@@ -106,10 +106,10 @@ uint32_t SpriteBatch::flush(uint32_t frame_index) {
         float hh = s.size.y * 0.5f;
 
         // TL, TR, BR, BL
-        verts[i * 4 + 0] = {{cx - hw, cy + hh, cz}, {0.0f, 0.0f}, s.color};
-        verts[i * 4 + 1] = {{cx + hw, cy + hh, cz}, {1.0f, 0.0f}, s.color};
-        verts[i * 4 + 2] = {{cx + hw, cy - hh, cz}, {1.0f, 1.0f}, s.color};
-        verts[i * 4 + 3] = {{cx - hw, cy - hh, cz}, {0.0f, 1.0f}, s.color};
+        verts[i * 4 + 0] = {{cx - hw, cy + hh, cz}, {s.uv_min.x, s.uv_min.y}, s.color};
+        verts[i * 4 + 1] = {{cx + hw, cy + hh, cz}, {s.uv_max.x, s.uv_min.y}, s.color};
+        verts[i * 4 + 2] = {{cx + hw, cy - hh, cz}, {s.uv_max.x, s.uv_max.y}, s.color};
+        verts[i * 4 + 3] = {{cx - hw, cy - hh, cz}, {s.uv_min.x, s.uv_max.y}, s.color};
     }
 
     return static_cast<uint32_t>(pending_sprites_.size()) * 6;

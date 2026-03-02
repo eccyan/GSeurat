@@ -9,4 +9,8 @@ Entity* Scene::create_entity() {
     return entities_.back().get();
 }
 
+void Scene::set_tile_layer(TileLayer layer) {
+    tile_layer_ = std::move(layer);
+}
+
 }  // namespace vulkan_game

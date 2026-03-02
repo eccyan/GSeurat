@@ -13,9 +13,11 @@
 namespace vulkan_game {
 
 struct SpriteDrawInfo {
-    glm::vec3 position;   // center x, y, z
-    glm::vec2 size;       // width, height
-    glm::vec4 color;      // rgba tint
+    glm::vec3 position;               // center x, y, z
+    glm::vec2 size;                   // width, height
+    glm::vec4 color;                  // rgba tint
+    glm::vec2 uv_min{0.0f, 0.0f};    // texture UV top-left
+    glm::vec2 uv_max{1.0f, 1.0f};    // texture UV bottom-right
 };
 
 class SpriteBatch {

@@ -28,6 +28,10 @@ void Renderer::init(GLFWwindow* window) {
         Texture::load_from_file(context_.device(), context_.allocator(), command_pool_.pool(),
                                 context_.graphics_queue(), "assets/textures/test_sprite.png");
 
+    tileset_texture_ =
+        Texture::load_from_file(context_.device(), context_.allocator(), command_pool_.pool(),
+                                context_.graphics_queue(), "assets/textures/tileset.png");
+
     std::array<VkBuffer, kMaxFramesInFlight> ubo_buffers;
     for (uint32_t i = 0; i < kMaxFramesInFlight; i++) {
         ubo_buffers[i] = uniform_buffers_[i].buffer();
@@ -35,6 +39,10 @@ void Renderer::init(GLFWwindow* window) {
     descriptor_sets_ = descriptors_.allocate_sprite_sets(
         context_.device(), ubo_buffers, sizeof(UniformBufferObject), test_texture_.image_view(),
         test_texture_.sampler());
+
+    tilemap_descriptor_sets_ = descriptors_.allocate_sprite_sets(
+        context_.device(), ubo_buffers, sizeof(UniformBufferObject),
+        tileset_texture_.image_view(), tileset_texture_.sampler());
 
     create_sprite_pipeline();
 
@@ -88,7 +96,24 @@ void Renderer::draw_scene(Scene& scene) {
     vkCmdBeginRenderPass(cmd, &rp_info, VK_SUBPASS_CONTENTS_INLINE);
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, sprite_pipeline_);
 
-    // Submit all entities to sprite batch
+    update_uniform_buffer(current_frame_, camera_.view_projection());
+
+    // Tilemap pass
+    if (scene.tile_layer().has_value()) {
+        sprite_batch_.begin();
+        for (const auto& draw_info : scene.tile_layer()->generate_draw_infos()) {
+            sprite_batch_.draw(draw_info);
+        }
+        uint32_t tile_index_count = sprite_batch_.flush(current_frame_);
+        if (tile_index_count > 0) {
+            sprite_batch_.bind(cmd, current_frame_);
+            vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, sprite_pipeline_layout_,
+                                    0, 1, &tilemap_descriptor_sets_[current_frame_], 0, nullptr);
+            vkCmdDrawIndexed(cmd, tile_index_count, 1, 0, 0, 0);
+        }
+    }
+
+    // Entity pass
     sprite_batch_.begin();
     for (const auto& entity_ptr : scene.entities()) {
         const auto& e = *entity_ptr;
@@ -98,15 +123,12 @@ void Renderer::draw_scene(Scene& scene) {
         info.color = e.tint;
         sprite_batch_.draw(info);
     }
-    uint32_t index_count = sprite_batch_.flush(current_frame_);
-
-    update_uniform_buffer(current_frame_, camera_.view_projection());
-
-    if (index_count > 0) {
+    uint32_t entity_index_count = sprite_batch_.flush(current_frame_);
+    if (entity_index_count > 0) {
         sprite_batch_.bind(cmd, current_frame_);
         vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, sprite_pipeline_layout_, 0,
                                 1, &descriptor_sets_[current_frame_], 0, nullptr);
-        vkCmdDrawIndexed(cmd, index_count, 1, 0, 0, 0);
+        vkCmdDrawIndexed(cmd, entity_index_count, 1, 0, 0, 0);
     }
 
     vkCmdEndRenderPass(cmd);
@@ -157,6 +179,7 @@ void Renderer::shutdown() {
     vkDeviceWaitIdle(context_.device());
 
     test_texture_.destroy(context_.device(), context_.allocator());
+    tileset_texture_.destroy(context_.device(), context_.allocator());
 
     for (auto& buf : uniform_buffers_) {
         buf.destroy(context_.allocator());

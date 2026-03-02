@@ -1,4 +1,5 @@
 #include "vulkan_game/app.hpp"
+#include "vulkan_game/engine/tilemap.hpp"
 
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
@@ -32,6 +33,16 @@ void App::init_scene() {
     // Camera follows player
     renderer_.camera().set_follow_target(player_entity_->transform.position);
     renderer_.camera().set_follow_speed(5.0f);
+
+    // Test tilemap: 8x8 grid, all tile 0, using a 16x16-pixel single-tile sheet
+    TileLayer layer{};
+    layer.tileset = Tileset{16, 16, 1, 16, 16};
+    layer.width = 8;
+    layer.height = 8;
+    layer.tile_size = 1.0f;
+    layer.z = 1.0f;  // behind player at Z=0
+    layer.tiles.assign(64, 0);
+    scene_.set_tile_layer(std::move(layer));
 }
 
 void App::update_game() {

@@ -46,7 +46,9 @@ private:
     SpriteBatch sprite_batch_;
     std::array<Buffer, kMaxFramesInFlight> uniform_buffers_;
     Texture test_texture_;
+    Texture tileset_texture_;
     std::array<VkDescriptorSet, kMaxFramesInFlight> descriptor_sets_{};
+    std::array<VkDescriptorSet, kMaxFramesInFlight> tilemap_descriptor_sets_{};
     Camera camera_;
 
     uint32_t current_frame_ = 0;

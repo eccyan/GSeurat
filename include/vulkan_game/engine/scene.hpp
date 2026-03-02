@@ -1,8 +1,11 @@
 #pragma once
 
+#include "vulkan_game/engine/tilemap.hpp"
+
 #include <glm/glm.hpp>
-#include <vector>
 #include <memory>
+#include <optional>
+#include <vector>
 
 namespace vulkan_game {
 
@@ -22,8 +25,12 @@ public:
 
     const std::vector<std::unique_ptr<Entity>>& entities() const { return entities_; }
 
+    void set_tile_layer(TileLayer layer);
+    const std::optional<TileLayer>& tile_layer() const { return tile_layer_; }
+
 private:
     std::vector<std::unique_ptr<Entity>> entities_;
+    std::optional<TileLayer> tile_layer_;
 };
 
 }  // namespace vulkan_game

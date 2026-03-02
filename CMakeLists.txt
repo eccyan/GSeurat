@@ -68,6 +68,7 @@ add_executable(vulkan_game
     src/engine/sprite_batch.cpp
     src/engine/input_manager.cpp
     src/engine/scene.cpp
+    src/engine/tilemap.cpp
 )
 
 target_include_directories(vulkan_game PRIVATE
