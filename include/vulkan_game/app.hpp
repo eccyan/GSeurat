@@ -3,7 +3,8 @@
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
-#include <cstdint>
+#include "vulkan_game/engine/renderer.hpp"
+#include "vulkan_game/engine/types.hpp"
 
 namespace vulkan_game {
 
@@ -13,17 +14,11 @@ public:
 
 private:
     void init_window();
-    void init_vulkan();
     void main_loop();
     void cleanup();
 
-    void create_instance();
-
     GLFWwindow* window_ = nullptr;
-    VkInstance instance_ = VK_NULL_HANDLE;
-
-    static constexpr uint32_t kWindowWidth = 1280;
-    static constexpr uint32_t kWindowHeight = 720;
+    Renderer renderer_;
 };
 
 }  // namespace vulkan_game

@@ -29,21 +29,58 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(glm)
 
+FetchContent_Declare(
+    vma
+    GIT_REPOSITORY https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator.git
+    GIT_TAG        v3.1.0
+)
+FetchContent_MakeAvailable(vma)
+
+FetchContent_Declare(
+    stb
+    GIT_REPOSITORY https://github.com/nothings/stb.git
+    GIT_TAG        master
+    CONFIGURE_COMMAND ""
+    BUILD_COMMAND ""
+)
+FetchContent_MakeAvailable(stb)
+
 # --- Shaders ----------------------------------------------------------------
 
 add_subdirectory(shaders)
 
 # --- Main executable --------------------------------------------------------
 
-add_executable(vulkan_game src/main.cpp)
+add_executable(vulkan_game
+    src/main.cpp
+    src/engine/vk_context.cpp
+    src/engine/swapchain.cpp
+    src/engine/render_pass.cpp
+    src/engine/pipeline.cpp
+    src/engine/command_pool.cpp
+    src/engine/sync.cpp
+    src/engine/buffer.cpp
+    src/engine/texture.cpp
+    src/engine/descriptor.cpp
+    src/engine/renderer.cpp
+    src/engine/camera.cpp
+)
 
-target_include_directories(vulkan_game PRIVATE ${PROJECT_SOURCE_DIR}/include)
+target_include_directories(vulkan_game PRIVATE
+    ${PROJECT_SOURCE_DIR}/include
+    ${stb_SOURCE_DIR}
+)
+
+target_compile_definitions(vulkan_game PRIVATE
+    GLM_FORCE_DEPTH_ZERO_TO_ONE
+)
 
 target_link_libraries(vulkan_game
     PRIVATE
         Vulkan::Vulkan
         glfw
         glm::glm
+        GPUOpen::VulkanMemoryAllocator
 )
 
 add_dependencies(vulkan_game shaders)

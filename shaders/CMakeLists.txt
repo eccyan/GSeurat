@@ -15,6 +15,8 @@ file(MAKE_DIRECTORY ${SHADER_OUTPUT_DIR})
 set(SHADER_SOURCES
     ${SHADER_SOURCE_DIR}/triangle.vert
     ${SHADER_SOURCE_DIR}/triangle.frag
+    ${SHADER_SOURCE_DIR}/sprite.vert
+    ${SHADER_SOURCE_DIR}/sprite.frag
 )
 
 set(SHADER_OUTPUTS "")
