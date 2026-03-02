@@ -22,12 +22,15 @@ private:
     void cleanup();
     static void generate_player_sheet();
 
+    enum class Direction { Down, Left, Right, Up };
+
     GLFWwindow* window_ = nullptr;
     Renderer renderer_;
     InputManager input_;
     Scene scene_;
     Entity* player_entity_ = nullptr;
     AnimationStateMachine player_anim_;
+    Direction player_dir_ = Direction::Down;
     std::chrono::steady_clock::time_point last_update_time_;
 };
 

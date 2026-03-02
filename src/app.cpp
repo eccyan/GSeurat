@@ -15,18 +15,27 @@ void App::generate_player_sheet() {
     constexpr int kFrameW   = 16;
     constexpr int kFrameH   = 16;
     constexpr int kFrames   = 4;
-    constexpr int kRows     = 3;
+    constexpr int kRows     = 12;  // 3 states × 4 directions
     constexpr int kWidth    = kFrameW * kFrames;  // 64
-    constexpr int kHeight   = kFrameH * kRows;    // 48
-    constexpr int kChannels = 4;                  // RGBA
+    constexpr int kHeight   = kFrameH * kRows;    // 192
+    constexpr int kChannels = 4;
 
-    // row 0: idle — grayscale brightness pulse
-    // row 1: walk — blue tint series
-    // row 2: run  — orange tint high-contrast
+    // Row order: idle_down, idle_left, idle_right, idle_up,
+    //            walk_down, walk_left, walk_right, walk_up,
+    //            run_down,  run_left,  run_right,  run_up
     const uint8_t row_colors[kRows][kFrames][4] = {
-        {{180,180,180,255}, {210,210,210,255}, {240,240,240,255}, {210,210,210,255}},
-        {{ 80,120,220,255}, {100,140,230,255}, { 60,100,200,255}, {100,140,230,255}},
-        {{230,120, 40,255}, {255,160, 60,255}, {200, 90, 20,255}, {255,160, 60,255}},
+        {{170,170,170,255}, {200,200,200,255}, {230,230,230,255}, {200,200,200,255}},  // idle_down
+        {{150,155,180,255}, {175,180,205,255}, {200,205,230,255}, {175,180,205,255}},  // idle_left
+        {{180,155,150,255}, {205,180,175,255}, {230,205,200,255}, {205,180,175,255}},  // idle_right
+        {{150,180,155,255}, {175,205,180,255}, {200,230,205,255}, {175,205,180,255}},  // idle_up
+        {{ 80,120,220,255}, {100,140,235,255}, { 60,100,205,255}, {100,140,235,255}},  // walk_down
+        {{ 60,190,210,255}, { 80,210,230,255}, { 40,165,185,255}, { 80,210,230,255}},  // walk_left
+        {{ 50,175,160,255}, { 70,195,180,255}, { 35,150,140,255}, { 70,195,180,255}},  // walk_right
+        {{110, 90,210,255}, {130,110,230,255}, { 90, 70,185,255}, {130,110,230,255}},  // walk_up
+        {{230,120, 40,255}, {255,160, 60,255}, {200, 90, 20,255}, {255,160, 60,255}},  // run_down
+        {{240,180, 40,255}, {255,210, 70,255}, {215,155, 20,255}, {255,210, 70,255}},  // run_left
+        {{220, 80, 40,255}, {245,110, 60,255}, {195, 55, 20,255}, {245,110, 60,255}},  // run_right
+        {{190, 40, 40,255}, {215, 65, 65,255}, {165, 20, 20,255}, {215, 65, 65,255}},  // run_up
     };
 
     std::vector<uint8_t> pixels(kWidth * kHeight * kChannels);
@@ -36,7 +45,7 @@ void App::generate_player_sheet() {
             for (int py_local = 0; py_local < kFrameH; ++py_local) {
                 int py_abs = sheet_row * kFrameH + py_local;
                 for (int px_local = 0; px_local < kFrameW; ++px_local) {
-                    int px = frame * kFrameW + px_local;
+                    int px  = frame * kFrameW + px_local;
                     int idx = (py_abs * kWidth + px) * kChannels;
                     pixels[idx + 0] = row_colors[sheet_row][frame][0];
                     pixels[idx + 1] = row_colors[sheet_row][frame][1];
@@ -77,32 +86,32 @@ void App::init_scene() {
     player_entity_->transform.scale = {1.0f, 1.0f};
     player_entity_->tint = {1.0f, 1.0f, 1.0f, 1.0f};
 
-    // Configure animation state machine: 3-row sheet (idle/walk/run)
-    player_anim_.configure(Tileset{16, 16, 4, 64, 48});
+    // Configure animation state machine: 12-row sheet (3 states × 4 directions)
+    player_anim_.configure(Tileset{16, 16, 4, 64, 192});
 
-    // idle: tile_ids 0–3 (row 0), 0.30s/frame
-    AnimationClip idle_clip;
-    idle_clip.name = "idle";
-    idle_clip.looping = true;
-    for (uint32_t i = 0; i < 4; ++i) idle_clip.frames.push_back(AnimationFrame{i, 0.30f});
-    player_anim_.add_clip(std::move(idle_clip));
+    // Row order: idle_down, idle_left, idle_right, idle_up,
+    //            walk_down, walk_left, walk_right, walk_up,
+    //            run_down,  run_left,  run_right,  run_up
+    const std::array<std::string, 3> state_names = {"idle", "walk", "run"};
+    const std::array<std::string, 4> dir_names   = {"down", "left", "right", "up"};
+    const std::array<float, 3> frame_durations   = {0.30f, 0.12f, 0.07f};
 
-    // walk: tile_ids 4–7 (row 1), 0.12s/frame
-    AnimationClip walk_clip;
-    walk_clip.name = "walk";
-    walk_clip.looping = true;
-    for (uint32_t i = 4; i < 8; ++i) walk_clip.frames.push_back(AnimationFrame{i, 0.12f});
-    player_anim_.add_clip(std::move(walk_clip));
+    for (int state = 0; state < 3; ++state) {
+        for (int dir = 0; dir < 4; ++dir) {
+            int sheet_row      = state * 4 + dir;
+            uint32_t base_tile = static_cast<uint32_t>(sheet_row * 4);
+            AnimationClip clip;
+            clip.name    = state_names[state] + "_" + dir_names[dir];
+            clip.looping = true;
+            for (uint32_t f = 0; f < 4; ++f) {
+                clip.frames.push_back(AnimationFrame{base_tile + f, frame_durations[state]});
+            }
+            player_anim_.add_clip(std::move(clip));
+        }
+    }
 
-    // run: tile_ids 8–11 (row 2), 0.07s/frame
-    AnimationClip run_clip;
-    run_clip.name = "run";
-    run_clip.looping = true;
-    for (uint32_t i = 8; i < 12; ++i) run_clip.frames.push_back(AnimationFrame{i, 0.07f});
-    player_anim_.add_clip(std::move(run_clip));
-
-    // First transition seeds UV correctly (current_state_ starts as "")
-    player_anim_.transition_to("idle");
+    // Seed to idle_down (default facing direction)
+    player_anim_.transition_to("idle_down");
 
     // Seed entity UVs immediately
     player_entity_->uv_min = player_anim_.current_uv_min();
@@ -142,8 +151,24 @@ void App::update_game(float dt) {
 
         renderer_.camera().set_follow_target(pos);
 
-        const std::string target = sprinting ? "run" : moving ? "walk" : "idle";
-        player_anim_.transition_to(target);
+        // Direction: only update when moving; horizontal beats vertical on diagonal
+        if (moving) {
+            if (d)      player_dir_ = Direction::Right;
+            else if (a) player_dir_ = Direction::Left;
+            else if (w) player_dir_ = Direction::Up;
+            else        player_dir_ = Direction::Down;
+        }
+
+        const char* dir_suffix = nullptr;
+        switch (player_dir_) {
+            case Direction::Down:  dir_suffix = "down";  break;
+            case Direction::Left:  dir_suffix = "left";  break;
+            case Direction::Right: dir_suffix = "right"; break;
+            case Direction::Up:    dir_suffix = "up";    break;
+        }
+
+        const std::string state_prefix = sprinting ? "run" : moving ? "walk" : "idle";
+        player_anim_.transition_to(state_prefix + "_" + dir_suffix);
         player_anim_.update(dt);
         player_entity_->uv_min = player_anim_.current_uv_min();
         player_entity_->uv_max = player_anim_.current_uv_max();
