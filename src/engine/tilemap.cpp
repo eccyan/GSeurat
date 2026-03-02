@@ -1,5 +1,7 @@
 #include "vulkan_game/engine/tilemap.hpp"
 
+#include <cmath>
+
 namespace vulkan_game {
 
 glm::vec2 Tileset::uv_min(uint32_t tile_id) const {
@@ -49,6 +51,47 @@ std::vector<SpriteDrawInfo> TileLayer::generate_draw_infos() const {
     }
 
     return infos;
+}
+
+glm::vec2 resolve_tilemap_collision(glm::vec2 pos,
+                                    float half_extent,
+                                    const TileLayer& layer)
+{
+    if (layer.solid.empty()) return pos;
+
+    const float half_w   = static_cast<float>(layer.width)  * layer.tile_size * 0.5f;
+    const float half_h   = static_cast<float>(layer.height) * layer.tile_size * 0.5f;
+    const float tile_half = layer.tile_size * 0.5f;
+    const float sum_half  = tile_half + half_extent;
+
+    for (uint32_t row = 0; row < layer.height; ++row) {
+        for (uint32_t col = 0; col < layer.width; ++col) {
+            const uint32_t idx = row * layer.width + col;
+            if (idx >= static_cast<uint32_t>(layer.solid.size())) continue;
+            if (!layer.solid[idx]) continue;
+
+            // Tile center — same formula as generate_draw_infos.
+            const float tile_cx = (static_cast<float>(col) + 0.5f) * layer.tile_size - half_w;
+            const float tile_cy = -(static_cast<float>(row) + 0.5f) * layer.tile_size + half_h;
+
+            const float dx = pos.x - tile_cx;
+            const float dy = pos.y - tile_cy;
+
+            const float overlap_x = sum_half - std::abs(dx);
+            const float overlap_y = sum_half - std::abs(dy);
+
+            if (overlap_x <= 0.0f || overlap_y <= 0.0f) continue;
+
+            // Push out on the axis with smaller overlap (SAT minimum translation).
+            if (overlap_x < overlap_y) {
+                pos.x += (dx >= 0.0f ? overlap_x : -overlap_x);
+            } else {
+                pos.y += (dy >= 0.0f ? overlap_y : -overlap_y);
+            }
+        }
+    }
+
+    return pos;
 }
 
 }  // namespace vulkan_game

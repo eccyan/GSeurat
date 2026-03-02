@@ -129,6 +129,17 @@ void App::init_scene() {
     layer.tile_size = 1.0f;
     layer.z = 1.0f;  // behind player at Z=0
     layer.tiles.assign(64, 0);
+
+    // Mark border cells solid so the player cannot leave the map.
+    layer.solid.resize(64, false);
+    for (uint32_t row = 0; row < 8; ++row) {
+        for (uint32_t col = 0; col < 8; ++col) {
+            if (col == 0 || col == 7 || row == 0 || row == 7) {
+                layer.solid[row * 8 + col] = true;
+            }
+        }
+    }
+
     scene_.set_tile_layer(std::move(layer));
 }
 
@@ -148,6 +159,14 @@ void App::update_game(float dt) {
         if (s) pos.y -= speed * dt;
         if (a) pos.x -= speed * dt;
         if (d) pos.x += speed * dt;
+
+        // Resolve AABB collisions against solid tilemap tiles.
+        if (scene_.tile_layer().has_value()) {
+            const glm::vec2 resolved = resolve_tilemap_collision(
+                {pos.x, pos.y}, 0.4f, *scene_.tile_layer());
+            pos.x = resolved.x;
+            pos.y = resolved.y;
+        }
 
         renderer_.camera().set_follow_target(pos);
 

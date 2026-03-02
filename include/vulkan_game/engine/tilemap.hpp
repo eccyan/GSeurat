@@ -27,8 +27,15 @@ struct TileLayer {
     float tile_size;    // world units per tile
     float z;            // depth (larger = further from camera)
     std::vector<uint16_t> tiles;  // row-major; 0xFFFF = skip
+    std::vector<bool> solid;      // row-major; true = blocks movement (empty = all passable)
 
     std::vector<SpriteDrawInfo> generate_draw_infos() const;
 };
+
+// Resolves AABB overlap between an entity (axis-aligned square with given
+// half_extent) and all solid tiles in layer. Returns corrected XY position.
+glm::vec2 resolve_tilemap_collision(glm::vec2 pos,
+                                    float half_extent,
+                                    const TileLayer& layer);
 
 }  // namespace vulkan_game
