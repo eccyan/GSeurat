@@ -22,6 +22,7 @@ private:
     void main_loop();
     void cleanup();
     static void generate_player_sheet();
+    static void generate_tileset();
 
     enum class Direction { Down, Left, Right, Up };
 

@@ -61,9 +61,44 @@ void App::generate_player_sheet() {
                    pixels.data(), kWidth * kChannels);
 }
 
+void App::generate_tileset() {
+    constexpr int kTileW    = 16;
+    constexpr int kTileH    = 16;
+    constexpr int kTiles    = 2;   // tile 0 = floor, tile 1 = wall
+    constexpr int kWidth    = kTileW * kTiles;  // 32
+    constexpr int kHeight   = kTileH;           // 16
+    constexpr int kChannels = 4;
+
+    // Tile 0: warm stone floor; Tile 1: dark rock wall
+    const uint8_t tile_colors[kTiles][4] = {
+        {200, 185, 145, 255},  // floor — warm sand/stone
+        { 70,  60,  55, 255},  // wall  — dark charcoal rock
+    };
+
+    std::vector<uint8_t> pixels(kWidth * kHeight * kChannels);
+
+    for (int tile = 0; tile < kTiles; ++tile) {
+        for (int py = 0; py < kTileH; ++py) {
+            for (int px_local = 0; px_local < kTileW; ++px_local) {
+                int px  = tile * kTileW + px_local;
+                int idx = (py * kWidth + px) * kChannels;
+                pixels[idx + 0] = tile_colors[tile][0];
+                pixels[idx + 1] = tile_colors[tile][1];
+                pixels[idx + 2] = tile_colors[tile][2];
+                pixels[idx + 3] = tile_colors[tile][3];
+            }
+        }
+    }
+
+    std::filesystem::create_directories("assets/textures");
+    stbi_write_png("assets/textures/tileset.png", kWidth, kHeight, kChannels,
+                   pixels.data(), kWidth * kChannels);
+}
+
 void App::run() {
     init_window();
     generate_player_sheet();
+    generate_tileset();
     renderer_.init(window_);
     init_scene();
     main_loop();
@@ -143,64 +178,70 @@ void App::init_scene() {
     // NPCs: 3 patrol agents with ping-pong movement.
     npcs_.reserve(3);
 
-    // NPC 0: left ↔ right at y = 1.5
+    // NPC 0: left ↔ right at y = 2, red tint
     npcs_.emplace_back();
     npcs_.back().entity = scene_.create_entity();
-    npcs_.back().entity->transform.position = {-1.5f, 1.5f, 0.0f};
+    npcs_.back().entity->transform.position = {-3.0f, 2.0f, 0.0f};
     npcs_.back().entity->transform.scale    = {1.0f, 1.0f};
-    npcs_.back().entity->tint               = {1.0f, 1.0f, 1.0f, 1.0f};
+    npcs_.back().entity->tint               = {1.0f, 0.8f, 0.8f, 1.0f};
     setup_anim(npcs_.back().anim);
     npcs_.back().dir         = Direction::Right;
     npcs_.back().reverse_dir = Direction::Left;
-    npcs_.back().interval    = 1.8f;
+    npcs_.back().interval    = 3.0f;
+    npcs_.back().speed       = 2.0f;
     npcs_.back().anim.transition_to("walk_right");
     npcs_.back().entity->uv_min = npcs_.back().anim.current_uv_min();
     npcs_.back().entity->uv_max = npcs_.back().anim.current_uv_max();
 
-    // NPC 1: up ↔ down at x = 1.5
+    // NPC 1: up ↔ down at x = 4, green tint
     npcs_.emplace_back();
     npcs_.back().entity = scene_.create_entity();
-    npcs_.back().entity->transform.position = {1.5f, -0.5f, 0.0f};
+    npcs_.back().entity->transform.position = {4.0f, -2.0f, 0.0f};
     npcs_.back().entity->transform.scale    = {1.0f, 1.0f};
-    npcs_.back().entity->tint               = {1.0f, 1.0f, 1.0f, 1.0f};
+    npcs_.back().entity->tint               = {0.8f, 1.0f, 0.8f, 1.0f};
     setup_anim(npcs_.back().anim);
     npcs_.back().dir         = Direction::Up;
     npcs_.back().reverse_dir = Direction::Down;
-    npcs_.back().interval    = 2.2f;
+    npcs_.back().interval    = 2.5f;
+    npcs_.back().speed       = 2.0f;
     npcs_.back().anim.transition_to("walk_up");
     npcs_.back().entity->uv_min = npcs_.back().anim.current_uv_min();
     npcs_.back().entity->uv_max = npcs_.back().anim.current_uv_max();
 
-    // NPC 2: left ↔ right at y = -1.5
+    // NPC 2: left ↔ right at y = -4, blue tint
     npcs_.emplace_back();
     npcs_.back().entity = scene_.create_entity();
-    npcs_.back().entity->transform.position = {0.0f, -1.5f, 0.0f};
+    npcs_.back().entity->transform.position = {0.0f, -4.0f, 0.0f};
     npcs_.back().entity->transform.scale    = {1.0f, 1.0f};
-    npcs_.back().entity->tint               = {1.0f, 1.0f, 1.0f, 1.0f};
+    npcs_.back().entity->tint               = {0.8f, 0.8f, 1.0f, 1.0f};
     setup_anim(npcs_.back().anim);
     npcs_.back().dir         = Direction::Left;
     npcs_.back().reverse_dir = Direction::Right;
-    npcs_.back().interval    = 1.5f;
+    npcs_.back().interval    = 3.5f;
+    npcs_.back().speed       = 2.0f;
     npcs_.back().anim.transition_to("walk_left");
     npcs_.back().entity->uv_min = npcs_.back().anim.current_uv_min();
     npcs_.back().entity->uv_max = npcs_.back().anim.current_uv_max();
 
-    // Test tilemap: 8x8 grid, all tile 0, using a 16x16-pixel single-tile sheet
+    // Tilemap: 16×16, tile 0=floor (warm stone), tile 1=wall (dark rock).
+    // Border walls + 4 interior pillars at corners (col,row) = (4,4),(11,4),(4,11),(11,11).
     TileLayer layer{};
-    layer.tileset = Tileset{16, 16, 1, 16, 16};
-    layer.width = 8;
-    layer.height = 8;
+    layer.tileset   = Tileset{16, 16, 2, 32, 16};
+    layer.width     = 16;
+    layer.height    = 16;
     layer.tile_size = 1.0f;
-    layer.z = 1.0f;  // behind player at Z=0
-    layer.tiles.assign(64, 0);
+    layer.z         = 1.0f;
+    layer.tiles.resize(16 * 16, 0);
+    layer.solid.resize(16 * 16, false);
 
-    // Mark border cells solid so the player cannot leave the map.
-    layer.solid.resize(64, false);
-    for (uint32_t row = 0; row < 8; ++row) {
-        for (uint32_t col = 0; col < 8; ++col) {
-            if (col == 0 || col == 7 || row == 0 || row == 7) {
-                layer.solid[row * 8 + col] = true;
-            }
+    for (uint32_t row = 0; row < 16; ++row) {
+        for (uint32_t col = 0; col < 16; ++col) {
+            const bool border  = (col == 0 || col == 15 || row == 0 || row == 15);
+            const bool pillar  = ((col == 4 || col == 11) && (row == 4 || row == 11));
+            const bool is_wall = border || pillar;
+            const uint32_t idx = row * 16 + col;
+            layer.tiles[idx] = is_wall ? 1 : 0;
+            layer.solid[idx] = is_wall;
         }
     }
 
