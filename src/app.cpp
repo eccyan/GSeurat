@@ -12,33 +12,37 @@
 namespace vulkan_game {
 
 void App::generate_player_sheet() {
-    constexpr int kFrameW = 16;
-    constexpr int kFrameH = 16;
-    constexpr int kFrames = 4;
-    constexpr int kWidth  = kFrameW * kFrames;  // 64
-    constexpr int kHeight = kFrameH;             // 16
-    constexpr int kChannels = 4;                 // RGBA
+    constexpr int kFrameW   = 16;
+    constexpr int kFrameH   = 16;
+    constexpr int kFrames   = 4;
+    constexpr int kRows     = 3;
+    constexpr int kWidth    = kFrameW * kFrames;  // 64
+    constexpr int kHeight   = kFrameH * kRows;    // 48
+    constexpr int kChannels = 4;                  // RGBA
 
-    // Frame colors: light-gray, red-tint, green-tint, blue-tint
-    const uint8_t frame_colors[kFrames][4] = {
-        {200, 200, 200, 255},
-        {220,  80,  80, 255},
-        { 80, 200,  80, 255},
-        { 80,  80, 220, 255},
+    // row 0: idle — grayscale brightness pulse
+    // row 1: walk — blue tint series
+    // row 2: run  — orange tint high-contrast
+    const uint8_t row_colors[kRows][kFrames][4] = {
+        {{180,180,180,255}, {210,210,210,255}, {240,240,240,255}, {210,210,210,255}},
+        {{ 80,120,220,255}, {100,140,230,255}, { 60,100,200,255}, {100,140,230,255}},
+        {{230,120, 40,255}, {255,160, 60,255}, {200, 90, 20,255}, {255,160, 60,255}},
     };
 
     std::vector<uint8_t> pixels(kWidth * kHeight * kChannels);
 
-    for (int frame = 0; frame < kFrames; ++frame) {
-        for (int row = 0; row < kFrameH; ++row) {
-            for (int col = 0; col < kFrameW; ++col) {
-                int px = (frame * kFrameW + col);
-                int py = row;
-                int idx = (py * kWidth + px) * kChannels;
-                pixels[idx + 0] = frame_colors[frame][0];
-                pixels[idx + 1] = frame_colors[frame][1];
-                pixels[idx + 2] = frame_colors[frame][2];
-                pixels[idx + 3] = frame_colors[frame][3];
+    for (int sheet_row = 0; sheet_row < kRows; ++sheet_row) {
+        for (int frame = 0; frame < kFrames; ++frame) {
+            for (int py_local = 0; py_local < kFrameH; ++py_local) {
+                int py_abs = sheet_row * kFrameH + py_local;
+                for (int px_local = 0; px_local < kFrameW; ++px_local) {
+                    int px = frame * kFrameW + px_local;
+                    int idx = (py_abs * kWidth + px) * kChannels;
+                    pixels[idx + 0] = row_colors[sheet_row][frame][0];
+                    pixels[idx + 1] = row_colors[sheet_row][frame][1];
+                    pixels[idx + 2] = row_colors[sheet_row][frame][2];
+                    pixels[idx + 3] = row_colors[sheet_row][frame][3];
+                }
             }
         }
     }
@@ -73,16 +77,32 @@ void App::init_scene() {
     player_entity_->transform.scale = {1.0f, 1.0f};
     player_entity_->tint = {1.0f, 1.0f, 1.0f, 1.0f};
 
-    // Configure animation: 4-frame idle clip at 0.25s per frame
-    player_anim_.set_sheet(Tileset{16, 16, 4, 64, 16});
+    // Configure animation state machine: 3-row sheet (idle/walk/run)
+    player_anim_.configure(Tileset{16, 16, 4, 64, 48});
+
+    // idle: tile_ids 0–3 (row 0), 0.30s/frame
     AnimationClip idle_clip;
     idle_clip.name = "idle";
     idle_clip.looping = true;
-    for (uint32_t i = 0; i < 4; ++i) {
-        idle_clip.frames.push_back(AnimationFrame{i, 0.25f});
-    }
+    for (uint32_t i = 0; i < 4; ++i) idle_clip.frames.push_back(AnimationFrame{i, 0.30f});
     player_anim_.add_clip(std::move(idle_clip));
-    player_anim_.play("idle");
+
+    // walk: tile_ids 4–7 (row 1), 0.12s/frame
+    AnimationClip walk_clip;
+    walk_clip.name = "walk";
+    walk_clip.looping = true;
+    for (uint32_t i = 4; i < 8; ++i) walk_clip.frames.push_back(AnimationFrame{i, 0.12f});
+    player_anim_.add_clip(std::move(walk_clip));
+
+    // run: tile_ids 8–11 (row 2), 0.07s/frame
+    AnimationClip run_clip;
+    run_clip.name = "run";
+    run_clip.looping = true;
+    for (uint32_t i = 8; i < 12; ++i) run_clip.frames.push_back(AnimationFrame{i, 0.07f});
+    player_anim_.add_clip(std::move(run_clip));
+
+    // First transition seeds UV correctly (current_state_ starts as "")
+    player_anim_.transition_to("idle");
 
     // Seed entity UVs immediately
     player_entity_->uv_min = player_anim_.current_uv_min();
@@ -104,17 +124,26 @@ void App::init_scene() {
 }
 
 void App::update_game(float dt) {
-    constexpr float kMoveSpeed = 4.0f;
-
     if (player_entity_) {
+        const bool w = input_.is_key_down(GLFW_KEY_W);
+        const bool a = input_.is_key_down(GLFW_KEY_A);
+        const bool s = input_.is_key_down(GLFW_KEY_S);
+        const bool d = input_.is_key_down(GLFW_KEY_D);
+        const bool moving    = w || a || s || d;
+        const bool sprinting = moving && input_.is_key_down(GLFW_KEY_LEFT_SHIFT);
+
+        const float speed = sprinting ? 8.0f : 4.0f;
+
         auto& pos = player_entity_->transform.position;
-        if (input_.is_key_down(GLFW_KEY_W)) pos.y += kMoveSpeed * dt;
-        if (input_.is_key_down(GLFW_KEY_S)) pos.y -= kMoveSpeed * dt;
-        if (input_.is_key_down(GLFW_KEY_A)) pos.x -= kMoveSpeed * dt;
-        if (input_.is_key_down(GLFW_KEY_D)) pos.x += kMoveSpeed * dt;
+        if (w) pos.y += speed * dt;
+        if (s) pos.y -= speed * dt;
+        if (a) pos.x -= speed * dt;
+        if (d) pos.x += speed * dt;
 
         renderer_.camera().set_follow_target(pos);
 
+        const std::string target = sprinting ? "run" : moving ? "walk" : "idle";
+        player_anim_.transition_to(target);
         player_anim_.update(dt);
         player_entity_->uv_min = player_anim_.current_uv_min();
         player_entity_->uv_max = player_anim_.current_uv_max();

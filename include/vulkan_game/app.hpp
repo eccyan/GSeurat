@@ -1,6 +1,6 @@
 #pragma once
 
-#include "vulkan_game/engine/animation.hpp"
+#include "vulkan_game/engine/animation_state_machine.hpp"
 #include "vulkan_game/engine/input_manager.hpp"
 #include "vulkan_game/engine/renderer.hpp"
 #include "vulkan_game/engine/scene.hpp"
@@ -27,7 +27,7 @@ private:
     InputManager input_;
     Scene scene_;
     Entity* player_entity_ = nullptr;
-    AnimationController player_anim_;
+    AnimationStateMachine player_anim_;
     std::chrono::steady_clock::time_point last_update_time_;
 };
 

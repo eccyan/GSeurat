@@ -70,6 +70,7 @@ add_executable(vulkan_game
     src/engine/scene.cpp
     src/engine/tilemap.cpp
     src/engine/animation.cpp
+    src/engine/animation_state_machine.cpp
 )
 
 target_include_directories(vulkan_game PRIVATE
