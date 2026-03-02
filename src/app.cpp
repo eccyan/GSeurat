@@ -121,6 +121,70 @@ void App::init_scene() {
     renderer_.camera().set_follow_target(player_entity_->transform.position);
     renderer_.camera().set_follow_speed(5.0f);
 
+    // Helper: configure animation state machine with the 12 directional clips.
+    auto setup_anim = [](AnimationStateMachine& anim) {
+        anim.configure(Tileset{16, 16, 4, 64, 192});
+        const std::array<std::string, 3> states    = {"idle", "walk", "run"};
+        const std::array<std::string, 4> dirs      = {"down", "left", "right", "up"};
+        const std::array<float, 3> durations       = {0.30f, 0.12f, 0.07f};
+        for (int s = 0; s < 3; ++s) {
+            for (int d = 0; d < 4; ++d) {
+                AnimationClip clip;
+                clip.name    = states[s] + "_" + dirs[d];
+                clip.looping = true;
+                uint32_t base = static_cast<uint32_t>((s * 4 + d) * 4);
+                for (uint32_t f = 0; f < 4; ++f)
+                    clip.frames.push_back(AnimationFrame{base + f, durations[s]});
+                anim.add_clip(std::move(clip));
+            }
+        }
+    };
+
+    // NPCs: 3 patrol agents with ping-pong movement.
+    npcs_.reserve(3);
+
+    // NPC 0: left ↔ right at y = 1.5
+    npcs_.emplace_back();
+    npcs_.back().entity = scene_.create_entity();
+    npcs_.back().entity->transform.position = {-1.5f, 1.5f, 0.0f};
+    npcs_.back().entity->transform.scale    = {1.0f, 1.0f};
+    npcs_.back().entity->tint               = {1.0f, 1.0f, 1.0f, 1.0f};
+    setup_anim(npcs_.back().anim);
+    npcs_.back().dir         = Direction::Right;
+    npcs_.back().reverse_dir = Direction::Left;
+    npcs_.back().interval    = 1.8f;
+    npcs_.back().anim.transition_to("walk_right");
+    npcs_.back().entity->uv_min = npcs_.back().anim.current_uv_min();
+    npcs_.back().entity->uv_max = npcs_.back().anim.current_uv_max();
+
+    // NPC 1: up ↔ down at x = 1.5
+    npcs_.emplace_back();
+    npcs_.back().entity = scene_.create_entity();
+    npcs_.back().entity->transform.position = {1.5f, -0.5f, 0.0f};
+    npcs_.back().entity->transform.scale    = {1.0f, 1.0f};
+    npcs_.back().entity->tint               = {1.0f, 1.0f, 1.0f, 1.0f};
+    setup_anim(npcs_.back().anim);
+    npcs_.back().dir         = Direction::Up;
+    npcs_.back().reverse_dir = Direction::Down;
+    npcs_.back().interval    = 2.2f;
+    npcs_.back().anim.transition_to("walk_up");
+    npcs_.back().entity->uv_min = npcs_.back().anim.current_uv_min();
+    npcs_.back().entity->uv_max = npcs_.back().anim.current_uv_max();
+
+    // NPC 2: left ↔ right at y = -1.5
+    npcs_.emplace_back();
+    npcs_.back().entity = scene_.create_entity();
+    npcs_.back().entity->transform.position = {0.0f, -1.5f, 0.0f};
+    npcs_.back().entity->transform.scale    = {1.0f, 1.0f};
+    npcs_.back().entity->tint               = {1.0f, 1.0f, 1.0f, 1.0f};
+    setup_anim(npcs_.back().anim);
+    npcs_.back().dir         = Direction::Left;
+    npcs_.back().reverse_dir = Direction::Right;
+    npcs_.back().interval    = 1.5f;
+    npcs_.back().anim.transition_to("walk_left");
+    npcs_.back().entity->uv_min = npcs_.back().anim.current_uv_min();
+    npcs_.back().entity->uv_max = npcs_.back().anim.current_uv_max();
+
     // Test tilemap: 8x8 grid, all tile 0, using a 16x16-pixel single-tile sheet
     TileLayer layer{};
     layer.tileset = Tileset{16, 16, 1, 16, 16};
@@ -193,8 +257,58 @@ void App::update_game(float dt) {
         player_entity_->uv_max = player_anim_.current_uv_max();
     }
 
+    update_npcs(dt);
+
     if (input_.is_key_down(GLFW_KEY_ESCAPE)) {
         glfwSetWindowShouldClose(window_, GLFW_TRUE);
+    }
+}
+
+void App::update_npcs(float dt) {
+    static constexpr const char* kDirSuffixes[] = {"down", "left", "right", "up"};
+
+    for (auto& npc : npcs_) {
+        auto& pos = npc.entity->transform.position;
+        const float prev_x = pos.x;
+        const float prev_y = pos.y;
+
+        switch (npc.dir) {
+            case Direction::Down:  pos.y -= npc.speed * dt; break;
+            case Direction::Left:  pos.x -= npc.speed * dt; break;
+            case Direction::Right: pos.x += npc.speed * dt; break;
+            case Direction::Up:    pos.y += npc.speed * dt; break;
+        }
+
+        if (scene_.tile_layer().has_value()) {
+            const glm::vec2 resolved = resolve_tilemap_collision(
+                {pos.x, pos.y}, 0.4f, *scene_.tile_layer());
+            pos.x = resolved.x;
+            pos.y = resolved.y;
+        }
+
+        // Detect wall block: position barely moved despite attempting to move.
+        const float ddx = pos.x - prev_x;
+        const float ddy = pos.y - prev_y;
+        const bool blocked = (ddx * ddx + ddy * ddy) < (0.001f * 0.001f);
+
+        npc.timer += dt;
+        if (blocked || npc.timer >= npc.interval) {
+            std::swap(npc.dir, npc.reverse_dir);
+            npc.timer = 0.0f;
+        }
+
+        int dir_idx = 0;
+        switch (npc.dir) {
+            case Direction::Down:  dir_idx = 0; break;
+            case Direction::Left:  dir_idx = 1; break;
+            case Direction::Right: dir_idx = 2; break;
+            case Direction::Up:    dir_idx = 3; break;
+        }
+
+        npc.anim.transition_to(std::string("walk_") + kDirSuffixes[dir_idx]);
+        npc.anim.update(dt);
+        npc.entity->uv_min = npc.anim.current_uv_min();
+        npc.entity->uv_max = npc.anim.current_uv_max();
     }
 }
 

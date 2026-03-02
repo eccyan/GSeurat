@@ -18,11 +18,22 @@ private:
     void init_window();
     void init_scene();
     void update_game(float dt);
+    void update_npcs(float dt);
     void main_loop();
     void cleanup();
     static void generate_player_sheet();
 
     enum class Direction { Down, Left, Right, Up };
+
+    struct NpcAgent {
+        Entity* entity       = nullptr;
+        AnimationStateMachine anim;
+        Direction dir        = Direction::Right;
+        Direction reverse_dir = Direction::Left;
+        float timer          = 0.0f;
+        float interval       = 2.0f;  // seconds between direction reversals
+        float speed          = 1.5f;
+    };
 
     GLFWwindow* window_ = nullptr;
     Renderer renderer_;
@@ -31,6 +42,7 @@ private:
     Entity* player_entity_ = nullptr;
     AnimationStateMachine player_anim_;
     Direction player_dir_ = Direction::Down;
+    std::vector<NpcAgent> npcs_;
     std::chrono::steady_clock::time_point last_update_time_;
 };
 
