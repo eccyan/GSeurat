@@ -26,7 +26,7 @@ void Renderer::init(GLFWwindow* window) {
 
     test_texture_ =
         Texture::load_from_file(context_.device(), context_.allocator(), command_pool_.pool(),
-                                context_.graphics_queue(), "assets/textures/test_sprite.png");
+                                context_.graphics_queue(), "assets/textures/player_sheet.png");
 
     tileset_texture_ =
         Texture::load_from_file(context_.device(), context_.allocator(), command_pool_.pool(),
@@ -121,6 +121,8 @@ void Renderer::draw_scene(Scene& scene) {
         info.position = e.transform.position;
         info.size = e.transform.scale;
         info.color = e.tint;
+        info.uv_min = e.uv_min;
+        info.uv_max = e.uv_max;
         sprite_batch_.draw(info);
     }
     uint32_t entity_index_count = sprite_batch_.flush(current_frame_);
