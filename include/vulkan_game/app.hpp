@@ -13,6 +13,7 @@
 #include "vulkan_game/engine/particle.hpp"
 #include "vulkan_game/engine/renderer.hpp"
 #include "vulkan_game/engine/resource_manager.hpp"
+#include "vulkan_game/engine/save_system.hpp"
 #include "vulkan_game/engine/scene.hpp"
 #include "vulkan_game/engine/text_renderer.hpp"
 #include "vulkan_game/engine/types.hpp"
@@ -37,6 +38,7 @@ public:
     Scene& scene() { return scene_; }
     ecs::World& world() { return world_; }
     AudioSystem& audio() { return audio_; }
+    SaveSystem& save_system() { return save_system_; }
     ParticleSystem& particles() { return particles_; }
     LocaleManager& locale() { return locale_; }
     FontAtlas& font_atlas() { return font_atlas_; }
@@ -61,6 +63,14 @@ public:
     std::vector<SpriteDrawInfo>& overlay_sprites() { return overlay_sprites_; }
     std::vector<SpriteDrawInfo>& ui_sprites() { return ui_sprites_; }
     std::vector<SpriteDrawInfo>& entity_sprites() { return entity_sprites_; }
+
+    // Game flags (used by save system and scripts)
+    std::unordered_map<std::string, bool>& game_flags() { return game_flags_; }
+    float play_time() const { return play_time_; }
+
+    // Save/load helpers
+    SaveData build_save_data() const;
+    void apply_save_data(const SaveData& data);
 
     // Public methods used by states
     void init_scene();
@@ -126,6 +136,11 @@ private:
     AudioSystem audio_;
     float footstep_timer_ = 0.0f;
     bool was_moving_ = false;
+
+    // Save system
+    SaveSystem save_system_;
+    std::unordered_map<std::string, bool> game_flags_;
+    float play_time_ = 0.0f;
 
     // Control server
     ControlServer control_server_;

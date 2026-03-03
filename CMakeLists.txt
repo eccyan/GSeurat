@@ -127,6 +127,7 @@ add_executable(vulkan_game
     src/engine/game_state.cpp
     src/engine/scene_loader.cpp
     src/engine/ui/ui_context.cpp
+    src/engine/save_system.cpp
     src/game/systems.cpp
     src/game/title_state.cpp
     src/game/gameplay_state.cpp

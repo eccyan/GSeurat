@@ -787,6 +787,7 @@ void App::main_loop() {
             if (dt > 0.1f) dt = 0.1f;
 
             state_stack_.update(*this, dt);
+            play_time_ += dt;
             tick_++;
         }
 
@@ -990,6 +991,48 @@ nlohmann::json App::build_map_json() const {
     }
 
     return map;
+}
+
+SaveData App::build_save_data() const {
+    SaveData data;
+    if (player_id_.valid()) {
+        data.player_position = world_.get<ecs::Transform>(player_id_).position;
+        data.player_facing = world_.get<ecs::Facing>(player_id_).dir;
+    }
+    for (auto npc : npc_ids_) {
+        NpcSaveData nsd;
+        nsd.position = world_.get<ecs::Transform>(npc).position;
+        nsd.facing = world_.get<ecs::Facing>(npc).dir;
+        const auto& patrol = world_.get<ecs::NpcPatrol>(npc);
+        nsd.patrol_dir = patrol.dir;
+        nsd.patrol_timer = patrol.timer;
+        data.npcs.push_back(nsd);
+    }
+    data.game_flags = game_flags_;
+    data.play_time = play_time_;
+    return data;
+}
+
+void App::apply_save_data(const SaveData& data) {
+    if (player_id_.valid()) {
+        world_.get<ecs::Transform>(player_id_).position = data.player_position;
+        world_.get<ecs::Facing>(player_id_).dir = data.player_facing;
+        auto& anim = world_.get<ecs::Animation>(player_id_);
+        anim.state_machine.transition_to("idle_" + std::string(direction_suffix(data.player_facing)));
+        renderer_.camera().set_follow_target(data.player_position);
+    }
+    for (size_t i = 0; i < data.npcs.size() && i < npc_ids_.size(); i++) {
+        const auto& nsd = data.npcs[i];
+        world_.get<ecs::Transform>(npc_ids_[i]).position = nsd.position;
+        world_.get<ecs::Facing>(npc_ids_[i]).dir = nsd.facing;
+        auto& patrol = world_.get<ecs::NpcPatrol>(npc_ids_[i]);
+        patrol.dir = nsd.patrol_dir;
+        patrol.timer = nsd.patrol_timer;
+        auto& anim = world_.get<ecs::Animation>(npc_ids_[i]);
+        anim.state_machine.transition_to("walk_" + std::string(direction_suffix(nsd.facing)));
+    }
+    game_flags_ = data.game_flags;
+    play_time_ = data.play_time;
 }
 
 void App::emit_event(const std::string& event, const nlohmann::json& data) {

@@ -13,6 +13,8 @@ public:
 private:
     float blink_timer_ = 0.0f;
     bool show_prompt_ = true;
+    int selected_item_ = 0;
+    bool has_save_ = false;
 };
 
 }  // namespace vulkan_game
