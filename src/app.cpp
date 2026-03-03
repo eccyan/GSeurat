@@ -3,6 +3,7 @@
 #include "vulkan_game/game/components.hpp"
 #include "vulkan_game/game/states/title_state.hpp"
 #include "vulkan_game/game/systems.hpp"
+#include "vulkan_game/engine/scene_loader.hpp"
 #include "vulkan_game/engine/tilemap.hpp"
 
 #define GLFW_INCLUDE_VULKAN
@@ -459,6 +460,8 @@ void App::init_window() {
 }
 
 void App::init_scene() {
+    auto scene_data = SceneLoader::load("assets/scenes/test_scene.json");
+
     // Animation setup helper (shared by player and NPCs)
     auto setup_anim = [](ecs::Animation& anim_comp) {
         anim_comp.state_machine.configure(Tileset{16, 16, 4, 64, 192});
@@ -478,45 +481,27 @@ void App::init_scene() {
         }
     };
 
-    // Footstep emitter setup (before player creation so we have the ID)
-    size_t footstep_eid;
-    {
-        EmitterConfig cfg;
-        cfg.spawn_rate           = 12.0f;
-        cfg.particle_lifetime_min = 0.3f;
-        cfg.particle_lifetime_max = 0.6f;
-        cfg.velocity_min         = {-0.5f, -0.1f};
-        cfg.velocity_max         = { 0.5f,  0.3f};
-        cfg.size_min             = 0.06f;
-        cfg.size_max             = 0.12f;
-        cfg.size_end_scale       = 1.5f;
-        cfg.color_start          = {0.6f, 0.55f, 0.45f, 0.6f};
-        cfg.color_end            = {0.5f, 0.48f, 0.40f, 0.0f};
-        cfg.tile                 = ParticleTile::SmokePuff;
-        cfg.z                    = -0.02f;
-        cfg.spawn_offset_min     = {-0.15f, -0.4f};
-        cfg.spawn_offset_max     = { 0.15f, -0.3f};
+    // Footstep emitter from scene data
+    size_t footstep_eid = particles_.add_emitter(scene_data.footstep_emitter, {0.0f, 0.0f});
+    particles_.set_emitter_active(footstep_eid, false);
 
-        footstep_eid = particles_.add_emitter(cfg, {0.0f, 0.0f});
-        particles_.set_emitter_active(footstep_eid, false);
-    }
-
-    // Create player entity
+    // Create player entity from scene data
     {
         ecs::Animation player_anim;
         setup_anim(player_anim);
-        player_anim.state_machine.transition_to("idle_down");
+        std::string initial_clip = "idle_" + std::string(direction_suffix(scene_data.player_facing));
+        player_anim.state_machine.transition_to(initial_clip);
 
         ecs::Sprite sprite;
-        sprite.tint = {1.0f, 1.0f, 1.0f, 1.0f};
+        sprite.tint = scene_data.player_tint;
         sprite.uv_min = player_anim.state_machine.current_uv_min();
         sprite.uv_max = player_anim.state_machine.current_uv_max();
 
         player_id_ = world_.create();
-        world_.add<ecs::Transform>(player_id_, ecs::Transform{{0.0f, 0.0f, 0.0f}, {1.0f, 1.0f}});
+        world_.add<ecs::Transform>(player_id_, ecs::Transform{scene_data.player_position, {1.0f, 1.0f}});
         world_.add<ecs::Sprite>(player_id_, sprite);
         world_.add<ecs::PlayerTag>(player_id_);
-        world_.add<ecs::Facing>(player_id_, ecs::Facing{Direction::Down});
+        world_.add<ecs::Facing>(player_id_, ecs::Facing{scene_data.player_facing});
         world_.add<ecs::Animation>(player_id_, std::move(player_anim));
         world_.add<ecs::FootstepEmitterRef>(player_id_, ecs::FootstepEmitterRef{footstep_eid});
     }
@@ -524,152 +509,60 @@ void App::init_scene() {
     renderer_.camera().set_follow_target(world_.get<ecs::Transform>(player_id_).position);
     renderer_.camera().set_follow_speed(5.0f);
 
-    // NPC dialog scripts (reference locale keys)
-    npc_dialogs_.resize(3);
-    npc_dialogs_[0].lines = {{"guard_name", "guard_line_1"}, {"guard_name", "guard_line_2"}};
-    npc_dialogs_[1].lines = {{"merchant_name", "merchant_line_1"}, {"merchant_name", "merchant_line_2"}};
-    npc_dialogs_[2].lines = {{"scholar_name", "scholar_line_1"}, {"scholar_name", "scholar_line_2"}};
+    // NPC dialog scripts from scene data
+    npc_dialogs_.resize(scene_data.npcs.size());
+    for (size_t i = 0; i < scene_data.npcs.size(); i++) {
+        npc_dialogs_[i] = scene_data.npcs[i].dialog;
+    }
 
-    // NPC definitions
-    struct NpcDef {
-        glm::vec3 position;
-        glm::vec4 tint;
-        Direction dir;
-        Direction reverse_dir;
-        float interval;
-        float speed;
-        size_t dialog_index;
-        const char* initial_clip;
-        glm::vec4 light_color;
-        float light_radius;
-        glm::vec4 aura_start;
-        glm::vec4 aura_end;
-    };
-
-    const NpcDef npc_defs[] = {
-        // Guard (red)
-        {{-3.0f, 2.0f, 0.0f}, {1.0f, 0.8f, 0.8f, 1.0f},
-         Direction::Right, Direction::Left, 3.0f, 2.0f, 0, "walk_right",
-         {1.0f, 0.4f, 0.3f, 0.8f}, 3.0f,
-         {1.0f, 0.3f, 0.2f, 0.8f}, {1.0f, 0.6f, 0.4f, 0.0f}},
-        // Merchant (green)
-        {{4.0f, -2.0f, 0.0f}, {0.8f, 1.0f, 0.8f, 1.0f},
-         Direction::Up, Direction::Down, 2.5f, 2.0f, 1, "walk_up",
-         {0.3f, 1.0f, 0.4f, 0.8f}, 3.0f,
-         {0.2f, 1.0f, 0.3f, 0.8f}, {0.4f, 1.0f, 0.6f, 0.0f}},
-        // Scholar (blue)
-        {{0.0f, -4.0f, 0.0f}, {0.8f, 0.8f, 1.0f, 1.0f},
-         Direction::Left, Direction::Right, 3.5f, 2.0f, 2, "walk_left",
-         {0.3f, 0.4f, 1.0f, 0.8f}, 3.0f,
-         {0.2f, 0.3f, 1.0f, 0.8f}, {0.4f, 0.6f, 1.0f, 0.0f}},
-    };
-
-    npc_ids_.reserve(3);
-    for (int i = 0; i < 3; ++i) {
-        const auto& def = npc_defs[i];
+    // Create NPC entities from scene data
+    npc_ids_.reserve(scene_data.npcs.size());
+    for (size_t i = 0; i < scene_data.npcs.size(); ++i) {
+        const auto& npc_data = scene_data.npcs[i];
 
         ecs::Animation npc_anim;
         setup_anim(npc_anim);
-        npc_anim.state_machine.transition_to(def.initial_clip);
+        std::string initial_clip = "walk_" + std::string(direction_suffix(npc_data.facing));
+        npc_anim.state_machine.transition_to(initial_clip);
 
         ecs::Sprite sprite;
-        sprite.tint = def.tint;
+        sprite.tint = npc_data.tint;
         sprite.uv_min = npc_anim.state_machine.current_uv_min();
         sprite.uv_max = npc_anim.state_machine.current_uv_max();
 
-        // NPC aura emitter
-        EmitterConfig aura_cfg;
-        aura_cfg.spawn_rate           = 6.0f;
-        aura_cfg.particle_lifetime_min = 0.6f;
-        aura_cfg.particle_lifetime_max = 1.2f;
-        aura_cfg.velocity_min         = {-0.4f, -0.2f};
-        aura_cfg.velocity_max         = { 0.4f,  0.5f};
-        aura_cfg.acceleration         = {0.0f, 0.1f};
-        aura_cfg.size_min             = 0.03f;
-        aura_cfg.size_max             = 0.07f;
-        aura_cfg.size_end_scale       = 0.2f;
-        aura_cfg.color_start          = def.aura_start;
-        aura_cfg.color_end            = def.aura_end;
-        aura_cfg.tile                 = ParticleTile::Spark;
-        aura_cfg.z                    = -0.04f;
-        aura_cfg.spawn_offset_min     = {-0.4f, -0.3f};
-        aura_cfg.spawn_offset_max     = { 0.4f,  0.3f};
-
-        size_t aura_eid = particles_.add_emitter(aura_cfg, {def.position.x, def.position.y});
+        // NPC aura emitter: use template with NPC-specific colors
+        EmitterConfig aura_cfg = scene_data.npc_aura_emitter;
+        aura_cfg.color_start = npc_data.aura_color_start;
+        aura_cfg.color_end = npc_data.aura_color_end;
+        size_t aura_eid = particles_.add_emitter(aura_cfg, {npc_data.position.x, npc_data.position.y});
 
         auto npc = world_.create();
-        world_.add<ecs::Transform>(npc, ecs::Transform{def.position, {1.0f, 1.0f}});
+        world_.add<ecs::Transform>(npc, ecs::Transform{npc_data.position, {1.0f, 1.0f}});
         world_.add<ecs::Sprite>(npc, sprite);
-        world_.add<ecs::Facing>(npc, ecs::Facing{def.dir});
+        world_.add<ecs::Facing>(npc, ecs::Facing{npc_data.facing});
         world_.add<ecs::Animation>(npc, std::move(npc_anim));
-        world_.add<ecs::NpcPatrol>(npc, ecs::NpcPatrol{def.dir, def.reverse_dir, 0.0f, def.interval, def.speed});
-        world_.add<ecs::DialogRef>(npc, ecs::DialogRef{def.dialog_index});
-        world_.add<ecs::DynamicLight>(npc, ecs::DynamicLight{def.light_color, def.light_radius});
+        world_.add<ecs::NpcPatrol>(npc, ecs::NpcPatrol{
+            npc_data.facing, npc_data.reverse_facing, 0.0f,
+            npc_data.patrol_interval, npc_data.patrol_speed});
+        world_.add<ecs::DialogRef>(npc, ecs::DialogRef{i});
+        world_.add<ecs::DynamicLight>(npc, ecs::DynamicLight{npc_data.light_color, npc_data.light_radius});
         world_.add<ecs::ParticleEmitterRef>(npc, ecs::ParticleEmitterRef{aura_eid});
         npc_ids_.push_back(npc);
     }
 
-    // Tilemap: 16x16, border walls + 4 interior pillars
-    TileLayer layer{};
-    layer.tileset   = Tileset{16, 16, 2, 32, 16};
-    layer.width     = 16;
-    layer.height    = 16;
-    layer.tile_size = 1.0f;
-    layer.z         = 1.0f;
-    layer.tiles.resize(16 * 16, 0);
-    layer.solid.resize(16 * 16, false);
+    // Tilemap from scene data
+    scene_.set_tile_layer(std::move(scene_data.tilemap));
+    scene_.set_ambient_color(scene_data.ambient_color);
 
-    for (uint32_t row = 0; row < 16; ++row) {
-        for (uint32_t col = 0; col < 16; ++col) {
-            const bool border  = (col == 0 || col == 15 || row == 0 || row == 15);
-            const bool pillar  = ((col == 4 || col == 11) && (row == 4 || row == 11));
-            const bool is_wall = border || pillar;
-            const uint32_t idx = row * 16 + col;
-            layer.tiles[idx] = is_wall ? 1 : 0;
-            layer.solid[idx] = is_wall;
-        }
+    // Torch emitters from scene data
+    for (size_t i = 0; i < scene_data.torch_positions.size() && i < 4; ++i) {
+        torch_emitter_ids_[i] = particles_.add_emitter(
+            scene_data.torch_emitter, scene_data.torch_positions[i]);
     }
 
-    scene_.set_tile_layer(std::move(layer));
-    scene_.set_ambient_color({0.25f, 0.28f, 0.45f, 1.0f});
-
-    // --- Torch emitters ---
-    {
-        EmitterConfig cfg;
-        cfg.spawn_rate           = 8.0f;
-        cfg.particle_lifetime_min = 0.8f;
-        cfg.particle_lifetime_max = 1.6f;
-        cfg.velocity_min         = {-0.3f, 0.5f};
-        cfg.velocity_max         = { 0.3f, 1.5f};
-        cfg.acceleration         = {0.0f, 0.2f};
-        cfg.size_min             = 0.04f;
-        cfg.size_max             = 0.10f;
-        cfg.size_end_scale       = 0.1f;
-        cfg.color_start          = {1.0f, 0.75f, 0.2f, 0.9f};
-        cfg.color_end            = {1.0f, 0.3f, 0.0f, 0.0f};
-        cfg.tile                 = ParticleTile::SoftGlow;
-        cfg.z                    = -0.05f;
-        cfg.spawn_offset_min     = {-0.15f, -0.1f};
-        cfg.spawn_offset_max     = { 0.15f,  0.1f};
-
-        const glm::vec2 pillar_pos[] = {
-            {-3.5f,  3.5f}, { 3.5f,  3.5f},
-            {-3.5f, -3.5f}, { 3.5f, -3.5f},
-        };
-        for (int i = 0; i < 4; ++i) {
-            torch_emitter_ids_[i] = particles_.add_emitter(cfg, pillar_pos[i]);
-        }
-    }
-
-    // --- Audio: position torch crackle instances at pillar positions ---
-    const glm::vec3 torch_audio_pos[] = {
-        {-3.5f, 0.0f,  3.5f},
-        { 3.5f, 0.0f,  3.5f},
-        {-3.5f, 0.0f, -3.5f},
-        { 3.5f, 0.0f, -3.5f},
-    };
-    for (int i = 0; i < 4; ++i) {
-        audio_.set_torch_position(static_cast<uint32_t>(i), torch_audio_pos[i]);
+    // Audio: position torch crackle instances
+    for (size_t i = 0; i < scene_data.torch_audio_positions.size() && i < 4; ++i) {
+        audio_.set_torch_position(static_cast<uint32_t>(i), scene_data.torch_audio_positions[i]);
     }
 }
 

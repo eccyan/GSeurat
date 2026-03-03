@@ -1,0 +1,118 @@
+{
+  "tilemap": {
+    "tileset": {
+      "tile_width": 16, "tile_height": 16, "columns": 2,
+      "sheet_width": 32, "sheet_height": 16
+    },
+    "width": 16, "height": 16,
+    "tile_size": 1.0, "z": 1.0,
+    "tiles": [
+      1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
+      1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+      1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+      1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+      1,0,0,0,1,0,0,0,0,0,0,1,0,0,0,1,
+      1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+      1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+      1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+      1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+      1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+      1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+      1,0,0,0,1,0,0,0,0,0,0,1,0,0,0,1,
+      1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+      1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+      1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+      1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+    ]
+  },
+  "ambient_color": [0.25, 0.28, 0.45, 1.0],
+  "static_lights": [
+    {"position": [-3.5, 3.5], "radius": 4.0, "color": [1.0, 0.85, 0.4], "intensity": 1.2},
+    {"position": [3.5, 3.5], "radius": 4.0, "color": [1.0, 0.85, 0.4], "intensity": 1.2},
+    {"position": [-3.5, -3.5], "radius": 4.0, "color": [1.0, 0.85, 0.4], "intensity": 1.2},
+    {"position": [3.5, -3.5], "radius": 4.0, "color": [1.0, 0.85, 0.4], "intensity": 1.2}
+  ],
+  "torch_emitter": {
+    "spawn_rate": 8.0,
+    "particle_lifetime_min": 0.8, "particle_lifetime_max": 1.6,
+    "velocity_min": [-0.3, 0.5], "velocity_max": [0.3, 1.5],
+    "acceleration": [0.0, 0.2],
+    "size_min": 0.04, "size_max": 0.10, "size_end_scale": 0.1,
+    "color_start": [1.0, 0.75, 0.2, 0.9], "color_end": [1.0, 0.3, 0.0, 0.0],
+    "tile": "SoftGlow", "z": -0.05,
+    "spawn_offset_min": [-0.15, -0.1], "spawn_offset_max": [0.15, 0.1]
+  },
+  "torch_positions": [
+    [-3.5, 3.5], [3.5, 3.5], [-3.5, -3.5], [3.5, -3.5]
+  ],
+  "torch_audio_positions": [
+    [-3.5, 0.0, 3.5], [3.5, 0.0, 3.5], [-3.5, 0.0, -3.5], [3.5, 0.0, -3.5]
+  ],
+  "footstep_emitter": {
+    "spawn_rate": 12.0,
+    "particle_lifetime_min": 0.3, "particle_lifetime_max": 0.6,
+    "velocity_min": [-0.5, -0.1], "velocity_max": [0.5, 0.3],
+    "size_min": 0.06, "size_max": 0.12, "size_end_scale": 1.5,
+    "color_start": [0.6, 0.55, 0.45, 0.6], "color_end": [0.5, 0.48, 0.40, 0.0],
+    "tile": "SmokePuff", "z": -0.02,
+    "spawn_offset_min": [-0.15, -0.4], "spawn_offset_max": [0.15, -0.3]
+  },
+  "player": {
+    "position": [0.0, 0.0, 0.0],
+    "tint": [1.0, 1.0, 1.0, 1.0],
+    "facing": "down"
+  },
+  "npcs": [
+    {
+      "name": "guard",
+      "position": [-3.0, 2.0, 0.0],
+      "tint": [1.0, 0.8, 0.8, 1.0],
+      "facing": "right", "reverse_facing": "left",
+      "patrol_interval": 3.0, "patrol_speed": 2.0,
+      "dialog": [
+        {"speaker_key": "guard_name", "text_key": "guard_line_1"},
+        {"speaker_key": "guard_name", "text_key": "guard_line_2"}
+      ],
+      "light_color": [1.0, 0.4, 0.3, 0.8], "light_radius": 3.0,
+      "aura_color_start": [1.0, 0.3, 0.2, 0.8],
+      "aura_color_end": [1.0, 0.6, 0.4, 0.0]
+    },
+    {
+      "name": "merchant",
+      "position": [4.0, -2.0, 0.0],
+      "tint": [0.8, 1.0, 0.8, 1.0],
+      "facing": "up", "reverse_facing": "down",
+      "patrol_interval": 2.5, "patrol_speed": 2.0,
+      "dialog": [
+        {"speaker_key": "merchant_name", "text_key": "merchant_line_1"},
+        {"speaker_key": "merchant_name", "text_key": "merchant_line_2"}
+      ],
+      "light_color": [0.3, 1.0, 0.4, 0.8], "light_radius": 3.0,
+      "aura_color_start": [0.2, 1.0, 0.3, 0.8],
+      "aura_color_end": [0.4, 1.0, 0.6, 0.0]
+    },
+    {
+      "name": "scholar",
+      "position": [0.0, -4.0, 0.0],
+      "tint": [0.8, 0.8, 1.0, 1.0],
+      "facing": "left", "reverse_facing": "right",
+      "patrol_interval": 3.5, "patrol_speed": 2.0,
+      "dialog": [
+        {"speaker_key": "scholar_name", "text_key": "scholar_line_1"},
+        {"speaker_key": "scholar_name", "text_key": "scholar_line_2"}
+      ],
+      "light_color": [0.3, 0.4, 1.0, 0.8], "light_radius": 3.0,
+      "aura_color_start": [0.2, 0.3, 1.0, 0.8],
+      "aura_color_end": [0.4, 0.6, 1.0, 0.0]
+    }
+  ],
+  "npc_aura_emitter": {
+    "spawn_rate": 6.0,
+    "particle_lifetime_min": 0.6, "particle_lifetime_max": 1.2,
+    "velocity_min": [-0.4, -0.2], "velocity_max": [0.4, 0.5],
+    "acceleration": [0.0, 0.1],
+    "size_min": 0.03, "size_max": 0.07, "size_end_scale": 0.2,
+    "tile": "Spark", "z": -0.04,
+    "spawn_offset_min": [-0.4, -0.3], "spawn_offset_max": [0.4, 0.3]
+  }
+}
