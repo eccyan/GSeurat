@@ -12,6 +12,10 @@ public:
     static Texture load_from_file(VkDevice device, VmaAllocator allocator,
                                   VkCommandPool cmd_pool, VkQueue queue,
                                   const std::string& path);
+    static Texture load_from_memory(VkDevice device, VmaAllocator allocator,
+                                    VkCommandPool cmd_pool, VkQueue queue,
+                                    const uint8_t* pixels, uint32_t width, uint32_t height,
+                                    VkFilter filter = VK_FILTER_NEAREST);
     void destroy(VkDevice device, VmaAllocator allocator);
 
     VkImageView image_view() const { return image_view_; }

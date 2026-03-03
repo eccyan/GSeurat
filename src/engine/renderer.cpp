@@ -45,6 +45,7 @@ void Renderer::init(GLFWwindow* window) {
         tileset_texture_.image_view(), tileset_texture_.sampler());
 
     create_sprite_pipeline();
+    create_ui_pipeline();
 
     float aspect = static_cast<float>(kWindowWidth) / static_cast<float>(kWindowHeight);
     camera_.configure_hd2d(aspect);
@@ -52,7 +53,65 @@ void Renderer::init(GLFWwindow* window) {
     last_time_ = static_cast<float>(glfwGetTime());
 }
 
-void Renderer::draw_scene(Scene& scene) {
+void Renderer::init_font(const FontAtlas& atlas) {
+    font_texture_ =
+        Texture::load_from_memory(context_.device(), context_.allocator(), command_pool_.pool(),
+                                  context_.graphics_queue(), atlas.pixels(),
+                                  atlas.width(), atlas.height(), VK_FILTER_LINEAR);
+
+    // Font descriptor sets with game UBOs (for world-space overlay)
+    std::array<VkBuffer, kMaxFramesInFlight> ubo_buffers;
+    for (uint32_t i = 0; i < kMaxFramesInFlight; i++) {
+        ubo_buffers[i] = uniform_buffers_[i].buffer();
+    }
+    font_descriptor_sets_ = descriptors_.allocate_sprite_sets(
+        context_.device(), ubo_buffers, sizeof(UniformBufferObject),
+        font_texture_.image_view(), font_texture_.sampler());
+
+    // UI uniform buffers with orthographic projection
+    for (auto& buf : ui_uniform_buffers_) {
+        buf = Buffer::create_uniform(context_.allocator(), sizeof(UniformBufferObject));
+    }
+    auto ortho_vp = glm::ortho(0.0f, static_cast<float>(kWindowWidth),
+                                static_cast<float>(kWindowHeight), 0.0f, -1.0f, 1.0f);
+    for (auto& buf : ui_uniform_buffers_) {
+        UniformBufferObject ubo{};
+        ubo.vp = ortho_vp;
+        ubo.ambient_color = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f);  // no dimming for UI
+        ubo.light_params = glm::ivec4(0, 0, 0, 0);               // no lights for UI
+        std::memcpy(buf.mapped(), &ubo, sizeof(ubo));
+    }
+
+    // UI descriptor sets with UI UBOs (for screen-space dialog)
+    std::array<VkBuffer, kMaxFramesInFlight> ui_ubo_buffers;
+    for (uint32_t i = 0; i < kMaxFramesInFlight; i++) {
+        ui_ubo_buffers[i] = ui_uniform_buffers_[i].buffer();
+    }
+    ui_descriptor_sets_ = descriptors_.allocate_sprite_sets(
+        context_.device(), ui_ubo_buffers, sizeof(UniformBufferObject),
+        font_texture_.image_view(), font_texture_.sampler());
+
+    font_initialized_ = true;
+}
+
+void Renderer::init_particles() {
+    particle_texture_ =
+        Texture::load_from_file(context_.device(), context_.allocator(), command_pool_.pool(),
+                                context_.graphics_queue(), "assets/textures/particle_atlas.png");
+
+    std::array<VkBuffer, kMaxFramesInFlight> ubo_buffers;
+    for (uint32_t i = 0; i < kMaxFramesInFlight; i++) {
+        ubo_buffers[i] = uniform_buffers_[i].buffer();
+    }
+    particle_descriptor_sets_ = descriptors_.allocate_sprite_sets(
+        context_.device(), ubo_buffers, sizeof(UniformBufferObject),
+        particle_texture_.image_view(), particle_texture_.sampler());
+}
+
+void Renderer::draw_scene(Scene& scene,
+                           const std::vector<SpriteDrawInfo>& particles,
+                           const std::vector<SpriteDrawInfo>& overlay,
+                           const std::vector<SpriteDrawInfo>& ui) {
     auto device = context_.device();
     const auto& frame_sync = sync_.frame(current_frame_);
 
@@ -96,7 +155,18 @@ void Renderer::draw_scene(Scene& scene) {
     vkCmdBeginRenderPass(cmd, &rp_info, VK_SUBPASS_CONTENTS_INLINE);
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, sprite_pipeline_);
 
-    update_uniform_buffer(current_frame_, camera_.view_projection());
+    // Build UBO with camera VP and lighting data from scene
+    UniformBufferObject ubo{};
+    ubo.vp = camera_.view_projection();
+    ubo.ambient_color = scene.ambient_color();
+    auto& scene_lights = scene.lights();
+    int light_count = static_cast<int>(std::min(scene_lights.size(),
+                                                static_cast<size_t>(kMaxLights)));
+    ubo.light_params = glm::ivec4(light_count, 0, 0, 0);
+    for (int i = 0; i < light_count; i++) {
+        ubo.lights[i] = scene_lights[i];
+    }
+    update_uniform_buffer(current_frame_, ubo);
 
     // Tilemap pass
     if (scene.tile_layer().has_value()) {
@@ -131,6 +201,52 @@ void Renderer::draw_scene(Scene& scene) {
         vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, sprite_pipeline_layout_, 0,
                                 1, &descriptor_sets_[current_frame_], 0, nullptr);
         vkCmdDrawIndexed(cmd, entity_index_count, 1, 0, 0, 0);
+    }
+
+    // Particle pass (world-space, particle texture, depth ON, lit by point lights)
+    if (!particles.empty()) {
+        sprite_batch_.begin();
+        for (const auto& spr : particles) {
+            sprite_batch_.draw(spr);
+        }
+        uint32_t particle_index_count = sprite_batch_.flush(current_frame_);
+        if (particle_index_count > 0) {
+            sprite_batch_.bind(cmd, current_frame_);
+            vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, sprite_pipeline_layout_,
+                                    0, 1, &particle_descriptor_sets_[current_frame_], 0, nullptr);
+            vkCmdDrawIndexed(cmd, particle_index_count, 1, 0, 0, 0);
+        }
+    }
+
+    // Overlay pass (world-space, font texture, depth ON)
+    if (font_initialized_ && !overlay.empty()) {
+        sprite_batch_.begin();
+        for (const auto& spr : overlay) {
+            sprite_batch_.draw(spr);
+        }
+        uint32_t overlay_index_count = sprite_batch_.flush(current_frame_);
+        if (overlay_index_count > 0) {
+            sprite_batch_.bind(cmd, current_frame_);
+            vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, sprite_pipeline_layout_,
+                                    0, 1, &font_descriptor_sets_[current_frame_], 0, nullptr);
+            vkCmdDrawIndexed(cmd, overlay_index_count, 1, 0, 0, 0);
+        }
+    }
+
+    // UI pass (screen-space, font texture, depth OFF)
+    if (font_initialized_ && !ui.empty()) {
+        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, ui_pipeline_);
+        sprite_batch_.begin();
+        for (const auto& spr : ui) {
+            sprite_batch_.draw(spr);
+        }
+        uint32_t ui_index_count = sprite_batch_.flush(current_frame_);
+        if (ui_index_count > 0) {
+            sprite_batch_.bind(cmd, current_frame_);
+            vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, sprite_pipeline_layout_,
+                                    0, 1, &ui_descriptor_sets_[current_frame_], 0, nullptr);
+            vkCmdDrawIndexed(cmd, ui_index_count, 1, 0, 0, 0);
+        }
     }
 
     vkCmdEndRenderPass(cmd);
@@ -174,7 +290,7 @@ void Renderer::draw_frame() {
     e->transform.position = {0.0f, 0.0f, 0.0f};
     e->transform.scale = {1.0f, 1.0f};
     e->tint = {1.0f, 1.0f, 1.0f, 1.0f};
-    draw_scene(test_scene);
+    draw_scene(test_scene, {}, {}, {});
 }
 
 void Renderer::shutdown() {
@@ -182,6 +298,13 @@ void Renderer::shutdown() {
 
     test_texture_.destroy(context_.device(), context_.allocator());
     tileset_texture_.destroy(context_.device(), context_.allocator());
+    particle_texture_.destroy(context_.device(), context_.allocator());
+    if (font_initialized_) {
+        font_texture_.destroy(context_.device(), context_.allocator());
+        for (auto& buf : ui_uniform_buffers_) {
+            buf.destroy(context_.allocator());
+        }
+    }
 
     for (auto& buf : uniform_buffers_) {
         buf.destroy(context_.allocator());
@@ -189,6 +312,9 @@ void Renderer::shutdown() {
     sprite_batch_.shutdown(context_.allocator());
 
     vkDestroyPipeline(context_.device(), sprite_pipeline_, nullptr);
+    if (ui_pipeline_ != VK_NULL_HANDLE) {
+        vkDestroyPipeline(context_.device(), ui_pipeline_, nullptr);
+    }
     vkDestroyPipelineLayout(context_.device(), sprite_pipeline_layout_, nullptr);
 
     descriptors_.shutdown(context_.device());
@@ -237,15 +363,40 @@ void Renderer::create_sprite_pipeline() {
     vkDestroyShaderModule(device, vert, nullptr);
 }
 
+void Renderer::create_ui_pipeline() {
+    auto device = context_.device();
+
+    auto vert = load_shader_module(device, "shaders/sprite.vert.spv");
+    auto frag = load_shader_module(device, "shaders/sprite.frag.spv");
+
+    auto binding = Vertex::binding_description();
+    auto attributes = Vertex::attribute_descriptions();
+
+    ui_pipeline_ = PipelineBuilder()
+                       .set_shaders(vert, frag)
+                       .set_vertex_input(binding, attributes.data(),
+                                         static_cast<uint32_t>(attributes.size()))
+                       .set_input_assembly(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST)
+                       .set_viewport_scissor(swapchain_.extent())
+                       .set_rasterizer(VK_POLYGON_MODE_FILL, VK_CULL_MODE_NONE)
+                       .set_multisampling(VK_SAMPLE_COUNT_1_BIT)
+                       .set_depth_stencil(false, false)
+                       .set_color_blend_alpha()
+                       .set_layout(sprite_pipeline_layout_)
+                       .set_render_pass(render_pass_mgr_.render_pass(), 0)
+                       .build(device);
+
+    vkDestroyShaderModule(device, frag, nullptr);
+    vkDestroyShaderModule(device, vert, nullptr);
+}
+
 void Renderer::create_uniform_buffers() {
     for (auto& buf : uniform_buffers_) {
         buf = Buffer::create_uniform(context_.allocator(), sizeof(UniformBufferObject));
     }
 }
 
-void Renderer::update_uniform_buffer(uint32_t frame_index, const glm::mat4& vp) {
-    UniformBufferObject ubo{};
-    ubo.vp = vp;
+void Renderer::update_uniform_buffer(uint32_t frame_index, const UniformBufferObject& ubo) {
     std::memcpy(uniform_buffers_[frame_index].mapped(), &ubo, sizeof(ubo));
 }
 

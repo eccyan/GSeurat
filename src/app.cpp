@@ -7,35 +7,64 @@
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include <stb_image_write.h>
 
+#include <cmath>
 #include <filesystem>
+#include <set>
 
 namespace vulkan_game {
+
+// Decode all unique codepoints from a UTF-8 string into a set.
+static void collect_codepoints(const std::string& text, std::set<uint32_t>& out) {
+    size_t i = 0;
+    while (i < text.size()) {
+        uint8_t c = static_cast<uint8_t>(text[i]);
+        uint32_t cp = 0;
+        if (c < 0x80) {
+            cp = c; i += 1;
+        } else if ((c & 0xE0) == 0xC0 && i + 1 < text.size()) {
+            cp = (c & 0x1F) << 6;
+            cp |= (static_cast<uint8_t>(text[i + 1]) & 0x3F);
+            i += 2;
+        } else if ((c & 0xF0) == 0xE0 && i + 2 < text.size()) {
+            cp = (c & 0x0F) << 12;
+            cp |= (static_cast<uint8_t>(text[i + 1]) & 0x3F) << 6;
+            cp |= (static_cast<uint8_t>(text[i + 2]) & 0x3F);
+            i += 3;
+        } else if ((c & 0xF8) == 0xF0 && i + 3 < text.size()) {
+            cp = (c & 0x07) << 18;
+            cp |= (static_cast<uint8_t>(text[i + 1]) & 0x3F) << 12;
+            cp |= (static_cast<uint8_t>(text[i + 2]) & 0x3F) << 6;
+            cp |= (static_cast<uint8_t>(text[i + 3]) & 0x3F);
+            i += 4;
+        } else {
+            i += 1; continue;
+        }
+        out.insert(cp);
+    }
+}
 
 void App::generate_player_sheet() {
     constexpr int kFrameW   = 16;
     constexpr int kFrameH   = 16;
     constexpr int kFrames   = 4;
-    constexpr int kRows     = 12;  // 3 states × 4 directions
+    constexpr int kRows     = 12;  // 3 states x 4 directions
     constexpr int kWidth    = kFrameW * kFrames;  // 64
     constexpr int kHeight   = kFrameH * kRows;    // 192
     constexpr int kChannels = 4;
 
-    // Row order: idle_down, idle_left, idle_right, idle_up,
-    //            walk_down, walk_left, walk_right, walk_up,
-    //            run_down,  run_left,  run_right,  run_up
     const uint8_t row_colors[kRows][kFrames][4] = {
-        {{170,170,170,255}, {200,200,200,255}, {230,230,230,255}, {200,200,200,255}},  // idle_down
-        {{150,155,180,255}, {175,180,205,255}, {200,205,230,255}, {175,180,205,255}},  // idle_left
-        {{180,155,150,255}, {205,180,175,255}, {230,205,200,255}, {205,180,175,255}},  // idle_right
-        {{150,180,155,255}, {175,205,180,255}, {200,230,205,255}, {175,205,180,255}},  // idle_up
-        {{ 80,120,220,255}, {100,140,235,255}, { 60,100,205,255}, {100,140,235,255}},  // walk_down
-        {{ 60,190,210,255}, { 80,210,230,255}, { 40,165,185,255}, { 80,210,230,255}},  // walk_left
-        {{ 50,175,160,255}, { 70,195,180,255}, { 35,150,140,255}, { 70,195,180,255}},  // walk_right
-        {{110, 90,210,255}, {130,110,230,255}, { 90, 70,185,255}, {130,110,230,255}},  // walk_up
-        {{230,120, 40,255}, {255,160, 60,255}, {200, 90, 20,255}, {255,160, 60,255}},  // run_down
-        {{240,180, 40,255}, {255,210, 70,255}, {215,155, 20,255}, {255,210, 70,255}},  // run_left
-        {{220, 80, 40,255}, {245,110, 60,255}, {195, 55, 20,255}, {245,110, 60,255}},  // run_right
-        {{190, 40, 40,255}, {215, 65, 65,255}, {165, 20, 20,255}, {215, 65, 65,255}},  // run_up
+        {{170,170,170,255}, {200,200,200,255}, {230,230,230,255}, {200,200,200,255}},
+        {{150,155,180,255}, {175,180,205,255}, {200,205,230,255}, {175,180,205,255}},
+        {{180,155,150,255}, {205,180,175,255}, {230,205,200,255}, {205,180,175,255}},
+        {{150,180,155,255}, {175,205,180,255}, {200,230,205,255}, {175,205,180,255}},
+        {{ 80,120,220,255}, {100,140,235,255}, { 60,100,205,255}, {100,140,235,255}},
+        {{ 60,190,210,255}, { 80,210,230,255}, { 40,165,185,255}, { 80,210,230,255}},
+        {{ 50,175,160,255}, { 70,195,180,255}, { 35,150,140,255}, { 70,195,180,255}},
+        {{110, 90,210,255}, {130,110,230,255}, { 90, 70,185,255}, {130,110,230,255}},
+        {{230,120, 40,255}, {255,160, 60,255}, {200, 90, 20,255}, {255,160, 60,255}},
+        {{240,180, 40,255}, {255,210, 70,255}, {215,155, 20,255}, {255,210, 70,255}},
+        {{220, 80, 40,255}, {245,110, 60,255}, {195, 55, 20,255}, {245,110, 60,255}},
+        {{190, 40, 40,255}, {215, 65, 65,255}, {165, 20, 20,255}, {215, 65, 65,255}},
     };
 
     std::vector<uint8_t> pixels(kWidth * kHeight * kChannels);
@@ -64,15 +93,14 @@ void App::generate_player_sheet() {
 void App::generate_tileset() {
     constexpr int kTileW    = 16;
     constexpr int kTileH    = 16;
-    constexpr int kTiles    = 2;   // tile 0 = floor, tile 1 = wall
+    constexpr int kTiles    = 2;
     constexpr int kWidth    = kTileW * kTiles;  // 32
     constexpr int kHeight   = kTileH;           // 16
     constexpr int kChannels = 4;
 
-    // Tile 0: warm stone floor; Tile 1: dark rock wall
     const uint8_t tile_colors[kTiles][4] = {
-        {200, 185, 145, 255},  // floor — warm sand/stone
-        { 70,  60,  55, 255},  // wall  — dark charcoal rock
+        {200, 185, 145, 255},
+        { 70,  60,  55, 255},
     };
 
     std::vector<uint8_t> pixels(kWidth * kHeight * kChannels);
@@ -95,11 +123,96 @@ void App::generate_tileset() {
                    pixels.data(), kWidth * kChannels);
 }
 
+void App::generate_particle_atlas() {
+    constexpr int kTileSize = 16;
+    constexpr int kTiles    = 4;
+    constexpr int kWidth    = kTileSize * kTiles;  // 64
+    constexpr int kHeight   = kTileSize;           // 16
+    constexpr int kChannels = 4;
+    constexpr float kCenter = 7.5f;
+    constexpr float kRadius = 7.0f;
+
+    std::vector<uint8_t> pixels(kWidth * kHeight * kChannels, 0);
+
+    auto set_pixel = [&](int x, int y, uint8_t a) {
+        int idx = (y * kWidth + x) * kChannels;
+        pixels[idx + 0] = 255;
+        pixels[idx + 1] = 255;
+        pixels[idx + 2] = 255;
+        pixels[idx + 3] = a;
+    };
+
+    for (int py = 0; py < kTileSize; ++py) {
+        for (int px = 0; px < kTileSize; ++px) {
+            float dx = static_cast<float>(px) - kCenter;
+            float dy = static_cast<float>(py) - kCenter;
+            float dist = std::sqrt(dx * dx + dy * dy);
+
+            // Tile 0: Circle (hard edge)
+            set_pixel(px, py, dist <= kRadius ? 255 : 0);
+
+            // Tile 1: Soft Glow (gaussian)
+            {
+                float norm = dist / kRadius;
+                float val = std::exp(-norm * norm * 3.0f);
+                val = std::max(0.0f, std::min(1.0f, val));
+                set_pixel(kTileSize + px, py, static_cast<uint8_t>(val * 255.0f));
+            }
+
+            // Tile 2: Spark (diamond / manhattan distance)
+            {
+                float adx = std::abs(dx);
+                float ady = std::abs(dy);
+                float manhattan = adx + ady;
+                float val = 1.0f - manhattan / kRadius;
+                val = std::max(0.0f, std::min(1.0f, val));
+                val *= val;
+                set_pixel(2 * kTileSize + px, py, static_cast<uint8_t>(val * 255.0f));
+            }
+
+            // Tile 3: Smoke Puff (wavy blob)
+            {
+                float angle = std::atan2(dy, dx);
+                float wave = 1.0f + 0.2f * std::sin(angle * 5.0f)
+                                  + 0.1f * std::sin(angle * 3.0f + 1.0f);
+                float adj_r = kRadius * 0.85f * wave;
+                float norm = dist / adj_r;
+                float val = 1.0f - norm;
+                val = std::max(0.0f, std::min(1.0f, val));
+                val = std::sqrt(val);
+                set_pixel(3 * kTileSize + px, py, static_cast<uint8_t>(val * 255.0f));
+            }
+        }
+    }
+
+    std::filesystem::create_directories("assets/textures");
+    stbi_write_png("assets/textures/particle_atlas.png", kWidth, kHeight, kChannels,
+                   pixels.data(), kWidth * kChannels);
+}
+
 void App::run() {
     init_window();
     generate_player_sheet();
     generate_tileset();
+    generate_particle_atlas();
+
+    // Load locale and build font atlas from all text
+    locale_.load("assets/locales", "en");
+    std::set<uint32_t> codepoint_set;
+    for (const auto& str : locale_.all_strings()) {
+        collect_codepoints(str, codepoint_set);
+    }
+    // Always include basic ASCII printable range
+    for (uint32_t cp = 32; cp <= 126; cp++) {
+        codepoint_set.insert(cp);
+    }
+    std::vector<uint32_t> codepoints(codepoint_set.begin(), codepoint_set.end());
+    font_atlas_.init("assets/fonts/NotoSans-Regular.ttf", 32.0f, codepoints);
+    text_renderer_.init(font_atlas_);
+
     renderer_.init(window_);
+    renderer_.init_font(font_atlas_);
+    renderer_.init_particles();
     init_scene();
     main_loop();
     cleanup();
@@ -121,12 +234,9 @@ void App::init_scene() {
     player_entity_->transform.scale = {1.0f, 1.0f};
     player_entity_->tint = {1.0f, 1.0f, 1.0f, 1.0f};
 
-    // Configure animation state machine: 12-row sheet (3 states × 4 directions)
+    // Configure animation state machine: 12-row sheet (3 states x 4 directions)
     player_anim_.configure(Tileset{16, 16, 4, 64, 192});
 
-    // Row order: idle_down, idle_left, idle_right, idle_up,
-    //            walk_down, walk_left, walk_right, walk_up,
-    //            run_down,  run_left,  run_right,  run_up
     const std::array<std::string, 3> state_names = {"idle", "walk", "run"};
     const std::array<std::string, 4> dir_names   = {"down", "left", "right", "up"};
     const std::array<float, 3> frame_durations   = {0.30f, 0.12f, 0.07f};
@@ -145,18 +255,14 @@ void App::init_scene() {
         }
     }
 
-    // Seed to idle_down (default facing direction)
     player_anim_.transition_to("idle_down");
-
-    // Seed entity UVs immediately
     player_entity_->uv_min = player_anim_.current_uv_min();
     player_entity_->uv_max = player_anim_.current_uv_max();
 
-    // Camera follows player
     renderer_.camera().set_follow_target(player_entity_->transform.position);
     renderer_.camera().set_follow_speed(5.0f);
 
-    // Helper: configure animation state machine with the 12 directional clips.
+    // NPC animation setup helper
     auto setup_anim = [](AnimationStateMachine& anim) {
         anim.configure(Tileset{16, 16, 4, 64, 192});
         const std::array<std::string, 3> states    = {"idle", "walk", "run"};
@@ -175,10 +281,16 @@ void App::init_scene() {
         }
     };
 
-    // NPCs: 3 patrol agents with ping-pong movement.
+    // NPC dialog scripts (reference locale keys)
+    npc_dialogs_.resize(3);
+    npc_dialogs_[0].lines = {{"guard_name", "guard_line_1"}, {"guard_name", "guard_line_2"}};
+    npc_dialogs_[1].lines = {{"merchant_name", "merchant_line_1"}, {"merchant_name", "merchant_line_2"}};
+    npc_dialogs_[2].lines = {{"scholar_name", "scholar_line_1"}, {"scholar_name", "scholar_line_2"}};
+
+    // NPCs
     npcs_.reserve(3);
 
-    // NPC 0: left ↔ right at y = 2, red tint
+    // NPC 0: Guard (red), left-right at y=2
     npcs_.emplace_back();
     npcs_.back().entity = scene_.create_entity();
     npcs_.back().entity->transform.position = {-3.0f, 2.0f, 0.0f};
@@ -189,11 +301,12 @@ void App::init_scene() {
     npcs_.back().reverse_dir = Direction::Left;
     npcs_.back().interval    = 3.0f;
     npcs_.back().speed       = 2.0f;
+    npcs_.back().dialog_index = 0;
     npcs_.back().anim.transition_to("walk_right");
     npcs_.back().entity->uv_min = npcs_.back().anim.current_uv_min();
     npcs_.back().entity->uv_max = npcs_.back().anim.current_uv_max();
 
-    // NPC 1: up ↔ down at x = 4, green tint
+    // NPC 1: Merchant (green), up-down at x=4
     npcs_.emplace_back();
     npcs_.back().entity = scene_.create_entity();
     npcs_.back().entity->transform.position = {4.0f, -2.0f, 0.0f};
@@ -204,11 +317,12 @@ void App::init_scene() {
     npcs_.back().reverse_dir = Direction::Down;
     npcs_.back().interval    = 2.5f;
     npcs_.back().speed       = 2.0f;
+    npcs_.back().dialog_index = 1;
     npcs_.back().anim.transition_to("walk_up");
     npcs_.back().entity->uv_min = npcs_.back().anim.current_uv_min();
     npcs_.back().entity->uv_max = npcs_.back().anim.current_uv_max();
 
-    // NPC 2: left ↔ right at y = -4, blue tint
+    // NPC 2: Scholar (blue), left-right at y=-4
     npcs_.emplace_back();
     npcs_.back().entity = scene_.create_entity();
     npcs_.back().entity->transform.position = {0.0f, -4.0f, 0.0f};
@@ -219,12 +333,12 @@ void App::init_scene() {
     npcs_.back().reverse_dir = Direction::Right;
     npcs_.back().interval    = 3.5f;
     npcs_.back().speed       = 2.0f;
+    npcs_.back().dialog_index = 2;
     npcs_.back().anim.transition_to("walk_left");
     npcs_.back().entity->uv_min = npcs_.back().anim.current_uv_min();
     npcs_.back().entity->uv_max = npcs_.back().anim.current_uv_max();
 
-    // Tilemap: 16×16, tile 0=floor (warm stone), tile 1=wall (dark rock).
-    // Border walls + 4 interior pillars at corners (col,row) = (4,4),(11,4),(4,11),(11,11).
+    // Tilemap: 16x16, border walls + 4 interior pillars
     TileLayer layer{};
     layer.tileset   = Tileset{16, 16, 2, 32, 16};
     layer.width     = 16;
@@ -246,10 +360,157 @@ void App::init_scene() {
     }
 
     scene_.set_tile_layer(std::move(layer));
+    scene_.set_ambient_color({0.25f, 0.28f, 0.45f, 1.0f});
+
+    // --- Particle emitters ---
+
+    // Torch embers: warm orange particles rising from 4 pillar positions
+    {
+        EmitterConfig cfg;
+        cfg.spawn_rate           = 8.0f;
+        cfg.particle_lifetime_min = 0.8f;
+        cfg.particle_lifetime_max = 1.6f;
+        cfg.velocity_min         = {-0.3f, 0.5f};
+        cfg.velocity_max         = { 0.3f, 1.5f};
+        cfg.acceleration         = {0.0f, 0.2f};
+        cfg.size_min             = 0.04f;
+        cfg.size_max             = 0.10f;
+        cfg.size_end_scale       = 0.1f;
+        cfg.color_start          = {1.0f, 0.75f, 0.2f, 0.9f};
+        cfg.color_end            = {1.0f, 0.3f, 0.0f, 0.0f};
+        cfg.tile                 = ParticleTile::SoftGlow;
+        cfg.z                    = -0.05f;
+        cfg.spawn_offset_min     = {-0.15f, -0.1f};
+        cfg.spawn_offset_max     = { 0.15f,  0.1f};
+
+        const glm::vec2 pillar_pos[] = {
+            {-3.5f,  3.5f}, { 3.5f,  3.5f},
+            {-3.5f, -3.5f}, { 3.5f, -3.5f},
+        };
+        for (int i = 0; i < 4; ++i) {
+            torch_emitter_ids_[i] = particles_.add_emitter(cfg, pillar_pos[i]);
+        }
+    }
+
+    // Footstep dust: brown-gray puffs at player feet (starts inactive)
+    {
+        EmitterConfig cfg;
+        cfg.spawn_rate           = 12.0f;
+        cfg.particle_lifetime_min = 0.3f;
+        cfg.particle_lifetime_max = 0.6f;
+        cfg.velocity_min         = {-0.5f, -0.1f};
+        cfg.velocity_max         = { 0.5f,  0.3f};
+        cfg.size_min             = 0.06f;
+        cfg.size_max             = 0.12f;
+        cfg.size_end_scale       = 1.5f;
+        cfg.color_start          = {0.6f, 0.55f, 0.45f, 0.6f};
+        cfg.color_end            = {0.5f, 0.48f, 0.40f, 0.0f};
+        cfg.tile                 = ParticleTile::SmokePuff;
+        cfg.z                    = -0.02f;
+        cfg.spawn_offset_min     = {-0.15f, -0.4f};
+        cfg.spawn_offset_max     = { 0.15f, -0.3f};
+
+        footstep_emitter_id_ = particles_.add_emitter(cfg, {0.0f, 0.0f});
+        particles_.set_emitter_active(footstep_emitter_id_, false);
+    }
+
+    // NPC aura sparkles: colored sparkles matching each NPC tint
+    {
+        const glm::vec4 colors[] = {
+            {1.0f, 0.3f, 0.2f, 0.8f},
+            {0.2f, 1.0f, 0.3f, 0.8f},
+            {0.2f, 0.3f, 1.0f, 0.8f},
+        };
+        const glm::vec4 end_colors[] = {
+            {1.0f, 0.6f, 0.4f, 0.0f},
+            {0.4f, 1.0f, 0.6f, 0.0f},
+            {0.4f, 0.6f, 1.0f, 0.0f},
+        };
+        for (int i = 0; i < 3; ++i) {
+            EmitterConfig cfg;
+            cfg.spawn_rate           = 6.0f;
+            cfg.particle_lifetime_min = 0.6f;
+            cfg.particle_lifetime_max = 1.2f;
+            cfg.velocity_min         = {-0.4f, -0.2f};
+            cfg.velocity_max         = { 0.4f,  0.5f};
+            cfg.acceleration         = {0.0f, 0.1f};
+            cfg.size_min             = 0.03f;
+            cfg.size_max             = 0.07f;
+            cfg.size_end_scale       = 0.2f;
+            cfg.color_start          = colors[i];
+            cfg.color_end            = end_colors[i];
+            cfg.tile                 = ParticleTile::Spark;
+            cfg.z                    = -0.04f;
+            cfg.spawn_offset_min     = {-0.4f, -0.3f};
+            cfg.spawn_offset_max     = { 0.4f,  0.3f};
+
+            const auto& npc_pos = npcs_[i].entity->transform.position;
+            npc_aura_emitter_ids_[i] = particles_.add_emitter(cfg, {npc_pos.x, npc_pos.y});
+        }
+    }
 }
 
 void App::update_game(float dt) {
-    if (player_entity_) {
+    overlay_sprites_.clear();
+    ui_sprites_.clear();
+
+    if (input_.was_key_pressed(GLFW_KEY_ESCAPE)) {
+        glfwSetWindowShouldClose(window_, GLFW_TRUE);
+        return;
+    }
+
+    if (game_mode_ == GameMode::Dialog) {
+        // Dialog mode: freeze movement, handle advance
+        if (input_.was_key_pressed(GLFW_KEY_E) || input_.was_key_pressed(GLFW_KEY_SPACE)) {
+            if (!dialog_state_.advance()) {
+                game_mode_ = GameMode::Explore;
+            }
+        }
+
+        // Still update animations (idle) but don't move
+        player_anim_.update(dt);
+        player_entity_->uv_min = player_anim_.current_uv_min();
+        player_entity_->uv_max = player_anim_.current_uv_max();
+        for (auto& npc : npcs_) {
+            npc.anim.update(dt);
+            npc.entity->uv_min = npc.anim.current_uv_min();
+            npc.entity->uv_max = npc.anim.current_uv_max();
+        }
+
+        // Build dialog UI sprites
+        if (dialog_state_.active) {
+            const auto& line = dialog_state_.current();
+            const auto& speaker = locale_.get(line.speaker_key);
+            const auto& text = locale_.get(line.text_key);
+            const auto& prompt = locale_.get("prompt_continue");
+
+            // Dialog background box (dark semi-transparent)
+            SpriteDrawInfo bg{};
+            bg.position = {640.0f, 610.0f, 0.5f};
+            bg.size = {1200.0f, 180.0f};
+            bg.color = {0.05f, 0.05f, 0.12f, 0.88f};
+            const GlyphInfo* space_glyph = font_atlas_.glyph('.');
+            if (space_glyph && space_glyph->size.x > 0) {
+                glm::vec2 center = (space_glyph->uv_min + space_glyph->uv_max) * 0.5f;
+                bg.uv_min = center;
+                bg.uv_max = center;
+            }
+            ui_sprites_.push_back(bg);
+
+            auto name_sprites = text_renderer_.render_text(
+                speaker, 60.0f, 535.0f, 0.0f, 0.8f, {1.0f, 0.85f, 0.2f, 1.0f});
+            ui_sprites_.insert(ui_sprites_.end(), name_sprites.begin(), name_sprites.end());
+
+            auto text_sprites = text_renderer_.render_wrapped(
+                text, 60.0f, 580.0f, 0.0f, 0.6f, {1.0f, 1.0f, 1.0f, 1.0f}, 1160.0f);
+            ui_sprites_.insert(ui_sprites_.end(), text_sprites.begin(), text_sprites.end());
+
+            auto prompt_sprites = text_renderer_.render_text(
+                prompt, 1180.0f, 680.0f, 0.0f, 0.5f, {0.7f, 0.7f, 0.7f, 1.0f});
+            ui_sprites_.insert(ui_sprites_.end(), prompt_sprites.begin(), prompt_sprites.end());
+        }
+    } else if (player_entity_) {
+        // === Explore mode ===
         const bool w = input_.is_key_down(GLFW_KEY_W);
         const bool a = input_.is_key_down(GLFW_KEY_A);
         const bool s = input_.is_key_down(GLFW_KEY_S);
@@ -265,7 +526,6 @@ void App::update_game(float dt) {
         if (a) pos.x -= speed * dt;
         if (d) pos.x += speed * dt;
 
-        // Resolve AABB collisions against solid tilemap tiles.
         if (scene_.tile_layer().has_value()) {
             const glm::vec2 resolved = resolve_tilemap_collision(
                 {pos.x, pos.y}, 0.4f, *scene_.tile_layer());
@@ -275,7 +535,6 @@ void App::update_game(float dt) {
 
         renderer_.camera().set_follow_target(pos);
 
-        // Direction: only update when moving; horizontal beats vertical on diagonal
         if (moving) {
             if (d)      player_dir_ = Direction::Right;
             else if (a) player_dir_ = Direction::Left;
@@ -296,13 +555,68 @@ void App::update_game(float dt) {
         player_anim_.update(dt);
         player_entity_->uv_min = player_anim_.current_uv_min();
         player_entity_->uv_max = player_anim_.current_uv_max();
+
+        // Proximity detection: find nearest NPC within interaction range
+        constexpr float kInteractRange = 1.5f;
+        int nearest_npc = -1;
+        float nearest_dist_sq = kInteractRange * kInteractRange;
+
+        for (size_t i = 0; i < npcs_.size(); i++) {
+            float dx = npcs_[i].entity->transform.position.x - pos.x;
+            float dy = npcs_[i].entity->transform.position.y - pos.y;
+            float dist_sq = dx * dx + dy * dy;
+            if (dist_sq < nearest_dist_sq) {
+                nearest_dist_sq = dist_sq;
+                nearest_npc = static_cast<int>(i);
+            }
+        }
+
+        // Show interaction prompt above nearest NPC
+        if (nearest_npc >= 0) {
+            const auto& npc_pos = npcs_[nearest_npc].entity->transform.position;
+            auto prompt_sprites = text_renderer_.render_text(
+                locale_.get("prompt_interact"),
+                npc_pos.x - 0.2f, npc_pos.y + 0.7f, -0.1f,
+                0.02f, {1.0f, 0.9f, 0.2f, 1.0f});
+            overlay_sprites_.insert(overlay_sprites_.end(),
+                                    prompt_sprites.begin(), prompt_sprites.end());
+
+            // Interact on E press
+            if (input_.was_key_pressed(GLFW_KEY_E)) {
+                size_t di = npcs_[nearest_npc].dialog_index;
+                if (di < npc_dialogs_.size()) {
+                    dialog_state_.start(npc_dialogs_[di]);
+                    game_mode_ = GameMode::Dialog;
+
+                    // Transition player to idle
+                    player_anim_.transition_to(std::string("idle_") + dir_suffix);
+                }
+            }
+        }
+        update_npcs(dt);
     }
 
-    update_npcs(dt);
+    update_particles(dt);
+    update_lights();
+}
 
-    if (input_.is_key_down(GLFW_KEY_ESCAPE)) {
-        glfwSetWindowShouldClose(window_, GLFW_TRUE);
+void App::update_particles(float dt) {
+    if (player_entity_) {
+        const bool moving = input_.is_key_down(GLFW_KEY_W) || input_.is_key_down(GLFW_KEY_A) ||
+                            input_.is_key_down(GLFW_KEY_S) || input_.is_key_down(GLFW_KEY_D);
+        particles_.set_emitter_active(footstep_emitter_id_,
+                                      moving && game_mode_ == GameMode::Explore);
+        particles_.set_emitter_position(
+            footstep_emitter_id_,
+            {player_entity_->transform.position.x, player_entity_->transform.position.y});
     }
+
+    for (size_t i = 0; i < npcs_.size() && i < 3; ++i) {
+        const auto& pos = npcs_[i].entity->transform.position;
+        particles_.set_emitter_position(npc_aura_emitter_ids_[i], {pos.x, pos.y});
+    }
+
+    particles_.update(dt);
 }
 
 void App::update_npcs(float dt) {
@@ -327,7 +641,6 @@ void App::update_npcs(float dt) {
             pos.y = resolved.y;
         }
 
-        // Detect wall block: position barely moved despite attempting to move.
         const float ddx = pos.x - prev_x;
         const float ddy = pos.y - prev_y;
         const bool blocked = (ddx * ddx + ddy * ddy) < (0.001f * 0.001f);
@@ -353,21 +666,48 @@ void App::update_npcs(float dt) {
     }
 }
 
+void App::update_lights() {
+    scene_.clear_lights();
+
+    // Static pillar torches (warm orange glow)
+    const glm::vec4 warm_color{1.0f, 0.85f, 0.5f, 1.2f};
+    const float pillar_radius = 4.0f;
+    scene_.add_light(PointLight{{-3.5f,  3.5f, 0.0f, pillar_radius}, warm_color});
+    scene_.add_light(PointLight{{ 3.5f,  3.5f, 0.0f, pillar_radius}, warm_color});
+    scene_.add_light(PointLight{{-3.5f, -3.5f, 0.0f, pillar_radius}, warm_color});
+    scene_.add_light(PointLight{{ 3.5f, -3.5f, 0.0f, pillar_radius}, warm_color});
+
+    // Dynamic NPC lights (matching their tint colors)
+    const glm::vec4 npc_colors[] = {
+        {1.0f, 0.4f, 0.3f, 0.8f},  // Guard: red
+        {0.3f, 1.0f, 0.4f, 0.8f},  // Merchant: green
+        {0.3f, 0.4f, 1.0f, 0.8f},  // Scholar: blue
+    };
+    const float npc_radius = 3.0f;
+    for (size_t i = 0; i < npcs_.size() && i < 3; i++) {
+        const auto& pos = npcs_[i].entity->transform.position;
+        scene_.add_light(PointLight{{pos.x, pos.y, 0.0f, npc_radius}, npc_colors[i]});
+    }
+}
+
 void App::main_loop() {
     last_update_time_ = std::chrono::steady_clock::now();
 
     while (!glfwWindowShouldClose(window_)) {
         glfwPollEvents();
+        input_.update();
 
         auto now = std::chrono::steady_clock::now();
         float dt = std::chrono::duration<float>(now - last_update_time_).count();
         last_update_time_ = now;
 
-        // Clamp to 100 ms to absorb startup hitches
         if (dt > 0.1f) dt = 0.1f;
 
         update_game(dt);
-        renderer_.draw_scene(scene_);
+
+        std::vector<SpriteDrawInfo> particle_sprites;
+        particles_.generate_draw_infos(particle_sprites);
+        renderer_.draw_scene(scene_, particle_sprites, overlay_sprites_, ui_sprites_);
     }
 }
 

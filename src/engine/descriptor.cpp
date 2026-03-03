@@ -10,7 +10,7 @@ void DescriptorManager::init(VkDevice device) {
     ubo_binding.binding = 0;
     ubo_binding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
     ubo_binding.descriptorCount = 1;
-    ubo_binding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+    ubo_binding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
 
     VkDescriptorSetLayoutBinding sampler_binding{};
     sampler_binding.binding = 1;
@@ -30,18 +30,18 @@ void DescriptorManager::init(VkDevice device) {
         throw std::runtime_error("Failed to create descriptor set layout");
     }
 
-    // Create descriptor pool (sized for up to 4 allocations × kMaxFramesInFlight sets each)
+    // Create descriptor pool (sized for up to 5 allocations × kMaxFramesInFlight sets each)
     std::array<VkDescriptorPoolSize, 2> pool_sizes{};
     pool_sizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    pool_sizes[0].descriptorCount = kMaxFramesInFlight * 4;
+    pool_sizes[0].descriptorCount = kMaxFramesInFlight * 5;
     pool_sizes[1].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    pool_sizes[1].descriptorCount = kMaxFramesInFlight * 4;
+    pool_sizes[1].descriptorCount = kMaxFramesInFlight * 5;
 
     VkDescriptorPoolCreateInfo pool_info{};
     pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
     pool_info.poolSizeCount = static_cast<uint32_t>(pool_sizes.size());
     pool_info.pPoolSizes = pool_sizes.data();
-    pool_info.maxSets = kMaxFramesInFlight * 4;
+    pool_info.maxSets = kMaxFramesInFlight * 5;
 
     if (vkCreateDescriptorPool(device, &pool_info, nullptr, &pool_) != VK_SUCCESS) {
         throw std::runtime_error("Failed to create descriptor pool");

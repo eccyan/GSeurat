@@ -32,8 +32,18 @@ struct Vertex {
     }
 };
 
-struct UniformBufferObject {
-    glm::mat4 vp;
+struct PointLight {
+    glm::vec4 position_and_radius;  // xy = world pos, z = unused, w = radius
+    glm::vec4 color;                // rgb = color, a = intensity
 };
+
+inline constexpr uint32_t kMaxLights = 8;
+
+struct UniformBufferObject {
+    glm::mat4 vp;                         // 64 bytes
+    glm::vec4 ambient_color;              // 16 bytes (rgb, a = strength)
+    glm::ivec4 light_params;              // 16 bytes (x = light_count)
+    PointLight lights[kMaxLights];        // 256 bytes
+};  // 352 bytes total, std140 aligned
 
 }  // namespace vulkan_game

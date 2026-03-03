@@ -184,6 +184,109 @@ Texture Texture::load_from_file(VkDevice device, VmaAllocator allocator,
     return tex;
 }
 
+Texture Texture::load_from_memory(VkDevice device, VmaAllocator allocator,
+                                   VkCommandPool cmd_pool, VkQueue queue,
+                                   const uint8_t* pixels, uint32_t width, uint32_t height,
+                                   VkFilter filter) {
+    VkDeviceSize image_size = static_cast<VkDeviceSize>(width) * height * 4;
+
+    Buffer staging = Buffer::create_staging(allocator, image_size);
+    staging.upload(pixels, image_size);
+
+    Texture tex;
+
+    VkImageCreateInfo image_info{};
+    image_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+    image_info.imageType = VK_IMAGE_TYPE_2D;
+    image_info.format = VK_FORMAT_R8G8B8A8_SRGB;
+    image_info.extent = {width, height, 1};
+    image_info.mipLevels = 1;
+    image_info.arrayLayers = 1;
+    image_info.samples = VK_SAMPLE_COUNT_1_BIT;
+    image_info.tiling = VK_IMAGE_TILING_OPTIMAL;
+    image_info.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+
+    VmaAllocationCreateInfo alloc_info{};
+    alloc_info.usage = VMA_MEMORY_USAGE_GPU_ONLY;
+
+    if (vmaCreateImage(allocator, &image_info, &alloc_info, &tex.image_, &tex.allocation_,
+                       nullptr) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to create texture image");
+    }
+
+    transition_image_layout(device, cmd_pool, queue, tex.image_, VK_IMAGE_LAYOUT_UNDEFINED,
+                            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+
+    {
+        VkCommandBufferAllocateInfo cmd_alloc{};
+        cmd_alloc.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+        cmd_alloc.commandPool = cmd_pool;
+        cmd_alloc.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+        cmd_alloc.commandBufferCount = 1;
+
+        VkCommandBuffer cmd;
+        vkAllocateCommandBuffers(device, &cmd_alloc, &cmd);
+
+        VkCommandBufferBeginInfo begin_info{};
+        begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+        vkBeginCommandBuffer(cmd, &begin_info);
+
+        VkBufferImageCopy region{};
+        region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        region.imageSubresource.layerCount = 1;
+        region.imageExtent = {width, height, 1};
+
+        vkCmdCopyBufferToImage(cmd, staging.buffer(), tex.image_,
+                               VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+
+        vkEndCommandBuffer(cmd);
+
+        VkSubmitInfo submit{};
+        submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+        submit.commandBufferCount = 1;
+        submit.pCommandBuffers = &cmd;
+        vkQueueSubmit(queue, 1, &submit, VK_NULL_HANDLE);
+        vkQueueWaitIdle(queue);
+
+        vkFreeCommandBuffers(device, cmd_pool, 1, &cmd);
+    }
+
+    transition_image_layout(device, cmd_pool, queue, tex.image_,
+                            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
+    staging.destroy(allocator);
+
+    VkImageViewCreateInfo view_info{};
+    view_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+    view_info.image = tex.image_;
+    view_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
+    view_info.format = VK_FORMAT_R8G8B8A8_SRGB;
+    view_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    view_info.subresourceRange.levelCount = 1;
+    view_info.subresourceRange.layerCount = 1;
+
+    if (vkCreateImageView(device, &view_info, nullptr, &tex.image_view_) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to create texture image view");
+    }
+
+    VkSamplerCreateInfo sampler_info{};
+    sampler_info.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+    sampler_info.magFilter = filter;
+    sampler_info.minFilter = filter;
+    sampler_info.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    sampler_info.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    sampler_info.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    sampler_info.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
+
+    if (vkCreateSampler(device, &sampler_info, nullptr, &tex.sampler_) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to create texture sampler");
+    }
+
+    return tex;
+}
+
 void Texture::destroy(VkDevice device, VmaAllocator allocator) {
     vkDestroySampler(device, sampler_, nullptr);
     vkDestroyImageView(device, image_view_, nullptr);

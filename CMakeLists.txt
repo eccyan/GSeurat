@@ -45,6 +45,43 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(stb)
 
+FetchContent_Declare(
+    json
+    GIT_REPOSITORY https://github.com/nlohmann/json.git
+    GIT_TAG        v3.11.3
+)
+set(JSON_BuildTests OFF CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(json)
+
+# --- Download font if not present -------------------------------------------
+
+set(FONT_DIR "${PROJECT_SOURCE_DIR}/assets/fonts")
+set(FONT_FILE "${FONT_DIR}/NotoSans-Regular.ttf")
+if(NOT EXISTS "${FONT_FILE}")
+    file(MAKE_DIRECTORY "${FONT_DIR}")
+    message(STATUS "Downloading NotoSans-Regular.ttf ...")
+    file(DOWNLOAD
+        "https://github.com/notofonts/latin-greek-cyrillic/releases/download/NotoSans-v2.014/NotoSans-v2.014.zip"
+        "${CMAKE_BINARY_DIR}/NotoSans.zip"
+        STATUS DOWNLOAD_STATUS
+    )
+    list(GET DOWNLOAD_STATUS 0 STATUS_CODE)
+    if(STATUS_CODE EQUAL 0)
+        file(ARCHIVE_EXTRACT INPUT "${CMAKE_BINARY_DIR}/NotoSans.zip"
+             DESTINATION "${CMAKE_BINARY_DIR}/NotoSans_tmp")
+        file(GLOB_RECURSE NOTO_TTF "${CMAKE_BINARY_DIR}/NotoSans_tmp/**/NotoSans-Regular.ttf")
+        if(NOTO_TTF)
+            list(GET NOTO_TTF 0 NOTO_TTF_PATH)
+            file(COPY "${NOTO_TTF_PATH}" DESTINATION "${FONT_DIR}")
+        else()
+            message(WARNING "Could not find NotoSans-Regular.ttf in downloaded archive")
+        endif()
+    else()
+        message(WARNING "Failed to download NotoSans font (status ${STATUS_CODE}). "
+                        "Place a TTF font at ${FONT_FILE} manually.")
+    endif()
+endif()
+
 # --- Shaders ----------------------------------------------------------------
 
 add_subdirectory(shaders)
@@ -71,6 +108,10 @@ add_executable(vulkan_game
     src/engine/tilemap.cpp
     src/engine/animation.cpp
     src/engine/animation_state_machine.cpp
+    src/engine/particle.cpp
+    src/engine/font_atlas.cpp
+    src/engine/text_renderer.cpp
+    src/engine/locale_manager.cpp
 )
 
 target_include_directories(vulkan_game PRIVATE
@@ -88,6 +129,7 @@ target_link_libraries(vulkan_game
         glfw
         glm::glm
         GPUOpen::VulkanMemoryAllocator
+        nlohmann_json::nlohmann_json
 )
 
 add_dependencies(vulkan_game shaders)

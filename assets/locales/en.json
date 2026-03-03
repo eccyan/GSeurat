@@ -1,0 +1,13 @@
+{
+  "guard_name": "Guard",
+  "guard_line_1": "Halt! No one passes without the royal seal.",
+  "guard_line_2": "The kingdom has been on edge since the shadow appeared.",
+  "merchant_name": "Merchant",
+  "merchant_line_1": "Welcome! Care to browse my wares?",
+  "merchant_line_2": "Business has been slow... too many monsters on the roads.",
+  "scholar_name": "Scholar",
+  "scholar_line_1": "Fascinating... these ruins predate the old empire.",
+  "scholar_line_2": "If only I could decipher the glyphs on the northern wall.",
+  "prompt_continue": ">>",
+  "prompt_interact": "[E]"
+}
