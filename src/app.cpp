@@ -1,4 +1,6 @@
 #include "vulkan_game/app.hpp"
+#include "vulkan_game/engine/ecs/components.hpp"
+#include "vulkan_game/engine/ecs/systems.hpp"
 #include "vulkan_game/engine/tilemap.hpp"
 
 #define GLFW_INCLUDE_VULKAN
@@ -455,43 +457,9 @@ void App::init_window() {
 }
 
 void App::init_scene() {
-    // Create player entity at origin
-    player_entity_ = scene_.create_entity();
-    player_entity_->transform.position = {0.0f, 0.0f, 0.0f};
-    player_entity_->transform.scale = {1.0f, 1.0f};
-    player_entity_->tint = {1.0f, 1.0f, 1.0f, 1.0f};
-
-    // Configure animation state machine: 12-row sheet (3 states x 4 directions)
-    player_anim_.configure(Tileset{16, 16, 4, 64, 192});
-
-    const std::array<std::string, 3> state_names = {"idle", "walk", "run"};
-    const std::array<std::string, 4> dir_names   = {"down", "left", "right", "up"};
-    const std::array<float, 3> frame_durations   = {0.30f, 0.12f, 0.07f};
-
-    for (int state = 0; state < 3; ++state) {
-        for (int dir = 0; dir < 4; ++dir) {
-            int sheet_row      = state * 4 + dir;
-            uint32_t base_tile = static_cast<uint32_t>(sheet_row * 4);
-            AnimationClip clip;
-            clip.name    = state_names[state] + "_" + dir_names[dir];
-            clip.looping = true;
-            for (uint32_t f = 0; f < 4; ++f) {
-                clip.frames.push_back(AnimationFrame{base_tile + f, frame_durations[state]});
-            }
-            player_anim_.add_clip(std::move(clip));
-        }
-    }
-
-    player_anim_.transition_to("idle_down");
-    player_entity_->uv_min = player_anim_.current_uv_min();
-    player_entity_->uv_max = player_anim_.current_uv_max();
-
-    renderer_.camera().set_follow_target(player_entity_->transform.position);
-    renderer_.camera().set_follow_speed(5.0f);
-
-    // NPC animation setup helper
-    auto setup_anim = [](AnimationStateMachine& anim) {
-        anim.configure(Tileset{16, 16, 4, 64, 192});
+    // Animation setup helper (shared by player and NPCs)
+    auto setup_anim = [](ecs::Animation& anim_comp) {
+        anim_comp.state_machine.configure(Tileset{16, 16, 4, 64, 192});
         const std::array<std::string, 3> states    = {"idle", "walk", "run"};
         const std::array<std::string, 4> dirs      = {"down", "left", "right", "up"};
         const std::array<float, 3> durations       = {0.30f, 0.12f, 0.07f};
@@ -503,10 +471,56 @@ void App::init_scene() {
                 uint32_t base = static_cast<uint32_t>((s * 4 + d) * 4);
                 for (uint32_t f = 0; f < 4; ++f)
                     clip.frames.push_back(AnimationFrame{base + f, durations[s]});
-                anim.add_clip(std::move(clip));
+                anim_comp.state_machine.add_clip(std::move(clip));
             }
         }
     };
+
+    // Footstep emitter setup (before player creation so we have the ID)
+    size_t footstep_eid;
+    {
+        EmitterConfig cfg;
+        cfg.spawn_rate           = 12.0f;
+        cfg.particle_lifetime_min = 0.3f;
+        cfg.particle_lifetime_max = 0.6f;
+        cfg.velocity_min         = {-0.5f, -0.1f};
+        cfg.velocity_max         = { 0.5f,  0.3f};
+        cfg.size_min             = 0.06f;
+        cfg.size_max             = 0.12f;
+        cfg.size_end_scale       = 1.5f;
+        cfg.color_start          = {0.6f, 0.55f, 0.45f, 0.6f};
+        cfg.color_end            = {0.5f, 0.48f, 0.40f, 0.0f};
+        cfg.tile                 = ParticleTile::SmokePuff;
+        cfg.z                    = -0.02f;
+        cfg.spawn_offset_min     = {-0.15f, -0.4f};
+        cfg.spawn_offset_max     = { 0.15f, -0.3f};
+
+        footstep_eid = particles_.add_emitter(cfg, {0.0f, 0.0f});
+        particles_.set_emitter_active(footstep_eid, false);
+    }
+
+    // Create player entity
+    {
+        ecs::Animation player_anim;
+        setup_anim(player_anim);
+        player_anim.state_machine.transition_to("idle_down");
+
+        ecs::Sprite sprite;
+        sprite.tint = {1.0f, 1.0f, 1.0f, 1.0f};
+        sprite.uv_min = player_anim.state_machine.current_uv_min();
+        sprite.uv_max = player_anim.state_machine.current_uv_max();
+
+        player_id_ = world_.create();
+        world_.add<ecs::Transform>(player_id_, ecs::Transform{{0.0f, 0.0f, 0.0f}, {1.0f, 1.0f}});
+        world_.add<ecs::Sprite>(player_id_, sprite);
+        world_.add<ecs::PlayerTag>(player_id_);
+        world_.add<ecs::Facing>(player_id_, ecs::Facing{Direction::Down});
+        world_.add<ecs::Animation>(player_id_, std::move(player_anim));
+        world_.add<ecs::FootstepEmitterRef>(player_id_, ecs::FootstepEmitterRef{footstep_eid});
+    }
+
+    renderer_.camera().set_follow_target(world_.get<ecs::Transform>(player_id_).position);
+    renderer_.camera().set_follow_speed(5.0f);
 
     // NPC dialog scripts (reference locale keys)
     npc_dialogs_.resize(3);
@@ -514,56 +528,84 @@ void App::init_scene() {
     npc_dialogs_[1].lines = {{"merchant_name", "merchant_line_1"}, {"merchant_name", "merchant_line_2"}};
     npc_dialogs_[2].lines = {{"scholar_name", "scholar_line_1"}, {"scholar_name", "scholar_line_2"}};
 
-    // NPCs
-    npcs_.reserve(3);
+    // NPC definitions
+    struct NpcDef {
+        glm::vec3 position;
+        glm::vec4 tint;
+        Direction dir;
+        Direction reverse_dir;
+        float interval;
+        float speed;
+        size_t dialog_index;
+        const char* initial_clip;
+        glm::vec4 light_color;
+        float light_radius;
+        glm::vec4 aura_start;
+        glm::vec4 aura_end;
+    };
 
-    // NPC 0: Guard (red), left-right at y=2
-    npcs_.emplace_back();
-    npcs_.back().entity = scene_.create_entity();
-    npcs_.back().entity->transform.position = {-3.0f, 2.0f, 0.0f};
-    npcs_.back().entity->transform.scale    = {1.0f, 1.0f};
-    npcs_.back().entity->tint               = {1.0f, 0.8f, 0.8f, 1.0f};
-    setup_anim(npcs_.back().anim);
-    npcs_.back().dir         = Direction::Right;
-    npcs_.back().reverse_dir = Direction::Left;
-    npcs_.back().interval    = 3.0f;
-    npcs_.back().speed       = 2.0f;
-    npcs_.back().dialog_index = 0;
-    npcs_.back().anim.transition_to("walk_right");
-    npcs_.back().entity->uv_min = npcs_.back().anim.current_uv_min();
-    npcs_.back().entity->uv_max = npcs_.back().anim.current_uv_max();
+    const NpcDef npc_defs[] = {
+        // Guard (red)
+        {{-3.0f, 2.0f, 0.0f}, {1.0f, 0.8f, 0.8f, 1.0f},
+         Direction::Right, Direction::Left, 3.0f, 2.0f, 0, "walk_right",
+         {1.0f, 0.4f, 0.3f, 0.8f}, 3.0f,
+         {1.0f, 0.3f, 0.2f, 0.8f}, {1.0f, 0.6f, 0.4f, 0.0f}},
+        // Merchant (green)
+        {{4.0f, -2.0f, 0.0f}, {0.8f, 1.0f, 0.8f, 1.0f},
+         Direction::Up, Direction::Down, 2.5f, 2.0f, 1, "walk_up",
+         {0.3f, 1.0f, 0.4f, 0.8f}, 3.0f,
+         {0.2f, 1.0f, 0.3f, 0.8f}, {0.4f, 1.0f, 0.6f, 0.0f}},
+        // Scholar (blue)
+        {{0.0f, -4.0f, 0.0f}, {0.8f, 0.8f, 1.0f, 1.0f},
+         Direction::Left, Direction::Right, 3.5f, 2.0f, 2, "walk_left",
+         {0.3f, 0.4f, 1.0f, 0.8f}, 3.0f,
+         {0.2f, 0.3f, 1.0f, 0.8f}, {0.4f, 0.6f, 1.0f, 0.0f}},
+    };
 
-    // NPC 1: Merchant (green), up-down at x=4
-    npcs_.emplace_back();
-    npcs_.back().entity = scene_.create_entity();
-    npcs_.back().entity->transform.position = {4.0f, -2.0f, 0.0f};
-    npcs_.back().entity->transform.scale    = {1.0f, 1.0f};
-    npcs_.back().entity->tint               = {0.8f, 1.0f, 0.8f, 1.0f};
-    setup_anim(npcs_.back().anim);
-    npcs_.back().dir         = Direction::Up;
-    npcs_.back().reverse_dir = Direction::Down;
-    npcs_.back().interval    = 2.5f;
-    npcs_.back().speed       = 2.0f;
-    npcs_.back().dialog_index = 1;
-    npcs_.back().anim.transition_to("walk_up");
-    npcs_.back().entity->uv_min = npcs_.back().anim.current_uv_min();
-    npcs_.back().entity->uv_max = npcs_.back().anim.current_uv_max();
+    npc_ids_.reserve(3);
+    for (int i = 0; i < 3; ++i) {
+        const auto& def = npc_defs[i];
 
-    // NPC 2: Scholar (blue), left-right at y=-4
-    npcs_.emplace_back();
-    npcs_.back().entity = scene_.create_entity();
-    npcs_.back().entity->transform.position = {0.0f, -4.0f, 0.0f};
-    npcs_.back().entity->transform.scale    = {1.0f, 1.0f};
-    npcs_.back().entity->tint               = {0.8f, 0.8f, 1.0f, 1.0f};
-    setup_anim(npcs_.back().anim);
-    npcs_.back().dir         = Direction::Left;
-    npcs_.back().reverse_dir = Direction::Right;
-    npcs_.back().interval    = 3.5f;
-    npcs_.back().speed       = 2.0f;
-    npcs_.back().dialog_index = 2;
-    npcs_.back().anim.transition_to("walk_left");
-    npcs_.back().entity->uv_min = npcs_.back().anim.current_uv_min();
-    npcs_.back().entity->uv_max = npcs_.back().anim.current_uv_max();
+        ecs::Animation npc_anim;
+        setup_anim(npc_anim);
+        npc_anim.state_machine.transition_to(def.initial_clip);
+
+        ecs::Sprite sprite;
+        sprite.tint = def.tint;
+        sprite.uv_min = npc_anim.state_machine.current_uv_min();
+        sprite.uv_max = npc_anim.state_machine.current_uv_max();
+
+        // NPC aura emitter
+        EmitterConfig aura_cfg;
+        aura_cfg.spawn_rate           = 6.0f;
+        aura_cfg.particle_lifetime_min = 0.6f;
+        aura_cfg.particle_lifetime_max = 1.2f;
+        aura_cfg.velocity_min         = {-0.4f, -0.2f};
+        aura_cfg.velocity_max         = { 0.4f,  0.5f};
+        aura_cfg.acceleration         = {0.0f, 0.1f};
+        aura_cfg.size_min             = 0.03f;
+        aura_cfg.size_max             = 0.07f;
+        aura_cfg.size_end_scale       = 0.2f;
+        aura_cfg.color_start          = def.aura_start;
+        aura_cfg.color_end            = def.aura_end;
+        aura_cfg.tile                 = ParticleTile::Spark;
+        aura_cfg.z                    = -0.04f;
+        aura_cfg.spawn_offset_min     = {-0.4f, -0.3f};
+        aura_cfg.spawn_offset_max     = { 0.4f,  0.3f};
+
+        size_t aura_eid = particles_.add_emitter(aura_cfg, {def.position.x, def.position.y});
+
+        auto npc = world_.create();
+        world_.add<ecs::Transform>(npc, ecs::Transform{def.position, {1.0f, 1.0f}});
+        world_.add<ecs::Sprite>(npc, sprite);
+        world_.add<ecs::Facing>(npc, ecs::Facing{def.dir});
+        world_.add<ecs::Animation>(npc, std::move(npc_anim));
+        world_.add<ecs::NpcPatrol>(npc, ecs::NpcPatrol{def.dir, def.reverse_dir, 0.0f, def.interval, def.speed});
+        world_.add<ecs::DialogRef>(npc, ecs::DialogRef{def.dialog_index});
+        world_.add<ecs::DynamicLight>(npc, ecs::DynamicLight{def.light_color, def.light_radius});
+        world_.add<ecs::ParticleEmitterRef>(npc, ecs::ParticleEmitterRef{aura_eid});
+        npc_ids_.push_back(npc);
+    }
 
     // Tilemap: 16x16, border walls + 4 interior pillars
     TileLayer layer{};
@@ -589,9 +631,7 @@ void App::init_scene() {
     scene_.set_tile_layer(std::move(layer));
     scene_.set_ambient_color({0.25f, 0.28f, 0.45f, 1.0f});
 
-    // --- Particle emitters ---
-
-    // Torch embers: warm orange particles rising from 4 pillar positions
+    // --- Torch emitters ---
     {
         EmitterConfig cfg;
         cfg.spawn_rate           = 8.0f;
@@ -616,63 +656,6 @@ void App::init_scene() {
         };
         for (int i = 0; i < 4; ++i) {
             torch_emitter_ids_[i] = particles_.add_emitter(cfg, pillar_pos[i]);
-        }
-    }
-
-    // Footstep dust: brown-gray puffs at player feet (starts inactive)
-    {
-        EmitterConfig cfg;
-        cfg.spawn_rate           = 12.0f;
-        cfg.particle_lifetime_min = 0.3f;
-        cfg.particle_lifetime_max = 0.6f;
-        cfg.velocity_min         = {-0.5f, -0.1f};
-        cfg.velocity_max         = { 0.5f,  0.3f};
-        cfg.size_min             = 0.06f;
-        cfg.size_max             = 0.12f;
-        cfg.size_end_scale       = 1.5f;
-        cfg.color_start          = {0.6f, 0.55f, 0.45f, 0.6f};
-        cfg.color_end            = {0.5f, 0.48f, 0.40f, 0.0f};
-        cfg.tile                 = ParticleTile::SmokePuff;
-        cfg.z                    = -0.02f;
-        cfg.spawn_offset_min     = {-0.15f, -0.4f};
-        cfg.spawn_offset_max     = { 0.15f, -0.3f};
-
-        footstep_emitter_id_ = particles_.add_emitter(cfg, {0.0f, 0.0f});
-        particles_.set_emitter_active(footstep_emitter_id_, false);
-    }
-
-    // NPC aura sparkles: colored sparkles matching each NPC tint
-    {
-        const glm::vec4 colors[] = {
-            {1.0f, 0.3f, 0.2f, 0.8f},
-            {0.2f, 1.0f, 0.3f, 0.8f},
-            {0.2f, 0.3f, 1.0f, 0.8f},
-        };
-        const glm::vec4 end_colors[] = {
-            {1.0f, 0.6f, 0.4f, 0.0f},
-            {0.4f, 1.0f, 0.6f, 0.0f},
-            {0.4f, 0.6f, 1.0f, 0.0f},
-        };
-        for (int i = 0; i < 3; ++i) {
-            EmitterConfig cfg;
-            cfg.spawn_rate           = 6.0f;
-            cfg.particle_lifetime_min = 0.6f;
-            cfg.particle_lifetime_max = 1.2f;
-            cfg.velocity_min         = {-0.4f, -0.2f};
-            cfg.velocity_max         = { 0.4f,  0.5f};
-            cfg.acceleration         = {0.0f, 0.1f};
-            cfg.size_min             = 0.03f;
-            cfg.size_max             = 0.07f;
-            cfg.size_end_scale       = 0.2f;
-            cfg.color_start          = colors[i];
-            cfg.color_end            = end_colors[i];
-            cfg.tile                 = ParticleTile::Spark;
-            cfg.z                    = -0.04f;
-            cfg.spawn_offset_min     = {-0.4f, -0.3f};
-            cfg.spawn_offset_max     = { 0.4f,  0.3f};
-
-            const auto& npc_pos = npcs_[i].entity->transform.position;
-            npc_aura_emitter_ids_[i] = particles_.add_emitter(cfg, {npc_pos.x, npc_pos.y});
         }
     }
 
@@ -711,14 +694,7 @@ void App::update_game(float dt) {
         }
 
         // Still update animations (idle) but don't move
-        player_anim_.update(dt);
-        player_entity_->uv_min = player_anim_.current_uv_min();
-        player_entity_->uv_max = player_anim_.current_uv_max();
-        for (auto& npc : npcs_) {
-            npc.anim.update(dt);
-            npc.entity->uv_min = npc.anim.current_uv_min();
-            npc.entity->uv_max = npc.anim.current_uv_max();
-        }
+        ecs::systems::animation_update(world_, dt);
 
         // Build dialog UI sprites
         if (dialog_state_.active) {
@@ -752,61 +728,43 @@ void App::update_game(float dt) {
                 prompt, 1180.0f, 680.0f, 0.0f, 0.5f, {0.7f, 0.7f, 0.7f, 1.0f});
             ui_sprites_.insert(ui_sprites_.end(), prompt_sprites.begin(), prompt_sprites.end());
         }
-    } else if (player_entity_) {
+    } else if (player_id_.valid()) {
         // === Explore mode ===
-        const bool w = input_.is_key_down(GLFW_KEY_W);
-        const bool a = input_.is_key_down(GLFW_KEY_A);
-        const bool s = input_.is_key_down(GLFW_KEY_S);
-        const bool d = input_.is_key_down(GLFW_KEY_D);
-        const bool moving    = w || a || s || d;
-        const bool sprinting = moving && input_.is_key_down(GLFW_KEY_LEFT_SHIFT);
-
-        const float speed = sprinting ? 8.0f : 4.0f;
-
-        auto& pos = player_entity_->transform.position;
-        if (w) pos.y += speed * dt;
-        if (s) pos.y -= speed * dt;
-        if (a) pos.x -= speed * dt;
-        if (d) pos.x += speed * dt;
+        auto move_result = ecs::systems::player_movement(world_, input_, dt);
 
         if (scene_.tile_layer().has_value()) {
-            const glm::vec2 resolved = resolve_tilemap_collision(
-                {pos.x, pos.y}, 0.4f, *scene_.tile_layer());
-            pos.x = resolved.x;
-            pos.y = resolved.y;
+            ecs::systems::player_collision(world_, *scene_.tile_layer());
         }
 
-        renderer_.camera().set_follow_target(pos);
+        auto& player_pos = world_.get<ecs::Transform>(player_id_).position;
+        renderer_.camera().set_follow_target(player_pos);
 
-        if (moving) {
-            if (d)      player_dir_ = Direction::Right;
-            else if (a) player_dir_ = Direction::Left;
-            else if (w) player_dir_ = Direction::Up;
-            else        player_dir_ = Direction::Down;
+        auto& player_facing = world_.get<ecs::Facing>(player_id_);
+        const char* dir_str = direction_suffix(player_facing.dir);
+
+        const std::string state_prefix = move_result.sprinting ? "run"
+                                       : move_result.moving    ? "walk"
+                                                               : "idle";
+        auto& player_anim = world_.get<ecs::Animation>(player_id_);
+        player_anim.state_machine.transition_to(state_prefix + "_" + dir_str);
+
+        // NPC patrol
+        if (scene_.tile_layer().has_value()) {
+            ecs::systems::npc_patrol(world_, *scene_.tile_layer(), dt);
         }
 
-        const char* dir_suffix = nullptr;
-        switch (player_dir_) {
-            case Direction::Down:  dir_suffix = "down";  break;
-            case Direction::Left:  dir_suffix = "left";  break;
-            case Direction::Right: dir_suffix = "right"; break;
-            case Direction::Up:    dir_suffix = "up";    break;
-        }
-
-        const std::string state_prefix = sprinting ? "run" : moving ? "walk" : "idle";
-        player_anim_.transition_to(state_prefix + "_" + dir_suffix);
-        player_anim_.update(dt);
-        player_entity_->uv_min = player_anim_.current_uv_min();
-        player_entity_->uv_max = player_anim_.current_uv_max();
+        // Update all animations
+        ecs::systems::animation_update(world_, dt);
 
         // Proximity detection: find nearest NPC within interaction range
         constexpr float kInteractRange = 1.5f;
         int nearest_npc = -1;
         float nearest_dist_sq = kInteractRange * kInteractRange;
 
-        for (size_t i = 0; i < npcs_.size(); i++) {
-            float dx = npcs_[i].entity->transform.position.x - pos.x;
-            float dy = npcs_[i].entity->transform.position.y - pos.y;
+        for (size_t i = 0; i < npc_ids_.size(); i++) {
+            const auto& npc_pos = world_.get<ecs::Transform>(npc_ids_[i]).position;
+            float dx = npc_pos.x - player_pos.x;
+            float dy = npc_pos.y - player_pos.y;
             float dist_sq = dx * dx + dy * dy;
             if (dist_sq < nearest_dist_sq) {
                 nearest_dist_sq = dist_sq;
@@ -816,7 +774,7 @@ void App::update_game(float dt) {
 
         // Show interaction prompt above nearest NPC
         if (nearest_npc >= 0) {
-            const auto& npc_pos = npcs_[nearest_npc].entity->transform.position;
+            const auto& npc_pos = world_.get<ecs::Transform>(npc_ids_[nearest_npc]).position;
             auto prompt_sprites = text_renderer_.render_text(
                 locale_.get("prompt_interact"),
                 npc_pos.x - 0.2f, npc_pos.y + 0.7f, -0.1f,
@@ -826,7 +784,8 @@ void App::update_game(float dt) {
 
             // Interact on E press
             if (input_.was_key_pressed(GLFW_KEY_E)) {
-                size_t di = npcs_[nearest_npc].dialog_index;
+                const auto& dialog_ref = world_.get<ecs::DialogRef>(npc_ids_[nearest_npc]);
+                size_t di = dialog_ref.dialog_index;
                 if (di < npc_dialogs_.size()) {
                     dialog_state_.start(npc_dialogs_[di]);
                     game_mode_ = GameMode::Dialog;
@@ -834,106 +793,22 @@ void App::update_game(float dt) {
                     emit_event("dialog_started", {{"npc_index", nearest_npc}});
 
                     // Transition player to idle
-                    player_anim_.transition_to(std::string("idle_") + dir_suffix);
+                    player_anim.state_machine.transition_to(std::string("idle_") + dir_str);
                 }
             }
         }
-        update_npcs(dt);
     }
 
-    update_particles(dt);
-    update_lights();
-    update_audio(dt);
-}
-
-void App::update_particles(float dt) {
-    if (player_entity_) {
+    // ECS systems: particles, lighting, sprite collection
+    {
         const bool moving = input_.is_key_down(GLFW_KEY_W) || input_.is_key_down(GLFW_KEY_A) ||
                             input_.is_key_down(GLFW_KEY_S) || input_.is_key_down(GLFW_KEY_D);
-        particles_.set_emitter_active(footstep_emitter_id_,
-                                      moving && game_mode_ == GameMode::Explore);
-        particles_.set_emitter_position(
-            footstep_emitter_id_,
-            {player_entity_->transform.position.x, player_entity_->transform.position.y});
+        ecs::systems::particle_sync(world_, particles_, moving && game_mode_ == GameMode::Explore);
     }
-
-    for (size_t i = 0; i < npcs_.size() && i < 3; ++i) {
-        const auto& pos = npcs_[i].entity->transform.position;
-        particles_.set_emitter_position(npc_aura_emitter_ids_[i], {pos.x, pos.y});
-    }
-
     particles_.update(dt);
-}
-
-void App::update_npcs(float dt) {
-    static constexpr const char* kDirSuffixes[] = {"down", "left", "right", "up"};
-
-    for (auto& npc : npcs_) {
-        auto& pos = npc.entity->transform.position;
-        const float prev_x = pos.x;
-        const float prev_y = pos.y;
-
-        switch (npc.dir) {
-            case Direction::Down:  pos.y -= npc.speed * dt; break;
-            case Direction::Left:  pos.x -= npc.speed * dt; break;
-            case Direction::Right: pos.x += npc.speed * dt; break;
-            case Direction::Up:    pos.y += npc.speed * dt; break;
-        }
-
-        if (scene_.tile_layer().has_value()) {
-            const glm::vec2 resolved = resolve_tilemap_collision(
-                {pos.x, pos.y}, 0.4f, *scene_.tile_layer());
-            pos.x = resolved.x;
-            pos.y = resolved.y;
-        }
-
-        const float ddx = pos.x - prev_x;
-        const float ddy = pos.y - prev_y;
-        const bool blocked = (ddx * ddx + ddy * ddy) < (0.001f * 0.001f);
-
-        npc.timer += dt;
-        if (blocked || npc.timer >= npc.interval) {
-            std::swap(npc.dir, npc.reverse_dir);
-            npc.timer = 0.0f;
-        }
-
-        int dir_idx = 0;
-        switch (npc.dir) {
-            case Direction::Down:  dir_idx = 0; break;
-            case Direction::Left:  dir_idx = 1; break;
-            case Direction::Right: dir_idx = 2; break;
-            case Direction::Up:    dir_idx = 3; break;
-        }
-
-        npc.anim.transition_to(std::string("walk_") + kDirSuffixes[dir_idx]);
-        npc.anim.update(dt);
-        npc.entity->uv_min = npc.anim.current_uv_min();
-        npc.entity->uv_max = npc.anim.current_uv_max();
-    }
-}
-
-void App::update_lights() {
-    scene_.clear_lights();
-
-    // Static pillar torches (warm orange glow)
-    const glm::vec4 warm_color{1.0f, 0.85f, 0.5f, 1.2f};
-    const float pillar_radius = 4.0f;
-    scene_.add_light(PointLight{{-3.5f,  3.5f, 0.0f, pillar_radius}, warm_color});
-    scene_.add_light(PointLight{{ 3.5f,  3.5f, 0.0f, pillar_radius}, warm_color});
-    scene_.add_light(PointLight{{-3.5f, -3.5f, 0.0f, pillar_radius}, warm_color});
-    scene_.add_light(PointLight{{ 3.5f, -3.5f, 0.0f, pillar_radius}, warm_color});
-
-    // Dynamic NPC lights (matching their tint colors)
-    const glm::vec4 npc_colors[] = {
-        {1.0f, 0.4f, 0.3f, 0.8f},  // Guard: red
-        {0.3f, 1.0f, 0.4f, 0.8f},  // Merchant: green
-        {0.3f, 0.4f, 1.0f, 0.8f},  // Scholar: blue
-    };
-    const float npc_radius = 3.0f;
-    for (size_t i = 0; i < npcs_.size() && i < 3; i++) {
-        const auto& pos = npcs_[i].entity->transform.position;
-        scene_.add_light(PointLight{{pos.x, pos.y, 0.0f, npc_radius}, npc_colors[i]});
-    }
+    ecs::systems::lighting_rebuild(world_, scene_);
+    ecs::systems::sprite_collect(world_, entity_sprites_);
+    update_audio(dt);
 }
 
 void App::update_audio(float dt) {
@@ -946,10 +821,12 @@ void App::update_audio(float dt) {
 
     // Compute NPC proximity (min distance from player to any NPC)
     float min_dist = 100.0f;
-    if (player_entity_) {
-        for (const auto& npc : npcs_) {
-            float dx = npc.entity->transform.position.x - player_entity_->transform.position.x;
-            float dy = npc.entity->transform.position.y - player_entity_->transform.position.y;
+    if (player_id_.valid()) {
+        const auto& player_pos = world_.get<ecs::Transform>(player_id_).position;
+        for (auto npc : npc_ids_) {
+            const auto& npc_pos = world_.get<ecs::Transform>(npc).position;
+            float dx = npc_pos.x - player_pos.x;
+            float dy = npc_pos.y - player_pos.y;
             float dist = std::sqrt(dx * dx + dy * dy);
             if (dist < min_dist) min_dist = dist;
         }
@@ -988,9 +865,6 @@ void App::update_audio(float dt) {
             was_moving_ = false;
         }
     }
-
-    // Dialog SFX on state transitions
-    // (dialog_open/close handled at transition points in update_game)
 
     audio_.update(dt);
 }
@@ -1042,7 +916,7 @@ void App::main_loop() {
         // Always render
         std::vector<SpriteDrawInfo> particle_sprites;
         particles_.generate_draw_infos(particle_sprites);
-        renderer_.draw_scene(scene_, particle_sprites, overlay_sprites_, ui_sprites_);
+        renderer_.draw_scene(scene_, entity_sprites_, particle_sprites, overlay_sprites_, ui_sprites_);
     }
 }
 
@@ -1133,40 +1007,28 @@ nlohmann::json App::build_state_json() const {
     state["game_mode"] = (game_mode_ == GameMode::Dialog) ? "dialog" : "explore";
 
     // Player
-    if (player_entity_) {
-        const auto& pos = player_entity_->transform.position;
-        const char* dir_str = "down";
-        switch (player_dir_) {
-            case Direction::Down:  dir_str = "down";  break;
-            case Direction::Left:  dir_str = "left";  break;
-            case Direction::Right: dir_str = "right"; break;
-            case Direction::Up:    dir_str = "up";    break;
-        }
+    if (player_id_.valid()) {
+        const auto& pos = world_.get<ecs::Transform>(player_id_).position;
+        const auto& facing = world_.get<ecs::Facing>(player_id_);
+        const auto& anim = world_.get<ecs::Animation>(player_id_);
         state["player"] = {
             {"x", pos.x},
             {"y", pos.y},
-            {"direction", dir_str},
-            {"animation", player_anim_.current_state()}
+            {"direction", direction_suffix(facing.dir)},
+            {"animation", anim.state_machine.current_state()}
         };
     }
 
     // NPCs
     nlohmann::json npc_arr = nlohmann::json::array();
-    for (size_t i = 0; i < npcs_.size(); ++i) {
-        const auto& npc = npcs_[i];
-        const auto& pos = npc.entity->transform.position;
-        const char* dir_str = "down";
-        switch (npc.dir) {
-            case Direction::Down:  dir_str = "down";  break;
-            case Direction::Left:  dir_str = "left";  break;
-            case Direction::Right: dir_str = "right"; break;
-            case Direction::Up:    dir_str = "up";    break;
-        }
+    for (size_t i = 0; i < npc_ids_.size(); ++i) {
+        const auto& pos = world_.get<ecs::Transform>(npc_ids_[i]).position;
+        const auto& facing = world_.get<ecs::Facing>(npc_ids_[i]);
         npc_arr.push_back({
             {"index", i},
             {"x", pos.x},
             {"y", pos.y},
-            {"direction", dir_str}
+            {"direction", direction_suffix(facing.dir)}
         });
     }
     state["npcs"] = npc_arr;
@@ -1184,13 +1046,15 @@ nlohmann::json App::build_state_json() const {
     }
 
     // Nearest NPC (proximity check)
-    if (player_entity_ && game_mode_ == GameMode::Explore) {
+    if (player_id_.valid() && game_mode_ == GameMode::Explore) {
         constexpr float kInteractRange = 1.5f;
         int nearest = -1;
         float nearest_dist_sq = kInteractRange * kInteractRange;
-        for (size_t i = 0; i < npcs_.size(); i++) {
-            float dx = npcs_[i].entity->transform.position.x - player_entity_->transform.position.x;
-            float dy = npcs_[i].entity->transform.position.y - player_entity_->transform.position.y;
+        const auto& player_pos = world_.get<ecs::Transform>(player_id_).position;
+        for (size_t i = 0; i < npc_ids_.size(); i++) {
+            const auto& npc_pos = world_.get<ecs::Transform>(npc_ids_[i]).position;
+            float dx = npc_pos.x - player_pos.x;
+            float dy = npc_pos.y - player_pos.y;
             float dist_sq = dx * dx + dy * dy;
             if (dist_sq < nearest_dist_sq) {
                 nearest_dist_sq = dist_sq;

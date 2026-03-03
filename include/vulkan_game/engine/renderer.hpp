@@ -28,6 +28,7 @@ public:
     void init_particles();
     void draw_frame();
     void draw_scene(Scene& scene,
+                    const std::vector<SpriteDrawInfo>& entity_sprites = {},
                     const std::vector<SpriteDrawInfo>& particles = {},
                     const std::vector<SpriteDrawInfo>& overlay = {},
                     const std::vector<SpriteDrawInfo>& ui = {});

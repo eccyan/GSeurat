@@ -109,6 +109,7 @@ void Renderer::init_particles() {
 }
 
 void Renderer::draw_scene(Scene& scene,
+                           const std::vector<SpriteDrawInfo>& entity_sprites,
                            const std::vector<SpriteDrawInfo>& particles,
                            const std::vector<SpriteDrawInfo>& overlay,
                            const std::vector<SpriteDrawInfo>& ui) {
@@ -190,14 +191,7 @@ void Renderer::draw_scene(Scene& scene,
 
     // Entity pass
     sprite_batch_.begin();
-    for (const auto& entity_ptr : scene.entities()) {
-        const auto& e = *entity_ptr;
-        SpriteDrawInfo info{};
-        info.position = e.transform.position;
-        info.size = e.transform.scale;
-        info.color = e.tint;
-        info.uv_min = e.uv_min;
-        info.uv_max = e.uv_max;
+    for (const auto& info : entity_sprites) {
         sprite_batch_.draw(info);
     }
     auto entity_flush = sprite_batch_.flush(current_frame_);
@@ -285,13 +279,13 @@ void Renderer::draw_scene(Scene& scene,
 }
 
 void Renderer::draw_frame() {
-    // Legacy shim: create a static test scene with one white quad and render it
+    // Legacy shim: render a single white quad
     Scene test_scene;
-    auto* e = test_scene.create_entity();
-    e->transform.position = {0.0f, 0.0f, 0.0f};
-    e->transform.scale = {1.0f, 1.0f};
-    e->tint = {1.0f, 1.0f, 1.0f, 1.0f};
-    draw_scene(test_scene, {}, {}, {});
+    SpriteDrawInfo info{};
+    info.position = {0.0f, 0.0f, 0.0f};
+    info.size = {1.0f, 1.0f};
+    info.color = {1.0f, 1.0f, 1.0f, 1.0f};
+    draw_scene(test_scene, {info}, {}, {}, {});
 }
 
 void Renderer::shutdown() {

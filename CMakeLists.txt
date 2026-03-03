@@ -123,6 +123,7 @@ add_executable(vulkan_game
     src/engine/text_renderer.cpp
     src/engine/locale_manager.cpp
     src/engine/control_server.cpp
+    src/engine/ecs/systems.cpp
 )
 
 target_include_directories(vulkan_game PRIVATE
