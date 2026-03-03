@@ -443,6 +443,7 @@ void App::run() {
     renderer_.init(window_, resources_);
     renderer_.init_font(font_atlas_, resources_);
     renderer_.init_particles(resources_);
+    ui_ctx_.init(font_atlas_, text_renderer_);
     audio_.init("assets");
     control_server_.start();
     state_stack_.push(std::make_unique<TitleState>(), *this);
@@ -583,37 +584,25 @@ void App::update_game(float dt) {
         // Still update animations (idle) but don't move
         ecs::systems::animation_update(world_, dt);
 
-        // Build dialog UI sprites
+        // Build dialog UI sprites via UIContext
         if (dialog_state_.active) {
             const auto& line = dialog_state_.current();
             const auto& speaker = locale_.get(line.speaker_key);
             const auto& text = locale_.get(line.text_key);
             const auto& prompt = locale_.get("prompt_continue");
 
-            // Dialog background box (dark semi-transparent)
-            SpriteDrawInfo bg{};
-            bg.position = {640.0f, 610.0f, 0.5f};
-            bg.size = {1200.0f, 180.0f};
-            bg.color = {0.05f, 0.05f, 0.12f, 0.88f};
-            const GlyphInfo* space_glyph = font_atlas_.glyph('.');
-            if (space_glyph && space_glyph->size.x > 0) {
-                glm::vec2 center = (space_glyph->uv_min + space_glyph->uv_max) * 0.5f;
-                bg.uv_min = center;
-                bg.uv_max = center;
-            }
-            ui_sprites_.push_back(bg);
+            ui_ctx_.panel(640.0f, 610.0f, 1200.0f, 180.0f, {0.05f, 0.05f, 0.12f, 0.88f});
+            ui_ctx_.label(speaker, 60.0f, 535.0f, 0.8f, {1.0f, 0.85f, 0.2f, 1.0f});
+            ui_ctx_.label(prompt, 1180.0f, 680.0f, 0.5f, {0.7f, 0.7f, 0.7f, 1.0f});
 
-            auto name_sprites = text_renderer_.render_text(
-                speaker, 60.0f, 535.0f, 0.0f, 0.8f, {1.0f, 0.85f, 0.2f, 1.0f});
-            ui_sprites_.insert(ui_sprites_.end(), name_sprites.begin(), name_sprites.end());
+            // Append UIContext draw list to UI sprites
+            const auto& dl = ui_ctx_.draw_list();
+            ui_sprites_.insert(ui_sprites_.end(), dl.begin(), dl.end());
 
+            // Wrapped text goes directly (UIContext doesn't have render_wrapped)
             auto text_sprites = text_renderer_.render_wrapped(
                 text, 60.0f, 580.0f, 0.0f, 0.6f, {1.0f, 1.0f, 1.0f, 1.0f}, 1160.0f);
             ui_sprites_.insert(ui_sprites_.end(), text_sprites.begin(), text_sprites.end());
-
-            auto prompt_sprites = text_renderer_.render_text(
-                prompt, 1180.0f, 680.0f, 0.0f, 0.5f, {0.7f, 0.7f, 0.7f, 1.0f});
-            ui_sprites_.insert(ui_sprites_.end(), prompt_sprites.begin(), prompt_sprites.end());
         }
     } else if (player_id_.valid()) {
         // === Explore mode ===
@@ -799,6 +788,19 @@ void App::main_loop() {
 
             state_stack_.update(*this, dt);
             tick_++;
+        }
+
+        // Feed UI context with input state
+        {
+            ui::UIInput ui_input;
+            ui_input.mouse_pos = input_.mouse_pos();
+            ui_input.mouse_down = input_.is_mouse_down(0);
+            ui_input.mouse_pressed = input_.was_mouse_pressed(0);
+            ui_input.key_up = input_.was_key_pressed(GLFW_KEY_UP) || input_.was_key_pressed(GLFW_KEY_W);
+            ui_input.key_down_nav = input_.was_key_pressed(GLFW_KEY_DOWN) || input_.was_key_pressed(GLFW_KEY_S);
+            ui_input.key_enter = input_.was_key_pressed(GLFW_KEY_ENTER) || input_.was_key_pressed(GLFW_KEY_SPACE);
+            ui_input.key_escape = input_.was_key_pressed(GLFW_KEY_ESCAPE);
+            ui_ctx_.begin_frame(ui_input);
         }
 
         // Let states build their draw lists

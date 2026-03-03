@@ -2,6 +2,8 @@
 
 #include <array>
 
+#include <glm/glm.hpp>
+
 struct GLFWwindow;
 
 // GLFW_KEY_LAST is 348
@@ -16,6 +18,11 @@ public:
     bool is_key_down(int glfw_key) const;
     bool was_key_pressed(int glfw_key) const;
 
+    // Mouse
+    glm::vec2 mouse_pos() const { return mouse_pos_; }
+    bool is_mouse_down(int button = 0) const;
+    bool was_mouse_pressed(int button = 0) const;
+
     // External injection (for ControlServer / AI agent)
     void inject_key(int glfw_key, bool down);   // persistent hold (WASD, Shift)
     void inject_key_once(int glfw_key);          // single-frame pulse (E)
@@ -27,6 +34,11 @@ private:
     std::array<bool, kKeyCount> previous_{};
     std::array<bool, kKeyCount> injected_{};     // persistent key state
     std::array<bool, kKeyCount> inject_once_{};  // single-frame pulse
+
+    // Mouse state
+    glm::vec2 mouse_pos_{0.0f};
+    std::array<bool, 3> mouse_current_{};
+    std::array<bool, 3> mouse_previous_{};
 };
 
 }  // namespace vulkan_game

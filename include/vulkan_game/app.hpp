@@ -16,6 +16,7 @@
 #include "vulkan_game/engine/scene.hpp"
 #include "vulkan_game/engine/text_renderer.hpp"
 #include "vulkan_game/engine/types.hpp"
+#include "vulkan_game/engine/ui/ui_context.hpp"
 #include "vulkan_game/game/components.hpp"
 #include "vulkan_game/game/systems.hpp"
 
@@ -40,6 +41,7 @@ public:
     LocaleManager& locale() { return locale_; }
     FontAtlas& font_atlas() { return font_atlas_; }
     TextRenderer& text_renderer() { return text_renderer_; }
+    ui::UIContext& ui_ctx() { return ui_ctx_; }
     ControlServer& control_server() { return control_server_; }
     GameStateStack& state_stack() { return state_stack_; }
     GLFWwindow* window() { return window_; }
@@ -104,6 +106,9 @@ private:
     ecs::Entity player_id_ = ecs::kNullEntity;
     std::vector<ecs::Entity> npc_ids_;
     std::vector<SpriteDrawInfo> entity_sprites_;
+
+    // UI context
+    ui::UIContext ui_ctx_;
 
     // Dialog & i18n
     GameMode game_mode_ = GameMode::Explore;

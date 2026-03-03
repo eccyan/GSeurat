@@ -14,6 +14,15 @@ void InputManager::update() {
                       || inject_once_[key];
     }
     inject_once_.fill(false);
+
+    // Mouse
+    double mx, my;
+    glfwGetCursorPos(window_, &mx, &my);
+    mouse_pos_ = {static_cast<float>(mx), static_cast<float>(my)};
+    mouse_previous_ = mouse_current_;
+    for (int i = 0; i < 3; i++) {
+        mouse_current_[i] = (glfwGetMouseButton(window_, i) == GLFW_PRESS);
+    }
 }
 
 bool InputManager::is_key_down(int glfw_key) const {
@@ -24,6 +33,16 @@ bool InputManager::is_key_down(int glfw_key) const {
 bool InputManager::was_key_pressed(int glfw_key) const {
     if (glfw_key < 0 || glfw_key >= kKeyCount) return false;
     return current_[glfw_key] && !previous_[glfw_key];
+}
+
+bool InputManager::is_mouse_down(int button) const {
+    if (button < 0 || button >= 3) return false;
+    return mouse_current_[button];
+}
+
+bool InputManager::was_mouse_pressed(int button) const {
+    if (button < 0 || button >= 3) return false;
+    return mouse_current_[button] && !mouse_previous_[button];
 }
 
 void InputManager::inject_key(int glfw_key, bool down) {
