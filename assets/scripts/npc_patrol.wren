@@ -1,4 +1,4 @@
-import "engine" for Engine
+import "./engine" for Engine
 
 // Example NPC patrol script driven by Wren.
 // Demonstrates reading/writing entity positions and using game flags.

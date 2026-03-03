@@ -1,4 +1,4 @@
-import "engine" for Engine
+import "./engine" for Engine
 
 // Simple test script: logs a greeting once when a flag hasn't been set yet.
 class NpcGreeting {
