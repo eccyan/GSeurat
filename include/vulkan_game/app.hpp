@@ -1,6 +1,7 @@
 #pragma once
 
 #include "vulkan_game/engine/animation_state_machine.hpp"
+#include "vulkan_game/engine/audio_system.hpp"
 #include "vulkan_game/engine/dialog.hpp"
 #include "vulkan_game/engine/font_atlas.hpp"
 #include "vulkan_game/engine/input_manager.hpp"
@@ -26,11 +27,13 @@ private:
     void update_npcs(float dt);
     void update_lights();
     void update_particles(float dt);
+    void update_audio(float dt);
     void main_loop();
     void cleanup();
     static void generate_player_sheet();
     static void generate_tileset();
     static void generate_particle_atlas();
+    static void generate_audio_assets();
 
     enum class Direction { Down, Left, Right, Up };
     enum class GameMode  { Explore, Dialog };
@@ -69,6 +72,11 @@ private:
     size_t torch_emitter_ids_[4]{};
     size_t footstep_emitter_id_ = 0;
     size_t npc_aura_emitter_ids_[3]{};
+
+    // Phase 13: Audio
+    AudioSystem audio_;
+    float footstep_timer_ = 0.0f;
+    bool was_moving_ = false;
 
     // Per-frame draw lists built in update_game, consumed by draw_scene
     std::vector<SpriteDrawInfo> overlay_sprites_;

@@ -24,6 +24,9 @@ public:
     glm::mat4 view() const;
     glm::mat4 projection() const;
 
+    glm::vec3 position() const { return position_; }
+    glm::vec3 target() const { return target_; }
+
 private:
     glm::vec3 position_;
     glm::vec3 target_;

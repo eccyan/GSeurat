@@ -53,6 +53,15 @@ FetchContent_Declare(
 set(JSON_BuildTests OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(json)
 
+FetchContent_Declare(
+    miniaudio
+    GIT_REPOSITORY https://github.com/mackron/miniaudio.git
+    GIT_TAG        0.11.21
+    CONFIGURE_COMMAND ""
+    BUILD_COMMAND ""
+)
+FetchContent_MakeAvailable(miniaudio)
+
 # --- Download font if not present -------------------------------------------
 
 set(FONT_DIR "${PROJECT_SOURCE_DIR}/assets/fonts")
@@ -109,6 +118,7 @@ add_executable(vulkan_game
     src/engine/animation.cpp
     src/engine/animation_state_machine.cpp
     src/engine/particle.cpp
+    src/engine/audio_system.cpp
     src/engine/font_atlas.cpp
     src/engine/text_renderer.cpp
     src/engine/locale_manager.cpp
@@ -117,6 +127,7 @@ add_executable(vulkan_game
 target_include_directories(vulkan_game PRIVATE
     ${PROJECT_SOURCE_DIR}/include
     ${stb_SOURCE_DIR}
+    ${miniaudio_SOURCE_DIR}
 )
 
 target_compile_definitions(vulkan_game PRIVATE
@@ -131,6 +142,14 @@ target_link_libraries(vulkan_game
         GPUOpen::VulkanMemoryAllocator
         nlohmann_json::nlohmann_json
 )
+
+if(APPLE)
+    target_link_libraries(vulkan_game PRIVATE
+        "-framework CoreAudio"
+        "-framework AudioToolbox"
+        "-framework CoreFoundation"
+    )
+endif()
 
 add_dependencies(vulkan_game shaders)
 

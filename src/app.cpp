@@ -8,6 +8,7 @@
 #include <stb_image_write.h>
 
 #include <cmath>
+#include <cstring>
 #include <filesystem>
 #include <set>
 
@@ -190,11 +191,235 @@ void App::generate_particle_atlas() {
                    pixels.data(), kWidth * kChannels);
 }
 
+namespace {
+
+void write_wav(const std::string& path, const std::vector<int16_t>& samples, uint32_t sample_rate) {
+    uint32_t data_size = static_cast<uint32_t>(samples.size() * sizeof(int16_t));
+    uint32_t file_size = 36 + data_size;
+    uint16_t channels = 1;
+    uint16_t bits_per_sample = 16;
+    uint32_t byte_rate = sample_rate * channels * bits_per_sample / 8;
+    uint16_t block_align = channels * bits_per_sample / 8;
+
+    auto f = std::fopen(path.c_str(), "wb");
+    if (!f) return;
+
+    std::fwrite("RIFF", 1, 4, f);
+    std::fwrite(&file_size, 4, 1, f);
+    std::fwrite("WAVE", 1, 4, f);
+    std::fwrite("fmt ", 1, 4, f);
+    uint32_t fmt_size = 16;
+    std::fwrite(&fmt_size, 4, 1, f);
+    uint16_t audio_fmt = 1;  // PCM
+    std::fwrite(&audio_fmt, 2, 1, f);
+    std::fwrite(&channels, 2, 1, f);
+    std::fwrite(&sample_rate, 4, 1, f);
+    std::fwrite(&byte_rate, 4, 1, f);
+    std::fwrite(&block_align, 2, 1, f);
+    std::fwrite(&bits_per_sample, 2, 1, f);
+    std::fwrite("data", 1, 4, f);
+    std::fwrite(&data_size, 4, 1, f);
+    std::fwrite(samples.data(), sizeof(int16_t), samples.size(), f);
+    std::fclose(f);
+}
+
+}  // namespace
+
+void App::generate_audio_assets() {
+    std::filesystem::create_directories("assets/audio");
+
+    constexpr uint32_t kRate = 44100;
+    constexpr float kPi = 3.14159265358979323846f;
+
+    // 1. music_bass.wav — 4.0s low sine chord C2+G2 with tremolo
+    {
+        uint32_t len = kRate * 4;
+        std::vector<int16_t> samples(len);
+        for (uint32_t i = 0; i < len; ++i) {
+            float t = static_cast<float>(i) / kRate;
+            float c2 = std::sin(2.0f * kPi * 65.41f * t);   // C2
+            float g2 = std::sin(2.0f * kPi * 98.00f * t);   // G2
+            float mix = (c2 + g2 * 0.7f) * 0.4f;
+            float tremolo = 1.0f - 0.15f * std::sin(2.0f * kPi * 0.5f * t);
+            // Fade in/out for seamless loop
+            float env = 1.0f;
+            float fade_dur = 0.05f * kRate;
+            if (i < static_cast<uint32_t>(fade_dur)) env = static_cast<float>(i) / fade_dur;
+            if (i > len - static_cast<uint32_t>(fade_dur)) env = static_cast<float>(len - i) / fade_dur;
+            samples[i] = static_cast<int16_t>(mix * tremolo * env * 20000.0f);
+        }
+        write_wav("assets/audio/music_bass.wav", samples, kRate);
+    }
+
+    // 2. music_harmony.wav — 4.0s warm pad C3+E3+G3
+    {
+        uint32_t len = kRate * 4;
+        std::vector<int16_t> samples(len);
+        for (uint32_t i = 0; i < len; ++i) {
+            float t = static_cast<float>(i) / kRate;
+            float c3 = std::sin(2.0f * kPi * 130.81f * t);
+            float e3 = std::sin(2.0f * kPi * 164.81f * t + 0.5f);
+            float g3 = std::sin(2.0f * kPi * 196.00f * t + 1.0f);
+            float mix = (c3 + e3 * 0.8f + g3 * 0.6f) * 0.25f;
+            float swell = 0.7f + 0.3f * std::sin(2.0f * kPi * 0.25f * t);
+            float env = 1.0f;
+            float fade_dur = 0.05f * kRate;
+            if (i < static_cast<uint32_t>(fade_dur)) env = static_cast<float>(i) / fade_dur;
+            if (i > len - static_cast<uint32_t>(fade_dur)) env = static_cast<float>(len - i) / fade_dur;
+            samples[i] = static_cast<int16_t>(mix * swell * env * 20000.0f);
+        }
+        write_wav("assets/audio/music_harmony.wav", samples, kRate);
+    }
+
+    // 3. music_melody.wav — 4.0s pentatonic arpeggio
+    {
+        uint32_t len = kRate * 4;
+        std::vector<int16_t> samples(len);
+        const float notes[] = {261.63f, 293.66f, 329.63f, 392.00f, 440.00f,
+                                392.00f, 329.63f, 293.66f};  // C4 D4 E4 G4 A4 G4 E4 D4
+        const float note_dur = 0.5f;
+        for (uint32_t i = 0; i < len; ++i) {
+            float t = static_cast<float>(i) / kRate;
+            int note_idx = static_cast<int>(t / note_dur) % 8;
+            float note_t = std::fmod(t, note_dur);
+            float freq = notes[note_idx];
+            float val = std::sin(2.0f * kPi * freq * t) * 0.35f;
+            // Per-note envelope: attack 0.02s, sustain, release 0.05s
+            float note_env = 1.0f;
+            if (note_t < 0.02f) note_env = note_t / 0.02f;
+            else if (note_t > note_dur - 0.05f) note_env = (note_dur - note_t) / 0.05f;
+            float env = 1.0f;
+            float fade_dur = 0.05f * kRate;
+            if (i < static_cast<uint32_t>(fade_dur)) env = static_cast<float>(i) / fade_dur;
+            if (i > len - static_cast<uint32_t>(fade_dur)) env = static_cast<float>(len - i) / fade_dur;
+            samples[i] = static_cast<int16_t>(val * note_env * env * 20000.0f);
+        }
+        write_wav("assets/audio/music_melody.wav", samples, kRate);
+    }
+
+    // 4. music_percussion.wav — 2.0s soft kick + hi-hat at 120 BPM
+    {
+        uint32_t len = kRate * 2;
+        std::vector<int16_t> samples(len);
+        const float beat_dur = 0.5f;  // 120 BPM
+        uint32_t rng = 0xDEADBEEF;
+        for (uint32_t i = 0; i < len; ++i) {
+            float t = static_cast<float>(i) / kRate;
+            float beat_t = std::fmod(t, beat_dur);
+            float val = 0.0f;
+
+            // Kick on beat
+            if (beat_t < 0.08f) {
+                float kick_env = std::exp(-beat_t * 50.0f);
+                val += std::sin(2.0f * kPi * 60.0f * beat_t) * kick_env * 0.5f;
+            }
+
+            // Hi-hat on off-beat
+            float offbeat_t = std::fmod(t + beat_dur * 0.5f, beat_dur);
+            if (offbeat_t < 0.03f) {
+                float hat_env = std::exp(-offbeat_t * 150.0f);
+                rng ^= rng << 13; rng ^= rng >> 17; rng ^= rng << 5;
+                float noise = static_cast<float>(static_cast<int32_t>(rng)) / 2147483648.0f;
+                val += noise * hat_env * 0.25f;
+            }
+
+            float env = 1.0f;
+            float fade_dur_f = 0.02f * kRate;
+            if (i < static_cast<uint32_t>(fade_dur_f)) env = static_cast<float>(i) / fade_dur_f;
+            if (i > len - static_cast<uint32_t>(fade_dur_f)) env = static_cast<float>(len - i) / fade_dur_f;
+            samples[i] = static_cast<int16_t>(val * env * 24000.0f);
+        }
+        write_wav("assets/audio/music_percussion.wav", samples, kRate);
+    }
+
+    // 5. torch_crackle.wav — 2.0s random noise bursts
+    {
+        uint32_t len = kRate * 2;
+        std::vector<int16_t> samples(len);
+        uint32_t rng = 0xCAFEBABE;
+        for (uint32_t i = 0; i < len; ++i) {
+            rng ^= rng << 13; rng ^= rng >> 17; rng ^= rng << 5;
+            float noise = static_cast<float>(static_cast<int32_t>(rng)) / 2147483648.0f;
+            // Random amplitude modulation for crackling effect
+            float t = static_cast<float>(i) / kRate;
+            float burst = std::abs(std::sin(t * 25.0f)) * std::abs(std::sin(t * 37.0f));
+            burst = burst * burst * burst;  // make it spiky
+            float env = 1.0f;
+            float fade_dur_f = 0.02f * kRate;
+            if (i < static_cast<uint32_t>(fade_dur_f)) env = static_cast<float>(i) / fade_dur_f;
+            if (i > len - static_cast<uint32_t>(fade_dur_f)) env = static_cast<float>(len - i) / fade_dur_f;
+            samples[i] = static_cast<int16_t>(noise * burst * env * 15000.0f);
+        }
+        write_wav("assets/audio/torch_crackle.wav", samples, kRate);
+    }
+
+    // 6. footstep.wav — 0.15s short thud
+    {
+        uint32_t len = static_cast<uint32_t>(kRate * 0.15f);
+        std::vector<int16_t> samples(len);
+        uint32_t rng = 0x12345678;
+        for (uint32_t i = 0; i < len; ++i) {
+            float t = static_cast<float>(i) / kRate;
+            rng ^= rng << 13; rng ^= rng >> 17; rng ^= rng << 5;
+            float noise = static_cast<float>(static_cast<int32_t>(rng)) / 2147483648.0f;
+            float env = std::exp(-t * 30.0f);
+            samples[i] = static_cast<int16_t>(noise * env * 18000.0f);
+        }
+        write_wav("assets/audio/footstep.wav", samples, kRate);
+    }
+
+    // 7. dialog_open.wav — 0.2s rising sweep 300→600 Hz
+    {
+        uint32_t len = static_cast<uint32_t>(kRate * 0.2f);
+        std::vector<int16_t> samples(len);
+        for (uint32_t i = 0; i < len; ++i) {
+            float t = static_cast<float>(i) / kRate;
+            float frac = t / 0.2f;
+            float freq = 300.0f + 300.0f * frac;
+            float val = std::sin(2.0f * kPi * freq * t) * 0.4f;
+            float env = 1.0f - frac;
+            env = std::sqrt(env);
+            samples[i] = static_cast<int16_t>(val * env * 20000.0f);
+        }
+        write_wav("assets/audio/dialog_open.wav", samples, kRate);
+    }
+
+    // 8. dialog_close.wav — 0.2s falling sweep 600→300 Hz
+    {
+        uint32_t len = static_cast<uint32_t>(kRate * 0.2f);
+        std::vector<int16_t> samples(len);
+        for (uint32_t i = 0; i < len; ++i) {
+            float t = static_cast<float>(i) / kRate;
+            float frac = t / 0.2f;
+            float freq = 600.0f - 300.0f * frac;
+            float val = std::sin(2.0f * kPi * freq * t) * 0.4f;
+            float env = 1.0f - frac;
+            env = std::sqrt(env);
+            samples[i] = static_cast<int16_t>(val * env * 20000.0f);
+        }
+        write_wav("assets/audio/dialog_close.wav", samples, kRate);
+    }
+
+    // 9. dialog_blip.wav — 0.05s square wave blip at 440 Hz
+    {
+        uint32_t len = static_cast<uint32_t>(kRate * 0.05f);
+        std::vector<int16_t> samples(len);
+        for (uint32_t i = 0; i < len; ++i) {
+            float t = static_cast<float>(i) / kRate;
+            float val = std::sin(2.0f * kPi * 440.0f * t) > 0.0f ? 0.3f : -0.3f;
+            float env = 1.0f - t / 0.05f;
+            samples[i] = static_cast<int16_t>(val * env * 20000.0f);
+        }
+        write_wav("assets/audio/dialog_blip.wav", samples, kRate);
+    }
+}
+
 void App::run() {
     init_window();
     generate_player_sheet();
     generate_tileset();
     generate_particle_atlas();
+    generate_audio_assets();
 
     // Load locale and build font atlas from all text
     locale_.load("assets/locales", "en");
@@ -213,6 +438,7 @@ void App::run() {
     renderer_.init(window_);
     renderer_.init_font(font_atlas_);
     renderer_.init_particles();
+    audio_.init("assets");
     init_scene();
     main_loop();
     cleanup();
@@ -448,6 +674,17 @@ void App::init_scene() {
             npc_aura_emitter_ids_[i] = particles_.add_emitter(cfg, {npc_pos.x, npc_pos.y});
         }
     }
+
+    // --- Audio: position torch crackle instances at pillar positions ---
+    const glm::vec3 torch_audio_pos[] = {
+        {-3.5f, 0.0f,  3.5f},
+        { 3.5f, 0.0f,  3.5f},
+        {-3.5f, 0.0f, -3.5f},
+        { 3.5f, 0.0f, -3.5f},
+    };
+    for (int i = 0; i < 4; ++i) {
+        audio_.set_torch_position(static_cast<uint32_t>(i), torch_audio_pos[i]);
+    }
 }
 
 void App::update_game(float dt) {
@@ -464,6 +701,9 @@ void App::update_game(float dt) {
         if (input_.was_key_pressed(GLFW_KEY_E) || input_.was_key_pressed(GLFW_KEY_SPACE)) {
             if (!dialog_state_.advance()) {
                 game_mode_ = GameMode::Explore;
+                audio_.play(SoundId::DialogClose);
+            } else {
+                audio_.play(SoundId::DialogBlip);
             }
         }
 
@@ -587,6 +827,7 @@ void App::update_game(float dt) {
                 if (di < npc_dialogs_.size()) {
                     dialog_state_.start(npc_dialogs_[di]);
                     game_mode_ = GameMode::Dialog;
+                    audio_.play(SoundId::DialogOpen);
 
                     // Transition player to idle
                     player_anim_.transition_to(std::string("idle_") + dir_suffix);
@@ -598,6 +839,7 @@ void App::update_game(float dt) {
 
     update_particles(dt);
     update_lights();
+    update_audio(dt);
 }
 
 void App::update_particles(float dt) {
@@ -690,6 +932,65 @@ void App::update_lights() {
     }
 }
 
+void App::update_audio(float dt) {
+    // Update listener from camera
+    const auto& cam = renderer_.camera();
+    glm::vec3 cam_pos = cam.position();
+    glm::vec3 cam_target = cam.target();
+    glm::vec3 forward = glm::normalize(cam_target - cam_pos);
+    audio_.set_listener(cam_pos, forward, {0.0f, 1.0f, 0.0f});
+
+    // Compute NPC proximity (min distance from player to any NPC)
+    float min_dist = 100.0f;
+    if (player_entity_) {
+        for (const auto& npc : npcs_) {
+            float dx = npc.entity->transform.position.x - player_entity_->transform.position.x;
+            float dy = npc.entity->transform.position.y - player_entity_->transform.position.y;
+            float dist = std::sqrt(dx * dx + dy * dy);
+            if (dist < min_dist) min_dist = dist;
+        }
+    }
+    float proximity = std::clamp(1.0f - min_dist / 8.0f, 0.0f, 1.0f);
+    audio_.set_npc_proximity(proximity);
+
+    // Compute player speed
+    const bool moving = input_.is_key_down(GLFW_KEY_W) || input_.is_key_down(GLFW_KEY_A) ||
+                        input_.is_key_down(GLFW_KEY_S) || input_.is_key_down(GLFW_KEY_D);
+    const bool sprinting = moving && input_.is_key_down(GLFW_KEY_LEFT_SHIFT);
+    float current_speed = sprinting ? 8.0f : (moving ? 4.0f : 0.0f);
+    audio_.set_player_speed(std::clamp(current_speed / 8.0f, 0.0f, 1.0f));
+
+    // Set music state
+    if (game_mode_ == GameMode::Dialog) {
+        audio_.set_music_state(MusicState::Dialog);
+    } else if (proximity > 0.3f) {
+        audio_.set_music_state(MusicState::NearNPC);
+    } else {
+        audio_.set_music_state(MusicState::Explore);
+    }
+
+    // Footstep timing
+    if (moving && game_mode_ == GameMode::Explore) {
+        float interval = sprinting ? 0.25f : 0.45f;
+        footstep_timer_ += dt;
+        if (footstep_timer_ >= interval) {
+            audio_.play(SoundId::Footstep);
+            footstep_timer_ -= interval;
+        }
+        was_moving_ = true;
+    } else {
+        if (was_moving_) {
+            footstep_timer_ = 0.0f;
+            was_moving_ = false;
+        }
+    }
+
+    // Dialog SFX on state transitions
+    // (dialog_open/close handled at transition points in update_game)
+
+    audio_.update(dt);
+}
+
 void App::main_loop() {
     last_update_time_ = std::chrono::steady_clock::now();
 
@@ -712,6 +1013,7 @@ void App::main_loop() {
 }
 
 void App::cleanup() {
+    audio_.shutdown();
     renderer_.shutdown();
     glfwDestroyWindow(window_);
     glfwTerminate();

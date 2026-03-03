@@ -34,6 +34,7 @@ public:
     void shutdown();
 
     Camera& camera() { return camera_; }
+    const Camera& camera() const { return camera_; }
 
 private:
     void create_sprite_pipeline();
