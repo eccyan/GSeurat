@@ -96,7 +96,7 @@ void animation_update(World& world, float dt) {
         });
 }
 
-void lighting_rebuild(World& world, Scene& scene) {
+void lighting_rebuild(World& world, Scene& scene, bool include_npc_lights) {
     scene.clear_lights();
 
     // Static pillar torches
@@ -108,12 +108,14 @@ void lighting_rebuild(World& world, Scene& scene) {
     scene.add_light(PointLight{{ 3.5f, -3.5f, 0.0f, pillar_radius}, warm_color});
 
     // Dynamic NPC lights
-    world.view<Transform, DynamicLight>().each(
-        [&](Entity, Transform& tf, DynamicLight& light) {
-            scene.add_light(PointLight{
-                {tf.position.x, tf.position.y, 0.0f, light.radius},
-                light.color});
-        });
+    if (include_npc_lights) {
+        world.view<Transform, DynamicLight>().each(
+            [&](Entity, Transform& tf, DynamicLight& light) {
+                scene.add_light(PointLight{
+                    {tf.position.x, tf.position.y, 0.0f, light.radius},
+                    light.color});
+            });
+    }
 }
 
 void particle_sync(World& world, ParticleSystem& particles, bool footstep_active) {

@@ -502,7 +502,11 @@ void App::generate_audio_assets() {
     }
 }
 
-void App::run() {
+void App::set_start_state(std::unique_ptr<GameState> state) {
+    custom_start_state_ = std::move(state);
+}
+
+void App::init_subsystems() {
     init_window();
     generate_player_sheet();
     generate_tileset();
@@ -549,8 +553,16 @@ void App::run() {
     register_wren_bindings(wren_vm_);
     wren_vm_.load_module("engine", "assets/scripts/engine.wren");
     script_system_.init(this, &wren_vm_);
+}
 
-    state_stack_.push(std::make_unique<TitleState>(), *this);
+void App::run() {
+    init_subsystems();
+
+    if (custom_start_state_) {
+        state_stack_.push(std::move(custom_start_state_), *this);
+    } else {
+        state_stack_.push(std::make_unique<TitleState>(), *this);
+    }
     main_loop();
     cleanup();
 }
@@ -771,7 +783,7 @@ void App::update_game(float dt) {
         player_anim.state_machine.transition_to(state_prefix + "_" + dir_str);
 
         // NPC patrol
-        if (scene_.tile_layer().has_value()) {
+        if (feature_flags_.npc_patrol && scene_.tile_layer().has_value()) {
             ecs::systems::npc_patrol(world_, *scene_.tile_layer(), dt);
         }
 
@@ -780,7 +792,9 @@ void App::update_game(float dt) {
         script_system_.check_hot_reload();
 
         // Update all animations
-        ecs::systems::animation_update(world_, dt);
+        if (feature_flags_.animation) {
+            ecs::systems::animation_update(world_, dt);
+        }
 
         // Proximity detection: find nearest NPC within interaction range
         constexpr float kInteractRange = 1.5f;
@@ -826,24 +840,28 @@ void App::update_game(float dt) {
     }
 
     // Weather system update (before particles, updates ambient + fog)
-    if (weather_system_.active()) {
+    if (feature_flags_.weather && weather_system_.active()) {
         const auto& cam = renderer_.camera();
         weather_system_.update(dt, scene_, {cam.target().x, cam.target().y});
     }
 
     // ECS systems: particles, lighting, sprite collection
-    {
+    if (feature_flags_.particles) {
         const bool moving = input_.is_key_down(GLFW_KEY_W) || input_.is_key_down(GLFW_KEY_A) ||
                             input_.is_key_down(GLFW_KEY_S) || input_.is_key_down(GLFW_KEY_D);
         ecs::systems::particle_sync(world_, particles_, moving && game_mode_ == GameMode::Explore);
+        particles_.update(dt);
     }
-    particles_.update(dt);
-    ecs::systems::lighting_rebuild(world_, scene_);
+    ecs::systems::lighting_rebuild(world_, scene_, feature_flags_.npc_lights);
     ecs::systems::sprite_collect(world_, entity_sprites_);
     update_audio(dt);
 }
 
 void App::update_audio(float dt) {
+    // Apply feature flags to audio
+    audio_.set_music_muted(!feature_flags_.music);
+    audio_.set_sfx_muted(!feature_flags_.sfx);
+
     // Update listener from camera
     const auto& cam = renderer_.camera();
     glm::vec3 cam_pos = cam.position();
@@ -966,7 +984,8 @@ void App::main_loop() {
         // Always render
         std::vector<SpriteDrawInfo> particle_sprites;
         particles_.generate_draw_infos(particle_sprites);
-        renderer_.draw_scene(scene_, entity_sprites_, particle_sprites, overlay_sprites_, ui_sprites_);
+        renderer_.draw_scene(scene_, entity_sprites_, particle_sprites, overlay_sprites_, ui_sprites_,
+                             feature_flags_);
     }
 }
 

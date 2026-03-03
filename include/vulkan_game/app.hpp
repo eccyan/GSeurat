@@ -6,6 +6,7 @@
 #include "vulkan_game/engine/direction.hpp"
 #include "vulkan_game/engine/ecs/default_components.hpp"
 #include "vulkan_game/engine/ecs/ecs.hpp"
+#include "vulkan_game/engine/feature_flags.hpp"
 #include "vulkan_game/engine/font_atlas.hpp"
 #include "vulkan_game/engine/game_state.hpp"
 #include "vulkan_game/engine/input_manager.hpp"
@@ -91,10 +92,23 @@ public:
     // Torch emitters
     size_t (&torch_emitter_ids())[4] { return torch_emitter_ids_; }
 
-private:
-    void init_window();
+    // Feature flags
+    FeatureFlags& feature_flags() { return feature_flags_; }
+    const FeatureFlags& feature_flags() const { return feature_flags_; }
+
+    // Allow custom start state (e.g. DemoApp skips TitleState)
+    void set_start_state(std::unique_ptr<GameState> state);
+
+    // Weather system accessor
+    WeatherSystem& weather_system() { return weather_system_; }
+
+protected:
+    void init_subsystems();
     void main_loop();
     void cleanup();
+
+private:
+    void init_window();
     void process_commands();
     nlohmann::json build_state_json() const;
     nlohmann::json build_map_json() const;
@@ -111,6 +125,10 @@ private:
     InputManager input_;
     Scene scene_;
     std::chrono::steady_clock::time_point last_update_time_;
+
+    // Feature flags
+    FeatureFlags feature_flags_;
+    std::unique_ptr<GameState> custom_start_state_;
 
     // Game state stack
     GameStateStack state_stack_;

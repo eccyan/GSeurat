@@ -128,10 +128,9 @@ endif()
 
 add_subdirectory(shaders)
 
-# --- Main executable --------------------------------------------------------
+# --- Core OBJECT library (shared by main + demo) ---------------------------
 
-add_executable(vulkan_game
-    src/main.cpp
+add_library(vulkan_game_core OBJECT
     src/app.cpp
     src/engine/vk_context.cpp
     src/engine/swapchain.cpp
@@ -173,18 +172,18 @@ add_executable(vulkan_game
     src/game/pause_state.cpp
 )
 
-target_include_directories(vulkan_game PRIVATE
+target_include_directories(vulkan_game_core PUBLIC
     ${PROJECT_SOURCE_DIR}/include
     ${stb_SOURCE_DIR}
     ${miniaudio_SOURCE_DIR}
 )
 
-target_compile_definitions(vulkan_game PRIVATE
+target_compile_definitions(vulkan_game_core PUBLIC
     GLM_FORCE_DEPTH_ZERO_TO_ONE
 )
 
-target_link_libraries(vulkan_game
-    PRIVATE
+target_link_libraries(vulkan_game_core
+    PUBLIC
         Vulkan::Vulkan
         glfw
         glm::glm
@@ -194,14 +193,28 @@ target_link_libraries(vulkan_game
 )
 
 if(APPLE)
-    target_link_libraries(vulkan_game PRIVATE
+    target_link_libraries(vulkan_game_core PUBLIC
         "-framework CoreAudio"
         "-framework AudioToolbox"
         "-framework CoreFoundation"
     )
 endif()
 
+# --- Main executable --------------------------------------------------------
+
+add_executable(vulkan_game src/main.cpp)
+target_link_libraries(vulkan_game PRIVATE vulkan_game_core)
 add_dependencies(vulkan_game shaders)
+
+# --- Demo executable --------------------------------------------------------
+
+add_executable(vulkan_game_demo
+    src/demo_main.cpp
+    src/demo/demo_app.cpp
+    src/demo/demo_gameplay_state.cpp
+)
+target_link_libraries(vulkan_game_demo PRIVATE vulkan_game_core)
+add_dependencies(vulkan_game_demo shaders)
 
 # --- Copy assets to build directory -----------------------------------------
 
@@ -210,4 +223,11 @@ add_custom_command(TARGET vulkan_game POST_BUILD
         ${PROJECT_SOURCE_DIR}/assets
         $<TARGET_FILE_DIR:vulkan_game>/assets
     COMMENT "Copying assets to build directory"
+)
+
+add_custom_command(TARGET vulkan_game_demo POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${PROJECT_SOURCE_DIR}/assets
+        $<TARGET_FILE_DIR:vulkan_game_demo>/assets
+    COMMENT "Copying assets to demo build directory"
 )

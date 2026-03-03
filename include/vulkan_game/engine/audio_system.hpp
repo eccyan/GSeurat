@@ -51,6 +51,12 @@ public:
     void set_torch_position(uint32_t index, glm::vec3 pos);
     void set_listener(glm::vec3 pos, glm::vec3 forward, glm::vec3 up);
 
+    // Mute controls
+    void set_music_muted(bool muted) { music_muted_ = muted; }
+    void set_sfx_muted(bool muted) { sfx_muted_ = muted; }
+    bool music_muted() const { return music_muted_; }
+    bool sfx_muted() const { return sfx_muted_; }
+
 private:
     struct SoundSlot {
         ma_sound sound{};
@@ -77,6 +83,8 @@ private:
     MusicState current_state_ = MusicState::Explore;
 
     static constexpr float kCrossfadeSpeed = 3.0f;
+    bool music_muted_ = false;
+    bool sfx_muted_ = false;
 
     bool load_sound(const std::string& path, SoundSlot& slot, bool spatial, bool looping);
     void apply_state_volumes();

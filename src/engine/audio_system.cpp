@@ -131,6 +131,7 @@ void AudioSystem::update(float dt) {
 }
 
 void AudioSystem::play(SoundId id) {
+    if (sfx_muted_) return;
     auto idx = static_cast<size_t>(id);
     if (idx < sounds_.size() && sounds_[idx].initialized) {
         ma_sound_seek_to_pcm_frame(&sounds_[idx].sound, 0);
@@ -207,7 +208,8 @@ void AudioSystem::update_layer_volumes(float dt) {
         music_current_volumes_[i] += (music_target_volumes_[i] - music_current_volumes_[i]) * factor;
 
         if (music_layers_[i].initialized) {
-            ma_sound_set_volume(&music_layers_[i].sound, music_current_volumes_[i]);
+            float vol = music_muted_ ? 0.0f : music_current_volumes_[i];
+            ma_sound_set_volume(&music_layers_[i].sound, vol);
         }
     }
 }

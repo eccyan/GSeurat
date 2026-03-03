@@ -125,7 +125,8 @@ void Renderer::draw_scene(Scene& scene,
                            const std::vector<SpriteDrawInfo>& entity_sprites,
                            const std::vector<SpriteDrawInfo>& particles,
                            const std::vector<SpriteDrawInfo>& overlay,
-                           const std::vector<SpriteDrawInfo>& ui) {
+                           const std::vector<SpriteDrawInfo>& ui,
+                           const FeatureFlags& flags) {
     auto device = context_.device();
     const auto& frame_sync = sync_.frame(current_frame_);
 
@@ -185,13 +186,18 @@ void Renderer::draw_scene(Scene& scene,
         for (int i = 0; i < light_count; i++) {
             ubo.lights[i] = scene_lights[i];
         }
+
+        // Apply feature flags to UBO
+        if (!flags.point_lights) {
+            ubo.light_params = glm::ivec4(0, 0, 0, 0);
+        }
         update_uniform_buffer(current_frame_, ubo);
 
         // Bind vertex/index buffers once (shared across all passes)
         sprite_batch_.bind(cmd, current_frame_);
 
         // Background layers pass (rendered before tilemap, back-to-front by Z)
-        if (!scene.background_layers().empty()) {
+        if (flags.parallax_backgrounds && !scene.background_layers().empty()) {
             auto cam_target = camera_.target();
             glm::vec2 cam_xy = {cam_target.x, cam_target.y};
 
@@ -239,7 +245,7 @@ void Renderer::draw_scene(Scene& scene,
         }
 
         // Particle pass
-        if (!particles.empty()) {
+        if (flags.particles && !particles.empty()) {
             sprite_batch_.begin();
             for (const auto& spr : particles) {
                 sprite_batch_.draw(spr);
@@ -281,6 +287,14 @@ void Renderer::draw_scene(Scene& scene,
     pp_params.fog_color_r = scene.fog_color().r;
     pp_params.fog_color_g = scene.fog_color().g;
     pp_params.fog_color_b = scene.fog_color().b;
+
+    // Apply feature flags to post-process
+    if (!flags.bloom) pp_params.bloom_intensity = 0.0f;
+    if (!flags.depth_of_field) pp_params.dof_max_blur = 0.0f;
+    if (!flags.vignette) pp_params.vignette_radius = 2.0f;
+    if (!flags.tone_mapping) pp_params.exposure = 1.0f;
+    if (!flags.fog) pp_params.fog_density = 0.0f;
+
     post_process_.record_post_process(cmd, image_index, pp_params);
 
     // ===== Pass 5: UI (drawn inside the composite render pass, unaffected by post-processing) =====
