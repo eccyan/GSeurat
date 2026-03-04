@@ -15,6 +15,7 @@
 #include "vulkan_game/engine/texture.hpp"
 #include "vulkan_game/engine/types.hpp"
 #include "vulkan_game/engine/feature_flags.hpp"
+#include "vulkan_game/engine/ui/ui_context.hpp"
 #include "vulkan_game/engine/vk_context.hpp"
 
 #include <array>
@@ -40,7 +41,7 @@ public:
                     const std::vector<SpriteDrawInfo>& shadow_sprites = {},
                     const std::vector<SpriteDrawInfo>& particles = {},
                     const std::vector<SpriteDrawInfo>& overlay = {},
-                    const std::vector<SpriteDrawInfo>& ui = {},
+                    const std::vector<ui::UIDrawBatch>& ui_batches = {},
                     const FeatureFlags& flags = {});
     void shutdown();
 

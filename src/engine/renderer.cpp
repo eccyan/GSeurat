@@ -139,7 +139,7 @@ void Renderer::draw_scene(Scene& scene,
                            const std::vector<SpriteDrawInfo>& shadow_sprites,
                            const std::vector<SpriteDrawInfo>& particles,
                            const std::vector<SpriteDrawInfo>& overlay,
-                           const std::vector<SpriteDrawInfo>& ui,
+                           const std::vector<ui::UIDrawBatch>& ui_batches,
                            const FeatureFlags& flags) {
     auto device = context_.device();
     const auto& frame_sync = sync_.frame(current_frame_);
@@ -349,22 +349,50 @@ void Renderer::draw_scene(Scene& scene,
     post_process_.record_post_process(cmd, image_index, pp_params);
 
     // ===== Pass 5: UI (drawn inside the composite render pass, unaffected by post-processing) =====
-    if (font_initialized_ && !ui.empty()) {
+    if (font_initialized_ && !ui_batches.empty()) {
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, ui_pipeline_);
 
         // Re-bind sprite batch vertex/index buffers for UI drawing
         sprite_batch_.bind(cmd, current_frame_);
 
-        sprite_batch_.begin();
-        for (const auto& spr : ui) {
-            sprite_batch_.draw(spr);
+        VkRect2D full_scissor{};
+        full_scissor.offset = {0, 0};
+        full_scissor.extent = swapchain_.extent();
+
+        // Scale factor from logical UI coords to framebuffer coords (Retina 2x etc.)
+        float sx = static_cast<float>(swapchain_.extent().width) / static_cast<float>(kWindowWidth);
+        float sy = static_cast<float>(swapchain_.extent().height) / static_cast<float>(kWindowHeight);
+
+        for (const auto& batch : ui_batches) {
+            if (batch.sprites.empty()) continue;
+
+            // Set scissor rect (dynamic state)
+            if (batch.scissor) {
+                VkRect2D scissor{};
+                scissor.offset.x = static_cast<int32_t>(static_cast<float>(batch.scissor->x) * sx);
+                scissor.offset.y = static_cast<int32_t>(static_cast<float>(batch.scissor->y) * sy);
+                scissor.extent.width = static_cast<uint32_t>(static_cast<float>(batch.scissor->width) * sx);
+                scissor.extent.height = static_cast<uint32_t>(static_cast<float>(batch.scissor->height) * sy);
+                vkCmdSetScissor(cmd, 0, 1, &scissor);
+            } else {
+                vkCmdSetScissor(cmd, 0, 1, &full_scissor);
+            }
+
+            sprite_batch_.begin();
+            for (const auto& spr : batch.sprites) {
+                sprite_batch_.draw(spr);
+            }
+            auto ui_flush = sprite_batch_.flush(current_frame_);
+            if (ui_flush.index_count > 0) {
+                vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                        sprite_pipeline_layout_, 0, 1,
+                                        &ui_descriptor_sets_[current_frame_], 0, nullptr);
+                vkCmdDrawIndexed(cmd, ui_flush.index_count, 1, 0, ui_flush.vertex_offset, 0);
+            }
         }
-        auto ui_flush = sprite_batch_.flush(current_frame_);
-        if (ui_flush.index_count > 0) {
-            vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, sprite_pipeline_layout_,
-                                    0, 1, &ui_descriptor_sets_[current_frame_], 0, nullptr);
-            vkCmdDrawIndexed(cmd, ui_flush.index_count, 1, 0, ui_flush.vertex_offset, 0);
-        }
+
+        // Reset scissor to full viewport
+        vkCmdSetScissor(cmd, 0, 1, &full_scissor);
     }
 
     // End composite render pass
@@ -513,6 +541,7 @@ void Renderer::create_ui_pipeline() {
                        .set_multisampling(VK_SAMPLE_COUNT_1_BIT)
                        .set_depth_stencil(false, false)
                        .set_color_blend_alpha()
+                       .set_dynamic_scissor()
                        .set_layout(sprite_pipeline_layout_)
                        .set_render_pass(post_process_.composite_render_pass(), 0)
                        .build(device);

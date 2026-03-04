@@ -132,6 +132,11 @@ PipelineBuilder& PipelineBuilder::set_no_vertex_input() {
     return *this;
 }
 
+PipelineBuilder& PipelineBuilder::set_dynamic_scissor() {
+    dynamic_states_.push_back(VK_DYNAMIC_STATE_SCISSOR);
+    return *this;
+}
+
 PipelineBuilder& PipelineBuilder::set_layout(VkPipelineLayout layout) {
     layout_ = layout;
     return *this;
@@ -156,6 +161,11 @@ VkPipeline PipelineBuilder::build(VkDevice device) {
     color_blend.attachmentCount = 1;
     color_blend.pAttachments = &color_blend_attachment_;
 
+    VkPipelineDynamicStateCreateInfo dynamic_state{};
+    dynamic_state.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+    dynamic_state.dynamicStateCount = static_cast<uint32_t>(dynamic_states_.size());
+    dynamic_state.pDynamicStates = dynamic_states_.data();
+
     VkGraphicsPipelineCreateInfo info{};
     info.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
     info.stageCount = static_cast<uint32_t>(shader_stages_.size());
@@ -170,6 +180,9 @@ VkPipeline PipelineBuilder::build(VkDevice device) {
     info.layout = layout_;
     info.renderPass = render_pass_;
     info.subpass = subpass_;
+    if (!dynamic_states_.empty()) {
+        info.pDynamicState = &dynamic_state;
+    }
 
     VkPipeline pipeline;
     if (vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &info, nullptr, &pipeline) !=

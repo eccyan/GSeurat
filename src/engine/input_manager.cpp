@@ -5,6 +5,17 @@
 
 namespace vulkan_game {
 
+void InputManager::set_window(GLFWwindow* window) {
+    window_ = window;
+    if (window_) {
+        glfwSetWindowUserPointer(window_, this);
+        glfwSetScrollCallback(window_, [](GLFWwindow* w, double /*xoffset*/, double yoffset) {
+            auto* self = static_cast<InputManager*>(glfwGetWindowUserPointer(w));
+            if (self) self->scroll_y_accum_ += static_cast<float>(yoffset);
+        });
+    }
+}
+
 void InputManager::update() {
     if (!window_) return;
     previous_ = current_;
@@ -14,6 +25,10 @@ void InputManager::update() {
                       || inject_once_[key];
     }
     inject_once_.fill(false);
+
+    // Scroll wheel
+    scroll_y_delta_ = scroll_y_accum_;
+    scroll_y_accum_ = 0.0f;
 
     // Mouse
     double mx, my;

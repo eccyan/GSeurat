@@ -34,7 +34,6 @@ void PauseState::update(App& app, float dt) {
 
 void PauseState::build_draw_lists(App& app) {
     auto& ctx = app.ui_ctx();
-    auto& ui = app.ui_sprites();
 
     ctx.panel(640.0f, 360.0f, 1280.0f, 720.0f, {0.0f, 0.0f, 0.0f, 0.6f});
     ctx.label("PAUSED", 560.0f, 220.0f, 1.0f, {1.0f, 1.0f, 1.0f, 1.0f});
@@ -60,9 +59,6 @@ void PauseState::build_draw_lists(App& app) {
     }
 
     selected_item_ = ctx.menu_selection();
-
-    const auto& draw_list = ctx.draw_list();
-    ui.insert(ui.end(), draw_list.begin(), draw_list.end());
 }
 
 }  // namespace vulkan_game

@@ -5,7 +5,9 @@
 #include "vulkan_game/engine/text_renderer.hpp"
 
 #include <glm/glm.hpp>
+#include <optional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace vulkan_game::ui {
@@ -18,13 +20,24 @@ struct UIInput {
     bool key_down_nav = false;   // rising edge (renamed to avoid conflict)
     bool key_enter = false;      // rising edge
     bool key_escape = false;     // rising edge
+    float scroll_delta = 0.0f;   // mouse wheel delta
+};
+
+struct ScissorRect {
+    int32_t x, y;
+    uint32_t width, height;
+};
+
+struct UIDrawBatch {
+    std::vector<SpriteDrawInfo> sprites;
+    std::optional<ScissorRect> scissor;  // nullopt = full viewport
 };
 
 class UIContext {
 public:
     void init(const FontAtlas& atlas, const TextRenderer& text_renderer);
     void begin_frame(const UIInput& input);
-    const std::vector<SpriteDrawInfo>& draw_list() const { return draw_list_; }
+    const std::vector<SpriteDrawInfo>& draw_list() const;
 
     // Widgets
     void label(const std::string& text, float x, float y, float scale,
@@ -44,6 +57,14 @@ public:
     void set_focus_count(int count) { focus_count_ = count; }
     int focused_index() const { return focused_index_; }
 
+    // Scroll area
+    float begin_scroll_area(const std::string& id, float x, float y, float w, float h,
+                            float content_height);
+    void scroll_to_visible(float item_y, float item_h);
+    void end_scroll_area();
+    const std::vector<UIDrawBatch>& draw_batches() const { return batches_; }
+    void set_screen_height(float h) { screen_height_ = h; }
+
 private:
     void draw_rect(float x, float y, float w, float h, glm::vec4 color);
     bool hit_test(float x, float y, float w, float h) const;
@@ -51,7 +72,9 @@ private:
     const FontAtlas* atlas_ = nullptr;
     const TextRenderer* text_renderer_ = nullptr;
     UIInput input_{};
-    std::vector<SpriteDrawInfo> draw_list_;
+    std::vector<UIDrawBatch> batches_;
+    mutable std::vector<SpriteDrawInfo> flat_cache_;
+    mutable bool flat_dirty_ = true;
 
     // Focus/hot tracking
     int focused_index_ = 0;
@@ -65,6 +88,16 @@ private:
     float menu_item_height_ = 50.0f;
     int menu_item_index_ = 0;
     int menu_selected_ = 0;
+
+    // Scroll area state
+    struct ScrollAreaState { float scroll_offset = 0.0f; };
+    struct ActiveScrollArea {
+        std::string id;
+        float x, y, w, h, content_height, scroll_offset;
+    };
+    std::unordered_map<std::string, ScrollAreaState> scroll_states_;
+    std::optional<ActiveScrollArea> active_scroll_;
+    float screen_height_ = 720.0f;
 };
 
 }  // namespace vulkan_game::ui

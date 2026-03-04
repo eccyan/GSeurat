@@ -1174,6 +1174,8 @@ void App::main_loop() {
             ui_input.key_down_nav = input_.was_key_pressed(GLFW_KEY_DOWN) || input_.was_key_pressed(GLFW_KEY_S);
             ui_input.key_enter = input_.was_key_pressed(GLFW_KEY_ENTER) || input_.was_key_pressed(GLFW_KEY_SPACE);
             ui_input.key_escape = input_.was_key_pressed(GLFW_KEY_ESCAPE);
+            ui_input.scroll_delta = input_.scroll_y_delta();
+            ui_ctx_.set_screen_height(720.0f);
             ui_ctx_.begin_frame(ui_input);
         }
 
@@ -1183,8 +1185,19 @@ void App::main_loop() {
         // Always render
         std::vector<SpriteDrawInfo> particle_sprites;
         particles_.generate_draw_infos(particle_sprites);
+
+        // Build UI batches: flat ui_sprites_ (dialog etc.) + UIContext batches (menus, scroll areas)
+        std::vector<ui::UIDrawBatch> ui_batches;
+        if (!ui_sprites_.empty()) {
+            ui_batches.push_back(ui::UIDrawBatch{ui_sprites_, std::nullopt});
+        }
+        const auto& ctx_batches = ui_ctx_.draw_batches();
+        for (const auto& b : ctx_batches) {
+            if (!b.sprites.empty()) ui_batches.push_back(b);
+        }
+
         renderer_.draw_scene(scene_, entity_sprites_, reflection_sprites_, shadow_sprites_,
-                             particle_sprites, overlay_sprites_, ui_sprites_, feature_flags_);
+                             particle_sprites, overlay_sprites_, ui_batches, feature_flags_);
     }
 }
 

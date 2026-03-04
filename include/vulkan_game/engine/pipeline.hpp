@@ -23,6 +23,7 @@ public:
     PipelineBuilder& set_color_blend_alpha();
     PipelineBuilder& set_no_blend();
     PipelineBuilder& set_no_vertex_input();
+    PipelineBuilder& set_dynamic_scissor();
     PipelineBuilder& set_layout(VkPipelineLayout layout);
     PipelineBuilder& set_render_pass(VkRenderPass render_pass, uint32_t subpass);
 
@@ -41,6 +42,7 @@ private:
     VkPipelineLayout layout_ = VK_NULL_HANDLE;
     VkRenderPass render_pass_ = VK_NULL_HANDLE;
     uint32_t subpass_ = 0;
+    std::vector<VkDynamicState> dynamic_states_;
 };
 
 }  // namespace vulkan_game

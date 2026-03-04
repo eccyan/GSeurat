@@ -42,7 +42,6 @@ void TitleState::update(App& app, float dt) {
 
 void TitleState::build_draw_lists(App& app) {
     auto& ctx = app.ui_ctx();
-    auto& ui = app.ui_sprites();
 
     // Title
     ctx.label("HD-2D Vulkan Game", 400.0f, 250.0f, 1.2f, {1.0f, 0.9f, 0.3f, 1.0f});
@@ -72,9 +71,6 @@ void TitleState::build_draw_lists(App& app) {
     }
 
     selected_item_ = ctx.menu_selection();
-
-    const auto& draw_list = ctx.draw_list();
-    ui.insert(ui.end(), draw_list.begin(), draw_list.end());
 }
 
 }  // namespace vulkan_game

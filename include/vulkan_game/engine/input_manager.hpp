@@ -13,7 +13,7 @@ namespace vulkan_game {
 
 class InputManager {
 public:
-    void set_window(GLFWwindow* window) { window_ = window; }
+    void set_window(GLFWwindow* window);
     void update();
     bool is_key_down(int glfw_key) const;
     bool was_key_pressed(int glfw_key) const;
@@ -22,6 +22,9 @@ public:
     glm::vec2 mouse_pos() const { return mouse_pos_; }
     bool is_mouse_down(int button = 0) const;
     bool was_mouse_pressed(int button = 0) const;
+
+    // Scroll wheel (accumulated delta since last update)
+    float scroll_y_delta() const { return scroll_y_delta_; }
 
     // External injection (for ControlServer / AI agent)
     void inject_key(int glfw_key, bool down);   // persistent hold (WASD, Shift)
@@ -39,6 +42,10 @@ private:
     glm::vec2 mouse_pos_{0.0f};
     std::array<bool, 3> mouse_current_{};
     std::array<bool, 3> mouse_previous_{};
+
+    // Scroll wheel
+    float scroll_y_delta_ = 0.0f;
+    float scroll_y_accum_ = 0.0f;
 };
 
 }  // namespace vulkan_game

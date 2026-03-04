@@ -33,9 +33,11 @@ void DemoGameplayState::update(App& app, float dt) {
         constexpr int item_count = 18;
         if (app.input().was_key_pressed(GLFW_KEY_UP)) {
             selected_item_ = (selected_item_ - 1 + item_count) % item_count;
+            scroll_needs_update_ = true;
         }
         if (app.input().was_key_pressed(GLFW_KEY_DOWN)) {
             selected_item_ = (selected_item_ + 1) % item_count;
+            scroll_needs_update_ = true;
         }
         if (app.input().was_key_pressed(GLFW_KEY_ENTER)) {
             auto entries = FeatureFlags::entries();
@@ -51,7 +53,6 @@ void DemoGameplayState::build_draw_lists(App& app) {
     if (!panel_visible_) return;
 
     auto& ui = app.ui_ctx();
-    auto& ui_sprites = app.ui_sprites();
 
     // Panel background
     // UI uses Y-UP coordinates: y=0 is screen bottom, y=720 is screen top.
@@ -61,14 +62,37 @@ void DemoGameplayState::build_draw_lists(App& app) {
     ui.panel(panel_x + panel_w * 0.5f, panel_h * 0.5f, panel_w, panel_h,
              {0.02f, 0.02f, 0.08f, 0.92f});
 
-    // Title near screen top (high Y)
+    // Title near screen top (high Y) — outside scroll area (always visible)
     ui.label("FEATURE DEMO", panel_x + 20.0f, 700.0f, 0.7f, {1.0f, 0.85f, 0.2f, 1.0f});
     ui.label("[F1]", panel_x + panel_w - 60.0f, 700.0f, 0.5f, {0.5f, 0.5f, 0.5f, 1.0f});
 
+    // Scroll area for feature items
+    // Area: from y=60 (near bottom) to y=670 (below title), height=610
+    constexpr float scroll_area_y = 60.0f;
+    constexpr float scroll_area_h = 610.0f;
+
+    // Pre-calculate content height by simulating the layout
     auto entries = FeatureFlags::entries();
     const auto& flags = app.feature_flags();
+    float content_height = 0.0f;
+    {
+        std::string_view cat;
+        for (int i = 0; i < static_cast<int>(entries.size()); ++i) {
+            if (entries[i].category != cat) {
+                cat = entries[i].category;
+                content_height += 8.0f + 30.0f;  // category gap + header
+            }
+            content_height += 32.0f;  // item
+        }
+        content_height += 10.0f;  // bottom padding
+    }
 
-    float y = 660.0f;
+    ui.begin_scroll_area("demo_features", panel_x, scroll_area_y,
+                          panel_w, scroll_area_h, content_height);
+
+    // Content Y positions: start at top of scroll area and go down (Y-UP)
+    // UIContext internally applies scroll offset, so use content-space positions
+    float y = scroll_area_y + scroll_area_h - 10.0f;
     std::string_view current_category;
 
     for (int i = 0; i < static_cast<int>(entries.size()); ++i) {
@@ -94,6 +118,12 @@ void DemoGameplayState::build_draw_lists(App& app) {
                      {0.15f, 0.15f, 0.35f, 0.8f});
         }
 
+        // Auto-scroll to keep selected item visible
+        if (selected && scroll_needs_update_) {
+            ui.scroll_to_visible(y - 10.0f, 32.0f);
+            scroll_needs_update_ = false;
+        }
+
         // Cursor
         std::string cursor = selected ? "> " : "  ";
 
@@ -111,13 +141,11 @@ void DemoGameplayState::build_draw_lists(App& app) {
         y -= 32.0f;
     }
 
-    // Help text near screen bottom (low Y)
-    ui.label("Up/Down:Nav Enter:Toggle", panel_x + 20.0f, 30.0f, 0.4f,
-             {0.4f, 0.4f, 0.4f, 1.0f});
+    ui.end_scroll_area();
 
-    // Append UI draw list
-    const auto& dl = ui.draw_list();
-    ui_sprites.insert(ui_sprites.end(), dl.begin(), dl.end());
+    // Help text near screen bottom (low Y) — outside scroll area (always visible)
+    ui.label("Up/Down:Nav Enter:Toggle Scroll:Mouse", panel_x + 20.0f, 30.0f, 0.4f,
+             {0.4f, 0.4f, 0.4f, 1.0f});
 }
 
 }  // namespace vulkan_game

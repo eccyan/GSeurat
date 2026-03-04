@@ -14,6 +14,7 @@ public:
 private:
     int selected_item_ = 0;
     bool panel_visible_ = true;
+    bool scroll_needs_update_ = false;
 };
 
 }  // namespace vulkan_game
