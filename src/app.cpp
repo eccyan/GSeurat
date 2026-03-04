@@ -426,6 +426,211 @@ void App::generate_shadow_texture() {
                    pixels.data(), kSize * kChannels);
 }
 
+void App::generate_flat_normal_texture() {
+    std::filesystem::create_directories("assets/textures");
+    // 1×1 flat normal pointing straight up (Z-facing): (128,128,255,255) in tangent space
+    uint8_t pixels[4] = {128, 128, 255, 255};
+    stbi_write_png("assets/textures/flat_normal.png", 1, 1, 4, pixels, 4);
+}
+
+void App::generate_tileset_normal() {
+    // Must match tileset.png: 128×48 (8 cols × 3 rows of 16×16 tiles)
+    constexpr int kTileW = 16;
+    constexpr int kTileH = 16;
+    constexpr int kCols = 8;
+    constexpr int kRows = 3;
+    constexpr int kWidth = kCols * kTileW;   // 128
+    constexpr int kHeight = kRows * kTileH;  // 48
+    constexpr int kChannels = 4;
+    constexpr float kPi = 3.14159265358979323846f;
+
+    std::vector<float> heightmap(kWidth * kHeight, 0.0f);
+    std::vector<uint8_t> pixels(kWidth * kHeight * kChannels, 0);
+
+    // Helper: tile_id → top-left pixel (col, row)
+    auto tile_origin = [&](int tile_id) -> std::pair<int, int> {
+        int col = tile_id % kCols;
+        int row = tile_id / kCols;
+        return {col * kTileW, row * kTileH};
+    };
+
+    // Generate heightmap per tile
+    auto fill_tile_height = [&](int tile_id, auto height_fn) {
+        auto [ox, oy] = tile_origin(tile_id);
+        for (int ly = 0; ly < kTileH; ++ly) {
+            for (int lx = 0; lx < kTileW; ++lx) {
+                int gx = ox + lx;
+                int gy = oy + ly;
+                heightmap[gy * kWidth + gx] = height_fn(lx, ly);
+            }
+        }
+    };
+
+    // Tile 0: floor — subtle stone bumps
+    fill_tile_height(0, [&](int lx, int ly) {
+        float fx = static_cast<float>(lx);
+        float fy = static_cast<float>(ly);
+        return std::sin(fx * 1.5f) * std::sin(fy * 1.7f) * 1.5f;
+    });
+
+    // Tile 1: wall — brick mortar grooves
+    fill_tile_height(1, [&](int lx, int ly) {
+        float h = 3.0f;
+        // Horizontal mortar lines every 4 pixels
+        if (ly % 4 == 0) h = 0.0f;
+        // Alternating vertical mortar
+        int brick_offset = (ly / 4) % 2 == 0 ? 0 : 8;
+        if ((lx + brick_offset) % 8 == 0) h = 0.0f;
+        return h;
+    });
+
+    // Tiles 2-4: water — sinusoidal waves
+    for (int t = 2; t <= 4; ++t) {
+        float phase = static_cast<float>(t - 2) * 2.0f * kPi / 3.0f;
+        fill_tile_height(t, [&](int lx, int ly) {
+            float fx = static_cast<float>(lx);
+            float fy = static_cast<float>(ly);
+            return (std::sin(fx * 0.8f + phase) + std::sin(fy * 0.6f + phase * 0.7f)) * 2.0f;
+        });
+    }
+
+    // Tiles 5-7: lava — turbulent flow
+    for (int t = 5; t <= 7; ++t) {
+        float phase = static_cast<float>(t - 5) * 2.0f * kPi / 3.0f;
+        fill_tile_height(t, [&](int lx, int ly) {
+            float fx = static_cast<float>(lx);
+            float fy = static_cast<float>(ly);
+            return (std::sin(fx * 1.2f + phase) * std::cos(fy * 0.9f + phase * 1.3f)
+                    + std::sin((fx + fy) * 0.7f + phase)) * 2.5f;
+        });
+    }
+
+    // Tiles 8-9: torch on wall — wall base + smooth center bump
+    for (int t = 8; t <= 9; ++t) {
+        fill_tile_height(t, [&](int lx, int ly) {
+            // Wall base height
+            float h = 2.0f;
+            // Smooth center bump (flame area)
+            float cx = static_cast<float>(lx) - 7.5f;
+            float cy = static_cast<float>(ly) - 7.5f;
+            float r2 = (cx * cx + cy * cy) / (7.0f * 7.0f);
+            if (r2 < 1.0f) h += (1.0f - r2) * 2.5f;
+            return h;
+        });
+    }
+
+    // Convert heightmap → normal map using central differences
+    for (int gy = 0; gy < kHeight; ++gy) {
+        for (int gx = 0; gx < kWidth; ++gx) {
+            // Determine which tile this pixel is in to clamp sampling
+            int tile_col = gx / kTileW;
+            int tile_row = gy / kTileH;
+            int tile_x0 = tile_col * kTileW;
+            int tile_y0 = tile_row * kTileH;
+
+            auto sample_h = [&](int sx, int sy) -> float {
+                sx = std::clamp(sx, tile_x0, tile_x0 + kTileW - 1);
+                sy = std::clamp(sy, tile_y0, tile_y0 + kTileH - 1);
+                return heightmap[sy * kWidth + sx];
+            };
+
+            float dhdx = sample_h(gx + 1, gy) - sample_h(gx - 1, gy);
+            float dhdy = sample_h(gx, gy + 1) - sample_h(gx, gy - 1);
+
+            // Normal = normalize(-dhdx, -dhdy, 1)
+            float nx = -dhdx;
+            float ny = -dhdy;
+            float nz = 1.0f;
+            float len = std::sqrt(nx * nx + ny * ny + nz * nz);
+            nx /= len;
+            ny /= len;
+            nz /= len;
+
+            // Encode to [0,255]: n * 0.5 + 0.5
+            int idx = (gy * kWidth + gx) * kChannels;
+            pixels[idx + 0] = static_cast<uint8_t>(std::clamp((nx * 0.5f + 0.5f) * 255.0f, 0.0f, 255.0f));
+            pixels[idx + 1] = static_cast<uint8_t>(std::clamp((ny * 0.5f + 0.5f) * 255.0f, 0.0f, 255.0f));
+            pixels[idx + 2] = static_cast<uint8_t>(std::clamp((nz * 0.5f + 0.5f) * 255.0f, 0.0f, 255.0f));
+            pixels[idx + 3] = 255;
+        }
+    }
+
+    // Fill unused tiles (10-23) with flat normal
+    for (int t = 10; t < kCols * kRows; ++t) {
+        auto [ox, oy] = tile_origin(t);
+        for (int ly = 0; ly < kTileH; ++ly) {
+            for (int lx = 0; lx < kTileW; ++lx) {
+                int idx = ((oy + ly) * kWidth + (ox + lx)) * kChannels;
+                pixels[idx + 0] = 128;
+                pixels[idx + 1] = 128;
+                pixels[idx + 2] = 255;
+                pixels[idx + 3] = 255;
+            }
+        }
+    }
+
+    std::filesystem::create_directories("assets/textures");
+    stbi_write_png("assets/textures/tileset_normal.png", kWidth, kHeight, kChannels,
+                   pixels.data(), kWidth * kChannels);
+}
+
+void App::generate_player_normal() {
+    // Must match player_sheet.png: 64×192 (4 frames × 12 rows of 16×16)
+    constexpr int kFrameW = 16;
+    constexpr int kFrameH = 16;
+    constexpr int kFrames = 4;
+    constexpr int kRows = 12;
+    constexpr int kWidth = kFrameW * kFrames;   // 64
+    constexpr int kHeight = kFrameH * kRows;    // 192
+    constexpr int kChannels = 4;
+
+    std::vector<uint8_t> pixels(kWidth * kHeight * kChannels, 0);
+
+    // Per 16×16 frame: dome/pillow normal map
+    for (int row = 0; row < kRows; ++row) {
+        for (int frame = 0; frame < kFrames; ++frame) {
+            int ox = frame * kFrameW;
+            int oy = row * kFrameH;
+            for (int ly = 0; ly < kFrameH; ++ly) {
+                for (int lx = 0; lx < kFrameW; ++lx) {
+                    float cx = (static_cast<float>(lx) - 7.5f) / 7.0f;
+                    float cy = (static_cast<float>(ly) - 7.5f) / 7.0f;
+                    float r2 = cx * cx + cy * cy;
+                    float height = std::max(0.0f, 1.0f - r2);
+
+                    // Central differences from the dome heightfield
+                    float strength = 1.0f;
+                    float nx = -strength * (-2.0f * cx / (7.0f)) * (r2 < 1.0f ? 1.0f : 0.0f);
+                    float ny = -strength * (-2.0f * cy / (7.0f)) * (r2 < 1.0f ? 1.0f : 0.0f);
+                    float nz = 1.0f;
+                    // Suppress if outside dome
+                    if (r2 >= 1.0f) {
+                        nx = 0.0f;
+                        ny = 0.0f;
+                    }
+                    float len = std::sqrt(nx * nx + ny * ny + nz * nz);
+                    nx /= len;
+                    ny /= len;
+                    nz /= len;
+
+                    int gx = ox + lx;
+                    int gy = oy + ly;
+                    int idx = (gy * kWidth + gx) * kChannels;
+                    pixels[idx + 0] = static_cast<uint8_t>(std::clamp((nx * 0.5f + 0.5f) * 255.0f, 0.0f, 255.0f));
+                    pixels[idx + 1] = static_cast<uint8_t>(std::clamp((ny * 0.5f + 0.5f) * 255.0f, 0.0f, 255.0f));
+                    pixels[idx + 2] = static_cast<uint8_t>(std::clamp((nz * 0.5f + 0.5f) * 255.0f, 0.0f, 255.0f));
+                    pixels[idx + 3] = 255;
+                    (void)height;
+                }
+            }
+        }
+    }
+
+    std::filesystem::create_directories("assets/textures");
+    stbi_write_png("assets/textures/player_normal.png", kWidth, kHeight, kChannels,
+                   pixels.data(), kWidth * kChannels);
+}
+
 void App::generate_audio_assets() {
     std::filesystem::create_directories("assets/audio");
 
@@ -626,6 +831,9 @@ void App::init_subsystems() {
     generate_particle_atlas();
     generate_background_textures();
     generate_shadow_texture();
+    generate_flat_normal_texture();
+    generate_tileset_normal();
+    generate_player_normal();
     generate_audio_assets();
 
     // Load locale and build font atlas from all text

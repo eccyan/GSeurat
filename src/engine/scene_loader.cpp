@@ -114,7 +114,8 @@ SceneData SceneLoader::from_json(const nlohmann::json& j) {
             PointLight pl;
             auto pos = parse_vec2(light_j["position"]);
             float radius = light_j["radius"];
-            pl.position_and_radius = {pos.x, pos.y, 0.0f, radius};
+            float height = light_j.value("height", 3.0f);
+            pl.position_and_radius = {pos.x, pos.y, height, radius};
             auto color = parse_vec4(light_j["color"]);
             float intensity = light_j.value("intensity", 1.0f);
             pl.color = {color.r, color.g, color.b, intensity};

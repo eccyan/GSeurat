@@ -7,6 +7,7 @@ layout(location = 2) in vec2 frag_world_pos;
 layout(location = 0) out vec4 out_color;
 
 layout(set = 0, binding = 1) uniform sampler2D tex_sampler;
+layout(set = 0, binding = 2) uniform sampler2D normal_sampler;  // unused, layout compat
 
 layout(push_constant) uniform PushConstants {
     vec4 outline_color;

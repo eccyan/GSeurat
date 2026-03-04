@@ -21,7 +21,9 @@ public:
         const std::array<VkBuffer, kMaxFramesInFlight>& uniform_buffers,
         VkDeviceSize ubo_size,
         VkImageView texture_view,
-        VkSampler sampler);
+        VkSampler sampler,
+        VkImageView normal_view = VK_NULL_HANDLE,
+        VkSampler normal_sampler = VK_NULL_HANDLE);
 
 private:
     VkDescriptorPool pool_ = VK_NULL_HANDLE;

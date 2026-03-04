@@ -73,7 +73,8 @@ Texture Texture::load_from_file(VkDevice device, VmaAllocator allocator,
                                 VkCommandPool cmd_pool, VkQueue queue,
                                 const std::string& path,
                                 VkFilter filter,
-                                VkSamplerAddressMode address_mode) {
+                                VkSamplerAddressMode address_mode,
+                                VkFormat format) {
     int width, height, channels;
     stbi_uc* pixels = stbi_load(path.c_str(), &width, &height, &channels, STBI_rgb_alpha);
     if (!pixels) {
@@ -93,7 +94,7 @@ Texture Texture::load_from_file(VkDevice device, VmaAllocator allocator,
     VkImageCreateInfo image_info{};
     image_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
     image_info.imageType = VK_IMAGE_TYPE_2D;
-    image_info.format = VK_FORMAT_R8G8B8A8_SRGB;
+    image_info.format = format;
     image_info.extent = {static_cast<uint32_t>(width), static_cast<uint32_t>(height), 1};
     image_info.mipLevels = 1;
     image_info.arrayLayers = 1;
@@ -160,7 +161,7 @@ Texture Texture::load_from_file(VkDevice device, VmaAllocator allocator,
     view_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
     view_info.image = tex.image_;
     view_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
-    view_info.format = VK_FORMAT_R8G8B8A8_SRGB;
+    view_info.format = format;
     view_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
     view_info.subresourceRange.levelCount = 1;
     view_info.subresourceRange.layerCount = 1;
@@ -190,7 +191,8 @@ Texture Texture::load_from_memory(VkDevice device, VmaAllocator allocator,
                                    VkCommandPool cmd_pool, VkQueue queue,
                                    const uint8_t* pixels, uint32_t width, uint32_t height,
                                    VkFilter filter,
-                                   VkSamplerAddressMode address_mode) {
+                                   VkSamplerAddressMode address_mode,
+                                   VkFormat format) {
     VkDeviceSize image_size = static_cast<VkDeviceSize>(width) * height * 4;
 
     Buffer staging = Buffer::create_staging(allocator, image_size);
@@ -201,7 +203,7 @@ Texture Texture::load_from_memory(VkDevice device, VmaAllocator allocator,
     VkImageCreateInfo image_info{};
     image_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
     image_info.imageType = VK_IMAGE_TYPE_2D;
-    image_info.format = VK_FORMAT_R8G8B8A8_SRGB;
+    image_info.format = format;
     image_info.extent = {width, height, 1};
     image_info.mipLevels = 1;
     image_info.arrayLayers = 1;
@@ -265,7 +267,7 @@ Texture Texture::load_from_memory(VkDevice device, VmaAllocator allocator,
     view_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
     view_info.image = tex.image_;
     view_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
-    view_info.format = VK_FORMAT_R8G8B8A8_SRGB;
+    view_info.format = format;
     view_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
     view_info.subresourceRange.levelCount = 1;
     view_info.subresourceRange.layerCount = 1;

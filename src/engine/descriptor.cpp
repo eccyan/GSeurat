@@ -18,7 +18,13 @@ void DescriptorManager::init(VkDevice device) {
     sampler_binding.descriptorCount = 1;
     sampler_binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 
-    std::array<VkDescriptorSetLayoutBinding, 2> bindings = {ubo_binding, sampler_binding};
+    VkDescriptorSetLayoutBinding normal_binding{};
+    normal_binding.binding = 2;
+    normal_binding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    normal_binding.descriptorCount = 1;
+    normal_binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+    std::array<VkDescriptorSetLayoutBinding, 3> bindings = {ubo_binding, sampler_binding, normal_binding};
 
     VkDescriptorSetLayoutCreateInfo layout_info{};
     layout_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
@@ -35,7 +41,7 @@ void DescriptorManager::init(VkDevice device) {
     pool_sizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
     pool_sizes[0].descriptorCount = kMaxFramesInFlight * 10;
     pool_sizes[1].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    pool_sizes[1].descriptorCount = kMaxFramesInFlight * 10;
+    pool_sizes[1].descriptorCount = kMaxFramesInFlight * 20;
 
     VkDescriptorPoolCreateInfo pool_info{};
     pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
@@ -55,7 +61,8 @@ void DescriptorManager::shutdown(VkDevice device) {
 
 std::array<VkDescriptorSet, kMaxFramesInFlight> DescriptorManager::allocate_sprite_sets(
     VkDevice device, const std::array<VkBuffer, kMaxFramesInFlight>& uniform_buffers,
-    VkDeviceSize ubo_size, VkImageView texture_view, VkSampler sampler) {
+    VkDeviceSize ubo_size, VkImageView texture_view, VkSampler sampler,
+    VkImageView normal_view, VkSampler normal_sampler) {
     std::array<VkDescriptorSetLayout, kMaxFramesInFlight> layouts;
     layouts.fill(sprite_layout_);
 
@@ -81,7 +88,13 @@ std::array<VkDescriptorSet, kMaxFramesInFlight> DescriptorManager::allocate_spri
         image_info.imageView = texture_view;
         image_info.sampler = sampler;
 
-        std::array<VkWriteDescriptorSet, 2> writes{};
+        // Normal map: use provided view/sampler, or fall back to diffuse texture
+        VkDescriptorImageInfo normal_info{};
+        normal_info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        normal_info.imageView = (normal_view != VK_NULL_HANDLE) ? normal_view : texture_view;
+        normal_info.sampler = (normal_sampler != VK_NULL_HANDLE) ? normal_sampler : sampler;
+
+        std::array<VkWriteDescriptorSet, 3> writes{};
         writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
         writes[0].dstSet = sets[i];
         writes[0].dstBinding = 0;
@@ -95,6 +108,13 @@ std::array<VkDescriptorSet, kMaxFramesInFlight> DescriptorManager::allocate_spri
         writes[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
         writes[1].descriptorCount = 1;
         writes[1].pImageInfo = &image_info;
+
+        writes[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        writes[2].dstSet = sets[i];
+        writes[2].dstBinding = 2;
+        writes[2].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        writes[2].descriptorCount = 1;
+        writes[2].pImageInfo = &normal_info;
 
         vkUpdateDescriptorSets(device, static_cast<uint32_t>(writes.size()), writes.data(), 0,
                                nullptr);

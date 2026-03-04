@@ -127,6 +127,9 @@ private:
     static void generate_background_textures();
     static void generate_shadow_texture();
     static void generate_audio_assets();
+    static void generate_flat_normal_texture();
+    static void generate_tileset_normal();
+    static void generate_player_normal();
 
     GLFWwindow* window_ = nullptr;
     ResourceManager resources_;

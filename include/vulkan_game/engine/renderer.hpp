@@ -90,6 +90,9 @@ private:
     ResourceHandle<Texture> font_texture_;
     ResourceHandle<Texture> particle_texture_;
     ResourceHandle<Texture> shadow_texture_;
+    ResourceHandle<Texture> flat_normal_texture_;
+    ResourceHandle<Texture> tileset_normal_texture_;
+    ResourceHandle<Texture> entity_normal_texture_;
     std::vector<ResourceHandle<Texture>> bg_textures_;
     std::array<VkDescriptorSet, kMaxFramesInFlight> descriptor_sets_{};
     std::array<VkDescriptorSet, kMaxFramesInFlight> tilemap_descriptor_sets_{};

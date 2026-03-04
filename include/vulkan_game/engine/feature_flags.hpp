@@ -14,6 +14,7 @@ struct FeatureFlags {
     bool vignette = true;
     bool tone_mapping = true;
     bool fog = true;
+    bool normal_mapping = true;
 
     // Effects
     bool particles = true;
@@ -43,7 +44,7 @@ struct FeatureFlags {
         bool FeatureFlags::* ptr;
     };
 
-    static constexpr std::array<Entry, 20> entries() {
+    static constexpr std::array<Entry, 21> entries() {
         return {{
             {"Parallax BG",    "24",  "RENDERING", &FeatureFlags::parallax_backgrounds},
             {"Point Lights",   "11",  "RENDERING", &FeatureFlags::point_lights},
@@ -52,6 +53,7 @@ struct FeatureFlags {
             {"Vignette",       "22",  "RENDERING", &FeatureFlags::vignette},
             {"Tone Mapping",   "22",  "RENDERING", &FeatureFlags::tone_mapping},
             {"Fog",            "25",  "RENDERING", &FeatureFlags::fog},
+            {"Normal Maps",    "35",  "RENDERING", &FeatureFlags::normal_mapping},
             {"Particles",      "12",  "EFFECTS",   &FeatureFlags::particles},
             {"Weather",        "25",  "EFFECTS",   &FeatureFlags::weather},
             {"Blob Shadows",   "28",  "EFFECTS",   &FeatureFlags::blob_shadows},

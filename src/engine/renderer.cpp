@@ -34,17 +34,27 @@ void Renderer::init(GLFWwindow* window, ResourceManager& resources) {
     test_texture_ = resources.load_texture("assets/textures/player_sheet.png");
     tileset_texture_ = resources.load_texture("assets/textures/tileset.png");
 
+    // Load normal map textures (UNORM format — linear data, not sRGB)
+    flat_normal_texture_ = resources.load_texture("assets/textures/flat_normal.png",
+        VK_FILTER_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, VK_FORMAT_R8G8B8A8_UNORM);
+    tileset_normal_texture_ = resources.load_texture("assets/textures/tileset_normal.png",
+        VK_FILTER_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, VK_FORMAT_R8G8B8A8_UNORM);
+    entity_normal_texture_ = resources.load_texture("assets/textures/player_normal.png",
+        VK_FILTER_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, VK_FORMAT_R8G8B8A8_UNORM);
+
     std::array<VkBuffer, kMaxFramesInFlight> ubo_buffers;
     for (uint32_t i = 0; i < kMaxFramesInFlight; i++) {
         ubo_buffers[i] = uniform_buffers_[i].buffer();
     }
     descriptor_sets_ = descriptors_.allocate_sprite_sets(
         context_.device(), ubo_buffers, sizeof(UniformBufferObject), test_texture_->image_view(),
-        test_texture_->sampler());
+        test_texture_->sampler(),
+        entity_normal_texture_->image_view(), entity_normal_texture_->sampler());
 
     tilemap_descriptor_sets_ = descriptors_.allocate_sprite_sets(
         context_.device(), ubo_buffers, sizeof(UniformBufferObject),
-        tileset_texture_->image_view(), tileset_texture_->sampler());
+        tileset_texture_->image_view(), tileset_texture_->sampler(),
+        tileset_normal_texture_->image_view(), tileset_normal_texture_->sampler());
 
     create_sprite_pipeline();
     create_outline_pipeline();
@@ -67,7 +77,8 @@ void Renderer::init_font(const FontAtlas& atlas, ResourceManager& resources) {
     }
     font_descriptor_sets_ = descriptors_.allocate_sprite_sets(
         context_.device(), ubo_buffers, sizeof(UniformBufferObject),
-        font_texture_->image_view(), font_texture_->sampler());
+        font_texture_->image_view(), font_texture_->sampler(),
+        flat_normal_texture_->image_view(), flat_normal_texture_->sampler());
 
     // UI uniform buffers with orthographic projection
     for (auto& buf : ui_uniform_buffers_) {
@@ -90,7 +101,8 @@ void Renderer::init_font(const FontAtlas& atlas, ResourceManager& resources) {
     }
     ui_descriptor_sets_ = descriptors_.allocate_sprite_sets(
         context_.device(), ui_ubo_buffers, sizeof(UniformBufferObject),
-        font_texture_->image_view(), font_texture_->sampler());
+        font_texture_->image_view(), font_texture_->sampler(),
+        flat_normal_texture_->image_view(), flat_normal_texture_->sampler());
 
     font_initialized_ = true;
 }
@@ -104,7 +116,8 @@ void Renderer::init_particles(ResourceManager& resources) {
     }
     particle_descriptor_sets_ = descriptors_.allocate_sprite_sets(
         context_.device(), ubo_buffers, sizeof(UniformBufferObject),
-        particle_texture_->image_view(), particle_texture_->sampler());
+        particle_texture_->image_view(), particle_texture_->sampler(),
+        flat_normal_texture_->image_view(), flat_normal_texture_->sampler());
 }
 
 void Renderer::init_shadows(ResourceManager& resources) {
@@ -116,7 +129,8 @@ void Renderer::init_shadows(ResourceManager& resources) {
     }
     shadow_descriptor_sets_ = descriptors_.allocate_sprite_sets(
         context_.device(), ubo_buffers, sizeof(UniformBufferObject),
-        shadow_texture_->image_view(), shadow_texture_->sampler());
+        shadow_texture_->image_view(), shadow_texture_->sampler(),
+        flat_normal_texture_->image_view(), flat_normal_texture_->sampler());
 }
 
 void Renderer::init_backgrounds(const std::vector<ResourceHandle<Texture>>& bg_textures) {
@@ -131,7 +145,8 @@ void Renderer::init_backgrounds(const std::vector<ResourceHandle<Texture>>& bg_t
     for (const auto& tex : bg_textures_) {
         auto sets = descriptors_.allocate_sprite_sets(
             context_.device(), ubo_buffers, sizeof(UniformBufferObject),
-            tex->image_view(), tex->sampler());
+            tex->image_view(), tex->sampler(),
+            flat_normal_texture_->image_view(), flat_normal_texture_->sampler());
         bg_descriptor_sets_.push_back(sets);
     }
 }
@@ -200,7 +215,8 @@ void Renderer::draw_scene(Scene& scene,
         auto& scene_lights = scene.lights();
         int light_count = static_cast<int>(std::min(scene_lights.size(),
                                                     static_cast<size_t>(kMaxLights)));
-        ubo.light_params = glm::ivec4(light_count, 0, 0, 0);
+        int normal_map_flag = flags.normal_mapping ? 1 : 0;
+        ubo.light_params = glm::ivec4(light_count, normal_map_flag, 0, 0);
         for (int i = 0; i < light_count; i++) {
             ubo.lights[i] = scene_lights[i];
         }
@@ -580,6 +596,9 @@ void Renderer::shutdown() {
     destroy_tex(tileset_texture_);
     destroy_tex(particle_texture_);
     destroy_tex(shadow_texture_);
+    destroy_tex(flat_normal_texture_);
+    destroy_tex(tileset_normal_texture_);
+    destroy_tex(entity_normal_texture_);
     for (auto& tex : bg_textures_) {
         destroy_tex(tex);
     }
