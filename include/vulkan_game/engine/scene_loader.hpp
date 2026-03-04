@@ -2,6 +2,7 @@
 
 #include "vulkan_game/engine/dialog.hpp"
 #include "vulkan_game/engine/direction.hpp"
+#include "vulkan_game/engine/minimap.hpp"
 #include "vulkan_game/engine/particle.hpp"
 #include "vulkan_game/engine/tilemap.hpp"
 #include "vulkan_game/engine/types.hpp"
@@ -9,6 +10,7 @@
 #include <glm/glm.hpp>
 #include <nlohmann/json.hpp>
 
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -78,6 +80,9 @@ struct SceneData {
 
     // Portals
     std::vector<PortalData> portals;
+
+    // Minimap
+    std::optional<Minimap::Config> minimap_config;
 
     // Emitter templates
     EmitterConfig torch_emitter;

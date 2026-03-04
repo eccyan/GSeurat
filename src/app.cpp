@@ -1057,6 +1057,11 @@ void App::init_scene(const std::string& scene_path) {
         audio_.set_torch_position(static_cast<uint32_t>(i), scene_data.torch_audio_positions[i]);
     }
 
+    // Minimap config
+    if (scene_data.minimap_config) {
+        minimap_.set_config(*scene_data.minimap_config);
+    }
+
     // Store portals for transition checking
     portals_ = std::move(scene_data.portals);
 }
@@ -1267,6 +1272,28 @@ void App::update_game(float dt) {
     } else {
         reflection_sprites_.clear();
     }
+
+    // Minimap
+    if (feature_flags_.minimap && scene_.tile_layer().has_value()) {
+        auto* player_tf = world_.try_get<ecs::Transform>(player_id_);
+        glm::vec2 player_pos = player_tf ? glm::vec2(player_tf->position.x, player_tf->position.y)
+                                         : glm::vec2(0.0f);
+
+        std::vector<std::pair<glm::vec2, glm::vec4>> npc_markers;
+        for (auto npc : npc_ids_) {
+            auto* tf = world_.try_get<ecs::Transform>(npc);
+            auto* spr = world_.try_get<ecs::Sprite>(npc);
+            if (tf && spr) {
+                npc_markers.push_back({{tf->position.x, tf->position.y}, spr->tint});
+            }
+        }
+
+        minimap_sprites_.clear();
+        minimap_.build_sprites(*scene_.tile_layer(), player_pos, npc_markers, minimap_sprites_);
+    } else {
+        minimap_sprites_.clear();
+    }
+
     update_audio(dt);
 }
 
@@ -1408,6 +1435,9 @@ void App::main_loop() {
         const auto& ctx_batches = ui_ctx_.draw_batches();
         for (const auto& b : ctx_batches) {
             if (!b.sprites.empty()) ui_batches.push_back(b);
+        }
+        if (feature_flags_.minimap && !minimap_sprites_.empty()) {
+            ui_batches.push_back(ui::UIDrawBatch{minimap_sprites_, std::nullopt});
         }
 
         // Pass screen effects to renderer

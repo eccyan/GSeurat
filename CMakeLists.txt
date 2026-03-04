@@ -155,6 +155,7 @@ add_library(vulkan_game_core OBJECT
     src/engine/font_atlas.cpp
     src/engine/text_renderer.cpp
     src/engine/locale_manager.cpp
+    src/engine/minimap.cpp
     src/engine/control_server.cpp
     src/engine/post_process.cpp
     src/engine/resource_manager.cpp

@@ -11,6 +11,7 @@
 #include "vulkan_game/engine/game_state.hpp"
 #include "vulkan_game/engine/input_manager.hpp"
 #include "vulkan_game/engine/locale_manager.hpp"
+#include "vulkan_game/engine/minimap.hpp"
 #include "vulkan_game/engine/particle.hpp"
 #include "vulkan_game/engine/renderer.hpp"
 #include "vulkan_game/engine/resource_manager.hpp"
@@ -182,6 +183,10 @@ private:
 
     // Screen effects
     ScreenEffects screen_effects_;
+
+    // Minimap
+    Minimap minimap_;
+    std::vector<SpriteDrawInfo> minimap_sprites_;
 
     // Audio
     AudioSystem audio_;

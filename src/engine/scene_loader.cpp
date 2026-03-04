@@ -233,6 +233,19 @@ SceneData SceneLoader::from_json(const nlohmann::json& j) {
         data.weather.transition_speed = w.value("transition_speed", 1.0f);
     }
 
+    // Minimap
+    if (j.contains("minimap")) {
+        const auto& m = j["minimap"];
+        Minimap::Config cfg;
+        cfg.screen_x = m.value("x", cfg.screen_x);
+        cfg.screen_y = m.value("y", cfg.screen_y);
+        cfg.size = m.value("size", cfg.size);
+        cfg.border = m.value("border", cfg.border);
+        if (m.contains("border_color")) cfg.border_color = parse_vec4(m["border_color"]);
+        if (m.contains("bg_color")) cfg.bg_color = parse_vec4(m["bg_color"]);
+        data.minimap_config = cfg;
+    }
+
     return data;
 }
 
