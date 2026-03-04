@@ -5,10 +5,12 @@
 #include <array>
 #include <cstring>
 #include <stdexcept>
+#include <vector>
 
 #include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#include <stb_image_write.h>
 
 namespace vulkan_game {
 
@@ -397,6 +399,67 @@ void Renderer::draw_scene(Scene& scene,
 
     // End composite render pass
     vkCmdEndRenderPass(cmd);
+
+    // Screenshot: copy swapchain image to staging buffer
+    bool screenshot_requested = !screenshot_path_.empty();
+    if (screenshot_requested) {
+        // Lazy-init readback buffer
+        if (!screenshot_buffer_initialized_) {
+            VkDeviceSize buf_size = static_cast<VkDeviceSize>(swapchain_.extent().width) *
+                                    swapchain_.extent().height * 4;
+            screenshot_staging_buffer_ = Buffer::create_readback(context_.allocator(), buf_size);
+            screenshot_buffer_initialized_ = true;
+        }
+
+        VkImage src_image = swapchain_.image(image_index);
+
+        // Barrier: PRESENT_SRC → TRANSFER_SRC
+        VkImageMemoryBarrier to_transfer{};
+        to_transfer.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        to_transfer.srcAccessMask = VK_ACCESS_MEMORY_READ_BIT;
+        to_transfer.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+        to_transfer.oldLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+        to_transfer.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+        to_transfer.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        to_transfer.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        to_transfer.image = src_image;
+        to_transfer.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+
+        vkCmdPipelineBarrier(cmd,
+            VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+            VK_PIPELINE_STAGE_TRANSFER_BIT,
+            0, 0, nullptr, 0, nullptr, 1, &to_transfer);
+
+        // Copy image to buffer
+        VkBufferImageCopy region{};
+        region.bufferOffset = 0;
+        region.bufferRowLength = 0;
+        region.bufferImageHeight = 0;
+        region.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+        region.imageOffset = {0, 0, 0};
+        region.imageExtent = {swapchain_.extent().width, swapchain_.extent().height, 1};
+
+        vkCmdCopyImageToBuffer(cmd, src_image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                               screenshot_staging_buffer_.buffer(), 1, &region);
+
+        // Barrier: TRANSFER_SRC → PRESENT_SRC
+        VkImageMemoryBarrier to_present{};
+        to_present.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        to_present.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+        to_present.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT;
+        to_present.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+        to_present.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+        to_present.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        to_present.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        to_present.image = src_image;
+        to_present.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+
+        vkCmdPipelineBarrier(cmd,
+            VK_PIPELINE_STAGE_TRANSFER_BIT,
+            VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+            0, 0, nullptr, 0, nullptr, 1, &to_present);
+    }
+
     vkEndCommandBuffer(cmd);
 
     auto render_done_sem = sync_.render_finished_semaphore(image_index);
@@ -416,6 +479,31 @@ void Renderer::draw_scene(Scene& scene,
         throw std::runtime_error("Failed to submit draw command buffer");
     }
 
+    // Screenshot readback: wait for GPU, read buffer, swizzle BGRA→RGBA, write PNG
+    if (screenshot_requested) {
+        vkWaitForFences(device, 1, &frame_sync.in_flight, VK_TRUE, UINT64_MAX);
+        vmaInvalidateAllocation(context_.allocator(), screenshot_staging_buffer_.allocation(), 0, VK_WHOLE_SIZE);
+
+        uint32_t w = swapchain_.extent().width;
+        uint32_t h = swapchain_.extent().height;
+        auto* src = static_cast<const uint8_t*>(screenshot_staging_buffer_.mapped());
+
+        std::vector<uint8_t> rgba(w * h * 4);
+        for (uint32_t i = 0; i < w * h; ++i) {
+            rgba[i * 4 + 0] = src[i * 4 + 2]; // B → R
+            rgba[i * 4 + 1] = src[i * 4 + 1]; // G → G
+            rgba[i * 4 + 2] = src[i * 4 + 0]; // R → B
+            rgba[i * 4 + 3] = 255;             // A = opaque
+        }
+
+        screenshot_write_ok_ = stbi_write_png(screenshot_path_.c_str(),
+                                               static_cast<int>(w), static_cast<int>(h),
+                                               4, rgba.data(), static_cast<int>(w * 4)) != 0;
+        screenshot_width_ = w;
+        screenshot_height_ = h;
+        screenshot_path_.clear();
+    }
+
     VkPresentInfoKHR present{};
     present.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
     present.waitSemaphoreCount = 1;
@@ -428,6 +516,11 @@ void Renderer::draw_scene(Scene& scene,
     vkQueuePresentKHR(context_.graphics_queue(), &present);
 
     current_frame_ = (current_frame_ + 1) % kMaxFramesInFlight;
+}
+
+void Renderer::request_screenshot(const std::string& path) {
+    screenshot_path_ = path;
+    screenshot_write_ok_ = false;
 }
 
 void Renderer::draw_frame() {
@@ -462,6 +555,10 @@ void Renderer::shutdown() {
         for (auto& buf : ui_uniform_buffers_) {
             buf.destroy(context_.allocator());
         }
+    }
+
+    if (screenshot_buffer_initialized_) {
+        screenshot_staging_buffer_.destroy(context_.allocator());
     }
 
     for (auto& buf : uniform_buffers_) {

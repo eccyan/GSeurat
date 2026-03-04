@@ -19,6 +19,7 @@
 #include "vulkan_game/engine/vk_context.hpp"
 
 #include <array>
+#include <string>
 #include <vector>
 
 struct GLFWwindow;
@@ -50,6 +51,11 @@ public:
 
     void set_fade_amount(float f) { fade_amount_ = f; }
     float fade_amount() const { return fade_amount_; }
+
+    void request_screenshot(const std::string& path);
+    bool screenshot_write_ok() const { return screenshot_write_ok_; }
+    uint32_t screenshot_width() const { return screenshot_width_; }
+    uint32_t screenshot_height() const { return screenshot_height_; }
 
     VkContext& context() { return context_; }
     CommandPool& command_pool() { return command_pool_; }
@@ -95,6 +101,14 @@ private:
     uint32_t acquire_semaphore_index_ = 0;
     float last_time_ = 0.0f;
     bool font_initialized_ = false;
+
+    // Screenshot capture
+    std::string screenshot_path_;
+    Buffer screenshot_staging_buffer_;
+    bool screenshot_buffer_initialized_ = false;
+    bool screenshot_write_ok_ = false;
+    uint32_t screenshot_width_ = 0;
+    uint32_t screenshot_height_ = 0;
 };
 
 }  // namespace vulkan_game

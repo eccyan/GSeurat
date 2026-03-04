@@ -18,6 +18,7 @@ public:
     VkExtent2D extent() const { return extent_; }
     const std::vector<VkImageView>& image_views() const { return image_views_; }
     uint32_t image_count() const { return static_cast<uint32_t>(image_views_.size()); }
+    VkImage image(uint32_t index) const { return images_[index]; }
 
 private:
     VkSwapchainKHR swapchain_ = VK_NULL_HANDLE;

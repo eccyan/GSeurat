@@ -1198,6 +1198,20 @@ void App::main_loop() {
 
         renderer_.draw_scene(scene_, entity_sprites_, reflection_sprites_, shadow_sprites_,
                              particle_sprites, overlay_sprites_, ui_batches, feature_flags_);
+
+        // Send screenshot response after draw completes
+        if (!screenshot_response_path_.empty()) {
+            if (renderer_.screenshot_write_ok()) {
+                control_server_.send({{"type", "screenshot"},
+                                      {"path", screenshot_response_path_},
+                                      {"width", renderer_.screenshot_width()},
+                                      {"height", renderer_.screenshot_height()}});
+            } else {
+                control_server_.send({{"type", "error"},
+                                      {"message", "Failed to write screenshot to: " + screenshot_response_path_}});
+            }
+            screenshot_response_path_.clear();
+        }
     }
 }
 
@@ -1271,6 +1285,16 @@ void App::process_commands() {
                 if (frames > 600) frames = 600;
                 pending_steps_ += frames;
                 // State will be sent after steps are consumed in main_loop
+            }
+        } else if (cmd == "screenshot") {
+            if (cmd_json.contains("path") && cmd_json["path"].is_string()) {
+                std::string path = cmd_json["path"];
+                renderer_.request_screenshot(path);
+                screenshot_response_path_ = path;
+                // Response sent after draw_scene completes
+            } else {
+                control_server_.send({{"type", "error"},
+                                      {"message", "missing 'path' field"}});
             }
         } else {
             control_server_.send({{"type", "error"},

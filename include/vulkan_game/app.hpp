@@ -192,6 +192,7 @@ private:
     int pending_steps_ = 0;
     uint64_t tick_ = 0;
     static constexpr float kFixedDt = 1.0f / 60.0f;
+    std::string screenshot_response_path_;
 
     // Per-frame draw lists built in update_game, consumed by draw_scene
     std::vector<SpriteDrawInfo> overlay_sprites_;
