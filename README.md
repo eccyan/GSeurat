@@ -63,6 +63,103 @@ cmake --preset linux-debug
 cmake --build --preset linux-debug
 ```
 
+## AI Debugging via Control Server
+
+The game exposes a Unix domain socket at `/tmp/vulkan_game.sock` for external control. AI agents (Claude Code, etc.) can send commands, step the game deterministically, and capture screenshots to visually inspect rendering — all without human interaction.
+
+### Quick Start
+
+```bash
+# 1. Build and launch the game
+cmake --build --preset macos-debug
+cd build/macos-debug && ./vulkan_game &
+
+# 2. Connect and send commands (Python example)
+python3 -c "
+import socket, json
+
+s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+s.connect('/tmp/vulkan_game.sock')
+
+def send(cmd):
+    s.sendall(json.dumps(cmd).encode() + b'\n')
+    return json.loads(s.recv(4096).decode())
+
+# Switch to deterministic step mode
+print(send({'cmd': 'set_mode', 'mode': 'step'}))
+
+# Move player right for 30 frames (~0.5s)
+send({'cmd': 'move', 'direction': 'right'})
+print(send({'cmd': 'step', 'frames': 30}))
+
+# Stop and capture a screenshot
+send({'cmd': 'stop'})
+send({'cmd': 'step', 'frames': 1})
+print(send({'cmd': 'screenshot', 'path': '/tmp/debug.png'}))
+
+s.close()
+"
+```
+
+### Protocol
+
+All communication uses JSON Lines (one JSON object per line) over the Unix socket.
+
+#### Commands
+
+| Command | Payload | Description |
+|---------|---------|-------------|
+| `get_state` | — | Returns player/NPC positions, facing, animation, dialog state, tick count |
+| `get_map` | — | Returns tilemap data (dimensions, tiles, solid flags) |
+| `move` | `direction`: `"up"/"down"/"left"/"right"`, `sprint`: bool | Inject movement input |
+| `stop` | — | Clear all injected inputs |
+| `interact` | — | Press the interact key (E) for one frame |
+| `set_mode` | `mode`: `"step"/"realtime"` | Switch between deterministic and real-time modes |
+| `step` | `frames`: int (1-600) | Advance N frames at fixed 1/60s dt (step mode only) |
+| `screenshot` | `path`: string | Capture current frame to PNG file |
+
+#### Responses
+
+```jsonc
+// State (from get_state or after step)
+{"type": "state", "tick": 42, "game_mode": "explore",
+ "player": {"x": 3.5, "y": 2.0, "direction": "down", "animation": "idle_down"},
+ "npcs": [{"index": 0, "x": 5.0, "y": 3.0, "direction": "left"}]}
+
+// Screenshot
+{"type": "screenshot", "path": "/tmp/debug.png", "width": 2560, "height": 1440}
+
+// Events (emitted automatically)
+{"type": "dialog_started", "speaker_key": "npc_guard", "text_key": "guard_greeting"}
+{"type": "dialog_advanced", "line": 1}
+{"type": "dialog_ended"}
+
+// Errors
+{"type": "error", "message": "not in step mode"}
+```
+
+### Debugging Workflow for AI Agents
+
+The recommended loop for AI-driven visual debugging:
+
+1. **Launch** the game in the background
+2. **Connect** to `/tmp/vulkan_game.sock`
+3. **Switch to step mode** — game pauses, frames advance only on `step` commands
+4. **Send commands** (move, interact, step) to reproduce the issue
+5. **Capture screenshot** — read the PNG to visually inspect rendering
+6. **Inspect state** via `get_state` / `get_map` for numerical verification
+7. **Iterate** — make code changes, rebuild, relaunch, repeat
+
+Step mode ensures deterministic reproduction: the same sequence of commands always produces the same game state, regardless of wall-clock timing.
+
+### Notes
+
+- The socket auto-cleans stale files on startup
+- Only one client connection at a time
+- Client disconnect automatically reverts to real-time mode
+- Screenshot dimensions reflect the actual framebuffer (e.g., 2560x1440 on Retina, 1280x720 otherwise)
+- Screenshots capture the final composited frame including post-processing (bloom, DoF, vignette, fog)
+
 ## Project Structure
 
 ```
