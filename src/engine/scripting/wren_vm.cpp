@@ -45,6 +45,11 @@ void WrenVM::shutdown() {
 }
 
 bool WrenVM::load_module(const std::string& module_name, const std::string& path) {
+    // Skip if this module has already been compiled in the VM.
+    if (modules_.contains(module_name) && !modules_[module_name].source.empty()) {
+        return true;
+    }
+
     std::ifstream file(path);
     if (!file.is_open()) {
         std::fprintf(stderr, "WrenVM: failed to open %s\n", path.c_str());
