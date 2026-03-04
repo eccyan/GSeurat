@@ -70,8 +70,11 @@ void Renderer::init_font(const FontAtlas& atlas, ResourceManager& resources) {
     for (auto& buf : ui_uniform_buffers_) {
         buf = Buffer::create_uniform(context_.allocator(), sizeof(UniformBufferObject));
     }
+    // Vulkan has Y-down in NDC with positive viewport height, so swap
+    // bottom/top (3rd/4th args) to get standard screen-space coordinates
+    // where y=0 is the top of the screen and y=kWindowHeight is the bottom.
     auto ortho_vp = glm::ortho(0.0f, static_cast<float>(kWindowWidth),
-                                static_cast<float>(kWindowHeight), 0.0f, -1.0f, 1.0f);
+                                0.0f, static_cast<float>(kWindowHeight), -1.0f, 1.0f);
     for (auto& buf : ui_uniform_buffers_) {
         UniformBufferObject ubo{};
         ubo.vp = ortho_vp;
@@ -215,6 +218,18 @@ void Renderer::draw_scene(Scene& scene,
                     vkCmdDrawIndexed(cmd, bg_flush.index_count, 1, 0, bg_flush.vertex_offset, 0);
                 }
             }
+
+            // Clear depth buffer after backgrounds so they don't occlude scene
+            // geometry. The HD-2D camera at z≈9.83 makes high-Z backgrounds
+            // appear closer in camera space than low-Z entities/tilemap.
+            VkClearAttachment clear_depth{};
+            clear_depth.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+            clear_depth.clearValue.depthStencil = {1.0f, 0};
+            VkClearRect clear_rect{};
+            clear_rect.rect.extent = swapchain_.extent();
+            clear_rect.baseArrayLayer = 0;
+            clear_rect.layerCount = 1;
+            vkCmdClearAttachments(cmd, 1, &clear_depth, 1, &clear_rect);
         }
 
         // Tilemap pass
