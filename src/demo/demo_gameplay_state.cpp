@@ -30,7 +30,7 @@ void DemoGameplayState::update(App& app, float dt) {
 
     // Panel navigation (arrow keys, no conflict with WASD)
     if (panel_visible_) {
-        constexpr int item_count = 19;
+        constexpr int item_count = 20;
         if (app.input().was_key_pressed(GLFW_KEY_UP)) {
             selected_item_ = (selected_item_ - 1 + item_count) % item_count;
             scroll_needs_update_ = true;

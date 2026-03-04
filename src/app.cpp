@@ -1043,6 +1043,11 @@ void App::update_game(float dt) {
     }
     ecs::systems::lighting_rebuild(world_, scene_, feature_flags_.npc_lights);
     ecs::systems::sprite_collect(world_, entity_sprites_, feature_flags_.y_sort_depth);
+    if (feature_flags_.sprite_outlines) {
+        ecs::systems::outline_collect(world_, outline_sprites_, 0.06f, feature_flags_.y_sort_depth);
+    } else {
+        outline_sprites_.clear();
+    }
     if (feature_flags_.blob_shadows) {
         ecs::systems::shadow_collect(world_, shadow_sprites_, feature_flags_.y_sort_depth);
     } else {
@@ -1196,8 +1201,9 @@ void App::main_loop() {
             if (!b.sprites.empty()) ui_batches.push_back(b);
         }
 
-        renderer_.draw_scene(scene_, entity_sprites_, reflection_sprites_, shadow_sprites_,
-                             particle_sprites, overlay_sprites_, ui_batches, feature_flags_);
+        renderer_.draw_scene(scene_, entity_sprites_, outline_sprites_, reflection_sprites_,
+                             shadow_sprites_, particle_sprites, overlay_sprites_, ui_batches,
+                             feature_flags_);
 
         // Send screenshot response after draw completes
         if (!screenshot_response_path_.empty()) {

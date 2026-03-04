@@ -47,6 +47,7 @@ void Renderer::init(GLFWwindow* window, ResourceManager& resources) {
         tileset_texture_->image_view(), tileset_texture_->sampler());
 
     create_sprite_pipeline();
+    create_outline_pipeline();
     create_ui_pipeline();
 
     float aspect = static_cast<float>(kWindowWidth) / static_cast<float>(kWindowHeight);
@@ -137,6 +138,7 @@ void Renderer::init_backgrounds(const std::vector<ResourceHandle<Texture>>& bg_t
 
 void Renderer::draw_scene(Scene& scene,
                            const std::vector<SpriteDrawInfo>& entity_sprites,
+                           const std::vector<SpriteDrawInfo>& outline_sprites,
                            const std::vector<SpriteDrawInfo>& reflection_sprites,
                            const std::vector<SpriteDrawInfo>& shadow_sprites,
                            const std::vector<SpriteDrawInfo>& particles,
@@ -282,6 +284,39 @@ void Renderer::draw_scene(Scene& scene,
                 vkCmdDrawIndexed(cmd, shadow_flush.index_count, 1, 0,
                                  shadow_flush.vertex_offset, 0);
             }
+        }
+
+        // Outline pass (between shadows and entities)
+        if (flags.sprite_outlines && !outline_sprites.empty()) {
+            vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, outline_pipeline_);
+
+            struct OutlinePushConstants {
+                float color[4];
+                float thickness;
+                float _pad[3];
+            } outline_pc = {
+                {0.05f, 0.02f, 0.02f, 1.0f},  // dark near-black
+                1.2f,
+                {0.0f, 0.0f, 0.0f}
+            };
+            vkCmdPushConstants(cmd, outline_pipeline_layout_, VK_SHADER_STAGE_FRAGMENT_BIT,
+                               0, sizeof(OutlinePushConstants), &outline_pc);
+
+            sprite_batch_.begin();
+            for (const auto& spr : outline_sprites) {
+                sprite_batch_.draw(spr);
+            }
+            auto outline_flush = sprite_batch_.flush(current_frame_);
+            if (outline_flush.index_count > 0) {
+                vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                        outline_pipeline_layout_, 0, 1,
+                                        &descriptor_sets_[current_frame_], 0, nullptr);
+                vkCmdDrawIndexed(cmd, outline_flush.index_count, 1, 0,
+                                 outline_flush.vertex_offset, 0);
+            }
+
+            // Re-bind sprite pipeline for subsequent passes
+            vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, sprite_pipeline_);
         }
 
         // Entity pass
@@ -530,7 +565,7 @@ void Renderer::draw_frame() {
     info.position = {0.0f, 0.0f, 0.0f};
     info.size = {1.0f, 1.0f};
     info.color = {1.0f, 1.0f, 1.0f, 1.0f};
-    draw_scene(test_scene, {info}, {}, {}, {}, {}, {});
+    draw_scene(test_scene, {info}, {}, {}, {}, {}, {}, {});
 }
 
 void Renderer::shutdown() {
@@ -567,6 +602,12 @@ void Renderer::shutdown() {
     sprite_batch_.shutdown(context_.allocator());
 
     vkDestroyPipeline(context_.device(), sprite_pipeline_, nullptr);
+    if (outline_pipeline_ != VK_NULL_HANDLE) {
+        vkDestroyPipeline(context_.device(), outline_pipeline_, nullptr);
+    }
+    if (outline_pipeline_layout_ != VK_NULL_HANDLE) {
+        vkDestroyPipelineLayout(context_.device(), outline_pipeline_layout_, nullptr);
+    }
     if (ui_pipeline_ != VK_NULL_HANDLE) {
         vkDestroyPipeline(context_.device(), ui_pipeline_, nullptr);
     }
@@ -614,6 +655,52 @@ void Renderer::create_sprite_pipeline() {
                            .set_layout(sprite_pipeline_layout_)
                            .set_render_pass(post_process_.scene_render_pass(), 0)
                            .build(device);
+
+    vkDestroyShaderModule(device, frag, nullptr);
+    vkDestroyShaderModule(device, vert, nullptr);
+}
+
+void Renderer::create_outline_pipeline() {
+    auto device = context_.device();
+
+    auto vert = load_shader_module(device, "shaders/sprite.vert.spv");
+    auto frag = load_shader_module(device, "shaders/sprite_outline.frag.spv");
+
+    // Pipeline layout with push constants for outline parameters
+    VkPushConstantRange push_range{};
+    push_range.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+    push_range.offset = 0;
+    push_range.size = 32;  // outline_color(16) + thickness(4) + pad(12)
+
+    VkPipelineLayoutCreateInfo layout_info{};
+    layout_info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    auto desc_layout = descriptors_.sprite_layout();
+    layout_info.setLayoutCount = 1;
+    layout_info.pSetLayouts = &desc_layout;
+    layout_info.pushConstantRangeCount = 1;
+    layout_info.pPushConstantRanges = &push_range;
+
+    if (vkCreatePipelineLayout(device, &layout_info, nullptr, &outline_pipeline_layout_) !=
+        VK_SUCCESS) {
+        throw std::runtime_error("Failed to create outline pipeline layout");
+    }
+
+    auto binding = Vertex::binding_description();
+    auto attributes = Vertex::attribute_descriptions();
+
+    outline_pipeline_ = PipelineBuilder()
+                            .set_shaders(vert, frag)
+                            .set_vertex_input(binding, attributes.data(),
+                                              static_cast<uint32_t>(attributes.size()))
+                            .set_input_assembly(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST)
+                            .set_viewport_scissor(swapchain_.extent())
+                            .set_rasterizer(VK_POLYGON_MODE_FILL, VK_CULL_MODE_BACK_BIT)
+                            .set_multisampling(VK_SAMPLE_COUNT_1_BIT)
+                            .set_depth_stencil(true, true)
+                            .set_color_blend_alpha()
+                            .set_layout(outline_pipeline_layout_)
+                            .set_render_pass(post_process_.scene_render_pass(), 0)
+                            .build(device);
 
     vkDestroyShaderModule(device, frag, nullptr);
     vkDestroyShaderModule(device, vert, nullptr);

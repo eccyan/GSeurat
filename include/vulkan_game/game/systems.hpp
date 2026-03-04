@@ -25,5 +25,6 @@ void particle_sync(World& world, ParticleSystem& particles, bool footstep_active
 void sprite_collect(World& world, std::vector<SpriteDrawInfo>& out, bool y_sort = false);
 void shadow_collect(World& world, std::vector<SpriteDrawInfo>& out, bool y_sort = false);
 void reflection_collect(World& world, const TileLayer& layer, std::vector<SpriteDrawInfo>& out, bool y_sort = false);
+void outline_collect(World& world, std::vector<SpriteDrawInfo>& out, float outline_expand, bool y_sort = false);
 
 }  // namespace vulkan_game::ecs::systems

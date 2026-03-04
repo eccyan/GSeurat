@@ -147,6 +147,7 @@ private:
     ecs::Entity player_id_ = ecs::kNullEntity;
     std::vector<ecs::Entity> npc_ids_;
     std::vector<SpriteDrawInfo> entity_sprites_;
+    std::vector<SpriteDrawInfo> outline_sprites_;
     std::vector<SpriteDrawInfo> shadow_sprites_;
     std::vector<SpriteDrawInfo> reflection_sprites_;
 

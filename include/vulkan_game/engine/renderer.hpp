@@ -38,6 +38,7 @@ public:
     void draw_frame();
     void draw_scene(Scene& scene,
                     const std::vector<SpriteDrawInfo>& entity_sprites = {},
+                    const std::vector<SpriteDrawInfo>& outline_sprites = {},
                     const std::vector<SpriteDrawInfo>& reflection_sprites = {},
                     const std::vector<SpriteDrawInfo>& shadow_sprites = {},
                     const std::vector<SpriteDrawInfo>& particles = {},
@@ -62,6 +63,7 @@ public:
 
 private:
     void create_sprite_pipeline();
+    void create_outline_pipeline();
     void create_ui_pipeline();
     void create_uniform_buffers();
     void update_uniform_buffer(uint32_t frame_index, const UniformBufferObject& ubo);
@@ -76,6 +78,8 @@ private:
 
     VkPipelineLayout sprite_pipeline_layout_ = VK_NULL_HANDLE;
     VkPipeline sprite_pipeline_ = VK_NULL_HANDLE;
+    VkPipelineLayout outline_pipeline_layout_ = VK_NULL_HANDLE;
+    VkPipeline outline_pipeline_ = VK_NULL_HANDLE;
     VkPipeline ui_pipeline_ = VK_NULL_HANDLE;
 
     SpriteBatch sprite_batch_;

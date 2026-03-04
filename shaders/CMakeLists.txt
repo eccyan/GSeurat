@@ -21,6 +21,7 @@ set(SHADER_SOURCES
     ${SHADER_SOURCE_DIR}/bloom_extract.frag
     ${SHADER_SOURCE_DIR}/bloom_blur.frag
     ${SHADER_SOURCE_DIR}/composite.frag
+    ${SHADER_SOURCE_DIR}/sprite_outline.frag
 )
 
 set(SHADER_OUTPUTS "")

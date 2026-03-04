@@ -227,4 +227,26 @@ void reflection_collect(World& world, const TileLayer& layer, std::vector<Sprite
         });
 }
 
+void outline_collect(World& world, std::vector<SpriteDrawInfo>& out, float outline_expand, bool y_sort) {
+    out.clear();
+    world.view<Transform, Sprite>().each(
+        [&](Entity, Transform& tf, Sprite& sprite) {
+            SpriteDrawInfo info{};
+            float z = y_sort ? -tf.position.y * kYSortScale : 0.0f;
+            info.position = {tf.position.x, tf.position.y, z + 0.001f};  // slightly behind entity
+            info.size = {tf.scale.x + outline_expand, tf.scale.y + outline_expand};
+
+            // Expand UVs proportionally to cover extra texels at edges
+            glm::vec2 uv_range = sprite.uv_max - sprite.uv_min;
+            float expand_u = (outline_expand / tf.scale.x) * uv_range.x * 0.5f;
+            float expand_v = (outline_expand / tf.scale.y) * uv_range.y * 0.5f;
+            info.uv_min = {sprite.uv_min.x - expand_u, sprite.uv_min.y - expand_v};
+            info.uv_max = {sprite.uv_max.x + expand_u, sprite.uv_max.y + expand_v};
+
+            // Pack original UV bounds into color for shader clamping
+            info.color = {sprite.uv_min.x, sprite.uv_min.y, sprite.uv_max.x, sprite.uv_max.y};
+            out.push_back(info);
+        });
+}
+
 }  // namespace vulkan_game::ecs::systems
