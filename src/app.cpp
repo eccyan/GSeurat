@@ -759,7 +759,7 @@ void App::update_game(float dt) {
 
             // Wrapped text goes directly (UIContext doesn't have render_wrapped)
             auto text_sprites = text_renderer_.render_wrapped(
-                text, 60.0f, 580.0f, 0.0f, 0.6f, {1.0f, 1.0f, 1.0f, 1.0f}, 1160.0f);
+                text, 60.0f, 580.0f, 0.0f, 0.6f, {1.0f, 1.0f, 1.0f, 1.0f}, 1160.0f, true);
             ui_sprites_.insert(ui_sprites_.end(), text_sprites.begin(), text_sprites.end());
         }
     } else if (player_id_.valid()) {

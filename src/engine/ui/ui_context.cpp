@@ -52,7 +52,7 @@ bool UIContext::hit_test(float x, float y, float w, float h) const {
 void UIContext::label(const std::string& text, float x, float y, float scale,
                       glm::vec4 color) {
     if (!text_renderer_) return;
-    auto sprites = text_renderer_->render_text(text, x, y, 0.0f, scale, color);
+    auto sprites = text_renderer_->render_text(text, x, y, 0.0f, scale, color, true);
     draw_list_.insert(draw_list_.end(), sprites.begin(), sprites.end());
 }
 
@@ -92,7 +92,7 @@ bool UIContext::button(const std::string& text, float x, float y, float w, float
         float text_y = y - text_size.y * 0.5f;
         glm::vec4 text_color = focused ? glm::vec4{1.0f, 0.9f, 0.3f, 1.0f}
                                        : glm::vec4{0.8f, 0.8f, 0.8f, 1.0f};
-        auto sprites = text_renderer_->render_text(text, text_x, text_y, 0.0f, text_scale, text_color);
+        auto sprites = text_renderer_->render_text(text, text_x, text_y, 0.0f, text_scale, text_color, true);
         draw_list_.insert(draw_list_.end(), sprites.begin(), sprites.end());
     }
 
@@ -136,7 +136,7 @@ bool UIContext::menu_item(const std::string& text, float text_scale) {
     if (text_renderer_) {
         auto sprites = text_renderer_->render_text(
             display, menu_x_ - 80.0f, y - menu_item_height_ * 0.3f,
-            0.0f, text_scale, color);
+            0.0f, text_scale, color, true);
         draw_list_.insert(draw_list_.end(), sprites.begin(), sprites.end());
     }
 

@@ -16,14 +16,16 @@ public:
 
     std::vector<SpriteDrawInfo> render_text(const std::string& text,
                                             float x, float y, float z,
-                                            float scale, glm::vec4 color) const;
+                                            float scale, glm::vec4 color,
+                                            bool y_up = false) const;
 
     glm::vec2 measure_text(const std::string& text, float scale) const;
 
     std::vector<SpriteDrawInfo> render_wrapped(const std::string& text,
                                                float x, float y, float z,
                                                float scale, glm::vec4 color,
-                                               float max_width) const;
+                                               float max_width,
+                                               bool y_up = false) const;
 
 private:
     const FontAtlas* atlas_ = nullptr;

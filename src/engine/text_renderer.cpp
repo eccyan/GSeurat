@@ -43,7 +43,8 @@ void TextRenderer::init(const FontAtlas& atlas) {
 
 std::vector<SpriteDrawInfo> TextRenderer::render_text(const std::string& text,
                                                       float x, float y, float z,
-                                                      float scale, glm::vec4 color) const {
+                                                      float scale, glm::vec4 color,
+                                                      bool y_up) const {
     std::vector<SpriteDrawInfo> sprites;
     if (!atlas_) return sprites;
 
@@ -58,12 +59,23 @@ std::vector<SpriteDrawInfo> TextRenderer::render_text(const std::string& text,
         // Skip invisible glyphs (like space) but advance cursor
         if (g->size.x > 0 && g->size.y > 0) {
             float glyph_x = cursor_x + g->bearing.x * scale;
-            float glyph_y = y + g->bearing.y * scale;  // bearing.y is negative (above baseline)
             float glyph_w = g->size.x * scale;
             float glyph_h = g->size.y * scale;
 
+            float center_y;
+            if (y_up) {
+                // Y-UP (UI ortho): bearing.y (stbtt y0) is negative for above-baseline.
+                // Negate to get glyph top at higher Y, then center below it.
+                float glyph_top = y - g->bearing.y * scale;
+                center_y = glyph_top - glyph_h * 0.5f;
+            } else {
+                // Y-DOWN (3D camera): original convention
+                float glyph_top = y + g->bearing.y * scale;
+                center_y = glyph_top + glyph_h * 0.5f;
+            }
+
             SpriteDrawInfo info{};
-            info.position = {glyph_x + glyph_w * 0.5f, glyph_y + glyph_h * 0.5f, z};
+            info.position = {glyph_x + glyph_w * 0.5f, center_y, z};
             info.size = {glyph_w, glyph_h};
             info.color = color;
             info.uv_min = g->uv_min;
@@ -96,7 +108,8 @@ glm::vec2 TextRenderer::measure_text(const std::string& text, float scale) const
 std::vector<SpriteDrawInfo> TextRenderer::render_wrapped(const std::string& text,
                                                          float x, float y, float z,
                                                          float scale, glm::vec4 color,
-                                                         float max_width) const {
+                                                         float max_width,
+                                                         bool y_up) const {
     std::vector<SpriteDrawInfo> sprites;
     if (!atlas_) return sprites;
 
@@ -140,11 +153,12 @@ std::vector<SpriteDrawInfo> TextRenderer::render_wrapped(const std::string& text
         // Wrap if this word exceeds line width
         if (cursor_x + word_width > x + max_width && cursor_x > x) {
             cursor_x = x;
-            cursor_y += line_h;
+            // In Y-UP next line is lower (smaller Y); in Y-DOWN it's larger Y
+            cursor_y += y_up ? -line_h : line_h;
         }
 
         // Render each character in the word
-        auto word_sprites = render_text(word, cursor_x, cursor_y, z, scale, color);
+        auto word_sprites = render_text(word, cursor_x, cursor_y, z, scale, color, y_up);
         sprites.insert(sprites.end(), word_sprites.begin(), word_sprites.end());
         cursor_x += word_width;
     }
