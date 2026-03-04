@@ -99,7 +99,7 @@ PipelineBuilder& PipelineBuilder::set_depth_stencil(bool depth_test, bool depth_
     depth_stencil_.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
     depth_stencil_.depthTestEnable = depth_test ? VK_TRUE : VK_FALSE;
     depth_stencil_.depthWriteEnable = depth_write ? VK_TRUE : VK_FALSE;
-    depth_stencil_.depthCompareOp = VK_COMPARE_OP_LESS;
+    depth_stencil_.depthCompareOp = VK_COMPARE_OP_ALWAYS;
     return *this;
 }
 

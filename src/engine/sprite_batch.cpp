@@ -99,6 +99,13 @@ FlushResult SpriteBatch::flush(uint32_t frame_index) {
                   return a.position.z > b.position.z;
               });
 
+    // Clamp to remaining buffer capacity
+    uint32_t max_remaining = (kMaxSprites * 4 - frame_vertex_offset_) / 4;
+    if (max_remaining == 0) return {};
+    if (pending_sprites_.size() > max_remaining) {
+        pending_sprites_.resize(max_remaining);
+    }
+
     // Build vertices at current write offset
     auto* verts = static_cast<Vertex*>(vertex_buffers_[frame_index].mapped());
     uint32_t base = frame_vertex_offset_;

@@ -12,7 +12,7 @@ namespace vulkan_game {
 inline constexpr uint32_t kMaxFramesInFlight = 2;
 inline constexpr uint32_t kWindowWidth = 1280;
 inline constexpr uint32_t kWindowHeight = 720;
-inline constexpr uint32_t kMaxSprites = 1024;
+inline constexpr uint32_t kMaxSprites = 2048;
 
 struct Vertex {
     glm::vec3 position;
