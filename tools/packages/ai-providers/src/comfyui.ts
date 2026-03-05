@@ -1,4 +1,4 @@
-import type { ImageProvider, ImageGenerateOptions } from "./types.js";
+import type { ImageProvider, ImageGenerateOptions, AvailabilityResult } from "./types.js";
 
 /** A single node entry in a ComfyUI workflow graph. */
 interface WorkflowNode {
@@ -45,50 +45,54 @@ interface SystemStats {
   system: Record<string, unknown>;
 }
 
-/**
- * Build a minimal txt2img workflow for ComfyUI.
- *
- * Node IDs follow the ComfyUI convention used in the default workflow export:
- *   "4" KSampler checkpoint loader
- *   "5" Empty latent image
- *   "6" CLIP text encode (positive)
- *   "7" CLIP text encode (negative)
- *   "8" VAE decode
- *   "9" Save image
- */
+/** LoRA entry for workflow generation. */
+interface LoraEntry {
+  name: string;
+  weight?: number;
+}
+
+/** Options for building the txt2img workflow. */
+interface WorkflowOptions {
+  prompt: string;
+  negativePrompt: string;
+  width: number;
+  height: number;
+  steps: number;
+  seed: number;
+  cfg: number;
+  samplerName: string;
+  loras: LoraEntry[];
+}
+
 function buildTxt2ImgWorkflow(
-  prompt: string,
-  width: number,
-  height: number,
-  steps: number,
-  seed: number
+  opts: WorkflowOptions
 ): Record<string, WorkflowNode> {
-  return {
+  const nodes: Record<string, WorkflowNode> = {
     "4": {
       class_type: "CheckpointLoaderSimple",
       inputs: {
-        ckpt_name: "v1-5-pruned-emaonly.ckpt",
+        ckpt_name: "v1-5-pruned-emaonly.safetensors",
       },
     },
     "5": {
       class_type: "EmptyLatentImage",
       inputs: {
-        width,
-        height,
+        width: opts.width,
+        height: opts.height,
         batch_size: 1,
       },
     },
     "6": {
       class_type: "CLIPTextEncode",
       inputs: {
-        text: prompt,
+        text: opts.prompt,
         clip: ["4", 1],
       },
     },
     "7": {
       class_type: "CLIPTextEncode",
       inputs: {
-        text: "bad quality, blurry, deformed",
+        text: opts.negativePrompt,
         clip: ["4", 1],
       },
     },
@@ -102,10 +106,10 @@ function buildTxt2ImgWorkflow(
     "3": {
       class_type: "KSampler",
       inputs: {
-        seed,
-        steps,
-        cfg: 7,
-        sampler_name: "euler",
+        seed: opts.seed,
+        steps: opts.steps,
+        cfg: opts.cfg,
+        sampler_name: opts.samplerName,
         scheduler: "normal",
         denoise: 1,
         model: ["4", 0],
@@ -122,6 +126,37 @@ function buildTxt2ImgWorkflow(
       },
     },
   };
+
+  // Chain LoRA loaders between checkpoint and KSampler/CLIP
+  // Each LoraLoader takes model+clip in, outputs model+clip out
+  if (opts.loras.length > 0) {
+    let prevModelRef: [string, number] = ["4", 0];
+    let prevClipRef: [string, number] = ["4", 1];
+
+    opts.loras.forEach((lora, i) => {
+      const nodeId = `lora_${i}`;
+      const weight = lora.weight ?? 1.0;
+      nodes[nodeId] = {
+        class_type: "LoraLoader",
+        inputs: {
+          lora_name: lora.name.includes(".") ? lora.name : `${lora.name}.safetensors`,
+          strength_model: weight,
+          strength_clip: weight,
+          model: prevModelRef,
+          clip: prevClipRef,
+        },
+      };
+      prevModelRef = [nodeId, 0];
+      prevClipRef = [nodeId, 1];
+    });
+
+    // Rewire KSampler and CLIP encoders to use final LoRA output
+    (nodes["3"].inputs as Record<string, unknown>).model = prevModelRef;
+    (nodes["6"].inputs as Record<string, unknown>).clip = prevClipRef;
+    (nodes["7"].inputs as Record<string, unknown>).clip = prevClipRef;
+  }
+
+  return nodes;
 }
 
 /**
@@ -160,12 +195,17 @@ export class ComfyUIClient implements ImageProvider {
     prompt: string,
     opts?: ImageGenerateOptions
   ): Promise<Uint8Array> {
-    const width = opts?.width ?? 512;
-    const height = opts?.height ?? 512;
-    const steps = opts?.steps ?? 20;
-    const seed = opts?.seed ?? Math.floor(Math.random() * 2 ** 32);
-
-    const workflow = buildTxt2ImgWorkflow(prompt, width, height, steps, seed);
+    const workflow = buildTxt2ImgWorkflow({
+      prompt,
+      negativePrompt: opts?.negativePrompt ?? "bad quality, blurry, deformed",
+      width: opts?.width ?? 512,
+      height: opts?.height ?? 512,
+      steps: opts?.steps ?? 20,
+      seed: opts?.seed ?? Math.floor(Math.random() * 2 ** 32),
+      cfg: opts?.cfgScale ?? 7,
+      samplerName: opts?.samplerName ?? "euler",
+      loras: opts?.loras ?? [],
+    });
 
     // Submit the prompt
     const submitBody: PromptRequest = { prompt: workflow };
@@ -251,15 +291,33 @@ export class ComfyUIClient implements ImageProvider {
    * @returns true if GET /system_stats returns a valid response, false otherwise
    */
   async isAvailable(): Promise<boolean> {
+    return (await this.checkAvailability()).available;
+  }
+
+  /**
+   * Check availability with a descriptive error message on failure.
+   */
+  async checkAvailability(): Promise<AvailabilityResult> {
     try {
       const response = await fetch(`${this.baseUrl}/system_stats`, {
         signal: AbortSignal.timeout(5000),
       });
-      if (!response.ok) return false;
+      if (!response.ok) {
+        return {
+          available: false,
+          error: `ComfyUI returned HTTP ${response.status}. Ensure ComfyUI is running at ${this.baseUrl}.`,
+        };
+      }
       const data = (await response.json()) as SystemStats;
-      return typeof data.system === "object" && data.system !== null;
+      if (typeof data.system !== "object" || data.system === null) {
+        return { available: false, error: 'ComfyUI returned unexpected response format.' };
+      }
+      return { available: true };
     } catch {
-      return false;
+      return {
+        available: false,
+        error: `Cannot reach ComfyUI at ${this.baseUrl}. Start it with: python main.py --listen`,
+      };
     }
   }
 }

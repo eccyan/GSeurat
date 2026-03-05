@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useRef } from 'react';
-import { StableDiffusionWebUIClient } from '@vulkan-game-tools/ai-providers';
+import { ComfyUIClient } from '@vulkan-game-tools/ai-providers';
 import { usePainterStore, PixelData } from '../store/usePainterStore.js';
 
 // ---------------------------------------------------------------------------
@@ -49,11 +49,11 @@ export function AIGeneratePanel() {
 
   const [prompt, setPrompt] = useState('');
   const [negativePrompt, setNegativePrompt] = useState('smooth, realistic, 3d render, blurry, soft, high resolution, photorealistic, anti-aliasing, gradient, watercolor');
-  const [sdUrl, setSdUrl] = useState(import.meta.env.VITE_SD_WEBUI_URL || 'http://localhost:7860');
+  const [comfyUrl, setComfyUrl] = useState(import.meta.env.VITE_COMFYUI_URL || 'http://localhost:8188');
   const [steps, setSteps] = useState(20);
   const [seed, setSeed] = useState(-1); // -1 = random
   const [cfgScale, setCfgScale] = useState(7);
-  const [samplerName, setSamplerName] = useState('Euler a');
+  const [samplerName, setSamplerName] = useState('euler');
   const [status, setStatus] = useState<GenStatus>({ kind: 'idle' });
   const [previewDataUrl, setPreviewDataUrl] = useState<string | null>(null);
   const [pendingPixels, setPendingPixels] = useState<PixelData | null>(null);
@@ -74,17 +74,17 @@ export function AIGeneratePanel() {
       return;
     }
 
-    setStatus({ kind: 'generating', message: 'Checking Forge...' });
+    setStatus({ kind: 'generating', message: 'Checking ComfyUI...' });
     setPreviewDataUrl(null);
     setPendingPixels(null);
 
-    const client = new StableDiffusionWebUIClient(sdUrl);
+    const client = new ComfyUIClient(comfyUrl);
     const check = await client.checkAvailability().catch(() => ({
       available: false,
-      error: `Cannot reach Forge at ${sdUrl}. Start it with: ./webui.sh --api`,
+      error: `Cannot reach ComfyUI at ${comfyUrl}. Start it with: python main.py --cpu --listen`,
     }));
     if (!check.available) {
-      setStatus({ kind: 'error', message: check.error ?? 'SD WebUI unavailable' });
+      setStatus({ kind: 'error', message: check.error ?? 'ComfyUI unavailable' });
       return;
     }
 
@@ -100,7 +100,7 @@ export function AIGeneratePanel() {
       ? `${negativePrompt}, watermark, text, signature`
       : 'smooth, realistic, 3d render, blurry, soft, high resolution, photorealistic, watermark, text, signature';
 
-    setStatus({ kind: 'generating', message: 'Generating with Forge...' });
+    setStatus({ kind: 'generating', message: 'Generating with ComfyUI...' });
 
     try {
       const loras = loraName.trim()
@@ -137,7 +137,7 @@ export function AIGeneratePanel() {
         setStatus({ kind: 'error', message: (err as Error).message ?? String(err) });
       }
     }
-  }, [prompt, negativePrompt, sdUrl, steps, seed, cfgScale, samplerName, loraName, loraWeight, status, editTarget, selectedTileCol, selectedTileRow, selectedFrameCol, selectedFrameRow]);
+  }, [prompt, negativePrompt, comfyUrl, steps, seed, cfgScale, samplerName, loraName, loraWeight, status, editTarget, selectedTileCol, selectedTileRow, selectedFrameCol, selectedFrameRow]);
 
   const handleApply = useCallback(() => {
     if (!pendingPixels) return;
@@ -170,7 +170,7 @@ export function AIGeneratePanel() {
     <div style={styles.wrapper}>
       {/* Header */}
       <div style={styles.header}>
-        AI Generate (SD Forge)
+        AI Generate (ComfyUI)
       </div>
 
       <div style={styles.body}>
@@ -269,11 +269,11 @@ export function AIGeneratePanel() {
           {showAdvanced && (
             <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 6 }}>
               <div>
-                <div style={styles.fieldLabel}>Forge URL</div>
+                <div style={styles.fieldLabel}>ComfyUI URL</div>
                 <input
                   type="text"
-                  value={sdUrl}
-                  onChange={(e) => setSdUrl(e.target.value)}
+                  value={comfyUrl}
+                  onChange={(e) => setComfyUrl(e.target.value)}
                   style={styles.textInput}
                 />
               </div>
@@ -303,7 +303,7 @@ export function AIGeneratePanel() {
                   </div>
                 </div>
                 <div style={{ ...styles.hint, marginTop: 2 }}>
-                  Place .safetensors in models/Lora/ folder
+                  Place .safetensors in models/loras/ folder
                 </div>
               </div>
               <div style={styles.row}>
@@ -326,11 +326,12 @@ export function AIGeneratePanel() {
                     onChange={(e) => setSamplerName(e.target.value)}
                     style={styles.selectInput}
                   >
-                    <option value="Euler a">Euler a</option>
-                    <option value="Euler">Euler</option>
-                    <option value="DPM++ 2M Karras">DPM++ 2M Karras</option>
-                    <option value="DPM++ SDE Karras">DPM++ SDE Karras</option>
-                    <option value="DDIM">DDIM</option>
+                    <option value="euler">euler</option>
+                    <option value="euler_ancestral">euler_ancestral</option>
+                    <option value="dpmpp_2m">dpmpp_2m</option>
+                    <option value="dpmpp_sde">dpmpp_sde</option>
+                    <option value="ddim">ddim</option>
+                    <option value="uni_pc">uni_pc</option>
                   </select>
                 </div>
               </div>
@@ -407,10 +408,10 @@ export function AIGeneratePanel() {
 
         {/* Help text */}
         <div style={styles.helpText}>
-          Requires SD WebUI (A1111 or Forge) running locally.<br />
+          Requires ComfyUI running locally.<br />
           Model: SD 1.5 + pixel art LoRA recommended.<br />
-          Mac (no CUDA): ./webui.sh --api --skip-torch-cuda-test --use-cpu all --no-half<br />
-          LoRA: download .safetensors to models/Lora/, enter filename without extension above.
+          Mac (no CUDA): python main.py --cpu --listen<br />
+          LoRA: download .safetensors to models/loras/, enter filename without extension above.
         </div>
       </div>
     </div>

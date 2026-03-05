@@ -58,24 +58,41 @@ Plays back the 4 frames of the selected row at the frame duration defined for th
 
 ## AI Generation
 
-The Pixel Painter integrates with **Stable Diffusion WebUI** (AUTOMATIC1111 or Forge) for AI-assisted pixel art generation. Toggle the AI panel with the `[A]` key or the "AI Gen" toolbar button.
+The Pixel Painter integrates with **ComfyUI** for AI-assisted pixel art generation. Toggle the AI panel with the `[A]` key or the "AI Gen" toolbar button.
 
 ### Requirements
 
-- [AUTOMATIC1111 WebUI](https://github.com/AUTOMATIC1111/stable-diffusion-webui) or [SD WebUI Forge](https://github.com/lllyasviel/stable-diffusion-webui-forge)
+- [ComfyUI](https://github.com/comfyanonymous/ComfyUI)
+- Python 3.10 (required by PyTorch / ComfyUI dependencies)
 - A Stable Diffusion 1.5 checkpoint (e.g. `v1-5-pruned-emaonly.safetensors`)
 - (Recommended) A pixel art LoRA model for better results
 
 ### Setup on macOS (No CUDA)
 
-Since macOS does not have NVIDIA CUDA, run the WebUI in CPU mode:
+ComfyUI runs on Mac in CPU mode with minimal setup hassle:
 
 ```bash
-cd stable-diffusion-webui   # or stable-diffusion-webui-forge
-./webui.sh --api --skip-torch-cuda-test --use-cpu all --no-half
+# 1. Install Python 3.10 via pyenv (keeps your system Python untouched)
+brew install pyenv
+pyenv install 3.10.17
+
+# 2. Clone ComfyUI
+git clone https://github.com/comfyanonymous/ComfyUI
+cd ComfyUI
+
+# 3. Create a venv with Python 3.10
+$(pyenv prefix 3.10.17)/bin/python3.10 -m venv venv
+./venv/bin/pip install -r requirements.txt
+
+# 4. Download SD 1.5 checkpoint
+# Place v1-5-pruned-emaonly.safetensors into models/checkpoints/
+# (download from https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5)
+
+# 5. Start ComfyUI in CPU mode
+./venv/bin/python main.py --cpu --listen
 ```
 
-The server starts at `http://localhost:7860` by default. You can change the URL in the Pixel Painter's Advanced settings or via the `VITE_SD_WEBUI_URL` environment variable.
+The server starts at `http://localhost:8188` by default. You can change the URL in the Pixel Painter's Advanced settings or via the `VITE_COMFYUI_URL` environment variable.
 
 > **Note:** CPU inference is slower than GPU. Expect 1–5 minutes per image at 20 steps on an Apple Silicon Mac. Reducing steps to 10–15 gives faster results with slightly lower quality.
 
@@ -88,22 +105,22 @@ LoRA (Low-Rank Adaptation) models specialize Stable Diffusion for a specific sty
    - "16-bit SNES" style LoRAs
    - Any LoRA tagged `pixel art` + `SD 1.5`
 
-2. **Install the LoRA** — copy the `.safetensors` file into your SD WebUI installation:
+2. **Install the LoRA** — copy the `.safetensors` file into your ComfyUI installation:
    ```
-   stable-diffusion-webui/models/Lora/pixel-art.safetensors
+   ComfyUI/models/loras/pixel-art.safetensors
    ```
 
 3. **Configure in Pixel Painter** — open the AI panel, expand **Advanced**, and enter the LoRA filename without the `.safetensors` extension:
    - **LoRA Model:** `pixel-art`
    - **Weight:** `0.8` (adjust 0.5–1.0 to taste; higher = stronger style effect)
 
-4. **Generate** — type a prompt like "stone floor tile, top-down, gray, rough texture" and click Generate (or Ctrl+Enter). The LoRA tag `<lora:pixel-art:0.8>` is automatically appended to the prompt.
+4. **Generate** — type a prompt like "stone floor tile, top-down, gray, rough texture" and click Generate (or Ctrl+Enter). A `LoraLoader` node is automatically inserted into the ComfyUI workflow.
 
 ### Generation Workflow
 
 1. Enter a text prompt describing the desired tile or sprite
 2. (Optional) Use a **Quick Preset** button for common game asset prompts
-3. Click **Generate** — the tool sends a 512×512 txt2img request to SD WebUI
+3. Click **Generate** — the tool sends a 512×512 txt2img workflow to ComfyUI
 4. The generated image is displayed as a full-resolution preview
 5. A **16×16 nearest-neighbor downscale** preview shows the final pixel art result
 6. Click **Apply to Canvas** to place the result on the current tile/sprite cell
@@ -116,10 +133,10 @@ LoRA (Low-Rank Adaptation) models specialize Stable Diffusion for a specific sty
 | Steps | 20 | Diffusion steps. Lower = faster, higher = more detail |
 | Seed | -1 (random) | Fixed seed for reproducible results |
 | CFG Scale | 7 | How closely to follow the prompt (1–30) |
-| Sampler | Euler a | Sampling algorithm |
+| Sampler | euler | Sampling algorithm (euler, euler_ancestral, dpmpp_2m, ddim, uni_pc) |
 | LoRA Model | (empty) | LoRA filename without extension |
 | LoRA Weight | 0.8 | LoRA influence strength (0–1.5) |
-| Forge URL | localhost:7860 | SD WebUI server address |
+| ComfyUI URL | localhost:8188 | ComfyUI server address |
 
 ### Prompt Tips
 
