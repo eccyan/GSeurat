@@ -117,6 +117,31 @@ All communication uses JSON Lines (one JSON object per line) over the Unix socke
 | `set_mode` | `mode`: `"step"/"realtime"` | Switch between deterministic and real-time modes |
 | `step` | `frames`: int (1-600) | Advance N frames at fixed 1/60s dt (step mode only) |
 | `screenshot` | `path`: string | Capture current frame to PNG file |
+| `get_scene` | — | Returns full scene JSON (tilemap, NPCs, lights, portals, etc.) |
+| `get_tilemap` | — | Returns tilemap tiles and solid arrays |
+| `reload_scene` | — | Re-initializes current scene from disk |
+| `set_tile` | `col`, `row`, `tile_id`, `solid` | Modify a single tile |
+| `set_tiles` | `tiles`: array of `{col, row, tile_id, solid}` | Batch tile modification |
+| `resize_tilemap` | `width`, `height`, `fill_tile` | Resize tilemap with fill |
+| `set_player_position` | `position`: `[x,y,z]` | Teleport the player |
+| `update_npc` | `index`, `position?`, `tint?`, `facing?` | Modify NPC properties |
+| `set_ambient` | `color`: `[r,g,b,a]` | Change ambient lighting color |
+| `add_light` | `position`, `radius`, `color`, `intensity`, `height` | Add a point light |
+| `remove_light` | `index` | Remove a point light |
+| `update_light` | `index`, field overrides | Modify a point light |
+| `add_portal` | `portal`: `{position, size, target_scene, ...}` | Add a scene portal |
+| `remove_portal` | `index` | Remove a portal |
+| `set_weather` | `type`, `fog_density?`, `fog_color?` | Change weather state |
+| `set_day_night` | `enabled`, `cycle_speed?`, `time?` | Configure day/night cycle |
+| `set_emitter_config` | `emitter_index`, `config` | Modify particle emitter |
+| `add_emitter` | `config`, `position` | Add a particle emitter |
+| `remove_emitter` | `index` | Remove a particle emitter |
+| `list_emitters` | — | List all particle emitters |
+| `get_features` | — | List feature flags and states |
+| `set_feature` | `name`, `enabled` | Toggle a feature flag |
+| `set_camera` | `position?`, `zoom?` | Override camera position/zoom |
+| `subscribe` | `events`: string array | Filter which events are sent |
+| `unsubscribe` | — | Receive all events (default) |
 
 #### Responses
 
@@ -160,6 +185,39 @@ Step mode ensures deterministic reproduction: the same sequence of commands alwa
 - Screenshot dimensions reflect the actual framebuffer (e.g., 2560x1440 on Retina, 1280x720 otherwise)
 - Screenshots capture the final composited frame including post-processing (bloom, DoF, vignette, fog)
 
+## Creative Tooling Ecosystem
+
+The `tools/` directory contains a suite of web-based creative tools for authoring game content. Each tool connects to the running engine via a WebSocket bridge proxy for live preview.
+
+```
+Engine (Vulkan) ←→ Unix Socket ←→ Bridge Proxy (ws://localhost:9100) ←→ Web Tools
+```
+
+| Tool | Port | Description |
+|------|------|-------------|
+| **Bridge Proxy** | 9100/9101 | Node.js relay between Unix socket and WebSocket clients |
+| **Level Designer** | 5173 | Tile painting, NPC/light/portal placement, AI level generation |
+| **Pixel Painter** | 5174 | 16x16 tile/sprite editor with Stable Diffusion integration |
+| **Keyframe Animator** | 5175 | Animation timeline and state machine graph editor |
+| **Particle Designer** | 5176 | Visual EmitterConfig editor with live engine preview |
+| **Audio Composer** | 5177 | 4-layer interactive music editor with MusicGen AI |
+| **SFX Designer** | 5178 | Waveform editor, procedural synthesis, AI SFX generation |
+
+### Quick Start
+
+```bash
+# Prerequisites: Node.js 18+, pnpm
+cd tools && pnpm install && pnpm build
+
+# Start the bridge (requires running game)
+cd apps/bridge && pnpm start
+
+# Start a tool (e.g., level designer)
+cd apps/level-designer && pnpm dev
+```
+
+See [tools/README.md](tools/README.md) for full documentation.
+
 ## Project Structure
 
 ```
@@ -167,5 +225,8 @@ src/            C++ source files
 include/        Public headers
 shaders/        GLSL shaders (compiled to SPIR-V at build time)
 assets/         Game assets (copied to build directory)
+tools/          Web-based creative tooling ecosystem (TypeScript/React)
+  packages/     Shared libraries (engine-client, asset-types, ai-providers, ui-kit)
+  apps/         Tool applications (bridge, level-designer, pixel-painter, etc.)
 .devcontainer/  Container development environment
 ```
