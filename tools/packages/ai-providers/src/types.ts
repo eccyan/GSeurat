@@ -35,6 +35,8 @@ export interface ImageGenerateOptions {
   cfgScale?: number;
   /** Sampler/scheduler name (e.g. "Euler a", "DPM++ 2M Karras"). */
   samplerName?: string;
+  /** LoRA models to apply. Each entry has a name and optional weight (default 1.0). */
+  loras?: Array<{ name: string; weight?: number }>;
 }
 
 /**

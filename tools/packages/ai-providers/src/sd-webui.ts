@@ -49,9 +49,19 @@ export class StableDiffusionWebUIClient implements ImageProvider {
     const negativePrompt = opts?.negativePrompt ?? "";
     const cfgScale = opts?.cfgScale ?? 7;
     const samplerName = opts?.samplerName ?? "Euler a";
+    const loras = opts?.loras ?? [];
+
+    // Inject LoRA tags into the prompt (SD WebUI syntax: <lora:name:weight>)
+    let finalPrompt = prompt;
+    if (loras.length > 0) {
+      const loraTags = loras
+        .map((l) => `<lora:${l.name}:${l.weight ?? 1.0}>`)
+        .join(" ");
+      finalPrompt = `${prompt} ${loraTags}`;
+    }
 
     const body = {
-      prompt,
+      prompt: finalPrompt,
       negative_prompt: negativePrompt,
       width,
       height,

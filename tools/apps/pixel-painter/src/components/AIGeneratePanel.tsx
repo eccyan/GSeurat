@@ -58,6 +58,8 @@ export function AIGeneratePanel() {
   const [previewDataUrl, setPreviewDataUrl] = useState<string | null>(null);
   const [pendingPixels, setPendingPixels] = useState<PixelData | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [loraName, setLoraName] = useState('');
+  const [loraWeight, setLoraWeight] = useState(0.8);
 
   const abortControllerRef = useRef<AbortController | null>(null);
 
@@ -101,6 +103,10 @@ export function AIGeneratePanel() {
     setStatus({ kind: 'generating', message: 'Generating with Forge...' });
 
     try {
+      const loras = loraName.trim()
+        ? [{ name: loraName.trim(), weight: loraWeight }]
+        : [];
+
       const pngBytes = await client.generateImage(fullPrompt, {
         width: 512,
         height: 512,
@@ -109,6 +115,7 @@ export function AIGeneratePanel() {
         negativePrompt: fullNegative,
         cfgScale,
         samplerName,
+        loras,
       });
 
       setStatus({ kind: 'generating', message: 'Downscaling to 16x16...' });
@@ -130,7 +137,7 @@ export function AIGeneratePanel() {
         setStatus({ kind: 'error', message: (err as Error).message ?? String(err) });
       }
     }
-  }, [prompt, negativePrompt, sdUrl, steps, seed, cfgScale, samplerName, status, editTarget, selectedTileCol, selectedTileRow, selectedFrameCol, selectedFrameRow]);
+  }, [prompt, negativePrompt, sdUrl, steps, seed, cfgScale, samplerName, loraName, loraWeight, status, editTarget, selectedTileCol, selectedTileRow, selectedFrameCol, selectedFrameRow]);
 
   const handleApply = useCallback(() => {
     if (!pendingPixels) return;
@@ -270,6 +277,35 @@ export function AIGeneratePanel() {
                   style={styles.textInput}
                 />
               </div>
+              <div>
+                <div style={styles.fieldLabel}>LoRA Model (optional)</div>
+                <div style={{ ...styles.row, marginTop: 3 }}>
+                  <div style={{ flex: 2 }}>
+                    <input
+                      type="text"
+                      value={loraName}
+                      onChange={(e) => setLoraName(e.target.value)}
+                      placeholder="e.g. pixel-art-xl"
+                      style={styles.textInput}
+                    />
+                  </div>
+                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    <div style={{ ...styles.fieldLabel, fontSize: 8 }}>Weight: {loraWeight}</div>
+                    <input
+                      type="range"
+                      min={0}
+                      max={1.5}
+                      step={0.05}
+                      value={loraWeight}
+                      onChange={(e) => setLoraWeight(parseFloat(e.target.value))}
+                      style={{ width: '100%' }}
+                    />
+                  </div>
+                </div>
+                <div style={{ ...styles.hint, marginTop: 2 }}>
+                  Place .safetensors in models/Lora/ folder
+                </div>
+              </div>
               <div style={styles.row}>
                 <div style={styles.fieldHalf}>
                   <div style={styles.fieldLabel}>CFG Scale</div>
@@ -371,10 +407,10 @@ export function AIGeneratePanel() {
 
         {/* Help text */}
         <div style={styles.helpText}>
-          Requires SD WebUI Forge running locally.<br />
-          Install: <span style={{ color: '#4a7ad0' }}>github.com/lllyasviel/stable-diffusion-webui-forge</span><br />
-          Model: SD 1.5 based (&lt;4GB) recommended for pixel art.<br />
-          Start: ./webui.sh --api
+          Requires SD WebUI (A1111 or Forge) running locally.<br />
+          Model: SD 1.5 + pixel art LoRA recommended.<br />
+          Mac (no CUDA): ./webui.sh --api --skip-torch-cuda-test --use-cpu all --no-half<br />
+          LoRA: download .safetensors to models/Lora/, enter filename without extension above.
         </div>
       </div>
     </div>

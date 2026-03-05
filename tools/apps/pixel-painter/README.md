@@ -58,9 +58,78 @@ Plays back the 4 frames of the selected row at the frame duration defined for th
 
 ## AI Generation
 
-When ComfyUI is running at `localhost:8188`, an "AI Generate" button appears in the toolbar. Enter a text prompt such as "mossy stone floor tile, top-down, pixel art, 16x16" and the tool sends a ComfyUI workflow request. The returned image is downsampled to 16x16 and placed on the canvas as a starting point for manual refinement.
+The Pixel Painter integrates with **Stable Diffusion WebUI** (AUTOMATIC1111 or Forge) for AI-assisted pixel art generation. Toggle the AI panel with the `[A]` key or the "AI Gen" toolbar button.
 
-Generation always targets the currently selected 16x16 tile region. Full sheet generation is not supported.
+### Requirements
+
+- [AUTOMATIC1111 WebUI](https://github.com/AUTOMATIC1111/stable-diffusion-webui) or [SD WebUI Forge](https://github.com/lllyasviel/stable-diffusion-webui-forge)
+- A Stable Diffusion 1.5 checkpoint (e.g. `v1-5-pruned-emaonly.safetensors`)
+- (Recommended) A pixel art LoRA model for better results
+
+### Setup on macOS (No CUDA)
+
+Since macOS does not have NVIDIA CUDA, run the WebUI in CPU mode:
+
+```bash
+cd stable-diffusion-webui   # or stable-diffusion-webui-forge
+./webui.sh --api --skip-torch-cuda-test --use-cpu all --no-half
+```
+
+The server starts at `http://localhost:7860` by default. You can change the URL in the Pixel Painter's Advanced settings or via the `VITE_SD_WEBUI_URL` environment variable.
+
+> **Note:** CPU inference is slower than GPU. Expect 1–5 minutes per image at 20 steps on an Apple Silicon Mac. Reducing steps to 10–15 gives faster results with slightly lower quality.
+
+### Using a Pixel Art LoRA
+
+LoRA (Low-Rank Adaptation) models specialize Stable Diffusion for a specific style. For pixel art, a LoRA dramatically improves output quality compared to prompt keywords alone.
+
+1. **Download a pixel art LoRA** — search for "pixel art" on [Civitai](https://civitai.com) or Hugging Face. Look for SD 1.5 compatible LoRA files (`.safetensors`). Popular choices include:
+   - "Pixel Art XL" style LoRAs
+   - "16-bit SNES" style LoRAs
+   - Any LoRA tagged `pixel art` + `SD 1.5`
+
+2. **Install the LoRA** — copy the `.safetensors` file into your SD WebUI installation:
+   ```
+   stable-diffusion-webui/models/Lora/pixel-art.safetensors
+   ```
+
+3. **Configure in Pixel Painter** — open the AI panel, expand **Advanced**, and enter the LoRA filename without the `.safetensors` extension:
+   - **LoRA Model:** `pixel-art`
+   - **Weight:** `0.8` (adjust 0.5–1.0 to taste; higher = stronger style effect)
+
+4. **Generate** — type a prompt like "stone floor tile, top-down, gray, rough texture" and click Generate (or Ctrl+Enter). The LoRA tag `<lora:pixel-art:0.8>` is automatically appended to the prompt.
+
+### Generation Workflow
+
+1. Enter a text prompt describing the desired tile or sprite
+2. (Optional) Use a **Quick Preset** button for common game asset prompts
+3. Click **Generate** — the tool sends a 512×512 txt2img request to SD WebUI
+4. The generated image is displayed as a full-resolution preview
+5. A **16×16 nearest-neighbor downscale** preview shows the final pixel art result
+6. Click **Apply to Canvas** to place the result on the current tile/sprite cell
+7. Refine manually with the drawing tools as needed
+
+### Settings Reference
+
+| Setting | Default | Description |
+|---|---|---|
+| Steps | 20 | Diffusion steps. Lower = faster, higher = more detail |
+| Seed | -1 (random) | Fixed seed for reproducible results |
+| CFG Scale | 7 | How closely to follow the prompt (1–30) |
+| Sampler | Euler a | Sampling algorithm |
+| LoRA Model | (empty) | LoRA filename without extension |
+| LoRA Weight | 0.8 | LoRA influence strength (0–1.5) |
+| Forge URL | localhost:7860 | SD WebUI server address |
+
+### Prompt Tips
+
+- The tool automatically appends pixel art style keywords (`pixel art, 8-bit, 16-bit, low-res, retro game graphics, NES palette, clean edges, game asset`) to your prompt
+- The default negative prompt excludes smooth/realistic/blurry styles
+- Keep prompts short and descriptive: subject + color + style
+- For tiles: mention "top-down", "seamless", "tile" for better tiling results
+- For sprites: mention facing direction and character description
+
+Generation always targets the currently selected 16×16 tile or sprite cell. Full sheet generation is not supported.
 
 ## Export and Hot-Reload
 
