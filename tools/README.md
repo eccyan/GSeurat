@@ -100,13 +100,45 @@ Tools function fully without any AI backend. AI features appear only when the co
 | ComfyUI | `localhost:8188` | Stable Diffusion pixel art generation in Pixel Painter |
 | AudioCraft | `localhost:8001` | MusicGen layer generation and SFX synthesis |
 
+## Testing
+
+The `tests/` package contains two kinds of tests:
+
+- **Unit tests** (`.test.ts`) — validate individual store actions in isolation (63 tests)
+- **Scenario tests** (`.scenario.ts`) — multi-step workflow tests that simulate real user journeys such as "design a complete dungeon room" or "synthesize a bell sound from scratch" (12 scenarios)
+
+Tests run in headless Chrome via Puppeteer, dispatching actions through the test-harness WebSocket bridge.
+
+```bash
+cd tools
+
+# Run all tests (unit + scenario)
+pnpm test
+
+# Run only scenario tests
+pnpm test:scenarios
+
+# Run one tool's tests (unit + scenario)
+pnpm test --tool sfx-designer
+
+# Run one tool's scenario tests only
+pnpm test:sfx-designer:scenario
+```
+
+### Adding a new scenario test
+
+1. Create `tests/src/{tool-name}.scenario.ts`
+2. Export a `run{ToolName}Scenarios(runner: TestRunner)` function
+3. Register it in `tests/src/qa-runner.ts` (import + add `runScenarios` to the tool's entry in `TOOLS`)
+4. Shared helpers (`assertStateHas`, `undoTimes`, `redoTimes`, etc.) are in `tests/src/helpers.ts`
+
 ## Development
 
 ```bash
 # Run all type checks
 pnpm typecheck
 
-# Run all unit tests
+# Run all tests (unit + scenario)
 pnpm test
 
 # Build all packages and apps
