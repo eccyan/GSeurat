@@ -366,11 +366,19 @@ check_stable_audio() {
   return 1
 }
 
-# Use venv python if the venv exists
+# Use venv python if the venv exists and has a compatible version
 activate_stable_audio_venv() {
   if [ -f "${STABLE_AUDIO_VENV}/bin/python" ]; then
-    STABLE_AUDIO_PYTHON="${STABLE_AUDIO_VENV}/bin/python"
-    return 0
+    local minor
+    minor=$("${STABLE_AUDIO_VENV}/bin/python" -c 'import sys; print(sys.version_info.minor)' 2>/dev/null || echo "0")
+    if [ "$minor" -ge "$SA_REQUIRED_PY_MINOR_MIN" ] && [ "$minor" -le "$SA_REQUIRED_PY_MINOR_MAX" ]; then
+      STABLE_AUDIO_PYTHON="${STABLE_AUDIO_VENV}/bin/python"
+      return 0
+    else
+      warn "Existing venv uses Python 3.${minor} (need 3.${SA_REQUIRED_PY_MINOR_MIN}–3.${SA_REQUIRED_PY_MINOR_MAX}). Removing..."
+      rm -rf "$STABLE_AUDIO_VENV"
+      return 1
+    fi
   fi
   return 1
 }
