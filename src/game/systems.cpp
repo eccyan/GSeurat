@@ -2,6 +2,7 @@
 #include "vulkan_game/engine/ecs/default_components.hpp"
 #include "vulkan_game/engine/ecs/ecs.hpp"
 #include "vulkan_game/engine/direction.hpp"
+#include "vulkan_game/engine/pathfinder.hpp"
 #include "vulkan_game/engine/sprite_batch.hpp"
 #include "vulkan_game/game/components.hpp"
 
@@ -246,6 +247,69 @@ void outline_collect(World& world, std::vector<SpriteDrawInfo>& out, float outli
             // Pack original UV bounds into color for shader clamping
             info.color = {sprite.uv_min.x, sprite.uv_min.y, sprite.uv_max.x, sprite.uv_max.y};
             out.push_back(info);
+        });
+}
+
+void npc_pathfind(World& world, const TileLayer& layer, float dt) {
+    world.view<Transform, NpcWaypoints, Facing, Animation>().each(
+        [&](Entity, Transform& tf, NpcWaypoints& wp, Facing& facing, Animation& anim) {
+            if (wp.waypoints.empty()) return;
+
+            // Recompute path if needed
+            if (wp.needs_repath) {
+                glm::vec2 pos{tf.position.x, tf.position.y};
+                wp.path = Pathfinder::find_path(layer, pos, wp.waypoints[wp.current_target]);
+                wp.path_index = 0;
+                wp.needs_repath = false;
+            }
+
+            // Arrived at end of path (or no path)
+            if (wp.path.empty() || wp.path_index >= static_cast<uint32_t>(wp.path.size())) {
+                wp.pause_timer -= dt;
+                if (wp.pause_timer <= 0.0f) {
+                    wp.current_target = (wp.current_target + 1) %
+                        static_cast<uint32_t>(wp.waypoints.size());
+                    wp.needs_repath = true;
+                    wp.pause_timer = wp.pause_duration;
+                }
+
+                // Play idle animation while paused
+                const std::string clip = std::string("idle_") + direction_suffix(facing.dir);
+                anim.state_machine.transition_to(clip);
+                return;
+            }
+
+            // Move toward current path waypoint
+            glm::vec2 target = wp.path[wp.path_index];
+            float dx = target.x - tf.position.x;
+            float dy = target.y - tf.position.y;
+            float dist = std::sqrt(dx * dx + dy * dy);
+
+            if (dist < 0.15f) {
+                wp.path_index++;
+                return;
+            }
+
+            float move = wp.speed * dt;
+            if (move > dist) move = dist;
+            tf.position.x += (dx / dist) * move;
+            tf.position.y += (dy / dist) * move;
+
+            // Collision
+            const glm::vec2 resolved = resolve_tilemap_collision(
+                {tf.position.x, tf.position.y}, 0.4f, layer);
+            tf.position.x = resolved.x;
+            tf.position.y = resolved.y;
+
+            // Update facing based on dominant axis
+            if (std::abs(dx) >= std::abs(dy)) {
+                facing.dir = dx > 0.0f ? Direction::Right : Direction::Left;
+            } else {
+                facing.dir = dy > 0.0f ? Direction::Down : Direction::Up;
+            }
+
+            const std::string clip = std::string("walk_") + direction_suffix(facing.dir);
+            anim.state_machine.transition_to(clip);
         });
 }
 

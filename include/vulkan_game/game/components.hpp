@@ -6,7 +6,9 @@
 
 #include <glm/glm.hpp>
 
+#include <cstdint>
 #include <string>
+#include <vector>
 
 namespace vulkan_game::ecs {
 
@@ -43,6 +45,17 @@ struct ParticleEmitterRef {
 
 struct FootstepEmitterRef {
     size_t emitter_id = 0;
+};
+
+struct NpcWaypoints {
+    std::vector<glm::vec2> waypoints;       // target positions (world-space loop)
+    uint32_t current_target = 0;
+    std::vector<glm::vec2> path;            // computed A* path (tile centers)
+    uint32_t path_index = 0;
+    float pause_timer = 0.0f;
+    float pause_duration = 1.0f;
+    float speed = 1.5f;
+    bool needs_repath = true;
 };
 
 struct ScriptRef {

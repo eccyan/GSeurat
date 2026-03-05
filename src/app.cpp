@@ -4,6 +4,7 @@
 #include "vulkan_game/game/states/title_state.hpp"
 #include "vulkan_game/game/states/transition_state.hpp"
 #include "vulkan_game/game/systems.hpp"
+#include "vulkan_game/engine/pathfinder.hpp"
 #include "vulkan_game/engine/scene_loader.hpp"
 #include "vulkan_game/engine/tilemap.hpp"
 
@@ -982,9 +983,17 @@ void App::init_scene(const std::string& scene_path) {
         world_.add<ecs::Sprite>(npc, sprite);
         world_.add<ecs::Facing>(npc, ecs::Facing{npc_data.facing});
         world_.add<ecs::Animation>(npc, std::move(npc_anim));
-        world_.add<ecs::NpcPatrol>(npc, ecs::NpcPatrol{
-            npc_data.facing, npc_data.reverse_facing, 0.0f,
-            npc_data.patrol_interval, npc_data.patrol_speed});
+        if (!npc_data.waypoints.empty()) {
+            ecs::NpcWaypoints waypoints;
+            waypoints.waypoints = npc_data.waypoints;
+            waypoints.pause_duration = npc_data.waypoint_pause;
+            waypoints.speed = npc_data.patrol_speed;
+            world_.add<ecs::NpcWaypoints>(npc, std::move(waypoints));
+        } else {
+            world_.add<ecs::NpcPatrol>(npc, ecs::NpcPatrol{
+                npc_data.facing, npc_data.reverse_facing, 0.0f,
+                npc_data.patrol_interval, npc_data.patrol_speed});
+        }
         world_.add<ecs::DialogRef>(npc, ecs::DialogRef{i});
         world_.add<ecs::DynamicLight>(npc, ecs::DynamicLight{npc_data.light_color, npc_data.light_radius});
         world_.add<ecs::ParticleEmitterRef>(npc, ecs::ParticleEmitterRef{aura_eid});
@@ -1185,9 +1194,10 @@ void App::update_game(float dt) {
         auto& player_anim = world_.get<ecs::Animation>(player_id_);
         player_anim.state_machine.transition_to(state_prefix + "_" + dir_str);
 
-        // NPC patrol
+        // NPC patrol + pathfinding
         if (feature_flags_.npc_patrol && scene_.tile_layer().has_value()) {
             ecs::systems::npc_patrol(world_, *scene_.tile_layer(), dt);
+            ecs::systems::npc_pathfind(world_, *scene_.tile_layer(), dt);
         }
 
         // Wren script system (runs update on entities with ScriptRef)

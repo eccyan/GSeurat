@@ -184,6 +184,12 @@ SceneData SceneLoader::from_json(const nlohmann::json& j) {
                 npc.aura_color_end = parse_vec4(npc_j["aura_color_end"]);
             npc.script_module = npc_j.value("script_module", "");
             npc.script_class = npc_j.value("script_class", "");
+            if (npc_j.contains("waypoints")) {
+                for (const auto& wp : npc_j["waypoints"]) {
+                    npc.waypoints.push_back(parse_vec2(wp));
+                }
+            }
+            npc.waypoint_pause = npc_j.value("waypoint_pause", 1.0f);
             data.npcs.push_back(std::move(npc));
         }
     }

@@ -32,6 +32,8 @@ struct NpcData {
     glm::vec4 aura_color_end{0.0f};
     std::string script_module;  // empty = no script
     std::string script_class;
+    std::vector<glm::vec2> waypoints;  // empty = use NpcPatrol
+    float waypoint_pause = 1.0f;
 };
 
 struct ParallaxLayerData {
