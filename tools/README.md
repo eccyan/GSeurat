@@ -34,8 +34,8 @@ Each tool app connects to the bridge proxy over WebSocket. The bridge relays JSO
 # From the project root:
 cd tools && pnpm install && pnpm build
 
-# Terminal 1: start the game engine (from project root)
-./build/macos-debug/vulkan_game
+# Terminal 1: start the game engine (from its build directory)
+cd build/macos-debug && ./vulkan_game
 
 # Terminal 2: start the bridge proxy
 cd tools/apps/bridge && pnpm start
