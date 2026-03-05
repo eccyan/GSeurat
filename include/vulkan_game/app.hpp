@@ -129,6 +129,8 @@ private:
     void process_commands();
     nlohmann::json build_state_json() const;
     nlohmann::json build_map_json() const;
+    nlohmann::json build_scene_json() const;
+    nlohmann::json build_tilemap_json() const;
     void emit_event(const std::string& event, const nlohmann::json& data = {});
     static void generate_player_sheet();
     static void generate_tileset();
@@ -179,6 +181,10 @@ private:
     std::vector<PortalData> portals_;
     bool transitioning_ = false;
     void check_portals();
+
+    // Scene data storage for round-trip serialization (kept in sync with ECS)
+    std::vector<NpcData> scene_npc_data_;
+    std::vector<PointLight> static_lights_;
 
     // Particles & Weather
     ParticleSystem particles_;

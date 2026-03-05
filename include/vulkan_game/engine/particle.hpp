@@ -69,6 +69,10 @@ public:
     size_t add_emitter(const EmitterConfig& config, glm::vec2 position);
     void set_emitter_position(size_t index, glm::vec2 position);
     void set_emitter_active(size_t index, bool active);
+    void set_emitter_config(size_t index, const EmitterConfig& config);
+    void remove_emitter(size_t index);
+    size_t emitter_count() const { return emitters_.size(); }
+    const Emitter& emitter(size_t index) const { return emitters_[index]; }
     void update(float dt);
     void generate_draw_infos(std::vector<SpriteDrawInfo>& out) const;
     void clear();

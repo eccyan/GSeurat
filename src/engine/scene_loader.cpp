@@ -274,4 +274,263 @@ SceneData SceneLoader::from_json(const nlohmann::json& j) {
     return data;
 }
 
+std::string SceneLoader::direction_to_string(Direction d) {
+    switch (d) {
+        case Direction::Up:    return "up";
+        case Direction::Down:  return "down";
+        case Direction::Left:  return "left";
+        case Direction::Right: return "right";
+    }
+    return "down";
+}
+
+std::string SceneLoader::tile_to_string(ParticleTile t) {
+    switch (t) {
+        case ParticleTile::Circle:    return "Circle";
+        case ParticleTile::SoftGlow:  return "SoftGlow";
+        case ParticleTile::Spark:     return "Spark";
+        case ParticleTile::SmokePuff: return "SmokePuff";
+        case ParticleTile::Raindrop:  return "Raindrop";
+        case ParticleTile::Snowflake: return "Snowflake";
+    }
+    return "Circle";
+}
+
+nlohmann::json SceneLoader::vec2_json(const glm::vec2& v) {
+    return {v.x, v.y};
+}
+
+nlohmann::json SceneLoader::vec3_json(const glm::vec3& v) {
+    return {v.x, v.y, v.z};
+}
+
+nlohmann::json SceneLoader::vec4_json(const glm::vec4& v) {
+    return {v.x, v.y, v.z, v.w};
+}
+
+nlohmann::json SceneLoader::emitter_json(const EmitterConfig& cfg) {
+    nlohmann::json j;
+    j["spawn_rate"] = cfg.spawn_rate;
+    j["particle_lifetime_min"] = cfg.particle_lifetime_min;
+    j["particle_lifetime_max"] = cfg.particle_lifetime_max;
+    j["velocity_min"] = vec2_json(cfg.velocity_min);
+    j["velocity_max"] = vec2_json(cfg.velocity_max);
+    j["acceleration"] = vec2_json(cfg.acceleration);
+    j["size_min"] = cfg.size_min;
+    j["size_max"] = cfg.size_max;
+    j["size_end_scale"] = cfg.size_end_scale;
+    j["color_start"] = vec4_json(cfg.color_start);
+    j["color_end"] = vec4_json(cfg.color_end);
+    j["tile"] = tile_to_string(cfg.tile);
+    j["z"] = cfg.z;
+    j["spawn_offset_min"] = vec2_json(cfg.spawn_offset_min);
+    j["spawn_offset_max"] = vec2_json(cfg.spawn_offset_max);
+    return j;
+}
+
+nlohmann::json SceneLoader::to_json(const SceneData& data) {
+    nlohmann::json j;
+
+    // Tilemap
+    {
+        nlohmann::json tm;
+        tm["tileset"] = {
+            {"tile_width", data.tilemap.tileset.tile_width},
+            {"tile_height", data.tilemap.tileset.tile_height},
+            {"columns", data.tilemap.tileset.columns},
+            {"sheet_width", data.tilemap.tileset.sheet_width},
+            {"sheet_height", data.tilemap.tileset.sheet_height}
+        };
+        tm["width"] = data.tilemap.width;
+        tm["height"] = data.tilemap.height;
+        tm["tile_size"] = data.tilemap.tile_size;
+        tm["z"] = data.tilemap.z;
+
+        nlohmann::json tiles = nlohmann::json::array();
+        for (auto t : data.tilemap.tiles) tiles.push_back(t);
+        tm["tiles"] = tiles;
+
+        if (!data.tile_animations.empty()) {
+            nlohmann::json anims = nlohmann::json::array();
+            for (const auto& def : data.tile_animations) {
+                nlohmann::json anim_j;
+                anim_j["base_tile"] = def.base_tile_id;
+                nlohmann::json frames = nlohmann::json::array();
+                for (auto f : def.frame_tile_ids) frames.push_back(f);
+                anim_j["frames"] = frames;
+                anim_j["frame_duration"] = def.frame_duration;
+                anims.push_back(anim_j);
+            }
+            tm["tile_animations"] = anims;
+        }
+
+        j["tilemap"] = tm;
+    }
+
+    // Ambient color
+    j["ambient_color"] = vec4_json(data.ambient_color);
+
+    // Static lights
+    if (!data.static_lights.empty()) {
+        nlohmann::json lights = nlohmann::json::array();
+        for (const auto& pl : data.static_lights) {
+            lights.push_back({
+                {"position", {pl.position_and_radius.x, pl.position_and_radius.y}},
+                {"radius", pl.position_and_radius.w},
+                {"height", pl.position_and_radius.z},
+                {"color", {pl.color.r, pl.color.g, pl.color.b}},
+                {"intensity", pl.color.a}
+            });
+        }
+        j["static_lights"] = lights;
+    }
+
+    // Torch emitter + positions
+    j["torch_emitter"] = emitter_json(data.torch_emitter);
+    if (!data.torch_positions.empty()) {
+        nlohmann::json positions = nlohmann::json::array();
+        for (const auto& p : data.torch_positions) positions.push_back(vec2_json(p));
+        j["torch_positions"] = positions;
+    }
+    if (!data.torch_audio_positions.empty()) {
+        nlohmann::json positions = nlohmann::json::array();
+        for (const auto& p : data.torch_audio_positions) positions.push_back(vec3_json(p));
+        j["torch_audio_positions"] = positions;
+    }
+
+    // Footstep emitter
+    j["footstep_emitter"] = emitter_json(data.footstep_emitter);
+
+    // NPC aura emitter
+    j["npc_aura_emitter"] = emitter_json(data.npc_aura_emitter);
+
+    // Player
+    j["player"] = {
+        {"position", vec3_json(data.player_position)},
+        {"tint", vec4_json(data.player_tint)},
+        {"facing", direction_to_string(data.player_facing)}
+    };
+
+    // NPCs
+    if (!data.npcs.empty()) {
+        nlohmann::json npcs = nlohmann::json::array();
+        for (const auto& npc : data.npcs) {
+            nlohmann::json npc_j;
+            npc_j["name"] = npc.name;
+            npc_j["position"] = vec3_json(npc.position);
+            npc_j["tint"] = vec4_json(npc.tint);
+            npc_j["facing"] = direction_to_string(npc.facing);
+            npc_j["reverse_facing"] = direction_to_string(npc.reverse_facing);
+            npc_j["patrol_interval"] = npc.patrol_interval;
+            npc_j["patrol_speed"] = npc.patrol_speed;
+            if (!npc.dialog.lines.empty()) {
+                nlohmann::json dialog = nlohmann::json::array();
+                for (const auto& line : npc.dialog.lines) {
+                    dialog.push_back({{"speaker_key", line.speaker_key}, {"text_key", line.text_key}});
+                }
+                npc_j["dialog"] = dialog;
+            }
+            npc_j["light_color"] = vec4_json(npc.light_color);
+            npc_j["light_radius"] = npc.light_radius;
+            npc_j["aura_color_start"] = vec4_json(npc.aura_color_start);
+            npc_j["aura_color_end"] = vec4_json(npc.aura_color_end);
+            if (!npc.script_module.empty()) {
+                npc_j["script_module"] = npc.script_module;
+                npc_j["script_class"] = npc.script_class;
+            }
+            if (!npc.waypoints.empty()) {
+                nlohmann::json wps = nlohmann::json::array();
+                for (const auto& wp : npc.waypoints) wps.push_back(vec2_json(wp));
+                npc_j["waypoints"] = wps;
+                npc_j["waypoint_pause"] = npc.waypoint_pause;
+            }
+            npcs.push_back(npc_j);
+        }
+        j["npcs"] = npcs;
+    }
+
+    // Background parallax layers
+    if (!data.background_layers.empty()) {
+        nlohmann::json layers = nlohmann::json::array();
+        for (const auto& layer : data.background_layers) {
+            nlohmann::json layer_j;
+            layer_j["texture"] = layer.texture_key;
+            layer_j["z"] = layer.z;
+            layer_j["parallax_factor"] = layer.parallax_factor;
+            layer_j["quad_width"] = layer.quad_width;
+            layer_j["quad_height"] = layer.quad_height;
+            layer_j["uv_repeat_x"] = layer.uv_repeat_x;
+            layer_j["uv_repeat_y"] = layer.uv_repeat_y;
+            layer_j["tint"] = vec4_json(layer.tint);
+            layer_j["wall"] = layer.wall;
+            layer_j["wall_y_offset"] = layer.wall_y_offset;
+            layers.push_back(layer_j);
+        }
+        j["background_layers"] = layers;
+    }
+
+    // Portals
+    if (!data.portals.empty()) {
+        nlohmann::json portals = nlohmann::json::array();
+        for (const auto& portal : data.portals) {
+            portals.push_back({
+                {"position", vec2_json(portal.position)},
+                {"size", vec2_json(portal.size)},
+                {"target_scene", portal.target_scene},
+                {"spawn_position", vec3_json(portal.spawn_position)},
+                {"spawn_facing", direction_to_string(portal.spawn_facing)}
+            });
+        }
+        j["portals"] = portals;
+    }
+
+    // Weather
+    if (data.weather.enabled) {
+        nlohmann::json w;
+        w["enabled"] = true;
+        w["type"] = data.weather.type;
+        w["emitter"] = emitter_json(data.weather.emitter);
+        w["ambient_override"] = vec4_json(data.weather.ambient_override);
+        w["fog_density"] = data.weather.fog_density;
+        w["fog_color"] = vec3_json(data.weather.fog_color);
+        w["transition_speed"] = data.weather.transition_speed;
+        j["weather"] = w;
+    }
+
+    // Day/night cycle
+    if (data.day_night.enabled) {
+        nlohmann::json dn;
+        dn["enabled"] = true;
+        dn["cycle_speed"] = data.day_night.cycle_speed;
+        dn["initial_time"] = data.day_night.initial_time;
+        if (!data.day_night.keyframes.empty()) {
+            nlohmann::json kfs = nlohmann::json::array();
+            for (const auto& kf : data.day_night.keyframes) {
+                kfs.push_back({
+                    {"time", kf.time},
+                    {"ambient", vec4_json(kf.ambient)},
+                    {"torch_intensity", kf.torch_intensity}
+                });
+            }
+            dn["keyframes"] = kfs;
+        }
+        j["day_night"] = dn;
+    }
+
+    // Minimap
+    if (data.minimap_config) {
+        const auto& cfg = *data.minimap_config;
+        j["minimap"] = {
+            {"x", cfg.screen_x},
+            {"y", cfg.screen_y},
+            {"size", cfg.size},
+            {"border", cfg.border},
+            {"border_color", vec4_json(cfg.border_color)},
+            {"bg_color", vec4_json(cfg.bg_color)}
+        };
+    }
+
+    return j;
+}
+
 }  // namespace vulkan_game

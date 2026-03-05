@@ -104,14 +104,24 @@ class SceneLoader {
 public:
     static SceneData load(const std::string& path);
     static SceneData from_json(const nlohmann::json& j);
+    static nlohmann::json to_json(const SceneData& data);
+
+    // Public parse helpers (used by control server commands)
+    static EmitterConfig parse_emitter(const nlohmann::json& j);
 
 private:
     static Direction parse_direction(const std::string& s);
     static ParticleTile parse_tile(const std::string& s);
-    static EmitterConfig parse_emitter(const nlohmann::json& j);
     static glm::vec2 parse_vec2(const nlohmann::json& j);
     static glm::vec3 parse_vec3(const nlohmann::json& j);
     static glm::vec4 parse_vec4(const nlohmann::json& j);
+
+    static std::string direction_to_string(Direction d);
+    static std::string tile_to_string(ParticleTile t);
+    static nlohmann::json vec2_json(const glm::vec2& v);
+    static nlohmann::json vec3_json(const glm::vec3& v);
+    static nlohmann::json vec4_json(const glm::vec4& v);
+    static nlohmann::json emitter_json(const EmitterConfig& cfg);
 };
 
 }  // namespace vulkan_game

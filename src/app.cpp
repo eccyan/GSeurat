@@ -17,6 +17,7 @@
 #include <cmath>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
 #include <set>
 
 namespace vulkan_game {
@@ -1078,6 +1079,10 @@ void App::init_scene(const std::string& scene_path) {
 
     // Store portals for transition checking
     portals_ = std::move(scene_data.portals);
+
+    // Store scene data for round-trip serialization
+    scene_npc_data_ = scene_data.npcs;
+    static_lights_ = scene_data.static_lights;
 }
 
 void App::clear_scene() {
@@ -1104,6 +1109,10 @@ void App::clear_scene() {
 
     // Reset portals
     portals_.clear();
+
+    // Reset scene data storage
+    scene_npc_data_.clear();
+    static_lights_.clear();
 
     // Reset dialog/game mode
     game_mode_ = GameMode::Explore;
@@ -1608,6 +1617,416 @@ void App::process_commands() {
         } else if (cmd == "get_time") {
             control_server_.send({{"type", "time"}, {"time_of_day", day_night_system_.time_of_day()},
                                   {"active", day_night_system_.active()}});
+
+        // === Scene manipulation ===
+        } else if (cmd == "get_scene") {
+            control_server_.send(build_scene_json());
+
+        } else if (cmd == "load_scene_json") {
+            if (cmd_json.contains("scene") && cmd_json["scene"].is_object()) {
+                try {
+                    clear_scene();
+                    auto scene_data = SceneLoader::from_json(cmd_json["scene"]);
+                    // Re-init from parsed data (reuse init_scene logic with inline data)
+                    // Write to temp file and load, or adapt init_scene
+                    // For simplicity, write temp then load
+                    std::string tmp_path = "assets/scenes/_temp_inline.json";
+                    std::ofstream tmp(tmp_path);
+                    tmp << cmd_json["scene"].dump(2);
+                    tmp.close();
+                    init_scene(tmp_path);
+                    std::filesystem::remove(tmp_path);
+                    control_server_.send({{"type", "ok"}});
+                } catch (const std::exception& e) {
+                    control_server_.send({{"type", "error"}, {"message", e.what()}});
+                }
+            } else {
+                control_server_.send({{"type", "error"}, {"message", "missing 'scene' object"}});
+            }
+
+        } else if (cmd == "reload_scene") {
+            try {
+                std::string path = current_scene_path_;
+                clear_scene();
+                init_scene(path);
+                control_server_.send({{"type", "ok"}});
+            } catch (const std::exception& e) {
+                control_server_.send({{"type", "error"}, {"message", e.what()}});
+            }
+
+        // === Tilemap editing ===
+        } else if (cmd == "get_tilemap") {
+            control_server_.send(build_tilemap_json());
+
+        } else if (cmd == "set_tile") {
+            if (scene_.tile_layer().has_value()) {
+                auto& layer = const_cast<TileLayer&>(*scene_.tile_layer());
+                uint32_t col = cmd_json.value("col", 0u);
+                uint32_t row = cmd_json.value("row", 0u);
+                uint16_t tile_id = cmd_json.value("tile_id", static_cast<uint16_t>(0));
+                bool solid = cmd_json.value("solid", false);
+                if (col < layer.width && row < layer.height) {
+                    uint32_t idx = row * layer.width + col;
+                    layer.tiles[idx] = tile_id;
+                    if (idx < layer.solid.size()) layer.solid[idx] = solid;
+                    control_server_.send({{"type", "ok"}});
+                } else {
+                    control_server_.send({{"type", "error"}, {"message", "tile out of bounds"}});
+                }
+            } else {
+                control_server_.send({{"type", "error"}, {"message", "no tilemap"}});
+            }
+
+        } else if (cmd == "set_tiles") {
+            if (scene_.tile_layer().has_value() && cmd_json.contains("tiles") && cmd_json["tiles"].is_array()) {
+                auto& layer = const_cast<TileLayer&>(*scene_.tile_layer());
+                for (const auto& t : cmd_json["tiles"]) {
+                    uint32_t col = t.value("col", 0u);
+                    uint32_t row = t.value("row", 0u);
+                    if (col < layer.width && row < layer.height) {
+                        uint32_t idx = row * layer.width + col;
+                        layer.tiles[idx] = t.value("tile_id", static_cast<uint16_t>(0));
+                        if (t.contains("solid") && idx < layer.solid.size()) {
+                            layer.solid[idx] = t["solid"].get<bool>();
+                        }
+                    }
+                }
+                control_server_.send({{"type", "ok"}});
+            } else {
+                control_server_.send({{"type", "error"}, {"message", "no tilemap or missing 'tiles' array"}});
+            }
+
+        } else if (cmd == "resize_tilemap") {
+            if (scene_.tile_layer().has_value()) {
+                auto& layer = const_cast<TileLayer&>(*scene_.tile_layer());
+                uint32_t new_w = cmd_json.value("width", layer.width);
+                uint32_t new_h = cmd_json.value("height", layer.height);
+                uint16_t fill = cmd_json.value("fill_tile", static_cast<uint16_t>(0));
+                std::vector<uint16_t> new_tiles(new_w * new_h, fill);
+                std::vector<bool> new_solid(new_w * new_h, false);
+                for (uint32_t r = 0; r < std::min(layer.height, new_h); ++r) {
+                    for (uint32_t c = 0; c < std::min(layer.width, new_w); ++c) {
+                        new_tiles[r * new_w + c] = layer.tiles[r * layer.width + c];
+                        new_solid[r * new_w + c] = layer.solid[r * layer.width + c];
+                    }
+                }
+                layer.width = new_w;
+                layer.height = new_h;
+                layer.tiles = std::move(new_tiles);
+                layer.solid = std::move(new_solid);
+                control_server_.send({{"type", "ok"}});
+            } else {
+                control_server_.send({{"type", "error"}, {"message", "no tilemap"}});
+            }
+
+        // === Entity manipulation ===
+        } else if (cmd == "set_player_position") {
+            if (player_id_.valid() && cmd_json.contains("position") && cmd_json["position"].is_array()) {
+                auto& pos = world_.get<ecs::Transform>(player_id_).position;
+                pos.x = cmd_json["position"][0].get<float>();
+                pos.y = cmd_json["position"][1].get<float>();
+                if (cmd_json["position"].size() > 2) pos.z = cmd_json["position"][2].get<float>();
+                renderer_.camera().set_follow_target(pos);
+                control_server_.send({{"type", "ok"}});
+            } else {
+                control_server_.send({{"type", "error"}, {"message", "no player or missing position"}});
+            }
+
+        } else if (cmd == "update_npc") {
+            int index = cmd_json.value("index", -1);
+            if (index >= 0 && index < static_cast<int>(npc_ids_.size())) {
+                auto eid = npc_ids_[index];
+                if (cmd_json.contains("position") && cmd_json["position"].is_array()) {
+                    auto& pos = world_.get<ecs::Transform>(eid).position;
+                    pos.x = cmd_json["position"][0].get<float>();
+                    pos.y = cmd_json["position"][1].get<float>();
+                    if (cmd_json["position"].size() > 2) pos.z = cmd_json["position"][2].get<float>();
+                    if (index < static_cast<int>(scene_npc_data_.size())) {
+                        scene_npc_data_[index].position = pos;
+                    }
+                }
+                if (cmd_json.contains("tint") && cmd_json["tint"].is_array()) {
+                    auto& spr = world_.get<ecs::Sprite>(eid);
+                    spr.tint = {cmd_json["tint"][0].get<float>(), cmd_json["tint"][1].get<float>(),
+                                cmd_json["tint"][2].get<float>(), cmd_json["tint"][3].get<float>()};
+                    if (index < static_cast<int>(scene_npc_data_.size())) {
+                        scene_npc_data_[index].tint = spr.tint;
+                    }
+                }
+                if (cmd_json.contains("facing") && cmd_json["facing"].is_string()) {
+                    Direction dir = Direction::Down;
+                    std::string f = cmd_json["facing"];
+                    if (f == "up") dir = Direction::Up;
+                    else if (f == "left") dir = Direction::Left;
+                    else if (f == "right") dir = Direction::Right;
+                    world_.get<ecs::Facing>(eid).dir = dir;
+                    if (index < static_cast<int>(scene_npc_data_.size())) {
+                        scene_npc_data_[index].facing = dir;
+                    }
+                }
+                control_server_.send({{"type", "ok"}});
+            } else {
+                control_server_.send({{"type", "error"}, {"message", "invalid npc index"}});
+            }
+
+        // === Lighting ===
+        } else if (cmd == "set_ambient") {
+            if (cmd_json.contains("color") && cmd_json["color"].is_array()) {
+                auto c = cmd_json["color"];
+                glm::vec4 ambient{c[0].get<float>(), c[1].get<float>(), c[2].get<float>(),
+                                  c.size() > 3 ? c[3].get<float>() : 1.0f};
+                scene_.set_ambient_color(ambient);
+                control_server_.send({{"type", "ok"}});
+            } else {
+                control_server_.send({{"type", "error"}, {"message", "missing 'color' array"}});
+            }
+
+        } else if (cmd == "add_light") {
+            PointLight pl;
+            float x = cmd_json.value("x", 0.0f);
+            float y = cmd_json.value("y", 0.0f);
+            if (cmd_json.contains("position") && cmd_json["position"].is_array()) {
+                x = cmd_json["position"][0].get<float>();
+                y = cmd_json["position"][1].get<float>();
+            }
+            float radius = cmd_json.value("radius", 4.0f);
+            float height = cmd_json.value("height", 3.0f);
+            float intensity = cmd_json.value("intensity", 1.0f);
+            pl.position_and_radius = {x, y, height, radius};
+            float r = 1.0f, g = 0.9f, b = 0.6f;
+            if (cmd_json.contains("color") && cmd_json["color"].is_array()) {
+                r = cmd_json["color"][0].get<float>();
+                g = cmd_json["color"][1].get<float>();
+                b = cmd_json["color"][2].get<float>();
+            }
+            pl.color = {r, g, b, intensity};
+            static_lights_.push_back(pl);
+            control_server_.send({{"type", "ok"}, {"index", static_lights_.size() - 1}});
+
+        } else if (cmd == "remove_light") {
+            int index = cmd_json.value("index", -1);
+            if (index >= 0 && index < static_cast<int>(static_lights_.size())) {
+                static_lights_.erase(static_lights_.begin() + index);
+                control_server_.send({{"type", "ok"}});
+            } else {
+                control_server_.send({{"type", "error"}, {"message", "invalid light index"}});
+            }
+
+        } else if (cmd == "update_light") {
+            int index = cmd_json.value("index", -1);
+            if (index >= 0 && index < static_cast<int>(static_lights_.size())) {
+                auto& pl = static_lights_[index];
+                if (cmd_json.contains("position") && cmd_json["position"].is_array()) {
+                    pl.position_and_radius.x = cmd_json["position"][0].get<float>();
+                    pl.position_and_radius.y = cmd_json["position"][1].get<float>();
+                }
+                if (cmd_json.contains("radius")) pl.position_and_radius.w = cmd_json["radius"].get<float>();
+                if (cmd_json.contains("height")) pl.position_and_radius.z = cmd_json["height"].get<float>();
+                if (cmd_json.contains("intensity")) pl.color.a = cmd_json["intensity"].get<float>();
+                if (cmd_json.contains("color") && cmd_json["color"].is_array()) {
+                    pl.color.r = cmd_json["color"][0].get<float>();
+                    pl.color.g = cmd_json["color"][1].get<float>();
+                    pl.color.b = cmd_json["color"][2].get<float>();
+                }
+                control_server_.send({{"type", "ok"}});
+            } else {
+                control_server_.send({{"type", "error"}, {"message", "invalid light index"}});
+            }
+
+        // === Portals ===
+        } else if (cmd == "add_portal") {
+            if (cmd_json.contains("portal") && cmd_json["portal"].is_object()) {
+                const auto& p = cmd_json["portal"];
+                PortalData portal;
+                if (p.contains("position") && p["position"].is_array()) {
+                    portal.position = {p["position"][0].get<float>(), p["position"][1].get<float>()};
+                }
+                if (p.contains("size") && p["size"].is_array()) {
+                    portal.size = {p["size"][0].get<float>(), p["size"][1].get<float>()};
+                }
+                portal.target_scene = p.value("target_scene", "");
+                if (p.contains("spawn_position") && p["spawn_position"].is_array()) {
+                    portal.spawn_position = {p["spawn_position"][0].get<float>(),
+                                             p["spawn_position"][1].get<float>(),
+                                             p["spawn_position"].size() > 2 ? p["spawn_position"][2].get<float>() : 0.0f};
+                }
+                if (p.contains("spawn_facing")) {
+                    std::string f = p["spawn_facing"];
+                    if (f == "up") portal.spawn_facing = Direction::Up;
+                    else if (f == "left") portal.spawn_facing = Direction::Left;
+                    else if (f == "right") portal.spawn_facing = Direction::Right;
+                    else portal.spawn_facing = Direction::Down;
+                }
+                portals_.push_back(portal);
+                control_server_.send({{"type", "ok"}, {"index", portals_.size() - 1}});
+            } else {
+                control_server_.send({{"type", "error"}, {"message", "missing 'portal' object"}});
+            }
+
+        } else if (cmd == "remove_portal") {
+            int index = cmd_json.value("index", -1);
+            if (index >= 0 && index < static_cast<int>(portals_.size())) {
+                portals_.erase(portals_.begin() + index);
+                control_server_.send({{"type", "ok"}});
+            } else {
+                control_server_.send({{"type", "error"}, {"message", "invalid portal index"}});
+            }
+
+        // === Environment ===
+        } else if (cmd == "set_weather") {
+            if (cmd_json.contains("type") && cmd_json["type"].is_string()) {
+                std::string wtype = cmd_json["type"];
+                if (wtype == "clear") {
+                    weather_system_.reset();
+                } else {
+                    WeatherConfig weather_cfg;
+                    if (wtype == "rain") weather_cfg.type = WeatherType::Rain;
+                    else if (wtype == "snow") weather_cfg.type = WeatherType::Snow;
+                    if (cmd_json.contains("fog_density")) weather_cfg.fog_density = cmd_json["fog_density"].get<float>();
+                    if (cmd_json.contains("fog_color") && cmd_json["fog_color"].is_array()) {
+                        weather_cfg.fog_color = {cmd_json["fog_color"][0].get<float>(),
+                                                 cmd_json["fog_color"][1].get<float>(),
+                                                 cmd_json["fog_color"][2].get<float>()};
+                    }
+                    if (cmd_json.contains("transition_speed")) {
+                        weather_cfg.transition_speed = cmd_json["transition_speed"].get<float>();
+                    }
+                    weather_system_.init(particles_, scene_, weather_cfg);
+                }
+                control_server_.send({{"type", "ok"}});
+            } else {
+                control_server_.send({{"type", "error"}, {"message", "missing 'type' field"}});
+            }
+
+        } else if (cmd == "set_day_night") {
+            if (cmd_json.contains("enabled")) {
+                if (cmd_json["enabled"].get<bool>()) {
+                    DayNightConfig dn_cfg;
+                    dn_cfg.enabled = true;
+                    dn_cfg.cycle_speed = cmd_json.value("cycle_speed", 0.02f);
+                    if (cmd_json.contains("time")) {
+                        dn_cfg.initial_time = cmd_json["time"].get<float>();
+                    }
+                    day_night_system_.init(dn_cfg);
+                } else {
+                    day_night_system_.reset();
+                }
+                control_server_.send({{"type", "ok"}});
+            } else {
+                control_server_.send({{"type", "error"}, {"message", "missing 'enabled' field"}});
+            }
+
+        // === Particles ===
+        } else if (cmd == "list_emitters") {
+            nlohmann::json result;
+            result["type"] = "emitters";
+            nlohmann::json arr = nlohmann::json::array();
+            for (size_t i = 0; i < particles_.emitter_count(); ++i) {
+                const auto& em = particles_.emitter(i);
+                arr.push_back({
+                    {"index", i},
+                    {"active", em.active},
+                    {"position", {em.position.x, em.position.y}},
+                    {"spawn_rate", em.config.spawn_rate}
+                });
+            }
+            result["emitters"] = arr;
+            control_server_.send(result);
+
+        } else if (cmd == "set_emitter_config") {
+            int index = cmd_json.value("emitter_index", -1);
+            if (index >= 0 && index < static_cast<int>(particles_.emitter_count()) &&
+                cmd_json.contains("config") && cmd_json["config"].is_object()) {
+                EmitterConfig cfg = SceneLoader::parse_emitter(cmd_json["config"]);
+                particles_.set_emitter_config(static_cast<size_t>(index), cfg);
+                control_server_.send({{"type", "ok"}});
+            } else {
+                control_server_.send({{"type", "error"}, {"message", "invalid emitter index or missing config"}});
+            }
+
+        } else if (cmd == "add_emitter") {
+            EmitterConfig cfg;
+            if (cmd_json.contains("config") && cmd_json["config"].is_object()) {
+                cfg = SceneLoader::parse_emitter(cmd_json["config"]);
+            }
+            glm::vec2 pos{0.0f};
+            if (cmd_json.contains("position") && cmd_json["position"].is_array()) {
+                pos = {cmd_json["position"][0].get<float>(), cmd_json["position"][1].get<float>()};
+            }
+            size_t idx = particles_.add_emitter(cfg, pos);
+            control_server_.send({{"type", "ok"}, {"index", idx}});
+
+        } else if (cmd == "remove_emitter") {
+            int index = cmd_json.value("index", -1);
+            if (index >= 0 && index < static_cast<int>(particles_.emitter_count())) {
+                particles_.remove_emitter(static_cast<size_t>(index));
+                control_server_.send({{"type", "ok"}});
+            } else {
+                control_server_.send({{"type", "error"}, {"message", "invalid emitter index"}});
+            }
+
+        // === Features ===
+        } else if (cmd == "get_features") {
+            nlohmann::json result;
+            result["type"] = "features";
+            nlohmann::json flags = nlohmann::json::object();
+            for (const auto& entry : FeatureFlags::entries()) {
+                flags[std::string(entry.name)] = feature_flags_.*entry.ptr;
+            }
+            result["flags"] = flags;
+            control_server_.send(result);
+
+        } else if (cmd == "set_feature") {
+            if (cmd_json.contains("name") && cmd_json["name"].is_string() && cmd_json.contains("enabled")) {
+                std::string name = cmd_json["name"];
+                bool enabled = cmd_json["enabled"].get<bool>();
+                bool found = false;
+                for (const auto& entry : FeatureFlags::entries()) {
+                    if (entry.name == name) {
+                        feature_flags_.*entry.ptr = enabled;
+                        found = true;
+                        break;
+                    }
+                }
+                if (found) {
+                    control_server_.send({{"type", "ok"}});
+                } else {
+                    control_server_.send({{"type", "error"}, {"message", "unknown feature: " + name}});
+                }
+            } else {
+                control_server_.send({{"type", "error"}, {"message", "missing 'name' or 'enabled' field"}});
+            }
+
+        // === Camera ===
+        } else if (cmd == "set_camera") {
+            if (cmd_json.contains("position") && cmd_json["position"].is_array()) {
+                glm::vec3 pos{cmd_json["position"][0].get<float>(),
+                              cmd_json["position"][1].get<float>(),
+                              cmd_json["position"].size() > 2 ? cmd_json["position"][2].get<float>() : 0.0f};
+                renderer_.camera().set_follow_target(pos);
+            }
+            if (cmd_json.contains("zoom")) {
+                renderer_.camera().set_target_zoom(cmd_json["zoom"].get<float>());
+            }
+            control_server_.send({{"type", "ok"}});
+
+        // === Event subscription ===
+        } else if (cmd == "subscribe") {
+            if (cmd_json.contains("events") && cmd_json["events"].is_array()) {
+                std::vector<std::string> events;
+                for (const auto& e : cmd_json["events"]) {
+                    if (e.is_string()) events.push_back(e.get<std::string>());
+                }
+                control_server_.subscribe_events(events);
+                control_server_.send({{"type", "ok"}});
+            } else {
+                control_server_.send({{"type", "error"}, {"message", "missing 'events' array"}});
+            }
+
+        } else if (cmd == "unsubscribe") {
+            control_server_.unsubscribe_all();
+            control_server_.send({{"type", "ok"}});
+
         } else {
             control_server_.send({{"type", "error"},
                                   {"message", "unknown command: " + cmd}});
@@ -1774,6 +2193,7 @@ void App::apply_save_data(const SaveData& data) {
 
 void App::emit_event(const std::string& event, const nlohmann::json& data) {
     if (!control_server_.has_client()) return;
+    if (!control_server_.is_event_subscribed(event)) return;
     nlohmann::json msg;
     msg["type"] = "event";
     msg["event"] = event;
@@ -1782,6 +2202,88 @@ void App::emit_event(const std::string& event, const nlohmann::json& data) {
         msg["data"] = data;
     }
     control_server_.send(msg);
+}
+
+nlohmann::json App::build_scene_json() const {
+    // Reconstruct SceneData from current live state + stored metadata
+    SceneData data;
+
+    // Tilemap from live scene
+    if (scene_.tile_layer().has_value()) {
+        data.tilemap = *scene_.tile_layer();
+    }
+    if (scene_.tile_animator()) {
+        // Can't easily extract animations back; use stored data if available
+    }
+
+    data.ambient_color = scene_.ambient_color();
+    data.static_lights = static_lights_;
+
+    // Player from ECS
+    if (player_id_.valid()) {
+        data.player_position = world_.get<ecs::Transform>(player_id_).position;
+        data.player_tint = world_.get<ecs::Sprite>(player_id_).tint;
+        data.player_facing = world_.get<ecs::Facing>(player_id_).dir;
+    }
+
+    // NPCs from stored data + live ECS positions
+    data.npcs = scene_npc_data_;
+    for (size_t i = 0; i < npc_ids_.size() && i < data.npcs.size(); ++i) {
+        data.npcs[i].position = world_.get<ecs::Transform>(npc_ids_[i]).position;
+        data.npcs[i].facing = world_.get<ecs::Facing>(npc_ids_[i]).dir;
+    }
+
+    // Background layers from stored data
+    for (const auto& layer : scene_.background_layers()) {
+        ParallaxLayerData pld;
+        pld.z = layer.z;
+        pld.parallax_factor = layer.parallax_factor;
+        pld.quad_width = layer.quad_width;
+        pld.quad_height = layer.quad_height;
+        pld.uv_repeat_x = layer.uv_repeat_x;
+        pld.uv_repeat_y = layer.uv_repeat_y;
+        pld.tint = layer.tint;
+        pld.wall = layer.wall;
+        pld.wall_y_offset = layer.wall_y_offset;
+        data.background_layers.push_back(pld);
+    }
+
+    // Portals
+    data.portals = portals_;
+
+    // Day/night
+    if (day_night_system_.active()) {
+        data.day_night.enabled = true;
+        data.day_night.initial_time = day_night_system_.time_of_day();
+    }
+
+    nlohmann::json result = SceneLoader::to_json(data);
+    result["type"] = "scene";
+    return result;
+}
+
+nlohmann::json App::build_tilemap_json() const {
+    nlohmann::json result;
+    result["type"] = "tilemap";
+
+    if (scene_.tile_layer().has_value()) {
+        const auto& layer = *scene_.tile_layer();
+        result["width"] = layer.width;
+        result["height"] = layer.height;
+        result["tile_size"] = layer.tile_size;
+
+        nlohmann::json tiles = nlohmann::json::array();
+        for (auto t : layer.tiles) tiles.push_back(t);
+        result["tiles"] = tiles;
+
+        nlohmann::json solid = nlohmann::json::array();
+        for (size_t i = 0; i < layer.solid.size(); ++i) {
+            solid.push_back(layer.solid[i] ? true : false);
+        }
+        result["solid"] = solid;
+    }
+
+    return result;
 }
 
 void App::cleanup() {

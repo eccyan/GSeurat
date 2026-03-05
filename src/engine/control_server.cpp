@@ -154,4 +154,20 @@ void ControlServer::send(const nlohmann::json& msg) {
     }
 }
 
+void ControlServer::subscribe_events(const std::vector<std::string>& events) {
+    subscribed_events_.clear();
+    for (const auto& e : events) {
+        subscribed_events_.insert(e);
+    }
+}
+
+void ControlServer::unsubscribe_all() {
+    subscribed_events_.clear();
+}
+
+bool ControlServer::is_event_subscribed(const std::string& event) const {
+    if (subscribed_events_.empty()) return true;  // empty = all pass
+    return subscribed_events_.count(event) > 0;
+}
+
 }  // namespace vulkan_game

@@ -114,6 +114,19 @@ glm::vec2 ParticleSystem::tile_uv_max(uint32_t tile_id) const {
     return {col / static_cast<float>(kAtlasColumns), 1.0f};
 }
 
+void ParticleSystem::set_emitter_config(size_t index, const EmitterConfig& config) {
+    if (index < emitters_.size()) {
+        emitters_[index].config = config;
+    }
+}
+
+void ParticleSystem::remove_emitter(size_t index) {
+    if (index < emitters_.size()) {
+        emitters_[index].active = false;
+        emitters_[index].config.spawn_rate = 0.0f;
+    }
+}
+
 void ParticleSystem::clear() {
     emitters_.clear();
     for (auto& p : pool_) p.alive = false;
