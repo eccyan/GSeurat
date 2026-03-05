@@ -1,8 +1,11 @@
 import React, { useState, useCallback, useRef } from 'react';
+import { ReplicateClient } from '@vulkan-game-tools/ai-providers';
 import { useComposerStore, LayerId } from '../store/useComposerStore.js';
 import { AudioPlayerHandle } from './AudioPlayer.js';
 import { LOOP_PRESETS, MusicLoopPreset, LoopStyle } from '../audio/music-presets.js';
 import { generateLoop } from '../audio/loop-generator.js';
+
+const REPLICATE_TOKEN = (import.meta as any).env?.VITE_REPLICATE_API_TOKEN as string | undefined;
 
 // ---------------------------------------------------------------------------
 // Types
@@ -43,6 +46,15 @@ export function AIGeneratePanel({ playerRef }: AIGeneratePanelProps) {
   const previewSourceRef = useRef<AudioBufferSourceNode | null>(null);
   const [previewBuffer, setPreviewBuffer] = useState<AudioBuffer | null>(null);
   const [isPreviewPlaying, setIsPreviewPlaying] = useState(false);
+
+  // AI generation state (optional)
+  const [aiPrompt, setAiPrompt] = useState('');
+  const [aiDuration, setAiDuration] = useState(5);
+  const [aiStatus, setAiStatus] = useState<GenerationStatus>({ kind: 'idle' });
+  const aiPreviewCtxRef = useRef<AudioContext | null>(null);
+  const aiPreviewSourceRef = useRef<AudioBufferSourceNode | null>(null);
+  const [aiPreviewBuffer, setAiPreviewBuffer] = useState<AudioBuffer | null>(null);
+  const [isAiPreviewPlaying, setIsAiPreviewPlaying] = useState(false);
 
   const bpm = useComposerStore((s) => s.bpm);
 
@@ -108,6 +120,54 @@ export function AIGeneratePanel({ playerRef }: AIGeneratePanelProps) {
     setPreviewBuffer(null);
     setIsPreviewPlaying(false);
   }, [status, targetLayer, playerRef]);
+
+  // -------------------------------------------------------------------------
+  // AI generation via Replicate
+  // -------------------------------------------------------------------------
+  const handleAiGenerate = useCallback(async () => {
+    if (!aiPrompt.trim() || !REPLICATE_TOKEN) return;
+    if (aiStatus.kind === 'generating') return;
+
+    setAiStatus({ kind: 'generating', message: `Generating ${aiDuration}s via AI...` });
+    try {
+      const client = new ReplicateClient(REPLICATE_TOKEN);
+      const audioData = await client.generateAudio(aiPrompt.trim(), { duration: aiDuration });
+      setAiStatus({ kind: 'ready', audioData });
+
+      const ctx = new AudioContext();
+      aiPreviewCtxRef.current = ctx;
+      const decoded = await ctx.decodeAudioData(audioData.slice(0));
+      setAiPreviewBuffer(decoded);
+    } catch (err) {
+      setAiStatus({ kind: 'error', message: err instanceof Error ? err.message : String(err) });
+    }
+  }, [aiPrompt, aiDuration, aiStatus.kind]);
+
+  const handleAiPreviewPlay = useCallback(() => {
+    if (!aiPreviewBuffer || !aiPreviewCtxRef.current) return;
+    if (isAiPreviewPlaying) {
+      aiPreviewSourceRef.current?.stop();
+      setIsAiPreviewPlaying(false);
+      return;
+    }
+    const ctx = aiPreviewCtxRef.current;
+    if (ctx.state === 'suspended') ctx.resume();
+    const src = ctx.createBufferSource();
+    src.buffer = aiPreviewBuffer;
+    src.connect(ctx.destination);
+    src.start();
+    src.onended = () => setIsAiPreviewPlaying(false);
+    aiPreviewSourceRef.current = src;
+    setIsAiPreviewPlaying(true);
+  }, [aiPreviewBuffer, isAiPreviewPlaying]);
+
+  const handleAiApplyToLane = useCallback(async () => {
+    if (aiStatus.kind !== 'ready') return;
+    await playerRef.current?.loadLayerBuffer(targetLayer, aiStatus.audioData);
+    setAiStatus({ kind: 'idle' });
+    setAiPreviewBuffer(null);
+    setIsAiPreviewPlaying(false);
+  }, [aiStatus, targetLayer, playerRef]);
 
   // -------------------------------------------------------------------------
   // Status color / icon
@@ -254,10 +314,106 @@ export function AIGeneratePanel({ playerRef }: AIGeneratePanelProps) {
           </div>
         )}
 
+        {/* ---------------------------------------------------------------- */}
+        {/* AI Generation (optional — Replicate)                             */}
+        {/* ---------------------------------------------------------------- */}
+        {REPLICATE_TOKEN && (
+          <>
+            <div style={{ borderTop: '1px solid #2a2a2a', margin: '4px 0' }} />
+            <div style={styles.field}>
+              <div style={{ ...styles.fieldLabel, color: '#888' }}>AI GENERATION (REPLICATE)</div>
+
+              <textarea
+                value={aiPrompt}
+                onChange={(e) => setAiPrompt(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                    e.preventDefault();
+                    handleAiGenerate();
+                  }
+                }}
+                placeholder={`Describe the ${LAYER_LABELS[targetLayer].toLowerCase()} sound for AI...`}
+                rows={2}
+                style={styles.textarea}
+              />
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', ...styles.fieldLabel }}>
+                <span>Duration</span>
+                <span style={{ color: '#aaa' }}>{aiDuration}s</span>
+              </div>
+              <input
+                type="range" min={1} max={30} step={1}
+                value={aiDuration}
+                onChange={(e) => setAiDuration(parseInt(e.target.value))}
+                style={styles.slider}
+              />
+
+              <button
+                onClick={handleAiGenerate}
+                disabled={aiStatus.kind === 'generating' || !aiPrompt.trim()}
+                style={{
+                  ...styles.generateBtn,
+                  background: '#2a1a3a',
+                  borderColor: '#4a2a6a',
+                  color: '#b090e0',
+                  opacity: aiStatus.kind === 'generating' || !aiPrompt.trim() ? 0.5 : 1,
+                }}
+              >
+                {aiStatus.kind === 'generating' ? 'Generating via AI...' : 'Generate with AI'}
+              </button>
+
+              {aiStatus.kind !== 'idle' && (
+                <div style={{
+                  ...styles.statusBox,
+                  borderColor: statusMeta[aiStatus.kind].color + '44',
+                  color: statusMeta[aiStatus.kind].color,
+                }}>
+                  {'message' in aiStatus ? aiStatus.message : aiStatus.kind === 'ready' ? 'AI audio ready' : ''}
+                </div>
+              )}
+
+              {aiStatus.kind === 'ready' && aiPreviewBuffer && (
+                <div style={styles.previewRow}>
+                  <button
+                    onClick={handleAiPreviewPlay}
+                    style={{
+                      ...styles.previewBtn,
+                      background: isAiPreviewPlaying ? '#2a3a5a' : '#1a1a1a',
+                      borderColor: isAiPreviewPlaying ? '#4a6ab8' : '#333',
+                      color: isAiPreviewPlaying ? '#90b8f8' : '#888',
+                      flex: 1,
+                    }}
+                  >
+                    {isAiPreviewPlaying ? 'Stop' : 'Preview'}
+                  </button>
+                  <button
+                    onClick={handleAiApplyToLane}
+                    style={{
+                      ...styles.previewBtn,
+                      background: '#1a2a1a',
+                      borderColor: '#2a5a2a',
+                      color: '#70d070',
+                      flex: 1,
+                    }}
+                  >
+                    Apply to {LAYER_LABELS[targetLayer]}
+                  </button>
+                </div>
+              )}
+            </div>
+          </>
+        )}
+
         {/* Help */}
         <div style={styles.helpBox}>
           Generates loops procedurally in the browser.<br />
           No server required — uses OfflineAudioContext synthesis.
+          {!REPLICATE_TOKEN && (
+            <>
+              <br /><br />
+              Set <code style={{ color: '#4a7ad0' }}>VITE_REPLICATE_API_TOKEN</code> in tools/.env for optional AI generation via Replicate.
+            </>
+          )}
         </div>
       </div>
     </div>

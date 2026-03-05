@@ -1,8 +1,11 @@
 import React, { useState, useCallback } from 'react';
+import { ReplicateClient } from '@vulkan-game-tools/ai-providers';
 import { useSfxStore } from '../store/useSfxStore.js';
 import { SFX_PRESETS } from '../audio/presets.js';
 import { renderSfx, SAMPLE_RATE } from '../audio/synth.js';
 import { smartGenerate, SmartGenerateResult } from '../audio/smart-generate.js';
+
+const REPLICATE_TOKEN = (import.meta as any).env?.VITE_REPLICATE_API_TOKEN as string | undefined;
 
 // ---------------------------------------------------------------------------
 // Preset row
@@ -37,6 +40,13 @@ export function AIGeneratePanel() {
 
   const [prompt, setPrompt] = useState('');
   const [lastResult, setLastResult] = useState<SmartGenerateResult | null>(null);
+
+  // AI generation state (optional, only when VITE_REPLICATE_API_TOKEN is set)
+  const [aiPrompt, setAiPrompt] = useState('');
+  const [aiDuration, setAiDuration] = useState(2);
+  const [aiStatus, setAiStatus] = useState<
+    { kind: 'idle' } | { kind: 'generating' } | { kind: 'done' } | { kind: 'error'; message: string }
+  >({ kind: 'idle' });
 
   // Load a named preset into the editor store
   const loadPreset = useCallback(
@@ -112,6 +122,29 @@ export function AIGeneratePanel() {
     },
     [handleGenerate],
   );
+
+  // AI generation via Replicate
+  const handleAiGenerate = useCallback(async () => {
+    if (!aiPrompt.trim() || !REPLICATE_TOKEN) return;
+    if (aiStatus.kind === 'generating') return;
+
+    setAiStatus({ kind: 'generating' });
+    try {
+      const client = new ReplicateClient(REPLICATE_TOKEN);
+      const buffer = await client.generateAudio(aiPrompt.trim(), { duration: aiDuration });
+
+      const audioCtx = new AudioContext();
+      const decoded = await audioCtx.decodeAudioData(buffer.slice(0));
+      const channelData = decoded.getChannelData(0);
+      const samples = new Float32Array(channelData.length);
+      samples.set(channelData);
+
+      store.setGeneratedSamples(samples);
+      setAiStatus({ kind: 'done' });
+    } catch (e) {
+      setAiStatus({ kind: 'error', message: e instanceof Error ? e.message : String(e) });
+    }
+  }, [aiPrompt, aiDuration, aiStatus.kind, store]);
 
   // Quick-fill chips
   const QUICK_CHIPS = [
@@ -216,12 +249,85 @@ export function AIGeneratePanel() {
           </div>
         </div>
 
+        {/* ---------------------------------------------------------------- */}
+        {/* AI Generation (optional — Replicate)                             */}
+        {/* ---------------------------------------------------------------- */}
+        {REPLICATE_TOKEN && (
+          <>
+            <div style={styles.divider} />
+            <div style={styles.section}>
+              <div style={styles.sectionLabel}>AI GENERATION (REPLICATE)</div>
+
+              <div style={styles.fieldGroup}>
+                <div style={styles.fieldLabel}>Prompt</div>
+                <textarea
+                  value={aiPrompt}
+                  onChange={(e) => setAiPrompt(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                      e.preventDefault();
+                      handleAiGenerate();
+                    }
+                  }}
+                  placeholder="Describe the sound for AI generation..."
+                  rows={2}
+                  style={styles.textarea}
+                />
+              </div>
+
+              <div style={styles.fieldGroup}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={styles.fieldLabel}>Duration</span>
+                  <input
+                    type="range" min={0.5} max={10} step={0.5}
+                    value={aiDuration}
+                    onChange={(e) => setAiDuration(parseFloat(e.target.value))}
+                    style={{ flex: 1 }}
+                  />
+                  <span style={{ ...styles.hint, minWidth: 28, textAlign: 'right' as const }}>{aiDuration}s</span>
+                </div>
+              </div>
+
+              <button
+                onClick={handleAiGenerate}
+                disabled={aiStatus.kind === 'generating' || !aiPrompt.trim()}
+                style={{
+                  ...styles.generateBtn,
+                  background: '#1a2a3a',
+                  borderColor: '#2a4a7a',
+                  color: '#80b0f0',
+                  opacity: aiStatus.kind === 'generating' || !aiPrompt.trim() ? 0.6 : 1,
+                }}
+              >
+                {aiStatus.kind === 'generating' ? 'Generating...' : 'Generate with AI'}
+              </button>
+
+              {aiStatus.kind === 'done' && (
+                <div style={{ ...styles.statusBox, color: '#70d870', borderColor: '#70d87044' }}>
+                  AI audio loaded as waveform.
+                </div>
+              )}
+              {aiStatus.kind === 'error' && (
+                <div style={{ ...styles.statusBox, color: '#e07070', borderColor: '#e0707044' }}>
+                  {aiStatus.message}
+                </div>
+              )}
+            </div>
+          </>
+        )}
+
         {/* Help */}
         <div style={styles.helpBox}>
           <div style={styles.helpTitle}>How it works</div>
           <div style={styles.helpText}>
             Generates SFX from text description using keyword matching.<br />
             No server required — runs entirely in the browser.
+            {!REPLICATE_TOKEN && (
+              <>
+                <br /><br />
+                Set <code style={{ color: '#6a6aa0' }}>VITE_REPLICATE_API_TOKEN</code> in tools/.env for optional AI generation via Replicate.
+              </>
+            )}
           </div>
         </div>
       </div>
