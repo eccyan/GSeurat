@@ -89,11 +89,9 @@ header "Detecting AI providers"
 OLLAMA_URL="http://localhost:11434"
 OLLAMA_MODEL="llama3"
 SD_WEBUI_URL="http://localhost:7860"
-STABLE_AUDIO_URL="http://localhost:8001"
 
 OLLAMA_OK=false
 SD_WEBUI_OK=false
-STABLE_AUDIO_OK=false
 
 # --- Ollama ------------------------------------------------------------------
 check_ollama() {
@@ -352,208 +350,6 @@ fi
 
 echo ""
 
-# --- Stable Audio Open Small --------------------------------------------------
-STABLE_AUDIO_SERVER="${SCRIPT_DIR}/scripts/stable-audio-server.py"
-STABLE_AUDIO_VENV="${SCRIPT_DIR}/.venv/stable-audio"
-STABLE_AUDIO_PYTHON="python3"  # overridden below
-SA_REQUIRED_PY_MINOR_MIN=10    # Python 3.10
-SA_REQUIRED_PY_MINOR_MAX=11    # Python 3.11 (pandas 2.0.2 has no wheel for 3.12+)
-
-check_stable_audio() {
-  if curl -sf "${STABLE_AUDIO_URL}/health" -o /dev/null --connect-timeout 3; then
-    return 0
-  fi
-  return 1
-}
-
-# Use venv python if the venv exists and has a compatible version
-activate_stable_audio_venv() {
-  if [ -f "${STABLE_AUDIO_VENV}/bin/python" ]; then
-    local minor
-    minor=$("${STABLE_AUDIO_VENV}/bin/python" -c 'import sys; print(sys.version_info.minor)' 2>/dev/null || echo "0")
-    if [ "$minor" -ge "$SA_REQUIRED_PY_MINOR_MIN" ] && [ "$minor" -le "$SA_REQUIRED_PY_MINOR_MAX" ]; then
-      STABLE_AUDIO_PYTHON="${STABLE_AUDIO_VENV}/bin/python"
-      return 0
-    else
-      warn "Existing venv uses Python 3.${minor} (need 3.${SA_REQUIRED_PY_MINOR_MIN}–3.${SA_REQUIRED_PY_MINOR_MAX}). Removing..."
-      rm -rf "$STABLE_AUDIO_VENV"
-      return 1
-    fi
-  fi
-  return 1
-}
-
-# Check if stable-audio-tools Python package is installed (in venv or system)
-check_stable_audio_deps() {
-  activate_stable_audio_venv 2>/dev/null || true
-  "$STABLE_AUDIO_PYTHON" -c "import stable_audio_tools; import flask" &>/dev/null
-}
-
-# Find a compatible Python (3.10–3.11). Sets SA_COMPAT_PYTHON if found.
-find_compatible_python() {
-  SA_COMPAT_PYTHON=""
-  # pandas 2.0.2 (pinned by stable-audio-tools) only has pre-built wheels
-  # for Python 3.8–3.11 and cannot compile from source on 3.12+.
-  for minor in 11 10; do
-    for candidate in "python3.${minor}" "/opt/homebrew/bin/python3.${minor}" "/usr/local/bin/python3.${minor}"; do
-      if command -v "$candidate" &>/dev/null; then
-        SA_COMPAT_PYTHON="$candidate"
-        return 0
-      fi
-    done
-  done
-  # Check if default python3 is in range
-  if command -v python3 &>/dev/null; then
-    local minor
-    minor=$(python3 -c 'import sys; print(sys.version_info.minor)' 2>/dev/null || echo "0")
-    if [ "$minor" -ge "$SA_REQUIRED_PY_MINOR_MIN" ] && [ "$minor" -le "$SA_REQUIRED_PY_MINOR_MAX" ]; then
-      SA_COMPAT_PYTHON="python3"
-      return 0
-    fi
-  fi
-  return 1
-}
-
-start_stable_audio() {
-  activate_stable_audio_venv 2>/dev/null || true
-  info "Starting Stable Audio server in background..."
-  info "First run will download the model from HuggingFace (~500MB)."
-  nohup "$STABLE_AUDIO_PYTHON" "$STABLE_AUDIO_SERVER" --port 8001 &>/dev/null &
-  # Poll for startup — model loading can take a while
-  local attempts=0
-  while [ $attempts -lt 40 ]; do
-    sleep 3
-    if check_stable_audio; then
-      return 0
-    fi
-    attempts=$((attempts + 1))
-    echo -ne "    Waiting for Stable Audio to start... (${attempts}/40)\r"
-  done
-  echo ""
-  return 1
-}
-
-if check_stable_audio; then
-  STABLE_AUDIO_OK=true
-  success "Stable Audio is running at $STABLE_AUDIO_URL"
-else
-  if check_stable_audio_deps; then
-    SA_PY_VER=$("$STABLE_AUDIO_PYTHON" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")' 2>/dev/null)
-    success "Stable Audio dependencies installed (python $SA_PY_VER)"
-
-    read -rp "    Start Stable Audio server now? (Y/n) " START_SA
-    if [[ "${START_SA:-y}" =~ ^[Yy]$ ]]; then
-      if start_stable_audio; then
-        STABLE_AUDIO_OK=true
-        success "Stable Audio is running at $STABLE_AUDIO_URL"
-      else
-        warn "Stable Audio is still loading the model. It may take longer on first run."
-        dim "Check manually: $STABLE_AUDIO_PYTHON $STABLE_AUDIO_SERVER"
-      fi
-    fi
-  else
-    # Need to install — find a compatible Python
-    SA_NEED_INSTALL_PYTHON=false
-
-    if find_compatible_python; then
-      SA_PY_VER=$("$SA_COMPAT_PYTHON" --version 2>&1 | sed 's/Python //')
-      dim "Found compatible Python: $SA_COMPAT_PYTHON ($SA_PY_VER)"
-    else
-      SA_NEED_INSTALL_PYTHON=true
-      DEFAULT_PY_VER=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")' 2>/dev/null || echo "none")
-      warn "No compatible Python found (need 3.10–3.11, found $DEFAULT_PY_VER)"
-      echo ""
-      echo -e "    ${BOLD}Stable Audio Open Small${NC} requires Python 3.10 or 3.11."
-      echo -e "    stable-audio-tools pins pandas 2.0.2 which has no wheels for 3.12+."
-      echo ""
-
-      if command -v brew &>/dev/null; then
-        read -rp "    Install Python 3.11 via Homebrew? (Y/n) " INSTALL_PY
-        if [[ "${INSTALL_PY:-y}" =~ ^[Yy]$ ]]; then
-          info "Installing python@3.11 via Homebrew..."
-          brew install python@3.11 </dev/null
-          # Homebrew installs to a versioned path
-          if command -v python3.11 &>/dev/null; then
-            SA_COMPAT_PYTHON="python3.11"
-          elif [ -x "/opt/homebrew/bin/python3.11" ]; then
-            SA_COMPAT_PYTHON="/opt/homebrew/bin/python3.11"
-          elif [ -x "/usr/local/bin/python3.11" ]; then
-            SA_COMPAT_PYTHON="/usr/local/bin/python3.11"
-          fi
-
-          if [ -n "$SA_COMPAT_PYTHON" ]; then
-            SA_NEED_INSTALL_PYTHON=false
-            success "Python 3.11 installed: $SA_COMPAT_PYTHON"
-          else
-            warn "python3.11 not found in PATH after install"
-            dim "Try: brew link python@3.11"
-          fi
-        fi
-      else
-        dim "Install Python 3.11:"
-        if [[ "$OSTYPE" == "darwin"* ]]; then
-          dim "  brew install python@3.11"
-        else
-          dim "  sudo apt install python3.11 python3.11-venv   (Debian/Ubuntu)"
-          dim "  sudo dnf install python3.11                   (Fedora)"
-        fi
-      fi
-    fi
-
-    if ! $SA_NEED_INSTALL_PYTHON && [ -n "$SA_COMPAT_PYTHON" ]; then
-      echo ""
-      echo -e "    ${BOLD}Stable Audio Open Small${NC} provides music/SFX generation for"
-      echo -e "    Audio Composer and SFX Designer. Max 11s, 44.1kHz stereo."
-      echo ""
-      echo -e "    Packages: ${CYAN}flask torch torchaudio einops stable-audio-tools${NC}"
-      echo -e "    Venv at:  ${CYAN}${STABLE_AUDIO_VENV}${NC}"
-      echo -e "    ${DIM}First server run will download the model (~500MB).${NC}"
-      echo ""
-
-      read -rp "    Create venv and install Stable Audio dependencies? (Y/n) " INSTALL_SA
-      if [[ "${INSTALL_SA:-y}" =~ ^[Yy]$ ]]; then
-        info "Creating virtual environment with $SA_COMPAT_PYTHON..."
-        mkdir -p "$(dirname "$STABLE_AUDIO_VENV")"
-        "$SA_COMPAT_PYTHON" -m venv "$STABLE_AUDIO_VENV"
-        STABLE_AUDIO_PYTHON="${STABLE_AUDIO_VENV}/bin/python"
-        success "Virtual environment created"
-
-        info "Installing Stable Audio dependencies (this may take a while)..."
-        "$STABLE_AUDIO_PYTHON" -m pip install --upgrade pip 'setuptools<78' wheel
-        "$STABLE_AUDIO_PYTHON" -m pip install flask torch torchaudio einops stable-audio-tools
-        success "Stable Audio dependencies installed"
-
-        read -rp "    Start Stable Audio server now? (Y/n) " START_SA_NOW
-        if [[ "${START_SA_NOW:-y}" =~ ^[Yy]$ ]]; then
-          if start_stable_audio; then
-            STABLE_AUDIO_OK=true
-            success "Stable Audio is running at $STABLE_AUDIO_URL"
-          else
-            warn "Stable Audio is still loading. Start manually later:"
-            dim "  $STABLE_AUDIO_PYTHON $STABLE_AUDIO_SERVER"
-          fi
-        else
-          dim "Start later with:"
-          dim "  $STABLE_AUDIO_PYTHON $STABLE_AUDIO_SERVER"
-        fi
-      fi
-    fi
-  fi
-
-  if ! $STABLE_AUDIO_OK; then
-    read -rp "    Enter custom Stable Audio URL (or press Enter to skip): " CUSTOM_STABLE_AUDIO
-    if [ -n "$CUSTOM_STABLE_AUDIO" ]; then
-      STABLE_AUDIO_URL="$CUSTOM_STABLE_AUDIO"
-      if check_stable_audio; then
-        STABLE_AUDIO_OK=true
-        success "Stable Audio found at $STABLE_AUDIO_URL"
-      else
-        warn "Stable Audio not responding at $STABLE_AUDIO_URL (saved anyway)"
-      fi
-    fi
-  fi
-fi
-
 # ---------------------------------------------------------------------------
 # 5. Write .env
 # ---------------------------------------------------------------------------
@@ -576,9 +372,10 @@ VITE_OLLAMA_MODEL=${OLLAMA_MODEL}
 # Used by: Pixel Painter
 VITE_SD_WEBUI_URL=${SD_WEBUI_URL}
 
-# --- Stable Audio Open Small (Music/SFX Generation) -------------------------
-# Used by: Audio Composer, SFX Designer
-VITE_STABLE_AUDIO_URL=${STABLE_AUDIO_URL}
+# --- Replicate API (optional, cloud AI audio) --------------------------------
+# Audio Composer and SFX Designer have built-in procedural generation.
+# Uncomment and set your token for optional cloud AI audio generation.
+# VITE_REPLICATE_API_TOKEN=r8_your_token_here
 EOF
 
 success "Configuration written to tools/.env"
@@ -600,11 +397,7 @@ if $SD_WEBUI_OK; then
 else
   echo -e "    ${RED}*${NC} Forge       ${DIM}not running${NC}  ${DIM}(Pixel Painter)${NC}"
 fi
-if $STABLE_AUDIO_OK; then
-  echo -e "    ${GREEN}*${NC} Stable Audio ${GREEN}ready${NC}"
-else
-  echo -e "    ${RED}*${NC} Stable Audio ${DIM}not running${NC}  ${DIM}(Audio Composer, SFX Designer)${NC}"
-fi
+echo -e "    ${GREEN}*${NC} Audio       ${GREEN}built-in${NC}  ${DIM}(Audio Composer, SFX Designer — procedural, no server needed)${NC}"
 
 echo ""
 echo -e "  ${BOLD}Quick Start:${NC}"
@@ -622,8 +415,8 @@ echo -e "    Level Designer       ${CYAN}http://localhost:5173${NC}  (Ollama)"
 echo -e "    Pixel Painter        ${CYAN}http://localhost:5174${NC}  (Forge)"
 echo -e "    Keyframe Animator    ${CYAN}http://localhost:5175${NC}  (Ollama)"
 echo -e "    Particle Designer    ${CYAN}http://localhost:5176${NC}  (Ollama)"
-echo -e "    Audio Composer       ${CYAN}http://localhost:5177${NC}  (Stable Audio)"
-echo -e "    SFX Designer         ${CYAN}http://localhost:5178${NC}  (Stable Audio)"
+echo -e "    Audio Composer       ${CYAN}http://localhost:5177${NC}  (built-in procedural)"
+echo -e "    SFX Designer         ${CYAN}http://localhost:5178${NC}  (built-in procedural)"
 echo ""
 echo -e "  ${DIM}Edit tools/.env to change AI provider URLs/models.${NC}"
 echo ""

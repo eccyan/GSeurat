@@ -1,4 +1,4 @@
-import type { AudioProvider, AudioGenerateOptions } from "./types.js";
+import type { AudioProvider, AudioGenerateOptions, AvailabilityResult } from "./types.js";
 
 /** Request body for POST /generate. */
 interface AudioCraftGenerateRequest {
@@ -28,6 +28,10 @@ interface HealthResponse {
  *
  * Expects a simple REST wrapper around Meta's AudioCraft / MusicGen model
  * that exposes POST /generate and GET /health endpoints.
+ *
+ * @deprecated Use procedural generation (Audio Composer built-in) or
+ * ReplicateClient for cloud-based AI audio. This client requires a
+ * local AudioCraft server with heavy Python dependencies.
  */
 export class AudioCraftClient implements AudioProvider {
   private readonly baseUrl: string;
@@ -111,15 +115,36 @@ export class AudioCraftClient implements AudioProvider {
    * @returns true if GET /health returns { status: "ok" }, false otherwise
    */
   async isAvailable(): Promise<boolean> {
+    return (await this.checkAvailability()).available;
+  }
+
+  /**
+   * Check availability with a descriptive error message on failure.
+   */
+  async checkAvailability(): Promise<AvailabilityResult> {
     try {
       const response = await fetch(`${this.baseUrl}/health`, {
         signal: AbortSignal.timeout(5000),
       });
-      if (!response.ok) return false;
+      if (!response.ok) {
+        return {
+          available: false,
+          error: `AudioCraft returned HTTP ${response.status}. Ensure the server is running at ${this.baseUrl}.`,
+        };
+      }
       const data = (await response.json()) as HealthResponse;
-      return typeof data.status === "string" && data.status.toLowerCase() === "ok";
+      if (typeof data.status !== "string" || data.status.toLowerCase() !== "ok") {
+        return {
+          available: false,
+          error: `AudioCraft server is not healthy (status: ${data.status ?? 'unknown'}).`,
+        };
+      }
+      return { available: true };
     } catch {
-      return false;
+      return {
+        available: false,
+        error: `Cannot reach AudioCraft at ${this.baseUrl}. Start the AudioCraft REST server on port 8001.`,
+      };
     }
   }
 }

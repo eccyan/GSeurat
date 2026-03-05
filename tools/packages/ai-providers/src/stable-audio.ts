@@ -23,6 +23,10 @@ interface HealthResponse {
  * Model: stabilityai/stable-audio-open-small
  * Output: 44.1 kHz stereo WAV, up to 11 seconds.
  *
+ * @deprecated Use procedural generation (SFX Designer / Audio Composer built-in)
+ * or ReplicateClient for cloud-based AI audio. This client requires a complex
+ * Python 3.11 venv + gated HuggingFace model setup.
+ *
  * @see https://huggingface.co/stabilityai/stable-audio-open-small
  */
 export class StableAudioClient implements AudioProvider {

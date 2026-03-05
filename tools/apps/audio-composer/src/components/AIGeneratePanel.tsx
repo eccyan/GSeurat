@@ -1,14 +1,14 @@
 import React, { useState, useCallback, useRef } from 'react';
-import { StableAudioClient } from '@vulkan-game-tools/ai-providers';
 import { useComposerStore, LayerId } from '../store/useComposerStore.js';
 import { AudioPlayerHandle } from './AudioPlayer.js';
+import { LOOP_PRESETS, MusicLoopPreset, LoopStyle } from '../audio/music-presets.js';
+import { generateLoop } from '../audio/loop-generator.js';
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 type GenerationStatus =
   | { kind: 'idle' }
-  | { kind: 'checking' }
   | { kind: 'generating'; message: string }
   | { kind: 'ready'; audioData: ArrayBuffer }
   | { kind: 'error'; message: string };
@@ -32,72 +32,35 @@ const LAYER_COLORS: Record<LayerId, string> = {
 };
 
 // ---------------------------------------------------------------------------
-// Prompt presets per layer
-// ---------------------------------------------------------------------------
-const PRESET_PROMPTS: Record<LayerId, string[]> = {
-  bass: [
-    'Low, rumbling bass drone with dark atmospheric undertones',
-    'Deep electronic bass pulse, slow 120 BPM, ambient feel',
-    'Warm sub-bass hum, fantasy dungeon atmosphere',
-  ],
-  harmony: [
-    'Ethereal synth pad, lush harmonics, slow attack',
-    'Fantasy orchestral strings, gentle and mysterious',
-    'Warm choir voices, soft ambient texture',
-  ],
-  melody: [
-    'Gentle folk flute melody, playful and light',
-    'Fantasy harp melody, pentatonic scale, flowing',
-    'Celtic tin whistle, upbeat exploration theme',
-  ],
-  percussion: [
-    'Subtle tribal drums, 120 BPM, soft and atmospheric',
-    'Light percussion loop, shakers and soft cymbal',
-    'Fantasy taiko drum, distant rhythmic pulse',
-  ],
-};
-
-// ---------------------------------------------------------------------------
 // AIGeneratePanel
 // ---------------------------------------------------------------------------
 export function AIGeneratePanel({ playerRef }: AIGeneratePanelProps) {
-  const [prompt, setPrompt] = useState('');
   const [targetLayer, setTargetLayer] = useState<LayerId>('melody');
-  const [duration, setDuration] = useState(5);
-  const [serverUrl, setServerUrl] = useState(import.meta.env.VITE_STABLE_AUDIO_URL || 'http://localhost:8001');
-  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [selectedPreset, setSelectedPreset] = useState<LoopStyle | null>(null);
+  const [duration, setDuration] = useState(4);
   const [status, setStatus] = useState<GenerationStatus>({ kind: 'idle' });
   const previewCtxRef = useRef<AudioContext | null>(null);
   const previewSourceRef = useRef<AudioBufferSourceNode | null>(null);
   const [previewBuffer, setPreviewBuffer] = useState<AudioBuffer | null>(null);
   const [isPreviewPlaying, setIsPreviewPlaying] = useState(false);
 
-  const layers = useComposerStore((s) => s.layers);
+  const bpm = useComposerStore((s) => s.bpm);
 
   // -------------------------------------------------------------------------
   // Generate
   // -------------------------------------------------------------------------
   const handleGenerate = useCallback(async () => {
-    if (!prompt.trim()) return;
+    if (!selectedPreset) return;
     if (status.kind === 'generating') return;
 
-    setStatus({ kind: 'checking' });
-
-    const client = new StableAudioClient(serverUrl);
-    const check = await client.checkAvailability().catch(() => ({
-      available: false,
-      error: `Cannot reach Stable Audio at ${serverUrl}. Start the server with: python tools/scripts/stable-audio-server.py`,
-    }));
-
-    if (!check.available) {
-      setStatus({ kind: 'error', message: check.error ?? 'Stable Audio unavailable' });
-      return;
-    }
-
-    setStatus({ kind: 'generating', message: `Generating ${duration}s of audio…` });
+    setStatus({ kind: 'generating', message: `Generating ${duration}s loop...` });
 
     try {
-      const audioData = await client.generateAudio(prompt, { duration, steps: 8, cfgScale: 1.0 });
+      const audioData = await generateLoop({
+        style: selectedPreset,
+        duration,
+        bpm,
+      });
       setStatus({ kind: 'ready', audioData });
 
       // Decode for preview
@@ -109,7 +72,7 @@ export function AIGeneratePanel({ playerRef }: AIGeneratePanelProps) {
       const msg = err instanceof Error ? err.message : String(err);
       setStatus({ kind: 'error', message: msg });
     }
-  }, [prompt, duration, serverUrl, status]);
+  }, [selectedPreset, duration, bpm, status]);
 
   // -------------------------------------------------------------------------
   // Preview playback
@@ -151,13 +114,13 @@ export function AIGeneratePanel({ playerRef }: AIGeneratePanelProps) {
   // -------------------------------------------------------------------------
   const statusMeta: Record<GenerationStatus['kind'], { color: string; icon: string }> = {
     idle:       { color: '#666',    icon: '' },
-    checking:   { color: '#90c0f0', icon: '...' },
-    generating: { color: '#90c0f0', icon: '⟳' },
-    ready:      { color: '#70d870', icon: '✓' },
-    error:      { color: '#e07070', icon: '✗' },
+    generating: { color: '#90c0f0', icon: '...' },
+    ready:      { color: '#70d870', icon: '' },
+    error:      { color: '#e07070', icon: '' },
   };
 
-  const isWorking = status.kind === 'checking' || status.kind === 'generating';
+  const isWorking = status.kind === 'generating';
+  const presets = LOOP_PRESETS[targetLayer];
 
   // -------------------------------------------------------------------------
   // Render
@@ -165,8 +128,7 @@ export function AIGeneratePanel({ playerRef }: AIGeneratePanelProps) {
   return (
     <div style={styles.root}>
       <div style={styles.header}>
-        AI Music Generation
-        <span style={{ fontSize: 10, color: '#555', marginLeft: 6 }}>Stable Audio</span>
+        Procedural Generation
       </div>
 
       <div style={styles.body}>
@@ -177,7 +139,7 @@ export function AIGeneratePanel({ playerRef }: AIGeneratePanelProps) {
             {LAYER_IDS.map((id) => (
               <button
                 key={id}
-                onClick={() => setTargetLayer(id)}
+                onClick={() => { setTargetLayer(id); setSelectedPreset(null); }}
                 style={{
                   ...styles.layerBtn,
                   background: targetLayer === id ? LAYER_COLORS[id] + '22' : 'transparent',
@@ -191,43 +153,23 @@ export function AIGeneratePanel({ playerRef }: AIGeneratePanelProps) {
           </div>
         </div>
 
-        {/* Prompt */}
+        {/* Preset list */}
         <div style={styles.field}>
-          <div style={styles.fieldLabel}>Music Description</div>
-          <textarea
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) handleGenerate();
-            }}
-            placeholder={`Describe the ${LAYER_LABELS[targetLayer].toLowerCase()} sound…`}
-            rows={3}
-            style={styles.textarea}
-          />
-          <div style={{ fontFamily: 'monospace', fontSize: 9, color: '#444', marginTop: 2 }}>
-            Ctrl+Enter to generate
-          </div>
-        </div>
-
-        {/* Preset prompts */}
-        <div style={styles.field}>
-          <div style={styles.fieldLabel}>Quick Presets</div>
+          <div style={styles.fieldLabel}>Style</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-            {PRESET_PROMPTS[targetLayer].map((preset, i) => (
+            {presets.map((preset: MusicLoopPreset) => (
               <button
-                key={i}
-                onClick={() => setPrompt(preset)}
-                style={styles.presetBtn}
-                onMouseEnter={(e) => {
-                  (e.currentTarget as HTMLButtonElement).style.borderColor = '#444';
-                  (e.currentTarget as HTMLButtonElement).style.color = '#aaa';
-                }}
-                onMouseLeave={(e) => {
-                  (e.currentTarget as HTMLButtonElement).style.borderColor = '#2a2a2a';
-                  (e.currentTarget as HTMLButtonElement).style.color = '#666';
+                key={preset.id}
+                onClick={() => setSelectedPreset(preset.id)}
+                style={{
+                  ...styles.presetBtn,
+                  borderColor: selectedPreset === preset.id ? LAYER_COLORS[targetLayer] : '#2a2a2a',
+                  color: selectedPreset === preset.id ? '#ccc' : '#666',
+                  background: selectedPreset === preset.id ? LAYER_COLORS[targetLayer] + '15' : 'transparent',
                 }}
               >
-                {preset}
+                <strong>{preset.label}</strong>
+                <span style={{ marginLeft: 6, fontSize: 8, color: '#555' }}>{preset.description}</span>
               </button>
             ))}
           </div>
@@ -242,57 +184,32 @@ export function AIGeneratePanel({ playerRef }: AIGeneratePanelProps) {
           <input
             type="range"
             min={1}
-            max={11}
+            max={16}
             step={1}
             value={duration}
             onChange={(e) => setDuration(parseInt(e.target.value))}
             style={styles.slider}
           />
           <div style={{ display: 'flex', justifyContent: 'space-between', fontFamily: 'monospace', fontSize: 8, color: '#444' }}>
-            <span>1s</span><span>5s</span><span>11s</span>
+            <span>1s</span><span>8s</span><span>16s</span>
           </div>
         </div>
 
-        {/* Advanced */}
+        {/* BPM display */}
         <div style={styles.field}>
-          <button
-            onClick={() => setShowAdvanced((v) => !v)}
-            style={styles.toggleBtn}
-          >
-            {showAdvanced ? '▼' : '▶'} Advanced
-          </button>
-          {showAdvanced && (
-            <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {/* Server URL */}
-              <div>
-                <div style={styles.fieldLabel}>Stable Audio Server URL</div>
-                <input
-                  type="text"
-                  value={serverUrl}
-                  onChange={(e) => setServerUrl(e.target.value)}
-                  style={styles.input}
-                />
-              </div>
-            </div>
-          )}
+          <div style={styles.fieldLabel}>BPM: {bpm}</div>
         </div>
 
         {/* Generate button */}
         <button
           onClick={handleGenerate}
-          disabled={isWorking || !prompt.trim()}
+          disabled={isWorking || !selectedPreset}
           style={{
             ...styles.generateBtn,
-            opacity: isWorking || !prompt.trim() ? 0.5 : 1,
+            opacity: isWorking || !selectedPreset ? 0.5 : 1,
           }}
         >
-          {isWorking ? (
-            <span style={{ animation: 'spin 1s linear infinite', display: 'inline-block' }}>⟳</span>
-          ) : (
-            '♪'
-          )}
-          {' '}
-          {status.kind === 'checking' ? 'Checking server…' : status.kind === 'generating' ? 'Generating…' : 'Generate Audio'}
+          {isWorking ? 'Generating...' : 'Generate Loop'}
         </button>
 
         {/* Status */}
@@ -303,7 +220,7 @@ export function AIGeneratePanel({ playerRef }: AIGeneratePanelProps) {
             color: statusMeta[status.kind].color,
           }}>
             <span style={{ marginRight: 4 }}>{statusMeta[status.kind].icon}</span>
-            {'message' in status ? status.message : status.kind === 'ready' ? 'Audio ready to preview' : ''}
+            {'message' in status ? status.message : status.kind === 'ready' ? 'Loop ready to preview' : ''}
           </div>
         )}
 
@@ -320,7 +237,7 @@ export function AIGeneratePanel({ playerRef }: AIGeneratePanelProps) {
                 flex: 1,
               }}
             >
-              {isPreviewPlaying ? '■ Stop' : '▶ Preview'}
+              {isPreviewPlaying ? 'Stop' : 'Preview'}
             </button>
             <button
               onClick={handleApplyToLane}
@@ -339,10 +256,8 @@ export function AIGeneratePanel({ playerRef }: AIGeneratePanelProps) {
 
         {/* Help */}
         <div style={styles.helpBox}>
-          Requires Stable Audio server running locally.<br />
-          <code style={{ color: '#4a7ad0' }}>pip install flask torch torchaudio einops stable-audio-tools</code><br />
-          <code style={{ color: '#4a7ad0' }}>python tools/scripts/stable-audio-server.py</code><br />
-          Model: stable-audio-open-small (max 11s, 44.1kHz stereo)
+          Generates loops procedurally in the browser.<br />
+          No server required — uses OfflineAudioContext synthesis.
         </div>
       </div>
     </div>
@@ -407,18 +322,6 @@ const styles: Record<string, React.CSSProperties> = {
     cursor: 'pointer',
     transition: 'all 0.1s',
   },
-  textarea: {
-    background: '#111',
-    border: '1px solid #333',
-    borderRadius: 4,
-    color: '#ccc',
-    fontFamily: 'monospace',
-    fontSize: 10,
-    padding: '5px 7px',
-    resize: 'vertical' as const,
-    outline: 'none',
-    lineHeight: 1.5,
-  },
   presetBtn: {
     background: 'transparent',
     border: '1px solid #2a2a2a',
@@ -426,41 +329,18 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#666',
     fontFamily: 'monospace',
     fontSize: 9,
-    padding: '3px 6px',
+    padding: '4px 6px',
     cursor: 'pointer',
     textAlign: 'left' as const,
     lineHeight: 1.4,
     transition: 'all 0.1s',
+    display: 'flex',
+    alignItems: 'baseline',
   },
   slider: {
     width: '100%',
     height: 3,
     cursor: 'pointer',
-  },
-  input: {
-    width: '100%',
-    boxSizing: 'border-box' as const,
-    background: '#111',
-    border: '1px solid #333',
-    borderRadius: 3,
-    color: '#aaa',
-    fontFamily: 'monospace',
-    fontSize: 10,
-    padding: '4px 7px',
-    outline: 'none',
-  },
-  toggleBtn: {
-    background: 'transparent',
-    border: 'none',
-    color: '#666',
-    fontFamily: 'monospace',
-    fontSize: 10,
-    cursor: 'pointer',
-    padding: 0,
-    textAlign: 'left' as const,
-    display: 'flex',
-    alignItems: 'center',
-    gap: 4,
   },
   generateBtn: {
     padding: '8px 0',
