@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useRef } from 'react';
+import { OllamaClient } from '@vulkan-game-tools/ai-providers';
 import { useAnimatorStore, AnimClip, AnimFrame } from '../store/useAnimatorStore.js';
 
 // ---------------------------------------------------------------------------
@@ -43,36 +44,6 @@ type GenerationStatus =
   | { kind: 'error'; message: string };
 
 // ---------------------------------------------------------------------------
-// Ollama client (inline, no package dep for this panel)
-// ---------------------------------------------------------------------------
-
-async function callOllama(
-  baseUrl: string,
-  model: string,
-  prompt: string,
-  signal?: AbortSignal,
-): Promise<string> {
-  const resp = await fetch(`${baseUrl}/api/generate`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model, prompt, system: SYSTEM_PROMPT, stream: false }),
-    signal,
-  });
-  if (!resp.ok) throw new Error(`Ollama returned ${resp.status}`);
-  const data = await resp.json() as { response: string };
-  return data.response ?? '';
-}
-
-async function checkOllama(baseUrl: string): Promise<boolean> {
-  try {
-    const resp = await fetch(`${baseUrl}/api/tags`, { method: 'GET' });
-    return resp.ok;
-  } catch {
-    return false;
-  }
-}
-
-// ---------------------------------------------------------------------------
 // AIAssistPanel
 // ---------------------------------------------------------------------------
 
@@ -87,8 +58,8 @@ const PRESETS = [
 
 export function AIAssistPanel() {
   const [prompt, setPrompt] = useState('');
-  const [modelName, setModelName] = useState('llama3');
-  const [ollamaUrl, setOllamaUrl] = useState('http://localhost:11434');
+  const [modelName, setModelName] = useState(import.meta.env.VITE_OLLAMA_MODEL || 'llama3');
+  const [ollamaUrl, setOllamaUrl] = useState(import.meta.env.VITE_OLLAMA_URL || 'http://localhost:11434');
   const [status, setStatus] = useState<GenerationStatus>({ kind: 'idle' });
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [lastJson, setLastJson] = useState<string | null>(null);
@@ -108,12 +79,13 @@ export function AIAssistPanel() {
     setStatus({ kind: 'generating', message: 'Connecting to Ollama...' });
     setPreviewClips(null);
 
-    const available = await checkOllama(ollamaUrl).catch(() => false);
-    if (!available) {
-      setStatus({
-        kind: 'error',
-        message: `Cannot reach Ollama at ${ollamaUrl}. Is it running?`,
-      });
+    const client = new OllamaClient(ollamaUrl, modelName);
+    const check = await client.checkAvailability().catch(() => ({
+      available: false,
+      error: `Cannot reach Ollama at ${ollamaUrl}. Start it with: ollama serve`,
+    }));
+    if (!check.available) {
+      setStatus({ kind: 'error', message: check.error ?? 'Ollama unavailable' });
       return;
     }
 
@@ -123,7 +95,11 @@ export function AIAssistPanel() {
     abortRef.current = ctrl;
 
     try {
-      const response = await callOllama(ollamaUrl, modelName, prompt, ctrl.signal);
+      const response = await client.generate(prompt, {
+        system: SYSTEM_PROMPT,
+        temperature: 0.7,
+        maxTokens: 2048,
+      });
 
       setStatus({ kind: 'generating', message: 'Parsing animation JSON...' });
 

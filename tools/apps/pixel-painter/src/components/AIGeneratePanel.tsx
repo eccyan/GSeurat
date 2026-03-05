@@ -49,7 +49,7 @@ export function AIGeneratePanel() {
 
   const [prompt, setPrompt] = useState('');
   const [negativePrompt, setNegativePrompt] = useState('blurry, ugly, deformed, low quality, watermark');
-  const [comfyUrl, setComfyUrl] = useState('http://localhost:8188');
+  const [comfyUrl, setComfyUrl] = useState(import.meta.env.VITE_COMFYUI_URL || 'http://localhost:8188');
   const [steps, setSteps] = useState(20);
   const [seed, setSeed] = useState(-1); // -1 = random
   const [status, setStatus] = useState<GenStatus>({ kind: 'idle' });
@@ -75,12 +75,12 @@ export function AIGeneratePanel() {
     setPendingPixels(null);
 
     const client = new ComfyUIClient(comfyUrl);
-    const available = await client.isAvailable().catch(() => false);
-    if (!available) {
-      setStatus({
-        kind: 'error',
-        message: `Cannot reach ComfyUI at ${comfyUrl}. Is it running?`,
-      });
+    const check = await client.checkAvailability().catch(() => ({
+      available: false,
+      error: `Cannot reach ComfyUI at ${comfyUrl}. Start it with: python main.py --listen`,
+    }));
+    if (!check.available) {
+      setStatus({ kind: 'error', message: check.error ?? 'ComfyUI unavailable' });
       return;
     }
 

@@ -49,7 +49,7 @@ export function AIGeneratePanel() {
   const [prompt, setPrompt] = useState('');
   const [duration, setDuration] = useState(2);
   const [temperature, setTemperature] = useState(1.0);
-  const [audioCraftUrl, setAudioCraftUrl] = useState('http://localhost:8001');
+  const [audioCraftUrl, setAudioCraftUrl] = useState(import.meta.env.VITE_AUDIOCRAFT_URL || 'http://localhost:8001');
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [status, setStatus] = useState<GenStatus>({ kind: 'idle' });
 
@@ -119,12 +119,12 @@ export function AIGeneratePanel() {
 
     const client = new AudioCraftClient(audioCraftUrl);
 
-    const available = await client.isAvailable().catch(() => false);
-    if (!available) {
-      setStatus({
-        kind: 'error',
-        message: `Cannot reach AudioCraft at ${audioCraftUrl}. Is the server running?`,
-      });
+    const check = await client.checkAvailability().catch(() => ({
+      available: false,
+      error: `Cannot reach AudioCraft at ${audioCraftUrl}. Start the AudioCraft REST server on port 8001.`,
+    }));
+    if (!check.available) {
+      setStatus({ kind: 'error', message: check.error ?? 'AudioCraft unavailable' });
       return;
     }
 

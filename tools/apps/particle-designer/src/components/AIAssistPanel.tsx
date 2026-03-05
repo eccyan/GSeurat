@@ -66,8 +66,8 @@ interface AIAssistPanelProps {
 
 export function AIAssistPanel({ onClose }: AIAssistPanelProps) {
   const [prompt, setPrompt] = useState('');
-  const [modelName, setModelName] = useState('llama3');
-  const [ollamaUrl, setOllamaUrl] = useState('http://localhost:11434');
+  const [modelName, setModelName] = useState(import.meta.env.VITE_OLLAMA_MODEL || 'llama3');
+  const [ollamaUrl, setOllamaUrl] = useState(import.meta.env.VITE_OLLAMA_URL || 'http://localhost:11434');
   const [status, setStatus] = useState<GenerationStatus>({ kind: 'idle' });
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [lastJson, setLastJson] = useState<string | null>(null);
@@ -89,12 +89,12 @@ export function AIAssistPanel({ onClose }: AIAssistPanelProps) {
 
     const client = new OllamaClient(ollamaUrl, modelName);
 
-    const available = await client.isAvailable().catch(() => false);
-    if (!available) {
-      setStatus({
-        kind: 'error',
-        message: `Cannot reach Ollama at ${ollamaUrl}. Is it running?`,
-      });
+    const check = await client.checkAvailability().catch(() => ({
+      available: false,
+      error: `Cannot reach Ollama at ${ollamaUrl}. Start it with: ollama serve`,
+    }));
+    if (!check.available) {
+      setStatus({ kind: 'error', message: check.error ?? 'Ollama unavailable' });
       return;
     }
 

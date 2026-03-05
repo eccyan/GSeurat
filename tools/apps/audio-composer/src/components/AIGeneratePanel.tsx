@@ -65,7 +65,7 @@ export function AIGeneratePanel({ playerRef }: AIGeneratePanelProps) {
   const [targetLayer, setTargetLayer] = useState<LayerId>('melody');
   const [duration, setDuration] = useState(5);
   const [temperature, setTemperature] = useState(1.0);
-  const [serverUrl, setServerUrl] = useState('http://localhost:8001');
+  const [serverUrl, setServerUrl] = useState(import.meta.env.VITE_AUDIOCRAFT_URL || 'http://localhost:8001');
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [status, setStatus] = useState<GenerationStatus>({ kind: 'idle' });
   const previewCtxRef = useRef<AudioContext | null>(null);
@@ -85,13 +85,13 @@ export function AIGeneratePanel({ playerRef }: AIGeneratePanelProps) {
     setStatus({ kind: 'checking' });
 
     const client = new AudioCraftClient(serverUrl);
-    const available = await client.isAvailable().catch(() => false);
+    const check = await client.checkAvailability().catch(() => ({
+      available: false,
+      error: `Cannot reach AudioCraft at ${serverUrl}. Start the AudioCraft REST server on port 8001.`,
+    }));
 
-    if (!available) {
-      setStatus({
-        kind: 'error',
-        message: `Cannot reach AudioCraft at ${serverUrl}.\nIs the server running?\n\npip install audiocraft\npython -m audiocraft.server`,
-      });
+    if (!check.available) {
+      setStatus({ kind: 'error', message: check.error ?? 'AudioCraft unavailable' });
       return;
     }
 
