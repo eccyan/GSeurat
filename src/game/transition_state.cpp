@@ -31,10 +31,18 @@ void TransitionState::update(App& app, float dt) {
             app.renderer().set_fade_amount(fade_);
             break;
 
-        case Load:
+        case Load: {
+            // Preserve day/night time across scene transitions
+            float saved_time = app.day_night_system().time_of_day();
+
             // Clear old scene and load new one
             app.clear_scene();
             app.init_scene(target_scene_);
+
+            // Restore day/night time if new scene has it enabled
+            if (app.day_night_system().active()) {
+                app.day_night_system().set_time_of_day(saved_time);
+            }
 
             // Set player position and facing
             if (app.player_id().valid()) {
@@ -50,6 +58,7 @@ void TransitionState::update(App& app, float dt) {
 
             phase_ = FadeIn;
             break;
+        }
 
         case FadeIn:
             fade_ -= dt * kFadeSpeed;

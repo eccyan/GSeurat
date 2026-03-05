@@ -1052,6 +1052,9 @@ void App::init_scene(const std::string& scene_path) {
         weather_system_.init(particles_, scene_, weather_cfg);
     }
 
+    // Day/night system from scene data
+    day_night_system_.init(scene_data.day_night);
+
     // Audio: position torch crackle instances
     for (size_t i = 0; i < scene_data.torch_audio_positions.size() && i < 4; ++i) {
         audio_.set_torch_position(static_cast<uint32_t>(i), scene_data.torch_audio_positions[i]);
@@ -1076,9 +1079,10 @@ void App::clear_scene() {
     shadow_sprites_.clear();
     reflection_sprites_.clear();
 
-    // Clear particles and weather
+    // Clear particles, weather, and day/night
     particles_.clear();
     weather_system_.reset();
+    day_night_system_.reset();
     for (auto& id : torch_emitter_ids_) id = 0;
 
     // Reset scene state
@@ -1241,6 +1245,12 @@ void App::update_game(float dt) {
         scene_.tile_animator()->update(dt);
     }
 
+    // Day/night cycle (before weather so weather can lerp from day/night base)
+    if (feature_flags_.day_night_cycle && day_night_system_.active()) {
+        day_night_system_.update(dt, scene_,
+            (feature_flags_.weather && weather_system_.active()) ? &weather_system_ : nullptr);
+    }
+
     // Weather system update (before particles, updates ambient + fog)
     if (feature_flags_.weather && weather_system_.active()) {
         const auto& cam = renderer_.camera();
@@ -1254,7 +1264,9 @@ void App::update_game(float dt) {
         ecs::systems::particle_sync(world_, particles_, moving && game_mode_ == GameMode::Explore);
         particles_.update(dt);
     }
-    ecs::systems::lighting_rebuild(world_, scene_, feature_flags_.npc_lights);
+    float torch_mul = (feature_flags_.day_night_cycle && day_night_system_.active())
+        ? day_night_system_.torch_intensity() : 1.0f;
+    ecs::systems::lighting_rebuild(world_, scene_, feature_flags_.npc_lights, torch_mul);
     screen_effects_.update(dt);
     ecs::systems::sprite_collect(world_, entity_sprites_, feature_flags_.y_sort_depth);
     if (feature_flags_.sprite_outlines) {
@@ -1577,6 +1589,13 @@ void App::process_commands() {
             float duration = cmd_json.value("duration", 0.3f);
             screen_effects_.trigger_chromatic_pulse(intensity, duration);
             control_server_.send({{"type", "ok"}});
+        } else if (cmd == "set_time") {
+            float t = cmd_json.value("time", 0.0f);
+            day_night_system_.set_time_of_day(t);
+            control_server_.send({{"type", "ok"}, {"time_of_day", day_night_system_.time_of_day()}});
+        } else if (cmd == "get_time") {
+            control_server_.send({{"type", "time"}, {"time_of_day", day_night_system_.time_of_day()},
+                                  {"active", day_night_system_.active()}});
         } else {
             control_server_.send({{"type", "error"},
                                   {"message", "unknown command: " + cmd}});
@@ -1629,6 +1648,11 @@ nlohmann::json App::build_state_json() const {
         };
     } else {
         state["dialog"] = nullptr;
+    }
+
+    // Day/night time of day
+    if (day_night_system_.active()) {
+        state["time_of_day"] = day_night_system_.time_of_day();
     }
 
     // Nearest NPC (proximity check)
@@ -1703,6 +1727,7 @@ SaveData App::build_save_data() const {
     data.game_flags = game_flags_;
     data.play_time = play_time_;
     data.scene_path = current_scene_path_;
+    data.time_of_day = day_night_system_.time_of_day();
     return data;
 }
 
@@ -1732,6 +1757,7 @@ void App::apply_save_data(const SaveData& data) {
     }
     game_flags_ = data.game_flags;
     play_time_ = data.play_time;
+    day_night_system_.set_time_of_day(data.time_of_day);
 }
 
 void App::emit_event(const std::string& event, const nlohmann::json& data) {

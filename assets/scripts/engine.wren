@@ -12,4 +12,6 @@ class Engine {
     foreign static log(message)
     foreign static player_id()
     foreign static npc_ids()
+    foreign static get_time_of_day()
+    foreign static set_time_of_day(time)
 }

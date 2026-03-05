@@ -233,6 +233,23 @@ SceneData SceneLoader::from_json(const nlohmann::json& j) {
         data.weather.transition_speed = w.value("transition_speed", 1.0f);
     }
 
+    // Day/night cycle
+    if (j.contains("day_night")) {
+        const auto& dn = j["day_night"];
+        data.day_night.enabled = dn.value("enabled", false);
+        data.day_night.cycle_speed = dn.value("cycle_speed", 0.02f);
+        data.day_night.initial_time = dn.value("initial_time", 0.35f);
+        if (dn.contains("keyframes")) {
+            for (const auto& kf_j : dn["keyframes"]) {
+                DayNightKeyframe kf;
+                kf.time = kf_j["time"].get<float>();
+                kf.ambient = parse_vec4(kf_j["ambient"]);
+                kf.torch_intensity = kf_j.value("torch_intensity", 1.0f);
+                data.day_night.keyframes.push_back(kf);
+            }
+        }
+    }
+
     // Minimap
     if (j.contains("minimap")) {
         const auto& m = j["minimap"];

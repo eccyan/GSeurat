@@ -2,6 +2,7 @@
 
 #include "vulkan_game/engine/audio_system.hpp"
 #include "vulkan_game/engine/control_server.hpp"
+#include "vulkan_game/engine/day_night_system.hpp"
 #include "vulkan_game/engine/dialog.hpp"
 #include "vulkan_game/engine/direction.hpp"
 #include "vulkan_game/engine/ecs/default_components.hpp"
@@ -112,6 +113,9 @@ public:
     // Weather system accessor
     WeatherSystem& weather_system() { return weather_system_; }
 
+    // Day/night system accessor
+    DayNightSystem& day_night_system() { return day_night_system_; }
+
     // Screen effects accessor
     ScreenEffects& screen_effects() { return screen_effects_; }
 
@@ -180,6 +184,7 @@ private:
     ParticleSystem particles_;
     size_t torch_emitter_ids_[4]{};
     WeatherSystem weather_system_;
+    DayNightSystem day_night_system_;
 
     // Screen effects
     ScreenEffects screen_effects_;

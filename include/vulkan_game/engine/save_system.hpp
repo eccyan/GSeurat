@@ -27,6 +27,7 @@ struct SaveData {
     std::unordered_map<std::string, bool> game_flags;
     float play_time = 0.0f;
     std::string scene_path = "assets/scenes/test_scene.json";
+    float time_of_day = 0.35f;
 };
 
 struct SaveMetadata {

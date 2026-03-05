@@ -28,6 +28,7 @@ public:
     float fog_density() const;
     glm::vec3 fog_color() const;
     float intensity() const { return intensity_; }
+    void set_base_ambient(const glm::vec4& a) { base_ambient_ = a; }
 
 private:
     WeatherConfig config_;

@@ -27,6 +27,7 @@ struct FeatureFlags {
     bool camera_shake = true;
     bool screen_effects = true;
     bool minimap = true;
+    bool day_night_cycle = true;
 
     // Gameplay
     bool npc_patrol = true;
@@ -47,7 +48,7 @@ struct FeatureFlags {
         bool FeatureFlags::* ptr;
     };
 
-    static constexpr std::array<Entry, 24> entries() {
+    static constexpr std::array<Entry, 25> entries() {
         return {{
             {"Parallax BG",    "24",  "RENDERING", &FeatureFlags::parallax_backgrounds},
             {"Point Lights",   "11",  "RENDERING", &FeatureFlags::point_lights},
@@ -67,6 +68,7 @@ struct FeatureFlags {
             {"Camera Shake",   "36",  "EFFECTS",   &FeatureFlags::camera_shake},
             {"Screen FX",      "36",  "EFFECTS",   &FeatureFlags::screen_effects},
             {"Minimap",        "37",  "EFFECTS",   &FeatureFlags::minimap},
+            {"Day/Night",      "38",  "EFFECTS",   &FeatureFlags::day_night_cycle},
             {"NPC Patrol",     "8",   "GAMEPLAY",  &FeatureFlags::npc_patrol},
             {"Animation",      "4-6", "GAMEPLAY",  &FeatureFlags::animation},
             {"NPC Lights",     "11",  "GAMEPLAY",  &FeatureFlags::npc_lights},

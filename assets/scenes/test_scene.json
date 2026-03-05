@@ -121,6 +121,11 @@
     "tile": "Spark", "z": -0.04,
     "spawn_offset_min": [-0.4, -0.3], "spawn_offset_max": [0.4, 0.3]
   },
+  "day_night": {
+    "enabled": true,
+    "cycle_speed": 0.02,
+    "initial_time": 0.35
+  },
   "weather": {
     "enabled": true,
     "type": "rain",

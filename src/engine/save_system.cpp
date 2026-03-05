@@ -56,6 +56,7 @@ nlohmann::json SaveSystem::to_json(const SaveData& data) {
     j["game_flags"] = flags;
     j["play_time"] = data.play_time;
     j["scene_path"] = data.scene_path;
+    j["time_of_day"] = data.time_of_day;
 
     // Add timestamp
     auto now = std::chrono::system_clock::now();
@@ -105,6 +106,7 @@ SaveData SaveSystem::from_json(const nlohmann::json& j) {
 
     data.play_time = j.value("play_time", 0.0f);
     data.scene_path = j.value("scene_path", std::string("assets/scenes/test_scene.json"));
+    data.time_of_day = j.value("time_of_day", 0.35f);
 
     return data;
 }

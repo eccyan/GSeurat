@@ -187,6 +187,23 @@ static void engine_npc_ids(::WrenVM* vm) {
     }
 }
 
+// --- Day/Night ---
+static void engine_get_time_of_day(::WrenVM* vm) {
+    App* app = get_app(vm);
+    if (!app) {
+        wrenSetSlotDouble(vm, 0, 0.0);
+        return;
+    }
+    wrenSetSlotDouble(vm, 0, static_cast<double>(app->day_night_system().time_of_day()));
+}
+
+static void engine_set_time_of_day(::WrenVM* vm) {
+    App* app = get_app(vm);
+    if (!app) return;
+    float t = static_cast<float>(wrenGetSlotDouble(vm, 1));
+    app->day_night_system().set_time_of_day(t);
+}
+
 // --- Camera & Screen Effects ---
 static void engine_camera_shake_1(::WrenVM* vm) {
     App* app = get_app(vm);
@@ -255,6 +272,8 @@ void register_wren_bindings(WrenVM& wren_vm) {
             if (std::strcmp(signature, "camera_zoom(_)") == 0)        return &engine_camera_zoom;
             if (std::strcmp(signature, "screen_flash(_,_,_,_)") == 0) return &engine_screen_flash;
             if (std::strcmp(signature, "chromatic_aberration(_,_)") == 0) return &engine_chromatic_aberration;
+            if (std::strcmp(signature, "get_time_of_day()") == 0)      return &engine_get_time_of_day;
+            if (std::strcmp(signature, "set_time_of_day(_)") == 0)     return &engine_set_time_of_day;
 
             return nullptr;
         });

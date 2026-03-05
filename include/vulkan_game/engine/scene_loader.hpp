@@ -1,5 +1,6 @@
 #pragma once
 
+#include "vulkan_game/engine/day_night_system.hpp"
 #include "vulkan_game/engine/dialog.hpp"
 #include "vulkan_game/engine/direction.hpp"
 #include "vulkan_game/engine/minimap.hpp"
@@ -83,6 +84,9 @@ struct SceneData {
 
     // Minimap
     std::optional<Minimap::Config> minimap_config;
+
+    // Day/night cycle
+    DayNightConfig day_night;
 
     // Emitter templates
     EmitterConfig torch_emitter;

@@ -98,11 +98,11 @@ void animation_update(World& world, float dt) {
         });
 }
 
-void lighting_rebuild(World& world, Scene& scene, bool include_npc_lights) {
+void lighting_rebuild(World& world, Scene& scene, bool include_npc_lights, float torch_intensity_mul) {
     scene.clear_lights();
 
     // Static pillar torches (z=3.0 light height above sprite plane)
-    const glm::vec4 warm_color{1.0f, 0.85f, 0.5f, 1.2f};
+    glm::vec4 warm_color{1.0f, 0.85f, 0.5f, 1.2f * torch_intensity_mul};
     const float pillar_radius = 4.0f;
     scene.add_light(PointLight{{-3.5f,  3.5f, 3.0f, pillar_radius}, warm_color});
     scene.add_light(PointLight{{ 3.5f,  3.5f, 3.0f, pillar_radius}, warm_color});
