@@ -1,0 +1,32 @@
+[
+  {
+    "tool": "level-designer",
+    "port": 6173,
+    "results": []
+  },
+  {
+    "tool": "pixel-painter",
+    "port": 6174,
+    "results": []
+  },
+  {
+    "tool": "keyframe-animator",
+    "port": 6175,
+    "results": []
+  },
+  {
+    "tool": "particle-designer",
+    "port": 6176,
+    "results": []
+  },
+  {
+    "tool": "audio-composer",
+    "port": 6177,
+    "results": []
+  },
+  {
+    "tool": "sfx-designer",
+    "port": 6178,
+    "results": []
+  }
+]

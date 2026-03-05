@@ -1,0 +1,41 @@
+{
+  "name": "@vulkan-game-tools/test-harness",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "import": "./src/index.ts",
+      "types": "./src/index.ts"
+    },
+    "./plugin": {
+      "source": "./src/vite-plugin.ts",
+      "import": "./src/vite-plugin.ts",
+      "types": "./src/vite-plugin.ts"
+    },
+    "./register": {
+      "source": "./src/register-store.ts",
+      "import": "./src/register-store.ts",
+      "types": "./src/register-store.ts"
+    },
+    "./client": {
+      "source": "./src/test-client.ts",
+      "import": "./src/test-client.ts",
+      "types": "./src/test-client.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch"
+  },
+  "dependencies": {
+    "ws": "^8.16.0"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.5.10",
+    "typescript": "^5.4.0",
+    "vite": "^5.0.0"
+  }
+}
