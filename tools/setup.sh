@@ -355,7 +355,9 @@ echo ""
 # --- Stable Audio Open Small --------------------------------------------------
 STABLE_AUDIO_SERVER="${SCRIPT_DIR}/scripts/stable-audio-server.py"
 STABLE_AUDIO_VENV="${SCRIPT_DIR}/.venv/stable-audio"
-STABLE_AUDIO_PYTHON="python3"  # overridden if venv exists
+STABLE_AUDIO_PYTHON="python3"  # overridden below
+SA_REQUIRED_PY_MINOR_MIN=10    # Python 3.10
+SA_REQUIRED_PY_MINOR_MAX=12    # Python 3.12
 
 check_stable_audio() {
   if curl -sf "${STABLE_AUDIO_URL}/health" -o /dev/null --connect-timeout 3; then
@@ -377,6 +379,30 @@ activate_stable_audio_venv() {
 check_stable_audio_deps() {
   activate_stable_audio_venv 2>/dev/null || true
   "$STABLE_AUDIO_PYTHON" -c "import stable_audio_tools; import flask" &>/dev/null
+}
+
+# Find a compatible Python (3.10–3.12). Sets SA_COMPAT_PYTHON if found.
+find_compatible_python() {
+  SA_COMPAT_PYTHON=""
+  # Check explicit versioned binaries first
+  for minor in 12 11 10; do
+    for candidate in "python3.${minor}" "/opt/homebrew/bin/python3.${minor}" "/usr/local/bin/python3.${minor}"; do
+      if command -v "$candidate" &>/dev/null; then
+        SA_COMPAT_PYTHON="$candidate"
+        return 0
+      fi
+    done
+  done
+  # Check if default python3 is in range
+  if command -v python3 &>/dev/null; then
+    local minor
+    minor=$(python3 -c 'import sys; print(sys.version_info.minor)' 2>/dev/null || echo "0")
+    if [ "$minor" -ge "$SA_REQUIRED_PY_MINOR_MIN" ] && [ "$minor" -le "$SA_REQUIRED_PY_MINOR_MAX" ]; then
+      SA_COMPAT_PYTHON="python3"
+      return 0
+    fi
+  fi
+  return 1
 }
 
 start_stable_audio() {
@@ -402,41 +428,84 @@ if check_stable_audio; then
   STABLE_AUDIO_OK=true
   success "Stable Audio is running at $STABLE_AUDIO_URL"
 else
-  if command -v python3 &>/dev/null; then
-    PY_VER=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")' 2>/dev/null || echo "0.0")
+  if check_stable_audio_deps; then
+    SA_PY_VER=$("$STABLE_AUDIO_PYTHON" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")' 2>/dev/null)
+    success "Stable Audio dependencies installed (python $SA_PY_VER)"
 
-    if check_stable_audio_deps; then
-      success "Stable Audio dependencies installed (python3 $PY_VER)"
+    read -rp "    Start Stable Audio server now? (Y/n) " START_SA
+    if [[ "${START_SA:-y}" =~ ^[Yy]$ ]]; then
+      if start_stable_audio; then
+        STABLE_AUDIO_OK=true
+        success "Stable Audio is running at $STABLE_AUDIO_URL"
+      else
+        warn "Stable Audio is still loading the model. It may take longer on first run."
+        dim "Check manually: $STABLE_AUDIO_PYTHON $STABLE_AUDIO_SERVER"
+      fi
+    fi
+  else
+    # Need to install — find a compatible Python
+    SA_NEED_INSTALL_PYTHON=false
 
-      read -rp "    Start Stable Audio server now? (Y/n) " START_SA
-      if [[ "${START_SA:-y}" =~ ^[Yy]$ ]]; then
-        if start_stable_audio; then
-          STABLE_AUDIO_OK=true
-          success "Stable Audio is running at $STABLE_AUDIO_URL"
+    if find_compatible_python; then
+      SA_PY_VER=$("$SA_COMPAT_PYTHON" --version 2>&1 | sed 's/Python //')
+      dim "Found compatible Python: $SA_COMPAT_PYTHON ($SA_PY_VER)"
+    else
+      SA_NEED_INSTALL_PYTHON=true
+      DEFAULT_PY_VER=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")' 2>/dev/null || echo "none")
+      warn "No compatible Python found (need 3.10–3.12, found $DEFAULT_PY_VER)"
+      echo ""
+      echo -e "    ${BOLD}Stable Audio Open Small${NC} requires Python 3.10–3.12."
+      echo -e "    PyTorch and stable-audio-tools do not yet support Python 3.13+."
+      echo ""
+
+      if command -v brew &>/dev/null; then
+        read -rp "    Install Python 3.12 via Homebrew? (Y/n) " INSTALL_PY
+        if [[ "${INSTALL_PY:-y}" =~ ^[Yy]$ ]]; then
+          info "Installing python@3.12 via Homebrew..."
+          brew install python@3.12
+          # Homebrew installs to a versioned path
+          if command -v python3.12 &>/dev/null; then
+            SA_COMPAT_PYTHON="python3.12"
+          elif [ -x "/opt/homebrew/bin/python3.12" ]; then
+            SA_COMPAT_PYTHON="/opt/homebrew/bin/python3.12"
+          elif [ -x "/usr/local/bin/python3.12" ]; then
+            SA_COMPAT_PYTHON="/usr/local/bin/python3.12"
+          fi
+
+          if [ -n "$SA_COMPAT_PYTHON" ]; then
+            SA_NEED_INSTALL_PYTHON=false
+            success "Python 3.12 installed: $SA_COMPAT_PYTHON"
+          else
+            warn "python3.12 not found in PATH after install"
+            dim "Try: brew link python@3.12"
+          fi
+        fi
+      else
+        dim "Install Python 3.12:"
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+          dim "  brew install python@3.12"
         else
-          warn "Stable Audio is still loading the model. It may take longer on first run."
-          dim "Check manually: $STABLE_AUDIO_PYTHON $STABLE_AUDIO_SERVER"
+          dim "  sudo apt install python3.12 python3.12-venv   (Debian/Ubuntu)"
+          dim "  sudo dnf install python3.12                   (Fedora)"
         fi
       fi
-    else
-      warn "Stable Audio dependencies not installed"
+    fi
+
+    if ! $SA_NEED_INSTALL_PYTHON && [ -n "$SA_COMPAT_PYTHON" ]; then
       echo ""
       echo -e "    ${BOLD}Stable Audio Open Small${NC} provides music/SFX generation for"
       echo -e "    Audio Composer and SFX Designer. Max 11s, 44.1kHz stereo."
       echo ""
-
-      dim "Found: python3 ($PY_VER)"
-      echo ""
       echo -e "    Packages: ${CYAN}flask torch torchaudio einops stable-audio-tools${NC}"
-      echo -e "    Installs into a venv at: ${CYAN}${STABLE_AUDIO_VENV}${NC}"
+      echo -e "    Venv at:  ${CYAN}${STABLE_AUDIO_VENV}${NC}"
       echo -e "    ${DIM}First server run will download the model (~500MB).${NC}"
       echo ""
 
       read -rp "    Create venv and install Stable Audio dependencies? (Y/n) " INSTALL_SA
       if [[ "${INSTALL_SA:-y}" =~ ^[Yy]$ ]]; then
-        info "Creating virtual environment at ${STABLE_AUDIO_VENV}..."
+        info "Creating virtual environment with $SA_COMPAT_PYTHON..."
         mkdir -p "$(dirname "$STABLE_AUDIO_VENV")"
-        python3 -m venv "$STABLE_AUDIO_VENV"
+        "$SA_COMPAT_PYTHON" -m venv "$STABLE_AUDIO_VENV"
         STABLE_AUDIO_PYTHON="${STABLE_AUDIO_VENV}/bin/python"
         success "Virtual environment created"
 
@@ -460,13 +529,6 @@ else
         fi
       fi
     fi
-  else
-    warn "python3 not found"
-    echo ""
-    echo -e "    ${BOLD}Stable Audio Open Small${NC} provides music/SFX generation for"
-    echo -e "    Audio Composer and SFX Designer."
-    echo ""
-    echo -e "    Requires Python 3.10+. Install Python first, then re-run this script."
   fi
 
   if ! $STABLE_AUDIO_OK; then
