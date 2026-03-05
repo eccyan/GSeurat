@@ -5,7 +5,7 @@ import { StateMachineGraph } from './components/StateMachineGraph.js';
 import { ClipProperties } from './components/ClipProperties.js';
 import { ClipList } from './components/ClipList.js';
 import { AIAssistPanel } from './components/AIAssistPanel.js';
-import { useAnimatorStore } from './store/useAnimatorStore.js';
+import { useAnimatorStore, getClipDuration } from './store/useAnimatorStore.js';
 
 // ---------------------------------------------------------------------------
 // Tab type for center-bottom area

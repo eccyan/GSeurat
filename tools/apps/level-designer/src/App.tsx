@@ -5,10 +5,12 @@ import { TileCanvas } from './components/TileCanvas.js';
 import { PropertiesPanel } from './components/PropertiesPanel.js';
 import { AIPanel } from './components/AIPanel.js';
 import { useEngine } from './hooks/useEngine.js';
+import { useEngineSync } from './hooks/useEngineSync.js';
 import { useEditorStore } from './store/useEditorStore.js';
 
 export function App() {
   const engine = useEngine();
+  useEngineSync(engine);
   const activeLayer = useEditorStore((s) => s.activeLayer);
   const [showAI, setShowAI] = useState(false);
 
