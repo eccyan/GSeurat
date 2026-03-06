@@ -339,6 +339,9 @@ importers:
 
   tests:
     dependencies:
+      '@vulkan-game-tools/asset-types':
+        specifier: workspace:*
+        version: link:../packages/asset-types
       '@vulkan-game-tools/test-harness':
         specifier: workspace:*
         version: link:../packages/test-harness
