@@ -97,6 +97,12 @@ interface AnimatorState {
 
   importClipsFromJson: (json: AnimClip[]) => void;
   exportClipsToJson: () => string;
+
+  // Character manifest sync
+  characterId: string | null;
+  setCharacterId: (id: string | null) => void;
+  loadFromCharacter: (id: string) => Promise<void>;
+  saveToCharacter: () => Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
@@ -374,6 +380,109 @@ export const useAnimatorStore = create<AnimatorState>((set, get) => ({
   exportClipsToJson: () => {
     const { clips } = get();
     return JSON.stringify(clips, null, 2);
+  },
+
+  // Character manifest sync
+  characterId: null,
+
+  setCharacterId: (id) => set({ characterId: id }),
+
+  loadFromCharacter: async (id: string) => {
+    const BRIDGE_URL = 'http://localhost:9101';
+    try {
+      const res = await fetch(`${BRIDGE_URL}/api/characters/${id}`);
+      if (!res.ok) throw new Error(`Character not found: ${id}`);
+      const manifest = await res.json();
+
+      // Convert manifest animations to AnimClips
+      const clips: AnimClip[] = (manifest.animations ?? []).map((anim: { name: string; loop: boolean; frames: { tile_id: number; duration: number }[] }) => ({
+        id: makeId(),
+        name: anim.name,
+        loop: anim.loop,
+        frames: anim.frames.map((f: { tile_id: number; duration: number }) => ({
+          id: makeId(),
+          tile_id: f.tile_id,
+          duration: f.duration,
+        })),
+      }));
+
+      // Configure tileset from manifest spritesheet
+      const ss = manifest.spritesheet;
+      const totalRows = manifest.animations?.length ?? 12;
+      const columns = ss?.columns ?? 4;
+
+      set({
+        characterId: id,
+        clips,
+        tileset: {
+          tile_width: ss?.frame_width ?? 128,
+          tile_height: ss?.frame_height ?? 128,
+          columns,
+          sheet_width: (ss?.frame_width ?? 128) * columns,
+          sheet_height: (ss?.frame_height ?? 128) * totalRows,
+          image_url: get().tileset.image_url,
+        },
+        smNodes: makeDefaultSmNodes(clips),
+        smEdges: [],
+        selectedClipId: clips[0]?.id ?? null,
+      });
+    } catch (err) {
+      console.error('Failed to load character:', err);
+    }
+  },
+
+  saveToCharacter: async () => {
+    const { characterId, clips, tileset } = get();
+    if (!characterId) return;
+    const BRIDGE_URL = 'http://localhost:9101';
+    try {
+      // Fetch current manifest
+      const res = await fetch(`${BRIDGE_URL}/api/characters/${characterId}`);
+      if (!res.ok) throw new Error('Failed to load manifest');
+      const manifest = await res.json();
+
+      // Update animations from clips
+      manifest.animations = clips.map((clip, row) => {
+        // Try to match existing animation by name to preserve metadata
+        const existing = manifest.animations?.find((a: { name: string }) => a.name === clip.name);
+        return {
+          name: clip.name,
+          state: existing?.state ?? clip.name.split('_')[0] ?? 'idle',
+          direction: existing?.direction ?? 'S',
+          row,
+          loop: clip.loop,
+          frames: clip.frames.map((f, idx) => {
+            const existingFrame = existing?.frames?.[idx];
+            return {
+              index: idx,
+              tile_id: f.tile_id,
+              duration: f.duration,
+              status: existingFrame?.status ?? 'pending',
+              source: existingFrame?.source ?? 'placeholder',
+              file: existingFrame?.file ?? `${clip.name}_f${idx}.png`,
+              ...(existingFrame?.generation && { generation: existingFrame.generation }),
+              ...(existingFrame?.review && { review: existingFrame.review }),
+            };
+          }),
+        };
+      });
+
+      // Update spritesheet config
+      manifest.spritesheet = {
+        frame_width: tileset.tile_width,
+        frame_height: tileset.tile_height,
+        columns: tileset.columns,
+      };
+
+      // Save back
+      await fetch(`${BRIDGE_URL}/api/characters/${characterId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(manifest, null, 2),
+      });
+    } catch (err) {
+      console.error('Failed to save to character:', err);
+    }
   },
 }));
 

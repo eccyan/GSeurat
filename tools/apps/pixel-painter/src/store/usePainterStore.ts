@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { AssetManifest, DEFAULT_ASSET_MANIFEST } from '@vulkan-game-tools/asset-types';
+import type { CharacterManifest } from '@vulkan-game-tools/asset-types';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -72,6 +73,11 @@ export interface PainterState {
   showNormalPreview: boolean;
   heightmapOpacity: number;
 
+  // --- Character workflow ---
+  characterId: string | null;
+  characterManifest: CharacterManifest | null;
+  showReviewPanel: boolean;
+
   // --- UI state ---
   showAIPanel: boolean;
   showManifestSettings: boolean;
@@ -106,6 +112,9 @@ export interface PainterState {
   setHeightmapPixels: (data: HeightmapData) => void;
   setShowNormalPreview: (show: boolean) => void;
   setHeightmapOpacity: (opacity: number) => void;
+  setCharacterId: (id: string | null) => void;
+  setCharacterManifest: (manifest: CharacterManifest | null) => void;
+  setShowReviewPanel: (show: boolean) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -195,6 +204,10 @@ export const usePainterStore = create<PainterState>((set, get) => ({
   heightmapPixels: makeBlankHeightmap(DEFAULT_ASSET_MANIFEST.tileset.tile_width, DEFAULT_ASSET_MANIFEST.tileset.tile_height),
   showNormalPreview: false,
   heightmapOpacity: 0.5,
+
+  characterId: null,
+  characterManifest: null,
+  showReviewPanel: false,
 
   showAIPanel: false,
   showManifestSettings: false,
@@ -463,4 +476,8 @@ export const usePainterStore = create<PainterState>((set, get) => ({
   setShowNormalPreview: (show) => set({ showNormalPreview: show }),
 
   setHeightmapOpacity: (opacity) => set({ heightmapOpacity: Math.max(0, Math.min(1, opacity)) }),
+
+  setCharacterId: (id) => set({ characterId: id }),
+  setCharacterManifest: (manifest) => set({ characterManifest: manifest }),
+  setShowReviewPanel: (show) => set({ showReviewPanel: show }),
 }));

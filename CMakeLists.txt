@@ -150,6 +150,7 @@ add_library(vulkan_game_core OBJECT
     src/engine/pathfinder.cpp
     src/engine/parallax_layer.cpp
     src/engine/animation.cpp
+    src/engine/character_data.cpp
     src/engine/animation_state_machine.cpp
     src/engine/particle.cpp
     src/engine/audio_system.cpp

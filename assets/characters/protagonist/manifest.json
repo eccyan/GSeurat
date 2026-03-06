@@ -1,0 +1,520 @@
+{
+  "version": 1,
+  "character_id": "protagonist",
+  "display_name": "Protagonist",
+  "concept": {
+    "description": "",
+    "style_prompt": "pixel art, 128x128",
+    "negative_prompt": "blurry, realistic, 3d render",
+    "reference_images": [],
+    "approved": false
+  },
+  "spritesheet": {
+    "frame_width": 128,
+    "frame_height": 128,
+    "columns": 4
+  },
+  "animations": [
+    {
+      "name": "idle_down",
+      "state": "idle",
+      "direction": "S",
+      "row": 0,
+      "loop": true,
+      "frames": [
+        {
+          "index": 0,
+          "tile_id": 0,
+          "duration": 0.3,
+          "status": "pending",
+          "source": "placeholder",
+          "file": "idle_S_f0.png",
+          "review": {
+            "reviewer": "human",
+            "notes": "too blurry"
+          }
+        },
+        {
+          "index": 1,
+          "tile_id": 1,
+          "duration": 0.3,
+          "status": "pending",
+          "source": "placeholder",
+          "file": "idle_S_f1.png"
+        },
+        {
+          "index": 2,
+          "tile_id": 2,
+          "duration": 0.3,
+          "status": "pending",
+          "source": "placeholder",
+          "file": "idle_S_f2.png"
+        },
+        {
+          "index": 3,
+          "tile_id": 3,
+          "duration": 0.3,
+          "status": "pending",
+          "source": "placeholder",
+          "file": "idle_S_f3.png"
+        }
+      ]
+    },
+    {
+      "name": "idle_up",
+      "state": "idle",
+      "direction": "N",
+      "row": 1,
+      "loop": true,
+      "frames": [
+        {
+          "index": 0,
+          "tile_id": 4,
+          "duration": 0.3,
+          "status": "pending",
+          "source": "placeholder",
+          "file": "idle_N_f0.png"
+        },
+        {
+          "index": 1,
+          "tile_id": 5,
+          "duration": 0.3,
+          "status": "pending",
+          "source": "placeholder",
+          "file": "idle_N_f1.png"
+        },
+        {
+          "index": 2,
+          "tile_id": 6,
+          "duration": 0.3,
+          "status": "pending",
+          "source": "placeholder",
+          "file": "idle_N_f2.png"
+        },
+        {
+          "index": 3,
+          "tile_id": 7,
+          "duration": 0.3,
+          "status": "pending",
+          "source": "placeholder",
+          "file": "idle_N_f3.png"
+        }
+      ]
+    },
+    {
+      "name": "idle_right",
+      "state": "idle",
+      "direction": "E",
+      "row": 2,
+      "loop": true,
+      "frames": [
+        {
+          "index": 0,
+          "tile_id": 8,
+          "duration": 0.3,
+          "status": "pending",
+          "source": "placeholder",
+          "file": "idle_E_f0.png"
+        },
+        {
+          "index": 1,
+          "tile_id": 9,
+          "duration": 0.3,
+          "status": "pending",
+          "source": "placeholder",
+          "file": "idle_E_f1.png"
+        },
+        {
+          "index": 2,
+          "tile_id": 10,
+          "duration": 0.3,
+          "status": "pending",
+          "source": "placeholder",
+          "file": "idle_E_f2.png"
+        },
+        {
+          "index": 3,
+          "tile_id": 11,
+          "duration": 0.3,
+          "status": "pending",
+          "source": "placeholder",
+          "file": "idle_E_f3.png"
+        }
+      ]
+    },
+    {
+      "name": "idle_left",
+      "state": "idle",
+      "direction": "W",
+      "row": 3,
+      "loop": true,
+      "frames": [
+        {
+          "index": 0,
+          "tile_id": 12,
+          "duration": 0.3,
+          "status": "pending",
+          "source": "placeholder",
+          "file": "idle_W_f0.png"
+        },
+        {
+          "index": 1,
+          "tile_id": 13,
+          "duration": 0.3,
+          "status": "pending",
+          "source": "placeholder",
+          "file": "idle_W_f1.png"
+        },
+        {
+          "index": 2,
+          "tile_id": 14,
+          "duration": 0.3,
+          "status": "pending",
+          "source": "placeholder",
+          "file": "idle_W_f2.png"
+        },
+        {
+          "index": 3,
+          "tile_id": 15,
+          "duration": 0.3,
+          "status": "pending",
+          "source": "placeholder",
+          "file": "idle_W_f3.png"
+        }
+      ]
+    },
+    {
+      "name": "walk_down",
+      "state": "walk",
+      "direction": "S",
+      "row": 4,
+      "loop": true,
+      "frames": [
+        {
+          "index": 0,
+          "tile_id": 16,
+          "duration": 0.12,
+          "status": "pending",
+          "source": "placeholder",
+          "file": "walk_S_f0.png"
+        },
+        {
+          "index": 1,
+          "tile_id": 17,
+          "duration": 0.12,
+          "status": "pending",
+          "source": "placeholder",
+          "file": "walk_S_f1.png"
+        },
+        {
+          "index": 2,
+          "tile_id": 18,
+          "duration": 0.12,
+          "status": "pending",
+          "source": "placeholder",
+          "file": "walk_S_f2.png"
+        },
+        {
+          "index": 3,
+          "tile_id": 19,
+          "duration": 0.12,
+          "status": "pending",
+          "source": "placeholder",
+          "file": "walk_S_f3.png"
+        }
+      ]
+    },
+    {
+      "name": "walk_up",
+      "state": "walk",
+      "direction": "N",
+      "row": 5,
+      "loop": true,
+      "frames": [
+        {
+          "index": 0,
+          "tile_id": 20,
+          "duration": 0.12,
+          "status": "pending",
+          "source": "placeholder",
+          "file": "walk_N_f0.png"
+        },
+        {
+          "index": 1,
+          "tile_id": 21,
+          "duration": 0.12,
+          "status": "pending",
+          "source": "placeholder",
+          "file": "walk_N_f1.png"
+        },
+        {
+          "index": 2,
+          "tile_id": 22,
+          "duration": 0.12,
+          "status": "pending",
+          "source": "placeholder",
+          "file": "walk_N_f2.png"
+        },
+        {
+          "index": 3,
+          "tile_id": 23,
+          "duration": 0.12,
+          "status": "pending",
+          "source": "placeholder",
+          "file": "walk_N_f3.png"
+        }
+      ]
+    },
+    {
+      "name": "walk_right",
+      "state": "walk",
+      "direction": "E",
+      "row": 6,
+      "loop": true,
+      "frames": [
+        {
+          "index": 0,
+          "tile_id": 24,
+          "duration": 0.12,
+          "status": "pending",
+          "source": "placeholder",
+          "file": "walk_E_f0.png"
+        },
+        {
+          "index": 1,
+          "tile_id": 25,
+          "duration": 0.12,
+          "status": "pending",
+          "source": "placeholder",
+          "file": "walk_E_f1.png"
+        },
+        {
+          "index": 2,
+          "tile_id": 26,
+          "duration": 0.12,
+          "status": "pending",
+          "source": "placeholder",
+          "file": "walk_E_f2.png"
+        },
+        {
+          "index": 3,
+          "tile_id": 27,
+          "duration": 0.12,
+          "status": "pending",
+          "source": "placeholder",
+          "file": "walk_E_f3.png"
+        }
+      ]
+    },
+    {
+      "name": "walk_left",
+      "state": "walk",
+      "direction": "W",
+      "row": 7,
+      "loop": true,
+      "frames": [
+        {
+          "index": 0,
+          "tile_id": 28,
+          "duration": 0.12,
+          "status": "pending",
+          "source": "placeholder",
+          "file": "walk_W_f0.png"
+        },
+        {
+          "index": 1,
+          "tile_id": 29,
+          "duration": 0.12,
+          "status": "pending",
+          "source": "placeholder",
+          "file": "walk_W_f1.png"
+        },
+        {
+          "index": 2,
+          "tile_id": 30,
+          "duration": 0.12,
+          "status": "pending",
+          "source": "placeholder",
+          "file": "walk_W_f2.png"
+        },
+        {
+          "index": 3,
+          "tile_id": 31,
+          "duration": 0.12,
+          "status": "pending",
+          "source": "placeholder",
+          "file": "walk_W_f3.png"
+        }
+      ]
+    },
+    {
+      "name": "run_down",
+      "state": "run",
+      "direction": "S",
+      "row": 8,
+      "loop": true,
+      "frames": [
+        {
+          "index": 0,
+          "tile_id": 32,
+          "duration": 0.07,
+          "status": "pending",
+          "source": "placeholder",
+          "file": "run_S_f0.png"
+        },
+        {
+          "index": 1,
+          "tile_id": 33,
+          "duration": 0.07,
+          "status": "pending",
+          "source": "placeholder",
+          "file": "run_S_f1.png"
+        },
+        {
+          "index": 2,
+          "tile_id": 34,
+          "duration": 0.07,
+          "status": "pending",
+          "source": "placeholder",
+          "file": "run_S_f2.png"
+        },
+        {
+          "index": 3,
+          "tile_id": 35,
+          "duration": 0.07,
+          "status": "pending",
+          "source": "placeholder",
+          "file": "run_S_f3.png"
+        }
+      ]
+    },
+    {
+      "name": "run_up",
+      "state": "run",
+      "direction": "N",
+      "row": 9,
+      "loop": true,
+      "frames": [
+        {
+          "index": 0,
+          "tile_id": 36,
+          "duration": 0.07,
+          "status": "pending",
+          "source": "placeholder",
+          "file": "run_N_f0.png"
+        },
+        {
+          "index": 1,
+          "tile_id": 37,
+          "duration": 0.07,
+          "status": "pending",
+          "source": "placeholder",
+          "file": "run_N_f1.png"
+        },
+        {
+          "index": 2,
+          "tile_id": 38,
+          "duration": 0.07,
+          "status": "pending",
+          "source": "placeholder",
+          "file": "run_N_f2.png"
+        },
+        {
+          "index": 3,
+          "tile_id": 39,
+          "duration": 0.07,
+          "status": "pending",
+          "source": "placeholder",
+          "file": "run_N_f3.png"
+        }
+      ]
+    },
+    {
+      "name": "run_right",
+      "state": "run",
+      "direction": "E",
+      "row": 10,
+      "loop": true,
+      "frames": [
+        {
+          "index": 0,
+          "tile_id": 40,
+          "duration": 0.07,
+          "status": "pending",
+          "source": "placeholder",
+          "file": "run_E_f0.png"
+        },
+        {
+          "index": 1,
+          "tile_id": 41,
+          "duration": 0.07,
+          "status": "pending",
+          "source": "placeholder",
+          "file": "run_E_f1.png"
+        },
+        {
+          "index": 2,
+          "tile_id": 42,
+          "duration": 0.07,
+          "status": "pending",
+          "source": "placeholder",
+          "file": "run_E_f2.png"
+        },
+        {
+          "index": 3,
+          "tile_id": 43,
+          "duration": 0.07,
+          "status": "pending",
+          "source": "placeholder",
+          "file": "run_E_f3.png"
+        }
+      ]
+    },
+    {
+      "name": "run_left",
+      "state": "run",
+      "direction": "W",
+      "row": 11,
+      "loop": true,
+      "frames": [
+        {
+          "index": 0,
+          "tile_id": 44,
+          "duration": 0.07,
+          "status": "pending",
+          "source": "placeholder",
+          "file": "run_W_f0.png"
+        },
+        {
+          "index": 1,
+          "tile_id": 45,
+          "duration": 0.07,
+          "status": "pending",
+          "source": "placeholder",
+          "file": "run_W_f1.png"
+        },
+        {
+          "index": 2,
+          "tile_id": 46,
+          "duration": 0.07,
+          "status": "pending",
+          "source": "placeholder",
+          "file": "run_W_f2.png"
+        },
+        {
+          "index": 3,
+          "tile_id": 47,
+          "duration": 0.07,
+          "status": "pending",
+          "source": "placeholder",
+          "file": "run_W_f3.png"
+        }
+      ]
+    }
+  ],
+  "atlas": {
+    "file": "spritesheet.png",
+    "width": 512,
+    "height": 1536
+  }
+}

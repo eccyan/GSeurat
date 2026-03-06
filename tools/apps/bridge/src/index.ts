@@ -31,6 +31,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ENGINE_DIR = path.resolve(__dirname, '../../../../');
 const SCENES_DIR = path.join(ENGINE_DIR, 'assets', 'scenes');
 const TEXTURES_DIR = path.join(ENGINE_DIR, 'assets', 'textures');
+const CHARACTERS_DIR = path.join(ENGINE_DIR, 'assets', 'characters');
 
 // ---------------------------------------------------------------------------
 // Instantiate core components
@@ -268,6 +269,141 @@ app.post('/api/files/textures/:name', async (req: Request, res: Response) => {
     const message = err instanceof Error ? err.message : String(err);
     const statusCode = message.includes('Path traversal') ? 400 : 500;
     res.status(statusCode).json({ error: message });
+  }
+});
+
+// GET /api/characters — list all character IDs with manifests
+app.get('/api/characters', async (_req: Request, res: Response) => {
+  try {
+    const entries = await fs.readdir(CHARACTERS_DIR, { withFileTypes: true });
+    const ids: string[] = [];
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        const mPath = path.join(CHARACTERS_DIR, entry.name, 'manifest.json');
+        try {
+          await fs.access(mPath);
+          ids.push(entry.name);
+        } catch {
+          // No manifest — skip
+        }
+      }
+    }
+    res.json({ characters: ids.sort() });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: message });
+  }
+});
+
+// GET /api/characters/:id — read a character manifest
+app.get('/api/characters/:id', async (req: Request, res: Response) => {
+  try {
+    const charDir = safeResolve(CHARACTERS_DIR, req.params['id']!);
+    const filePath = path.join(charDir, 'manifest.json');
+    const content = await fs.readFile(filePath, 'utf8');
+    res.setHeader('Content-Type', 'application/json');
+    res.send(content);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    const statusCode = message.includes('Path traversal') ? 400 : 404;
+    res.status(statusCode).json({ error: message });
+  }
+});
+
+// POST /api/characters/:id — write/update a character manifest
+app.post('/api/characters/:id', async (req: Request, res: Response) => {
+  try {
+    const charDir = safeResolve(CHARACTERS_DIR, req.params['id']!);
+    await fs.mkdir(charDir, { recursive: true });
+    const filePath = path.join(charDir, 'manifest.json');
+    const body = typeof req.body === 'string' ? req.body : JSON.stringify(req.body, null, 2);
+    await fs.writeFile(filePath, body, 'utf8');
+    console.log(`[REST] Character manifest written: ${filePath}`);
+    res.json({ ok: true, path: filePath });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    const statusCode = message.includes('Path traversal') ? 400 : 500;
+    res.status(statusCode).json({ error: message });
+  }
+});
+
+// GET /api/characters/:id/frames/:anim/:frame — get a specific frame's status
+app.get('/api/characters/:id/frames/:anim/:frame', async (req: Request, res: Response) => {
+  try {
+    const charDir = safeResolve(CHARACTERS_DIR, req.params['id']!);
+    const filePath = path.join(charDir, 'manifest.json');
+    const content = await fs.readFile(filePath, 'utf8');
+    const manifest = JSON.parse(content);
+    const anim = manifest.animations?.find((a: { name: string }) => a.name === req.params['anim']);
+    if (!anim) {
+      res.status(404).json({ error: `Animation "${req.params['anim']}" not found` });
+      return;
+    }
+    const frameIdx = parseInt(req.params['frame']!, 10);
+    const frame = anim.frames?.find((f: { index: number }) => f.index === frameIdx);
+    if (!frame) {
+      res.status(404).json({ error: `Frame ${frameIdx} not found` });
+      return;
+    }
+    res.json(frame);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(404).json({ error: message });
+  }
+});
+
+// POST /api/characters/:id/frames/:anim/:frame — update a frame's status
+app.post('/api/characters/:id/frames/:anim/:frame', async (req: Request, res: Response) => {
+  try {
+    const charDir = safeResolve(CHARACTERS_DIR, req.params['id']!);
+    const filePath = path.join(charDir, 'manifest.json');
+    const content = await fs.readFile(filePath, 'utf8');
+    const manifest = JSON.parse(content);
+    const anim = manifest.animations?.find((a: { name: string }) => a.name === req.params['anim']);
+    if (!anim) {
+      res.status(404).json({ error: `Animation "${req.params['anim']}" not found` });
+      return;
+    }
+    const frameIdx = parseInt(req.params['frame']!, 10);
+    const frame = anim.frames?.find((f: { index: number }) => f.index === frameIdx);
+    if (!frame) {
+      res.status(404).json({ error: `Frame ${frameIdx} not found` });
+      return;
+    }
+
+    // Update frame fields from request body
+    if (req.body.status) frame.status = req.body.status;
+    if (req.body.source) frame.source = req.body.source;
+    if (req.body.file) frame.file = req.body.file;
+    if (req.body.generation) frame.generation = req.body.generation;
+    if (req.body.review) frame.review = req.body.review;
+    if (req.body.notes !== undefined) {
+      if (!frame.review) frame.review = { reviewer: 'human', notes: '' };
+      frame.review.notes = req.body.notes;
+    }
+
+    await fs.writeFile(filePath, JSON.stringify(manifest, null, 2), 'utf8');
+    console.log(`[REST] Frame updated: ${req.params['id']}/${req.params['anim']}[${frameIdx}]`);
+    res.json({ ok: true, frame });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    const statusCode = message.includes('Path traversal') ? 400 : 500;
+    res.status(statusCode).json({ error: message });
+  }
+});
+
+// POST /api/characters/:id/assemble — trigger atlas assembly
+app.post('/api/characters/:id/assemble', async (req: Request, res: Response) => {
+  try {
+    // Dynamically import the atlas assembler (optional dependency)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const mod = await (import('@vulkan-game-tools/atlas-assembler' as any) as Promise<any>);
+    const validate = req.body?.validate === true;
+    const result = await mod.assembleCharacterAtlas(req.params['id']!, { validate });
+    res.json(result);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: message });
   }
 });
 

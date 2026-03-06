@@ -67,6 +67,7 @@ export interface NpcJSON {
   script_class?: string;
   waypoints?: Vec2[];
   waypoint_pause?: number;
+  character_id?: string;
 }
 
 // Static point light — matches PointLight struct in types.hpp
@@ -163,6 +164,7 @@ export interface PlayerJSON {
   position: Vec3;
   tint?: Vec4;
   facing?: DirectionString;
+  character_id?: string;
 }
 
 // Top-level scene descriptor — matches SceneData struct in scene_loader.hpp

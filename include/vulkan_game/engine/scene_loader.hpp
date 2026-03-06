@@ -34,6 +34,7 @@ struct NpcData {
     std::string script_class;
     std::vector<glm::vec2> waypoints;  // empty = use NpcPatrol
     float waypoint_pause = 1.0f;
+    std::string character_id;  // empty = use hardcoded anim setup
 };
 
 struct ParallaxLayerData {
@@ -79,6 +80,7 @@ struct SceneData {
     glm::vec3 player_position{0.0f};
     glm::vec4 player_tint{1.0f};
     Direction player_facing = Direction::Down;
+    std::string player_character_id;  // empty = use hardcoded anim setup
 
     // NPCs
     std::vector<NpcData> npcs;

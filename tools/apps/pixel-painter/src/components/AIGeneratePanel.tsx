@@ -20,7 +20,7 @@ type GenMode = 'single' | 'row';
 // ---------------------------------------------------------------------------
 
 export function AIGeneratePanel() {
-  const { applyAIPixels, applyRowPixels, editTarget, selectedTileCol, selectedTileRow, selectedFrameCol, selectedFrameRow, manifest, activeLayer, setHeightmapPixels, pushHistory } = usePainterStore();
+  const { applyAIPixels, applyRowPixels, editTarget, selectedTileCol, selectedTileRow, selectedFrameCol, selectedFrameRow, manifest, activeLayer, setHeightmapPixels, pushHistory, characterManifest } = usePainterStore();
   const { w: targetW, h: targetH } = pixelDims({ editTarget, manifest });
 
   const [prompt, setPrompt] = useState('');
@@ -76,7 +76,10 @@ export function AIGeneratePanel() {
 
     const col = editTarget === 'tileset' ? selectedTileCol : selectedFrameCol;
     const row = editTarget === 'tileset' ? selectedTileRow : selectedFrameRow;
-    const fullPrompt = buildFullPrompt({ prompt, editTarget, manifest, col, row, targetW, targetH, activeLayer });
+    // Prepend concept style_prompt when a character is loaded
+    const conceptPrefix = characterManifest?.concept?.style_prompt ?? '';
+    const effectivePrompt = conceptPrefix ? `${conceptPrefix}, ${prompt}` : prompt;
+    const fullPrompt = buildFullPrompt({ prompt: effectivePrompt, editTarget, manifest, col, row, targetW, targetH, activeLayer });
     const fullNegative = buildNegativePrompt(negativePrompt);
 
     setStatus({ kind: 'generating', message: 'Generating with ComfyUI...' });

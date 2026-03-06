@@ -154,6 +154,7 @@ SceneData SceneLoader::from_json(const nlohmann::json& j) {
         data.player_position = parse_vec3(p["position"]);
         if (p.contains("tint")) data.player_tint = parse_vec4(p["tint"]);
         if (p.contains("facing")) data.player_facing = parse_direction(p["facing"]);
+        data.player_character_id = p.value("character_id", "");
     }
 
     // NPCs
@@ -190,6 +191,7 @@ SceneData SceneLoader::from_json(const nlohmann::json& j) {
                 }
             }
             npc.waypoint_pause = npc_j.value("waypoint_pause", 1.0f);
+            npc.character_id = npc_j.value("character_id", "");
             data.npcs.push_back(std::move(npc));
         }
     }
@@ -405,11 +407,15 @@ nlohmann::json SceneLoader::to_json(const SceneData& data) {
     j["npc_aura_emitter"] = emitter_json(data.npc_aura_emitter);
 
     // Player
-    j["player"] = {
-        {"position", vec3_json(data.player_position)},
-        {"tint", vec4_json(data.player_tint)},
-        {"facing", direction_to_string(data.player_facing)}
-    };
+    {
+        nlohmann::json p;
+        p["position"] = vec3_json(data.player_position);
+        p["tint"] = vec4_json(data.player_tint);
+        p["facing"] = direction_to_string(data.player_facing);
+        if (!data.player_character_id.empty())
+            p["character_id"] = data.player_character_id;
+        j["player"] = p;
+    }
 
     // NPCs
     if (!data.npcs.empty()) {
@@ -444,6 +450,8 @@ nlohmann::json SceneLoader::to_json(const SceneData& data) {
                 npc_j["waypoints"] = wps;
                 npc_j["waypoint_pause"] = npc.waypoint_pause;
             }
+            if (!npc.character_id.empty())
+                npc_j["character_id"] = npc.character_id;
             npcs.push_back(npc_j);
         }
         j["npcs"] = npcs;

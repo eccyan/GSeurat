@@ -302,6 +302,16 @@ export function handleCommand(
       return handleAiGenerateRow(params, store);
     }
 
+    // Character workflow commands
+    case 'load_character':
+      return handleLoadCharacter(store, params);
+    case 'save_character':
+      return handleSaveCharacter(store);
+    case 'set_frame_status':
+      return handleSetFrameStatus(store, params);
+    case 'assemble_atlas':
+      return handleAssembleAtlas(store);
+
     default:
       return { error: `unknown command: ${cmd}` };
   }
@@ -590,6 +600,78 @@ async function handleAiGenerateRow(
         height: fh,
       },
     };
+  } catch (err) {
+    return { error: (err as Error).message ?? String(err) };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Character workflow commands
+// ---------------------------------------------------------------------------
+
+const BRIDGE_URL = 'http://localhost:9101';
+
+async function handleLoadCharacter(store: PainterState, params: Record<string, unknown>): Promise<CommandResult> {
+  const id = params['id'] as string;
+  if (!id) return { error: 'Missing character id' };
+  try {
+    const res = await fetch(`${BRIDGE_URL}/api/characters/${id}`);
+    if (!res.ok) return { error: `Character not found: ${id}` };
+    const manifest = await res.json();
+    store.setCharacterId(id);
+    store.setCharacterManifest(manifest);
+    return { response: { loaded: id, animations: manifest.animations?.length ?? 0 } };
+  } catch (err) {
+    return { error: (err as Error).message ?? String(err) };
+  }
+}
+
+async function handleSaveCharacter(store: PainterState): Promise<CommandResult> {
+  const { characterId, characterManifest } = store;
+  if (!characterId || !characterManifest) return { error: 'No character loaded' };
+  try {
+    const res = await fetch(`${BRIDGE_URL}/api/characters/${characterId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(characterManifest, null, 2),
+    });
+    if (!res.ok) return { error: 'Failed to save manifest' };
+    return { response: { saved: characterId } };
+  } catch (err) {
+    return { error: (err as Error).message ?? String(err) };
+  }
+}
+
+async function handleSetFrameStatus(store: PainterState, params: Record<string, unknown>): Promise<CommandResult> {
+  const { characterId } = store;
+  if (!characterId) return { error: 'No character loaded' };
+  const anim = params['animation'] as string;
+  const frame = params['frame'] as number;
+  const status = params['status'] as string;
+  if (!anim || frame === undefined || !status) return { error: 'Missing animation, frame, or status' };
+  try {
+    const res = await fetch(`${BRIDGE_URL}/api/characters/${characterId}/frames/${anim}/${frame}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status }),
+    });
+    if (!res.ok) return { error: 'Failed to update frame status' };
+    return { response: await res.json() };
+  } catch (err) {
+    return { error: (err as Error).message ?? String(err) };
+  }
+}
+
+async function handleAssembleAtlas(store: PainterState): Promise<CommandResult> {
+  const { characterId } = store;
+  if (!characterId) return { error: 'No character loaded' };
+  try {
+    const res = await fetch(`${BRIDGE_URL}/api/characters/${characterId}/assemble`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+    });
+    return { response: await res.json() };
   } catch (err) {
     return { error: (err as Error).message ?? String(err) };
   }

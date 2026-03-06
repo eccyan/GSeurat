@@ -5,6 +5,7 @@
 #include "vulkan_game/game/states/transition_state.hpp"
 #include "vulkan_game/game/systems.hpp"
 #include "vulkan_game/engine/pathfinder.hpp"
+#include "vulkan_game/engine/character_data.hpp"
 #include "vulkan_game/engine/scene_loader.hpp"
 #include "vulkan_game/engine/tilemap.hpp"
 
@@ -909,8 +910,20 @@ void App::init_scene(const std::string& scene_path) {
     current_scene_path_ = scene_path;
     auto scene_data = SceneLoader::load(scene_path);
 
-    // Animation setup helper (shared by player and NPCs)
-    auto setup_anim = [](ecs::Animation& anim_comp) {
+    // Animation setup: data-driven from character manifest, or hardcoded fallback
+    auto setup_anim = [](ecs::Animation& anim_comp, const std::string& character_id) {
+        if (!character_id.empty()) {
+            std::string anim_path = "assets/characters/" + character_id + "/animations.json";
+            auto char_data = load_character_anims(anim_path);
+            if (char_data) {
+                anim_comp.state_machine.configure(char_data->tileset);
+                for (auto& clip : char_data->clips) {
+                    anim_comp.state_machine.add_clip(std::move(clip));
+                }
+                return;
+            }
+        }
+        // Hardcoded fallback
         anim_comp.state_machine.configure(Tileset{16, 16, 4, 64, 192});
         const std::array<std::string, 3> states    = {"idle", "walk", "run"};
         const std::array<std::string, 4> dirs      = {"down", "left", "right", "up"};
@@ -935,7 +948,7 @@ void App::init_scene(const std::string& scene_path) {
     // Create player entity from scene data
     {
         ecs::Animation player_anim;
-        setup_anim(player_anim);
+        setup_anim(player_anim, scene_data.player_character_id);
         std::string initial_clip = "idle_" + std::string(direction_suffix(scene_data.player_facing));
         player_anim.state_machine.transition_to(initial_clip);
 
@@ -968,7 +981,7 @@ void App::init_scene(const std::string& scene_path) {
         const auto& npc_data = scene_data.npcs[i];
 
         ecs::Animation npc_anim;
-        setup_anim(npc_anim);
+        setup_anim(npc_anim, npc_data.character_id);
         std::string initial_clip = "walk_" + std::string(direction_suffix(npc_data.facing));
         npc_anim.state_machine.transition_to(initial_clip);
 
