@@ -7,7 +7,121 @@
   {
     "tool": "pixel-painter",
     "port": 6174,
-    "results": []
+    "results": [
+      {
+        "name": "Store is accessible",
+        "passed": true
+      },
+      {
+        "name": "Manifest is present with correct structure",
+        "passed": true
+      },
+      {
+        "name": "Set pixel updates canvas data",
+        "passed": true
+      },
+      {
+        "name": "Color swap swaps fg/bg",
+        "passed": true
+      },
+      {
+        "name": "Mirror mode updates state",
+        "passed": true
+      },
+      {
+        "name": "Undo restores pixel state",
+        "passed": true
+      },
+      {
+        "name": "Redo restores edited pixel",
+        "passed": true
+      },
+      {
+        "name": "Tool selection works",
+        "passed": true
+      },
+      {
+        "name": "Edit target switching",
+        "passed": true
+      },
+      {
+        "name": "Zoom updates",
+        "passed": true
+      },
+      {
+        "name": "Foreground color set",
+        "passed": true
+      },
+      {
+        "name": "Manifest settings toggle",
+        "passed": true
+      },
+      {
+        "name": "Layer switching",
+        "passed": true
+      },
+      {
+        "name": "Height value set",
+        "passed": true
+      },
+      {
+        "name": "Heightmap pixel set",
+        "passed": true
+      },
+      {
+        "name": "Normal preview toggle",
+        "passed": true
+      },
+      {
+        "name": "Heightmap opacity",
+        "passed": true
+      },
+      {
+        "name": "setManifest updates manifest",
+        "passed": true
+      },
+      {
+        "name": "[Scenario] Create multi-frame sprite animation",
+        "passed": true
+      },
+      {
+        "name": "[Scenario] Mirror mode drawing workflow",
+        "passed": false,
+        "error": "Pixel at (0,2) undone: expected 0, got 64"
+      },
+      {
+        "name": "[Scenario] Manifest defaults are correct",
+        "passed": true
+      },
+      {
+        "name": "[Scenario] Manifest update resizes canvas",
+        "passed": true
+      },
+      {
+        "name": "[Scenario] Manifest settings panel toggle",
+        "passed": true
+      },
+      {
+        "name": "[Scenario] Tile selection across manifest grid",
+        "passed": true
+      },
+      {
+        "name": "[Scenario] Heightmap editing workflow",
+        "passed": true
+      },
+      {
+        "name": "[Scenario] Dual layer round-trip",
+        "passed": true
+      },
+      {
+        "name": "[Scenario] Normal preview toggle",
+        "passed": true
+      },
+      {
+        "name": "[Scenario] Spritesheet frames use manifest row count",
+        "passed": true
+      }
+    ]
   },
   {
     "tool": "keyframe-animator",
