@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useRef } from 'react';
 import { ComfyUIClient } from '@vulkan-game-tools/ai-providers';
 import { usePainterStore, PixelData, pixelDims } from '../store/usePainterStore.js';
-import { buildFullPrompt, buildNegativePrompt, downscaleToPixelData, pixelsToHeightmap, DEFAULT_NEGATIVE_PROMPT } from '../lib/ai-generate-helpers.js';
+import { buildFullPrompt, buildNegativePrompt, buildRowPrompt, downscaleToPixelData, sliceStripToFrames, pixelsToHeightmap, DEFAULT_NEGATIVE_PROMPT } from '../lib/ai-generate-helpers.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -13,12 +13,14 @@ type GenStatus =
   | { kind: 'success'; message: string }
   | { kind: 'error'; message: string };
 
+type GenMode = 'single' | 'row';
+
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
 export function AIGeneratePanel() {
-  const { applyAIPixels, editTarget, selectedTileCol, selectedTileRow, selectedFrameCol, selectedFrameRow, manifest, activeLayer, setHeightmapPixels, pushHistory } = usePainterStore();
+  const { applyAIPixels, applyRowPixels, editTarget, selectedTileCol, selectedTileRow, selectedFrameCol, selectedFrameRow, manifest, activeLayer, setHeightmapPixels, pushHistory } = usePainterStore();
   const { w: targetW, h: targetH } = pixelDims({ editTarget, manifest });
 
   const [prompt, setPrompt] = useState('');
@@ -34,8 +36,16 @@ export function AIGeneratePanel() {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [loraName, setLoraName] = useState('PixelArtRedmond15V-PixelArt-PIXARFK');
   const [loraWeight, setLoraWeight] = useState(0.85);
+  const [genMode, setGenMode] = useState<GenMode>('single');
+  const [pendingFrames, setPendingFrames] = useState<PixelData[] | null>(null);
+  const [stripPreviewUrl, setStripPreviewUrl] = useState<string | null>(null);
 
   const abortControllerRef = useRef<AbortController | null>(null);
+
+  // Row info for row mode
+  const currentRow = editTarget === 'spritesheet' ? selectedFrameRow : 0;
+  const rowDef = manifest.spritesheet.rows.find((r) => r.row === currentRow);
+  const canUseRowMode = editTarget === 'spritesheet' && !!rowDef;
 
   const handleGenerate = useCallback(async () => {
     if (!prompt.trim()) {
@@ -121,6 +131,94 @@ export function AIGeneratePanel() {
     }
   }, [pendingPixels, applyAIPixels, activeLayer, targetW, targetH, setHeightmapPixels, pushHistory]);
 
+  const handleGenerateRow = useCallback(async () => {
+    if (!prompt.trim()) {
+      setStatus({ kind: 'error', message: 'Please enter a prompt.' });
+      return;
+    }
+    if (!rowDef) {
+      setStatus({ kind: 'error', message: 'No row definition found. Switch to spritesheet mode.' });
+      return;
+    }
+    if (status.kind === 'generating') {
+      abortControllerRef.current?.abort();
+      setStatus({ kind: 'idle' });
+      return;
+    }
+
+    setStatus({ kind: 'generating', message: 'Checking ComfyUI...' });
+    setPreviewDataUrl(null);
+    setPendingPixels(null);
+    setPendingFrames(null);
+    setStripPreviewUrl(null);
+
+    const client = new ComfyUIClient(comfyUrl);
+    const check = await client.checkAvailability().catch(() => ({
+      available: false,
+      error: `Cannot reach ComfyUI at ${comfyUrl}. Start it with: python main.py --cpu --listen`,
+    }));
+    if (!check.available) {
+      setStatus({ kind: 'error', message: check.error ?? 'ComfyUI unavailable' });
+      return;
+    }
+
+    const actualSeed = seed === -1 ? Math.floor(Math.random() * 2 ** 31) : seed;
+    const frameCount = rowDef.frames;
+    const genWidth = 512;
+    const genHeight = Math.max(64, Math.round(512 / frameCount));
+
+    const fullPrompt = buildRowPrompt({
+      prompt,
+      rowDef,
+      frameWidth: targetW,
+      frameHeight: targetH,
+      activeLayer,
+    });
+    const fullNegative = buildNegativePrompt(negativePrompt);
+
+    setStatus({ kind: 'generating', message: `Generating ${frameCount}-frame strip (${genWidth}x${genHeight})...` });
+
+    try {
+      const loras = loraName.trim()
+        ? [{ name: loraName.trim(), weight: loraWeight }]
+        : [];
+
+      const pngBytes = await client.generateImage(fullPrompt, {
+        width: genWidth,
+        height: genHeight,
+        steps,
+        seed: actualSeed,
+        negativePrompt: fullNegative,
+        cfgScale,
+        samplerName,
+        loras,
+      });
+
+      // Show full strip preview
+      const blob = new Blob([pngBytes], { type: 'image/png' });
+      setStripPreviewUrl(URL.createObjectURL(blob));
+
+      setStatus({ kind: 'generating', message: `Slicing into ${frameCount} frames...` });
+
+      const frames = await sliceStripToFrames(pngBytes, frameCount, targetW, targetH);
+      setPendingFrames(frames);
+
+      setStatus({ kind: 'success', message: `Generated ${frameCount} frames! Seed: ${actualSeed}` });
+    } catch (err) {
+      if ((err as Error).name === 'AbortError') {
+        setStatus({ kind: 'idle' });
+      } else {
+        setStatus({ kind: 'error', message: (err as Error).message ?? String(err) });
+      }
+    }
+  }, [prompt, negativePrompt, comfyUrl, steps, seed, cfgScale, samplerName, loraName, loraWeight, status, rowDef, targetW, targetH, activeLayer]);
+
+  const handleApplyRow = useCallback(() => {
+    if (!pendingFrames || !rowDef) return;
+    applyRowPixels(rowDef.row, pendingFrames);
+    setStatus({ kind: 'success', message: `Applied ${pendingFrames.length} frames to row ${rowDef.row}!` });
+  }, [pendingFrames, rowDef, applyRowPixels]);
+
   const isGenerating = status.kind === 'generating';
 
   const statusColors: Record<GenStatus['kind'], string> = {
@@ -160,6 +258,38 @@ export function AIGeneratePanel() {
             {activeLayer === 'heightmap' && ' (heightmap)'}
           </span>
         </div>
+
+        {/* Mode toggle */}
+        {canUseRowMode && (
+          <div style={styles.modeToggle}>
+            <button
+              onClick={() => setGenMode('single')}
+              style={{
+                ...styles.modeBtn,
+                ...(genMode === 'single' ? styles.modeBtnActive : {}),
+              }}
+            >
+              Single
+            </button>
+            <button
+              onClick={() => setGenMode('row')}
+              style={{
+                ...styles.modeBtn,
+                ...(genMode === 'row' ? styles.modeBtnActive : {}),
+              }}
+            >
+              Row
+            </button>
+          </div>
+        )}
+
+        {/* Row info */}
+        {genMode === 'row' && rowDef && (
+          <div style={styles.rowInfo}>
+            Row {rowDef.row}: <span style={styles.targetValue}>{rowDef.label}</span>{' '}
+            ({rowDef.frames} frames, {rowDef.state} {rowDef.direction})
+          </div>
+        )}
 
         {/* Prompt */}
         <div style={styles.field}>
@@ -318,7 +448,7 @@ export function AIGeneratePanel() {
 
         {/* Generate button */}
         <button
-          onClick={handleGenerate}
+          onClick={genMode === 'row' && canUseRowMode ? handleGenerateRow : handleGenerate}
           style={{
             ...styles.generateBtn,
             background: isGenerating ? '#3a2a1a' : '#2a3a6a',
@@ -326,7 +456,7 @@ export function AIGeneratePanel() {
             color: isGenerating ? '#e0a040' : '#90b8f8',
           }}
         >
-          {isGenerating ? 'Cancel' : 'Generate'}
+          {isGenerating ? 'Cancel' : genMode === 'row' ? 'Generate Row' : 'Generate'}
         </button>
 
         {/* Status */}
@@ -379,6 +509,46 @@ export function AIGeneratePanel() {
               >
                 Apply to Canvas
               </button>
+            )}
+          </div>
+        )}
+
+        {/* Row strip preview */}
+        {genMode === 'row' && stripPreviewUrl && (
+          <div style={styles.previewSection}>
+            <div style={styles.fieldLabel}>Generated Strip</div>
+            <img
+              src={stripPreviewUrl}
+              alt="Generated strip"
+              style={styles.stripPreview}
+            />
+            {pendingFrames && (
+              <>
+                <div style={styles.fieldLabel}>Sliced Frames ({pendingFrames.length})</div>
+                <div style={styles.frameRow}>
+                  {pendingFrames.map((frame, i) => (
+                    <canvas
+                      key={i}
+                      ref={(canvas) => {
+                        if (!canvas) return;
+                        const ctx = canvas.getContext('2d')!;
+                        const imgData = new ImageData(new Uint8ClampedArray(frame), targetW, targetH);
+                        ctx.putImageData(imgData, 0, 0);
+                      }}
+                      width={targetW}
+                      height={targetH}
+                      style={styles.frameThumb}
+                      title={`Frame ${i}`}
+                    />
+                  ))}
+                </div>
+                <button
+                  onClick={handleApplyRow}
+                  style={styles.applyBtn}
+                >
+                  Apply to Row
+                </button>
+              </>
             )}
           </div>
         )}
@@ -591,6 +761,53 @@ const styles: Record<string, React.CSSProperties> = {
     padding: '6px 0',
     cursor: 'pointer',
     width: '100%',
+  },
+  modeToggle: {
+    display: 'flex',
+    gap: 0,
+    borderRadius: 4,
+    overflow: 'hidden',
+    border: '1px solid #444',
+  },
+  modeBtn: {
+    flex: 1,
+    background: '#1a1a2a',
+    border: 'none',
+    color: '#666',
+    fontFamily: 'monospace',
+    fontSize: 10,
+    fontWeight: 600,
+    padding: '5px 0',
+    cursor: 'pointer',
+  },
+  modeBtnActive: {
+    background: '#2a3a6a',
+    color: '#90b8f8',
+  },
+  rowInfo: {
+    fontFamily: 'monospace',
+    fontSize: 10,
+    color: '#666',
+  },
+  stripPreview: {
+    width: '100%',
+    maxHeight: 60,
+    imageRendering: 'pixelated' as const,
+    border: '1px solid #444',
+    borderRadius: 2,
+    objectFit: 'contain' as const,
+  },
+  frameRow: {
+    display: 'flex',
+    gap: 4,
+    flexWrap: 'wrap' as const,
+  },
+  frameThumb: {
+    width: 48,
+    height: 48,
+    imageRendering: 'pixelated' as const,
+    border: '1px solid #4a9ef8',
+    borderRadius: 2,
   },
   helpText: {
     fontFamily: 'monospace',

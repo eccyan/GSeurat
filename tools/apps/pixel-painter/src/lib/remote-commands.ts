@@ -6,7 +6,9 @@ import { ComfyUIClient } from '@vulkan-game-tools/ai-providers';
 import {
   buildFullPrompt,
   buildNegativePrompt,
+  buildRowPrompt,
   downscaleToPixelData,
+  sliceStripToFrames,
   pixelsToHeightmap,
   SAMPLER_NAMES,
   DEFAULT_NEGATIVE_PROMPT,
@@ -297,6 +299,10 @@ export function handleCommand(
       return handleAiGenerateBatch(params, store);
     }
 
+    case 'ai_generate_row': {
+      return handleAiGenerateRow(params, store);
+    }
+
     default:
       return { error: `unknown command: ${cmd}` };
   }
@@ -454,4 +460,88 @@ async function handleAiGenerateBatch(
   }
 
   return { response: { results } };
+}
+
+async function handleAiGenerateRow(
+  params: Record<string, unknown>,
+  store: PainterState,
+): Promise<CommandResult> {
+  const prompt = params['prompt'] as string | undefined;
+  if (!prompt) return { error: 'missing prompt param' };
+
+  const comfyUrl = (params['comfy_url'] as string | undefined) ?? getComfyUrl();
+  const client = new ComfyUIClient(comfyUrl);
+
+  const check = await client.checkAvailability().catch(() => ({
+    available: false as const,
+    error: `Cannot reach ComfyUI at ${comfyUrl}`,
+  }));
+  if (!check.available) {
+    return { error: check.error ?? 'ComfyUI unavailable' };
+  }
+
+  // Determine row — use param or current selected frame row
+  const row = (params['row'] as number | undefined) ?? store.selectedFrameRow;
+  const rowDef = store.manifest.spritesheet.rows.find((r) => r.row === row);
+  if (!rowDef) return { error: `no row definition for row ${row}` };
+
+  const frameCount = rowDef.frames;
+  const fw = store.manifest.spritesheet.frame_width;
+  const fh = store.manifest.spritesheet.frame_height;
+
+  const negativePrompt = params['negative_prompt'] as string | undefined;
+  const steps = (params['steps'] as number | undefined) ?? 20;
+  const seedParam = (params['seed'] as number | undefined) ?? -1;
+  const cfg = (params['cfg'] as number | undefined) ?? 7;
+  const sampler = (params['sampler'] as string | undefined) ?? 'euler';
+  const loras = (params['loras'] as Array<{ name: string; weight?: number }> | undefined) ?? [];
+  const apply = (params['apply'] as boolean | undefined) ?? true;
+
+  const actualSeed = seedParam === -1 ? Math.floor(Math.random() * 2 ** 31) : seedParam;
+
+  const fullPrompt = buildRowPrompt({
+    prompt,
+    rowDef,
+    frameWidth: fw,
+    frameHeight: fh,
+    activeLayer: store.activeLayer,
+  });
+  const fullNegative = buildNegativePrompt(negativePrompt);
+
+  // Generate at 512 x (512/frameCount) — strip aspect ratio
+  const genWidth = 512;
+  const genHeight = Math.max(64, Math.round(512 / frameCount));
+
+  try {
+    const pngBytes = await client.generateImage(fullPrompt, {
+      width: genWidth,
+      height: genHeight,
+      steps,
+      seed: actualSeed,
+      negativePrompt: fullNegative,
+      cfgScale: cfg,
+      samplerName: sampler,
+      loras,
+    });
+
+    const frames = await sliceStripToFrames(pngBytes, frameCount, fw, fh);
+
+    if (apply) {
+      store.applyRowPixels(row, frames);
+    }
+
+    return {
+      response: {
+        frames: frames.map((f) => pixelsToBase64(f)),
+        seed: actualSeed,
+        row,
+        width: fw,
+        height: fh,
+        gen_width: genWidth,
+        gen_height: genHeight,
+      },
+    };
+  } catch (err) {
+    return { error: (err as Error).message ?? String(err) };
+  }
 }

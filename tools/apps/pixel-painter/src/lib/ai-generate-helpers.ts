@@ -1,5 +1,5 @@
 import type { EditTarget, ActiveLayer, PixelData, HeightmapData } from '../store/usePainterStore.js';
-import type { AssetManifest } from '@vulkan-game-tools/asset-types';
+import type { AssetManifest, SpriteRowDef } from '@vulkan-game-tools/asset-types';
 
 // ---------------------------------------------------------------------------
 // Available samplers (exported for ai_get_config)
@@ -84,6 +84,70 @@ export async function downscaleToPixelData(
     ctx.drawImage(img, 0, 0, targetW, targetH);
     const imgData = ctx.getImageData(0, 0, targetW, targetH);
     return new Uint8ClampedArray(imgData.data) as PixelData;
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Row prompt builder
+// ---------------------------------------------------------------------------
+
+export interface RowPromptContext {
+  prompt: string;
+  rowDef: SpriteRowDef;
+  frameWidth: number;
+  frameHeight: number;
+  activeLayer: ActiveLayer;
+}
+
+export function buildRowPrompt(ctx: RowPromptContext): string {
+  const { prompt, rowDef, frameWidth, frameHeight, activeLayer } = ctx;
+  const frameCount = rowDef.frames;
+
+  const heightmapSuffix = activeLayer === 'heightmap'
+    ? ', height map, white=high black=low, grayscale, depth map'
+    : ', pixel art, 8-bit, 16-bit, low-res, retro game graphics, NES palette, clean edges, game asset';
+
+  return `${prompt}, pixel art sprite sheet strip, ${frameCount} animation frames, ${rowDef.state} ${rowDef.direction}, ${frameWidth}x${frameHeight} per frame, horizontal strip, consistent character, evenly spaced${heightmapSuffix}`;
+}
+
+// ---------------------------------------------------------------------------
+// Strip slicer
+// ---------------------------------------------------------------------------
+
+export async function sliceStripToFrames(
+  pngBytes: Uint8Array,
+  frameCount: number,
+  targetW: number,
+  targetH: number,
+): Promise<PixelData[]> {
+  const blob = new Blob([pngBytes], { type: 'image/png' });
+  const url = URL.createObjectURL(blob);
+  try {
+    const img = new Image();
+    await new Promise<void>((resolve, reject) => {
+      img.onload = () => resolve();
+      img.onerror = () => reject(new Error('Failed to load generated strip image'));
+      img.src = url;
+    });
+
+    const sliceW = Math.floor(img.width / frameCount);
+    const srcH = img.height;
+    const frames: PixelData[] = [];
+
+    for (let i = 0; i < frameCount; i++) {
+      const offscreen = document.createElement('canvas');
+      offscreen.width = targetW;
+      offscreen.height = targetH;
+      const ctx = offscreen.getContext('2d')!;
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(img, i * sliceW, 0, sliceW, srcH, 0, 0, targetW, targetH);
+      const imgData = ctx.getImageData(0, 0, targetW, targetH);
+      frames.push(new Uint8ClampedArray(imgData.data) as PixelData);
+    }
+
+    return frames;
   } finally {
     URL.revokeObjectURL(url);
   }

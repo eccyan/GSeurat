@@ -99,6 +99,7 @@ export interface PainterState {
   setShowAIPanel: (show: boolean) => void;
   setShowManifestSettings: (show: boolean) => void;
   applyAIPixels: (pixels: PixelData) => void;
+  applyRowPixels: (row: number, frames: PixelData[]) => void;
   setActiveLayer: (layer: ActiveLayer) => void;
   setHeightValue: (v: number) => void;
   setHeightmapPixel: (x: number, y: number, height: number) => void;
@@ -407,6 +408,39 @@ export const usePainterStore = create<PainterState>((set, get) => ({
     const truncated = state.history.slice(0, state.historyIndex + 1);
     const newHistory = [...truncated, newEntry].slice(-MAX_HISTORY);
     set({ pixels: clonePixels(pixels), history: newHistory, historyIndex: newHistory.length - 1 });
+  },
+
+  applyRowPixels: (row, frames) => {
+    const state = get();
+    // Push history before applying
+    const newEntry: HistoryEntry = {
+      pixels: clonePixels(state.pixels),
+      heightmapPixels: cloneHeightmap(state.heightmapPixels),
+    };
+    const truncated = state.history.slice(0, state.historyIndex + 1);
+    const newHistory = [...truncated, newEntry].slice(-MAX_HISTORY);
+
+    const newMap = new Map(state.spritesheetPixels);
+    for (let col = 0; col < frames.length; col++) {
+      newMap.set(getTileKey(col, row), clonePixels(frames[col]));
+    }
+
+    const updates: Partial<PainterState> = {
+      spritesheetPixels: newMap,
+      history: newHistory,
+      historyIndex: newHistory.length - 1,
+    };
+
+    // If currently viewing a frame in this row, update active pixels too
+    if (
+      state.editTarget === 'spritesheet' &&
+      state.selectedFrameRow === row &&
+      state.selectedFrameCol < frames.length
+    ) {
+      updates.pixels = clonePixels(frames[state.selectedFrameCol]);
+    }
+
+    set(updates);
   },
 
   setActiveLayer: (layer) => set({ activeLayer: layer }),
