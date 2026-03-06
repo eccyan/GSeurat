@@ -1,4 +1,4 @@
-import type { ImageProvider, ImageGenerateOptions, AvailabilityResult } from "./types.js";
+import type { ImageProvider, ImageGenerateOptions, Img2ImgOptions, AvailabilityResult } from "./types.js";
 
 /** A single node entry in a ComfyUI workflow graph. */
 interface WorkflowNode {
@@ -159,6 +159,112 @@ function buildTxt2ImgWorkflow(
   return nodes;
 }
 
+/** Options for building the img2img workflow. */
+interface Img2ImgWorkflowOptions extends WorkflowOptions {
+  /** Uploaded image filename (as returned by ComfyUI /upload/image). */
+  imageName: string;
+  /** Denoise strength (0.0 = no change, 1.0 = full regeneration). */
+  denoise: number;
+}
+
+function buildImg2ImgWorkflow(
+  opts: Img2ImgWorkflowOptions
+): Record<string, WorkflowNode> {
+  const nodes: Record<string, WorkflowNode> = {
+    "4": {
+      class_type: "CheckpointLoaderSimple",
+      inputs: {
+        ckpt_name: "v1-5-pruned-emaonly.safetensors",
+      },
+    },
+    "10": {
+      class_type: "LoadImage",
+      inputs: {
+        image: opts.imageName,
+      },
+    },
+    "11": {
+      class_type: "VAEEncode",
+      inputs: {
+        pixels: ["10", 0],
+        vae: ["4", 2],
+      },
+    },
+    "6": {
+      class_type: "CLIPTextEncode",
+      inputs: {
+        text: opts.prompt,
+        clip: ["4", 1],
+      },
+    },
+    "7": {
+      class_type: "CLIPTextEncode",
+      inputs: {
+        text: opts.negativePrompt,
+        clip: ["4", 1],
+      },
+    },
+    "3": {
+      class_type: "KSampler",
+      inputs: {
+        seed: opts.seed,
+        steps: opts.steps,
+        cfg: opts.cfg,
+        sampler_name: opts.samplerName,
+        scheduler: "normal",
+        denoise: opts.denoise,
+        model: ["4", 0],
+        positive: ["6", 0],
+        negative: ["7", 0],
+        latent_image: ["11", 0],
+      },
+    },
+    "8": {
+      class_type: "VAEDecode",
+      inputs: {
+        samples: ["3", 0],
+        vae: ["4", 2],
+      },
+    },
+    "9": {
+      class_type: "SaveImage",
+      inputs: {
+        filename_prefix: "vulkan_game_i2i_",
+        images: ["8", 0],
+      },
+    },
+  };
+
+  // Chain LoRA loaders
+  if (opts.loras.length > 0) {
+    let prevModelRef: [string, number] = ["4", 0];
+    let prevClipRef: [string, number] = ["4", 1];
+
+    opts.loras.forEach((lora, i) => {
+      const nodeId = `lora_${i}`;
+      const weight = lora.weight ?? 1.0;
+      nodes[nodeId] = {
+        class_type: "LoraLoader",
+        inputs: {
+          lora_name: lora.name.includes(".") ? lora.name : `${lora.name}.safetensors`,
+          strength_model: weight,
+          strength_clip: weight,
+          model: prevModelRef,
+          clip: prevClipRef,
+        },
+      };
+      prevModelRef = [nodeId, 0];
+      prevClipRef = [nodeId, 1];
+    });
+
+    (nodes["3"].inputs as Record<string, unknown>).model = prevModelRef;
+    (nodes["6"].inputs as Record<string, unknown>).clip = prevClipRef;
+    (nodes["7"].inputs as Record<string, unknown>).clip = prevClipRef;
+  }
+
+  return nodes;
+}
+
 /**
  * HTTP client for ComfyUI local image generation server.
  *
@@ -243,6 +349,97 @@ export class ComfyUIClient implements ImageProvider {
 
     const buffer = await imageResponse.arrayBuffer();
     return new Uint8Array(buffer);
+  }
+
+  /**
+   * Generate an image via img2img — uses a reference image as the starting
+   * latent, with denoise controlling how much to change.
+   *
+   * @param prompt        - Text description guiding the output
+   * @param referenceImage - PNG bytes of the reference/source image
+   * @param opts          - Generation options including denoise (default 0.4)
+   * @returns Raw PNG image bytes
+   */
+  async generateImg2Img(
+    prompt: string,
+    referenceImage: Uint8Array,
+    opts?: Img2ImgOptions
+  ): Promise<Uint8Array> {
+    // Upload the reference image to ComfyUI
+    const imageName = await this.uploadImage(referenceImage);
+
+    const workflow = buildImg2ImgWorkflow({
+      prompt,
+      negativePrompt: opts?.negativePrompt ?? "bad quality, blurry, deformed",
+      width: opts?.width ?? 512,
+      height: opts?.height ?? 512,
+      steps: opts?.steps ?? 20,
+      seed: opts?.seed ?? Math.floor(Math.random() * 2 ** 32),
+      cfg: opts?.cfgScale ?? 7,
+      samplerName: opts?.samplerName ?? "euler",
+      loras: opts?.loras ?? [],
+      imageName,
+      denoise: opts?.denoise ?? 0.4,
+    });
+
+    const submitBody: PromptRequest = { prompt: workflow };
+    const submitResponse = await fetch(`${this.baseUrl}/prompt`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(submitBody),
+    });
+
+    if (!submitResponse.ok) {
+      const text = await submitResponse.text().catch(() => "(no body)");
+      throw new Error(
+        `ComfyUI img2img prompt failed: HTTP ${submitResponse.status} ${submitResponse.statusText} — ${text}`
+      );
+    }
+
+    const { prompt_id } = (await submitResponse.json()) as PromptResponse;
+    const imageFile = await this.pollForCompletion(prompt_id);
+
+    const imageUrl = `${this.baseUrl}/view?filename=${encodeURIComponent(
+      imageFile.filename
+    )}&subfolder=${encodeURIComponent(imageFile.subfolder)}&type=${encodeURIComponent(
+      imageFile.type
+    )}`;
+
+    const imageResponse = await fetch(imageUrl);
+    if (!imageResponse.ok) {
+      throw new Error(
+        `ComfyUI image fetch failed: HTTP ${imageResponse.status} ${imageResponse.statusText}`
+      );
+    }
+
+    const buffer = await imageResponse.arrayBuffer();
+    return new Uint8Array(buffer);
+  }
+
+  /**
+   * Upload a PNG image to ComfyUI's input directory.
+   * @returns The filename as stored by ComfyUI (used by LoadImage node).
+   */
+  private async uploadImage(pngBytes: Uint8Array): Promise<string> {
+    const blob = new Blob([pngBytes as BlobPart], { type: "image/png" });
+    const formData = new FormData();
+    const filename = `ref_${Date.now()}.png`;
+    formData.append("image", blob, filename);
+
+    const response = await fetch(`${this.baseUrl}/upload/image`, {
+      method: "POST",
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const text = await response.text().catch(() => "(no body)");
+      throw new Error(
+        `ComfyUI image upload failed: HTTP ${response.status} ${response.statusText} — ${text}`
+      );
+    }
+
+    const result = (await response.json()) as { name: string; subfolder?: string; type?: string };
+    return result.name;
   }
 
   /**

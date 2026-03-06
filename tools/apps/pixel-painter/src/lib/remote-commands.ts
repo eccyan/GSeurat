@@ -497,6 +497,7 @@ async function handleAiGenerateRow(
   const apply = (params['apply'] as boolean | undefined) ?? true;
 
   const actualSeed = seedParam === -1 ? Math.floor(Math.random() * 2 ** 31) : seedParam;
+  const denoise = (params['denoise'] as number | undefined) ?? 0.4;
 
   const framePrompts = buildRowFramePrompts({
     prompt,
@@ -507,27 +508,52 @@ async function handleAiGenerateRow(
   });
   const fullNegative = buildNegativePrompt(negativePrompt);
 
-  // Generate each frame as a separate 512x512 image using the same seed
-  // for visual consistency, then downscale to target size.
-  // Retry up to 3 times per frame on ComfyUI failures or blank output.
+  // Frame 0: txt2img (reference). Frames 1+: img2img from frame 0
+  // for visual consistency. Retry up to 3 times on blank output.
   const maxRetries = 3;
   try {
     const frames: PixelData[] = [];
+    let referenceImageBytes: Uint8Array | null = null;
 
     for (let i = 0; i < frameCount; i++) {
       let pixels: PixelData | null = null;
       for (let attempt = 0; attempt <= maxRetries; attempt++) {
         try {
-          const pngBytes = await client.generateImage(framePrompts[i], {
-            width: 512,
-            height: 512,
-            steps,
-            seed: actualSeed + (attempt > 0 ? attempt * 1000 : 0),
-            negativePrompt: fullNegative,
-            cfgScale: cfg,
-            samplerName: sampler,
-            loras,
-          });
+          let pngBytes: Uint8Array;
+          const frameSeed = actualSeed + (attempt > 0 ? attempt * 1000 : 0);
+
+          if (i === 0 || !referenceImageBytes) {
+            // txt2img for the reference frame
+            pngBytes = await client.generateImage(framePrompts[i], {
+              width: 512,
+              height: 512,
+              steps,
+              seed: frameSeed,
+              negativePrompt: fullNegative,
+              cfgScale: cfg,
+              samplerName: sampler,
+              loras,
+            });
+          } else {
+            // img2img from reference for consistent variants
+            pngBytes = await client.generateImg2Img(framePrompts[i], referenceImageBytes, {
+              width: 512,
+              height: 512,
+              steps,
+              seed: frameSeed,
+              negativePrompt: fullNegative,
+              cfgScale: cfg,
+              samplerName: sampler,
+              loras,
+              denoise,
+            });
+          }
+
+          // Save reference for subsequent frames
+          if (i === 0 && !referenceImageBytes) {
+            referenceImageBytes = pngBytes;
+          }
+
           const candidate = await downscaleToPixelData(pngBytes, fw, fh);
           // Check for blank output (all pixels have zero RGB)
           let hasContent = false;

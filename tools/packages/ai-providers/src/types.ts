@@ -40,6 +40,15 @@ export interface ImageGenerateOptions {
 }
 
 /**
+ * Options for img2img generation — inherits from ImageGenerateOptions,
+ * adds denoise strength.
+ */
+export interface Img2ImgOptions extends ImageGenerateOptions {
+  /** Denoise strength (0.0 = no change, 1.0 = full regeneration). Default 0.4. */
+  denoise?: number;
+}
+
+/**
  * A provider that generates images from text prompts.
  */
 export interface ImageProvider {

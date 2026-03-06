@@ -180,25 +180,51 @@ export function AIGeneratePanel() {
         : [];
 
       const maxRetries = 3;
+      const denoise = 0.4;
       const frames: PixelData[] = [];
+      let referenceImageBytes: Uint8Array | null = null;
+
       for (let i = 0; i < frameCount; i++) {
         let pixels: PixelData | null = null;
         for (let attempt = 0; attempt <= maxRetries; attempt++) {
+          const isRef = i === 0 || !referenceImageBytes;
           setStatus({
             kind: 'generating',
-            message: `Generating frame ${i + 1}/${frameCount}${attempt > 0 ? ` (retry ${attempt})` : ''}...`,
+            message: `${isRef ? 'Generating' : 'Varying'} frame ${i + 1}/${frameCount}${attempt > 0 ? ` (retry ${attempt})` : ''}...`,
           });
           try {
-            const pngBytes = await client.generateImage(framePrompts[i], {
-              width: 512,
-              height: 512,
-              steps,
-              seed: actualSeed + (attempt > 0 ? attempt * 1000 : 0),
-              negativePrompt: fullNegative,
-              cfgScale,
-              samplerName,
-              loras,
-            });
+            let pngBytes: Uint8Array;
+            const frameSeed = actualSeed + (attempt > 0 ? attempt * 1000 : 0);
+
+            if (isRef) {
+              pngBytes = await client.generateImage(framePrompts[i], {
+                width: 512,
+                height: 512,
+                steps,
+                seed: frameSeed,
+                negativePrompt: fullNegative,
+                cfgScale,
+                samplerName,
+                loras,
+              });
+            } else {
+              pngBytes = await client.generateImg2Img(framePrompts[i], referenceImageBytes!, {
+                width: 512,
+                height: 512,
+                steps,
+                seed: frameSeed,
+                negativePrompt: fullNegative,
+                cfgScale,
+                samplerName,
+                loras,
+                denoise,
+              });
+            }
+
+            if (i === 0 && !referenceImageBytes) {
+              referenceImageBytes = pngBytes;
+            }
+
             const candidate = await downscaleToPixelData(pngBytes, targetW, targetH);
             let hasContent = false;
             for (let p = 0; p < candidate.length; p += 4) {
