@@ -17,10 +17,13 @@
     "test:keyframe-animator:scenario": "node --import tsx/esm --conditions source src/qa-runner.ts --tool keyframe-animator --scenario",
     "test:particle-designer:scenario": "node --import tsx/esm --conditions source src/qa-runner.ts --tool particle-designer --scenario",
     "test:audio-composer:scenario": "node --import tsx/esm --conditions source src/qa-runner.ts --tool audio-composer --scenario",
-    "test:sfx-designer:scenario": "node --import tsx/esm --conditions source src/qa-runner.ts --tool sfx-designer --scenario"
+    "test:sfx-designer:scenario": "node --import tsx/esm --conditions source src/qa-runner.ts --tool sfx-designer --scenario",
+    "test:bridge-routing": "node --import tsx/esm --conditions source src/bridge-routing.test.ts",
+    "test:remote-commands": "node --import tsx/esm --conditions source src/remote-commands.test.ts"
   },
   "dependencies": {
     "@vulkan-game-tools/test-harness": "workspace:*",
+    "@vulkan-game-tools/asset-types": "workspace:*",
     "puppeteer-core": "^24.0.0",
     "tsx": "^4.7.0",
     "ws": "^8.16.0"

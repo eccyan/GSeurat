@@ -6,6 +6,27 @@ export function runPixelPainterTests(runner: TestRunner): void {
     assert(state !== null, 'State should not be null');
     assert('pixels' in state, 'State should have pixels');
     assert('activeTool' in state, 'State should have activeTool');
+    assert('manifest' in state, 'State should have manifest');
+  });
+
+  runner.test('Manifest is present with correct structure', async (client) => {
+    const manifest = await client.getStateSelector('manifest') as Record<string, unknown>;
+    assert('tileset' in manifest, 'Manifest should have tileset');
+    assert('spritesheet' in manifest, 'Manifest should have spritesheet');
+    assert('version' in manifest, 'Manifest should have version');
+
+    const tileset = manifest['tileset'] as Record<string, unknown>;
+    assert('tile_width' in tileset, 'Tileset should have tile_width');
+    assert('tile_height' in tileset, 'Tileset should have tile_height');
+    assert('columns' in tileset, 'Tileset should have columns');
+    assert('rows' in tileset, 'Tileset should have rows');
+    assert('slots' in tileset, 'Tileset should have slots');
+
+    const spritesheet = manifest['spritesheet'] as Record<string, unknown>;
+    assert('frame_width' in spritesheet, 'Spritesheet should have frame_width');
+    assert('frame_height' in spritesheet, 'Spritesheet should have frame_height');
+    assert('columns' in spritesheet, 'Spritesheet should have columns');
+    assert('rows' in spritesheet, 'Spritesheet should have rows');
   });
 
   runner.test('Set pixel updates canvas data', async (client) => {
@@ -100,5 +121,35 @@ export function runPixelPainterTests(runner: TestRunner): void {
     assertEqual(fg[0], 0, 'FG R');
     assertEqual(fg[1], 128, 'FG G');
     assertEqual(fg[2], 255, 'FG B');
+  });
+
+  runner.test('Manifest settings toggle', async (client) => {
+    await client.dispatch('setShowManifestSettings', true);
+    let show = await client.getStateSelector('showManifestSettings');
+    assertEqual(show, true, 'Settings shown');
+    await client.dispatch('setShowManifestSettings', false);
+    show = await client.getStateSelector('showManifestSettings');
+    assertEqual(show, false, 'Settings hidden');
+  });
+
+  runner.test('setManifest updates manifest', async (client) => {
+    const orig = await client.getStateSelector('manifest') as Record<string, unknown>;
+    const tileset = orig['tileset'] as Record<string, unknown>;
+    assertEqual(tileset['tile_width'], 16, 'Original tile width');
+
+    // Modify
+    const modified = JSON.parse(JSON.stringify(orig));
+    modified['tileset']['columns'] = 4;
+    await client.dispatch('setManifest', modified);
+
+    const updated = await client.getStateSelector('manifest') as Record<string, unknown>;
+    const updatedTileset = updated['tileset'] as Record<string, unknown>;
+    assertEqual(updatedTileset['columns'], 4, 'Columns changed to 4');
+
+    // Restore
+    await client.dispatch('setManifest', orig);
+    const restored = await client.getStateSelector('manifest') as Record<string, unknown>;
+    const restoredTileset = restored['tileset'] as Record<string, unknown>;
+    assertEqual(restoredTileset['columns'], 8, 'Columns restored to 8');
   });
 }
