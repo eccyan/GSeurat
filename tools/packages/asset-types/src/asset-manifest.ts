@@ -59,8 +59,8 @@ export const DEFAULT_ASSET_MANIFEST: AssetManifest = {
     ],
   },
   spritesheet: {
-    frame_width: 16,
-    frame_height: 16,
+    frame_width: 128,
+    frame_height: 128,
     columns: 4,
     rows: [
       { row: 0, label: "idle_S", state: "idle", direction: "S", frames: 4 },

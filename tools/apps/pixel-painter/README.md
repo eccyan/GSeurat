@@ -1,6 +1,6 @@
 # Pixel Painter
 
-16x16 pixel art editor for authoring tiles and sprite sheets used by the vulkan-game engine. Supports both the 128x48 tileset and the 64x192 player sprite sheet.
+16x16 pixel art editor for authoring tiles and sprite sheets used by the vulkan-game engine. Supports both the 128x48 tileset and the 512x1536 player sprite sheet.
 
 ## Views
 
@@ -8,7 +8,7 @@ Switch between views with the tab bar at the top:
 
 - **Tile** — edit a single 16x16 tile in isolation with a large zoomed canvas
 - **Tileset** — view and edit the full 128x48 tileset (8 columns x 3 rows of 16x16 tiles)
-- **Sprite Sheet** — view and edit the 64x192 player sheet (4 columns x 12 rows representing 4 frames x 3 states x 4 directions)
+- **Sprite Sheet** — view and edit the 512x1536 player sheet (4 columns x 12 rows representing 4 frames x 3 states x 4 directions)
 - **Animation Preview** — looping playback of the currently selected animation row
 
 ## Features
@@ -130,7 +130,7 @@ LoRA (Low-Rank Adaptation) models specialize Stable Diffusion for a specific sty
 2. (Optional) Use a **Quick Preset** button for common game asset prompts
 3. Click **Generate** — the tool sends a 512×512 txt2img workflow to ComfyUI
 4. The generated image is displayed as a full-resolution preview
-5. A **16×16 nearest-neighbor downscale** preview shows the final pixel art result
+5. A **128×128 nearest-neighbor downscale** preview shows the final pixel art result
 6. Click **Apply to Canvas** to place the result on the current tile/sprite cell
 7. Refine manually with the drawing tools as needed
 
@@ -172,7 +172,7 @@ Row generation is also available via remote command:
 - For tiles: mention "top-down", "seamless", "tile" for better tiling results
 - For sprites: mention facing direction and character description
 
-Single mode targets the currently selected 16×16 tile or sprite cell. Row mode generates all frames for a sprite sheet animation row at once.
+Single mode targets the currently selected tile or sprite cell. Row mode generates all frames for a sprite sheet animation row at once.
 
 ## Batch Generation (CLI Scripts)
 
@@ -182,7 +182,7 @@ For generating entire tilesets or sprite sheets at once, use the Python scripts 
 # Generate full 128x48 tileset (24 tiles, ~12 min on CPU)
 ./tools/ComfyUI/venv/bin/python tools/scripts/generate_tileset.py
 
-# Generate full 64x192 player sprite sheet (48 frames, ~25 min on CPU)
+# Generate full 512x1536 player sprite sheet (48 frames, ~25 min on CPU)
 ./tools/ComfyUI/venv/bin/python tools/scripts/generate_player_sheet.py
 ```
 
@@ -197,7 +197,7 @@ Supported export targets:
 | File | Dimensions | Target |
 |---|---|---|
 | `tileset.png` | 128x48 | Tile map rendering |
-| `player_sheet.png` | 64x192 | Player animation |
+| `player_sheet.png` | 512x1536 | Player animation |
 | `particle_atlas.png` | 96x16 | Particle system |
 
 ## Keyboard Shortcuts
