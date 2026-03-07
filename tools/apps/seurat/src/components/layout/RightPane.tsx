@@ -164,7 +164,7 @@ const styles: Record<string, React.CSSProperties> = {
   pane: {
     width: 300,
     flexShrink: 0,
-    minHeight: 0,
+    height: '100%',
     background: '#111120',
     borderLeft: '1px solid #2a2a3a',
     overflowY: 'auto',
