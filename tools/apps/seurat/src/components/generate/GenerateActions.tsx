@@ -2,43 +2,33 @@ import React, { useState } from 'react';
 import { useSeuratStore } from '../../store/useSeuratStore.js';
 import { SAMPLER_NAMES } from '../../lib/ai-generate.js';
 
-
-type GenerateScope = 'single' | 'row' | 'all_pending';
-
 interface Props {
-  animName?: string;
+  animName: string;
 }
 
-export function GenerateActions({ animName: preselectedAnim }: Props) {
+export function GenerateActions({ animName }: Props) {
   const manifest = useSeuratStore((s) => s.manifest);
   const aiConfig = useSeuratStore((s) => s.aiConfig);
   const setAIConfig = useSeuratStore((s) => s.setAIConfig);
   const generationJobs = useSeuratStore((s) => s.generationJobs);
   const clearCompletedJobs = useSeuratStore((s) => s.clearCompletedJobs);
   const generateFrames = useSeuratStore((s) => s.generateFrames);
-  const [scope, setScope] = useState<GenerateScope>(preselectedAnim ? 'row' : 'all_pending');
-  const [selectedAnim, setSelectedAnim] = useState<string>(preselectedAnim ?? '');
-  const [selectedFrame, setSelectedFrame] = useState(0);
   const [generating, setGenerating] = useState(false);
 
   if (!manifest) return null;
 
-  const effectiveAnim = selectedAnim || preselectedAnim || manifest.animations[0]?.name || '';
   const hasConceptImage = manifest.concept.reference_images.length > 0;
+  const anim = manifest.animations.find((a) => a.name === animName);
+  const frameCount = anim?.frames.length ?? 0;
 
   const handleGenerate = async () => {
     setGenerating(true);
     try {
-      await generateFrames(scope, effectiveAnim, selectedFrame);
+      await generateFrames('row', animName);
     } finally {
       setGenerating(false);
     }
   };
-
-  const pendingCount = manifest.animations.reduce(
-    (s, a) => s + a.frames.filter((f) => f.status === 'pending').length,
-    0,
-  );
 
   return (
     <div style={styles.container}>
@@ -126,7 +116,7 @@ export function GenerateActions({ animName: preselectedAnim }: Props) {
 
       {/* ControlNet */}
       <div style={styles.section}>
-        <div style={styles.subTitle}>ControlNet (Row mode)</div>
+        <div style={styles.subTitle}>ControlNet</div>
         <Row>
           <label style={styles.label}>Model</label>
           <input
@@ -151,54 +141,17 @@ export function GenerateActions({ animName: preselectedAnim }: Props) {
         {!hasConceptImage ? 'txt2img mode' : aiConfig.controlNetModel ? 'ControlNet + img2img mode' : 'img2img mode'}
       </div>
 
-      {/* Scope */}
+      {/* Generate Animation */}
       <div style={styles.section}>
-        <div style={styles.subTitle}>Scope</div>
-        <Row>
-          {(['single', 'row', 'all_pending'] as const).map((s) => (
-            <button
-              key={s}
-              onClick={() => setScope(s)}
-              style={{
-                ...styles.scopeBtn,
-                background: scope === s ? '#1e2a42' : 'transparent',
-                borderColor: scope === s ? '#4a8af8' : '#333',
-                color: scope === s ? '#90b8f8' : '#666',
-              }}
-            >
-              {s === 'single' ? 'Single' : s === 'row' ? 'Row' : `All (${pendingCount})`}
-            </button>
-          ))}
-        </Row>
-
-        {scope !== 'all_pending' && (
-          <Row>
-            <label style={styles.label}>Anim</label>
-            <select value={effectiveAnim} onChange={(e) => setSelectedAnim(e.target.value)} style={styles.select}>
-              {manifest.animations.map((a) => <option key={a.name} value={a.name}>{a.name}</option>)}
-            </select>
-          </Row>
-        )}
-        {scope === 'single' && (
-          <Row>
-            <label style={styles.label}>Frame</label>
-            <input
-              type="number"
-              min={0}
-              max={(manifest.animations.find((a) => a.name === effectiveAnim)?.frames.length ?? 1) - 1}
-              value={selectedFrame}
-              onChange={(e) => setSelectedFrame(parseInt(e.target.value) || 0)}
-              style={{ ...styles.input, width: 50 }}
-            />
-          </Row>
-        )}
-
+        <div style={{ fontSize: 9, fontFamily: 'monospace', color: '#888' }}>
+          Animation: <span style={{ color: '#ccc' }}>{animName}</span> ({frameCount} frames)
+        </div>
         <button
           onClick={handleGenerate}
           disabled={generating}
           style={{ ...styles.generateBtn, opacity: generating ? 0.5 : 1 }}
         >
-          {generating ? 'Generating...' : 'Generate'}
+          {generating ? 'Generating...' : 'Generate Animation'}
         </button>
       </div>
 
@@ -282,15 +235,6 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 10,
     padding: '3px 6px',
     outline: 'none',
-  },
-  scopeBtn: {
-    border: '1px solid',
-    borderRadius: 3,
-    fontFamily: 'monospace',
-    fontSize: 9,
-    padding: '3px 8px',
-    cursor: 'pointer',
-    background: 'transparent',
   },
   generateBtn: {
     background: '#1e3a6e',
