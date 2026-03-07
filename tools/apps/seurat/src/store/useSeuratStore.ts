@@ -5,6 +5,7 @@ import type {
   ChibiArt,
   PixelArt,
   FrameStatus,
+  StageGenerationSettings,
 } from '@vulkan-game-tools/asset-types';
 import { createDefaultManifest, getManifestStats } from '@vulkan-game-tools/asset-types';
 import { ComfyUIClient } from '@vulkan-game-tools/ai-providers';
@@ -101,6 +102,11 @@ export interface SeuratState {
   setPoseOverride: (animName: string, frameIndex: number, pose: ([number, number] | null)[]) => void;
   clearPoseOverride: (animName: string, frameIndex: number) => void;
   clearAllPoseOverrides: (animName: string) => void;
+
+  // ComfyUI model lists
+  availableCheckpoints: string[];
+  availableLoras: string[];
+  refreshComfyModels: () => Promise<void>;
 
   // Atlas
   assemblyResult: AssembleResult | null;
@@ -255,12 +261,13 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
       // Save to bridge
       await api.saveConceptImage(manifest.character_id, pngBytes);
 
-      // Update manifest reference_images
+      // Update manifest reference_images + generation settings
       const updated = {
         ...manifest,
         concept: {
           ...manifest.concept,
           reference_images: ['concept.png'],
+          generation_settings: { checkpoint, steps, cfg, sampler, seed: rawSeed, loras },
         },
       };
       set({ manifest: updated });
@@ -379,6 +386,7 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
           negative_prompt: negPrompt,
           reference_image: 'chibi.png',
           approved: manifest.chibi?.approved ?? false,
+          generation_settings: { checkpoint, steps, cfg, sampler, seed: rawSeed, denoise, loras },
         },
       };
       set({ manifest: updated });
@@ -492,6 +500,7 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
           negative_prompt: negPrompt,
           reference_image: 'pixel.png',
           approved: manifest.pixel?.approved ?? false,
+          generation_settings: { checkpoint, steps, cfg, sampler, seed: rawSeed, denoise, loras },
         },
       };
       set({ manifest: updated });
@@ -943,6 +952,23 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
       if (key.startsWith(`${animName}:`)) delete overrides[key];
     }
     set({ poseOverrides: overrides });
+  },
+
+  // ComfyUI model lists
+  availableCheckpoints: [],
+  availableLoras: [],
+  refreshComfyModels: async () => {
+    const { aiConfig } = get();
+    try {
+      const comfy = new ComfyUIClient(aiConfig.comfyUrl);
+      const [checkpoints, loras] = await Promise.all([
+        comfy.listCheckpoints(),
+        comfy.listLoras(),
+      ]);
+      set({ availableCheckpoints: checkpoints, availableLoras: loras });
+    } catch {
+      // ComfyUI not reachable — keep empty lists
+    }
   },
 
   // Atlas

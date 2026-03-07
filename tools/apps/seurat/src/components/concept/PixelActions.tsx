@@ -1,7 +1,7 @@
 import React, { useRef, useState, useEffect } from 'react';
 import type { PixelArt } from '@vulkan-game-tools/asset-types';
 import { useSeuratStore } from '../../store/useSeuratStore.js';
-import { SAMPLER_NAMES } from '../../lib/ai-generate.js';
+import { ComfySettingsPanel, type ComfySettings } from './ComfySettingsPanel.js';
 
 export function PixelActions() {
   const manifest = useSeuratStore((s) => s.manifest);
@@ -17,22 +17,30 @@ export function PixelActions() {
   const [negativePrompt, setNegativePrompt] = useState('blurry, realistic, 3d render, smooth shading');
   const [saving, setSaving] = useState(false);
 
-  const [pixelSteps, setPixelSteps] = useState(20);
-  const [pixelCfg, setPixelCfg] = useState(10);
-  const [pixelSampler, setPixelSampler] = useState('euler');
-  const [pixelSeed, setPixelSeed] = useState(-1);
-  const [pixelCheckpoint, setPixelCheckpoint] = useState('');
-  const [pixelDenoise, setPixelDenoise] = useState(0.55);
-  const [pixelLoras, setPixelLoras] = useState<{ name: string; weight: number }[]>([]);
+  const [comfySettings, setComfySettings] = useState<ComfySettings>({
+    checkpoint: '', steps: 20, cfg: 10, sampler: 'euler', seed: -1, denoise: 0.55, loras: [],
+  });
 
   useEffect(() => {
-    setPixelSampler(aiConfig.sampler);
+    setComfySettings((s) => ({ ...s, sampler: aiConfig.sampler }));
   }, [aiConfig.sampler]);
 
   useEffect(() => {
     if (!manifest?.pixel) return;
     setStylePrompt(manifest.pixel.style_prompt);
     setNegativePrompt(manifest.pixel.negative_prompt);
+    const gs = manifest.pixel.generation_settings;
+    if (gs) {
+      setComfySettings({
+        checkpoint: gs.checkpoint ?? '',
+        steps: gs.steps ?? 20,
+        cfg: gs.cfg ?? 10,
+        sampler: gs.sampler ?? 'euler',
+        seed: gs.seed ?? -1,
+        denoise: gs.denoise ?? 0.55,
+        loras: gs.loras ?? [],
+      });
+    }
   }, [manifest?.character_id]);
 
   if (!manifest) return null;
@@ -55,8 +63,9 @@ export function PixelActions() {
   const handleGenerate = async () => {
     await handleSave();
     await generatePixelArt({
-      steps: pixelSteps, cfg: pixelCfg, sampler: pixelSampler, seed: pixelSeed,
-      loras: pixelLoras, checkpoint: pixelCheckpoint || undefined, denoise: pixelDenoise,
+      steps: comfySettings.steps, cfg: comfySettings.cfg, sampler: comfySettings.sampler,
+      seed: comfySettings.seed, loras: comfySettings.loras,
+      checkpoint: comfySettings.checkpoint || undefined, denoise: comfySettings.denoise,
     });
   };
 
@@ -101,74 +110,14 @@ export function PixelActions() {
 
       <div style={styles.divider} />
 
-      <div style={styles.settingsSection}>
-        <div style={{ fontFamily: 'monospace', fontSize: 10, color: '#777', fontWeight: 600, marginBottom: 2 }}>
-          ComfyUI Settings (Pixel)
-        </div>
-        <Row>
-          <label style={styles.settingLabel}>Ckpt</label>
-          <input
-            value={pixelCheckpoint}
-            onChange={(e) => setPixelCheckpoint(e.target.value)}
-            style={{ ...styles.settingInput, flex: 1 }}
-            placeholder={aiConfig.checkpoint || 'v1-5-pruned-emaonly.safetensors'}
-            disabled={disabled}
-          />
-        </Row>
-        <Row>
-          <label style={styles.settingLabel}>Steps</label>
-          <input type="number" value={pixelSteps} onChange={(e) => setPixelSteps(parseInt(e.target.value) || 20)} style={{ ...styles.settingInput, width: 50 }} disabled={disabled} />
-          <label style={styles.settingLabel}>CFG</label>
-          <input type="number" value={pixelCfg} onChange={(e) => setPixelCfg(parseFloat(e.target.value) || 7)} style={{ ...styles.settingInput, width: 50 }} step={0.5} disabled={disabled} />
-        </Row>
-        <Row>
-          <label style={styles.settingLabel}>Seed</label>
-          <input type="number" value={pixelSeed} onChange={(e) => setPixelSeed(parseInt(e.target.value))} style={{ ...styles.settingInput, width: 80 }} disabled={disabled} />
-          <span style={{ fontSize: 8, color: '#555', fontFamily: 'monospace' }}>-1=rng</span>
-        </Row>
-        <Row>
-          <label style={styles.settingLabel}>Sampler</label>
-          <select value={pixelSampler} onChange={(e) => setPixelSampler(e.target.value)} style={styles.settingSelect} disabled={disabled}>
-            {SAMPLER_NAMES.map((s) => <option key={s} value={s}>{s}</option>)}
-          </select>
-        </Row>
-        <Row>
-          <label style={styles.settingLabel}>Denoise</label>
-          <input
-            type="range" min={0.3} max={0.9} step={0.05} value={pixelDenoise}
-            onChange={(e) => setPixelDenoise(parseFloat(e.target.value))}
-            style={{ flex: 1 }}
-            disabled={disabled}
-          />
-          <span style={{ fontFamily: 'monospace', fontSize: 9, color: '#aaa', minWidth: 30 }}>{pixelDenoise.toFixed(2)}</span>
-        </Row>
-        {/* LoRA */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
-          <span style={{ fontFamily: 'monospace', fontSize: 10, color: '#777', fontWeight: 600 }}>LoRA</span>
-          <button onClick={() => setPixelLoras([...pixelLoras, { name: '', weight: 0.8 }])} style={styles.miniBtn} disabled={disabled}>+</button>
-          {pixelLoras.length === 0 && (
-            <span style={{ fontSize: 8, color: '#555', fontFamily: 'monospace' }}>none (add to apply)</span>
-          )}
-        </div>
-        {pixelLoras.map((lora, i) => (
-          <Row key={i}>
-            <input
-              value={lora.name}
-              onChange={(e) => { const u = [...pixelLoras]; u[i] = { ...u[i], name: e.target.value }; setPixelLoras(u); }}
-              style={{ ...styles.settingInput, flex: 1 }}
-              placeholder="lora_name"
-              disabled={disabled}
-            />
-            <input
-              type="number" value={lora.weight}
-              onChange={(e) => { const u = [...pixelLoras]; u[i] = { ...u[i], weight: parseFloat(e.target.value) || 0 }; setPixelLoras(u); }}
-              style={{ ...styles.settingInput, width: 55 }} step={0.1} min={0} max={2}
-              disabled={disabled}
-            />
-            <button onClick={() => setPixelLoras(pixelLoras.filter((_, j) => j !== i))} style={styles.miniBtn} disabled={disabled}>x</button>
-          </Row>
-        ))}
-      </div>
+      <ComfySettingsPanel
+        label="Pixel"
+        settings={comfySettings}
+        onChange={setComfySettings}
+        showDenoise
+        disabled={disabled}
+        savedSettings={manifest.pixel?.generation_settings}
+      />
 
       <div style={styles.buttonRow}>
         <button
@@ -197,18 +146,10 @@ export function PixelActions() {
         />
       </div>
 
-      {pixelGenerating && (
-        <div style={styles.progressText}>Sending to ComfyUI...</div>
-      )}
-      {pixelError && (
-        <div style={styles.errorText}>{pixelError}</div>
-      )}
+      {pixelGenerating && <div style={styles.progressText}>Sending to ComfyUI...</div>}
+      {pixelError && <div style={styles.errorText}>{pixelError}</div>}
     </div>
   );
-}
-
-function Row({ children }: { children: React.ReactNode }) {
-  return <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>{children}</div>;
 }
 
 const styles: Record<string, React.CSSProperties> = {
@@ -226,9 +167,4 @@ const styles: Record<string, React.CSSProperties> = {
   uploadBtn: { flex: 1, background: '#1e3a3a', border: '1px solid #4ac8c8', borderRadius: 4, color: '#90d8d8', fontFamily: 'monospace', fontSize: 10, padding: '8px 8px', cursor: 'pointer', fontWeight: 600, textAlign: 'center' },
   progressText: { fontFamily: 'monospace', fontSize: 9, color: '#8a4af8', textAlign: 'center' },
   errorText: { fontFamily: 'monospace', fontSize: 9, color: '#d88', background: '#2a1515', border: '1px solid #553333', borderRadius: 4, padding: '4px 6px' },
-  settingsSection: { background: '#131324', border: '1px solid #2a2a3a', borderRadius: 6, padding: 8, display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 6 },
-  settingLabel: { fontFamily: 'monospace', fontSize: 9, color: '#666', minWidth: 40 },
-  settingInput: { background: '#1a1a2e', border: '1px solid #3a3a5a', borderRadius: 3, color: '#ddd', fontFamily: 'monospace', fontSize: 10, padding: '3px 6px', outline: 'none' },
-  miniBtn: { background: '#2a2a3a', border: '1px solid #444', borderRadius: 3, color: '#888', fontFamily: 'monospace', fontSize: 8, padding: '1px 6px', cursor: 'pointer' },
-  settingSelect: { background: '#1a1a2e', border: '1px solid #3a3a5a', borderRadius: 3, color: '#ddd', fontFamily: 'monospace', fontSize: 10, padding: '3px 6px', outline: 'none' },
 };

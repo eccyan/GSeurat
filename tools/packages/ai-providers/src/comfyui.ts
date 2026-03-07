@@ -1144,6 +1144,48 @@ export class ComfyUIClient implements ImageProvider {
   }
 
   /**
+   * List available checkpoint model filenames from ComfyUI.
+   * Queries GET /object_info/CheckpointLoaderSimple.
+   */
+  async listCheckpoints(): Promise<string[]> {
+    try {
+      const res = await fetch(`${this.baseUrl}/object_info/CheckpointLoaderSimple`, {
+        signal: AbortSignal.timeout(5000),
+      });
+      if (!res.ok) return [];
+      const data = await res.json() as Record<string, unknown>;
+      const info = data['CheckpointLoaderSimple'] as Record<string, unknown> | undefined;
+      const input = info?.['input'] as Record<string, unknown> | undefined;
+      const required = input?.['required'] as Record<string, unknown> | undefined;
+      const ckptName = required?.['ckpt_name'] as [string[]] | undefined;
+      return ckptName?.[0] ?? [];
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * List available LoRA filenames from ComfyUI.
+   * Queries GET /object_info/LoraLoader.
+   */
+  async listLoras(): Promise<string[]> {
+    try {
+      const res = await fetch(`${this.baseUrl}/object_info/LoraLoader`, {
+        signal: AbortSignal.timeout(5000),
+      });
+      if (!res.ok) return [];
+      const data = await res.json() as Record<string, unknown>;
+      const info = data['LoraLoader'] as Record<string, unknown> | undefined;
+      const input = info?.['input'] as Record<string, unknown> | undefined;
+      const required = input?.['required'] as Record<string, unknown> | undefined;
+      const loraName = required?.['lora_name'] as [string[]] | undefined;
+      return loraName?.[0] ?? [];
+    } catch {
+      return [];
+    }
+  }
+
+  /**
    * Check whether the ComfyUI server is reachable and responding.
    *
    * @returns true if GET /system_stats returns a valid response, false otherwise

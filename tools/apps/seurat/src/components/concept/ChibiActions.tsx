@@ -1,7 +1,7 @@
 import React, { useRef, useState, useEffect } from 'react';
 import type { ChibiArt } from '@vulkan-game-tools/asset-types';
 import { useSeuratStore } from '../../store/useSeuratStore.js';
-import { SAMPLER_NAMES } from '../../lib/ai-generate.js';
+import { ComfySettingsPanel, type ComfySettings } from './ComfySettingsPanel.js';
 
 export function ChibiActions() {
   const manifest = useSeuratStore((s) => s.manifest);
@@ -17,22 +17,30 @@ export function ChibiActions() {
   const [negativePrompt, setNegativePrompt] = useState('realistic, photograph, 3d render');
   const [saving, setSaving] = useState(false);
 
-  const [chibiSteps, setChibiSteps] = useState(20);
-  const [chibiCfg, setChibiCfg] = useState(10);
-  const [chibiSampler, setChibiSampler] = useState('euler');
-  const [chibiSeed, setChibiSeed] = useState(-1);
-  const [chibiCheckpoint, setChibiCheckpoint] = useState('');
-  const [chibiDenoise, setChibiDenoise] = useState(0.6);
-  const [chibiLoras, setChibiLoras] = useState<{ name: string; weight: number }[]>([]);
+  const [comfySettings, setComfySettings] = useState<ComfySettings>({
+    checkpoint: '', steps: 20, cfg: 10, sampler: 'euler', seed: -1, denoise: 0.6, loras: [],
+  });
 
   useEffect(() => {
-    setChibiSampler(aiConfig.sampler);
+    setComfySettings((s) => ({ ...s, sampler: aiConfig.sampler }));
   }, [aiConfig.sampler]);
 
   useEffect(() => {
     if (!manifest?.chibi) return;
     setStylePrompt(manifest.chibi.style_prompt);
     setNegativePrompt(manifest.chibi.negative_prompt);
+    const gs = manifest.chibi.generation_settings;
+    if (gs) {
+      setComfySettings({
+        checkpoint: gs.checkpoint ?? '',
+        steps: gs.steps ?? 20,
+        cfg: gs.cfg ?? 10,
+        sampler: gs.sampler ?? 'euler',
+        seed: gs.seed ?? -1,
+        denoise: gs.denoise ?? 0.6,
+        loras: gs.loras ?? [],
+      });
+    }
   }, [manifest?.character_id]);
 
   if (!manifest) return null;
@@ -55,8 +63,9 @@ export function ChibiActions() {
   const handleGenerate = async () => {
     await handleSave();
     await generateChibiArt({
-      steps: chibiSteps, cfg: chibiCfg, sampler: chibiSampler, seed: chibiSeed,
-      loras: chibiLoras, checkpoint: chibiCheckpoint || undefined, denoise: chibiDenoise,
+      steps: comfySettings.steps, cfg: comfySettings.cfg, sampler: comfySettings.sampler,
+      seed: comfySettings.seed, loras: comfySettings.loras,
+      checkpoint: comfySettings.checkpoint || undefined, denoise: comfySettings.denoise,
     });
   };
 
@@ -101,74 +110,14 @@ export function ChibiActions() {
 
       <div style={styles.divider} />
 
-      <div style={styles.settingsSection}>
-        <div style={{ fontFamily: 'monospace', fontSize: 10, color: '#777', fontWeight: 600, marginBottom: 2 }}>
-          ComfyUI Settings (Chibi)
-        </div>
-        <Row>
-          <label style={styles.settingLabel}>Ckpt</label>
-          <input
-            value={chibiCheckpoint}
-            onChange={(e) => setChibiCheckpoint(e.target.value)}
-            style={{ ...styles.settingInput, flex: 1 }}
-            placeholder={aiConfig.checkpoint || 'v1-5-pruned-emaonly.safetensors'}
-            disabled={disabled}
-          />
-        </Row>
-        <Row>
-          <label style={styles.settingLabel}>Steps</label>
-          <input type="number" value={chibiSteps} onChange={(e) => setChibiSteps(parseInt(e.target.value) || 20)} style={{ ...styles.settingInput, width: 50 }} disabled={disabled} />
-          <label style={styles.settingLabel}>CFG</label>
-          <input type="number" value={chibiCfg} onChange={(e) => setChibiCfg(parseFloat(e.target.value) || 7)} style={{ ...styles.settingInput, width: 50 }} step={0.5} disabled={disabled} />
-        </Row>
-        <Row>
-          <label style={styles.settingLabel}>Seed</label>
-          <input type="number" value={chibiSeed} onChange={(e) => setChibiSeed(parseInt(e.target.value))} style={{ ...styles.settingInput, width: 80 }} disabled={disabled} />
-          <span style={{ fontSize: 8, color: '#555', fontFamily: 'monospace' }}>-1=rng</span>
-        </Row>
-        <Row>
-          <label style={styles.settingLabel}>Sampler</label>
-          <select value={chibiSampler} onChange={(e) => setChibiSampler(e.target.value)} style={styles.settingSelect} disabled={disabled}>
-            {SAMPLER_NAMES.map((s) => <option key={s} value={s}>{s}</option>)}
-          </select>
-        </Row>
-        <Row>
-          <label style={styles.settingLabel}>Denoise</label>
-          <input
-            type="range" min={0.3} max={0.9} step={0.05} value={chibiDenoise}
-            onChange={(e) => setChibiDenoise(parseFloat(e.target.value))}
-            style={{ flex: 1 }}
-            disabled={disabled}
-          />
-          <span style={{ fontFamily: 'monospace', fontSize: 9, color: '#aaa', minWidth: 30 }}>{chibiDenoise.toFixed(2)}</span>
-        </Row>
-        {/* LoRA */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
-          <span style={{ fontFamily: 'monospace', fontSize: 10, color: '#777', fontWeight: 600 }}>LoRA</span>
-          <button onClick={() => setChibiLoras([...chibiLoras, { name: '', weight: 0.8 }])} style={styles.miniBtn} disabled={disabled}>+</button>
-          {chibiLoras.length === 0 && (
-            <span style={{ fontSize: 8, color: '#555', fontFamily: 'monospace' }}>none (add to apply)</span>
-          )}
-        </div>
-        {chibiLoras.map((lora, i) => (
-          <Row key={i}>
-            <input
-              value={lora.name}
-              onChange={(e) => { const u = [...chibiLoras]; u[i] = { ...u[i], name: e.target.value }; setChibiLoras(u); }}
-              style={{ ...styles.settingInput, flex: 1 }}
-              placeholder="lora_name"
-              disabled={disabled}
-            />
-            <input
-              type="number" value={lora.weight}
-              onChange={(e) => { const u = [...chibiLoras]; u[i] = { ...u[i], weight: parseFloat(e.target.value) || 0 }; setChibiLoras(u); }}
-              style={{ ...styles.settingInput, width: 55 }} step={0.1} min={0} max={2}
-              disabled={disabled}
-            />
-            <button onClick={() => setChibiLoras(chibiLoras.filter((_, j) => j !== i))} style={styles.miniBtn} disabled={disabled}>x</button>
-          </Row>
-        ))}
-      </div>
+      <ComfySettingsPanel
+        label="Chibi"
+        settings={comfySettings}
+        onChange={setComfySettings}
+        showDenoise
+        disabled={disabled}
+        savedSettings={manifest.chibi?.generation_settings}
+      />
 
       <div style={styles.buttonRow}>
         <button
@@ -197,18 +146,10 @@ export function ChibiActions() {
         />
       </div>
 
-      {chibiGenerating && (
-        <div style={styles.progressText}>Sending to ComfyUI...</div>
-      )}
-      {chibiError && (
-        <div style={styles.errorText}>{chibiError}</div>
-      )}
+      {chibiGenerating && <div style={styles.progressText}>Sending to ComfyUI...</div>}
+      {chibiError && <div style={styles.errorText}>{chibiError}</div>}
     </div>
   );
-}
-
-function Row({ children }: { children: React.ReactNode }) {
-  return <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>{children}</div>;
 }
 
 const styles: Record<string, React.CSSProperties> = {
@@ -226,9 +167,4 @@ const styles: Record<string, React.CSSProperties> = {
   uploadBtn: { flex: 1, background: '#1e3a3a', border: '1px solid #4ac8c8', borderRadius: 4, color: '#90d8d8', fontFamily: 'monospace', fontSize: 10, padding: '8px 8px', cursor: 'pointer', fontWeight: 600, textAlign: 'center' },
   progressText: { fontFamily: 'monospace', fontSize: 9, color: '#8a4af8', textAlign: 'center' },
   errorText: { fontFamily: 'monospace', fontSize: 9, color: '#d88', background: '#2a1515', border: '1px solid #553333', borderRadius: 4, padding: '4px 6px' },
-  settingsSection: { background: '#131324', border: '1px solid #2a2a3a', borderRadius: 6, padding: 8, display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 6 },
-  settingLabel: { fontFamily: 'monospace', fontSize: 9, color: '#666', minWidth: 40 },
-  settingInput: { background: '#1a1a2e', border: '1px solid #3a3a5a', borderRadius: 3, color: '#ddd', fontFamily: 'monospace', fontSize: 10, padding: '3px 6px', outline: 'none' },
-  miniBtn: { background: '#2a2a3a', border: '1px solid #444', borderRadius: 3, color: '#888', fontFamily: 'monospace', fontSize: 8, padding: '1px 6px', cursor: 'pointer' },
-  settingSelect: { background: '#1a1a2e', border: '1px solid #3a3a5a', borderRadius: 3, color: '#ddd', fontFamily: 'monospace', fontSize: 10, padding: '3px 6px', outline: 'none' },
 };

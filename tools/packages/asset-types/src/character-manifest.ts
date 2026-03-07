@@ -41,12 +41,23 @@ export interface CharacterAnimation {
   frames: CharacterFrame[];
 }
 
+export interface StageGenerationSettings {
+  checkpoint?: string;
+  steps?: number;
+  cfg?: number;
+  sampler?: string;
+  seed?: number;
+  denoise?: number;
+  loras?: { name: string; weight: number }[];
+}
+
 export interface ConceptArt {
   description: string;
   style_prompt: string;
   negative_prompt: string;
   reference_images: string[]; // relative paths
   approved: boolean;
+  generation_settings?: StageGenerationSettings;
 }
 
 export interface SpritesheetConfig {
@@ -67,6 +78,7 @@ export interface ChibiArt {
   negative_prompt: string;
   reference_image: string;  // "chibi.png"
   approved: boolean;
+  generation_settings?: StageGenerationSettings;
 }
 
 export interface PixelArt {
@@ -74,6 +86,7 @@ export interface PixelArt {
   negative_prompt: string;
   reference_image: string;  // "pixel.png"
   approved: boolean;
+  generation_settings?: StageGenerationSettings;
 }
 
 export interface CharacterManifest {
