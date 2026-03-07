@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import type { CharacterFrame, FrameStatus } from '@vulkan-game-tools/asset-types';
+import type { CharacterFrame } from '@vulkan-game-tools/asset-types';
 import { useSeuratStore } from '../../store/useSeuratStore.js';
 import { AnimationPreviewCanvas } from './AnimationPreviewCanvas.js';
 import { FramePreviewCanvas } from './FramePreviewCanvas.js';
@@ -17,8 +17,6 @@ export function AnimationMainView({ animName }: Props) {
   const loadSpriteSheet = useSeuratStore((s) => s.loadSpriteSheet);
   const playbackState = useSeuratStore((s) => s.playbackState);
   const currentTime = useSeuratStore((s) => s.currentTime);
-  const reviewFilter = useSeuratStore((s) => s.reviewFilter);
-  const updateFrameStatus = useSeuratStore((s) => s.updateFrameStatus);
   const selectClip = useSeuratStore((s) => s.selectClip);
 
   const [detailFrame, setDetailFrame] = useState<{ animName: string; frame: CharacterFrame } | null>(null);
@@ -38,9 +36,7 @@ export function AnimationMainView({ animName }: Props) {
     return <div style={styles.empty}>Animation "{animName}" not found.</div>;
   }
 
-  const filteredFrames = clip.frames.filter(
-    (f) => reviewFilter === 'all' || f.status === reviewFilter,
-  );
+  const filteredFrames = clip.frames;
 
   const hasGeneratedFrames = clip.frames.some((f) => f.status !== 'pending' && f.status !== 'generating');
   const useFramePreview = !spriteSheetUrl && hasGeneratedFrames;
@@ -93,9 +89,6 @@ export function AnimationMainView({ animName }: Props) {
               frame={frame}
               animName={clip.name}
               characterId={manifest.character_id}
-              onApprove={() => updateFrameStatus(clip.name, frame.index, 'approved')}
-              onReject={() => updateFrameStatus(clip.name, frame.index, 'rejected')}
-              onRegenerate={() => {}}
               onClick={() => setDetailFrame({ animName: clip.name, frame })}
             />
           ))}
@@ -108,10 +101,6 @@ export function AnimationMainView({ animName }: Props) {
           animName={detailFrame.animName}
           characterId={manifest.character_id}
           onClose={() => setDetailFrame(null)}
-          onUpdateStatus={(status: FrameStatus, notes?: string) => {
-            updateFrameStatus(detailFrame.animName, detailFrame.frame.index, status, notes);
-            setDetailFrame(null);
-          }}
         />
       )}
     </div>

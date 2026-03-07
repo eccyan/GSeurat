@@ -63,6 +63,8 @@ export interface SeuratState {
   reviewFilter: ReviewFilter;
   setReviewFilter: (f: ReviewFilter) => void;
   updateFrameStatus: (anim: string, frame: number, status: FrameStatus, notes?: string) => Promise<void>;
+  approveAnimation: (animName: string) => Promise<void>;
+  rejectAnimation: (animName: string) => Promise<void>;
   batchApproveGenerated: () => Promise<void>;
 
   // Animate
@@ -475,6 +477,42 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
       }
     }
     set({ manifest: updated });
+  },
+
+  approveAnimation: async (animName) => {
+    const { manifest } = get();
+    if (!manifest) return;
+    const updated = structuredClone(manifest);
+    const anim = updated.animations.find((a) => a.name === animName);
+    if (!anim) return;
+    for (const frame of anim.frames) {
+      if (frame.status === 'generated' || frame.status === 'rejected') {
+        frame.status = 'approved';
+        try {
+          await api.updateFrameStatus(manifest.character_id, animName, frame.index, 'approved');
+        } catch { /* continue */ }
+      }
+    }
+    set({ manifest: updated });
+    try { await api.saveManifest(updated); } catch { /* best effort */ }
+  },
+
+  rejectAnimation: async (animName) => {
+    const { manifest } = get();
+    if (!manifest) return;
+    const updated = structuredClone(manifest);
+    const anim = updated.animations.find((a) => a.name === animName);
+    if (!anim) return;
+    for (const frame of anim.frames) {
+      if (frame.status === 'generated' || frame.status === 'approved') {
+        frame.status = 'rejected';
+        try {
+          await api.updateFrameStatus(manifest.character_id, animName, frame.index, 'rejected');
+        } catch { /* continue */ }
+      }
+    }
+    set({ manifest: updated });
+    try { await api.saveManifest(updated); } catch { /* best effort */ }
   },
 
   batchApproveGenerated: async () => {

@@ -32,7 +32,7 @@ function RightContent({ selection }: { selection: ReturnType<typeof useSeuratSto
         <>
           <GenerateActions animName={selection.animName} />
           <div style={{ height: 1, background: '#2a2a3a', margin: '8px 0' }} />
-          <ReviewActions />
+          <ReviewActions animName={selection.animName} />
         </>
       );
   }

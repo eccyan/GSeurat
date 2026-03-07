@@ -1,47 +1,60 @@
 import React from 'react';
-import type { FrameStatus } from '@vulkan-game-tools/asset-types';
 import { useSeuratStore } from '../../store/useSeuratStore.js';
 
-const FILTER_OPTIONS: Array<{ value: FrameStatus | 'all'; label: string }> = [
-  { value: 'all', label: 'All' },
-  { value: 'pending', label: 'Pending' },
-  { value: 'generated', label: 'Generated' },
-  { value: 'approved', label: 'Approved' },
-  { value: 'rejected', label: 'Rejected' },
-];
+interface Props {
+  animName: string;
+}
 
-export function ReviewActions() {
-  const reviewFilter = useSeuratStore((s) => s.reviewFilter);
-  const setReviewFilter = useSeuratStore((s) => s.setReviewFilter);
-  const batchApproveGenerated = useSeuratStore((s) => s.batchApproveGenerated);
+export function ReviewActions({ animName }: Props) {
+  const manifest = useSeuratStore((s) => s.manifest);
+  const approveAnimation = useSeuratStore((s) => s.approveAnimation);
+  const rejectAnimation = useSeuratStore((s) => s.rejectAnimation);
+
+  if (!manifest) return null;
+
+  const anim = manifest.animations.find((a) => a.name === animName);
+  if (!anim) return null;
+
+  const total = anim.frames.length;
+  const counts = {
+    pending: anim.frames.filter((f) => f.status === 'pending').length,
+    generated: anim.frames.filter((f) => f.status === 'generated').length,
+    approved: anim.frames.filter((f) => f.status === 'approved').length,
+    rejected: anim.frames.filter((f) => f.status === 'rejected').length,
+  };
+  const canApprove = counts.generated > 0 || counts.rejected > 0;
+  const canReject = counts.generated > 0 || counts.approved > 0;
 
   return (
     <div style={styles.container}>
       <div style={styles.sectionTitle}>Review</div>
 
       <div style={styles.section}>
-        <div style={styles.subTitle}>Filter</div>
-        <div style={styles.filterRow}>
-          {FILTER_OPTIONS.map(({ value, label }) => (
-            <button
-              key={value}
-              onClick={() => setReviewFilter(value)}
-              style={{
-                ...styles.filterBtn,
-                background: reviewFilter === value ? '#1e2a42' : 'transparent',
-                borderColor: reviewFilter === value ? '#4a8af8' : '#333',
-                color: reviewFilter === value ? '#90b8f8' : '#666',
-              }}
-            >
-              {label}
-            </button>
-          ))}
+        <div style={styles.statusRow}>
+          {counts.pending > 0 && <span style={{ color: '#666' }}>{counts.pending} pending</span>}
+          {counts.generated > 0 && <span style={{ color: '#aa8800' }}>{counts.generated} generated</span>}
+          {counts.approved > 0 && <span style={{ color: '#44aa44' }}>{counts.approved} approved</span>}
+          {counts.rejected > 0 && <span style={{ color: '#aa4444' }}>{counts.rejected} rejected</span>}
+          <span style={{ color: '#555' }}>{total} total</span>
+        </div>
+
+        <div style={styles.actions}>
+          <button
+            onClick={() => approveAnimation(animName)}
+            disabled={!canApprove}
+            style={{ ...styles.approveBtn, opacity: canApprove ? 1 : 0.4 }}
+          >
+            Approve Animation
+          </button>
+          <button
+            onClick={() => rejectAnimation(animName)}
+            disabled={!canReject}
+            style={{ ...styles.rejectBtn, opacity: canReject ? 1 : 0.4 }}
+          >
+            Reject
+          </button>
         </div>
       </div>
-
-      <button onClick={batchApproveGenerated} style={styles.batchBtn}>
-        Approve All Generated
-      </button>
     </div>
   );
 }
@@ -67,27 +80,19 @@ const styles: Record<string, React.CSSProperties> = {
     flexDirection: 'column',
     gap: 6,
   },
-  subTitle: {
-    fontFamily: 'monospace',
-    fontSize: 10,
-    color: '#777',
-    fontWeight: 600,
-  },
-  filterRow: {
+  statusRow: {
     display: 'flex',
-    gap: 4,
+    gap: 8,
     flexWrap: 'wrap',
-  },
-  filterBtn: {
-    border: '1px solid',
-    borderRadius: 3,
     fontFamily: 'monospace',
     fontSize: 9,
-    padding: '3px 8px',
-    cursor: 'pointer',
-    background: 'transparent',
   },
-  batchBtn: {
+  actions: {
+    display: 'flex',
+    gap: 6,
+  },
+  approveBtn: {
+    flex: 1,
     background: '#1e3a2e',
     border: '1px solid #44aa44',
     borderRadius: 4,
@@ -96,6 +101,17 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 10,
     padding: '6px 12px',
     cursor: 'pointer',
-    alignSelf: 'flex-start',
+    fontWeight: 600,
+  },
+  rejectBtn: {
+    background: '#3a1e1e',
+    border: '1px solid #aa4444',
+    borderRadius: 4,
+    color: '#d87070',
+    fontFamily: 'monospace',
+    fontSize: 10,
+    padding: '6px 12px',
+    cursor: 'pointer',
+    fontWeight: 600,
   },
 };

@@ -22,13 +22,10 @@ interface Props {
   frame: CharacterFrame;
   animName: string;
   characterId: string;
-  onApprove: () => void;
-  onReject: () => void;
-  onRegenerate: () => void;
   onClick: () => void;
 }
 
-export function FrameCell({ frame, animName, characterId, onApprove, onReject, onRegenerate, onClick }: Props) {
+export function FrameCell({ frame, animName, characterId, onClick }: Props) {
   const hasImage = frame.status !== 'pending' && frame.status !== 'generating';
 
   return (
@@ -47,30 +44,6 @@ export function FrameCell({ frame, animName, characterId, onApprove, onReject, o
         ) : (
           <div style={styles.frameIndex}>f{frame.index}</div>
         )}
-      </div>
-
-      <div style={styles.actions}>
-        <button
-          onClick={(e) => { e.stopPropagation(); onApprove(); }}
-          style={styles.approveBtn}
-          title="Approve"
-        >
-          OK
-        </button>
-        <button
-          onClick={(e) => { e.stopPropagation(); onReject(); }}
-          style={styles.rejectBtn}
-          title="Reject"
-        >
-          X
-        </button>
-        <button
-          onClick={(e) => { e.stopPropagation(); onRegenerate(); }}
-          style={styles.regenBtn}
-          title="Regenerate"
-        >
-          Re
-        </button>
       </div>
     </div>
   );
@@ -118,41 +91,5 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 11,
     fontFamily: 'monospace',
     color: '#ccc',
-  },
-  actions: {
-    display: 'flex',
-    gap: 1,
-    padding: '3px 2px 2px',
-    justifyContent: 'center',
-  },
-  approveBtn: {
-    fontSize: 9,
-    padding: '1px 4px',
-    background: '#253525',
-    border: 'none',
-    color: '#8d8',
-    cursor: 'pointer',
-    borderRadius: 2,
-    fontFamily: 'monospace',
-  },
-  rejectBtn: {
-    fontSize: 9,
-    padding: '1px 4px',
-    background: '#352525',
-    border: 'none',
-    color: '#d88',
-    cursor: 'pointer',
-    borderRadius: 2,
-    fontFamily: 'monospace',
-  },
-  regenBtn: {
-    fontSize: 9,
-    padding: '1px 4px',
-    background: '#252535',
-    border: 'none',
-    color: '#88d',
-    cursor: 'pointer',
-    borderRadius: 2,
-    fontFamily: 'monospace',
   },
 };

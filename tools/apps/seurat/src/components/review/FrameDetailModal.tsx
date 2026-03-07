@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import type { CharacterFrame, FrameStatus } from '@vulkan-game-tools/asset-types';
+import React from 'react';
+import type { CharacterFrame } from '@vulkan-game-tools/asset-types';
 import { frameThumbnailUrl } from '../../lib/bridge-api.js';
 
 interface Props {
@@ -7,11 +7,9 @@ interface Props {
   animName: string;
   characterId: string;
   onClose: () => void;
-  onUpdateStatus: (status: FrameStatus, notes?: string) => void;
 }
 
-export function FrameDetailModal({ frame, animName, characterId, onClose, onUpdateStatus }: Props) {
-  const [notes, setNotes] = useState(frame.review?.notes ?? '');
+export function FrameDetailModal({ frame, animName, characterId, onClose }: Props) {
   const hasImage = frame.status !== 'pending' && frame.status !== 'generating';
 
   return (
@@ -19,6 +17,9 @@ export function FrameDetailModal({ frame, animName, characterId, onClose, onUpda
       <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
         <div style={styles.header}>
           <span style={styles.title}>{animName} / frame {frame.index}</span>
+          <span style={{ fontFamily: 'monospace', fontSize: 10, color: STATUS_COLORS[frame.status] }}>
+            {frame.status}
+          </span>
           <button onClick={onClose} style={styles.closeBtn}>X</button>
         </div>
 
@@ -32,16 +33,16 @@ export function FrameDetailModal({ frame, animName, characterId, onClose, onUpda
               />
             ) : (
               <div style={styles.placeholder}>
-                <span style={{ fontSize: 11 }}>{frame.file}</span>
-                <span style={{ fontSize: 9, color: '#555' }}>Status: {frame.status}</span>
+                <span style={{ fontSize: 11 }}>f{frame.index}</span>
+                <span style={{ fontSize: 9, color: '#555' }}>Not yet generated</span>
               </div>
             )}
           </div>
 
           <div style={styles.details}>
             <div style={styles.field}>
-              <span style={styles.label}>Source:</span>
-              <span style={styles.value}>{frame.source}</span>
+              <span style={styles.label}>File:</span>
+              <span style={styles.value}>{frame.file}</span>
             </div>
             <div style={styles.field}>
               <span style={styles.label}>Duration:</span>
@@ -57,36 +58,20 @@ export function FrameDetailModal({ frame, animName, characterId, onClose, onUpda
                 <span style={{ ...styles.value, fontSize: 9 }}>{frame.generation.prompt}</span>
               </div>
             )}
-
-            <label style={{ ...styles.label, marginTop: 8 }}>Review Notes</label>
-            <textarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              rows={2}
-              style={styles.textarea}
-              placeholder="Notes about this frame..."
-            />
-
-            <div style={styles.actions}>
-              <button
-                onClick={() => onUpdateStatus('approved', notes)}
-                style={styles.approveBtn}
-              >
-                Approve
-              </button>
-              <button
-                onClick={() => onUpdateStatus('rejected', notes)}
-                style={styles.rejectBtn}
-              >
-                Reject
-              </button>
-            </div>
           </div>
         </div>
       </div>
     </div>
   );
 }
+
+const STATUS_COLORS: Record<string, string> = {
+  pending: '#666',
+  generating: '#cc8800',
+  generated: '#aa8800',
+  approved: '#44aa44',
+  rejected: '#aa4444',
+};
 
 const styles: Record<string, React.CSSProperties> = {
   overlay: {
@@ -113,6 +98,7 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: 'center',
     padding: '12px 16px',
     borderBottom: '1px solid #2a2a3a',
+    gap: 8,
   },
   title: {
     fontFamily: 'monospace',
@@ -182,43 +168,5 @@ const styles: Record<string, React.CSSProperties> = {
     fontFamily: 'monospace',
     fontSize: 11,
     color: '#bbb',
-  },
-  textarea: {
-    background: '#222236',
-    border: '1px solid #444',
-    borderRadius: 4,
-    color: '#ddd',
-    fontFamily: 'monospace',
-    fontSize: 11,
-    padding: '6px 8px',
-    resize: 'vertical' as const,
-    outline: 'none',
-  },
-  actions: {
-    display: 'flex',
-    gap: 8,
-    marginTop: 8,
-  },
-  approveBtn: {
-    background: '#1e3a2e',
-    border: '1px solid #44aa44',
-    borderRadius: 4,
-    color: '#70d870',
-    fontFamily: 'monospace',
-    fontSize: 11,
-    padding: '6px 16px',
-    cursor: 'pointer',
-    fontWeight: 600,
-  },
-  rejectBtn: {
-    background: '#3a1e1e',
-    border: '1px solid #aa4444',
-    borderRadius: 4,
-    color: '#d87070',
-    fontFamily: 'monospace',
-    fontSize: 11,
-    padding: '6px 16px',
-    cursor: 'pointer',
-    fontWeight: 600,
   },
 };
