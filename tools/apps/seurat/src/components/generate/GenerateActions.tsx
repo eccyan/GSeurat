@@ -155,19 +155,19 @@ export function GenerateActions({ animName }: Props) {
         </button>
       </div>
 
-      {/* Jobs */}
-      {generationJobs.length > 0 && (
+      {/* Jobs (filtered to current animation) */}
+      {generationJobs.filter((j) => j.animName === animName).length > 0 && (
         <div style={styles.section}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <div style={styles.subTitle}>Jobs</div>
             <button onClick={clearCompletedJobs} style={styles.clearBtn}>Clear</button>
           </div>
-          {generationJobs.map((job) => (
+          {generationJobs.filter((j) => j.animName === animName).map((job) => (
             <div key={job.id} style={styles.jobRow}>
               <span style={{ color: job.status === 'error' ? '#d88' : job.status === 'done' ? '#8d8' : '#aa8' }}>
                 [{job.status}]
               </span>
-              <span>{job.animName}/f{job.frameIndex}</span>
+              <span>{job.frameIndex >= 0 ? `f${job.frameIndex}` : 'all'}</span>
               {job.error && <span style={{ color: '#d88', fontSize: 8 }}>{job.error}</span>}
             </div>
           ))}
