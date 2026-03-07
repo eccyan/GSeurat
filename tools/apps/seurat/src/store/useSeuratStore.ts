@@ -84,8 +84,8 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
     try {
       const characters = await api.fetchCharacters();
       set({ characters });
-    } catch (err) {
-      console.error('Failed to refresh characters:', err);
+    } catch {
+      // Bridge not running — silently keep empty list
     }
   },
 
@@ -99,8 +99,8 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
         assemblyResult: null,
         spriteSheetUrl: null,
       });
-    } catch (err) {
-      console.error('Failed to select character:', err);
+    } catch {
+      console.warn(`[Seurat] Could not load manifest for "${id}" — is the bridge running?`);
     }
   },
 

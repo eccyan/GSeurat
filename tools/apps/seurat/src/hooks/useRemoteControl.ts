@@ -39,7 +39,6 @@ export function useRemoteControl(bridgeUrl: string): void {
         };
 
         ws.onclose = () => {
-          console.log('[Seurat] Disconnected from bridge');
           wsRef.current = null;
           if (!disposed) {
             reconnectTimerRef.current = setTimeout(connect, 3000);

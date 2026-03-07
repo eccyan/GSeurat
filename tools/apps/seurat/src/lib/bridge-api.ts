@@ -11,7 +11,9 @@ const BASE = '';
 export async function fetchCharacters(): Promise<string[]> {
   const res = await fetch(`${BASE}/api/characters`);
   if (!res.ok) throw new Error(`Failed to list characters: ${res.status}`);
-  return res.json();
+  const data = await res.json();
+  // Bridge returns { characters: string[] }
+  return data.characters ?? data;
 }
 
 export async function fetchManifest(id: string): Promise<CharacterManifest> {
