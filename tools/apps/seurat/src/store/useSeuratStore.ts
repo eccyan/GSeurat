@@ -20,6 +20,8 @@ import * as api from '../lib/bridge-api.js';
 
 export { getManifestStats };
 
+
+
 export interface SeuratState {
   // Navigation
   activeSection: Section;
@@ -181,7 +183,7 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
         'front view',
         'standing pose',
         `${spritesheet.frame_width * 4}x${spritesheet.frame_height * 4}`,
-        'pixel art, game character concept art, clean edges, centered, transparent background',
+        'centered, transparent background',
       ].filter(Boolean).join(', ');
 
       const negative = concept.negative_prompt
@@ -202,6 +204,8 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
           samplerName: aiConfig.sampler,
           negativePrompt: negative,
           loras,
+          removeBackground: aiConfig.removeBackground,
+          remBgNodeType: aiConfig.remBgNodeType,
         },
         3, // maxRetries
         (attempt, max) => {
@@ -305,8 +309,9 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
       console.log('[Seurat] No concept image, using txt2img mode');
     }
 
-    // Import prompt builders
+    // Import prompt builders and pose templates
     const { buildFramePrompt, buildSheetRowPrompt, buildNegativePrompt } = await import('../lib/ai-generate.js');
+    const { getPose, renderPoseToPng, getAnimationPoses, renderPoseStripToPng } = await import('../lib/pose-templates.js');
     const loras = aiConfig.loras.filter((l) => l.name.trim());
     const negative = buildNegativePrompt(manifest);
 
@@ -326,12 +331,31 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
           : aiConfig.seed + frameIndex;
 
         let pngBytes: Uint8Array;
-        if (conceptBytes) {
+        const pose = aiConfig.useIPAdapter ? getPose(animName, frameIndex) : null;
+
+        if (aiConfig.useIPAdapter && conceptBytes && pose) {
+          // IP-Adapter + OpenPose mode
+          console.log('[Seurat] Generating single frame via IP-Adapter + OpenPose...');
+          const poseBytes = await renderPoseToPng(pose, manifest.spritesheet.frame_width, manifest.spritesheet.frame_height);
+          pngBytes = await comfy.generateIPAdapterWithRetry(prompt, conceptBytes, poseBytes, {
+            width: manifest.spritesheet.frame_width, height: manifest.spritesheet.frame_height,
+            steps: aiConfig.steps, seed, cfgScale: aiConfig.cfg, samplerName: aiConfig.sampler,
+            negativePrompt: negative, denoise: aiConfig.denoise, loras,
+            ipAdapterWeight: aiConfig.ipAdapterWeight,
+            ipAdapterPreset: aiConfig.ipAdapterPreset,
+            openPoseModel: aiConfig.openPoseModel,
+            openPoseStrength: aiConfig.openPoseStrength,
+            removeBackground: aiConfig.removeBackground,
+            remBgNodeType: aiConfig.remBgNodeType,
+          });
+        } else if (conceptBytes) {
           console.log('[Seurat] Generating single frame via img2img...');
           pngBytes = await comfy.generateImg2ImgWithRetry(prompt, conceptBytes, {
             width: manifest.spritesheet.frame_width, height: manifest.spritesheet.frame_height,
             steps: aiConfig.steps, seed, cfgScale: aiConfig.cfg, samplerName: aiConfig.sampler,
             negativePrompt: negative, denoise: aiConfig.denoise, loras,
+            removeBackground: aiConfig.removeBackground,
+            remBgNodeType: aiConfig.remBgNodeType,
           });
         } else {
           console.log('[Seurat] Generating single frame via txt2img...');
@@ -339,6 +363,8 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
             width: manifest.spritesheet.frame_width, height: manifest.spritesheet.frame_height,
             steps: aiConfig.steps, seed, cfgScale: aiConfig.cfg, samplerName: aiConfig.sampler,
             negativePrompt: negative, loras,
+            removeBackground: aiConfig.removeBackground,
+            remBgNodeType: aiConfig.remBgNodeType,
           });
         }
         console.log(`[Seurat] Got ${pngBytes.length} bytes from ComfyUI, saving frame...`);
@@ -377,74 +403,115 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
         get().addGenerationJob({ id: jobId, animName: an, frameIndex: -1, status: 'running' });
 
         try {
-          const prompt = buildSheetRowPrompt(manifest, anim);
-          console.log(`[Seurat] Row "${an}" prompt:`, prompt);
+          const frameCount = anim.frames.length;
+          const fw = manifest.spritesheet.frame_width;
+          const fh = manifest.spritesheet.frame_height;
           const seed = aiConfig.seed === -1
             ? Math.floor(Math.random() * 2147483647)
             : aiConfig.seed;
-          const frameCount = anim.frames.length;
-          const sheetWidth = manifest.spritesheet.frame_width * frameCount;
-          const sheetHeight = manifest.spritesheet.frame_height;
-          console.log(`[Seurat] Row "${an}": ${frameCount} frames, ${sheetWidth}x${sheetHeight}`);
 
-          let pngBytes: Uint8Array;
-          if (conceptBytes && aiConfig.controlNetModel) {
-            console.log(`[Seurat] Row "${an}": ControlNet mode, tiling concept image...`);
-            const tiledBytes = await tileImageHorizontally(conceptBytes, frameCount, sheetWidth, sheetHeight);
-            console.log(`[Seurat] Tiled image: ${tiledBytes.length} bytes, sending to ComfyUI...`);
-            pngBytes = await comfy.generateControlNetWithRetry(prompt, tiledBytes, {
-              width: sheetWidth, height: sheetHeight,
-              steps: aiConfig.steps, seed, cfgScale: aiConfig.cfg, samplerName: aiConfig.sampler,
-              negativePrompt: negative, denoise: aiConfig.denoise, loras,
-              controlNetModel: aiConfig.controlNetModel,
-              controlStrength: aiConfig.controlStrength,
-            });
-          } else if (conceptBytes) {
-            console.log(`[Seurat] Row "${an}": img2img mode, tiling concept image...`);
-            const tiledBytes = await tileImageHorizontally(conceptBytes, frameCount, sheetWidth, sheetHeight);
-            console.log(`[Seurat] Tiled image: ${tiledBytes.length} bytes, sending to ComfyUI...`);
-            pngBytes = await comfy.generateImg2ImgWithRetry(prompt, tiledBytes, {
-              width: sheetWidth, height: sheetHeight,
-              steps: aiConfig.steps, seed, cfgScale: aiConfig.cfg, samplerName: aiConfig.sampler,
-              negativePrompt: negative, denoise: aiConfig.denoise, loras,
-            });
-          } else {
-            console.log(`[Seurat] Row "${an}": txt2img mode...`);
-            pngBytes = await comfy.generateImageWithRetry(prompt, {
-              width: sheetWidth, height: sheetHeight,
-              steps: aiConfig.steps, seed, cfgScale: aiConfig.cfg, samplerName: aiConfig.sampler,
-              negativePrompt: negative, loras,
-            });
-          }
-          console.log(`[Seurat] Row "${an}": got ${pngBytes.length} bytes from ComfyUI, slicing...`);
+          // Check if IP-Adapter per-frame mode applies
+          const animPoses = aiConfig.useIPAdapter ? getAnimationPoses(an, frameCount) : null;
 
-          // Slice the wide image into individual frames
-          const blob = new Blob([pngBytes as BlobPart], { type: 'image/png' });
-          const bitmap = await createImageBitmap(blob);
-          console.log(`[Seurat] Row "${an}": bitmap ${bitmap.width}x${bitmap.height}, slicing into ${frameCount} frames of ${manifest.spritesheet.frame_width}x${manifest.spritesheet.frame_height}`);
-          const fw = manifest.spritesheet.frame_width;
-          const fh = manifest.spritesheet.frame_height;
+          if (aiConfig.useIPAdapter && conceptBytes && animPoses) {
+            // IP-Adapter + OpenPose: generate each frame individually with its pose
+            console.log(`[Seurat] Row "${an}": IP-Adapter + OpenPose mode, ${frameCount} frames...`);
 
-          for (let i = 0; i < frameCount; i++) {
-            const canvas = new OffscreenCanvas(fw, fh);
-            const ctx = canvas.getContext('2d')!;
-            ctx.drawImage(bitmap, i * fw, 0, fw, fh, 0, 0, fw, fh);
-            const frameBlob = await canvas.convertToBlob({ type: 'image/png' });
-            const frameBuf = await frameBlob.arrayBuffer();
-            const frameBytes = new Uint8Array(frameBuf);
-            console.log(`[Seurat] Row "${an}" frame ${i}: ${frameBytes.length} bytes, saving...`);
+            for (let i = 0; i < frameCount; i++) {
+              const framePrompt = buildFramePrompt(manifest, anim, i);
+              const frameSeed = seed + i;
+              const poseBytes = await renderPoseToPng(animPoses[i], fw, fh);
+              console.log(`[Seurat] Row "${an}" frame ${i}: generating via IP-Adapter...`);
 
-            await api.saveFrameImage(manifest.character_id, an, i, frameBytes);
-            console.log(`[Seurat] Row "${an}" frame ${i}: saved successfully`);
-            const current = get().manifest;
-            if (current) {
-              const updated = structuredClone(current);
-              const f = updated.animations.find((x) => x.name === an)?.frames.find((x) => x.index === i);
-              if (f) { f.status = 'generated'; f.file = `${an}/${an}_${i}.png`; }
-              set({ manifest: updated });
+              const frameBytes = await comfy.generateIPAdapterWithRetry(framePrompt, conceptBytes, poseBytes, {
+                width: fw, height: fh,
+                steps: aiConfig.steps, seed: frameSeed, cfgScale: aiConfig.cfg, samplerName: aiConfig.sampler,
+                negativePrompt: negative, denoise: aiConfig.denoise, loras,
+                ipAdapterWeight: aiConfig.ipAdapterWeight,
+                ipAdapterPreset: aiConfig.ipAdapterPreset,
+                openPoseModel: aiConfig.openPoseModel,
+                openPoseStrength: aiConfig.openPoseStrength,
+                removeBackground: aiConfig.removeBackground,
+                remBgNodeType: aiConfig.remBgNodeType,
+              });
+
+              await api.saveFrameImage(manifest.character_id, an, i, frameBytes);
+              console.log(`[Seurat] Row "${an}" frame ${i}: saved successfully`);
+              const current = get().manifest;
+              if (current) {
+                const updated = structuredClone(current);
+                const f = updated.animations.find((x) => x.name === an)?.frames.find((x) => x.index === i);
+                if (f) { f.status = 'generated'; f.file = `${an}/${an}_${i}.png`; }
+                set({ manifest: updated });
+              }
             }
+          } else {
+            // Existing row-based generation (tiled strip)
+            const prompt = buildSheetRowPrompt(manifest, anim);
+            console.log(`[Seurat] Row "${an}" prompt:`, prompt);
+            const sheetWidth = fw * frameCount;
+            const sheetHeight = fh;
+            console.log(`[Seurat] Row "${an}": ${frameCount} frames, ${sheetWidth}x${sheetHeight}`);
+
+            let pngBytes: Uint8Array;
+            if (conceptBytes && aiConfig.controlNetModel) {
+              console.log(`[Seurat] Row "${an}": ControlNet mode, tiling concept image...`);
+              const tiledBytes = await tileImageHorizontally(conceptBytes, frameCount, sheetWidth, sheetHeight);
+              pngBytes = await comfy.generateControlNetWithRetry(prompt, tiledBytes, {
+                width: sheetWidth, height: sheetHeight,
+                steps: aiConfig.steps, seed, cfgScale: aiConfig.cfg, samplerName: aiConfig.sampler,
+                negativePrompt: negative, denoise: aiConfig.denoise, loras,
+                controlNetModel: aiConfig.controlNetModel,
+                controlStrength: aiConfig.controlStrength,
+                removeBackground: aiConfig.removeBackground,
+                remBgNodeType: aiConfig.remBgNodeType,
+              });
+            } else if (conceptBytes) {
+              console.log(`[Seurat] Row "${an}": img2img mode, tiling concept image...`);
+              const tiledBytes = await tileImageHorizontally(conceptBytes, frameCount, sheetWidth, sheetHeight);
+              pngBytes = await comfy.generateImg2ImgWithRetry(prompt, tiledBytes, {
+                width: sheetWidth, height: sheetHeight,
+                steps: aiConfig.steps, seed, cfgScale: aiConfig.cfg, samplerName: aiConfig.sampler,
+                negativePrompt: negative, denoise: aiConfig.denoise, loras,
+                removeBackground: aiConfig.removeBackground,
+                remBgNodeType: aiConfig.remBgNodeType,
+              });
+            } else {
+              console.log(`[Seurat] Row "${an}": txt2img mode...`);
+              pngBytes = await comfy.generateImageWithRetry(prompt, {
+                width: sheetWidth, height: sheetHeight,
+                steps: aiConfig.steps, seed, cfgScale: aiConfig.cfg, samplerName: aiConfig.sampler,
+                negativePrompt: negative, loras,
+                removeBackground: aiConfig.removeBackground,
+                remBgNodeType: aiConfig.remBgNodeType,
+              });
+            }
+            console.log(`[Seurat] Row "${an}": got ${pngBytes.length} bytes from ComfyUI, slicing...`);
+
+            // Slice the wide image into individual frames
+            const blob = new Blob([pngBytes as BlobPart], { type: 'image/png' });
+            const bitmap = await createImageBitmap(blob);
+            console.log(`[Seurat] Row "${an}": bitmap ${bitmap.width}x${bitmap.height}, slicing into ${frameCount} frames of ${fw}x${fh}`);
+
+            for (let i = 0; i < frameCount; i++) {
+              const canvas = new OffscreenCanvas(fw, fh);
+              const ctx = canvas.getContext('2d')!;
+              ctx.drawImage(bitmap, i * fw, 0, fw, fh, 0, 0, fw, fh);
+              const frameBlob = await canvas.convertToBlob({ type: 'image/png' });
+              const frameBuf = await frameBlob.arrayBuffer();
+              const frameBytes = new Uint8Array(frameBuf);
+
+              await api.saveFrameImage(manifest.character_id, an, i, frameBytes);
+              const current = get().manifest;
+              if (current) {
+                const updated = structuredClone(current);
+                const f = updated.animations.find((x) => x.name === an)?.frames.find((x) => x.index === i);
+                if (f) { f.status = 'generated'; f.file = `${an}/${an}_${i}.png`; }
+                set({ manifest: updated });
+              }
+            }
+            bitmap.close();
           }
-          bitmap.close();
           set({ frameRevision: get().frameRevision + 1 });
           get().updateGenerationJob(jobId, { status: 'done' });
         } catch (err) {

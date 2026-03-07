@@ -1,4 +1,4 @@
-import type { ImageProvider, ImageGenerateOptions, Img2ImgOptions, ControlNetOptions, AvailabilityResult } from "./types.js";
+import type { ImageProvider, ImageGenerateOptions, Img2ImgOptions, ControlNetOptions, IPAdapterOptions, AvailabilityResult } from "./types.js";
 
 /** A single node entry in a ComfyUI workflow graph. */
 interface WorkflowNode {
@@ -62,6 +62,35 @@ interface WorkflowOptions {
   cfg: number;
   samplerName: string;
   loras: LoraEntry[];
+  removeBackground?: boolean;
+  remBgNodeType?: string;
+}
+
+/**
+ * If removeBackground is enabled, insert a background-removal node between
+ * VAEDecode ("8") and SaveImage ("9").
+ */
+function injectRemBGNodes(
+  nodes: Record<string, WorkflowNode>,
+  opts: Pick<WorkflowOptions, 'removeBackground' | 'remBgNodeType'>,
+): void {
+  if (!opts.removeBackground) return;
+
+  const classType = opts.remBgNodeType ?? "BRIA_RMBG_Zho";
+  // Model loader for BRIA RMBG
+  nodes["31"] = {
+    class_type: "BRIA_RMBG_ModelLoader_Zho",
+    inputs: {},
+  };
+  nodes["30"] = {
+    class_type: classType,
+    inputs: {
+      rmbgmodel: ["31", 0],
+      image: ["8", 0],
+    },
+  };
+  // Rewire SaveImage to take input from RemBG node instead of VAEDecode
+  (nodes["9"].inputs as Record<string, unknown>).images = ["30", 0];
 }
 
 function buildTxt2ImgWorkflow(
@@ -156,6 +185,7 @@ function buildTxt2ImgWorkflow(
     (nodes["7"].inputs as Record<string, unknown>).clip = prevClipRef;
   }
 
+  injectRemBGNodes(nodes, opts);
   return nodes;
 }
 
@@ -262,6 +292,7 @@ function buildImg2ImgWorkflow(
     (nodes["7"].inputs as Record<string, unknown>).clip = prevClipRef;
   }
 
+  injectRemBGNodes(nodes, opts);
   return nodes;
 }
 
@@ -400,6 +431,182 @@ function buildControlNetWorkflow(
     (nodes["7"].inputs as Record<string, unknown>).clip = prevClipRef;
   }
 
+  injectRemBGNodes(nodes, opts);
+  return nodes;
+}
+
+/** Options for building the IP-Adapter + OpenPose workflow. */
+interface IPAdapterWorkflowOptions extends WorkflowOptions {
+  /** Uploaded concept image filename. */
+  conceptImageName: string;
+  /** Uploaded pose skeleton image filename. */
+  poseImageName: string;
+  /** Denoise strength. */
+  denoise: number;
+  /** IP-Adapter weight (0.0–1.0). */
+  ipAdapterWeight: number;
+  /** IP-Adapter preset (LIGHT, STANDARD, PLUS, etc.). */
+  ipAdapterPreset: string;
+  /** OpenPose ControlNet model filename. */
+  openPoseModel: string;
+  /** OpenPose ControlNet strength. */
+  openPoseStrength: number;
+}
+
+function buildIPAdapterPoseWorkflow(
+  opts: IPAdapterWorkflowOptions
+): Record<string, WorkflowNode> {
+  const nodes: Record<string, WorkflowNode> = {
+    // Checkpoint
+    "4": {
+      class_type: "CheckpointLoaderSimple",
+      inputs: {
+        ckpt_name: "v1-5-pruned-emaonly.safetensors",
+      },
+    },
+    // Load concept image for IP-Adapter
+    "40": {
+      class_type: "LoadImage",
+      inputs: {
+        image: opts.conceptImageName,
+      },
+    },
+    // Load pose skeleton image for OpenPose ControlNet
+    "45": {
+      class_type: "LoadImage",
+      inputs: {
+        image: opts.poseImageName,
+      },
+    },
+    // IP-Adapter Unified Loader
+    "41": {
+      class_type: "IPAdapterUnifiedLoader",
+      inputs: {
+        preset: opts.ipAdapterPreset,
+        model: ["4", 0],
+      },
+    },
+    // IP-Adapter Apply
+    "42": {
+      class_type: "IPAdapterAdvanced",
+      inputs: {
+        weight: opts.ipAdapterWeight,
+        weight_type: "linear",
+        combine_embeds: "concat",
+        start_at: 0.0,
+        end_at: 1.0,
+        embeds_scaling: "V only",
+        model: ["41", 0],
+        ipadapter: ["41", 1],
+        image: ["40", 0],
+      },
+    },
+    // Positive CLIP
+    "6": {
+      class_type: "CLIPTextEncode",
+      inputs: {
+        text: opts.prompt,
+        clip: ["4", 1],
+      },
+    },
+    // Negative CLIP
+    "7": {
+      class_type: "CLIPTextEncode",
+      inputs: {
+        text: opts.negativePrompt,
+        clip: ["4", 1],
+      },
+    },
+    // OpenPose ControlNet model loader
+    "46": {
+      class_type: "ControlNetLoader",
+      inputs: {
+        control_net_name: opts.openPoseModel,
+      },
+    },
+    // Apply OpenPose ControlNet
+    "47": {
+      class_type: "ControlNetApplyAdvanced",
+      inputs: {
+        positive: ["6", 0],
+        negative: ["7", 0],
+        control_net: ["46", 0],
+        image: ["45", 0],
+        strength: opts.openPoseStrength,
+        start_percent: 0.0,
+        end_percent: 1.0,
+      },
+    },
+    // Empty latent (txt2img style — no reference latent needed)
+    "5": {
+      class_type: "EmptyLatentImage",
+      inputs: {
+        width: opts.width,
+        height: opts.height,
+        batch_size: 1,
+      },
+    },
+    // KSampler — model from IP-Adapter, conditioning from ControlNet
+    "3": {
+      class_type: "KSampler",
+      inputs: {
+        seed: opts.seed,
+        steps: opts.steps,
+        cfg: opts.cfg,
+        sampler_name: opts.samplerName,
+        scheduler: "normal",
+        denoise: opts.denoise,
+        model: ["42", 0],     // IP-Adapter conditioned model
+        positive: ["47", 0],  // OpenPose conditioned positive
+        negative: ["47", 1],  // OpenPose conditioned negative
+        latent_image: ["5", 0],
+      },
+    },
+    "8": {
+      class_type: "VAEDecode",
+      inputs: {
+        samples: ["3", 0],
+        vae: ["4", 2],
+      },
+    },
+    "9": {
+      class_type: "SaveImage",
+      inputs: {
+        filename_prefix: "vulkan_game_ipa_",
+        images: ["8", 0],
+      },
+    },
+  };
+
+  // Chain LoRA loaders (between checkpoint and IP-Adapter loader)
+  if (opts.loras.length > 0) {
+    let prevModelRef: [string, number] = ["4", 0];
+    let prevClipRef: [string, number] = ["4", 1];
+
+    opts.loras.forEach((lora, i) => {
+      const nodeId = `lora_${i}`;
+      const weight = lora.weight ?? 1.0;
+      nodes[nodeId] = {
+        class_type: "LoraLoader",
+        inputs: {
+          lora_name: lora.name.includes(".") ? lora.name : `${lora.name}.safetensors`,
+          strength_model: weight,
+          strength_clip: weight,
+          model: prevModelRef,
+          clip: prevClipRef,
+        },
+      };
+      prevModelRef = [nodeId, 0];
+      prevClipRef = [nodeId, 1];
+    });
+
+    // Rewire IP-Adapter loader and CLIP encoders to use LoRA output
+    (nodes["41"].inputs as Record<string, unknown>).model = prevModelRef;
+    (nodes["6"].inputs as Record<string, unknown>).clip = prevClipRef;
+    (nodes["7"].inputs as Record<string, unknown>).clip = prevClipRef;
+  }
+
+  injectRemBGNodes(nodes, opts);
   return nodes;
 }
 
@@ -449,6 +656,8 @@ export class ComfyUIClient implements ImageProvider {
       cfg: opts?.cfgScale ?? 7,
       samplerName: opts?.samplerName ?? "euler",
       loras: opts?.loras ?? [],
+      removeBackground: opts?.removeBackground,
+      remBgNodeType: opts?.remBgNodeType,
     });
 
     // Submit the prompt
@@ -518,6 +727,8 @@ export class ComfyUIClient implements ImageProvider {
       loras: opts?.loras ?? [],
       imageName,
       denoise: opts?.denoise ?? 0.4,
+      removeBackground: opts?.removeBackground,
+      remBgNodeType: opts?.remBgNodeType,
     });
 
     const submitBody: PromptRequest = { prompt: workflow };
@@ -725,6 +936,8 @@ export class ComfyUIClient implements ImageProvider {
       controlStrength: opts.controlStrength ?? 0.7,
       controlStart: opts.controlStart ?? 0.0,
       controlEnd: opts.controlEnd ?? 1.0,
+      removeBackground: opts.removeBackground,
+      remBgNodeType: opts.remBgNodeType,
     });
 
     const submitBody: PromptRequest = { prompt: workflow };
@@ -790,6 +1003,112 @@ export class ComfyUIClient implements ImageProvider {
 
     throw new Error(
       `ComfyUI returned a blank/black image after ${maxRetries} ControlNet attempts. ` +
+      `Try different prompts, check the model is loaded, or increase steps.`
+    );
+  }
+
+  /**
+   * Generate an image using IP-Adapter (character consistency) + OpenPose ControlNet (pose control).
+   * Uploads the concept image and pose skeleton, then runs the combined workflow.
+   */
+  async generateIPAdapter(
+    prompt: string,
+    conceptImage: Uint8Array,
+    poseImage: Uint8Array,
+    opts: IPAdapterOptions,
+  ): Promise<Uint8Array> {
+    const conceptImageName = await this.uploadImage(conceptImage);
+    const poseImageName = await this.uploadImage(poseImage);
+
+    const openPoseModel = (opts.openPoseModel ?? "control_v11p_sd15_openpose").includes(".")
+      ? opts.openPoseModel!
+      : `${opts.openPoseModel ?? "control_v11p_sd15_openpose"}.pth`;
+
+    const workflow = buildIPAdapterPoseWorkflow({
+      prompt,
+      negativePrompt: opts.negativePrompt ?? "bad quality, blurry, deformed",
+      width: opts.width ?? 512,
+      height: opts.height ?? 512,
+      steps: opts.steps ?? 20,
+      seed: opts.seed ?? Math.floor(Math.random() * 2 ** 32),
+      cfg: opts.cfgScale ?? 7,
+      samplerName: opts.samplerName ?? "euler",
+      loras: opts.loras ?? [],
+      conceptImageName,
+      poseImageName,
+      denoise: opts.denoise ?? 0.75,
+      ipAdapterWeight: opts.ipAdapterWeight ?? 0.6,
+      ipAdapterPreset: opts.ipAdapterPreset ?? "PLUS",
+      openPoseModel,
+      openPoseStrength: opts.openPoseStrength ?? 0.8,
+      removeBackground: opts.removeBackground,
+      remBgNodeType: opts.remBgNodeType,
+    });
+
+    const submitBody: PromptRequest = { prompt: workflow };
+    const submitResponse = await fetch(`${this.baseUrl}/prompt`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(submitBody),
+    });
+
+    if (!submitResponse.ok) {
+      const text = await submitResponse.text().catch(() => "(no body)");
+      throw new Error(
+        `ComfyUI IP-Adapter prompt failed: HTTP ${submitResponse.status} ${submitResponse.statusText} — ${text}`
+      );
+    }
+
+    const { prompt_id } = (await submitResponse.json()) as PromptResponse;
+    const imageFile = await this.pollForCompletion(prompt_id);
+
+    const imageUrl = `${this.baseUrl}/view?filename=${encodeURIComponent(
+      imageFile.filename
+    )}&subfolder=${encodeURIComponent(imageFile.subfolder)}&type=${encodeURIComponent(
+      imageFile.type
+    )}`;
+
+    const imageResponse = await fetch(imageUrl);
+    if (!imageResponse.ok) {
+      throw new Error(
+        `ComfyUI image fetch failed: HTTP ${imageResponse.status} ${imageResponse.statusText}`
+      );
+    }
+
+    const buffer = await imageResponse.arrayBuffer();
+    return new Uint8Array(buffer);
+  }
+
+  /**
+   * Generate an IP-Adapter + OpenPose image with retry on blank results.
+   */
+  async generateIPAdapterWithRetry(
+    prompt: string,
+    conceptImage: Uint8Array,
+    poseImage: Uint8Array,
+    opts: IPAdapterOptions,
+    maxRetries = 3,
+    onRetry?: (attempt: number, max: number) => void,
+  ): Promise<Uint8Array> {
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      const seed = attempt === 1
+        ? (opts.seed ?? Math.floor(Math.random() * 2 ** 32))
+        : Math.floor(Math.random() * 2 ** 32);
+
+      const pngBytes = await this.generateIPAdapter(prompt, conceptImage, poseImage, { ...opts, seed });
+
+      if (!isBlankImage(pngBytes)) {
+        return pngBytes;
+      }
+
+      if (attempt < maxRetries) {
+        onRetry?.(attempt + 1, maxRetries);
+        await sleep(1000);
+      }
+    }
+
+    throw new Error(
+      `ComfyUI returned a blank/black image after ${maxRetries} IP-Adapter attempts. ` +
       `Try different prompts, check the model is loaded, or increase steps.`
     );
   }

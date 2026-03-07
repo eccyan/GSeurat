@@ -29,6 +29,13 @@ export interface AIConfig {
   loras: LoraConfig[];
   controlNetModel: string;
   controlStrength: number;
+  removeBackground: boolean;
+  remBgNodeType: string;
+  useIPAdapter: boolean;
+  ipAdapterWeight: number;
+  ipAdapterPreset: string;
+  openPoseModel: string;
+  openPoseStrength: number;
 }
 
 export const DEFAULT_AI_CONFIG: AIConfig = {
@@ -36,11 +43,18 @@ export const DEFAULT_AI_CONFIG: AIConfig = {
   steps: 20,
   seed: -1,
   cfg: 7,
-  sampler: 'euler_ancestral',
+  sampler: 'euler',
   denoise: 0.55,
   loras: [{ name: 'PixelArtRedmond15V-PixelArt-PIXARFK', weight: 0.8 }],
   controlNetModel: 'control_v11f1e_sd15_tile',
   controlStrength: 0.7,
+  removeBackground: false,
+  remBgNodeType: 'BRIA_RMBG_Zho',
+  useIPAdapter: false,
+  ipAdapterWeight: 0.6,
+  ipAdapterPreset: 'PLUS',
+  openPoseModel: 'control_v11p_sd15_openpose',
+  openPoseStrength: 0.8,
 };
 
 export interface GenerationJob {

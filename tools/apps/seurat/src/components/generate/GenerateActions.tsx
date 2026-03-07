@@ -136,9 +136,83 @@ export function GenerateActions({ animName }: Props) {
         </div>
       </div>
 
+      {/* IP-Adapter + OpenPose */}
+      <div style={styles.section}>
+        <Row>
+          <label style={{ ...styles.label, minWidth: 'auto' }}>
+            <input
+              type="checkbox"
+              checked={aiConfig.useIPAdapter}
+              onChange={(e) => setAIConfig({ useIPAdapter: e.target.checked })}
+            />
+            {' '}IP-Adapter + OpenPose
+          </label>
+        </Row>
+        {aiConfig.useIPAdapter && (
+          <>
+            <Row>
+              <label style={styles.label}>IP Weight</label>
+              <input type="range" min={0.1} max={1.0} step={0.05} value={aiConfig.ipAdapterWeight} onChange={(e) => setAIConfig({ ipAdapterWeight: parseFloat(e.target.value) })} style={{ flex: 1 }} />
+              <span style={{ fontSize: 9, color: '#888', fontFamily: 'monospace' }}>{aiConfig.ipAdapterWeight.toFixed(2)}</span>
+            </Row>
+            <Row>
+              <label style={styles.label}>Preset</label>
+              <select value={aiConfig.ipAdapterPreset} onChange={(e) => setAIConfig({ ipAdapterPreset: e.target.value })} style={styles.select}>
+                {['LIGHT', 'STANDARD', 'VIT-G', 'PLUS', 'PLUS FACE', 'FULL FACE'].map((p) => <option key={p} value={p}>{p}</option>)}
+              </select>
+            </Row>
+            <Row>
+              <label style={styles.label}>Pose Model</label>
+              <input
+                value={aiConfig.openPoseModel}
+                onChange={(e) => setAIConfig({ openPoseModel: e.target.value })}
+                style={styles.input}
+                placeholder="control_v11p_sd15_openpose"
+              />
+            </Row>
+            <Row>
+              <label style={styles.label}>Pose Str</label>
+              <input type="range" min={0.1} max={1.5} step={0.05} value={aiConfig.openPoseStrength} onChange={(e) => setAIConfig({ openPoseStrength: parseFloat(e.target.value) })} style={{ flex: 1 }} />
+              <span style={{ fontSize: 9, color: '#888', fontFamily: 'monospace' }}>{aiConfig.openPoseStrength.toFixed(2)}</span>
+            </Row>
+            <div style={{ fontSize: 8, color: '#555', fontFamily: 'monospace' }}>
+              Uses concept art for character consistency + pose skeletons for animation control. Generates per-frame.
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* Background Removal */}
+      <div style={styles.section}>
+        <Row>
+          <label style={{ ...styles.label, minWidth: 'auto' }}>
+            <input
+              type="checkbox"
+              checked={aiConfig.removeBackground}
+              onChange={(e) => setAIConfig({ removeBackground: e.target.checked })}
+            />
+            {' '}Remove Background
+          </label>
+        </Row>
+        {aiConfig.removeBackground && (
+          <Row>
+            <label style={styles.label}>Node</label>
+            <input
+              value={aiConfig.remBgNodeType}
+              onChange={(e) => setAIConfig({ remBgNodeType: e.target.value })}
+              style={styles.input}
+              placeholder="BRIA_RMBG_Zho"
+            />
+          </Row>
+        )}
+        <div style={{ fontSize: 8, color: '#555', fontFamily: 'monospace' }}>
+          Requires ComfyUI-BRIA_AI-REMBG or comfyui-rembg custom node.
+        </div>
+      </div>
+
       {/* Mode */}
-      <div style={{ fontSize: 9, fontFamily: 'monospace', marginBottom: 4, color: !hasConceptImage ? '#666' : aiConfig.controlNetModel ? '#c890f8' : '#4ac8c8' }}>
-        {!hasConceptImage ? 'txt2img mode' : aiConfig.controlNetModel ? 'ControlNet + img2img mode' : 'img2img mode'}
+      <div style={{ fontSize: 9, fontFamily: 'monospace', marginBottom: 4, color: !hasConceptImage ? '#666' : aiConfig.useIPAdapter ? '#f890c8' : aiConfig.controlNetModel ? '#c890f8' : '#4ac8c8' }}>
+        {!hasConceptImage ? 'txt2img mode' : aiConfig.useIPAdapter ? 'IP-Adapter + OpenPose mode (per-frame)' : aiConfig.controlNetModel ? 'ControlNet + img2img mode' : 'img2img mode'}
       </div>
 
       {/* Generate Animation */}

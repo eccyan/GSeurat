@@ -37,6 +37,10 @@ export interface ImageGenerateOptions {
   samplerName?: string;
   /** LoRA models to apply. Each entry has a name and optional weight (default 1.0). */
   loras?: Array<{ name: string; weight?: number }>;
+  /** Run background removal on the output image (requires ComfyUI RemBG node). */
+  removeBackground?: boolean;
+  /** ComfyUI class_type for the background removal node. Default: BRIA_REMBG_Zeroshot. */
+  remBgNodeType?: string;
 }
 
 /**
@@ -62,6 +66,22 @@ export interface ControlNetOptions extends ImageGenerateOptions {
   controlStart?: number;
   /** End percent for ControlNet application (0.0–1.0). Default 1.0. */
   controlEnd?: number;
+}
+
+/**
+ * Options for IP-Adapter + OpenPose generation.
+ */
+export interface IPAdapterOptions extends ImageGenerateOptions {
+  /** Denoise strength. Default 0.75. */
+  denoise?: number;
+  /** IP-Adapter weight (0.0–1.0). Default 0.6. */
+  ipAdapterWeight?: number;
+  /** IP-Adapter preset. Default "PLUS". */
+  ipAdapterPreset?: string;
+  /** OpenPose ControlNet model filename. */
+  openPoseModel?: string;
+  /** OpenPose ControlNet strength. Default 0.8. */
+  openPoseStrength?: number;
 }
 
 /**
