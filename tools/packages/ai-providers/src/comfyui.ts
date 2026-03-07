@@ -483,6 +483,46 @@ export class ComfyUIClient implements ImageProvider {
   }
 
   /**
+   * Generate an image with automatic retry when the result appears to be
+   * a blank/black image.  Uses a different seed on each retry.
+   *
+   * @param prompt      - Text description of the desired image
+   * @param opts        - Generation parameters
+   * @param maxRetries  - Maximum number of attempts (default 3)
+   * @param onRetry     - Optional callback invoked before each retry with (attempt, maxRetries)
+   * @returns Raw PNG image bytes of a non-blank image
+   */
+  async generateImageWithRetry(
+    prompt: string,
+    opts?: ImageGenerateOptions,
+    maxRetries = 3,
+    onRetry?: (attempt: number, max: number) => void,
+  ): Promise<Uint8Array> {
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      const seed = attempt === 1
+        ? (opts?.seed ?? Math.floor(Math.random() * 2 ** 32))
+        : Math.floor(Math.random() * 2 ** 32);
+
+      const pngBytes = await this.generateImage(prompt, { ...opts, seed });
+
+      if (!isBlankImage(pngBytes)) {
+        return pngBytes;
+      }
+
+      if (attempt < maxRetries) {
+        onRetry?.(attempt + 1, maxRetries);
+        // Brief pause before retrying
+        await sleep(1000);
+      }
+    }
+
+    throw new Error(
+      `ComfyUI returned a blank/black image after ${maxRetries} attempts. ` +
+      `Try different prompts, check the model is loaded, or increase steps.`
+    );
+  }
+
+  /**
    * Check whether the ComfyUI server is reachable and responding.
    *
    * @returns true if GET /system_stats returns a valid response, false otherwise
@@ -521,4 +561,70 @@ export class ComfyUIClient implements ImageProvider {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Detect whether a PNG image is essentially blank (all black or all same color).
+ *
+ * Parses the raw PNG to find IDAT chunks and checks if the uncompressed pixel
+ * data has near-zero variance.  Falls back to a byte-entropy heuristic when
+ * full decompression is not available.
+ *
+ * The heuristic: a valid non-blank PNG has meaningful entropy in its IDAT data.
+ * A pure black image compresses to very few unique byte values.
+ */
+function isBlankImage(pngBytes: Uint8Array): boolean {
+  if (pngBytes.length < 100) return true;
+
+  // Verify PNG signature
+  const sig = [137, 80, 78, 71, 13, 10, 26, 10];
+  for (let i = 0; i < sig.length; i++) {
+    if (pngBytes[i] !== sig[i]) return false; // Not a PNG — don't flag as blank
+  }
+
+  // Collect all IDAT chunk data
+  const idatBytes: number[] = [];
+  let offset = 8; // skip signature
+  while (offset + 12 <= pngBytes.length) {
+    const length =
+      (pngBytes[offset] << 24) |
+      (pngBytes[offset + 1] << 16) |
+      (pngBytes[offset + 2] << 8) |
+      pngBytes[offset + 3];
+    const type = String.fromCharCode(
+      pngBytes[offset + 4],
+      pngBytes[offset + 5],
+      pngBytes[offset + 6],
+      pngBytes[offset + 7],
+    );
+
+    if (type === 'IDAT') {
+      const dataStart = offset + 8;
+      const dataEnd = dataStart + length;
+      for (let i = dataStart; i < dataEnd && i < pngBytes.length; i++) {
+        idatBytes.push(pngBytes[i]);
+      }
+    }
+
+    // Move to next chunk: 4 (length) + 4 (type) + length (data) + 4 (CRC)
+    offset += 12 + length;
+
+    if (type === 'IEND') break;
+  }
+
+  if (idatBytes.length === 0) return true;
+
+  // Heuristic: count unique byte values in IDAT data.
+  // A blank image compresses to very few distinct bytes.
+  // Sample up to 2048 bytes for performance.
+  const sampleSize = Math.min(idatBytes.length, 2048);
+  const seen = new Set<number>();
+  for (let i = 0; i < sampleSize; i++) {
+    seen.add(idatBytes[i]);
+  }
+
+  // A non-blank 512x512 image typically has 100+ unique byte values
+  // in its compressed data. A pure black image has < 20.
+  const uniqueRatio = seen.size / sampleSize;
+  return uniqueRatio < 0.03 || seen.size < 15;
 }

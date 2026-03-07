@@ -174,15 +174,24 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
         ? `${concept.negative_prompt}, watermark, text, signature, cropped, partial`
         : 'blurry, realistic, 3d render, watermark, text, signature, cropped, partial';
 
-      const pngBytes = await comfy.generateImage(prompt, {
-        width: 512,
-        height: 512,
-        steps: aiConfig.steps,
-        seed: aiConfig.seed === -1 ? Math.floor(Math.random() * 2147483647) : aiConfig.seed,
-        cfgScale: aiConfig.cfg,
-        samplerName: aiConfig.sampler,
-        negativePrompt: negative,
-      });
+      const seed = aiConfig.seed === -1 ? Math.floor(Math.random() * 2147483647) : aiConfig.seed;
+
+      const pngBytes = await comfy.generateImageWithRetry(
+        prompt,
+        {
+          width: 512,
+          height: 512,
+          steps: aiConfig.steps,
+          seed,
+          cfgScale: aiConfig.cfg,
+          samplerName: aiConfig.sampler,
+          negativePrompt: negative,
+        },
+        3, // maxRetries
+        (attempt, max) => {
+          set({ conceptError: `Blank image detected — retrying (${attempt}/${max})...` });
+        },
+      );
 
       // Save to bridge
       await api.saveConceptImage(manifest.character_id, pngBytes);
@@ -199,7 +208,7 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
       await api.saveManifest(updated);
 
       // Reload the concept image URL
-      set({ conceptImageUrl: api.conceptImageUrl(manifest.character_id) });
+      set({ conceptImageUrl: api.conceptImageUrl(manifest.character_id), conceptError: null });
     } catch (err) {
       set({ conceptError: err instanceof Error ? err.message : String(err) });
     } finally {
