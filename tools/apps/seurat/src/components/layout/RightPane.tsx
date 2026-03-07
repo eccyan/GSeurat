@@ -175,14 +175,12 @@ const styles: Record<string, React.CSSProperties> = {
     borderLeft: '1px solid #2a2a3a',
     overflowY: 'auto' as const,
     padding: 12,
-    display: 'flex',
-    flexDirection: 'column' as const,
-    gap: 4,
   },
   collapsible: {
     borderRadius: 6,
     border: '1px solid #2a2a3a',
     overflow: 'hidden',
+    marginBottom: 4,
   },
   collapseHeader: {
     display: 'flex',
