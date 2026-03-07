@@ -158,7 +158,7 @@ export function GenerateActions({ animName }: Props) {
             <Row>
               <label style={styles.label}>Preset</label>
               <select value={aiConfig.ipAdapterPreset} onChange={(e) => setAIConfig({ ipAdapterPreset: e.target.value })} style={styles.select}>
-                {['LIGHT', 'STANDARD', 'VIT-G', 'PLUS', 'PLUS FACE', 'FULL FACE'].map((p) => <option key={p} value={p}>{p}</option>)}
+                {['LIGHT - SD1.5 only (low strength)', 'STANDARD (medium strength)', 'VIT-G (medium strength)', 'PLUS (high strength)', 'PLUS FACE (portraits)', 'FULL FACE - SD1.5 only (portraits stronger)'].map((p) => <option key={p} value={p}>{p}</option>)}
               </select>
             </Row>
             <Row>

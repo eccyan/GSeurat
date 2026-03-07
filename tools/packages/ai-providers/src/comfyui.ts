@@ -1038,7 +1038,7 @@ export class ComfyUIClient implements ImageProvider {
       poseImageName,
       denoise: opts.denoise ?? 0.75,
       ipAdapterWeight: opts.ipAdapterWeight ?? 0.6,
-      ipAdapterPreset: opts.ipAdapterPreset ?? "PLUS",
+      ipAdapterPreset: opts.ipAdapterPreset ?? "PLUS (high strength)",
       openPoseModel,
       openPoseStrength: opts.openPoseStrength ?? 0.8,
       removeBackground: opts.removeBackground,

@@ -52,7 +52,7 @@ export const DEFAULT_AI_CONFIG: AIConfig = {
   remBgNodeType: 'BRIA_RMBG_Zho',
   useIPAdapter: false,
   ipAdapterWeight: 0.6,
-  ipAdapterPreset: 'PLUS',
+  ipAdapterPreset: 'PLUS (high strength)',
   openPoseModel: 'control_v11p_sd15_openpose',
   openPoseStrength: 0.8,
 };
