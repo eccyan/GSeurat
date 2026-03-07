@@ -14,6 +14,11 @@ export type TreeSelection =
   | { kind: 'character'; characterId: string }
   | { kind: 'animation'; characterId: string; animName: string };
 
+export interface LoraConfig {
+  name: string;
+  weight: number;
+}
+
 export interface AIConfig {
   comfyUrl: string;
   steps: number;
@@ -21,6 +26,7 @@ export interface AIConfig {
   cfg: number;
   sampler: string;
   denoise: number;
+  loras: LoraConfig[];
 }
 
 export const DEFAULT_AI_CONFIG: AIConfig = {
@@ -30,6 +36,7 @@ export const DEFAULT_AI_CONFIG: AIConfig = {
   cfg: 7,
   sampler: 'euler_ancestral',
   denoise: 0.55,
+  loras: [{ name: 'pixel-art-xl-v1.1', weight: 0.8 }],
 };
 
 export interface GenerationJob {

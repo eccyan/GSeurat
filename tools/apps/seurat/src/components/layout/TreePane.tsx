@@ -31,12 +31,15 @@ export function TreePane() {
     setExpanded((prev) => ({ ...prev, [id]: !prev[id] }));
   };
 
-  const handleCharacterDoubleClick = async (id: string) => {
-    await selectCharacter(id);
+  const handleCharacterClick = async (id: string) => {
+    if (selectedCharacterId !== id) {
+      await selectCharacter(id);
+    }
+    setExpanded((prev) => ({ ...prev, [id]: true }));
     setTreeSelection({ kind: 'character', characterId: id });
   };
 
-  const handleAnimDoubleClick = async (characterId: string, animName: string) => {
+  const handleAnimClick = async (characterId: string, animName: string) => {
     if (selectedCharacterId !== characterId) {
       await selectCharacter(characterId);
     }
@@ -129,11 +132,7 @@ export function TreePane() {
         return (
           <div key={id}>
             <button
-              onClick={() => {
-                toggleExpand(id);
-                if (selectedCharacterId !== id) selectCharacter(id);
-              }}
-              onDoubleClick={() => handleCharacterDoubleClick(id)}
+              onClick={() => handleCharacterClick(id)}
               style={{
                 ...styles.treeNode,
                 background: charSelected ? '#1e2a42' : selectedCharacterId === id ? '#161630' : 'transparent',
@@ -142,7 +141,10 @@ export function TreePane() {
                 fontWeight: 600,
               }}
             >
-              <span style={{ fontSize: 8, color: '#555', marginRight: 4 }}>
+              <span
+                onClick={(e) => { e.stopPropagation(); toggleExpand(id); }}
+                style={{ fontSize: 8, color: '#555', marginRight: 4, padding: '2px 4px', cursor: 'pointer' }}
+              >
                 {isExpanded ? '\u25BC' : '\u25B6'}
               </span>
               {id}
@@ -153,7 +155,7 @@ export function TreePane() {
               return (
                 <button
                   key={anim.name}
-                  onDoubleClick={() => handleAnimDoubleClick(id, anim.name)}
+                  onClick={() => handleAnimClick(id, anim.name)}
                   style={{
                     ...styles.treeNode,
                     paddingLeft: 24,

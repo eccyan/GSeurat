@@ -57,6 +57,7 @@ export interface SeuratState {
     animName?: string,
     frameIndex?: number,
   ) => Promise<void>;
+  generateSheetRow: (animName: string) => Promise<void>;
 
   // Review
   reviewFilter: ReviewFilter;
@@ -187,6 +188,7 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
 
       const seed = aiConfig.seed === -1 ? Math.floor(Math.random() * 2147483647) : aiConfig.seed;
 
+      const loras = aiConfig.loras.filter((l) => l.name.trim());
       const pngBytes = await comfy.generateImageWithRetry(
         prompt,
         {
@@ -197,6 +199,7 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
           cfgScale: aiConfig.cfg,
           samplerName: aiConfig.sampler,
           negativePrompt: negative,
+          loras,
         },
         3, // maxRetries
         (attempt, max) => {
@@ -342,9 +345,10 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
 
         let pngBytes: Uint8Array;
 
+        const loras = aiConfig.loras.filter((l) => l.name.trim());
         if (conceptBytes) {
-          // img2img: use concept art as reference
-          pngBytes = await comfy.generateImg2Img(prompt, conceptBytes, {
+          // img2img: use concept art as reference (with retry for blank images)
+          pngBytes = await comfy.generateImg2ImgWithRetry(prompt, conceptBytes, {
             width: manifest.spritesheet.frame_width,
             height: manifest.spritesheet.frame_height,
             steps: aiConfig.steps,
@@ -353,9 +357,10 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
             samplerName: aiConfig.sampler,
             negativePrompt: negative,
             denoise: aiConfig.denoise,
+            loras,
           });
         } else {
-          // txt2img fallback
+          // txt2img fallback (with retry for blank images)
           pngBytes = await comfy.generateImageWithRetry(prompt, {
             width: manifest.spritesheet.frame_width,
             height: manifest.spritesheet.frame_height,
@@ -364,6 +369,7 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
             cfgScale: aiConfig.cfg,
             samplerName: aiConfig.sampler,
             negativePrompt: negative,
+            loras,
           });
         }
 
@@ -393,6 +399,111 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
     }
 
     // Save final manifest state
+    try { await api.saveManifest(get().manifest!); } catch { /* best effort */ }
+  },
+
+  generateSheetRow: async (animName) => {
+    const { manifest, aiConfig } = get();
+    if (!manifest) return;
+
+    const anim = manifest.animations.find((a) => a.name === animName);
+    if (!anim) return;
+
+    const comfy = new ComfyUIClient(aiConfig.comfyUrl);
+    const hasConceptImage = manifest.concept.reference_images.length > 0;
+
+    let conceptBytes: Uint8Array | null = null;
+    if (hasConceptImage) {
+      try {
+        conceptBytes = await api.fetchConceptImageBytes(manifest.character_id);
+      } catch { /* Fall back to txt2img */ }
+    }
+
+    const jobId = `sheet_${animName}_${Date.now()}`;
+    get().addGenerationJob({
+      id: jobId,
+      animName,
+      frameIndex: -1, // indicates sheet row
+      status: 'running',
+    });
+
+    try {
+      const { buildSheetRowPrompt, buildNegativePrompt } = await import('../lib/ai-generate.js');
+      const prompt = buildSheetRowPrompt(manifest, anim);
+      const negative = buildNegativePrompt(manifest);
+      const seed = aiConfig.seed === -1
+        ? Math.floor(Math.random() * 2147483647)
+        : aiConfig.seed;
+      const loras = aiConfig.loras.filter((l) => l.name.trim());
+
+      const frameCount = anim.frames.length;
+      const sheetWidth = manifest.spritesheet.frame_width * frameCount;
+      const sheetHeight = manifest.spritesheet.frame_height;
+
+      let pngBytes: Uint8Array;
+      if (conceptBytes) {
+        pngBytes = await comfy.generateImg2ImgWithRetry(prompt, conceptBytes, {
+          width: sheetWidth,
+          height: sheetHeight,
+          steps: aiConfig.steps,
+          seed,
+          cfgScale: aiConfig.cfg,
+          samplerName: aiConfig.sampler,
+          negativePrompt: negative,
+          denoise: aiConfig.denoise,
+          loras,
+        });
+      } else {
+        pngBytes = await comfy.generateImageWithRetry(prompt, {
+          width: sheetWidth,
+          height: sheetHeight,
+          steps: aiConfig.steps,
+          seed,
+          cfgScale: aiConfig.cfg,
+          samplerName: aiConfig.sampler,
+          negativePrompt: negative,
+          loras,
+        });
+      }
+
+      // Slice the sheet row into individual frames using OffscreenCanvas
+      const blob = new Blob([pngBytes as BlobPart], { type: 'image/png' });
+      const bitmap = await createImageBitmap(blob);
+      const fw = manifest.spritesheet.frame_width;
+      const fh = manifest.spritesheet.frame_height;
+
+      for (let i = 0; i < frameCount; i++) {
+        const canvas = new OffscreenCanvas(fw, fh);
+        const ctx = canvas.getContext('2d')!;
+        ctx.drawImage(bitmap, i * fw, 0, fw, fh, 0, 0, fw, fh);
+        const frameBlob = await canvas.convertToBlob({ type: 'image/png' });
+        const frameBuf = await frameBlob.arrayBuffer();
+        const frameBytes = new Uint8Array(frameBuf);
+
+        await api.saveFrameImage(manifest.character_id, animName, i, frameBytes);
+
+        const current = get().manifest;
+        if (current) {
+          const updated = structuredClone(current);
+          const a = updated.animations.find((x) => x.name === animName);
+          const f = a?.frames.find((x) => x.index === i);
+          if (f) {
+            f.status = 'generated';
+            f.file = `${animName}/${animName}_${i}.png`;
+          }
+          set({ manifest: updated });
+        }
+      }
+
+      bitmap.close();
+      get().updateGenerationJob(jobId, { status: 'done' });
+    } catch (err) {
+      get().updateGenerationJob(jobId, {
+        status: 'error',
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+
     try { await api.saveManifest(get().manifest!); } catch { /* best effort */ }
   },
 

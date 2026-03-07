@@ -523,6 +523,40 @@ export class ComfyUIClient implements ImageProvider {
   }
 
   /**
+   * Generate an img2img image with automatic retry when the result appears
+   * to be a blank/black image.  Uses a different seed on each retry.
+   */
+  async generateImg2ImgWithRetry(
+    prompt: string,
+    referenceImage: Uint8Array,
+    opts?: Img2ImgOptions,
+    maxRetries = 3,
+    onRetry?: (attempt: number, max: number) => void,
+  ): Promise<Uint8Array> {
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      const seed = attempt === 1
+        ? (opts?.seed ?? Math.floor(Math.random() * 2 ** 32))
+        : Math.floor(Math.random() * 2 ** 32);
+
+      const pngBytes = await this.generateImg2Img(prompt, referenceImage, { ...opts, seed });
+
+      if (!isBlankImage(pngBytes)) {
+        return pngBytes;
+      }
+
+      if (attempt < maxRetries) {
+        onRetry?.(attempt + 1, maxRetries);
+        await sleep(1000);
+      }
+    }
+
+    throw new Error(
+      `ComfyUI returned a blank/black image after ${maxRetries} img2img attempts. ` +
+      `Try different prompts, check the model is loaded, or increase steps.`
+    );
+  }
+
+  /**
    * Check whether the ComfyUI server is reachable and responding.
    *
    * @returns true if GET /system_stats returns a valid response, false otherwise

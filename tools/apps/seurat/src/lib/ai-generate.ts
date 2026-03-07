@@ -62,6 +62,29 @@ export function buildRowPrompts(
   return anim.frames.map((_, i) => buildFramePrompt(manifest, anim, i));
 }
 
+export function buildSheetRowPrompt(
+  manifest: CharacterManifest,
+  anim: CharacterAnimation,
+): string {
+  const { concept, spritesheet } = manifest;
+  const dirDesc = DIR_DESCRIPTIONS[anim.direction] ?? `facing ${anim.direction}`;
+  const frameCount = anim.frames.length;
+  const phases = STATE_PHASES[anim.state] ?? Array(frameCount).fill(anim.state);
+  const phaseList = phases.slice(0, frameCount).join(', then ');
+
+  return [
+    concept.style_prompt,
+    concept.description,
+    `sprite sheet strip, ${frameCount} frames in a single horizontal row`,
+    `${anim.state} animation cycle, ${dirDesc}`,
+    `animation sequence: ${phaseList}`,
+    `each frame ${spritesheet.frame_width}x${spritesheet.frame_height} pixels`,
+    `total image size ${spritesheet.frame_width * frameCount}x${spritesheet.frame_height}`,
+    'evenly spaced frames, consistent character across all frames',
+    'pixel art, 8-bit, retro game graphics, clean edges, game asset, spritesheet row, transparent background',
+  ].join(', ');
+}
+
 export interface ComfyGenerateParams {
   prompt: string;
   negative_prompt: string;
