@@ -57,6 +57,7 @@ export interface SeuratState {
     animName?: string,
     frameIndex?: number,
   ) => Promise<void>;
+  frameRevision: number;
 
   // Review
   reviewFilter: ReviewFilter;
@@ -269,6 +270,7 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
   aiConfig: DEFAULT_AI_CONFIG,
   setAIConfig: (config) => set((s) => ({ aiConfig: { ...s.aiConfig, ...config } })),
   generationJobs: [],
+  frameRevision: 0,
   addGenerationJob: (job) => set((s) => ({ generationJobs: [...s.generationJobs, job] })),
   updateGenerationJob: (id, update) =>
     set((s) => ({
@@ -346,7 +348,7 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
           const updated = structuredClone(current);
           const f = updated.animations.find((x) => x.name === animName)?.frames.find((x) => x.index === frameIndex);
           if (f) { f.status = 'generated'; f.file = `${animName}/${animName}_${frameIndex}.png`; }
-          set({ manifest: updated });
+          set({ manifest: updated, frameRevision: get().frameRevision + 1 });
         }
         get().updateGenerationJob(jobId, { status: 'done' });
       } catch (err) {
@@ -441,6 +443,7 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
             }
           }
           bitmap.close();
+          set({ frameRevision: get().frameRevision + 1 });
           get().updateGenerationJob(jobId, { status: 'done' });
         } catch (err) {
           console.error(`[Seurat] Row "${an}" generation error:`, err);

@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import type { CharacterAnimation } from '@vulkan-game-tools/asset-types';
 import { frameThumbnailUrl } from '../../lib/bridge-api.js';
+import { useSeuratStore } from '../../store/useSeuratStore.js';
 import { getFrameAtTime } from '../../lib/frame-utils.js';
 
 interface Props {
@@ -15,6 +16,7 @@ interface Props {
  * Loads each frame PNG from the bridge API and cycles through them.
  */
 export function FramePreviewCanvas({ characterId, clip, currentTime, playbackState }: Props) {
+  const frameRevision = useSeuratStore((s) => s.frameRevision);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const imagesRef = useRef<(HTMLImageElement | null)[]>([]);
@@ -65,7 +67,7 @@ export function FramePreviewCanvas({ characterId, clip, currentTime, playbackSta
       };
       img.src = frameThumbnailUrl(characterId, clip.name, frame.index);
     });
-  }, [characterId, clip.name, clip.frames.map((f) => f.status).join(',')]);
+  }, [characterId, clip.name, clip.frames.map((f) => f.status).join(','), frameRevision]);
 
   // Draw
   useEffect(() => {
