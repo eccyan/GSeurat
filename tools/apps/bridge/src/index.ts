@@ -181,6 +181,19 @@ unixClient.onError((err: Error) => {
 // ---------------------------------------------------------------------------
 
 const app = express();
+
+// CORS — allow requests from any localhost dev server
+app.use((_req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  if (_req.method === 'OPTIONS') {
+    res.sendStatus(204);
+    return;
+  }
+  next();
+});
+
 app.use(express.json({ limit: '16mb' }));
 
 // Utility: ensure a path stays within the allowed base directory.
