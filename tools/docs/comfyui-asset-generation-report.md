@@ -210,13 +210,20 @@ cd tools/ComfyUI
 ./venv/bin/python main.py --listen --enable-cors-header '*' --force-fp32
 ```
 
-### Quality Tips
+### Experiment Results
 
-- Use **8 frames** for walk/run cycles (matches the game's 4-frame animation structure with interpolation)
-- Pair with **PixelArtRedmond15V LoRA** (weight 0.85) for consistent pixel art style
-- Keep **denoise at 0.5-0.7** for motion that preserves the reference character's appearance
-- Use `euler` sampler — other samplers produce worse results on MPS
-- For production sprite sheets, generate frames individually via the existing IP-Adapter+OpenPose pipeline for more control; use AnimateDiff for motion reference/prototyping
+Extensive parameter sweep experiments were conducted (see `tools/animatediff-experiments/EXPERIMENT-REPORT.md`). Key findings:
+
+- **AnimateDiff animates backgrounds, not characters.** The motion model applies temporal changes to the entire latent space, resulting in shimmering backgrounds while the character remains mostly static. This makes it unsuitable for sprite animation where characters need specific movements (walk cycles, attacks).
+- **Denoise 0.5-0.6** balances character preservation with motion; >0.8 changes the character too much.
+- **8 frames** is the practical maximum on Apple Silicon (16 frames OOM).
+- **MPS instability**: ComfyUI hangs after ~5-8 consecutive AnimateDiff jobs. Restart between generations.
+- **Chibi vs concept art**: Both produce similar results; neither solves the background animation issue.
+- **Margin padding**: Adding space around the character does not help with the core issue.
+
+### Recommendation
+
+**AnimateDiff is not recommended for sprite animation.** The existing **IP-Adapter + OpenPose** per-frame pipeline provides explicit pose control without background animation issues. AnimateDiff may still be useful for environmental animation (water, fire, foliage tiles) or motion prototyping.
 
 ## Recommendations for Future Work
 

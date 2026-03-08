@@ -772,16 +772,15 @@ function buildAnimateDiffWorkflow(
         guarantee_steps: 1,
       },
     },
-    // Empty latent batch for the animation frames
+    // Repeat the reference image latent across all animation frames
     "74": {
-      class_type: "ADE_EmptyLatentImageLarge",
+      class_type: "RepeatLatentBatch",
       inputs: {
-        width: opts.width,
-        height: opts.height,
-        batch_size: opts.frameCount,
+        samples: ["11", 0],
+        amount: opts.frameCount,
       },
     },
-    // KSampler — uses AnimateDiff-conditioned model
+    // KSampler — uses AnimateDiff-conditioned model + reference latent batch
     "3": {
       class_type: "KSampler",
       inputs: {
