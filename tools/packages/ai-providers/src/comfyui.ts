@@ -70,8 +70,9 @@ interface WorkflowOptions {
 }
 
 /**
- * If removeBackground is enabled, insert a background-removal node between
- * VAEDecode ("8") and SaveImage ("9").
+ * If removeBackground is enabled, insert a background-removal node just before
+ * SaveImage ("9"). Reads whatever SaveImage currently points to (could be
+ * VAEDecode from pass 1, 2, or 3 depending on the workflow).
  */
 function injectRemBGNodes(
   nodes: Record<string, WorkflowNode>,
@@ -80,6 +81,10 @@ function injectRemBGNodes(
   if (!opts.removeBackground) return;
 
   const classType = opts.remBgNodeType ?? "BRIA_RMBG_Zho";
+  // Grab whatever SaveImage currently reads from (the final image source)
+  const saveInputs = nodes["9"].inputs as Record<string, unknown>;
+  const currentSource = saveInputs.images;
+
   // Model loader for BRIA RMBG
   nodes["31"] = {
     class_type: "BRIA_RMBG_ModelLoader_Zho",
@@ -89,11 +94,11 @@ function injectRemBGNodes(
     class_type: classType,
     inputs: {
       rmbgmodel: ["31", 0],
-      image: ["8", 0],
+      image: currentSource,
     },
   };
-  // Rewire SaveImage to take input from RemBG node instead of VAEDecode
-  (nodes["9"].inputs as Record<string, unknown>).images = ["30", 0];
+  // Rewire SaveImage to take input from RemBG node
+  saveInputs.images = ["30", 0];
 }
 
 function buildTxt2ImgWorkflow(

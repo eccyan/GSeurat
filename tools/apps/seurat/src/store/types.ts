@@ -64,7 +64,7 @@ export const DEFAULT_AI_CONFIG: AIConfig = {
   controlStrength: 0.7,
   removeBackground: false,
   remBgNodeType: 'BRIA_RMBG_Zho',
-  useIPAdapter: false,
+  useIPAdapter: true,
   ipAdapterWeight: 0.7,
   ipAdapterPreset: 'PLUS (high strength)',
   ipAdapterStartAt: 0.0,
