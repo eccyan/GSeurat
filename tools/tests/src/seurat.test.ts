@@ -44,6 +44,34 @@ export function runSeuratTests(runner: TestRunner): void {
     assertEqual(config['cfg'], 7, 'Default cfg = 7');
   });
 
+  runner.test('AI config has pixel pass defaults', async (client) => {
+    const config = await client.getStateSelector('aiConfig') as Record<string, unknown>;
+    assert('pixelPassEnabled' in config, 'AI config has pixelPassEnabled');
+    assert('pixelPassDenoise' in config, 'AI config has pixelPassDenoise');
+    assertEqual(config['pixelPassEnabled'], true, 'Default pixelPassEnabled = true');
+    assertEqual(config['pixelPassDenoise'], 0.35, 'Default pixelPassDenoise = 0.35');
+  });
+
+  runner.test('Pixel pass config can be updated', async (client) => {
+    await client.dispatch('setAIConfig', { pixelPassEnabled: false, pixelPassDenoise: 0.5 });
+    const config = await client.getStateSelector('aiConfig') as Record<string, unknown>;
+    assertEqual(config['pixelPassEnabled'], false, 'pixelPassEnabled updated to false');
+    assertEqual(config['pixelPassDenoise'], 0.5, 'pixelPassDenoise updated to 0.5');
+
+    // Restore
+    await client.dispatch('setAIConfig', { pixelPassEnabled: true, pixelPassDenoise: 0.35 });
+  });
+
+  runner.test('Approval actions do not exist', async (client) => {
+    const state = await client.getState() as Record<string, unknown>;
+    assert(!('approveAnimation' in state) || typeof state['approveAnimation'] !== 'function',
+      'approveAnimation should not be an action');
+    assert(!('rejectAnimation' in state) || typeof state['rejectAnimation'] !== 'function',
+      'rejectAnimation should not be an action');
+    assert(!('batchApproveGenerated' in state) || typeof state['batchApproveGenerated'] !== 'function',
+      'batchApproveGenerated should not be an action');
+  });
+
   runner.test('AI config can be updated', async (client) => {
     await client.dispatch('setAIConfig', { steps: 30, cfg: 8.5 });
     const config = await client.getStateSelector('aiConfig') as Record<string, unknown>;

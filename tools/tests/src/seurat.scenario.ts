@@ -186,7 +186,7 @@ export function runSeuratScenarios(runner: TestRunner): void {
   });
 
   // -----------------------------------------------------------------------
-  // Scenario: Review filter cycling
+  // Scenario: Review filter cycling (only valid statuses)
   // -----------------------------------------------------------------------
   runner.test('[Scenario] Review filter cycling', async (client) => {
     const filters = ['all', 'pending', 'generating', 'generated', 'all'] as const;
@@ -195,6 +195,53 @@ export function runSeuratScenarios(runner: TestRunner): void {
       const current = await client.getStateSelector('reviewFilter');
       assertEqual(current, f, `Review filter: ${f}`);
     }
+  });
+
+  // -----------------------------------------------------------------------
+  // Scenario: Pixel pass config modification
+  // -----------------------------------------------------------------------
+  runner.test('[Scenario] Pixel pass config modification and restore', async (client) => {
+    // 1. Read defaults
+    const defaults = await client.getStateSelector('aiConfig') as Record<string, unknown>;
+    assertEqual(defaults['pixelPassEnabled'], true, 'Default pixelPassEnabled');
+    assertEqual(defaults['pixelPassDenoise'], 0.35, 'Default pixelPassDenoise');
+
+    // 2. Disable pixel pass
+    await client.dispatch('setAIConfig', { pixelPassEnabled: false });
+    let config = await client.getStateSelector('aiConfig') as Record<string, unknown>;
+    assertEqual(config['pixelPassEnabled'], false, 'Pixel pass disabled');
+    // Other fields unchanged
+    assertEqual(config['pixelPassDenoise'], 0.35, 'Denoise unchanged');
+    assertEqual(config['useIPAdapter'], defaults['useIPAdapter'], 'IP-Adapter unchanged');
+
+    // 3. Modify denoise
+    await client.dispatch('setAIConfig', { pixelPassDenoise: 0.6 });
+    config = await client.getStateSelector('aiConfig') as Record<string, unknown>;
+    assertEqual(config['pixelPassDenoise'], 0.6, 'Denoise updated to 0.6');
+    assertEqual(config['pixelPassEnabled'], false, 'Still disabled');
+
+    // 4. Re-enable and restore
+    await client.dispatch('setAIConfig', { pixelPassEnabled: true, pixelPassDenoise: 0.35 });
+    config = await client.getStateSelector('aiConfig') as Record<string, unknown>;
+    assertEqual(config['pixelPassEnabled'], true, 'Pixel pass re-enabled');
+    assertEqual(config['pixelPassDenoise'], 0.35, 'Denoise restored');
+  });
+
+  // -----------------------------------------------------------------------
+  // Scenario: No approval gating — all sections always accessible
+  // -----------------------------------------------------------------------
+  runner.test('[Scenario] No approval gating on pipeline', async (client) => {
+    // Verify there are no approval-related actions in the store
+    const state = await client.getState() as Record<string, unknown>;
+    assert(!('approveAnimation' in state), 'No approveAnimation action');
+    assert(!('rejectAnimation' in state), 'No rejectAnimation action');
+    assert(!('batchApproveGenerated' in state), 'No batchApproveGenerated action');
+
+    // All pipeline actions should exist regardless of approval state
+    assert('saveConcept' in state, 'saveConcept exists');
+    assert('saveChibi' in state, 'saveChibi exists');
+    assert('savePixel' in state, 'savePixel exists');
+    assert('generateFrames' in state, 'generateFrames exists');
   });
 
   // -----------------------------------------------------------------------

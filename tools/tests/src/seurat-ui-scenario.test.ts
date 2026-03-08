@@ -60,7 +60,6 @@ function mockManifest() {
       style_prompt: '',
       negative_prompt: '',
       reference_images: [],
-      approved: false,
     },
     spritesheet: {
       frame_width: 128,
@@ -232,9 +231,9 @@ function registerScenarios(runner: ScenarioRunner): void {
     );
     if (saveBtnDisabled) throw new Error('Save button should be enabled');
 
-    // Verify Approve button exists (concept not yet approved)
+    // Verify no Approve button (approval system removed)
     const approveBtn = await page.$('[data-testid="concept-approve-btn"]');
-    if (!approveBtn) throw new Error('Approve button should be visible when concept is not approved');
+    if (approveBtn) throw new Error('Approve button should not exist (approval system removed)');
   });
 
   // -------------------------------------------------------------------------
@@ -260,34 +259,18 @@ function registerScenarios(runner: ScenarioRunner): void {
     await page.click('[data-testid="review-filter-pending"]');
     await sleep(300);
     const pendingCells = await page.$$('[data-testid^="frame-cell-"]');
-    // 1 pending in idle_south + 2 pending in walk_south = 3
-    if (pendingCells.length !== 3) {
-      throw new Error(`Expected 3 pending cells, got ${pendingCells.length}`);
+    // 2 pending in idle_south + 2 pending in walk_south = 4
+    if (pendingCells.length !== 4) {
+      throw new Error(`Expected 4 pending cells, got ${pendingCells.length}`);
     }
 
     // Click "Generated" filter
     await page.click('[data-testid="review-filter-generated"]');
     await sleep(300);
     const generatedCells = await page.$$('[data-testid^="frame-cell-"]');
-    // 1 generated in idle_south + 2 generated in walk_south = 3
-    if (generatedCells.length !== 3) {
-      throw new Error(`Expected 3 generated cells, got ${generatedCells.length}`);
-    }
-
-    // Click "Approved" filter
-    await page.click('[data-testid="review-filter-approved"]');
-    await sleep(300);
-    const approvedCells = await page.$$('[data-testid^="frame-cell-"]');
-    if (approvedCells.length !== 1) {
-      throw new Error(`Expected 1 approved cell, got ${approvedCells.length}`);
-    }
-
-    // Click "Rejected" filter
-    await page.click('[data-testid="review-filter-rejected"]');
-    await sleep(300);
-    const rejectedCells = await page.$$('[data-testid^="frame-cell-"]');
-    if (rejectedCells.length !== 1) {
-      throw new Error(`Expected 1 rejected cell, got ${rejectedCells.length}`);
+    // 2 generated in idle_south + 2 generated in walk_south = 4
+    if (generatedCells.length !== 4) {
+      throw new Error(`Expected 4 generated cells, got ${generatedCells.length}`);
     }
 
     // Back to "All"
