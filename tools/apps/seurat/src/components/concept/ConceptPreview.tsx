@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useSeuratStore } from '../../store/useSeuratStore.js';
 
 type Stage = 'concept' | 'chibi' | 'pixel';
@@ -32,6 +32,20 @@ export function ConceptPreview() {
   const pixelImageUrl = useSeuratStore((s) => s.pixelImageUrl);
   const [selectedStage, setSelectedStage] = useState<Stage>('concept');
   const [imgError, setImgError] = useState<Record<Stage, boolean>>({ concept: false, chibi: false, pixel: false });
+
+  // Reset error state when image URLs change (e.g. after generation)
+  const prevUrls = useRef({ conceptImageUrl, chibiImageUrl, pixelImageUrl });
+  useEffect(() => {
+    const prev = prevUrls.current;
+    const reset: Partial<Record<Stage, boolean>> = {};
+    if (conceptImageUrl !== prev.conceptImageUrl) reset.concept = false;
+    if (chibiImageUrl !== prev.chibiImageUrl) reset.chibi = false;
+    if (pixelImageUrl !== prev.pixelImageUrl) reset.pixel = false;
+    if (Object.keys(reset).length > 0) {
+      setImgError((e) => ({ ...e, ...reset }));
+    }
+    prevUrls.current = { conceptImageUrl, chibiImageUrl, pixelImageUrl };
+  }, [conceptImageUrl, chibiImageUrl, pixelImageUrl]);
 
   if (!manifest) {
     return (
