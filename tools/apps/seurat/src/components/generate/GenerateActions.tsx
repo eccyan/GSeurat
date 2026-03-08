@@ -279,6 +279,24 @@ export function GenerateActions({ animName }: Props) {
         </div>
       </div>
 
+      {/* Downscale */}
+      <div style={styles.section}>
+        <div style={styles.subTitle}>Downscale</div>
+        <Row>
+          <label style={styles.label}>Gen Size</label>
+          <span style={{ fontSize: 9, color: '#aaa', fontFamily: 'monospace' }}>512 x 512</span>
+        </Row>
+        <Row>
+          <label style={styles.label}>Output</label>
+          <span style={{ fontSize: 9, color: '#aaa', fontFamily: 'monospace' }}>
+            {manifest.spritesheet.frame_width} x {manifest.spritesheet.frame_height}
+          </span>
+        </Row>
+        <div style={{ fontSize: 8, color: '#555', fontFamily: 'monospace' }}>
+          Generated at 512x512 then downscaled to sprite frame size via nearest-exact.
+        </div>
+      </div>
+
       {/* AnimateDiff */}
       <div style={styles.section}>
         <Row>
@@ -344,24 +362,6 @@ export function GenerateActions({ animName }: Props) {
         )}
         <div style={{ fontSize: 8, color: '#555', fontFamily: 'monospace' }}>
           Requires ComfyUI-BRIA_AI-REMBG or comfyui-rembg custom node.
-        </div>
-      </div>
-
-      {/* Downscale */}
-      <div style={styles.section}>
-        <div style={styles.subTitle}>Downscale</div>
-        <Row>
-          <label style={styles.label}>Gen Size</label>
-          <span style={{ fontSize: 9, color: '#aaa', fontFamily: 'monospace' }}>512 x 512</span>
-        </Row>
-        <Row>
-          <label style={styles.label}>Output</label>
-          <span style={{ fontSize: 9, color: '#aaa', fontFamily: 'monospace' }}>
-            {manifest.spritesheet.frame_width} x {manifest.spritesheet.frame_height}
-          </span>
-        </Row>
-        <div style={{ fontSize: 8, color: '#555', fontFamily: 'monospace' }}>
-          Generated at 512x512 then downscaled to sprite frame size via nearest-exact.
         </div>
       </div>
 
