@@ -347,6 +347,24 @@ export function GenerateActions({ animName }: Props) {
         </div>
       </div>
 
+      {/* Downscale */}
+      <div style={styles.section}>
+        <div style={styles.subTitle}>Downscale</div>
+        <Row>
+          <label style={styles.label}>Gen Size</label>
+          <span style={{ fontSize: 9, color: '#aaa', fontFamily: 'monospace' }}>512 x 512</span>
+        </Row>
+        <Row>
+          <label style={styles.label}>Output</label>
+          <span style={{ fontSize: 9, color: '#aaa', fontFamily: 'monospace' }}>
+            {manifest.spritesheet.frame_width} x {manifest.spritesheet.frame_height}
+          </span>
+        </Row>
+        <div style={{ fontSize: 8, color: '#555', fontFamily: 'monospace' }}>
+          Generated at 512x512 then downscaled to sprite frame size via nearest-exact.
+        </div>
+      </div>
+
       {/* Mode */}
       <div style={{ fontSize: 9, fontFamily: 'monospace', marginBottom: 4, color: !hasConceptImage ? '#666' : aiConfig.useAnimateDiff ? '#f8c860' : (hasChibiImage && aiConfig.pixelPassEnabled) ? '#90f8b8' : hasChibiImage ? '#90f8b8' : '#f890c8' }}>
         {!hasConceptImage ? 'Upload concept art first' : aiConfig.useAnimateDiff ? 'AnimateDiff mode (all frames)' : (hasChibiImage && aiConfig.pixelPassEnabled) ? 'Three-pass: Pose\u2192Chibi\u2192Pixel' : hasChibiImage ? 'Two-pass: Pose\u2192Chibi' : 'IP-Adapter + OpenPose (single pass)'}
