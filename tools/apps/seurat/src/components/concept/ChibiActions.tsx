@@ -42,7 +42,7 @@ export function ChibiActions() {
   const [saving, setSaving] = useState(false);
 
   const [comfySettings, setComfySettings] = useState<ComfySettings>({
-    checkpoint: '', vae: '', steps: 20, cfg: 10, sampler: 'euler', scheduler: 'normal', seed: -1, denoise: 0.6, loras: [],
+    checkpoint: '', vae: '', steps: 20, cfg: 10, sampler: 'euler', scheduler: 'normal', seed: -1, denoise: 0.75, loras: [],
   });
 
   useEffect(() => {
@@ -63,7 +63,7 @@ export function ChibiActions() {
         sampler: gs.sampler ?? 'euler',
         scheduler: gs.scheduler ?? 'normal',
         seed: gs.seed ?? -1,
-        denoise: gs.denoise ?? 0.6,
+        denoise: gs.denoise ?? 0.75,
         loras: gs.loras ?? [],
       });
     }

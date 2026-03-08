@@ -80,11 +80,9 @@ export interface SeuratState {
   generateChibiViews: (overrides?: { steps?: number; cfg?: number; sampler?: string; scheduler?: string; seed?: number; loras?: { name: string; weight: number }[]; checkpoint?: string; vae?: string; denoise?: number }) => Promise<void>;
   loadChibiViewUrls: () => void;
 
-  // Per-direction reference overrides (null = auto from DIRECTION_TO_VIEW)
-  directionConceptOverride: Record<DirectionCode, ViewDirection | null>;
-  directionChibiOverride: Record<DirectionCode, ViewDirection | null>;
-  setDirectionConceptOverride: (dir: DirectionCode, view: ViewDirection | null) => void;
-  setDirectionChibiOverride: (dir: DirectionCode, view: ViewDirection | null) => void;
+  // Per-animation chibi reference override (null = auto from DIRECTION_TO_VIEW based on anim direction)
+  animChibiOverride: Record<string, ViewDirection | null>;
+  setAnimChibiOverride: (animName: string, view: ViewDirection | null) => void;
 
   // Pixel
   savePixel: (pixel: PixelArt) => Promise<void>;
@@ -227,8 +225,7 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
           ? api.pixelImageUrl(id)
           : null,
         pixelError: null,
-        directionConceptOverride: { S: null, N: null, E: null, W: null },
-        directionChibiOverride: { S: null, N: null, E: null, W: null },
+        animChibiOverride: {},
       });
     } catch {
       console.warn(`[Seurat] Could not load manifest for "${id}" — is the bridge running?`);
@@ -650,8 +647,8 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
     if (!manifest) return;
 
     const chibi = manifest.chibi;
-    const stylePrompt = chibi?.style_prompt || 'chibi, super deformed, 2-3 head body ratio, cute, simple features';
-    const negPrompt = chibi?.negative_prompt || 'realistic, photograph, 3d render';
+    const stylePrompt = chibi?.style_prompt || 'chibi, super deformed, 1.5 head body ratio, big head, small body, cute, simple features, short limbs';
+    const negPrompt = chibi?.negative_prompt || 'realistic, photograph, 3d render, tall, long legs, long limbs, realistic proportions, normal proportions';
 
     set({ chibiGenerating: true, chibiError: null });
 
@@ -669,7 +666,7 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
       const sampler = overrides?.sampler ?? aiConfig.sampler;
       const rawSeed = overrides?.seed ?? aiConfig.seed;
       const seed = rawSeed === -1 ? Math.floor(Math.random() * 2147483647) : rawSeed;
-      const denoise = overrides?.denoise ?? 0.6;
+      const denoise = overrides?.denoise ?? 0.75;
       const loras = overrides?.loras !== undefined
         ? overrides.loras.filter((l) => l.name.trim())
         : aiConfig.loras.filter((l) => l.name.trim());
@@ -804,8 +801,8 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
     if (!manifest) return;
 
     const chibi = manifest.chibi;
-    const stylePrompt = chibi?.style_prompt || 'chibi, super deformed, 2-3 head body ratio, cute, simple features';
-    const negPrompt = chibi?.negative_prompt || 'realistic, photograph, 3d render';
+    const stylePrompt = chibi?.style_prompt || 'chibi, super deformed, 1.5 head body ratio, big head, small body, cute, simple features, short limbs';
+    const negPrompt = chibi?.negative_prompt || 'realistic, photograph, 3d render, tall, long legs, long limbs, realistic proportions, normal proportions';
 
     set({ chibiViewsGenerating: true, chibiViewsError: null, chibiViewsProgress: 'Starting chibi views...' });
 
@@ -820,7 +817,7 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
       const sampler = overrides?.sampler ?? aiConfig.sampler;
       const rawSeed = overrides?.seed ?? aiConfig.seed;
       const seed = rawSeed === -1 ? Math.floor(Math.random() * 2147483647) : rawSeed;
-      const denoise = overrides?.denoise ?? 0.6;
+      const denoise = overrides?.denoise ?? 0.75;
       const loras = overrides?.loras !== undefined
         ? overrides.loras.filter((l) => l.name.trim())
         : aiConfig.loras.filter((l) => l.name.trim());
@@ -912,14 +909,10 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
     }
   },
 
-  // Per-direction reference overrides
-  directionConceptOverride: { S: null, N: null, E: null, W: null },
-  directionChibiOverride: { S: null, N: null, E: null, W: null },
-  setDirectionConceptOverride: (dir, view) => set((s) => ({
-    directionConceptOverride: { ...s.directionConceptOverride, [dir]: view },
-  })),
-  setDirectionChibiOverride: (dir, view) => set((s) => ({
-    directionChibiOverride: { ...s.directionChibiOverride, [dir]: view },
+  // Per-animation chibi reference override
+  animChibiOverride: {},
+  setAnimChibiOverride: (animName, view) => set((s) => ({
+    animChibiOverride: { ...s.animChibiOverride, [animName]: view },
   })),
 
   // Pixel
@@ -1056,7 +1049,7 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
     })),
 
   generateFrames: async (scope, animName, frameIndex) => {
-    const { manifest: _manifest, aiConfig, directionConceptOverride, directionChibiOverride } = get();
+    const { manifest: _manifest, aiConfig, animChibiOverride } = get();
     if (!_manifest) return;
     const manifest = _manifest; // non-null assertion for closures
 
@@ -1067,11 +1060,10 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
     const conceptCache: Partial<Record<ViewDirection | '_default', Uint8Array>> = {};
     const chibiCache: Partial<Record<ViewDirection | '_default', Uint8Array>> = {};
 
-    // Helper: get concept bytes for a given direction code (with override support)
+    // Helper: get concept bytes for a given direction code
     async function getConceptBytesForDir(dir: DirectionCode): Promise<Uint8Array | null> {
       if (!hasConceptImage) return null;
-      const overrideView = directionConceptOverride[dir];
-      const view = overrideView ?? DIRECTION_TO_VIEW[dir];
+      const view = DIRECTION_TO_VIEW[dir];
       // Try direction-specific first, then fall back to default
       if (conceptCache[view]) return conceptCache[view]!;
       try {
@@ -1094,10 +1086,10 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
       }
     }
 
-    async function getChibiBytesForDir(dir: DirectionCode): Promise<Uint8Array | null> {
+    async function getChibiBytesForAnim(animNameKey: string, dir: DirectionCode): Promise<Uint8Array | null> {
       if (!manifest.chibi?.reference_image) return null;
-      const overrideView = directionChibiOverride[dir];
-      const view = overrideView ?? DIRECTION_TO_VIEW[dir];
+      const override = animChibiOverride[animNameKey];
+      const view = override ?? DIRECTION_TO_VIEW[dir];
       if (chibiCache[view]) return chibiCache[view]!;
       try {
         const bytes = await api.fetchChibiImageBytes(manifest.character_id, view);
@@ -1193,7 +1185,7 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
           // Two-pass mode: Concept→Pose→Chibi→Pixel (direction-aware refs)
           const genSize = 512;
           const dirConceptBytes = await getConceptBytesForDir(anim.direction) ?? conceptBytes!;
-          const dirChibiBytes = await getChibiBytesForDir(anim.direction) ?? chibiBytes!;
+          const dirChibiBytes = await getChibiBytesForAnim(anim.name, anim.direction) ?? chibiBytes!;
           console.log(`[Seurat] Generating single frame via two-pass (Concept→Pose→Chibi) (${genSize}x${genSize} → ${manifest.spritesheet.frame_width}x${manifest.spritesheet.frame_height})...`);
           const poseBytes = await renderPoseToPng(pose, genSize, genSize);
           pngBytes = await comfy.generateTwoPassIPAdapterWithRetry(prompt, dirConceptBytes, dirChibiBytes, poseBytes, {
@@ -1385,7 +1377,7 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
 
             // Load direction-specific references
             const dirConceptBytes = await getConceptBytesForDir(anim.direction) ?? conceptBytes!;
-            const dirChibiBytes = await getChibiBytesForDir(anim.direction) ?? chibiBytes!;
+            const dirChibiBytes = await getChibiBytesForAnim(anim.name, anim.direction) ?? chibiBytes!;
 
             for (let i = 0; i < frameCount; i++) {
               const framePrompt = buildFramePrompt(manifest, anim, i);
