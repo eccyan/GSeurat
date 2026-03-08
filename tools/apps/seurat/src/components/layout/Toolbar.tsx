@@ -20,12 +20,11 @@ export function Toolbar() {
       <span style={styles.divider} />
       <span style={styles.sectionTitle}>{getSelectionLabel(treeSelection)}</span>
       <div style={{ flex: 1 }} />
-      {treeSelection.kind === 'animation' && <PlaybackControls />}
     </div>
   );
 }
 
-function PlaybackControls() {
+export function PlaybackControls() {
   const playbackState = useSeuratStore((s) => s.playbackState);
   const currentTime = useSeuratStore((s) => s.currentTime);
   const manifest = useSeuratStore((s) => s.manifest);

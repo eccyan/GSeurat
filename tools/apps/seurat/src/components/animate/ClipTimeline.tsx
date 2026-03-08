@@ -1,6 +1,7 @@
 import React from 'react';
 import type { CharacterAnimation } from '@vulkan-game-tools/asset-types';
 import { useSeuratStore } from '../../store/useSeuratStore.js';
+import { getClipDuration } from '../../lib/frame-utils.js';
 
 interface Props {
   clip: CharacterAnimation;
@@ -9,9 +10,26 @@ interface Props {
 export function ClipTimeline({ clip }: Props) {
   const updateFrameDuration = useSeuratStore((s) => s.updateFrameDuration);
   const currentTime = useSeuratStore((s) => s.currentTime);
+  const playbackState = useSeuratStore((s) => s.playbackState);
+  const { setPlaybackState, setCurrentTime } = useSeuratStore();
 
   const totalDuration = clip.frames.reduce((s, f) => s + f.duration, 0);
+  const duration = getClipDuration(clip);
   const pxPerSecond = 400;
+
+  const handlePlay = () => {
+    if (playbackState === 'playing') {
+      setPlaybackState('paused');
+    } else {
+      if (currentTime >= duration && !clip.loop) setCurrentTime(0);
+      setPlaybackState('playing');
+    }
+  };
+
+  const handleStop = () => {
+    setPlaybackState('stopped');
+    setCurrentTime(0);
+  };
 
   let accum = 0;
 
@@ -22,6 +40,22 @@ export function ClipTimeline({ clip }: Props) {
         <span style={styles.info}>
           {clip.frames.length} frames | {totalDuration.toFixed(3)}s | {clip.loop ? 'loop' : 'once'}
         </span>
+        <div style={{ flex: 1 }} />
+        <button onClick={handleStop} style={styles.tbBtn} title="Stop">&#9632;</button>
+        <button
+          onClick={handlePlay}
+          style={{ ...styles.tbBtn, background: playbackState === 'playing' ? '#2a3a5a' : '#1e1e30', color: playbackState === 'playing' ? '#90b8f8' : '#aaa' }}
+          title={playbackState === 'playing' ? 'Pause' : 'Play'}
+        >
+          {playbackState === 'playing' ? '\u23F8' : '\u25B6'}
+        </button>
+        <input
+          type="range" min={0} max={duration || 1} step={0.001}
+          value={Math.min(currentTime, duration || 1)}
+          onChange={(e) => setCurrentTime(parseFloat(e.target.value))}
+          style={{ width: 120, accentColor: '#f0c040', height: 4 }}
+        />
+        <span style={styles.timeLabel}>{currentTime.toFixed(3)}s / {duration.toFixed(3)}s</span>
       </div>
 
       <div style={styles.timeline}>
@@ -133,6 +167,21 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 9,
     color: '#90b8f8',
     fontWeight: 600,
+  },
+  tbBtn: {
+    background: '#1e1e30',
+    border: '1px solid #333',
+    borderRadius: 3,
+    color: '#aaa',
+    fontFamily: 'monospace',
+    fontSize: 12,
+    padding: '2px 8px',
+    cursor: 'pointer',
+  },
+  timeLabel: {
+    fontFamily: 'monospace',
+    fontSize: 10,
+    color: '#888',
   },
   durationInput: {
     width: 44,
