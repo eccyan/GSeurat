@@ -11,13 +11,13 @@ export const SAMPLER_NAMES = [
 ] as const;
 
 export const DEFAULT_NEGATIVE_PROMPT =
-  'blurry, smooth, realistic, 3d render, photorealistic, watermark, text, signature, noise, static, artifacts, multiple people, crowd, group, duplicate, background, scenery, landscape, buildings, objects';
+  'blurry, smooth, realistic, 3d render, photorealistic, watermark, text, signature, noise, static, artifacts, multiple people, crowd, group, duplicate, background, scenery, landscape, buildings, objects, frame, border, ornate frame, decorative border, circular frame, art nouveau, corner ornaments, vignette, picture frame';
 
 export const CONCEPT_VIEW_PROMPTS: Record<ViewDirection, string> = {
-  front: 'solo, single character, facing forward, front view, looking at viewer, plain background',
-  back:  'solo, single character, from behind, back view, facing away, plain background',
-  right: 'solo, single character, right side view, profile view, facing right, plain background',
-  left:  'solo, single character, left side view, profile view, facing left, plain background',
+  front: 'solo, single character, facing forward, front view, looking at viewer, plain white background, no frame, no border',
+  back:  'solo, single character, from behind, back view, facing away, plain white background, no frame, no border',
+  right: 'solo, single character, right side view, profile view, facing right, plain white background, no frame, no border',
+  left:  'solo, single character, left side view, profile view, facing left, plain white background, no frame, no border',
 };
 
 const DIR_DESCRIPTIONS: Record<string, string> = {

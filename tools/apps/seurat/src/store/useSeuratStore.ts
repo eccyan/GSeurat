@@ -258,14 +258,17 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
     try {
       const comfy = new ComfyUIClient(aiConfig.comfyUrl);
 
+      const { DEFAULT_NEGATIVE_PROMPT, CONCEPT_VIEW_PROMPTS } = await import('../lib/ai-generate.js');
+
       const prompt = [
         concept.style_prompt,
         concept.description,
+        CONCEPT_VIEW_PROMPTS.front,
       ].filter(Boolean).join(', ');
 
       const negative = concept.negative_prompt
-        ? `${concept.negative_prompt}, watermark, text, signature, cropped, partial body`
-        : 'blurry, watermark, text, signature, cropped, partial body';
+        ? `${concept.negative_prompt}, ${DEFAULT_NEGATIVE_PROMPT}, cropped, partial body`
+        : `${DEFAULT_NEGATIVE_PROMPT}, cropped, partial body`;
 
       const steps = overrides?.steps ?? aiConfig.steps;
       const cfg = overrides?.cfg ?? aiConfig.cfg;
@@ -440,12 +443,12 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
 
     try {
       const comfy = new ComfyUIClient(aiConfig.comfyUrl);
-      const { CONCEPT_VIEW_PROMPTS } = await import('../lib/ai-generate.js');
+      const { CONCEPT_VIEW_PROMPTS, DEFAULT_NEGATIVE_PROMPT } = await import('../lib/ai-generate.js');
 
       const basePrompt = [concept.style_prompt, concept.description].filter(Boolean).join(', ');
       const negative = concept.negative_prompt
-        ? `${concept.negative_prompt}, watermark, text, signature, cropped, partial body`
-        : 'blurry, watermark, text, signature, cropped, partial body';
+        ? `${concept.negative_prompt}, ${DEFAULT_NEGATIVE_PROMPT}, cropped, partial body`
+        : `${DEFAULT_NEGATIVE_PROMPT}, cropped, partial body`;
 
       const steps = overrides?.steps ?? aiConfig.steps;
       const cfg = overrides?.cfg ?? aiConfig.cfg;
