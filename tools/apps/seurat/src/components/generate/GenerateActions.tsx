@@ -183,102 +183,100 @@ export function GenerateActions({ animName }: Props) {
 
       {/* IP-Adapter + OpenPose */}
       <div style={styles.section}>
+        <div style={styles.subTitle}>IP-Adapter + OpenPose</div>
+        <Row>
+          <label style={styles.label}>IP Weight</label>
+          <input type="range" min={0.1} max={1.0} step={0.05} value={aiConfig.ipAdapterWeight} onChange={(e) => setAIConfig({ ipAdapterWeight: parseFloat(e.target.value) })} style={{ flex: 1 }} />
+          <span style={{ fontSize: 9, color: '#888', fontFamily: 'monospace' }}>{aiConfig.ipAdapterWeight.toFixed(2)}</span>
+        </Row>
+        <Row>
+          <label style={styles.label}>Preset</label>
+          <select value={aiConfig.ipAdapterPreset} onChange={(e) => setAIConfig({ ipAdapterPreset: e.target.value })} style={styles.select}>
+            {['LIGHT - SD1.5 only (low strength)', 'STANDARD (medium strength)', 'VIT-G (medium strength)', 'PLUS (high strength)', 'PLUS FACE (portraits)', 'FULL FACE - SD1.5 only (portraits stronger)'].map((p) => <option key={p} value={p}>{p}</option>)}
+          </select>
+        </Row>
+        <Row>
+          <label style={styles.label}>Pose Model</label>
+          <input
+            value={aiConfig.openPoseModel}
+            onChange={(e) => setAIConfig({ openPoseModel: e.target.value })}
+            style={styles.input}
+            placeholder="control_v11p_sd15_openpose"
+          />
+        </Row>
+        <Row>
+          <label style={styles.label}>Pose Str</label>
+          <input type="range" min={0.1} max={1.5} step={0.05} value={aiConfig.openPoseStrength} onChange={(e) => setAIConfig({ openPoseStrength: parseFloat(e.target.value) })} style={{ flex: 1 }} />
+          <span style={{ fontSize: 9, color: '#888', fontFamily: 'monospace' }}>{aiConfig.openPoseStrength.toFixed(2)}</span>
+        </Row>
+        <Row>
+          <label style={styles.label}>IPA Range</label>
+          <input type="range" min={0.0} max={1.0} step={0.05} value={aiConfig.ipAdapterStartAt} onChange={(e) => setAIConfig({ ipAdapterStartAt: parseFloat(e.target.value) })} style={{ flex: 1 }} />
+          <span style={{ fontSize: 9, color: '#888', fontFamily: 'monospace' }}>{aiConfig.ipAdapterStartAt.toFixed(2)}</span>
+          <span style={{ fontSize: 9, color: '#666', fontFamily: 'monospace' }}>-</span>
+          <input type="range" min={0.0} max={1.0} step={0.05} value={aiConfig.ipAdapterEndAt} onChange={(e) => setAIConfig({ ipAdapterEndAt: parseFloat(e.target.value) })} style={{ flex: 1 }} />
+          <span style={{ fontSize: 9, color: '#888', fontFamily: 'monospace' }}>{aiConfig.ipAdapterEndAt.toFixed(2)}</span>
+        </Row>
         <Row>
           <label style={{ ...styles.label, minWidth: 'auto' }}>
             <input
               type="checkbox"
-              checked={aiConfig.useIPAdapter}
-              onChange={(e) => setAIConfig({ useIPAdapter: e.target.checked })}
+              checked={aiConfig.consistentSeed}
+              onChange={(e) => setAIConfig({ consistentSeed: e.target.checked })}
             />
-            {' '}IP-Adapter + OpenPose
+            {' '}Consistent seed
           </label>
+          <span style={{ fontSize: 8, color: '#555', fontFamily: 'monospace' }}>same seed for all frames (pose drives variation)</span>
         </Row>
-        {aiConfig.useIPAdapter && (
-          <>
-            <Row>
-              <label style={styles.label}>IP Weight</label>
-              <input type="range" min={0.1} max={1.0} step={0.05} value={aiConfig.ipAdapterWeight} onChange={(e) => setAIConfig({ ipAdapterWeight: parseFloat(e.target.value) })} style={{ flex: 1 }} />
-              <span style={{ fontSize: 9, color: '#888', fontFamily: 'monospace' }}>{aiConfig.ipAdapterWeight.toFixed(2)}</span>
-            </Row>
-            <Row>
-              <label style={styles.label}>Preset</label>
-              <select value={aiConfig.ipAdapterPreset} onChange={(e) => setAIConfig({ ipAdapterPreset: e.target.value })} style={styles.select}>
-                {['LIGHT - SD1.5 only (low strength)', 'STANDARD (medium strength)', 'VIT-G (medium strength)', 'PLUS (high strength)', 'PLUS FACE (portraits)', 'FULL FACE - SD1.5 only (portraits stronger)'].map((p) => <option key={p} value={p}>{p}</option>)}
-              </select>
-            </Row>
-            <Row>
-              <label style={styles.label}>Pose Model</label>
-              <input
-                value={aiConfig.openPoseModel}
-                onChange={(e) => setAIConfig({ openPoseModel: e.target.value })}
-                style={styles.input}
-                placeholder="control_v11p_sd15_openpose"
-              />
-            </Row>
-            <Row>
-              <label style={styles.label}>Pose Str</label>
-              <input type="range" min={0.1} max={1.5} step={0.05} value={aiConfig.openPoseStrength} onChange={(e) => setAIConfig({ openPoseStrength: parseFloat(e.target.value) })} style={{ flex: 1 }} />
-              <span style={{ fontSize: 9, color: '#888', fontFamily: 'monospace' }}>{aiConfig.openPoseStrength.toFixed(2)}</span>
-            </Row>
-            <Row>
-              <label style={styles.label}>IPA Range</label>
-              <input type="range" min={0.0} max={1.0} step={0.05} value={aiConfig.ipAdapterStartAt} onChange={(e) => setAIConfig({ ipAdapterStartAt: parseFloat(e.target.value) })} style={{ flex: 1 }} />
-              <span style={{ fontSize: 9, color: '#888', fontFamily: 'monospace' }}>{aiConfig.ipAdapterStartAt.toFixed(2)}</span>
-              <span style={{ fontSize: 9, color: '#666', fontFamily: 'monospace' }}>-</span>
-              <input type="range" min={0.0} max={1.0} step={0.05} value={aiConfig.ipAdapterEndAt} onChange={(e) => setAIConfig({ ipAdapterEndAt: parseFloat(e.target.value) })} style={{ flex: 1 }} />
-              <span style={{ fontSize: 9, color: '#888', fontFamily: 'monospace' }}>{aiConfig.ipAdapterEndAt.toFixed(2)}</span>
-            </Row>
-            <Row>
-              <label style={{ ...styles.label, minWidth: 'auto' }}>
-                <input
-                  type="checkbox"
-                  checked={aiConfig.consistentSeed}
-                  onChange={(e) => setAIConfig({ consistentSeed: e.target.checked })}
-                />
-                {' '}Consistent seed
-              </label>
-              <span style={{ fontSize: 8, color: '#555', fontFamily: 'monospace' }}>same seed for all frames (pose drives variation)</span>
-            </Row>
-            <div style={{ ...styles.subTitle, marginTop: 4 }}>Chibi Pass (two/three-pass mode)</div>
-            <div style={{ fontSize: 8, color: '#555', fontFamily: 'monospace', marginBottom: 2 }}>
-              When both concept art and chibi images exist: Pass 1 poses with concept, Pass 2 converts to chibi style, Pass 3 (optional) pixelizes.
-            </div>
-            <Row>
-              <label style={styles.label}>Chibi Wt</label>
-              <input type="range" min={0.1} max={1.0} step={0.05} value={aiConfig.chibiWeight} onChange={(e) => setAIConfig({ chibiWeight: parseFloat(e.target.value) })} style={{ flex: 1 }} />
-              <span style={{ fontSize: 9, color: '#888', fontFamily: 'monospace' }}>{aiConfig.chibiWeight.toFixed(2)}</span>
-            </Row>
-            <Row>
-              <label style={styles.label}>Chibi Den</label>
-              <input type="range" min={0.2} max={0.8} step={0.05} value={aiConfig.chibiDenoise} onChange={(e) => setAIConfig({ chibiDenoise: parseFloat(e.target.value) })} style={{ flex: 1 }} />
-              <span style={{ fontSize: 9, color: '#888', fontFamily: 'monospace' }}>{aiConfig.chibiDenoise.toFixed(2)}</span>
-            </Row>
-            <div style={{ fontSize: 8, color: '#555', fontFamily: 'monospace' }}>
-              IPA Range: when IP-Adapter applies during denoising (early=identity, late=details). Chibi Den: lower = closer to posed concept, higher = more chibi style.
-            </div>
-            <div style={{ ...styles.subTitle, marginTop: 4 }}>Pixel Pass (three-pass mode)</div>
-            <Row>
-              <label style={{ ...styles.label, minWidth: 'auto' }}>
-                <input
-                  type="checkbox"
-                  checked={aiConfig.pixelPassEnabled}
-                  onChange={(e) => setAIConfig({ pixelPassEnabled: e.target.checked })}
-                />
-                {' '}Enable Pixel Pass
-              </label>
-            </Row>
-            {aiConfig.pixelPassEnabled && (
-              <Row>
-                <label style={styles.label}>Pixel Den</label>
-                <input type="range" min={0.1} max={0.7} step={0.05} value={aiConfig.pixelPassDenoise} onChange={(e) => setAIConfig({ pixelPassDenoise: parseFloat(e.target.value) })} style={{ flex: 1 }} />
-                <span style={{ fontSize: 9, color: '#888', fontFamily: 'monospace' }}>{aiConfig.pixelPassDenoise.toFixed(2)}</span>
-              </Row>
-            )}
-            <div style={{ fontSize: 8, color: '#555', fontFamily: 'monospace' }}>
-              Pass 3 applies pixel art LoRA to chibi output. Uses LoRAs from the LoRA section above.
-            </div>
-          </>
+        <div style={{ fontSize: 8, color: '#555', fontFamily: 'monospace' }}>
+          IPA Range: when IP-Adapter applies during denoising (early=identity, late=details).
+        </div>
+      </div>
+
+      {/* Chibi Pass */}
+      <div style={styles.section}>
+        <div style={styles.subTitle}>Chibi Pass</div>
+        <div style={{ fontSize: 8, color: '#555', fontFamily: 'monospace', marginBottom: 2 }}>
+          Pass 2 converts posed character to chibi style using chibi reference image.
+        </div>
+        <Row>
+          <label style={styles.label}>Chibi Wt</label>
+          <input type="range" min={0.1} max={1.0} step={0.05} value={aiConfig.chibiWeight} onChange={(e) => setAIConfig({ chibiWeight: parseFloat(e.target.value) })} style={{ flex: 1 }} />
+          <span style={{ fontSize: 9, color: '#888', fontFamily: 'monospace' }}>{aiConfig.chibiWeight.toFixed(2)}</span>
+        </Row>
+        <Row>
+          <label style={styles.label}>Chibi Den</label>
+          <input type="range" min={0.2} max={0.8} step={0.05} value={aiConfig.chibiDenoise} onChange={(e) => setAIConfig({ chibiDenoise: parseFloat(e.target.value) })} style={{ flex: 1 }} />
+          <span style={{ fontSize: 9, color: '#888', fontFamily: 'monospace' }}>{aiConfig.chibiDenoise.toFixed(2)}</span>
+        </Row>
+        <div style={{ fontSize: 8, color: '#555', fontFamily: 'monospace' }}>
+          Lower = closer to posed concept, higher = more chibi style.
+        </div>
+      </div>
+
+      {/* Pixel Pass */}
+      <div style={styles.section}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div style={styles.subTitle}>Pixel Pass</div>
+          <label style={{ ...styles.label, minWidth: 'auto' }}>
+            <input
+              type="checkbox"
+              checked={aiConfig.pixelPassEnabled}
+              onChange={(e) => setAIConfig({ pixelPassEnabled: e.target.checked })}
+            />
+            {' '}Enable
+          </label>
+        </div>
+        {aiConfig.pixelPassEnabled && (
+          <Row>
+            <label style={styles.label}>Pixel Den</label>
+            <input type="range" min={0.1} max={0.7} step={0.05} value={aiConfig.pixelPassDenoise} onChange={(e) => setAIConfig({ pixelPassDenoise: parseFloat(e.target.value) })} style={{ flex: 1 }} />
+            <span style={{ fontSize: 9, color: '#888', fontFamily: 'monospace' }}>{aiConfig.pixelPassDenoise.toFixed(2)}</span>
+          </Row>
         )}
+        <div style={{ fontSize: 8, color: '#555', fontFamily: 'monospace' }}>
+          Pass 3 applies pixel art LoRA to chibi output. Uses LoRAs from the LoRA section above.
+        </div>
       </div>
 
       {/* AnimateDiff */}
@@ -288,7 +286,7 @@ export function GenerateActions({ animName }: Props) {
             <input
               type="checkbox"
               checked={aiConfig.useAnimateDiff}
-              onChange={(e) => setAIConfig({ useAnimateDiff: e.target.checked, useIPAdapter: e.target.checked ? false : aiConfig.useIPAdapter })}
+              onChange={(e) => setAIConfig({ useAnimateDiff: e.target.checked })}
             />
             {' '}AnimateDiff
           </label>
@@ -350,8 +348,8 @@ export function GenerateActions({ animName }: Props) {
       </div>
 
       {/* Mode */}
-      <div style={{ fontSize: 9, fontFamily: 'monospace', marginBottom: 4, color: !hasConceptImage ? '#666' : aiConfig.useAnimateDiff ? '#f8c860' : (aiConfig.useIPAdapter && hasChibiImage) ? '#90f8b8' : aiConfig.useIPAdapter ? '#f890c8' : aiConfig.controlNetModel ? '#c890f8' : '#4ac8c8' }}>
-        {!hasConceptImage ? 'txt2img mode' : aiConfig.useAnimateDiff ? 'AnimateDiff mode (all frames)' : (aiConfig.useIPAdapter && hasChibiImage && aiConfig.pixelPassEnabled) ? 'Three-pass: Pose\u2192Chibi\u2192Pixel' : (aiConfig.useIPAdapter && hasChibiImage) ? 'Two-pass: Pose\u2192Chibi' : aiConfig.useIPAdapter ? 'IP-Adapter + OpenPose mode (per-frame)' : aiConfig.controlNetModel ? 'ControlNet + img2img mode' : 'img2img mode'}
+      <div style={{ fontSize: 9, fontFamily: 'monospace', marginBottom: 4, color: !hasConceptImage ? '#666' : aiConfig.useAnimateDiff ? '#f8c860' : (hasChibiImage && aiConfig.pixelPassEnabled) ? '#90f8b8' : hasChibiImage ? '#90f8b8' : '#f890c8' }}>
+        {!hasConceptImage ? 'Upload concept art first' : aiConfig.useAnimateDiff ? 'AnimateDiff mode (all frames)' : (hasChibiImage && aiConfig.pixelPassEnabled) ? 'Three-pass: Pose\u2192Chibi\u2192Pixel' : hasChibiImage ? 'Two-pass: Pose\u2192Chibi' : 'IP-Adapter + OpenPose (single pass)'}
       </div>
 
       {/* Generate Animation */}
