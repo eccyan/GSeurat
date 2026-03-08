@@ -73,13 +73,6 @@ export function ConceptPreview() {
 
   return (
     <div style={styles.container}>
-      {/* Column headers */}
-      <div style={styles.headerRow}>
-        <div style={styles.dirLabel} />
-        <div style={styles.colHeader}>Concept</div>
-        <div style={styles.colHeader}>Chibi</div>
-      </div>
-
       {/* One row per direction */}
       {VIEW_ORDER.map(({ view, label }) => {
         const conceptUrl = conceptViewUrls[view] ?? (view === 'front' ? conceptImageUrl : null);
@@ -129,21 +122,6 @@ const styles: Record<string, React.CSSProperties> = {
     fontFamily: 'monospace',
     fontSize: 12,
   },
-  headerRow: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 8,
-    paddingBottom: 4,
-    borderBottom: '1px solid #2a2a3a',
-  },
-  colHeader: {
-    flex: 1,
-    fontFamily: 'monospace',
-    fontSize: 10,
-    fontWeight: 600,
-    color: '#888',
-    textAlign: 'center',
-  },
   row: {
     display: 'flex',
     alignItems: 'center',
@@ -159,9 +137,8 @@ const styles: Record<string, React.CSSProperties> = {
     flexShrink: 0,
   },
   cell: {
-    flex: 1,
-    aspectRatio: '1',
-    maxWidth: 200,
+    width: 120,
+    height: 120,
     background: '#0e0e1a',
     border: '1px solid #2a2a3a',
     borderRadius: 4,
@@ -169,6 +146,7 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
+    flexShrink: 0,
   },
   cellImg: {
     width: '100%',
