@@ -15,6 +15,7 @@ export function ConceptActions() {
   const manifest = useSeuratStore((s) => s.manifest);
   const saveConcept = useSeuratStore((s) => s.saveConcept);
   const aiConfig = useSeuratStore((s) => s.aiConfig);
+  const setAIConfig = useSeuratStore((s) => s.setAIConfig);
   const conceptGenerating = useSeuratStore((s) => s.conceptGenerating);
   const conceptError = useSeuratStore((s) => s.conceptError);
   const uploadConceptImageForView = useSeuratStore((s) => s.uploadConceptImageForView);
@@ -133,6 +134,32 @@ export function ConceptActions() {
         savedSettings={manifest.concept.generation_settings}
       />
 
+      {/* Background Removal */}
+      <div style={styles.remBgSection}>
+        <label style={{ ...styles.label, marginTop: 0, display: 'flex', alignItems: 'center', gap: 4 }}>
+          <input
+            type="checkbox"
+            checked={aiConfig.removeBackground}
+            onChange={(e) => setAIConfig({ removeBackground: e.target.checked })}
+          />
+          Remove Background
+        </label>
+        {aiConfig.removeBackground && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 2 }}>
+            <label style={{ ...styles.label, marginTop: 0, whiteSpace: 'nowrap' }}>Node</label>
+            <input
+              value={aiConfig.remBgNodeType}
+              onChange={(e) => setAIConfig({ remBgNodeType: e.target.value })}
+              style={styles.remBgInput}
+              placeholder="BRIA_RMBG_Zho"
+            />
+          </div>
+        )}
+        <div style={{ fontSize: 8, color: '#555', fontFamily: 'monospace' }}>
+          Requires ComfyUI-BRIA_AI-REMBG or comfyui-rembg custom node.
+        </div>
+      </div>
+
       <label style={styles.label}>Upload per Direction</label>
       <div style={styles.uploadGrid}>
         {VIEW_DIRECTIONS.map((view) => (
@@ -206,6 +233,8 @@ const styles: Record<string, React.CSSProperties> = {
   approveBtn: { flex: 1, background: '#1e3a2e', border: '1px solid #44aa44', borderRadius: 4, color: '#70d870', fontFamily: 'monospace', fontSize: 10, padding: '6px 12px', cursor: 'pointer', fontWeight: 600 },
   divider: { height: 1, background: '#2a2a3a', margin: '8px 0' },
   uploadGrid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 },
+  remBgSection: { background: '#12121e', border: '1px solid #2a2a3a', borderRadius: 4, padding: '6px 8px', display: 'flex', flexDirection: 'column' as const, gap: 2 },
+  remBgInput: { flex: 1, background: '#1a1a2e', border: '1px solid #3a3a5a', borderRadius: 4, color: '#ddd', fontFamily: 'monospace', fontSize: 10, padding: '3px 6px', outline: 'none' },
   generateAllBtn: { width: '100%', background: '#1e3a2e', border: '1px solid #44aa44', borderRadius: 4, color: '#70d870', fontFamily: 'monospace', fontSize: 10, padding: '8px 8px', cursor: 'pointer', fontWeight: 600, textAlign: 'center' },
   uploadBtn: { flex: 1, background: '#1e3a3a', border: '1px solid #4ac8c8', borderRadius: 4, color: '#90d8d8', fontFamily: 'monospace', fontSize: 10, padding: '8px 8px', cursor: 'pointer', fontWeight: 600, textAlign: 'center' },
   progressText: { fontFamily: 'monospace', fontSize: 9, color: '#8a4af8', textAlign: 'center' },

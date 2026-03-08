@@ -459,23 +459,54 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
       const scheduler = overrides?.scheduler;
       const vae = overrides?.vae;
 
-      // 1. Front: txt2img
+      const { getPose, renderPoseToPng } = await import('../lib/pose-templates.js');
+
+      // 1. Front: use existing concept as IP-Adapter ref if available, else txt2img
       const frontPrompt = `${basePrompt}, ${CONCEPT_VIEW_PROMPTS.front}`;
       console.log('[Seurat] Concept views — front prompt:', frontPrompt);
-      const frontBytes = await comfy.generateImageWithRetry(frontPrompt, {
-        width: 512, height: 512, steps, seed, cfgScale: cfg, samplerName: sampler,
-        scheduler, checkpoint, vae, negativePrompt: negative, loras,
-        removeBackground: aiConfig.removeBackground, remBgNodeType: aiConfig.remBgNodeType,
-      }, 3, (attempt, max) => {
-        set({ conceptViewsProgress: `Front: retrying (${attempt}/${max})...` });
-      });
+
+      let existingConceptBytes: Uint8Array | null = null;
+      try {
+        existingConceptBytes = await api.fetchConceptImageBytes(manifest.character_id);
+      } catch { /* no existing concept image — will use txt2img */ }
+
+      let frontBytes: Uint8Array;
+      if (existingConceptBytes) {
+        console.log('[Seurat] Concept views — front: using existing concept as IP-Adapter reference');
+        const idleFrontPose = getPose('idle_down', 0);
+        const frontPoseBytes = idleFrontPose ? await renderPoseToPng(idleFrontPose, 512, 512) : null;
+        if (frontPoseBytes) {
+          frontBytes = await comfy.generateIPAdapterWithRetry(frontPrompt, existingConceptBytes, frontPoseBytes, {
+            width: 512, height: 512, steps, seed, cfgScale: Math.min(cfg, 5), samplerName: sampler,
+            checkpoint, negativePrompt: negative, denoise: 1.0, loras,
+            ipAdapterWeight: 0.7, ipAdapterPreset: aiConfig.ipAdapterPreset,
+            ipAdapterStartAt: 0.0, ipAdapterEndAt: 0.8,
+            openPoseModel: aiConfig.openPoseModel, openPoseStrength: 0.8,
+            removeBackground: aiConfig.removeBackground, remBgNodeType: aiConfig.remBgNodeType,
+            outputWidth: 512, outputHeight: 512,
+          });
+        } else {
+          frontBytes = await comfy.generateImg2ImgWithRetry(frontPrompt, existingConceptBytes, {
+            width: 512, height: 512, steps, seed, cfgScale: cfg, samplerName: sampler,
+            checkpoint, negativePrompt: negative, denoise: 0.6, loras,
+            removeBackground: aiConfig.removeBackground, remBgNodeType: aiConfig.remBgNodeType,
+          });
+        }
+      } else {
+        frontBytes = await comfy.generateImageWithRetry(frontPrompt, {
+          width: 512, height: 512, steps, seed, cfgScale: cfg, samplerName: sampler,
+          scheduler, checkpoint, vae, negativePrompt: negative, loras,
+          removeBackground: aiConfig.removeBackground, remBgNodeType: aiConfig.remBgNodeType,
+        }, 3, (attempt, max) => {
+          set({ conceptViewsProgress: `Front: retrying (${attempt}/${max})...` });
+        });
+      }
       await api.saveConceptImage(manifest.character_id, frontBytes, 'front');
       // Also save as default concept.png for backward compat
       await api.saveConceptImage(manifest.character_id, frontBytes);
       set({ conceptViewsProgress: 'Front done. Generating right view...' });
 
       // 2. Right: IP-Adapter from front + direction prompt
-      const { getPose, renderPoseToPng } = await import('../lib/pose-templates.js');
       const rightPrompt = `${basePrompt}, ${CONCEPT_VIEW_PROMPTS.right}`;
       console.log('[Seurat] Concept views — right prompt:', rightPrompt);
       const idleRightPose = getPose('idle_right', 0);

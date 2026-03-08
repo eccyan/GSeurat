@@ -62,7 +62,7 @@ export const DEFAULT_AI_CONFIG: AIConfig = {
   loras: [{ name: 'PixelArtRedmond15V-PixelArt-PIXARFK', weight: 0.4 }],
   controlNetModel: 'control_v11f1e_sd15_tile',
   controlStrength: 0.7,
-  removeBackground: false,
+  removeBackground: true,
   remBgNodeType: 'BRIA_RMBG_Zho',
   useIPAdapter: true,
   ipAdapterWeight: 0.7,
