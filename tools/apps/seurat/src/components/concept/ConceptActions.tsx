@@ -11,6 +11,10 @@ export function ConceptActions() {
   const conceptError = useSeuratStore((s) => s.conceptError);
   const generateConceptArt = useSeuratStore((s) => s.generateConceptArt);
   const uploadConceptImage = useSeuratStore((s) => s.uploadConceptImage);
+  const conceptViewsGenerating = useSeuratStore((s) => s.conceptViewsGenerating);
+  const conceptViewsError = useSeuratStore((s) => s.conceptViewsError);
+  const conceptViewsProgress = useSeuratStore((s) => s.conceptViewsProgress);
+  const generateConceptViews = useSeuratStore((s) => s.generateConceptViews);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [description, setDescription] = useState('');
@@ -78,6 +82,22 @@ export function ConceptActions() {
     });
   };
 
+  const handleGenerateAllViews = async () => {
+    const concept: ConceptArt = {
+      ...manifest.concept,
+      description,
+      style_prompt: stylePrompt,
+      negative_prompt: negativePrompt,
+    };
+    await saveConcept(concept);
+    await generateConceptViews({
+      steps: comfySettings.steps, cfg: comfySettings.cfg, sampler: comfySettings.sampler,
+      scheduler: comfySettings.scheduler || undefined, seed: comfySettings.seed,
+      loras: comfySettings.loras, checkpoint: comfySettings.checkpoint || undefined,
+      vae: comfySettings.vae || undefined,
+    });
+  };
+
   return (
     <div style={styles.container}>
       <label style={styles.label}>Description</label>
@@ -125,17 +145,17 @@ export function ConceptActions() {
       <div style={styles.buttonRow}>
         <button
           onClick={handleGenerate}
-          disabled={conceptGenerating || (!description && !stylePrompt)}
+          disabled={conceptGenerating || conceptViewsGenerating || (!description && !stylePrompt)}
           style={{
             ...styles.generateBtn,
-            opacity: conceptGenerating || (!description && !stylePrompt) ? 0.5 : 1,
+            opacity: conceptGenerating || conceptViewsGenerating || (!description && !stylePrompt) ? 0.5 : 1,
           }}
         >
-          {conceptGenerating ? 'Generating...' : 'Generate via AI'}
+          {conceptGenerating ? 'Generating...' : 'Generate Front View'}
         </button>
         <button
           onClick={() => fileInputRef.current?.click()}
-          disabled={conceptGenerating}
+          disabled={conceptGenerating || conceptViewsGenerating}
           style={styles.uploadBtn}
         >
           Upload Image
@@ -155,13 +175,33 @@ export function ConceptActions() {
         />
       </div>
 
+      <button
+        onClick={handleGenerateAllViews}
+        disabled={conceptGenerating || conceptViewsGenerating || (!description && !stylePrompt)}
+        style={{
+          ...styles.generateAllBtn,
+          opacity: conceptGenerating || conceptViewsGenerating || (!description && !stylePrompt) ? 0.5 : 1,
+        }}
+      >
+        {conceptViewsGenerating ? 'Generating Views...' : 'Generate All 4 Views'}
+      </button>
+
       {conceptGenerating && (
         <div style={styles.progressText}>
           {conceptError?.includes('retrying') ? conceptError : 'Sending to ComfyUI...'}
         </div>
       )}
+      {conceptViewsGenerating && conceptViewsProgress && (
+        <div style={styles.progressText}>{conceptViewsProgress}</div>
+      )}
       {conceptError && !conceptError.includes('retrying') && (
         <div style={styles.errorText}>{conceptError}</div>
+      )}
+      {conceptViewsError && (
+        <div style={styles.errorText}>{conceptViewsError}</div>
+      )}
+      {!conceptViewsGenerating && conceptViewsProgress && !conceptViewsError && (
+        <div style={{ fontFamily: 'monospace', fontSize: 9, color: '#70d870', textAlign: 'center' }}>{conceptViewsProgress}</div>
       )}
     </div>
   );
@@ -178,6 +218,7 @@ const styles: Record<string, React.CSSProperties> = {
   divider: { height: 1, background: '#2a2a3a', margin: '8px 0' },
   buttonRow: { display: 'flex', gap: 6 },
   generateBtn: { flex: 1, background: '#3a1e6e', border: '1px solid #8a4af8', borderRadius: 4, color: '#b890f8', fontFamily: 'monospace', fontSize: 10, padding: '8px 8px', cursor: 'pointer', fontWeight: 600, textAlign: 'center' },
+  generateAllBtn: { width: '100%', background: '#1e3a2e', border: '1px solid #44aa44', borderRadius: 4, color: '#70d870', fontFamily: 'monospace', fontSize: 10, padding: '8px 8px', cursor: 'pointer', fontWeight: 600, textAlign: 'center' },
   uploadBtn: { flex: 1, background: '#1e3a3a', border: '1px solid #4ac8c8', borderRadius: 4, color: '#90d8d8', fontFamily: 'monospace', fontSize: 10, padding: '8px 8px', cursor: 'pointer', fontWeight: 600, textAlign: 'center' },
   progressText: { fontFamily: 'monospace', fontSize: 9, color: '#8a4af8', textAlign: 'center' },
   errorText: { fontFamily: 'monospace', fontSize: 9, color: '#d88', background: '#2a1515', border: '1px solid #553333', borderRadius: 4, padding: '4px 6px' },

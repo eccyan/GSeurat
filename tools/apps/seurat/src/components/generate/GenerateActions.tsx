@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import type { DirectionCode, ViewDirection } from '@vulkan-game-tools/asset-types';
+import { VIEW_DIRECTIONS, DIRECTION_TO_VIEW } from '@vulkan-game-tools/asset-types';
 import { useSeuratStore } from '../../store/useSeuratStore.js';
 import { SAMPLER_NAMES } from '../../lib/ai-generate.js';
 
@@ -15,6 +17,12 @@ export function GenerateActions({ animName }: Props) {
   const generateFrames = useSeuratStore((s) => s.generateFrames);
   const availableCheckpoints = useSeuratStore((s) => s.availableCheckpoints);
   const refreshComfyModels = useSeuratStore((s) => s.refreshComfyModels);
+  const conceptViewUrls = useSeuratStore((s) => s.conceptViewUrls);
+  const chibiViewUrls = useSeuratStore((s) => s.chibiViewUrls);
+  const directionConceptOverride = useSeuratStore((s) => s.directionConceptOverride);
+  const directionChibiOverride = useSeuratStore((s) => s.directionChibiOverride);
+  const setDirectionConceptOverride = useSeuratStore((s) => s.setDirectionConceptOverride);
+  const setDirectionChibiOverride = useSeuratStore((s) => s.setDirectionChibiOverride);
   const [generating, setGenerating] = useState(false);
   const [ckptSearch, setCkptSearch] = useState('');
   const [ckptOpen, setCkptOpen] = useState(false);
@@ -31,6 +39,8 @@ export function GenerateActions({ animName }: Props) {
 
   const hasConceptImage = manifest.concept.reference_images.length > 0;
   const hasChibiImage = !!manifest.chibi?.reference_image;
+  const hasConceptViews = VIEW_DIRECTIONS.some((v) => conceptViewUrls[v] !== null);
+  const DIR_CODES: DirectionCode[] = ['S', 'N', 'E', 'W'];
   const anim = manifest.animations.find((a) => a.name === animName);
   const frameCount = anim?.frames.length ?? 0;
 
@@ -232,6 +242,53 @@ export function GenerateActions({ animName }: Props) {
           IPA Range: when IP-Adapter applies during denoising (early=identity, late=details).
         </div>
       </div>
+
+      {/* Per-direction Reference Override */}
+      {hasConceptViews && (
+        <div style={styles.section}>
+          <div style={styles.subTitle}>Reference Override</div>
+          <div style={{ fontSize: 8, color: '#555', fontFamily: 'monospace', marginBottom: 4 }}>
+            Per-direction concept/chibi reference. "auto" uses the natural direction mapping.
+          </div>
+          {DIR_CODES.map((dir) => {
+            const autoView = DIRECTION_TO_VIEW[dir];
+            const conceptOverride = directionConceptOverride[dir];
+            const chibiOverride = directionChibiOverride[dir];
+            const effectiveConceptView = conceptOverride ?? autoView;
+            const effectiveChibiView = chibiOverride ?? autoView;
+            const conceptUrl = conceptViewUrls[effectiveConceptView];
+            const chibiUrl = chibiViewUrls[effectiveChibiView];
+            return (
+              <Row key={dir}>
+                <span style={{ fontFamily: 'monospace', fontSize: 9, color: '#aaa', minWidth: 16 }}>{dir}</span>
+                <span style={{ fontFamily: 'monospace', fontSize: 8, color: '#666', minWidth: 32 }}>({autoView})</span>
+                {conceptUrl && (
+                  <img src={conceptUrl} alt="" style={{ width: 20, height: 20, objectFit: 'contain', imageRendering: 'pixelated' as const, borderRadius: 2, border: '1px solid #333' }} />
+                )}
+                <select
+                  value={conceptOverride ?? 'auto'}
+                  onChange={(e) => setDirectionConceptOverride(dir, e.target.value === 'auto' ? null : e.target.value as ViewDirection)}
+                  style={{ ...styles.select, flex: 1, fontSize: 8 }}
+                >
+                  <option value="auto">auto ({autoView})</option>
+                  {VIEW_DIRECTIONS.map((v) => <option key={v} value={v}>{v}</option>)}
+                </select>
+                {chibiUrl && (
+                  <img src={chibiUrl} alt="" style={{ width: 20, height: 20, objectFit: 'contain', imageRendering: 'pixelated' as const, borderRadius: 2, border: '1px solid #333' }} />
+                )}
+                <select
+                  value={chibiOverride ?? 'auto'}
+                  onChange={(e) => setDirectionChibiOverride(dir, e.target.value === 'auto' ? null : e.target.value as ViewDirection)}
+                  style={{ ...styles.select, flex: 1, fontSize: 8 }}
+                >
+                  <option value="auto">auto ({autoView})</option>
+                  {VIEW_DIRECTIONS.map((v) => <option key={v} value={v}>{v}</option>)}
+                </select>
+              </Row>
+            );
+          })}
+        </div>
+      )}
 
       {/* Chibi Pass */}
       <div style={styles.section}>

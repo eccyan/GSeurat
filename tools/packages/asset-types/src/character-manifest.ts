@@ -6,6 +6,26 @@ export type FrameStatus = "pending" | "generating" | "generated";
 export type FrameSource = "ai" | "manual" | "placeholder";
 export type DirectionCode = "S" | "N" | "E" | "W";
 export type AnimState = "idle" | "walk" | "run";
+export type ViewDirection = "front" | "back" | "right" | "left";
+
+export const VIEW_DIRECTIONS: ViewDirection[] = ["front", "back", "right", "left"];
+
+export const DIRECTION_TO_VIEW: Record<DirectionCode, ViewDirection> = {
+  S: "front",
+  N: "back",
+  E: "right",
+  W: "left",
+};
+
+/** Returns the concept image filename for a given view direction. */
+export function conceptImageForView(view: ViewDirection): string {
+  return `concept_${view}.png`;
+}
+
+/** Returns the chibi image filename for a given view direction. */
+export function chibiImageForView(view: ViewDirection): string {
+  return `chibi_${view}.png`;
+}
 
 export interface FrameGeneration {
   prompt: string;
@@ -78,6 +98,7 @@ export interface ChibiArt {
   style_prompt: string;
   negative_prompt: string;
   reference_image: string;  // "chibi.png"
+  reference_images?: Partial<Record<ViewDirection, string>>;  // per-view chibi images
   generation_settings?: StageGenerationSettings;
 }
 

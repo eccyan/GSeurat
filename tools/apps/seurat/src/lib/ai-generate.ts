@@ -1,4 +1,4 @@
-import type { CharacterManifest, CharacterAnimation } from '@vulkan-game-tools/asset-types';
+import type { CharacterManifest, CharacterAnimation, ViewDirection } from '@vulkan-game-tools/asset-types';
 import type { AIConfig } from '../store/types.js';
 
 export const SAMPLER_NAMES = [
@@ -12,6 +12,13 @@ export const SAMPLER_NAMES = [
 
 export const DEFAULT_NEGATIVE_PROMPT =
   'blurry, smooth, realistic, 3d render, photorealistic, watermark, text, signature, noise, static, artifacts';
+
+export const CONCEPT_VIEW_PROMPTS: Record<ViewDirection, string> = {
+  front: 'facing forward, front view, looking at viewer',
+  back:  'from behind, back view, facing away',
+  right: 'right side view, profile view, facing right',
+  left:  'left side view, profile view, facing left',
+};
 
 const DIR_DESCRIPTIONS: Record<string, string> = {
   S: 'facing forward, front view',

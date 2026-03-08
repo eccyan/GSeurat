@@ -1,6 +1,7 @@
 import type {
   CharacterManifest,
   FrameStatus,
+  ViewDirection,
 } from '@vulkan-game-tools/asset-types';
 import type { AssembleResult } from '../store/types.js';
 
@@ -85,13 +86,15 @@ export function spriteSheetUrl(characterId: string): string {
   return `${BASE}/api/characters/${encodeURIComponent(characterId)}/spritesheet.png?t=${Date.now()}`;
 }
 
-export function conceptImageUrl(characterId: string): string {
-  return `${BASE}/api/characters/${encodeURIComponent(characterId)}/concept-image?t=${Date.now()}`;
+export function conceptImageUrl(characterId: string, view?: ViewDirection): string {
+  const suffix = view ? `/${view}` : '';
+  return `${BASE}/api/characters/${encodeURIComponent(characterId)}/concept-image${suffix}?t=${Date.now()}`;
 }
 
-export async function fetchConceptImageBytes(characterId: string): Promise<Uint8Array> {
-  const res = await fetch(`${BASE}/api/characters/${encodeURIComponent(characterId)}/concept-image`);
-  if (!res.ok) throw new Error(`No concept image for ${characterId}: ${res.status}`);
+export async function fetchConceptImageBytes(characterId: string, view?: ViewDirection): Promise<Uint8Array> {
+  const suffix = view ? `/${view}` : '';
+  const res = await fetch(`${BASE}/api/characters/${encodeURIComponent(characterId)}/concept-image${suffix}`);
+  if (!res.ok) throw new Error(`No concept image for ${characterId}${view ? ` (${view})` : ''}: ${res.status}`);
   const buf = await res.arrayBuffer();
   return new Uint8Array(buf);
 }
@@ -119,7 +122,7 @@ export async function saveFrameImage(
   if (!res.ok) throw new Error(`Failed to save frame image: ${res.status}`);
 }
 
-export async function saveConceptImage(characterId: string, pngBytes: Uint8Array): Promise<void> {
+export async function saveConceptImage(characterId: string, pngBytes: Uint8Array, view?: ViewDirection): Promise<void> {
   // Convert to base64 for JSON transport
   let binary = '';
   for (let i = 0; i < pngBytes.length; i++) {
@@ -127,8 +130,9 @@ export async function saveConceptImage(characterId: string, pngBytes: Uint8Array
   }
   const base64 = btoa(binary);
 
+  const suffix = view ? `/${view}` : '';
   const res = await fetch(
-    `${BASE}/api/characters/${encodeURIComponent(characterId)}/concept-image`,
+    `${BASE}/api/characters/${encodeURIComponent(characterId)}/concept-image${suffix}`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -138,26 +142,29 @@ export async function saveConceptImage(characterId: string, pngBytes: Uint8Array
   if (!res.ok) throw new Error(`Failed to save concept image: ${res.status}`);
 }
 
-export function chibiImageUrl(characterId: string): string {
-  return `${BASE}/api/characters/${encodeURIComponent(characterId)}/chibi-image?t=${Date.now()}`;
+export function chibiImageUrl(characterId: string, view?: ViewDirection): string {
+  const suffix = view ? `/${view}` : '';
+  return `${BASE}/api/characters/${encodeURIComponent(characterId)}/chibi-image${suffix}?t=${Date.now()}`;
 }
 
-export async function fetchChibiImageBytes(characterId: string): Promise<Uint8Array> {
-  const res = await fetch(`${BASE}/api/characters/${encodeURIComponent(characterId)}/chibi-image`);
-  if (!res.ok) throw new Error(`No chibi image for ${characterId}: ${res.status}`);
+export async function fetchChibiImageBytes(characterId: string, view?: ViewDirection): Promise<Uint8Array> {
+  const suffix = view ? `/${view}` : '';
+  const res = await fetch(`${BASE}/api/characters/${encodeURIComponent(characterId)}/chibi-image${suffix}`);
+  if (!res.ok) throw new Error(`No chibi image for ${characterId}${view ? ` (${view})` : ''}: ${res.status}`);
   const buf = await res.arrayBuffer();
   return new Uint8Array(buf);
 }
 
-export async function saveChibiImage(characterId: string, pngBytes: Uint8Array): Promise<void> {
+export async function saveChibiImage(characterId: string, pngBytes: Uint8Array, view?: ViewDirection): Promise<void> {
   let binary = '';
   for (let i = 0; i < pngBytes.length; i++) {
     binary += String.fromCharCode(pngBytes[i]);
   }
   const base64 = btoa(binary);
 
+  const suffix = view ? `/${view}` : '';
   const res = await fetch(
-    `${BASE}/api/characters/${encodeURIComponent(characterId)}/chibi-image`,
+    `${BASE}/api/characters/${encodeURIComponent(characterId)}/chibi-image${suffix}`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

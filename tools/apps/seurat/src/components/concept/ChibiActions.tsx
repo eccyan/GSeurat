@@ -11,6 +11,10 @@ export function ChibiActions() {
   const chibiError = useSeuratStore((s) => s.chibiError);
   const generateChibiArt = useSeuratStore((s) => s.generateChibiArt);
   const uploadChibiImage = useSeuratStore((s) => s.uploadChibiImage);
+  const chibiViewsGenerating = useSeuratStore((s) => s.chibiViewsGenerating);
+  const chibiViewsError = useSeuratStore((s) => s.chibiViewsError);
+  const chibiViewsProgress = useSeuratStore((s) => s.chibiViewsProgress);
+  const generateChibiViews = useSeuratStore((s) => s.generateChibiViews);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [stylePrompt, setStylePrompt] = useState('chibi, super deformed, 2-3 head body ratio, cute, simple features');
@@ -68,6 +72,16 @@ export function ChibiActions() {
     });
   };
 
+  const handleGenerateAllViews = async () => {
+    await handleSave();
+    await generateChibiViews({
+      steps: comfySettings.steps, cfg: comfySettings.cfg, sampler: comfySettings.sampler,
+      scheduler: comfySettings.scheduler || undefined, seed: comfySettings.seed,
+      loras: comfySettings.loras, checkpoint: comfySettings.checkpoint || undefined,
+      vae: comfySettings.vae || undefined, denoise: comfySettings.denoise,
+    });
+  };
+
   return (
     <div style={styles.container}>
       <label style={styles.label}>Style Prompt</label>
@@ -107,14 +121,14 @@ export function ChibiActions() {
       <div style={styles.buttonRow}>
         <button
           onClick={handleGenerate}
-          disabled={chibiGenerating}
-          style={{ ...styles.generateBtn, opacity: chibiGenerating ? 0.5 : 1 }}
+          disabled={chibiGenerating || chibiViewsGenerating}
+          style={{ ...styles.generateBtn, opacity: chibiGenerating || chibiViewsGenerating ? 0.5 : 1 }}
         >
           {chibiGenerating ? 'Generating...' : 'Generate Chibi'}
         </button>
         <button
           onClick={() => fileInputRef.current?.click()}
-          disabled={chibiGenerating}
+          disabled={chibiGenerating || chibiViewsGenerating}
           style={styles.uploadBtn}
         >
           Upload Image
@@ -131,8 +145,26 @@ export function ChibiActions() {
         />
       </div>
 
+      <button
+        onClick={handleGenerateAllViews}
+        disabled={chibiGenerating || chibiViewsGenerating}
+        style={{
+          ...styles.generateAllBtn,
+          opacity: chibiGenerating || chibiViewsGenerating ? 0.5 : 1,
+        }}
+      >
+        {chibiViewsGenerating ? 'Generating Views...' : 'Generate All 4 Views'}
+      </button>
+
       {chibiGenerating && <div style={styles.progressText}>Sending to ComfyUI...</div>}
+      {chibiViewsGenerating && chibiViewsProgress && (
+        <div style={styles.progressText}>{chibiViewsProgress}</div>
+      )}
       {chibiError && <div style={styles.errorText}>{chibiError}</div>}
+      {chibiViewsError && <div style={styles.errorText}>{chibiViewsError}</div>}
+      {!chibiViewsGenerating && chibiViewsProgress && !chibiViewsError && (
+        <div style={{ fontFamily: 'monospace', fontSize: 9, color: '#70d870', textAlign: 'center' }}>{chibiViewsProgress}</div>
+      )}
     </div>
   );
 }
@@ -149,6 +181,7 @@ const styles: Record<string, React.CSSProperties> = {
   divider: { height: 1, background: '#2a2a3a', margin: '8px 0' },
   buttonRow: { display: 'flex', gap: 6 },
   generateBtn: { flex: 1, background: '#3a1e6e', border: '1px solid #8a4af8', borderRadius: 4, color: '#b890f8', fontFamily: 'monospace', fontSize: 10, padding: '8px 8px', cursor: 'pointer', fontWeight: 600, textAlign: 'center' },
+  generateAllBtn: { width: '100%', background: '#1e3a2e', border: '1px solid #44aa44', borderRadius: 4, color: '#70d870', fontFamily: 'monospace', fontSize: 10, padding: '8px 8px', cursor: 'pointer', fontWeight: 600, textAlign: 'center' },
   uploadBtn: { flex: 1, background: '#1e3a3a', border: '1px solid #4ac8c8', borderRadius: 4, color: '#90d8d8', fontFamily: 'monospace', fontSize: 10, padding: '8px 8px', cursor: 'pointer', fontWeight: 600, textAlign: 'center' },
   progressText: { fontFamily: 'monospace', fontSize: 9, color: '#8a4af8', textAlign: 'center' },
   errorText: { fontFamily: 'monospace', fontSize: 9, color: '#d88', background: '#2a1515', border: '1px solid #553333', borderRadius: 4, padding: '4px 6px' },
