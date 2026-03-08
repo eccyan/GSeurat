@@ -35,6 +35,11 @@ export interface AIConfig {
   useIPAdapter: boolean;
   ipAdapterWeight: number;
   ipAdapterPreset: string;
+  ipAdapterStartAt: number;
+  ipAdapterEndAt: number;
+  consistentSeed: boolean;
+  chibiWeight: number;
+  chibiDenoise: number;
   openPoseModel: string;
   openPoseStrength: number;
   useAnimateDiff: boolean;
@@ -58,10 +63,15 @@ export const DEFAULT_AI_CONFIG: AIConfig = {
   removeBackground: false,
   remBgNodeType: 'BRIA_RMBG_Zho',
   useIPAdapter: false,
-  ipAdapterWeight: 0.6,
+  ipAdapterWeight: 0.7,
   ipAdapterPreset: 'PLUS (high strength)',
+  ipAdapterStartAt: 0.0,
+  ipAdapterEndAt: 0.8,
+  consistentSeed: true,
+  chibiWeight: 0.7,
+  chibiDenoise: 0.5,
   openPoseModel: 'control_v11p_sd15_openpose',
-  openPoseStrength: 0.6,
+  openPoseStrength: 0.8,
   useAnimateDiff: false,
   motionModel: 'mm_sd_v15_v2.ckpt',
   animFrameCount: 8,

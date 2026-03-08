@@ -582,34 +582,51 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
     const comfy = new ComfyUIClient(aiConfig.comfyUrl);
     const hasConceptImage = manifest.concept.reference_images.length > 0;
 
-    // Load reference image for img2img: prefer pixel > chibi > concept
+    // Load reference images for generation
+    // Two-pass mode needs both concept art AND chibi separately
+    // Single-pass fallback: prefer pixel > chibi > concept
     let conceptBytes: Uint8Array | null = null;
-    if (manifest.pixel?.reference_image) {
-      try {
-        conceptBytes = await api.fetchPixelImageBytes(manifest.character_id);
-        console.log(`[Seurat] Loaded pixel image as reference: ${conceptBytes.length} bytes`);
-      } catch (err) {
-        console.warn('[Seurat] Failed to load pixel image, trying chibi:', err);
-      }
-    }
-    if (!conceptBytes && manifest.chibi?.reference_image) {
-      try {
-        conceptBytes = await api.fetchChibiImageBytes(manifest.character_id);
-        console.log(`[Seurat] Loaded chibi image as reference: ${conceptBytes.length} bytes`);
-      } catch (err) {
-        console.warn('[Seurat] Failed to load chibi image, trying concept:', err);
-      }
-    }
-    if (!conceptBytes && hasConceptImage) {
+    let chibiBytes: Uint8Array | null = null;
+
+    // Always try to load concept art
+    if (hasConceptImage) {
       try {
         conceptBytes = await api.fetchConceptImageBytes(manifest.character_id);
         console.log(`[Seurat] Loaded concept image: ${conceptBytes.length} bytes`);
       } catch (err) {
-        console.warn('[Seurat] Failed to load concept image, falling back to txt2img:', err);
+        console.warn('[Seurat] Failed to load concept image:', err);
       }
     }
-    if (!conceptBytes) {
+    // Always try to load chibi
+    if (manifest.chibi?.reference_image) {
+      try {
+        chibiBytes = await api.fetchChibiImageBytes(manifest.character_id);
+        console.log(`[Seurat] Loaded chibi image: ${chibiBytes.length} bytes`);
+      } catch (err) {
+        console.warn('[Seurat] Failed to load chibi image:', err);
+      }
+    }
+
+    // For single-pass modes: pick best available reference (pixel > chibi > concept)
+    let singlePassRef: Uint8Array | null = null;
+    if (manifest.pixel?.reference_image) {
+      try {
+        singlePassRef = await api.fetchPixelImageBytes(manifest.character_id);
+        console.log(`[Seurat] Loaded pixel image as single-pass reference: ${singlePassRef.length} bytes`);
+      } catch (err) {
+        console.warn('[Seurat] Failed to load pixel image:', err);
+      }
+    }
+    if (!singlePassRef) singlePassRef = chibiBytes ?? conceptBytes;
+
+    if (!singlePassRef) {
       console.log('[Seurat] No reference image, using txt2img mode');
+    }
+
+    // Two-pass mode: available when both concept and chibi exist + IP-Adapter enabled
+    const canTwoPass = !!(conceptBytes && chibiBytes && aiConfig.useIPAdapter);
+    if (canTwoPass) {
+      console.log('[Seurat] Two-pass mode available: Concept→Pose→Chibi→Pixel');
     }
 
     // Import prompt builders and pose templates
@@ -647,18 +664,43 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
           ? (get().poseOverrides[`${animName}:${frameIndex}`] ?? getPose(animName, frameIndex))
           : null;
 
-        if (aiConfig.useIPAdapter && conceptBytes && pose) {
-          // IP-Adapter + OpenPose mode — generate at 512x512, downscale to frame size
+        if (canTwoPass && pose) {
+          // Two-pass mode: Concept→Pose→Chibi→Pixel
           const genSize = 512;
-          console.log(`[Seurat] Generating single frame via IP-Adapter + OpenPose (${genSize}x${genSize} → ${manifest.spritesheet.frame_width}x${manifest.spritesheet.frame_height})...`);
+          console.log(`[Seurat] Generating single frame via two-pass (Concept→Pose→Chibi) (${genSize}x${genSize} → ${manifest.spritesheet.frame_width}x${manifest.spritesheet.frame_height})...`);
           const poseBytes = await renderPoseToPng(pose, genSize, genSize);
-          pngBytes = await comfy.generateIPAdapterWithRetry(prompt, conceptBytes, poseBytes, {
+          pngBytes = await comfy.generateTwoPassIPAdapterWithRetry(prompt, conceptBytes!, chibiBytes!, poseBytes, {
             width: genSize, height: genSize,
             steps: aiConfig.steps, seed, cfgScale: ipaCfg, samplerName: aiConfig.sampler,
             checkpoint: aiConfig.checkpoint,
             negativePrompt: negative, denoise: ipaDenoise, loras: ipaLoras,
             ipAdapterWeight: aiConfig.ipAdapterWeight,
             ipAdapterPreset: aiConfig.ipAdapterPreset,
+            ipAdapterStartAt: aiConfig.ipAdapterStartAt,
+            ipAdapterEndAt: aiConfig.ipAdapterEndAt,
+            openPoseModel: aiConfig.openPoseModel,
+            openPoseStrength: aiConfig.openPoseStrength,
+            chibiWeight: aiConfig.chibiWeight,
+            chibiDenoise: aiConfig.chibiDenoise,
+            removeBackground: aiConfig.removeBackground,
+            remBgNodeType: aiConfig.remBgNodeType,
+            outputWidth: manifest.spritesheet.frame_width,
+            outputHeight: manifest.spritesheet.frame_height,
+          });
+        } else if (aiConfig.useIPAdapter && singlePassRef && pose) {
+          // Single-pass IP-Adapter + OpenPose mode (no chibi available)
+          const genSize = 512;
+          console.log(`[Seurat] Generating single frame via IP-Adapter + OpenPose (${genSize}x${genSize} → ${manifest.spritesheet.frame_width}x${manifest.spritesheet.frame_height})...`);
+          const poseBytes = await renderPoseToPng(pose, genSize, genSize);
+          pngBytes = await comfy.generateIPAdapterWithRetry(prompt, singlePassRef, poseBytes, {
+            width: genSize, height: genSize,
+            steps: aiConfig.steps, seed, cfgScale: ipaCfg, samplerName: aiConfig.sampler,
+            checkpoint: aiConfig.checkpoint,
+            negativePrompt: negative, denoise: ipaDenoise, loras: ipaLoras,
+            ipAdapterWeight: aiConfig.ipAdapterWeight,
+            ipAdapterPreset: aiConfig.ipAdapterPreset,
+            ipAdapterStartAt: aiConfig.ipAdapterStartAt,
+            ipAdapterEndAt: aiConfig.ipAdapterEndAt,
             openPoseModel: aiConfig.openPoseModel,
             openPoseStrength: aiConfig.openPoseStrength,
             removeBackground: aiConfig.removeBackground,
@@ -666,9 +708,9 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
             outputWidth: manifest.spritesheet.frame_width,
             outputHeight: manifest.spritesheet.frame_height,
           });
-        } else if (conceptBytes) {
+        } else if (singlePassRef) {
           console.log('[Seurat] Generating single frame via img2img...');
-          pngBytes = await comfy.generateImg2ImgWithRetry(prompt, conceptBytes, {
+          pngBytes = await comfy.generateImg2ImgWithRetry(prompt, singlePassRef, {
             width: manifest.spritesheet.frame_width, height: manifest.spritesheet.frame_height,
             steps: aiConfig.steps, seed, cfgScale: aiConfig.cfg, samplerName: aiConfig.sampler,
             checkpoint: aiConfig.checkpoint,
@@ -736,14 +778,14 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
             (p, i) => overrides[`${an}:${i}`] ?? p
           ) ?? null : null;
 
-          if (aiConfig.useAnimateDiff && conceptBytes) {
+          if (aiConfig.useAnimateDiff && singlePassRef) {
             // AnimateDiff mode: generate animation frames via motion model, then slice
             const genSize = 512;
             console.log(`[Seurat] Row "${an}": AnimateDiff mode, ${frameCount} frames at ${genSize}x${genSize}...`);
 
             const animResult = await comfy.generateAnimateDiffWithRetry(
               buildSheetRowPrompt(manifest, anim),
-              conceptBytes,
+              singlePassRef,
               {
                 width: genSize,
                 height: genSize,
@@ -805,24 +847,66 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
                 console.warn(`[Seurat] Row "${an}" frame ${i}: fetch error:`, err);
               }
             }
-          } else if (aiConfig.useIPAdapter && conceptBytes && animPoses) {
-            // IP-Adapter + OpenPose: generate at 512x512 per-frame, downscale to sprite size
+          } else if (canTwoPass && animPoses) {
+            // Two-pass mode: Concept→Pose→Chibi→Pixel per-frame
             const genSize = 512;
-            console.log(`[Seurat] Row "${an}": IP-Adapter + OpenPose mode, ${frameCount} frames (${genSize}x${genSize} → ${fw}x${fh})...`);
+            console.log(`[Seurat] Row "${an}": Two-pass mode (Concept→Pose→Chibi), ${frameCount} frames (${genSize}x${genSize} → ${fw}x${fh})...`);
 
             for (let i = 0; i < frameCount; i++) {
               const framePrompt = buildFramePrompt(manifest, anim, i);
-              const frameSeed = seed + i;
+              const frameSeed = aiConfig.consistentSeed ? seed : seed + i;
               const poseBytes = await renderPoseToPng(animPoses[i], genSize, genSize);
-              console.log(`[Seurat] Row "${an}" frame ${i}: generating via IP-Adapter...`);
+              console.log(`[Seurat] Row "${an}" frame ${i}: generating via two-pass (seed=${frameSeed}, consistent=${aiConfig.consistentSeed})...`);
 
-              const frameBytes = await comfy.generateIPAdapterWithRetry(framePrompt, conceptBytes, poseBytes, {
+              const frameBytes = await comfy.generateTwoPassIPAdapterWithRetry(framePrompt, conceptBytes!, chibiBytes!, poseBytes, {
                 width: genSize, height: genSize,
                 steps: aiConfig.steps, seed: frameSeed, cfgScale: ipaCfg, samplerName: aiConfig.sampler,
                 checkpoint: aiConfig.checkpoint,
                 negativePrompt: negative, denoise: ipaDenoise, loras: ipaLoras,
                 ipAdapterWeight: aiConfig.ipAdapterWeight,
                 ipAdapterPreset: aiConfig.ipAdapterPreset,
+                ipAdapterStartAt: aiConfig.ipAdapterStartAt,
+                ipAdapterEndAt: aiConfig.ipAdapterEndAt,
+                openPoseModel: aiConfig.openPoseModel,
+                openPoseStrength: aiConfig.openPoseStrength,
+                chibiWeight: aiConfig.chibiWeight,
+                chibiDenoise: aiConfig.chibiDenoise,
+                removeBackground: aiConfig.removeBackground,
+                remBgNodeType: aiConfig.remBgNodeType,
+                outputWidth: fw,
+                outputHeight: fh,
+              });
+
+              await api.saveFrameImage(manifest.character_id, an, i, frameBytes);
+              console.log(`[Seurat] Row "${an}" frame ${i}: saved successfully`);
+              const current = get().manifest;
+              if (current) {
+                const updated = structuredClone(current);
+                const f = updated.animations.find((x) => x.name === an)?.frames.find((x) => x.index === i);
+                if (f) { f.status = 'generated'; f.file = `${an}/${an}_${i}.png`; }
+                set({ manifest: updated });
+              }
+            }
+          } else if (aiConfig.useIPAdapter && singlePassRef && animPoses) {
+            // Single-pass IP-Adapter + OpenPose fallback (no chibi available)
+            const genSize = 512;
+            console.log(`[Seurat] Row "${an}": IP-Adapter + OpenPose mode, ${frameCount} frames (${genSize}x${genSize} → ${fw}x${fh})...`);
+
+            for (let i = 0; i < frameCount; i++) {
+              const framePrompt = buildFramePrompt(manifest, anim, i);
+              const frameSeed = aiConfig.consistentSeed ? seed : seed + i;
+              const poseBytes = await renderPoseToPng(animPoses[i], genSize, genSize);
+              console.log(`[Seurat] Row "${an}" frame ${i}: generating via IP-Adapter (seed=${frameSeed}, consistent=${aiConfig.consistentSeed})...`);
+
+              const frameBytes = await comfy.generateIPAdapterWithRetry(framePrompt, singlePassRef, poseBytes, {
+                width: genSize, height: genSize,
+                steps: aiConfig.steps, seed: frameSeed, cfgScale: ipaCfg, samplerName: aiConfig.sampler,
+                checkpoint: aiConfig.checkpoint,
+                negativePrompt: negative, denoise: ipaDenoise, loras: ipaLoras,
+                ipAdapterWeight: aiConfig.ipAdapterWeight,
+                ipAdapterPreset: aiConfig.ipAdapterPreset,
+                ipAdapterStartAt: aiConfig.ipAdapterStartAt,
+                ipAdapterEndAt: aiConfig.ipAdapterEndAt,
                 openPoseModel: aiConfig.openPoseModel,
                 openPoseStrength: aiConfig.openPoseStrength,
                 removeBackground: aiConfig.removeBackground,
@@ -850,9 +934,9 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
             console.log(`[Seurat] Row "${an}": ${frameCount} frames, ${sheetWidth}x${sheetHeight}`);
 
             let pngBytes: Uint8Array;
-            if (conceptBytes && aiConfig.controlNetModel) {
-              console.log(`[Seurat] Row "${an}": ControlNet mode, tiling concept image...`);
-              const tiledBytes = await tileImageHorizontally(conceptBytes, frameCount, sheetWidth, sheetHeight);
+            if (singlePassRef && aiConfig.controlNetModel) {
+              console.log(`[Seurat] Row "${an}": ControlNet mode, tiling reference image...`);
+              const tiledBytes = await tileImageHorizontally(singlePassRef, frameCount, sheetWidth, sheetHeight);
               pngBytes = await comfy.generateControlNetWithRetry(prompt, tiledBytes, {
                 width: sheetWidth, height: sheetHeight,
                 steps: aiConfig.steps, seed, cfgScale: aiConfig.cfg, samplerName: aiConfig.sampler,
@@ -863,9 +947,9 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
                 removeBackground: aiConfig.removeBackground,
                 remBgNodeType: aiConfig.remBgNodeType,
               });
-            } else if (conceptBytes) {
-              console.log(`[Seurat] Row "${an}": img2img mode, tiling concept image...`);
-              const tiledBytes = await tileImageHorizontally(conceptBytes, frameCount, sheetWidth, sheetHeight);
+            } else if (singlePassRef) {
+              console.log(`[Seurat] Row "${an}": img2img mode, tiling reference image...`);
+              const tiledBytes = await tileImageHorizontally(singlePassRef, frameCount, sheetWidth, sheetHeight);
               pngBytes = await comfy.generateImg2ImgWithRetry(prompt, tiledBytes, {
                 width: sheetWidth, height: sheetHeight,
                 steps: aiConfig.steps, seed, cfgScale: aiConfig.cfg, samplerName: aiConfig.sampler,

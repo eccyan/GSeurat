@@ -1,4 +1,4 @@
-import type { ImageProvider, ImageGenerateOptions, Img2ImgOptions, ControlNetOptions, IPAdapterOptions, AnimateDiffOptions, AvailabilityResult } from "./types.js";
+import type { ImageProvider, ImageGenerateOptions, Img2ImgOptions, ControlNetOptions, IPAdapterOptions, TwoPassIPAdapterOptions, AnimateDiffOptions, AvailabilityResult } from "./types.js";
 
 /** A single node entry in a ComfyUI workflow graph. */
 interface WorkflowNode {
@@ -479,6 +479,10 @@ interface IPAdapterWorkflowOptions extends WorkflowOptions {
   ipAdapterWeight: number;
   /** IP-Adapter preset (LIGHT, STANDARD, PLUS, etc.). */
   ipAdapterPreset: string;
+  /** IP-Adapter start_at — begin applying at this denoising % (0.0–1.0). */
+  ipAdapterStartAt: number;
+  /** IP-Adapter end_at — stop applying at this denoising % (0.0–1.0). */
+  ipAdapterEndAt: number;
   /** OpenPose ControlNet model filename. */
   openPoseModel: string;
   /** OpenPose ControlNet strength. */
@@ -529,8 +533,8 @@ function buildIPAdapterPoseWorkflow(
         weight: opts.ipAdapterWeight,
         weight_type: "linear",
         combine_embeds: "concat",
-        start_at: 0.0,
-        end_at: 1.0,
+        start_at: opts.ipAdapterStartAt,
+        end_at: opts.ipAdapterEndAt,
         embeds_scaling: "V only",
         model: ["41", 0],
         ipadapter: ["41", 1],
@@ -649,6 +653,303 @@ function buildIPAdapterPoseWorkflow(
     (nodes["41"].inputs as Record<string, unknown>).model = prevModelRef;
     (nodes["6"].inputs as Record<string, unknown>).clip = prevClipRef;
     (nodes["7"].inputs as Record<string, unknown>).clip = prevClipRef;
+  }
+
+  injectRemBGNodes(nodes, opts);
+
+  // Downscale from generation resolution to final sprite size
+  if (opts.outputWidth && opts.outputHeight &&
+      (opts.outputWidth !== opts.width || opts.outputHeight !== opts.height)) {
+    const saveInputs = nodes["9"].inputs as Record<string, unknown>;
+    const currentSource = saveInputs.images;
+    nodes["50"] = {
+      class_type: "ImageScale",
+      inputs: {
+        upscale_method: "nearest-exact",
+        width: opts.outputWidth,
+        height: opts.outputHeight,
+        crop: "disabled",
+        image: currentSource,
+      },
+    };
+    saveInputs.images = ["50", 0];
+  }
+
+  return nodes;
+}
+
+/** Options for building the two-pass IP-Adapter workflow (Concept→Pose→Chibi→Pixel). */
+interface TwoPassIPAdapterWorkflowOptions extends WorkflowOptions {
+  /** Uploaded concept image filename (for pass 1 identity). */
+  conceptImageName: string;
+  /** Uploaded chibi image filename (for pass 2 style transfer). */
+  chibiImageName: string;
+  /** Uploaded pose skeleton image filename. */
+  poseImageName: string;
+  /** IP-Adapter weight for pass 1 (concept identity). */
+  ipAdapterWeight: number;
+  /** IP-Adapter preset for pass 1. */
+  ipAdapterPreset: string;
+  /** IP-Adapter start_at for pass 1. */
+  ipAdapterStartAt: number;
+  /** IP-Adapter end_at for pass 1. */
+  ipAdapterEndAt: number;
+  /** OpenPose ControlNet model filename. */
+  openPoseModel: string;
+  /** OpenPose ControlNet strength. */
+  openPoseStrength: number;
+  /** IP-Adapter weight for pass 2 (chibi style). */
+  chibiWeight: number;
+  /** Denoise for pass 2 (how much to chibi-fy; lower = closer to posed concept). */
+  chibiDenoise: number;
+  /** Final output width. */
+  outputWidth?: number;
+  /** Final output height. */
+  outputHeight?: number;
+}
+
+/**
+ * Two-pass workflow: Concept Art + Pose → Posed Character → Chibi-fy → Pixelize
+ *
+ * Pass 1: IP-Adapter (concept) + OpenPose → posed concept at 512x512
+ * Pass 2: IP-Adapter (chibi ref) + img2img (pass 1 output) with low denoise → chibi-fied
+ * Then downscale to final sprite size.
+ */
+function buildTwoPassIPAdapterWorkflow(
+  opts: TwoPassIPAdapterWorkflowOptions
+): Record<string, WorkflowNode> {
+  const nodes: Record<string, WorkflowNode> = {
+    // === Shared: Checkpoint ===
+    "4": {
+      class_type: "CheckpointLoaderSimple",
+      inputs: {
+        ckpt_name: opts.checkpoint ?? "v1-5-pruned-emaonly.safetensors",
+      },
+    },
+
+    // === Pass 1: Concept + Pose → Posed character ===
+
+    // Load concept image for IP-Adapter (identity source)
+    "40": {
+      class_type: "LoadImage",
+      inputs: { image: opts.conceptImageName },
+    },
+    // Load pose skeleton for OpenPose ControlNet
+    "45": {
+      class_type: "LoadImage",
+      inputs: { image: opts.poseImageName },
+    },
+    // IP-Adapter Unified Loader (pass 1)
+    "41": {
+      class_type: "IPAdapterUnifiedLoader",
+      inputs: {
+        preset: opts.ipAdapterPreset,
+        model: ["4", 0],
+      },
+    },
+    // IP-Adapter Apply (pass 1 — concept identity)
+    "42": {
+      class_type: "IPAdapterAdvanced",
+      inputs: {
+        weight: opts.ipAdapterWeight,
+        weight_type: "linear",
+        combine_embeds: "concat",
+        start_at: opts.ipAdapterStartAt,
+        end_at: opts.ipAdapterEndAt,
+        embeds_scaling: "V only",
+        model: ["41", 0],
+        ipadapter: ["41", 1],
+        image: ["40", 0],
+      },
+    },
+    // Positive CLIP (pass 1 — concept prompt focuses on pose)
+    "6": {
+      class_type: "CLIPTextEncode",
+      inputs: {
+        text: opts.prompt,
+        clip: ["4", 1],
+      },
+    },
+    // Negative CLIP (shared)
+    "7": {
+      class_type: "CLIPTextEncode",
+      inputs: {
+        text: opts.negativePrompt,
+        clip: ["4", 1],
+      },
+    },
+    // OpenPose ControlNet loader
+    "46": {
+      class_type: "ControlNetLoader",
+      inputs: { control_net_name: opts.openPoseModel },
+    },
+    // Apply OpenPose ControlNet
+    "47": {
+      class_type: "ControlNetApplyAdvanced",
+      inputs: {
+        positive: ["6", 0],
+        negative: ["7", 0],
+        control_net: ["46", 0],
+        image: ["45", 0],
+        strength: opts.openPoseStrength,
+        start_percent: 0.0,
+        end_percent: 1.0,
+      },
+    },
+    // Empty latent for pass 1 (txt2img style)
+    "5": {
+      class_type: "EmptyLatentImage",
+      inputs: {
+        width: opts.width,
+        height: opts.height,
+        batch_size: 1,
+      },
+    },
+    // KSampler pass 1 — full generation from concept + pose
+    "3": {
+      class_type: "KSampler",
+      inputs: {
+        seed: opts.seed,
+        steps: opts.steps,
+        cfg: opts.cfg,
+        sampler_name: opts.samplerName,
+        scheduler: opts.scheduler ?? "normal",
+        denoise: 1.0,
+        model: ["42", 0],     // IP-Adapter conditioned model
+        positive: ["47", 0],  // OpenPose conditioned positive
+        negative: ["47", 1],  // OpenPose conditioned negative
+        latent_image: ["5", 0],
+      },
+    },
+    // VAEDecode pass 1 output (intermediate — used as input for pass 2)
+    "8": {
+      class_type: "VAEDecode",
+      inputs: {
+        samples: ["3", 0],
+        vae: ["4", 2],
+      },
+    },
+
+    // === Pass 2: Chibi-fy the posed character ===
+
+    // Load chibi reference image for IP-Adapter pass 2
+    "80": {
+      class_type: "LoadImage",
+      inputs: { image: opts.chibiImageName },
+    },
+    // VAEEncode the pass 1 output as starting latent for pass 2
+    "81": {
+      class_type: "VAEEncode",
+      inputs: {
+        pixels: ["8", 0],
+        vae: ["4", 2],
+      },
+    },
+    // IP-Adapter Unified Loader (pass 2 — reuses same checkpoint model)
+    "82": {
+      class_type: "IPAdapterUnifiedLoader",
+      inputs: {
+        preset: opts.ipAdapterPreset,
+        model: ["4", 0],
+      },
+    },
+    // IP-Adapter Apply (pass 2 — chibi style)
+    "83": {
+      class_type: "IPAdapterAdvanced",
+      inputs: {
+        weight: opts.chibiWeight,
+        weight_type: "linear",
+        combine_embeds: "concat",
+        start_at: 0.0,
+        end_at: 1.0,
+        embeds_scaling: "V only",
+        model: ["82", 0],
+        ipadapter: ["82", 1],
+        image: ["80", 0],
+      },
+    },
+    // Positive CLIP (pass 2 — chibi style prompt)
+    "84": {
+      class_type: "CLIPTextEncode",
+      inputs: {
+        text: opts.prompt + ", chibi style, cute, big head, small body, deformed proportions",
+        clip: ["4", 1],
+      },
+    },
+    // KSampler pass 2 — low denoise img2img to chibi-fy
+    "85": {
+      class_type: "KSampler",
+      inputs: {
+        seed: opts.seed,
+        steps: opts.steps,
+        cfg: opts.cfg,
+        sampler_name: opts.samplerName,
+        scheduler: opts.scheduler ?? "normal",
+        denoise: opts.chibiDenoise,
+        model: ["83", 0],     // IP-Adapter (chibi) conditioned model
+        positive: ["84", 0],  // Chibi style positive
+        negative: ["7", 0],   // Shared negative
+        latent_image: ["81", 0], // Pass 1 output as starting latent
+      },
+    },
+    // VAEDecode pass 2
+    "86": {
+      class_type: "VAEDecode",
+      inputs: {
+        samples: ["85", 0],
+        vae: ["4", 2],
+      },
+    },
+    // Save final output
+    "9": {
+      class_type: "SaveImage",
+      inputs: {
+        filename_prefix: "vulkan_game_2pass_",
+        images: ["86", 0],
+      },
+    },
+  };
+
+  // Optional external VAE loader
+  if (opts.vae) {
+    nodes["60"] = {
+      class_type: "VAELoader",
+      inputs: { vae_name: opts.vae },
+    };
+    // Rewire all VAE references
+    (nodes["8"].inputs as Record<string, unknown>).vae = ["60", 0];
+    (nodes["81"].inputs as Record<string, unknown>).vae = ["60", 0];
+    (nodes["86"].inputs as Record<string, unknown>).vae = ["60", 0];
+  }
+
+  // Chain LoRA loaders (between checkpoint and both IP-Adapter loaders)
+  if (opts.loras.length > 0) {
+    let prevModelRef: [string, number] = ["4", 0];
+    let prevClipRef: [string, number] = ["4", 1];
+
+    opts.loras.forEach((lora, i) => {
+      const nodeId = `lora_${i}`;
+      const weight = lora.weight ?? 1.0;
+      nodes[nodeId] = {
+        class_type: "LoraLoader",
+        inputs: {
+          lora_name: lora.name.includes(".") ? lora.name : `${lora.name}.safetensors`,
+          strength_model: weight,
+          strength_clip: weight,
+          model: prevModelRef,
+          clip: prevClipRef,
+        },
+      };
+      prevModelRef = [nodeId, 0];
+      prevClipRef = [nodeId, 1];
+    });
+
+    // Rewire both IP-Adapter loaders and CLIP encoders to use LoRA output
+    (nodes["41"].inputs as Record<string, unknown>).model = prevModelRef;
+    (nodes["82"].inputs as Record<string, unknown>).model = prevModelRef;
+    (nodes["6"].inputs as Record<string, unknown>).clip = prevClipRef;
+    (nodes["7"].inputs as Record<string, unknown>).clip = prevClipRef;
+    (nodes["84"].inputs as Record<string, unknown>).clip = prevClipRef;
   }
 
   injectRemBGNodes(nodes, opts);
@@ -1310,8 +1611,10 @@ export class ComfyUIClient implements ImageProvider {
       conceptImageName,
       poseImageName,
       denoise: opts.denoise ?? 0.75,
-      ipAdapterWeight: opts.ipAdapterWeight ?? 0.6,
+      ipAdapterWeight: opts.ipAdapterWeight ?? 0.7,
       ipAdapterPreset: opts.ipAdapterPreset ?? "PLUS (high strength)",
+      ipAdapterStartAt: opts.ipAdapterStartAt ?? 0.0,
+      ipAdapterEndAt: opts.ipAdapterEndAt ?? 0.8,
       openPoseModel,
       openPoseStrength: opts.openPoseStrength ?? 0.8,
       removeBackground: opts.removeBackground,
@@ -1384,6 +1687,126 @@ export class ComfyUIClient implements ImageProvider {
 
     throw new Error(
       `ComfyUI returned a blank/black image after ${maxRetries} IP-Adapter attempts. ` +
+      `Try different prompts, check the model is loaded, or increase steps.`
+    );
+  }
+
+  /**
+   * Two-pass generation: Concept Art + Pose → Posed Character → Chibi-fy → Pixelize.
+   * Pass 1: IP-Adapter (concept) + OpenPose → posed concept character at 512x512
+   * Pass 2: IP-Adapter (chibi) + img2img on pass 1 output → chibi-fied character
+   * Then downscaled to final sprite size.
+   */
+  async generateTwoPassIPAdapter(
+    prompt: string,
+    conceptImage: Uint8Array,
+    chibiImage: Uint8Array,
+    poseImage: Uint8Array,
+    opts: TwoPassIPAdapterOptions,
+  ): Promise<Uint8Array> {
+    const conceptImageName = await this.uploadImage(conceptImage);
+    const chibiImageName = await this.uploadImage(chibiImage);
+    const poseImageName = await this.uploadImage(poseImage);
+
+    const openPoseModel = (opts.openPoseModel ?? "control_v11p_sd15_openpose").includes(".")
+      ? opts.openPoseModel!
+      : `${opts.openPoseModel ?? "control_v11p_sd15_openpose"}.pth`;
+
+    const workflow = buildTwoPassIPAdapterWorkflow({
+      prompt,
+      negativePrompt: opts.negativePrompt ?? "bad quality, blurry, deformed",
+      width: opts.width ?? 512,
+      height: opts.height ?? 512,
+      steps: opts.steps ?? 20,
+      seed: opts.seed ?? Math.floor(Math.random() * 2 ** 32),
+      cfg: opts.cfgScale ?? 7,
+      samplerName: opts.samplerName ?? "euler",
+      scheduler: opts.scheduler,
+      loras: opts.loras ?? [],
+      checkpoint: opts.checkpoint,
+      vae: opts.vae,
+      conceptImageName,
+      chibiImageName,
+      poseImageName,
+      ipAdapterWeight: opts.ipAdapterWeight ?? 0.7,
+      ipAdapterPreset: opts.ipAdapterPreset ?? "PLUS (high strength)",
+      ipAdapterStartAt: opts.ipAdapterStartAt ?? 0.0,
+      ipAdapterEndAt: opts.ipAdapterEndAt ?? 0.8,
+      openPoseModel,
+      openPoseStrength: opts.openPoseStrength ?? 0.8,
+      chibiWeight: opts.chibiWeight ?? 0.7,
+      chibiDenoise: opts.chibiDenoise ?? 0.5,
+      removeBackground: opts.removeBackground,
+      remBgNodeType: opts.remBgNodeType,
+      outputWidth: opts.outputWidth,
+      outputHeight: opts.outputHeight,
+    });
+
+    const submitBody: PromptRequest = { prompt: workflow };
+    const submitResponse = await fetch(`${this.baseUrl}/prompt`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(submitBody),
+    });
+
+    if (!submitResponse.ok) {
+      const text = await submitResponse.text().catch(() => "(no body)");
+      throw new Error(
+        `ComfyUI two-pass IP-Adapter prompt failed: HTTP ${submitResponse.status} ${submitResponse.statusText} — ${text}`
+      );
+    }
+
+    const { prompt_id } = (await submitResponse.json()) as PromptResponse;
+    const imageFile = await this.pollForCompletion(prompt_id);
+
+    const imageUrl = `${this.baseUrl}/view?filename=${encodeURIComponent(
+      imageFile.filename
+    )}&subfolder=${encodeURIComponent(imageFile.subfolder)}&type=${encodeURIComponent(
+      imageFile.type
+    )}`;
+
+    const imageResponse = await fetch(imageUrl);
+    if (!imageResponse.ok) {
+      throw new Error(
+        `ComfyUI image fetch failed: HTTP ${imageResponse.status} ${imageResponse.statusText}`
+      );
+    }
+
+    const buffer = await imageResponse.arrayBuffer();
+    return new Uint8Array(buffer);
+  }
+
+  /**
+   * Two-pass IP-Adapter generation with retry on blank results.
+   */
+  async generateTwoPassIPAdapterWithRetry(
+    prompt: string,
+    conceptImage: Uint8Array,
+    chibiImage: Uint8Array,
+    poseImage: Uint8Array,
+    opts: TwoPassIPAdapterOptions,
+    maxRetries = 3,
+    onRetry?: (attempt: number, max: number) => void,
+  ): Promise<Uint8Array> {
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      const seed = attempt === 1
+        ? (opts.seed ?? Math.floor(Math.random() * 2 ** 32))
+        : Math.floor(Math.random() * 2 ** 32);
+
+      const pngBytes = await this.generateTwoPassIPAdapter(prompt, conceptImage, chibiImage, poseImage, { ...opts, seed });
+
+      if (!isBlankImage(pngBytes)) {
+        return pngBytes;
+      }
+
+      if (attempt < maxRetries) {
+        onRetry?.(attempt + 1, maxRetries);
+        await sleep(1000);
+      }
+    }
+
+    throw new Error(
+      `ComfyUI returned a blank/black image after ${maxRetries} two-pass IP-Adapter attempts. ` +
       `Try different prompts, check the model is loaded, or increase steps.`
     );
   }

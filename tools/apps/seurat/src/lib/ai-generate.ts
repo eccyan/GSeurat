@@ -43,9 +43,8 @@ export function buildFramePrompt(
     dirDesc,
     `${anim.state} pose`,
     phase,
-    `frame ${frameIndex + 1} of ${frameCount}`,
     `${spritesheet.frame_width}x${spritesheet.frame_height}`,
-    'pixel art, 8-bit, retro game graphics, clean edges, game asset, single character, centered, transparent background',
+    'pixel art, 8-bit, retro game graphics, clean edges, game asset, single character, centered, transparent background, same character',
   ].join(', ');
 }
 

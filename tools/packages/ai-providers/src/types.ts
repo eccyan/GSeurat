@@ -80,10 +80,14 @@ export interface ControlNetOptions extends ImageGenerateOptions {
 export interface IPAdapterOptions extends ImageGenerateOptions {
   /** Denoise strength. Default 0.75. */
   denoise?: number;
-  /** IP-Adapter weight (0.0–1.0). Default 0.6. */
+  /** IP-Adapter weight (0.0–1.0). Default 0.7. */
   ipAdapterWeight?: number;
   /** IP-Adapter preset. Default "PLUS". */
   ipAdapterPreset?: string;
+  /** IP-Adapter start_at — begin applying IP-Adapter at this denoising % (0.0–1.0). Default 0.0. */
+  ipAdapterStartAt?: number;
+  /** IP-Adapter end_at — stop applying IP-Adapter at this denoising % (0.0–1.0). Default 0.8. */
+  ipAdapterEndAt?: number;
   /** OpenPose ControlNet model filename. */
   openPoseModel?: string;
   /** OpenPose ControlNet strength. Default 0.8. */
@@ -92,6 +96,18 @@ export interface IPAdapterOptions extends ImageGenerateOptions {
   outputWidth?: number;
   /** Final output height — downscale from generation resolution. */
   outputHeight?: number;
+}
+
+/**
+ * Options for two-pass IP-Adapter generation (Concept→Pose→Chibi→Pixel).
+ * Pass 1: Concept art (IP-Adapter) + OpenPose → posed character
+ * Pass 2: Chibi reference (IP-Adapter) + img2img → chibi-fied posed character
+ */
+export interface TwoPassIPAdapterOptions extends IPAdapterOptions {
+  /** IP-Adapter weight for pass 2 (chibi style transfer). Default 0.7. */
+  chibiWeight?: number;
+  /** Denoise for pass 2 (how much to chibi-fy). Lower = closer to posed concept. Default 0.5. */
+  chibiDenoise?: number;
 }
 
 /**

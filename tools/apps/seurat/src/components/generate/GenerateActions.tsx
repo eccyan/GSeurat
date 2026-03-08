@@ -18,6 +18,7 @@ export function GenerateActions({ animName }: Props) {
   if (!manifest) return null;
 
   const hasConceptImage = manifest.concept.reference_images.length > 0;
+  const hasChibiImage = !!manifest.chibi?.reference_image;
   const anim = manifest.animations.find((a) => a.name === animName);
   const frameCount = anim?.frames.length ?? 0;
 
@@ -179,8 +180,41 @@ export function GenerateActions({ animName }: Props) {
               <input type="range" min={0.1} max={1.5} step={0.05} value={aiConfig.openPoseStrength} onChange={(e) => setAIConfig({ openPoseStrength: parseFloat(e.target.value) })} style={{ flex: 1 }} />
               <span style={{ fontSize: 9, color: '#888', fontFamily: 'monospace' }}>{aiConfig.openPoseStrength.toFixed(2)}</span>
             </Row>
+            <Row>
+              <label style={styles.label}>IPA Range</label>
+              <input type="range" min={0.0} max={1.0} step={0.05} value={aiConfig.ipAdapterStartAt} onChange={(e) => setAIConfig({ ipAdapterStartAt: parseFloat(e.target.value) })} style={{ flex: 1 }} />
+              <span style={{ fontSize: 9, color: '#888', fontFamily: 'monospace' }}>{aiConfig.ipAdapterStartAt.toFixed(2)}</span>
+              <span style={{ fontSize: 9, color: '#666', fontFamily: 'monospace' }}>-</span>
+              <input type="range" min={0.0} max={1.0} step={0.05} value={aiConfig.ipAdapterEndAt} onChange={(e) => setAIConfig({ ipAdapterEndAt: parseFloat(e.target.value) })} style={{ flex: 1 }} />
+              <span style={{ fontSize: 9, color: '#888', fontFamily: 'monospace' }}>{aiConfig.ipAdapterEndAt.toFixed(2)}</span>
+            </Row>
+            <Row>
+              <label style={{ ...styles.label, minWidth: 'auto' }}>
+                <input
+                  type="checkbox"
+                  checked={aiConfig.consistentSeed}
+                  onChange={(e) => setAIConfig({ consistentSeed: e.target.checked })}
+                />
+                {' '}Consistent seed
+              </label>
+              <span style={{ fontSize: 8, color: '#555', fontFamily: 'monospace' }}>same seed for all frames (pose drives variation)</span>
+            </Row>
+            <div style={{ ...styles.subTitle, marginTop: 4 }}>Chibi Pass (two-pass mode)</div>
+            <div style={{ fontSize: 8, color: '#555', fontFamily: 'monospace', marginBottom: 2 }}>
+              When both concept art and chibi images exist: Pass 1 poses with concept, Pass 2 converts to chibi style.
+            </div>
+            <Row>
+              <label style={styles.label}>Chibi Wt</label>
+              <input type="range" min={0.1} max={1.0} step={0.05} value={aiConfig.chibiWeight} onChange={(e) => setAIConfig({ chibiWeight: parseFloat(e.target.value) })} style={{ flex: 1 }} />
+              <span style={{ fontSize: 9, color: '#888', fontFamily: 'monospace' }}>{aiConfig.chibiWeight.toFixed(2)}</span>
+            </Row>
+            <Row>
+              <label style={styles.label}>Chibi Den</label>
+              <input type="range" min={0.2} max={0.8} step={0.05} value={aiConfig.chibiDenoise} onChange={(e) => setAIConfig({ chibiDenoise: parseFloat(e.target.value) })} style={{ flex: 1 }} />
+              <span style={{ fontSize: 9, color: '#888', fontFamily: 'monospace' }}>{aiConfig.chibiDenoise.toFixed(2)}</span>
+            </Row>
             <div style={{ fontSize: 8, color: '#555', fontFamily: 'monospace' }}>
-              Uses concept art for character consistency + pose skeletons for animation control. Generates per-frame.
+              IPA Range: when IP-Adapter applies during denoising (early=identity, late=details). Chibi Den: lower = closer to posed concept, higher = more chibi style.
             </div>
           </>
         )}
@@ -255,8 +289,8 @@ export function GenerateActions({ animName }: Props) {
       </div>
 
       {/* Mode */}
-      <div style={{ fontSize: 9, fontFamily: 'monospace', marginBottom: 4, color: !hasConceptImage ? '#666' : aiConfig.useAnimateDiff ? '#f8c860' : aiConfig.useIPAdapter ? '#f890c8' : aiConfig.controlNetModel ? '#c890f8' : '#4ac8c8' }}>
-        {!hasConceptImage ? 'txt2img mode' : aiConfig.useAnimateDiff ? 'AnimateDiff mode (all frames)' : aiConfig.useIPAdapter ? 'IP-Adapter + OpenPose mode (per-frame)' : aiConfig.controlNetModel ? 'ControlNet + img2img mode' : 'img2img mode'}
+      <div style={{ fontSize: 9, fontFamily: 'monospace', marginBottom: 4, color: !hasConceptImage ? '#666' : aiConfig.useAnimateDiff ? '#f8c860' : (aiConfig.useIPAdapter && hasChibiImage) ? '#90f8b8' : aiConfig.useIPAdapter ? '#f890c8' : aiConfig.controlNetModel ? '#c890f8' : '#4ac8c8' }}>
+        {!hasConceptImage ? 'txt2img mode' : aiConfig.useAnimateDiff ? 'AnimateDiff mode (all frames)' : (aiConfig.useIPAdapter && hasChibiImage) ? 'Two-pass mode: Concept\u2192Pose\u2192Chibi\u2192Pixel' : aiConfig.useIPAdapter ? 'IP-Adapter + OpenPose mode (per-frame)' : aiConfig.controlNetModel ? 'ControlNet + img2img mode' : 'img2img mode'}
       </div>
 
       {/* Generate Animation */}
