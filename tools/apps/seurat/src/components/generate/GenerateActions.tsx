@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useSeuratStore } from '../../store/useSeuratStore.js';
 import { SAMPLER_NAMES } from '../../lib/ai-generate.js';
 
@@ -13,9 +13,21 @@ export function GenerateActions({ animName }: Props) {
   const generationJobs = useSeuratStore((s) => s.generationJobs);
   const clearCompletedJobs = useSeuratStore((s) => s.clearCompletedJobs);
   const generateFrames = useSeuratStore((s) => s.generateFrames);
+  const availableCheckpoints = useSeuratStore((s) => s.availableCheckpoints);
+  const refreshComfyModels = useSeuratStore((s) => s.refreshComfyModels);
   const [generating, setGenerating] = useState(false);
+  const [ckptSearch, setCkptSearch] = useState('');
+  const [ckptOpen, setCkptOpen] = useState(false);
+
+  useEffect(() => {
+    if (availableCheckpoints.length === 0) refreshComfyModels();
+  }, []);
 
   if (!manifest) return null;
+
+  const filteredCkpts = ckptSearch
+    ? availableCheckpoints.filter((c) => c.toLowerCase().includes(ckptSearch.toLowerCase()))
+    : availableCheckpoints;
 
   const hasConceptImage = manifest.concept.reference_images.length > 0;
   const hasChibiImage = !!manifest.chibi?.reference_image;
@@ -44,7 +56,32 @@ export function GenerateActions({ animName }: Props) {
         </Row>
         <Row>
           <label style={styles.label}>Ckpt</label>
-          <input value={aiConfig.checkpoint} onChange={(e) => setAIConfig({ checkpoint: e.target.value })} style={styles.input} placeholder="v1-5-pruned-emaonly.safetensors" />
+          <div style={{ flex: 1, position: 'relative' }}>
+            <input
+              value={aiConfig.checkpoint}
+              onChange={(e) => { setAIConfig({ checkpoint: e.target.value }); setCkptSearch(e.target.value); }}
+              onFocus={() => { setCkptOpen(true); setCkptSearch(''); }}
+              onBlur={() => setTimeout(() => setCkptOpen(false), 200)}
+              style={{ ...styles.input, width: '100%' }}
+              placeholder="v1-5-pruned-emaonly.safetensors"
+            />
+            {ckptOpen && filteredCkpts.length > 0 && (
+              <div style={styles.dropdown}>
+                {filteredCkpts.slice(0, 15).map((c) => (
+                  <div
+                    key={c}
+                    style={styles.dropdownItem}
+                    onMouseDown={(e) => { e.preventDefault(); setAIConfig({ checkpoint: c }); setCkptOpen(false); }}
+                  >
+                    {c}
+                  </div>
+                ))}
+                {filteredCkpts.length > 15 && (
+                  <div style={{ ...styles.dropdownItem, color: '#555' }}>...{filteredCkpts.length - 15} more</div>
+                )}
+              </div>
+            )}
+          </div>
         </Row>
         <Row>
           <label style={styles.label}>Steps</label>
@@ -439,5 +476,28 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 9,
     color: '#aaa',
     padding: '1px 0',
+  },
+  dropdown: {
+    position: 'absolute' as const,
+    top: '100%',
+    left: 0,
+    right: 0,
+    maxHeight: 200,
+    overflowY: 'auto' as const,
+    background: '#1a1a2e',
+    border: '1px solid #4a4a6a',
+    borderRadius: 3,
+    zIndex: 100,
+  },
+  dropdownItem: {
+    padding: '4px 6px',
+    fontFamily: 'monospace',
+    fontSize: 9,
+    color: '#ccc',
+    cursor: 'pointer',
+    borderBottom: '1px solid #2a2a3a',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap' as const,
   },
 };
