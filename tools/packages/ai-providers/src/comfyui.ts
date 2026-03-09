@@ -493,7 +493,7 @@ interface IPAdapterOnlyWorkflowOptions extends WorkflowOptions {
 function buildIPAdapterOnlyWorkflow(
   opts: IPAdapterOnlyWorkflowOptions
 ): Record<string, WorkflowNode> {
-  const embedsScaling = "K+mean(V)";
+  const embedsScaling = "K+mean(V) w/ C penalty";
   const nodes: Record<string, WorkflowNode> = {
     // Checkpoint
     "4": {
@@ -660,7 +660,7 @@ interface IPAdapterWorkflowOptions extends WorkflowOptions {
 function buildIPAdapterPoseWorkflow(
   opts: IPAdapterWorkflowOptions
 ): Record<string, WorkflowNode> {
-  const embedsScaling = "K+mean(V)";
+  const embedsScaling = "K+mean(V) w/ C penalty";
   const nodes: Record<string, WorkflowNode> = {
     // Checkpoint
     "4": {
@@ -889,7 +889,7 @@ interface TwoPassIPAdapterWorkflowOptions extends WorkflowOptions {
 function buildTwoPassIPAdapterWorkflow(
   opts: TwoPassIPAdapterWorkflowOptions
 ): Record<string, WorkflowNode> {
-  const embedsScaling = "K+mean(V)";
+  const embedsScaling = "K+mean(V) w/ C penalty";
   const nodes: Record<string, WorkflowNode> = {
     // === Shared: Checkpoint ===
     "4": {
