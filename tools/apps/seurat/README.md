@@ -119,7 +119,7 @@ Removes opaque backgrounds from generated sprites (SD 1.5 does not natively supp
 Background removal operates at multiple stages:
 
 1. **Reference pre-processing**: When IP-Adapter + RemBG are both enabled, concept art and chibi reference images are run through RemBG *before* being fed to IP-Adapter. This prevents IP-Adapter from reproducing backgrounds present in the references. Results are cached per-view direction.
-2. **Inter-pass cleanup** (two-pass mode): RemBG runs between Pass 1 (concept+pose) and Pass 2 (chibi-fy) so that the chibi pass starts from a clean character on transparent background.
+2. **Inter-pass cleanup** (two-pass mode): RemBG runs between Pass 1 (concept+pose) and Pass 2 (chibi-fy). The extracted character is composited onto a **solid white background** before VAEEncode — this prevents black/transparent regions from becoming latent noise artifacts in Pass 2.
 3. **Final output**: Standard RemBG on the final generated image.
 
 Frame prompts use `plain white background, solid color background` (SD 1.5 handles solid white reliably) and negative prompts include environment-related terms (`detailed background, room, interior, exterior, furniture, floor, wall, ceiling, sky, ground, environment`).

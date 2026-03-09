@@ -257,10 +257,31 @@ Backgrounds in generated frames were a persistent issue. The pipeline uses multi
 
 1. **Prompt engineering**: Frames use `plain white background, solid color background` instead of `transparent background` (SD 1.5 handles solid colors much better than transparency). Negative prompts include `detailed background, room, interior, exterior, furniture, floor, wall, ceiling, sky, ground, environment`.
 2. **Reference image pre-processing**: When IP-Adapter + RemBG are both enabled, all reference images (concept art and chibi, per-direction) are run through RemBG *before* being fed to IP-Adapter. This prevents IP-Adapter from reproducing backgrounds present in the reference images. Results are cached per-view so RemBG runs once per direction.
-3. **IP-Adapter embeds_scaling**: Pass-1 IP-Adapter nodes use `"K+mean(V) w/ C penalty"` instead of `"V only"`. This preserves character identity but reduces spatial/compositional influence (i.e., backgrounds). Pass-2 chibi nodes remain `"V only"` for strong style transfer.
-4. **IP-Adapter end_at**: Default lowered to `0.6` (from `0.8`) so IP-Adapter stops influencing earlier, giving the text prompt and ControlNet more control over the final output.
-5. **Inter-pass RemBG**: Background removal runs between Pass 1 and Pass 2 so that the chibi pass starts from a clean character on transparent background.
-6. **Final RemBG**: Standard background removal on the final output.
+3. **IP-Adapter embeds_scaling**: All IP-Adapter nodes (pass 1 and pass 2) use `"K+mean(V) w/ C penalty"` instead of `"V only"`. This preserves character identity but reduces spatial/compositional influence (i.e., backgrounds).
+4. **IP-Adapter end_at**: Pass 1 default lowered to `0.6` (from `0.8`); pass 2 lowered to `0.8` (from `1.0`). Stopping IP-Adapter earlier gives the text prompt and ControlNet more control over the final output.
+5. **Inter-pass RemBG + white compositing**: Background removal runs between Pass 1 and Pass 2. Critically, the RemBG output is composited onto a **solid white background** (via `SolidMask` → `MaskToImage` → `ImageCompositeMasked`) before being fed to Pass 2's VAEEncode. Without this step, RemBG strips backgrounds to black/transparent, and VAEEncode turns those black regions into latent noise that Pass 2 renders as swirling artifacts.
+6. **Pass 2/3 white background prompts**: Both the chibi pass and pixel art pass CLIP prompts explicitly include `plain white background, solid color background` to reinforce white background generation in later passes.
+7. **Final RemBG**: Standard background removal on the final output.
+
+### Known Limitation: IP-Adapter PLUS Always Generates Backgrounds
+
+Testing confirmed that IP-Adapter "PLUS (high strength)" (CLIP-ViT-H-14) **always generates backgrounds** with SD 1.5, regardless of:
+- Prompt engineering (negative prompts, "plain white background")
+- Reference image pre-processing (RemBG-cleaned references)
+- embeds_scaling setting (all variants tested)
+- Weight and end_at values (tested 0.3–0.7 weight, 0.2–0.6 end_at)
+- Attention masking (center-region attn_mask on IPAdapterAdvanced)
+- Checkpoint (AnythingV5 and base v1-5-pruned-emaonly both affected)
+
+Without IP-Adapter, the model generates clean white backgrounds but loses character identity. The current pipeline mitigates this by:
+1. Generating with IP-Adapter (accepting backgrounds will exist)
+2. Relying on multi-stage RemBG to extract the character
+3. Using the base `v1-5-pruned-emaonly` checkpoint + higher CFG (7–10) produces simpler/more uniform backgrounds that RemBG handles better than AnythingV5's complex artistic backgrounds
+
+**Future options** to fully solve this:
+- Install the `ip-adapter_sd15_light.safetensors` model for `"LIGHT - SD1.5 only (low strength)"` preset — uses a simpler CLIP encoder with less compositional influence
+- Use `"STANDARD (medium strength)"` with its separate model file
+- Explore ControlNet inpainting to regenerate only the background region after initial generation
 
 ### Workflow Architecture
 
@@ -272,13 +293,15 @@ ControlNetLoader (OpenPose) → ControlNetApplyAdvanced (pose skeleton, strength
                                                ↓
 EmptyLatentImage → KSampler (denoise=1.0) → VAEDecode → Pass 1 output
 
-Inter-pass:
-Pass 1 output → BRIA_RMBG (background removal) → cleaned character
+Inter-pass (white compositing):
+Pass 1 output → BRIA_RMBG → mask
+SolidMask(1.0) → MaskToImage → white background
+ImageCompositeMasked(white, pass1_rgb, rmbg_mask) → character on white
 
 Pass 2:
-Cleaned output → VAEEncode → KSampler (denoise=0.7) → VAEDecode → ImageScale → RemBG → SaveImage
-                                ↑
-IPAdapterUnifiedLoader → IPAdapterAdvanced (chibi reference, V only)
+Character-on-white → VAEEncode → KSampler (denoise=0.7) → VAEDecode → ImageScale → RemBG → SaveImage
+                                     ↑
+IPAdapterUnifiedLoader → IPAdapterAdvanced (chibi reference, K+mean(V) w/ C penalty, end_at=0.8)
 ```
 
 ### API Usage
@@ -330,7 +353,9 @@ A parameter sweep of 14 experiments (56 frames total) was conducted. See `tools/
 | chibiWeight | 0.7 | Weight has minimal effect compared to denoise. 0.5-0.9 all look similar. |
 | ipAdapterEndAt | 0.6 | Stopping IP-Adapter at 60% lets the text prompt and ControlNet dominate the final denoising steps, reducing background leakage and improving pose adherence. |
 | ipAdapterWeight | 0.7 | Standard value; balances identity preservation with prompt adherence. |
-| embeds_scaling (pass 1) | K+mean(V) w/ C penalty | Reduces IP-Adapter's spatial/compositional influence while preserving character identity. |
+| embeds_scaling (all passes) | K+mean(V) w/ C penalty | Reduces IP-Adapter's spatial/compositional influence while preserving character identity. Applied to both pass 1 and pass 2. |
+| checkpoint | v1-5-pruned-emaonly | Base SD 1.5 produces simpler/uniform backgrounds that RemBG handles better. AnythingV5 produces complex artistic backgrounds that resist removal. |
+| CFG | 7–10 | Higher CFG improves prompt adherence for "plain white background". |
 
 **Two-pass vs single-pass comparison:**
 - Two-pass produces more detailed, higher-quality sprites with better concept art fidelity
