@@ -96,7 +96,7 @@ export function ChibiActions() {
     if (genDirection === 'all') {
       await generateChibiViews(comfyOverrides);
     } else {
-      await generateChibiArt(comfyOverrides);
+      await generateChibiArt(genDirection as ViewDirection, comfyOverrides);
     }
   };
 

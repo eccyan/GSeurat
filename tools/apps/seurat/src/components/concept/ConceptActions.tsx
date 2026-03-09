@@ -107,7 +107,7 @@ export function ConceptActions() {
     if (genDirection === 'all') {
       await generateConceptViews(comfyOverrides);
     } else {
-      await generateConceptArt(comfyOverrides);
+      await generateConceptArt(genDirection as ViewDirection, comfyOverrides);
     }
   };
 

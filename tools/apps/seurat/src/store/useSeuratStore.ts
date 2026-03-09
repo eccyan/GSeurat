@@ -50,7 +50,7 @@ export interface SeuratState {
   conceptImageUrl: string | null;
   conceptGenerating: boolean;
   conceptError: string | null;
-  generateConceptArt: (overrides?: { steps?: number; cfg?: number; sampler?: string; scheduler?: string; seed?: number; loras?: { name: string; weight: number }[]; checkpoint?: string; vae?: string }) => Promise<void>;
+  generateConceptArt: (view: ViewDirection, overrides?: { steps?: number; cfg?: number; sampler?: string; scheduler?: string; seed?: number; loras?: { name: string; weight: number }[]; checkpoint?: string; vae?: string }) => Promise<void>;
   uploadConceptImage: (file: File) => Promise<void>;
   uploadConceptImageForView: (file: File, view: ViewDirection) => Promise<void>;
   loadConceptImage: () => void;
@@ -68,7 +68,7 @@ export interface SeuratState {
   chibiImageUrl: string | null;
   chibiGenerating: boolean;
   chibiError: string | null;
-  generateChibiArt: (overrides?: { steps?: number; cfg?: number; sampler?: string; scheduler?: string; seed?: number; loras?: { name: string; weight: number }[]; checkpoint?: string; vae?: string; denoise?: number }) => Promise<void>;
+  generateChibiArt: (view: ViewDirection, overrides?: { steps?: number; cfg?: number; sampler?: string; scheduler?: string; seed?: number; loras?: { name: string; weight: number }[]; checkpoint?: string; vae?: string; denoise?: number }) => Promise<void>;
   uploadChibiImage: (file: File) => Promise<void>;
   uploadChibiImageForView: (file: File, view: ViewDirection) => Promise<void>;
 
@@ -263,7 +263,7 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
   conceptGenerating: false,
   conceptError: null,
 
-  generateConceptArt: async (overrides) => {
+  generateConceptArt: async (view, overrides) => {
     const { manifest, aiConfig } = get();
     if (!manifest) return;
 
@@ -283,7 +283,7 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
       const prompt = [
         sanitizeStylePrompt(concept.style_prompt),
         concept.description,
-        CONCEPT_VIEW_PROMPTS.front,
+        CONCEPT_VIEW_PROMPTS[view],
       ].filter(Boolean).join(', ');
 
       const negative = concept.negative_prompt
@@ -328,23 +328,38 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
         },
       );
 
-      // Save to bridge
-      await api.saveConceptImage(manifest.character_id, pngBytes);
+      // Save to bridge (view-specific)
+      await api.saveConceptImage(manifest.character_id, pngBytes, view);
+
+      // Also save as default concept.png if generating front view
+      if (view === 'front') {
+        await api.saveConceptImage(manifest.character_id, pngBytes);
+      }
 
       // Update manifest reference_images + generation settings
+      const existingImages = manifest.concept.reference_images || [];
+      const viewFile = `concept_${view}.png`;
+      const updatedImages = existingImages.includes(viewFile) ? existingImages : [...existingImages, viewFile];
       const updated = {
         ...manifest,
         concept: {
           ...manifest.concept,
-          reference_images: ['concept.png'],
+          reference_images: updatedImages,
           generation_settings: { checkpoint, vae, steps, cfg, sampler, scheduler, seed: rawSeed, loras },
         },
       };
       set({ manifest: updated });
       await api.saveManifest(updated);
 
-      // Reload the concept image URL
-      set({ conceptImageUrl: api.conceptImageUrl(manifest.character_id), conceptError: null });
+      // Reload the concept image URL for this view
+      const cb = `?t=${Date.now()}`;
+      set({
+        conceptViewUrls: { ...get().conceptViewUrls, [view]: api.conceptImageUrl(manifest.character_id, view) + cb },
+        conceptError: null,
+      });
+      if (view === 'front') {
+        set({ conceptImageUrl: api.conceptImageUrl(manifest.character_id) + cb });
+      }
     } catch (err) {
       set({ conceptError: err instanceof Error ? err.message : String(err) });
     } finally {
@@ -642,7 +657,7 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
   chibiGenerating: false,
   chibiError: null,
 
-  generateChibiArt: async (overrides) => {
+  generateChibiArt: async (view, overrides) => {
     const { manifest, aiConfig } = get();
     if (!manifest) return;
 
@@ -653,12 +668,17 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
     set({ chibiGenerating: true, chibiError: null });
 
     try {
-      // Load concept image for img2img (IP-Adapter would fight chibi proportions)
-      const conceptBytes = await api.fetchConceptImageBytes(manifest.character_id);
+      // Load view-specific concept image for img2img (IP-Adapter would fight chibi proportions)
+      let conceptBytes: Uint8Array;
+      try {
+        conceptBytes = await api.fetchConceptImageBytes(manifest.character_id, view);
+      } catch {
+        conceptBytes = await api.fetchConceptImageBytes(manifest.character_id);
+      }
 
       const comfy = new ComfyUIClient(aiConfig.comfyUrl);
       const { CONCEPT_VIEW_PROMPTS, DEFAULT_NEGATIVE_PROMPT, sanitizeStylePrompt } = await import('../lib/ai-generate.js');
-      const prompt = [sanitizeStylePrompt(stylePrompt), manifest.concept.description, CONCEPT_VIEW_PROMPTS.front].filter(Boolean).join(', ');
+      const prompt = [sanitizeStylePrompt(stylePrompt), manifest.concept.description, CONCEPT_VIEW_PROMPTS[view]].filter(Boolean).join(', ');
       const negative = `${negPrompt}, ${DEFAULT_NEGATIVE_PROMPT}`;
 
       const steps = overrides?.steps ?? aiConfig.steps;
@@ -682,21 +702,34 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
         removeBackground: aiConfig.removeBackground, remBgNodeType: aiConfig.remBgNodeType,
       });
 
-      await api.saveChibiImage(manifest.character_id, pngBytes);
+      await api.saveChibiImage(manifest.character_id, pngBytes, view);
+
+      // Also save as default chibi.png if generating front view
+      if (view === 'front') {
+        await api.saveChibiImage(manifest.character_id, pngBytes);
+      }
 
       const updated = {
         ...manifest,
         chibi: {
           style_prompt: stylePrompt,
           negative_prompt: negPrompt,
-          reference_image: 'chibi.png',
+          reference_image: manifest.chibi?.reference_image || 'chibi.png',
+          reference_images: { ...(manifest.chibi?.reference_images || {}), [view]: `chibi_${view}.png` },
           generation_settings: { checkpoint, vae, steps, cfg, sampler, scheduler, seed: rawSeed, denoise, loras },
         },
       };
       set({ manifest: updated });
       await api.saveManifest(updated);
 
-      set({ chibiImageUrl: api.chibiImageUrl(manifest.character_id), chibiError: null });
+      const cb = `?t=${Date.now()}`;
+      set({
+        chibiViewUrls: { ...get().chibiViewUrls, [view]: api.chibiImageUrl(manifest.character_id, view) + cb },
+        chibiError: null,
+      });
+      if (view === 'front') {
+        set({ chibiImageUrl: api.chibiImageUrl(manifest.character_id) + cb });
+      }
     } catch (err) {
       set({ chibiError: err instanceof Error ? err.message : String(err) });
     } finally {
