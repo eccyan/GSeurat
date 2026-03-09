@@ -225,11 +225,24 @@ Extensive parameter sweep experiments were conducted (see `tools/animatediff-exp
 
 **AnimateDiff is not recommended for sprite animation.** The existing **IP-Adapter + OpenPose** per-frame pipeline provides explicit pose control without background animation issues. AnimateDiff may still be useful for environmental animation (water, fire, foliage tiles) or motion prototyping.
 
+## IP-Adapter Only Pipeline (Concept→Chibi)
+
+### Overview
+
+For generating chibi versions of concept art, Seurat uses a **txt2img + IP-Adapter** workflow (no ControlNet or img2img):
+
+- **txt2img**: Generates from scratch so the prompt fully controls chibi proportions (2-head body ratio, big head, small body)
+- **IP-Adapter**: Feeds the concept art as an identity reference, preserving character colors/features/design without constraining body structure
+
+This replaced the previous img2img approach, which forced an impossible tradeoff: low denoise preserved the concept but couldn't change proportions, while high denoise changed proportions but lost character identity.
+
+**Default IP-Adapter settings**: weight=0.6, end_at=0.7 (adjustable in Seurat's chibi generation UI).
+
 ## Two-Pass IP-Adapter Pipeline (Concept→Pose→Chibi→Pixel)
 
 ### Overview
 
-The recommended sprite generation pipeline uses a **two-pass ComfyUI workflow** that separates posing from style transfer:
+The recommended **sprite frame** generation pipeline uses a **two-pass ComfyUI workflow** that separates posing from style transfer:
 
 1. **Pass 1 (Pose)**: IP-Adapter (concept art reference) + OpenPose ControlNet → posed character at 512x512
 2. **Pass 2 (Chibi-fy)**: IP-Adapter (chibi reference) + img2img on Pass 1 output → chibi-fied character
@@ -313,7 +326,7 @@ A parameter sweep of 14 experiments (56 frames total) was conducted. See `tools/
 
 4. **Manual curation pass**: Not all non-black images are usable. Estimate ~70% of character sprites and ~40% of tiles are good quality. A human review step is essential.
 
-5. **Consider img2img**: Start from a rough pixel art sketch and use SD to refine it. This gives much more control over composition and perspective.
+5. **Consider IP-Adapter for style transfer**: For chibi generation, txt2img + IP-Adapter gives better results than img2img — the prompt controls proportions while IP-Adapter preserves character identity. For sprite frames, the two-pass IP-Adapter + OpenPose pipeline provides explicit pose control.
 
 6. **GPU recommendation**: For production use, an NVIDIA GPU avoids all MPS precision issues. The black image problem is entirely an Apple Silicon limitation.
 

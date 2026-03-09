@@ -123,6 +123,7 @@ Seurat automatically selects the generation mode based on available assets and s
 | **img2img** | Concept art exists, ControlNet model cleared | Uses concept art as starting image |
 | **ControlNet + img2img** | Concept art exists + ControlNet model set | Tiles concept art for ControlNet conditioning + img2img |
 | **IP-Adapter + OpenPose** | IP-Adapter enabled + concept art exists | Per-frame generation with character consistency + pose control |
+| **IP-Adapter (chibi)** | Chibi generation from Concept Art view | txt2img + IP-Adapter for chibi proportions with character identity |
 
 ### Generation Scope
 
@@ -135,6 +136,21 @@ Seurat automatically selects the generation mode based on available assets and s
 Row mode generates a horizontal sprite strip (e.g., 512x128 for 4 frames of 128x128) and slices it into individual frame PNGs. This produces more consistent animations than single-frame generation.
 
 When IP-Adapter + OpenPose is enabled, row mode generates each frame individually (per-frame pose skeletons) rather than as a single strip.
+
+### Chibi Generation (IP-Adapter Only)
+
+Chibi generation uses **txt2img + IP-Adapter** (no ControlNet or img2img). This approach generates chibi versions from scratch using the prompt to control proportions (2-head body ratio, big head, small body), while IP-Adapter preserves the character's identity from the concept art reference image.
+
+This is better than the previous img2img approach, which forced a tradeoff: low denoise preserved the concept but couldn't change body proportions, while high denoise changed proportions but lost character identity.
+
+**IP-Adapter settings** (adjustable in the Chibi UI):
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| **Weight** | 0.6 | How much character identity to preserve (0.1–1.0). Lower = more chibi freedom, higher = more concept fidelity. |
+| **End At** | 0.7 | When IP-Adapter stops influencing generation (0.3–1.0). Lower = prompt has more final say on proportions. |
+
+These settings are persisted per-character in the manifest and restored on load.
 
 ### Blank Image Detection
 
@@ -151,10 +167,11 @@ The main pane shows an animation preview when an animation is selected:
 ## Workflow
 
 1. **Create a character** via the tree's "+ New Character" button
-2. **Set up concept art** — describe the character, configure style prompt, generate or upload concept art
-3. **Generate sprites** — select an animation, configure ComfyUI settings, generate frames
-4. **Review frames** — approve, reject, or regenerate individual frames
-5. **Assemble atlas** — validate and build the final spritesheet PNG
+2. **Set up concept art** — describe the character, configure style prompt, generate or upload concept art (per-direction: front, back, right, left)
+3. **Generate chibi** — generate chibi versions from concept art using IP-Adapter for character identity; adjust IP-Adapter weight/end_at for the balance between chibi proportions and concept fidelity
+4. **Generate sprites** — select an animation, configure ComfyUI settings, generate frames
+5. **Review frames** — approve, reject, or regenerate individual frames
+6. **Assemble atlas** — validate and build the final spritesheet PNG
 
 ## Architecture
 
@@ -172,7 +189,7 @@ seurat/
 │   │   └── pose-templates.ts        # OpenPose skeleton data + renderer
 │   ├── components/
 │   │   ├── layout/                  # TreePane, MainPane, RightPane, Toolbar, StatusBar
-│   │   ├── concept/                 # ConceptPreview, ConceptActions
+│   │   ├── concept/                 # ConceptPreview, ConceptActions, ChibiActions, ComfySettingsPanel
 │   │   ├── generate/                # GenerateActions (ComfyUI settings + scope)
 │   │   ├── review/                  # FrameCell, FrameDetailModal, ReviewActions
 │   │   ├── animate/                 # AnimationMainView, AnimationPreviewCanvas, FramePreviewCanvas
