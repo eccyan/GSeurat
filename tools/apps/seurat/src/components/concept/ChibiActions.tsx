@@ -41,6 +41,9 @@ export function ChibiActions() {
   const [negativePrompt, setNegativePrompt] = useState('realistic, photograph, 3d render');
   const [saving, setSaving] = useState(false);
 
+  const [ipAdapterWeight, setIpAdapterWeight] = useState(0.6);
+  const [ipAdapterEndAt, setIpAdapterEndAt] = useState(0.7);
+
   const [comfySettings, setComfySettings] = useState<ComfySettings>({
     checkpoint: '', vae: '', steps: 20, cfg: 10, sampler: 'euler', scheduler: 'normal', seed: -1, denoise: 0.75, loras: [],
   });
@@ -66,6 +69,8 @@ export function ChibiActions() {
         denoise: gs.denoise ?? 0.75,
         loras: gs.loras ?? [],
       });
+      setIpAdapterWeight(gs.ipAdapterWeight ?? 0.6);
+      setIpAdapterEndAt(gs.ipAdapterEndAt ?? 0.7);
     }
   }, [manifest?.character_id]);
 
@@ -78,6 +83,7 @@ export function ChibiActions() {
     scheduler: comfySettings.scheduler || undefined, seed: comfySettings.seed,
     loras: comfySettings.loras, checkpoint: comfySettings.checkpoint || undefined,
     vae: comfySettings.vae || undefined, denoise: comfySettings.denoise,
+    ipAdapterWeight, ipAdapterEndAt,
   };
 
   const handleSave = async () => {
@@ -143,9 +149,36 @@ export function ChibiActions() {
         label="Chibi"
         settings={comfySettings}
         onChange={setComfySettings}
-        showDenoise
         savedSettings={manifest.chibi?.generation_settings}
       />
+
+      {/* IP-Adapter settings */}
+      <div style={styles.ipSection}>
+        <span style={{ fontFamily: 'monospace', fontSize: 10, color: '#777', fontWeight: 600 }}>
+          IP-Adapter (Identity)
+        </span>
+        <div style={styles.sliderRow}>
+          <label style={styles.sliderLabel}>Weight</label>
+          <input
+            type="range" min={0.1} max={1.0} step={0.05} value={ipAdapterWeight}
+            onChange={(e) => setIpAdapterWeight(parseFloat(e.target.value))}
+            style={{ flex: 1 }}
+          />
+          <span style={styles.sliderValue}>{ipAdapterWeight.toFixed(2)}</span>
+        </div>
+        <div style={styles.sliderRow}>
+          <label style={styles.sliderLabel}>End At</label>
+          <input
+            type="range" min={0.3} max={1.0} step={0.05} value={ipAdapterEndAt}
+            onChange={(e) => setIpAdapterEndAt(parseFloat(e.target.value))}
+            style={{ flex: 1 }}
+          />
+          <span style={styles.sliderValue}>{ipAdapterEndAt.toFixed(2)}</span>
+        </div>
+        <div style={{ fontSize: 8, color: '#555', fontFamily: 'monospace' }}>
+          Lower weight = more chibi freedom, higher = more concept fidelity
+        </div>
+      </div>
 
       {/* Generate */}
       <div style={styles.actionRow}>
@@ -226,6 +259,10 @@ const styles: Record<string, React.CSSProperties> = {
   generateBtn: { flex: 1, background: '#1e3a2e', border: '1px solid #44aa44', borderRadius: 4, color: '#70d870', fontFamily: 'monospace', fontSize: 10, padding: '8px 8px', cursor: 'pointer', fontWeight: 600, textAlign: 'center' },
   cancelBtn: { background: '#2a1a1a', border: '1px solid #553333', borderRadius: 4, color: '#d88', fontFamily: 'monospace', fontSize: 10, padding: '8px 10px', cursor: 'pointer', fontWeight: 600 },
   uploadBtn: { flex: 1, background: '#1e3a3a', border: '1px solid #4ac8c8', borderRadius: 4, color: '#90d8d8', fontFamily: 'monospace', fontSize: 10, padding: '8px 8px', cursor: 'pointer', fontWeight: 600, textAlign: 'center' },
+  ipSection: { background: '#131324', border: '1px solid #2a2a3a', borderRadius: 6, padding: 8, display: 'flex', flexDirection: 'column' as const, gap: 4, marginBottom: 6 },
+  sliderRow: { display: 'flex', alignItems: 'center', gap: 6 },
+  sliderLabel: { fontFamily: 'monospace', fontSize: 9, color: '#666', minWidth: 40 },
+  sliderValue: { fontFamily: 'monospace', fontSize: 9, color: '#aaa', minWidth: 30 },
   progressText: { fontFamily: 'monospace', fontSize: 9, color: '#8a4af8', textAlign: 'center' },
   errorText: { fontFamily: 'monospace', fontSize: 9, color: '#d88', background: '#2a1515', border: '1px solid #553333', borderRadius: 4, padding: '4px 6px' },
 };

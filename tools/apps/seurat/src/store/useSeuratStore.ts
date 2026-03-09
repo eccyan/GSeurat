@@ -68,7 +68,7 @@ export interface SeuratState {
   chibiImageUrl: string | null;
   chibiGenerating: boolean;
   chibiError: string | null;
-  generateChibiArt: (view: ViewDirection, overrides?: { steps?: number; cfg?: number; sampler?: string; scheduler?: string; seed?: number; loras?: { name: string; weight: number }[]; checkpoint?: string; vae?: string; denoise?: number }) => Promise<void>;
+  generateChibiArt: (view: ViewDirection, overrides?: { steps?: number; cfg?: number; sampler?: string; scheduler?: string; seed?: number; loras?: { name: string; weight: number }[]; checkpoint?: string; vae?: string; denoise?: number; ipAdapterWeight?: number; ipAdapterEndAt?: number }) => Promise<void>;
   uploadChibiImage: (file: File) => Promise<void>;
   uploadChibiImageForView: (file: File, view: ViewDirection) => Promise<void>;
 
@@ -77,7 +77,7 @@ export interface SeuratState {
   chibiViewsGenerating: boolean;
   chibiViewsError: string | null;
   chibiViewsProgress: string | null;
-  generateChibiViews: (overrides?: { steps?: number; cfg?: number; sampler?: string; scheduler?: string; seed?: number; loras?: { name: string; weight: number }[]; checkpoint?: string; vae?: string; denoise?: number }) => Promise<void>;
+  generateChibiViews: (overrides?: { steps?: number; cfg?: number; sampler?: string; scheduler?: string; seed?: number; loras?: { name: string; weight: number }[]; checkpoint?: string; vae?: string; denoise?: number; ipAdapterWeight?: number; ipAdapterEndAt?: number }) => Promise<void>;
   loadChibiViewUrls: () => void;
 
   // Per-animation reference override — selects which direction's concept + chibi to use (null = auto)
@@ -696,12 +696,15 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
 
       console.log('[Seurat] Chibi prompt:', prompt);
 
+      const ipWeight = overrides?.ipAdapterWeight ?? 0.6;
+      const ipEndAt = overrides?.ipAdapterEndAt ?? 0.7;
+
       // Use txt2img + IP-Adapter: prompt controls chibi proportions,
       // IP-Adapter preserves character identity from concept image
       const pngBytes = await comfy.generateIPAdapterOnlyWithRetry(prompt, conceptBytes, {
         width: 512, height: 512, steps, seed, cfgScale: cfg, samplerName: sampler,
         scheduler, checkpoint, vae, negativePrompt: negative, loras,
-        ipAdapterWeight: 0.6, ipAdapterEndAt: 0.7,
+        ipAdapterWeight: ipWeight, ipAdapterEndAt: ipEndAt,
         removeBackground: aiConfig.removeBackground, remBgNodeType: aiConfig.remBgNodeType,
       });
 
@@ -719,7 +722,7 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
           negative_prompt: negPrompt,
           reference_image: manifest.chibi?.reference_image || 'chibi.png',
           reference_images: { ...(manifest.chibi?.reference_images || {}), [view]: `chibi_${view}.png` },
-          generation_settings: { checkpoint, vae, steps, cfg, sampler, scheduler, seed: rawSeed, denoise, loras },
+          generation_settings: { checkpoint, vae, steps, cfg, sampler, scheduler, seed: rawSeed, denoise, loras, ipAdapterWeight: ipWeight, ipAdapterEndAt: ipEndAt },
         },
       };
       set({ manifest: updated });
@@ -861,6 +864,9 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
       const scheduler = overrides?.scheduler;
       const vae = overrides?.vae;
 
+      const ipWeight = overrides?.ipAdapterWeight ?? 0.6;
+      const ipEndAt = overrides?.ipAdapterEndAt ?? 0.7;
+
       const viewsToGenerate: ViewDirection[] = ['front', 'right', 'back'];
       const chibiRefImages: Partial<Record<ViewDirection, string>> = {};
 
@@ -883,7 +889,7 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
         const pngBytes = await comfy.generateIPAdapterOnlyWithRetry(prompt, conceptBytes, {
           width: 512, height: 512, steps, seed: viewSeed, cfgScale: cfg, samplerName: sampler,
           scheduler, checkpoint, vae, negativePrompt: negative, loras,
-          ipAdapterWeight: 0.6, ipAdapterEndAt: 0.7,
+          ipAdapterWeight: ipWeight, ipAdapterEndAt: ipEndAt,
           removeBackground: aiConfig.removeBackground, remBgNodeType: aiConfig.remBgNodeType,
         });
 
@@ -922,7 +928,7 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
           negative_prompt: negPrompt,
           reference_image: 'chibi.png',
           reference_images: chibiRefImages,
-          generation_settings: { checkpoint, vae, steps, cfg, sampler, scheduler, seed: rawSeed, denoise, loras },
+          generation_settings: { checkpoint, vae, steps, cfg, sampler, scheduler, seed: rawSeed, denoise, loras, ipAdapterWeight: ipWeight, ipAdapterEndAt: ipEndAt },
         },
       };
       set({ manifest: updated });

@@ -71,6 +71,8 @@ export interface StageGenerationSettings {
   seed?: number;
   denoise?: number;
   loras?: { name: string; weight: number }[];
+  ipAdapterWeight?: number;
+  ipAdapterEndAt?: number;
 }
 
 export interface ConceptArt {
