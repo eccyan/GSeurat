@@ -1002,6 +1002,20 @@ function buildTwoPassIPAdapterWorkflow(
       },
     },
 
+    // === Inter-pass: Remove background from pass 1 output ===
+    // This prevents pass 2 from reinforcing any background generated in pass 1.
+    "70": {
+      class_type: "BRIA_RMBG_ModelLoader_Zho",
+      inputs: {},
+    },
+    "71": {
+      class_type: opts.remBgNodeType ?? "BRIA_RMBG_Zho",
+      inputs: {
+        rmbgmodel: ["70", 0],
+        image: ["8", 0],  // pass 1 VAEDecode output
+      },
+    },
+
     // === Pass 2: Chibi-fy the posed character ===
 
     // Load chibi reference image for IP-Adapter pass 2
@@ -1009,11 +1023,11 @@ function buildTwoPassIPAdapterWorkflow(
       class_type: "LoadImage",
       inputs: { image: opts.chibiImageName },
     },
-    // VAEEncode the pass 1 output as starting latent for pass 2
+    // VAEEncode the cleaned pass 1 output as starting latent for pass 2
     "81": {
       class_type: "VAEEncode",
       inputs: {
-        pixels: ["8", 0],
+        pixels: ["71", 0],  // RemBG-cleaned pass 1 output
         vae: ["4", 2],
       },
     },
