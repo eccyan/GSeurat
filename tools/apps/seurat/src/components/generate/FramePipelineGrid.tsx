@@ -1,15 +1,25 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import type { PipelineStage, CharacterAnimation } from '@vulkan-game-tools/asset-types';
 import { useSeuratStore } from '../../store/useSeuratStore.js';
 import { PaintEditor } from '../shared/PaintEditor.js';
+import { getPose } from '../../lib/pose-templates.js';
 import * as api from '../../lib/bridge-api.js';
 
+/** Columns after the Pose column */
 const PASS_COLUMNS: { key: PipelineStage; label: string }[] = [
   { key: 'pass1', label: 'Pass 1' },
   { key: 'pass1_edited', label: 'Edit' },
   { key: 'pass2', label: 'Pass 2' },
   { key: 'pass2_edited', label: 'Edit' },
   { key: 'pass3', label: 'Pass 3' },
+];
+
+/** All column keys including pose */
+type ColumnKey = 'pose' | PipelineStage;
+
+const ALL_COLUMNS: { key: ColumnKey; label: string }[] = [
+  { key: 'pose', label: 'Pose' },
+  ...PASS_COLUMNS,
 ];
 
 function stageBadgeColor(stage?: PipelineStage): string {
@@ -30,8 +40,75 @@ function stageBadgeLabel(stage?: PipelineStage): string {
     case 'pass2': return 'P2';
     case 'pass2_edited': return 'E2';
     case 'pass3': return 'P3';
-    default: return '--';
+    default: return 'pending';
   }
+}
+
+/** Limb connections for drawing pose skeletons */
+const LIMBS: [number, number, string][] = [
+  [0, 1, '#ff0000'], [1, 2, '#ff5500'], [2, 3, '#ffaa00'], [3, 4, '#ffff00'],
+  [1, 5, '#aaff00'], [5, 6, '#55ff00'], [6, 7, '#00ff00'], [1, 8, '#00ff55'],
+  [8, 9, '#00ffaa'], [9, 10, '#00ffff'], [10, 11, '#00aaff'],
+  [8, 12, '#0055ff'], [12, 13, '#0000ff'], [13, 14, '#5500ff'],
+];
+
+/** Tiny canvas that draws a pose skeleton */
+function PoseCell({ animName, frameIndex, size }: { animName: string; frameIndex: number; size: number }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const poseOverrides = useSeuratStore((s) => s.poseOverrides);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    canvas.width = size;
+    canvas.height = size;
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(0, 0, size, size);
+
+    const key = `${animName}:${frameIndex}`;
+    const pose = poseOverrides[key] ?? getPose(animName, frameIndex);
+    if (!pose) {
+      ctx.fillStyle = '#333';
+      ctx.font = '9px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('N/A', size / 2, size / 2 + 3);
+      return;
+    }
+
+    const lw = Math.max(1.5, size / 40);
+    const dr = lw * 0.8;
+
+    for (const [i, j, color] of LIMBS) {
+      const a = pose[i];
+      const b = pose[j];
+      if (!a || !b) continue;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = lw;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(a[0] * size, a[1] * size);
+      ctx.lineTo(b[0] * size, b[1] * size);
+      ctx.stroke();
+    }
+
+    for (const kp of pose) {
+      if (!kp) continue;
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(kp[0] * size, kp[1] * size, dr, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }, [animName, frameIndex, size, poseOverrides]);
+
+  return (
+    <canvas
+      ref={canvasRef}
+      style={{ width: '100%', height: '100%', borderRadius: 3, display: 'block' }}
+    />
+  );
 }
 
 interface Props {
@@ -67,20 +144,19 @@ export function FramePipelineGrid({ animName }: Props) {
   if (!anim) return <div style={styles.empty}>Animation "{animName}" not found.</div>;
 
   const characterId = manifest.character_id;
+  const colCount = ALL_COLUMNS.length; // 6 (pose + 5 passes)
 
   const handleCellClick = (frameIndex: number, pass: PipelineStage) => {
     const frame = anim.frames.find((f) => f.index === frameIndex);
     if (!frame) return;
 
-    // Determine if this cell has an image
     const stage = frame.pipeline_stage;
     const passOrder: PipelineStage[] = ['pass1', 'pass1_edited', 'pass2', 'pass2_edited', 'pass3'];
     const passIdx = passOrder.indexOf(pass);
     const stageIdx = stage ? passOrder.indexOf(stage) : -1;
 
-    if (stageIdx < passIdx) return; // No image for this pass yet
+    if (stageIdx < passIdx) return;
 
-    // For edited stages, use the edited image; for pass stages, use the pass image
     let imageUrl: string;
     if (pass === 'pass3' && frame.status === 'generated') {
       imageUrl = api.frameThumbnailUrl(characterId, animName, frameIndex);
@@ -110,11 +186,6 @@ export function FramePipelineGrid({ animName }: Props) {
     });
   };
 
-  const getSelectedIndices = (): number[] => {
-    if (selectedFrames.size === 0) return anim.frames.map((f) => f.index);
-    return Array.from(selectedFrames).sort();
-  };
-
   // If editing, show PaintEditor
   if (editing) {
     return (
@@ -128,11 +199,11 @@ export function FramePipelineGrid({ animName }: Props) {
   }
 
   return (
-    <div style={styles.container}>
-      {/* Header row */}
-      <div style={styles.headerRow}>
+    <div style={styles.container} data-testid="pipeline-grid">
+      {/* Header row — uses CSS grid to match cell columns */}
+      <div style={{ ...styles.headerRow, gridTemplateColumns: `60px repeat(${colCount}, 1fr)` }}>
         <div style={styles.frameLabel}>Frame</div>
-        {PASS_COLUMNS.map((col) => (
+        {ALL_COLUMNS.map((col) => (
           <div key={col.key} style={styles.colHeader}>{col.label}</div>
         ))}
       </div>
@@ -146,8 +217,10 @@ export function FramePipelineGrid({ animName }: Props) {
           return (
             <div
               key={frame.index}
+              data-testid={`pipeline-row-${frame.index}`}
               style={{
                 ...styles.frameRow,
+                gridTemplateColumns: `60px repeat(${colCount}, 1fr)`,
                 background: isSelected ? '#1a2a3a' : undefined,
               }}
             >
@@ -166,6 +239,11 @@ export function FramePipelineGrid({ animName }: Props) {
                 </span>
               </div>
 
+              {/* Pose cell */}
+              <div style={styles.passCell}>
+                <PoseCell animName={animName} frameIndex={frame.index} size={128} />
+              </div>
+
               {/* Pass cells */}
               {PASS_COLUMNS.map((col) => {
                 const passOrder: PipelineStage[] = ['pass1', 'pass1_edited', 'pass2', 'pass2_edited', 'pass3'];
@@ -173,7 +251,6 @@ export function FramePipelineGrid({ animName }: Props) {
                 const stageIdx = stage ? passOrder.indexOf(stage) : -1;
                 const hasImage = stageIdx >= passIdx;
 
-                // For edited columns, only show if the actual stage is edited
                 const isEditCol = col.key === 'pass1_edited' || col.key === 'pass2_edited';
                 const showImage = isEditCol
                   ? (stage === col.key || (col.key === 'pass1_edited' && stageIdx > passIdx) || (col.key === 'pass2_edited' && stageIdx > passIdx))
@@ -184,7 +261,6 @@ export function FramePipelineGrid({ animName }: Props) {
                   if (col.key === 'pass3' && frame.status === 'generated') {
                     imageUrl = api.frameThumbnailUrl(characterId, animName, frame.index);
                   } else if (isEditCol) {
-                    // Show the base pass image if no explicit edit exists
                     const basePass = col.key === 'pass1_edited' ? 'pass1' : 'pass2';
                     imageUrl = stage === col.key
                       ? api.passImageUrl(characterId, animName, frame.index, col.key)
@@ -278,23 +354,21 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 12,
   },
   headerRow: {
-    display: 'flex',
+    display: 'grid',
     alignItems: 'center',
     padding: '6px 8px',
     borderBottom: '1px solid #2a2a3a',
     background: '#111120',
     flexShrink: 0,
+    gap: 4,
   },
   frameLabel: {
-    width: 60,
     fontFamily: 'monospace',
     fontSize: 9,
     fontWeight: 600,
     color: '#666',
-    flexShrink: 0,
   },
   colHeader: {
-    flex: 1,
     textAlign: 'center',
     fontFamily: 'monospace',
     fontSize: 9,
@@ -307,20 +381,18 @@ const styles: Record<string, React.CSSProperties> = {
     overflowX: 'hidden',
   },
   frameRow: {
-    display: 'flex',
+    display: 'grid',
     alignItems: 'center',
     padding: '4px 8px',
     borderBottom: '1px solid #1a1a2a',
-    minHeight: 60,
+    gap: 4,
   },
   frameIndexCell: {
-    width: 60,
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
     gap: 2,
     cursor: 'pointer',
-    flexShrink: 0,
   },
   frameIndexLabel: {
     fontFamily: 'monospace',
@@ -330,17 +402,13 @@ const styles: Record<string, React.CSSProperties> = {
   },
   badge: {
     fontFamily: 'monospace',
-    fontSize: 8,
+    fontSize: 7,
     padding: '1px 4px',
     borderRadius: 3,
     border: '1px solid',
   },
   passCell: {
-    flex: 1,
     aspectRatio: '1',
-    maxWidth: 80,
-    maxHeight: 80,
-    margin: '0 2px',
     background: '#0a0a14',
     border: '1px solid #2a2a3a',
     borderRadius: 4,

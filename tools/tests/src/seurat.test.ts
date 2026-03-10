@@ -159,4 +159,53 @@ export function runSeuratTests(runner: TestRunner): void {
     const url = await client.getStateSelector('spriteSheetUrl');
     assertEqual(url, null, 'No sprite sheet URL initially');
   });
+
+  // ─── Pipeline state defaults ────────────────────────────────────
+
+  runner.test('Pipeline editingFrame starts null', async (client) => {
+    const frame = await client.getStateSelector('editingFrame');
+    assertEqual(frame, null, 'No editing frame initially');
+  });
+
+  runner.test('Pipeline clipboard starts null', async (client) => {
+    const cb = await client.getStateSelector('clipboard');
+    assertEqual(cb, null, 'No clipboard initially');
+  });
+
+  runner.test('Pipeline actions are callable', async (client) => {
+    // Verify setEditingFrame works (functions are not serialized in getState)
+    await client.dispatch('setEditingFrame', { animName: 'test', frameIndex: 0, pass: 'pass1' });
+    const frame = await client.getStateSelector('editingFrame') as Record<string, unknown> | null;
+    assert(frame !== null, 'setEditingFrame is callable');
+    assertEqual(frame!['animName'], 'test', 'setEditingFrame sets animName');
+    await client.dispatch('setEditingFrame', null);
+  });
+
+  runner.test('setEditingFrame updates state', async (client) => {
+    const frame = { animName: 'idle_down', frameIndex: 0, pass: 'pass1' };
+    await client.dispatch('setEditingFrame', frame);
+    const result = await client.getStateSelector('editingFrame') as Record<string, unknown> | null;
+    assert(result !== null, 'editingFrame should not be null');
+    assertEqual(result!['animName'], 'idle_down', 'animName matches');
+    assertEqual(result!['frameIndex'], 0, 'frameIndex matches');
+    assertEqual(result!['pass'], 'pass1', 'pass matches');
+
+    // Clear
+    await client.dispatch('setEditingFrame', null);
+    const cleared = await client.getStateSelector('editingFrame');
+    assertEqual(cleared, null, 'editingFrame cleared');
+  });
+
+  runner.test('Generation job with pass field', async (client) => {
+    const job = { id: 'pass_test_1', animName: 'idle_down', frameIndex: 0, status: 'queued', pass: 'pass1' };
+    await client.dispatch('addGenerationJob', job);
+    const jobs = await client.getStateSelector('generationJobs') as Array<Record<string, unknown>>;
+    const added = jobs.find((j) => j['id'] === 'pass_test_1');
+    assert(added !== undefined, 'Job with pass field added');
+    assertEqual(added!['pass'], 'pass1', 'Job pass field preserved');
+
+    // Clean up
+    await client.dispatch('updateGenerationJob', 'pass_test_1', { status: 'done' });
+    await client.dispatch('clearCompletedJobs');
+  });
 }

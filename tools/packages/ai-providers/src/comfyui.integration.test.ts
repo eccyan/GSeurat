@@ -249,6 +249,71 @@ describe("ComfyUIClient integration", () => {
     expect(isPng(png)).toBe(true);
   }, 300_000);
 
+  // ─── img2img + IP-Adapter (Pass 2 pipeline) ────────────────────
+
+  it("generateImg2ImgWithIPAdapter returns a valid PNG", async () => {
+    if (!comfyAvailable || !hasIPAdapter || !hasRemBg) {
+      console.warn(
+        "Skipped: requires ComfyUI + IPAdapterAdvanced + BRIA_RMBG nodes"
+      );
+      return;
+    }
+
+    const png = await client.generateImg2ImgWithIPAdapter(
+      "chibi pixel art character, standing, solid white background",
+      refImage, // input image (pass1 output)
+      refImage, // reference image (chibi)
+      {
+        width: 128,
+        height: 128,
+        steps: 4,
+        cfgScale: 7,
+        samplerName: "euler",
+        seed: 42,
+        denoise: 0.7,
+        ipAdapterWeight: 0.5,
+        ipAdapterPreset: "PLUS (high strength)",
+        ipAdapterStartAt: 0.0,
+        ipAdapterEndAt: 0.6,
+      }
+    );
+
+    expect(png).toBeInstanceOf(Uint8Array);
+    expect(png.length).toBeGreaterThan(100);
+    expect(isPng(png)).toBe(true);
+  }, 180_000);
+
+  it("generateImg2ImgWithIPAdapterWithRetry returns a valid PNG", async () => {
+    if (!comfyAvailable || !hasIPAdapter || !hasRemBg) {
+      console.warn(
+        "Skipped: requires ComfyUI + IPAdapterAdvanced + BRIA_RMBG nodes"
+      );
+      return;
+    }
+
+    const png = await client.generateImg2ImgWithIPAdapterWithRetry(
+      "chibi pixel art character, standing, solid white background",
+      refImage,
+      refImage,
+      {
+        width: 128,
+        height: 128,
+        steps: 4,
+        cfgScale: 7,
+        samplerName: "euler",
+        seed: 42,
+        denoise: 0.7,
+        ipAdapterWeight: 0.5,
+        ipAdapterPreset: "PLUS (high strength)",
+      },
+      2
+    );
+
+    expect(png).toBeInstanceOf(Uint8Array);
+    expect(png.length).toBeGreaterThan(100);
+    expect(isPng(png)).toBe(true);
+  }, 180_000);
+
   // ─── Retry wrapper (blank image detection) ───────────────────────
 
   it("generateImageWithRetry retries on blank images", async () => {

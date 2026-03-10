@@ -76,9 +76,9 @@ export function PipelineControls({ animName }: Props) {
   const animJobs = generationJobs.filter((j) => j.animName === animName);
 
   return (
-    <div style={styles.container}>
+    <div style={styles.container} data-testid="pipeline-controls">
       {/* Step indicator */}
-      <div style={styles.stepIndicator}>
+      <div style={styles.stepIndicator} data-testid="pipeline-step-indicator">
         {PASS_STEPS.map((step, i) => (
           <React.Fragment key={step.key}>
             {i > 0 && <div style={styles.stepLine} />}
@@ -99,6 +99,7 @@ export function PipelineControls({ animName }: Props) {
         <div style={styles.statusText}>{stageCounts.pass1}/{totalFrames} frames</div>
         <div style={{ display: 'flex', gap: 4 }}>
           <button
+            data-testid="run-pass1-btn"
             onClick={() => handleRunPass('pass1')}
             disabled={!!generating}
             style={{ ...styles.passBtn, borderColor: '#4a8af8', color: '#90b8f8', opacity: generating ? 0.5 : 1, flex: 1 }}
@@ -124,6 +125,7 @@ export function PipelineControls({ animName }: Props) {
         <div style={styles.statusText}>{stageCounts.pass2}/{totalFrames} frames</div>
         <div style={{ display: 'flex', gap: 4 }}>
           <button
+            data-testid="run-pass2-btn"
             onClick={() => handleRunPass('pass2')}
             disabled={!!generating || stageCounts.pass1 === 0}
             style={{ ...styles.passBtn, borderColor: '#60c880', color: '#90f8b8', opacity: (generating || stageCounts.pass1 === 0) ? 0.5 : 1, flex: 1 }}
@@ -149,6 +151,7 @@ export function PipelineControls({ animName }: Props) {
         <div style={styles.statusText}>{stageCounts.pass3}/{totalFrames} frames</div>
         <div style={{ display: 'flex', gap: 4 }}>
           <button
+            data-testid="run-pass3-btn"
             onClick={() => handleRunPass('pass3')}
             disabled={!!generating || stageCounts.pass2 === 0}
             style={{ ...styles.passBtn, borderColor: '#70d870', color: '#70d870', opacity: (generating || stageCounts.pass2 === 0) ? 0.5 : 1, flex: 1 }}

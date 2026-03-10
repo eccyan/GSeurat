@@ -14,22 +14,23 @@ export function BottomPane() {
 
   const [collapsed, setCollapsed] = useState(false);
 
+  const animName = treeSelection.kind === 'animation' ? treeSelection.animName : null;
+
+  // Auto-select clip (must be before any early returns)
+  React.useEffect(() => {
+    if (animName) selectClip(animName);
+  }, [animName]);
+
   if (treeSelection.kind !== 'animation' || !manifest) return null;
 
-  const animName = treeSelection.animName;
   const clip = manifest.animations.find((a) => a.name === animName);
   if (!clip) return null;
-
-  // Auto-select clip
-  React.useEffect(() => {
-    selectClip(animName);
-  }, [animName]);
 
   const hasGeneratedFrames = clip.frames.some((f) => f.status !== 'pending' && f.status !== 'generating');
   const useFramePreview = !spriteSheetUrl && hasGeneratedFrames;
 
   return (
-    <div style={{
+    <div data-testid="bottom-pane" style={{
       ...styles.container,
       height: collapsed ? 30 : 240,
     }}>

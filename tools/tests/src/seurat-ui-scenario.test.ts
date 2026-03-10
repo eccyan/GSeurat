@@ -474,7 +474,136 @@ function registerScenarios(runner: ScenarioRunner): void {
   });
 
   // -------------------------------------------------------------------------
-  // Scenario 8: Dashboard → Create → Cancel → Navigate flow
+  // Scenario 8: Pipeline view renders when animation selected
+  // -------------------------------------------------------------------------
+  runner.scenario('Pipeline: grid and controls render for animation selection', async (page, client) => {
+    // Inject manifest with required fields for pipeline
+    const manifest = {
+      ...mockManifest(),
+      animations: mockManifest().animations.map((a, i) => ({
+        ...a,
+        state: i === 0 ? 'idle' : 'walk',
+        direction: 'S' as const,
+        row: i,
+      })),
+    };
+    await client.dispatch('selectCharacterDirect', manifest);
+    await sleep(400);
+
+    // Set tree selection to animation mode
+    await client.dispatch('setTreeSelection', {
+      kind: 'animation',
+      characterId: 'test_hero',
+      animName: 'idle_south',
+    });
+    await sleep(500);
+
+    // Verify FramePipelineGrid renders
+    const grid = await page.$('[data-testid="pipeline-grid"]');
+    if (!grid) throw new Error('FramePipelineGrid did not render (missing data-testid="pipeline-grid")');
+
+    // Verify frame rows render (idle_south has 4 frames)
+    const rows = await page.$$('[data-testid^="pipeline-row-"]');
+    if (rows.length !== 4) {
+      throw new Error(`Expected 4 pipeline rows for idle_south, got ${rows.length}`);
+    }
+
+    // Verify PipelineControls renders in right pane
+    const controls = await page.$('[data-testid="pipeline-controls"]');
+    if (!controls) throw new Error('PipelineControls did not render (missing data-testid="pipeline-controls")');
+
+    // Verify step indicator renders
+    const stepIndicator = await page.$('[data-testid="pipeline-step-indicator"]');
+    if (!stepIndicator) throw new Error('Pipeline step indicator did not render');
+
+    // Verify pass buttons exist
+    const pass1Btn = await page.$('[data-testid="run-pass1-btn"]');
+    if (!pass1Btn) throw new Error('Run Pass 1 button not found');
+    const pass2Btn = await page.$('[data-testid="run-pass2-btn"]');
+    if (!pass2Btn) throw new Error('Run Pass 2 button not found');
+    const pass3Btn = await page.$('[data-testid="run-pass3-btn"]');
+    if (!pass3Btn) throw new Error('Run Pass 3 button not found');
+
+    // Verify pass2 is disabled (no pass1 frames done yet)
+    const pass2Disabled = await page.$eval(
+      '[data-testid="run-pass2-btn"]',
+      (el) => (el as HTMLButtonElement).disabled,
+    );
+    if (!pass2Disabled) throw new Error('Pass 2 button should be disabled when no pass1 frames exist');
+
+    // Verify BottomPane renders for animation
+    const bottomPane = await page.$('[data-testid="bottom-pane"]');
+    if (!bottomPane) throw new Error('BottomPane did not render for animation selection');
+
+    // Verify bottom pane contains animation name text
+    const bottomText = await bottomPane.evaluate((el) => el.textContent);
+    if (!bottomText?.includes('idle_south')) {
+      throw new Error(`BottomPane should show "idle_south", got "${bottomText}"`);
+    }
+  });
+
+  // -------------------------------------------------------------------------
+  // Scenario 9: Pipeline grid updates when switching animations
+  // -------------------------------------------------------------------------
+  runner.scenario('Pipeline: switching animations updates grid', async (page, client) => {
+    const manifest = {
+      ...mockManifest(),
+      animations: mockManifest().animations.map((a, i) => ({
+        ...a,
+        state: i === 0 ? 'idle' : 'walk',
+        direction: 'S' as const,
+        row: i,
+      })),
+    };
+    await client.dispatch('selectCharacterDirect', manifest);
+    await sleep(400);
+
+    // Select first animation
+    await client.dispatch('setTreeSelection', {
+      kind: 'animation',
+      characterId: 'test_hero',
+      animName: 'idle_south',
+    });
+    await sleep(500);
+
+    const grid1 = await page.$('[data-testid="pipeline-grid"]');
+    if (!grid1) throw new Error('Pipeline grid not rendered for idle_south');
+
+    // Switch to second animation
+    await client.dispatch('setTreeSelection', {
+      kind: 'animation',
+      characterId: 'test_hero',
+      animName: 'walk_south',
+    });
+    await sleep(500);
+
+    const grid2 = await page.$('[data-testid="pipeline-grid"]');
+    if (!grid2) throw new Error('Pipeline grid not rendered for walk_south');
+
+    // Verify bottom pane updated
+    const bottomPane = await page.$('[data-testid="bottom-pane"]');
+    if (!bottomPane) throw new Error('BottomPane not rendered');
+    const bottomText = await bottomPane.evaluate((el) => el.textContent);
+    if (!bottomText?.includes('walk_south')) {
+      throw new Error(`BottomPane should show "walk_south" after switch, got "${bottomText}"`);
+    }
+
+    // Switch to character view — grid should disappear
+    await client.dispatch('setTreeSelection', {
+      kind: 'character',
+      characterId: 'test_hero',
+    });
+    await sleep(400);
+
+    const gridGone = await page.$('[data-testid="pipeline-grid"]');
+    if (gridGone) throw new Error('Pipeline grid should not render for character selection');
+
+    const bottomGone = await page.$('[data-testid="bottom-pane"]');
+    if (bottomGone) throw new Error('BottomPane should not render for character selection');
+  });
+
+  // -------------------------------------------------------------------------
+  // Scenario 10: Dashboard → Create → Cancel → Navigate flow
   // -------------------------------------------------------------------------
   runner.scenario('Dashboard: create dialog open/cancel then navigate sections', async (page, client) => {
     await client.dispatch('setActiveSection', 'dashboard');
@@ -515,22 +644,7 @@ async function main() {
   const chromePath = process.env.CHROME_PATH || findChromePath();
   console.log(`Using Chrome: ${chromePath}`);
 
-  // Connect to test harness
-  const client = new TestClient(HARNESS_PORT);
-  try {
-    console.log(`Connecting to test harness on port ${HARNESS_PORT}...`);
-    await client.connect(5000);
-    const pong = await client.ping();
-    if (!pong) throw new Error('Ping failed');
-    console.log('Test harness connected.');
-  } catch (err) {
-    console.error(`Failed to connect to test harness on port ${HARNESS_PORT}.`);
-    console.error('Make sure the Seurat dev server is running: cd apps/seurat && pnpm dev');
-    console.error(err);
-    process.exit(1);
-  }
-
-  // Launch browser
+  // Launch browser FIRST so the page can establish the browser bridge
   let browser: Browser;
   try {
     browser = await puppeteer.launch({
@@ -540,7 +654,6 @@ async function main() {
     });
   } catch (err) {
     console.error('Failed to launch Chrome:', err);
-    client.disconnect();
     process.exit(1);
   }
 
@@ -563,12 +676,27 @@ async function main() {
     console.error(`Failed to load Seurat at ${DEV_URL}`);
     console.error(err);
     await browser.close();
-    client.disconnect();
     process.exit(1);
   }
 
-  // Wait for React to render
-  await sleep(1000);
+  // Wait for React to render and browser bridge to connect
+  await sleep(2000);
+
+  // Connect to test harness AFTER browser bridge is established
+  const client = new TestClient(HARNESS_PORT);
+  try {
+    console.log(`Connecting to test harness on port ${HARNESS_PORT}...`);
+    await client.connect(5000);
+    const pong = await client.ping();
+    if (!pong) throw new Error('Ping failed');
+    console.log('Test harness connected.');
+  } catch (err) {
+    console.error(`Failed to connect to test harness on port ${HARNESS_PORT}.`);
+    console.error('Make sure the Seurat dev server is running: cd apps/seurat && pnpm dev');
+    console.error(err);
+    await browser.close();
+    process.exit(1);
+  }
 
   console.log('Running scenario tests...\n');
   const runner = new ScenarioRunner();

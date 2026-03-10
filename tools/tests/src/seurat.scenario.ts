@@ -245,6 +245,105 @@ export function runSeuratScenarios(runner: TestRunner): void {
   });
 
   // -----------------------------------------------------------------------
+  // Scenario: Pipeline editing frame lifecycle
+  // -----------------------------------------------------------------------
+  runner.test('[Scenario] Pipeline editing frame lifecycle', async (client) => {
+    // 1. Initially null
+    let frame = await client.getStateSelector('editingFrame');
+    assertEqual(frame, null, 'editingFrame starts null');
+
+    // 2. Set editing frame for pass1
+    await client.dispatch('setEditingFrame', { animName: 'idle_down', frameIndex: 0, pass: 'pass1' });
+    frame = await client.getStateSelector('editingFrame') as Record<string, unknown>;
+    assertEqual(frame['animName'], 'idle_down', 'editing idle_down');
+    assertEqual(frame['pass'], 'pass1', 'editing pass1');
+
+    // 3. Switch to different frame/pass
+    await client.dispatch('setEditingFrame', { animName: 'run_right', frameIndex: 2, pass: 'pass2' });
+    frame = await client.getStateSelector('editingFrame') as Record<string, unknown>;
+    assertEqual(frame['animName'], 'run_right', 'switched to run_right');
+    assertEqual(frame['frameIndex'], 2, 'frame index 2');
+    assertEqual(frame['pass'], 'pass2', 'switched to pass2');
+
+    // 4. Close editor
+    await client.dispatch('setEditingFrame', null);
+    frame = await client.getStateSelector('editingFrame');
+    assertEqual(frame, null, 'editingFrame cleared');
+  });
+
+  // -----------------------------------------------------------------------
+  // Scenario: Generation jobs with pass tracking
+  // -----------------------------------------------------------------------
+  runner.test('[Scenario] Generation jobs with pass tracking', async (client) => {
+    // 1. Queue jobs for different passes
+    await client.dispatch('addGenerationJob', {
+      id: 'pipe_pass1_0', animName: 'idle_down', frameIndex: 0, status: 'queued', pass: 'pass1',
+    });
+    await client.dispatch('addGenerationJob', {
+      id: 'pipe_pass1_1', animName: 'idle_down', frameIndex: 1, status: 'queued', pass: 'pass1',
+    });
+    await client.dispatch('addGenerationJob', {
+      id: 'pipe_pass2_0', animName: 'idle_down', frameIndex: 0, status: 'queued', pass: 'pass2',
+    });
+
+    let jobs = await client.getStateSelector('generationJobs') as Array<Record<string, unknown>>;
+    assertEqual(jobs.length, 3, '3 pipeline jobs queued');
+
+    // 2. Complete pass1 jobs
+    await client.dispatch('updateGenerationJob', 'pipe_pass1_0', { status: 'done' });
+    await client.dispatch('updateGenerationJob', 'pipe_pass1_1', { status: 'done' });
+    jobs = await client.getStateSelector('generationJobs') as Array<Record<string, unknown>>;
+    const pass1Done = jobs.filter((j) => j['pass'] === 'pass1' && j['status'] === 'done');
+    assertEqual(pass1Done.length, 2, '2 pass1 jobs done');
+
+    // 3. Run pass2 job
+    await client.dispatch('updateGenerationJob', 'pipe_pass2_0', { status: 'running' });
+    jobs = await client.getStateSelector('generationJobs') as Array<Record<string, unknown>>;
+    const pass2Running = jobs.find((j) => j['id'] === 'pipe_pass2_0');
+    assertEqual(pass2Running!['status'], 'running', 'pass2 job running');
+
+    // 4. Complete and clear
+    await client.dispatch('updateGenerationJob', 'pipe_pass2_0', { status: 'done' });
+    await client.dispatch('clearCompletedJobs');
+    jobs = await client.getStateSelector('generationJobs') as unknown[];
+    assertEqual(jobs.length, 0, 'All pipeline jobs cleared');
+  });
+
+  // -----------------------------------------------------------------------
+  // Scenario: AI config chibi/openpose/pipeline settings
+  // -----------------------------------------------------------------------
+  runner.test('[Scenario] Pipeline-related AI config settings', async (client) => {
+    // 1. Read defaults
+    const defaults = await client.getStateSelector('aiConfig') as Record<string, unknown>;
+    assertEqual(defaults['chibiWeight'], 0.5, 'Default chibiWeight');
+    assertEqual(defaults['chibiDenoise'], 0.7, 'Default chibiDenoise');
+    assertEqual(defaults['openPoseStrength'], 0.8, 'Default openPoseStrength');
+    assertEqual(defaults['downscaleMethod'], 'nearest-exact', 'Default downscaleMethod');
+
+    // 2. Modify chibi settings
+    await client.dispatch('setAIConfig', { chibiWeight: 0.8, chibiDenoise: 0.5 });
+    let config = await client.getStateSelector('aiConfig') as Record<string, unknown>;
+    assertEqual(config['chibiWeight'], 0.8, 'chibiWeight updated');
+    assertEqual(config['chibiDenoise'], 0.5, 'chibiDenoise updated');
+
+    // 3. Modify openpose
+    await client.dispatch('setAIConfig', { openPoseStrength: 0.6 });
+    config = await client.getStateSelector('aiConfig') as Record<string, unknown>;
+    assertEqual(config['openPoseStrength'], 0.6, 'openPoseStrength updated');
+    // chibi settings unchanged
+    assertEqual(config['chibiWeight'], 0.8, 'chibiWeight still 0.8');
+
+    // 4. Restore
+    await client.dispatch('setAIConfig', {
+      chibiWeight: 0.5, chibiDenoise: 0.7, openPoseStrength: 0.8,
+    });
+    config = await client.getStateSelector('aiConfig') as Record<string, unknown>;
+    assertEqual(config['chibiWeight'], 0.5, 'chibiWeight restored');
+    assertEqual(config['chibiDenoise'], 0.7, 'chibiDenoise restored');
+    assertEqual(config['openPoseStrength'], 0.8, 'openPoseStrength restored');
+  });
+
+  // -----------------------------------------------------------------------
   // Scenario: Clip selection and re-selection
   // -----------------------------------------------------------------------
   runner.test('[Scenario] Clip selection resets playback', async (client) => {
