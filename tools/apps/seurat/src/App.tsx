@@ -7,6 +7,7 @@ import { Toolbar } from './components/layout/Toolbar.js';
 import { StatusBar } from './components/layout/StatusBar.js';
 import { MainPane } from './components/layout/MainPane.js';
 import { RightPane } from './components/layout/RightPane.js';
+import { BottomPane } from './components/layout/BottomPane.js';
 
 export function App() {
   usePlaybackEngine();
@@ -46,8 +47,11 @@ export function App() {
       <Toolbar />
       <div style={styles.body}>
         <TreePane />
-        <div style={styles.main}>
-          <MainPane />
+        <div style={styles.center}>
+          <div style={styles.main}>
+            <MainPane />
+          </div>
+          <BottomPane />
         </div>
         <RightPane />
       </div>
@@ -69,6 +73,12 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     flex: '1 1 0',
     minHeight: 0,
+    overflow: 'hidden',
+  },
+  center: {
+    flex: 1,
+    display: 'flex',
+    flexDirection: 'column',
     overflow: 'hidden',
   },
   main: {

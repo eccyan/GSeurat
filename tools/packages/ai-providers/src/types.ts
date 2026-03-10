@@ -119,6 +119,29 @@ export interface TwoPassIPAdapterOptions extends IPAdapterOptions {
 }
 
 /**
+ * Options for img2img generation with IP-Adapter reference.
+ * Uses VAEEncode(inputImage) + IPAdapterAdvanced(referenceImage) + KSampler(denoise) + RemBG.
+ */
+export interface Img2ImgWithIPAdapterOptions extends ImageGenerateOptions {
+  /** Denoise strength. Default 0.7. */
+  denoise?: number;
+  /** IP-Adapter weight for the reference image. Default 0.5. */
+  ipAdapterWeight?: number;
+  /** IP-Adapter preset. Default "PLUS (high strength)". */
+  ipAdapterPreset?: string;
+  /** IP-Adapter start_at (0.0–1.0). Default 0.0. */
+  ipAdapterStartAt?: number;
+  /** IP-Adapter end_at (0.0–1.0). Default 0.7. */
+  ipAdapterEndAt?: number;
+  /** Final output width — downscale from generation resolution. */
+  outputWidth?: number;
+  /** Final output height — downscale from generation resolution. */
+  outputHeight?: number;
+  /** Downscale interpolation method. Default "nearest-exact". */
+  downscaleMethod?: string;
+}
+
+/**
  * Options for AnimateDiff animation generation from an input image.
  */
 export interface AnimateDiffOptions extends ImageGenerateOptions {

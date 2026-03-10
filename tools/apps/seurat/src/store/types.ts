@@ -1,4 +1,4 @@
-import type { FrameStatus } from '@vulkan-game-tools/asset-types';
+import type { FrameStatus, PipelineStage } from '@vulkan-game-tools/asset-types';
 
 export type Section =
   | 'dashboard'
@@ -90,8 +90,16 @@ export interface GenerationJob {
   animName: string;
   frameIndex: number;
   status: 'queued' | 'running' | 'done' | 'error';
+  pass?: 'pass1' | 'pass2' | 'pass3';
   error?: string;
   seed?: number;
+}
+
+export interface ClipboardFrame {
+  animName: string;
+  frameIndex: number;
+  pass: PipelineStage;
+  pngBytes: Uint8Array;
 }
 
 export type PlaybackState = 'stopped' | 'playing' | 'paused';

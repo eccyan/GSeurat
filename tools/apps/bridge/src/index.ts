@@ -596,6 +596,79 @@ app.get('/api/characters/:id/frames/:anim/:frame/image', async (req: Request, re
   }
 });
 
+// Allowed pipeline pass names
+const VALID_PASSES = ['pending', 'pass1', 'pass1_edited', 'pass2', 'pass2_edited', 'pass3'];
+
+// GET /api/characters/:id/frames/:anim/:frame/pass/:pass — serve an intermediate pass image
+app.get('/api/characters/:id/frames/:anim/:frame/pass/:pass', async (req: Request, res: Response) => {
+  try {
+    const charDir = safeResolve(CHARACTERS_DIR, req.params['id']!);
+    const pass = req.params['pass']!;
+    if (!VALID_PASSES.includes(pass)) {
+      res.status(400).json({ error: `Invalid pass: ${pass}` });
+      return;
+    }
+    const animName = req.params['anim']!;
+    const frameIdx = req.params['frame']!;
+    const filename = `${animName}_${frameIdx}_${pass}.png`;
+    const filePath = path.join(charDir, animName, filename);
+    await fs.access(filePath);
+    res.setHeader('Content-Type', 'image/png');
+    res.setHeader('Cache-Control', 'no-cache');
+    const data = await fs.readFile(filePath);
+    res.send(data);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (message.includes('ENOENT') || message.includes('no such file')) {
+      res.status(404).json({ error: 'Pass image not found' });
+    } else {
+      res.status(500).json({ error: message });
+    }
+  }
+});
+
+// POST /api/characters/:id/frames/:anim/:frame/pass/:pass — save an intermediate pass image
+app.post('/api/characters/:id/frames/:anim/:frame/pass/:pass', async (req: Request, res: Response) => {
+  try {
+    const charDir = safeResolve(CHARACTERS_DIR, req.params['id']!);
+    const pass = req.params['pass']!;
+    if (!VALID_PASSES.includes(pass)) {
+      res.status(400).json({ error: `Invalid pass: ${pass}` });
+      return;
+    }
+    const animName = req.params['anim']!;
+    const animDir = path.join(charDir, animName);
+    await fs.mkdir(animDir, { recursive: true });
+    const frameIdx = req.params['frame']!;
+    const filename = `${animName}_${frameIdx}_${pass}.png`;
+    const filePath = path.join(animDir, filename);
+
+    const data = await readBinaryBody(req);
+    await fs.writeFile(filePath, data);
+    console.log(`[REST] Pass image written: ${filePath} (${data.length} bytes)`);
+
+    // Update pipeline_stage in manifest
+    const manifestPath = path.join(charDir, 'manifest.json');
+    try {
+      const raw = await fs.readFile(manifestPath, 'utf8');
+      const manifest = JSON.parse(raw);
+      const anim = manifest.animations?.find((a: { name: string }) => a.name === animName);
+      const fi = parseInt(frameIdx, 10);
+      const frame = anim?.frames?.find((f: { index: number }) => f.index === fi);
+      if (frame) {
+        frame.pipeline_stage = pass;
+        await fs.writeFile(manifestPath, JSON.stringify(manifest, null, 2), 'utf8');
+      }
+    } catch { /* manifest update optional */ }
+
+    res.json({ ok: true, path: filePath, bytes: data.length });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    const statusCode = message.includes('Path traversal') ? 400 : 500;
+    res.status(statusCode).json({ error: message });
+  }
+});
+
 // GET /api/characters/:id/frames/:anim/:frame — get a specific frame's status
 app.get('/api/characters/:id/frames/:anim/:frame', async (req: Request, res: Response) => {
   try {

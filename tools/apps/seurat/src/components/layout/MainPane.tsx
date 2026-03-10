@@ -2,7 +2,7 @@ import React from 'react';
 import { useSeuratStore } from '../../store/useSeuratStore.js';
 import { ManifestStatsView } from '../manifest/ManifestStatsView.js';
 import { ConceptPreview } from '../concept/ConceptPreview.js';
-import { AnimationMainView } from '../animate/AnimationMainView.js';
+import { FramePipelineGrid } from '../generate/FramePipelineGrid.js';
 
 export function MainPane() {
   const treeSelection = useSeuratStore((s) => s.treeSelection);
@@ -14,7 +14,7 @@ export function MainPane() {
       return <ConceptPreview />;
     case 'animation':
       return (
-        <AnimationMainView
+        <FramePipelineGrid
           key={`${treeSelection.characterId}-${treeSelection.animName}`}
           animName={treeSelection.animName}
         />

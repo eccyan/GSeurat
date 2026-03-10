@@ -5,6 +5,7 @@ import type {
   ChibiArt,
   PixelArt,
   FrameStatus,
+  PipelineStage,
   ViewDirection,
   DirectionCode,
 } from '@vulkan-game-tools/asset-types';
@@ -15,6 +16,7 @@ import type {
   TreeSelection,
   AIConfig,
   GenerationJob,
+  ClipboardFrame,
   PlaybackState,
   ReviewFilter,
   AssembleResult,
@@ -105,6 +107,19 @@ export interface SeuratState {
     frameIndex?: number,
   ) => Promise<void>;
   frameRevision: number;
+
+  // Pipeline (step-by-step)
+  editingFrame: { animName: string; frameIndex: number; pass: PipelineStage } | null;
+  setEditingFrame: (frame: { animName: string; frameIndex: number; pass: PipelineStage } | null) => void;
+  clipboard: ClipboardFrame | null;
+  copyFrame: (animName: string, frameIndex: number, pass: PipelineStage) => Promise<void>;
+  pasteFrame: (animName: string, frameIndex: number, pass: PipelineStage) => Promise<void>;
+  generatePass: (
+    pass: 'pass1' | 'pass2' | 'pass3',
+    animName: string,
+    frameIndices?: number[],
+  ) => Promise<void>;
+  saveEditedFrame: (animName: string, frameIndex: number, pass: PipelineStage, pngBytes: Uint8Array) => Promise<void>;
 
   // Review
   reviewFilter: ReviewFilter;
@@ -1101,6 +1116,223 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
     set((s) => ({
       generationJobs: s.generationJobs.filter((j) => j.status !== 'done' && j.status !== 'error'),
     })),
+
+  // Pipeline (step-by-step)
+  editingFrame: null,
+  setEditingFrame: (frame) => set({ editingFrame: frame }),
+  clipboard: null,
+
+  copyFrame: async (animName, frameIndex, pass) => {
+    const { manifest } = get();
+    if (!manifest) return;
+    try {
+      let pngBytes: Uint8Array;
+      if (pass === 'pass3') {
+        // Final frame
+        const res = await fetch(api.frameThumbnailUrl(manifest.character_id, animName, frameIndex));
+        if (!res.ok) throw new Error('Frame not found');
+        pngBytes = new Uint8Array(await res.arrayBuffer());
+      } else if (pass === 'pending') {
+        return; // nothing to copy
+      } else {
+        pngBytes = await api.fetchPassImageBytes(manifest.character_id, animName, frameIndex, pass);
+      }
+      set({ clipboard: { animName, frameIndex, pass, pngBytes } });
+    } catch (err) {
+      console.warn('[Seurat] Copy failed:', err);
+    }
+  },
+
+  pasteFrame: async (animName, frameIndex, pass) => {
+    const { manifest, clipboard } = get();
+    if (!manifest || !clipboard) return;
+    try {
+      if (pass === 'pass3') {
+        await api.saveFrameImage(manifest.character_id, animName, frameIndex, clipboard.pngBytes);
+      } else {
+        await api.savePassImage(manifest.character_id, animName, frameIndex, pass, clipboard.pngBytes);
+      }
+      // Update pipeline_stage in local manifest
+      const updated = structuredClone(manifest);
+      const frame = updated.animations.find((a) => a.name === animName)?.frames.find((f) => f.index === frameIndex);
+      if (frame) {
+        frame.pipeline_stage = pass;
+        if (pass === 'pass3') { frame.status = 'generated'; }
+      }
+      set({ manifest: updated, frameRevision: get().frameRevision + 1 });
+    } catch (err) {
+      console.warn('[Seurat] Paste failed:', err);
+    }
+  },
+
+  saveEditedFrame: async (animName, frameIndex, pass, pngBytes) => {
+    const { manifest } = get();
+    if (!manifest) return;
+    const editedStage = (pass === 'pass1' || pass === 'pass1_edited') ? 'pass1_edited'
+      : (pass === 'pass2' || pass === 'pass2_edited') ? 'pass2_edited'
+      : pass;
+    await api.savePassImage(manifest.character_id, animName, frameIndex, editedStage, pngBytes);
+    const updated = structuredClone(manifest);
+    const frame = updated.animations.find((a) => a.name === animName)?.frames.find((f) => f.index === frameIndex);
+    if (frame) { frame.pipeline_stage = editedStage as PipelineStage; }
+    set({ manifest: updated, frameRevision: get().frameRevision + 1 });
+  },
+
+  generatePass: async (pass, animName, frameIndices) => {
+    const { manifest: _manifest, aiConfig, animRefOverride } = get();
+    if (!_manifest) return;
+    const manifest = _manifest;
+
+    const anim = manifest.animations.find((a) => a.name === animName);
+    if (!anim) return;
+
+    const comfy = new ComfyUIClient(aiConfig.comfyUrl);
+    const indices = frameIndices ?? anim.frames.map((f) => f.index);
+
+    const { buildFramePrompt, buildNegativePrompt } = await import('../lib/ai-generate.js');
+    const { getPose, renderPoseToPng } = await import('../lib/pose-templates.js');
+    const loras = aiConfig.loras.filter((l) => l.name.trim());
+    const negative = buildNegativePrompt(manifest);
+    const override = animRefOverride[animName];
+    const view = override ?? DIRECTION_TO_VIEW[anim.direction];
+
+    // Pre-process reference images through RemBG
+    const shouldPreRemBg = aiConfig.useIPAdapter && aiConfig.removeBackground;
+    async function preRemBg(bytes: Uint8Array): Promise<Uint8Array> {
+      if (!shouldPreRemBg) return bytes;
+      try { return await comfy.removeBackground(bytes, aiConfig.remBgNodeType); } catch { return bytes; }
+    }
+
+    for (const fi of indices) {
+      const jobId = `${pass}_${animName}_${fi}_${Date.now()}`;
+      const rawSeed = aiConfig.seed === -1 ? Math.floor(Math.random() * 2147483647) : aiConfig.seed + fi;
+      get().addGenerationJob({ id: jobId, animName, frameIndex: fi, status: 'running', pass, seed: rawSeed });
+
+      try {
+        const prompt = buildFramePrompt(manifest, anim, fi);
+
+        if (pass === 'pass1') {
+          // Pass 1: IP-Adapter (concept) + OpenPose → 512x512
+          let conceptBytes: Uint8Array;
+          try { conceptBytes = await api.fetchConceptImageBytes(manifest.character_id, view); }
+          catch { conceptBytes = await api.fetchConceptImageBytes(manifest.character_id); }
+          conceptBytes = await preRemBg(conceptBytes);
+
+          const pose = get().poseOverrides[`${animName}:${fi}`] ?? getPose(animName, fi);
+          const poseBytes = pose ? await renderPoseToPng(pose, 512, 512) : null;
+
+          let pngBytes: Uint8Array;
+          if (poseBytes) {
+            pngBytes = await comfy.generateIPAdapterWithRetry(prompt, conceptBytes, poseBytes, {
+              width: 512, height: 512, steps: aiConfig.steps, seed: rawSeed, cfgScale: Math.min(aiConfig.cfg, 7),
+              samplerName: aiConfig.sampler, checkpoint: aiConfig.checkpoint,
+              negativePrompt: negative, denoise: 1.0, loras,
+              ipAdapterWeight: aiConfig.ipAdapterWeight, ipAdapterPreset: aiConfig.ipAdapterPreset,
+              ipAdapterStartAt: aiConfig.ipAdapterStartAt, ipAdapterEndAt: aiConfig.ipAdapterEndAt,
+              openPoseModel: aiConfig.openPoseModel, openPoseStrength: aiConfig.openPoseStrength,
+              removeBackground: aiConfig.removeBackground, remBgNodeType: aiConfig.remBgNodeType,
+            });
+          } else {
+            pngBytes = await comfy.generateIPAdapterOnlyWithRetry(prompt, conceptBytes, {
+              width: 512, height: 512, steps: aiConfig.steps, seed: rawSeed, cfgScale: Math.min(aiConfig.cfg, 7),
+              samplerName: aiConfig.sampler, checkpoint: aiConfig.checkpoint,
+              negativePrompt: negative, loras,
+              ipAdapterWeight: aiConfig.ipAdapterWeight, ipAdapterEndAt: aiConfig.ipAdapterEndAt,
+              removeBackground: aiConfig.removeBackground, remBgNodeType: aiConfig.remBgNodeType,
+            });
+          }
+
+          await api.savePassImage(manifest.character_id, animName, fi, 'pass1', pngBytes);
+          const cur = get().manifest;
+          if (cur) {
+            const updated = structuredClone(cur);
+            const f = updated.animations.find((x) => x.name === animName)?.frames.find((x) => x.index === fi);
+            if (f) f.pipeline_stage = 'pass1';
+            set({ manifest: updated, frameRevision: get().frameRevision + 1 });
+          }
+
+        } else if (pass === 'pass2') {
+          // Pass 2: img2img + IPAdapter(chibi) on pass1 output
+          const cur = get().manifest;
+          const frame = cur?.animations.find((a) => a.name === animName)?.frames.find((f) => f.index === fi);
+          const inputStage = (frame?.pipeline_stage === 'pass1_edited') ? 'pass1_edited' : 'pass1';
+
+          let pass1Bytes: Uint8Array;
+          try { pass1Bytes = await api.fetchPassImageBytes(manifest.character_id, animName, fi, inputStage); }
+          catch { pass1Bytes = await api.fetchPassImageBytes(manifest.character_id, animName, fi, 'pass1'); }
+
+          let chibiBytes: Uint8Array;
+          try { chibiBytes = await api.fetchChibiImageBytes(manifest.character_id, view); }
+          catch { chibiBytes = await api.fetchChibiImageBytes(manifest.character_id); }
+          chibiBytes = await preRemBg(chibiBytes);
+
+          const pngBytes = await comfy.generateImg2ImgWithIPAdapterWithRetry(prompt, pass1Bytes, chibiBytes, {
+            width: 512, height: 512, steps: aiConfig.steps, seed: rawSeed, cfgScale: aiConfig.cfg,
+            samplerName: aiConfig.sampler, checkpoint: aiConfig.checkpoint,
+            negativePrompt: negative, denoise: aiConfig.chibiDenoise, loras: [],
+            ipAdapterWeight: aiConfig.chibiWeight, ipAdapterEndAt: 0.7,
+            removeBackground: aiConfig.removeBackground, remBgNodeType: aiConfig.remBgNodeType,
+          });
+
+          await api.savePassImage(manifest.character_id, animName, fi, 'pass2', pngBytes);
+          const latest = get().manifest;
+          if (latest) {
+            const updated = structuredClone(latest);
+            const f = updated.animations.find((x) => x.name === animName)?.frames.find((x) => x.index === fi);
+            if (f) f.pipeline_stage = 'pass2';
+            set({ manifest: updated, frameRevision: get().frameRevision + 1 });
+          }
+
+        } else if (pass === 'pass3') {
+          // Pass 3: Pixel LoRA img2img + downscale → final frame
+          const cur = get().manifest;
+          const frame = cur?.animations.find((a) => a.name === animName)?.frames.find((f) => f.index === fi);
+          const inputStage = (frame?.pipeline_stage === 'pass2_edited') ? 'pass2_edited' : 'pass2';
+
+          let pass2Bytes: Uint8Array;
+          try { pass2Bytes = await api.fetchPassImageBytes(manifest.character_id, animName, fi, inputStage); }
+          catch { pass2Bytes = await api.fetchPassImageBytes(manifest.character_id, animName, fi, 'pass2'); }
+
+          const { frame_width, frame_height } = manifest.spritesheet;
+          // Use img2img at 512x512 then downscale client-side
+          let pngBytes = await comfy.generateImg2ImgWithRetry(prompt, pass2Bytes, {
+            width: 512, height: 512, steps: aiConfig.steps, seed: rawSeed, cfgScale: aiConfig.cfg,
+            samplerName: aiConfig.sampler, checkpoint: aiConfig.checkpoint,
+            negativePrompt: negative, denoise: aiConfig.pixelPassDenoise, loras,
+            removeBackground: aiConfig.removeBackground, remBgNodeType: aiConfig.remBgNodeType,
+          });
+          // Client-side downscale to sprite size
+          if (frame_width !== 512 || frame_height !== 512) {
+            const blob = new Blob([pngBytes as BlobPart], { type: 'image/png' });
+            const bmp = await createImageBitmap(blob);
+            const canvas = new OffscreenCanvas(frame_width, frame_height);
+            const ctx = canvas.getContext('2d')!;
+            ctx.drawImage(bmp, 0, 0, frame_width, frame_height);
+            bmp.close();
+            const outBlob = await canvas.convertToBlob({ type: 'image/png' });
+            pngBytes = new Uint8Array(await outBlob.arrayBuffer());
+          }
+
+          // Save as final frame
+          await api.saveFrameImage(manifest.character_id, animName, fi, pngBytes);
+          // Also save as pass3 intermediate
+          await api.savePassImage(manifest.character_id, animName, fi, 'pass3', pngBytes);
+          const latest = get().manifest;
+          if (latest) {
+            const updated = structuredClone(latest);
+            const f = updated.animations.find((x) => x.name === animName)?.frames.find((x) => x.index === fi);
+            if (f) { f.pipeline_stage = 'pass3'; f.status = 'generated'; f.file = `${animName}/${animName}_${fi}.png`; }
+            set({ manifest: updated, frameRevision: get().frameRevision + 1 });
+          }
+        }
+
+        get().updateGenerationJob(jobId, { status: 'done' });
+      } catch (err) {
+        console.error(`[Seurat] ${pass} generation error for ${animName}/f${fi}:`, err);
+        get().updateGenerationJob(jobId, { status: 'error', error: err instanceof Error ? err.message : String(err) });
+      }
+    }
+  },
 
   generateFrames: async (scope, animName, frameIndex) => {
     const { manifest: _manifest, aiConfig, animRefOverride } = get();

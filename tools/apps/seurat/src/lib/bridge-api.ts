@@ -1,6 +1,7 @@
 import type {
   CharacterManifest,
   FrameStatus,
+  PipelineStage,
   ViewDirection,
 } from '@vulkan-game-tools/asset-types';
 import type { AssembleResult } from '../store/types.js';
@@ -209,4 +210,53 @@ export function frameThumbnailUrl(
   frameIndex: number,
 ): string {
   return `${BASE}/api/characters/${encodeURIComponent(characterId)}/frames/${encodeURIComponent(animName)}/${frameIndex}/image?t=${Date.now()}`;
+}
+
+// --- Pipeline pass image endpoints ---
+
+export function passImageUrl(
+  characterId: string,
+  animName: string,
+  frameIndex: number,
+  pass: PipelineStage,
+): string {
+  return `${BASE}/api/characters/${encodeURIComponent(characterId)}/frames/${encodeURIComponent(animName)}/${frameIndex}/pass/${pass}?t=${Date.now()}`;
+}
+
+export async function fetchPassImageBytes(
+  characterId: string,
+  animName: string,
+  frameIndex: number,
+  pass: PipelineStage,
+): Promise<Uint8Array> {
+  const res = await fetch(
+    `${BASE}/api/characters/${encodeURIComponent(characterId)}/frames/${encodeURIComponent(animName)}/${frameIndex}/pass/${pass}`,
+  );
+  if (!res.ok) throw new Error(`No pass image for ${characterId}/${animName}/${frameIndex}/${pass}: ${res.status}`);
+  const buf = await res.arrayBuffer();
+  return new Uint8Array(buf);
+}
+
+export async function savePassImage(
+  characterId: string,
+  animName: string,
+  frameIndex: number,
+  pass: PipelineStage,
+  pngBytes: Uint8Array,
+): Promise<void> {
+  let binary = '';
+  for (let i = 0; i < pngBytes.length; i++) {
+    binary += String.fromCharCode(pngBytes[i]);
+  }
+  const base64 = btoa(binary);
+
+  const res = await fetch(
+    `${BASE}/api/characters/${encodeURIComponent(characterId)}/frames/${encodeURIComponent(animName)}/${frameIndex}/pass/${pass}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ data: base64 }),
+    },
+  );
+  if (!res.ok) throw new Error(`Failed to save pass image: ${res.status}`);
 }

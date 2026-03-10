@@ -1,4 +1,4 @@
-import type { ImageProvider, ImageGenerateOptions, Img2ImgOptions, ControlNetOptions, IPAdapterOptions, TwoPassIPAdapterOptions, AnimateDiffOptions, AvailabilityResult } from "./types.js";
+import type { ImageProvider, ImageGenerateOptions, Img2ImgOptions, ControlNetOptions, IPAdapterOptions, TwoPassIPAdapterOptions, Img2ImgWithIPAdapterOptions, AnimateDiffOptions, AvailabilityResult } from "./types.js";
 
 /** A single node entry in a ComfyUI workflow graph. */
 interface WorkflowNode {
@@ -2193,6 +2193,258 @@ export class ComfyUIClient implements ImageProvider {
     throw new Error(
       `ComfyUI returned a blank/black image after ${maxRetries} IP-Adapter attempts. ` +
       `Try different prompts, check the model is loaded, or increase steps.`
+    );
+  }
+
+  /**
+   * Img2img with IP-Adapter reference: VAEEncode(inputImage) + IPAdapterAdvanced(referenceImage) + KSampler + RemBG.
+   * Used for pipeline Pass 2: apply chibi style to pass1 output using chibi as IP-Adapter reference.
+   */
+  async generateImg2ImgWithIPAdapter(
+    prompt: string,
+    inputImage: Uint8Array,
+    referenceImage: Uint8Array,
+    opts: Img2ImgWithIPAdapterOptions,
+  ): Promise<Uint8Array> {
+    const inputImageName = await this.uploadImage(inputImage);
+    const refImageName = await this.uploadImage(referenceImage);
+
+    const denoise = opts.denoise ?? 0.7;
+    const ipWeight = opts.ipAdapterWeight ?? 0.5;
+    const ipPreset = opts.ipAdapterPreset ?? "PLUS (high strength)";
+    const ipStartAt = opts.ipAdapterStartAt ?? 0.0;
+    const ipEndAt = opts.ipAdapterEndAt ?? 0.7;
+    const width = opts.width ?? 512;
+    const height = opts.height ?? 512;
+    const steps = opts.steps ?? 20;
+    const seed = opts.seed ?? Math.floor(Math.random() * 2 ** 32);
+    const cfg = opts.cfgScale ?? 7;
+    const samplerName = opts.samplerName ?? "euler";
+    const scheduler = opts.scheduler;
+    const loras = opts.loras ?? [];
+    const checkpoint = opts.checkpoint;
+    const vae = opts.vae;
+
+    // Build workflow: LoadCheckpoint → LoadImage(input) → VAEEncode → IPAdapter(ref) → KSampler → VAEDecode → RemBG → Downscale → Save
+    const nodes: Record<string, WorkflowNode> = {};
+
+    // Checkpoint loader
+    nodes["1"] = {
+      class_type: "CheckpointLoaderSimple",
+      inputs: { ckpt_name: checkpoint ?? "v1-5-pruned-emaonly.safetensors" },
+    };
+
+    // Positive prompt
+    nodes["2"] = {
+      class_type: "CLIPTextEncode",
+      inputs: { text: prompt, clip: ["1", 1] },
+    };
+
+    // Negative prompt
+    nodes["3"] = {
+      class_type: "CLIPTextEncode",
+      inputs: { text: opts.negativePrompt ?? "bad quality, blurry, deformed", clip: ["1", 1] },
+    };
+
+    // Load input image (pass1 output)
+    nodes["10"] = {
+      class_type: "LoadImage",
+      inputs: { image: inputImageName },
+    };
+
+    // Resize input to target
+    nodes["11"] = {
+      class_type: "ImageScale",
+      inputs: { image: ["10", 0], width, height, upscale_method: "bilinear", crop: "center" },
+    };
+
+    // VAE encode input image
+    nodes["12"] = {
+      class_type: "VAEEncode",
+      inputs: { pixels: ["11", 0], vae: ["1", 2] },
+    };
+
+    // Load reference image (chibi)
+    nodes["20"] = {
+      class_type: "LoadImage",
+      inputs: { image: refImageName },
+    };
+
+    // IP-Adapter Unified Loader
+    nodes["21"] = {
+      class_type: "IPAdapterUnifiedLoader",
+      inputs: { model: ["1", 0], preset: ipPreset },
+    };
+
+    // IP-Adapter Advanced
+    nodes["22"] = {
+      class_type: "IPAdapterAdvanced",
+      inputs: {
+        model: ["21", 0],
+        ipadapter: ["21", 1],
+        image: ["20", 0],
+        weight: ipWeight,
+        weight_type: "linear",
+        combine_embeds: "concat",
+        start_at: ipStartAt,
+        end_at: ipEndAt,
+        embeds_scaling: "V only",
+      },
+    };
+
+    // KSampler — denoise on the VAE-encoded input latent
+    nodes["5"] = {
+      class_type: "KSampler",
+      inputs: {
+        model: ["22", 0],
+        positive: ["2", 0],
+        negative: ["3", 0],
+        latent_image: ["12", 0],
+        seed,
+        steps,
+        cfg,
+        sampler_name: samplerName,
+        scheduler: scheduler ?? "normal",
+        denoise,
+      },
+    };
+
+    // VAE Decode
+    nodes["8"] = {
+      class_type: "VAEDecode",
+      inputs: { samples: ["5", 0], vae: ["1", 2] },
+    };
+
+    // Apply LoRAs if any
+    let modelOutput: [string, number] = ["22", 0];
+    let clipOutput: [string, number] = ["1", 1];
+    if (loras.length > 0) {
+      let prevModel: [string, number] = ["1", 0];
+      let prevClip: [string, number] = ["1", 1];
+      for (let i = 0; i < loras.length; i++) {
+        const loraId = `lora_${i}`;
+        const loraName = loras[i].name.includes('.') ? loras[i].name : `${loras[i].name}.safetensors`;
+        nodes[loraId] = {
+          class_type: "LoraLoader",
+          inputs: {
+            model: prevModel,
+            clip: prevClip,
+            lora_name: loraName,
+            strength_model: loras[i].weight ?? 0.8,
+            strength_clip: loras[i].weight ?? 0.8,
+          },
+        };
+        prevModel = [loraId, 0];
+        prevClip = [loraId, 1];
+      }
+      // Re-wire: IP-Adapter uses LoRA model output, prompts use LoRA clip output
+      nodes["21"].inputs.model = prevModel;
+      nodes["2"].inputs.clip = prevClip;
+      nodes["3"].inputs.clip = prevClip;
+      clipOutput = prevClip;
+      modelOutput = ["22", 0];
+    }
+
+    // VAE override
+    if (vae) {
+      nodes["vae_loader"] = {
+        class_type: "VAELoader",
+        inputs: { vae_name: vae },
+      };
+      nodes["12"].inputs.vae = ["vae_loader", 0];
+      nodes["8"].inputs.vae = ["vae_loader", 0];
+    }
+
+    // Save Image
+    nodes["9"] = {
+      class_type: "SaveImage",
+      inputs: { images: ["8", 0], filename_prefix: "img2img_ipadapter" },
+    };
+
+    // RemBG
+    injectRemBGNodes(nodes, { removeBackground: opts.removeBackground, remBgNodeType: opts.remBgNodeType });
+
+    // Downscale if needed
+    if (opts.outputWidth && opts.outputHeight && (opts.outputWidth !== width || opts.outputHeight !== height)) {
+      const saveInputs = nodes["9"].inputs as Record<string, unknown>;
+      const currentSource = saveInputs.images;
+      nodes["downscale"] = {
+        class_type: "ImageScale",
+        inputs: {
+          image: currentSource,
+          width: opts.outputWidth,
+          height: opts.outputHeight,
+          upscale_method: opts.downscaleMethod ?? "nearest-exact",
+          crop: "disabled",
+        },
+      };
+      saveInputs.images = ["downscale", 0];
+    }
+
+    const submitBody: PromptRequest = { prompt: nodes };
+    const submitResponse = await fetch(`${this.baseUrl}/prompt`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(submitBody),
+    });
+
+    if (!submitResponse.ok) {
+      const text = await submitResponse.text().catch(() => "(no body)");
+      throw new Error(
+        `ComfyUI img2img+IPAdapter prompt failed: HTTP ${submitResponse.status} ${submitResponse.statusText} — ${text}`
+      );
+    }
+
+    const { prompt_id } = (await submitResponse.json()) as PromptResponse;
+    const imageFile = await this.pollForCompletion(prompt_id);
+
+    const imageUrl = `${this.baseUrl}/view?filename=${encodeURIComponent(
+      imageFile.filename
+    )}&subfolder=${encodeURIComponent(imageFile.subfolder)}&type=${encodeURIComponent(
+      imageFile.type
+    )}`;
+
+    const imageResponse = await fetch(imageUrl);
+    if (!imageResponse.ok) {
+      throw new Error(
+        `ComfyUI image fetch failed: HTTP ${imageResponse.status} ${imageResponse.statusText}`
+      );
+    }
+
+    const buffer = await imageResponse.arrayBuffer();
+    return new Uint8Array(buffer);
+  }
+
+  /**
+   * Img2img with IP-Adapter with retry on blank results.
+   */
+  async generateImg2ImgWithIPAdapterWithRetry(
+    prompt: string,
+    inputImage: Uint8Array,
+    referenceImage: Uint8Array,
+    opts: Img2ImgWithIPAdapterOptions,
+    maxRetries = 3,
+    onRetry?: (attempt: number, max: number) => void,
+  ): Promise<Uint8Array> {
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      const seed = attempt === 1
+        ? (opts.seed ?? Math.floor(Math.random() * 2 ** 32))
+        : Math.floor(Math.random() * 2 ** 32);
+
+      const pngBytes = await this.generateImg2ImgWithIPAdapter(prompt, inputImage, referenceImage, { ...opts, seed });
+
+      if (!isBlankImage(pngBytes)) {
+        return pngBytes;
+      }
+
+      if (attempt < maxRetries) {
+        onRetry?.(attempt + 1, maxRetries);
+        await sleep(1000);
+      }
+    }
+
+    throw new Error(
+      `ComfyUI returned a blank/black image after ${maxRetries} img2img+IPAdapter attempts.`
     );
   }
 

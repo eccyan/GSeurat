@@ -5,6 +5,7 @@ import { ConceptActions } from '../concept/ConceptActions.js';
 import { ChibiActions } from '../concept/ChibiActions.js';
 import { AtlasActions } from '../atlas/AtlasActions.js';
 import { GenerateActions } from '../generate/GenerateActions.js';
+import { PipelineControls } from '../generate/PipelineControls.js';
 import { ReviewActions } from '../review/ReviewActions.js';
 
 function Collapsible({ title, defaultOpen = true, badge, children }: {
@@ -54,10 +55,10 @@ function RightContent({ selection }: { selection: ReturnType<typeof useSeuratSto
     case 'animation':
       return (
         <>
-          <Collapsible title="Generate" defaultOpen>
-            <GenerateActions animName={selection.animName} />
+          <Collapsible title="Pipeline" defaultOpen>
+            <PipelineControls animName={selection.animName} />
           </Collapsible>
-          <Collapsible title="Review" defaultOpen>
+          <Collapsible title="Review" defaultOpen={false}>
             <ReviewActions animName={selection.animName} />
           </Collapsible>
         </>

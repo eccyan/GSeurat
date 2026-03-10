@@ -7,6 +7,7 @@ export type FrameSource = "ai" | "manual" | "placeholder";
 export type DirectionCode = "S" | "N" | "E" | "W";
 export type AnimState = "idle" | "walk" | "run";
 export type ViewDirection = "front" | "back" | "right" | "left";
+export type PipelineStage = 'pending' | 'pass1' | 'pass1_edited' | 'pass2' | 'pass2_edited' | 'pass3';
 
 export const VIEW_DIRECTIONS: ViewDirection[] = ["front", "back", "right", "left"];
 
@@ -48,6 +49,7 @@ export interface CharacterFrame {
   status: FrameStatus;
   source: FrameSource;
   file: string; // relative path within character directory
+  pipeline_stage?: PipelineStage;
   generation?: FrameGeneration;
   review?: FrameReview;
 }

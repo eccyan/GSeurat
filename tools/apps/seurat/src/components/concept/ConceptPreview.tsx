@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import type { ViewDirection } from '@vulkan-game-tools/asset-types';
 import { useSeuratStore } from '../../store/useSeuratStore.js';
+import { PaintEditor } from '../shared/PaintEditor.js';
 import * as api from '../../lib/bridge-api.js';
 
 const VIEW_ORDER: { view: ViewDirection; label: string }[] = [
@@ -9,16 +10,6 @@ const VIEW_ORDER: { view: ViewDirection; label: string }[] = [
   { view: 'right', label: 'Right' },
   { view: 'left',  label: 'Left' },
 ];
-
-/* ── Erase a circle of pixels ── */
-function eraseCircle(ctx: CanvasRenderingContext2D, cx: number, cy: number, radius: number): void {
-  ctx.save();
-  ctx.globalCompositeOperation = 'destination-out';
-  ctx.beginPath();
-  ctx.arc(cx, cy, radius, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.restore();
-}
 
 /* ── Small thumbnail cell — click to open editor ── */
 function ImageCell({
@@ -49,159 +40,6 @@ function ImageCell({
       ) : (
         <div style={styles.cellPlaceholder}>—</div>
       )}
-    </div>
-  );
-}
-
-/* ── Full-size painting editor ── */
-function PaintEditor({
-  imageUrl,
-  title,
-  onSave,
-  onClose,
-}: {
-  imageUrl: string;
-  title: string;
-  onSave: (pngBytes: Uint8Array) => Promise<void>;
-  onClose: () => void;
-}) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const painting = useRef(false);
-  const lastPos = useRef<{ x: number; y: number } | null>(null);
-  const [brushSize, setBrushSize] = useState(20);
-  const [saving, setSaving] = useState(false);
-
-  // Generate a circular brush cursor as a data URL
-  const brushCursor = React.useMemo(() => {
-    const size = brushSize;
-    const half = size / 2;
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}"><circle cx="${half}" cy="${half}" r="${half - 1}" fill="none" stroke="white" stroke-width="1" opacity="0.8"/><circle cx="${half}" cy="${half}" r="${half - 1}" fill="none" stroke="black" stroke-width="1" opacity="0.4" stroke-dasharray="2,2"/></svg>`;
-    const encoded = btoa(svg);
-    return `url('data:image/svg+xml;base64,${encoded}') ${half} ${half}, crosshair`;
-  }, [brushSize]);
-
-  // Load image into canvas
-  useEffect(() => {
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => {
-      const canvas = canvasRef.current;
-      if (!canvas) return;
-      canvas.width = img.naturalWidth;
-      canvas.height = img.naturalHeight;
-      const ctx = canvas.getContext('2d')!;
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(img, 0, 0);
-    };
-    img.src = imageUrl;
-  }, [imageUrl]);
-
-  const getCanvasPos = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
-    const canvas = canvasRef.current!;
-    const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
-    return {
-      x: (e.clientX - rect.left) * scaleX,
-      y: (e.clientY - rect.top) * scaleY,
-    };
-  }, []);
-
-  const getRadius = useCallback(() => {
-    const canvas = canvasRef.current!;
-    const rect = canvas.getBoundingClientRect();
-    return (brushSize / 2) * (canvas.width / rect.width);
-  }, [brushSize]);
-
-  const strokeLine = useCallback((ctx: CanvasRenderingContext2D, x0: number, y0: number, x1: number, y1: number, radius: number) => {
-    const dx = x1 - x0;
-    const dy = y1 - y0;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-    const steps = Math.max(1, Math.ceil(dist / (radius * 0.5)));
-    for (let i = 0; i <= steps; i++) {
-      const t = i / steps;
-      eraseCircle(ctx, x0 + dx * t, y0 + dy * t, radius);
-    }
-  }, []);
-
-  const handleMouseDown = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
-    painting.current = true;
-    const canvas = canvasRef.current!;
-    const ctx = canvas.getContext('2d')!;
-    const pos = getCanvasPos(e);
-    eraseCircle(ctx, pos.x, pos.y, getRadius());
-    lastPos.current = pos;
-  }, [getCanvasPos, getRadius]);
-
-  const handleMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!painting.current) return;
-    const canvas = canvasRef.current!;
-    const ctx = canvas.getContext('2d')!;
-    const pos = getCanvasPos(e);
-    const radius = getRadius();
-    if (lastPos.current) {
-      strokeLine(ctx, lastPos.current.x, lastPos.current.y, pos.x, pos.y, radius);
-    } else {
-      eraseCircle(ctx, pos.x, pos.y, radius);
-    }
-    lastPos.current = pos;
-  }, [getCanvasPos, getRadius, strokeLine]);
-
-  const handleMouseUp = useCallback(() => {
-    painting.current = false;
-    lastPos.current = null;
-  }, []);
-
-  const handleSave = useCallback(async () => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    setSaving(true);
-    try {
-      const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
-      if (!blob) return;
-      const bytes = new Uint8Array(await blob.arrayBuffer());
-      await onSave(bytes);
-      onClose();
-    } finally {
-      setSaving(false);
-    }
-  }, [onSave, onClose]);
-
-  return (
-    <div style={styles.editorOverlay}>
-      {/* Toolbar */}
-      <div style={styles.editorToolbar}>
-        <span style={styles.editorTitle}>{title}</span>
-        <div style={styles.brushRow}>
-          <span style={styles.editorLabel}>Brush</span>
-          <input
-            type="range"
-            min={4}
-            max={80}
-            value={brushSize}
-            onChange={(e) => setBrushSize(Number(e.target.value))}
-            style={{ width: 120, height: 12 }}
-          />
-          <span style={styles.editorLabel}>{brushSize}px</span>
-        </div>
-        <div style={{ flex: 1 }} />
-        <button onClick={handleSave} disabled={saving} style={styles.editorSaveBtn}>
-          {saving ? 'Saving...' : 'Save'}
-        </button>
-        <button onClick={onClose} style={styles.editorCloseBtn}>Cancel</button>
-      </div>
-      {/* Canvas area */}
-      <div ref={containerRef} style={styles.editorCanvasWrap}>
-        <canvas
-          ref={canvasRef}
-          onMouseDown={handleMouseDown}
-          onMouseMove={handleMouseMove}
-          onMouseUp={handleMouseUp}
-          onMouseLeave={handleMouseUp}
-          style={{ ...styles.editorCanvas, cursor: brushCursor }}
-        />
-      </div>
     </div>
   );
 }
@@ -485,84 +323,5 @@ const styles: Record<string, React.CSSProperties> = {
     padding: '2px 8px',
     cursor: 'pointer',
     fontWeight: 600,
-  },
-  /* ── Paint Editor ── */
-  editorOverlay: {
-    display: 'flex',
-    flexDirection: 'column',
-    height: '100%',
-    background: '#0a0a14',
-  },
-  editorToolbar: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 12,
-    padding: '8px 12px',
-    background: '#12121e',
-    borderBottom: '1px solid #2a2a3a',
-    flexShrink: 0,
-  },
-  editorTitle: {
-    fontFamily: 'monospace',
-    fontSize: 12,
-    fontWeight: 600,
-    color: '#ccc',
-  },
-  editorLabel: {
-    fontFamily: 'monospace',
-    fontSize: 10,
-    color: '#888',
-    whiteSpace: 'nowrap' as const,
-  },
-  brushRow: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 6,
-  },
-  editorSaveBtn: {
-    background: '#1e3a2e',
-    border: '1px solid #44aa44',
-    borderRadius: 4,
-    color: '#70d870',
-    fontFamily: 'monospace',
-    fontSize: 10,
-    padding: '4px 14px',
-    cursor: 'pointer',
-    fontWeight: 600,
-  },
-  editorCloseBtn: {
-    background: '#2a1a1a',
-    border: '1px solid #553333',
-    borderRadius: 4,
-    color: '#d88',
-    fontFamily: 'monospace',
-    fontSize: 10,
-    padding: '4px 14px',
-    cursor: 'pointer',
-    fontWeight: 600,
-  },
-  editorCanvasWrap: {
-    flex: 1,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'auto',
-    padding: 16,
-    // Checkerboard pattern to show transparency
-    backgroundImage:
-      'linear-gradient(45deg, #1a1a2a 25%, transparent 25%), ' +
-      'linear-gradient(-45deg, #1a1a2a 25%, transparent 25%), ' +
-      'linear-gradient(45deg, transparent 75%, #1a1a2a 75%), ' +
-      'linear-gradient(-45deg, transparent 75%, #1a1a2a 75%)',
-    backgroundSize: '16px 16px',
-    backgroundPosition: '0 0, 0 8px, 8px -8px, -8px 0',
-    backgroundColor: '#0e0e1a',
-  },
-  editorCanvas: {
-    maxWidth: '100%',
-    maxHeight: '100%',
-    objectFit: 'contain',
-    imageRendering: 'pixelated' as const,
-    cursor: 'crosshair',
   },
 };
