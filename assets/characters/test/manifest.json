@@ -1,33 +1,17 @@
 {
   "version": 1,
-  "character_id": "protagonist",
-  "display_name": "Protagonist",
+  "character_id": "test",
+  "display_name": "test",
   "concept": {
-    "description": "male knight, mid-age, no helmet, exposed face, brown short hair, plate armor, solid white background",
-    "style_prompt": "pen drawing, detailed linework, centered, whole body, overall character portrayal",
-    "negative_prompt": "blurry, smooth, shadow, 3d render, photograph, photorealistic, abstract painting, multiple characters, busy background, watermark, text, signature, noise, extra limbs, deformed, partial body, cropped, helmet, visor, headgear",
-    "reference_images": [
-      "concept.png",
-      "concept_front.png",
-      "concept_back.png",
-      "concept_right.png",
-      "concept_left.png"
-    ],
-    "approved": true,
-    "generation_settings": {
-      "checkpoint": "AnythingV5_v5PrtRE.safetensors",
-      "vae": "vae-ft-mse-840000-ema-pruned.safetensors",
-      "steps": 20,
-      "cfg": 6,
-      "sampler": "euler_ancestral",
-      "scheduler": "karras",
-      "seed": -1,
-      "loras": []
-    }
+    "description": "",
+    "style_prompt": "pixel art, 128x128",
+    "negative_prompt": "blurry, realistic, 3d render",
+    "reference_images": [],
+    "approved": false
   },
   "spritesheet": {
-    "frame_width": 512,
-    "frame_height": 512,
+    "frame_width": 128,
+    "frame_height": 128,
     "columns": 4
   },
   "animations": [
@@ -42,45 +26,33 @@
           "index": 0,
           "tile_id": 0,
           "duration": 0.3,
-          "status": "generated",
+          "status": "pending",
           "source": "placeholder",
-          "file": "idle_down/idle_down_0.png",
-          "review": {
-            "reviewer": "human",
-            "notes": "too blurry"
-          }
+          "file": "idle_S_f0.png"
         },
         {
           "index": 1,
           "tile_id": 1,
           "duration": 0.3,
-          "status": "generated",
+          "status": "pending",
           "source": "placeholder",
-          "file": "idle_down/idle_down_1.png",
-          "review": {
-            "reviewer": "human",
-            "notes": ""
-          }
+          "file": "idle_S_f1.png"
         },
         {
           "index": 2,
           "tile_id": 2,
           "duration": 0.3,
-          "status": "generated",
+          "status": "pending",
           "source": "placeholder",
-          "file": "idle_down/idle_down_2.png",
-          "review": {
-            "reviewer": "human",
-            "notes": ""
-          }
+          "file": "idle_S_f2.png"
         },
         {
           "index": 3,
           "tile_id": 3,
           "duration": 0.3,
-          "status": "generated",
+          "status": "pending",
           "source": "placeholder",
-          "file": "idle_down/idle_down_3.png"
+          "file": "idle_S_f3.png"
         }
       ]
     },
@@ -95,33 +67,33 @@
           "index": 0,
           "tile_id": 4,
           "duration": 0.3,
-          "status": "generated",
+          "status": "pending",
           "source": "placeholder",
-          "file": "idle_up/idle_up_0.png"
+          "file": "idle_N_f0.png"
         },
         {
           "index": 1,
           "tile_id": 5,
           "duration": 0.3,
-          "status": "generated",
+          "status": "pending",
           "source": "placeholder",
-          "file": "idle_up/idle_up_1.png"
+          "file": "idle_N_f1.png"
         },
         {
           "index": 2,
           "tile_id": 6,
           "duration": 0.3,
-          "status": "generated",
+          "status": "pending",
           "source": "placeholder",
-          "file": "idle_up/idle_up_2.png"
+          "file": "idle_N_f2.png"
         },
         {
           "index": 3,
           "tile_id": 7,
           "duration": 0.3,
-          "status": "generated",
+          "status": "pending",
           "source": "placeholder",
-          "file": "idle_up/idle_up_3.png"
+          "file": "idle_N_f3.png"
         }
       ]
     },
@@ -136,33 +108,33 @@
           "index": 0,
           "tile_id": 8,
           "duration": 0.3,
-          "status": "generated",
+          "status": "pending",
           "source": "placeholder",
-          "file": "idle_right/idle_right_0.png"
+          "file": "idle_E_f0.png"
         },
         {
           "index": 1,
           "tile_id": 9,
           "duration": 0.3,
-          "status": "generated",
+          "status": "pending",
           "source": "placeholder",
-          "file": "idle_right/idle_right_1.png"
+          "file": "idle_E_f1.png"
         },
         {
           "index": 2,
           "tile_id": 10,
           "duration": 0.3,
-          "status": "generated",
+          "status": "pending",
           "source": "placeholder",
-          "file": "idle_right/idle_right_2.png"
+          "file": "idle_E_f2.png"
         },
         {
           "index": 3,
           "tile_id": 11,
           "duration": 0.3,
-          "status": "generated",
+          "status": "pending",
           "source": "placeholder",
-          "file": "idle_right/idle_right_3.png"
+          "file": "idle_E_f3.png"
         }
       ]
     },
@@ -177,33 +149,33 @@
           "index": 0,
           "tile_id": 12,
           "duration": 0.3,
-          "status": "generated",
+          "status": "pending",
           "source": "placeholder",
-          "file": "idle_left/idle_left_0.png"
+          "file": "idle_W_f0.png"
         },
         {
           "index": 1,
           "tile_id": 13,
           "duration": 0.3,
-          "status": "generated",
+          "status": "pending",
           "source": "placeholder",
-          "file": "idle_left/idle_left_1.png"
+          "file": "idle_W_f1.png"
         },
         {
           "index": 2,
           "tile_id": 14,
           "duration": 0.3,
-          "status": "generated",
+          "status": "pending",
           "source": "placeholder",
-          "file": "idle_left/idle_left_2.png"
+          "file": "idle_W_f2.png"
         },
         {
           "index": 3,
           "tile_id": 15,
           "duration": 0.3,
-          "status": "generated",
+          "status": "pending",
           "source": "placeholder",
-          "file": "idle_left/idle_left_3.png"
+          "file": "idle_W_f3.png"
         }
       ]
     },
@@ -218,33 +190,33 @@
           "index": 0,
           "tile_id": 16,
           "duration": 0.12,
-          "status": "generated",
+          "status": "pending",
           "source": "placeholder",
-          "file": "walk_down/walk_down_0.png"
+          "file": "walk_S_f0.png"
         },
         {
           "index": 1,
           "tile_id": 17,
           "duration": 0.12,
-          "status": "generated",
+          "status": "pending",
           "source": "placeholder",
-          "file": "walk_down/walk_down_1.png"
+          "file": "walk_S_f1.png"
         },
         {
           "index": 2,
           "tile_id": 18,
           "duration": 0.12,
-          "status": "generated",
+          "status": "pending",
           "source": "placeholder",
-          "file": "walk_down/walk_down_2.png"
+          "file": "walk_S_f2.png"
         },
         {
           "index": 3,
           "tile_id": 19,
           "duration": 0.12,
-          "status": "generated",
+          "status": "pending",
           "source": "placeholder",
-          "file": "walk_down/walk_down_3.png"
+          "file": "walk_S_f3.png"
         }
       ]
     },
@@ -259,17 +231,17 @@
           "index": 0,
           "tile_id": 20,
           "duration": 0.12,
-          "status": "generated",
+          "status": "pending",
           "source": "placeholder",
-          "file": "walk_up/walk_up_0.png"
+          "file": "walk_N_f0.png"
         },
         {
           "index": 1,
           "tile_id": 21,
           "duration": 0.12,
-          "status": "generated",
+          "status": "pending",
           "source": "placeholder",
-          "file": "walk_up/walk_up_1.png"
+          "file": "walk_N_f1.png"
         },
         {
           "index": 2,
@@ -300,33 +272,33 @@
           "index": 0,
           "tile_id": 24,
           "duration": 0.12,
-          "status": "generated",
+          "status": "pending",
           "source": "placeholder",
-          "file": "walk_right/walk_right_0.png"
+          "file": "walk_E_f0.png"
         },
         {
           "index": 1,
           "tile_id": 25,
           "duration": 0.12,
-          "status": "generated",
+          "status": "pending",
           "source": "placeholder",
-          "file": "walk_right/walk_right_1.png"
+          "file": "walk_E_f1.png"
         },
         {
           "index": 2,
           "tile_id": 26,
           "duration": 0.12,
-          "status": "generated",
+          "status": "pending",
           "source": "placeholder",
-          "file": "walk_right/walk_right_2.png"
+          "file": "walk_E_f2.png"
         },
         {
           "index": 3,
           "tile_id": 27,
           "duration": 0.12,
-          "status": "generated",
+          "status": "pending",
           "source": "placeholder",
-          "file": "walk_right/walk_right_3.png"
+          "file": "walk_E_f3.png"
         }
       ]
     },
@@ -464,33 +436,33 @@
           "index": 0,
           "tile_id": 40,
           "duration": 0.07,
-          "status": "generated",
+          "status": "pending",
           "source": "placeholder",
-          "file": "run_right/run_right_0.png"
+          "file": "run_E_f0.png"
         },
         {
           "index": 1,
           "tile_id": 41,
           "duration": 0.07,
-          "status": "generated",
+          "status": "pending",
           "source": "placeholder",
-          "file": "run_right/run_right_1.png"
+          "file": "run_E_f1.png"
         },
         {
           "index": 2,
           "tile_id": 42,
           "duration": 0.07,
-          "status": "generated",
+          "status": "pending",
           "source": "placeholder",
-          "file": "run_right/run_right_2.png"
+          "file": "run_E_f2.png"
         },
         {
           "index": 3,
           "tile_id": 43,
           "duration": 0.07,
-          "status": "generated",
+          "status": "pending",
           "source": "placeholder",
-          "file": "run_right/run_right_3.png"
+          "file": "run_E_f3.png"
         }
       ]
     },
@@ -505,73 +477,35 @@
           "index": 0,
           "tile_id": 44,
           "duration": 0.07,
-          "status": "generated",
+          "status": "pending",
           "source": "placeholder",
-          "file": "run_left/run_left_0.png"
+          "file": "run_W_f0.png"
         },
         {
           "index": 1,
           "tile_id": 45,
           "duration": 0.07,
-          "status": "generated",
+          "status": "pending",
           "source": "placeholder",
-          "file": "run_left/run_left_1.png"
+          "file": "run_W_f1.png"
         },
         {
           "index": 2,
           "tile_id": 46,
           "duration": 0.07,
-          "status": "generated",
+          "status": "pending",
           "source": "placeholder",
-          "file": "run_left/run_left_2.png"
+          "file": "run_W_f2.png"
         },
         {
           "index": 3,
           "tile_id": 47,
           "duration": 0.07,
-          "status": "generated",
+          "status": "pending",
           "source": "placeholder",
-          "file": "run_left/run_left_3.png"
+          "file": "run_W_f3.png"
         }
       ]
     }
-  ],
-  "atlas": {
-    "file": "spritesheet.png",
-    "width": 512,
-    "height": 1536
-  },
-  "chibi": {
-    "style_prompt": "chibi, super deformed, 1.5 head body ratio, cute, simple features, standing pose, arms down, solid white background",
-    "negative_prompt": "realistic, photograph, 3d render, standing pose, arms down, whole body, helmet",
-    "reference_image": "chibi.png",
-    "reference_images": {
-      "front": "chibi_front.png",
-      "right": "chibi_right.png",
-      "left": "chibi_left.png",
-      "back": "chibi_back.png"
-    }
-  },
-  "pixel": {
-    "style_prompt": "pixel art, 16-bit, clean edges, retro game sprite",
-    "negative_prompt": "blurry, realistic, 3d render, smooth shading",
-    "reference_image": "pixel.png",
-    "approved": false,
-    "generation_settings": {
-      "checkpoint": "AnythingV5_v5PrtRE.safetensors",
-      "vae": "vae-ft-mse-840000-ema-pruned.safetensors",
-      "steps": 20,
-      "cfg": 1,
-      "sampler": "euler",
-      "scheduler": "karras",
-      "seed": -1,
-      "denoise": 0.45,
-      "loras": [
-        {
-          "name": "PixelArtRedmond15V-PixelArt-PIXARFK.safetensors",
-          "weight": 1
-        }
-      ]
-    }
-  }
+  ]
 }

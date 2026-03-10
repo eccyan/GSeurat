@@ -1,0 +1,327 @@
+[
+  {
+    "name": "twopass_baseline",
+    "mode": "two-pass",
+    "frames_ok": 4,
+    "frame_sizes": [
+      42011,
+      40667,
+      39036,
+      40660
+    ],
+    "params": {
+      "name": "twopass_baseline",
+      "mode": "two-pass",
+      "ipAdapterWeight": 0.7,
+      "ipAdapterStartAt": 0,
+      "ipAdapterEndAt": 0.8,
+      "openPoseStrength": 0.8,
+      "chibiWeight": 0.7,
+      "chibiDenoise": 0.5,
+      "steps": 20,
+      "cfg": 5,
+      "seed": 42,
+      "consistentSeed": true
+    }
+  },
+  {
+    "name": "twopass_chibi_den_0.3",
+    "mode": "two-pass",
+    "frames_ok": 4,
+    "frame_sizes": [
+      37349,
+      36706,
+      33455,
+      36704
+    ],
+    "params": {
+      "name": "twopass_chibi_den_0.3",
+      "mode": "two-pass",
+      "ipAdapterWeight": 0.7,
+      "ipAdapterStartAt": 0,
+      "ipAdapterEndAt": 0.8,
+      "openPoseStrength": 0.8,
+      "chibiWeight": 0.7,
+      "chibiDenoise": 0.3,
+      "steps": 20,
+      "cfg": 5,
+      "seed": 42,
+      "consistentSeed": true
+    }
+  },
+  {
+    "name": "twopass_chibi_den_0.5",
+    "mode": "two-pass",
+    "frames_ok": 4,
+    "frame_sizes": [
+      42016,
+      40664,
+      39036,
+      40664
+    ],
+    "params": {
+      "name": "twopass_chibi_den_0.5",
+      "mode": "two-pass",
+      "ipAdapterWeight": 0.7,
+      "ipAdapterStartAt": 0,
+      "ipAdapterEndAt": 0.8,
+      "openPoseStrength": 0.8,
+      "chibiWeight": 0.7,
+      "chibiDenoise": 0.5,
+      "steps": 20,
+      "cfg": 5,
+      "seed": 42,
+      "consistentSeed": true
+    }
+  },
+  {
+    "name": "twopass_chibi_den_0.7",
+    "mode": "two-pass",
+    "frames_ok": 4,
+    "frame_sizes": [
+      36828,
+      35957,
+      35137,
+      35960
+    ],
+    "params": {
+      "name": "twopass_chibi_den_0.7",
+      "mode": "two-pass",
+      "ipAdapterWeight": 0.7,
+      "ipAdapterStartAt": 0,
+      "ipAdapterEndAt": 0.8,
+      "openPoseStrength": 0.8,
+      "chibiWeight": 0.7,
+      "chibiDenoise": 0.7,
+      "steps": 20,
+      "cfg": 5,
+      "seed": 42,
+      "consistentSeed": true
+    }
+  },
+  {
+    "name": "twopass_chibi_wt_0.5",
+    "mode": "two-pass",
+    "frames_ok": 4,
+    "frame_sizes": [
+      41055,
+      39549,
+      37881,
+      39549
+    ],
+    "params": {
+      "name": "twopass_chibi_wt_0.5",
+      "mode": "two-pass",
+      "ipAdapterWeight": 0.7,
+      "ipAdapterStartAt": 0,
+      "ipAdapterEndAt": 0.8,
+      "openPoseStrength": 0.8,
+      "chibiWeight": 0.5,
+      "chibiDenoise": 0.5,
+      "steps": 20,
+      "cfg": 5,
+      "seed": 42,
+      "consistentSeed": true
+    }
+  },
+  {
+    "name": "twopass_chibi_wt_0.9",
+    "mode": "two-pass",
+    "frames_ok": 4,
+    "frame_sizes": [
+      42447,
+      40926,
+      39468,
+      40926
+    ],
+    "params": {
+      "name": "twopass_chibi_wt_0.9",
+      "mode": "two-pass",
+      "ipAdapterWeight": 0.7,
+      "ipAdapterStartAt": 0,
+      "ipAdapterEndAt": 0.8,
+      "openPoseStrength": 0.8,
+      "chibiWeight": 0.9,
+      "chibiDenoise": 0.5,
+      "steps": 20,
+      "cfg": 5,
+      "seed": 42,
+      "consistentSeed": true
+    }
+  },
+  {
+    "name": "twopass_ipa_end_0.5",
+    "mode": "two-pass",
+    "frames_ok": 4,
+    "frame_sizes": [
+      41771,
+      39217,
+      39020,
+      39217
+    ],
+    "params": {
+      "name": "twopass_ipa_end_0.5",
+      "mode": "two-pass",
+      "ipAdapterWeight": 0.7,
+      "ipAdapterStartAt": 0,
+      "ipAdapterEndAt": 0.5,
+      "openPoseStrength": 0.8,
+      "chibiWeight": 0.7,
+      "chibiDenoise": 0.5,
+      "steps": 20,
+      "cfg": 5,
+      "seed": 42,
+      "consistentSeed": true
+    }
+  },
+  {
+    "name": "twopass_ipa_end_1.0",
+    "mode": "two-pass",
+    "frames_ok": 4,
+    "frame_sizes": [
+      42709,
+      41213,
+      40246,
+      41215
+    ],
+    "params": {
+      "name": "twopass_ipa_end_1.0",
+      "mode": "two-pass",
+      "ipAdapterWeight": 0.7,
+      "ipAdapterStartAt": 0,
+      "ipAdapterEndAt": 1,
+      "openPoseStrength": 0.8,
+      "chibiWeight": 0.7,
+      "chibiDenoise": 0.5,
+      "steps": 20,
+      "cfg": 5,
+      "seed": 42,
+      "consistentSeed": true
+    }
+  },
+  {
+    "name": "twopass_pose_0.5",
+    "mode": "two-pass",
+    "frames_ok": 4,
+    "frame_sizes": [
+      38232,
+      36164,
+      37816,
+      36165
+    ],
+    "params": {
+      "name": "twopass_pose_0.5",
+      "mode": "two-pass",
+      "ipAdapterWeight": 0.7,
+      "ipAdapterStartAt": 0,
+      "ipAdapterEndAt": 0.8,
+      "openPoseStrength": 0.5,
+      "chibiWeight": 0.7,
+      "chibiDenoise": 0.5,
+      "steps": 20,
+      "cfg": 5,
+      "seed": 42,
+      "consistentSeed": true
+    }
+  },
+  {
+    "name": "twopass_pose_1.0",
+    "mode": "two-pass",
+    "frames_ok": 4,
+    "frame_sizes": [
+      44342,
+      41419,
+      44302,
+      41420
+    ],
+    "params": {
+      "name": "twopass_pose_1.0",
+      "mode": "two-pass",
+      "ipAdapterWeight": 0.7,
+      "ipAdapterStartAt": 0,
+      "ipAdapterEndAt": 0.8,
+      "openPoseStrength": 1,
+      "chibiWeight": 0.7,
+      "chibiDenoise": 0.5,
+      "steps": 20,
+      "cfg": 5,
+      "seed": 42,
+      "consistentSeed": true
+    }
+  },
+  {
+    "name": "twopass_varied_seed",
+    "mode": "two-pass",
+    "frames_ok": 4,
+    "frame_sizes": [
+      42010,
+      39576,
+      41505,
+      42532
+    ],
+    "params": {
+      "name": "twopass_varied_seed",
+      "mode": "two-pass",
+      "ipAdapterWeight": 0.7,
+      "ipAdapterStartAt": 0,
+      "ipAdapterEndAt": 0.8,
+      "openPoseStrength": 0.8,
+      "chibiWeight": 0.7,
+      "chibiDenoise": 0.5,
+      "steps": 20,
+      "cfg": 5,
+      "seed": 42,
+      "consistentSeed": false
+    }
+  },
+  {
+    "name": "singlepass_chibi_ref",
+    "mode": "single-pass",
+    "frames_ok": 4,
+    "frame_sizes": [
+      33026,
+      32274,
+      32983,
+      32274
+    ],
+    "params": {
+      "name": "singlepass_chibi_ref",
+      "mode": "single-pass",
+      "ipAdapterWeight": 0.7,
+      "ipAdapterStartAt": 0,
+      "ipAdapterEndAt": 0.8,
+      "openPoseStrength": 0.8,
+      "chibiWeight": 0,
+      "chibiDenoise": 0,
+      "steps": 20,
+      "cfg": 5,
+      "seed": 42,
+      "consistentSeed": true
+    }
+  },
+  {
+    "name": "singlepass_concept_ref",
+    "mode": "single-pass",
+    "frames_ok": 4,
+    "frame_sizes": [
+      31295,
+      30239,
+      27508,
+      30239
+    ],
+    "params": {
+      "name": "singlepass_concept_ref",
+      "mode": "single-pass",
+      "ipAdapterWeight": 0.7,
+      "ipAdapterStartAt": 0,
+      "ipAdapterEndAt": 0.8,
+      "openPoseStrength": 0.8,
+      "chibiWeight": 0,
+      "chibiDenoise": 0,
+      "steps": 20,
+      "cfg": 5,
+      "seed": 42,
+      "consistentSeed": true
+    }
+  }
+]

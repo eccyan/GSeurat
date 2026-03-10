@@ -1,146 +1,84 @@
 [
   {
-    "tool": "level-designer",
-    "port": 6173,
-    "results": []
-  },
-  {
-    "tool": "pixel-painter",
-    "port": 6174,
+    "tool": "seurat",
+    "port": 6179,
     "results": [
       {
         "name": "Store is accessible",
         "passed": true
       },
       {
-        "name": "Manifest is present with correct structure",
+        "name": "Default section is dashboard",
         "passed": true
       },
       {
-        "name": "Set pixel updates canvas data",
+        "name": "Section navigation works",
         "passed": true
       },
       {
-        "name": "Color swap swaps fg/bg",
+        "name": "No character selected by default",
         "passed": true
       },
       {
-        "name": "Mirror mode updates state",
+        "name": "AI config has defaults",
         "passed": true
       },
       {
-        "name": "Undo restores pixel state",
+        "name": "AI config can be updated",
         "passed": true
       },
       {
-        "name": "Redo restores edited pixel",
+        "name": "Playback state transitions",
         "passed": true
       },
       {
-        "name": "Tool selection works",
+        "name": "Current time updates",
         "passed": true
       },
       {
-        "name": "Edit target switching",
+        "name": "Review filter works",
         "passed": true
       },
       {
-        "name": "Zoom updates",
+        "name": "Select clip updates state",
         "passed": true
       },
       {
-        "name": "Foreground color set",
+        "name": "Generation jobs lifecycle",
         "passed": true
       },
       {
-        "name": "Manifest settings toggle",
+        "name": "Assembly result starts null",
         "passed": true
       },
       {
-        "name": "Layer switching",
+        "name": "Sprite sheet URL starts null",
         "passed": true
       },
       {
-        "name": "Height value set",
+        "name": "[Scenario] Full section navigation workflow",
         "passed": true
       },
       {
-        "name": "Heightmap pixel set",
+        "name": "[Scenario] AI config modification and restore",
         "passed": true
       },
       {
-        "name": "Normal preview toggle",
+        "name": "[Scenario] Playback lifecycle",
         "passed": true
       },
       {
-        "name": "Heightmap opacity",
+        "name": "[Scenario] Generation job queue workflow",
         "passed": true
       },
       {
-        "name": "setManifest updates manifest",
+        "name": "[Scenario] Review filter cycling",
         "passed": true
       },
       {
-        "name": "[Scenario] Create multi-frame sprite animation",
-        "passed": true
-      },
-      {
-        "name": "[Scenario] Mirror mode drawing workflow",
-        "passed": false,
-        "error": "Pixel at (0,2) undone: expected 0, got 64"
-      },
-      {
-        "name": "[Scenario] Manifest defaults are correct",
-        "passed": true
-      },
-      {
-        "name": "[Scenario] Manifest update resizes canvas",
-        "passed": true
-      },
-      {
-        "name": "[Scenario] Manifest settings panel toggle",
-        "passed": true
-      },
-      {
-        "name": "[Scenario] Tile selection across manifest grid",
-        "passed": true
-      },
-      {
-        "name": "[Scenario] Heightmap editing workflow",
-        "passed": true
-      },
-      {
-        "name": "[Scenario] Dual layer round-trip",
-        "passed": true
-      },
-      {
-        "name": "[Scenario] Normal preview toggle",
-        "passed": true
-      },
-      {
-        "name": "[Scenario] Spritesheet frames use manifest row count",
+        "name": "[Scenario] Clip selection resets playback",
         "passed": true
       }
     ]
-  },
-  {
-    "tool": "keyframe-animator",
-    "port": 6175,
-    "results": []
-  },
-  {
-    "tool": "particle-designer",
-    "port": 6176,
-    "results": []
-  },
-  {
-    "tool": "audio-composer",
-    "port": 6177,
-    "results": []
-  },
-  {
-    "tool": "sfx-designer",
-    "port": 6178,
-    "results": []
   }
 ]

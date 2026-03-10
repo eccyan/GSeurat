@@ -1,0 +1,14 @@
+{
+  "name": "singlepass_concept_ref",
+  "mode": "single-pass",
+  "ipAdapterWeight": 0.7,
+  "ipAdapterStartAt": 0,
+  "ipAdapterEndAt": 0.8,
+  "openPoseStrength": 0.8,
+  "chibiWeight": 0,
+  "chibiDenoise": 0,
+  "steps": 20,
+  "cfg": 5,
+  "seed": 42,
+  "consistentSeed": true
+}

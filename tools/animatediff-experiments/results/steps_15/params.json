@@ -1,0 +1,9 @@
+{
+  "name": "steps_15",
+  "prompt": "pixel art knight walking animation, side view, medieval fantasy, sprite animation, game character",
+  "denoise": 0.6,
+  "steps": 15,
+  "cfg": 7,
+  "frameCount": 8,
+  "sampler": "euler"
+}

@@ -1,0 +1,11 @@
+{
+  "name": "chibi_no_margin",
+  "prompt": "pixel art chibi knight walking animation, side view, medieval fantasy, sprite animation, game character",
+  "denoise": 0.6,
+  "steps": 20,
+  "cfg": 7,
+  "frameCount": 8,
+  "sampler": "euler",
+  "margin": 0,
+  "refImage": "chibi"
+}

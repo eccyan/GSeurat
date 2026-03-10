@@ -1,0 +1,174 @@
+[
+  {
+    "name": "denoise_0.3",
+    "elapsed": 0,
+    "frameFiles": [
+      "(cached)"
+    ]
+  },
+  {
+    "name": "denoise_0.5",
+    "elapsed": 0,
+    "frameFiles": [
+      "(cached)"
+    ]
+  },
+  {
+    "name": "denoise_0.6",
+    "elapsed": 0,
+    "frameFiles": [
+      "(cached)"
+    ]
+  },
+  {
+    "name": "denoise_0.7",
+    "elapsed": 0,
+    "frameFiles": [
+      "(cached)"
+    ]
+  },
+  {
+    "name": "denoise_0.9",
+    "elapsed": 0,
+    "frameFiles": [
+      "(cached)"
+    ]
+  },
+  {
+    "name": "steps_10",
+    "elapsed": 0,
+    "frameFiles": [
+      "(cached)"
+    ]
+  },
+  {
+    "name": "steps_15",
+    "elapsed": 0,
+    "frameFiles": [
+      "(cached)"
+    ]
+  },
+  {
+    "name": "steps_20",
+    "elapsed": 0,
+    "frameFiles": [
+      "(cached)"
+    ]
+  },
+  {
+    "name": "steps_30",
+    "elapsed": 0,
+    "frameFiles": [
+      "(cached)"
+    ]
+  },
+  {
+    "name": "cfg_3",
+    "elapsed": 0,
+    "frameFiles": [
+      "(cached)"
+    ]
+  },
+  {
+    "name": "cfg_5",
+    "elapsed": 0,
+    "frameFiles": [
+      "(cached)"
+    ]
+  },
+  {
+    "name": "cfg_7",
+    "elapsed": 0,
+    "frameFiles": [
+      "(cached)"
+    ]
+  },
+  {
+    "name": "cfg_10",
+    "elapsed": 0,
+    "frameFiles": [
+      "(cached)"
+    ]
+  },
+  {
+    "name": "frames_4",
+    "elapsed": 0,
+    "frameFiles": [
+      "(cached)"
+    ]
+  },
+  {
+    "name": "frames_8",
+    "elapsed": 0,
+    "frameFiles": [
+      "(cached)"
+    ]
+  },
+  {
+    "name": "frames_12",
+    "elapsed": 0,
+    "frameFiles": [
+      "(cached)"
+    ]
+  },
+  {
+    "name": "frames_16",
+    "elapsed": 600.16,
+    "frameFiles": [],
+    "error": "ComfyUI generation timed out after 600000ms for prompt 89399215-6551-44d0-a892-8b0f104ea824"
+  },
+  {
+    "name": "sampler_euler",
+    "elapsed": 600.396,
+    "frameFiles": [],
+    "error": "ComfyUI generation timed out after 600000ms for prompt 8e2fa7dd-d3f9-4de2-af96-77ad75035146"
+  },
+  {
+    "name": "sampler_euler_a",
+    "elapsed": 601.069,
+    "frameFiles": [],
+    "error": "ComfyUI generation timed out after 600000ms for prompt 291a4950-5ffe-4861-b68b-905e5f67da1b"
+  },
+  {
+    "name": "sampler_dpmpp_2m",
+    "elapsed": 600.379,
+    "frameFiles": [],
+    "error": "ComfyUI generation timed out after 600000ms for prompt 50c8c94b-8437-429c-9cd4-2cc867140ebf"
+  },
+  {
+    "name": "prompt_idle",
+    "elapsed": 600.744,
+    "frameFiles": [],
+    "error": "ComfyUI generation timed out after 600000ms for prompt 4ee0bd0c-2212-476c-9881-4d2bef4ba37e"
+  },
+  {
+    "name": "prompt_run",
+    "elapsed": 318.199,
+    "frameFiles": [
+      "frame_00.png",
+      "frame_01.png",
+      "frame_02.png",
+      "frame_03.png",
+      "frame_04.png",
+      "frame_05.png",
+      "frame_06.png",
+      "frame_07.png",
+      "animation.gif"
+    ]
+  },
+  {
+    "name": "prompt_attack",
+    "elapsed": 182.252,
+    "frameFiles": [
+      "frame_00.png",
+      "frame_01.png",
+      "frame_02.png",
+      "frame_03.png",
+      "frame_04.png",
+      "frame_05.png",
+      "frame_06.png",
+      "frame_07.png",
+      "animation.gif"
+    ]
+  }
+]

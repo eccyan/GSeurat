@@ -1,0 +1,9 @@
+{
+  "name": "prompt_attack",
+  "prompt": "pixel art knight attack animation, sword slash, combat pose, medieval fantasy, game sprite",
+  "denoise": 0.6,
+  "steps": 20,
+  "cfg": 7,
+  "frameCount": 8,
+  "sampler": "euler"
+}
