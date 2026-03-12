@@ -44,12 +44,21 @@ function stageBadgeLabel(stage?: PipelineStage): string {
   }
 }
 
-/** Limb connections for drawing pose skeletons */
+/** Limb connections for drawing pose skeletons (14-keypoint OpenPose format) */
 const LIMBS: [number, number, string][] = [
-  [0, 1, '#ff0000'], [1, 2, '#ff5500'], [2, 3, '#ffaa00'], [3, 4, '#ffff00'],
-  [1, 5, '#aaff00'], [5, 6, '#55ff00'], [6, 7, '#00ff00'], [1, 8, '#00ff55'],
-  [8, 9, '#00ffaa'], [9, 10, '#00ffff'], [10, 11, '#00aaff'],
-  [8, 12, '#0055ff'], [12, 13, '#0000ff'], [13, 14, '#5500ff'],
+  [0, 1, '#ff0000'],   // nose-neck
+  [1, 2, '#ff5500'],   // neck-r_shoulder
+  [2, 3, '#ffaa00'],   // r_shoulder-r_elbow
+  [3, 4, '#ffff00'],   // r_elbow-r_wrist
+  [1, 5, '#00ff00'],   // neck-l_shoulder
+  [5, 6, '#00ff55'],   // l_shoulder-l_elbow
+  [6, 7, '#00ffaa'],   // l_elbow-l_wrist
+  [1, 8, '#00ffff'],   // neck-r_hip
+  [8, 9, '#00aaff'],   // r_hip-r_knee
+  [9, 10, '#0055ff'],  // r_knee-r_ankle
+  [1, 11, '#0000ff'],  // neck-l_hip
+  [11, 12, '#5500ff'], // l_hip-l_knee
+  [12, 13, '#aa00ff'], // l_knee-l_ankle
 ];
 
 /** Tiny canvas that draws a pose skeleton */
