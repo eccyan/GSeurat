@@ -494,7 +494,7 @@ interface IPAdapterOnlyWorkflowOptions extends WorkflowOptions {
 function buildIPAdapterOnlyWorkflow(
   opts: IPAdapterOnlyWorkflowOptions
 ): Record<string, WorkflowNode> {
-  const embedsScaling = "K+V";
+  const embedsScaling = "K+V w/ C penalty";
   const nodes: Record<string, WorkflowNode> = {
     // Checkpoint
     "4": {
@@ -530,7 +530,7 @@ function buildIPAdapterOnlyWorkflow(
       class_type: "IPAdapterAdvanced",
       inputs: {
         weight: opts.ipAdapterWeight,
-        weight_type: "linear",
+        weight_type: "ease out",
         combine_embeds: "concat",
         start_at: opts.ipAdapterStartAt,
         end_at: opts.ipAdapterEndAt,
@@ -663,7 +663,7 @@ interface IPAdapterWorkflowOptions extends WorkflowOptions {
 function buildIPAdapterPoseWorkflow(
   opts: IPAdapterWorkflowOptions
 ): Record<string, WorkflowNode> {
-  const embedsScaling = "K+V";
+  const embedsScaling = "K+V w/ C penalty";
   const nodes: Record<string, WorkflowNode> = {
     // Checkpoint
     "4": {
@@ -699,7 +699,7 @@ function buildIPAdapterPoseWorkflow(
       class_type: "IPAdapterAdvanced",
       inputs: {
         weight: opts.ipAdapterWeight,
-        weight_type: "linear",
+        weight_type: "ease out",
         combine_embeds: "concat",
         start_at: opts.ipAdapterStartAt,
         end_at: opts.ipAdapterEndAt,
@@ -894,7 +894,7 @@ interface TwoPassIPAdapterWorkflowOptions extends WorkflowOptions {
 function buildTwoPassIPAdapterWorkflow(
   opts: TwoPassIPAdapterWorkflowOptions
 ): Record<string, WorkflowNode> {
-  const pass1EmbedScaling = "K+V";
+  const pass1EmbedScaling = "K+V w/ C penalty";
   const pass2EmbedScaling = "K+mean(V) w/ C penalty";
   const nodes: Record<string, WorkflowNode> = {
     // === Shared: Checkpoint ===
@@ -930,7 +930,7 @@ function buildTwoPassIPAdapterWorkflow(
       class_type: "IPAdapterAdvanced",
       inputs: {
         weight: opts.ipAdapterWeight,
-        weight_type: "linear",
+        weight_type: "ease out",
         combine_embeds: "concat",
         start_at: opts.ipAdapterStartAt,
         end_at: opts.ipAdapterEndAt,
