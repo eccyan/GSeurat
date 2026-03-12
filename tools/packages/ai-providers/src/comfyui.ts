@@ -2764,12 +2764,21 @@ export class ComfyUIClient implements ImageProvider {
     frameB: Uint8Array,
     opts?: { model?: string; multiplier?: number },
   ): Promise<Uint8Array[]> {
-    const model = opts?.model ?? 'rife-v4.6';
     const multiplier = opts?.multiplier ?? 2;
 
-    // Auto-detect which RIFE node class is available.
-    // Different ComfyUI-Frame-Interpolation versions register different names.
-    const rifeNodeType = await this.detectRIFENode();
+    // Auto-detect which RIFE node class is available and query its schema
+    const { nodeType, schema } = await this.detectRIFENode();
+
+    // Resolve model name: use requested model if it's in the available list,
+    // otherwise fall back to the node's default or first available model
+    const availableModels = schema.ckpt_name_options ?? schema.model_options ?? [];
+    const defaultModel = schema.ckpt_name_default ?? schema.model_default ?? availableModels[0];
+    const requestedModel = opts?.model;
+    const resolvedModel = requestedModel && availableModels.some(
+      (m: string) => m === requestedModel || m === `${requestedModel}.pth`
+    )
+      ? (availableModels.find((m: string) => m === requestedModel) ?? `${requestedModel}.pth`)
+      : defaultModel;
 
     // Upload both frames
     const [nameA, nameB] = await Promise.all([
@@ -2777,25 +2786,24 @@ export class ComfyUIClient implements ImageProvider {
       this.uploadImage(frameB),
     ]);
 
-    // Build workflow: LoadImage -> ImageBatch -> RIFE -> SaveImage
-    // Input schema varies by node variant:
-    //   VFI_RIFE: ckpt_name, frames, multiplier, ...
-    //   RIFE VFI: ckpt_name, frames, multiplier, ...
-    //   RIFEInterpolation: model, images, multiplier
-    const rifeInputs: Record<string, unknown> = rifeNodeType === 'RIFEInterpolation'
+    // Build RIFE node inputs from the detected schema
+    const rifeInputs: Record<string, unknown> = schema.usesModelKey
       ? {
-          model: `${model}.pth`,
+          model: resolvedModel,
           images: ["3", 0],
           multiplier,
         }
       : {
-          ckpt_name: `${model}.pth`,
+          ckpt_name: resolvedModel,
           frames: ["3", 0],
           clear_cache_after_n_frames: 10,
           multiplier,
           fast_mode: true,
           ensemble: false,
           scale_factor: 1.0,
+          ...(schema.hasDtype ? { dtype: 'float32' } : {}),
+          ...(schema.hasTorchCompile ? { torch_compile: false } : {}),
+          ...(schema.hasBatchSize ? { batch_size: 1 } : {}),
         };
 
     const workflow: Record<string, WorkflowNode> = {
@@ -2815,7 +2823,7 @@ export class ComfyUIClient implements ImageProvider {
         },
       },
       "4": {
-        class_type: rifeNodeType,
+        class_type: nodeType,
         inputs: rifeInputs,
       },
       "9": {
@@ -2922,12 +2930,22 @@ export class ComfyUIClient implements ImageProvider {
   }
 
   /**
-   * Detect which RIFE VFI node class is registered on the ComfyUI server.
-   * Checks common names from different versions of ComfyUI-Frame-Interpolation.
-   * Throws if none are found.
+   * Detect which RIFE VFI node class is registered on the ComfyUI server,
+   * and extract its input schema so we can build a valid workflow.
    */
-  private async detectRIFENode(): Promise<string> {
-    // Candidate node class names in order of preference
+  private async detectRIFENode(): Promise<{
+    nodeType: string;
+    schema: {
+      usesModelKey: boolean;
+      ckpt_name_options?: string[];
+      ckpt_name_default?: string;
+      model_options?: string[];
+      model_default?: string;
+      hasDtype: boolean;
+      hasTorchCompile: boolean;
+      hasBatchSize: boolean;
+    };
+  }> {
     const candidates = ['RIFE VFI', 'VFI_RIFE', 'RIFEInterpolation'];
 
     for (const name of candidates) {
@@ -2936,10 +2954,34 @@ export class ComfyUIClient implements ImageProvider {
           `${this.baseUrl}/object_info/${encodeURIComponent(name)}`,
           { signal: AbortSignal.timeout(5000) },
         );
-        if (res.ok) {
-          const data = await res.json() as Record<string, unknown>;
-          if (data[name]) return name;
-        }
+        if (!res.ok) continue;
+
+        const data = await res.json() as Record<string, unknown>;
+        const info = data[name] as Record<string, unknown> | undefined;
+        if (!info) continue;
+
+        const input = info['input'] as Record<string, unknown> | undefined;
+        const required = input?.['required'] as Record<string, unknown> | undefined;
+        if (!required) continue;
+
+        // Extract model/ckpt_name options
+        const ckptField = required['ckpt_name'] as [string[], Record<string, unknown>] | undefined;
+        const modelField = required['model'] as [string[], Record<string, unknown>] | undefined;
+        const usesModelKey = !ckptField && !!modelField;
+
+        return {
+          nodeType: name,
+          schema: {
+            usesModelKey,
+            ckpt_name_options: Array.isArray(ckptField?.[0]) ? ckptField![0] : undefined,
+            ckpt_name_default: ckptField?.[1]?.['default'] as string | undefined,
+            model_options: Array.isArray(modelField?.[0]) ? modelField![0] : undefined,
+            model_default: modelField?.[1]?.['default'] as string | undefined,
+            hasDtype: 'dtype' in required,
+            hasTorchCompile: 'torch_compile' in required,
+            hasBatchSize: 'batch_size' in required,
+          },
+        };
       } catch { /* try next */ }
     }
 

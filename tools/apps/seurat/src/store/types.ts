@@ -90,7 +90,7 @@ export const DEFAULT_AI_CONFIG: AIConfig = {
   animContextLength: 16,
   interpMethod: 'blend',
   interpMultiplier: 2,
-  rifeModel: 'rife-v4.6',
+  rifeModel: 'rife49',
 };
 
 export interface GenerationJob {
