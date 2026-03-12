@@ -2946,7 +2946,9 @@ export class ComfyUIClient implements ImageProvider {
     throw new Error(
       `No RIFE frame interpolation node found on this ComfyUI server. ` +
       `Install ComfyUI-Frame-Interpolation: ` +
-      `cd ComfyUI/custom_nodes && git clone https://github.com/Fannovel16/ComfyUI-Frame-Interpolation && pip install -r ComfyUI-Frame-Interpolation/requirements.txt`
+      `cd ComfyUI/custom_nodes && git clone https://github.com/Fannovel16/ComfyUI-Frame-Interpolation && ` +
+      `pip install -r ComfyUI-Frame-Interpolation/requirements-no-cupy.txt ` +
+      `(or requirements-with-cupy.txt for CUDA acceleration)`
     );
   }
 
