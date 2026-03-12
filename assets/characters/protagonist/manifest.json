@@ -484,7 +484,7 @@
           "status": "generated",
           "source": "placeholder",
           "file": "run_right/run_right_1.png",
-          "pipeline_stage": "pass1"
+          "pipeline_stage": "pass1_edited"
         },
         {
           "index": 2,
@@ -493,7 +493,7 @@
           "status": "generated",
           "source": "placeholder",
           "file": "run_right/run_right_2.png",
-          "pipeline_stage": "pass1"
+          "pipeline_stage": "pass1_edited"
         },
         {
           "index": 3,
@@ -502,7 +502,7 @@
           "status": "generated",
           "source": "placeholder",
           "file": "run_right/run_right_3.png",
-          "pipeline_stage": "pass1"
+          "pipeline_stage": "pass1_edited"
         }
       ]
     },
@@ -577,7 +577,7 @@
       "sampler": "euler",
       "scheduler": "normal",
       "seed": -1,
-      "denoise": 0.40,
+      "denoise": 0.4,
       "loras": [
         {
           "name": "PixelArtRedmond15V-PixelArt-PIXARFK.safetensors",

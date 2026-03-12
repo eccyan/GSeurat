@@ -1,5 +1,10 @@
 [
   {
+    "tool": "level-designer",
+    "port": 6173,
+    "results": []
+  },
+  {
     "tool": "seurat",
     "port": 6179,
     "results": [
@@ -21,6 +26,19 @@
       },
       {
         "name": "AI config has defaults",
+        "passed": false,
+        "error": "Default steps = 20: expected 20, got 30"
+      },
+      {
+        "name": "AI config has pixel pass defaults",
+        "passed": true
+      },
+      {
+        "name": "Pixel pass config can be updated",
+        "passed": true
+      },
+      {
+        "name": "Approval actions do not exist",
         "passed": true
       },
       {
@@ -29,7 +47,8 @@
       },
       {
         "name": "Playback state transitions",
-        "passed": true
+        "passed": false,
+        "error": "Playback state: playing: expected \"playing\", got \"stopped\""
       },
       {
         "name": "Current time updates",
@@ -56,6 +75,26 @@
         "passed": true
       },
       {
+        "name": "Pipeline editingFrame starts null",
+        "passed": true
+      },
+      {
+        "name": "Pipeline clipboard starts null",
+        "passed": true
+      },
+      {
+        "name": "Pipeline actions are callable",
+        "passed": true
+      },
+      {
+        "name": "setEditingFrame updates state",
+        "passed": true
+      },
+      {
+        "name": "Generation job with pass field",
+        "passed": true
+      },
+      {
         "name": "[Scenario] Full section navigation workflow",
         "passed": true
       },
@@ -76,9 +115,45 @@
         "passed": true
       },
       {
+        "name": "[Scenario] Pixel pass config modification and restore",
+        "passed": true
+      },
+      {
+        "name": "[Scenario] No approval gating on pipeline",
+        "passed": false,
+        "error": "Assertion failed: saveConcept exists"
+      },
+      {
+        "name": "[Scenario] Pipeline editing frame lifecycle",
+        "passed": true
+      },
+      {
+        "name": "[Scenario] Generation jobs with pass tracking",
+        "passed": true
+      },
+      {
+        "name": "[Scenario] Pipeline-related AI config settings",
+        "passed": true
+      },
+      {
         "name": "[Scenario] Clip selection resets playback",
         "passed": true
       }
     ]
+  },
+  {
+    "tool": "particle-designer",
+    "port": 6176,
+    "results": []
+  },
+  {
+    "tool": "audio-composer",
+    "port": 6177,
+    "results": []
+  },
+  {
+    "tool": "sfx-designer",
+    "port": 6178,
+    "results": []
   }
 ]
