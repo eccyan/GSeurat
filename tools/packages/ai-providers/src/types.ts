@@ -86,7 +86,7 @@ export interface IPAdapterOptions extends ImageGenerateOptions {
   ipAdapterPreset?: string;
   /** IP-Adapter start_at — begin applying IP-Adapter at this denoising % (0.0–1.0). Default 0.0. */
   ipAdapterStartAt?: number;
-  /** IP-Adapter end_at — stop applying IP-Adapter at this denoising % (0.0–1.0). Default 0.8. */
+  /** IP-Adapter end_at — stop applying IP-Adapter at this denoising % (0.0–1.0). Default 0.9. */
   ipAdapterEndAt?: number;
   /** OpenPose ControlNet model filename. */
   openPoseModel?: string;

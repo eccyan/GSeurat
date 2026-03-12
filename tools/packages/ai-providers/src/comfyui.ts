@@ -494,7 +494,7 @@ interface IPAdapterOnlyWorkflowOptions extends WorkflowOptions {
 function buildIPAdapterOnlyWorkflow(
   opts: IPAdapterOnlyWorkflowOptions
 ): Record<string, WorkflowNode> {
-  const embedsScaling = "K+mean(V) w/ C penalty";
+  const embedsScaling = "K+V";
   const nodes: Record<string, WorkflowNode> = {
     // Checkpoint
     "4": {
@@ -663,7 +663,7 @@ interface IPAdapterWorkflowOptions extends WorkflowOptions {
 function buildIPAdapterPoseWorkflow(
   opts: IPAdapterWorkflowOptions
 ): Record<string, WorkflowNode> {
-  const embedsScaling = "K+mean(V) w/ C penalty";
+  const embedsScaling = "K+V";
   const nodes: Record<string, WorkflowNode> = {
     // Checkpoint
     "4": {
@@ -894,7 +894,8 @@ interface TwoPassIPAdapterWorkflowOptions extends WorkflowOptions {
 function buildTwoPassIPAdapterWorkflow(
   opts: TwoPassIPAdapterWorkflowOptions
 ): Record<string, WorkflowNode> {
-  const embedsScaling = "K+mean(V) w/ C penalty";
+  const pass1EmbedScaling = "K+V";
+  const pass2EmbedScaling = "K+mean(V) w/ C penalty";
   const nodes: Record<string, WorkflowNode> = {
     // === Shared: Checkpoint ===
     "4": {
@@ -933,7 +934,7 @@ function buildTwoPassIPAdapterWorkflow(
         combine_embeds: "concat",
         start_at: opts.ipAdapterStartAt,
         end_at: opts.ipAdapterEndAt,
-        embeds_scaling: embedsScaling,
+        embeds_scaling: pass1EmbedScaling,
         model: ["41", 0],
         ipadapter: ["41", 1],
         image: ["40", 0],
@@ -1082,7 +1083,7 @@ function buildTwoPassIPAdapterWorkflow(
         combine_embeds: "concat",
         start_at: 0.0,
         end_at: 0.6,
-        embeds_scaling: embedsScaling,
+        embeds_scaling: pass2EmbedScaling,
         model: ["82", 0],
         ipadapter: ["82", 1],
         image: ["80", 0],
