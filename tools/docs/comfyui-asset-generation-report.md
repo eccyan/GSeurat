@@ -207,8 +207,10 @@ const models = await client.listMotionModels();
 
 ```bash
 cd tools/ComfyUI
-./venv/bin/python main.py --listen --enable-cors-header '*' --force-fp32
+./venv/bin/python main.py --listen localhost --port 8188 --fp32-vae --enable-cors-header "*"
 ```
+
+> **Note**: `--fp32-vae` is sufficient for single-image and two-pass workflows. Use `--force-fp32` only for AnimateDiff (slower but required for temporal attention layers).
 
 ### Experiment Results
 

@@ -6,8 +6,8 @@ Seurat is a browser-based tool for generating, reviewing, and assembling pixel-a
 
 ```bash
 # 1. Start ComfyUI (must be running for generation)
-cd /path/to/ComfyUI
-python main.py --listen --enable-cors-header "*"
+cd tools/ComfyUI
+./venv/bin/python main.py --listen localhost --port 8188 --fp32-vae --enable-cors-header "*"
 
 # 2. Start the bridge server
 cd tools/apps/bridge
