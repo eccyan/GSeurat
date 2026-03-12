@@ -11,12 +11,6 @@ interface Props {
   animName: string;
 }
 
-const PASS_STEPS = [
-  { key: 'pass1' as const, label: '1 Pose', color: '#4a8af8' },
-  { key: 'pass2' as const, label: '2 Chibi', color: '#60c880' },
-  { key: 'pass3' as const, label: '3 Pixel', color: '#70d870' },
-];
-
 export function PipelineControls({ animName }: Props) {
   const manifest = useSeuratStore((s) => s.manifest);
   const aiConfig = useSeuratStore((s) => s.aiConfig);
@@ -92,22 +86,6 @@ export function PipelineControls({ animName }: Props) {
 
   return (
     <div style={styles.container} data-testid="pipeline-controls">
-      {/* Step indicator */}
-      <div style={styles.stepIndicator} data-testid="pipeline-step-indicator">
-        {PASS_STEPS.map((step, i) => (
-          <React.Fragment key={step.key}>
-            {i > 0 && <div style={styles.stepLine} />}
-            <div style={{
-              ...styles.stepCircle,
-              borderColor: step.color,
-              background: stageCounts[step.key] > 0 ? step.color + '33' : 'transparent',
-            }}>
-              <span style={{ color: step.color, fontWeight: 600 }}>{step.label}</span>
-            </div>
-          </React.Fragment>
-        ))}
-      </div>
-
       {/* Prompt */}
       <div style={styles.section}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -472,28 +450,6 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     flexDirection: 'column',
     gap: 6,
-  },
-  stepIndicator: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 0,
-    padding: '8px 4px',
-  },
-  stepCircle: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: '4px 10px',
-    borderRadius: 12,
-    border: '2px solid',
-    fontFamily: 'monospace',
-    fontSize: 9,
-  },
-  stepLine: {
-    width: 20,
-    height: 2,
-    background: '#3a3a5a',
   },
   section: {
     background: '#131324',
