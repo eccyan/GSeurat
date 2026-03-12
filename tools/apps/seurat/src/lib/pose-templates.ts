@@ -161,9 +161,9 @@ const WALK_RIGHT: Pose[] = [
 
 /** Side-view run facing right: exaggerated stride, arms pumping */
 const RUN_RIGHT: Pose[] = [
-  // Frame 0 — right leg far forward, left arm forward
-  [[0.52, 0.12], [0.50, 0.22], [0.44, 0.22], [0.38, 0.30], [0.40, 0.38],
-   [0.56, 0.22], [0.62, 0.30], [0.58, 0.38],
+  // Frame 0 — left leg forward, right arm forward (cross-lateral gait)
+  [[0.52, 0.12], [0.50, 0.22], [0.44, 0.22], [0.62, 0.30], [0.58, 0.38],
+   [0.56, 0.22], [0.38, 0.30], [0.40, 0.38],
    [0.45, 0.45], [0.38, 0.60], [0.42, 0.78],
    [0.55, 0.45], [0.65, 0.58], [0.62, 0.78]],
   // Frame 1 — contact, body lower (legs parallel, not crossing)
@@ -171,9 +171,9 @@ const RUN_RIGHT: Pose[] = [
    [0.56, 0.24], [0.48, 0.32], [0.44, 0.28],
    [0.45, 0.47], [0.44, 0.62], [0.44, 0.78],
    [0.55, 0.47], [0.56, 0.62], [0.56, 0.78]],
-  // Frame 2 — left leg forward, right arm forward (hips overlap at center to avoid crossing)
-  [[0.52, 0.12], [0.50, 0.22], [0.44, 0.22], [0.62, 0.30], [0.58, 0.38],
-   [0.56, 0.22], [0.38, 0.30], [0.40, 0.38],
+  // Frame 2 — right leg forward, left arm forward (cross-lateral gait, hips overlap to avoid crossing)
+  [[0.52, 0.12], [0.50, 0.22], [0.44, 0.22], [0.38, 0.30], [0.40, 0.38],
+   [0.56, 0.22], [0.62, 0.30], [0.58, 0.38],
    [0.50, 0.45], [0.60, 0.58], [0.58, 0.78],
    [0.50, 0.45], [0.40, 0.60], [0.42, 0.78]],
   // Frame 3 — contact other side (legs parallel, not crossing)
