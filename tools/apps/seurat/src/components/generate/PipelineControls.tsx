@@ -4,6 +4,7 @@ import { VIEW_DIRECTIONS, DIRECTION_TO_VIEW } from '@vulkan-game-tools/asset-typ
 import { useSeuratStore } from '../../store/useSeuratStore.js';
 import { SAMPLER_NAMES, buildFramePrompt, buildNegativePrompt } from '../../lib/ai-generate.js';
 import { NumericInput } from '../NumericInput.js';
+import { useSelectedFrameIndices } from './FramePipelineGrid.js';
 
 interface Props {
   animName: string;
@@ -32,9 +33,15 @@ export function PipelineControls({ animName }: Props) {
   const promptOverride = useSeuratStore((s) => s.promptOverride);
   const setPromptOverride = useSeuratStore((s) => s.setPromptOverride);
 
+  const selectedIndices = useSelectedFrameIndices();
+
+  const availableVaes = useSeuratStore((s) => s.availableVaes);
+
   const [generating, setGenerating] = useState<string | null>(null);
   const [ckptSearch, setCkptSearch] = useState('');
   const [ckptOpen, setCkptOpen] = useState(false);
+  const [vaeOpen, setVaeOpen] = useState(false);
+  const [vaeSearch, setVaeSearch] = useState('');
 
   useEffect(() => {
     if (availableCheckpoints.length === 0) refreshComfyModels();
@@ -49,6 +56,10 @@ export function PipelineControls({ animName }: Props) {
     ? availableCheckpoints.filter((c) => c.toLowerCase().includes(ckptSearch.toLowerCase()))
     : availableCheckpoints;
 
+  const filteredVaes = vaeSearch
+    ? availableVaes.filter((v) => v.toLowerCase().includes(vaeSearch.toLowerCase()))
+    : availableVaes;
+
   // Count frames at each stage
   const stageCounts = {
     pass1: anim.frames.filter((f) => f.pipeline_stage && ['pass1', 'pass1_edited', 'pass2', 'pass2_edited', 'pass3'].includes(f.pipeline_stage)).length,
@@ -60,7 +71,8 @@ export function PipelineControls({ animName }: Props) {
   const handleRunPass = async (pass: 'pass1' | 'pass2' | 'pass3') => {
     setGenerating(pass);
     try {
-      await generatePass(pass, animName);
+      const indices = selectedIndices.length > 0 ? selectedIndices : undefined;
+      await generatePass(pass, animName, indices);
     } finally {
       setGenerating(null);
     }
@@ -126,7 +138,7 @@ export function PipelineControls({ animName }: Props) {
             disabled={!!generating}
             style={{ ...styles.passBtn, borderColor: '#4a8af8', color: '#90b8f8', opacity: generating ? 0.5 : 1, flex: 1 }}
           >
-            {generating === 'pass1' ? 'Running...' : 'Run Pass 1 (all)'}
+            {generating === 'pass1' ? 'Running...' : selectedIndices.length > 0 ? `Run Pass 1 (${selectedIndices.length} sel)` : 'Run Pass 1 (all)'}
           </button>
         </div>
         <Row>
@@ -152,7 +164,7 @@ export function PipelineControls({ animName }: Props) {
             disabled={!!generating || stageCounts.pass1 === 0}
             style={{ ...styles.passBtn, borderColor: '#60c880', color: '#90f8b8', opacity: (generating || stageCounts.pass1 === 0) ? 0.5 : 1, flex: 1 }}
           >
-            {generating === 'pass2' ? 'Running...' : 'Run Pass 2 (all)'}
+            {generating === 'pass2' ? 'Running...' : selectedIndices.length > 0 ? `Run Pass 2 (${selectedIndices.length} sel)` : 'Run Pass 2 (all)'}
           </button>
         </div>
         <Row>
@@ -178,7 +190,7 @@ export function PipelineControls({ animName }: Props) {
             disabled={!!generating || stageCounts.pass2 === 0}
             style={{ ...styles.passBtn, borderColor: '#70d870', color: '#70d870', opacity: (generating || stageCounts.pass2 === 0) ? 0.5 : 1, flex: 1 }}
           >
-            {generating === 'pass3' ? 'Running...' : 'Run Pass 3 (all)'}
+            {generating === 'pass3' ? 'Running...' : selectedIndices.length > 0 ? `Run Pass 3 (${selectedIndices.length} sel)` : 'Run Pass 3 (all)'}
           </button>
         </div>
         <Row>
@@ -242,6 +254,32 @@ export function PipelineControls({ animName }: Props) {
                     onMouseDown={(e) => { e.preventDefault(); setAIConfig({ checkpoint: c }); setCkptOpen(false); }}
                   >
                     {c}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </Row>
+        <Row>
+          <label style={styles.label}>VAE</label>
+          <div style={{ flex: 1, position: 'relative' }}>
+            <input
+              value={aiConfig.vae}
+              onChange={(e) => { setAIConfig({ vae: e.target.value }); setVaeSearch(e.target.value); }}
+              onFocus={() => { setVaeOpen(true); setVaeSearch(''); }}
+              onBlur={() => setTimeout(() => setVaeOpen(false), 200)}
+              style={{ ...styles.input, width: '100%' }}
+              placeholder="(none — use built-in)"
+            />
+            {vaeOpen && filteredVaes.length > 0 && (
+              <div style={styles.dropdown}>
+                {filteredVaes.slice(0, 15).map((v) => (
+                  <div
+                    key={v}
+                    style={styles.dropdownItem}
+                    onMouseDown={(e) => { e.preventDefault(); setAIConfig({ vae: v }); setVaeOpen(false); }}
+                  >
+                    {v}
                   </div>
                 ))}
               </div>

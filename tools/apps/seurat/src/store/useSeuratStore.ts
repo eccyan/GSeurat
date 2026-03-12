@@ -112,6 +112,12 @@ export interface SeuratState {
   promptOverride: string;
   setPromptOverride: (prompt: string) => void;
 
+  // Frame selection (for pipeline grid row checkboxes)
+  selectedFrames: Set<number>;
+  toggleFrameSelection: (frameIndex: number) => void;
+  selectAllFrames: (frameCount: number) => void;
+  clearFrameSelection: () => void;
+
   // Pipeline (step-by-step)
   editingFrame: { animName: string; frameIndex: number; pass: PipelineStage } | null;
   setEditingFrame: (frame: { animName: string; frameIndex: number; pass: PipelineStage } | null) => void;
@@ -1125,6 +1131,19 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
   promptOverride: '',
   setPromptOverride: (prompt) => set({ promptOverride: prompt }),
 
+  // Frame selection
+  selectedFrames: new Set<number>(),
+  toggleFrameSelection: (frameIndex) => set((s) => {
+    const next = new Set(s.selectedFrames);
+    if (next.has(frameIndex)) next.delete(frameIndex);
+    else next.add(frameIndex);
+    return { selectedFrames: next };
+  }),
+  selectAllFrames: (frameCount) => set({
+    selectedFrames: new Set(Array.from({ length: frameCount }, (_, i) => i)),
+  }),
+  clearFrameSelection: () => set({ selectedFrames: new Set() }),
+
   // Pipeline (step-by-step)
   editingFrame: null,
   setEditingFrame: (frame) => set({ editingFrame: frame }),
@@ -1236,8 +1255,8 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
           if (poseBytes) {
             pngBytes = await comfy.generateIPAdapterWithRetry(prompt, conceptBytes, poseBytes, {
               width: 512, height: 512, steps: aiConfig.steps, seed: rawSeed, cfgScale: Math.min(aiConfig.cfg, 7),
-              samplerName: aiConfig.sampler, checkpoint: aiConfig.checkpoint,
-              negativePrompt: negative, denoise: 1.0, loras,
+              samplerName: aiConfig.sampler, checkpoint: aiConfig.checkpoint, vae: aiConfig.vae || undefined,
+              negativePrompt: negative, denoise: 1.0, loras: [],
               ipAdapterWeight: aiConfig.ipAdapterWeight, ipAdapterPreset: aiConfig.ipAdapterPreset,
               ipAdapterStartAt: aiConfig.ipAdapterStartAt, ipAdapterEndAt: aiConfig.ipAdapterEndAt,
               openPoseModel: aiConfig.openPoseModel, openPoseStrength: aiConfig.openPoseStrength,
@@ -1246,8 +1265,8 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
           } else {
             pngBytes = await comfy.generateIPAdapterOnlyWithRetry(prompt, conceptBytes, {
               width: 512, height: 512, steps: aiConfig.steps, seed: rawSeed, cfgScale: Math.min(aiConfig.cfg, 7),
-              samplerName: aiConfig.sampler, checkpoint: aiConfig.checkpoint,
-              negativePrompt: negative, loras,
+              samplerName: aiConfig.sampler, checkpoint: aiConfig.checkpoint, vae: aiConfig.vae || undefined,
+              negativePrompt: negative, loras: [],
               ipAdapterWeight: aiConfig.ipAdapterWeight, ipAdapterEndAt: aiConfig.ipAdapterEndAt,
               removeBackground: aiConfig.removeBackground, remBgNodeType: aiConfig.remBgNodeType,
             });
@@ -1279,7 +1298,7 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
 
           const pngBytes = await comfy.generateImg2ImgWithIPAdapterWithRetry(prompt, pass1Bytes, chibiBytes, {
             width: 512, height: 512, steps: aiConfig.steps, seed: rawSeed, cfgScale: aiConfig.cfg,
-            samplerName: aiConfig.sampler, checkpoint: aiConfig.checkpoint,
+            samplerName: aiConfig.sampler, checkpoint: aiConfig.checkpoint, vae: aiConfig.vae || undefined,
             negativePrompt: negative, denoise: aiConfig.chibiDenoise, loras: [],
             ipAdapterWeight: aiConfig.chibiWeight, ipAdapterEndAt: 0.7,
             removeBackground: aiConfig.removeBackground, remBgNodeType: aiConfig.remBgNodeType,
@@ -1308,7 +1327,7 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
           // Use img2img at 512x512 then downscale client-side
           let pngBytes = await comfy.generateImg2ImgWithRetry(prompt, pass2Bytes, {
             width: 512, height: 512, steps: aiConfig.steps, seed: rawSeed, cfgScale: aiConfig.cfg,
-            samplerName: aiConfig.sampler, checkpoint: aiConfig.checkpoint,
+            samplerName: aiConfig.sampler, checkpoint: aiConfig.checkpoint, vae: aiConfig.vae || undefined,
             negativePrompt: negative, denoise: aiConfig.pixelPassDenoise, loras,
             removeBackground: aiConfig.removeBackground, remBgNodeType: aiConfig.remBgNodeType,
           });

@@ -130,7 +130,11 @@ export function FramePipelineGrid({ animName }: Props) {
     imageUrl: string;
   } | null>(null);
 
-  const [selectedFrames, setSelectedFrames] = useState<Set<number>>(new Set());
+  const selectedFrames = useSeuratStore((s) => s.selectedFrames);
+  const toggleFrameSelection = useSeuratStore((s) => s.toggleFrameSelection);
+  const selectAllFrames = useSeuratStore((s) => s.selectAllFrames);
+  const clearFrameSelection = useSeuratStore((s) => s.clearFrameSelection);
+
   const [contextMenu, setContextMenu] = useState<{
     x: number;
     y: number;
@@ -177,15 +181,6 @@ export function FramePipelineGrid({ animName }: Props) {
     await saveEditedFrame(editing.animName, editing.frameIndex, editing.pass, pngBytes);
   };
 
-  const toggleFrameSelection = (frameIndex: number) => {
-    setSelectedFrames((prev) => {
-      const next = new Set(prev);
-      if (next.has(frameIndex)) next.delete(frameIndex);
-      else next.add(frameIndex);
-      return next;
-    });
-  };
-
   // If editing, show PaintEditor
   if (editing) {
     return (
@@ -202,7 +197,21 @@ export function FramePipelineGrid({ animName }: Props) {
     <div style={styles.container} data-testid="pipeline-grid">
       {/* Header row — uses CSS grid to match cell columns */}
       <div style={{ ...styles.headerRow, gridTemplateColumns: `60px repeat(${colCount}, 1fr)` }}>
-        <div style={styles.frameLabel}>Frame</div>
+        <div style={styles.frameLabel}>
+          <input
+            type="checkbox"
+            checked={anim.frames.length > 0 && selectedFrames.size === anim.frames.length}
+            ref={(el) => {
+              if (el) el.indeterminate = selectedFrames.size > 0 && selectedFrames.size < anim.frames.length;
+            }}
+            onChange={() => {
+              if (selectedFrames.size === anim.frames.length) clearFrameSelection();
+              else selectAllFrames(anim.frames.length);
+            }}
+            style={{ marginRight: 4 }}
+          />
+          All
+        </div>
         {ALL_COLUMNS.map((col) => (
           <div key={col.key} style={styles.colHeader}>{col.label}</div>
         ))}
@@ -229,6 +238,13 @@ export function FramePipelineGrid({ animName }: Props) {
                 style={styles.frameIndexCell}
                 onClick={() => toggleFrameSelection(frame.index)}
               >
+                <input
+                  type="checkbox"
+                  checked={isSelected}
+                  onChange={() => toggleFrameSelection(frame.index)}
+                  onClick={(e) => e.stopPropagation()}
+                  style={{ margin: 0 }}
+                />
                 <span style={styles.frameIndexLabel}>f{frame.index}</span>
                 <span style={{
                   ...styles.badge,
@@ -336,7 +352,8 @@ export function FramePipelineGrid({ animName }: Props) {
 
 // Exported helper for RightPane to get selected indices
 export function useSelectedFrameIndices(): number[] {
-  return [];
+  const selectedFrames = useSeuratStore((s) => s.selectedFrames);
+  return Array.from(selectedFrames).sort((a, b) => a - b);
 }
 
 const styles: Record<string, React.CSSProperties> = {

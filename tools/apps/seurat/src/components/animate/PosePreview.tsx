@@ -14,21 +14,20 @@ const LIMBS: [number, number, string][] = [
   [1, 2, '#ff5500'],
   [2, 3, '#ffaa00'],
   [3, 4, '#ffff00'],
-  [1, 5, '#aaff00'],
-  [5, 6, '#55ff00'],
-  [6, 7, '#00ff00'],
-  [1, 8, '#00ff55'],
-  [8, 9, '#00ffaa'],
-  [9, 10, '#00ffff'],
-  [10, 11, '#00aaff'],
-  [8, 12, '#0055ff'],
-  [12, 13, '#0000ff'],
-  [13, 14, '#5500ff'],
+  [1, 5, '#00ff00'],
+  [5, 6, '#00ff55'],
+  [6, 7, '#00ffaa'],
+  [1, 8, '#00ffff'],
+  [8, 9, '#00aaff'],
+  [9, 10, '#0055ff'],
+  [1, 11, '#0000ff'],
+  [11, 12, '#5500ff'],
+  [12, 13, '#aa00ff'],
 ];
 
 const KP_NAMES = [
   'nose', 'neck', 'r_shoulder', 'r_elbow', 'r_wrist',
-  'l_shoulder', 'l_elbow', 'l_wrist', 'mid_hip',
+  'l_shoulder', 'l_elbow', 'l_wrist',
   'r_hip', 'r_knee', 'r_ankle', 'l_hip', 'l_knee', 'l_ankle',
 ];
 

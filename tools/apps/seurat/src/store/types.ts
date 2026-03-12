@@ -22,6 +22,7 @@ export interface LoraConfig {
 export interface AIConfig {
   comfyUrl: string;
   checkpoint: string;
+  vae: string;
   steps: number;
   seed: number;
   cfg: number;
@@ -55,6 +56,7 @@ export interface AIConfig {
 export const DEFAULT_AI_CONFIG: AIConfig = {
   comfyUrl: 'http://127.0.0.1:8188',
   checkpoint: 'v1-5-pruned-emaonly.safetensors',
+  vae: 'vae-ft-mse-840000-ema-pruned.safetensors',
   steps: 30,
   seed: 42,
   cfg: 7,

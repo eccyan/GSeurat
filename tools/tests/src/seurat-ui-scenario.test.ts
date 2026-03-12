@@ -603,7 +603,132 @@ function registerScenarios(runner: ScenarioRunner): void {
   });
 
   // -------------------------------------------------------------------------
-  // Scenario 10: Dashboard → Create → Cancel → Navigate flow
+  // Scenario 10: Pipeline frame selection with checkboxes
+  // -------------------------------------------------------------------------
+  runner.scenario('Pipeline: frame row selection checkboxes and select-all', async (page, client) => {
+    const manifest = {
+      ...mockManifest(),
+      animations: mockManifest().animations.map((a, i) => ({
+        ...a,
+        state: i === 0 ? 'idle' : 'walk',
+        direction: 'S' as const,
+        row: i,
+      })),
+    };
+    await client.dispatch('selectCharacterDirect', manifest);
+    await sleep(400);
+
+    // Select animation to show pipeline grid
+    await client.dispatch('setTreeSelection', {
+      kind: 'animation',
+      characterId: 'test_hero',
+      animName: 'idle_south',
+    });
+    await sleep(500);
+
+    const grid = await page.$('[data-testid="pipeline-grid"]');
+    if (!grid) throw new Error('Pipeline grid not rendered');
+
+    // --- Verify checkboxes exist in each row ---
+    const rowCheckboxes = await page.$$('[data-testid^="pipeline-row-"] input[type="checkbox"]');
+    if (rowCheckboxes.length !== 4) {
+      throw new Error(`Expected 4 row checkboxes, got ${rowCheckboxes.length}`);
+    }
+
+    // --- Verify header select-all checkbox exists ---
+    // The header has its own checkbox (not inside a pipeline-row-)
+    const allCheckboxes = await page.$$('[data-testid="pipeline-grid"] input[type="checkbox"]');
+    // 1 header + 4 rows = 5
+    if (allCheckboxes.length !== 5) {
+      throw new Error(`Expected 5 total checkboxes (1 header + 4 rows), got ${allCheckboxes.length}`);
+    }
+
+    // --- Initially no frames are selected ---
+    const initialChecked = await page.$$eval(
+      '[data-testid^="pipeline-row-"] input[type="checkbox"]',
+      (els) => els.filter((el) => (el as HTMLInputElement).checked).length,
+    );
+    if (initialChecked !== 0) {
+      throw new Error(`Expected 0 checked initially, got ${initialChecked}`);
+    }
+
+    // --- Click individual row checkbox (frame 1) ---
+    await client.dispatch('toggleFrameSelection', 1);
+    await sleep(200);
+
+    const afterToggle = await page.$$eval(
+      '[data-testid^="pipeline-row-"] input[type="checkbox"]',
+      (els) => els.map((el) => (el as HTMLInputElement).checked),
+    );
+    if (afterToggle[1] !== true) {
+      throw new Error(`Frame 1 checkbox should be checked after toggle, got ${JSON.stringify(afterToggle)}`);
+    }
+    if (afterToggle.filter(Boolean).length !== 1) {
+      throw new Error(`Only 1 checkbox should be checked, got ${afterToggle.filter(Boolean).length}`);
+    }
+
+    // --- Verify pass button shows selection count ---
+    const pass1Text = await page.$eval(
+      '[data-testid="run-pass1-btn"]',
+      (el) => el.textContent,
+    );
+    if (!pass1Text?.includes('1 sel')) {
+      throw new Error(`Pass 1 button should show "1 sel", got "${pass1Text}"`);
+    }
+
+    // --- Select all via store dispatch ---
+    await client.dispatch('selectAllFrames', 4);
+    await sleep(200);
+
+    const afterSelectAll = await page.$$eval(
+      '[data-testid^="pipeline-row-"] input[type="checkbox"]',
+      (els) => els.filter((el) => (el as HTMLInputElement).checked).length,
+    );
+    if (afterSelectAll !== 4) {
+      throw new Error(`Expected all 4 checked after selectAll, got ${afterSelectAll}`);
+    }
+
+    // --- Header checkbox should be checked ---
+    const headerChecked = await allCheckboxes[0].evaluate(
+      (el) => (el as HTMLInputElement).checked,
+    );
+    if (!headerChecked) {
+      throw new Error('Header select-all checkbox should be checked when all rows selected');
+    }
+
+    // --- Pass button should show "4 sel" ---
+    const pass1TextAll = await page.$eval(
+      '[data-testid="run-pass1-btn"]',
+      (el) => el.textContent,
+    );
+    if (!pass1TextAll?.includes('4 sel')) {
+      throw new Error(`Pass 1 button should show "4 sel", got "${pass1TextAll}"`);
+    }
+
+    // --- Clear selection ---
+    await client.dispatch('clearFrameSelection');
+    await sleep(200);
+
+    const afterClear = await page.$$eval(
+      '[data-testid^="pipeline-row-"] input[type="checkbox"]',
+      (els) => els.filter((el) => (el as HTMLInputElement).checked).length,
+    );
+    if (afterClear !== 0) {
+      throw new Error(`Expected 0 checked after clear, got ${afterClear}`);
+    }
+
+    // --- Pass button should show "all" again ---
+    const pass1TextClear = await page.$eval(
+      '[data-testid="run-pass1-btn"]',
+      (el) => el.textContent,
+    );
+    if (!pass1TextClear?.includes('(all)')) {
+      throw new Error(`Pass 1 button should show "(all)" after clear, got "${pass1TextClear}"`);
+    }
+  });
+
+  // -------------------------------------------------------------------------
+  // Scenario 11: Dashboard → Create → Cancel → Navigate flow
   // -------------------------------------------------------------------------
   runner.scenario('Dashboard: create dialog open/cancel then navigate sections', async (page, client) => {
     await client.dispatch('setActiveSection', 'dashboard');
