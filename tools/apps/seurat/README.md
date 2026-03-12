@@ -151,14 +151,16 @@ Generates in-between frames from existing pass 2 (chibi) outputs to create smoot
 | **Multiplier** | 2x | Number of output frames per original pair: 2x doubles frame count, 3x triples, 4x quadruples. |
 | **RIFE Model** | `rife47` | RIFE checkpoint to use (only relevant when method is RIFE). |
 
-**Keyframe tracking**: Original frames are marked `keyframe: true`, interpolated frames `keyframe: false`. The grid shows interpolated frames at reduced opacity with an "interp" badge. Use **Revert to Keyframes** to discard interpolated frames and restore originals.
+**Manifest integration**: The interpolation multiplier is stored in `spritesheet.interp_multiplier`. When creating a new character, placeholder frames (`keyframe: false`, `status: "pending"`) are pre-populated between keyframes based on the current multiplier setting. This means the manifest always reflects the intended frame count from the start.
+
+**Keyframe tracking**: Original frames are marked `keyframe: true`, interpolated frames `keyframe: false`. The grid shows interpolated frames at reduced opacity with an "interp" badge. Pass 1 and Pass 2 generation automatically skips non-keyframes. Use **Revert to Keyframes** to discard interpolated frames and restore originals.
 
 **Workflow**:
-1. Generate Pass 1 + Pass 2 frames as usual
-2. Select interpolation method and multiplier
-3. Click **Interpolate** — in-between frames are generated and inserted into the manifest
+1. Set the interpolation multiplier before creating a character (placeholders are pre-populated)
+2. Generate Pass 1 + Pass 2 frames — only keyframes are generated
+3. Click **Interpolate** — in-between frames fill the existing placeholder slots
 4. Run Pass 3 (pixelization) on all frames including interpolated ones
-5. Assemble atlas — the spritesheet columns expand to accommodate the new frame count
+5. Assemble atlas — spritesheet columns already account for the full frame count
 
 **Canvas Blend** is fast and requires no external dependencies — use it for quick previews. **RIFE** produces higher quality motion-aware interpolation but requires ComfyUI with the Frame-Interpolation custom node. Seurat auto-detects the available RIFE node variant (`RIFE VFI`, `VFI_RIFE`, or `RIFEInterpolation`) and queries its schema for required inputs.
 
