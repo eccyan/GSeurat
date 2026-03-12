@@ -2767,13 +2767,37 @@ export class ComfyUIClient implements ImageProvider {
     const model = opts?.model ?? 'rife-v4.6';
     const multiplier = opts?.multiplier ?? 2;
 
+    // Auto-detect which RIFE node class is available.
+    // Different ComfyUI-Frame-Interpolation versions register different names.
+    const rifeNodeType = await this.detectRIFENode();
+
     // Upload both frames
     const [nameA, nameB] = await Promise.all([
       this.uploadImage(frameA),
       this.uploadImage(frameB),
     ]);
 
-    // Build workflow: LoadImage -> ImageBatch -> VFI_RIFE -> SaveImage
+    // Build workflow: LoadImage -> ImageBatch -> RIFE -> SaveImage
+    // Input schema varies by node variant:
+    //   VFI_RIFE: ckpt_name, frames, multiplier, ...
+    //   RIFE VFI: ckpt_name, frames, multiplier, ...
+    //   RIFEInterpolation: model, images, multiplier
+    const rifeInputs: Record<string, unknown> = rifeNodeType === 'RIFEInterpolation'
+      ? {
+          model: `${model}.pth`,
+          images: ["3", 0],
+          multiplier,
+        }
+      : {
+          ckpt_name: `${model}.pth`,
+          frames: ["3", 0],
+          clear_cache_after_n_frames: 10,
+          multiplier,
+          fast_mode: true,
+          ensemble: false,
+          scale_factor: 1.0,
+        };
+
     const workflow: Record<string, WorkflowNode> = {
       "1": {
         class_type: "LoadImage",
@@ -2791,16 +2815,8 @@ export class ComfyUIClient implements ImageProvider {
         },
       },
       "4": {
-        class_type: "VFI_RIFE",
-        inputs: {
-          ckpt_name: `${model}.pth`,
-          frames: ["3", 0],
-          clear_cache_after_n_frames: 10,
-          multiplier,
-          fast_mode: true,
-          ensemble: false,
-          scale_factor: 1.0,
-        },
+        class_type: rifeNodeType,
+        inputs: rifeInputs,
       },
       "9": {
         class_type: "SaveImage",
@@ -2902,6 +2918,35 @@ export class ComfyUIClient implements ImageProvider {
 
     throw new Error(
       `ComfyUI RIFE generation timed out after ${this.pollTimeoutMs}ms for prompt ${promptId}`
+    );
+  }
+
+  /**
+   * Detect which RIFE VFI node class is registered on the ComfyUI server.
+   * Checks common names from different versions of ComfyUI-Frame-Interpolation.
+   * Throws if none are found.
+   */
+  private async detectRIFENode(): Promise<string> {
+    // Candidate node class names in order of preference
+    const candidates = ['RIFE VFI', 'VFI_RIFE', 'RIFEInterpolation'];
+
+    for (const name of candidates) {
+      try {
+        const res = await fetch(
+          `${this.baseUrl}/object_info/${encodeURIComponent(name)}`,
+          { signal: AbortSignal.timeout(5000) },
+        );
+        if (res.ok) {
+          const data = await res.json() as Record<string, unknown>;
+          if (data[name]) return name;
+        }
+      } catch { /* try next */ }
+    }
+
+    throw new Error(
+      `No RIFE frame interpolation node found on this ComfyUI server. ` +
+      `Install ComfyUI-Frame-Interpolation: ` +
+      `cd ComfyUI/custom_nodes && git clone https://github.com/Fannovel16/ComfyUI-Frame-Interpolation && pip install -r ComfyUI-Frame-Interpolation/requirements.txt`
     );
   }
 
