@@ -257,8 +257,8 @@ Backgrounds in generated frames were a persistent issue. The pipeline uses multi
 
 1. **Prompt engineering**: Frames use `plain white background, solid color background` instead of `transparent background` (SD 1.5 handles solid colors much better than transparency). Negative prompts include `detailed background, room, interior, exterior, furniture, floor, wall, ceiling, sky, ground, environment`.
 2. **Reference image pre-processing**: When IP-Adapter + RemBG are both enabled, all reference images (concept art and chibi, per-direction) are run through RemBG *before* being fed to IP-Adapter. This prevents IP-Adapter from reproducing backgrounds present in the reference images. Results are cached per-view so RemBG runs once per direction.
-3. **IP-Adapter embeds_scaling**: All IP-Adapter nodes (pass 1 and pass 2) use `"K+mean(V) w/ C penalty"` instead of `"V only"`. This preserves character identity but reduces spatial/compositional influence (i.e., backgrounds).
-4. **IP-Adapter end_at**: Pass 1 default lowered to `0.6` (from `0.8`); pass 2 lowered to `0.8` (from `1.0`). Stopping IP-Adapter earlier gives the text prompt and ControlNet more control over the final output.
+3. **IP-Adapter embeds_scaling**: Pass-1 identity nodes use `"V only"` — experimentally validated as the best option for character consistency with least circular frame artifacts (tested against `"K+V"`, `"K+V w/ C penalty"`, `"K+mean(V) w/ C penalty"`). Pass-2 chibi nodes use `"K+mean(V) w/ C penalty"` to reduce background leakage during style transfer.
+4. **IP-Adapter end_at**: Pass 1 default is `1.0` (full denoising guidance). Pass 2 uses `0.6`. The `weight_type` is `"linear"` for all passes — experimentally validated as the most reliable on Apple Silicon MPS (other types like `"weak input"` and `"ease out"` caused rendering failures or worse results with OpenPose).
 5. **Inter-pass RemBG + white compositing**: Background removal runs between Pass 1 and Pass 2. Critically, the RemBG output is composited onto a **solid white background** (via `SolidMask` → `MaskToImage` → `ImageCompositeMasked`) before being fed to Pass 2's VAEEncode. Without this step, RemBG strips backgrounds to black/transparent, and VAEEncode turns those black regions into latent noise that Pass 2 renders as swirling artifacts.
 6. **Pass 2/3 white background prompts**: Both the chibi pass and pixel art pass CLIP prompts explicitly include `plain white background, solid color background` to reinforce white background generation in later passes.
 7. **Final RemBG**: Standard background removal on the final output.
@@ -287,7 +287,7 @@ Without IP-Adapter, the model generates clean white backgrounds but loses charac
 
 ```
 Pass 1:
-CheckpointLoader → IPAdapterUnifiedLoader → IPAdapterAdvanced (concept art, K+mean(V) w/ C penalty)
+CheckpointLoader → IPAdapterUnifiedLoader → IPAdapterAdvanced (concept art, V only, linear, end_at=1.0)
                                                ↓
 ControlNetLoader (OpenPose) → ControlNetApplyAdvanced (pose skeleton, strength=0.8)
                                                ↓
@@ -301,7 +301,7 @@ ImageCompositeMasked(white, pass1_rgb, rmbg_mask) → character on white
 Pass 2:
 Character-on-white → VAEEncode → KSampler (denoise=0.7) → VAEDecode → ImageScale → RemBG → SaveImage
                                      ↑
-IPAdapterUnifiedLoader → IPAdapterAdvanced (chibi reference, K+mean(V) w/ C penalty, end_at=0.8)
+IPAdapterUnifiedLoader → IPAdapterAdvanced (chibi reference, K+mean(V) w/ C penalty, linear, end_at=0.6)
 ```
 
 ### API Usage
@@ -315,13 +315,13 @@ const frame = await client.generateTwoPassIPAdapterWithRetry(
   prompt, conceptImageBytes, chibiImageBytes, poseSkeletonBytes,
   {
     width: 512, height: 512,
-    steps: 20, seed: 42, cfgScale: 5, samplerName: "euler",
+    steps: 30, seed: 42, cfgScale: 7, samplerName: "euler",
     checkpoint: "AnythingV5_v5PrtRE.safetensors",
     vae: "vae-ft-mse-840000-ema-pruned.safetensors",
     ipAdapterWeight: 0.7,
     ipAdapterPreset: "PLUS (high strength)",
     ipAdapterStartAt: 0.0,
-    ipAdapterEndAt: 0.6,
+    ipAdapterEndAt: 1.0,
     openPoseModel: "control_v11p_sd15_openpose.pth",
     openPoseStrength: 0.8,
     chibiWeight: 0.7,
@@ -351,11 +351,13 @@ A parameter sweep of 14 experiments (56 frames total) was conducted. See `tools/
 | **openPoseStrength** | **0.8** | Stronger pose guidance ensures the OpenPose skeleton is followed. Previous default of 0.5 was too weak when IP-Adapter dominated. |
 | **consistentSeed** | **true** | Same seed across all frames ensures character appearance stays consistent; the pose skeleton drives variation. |
 | chibiWeight | 0.7 | Weight has minimal effect compared to denoise. 0.5-0.9 all look similar. |
-| ipAdapterEndAt | 0.6 | Stopping IP-Adapter at 60% lets the text prompt and ControlNet dominate the final denoising steps, reducing background leakage and improving pose adherence. |
+| **ipAdapterEndAt** | **1.0** | Full denoising guidance produces the most consistent character identity. Previously 0.6, but experiments showed full range works best with `"V only"` embeds_scaling. |
 | ipAdapterWeight | 0.7 | Standard value; balances identity preservation with prompt adherence. |
-| embeds_scaling (all passes) | K+mean(V) w/ C penalty | Reduces IP-Adapter's spatial/compositional influence while preserving character identity. Applied to both pass 1 and pass 2. |
+| **embeds_scaling (pass 1)** | **V only** | Experimentally validated (8 param combos round 1, 3x4 frames round 2). `"V only"` gave best character consistency and least circular frame artifacts. `"K+V w/ C penalty"` was the runner-up. `"K+mean(V) w/ C penalty"` was too conservative. Pass 2 still uses `"K+mean(V) w/ C penalty"`. |
+| **weight_type** | **linear** | Tested: linear, ease out, weak input, style transfer. `"weak input"` was best without OpenPose but caused black/corrupted frames with OpenPose on MPS. `"ease out"` produced the worst results. `"linear"` is the most reliable across all modes. |
 | checkpoint | v1-5-pruned-emaonly | Base SD 1.5 produces simpler/uniform backgrounds that RemBG handles better. AnythingV5 produces complex artistic backgrounds that resist removal. |
-| CFG | 7–10 | Higher CFG improves prompt adherence for "plain white background". |
+| **CFG** | **7** | Balances prompt adherence (direction control) with IP-Adapter influence. Lower values (4-5) let IP-Adapter dominate too much. |
+| **steps** | **30** | IP-Adapter needs 30+ steps for proper convergence. 20 steps produced inconsistent results. |
 
 **Two-pass vs single-pass comparison:**
 - Two-pass produces more detailed, higher-quality sprites with better concept art fidelity
@@ -372,7 +374,7 @@ A parameter sweep of 14 experiments (56 frames total) was conducted. See `tools/
 
 4. **Manual curation pass**: Not all non-black images are usable. Estimate ~70% of character sprites and ~40% of tiles are good quality. A human review step is essential.
 
-5. **Consider IP-Adapter for style transfer**: For chibi generation, txt2img + IP-Adapter gives better results than img2img — the prompt controls proportions while IP-Adapter preserves character identity. For sprite frames, the two-pass IP-Adapter + OpenPose pipeline provides explicit pose control. Use `embeds_scaling: "K+mean(V) w/ C penalty"` on pass-1 nodes to reduce background leakage, and pre-process reference images through RemBG before feeding to IP-Adapter.
+5. **Consider IP-Adapter for style transfer**: For chibi generation, txt2img + IP-Adapter gives better results than img2img — the prompt controls proportions while IP-Adapter preserves character identity. For sprite frames, the two-pass IP-Adapter + OpenPose pipeline provides explicit pose control. Use `embeds_scaling: "V only"` with `weight_type: "linear"` on pass-1 identity nodes for best character consistency. Pre-process reference images through RemBG and composite onto white background before feeding to IP-Adapter. Frame prompts should omit the concept's `style_prompt` (IP-Adapter handles style transfer) and place direction terms first for strongest orientation influence.
 
 6. **GPU recommendation**: For production use, an NVIDIA GPU avoids all MPS precision issues. The black image problem is entirely an Apple Silicon limitation.
 

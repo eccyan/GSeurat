@@ -77,7 +77,7 @@ Place these in your ComfyUI `models/` directories:
 | Setting | Default | Description |
 |---------|---------|-------------|
 | URL | `http://127.0.0.1:8188` | ComfyUI server address |
-| Steps | 20 | Diffusion sampling steps |
+| Steps | 30 | Diffusion sampling steps (IP-Adapter needs 30+ for convergence) |
 | CFG | 7 | Classifier-free guidance scale |
 | Seed | -1 | Random seed (-1 = random each time) |
 | Sampler | `euler` | Sampling algorithm (recommended for Apple Silicon MPS) |
@@ -102,13 +102,17 @@ Uses IP-Adapter for character appearance consistency from concept art, combined 
 
 - **IP Weight**: IP-Adapter influence strength (0.1–1.0, default 0.70)
 - **Preset**: IP-Adapter model variant (default "PLUS (high strength)")
-- **End At**: When IP-Adapter stops influencing generation (0.0–1.0, default 0.60). Lower values give the text prompt and ControlNet more control in later denoising steps, reducing background leakage and improving pose adherence.
+- **End At**: When IP-Adapter stops influencing generation (0.0–1.0, default 1.0). Lower values give the text prompt more control in later denoising steps.
 - **Pose Model**: OpenPose ControlNet model filename (default `control_v11p_sd15_openpose`)
 - **Pose Strength**: OpenPose conditioning strength (0.1–1.5, default 0.80)
 
 When enabled, Seurat generates each frame individually with a programmatically rendered OpenPose skeleton matching the expected pose (idle breathing, walk cycle, run cycle) for each direction and frame index.
 
-**IP-Adapter embeds_scaling**: Pass-1 nodes use `"K+mean(V) w/ C penalty"` to preserve character identity while reducing spatial/compositional influence (backgrounds). Pass-2 chibi nodes use `"V only"` for strong style transfer.
+**IP-Adapter embeds_scaling**: Pass-1 identity nodes use `"V only"` — this provides the best character consistency while letting the text prompt control composition, direction, and pose. Pass-2 chibi nodes use `"K+mean(V) w/ C penalty"` to reduce background leakage during style transfer. The `weight_type` is `"linear"` for all passes.
+
+**Prompt override**: The Pipeline panel includes an editable **Prompt** textarea above Pass 1. When empty, auto-generated per-frame prompts are used. When filled, the custom prompt replaces the auto prompt for all frames, allowing quick iteration on prompt wording.
+
+> **Note on frame prompts**: Frame prompts intentionally exclude the concept's `style_prompt` (e.g. "pen drawing, detailed linework") because IP-Adapter already transfers style from the reference image. Including style terms in the text prompt would double down on a specific style and fight against IP-Adapter. Direction terms (e.g. "facing right, right side profile, looking right") are placed first in the prompt for strongest orientation influence.
 
 ### Background Removal
 
@@ -118,7 +122,7 @@ Removes opaque backgrounds from generated sprites (SD 1.5 does not natively supp
 
 Background removal operates at multiple stages:
 
-1. **Reference pre-processing**: When IP-Adapter + RemBG are both enabled, concept art and chibi reference images are run through RemBG *before* being fed to IP-Adapter. This prevents IP-Adapter from reproducing backgrounds present in the references. Results are cached per-view direction.
+1. **Reference pre-processing**: When IP-Adapter + RemBG are both enabled, concept art and chibi reference images are run through RemBG *before* being fed to IP-Adapter. The cleaned images are then **composited onto a solid white background** (via `compositeOnWhite()`) to prevent black/transparent regions from muddying the IP-Adapter character identity embedding. Results are cached per-view direction.
 2. **Inter-pass cleanup** (two-pass mode): RemBG runs between Pass 1 (concept+pose) and Pass 2 (chibi-fy). The extracted character is composited onto a **solid white background** before VAEEncode — this prevents black/transparent regions from becoming latent noise artifacts in Pass 2.
 3. **Final output**: Standard RemBG on the final generated image.
 
