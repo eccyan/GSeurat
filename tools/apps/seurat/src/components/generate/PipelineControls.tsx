@@ -70,10 +70,10 @@ export function PipelineControls({ animName }: Props) {
   const totalFrames = anim.frames.length;
 
   const handleRunPass = async (pass: 'pass1' | 'pass2' | 'pass3') => {
+    if (selectedIndices.length === 0) return;
     setGenerating(pass);
     try {
-      const indices = selectedIndices.length > 0 ? selectedIndices : undefined;
-      await generatePass(pass, animName, indices);
+      await generatePass(pass, animName, selectedIndices);
     } finally {
       setGenerating(null);
     }
@@ -136,10 +136,10 @@ export function PipelineControls({ animName }: Props) {
           <button
             data-testid="run-pass1-btn"
             onClick={() => handleRunPass('pass1')}
-            disabled={!!generating}
-            style={{ ...styles.passBtn, borderColor: '#4a8af8', color: '#90b8f8', opacity: generating ? 0.5 : 1, flex: 1 }}
+            disabled={!!generating || selectedIndices.length === 0}
+            style={{ ...styles.passBtn, borderColor: '#4a8af8', color: '#90b8f8', opacity: (generating || selectedIndices.length === 0) ? 0.5 : 1, flex: 1 }}
           >
-            {generating === 'pass1' ? 'Running...' : selectedIndices.length > 0 ? `Run Pass 1 (${selectedIndices.length} sel)` : 'Run Pass 1 (all)'}
+            {generating === 'pass1' ? 'Running...' : `Run Pass 1 (${selectedIndices.length} sel)`}
           </button>
         </div>
         <Row>
@@ -164,10 +164,10 @@ export function PipelineControls({ animName }: Props) {
           <button
             data-testid="run-pass2-btn"
             onClick={() => handleRunPass('pass2')}
-            disabled={!!generating || stageCounts.pass1 === 0}
-            style={{ ...styles.passBtn, borderColor: '#60c880', color: '#90f8b8', opacity: (generating || stageCounts.pass1 === 0) ? 0.5 : 1, flex: 1 }}
+            disabled={!!generating || stageCounts.pass1 === 0 || selectedIndices.length === 0}
+            style={{ ...styles.passBtn, borderColor: '#60c880', color: '#90f8b8', opacity: (generating || stageCounts.pass1 === 0 || selectedIndices.length === 0) ? 0.5 : 1, flex: 1 }}
           >
-            {generating === 'pass2' ? 'Running...' : selectedIndices.length > 0 ? `Run Pass 2 (${selectedIndices.length} sel)` : 'Run Pass 2 (all)'}
+            {generating === 'pass2' ? 'Running...' : `Run Pass 2 (${selectedIndices.length} sel)`}
           </button>
         </div>
         <Row>
@@ -192,10 +192,10 @@ export function PipelineControls({ animName }: Props) {
           <button
             data-testid="run-pass3-btn"
             onClick={() => handleRunPass('pass3')}
-            disabled={!!generating || stageCounts.pass2 === 0}
-            style={{ ...styles.passBtn, borderColor: '#70d870', color: '#70d870', opacity: (generating || stageCounts.pass2 === 0) ? 0.5 : 1, flex: 1 }}
+            disabled={!!generating || stageCounts.pass2 === 0 || selectedIndices.length === 0}
+            style={{ ...styles.passBtn, borderColor: '#70d870', color: '#70d870', opacity: (generating || stageCounts.pass2 === 0 || selectedIndices.length === 0) ? 0.5 : 1, flex: 1 }}
           >
-            {generating === 'pass3' ? 'Running...' : selectedIndices.length > 0 ? `Run Pass 3 (${selectedIndices.length} sel)` : 'Run Pass 3 (all)'}
+            {generating === 'pass3' ? 'Running...' : `Run Pass 3 (${selectedIndices.length} sel)`}
           </button>
         </div>
         <Row>

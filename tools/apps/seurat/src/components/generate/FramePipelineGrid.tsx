@@ -144,6 +144,12 @@ export function FramePipelineGrid({ animName }: Props) {
   const selectAllFrames = useSeuratStore((s) => s.selectAllFrames);
   const clearFrameSelection = useSeuratStore((s) => s.clearFrameSelection);
 
+  // Default to select-all when animation changes or loads
+  const frameCount = manifest?.animations.find((a) => a.name === animName)?.frames.length ?? 0;
+  useEffect(() => {
+    if (frameCount > 0) selectAllFrames(frameCount);
+  }, [animName, frameCount]);
+
   const [contextMenu, setContextMenu] = useState<{
     x: number;
     y: number;
@@ -286,10 +292,9 @@ export function FramePipelineGrid({ animName }: Props) {
                   if (col.key === 'pass3' && frame.status === 'generated') {
                     imageUrl = api.frameThumbnailUrl(characterId, animName, frame.index);
                   } else if (isEditCol) {
-                    const basePass = col.key === 'pass1_edited' ? 'pass1' : 'pass2';
-                    imageUrl = stage === col.key
-                      ? api.passImageUrl(characterId, animName, frame.index, col.key)
-                      : api.passImageUrl(characterId, animName, frame.index, basePass);
+                    // Always show the edited image in edit columns (the file persists on disk
+                    // even after the pipeline advances past this stage)
+                    imageUrl = api.passImageUrl(characterId, animName, frame.index, col.key);
                   } else {
                     imageUrl = api.passImageUrl(characterId, animName, frame.index, col.key);
                   }
