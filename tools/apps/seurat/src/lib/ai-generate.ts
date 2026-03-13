@@ -86,19 +86,18 @@ export function buildPass2Prompt(
   manifest: CharacterManifest,
   anim: CharacterAnimation,
   frameIndex: number,
-  headRatio: number,
+  _headRatio: number,
 ): string {
-  const base = buildFramePrompt(manifest, anim, frameIndex);
-  const ratioDesc = `1:${headRatio} head to body ratio, small head, long torso, long legs, mature proportions`;
-  return `${ratioDesc}, ${base}`;
+  // Pass 2 relies on IP-Adapter with chibi reference for style transfer.
+  // The prompt just provides the base frame context — no proportion overrides.
+  return buildFramePrompt(manifest, anim, frameIndex);
 }
 
 /**
- * Build a pass-2 negative prompt that rejects oversized-head / chibi proportions.
+ * Build a pass-2 negative prompt.
  */
 export function buildPass2NegativePrompt(manifest: CharacterManifest): string {
-  const base = buildNegativePrompt(manifest);
-  return `large head, big head, oversized head, chibi proportions, super deformed, ${base}`;
+  return buildNegativePrompt(manifest);
 }
 
 export function buildNegativePrompt(manifest: CharacterManifest): string {
