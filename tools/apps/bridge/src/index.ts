@@ -8,6 +8,7 @@
  */
 
 import path from 'node:path';
+import os from 'node:os';
 import fs from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import express, { Request, Response } from 'express';
@@ -762,6 +763,16 @@ app.post('/api/characters/:id/assemble', async (req: Request, res: Response) => 
   }
 });
 
+// Resolve a user-supplied path: expand ~ to home dir, resolve relative to home.
+function resolveUserPath(p: string): string {
+  if (p.startsWith('~/') || p === '~') {
+    return path.resolve(os.homedir(), p.slice(2));
+  }
+  if (path.isAbsolute(p)) return path.resolve(p);
+  // Relative paths resolve against home directory for predictability
+  return path.resolve(os.homedir(), p);
+}
+
 // ---------------------------------------------------------------------------
 // Project endpoints
 // ---------------------------------------------------------------------------
@@ -774,7 +785,7 @@ app.post('/api/projects/create', async (req: Request, res: Response) => {
       res.status(400).json({ error: 'path and name are required' });
       return;
     }
-    const projectDir = path.resolve(dirPath);
+    const projectDir = resolveUserPath(dirPath);
     const charsDir = path.join(projectDir, 'characters');
     await fs.mkdir(charsDir, { recursive: true });
 
@@ -808,7 +819,7 @@ app.post('/api/projects/open', async (req: Request, res: Response) => {
       res.status(400).json({ error: 'path is required' });
       return;
     }
-    const projectDir = path.resolve(dirPath);
+    const projectDir = resolveUserPath(dirPath);
     const projectFile = path.join(projectDir, 'project.json');
     const content = await fs.readFile(projectFile, 'utf8');
     const project = JSON.parse(content);
