@@ -90,7 +90,7 @@ export function ConceptPreview() {
     url: string;
     title: string;
     type: 'concept' | 'chibi';
-    view: ViewDirection;
+    view: ViewDirection | 'base';
   } | null>(null);
 
   // Reset error state when image URLs change
@@ -128,9 +128,17 @@ export function ConceptPreview() {
     }
   }, [manifest, conceptViewUrls, chibiViewUrls, conceptImageUrl, chibiImageUrl, uploadConceptImageForView, uploadChibiImageForView]);
 
+  const loadConceptImage = useSeuratStore((s) => s.loadConceptImage);
+
   const handleSaveEdited = useCallback(async (pngBytes: Uint8Array) => {
     if (!manifest || !editing) return;
     const { type, view } = editing;
+    if (view === 'base') {
+      // Saving the identity anchor (concept.png)
+      await api.saveConceptImage(manifest.character_id, pngBytes);
+      loadConceptImage();
+      return;
+    }
     if (type === 'concept') {
       await api.saveConceptImage(manifest.character_id, pngBytes, view);
       if (view === 'front') await api.saveConceptImage(manifest.character_id, pngBytes);
@@ -140,7 +148,7 @@ export function ConceptPreview() {
       if (view === 'front') await api.saveChibiImage(manifest.character_id, pngBytes);
       loadChibiViewUrls();
     }
-  }, [manifest, editing, loadConceptViewUrls, loadChibiViewUrls]);
+  }, [manifest, editing, loadConceptImage, loadConceptViewUrls, loadChibiViewUrls]);
 
   if (!manifest) {
     return (
@@ -171,7 +179,10 @@ export function ConceptPreview() {
       <div style={styles.anchorSection}>
         <div style={styles.anchorLabel}>Concept</div>
         {hasConceptBase && conceptImageUrl ? (
-          <div style={styles.anchorImageWrap}>
+          <div
+            style={styles.anchorImageWrap}
+            onClick={() => setEditing({ url: conceptImageUrl, title: 'Concept', type: 'concept', view: 'base' })}
+          >
             <img
               src={conceptImageUrl}
               alt="Identity concept"
@@ -332,6 +343,7 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
+    cursor: 'pointer',
   },
   anchorImg: {
     width: '100%',
