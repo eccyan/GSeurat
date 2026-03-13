@@ -1329,7 +1329,7 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
           }
 
         } else if (pass === 'pass3') {
-          // Pass 3: Client-side downscale → upscale (pixelization)
+          // Pass 3: Client-side downscale → upscale (pixelization) + background removal
           // Prefer edited version if it exists on disk, regardless of current pipeline_stage
           let pass2Bytes: Uint8Array;
           try { pass2Bytes = await api.fetchPassImageBytes(manifest.character_id, animName, fi, 'pass2_edited'); }
@@ -1357,7 +1357,16 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
           srcBmp.close();
 
           const outBlob = await outCanvas.convertToBlob({ type: 'image/png' });
-          const pngBytes = new Uint8Array(await outBlob.arrayBuffer());
+          let pngBytes: Uint8Array = new Uint8Array(await outBlob.arrayBuffer());
+
+          // Step 3: Remove background via ComfyUI RMBG
+          if (aiConfig.removeBackground) {
+            try {
+              pngBytes = await comfy.removeBackground(pngBytes, aiConfig.remBgNodeType);
+            } catch (err) {
+              console.warn(`[Seurat] Background removal failed for ${animName}/f${fi}, using pixelized image as-is:`, err);
+            }
+          }
 
           // Save as final frame
           await api.saveFrameImage(manifest.character_id, animName, fi, pngBytes);
