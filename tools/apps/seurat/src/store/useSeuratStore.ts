@@ -55,17 +55,18 @@ export interface SeuratState {
   conceptImageUrl: string | null;
   conceptGenerating: boolean;
   conceptError: string | null;
-  generateConceptArt: (view: ViewDirection, overrides?: { steps?: number; cfg?: number; sampler?: string; scheduler?: string; seed?: number; loras?: { name: string; weight: number }[]; checkpoint?: string; vae?: string }) => Promise<void>;
+  hasConceptBase: boolean;
+  generateConceptArt: (overrides?: { steps?: number; cfg?: number; sampler?: string; scheduler?: string; seed?: number; loras?: { name: string; weight: number }[]; checkpoint?: string; vae?: string }) => Promise<void>;
   uploadConceptImage: (file: File) => Promise<void>;
   uploadConceptImageForView: (file: File, view: ViewDirection) => Promise<void>;
   loadConceptImage: () => void;
 
-  // Multi-view concept
+  // Directional poses
   conceptViewUrls: Record<ViewDirection, string | null>;
-  conceptViewsGenerating: boolean;
-  conceptViewsError: string | null;
-  conceptViewsProgress: string | null;
-  generateConceptViews: (overrides?: { steps?: number; cfg?: number; sampler?: string; scheduler?: string; seed?: number; loras?: { name: string; weight: number }[]; checkpoint?: string; vae?: string }) => Promise<void>;
+  conceptPoseGenerating: boolean;
+  conceptPoseError: string | null;
+  conceptPoseProgress: string | null;
+  generateConceptPoses: (views?: ViewDirection[], overrides?: { steps?: number; cfg?: number; sampler?: string; scheduler?: string; seed?: number; loras?: { name: string; weight: number }[]; checkpoint?: string; vae?: string }) => Promise<void>;
   loadConceptViewUrls: () => void;
 
   // Chibi
@@ -207,11 +208,11 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
     } catch { /* best effort */ }
     set({
       conceptGenerating: false,
-      conceptViewsGenerating: false,
+      conceptPoseGenerating: false,
       chibiGenerating: false,
       chibiViewsGenerating: false,
       conceptError: 'Cancelled.',
-      conceptViewsError: null,
+      conceptPoseError: null,
       chibiError: null,
       chibiViewsError: null,
     });
@@ -251,6 +252,8 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
           }
         }
       }
+      // Check if concept.png exists
+      const hasConceptBase = refs.includes('concept.png') || refs.length > 0;
       set({
         selectedCharacterId: id,
         manifest,
@@ -261,6 +264,7 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
           ? api.conceptImageUrl(id)
           : null,
         conceptError: null,
+        hasConceptBase,
         conceptViewUrls,
         chibiImageUrl: manifest.chibi?.reference_image
           ? api.chibiImageUrl(id)
@@ -316,12 +320,13 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
   conceptImageUrl: null,
   conceptGenerating: false,
   conceptError: null,
+  hasConceptBase: false,
 
-  generateConceptArt: async (view, overrides) => {
+  generateConceptArt: async (overrides) => {
     const { manifest, aiConfig } = get();
     if (!manifest) return;
 
-    const { concept, spritesheet } = manifest;
+    const { concept } = manifest;
     if (!concept.description && !concept.style_prompt) {
       set({ conceptError: 'Fill in a description or style prompt first.' });
       return;
@@ -337,7 +342,7 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
       const prompt = [
         sanitizeStylePrompt(concept.style_prompt),
         concept.description,
-        CONCEPT_VIEW_PROMPTS[view],
+        CONCEPT_VIEW_PROMPTS.front,
       ].filter(Boolean).join(', ');
 
       const negative = concept.negative_prompt
@@ -382,18 +387,12 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
         },
       );
 
-      // Save to bridge (view-specific)
-      await api.saveConceptImage(manifest.character_id, pngBytes, view);
-
-      // Also save as default concept.png if generating front view
-      if (view === 'front') {
-        await api.saveConceptImage(manifest.character_id, pngBytes);
-      }
+      // Save as concept.png (identity anchor)
+      await api.saveConceptImage(manifest.character_id, pngBytes);
 
       // Update manifest reference_images + generation settings
       const existingImages = manifest.concept.reference_images || [];
-      const viewFile = `concept_${view}.png`;
-      const updatedImages = existingImages.includes(viewFile) ? existingImages : [...existingImages, viewFile];
+      const updatedImages = existingImages.includes('concept.png') ? existingImages : [...existingImages, 'concept.png'];
       const updated = {
         ...manifest,
         concept: {
@@ -405,15 +404,12 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
       set({ manifest: updated });
       await api.saveManifest(updated);
 
-      // Reload the concept image URL for this view
       const cb = `?t=${Date.now()}`;
       set({
-        conceptViewUrls: { ...get().conceptViewUrls, [view]: api.conceptImageUrl(manifest.character_id, view) + cb },
+        conceptImageUrl: api.conceptImageUrl(manifest.character_id) + cb,
+        hasConceptBase: true,
         conceptError: null,
       });
-      if (view === 'front') {
-        set({ conceptImageUrl: api.conceptImageUrl(manifest.character_id) + cb });
-      }
     } catch (err) {
       set({ conceptError: err instanceof Error ? err.message : String(err) });
     } finally {
@@ -443,7 +439,7 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
       set({ manifest: updated });
       await api.saveManifest(updated);
 
-      set({ conceptImageUrl: api.conceptImageUrl(manifest.character_id), conceptError: null });
+      set({ conceptImageUrl: api.conceptImageUrl(manifest.character_id), hasConceptBase: true, conceptError: null });
     } catch (err) {
       set({ conceptError: err instanceof Error ? err.message : String(err) });
     } finally {
@@ -498,11 +494,11 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
     set({ conceptImageUrl: api.conceptImageUrl(selectedCharacterId) });
   },
 
-  // Multi-view concept
+  // Directional poses
   conceptViewUrls: { front: null, back: null, right: null, left: null },
-  conceptViewsGenerating: false,
-  conceptViewsError: null,
-  conceptViewsProgress: null,
+  conceptPoseGenerating: false,
+  conceptPoseError: null,
+  conceptPoseProgress: null,
 
   loadConceptViewUrls: () => {
     const { selectedCharacterId, manifest } = get();
@@ -518,17 +514,28 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
     set({ conceptViewUrls: urls });
   },
 
-  generateConceptViews: async (overrides) => {
+  generateConceptPoses: async (views, overrides) => {
     const { manifest, aiConfig } = get();
     if (!manifest) return;
 
     const { concept } = manifest;
     if (!concept.description && !concept.style_prompt) {
-      set({ conceptViewsError: 'Fill in a description or style prompt first.' });
+      set({ conceptPoseError: 'Fill in a description or style prompt first.' });
       return;
     }
 
-    set({ conceptViewsGenerating: true, conceptViewsError: null, conceptViewsProgress: 'Generating front view...' });
+    // Require concept.png to exist
+    let conceptBytes: Uint8Array | null = null;
+    try {
+      conceptBytes = await api.fetchConceptImageBytes(manifest.character_id);
+    } catch { /* missing */ }
+    if (!conceptBytes) {
+      set({ conceptPoseError: 'Generate or upload a concept image first.' });
+      return;
+    }
+
+    const targetViews: ViewDirection[] = views ?? (['front', 'back', 'right', 'left'] as ViewDirection[]);
+    set({ conceptPoseGenerating: true, conceptPoseError: null, conceptPoseProgress: `Generating ${targetViews.join(', ')}...` });
 
     try {
       const comfy = new ComfyUIClient(aiConfig.comfyUrl);
@@ -551,127 +558,92 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
       const scheduler = overrides?.scheduler;
       const vae = overrides?.vae;
 
-      const { getPose, renderPoseToPng } = await import('../lib/pose-templates.js');
+      const { getPose, renderPoseToPng, CONCEPT_VIEW_POSES } = await import('../lib/pose-templates.js');
 
-      // 1. Front: use existing concept as IP-Adapter ref if available, else txt2img
-      const frontPrompt = `${basePrompt}, ${CONCEPT_VIEW_PROMPTS.front}`;
-      console.log('[Seurat] Concept views — front prompt:', frontPrompt);
+      const seedOffsets: Record<ViewDirection, number> = { front: 0, right: 1, back: 2, left: 3 };
+      const ipWeights: Record<ViewDirection, number> = { front: 0.7, right: 0.6, back: 0.5, left: 0.6 };
+      const poseStrengths: Record<ViewDirection, number> = { front: 0.8, right: 0.8, back: 0.9, left: 0.8 };
 
-      let existingConceptBytes: Uint8Array | null = null;
-      try {
-        existingConceptBytes = await api.fetchConceptImageBytes(manifest.character_id);
-      } catch { /* no existing concept image — will use txt2img */ }
+      // Track generated bytes for potential left mirror from right
+      let rightBytes: Uint8Array | null = null;
 
-      let frontBytes: Uint8Array;
-      if (existingConceptBytes) {
-        console.log('[Seurat] Concept views — front: using existing concept as IP-Adapter reference');
-        const idleFrontPose = getPose('idle_down', 0);
-        const frontPoseBytes = idleFrontPose ? await renderPoseToPng(idleFrontPose, 512, 512) : null;
-        if (frontPoseBytes) {
-          frontBytes = await comfy.generateIPAdapterWithRetry(frontPrompt, existingConceptBytes, frontPoseBytes, {
-            width: 512, height: 512, steps, seed, cfgScale: Math.min(cfg, 5), samplerName: sampler,
+      const generatedRefs: string[] = [];
+
+      for (const view of targetViews) {
+        set({ conceptPoseProgress: `Generating ${view} view...` });
+
+        // Left view: mirror from right if right was generated (or exists)
+        if (view === 'left') {
+          let sourceBytes = rightBytes;
+          if (!sourceBytes) {
+            // Try to fetch existing right image
+            try {
+              const rightUrl = api.conceptImageUrl(manifest.character_id, 'right');
+              const resp = await fetch(rightUrl);
+              if (resp.ok) sourceBytes = new Uint8Array(await resp.arrayBuffer());
+            } catch { /* no right image */ }
+          }
+          if (sourceBytes) {
+            const rightBlob = new Blob([sourceBytes as BlobPart], { type: 'image/png' });
+            const rightBitmap = await createImageBitmap(rightBlob);
+            const canvas = new OffscreenCanvas(rightBitmap.width, rightBitmap.height);
+            const ctx = canvas.getContext('2d')!;
+            ctx.translate(canvas.width, 0);
+            ctx.scale(-1, 1);
+            ctx.drawImage(rightBitmap, 0, 0);
+            rightBitmap.close();
+            const leftBlob = await canvas.convertToBlob({ type: 'image/png' });
+            const leftBytes = new Uint8Array(await leftBlob.arrayBuffer());
+            await api.saveConceptImage(manifest.character_id, leftBytes, 'left');
+            generatedRefs.push('concept_left.png');
+            set({ conceptPoseProgress: 'Left done (mirrored from right).' });
+            continue;
+          }
+          // Fall through to IP-Adapter generation if no right source
+        }
+
+        const viewPrompt = `${basePrompt}, ${CONCEPT_VIEW_PROMPTS[view]}`;
+        console.log(`[Seurat] Concept pose — ${view} prompt:`, viewPrompt);
+
+        const poseDef = CONCEPT_VIEW_POSES[view];
+        const pose = poseDef ? getPose(poseDef.animName, poseDef.frameIndex) : null;
+        const poseBytes = pose ? await renderPoseToPng(pose, 512, 512) : null;
+
+        let resultBytes: Uint8Array;
+        if (poseBytes) {
+          resultBytes = await comfy.generateIPAdapterWithRetry(viewPrompt, conceptBytes, poseBytes, {
+            width: 512, height: 512, steps, seed: seed + seedOffsets[view], cfgScale: Math.min(cfg, 5), samplerName: sampler,
             checkpoint, negativePrompt: negative, denoise: 1.0, loras,
-            ipAdapterWeight: 0.7, ipAdapterPreset: aiConfig.ipAdapterPreset,
+            ipAdapterWeight: ipWeights[view], ipAdapterPreset: aiConfig.ipAdapterPreset,
             ipAdapterStartAt: 0.0, ipAdapterEndAt: 0.8,
-            openPoseModel: aiConfig.openPoseModel, openPoseStrength: 0.8,
+            openPoseModel: aiConfig.openPoseModel, openPoseStrength: poseStrengths[view],
             removeBackground: aiConfig.removeBackground, remBgNodeType: aiConfig.remBgNodeType,
             outputWidth: 512, outputHeight: 512,
           });
         } else {
-          frontBytes = await comfy.generateImg2ImgWithRetry(frontPrompt, existingConceptBytes, {
-            width: 512, height: 512, steps, seed, cfgScale: cfg, samplerName: sampler,
-            checkpoint, negativePrompt: negative, denoise: 0.6, loras,
+          resultBytes = await comfy.generateImg2ImgWithRetry(viewPrompt, conceptBytes, {
+            width: 512, height: 512, steps, seed: seed + seedOffsets[view], cfgScale: cfg, samplerName: sampler,
+            checkpoint, negativePrompt: negative, denoise: 0.65, loras,
             removeBackground: aiConfig.removeBackground, remBgNodeType: aiConfig.remBgNodeType,
           });
         }
-      } else {
-        frontBytes = await comfy.generateImageWithRetry(frontPrompt, {
-          width: 512, height: 512, steps, seed, cfgScale: cfg, samplerName: sampler,
-          scheduler, checkpoint, vae, negativePrompt: negative, loras,
-          removeBackground: aiConfig.removeBackground, remBgNodeType: aiConfig.remBgNodeType,
-        }, 3, (attempt, max) => {
-          set({ conceptViewsProgress: `Front: retrying (${attempt}/${max})...` });
-        });
+
+        await api.saveConceptImage(manifest.character_id, resultBytes, view);
+        generatedRefs.push(`concept_${view}.png`);
+
+        if (view === 'right') rightBytes = resultBytes;
+
+        set({ conceptPoseProgress: `${view} done.` });
       }
-      await api.saveConceptImage(manifest.character_id, frontBytes, 'front');
-      // Also save as default concept.png for backward compat
-      await api.saveConceptImage(manifest.character_id, frontBytes);
-      set({ conceptViewsProgress: 'Front done. Generating right view...' });
-
-      // 2. Right: IP-Adapter from front + direction prompt
-      const rightPrompt = `${basePrompt}, ${CONCEPT_VIEW_PROMPTS.right}`;
-      console.log('[Seurat] Concept views — right prompt:', rightPrompt);
-      const idleRightPose = getPose('idle_right', 0);
-      const rightPoseBytes = idleRightPose ? await renderPoseToPng(idleRightPose, 512, 512) : null;
-
-      let rightBytes: Uint8Array;
-      if (rightPoseBytes) {
-        rightBytes = await comfy.generateIPAdapterWithRetry(rightPrompt, frontBytes, rightPoseBytes, {
-          width: 512, height: 512, steps, seed: seed + 1, cfgScale: Math.min(cfg, 5), samplerName: sampler,
-          checkpoint, negativePrompt: negative, denoise: 1.0, loras,
-          ipAdapterWeight: 0.6, ipAdapterPreset: aiConfig.ipAdapterPreset,
-          ipAdapterStartAt: 0.0, ipAdapterEndAt: 0.8,
-          openPoseModel: aiConfig.openPoseModel, openPoseStrength: 0.8,
-          removeBackground: aiConfig.removeBackground, remBgNodeType: aiConfig.remBgNodeType,
-          outputWidth: 512, outputHeight: 512,
-        });
-      } else {
-        // Fallback: img2img with direction prompt
-        rightBytes = await comfy.generateImg2ImgWithRetry(rightPrompt, frontBytes, {
-          width: 512, height: 512, steps, seed: seed + 1, cfgScale: cfg, samplerName: sampler,
-          checkpoint, negativePrompt: negative, denoise: 0.65, loras,
-          removeBackground: aiConfig.removeBackground, remBgNodeType: aiConfig.remBgNodeType,
-        });
-      }
-      await api.saveConceptImage(manifest.character_id, rightBytes, 'right');
-      set({ conceptViewsProgress: 'Right done. Generating back view...' });
-
-      // 3. Back: IP-Adapter from front + back prompt
-      const backPrompt = `${basePrompt}, ${CONCEPT_VIEW_PROMPTS.back}`;
-      console.log('[Seurat] Concept views — back prompt:', backPrompt);
-      const idleUpPose = getPose('idle_up', 0);
-      const backPoseBytes = idleUpPose ? await renderPoseToPng(idleUpPose, 512, 512) : null;
-
-      let backBytes: Uint8Array;
-      if (backPoseBytes) {
-        backBytes = await comfy.generateIPAdapterWithRetry(backPrompt, frontBytes, backPoseBytes, {
-          width: 512, height: 512, steps, seed: seed + 2, cfgScale: Math.min(cfg, 5), samplerName: sampler,
-          checkpoint, negativePrompt: negative, denoise: 1.0, loras,
-          ipAdapterWeight: 0.5, ipAdapterPreset: aiConfig.ipAdapterPreset,
-          ipAdapterStartAt: 0.0, ipAdapterEndAt: 0.8,
-          openPoseModel: aiConfig.openPoseModel, openPoseStrength: 0.9,
-          removeBackground: aiConfig.removeBackground, remBgNodeType: aiConfig.remBgNodeType,
-          outputWidth: 512, outputHeight: 512,
-        });
-      } else {
-        backBytes = await comfy.generateImg2ImgWithRetry(backPrompt, frontBytes, {
-          width: 512, height: 512, steps, seed: seed + 2, cfgScale: cfg, samplerName: sampler,
-          checkpoint, negativePrompt: negative, denoise: 0.7, loras,
-          removeBackground: aiConfig.removeBackground, remBgNodeType: aiConfig.remBgNodeType,
-        });
-      }
-      await api.saveConceptImage(manifest.character_id, backBytes, 'back');
-      set({ conceptViewsProgress: 'Back done. Mirroring left from right...' });
-
-      // 4. Left: mirror right horizontally
-      const rightBlob = new Blob([rightBytes as BlobPart], { type: 'image/png' });
-      const rightBitmap = await createImageBitmap(rightBlob);
-      const canvas = new OffscreenCanvas(rightBitmap.width, rightBitmap.height);
-      const ctx = canvas.getContext('2d')!;
-      ctx.translate(canvas.width, 0);
-      ctx.scale(-1, 1);
-      ctx.drawImage(rightBitmap, 0, 0);
-      rightBitmap.close();
-      const leftBlob = await canvas.convertToBlob({ type: 'image/png' });
-      const leftBytes = new Uint8Array(await leftBlob.arrayBuffer());
-      await api.saveConceptImage(manifest.character_id, leftBytes, 'left');
 
       // Update manifest
+      const existingRefs = manifest.concept.reference_images;
+      const allRefs = [...new Set([...existingRefs, 'concept.png', ...generatedRefs])];
       const updated = {
         ...manifest,
         concept: {
           ...manifest.concept,
-          reference_images: ['concept.png', 'concept_front.png', 'concept_back.png', 'concept_right.png', 'concept_left.png'],
+          reference_images: allRefs,
           generation_settings: { checkpoint, vae, steps, cfg, sampler, scheduler, seed: rawSeed, loras },
         },
       };
@@ -680,21 +652,20 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
 
       // Reload URLs
       const id = manifest.character_id;
+      const cb = `?t=${Date.now()}`;
+      const updatedUrls = { ...get().conceptViewUrls };
+      for (const v of targetViews) {
+        updatedUrls[v] = api.conceptImageUrl(id, v) + cb;
+      }
       set({
-        conceptImageUrl: api.conceptImageUrl(id),
-        conceptViewUrls: {
-          front: api.conceptImageUrl(id, 'front'),
-          back: api.conceptImageUrl(id, 'back'),
-          right: api.conceptImageUrl(id, 'right'),
-          left: api.conceptImageUrl(id, 'left'),
-        },
-        conceptViewsError: null,
-        conceptViewsProgress: 'All 4 views generated.',
+        conceptViewUrls: updatedUrls,
+        conceptPoseError: null,
+        conceptPoseProgress: `${targetViews.length} view(s) generated.`,
       });
     } catch (err) {
-      set({ conceptViewsError: err instanceof Error ? err.message : String(err) });
+      set({ conceptPoseError: err instanceof Error ? err.message : String(err) });
     } finally {
-      set({ conceptViewsGenerating: false });
+      set({ conceptPoseGenerating: false });
     }
   },
 
@@ -1291,7 +1262,7 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
           let pngBytes: Uint8Array;
           if (poseBytes) {
             pngBytes = await comfy.generateIPAdapterWithRetry(prompt, conceptBytes, poseBytes, {
-              width: 512, height: 512, steps: aiConfig.steps, seed: rawSeed, cfgScale: Math.min(aiConfig.cfg, 7),
+              width: 512, height: 512, steps: aiConfig.steps, seed: rawSeed, cfgScale: aiConfig.pass1Cfg,
               samplerName: aiConfig.sampler, checkpoint: aiConfig.checkpoint, vae: aiConfig.vae || undefined,
               negativePrompt: negative, denoise: 1.0, loras: [],
               ipAdapterWeight: aiConfig.ipAdapterWeight, ipAdapterPreset: aiConfig.ipAdapterPreset,
@@ -1301,7 +1272,7 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
             });
           } else {
             pngBytes = await comfy.generateIPAdapterOnlyWithRetry(prompt, conceptBytes, {
-              width: 512, height: 512, steps: aiConfig.steps, seed: rawSeed, cfgScale: Math.min(aiConfig.cfg, 7),
+              width: 512, height: 512, steps: aiConfig.steps, seed: rawSeed, cfgScale: aiConfig.pass1Cfg,
               samplerName: aiConfig.sampler, checkpoint: aiConfig.checkpoint, vae: aiConfig.vae || undefined,
               negativePrompt: negative, loras: [],
               ipAdapterWeight: aiConfig.ipAdapterWeight, ipAdapterEndAt: aiConfig.ipAdapterEndAt,
@@ -1330,12 +1301,11 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
           catch { chibiBytes = await api.fetchChibiImageBytes(manifest.character_id); }
           chibiBytes = await preRemBg(chibiBytes);
 
-          // Use ratio-aware prompt and negative for pass 2
-          const pass2Prompt = promptOverride.trim() || buildPass2Prompt(manifest, anim, fi, aiConfig.chibiHeadRatio);
+          const pass2Prompt = promptOverride.trim() || buildPass2Prompt(manifest, anim, fi);
           const pass2Negative = buildPass2NegativePrompt(manifest);
 
           const pngBytes = await comfy.generateImg2ImgWithIPAdapterWithRetry(pass2Prompt, pass1Bytes, chibiBytes, {
-            width: 512, height: 512, steps: aiConfig.steps, seed: rawSeed, cfgScale: aiConfig.cfg,
+            width: 512, height: 512, steps: aiConfig.steps, seed: rawSeed, cfgScale: aiConfig.pass2Cfg,
             samplerName: aiConfig.sampler, checkpoint: aiConfig.checkpoint, vae: aiConfig.vae || undefined,
             negativePrompt: pass2Negative, denoise: aiConfig.chibiDenoise, loras: [],
             ipAdapterWeight: aiConfig.chibiWeight, ipAdapterEndAt: 0.7,
@@ -1679,7 +1649,7 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
     // When IP-Adapter is active: skip LoRAs (conflict with IP-Adapter style),
     // cap CFG, force denoise=1.0 (EmptyLatentImage), add anti-saturation terms
     const ipaActive = aiConfig.useIPAdapter;
-    const ipaCfg = ipaActive ? Math.min(aiConfig.cfg, 7) : aiConfig.cfg;
+    const ipaCfg = ipaActive ? aiConfig.pass1Cfg : aiConfig.cfg;
     const ipaDenoise = 1.0;
     const ipaLoras = loras;
     if (ipaActive) {

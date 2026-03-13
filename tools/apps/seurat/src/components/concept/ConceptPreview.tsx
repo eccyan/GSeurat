@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import type { ViewDirection } from '@vulkan-game-tools/asset-types';
 import { useSeuratStore } from '../../store/useSeuratStore.js';
 import { PaintEditor } from '../shared/PaintEditor.js';
+import { PoseCell } from '../shared/PoseCell.js';
+import { CONCEPT_VIEW_POSES } from '../../lib/pose-templates.js';
 import * as api from '../../lib/bridge-api.js';
 
 const VIEW_ORDER: { view: ViewDirection; label: string }[] = [
@@ -19,6 +21,8 @@ function ImageCell({
   imgError,
   setImgError,
   onClick,
+  generating,
+  exists,
 }: {
   url: string | null;
   alt: string;
@@ -26,10 +30,16 @@ function ImageCell({
   imgError: Record<string, boolean>;
   setImgError: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
   onClick: () => void;
+  generating?: boolean;
+  exists?: boolean;
 }) {
+  const borderColor = generating ? '#8a4af8' : exists ? '#44aa44' : '#2a2a3a';
   return (
-    <div style={styles.cell} onClick={url ? onClick : undefined}>
-      {url && !imgError[errorKey] ? (
+    <div style={{ ...styles.cell, borderColor }} onClick={url ? onClick : undefined}>
+      {generating && (
+        <div style={styles.spinner}>...</div>
+      )}
+      {url && !imgError[errorKey] && !generating ? (
         <img
           src={url}
           alt={alt}
@@ -37,9 +47,9 @@ function ImageCell({
           style={styles.cellImg}
           onError={() => setImgError((prev) => ({ ...prev, [errorKey]: true }))}
         />
-      ) : (
+      ) : !generating ? (
         <div style={styles.cellPlaceholder}>—</div>
-      )}
+      ) : null}
     </div>
   );
 }
@@ -66,6 +76,8 @@ export function ConceptPreview() {
   const chibiImageUrl = useSeuratStore((s) => s.chibiImageUrl);
   const conceptViewUrls = useSeuratStore((s) => s.conceptViewUrls);
   const chibiViewUrls = useSeuratStore((s) => s.chibiViewUrls);
+  const hasConceptBase = useSeuratStore((s) => s.hasConceptBase);
+  const conceptPoseGenerating = useSeuratStore((s) => s.conceptPoseGenerating);
   const loadConceptViewUrls = useSeuratStore((s) => s.loadConceptViewUrls);
   const loadChibiViewUrls = useSeuratStore((s) => s.loadChibiViewUrls);
   const uploadConceptImageForView = useSeuratStore((s) => s.uploadConceptImageForView);
@@ -105,7 +117,6 @@ export function ConceptPreview() {
         : (chibiViewUrls[fromView] ?? (fromView === 'front' ? chibiImageUrl : null));
       if (!fromUrl) return;
       const flipped = await mirrorImage(fromUrl);
-      // Create a File object to reuse the existing upload-for-view store actions
       const file = new File([flipped as BlobPart], `${type}_${toView}.png`, { type: 'image/png' });
       if (type === 'concept') {
         await uploadConceptImageForView(file, toView);
@@ -137,15 +148,6 @@ export function ConceptPreview() {
     );
   }
 
-  const hasConceptImage = manifest.concept.reference_images.length > 0;
-  const hasChibiImage = !!manifest.chibi?.reference_image;
-
-  if (!hasConceptImage && !hasChibiImage) {
-    return (
-      <div style={styles.empty}>No concept or chibi art yet. Generate or upload from the panel on the right.</div>
-    );
-  }
-
   // If editing, show the paint editor full-screen
   if (editing) {
     return (
@@ -165,15 +167,58 @@ export function ConceptPreview() {
 
   return (
     <div style={styles.container}>
+      {/* ── Top: Identity Anchor ── */}
+      <div style={styles.anchorSection}>
+        <div style={styles.anchorLabel}>Concept</div>
+        {hasConceptBase && conceptImageUrl ? (
+          <div style={styles.anchorImageWrap}>
+            <img
+              src={conceptImageUrl}
+              alt="Identity concept"
+              crossOrigin="anonymous"
+              style={styles.anchorImg}
+              onError={() => setImgError((prev) => ({ ...prev, anchor: true }))}
+            />
+          </div>
+        ) : (
+          <div style={styles.anchorPlaceholder}>
+            Generate or upload a concept image
+          </div>
+        )}
+      </div>
+
+      {/* ── Bottom: Directional Views Grid ── */}
+      <div style={styles.gridHeader}>
+        <div style={styles.dirLabel} />
+        <div style={styles.colLabel}>Pose</div>
+        <div style={styles.colLabel}>Concept</div>
+        <div style={styles.colLabel}>Chibi</div>
+      </div>
+
       {VIEW_ORDER.map(({ view, label }) => {
-        const conceptUrl = conceptViewUrls[view] ?? (view === 'front' ? conceptImageUrl : null);
+        const conceptUrl = conceptViewUrls[view] ?? null;
         const chibiUrl = chibiViewUrls[view] ?? (view === 'front' ? chibiImageUrl : null);
-        const hasAny = !!conceptUrl || !!chibiUrl;
+        const poseDef = CONCEPT_VIEW_POSES[view];
+        const hasConceptView = !!conceptUrl;
 
         return (
           <React.Fragment key={view}>
             <div style={styles.row}>
               <div style={styles.dirLabel}>{label}</div>
+
+              {/* Pose cell */}
+              <div style={styles.poseWrap}>
+                {poseDef && (
+                  <PoseCell
+                    animName={poseDef.animName}
+                    frameIndex={poseDef.frameIndex}
+                    size={128}
+                    staticPose
+                  />
+                )}
+              </div>
+
+              {/* Concept view */}
               <ImageCell
                 url={conceptUrl}
                 alt={`${label} concept`}
@@ -181,7 +226,11 @@ export function ConceptPreview() {
                 imgError={imgError}
                 setImgError={setImgError}
                 onClick={() => conceptUrl && setEditing({ url: conceptUrl, title: `${label} Concept`, type: 'concept', view })}
+                generating={conceptPoseGenerating}
+                exists={hasConceptView}
               />
+
+              {/* Chibi view */}
               <ImageCell
                 url={chibiUrl}
                 alt={`${label} chibi`}
@@ -189,15 +238,15 @@ export function ConceptPreview() {
                 imgError={imgError}
                 setImgError={setImgError}
                 onClick={() => chibiUrl && setEditing({ url: chibiUrl, title: `${label} Chibi`, type: 'chibi', view })}
+                exists={!!chibiUrl}
               />
-              {!hasAny && (
-                <div style={styles.rowHint}>—</div>
-              )}
             </div>
+
             {/* Mirror buttons between Right and Left rows */}
             {view === 'right' && (
               <div style={styles.mirrorRow}>
                 <div style={styles.dirLabel} />
+                <div style={styles.mirrorSpacer} />
                 <div style={styles.mirrorBtnGroup}>
                   <button
                     style={{ ...styles.mirrorBtn, opacity: rightConceptUrl ? 1 : 0.3 }}
@@ -259,10 +308,72 @@ const styles: Record<string, React.CSSProperties> = {
     fontFamily: 'monospace',
     fontSize: 12,
   },
-  row: {
+  /* Identity anchor */
+  anchorSection: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 8,
+  },
+  anchorLabel: {
+    fontFamily: 'monospace',
+    fontSize: 11,
+    fontWeight: 600,
+    color: '#aaa',
+  },
+  anchorImageWrap: {
+    width: 160,
+    height: 160,
+    background: '#0e0e1a',
+    border: '2px solid #44aa44',
+    borderRadius: 6,
+    overflow: 'hidden',
     display: 'flex',
     alignItems: 'center',
+    justifyContent: 'center',
+  },
+  anchorImg: {
+    width: '100%',
+    height: '100%',
+    objectFit: 'contain',
+    imageRendering: 'pixelated' as const,
+  },
+  anchorPlaceholder: {
+    width: 160,
+    height: 160,
+    background: '#0e0e1a',
+    border: '2px dashed #333',
+    borderRadius: 6,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontFamily: 'monospace',
+    fontSize: 9,
+    color: '#555',
+    textAlign: 'center',
+    padding: 12,
+  },
+  /* Grid header */
+  gridHeader: {
+    display: 'grid',
+    gridTemplateColumns: '40px 1fr 1fr 1fr',
     gap: 8,
+    alignItems: 'center',
+  },
+  colLabel: {
+    textAlign: 'center',
+    fontFamily: 'monospace',
+    fontSize: 9,
+    fontWeight: 600,
+    color: '#888',
+  },
+  /* Direction rows */
+  row: {
+    display: 'grid',
+    gridTemplateColumns: '40px 1fr 1fr 1fr',
+    gap: 8,
+    alignItems: 'center',
   },
   dirLabel: {
     width: 40,
@@ -273,8 +384,14 @@ const styles: Record<string, React.CSSProperties> = {
     textAlign: 'right',
     flexShrink: 0,
   },
+  poseWrap: {
+    aspectRatio: '1',
+    background: '#0a0a14',
+    border: '1px solid #2a2a3a',
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
   cell: {
-    flex: 1,
     aspectRatio: '1',
     minWidth: 0,
     background: '#0e0e1a',
@@ -285,6 +402,7 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: 'center',
     justifyContent: 'center',
     cursor: 'pointer',
+    position: 'relative',
   },
   cellImg: {
     width: '100%',
@@ -297,18 +415,21 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 14,
     color: '#333',
   },
-  rowHint: {
+  spinner: {
     fontFamily: 'monospace',
-    fontSize: 8,
-    color: '#444',
+    fontSize: 12,
+    color: '#8a4af8',
+    animation: 'pulse 1s infinite',
   },
+  /* Mirror */
   mirrorRow: {
-    display: 'flex',
-    alignItems: 'center',
+    display: 'grid',
+    gridTemplateColumns: '40px 1fr 1fr 1fr',
     gap: 8,
+    alignItems: 'center',
   },
+  mirrorSpacer: {},
   mirrorBtnGroup: {
-    flex: 1,
     display: 'flex',
     justifyContent: 'center',
     gap: 4,

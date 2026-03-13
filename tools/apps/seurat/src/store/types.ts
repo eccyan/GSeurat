@@ -41,7 +41,8 @@ export interface AIConfig {
   consistentSeed: boolean;
   chibiWeight: number;
   chibiDenoise: number;
-  chibiHeadRatio: number;
+  pass1Cfg: number;
+  pass2Cfg: number;
   openPoseModel: string;
   openPoseStrength: number;
   pixelDownscaleSize: number;
@@ -78,7 +79,8 @@ export const DEFAULT_AI_CONFIG: AIConfig = {
   consistentSeed: true,
   chibiWeight: 0.5,
   chibiDenoise: 0.7,
-  chibiHeadRatio: 3,
+  pass1Cfg: 7,
+  pass2Cfg: 5,
   openPoseModel: 'control_v11p_sd15_openpose',
   openPoseStrength: 1.0,
   pixelDownscaleSize: 48,

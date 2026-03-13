@@ -15,6 +15,15 @@
 type Keypoint = [number, number] | null;
 type Pose = Keypoint[];
 
+/** Keyframe stride per animation state.
+ *  Poses are applied at frame indices 0, stride, 2*stride, etc.
+ *  Frames in between are interpolated and get no pose (null). */
+const KEYFRAME_STRIDE: Record<string, number> = {
+  idle: 1,
+  walk: 1,
+  run: 4,
+};
+
 /** Limb connections: [startIdx, endIdx, color] */
 const LIMBS: [number, number, string][] = [
   [0, 1, '#ff0000'],   // nose-neck
@@ -159,28 +168,32 @@ const WALK_RIGHT: Pose[] = [
    [0.55, 0.45], [0.52, 0.63], [0.52, 0.78]],
 ];
 
-/** Side-view run facing right: exaggerated stride, arms pumping */
+/** Side-view run facing right: 4-frame loop with exaggerated poses.
+ *  Cycle: R-contact → aerial(L) → L-contact → aerial(R) → loop
+ *  Key: big leg spread at contact, tucked legs at aerial, strong arm pump, body lean shifts. */
 const RUN_RIGHT: Pose[] = [
-  // Frame 0 — left leg forward, right arm forward (cross-lateral gait)
-  [[0.52, 0.12], [0.50, 0.22], [0.44, 0.22], [0.62, 0.30], [0.58, 0.38],
-   [0.56, 0.22], [0.38, 0.30], [0.40, 0.38],
-   [0.45, 0.45], [0.38, 0.60], [0.42, 0.78],
-   [0.55, 0.45], [0.65, 0.58], [0.62, 0.78]],
-  // Frame 1 — contact, body lower (legs parallel, not crossing)
-  [[0.52, 0.14], [0.50, 0.24], [0.44, 0.24], [0.50, 0.32], [0.55, 0.28],
-   [0.56, 0.24], [0.48, 0.32], [0.44, 0.28],
-   [0.45, 0.47], [0.44, 0.62], [0.44, 0.78],
-   [0.55, 0.47], [0.56, 0.62], [0.56, 0.78]],
-  // Frame 2 — right leg forward, left arm forward (cross-lateral gait, hips overlap to avoid crossing)
-  [[0.52, 0.12], [0.50, 0.22], [0.44, 0.22], [0.38, 0.30], [0.40, 0.38],
-   [0.56, 0.22], [0.62, 0.30], [0.58, 0.38],
-   [0.50, 0.45], [0.60, 0.58], [0.58, 0.78],
-   [0.50, 0.45], [0.40, 0.60], [0.42, 0.78]],
-  // Frame 3 — contact other side (legs parallel, not crossing)
-  [[0.52, 0.14], [0.50, 0.24], [0.44, 0.24], [0.48, 0.32], [0.44, 0.28],
-   [0.56, 0.24], [0.50, 0.32], [0.55, 0.28],
-   [0.45, 0.47], [0.44, 0.62], [0.44, 0.78],
-   [0.55, 0.47], [0.56, 0.62], [0.56, 0.78]],
+  // Frame 0 — Right foot contact: right leg far forward, left leg far back, torso leaning forward
+  //   nose, neck, r_shoulder, r_elbow, r_wrist, l_shoulder, l_elbow, l_wrist,
+  //   r_hip, r_knee, r_ankle, l_hip, l_knee, l_ankle
+  [[0.58, 0.10], [0.52, 0.22], [0.48, 0.22], [0.60, 0.15], [0.66, 0.10],
+   [0.56, 0.22], [0.38, 0.30], [0.32, 0.38],
+   [0.50, 0.44], [0.64, 0.58], [0.72, 0.74],
+   [0.50, 0.44], [0.34, 0.56], [0.24, 0.70]],
+  // Frame 1 — Aerial (left leading): body high, left knee driven up+forward, right leg trailing behind
+  [[0.56, 0.06], [0.50, 0.16], [0.46, 0.16], [0.36, 0.22], [0.30, 0.28],
+   [0.54, 0.16], [0.62, 0.10], [0.68, 0.06],
+   [0.48, 0.36], [0.40, 0.44], [0.34, 0.56],
+   [0.52, 0.36], [0.62, 0.44], [0.70, 0.54]],
+  // Frame 2 — Left foot contact: left leg far forward, right leg far back, torso leaning forward
+  [[0.58, 0.10], [0.52, 0.22], [0.48, 0.22], [0.38, 0.30], [0.32, 0.38],
+   [0.56, 0.22], [0.60, 0.15], [0.66, 0.10],
+   [0.50, 0.44], [0.34, 0.56], [0.24, 0.70],
+   [0.50, 0.44], [0.64, 0.58], [0.72, 0.74]],
+  // Frame 3 — Aerial (right leading): body high, right knee driven up+forward, left leg trailing behind
+  [[0.56, 0.06], [0.50, 0.16], [0.46, 0.16], [0.62, 0.10], [0.68, 0.06],
+   [0.54, 0.16], [0.36, 0.22], [0.30, 0.28],
+   [0.48, 0.36], [0.62, 0.44], [0.70, 0.54],
+   [0.52, 0.36], [0.40, 0.44], [0.34, 0.56]],
 ];
 
 // ---------------------------------------------------------------------------
@@ -250,7 +263,13 @@ export function getPose(animName: string, frameIndex: number): Pose | null {
   const dirPoses = statePoses[dir];
   if (!dirPoses || dirPoses.length === 0) return null;
 
-  return dirPoses[frameIndex % dirPoses.length];
+  // Keyframe stride: how many frame indices apart each pose keyframe is.
+  // For run animations, keyframes are at 0, 4, 8, 12 (stride 4) with
+  // interpolated frames in between. Other states use stride 1.
+  const stride = KEYFRAME_STRIDE[state] ?? 1;
+  if (frameIndex % stride !== 0) return null;
+  const poseIndex = (frameIndex / stride) % dirPoses.length;
+  return dirPoses[poseIndex];
 }
 
 /**
@@ -355,6 +374,14 @@ export async function renderPoseStripToPng(
   const buf = await blob.arrayBuffer();
   return new Uint8Array(buf);
 }
+
+/** Convenience mapping: concept view directions → idle animation name + frame index */
+export const CONCEPT_VIEW_POSES: Record<string, { animName: string; frameIndex: number }> = {
+  front: { animName: 'idle_down', frameIndex: 0 },
+  back:  { animName: 'idle_up',   frameIndex: 0 },
+  right: { animName: 'idle_right', frameIndex: 0 },
+  left:  { animName: 'idle_left',  frameIndex: 0 },
+};
 
 /**
  * Get all pose frames for an animation, or null if no template exists.
