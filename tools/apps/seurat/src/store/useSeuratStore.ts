@@ -45,6 +45,7 @@ export interface SeuratState {
   selectCharacter: (id: string) => Promise<void>;
   createCharacter: (id: string, name: string) => Promise<void>;
   saveManifest: () => Promise<void>;
+  renameCharacter: (oldId: string, newId: string) => Promise<void>;
 
   // Cancel
   cancelGeneration: () => Promise<void>;
@@ -294,6 +295,13 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
     } catch (err) {
       console.error('Failed to save manifest:', err);
     }
+  },
+
+  renameCharacter: async (oldId, newId) => {
+    await api.renameCharacter(oldId, newId);
+    await get().refreshCharacters();
+    await get().selectCharacter(newId);
+    set({ treeSelection: { kind: 'character', characterId: newId } });
   },
 
   // Concept

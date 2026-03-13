@@ -10,6 +10,7 @@ export function TreePane() {
   const selectCharacter = useSeuratStore((s) => s.selectCharacter);
   const refreshCharacters = useSeuratStore((s) => s.refreshCharacters);
   const createCharacter = useSeuratStore((s) => s.createCharacter);
+  const renameCharacter = useSeuratStore((s) => s.renameCharacter);
   const project = useSeuratStore((s) => s.project);
   const projectPath = useSeuratStore((s) => s.projectPath);
 
@@ -18,6 +19,9 @@ export function TreePane() {
   const [newId, setNewId] = useState('');
   const [newName, setNewName] = useState('');
   const [isCreating, setIsCreating] = useState(false);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+  const [renameError, setRenameError] = useState<string | null>(null);
 
   // Load characters on mount
   useEffect(() => { refreshCharacters(); }, []);
@@ -46,6 +50,25 @@ export function TreePane() {
       await selectCharacter(characterId);
     }
     setTreeSelection({ kind: 'animation', characterId, animName });
+  };
+
+  const handleRenameStart = (id: string) => {
+    setRenamingId(id);
+    setRenameValue(id);
+    setRenameError(null);
+  };
+
+  const handleRenameSubmit = async () => {
+    if (!renamingId || !renameValue.trim()) return;
+    const newId = renameValue.trim();
+    if (newId === renamingId) { setRenamingId(null); return; }
+    try {
+      await renameCharacter(renamingId, newId);
+      setRenamingId(null);
+      setRenameError(null);
+    } catch (err) {
+      setRenameError(err instanceof Error ? err.message : String(err));
+    }
   };
 
   const handleCreate = async () => {
@@ -144,8 +167,25 @@ export function TreePane() {
 
         return (
           <div key={id}>
+            {renamingId === id ? (
+              <div style={{ ...styles.treeNode, gap: 4 }}>
+                <input
+                  value={renameValue}
+                  onChange={(e) => setRenameValue(e.target.value.replace(/[^a-z0-9_]/g, ''))}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleRenameSubmit();
+                    if (e.key === 'Escape') { setRenamingId(null); setRenameError(null); }
+                  }}
+                  onBlur={() => handleRenameSubmit()}
+                  autoFocus
+                  style={styles.renameInput}
+                />
+                {renameError && <span style={{ fontSize: 8, color: '#f88' }}>{renameError}</span>}
+              </div>
+            ) : (
             <button
               onClick={() => handleCharacterClick(id)}
+              onDoubleClick={(e) => { e.preventDefault(); handleRenameStart(id); }}
               style={{
                 ...styles.treeNode,
                 background: charSelected ? '#1e2a42' : selectedCharacterId === id ? '#161630' : 'transparent',
@@ -162,6 +202,7 @@ export function TreePane() {
               </span>
               {id}
             </button>
+            )}
 
             {isExpanded && anims.map((anim) => {
               const animSel = isAnimSelected(id, anim.name);
@@ -277,6 +318,17 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 8,
     color: '#555',
     wordBreak: 'break-all',
+  },
+  renameInput: {
+    background: '#1a1a2e',
+    border: '1px solid #4a8af8',
+    borderRadius: 3,
+    color: '#ddd',
+    fontFamily: 'monospace',
+    fontSize: 11,
+    padding: '2px 6px',
+    outline: 'none',
+    flex: 1,
   },
   treeNode: {
     display: 'flex',

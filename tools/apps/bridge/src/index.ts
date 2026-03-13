@@ -354,6 +354,48 @@ app.post('/api/characters/:id', async (req: Request, res: Response) => {
   }
 });
 
+// POST /api/characters/:id/rename — rename a character (change its ID)
+app.post('/api/characters/:id/rename', async (req: Request, res: Response) => {
+  try {
+    const oldId = req.params['id']!;
+    const { newId } = req.body as { newId: string };
+    if (!newId || !newId.match(/^[a-z0-9_]+$/)) {
+      res.status(400).json({ error: 'newId must be lowercase alphanumeric with underscores' });
+      return;
+    }
+    const charsDir = getCharactersDir();
+    const oldDir = safeResolve(charsDir, oldId);
+    const newDir = safeResolve(charsDir, newId);
+
+    // Check old exists
+    try { await fs.access(oldDir); } catch {
+      res.status(404).json({ error: `Character "${oldId}" not found` });
+      return;
+    }
+    // Check new doesn't exist
+    try { await fs.access(newDir); res.status(409).json({ error: `Character "${newId}" already exists` }); return; } catch { /* good */ }
+
+    // Rename directory
+    await fs.rename(oldDir, newDir);
+
+    // Update character_id in manifest
+    const manifestPath = path.join(newDir, 'manifest.json');
+    try {
+      const raw = await fs.readFile(manifestPath, 'utf8');
+      const manifest = JSON.parse(raw);
+      manifest.character_id = newId;
+      if (manifest.display_name === oldId) manifest.display_name = newId;
+      await fs.writeFile(manifestPath, JSON.stringify(manifest, null, 2), 'utf8');
+    } catch { /* manifest update optional */ }
+
+    console.log(`[REST] Character renamed: ${oldId} → ${newId}`);
+    res.json({ ok: true, oldId, newId });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: message });
+  }
+});
+
 // Allowed concept/chibi view directions
 const VALID_VIEWS = ['front', 'back', 'right', 'left'];
 

@@ -49,6 +49,21 @@ export async function createCharacter(
   if (!res.ok) throw new Error(`Failed to create character ${id}: ${res.status}`);
 }
 
+export async function renameCharacter(oldId: string, newId: string): Promise<void> {
+  const res = await fetch(
+    `${BASE}/api/characters/${encodeURIComponent(oldId)}/rename`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ newId }),
+    },
+  );
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || `Failed to rename character: ${res.status}`);
+  }
+}
+
 export async function updateFrameStatus(
   characterId: string,
   animName: string,
