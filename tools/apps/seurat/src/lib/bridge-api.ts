@@ -208,8 +208,10 @@ export function frameThumbnailUrl(
   characterId: string,
   animName: string,
   frameIndex: number,
+  cacheBuster?: number,
 ): string {
-  return `${BASE}/api/characters/${encodeURIComponent(characterId)}/frames/${encodeURIComponent(animName)}/${frameIndex}/image?t=${Date.now()}`;
+  const t = cacheBuster ?? Date.now();
+  return `${BASE}/api/characters/${encodeURIComponent(characterId)}/frames/${encodeURIComponent(animName)}/${frameIndex}/image?t=${t}`;
 }
 
 // --- Pipeline pass image endpoints ---
@@ -219,8 +221,10 @@ export function passImageUrl(
   animName: string,
   frameIndex: number,
   pass: PipelineStage,
+  cacheBuster?: number,
 ): string {
-  return `${BASE}/api/characters/${encodeURIComponent(characterId)}/frames/${encodeURIComponent(animName)}/${frameIndex}/pass/${pass}?t=${Date.now()}`;
+  const t = cacheBuster ?? Date.now();
+  return `${BASE}/api/characters/${encodeURIComponent(characterId)}/frames/${encodeURIComponent(animName)}/${frameIndex}/pass/${pass}?t=${t}`;
 }
 
 export async function fetchPassImageBytes(

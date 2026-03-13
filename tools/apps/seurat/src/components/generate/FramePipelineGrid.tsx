@@ -382,15 +382,15 @@ export function FramePipelineGrid({ animName }: Props) {
                 let imageUrl: string | null = null;
                 if (showImage) {
                   if (col.key === 'pass3' && frame.status === 'generated') {
-                    imageUrl = api.frameThumbnailUrl(characterId, animName, frame.index);
+                    imageUrl = api.frameThumbnailUrl(characterId, animName, frame.index, frameRevision);
                   } else if (isInterpolated && col.key === 'pass2_edited') {
                     // Interpolated frames don't have a separate edited file —
                     // show the pass2 image (which was derived from edited keyframes)
-                    imageUrl = api.passImageUrl(characterId, animName, frame.index, 'pass2');
+                    imageUrl = api.passImageUrl(characterId, animName, frame.index, 'pass2', frameRevision);
                   } else if (isEditCol) {
-                    imageUrl = api.passImageUrl(characterId, animName, frame.index, col.key);
+                    imageUrl = api.passImageUrl(characterId, animName, frame.index, col.key, frameRevision);
                   } else {
-                    imageUrl = api.passImageUrl(characterId, animName, frame.index, col.key);
+                    imageUrl = api.passImageUrl(characterId, animName, frame.index, col.key, frameRevision);
                   }
                 }
 
@@ -410,7 +410,6 @@ export function FramePipelineGrid({ animName }: Props) {
                         src={imageUrl}
                         alt={`f${frame.index} ${col.key}`}
                         style={styles.cellImg}
-                        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
                       />
                     ) : (
                       <span style={styles.cellEmpty}>{isInterpolated ? '~' : '--'}</span>
