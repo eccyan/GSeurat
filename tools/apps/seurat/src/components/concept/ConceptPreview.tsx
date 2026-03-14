@@ -3,6 +3,7 @@ import type { ViewDirection } from '@vulkan-game-tools/asset-types';
 import { useSeuratStore } from '../../store/useSeuratStore.js';
 import { PaintEditor } from '../shared/PaintEditor.js';
 import { PoseCell } from '../shared/PoseCell.js';
+import { SinglePoseEditor } from '../shared/SinglePoseEditor.js';
 import { CONCEPT_VIEW_POSES } from '../../lib/pose-templates.js';
 import * as api from '../../lib/bridge-api.js';
 
@@ -84,6 +85,9 @@ export function ConceptPreview() {
   const uploadChibiImageForView = useSeuratStore((s) => s.uploadChibiImageForView);
   const [imgError, setImgError] = useState<Record<string, boolean>>({});
   const [mirroring, setMirroring] = useState<string | null>(null);
+
+  // Pose editor state
+  const [editingPose, setEditingPose] = useState<{ animName: string; frameIndex: number; title: string } | null>(null);
 
   // Editor state: which image is being edited
   const [editing, setEditing] = useState<{
@@ -217,14 +221,16 @@ export function ConceptPreview() {
             <div style={styles.row}>
               <div style={styles.dirLabel}>{label}</div>
 
-              {/* Pose cell */}
-              <div style={styles.poseWrap}>
+              {/* Pose cell — click to edit */}
+              <div
+                style={styles.poseWrap}
+                onClick={() => poseDef && setEditingPose({ animName: poseDef.animName, frameIndex: poseDef.frameIndex, title: `${label} Pose` })}
+              >
                 {poseDef && (
                   <PoseCell
                     animName={poseDef.animName}
                     frameIndex={poseDef.frameIndex}
                     size={128}
-                    staticPose
                   />
                 )}
               </div>
@@ -299,6 +305,16 @@ export function ConceptPreview() {
           </React.Fragment>
         );
       })}
+
+      {/* Pose editor overlay */}
+      {editingPose && (
+        <SinglePoseEditor
+          animName={editingPose.animName}
+          frameIndex={editingPose.frameIndex}
+          title={editingPose.title}
+          onClose={() => setEditingPose(null)}
+        />
+      )}
     </div>
   );
 }
@@ -311,6 +327,7 @@ const styles: Record<string, React.CSSProperties> = {
     flexDirection: 'column',
     gap: 8,
     overflowY: 'auto',
+    position: 'relative',
   },
   empty: {
     padding: 24,
@@ -402,6 +419,7 @@ const styles: Record<string, React.CSSProperties> = {
     border: '1px solid #2a2a3a',
     borderRadius: 4,
     overflow: 'hidden',
+    cursor: 'pointer',
   },
   cell: {
     aspectRatio: '1',
