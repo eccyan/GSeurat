@@ -121,34 +121,34 @@ const RUN_DOWN: Pose[] = [
 // ---------------------------------------------------------------------------
 
 /** Side-view idle facing right: character stands in profile.
- *  Near leg (right) sits BEHIND, far leg (left) sits FORWARD to give clear
- *  depth cue so ControlNet reads this as a side view, not front-facing.
- *  Ankle x-spread ~0.18, knee ~0.10, hips ~0.06. */
+ *  Front leg (left/far) is at center, back leg (right/near) is pushed
+ *  clearly BEHIND it so ControlNet reads one leg in front of the other.
+ *  Back ankle x=0.34, front ankle x=0.52 — back leg trails behind front. */
 const IDLE_RIGHT: Pose[] = [
   // Frame 0 — neutral standing
   //   nose,         neck,         r_shoulder,   r_elbow,      r_wrist,
   //   l_shoulder,   l_elbow,      l_wrist,
-  //   r_hip,        r_knee,       r_ankle,
-  //   l_hip,        l_knee,       l_ankle
+  //   r_hip,        r_knee,       r_ankle,      (back leg — behind)
+  //   l_hip,        l_knee,       l_ankle       (front leg — forward)
   [[0.52, 0.09], [0.49, 0.17], [0.42, 0.19], [0.38, 0.28], [0.38, 0.37],
    [0.54, 0.19], [0.52, 0.28], [0.52, 0.37],
-   [0.44, 0.38], [0.42, 0.54], [0.38, 0.72],
-   [0.50, 0.38], [0.52, 0.54], [0.56, 0.72]],
+   [0.44, 0.38], [0.40, 0.54], [0.34, 0.72],
+   [0.50, 0.38], [0.50, 0.54], [0.52, 0.72]],
   // Frame 1 — slight exhale (shoulders/arms drop a hair)
   [[0.52, 0.09], [0.49, 0.17], [0.42, 0.20], [0.38, 0.29], [0.38, 0.38],
    [0.54, 0.20], [0.52, 0.29], [0.52, 0.38],
-   [0.44, 0.39], [0.42, 0.54], [0.38, 0.72],
-   [0.50, 0.39], [0.52, 0.54], [0.56, 0.72]],
+   [0.44, 0.39], [0.40, 0.54], [0.34, 0.72],
+   [0.50, 0.39], [0.50, 0.54], [0.52, 0.72]],
   // Frame 2 — same as 0
   [[0.52, 0.09], [0.49, 0.17], [0.42, 0.19], [0.38, 0.28], [0.38, 0.37],
    [0.54, 0.19], [0.52, 0.28], [0.52, 0.37],
-   [0.44, 0.38], [0.42, 0.54], [0.38, 0.72],
-   [0.50, 0.38], [0.52, 0.54], [0.56, 0.72]],
+   [0.44, 0.38], [0.40, 0.54], [0.34, 0.72],
+   [0.50, 0.38], [0.50, 0.54], [0.52, 0.72]],
   // Frame 3 — slight inhale (head/shoulders rise a hair)
   [[0.52, 0.08], [0.49, 0.16], [0.42, 0.18], [0.38, 0.27], [0.38, 0.36],
    [0.54, 0.18], [0.52, 0.27], [0.52, 0.36],
-   [0.44, 0.38], [0.42, 0.54], [0.38, 0.72],
-   [0.50, 0.38], [0.52, 0.54], [0.56, 0.72]],
+   [0.44, 0.38], [0.40, 0.54], [0.34, 0.72],
+   [0.50, 0.38], [0.50, 0.54], [0.52, 0.72]],
 ];
 
 /** Side-view walk facing right: arms and legs swing forward/back.
