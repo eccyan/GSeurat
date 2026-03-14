@@ -64,6 +64,7 @@ export interface SeuratState {
   // Directional poses
   conceptViewUrls: Record<ViewDirection, string | null>;
   conceptPoseGenerating: boolean;
+  conceptPoseCurrentView: ViewDirection | null;
   conceptPoseError: string | null;
   conceptPoseProgress: string | null;
   generateConceptPoses: (views?: ViewDirection[], overrides?: { steps?: number; cfg?: number; sampler?: string; scheduler?: string; seed?: number; loras?: { name: string; weight: number }[]; checkpoint?: string; vae?: string }) => Promise<void>;
@@ -209,6 +210,7 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
     set({
       conceptGenerating: false,
       conceptPoseGenerating: false,
+      conceptPoseCurrentView: null,
       chibiGenerating: false,
       chibiViewsGenerating: false,
       conceptError: 'Cancelled.',
@@ -497,6 +499,7 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
   // Directional poses
   conceptViewUrls: { front: null, back: null, right: null, left: null },
   conceptPoseGenerating: false,
+  conceptPoseCurrentView: null,
   conceptPoseError: null,
   conceptPoseProgress: null,
 
@@ -570,7 +573,7 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
       const generatedRefs: string[] = [];
 
       for (const view of targetViews) {
-        set({ conceptPoseProgress: `Generating ${view} view...` });
+        set({ conceptPoseCurrentView: view, conceptPoseProgress: `Generating ${view} view...` });
 
         // Left view: mirror from right if right was generated (or exists)
         if (view === 'left') {
@@ -665,7 +668,7 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
     } catch (err) {
       set({ conceptPoseError: err instanceof Error ? err.message : String(err) });
     } finally {
-      set({ conceptPoseGenerating: false });
+      set({ conceptPoseGenerating: false, conceptPoseCurrentView: null });
     }
   },
 

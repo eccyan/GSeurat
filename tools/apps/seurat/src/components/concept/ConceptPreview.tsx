@@ -77,7 +77,7 @@ export function ConceptPreview() {
   const conceptViewUrls = useSeuratStore((s) => s.conceptViewUrls);
   const chibiViewUrls = useSeuratStore((s) => s.chibiViewUrls);
   const hasConceptBase = useSeuratStore((s) => s.hasConceptBase);
-  const conceptPoseGenerating = useSeuratStore((s) => s.conceptPoseGenerating);
+  const conceptPoseCurrentView = useSeuratStore((s) => s.conceptPoseCurrentView);
   const loadConceptViewUrls = useSeuratStore((s) => s.loadConceptViewUrls);
   const loadChibiViewUrls = useSeuratStore((s) => s.loadChibiViewUrls);
   const uploadConceptImageForView = useSeuratStore((s) => s.uploadConceptImageForView);
@@ -237,7 +237,7 @@ export function ConceptPreview() {
                 imgError={imgError}
                 setImgError={setImgError}
                 onClick={() => conceptUrl && setEditing({ url: conceptUrl, title: `${label} Concept`, type: 'concept', view })}
-                generating={conceptPoseGenerating}
+                generating={conceptPoseCurrentView === view}
                 exists={hasConceptView}
               />
 
