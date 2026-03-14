@@ -517,7 +517,18 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
     set({ detectingPose: true, detectedPoseUrl: null });
     try {
       const comfy = new ComfyUIClient(aiConfig.comfyUrl);
-      const poseBytes = await comfy.detectOpenPose(conceptBytes, { resolution: 512 });
+
+      // Remove background first for cleaner pose detection
+      let cleanBytes = conceptBytes;
+      if (aiConfig.removeBackground) {
+        try {
+          cleanBytes = await comfy.removeBackground(conceptBytes, aiConfig.remBgNodeType);
+        } catch {
+          console.warn('[Seurat] Background removal failed before pose detection, using original image');
+        }
+      }
+
+      const poseBytes = await comfy.detectOpenPose(cleanBytes, { resolution: 512 });
       const blob = new Blob([poseBytes as BlobPart], { type: 'image/png' });
       const url = URL.createObjectURL(blob);
       set({ detectedPoseUrl: url });
