@@ -39,6 +39,8 @@ export function ConceptActions() {
   const conceptPoseProgress = useSeuratStore((s) => s.conceptPoseProgress);
   const generateConceptPoses = useSeuratStore((s) => s.generateConceptPoses);
   const detectingPose = useSeuratStore((s) => s.detectingPose);
+  const detectedPoseBytes = useSeuratStore((s) => s.detectedPoseBytes);
+  const deriveDirectionalFromDetected = useSeuratStore((s) => s.deriveDirectionalFromDetected);
   const detectConceptViewPoses = useSeuratStore((s) => s.detectConceptViewPoses);
   const detectedViewPoseUrls = useSeuratStore((s) => s.detectedViewPoseUrls);
   const conceptFileRef = useRef<HTMLInputElement>(null);
@@ -300,19 +302,28 @@ export function ConceptActions() {
         </button>
       </div>
 
-      {/* Detect poses from generated directional views */}
+      {/* Derive directional poses from detected concept skeleton */}
       {hasConceptBase && (
         <div style={styles.actionRow}>
+          <button
+            onClick={deriveDirectionalFromDetected}
+            disabled={!detectedPoseBytes || detectingPose || conceptPoseGenerating}
+            style={{ ...styles.detectBtn, opacity: !detectedPoseBytes || detectingPose ? 0.5 : 1, flex: 1 }}
+            title="Extract keypoints from detected pose and create skeletons for all directions"
+          >
+            {detectingPose ? 'Deriving...' : 'Derive View Poses'}
+          </button>
           <button
             onClick={detectConceptViewPoses}
             disabled={detectingPose || conceptPoseGenerating}
             style={{ ...styles.detectBtn, opacity: detectingPose ? 0.5 : 1, flex: 1 }}
+            title="Run DWPreprocessor on each generated directional concept image"
           >
             {detectingPose ? 'Detecting...' : 'Detect View Poses'}
           </button>
           {Object.values(detectedViewPoseUrls).some(Boolean) && (
             <span style={{ fontFamily: 'monospace', fontSize: 8, color: '#70b8d8' }}>
-              {Object.values(detectedViewPoseUrls).filter(Boolean).length}/4 detected
+              {Object.values(detectedViewPoseUrls).filter(Boolean).length}/4
             </span>
           )}
         </div>

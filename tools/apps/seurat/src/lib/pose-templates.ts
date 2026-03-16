@@ -408,3 +408,291 @@ export function getAnimationPoses(animName: string, frameCount: number): Pose[] 
   }
   return poses;
 }
+
+// ---------------------------------------------------------------------------
+// Extract keypoints from a DWPreprocessor skeleton image and derive
+// directional poses by combining detected proportions with template shapes.
+// ---------------------------------------------------------------------------
+
+interface PixelCluster {
+  x: number;
+  y: number;
+  count: number;
+}
+
+/**
+ * Extract approximate keypoint positions from a rendered pose skeleton image.
+ * Scans for bright pixel clusters (keypoint dots) on dark background.
+ * Returns normalized [x, y] positions sorted top-to-bottom.
+ */
+export async function extractKeypointsFromPoseImage(
+  imageBytes: Uint8Array,
+): Promise<Keypoint[]> {
+  const blob = new Blob([imageBytes as BlobPart], { type: 'image/png' });
+  const bmp = await createImageBitmap(blob);
+  const canvas = new OffscreenCanvas(bmp.width, bmp.height);
+  const ctx = canvas.getContext('2d')!;
+  ctx.drawImage(bmp, 0, 0);
+  bmp.close();
+
+  const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const { data, width, height } = imgData;
+
+  // Find all bright pixels (keypoint dots and limb lines)
+  const brightPixels: [number, number][] = [];
+  for (let py = 0; py < height; py++) {
+    for (let px = 0; px < width; px++) {
+      const i = (py * width + px) * 4;
+      const brightness = data[i] + data[i + 1] + data[i + 2];
+      if (brightness > 200) {
+        brightPixels.push([px, py]);
+      }
+    }
+  }
+
+  if (brightPixels.length === 0) return Array(14).fill(null);
+
+  // Cluster nearby bright pixels (radius-based)
+  const clusterRadius = Math.max(8, Math.round(width / 40));
+  const visited = new Set<number>();
+  const clusters: PixelCluster[] = [];
+
+  for (let i = 0; i < brightPixels.length; i++) {
+    if (visited.has(i)) continue;
+    visited.add(i);
+
+    let sumX = brightPixels[i][0];
+    let sumY = brightPixels[i][1];
+    let count = 1;
+
+    // BFS to find connected bright pixels
+    const queue = [i];
+    while (queue.length > 0) {
+      const curr = queue.shift()!;
+      const [cx, cy] = brightPixels[curr];
+
+      for (let j = i + 1; j < brightPixels.length; j++) {
+        if (visited.has(j)) continue;
+        const dx = brightPixels[j][0] - cx;
+        const dy = brightPixels[j][1] - cy;
+        if (dx * dx + dy * dy <= clusterRadius * clusterRadius) {
+          visited.add(j);
+          queue.push(j);
+          sumX += brightPixels[j][0];
+          sumY += brightPixels[j][1];
+          count++;
+        }
+      }
+    }
+
+    clusters.push({ x: sumX / count / width, y: sumY / count / height, count });
+  }
+
+  // Filter out very small clusters (noise/thin lines) — keep only substantial dots
+  const avgCount = clusters.reduce((s, c) => s + c.count, 0) / clusters.length;
+  const threshold = Math.max(3, avgCount * 0.3);
+  const significant = clusters.filter((c) => c.count >= threshold);
+
+  // Sort by Y position (top to bottom)
+  significant.sort((a, b) => a.y - b.y);
+
+  // We expect ~14 keypoints. If we got too many, take the largest clusters.
+  let keypoints: PixelCluster[];
+  if (significant.length > 14) {
+    keypoints = [...significant].sort((a, b) => b.count - a.count).slice(0, 14);
+    keypoints.sort((a, b) => a.y - b.y);
+  } else {
+    keypoints = significant;
+  }
+
+  // Map to our 14-point format based on vertical position heuristics:
+  // 0:nose, 1:neck, 2:r_shoulder, 3:r_elbow, 4:r_wrist,
+  // 5:l_shoulder, 6:l_elbow, 7:l_wrist,
+  // 8:r_hip, 9:r_knee, 10:r_ankle, 11:l_hip, 12:l_knee, 13:l_ankle
+  //
+  // Group by approximate Y-bands:
+  //   head (0-1), shoulders (2,5), elbows (3,6), wrists (4,7),
+  //   hips (8,11), knees (9,12), ankles (10,13)
+  const result: Keypoint[] = Array(14).fill(null);
+  if (keypoints.length < 5) return result; // too few to map
+
+  // Group clusters into Y-bands
+  const bands: PixelCluster[][] = [];
+  let currentBand: PixelCluster[] = [keypoints[0]];
+  const bandThreshold = 0.06; // 6% of image height
+
+  for (let i = 1; i < keypoints.length; i++) {
+    if (keypoints[i].y - currentBand[0].y < bandThreshold) {
+      currentBand.push(keypoints[i]);
+    } else {
+      bands.push(currentBand);
+      currentBand = [keypoints[i]];
+    }
+  }
+  bands.push(currentBand);
+
+  // Assign bands to body parts (top to bottom)
+  let bandIdx = 0;
+
+  // Head band: 1-2 points (nose, neck)
+  if (bandIdx < bands.length) {
+    const head = bands[bandIdx];
+    if (head.length >= 2) {
+      head.sort((a, b) => a.y - b.y);
+      result[0] = [head[0].x, head[0].y]; // nose
+      result[1] = [head[1].x, head[1].y]; // neck
+    } else {
+      result[0] = [head[0].x, head[0].y]; // nose
+    }
+    bandIdx++;
+  }
+
+  // If nose/neck were in same band, next might be neck or shoulders
+  if (result[1] === null && bandIdx < bands.length) {
+    const band = bands[bandIdx];
+    if (band.length === 1) {
+      result[1] = [band[0].x, band[0].y]; // neck
+      bandIdx++;
+    }
+  }
+
+  // Shoulders: 2 points at similar Y, left/right of center
+  if (bandIdx < bands.length) {
+    const band = bands[bandIdx];
+    band.sort((a, b) => a.x - b.x);
+    if (band.length >= 2) {
+      result[2] = [band[0].x, band[0].y]; // r_shoulder (leftmost = right in image)
+      result[5] = [band[band.length - 1].x, band[band.length - 1].y]; // l_shoulder
+    } else if (band.length === 1) {
+      result[2] = [band[0].x, band[0].y];
+      result[5] = [band[0].x, band[0].y];
+    }
+    bandIdx++;
+  }
+
+  // Elbows: 2 points
+  if (bandIdx < bands.length) {
+    const band = bands[bandIdx];
+    band.sort((a, b) => a.x - b.x);
+    if (band.length >= 2) {
+      result[3] = [band[0].x, band[0].y]; // r_elbow
+      result[6] = [band[band.length - 1].x, band[band.length - 1].y]; // l_elbow
+    } else {
+      result[3] = [band[0].x, band[0].y];
+      result[6] = [band[0].x, band[0].y];
+    }
+    bandIdx++;
+  }
+
+  // Wrists or Hips — if many bands remain, next is wrists; if few, skip to hips
+  const remainingBands = bands.length - bandIdx;
+  if (remainingBands >= 4) {
+    // Wrists
+    if (bandIdx < bands.length) {
+      const band = bands[bandIdx];
+      band.sort((a, b) => a.x - b.x);
+      result[4] = [band[0].x, band[0].y]; // r_wrist
+      result[7] = [band[band.length - 1].x, band[band.length - 1].y]; // l_wrist
+      bandIdx++;
+    }
+  }
+
+  // Hips: 2 points
+  if (bandIdx < bands.length) {
+    const band = bands[bandIdx];
+    band.sort((a, b) => a.x - b.x);
+    if (band.length >= 2) {
+      result[8] = [band[0].x, band[0].y]; // r_hip
+      result[11] = [band[band.length - 1].x, band[band.length - 1].y]; // l_hip
+    } else {
+      result[8] = [band[0].x, band[0].y];
+      result[11] = [band[0].x, band[0].y];
+    }
+    bandIdx++;
+  }
+
+  // Knees: 2 points
+  if (bandIdx < bands.length) {
+    const band = bands[bandIdx];
+    band.sort((a, b) => a.x - b.x);
+    if (band.length >= 2) {
+      result[9] = [band[0].x, band[0].y]; // r_knee
+      result[12] = [band[band.length - 1].x, band[band.length - 1].y]; // l_knee
+    } else {
+      result[9] = [band[0].x, band[0].y];
+      result[12] = [band[0].x, band[0].y];
+    }
+    bandIdx++;
+  }
+
+  // Ankles: 2 points
+  if (bandIdx < bands.length) {
+    const band = bands[bandIdx];
+    band.sort((a, b) => a.x - b.x);
+    if (band.length >= 2) {
+      result[10] = [band[0].x, band[0].y]; // r_ankle
+      result[13] = [band[band.length - 1].x, band[band.length - 1].y]; // l_ankle
+    } else {
+      result[10] = [band[0].x, band[0].y];
+      result[13] = [band[0].x, band[0].y];
+    }
+  }
+
+  // Fill any missing wrists from elbows (shifted down)
+  if (!result[4] && result[3]) result[4] = [result[3][0], result[3][1] + 0.08];
+  if (!result[7] && result[6]) result[7] = [result[6][0], result[6][1] + 0.08];
+
+  return result;
+}
+
+/**
+ * Derive directional pose skeletons from detected front-view keypoints.
+ * Combines the character's actual y-proportions with template x-positions
+ * for each direction. Returns rendered PNG bytes for each direction.
+ */
+export async function deriveDirectionalPoses(
+  detectedFrontKeypoints: Keypoint[],
+): Promise<Record<string, Uint8Array>> {
+  // Get the template poses for each direction
+  const directions: Record<string, { animName: string; frameIndex: number }> = {
+    front: { animName: 'idle_down', frameIndex: 0 },
+    back:  { animName: 'idle_up',   frameIndex: 0 },
+    right: { animName: 'idle_right', frameIndex: 0 },
+    left:  { animName: 'idle_left',  frameIndex: 0 },
+  };
+
+  const result: Record<string, Uint8Array> = {};
+
+  for (const [dir, def] of Object.entries(directions)) {
+    const templatePose = getPose(def.animName, def.frameIndex);
+    if (!templatePose) continue;
+
+    // For front view, use detected keypoints directly
+    if (dir === 'front') {
+      const frontPose = detectedFrontKeypoints.map((kp) =>
+        kp ? [...kp] as [number, number] : null,
+      );
+      result[dir] = await renderPoseToPng(frontPose, 512, 512);
+      continue;
+    }
+
+    // For other directions: template x-coords + detected y-coords
+    const derivedPose: Pose = templatePose.map((templateKp, i) => {
+      const detectedKp = detectedFrontKeypoints[i];
+      if (!templateKp) return null;
+      if (!detectedKp) return templateKp ? [...templateKp] as [number, number] : null;
+
+      // Use template's x (defines direction) + detected y (defines proportions)
+      return [templateKp[0], detectedKp[1]] as [number, number];
+    });
+
+    // For back view, hide the nose
+    if (dir === 'back') {
+      derivedPose[0] = null;
+    }
+
+    result[dir] = await renderPoseToPng(derivedPose, 512, 512);
+  }
+
+  return result;
+}

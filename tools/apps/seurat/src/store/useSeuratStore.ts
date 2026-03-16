@@ -66,6 +66,7 @@ export interface SeuratState {
   detectedViewPoseBytes: Record<ViewDirection, Uint8Array | null>;
   detectingPose: boolean;
   detectConceptPose: () => Promise<void>;
+  deriveDirectionalFromDetected: () => Promise<void>;
   detectConceptViewPoses: () => Promise<void>;
 
   // Directional poses
@@ -553,6 +554,50 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
       set({ detectedPoseUrl: url, detectedPoseBytes: poseBytes });
     } catch (err) {
       set({ conceptError: `Pose detection failed: ${err instanceof Error ? err.message : String(err)}` });
+    } finally {
+      set({ detectingPose: false });
+    }
+  },
+
+  deriveDirectionalFromDetected: async () => {
+    const { detectedPoseBytes } = get();
+    if (!detectedPoseBytes) {
+      set({ conceptError: 'Detect the concept pose first.' });
+      return;
+    }
+
+    set({ detectingPose: true, conceptPoseProgress: 'Extracting keypoints from detected pose...' });
+    try {
+      const { extractKeypointsFromPoseImage, deriveDirectionalPoses } = await import('../lib/pose-templates.js');
+
+      const keypoints = await extractKeypointsFromPoseImage(detectedPoseBytes);
+      const validCount = keypoints.filter((k) => k !== null).length;
+      console.log(`[Seurat] Extracted ${validCount}/14 keypoints from detected pose`);
+
+      if (validCount < 5) {
+        set({ conceptPoseError: `Only ${validCount} keypoints detected — not enough to derive poses.` });
+        return;
+      }
+
+      set({ conceptPoseProgress: 'Deriving directional poses...' });
+      const dirPoses = await deriveDirectionalPoses(keypoints);
+
+      const updatedUrls = { ...get().detectedViewPoseUrls };
+      const updatedBytes = { ...get().detectedViewPoseBytes };
+
+      for (const [dir, pngBytes] of Object.entries(dirPoses)) {
+        const blob = new Blob([pngBytes as BlobPart], { type: 'image/png' });
+        updatedUrls[dir as ViewDirection] = URL.createObjectURL(blob);
+        updatedBytes[dir as ViewDirection] = pngBytes;
+      }
+
+      set({
+        detectedViewPoseUrls: updatedUrls,
+        detectedViewPoseBytes: updatedBytes,
+        conceptPoseProgress: `Derived ${Object.keys(dirPoses).length} directional poses from concept.`,
+      });
+    } catch (err) {
+      set({ conceptPoseError: `Pose derivation failed: ${err instanceof Error ? err.message : String(err)}` });
     } finally {
       set({ detectingPose: false });
     }
