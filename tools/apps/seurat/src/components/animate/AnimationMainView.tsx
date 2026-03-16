@@ -21,16 +21,15 @@ export function AnimationMainView({ animName }: Props) {
   const selectClip = useSeuratStore((s) => s.selectClip);
 
   const [detailFrame, setDetailFrame] = useState<{ animName: string; frame: CharacterFrame } | null>(null);
-  const previewContainerRef = React.useRef<HTMLDivElement>(null);
-  const [previewHeight, setPreviewHeight] = React.useState(0);
+  const topAreaRef = React.useRef<HTMLDivElement>(null);
+  const [topHeight, setTopHeight] = React.useState(0);
 
-  // Observe preview container height to set square width
+  // Observe top area height → square preview width
   React.useEffect(() => {
-    const el = previewContainerRef.current;
+    const el = topAreaRef.current;
     if (!el) return;
     const ro = new ResizeObserver((entries) => {
-      const h = Math.floor(entries[0].contentRect.height);
-      setPreviewHeight(h);
+      setTopHeight(Math.floor(entries[0].contentRect.height));
     });
     ro.observe(el);
     return () => ro.disconnect();
@@ -58,39 +57,41 @@ export function AnimationMainView({ animName }: Props) {
 
   return (
     <div style={styles.container}>
-      {/* Top area: square preview + timeline, centered */}
-      <div ref={previewContainerRef} style={styles.topArea}>
-        <div style={{ width: previewHeight > 0 ? previewHeight : '100%', display: 'flex', flexDirection: 'column', height: '100%', margin: '0 auto' }}>
-          {/* Preview canvas */}
-          <div style={styles.preview}>
-            {!spriteSheetUrl && !hasGeneratedFrames && (
-              <div style={styles.loadOverlay}>
-                <button onClick={loadSpriteSheet} style={styles.loadBtn}>Load Sprite Sheet</button>
-              </div>
-            )}
-            {useFramePreview ? (
-              <FramePreviewCanvas
-                characterId={manifest.character_id}
-                clip={clip}
-                currentTime={currentTime}
-                playbackState={playbackState}
-              />
-            ) : (
-              <AnimationPreviewCanvas
-                spriteSheetUrl={spriteSheetUrl}
-                spritesheet={manifest.spritesheet}
-                clip={clip}
-                currentTime={currentTime}
-                playbackState={playbackState}
-                selectedFrameIndex={0}
-              />
-            )}
-          </div>
+      {/* Top area: square preview (left) + timeline (right) */}
+      <div ref={topAreaRef} style={styles.topArea}>
+        {/* Square preview — width = height */}
+        <div style={{
+          ...styles.previewSquare,
+          width: topHeight > 0 ? topHeight : '50%',
+          minWidth: topHeight > 0 ? topHeight : '50%',
+        }}>
+          {!spriteSheetUrl && !hasGeneratedFrames && (
+            <div style={styles.loadOverlay}>
+              <button onClick={loadSpriteSheet} style={styles.loadBtn}>Load Sprite Sheet</button>
+            </div>
+          )}
+          {useFramePreview ? (
+            <FramePreviewCanvas
+              characterId={manifest.character_id}
+              clip={clip}
+              currentTime={currentTime}
+              playbackState={playbackState}
+            />
+          ) : (
+            <AnimationPreviewCanvas
+              spriteSheetUrl={spriteSheetUrl}
+              spritesheet={manifest.spritesheet}
+              clip={clip}
+              currentTime={currentTime}
+              playbackState={playbackState}
+              selectedFrameIndex={0}
+            />
+          )}
+        </div>
 
-          {/* Timeline */}
-          <div style={styles.timeline}>
-            <ClipTimeline clip={clip} />
-          </div>
+        {/* Timeline — fills remaining width */}
+        <div style={styles.timelineSide}>
+          <ClipTimeline clip={clip} />
         </div>
       </div>
 
@@ -147,16 +148,24 @@ const styles: Record<string, React.CSSProperties> = {
   },
   topArea: {
     flex: '1 1 50%',
-    overflow: 'hidden',
     display: 'flex',
-    position: 'relative',
-  },
-  preview: {
-    flex: 1,
+    flexDirection: 'row',
+    overflow: 'hidden',
     borderBottom: '1px solid #2a2a3a',
+  },
+  previewSquare: {
+    height: '100%',
     overflow: 'hidden',
     display: 'flex',
     position: 'relative',
+    borderRight: '1px solid #2a2a3a',
+    flexShrink: 0,
+  },
+  timelineSide: {
+    flex: 1,
+    overflow: 'hidden',
+    display: 'flex',
+    flexDirection: 'column',
   },
   loadOverlay: {
     position: 'absolute',
@@ -176,11 +185,6 @@ const styles: Record<string, React.CSSProperties> = {
     padding: '8px 16px',
     cursor: 'pointer',
     fontWeight: 600,
-  },
-  timeline: {
-    flex: '0 0 100px',
-    borderBottom: '1px solid #2a2a3a',
-    overflow: 'hidden',
   },
   reviewGrid: {
     flex: '0 0 auto',
