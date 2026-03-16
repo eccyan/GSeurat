@@ -585,7 +585,14 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
       const updatedUrls = { ...get().detectedViewPoseUrls };
       const updatedBytes = { ...get().detectedViewPoseBytes };
 
+      // Front: use the original DWPreprocessor image directly (not re-rendered)
+      const frontBlob = new Blob([detectedPoseBytes as BlobPart], { type: 'image/png' });
+      updatedUrls.front = URL.createObjectURL(frontBlob);
+      updatedBytes.front = detectedPoseBytes;
+
+      // Other directions: use derived poses
       for (const [dir, pngBytes] of Object.entries(dirPoses)) {
+        if (dir === 'front') continue; // already set above
         const blob = new Blob([pngBytes as BlobPart], { type: 'image/png' });
         updatedUrls[dir as ViewDirection] = URL.createObjectURL(blob);
         updatedBytes[dir as ViewDirection] = pngBytes;
