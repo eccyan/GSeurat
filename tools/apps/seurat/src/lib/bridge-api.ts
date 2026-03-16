@@ -219,6 +219,33 @@ export async function savePixelImage(characterId: string, pngBytes: Uint8Array):
   if (!res.ok) throw new Error(`Failed to save pixel image: ${res.status}`);
 }
 
+// ---------------------------------------------------------------------------
+// Generic character file save/load (for skeleton PNGs etc.)
+// ---------------------------------------------------------------------------
+
+export async function saveCharacterFile(characterId: string, filename: string, data: Uint8Array): Promise<void> {
+  let binary = '';
+  for (let i = 0; i < data.length; i++) {
+    binary += String.fromCharCode(data[i]);
+  }
+  const base64 = btoa(binary);
+  const res = await fetch(
+    `${BASE}/api/characters/${encodeURIComponent(characterId)}/file/${encodeURIComponent(filename)}`,
+    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data: base64 }) },
+  );
+  if (!res.ok) throw new Error(`Failed to save ${filename}: ${res.status}`);
+}
+
+export async function fetchCharacterFile(characterId: string, filename: string): Promise<Uint8Array> {
+  const res = await fetch(`${BASE}/api/characters/${encodeURIComponent(characterId)}/file/${encodeURIComponent(filename)}`);
+  if (!res.ok) throw new Error(`File not found: ${filename} (${res.status})`);
+  return new Uint8Array(await res.arrayBuffer());
+}
+
+export function characterFileUrl(characterId: string, filename: string): string {
+  return `${BASE}/api/characters/${encodeURIComponent(characterId)}/file/${encodeURIComponent(filename)}?t=${Date.now()}`;
+}
+
 export function frameThumbnailUrl(
   characterId: string,
   animName: string,

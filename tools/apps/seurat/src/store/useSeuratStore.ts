@@ -323,6 +323,29 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
         animRefOverride: {},
         derivedAnimPoses: manifest.derived_poses ?? {},
       });
+
+      // Restore skeleton files from disk (non-blocking)
+      (async () => {
+        try {
+          const skeletonBytes = await api.fetchCharacterFile(id, 'skeleton.png');
+          const blob = new Blob([skeletonBytes as BlobPart], { type: 'image/png' });
+          set({ detectedPoseUrl: URL.createObjectURL(blob), detectedPoseBytes: skeletonBytes });
+        } catch { /* no skeleton saved yet */ }
+
+        const viewUrls = { ...get().detectedViewPoseUrls };
+        const viewBytes = { ...get().detectedViewPoseBytes };
+        for (const v of VIEW_DIRECTIONS) {
+          try {
+            const bytes = await api.fetchCharacterFile(id, `skeleton_${v}.png`);
+            const blob = new Blob([bytes as BlobPart], { type: 'image/png' });
+            viewUrls[v] = URL.createObjectURL(blob);
+            viewBytes[v] = bytes;
+          } catch { /* not saved yet */ }
+        }
+        if (Object.values(viewBytes).some(Boolean)) {
+          set({ detectedViewPoseUrls: viewUrls, detectedViewPoseBytes: viewBytes });
+        }
+      })();
     } catch {
       console.warn(`[Seurat] Could not load manifest for "${id}" — is the bridge running?`);
     }
@@ -588,6 +611,9 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
       const blob = new Blob([poseBytes as BlobPart], { type: 'image/png' });
       const url = URL.createObjectURL(blob);
       set({ detectedPoseUrl: url, detectedPoseBytes: poseBytes });
+
+      // Persist skeleton to disk
+      await api.saveCharacterFile(manifest.character_id, 'skeleton.png', poseBytes);
     } catch (err) {
       set({ conceptError: `Pose detection failed: ${err instanceof Error ? err.message : String(err)}` });
     } finally {
@@ -639,6 +665,16 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
         detectedViewPoseBytes: updatedBytes,
         conceptPoseProgress: `Derived ${Object.keys(dirPoses).length} directional poses from concept.`,
       });
+
+      // Persist view skeletons to disk
+      const { manifest: m } = get();
+      if (m) {
+        await api.saveCharacterFile(m.character_id, 'skeleton_front.png', detectedPoseBytes);
+        for (const [dir, pngBytes] of Object.entries(dirPoses)) {
+          if (dir === 'front') continue;
+          await api.saveCharacterFile(m.character_id, `skeleton_${dir}.png`, pngBytes);
+        }
+      }
     } catch (err) {
       set({ conceptPoseError: `Pose derivation failed: ${err instanceof Error ? err.message : String(err)}` });
     } finally {
@@ -694,6 +730,8 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
           const blob = new Blob([poseBytes as BlobPart], { type: 'image/png' });
           updatedUrls[view] = URL.createObjectURL(blob);
           updatedBytes[view] = poseBytes;
+          // Persist to disk
+          await api.saveCharacterFile(manifest.character_id, `skeleton_${view}.png`, poseBytes);
           console.log(`[Seurat] Detected pose for ${view} view`);
         } catch (err) {
           console.warn(`[Seurat] Pose detection failed for ${view}:`, err);

@@ -584,6 +584,58 @@ app.get('/api/characters/:id/pixel-image', async (req: Request, res: Response) =
   }
 });
 
+// POST /api/characters/:id/file/:filename — save an arbitrary file to character directory
+// Accepts base64 JSON { "data": "<base64>" } or raw binary body.
+// Filename must end with .png or .json for safety.
+app.post('/api/characters/:id/file/:filename', async (req: Request, res: Response) => {
+  try {
+    const charDir = safeResolve(getCharactersDir(), req.params['id']!);
+    const filename = req.params['filename']!;
+    // Whitelist safe extensions
+    if (!/\.(png|json)$/.test(filename)) {
+      res.status(400).json({ error: `Unsupported file type: ${filename}` });
+      return;
+    }
+    // Prevent path traversal in filename
+    if (filename.includes('/') || filename.includes('\\') || filename.includes('..')) {
+      res.status(400).json({ error: 'Invalid filename' });
+      return;
+    }
+    await fs.mkdir(charDir, { recursive: true });
+    const filePath = path.join(charDir, filename);
+    const data = await readBinaryBody(req);
+    await fs.writeFile(filePath, data);
+    console.log(`[REST] Character file written: ${filePath} (${data.length} bytes)`);
+    res.json({ ok: true, path: filePath, bytes: data.length });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    const statusCode = message.includes('Path traversal') ? 400 : 500;
+    res.status(statusCode).json({ error: message });
+  }
+});
+
+// GET /api/characters/:id/file/:filename — serve an arbitrary file from character directory
+app.get('/api/characters/:id/file/:filename', async (req: Request, res: Response) => {
+  try {
+    const charDir = safeResolve(getCharactersDir(), req.params['id']!);
+    const filename = req.params['filename']!;
+    if (filename.includes('/') || filename.includes('\\') || filename.includes('..')) {
+      res.status(400).json({ error: 'Invalid filename' });
+      return;
+    }
+    const filePath = path.join(charDir, filename);
+    const data = await fs.readFile(filePath);
+    const ext = filename.split('.').pop();
+    if (ext === 'png') res.setHeader('Content-Type', 'image/png');
+    else if (ext === 'json') res.setHeader('Content-Type', 'application/json');
+    res.send(data);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    const statusCode = message.includes('Path traversal') ? 400 : 404;
+    res.status(statusCode).json({ error: message });
+  }
+});
+
 // POST /api/characters/:id/frames/:anim/:frame/image — save a frame PNG
 app.post('/api/characters/:id/frames/:anim/:frame/image', async (req: Request, res: Response) => {
   try {
