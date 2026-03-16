@@ -210,90 +210,11 @@ export function PipelineControls({ animName }: Props) {
         </Row>
       </div>
 
-      {/* Interpolation */}
-      <div style={styles.section}>
-        <div style={styles.subTitle}>Interpolation</div>
-        {(() => {
-          const hasPass2 = stageCounts.pass2 > 0;
-          const hasPlaceholders = anim.frames.some((f) => f.keyframe === false);
-          const interpSlots = anim.frames.filter((f) => f.keyframe === false);
-          const filledSlots = interpSlots.filter((f) => f.status === 'generated');
-          const hasInterpolated = filledSlots.length > 0;
-
-          return (
-            <>
-              <Row>
-                <label style={styles.label}>Method</label>
-                <select
-                  value={aiConfig.interpMethod}
-                  onChange={(e) => setAIConfig({ interpMethod: e.target.value as 'blend' | 'rife' })}
-                  style={{ ...styles.select, flex: 1 }}
-                >
-                  <option value="blend">Canvas Blend</option>
-                  <option value="rife">RIFE (ComfyUI)</option>
-                </select>
-              </Row>
-              <Row>
-                <label style={styles.label}>Multiply</label>
-                {[2, 3, 4].map((m) => (
-                  <button
-                    key={m}
-                    onClick={() => setAIConfig({ interpMultiplier: m })}
-                    style={{
-                      ...styles.clearBtn,
-                      background: aiConfig.interpMultiplier === m ? '#2a3a5a' : '#2a2a3a',
-                      color: aiConfig.interpMultiplier === m ? '#90b8f8' : '#888',
-                      border: aiConfig.interpMultiplier === m ? '1px solid #4a8af8' : '1px solid #444',
-                    }}
-                  >
-                    {m}x
-                  </button>
-                ))}
-              </Row>
-              <div style={styles.statusText}>
-                {hasPlaceholders
-                  ? `${anim.frames.filter((f) => f.keyframe !== false).length} keyframes + ${filledSlots.length}/${interpSlots.length} interp filled = ${totalFrames} total`
-                  : `${totalFrames} frames → ${totalFrames + (totalFrames - (anim.loop ? 0 : 1)) * (aiConfig.interpMultiplier - 1)} frames`
-                }
-              </div>
-              <div style={{ display: 'flex', gap: 4 }}>
-                <button
-                  onClick={() => interpolateAnimation(animName)}
-                  disabled={!hasPass2 || !!generating}
-                  style={{
-                    ...styles.passBtn,
-                    borderColor: '#b080f0',
-                    color: '#c8a8f8',
-                    opacity: (!hasPass2 || generating) ? 0.5 : 1,
-                    flex: 1,
-                  }}
-                >
-                  Interpolate
-                </button>
-                {hasInterpolated && (
-                  <button
-                    onClick={() => revertInterpolation(animName)}
-                    disabled={!!generating}
-                    style={{
-                      ...styles.passBtn,
-                      borderColor: '#886',
-                      color: '#aa8',
-                      opacity: generating ? 0.5 : 1,
-                    }}
-                  >
-                    Revert
-                  </button>
-                )}
-              </div>
-              {interpProgress && (
-                <div style={{ fontFamily: 'monospace', fontSize: 8, color: '#b080f0' }}>
-                  {interpProgress}
-                </div>
-              )}
-            </>
-          );
-        })()}
-      </div>
+      {/* Interpolation (optional fallback — collapsed by default) */}
+      <InterpCollapsible
+        animName={animName} anim={anim} totalFrames={totalFrames}
+        generating={generating} stageCounts={stageCounts}
+      />
 
       {/* Pass 3: Pixelize */}
       <div style={styles.section}>
@@ -544,6 +465,78 @@ export function PipelineControls({ animName }: Props) {
 
 function Row({ children }: { children: React.ReactNode }) {
   return <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>{children}</div>;
+}
+
+/** Collapsible interpolation section (optional fallback, collapsed by default) */
+function InterpCollapsible({ animName, anim, totalFrames, generating, stageCounts }: {
+  animName: string;
+  anim: { frames: Array<{ keyframe?: boolean; status: string }>; loop: boolean };
+  totalFrames: number;
+  generating: string | null;
+  stageCounts: { pass2: number };
+}) {
+  const aiConfig = useSeuratStore((s) => s.aiConfig);
+  const setAIConfig = useSeuratStore((s) => s.setAIConfig);
+  const interpolateAnimation = useSeuratStore((s) => s.interpolateAnimation);
+  const revertInterpolation = useSeuratStore((s) => s.revertInterpolation);
+  const interpProgress = useSeuratStore((s) => s.interpProgress);
+  const [open, setOpen] = useState(false);
+
+  const hasPass2 = stageCounts.pass2 > 0;
+  const hasPlaceholders = anim.frames.some((f) => f.keyframe === false);
+  const interpSlots = anim.frames.filter((f) => f.keyframe === false);
+  const filledSlots = interpSlots.filter((f) => f.status === 'generated');
+  const hasInterpolated = filledSlots.length > 0;
+
+  return (
+    <div style={styles.section}>
+      <button onClick={() => setOpen(!open)} style={{ ...styles.subTitle, background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, padding: 0 }}>
+        <span style={{ fontSize: 10, color: '#666' }}>{open ? '▾' : '▸'}</span>
+        Interpolation (optional)
+      </button>
+      {open && (
+        <>
+          <Row>
+            <label style={styles.label}>Method</label>
+            <select value={aiConfig.interpMethod} onChange={(e) => setAIConfig({ interpMethod: e.target.value as 'blend' | 'rife' })} style={{ ...styles.select, flex: 1 }}>
+              <option value="blend">Canvas Blend</option>
+              <option value="rife">RIFE (ComfyUI)</option>
+            </select>
+          </Row>
+          <Row>
+            <label style={styles.label}>Multiply</label>
+            {[2, 3, 4].map((m) => (
+              <button key={m} onClick={() => setAIConfig({ interpMultiplier: m })} style={{
+                ...styles.clearBtn,
+                background: aiConfig.interpMultiplier === m ? '#2a3a5a' : '#2a2a3a',
+                color: aiConfig.interpMultiplier === m ? '#90b8f8' : '#888',
+                border: aiConfig.interpMultiplier === m ? '1px solid #4a8af8' : '1px solid #444',
+              }}>{m}x</button>
+            ))}
+          </Row>
+          <div style={styles.statusText}>
+            {hasPlaceholders
+              ? `${anim.frames.filter((f) => f.keyframe !== false).length} keyframes + ${filledSlots.length}/${interpSlots.length} interp filled = ${totalFrames} total`
+              : `${totalFrames} frames → ${totalFrames + (totalFrames - (anim.loop ? 0 : 1)) * (aiConfig.interpMultiplier - 1)} frames`
+            }
+          </div>
+          <div style={{ display: 'flex', gap: 4 }}>
+            <button onClick={() => interpolateAnimation(animName)} disabled={!hasPass2 || !!generating}
+              style={{ ...styles.passBtn, borderColor: '#b080f0', color: '#c8a8f8', opacity: (!hasPass2 || generating) ? 0.5 : 1, flex: 1 }}>
+              Interpolate
+            </button>
+            {hasInterpolated && (
+              <button onClick={() => revertInterpolation(animName)} disabled={!!generating}
+                style={{ ...styles.passBtn, borderColor: '#886', color: '#aa8', opacity: generating ? 0.5 : 1 }}>
+                Revert
+              </button>
+            )}
+          </div>
+          {interpProgress && <div style={{ fontFamily: 'monospace', fontSize: 8, color: '#b080f0' }}>{interpProgress}</div>}
+        </>
+      )}
+    </div>
+  );
 }
 
 /** Tiny reset button — visible only when current value differs from default. */

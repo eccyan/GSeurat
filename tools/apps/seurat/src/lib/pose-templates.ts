@@ -278,11 +278,31 @@ export function getPose(animName: string, frameIndex: number): Pose | null {
 
   // Keyframe stride: how many frame indices apart each pose keyframe is.
   // For run animations, keyframes are at 0, 4, 8, 12 (stride 4) with
-  // interpolated frames in between. Other states use stride 1.
+  // interpolated frames in between.
   const stride = KEYFRAME_STRIDE[state] ?? 1;
-  if (frameIndex % stride !== 0) return null;
-  const poseIndex = (frameIndex / stride) % dirPoses.length;
-  return dirPoses[poseIndex];
+
+  if (stride <= 1 || frameIndex % stride === 0) {
+    // Exact keyframe hit — return directly
+    const poseIndex = Math.floor(frameIndex / stride) % dirPoses.length;
+    return dirPoses[poseIndex];
+  }
+
+  // Interpolate between bracketing keyframes for non-stride-aligned frames
+  const keyframePos = frameIndex / stride;
+  const kfA = Math.floor(keyframePos) % dirPoses.length;
+  const kfB = (kfA + 1) % dirPoses.length;
+  const t = keyframePos - Math.floor(keyframePos);
+
+  const poseA = dirPoses[kfA];
+  const poseB = dirPoses[kfB];
+  return poseA.map((kpA, i) => {
+    const kpB = poseB[i];
+    if (!kpA || !kpB) return null;
+    return [
+      kpA[0] + (kpB[0] - kpA[0]) * t,
+      kpA[1] + (kpB[1] - kpA[1]) * t,
+    ] as [number, number];
+  });
 }
 
 /**
@@ -398,15 +418,34 @@ export const CONCEPT_VIEW_POSES: Record<string, { animName: string; frameIndex: 
 
 /**
  * Get all pose frames for an animation, or null if no template exists.
+ * Uses interpolation to produce poses for every frame (not just keyframes).
  */
 export function getAnimationPoses(animName: string, frameCount: number): Pose[] | null {
-  const poses: Pose[] = [];
-  for (let i = 0; i < frameCount; i++) {
-    const pose = getPose(animName, i);
-    if (!pose) return null;
-    poses.push(pose);
-  }
-  return poses;
+  // Parse animation name
+  const parts = animName.split('_');
+  if (parts.length < 2) return null;
+
+  const state = parts[0];
+  const dirRaw = parts.slice(1).join('_');
+  const dirMap: Record<string, string> = {
+    down: 'down', south: 'down', s: 'down',
+    up: 'up', north: 'up', n: 'up',
+    right: 'right', east: 'right', e: 'right',
+    left: 'left', west: 'left', w: 'left',
+  };
+  const dir = dirMap[dirRaw.toLowerCase()];
+  if (!dir) return null;
+
+  const statePoses = POSE_MAP[state];
+  if (!statePoses) return null;
+
+  const dirPoses = statePoses[dir];
+  if (!dirPoses || dirPoses.length === 0) return null;
+
+  const stride = KEYFRAME_STRIDE[state] ?? 1;
+
+  // Interpolate template keyframes to cover all requested frames
+  return interpolateTemplatePoses(dirPoses, stride, frameCount);
 }
 
 /**
