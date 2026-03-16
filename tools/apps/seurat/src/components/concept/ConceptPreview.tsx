@@ -80,6 +80,7 @@ export function ConceptPreview() {
   const hasConceptBase = useSeuratStore((s) => s.hasConceptBase);
   const conceptPoseCurrentView = useSeuratStore((s) => s.conceptPoseCurrentView);
   const detectedPoseUrl = useSeuratStore((s) => s.detectedPoseUrl);
+  const detectedViewPoseUrls = useSeuratStore((s) => s.detectedViewPoseUrls);
   const detectingPose = useSeuratStore((s) => s.detectingPose);
   const detectConceptPose = useSeuratStore((s) => s.detectConceptPose);
   const loadConceptViewUrls = useSeuratStore((s) => s.loadConceptViewUrls);
@@ -224,7 +225,8 @@ export function ConceptPreview() {
       {/* ── Bottom: Directional Views Grid ── */}
       <div style={styles.gridHeader}>
         <div style={styles.dirLabel} />
-        <div style={styles.colLabel}>Pose</div>
+        <div style={styles.colLabel}>Template</div>
+        <div style={styles.colLabel}>Detected</div>
         <div style={styles.colLabel}>Concept</div>
         <div style={styles.colLabel}>Chibi</div>
       </div>
@@ -234,13 +236,14 @@ export function ConceptPreview() {
         const chibiUrl = chibiViewUrls[view] ?? (view === 'front' ? chibiImageUrl : null);
         const poseDef = CONCEPT_VIEW_POSES[view];
         const hasConceptView = !!conceptUrl;
+        const detectedViewUrl = detectedViewPoseUrls[view];
 
         return (
           <React.Fragment key={view}>
             <div style={styles.row}>
               <div style={styles.dirLabel}>{label}</div>
 
-              {/* Pose cell — click to edit */}
+              {/* Template pose cell — click to edit */}
               <div
                 style={styles.poseWrap}
                 onClick={() => poseDef && setEditingPose({ animName: poseDef.animName, frameIndex: poseDef.frameIndex, title: `${label} Pose` })}
@@ -251,6 +254,15 @@ export function ConceptPreview() {
                     frameIndex={poseDef.frameIndex}
                     size={128}
                   />
+                )}
+              </div>
+
+              {/* Detected pose from generated view */}
+              <div style={{ ...styles.poseWrap, borderColor: detectedViewUrl ? '#6a6a8a' : '#1a1a2a' }}>
+                {detectedViewUrl ? (
+                  <img src={detectedViewUrl} alt={`${label} detected`} style={styles.cellImg} />
+                ) : (
+                  <div style={styles.cellPlaceholder}>—</div>
                 )}
               </div>
 
@@ -422,7 +434,7 @@ const styles: Record<string, React.CSSProperties> = {
   /* Grid header */
   gridHeader: {
     display: 'grid',
-    gridTemplateColumns: '40px 1fr 1fr 1fr',
+    gridTemplateColumns: '40px 1fr 1fr 1fr 1fr',
     gap: 8,
     alignItems: 'center',
   },
@@ -436,7 +448,7 @@ const styles: Record<string, React.CSSProperties> = {
   /* Direction rows */
   row: {
     display: 'grid',
-    gridTemplateColumns: '40px 1fr 1fr 1fr',
+    gridTemplateColumns: '40px 1fr 1fr 1fr 1fr',
     gap: 8,
     alignItems: 'center',
   },
@@ -490,7 +502,7 @@ const styles: Record<string, React.CSSProperties> = {
   /* Mirror */
   mirrorRow: {
     display: 'grid',
-    gridTemplateColumns: '40px 1fr 1fr 1fr',
+    gridTemplateColumns: '40px 1fr 1fr 1fr 1fr',
     gap: 8,
     alignItems: 'center',
   },

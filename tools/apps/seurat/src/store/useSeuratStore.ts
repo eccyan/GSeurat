@@ -62,8 +62,11 @@ export interface SeuratState {
   loadConceptImage: () => void;
   detectedPoseUrl: string | null;
   detectedPoseBytes: Uint8Array | null;
+  detectedViewPoseUrls: Record<ViewDirection, string | null>;
+  detectedViewPoseBytes: Record<ViewDirection, Uint8Array | null>;
   detectingPose: boolean;
   detectConceptPose: () => Promise<void>;
+  detectConceptViewPoses: () => Promise<void>;
 
   // Directional poses
   conceptViewUrls: Record<ViewDirection, string | null>;
@@ -502,6 +505,8 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
 
   detectedPoseUrl: null,
   detectedPoseBytes: null,
+  detectedViewPoseUrls: { front: null, back: null, right: null, left: null },
+  detectedViewPoseBytes: { front: null, back: null, right: null, left: null },
   detectingPose: false,
   detectConceptPose: async () => {
     const { manifest, aiConfig } = get();
@@ -550,6 +555,72 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
       set({ conceptError: `Pose detection failed: ${err instanceof Error ? err.message : String(err)}` });
     } finally {
       set({ detectingPose: false });
+    }
+  },
+
+  detectConceptViewPoses: async () => {
+    const { manifest, aiConfig, conceptViewUrls } = get();
+    if (!manifest) return;
+
+    const comfy = new ComfyUIClient(aiConfig.comfyUrl);
+    const views: ViewDirection[] = ['front', 'back', 'right', 'left'];
+
+    set({ detectingPose: true, conceptPoseProgress: 'Detecting poses from directional views...' });
+
+    const updatedUrls = { ...get().detectedViewPoseUrls };
+    const updatedBytes = { ...get().detectedViewPoseBytes };
+
+    try {
+      for (const view of views) {
+        const viewUrl = conceptViewUrls[view];
+        if (!viewUrl) continue;
+
+        set({ conceptPoseProgress: `Detecting ${view} pose...`, conceptPoseCurrentView: view });
+
+        try {
+          // Fetch the directional concept image
+          const resp = await fetch(viewUrl);
+          if (!resp.ok) continue;
+          let imageBytes = new Uint8Array(await resp.arrayBuffer());
+
+          // RemBG → composite on white
+          if (aiConfig.removeBackground) {
+            try {
+              const rmbgBytes = await comfy.removeBackground(imageBytes, aiConfig.remBgNodeType);
+              const blob = new Blob([rmbgBytes as BlobPart], { type: 'image/png' });
+              const bmp = await createImageBitmap(blob);
+              const canvas = new OffscreenCanvas(bmp.width, bmp.height);
+              const ctx = canvas.getContext('2d')!;
+              ctx.fillStyle = '#ffffff';
+              ctx.fillRect(0, 0, canvas.width, canvas.height);
+              ctx.drawImage(bmp, 0, 0);
+              bmp.close();
+              const whiteBlob = await canvas.convertToBlob({ type: 'image/png' });
+              imageBytes = new Uint8Array(await whiteBlob.arrayBuffer());
+            } catch {
+              console.warn(`[Seurat] RemBG failed for ${view} pose detection, using original`);
+            }
+          }
+
+          const poseBytes = await comfy.detectOpenPose(imageBytes, { resolution: 512 });
+          const blob = new Blob([poseBytes as BlobPart], { type: 'image/png' });
+          updatedUrls[view] = URL.createObjectURL(blob);
+          updatedBytes[view] = poseBytes;
+          console.log(`[Seurat] Detected pose for ${view} view`);
+        } catch (err) {
+          console.warn(`[Seurat] Pose detection failed for ${view}:`, err);
+        }
+      }
+
+      set({
+        detectedViewPoseUrls: updatedUrls,
+        detectedViewPoseBytes: updatedBytes,
+        conceptPoseProgress: 'Pose detection complete.',
+      });
+    } catch (err) {
+      set({ conceptPoseError: `View pose detection failed: ${err instanceof Error ? err.message : String(err)}` });
+    } finally {
+      set({ detectingPose: false, conceptPoseCurrentView: null });
     }
   },
 
@@ -665,13 +736,15 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
         const viewPrompt = `${basePrompt}, ${CONCEPT_VIEW_PROMPTS[view]}`;
         console.log(`[Seurat] Concept pose — ${view} prompt:`, viewPrompt);
 
-        // Use detected pose from concept image for front view if available,
-        // otherwise fall back to template poses
-        const { detectedPoseBytes } = get();
+        // Prefer detected pose from concept images, then fall back to templates
+        const { detectedPoseBytes: frontDetected, detectedViewPoseBytes } = get();
         let poseBytes: Uint8Array | null = null;
-        if (view === 'front' && detectedPoseBytes) {
+        if (detectedViewPoseBytes[view]) {
+          console.log(`[Seurat] Concept pose — ${view}: using detected pose from directional view`);
+          poseBytes = detectedViewPoseBytes[view];
+        } else if (view === 'front' && frontDetected) {
           console.log('[Seurat] Concept pose — front: using detected pose from concept image');
-          poseBytes = detectedPoseBytes;
+          poseBytes = frontDetected;
         } else {
           const poseDef = CONCEPT_VIEW_POSES[view];
           const pose = poseDef ? getPose(poseDef.animName, poseDef.frameIndex) : null;

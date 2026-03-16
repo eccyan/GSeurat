@@ -38,6 +38,9 @@ export function ConceptActions() {
   const conceptPoseError = useSeuratStore((s) => s.conceptPoseError);
   const conceptPoseProgress = useSeuratStore((s) => s.conceptPoseProgress);
   const generateConceptPoses = useSeuratStore((s) => s.generateConceptPoses);
+  const detectingPose = useSeuratStore((s) => s.detectingPose);
+  const detectConceptViewPoses = useSeuratStore((s) => s.detectConceptViewPoses);
+  const detectedViewPoseUrls = useSeuratStore((s) => s.detectedViewPoseUrls);
   const conceptFileRef = useRef<HTMLInputElement>(null);
   const viewFileRef = useRef<HTMLInputElement>(null);
 
@@ -297,6 +300,24 @@ export function ConceptActions() {
         </button>
       </div>
 
+      {/* Detect poses from generated directional views */}
+      {hasConceptBase && (
+        <div style={styles.actionRow}>
+          <button
+            onClick={detectConceptViewPoses}
+            disabled={detectingPose || conceptPoseGenerating}
+            style={{ ...styles.detectBtn, opacity: detectingPose ? 0.5 : 1, flex: 1 }}
+          >
+            {detectingPose ? 'Detecting...' : 'Detect View Poses'}
+          </button>
+          {Object.values(detectedViewPoseUrls).some(Boolean) && (
+            <span style={{ fontFamily: 'monospace', fontSize: 8, color: '#70b8d8' }}>
+              {Object.values(detectedViewPoseUrls).filter(Boolean).length}/4 detected
+            </span>
+          )}
+        </div>
+      )}
+
       {/* Upload */}
       <div style={styles.actionRow}>
         <select
@@ -363,6 +384,7 @@ const styles: Record<string, React.CSSProperties> = {
   dirSelect: { background: '#1a1a2e', border: '1px solid #3a3a5a', borderRadius: 4, color: '#ddd', fontFamily: 'monospace', fontSize: 10, padding: '6px 8px', outline: 'none' },
   conceptBtn: { flex: 1, background: '#1e3a2e', border: '1px solid #44aa44', borderRadius: 4, color: '#70d870', fontFamily: 'monospace', fontSize: 10, padding: '8px 8px', cursor: 'pointer', fontWeight: 600, textAlign: 'center' },
   poseBtn: { flex: 1, background: '#1e2e3a', border: '1px solid #4488cc', borderRadius: 4, color: '#70b8d8', fontFamily: 'monospace', fontSize: 10, padding: '8px 8px', cursor: 'pointer', fontWeight: 600, textAlign: 'center' },
+  detectBtn: { background: '#2a2a3a', border: '1px solid #6a6a8a', borderRadius: 4, color: '#aaaacc', fontFamily: 'monospace', fontSize: 10, padding: '6px 8px', cursor: 'pointer', fontWeight: 600, textAlign: 'center' },
   cancelBtn: { background: '#2a1a1a', border: '1px solid #553333', borderRadius: 4, color: '#d88', fontFamily: 'monospace', fontSize: 10, padding: '8px 10px', cursor: 'pointer', fontWeight: 600 },
   uploadBtn: { flex: 1, background: '#1e3a3a', border: '1px solid #4ac8c8', borderRadius: 4, color: '#90d8d8', fontFamily: 'monospace', fontSize: 10, padding: '8px 8px', cursor: 'pointer', fontWeight: 600, textAlign: 'center' },
   progressText: { fontFamily: 'monospace', fontSize: 9, color: '#8a4af8', textAlign: 'center' },
