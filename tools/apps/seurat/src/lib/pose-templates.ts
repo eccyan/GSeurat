@@ -438,71 +438,91 @@ export async function extractKeypointsFromPoseImage(
   const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
   const { data, width, height } = imgData;
 
-  // Find all bright pixels (keypoint dots and limb lines)
-  const brightPixels: [number, number][] = [];
+  // Build a density map: for each pixel, count bright neighbors in a small radius.
+  // Keypoint dots are dense circles; limb lines are thin and have low density.
+  const cellSize = Math.max(4, Math.round(width / 64));
+  const gridW = Math.ceil(width / cellSize);
+  const gridH = Math.ceil(height / cellSize);
+  const densityGrid = new Float32Array(gridW * gridH);
+
+  // Count bright pixels per grid cell
   for (let py = 0; py < height; py++) {
     for (let px = 0; px < width; px++) {
       const i = (py * width + px) * 4;
       const brightness = data[i] + data[i + 1] + data[i + 2];
-      if (brightness > 200) {
-        brightPixels.push([px, py]);
+      if (brightness > 150) {
+        const gx = Math.floor(px / cellSize);
+        const gy = Math.floor(py / cellSize);
+        densityGrid[gy * gridW + gx]++;
       }
     }
   }
 
-  if (brightPixels.length === 0) return Array(14).fill(null);
-
-  // Cluster nearby bright pixels (radius-based)
-  const clusterRadius = Math.max(8, Math.round(width / 40));
-  const visited = new Set<number>();
+  // Find local density maxima — these are keypoint dot centers.
+  // A cell is a local max if its density exceeds all 8 neighbors.
+  const dotThreshold = cellSize * cellSize * 0.15; // at least 15% of cell is bright
   const clusters: PixelCluster[] = [];
 
-  for (let i = 0; i < brightPixels.length; i++) {
-    if (visited.has(i)) continue;
-    visited.add(i);
+  for (let gy = 1; gy < gridH - 1; gy++) {
+    for (let gx = 1; gx < gridW - 1; gx++) {
+      const d = densityGrid[gy * gridW + gx];
+      if (d < dotThreshold) continue;
 
-    let sumX = brightPixels[i][0];
-    let sumY = brightPixels[i][1];
-    let count = 1;
-
-    // BFS to find connected bright pixels
-    const queue = [i];
-    while (queue.length > 0) {
-      const curr = queue.shift()!;
-      const [cx, cy] = brightPixels[curr];
-
-      for (let j = i + 1; j < brightPixels.length; j++) {
-        if (visited.has(j)) continue;
-        const dx = brightPixels[j][0] - cx;
-        const dy = brightPixels[j][1] - cy;
-        if (dx * dx + dy * dy <= clusterRadius * clusterRadius) {
-          visited.add(j);
-          queue.push(j);
-          sumX += brightPixels[j][0];
-          sumY += brightPixels[j][1];
-          count++;
+      let isMax = true;
+      for (let dy = -1; dy <= 1 && isMax; dy++) {
+        for (let dx = -1; dx <= 1 && isMax; dx++) {
+          if (dx === 0 && dy === 0) continue;
+          if (densityGrid[(gy + dy) * gridW + (gx + dx)] > d) isMax = false;
         }
+      }
+
+      if (isMax) {
+        clusters.push({
+          x: (gx + 0.5) * cellSize / width,
+          y: (gy + 0.5) * cellSize / height,
+          count: d,
+        });
+      }
+    }
+  }
+
+  // Merge clusters that are very close (within 2 cells)
+  const merged: PixelCluster[] = [];
+  const used = new Set<number>();
+  for (let i = 0; i < clusters.length; i++) {
+    if (used.has(i)) continue;
+    let cx = clusters[i].x * clusters[i].count;
+    let cy = clusters[i].y * clusters[i].count;
+    let total = clusters[i].count;
+    used.add(i);
+
+    for (let j = i + 1; j < clusters.length; j++) {
+      if (used.has(j)) continue;
+      const dx = (clusters[i].x - clusters[j].x) * width;
+      const dy = (clusters[i].y - clusters[j].y) * height;
+      if (Math.sqrt(dx * dx + dy * dy) < cellSize * 2.5) {
+        cx += clusters[j].x * clusters[j].count;
+        cy += clusters[j].y * clusters[j].count;
+        total += clusters[j].count;
+        used.add(j);
       }
     }
 
-    clusters.push({ x: sumX / count / width, y: sumY / count / height, count });
+    merged.push({ x: cx / total, y: cy / total, count: total });
   }
 
-  // Filter out very small clusters (noise/thin lines) — keep only substantial dots
-  const avgCount = clusters.reduce((s, c) => s + c.count, 0) / clusters.length;
-  const threshold = Math.max(3, avgCount * 0.3);
-  const significant = clusters.filter((c) => c.count >= threshold);
-
   // Sort by Y position (top to bottom)
-  significant.sort((a, b) => a.y - b.y);
+  merged.sort((a, b) => a.y - b.y);
 
-  // We expect ~14 keypoints. If we got too many, take the largest clusters.
+  console.log(`[PoseExtract] Found ${merged.length} keypoint clusters from density grid (${gridW}x${gridH} cells)`);
+
+  // Take top 14 by density if too many
   let keypoints: PixelCluster[];
-  if (significant.length > 14) {
-    keypoints = [...significant].sort((a, b) => b.count - a.count).slice(0, 14);
+  if (merged.length > 14) {
+    keypoints = [...merged].sort((a, b) => b.count - a.count).slice(0, 14);
     keypoints.sort((a, b) => a.y - b.y);
   } else {
-    keypoints = significant;
+    keypoints = merged;
   }
 
   // Map to our 14-point format based on vertical position heuristics:
