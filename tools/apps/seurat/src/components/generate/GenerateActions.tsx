@@ -462,7 +462,7 @@ export function GenerateActions({ animName }: Props) {
               <span style={{ color: job.status === 'error' ? '#d88' : job.status === 'done' ? '#8d8' : '#aa8' }}>
                 [{job.status}]
               </span>
-              <span>{job.frameIndex >= 0 ? `f${job.frameIndex}` : 'all'}</span>
+              <span>{(job.frameIndex ?? -1) >= 0 ? `f${job.frameIndex}` : 'all'}</span>
               {job.seed != null && <span style={{ color: '#888', fontSize: 8, fontFamily: 'monospace' }}>seed:{job.seed}</span>}
               {job.error && <span style={{ color: '#d88', fontSize: 8 }}>{job.error}</span>}
             </div>

@@ -16,6 +16,7 @@ import type {
   TreeSelection,
   AIConfig,
   GenerationJob,
+  JobSource,
   ClipboardFrame,
   PlaybackState,
   ReviewFilter,
@@ -24,6 +25,19 @@ import type {
   RecentProject,
 } from './types.js';
 import { DEFAULT_AI_CONFIG } from './types.js';
+
+/** Create a generation job and add it to the store. Returns the job ID. */
+function createJob(
+  get: () => SeuratState,
+  source: JobSource,
+  label: string,
+  extra?: Partial<GenerationJob>,
+): string {
+  const id = `${source}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+  const job: GenerationJob = { id, source, label, status: 'running', ...extra };
+  get().addGenerationJob(job);
+  return id;
+}
 import * as api from '../lib/bridge-api.js';
 
 export { getManifestStats };
@@ -402,6 +416,7 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
     }
 
     set({ conceptGenerating: true, conceptError: null });
+    const jobId = createJob(get, 'concept', 'Generate concept art');
 
     try {
       const comfy = new ComfyUIClient(aiConfig.comfyUrl);
@@ -479,8 +494,11 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
         hasConceptBase: true,
         conceptError: null,
       });
+      get().updateGenerationJob(jobId, { status: 'done' });
     } catch (err) {
-      set({ conceptError: err instanceof Error ? err.message : String(err) });
+      const msg = err instanceof Error ? err.message : String(err);
+      set({ conceptError: msg });
+      get().updateGenerationJob(jobId, { status: 'error', error: msg });
     } finally {
       set({ conceptGenerating: false });
     }
@@ -582,6 +600,7 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
     }
 
     set({ detectingPose: true, detectedPoseUrl: null });
+    const skelJobId = createJob(get, 'detect_skeleton', 'Detect skeleton');
     try {
       const comfy = new ComfyUIClient(aiConfig.comfyUrl);
 
@@ -614,8 +633,11 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
 
       // Persist skeleton to disk
       await api.saveCharacterFile(manifest.character_id, 'skeleton.png', poseBytes);
+      get().updateGenerationJob(skelJobId, { status: 'done' });
     } catch (err) {
-      set({ conceptError: `Pose detection failed: ${err instanceof Error ? err.message : String(err)}` });
+      const msg = `Pose detection failed: ${err instanceof Error ? err.message : String(err)}`;
+      set({ conceptError: msg });
+      get().updateGenerationJob(skelJobId, { status: 'error', error: msg });
     } finally {
       set({ detectingPose: false });
     }
@@ -629,6 +651,7 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
     }
 
     set({ detectingPose: true, conceptPoseProgress: 'Extracting keypoints from detected pose...' });
+    const deriveJobId = createJob(get, 'derive_poses', 'Derive view skeletons');
     try {
       const { extractKeypointsFromPoseImage, deriveDirectionalPoses } = await import('../lib/pose-templates.js');
 
@@ -675,8 +698,11 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
           await api.saveCharacterFile(m.character_id, `skeleton_${dir}.png`, pngBytes);
         }
       }
+      get().updateGenerationJob(deriveJobId, { status: 'done' });
     } catch (err) {
-      set({ conceptPoseError: `Pose derivation failed: ${err instanceof Error ? err.message : String(err)}` });
+      const msg = `Pose derivation failed: ${err instanceof Error ? err.message : String(err)}`;
+      set({ conceptPoseError: msg });
+      get().updateGenerationJob(deriveJobId, { status: 'error', error: msg });
     } finally {
       set({ detectingPose: false });
     }
@@ -793,6 +819,7 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
 
     const targetViews: ViewDirection[] = views ?? (['front', 'back', 'right', 'left'] as ViewDirection[]);
     set({ conceptPoseGenerating: true, conceptPoseError: null, conceptPoseProgress: `Generating ${targetViews.join(', ')}...` });
+    const cpJobId = createJob(get, 'concept_pose', `Generate concept views (${targetViews.join(', ')})`);
 
     try {
       const comfy = new ComfyUIClient(aiConfig.comfyUrl);
@@ -936,8 +963,11 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
         conceptPoseError: null,
         conceptPoseProgress: `${targetViews.length} view(s) generated.`,
       });
+      get().updateGenerationJob(cpJobId, { status: 'done' });
     } catch (err) {
-      set({ conceptPoseError: err instanceof Error ? err.message : String(err) });
+      const msg = err instanceof Error ? err.message : String(err);
+      set({ conceptPoseError: msg });
+      get().updateGenerationJob(cpJobId, { status: 'error', error: msg });
     } finally {
       set({ conceptPoseGenerating: false, conceptPoseCurrentView: null });
     }
@@ -965,6 +995,7 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
     const negPrompt = chibi?.negative_prompt || 'realistic, photograph, 3d render, tall, long legs, long limbs, realistic proportions, normal proportions';
 
     set({ chibiGenerating: true, chibiError: null });
+    const chibiJobId = createJob(get, 'chibi', `Generate chibi (${view})`);
 
     try {
       // Load view-specific concept image as IP-Adapter reference (preserves identity)
@@ -1035,8 +1066,11 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
       if (view === 'front') {
         set({ chibiImageUrl: api.chibiImageUrl(manifest.character_id) + cb });
       }
+      get().updateGenerationJob(chibiJobId, { status: 'done' });
     } catch (err) {
-      set({ chibiError: err instanceof Error ? err.message : String(err) });
+      const msg = err instanceof Error ? err.message : String(err);
+      set({ chibiError: msg });
+      get().updateGenerationJob(chibiJobId, { status: 'error', error: msg });
     } finally {
       set({ chibiGenerating: false });
     }
@@ -1143,6 +1177,7 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
     const negPrompt = chibi?.negative_prompt || 'realistic, photograph, 3d render, tall, long legs, long limbs, realistic proportions, normal proportions';
 
     set({ chibiViewsGenerating: true, chibiViewsError: null, chibiViewsProgress: 'Starting chibi views...' });
+    const cvJobId = createJob(get, 'chibi', 'Generate all chibi views');
 
     try {
       const comfy = new ComfyUIClient(aiConfig.comfyUrl);
@@ -1245,8 +1280,11 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
         chibiViewsError: null,
         chibiViewsProgress: 'All 4 chibi views generated.',
       });
+      get().updateGenerationJob(cvJobId, { status: 'done' });
     } catch (err) {
-      set({ chibiViewsError: err instanceof Error ? err.message : String(err) });
+      const msg = err instanceof Error ? err.message : String(err);
+      set({ chibiViewsError: msg });
+      get().updateGenerationJob(cvJobId, { status: 'error', error: msg });
     } finally {
       set({ chibiViewsGenerating: false });
     }
@@ -1511,7 +1549,7 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
     for (const fi of indices) {
       const jobId = `${pass}_${animName}_${fi}_${Date.now()}`;
       const rawSeed = aiConfig.seed === -1 ? Math.floor(Math.random() * 2147483647) : aiConfig.seed + fi;
-      get().addGenerationJob({ id: jobId, animName, frameIndex: fi, status: 'running', pass, seed: rawSeed });
+      get().addGenerationJob({ id: jobId, source: pass as any, label: `${pass} ${animName} f${fi}`, animName, frameIndex: fi, status: 'running', pass, seed: rawSeed });
 
       try {
         const prompt = promptOverride.trim() || buildFramePrompt(manifest, anim, fi);
@@ -1934,7 +1972,7 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
       const seed = aiConfig.seed === -1
         ? Math.floor(Math.random() * 2147483647)
         : aiConfig.seed + frameIndex;
-      get().addGenerationJob({ id: jobId, animName, frameIndex, status: 'running', seed });
+      get().addGenerationJob({ id: jobId, source: 'generation', label: `Generate ${animName} f${frameIndex}`, animName, frameIndex, status: 'running', seed });
 
       try {
         const prompt = buildFramePrompt(manifest, anim, frameIndex);
@@ -2085,7 +2123,7 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
         const seed = aiConfig.seed === -1
           ? Math.floor(Math.random() * 2147483647)
           : aiConfig.seed;
-        get().addGenerationJob({ id: jobId, animName: an, frameIndex: -1, status: 'running', seed });
+        get().addGenerationJob({ id: jobId, source: 'generation', label: `Generate ${an} (row)`, animName: an, frameIndex: -1, status: 'running', seed });
 
         try {
           const frameCount = anim.frames.length;
@@ -2408,6 +2446,7 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
     }
 
     set({ derivingAnimPoses: true, conceptPoseProgress: 'Extracting keypoints for animation poses...' });
+    const daJobId = createJob(get, 'derive_poses', 'Derive animation poses');
     try {
       const { extractKeypointsFromPoseImage, deriveAllAnimationPoses } = await import('../lib/pose-templates.js');
 
@@ -2443,8 +2482,11 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
         set({ manifest: updated });
         await api.saveManifest(updated);
       }
+      get().updateGenerationJob(daJobId, { status: 'done' });
     } catch (err) {
-      set({ conceptPoseError: `Animation pose derivation failed: ${err instanceof Error ? err.message : String(err)}` });
+      const msg = `Animation pose derivation failed: ${err instanceof Error ? err.message : String(err)}`;
+      set({ conceptPoseError: msg });
+      get().updateGenerationJob(daJobId, { status: 'error', error: msg });
     } finally {
       set({ derivingAnimPoses: false });
     }

@@ -85,8 +85,6 @@ function CharacterSections() {
 function SpriteGenerationSection() {
   const manifest = useSeuratStore((s) => s.manifest);
   const generateFrames = useSeuratStore((s) => s.generateFrames);
-  const generationJobs = useSeuratStore((s) => s.generationJobs);
-  const clearCompletedJobs = useSeuratStore((s) => s.clearCompletedJobs);
   const [generatingAll, setGeneratingAll] = useState(false);
 
   if (!manifest) return null;
@@ -111,24 +109,6 @@ function SpriteGenerationSection() {
       >
         {generatingAll ? 'Generating...' : `Generate All Animations (${pendingCount})`}
       </button>
-
-      {generationJobs.length > 0 && (
-        <div style={styles.jobsSection}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ fontFamily: 'monospace', fontSize: 10, color: '#777', fontWeight: 600 }}>Jobs</span>
-            <button onClick={clearCompletedJobs} style={styles.clearJobsBtn}>Clear</button>
-          </div>
-          {generationJobs.map((job) => (
-            <div key={job.id} style={styles.jobRow}>
-              <span style={{ color: job.status === 'error' ? '#d88' : job.status === 'done' ? '#8d8' : '#aa8' }}>
-                [{job.status}]
-              </span>
-              <span>{job.animName}{job.frameIndex >= 0 ? `/f${job.frameIndex}` : ''}</span>
-              {job.error && <span style={{ color: '#d88', fontSize: 8 }}>{job.error}</span>}
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 }

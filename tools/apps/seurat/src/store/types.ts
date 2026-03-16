@@ -95,14 +95,31 @@ export const DEFAULT_AI_CONFIG: AIConfig = {
   rifeModel: 'rife47',
 };
 
+export type JobSource =
+  | 'concept'          // Identity concept generation
+  | 'detect_skeleton'  // Skeleton detection
+  | 'derive_poses'     // Derive directional/animation poses
+  | 'concept_pose'     // Directional concept view generation
+  | 'chibi'            // Chibi generation (single or batch)
+  | 'pixel'            // Pixel art generation
+  | 'pass1'            // Frame pipeline pass 1
+  | 'pass2'            // Frame pipeline pass 2
+  | 'pass3'            // Frame pipeline pass 3
+  | 'interpolation'    // Frame interpolation
+  | 'generation';      // Legacy/generic frame generation
+
 export interface GenerationJob {
   id: string;
-  animName: string;
-  frameIndex: number;
+  source: JobSource;
+  label: string;           // Human-readable description
   status: 'queued' | 'running' | 'done' | 'error';
-  pass?: 'pass1' | 'pass2' | 'pass3';
   error?: string;
   seed?: number;
+  progress?: string;       // Current step description
+  // Legacy fields (kept for backward compat with frame pipeline)
+  animName?: string;
+  frameIndex?: number;
+  pass?: 'pass1' | 'pass2' | 'pass3';
 }
 
 export interface ClipboardFrame {

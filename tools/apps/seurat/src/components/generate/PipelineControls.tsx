@@ -17,8 +17,8 @@ export function PipelineControls({ animName }: Props) {
   const setAIConfig = useSeuratStore((s) => s.setAIConfig);
   const generatePass = useSeuratStore((s) => s.generatePass);
   const cancelGeneration = useSeuratStore((s) => s.cancelGeneration);
-  const generationJobs = useSeuratStore((s) => s.generationJobs);
-  const clearCompletedJobs = useSeuratStore((s) => s.clearCompletedJobs);
+  // generationJobs now displayed in StatusBar
+  // Jobs are now displayed in the StatusBar
   const availableCheckpoints = useSeuratStore((s) => s.availableCheckpoints);
   const refreshComfyModels = useSeuratStore((s) => s.refreshComfyModels);
   const conceptViewUrls = useSeuratStore((s) => s.conceptViewUrls);
@@ -90,8 +90,6 @@ export function PipelineControls({ animName }: Props) {
       setGenerating(null);
     }
   };
-
-  const animJobs = generationJobs.filter((j) => j.animName === animName);
 
   const derivedForAnim = derivedAnimPoses[animName];
   const derivedPoseCount = derivedForAnim?.length ?? 0;
@@ -442,25 +440,6 @@ export function PipelineControls({ animName }: Props) {
         )}
       </div>
 
-      {/* Jobs */}
-      {animJobs.length > 0 && (
-        <div style={styles.section}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <div style={styles.subTitle}>Jobs</div>
-            <button onClick={clearCompletedJobs} style={styles.clearBtn}>Clear</button>
-          </div>
-          {animJobs.map((job) => (
-            <div key={job.id} style={styles.jobRow}>
-              <span style={{ color: job.status === 'error' ? '#d88' : job.status === 'done' ? '#8d8' : '#aa8' }}>
-                [{job.status}]
-              </span>
-              <span>{job.pass ?? ''} f{job.frameIndex}</span>
-              {job.seed != null && <span style={{ color: '#888', fontSize: 8 }}>seed:{job.seed}</span>}
-              {job.error && <span style={{ color: '#d88', fontSize: 8 }}>{job.error}</span>}
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 }
