@@ -132,14 +132,13 @@ export function AnimationPreviewCanvas({
       : selectedFrameIndex
     : 0;
 
-  // Observe container size — keep square using height as reference
+  // Observe container size
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
     const ro = new ResizeObserver((entries) => {
-      const { height } = entries[0].contentRect;
-      const size = Math.floor(height);
-      setCanvasSize({ w: size, h: size });
+      const { width, height } = entries[0].contentRect;
+      setCanvasSize({ w: Math.floor(width), h: Math.floor(height) });
     });
     ro.observe(el);
     return () => ro.disconnect();
@@ -200,7 +199,7 @@ export function AnimationPreviewCanvas({
   }, [imgLoaded, spritesheet, clip, activeFrameIndex, canvasSize]);
 
   return (
-    <div ref={containerRef} style={{ flex: 1, overflow: 'hidden', position: 'relative', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+    <div ref={containerRef} style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
       <canvas ref={canvasRef} style={{ display: 'block', imageRendering: 'pixelated' }} />
     </div>
   );
