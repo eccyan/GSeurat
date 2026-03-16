@@ -259,7 +259,7 @@ export function ConceptPreview() {
             <div style={styles.row}>
               <div style={styles.dirLabel}>{label}</div>
 
-              {/* Template pose cell — click to edit */}
+              {/* Template pose cell — always shows base template, click to edit */}
               <div
                 style={styles.poseWrap}
                 onClick={() => poseDef && setEditingPose({ animName: poseDef.animName, frameIndex: poseDef.frameIndex, title: `${label} Pose` })}
@@ -269,6 +269,7 @@ export function ConceptPreview() {
                     animName={poseDef.animName}
                     frameIndex={poseDef.frameIndex}
                     size={128}
+                    staticPose
                   />
                 )}
               </div>
