@@ -1722,15 +1722,29 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
 
       try {
         // Load start and end frame images (prefer edited > pass2 > pass1)
+        // Track which pass was loaded to save interpolated frames at the same stage
+        const PASS_PRIORITY = ['pass2_edited', 'pass2', 'pass1_edited', 'pass1'] as const;
+        type PassKey = typeof PASS_PRIORITY[number];
+        let bestPass: PassKey = 'pass1';
+
         async function loadBest(fi: number): Promise<Uint8Array> {
-          for (const pass of ['pass2_edited', 'pass2', 'pass1_edited', 'pass1'] as const) {
-            try { return await api.fetchPassImageBytes(characterId, animName, fi, pass); } catch { /* next */ }
+          for (const pass of PASS_PRIORITY) {
+            try {
+              const bytes = await api.fetchPassImageBytes(characterId, animName, fi, pass);
+              // Track highest pass found (pass2 > pass1)
+              const passLevel = pass.startsWith('pass2') ? 2 : 1;
+              const bestLevel = bestPass.startsWith('pass2') ? 2 : 1;
+              if (passLevel > bestLevel) bestPass = pass.startsWith('pass2') ? 'pass2' : 'pass1';
+              return bytes;
+            } catch { /* next */ }
           }
           throw new Error(`No pass image for f${fi}`);
         }
 
         const startBytes = await loadBest(startFrame);
         const endBytes = await loadBest(endFrame);
+        // Determine save stage: use the base pass (not _edited) of the best source
+        const savePass = bestPass.startsWith('pass2') ? 'pass2' : 'pass1';
 
         // Generate intermediates
         let intermediates: Uint8Array[];
@@ -1757,8 +1771,8 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
           if (frame) {
             frame.status = 'generated';
             frame.source = 'ai';
-            frame.pipeline_stage = 'pass1';
-            await api.savePassImage(characterId, animName, targetIndex, 'pass1', intermediates[i]);
+            frame.pipeline_stage = savePass;
+            await api.savePassImage(characterId, animName, targetIndex, savePass, intermediates[i]);
             set({ interpProgress: `Saved f${targetIndex} (${i + 1}/${intermediates.length})` });
           }
         }
