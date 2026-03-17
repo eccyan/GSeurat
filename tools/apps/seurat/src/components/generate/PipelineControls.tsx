@@ -189,7 +189,7 @@ export function PipelineControls({ animName }: Props) {
         </div>
         <Row>
           <label style={styles.label}>CFG</label>
-          <input type="range" min={1} max={20} step={0.5} value={aiConfig.pass1Cfg} onChange={(e) => setAIConfig({ pass1Cfg: parseFloat(e.target.value) })} style={{ flex: 1 }} />
+          <input type="range" min={1} max={5} step={0.5} value={aiConfig.pass1Cfg} onChange={(e) => setAIConfig({ pass1Cfg: parseFloat(e.target.value) })} style={{ flex: 1 }} />
           <span style={styles.valueLabel}>{aiConfig.pass1Cfg.toFixed(1)}</span>
           <ResetBtn field="pass1Cfg" current={aiConfig.pass1Cfg} onReset={(v) => setAIConfig({ pass1Cfg: v })} />
         </Row>

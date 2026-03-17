@@ -1570,7 +1570,7 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
           let pngBytes: Uint8Array;
           if (poseBytes) {
             pngBytes = await comfy.generateIPAdapterWithRetry(prompt, conceptBytes, poseBytes, {
-              width: 512, height: 512, steps: aiConfig.steps, seed: rawSeed, cfgScale: aiConfig.pass1Cfg,
+              width: 512, height: 512, steps: aiConfig.steps, seed: rawSeed, cfgScale: Math.min(aiConfig.pass1Cfg, 5),
               samplerName: aiConfig.sampler, checkpoint: aiConfig.checkpoint, vae: aiConfig.vae || undefined,
               negativePrompt: negative, denoise: 1.0, loras: [],
               ipAdapterWeight: aiConfig.ipAdapterWeight, ipAdapterPreset: aiConfig.ipAdapterPreset,
@@ -1580,7 +1580,7 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
             });
           } else {
             pngBytes = await comfy.generateIPAdapterOnlyWithRetry(prompt, conceptBytes, {
-              width: 512, height: 512, steps: aiConfig.steps, seed: rawSeed, cfgScale: aiConfig.pass1Cfg,
+              width: 512, height: 512, steps: aiConfig.steps, seed: rawSeed, cfgScale: Math.min(aiConfig.pass1Cfg, 5),
               samplerName: aiConfig.sampler, checkpoint: aiConfig.checkpoint, vae: aiConfig.vae || undefined,
               negativePrompt: negative, loras: [],
               ipAdapterWeight: aiConfig.ipAdapterWeight, ipAdapterEndAt: 0.8,
