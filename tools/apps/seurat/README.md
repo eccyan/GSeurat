@@ -91,7 +91,7 @@ Models are stored in `ComfyUI/custom_nodes/ComfyUI-Frame-Interpolation/ckpts/rif
 |---------|---------|-------------|
 | URL | `http://127.0.0.1:8188` | ComfyUI server address |
 | Steps | 30 | Diffusion sampling steps (IP-Adapter needs 30+ for convergence) |
-| CFG | 7 | Classifier-free guidance scale |
+| CFG | 7 | Classifier-free guidance scale (Pass 1 capped at 5) |
 | Seed | -1 | Random seed (-1 = random each time) |
 | Sampler | `euler` | Sampling algorithm (recommended for Apple Silicon MPS) |
 | Denoise | 0.55 | How much to change from the reference image (0 = no change, 1 = full regeneration) |
@@ -115,7 +115,7 @@ Uses IP-Adapter for character appearance consistency from concept art, combined 
 
 - **IP Weight**: IP-Adapter influence strength (0.1–1.0, default 0.70)
 - **Preset**: IP-Adapter model variant (default "PLUS (high strength)")
-- **End At**: When IP-Adapter stops influencing generation (0.0–1.0, default 1.0). Lower values give the text prompt more control in later denoising steps.
+- **End At**: When IP-Adapter stops influencing generation (0.0–1.0). Pass 1 and concept art generation use 0.8 (hardcoded) to let OpenPose take over in the final denoising steps. Lower values give the text prompt more control.
 - **Pose Model**: OpenPose ControlNet model filename (default `control_v11p_sd15_openpose`)
 - **Pose Strength**: OpenPose conditioning strength (0.1–1.5, default 0.80)
 
@@ -154,11 +154,11 @@ Seurat can derive per-frame pose skeletons for all animations from the detected 
 
 When the derived pose array is shorter than the manifest frame count (e.g., 4 derived poses for 16 frames due to interpolation multiplier), lookups use modulo cycling: `derivedPoses[frameIndex % derivedPoses.length]`.
 
-**Persistence**: Derived poses are stored in `manifest.derived_poses` (a `DerivedPoseMap` keyed by animation name) and restored on character select.
+**Persistence**: Derived poses are stored in `manifest.derived_poses` (a `DerivedPoseMap` keyed by animation name) and restored on character select. Pose overrides (manual edits) are stored in `manifest.pose_overrides` and also restored. Detected skeleton PNGs are saved as `skeleton.png` and `skeleton_{view}.png` in the character directory.
 
 **Pipeline integration**:
-- Click **"Derive Poses from Anchor"** in the Pipeline Controls panel (requires detected skeleton from Concept tab)
-- The button shows status: "16/16 poses derived" or "Anchor skeleton required"
+- Click **"Derive Poses"** in the Pipeline Controls panel (requires detected skeleton from Concept tab)
+- The button shows status: "16/16 poses derived" or "Detect skeleton in Concept tab first"
 - Derived pose cells show a **green border**, overridden poses show **orange**
 - Click any pose cell in the pipeline grid to open the SinglePoseEditor
 
@@ -176,12 +176,14 @@ Generates in-between frames from existing pass 2 (chibi) outputs to create smoot
 
 **Keyframe tracking**: Original frames are marked `keyframe: true`, interpolated frames `keyframe: false`. The grid shows interpolated frames with an "interp" badge. All frames are first-class — Pass 1 and Pass 2 generate for every selected frame (no automatic keyframe-only filtering). Use **Revert to Keyframes** to discard interpolated frames and restore originals.
 
-**Workflow**:
+**Workflow** (optional — all frames are AI-generated first-class by default):
 1. Set the interpolation multiplier before creating a character (placeholders are pre-populated)
-2. Generate Pass 1 + Pass 2 frames — only keyframes are generated
+2. Generate Pass 1 + Pass 2 on keyframes only (select keyframes via checkboxes)
 3. Click **Interpolate** — in-between frames fill the existing placeholder slots
-4. Run Pass 3 (pixelization) on all frames including interpolated ones
+4. Run Pass 3 (pixelization) on all frames
 5. Assemble atlas — spritesheet columns already account for the full frame count
+
+Interpolation is now an optional fallback (collapsed by default in the Pipeline panel) for users who prefer speed over per-frame AI quality.
 
 **Canvas Blend** is fast and requires no external dependencies — use it for quick previews. **RIFE** produces higher quality motion-aware interpolation but requires ComfyUI with the Frame-Interpolation custom node. Seurat auto-detects the available RIFE node variant (`RIFE VFI`, `VFI_RIFE`, or `RIFEInterpolation`) and queries its schema for required inputs.
 
@@ -228,9 +230,13 @@ These settings are persisted per-character in the manifest and restored on load.
 
 Seurat automatically retries generation (up to 3 times with different seeds) when ComfyUI produces blank or black images, which can happen with certain model/prompt combinations.
 
+### Generation Jobs
+
+All generation operations (concept art, skeleton detection, pose derivation, directional concepts, chibi, frame passes) are tracked in a unified job system displayed in the **StatusBar** at the bottom. Click the "Jobs: N" indicator to view a popup panel listing all jobs with status, source, label, seed, and error details.
+
 ## Animation Preview
 
-The main pane shows an animation preview when an animation is selected:
+The bottom pane shows an animation preview when an animation is selected, with a **square preview canvas** (width = height) on the left and the **ClipTimeline** filling the remaining width on the right:
 
 - **With generated frames**: Plays back individual frame images directly (no spritesheet needed)
 - **With assembled spritesheet**: Shows the full spritesheet with grid overlay and frame highlighting
@@ -250,7 +256,7 @@ Each step has a status badge (pending/ready/done) and is disabled until its prer
 
 ### Sprite Generation
 
-6. **Derive animation poses** — click "Derive Poses from Anchor" in the Pipeline panel to create character-proportioned skeletons for all animation frames
+6. **Derive animation poses** — click "Derive Poses" in the Pipeline panel to create character-proportioned skeletons for all animation frames
 7. **Generate sprites** — select an animation, run Pass 1 (pose generation) + Pass 2 (chibi styling) on all frames
 8. **(Optional) Interpolate** — generate in-between frames for smoother animation (blend or RIFE)
 9. **Pixelize** — run Pass 3 on all frames to produce final pixel art

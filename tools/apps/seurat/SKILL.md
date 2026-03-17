@@ -158,10 +158,14 @@ When adding UI components that need test coverage, add `data-testid` attributes:
 - `CharacterFrame.keyframe?: boolean` — `true` for original/artist frames, `false` for interpolated in-betweens. Omitted or `true` means keyframe.
 - `SpritesheetConfig.interp_multiplier?: number` — interpolation multiplier (2/3/4). `createDefaultManifest` pre-populates placeholder frames when > 1. All frames are first-class for generation.
 - `CharacterManifest.derived_poses?: DerivedPoseMap` — persisted derived skeleton poses from anchor, keyed by animation name. Restored on character select.
+- `CharacterManifest.pose_overrides?: PoseOverrideMap` — persisted manual pose edits, keyed by `animName:frameIndex`. Restored on character select.
+- `GenerationJob.source: JobSource` — identifies the operation type (concept, detect_skeleton, derive_poses, concept_pose, chibi, pass1, pass2, pass3, etc.)
+- Pass 1 CFG capped at 5 (`Math.min(cfg, 5)`), default 5. IP-Adapter startAt=0.0, endAt=0.8 (hardcoded, matching concept art generation).
 
 ### Bridge API
 - Client functions in `src/lib/bridge-api.ts`
 - Binary data sent as base64 JSON: `{ data: "<base64>" }` with `Content-Type: application/json`
+- Generic character file route: `GET/POST /api/characters/:id/file/:filename` — for skeleton PNGs and other arbitrary files
 - Bridge reads binary via `readBinaryBody()` which handles both raw and base64 JSON
 
 ### Pipeline Grid Layout
