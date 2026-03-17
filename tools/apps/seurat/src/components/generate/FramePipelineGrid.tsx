@@ -316,9 +316,11 @@ export function FramePipelineGrid({ animName }: Props) {
 
                 const isEditCol = col.key === 'pass1_edited' || col.key === 'pass2_edited';
 
-                // All frames are first-class — show images based on pipeline stage
+                // All frames are first-class — show images based on pipeline stage.
+                // Edit columns only show when the frame was actually edited at that stage
+                // (the edited file only exists if the user saved via PaintEditor).
                 const showImage = isEditCol
-                  ? (stage === col.key || (col.key === 'pass1_edited' && stageIdx > passIdx) || (col.key === 'pass2_edited' && stageIdx > passIdx))
+                  ? stage === col.key
                   : hasImage;
 
                 let imageUrl: string | null = null;
