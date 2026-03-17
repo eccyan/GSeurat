@@ -459,6 +459,7 @@ function InterpCollapsible({ animName, anim, totalFrames, generating, stageCount
   const aiConfig = useSeuratStore((s) => s.aiConfig);
   const setAIConfig = useSeuratStore((s) => s.setAIConfig);
   const interpolateAnimation = useSeuratStore((s) => s.interpolateAnimation);
+  const interpolateOddFrames = useSeuratStore((s) => s.interpolateOddFrames);
   const revertInterpolation = useSeuratStore((s) => s.revertInterpolation);
   const interpProgress = useSeuratStore((s) => s.interpProgress);
   const [open, setOpen] = useState(false);
@@ -513,6 +514,12 @@ function InterpCollapsible({ animName, anim, totalFrames, generating, stageCount
               <button onClick={() => interpolateAnimation(animName, startFrame, endFrame)} disabled={!canInterp || !!generating}
                 style={{ ...styles.passBtn, borderColor: '#b080f0', color: '#c8a8f8', opacity: (!canInterp || generating) ? 0.5 : 1, flex: 1 }}>
                 Fill {inBetween} frames (f{startFrame}→f{endFrame})
+              </button>
+            </div>
+            <div style={{ display: 'flex', gap: 4 }}>
+              <button onClick={() => interpolateOddFrames(animName)} disabled={!!generating}
+                style={{ ...styles.passBtn, borderColor: '#b080f0', color: '#c8a8f8', opacity: generating ? 0.5 : 1, flex: 1 }}>
+                Fill Odd Frames (f1, f3, f5...)
               </button>
             </div>
             {interpProgress && <div style={{ fontFamily: 'monospace', fontSize: 8, color: '#b080f0' }}>{interpProgress}</div>}

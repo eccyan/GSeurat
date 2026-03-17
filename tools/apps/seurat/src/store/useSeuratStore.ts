@@ -231,6 +231,7 @@ export interface SeuratState {
   // Interpolation
   interpProgress: string | null;
   interpolateAnimation: (animName: string, startFrame?: number, endFrame?: number) => Promise<void>;
+  interpolateOddFrames: (animName: string) => Promise<void>;
   revertInterpolation: (animName: string) => Promise<void>;
 
   // Project
@@ -1870,6 +1871,98 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
     } catch (err) {
       console.error('[Seurat] Interpolation error:', err);
       set({ interpProgress: `Error: ${err instanceof Error ? err.message : String(err)}` });
+    }
+  },
+
+  interpolateOddFrames: async (animName) => {
+    const { manifest, aiConfig } = get();
+    if (!manifest) return;
+
+    const anim = manifest.animations.find((a) => a.name === animName);
+    if (!anim) return;
+
+    const method = aiConfig.interpMethod;
+    const characterId = manifest.character_id;
+
+    // Find odd-indexed frames that have even neighbors on both sides
+    const oddFrames = anim.frames.filter((f) => f.index % 2 === 1);
+    if (oddFrames.length === 0) {
+      set({ interpProgress: 'No odd frames to interpolate.' });
+      return;
+    }
+
+    set({ interpProgress: `Interpolating ${oddFrames.length} odd frames (${method})...` });
+    const jobId = createJob(get, 'interpolation', `Interpolate ${oddFrames.length} odd frames`);
+
+    try {
+      // Load best available image for a frame
+      async function loadBest(fi: number): Promise<{ bytes: Uint8Array; pass: string }> {
+        for (const pass of ['pass2_edited', 'pass2', 'pass1_edited', 'pass1'] as const) {
+          try {
+            const bytes = await api.fetchPassImageBytes(characterId, animName, fi, pass);
+            return { bytes, pass };
+          } catch { /* next */ }
+        }
+        throw new Error(`No pass image for f${fi}`);
+      }
+
+      const updated = structuredClone(manifest);
+      const updatedAnim = updated.animations.find((a) => a.name === animName)!;
+      let filled = 0;
+
+      for (const oddFrame of oddFrames) {
+        const prevIdx = oddFrame.index - 1;
+        const nextIdx = oddFrame.index + 1;
+
+        // Both neighbors must exist
+        const prevExists = anim.frames.some((f) => f.index === prevIdx);
+        const nextExists = anim.frames.some((f) => f.index === nextIdx);
+        if (!prevExists || !nextExists) continue;
+
+        set({ interpProgress: `Interpolating f${prevIdx}→f${oddFrame.index}→f${nextIdx} (${filled + 1}/${oddFrames.length})...` });
+
+        try {
+          const prev = await loadBest(prevIdx);
+          const next = await loadBest(nextIdx);
+          const savePass = (prev.pass.startsWith('pass2') || next.pass.startsWith('pass2')) ? 'pass2' : 'pass1';
+
+          let intermediates: Uint8Array[];
+          if (method === 'rife') {
+            const comfy = new ComfyUIClient(aiConfig.comfyUrl);
+            intermediates = await comfy.interpolateFramesRIFE(prev.bytes, next.bytes, {
+              model: aiConfig.rifeModel,
+              multiplier: 2,
+            });
+            intermediates = intermediates.slice(0, 1);
+          } else {
+            const { blendInterpolate } = await import('../lib/frame-interpolate.js');
+            intermediates = await blendInterpolate(prev.bytes, next.bytes, 1);
+          }
+
+          if (intermediates.length > 0) {
+            await api.savePassImage(characterId, animName, oddFrame.index, savePass, intermediates[0]);
+            const frame = updatedAnim.frames.find((f) => f.index === oddFrame.index);
+            if (frame) {
+              frame.status = 'generated';
+              frame.source = 'ai';
+              frame.pipeline_stage = savePass as any;
+            }
+            filled++;
+          }
+        } catch (err) {
+          console.warn(`[Seurat] Failed to interpolate f${oddFrame.index}:`, err);
+        }
+      }
+
+      set({ manifest: updated, frameRevision: get().frameRevision + 1 });
+      await api.saveManifest(updated);
+      set({ interpProgress: `Done: filled ${filled} odd frames.` });
+      get().updateGenerationJob(jobId, { status: 'done' });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('[Seurat] Odd frame interpolation error:', err);
+      set({ interpProgress: `Error: ${msg}` });
+      get().updateGenerationJob(jobId, { status: 'error', error: msg });
     }
   },
 
