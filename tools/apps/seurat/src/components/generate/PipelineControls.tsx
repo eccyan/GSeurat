@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import type { ViewDirection } from '@vulkan-game-tools/asset-types';
 import { VIEW_DIRECTIONS, DIRECTION_TO_VIEW } from '@vulkan-game-tools/asset-types';
 import { useSeuratStore } from '../../store/useSeuratStore.js';
@@ -462,6 +462,13 @@ function InterpCollapsible({ animName, anim, totalFrames, generating, stageCount
   const revertInterpolation = useSeuratStore((s) => s.revertInterpolation);
   const interpProgress = useSeuratStore((s) => s.interpProgress);
   const [open, setOpen] = useState(false);
+  const [startFrame, setStartFrame] = useState(0);
+  const [endFrame, setEndFrame] = useState(totalFrames - 1);
+
+  // Update end frame when totalFrames changes
+  useEffect(() => {
+    setEndFrame(totalFrames - 1);
+  }, [totalFrames]);
 
   const hasPass2 = stageCounts.pass2 > 0;
   const hasPlaceholders = anim.frames.some((f) => f.keyframe === false);
@@ -495,16 +502,23 @@ function InterpCollapsible({ animName, anim, totalFrames, generating, stageCount
               }}>{m}x</button>
             ))}
           </Row>
-          <div style={styles.statusText}>
-            {hasPlaceholders
-              ? `${anim.frames.filter((f) => f.keyframe !== false).length} keyframes + ${filledSlots.length}/${interpSlots.length} interp filled = ${totalFrames} total`
-              : `${totalFrames} frames → ${totalFrames + (totalFrames - (anim.loop ? 0 : 1)) * (aiConfig.interpMultiplier - 1)} frames`
-            }
-          </div>
+          <Row>
+            <label style={styles.label}>Start</label>
+            <input type="number" min={0} max={totalFrames - 1} value={startFrame}
+              onChange={(e) => setStartFrame(Math.max(0, Math.min(Number(e.target.value), endFrame)))}
+              style={{ ...styles.select, width: 50, textAlign: 'center' }} />
+            <label style={styles.label}>End</label>
+            <input type="number" min={0} max={totalFrames - 1} value={endFrame}
+              onChange={(e) => setEndFrame(Math.max(startFrame, Math.min(Number(e.target.value), totalFrames - 1)))}
+              style={{ ...styles.select, width: 50, textAlign: 'center' }} />
+            <span style={{ fontFamily: 'monospace', fontSize: 8, color: '#666' }}>
+              {endFrame - startFrame + 1} frames
+            </span>
+          </Row>
           <div style={{ display: 'flex', gap: 4 }}>
-            <button onClick={() => interpolateAnimation(animName)} disabled={!hasPass2 || !!generating}
-              style={{ ...styles.passBtn, borderColor: '#b080f0', color: '#c8a8f8', opacity: (!hasPass2 || generating) ? 0.5 : 1, flex: 1 }}>
-              Interpolate
+            <button onClick={() => interpolateAnimation(animName, startFrame, endFrame)} disabled={!hasPass2 || !!generating || endFrame <= startFrame}
+              style={{ ...styles.passBtn, borderColor: '#b080f0', color: '#c8a8f8', opacity: (!hasPass2 || generating || endFrame <= startFrame) ? 0.5 : 1, flex: 1 }}>
+              Interpolate (f{startFrame}→f{endFrame})
             </button>
             {hasInterpolated && (
               <button onClick={() => revertInterpolation(animName)} disabled={!!generating}

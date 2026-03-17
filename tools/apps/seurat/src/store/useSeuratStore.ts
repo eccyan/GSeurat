@@ -230,7 +230,7 @@ export interface SeuratState {
 
   // Interpolation
   interpProgress: string | null;
-  interpolateAnimation: (animName: string) => Promise<void>;
+  interpolateAnimation: (animName: string, startFrame?: number, endFrame?: number) => Promise<void>;
   revertInterpolation: (animName: string) => Promise<void>;
 
   // Project
@@ -1699,7 +1699,7 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
   // Interpolation
   interpProgress: null,
 
-  interpolateAnimation: async (animName) => {
+  interpolateAnimation: async (animName, startFrame, endFrame) => {
     const { manifest, aiConfig } = get();
     if (!manifest) return;
 
@@ -1710,32 +1710,49 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
     const multiplier = aiConfig.interpMultiplier;
     const characterId = manifest.character_id;
 
-    // Separate keyframes from interpolation placeholders
-    const keyframes = anim.frames.filter((f) => f.keyframe !== false);
+    // If start/end specified, use frame range mode
+    // Otherwise, fall back to legacy keyframe-based interpolation
+    let keyframes: typeof anim.frames;
+    if (startFrame !== undefined && endFrame !== undefined) {
+      // Range mode: treat frames in [start..end] as the source keyframes
+      keyframes = anim.frames.filter((f) => f.index >= startFrame && f.index <= endFrame);
+    } else {
+      // Legacy: separate keyframes from interpolation placeholders
+      keyframes = anim.frames.filter((f) => f.keyframe !== false);
+    }
     const keyframeCount = keyframes.length;
 
-    set({ interpProgress: `Interpolating ${keyframeCount} keyframes (${method} ${multiplier}x)...` });
+    if (keyframeCount < 2) {
+      set({ interpProgress: 'Need at least 2 frames to interpolate.' });
+      return;
+    }
+
+    set({ interpProgress: `Interpolating ${keyframeCount} frames (${method} ${multiplier}x)...` });
 
     try {
-      // Load pass2/pass2_edited images for keyframes only
+      // Load pass images for source frames (prefer pass2_edited > pass2 > pass1)
       const keyframeBytes: Uint8Array[] = [];
       for (const frame of keyframes) {
         let bytes: Uint8Array;
         try {
           bytes = await api.fetchPassImageBytes(characterId, animName, frame.index, 'pass2_edited');
         } catch {
-          bytes = await api.fetchPassImageBytes(characterId, animName, frame.index, 'pass2');
+          try {
+            bytes = await api.fetchPassImageBytes(characterId, animName, frame.index, 'pass2');
+          } catch {
+            bytes = await api.fetchPassImageBytes(characterId, animName, frame.index, 'pass1');
+          }
         }
         keyframeBytes.push(bytes);
       }
 
-      // Generate interpolated frames between each adjacent keyframe pair
-      // For looping anims, also interpolate last→first
+      // Generate interpolated frames between each adjacent pair
+      // For looping anims (and no explicit range), also interpolate last→first
       const pairs: [number, number][] = [];
       for (let i = 0; i < keyframeCount - 1; i++) {
         pairs.push([i, i + 1]);
       }
-      if (anim.loop && keyframeCount > 1) {
+      if (anim.loop && keyframeCount > 1 && startFrame === undefined) {
         pairs.push([keyframeCount - 1, 0]);
       }
 
