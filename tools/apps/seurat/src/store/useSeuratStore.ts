@@ -1916,14 +1916,18 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
 
       for (const oddFrame of oddFrames) {
         const prevIdx = oddFrame.index - 1;
-        const nextIdx = oddFrame.index + 1;
+        let nextIdx = oddFrame.index + 1;
 
-        // Both neighbors must exist
+        // Both neighbors must exist; for looping anims, wrap to f0
         const prevExists = anim.frames.some((f) => f.index === prevIdx);
-        const nextExists = anim.frames.some((f) => f.index === nextIdx);
+        let nextExists = anim.frames.some((f) => f.index === nextIdx);
+        if (!nextExists && anim.loop) {
+          nextIdx = 0; // wrap to first frame
+          nextExists = anim.frames.some((f) => f.index === 0);
+        }
         if (!prevExists || !nextExists) continue;
 
-        set({ interpProgress: `Interpolating f${prevIdx}→f${oddFrame.index}→f${nextIdx} (${filled + 1}/${oddFrames.length})...` });
+        set({ interpProgress: `Interpolating f${prevIdx}→f${oddFrame.index}→f${nextIdx}${nextIdx === 0 ? ' (loop)' : ''} (${filled + 1}/${oddFrames.length})...` });
 
         try {
           const prev = await loadBest(prevIdx);
