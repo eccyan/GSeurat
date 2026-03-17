@@ -1707,56 +1707,102 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
     if (!anim) return;
 
     const method = aiConfig.interpMethod;
-    const multiplier = aiConfig.interpMultiplier;
     const characterId = manifest.character_id;
 
-    // If start/end specified, use frame range mode
-    // Otherwise, fall back to legacy keyframe-based interpolation
-    let keyframes: typeof anim.frames;
+    // Range mode: interpolate between start and end, filling in-between frames
     if (startFrame !== undefined && endFrame !== undefined) {
-      // Range mode: treat frames in [start..end] as the source keyframes
-      keyframes = anim.frames.filter((f) => f.index >= startFrame && f.index <= endFrame);
-    } else {
-      // Legacy: separate keyframes from interpolation placeholders
-      keyframes = anim.frames.filter((f) => f.keyframe !== false);
-    }
-    const keyframeCount = keyframes.length;
+      const inBetweenCount = endFrame - startFrame - 1;
+      if (inBetweenCount < 1) {
+        set({ interpProgress: 'Need at least 2 frames apart to interpolate.' });
+        return;
+      }
 
-    if (keyframeCount < 2) {
-      set({ interpProgress: 'Need at least 2 frames to interpolate.' });
+      set({ interpProgress: `Interpolating f${startFrame}→f${endFrame} (${inBetweenCount} in-between, ${method})...` });
+      const jobId = createJob(get, 'interpolation', `Interpolate f${startFrame}→f${endFrame}`);
+
+      try {
+        // Load start and end frame images (prefer edited > pass2 > pass1)
+        async function loadBest(fi: number): Promise<Uint8Array> {
+          for (const pass of ['pass2_edited', 'pass2', 'pass1_edited', 'pass1'] as const) {
+            try { return await api.fetchPassImageBytes(characterId, animName, fi, pass); } catch { /* next */ }
+          }
+          throw new Error(`No pass image for f${fi}`);
+        }
+
+        const startBytes = await loadBest(startFrame);
+        const endBytes = await loadBest(endFrame);
+
+        // Generate intermediates
+        let intermediates: Uint8Array[];
+        if (method === 'rife') {
+          const comfy = new ComfyUIClient(aiConfig.comfyUrl);
+          intermediates = await comfy.interpolateFramesRIFE(startBytes, endBytes, {
+            model: aiConfig.rifeModel,
+            multiplier: inBetweenCount + 1, // RIFE multiplier includes endpoints
+          });
+          // RIFE returns all frames including endpoints; take only intermediates
+          intermediates = intermediates.slice(0, inBetweenCount);
+        } else {
+          const { blendInterpolate } = await import('../lib/frame-interpolate.js');
+          intermediates = await blendInterpolate(startBytes, endBytes, inBetweenCount);
+        }
+
+        // Save interpolated frames to the in-between indices
+        const updated = structuredClone(manifest);
+        const updatedAnim = updated.animations.find((a) => a.name === animName)!;
+
+        for (let i = 0; i < intermediates.length; i++) {
+          const targetIndex = startFrame + 1 + i;
+          const frame = updatedAnim.frames.find((f) => f.index === targetIndex);
+          if (frame) {
+            frame.status = 'generated';
+            frame.source = 'ai';
+            frame.pipeline_stage = 'pass1';
+            await api.savePassImage(characterId, animName, targetIndex, 'pass1', intermediates[i]);
+            set({ interpProgress: `Saved f${targetIndex} (${i + 1}/${intermediates.length})` });
+          }
+        }
+
+        set({ manifest: updated, frameRevision: get().frameRevision + 1 });
+        await api.saveManifest(updated);
+        set({ interpProgress: `Done: filled ${intermediates.length} frames between f${startFrame} and f${endFrame}` });
+        get().updateGenerationJob(jobId, { status: 'done' });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error('[Seurat] Interpolation error:', err);
+        set({ interpProgress: `Error: ${msg}` });
+        get().updateGenerationJob(jobId, { status: 'error', error: msg });
+      }
       return;
     }
 
-    set({ interpProgress: `Interpolating ${keyframeCount} frames (${method} ${multiplier}x)...` });
+    // Legacy keyframe-based interpolation
+    const multiplier = aiConfig.interpMultiplier;
+    const keyframes = anim.frames.filter((f) => f.keyframe !== false);
+    const keyframeCount = keyframes.length;
+
+    set({ interpProgress: `Interpolating ${keyframeCount} keyframes (${method} ${multiplier}x)...` });
 
     try {
-      // Load pass images for source frames (prefer pass2_edited > pass2 > pass1)
       const keyframeBytes: Uint8Array[] = [];
       for (const frame of keyframes) {
         let bytes: Uint8Array;
         try {
           bytes = await api.fetchPassImageBytes(characterId, animName, frame.index, 'pass2_edited');
         } catch {
-          try {
-            bytes = await api.fetchPassImageBytes(characterId, animName, frame.index, 'pass2');
-          } catch {
-            bytes = await api.fetchPassImageBytes(characterId, animName, frame.index, 'pass1');
-          }
+          bytes = await api.fetchPassImageBytes(characterId, animName, frame.index, 'pass2');
         }
         keyframeBytes.push(bytes);
       }
 
-      // Generate interpolated frames between each adjacent pair
-      // For looping anims (and no explicit range), also interpolate last→first
       const pairs: [number, number][] = [];
       for (let i = 0; i < keyframeCount - 1; i++) {
         pairs.push([i, i + 1]);
       }
-      if (anim.loop && keyframeCount > 1 && startFrame === undefined) {
+      if (anim.loop && keyframeCount > 1) {
         pairs.push([keyframeCount - 1, 0]);
       }
 
-      // Map: keyframeArrayIndex -> interpolated frame bytes
       const interpResults: Map<number, Uint8Array[]> = new Map();
 
       for (const [idxA, idxB] of pairs) {
@@ -1767,7 +1813,7 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
           const comfy = new ComfyUIClient(aiConfig.comfyUrl);
           intermediates = await comfy.interpolateFramesRIFE(keyframeBytes[idxA], keyframeBytes[idxB], {
             model: aiConfig.rifeModel,
-            multiplier: multiplier + 1, // RIFE multiplier includes endpoints
+            multiplier: multiplier + 1,
           });
           intermediates = intermediates.slice(0, multiplier - 1);
         } else {
@@ -1777,8 +1823,6 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
         interpResults.set(idxA, intermediates);
       }
 
-      // Fill in placeholder frames. Walk through frames — each keyframe is
-      // followed by (multiplier-1) interpolation placeholder slots.
       const updated = structuredClone(manifest);
       const updatedAnim = updated.animations.find((a) => a.name === animName)!;
 

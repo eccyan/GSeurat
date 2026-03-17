@@ -482,54 +482,43 @@ function InterpCollapsible({ animName, anim, totalFrames, generating, stageCount
         <span style={{ fontSize: 10, color: '#666' }}>{open ? '▾' : '▸'}</span>
         Interpolation (optional)
       </button>
-      {open && (
-        <>
-          <Row>
-            <label style={styles.label}>Method</label>
-            <select value={aiConfig.interpMethod} onChange={(e) => setAIConfig({ interpMethod: e.target.value as 'blend' | 'rife' })} style={{ ...styles.select, flex: 1 }}>
-              <option value="blend">Canvas Blend</option>
-              <option value="rife">RIFE (ComfyUI)</option>
-            </select>
-          </Row>
-          <Row>
-            <label style={styles.label}>Multiply</label>
-            {[2, 3, 4].map((m) => (
-              <button key={m} onClick={() => setAIConfig({ interpMultiplier: m })} style={{
-                ...styles.clearBtn,
-                background: aiConfig.interpMultiplier === m ? '#2a3a5a' : '#2a2a3a',
-                color: aiConfig.interpMultiplier === m ? '#90b8f8' : '#888',
-                border: aiConfig.interpMultiplier === m ? '1px solid #4a8af8' : '1px solid #444',
-              }}>{m}x</button>
-            ))}
-          </Row>
-          <Row>
-            <label style={styles.label}>Start</label>
-            <input type="number" min={0} max={totalFrames - 1} value={startFrame}
-              onChange={(e) => setStartFrame(Math.max(0, Math.min(Number(e.target.value), endFrame)))}
-              style={{ ...styles.select, width: 50, textAlign: 'center' }} />
-            <label style={styles.label}>End</label>
-            <input type="number" min={0} max={totalFrames - 1} value={endFrame}
-              onChange={(e) => setEndFrame(Math.max(startFrame, Math.min(Number(e.target.value), totalFrames - 1)))}
-              style={{ ...styles.select, width: 50, textAlign: 'center' }} />
-            <span style={{ fontFamily: 'monospace', fontSize: 8, color: '#666' }}>
-              {endFrame - startFrame + 1} frames
-            </span>
-          </Row>
-          <div style={{ display: 'flex', gap: 4 }}>
-            <button onClick={() => interpolateAnimation(animName, startFrame, endFrame)} disabled={!hasPass2 || !!generating || endFrame <= startFrame}
-              style={{ ...styles.passBtn, borderColor: '#b080f0', color: '#c8a8f8', opacity: (!hasPass2 || generating || endFrame <= startFrame) ? 0.5 : 1, flex: 1 }}>
-              Interpolate (f{startFrame}→f{endFrame})
-            </button>
-            {hasInterpolated && (
-              <button onClick={() => revertInterpolation(animName)} disabled={!!generating}
-                style={{ ...styles.passBtn, borderColor: '#886', color: '#aa8', opacity: generating ? 0.5 : 1 }}>
-                Revert
+      {open && (() => {
+        const inBetween = Math.max(0, endFrame - startFrame - 1);
+        const canInterp = endFrame > startFrame + 1;
+        return (
+          <>
+            <Row>
+              <label style={styles.label}>Method</label>
+              <select value={aiConfig.interpMethod} onChange={(e) => setAIConfig({ interpMethod: e.target.value as 'blend' | 'rife' })} style={{ ...styles.select, flex: 1 }}>
+                <option value="blend">Canvas Blend</option>
+                <option value="rife">RIFE (ComfyUI)</option>
+              </select>
+            </Row>
+            <Row>
+              <label style={styles.label}>Start</label>
+              <input type="number" min={0} max={totalFrames - 1} value={startFrame}
+                onChange={(e) => setStartFrame(Math.max(0, Math.min(Number(e.target.value), totalFrames - 1)))}
+                style={{ ...styles.select, width: 50, textAlign: 'center' as const }} />
+              <label style={styles.label}>End</label>
+              <input type="number" min={0} max={totalFrames - 1} value={endFrame}
+                onChange={(e) => setEndFrame(Math.max(0, Math.min(Number(e.target.value), totalFrames - 1)))}
+                style={{ ...styles.select, width: 50, textAlign: 'center' as const }} />
+            </Row>
+            <div style={styles.statusText}>
+              {canInterp
+                ? `f${startFrame} → ${inBetween} in-between → f${endFrame}`
+                : 'Need at least 2 frames apart'}
+            </div>
+            <div style={{ display: 'flex', gap: 4 }}>
+              <button onClick={() => interpolateAnimation(animName, startFrame, endFrame)} disabled={!canInterp || !!generating}
+                style={{ ...styles.passBtn, borderColor: '#b080f0', color: '#c8a8f8', opacity: (!canInterp || generating) ? 0.5 : 1, flex: 1 }}>
+                Fill {inBetween} frames (f{startFrame}→f{endFrame})
               </button>
-            )}
-          </div>
-          {interpProgress && <div style={{ fontFamily: 'monospace', fontSize: 8, color: '#b080f0' }}>{interpProgress}</div>}
-        </>
-      )}
+            </div>
+            {interpProgress && <div style={{ fontFamily: 'monospace', fontSize: 8, color: '#b080f0' }}>{interpProgress}</div>}
+          </>
+        );
+      })()}
     </div>
   );
 }
