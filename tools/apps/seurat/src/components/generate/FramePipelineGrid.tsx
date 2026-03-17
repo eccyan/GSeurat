@@ -336,10 +336,10 @@ export function FramePipelineGrid({ animName }: Props) {
                 const isEditCol = col.key === 'pass1_edited' || col.key === 'pass2_edited';
 
                 // All frames are first-class — show images based on pipeline stage.
-                // Edit columns only show when the frame was actually edited at that stage
-                // (the edited file only exists if the user saved via PaintEditor).
+                // Edit columns: show if stage is at or past that point (file may or
+                // may not exist — onError hides broken images gracefully).
                 const showImage = isEditCol
-                  ? stage === col.key
+                  ? stageIdx >= passIdx
                   : hasImage;
 
                 let imageUrl: string | null = null;
@@ -368,6 +368,7 @@ export function FramePipelineGrid({ animName }: Props) {
                         alt={`f${frame.index} ${col.key}`}
                         style={styles.cellImg}
                         loading="lazy"
+                        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
                       />
                     ) : (
                       <span style={styles.cellEmpty}>{isInterpolated ? '~' : '--'}</span>
