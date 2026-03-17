@@ -1574,7 +1574,7 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
               samplerName: aiConfig.sampler, checkpoint: aiConfig.checkpoint, vae: aiConfig.vae || undefined,
               negativePrompt: negative, denoise: 1.0, loras: [],
               ipAdapterWeight: aiConfig.ipAdapterWeight, ipAdapterPreset: aiConfig.ipAdapterPreset,
-              ipAdapterStartAt: aiConfig.ipAdapterStartAt, ipAdapterEndAt: aiConfig.ipAdapterEndAt,
+              ipAdapterStartAt: 0.0, ipAdapterEndAt: 0.8,
               openPoseModel: aiConfig.openPoseModel, openPoseStrength: aiConfig.openPoseStrength,
               removeBackground: aiConfig.removeBackground, remBgNodeType: aiConfig.remBgNodeType,
             });
@@ -1583,7 +1583,7 @@ export const useSeuratStore = create<SeuratState>((set, get) => ({
               width: 512, height: 512, steps: aiConfig.steps, seed: rawSeed, cfgScale: aiConfig.pass1Cfg,
               samplerName: aiConfig.sampler, checkpoint: aiConfig.checkpoint, vae: aiConfig.vae || undefined,
               negativePrompt: negative, loras: [],
-              ipAdapterWeight: aiConfig.ipAdapterWeight, ipAdapterEndAt: aiConfig.ipAdapterEndAt,
+              ipAdapterWeight: aiConfig.ipAdapterWeight, ipAdapterEndAt: 0.8,
               removeBackground: aiConfig.removeBackground, remBgNodeType: aiConfig.remBgNodeType,
             });
           }
