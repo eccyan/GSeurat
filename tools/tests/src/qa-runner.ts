@@ -21,6 +21,8 @@ import { runSeuratScenarios } from './seurat.scenario.js';
 import { runParticleDesignerScenarios } from './particle-designer.scenario.js';
 import { runAudioComposerScenarios } from './audio-composer.scenario.js';
 import { runSfxDesignerScenarios } from './sfx-designer.scenario.js';
+import { runMapPainterTests } from './map-painter.test.js';
+import { runMapPainterScenarios } from './map-painter.scenario.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -125,6 +127,7 @@ const TOOLS: ToolDef[] = [
   { name: 'particle-designer', devPort: 5176, testPort: 6176, runUnit: runParticleDesignerTests, runScenarios: runParticleDesignerScenarios },
   { name: 'audio-composer', devPort: 5177, testPort: 6177, runUnit: runAudioComposerTests, runScenarios: runAudioComposerScenarios },
   { name: 'sfx-designer', devPort: 5178, testPort: 6178, runUnit: runSfxDesignerTests, runScenarios: runSfxDesignerScenarios },
+  { name: 'map-painter', devPort: 5180, testPort: 6180, runUnit: runMapPainterTests, runScenarios: runMapPainterScenarios },
 ];
 
 // ---------------------------------------------------------------------------
