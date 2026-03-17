@@ -79,7 +79,7 @@ export const DEFAULT_AI_CONFIG: AIConfig = {
   consistentSeed: true,
   chibiWeight: 0.5,
   chibiDenoise: 0.7,
-  pass1Cfg: 7,
+  pass1Cfg: 5,
   pass2Cfg: 5,
   openPoseModel: 'control_v11p_sd15_openpose',
   openPoseStrength: 1.0,
