@@ -433,7 +433,14 @@ export function PipelineControls({ animName }: Props) {
             disabled={!anim || anim.frames.every((f) => f.status === 'pending')}
             style={{ ...styles.passBtn, borderColor: '#4ac8c8', color: '#90d8d8', opacity: (!anim || anim.frames.every((f) => f.status === 'pending')) ? 0.5 : 1, flex: 1 }}
           >
-            Export APNG
+            APNG
+          </button>
+          <button
+            onClick={() => exportAnimationGIF(manifest!.character_id, animName, anim)}
+            disabled={!anim || anim.frames.every((f) => f.status === 'pending')}
+            style={{ ...styles.passBtn, borderColor: '#4ac8c8', color: '#90d8d8', opacity: (!anim || anim.frames.every((f) => f.status === 'pending')) ? 0.5 : 1, flex: 1 }}
+          >
+            GIF
           </button>
           <button
             onClick={() => exportAnimationFrames(manifest!.character_id, animName, anim)}
@@ -546,6 +553,199 @@ async function exportAnimationStrip(
   canvas.toBlob((blob) => {
     if (blob) downloadBlob(blob, `${animName}_strip.png`);
   }, 'image/png');
+}
+
+/** Export animation as an animated GIF */
+async function exportAnimationGIF(
+  characterId: string,
+  animName: string,
+  anim: { frames: Array<{ index: number; status: string; duration: number }> } | undefined,
+) {
+  if (!anim) return;
+
+  const frameData: { canvas: HTMLCanvasElement; delayCs: number }[] = [];
+  for (const frame of anim.frames) {
+    const img = await loadBestImage(characterId, animName, frame.index);
+    if (!img) continue;
+    const canvas = document.createElement('canvas');
+    canvas.width = img.naturalWidth;
+    canvas.height = img.naturalHeight;
+    const ctx = canvas.getContext('2d')!;
+    // White background for GIF (no transparency support in animation)
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(img, 0, 0);
+    frameData.push({ canvas, delayCs: Math.max(1, Math.round(frame.duration * 100)) });
+  }
+
+  if (frameData.length === 0) return;
+  const blob = encodeGIF(frameData);
+  downloadBlob(blob, `${animName}.gif`);
+}
+
+/** Minimal GIF89a encoder with median-cut color quantization */
+function encodeGIF(frames: { canvas: HTMLCanvasElement; delayCs: number }[]): Blob {
+  const w = frames[0].canvas.width;
+  const h = frames[0].canvas.height;
+  const parts: number[] = [];
+
+  // Helper to write bytes
+  const w8 = (v: number) => parts.push(v & 0xff);
+  const w16 = (v: number) => { parts.push(v & 0xff); parts.push((v >> 8) & 0xff); };
+  const wStr = (s: string) => { for (let i = 0; i < s.length; i++) parts.push(s.charCodeAt(i)); };
+
+  // Header
+  wStr('GIF89a');
+
+  // Logical Screen Descriptor (no global color table — each frame has local)
+  w16(w); w16(h);
+  w8(0x00); // no GCT
+  w8(0);    // bg color
+  w8(0);    // pixel aspect ratio
+
+  // Netscape looping extension
+  w8(0x21); w8(0xff); w8(11);
+  wStr('NETSCAPE2.0');
+  w8(3); w8(1); w16(0); // loop forever
+  w8(0);
+
+  for (const { canvas, delayCs } of frames) {
+    const ctx = canvas.getContext('2d')!;
+    const imgData = ctx.getImageData(0, 0, w, h);
+    const pixels = imgData.data;
+
+    // Quantize to 256 colors using simple popularity
+    const colorCount: Map<number, number> = new Map();
+    for (let i = 0; i < pixels.length; i += 4) {
+      // Reduce to 5-bit per channel for grouping
+      const r = pixels[i] >> 3;
+      const g = pixels[i + 1] >> 3;
+      const b = pixels[i + 2] >> 3;
+      const key = (r << 10) | (g << 5) | b;
+      colorCount.set(key, (colorCount.get(key) ?? 0) + 1);
+    }
+
+    // Take top 256 colors
+    const sorted = [...colorCount.entries()].sort((a, b) => b[1] - a[1]).slice(0, 256);
+    const palette: number[] = [];
+    const paletteMap = new Map<number, number>();
+    for (let i = 0; i < sorted.length; i++) {
+      const [key] = sorted[i];
+      const r = ((key >> 10) & 0x1f) << 3;
+      const g = ((key >> 5) & 0x1f) << 3;
+      const b = (key & 0x1f) << 3;
+      palette.push(r, g, b);
+      paletteMap.set(key, i);
+    }
+    // Pad palette to 256
+    while (palette.length < 768) palette.push(0);
+
+    // Map pixels to palette indices
+    const indices = new Uint8Array(w * h);
+    for (let i = 0; i < w * h; i++) {
+      const r = pixels[i * 4] >> 3;
+      const g = pixels[i * 4 + 1] >> 3;
+      const b = pixels[i * 4 + 2] >> 3;
+      const key = (r << 10) | (g << 5) | b;
+      indices[i] = paletteMap.get(key) ?? 0;
+    }
+
+    // Graphic Control Extension
+    w8(0x21); w8(0xf9); w8(4);
+    w8(0x00); // disposal: none, no transparency
+    w16(delayCs);
+    w8(0);    // transparent color (unused)
+    w8(0);
+
+    // Image Descriptor with local color table
+    w8(0x2c);
+    w16(0); w16(0); // position
+    w16(w); w16(h);
+    w8(0x87); // local color table, 256 colors (2^(7+1))
+
+    // Local Color Table
+    for (let i = 0; i < 768; i++) w8(palette[i]);
+
+    // LZW compressed image data
+    const minCodeSize = 8;
+    w8(minCodeSize);
+    const lzwData = lzwEncode(indices, minCodeSize);
+    // Write in sub-blocks (max 255 bytes each)
+    let pos = 0;
+    while (pos < lzwData.length) {
+      const blockSize = Math.min(255, lzwData.length - pos);
+      w8(blockSize);
+      for (let i = 0; i < blockSize; i++) parts.push(lzwData[pos++]);
+    }
+    w8(0); // block terminator
+  }
+
+  // Trailer
+  w8(0x3b);
+
+  return new Blob([new Uint8Array(parts)], { type: 'image/gif' });
+}
+
+/** LZW encoder for GIF */
+function lzwEncode(indices: Uint8Array, minCodeSize: number): Uint8Array {
+  const clearCode = 1 << minCodeSize;
+  const eoiCode = clearCode + 1;
+  let codeSize = minCodeSize + 1;
+  let nextCode = eoiCode + 1;
+  const maxCode = 4096;
+
+  const output: number[] = [];
+  let bits = 0;
+  let bitCount = 0;
+
+  function emit(code: number) {
+    bits |= code << bitCount;
+    bitCount += codeSize;
+    while (bitCount >= 8) {
+      output.push(bits & 0xff);
+      bits >>= 8;
+      bitCount -= 8;
+    }
+  }
+
+  // Initialize code table
+  let table = new Map<string, number>();
+  function resetTable() {
+    table = new Map();
+    for (let i = 0; i < clearCode; i++) table.set(String(i), i);
+    nextCode = eoiCode + 1;
+    codeSize = minCodeSize + 1;
+  }
+
+  emit(clearCode);
+  resetTable();
+
+  let current = String(indices[0]);
+
+  for (let i = 1; i < indices.length; i++) {
+    const next = current + ',' + indices[i];
+    if (table.has(next)) {
+      current = next;
+    } else {
+      emit(table.get(current)!);
+      if (nextCode < maxCode) {
+        table.set(next, nextCode++);
+        if (nextCode > (1 << codeSize) && codeSize < 12) codeSize++;
+      } else {
+        emit(clearCode);
+        resetTable();
+      }
+      current = String(indices[i]);
+    }
+  }
+
+  emit(table.get(current)!);
+  emit(eoiCode);
+
+  // Flush remaining bits
+  if (bitCount > 0) output.push(bits & 0xff);
+
+  return new Uint8Array(output);
 }
 
 /** Export animation as an animated PNG (APNG) */
