@@ -1,0 +1,157 @@
+#version 450
+
+layout(local_size_x = 256) in;
+
+// Input Gaussian data
+struct GpuGaussian {
+    vec4 pos_opacity;    // xyz = position, w = opacity
+    vec4 scale_pad;      // xyz = scale, w = unused
+    vec4 rot;            // xyzw = quaternion (x,y,z,w)
+    vec4 color_pad;      // rgb = color, w = unused
+};
+
+// Output projected splat
+struct ProjectedSplat {
+    vec2 center;         // screen-space center
+    float depth;         // view-space depth
+    float radius;        // bounding circle radius
+    vec4 conic_opacity;  // conic matrix (a, b, c) + opacity
+    vec4 color;          // rgba
+};
+
+// Sort entry
+struct SortEntry {
+    uint key;            // depth as uint
+    uint index;          // original index
+};
+
+layout(set = 0, binding = 0) readonly buffer GaussianBuffer {
+    GpuGaussian gaussians[];
+};
+
+layout(set = 0, binding = 1) writeonly buffer ProjectedBuffer {
+    ProjectedSplat projected[];
+};
+
+layout(set = 0, binding = 2) buffer SortBuffer {
+    SortEntry sort_entries[];
+};
+
+layout(set = 0, binding = 3) uniform Uniforms {
+    mat4 view;
+    mat4 proj;
+    uvec4 params;  // x = width, y = height, z = gaussian_count, w = sort_size
+};
+
+// Build rotation matrix from quaternion
+mat3 quat_to_mat(vec4 q) {
+    float x = q.x, y = q.y, z = q.z, w = q.w;
+    return mat3(
+        1.0 - 2.0*(y*y + z*z), 2.0*(x*y + w*z),       2.0*(x*z - w*y),
+        2.0*(x*y - w*z),       1.0 - 2.0*(x*x + z*z), 2.0*(y*z + w*x),
+        2.0*(x*z + w*y),       2.0*(y*z - w*x),       1.0 - 2.0*(x*x + y*y)
+    );
+}
+
+void main() {
+    uint idx = gl_GlobalInvocationID.x;
+    if (idx >= params.z) return;
+
+    GpuGaussian g = gaussians[idx];
+
+    // Transform to view space
+    vec4 view_pos = view * vec4(g.pos_opacity.xyz, 1.0);
+
+    // Frustum cull: discard if behind camera
+    if (view_pos.z > -0.1) {
+        sort_entries[idx].key = 0xFFFFFFFF;
+        sort_entries[idx].index = idx;
+        return;
+    }
+
+    // Project to screen space
+    vec4 clip_pos = proj * view_pos;
+    vec2 ndc = clip_pos.xy / clip_pos.w;
+    vec2 screen = (ndc * 0.5 + 0.5) * vec2(float(params.x), float(params.y));
+
+    // Frustum cull: discard if outside screen (with margin)
+    float margin = 64.0;
+    if (screen.x < -margin || screen.x > float(params.x) + margin ||
+        screen.y < -margin || screen.y > float(params.y) + margin) {
+        sort_entries[idx].key = 0xFFFFFFFF;
+        sort_entries[idx].index = idx;
+        return;
+    }
+
+    // Compute 3D covariance matrix Sigma = R * S * S^T * R^T
+    mat3 R = quat_to_mat(g.rot);
+    vec3 s = g.scale_pad.xyz;
+    mat3 S = mat3(
+        s.x, 0, 0,
+        0, s.y, 0,
+        0, 0, s.z
+    );
+    mat3 M = R * S;
+    mat3 Sigma = M * transpose(M);
+
+    // Project covariance to 2D: Sigma' = J * W * Sigma * W^T * J^T
+    // W = upper-left 3x3 of view matrix
+    mat3 W = mat3(view);
+    // J = Jacobian of perspective projection
+    float fx = proj[0][0];  // focal_x in NDC
+    float fy = proj[1][1];  // focal_y in NDC
+    float tz = view_pos.z;  // negative depth
+    float tz2 = tz * tz;
+
+    mat3 J = mat3(
+        fx / tz, 0, 0,
+        0, fy / tz, 0,
+        -fx * view_pos.x / tz2, -fy * view_pos.y / tz2, 0
+    );
+
+    mat3 T = J * W;
+    mat3 cov2d_full = T * Sigma * transpose(T);
+
+    // Extract 2x2 covariance + low-pass filter (min eigenvalue)
+    float a = cov2d_full[0][0] + 0.3;  // add small value for numerical stability
+    float b = cov2d_full[0][1];
+    float c = cov2d_full[1][1] + 0.3;
+
+    // Scale from NDC to pixel space
+    float half_w = float(params.x) * 0.5;
+    float half_h = float(params.y) * 0.5;
+    a *= half_w * half_w;
+    b *= half_w * half_h;
+    c *= half_h * half_h;
+
+    // Compute inverse of 2D covariance for conic representation
+    float det = a * c - b * b;
+    if (det <= 0.0) {
+        sort_entries[idx].key = 0xFFFFFFFF;
+        sort_entries[idx].index = idx;
+        return;
+    }
+    float inv_det = 1.0 / det;
+    float conic_a = c * inv_det;
+    float conic_b = -b * inv_det;
+    float conic_c = a * inv_det;
+
+    // Compute bounding radius (3 sigma)
+    float mid = 0.5 * (a + c);
+    float disc = max(0.1, mid * mid - det);
+    float lambda_max = mid + sqrt(disc);
+    float radius_px = ceil(3.0 * sqrt(lambda_max));
+
+    // Write projected splat
+    ProjectedSplat splat;
+    splat.center = screen;
+    splat.depth = -view_pos.z;
+    splat.radius = radius_px;
+    splat.conic_opacity = vec4(conic_a, conic_b, conic_c, g.pos_opacity.w);
+    splat.color = vec4(g.color_pad.rgb, 1.0);
+    projected[idx] = splat;
+
+    // Write sort entry (depth as uint for bitonic sort — closer = smaller key)
+    sort_entries[idx].key = floatBitsToUint(splat.depth);
+    sort_entries[idx].index = idx;
+}

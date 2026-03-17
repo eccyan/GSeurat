@@ -15,6 +15,8 @@
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include <stb_image_write.h>
 
+#include <glm/gtc/matrix_transform.hpp>
+
 #include <cmath>
 #include <cstring>
 #include <filesystem>
@@ -1027,6 +1029,27 @@ void App::init_scene(const std::string& scene_path) {
         npc_ids_.push_back(npc);
     }
 
+    // Gaussian splatting from scene data
+    if (scene_data.gaussian_splat) {
+        const auto& gs = *scene_data.gaussian_splat;
+        auto cloud = GaussianCloud::load_ply(gs.ply_file);
+        if (!cloud.empty()) {
+            renderer_.init_gs(cloud, gs.render_width, gs.render_height);
+
+            // Set up 3D perspective camera for GS rendering
+            float aspect = static_cast<float>(gs.render_width) / static_cast<float>(gs.render_height);
+            auto gs_view = glm::lookAt(gs.camera_position, gs.camera_target, glm::vec3(0, 1, 0));
+            auto gs_proj = glm::perspective(glm::radians(gs.camera_fov), aspect, 0.1f, 100.0f);
+            gs_proj[1][1] *= -1.0f;  // Vulkan Y-flip
+            renderer_.set_gs_camera(gs_view, gs_proj);
+        }
+    }
+
+    // Collision grid from scene data (used in place of tilemap collision)
+    if (scene_data.collision) {
+        collision_grid_ = *scene_data.collision;
+    }
+
     // Tilemap from scene data
     scene_.set_tile_layer(std::move(scene_data.tilemap));
     scene_.set_ambient_color(scene_data.ambient_color);
@@ -1117,6 +1140,9 @@ void App::clear_scene() {
     weather_system_.reset();
     day_night_system_.reset();
     for (auto& id : torch_emitter_ids_) id = 0;
+
+    // Clear collision grid
+    collision_grid_ = {};
 
     // Reset scene state
     scene_.clear_lights();

@@ -1,0 +1,91 @@
+#version 450
+
+// Tile-based Gaussian splatting rasterizer
+// One workgroup per 16×16 tile
+layout(local_size_x = 16, local_size_y = 16) in;
+
+struct ProjectedSplat {
+    vec2 center;
+    float depth;
+    float radius;
+    vec4 conic_opacity;  // (conic_a, conic_b, conic_c, opacity)
+    vec4 color;          // (r, g, b, a)
+};
+
+struct SortEntry {
+    uint key;
+    uint index;
+};
+
+layout(set = 0, binding = 0) readonly buffer ProjectedBuffer {
+    ProjectedSplat projected[];
+};
+
+layout(set = 0, binding = 1) readonly buffer SortBuffer {
+    SortEntry sort_entries[];
+};
+
+layout(set = 0, binding = 2) uniform Uniforms {
+    mat4 view;
+    mat4 proj;
+    uvec4 params;  // x = width, y = height, z = gaussian_count, w = sort_size
+};
+
+layout(set = 0, binding = 3, rgba16f) uniform writeonly image2D output_image;
+
+void main() {
+    uvec2 tile_id = gl_WorkGroupID.xy;
+    uvec2 local_id = gl_LocalInvocationID.xy;
+    uvec2 pixel = tile_id * 16 + local_id;
+
+    uint width = params.x;
+    uint height = params.y;
+    uint count = params.z;
+
+    if (pixel.x >= width || pixel.y >= height) return;
+
+    vec2 pix_center = vec2(pixel) + 0.5;
+
+    // Accumulate color front-to-back
+    vec3 color = vec3(0.0);
+    float alpha_accum = 0.0;
+
+    // Iterate through sorted Gaussians
+    for (uint s = 0; s < count; ++s) {
+        uint idx = sort_entries[s].index;
+
+        // Skip culled Gaussians (key == max)
+        if (sort_entries[s].key == 0xFFFFFFFF) continue;
+
+        ProjectedSplat splat = projected[idx];
+
+        // Quick bounding box check
+        vec2 d = pix_center - splat.center;
+        if (abs(d.x) > splat.radius || abs(d.y) > splat.radius) continue;
+
+        // Evaluate Gaussian: exp(-0.5 * (d^T * conic * d))
+        float conic_a = splat.conic_opacity.x;
+        float conic_b = splat.conic_opacity.y;
+        float conic_c = splat.conic_opacity.z;
+        float opacity = splat.conic_opacity.w;
+
+        float power = -0.5 * (conic_a * d.x * d.x + 2.0 * conic_b * d.x * d.y + conic_c * d.y * d.y);
+        if (power > 0.0) continue;  // shouldn't happen, but safety check
+
+        float gaussian_alpha = exp(power);
+        float alpha = min(0.99, opacity * gaussian_alpha);
+
+        if (alpha < 1.0 / 255.0) continue;  // negligible contribution
+
+        // Front-to-back compositing
+        float weight = alpha * (1.0 - alpha_accum);
+        color += weight * splat.color.rgb;
+        alpha_accum += weight;
+
+        // Early termination when pixel is saturated
+        if (alpha_accum > 0.999) break;
+    }
+
+    // Write output (premultiplied alpha)
+    imageStore(output_image, ivec2(pixel), vec4(color, alpha_accum));
+}

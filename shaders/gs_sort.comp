@@ -1,0 +1,48 @@
+#version 450
+
+// Bitonic sort — MoltenVK compatible (no subgroup ops)
+layout(local_size_x = 256) in;
+
+struct SortEntry {
+    uint key;
+    uint index;
+};
+
+layout(set = 0, binding = 0) buffer SortBuffer {
+    SortEntry entries[];
+};
+
+layout(set = 0, binding = 1) uniform Uniforms {
+    mat4 view;
+    mat4 proj;
+    uvec4 params;  // w = sort_size
+};
+
+layout(push_constant) uniform PushConstants {
+    uint k;  // block size
+    uint j;  // comparison distance
+};
+
+void main() {
+    uint i = gl_GlobalInvocationID.x;
+    if (i >= params.w) return;
+
+    // Bitonic sort step: compare-and-swap
+    uint ixj = i ^ j;
+
+    // Only process if ixj > i (each pair processed once)
+    if (ixj <= i) return;
+    if (ixj >= params.w) return;
+
+    SortEntry a = entries[i];
+    SortEntry b = entries[ixj];
+
+    // Determine sort direction: ascending if (i & k) == 0
+    bool ascending = (i & k) == 0;
+
+    bool should_swap = ascending ? (a.key > b.key) : (a.key < b.key);
+    if (should_swap) {
+        entries[i] = b;
+        entries[ixj] = a;
+    }
+}

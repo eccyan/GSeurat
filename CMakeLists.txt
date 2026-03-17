@@ -167,6 +167,9 @@ add_library(vulkan_game_core OBJECT
     src/engine/day_night_system.cpp
     src/engine/weather_system.cpp
     src/engine/ui/ui_context.cpp
+    src/engine/gaussian_cloud.cpp
+    src/engine/gs_renderer.cpp
+    src/engine/collision_gen.cpp
     src/engine/save_system.cpp
     src/engine/scripting/wren_vm.cpp
     src/engine/scripting/wren_bindings.cpp

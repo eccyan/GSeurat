@@ -151,6 +151,24 @@ void Renderer::init_backgrounds(const std::vector<ResourceHandle<Texture>>& bg_t
     }
 }
 
+void Renderer::init_gs(const GaussianCloud& cloud, uint32_t width, uint32_t height) {
+    if (!gs_initialized_) {
+        gs_renderer_.init(context_.device(), context_.allocator(), VK_NULL_HANDLE);
+        gs_initialized_ = true;
+    }
+    gs_renderer_.load_cloud(cloud);
+
+    // Create descriptor sets for sampling the GS output as a sprite texture
+    std::array<VkBuffer, kMaxFramesInFlight> ubo_buffers;
+    for (uint32_t i = 0; i < kMaxFramesInFlight; i++) {
+        ubo_buffers[i] = uniform_buffers_[i].buffer();
+    }
+    gs_descriptor_sets_ = descriptors_.allocate_sprite_sets(
+        context_.device(), ubo_buffers, sizeof(UniformBufferObject),
+        gs_renderer_.output_view(), gs_renderer_.output_sampler(),
+        flat_normal_texture_->image_view(), flat_normal_texture_->sampler());
+}
+
 void Renderer::draw_scene(Scene& scene,
                            const std::vector<SpriteDrawInfo>& entity_sprites,
                            const std::vector<SpriteDrawInfo>& outline_sprites,
@@ -191,6 +209,11 @@ void Renderer::draw_scene(Scene& scene,
     VkCommandBufferBeginInfo begin_info{};
     begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     vkBeginCommandBuffer(cmd, &begin_info);
+
+    // ===== Pre-pass: Gaussian splatting compute (before render pass) =====
+    if (gs_initialized_ && gs_renderer_.has_cloud()) {
+        gs_renderer_.render(cmd, gs_view_, gs_proj_, output_width_, output_height_);
+    }
 
     // ===== Pass 1: Scene render pass (offscreen HDR) =====
     {
@@ -262,6 +285,31 @@ void Renderer::draw_scene(Scene& scene,
                                             &bg_descriptor_sets_[i][current_frame_], 0, nullptr);
                     vkCmdDrawIndexed(cmd, bg_flush.index_count, 1, 0, bg_flush.vertex_offset, 0);
                 }
+            }
+        }
+
+        // Gaussian splatting background blit (fullscreen quad with NEAREST sampler)
+        if (gs_initialized_ && gs_renderer_.has_cloud()) {
+            sprite_batch_.begin();
+            SpriteDrawInfo gs_blit{};
+            gs_blit.position = {camera_.target().x, camera_.target().y, -20.0f};
+            // Size the quad to fill the camera view (estimate from projection matrix)
+            float proj_11 = camera_.projection()[1][1];  // 1/tan(fov/2)
+            float cam_dist = glm::length(camera_.position() - camera_.target());
+            float view_h = 2.0f * cam_dist / (proj_11 > 0.0f ? proj_11 : 1.0f);
+            float aspect = static_cast<float>(kWindowWidth) / static_cast<float>(kWindowHeight);
+            float view_w = view_h * aspect;
+            gs_blit.size = {view_w, view_h};
+            gs_blit.uv_min = {0.0f, 0.0f};
+            gs_blit.uv_max = {1.0f, 1.0f};
+            gs_blit.color = {1.0f, 1.0f, 1.0f, 1.0f};
+            sprite_batch_.draw(gs_blit);
+            auto gs_flush = sprite_batch_.flush(current_frame_);
+            if (gs_flush.index_count > 0) {
+                vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                        sprite_pipeline_layout_, 0, 1,
+                                        &gs_descriptor_sets_[current_frame_], 0, nullptr);
+                vkCmdDrawIndexed(cmd, gs_flush.index_count, 1, 0, gs_flush.vertex_offset, 0);
             }
         }
 
@@ -625,6 +673,10 @@ void Renderer::shutdown() {
         for (auto& buf : ui_uniform_buffers_) {
             buf.destroy(context_.allocator());
         }
+    }
+
+    if (gs_initialized_) {
+        gs_renderer_.shutdown(context_.allocator());
     }
 
     if (screenshot_buffer_initialized_) {

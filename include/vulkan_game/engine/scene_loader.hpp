@@ -1,5 +1,6 @@
 #pragma once
 
+#include "vulkan_game/engine/collision_gen.hpp"
 #include "vulkan_game/engine/day_night_system.hpp"
 #include "vulkan_game/engine/dialog.hpp"
 #include "vulkan_game/engine/direction.hpp"
@@ -60,6 +61,15 @@ struct WeatherData {
     float transition_speed = 1.0f;
 };
 
+struct GaussianSplatData {
+    std::string ply_file;
+    glm::vec3 camera_position{0.0f, 5.0f, 10.0f};
+    glm::vec3 camera_target{0.0f, 0.0f, 0.0f};
+    float camera_fov = 45.0f;
+    uint32_t render_width = 320;
+    uint32_t render_height = 240;
+};
+
 struct PortalData {
     glm::vec2 position{0.0f};
     glm::vec2 size{1.0f};
@@ -69,6 +79,10 @@ struct PortalData {
 };
 
 struct SceneData {
+    // Gaussian splatting (optional — when present, tilemap is optional)
+    std::optional<GaussianSplatData> gaussian_splat;
+    std::optional<CollisionGrid> collision;
+
     TileLayer tilemap;
     std::vector<TileAnimationDef> tile_animations;
     glm::vec4 ambient_color{0.25f, 0.28f, 0.45f, 1.0f};

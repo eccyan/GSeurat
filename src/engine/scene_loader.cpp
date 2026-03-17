@@ -68,6 +68,41 @@ SceneData SceneLoader::load(const std::string& path) {
 SceneData SceneLoader::from_json(const nlohmann::json& j) {
     SceneData data;
 
+    // Gaussian splatting
+    if (j.contains("gaussian_splat")) {
+        const auto& gs = j["gaussian_splat"];
+        GaussianSplatData gsd;
+        gsd.ply_file = gs.value("ply_file", "");
+        if (gs.contains("camera")) {
+            const auto& cam = gs["camera"];
+            if (cam.contains("position")) gsd.camera_position = parse_vec3(cam["position"]);
+            if (cam.contains("target")) gsd.camera_target = parse_vec3(cam["target"]);
+            gsd.camera_fov = cam.value("fov", 45.0f);
+        }
+        gsd.render_width = gs.value("render_width", 320u);
+        gsd.render_height = gs.value("render_height", 240u);
+        data.gaussian_splat = std::move(gsd);
+    }
+
+    // Collision grid
+    if (j.contains("collision")) {
+        const auto& col = j["collision"];
+        CollisionGrid grid;
+        grid.width = col.value("width", 0u);
+        grid.height = col.value("height", 0u);
+        grid.cell_size = col.value("cell_size", 1.0f);
+        if (col.contains("solid")) {
+            const auto& solid_arr = col["solid"];
+            grid.solid.resize(solid_arr.size(), false);
+            for (size_t i = 0; i < solid_arr.size(); ++i) {
+                grid.solid[i] = solid_arr[i].get<bool>();
+            }
+        } else {
+            grid.solid.resize(static_cast<size_t>(grid.width) * grid.height, false);
+        }
+        data.collision = std::move(grid);
+    }
+
     // Tilemap
     if (j.contains("tilemap")) {
         const auto& tm = j["tilemap"];
@@ -332,6 +367,34 @@ nlohmann::json SceneLoader::emitter_json(const EmitterConfig& cfg) {
 
 nlohmann::json SceneLoader::to_json(const SceneData& data) {
     nlohmann::json j;
+
+    // Gaussian splatting
+    if (data.gaussian_splat) {
+        const auto& gs = *data.gaussian_splat;
+        nlohmann::json gs_j;
+        gs_j["ply_file"] = gs.ply_file;
+        gs_j["camera"] = {
+            {"position", vec3_json(gs.camera_position)},
+            {"target", vec3_json(gs.camera_target)},
+            {"fov", gs.camera_fov}
+        };
+        gs_j["render_width"] = gs.render_width;
+        gs_j["render_height"] = gs.render_height;
+        j["gaussian_splat"] = gs_j;
+    }
+
+    // Collision grid
+    if (data.collision) {
+        const auto& grid = *data.collision;
+        nlohmann::json col;
+        col["width"] = grid.width;
+        col["height"] = grid.height;
+        col["cell_size"] = grid.cell_size;
+        nlohmann::json solid_arr = nlohmann::json::array();
+        for (bool s : grid.solid) solid_arr.push_back(s);
+        col["solid"] = solid_arr;
+        j["collision"] = col;
+    }
 
     // Tilemap
     {

@@ -1,6 +1,8 @@
 #pragma once
 
 #include "vulkan_game/engine/audio_system.hpp"
+#include "vulkan_game/engine/collision_gen.hpp"
+#include "vulkan_game/engine/gaussian_cloud.hpp"
 #include "vulkan_game/engine/control_server.hpp"
 #include "vulkan_game/engine/day_night_system.hpp"
 #include "vulkan_game/engine/dialog.hpp"
@@ -175,6 +177,9 @@ private:
     TextRenderer text_renderer_;
     DialogState dialog_state_;
     std::vector<DialogScript> npc_dialogs_;
+
+    // Gaussian splatting collision grid (when using GS scenes instead of tilemap)
+    CollisionGrid collision_grid_;
 
     // Scene transition
     std::string current_scene_path_ = "assets/scenes/test_scene.json";
