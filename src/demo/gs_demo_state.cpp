@@ -34,7 +34,7 @@ void GsDemoState::on_enter(App& app) {
 
             float max_extent = std::max(extent_x, extent_z);
             distance_ = max_extent * 0.35f;
-            elevation_ = 0.7f;   // ~40 degrees — shows terrain height clearly
+            elevation_ = 0.25f;  // ~14 degrees — near-horizontal perspective
             azimuth_ = 0.0f;
         }
     } else {
