@@ -1032,7 +1032,12 @@ void App::init_scene(const std::string& scene_path) {
     // Gaussian splatting from scene data
     if (scene_data.gaussian_splat) {
         const auto& gs = *scene_data.gaussian_splat;
-        auto cloud = GaussianCloud::load_ply(gs.ply_file);
+        GaussianCloud cloud;
+        try {
+            cloud = GaussianCloud::load_ply(gs.ply_file);
+        } catch (const std::runtime_error& e) {
+            std::fprintf(stderr, "Warning: %s (skipping GS rendering)\n", e.what());
+        }
         if (!cloud.empty()) {
             renderer_.init_gs(cloud, gs.render_width, gs.render_height);
 
