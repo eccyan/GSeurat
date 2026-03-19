@@ -58,4 +58,4 @@ jobs:
         run: cmake --preset ${{ matrix.preset }}-release
 
       - name: Build
-        run: cmake --build --preset ${{ matrix.preset }}-release
+        run: cmake --build --preset ${{ matrix.preset }}-release --target vulkan_game
