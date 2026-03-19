@@ -19,17 +19,21 @@ void GsDemoState::on_enter(App& app) {
         auto& grid = app.renderer().gs_chunk_grid();
         if (!grid.empty()) {
             auto aabb = grid.cloud_bounds();
-            target_ = glm::vec3(
-                (aabb.min.x + aabb.max.x) * 0.5f,
-                0.0f,
-                (aabb.min.z + aabb.max.z) * 0.5f
-            );
-            // Distance: close enough to fill the screen and cull off-screen chunks
-            // Elevation: ~40° to show terrain height while still seeing the map
             float extent_x = aabb.max.x - aabb.min.x;
             float extent_z = aabb.max.z - aabb.min.z;
+            float center_x = (aabb.min.x + aabb.max.x) * 0.5f;
+            float center_z = (aabb.min.z + aabb.max.z) * 0.5f;
+
+            // Offset target forward (-Z) and left (-X) to compensate for
+            // perspective distortion at oblique elevation angle
+            target_ = glm::vec3(
+                center_x - extent_x * 0.1f,
+                0.0f,
+                center_z - extent_z * 0.2f
+            );
+
             float max_extent = std::max(extent_x, extent_z);
-            distance_ = max_extent * 0.45f;
+            distance_ = max_extent * 0.35f;
             elevation_ = 0.7f;   // ~40 degrees — shows terrain height clearly
             azimuth_ = 0.0f;
         }
