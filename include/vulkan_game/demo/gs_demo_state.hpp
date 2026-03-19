@@ -27,6 +27,11 @@ private:
     glm::vec2 last_mouse_{0.0f};
     bool dragging_ = false;
 
+    // FPS tracking
+    float fps_timer_ = 0.0f;
+    int fps_frame_count_ = 0;
+    float fps_ = 0.0f;
+
     // Camera limits
     static constexpr float kMinElevation = 0.175f;  // ~10 degrees
     static constexpr float kMaxElevation = 1.396f;   // ~80 degrees

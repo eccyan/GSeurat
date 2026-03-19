@@ -96,6 +96,15 @@ void GsDemoState::update(App& app, float dt) {
         return;
     }
 
+    // FPS counter
+    fps_timer_ += dt;
+    fps_frame_count_++;
+    if (fps_timer_ >= 0.5f) {
+        fps_ = static_cast<float>(fps_frame_count_) / fps_timer_;
+        fps_frame_count_ = 0;
+        fps_timer_ = 0.0f;
+    }
+
     update_camera(app, dt);
     app.update_game(dt);
 }
@@ -120,18 +129,23 @@ void GsDemoState::build_draw_lists(App& app) {
     glm::vec4 dim{0.6f, 0.6f, 0.6f, 1.0f};
     glm::vec4 title_color{0.4f, 0.8f, 1.0f, 1.0f};
 
-    ui.label("GS DEMO", lx, y, 0.6f, title_color);
-    y -= 22.0f;
-
-    uint32_t count = app.renderer().gs_renderer().gaussian_count();
-    ui.label("Gaussians: " + std::to_string(count), lx, y, scale, white);
-    y -= 18.0f;
-
     auto fmt = [](float v) {
         char buf[16];
         std::snprintf(buf, sizeof(buf), "%.1f", v);
         return std::string(buf);
     };
+
+    ui.label("GS DEMO", lx, y, 0.6f, title_color);
+
+    // FPS in top-right of panel
+    glm::vec4 fps_color = fps_ >= 30.0f ? glm::vec4{0.2f, 1.0f, 0.3f, 1.0f}
+                                         : glm::vec4{1.0f, 0.3f, 0.2f, 1.0f};
+    ui.label(fmt(fps_) + " FPS", panel_x + panel_w - 80.0f, y, scale, fps_color);
+    y -= 22.0f;
+
+    uint32_t count = app.renderer().gs_renderer().gaussian_count();
+    ui.label("Gaussians: " + std::to_string(count), lx, y, scale, white);
+    y -= 18.0f;
 
     ui.label("Az:" + fmt(glm::degrees(azimuth_)) +
              "  El:" + fmt(glm::degrees(elevation_)) +
