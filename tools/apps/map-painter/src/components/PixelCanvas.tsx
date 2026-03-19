@@ -81,6 +81,7 @@ export const PixelCanvas: React.FC = () => {
   const panY = useMapStore(s => s.panY);
   const collisionGrid = useMapStore(s => s.collisionGrid);
   const showCollision = useMapStore(s => s.showCollision);
+  const showHeight = useMapStore(s => s.showHeight);
 
   const setPixel = useMapStore(s => s.setPixel);
   const erasePixel = useMapStore(s => s.erasePixel);
@@ -131,7 +132,7 @@ export const PixelCanvas: React.FC = () => {
 
         // Height visualization: color-coded overlay (green→yellow→red)
         const h = heights[y * width + x];
-        if (h > 0) {
+        if (showHeight && h > 0) {
           const t = Math.min(h / 16, 1); // 0..1 across full range
           // Green(low) → Yellow(mid) → Red(high)
           const hr = Math.min(1, t * 2);
@@ -196,7 +197,7 @@ export const PixelCanvas: React.FC = () => {
     }
 
     ctx.restore();
-  }, [width, height, layers, heights, zoom, panX, panY, collisionGrid, showCollision,
+  }, [width, height, layers, heights, zoom, panX, panY, collisionGrid, showCollision, showHeight,
       activeColor, activeTool, brushSize]);
 
   // Convert mouse position to grid cell

@@ -98,6 +98,7 @@ export const ToolBar: React.FC = () => {
   const heightBrushValue = useMapStore(s => s.heightBrushValue);
   const brushSize = useMapStore(s => s.brushSize);
   const showCollision = useMapStore(s => s.showCollision);
+  const showHeight = useMapStore(s => s.showHeight);
 
   const setTool = useMapStore(s => s.setTool);
   const setActiveLayer = useMapStore(s => s.setActiveLayer);
@@ -105,6 +106,7 @@ export const ToolBar: React.FC = () => {
   const setHeightBrushValue = useMapStore(s => s.setHeightBrushValue);
   const setBrushSize = useMapStore(s => s.setBrushSize);
   const setShowCollision = useMapStore(s => s.setShowCollision);
+  const setShowHeight = useMapStore(s => s.setShowHeight);
 
   const colorHex = `#${activeColor.slice(0, 3).map(c => c.toString(16).padStart(2, '0')).join('')}`;
 
@@ -214,6 +216,14 @@ export const ToolBar: React.FC = () => {
             onChange={e => setShowCollision(e.target.checked)}
           />
           Show Collision
+        </label>
+        <label style={{ fontSize: '12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <input
+            type="checkbox"
+            checked={showHeight}
+            onChange={e => setShowHeight(e.target.checked)}
+          />
+          Show Height
         </label>
       </div>
     </div>

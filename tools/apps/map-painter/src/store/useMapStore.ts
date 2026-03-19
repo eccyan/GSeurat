@@ -31,6 +31,7 @@ export interface MapPainterState {
   // Collision grid
   collisionGrid: boolean[];
   showCollision: boolean;
+  showHeight: boolean;
 
   // 3D preview camera
   previewCamera: {
@@ -54,6 +55,7 @@ export interface MapPainterState {
   setZoom: (zoom: number) => void;
   setPan: (x: number, y: number) => void;
   setShowCollision: (show: boolean) => void;
+  setShowHeight: (show: boolean) => void;
 
   // Pixel operations
   setPixel: (x: number, y: number, r: number, g: number, b: number, a: number) => void;
@@ -115,6 +117,7 @@ export const useMapStore = create<MapPainterState>((set, get) => ({
   selectionEnd: null,
   collisionGrid: new Array(256 * 224).fill(false),
   showCollision: false,
+  showHeight: true,
   previewCamera: {
     position: [0, 5, 10],
     target: [0, 0, 0],
@@ -177,6 +180,7 @@ export const useMapStore = create<MapPainterState>((set, get) => ({
   setZoom: (zoom) => set({ zoom: Math.max(1, Math.min(64, zoom)) }),
   setPan: (x, y) => set({ panX: x, panY: y }),
   setShowCollision: (show) => set({ showCollision: show }),
+  setShowHeight: (show) => set({ showHeight: show }),
 
   setPixel: (x, y, r, g, b, a) => {
     const state = get();
