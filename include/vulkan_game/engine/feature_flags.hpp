@@ -1,9 +1,19 @@
 #pragma once
 
 #include <array>
+#include <cstdint>
 #include <string_view>
 
 namespace vulkan_game {
+
+// Build profile — set per-target via CMake (VG_BUILD_PROFILE)
+enum class BuildProfile : uint8_t { Full = 0, GsViewer = 1 };
+
+#ifndef VG_BUILD_PROFILE
+#define VG_BUILD_PROFILE 0
+#endif
+inline constexpr BuildProfile kBuildProfile = static_cast<BuildProfile>(VG_BUILD_PROFILE);
+inline constexpr bool kIsGsViewer = (kBuildProfile == BuildProfile::GsViewer);
 
 struct FeatureFlags {
     // Rendering
@@ -47,6 +57,17 @@ struct FeatureFlags {
         std::string_view category;
         bool FeatureFlags::* ptr;
     };
+
+    // All flags disabled — for GS viewer / minimal mode
+    static constexpr FeatureFlags gs_viewer() {
+        return FeatureFlags{
+            false, false, false, false, false, false, false, false,
+            false, false, false, false, false, false, false, false,
+            false, false, false,
+            false, false, false, false,
+            false, false
+        };
+    }
 
     static constexpr std::array<Entry, 25> entries() {
         return {{

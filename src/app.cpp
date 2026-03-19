@@ -1256,6 +1256,7 @@ void App::check_portals() {
 void App::update_game(float dt) {
     if (transitioning_) return;
 
+    if constexpr (!kIsGsViewer) {
     if (game_mode_ == GameMode::Dialog) {
         // Dialog mode: freeze movement, handle advance
         if (input_.was_key_pressed(GLFW_KEY_E) || input_.was_key_pressed(GLFW_KEY_SPACE)) {
@@ -1416,7 +1417,9 @@ void App::update_game(float dt) {
             }
         }
     }
+    } // if constexpr (!kIsGsViewer) — game mode logic
 
+    if constexpr (!kIsGsViewer) {
     // Animated tiles (runs in both explore and dialog modes so water keeps flowing)
     if (feature_flags_.animated_tiles && scene_.tile_animator()) {
         scene_.tile_animator()->update(dt);
@@ -1484,6 +1487,7 @@ void App::update_game(float dt) {
     }
 
     update_audio(dt);
+    } // if constexpr (!kIsGsViewer) — per-frame systems
 }
 
 void App::update_audio(float dt) {

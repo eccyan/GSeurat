@@ -131,7 +131,6 @@ add_subdirectory(shaders)
 # --- Core OBJECT library (shared by main + demo) ---------------------------
 
 add_library(vulkan_game_core OBJECT
-    src/app.cpp
     src/engine/vk_context.cpp
     src/engine/swapchain.cpp
     src/engine/render_pass.cpp
@@ -213,7 +212,8 @@ endif()
 
 # --- Main executable --------------------------------------------------------
 
-add_executable(vulkan_game src/main.cpp)
+add_executable(vulkan_game src/main.cpp src/app.cpp)
+target_compile_definitions(vulkan_game PRIVATE VG_BUILD_PROFILE=0)
 target_link_libraries(vulkan_game PRIVATE vulkan_game_core)
 add_dependencies(vulkan_game shaders)
 
@@ -223,7 +223,9 @@ add_executable(vulkan_game_demo
     src/demo_main.cpp
     src/demo/demo_app.cpp
     src/demo/demo_gameplay_state.cpp
+    src/app.cpp
 )
+target_compile_definitions(vulkan_game_demo PRIVATE VG_BUILD_PROFILE=0)
 target_link_libraries(vulkan_game_demo PRIVATE vulkan_game_core)
 add_dependencies(vulkan_game_demo shaders)
 
@@ -249,7 +251,9 @@ add_executable(vulkan_game_gs_demo
     src/gs_demo_main.cpp
     src/demo/gs_demo_app.cpp
     src/demo/gs_demo_state.cpp
+    src/app.cpp
 )
+target_compile_definitions(vulkan_game_gs_demo PRIVATE VG_BUILD_PROFILE=1)
 target_link_libraries(vulkan_game_gs_demo PRIVATE vulkan_game_core)
 add_dependencies(vulkan_game_gs_demo shaders)
 
