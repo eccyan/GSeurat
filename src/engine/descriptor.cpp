@@ -36,18 +36,18 @@ void DescriptorManager::init(VkDevice device) {
         throw std::runtime_error("Failed to create descriptor set layout");
     }
 
-    // Create descriptor pool (sized for up to 10 allocations × kMaxFramesInFlight sets each)
+    // Create descriptor pool (sized for up to 16 allocations × kMaxFramesInFlight sets each)
     std::array<VkDescriptorPoolSize, 2> pool_sizes{};
     pool_sizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    pool_sizes[0].descriptorCount = kMaxFramesInFlight * 10;
+    pool_sizes[0].descriptorCount = kMaxFramesInFlight * 16;
     pool_sizes[1].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    pool_sizes[1].descriptorCount = kMaxFramesInFlight * 20;
+    pool_sizes[1].descriptorCount = kMaxFramesInFlight * 32;
 
     VkDescriptorPoolCreateInfo pool_info{};
     pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
     pool_info.poolSizeCount = static_cast<uint32_t>(pool_sizes.size());
     pool_info.pPoolSizes = pool_sizes.data();
-    pool_info.maxSets = kMaxFramesInFlight * 10;
+    pool_info.maxSets = kMaxFramesInFlight * 16;
 
     if (vkCreateDescriptorPool(device, &pool_info, nullptr, &pool_) != VK_SUCCESS) {
         throw std::runtime_error("Failed to create descriptor pool");
