@@ -198,7 +198,7 @@ export const ToolBar: React.FC = () => {
           <input
             type="range"
             min={0}
-            max={256}
+            max={64}
             step={1}
             value={heightBrushValue}
             onChange={e => setHeightBrushValue(Number(e.target.value))}
