@@ -185,6 +185,8 @@ private:
     // Parallax camera for shadow-box GS effect
     GsParallaxCamera gs_parallax_camera_;
     bool gs_parallax_active_ = false;
+    uint32_t gs_frame_counter_ = 0;
+    uint32_t gs_render_interval_ = 4;
 public:
     void set_gs_parallax_active(bool active) { gs_parallax_active_ = active; }
     GsParallaxCamera& gs_parallax_camera() { return gs_parallax_camera_; }

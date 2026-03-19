@@ -134,15 +134,23 @@ void GsDemoState::update_shadow_box_camera(App& app, float dt) {
     glm::vec2 player_offset = (mouse - window_center) / window_half;
     player_offset = glm::clamp(player_offset, glm::vec2(-1.0f), glm::vec2(1.0f));
 
-    if (app.renderer().gs_renderer().skip_sort()) {
-        // Cached GS mode: skip compute, shift blit quad for parallax effect
+    // Hybrid re-render: full GS compute every N frames, blit offset in between
+    bool is_compute_frame = (gs_frame_counter_ % gs_render_interval_) == 0;
+    gs_frame_counter_++;
+
+    if (is_compute_frame) {
+        // Full 3D parallax via GS compute pipeline
+        app.renderer().gs_renderer().set_skip_sort(false);
+        parallax_cam_.update(player_offset, dt);
+        app.renderer().set_gs_camera(parallax_cam_.view(), parallax_cam_.proj());
+        app.renderer().set_gs_blit_offset(0.0f, 0.0f);
+    } else {
+        // Cached frame: skip compute, shift blit quad for responsive parallax
+        app.renderer().gs_renderer().set_skip_sort(true);
         constexpr float kParallaxPixels = 30.0f;  // max pixel shift
         app.renderer().set_gs_blit_offset(
             player_offset.x * kParallaxPixels,
             -player_offset.y * kParallaxPixels);  // Y inverted (screen coords)
-    } else {
-        parallax_cam_.update(player_offset, dt);
-        app.renderer().set_gs_camera(parallax_cam_.view(), parallax_cam_.proj());
     }
 }
 
@@ -153,12 +161,18 @@ void GsDemoState::update(App& app, float dt) {
         return;
     }
 
-    // P → toggle shadow box mode
+    // P → toggle shadow box mode (hybrid: re-render every N frames)
     if (app.input().was_key_pressed(GLFW_KEY_P)) {
         shadow_box_mode_ = !shadow_box_mode_;
         app.renderer().set_gs_skip_chunk_cull(shadow_box_mode_);
-        app.renderer().gs_renderer().set_skip_sort(shadow_box_mode_);
-        std::fprintf(stderr, "Shadow box mode: %s\n", shadow_box_mode_ ? "ON" : "OFF");
+        if (shadow_box_mode_) {
+            gs_frame_counter_ = 0;  // first frame does full compute
+            app.renderer().gs_renderer().set_skip_sort(false);
+        } else {
+            app.renderer().gs_renderer().set_skip_sort(false);
+        }
+        std::fprintf(stderr, "Shadow box mode: %s (interval=%u)\n",
+                     shadow_box_mode_ ? "ON" : "OFF", gs_render_interval_);
     }
 
     // FPS counter — use wall clock instead of clamped dt for accurate measurement
@@ -236,7 +250,8 @@ void GsDemoState::build_draw_lists(App& app) {
     y -= 22.0f;
 
     if (shadow_box_mode_) {
-        ui.label("Mouse:Parallax  P:Exit shadow box  R:Reset", lx, y, 0.35f, dim);
+        ui.label("Hybrid N=" + std::to_string(gs_render_interval_) +
+                 "  Mouse:Parallax  P:Exit  R:Reset", lx, y, 0.35f, dim);
     } else {
         ui.label("Drag:Orbit  Scroll:Zoom  WASD:Pan  P:ShadowBox  R:Reset", lx, y, 0.35f, dim);
     }

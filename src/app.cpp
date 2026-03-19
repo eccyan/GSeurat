@@ -1091,11 +1091,12 @@ void App::init_scene(const std::string& scene_path) {
                 gs.camera_fov, renderer_.gs_renderer().output_width(), renderer_.gs_renderer().output_height(),
                 *gs.parallax);
             gs_parallax_active_ = true;
+            gs_frame_counter_ = 0;  // first frame does full compute
 
             // Shadow-box maps: skip per-frame chunk culling — all Gaussians
             // are always visible from every parallax angle, so upload once at load.
             renderer_.set_gs_skip_chunk_cull(true);
-            renderer_.gs_renderer().set_skip_sort(true);
+            renderer_.gs_renderer().set_skip_sort(false);  // first frame: full compute
 
             // Set shadow box shader params: tighter frustum margin, no cone cull
             // (cone cull is not useful for front-facing XY maps)
@@ -1211,6 +1212,7 @@ void App::clear_scene() {
     // Clear collision grid and parallax state
     collision_grid_ = {};
     gs_parallax_active_ = false;
+    gs_frame_counter_ = 0;
     renderer_.set_gs_skip_chunk_cull(false);
 
     // Reset scene state
@@ -1322,15 +1324,23 @@ void App::update_game(float dt) {
                 glm::vec2 player_xy = {player_pos.x, player_pos.y};
                 glm::vec2 player_offset = (player_xy - map_center) / map_half;
                 player_offset = glm::clamp(player_offset, glm::vec2(-1.0f), glm::vec2(1.0f));
-                if (renderer_.gs_renderer().skip_sort()) {
-                    // Cached GS mode: shift blit quad for parallax
+                // Hybrid re-render: full GS compute every N frames, blit offset in between
+                bool is_compute_frame = (gs_frame_counter_ % gs_render_interval_) == 0;
+                gs_frame_counter_++;
+
+                if (is_compute_frame) {
+                    // Full 3D parallax via GS compute pipeline
+                    renderer_.gs_renderer().set_skip_sort(false);
+                    gs_parallax_camera_.update(player_offset, dt);
+                    renderer_.set_gs_camera(gs_parallax_camera_.view(), gs_parallax_camera_.proj());
+                    renderer_.set_gs_blit_offset(0.0f, 0.0f);
+                } else {
+                    // Cached frame: skip compute, shift blit quad for responsive parallax
+                    renderer_.gs_renderer().set_skip_sort(true);
                     constexpr float kParallaxPixels = 30.0f;
                     renderer_.set_gs_blit_offset(
                         player_offset.x * kParallaxPixels,
                         -player_offset.y * kParallaxPixels);
-                } else {
-                    gs_parallax_camera_.update(player_offset, dt);
-                    renderer_.set_gs_camera(gs_parallax_camera_.view(), gs_parallax_camera_.proj());
                 }
             }
         }
