@@ -35,12 +35,12 @@ export function exportPly(
         const h = heights[gy * width + gx];
         const maxY = Math.max(1, Math.ceil(h));
 
-        // Create a column of Gaussians (map on XY plane, depth on -Z)
+        // Create a column of Gaussians (map on XY plane, height toward camera on +Z)
         for (let yi = 0; yi < maxY; yi++) {
           gaussians.push({
             x: gx - width / 2,       // horizontal
             y: height / 2 - gy,      // vertical (flip so canvas top = +Y)
-            z: -yi,                  // depth into screen
+            z: yi,                   // height toward camera (+Z)
             r: r / 255,
             g: g / 255,
             b: b / 255,

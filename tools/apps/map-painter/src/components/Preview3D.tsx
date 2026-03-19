@@ -71,14 +71,14 @@ export const Preview3D: React.FC = () => {
           const h = heights[gy * width + gx];
           const maxY = Math.max(1, Math.ceil(h));
 
-          // Sampled grid position (map on XY plane, depth on -Z)
+          // Sampled grid position (map on XY plane, height toward camera on +Z)
           const sx = gx / step - sampledW / 2;
           const sy = sampledH / 2 - gy / step;  // flip so canvas top = +Y
 
           for (let yi = 0; yi < maxY; yi++) {
-            const depth = sx * sinA + (-yi) * cosA - sy * sinE;
+            const depth = sx * sinA + yi * cosA - sy * sinE;
             voxels.push({
-              x: sx, y: sy, z: -yi,
+              x: sx, y: sy, z: yi,
               r: data[pixIdx], g: data[pixIdx + 1], b: data[pixIdx + 2],
               depth,
             });
