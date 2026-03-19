@@ -1,0 +1,24 @@
+{
+  "gaussian_splat": {
+    "ply_file": "assets/maps/map.ply",
+    "camera": {
+      "position": [0, 25, 25],
+      "target": [0, 0, 0],
+      "fov": 60
+    },
+    "render_width": 320,
+    "render_height": 240
+  },
+  "collision": {
+    "width": 1,
+    "height": 1,
+    "cell_size": 1.0,
+    "solid": [false]
+  },
+  "ambient_color": [1.0, 1.0, 1.0, 1.0],
+  "player": {
+    "position": [0, 0, 0],
+    "tint": [1, 1, 1, 0],
+    "facing": "down"
+  }
+}

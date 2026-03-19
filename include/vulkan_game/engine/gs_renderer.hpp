@@ -18,6 +18,7 @@ public:
     VkImageView output_view() const { return output_view_; }
     VkSampler output_sampler() const { return output_sampler_; }
     bool has_cloud() const { return gaussian_count_ > 0; }
+    uint32_t gaussian_count() const { return gaussian_count_; }
     void shutdown(VmaAllocator allocator);
 
 private:

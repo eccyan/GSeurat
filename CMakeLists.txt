@@ -240,3 +240,20 @@ add_custom_command(TARGET vulkan_game_demo POST_BUILD
         $<TARGET_FILE_DIR:vulkan_game_demo>/assets
     COMMENT "Copying assets to demo build directory"
 )
+
+# --- GS Demo executable ----------------------------------------------------
+
+add_executable(vulkan_game_gs_demo
+    src/gs_demo_main.cpp
+    src/demo/gs_demo_app.cpp
+    src/demo/gs_demo_state.cpp
+)
+target_link_libraries(vulkan_game_gs_demo PRIVATE vulkan_game_core)
+add_dependencies(vulkan_game_gs_demo shaders)
+
+add_custom_command(TARGET vulkan_game_gs_demo POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${PROJECT_SOURCE_DIR}/assets
+        $<TARGET_FILE_DIR:vulkan_game_gs_demo>/assets
+    COMMENT "Copying assets to GS demo build directory"
+)
