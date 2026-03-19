@@ -97,20 +97,20 @@ function colorsMatch(data: Uint8Array, idx: number, r: number, g: number, b: num
 }
 
 export const useMapStore = create<MapPainterState>((set, get) => ({
-  width: 32,
-  height: 32,
-  layers: createEmptyLayers(32 * 32),
-  heights: new Float32Array(32 * 32),
+  width: 256,
+  height: 224,
+  layers: createEmptyLayers(256 * 224),
+  heights: new Float32Array(256 * 224),
   activeTool: 'pencil',
   activeLayer: 'ground',
   activeColor: [76, 153, 76, 255],
   heightBrushValue: 1,
-  zoom: 16,
+  zoom: 4,
   panX: 0,
   panY: 0,
   selectionStart: null,
   selectionEnd: null,
-  collisionGrid: new Array(32 * 32).fill(false),
+  collisionGrid: new Array(256 * 224).fill(false),
   showCollision: false,
   previewCamera: {
     position: [0, 5, 10],

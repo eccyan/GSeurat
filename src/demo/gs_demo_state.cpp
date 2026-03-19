@@ -22,7 +22,7 @@ void GsDemoState::on_exit(App& /*app*/) {
 void GsDemoState::reset_camera() {
     azimuth_ = 0.0f;
     elevation_ = 0.7f;
-    distance_ = 35.0f;
+    distance_ = 250.0f;
     target_ = glm::vec3(0.0f, 0.0f, 0.0f);
 }
 
@@ -81,7 +81,7 @@ void GsDemoState::update_camera(App& app, float dt) {
     glm::mat4 proj = glm::perspective(
         glm::radians(60.0f),
         1280.0f / 720.0f,
-        0.1f, 200.0f
+        0.1f, 1000.0f
     );
     // Vulkan Y-flip
     proj[1][1] *= -1.0f;

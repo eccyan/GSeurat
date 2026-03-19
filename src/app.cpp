@@ -1057,7 +1057,7 @@ void App::init_scene(const std::string& scene_path) {
             // Set up 3D perspective camera for GS rendering
             float aspect = static_cast<float>(gs.render_width) / static_cast<float>(gs.render_height);
             auto gs_view = glm::lookAt(gs.camera_position, gs.camera_target, glm::vec3(0, 1, 0));
-            auto gs_proj = glm::perspective(glm::radians(gs.camera_fov), aspect, 0.1f, 100.0f);
+            auto gs_proj = glm::perspective(glm::radians(gs.camera_fov), aspect, 0.1f, 1000.0f);
             gs_proj[1][1] *= -1.0f;  // Vulkan Y-flip
             renderer_.set_gs_camera(gs_view, gs_proj);
         }

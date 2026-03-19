@@ -2,13 +2,12 @@
   "gaussian_splat": {
     "ply_file": "assets/maps/map.ply",
     "camera": {
-      "position": [0, 25, 25],
+      "position": [0, 200, 200],
       "target": [0, 0, 0],
       "fov": 60
     },
     "render_width": 1280,
-    "render_height": 720,
-    "scale_multiplier": 0.6
+    "render_height": 720
   },
   "collision": {
     "width": 1,
