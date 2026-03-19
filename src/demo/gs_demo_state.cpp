@@ -13,7 +13,27 @@ namespace vulkan_game {
 
 void GsDemoState::on_enter(App& app) {
     app.init_scene(app.current_scene_path());
-    reset_camera();
+
+    // Set initial camera based on loaded cloud AABB
+    if (app.renderer().has_gs_cloud()) {
+        auto& grid = app.renderer().gs_chunk_grid();
+        if (!grid.empty()) {
+            auto aabb = grid.cloud_bounds();
+            target_ = glm::vec3(
+                (aabb.min.x + aabb.max.x) * 0.5f,
+                0.0f,
+                (aabb.min.z + aabb.max.z) * 0.5f
+            );
+            // Distance sized to fill screen: use the larger XZ extent
+            float extent_x = aabb.max.x - aabb.min.x;
+            float extent_z = aabb.max.z - aabb.min.z;
+            distance_ = std::max(extent_x, extent_z) * 0.55f;
+            elevation_ = 0.9f;  // ~52 degrees — close to top-down
+            azimuth_ = 0.0f;
+        }
+    } else {
+        reset_camera();
+    }
 }
 
 void GsDemoState::on_exit(App& /*app*/) {
@@ -115,7 +135,7 @@ void GsDemoState::build_draw_lists(App& app) {
     // Semi-transparent HUD panel (top-left in Y-UP coords)
     constexpr float panel_x = 10.0f;
     constexpr float panel_w = 280.0f;
-    constexpr float panel_h = 130.0f;
+    constexpr float panel_h = 148.0f;
     constexpr float panel_top = 720.0f - 10.0f;  // 10px from screen top
     constexpr float panel_cy = panel_top - panel_h * 0.5f;
 
@@ -143,8 +163,10 @@ void GsDemoState::build_draw_lists(App& app) {
     ui.label(fmt(fps_) + " FPS", panel_x + panel_w - 80.0f, y, scale, fps_color);
     y -= 22.0f;
 
-    uint32_t count = app.renderer().gs_renderer().gaussian_count();
-    ui.label("Gaussians: " + std::to_string(count), lx, y, scale, white);
+    uint32_t total = app.renderer().gs_renderer().gaussian_count();
+    uint32_t visible = app.renderer().gs_renderer().visible_count();
+    ui.label("Gaussians: " + std::to_string(visible) + " / " + std::to_string(total),
+             lx, y, scale, white);
     y -= 18.0f;
 
     ui.label("Az:" + fmt(glm::degrees(azimuth_)) +

@@ -43,6 +43,8 @@ public:
         gs_view_ = view; gs_proj_ = proj;
     }
     GsRenderer& gs_renderer() { return gs_renderer_; }
+    GsChunkGrid& gs_chunk_grid() { return gs_chunk_grid_; }
+    const GsChunkGrid& gs_chunk_grid() const { return gs_chunk_grid_; }
     bool has_gs_cloud() const { return gs_renderer_.has_cloud(); }
 
     void draw_scene(Scene& scene,

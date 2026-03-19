@@ -10,11 +10,13 @@ void GsChunkGrid::build(const GaussianCloud& cloud, float chunk_size) {
     chunk_size_ = chunk_size;
     chunks_.clear();
     sorted_gaussians_.clear();
+    cloud_bounds_ = AABB{};
 
     if (cloud.empty()) return;
 
     const auto& gaussians = cloud.gaussians();
     const auto& bounds = cloud.bounds();
+    cloud_bounds_ = bounds;
 
     grid_min_ = bounds.min;
 

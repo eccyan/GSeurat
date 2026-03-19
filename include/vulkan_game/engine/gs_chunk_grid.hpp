@@ -22,6 +22,7 @@ public:
     uint32_t gather(const std::vector<uint32_t>& chunk_indices,
                     std::vector<Gaussian>& out) const;
     bool empty() const { return chunks_.empty(); }
+    AABB cloud_bounds() const { return cloud_bounds_; }
 
 private:
     std::vector<GsChunk> chunks_;
@@ -30,6 +31,7 @@ private:
     glm::vec3 grid_min_{0.0f};
     int32_t grid_cols_ = 0;
     int32_t grid_rows_ = 0;
+    AABB cloud_bounds_;
 };
 
 }  // namespace vulkan_game

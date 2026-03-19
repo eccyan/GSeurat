@@ -21,6 +21,11 @@ public:
     bool has_cloud() const { return gaussian_count_ > 0; }
     uint32_t gaussian_count() const { return gaussian_count_; }
     uint32_t max_gaussian_count() const { return max_gaussian_count_; }
+    uint32_t visible_count() const {
+        if (visible_count_ssbo_.mapped())
+            return *static_cast<const uint32_t*>(visible_count_ssbo_.mapped());
+        return 0;
+    }
     void shutdown(VmaAllocator allocator);
 
 private:
