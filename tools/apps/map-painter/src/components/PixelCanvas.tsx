@@ -129,16 +129,19 @@ export const PixelCanvas: React.FC = () => {
           ctx.fillRect(px, py, zoom, zoom);
         }
 
-        // Height visualization (darker shade = taller)
+        // Height visualization: color-coded overlay (green→yellow→red)
         const h = heights[y * width + x];
         if (h > 0) {
-          const shade = Math.min(0.6, h * 0.1);
-          ctx.fillStyle = `rgba(0,0,0,${shade})`;
+          const t = Math.min(h / 16, 1); // 0..1 across full range
+          // Green(low) → Yellow(mid) → Red(high)
+          const hr = Math.min(1, t * 2);
+          const hg = Math.min(1, 2 - t * 2);
+          ctx.fillStyle = `rgba(${Math.round(hr * 255)},${Math.round(hg * 200)},0,0.45)`;
           ctx.fillRect(px, py, zoom, zoom);
-          // Height number
-          if (zoom >= 12) {
+          // Height number (show at zoom >= 6 for better readability)
+          if (zoom >= 6) {
             ctx.fillStyle = '#fff';
-            ctx.font = `${Math.max(8, zoom * 0.4)}px monospace`;
+            ctx.font = `${Math.max(7, zoom * 0.4)}px monospace`;
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
             ctx.fillText(h.toFixed(0), px + zoom / 2, py + zoom / 2);
