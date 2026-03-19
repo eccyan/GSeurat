@@ -14,6 +14,9 @@ namespace vulkan_game {
 void GsDemoState::on_enter(App& app) {
     app.init_scene(app.current_scene_path());
 
+    // Disable app-level parallax — demo manages its own camera
+    app.set_gs_parallax_active(false);
+
     // Set initial camera based on loaded cloud AABB
     if (app.renderer().has_gs_cloud()) {
         auto& grid = app.renderer().gs_chunk_grid();

@@ -185,6 +185,10 @@ private:
     // Parallax camera for shadow-box GS effect
     GsParallaxCamera gs_parallax_camera_;
     bool gs_parallax_active_ = false;
+public:
+    void set_gs_parallax_active(bool active) { gs_parallax_active_ = active; }
+    GsParallaxCamera& gs_parallax_camera() { return gs_parallax_camera_; }
+private:
 
     // Scene transition
     std::string current_scene_path_ = "assets/scenes/test_scene.json";

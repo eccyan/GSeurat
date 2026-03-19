@@ -101,9 +101,9 @@ void main() {
         return;
     }
 
-    // Viewing cone backface cull (shadow box mode): cull Gaussians behind tall columns
+    // Viewing cone backface cull (shadow box mode): cull Gaussians outside viewing cone
     if (shadow_box.y > 0.0) {
-        vec3 to_gaussian = normalize(cam_pos.xyz - g.pos_opacity.xyz);
+        vec3 to_gaussian = normalize(g.pos_opacity.xyz - cam_pos.xyz);
         if (dot(to_gaussian, cone_dir.xyz) < shadow_box.y) {
             sort_entries[idx].key = 0xFFFFFFFF;
             sort_entries[idx].index = idx;
