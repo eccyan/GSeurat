@@ -241,6 +241,9 @@ void Renderer::draw_scene(Scene& scene,
                 gs_prev_visible_ = visible;
                 gs_chunk_grid_.gather(visible, gs_active_buffer_);
                 if (!gs_active_buffer_.empty()) {
+                    // Wait for all in-flight frames before writing shared SSBO
+                    // to avoid race with GPU reads from previous frame
+                    vkDeviceWaitIdle(device);
                     gs_renderer_.update_active_gaussians(
                         gs_active_buffer_.data(),
                         static_cast<uint32_t>(gs_active_buffer_.size()));
