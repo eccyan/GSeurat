@@ -24,12 +24,12 @@ void GsDemoState::on_enter(App& app) {
             float center_x = (aabb.min.x + aabb.max.x) * 0.5f;
             float center_z = (aabb.min.z + aabb.max.z) * 0.5f;
 
-            // Offset target forward (-Z) and left (-X) to compensate for
-            // perspective distortion at oblique elevation angle
+            // Offset target toward the near-right region of the map so terrain
+            // fills the screen at the default oblique elevation angle
             target_ = glm::vec3(
-                center_x - extent_x * 0.1f,
+                center_x + extent_x * 0.38f,
                 0.0f,
-                center_z - extent_z * 0.2f
+                center_z + extent_z * 0.43f
             );
 
             float max_extent = std::max(extent_x, extent_z);
