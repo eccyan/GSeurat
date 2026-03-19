@@ -107,6 +107,28 @@ Buffer Buffer::create_storage(VmaAllocator allocator, VkDeviceSize size) {
     return buf;
 }
 
+Buffer Buffer::create_storage_readback(VmaAllocator allocator, VkDeviceSize size) {
+    VkBufferCreateInfo buf_info{};
+    buf_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    buf_info.size = size;
+    buf_info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    buf_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+    VmaAllocationCreateInfo alloc_info{};
+    alloc_info.usage = VMA_MEMORY_USAGE_AUTO;
+    alloc_info.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT |
+                       VMA_ALLOCATION_CREATE_MAPPED_BIT;
+
+    Buffer buf;
+    VmaAllocationInfo info;
+    if (vmaCreateBuffer(allocator, &buf_info, &alloc_info, &buf.buffer_, &buf.allocation_,
+                        &info) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to create storage readback buffer");
+    }
+    buf.mapped_ = info.pMappedData;
+    return buf;
+}
+
 Buffer Buffer::create_staging(VmaAllocator allocator, VkDeviceSize size) {
     VkBufferCreateInfo buf_info{};
     buf_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;

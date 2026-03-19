@@ -286,7 +286,8 @@ void GsRenderer::load_cloud(const GaussianCloud& cloud) {
     projected_ssbo_ = Buffer::create_storage(allocator_, projected_buf_size);
     sort_keys_ssbo_ = Buffer::create_storage(allocator_, sort_buf_size);
     uniform_buffer_ = Buffer::create_uniform(allocator_, sizeof(GsUniforms));
-    visible_count_ssbo_ = Buffer::create_storage(allocator_, sizeof(uint32_t));
+    // Visible count buffer: TRANSFER_DST for vkCmdFillBuffer, host-readable for HUD readback
+    visible_count_ssbo_ = Buffer::create_storage_readback(allocator_, sizeof(uint32_t));
 
     // Upload Gaussian data
     {
@@ -308,9 +309,6 @@ void GsRenderer::load_cloud(const GaussianCloud& cloud) {
             sort[i].index = i < gaussian_count_ ? i : 0;
         }
     }
-
-    // Initialize visible count to 0
-    *static_cast<uint32_t*>(visible_count_ssbo_.mapped()) = 0;
 
     update_descriptors();
 }
@@ -437,8 +435,18 @@ void GsRenderer::render(VkCommandBuffer cmd, const glm::mat4& view, const glm::m
             0, 0, nullptr, 0, nullptr, 1, &barrier);
     }
 
-    // Reset visible count to 0 before preprocess
-    *static_cast<uint32_t*>(visible_count_ssbo_.mapped()) = 0;
+    // Reset visible count to 0 on GPU timeline (host write isn't coherent with device)
+    vkCmdFillBuffer(cmd, visible_count_ssbo_.buffer(), 0, sizeof(uint32_t), 0);
+    {
+        VkMemoryBarrier fill_barrier{};
+        fill_barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+        fill_barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        fill_barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+        vkCmdPipelineBarrier(cmd,
+            VK_PIPELINE_STAGE_TRANSFER_BIT,
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+            0, 1, &fill_barrier, 0, nullptr, 0, nullptr);
+    }
 
     // Pass 1: Preprocess — project Gaussians to 2D, frustum cull, compute covariance
     {
