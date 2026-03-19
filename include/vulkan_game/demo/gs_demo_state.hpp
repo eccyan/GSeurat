@@ -37,6 +37,7 @@ private:
     // Hybrid re-render: full GS compute every N frames, cached blit in between
     uint32_t gs_frame_counter_ = 0;
     uint32_t gs_render_interval_ = 4;
+    glm::vec2 last_compute_offset_{0.0f};
 
     // FPS tracking (wall clock for accuracy despite dt clamping)
     std::chrono::steady_clock::time_point fps_clock_{};

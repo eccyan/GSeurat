@@ -134,6 +134,9 @@ void GsDemoState::update_shadow_box_camera(App& app, float dt) {
     glm::vec2 player_offset = (mouse - window_center) / window_half;
     player_offset = glm::clamp(player_offset, glm::vec2(-1.0f), glm::vec2(1.0f));
 
+    // Always update parallax camera for smooth tracking (exponential smoothing)
+    parallax_cam_.update(player_offset, dt);
+
     // Hybrid re-render: full GS compute every N frames, blit offset in between
     bool is_compute_frame = (gs_frame_counter_ % gs_render_interval_) == 0;
     gs_frame_counter_++;
@@ -141,16 +144,17 @@ void GsDemoState::update_shadow_box_camera(App& app, float dt) {
     if (is_compute_frame) {
         // Full 3D parallax via GS compute pipeline
         app.renderer().gs_renderer().set_skip_sort(false);
-        parallax_cam_.update(player_offset, dt);
         app.renderer().set_gs_camera(parallax_cam_.view(), parallax_cam_.proj());
         app.renderer().set_gs_blit_offset(0.0f, 0.0f);
+        last_compute_offset_ = player_offset;
     } else {
-        // Cached frame: skip compute, shift blit quad for responsive parallax
+        // Cached frame: skip compute, use delta from last compute for blit offset
         app.renderer().gs_renderer().set_skip_sort(true);
-        constexpr float kParallaxPixels = 30.0f;  // max pixel shift
+        glm::vec2 delta = player_offset - last_compute_offset_;
+        constexpr float kParallaxPixels = 30.0f;  // max pixel shift per unit offset
         app.renderer().set_gs_blit_offset(
-            player_offset.x * kParallaxPixels,
-            -player_offset.y * kParallaxPixels);  // Y inverted (screen coords)
+            delta.x * kParallaxPixels,
+            -delta.y * kParallaxPixels);  // Y inverted (screen coords)
     }
 }
 

@@ -1213,6 +1213,7 @@ void App::clear_scene() {
     collision_grid_ = {};
     gs_parallax_active_ = false;
     gs_frame_counter_ = 0;
+    gs_last_compute_offset_ = glm::vec2(0.0f);
     renderer_.set_gs_skip_chunk_cull(false);
 
     // Reset scene state
@@ -1324,6 +1325,9 @@ void App::update_game(float dt) {
                 glm::vec2 player_xy = {player_pos.x, player_pos.y};
                 glm::vec2 player_offset = (player_xy - map_center) / map_half;
                 player_offset = glm::clamp(player_offset, glm::vec2(-1.0f), glm::vec2(1.0f));
+                // Always update parallax camera for smooth tracking
+                gs_parallax_camera_.update(player_offset, dt);
+
                 // Hybrid re-render: full GS compute every N frames, blit offset in between
                 bool is_compute_frame = (gs_frame_counter_ % gs_render_interval_) == 0;
                 gs_frame_counter_++;
@@ -1331,16 +1335,17 @@ void App::update_game(float dt) {
                 if (is_compute_frame) {
                     // Full 3D parallax via GS compute pipeline
                     renderer_.gs_renderer().set_skip_sort(false);
-                    gs_parallax_camera_.update(player_offset, dt);
                     renderer_.set_gs_camera(gs_parallax_camera_.view(), gs_parallax_camera_.proj());
                     renderer_.set_gs_blit_offset(0.0f, 0.0f);
+                    gs_last_compute_offset_ = player_offset;
                 } else {
-                    // Cached frame: skip compute, shift blit quad for responsive parallax
+                    // Cached frame: use delta from last compute for blit offset
                     renderer_.gs_renderer().set_skip_sort(true);
+                    glm::vec2 delta = player_offset - gs_last_compute_offset_;
                     constexpr float kParallaxPixels = 30.0f;
                     renderer_.set_gs_blit_offset(
-                        player_offset.x * kParallaxPixels,
-                        -player_offset.y * kParallaxPixels);
+                        delta.x * kParallaxPixels,
+                        -delta.y * kParallaxPixels);
                 }
             }
         }
