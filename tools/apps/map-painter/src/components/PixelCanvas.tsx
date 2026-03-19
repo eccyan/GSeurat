@@ -133,7 +133,7 @@ export const PixelCanvas: React.FC = () => {
         // Height visualization: color-coded overlay (green→yellow→red)
         const h = heights[y * width + x];
         if (showHeight && h > 0) {
-          const t = Math.min(h / 16, 1); // 0..1 across full range
+          const t = Math.min(h / 256, 1); // 0..1 across full range
           // Green(low) → Yellow(mid) → Red(high)
           const hr = Math.min(1, t * 2);
           const hg = Math.min(1, 2 - t * 2);
