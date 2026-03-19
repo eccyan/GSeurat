@@ -2,9 +2,9 @@ import React, { useRef, useEffect, useCallback } from 'react';
 import { useMapStore, type Layer } from '../store/useMapStore.js';
 
 /**
- * Simple WebGL isometric preview of the voxel map.
+ * Simple isometric preview of the voxel map.
  * Draws colored cubes for each pixel with height > 0.
- * Uses a lightweight canvas 2D isometric projection (no full WebGL 3DGS renderer here).
+ * Downsamples large maps to keep the preview responsive.
  */
 export const Preview3D: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -37,7 +37,13 @@ export const Preview3D: React.FC = () => {
     const cosE = Math.cos(elev);
     const sinE = Math.sin(elev);
 
-    const scale = Math.min(cw, ch) / Math.max(width, height) * 0.4;
+    // Downsample large maps to keep preview fast (max ~64 cells per axis)
+    const maxPreviewDim = 64;
+    const step = Math.max(1, Math.ceil(Math.max(width, height) / maxPreviewDim));
+    const sampledW = Math.ceil(width / step);
+    const sampledH = Math.ceil(height / step);
+
+    const scale = Math.min(cw, ch) / Math.max(sampledW, sampledH) * 0.4;
     const cx = cw / 2;
     const cy = ch / 2;
 
@@ -56,20 +62,22 @@ export const Preview3D: React.FC = () => {
     const layerOrder: Layer[] = ['ground', 'walls', 'decorations'];
     for (const layer of layerOrder) {
       const data = layers[layer];
-      for (let gy = 0; gy < height; gy++) {
-        for (let gx = 0; gx < width; gx++) {
+      for (let gy = 0; gy < height; gy += step) {
+        for (let gx = 0; gx < width; gx += step) {
           const pixIdx = (gy * width + gx) * 4;
           if (data[pixIdx + 3] === 0) continue;
 
           const h = heights[gy * width + gx];
           const maxY = Math.max(1, Math.ceil(h));
 
+          // Sampled grid position (centered)
+          const sx = gx / step - sampledW / 2;
+          const sz = gy / step - sampledH / 2;
+
           for (let yi = 0; yi < maxY; yi++) {
-            const wx = gx - width / 2;
-            const wz = gy - height / 2;
-            const depth = wx * sinA + wz * cosA - yi * sinE;
+            const depth = sx * sinA + sz * cosA - yi * sinE;
             voxels.push({
-              x: wx, y: yi, z: wz,
+              x: sx, y: yi, z: sz,
               r: data[pixIdx], g: data[pixIdx + 1], b: data[pixIdx + 2],
               depth,
             });
@@ -83,7 +91,7 @@ export const Preview3D: React.FC = () => {
 
     // Draw each voxel as an isometric cube (simplified: just top face)
     for (const v of voxels) {
-      const [sx, sy] = project(v.x, v.y, v.z);
+      const [px, py] = project(v.x, v.y, v.z);
       const s = scale * 0.5;
 
       // Darken sides for depth effect
@@ -92,21 +100,24 @@ export const Preview3D: React.FC = () => {
 
       // Top face
       ctx.fillStyle = topColor;
-      ctx.fillRect(sx - s * 0.5, sy - s * 0.5, s, s);
+      ctx.fillRect(px - s * 0.5, py - s * 0.5, s, s);
 
       // Right edge (simulated)
       ctx.fillStyle = sideColor;
-      ctx.fillRect(sx + s * 0.3, sy - s * 0.3, s * 0.2, s * 0.6);
+      ctx.fillRect(px + s * 0.3, py - s * 0.3, s * 0.2, s * 0.6);
 
       // Bottom edge (simulated)
-      ctx.fillRect(sx - s * 0.3, sy + s * 0.3, s * 0.6, s * 0.2);
+      ctx.fillRect(px - s * 0.3, py + s * 0.3, s * 0.6, s * 0.2);
     }
 
     // Labels
     ctx.fillStyle = '#666';
     ctx.font = '10px monospace';
     ctx.textAlign = 'left';
-    ctx.fillText(`Voxels: ${voxels.length}`, 8, ch - 8);
+    const info = step > 1
+      ? `Voxels: ${voxels.length} (${step}x downsample)`
+      : `Voxels: ${voxels.length}`;
+    ctx.fillText(info, 8, ch - 8);
   }, [width, height, layers, heights]);
 
   useEffect(() => {
