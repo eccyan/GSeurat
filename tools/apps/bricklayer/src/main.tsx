@@ -2,10 +2,10 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { App } from './App.js';
 import { registerTestStore } from '@vulkan-game-tools/test-harness/register';
-import { useMapStore } from './store/useMapStore.js';
+import { useSceneStore } from './store/useSceneStore.js';
 
 if (import.meta.env.DEV) {
-  registerTestStore(useMapStore);
+  registerTestStore(useSceneStore);
 }
 
 ReactDOM.createRoot(document.getElementById('root')!).render(

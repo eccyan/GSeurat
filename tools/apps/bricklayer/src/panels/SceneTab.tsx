@@ -1,0 +1,114 @@
+import React from 'react';
+import { useSceneStore } from '../store/useSceneStore.js';
+
+const styles: Record<string, React.CSSProperties> = {
+  section: { display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 },
+  label: { fontSize: 11, color: '#888', textTransform: 'uppercase' as const, letterSpacing: 1 },
+  row: { display: 'flex', alignItems: 'center', gap: 8 },
+  input: {
+    flex: 1, padding: '4px 6px', background: '#2a2a4a', border: '1px solid #444',
+    borderRadius: 4, color: '#ddd', fontSize: 13,
+  },
+  btn: {
+    padding: '4px 10px', border: '1px solid #555', borderRadius: 4,
+    background: '#3a3a6a', color: '#ddd', cursor: 'pointer', fontSize: 12,
+  },
+};
+
+function colorToHex(c: [number, number, number, number]): string {
+  return '#' + [c[0], c[1], c[2]].map((v) =>
+    Math.round(v * 255).toString(16).padStart(2, '0')
+  ).join('');
+}
+
+function hexToColor(hex: string, alpha: number): [number, number, number, number] {
+  const r = parseInt(hex.slice(1, 3), 16) / 255;
+  const g = parseInt(hex.slice(3, 5), 16) / 255;
+  const b = parseInt(hex.slice(5, 7), 16) / 255;
+  return [r, g, b, alpha];
+}
+
+export function SceneTab() {
+  const ambientColor = useSceneStore((s) => s.ambientColor);
+  const setAmbientColor = useSceneStore((s) => s.setAmbientColor);
+  const gridWidth = useSceneStore((s) => s.gridWidth);
+  const gridDepth = useSceneStore((s) => s.gridDepth);
+  const voxels = useSceneStore((s) => s.voxels);
+  const dayNight = useSceneStore((s) => s.dayNight);
+  const setDayNight = useSceneStore((s) => s.setDayNight);
+  const autoGenerateCollision = useSceneStore((s) => s.autoGenerateCollision);
+
+  return (
+    <div>
+      <div style={styles.section}>
+        <span style={styles.label}>Scene Info</span>
+        <div style={{ fontSize: 12, color: '#aaa' }}>
+          Grid: {gridWidth} x {gridDepth} | Voxels: {voxels.size}
+        </div>
+      </div>
+
+      <div style={styles.section}>
+        <span style={styles.label}>Ambient Color</span>
+        <div style={styles.row}>
+          <input
+            type="color"
+            value={colorToHex(ambientColor)}
+            onChange={(e) => setAmbientColor(hexToColor(e.target.value, ambientColor[3]))}
+            style={{ width: 40, height: 28, border: 'none', cursor: 'pointer' }}
+          />
+          <span style={{ fontSize: 12, color: '#aaa' }}>
+            [{ambientColor.map((v) => v.toFixed(2)).join(', ')}]
+          </span>
+        </div>
+      </div>
+
+      <div style={styles.section}>
+        <span style={styles.label}>Day/Night Cycle</span>
+        <label style={{ ...styles.row, fontSize: 13, cursor: 'pointer' }}>
+          <input
+            type="checkbox"
+            checked={dayNight.enabled}
+            onChange={(e) => setDayNight({ enabled: e.target.checked })}
+          />
+          Enabled
+        </label>
+        {dayNight.enabled && (
+          <>
+            <div style={styles.row}>
+              <span style={{ fontSize: 12, minWidth: 80 }}>Speed</span>
+              <input
+                type="number"
+                step={0.1}
+                value={dayNight.cycle_speed}
+                onChange={(e) => setDayNight({ cycle_speed: Number(e.target.value) })}
+                style={styles.input}
+              />
+            </div>
+            <div style={styles.row}>
+              <span style={{ fontSize: 12, minWidth: 80 }}>Initial Time</span>
+              <input
+                type="number"
+                step={0.05}
+                min={0}
+                max={1}
+                value={dayNight.initial_time}
+                onChange={(e) => setDayNight({ initial_time: Number(e.target.value) })}
+                style={styles.input}
+              />
+            </div>
+            <span style={{ fontSize: 11, color: '#666' }}>
+              {dayNight.keyframes.length} keyframes
+            </span>
+          </>
+        )}
+      </div>
+
+      <div style={styles.section}>
+        <span style={styles.label}>Collision</span>
+        <button style={styles.btn} onClick={autoGenerateCollision}>
+          Auto-Generate from Voxels
+        </button>
+      </div>
+    </div>
+  );
+}
