@@ -71,11 +71,9 @@ void GsDemoState::reset_camera() {
 void GsDemoState::update_camera(App& app, float dt) {
     auto& input = app.input();
 
-    // Mouse drag → orbit (suppressed when Shift is held for touch deformation)
+    // Mouse drag → orbit
     glm::vec2 mouse = input.mouse_pos();
-    bool shift_held = input.is_key_down(GLFW_KEY_LEFT_SHIFT) ||
-                      input.is_key_down(GLFW_KEY_RIGHT_SHIFT);
-    if (input.is_mouse_down(0) && !shift_held) {
+    if (input.is_mouse_down(0)) {
         if (!dragging_) {
             dragging_ = true;
             last_mouse_ = mouse;
@@ -244,11 +242,12 @@ void GsDemoState::update(App& app, float dt) {
         std::fprintf(stderr, "Light mode: %d\n", mode);
     }
 
-    // Shift+Click → touch deformation
-    if (app.input().was_mouse_pressed(0) &&
-        app.input().is_key_down(GLFW_KEY_LEFT_SHIFT)) {
+    // X → touch deformation at camera target
+    if (app.input().was_key_pressed(GLFW_KEY_X)) {
         app.renderer().gs_renderer().set_touch_point(target_, 20.0f);
         touch_timer_ = 0.001f;  // start timer
+        std::fprintf(stderr, "Touch at (%.1f, %.1f, %.1f)\n",
+                     target_.x, target_.y, target_.z);
     }
 
     // Update touch decay
@@ -378,7 +377,7 @@ void GsDemoState::build_draw_lists(App& app) {
         ui.label("Drag:Orbit  Scroll:Zoom  WASD:Pan  P:ShadowBox  R:Reset", lx, y, 0.35f, dim);
     }
     y -= 14.0f;
-    ui.label("T:Toon  L:Light  F:Fire  G:Water  Shift+Click:Touch", lx, y, 0.35f, dim);
+    ui.label("T:Toon  L:Light  F:Fire  G:Water  X:Touch", lx, y, 0.35f, dim);
 }
 
 }  // namespace vulkan_game

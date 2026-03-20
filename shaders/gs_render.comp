@@ -155,35 +155,41 @@ void main() {
         // --- Toon / cel shading ---
         if (toon_bands > 0.5) {
             float bands = toon_bands;
-            base_color = floor(base_color * bands + 0.5) / bands;
 
-            // Edge detection from depth discontinuity
+            // Quantize luminance, preserve hue — avoids harsh per-channel banding
+            float lum = dot(base_color, vec3(0.299, 0.587, 0.114));
+            float quant_lum = floor(lum * bands + 0.5) / bands;
+            float scale_factor = (lum > 0.001) ? quant_lum / lum : 1.0;
+            // Blend 70% quantized, 30% original for softer look
+            base_color = mix(base_color, base_color * scale_factor, 0.7);
+
+            // Edge detection from depth discontinuity (silhouette outlines only)
             float depth_c = tile_depth[local_id.y][local_id.x];
             if (depth_c > 0.0) {
-                // 15% relative threshold — voxel GS data has steep depth variation
-                float threshold = depth_c * 0.15;
+                // 25% relative threshold — only major silhouette edges
+                float threshold = depth_c * 0.25;
+                int edge_count = 0;
 
-                // Only compare against neighbors that have valid depth (non-zero)
-                bool edge = false;
+                // Count how many neighbors have a big depth jump (require 2+ for robustness)
                 if (local_id.x > 0u) {
                     float nd = tile_depth[local_id.y][local_id.x - 1u];
-                    if (nd > 0.0 && abs(nd - depth_c) > threshold) edge = true;
+                    if (nd > 0.0 && abs(nd - depth_c) > threshold) edge_count++;
                 }
                 if (local_id.x < 15u) {
                     float nd = tile_depth[local_id.y][local_id.x + 1u];
-                    if (nd > 0.0 && abs(nd - depth_c) > threshold) edge = true;
+                    if (nd > 0.0 && abs(nd - depth_c) > threshold) edge_count++;
                 }
                 if (local_id.y > 0u) {
                     float nd = tile_depth[local_id.y - 1u][local_id.x];
-                    if (nd > 0.0 && abs(nd - depth_c) > threshold) edge = true;
+                    if (nd > 0.0 && abs(nd - depth_c) > threshold) edge_count++;
                 }
                 if (local_id.y < 15u) {
                     float nd = tile_depth[local_id.y + 1u][local_id.x];
-                    if (nd > 0.0 && abs(nd - depth_c) > threshold) edge = true;
+                    if (nd > 0.0 && abs(nd - depth_c) > threshold) edge_count++;
                 }
 
-                if (edge) {
-                    base_color *= 0.15;  // dark outlines (not pure black)
+                if (edge_count >= 2) {
+                    base_color *= 0.2;  // dark outlines at silhouette edges
                 }
             }
         }
