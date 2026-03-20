@@ -114,7 +114,7 @@ private:
     float shadow_box_cone_cos_ = 0.0f;
     glm::vec3 shadow_box_cone_dir_{0.0f, 0.0f, -1.0f};
     glm::vec3 shadow_box_cam_pos_{0.0f};
-    uint32_t num_sort_passes_ = 4;
+    uint32_t num_sort_passes_ = 2;
     float scale_multiplier_ = 1.0f;
 };
 

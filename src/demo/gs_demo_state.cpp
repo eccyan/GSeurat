@@ -47,8 +47,11 @@ void GsDemoState::on_enter(App& app) {
                 distance_ * std::sin(elevation_),
                 distance_ * std::cos(elevation_) * std::cos(azimuth_)
             );
+            // Use renderer output dimensions (app.cpp auto-scales for large clouds)
+            uint32_t gs_w = app.renderer().gs_renderer().output_width();
+            uint32_t gs_h = app.renderer().gs_renderer().output_height();
             GsParallaxConfig parallax_config;
-            parallax_cam_.configure(eye, target_, 60.0f, 320, 240, parallax_config);
+            parallax_cam_.configure(eye, target_, 60.0f, gs_w, gs_h, parallax_config);
         }
     } else {
         reset_camera();

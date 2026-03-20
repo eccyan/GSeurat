@@ -681,14 +681,14 @@ void GsRenderer::set_shadow_box_params(const glm::vec3& cone_dir, float cone_cos
     shadow_box_cone_cos_ = cone_cos;
     shadow_box_cam_pos_ = cam_pos;
     shadow_box_margin_ = margin;
-    // Keep 4 sort passes — render shader reads from buffer A (even pass count required)
-    num_sort_passes_ = 4;
+    // 2 sort passes for 16-bit keys — even count so final data lands in buffer A
+    num_sort_passes_ = 2;
 }
 
 void GsRenderer::clear_shadow_box_params() {
     shadow_box_active_ = false;
     shadow_box_margin_ = 128.0f;
-    num_sort_passes_ = 4;
+    num_sort_passes_ = 2;
 }
 
 void GsRenderer::shutdown(VmaAllocator allocator) {

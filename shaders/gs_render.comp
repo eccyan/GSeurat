@@ -61,8 +61,8 @@ void main() {
     for (uint s = 0; s < count; ++s) {
         uint idx = sort_entries[s].index;
 
-        // Culled Gaussians (key == max) are sorted to the end — stop immediately
-        if (sort_entries[s].key == 0xFFFFFFFF) break;
+        // Culled Gaussians (key == 0xFFFF) are sorted to the end — stop immediately
+        if (sort_entries[s].key == 0xFFFF) break;
 
         ProjectedSplat splat = projected[idx];
 

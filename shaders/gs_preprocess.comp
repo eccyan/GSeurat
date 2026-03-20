@@ -71,7 +71,7 @@ void main() {
 
     // Frustum cull: discard if behind near plane (view space z is negative for visible objects)
     if (view_pos.z > -0.1) {
-        sort_entries[idx].key = 0xFFFFFFFF;
+        sort_entries[idx].key = 0xFFFF;
         sort_entries[idx].index = idx;
         return;
     }
@@ -79,7 +79,7 @@ void main() {
     // Project to clip space
     vec4 clip_pos = proj * view_pos;
     if (clip_pos.w <= 0.0) {
-        sort_entries[idx].key = 0xFFFFFFFF;
+        sort_entries[idx].key = 0xFFFF;
         sort_entries[idx].index = idx;
         return;
     }
@@ -96,7 +96,7 @@ void main() {
     float margin = shadow_box.x;
     if (screen_x < -margin || screen_x > float(params.x) + margin ||
         screen_y < -margin || screen_y > float(params.y) + margin) {
-        sort_entries[idx].key = 0xFFFFFFFF;
+        sort_entries[idx].key = 0xFFFF;
         sort_entries[idx].index = idx;
         return;
     }
@@ -105,7 +105,7 @@ void main() {
     if (shadow_box.y > 0.0) {
         vec3 to_gaussian = normalize(g.pos_opacity.xyz - cam_pos.xyz);
         if (dot(to_gaussian, cone_dir.xyz) < shadow_box.y) {
-            sort_entries[idx].key = 0xFFFFFFFF;
+            sort_entries[idx].key = 0xFFFF;
             sort_entries[idx].index = idx;
             return;
         }
@@ -152,7 +152,7 @@ void main() {
     // Compute inverse of 2D covariance for conic representation
     float det = a * c - b * b;
     if (det <= 1e-6) {
-        sort_entries[idx].key = 0xFFFFFFFF;
+        sort_entries[idx].key = 0xFFFF;
         sort_entries[idx].index = idx;
         return;
     }
@@ -179,8 +179,10 @@ void main() {
     splat.color = vec4(g.color_pad.rgb, 1.0);
     projected[idx] = splat;
 
-    // Write sort entry (depth as uint for bitonic sort — closer = smaller key)
-    sort_entries[idx].key = floatBitsToUint(splat.depth);
+    // Write sort entry — quantize depth to 16-bit key for 2-pass radix sort
+    // Camera range [0.1, 1000] → ~0.015 unit resolution, sufficient for 320×240 pixel art
+    float depth_norm = clamp(splat.depth / 1000.0, 0.0, 1.0);
+    sort_entries[idx].key = uint(depth_norm * 65535.0);
     sort_entries[idx].index = idx;
 
     // Count visible (non-culled) Gaussians
