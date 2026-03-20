@@ -189,10 +189,12 @@ the sprite layer.
 If the visual loss is unacceptable, these alternatives preserve more fidelity
 while still improving performance:
 
-1. **Re-render every N frames** — Run full GS compute every 4th frame, reuse
-   cached image on intermediate frames. Gives ~30 FPS of real-time GS with
-   120 FPS sprite responsiveness. Requires double-buffering the GS output image
-   to avoid tearing.
+1. **Re-render every N frames (implemented)** — Run full GS compute every Nth
+   frame, reuse cached image with 2D blit offset on intermediate frames. Default
+   N=8 with adaptive auto-tuning: every 0.5s the measured FPS is compared against
+   a 30 FPS target. If FPS < 25.5, N increases (up to 16); if FPS > 39, N
+   decreases (down to 1). This balances parallax update rate against hardware
+   capability automatically.
 
 2. **Re-render on significant camera change** — Track parallax delta and only
    re-sort when the accumulated shift exceeds a threshold (e.g., 2 pixels of
