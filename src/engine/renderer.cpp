@@ -166,8 +166,8 @@ void Renderer::init_gs(const GaussianCloud& cloud, uint32_t width, uint32_t heig
     gs_prev_visible_.clear();
 
     // Auto-set LOD budget for large clouds (keeps small scenes unaffected)
-    if (cloud.count() > 400000 && gs_gaussian_budget_ == 0) {
-        gs_gaussian_budget_ = 400000;
+    if (cloud.count() > 200000 && gs_gaussian_budget_ == 0) {
+        gs_gaussian_budget_ = 200000;
     }
 
     // Create descriptor sets for sampling the GS output as a sprite texture

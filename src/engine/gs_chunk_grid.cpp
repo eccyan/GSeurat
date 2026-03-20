@@ -194,7 +194,7 @@ uint32_t GsChunkGrid::gather_lod(const std::vector<uint32_t>& chunk_indices,
     // Distance thresholds based on chunk size
     float near_dist = 2.0f * chunk_size_;
     float far_dist = 8.0f * chunk_size_;
-    float min_ratio = 0.1f;  // 10% kept at far distance
+    float min_ratio = 0.001f;  // 0.1% kept at far distance
 
     // Compute per-chunk distances and initial keep ratios
     struct ChunkLod {
