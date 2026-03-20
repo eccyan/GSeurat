@@ -1,12 +1,28 @@
 import type { VoxelKey, Voxel } from '../store/types.js';
-import { parseKey } from './voxelUtils.js';
+import { parseKey, voxelKey } from './voxelUtils.js';
+
+const NEIGHBORS: [number, number, number][] = [
+  [1, 0, 0], [-1, 0, 0],
+  [0, 1, 0], [0, -1, 0],
+  [0, 0, 1], [0, 0, -1],
+];
 
 export function exportPly(
   voxels: Map<VoxelKey, Voxel>,
   gridWidth: number,
   gridHeight: number,
 ): Blob {
-  const entries = Array.from(voxels.entries());
+  // Surface culling: skip interior voxels enclosed by 6 neighbors
+  const allEntries = Array.from(voxels.entries());
+  const entries = allEntries.filter(([key]) => {
+    const [x, y, z] = parseKey(key);
+    for (const [dx, dy, dz] of NEIGHBORS) {
+      if (!voxels.has(voxelKey(x + dx, y + dy, z + dz))) {
+        return true; // at least one face exposed
+      }
+    }
+    return false; // fully enclosed
+  });
   const count = entries.length;
 
   const header =
