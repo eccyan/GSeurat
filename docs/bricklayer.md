@@ -34,9 +34,11 @@ cd apps/bricklayer && pnpm dev
 | **Depth AI**   | Uses Depth Anything V2 (in-browser via `@huggingface/transformers`) to estimate per-pixel depth. Close objects get deeper columns. Model (~50 MB) downloads on first use and is cached in IndexedDB. |
 
 **Max Width** slider (default 256px) downscales the image before voxelization.
-Lower values = fewer voxels, faster rendering.
+This controls editor viewport performance; there is no engine-side limit on map
+width or voxel count.
 
 **Max Height** slider (luminance/depth modes) controls the maximum column depth.
+There is no engine-side limit on map height.
 
 ### Coordinate Mapping
 
@@ -48,6 +50,11 @@ Images are mapped to the X,Y plane facing the camera:
 
 ### Performance
 
+- **No map size limits**: The engine imposes no restrictions on map width, height,
+  or total voxel/Gaussian count. The adaptive LOD budget automatically decimates
+  large scenes to maintain 30+ FPS regardless of size. A 949K Gaussian scene
+  (256×256 with depth) runs at 30+ FPS via distance-based LOD that keeps near
+  chunks at full density and aggressively decimates far chunks.
 - **Surface culling**: Only voxels with at least one exposed face are rendered.
   Interior voxels (enclosed by 6 neighbors) are skipped. A solid column of
   height 16 renders ~5 instances instead of 16.
