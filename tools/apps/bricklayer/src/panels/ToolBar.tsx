@@ -109,11 +109,9 @@ export function ToolBar() {
   const showGrid = useSceneStore((s) => s.showGrid);
   const showCollision = useSceneStore((s) => s.showCollision);
   const showGizmos = useSceneStore((s) => s.showGizmos);
-  const showReferenceImage = useSceneStore((s) => s.showReferenceImage);
   const setShowGrid = useSceneStore((s) => s.setShowGrid);
   const setShowCollision = useSceneStore((s) => s.setShowCollision);
   const setShowGizmos = useSceneStore((s) => s.setShowGizmos);
-  const setShowReferenceImage = useSceneStore((s) => s.setShowReferenceImage);
 
   const hexColor = `#${activeColor.slice(0, 3).map((c) => c.toString(16).padStart(2, '0')).join('')}`;
 
@@ -226,10 +224,6 @@ export function ToolBar() {
         <label style={{ ...styles.row, fontSize: 13, cursor: 'pointer' }}>
           <input type="checkbox" checked={showGizmos} onChange={(e) => setShowGizmos(e.target.checked)} />
           Gizmos
-        </label>
-        <label style={{ ...styles.row, fontSize: 13, cursor: 'pointer' }}>
-          <input type="checkbox" checked={showReferenceImage} onChange={(e) => setShowReferenceImage(e.target.checked)} />
-          Reference
         </label>
       </div>
     </div>

@@ -144,8 +144,6 @@ export interface SceneStoreState {
   showGrid: boolean;
   showCollision: boolean;
   showGizmos: boolean;
-  showReferenceImage: boolean;
-  referenceImageUrl: string | null;
 
   // Undo/redo
   undoStack: Snapshot[];
@@ -201,8 +199,6 @@ export interface SceneStoreState {
   setShowGrid: (v: boolean) => void;
   setShowCollision: (v: boolean) => void;
   setShowGizmos: (v: boolean) => void;
-  setShowReferenceImage: (v: boolean) => void;
-  setReferenceImageUrl: (url: string | null) => void;
 
   // Actions – undo/redo
   undo: () => void;
@@ -245,8 +241,6 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
   showGrid: true,
   showCollision: false,
   showGizmos: true,
-  showReferenceImage: true,
-  referenceImageUrl: null,
 
   undoStack: [],
   redoStack: [],
@@ -507,8 +501,6 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
   setShowGrid: (v) => set({ showGrid: v }),
   setShowCollision: (v) => set({ showCollision: v }),
   setShowGizmos: (v) => set({ showGizmos: v }),
-  setShowReferenceImage: (v) => set({ showReferenceImage: v }),
-  setReferenceImageUrl: (url) => set({ referenceImageUrl: url }),
 
   // ── File actions ──
   newScene: (width, depth) => set({
@@ -564,15 +556,7 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
       }
     }
 
-    // Generate reference image URL from the (possibly downscaled) imageData
-    const refCanvas = document.createElement('canvas');
-    refCanvas.width = w;
-    refCanvas.height = h;
-    const refCtx = refCanvas.getContext('2d')!;
-    refCtx.putImageData(imageData, 0, 0);
-    const refUrl = refCanvas.toDataURL('image/png');
-
-    set({ voxels: next, gridWidth: w, gridDepth: h, referenceImageUrl: refUrl });
+    set({ voxels: next, gridWidth: w, gridDepth: h });
   },
 
   saveProject: () => {

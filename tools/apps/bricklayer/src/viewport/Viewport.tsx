@@ -9,7 +9,6 @@ import { NpcMarkers } from './NpcMarkers.js';
 import { PortalMarkers } from './PortalMarkers.js';
 import { PlayerMarker } from './PlayerMarker.js';
 import { CollisionOverlay } from './CollisionOverlay.js';
-import { ReferenceImage } from './ReferenceImage.js';
 import { useSceneStore } from '../store/useSceneStore.js';
 
 export function Viewport() {
@@ -50,7 +49,6 @@ export function Viewport() {
       <PortalMarkers />
       <PlayerMarker />
       <CollisionOverlay />
-      <ReferenceImage />
 
       <OrbitControls
         target={[gridWidth / 2, 0, gridDepth / 2]}
