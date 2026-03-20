@@ -165,6 +165,11 @@ void Renderer::init_gs(const GaussianCloud& cloud, uint32_t width, uint32_t heig
     gs_chunk_grid_.build(cloud, 32.0f);
     gs_prev_visible_.clear();
 
+    // Auto-set LOD budget for large clouds (keeps small scenes unaffected)
+    if (cloud.count() > 200000 && gs_gaussian_budget_ == 0) {
+        gs_gaussian_budget_ = 200000;
+    }
+
     // Create descriptor sets for sampling the GS output as a sprite texture
     std::array<VkBuffer, kMaxFramesInFlight> ubo_buffers;
     for (uint32_t i = 0; i < kMaxFramesInFlight; i++) {
@@ -254,7 +259,13 @@ void Renderer::draw_scene(Scene& scene,
             // Dirty check: skip re-upload if same chunks are visible
             if (visible != gs_prev_visible_) {
                 gs_prev_visible_ = visible;
-                gs_chunk_grid_.gather(visible, gs_active_buffer_);
+                if (gs_gaussian_budget_ > 0) {
+                    glm::vec3 cam_pos = glm::vec3(glm::inverse(gs_view_)[3]);
+                    gs_chunk_grid_.gather_lod(visible, cam_pos, gs_gaussian_budget_,
+                                              gs_active_buffer_);
+                } else {
+                    gs_chunk_grid_.gather(visible, gs_active_buffer_);
+                }
                 if (!gs_active_buffer_.empty()) {
                     // Wait for all in-flight frames before writing shared SSBO
                     // to avoid race with GPU reads from previous frame

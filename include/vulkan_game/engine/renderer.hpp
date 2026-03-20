@@ -49,6 +49,8 @@ public:
     bool has_gs_cloud() const { return gs_renderer_.has_cloud(); }
     void set_gs_skip_chunk_cull(bool skip) { gs_skip_chunk_cull_ = skip; }
     void set_gs_blit_offset(float x, float y) { gs_blit_offset_x_ = x; gs_blit_offset_y_ = y; }
+    void set_gs_gaussian_budget(uint32_t b) { gs_gaussian_budget_ = b; }
+    uint32_t gs_gaussian_budget() const { return gs_gaussian_budget_; }
 
     void draw_scene(Scene& scene,
                     const std::vector<SpriteDrawInfo>& entity_sprites = {},
@@ -149,6 +151,7 @@ private:
     std::vector<Gaussian> gs_active_buffer_;
     std::vector<uint32_t> gs_prev_visible_;
     bool gs_skip_chunk_cull_ = false;
+    uint32_t gs_gaussian_budget_ = 0;  // 0 = unlimited (no LOD decimation)
     float gs_blit_offset_x_ = 0.0f;
     float gs_blit_offset_y_ = 0.0f;
 

@@ -225,6 +225,9 @@ GaussianCloud GaussianCloud::load_ply(const std::string& path) {
             g.opacity = 1.0f;
         }
 
+        // Importance for LOD: large, opaque Gaussians are most important
+        g.importance = g.opacity * std::max({g.scale.x, g.scale.y, g.scale.z});
+
         cloud.bounds_.expand(g.position);
     }
 

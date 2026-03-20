@@ -14,7 +14,8 @@ struct Gaussian {
     glm::quat rotation;   // 16 bytes
     glm::vec3 color;      // 12 bytes (SH DC coefficient → linear RGB)
     float opacity;         // 4 bytes
-};  // 56 bytes
+    float importance;      // 4 bytes (opacity * max_scale, for LOD decimation)
+};  // 60 bytes
 
 struct AABB {
     glm::vec3 min{std::numeric_limits<float>::max()};
