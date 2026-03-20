@@ -522,10 +522,9 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
   }),
 
   importImage: (imageData, mode, maxHeight, depthMap?) => {
-    const { gridWidth, gridDepth } = get();
     const next = new Map<VoxelKey, Voxel>();
-    const w = Math.min(imageData.width, gridWidth);
-    const h = Math.min(imageData.height, gridDepth);
+    const w = imageData.width;
+    const h = imageData.height;
 
     for (let iz = 0; iz < h; iz++) {
       for (let ix = 0; ix < w; ix++) {
