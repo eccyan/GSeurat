@@ -210,6 +210,75 @@ while still improving performance:
    threshold (e.g., 150K). Smaller maps (50K-100K) may achieve 30+ FPS with
    full real-time compute.
 
+## LOD Decimation (GS10)
+
+**Date:** 2026-03-20
+**Target:** Orbit mode with 949K Gaussians (Bricklayer export)
+
+### Problem
+
+949K Gaussians at 160x120 ran at 4.2 FPS in orbit mode. GPU-side culling
+(visible_count SSBO, early termination) doesn't help because culled Gaussians
+still participate in the radix sort. The 16-bit sort optimization (GS9) reduced
+sort passes from 4 to 2, but sort cost remains O(N) where N = uploaded count.
+
+### Solution: CPU-side distance-based LOD decimation
+
+Reduce Gaussian count *before* GPU upload by decimating far chunks more
+aggressively than near chunks.
+
+#### Key components
+
+1. **Importance field** (`Gaussian::importance = opacity × max(scale)`)
+   Precomputed once at PLY load. Used to sort Gaussians within each chunk
+   by visual contribution (descending). Zero per-frame cost.
+
+2. **Stride-based decimation** (`GsChunkGrid::gather_lod()`)
+   For each visible chunk, computes a keep ratio based on distance to camera:
+   - `dist < 2×chunk_size` → 100% (near stays crisp)
+   - `dist > 8×chunk_size` → 0.1% minimum
+   - Linear interpolation between
+
+   Instead of taking the first N Gaussians (which creates spatial bias from
+   PLY ordering — visible as horizontal gaps in voxel data), uses stride-based
+   sampling: `out[i] = src[i × stride]`. This ensures even spatial distribution
+   within each chunk regardless of importance uniformity.
+
+   If total kept exceeds budget, all ratios are scaled proportionally.
+
+3. **Adaptive budget** (converge-and-lock feedback loop)
+   - Starts at full cloud size
+   - Each frame: measures smoothed FPS (EMA α=0.1)
+   - If FPS < 30: reduces budget proportionally, resets stability counter
+   - If FPS ≥ 30 for 30 consecutive frames (~0.5s): **locks** budget
+   - When visible chunk set changes (camera moves): **unlocks** for re-tuning
+   - Floor: 50K Gaussians minimum
+
+### Results
+
+| Budget  | Gaussians Rendered | FPS    | Speedup | Quality |
+|---------|--------------------|--------|---------|---------|
+| 949K    | 949K (no LOD)      | 4.2    | 1x      | Full    |
+| 400K    | ~400K              | 8.5    | 2x      | Good    |
+| 200K    | ~200K              | 15.7   | 3.7x    | Good    |
+| 100K    | ~100K              | 28-30  | 7x      | Acceptable |
+| Adaptive| Converges to ~100K | 30+    | 7x+     | Auto-tuned |
+
+At 160×120 pixel-art resolution, most decimated Gaussians are sub-pixel.
+The stride-based sampling preserves scene structure even at extreme decimation
+(100K from 949K = 10.5% kept).
+
+### Files modified
+
+| File | Change |
+|------|--------|
+| `gaussian_cloud.hpp` | Added `float importance` to `Gaussian` (56→60 bytes) |
+| `gaussian_cloud.cpp` | Compute importance in PLY load loop |
+| `gs_chunk_grid.hpp` | Added `gather_lod()` declaration |
+| `gs_chunk_grid.cpp` | Sort chunks by importance at build; stride-based `gather_lod()` |
+| `renderer.hpp` | Adaptive budget state (`gs_gaussian_budget_`, `gs_budget_locked_`, etc.) |
+| `renderer.cpp` | Adaptive budget feedback loop; `gather_lod()` call; auto-enable for large clouds |
+
 ## Recommendation
 
 For production use, always run the release build (`cmake --build --preset
