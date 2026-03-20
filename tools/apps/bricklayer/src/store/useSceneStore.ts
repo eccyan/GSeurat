@@ -526,6 +526,10 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
     const w = imageData.width;
     const h = imageData.height;
 
+    // Map image to X,Y plane (facing camera):
+    //   ix → X (horizontal)
+    //   iz (image row) → Y (flipped so top of image = high Y)
+    //   depth columns extend along +Z (away from camera)
     for (let iz = 0; iz < h; iz++) {
       for (let ix = 0; ix < w; ix++) {
         const idx = (iz * imageData.width + ix) * 4;
@@ -535,28 +539,29 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
         const a = imageData.data[idx + 3];
         if (a < 10) continue;
 
+        const vy = h - 1 - iz; // flip Y so image top = high Y
+
         if (mode === 'flat') {
-          next.set(voxelKey(ix, 0, iz), { color: [r, g, b, a] });
+          next.set(voxelKey(ix, vy, 0), { color: [r, g, b, a] });
         } else if (mode === 'depth' && depthMap) {
-          // Depth map: higher value = closer to camera = taller column
           const depthIdx = iz * imageData.width + ix;
           const depth = depthMap[depthIdx] ?? 0;
-          const colHeight = Math.max(1, Math.round(depth * maxHeight));
-          for (let iy = 0; iy < colHeight; iy++) {
-            next.set(voxelKey(ix, iy, iz), { color: [r, g, b, a] });
+          const colDepth = Math.max(1, Math.round(depth * maxHeight));
+          for (let d = 0; d < colDepth; d++) {
+            next.set(voxelKey(ix, vy, d), { color: [r, g, b, a] });
           }
         } else {
           // luminance mode
           const lum = 0.299 * r + 0.587 * g + 0.114 * b;
-          const colHeight = Math.max(1, Math.round((lum / 255) * maxHeight));
-          for (let iy = 0; iy < colHeight; iy++) {
-            next.set(voxelKey(ix, iy, iz), { color: [r, g, b, a] });
+          const colDepth = Math.max(1, Math.round((lum / 255) * maxHeight));
+          for (let d = 0; d < colDepth; d++) {
+            next.set(voxelKey(ix, vy, d), { color: [r, g, b, a] });
           }
         }
       }
     }
 
-    set({ voxels: next, gridWidth: w, gridDepth: h });
+    set({ voxels: next, gridWidth: w, gridDepth: maxHeight });
   },
 
   saveProject: () => {
