@@ -32,7 +32,7 @@ export function VoxelMesh() {
       _dummy.position.set(x, y, z);
       _dummy.updateMatrix();
       mesh.setMatrixAt(i, _dummy.matrix);
-      _color.setRGB(voxel.color[0] / 255, voxel.color[1] / 255, voxel.color[2] / 255);
+      _color.setRGB(voxel.color[0] / 255, voxel.color[1] / 255, voxel.color[2] / 255, THREE.SRGBColorSpace);
       mesh.setColorAt(i, _color);
     });
 
