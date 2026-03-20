@@ -108,6 +108,7 @@ export function ImportDialog({ onClose }: { onClose: () => void }) {
   const [mode, setMode] = useState<ImportMode>('flat');
   const [maxHeight, setMaxHeight] = useState(16);
   const [maxWidth, setMaxWidth] = useState(256);
+  const [voxelBudget, setVoxelBudget] = useState(500000);
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -140,7 +141,7 @@ export function ImportDialog({ onClose }: { onClose: () => void }) {
           });
 
           setStatus('Generating voxels...');
-          store.importImage(imageData, 'depth', maxHeight, depthMap);
+          store.importImage(imageData, 'depth', maxHeight, depthMap, voxelBudget);
           onClose();
         } catch (err) {
           console.error('Depth estimation failed:', err);
@@ -148,7 +149,7 @@ export function ImportDialog({ onClose }: { onClose: () => void }) {
           setLoading(false);
         }
       } else {
-        store.importImage(imageData, mode, maxHeight);
+        store.importImage(imageData, mode, maxHeight, undefined, voxelBudget);
         onClose();
       }
     };
@@ -157,6 +158,17 @@ export function ImportDialog({ onClose }: { onClose: () => void }) {
   };
 
   const showHeightSlider = mode === 'luminance' || mode === 'depth';
+
+  // Estimate surface voxels after culling
+  const estimatedVoxels = (() => {
+    if (mode === 'flat') return maxWidth * maxWidth; // worst case: all pixels opaque
+    // Surface of a W×H×D box: 2(WH + WD + HD)
+    const estW = maxWidth;
+    const estH = maxWidth; // assume square-ish image
+    const estD = maxHeight;
+    return 2 * (estW * estH + estW * estD + estH * estD);
+  })();
+  const overBudget = estimatedVoxels > voxelBudget;
 
   return (
     <div style={styles.overlay} onClick={loading ? undefined : onClose}>
@@ -232,6 +244,30 @@ export function ImportDialog({ onClose }: { onClose: () => void }) {
             <span style={{ fontSize: 13 }}>{maxHeight}</span>
           </div>
         )}
+
+        <div style={styles.row}>
+          <span style={styles.label}>Voxel Budget</span>
+          <input
+            type="number"
+            min={10000}
+            max={5000000}
+            step={50000}
+            value={voxelBudget}
+            onChange={(e) => setVoxelBudget(Math.max(10000, Number(e.target.value)))}
+            style={{ ...styles.input, maxWidth: 120 }}
+            disabled={loading}
+          />
+          <span style={{ fontSize: 12, color: '#888' }}>
+            {(voxelBudget / 1000).toFixed(0)}K
+          </span>
+        </div>
+        <div style={{
+          ...styles.hint,
+          color: overBudget ? '#fa4' : '#666',
+        }}>
+          Est. ~{(estimatedVoxels / 1000).toFixed(0)}K surface voxels
+          {overBudget && ' (will be trimmed to budget)'}
+        </div>
 
         {loading && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>

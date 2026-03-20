@@ -206,7 +206,7 @@ export interface SceneStoreState {
 
   // Actions – file
   newScene: (width: number, depth: number) => void;
-  importImage: (imageData: ImageData, mode: 'flat' | 'luminance' | 'depth', maxHeight: number, depthMap?: Float32Array) => void;
+  importImage: (imageData: ImageData, mode: 'flat' | 'luminance' | 'depth', maxHeight: number, depthMap?: Float32Array, budget?: number) => void;
   saveProject: () => BricklayerFile;
   loadProject: (data: BricklayerFile) => void;
 }
@@ -521,7 +521,7 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
     redoStack: [],
   }),
 
-  importImage: (imageData, mode, maxHeight, depthMap?) => {
+  importImage: (imageData, mode, maxHeight, depthMap?, budget?) => {
     const next = new Map<VoxelKey, Voxel>();
     const w = imageData.width;
     const h = imageData.height;
@@ -558,6 +558,34 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
             next.set(voxelKey(ix, vy, d), { color: [r, g, b, a] });
           }
         }
+      }
+    }
+
+    // Surface culling: remove fully interior voxels (all 6 neighbors present)
+    if (mode !== 'flat') {
+      const NEIGHBORS: [number, number, number][] = [
+        [1, 0, 0], [-1, 0, 0],
+        [0, 1, 0], [0, -1, 0],
+        [0, 0, 1], [0, 0, -1],
+      ];
+      const toDelete: VoxelKey[] = [];
+      for (const key of next.keys()) {
+        const [x, y, z] = parseKey(key);
+        const allEnclosed = NEIGHBORS.every(([dx, dy, dz]) =>
+          next.has(voxelKey(x + dx, y + dy, z + dz))
+        );
+        if (allEnclosed) toDelete.push(key);
+      }
+      for (const key of toDelete) next.delete(key);
+    }
+
+    // Budget enforcement: stride-sample if still over budget
+    if (budget && budget > 0 && next.size > budget) {
+      const entries = Array.from(next.entries());
+      const stride = Math.ceil(entries.length / budget);
+      next.clear();
+      for (let i = 0; i < entries.length; i += stride) {
+        next.set(entries[i][0], entries[i][1]);
       }
     }
 
