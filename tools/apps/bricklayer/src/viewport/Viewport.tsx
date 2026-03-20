@@ -53,6 +53,7 @@ export function Viewport() {
       <OrbitControls
         target={[gridWidth / 2, 0, gridDepth / 2]}
         makeDefault
+        screenSpacePanning
         mouseButtons={{
           LEFT: 0,
           MIDDLE: 2,
