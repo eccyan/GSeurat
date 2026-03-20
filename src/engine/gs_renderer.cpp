@@ -558,7 +558,7 @@ void GsRenderer::render(VkCommandBuffer cmd, const glm::mat4& view, const glm::m
     uniforms.light_params = glm::vec4(glm::normalize(light_dir_), light_intensity_);
     uniforms.touch_point = glm::vec4(touch_point_, touch_radius_);
     uniforms.effect_params = glm::vec4(water_y_, fire_y_min_, fire_y_max_, effect_strength_);
-    uniforms.effect_params2 = glm::vec4(pulse_t_, xray_depth_, swirl_t_, 0.0f);
+    uniforms.effect_params2 = glm::vec4(pulse_t_, xray_depth_, swirl_t_, burn_t_);
     std::memcpy(uniform_buffer_.mapped(), &uniforms, sizeof(uniforms));
 
     // In skip-sort mode, skip the entire compute pipeline after the first

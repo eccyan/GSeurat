@@ -62,6 +62,8 @@ private:
     float xray_depth_ = 0.0f;        // 0=off, +20 per press, wraps at 300
     bool swirl_active_ = false;
     float swirl_blend_ = 0.0f;       // smooth 0→1
+    float burn_timer_ = 0.0f;        // 0=off, animates 0→1 over 5s
+    bool burn_fire_was_active_ = false;  // restore fire state after burn
 
     // FPS tracking (wall clock for accuracy despite dt clamping)
     std::chrono::steady_clock::time_point fps_clock_{};

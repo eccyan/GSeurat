@@ -74,6 +74,8 @@ public:
     float xray_depth() const { return xray_depth_; }
     void set_swirl_t(float t) { swirl_t_ = t; }
     float swirl_t() const { return swirl_t_; }
+    void set_burn_t(float t) { burn_t_ = t; }
+    float burn_t() const { return burn_t_; }
 
     void shutdown(VmaAllocator allocator);
 
@@ -177,6 +179,7 @@ private:
     float pulse_t_ = 0.0f;
     float xray_depth_ = 0.0f;
     float swirl_t_ = 0.0f;
+    float burn_t_ = 0.0f;
 };
 
 }  // namespace vulkan_game

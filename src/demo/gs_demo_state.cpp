@@ -333,6 +333,19 @@ void GsDemoState::update(App& app, float dt) {
         std::fprintf(stderr, "Swirl: %s\n", swirl_active_ ? "ON" : "OFF");
     }
 
+    // B → burn (one-shot 5s: fire→char→scatter)
+    if (app.input().was_key_pressed(GLFW_KEY_B) && burn_timer_ <= 0.0f) {
+        burn_timer_ = 0.001f;
+        burn_fire_was_active_ = fire_active_;
+        // Set fire region to full cloud Y range for the burn shader
+        auto& gs = app.renderer().gs_renderer();
+        if (app.renderer().has_gs_cloud()) {
+            auto aabb = app.renderer().gs_chunk_grid().cloud_bounds();
+            gs.set_fire_region(aabb.min.y, aabb.max.y);
+        }
+        std::fprintf(stderr, "Burn: START\n");
+    }
+
     // Animate explode (0→1 over 3s, auto-reset)
     if (explode_timer_ > 0.0f) {
         explode_timer_ += dt;
@@ -363,6 +376,22 @@ void GsDemoState::update(App& app, float dt) {
         if (swirl_blend_ < target) swirl_blend_ = std::min(swirl_blend_ + speed * dt, target);
         else if (swirl_blend_ > target) swirl_blend_ = std::max(swirl_blend_ - speed * dt, target);
         app.renderer().gs_renderer().set_swirl_t(swirl_blend_);
+    }
+
+    // Animate burn (0→1 over 5s, auto-reset)
+    if (burn_timer_ > 0.0f) {
+        burn_timer_ += dt;
+        float t = std::min(burn_timer_ / 5.0f, 1.0f);
+        app.renderer().gs_renderer().set_burn_t(t);
+        if (burn_timer_ >= 5.0f) {
+            burn_timer_ = 0.0f;
+            app.renderer().gs_renderer().set_burn_t(0.0f);
+            // Restore previous fire state
+            if (!burn_fire_was_active_) {
+                app.renderer().gs_renderer().clear_fire();
+            }
+            std::fprintf(stderr, "Burn: END\n");
+        }
     }
 
     if (shadow_box_mode_) {
@@ -444,6 +473,7 @@ void GsDemoState::build_draw_lists(App& app) {
         if (pulse_active_) fx += "Pulse ";
         if (xray_depth_ > 0.0f) fx += "XRay=" + std::to_string(static_cast<int>(xray_depth_)) + " ";
         if (swirl_blend_ > 0.01f) fx += "Swirl ";
+        if (burn_timer_ > 0.0f) fx += "Burn ";
         if (!fx.empty()) {
             ui.label("FX: " + fx, lx, y, scale, {1.0f, 0.9f, 0.3f, 1.0f});
             y -= 18.0f;
@@ -459,7 +489,7 @@ void GsDemoState::build_draw_lists(App& app) {
     y -= 14.0f;
     ui.label("T:Toon  L:Light  F:Fire  G:Water  X:Touch", lx, y, 0.35f, dim);
     y -= 14.0f;
-    ui.label("E:Explode  V:Voxel  H:Pulse  Y:XRay  C:Swirl", lx, y, 0.35f, dim);
+    ui.label("E:Explode  V:Voxel  H:Pulse  Y:XRay  C:Swirl  B:Burn", lx, y, 0.35f, dim);
 }
 
 }  // namespace vulkan_game

@@ -149,6 +149,54 @@ void main() {
         }
     }
 
+    // --- Burn effect (fire → char → scatter) ---
+    float burn_t = effect_params2.w;
+    if (burn_t > 0.0) {
+        float y_min = effect_params.y;  // fire_y_min (set to cloud bottom)
+        float y_max = effect_params.z;  // fire_y_max (set to cloud top)
+        float y_range = max(y_max - y_min, 1.0);
+
+        // Burn front rises from bottom to top (overshoots so top chars fully)
+        float burn_front = y_min + y_range * burn_t * 1.4;
+        float dist_below = burn_front - pos.y;
+
+        if (dist_below > 0.0) {
+            float norm_depth = dist_below / (y_range * 0.3);
+
+            // Fire edge: narrow band at the advancing front
+            float fire_band = y_range * 0.1;
+            if (dist_below < fire_band) {
+                float fire_factor = 1.0 - dist_below / fire_band;
+                vec3 fire_col = mix(vec3(1.0, 0.3, 0.0), vec3(1.0, 0.8, 0.0), fire_factor);
+                col = mix(col, fire_col, 0.8 * fire_factor);
+                // Upward jitter at the flame edge
+                pos.y += sin(time * 8.0 + h * 6.28) * fire_band * 0.3 * fire_factor;
+                pos.x += sin(time * 6.0 + h * 9.42) * fire_band * 0.1 * fire_factor;
+            }
+
+            // Char: darken to black/ember behind the fire front
+            float char_factor = clamp(norm_depth * 2.0, 0.0, 1.0);
+            col = mix(col, vec3(0.03, 0.02, 0.01), char_factor);
+
+            // Scatter: charred pieces break away and drift upward as ash
+            float scatter_factor = clamp(norm_depth - 0.5, 0.0, 1.0) * 2.0;
+            if (scatter_factor > 0.0) {
+                vec3 scatter_dir = normalize(vec3(
+                    hash_uint(idx * 11u + 7u) * 2.0 - 1.0,
+                    hash_uint(idx * 17u + 23u) * 0.5 + 0.3,  // upward bias
+                    hash_uint(idx * 29u + 41u) * 2.0 - 1.0
+                ));
+                float sf2 = scatter_factor * scatter_factor;
+                pos += scatter_dir * sf2 * 60.0;
+                // Ember glow on some scattered pieces
+                if (h > 0.7) {
+                    col = mix(col, vec3(1.0, 0.3, 0.0), scatter_factor * 0.5);
+                }
+                opacity *= max(0.0, 1.0 - scatter_factor * 0.9);
+            }
+        }
+    }
+
     // --- Explode effect ---
     float explode_t = cone_dir.w;
     if (explode_t > 0.0) {
