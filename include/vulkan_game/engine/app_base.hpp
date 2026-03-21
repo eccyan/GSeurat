@@ -1,5 +1,6 @@
 #pragma once
 
+#include "vulkan_game/engine/async_loader.hpp"
 #include "vulkan_game/engine/audio_system.hpp"
 #include "vulkan_game/engine/collision_gen.hpp"
 #include "vulkan_game/engine/gaussian_cloud.hpp"
@@ -20,6 +21,7 @@
 #include "vulkan_game/engine/save_system.hpp"
 #include "vulkan_game/engine/gs_parallax_camera.hpp"
 #include "vulkan_game/engine/scene_loader.hpp"
+#include "vulkan_game/engine/staging_uploader.hpp"
 #include "vulkan_game/engine/scripting/script_system.hpp"
 #include "vulkan_game/engine/scripting/wren_bindings.hpp"
 #include "vulkan_game/engine/scene.hpp"
@@ -125,6 +127,10 @@ public:
     void set_gs_parallax_active(bool active) { gs_parallax_active_ = active; }
     GsParallaxCamera& gs_parallax_camera() { return gs_parallax_camera_; }
 
+    // Async loading accessors
+    AsyncLoader& async_loader() { return async_loader_; }
+    StagingUploader& staging_uploader() { return staging_uploader_; }
+
 protected:
     void init_window();
     virtual void init_game_content();
@@ -221,6 +227,10 @@ protected:
     // Per-frame draw lists built in update_game, consumed by draw_scene
     std::vector<SpriteDrawInfo> overlay_sprites_;
     std::vector<SpriteDrawInfo> ui_sprites_;
+
+    // Async asset loading
+    AsyncLoader async_loader_;
+    StagingUploader staging_uploader_;
 };
 
 }  // namespace vulkan_game

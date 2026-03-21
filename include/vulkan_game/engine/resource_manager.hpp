@@ -61,6 +61,9 @@ public:
     // Call once per frame from the main loop.
     void process_async_results(AsyncLoader& loader, StagingUploader& uploader);
 
+    // Access the texture cache (used by StagingUploader callback to insert completed textures)
+    ResourceCache<Texture>& texture_cache() { return texture_cache_; }
+
 private:
     // Build a cache key from path + filter/address/format
     static std::string make_cache_key(const std::string& path, VkFilter filter,
