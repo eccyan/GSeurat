@@ -252,7 +252,7 @@ void Renderer::draw_scene(Scene& scene,
     vkBeginCommandBuffer(cmd, &begin_info);
 
     // ===== Adaptive GS budget: converge to target FPS then lock =====
-    if (gs_adaptive_budget_ && gs_gaussian_budget_ > 0 && dt > 0.0f) {
+    if (flags.gs_adaptive_budget && gs_adaptive_budget_ && gs_gaussian_budget_ > 0 && dt > 0.0f) {
         float fps = 1.0f / dt;
         gs_smoothed_fps_ = gs_smoothed_fps_ * 0.9f + fps * 0.1f;
 
@@ -277,10 +277,10 @@ void Renderer::draw_scene(Scene& scene,
     }
 
     // ===== Pre-pass: Gaussian splatting compute (before render pass) =====
-    if (gs_initialized_ && gs_renderer_.has_cloud()) {
+    if (flags.gs_rendering && gs_initialized_ && gs_renderer_.has_cloud()) {
         // Frustum-cull chunks and re-upload only visible Gaussians
         // (skipped for shadow-box maps where all Gaussians are uploaded once at load)
-        if (!gs_skip_chunk_cull_ && !gs_chunk_grid_.empty()) {
+        if (flags.gs_chunk_culling && !gs_skip_chunk_cull_ && !gs_chunk_grid_.empty()) {
             glm::mat4 gs_vp = gs_proj_ * gs_view_;
             auto visible = gs_chunk_grid_.visible_chunks(gs_vp);
 
@@ -292,7 +292,7 @@ void Renderer::draw_scene(Scene& scene,
                     gs_stable_frame_count_ = 0;
                 }
                 gs_prev_visible_ = visible;
-                if (gs_gaussian_budget_ > 0) {
+                if (flags.gs_lod && gs_gaussian_budget_ > 0) {
                     glm::vec3 cam_pos = glm::vec3(glm::inverse(gs_view_)[3]);
                     gs_chunk_grid_.gather_lod(visible, cam_pos, gs_gaussian_budget_,
                                               gs_active_buffer_);
@@ -539,7 +539,7 @@ void Renderer::draw_scene(Scene& scene,
     post_process_.record_post_process(cmd, image_index, pp_params);
 
     // ===== GS background + fullscreen blit (in composite pass, screen-space, before UI) =====
-    if (gs_initialized_ && gs_renderer_.has_cloud() && font_initialized_) {
+    if (flags.gs_rendering && gs_initialized_ && gs_renderer_.has_cloud() && font_initialized_) {
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, ui_pipeline_);
         sprite_batch_.bind(cmd, current_frame_);
 

@@ -33,6 +33,7 @@ struct AABB {
 class GaussianCloud {
 public:
     static GaussianCloud load_ply(const std::string& path);
+    static GaussianCloud from_gaussians(std::vector<Gaussian> gaussians);
 
     const std::vector<Gaussian>& gaussians() const { return gaussians_; }
     const AABB& bounds() const { return bounds_; }

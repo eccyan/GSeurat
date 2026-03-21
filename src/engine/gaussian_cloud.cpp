@@ -234,4 +234,14 @@ GaussianCloud GaussianCloud::load_ply(const std::string& path) {
     return cloud;
 }
 
+GaussianCloud GaussianCloud::from_gaussians(std::vector<Gaussian> gaussians) {
+    GaussianCloud cloud;
+    cloud.gaussians_ = std::move(gaussians);
+    for (auto& g : cloud.gaussians_) {
+        g.importance = g.opacity * std::max({g.scale.x, g.scale.y, g.scale.z});
+        cloud.bounds_.expand(g.position);
+    }
+    return cloud;
+}
+
 }  // namespace vulkan_game

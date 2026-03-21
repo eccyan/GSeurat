@@ -51,6 +51,13 @@ struct FeatureFlags {
     bool music = true;
     bool sfx = true;
 
+    // 3D Gaussian Splatting
+    bool gs_rendering = true;       // Master toggle: GS compute dispatch + composite blit
+    bool gs_chunk_culling = true;   // Frustum-based spatial chunk culling
+    bool gs_lod = true;             // Distance-based LOD budget decimation
+    bool gs_adaptive_budget = true; // Auto-tuning LOD budget to target FPS
+    bool gs_parallax = true;        // Shadow-box parallax camera
+
     struct Entry {
         std::string_view name;
         std::string_view phase;
@@ -58,18 +65,19 @@ struct FeatureFlags {
         bool FeatureFlags::* ptr;
     };
 
-    // All flags disabled — for GS viewer / minimal mode
+    // GS viewer: GS subsystem enabled (except parallax), everything else off
     static constexpr FeatureFlags gs_viewer() {
         return FeatureFlags{
             false, false, false, false, false, false, false, false,
             false, false, false, false, false, false, false, false,
             false, false, false,
             false, false, false, false,
-            false, false
+            false, false,
+            true, true, true, true, false
         };
     }
 
-    static constexpr std::array<Entry, 25> entries() {
+    static constexpr std::array<Entry, 30> entries() {
         return {{
             {"Parallax BG",    "24",  "RENDERING", &FeatureFlags::parallax_backgrounds},
             {"Point Lights",   "11",  "RENDERING", &FeatureFlags::point_lights},
@@ -96,6 +104,11 @@ struct FeatureFlags {
             {"Scene Trans.",   "27",  "GAMEPLAY",  &FeatureFlags::scene_transitions},
             {"Music",          "13",  "AUDIO",     &FeatureFlags::music},
             {"SFX",            "13",  "AUDIO",     &FeatureFlags::sfx},
+            {"GS Rendering",   "GS1", "3DGS",     &FeatureFlags::gs_rendering},
+            {"GS Chunk Cull",  "GS9", "3DGS",     &FeatureFlags::gs_chunk_culling},
+            {"GS LOD",         "GS10","3DGS",      &FeatureFlags::gs_lod},
+            {"GS Budget",      "GS10","3DGS",      &FeatureFlags::gs_adaptive_budget},
+            {"GS Parallax",    "GS9", "3DGS",     &FeatureFlags::gs_parallax},
         }};
     }
 };

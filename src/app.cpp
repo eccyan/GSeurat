@@ -1085,7 +1085,7 @@ void App::init_scene(const std::string& scene_path) {
         }
 
         // Configure parallax camera if parallax config present
-        if (gs.parallax) {
+        if (feature_flags_.gs_parallax && gs.parallax) {
             gs_parallax_camera_.configure(
                 gs.camera_position, gs.camera_target,
                 gs.camera_fov, renderer_.gs_renderer().output_width(), renderer_.gs_renderer().output_height(),
@@ -1315,7 +1315,7 @@ void App::update_game(float dt) {
         renderer_.camera().set_follow_target(player_pos);
 
         // Update parallax camera from player position
-        if (gs_parallax_active_ && renderer_.has_gs_cloud()) {
+        if (feature_flags_.gs_parallax && gs_parallax_active_ && renderer_.has_gs_cloud()) {
             auto& grid = renderer_.gs_chunk_grid();
             if (!grid.empty()) {
                 auto aabb = grid.cloud_bounds();
