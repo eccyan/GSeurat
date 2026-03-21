@@ -279,6 +279,48 @@ The stride-based sampling preserves scene structure even at extreme decimation
 | `renderer.hpp` | Adaptive budget state (`gs_gaussian_budget_`, `gs_budget_locked_`, etc.) |
 | `renderer.cpp` | Adaptive budget feedback loop; `gather_lod()` call; auto-enable for large clouds |
 
+## Async Chunk Streaming
+
+**Date:** 2026-03-22
+
+For open-world scale maps where the full PLY exceeds memory, the engine supports
+distance-based chunk streaming via `GsChunkStreamer`.
+
+### Architecture
+
+```
+AsyncLoader (worker thread)  →  disk I/O + PLY parsing
+GsChunkStreamer              →  distance-based load/unload state machine
+StagingUploader              →  budget-limited GPU uploads (4MB/frame)
+```
+
+### Key design decisions
+
+1. **Single worker thread** — disk I/O serializes naturally; a thread pool adds
+   complexity without clear benefit for this workload.
+
+2. **Hysteresis** — load radius < unload radius prevents chunk thrashing at
+   boundaries (default: load at 40% of map extent, unload at 60%).
+
+3. **Memory budget** — tracks loaded chunk memory, evicts furthest chunks when
+   exceeded (default: 512 MB).
+
+4. **Frame-fence sync** — replaced `vkDeviceWaitIdle()` in GS prepass with
+   per-frame fence waiting, eliminating full GPU pipeline stalls.
+
+5. **LOD integration** — assembled active buffer uses stride-based decimation
+   from `gather_lod()`, combining streaming with distance-based LOD.
+
+### GS Demo streaming mode
+
+Press **M** in the GS demo to enter streaming mode. The loaded PLY is split
+into per-chunk PLY files and streamed via `GsChunkStreamer`. HUD displays:
+- Loaded / loading / total chunks
+- Stream memory usage
+- Load/unload radii
+
+Move the camera to observe chunks loading and unloading in real-time.
+
 ## Recommendation
 
 For production use, always run the release build (`cmake --build --preset
