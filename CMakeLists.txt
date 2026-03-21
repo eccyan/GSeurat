@@ -182,6 +182,7 @@ add_library(vulkan_game_core OBJECT
     src/game/pause_state.cpp
     src/game/transition_state.cpp
     src/engine/async_loader.cpp
+    src/engine/staging_uploader.cpp
 )
 
 if(NOT WIN32)
