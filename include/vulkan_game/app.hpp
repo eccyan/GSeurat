@@ -36,6 +36,7 @@
 
 #include <chrono>
 #include <cstdint>
+#include <functional>
 #include <vector>
 
 namespace vulkan_game {
@@ -135,7 +136,35 @@ private:
     void init_window();
 #ifndef _WIN32
     void process_commands();
+    void handle_query_cmd(const std::string& cmd, const nlohmann::json& j);
+    void handle_input_cmd(const std::string& cmd, const nlohmann::json& j);
+    void handle_debug_cmd(const std::string& cmd, const nlohmann::json& j);
+    void handle_camera_cmd(const std::string& cmd, const nlohmann::json& j);
+    void handle_time_cmd(const std::string& cmd, const nlohmann::json& j);
+    void handle_scene_cmd(const std::string& cmd, const nlohmann::json& j);
+    void handle_tilemap_cmd(const std::string& cmd, const nlohmann::json& j);
+    void handle_entity_cmd(const std::string& cmd, const nlohmann::json& j);
+    void handle_lighting_cmd(const std::string& cmd, const nlohmann::json& j);
+    void handle_portal_cmd(const std::string& cmd, const nlohmann::json& j);
+    void handle_environment_cmd(const std::string& cmd, const nlohmann::json& j);
+    void handle_particle_cmd(const std::string& cmd, const nlohmann::json& j);
+    void handle_config_cmd(const std::string& cmd, const nlohmann::json& j);
+    void handle_event_cmd(const std::string& cmd, const nlohmann::json& j);
 #endif
+    // init_scene phase methods
+    void init_player(const SceneData& sd,
+                     const std::function<void(ecs::Animation&, const std::string&)>& setup_anim);
+    void init_npcs(const SceneData& sd,
+                   const std::function<void(ecs::Animation&, const std::string&)>& setup_anim);
+    void init_gs(const SceneData& sd);
+    void init_environment(SceneData& sd);
+    void init_weather_and_systems(const SceneData& sd);
+
+    // update_game mode methods
+    void update_dialog_mode(float dt);
+    void update_explore_mode(float dt);
+    void update_shared_systems(float dt);
+
     nlohmann::json build_state_json() const;
     nlohmann::json build_map_json() const;
     nlohmann::json build_scene_json() const;
