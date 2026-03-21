@@ -2,6 +2,7 @@
 #include "gseurat/engine/app_base.hpp"
 #include "gseurat/engine/gaussian_cloud.hpp"
 #include "gseurat/engine/gs_chunk_grid.hpp"
+#include "gseurat/engine/scene_loader.hpp"
 
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
@@ -678,86 +679,102 @@ void GsDemoState::update_streaming(AppBase& app) {
 // ---------------------------------------------------------------------------
 
 void GsDemoState::spawn_test_character(AppBase& app) {
-    // Generate a simple humanoid from voxels:
-    // body parts: 0=unassigned, 1=torso, 2=head, 3=arm_l, 4=arm_r, 5=leg_l, 6=leg_r
-    std::vector<Gaussian> gaussians;
+    // Find the center of the existing map
+    glm::vec3 center{0.0f};
+    if (app.renderer().has_gs_cloud()) {
+        auto aabb = app.renderer().gs_chunk_grid().cloud_bounds();
+        center = aabb.center();
+    }
+    character_origin_ = center;
 
+    // Gather existing map Gaussians
+    std::vector<Gaussian> merged;
+    auto& grid = app.renderer().gs_chunk_grid();
+    if (!grid.empty()) {
+        std::vector<uint32_t> all_chunks;
+        // Gather all chunks by using a very wide frustum (identity = everything visible)
+        all_chunks = grid.visible_chunks(glm::mat4(1.0f));
+        // If that returns nothing, manually build indices
+        if (all_chunks.empty()) {
+            // Fallback: re-load from scene
+            auto scene = SceneLoader::load(app.current_scene_path());
+            if (scene.gaussian_splat) {
+                auto cloud = GaussianCloud::load_ply(scene.gaussian_splat->ply_file);
+                merged.insert(merged.end(), cloud.gaussians().begin(), cloud.gaussians().end());
+            }
+        } else {
+            grid.gather(all_chunks, merged);
+        }
+    }
+    uint32_t map_count = static_cast<uint32_t>(merged.size());
+
+    // Generate humanoid at center: body parts 1-6
     auto add_box = [&](float cx, float cy, float cz, int w, int h, int d,
                        glm::vec3 color, uint32_t bone) {
         for (int x = 0; x < w; ++x) {
             for (int y = 0; y < h; ++y) {
                 for (int z = 0; z < d; ++z) {
                     Gaussian g{};
-                    g.position = {cx + x - w/2.0f, cy + y, cz + z - d/2.0f};
+                    g.position = center + glm::vec3(cx + x - w/2.0f, cy + y, cz + z - d/2.0f);
                     g.scale = glm::vec3(0.5f);
                     g.rotation = glm::quat(1, 0, 0, 0);
                     g.color = color;
                     g.opacity = 1.0f;
                     g.importance = 1.0f;
                     g.bone_index = bone;
-                    gaussians.push_back(g);
+                    merged.push_back(g);
                 }
             }
         }
     };
 
-    // Torso (bone 1) — centered at origin, 4×6×2
-    add_box(0, 4, 0, 4, 6, 2, {0.2f, 0.5f, 0.8f}, 1);
-    // Head (bone 2) — on top of torso, 3×3×2
-    add_box(0, 10, 0, 3, 3, 2, {0.9f, 0.75f, 0.6f}, 2);
-    // Left arm (bone 3) — left of torso, 2×5×2
-    add_box(-3.5f, 5, 0, 2, 5, 2, {0.2f, 0.5f, 0.8f}, 3);
-    // Right arm (bone 4) — right of torso, 2×5×2
-    add_box(3.5f, 5, 0, 2, 5, 2, {0.2f, 0.5f, 0.8f}, 4);
-    // Left leg (bone 5) — bottom-left, 2×4×2
-    add_box(-1.0f, 0, 0, 2, 4, 2, {0.3f, 0.3f, 0.5f}, 5);
-    // Right leg (bone 6) — bottom-right, 2×4×2
-    add_box(1.0f, 0, 0, 2, 4, 2, {0.3f, 0.3f, 0.5f}, 6);
+    add_box(0, 4, 0, 4, 6, 2, {0.2f, 0.5f, 0.8f}, 1);  // Torso
+    add_box(0, 10, 0, 3, 3, 2, {0.9f, 0.75f, 0.6f}, 2); // Head
+    add_box(-3.5f, 5, 0, 2, 5, 2, {0.2f, 0.5f, 0.8f}, 3); // Left arm
+    add_box(3.5f, 5, 0, 2, 5, 2, {0.2f, 0.5f, 0.8f}, 4);  // Right arm
+    add_box(-1.0f, 0, 0, 2, 4, 2, {0.3f, 0.3f, 0.5f}, 5); // Left leg
+    add_box(1.0f, 0, 0, 2, 4, 2, {0.3f, 0.3f, 0.5f}, 6);  // Right leg
 
-    auto cloud = GaussianCloud::from_gaussians(std::move(gaussians));
-    app.renderer().init_gs(cloud, 320, 240);
-    std::fprintf(stderr, "Character: spawned %u voxel Gaussians\n", cloud.count());
+    uint32_t char_count = static_cast<uint32_t>(merged.size()) - map_count;
+    auto cloud = GaussianCloud::from_gaussians(std::move(merged));
+
+    uint32_t gs_w = app.renderer().gs_renderer().output_width();
+    uint32_t gs_h = app.renderer().gs_renderer().output_height();
+    if (gs_w == 0) { gs_w = 320; gs_h = 240; }
+    app.renderer().init_gs(cloud, gs_w, gs_h);
+    std::fprintf(stderr, "Character: %u map + %u character Gaussians, placed at (%.1f, %.1f, %.1f)\n",
+                 map_count, char_count, center.x, center.y, center.z);
 
     character_anim_time_ = 0.0f;
 }
 
 void GsDemoState::update_character_pose(AppBase& app, float dt) {
     character_anim_time_ += dt;
+    const glm::vec3& o = character_origin_;
 
-    // Simple walk cycle: arms and legs swing sinusoidally
-    float swing = std::sin(character_anim_time_ * 4.0f) * 0.5f;  // radians
+    // Walk cycle: arms and legs swing sinusoidally around joints
+    float swing = std::sin(character_anim_time_ * 4.0f) * 0.5f;
 
     glm::mat4 bones[7];
-    // Bone 0: identity (unused/unassigned)
-    bones[0] = glm::mat4(1.0f);
-    // Bone 1: torso — slight bob
+    bones[0] = glm::mat4(1.0f);  // unused
+
+    // Torso bob
     bones[1] = glm::translate(glm::mat4(1.0f), {0, std::abs(swing) * 0.3f, 0});
-    // Bone 2: head — follows torso
+    // Head follows torso
     bones[2] = bones[1];
-    // Bone 3: left arm — swing forward/back around shoulder joint (y=9)
-    {
-        auto t = glm::translate(glm::mat4(1.0f), {-3.5f, 9.0f, 0.0f});
-        auto r = glm::rotate(glm::mat4(1.0f), swing, {1, 0, 0});
-        bones[3] = t * r * glm::translate(glm::mat4(1.0f), {3.5f, -9.0f, 0.0f});
-    }
-    // Bone 4: right arm — opposite swing
-    {
-        auto t = glm::translate(glm::mat4(1.0f), {3.5f, 9.0f, 0.0f});
-        auto r = glm::rotate(glm::mat4(1.0f), -swing, {1, 0, 0});
-        bones[4] = t * r * glm::translate(glm::mat4(1.0f), {-3.5f, -9.0f, 0.0f});
-    }
-    // Bone 5: left leg — opposite to left arm
-    {
-        auto t = glm::translate(glm::mat4(1.0f), {-1.0f, 4.0f, 0.0f});
-        auto r = glm::rotate(glm::mat4(1.0f), -swing, {1, 0, 0});
-        bones[5] = t * r * glm::translate(glm::mat4(1.0f), {1.0f, -4.0f, 0.0f});
-    }
-    // Bone 6: right leg — opposite to right arm
-    {
-        auto t = glm::translate(glm::mat4(1.0f), {1.0f, 4.0f, 0.0f});
-        auto r = glm::rotate(glm::mat4(1.0f), swing, {1, 0, 0});
-        bones[6] = t * r * glm::translate(glm::mat4(1.0f), {-1.0f, -4.0f, 0.0f});
-    }
+
+    // Arms swing around shoulder joints (character-local y=9, offset by origin)
+    auto pivot_rotate = [&](glm::vec3 pivot_local, float angle) {
+        glm::vec3 world_pivot = o + pivot_local;
+        auto t = glm::translate(glm::mat4(1.0f), world_pivot);
+        auto r = glm::rotate(glm::mat4(1.0f), angle, {1, 0, 0});
+        return t * r * glm::translate(glm::mat4(1.0f), -world_pivot);
+    };
+
+    bones[3] = pivot_rotate({-3.5f, 9.0f, 0.0f}, swing);   // Left arm
+    bones[4] = pivot_rotate({3.5f, 9.0f, 0.0f}, -swing);    // Right arm
+    bones[5] = pivot_rotate({-1.0f, 4.0f, 0.0f}, -swing);   // Left leg
+    bones[6] = pivot_rotate({1.0f, 4.0f, 0.0f}, swing);     // Right leg
 
     app.renderer().gs_renderer().upload_bone_transforms(bones, 7);
 }
