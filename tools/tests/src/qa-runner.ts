@@ -12,12 +12,10 @@ import { existsSync } from 'fs';
 import { TestClient } from '@gseurat/test-harness/client';
 import puppeteer, { type Browser, type Page } from 'puppeteer-core';
 import { runLevelDesignerTests } from './level-designer.test.js';
-import { runSeuratTests } from './seurat.test.js';
 import { runParticleDesignerTests } from './particle-designer.test.js';
 import { runAudioComposerTests } from './audio-composer.test.js';
 import { runSfxDesignerTests } from './sfx-designer.test.js';
 import { runLevelDesignerScenarios } from './level-designer.scenario.js';
-import { runSeuratScenarios } from './seurat.scenario.js';
 import { runParticleDesignerScenarios } from './particle-designer.scenario.js';
 import { runAudioComposerScenarios } from './audio-composer.scenario.js';
 import { runSfxDesignerScenarios } from './sfx-designer.scenario.js';
@@ -123,7 +121,6 @@ interface ToolDef {
 
 const TOOLS: ToolDef[] = [
   { name: 'level-designer', devPort: 5173, testPort: 6173, runUnit: runLevelDesignerTests, runScenarios: runLevelDesignerScenarios },
-  { name: 'seurat', devPort: 5179, testPort: 6179, runUnit: runSeuratTests, runScenarios: runSeuratScenarios },
   { name: 'particle-designer', devPort: 5176, testPort: 6176, runUnit: runParticleDesignerTests, runScenarios: runParticleDesignerScenarios },
   { name: 'audio-composer', devPort: 5177, testPort: 6177, runUnit: runAudioComposerTests, runScenarios: runAudioComposerScenarios },
   { name: 'sfx-designer', devPort: 5178, testPort: 6178, runUnit: runSfxDesignerTests, runScenarios: runSfxDesignerScenarios },
