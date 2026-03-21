@@ -1,5 +1,6 @@
 #include "vulkan_game/engine/gaussian_cloud.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <cstring>
 #include <fstream>
