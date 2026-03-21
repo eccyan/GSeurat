@@ -39,8 +39,23 @@ void AppBase::init_game_content() {
 void AppBase::main_loop() {
     last_update_time_ = std::chrono::steady_clock::now();
 
+    // Initialize async loading subsystems
+    async_loader_.init();
+    staging_uploader_.init(
+        renderer_.context().device(), renderer_.context().allocator(),
+        renderer_.command_pool().pool(), renderer_.context().graphics_queue(),
+        [this](const std::string& cache_key, Texture tex) {
+            // Insert completed texture into resource cache
+            auto sp = std::make_shared<Texture>(std::move(tex));
+            resources_.texture_cache().insert(cache_key, std::move(sp));
+        });
+
     while (!glfwWindowShouldClose(window_)) {
         glfwPollEvents();
+
+        // Poll async loader and process GPU uploads (before game logic)
+        resources_.process_async_results(async_loader_, staging_uploader_);
+        staging_uploader_.flush();
 
         // Clear draw lists at frame start (states will rebuild them)
         overlay_sprites_.clear();
@@ -114,6 +129,8 @@ void AppBase::cleanup() {
     while (!state_stack_.empty()) {
         state_stack_.pop(*this);
     }
+    async_loader_.shutdown();
+    staging_uploader_.shutdown();
     wren_vm_.shutdown();
     audio_.shutdown();
     renderer_.shutdown();

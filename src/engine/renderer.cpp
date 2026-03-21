@@ -726,7 +726,8 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
                     gs_chunk_grid_.gather(visible, gs_active_buffer_);
                 }
                 if (!gs_active_buffer_.empty()) {
-                    vkDeviceWaitIdle(device);
+                    // Frame fence (waited at frame start) guarantees the GPU
+                    // is done with these SSBOs — no need for vkDeviceWaitIdle.
                     gs_renderer_.update_active_gaussians(
                         gs_active_buffer_.data(),
                         static_cast<uint32_t>(gs_active_buffer_.size()));

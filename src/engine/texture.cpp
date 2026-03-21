@@ -292,6 +292,44 @@ Texture Texture::load_from_memory(VkDevice device, VmaAllocator allocator,
     return tex;
 }
 
+Texture Texture::create_from_image(VkDevice device,
+                                    VkImage image, VmaAllocation allocation,
+                                    VkFormat format,
+                                    VkFilter filter,
+                                    VkSamplerAddressMode address_mode) {
+    Texture tex;
+    tex.image_ = image;
+    tex.allocation_ = allocation;
+
+    VkImageViewCreateInfo view_info{};
+    view_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+    view_info.image = image;
+    view_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
+    view_info.format = format;
+    view_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    view_info.subresourceRange.levelCount = 1;
+    view_info.subresourceRange.layerCount = 1;
+
+    if (vkCreateImageView(device, &view_info, nullptr, &tex.image_view_) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to create texture image view");
+    }
+
+    VkSamplerCreateInfo sampler_info{};
+    sampler_info.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+    sampler_info.magFilter = filter;
+    sampler_info.minFilter = filter;
+    sampler_info.addressModeU = address_mode;
+    sampler_info.addressModeV = address_mode;
+    sampler_info.addressModeW = address_mode;
+    sampler_info.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
+
+    if (vkCreateSampler(device, &sampler_info, nullptr, &tex.sampler_) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to create texture sampler");
+    }
+
+    return tex;
+}
+
 void Texture::destroy(VkDevice device, VmaAllocator allocator) {
     vkDestroySampler(device, sampler_, nullptr);
     vkDestroyImageView(device, image_view_, nullptr);
