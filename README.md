@@ -5,6 +5,7 @@ A Vulkan-based 3D Gaussian Splatting engine built with C++23. Named after **3DGS
 ## Features
 
 - **3D Gaussian Splatting** — GPU compute pipeline for rendering `.ply` point clouds with tile-based rasterization
+- **Voxel character pipeline** — MagicaVoxel import, rigid-body-part posing, GPU bone skinning in compute shader
 - **Sprite overlay** — Sprite-based entities over GS backgrounds with bloom, depth-of-field, and tone mapping
 - **Entity Component System** — Header-only ECS with archetype storage, typed views, and system functions
 - **Async asset streaming** — Background thread loading with budget-limited GPU uploads for open-world support
@@ -137,6 +138,29 @@ Output is sampled with nearest-neighbor filtering for stylized upscale.
 | E/V/H/Y/C/B | Explode / Voxel / Pulse / X-Ray / Swirl / Burn |
 | K | Toggle character demo (procedural walking humanoid) |
 
+### Voxel Character Pipeline
+
+Characters are authored as voxel body parts, exported as Gaussians with per-splat bone indices, and animated via GPU bone transforms.
+
+```
+MagicaVoxel (.vox) → Bricklayer (edit parts/joints/poses) → PLY + manifest JSON
+                                                                    ↓
+Engine: PLY load → bone_index per Gaussian → preprocess shader → skeletal skinning
+```
+
+**Authoring** (Bricklayer Character tab):
+- Import `.vox` files — each MagicaVoxel model maps to a body part
+- Define bone hierarchy (parent/child) with joint pivot positions
+- Create named poses with per-part euler rotations
+- Export PLY with `bone_index` property + character manifest JSON
+
+**Runtime** (Engine):
+- `bone_index` packed into `GpuGaussian.scale_pad.w` (no SSBO size change)
+- Bone transform SSBO at binding 5 (max 32 bones)
+- Preprocess shader applies `mat4` per bone: transforms position + rotates Gaussian orientation
+- Bone 0 = identity (map Gaussians pass through untouched)
+- Rigid body part animation (action-figure style, no smooth skinning)
+
 ### Scene Format
 
 ```json
@@ -225,7 +249,7 @@ Engine (Vulkan) ←→ Unix Socket ←→ Bridge Proxy (ws://localhost:9100) ←
 | **Particle Designer** | 5176 | Visual EmitterConfig editor with live engine preview |
 | **Audio Composer** | 5177 | 4-layer interactive music editor with MusicGen AI |
 | **SFX Designer** | 5178 | Waveform editor, procedural synthesis, AI SFX generation |
-| **Bricklayer** | 5180 | 3D voxel map editor with depth estimation and PLY export |
+| **Bricklayer** | 5180 | 3D voxel map/character editor with .vox import, bone posing, and PLY export |
 
 ```bash
 # Prerequisites: Node.js 18+, pnpm
