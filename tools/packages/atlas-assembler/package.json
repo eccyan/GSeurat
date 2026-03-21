@@ -1,5 +1,5 @@
 {
-  "name": "@vulkan-game-tools/atlas-assembler",
+  "name": "@gseurat/atlas-assembler",
   "version": "0.1.0",
   "type": "module",
   "main": "src/index.ts",
@@ -18,7 +18,7 @@
     "build": "tsc"
   },
   "dependencies": {
-    "@vulkan-game-tools/asset-types": "workspace:*",
+    "@gseurat/asset-types": "workspace:*",
     "sharp": "^0.33.0"
   },
   "devDependencies": {

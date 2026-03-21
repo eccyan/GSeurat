@@ -1,11 +1,11 @@
-#include "vulkan_game/game/states/gameplay_state.hpp"
-#include "vulkan_game/engine/app_base.hpp"
-#include "vulkan_game/game/states/pause_state.hpp"
+#include "gseurat/game/states/gameplay_state.hpp"
+#include "gseurat/engine/app_base.hpp"
+#include "gseurat/game/states/pause_state.hpp"
 
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
-namespace vulkan_game {
+namespace gseurat {
 
 void GameplayState::on_enter(AppBase& app) {
     app.init_scene(app.current_scene_path());
@@ -30,4 +30,4 @@ void GameplayState::build_draw_lists(AppBase& /*app*/) {
     // update_game already builds entity_sprites_, overlay_sprites_, ui_sprites_
 }
 
-}  // namespace vulkan_game
+}  // namespace gseurat

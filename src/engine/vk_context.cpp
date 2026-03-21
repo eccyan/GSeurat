@@ -1,12 +1,12 @@
 #define VMA_IMPLEMENTATION
-#include "vulkan_game/engine/vk_context.hpp"
+#include "gseurat/engine/vk_context.hpp"
 
 #include <cstring>
 #include <iostream>
 #include <stdexcept>
 #include <vector>
 
-namespace vulkan_game {
+namespace gseurat {
 
 static VKAPI_ATTR VkBool32 VKAPI_CALL debug_callback(
     VkDebugUtilsMessageSeverityFlagBitsEXT severity,
@@ -46,9 +46,9 @@ void VkContext::shutdown() {
 void VkContext::create_instance() {
     VkApplicationInfo app_info{};
     app_info.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
-    app_info.pApplicationName = "Vulkan Game";
+    app_info.pApplicationName = "GSeurat";
     app_info.applicationVersion = VK_MAKE_VERSION(0, 1, 0);
-    app_info.pEngineName = "HD2D Engine";
+    app_info.pEngineName = "GSeurat";
     app_info.engineVersion = VK_MAKE_VERSION(1, 0, 0);
     app_info.apiVersion = VK_API_VERSION_1_3;
 
@@ -218,4 +218,4 @@ void VkContext::create_allocator() {
     }
 }
 
-}  // namespace vulkan_game
+}  // namespace gseurat

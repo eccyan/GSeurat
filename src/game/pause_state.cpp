@@ -1,10 +1,10 @@
-#include "vulkan_game/game/states/pause_state.hpp"
-#include "vulkan_game/engine/app_base.hpp"
+#include "gseurat/game/states/pause_state.hpp"
+#include "gseurat/engine/app_base.hpp"
 
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
-namespace vulkan_game {
+namespace gseurat {
 
 void PauseState::on_enter(AppBase& app) {
     selected_item_ = 0;
@@ -61,4 +61,4 @@ void PauseState::build_draw_lists(AppBase& app) {
     selected_item_ = ctx.menu_selection();
 }
 
-}  // namespace vulkan_game
+}  // namespace gseurat

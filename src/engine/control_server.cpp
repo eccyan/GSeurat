@@ -1,4 +1,4 @@
-#include "vulkan_game/engine/control_server.hpp"
+#include "gseurat/engine/control_server.hpp"
 
 #include <cerrno>
 #include <cstdio>
@@ -8,7 +8,7 @@
 #include <sys/un.h>
 #include <unistd.h>
 
-namespace vulkan_game {
+namespace gseurat {
 
 ControlServer::~ControlServer() {
     stop();
@@ -170,4 +170,4 @@ bool ControlServer::is_event_subscribed(const std::string& event) const {
     return subscribed_events_.count(event) > 0;
 }
 
-}  // namespace vulkan_game
+}  // namespace gseurat

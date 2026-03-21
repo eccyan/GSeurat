@@ -4,7 +4,7 @@ Relay server between the Vulkan engine's Unix domain socket and the browser-base
 
 ## What It Does
 
-The engine exposes a JSON Lines control server over `/tmp/vulkan_game.sock` (Phase 14). Browser apps cannot connect to Unix sockets directly, so the bridge:
+The engine exposes a JSON Lines control server over `/tmp/gseurat.sock` (Phase 14). Browser apps cannot connect to Unix sockets directly, so the bridge:
 
 1. Maintains a persistent connection to the engine socket.
 2. Accepts WebSocket connections from tool apps on port 9100.
@@ -25,7 +25,7 @@ Environment variables (all optional):
 
 | Variable | Default | Description |
 |---|---|---|
-| `SOCKET_PATH` | `/tmp/vulkan_game.sock` | Path to the engine Unix socket |
+| `SOCKET_PATH` | `/tmp/gseurat.sock` | Path to the engine Unix socket |
 | `WS_PORT` | `9100` | WebSocket server port |
 | `HTTP_PORT` | `9101` | REST API server port |
 | `ENGINE_DIR` | `../../build/macos-debug` | Root directory for asset file paths |

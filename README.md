@@ -1,4 +1,4 @@
-# HD-2D Vulkan Game Engine
+# HD-2D GSeurat Engine
 
 A Vulkan-based HD-2D game engine built with C++23, featuring 3D Gaussian Splatting rendering, an ECS architecture, and a suite of web-based creative tools.
 
@@ -62,8 +62,8 @@ Two demo executables are produced:
 
 | Executable | Description |
 |---|---|
-| `vulkan_game_demo` | Full engine demo with gameplay, NPCs, dialog, particles |
-| `vulkan_game_gs_demo` | 3D Gaussian Splatting viewer with visual effects and streaming |
+| `gseurat_demo` | Full engine demo with gameplay, NPCs, dialog, particles |
+| `gseurat_gs_demo` | 3D Gaussian Splatting viewer with visual effects and streaming |
 
 ## Architecture
 
@@ -77,7 +77,7 @@ Draw order: GS compute → GS blit → backgrounds → tilemap → reflections �
 
 ### ECS
 
-Header-only (`include/vulkan_game/engine/ecs/`): archetype-based storage with typed views.
+Header-only (`include/gseurat/engine/ecs/`): archetype-based storage with typed views.
 
 **Components:** Transform, Sprite, PlayerTag, Facing, Animation, NpcPatrol, NpcWaypoints, DialogRef, DynamicLight, ParticleEmitterRef, FootstepEmitterRef, ScriptRef
 
@@ -158,14 +158,14 @@ Output is sampled with nearest-neighbor filtering for pixel-art upscale.
 
 ## AI Debugging via Control Server
 
-The engine exposes a Unix domain socket at `/tmp/vulkan_game.sock` for external control. AI agents can send commands, step deterministically, and capture screenshots.
+The engine exposes a Unix domain socket at `/tmp/gseurat.sock` for external control. AI agents can send commands, step deterministically, and capture screenshots.
 
 ```bash
 # Connect and control
 python3 -c "
 import socket, json
 s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-s.connect('/tmp/vulkan_game.sock')
+s.connect('/tmp/gseurat.sock')
 
 def send(cmd):
     s.sendall(json.dumps(cmd).encode() + b'\n')
@@ -272,7 +272,7 @@ src/
   game/           Game-specific states and systems
   demo/           Demo applications (gameplay demo, GS viewer)
 include/
-  vulkan_game/
+  gseurat/
     engine/       Engine headers
     game/         Game state headers
     demo/         Demo app headers

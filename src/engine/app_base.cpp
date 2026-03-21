@@ -1,11 +1,11 @@
-#include "vulkan_game/engine/app_base.hpp"
+#include "gseurat/engine/app_base.hpp"
 
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
 #include <chrono>
 
-namespace vulkan_game {
+namespace gseurat {
 
 void AppBase::set_start_state(std::unique_ptr<GameState> state) {
     custom_start_state_ = std::move(state);
@@ -28,7 +28,7 @@ void AppBase::init_window() {
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
     glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
 
-    window_ = glfwCreateWindow(kWindowWidth, kWindowHeight, "Vulkan Game", nullptr, nullptr);
+    window_ = glfwCreateWindow(kWindowWidth, kWindowHeight, "GSeurat", nullptr, nullptr);
     input_.set_window(window_);
 }
 
@@ -147,4 +147,4 @@ void AppBase::update_audio(float /*dt*/) {}
 SaveData AppBase::build_save_data() const { return {}; }
 void AppBase::apply_save_data(const SaveData& /*data*/) {}
 
-}  // namespace vulkan_game
+}  // namespace gseurat

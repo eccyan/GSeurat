@@ -70,9 +70,9 @@ cd tools/apps/seurat && node_modules/.bin/tsc --noEmit
 cd tools/apps/seurat && pnpm build
 
 # Rebuild a dependency package after changing its source
-pnpm --filter @vulkan-game-tools/asset-types build
-pnpm --filter @vulkan-game-tools/ai-providers build
-pnpm --filter @vulkan-game-tools/bridge build
+pnpm --filter @gseurat-tools/asset-types build
+pnpm --filter @gseurat-tools/ai-providers build
+pnpm --filter @gseurat-tools/bridge build
 ```
 
 After changing `asset-types` or `ai-providers`, you **must** rebuild the package before Seurat's tsc will see the new exports.

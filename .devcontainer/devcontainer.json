@@ -1,5 +1,5 @@
 {
-  "name": "Vulkan Game Dev",
+  "name": "GSeurat Dev",
   "build": {
     "dockerfile": "Dockerfile"
   },

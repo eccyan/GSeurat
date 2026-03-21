@@ -6,7 +6,7 @@
  *
  * Usage: node --import tsx/esm --conditions source src/remote-commands.test.ts
  */
-import { DEFAULT_ASSET_MANIFEST, type AssetManifest } from '@vulkan-game-tools/asset-types';
+import { DEFAULT_ASSET_MANIFEST, type AssetManifest } from '@gseurat/asset-types';
 
 // Re-implement minimal store types/helpers for testing without browser deps
 type RGBA = [number, number, number, number];

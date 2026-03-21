@@ -10,7 +10,7 @@ Research into using ComfyUI with Stable Diffusion 1.5 on Apple Silicon (MPS) for
 - **Model**: `v1-5-pruned-emaonly.safetensors` (SD 1.5)
 - **LoRA**: `PixelArtRedmond15V-PixelArt-PIXARFK.safetensors` (trigger: `Pixel Art, PIXARFK`)
 - **Device**: Apple Silicon MPS (16GB unified RAM)
-- **Client**: `@vulkan-game/ai-providers` ComfyUIClient (TypeScript, via Node.js)
+- **Client**: `@gseurat/ai-providers` ComfyUIClient (TypeScript, via Node.js)
 
 ## Key Findings
 
@@ -165,7 +165,7 @@ Key node connections:
 ### API Usage
 
 ```typescript
-import { ComfyUIClient } from "@vulkan-game-tools/ai-providers";
+import { ComfyUIClient } from "@gseurat-tools/ai-providers";
 
 const client = new ComfyUIClient("http://localhost:8188", 1000, 300_000);
 
@@ -309,7 +309,7 @@ IPAdapterUnifiedLoader → IPAdapterAdvanced (chibi reference, K+mean(V) w/ C pe
 ### API Usage
 
 ```typescript
-import { ComfyUIClient } from "@vulkan-game-tools/ai-providers";
+import { ComfyUIClient } from "@gseurat-tools/ai-providers";
 
 const client = new ComfyUIClient("http://localhost:8188", 1000, 600_000);
 

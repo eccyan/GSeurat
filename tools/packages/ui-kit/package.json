@@ -1,5 +1,5 @@
 {
-  "name": "@vulkan-game-tools/ui-kit",
+  "name": "@gseurat/ui-kit",
   "version": "0.1.0",
   "type": "module",
   "main": "src/index.ts",

@@ -1,12 +1,12 @@
-#include "vulkan_game/engine/gs_renderer.hpp"
-#include "vulkan_game/engine/pipeline.hpp"
+#include "gseurat/engine/gs_renderer.hpp"
+#include "gseurat/engine/pipeline.hpp"
 
 #include <cmath>
 #include <cstring>
 #include <stdexcept>
 #include <algorithm>
 
-namespace vulkan_game {
+namespace gseurat {
 
 namespace {
 
@@ -750,4 +750,4 @@ void GsRenderer::shutdown(VmaAllocator allocator) {
     initialized_ = false;
 }
 
-}  // namespace vulkan_game
+}  // namespace gseurat

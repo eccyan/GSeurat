@@ -1,9 +1,9 @@
-#include "vulkan_game/engine/gs_chunk_streamer.hpp"
+#include "gseurat/engine/gs_chunk_streamer.hpp"
 
 #include <algorithm>
 #include <cmath>
 
-namespace vulkan_game {
+namespace gseurat {
 
 // --- ChunkManifest ---
 
@@ -261,4 +261,4 @@ float GsChunkStreamer::chunk_distance_xz(const AABB& bounds, const glm::vec3& ca
     return std::sqrt(dx * dx + dz * dz);
 }
 
-}  // namespace vulkan_game
+}  // namespace gseurat

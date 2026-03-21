@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useRef } from 'react';
-import { ReplicateClient, StableAudioClient } from '@vulkan-game-tools/ai-providers';
+import { ReplicateClient, StableAudioClient } from '@gseurat/ai-providers';
 import { useComposerStore, LayerId } from '../store/useComposerStore.js';
 import { AudioPlayerHandle } from './AudioPlayer.js';
 import { LOOP_PRESETS, MusicLoopPreset, LoopStyle } from '../audio/music-presets.js';

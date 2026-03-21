@@ -1,8 +1,8 @@
-#include "vulkan_game/engine/command_pool.hpp"
+#include "gseurat/engine/command_pool.hpp"
 
 #include <stdexcept>
 
-namespace vulkan_game {
+namespace gseurat {
 
 void CommandPool::init(VkDevice device, uint32_t queue_family) {
     VkCommandPoolCreateInfo pool_info{};
@@ -61,4 +61,4 @@ void CommandPool::end_single_time(VkDevice device, VkQueue queue, VkCommandBuffe
     vkFreeCommandBuffers(device, pool_, 1, &cmd);
 }
 
-}  // namespace vulkan_game
+}  // namespace gseurat

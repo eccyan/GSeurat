@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import type { CharacterAnimation } from '@vulkan-game-tools/asset-types';
+import type { CharacterAnimation } from '@gseurat/asset-types';
 import { frameThumbnailUrl } from '../../lib/bridge-api.js';
 import { useSeuratStore } from '../../store/useSeuratStore.js';
 import { getFrameAtTime } from '../../lib/frame-utils.js';

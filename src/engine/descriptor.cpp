@@ -1,8 +1,8 @@
-#include "vulkan_game/engine/descriptor.hpp"
+#include "gseurat/engine/descriptor.hpp"
 
 #include <stdexcept>
 
-namespace vulkan_game {
+namespace gseurat {
 
 void DescriptorManager::init(VkDevice device) {
     // Create descriptor set layout for sprites
@@ -123,4 +123,4 @@ std::array<VkDescriptorSet, kMaxFramesInFlight> DescriptorManager::allocate_spri
     return sets;
 }
 
-}  // namespace vulkan_game
+}  // namespace gseurat

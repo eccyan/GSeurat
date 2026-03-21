@@ -1,5 +1,5 @@
 import React from 'react';
-import type { CharacterAnimation } from '@vulkan-game-tools/asset-types';
+import type { CharacterAnimation } from '@gseurat/asset-types';
 import { useSeuratStore } from '../../store/useSeuratStore.js';
 import { getClipDuration } from '../../lib/frame-utils.js';
 import { NumericInput } from '../NumericInput.js';

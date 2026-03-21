@@ -1,11 +1,11 @@
-#include "vulkan_game/engine/post_process.hpp"
-#include "vulkan_game/engine/pipeline.hpp"
-#include "vulkan_game/engine/swapchain.hpp"
+#include "gseurat/engine/post_process.hpp"
+#include "gseurat/engine/pipeline.hpp"
+#include "gseurat/engine/swapchain.hpp"
 
 #include <array>
 #include <stdexcept>
 
-namespace vulkan_game {
+namespace gseurat {
 
 void PostProcessPipeline::init(VkDevice device, VmaAllocator allocator,
                                 const Swapchain& swapchain) {
@@ -903,4 +903,4 @@ void PostProcessPipeline::record_post_process(VkCommandBuffer cmd, uint32_t swap
     }
 }
 
-}  // namespace vulkan_game
+}  // namespace gseurat

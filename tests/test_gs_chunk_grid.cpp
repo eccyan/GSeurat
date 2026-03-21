@@ -9,8 +9,8 @@
 //
 // Run: ./build/test_gs_chunk_grid
 
-#include "vulkan_game/engine/gs_chunk_grid.hpp"
-#include "vulkan_game/engine/gaussian_cloud.hpp"
+#include "gseurat/engine/gs_chunk_grid.hpp"
+#include "gseurat/engine/gaussian_cloud.hpp"
 
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -21,7 +21,7 @@
 #include <set>
 #include <vector>
 
-using namespace vulkan_game;
+using namespace gseurat;
 
 // Build a wide VP matrix that sees a large region centered at the given position
 static glm::mat4 wide_vp(glm::vec3 center = glm::vec3(0.0f)) {

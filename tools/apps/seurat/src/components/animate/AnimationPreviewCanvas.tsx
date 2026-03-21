@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import type { CharacterAnimation } from '@vulkan-game-tools/asset-types';
-import type { SpritesheetConfig } from '@vulkan-game-tools/asset-types';
+import type { CharacterAnimation } from '@gseurat/asset-types';
+import type { SpritesheetConfig } from '@gseurat/asset-types';
 import { getFrameAtTime } from '../../lib/frame-utils.js';
 
 interface Props {

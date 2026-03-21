@@ -11,7 +11,7 @@
  */
 import { existsSync } from 'fs';
 import puppeteer, { type Browser, type Page } from 'puppeteer-core';
-import { TestClient } from '@vulkan-game-tools/test-harness';
+import { TestClient } from '@gseurat/test-harness';
 
 // ---------------------------------------------------------------------------
 // Config

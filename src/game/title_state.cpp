@@ -1,11 +1,11 @@
-#include "vulkan_game/game/states/title_state.hpp"
-#include "vulkan_game/game/states/gameplay_state.hpp"
-#include "vulkan_game/engine/app_base.hpp"
+#include "gseurat/game/states/title_state.hpp"
+#include "gseurat/game/states/gameplay_state.hpp"
+#include "gseurat/engine/app_base.hpp"
 
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
-namespace vulkan_game {
+namespace gseurat {
 
 void TitleState::on_enter(AppBase& app) {
     blink_timer_ = 0.0f;
@@ -44,7 +44,7 @@ void TitleState::build_draw_lists(AppBase& app) {
     auto& ctx = app.ui_ctx();
 
     // Title
-    ctx.label("HD-2D Vulkan Game", 400.0f, 250.0f, 1.2f, {1.0f, 0.9f, 0.3f, 1.0f});
+    ctx.label("GSeurat", 400.0f, 250.0f, 1.2f, {1.0f, 0.9f, 0.3f, 1.0f});
 
     // Blinking prompt if no menu
     if (!has_save_ && show_prompt_) {
@@ -73,4 +73,4 @@ void TitleState::build_draw_lists(AppBase& app) {
     selected_item_ = ctx.menu_selection();
 }
 
-}  // namespace vulkan_game
+}  // namespace gseurat

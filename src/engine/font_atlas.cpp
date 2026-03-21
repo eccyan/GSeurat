@@ -4,7 +4,7 @@
 #define STB_TRUETYPE_IMPLEMENTATION
 #include <stb_truetype.h>
 
-#include "vulkan_game/engine/font_atlas.hpp"
+#include "gseurat/engine/font_atlas.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -12,7 +12,7 @@
 #include <fstream>
 #include <stdexcept>
 
-namespace vulkan_game {
+namespace gseurat {
 
 void FontAtlas::init(const std::string& ttf_path, float font_size,
                      const std::vector<uint32_t>& codepoints) {
@@ -168,4 +168,4 @@ const GlyphInfo* FontAtlas::glyph(uint32_t codepoint) const {
     return nullptr;
 }
 
-}  // namespace vulkan_game
+}  // namespace gseurat

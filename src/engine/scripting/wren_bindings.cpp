@@ -1,7 +1,7 @@
-#include "vulkan_game/engine/scripting/wren_bindings.hpp"
-#include "vulkan_game/engine/app_base.hpp"
-#include "vulkan_game/engine/ecs/default_components.hpp"
-#include "vulkan_game/game/components.hpp"
+#include "gseurat/engine/scripting/wren_bindings.hpp"
+#include "gseurat/engine/app_base.hpp"
+#include "gseurat/engine/ecs/default_components.hpp"
+#include "gseurat/game/components.hpp"
 
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
@@ -9,7 +9,7 @@
 #include <cstring>
 #include <string>
 
-namespace vulkan_game {
+namespace gseurat {
 
 // Helper to get the App pointer from Wren VM user data.
 static AppBase* get_app(::WrenVM* vm) {
@@ -279,4 +279,4 @@ void register_wren_bindings(WrenVM& wren_vm) {
         });
 }
 
-}  // namespace vulkan_game
+}  // namespace gseurat

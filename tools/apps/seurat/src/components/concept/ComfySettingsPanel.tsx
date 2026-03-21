@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import type { StageGenerationSettings } from '@vulkan-game-tools/asset-types';
+import type { StageGenerationSettings } from '@gseurat/asset-types';
 import { useSeuratStore } from '../../store/useSeuratStore.js';
 import { SAMPLER_NAMES } from '../../lib/ai-generate.js';
 import { NumericInput } from '../NumericInput.js';

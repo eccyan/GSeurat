@@ -8,9 +8,9 @@ import type {
   PipelineStage,
   ViewDirection,
   DirectionCode,
-} from '@vulkan-game-tools/asset-types';
-import { createDefaultManifest, getManifestStats, VIEW_DIRECTIONS, DIRECTION_TO_VIEW } from '@vulkan-game-tools/asset-types';
-import { ComfyUIClient } from '@vulkan-game-tools/ai-providers';
+} from '@gseurat/asset-types';
+import { createDefaultManifest, getManifestStats, VIEW_DIRECTIONS, DIRECTION_TO_VIEW } from '@gseurat/asset-types';
+import { ComfyUIClient } from '@gseurat/ai-providers';
 import type {
   Section,
   TreeSelection,

@@ -11,13 +11,13 @@
 //
 // Run: ./build/test_tilemap
 
-#include "vulkan_game/engine/tilemap.hpp"
+#include "gseurat/engine/tilemap.hpp"
 
 #include <cassert>
 #include <cmath>
 #include <cstdio>
 
-using namespace vulkan_game;
+using namespace gseurat;
 
 // ──── Group A: TileAnimator ────
 

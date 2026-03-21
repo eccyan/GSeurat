@@ -15,9 +15,9 @@
 //
 // Run: ./build/test_gaussian_cloud
 
-#include "vulkan_game/engine/gaussian_cloud.hpp"
-#include "vulkan_game/engine/collision_gen.hpp"
-#include "vulkan_game/engine/scene_loader.hpp"
+#include "gseurat/engine/gaussian_cloud.hpp"
+#include "gseurat/engine/collision_gen.hpp"
+#include "gseurat/engine/scene_loader.hpp"
 
 #include <cassert>
 #include <cmath>
@@ -28,7 +28,7 @@
 
 namespace fs = std::filesystem;
 
-using namespace vulkan_game;
+using namespace gseurat;
 
 // ---------------------------------------------------------------------------
 // Helpers: create test PLY files on disk

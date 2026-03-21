@@ -1,9 +1,9 @@
-#include "vulkan_game/engine/staging_uploader.hpp"
+#include "gseurat/engine/staging_uploader.hpp"
 
 #include <cstring>
 #include <stdexcept>
 
-namespace vulkan_game {
+namespace gseurat {
 
 void StagingUploader::init(VkDevice device, VmaAllocator allocator,
                            VkCommandPool cmd_pool, VkQueue queue,
@@ -224,4 +224,4 @@ void StagingUploader::end_and_submit(VkCommandBuffer cmd, VkFence fence) {
     vkQueueSubmit(queue_, 1, &submit, fence);
 }
 
-}  // namespace vulkan_game
+}  // namespace gseurat

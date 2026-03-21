@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import type { ViewDirection } from '@vulkan-game-tools/asset-types';
-import { VIEW_DIRECTIONS, DIRECTION_TO_VIEW } from '@vulkan-game-tools/asset-types';
+import type { ViewDirection } from '@gseurat/asset-types';
+import { VIEW_DIRECTIONS, DIRECTION_TO_VIEW } from '@gseurat/asset-types';
 import { useSeuratStore } from '../../store/useSeuratStore.js';
 import { DEFAULT_AI_CONFIG } from '../../store/types.js';
 import { SAMPLER_NAMES } from '../../lib/ai-generate.js';

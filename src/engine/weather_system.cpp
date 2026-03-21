@@ -1,10 +1,10 @@
-#include "vulkan_game/engine/weather_system.hpp"
-#include "vulkan_game/engine/scene.hpp"
+#include "gseurat/engine/weather_system.hpp"
+#include "gseurat/engine/scene.hpp"
 
 #include <algorithm>
 #include <cmath>
 
-namespace vulkan_game {
+namespace gseurat {
 
 void WeatherSystem::init(ParticleSystem& particles, Scene& scene, const WeatherConfig& config) {
     config_ = config;
@@ -56,4 +56,4 @@ glm::vec3 WeatherSystem::fog_color() const {
     return config_.fog_color;
 }
 
-}  // namespace vulkan_game
+}  // namespace gseurat

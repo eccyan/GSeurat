@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import type { PipelineStage, CharacterFrame, CharacterAnimation } from '@vulkan-game-tools/asset-types';
+import type { PipelineStage, CharacterFrame, CharacterAnimation } from '@gseurat/asset-types';
 import { useSeuratStore } from '../../store/useSeuratStore.js';
 import { PaintEditor } from '../shared/PaintEditor.js';
 import { PoseCell } from '../shared/PoseCell.js';

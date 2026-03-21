@@ -1,6 +1,6 @@
-#include "vulkan_game/engine/particle.hpp"
+#include "gseurat/engine/particle.hpp"
 
-namespace vulkan_game {
+namespace gseurat {
 
 size_t ParticleSystem::add_emitter(const EmitterConfig& config, glm::vec2 position) {
     emitters_.push_back(Emitter{config, position, true, 0.0f});
@@ -133,4 +133,4 @@ void ParticleSystem::clear() {
     next_spawn_index_ = 0;
 }
 
-}  // namespace vulkan_game
+}  // namespace gseurat

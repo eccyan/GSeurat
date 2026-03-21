@@ -1,10 +1,10 @@
-#include "vulkan_game/engine/render_pass.hpp"
-#include "vulkan_game/engine/swapchain.hpp"
+#include "gseurat/engine/render_pass.hpp"
+#include "gseurat/engine/swapchain.hpp"
 
 #include <array>
 #include <stdexcept>
 
-namespace vulkan_game {
+namespace gseurat {
 
 void RenderPassManager::init(VkDevice device, VmaAllocator allocator,
                              const Swapchain& swapchain) {
@@ -139,4 +139,4 @@ void RenderPassManager::create_framebuffers(VkDevice device, const Swapchain& sw
     }
 }
 
-}  // namespace vulkan_game
+}  // namespace gseurat

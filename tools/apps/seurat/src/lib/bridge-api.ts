@@ -3,7 +3,7 @@ import type {
   FrameStatus,
   PipelineStage,
   ViewDirection,
-} from '@vulkan-game-tools/asset-types';
+} from '@gseurat/asset-types';
 import type { AssembleResult } from '../store/types.js';
 
 // In dev mode, Vite proxies /api to the bridge server (avoids CORS).

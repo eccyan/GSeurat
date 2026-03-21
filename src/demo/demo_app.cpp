@@ -1,13 +1,13 @@
-#include "vulkan_game/demo/demo_app.hpp"
-#include "vulkan_game/demo/demo_gameplay_state.hpp"
-#include "vulkan_game/engine/ecs/default_components.hpp"
-#include "vulkan_game/game/components.hpp"
-#include "vulkan_game/game/states/transition_state.hpp"
-#include "vulkan_game/game/systems.hpp"
-#include "vulkan_game/engine/pathfinder.hpp"
-#include "vulkan_game/engine/character_data.hpp"
-#include "vulkan_game/engine/scene_loader.hpp"
-#include "vulkan_game/engine/tilemap.hpp"
+#include "gseurat/demo/demo_app.hpp"
+#include "gseurat/demo/demo_gameplay_state.hpp"
+#include "gseurat/engine/ecs/default_components.hpp"
+#include "gseurat/game/components.hpp"
+#include "gseurat/game/states/transition_state.hpp"
+#include "gseurat/game/systems.hpp"
+#include "gseurat/engine/pathfinder.hpp"
+#include "gseurat/engine/character_data.hpp"
+#include "gseurat/engine/scene_loader.hpp"
+#include "gseurat/engine/tilemap.hpp"
 
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
@@ -26,7 +26,7 @@
 #include <string>
 #include <string_view>
 
-namespace vulkan_game {
+namespace gseurat {
 
 // Decode all unique codepoints from a UTF-8 string into a set.
 static void collect_codepoints(const std::string& text, std::set<uint32_t>& out) {
@@ -1518,4 +1518,4 @@ void DemoApp::update_audio(float dt) {
     audio_.update(dt);
 }
 
-}  // namespace vulkan_game
+}  // namespace gseurat

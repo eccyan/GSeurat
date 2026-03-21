@@ -1,8 +1,8 @@
-#include "vulkan_game/engine/resource_manager.hpp"
+#include "gseurat/engine/resource_manager.hpp"
 
 #include <stb_image.h>
 
-namespace vulkan_game {
+namespace gseurat {
 
 void ResourceManager::init(VkDevice device, VmaAllocator allocator,
                             VkCommandPool cmd_pool, VkQueue queue) {
@@ -152,4 +152,4 @@ void ResourceManager::process_async_results(AsyncLoader& loader, StagingUploader
     }
 }
 
-}  // namespace vulkan_game
+}  // namespace gseurat

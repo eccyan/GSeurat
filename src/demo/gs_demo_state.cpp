@@ -1,7 +1,7 @@
-#include "vulkan_game/demo/gs_demo_state.hpp"
-#include "vulkan_game/engine/app_base.hpp"
-#include "vulkan_game/engine/gaussian_cloud.hpp"
-#include "vulkan_game/engine/gs_chunk_grid.hpp"
+#include "gseurat/demo/gs_demo_state.hpp"
+#include "gseurat/engine/app_base.hpp"
+#include "gseurat/engine/gaussian_cloud.hpp"
+#include "gseurat/engine/gs_chunk_grid.hpp"
 
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
@@ -15,7 +15,7 @@
 #include <fstream>
 #include <string>
 
-namespace vulkan_game {
+namespace gseurat {
 
 void GsDemoState::on_enter(AppBase& app) {
     app.feature_flags() = FeatureFlags::gs_viewer();
@@ -656,4 +656,4 @@ void GsDemoState::update_streaming(AppBase& app) {
     }
 }
 
-}  // namespace vulkan_game
+}  // namespace gseurat

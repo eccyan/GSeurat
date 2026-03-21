@@ -6,13 +6,13 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import sharp from "sharp";
-import type { CharacterManifest } from "@vulkan-game-tools/asset-types";
+import type { CharacterManifest } from "@gseurat/asset-types";
 import type {
   SpritesheetExportMetadata,
   IndividualExportMetadata,
   ExportFrameCoord,
   ExportFrameFile,
-} from "@vulkan-game-tools/asset-types";
+} from "@gseurat/asset-types";
 
 export interface ExportOptions {
   charactersDir: string;

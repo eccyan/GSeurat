@@ -1,4 +1,4 @@
-#include "vulkan_game/engine/gaussian_cloud.hpp"
+#include "gseurat/engine/gaussian_cloud.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -8,7 +8,7 @@
 #include <stdexcept>
 #include <unordered_map>
 
-namespace vulkan_game {
+namespace gseurat {
 
 namespace {
 
@@ -315,4 +315,4 @@ void GaussianCloud::write_ply(const std::string& path,
     }
 }
 
-}  // namespace vulkan_game
+}  // namespace gseurat

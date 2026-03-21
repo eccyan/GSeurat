@@ -1,9 +1,9 @@
-#include "vulkan_game/game/states/transition_state.hpp"
-#include "vulkan_game/engine/app_base.hpp"
-#include "vulkan_game/engine/ecs/default_components.hpp"
-#include "vulkan_game/game/components.hpp"
+#include "gseurat/game/states/transition_state.hpp"
+#include "gseurat/engine/app_base.hpp"
+#include "gseurat/engine/ecs/default_components.hpp"
+#include "gseurat/game/components.hpp"
 
-namespace vulkan_game {
+namespace gseurat {
 
 TransitionState::TransitionState(std::string target_scene, glm::vec3 spawn_pos, Direction facing)
     : target_scene_(std::move(target_scene))
@@ -80,4 +80,4 @@ void TransitionState::build_draw_lists(AppBase& /*app*/) {
     // Fade effect is handled via renderer's fade_amount, no sprites needed
 }
 
-}  // namespace vulkan_game
+}  // namespace gseurat

@@ -10,7 +10,7 @@
 //
 // Run: ./build/test_gs_chunk_streamer
 
-#include "vulkan_game/engine/gs_chunk_streamer.hpp"
+#include "gseurat/engine/gs_chunk_streamer.hpp"
 
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -19,7 +19,7 @@
 #include <cmath>
 #include <cstdio>
 
-using namespace vulkan_game;
+using namespace gseurat;
 
 // Helper: build a test manifest with chunks laid out on a grid
 static ChunkManifest make_test_manifest(int cols, int rows, float chunk_size = 32.0f) {

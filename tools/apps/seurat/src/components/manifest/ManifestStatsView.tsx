@@ -1,6 +1,6 @@
 import React, { useCallback } from 'react';
 import { useSeuratStore, getManifestStats } from '../../store/useSeuratStore.js';
-import type { CharacterManifest } from '@vulkan-game-tools/asset-types';
+import type { CharacterManifest } from '@gseurat/asset-types';
 import { NumericInput } from '../NumericInput.js';
 
 export function ManifestStatsView() {

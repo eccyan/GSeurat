@@ -1,11 +1,11 @@
-#include "vulkan_game/engine/day_night_system.hpp"
-#include "vulkan_game/engine/scene.hpp"
-#include "vulkan_game/engine/weather_system.hpp"
+#include "gseurat/engine/day_night_system.hpp"
+#include "gseurat/engine/scene.hpp"
+#include "gseurat/engine/weather_system.hpp"
 
 #include <algorithm>
 #include <cmath>
 
-namespace vulkan_game {
+namespace gseurat {
 
 std::vector<DayNightKeyframe> DayNightConfig::default_keyframes() {
     return {
@@ -133,4 +133,4 @@ DayNightSystem::EvalResult DayNightSystem::evaluate(float t) const {
     return result;
 }
 
-}  // namespace vulkan_game
+}  // namespace gseurat

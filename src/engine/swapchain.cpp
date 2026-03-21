@@ -1,10 +1,10 @@
-#include "vulkan_game/engine/swapchain.hpp"
-#include "vulkan_game/engine/vk_context.hpp"
+#include "gseurat/engine/swapchain.hpp"
+#include "gseurat/engine/vk_context.hpp"
 
 #include <algorithm>
 #include <stdexcept>
 
-namespace vulkan_game {
+namespace gseurat {
 
 void Swapchain::init(const VkContext& context, uint32_t width, uint32_t height) {
     auto physical = context.physical_device();
@@ -108,4 +108,4 @@ void Swapchain::shutdown(VkDevice device) {
     vkDestroySwapchainKHR(device, swapchain_, nullptr);
 }
 
-}  // namespace vulkan_game
+}  // namespace gseurat

@@ -1,5 +1,5 @@
 {
-  "name": "@vulkan-game-tools/audio-composer",
+  "name": "@gseurat/audio-composer",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -12,11 +12,11 @@
     "react": "^18.3.0",
     "react-dom": "^18.3.0",
     "zustand": "^4.5.0",
-    "@vulkan-game-tools/engine-client": "workspace:*",
-    "@vulkan-game-tools/asset-types": "workspace:*",
-    "@vulkan-game-tools/ai-providers": "workspace:*",
-    "@vulkan-game-tools/ui-kit": "workspace:*",
-    "@vulkan-game-tools/test-harness": "workspace:*"
+    "@gseurat/engine-client": "workspace:*",
+    "@gseurat/asset-types": "workspace:*",
+    "@gseurat/ai-providers": "workspace:*",
+    "@gseurat/ui-kit": "workspace:*",
+    "@gseurat/test-harness": "workspace:*"
   },
   "devDependencies": {
     "@types/react": "^18.3.0",

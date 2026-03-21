@@ -1,8 +1,8 @@
-#include "vulkan_game/engine/sync.hpp"
+#include "gseurat/engine/sync.hpp"
 
 #include <stdexcept>
 
-namespace vulkan_game {
+namespace gseurat {
 
 void SyncObjects::init(VkDevice device, uint32_t swapchain_image_count) {
     VkSemaphoreCreateInfo sem_info{};
@@ -47,4 +47,4 @@ void SyncObjects::shutdown(VkDevice device) {
     }
 }
 
-}  // namespace vulkan_game
+}  // namespace gseurat

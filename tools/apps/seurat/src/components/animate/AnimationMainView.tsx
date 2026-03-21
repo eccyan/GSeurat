@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import type { CharacterFrame } from '@vulkan-game-tools/asset-types';
+import type { CharacterFrame } from '@gseurat/asset-types';
 import { useSeuratStore } from '../../store/useSeuratStore.js';
 import { AnimationPreviewCanvas } from './AnimationPreviewCanvas.js';
 import { FramePreviewCanvas } from './FramePreviewCanvas.js';

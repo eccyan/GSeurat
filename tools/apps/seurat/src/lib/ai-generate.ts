@@ -1,4 +1,4 @@
-import type { CharacterManifest, CharacterAnimation, ViewDirection } from '@vulkan-game-tools/asset-types';
+import type { CharacterManifest, CharacterAnimation, ViewDirection } from '@gseurat/asset-types';
 import type { AIConfig } from '../store/types.js';
 
 export const SAMPLER_NAMES = [

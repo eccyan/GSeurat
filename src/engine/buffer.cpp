@@ -1,9 +1,9 @@
-#include "vulkan_game/engine/buffer.hpp"
+#include "gseurat/engine/buffer.hpp"
 
 #include <cstring>
 #include <stdexcept>
 
-namespace vulkan_game {
+namespace gseurat {
 
 Buffer Buffer::create_vertex(VmaAllocator allocator, VkDeviceSize size) {
     VkBufferCreateInfo buf_info{};
@@ -188,4 +188,4 @@ void Buffer::destroy(VmaAllocator allocator) {
     }
 }
 
-}  // namespace vulkan_game
+}  // namespace gseurat

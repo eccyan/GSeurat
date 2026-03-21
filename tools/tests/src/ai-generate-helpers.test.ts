@@ -3,7 +3,7 @@
  *
  * Usage: node --import tsx/esm --conditions source src/ai-generate-helpers.test.ts
  */
-import { DEFAULT_ASSET_MANIFEST, type AssetManifest } from '@vulkan-game-tools/asset-types';
+import { DEFAULT_ASSET_MANIFEST, type AssetManifest } from '@gseurat/asset-types';
 
 // Re-implement types locally (no browser deps)
 type EditTarget = 'tileset' | 'spritesheet';

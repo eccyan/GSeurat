@@ -1,10 +1,10 @@
-#include "vulkan_game/engine/screenshot.hpp"
+#include "gseurat/engine/screenshot.hpp"
 
 #include <vector>
 
 #include <stb_image_write.h>
 
-namespace vulkan_game {
+namespace gseurat {
 
 void swizzle_bgra_to_rgba(const uint8_t* src, uint8_t* dst, uint32_t pixel_count) {
     for (uint32_t i = 0; i < pixel_count; ++i) {
@@ -110,4 +110,4 @@ void ScreenshotCapture::shutdown(VmaAllocator allocator) {
     }
 }
 
-}  // namespace vulkan_game
+}  // namespace gseurat

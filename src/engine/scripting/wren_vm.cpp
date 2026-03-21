@@ -1,5 +1,5 @@
-#include "vulkan_game/engine/scripting/wren_vm.hpp"
-#include "vulkan_game/engine/app_base.hpp"
+#include "gseurat/engine/scripting/wren_vm.hpp"
+#include "gseurat/engine/app_base.hpp"
 
 #include <chrono>
 #include <cstdio>
@@ -7,7 +7,7 @@
 #include <fstream>
 #include <sstream>
 
-namespace vulkan_game {
+namespace gseurat {
 
 WrenVM::~WrenVM() {
     shutdown();
@@ -238,4 +238,4 @@ WrenLoadModuleResult WrenVM::load_module_fn(::WrenVM* vm, const char* name) {
     return result;
 }
 
-}  // namespace vulkan_game
+}  // namespace gseurat

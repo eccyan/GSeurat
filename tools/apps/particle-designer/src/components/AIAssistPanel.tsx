@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useRef } from 'react';
-import { OllamaClient } from '@vulkan-game-tools/ai-providers';
+import { OllamaClient } from '@gseurat/ai-providers';
 import { useParticleStore } from '../store/useParticleStore.js';
 import type { EmitterConfig } from '../store/useParticleStore.js';
 

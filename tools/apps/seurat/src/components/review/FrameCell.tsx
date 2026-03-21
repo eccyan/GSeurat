@@ -1,5 +1,5 @@
 import React from 'react';
-import type { CharacterFrame, FrameStatus } from '@vulkan-game-tools/asset-types';
+import type { CharacterFrame, FrameStatus } from '@gseurat/asset-types';
 import { frameThumbnailUrl } from '../../lib/bridge-api.js';
 
 const STATUS_COLORS: Record<FrameStatus, string> = {

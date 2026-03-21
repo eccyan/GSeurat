@@ -1,10 +1,10 @@
-#include "vulkan_game/engine/sprite_batch.hpp"
+#include "gseurat/engine/sprite_batch.hpp"
 
 #include <algorithm>
 #include <cstring>
 #include <stdexcept>
 
-namespace vulkan_game {
+namespace gseurat {
 
 void SpriteBatch::init(VmaAllocator allocator, VkDevice device, VkCommandPool cmd_pool,
                        VkQueue queue) {
@@ -149,4 +149,4 @@ void SpriteBatch::bind(VkCommandBuffer cmd, uint32_t frame_index) {
     vkCmdBindIndexBuffer(cmd, index_buffer_.buffer(), 0, VK_INDEX_TYPE_UINT32);
 }
 
-}  // namespace vulkan_game
+}  // namespace gseurat

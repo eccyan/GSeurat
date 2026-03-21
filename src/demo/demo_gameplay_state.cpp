@@ -1,13 +1,13 @@
-#include "vulkan_game/demo/demo_gameplay_state.hpp"
-#include "vulkan_game/engine/app_base.hpp"
-#include "vulkan_game/game/states/pause_state.hpp"
+#include "gseurat/demo/demo_gameplay_state.hpp"
+#include "gseurat/engine/app_base.hpp"
+#include "gseurat/game/states/pause_state.hpp"
 
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
 #include <string>
 
-namespace vulkan_game {
+namespace gseurat {
 
 void DemoGameplayState::on_enter(AppBase& app) {
     app.init_scene(app.current_scene_path());
@@ -148,4 +148,4 @@ void DemoGameplayState::build_draw_lists(AppBase& app) {
              {0.4f, 0.4f, 0.4f, 1.0f});
 }
 
-}  // namespace vulkan_game
+}  // namespace gseurat

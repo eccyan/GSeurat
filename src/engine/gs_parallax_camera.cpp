@@ -1,10 +1,10 @@
-#include "vulkan_game/engine/gs_parallax_camera.hpp"
+#include "gseurat/engine/gs_parallax_camera.hpp"
 
 #include <glm/gtc/matrix_transform.hpp>
 #include <algorithm>
 #include <cmath>
 
-namespace vulkan_game {
+namespace gseurat {
 
 void GsParallaxCamera::configure(const glm::vec3& home_position,
                                   const glm::vec3& home_target,
@@ -93,4 +93,4 @@ glm::mat4 GsParallaxCamera::proj() const {
     return p;
 }
 
-}  // namespace vulkan_game
+}  // namespace gseurat
