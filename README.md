@@ -14,7 +14,7 @@ A Vulkan-based HD-2D game engine built with C++23, featuring 3D Gaussian Splatti
 - **Day/night cycle** — Ambient color interpolation with weather system
 - **Save system** — JSON-based save/load with game flags
 - **AI debugging** — Unix socket control server for deterministic step-mode testing
-- **Creative tooling** — 7 web-based tools for content authoring (level design, sprite art, particles, audio, maps)
+- **Creative tooling** — 6 web-based tools for content authoring (level design, particles, audio, maps)
 
 ## Prerequisites
 
@@ -281,7 +281,7 @@ assets/           Game assets (scenes, textures, maps)
 tests/            C++ integration tests (assert-based)
 tools/            Web-based creative tooling ecosystem (TypeScript/React)
   packages/       Shared libraries (engine-client, asset-types, ai-providers, ui-kit)
-  apps/           Tool applications (bridge, level-designer, seurat, bricklayer, etc.)
+  apps/           Tool applications (bridge, level-designer, bricklayer, etc.)
 docs/             Performance reports and tool documentation
 .devcontainer/    Container development environment
 ```
