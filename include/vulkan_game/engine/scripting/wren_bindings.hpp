@@ -4,7 +4,7 @@
 
 namespace vulkan_game {
 
-class App;
+class AppBase;
 
 // Register all engine foreign methods with the WrenVM.
 // Binds: Engine.get_position(_), Engine.set_position(_,_,_,_),

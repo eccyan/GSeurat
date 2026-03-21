@@ -1,5 +1,5 @@
 #include "vulkan_game/demo/demo_gameplay_state.hpp"
-#include "vulkan_game/app.hpp"
+#include "vulkan_game/engine/app_base.hpp"
 #include "vulkan_game/game/states/pause_state.hpp"
 
 #define GLFW_INCLUDE_VULKAN
@@ -9,14 +9,14 @@
 
 namespace vulkan_game {
 
-void DemoGameplayState::on_enter(App& app) {
+void DemoGameplayState::on_enter(AppBase& app) {
     app.init_scene(app.current_scene_path());
 }
 
-void DemoGameplayState::on_exit(App& /*app*/) {
+void DemoGameplayState::on_exit(AppBase& /*app*/) {
 }
 
-void DemoGameplayState::update(App& app, float dt) {
+void DemoGameplayState::update(AppBase& app, float dt) {
     // F1 toggles panel visibility
     if (app.input().was_key_pressed(GLFW_KEY_F1)) {
         panel_visible_ = !panel_visible_;
@@ -49,7 +49,7 @@ void DemoGameplayState::update(App& app, float dt) {
     app.update_game(dt);
 }
 
-void DemoGameplayState::build_draw_lists(App& app) {
+void DemoGameplayState::build_draw_lists(AppBase& app) {
     if (!panel_visible_) return;
 
     auto& ui = app.ui_ctx();

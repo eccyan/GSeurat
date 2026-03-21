@@ -131,6 +131,7 @@ add_subdirectory(shaders)
 # --- Core OBJECT library (shared by main + demo) ---------------------------
 
 add_library(vulkan_game_core OBJECT
+    src/engine/app_base.cpp
     src/engine/vk_context.cpp
     src/engine/swapchain.cpp
     src/engine/render_pass.cpp

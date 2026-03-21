@@ -1,5 +1,5 @@
 #include "vulkan_game/engine/scripting/wren_bindings.hpp"
-#include "vulkan_game/app.hpp"
+#include "vulkan_game/engine/app_base.hpp"
 #include "vulkan_game/engine/ecs/default_components.hpp"
 #include "vulkan_game/game/components.hpp"
 
@@ -12,7 +12,7 @@
 namespace vulkan_game {
 
 // Helper to get the App pointer from Wren VM user data.
-static App* get_app(::WrenVM* vm) {
+static AppBase* get_app(::WrenVM* vm) {
     auto* wrapper = static_cast<WrenVM*>(wrenGetUserData(vm));
     return wrapper ? wrapper->app() : nullptr;
 }
@@ -20,7 +20,7 @@ static App* get_app(::WrenVM* vm) {
 // --- Engine.get_position(entity_id) ---
 // Returns a list [x, y, z] for the given entity ID.
 static void engine_get_position(::WrenVM* vm) {
-    App* app = get_app(vm);
+    AppBase* app = get_app(vm);
     if (!app) return;
 
     uint32_t id = static_cast<uint32_t>(wrenGetSlotDouble(vm, 1));
@@ -44,7 +44,7 @@ static void engine_get_position(::WrenVM* vm) {
 
 // --- Engine.set_position(entity_id, x, y, z) ---
 static void engine_set_position(::WrenVM* vm) {
-    App* app = get_app(vm);
+    AppBase* app = get_app(vm);
     if (!app) return;
 
     uint32_t id = static_cast<uint32_t>(wrenGetSlotDouble(vm, 1));
@@ -62,7 +62,7 @@ static void engine_set_position(::WrenVM* vm) {
 // --- Engine.get_facing(entity_id) ---
 // Returns facing direction as a string: "up", "down", "left", "right".
 static void engine_get_facing(::WrenVM* vm) {
-    App* app = get_app(vm);
+    AppBase* app = get_app(vm);
     if (!app) return;
 
     uint32_t id = static_cast<uint32_t>(wrenGetSlotDouble(vm, 1));
@@ -78,7 +78,7 @@ static void engine_get_facing(::WrenVM* vm) {
 
 // --- Engine.set_facing(entity_id, direction_string) ---
 static void engine_set_facing(::WrenVM* vm) {
-    App* app = get_app(vm);
+    AppBase* app = get_app(vm);
     if (!app) return;
 
     uint32_t id = static_cast<uint32_t>(wrenGetSlotDouble(vm, 1));
@@ -96,7 +96,7 @@ static void engine_set_facing(::WrenVM* vm) {
 
 // --- Engine.is_key_down(key_code) ---
 static void engine_is_key_down(::WrenVM* vm) {
-    App* app = get_app(vm);
+    AppBase* app = get_app(vm);
     if (!app) {
         wrenSetSlotBool(vm, 0, false);
         return;
@@ -108,7 +108,7 @@ static void engine_is_key_down(::WrenVM* vm) {
 
 // --- Engine.play_sound(sound_name) ---
 static void engine_play_sound(::WrenVM* vm) {
-    App* app = get_app(vm);
+    AppBase* app = get_app(vm);
     if (!app) return;
 
     const char* name = wrenGetSlotString(vm, 1);
@@ -121,7 +121,7 @@ static void engine_play_sound(::WrenVM* vm) {
 
 // --- Engine.get_flag(name) ---
 static void engine_get_flag(::WrenVM* vm) {
-    App* app = get_app(vm);
+    AppBase* app = get_app(vm);
     if (!app) {
         wrenSetSlotBool(vm, 0, false);
         return;
@@ -135,7 +135,7 @@ static void engine_get_flag(::WrenVM* vm) {
 
 // --- Engine.set_flag(name, value) ---
 static void engine_set_flag(::WrenVM* vm) {
-    App* app = get_app(vm);
+    AppBase* app = get_app(vm);
     if (!app) return;
 
     const char* name = wrenGetSlotString(vm, 1);
@@ -163,7 +163,7 @@ static void engine_log(::WrenVM* vm) {
 
 // --- Engine.player_id() ---
 static void engine_player_id(::WrenVM* vm) {
-    App* app = get_app(vm);
+    AppBase* app = get_app(vm);
     if (!app) {
         wrenSetSlotDouble(vm, 0, 0);
         return;
@@ -173,7 +173,7 @@ static void engine_player_id(::WrenVM* vm) {
 
 // --- Engine.npc_ids() ---
 static void engine_npc_ids(::WrenVM* vm) {
-    App* app = get_app(vm);
+    AppBase* app = get_app(vm);
     if (!app) {
         wrenSetSlotNewList(vm, 0);
         return;
@@ -189,7 +189,7 @@ static void engine_npc_ids(::WrenVM* vm) {
 
 // --- Day/Night ---
 static void engine_get_time_of_day(::WrenVM* vm) {
-    App* app = get_app(vm);
+    AppBase* app = get_app(vm);
     if (!app) {
         wrenSetSlotDouble(vm, 0, 0.0);
         return;
@@ -198,7 +198,7 @@ static void engine_get_time_of_day(::WrenVM* vm) {
 }
 
 static void engine_set_time_of_day(::WrenVM* vm) {
-    App* app = get_app(vm);
+    AppBase* app = get_app(vm);
     if (!app) return;
     float t = static_cast<float>(wrenGetSlotDouble(vm, 1));
     app->day_night_system().set_time_of_day(t);
@@ -206,14 +206,14 @@ static void engine_set_time_of_day(::WrenVM* vm) {
 
 // --- Camera & Screen Effects ---
 static void engine_camera_shake_1(::WrenVM* vm) {
-    App* app = get_app(vm);
+    AppBase* app = get_app(vm);
     if (!app) return;
     float amp = static_cast<float>(wrenGetSlotDouble(vm, 1));
     app->renderer().camera().trigger_shake(amp);
 }
 
 static void engine_camera_shake_3(::WrenVM* vm) {
-    App* app = get_app(vm);
+    AppBase* app = get_app(vm);
     if (!app) return;
     float amp = static_cast<float>(wrenGetSlotDouble(vm, 1));
     float freq = static_cast<float>(wrenGetSlotDouble(vm, 2));
@@ -222,14 +222,14 @@ static void engine_camera_shake_3(::WrenVM* vm) {
 }
 
 static void engine_camera_zoom(::WrenVM* vm) {
-    App* app = get_app(vm);
+    AppBase* app = get_app(vm);
     if (!app) return;
     float z = static_cast<float>(wrenGetSlotDouble(vm, 1));
     app->renderer().camera().set_target_zoom(z);
 }
 
 static void engine_screen_flash(::WrenVM* vm) {
-    App* app = get_app(vm);
+    AppBase* app = get_app(vm);
     if (!app) return;
     float r = static_cast<float>(wrenGetSlotDouble(vm, 1));
     float g = static_cast<float>(wrenGetSlotDouble(vm, 2));
@@ -239,7 +239,7 @@ static void engine_screen_flash(::WrenVM* vm) {
 }
 
 static void engine_chromatic_aberration(::WrenVM* vm) {
-    App* app = get_app(vm);
+    AppBase* app = get_app(vm);
     if (!app) return;
     float intensity = static_cast<float>(wrenGetSlotDouble(vm, 1));
     float dur = static_cast<float>(wrenGetSlotDouble(vm, 2));

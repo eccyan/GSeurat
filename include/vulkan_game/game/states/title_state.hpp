@@ -6,9 +6,9 @@ namespace vulkan_game {
 
 class TitleState : public GameState {
 public:
-    void on_enter(App& app) override;
-    void update(App& app, float dt) override;
-    void build_draw_lists(App& app) override;
+    void on_enter(AppBase& app) override;
+    void update(AppBase& app, float dt) override;
+    void build_draw_lists(AppBase& app) override;
 
 private:
     float blink_timer_ = 0.0f;

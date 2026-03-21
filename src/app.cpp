@@ -829,11 +829,7 @@ void App::generate_audio_assets() {
     }
 }
 
-void App::set_start_state(std::unique_ptr<GameState> state) {
-    custom_start_state_ = std::move(state);
-}
-
-void App::init_subsystems() {
+void App::init_game_content() {
     init_window();
     generate_player_sheet();
     generate_tileset();
@@ -890,7 +886,7 @@ void App::init_subsystems() {
 }
 
 void App::run() {
-    init_subsystems();
+    init_game_content();
 
     if (custom_start_state_) {
         state_stack_.push(std::move(custom_start_state_), *this);
@@ -899,15 +895,6 @@ void App::run() {
     }
     main_loop();
     cleanup();
-}
-
-void App::init_window() {
-    glfwInit();
-    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-    glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
-
-    window_ = glfwCreateWindow(kWindowWidth, kWindowHeight, "Vulkan Game", nullptr, nullptr);
-    input_.set_window(window_);
 }
 
 void App::init_scene(const std::string& scene_path) {
@@ -1264,17 +1251,13 @@ void App::check_portals() {
 void App::update_game(float dt) {
     if (transitioning_) return;
 
-    if constexpr (!kIsGsViewer) {
-        if (game_mode_ == GameMode::Dialog) {
-            update_dialog_mode(dt);
-        } else if (player_id_.valid()) {
-            update_explore_mode(dt);
-        }
+    if (game_mode_ == GameMode::Dialog) {
+        update_dialog_mode(dt);
+    } else if (player_id_.valid()) {
+        update_explore_mode(dt);
     }
 
-    if constexpr (!kIsGsViewer) {
-        update_shared_systems(dt);
-    }
+    update_shared_systems(dt);
 }
 
 void App::update_dialog_mode(float dt) {
@@ -1568,123 +1551,6 @@ void App::update_audio(float dt) {
     }
 
     audio_.update(dt);
-}
-
-void App::main_loop() {
-    last_update_time_ = std::chrono::steady_clock::now();
-
-    while (!glfwWindowShouldClose(window_)) {
-        glfwPollEvents();
-
-#ifndef _WIN32
-        // Handle client disconnect → revert to realtime
-        if (!control_server_.has_client() && step_mode_) {
-            step_mode_ = false;
-            pending_steps_ = 0;
-            input_.clear_injections();
-        }
-
-        process_commands();
-#endif
-
-        // Clear draw lists at frame start (states will rebuild them)
-        overlay_sprites_.clear();
-        ui_sprites_.clear();
-
-        if (step_mode_) {
-            // Step mode: only update input + game when there are pending steps.
-            bool did_step = pending_steps_ > 0;
-            while (pending_steps_ > 0) {
-                input_.update();
-                state_stack_.update(*this, kFixedDt);
-                tick_++;
-                pending_steps_--;
-            }
-            if (did_step) {
-#ifndef _WIN32
-                control_server_.send(build_state_json());
-#endif
-            }
-        } else {
-            // Realtime mode
-            input_.update();
-
-            auto now = std::chrono::steady_clock::now();
-            float dt = std::chrono::duration<float>(now - last_update_time_).count();
-            last_update_time_ = now;
-
-            if (dt > 0.1f) dt = 0.1f;
-
-            state_stack_.update(*this, dt);
-            play_time_ += dt;
-            tick_++;
-        }
-
-        // Feed UI context with input state
-        {
-            ui::UIInput ui_input;
-            ui_input.mouse_pos = input_.mouse_pos();
-            ui_input.mouse_down = input_.is_mouse_down(0);
-            ui_input.mouse_pressed = input_.was_mouse_pressed(0);
-            ui_input.key_up = input_.was_key_pressed(GLFW_KEY_UP) || input_.was_key_pressed(GLFW_KEY_W);
-            ui_input.key_down_nav = input_.was_key_pressed(GLFW_KEY_DOWN) || input_.was_key_pressed(GLFW_KEY_S);
-            ui_input.key_enter = input_.was_key_pressed(GLFW_KEY_ENTER) || input_.was_key_pressed(GLFW_KEY_SPACE);
-            ui_input.key_escape = input_.was_key_pressed(GLFW_KEY_ESCAPE);
-            ui_input.scroll_delta = input_.scroll_y_delta();
-            ui_ctx_.set_screen_height(720.0f);
-            ui_ctx_.begin_frame(ui_input);
-        }
-
-        // Let states build their draw lists
-        state_stack_.build_draw_lists(*this);
-
-        // Always render
-        std::vector<SpriteDrawInfo> particle_sprites;
-        particles_.generate_draw_infos(particle_sprites);
-
-        // Build UI batches: flat ui_sprites_ (dialog etc.) + UIContext batches (menus, scroll areas)
-        std::vector<ui::UIDrawBatch> ui_batches;
-        if (!ui_sprites_.empty()) {
-            ui_batches.push_back(ui::UIDrawBatch{ui_sprites_, std::nullopt});
-        }
-        const auto& ctx_batches = ui_ctx_.draw_batches();
-        for (const auto& b : ctx_batches) {
-            if (!b.sprites.empty()) ui_batches.push_back(b);
-        }
-        if (feature_flags_.minimap && !minimap_sprites_.empty()) {
-            ui_batches.push_back(ui::UIDrawBatch{minimap_sprites_, std::nullopt});
-        }
-
-        // Pass screen effects to renderer
-        if (feature_flags_.screen_effects) {
-            auto fc = screen_effects_.flash_color() * screen_effects_.flash_alpha();
-            renderer_.set_ca_intensity(screen_effects_.ca_intensity());
-            renderer_.set_flash_color(fc.r, fc.g, fc.b);
-        } else {
-            renderer_.set_ca_intensity(0.0f);
-            renderer_.set_flash_color(0.0f, 0.0f, 0.0f);
-        }
-
-        renderer_.draw_scene(scene_, entity_sprites_, outline_sprites_, reflection_sprites_,
-                             shadow_sprites_, particle_sprites, overlay_sprites_, ui_batches,
-                             feature_flags_);
-
-#ifndef _WIN32
-        // Send screenshot response after draw completes
-        if (!screenshot_response_path_.empty()) {
-            if (renderer_.screenshot_write_ok()) {
-                control_server_.send({{"type", "screenshot"},
-                                      {"path", screenshot_response_path_},
-                                      {"width", renderer_.screenshot_width()},
-                                      {"height", renderer_.screenshot_height()}});
-            } else {
-                control_server_.send({{"type", "error"},
-                                      {"message", "Failed to write screenshot to: " + screenshot_response_path_}});
-            }
-            screenshot_response_path_.clear();
-        }
-#endif
-    }
 }
 
 #ifndef _WIN32
@@ -2521,19 +2387,128 @@ nlohmann::json App::build_tilemap_json() const {
     return result;
 }
 
-void App::cleanup() {
-    while (!state_stack_.empty()) {
-        state_stack_.pop(*this);
+void App::main_loop() {
+    last_update_time_ = std::chrono::steady_clock::now();
+
+    while (!glfwWindowShouldClose(window_)) {
+        glfwPollEvents();
+
+#ifndef _WIN32
+        // Handle client disconnect -> revert to realtime
+        if (!control_server_.has_client() && step_mode_) {
+            step_mode_ = false;
+            pending_steps_ = 0;
+            input_.clear_injections();
+        }
+
+        process_commands();
+#endif
+
+        // Clear draw lists at frame start (states will rebuild them)
+        overlay_sprites_.clear();
+        ui_sprites_.clear();
+
+        if (step_mode_) {
+            // Step mode: only update input + game when there are pending steps.
+            bool did_step = pending_steps_ > 0;
+            while (pending_steps_ > 0) {
+                input_.update();
+                state_stack_.update(*this, kFixedDt);
+                tick_++;
+                pending_steps_--;
+            }
+            if (did_step) {
+#ifndef _WIN32
+                control_server_.send(build_state_json());
+#endif
+            }
+        } else {
+            // Realtime mode
+            input_.update();
+
+            auto now = std::chrono::steady_clock::now();
+            float dt = std::chrono::duration<float>(now - last_update_time_).count();
+            last_update_time_ = now;
+
+            if (dt > 0.1f) dt = 0.1f;
+
+            state_stack_.update(*this, dt);
+            play_time_ += dt;
+            tick_++;
+        }
+
+        // Feed UI context with input state
+        {
+            ui::UIInput ui_input;
+            ui_input.mouse_pos = input_.mouse_pos();
+            ui_input.mouse_down = input_.is_mouse_down(0);
+            ui_input.mouse_pressed = input_.was_mouse_pressed(0);
+            ui_input.key_up = input_.was_key_pressed(GLFW_KEY_UP) || input_.was_key_pressed(GLFW_KEY_W);
+            ui_input.key_down_nav = input_.was_key_pressed(GLFW_KEY_DOWN) || input_.was_key_pressed(GLFW_KEY_S);
+            ui_input.key_enter = input_.was_key_pressed(GLFW_KEY_ENTER) || input_.was_key_pressed(GLFW_KEY_SPACE);
+            ui_input.key_escape = input_.was_key_pressed(GLFW_KEY_ESCAPE);
+            ui_input.scroll_delta = input_.scroll_y_delta();
+            ui_ctx_.set_screen_height(720.0f);
+            ui_ctx_.begin_frame(ui_input);
+        }
+
+        // Let states build their draw lists
+        state_stack_.build_draw_lists(*this);
+
+        // Always render
+        std::vector<SpriteDrawInfo> particle_sprites;
+        particles_.generate_draw_infos(particle_sprites);
+
+        // Build UI batches: flat ui_sprites_ (dialog etc.) + UIContext batches (menus, scroll areas)
+        std::vector<ui::UIDrawBatch> ui_batches;
+        if (!ui_sprites_.empty()) {
+            ui_batches.push_back(ui::UIDrawBatch{ui_sprites_, std::nullopt});
+        }
+        const auto& ctx_batches = ui_ctx_.draw_batches();
+        for (const auto& b : ctx_batches) {
+            if (!b.sprites.empty()) ui_batches.push_back(b);
+        }
+        if (feature_flags_.minimap && !minimap_sprites_.empty()) {
+            ui_batches.push_back(ui::UIDrawBatch{minimap_sprites_, std::nullopt});
+        }
+
+        // Pass screen effects to renderer
+        if (feature_flags_.screen_effects) {
+            auto fc = screen_effects_.flash_color() * screen_effects_.flash_alpha();
+            renderer_.set_ca_intensity(screen_effects_.ca_intensity());
+            renderer_.set_flash_color(fc.r, fc.g, fc.b);
+        } else {
+            renderer_.set_ca_intensity(0.0f);
+            renderer_.set_flash_color(0.0f, 0.0f, 0.0f);
+        }
+
+        renderer_.draw_scene(scene_, entity_sprites_, outline_sprites_, reflection_sprites_,
+                             shadow_sprites_, particle_sprites, overlay_sprites_, ui_batches,
+                             feature_flags_);
+
+#ifndef _WIN32
+        // Send screenshot response after draw completes
+        if (!screenshot_response_path_.empty()) {
+            if (renderer_.screenshot_write_ok()) {
+                control_server_.send({{"type", "screenshot"},
+                                      {"path", screenshot_response_path_},
+                                      {"width", renderer_.screenshot_width()},
+                                      {"height", renderer_.screenshot_height()}});
+            } else {
+                control_server_.send({{"type", "error"},
+                                      {"message", "Failed to write screenshot to: " + screenshot_response_path_}});
+            }
+            screenshot_response_path_.clear();
+        }
+#endif
     }
-    wren_vm_.shutdown();
+}
+
+void App::cleanup() {
 #ifndef _WIN32
     control_server_.stop();
 #endif
-    audio_.shutdown();
-    renderer_.shutdown();
-    resources_.shutdown();
-    glfwDestroyWindow(window_);
-    glfwTerminate();
+    AppBase::cleanup();
 }
 
 }  // namespace vulkan_game

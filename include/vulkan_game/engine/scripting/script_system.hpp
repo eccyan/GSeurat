@@ -5,11 +5,11 @@
 
 namespace vulkan_game {
 
-class App;
+class AppBase;
 
 class ScriptSystem {
 public:
-    void init(App* app, WrenVM* wren_vm);
+    void init(AppBase* app, WrenVM* wren_vm);
 
     // Call update(entity_id, dt) on all entities with ScriptRef.
     void update(float dt);
@@ -18,7 +18,7 @@ public:
     void check_hot_reload();
 
 private:
-    App* app_ = nullptr;
+    AppBase* app_ = nullptr;
     WrenVM* wren_vm_ = nullptr;
     float reload_timer_ = 0.0f;
     static constexpr float kReloadInterval = 1.0f;

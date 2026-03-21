@@ -1,12 +1,13 @@
 #include "vulkan_game/engine/scripting/script_system.hpp"
-#include "vulkan_game/app.hpp"
+#include "vulkan_game/engine/app_base.hpp"
 #include "vulkan_game/engine/ecs/default_components.hpp"
+#include "vulkan_game/game/components.hpp"
 
 #include <cstdio>
 
 namespace vulkan_game {
 
-void ScriptSystem::init(App* app, WrenVM* wren_vm) {
+void ScriptSystem::init(AppBase* app, WrenVM* wren_vm) {
     app_ = app;
     wren_vm_ = wren_vm;
 }

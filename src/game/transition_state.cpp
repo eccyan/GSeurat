@@ -1,6 +1,7 @@
 #include "vulkan_game/game/states/transition_state.hpp"
-#include "vulkan_game/app.hpp"
+#include "vulkan_game/engine/app_base.hpp"
 #include "vulkan_game/engine/ecs/default_components.hpp"
+#include "vulkan_game/game/components.hpp"
 
 namespace vulkan_game {
 
@@ -9,18 +10,18 @@ TransitionState::TransitionState(std::string target_scene, glm::vec3 spawn_pos, 
     , spawn_position_(spawn_pos)
     , spawn_facing_(facing) {}
 
-void TransitionState::on_enter(App& app) {
+void TransitionState::on_enter(AppBase& app) {
     app.set_transitioning(true);
     phase_ = FadeOut;
     fade_ = 0.0f;
 }
 
-void TransitionState::on_exit(App& app) {
+void TransitionState::on_exit(AppBase& app) {
     app.set_transitioning(false);
     app.renderer().set_fade_amount(0.0f);
 }
 
-void TransitionState::update(App& app, float dt) {
+void TransitionState::update(AppBase& app, float dt) {
     switch (phase_) {
         case FadeOut:
             fade_ += dt * kFadeSpeed;
@@ -75,7 +76,7 @@ void TransitionState::update(App& app, float dt) {
     }
 }
 
-void TransitionState::build_draw_lists(App& /*app*/) {
+void TransitionState::build_draw_lists(AppBase& /*app*/) {
     // Fade effect is handled via renderer's fade_amount, no sprites needed
 }
 

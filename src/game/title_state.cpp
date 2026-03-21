@@ -1,13 +1,13 @@
 #include "vulkan_game/game/states/title_state.hpp"
 #include "vulkan_game/game/states/gameplay_state.hpp"
-#include "vulkan_game/app.hpp"
+#include "vulkan_game/engine/app_base.hpp"
 
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
 namespace vulkan_game {
 
-void TitleState::on_enter(App& app) {
+void TitleState::on_enter(AppBase& app) {
     blink_timer_ = 0.0f;
     show_prompt_ = true;
     selected_item_ = 0;
@@ -19,7 +19,7 @@ void TitleState::on_enter(App& app) {
     app.ui_ctx().set_menu_selection(0);
 }
 
-void TitleState::update(App& app, float dt) {
+void TitleState::update(AppBase& app, float dt) {
     blink_timer_ += dt;
     if (blink_timer_ >= 0.5f) {
         blink_timer_ -= 0.5f;
@@ -40,7 +40,7 @@ void TitleState::update(App& app, float dt) {
     }
 }
 
-void TitleState::build_draw_lists(App& app) {
+void TitleState::build_draw_lists(AppBase& app) {
     auto& ctx = app.ui_ctx();
 
     // Title

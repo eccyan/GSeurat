@@ -10,20 +10,20 @@ namespace vulkan_game {
 
 class GsDemoState : public GameState {
 public:
-    void on_enter(App& app) override;
-    void on_exit(App& app) override;
-    void update(App& app, float dt) override;
-    void build_draw_lists(App& app) override;
+    void on_enter(AppBase& app) override;
+    void on_exit(AppBase& app) override;
+    void update(AppBase& app, float dt) override;
+    void build_draw_lists(AppBase& app) override;
 
 private:
-    void update_camera(App& app, float dt);
-    void update_shadow_box_camera(App& app, float dt);
+    void update_camera(AppBase& app, float dt);
+    void update_shadow_box_camera(AppBase& app, float dt);
     void reset_camera();
 
     // Orbit camera parameters
     float azimuth_ = 0.0f;          // horizontal angle (radians)
     float elevation_ = 0.7f;        // vertical angle (radians), ~40 degrees
-    float distance_ = 250.0f;       // distance from target (sized for 256×224 maps)
+    float distance_ = 250.0f;       // distance from target (sized for 256x224 maps)
     glm::vec3 target_{0.0f, 0.0f, 0.0f};
 
     // Mouse drag state
@@ -55,14 +55,14 @@ private:
     static constexpr float kTouchDecay = 3.0f;  // seconds until touch fades
 
     // Wave 2 effects
-    float explode_timer_ = 0.0f;     // 0=off, animates 0→1 over 3s
+    float explode_timer_ = 0.0f;     // 0=off, animates 0->1 over 3s
     bool voxel_active_ = false;
-    float voxel_blend_ = 0.0f;       // smooth 0→1
+    float voxel_blend_ = 0.0f;       // smooth 0->1
     bool pulse_active_ = false;
     float xray_depth_ = 0.0f;        // 0=off, +20 per press, wraps at 300
     bool swirl_active_ = false;
-    float swirl_blend_ = 0.0f;       // smooth 0→1
-    float burn_timer_ = 0.0f;        // 0=off, animates 0→1 over 5s
+    float swirl_blend_ = 0.0f;       // smooth 0->1
+    float burn_timer_ = 0.0f;        // 0=off, animates 0->1 over 5s
     bool burn_fire_was_active_ = false;  // restore fire state after burn
 
     // FPS tracking (wall clock for accuracy despite dt clamping)

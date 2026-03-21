@@ -1,5 +1,5 @@
 #include "vulkan_game/engine/scripting/wren_vm.hpp"
-#include "vulkan_game/app.hpp"
+#include "vulkan_game/engine/app_base.hpp"
 
 #include <chrono>
 #include <cstdio>
@@ -13,7 +13,7 @@ WrenVM::~WrenVM() {
     shutdown();
 }
 
-void WrenVM::init(App* app) {
+void WrenVM::init(AppBase* app) {
     app_ = app;
 
     WrenConfiguration config;

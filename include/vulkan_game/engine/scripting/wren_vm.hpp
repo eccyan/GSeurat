@@ -8,7 +8,7 @@
 
 namespace vulkan_game {
 
-class App;
+class AppBase;
 
 // Callback for binding foreign methods to Wren classes.
 using ForeignMethodFn = WrenForeignMethodFn;
@@ -24,7 +24,7 @@ public:
     WrenVM(const WrenVM&) = delete;
     WrenVM& operator=(const WrenVM&) = delete;
 
-    void init(App* app);
+    void init(AppBase* app);
     void shutdown();
 
     // Load and interpret a module from a file path.
@@ -46,7 +46,7 @@ public:
 
     // Get the underlying Wren VM pointer (for bindings).
     ::WrenVM* vm() { return vm_; }
-    App* app() { return app_; }
+    AppBase* app() { return app_; }
 
     // Hot-reload: check file timestamps and reload changed modules.
     void check_hot_reload();
@@ -64,7 +64,7 @@ private:
     static WrenLoadModuleResult load_module_fn(::WrenVM* vm, const char* name);
 
     ::WrenVM* vm_ = nullptr;
-    App* app_ = nullptr;
+    AppBase* app_ = nullptr;
     BindForeignMethodCallback bind_foreign_method_cb_;
 
     // Module source cache for hot-reload.

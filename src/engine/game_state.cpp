@@ -2,18 +2,18 @@
 
 namespace vulkan_game {
 
-void GameStateStack::push(std::unique_ptr<GameState> state, App& app) {
+void GameStateStack::push(std::unique_ptr<GameState> state, AppBase& app) {
     state->on_enter(app);
     stack_.push_back(std::move(state));
 }
 
-void GameStateStack::pop(App& app) {
+void GameStateStack::pop(AppBase& app) {
     if (stack_.empty()) return;
     stack_.back()->on_exit(app);
     stack_.pop_back();
 }
 
-void GameStateStack::replace(std::unique_ptr<GameState> state, App& app) {
+void GameStateStack::replace(std::unique_ptr<GameState> state, AppBase& app) {
     if (!stack_.empty()) {
         stack_.back()->on_exit(app);
         stack_.pop_back();
@@ -22,7 +22,7 @@ void GameStateStack::replace(std::unique_ptr<GameState> state, App& app) {
     stack_.push_back(std::move(state));
 }
 
-void GameStateStack::update(App& app, float dt) {
+void GameStateStack::update(AppBase& app, float dt) {
     if (stack_.empty()) return;
 
     // Find the lowest non-overlay state
@@ -37,7 +37,7 @@ void GameStateStack::update(App& app, float dt) {
     }
 }
 
-void GameStateStack::build_draw_lists(App& app) {
+void GameStateStack::build_draw_lists(AppBase& app) {
     if (stack_.empty()) return;
 
     int base = static_cast<int>(stack_.size()) - 1;

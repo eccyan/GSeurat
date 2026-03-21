@@ -1,17 +1,17 @@
 #include "vulkan_game/game/states/pause_state.hpp"
-#include "vulkan_game/app.hpp"
+#include "vulkan_game/engine/app_base.hpp"
 
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
 namespace vulkan_game {
 
-void PauseState::on_enter(App& app) {
+void PauseState::on_enter(AppBase& app) {
     selected_item_ = 0;
     app.ui_ctx().set_menu_selection(0);
 }
 
-void PauseState::update(App& app, float dt) {
+void PauseState::update(AppBase& app, float dt) {
     (void)dt;
 
     if (app.input().was_key_pressed(GLFW_KEY_ESCAPE)) {
@@ -32,7 +32,7 @@ void PauseState::update(App& app, float dt) {
     }
 }
 
-void PauseState::build_draw_lists(App& app) {
+void PauseState::build_draw_lists(AppBase& app) {
     auto& ctx = app.ui_ctx();
 
     ctx.panel(640.0f, 360.0f, 1280.0f, 720.0f, {0.0f, 0.0f, 0.0f, 0.6f});

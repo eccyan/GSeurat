@@ -1,5 +1,5 @@
 #include "vulkan_game/demo/gs_demo_state.hpp"
-#include "vulkan_game/app.hpp"
+#include "vulkan_game/engine/app_base.hpp"
 
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
@@ -11,7 +11,7 @@
 
 namespace vulkan_game {
 
-void GsDemoState::on_enter(App& app) {
+void GsDemoState::on_enter(AppBase& app) {
     app.feature_flags() = FeatureFlags::gs_viewer();
     app.init_scene(app.current_scene_path());
 
@@ -58,7 +58,7 @@ void GsDemoState::on_enter(App& app) {
     }
 }
 
-void GsDemoState::on_exit(App& /*app*/) {
+void GsDemoState::on_exit(AppBase& /*app*/) {
 }
 
 void GsDemoState::reset_camera() {
@@ -68,7 +68,7 @@ void GsDemoState::reset_camera() {
     target_ = glm::vec3(0.0f, 0.0f, 0.0f);
 }
 
-void GsDemoState::update_camera(App& app, float dt) {
+void GsDemoState::update_camera(AppBase& app, float dt) {
     auto& input = app.input();
 
     // Mouse drag → orbit
@@ -131,7 +131,7 @@ void GsDemoState::update_camera(App& app, float dt) {
     app.renderer().set_gs_camera(view, proj);
 }
 
-void GsDemoState::update_shadow_box_camera(App& app, float dt) {
+void GsDemoState::update_shadow_box_camera(AppBase& app, float dt) {
     auto& input = app.input();
 
     // Map mouse position relative to window center → player_offset [-1,1]
@@ -165,7 +165,7 @@ void GsDemoState::update_shadow_box_camera(App& app, float dt) {
     }
 }
 
-void GsDemoState::update(App& app, float dt) {
+void GsDemoState::update(AppBase& app, float dt) {
     // Escape → quit
     if (app.input().was_key_pressed(GLFW_KEY_ESCAPE)) {
         glfwSetWindowShouldClose(app.window(), GLFW_TRUE);
@@ -399,10 +399,9 @@ void GsDemoState::update(App& app, float dt) {
     } else {
         update_camera(app, dt);
     }
-    app.update_game(dt);
 }
 
-void GsDemoState::build_draw_lists(App& app) {
+void GsDemoState::build_draw_lists(AppBase& app) {
     auto& ui = app.ui_ctx();
 
     // Semi-transparent HUD panel (top-left in Y-UP coords)
