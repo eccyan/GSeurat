@@ -58,12 +58,11 @@ cmake --build --preset <platform>-debug
 cmake --build --preset <platform>-release
 ```
 
-Two demo executables are produced:
+One demo executable is produced:
 
 | Executable | Description |
 |---|---|
-| `gseurat_demo` | Full engine demo with gameplay, NPCs, dialog, particles |
-| `gseurat_gs_demo` | GS viewer with visual effects, LOD, and chunk streaming |
+| `gseurat_demo` | GS viewer with visual effects, LOD, and chunk streaming |
 
 ## Architecture
 

@@ -223,8 +223,9 @@ endif()
 add_executable(gseurat_demo
     src/demo_main.cpp
     src/demo/demo_app.cpp
-    src/demo/demo_gameplay_state.cpp
+    src/demo/gs_demo_state.cpp
 )
+target_compile_definitions(gseurat_demo PRIVATE VG_BUILD_PROFILE=1)
 target_link_libraries(gseurat_demo PRIVATE gseurat_core)
 add_dependencies(gseurat_demo shaders)
 
@@ -235,22 +236,4 @@ add_custom_command(TARGET gseurat_demo POST_BUILD
         ${PROJECT_SOURCE_DIR}/assets
         $<TARGET_FILE_DIR:gseurat_demo>/assets
     COMMENT "Copying assets to demo build directory"
-)
-
-# --- GS Demo executable ----------------------------------------------------
-
-add_executable(gseurat_gs_demo
-    src/gs_demo_main.cpp
-    src/demo/gs_demo_app.cpp
-    src/demo/gs_demo_state.cpp
-)
-target_compile_definitions(gseurat_gs_demo PRIVATE VG_BUILD_PROFILE=1)
-target_link_libraries(gseurat_gs_demo PRIVATE gseurat_core)
-add_dependencies(gseurat_gs_demo shaders)
-
-add_custom_command(TARGET gseurat_gs_demo POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${PROJECT_SOURCE_DIR}/assets
-        $<TARGET_FILE_DIR:gseurat_gs_demo>/assets
-    COMMENT "Copying assets to GS demo build directory"
 )
