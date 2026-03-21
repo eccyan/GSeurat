@@ -200,9 +200,100 @@ c++ -std=c++23 -I include \
 | 5 | Smoothing converges | Many `update()` calls converge to target |
 | 6 | Aspect ratio | Configure 320×240, verify proj encodes 4:3 |
 
+### test_async_loader
+
+Tests AsyncLoader: thread-safe work queue with single worker thread.
+
+**Build:**
+```bash
+c++ -std=c++23 -I include \
+    tests/test_async_loader.cpp src/engine/async_loader.cpp \
+    -o build/test_async_loader
+```
+
+**Run:**
+```bash
+./build/test_async_loader
+```
+
+**Tests (10):**
+| # | Test | What it verifies |
+|---|------|------------------|
+| 1 | Submit and poll | Submit a job, poll_results returns it |
+| 2 | Multiple requests all processed | 10 requests all complete with correct IDs |
+| 3 | poll_results empty when idle | Returns empty when nothing is complete |
+| 4 | Cancel prevents result | Cancelled job's result does not appear |
+| 5 | Shutdown with pending requests | Shutdown completes promptly, doesn't process all |
+| 6 | Job exception reported as error | Throwing job sets `success=false` with error message |
+| 7 | Monotonic request IDs | IDs are sequential and increasing |
+| 8 | pending_count tracking | Tracks queued + in-flight, reaches 0 after completion |
+| 9 | Double init/shutdown safe | Redundant init/shutdown calls are no-ops |
+| 10 | Reuse after shutdown | Can init → use → shutdown → init → use again |
+
+### test_staging_uploader
+
+Tests StagingUploader: budget-limited per-frame GPU texture uploads.
+
+**Build:**
+```bash
+c++ -std=c++23 -I include \
+    -I build/macos-debug/_deps/glm-src \
+    -I build/macos-debug/_deps/stb-src \
+    -I build/macos-debug/_deps/vma-src/include \
+    $(pkg-config --cflags vulkan 2>/dev/null || echo "-I$VULKAN_SDK/include") \
+    tests/test_staging_uploader.cpp src/engine/staging_uploader.cpp \
+    -o build/test_staging_uploader
+```
+
+**Run:**
+```bash
+./build/test_staging_uploader
+```
+
+**Tests (6):**
+| # | Test | What it verifies |
+|---|------|------------------|
+| 1 | Enqueue tracking | `pending_count()` and `pending_bytes()` update correctly |
+| 2 | Flush processes all within budget | Large budget processes all textures |
+| 3 | Flush respects budget | Partial processing when budget is exceeded |
+| 4 | Empty flush no-op | No GPU submits when nothing is pending |
+| 5 | Callback receives correct keys | Cache keys delivered in order via callback |
+| 6 | byte_size calculation | `width * height * 4` computed correctly |
+
+### test_gs_chunk_streamer
+
+Tests GsChunkStreamer: distance-based chunk streaming with hysteresis and memory budget.
+
+**Build:**
+```bash
+c++ -std=c++23 -I include \
+    -I build/macos-debug/_deps/glm-src \
+    -I build/macos-debug/_deps/stb-src \
+    -I build/macos-debug/_deps/json-src/include \
+    tests/test_gs_chunk_streamer.cpp src/engine/gs_chunk_streamer.cpp \
+    src/engine/async_loader.cpp src/engine/gaussian_cloud.cpp \
+    -o build/test_gs_chunk_streamer
+```
+
+**Run:**
+```bash
+./build/test_gs_chunk_streamer
+```
+
+**Tests (7):**
+| # | Test | What it verifies |
+|---|------|------------------|
+| 1 | Manifest from JSON | Parses chunk_size, grid dimensions, per-chunk metadata |
+| 2 | Chunks within load_radius → Loading | Nearby chunks transition to Loading state |
+| 3 | Chunks beyond unload_radius → Unloaded | Far chunks are released |
+| 4 | Hysteresis zone preserves state | Chunks between load/unload radii stay in current state |
+| 5 | Memory budget enforcement | Evicts furthest chunks when budget exceeded |
+| 6 | active_set_dirty flag | Set on load, cleared by assemble_active() |
+| 7 | Assemble with frustum culling | Narrow VP returns fewer Gaussians than wide VP |
+
 ### test_character_data
 
-Tests character animation JSON loading (pre-existing).
+Tests character animation JSON loading.
 
 **Build:**
 ```bash
@@ -220,43 +311,17 @@ c++ -std=c++23 -I include \
 
 All tool tests run via the QA test runner which uses headless Chrome + WebSocket to manipulate Zustand stores.
 
-### Map Painter Tests
+### Bricklayer Tests
 
 **Prerequisites:** Start the dev server first:
 ```bash
-cd tools/apps/map-painter && pnpm dev
+cd tools/apps/bricklayer && pnpm dev
 ```
 
 **Run all tests (unit + scenario):**
 ```bash
-cd tools/tests && pnpm test:map-painter
+cd tools/tests && pnpm test:bricklayer
 ```
-
-**Run scenarios only:**
-```bash
-cd tools/tests && pnpm test:map-painter:scenario
-```
-
-**Unit Tests (19):**
-- Store accessibility and default dimensions
-- Pixel set/erase on ground layer
-- Height brush updates
-- Tool, layer, color selection
-- Zoom clamping (min=1, max=64)
-- Collision toggle and auto-generation from heights
-- Undo/redo for pixel operations
-- Map resize with data preservation
-- Flood fill across connected region
-- Preview camera updates
-- Layer independence (ground vs walls vs decorations)
-
-**Scenario Tests (3):**
-
-| Scenario | Steps | What it verifies |
-|----------|-------|------------------|
-| Village map | Init → grass fill → wall border → heights → auto-collision → water feature → camera → undo/redo | Full creative workflow with multi-layer painting |
-| Cross-layer undo/redo | Paint across 3 layers + height → undo all → redo all | State isolation between operations |
-| Collision refinement | Set all heights → auto-gen (all solid) → manually clear path → verify mixed state | Manual override of auto-generated collision |
 
 ### Other Tool Tests
 
@@ -275,4 +340,4 @@ pnpm test --scenario         # Scenarios only
 | particle-designer | 5176 | 6176 |
 | audio-composer | 5177 | 6177 |
 | sfx-designer | 5178 | 6178 |
-| map-painter | 5180 | 6180 |
+| bricklayer | 5180 | 6180 |
