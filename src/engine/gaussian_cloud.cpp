@@ -245,4 +245,74 @@ GaussianCloud GaussianCloud::from_gaussians(std::vector<Gaussian> gaussians) {
     return cloud;
 }
 
+void GaussianCloud::write_ply(const std::string& path,
+                              const std::vector<Gaussian>& gaussians) {
+    std::ofstream file(path, std::ios::binary);
+    if (!file.is_open()) {
+        throw std::runtime_error("Failed to open PLY file for writing: " + path);
+    }
+
+    // Write header
+    file << "ply\n";
+    file << "format binary_little_endian 1.0\n";
+    file << "element vertex " << gaussians.size() << "\n";
+    file << "property float x\n";
+    file << "property float y\n";
+    file << "property float z\n";
+    file << "property float scale_0\n";
+    file << "property float scale_1\n";
+    file << "property float scale_2\n";
+    file << "property float rot_0\n";
+    file << "property float rot_1\n";
+    file << "property float rot_2\n";
+    file << "property float rot_3\n";
+    file << "property float f_dc_0\n";
+    file << "property float f_dc_1\n";
+    file << "property float f_dc_2\n";
+    file << "property float opacity\n";
+    file << "end_header\n";
+
+    // Write binary vertex data
+    // load_ply applies: exp(scale), sigmoid(opacity), SH_C0*f_dc+0.5 for color
+    // So we write the inverse: log(scale), logit(opacity), (color-0.5)/SH_C0
+    constexpr float kSH_C0 = 0.28209479177387814f;
+
+    for (const auto& g : gaussians) {
+        // Position (stored directly)
+        float x = g.position.x, y = g.position.y, z = g.position.z;
+        file.write(reinterpret_cast<const char*>(&x), 4);
+        file.write(reinterpret_cast<const char*>(&y), 4);
+        file.write(reinterpret_cast<const char*>(&z), 4);
+
+        // Scale: write log(scale) since load_ply applies exp()
+        float s0 = std::log(std::max(g.scale.x, 1e-10f));
+        float s1 = std::log(std::max(g.scale.y, 1e-10f));
+        float s2 = std::log(std::max(g.scale.z, 1e-10f));
+        file.write(reinterpret_cast<const char*>(&s0), 4);
+        file.write(reinterpret_cast<const char*>(&s1), 4);
+        file.write(reinterpret_cast<const char*>(&s2), 4);
+
+        // Rotation quaternion (stored directly, w first)
+        float rw = g.rotation.w, rx = g.rotation.x;
+        float ry = g.rotation.y, rz = g.rotation.z;
+        file.write(reinterpret_cast<const char*>(&rw), 4);
+        file.write(reinterpret_cast<const char*>(&rx), 4);
+        file.write(reinterpret_cast<const char*>(&ry), 4);
+        file.write(reinterpret_cast<const char*>(&rz), 4);
+
+        // Color: write (color - 0.5) / SH_C0 since load_ply applies SH_C0*f_dc+0.5
+        float dc0 = (g.color.r - 0.5f) / kSH_C0;
+        float dc1 = (g.color.g - 0.5f) / kSH_C0;
+        float dc2 = (g.color.b - 0.5f) / kSH_C0;
+        file.write(reinterpret_cast<const char*>(&dc0), 4);
+        file.write(reinterpret_cast<const char*>(&dc1), 4);
+        file.write(reinterpret_cast<const char*>(&dc2), 4);
+
+        // Opacity: write logit(opacity) since load_ply applies sigmoid()
+        float op_clamped = std::clamp(g.opacity, 1e-6f, 1.0f - 1e-6f);
+        float logit = std::log(op_clamped / (1.0f - op_clamped));
+        file.write(reinterpret_cast<const char*>(&logit), 4);
+    }
+}
+
 }  // namespace vulkan_game

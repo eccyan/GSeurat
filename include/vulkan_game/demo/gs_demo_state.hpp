@@ -1,6 +1,7 @@
 #pragma once
 
 #include "vulkan_game/engine/game_state.hpp"
+#include "vulkan_game/engine/gs_chunk_streamer.hpp"
 #include "vulkan_game/engine/gs_parallax_camera.hpp"
 
 #include <glm/glm.hpp>
@@ -19,6 +20,8 @@ private:
     void update_camera(AppBase& app, float dt);
     void update_shadow_box_camera(AppBase& app, float dt);
     void reset_camera();
+    void enter_streaming_mode(AppBase& app);
+    void update_streaming(AppBase& app);
 
     // Orbit camera parameters
     float azimuth_ = 0.0f;          // horizontal angle (radians)
@@ -78,6 +81,11 @@ private:
     static constexpr float kPanSpeed = 80.0f;
     static constexpr float kOrbitSensitivity = 0.005f;
     static constexpr float kZoomSensitivity = 10.0f;
+
+    // Streaming mode (M key)
+    bool streaming_mode_ = false;
+    GsChunkStreamer chunk_streamer_;
+    std::string chunk_dir_;  // directory where chunk PLYs are written
 };
 
 }  // namespace vulkan_game

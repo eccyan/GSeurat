@@ -35,6 +35,10 @@ public:
     static GaussianCloud load_ply(const std::string& path);
     static GaussianCloud from_gaussians(std::vector<Gaussian> gaussians);
 
+    // Write Gaussians to a binary little-endian PLY file.
+    // Data is stored in the same format load_ply() expects (log-scale, logit-opacity, SH DC color).
+    static void write_ply(const std::string& path, const std::vector<Gaussian>& gaussians);
+
     const std::vector<Gaussian>& gaussians() const { return gaussians_; }
     const AABB& bounds() const { return bounds_; }
     uint32_t count() const { return static_cast<uint32_t>(gaussians_.size()); }
