@@ -68,6 +68,35 @@ c++ -std=c++23 -I include \
 | 7 | Tilemap flags default true | `tilemap_rendering` and `tilemap_collision` default true |
 | 8 | gs_viewer() tilemap false | GS viewer profile has both tilemap flags false |
 
+### test_screenshot
+
+Tests ScreenshotCapture state machine and BGRA→RGBA pixel swizzle.
+
+**Build:**
+```bash
+c++ -std=c++23 -I include \
+    -I build/macos-debug/_deps/glm-src \
+    -I build/macos-debug/_deps/stb-src \
+    -I build/macos-debug/_deps/vma-src/include \
+    $(pkg-config --cflags vulkan 2>/dev/null || echo "-I$VULKAN_SDK/include") \
+    tests/test_screenshot.cpp src/engine/screenshot.cpp \
+    -o build/test_screenshot
+```
+
+**Run:**
+```bash
+./build/test_screenshot
+```
+
+**Tests (5):**
+| # | Test | What it verifies |
+|---|------|------------------|
+| 1 | Initial state not pending | `has_pending() == false` after construction |
+| 2 | Request sets pending | After `request("out.png")`, `has_pending() == true` |
+| 3 | Initial write_ok false | `write_ok() == false` before any capture |
+| 4 | BGRA→RGBA swizzle 4 pixels | 4-pixel input with known BGRA values produces correct RGBA, alpha forced to 255 |
+| 5 | Swizzle single pixel | 1-pixel buffer swizzles correctly |
+
 ### test_tilemap
 
 Tests TileAnimator, resolve_tilemap_collision, and TileLayer::generate_draw_infos.

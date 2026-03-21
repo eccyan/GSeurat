@@ -2,6 +2,7 @@
 
 #include "vulkan_game/engine/buffer.hpp"
 #include "vulkan_game/engine/camera.hpp"
+#include "vulkan_game/engine/screenshot.hpp"
 #include "vulkan_game/engine/gs_chunk_grid.hpp"
 #include "vulkan_game/engine/gs_renderer.hpp"
 #include "vulkan_game/engine/command_pool.hpp"
@@ -72,10 +73,10 @@ public:
     void set_ca_intensity(float v) { ca_intensity_ = v; }
     void set_flash_color(float r, float g, float b) { flash_r_ = r; flash_g_ = g; flash_b_ = b; }
 
-    void request_screenshot(const std::string& path);
-    bool screenshot_write_ok() const { return screenshot_write_ok_; }
-    uint32_t screenshot_width() const { return screenshot_width_; }
-    uint32_t screenshot_height() const { return screenshot_height_; }
+    void request_screenshot(const std::string& path) { screenshot_.request(path); }
+    bool screenshot_write_ok() const { return screenshot_.write_ok(); }
+    uint32_t screenshot_width() const { return screenshot_.width(); }
+    uint32_t screenshot_height() const { return screenshot_.height(); }
 
     VkContext& context() { return context_; }
     CommandPool& command_pool() { return command_pool_; }
@@ -86,6 +87,15 @@ private:
     void create_ui_pipeline();
     void create_uniform_buffers();
     void update_uniform_buffer(uint32_t frame_index, const UniformBufferObject& ubo);
+
+    void draw_sprite_pass(VkCommandBuffer cmd,
+                          const std::vector<SpriteDrawInfo>& sprites,
+                          VkDescriptorSet descriptor_set);
+    void record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
+                           const FeatureFlags& flags);
+    void record_gs_blit(VkCommandBuffer cmd, const FeatureFlags& flags);
+    void record_ui_pass(VkCommandBuffer cmd,
+                        const std::vector<ui::UIDrawBatch>& ui_batches);
 
     VkContext context_;
     Swapchain swapchain_;
@@ -164,12 +174,7 @@ private:
     float gs_blit_offset_y_ = 0.0f;
 
     // Screenshot capture
-    std::string screenshot_path_;
-    Buffer screenshot_staging_buffer_;
-    bool screenshot_buffer_initialized_ = false;
-    bool screenshot_write_ok_ = false;
-    uint32_t screenshot_width_ = 0;
-    uint32_t screenshot_height_ = 0;
+    ScreenshotCapture screenshot_;
 };
 
 }  // namespace vulkan_game
