@@ -32,6 +32,11 @@ layout(set = 0, binding = 2) uniform Uniforms {
     vec4 shadow_box;    // x = margin, y = cone_cos, z = num_sort_passes, w = unused
     vec4 cone_dir;      // xyz = cone direction, w = unused
     vec4 cam_pos;       // xyz = camera position, w = unused
+    vec4 effect_flags;  // x = toon_bands, y = light_mode, z = touch_timer (0=off), w = time
+    vec4 light_params;  // xyz = light_dir, w = intensity
+    vec4 touch_point;   // xyz = world_pos, w = radius
+    vec4 effect_params; // x = water_y, y = fire_y_min, z = fire_y_max, w = strength
+    vec4 effect_params2; // x = pulse_t, y = xray_depth, z = swirl_t, w = unused
 };
 
 layout(set = 0, binding = 3, rgba16f) uniform writeonly image2D output_image;
@@ -39,6 +44,9 @@ layout(set = 0, binding = 3, rgba16f) uniform writeonly image2D output_image;
 layout(set = 0, binding = 4) readonly buffer VisibleCountBuffer {
     uint visible_count;
 };
+
+// Shared tile depth for edge detection and pseudo-normal lighting
+shared float tile_depth[16][16];
 
 void main() {
     uvec2 tile_id = gl_WorkGroupID.xy;
@@ -53,18 +61,26 @@ void main() {
 
     vec2 pix_center = vec2(pixel) + 0.5;
 
+    // X-Ray depth threshold
+    float xray_depth = effect_params2.y;
+
     // Accumulate color front-to-back
     vec3 color = vec3(0.0);
     float alpha_accum = 0.0;
+    float first_hit_depth = 0.0;
+    bool has_first_hit = false;
 
     // Iterate through sorted Gaussians
     for (uint s = 0; s < count; ++s) {
         uint idx = sort_entries[s].index;
 
-        // Culled Gaussians (key == max) are sorted to the end — stop immediately
-        if (sort_entries[s].key == 0xFFFFFFFF) break;
+        // Culled Gaussians (key == 0xFFFF) are sorted to the end — stop immediately
+        if (sort_entries[s].key == 0xFFFF) break;
 
         ProjectedSplat splat = projected[idx];
+
+        // X-Ray: skip front Gaussians by depth threshold
+        if (xray_depth > 0.0 && splat.depth < xray_depth) continue;
 
         // Quick bounding box check
         vec2 d = pix_center - splat.center;
@@ -84,6 +100,12 @@ void main() {
 
         if (alpha < 1.0 / 255.0) continue;  // negligible contribution
 
+        // Track first hit depth for edge detection / lighting
+        if (!has_first_hit) {
+            first_hit_depth = splat.depth;
+            has_first_hit = true;
+        }
+
         // Front-to-back compositing
         float weight = alpha * (1.0 - alpha_accum);
         color += weight * splat.color.rgb;
@@ -91,6 +113,108 @@ void main() {
 
         // Early termination when pixel is saturated
         if (alpha_accum > 0.999) break;
+    }
+
+    // Store depth in shared memory for tile-based effects
+    tile_depth[local_id.y][local_id.x] = has_first_hit ? first_hit_depth : 0.0;
+    barrier();
+
+    // Apply post-processing effects if any are active
+    float toon_bands = effect_flags.x;
+    float light_mode = effect_flags.y;
+
+    if (alpha_accum > 0.001 && (light_mode > 0.5 || toon_bands > 0.5)) {
+        // Un-premultiply color for effect processing
+        vec3 base_color = color / max(alpha_accum, 0.001);
+
+        // --- Pseudo-normal from depth gradient (for lighting) ---
+        if (light_mode > 0.5) {
+            float depth_c = tile_depth[local_id.y][local_id.x];
+
+            // Sample neighbor depths (clamped to tile edges)
+            float depth_l = (local_id.x > 0u)  ? tile_depth[local_id.y][local_id.x - 1u] : depth_c;
+            float depth_r = (local_id.x < 15u) ? tile_depth[local_id.y][local_id.x + 1u] : depth_c;
+            float depth_u = (local_id.y > 0u)  ? tile_depth[local_id.y - 1u][local_id.x] : depth_c;
+            float depth_d = (local_id.y < 15u) ? tile_depth[local_id.y + 1u][local_id.x] : depth_c;
+
+            float dz_dx = (depth_r - depth_l) * 0.5;
+            float dz_dy = (depth_d - depth_u) * 0.5;
+
+            vec3 normal = normalize(vec3(-dz_dx, -dz_dy, 1.0));
+
+            float NdotL;
+            if (light_mode < 1.5) {
+                // Directional light
+                NdotL = max(dot(normal, light_params.xyz), 0.0);
+            } else {
+                // Point light (simplified screen-space)
+                vec2 light_screen = vec2(float(width) * 0.5, float(height) * 0.5);
+                vec2 to_light = normalize(light_screen - vec2(pixel));
+                vec3 light_dir_ss = normalize(vec3(to_light, 0.5));
+                NdotL = max(dot(normal, light_dir_ss), 0.0);
+            }
+
+            float ambient = 0.3;
+            float intensity = light_params.w;
+            base_color *= ambient + (1.0 - ambient) * NdotL * intensity;
+        }
+
+        // --- Toon / cel shading ---
+        if (toon_bands > 0.5) {
+            float bands = toon_bands;
+
+            // Quantize luminance, preserve hue — avoids harsh per-channel banding
+            float lum = dot(base_color, vec3(0.299, 0.587, 0.114));
+            float quant_lum = floor(lum * bands + 0.5) / bands;
+            float scale_factor = (lum > 0.001) ? min(quant_lum / lum, 1.5) : 1.0;
+            // Blend 60% quantized, 40% original for softer look
+            base_color = mix(base_color, base_color * scale_factor, 0.6);
+
+            // Edge detection from depth discontinuity (silhouette outlines only)
+            float depth_c = tile_depth[local_id.y][local_id.x];
+            if (depth_c > 0.0) {
+                // 25% relative threshold — only major silhouette edges
+                float threshold = depth_c * 0.25;
+                int edge_count = 0;
+
+                // Count how many neighbors have a big depth jump (require 2+ for robustness)
+                if (local_id.x > 0u) {
+                    float nd = tile_depth[local_id.y][local_id.x - 1u];
+                    if (nd > 0.0 && abs(nd - depth_c) > threshold) edge_count++;
+                }
+                if (local_id.x < 15u) {
+                    float nd = tile_depth[local_id.y][local_id.x + 1u];
+                    if (nd > 0.0 && abs(nd - depth_c) > threshold) edge_count++;
+                }
+                if (local_id.y > 0u) {
+                    float nd = tile_depth[local_id.y - 1u][local_id.x];
+                    if (nd > 0.0 && abs(nd - depth_c) > threshold) edge_count++;
+                }
+                if (local_id.y < 15u) {
+                    float nd = tile_depth[local_id.y + 1u][local_id.x];
+                    if (nd > 0.0 && abs(nd - depth_c) > threshold) edge_count++;
+                }
+
+                if (edge_count >= 2) {
+                    base_color *= 0.2;  // dark outlines at silhouette edges
+                }
+            }
+        }
+
+        // Re-premultiply
+        color = base_color * alpha_accum;
+    }
+
+    // --- X-Ray color treatment ---
+    if (xray_depth > 0.0 && alpha_accum > 0.001) {
+        vec3 base = color / max(alpha_accum, 0.001);
+        float lum = dot(base, vec3(0.299, 0.587, 0.114));
+        // Blue-green medical-scan tint
+        vec3 xray_color = vec3(lum * 0.3, lum * 0.8, lum * 1.0);
+        // Edge glow: thin regions (low alpha) glow brighter
+        float edge_glow = 1.0 + max(0.0, 1.0 - alpha_accum * 2.0) * 0.5;
+        xray_color *= edge_glow;
+        color = xray_color * alpha_accum;
     }
 
     // Write output (premultiplied alpha)

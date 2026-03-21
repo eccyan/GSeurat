@@ -10,8 +10,6 @@
 #include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
-#include <stb_image_write.h>
-
 namespace vulkan_game {
 
 void Renderer::init(GLFWwindow* window, ResourceManager& resources) {
@@ -165,6 +163,14 @@ void Renderer::init_gs(const GaussianCloud& cloud, uint32_t width, uint32_t heig
     gs_chunk_grid_.build(cloud, 32.0f);
     gs_prev_visible_.clear();
 
+    // Auto-enable adaptive LOD budget for large clouds
+    gs_total_gaussian_count_ = cloud.count();
+    if (gs_total_gaussian_count_ > 200000 && gs_gaussian_budget_ == 0) {
+        gs_gaussian_budget_ = gs_total_gaussian_count_;  // start at full, let adaptive tuning reduce
+        gs_adaptive_budget_ = true;
+        gs_smoothed_fps_ = 60.0f;
+    }
+
     // Create descriptor sets for sampling the GS output as a sprite texture
     std::array<VkBuffer, kMaxFramesInFlight> ubo_buffers;
     for (uint32_t i = 0; i < kMaxFramesInFlight; i++) {
@@ -243,31 +249,7 @@ void Renderer::draw_scene(Scene& scene,
     begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     vkBeginCommandBuffer(cmd, &begin_info);
 
-    // ===== Pre-pass: Gaussian splatting compute (before render pass) =====
-    if (gs_initialized_ && gs_renderer_.has_cloud()) {
-        // Frustum-cull chunks and re-upload only visible Gaussians
-        // (skipped for shadow-box maps where all Gaussians are uploaded once at load)
-        if (!gs_skip_chunk_cull_ && !gs_chunk_grid_.empty()) {
-            glm::mat4 gs_vp = gs_proj_ * gs_view_;
-            auto visible = gs_chunk_grid_.visible_chunks(gs_vp);
-
-            // Dirty check: skip re-upload if same chunks are visible
-            if (visible != gs_prev_visible_) {
-                gs_prev_visible_ = visible;
-                gs_chunk_grid_.gather(visible, gs_active_buffer_);
-                if (!gs_active_buffer_.empty()) {
-                    // Wait for all in-flight frames before writing shared SSBO
-                    // to avoid race with GPU reads from previous frame
-                    vkDeviceWaitIdle(device);
-                    gs_renderer_.update_active_gaussians(
-                        gs_active_buffer_.data(),
-                        static_cast<uint32_t>(gs_active_buffer_.size()));
-                }
-            }
-        }
-
-        gs_renderer_.render(cmd, gs_view_, gs_proj_);
-    }
+    record_gs_prepass(cmd, device, dt, flags);
 
     // ===== Pass 1: Scene render pass (offscreen HDR) =====
     {
@@ -343,7 +325,7 @@ void Renderer::draw_scene(Scene& scene,
         }
 
         // Tilemap pass
-        if (scene.tile_layer().has_value()) {
+        if (flags.tilemap_rendering && scene.tile_layer().has_value()) {
             sprite_batch_.begin();
             for (const auto& draw_info : scene.tile_layer()->generate_draw_infos(scene.tile_animator())) {
                 sprite_batch_.draw(draw_info);
@@ -358,35 +340,13 @@ void Renderer::draw_scene(Scene& scene,
         }
 
         // Reflection pass (between tilemap and shadows)
-        if (flags.water_reflections && !reflection_sprites.empty()) {
-            sprite_batch_.begin();
-            for (const auto& spr : reflection_sprites) {
-                sprite_batch_.draw(spr);
-            }
-            auto refl_flush = sprite_batch_.flush(current_frame_);
-            if (refl_flush.index_count > 0) {
-                vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                                        sprite_pipeline_layout_, 0, 1,
-                                        &descriptor_sets_[current_frame_], 0, nullptr);
-                vkCmdDrawIndexed(cmd, refl_flush.index_count, 1, 0,
-                                 refl_flush.vertex_offset, 0);
-            }
+        if (flags.water_reflections) {
+            draw_sprite_pass(cmd, reflection_sprites, descriptor_sets_[current_frame_]);
         }
 
         // Shadow pass (between tilemap and entities)
-        if (flags.blob_shadows && !shadow_sprites.empty()) {
-            sprite_batch_.begin();
-            for (const auto& spr : shadow_sprites) {
-                sprite_batch_.draw(spr);
-            }
-            auto shadow_flush = sprite_batch_.flush(current_frame_);
-            if (shadow_flush.index_count > 0) {
-                vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                                        sprite_pipeline_layout_, 0, 1,
-                                        &shadow_descriptor_sets_[current_frame_], 0, nullptr);
-                vkCmdDrawIndexed(cmd, shadow_flush.index_count, 1, 0,
-                                 shadow_flush.vertex_offset, 0);
-            }
+        if (flags.blob_shadows) {
+            draw_sprite_pass(cmd, shadow_sprites, shadow_descriptor_sets_[current_frame_]);
         }
 
         // Outline pass (between shadows and entities)
@@ -423,47 +383,16 @@ void Renderer::draw_scene(Scene& scene,
         }
 
         // Entity pass
-        sprite_batch_.begin();
-        for (const auto& info : entity_sprites) {
-            sprite_batch_.draw(info);
-        }
-        auto entity_flush = sprite_batch_.flush(current_frame_);
-        if (entity_flush.index_count > 0) {
-            vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, sprite_pipeline_layout_,
-                                    0, 1, &descriptor_sets_[current_frame_], 0, nullptr);
-            vkCmdDrawIndexed(cmd, entity_flush.index_count, 1, 0, entity_flush.vertex_offset, 0);
-        }
+        draw_sprite_pass(cmd, entity_sprites, descriptor_sets_[current_frame_]);
 
         // Particle pass
-        if (flags.particles && !particles.empty()) {
-            sprite_batch_.begin();
-            for (const auto& spr : particles) {
-                sprite_batch_.draw(spr);
-            }
-            auto particle_flush = sprite_batch_.flush(current_frame_);
-            if (particle_flush.index_count > 0) {
-                vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                                        sprite_pipeline_layout_, 0, 1,
-                                        &particle_descriptor_sets_[current_frame_], 0, nullptr);
-                vkCmdDrawIndexed(cmd, particle_flush.index_count, 1, 0,
-                                 particle_flush.vertex_offset, 0);
-            }
+        if (flags.particles) {
+            draw_sprite_pass(cmd, particles, particle_descriptor_sets_[current_frame_]);
         }
 
         // Overlay pass (world-space, font texture)
-        if (font_initialized_ && !overlay.empty()) {
-            sprite_batch_.begin();
-            for (const auto& spr : overlay) {
-                sprite_batch_.draw(spr);
-            }
-            auto overlay_flush = sprite_batch_.flush(current_frame_);
-            if (overlay_flush.index_count > 0) {
-                vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                                        sprite_pipeline_layout_, 0, 1,
-                                        &font_descriptor_sets_[current_frame_], 0, nullptr);
-                vkCmdDrawIndexed(cmd, overlay_flush.index_count, 1, 0,
-                                 overlay_flush.vertex_offset, 0);
-            }
+        if (font_initialized_) {
+            draw_sprite_pass(cmd, overlay, font_descriptor_sets_[current_frame_]);
         }
 
         vkCmdEndRenderPass(cmd);
@@ -494,177 +423,17 @@ void Renderer::draw_scene(Scene& scene,
 
     post_process_.record_post_process(cmd, image_index, pp_params);
 
-    // ===== GS background + fullscreen blit (in composite pass, screen-space, before UI) =====
-    if (gs_initialized_ && gs_renderer_.has_cloud() && font_initialized_) {
-        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, ui_pipeline_);
-        sprite_batch_.bind(cmd, current_frame_);
-
-        VkRect2D full_scissor{};
-        full_scissor.offset = {0, 0};
-        full_scissor.extent = swapchain_.extent();
-        vkCmdSetScissor(cmd, 0, 1, &full_scissor);
-
-        // Background behind GS (sky, mountains, etc.)
-        if (gs_bg_initialized_) {
-            sprite_batch_.begin();
-            SpriteDrawInfo bg_blit{};
-            bg_blit.position = {
-                static_cast<float>(kWindowWidth) * 0.5f,
-                static_cast<float>(kWindowHeight) * 0.5f,
-                0.0f
-            };
-            bg_blit.size = {
-                static_cast<float>(kWindowWidth),
-                static_cast<float>(kWindowHeight)
-            };
-            bg_blit.uv_min = {0.0f, 0.0f};
-            bg_blit.uv_max = {1.0f, 1.0f};
-            bg_blit.color = {1.0f, 1.0f, 1.0f, 1.0f};
-            sprite_batch_.draw(bg_blit);
-            auto bg_flush = sprite_batch_.flush(current_frame_);
-            if (bg_flush.index_count > 0) {
-                vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                                        sprite_pipeline_layout_, 0, 1,
-                                        &gs_bg_descriptor_sets_[current_frame_], 0, nullptr);
-                vkCmdDrawIndexed(cmd, bg_flush.index_count, 1, 0, bg_flush.vertex_offset, 0);
-            }
-        }
-
-        // GS output on top (alpha-composited over background)
-        sprite_batch_.begin();
-        SpriteDrawInfo gs_blit{};
-        // UI ortho projection: (0,0) = top-left, (kWindowWidth, kWindowHeight) = bottom-right
-        // Apply parallax blit offset for shadow-box mode (cached GS image, shift quad)
-        gs_blit.position = {
-            static_cast<float>(kWindowWidth) * 0.5f + gs_blit_offset_x_,
-            static_cast<float>(kWindowHeight) * 0.5f + gs_blit_offset_y_,
-            0.0f
-        };
-        gs_blit.size = {
-            static_cast<float>(kWindowWidth),
-            static_cast<float>(kWindowHeight)
-        };
-        gs_blit.uv_min = {0.0f, 0.0f};
-        gs_blit.uv_max = {1.0f, 1.0f};
-        gs_blit.color = {1.0f, 1.0f, 1.0f, 1.0f};
-        sprite_batch_.draw(gs_blit);
-        auto gs_flush = sprite_batch_.flush(current_frame_);
-        if (gs_flush.index_count > 0) {
-            vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                                    sprite_pipeline_layout_, 0, 1,
-                                    &gs_ui_descriptor_sets_[current_frame_], 0, nullptr);
-            vkCmdDrawIndexed(cmd, gs_flush.index_count, 1, 0, gs_flush.vertex_offset, 0);
-        }
-    }
-
-    // ===== Pass 5: UI (drawn inside the composite render pass, unaffected by post-processing) =====
-    if (font_initialized_ && !ui_batches.empty()) {
-        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, ui_pipeline_);
-
-        // Re-bind sprite batch vertex/index buffers for UI drawing
-        sprite_batch_.bind(cmd, current_frame_);
-
-        VkRect2D full_scissor{};
-        full_scissor.offset = {0, 0};
-        full_scissor.extent = swapchain_.extent();
-
-        // Scale factor from logical UI coords to framebuffer coords (Retina 2x etc.)
-        float sx = static_cast<float>(swapchain_.extent().width) / static_cast<float>(kWindowWidth);
-        float sy = static_cast<float>(swapchain_.extent().height) / static_cast<float>(kWindowHeight);
-
-        for (const auto& batch : ui_batches) {
-            if (batch.sprites.empty()) continue;
-
-            // Set scissor rect (dynamic state)
-            if (batch.scissor) {
-                VkRect2D scissor{};
-                scissor.offset.x = static_cast<int32_t>(static_cast<float>(batch.scissor->x) * sx);
-                scissor.offset.y = static_cast<int32_t>(static_cast<float>(batch.scissor->y) * sy);
-                scissor.extent.width = static_cast<uint32_t>(static_cast<float>(batch.scissor->width) * sx);
-                scissor.extent.height = static_cast<uint32_t>(static_cast<float>(batch.scissor->height) * sy);
-                vkCmdSetScissor(cmd, 0, 1, &scissor);
-            } else {
-                vkCmdSetScissor(cmd, 0, 1, &full_scissor);
-            }
-
-            sprite_batch_.begin();
-            for (const auto& spr : batch.sprites) {
-                sprite_batch_.draw(spr);
-            }
-            auto ui_flush = sprite_batch_.flush(current_frame_);
-            if (ui_flush.index_count > 0) {
-                vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                                        sprite_pipeline_layout_, 0, 1,
-                                        &ui_descriptor_sets_[current_frame_], 0, nullptr);
-                vkCmdDrawIndexed(cmd, ui_flush.index_count, 1, 0, ui_flush.vertex_offset, 0);
-            }
-        }
-
-        // Reset scissor to full viewport
-        vkCmdSetScissor(cmd, 0, 1, &full_scissor);
-    }
+    record_gs_blit(cmd, flags);
+    record_ui_pass(cmd, ui_batches);
 
     // End composite render pass
     vkCmdEndRenderPass(cmd);
 
     // Screenshot: copy swapchain image to staging buffer
-    bool screenshot_requested = !screenshot_path_.empty();
+    bool screenshot_requested = screenshot_.has_pending();
     if (screenshot_requested) {
-        // Lazy-init readback buffer
-        if (!screenshot_buffer_initialized_) {
-            VkDeviceSize buf_size = static_cast<VkDeviceSize>(swapchain_.extent().width) *
-                                    swapchain_.extent().height * 4;
-            screenshot_staging_buffer_ = Buffer::create_readback(context_.allocator(), buf_size);
-            screenshot_buffer_initialized_ = true;
-        }
-
-        VkImage src_image = swapchain_.image(image_index);
-
-        // Barrier: PRESENT_SRC → TRANSFER_SRC
-        VkImageMemoryBarrier to_transfer{};
-        to_transfer.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-        to_transfer.srcAccessMask = VK_ACCESS_MEMORY_READ_BIT;
-        to_transfer.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-        to_transfer.oldLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-        to_transfer.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-        to_transfer.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        to_transfer.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        to_transfer.image = src_image;
-        to_transfer.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
-
-        vkCmdPipelineBarrier(cmd,
-            VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-            VK_PIPELINE_STAGE_TRANSFER_BIT,
-            0, 0, nullptr, 0, nullptr, 1, &to_transfer);
-
-        // Copy image to buffer
-        VkBufferImageCopy region{};
-        region.bufferOffset = 0;
-        region.bufferRowLength = 0;
-        region.bufferImageHeight = 0;
-        region.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
-        region.imageOffset = {0, 0, 0};
-        region.imageExtent = {swapchain_.extent().width, swapchain_.extent().height, 1};
-
-        vkCmdCopyImageToBuffer(cmd, src_image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                               screenshot_staging_buffer_.buffer(), 1, &region);
-
-        // Barrier: TRANSFER_SRC → PRESENT_SRC
-        VkImageMemoryBarrier to_present{};
-        to_present.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-        to_present.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-        to_present.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT;
-        to_present.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-        to_present.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-        to_present.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        to_present.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        to_present.image = src_image;
-        to_present.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
-
-        vkCmdPipelineBarrier(cmd,
-            VK_PIPELINE_STAGE_TRANSFER_BIT,
-            VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
-            0, 0, nullptr, 0, nullptr, 1, &to_present);
+        screenshot_.record_copy(cmd, swapchain_.image(image_index),
+                                swapchain_.extent(), context_.allocator());
     }
 
     vkEndCommandBuffer(cmd);
@@ -686,29 +455,10 @@ void Renderer::draw_scene(Scene& scene,
         throw std::runtime_error("Failed to submit draw command buffer");
     }
 
-    // Screenshot readback: wait for GPU, read buffer, swizzle BGRA→RGBA, write PNG
+    // Screenshot readback: wait for GPU, swizzle BGRA→RGBA, write PNG
     if (screenshot_requested) {
         vkWaitForFences(device, 1, &frame_sync.in_flight, VK_TRUE, UINT64_MAX);
-        vmaInvalidateAllocation(context_.allocator(), screenshot_staging_buffer_.allocation(), 0, VK_WHOLE_SIZE);
-
-        uint32_t w = swapchain_.extent().width;
-        uint32_t h = swapchain_.extent().height;
-        auto* src = static_cast<const uint8_t*>(screenshot_staging_buffer_.mapped());
-
-        std::vector<uint8_t> rgba(w * h * 4);
-        for (uint32_t i = 0; i < w * h; ++i) {
-            rgba[i * 4 + 0] = src[i * 4 + 2]; // B → R
-            rgba[i * 4 + 1] = src[i * 4 + 1]; // G → G
-            rgba[i * 4 + 2] = src[i * 4 + 0]; // R → B
-            rgba[i * 4 + 3] = 255;             // A = opaque
-        }
-
-        screenshot_write_ok_ = stbi_write_png(screenshot_path_.c_str(),
-                                               static_cast<int>(w), static_cast<int>(h),
-                                               4, rgba.data(), static_cast<int>(w * 4)) != 0;
-        screenshot_width_ = w;
-        screenshot_height_ = h;
-        screenshot_path_.clear();
+        screenshot_.readback_and_write(context_.allocator(), swapchain_.extent());
     }
 
     VkPresentInfoKHR present{};
@@ -723,11 +473,6 @@ void Renderer::draw_scene(Scene& scene,
     vkQueuePresentKHR(context_.graphics_queue(), &present);
 
     current_frame_ = (current_frame_ + 1) % kMaxFramesInFlight;
-}
-
-void Renderer::request_screenshot(const std::string& path) {
-    screenshot_path_ = path;
-    screenshot_write_ok_ = false;
 }
 
 void Renderer::draw_frame() {
@@ -771,9 +516,7 @@ void Renderer::shutdown() {
         gs_renderer_.shutdown(context_.allocator());
     }
 
-    if (screenshot_buffer_initialized_) {
-        screenshot_staging_buffer_.destroy(context_.allocator());
-    }
+    screenshot_.shutdown(context_.allocator());
 
     for (auto& buf : uniform_buffers_) {
         buf.destroy(context_.allocator());
@@ -921,6 +664,187 @@ void Renderer::create_uniform_buffers() {
 
 void Renderer::update_uniform_buffer(uint32_t frame_index, const UniformBufferObject& ubo) {
     std::memcpy(uniform_buffers_[frame_index].mapped(), &ubo, sizeof(ubo));
+}
+
+void Renderer::draw_sprite_pass(VkCommandBuffer cmd,
+                                const std::vector<SpriteDrawInfo>& sprites,
+                                VkDescriptorSet descriptor_set) {
+    if (sprites.empty()) return;
+    sprite_batch_.begin();
+    for (const auto& spr : sprites) {
+        sprite_batch_.draw(spr);
+    }
+    auto result = sprite_batch_.flush(current_frame_);
+    if (result.index_count > 0) {
+        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                sprite_pipeline_layout_, 0, 1,
+                                &descriptor_set, 0, nullptr);
+        vkCmdDrawIndexed(cmd, result.index_count, 1, 0, result.vertex_offset, 0);
+    }
+}
+
+void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
+                                  const FeatureFlags& flags) {
+    // Adaptive GS budget: converge to target FPS then lock
+    if (flags.gs_adaptive_budget && gs_adaptive_budget_ && gs_gaussian_budget_ > 0 && dt > 0.0f) {
+        float fps = 1.0f / dt;
+        gs_smoothed_fps_ = gs_smoothed_fps_ * 0.9f + fps * 0.1f;
+
+        if (!gs_budget_locked_) {
+            if (gs_smoothed_fps_ < gs_target_fps_) {
+                float scale = gs_smoothed_fps_ / gs_target_fps_;
+                gs_gaussian_budget_ = std::max(kGsBudgetMin,
+                    static_cast<uint32_t>(gs_gaussian_budget_ * scale));
+                gs_prev_visible_.clear();
+                gs_stable_frame_count_ = 0;
+            } else {
+                gs_stable_frame_count_++;
+                if (gs_stable_frame_count_ >= kGsStableFramesNeeded) {
+                    gs_budget_locked_ = true;
+                }
+            }
+        }
+    }
+
+    // Gaussian splatting compute (before render pass)
+    if (flags.gs_rendering && gs_initialized_ && gs_renderer_.has_cloud()) {
+        if (flags.gs_chunk_culling && !gs_skip_chunk_cull_ && !gs_chunk_grid_.empty()) {
+            glm::mat4 gs_vp = gs_proj_ * gs_view_;
+            auto visible = gs_chunk_grid_.visible_chunks(gs_vp);
+
+            if (visible != gs_prev_visible_) {
+                if (gs_budget_locked_) {
+                    gs_budget_locked_ = false;
+                    gs_stable_frame_count_ = 0;
+                }
+                gs_prev_visible_ = visible;
+                if (flags.gs_lod && gs_gaussian_budget_ > 0) {
+                    glm::vec3 cam_pos = glm::vec3(glm::inverse(gs_view_)[3]);
+                    gs_chunk_grid_.gather_lod(visible, cam_pos, gs_gaussian_budget_,
+                                              gs_active_buffer_);
+                } else {
+                    gs_chunk_grid_.gather(visible, gs_active_buffer_);
+                }
+                if (!gs_active_buffer_.empty()) {
+                    vkDeviceWaitIdle(device);
+                    gs_renderer_.update_active_gaussians(
+                        gs_active_buffer_.data(),
+                        static_cast<uint32_t>(gs_active_buffer_.size()));
+                }
+            }
+        }
+
+        gs_renderer_.render(cmd, gs_view_, gs_proj_);
+    }
+}
+
+void Renderer::record_gs_blit(VkCommandBuffer cmd, const FeatureFlags& flags) {
+    if (!(flags.gs_rendering && gs_initialized_ && gs_renderer_.has_cloud() && font_initialized_))
+        return;
+
+    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, ui_pipeline_);
+    sprite_batch_.bind(cmd, current_frame_);
+
+    VkRect2D full_scissor{};
+    full_scissor.offset = {0, 0};
+    full_scissor.extent = swapchain_.extent();
+    vkCmdSetScissor(cmd, 0, 1, &full_scissor);
+
+    // Background behind GS (sky, mountains, etc.)
+    if (gs_bg_initialized_) {
+        SpriteDrawInfo bg_blit{};
+        bg_blit.position = {
+            static_cast<float>(kWindowWidth) * 0.5f,
+            static_cast<float>(kWindowHeight) * 0.5f,
+            0.0f
+        };
+        bg_blit.size = {
+            static_cast<float>(kWindowWidth),
+            static_cast<float>(kWindowHeight)
+        };
+        bg_blit.uv_min = {0.0f, 0.0f};
+        bg_blit.uv_max = {1.0f, 1.0f};
+        bg_blit.color = {1.0f, 1.0f, 1.0f, 1.0f};
+
+        sprite_batch_.begin();
+        sprite_batch_.draw(bg_blit);
+        auto bg_flush = sprite_batch_.flush(current_frame_);
+        if (bg_flush.index_count > 0) {
+            vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                    sprite_pipeline_layout_, 0, 1,
+                                    &gs_bg_descriptor_sets_[current_frame_], 0, nullptr);
+            vkCmdDrawIndexed(cmd, bg_flush.index_count, 1, 0, bg_flush.vertex_offset, 0);
+        }
+    }
+
+    // GS output on top (alpha-composited over background)
+    SpriteDrawInfo gs_blit{};
+    gs_blit.position = {
+        static_cast<float>(kWindowWidth) * 0.5f + gs_blit_offset_x_,
+        static_cast<float>(kWindowHeight) * 0.5f + gs_blit_offset_y_,
+        0.0f
+    };
+    gs_blit.size = {
+        static_cast<float>(kWindowWidth),
+        static_cast<float>(kWindowHeight)
+    };
+    gs_blit.uv_min = {0.0f, 0.0f};
+    gs_blit.uv_max = {1.0f, 1.0f};
+    gs_blit.color = {1.0f, 1.0f, 1.0f, 1.0f};
+
+    sprite_batch_.begin();
+    sprite_batch_.draw(gs_blit);
+    auto gs_flush = sprite_batch_.flush(current_frame_);
+    if (gs_flush.index_count > 0) {
+        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                sprite_pipeline_layout_, 0, 1,
+                                &gs_ui_descriptor_sets_[current_frame_], 0, nullptr);
+        vkCmdDrawIndexed(cmd, gs_flush.index_count, 1, 0, gs_flush.vertex_offset, 0);
+    }
+}
+
+void Renderer::record_ui_pass(VkCommandBuffer cmd,
+                               const std::vector<ui::UIDrawBatch>& ui_batches) {
+    if (!font_initialized_ || ui_batches.empty()) return;
+
+    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, ui_pipeline_);
+    sprite_batch_.bind(cmd, current_frame_);
+
+    VkRect2D full_scissor{};
+    full_scissor.offset = {0, 0};
+    full_scissor.extent = swapchain_.extent();
+
+    float sx = static_cast<float>(swapchain_.extent().width) / static_cast<float>(kWindowWidth);
+    float sy = static_cast<float>(swapchain_.extent().height) / static_cast<float>(kWindowHeight);
+
+    for (const auto& batch : ui_batches) {
+        if (batch.sprites.empty()) continue;
+
+        if (batch.scissor) {
+            VkRect2D scissor{};
+            scissor.offset.x = static_cast<int32_t>(static_cast<float>(batch.scissor->x) * sx);
+            scissor.offset.y = static_cast<int32_t>(static_cast<float>(batch.scissor->y) * sy);
+            scissor.extent.width = static_cast<uint32_t>(static_cast<float>(batch.scissor->width) * sx);
+            scissor.extent.height = static_cast<uint32_t>(static_cast<float>(batch.scissor->height) * sy);
+            vkCmdSetScissor(cmd, 0, 1, &scissor);
+        } else {
+            vkCmdSetScissor(cmd, 0, 1, &full_scissor);
+        }
+
+        sprite_batch_.begin();
+        for (const auto& spr : batch.sprites) {
+            sprite_batch_.draw(spr);
+        }
+        auto ui_flush = sprite_batch_.flush(current_frame_);
+        if (ui_flush.index_count > 0) {
+            vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                    sprite_pipeline_layout_, 0, 1,
+                                    &ui_descriptor_sets_[current_frame_], 0, nullptr);
+            vkCmdDrawIndexed(cmd, ui_flush.index_count, 1, 0, ui_flush.vertex_offset, 0);
+        }
+    }
+
+    vkCmdSetScissor(cmd, 0, 1, &full_scissor);
 }
 
 }  // namespace vulkan_game

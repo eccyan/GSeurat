@@ -27,14 +27,19 @@ struct ProjectedSplat {
     glm::vec4 color;          // rgb + alpha
 };  // 48 bytes
 
-// Uniform data for compute shaders
+// Uniform data for compute shaders (256 bytes, aligned)
 struct GsUniforms {
     glm::mat4 view;
     glm::mat4 proj;
     glm::uvec4 params;       // x = width, y = height, z = gaussian_count, w = sort_size
-    glm::vec4 shadow_box;    // x = margin, y = cone_cos, z = num_sort_passes, w = unused
+    glm::vec4 shadow_box;    // x = margin, y = cone_cos, z = num_sort_passes, w = scale_multiplier
     glm::vec4 cone_dir;      // xyz = cone direction, w = unused
     glm::vec4 cam_pos;       // xyz = camera position, w = unused
+    glm::vec4 effect_flags;  // x = toon_bands, y = light_mode, z = touch_active, w = time
+    glm::vec4 light_params;  // xyz = light_dir, w = intensity
+    glm::vec4 touch_point;   // xyz = world_pos, w = radius
+    glm::vec4 effect_params; // x = water_y, y = fire_y_min, z = fire_y_max, w = strength
+    glm::vec4 effect_params2; // x = pulse_t, y = xray_depth, z = swirl_t, w = unused
 };
 
 // Sort key: depth packed with index
@@ -542,9 +547,18 @@ void GsRenderer::render(VkCommandBuffer cmd, const glm::mat4& view, const glm::m
     uniforms.proj = proj;
     uniforms.params = glm::uvec4(width, height, gaussian_count_, sort_size_);
     uniforms.shadow_box = glm::vec4(shadow_box_margin_, shadow_box_cone_cos_,
-                                     static_cast<float>(num_sort_passes_), 0.0f);
-    uniforms.cone_dir = glm::vec4(shadow_box_cone_dir_, 0.0f);
-    uniforms.cam_pos = glm::vec4(shadow_box_cam_pos_, 0.0f);
+                                     static_cast<float>(num_sort_passes_), scale_multiplier_);
+    uniforms.cone_dir = glm::vec4(shadow_box_cone_dir_, explode_t_);
+    uniforms.cam_pos = glm::vec4(shadow_box_cam_pos_, voxel_t_);
+    uniforms.effect_flags = glm::vec4(
+        static_cast<float>(toon_bands_),
+        static_cast<float>(light_mode_),
+        touch_active_ ? touch_time_ : 0.0f,
+        time_);
+    uniforms.light_params = glm::vec4(glm::normalize(light_dir_), light_intensity_);
+    uniforms.touch_point = glm::vec4(touch_point_, touch_radius_);
+    uniforms.effect_params = glm::vec4(water_y_, fire_y_min_, fire_y_max_, effect_strength_);
+    uniforms.effect_params2 = glm::vec4(pulse_t_, xray_depth_, swirl_t_, burn_t_);
     std::memcpy(uniform_buffer_.mapped(), &uniforms, sizeof(uniforms));
 
     // In skip-sort mode, skip the entire compute pipeline after the first
@@ -681,14 +695,14 @@ void GsRenderer::set_shadow_box_params(const glm::vec3& cone_dir, float cone_cos
     shadow_box_cone_cos_ = cone_cos;
     shadow_box_cam_pos_ = cam_pos;
     shadow_box_margin_ = margin;
-    // Keep 4 sort passes — render shader reads from buffer A (even pass count required)
-    num_sort_passes_ = 4;
+    // 2 sort passes for 16-bit keys — even count so final data lands in buffer A
+    num_sort_passes_ = 2;
 }
 
 void GsRenderer::clear_shadow_box_params() {
     shadow_box_active_ = false;
     shadow_box_margin_ = 128.0f;
-    num_sort_passes_ = 4;
+    num_sort_passes_ = 2;
 }
 
 void GsRenderer::shutdown(VmaAllocator allocator) {

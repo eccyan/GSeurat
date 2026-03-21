@@ -36,8 +36,34 @@ private:
 
     // Hybrid re-render: full GS compute every N frames, cached blit in between
     uint32_t gs_frame_counter_ = 0;
-    uint32_t gs_render_interval_ = 4;
+    uint32_t gs_render_interval_ = 8;
     glm::vec2 last_compute_offset_{0.0f};
+
+    // Adaptive interval tuning
+    static constexpr float kTargetFps = 30.0f;
+    static constexpr uint32_t kMinInterval = 1;
+    static constexpr uint32_t kMaxInterval = 16;
+
+    // Scale multiplier (adjusted with +/- keys)
+    float scale_multiplier_ = 1.0f;
+
+    // Visual effects
+    float effect_time_ = 0.0f;
+    bool fire_active_ = false;
+    bool water_active_ = false;
+    float touch_timer_ = 0.0f;       // seconds since touch, 0 = inactive
+    static constexpr float kTouchDecay = 3.0f;  // seconds until touch fades
+
+    // Wave 2 effects
+    float explode_timer_ = 0.0f;     // 0=off, animates 0→1 over 3s
+    bool voxel_active_ = false;
+    float voxel_blend_ = 0.0f;       // smooth 0→1
+    bool pulse_active_ = false;
+    float xray_depth_ = 0.0f;        // 0=off, +20 per press, wraps at 300
+    bool swirl_active_ = false;
+    float swirl_blend_ = 0.0f;       // smooth 0→1
+    float burn_timer_ = 0.0f;        // 0=off, animates 0→1 over 5s
+    bool burn_fire_was_active_ = false;  // restore fire state after burn
 
     // FPS tracking (wall clock for accuracy despite dt clamping)
     std::chrono::steady_clock::time_point fps_clock_{};

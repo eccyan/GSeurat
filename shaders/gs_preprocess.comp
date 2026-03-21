@@ -41,14 +41,26 @@ layout(set = 0, binding = 3) uniform Uniforms {
     mat4 view;
     mat4 proj;
     uvec4 params;       // x = width, y = height, z = gaussian_count, w = sort_size
-    vec4 shadow_box;    // x = margin, y = cone_cos, z = num_sort_passes, w = unused
+    vec4 shadow_box;    // x = margin, y = cone_cos, z = num_sort_passes, w = scale_multiplier
     vec4 cone_dir;      // xyz = cone direction, w = unused
     vec4 cam_pos;       // xyz = camera position, w = unused
+    vec4 effect_flags;  // x = toon_bands, y = light_mode, z = touch_timer (0=off), w = time
+    vec4 light_params;  // xyz = light_dir, w = intensity
+    vec4 touch_point;   // xyz = world_pos, w = radius
+    vec4 effect_params; // x = water_y, y = fire_y_min, z = fire_y_max, w = strength
+    vec4 effect_params2; // x = pulse_t, y = xray_depth, z = swirl_t, w = unused
 };
 
 layout(set = 0, binding = 4) buffer VisibleCountBuffer {
     uint visible_count;
 };
+
+// Simple hash for per-Gaussian variation
+float hash_uint(uint n) {
+    n = (n << 13u) ^ n;
+    n = n * (n * n * 15731u + 789221u) + 1376312589u;
+    return float(n & 0x7fffffffu) / float(0x7fffffff);
+}
 
 // Build rotation matrix from quaternion
 mat3 quat_to_mat(vec4 q) {
@@ -65,13 +77,200 @@ void main() {
     if (idx >= params.z) return;
 
     GpuGaussian g = gaussians[idx];
+    vec3 pos = g.pos_opacity.xyz;
+    float opacity = g.pos_opacity.w;
+    vec3 col = g.color_pad.rgb;
+
+    float time = effect_flags.w;
+    float h = hash_uint(idx);
+
+    // --- Touch deformation (Phase 4) ---
+    // effect_flags.z carries the touch timer (>0 = active, value = seconds since touch)
+    float touch_time = effect_flags.z;
+    if (touch_time > 0.0) {
+        vec3 tp = touch_point.xyz;
+        float radius = touch_point.w;
+        float dist = length(pos - tp);
+        if (dist < radius) {
+            float falloff = 1.0 - dist / radius;
+            falloff *= falloff;
+            float t = touch_time;
+            // Strong initial burst that decays over 3 seconds
+            // Radial push + oscillation for spring-like wobble
+            float push = falloff * exp(-t * 1.5) * radius * 0.5;
+            float wobble = sin(t * 10.0 - dist * 0.2) * exp(-t * 2.0) * radius * 0.3 * falloff;
+            float displacement = push + wobble;
+            vec3 dir = (dist > 0.001) ? normalize(pos - tp) : vec3(0.0, 1.0, 0.0);
+            pos += dir * displacement;
+        }
+    }
+
+    // --- Fire effect (Phase 5) ---
+    // Burn front is not active when burn_t > 0 (burn effect handles its own fire)
+    float fire_y_min = effect_params.y;
+    float fire_y_max = effect_params.z;
+    float burn_t_check = effect_params2.w;
+    if (fire_y_max > fire_y_min + 0.01 && burn_t_check <= 0.0) {
+        float fire_range = fire_y_max - fire_y_min;
+
+        // Rising flame front: starts at fire_y_min, climbs up over time
+        // Cycles every ~8 seconds, creating a repeating upward sweep
+        float cycle = fract(time * 0.125);  // 0→1 over 8 seconds
+        float flame_front = fire_y_min + fire_range * cycle * 1.3;  // overshoots top
+
+        if (pos.y >= fire_y_min && pos.y <= fire_y_max) {
+            // Distance below the flame front — positive means already engulfed
+            float dist_below_front = flame_front - pos.y;
+            // Intensity: strongest at the front, fading behind; zero above front
+            float front_band = fire_range * 0.25;  // width of active flame zone
+            float intensity = clamp(dist_below_front / front_band, 0.0, 1.0);
+            // Fade out well behind the front (flames die down after passing)
+            float behind_fade = clamp(1.0 - (dist_below_front - front_band) / (fire_range * 0.5), 0.0, 1.0);
+            intensity *= behind_fade;
+
+            if (intensity > 0.001) {
+                float fire_factor = (pos.y - fire_y_min) / fire_range;
+
+                // Upward drift + horizontal jitter — scaled by intensity
+                pos.y += intensity * sin(time * 3.0 + h * 6.28) * fire_range * 0.15;
+                pos.x += sin(time * 5.0 + h * 12.56) * fire_range * 0.03 * intensity;
+                pos.z += cos(time * 4.0 + h * 9.42) * fire_range * 0.03 * intensity;
+
+                // Color: bright yellow at the front edge, deeper red behind
+                vec3 fire_color = mix(vec3(1.0, 0.5, 0.0), vec3(1.0, 0.1, 0.0), fire_factor);
+                // Brighten at the leading edge of the front
+                float edge_glow = clamp(1.0 - abs(dist_below_front) / (front_band * 0.3), 0.0, 1.0);
+                fire_color = mix(fire_color, vec3(1.0, 0.9, 0.3), edge_glow * 0.5);
+                col = mix(col, fire_color, intensity * (0.5 + fire_factor * 0.4));
+
+                // Opacity flicker
+                opacity *= mix(1.0, 0.7 + 0.3 * sin(time * 10.0 + h * 6.28), intensity);
+            }
+        }
+    }
+
+    // --- Water effect (Phase 6) ---
+    // effect_params.x = water_y threshold, effect_params.w = strength (also encodes water depth range)
+    float water_y = effect_params.x;
+    if (water_y > -999.0) {
+        if (pos.y < water_y) {
+            // Normalize depth below surface: 0 at surface, 1 at ~20 units deep
+            float depth_below = (water_y - pos.y) / 20.0;
+            float tint = clamp(depth_below, 0.0, 1.0);
+
+            // Sinusoidal ripple — stronger near surface
+            float surface_factor = 1.0 - tint;
+            pos.y += sin(time * 3.0 + pos.x * 0.3 + h * 6.28) * 2.0 * surface_factor;
+            pos.x += sin(time * 2.0 + pos.z * 0.2) * 1.5 * tint;
+
+            // Strong blue tint
+            col = mix(col, vec3(0.05, 0.2, 0.7), 0.4 + tint * 0.4);
+
+            // Transparency increases with depth
+            opacity *= mix(0.85, 0.5, tint);
+        }
+    }
+
+    // --- Burn effect (fire → char → scatter) ---
+    float burn_t = effect_params2.w;
+    if (burn_t > 0.0) {
+        float y_min = effect_params.y;  // fire_y_min (set to cloud bottom)
+        float y_max = effect_params.z;  // fire_y_max (set to cloud top)
+        float y_range = max(y_max - y_min, 1.0);
+
+        // Burn front rises from bottom to top (overshoots so top chars fully)
+        float burn_front = y_min + y_range * burn_t * 1.4;
+        float dist_below = burn_front - pos.y;
+
+        if (dist_below > 0.0) {
+            float norm_depth = dist_below / (y_range * 0.3);
+
+            // Fire edge: narrow band at the advancing front
+            float fire_band = y_range * 0.1;
+            if (dist_below < fire_band) {
+                float fire_factor = 1.0 - dist_below / fire_band;
+                vec3 fire_col = mix(vec3(1.0, 0.3, 0.0), vec3(1.0, 0.8, 0.0), fire_factor);
+                col = mix(col, fire_col, 0.8 * fire_factor);
+                // Upward jitter at the flame edge
+                pos.y += sin(time * 8.0 + h * 6.28) * fire_band * 0.3 * fire_factor;
+                pos.x += sin(time * 6.0 + h * 9.42) * fire_band * 0.1 * fire_factor;
+            }
+
+            // Char: darken to black/ember behind the fire front
+            float char_factor = clamp(norm_depth * 2.0, 0.0, 1.0);
+            col = mix(col, vec3(0.03, 0.02, 0.01), char_factor);
+
+            // Scatter: charred pieces break away and drift upward as ash
+            float scatter_factor = clamp(norm_depth - 0.5, 0.0, 1.0) * 2.0;
+            if (scatter_factor > 0.0) {
+                vec3 scatter_dir = normalize(vec3(
+                    hash_uint(idx * 11u + 7u) * 2.0 - 1.0,
+                    hash_uint(idx * 17u + 23u) * 0.5 + 0.3,  // upward bias
+                    hash_uint(idx * 29u + 41u) * 2.0 - 1.0
+                ));
+                float sf2 = scatter_factor * scatter_factor;
+                pos += scatter_dir * sf2 * 60.0;
+                // Ember glow on some scattered pieces
+                if (h > 0.7) {
+                    col = mix(col, vec3(1.0, 0.3, 0.0), scatter_factor * 0.5);
+                }
+                opacity *= max(0.0, 1.0 - scatter_factor * 0.9);
+            }
+        }
+    }
+
+    // --- Explode effect ---
+    float explode_t = cone_dir.w;
+    if (explode_t > 0.0) {
+        // Per-Gaussian unique direction via hash
+        float hx = hash_uint(idx * 7u + 31u) * 2.0 - 1.0;
+        float hy = hash_uint(idx * 13u + 53u) * 0.5 + 0.5;  // upward bias
+        float hz = hash_uint(idx * 19u + 97u) * 2.0 - 1.0;
+        vec3 explode_dir = normalize(vec3(hx, hy, hz));
+        float t2 = explode_t * explode_t;
+        pos += explode_dir * t2 * 200.0;
+        // Gravity after midpoint
+        pos.y -= max(0.0, explode_t - 0.5) * 80.0;
+        // Fade
+        opacity *= max(0.0, 1.0 - explode_t * 0.8);
+        // Glow
+        col = mix(col, vec3(1.0), explode_t * 0.3);
+    }
+
+    // --- Voxelize position snap ---
+    float voxel_t = cam_pos.w;
+    if (voxel_t > 0.0) {
+        float grid = 4.0;
+        vec3 snapped = floor(pos / grid + 0.5) * grid;
+        pos = mix(pos, snapped, voxel_t);
+        // Color quantize
+        col = mix(col, floor(col * 8.0 + 0.5) / 8.0, voxel_t);
+    }
+
+    // --- Swirl rotation ---
+    float swirl_t = effect_params2.z;
+    if (swirl_t > 0.0) {
+        // Rotate around Y axis through approximate cloud center
+        vec3 center = vec3(0.0, 0.0, 64.0);
+        vec2 rel = pos.xz - center.xz;
+        float dist = length(rel);
+        // Differential rotation: outer spins faster
+        float angle = swirl_t * (2.0 + dist * 0.05) * time;
+        float cs = cos(angle);
+        float sn = sin(angle);
+        pos.x = center.x + rel.x * cs - rel.y * sn;
+        pos.z = center.z + rel.x * sn + rel.y * cs;
+        // Funnel lift: near center rises
+        float lift = max(0.0, 1.0 - dist * 0.02) * swirl_t * 30.0;
+        pos.y += lift;
+    }
 
     // Transform to view space
-    vec4 view_pos = view * vec4(g.pos_opacity.xyz, 1.0);
+    vec4 view_pos = view * vec4(pos, 1.0);
 
     // Frustum cull: discard if behind near plane (view space z is negative for visible objects)
     if (view_pos.z > -0.1) {
-        sort_entries[idx].key = 0xFFFFFFFF;
+        sort_entries[idx].key = 0xFFFF;
         sort_entries[idx].index = idx;
         return;
     }
@@ -79,7 +278,7 @@ void main() {
     // Project to clip space
     vec4 clip_pos = proj * view_pos;
     if (clip_pos.w <= 0.0) {
-        sort_entries[idx].key = 0xFFFFFFFF;
+        sort_entries[idx].key = 0xFFFF;
         sort_entries[idx].index = idx;
         return;
     }
@@ -96,16 +295,16 @@ void main() {
     float margin = shadow_box.x;
     if (screen_x < -margin || screen_x > float(params.x) + margin ||
         screen_y < -margin || screen_y > float(params.y) + margin) {
-        sort_entries[idx].key = 0xFFFFFFFF;
+        sort_entries[idx].key = 0xFFFF;
         sort_entries[idx].index = idx;
         return;
     }
 
     // Viewing cone backface cull (shadow box mode): cull Gaussians outside viewing cone
     if (shadow_box.y > 0.0) {
-        vec3 to_gaussian = normalize(g.pos_opacity.xyz - cam_pos.xyz);
+        vec3 to_gaussian = normalize(pos - cam_pos.xyz);
         if (dot(to_gaussian, cone_dir.xyz) < shadow_box.y) {
-            sort_entries[idx].key = 0xFFFFFFFF;
+            sort_entries[idx].key = 0xFFFF;
             sort_entries[idx].index = idx;
             return;
         }
@@ -113,7 +312,38 @@ void main() {
 
     // Compute 3D covariance matrix Sigma = R * S * S^T * R^T
     mat3 R = quat_to_mat(g.rot);
-    vec3 s = g.scale_pad.xyz;
+    vec3 s = g.scale_pad.xyz * shadow_box.w;
+
+    // --- Voxelize scale uniformize ---
+    if (voxel_t > 0.0) {
+        float grid = 4.0;
+        s = mix(s, vec3(grid * 0.4), voxel_t);
+    }
+
+    // --- Pulse scale modulation ---
+    float pulse_t = effect_params2.x;
+    if (pulse_t > 0.0) {
+        vec3 center = vec3(0.0, 0.0, 64.0);
+        float dist_from_center = length(pos - center);
+        float phase = pulse_t * 4.0 - dist_from_center * 0.05;
+        // Double-beat heartbeat pattern
+        float beat = 0.5 + 0.5 * sin(phase * 6.2832);
+        float beat2 = 0.5 + 0.5 * sin(phase * 6.2832 * 2.0);
+        float scale_mod = 0.8 + 0.5 * beat * beat2;
+        s *= scale_mod;
+        // Slight red warmth on expansion
+        col = mix(col, col * vec3(1.2, 0.9, 0.9), beat * beat2 * 0.3);
+    }
+
+    // --- Swirl scale stretch ---
+    if (swirl_t > 0.0) {
+        vec3 center_s = vec3(0.0, 0.0, 64.0);
+        float dist_s = length(pos.xz - center_s.xz);
+        float stretch = 1.0 + dist_s * 0.003 * swirl_t;
+        s.x *= stretch;
+        s.z *= stretch;
+    }
+
     mat3 S = mat3(
         s.x, 0, 0,
         0, s.y, 0,
@@ -152,7 +382,7 @@ void main() {
     // Compute inverse of 2D covariance for conic representation
     float det = a * c - b * b;
     if (det <= 1e-6) {
-        sort_entries[idx].key = 0xFFFFFFFF;
+        sort_entries[idx].key = 0xFFFF;
         sort_entries[idx].index = idx;
         return;
     }
@@ -175,12 +405,14 @@ void main() {
     splat.center = vec2(screen_x, screen_y);
     splat.depth = -view_pos.z;
     splat.radius = radius_px;
-    splat.conic_opacity = vec4(conic_a, conic_b, conic_c, g.pos_opacity.w);
-    splat.color = vec4(g.color_pad.rgb, 1.0);
+    splat.conic_opacity = vec4(conic_a, conic_b, conic_c, opacity);
+    splat.color = vec4(col, 1.0);
     projected[idx] = splat;
 
-    // Write sort entry (depth as uint for bitonic sort — closer = smaller key)
-    sort_entries[idx].key = floatBitsToUint(splat.depth);
+    // Write sort entry — quantize depth to 16-bit key for 2-pass radix sort
+    // Camera range [0.1, 1000] → ~0.015 unit resolution, sufficient for 320×240 pixel art
+    float depth_norm = clamp(splat.depth / 1000.0, 0.0, 1.0);
+    sort_entries[idx].key = uint(depth_norm * 65535.0);
     sort_entries[idx].index = idx;
 
     // Count visible (non-culled) Gaussians

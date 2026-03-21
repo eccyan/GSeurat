@@ -141,6 +141,7 @@ add_library(vulkan_game_core OBJECT
     src/engine/texture.cpp
     src/engine/descriptor.cpp
     src/engine/renderer.cpp
+    src/engine/screenshot.cpp
     src/engine/camera.cpp
     src/engine/sprite_batch.cpp
     src/engine/input_manager.cpp

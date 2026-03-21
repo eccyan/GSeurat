@@ -2,6 +2,7 @@
 
 #include "vulkan_game/engine/buffer.hpp"
 #include "vulkan_game/engine/camera.hpp"
+#include "vulkan_game/engine/screenshot.hpp"
 #include "vulkan_game/engine/gs_chunk_grid.hpp"
 #include "vulkan_game/engine/gs_renderer.hpp"
 #include "vulkan_game/engine/command_pool.hpp"
@@ -49,6 +50,8 @@ public:
     bool has_gs_cloud() const { return gs_renderer_.has_cloud(); }
     void set_gs_skip_chunk_cull(bool skip) { gs_skip_chunk_cull_ = skip; }
     void set_gs_blit_offset(float x, float y) { gs_blit_offset_x_ = x; gs_blit_offset_y_ = y; }
+    void set_gs_gaussian_budget(uint32_t b) { gs_gaussian_budget_ = b; }
+    uint32_t gs_gaussian_budget() const { return gs_gaussian_budget_; }
 
     void draw_scene(Scene& scene,
                     const std::vector<SpriteDrawInfo>& entity_sprites = {},
@@ -70,10 +73,10 @@ public:
     void set_ca_intensity(float v) { ca_intensity_ = v; }
     void set_flash_color(float r, float g, float b) { flash_r_ = r; flash_g_ = g; flash_b_ = b; }
 
-    void request_screenshot(const std::string& path);
-    bool screenshot_write_ok() const { return screenshot_write_ok_; }
-    uint32_t screenshot_width() const { return screenshot_width_; }
-    uint32_t screenshot_height() const { return screenshot_height_; }
+    void request_screenshot(const std::string& path) { screenshot_.request(path); }
+    bool screenshot_write_ok() const { return screenshot_.write_ok(); }
+    uint32_t screenshot_width() const { return screenshot_.width(); }
+    uint32_t screenshot_height() const { return screenshot_.height(); }
 
     VkContext& context() { return context_; }
     CommandPool& command_pool() { return command_pool_; }
@@ -84,6 +87,15 @@ private:
     void create_ui_pipeline();
     void create_uniform_buffers();
     void update_uniform_buffer(uint32_t frame_index, const UniformBufferObject& ubo);
+
+    void draw_sprite_pass(VkCommandBuffer cmd,
+                          const std::vector<SpriteDrawInfo>& sprites,
+                          VkDescriptorSet descriptor_set);
+    void record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
+                           const FeatureFlags& flags);
+    void record_gs_blit(VkCommandBuffer cmd, const FeatureFlags& flags);
+    void record_ui_pass(VkCommandBuffer cmd,
+                        const std::vector<ui::UIDrawBatch>& ui_batches);
 
     VkContext context_;
     Swapchain swapchain_;
@@ -149,16 +161,20 @@ private:
     std::vector<Gaussian> gs_active_buffer_;
     std::vector<uint32_t> gs_prev_visible_;
     bool gs_skip_chunk_cull_ = false;
+    uint32_t gs_gaussian_budget_ = 0;  // 0 = unlimited (no LOD decimation)
+    uint32_t gs_total_gaussian_count_ = 0;  // total Gaussians in loaded cloud
+    bool gs_adaptive_budget_ = false;
+    bool gs_budget_locked_ = false;
+    float gs_smoothed_fps_ = 60.0f;
+    float gs_target_fps_ = 30.0f;
+    uint32_t gs_stable_frame_count_ = 0;
+    static constexpr uint32_t kGsBudgetMin = 50000;
+    static constexpr uint32_t kGsStableFramesNeeded = 30;  // ~0.5s at 60fps
     float gs_blit_offset_x_ = 0.0f;
     float gs_blit_offset_y_ = 0.0f;
 
     // Screenshot capture
-    std::string screenshot_path_;
-    Buffer screenshot_staging_buffer_;
-    bool screenshot_buffer_initialized_ = false;
-    bool screenshot_write_ok_ = false;
-    uint32_t screenshot_width_ = 0;
-    uint32_t screenshot_height_ = 0;
+    ScreenshotCapture screenshot_;
 };
 
 }  // namespace vulkan_game

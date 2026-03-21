@@ -33,7 +33,50 @@ public:
     void clear_shadow_box_params();
     void set_skip_sort(bool skip) { skip_sort_ = skip; }
     bool skip_sort() const { return skip_sort_; }
+    void set_scale_multiplier(float m) { scale_multiplier_ = m; }
+    float scale_multiplier() const { return scale_multiplier_; }
     bool sort_done_once() const { return sort_done_once_; }
+
+    // Visual effect setters
+    void set_effect_time(float t) { time_ = t; }
+    void set_toon_bands(int bands) { toon_bands_ = bands; }
+    int toon_bands() const { return toon_bands_; }
+    void set_light_mode(int mode) { light_mode_ = mode; }
+    int light_mode() const { return light_mode_; }
+    void set_light_dir(const glm::vec3& d) { light_dir_ = d; }
+    void set_light_intensity(float i) { light_intensity_ = i; }
+    void set_touch_point(const glm::vec3& p, float radius, float timer = 0.0f) {
+        touch_point_ = p; touch_radius_ = radius; touch_active_ = true; touch_time_ = timer;
+    }
+    void set_touch_time(float t) { touch_time_ = t; }
+    void clear_touch() { touch_active_ = false; touch_time_ = 0.0f; }
+    bool touch_active() const { return touch_active_; }
+    void set_fire_region(float y_min, float y_max, float strength = 1.0f) {
+        fire_y_min_ = y_min; fire_y_max_ = y_max; effect_strength_ = strength;
+    }
+    void clear_fire() { fire_y_min_ = 0.0f; fire_y_max_ = 0.0f; }
+    void set_water_threshold(float y, float strength = 1.0f) {
+        water_y_ = y; effect_strength_ = strength;
+    }
+    void clear_water() { water_y_ = -1000.0f; }
+    float water_y() const { return water_y_; }
+    float fire_y_min() const { return fire_y_min_; }
+    float fire_y_max() const { return fire_y_max_; }
+
+    // Wave 2 effect setters
+    void set_explode_t(float t) { explode_t_ = t; }
+    float explode_t() const { return explode_t_; }
+    void set_voxel_t(float t) { voxel_t_ = t; }
+    float voxel_t() const { return voxel_t_; }
+    void set_pulse_t(float t) { pulse_t_ = t; }
+    float pulse_t() const { return pulse_t_; }
+    void set_xray_depth(float d) { xray_depth_ = d; }
+    float xray_depth() const { return xray_depth_; }
+    void set_swirl_t(float t) { swirl_t_ = t; }
+    float swirl_t() const { return swirl_t_; }
+    void set_burn_t(float t) { burn_t_ = t; }
+    float burn_t() const { return burn_t_; }
+
     void shutdown(VmaAllocator allocator);
 
 private:
@@ -112,7 +155,31 @@ private:
     float shadow_box_cone_cos_ = 0.0f;
     glm::vec3 shadow_box_cone_dir_{0.0f, 0.0f, -1.0f};
     glm::vec3 shadow_box_cam_pos_{0.0f};
-    uint32_t num_sort_passes_ = 4;
+    uint32_t num_sort_passes_ = 2;
+    float scale_multiplier_ = 1.0f;
+
+    // Visual effect state
+    float time_ = 0.0f;
+    int toon_bands_ = 0;          // 0 = off, 3/4/5 = band count
+    int light_mode_ = 0;          // 0 = off, 1 = directional, 2 = point
+    glm::vec3 light_dir_{0.5f, 1.0f, 0.7f};
+    float light_intensity_ = 1.0f;
+    glm::vec3 touch_point_{0.0f};
+    float touch_radius_ = 20.0f;
+    bool touch_active_ = false;
+    float touch_time_ = 0.0f;
+    float water_y_ = -1000.0f;    // sentinel: disabled
+    float fire_y_min_ = 0.0f;
+    float fire_y_max_ = 0.0f;
+    float effect_strength_ = 1.0f;
+
+    // Wave 2 effects
+    float explode_t_ = 0.0f;
+    float voxel_t_ = 0.0f;
+    float pulse_t_ = 0.0f;
+    float xray_depth_ = 0.0f;
+    float swirl_t_ = 0.0f;
+    float burn_t_ = 0.0f;
 };
 
 }  // namespace vulkan_game

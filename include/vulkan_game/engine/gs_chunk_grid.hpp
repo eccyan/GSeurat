@@ -21,6 +21,10 @@ public:
     std::vector<uint32_t> visible_chunks(const glm::mat4& view_proj) const;
     uint32_t gather(const std::vector<uint32_t>& chunk_indices,
                     std::vector<Gaussian>& out) const;
+    uint32_t gather_lod(const std::vector<uint32_t>& chunk_indices,
+                        const glm::vec3& camera_pos,
+                        uint32_t budget,
+                        std::vector<Gaussian>& out) const;
     bool empty() const { return chunks_.empty(); }
     AABB cloud_bounds() const { return cloud_bounds_; }
 

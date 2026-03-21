@@ -79,6 +79,14 @@ void GsChunkGrid::build(const GaussianCloud& cloud, float chunk_size) {
             chunk.bounds.expand(sorted_gaussians_[i].position);
         }
 
+        // Sort Gaussians within this chunk by descending importance
+        // so gather_lod can simply take the first N for LOD decimation
+        std::sort(sorted_gaussians_.begin() + chunk.start_index,
+                  sorted_gaussians_.begin() + chunk.start_index + chunk.count,
+                  [](const Gaussian& a, const Gaussian& b) {
+                      return a.importance > b.importance;
+                  });
+
         chunks_.push_back(chunk);
     }
 }
@@ -172,6 +180,90 @@ uint32_t GsChunkGrid::gather(const std::vector<uint32_t>& chunk_indices,
     }
 
     return total;
+}
+
+uint32_t GsChunkGrid::gather_lod(const std::vector<uint32_t>& chunk_indices,
+                                  const glm::vec3& camera_pos,
+                                  uint32_t budget,
+                                  std::vector<Gaussian>& out) const {
+    if (chunk_indices.empty()) {
+        out.clear();
+        return 0;
+    }
+
+    // Distance thresholds based on chunk size
+    float near_dist = 2.0f * chunk_size_;
+    float far_dist = 8.0f * chunk_size_;
+    float min_ratio = 0.1f;  // 10% kept at far distance
+
+    // Compute per-chunk distances and initial keep ratios
+    struct ChunkLod {
+        uint32_t idx;
+        float ratio;
+        uint32_t keep_count;
+    };
+    std::vector<ChunkLod> lods(chunk_indices.size());
+
+    uint32_t total_wanted = 0;
+    for (size_t i = 0; i < chunk_indices.size(); ++i) {
+        const auto& chunk = chunks_[chunk_indices[i]];
+        glm::vec3 center = chunk.bounds.center();
+        float dist = glm::length(center - camera_pos);
+
+        float ratio;
+        if (dist <= near_dist) {
+            ratio = 1.0f;
+        } else if (dist >= far_dist) {
+            ratio = min_ratio;
+        } else {
+            // Linear interpolation
+            float t = (dist - near_dist) / (far_dist - near_dist);
+            ratio = 1.0f - t * (1.0f - min_ratio);
+        }
+
+        uint32_t keep = std::max(1u, static_cast<uint32_t>(chunk.count * ratio));
+        lods[i] = {chunk_indices[i], ratio, keep};
+        total_wanted += keep;
+    }
+
+    // If total exceeds budget, scale all ratios proportionally
+    if (total_wanted > budget) {
+        float scale = static_cast<float>(budget) / static_cast<float>(total_wanted);
+        total_wanted = 0;
+        for (auto& lod : lods) {
+            const auto& chunk = chunks_[lod.idx];
+            lod.keep_count = std::max(1u, static_cast<uint32_t>(chunk.count * lod.ratio * scale));
+            total_wanted += lod.keep_count;
+        }
+    }
+
+    out.resize(total_wanted);
+
+    // Stride-based decimation: evenly sample across each chunk to avoid
+    // spatial bias when importance values are uniform (e.g. voxel data)
+    uint32_t offset = 0;
+    for (const auto& lod : lods) {
+        const auto& chunk = chunks_[lod.idx];
+        uint32_t count = std::min(lod.keep_count, chunk.count);
+        if (count == chunk.count) {
+            // Full copy — no decimation needed
+            std::memcpy(out.data() + offset,
+                        sorted_gaussians_.data() + chunk.start_index,
+                        count * sizeof(Gaussian));
+        } else {
+            // Stride through chunk to ensure spatial uniformity
+            float stride = static_cast<float>(chunk.count) / static_cast<float>(count);
+            for (uint32_t i = 0; i < count; ++i) {
+                uint32_t src = std::min(static_cast<uint32_t>(i * stride),
+                                        chunk.count - 1);
+                out[offset + i] = sorted_gaussians_[chunk.start_index + src];
+            }
+        }
+        offset += count;
+    }
+
+    out.resize(offset);
+    return offset;
 }
 
 }  // namespace vulkan_game

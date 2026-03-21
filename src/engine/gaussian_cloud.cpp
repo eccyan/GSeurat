@@ -1,5 +1,6 @@
 #include "vulkan_game/engine/gaussian_cloud.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <cstring>
 #include <fstream>
@@ -225,9 +226,22 @@ GaussianCloud GaussianCloud::load_ply(const std::string& path) {
             g.opacity = 1.0f;
         }
 
+        // Importance for LOD: large, opaque Gaussians are most important
+        g.importance = g.opacity * std::max({g.scale.x, g.scale.y, g.scale.z});
+
         cloud.bounds_.expand(g.position);
     }
 
+    return cloud;
+}
+
+GaussianCloud GaussianCloud::from_gaussians(std::vector<Gaussian> gaussians) {
+    GaussianCloud cloud;
+    cloud.gaussians_ = std::move(gaussians);
+    for (auto& g : cloud.gaussians_) {
+        g.importance = g.opacity * std::max({g.scale.x, g.scale.y, g.scale.z});
+        cloud.bounds_.expand(g.position);
+    }
     return cloud;
 }
 
