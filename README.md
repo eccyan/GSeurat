@@ -296,3 +296,7 @@ podman run --rm -it --device /dev/dri -v "$PWD":/workspace:Z --workdir /workspac
 # Inside the container
 cmake --preset linux-debug && cmake --build --preset linux-debug
 ```
+
+## License
+
+Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE) for details.
