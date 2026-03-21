@@ -1,11 +1,11 @@
-#include "vulkan_game/engine/character_data.hpp"
+#include "gseurat/engine/character_data.hpp"
 
 #include <filesystem>
 #include <fstream>
 
 #include <nlohmann/json.hpp>
 
-namespace vulkan_game {
+namespace gseurat {
 
 std::optional<CharacterAnimData> load_character_anims(const std::string& path) {
     if (!std::filesystem::exists(path)) {
@@ -49,4 +49,4 @@ std::optional<CharacterAnimData> load_character_anims(const std::string& path) {
     return data;
 }
 
-}  // namespace vulkan_game
+}  // namespace gseurat

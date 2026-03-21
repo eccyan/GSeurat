@@ -1,6 +1,6 @@
-#include "vulkan_game/engine/scene.hpp"
+#include "gseurat/engine/scene.hpp"
 
-namespace vulkan_game {
+namespace gseurat {
 
 void Scene::set_tile_layer(TileLayer layer) {
     if (!layer.tiles.empty()) {
@@ -10,4 +10,4 @@ void Scene::set_tile_layer(TileLayer layer) {
     }
 }
 
-}  // namespace vulkan_game
+}  // namespace gseurat

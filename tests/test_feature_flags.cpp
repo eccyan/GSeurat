@@ -5,13 +5,13 @@
 //
 // Run: ./build/test_feature_flags
 
-#include "vulkan_game/engine/feature_flags.hpp"
+#include "gseurat/engine/feature_flags.hpp"
 
 #include <cassert>
 #include <cstdio>
 #include <cstring>
 
-using namespace vulkan_game;
+using namespace gseurat;
 
 int main() {
     // 1. Default flags all true

@@ -1,12 +1,12 @@
 // Integration test: verify character_data.hpp loads animations.json correctly
 // Build: c++ -std=c++23 -I include -I build/macos-debug/_deps/json-src/include -I build/macos-debug/_deps/glm-src -I build/macos-debug/_deps/stb-src tests/test_character_data.cpp src/engine/character_data.cpp src/engine/tilemap.cpp -o build/test_character_data
 
-#include "vulkan_game/engine/character_data.hpp"
+#include "gseurat/engine/character_data.hpp"
 #include <cassert>
 #include <cstdio>
 
 int main() {
-    using namespace vulkan_game;
+    using namespace gseurat;
 
     // Test 1: Load existing test animations.json
     {

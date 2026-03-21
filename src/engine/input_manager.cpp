@@ -1,9 +1,9 @@
-#include "vulkan_game/engine/input_manager.hpp"
+#include "gseurat/engine/input_manager.hpp"
 
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
-namespace vulkan_game {
+namespace gseurat {
 
 void InputManager::set_window(GLFWwindow* window) {
     window_ = window;
@@ -75,4 +75,4 @@ void InputManager::clear_injections() {
     inject_once_.fill(false);
 }
 
-}  // namespace vulkan_game
+}  // namespace gseurat

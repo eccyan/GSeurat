@@ -1,6 +1,6 @@
-#include "vulkan_game/engine/game_state.hpp"
+#include "gseurat/engine/game_state.hpp"
 
-namespace vulkan_game {
+namespace gseurat {
 
 void GameStateStack::push(std::unique_ptr<GameState> state, AppBase& app) {
     state->on_enter(app);
@@ -54,4 +54,4 @@ GameState* GameStateStack::top() const {
     return stack_.empty() ? nullptr : stack_.back().get();
 }
 
-}  // namespace vulkan_game
+}  // namespace gseurat

@@ -5,7 +5,7 @@ import type {
   TilemapResponse,
   OkResponse,
   LightParams,
-} from '@vulkan-game-tools/engine-client';
+} from '@gseurat/engine-client';
 
 // Re-export the EngineClient interface shape so callers can reference it if
 // needed, while keeping the actual import lazy (dynamic import at connect time)
@@ -51,7 +51,7 @@ export function useEngine() {
     if (clientRef.current?.isConnected) return;
 
     try {
-      const mod = await import('@vulkan-game-tools/engine-client');
+      const mod = await import('@gseurat/engine-client');
       const client = new mod.EngineClient('ws://localhost:9100') as EngineClientLike;
       await client.connect();
       clientRef.current = client;

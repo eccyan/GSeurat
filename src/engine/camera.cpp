@@ -1,11 +1,11 @@
-#include "vulkan_game/engine/camera.hpp"
+#include "gseurat/engine/camera.hpp"
 
 #include <cmath>
 #include <random>
 
 #include <glm/gtc/matrix_transform.hpp>
 
-namespace vulkan_game {
+namespace gseurat {
 
 Camera::Camera()
     : position_(0.0f, 5.0f, 5.0f),
@@ -127,4 +127,4 @@ glm::mat4 Camera::view_projection() const {
     return projection() * view();
 }
 
-}  // namespace vulkan_game
+}  // namespace gseurat

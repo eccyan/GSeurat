@@ -1,4 +1,4 @@
-#include "vulkan_game/engine/pathfinder.hpp"
+#include "gseurat/engine/pathfinder.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -6,7 +6,7 @@
 #include <queue>
 #include <vector>
 
-namespace vulkan_game {
+namespace gseurat {
 
 glm::ivec2 Pathfinder::world_to_grid(glm::vec2 world_pos, const TileLayer& layer) {
     const float half_w = static_cast<float>(layer.width) * layer.tile_size * 0.5f;
@@ -122,4 +122,4 @@ std::vector<glm::vec2> Pathfinder::find_path(const TileLayer& layer,
     return {};  // no path found
 }
 
-}  // namespace vulkan_game
+}  // namespace gseurat

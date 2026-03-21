@@ -1,9 +1,9 @@
-#include "vulkan_game/engine/ui/ui_context.hpp"
+#include "gseurat/engine/ui/ui_context.hpp"
 
 #include <algorithm>
 #include <cmath>
 
-namespace vulkan_game::ui {
+namespace gseurat::ui {
 
 void UIContext::init(const FontAtlas& atlas, const TextRenderer& text_renderer) {
     atlas_ = &atlas;
@@ -291,4 +291,4 @@ void UIContext::end_scroll_area() {
     batches_.push_back(UIDrawBatch{{}, std::nullopt});
 }
 
-}  // namespace vulkan_game::ui
+}  // namespace gseurat::ui

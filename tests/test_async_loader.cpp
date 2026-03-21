@@ -7,14 +7,14 @@
 //
 // Run: ./build/test_async_loader
 
-#include "vulkan_game/engine/async_loader.hpp"
+#include "gseurat/engine/async_loader.hpp"
 
 #include <cassert>
 #include <chrono>
 #include <cstdio>
 #include <thread>
 
-using namespace vulkan_game;
+using namespace gseurat;
 
 // Helper: poll with timeout (avoids hanging on failure)
 static std::vector<LoadResult> poll_until(AsyncLoader& loader, uint32_t count,

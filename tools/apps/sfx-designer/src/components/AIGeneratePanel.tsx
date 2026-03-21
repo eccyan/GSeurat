@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { ReplicateClient, StableAudioClient } from '@vulkan-game-tools/ai-providers';
+import { ReplicateClient, StableAudioClient } from '@gseurat/ai-providers';
 import { useSfxStore } from '../store/useSfxStore.js';
 import { SFX_PRESETS } from '../audio/presets.js';
 import { renderSfx, SAMPLE_RATE } from '../audio/synth.js';

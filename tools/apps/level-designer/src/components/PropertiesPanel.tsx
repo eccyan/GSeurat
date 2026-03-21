@@ -4,7 +4,7 @@ import {
   NumberSlider,
   ColorPicker,
   Vec2Input,
-} from '@vulkan-game-tools/ui-kit';
+} from '@gseurat/ui-kit';
 
 // ---------------------------------------------------------------------------
 // Helpers

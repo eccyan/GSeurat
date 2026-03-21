@@ -1,5 +1,5 @@
 {
-  "name": "@vulkan-game-tools/asset-types",
+  "name": "@gseurat/asset-types",
   "version": "0.1.0",
   "type": "module",
   "main": "src/index.ts",

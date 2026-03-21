@@ -9,7 +9,7 @@
  *   pnpm test --tool sfx-designer --scenario  # One tool, scenarios only
  */
 import { existsSync } from 'fs';
-import { TestClient } from '@vulkan-game-tools/test-harness/client';
+import { TestClient } from '@gseurat/test-harness/client';
 import puppeteer, { type Browser, type Page } from 'puppeteer-core';
 import { runLevelDesignerTests } from './level-designer.test.js';
 import { runSeuratTests } from './seurat.test.js';

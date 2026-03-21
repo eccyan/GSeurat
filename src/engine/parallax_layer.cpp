@@ -1,6 +1,6 @@
-#include "vulkan_game/engine/parallax_layer.hpp"
+#include "gseurat/engine/parallax_layer.hpp"
 
-namespace vulkan_game {
+namespace gseurat {
 
 SpriteDrawInfo ParallaxLayer::generate_draw_info(glm::vec2 camera_target_xy) const {
     SpriteDrawInfo info{};
@@ -41,4 +41,4 @@ SpriteDrawInfo ParallaxLayer::generate_wall_draw_info(glm::vec2 camera_target_xy
     return info;
 }
 
-}  // namespace vulkan_game
+}  // namespace gseurat

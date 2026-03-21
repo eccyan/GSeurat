@@ -1,9 +1,9 @@
-#include "vulkan_game/engine/pipeline.hpp"
+#include "gseurat/engine/pipeline.hpp"
 
 #include <fstream>
 #include <stdexcept>
 
-namespace vulkan_game {
+namespace gseurat {
 
 VkShaderModule load_shader_module(VkDevice device, const std::string& filepath) {
     std::ifstream file(filepath, std::ios::ate | std::ios::binary);
@@ -192,4 +192,4 @@ VkPipeline PipelineBuilder::build(VkDevice device) {
     return pipeline;
 }
 
-}  // namespace vulkan_game
+}  // namespace gseurat

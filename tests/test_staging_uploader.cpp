@@ -11,7 +11,7 @@
 //
 // Run: ./build/test_staging_uploader
 
-#include "vulkan_game/engine/staging_uploader.hpp"
+#include "gseurat/engine/staging_uploader.hpp"
 
 #include <cassert>
 #include <cstdio>
@@ -19,7 +19,7 @@
 #include <string>
 #include <vector>
 
-using namespace vulkan_game;
+using namespace gseurat;
 
 // --- Linker stubs for Vulkan/VMA functions referenced by staging_uploader.cpp ---
 // These allow testing queue logic without a live Vulkan device.
@@ -141,7 +141,7 @@ void vmaUnmapMemory(VmaAllocator, VmaAllocation) {}
 }  // extern "C"
 
 // Stubs for Buffer and Texture methods used by StagingUploader
-namespace vulkan_game {
+namespace gseurat {
 
 Buffer Buffer::create_staging(VmaAllocator, VkDeviceSize) {
     return Buffer{};
@@ -160,7 +160,7 @@ Texture Texture::create_from_image(VkDevice device,
     return Texture{};
 }
 
-}  // namespace vulkan_game
+}  // namespace gseurat
 
 // Helper: create a StagedTexture with given dimensions (pixels filled with 0xFF)
 static StagedTexture make_staged(const std::string& key, uint32_t w, uint32_t h) {

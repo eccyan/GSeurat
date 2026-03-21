@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import type { ViewDirection } from '@vulkan-game-tools/asset-types';
+import type { ViewDirection } from '@gseurat/asset-types';
 import { useSeuratStore } from '../../store/useSeuratStore.js';
 import { PaintEditor } from '../shared/PaintEditor.js';
 import { PoseCell } from '../shared/PoseCell.js';

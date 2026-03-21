@@ -1,8 +1,8 @@
-#include "vulkan_game/engine/text_renderer.hpp"
+#include "gseurat/engine/text_renderer.hpp"
 
 #include <cstdint>
 
-namespace vulkan_game {
+namespace gseurat {
 
 // Decode one UTF-8 codepoint from a byte sequence.
 // Returns the codepoint and advances the index past the consumed bytes.
@@ -166,4 +166,4 @@ std::vector<SpriteDrawInfo> TextRenderer::render_wrapped(const std::string& text
     return sprites;
 }
 
-}  // namespace vulkan_game
+}  // namespace gseurat

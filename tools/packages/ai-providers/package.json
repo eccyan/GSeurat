@@ -1,5 +1,5 @@
 {
-  "name": "@vulkan-game-tools/ai-providers",
+  "name": "@gseurat/ai-providers",
   "version": "0.1.0",
   "type": "module",
   "main": "src/index.ts",

@@ -1,8 +1,8 @@
-#include "vulkan_game/engine/async_loader.hpp"
+#include "gseurat/engine/async_loader.hpp"
 
 #include <stdexcept>
 
-namespace vulkan_game {
+namespace gseurat {
 
 AsyncLoader::~AsyncLoader() {
     shutdown();
@@ -156,4 +156,4 @@ void AsyncLoader::worker_loop() {
     }
 }
 
-}  // namespace vulkan_game
+}  // namespace gseurat

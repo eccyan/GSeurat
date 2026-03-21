@@ -2,7 +2,7 @@
  * Shared scenario test helpers — reusable setup/assertion utilities
  * for multi-step workflow tests.
  */
-import { TestClient } from '@vulkan-game-tools/test-harness/client';
+import { TestClient } from '@gseurat/test-harness/client';
 import { assert } from './qa-runner.js';
 
 /**

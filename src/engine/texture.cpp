@@ -1,12 +1,12 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
 
-#include "vulkan_game/engine/buffer.hpp"
-#include "vulkan_game/engine/texture.hpp"
+#include "gseurat/engine/buffer.hpp"
+#include "gseurat/engine/texture.hpp"
 
 #include <stdexcept>
 
-namespace vulkan_game {
+namespace gseurat {
 
 static void transition_image_layout(VkDevice device, VkCommandPool cmd_pool, VkQueue queue,
                                     VkImage image, VkImageLayout old_layout,
@@ -336,4 +336,4 @@ void Texture::destroy(VkDevice device, VmaAllocator allocator) {
     vmaDestroyImage(allocator, image_, allocation_);
 }
 
-}  // namespace vulkan_game
+}  // namespace gseurat

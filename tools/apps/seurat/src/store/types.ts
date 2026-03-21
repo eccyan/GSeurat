@@ -1,4 +1,4 @@
-import type { FrameStatus, PipelineStage } from '@vulkan-game-tools/asset-types';
+import type { FrameStatus, PipelineStage } from '@gseurat/asset-types';
 
 export type Section =
   | 'dashboard'

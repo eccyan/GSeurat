@@ -1,13 +1,13 @@
 # Creative Tooling Ecosystem
 
-External web-based creative tools for the vulkan-game engine. Designers author tilesets, levels, animations, particles, music, and SFX through browser-based editors that communicate with the running engine via WebSocket.
+External web-based creative tools for the gseurat engine. Designers author tilesets, levels, animations, particles, music, and SFX through browser-based editors that communicate with the running engine via WebSocket.
 
 ## Architecture
 
 ```
 [Engine / Vulkan Window]
        |
-   Unix Socket (/tmp/vulkan_game.sock)
+   Unix Socket (/tmp/gseurat.sock)
        |
 [Bridge Proxy (Node.js :9100)]  <-->  WebSocket
     |       |       |       |       |       |
@@ -26,7 +26,7 @@ Each tool app connects to the bridge proxy over WebSocket. The bridge relays JSO
 
 - Node.js 20+
 - pnpm 9+
-- A running build of `vulkan_game` (see root CMakeLists.txt)
+- A running build of `gseurat` (see root CMakeLists.txt)
 
 ## Quick Start
 
@@ -35,7 +35,7 @@ Each tool app connects to the bridge proxy over WebSocket. The bridge relays JSO
 cd tools && pnpm install
 
 # Terminal 1: start the game engine (from its build directory)
-cd build/macos-debug && ./vulkan_game
+cd build/macos-debug && ./gseurat
 
 # Terminal 2: start the bridge proxy (build required)
 cd tools/apps/bridge && pnpm build && pnpm start

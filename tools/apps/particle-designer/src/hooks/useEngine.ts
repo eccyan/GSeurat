@@ -1,6 +1,6 @@
 import { useCallback, useRef } from 'react';
-import { EngineClient } from '@vulkan-game-tools/engine-client';
-import type { EmittersResponse } from '@vulkan-game-tools/engine-client';
+import { EngineClient } from '@gseurat/engine-client';
+import type { EmittersResponse } from '@gseurat/engine-client';
 import { useParticleStore } from '../store/useParticleStore.js';
 import type { EmitterConfig } from '../store/useParticleStore.js';
 

@@ -8,8 +8,8 @@ import type {
   CharacterManifest,
   FrameStatus,
   ManifestStats,
-} from "@vulkan-game-tools/asset-types";
-import { createDefaultManifest, getManifestStats } from "@vulkan-game-tools/asset-types";
+} from "@gseurat/asset-types";
+import { createDefaultManifest, getManifestStats } from "@gseurat/asset-types";
 
 // Resolve from the engine root (4 levels up from this file in tools/packages/atlas-assembler/src/)
 const __dirname = path.dirname(new URL(import.meta.url).pathname);

@@ -1,9 +1,9 @@
-#include "vulkan_game/engine/scene_loader.hpp"
+#include "gseurat/engine/scene_loader.hpp"
 
 #include <fstream>
 #include <stdexcept>
 
-namespace vulkan_game {
+namespace gseurat {
 
 Direction SceneLoader::parse_direction(const std::string& s) {
     if (s == "up")    return Direction::Up;
@@ -632,4 +632,4 @@ nlohmann::json SceneLoader::to_json(const SceneData& data) {
     return j;
 }
 
-}  // namespace vulkan_game
+}  // namespace gseurat

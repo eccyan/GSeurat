@@ -1,10 +1,10 @@
-#include "vulkan_game/demo/demo_app.hpp"
+#include "gseurat/demo/demo_app.hpp"
 
 #include <cstdlib>
 #include <iostream>
 
 int main(int argc, char* argv[]) {
-    vulkan_game::DemoApp demo;
+    gseurat::DemoApp demo;
     demo.parse_args(argc, argv);
 
     try {

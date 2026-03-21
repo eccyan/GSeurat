@@ -1,9 +1,9 @@
-#include "vulkan_game/engine/animation.hpp"
+#include "gseurat/engine/animation.hpp"
 
 #include <algorithm>
 #include <stdexcept>
 
-namespace vulkan_game {
+namespace gseurat {
 
 void AnimationController::set_sheet(Tileset tileset) {
     sheet_ = tileset;
@@ -67,4 +67,4 @@ void AnimationController::recompute_uvs() {
     uv_max_ = sheet_.uv_max(tile_id);
 }
 
-}  // namespace vulkan_game
+}  // namespace gseurat

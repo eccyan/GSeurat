@@ -869,7 +869,7 @@ app.post('/api/characters/:id/assemble', async (req: Request, res: Response) => 
   try {
     // Dynamically import the atlas assembler (optional dependency)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const mod = await (import('@vulkan-game-tools/atlas-assembler' as any) as Promise<any>);
+    const mod = await (import('@gseurat/atlas-assembler' as any) as Promise<any>);
     const validate = req.body?.validate === true;
     const result = await mod.assembleCharacterAtlas(req.params['id']!, { validate });
     res.json(result);
@@ -1012,7 +1012,7 @@ app.post('/api/projects/export', async (req: Request, res: Response) => {
 
     // Dynamically import the export function
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const mod = await (import('@vulkan-game-tools/atlas-assembler' as any) as Promise<any>);
+    const mod = await (import('@gseurat/atlas-assembler' as any) as Promise<any>);
     const exportFn = mod.exportCharacters;
     if (typeof exportFn !== 'function') {
       res.status(500).json({ error: 'Export function not available — update atlas-assembler' });

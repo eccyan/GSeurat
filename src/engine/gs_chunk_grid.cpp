@@ -1,4 +1,4 @@
-#include "vulkan_game/engine/gs_chunk_grid.hpp"
+#include "gseurat/engine/gs_chunk_grid.hpp"
 
 #include <algorithm>
 #include <array>
@@ -6,7 +6,7 @@
 #include <cstring>
 #include <unordered_map>
 
-namespace vulkan_game {
+namespace gseurat {
 
 void GsChunkGrid::build(const GaussianCloud& cloud, float chunk_size) {
     chunk_size_ = chunk_size;
@@ -266,4 +266,4 @@ uint32_t GsChunkGrid::gather_lod(const std::vector<uint32_t>& chunk_indices,
     return offset;
 }
 
-}  // namespace vulkan_game
+}  // namespace gseurat

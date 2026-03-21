@@ -1,5 +1,5 @@
 {
-  "name": "@vulkan-game-tools/tests",
+  "name": "@gseurat/tests",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -26,8 +26,8 @@
     "test:pose-templates": "node --import tsx/esm --conditions source src/pose-templates.test.ts"
   },
   "dependencies": {
-    "@vulkan-game-tools/test-harness": "workspace:*",
-    "@vulkan-game-tools/asset-types": "workspace:*",
+    "@gseurat/test-harness": "workspace:*",
+    "@gseurat/asset-types": "workspace:*",
     "puppeteer-core": "^24.0.0",
     "tsx": "^4.7.0",
     "ws": "^8.16.0"

@@ -1,17 +1,17 @@
-#include "vulkan_game/game/systems.hpp"
-#include "vulkan_game/engine/ecs/default_components.hpp"
-#include "vulkan_game/engine/ecs/ecs.hpp"
-#include "vulkan_game/engine/direction.hpp"
-#include "vulkan_game/engine/pathfinder.hpp"
-#include "vulkan_game/engine/sprite_batch.hpp"
-#include "vulkan_game/game/components.hpp"
+#include "gseurat/game/systems.hpp"
+#include "gseurat/engine/ecs/default_components.hpp"
+#include "gseurat/engine/ecs/ecs.hpp"
+#include "gseurat/engine/direction.hpp"
+#include "gseurat/engine/pathfinder.hpp"
+#include "gseurat/engine/sprite_batch.hpp"
+#include "gseurat/game/components.hpp"
 
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
 #include <string>
 
-namespace vulkan_game::ecs::systems {
+namespace gseurat::ecs::systems {
 
 constexpr float kYSortScale = 0.01f;
 
@@ -314,4 +314,4 @@ void npc_pathfind(World& world, const TileLayer& layer, float dt) {
         });
 }
 
-}  // namespace vulkan_game::ecs::systems
+}  // namespace gseurat::ecs::systems

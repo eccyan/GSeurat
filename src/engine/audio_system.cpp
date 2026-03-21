@@ -1,12 +1,12 @@
 #define MINIAUDIO_IMPLEMENTATION
 #include <miniaudio.h>
 
-#include "vulkan_game/engine/audio_system.hpp"
+#include "gseurat/engine/audio_system.hpp"
 
 #include <algorithm>
 #include <cmath>
 
-namespace vulkan_game {
+namespace gseurat {
 
 namespace {
 
@@ -214,4 +214,4 @@ void AudioSystem::update_layer_volumes(float dt) {
     }
 }
 
-}  // namespace vulkan_game
+}  // namespace gseurat

@@ -1,9 +1,9 @@
-#include "vulkan_game/engine/collision_gen.hpp"
+#include "gseurat/engine/collision_gen.hpp"
 
 #include <algorithm>
 #include <cmath>
 
-namespace vulkan_game {
+namespace gseurat {
 
 CollisionGrid generate_collision_from_depth(
     const float* depth_data, uint32_t render_width, uint32_t render_height,
@@ -57,4 +57,4 @@ CollisionGrid generate_collision_from_depth(
     return grid;
 }
 
-}  // namespace vulkan_game
+}  // namespace gseurat

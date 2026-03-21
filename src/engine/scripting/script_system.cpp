@@ -1,11 +1,11 @@
-#include "vulkan_game/engine/scripting/script_system.hpp"
-#include "vulkan_game/engine/app_base.hpp"
-#include "vulkan_game/engine/ecs/default_components.hpp"
-#include "vulkan_game/game/components.hpp"
+#include "gseurat/engine/scripting/script_system.hpp"
+#include "gseurat/engine/app_base.hpp"
+#include "gseurat/engine/ecs/default_components.hpp"
+#include "gseurat/game/components.hpp"
 
 #include <cstdio>
 
-namespace vulkan_game {
+namespace gseurat {
 
 void ScriptSystem::init(AppBase* app, WrenVM* wren_vm) {
     app_ = app;
@@ -49,4 +49,4 @@ void ScriptSystem::check_hot_reload() {
     wren_vm_->check_hot_reload();
 }
 
-}  // namespace vulkan_game
+}  // namespace gseurat

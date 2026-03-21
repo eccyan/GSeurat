@@ -6,7 +6,7 @@
  * WebSocket commands work regardless of which tab is active.
  */
 import { useEffect, useRef } from 'react';
-import { StableAudioClient } from '@vulkan-game-tools/ai-providers';
+import { StableAudioClient } from '@gseurat/ai-providers';
 import { useComposerStore } from '../store/useComposerStore.js';
 import type { AudioPlayerHandle } from '../components/AudioPlayer.js';
 

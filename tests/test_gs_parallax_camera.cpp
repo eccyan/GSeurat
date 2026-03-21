@@ -10,7 +10,7 @@
 //
 // Run: ./build/test_gs_parallax_camera
 
-#include "vulkan_game/engine/gs_parallax_camera.hpp"
+#include "gseurat/engine/gs_parallax_camera.hpp"
 
 #include <glm/glm.hpp>
 
@@ -18,7 +18,7 @@
 #include <cmath>
 #include <cstdio>
 
-using namespace vulkan_game;
+using namespace gseurat;
 
 static bool is_identity(const glm::mat4& m) {
     for (int c = 0; c < 4; ++c)

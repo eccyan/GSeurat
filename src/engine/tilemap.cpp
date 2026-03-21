@@ -1,8 +1,8 @@
-#include "vulkan_game/engine/tilemap.hpp"
+#include "gseurat/engine/tilemap.hpp"
 
 #include <cmath>
 
-namespace vulkan_game {
+namespace gseurat {
 
 glm::vec2 Tileset::uv_min(uint32_t tile_id) const {
     uint32_t col = tile_id % columns;
@@ -125,4 +125,4 @@ glm::vec2 resolve_tilemap_collision(glm::vec2 pos,
     return pos;
 }
 
-}  // namespace vulkan_game
+}  // namespace gseurat

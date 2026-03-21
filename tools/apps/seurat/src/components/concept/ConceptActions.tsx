@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect } from 'react';
-import type { ConceptArt, ChibiArt, ViewDirection } from '@vulkan-game-tools/asset-types';
+import type { ConceptArt, ChibiArt, ViewDirection } from '@gseurat/asset-types';
 import { useSeuratStore } from '../../store/useSeuratStore.js';
 import { ComfySettingsPanel, type ComfySettings } from './ComfySettingsPanel.js';
 import { NumericInput } from '../NumericInput.js';

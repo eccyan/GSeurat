@@ -1,4 +1,4 @@
-#include "vulkan_game/engine/save_system.hpp"
+#include "gseurat/engine/save_system.hpp"
 
 #include <chrono>
 #include <ctime>
@@ -7,7 +7,7 @@
 #include <iomanip>
 #include <sstream>
 
-namespace vulkan_game {
+namespace gseurat {
 
 std::string SaveSystem::slot_path(int slot) const {
     return save_dir_ + "/slot_" + std::to_string(slot) + ".json";
@@ -184,4 +184,4 @@ int SaveSystem::most_recent_slot() const {
     return best;
 }
 
-}  // namespace vulkan_game
+}  // namespace gseurat

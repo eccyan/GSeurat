@@ -1,9 +1,9 @@
-#include "vulkan_game/engine/screen_effects.hpp"
+#include "gseurat/engine/screen_effects.hpp"
 
 #include <algorithm>
 #include <cmath>
 
-namespace vulkan_game {
+namespace gseurat {
 
 void ScreenEffects::trigger_flash(glm::vec3 color, float duration) {
     flash_color_ = color;
@@ -45,4 +45,4 @@ float ScreenEffects::ca_intensity() const {
     return ca_persistent_ + ca_pulse_;
 }
 
-}  // namespace vulkan_game
+}  // namespace gseurat

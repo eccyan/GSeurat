@@ -1,6 +1,6 @@
-#include "vulkan_game/engine/animation_state_machine.hpp"
+#include "gseurat/engine/animation_state_machine.hpp"
 
-namespace vulkan_game {
+namespace gseurat {
 
 void AnimationStateMachine::configure(Tileset tileset) {
     controller_.set_sheet(tileset);
@@ -28,4 +28,4 @@ glm::vec2 AnimationStateMachine::current_uv_max() const {
     return controller_.current_uv_max();
 }
 
-}  // namespace vulkan_game
+}  // namespace gseurat

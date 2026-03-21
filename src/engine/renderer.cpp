@@ -1,6 +1,6 @@
-#include "vulkan_game/engine/renderer.hpp"
-#include "vulkan_game/engine/pipeline.hpp"
-#include "vulkan_game/engine/resource_manager.hpp"
+#include "gseurat/engine/renderer.hpp"
+#include "gseurat/engine/pipeline.hpp"
+#include "gseurat/engine/resource_manager.hpp"
 
 #include <array>
 #include <cstring>
@@ -10,7 +10,7 @@
 #include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
-namespace vulkan_game {
+namespace gseurat {
 
 void Renderer::init(GLFWwindow* window, ResourceManager& resources) {
     context_.init(window);
@@ -848,4 +848,4 @@ void Renderer::record_ui_pass(VkCommandBuffer cmd,
     vkCmdSetScissor(cmd, 0, 1, &full_scissor);
 }
 
-}  // namespace vulkan_game
+}  // namespace gseurat

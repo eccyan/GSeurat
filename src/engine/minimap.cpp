@@ -1,9 +1,9 @@
-#include "vulkan_game/engine/minimap.hpp"
+#include "gseurat/engine/minimap.hpp"
 
 #include <algorithm>
 #include <cmath>
 
-namespace vulkan_game {
+namespace gseurat {
 
 glm::vec4 Minimap::tile_color(uint16_t tile_id) {
     switch (tile_id) {
@@ -120,4 +120,4 @@ void Minimap::build_sprites(const TileLayer& layer,
     }
 }
 
-}  // namespace vulkan_game
+}  // namespace gseurat

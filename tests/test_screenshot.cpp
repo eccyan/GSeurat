@@ -11,7 +11,7 @@
 //
 // Run: ./build/test_screenshot
 
-#include "vulkan_game/engine/screenshot.hpp"
+#include "gseurat/engine/screenshot.hpp"
 
 #include <cassert>
 #include <cstdint>
@@ -32,12 +32,12 @@ int stbi_write_png(const char*, int, int, int, const void*, int) { return 0; }
 }
 
 // Stubs for Buffer methods referenced by ScreenshotCapture
-namespace vulkan_game {
+namespace gseurat {
 Buffer Buffer::create_readback(VmaAllocator, VkDeviceSize) { return Buffer{}; }
 void Buffer::destroy(VmaAllocator) {}
 }
 
-using namespace vulkan_game;
+using namespace gseurat;
 
 // ──── Group A: ScreenshotCapture state machine ────
 

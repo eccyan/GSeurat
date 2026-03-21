@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(vulkan_game VERSION 0.1.0 LANGUAGES C CXX)
+project(gseurat VERSION 0.1.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -130,7 +130,7 @@ add_subdirectory(shaders)
 
 # --- Core OBJECT library (shared by main + demo) ---------------------------
 
-add_library(vulkan_game_core OBJECT
+add_library(gseurat_core OBJECT
     src/engine/app_base.cpp
     src/engine/vk_context.cpp
     src/engine/swapchain.cpp
@@ -187,20 +187,20 @@ add_library(vulkan_game_core OBJECT
 )
 
 if(NOT WIN32)
-    target_sources(vulkan_game_core PRIVATE src/engine/control_server.cpp)
+    target_sources(gseurat_core PRIVATE src/engine/control_server.cpp)
 endif()
 
-target_include_directories(vulkan_game_core PUBLIC
+target_include_directories(gseurat_core PUBLIC
     ${PROJECT_SOURCE_DIR}/include
     ${stb_SOURCE_DIR}
     ${miniaudio_SOURCE_DIR}
 )
 
-target_compile_definitions(vulkan_game_core PUBLIC
+target_compile_definitions(gseurat_core PUBLIC
     GLM_FORCE_DEPTH_ZERO_TO_ONE
 )
 
-target_link_libraries(vulkan_game_core
+target_link_libraries(gseurat_core
     PUBLIC
         Vulkan::Vulkan
         glfw
@@ -211,7 +211,7 @@ target_link_libraries(vulkan_game_core
 )
 
 if(APPLE)
-    target_link_libraries(vulkan_game_core PUBLIC
+    target_link_libraries(gseurat_core PUBLIC
         "-framework CoreAudio"
         "-framework AudioToolbox"
         "-framework CoreFoundation"
@@ -220,37 +220,37 @@ endif()
 
 # --- Demo executable --------------------------------------------------------
 
-add_executable(vulkan_game_demo
+add_executable(gseurat_demo
     src/demo_main.cpp
     src/demo/demo_app.cpp
     src/demo/demo_gameplay_state.cpp
 )
-target_link_libraries(vulkan_game_demo PRIVATE vulkan_game_core)
-add_dependencies(vulkan_game_demo shaders)
+target_link_libraries(gseurat_demo PRIVATE gseurat_core)
+add_dependencies(gseurat_demo shaders)
 
 # --- Copy assets to build directory -----------------------------------------
 
-add_custom_command(TARGET vulkan_game_demo POST_BUILD
+add_custom_command(TARGET gseurat_demo POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         ${PROJECT_SOURCE_DIR}/assets
-        $<TARGET_FILE_DIR:vulkan_game_demo>/assets
+        $<TARGET_FILE_DIR:gseurat_demo>/assets
     COMMENT "Copying assets to demo build directory"
 )
 
 # --- GS Demo executable ----------------------------------------------------
 
-add_executable(vulkan_game_gs_demo
+add_executable(gseurat_gs_demo
     src/gs_demo_main.cpp
     src/demo/gs_demo_app.cpp
     src/demo/gs_demo_state.cpp
 )
-target_compile_definitions(vulkan_game_gs_demo PRIVATE VG_BUILD_PROFILE=1)
-target_link_libraries(vulkan_game_gs_demo PRIVATE vulkan_game_core)
-add_dependencies(vulkan_game_gs_demo shaders)
+target_compile_definitions(gseurat_gs_demo PRIVATE VG_BUILD_PROFILE=1)
+target_link_libraries(gseurat_gs_demo PRIVATE gseurat_core)
+add_dependencies(gseurat_gs_demo shaders)
 
-add_custom_command(TARGET vulkan_game_gs_demo POST_BUILD
+add_custom_command(TARGET gseurat_gs_demo POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         ${PROJECT_SOURCE_DIR}/assets
-        $<TARGET_FILE_DIR:vulkan_game_gs_demo>/assets
+        $<TARGET_FILE_DIR:gseurat_gs_demo>/assets
     COMMENT "Copying assets to GS demo build directory"
 )

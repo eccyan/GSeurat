@@ -11,7 +11,7 @@ import type {
   EngineAnimations,
   EngineClip,
   EngineTileset,
-} from "@vulkan-game-tools/asset-types";
+} from "@gseurat/asset-types";
 import { loadManifest, saveManifest } from "./manifest-ops.js";
 import { runAllChecks } from "./quality-checks.js";
 

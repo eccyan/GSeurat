@@ -1,6 +1,6 @@
 # Level Designer
 
-Browser-based tile map editor for authoring scenes loaded by the vulkan-game engine. Supports tile painting, entity placement, and live preview inside the running engine window.
+Browser-based tile map editor for authoring scenes loaded by the gseurat engine. Supports tile painting, entity placement, and live preview inside the running engine window.
 
 ## UI Layout
 

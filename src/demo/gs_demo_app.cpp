@@ -1,8 +1,8 @@
-#include "vulkan_game/demo/gs_demo_app.hpp"
-#include "vulkan_game/demo/gs_demo_state.hpp"
-#include "vulkan_game/engine/gaussian_cloud.hpp"
-#include "vulkan_game/engine/gs_parallax_camera.hpp"
-#include "vulkan_game/engine/scene_loader.hpp"
+#include "gseurat/demo/gs_demo_app.hpp"
+#include "gseurat/demo/gs_demo_state.hpp"
+#include "gseurat/engine/gaussian_cloud.hpp"
+#include "gseurat/engine/gs_parallax_camera.hpp"
+#include "gseurat/engine/scene_loader.hpp"
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include <stb_image_write.h>
@@ -15,7 +15,7 @@
 #include <string_view>
 #include <vector>
 
-namespace vulkan_game {
+namespace gseurat {
 
 void GsDemoApp::parse_args(int argc, char* argv[]) {
     for (int i = 1; i < argc; ++i) {
@@ -269,4 +269,4 @@ void GsDemoApp::generate_flat_normal_texture() {
     stbi_write_png("assets/textures/flat_normal.png", 1, 1, 4, pixels, 4);
 }
 
-}  // namespace vulkan_game
+}  // namespace gseurat

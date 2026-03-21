@@ -1,11 +1,11 @@
-#include "vulkan_game/engine/locale_manager.hpp"
+#include "gseurat/engine/locale_manager.hpp"
 
 #include <fstream>
 #include <stdexcept>
 
 #include <nlohmann/json.hpp>
 
-namespace vulkan_game {
+namespace gseurat {
 
 void LocaleManager::load(const std::string& locale_dir, const std::string& locale_name) {
     std::string path = locale_dir + "/" + locale_name + ".json";
@@ -41,4 +41,4 @@ std::vector<std::string> LocaleManager::all_strings() const {
     return result;
 }
 
-}  // namespace vulkan_game
+}  // namespace gseurat

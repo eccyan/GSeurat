@@ -1,4 +1,4 @@
-import type { CharacterManifest, CharacterAnimation } from '@vulkan-game-tools/asset-types';
+import type { CharacterManifest, CharacterAnimation } from '@gseurat/asset-types';
 
 export interface TileUV {
   u: number;
