@@ -12,7 +12,7 @@ public:
     void set_position(glm::vec3 position);
     void set_target(glm::vec3 target);
 
-    // HD-2D preset: 35° elevation, dist=12, perspective fov
+    // Default preset: 35° elevation, dist=12, perspective fov
     void configure_hd2d(float aspect);
 
     // Smooth camera follow

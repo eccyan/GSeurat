@@ -1,11 +1,11 @@
-# HD-2D GSeurat Engine
+# GSeurat
 
-A Vulkan-based HD-2D game engine built with C++23, featuring 3D Gaussian Splatting rendering, an ECS architecture, and a suite of web-based creative tools.
+A Vulkan-based 3D Gaussian Splatting engine built with C++23. Named after **3DGS + [Georges Seurat](https://en.wikipedia.org/wiki/Georges_Seurat)**, the pointillist painter — because Gaussian splats are the modern equivalent of painted dots.
 
 ## Features
 
-- **HD-2D rendering** — Sprite-based entities over parallax backgrounds with bloom, depth-of-field, and tone mapping
-- **3D Gaussian Splatting** — GPU compute pipeline for rendering `.ply` point clouds as an alternative to tilemaps
+- **3D Gaussian Splatting** — GPU compute pipeline for rendering `.ply` point clouds with tile-based rasterization
+- **Sprite overlay** — Sprite-based entities over GS backgrounds with bloom, depth-of-field, and tone mapping
 - **Entity Component System** — Header-only ECS with archetype storage, typed views, and system functions
 - **Async asset streaming** — Background thread loading with budget-limited GPU uploads for open-world support
 - **Particle system** — Configurable emitters with ring-buffer pool (600 particles)
@@ -63,7 +63,7 @@ Two demo executables are produced:
 | Executable | Description |
 |---|---|
 | `gseurat_demo` | Full engine demo with gameplay, NPCs, dialog, particles |
-| `gseurat_gs_demo` | 3D Gaussian Splatting viewer with visual effects and streaming |
+| `gseurat_gs_demo` | GS viewer with visual effects, LOD, and chunk streaming |
 
 ## Architecture
 
@@ -115,7 +115,7 @@ Three compute passes before the main render pass:
 2. **Bitonic Sort** — depth-sort projected splats front-to-back
 3. **Tile Rasterizer** — 16x16 tile-based splatting into a 320x240 HDR storage image
 
-Output is sampled with nearest-neighbor filtering for pixel-art upscale.
+Output is sampled with nearest-neighbor filtering for stylized upscale.
 
 **Performance optimizations:**
 - Render early termination on first culled Gaussian (sorted order)
@@ -221,7 +221,6 @@ Engine (Vulkan) ←→ Unix Socket ←→ Bridge Proxy (ws://localhost:9100) ←
 | Tool | Port | Description |
 |------|------|-------------|
 | **Bridge Proxy** | 9100/9101 | Node.js relay between Unix socket and WebSocket clients |
-| **Seurat** | 5179 | Sprite art pipeline: concept → chibi → pixel → animation frames |
 | **Level Designer** | 5173 | Tile painting, NPC/light/portal placement, AI level generation |
 | **Particle Designer** | 5176 | Visual EmitterConfig editor with live engine preview |
 | **Audio Composer** | 5177 | 4-layer interactive music editor with MusicGen AI |
@@ -291,8 +290,8 @@ docs/             Performance reports and tool documentation
 For M-series Macs with GPU remoting via krunkit:
 
 ```bash
-podman build -t vulkan-dev -f .devcontainer/Dockerfile .
-podman run --rm -it --device /dev/dri -v "$PWD":/workspace:Z --workdir /workspace vulkan-dev bash
+podman build -t gseurat-dev -f .devcontainer/Dockerfile .
+podman run --rm -it --device /dev/dri -v "$PWD":/workspace:Z --workdir /workspace gseurat-dev bash
 
 # Inside the container
 cmake --preset linux-debug && cmake --build --preset linux-debug

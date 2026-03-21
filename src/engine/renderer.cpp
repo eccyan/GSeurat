@@ -295,7 +295,7 @@ void Renderer::draw_scene(Scene& scene,
 
         // Background layers pass (rendered before tilemap, back-to-front by Z)
         // Override Z to a negative value so backgrounds sit behind everything
-        // in camera space. The HD-2D camera at z≈9.83 would otherwise make
+        // in camera space. The default camera at z≈9.83 would otherwise make
         // scene-JSON Z values (5-10) appear closer than entities at z=0.
         if (flags.parallax_backgrounds && !scene.background_layers().empty()) {
             auto cam_target = camera_.target();
