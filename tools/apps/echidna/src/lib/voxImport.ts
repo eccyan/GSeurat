@@ -76,14 +76,14 @@ function tryParseRawGrid(buffer: ArrayBuffer): VoxFile | null {
     ]);
   }
 
-  // Read voxels — storage order: Z-fastest, then X, then Y
-  // index = z + x*d + y*d*w.  0xFF (255) = empty.
+  // Read voxels — storage order: Z-fastest, then Y, then X
+  // index = x*(h*d) + y*d + z.  0xFF (255) = empty.
   // File axes: w=X(width), h=Y(depth/length), d=Z(height).
   const voxelMap = new Map<VoxelKey, Voxel>();
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
+  for (let x = 0; x < w; x++) {
+    for (let y = 0; y < h; y++) {
       for (let z = 0; z < d; z++) {
-        const idx = 12 + z + x * d + y * d * w;
+        const idx = 12 + x * (h * d) + y * d + z;
         const colorIndex = view.getUint8(idx);
         if (colorIndex === 0xFF) continue; // empty
         // Map to Echidna coords: X=x, Y(up)=z, Z(depth)=y
