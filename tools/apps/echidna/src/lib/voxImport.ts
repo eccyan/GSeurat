@@ -60,26 +60,30 @@ function tryParseRawGrid(buffer: ArrayBuffer): VoxFile | null {
   const expectedSize = 12 + voxelCount + 768;
   if (buffer.byteLength !== expectedSize) return null;
 
-  // Read palette (last 768 bytes)
+  // Read palette (last 768 bytes) — values are 6-bit (0-63), scale to 8-bit
   const paletteOffset = 12 + voxelCount;
   const palette: [number, number, number, number][] = [];
   for (let i = 0; i < 256; i++) {
+    const r6 = view.getUint8(paletteOffset + i * 3);
+    const g6 = view.getUint8(paletteOffset + i * 3 + 1);
+    const b6 = view.getUint8(paletteOffset + i * 3 + 2);
+    // Scale 6-bit (0-63) to 8-bit (0-255): multiply by 255/63 ≈ 4.048
     palette.push([
-      view.getUint8(paletteOffset + i * 3),
-      view.getUint8(paletteOffset + i * 3 + 1),
-      view.getUint8(paletteOffset + i * 3 + 2),
+      Math.round(r6 * 255 / 63),
+      Math.round(g6 * 255 / 63),
+      Math.round(b6 * 255 / 63),
       255,
     ]);
   }
 
-  // Read voxels
+  // Read voxels — index 0xFF (255) is empty in this format
   const voxelMap = new Map<VoxelKey, Voxel>();
   for (let x = 0; x < w; x++) {
     for (let y = 0; y < h; y++) {
       for (let z = 0; z < d; z++) {
         const idx = 12 + x + y * w + z * w * h;
         const colorIndex = view.getUint8(idx);
-        if (colorIndex === 0) continue; // empty
+        if (colorIndex === 0xFF) continue; // empty
         // Remap: raw grid (x, y, z) → Echidna (x, z, y) so Z becomes height
         const key = voxelKey(x, z, y);
         voxelMap.set(key, { color: [...palette[colorIndex]] });
