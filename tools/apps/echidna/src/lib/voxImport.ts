@@ -86,8 +86,8 @@ function tryParseRawGrid(buffer: ArrayBuffer): VoxFile | null {
         const idx = 12 + x * (h * d) + y * d + z;
         const colorIndex = view.getUint8(idx);
         if (colorIndex === 0xFF) continue; // empty
-        // Map to Echidna coords: X=x, Y(up)=z, Z(depth)=y
-        const key = voxelKey(x, z, y);
+        // Map to Echidna coords: X=x, Y(up)=(d-1-z) flipped, Z(depth)=y
+        const key = voxelKey(x, d - 1 - z, y);
         voxelMap.set(key, { color: [...palette[colorIndex]] });
       }
     }
