@@ -63,7 +63,13 @@ One demo executable is produced:
 
 | Executable | Description |
 |---|---|
-| `gseurat_demo` | GS viewer with visual effects, LOD, and chunk streaming |
+| `gseurat_demo` | GS viewer with visual effects, scene layers, and chunk streaming |
+
+The default scene includes procedural terrain with placed objects, collision grid, nav zones, and elevation. Load custom scenes with `--scene`:
+
+```bash
+./build/macos-release/gseurat_demo --scene assets/scenes/my_scene.json
+```
 
 ## Architecture
 
@@ -384,8 +390,12 @@ python3 scripts/generate_test_scene.py \
   --props-dir assets/props \
   --output assets/scenes/gs_layers_demo.json
 
-# Run the demo with generated scene
-./build/macos-release/gseurat_demo --scene assets/scenes/gs_layers_demo.json
+# The default gs_demo.json uses the generated test scene.
+# Regenerate it after modifying scripts:
+cp assets/scenes/gs_layers_demo.json assets/scenes/gs_demo.json
+
+# Run with a custom scene:
+./build/macos-release/gseurat_demo --scene path/to/scene.json
 ```
 
 ## Dev Container (Podman + krunkit)
