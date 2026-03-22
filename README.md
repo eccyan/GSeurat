@@ -266,12 +266,14 @@ cd tools/apps/level-designer && pnpm dev
 
 ## Testing
 
-Tests use `assert`-based validation (no framework). Each test file includes build instructions as comments.
+### C++ Engine Tests
+
+All 10 test suites are CMake targets, run via `ctest`:
 
 ```bash
-# Build and run all tests
-c++ -std=c++23 -I include tests/test_async_loader.cpp src/engine/async_loader.cpp -o build/test_async_loader
-./build/test_async_loader
+cmake --preset <platform>-debug
+cmake --build --preset <platform>-debug
+ctest --test-dir build/<platform>-debug --output-on-failure
 ```
 
 | Test Suite | Tests | What it covers |
@@ -286,6 +288,24 @@ c++ -std=c++23 -I include tests/test_async_loader.cpp src/engine/async_loader.cp
 | `test_gs_parallax_camera` | 6 | Camera configuration, Y-flip, smoothing convergence |
 | `test_screenshot` | 5 | State machine, BGRA→RGBA swizzle |
 | `test_character_data` | 12 | Character animation JSON loading |
+
+### TypeScript Tool Tests
+
+```bash
+cd tools && pnpm install
+pnpm --filter @gseurat/tests test:echidna-ply-export
+```
+
+| Test Suite | Assertions | What it covers |
+|---|---|---|
+| `echidna-ply-export` | 37 | PLY export with bone_index, SH color encoding, opacity, surface culling |
+
+### CI
+
+GitHub Actions runs three parallel jobs on every push/PR to main:
+- **Build** — C++ engine on Linux, Windows, macOS
+- **Test (C++)** — 10 engine test suites via ctest (ubuntu)
+- **Test (TypeScript)** — Tool tests via pnpm (ubuntu)
 
 See [tests/README.md](tests/README.md) for detailed build commands and test descriptions.
 
