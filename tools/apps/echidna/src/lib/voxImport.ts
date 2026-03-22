@@ -76,15 +76,16 @@ function tryParseRawGrid(buffer: ArrayBuffer): VoxFile | null {
     ]);
   }
 
-  // Read voxels — index 0xFF (255) is empty in this format
+  // Read voxels — column-major order: index = x*(h*d) + z*h + y
+  // 0xFF (255) is empty. Axes: w=X, h=Y (depth), d=Z (height).
   const voxelMap = new Map<VoxelKey, Voxel>();
   for (let x = 0; x < w; x++) {
-    for (let y = 0; y < h; y++) {
-      for (let z = 0; z < d; z++) {
-        const idx = 12 + x + y * w + z * w * h;
+    for (let z = 0; z < d; z++) {
+      for (let y = 0; y < h; y++) {
+        const idx = 12 + x * (h * d) + z * h + y;
         const colorIndex = view.getUint8(idx);
         if (colorIndex === 0xFF) continue; // empty
-        // Remap: raw grid (x, y, z) → Echidna (x, z, y) so Z becomes height
+        // Map to Echidna coords: X=x, Y(up)=z, Z(depth)=y
         const key = voxelKey(x, z, y);
         voxelMap.set(key, { color: [...palette[colorIndex]] });
       }
