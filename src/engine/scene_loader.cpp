@@ -122,7 +122,23 @@ SceneData SceneLoader::from_json(const nlohmann::json& j) {
         } else {
             grid.elevation.resize(total, 0.0f);
         }
+        if (col.contains("nav_zone")) {
+            const auto& zone_arr = col["nav_zone"];
+            grid.nav_zone.resize(zone_arr.size(), 0);
+            for (size_t i = 0; i < zone_arr.size(); ++i) {
+                grid.nav_zone[i] = zone_arr[i].get<uint8_t>();
+            }
+        } else {
+            grid.nav_zone.resize(total, 0);
+        }
         data.collision = std::move(grid);
+    }
+
+    // Navigation zone names
+    if (j.contains("nav_zone_names")) {
+        for (const auto& name : j["nav_zone_names"]) {
+            data.nav_zone_names.push_back(name.get<std::string>());
+        }
     }
 
     // Tilemap
@@ -451,6 +467,11 @@ nlohmann::json SceneLoader::to_json(const SceneData& data) {
             for (float e : grid.elevation) elev_arr.push_back(e);
             col["elevation"] = elev_arr;
         }
+        if (!grid.nav_zone.empty()) {
+            nlohmann::json zone_arr = nlohmann::json::array();
+            for (uint8_t z : grid.nav_zone) zone_arr.push_back(z);
+            col["nav_zone"] = zone_arr;
+        }
         j["collision"] = col;
     }
 
@@ -629,6 +650,11 @@ nlohmann::json SceneLoader::to_json(const SceneData& data) {
             objects.push_back(obj_j);
         }
         j["placed_objects"] = objects;
+    }
+
+    // Navigation zone names
+    if (!data.nav_zone_names.empty()) {
+        j["nav_zone_names"] = data.nav_zone_names;
     }
 
     // Weather

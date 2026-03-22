@@ -12,7 +12,8 @@ struct CollisionGrid {
     uint32_t height = 0;
     float cell_size = 1.0f;
     std::vector<bool> solid;
-    std::vector<float> elevation;  // per-cell ground height (Y value)
+    std::vector<float> elevation;       // per-cell ground height (Y value)
+    std::vector<uint8_t> nav_zone;      // per-cell navigation zone ID (0 = default)
 
     bool is_solid(uint32_t x, uint32_t y) const {
         if (x >= width || y >= height) return true;
@@ -35,6 +36,19 @@ struct CollisionGrid {
         if (x < width && y < height) {
             size_t idx = y * width + x;
             if (idx < elevation.size()) elevation[idx] = val;
+        }
+    }
+
+    uint8_t get_nav_zone(uint32_t x, uint32_t y) const {
+        if (x >= width || y >= height) return 0;
+        size_t idx = y * width + x;
+        return idx < nav_zone.size() ? nav_zone[idx] : 0;
+    }
+
+    void set_nav_zone(uint32_t x, uint32_t y, uint8_t zone) {
+        if (x < width && y < height) {
+            size_t idx = y * width + x;
+            if (idx < nav_zone.size()) nav_zone[idx] = zone;
         }
     }
 };

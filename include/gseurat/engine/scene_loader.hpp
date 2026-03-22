@@ -138,6 +138,9 @@ struct SceneData {
     std::vector<glm::vec3> torch_audio_positions;
     EmitterConfig footstep_emitter;
     EmitterConfig npc_aura_emitter;
+
+    // Navigation zone names (index 0 = "default", 1+ = named zones)
+    std::vector<std::string> nav_zone_names;
 };
 
 class SceneLoader {

@@ -71,6 +71,7 @@ CollisionGrid generate_collision_from_gaussians(
     size_t total = static_cast<size_t>(grid_width) * grid_height;
     grid.solid.resize(total, true);       // default: solid (no Gaussians = void)
     grid.elevation.resize(total, 0.0f);
+    grid.nav_zone.resize(total, 0);
 
     if (cloud.empty()) return grid;
 
