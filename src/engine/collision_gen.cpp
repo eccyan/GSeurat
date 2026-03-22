@@ -72,6 +72,11 @@ CollisionGrid generate_collision_from_gaussians(
     grid.solid.resize(total, true);       // default: solid (no Gaussians = void)
     grid.elevation.resize(total, 0.0f);
     grid.nav_zone.resize(total, 0);
+    grid.light_probe.resize(total, glm::vec3(0.5f));
+
+    // Accumulators for light probe averaging
+    std::vector<glm::vec3> color_sum(total, glm::vec3(0.0f));
+    std::vector<uint32_t> color_count(total, 0);
 
     if (cloud.empty()) return grid;
 
@@ -97,6 +102,10 @@ CollisionGrid generate_collision_from_gaussians(
         } else {
             grid.elevation[idx] = std::max(grid.elevation[idx], g.position.y);
         }
+
+        // Accumulate color for light probe
+        color_sum[idx] += g.color;
+        color_count[idx]++;
     }
 
     // Mark cells with steep slope as solid
@@ -121,6 +130,13 @@ CollisionGrid generate_collision_from_gaussians(
             check_neighbor(static_cast<int>(gx) + 1, static_cast<int>(gy));
             check_neighbor(static_cast<int>(gx), static_cast<int>(gy) - 1);
             check_neighbor(static_cast<int>(gx), static_cast<int>(gy) + 1);
+        }
+    }
+
+    // Compute light probes (average Gaussian color per cell)
+    for (size_t i = 0; i < total; ++i) {
+        if (color_count[i] > 0) {
+            grid.light_probe[i] = color_sum[i] / static_cast<float>(color_count[i]);
         }
     }
 

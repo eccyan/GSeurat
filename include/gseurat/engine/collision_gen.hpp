@@ -14,6 +14,7 @@ struct CollisionGrid {
     std::vector<bool> solid;
     std::vector<float> elevation;       // per-cell ground height (Y value)
     std::vector<uint8_t> nav_zone;      // per-cell navigation zone ID (0 = default)
+    std::vector<glm::vec3> light_probe;  // per-cell ambient color sampled from Gaussians
 
     bool is_solid(uint32_t x, uint32_t y) const {
         if (x >= width || y >= height) return true;
@@ -50,6 +51,12 @@ struct CollisionGrid {
             size_t idx = y * width + x;
             if (idx < nav_zone.size()) nav_zone[idx] = zone;
         }
+    }
+
+    glm::vec3 get_light_probe(uint32_t x, uint32_t y) const {
+        if (x >= width || y >= height) return glm::vec3(0.5f);
+        size_t idx = y * width + x;
+        return idx < light_probe.size() ? light_probe[idx] : glm::vec3(0.5f);
     }
 };
 

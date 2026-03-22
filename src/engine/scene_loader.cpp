@@ -131,6 +131,18 @@ SceneData SceneLoader::from_json(const nlohmann::json& j) {
         } else {
             grid.nav_zone.resize(total, 0);
         }
+        if (col.contains("light_probe")) {
+            const auto& lp_arr = col["light_probe"];
+            grid.light_probe.resize(lp_arr.size() / 3, glm::vec3(0.5f));
+            for (size_t i = 0; i < grid.light_probe.size(); ++i) {
+                grid.light_probe[i] = glm::vec3(
+                    lp_arr[i * 3].get<float>(),
+                    lp_arr[i * 3 + 1].get<float>(),
+                    lp_arr[i * 3 + 2].get<float>());
+            }
+        } else {
+            grid.light_probe.resize(total, glm::vec3(0.5f));
+        }
         data.collision = std::move(grid);
     }
 
@@ -471,6 +483,15 @@ nlohmann::json SceneLoader::to_json(const SceneData& data) {
             nlohmann::json zone_arr = nlohmann::json::array();
             for (uint8_t z : grid.nav_zone) zone_arr.push_back(z);
             col["nav_zone"] = zone_arr;
+        }
+        if (!grid.light_probe.empty()) {
+            nlohmann::json lp_arr = nlohmann::json::array();
+            for (const auto& lp : grid.light_probe) {
+                lp_arr.push_back(lp.x);
+                lp_arr.push_back(lp.y);
+                lp_arr.push_back(lp.z);
+            }
+            col["light_probe"] = lp_arr;
         }
         j["collision"] = col;
     }
