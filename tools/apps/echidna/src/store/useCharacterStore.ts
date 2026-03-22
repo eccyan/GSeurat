@@ -7,6 +7,9 @@ import type {
   ToolType,
   Snapshot,
   EchidnaFile,
+  AppMode,
+  AnimationClip,
+  AnimationKeyframe,
 } from './types.js';
 import { voxelKey, parseKey } from '../lib/voxelUtils.js';
 
@@ -24,7 +27,47 @@ function restoreSnapshot(snapshot: Snapshot): { voxels: Map<VoxelKey, Voxel>; ch
   };
 }
 
+/** Compute mirrored position for a given axis. */
+function mirrorPos(
+  x: number, y: number, z: number,
+  axis: 'x' | 'z' | null,
+  gridWidth: number,
+): [number, number, number] | null {
+  if (!axis) return null;
+  if (axis === 'x') return [gridWidth - 1 - x, y, z];
+  return [x, y, gridWidth - 1 - z];
+}
+
+/** Auto-generate part colors from HSL hue wheel. */
+function generatePartColors(parts: BodyPart[]): Record<string, [number, number, number]> {
+  const colors: Record<string, [number, number, number]> = {};
+  const total = parts.length;
+  for (let i = 0; i < total; i++) {
+    const hue = (i / total) * 360;
+    const s = 0.7, l = 0.55;
+    const c = (1 - Math.abs(2 * l - 1)) * s;
+    const x = c * (1 - Math.abs(((hue / 60) % 2) - 1));
+    const m = l - c / 2;
+    let r = 0, g = 0, b = 0;
+    if (hue < 60) { r = c; g = x; }
+    else if (hue < 120) { r = x; g = c; }
+    else if (hue < 180) { g = c; b = x; }
+    else if (hue < 240) { g = x; b = c; }
+    else if (hue < 300) { r = x; b = c; }
+    else { r = c; b = x; }
+    colors[parts[i].id] = [
+      Math.round((r + m) * 255),
+      Math.round((g + m) * 255),
+      Math.round((b + m) * 255),
+    ];
+  }
+  return colors;
+}
+
 export interface CharacterStoreState {
+  // App mode
+  mode: AppMode;
+
   // Voxels
   voxels: Map<VoxelKey, Voxel>;
   gridWidth: number;
@@ -46,10 +89,34 @@ export interface CharacterStoreState {
   // View
   showGrid: boolean;
   showGizmos: boolean;
+  yClip: number | null;
+
+  // Mirror
+  mirrorAxis: 'x' | 'z' | null;
+
+  // Part color coding
+  colorByPart: boolean;
+  partColors: Record<string, [number, number, number]>;
+
+  // Box selection
+  boxSelection: VoxelKey[] | null;
+
+  // Animation
+  animations: Record<string, AnimationClip>;
+  selectedAnimation: string | null;
+  playbackTime: number;
+  isPlaying: boolean;
+  playbackSpeed: number;
+
+  // File
+  currentFilename: string | null;
 
   // Undo / redo
   undoStack: Snapshot[];
   redoStack: Snapshot[];
+
+  // Actions – mode
+  setMode: (mode: AppMode) => void;
 
   // Actions – voxels
   pushUndo: () => void;
@@ -68,6 +135,16 @@ export interface CharacterStoreState {
   // Actions – view
   setShowGrid: (v: boolean) => void;
   setShowGizmos: (v: boolean) => void;
+  setYClip: (v: number | null) => void;
+
+  // Actions – mirror
+  setMirrorAxis: (axis: 'x' | 'z' | null) => void;
+
+  // Actions – part color coding
+  setColorByPart: (v: boolean) => void;
+
+  // Actions – box selection
+  setBoxSelection: (keys: VoxelKey[] | null) => void;
 
   // Actions – undo/redo
   undo: () => void;
@@ -88,13 +165,26 @@ export interface CharacterStoreState {
   setPreviewPose: (on: boolean) => void;
   importVoxModels: (models: { name: string; voxels: Map<VoxelKey, Voxel> }[]) => void;
 
+  // Actions – animation
+  addAnimation: (name: string) => void;
+  removeAnimation: (name: string) => void;
+  selectAnimation: (name: string | null) => void;
+  addKeyframe: (animName: string, keyframe: AnimationKeyframe) => void;
+  removeKeyframe: (animName: string, index: number) => void;
+  setPlaybackTime: (time: number) => void;
+  togglePlayback: () => void;
+  setPlaybackSpeed: (speed: number) => void;
+
   // Actions – file
   newCharacter: () => void;
   saveProject: () => EchidnaFile;
   loadProject: (data: EchidnaFile) => void;
+  setCurrentFilename: (name: string | null) => void;
 }
 
 export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
+  mode: 'build',
+
   voxels: new Map(),
   gridWidth: 32,
   gridDepth: 32,
@@ -112,9 +202,28 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
 
   showGrid: true,
   showGizmos: true,
+  yClip: null,
+
+  mirrorAxis: null,
+
+  colorByPart: false,
+  partColors: {},
+
+  boxSelection: null,
+
+  animations: {},
+  selectedAnimation: null,
+  playbackTime: 0,
+  isPlaying: false,
+  playbackSpeed: 1,
+
+  currentFilename: null,
 
   undoStack: [],
   redoStack: [],
+
+  // ── Mode ──
+  setMode: (mode) => set({ mode }),
 
   // ── Undo ──
   pushUndo: () => {
@@ -149,46 +258,59 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
     });
   },
 
-  // ── Voxel actions ──
+  // ── Voxel actions (with mirror support) ──
   placeVoxel: (x, y, z) => {
-    const { voxels, activeColor } = get();
+    const { voxels, activeColor, mirrorAxis, gridWidth } = get();
     const next = new Map(voxels);
     next.set(voxelKey(x, y, z), { color: [...activeColor] });
+    const m = mirrorPos(x, y, z, mirrorAxis, gridWidth);
+    if (m) next.set(voxelKey(m[0], m[1], m[2]), { color: [...activeColor] });
     set({ voxels: next });
   },
 
   placeVoxels: (positions) => {
-    const { voxels, activeColor } = get();
+    const { voxels, activeColor, mirrorAxis, gridWidth } = get();
     const next = new Map(voxels);
     for (const [x, y, z] of positions) {
       next.set(voxelKey(x, y, z), { color: [...activeColor] });
+      const m = mirrorPos(x, y, z, mirrorAxis, gridWidth);
+      if (m) next.set(voxelKey(m[0], m[1], m[2]), { color: [...activeColor] });
     }
     set({ voxels: next });
   },
 
   paintVoxel: (x, y, z) => {
-    const { voxels, activeColor } = get();
+    const { voxels, activeColor, mirrorAxis, gridWidth } = get();
     const key = voxelKey(x, y, z);
     if (!voxels.has(key)) return;
     const next = new Map(voxels);
     next.set(key, { color: [...activeColor] });
+    const m = mirrorPos(x, y, z, mirrorAxis, gridWidth);
+    if (m) {
+      const mk = voxelKey(m[0], m[1], m[2]);
+      if (next.has(mk)) next.set(mk, { color: [...activeColor] });
+    }
     set({ voxels: next });
   },
 
   eraseVoxel: (x, y, z) => {
-    const { voxels } = get();
+    const { voxels, mirrorAxis, gridWidth } = get();
     const key = voxelKey(x, y, z);
     if (!voxels.has(key)) return;
     const next = new Map(voxels);
     next.delete(key);
+    const m = mirrorPos(x, y, z, mirrorAxis, gridWidth);
+    if (m) next.delete(voxelKey(m[0], m[1], m[2]));
     set({ voxels: next });
   },
 
   eraseVoxels: (positions) => {
-    const { voxels } = get();
+    const { voxels, mirrorAxis, gridWidth } = get();
     const next = new Map(voxels);
     for (const [x, y, z] of positions) {
       next.delete(voxelKey(x, y, z));
+      const m = mirrorPos(x, y, z, mirrorAxis, gridWidth);
+      if (m) next.delete(voxelKey(m[0], m[1], m[2]));
     }
     set({ voxels: next });
   },
@@ -207,6 +329,19 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
   // ── View actions ──
   setShowGrid: (v) => set({ showGrid: v }),
   setShowGizmos: (v) => set({ showGizmos: v }),
+  setYClip: (v: number | null) => set({ yClip: v }),
+
+  // ── Mirror ──
+  setMirrorAxis: (axis) => set({ mirrorAxis: axis }),
+
+  // ── Part color coding ──
+  setColorByPart: (v) => {
+    const colors = v ? generatePartColors(get().characterParts) : {};
+    set({ colorByPart: v, partColors: colors });
+  },
+
+  // ── Box selection ──
+  setBoxSelection: (keys) => set({ boxSelection: keys }),
 
   // ── Character actions ──
   setCharacterName: (name) => set({ characterName: name }),
@@ -220,12 +355,16 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
       joint: [0, 0, 0],
       voxelKeys: [],
     };
-    set({ characterParts: [...parts, part], selectedPart: name });
+    const newParts = [...parts, part];
+    set({
+      characterParts: newParts,
+      selectedPart: name,
+      partColors: get().colorByPart ? generatePartColors(newParts) : get().partColors,
+    });
   },
 
   removePart: (id) => {
     const parts = get().characterParts.filter((p) => p.id !== id);
-    // Unparent children of removed part
     const updated = parts.map((p) => (p.parent === id ? { ...p, parent: null } : p));
     const poses = { ...get().characterPoses };
     for (const name of Object.keys(poses)) {
@@ -237,6 +376,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
       characterParts: updated,
       characterPoses: poses,
       selectedPart: get().selectedPart === id ? null : get().selectedPart,
+      partColors: get().colorByPart ? generatePartColors(updated) : get().partColors,
     });
   },
 
@@ -257,16 +397,26 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
   },
 
   assignVoxelsToPart: (keys, partId) => {
-    const keySet = new Set(keys);
+    const { mirrorAxis, gridWidth, voxels: voxelMap } = get();
+    const allKeys = [...keys];
+    if (mirrorAxis) {
+      for (const k of keys) {
+        const [x, y, z] = parseKey(k);
+        const m = mirrorPos(x, y, z, mirrorAxis, gridWidth);
+        if (m) {
+          const mk = voxelKey(m[0], m[1], m[2]);
+          if (voxelMap.has(mk) && !allKeys.includes(mk)) allKeys.push(mk);
+        }
+      }
+    }
+    const keySet = new Set(allKeys);
     set({
       characterParts: get().characterParts.map((p) => {
         if (p.id === partId) {
-          // Add keys not already assigned
           const existing = new Set(p.voxelKeys);
-          const merged = [...p.voxelKeys, ...keys.filter((k) => !existing.has(k))];
+          const merged = [...p.voxelKeys, ...allKeys.filter((k) => !existing.has(k))];
           return { ...p, voxelKeys: merged };
         }
-        // Remove these keys from other parts
         const filtered = p.voxelKeys.filter((k) => !keySet.has(k));
         return filtered.length !== p.voxelKeys.length ? { ...p, voxelKeys: filtered } : p;
       }),
@@ -308,13 +458,11 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
     const parts: BodyPart[] = [...get().characterParts];
 
     for (const model of models) {
-      // Merge voxels into the main voxel map
       const keys: VoxelKey[] = [];
       for (const [key, voxel] of model.voxels) {
         voxels.set(key, voxel);
         keys.push(key);
       }
-      // Create a body part for each model
       parts.push({
         id: model.name,
         parent: parts.length > 0 ? parts[0].id : null,
@@ -326,7 +474,51 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
     set({ voxels, characterParts: parts });
   },
 
+  // ── Animation actions ──
+  addAnimation: (name) => {
+    const anims = { ...get().animations };
+    if (!anims[name]) {
+      anims[name] = { name, keyframes: [], duration: 1 };
+    }
+    set({ animations: anims, selectedAnimation: name });
+  },
+
+  removeAnimation: (name) => {
+    const anims = { ...get().animations };
+    delete anims[name];
+    set({
+      animations: anims,
+      selectedAnimation: get().selectedAnimation === name ? null : get().selectedAnimation,
+    });
+  },
+
+  selectAnimation: (name) => set({ selectedAnimation: name }),
+
+  addKeyframe: (animName, keyframe) => {
+    const anims = { ...get().animations };
+    const clip = anims[animName];
+    if (!clip) return;
+    const keyframes = [...clip.keyframes, keyframe].sort((a, b) => a.time - b.time);
+    anims[animName] = { ...clip, keyframes };
+    set({ animations: anims });
+  },
+
+  removeKeyframe: (animName, index) => {
+    const anims = { ...get().animations };
+    const clip = anims[animName];
+    if (!clip) return;
+    const keyframes = clip.keyframes.filter((_, i) => i !== index);
+    anims[animName] = { ...clip, keyframes };
+    set({ animations: anims });
+  },
+
+  setPlaybackTime: (time) => set({ playbackTime: time }),
+  togglePlayback: () => set({ isPlaying: !get().isPlaying }),
+  setPlaybackSpeed: (speed) => set({ playbackSpeed: speed }),
+
   // ── File actions ──
+  setCurrentFilename: (name) => set({ currentFilename: name }),
+
   newCharacter: () => set({
     voxels: new Map(),
     gridWidth: 32,
@@ -339,6 +531,15 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
     previewPose: false,
     undoStack: [],
     redoStack: [],
+    animations: {},
+    selectedAnimation: null,
+    playbackTime: 0,
+    isPlaying: false,
+    currentFilename: null,
+    boxSelection: null,
+    mirrorAxis: null,
+    colorByPart: false,
+    partColors: {},
   }),
 
   saveProject: () => {
@@ -356,6 +557,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
       voxels: voxelArr,
       parts: s.characterParts,
       poses: s.characterPoses,
+      animations: Object.keys(s.animations).length > 0 ? s.animations : undefined,
     };
   },
 
@@ -371,11 +573,16 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
       characterName: data.characterName,
       characterParts: data.parts,
       characterPoses: data.poses,
+      animations: data.animations ?? {},
       selectedPart: null,
       selectedPose: null,
+      selectedAnimation: null,
       previewPose: false,
       undoStack: [],
       redoStack: [],
+      playbackTime: 0,
+      isPlaying: false,
+      boxSelection: null,
     });
   },
 }));

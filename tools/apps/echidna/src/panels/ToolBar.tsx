@@ -8,6 +8,7 @@ const tools: { id: ToolType; label: string; key: string }[] = [
   { id: 'erase', label: 'Erase', key: 'E' },
   { id: 'eyedropper', label: 'Eyedrop', key: 'I' },
   { id: 'assign_part', label: 'Assign Part', key: 'A' },
+  { id: 'box_select', label: 'Box Select', key: 'S' },
 ];
 
 const presetColors: [number, number, number, number][] = [
@@ -102,10 +103,6 @@ export function ToolBar() {
   const setTool = useCharacterStore((s) => s.setTool);
   const setActiveColor = useCharacterStore((s) => s.setActiveColor);
   const setBrushSize = useCharacterStore((s) => s.setBrushSize);
-  const showGrid = useCharacterStore((s) => s.showGrid);
-  const showGizmos = useCharacterStore((s) => s.showGizmos);
-  const setShowGrid = useCharacterStore((s) => s.setShowGrid);
-  const setShowGizmos = useCharacterStore((s) => s.setShowGizmos);
   const selectedPart = useCharacterStore((s) => s.selectedPart);
   const characterParts = useCharacterStore((s) => s.characterParts);
   const setSelectedPart = useCharacterStore((s) => s.setSelectedPart);
@@ -204,18 +201,6 @@ export function ToolBar() {
           </select>
         </div>
       )}
-
-      <div style={styles.section}>
-        <span style={styles.label}>View</span>
-        <label style={{ ...styles.row, fontSize: 13, cursor: 'pointer' }}>
-          <input type="checkbox" checked={showGrid} onChange={(e) => setShowGrid(e.target.checked)} />
-          Grid
-        </label>
-        <label style={{ ...styles.row, fontSize: 13, cursor: 'pointer' }}>
-          <input type="checkbox" checked={showGizmos} onChange={(e) => setShowGizmos(e.target.checked)} />
-          Gizmos
-        </label>
-      </div>
     </div>
   );
 }

@@ -5,6 +5,7 @@ import { VoxelMesh } from './VoxelMesh.js';
 import { GroundPlane } from './GroundPlane.js';
 import { GhostVoxel } from './GhostVoxel.js';
 import { JointGizmos } from './JointGizmos.js';
+import { MirrorPlane } from './MirrorPlane.js';
 import { useCharacterStore } from '../store/useCharacterStore.js';
 
 export function CharacterViewport() {
@@ -41,6 +42,7 @@ export function CharacterViewport() {
       <GroundPlane />
       <GhostVoxel />
       <JointGizmos />
+      <MirrorPlane />
 
       <OrbitControls
         target={[gridWidth / 2, 0, gridDepth / 2]}
