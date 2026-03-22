@@ -194,10 +194,26 @@ export function App() {
     <div style={styles.root}>
       <MenuBar />
       <div style={styles.body}>
-        {mode === 'build'
-          ? <BuildModeLayout leftWidth={leftWidth} rightWidth={rightWidth} onLeftDrag={handleLeftDrag} onRightDrag={handleRightDrag} />
-          : <AnimateModeLayout leftWidth={leftWidth} rightWidth={rightWidth} onLeftDrag={handleLeftDrag} onRightDrag={handleRightDrag} />
-        }
+        {/* Left panel */}
+        <div style={{ width: leftWidth, flexShrink: 0, display: 'flex', flexDirection: 'column' as const, overflow: 'hidden', background: '#1e1e3a', borderRight: '1px solid #333' }}>
+          <ModeTabs />
+          {mode === 'build' ? <ToolBar /> : <AnimateLeftPanel />}
+        </div>
+        <ResizeHandle onDrag={handleLeftDrag} />
+
+        {/* Center panel */}
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column' as const, overflow: 'hidden' }}>
+          <div style={styles.viewport}>
+            <CharacterViewport />
+          </div>
+          {mode === 'animate' && <Timeline />}
+        </div>
+        <ResizeHandle onDrag={handleRightDrag} />
+
+        {/* Right panel */}
+        <div style={{ ...styles.inspector, width: rightWidth }}>
+          {mode === 'build' ? <BuildPanel /> : <AnimateRightPanel />}
+        </div>
       </div>
     </div>
   );
@@ -250,50 +266,3 @@ function ModeTabs() {
   );
 }
 
-interface LayoutProps {
-  leftWidth: number;
-  rightWidth: number;
-  onLeftDrag: (delta: number) => void;
-  onRightDrag: (delta: number) => void;
-}
-
-function BuildModeLayout({ leftWidth, rightWidth, onLeftDrag, onRightDrag }: LayoutProps) {
-  return (
-    <>
-      <div style={{ width: leftWidth, flexShrink: 0, display: 'flex', flexDirection: 'column' as const, overflow: 'hidden' }}>
-        <ModeTabs />
-        <ToolBar />
-      </div>
-      <ResizeHandle onDrag={onLeftDrag} />
-      <div style={styles.viewport}>
-        <CharacterViewport />
-      </div>
-      <ResizeHandle onDrag={onRightDrag} />
-      <div style={{ ...styles.inspector, width: rightWidth }}>
-        <BuildPanel />
-      </div>
-    </>
-  );
-}
-
-function AnimateModeLayout({ leftWidth, rightWidth, onLeftDrag, onRightDrag }: LayoutProps) {
-  return (
-    <>
-      <div style={{ width: leftWidth, flexShrink: 0, display: 'flex', flexDirection: 'column' as const, overflow: 'hidden' }}>
-        <ModeTabs />
-        <AnimateLeftPanel />
-      </div>
-      <ResizeHandle onDrag={onLeftDrag} />
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column' as const, overflow: 'hidden' }}>
-        <div style={styles.viewport}>
-          <CharacterViewport />
-        </div>
-        <Timeline />
-      </div>
-      <ResizeHandle onDrag={onRightDrag} />
-      <div style={{ ...styles.inspector, width: rightWidth }}>
-        <AnimateRightPanel />
-      </div>
-    </>
-  );
-}
