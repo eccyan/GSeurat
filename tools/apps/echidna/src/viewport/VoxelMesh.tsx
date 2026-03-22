@@ -321,6 +321,19 @@ export function VoxelMesh() {
     const store = useCharacterStore.getState();
     const normal = e.face?.normal;
 
+    // In Animate mode, clicking always assigns voxels to the selected bone
+    if (store.mode === 'animate') {
+      const partId = store.selectedPart;
+      if (!partId) return;
+      store.pushUndo();
+      const positions = brushPositions(x, y, z, store.brushSize);
+      const keys = positions
+        .filter(([px, py, pz]) => store.voxels.has(voxelKey(px, py, pz)))
+        .map(([px, py, pz]) => voxelKey(px, py, pz));
+      store.assignVoxelsToPart(keys, partId);
+      return;
+    }
+
     switch (store.activeTool) {
       case 'place': {
         if (!normal) return;
