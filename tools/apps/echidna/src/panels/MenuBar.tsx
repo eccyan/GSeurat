@@ -68,28 +68,6 @@ const styles: Record<string, React.CSSProperties> = {
     margin: '4px 8px',
   },
   spacer: { flex: 1 },
-  modeTab: {
-    padding: '4px 16px',
-    border: '1px solid #444',
-    color: '#ccc',
-    cursor: 'pointer',
-    fontSize: 12,
-    fontWeight: 600,
-    letterSpacing: 1,
-    background: 'transparent',
-  },
-  modeTabLeft: {
-    borderRadius: '4px 0 0 4px',
-    borderRight: 'none',
-  },
-  modeTabRight: {
-    borderRadius: '0 4px 4px 0',
-  },
-  modeTabActive: {
-    background: '#3a3a6a',
-    borderColor: '#77f',
-    color: '#fff',
-  },
   title: {
     fontSize: 12,
     color: '#666',
@@ -179,8 +157,6 @@ export function MenuBar() {
   const voxRef = useRef<HTMLInputElement>(null);
   const [openMenu, setOpenMenu] = useState<string | null>(null);
 
-  const mode = useCharacterStore((s) => s.mode);
-  const setMode = useCharacterStore((s) => s.setMode);
   const showGrid = useCharacterStore((s) => s.showGrid);
   const showGizmos = useCharacterStore((s) => s.showGizmos);
 
@@ -300,29 +276,6 @@ export function MenuBar() {
       />
 
       <div style={styles.spacer} />
-
-      <div style={{ display: 'flex' }}>
-        <button
-          style={{
-            ...styles.modeTab,
-            ...styles.modeTabLeft,
-            ...(mode === 'build' ? styles.modeTabActive : {}),
-          }}
-          onClick={() => setMode('build')}
-        >
-          BUILD
-        </button>
-        <button
-          style={{
-            ...styles.modeTab,
-            ...styles.modeTabRight,
-            ...(mode === 'animate' ? styles.modeTabActive : {}),
-          }}
-          onClick={() => setMode('animate')}
-        >
-          ANIMATE
-        </button>
-      </div>
 
       <span style={styles.title}>Echidna</span>
 

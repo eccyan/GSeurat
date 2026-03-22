@@ -7,8 +7,6 @@ const tools: { id: ToolType; label: string; key: string }[] = [
   { id: 'paint', label: 'Paint', key: 'B' },
   { id: 'erase', label: 'Erase', key: 'E' },
   { id: 'eyedropper', label: 'Eyedrop', key: 'I' },
-  { id: 'assign_part', label: 'Assign Part', key: 'A' },
-  { id: 'box_select', label: 'Box Select', key: 'S' },
 ];
 
 const presetColors: [number, number, number, number][] = [

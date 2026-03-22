@@ -2,8 +2,6 @@ import React, { useEffect } from 'react';
 import { CharacterViewport } from './viewport/CharacterViewport.js';
 import { MenuBar } from './panels/MenuBar.js';
 import { ToolBar } from './panels/ToolBar.js';
-import { PartsPanel } from './panels/PartsPanel.js';
-import { PosePanel } from './panels/PosePanel.js';
 import { BuildPanel } from './panels/BuildPanel.js';
 import { AnimateLeftPanel } from './panels/AnimateLeftPanel.js';
 import { AnimateRightPanel } from './panels/AnimateRightPanel.js';
@@ -48,11 +46,14 @@ const styles: Record<string, React.CSSProperties> = {
   },
 };
 
-const toolKeys: Record<string, ToolType> = {
+const buildToolKeys: Record<string, ToolType> = {
   v: 'place',
   b: 'paint',
   e: 'erase',
   i: 'eyedropper',
+};
+
+const animateToolKeys: Record<string, ToolType> = {
   a: 'assign_part',
   s: 'box_select',
 };
@@ -120,7 +121,8 @@ export function App() {
         return;
       }
 
-      const tool = toolKeys[e.key.toLowerCase()];
+      const toolMap = store.mode === 'build' ? buildToolKeys : { ...buildToolKeys, ...animateToolKeys };
+      const tool = toolMap[e.key.toLowerCase()];
       if (tool) {
         store.setTool(tool);
         return;
@@ -147,6 +149,53 @@ export function App() {
   );
 }
 
+const modeTabStyles: Record<string, React.CSSProperties> = {
+  container: {
+    display: 'flex',
+    borderBottom: '1px solid #333',
+    flexShrink: 0,
+  },
+  tab: {
+    flex: 1,
+    padding: '8px 0',
+    border: 'none',
+    background: 'transparent',
+    color: '#888',
+    cursor: 'pointer',
+    fontSize: 12,
+    fontWeight: 600,
+    textAlign: 'center',
+    letterSpacing: 1,
+  },
+  tabActive: {
+    color: '#fff',
+    background: '#2a2a4a',
+    borderBottom: '2px solid #77f',
+  },
+};
+
+function ModeTabs() {
+  const mode = useCharacterStore((s) => s.mode);
+  const setMode = useCharacterStore((s) => s.setMode);
+
+  return (
+    <div style={modeTabStyles.container}>
+      <button
+        style={{ ...modeTabStyles.tab, ...(mode === 'build' ? modeTabStyles.tabActive : {}) }}
+        onClick={() => setMode('build')}
+      >
+        BUILD
+      </button>
+      <button
+        style={{ ...modeTabStyles.tab, ...(mode === 'animate' ? modeTabStyles.tabActive : {}) }}
+        onClick={() => setMode('animate')}
+      >
+        ANIMATE
+      </button>
+    </div>
+  );
+}
+
 function BuildModeLayout() {
   return (
     <>
@@ -155,13 +204,8 @@ function BuildModeLayout() {
         <CharacterViewport />
       </div>
       <div style={styles.inspector}>
-        <div style={styles.inspectorSection}>
-          <PartsPanel />
-        </div>
-        <div style={styles.inspectorSection}>
-          <PosePanel />
-        </div>
-        <div style={styles.inspectorSection}>
+        <ModeTabs />
+        <div style={{ padding: 12, overflowY: 'auto', flex: 1 }}>
           <BuildPanel />
         </div>
       </div>
@@ -179,7 +223,10 @@ function AnimateModeLayout() {
         </div>
         <Timeline />
       </div>
-      <AnimateRightPanel />
+      <div style={styles.inspector}>
+        <ModeTabs />
+        <AnimateRightPanel />
+      </div>
     </>
   );
 }
