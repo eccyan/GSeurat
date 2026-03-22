@@ -163,22 +163,55 @@ Engine: PLY load → bone_index per Gaussian → preprocess shader → skeletal 
 - Bone 0 = identity (map Gaussians pass through untouched)
 - Rigid body part animation (action-figure style, no smooth skinning)
 
+### Scene Composition (PlacedObjects)
+
+Scenes are composed from separate PLY files — terrain, props, and characters authored independently:
+
+```
+Bricklayer (terrain.ply) + Echidna (character.ply) + props (tree.ply, rock.ply)
+                          ↓
+                   scene.json (placed_objects references)
+                          ↓
+              Engine: merge static PLYs at load, animate characters separately
+```
+
+- **Static objects** (is_static=true): merged into the terrain cloud at load time
+- **Animated objects** (with character_manifest): rendered as separate GS passes with bone transforms
+
+### Scene Layers
+
+The `CollisionGrid` provides gameplay metadata overlaid on the GS terrain:
+
+| Layer | Type | Purpose |
+|-------|------|---------|
+| `solid` | bool[] | Walkable/blocked per cell |
+| `elevation` | float[] | Ground height (Y) per cell — for entity placement |
+| `nav_zone` | uint8[] | Named regions (town, forest, etc.) for AI behavior |
+| `light_probe` | vec3[] | Ambient color sampled from Gaussians — for entity lighting |
+
+Auto-generated from Gaussian data via `generate_collision_from_gaussians()`, or painted manually in Bricklayer.
+
 ### Scene Format
 
 ```json
 {
   "gaussian_splat": {
-    "ply_file": "maps/map.ply",
-    "camera": { "position": [0, 5, 10], "target": [0, 0, 0], "fov": 60 },
-    "render_width": 320,
-    "render_height": 240,
-    "parallax": { "azimuth_range": 0.15, "parallax_strength": 1.0 }
+    "ply_file": "assets/maps/terrain.ply",
+    "camera": { "position": [32, 30, 80], "target": [32, 0, 32], "fov": 45 },
+    "render_width": 320, "render_height": 240
   },
-  "collision": { "width": 16, "height": 16, "cell_size": 1.0, "solid": [0,1,...] },
-  "ambient_color": [0.25, 0.28, 0.45, 1.0],
-  "player_position": [3.0, 2.0, 0.0],
-  "npcs": [{ "name": "guard", "position": [5, 3, 0], "dialog": {...} }],
-  "portals": [{ "position": [0, 7], "target_scene": "dungeon.json" }]
+  "placed_objects": [
+    { "id": "house", "ply_file": "assets/props/house.ply",
+      "position": [32, 0, 32], "rotation": [0, 0, 0], "scale": 1.0, "is_static": true },
+    { "id": "tree_1", "ply_file": "assets/props/tree.ply",
+      "position": [20, 0, 25], "rotation": [0, 45, 0], "scale": 1.0, "is_static": true }
+  ],
+  "collision": {
+    "width": 64, "height": 64, "cell_size": 1.0,
+    "solid": [...], "elevation": [...], "nav_zone": [...]
+  },
+  "nav_zone_names": ["default", "town", "forest"],
+  "ambient_color": [0.8, 0.85, 0.95, 1.0]
 }
 ```
 
@@ -252,7 +285,7 @@ Engine (Vulkan) ←→ Unix Socket ←→ Bridge Proxy (ws://localhost:9100) ←
 | **Audio Composer** | 5177 | 4-layer interactive music editor with MusicGen AI |
 | **SFX Designer** | 5178 | Waveform editor, procedural synthesis, AI SFX generation |
 | **Echidna** | 5179 | Voxel character editor with body parts, bone posing, .vox import, PLY export |
-| **Bricklayer** | 5180 | 3D voxel map editor with depth estimation and PLY export |
+| **Bricklayer** | 5180 | 3D voxel map editor with collision grid, nav zones, placed objects, PLY export |
 
 ```bash
 # Prerequisites: Node.js 18+, pnpm
@@ -321,13 +354,38 @@ include/
     engine/       Engine headers
     demo/         Demo app headers
 shaders/          GLSL shaders (compiled to SPIR-V at build time)
-assets/           Game assets (scenes, textures, maps)
+assets/
+  maps/           Terrain PLY files
+  props/          Prop PLY files (tree, rock, house)
+  scenes/         Scene JSON files
 tests/            C++ integration tests (assert-based)
+scripts/          Python utilities for test data generation
 tools/            Web-based creative tooling ecosystem (TypeScript/React)
   packages/       Shared libraries (engine-client, asset-types, ai-providers, ui-kit)
   apps/           Tool applications (bridge, level-designer, echidna, bricklayer, etc.)
 docs/             Performance reports and tool documentation
 .devcontainer/    Container development environment
+```
+
+### Test Data Generation
+
+Python scripts for generating procedural PLY test assets (no external dependencies):
+
+```bash
+# Generate terrain (rolling hills, 64x64 grid)
+python3 scripts/generate_test_terrain.py --output assets/maps/test_terrain.ply
+
+# Generate props (tree, rock, house)
+python3 scripts/generate_test_props.py --output-dir assets/props
+
+# Generate complete scene (terrain + placed objects + collision grid + nav zones)
+python3 scripts/generate_test_scene.py \
+  --terrain assets/maps/test_terrain.ply \
+  --props-dir assets/props \
+  --output assets/scenes/gs_layers_demo.json
+
+# Run the demo with generated scene
+./build/macos-release/gseurat_demo --scene assets/scenes/gs_layers_demo.json
 ```
 
 ## Dev Container (Podman + krunkit)
