@@ -19,7 +19,8 @@
     "test:bridge-routing": "node --import tsx/esm --conditions source src/bridge-routing.test.ts",
     "test:remote-commands": "node --import tsx/esm --conditions source src/remote-commands.test.ts",
     "test:normal-map": "node --import tsx/esm --conditions source src/normal-map.test.ts",
-    "test:pose-templates": "node --import tsx/esm --conditions source src/pose-templates.test.ts"
+    "test:pose-templates": "node --import tsx/esm --conditions source src/pose-templates.test.ts",
+    "test:echidna-ply-export": "node --import tsx/esm --conditions source src/echidna-ply-export.test.ts"
   },
   "dependencies": {
     "@gseurat/test-harness": "workspace:*",
