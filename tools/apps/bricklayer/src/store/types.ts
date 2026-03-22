@@ -143,7 +143,8 @@ export type InspectorTab =
   | 'entities'
   | 'objects'
   | 'backgrounds'
-  | 'gaussian';
+  | 'gaussian'
+  | 'nav_zone';
 
 export interface PlacedObjectData {
   id: string;
@@ -155,6 +156,15 @@ export interface PlacedObjectData {
   character_manifest: string;
 }
 
+export interface CollisionGridData {
+  width: number;
+  height: number;
+  cell_size: number;
+  solid: boolean[];         // row-major walkability
+  elevation: number[];      // per-cell ground height
+  nav_zone: number[];       // per-cell zone ID (0=default)
+}
+
 export interface SelectedEntity {
   type: string;
   id: string;
@@ -162,7 +172,7 @@ export interface SelectedEntity {
 
 export interface Snapshot {
   voxels: [VoxelKey, Voxel][];
-  collisionGrid: string[];
+  collisionGridData: CollisionGridData | null;
 }
 
 export interface BricklayerFile {
@@ -170,7 +180,9 @@ export interface BricklayerFile {
   gridWidth: number;
   gridDepth: number;
   voxels: { x: number; y: number; z: number; r: number; g: number; b: number; a: number }[];
-  collision: string[];
+  collision: string[];  // legacy format
+  collisionGridData?: CollisionGridData;
+  nav_zone_names?: string[];
   scene: {
     ambientColor: [number, number, number, number];
     staticLights: StaticLight[];

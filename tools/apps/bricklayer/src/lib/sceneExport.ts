@@ -117,13 +117,16 @@ export function exportSceneJson(state: SceneStoreState): object {
     }));
   }
 
-  if (state.collisionGrid.size > 0) {
-    const cells: { x: number; z: number }[] = [];
-    for (const key of state.collisionGrid) {
-      const [x, z] = key.split(',').map(Number);
-      cells.push({ x, z });
-    }
-    scene.collision = { cells };
+  if (state.collisionGridData) {
+    const g = state.collisionGridData;
+    scene.collision = {
+      width: g.width,
+      height: g.height,
+      cell_size: g.cell_size,
+      solid: g.solid,
+      elevation: g.elevation,
+      nav_zone: g.nav_zone,
+    };
   }
 
   return scene;

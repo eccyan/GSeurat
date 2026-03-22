@@ -17,6 +17,7 @@ import type {
   SelectedEntity,
   Snapshot,
   BricklayerFile,
+  CollisionGridData,
 } from './types.js';
 import { voxelKey, parseKey, floodFill3D, brushPositions } from '../lib/voxelUtils.js';
 
@@ -92,17 +93,29 @@ function defaultPlayer(): PlayerData {
   };
 }
 
-function makeSnapshot(voxels: Map<VoxelKey, Voxel>, collisionGrid: Set<string>): Snapshot {
+function cloneCollisionGrid(g: CollisionGridData | null): CollisionGridData | null {
+  if (!g) return null;
   return {
-    voxels: Array.from(voxels.entries()),
-    collisionGrid: Array.from(collisionGrid),
+    width: g.width,
+    height: g.height,
+    cell_size: g.cell_size,
+    solid: [...g.solid],
+    elevation: [...g.elevation],
+    nav_zone: [...g.nav_zone],
   };
 }
 
-function restoreSnapshot(snapshot: Snapshot): { voxels: Map<VoxelKey, Voxel>; collisionGrid: Set<string> } {
+function makeSnapshot(voxels: Map<VoxelKey, Voxel>, collisionGridData: CollisionGridData | null): Snapshot {
+  return {
+    voxels: Array.from(voxels.entries()),
+    collisionGridData: cloneCollisionGrid(collisionGridData),
+  };
+}
+
+function restoreSnapshot(snapshot: Snapshot): { voxels: Map<VoxelKey, Voxel>; collisionGridData: CollisionGridData | null } {
   return {
     voxels: new Map(snapshot.voxels),
-    collisionGrid: new Set(snapshot.collisionGrid),
+    collisionGridData: cloneCollisionGrid(snapshot.collisionGridData),
   };
 }
 
@@ -138,7 +151,8 @@ export interface SceneStoreState {
   weather: WeatherData;
   dayNight: DayNightData;
   gaussianSplat: GaussianSplatConfig;
-  collisionGrid: Set<string>;
+  collisionGridData: CollisionGridData | null;
+  navZoneNames: string[];
 
   // Editor state
   selectedEntity: SelectedEntity | null;
@@ -195,8 +209,12 @@ export interface SceneStoreState {
   setWeather: (w: Partial<WeatherData>) => void;
   setDayNight: (d: Partial<DayNightData>) => void;
   setGaussianSplat: (g: Partial<GaussianSplatConfig>) => void;
-  toggleCollision: (x: number, z: number) => void;
-  autoGenerateCollision: () => void;
+  initCollisionGrid: (width: number, height: number, cellSize: number) => void;
+  toggleCellSolid: (x: number, z: number) => void;
+  setCellElevation: (x: number, z: number, value: number) => void;
+  setCellNavZone: (x: number, z: number, zone: number) => void;
+  addNavZoneName: (name: string) => void;
+  removeNavZoneName: (index: number) => void;
 
   // Actions – editor
   setSelectedEntity: (e: SelectedEntity | null) => void;
@@ -240,7 +258,8 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
   weather: defaultWeather(),
   dayNight: defaultDayNight(),
   gaussianSplat: defaultGaussianSplat(),
-  collisionGrid: new Set(),
+  collisionGridData: null,
+  navZoneNames: [],
 
   selectedEntity: null,
   inspectorTab: 'scene',
@@ -253,15 +272,15 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
 
   // ── Undo ──
   pushUndo: () => {
-    const { voxels, collisionGrid, undoStack } = get();
-    const snap = makeSnapshot(voxels, collisionGrid);
+    const { voxels, collisionGridData, undoStack } = get();
+    const snap = makeSnapshot(voxels, collisionGridData);
     set({ undoStack: [...undoStack.slice(-49), snap], redoStack: [] });
   },
 
   undo: () => {
-    const { undoStack, voxels, collisionGrid } = get();
+    const { undoStack, voxels, collisionGridData } = get();
     if (undoStack.length === 0) return;
-    const current = makeSnapshot(voxels, collisionGrid);
+    const current = makeSnapshot(voxels, collisionGridData);
     const prev = undoStack[undoStack.length - 1];
     const restored = restoreSnapshot(prev);
     set({
@@ -272,9 +291,9 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
   },
 
   redo: () => {
-    const { redoStack, voxels, collisionGrid } = get();
+    const { redoStack, voxels, collisionGridData } = get();
     if (redoStack.length === 0) return;
-    const current = makeSnapshot(voxels, collisionGrid);
+    const current = makeSnapshot(voxels, collisionGridData);
     const next = redoStack[redoStack.length - 1];
     const restored = restoreSnapshot(next);
     set({
@@ -498,26 +517,56 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
   setDayNight: (d) => set({ dayNight: { ...get().dayNight, ...d } }),
   setGaussianSplat: (g) => set({ gaussianSplat: { ...get().gaussianSplat, ...g } }),
 
-  toggleCollision: (x, z) => {
-    const { collisionGrid } = get();
-    const next = new Set(collisionGrid);
-    const key = `${x},${z}`;
-    if (next.has(key)) {
-      next.delete(key);
-    } else {
-      next.add(key);
-    }
-    set({ collisionGrid: next });
+  initCollisionGrid: (width, height, cellSize) => {
+    const count = width * height;
+    set({
+      collisionGridData: {
+        width,
+        height,
+        cell_size: cellSize,
+        solid: new Array(count).fill(false),
+        elevation: new Array(count).fill(0),
+        nav_zone: new Array(count).fill(0),
+      },
+    });
   },
 
-  autoGenerateCollision: () => {
-    const { voxels } = get();
-    const occupied = new Set<string>();
-    for (const key of voxels.keys()) {
-      const [x, , z] = parseKey(key);
-      occupied.add(`${x},${z}`);
-    }
-    set({ collisionGrid: occupied });
+  toggleCellSolid: (x, z) => {
+    const { collisionGridData } = get();
+    if (!collisionGridData) return;
+    const idx = z * collisionGridData.width + x;
+    if (idx < 0 || idx >= collisionGridData.solid.length) return;
+    const solid = [...collisionGridData.solid];
+    solid[idx] = !solid[idx];
+    set({ collisionGridData: { ...collisionGridData, solid } });
+  },
+
+  setCellElevation: (x, z, value) => {
+    const { collisionGridData } = get();
+    if (!collisionGridData) return;
+    const idx = z * collisionGridData.width + x;
+    if (idx < 0 || idx >= collisionGridData.elevation.length) return;
+    const elevation = [...collisionGridData.elevation];
+    elevation[idx] = value;
+    set({ collisionGridData: { ...collisionGridData, elevation } });
+  },
+
+  setCellNavZone: (x, z, zone) => {
+    const { collisionGridData } = get();
+    if (!collisionGridData) return;
+    const idx = z * collisionGridData.width + x;
+    if (idx < 0 || idx >= collisionGridData.nav_zone.length) return;
+    const nav_zone = [...collisionGridData.nav_zone];
+    nav_zone[idx] = zone;
+    set({ collisionGridData: { ...collisionGridData, nav_zone } });
+  },
+
+  addNavZoneName: (name) => {
+    set({ navZoneNames: [...get().navZoneNames, name] });
+  },
+
+  removeNavZoneName: (index) => {
+    set({ navZoneNames: get().navZoneNames.filter((_, i) => i !== index) });
   },
 
   // ── Editor actions ──
@@ -532,7 +581,8 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
     voxels: new Map(),
     gridWidth: width,
     gridDepth: depth,
-    collisionGrid: new Set(),
+    collisionGridData: null,
+    navZoneNames: [],
     staticLights: [],
     npcs: [],
     portals: [],
@@ -632,7 +682,9 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
       gridWidth: s.gridWidth,
       gridDepth: s.gridDepth,
       voxels: voxelArr,
-      collision: Array.from(s.collisionGrid),
+      collision: [],
+      collisionGridData: s.collisionGridData ?? undefined,
+      nav_zone_names: s.navZoneNames.length > 0 ? s.navZoneNames : undefined,
       scene: {
         ambientColor: s.ambientColor,
         staticLights: s.staticLights,
@@ -661,7 +713,8 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
       voxels,
       gridWidth: data.gridWidth,
       gridDepth: data.gridDepth,
-      collisionGrid: new Set(data.collision),
+      collisionGridData: data.collisionGridData ?? null,
+      navZoneNames: data.nav_zone_names ?? [],
       ambientColor: data.scene.ambientColor,
       staticLights: data.scene.staticLights,
       npcs: data.scene.npcs,

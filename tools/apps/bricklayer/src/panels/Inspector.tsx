@@ -9,6 +9,7 @@ import { EntitiesTab } from './EntitiesTab.js';
 import { BackgroundTab } from './BackgroundTab.js';
 import { GaussianTab } from './GaussianTab.js';
 import { ObjectsTab } from './ObjectsTab.js';
+import { NavZoneTab } from './NavZoneTab.js';
 
 const tabs: { id: InspectorTab; label: string }[] = [
   { id: 'scene', label: 'Scene' },
@@ -19,6 +20,7 @@ const tabs: { id: InspectorTab; label: string }[] = [
   { id: 'objects', label: 'Objects' },
   { id: 'backgrounds', label: 'BG' },
   { id: 'gaussian', label: 'GS' },
+  { id: 'nav_zone', label: 'Nav' },
 ];
 
 const styles: Record<string, React.CSSProperties> = {
@@ -83,6 +85,7 @@ export function Inspector() {
         {inspectorTab === 'objects' && <ObjectsTab />}
         {inspectorTab === 'backgrounds' && <BackgroundTab />}
         {inspectorTab === 'gaussian' && <GaussianTab />}
+        {inspectorTab === 'nav_zone' && <NavZoneTab />}
       </div>
     </div>
   );

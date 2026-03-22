@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useSceneStore } from '../store/useSceneStore.js';
 
 const styles: Record<string, React.CSSProperties> = {
@@ -9,11 +9,26 @@ const styles: Record<string, React.CSSProperties> = {
     flex: 1, padding: '4px 6px', background: '#2a2a4a', border: '1px solid #444',
     borderRadius: 4, color: '#ddd', fontSize: 13,
   },
+  btn: {
+    padding: '4px 10px', background: '#3a3a6a', border: '1px solid #555',
+    borderRadius: 4, color: '#ddd', fontSize: 12, cursor: 'pointer',
+  },
+  info: { fontSize: 11, color: '#aaa' },
 };
 
 export function GaussianTab() {
   const gs = useSceneStore((s) => s.gaussianSplat);
   const setGs = useSceneStore((s) => s.setGaussianSplat);
+  const collisionGridData = useSceneStore((s) => s.collisionGridData);
+  const initCollisionGrid = useSceneStore((s) => s.initCollisionGrid);
+  const navZoneNames = useSceneStore((s) => s.navZoneNames);
+  const addNavZoneName = useSceneStore((s) => s.addNavZoneName);
+  const removeNavZoneName = useSceneStore((s) => s.removeNavZoneName);
+
+  const [gridW, setGridW] = useState(32);
+  const [gridH, setGridH] = useState(32);
+  const [cellSize, setCellSize] = useState(1.0);
+  const [newZoneName, setNewZoneName] = useState('');
 
   return (
     <div>
@@ -159,6 +174,68 @@ export function GaussianTab() {
           />
         </div>
       </div>
+
+      {/* ── Collision Grid ── */}
+      <div style={styles.section}>
+        <span style={styles.label}>Collision Grid</span>
+        {!collisionGridData ? (
+          <>
+            <div style={styles.row}>
+              <span style={{ fontSize: 12, minWidth: 50 }}>Width</span>
+              <input type="number" value={gridW} min={1}
+                onChange={(e) => setGridW(Math.max(1, Number(e.target.value)))}
+                style={{ ...styles.input, maxWidth: 60 }} />
+              <span style={{ fontSize: 12, minWidth: 50 }}>Height</span>
+              <input type="number" value={gridH} min={1}
+                onChange={(e) => setGridH(Math.max(1, Number(e.target.value)))}
+                style={{ ...styles.input, maxWidth: 60 }} />
+            </div>
+            <div style={styles.row}>
+              <span style={{ fontSize: 12, minWidth: 50 }}>Cell</span>
+              <input type="number" value={cellSize} step={0.1} min={0.1}
+                onChange={(e) => setCellSize(Math.max(0.1, Number(e.target.value)))}
+                style={{ ...styles.input, maxWidth: 60 }} />
+            </div>
+            <button style={styles.btn} onClick={() => initCollisionGrid(gridW, gridH, cellSize)}>
+              Init Grid
+            </button>
+          </>
+        ) : (
+          <>
+            <span style={styles.info}>
+              {collisionGridData.width} x {collisionGridData.height} (cell {collisionGridData.cell_size}) &mdash;{' '}
+              {collisionGridData.solid.filter(Boolean).length} solid /{' '}
+              {collisionGridData.solid.length - collisionGridData.solid.filter(Boolean).length} walkable
+            </span>
+            <span style={styles.info}>
+              Enable &quot;Collision&quot; overlay in viewport to paint cells.
+            </span>
+          </>
+        )}
+      </div>
+
+      {/* ── Nav Zones ── */}
+      {collisionGridData && (
+        <div style={styles.section}>
+          <span style={styles.label}>Nav Zones</span>
+          {navZoneNames.map((name, i) => (
+            <div key={i} style={styles.row}>
+              <span style={{ fontSize: 12, flex: 1 }}>#{i + 1}: {name}</span>
+              <button style={{ ...styles.btn, padding: '2px 6px' }}
+                onClick={() => removeNavZoneName(i)}>x</button>
+            </div>
+          ))}
+          <div style={styles.row}>
+            <input type="text" value={newZoneName} placeholder="zone name"
+              onChange={(e) => setNewZoneName(e.target.value)}
+              style={styles.input} />
+            <button style={styles.btn}
+              onClick={() => { if (newZoneName.trim()) { addNavZoneName(newZoneName.trim()); setNewZoneName(''); } }}>
+              Add
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

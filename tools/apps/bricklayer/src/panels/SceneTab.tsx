@@ -36,7 +36,7 @@ export function SceneTab() {
   const voxels = useSceneStore((s) => s.voxels);
   const dayNight = useSceneStore((s) => s.dayNight);
   const setDayNight = useSceneStore((s) => s.setDayNight);
-  const autoGenerateCollision = useSceneStore((s) => s.autoGenerateCollision);
+  const collisionGridData = useSceneStore((s) => s.collisionGridData);
 
   return (
     <div>
@@ -105,9 +105,11 @@ export function SceneTab() {
 
       <div style={styles.section}>
         <span style={styles.label}>Collision</span>
-        <button style={styles.btn} onClick={autoGenerateCollision}>
-          Auto-Generate from Voxels
-        </button>
+        <span style={{ fontSize: 12, color: '#aaa' }}>
+          {collisionGridData
+            ? `${collisionGridData.width}x${collisionGridData.height} grid (${collisionGridData.solid.filter(Boolean).length} solid)`
+            : 'No grid — init in GS tab'}
+        </span>
       </div>
     </div>
   );
