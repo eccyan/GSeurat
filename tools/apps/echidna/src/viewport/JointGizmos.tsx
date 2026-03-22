@@ -1,7 +1,7 @@
-import React, { useCallback, useMemo } from 'react';
-import { ThreeEvent } from '@react-three/fiber';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
+import { ThreeEvent, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
-import { Line } from '@react-three/drei';
+import { Line, Html } from '@react-three/drei';
 import { useCharacterStore } from '../store/useCharacterStore.js';
 import type { BodyPart, PoseData } from '../store/types.js';
 
@@ -53,6 +53,107 @@ function computePosedJoints(
   return result;
 }
 
+const _plane = new THREE.Plane();
+const _raycaster = new THREE.Raycaster();
+const _intersection = new THREE.Vector3();
+
+function DraggableJoint({ part, isSelected, jointPos, parentPos, onSelect }: {
+  part: BodyPart;
+  isSelected: boolean;
+  jointPos: [number, number, number];
+  parentPos: [number, number, number] | null;
+  onSelect: (id: string) => void;
+}) {
+  const { camera, gl } = useThree();
+  const [dragging, setDragging] = useState(false);
+  const [dragPos, setDragPos] = useState<[number, number, number] | null>(null);
+  const meshRef = useRef<THREE.Mesh>(null);
+
+  const [jx, jy, jz] = dragPos ?? jointPos;
+
+  const handlePointerDown = useCallback((e: ThreeEvent<PointerEvent>) => {
+    e.stopPropagation();
+    onSelect(part.id);
+
+    const el = gl.domElement;
+    // Use horizontal plane at joint Y for intuitive dragging
+    _plane.set(new THREE.Vector3(0, 1, 0), -jointPos[1]);
+
+    setDragging(true);
+
+    const onMove = (ev: PointerEvent) => {
+      const rect = el.getBoundingClientRect();
+      const pointer = new THREE.Vector2(
+        ((ev.clientX - rect.left) / rect.width) * 2 - 1,
+        -((ev.clientY - rect.top) / rect.height) * 2 + 1,
+      );
+      _raycaster.setFromCamera(pointer, camera);
+      if (_raycaster.ray.intersectPlane(_plane, _intersection)) {
+        setDragPos([
+          Math.round(_intersection.x),
+          jointPos[1],
+          Math.round(_intersection.z),
+        ]);
+      }
+    };
+
+    const onUp = () => {
+      el.removeEventListener('pointermove', onMove);
+      el.removeEventListener('pointerup', onUp);
+      setDragging(false);
+      // Read latest dragPos from closure - use _intersection as last known
+      const snapped: [number, number, number] = [
+        Math.round(_intersection.x),
+        jointPos[1],
+        Math.round(_intersection.z),
+      ];
+      useCharacterStore.getState().updatePartJoint(part.id, snapped);
+      setDragPos(null);
+    };
+
+    el.addEventListener('pointermove', onMove);
+    el.addEventListener('pointerup', onUp);
+  }, [part.id, onSelect, camera, gl, jointPos]);
+
+  return (
+    <>
+      {parentPos && (
+        <Line
+          points={[[jx, jy, jz], parentPos]}
+          color="#ffffff"
+          lineWidth={1}
+        />
+      )}
+      <mesh
+        ref={meshRef}
+        position={[jx, jy, jz]}
+        onPointerDown={handlePointerDown}
+      >
+        <sphereGeometry args={[0.3, 12, 12]} />
+        <meshStandardMaterial
+          color={dragging ? '#ff8800' : isSelected ? '#ffcc00' : '#ffffff'}
+          emissive={dragging ? '#ff8800' : isSelected ? '#ffcc00' : '#444444'}
+          emissiveIntensity={isSelected || dragging ? 0.5 : 0.2}
+        />
+      </mesh>
+      {dragging && (
+        <Html position={[jx, jy + 1.5, jz]} center>
+          <div style={{
+            background: 'rgba(0,0,0,0.8)',
+            color: '#ffcc00',
+            padding: '2px 6px',
+            borderRadius: 4,
+            fontSize: 11,
+            whiteSpace: 'nowrap',
+          }}>
+            {Math.round(jx)}, {Math.round(jy)}, {Math.round(jz)}
+          </div>
+        </Html>
+      )}
+    </>
+  );
+}
+
 export function JointGizmos() {
   const characterParts = useCharacterStore((s) => s.characterParts);
   const selectedPart = useCharacterStore((s) => s.selectedPart);
@@ -62,12 +163,6 @@ export function JointGizmos() {
   const selectedPose = useCharacterStore((s) => s.selectedPose);
   const characterPoses = useCharacterStore((s) => s.characterPoses);
 
-  const handleClick = useCallback((partId: string) => (e: ThreeEvent<MouseEvent>) => {
-    e.stopPropagation();
-    setSelectedPart(partId);
-  }, [setSelectedPart]);
-
-  // Compute posed joint positions
   const posedJoints = useMemo(() => {
     if (!previewPose || !selectedPose) return null;
     const pose = characterPoses[selectedPose];
@@ -84,40 +179,24 @@ export function JointGizmos() {
       {characterParts.map((part) => {
         const isSelected = part.id === selectedPart;
         const jointPos = posedJoints?.get(part.id) ?? part.joint;
-        const [jx, jy, jz] = jointPos;
 
-        // Line to parent joint
-        let line = null;
+        let parentPos: [number, number, number] | null = null;
         if (part.parent) {
           const parent = partMap.get(part.parent);
           if (parent) {
-            const parentPos = posedJoints?.get(part.parent) ?? parent.joint;
-            const [px, py, pz] = parentPos;
-            line = (
-              <Line
-                points={[[jx, jy, jz], [px, py, pz]]}
-                color="#ffffff"
-                lineWidth={1}
-              />
-            );
+            parentPos = posedJoints?.get(part.parent) ?? parent.joint;
           }
         }
 
         return (
-          <React.Fragment key={part.id}>
-            {line}
-            <mesh
-              position={[jx, jy, jz]}
-              onClick={handleClick(part.id)}
-            >
-              <sphereGeometry args={[0.3, 12, 12]} />
-              <meshStandardMaterial
-                color={isSelected ? '#ffcc00' : '#ffffff'}
-                emissive={isSelected ? '#ffcc00' : '#444444'}
-                emissiveIntensity={isSelected ? 0.5 : 0.2}
-              />
-            </mesh>
-          </React.Fragment>
+          <DraggableJoint
+            key={part.id}
+            part={part}
+            isSelected={isSelected}
+            jointPos={jointPos}
+            parentPos={parentPos}
+            onSelect={setSelectedPart}
+          />
         );
       })}
     </group>

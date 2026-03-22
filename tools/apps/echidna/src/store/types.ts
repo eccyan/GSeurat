@@ -25,7 +25,25 @@ export type ToolType =
   | 'paint'
   | 'erase'
   | 'eyedropper'
-  | 'assign_part';
+  | 'assign_part'
+  | 'box_select';
+
+// ── Animation ──
+
+export interface AnimationKeyframe {
+  time: number;
+  poseName: string;
+}
+
+export interface AnimationClip {
+  name: string;
+  keyframes: AnimationKeyframe[];
+  duration: number;
+}
+
+// ── App mode ──
+
+export type AppMode = 'build' | 'animate';
 
 // ── File format ──
 
@@ -37,6 +55,7 @@ export interface EchidnaFile {
   voxels: { x: number; y: number; z: number; r: number; g: number; b: number; a: number }[];
   parts: BodyPart[];
   poses: Record<string, PoseData>;
+  animations?: Record<string, AnimationClip>;
 }
 
 // ── Undo snapshot ──

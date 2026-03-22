@@ -8,6 +8,7 @@ const tools: { id: ToolType; label: string; key: string }[] = [
   { id: 'erase', label: 'Erase', key: 'E' },
   { id: 'eyedropper', label: 'Eyedrop', key: 'I' },
   { id: 'assign_part', label: 'Assign Part', key: 'A' },
+  { id: 'box_select', label: 'Box Select', key: 'S' },
 ];
 
 const presetColors: [number, number, number, number][] = [
@@ -102,10 +103,6 @@ export function ToolBar() {
   const setTool = useCharacterStore((s) => s.setTool);
   const setActiveColor = useCharacterStore((s) => s.setActiveColor);
   const setBrushSize = useCharacterStore((s) => s.setBrushSize);
-  const showGrid = useCharacterStore((s) => s.showGrid);
-  const showGizmos = useCharacterStore((s) => s.showGizmos);
-  const setShowGrid = useCharacterStore((s) => s.setShowGrid);
-  const setShowGizmos = useCharacterStore((s) => s.setShowGizmos);
   const selectedPart = useCharacterStore((s) => s.selectedPart);
   const characterParts = useCharacterStore((s) => s.characterParts);
   const setSelectedPart = useCharacterStore((s) => s.setSelectedPart);
@@ -202,63 +199,6 @@ export function ToolBar() {
               <option key={p.id} value={p.id}>{p.id}</option>
             ))}
           </select>
-        </div>
-      )}
-
-      <div style={styles.section}>
-        <span style={styles.label}>View</span>
-        <label style={{ ...styles.row, fontSize: 13, cursor: 'pointer' }}>
-          <input type="checkbox" checked={showGrid} onChange={(e) => setShowGrid(e.target.checked)} />
-          Grid
-        </label>
-        <label style={{ ...styles.row, fontSize: 13, cursor: 'pointer' }}>
-          <input type="checkbox" checked={showGizmos} onChange={(e) => setShowGizmos(e.target.checked)} />
-          Gizmos
-        </label>
-      </div>
-
-      <YClipControl />
-    </div>
-  );
-}
-
-function YClipControl() {
-  const yClip = useCharacterStore((s) => s.yClip);
-  const setYClip = useCharacterStore((s) => s.setYClip);
-  const voxels = useCharacterStore((s) => s.voxels);
-
-  // Compute max Y from voxels
-  let maxY = 0;
-  for (const [key] of voxels) {
-    const parts = key.split(',');
-    const y = Number(parts[1]);
-    if (y > maxY) maxY = y;
-  }
-
-  const enabled = yClip !== null;
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
-      <span style={{ fontSize: 11, color: '#888', textTransform: 'uppercase' as const, letterSpacing: 1 }}>Y-Clip</span>
-      <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' }}>
-        <input
-          type="checkbox"
-          checked={enabled}
-          onChange={(e) => setYClip(e.target.checked ? Math.floor(maxY / 2) : null)}
-        />
-        Enable
-      </label>
-      {enabled && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <input
-            type="range"
-            min={0}
-            max={maxY}
-            value={yClip}
-            onChange={(e) => setYClip(Number(e.target.value))}
-            style={{ flex: 1 }}
-          />
-          <span style={{ fontSize: 13, color: '#ddd', minWidth: 24 }}>Y:{yClip}</span>
         </div>
       )}
     </div>

@@ -41,7 +41,74 @@ function readString(view: DataView, offset: number, length: number): string {
   return s;
 }
 
+/**
+ * Try parsing as a raw voxel grid format:
+ * 12 bytes header: width(u32) height(u32) depth(u32)
+ * W*H*D bytes: palette index per voxel (0 = empty)
+ * 768 bytes: 256-entry RGB palette (3 bytes each)
+ */
+function tryParseRawGrid(buffer: ArrayBuffer): VoxFile | null {
+  if (buffer.byteLength < 12) return null;
+  const view = new DataView(buffer);
+  const w = view.getUint32(0, true);
+  const h = view.getUint32(4, true);
+  const d = view.getUint32(8, true);
+
+  // Sanity check: dimensions should be reasonable, and file size must match
+  if (w === 0 || h === 0 || d === 0 || w > 512 || h > 512 || d > 512) return null;
+  const voxelCount = w * h * d;
+  const expectedSize = 12 + voxelCount + 768;
+  if (buffer.byteLength !== expectedSize) return null;
+
+  // Read palette (last 768 bytes) — values are 6-bit (0-63), scale to 8-bit
+  const paletteOffset = 12 + voxelCount;
+  const palette: [number, number, number, number][] = [];
+  for (let i = 0; i < 256; i++) {
+    const r6 = view.getUint8(paletteOffset + i * 3);
+    const g6 = view.getUint8(paletteOffset + i * 3 + 1);
+    const b6 = view.getUint8(paletteOffset + i * 3 + 2);
+    // Scale 6-bit (0-63) to 8-bit (0-255): multiply by 255/63 ≈ 4.048
+    palette.push([
+      Math.round(r6 * 255 / 63),
+      Math.round(g6 * 255 / 63),
+      Math.round(b6 * 255 / 63),
+      255,
+    ]);
+  }
+
+  // Read voxels — storage order: Z-fastest, then Y, then X
+  // index = x*(h*d) + y*d + z.  0xFF (255) = empty.
+  // File axes: w=X(width), h=Y(depth/length), d=Z(height).
+  const voxelMap = new Map<VoxelKey, Voxel>();
+  for (let x = 0; x < w; x++) {
+    for (let y = 0; y < h; y++) {
+      for (let z = 0; z < d; z++) {
+        const idx = 12 + x * (h * d) + y * d + z;
+        const colorIndex = view.getUint8(idx);
+        if (colorIndex === 0xFF) continue; // empty
+        // Map to Echidna coords: X=x, Y(up)=(d-1-z) flipped, Z(depth)=y
+        const key = voxelKey(x, d - 1 - z, y);
+        voxelMap.set(key, { color: [...palette[colorIndex]] });
+      }
+    }
+  }
+
+  return {
+    models: [{
+      sizeX: w,
+      sizeY: d,
+      sizeZ: h,
+      voxels: voxelMap,
+    }],
+    palette,
+  };
+}
+
 export function parseVox(buffer: ArrayBuffer): VoxFile {
+  // Try raw grid format first (no magic header)
+  const rawResult = tryParseRawGrid(buffer);
+  if (rawResult) return rawResult;
+
   const view = new DataView(buffer);
   let offset = 0;
 
@@ -49,7 +116,7 @@ export function parseVox(buffer: ArrayBuffer): VoxFile {
   const magic = readString(view, offset, 4);
   offset += 4;
   if (magic !== 'VOX ') {
-    throw new Error(`Not a MagicaVoxel file (magic: "${magic}")`);
+    throw new Error(`Unsupported .vox format (magic: "${magic}"). Expected MagicaVoxel or raw grid format.`);
   }
 
   // Version
