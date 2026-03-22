@@ -46,6 +46,7 @@ export interface CharacterStoreState {
   // View
   showGrid: boolean;
   showGizmos: boolean;
+  yClip: number | null;  // null = no clipping
 
   // Undo / redo
   undoStack: Snapshot[];
@@ -68,6 +69,7 @@ export interface CharacterStoreState {
   // Actions – view
   setShowGrid: (v: boolean) => void;
   setShowGizmos: (v: boolean) => void;
+  setYClip: (v: number | null) => void;
 
   // Actions – undo/redo
   undo: () => void;
@@ -112,6 +114,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
 
   showGrid: true,
   showGizmos: true,
+  yClip: null,
 
   undoStack: [],
   redoStack: [],
@@ -207,6 +210,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
   // ── View actions ──
   setShowGrid: (v) => set({ showGrid: v }),
   setShowGizmos: (v) => set({ showGizmos: v }),
+  setYClip: (v: number | null) => set({ yClip: v }),
 
   // ── Character actions ──
   setCharacterName: (name) => set({ characterName: name }),

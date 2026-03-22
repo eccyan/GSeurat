@@ -3,9 +3,10 @@ import { ThreeEvent } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useCharacterStore } from '../store/useCharacterStore.js';
 import { voxelKey, parseKey, brushPositions } from '../lib/voxelUtils.js';
-import type { VoxelKey } from '../store/types.js';
+import type { VoxelKey, BodyPart, PoseData } from '../store/types.js';
 
 const _dummy = new THREE.Object3D();
+const DEG2RAD = Math.PI / 180;
 
 // sRGB -> linear conversion for a single channel (0-255 input, 0-1 linear output)
 function srgbToLinear(c: number): number {
@@ -20,27 +21,84 @@ const NEIGHBORS: [number, number, number][] = [
   [0, 0, 1], [0, 0, -1],
 ];
 
+/** Compute accumulated FK transforms for all parts given a pose. */
+function computeFKTransforms(
+  parts: BodyPart[],
+  pose: PoseData,
+): Map<string, THREE.Matrix4> {
+  const result = new Map<string, THREE.Matrix4>();
+  const partMap = new Map<string, BodyPart>();
+  for (const p of parts) partMap.set(p.id, p);
+
+  function getTransform(partId: string): THREE.Matrix4 {
+    const cached = result.get(partId);
+    if (cached) return cached;
+
+    const part = partMap.get(partId);
+    if (!part) {
+      const identity = new THREE.Matrix4();
+      result.set(partId, identity);
+      return identity;
+    }
+
+    // Local rotation around this part's joint
+    const [rx, ry, rz] = pose.rotations[partId] ?? [0, 0, 0];
+    const euler = new THREE.Euler(rx * DEG2RAD, ry * DEG2RAD, rz * DEG2RAD);
+    const j = part.joint;
+
+    const local = new THREE.Matrix4()
+      .makeTranslation(j[0], j[1], j[2])
+      .multiply(new THREE.Matrix4().makeRotationFromEuler(euler))
+      .multiply(new THREE.Matrix4().makeTranslation(-j[0], -j[1], -j[2]));
+
+    // Accumulate parent transform
+    const parentTf = part.parent ? getTransform(part.parent) : new THREE.Matrix4();
+    const accumulated = parentTf.clone().multiply(local);
+    result.set(partId, accumulated);
+    return accumulated;
+  }
+
+  for (const part of parts) getTransform(part.id);
+  return result;
+}
+
 export function VoxelMesh() {
   const meshRef = useRef<THREE.InstancedMesh>(null!);
   const voxels = useCharacterStore((s) => s.voxels);
   const characterParts = useCharacterStore((s) => s.characterParts);
   const selectedPart = useCharacterStore((s) => s.selectedPart);
+  const previewPose = useCharacterStore((s) => s.previewPose);
+  const selectedPose = useCharacterStore((s) => s.selectedPose);
+  const characterPoses = useCharacterStore((s) => s.characterPoses);
+  const yClip = useCharacterStore((s) => s.yClip);
 
-  // Filter to surface-only voxels (at least one exposed face)
+  // Filter to surface-only voxels (at least one exposed face), then apply Y-clip
   const surfaceEntries = useMemo(() => {
     const all = Array.from(voxels.entries());
-    if (all.length < 1000) return all; // skip culling for small sets
 
-    return all.filter(([key]) => {
-      const [x, y, z] = parseKey(key);
-      for (const [dx, dy, dz] of NEIGHBORS) {
-        if (!voxels.has(voxelKey(x + dx, y + dy, z + dz))) {
-          return true; // at least one face exposed
+    let filtered = all;
+    if (all.length >= 1000) {
+      filtered = all.filter(([key]) => {
+        const [x, y, z] = parseKey(key);
+        for (const [dx, dy, dz] of NEIGHBORS) {
+          if (!voxels.has(voxelKey(x + dx, y + dy, z + dz))) {
+            return true;
+          }
         }
-      }
-      return false; // fully enclosed -- cull
-    });
-  }, [voxels]);
+        return false;
+      });
+    }
+
+    // Apply Y-clip
+    if (yClip !== null) {
+      filtered = filtered.filter(([key]) => {
+        const [, y] = parseKey(key);
+        return y <= yClip;
+      });
+    }
+
+    return filtered;
+  }, [voxels, yClip]);
 
   const count = surfaceEntries.length;
 
@@ -67,17 +125,46 @@ export function VoxelMesh() {
     return { selectedKeys: sel, otherPartKeys: other };
   }, [characterParts, selectedPart]);
 
+  // Build voxelKey → partId lookup for FK
+  const voxelToPartId = useMemo(() => {
+    const map = new Map<VoxelKey, string>();
+    for (const part of characterParts) {
+      for (const k of part.voxelKeys) map.set(k, part.id);
+    }
+    return map;
+  }, [characterParts]);
+
+  // Compute FK transforms when previewing
+  const fkTransforms = useMemo(() => {
+    if (!previewPose || !selectedPose) return null;
+    const pose = characterPoses[selectedPose];
+    if (!pose) return null;
+    return computeFKTransforms(characterParts, pose);
+  }, [previewPose, selectedPose, characterPoses, characterParts]);
+
   // Pre-compute matrix and color buffers from surface voxels only
   const { matrices, colors } = useMemo(() => {
     const mat = new Float32Array(count * 16);
     const col = new Float32Array(count * 3);
     const hasHighlighting = characterParts.length > 0 && selectedPart;
+    const _pos = new THREE.Vector3();
 
     for (let i = 0; i < count; i++) {
       const [key, voxel] = surfaceEntries[i];
       const [x, y, z] = parseKey(key);
 
-      _dummy.position.set(x, y, z);
+      _pos.set(x, y, z);
+
+      // Apply FK transform if previewing
+      if (fkTransforms) {
+        const partId = voxelToPartId.get(key);
+        if (partId) {
+          const tf = fkTransforms.get(partId);
+          if (tf) _pos.applyMatrix4(tf);
+        }
+      }
+
+      _dummy.position.copy(_pos);
       _dummy.scale.set(1, 1, 1);
       _dummy.rotation.set(0, 0, 0);
       _dummy.updateMatrix();
@@ -105,7 +192,7 @@ export function VoxelMesh() {
     }
 
     return { matrices: mat, colors: col };
-  }, [surfaceEntries, count, characterParts, selectedPart, selectedKeys, otherPartKeys]);
+  }, [surfaceEntries, count, characterParts, selectedPart, selectedKeys, otherPartKeys, fkTransforms, voxelToPartId]);
 
   // Apply buffers to the InstancedMesh
   useEffect(() => {

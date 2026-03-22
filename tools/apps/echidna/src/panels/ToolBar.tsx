@@ -216,6 +216,51 @@ export function ToolBar() {
           Gizmos
         </label>
       </div>
+
+      <YClipControl />
+    </div>
+  );
+}
+
+function YClipControl() {
+  const yClip = useCharacterStore((s) => s.yClip);
+  const setYClip = useCharacterStore((s) => s.setYClip);
+  const voxels = useCharacterStore((s) => s.voxels);
+
+  // Compute max Y from voxels
+  let maxY = 0;
+  for (const [key] of voxels) {
+    const parts = key.split(',');
+    const y = Number(parts[1]);
+    if (y > maxY) maxY = y;
+  }
+
+  const enabled = yClip !== null;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
+      <span style={{ fontSize: 11, color: '#888', textTransform: 'uppercase' as const, letterSpacing: 1 }}>Y-Clip</span>
+      <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' }}>
+        <input
+          type="checkbox"
+          checked={enabled}
+          onChange={(e) => setYClip(e.target.checked ? Math.floor(maxY / 2) : null)}
+        />
+        Enable
+      </label>
+      {enabled && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <input
+            type="range"
+            min={0}
+            max={maxY}
+            value={yClip}
+            onChange={(e) => setYClip(Number(e.target.value))}
+            style={{ flex: 1 }}
+          />
+          <span style={{ fontSize: 13, color: '#ddd', minWidth: 24 }}>Y:{yClip}</span>
+        </div>
+      )}
     </div>
   );
 }
