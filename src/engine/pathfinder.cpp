@@ -1,6 +1,7 @@
 #include "gseurat/engine/pathfinder.hpp"
 
 #include <algorithm>
+#include <climits>
 #include <cmath>
 #include <cstdint>
 #include <queue>
@@ -120,6 +121,88 @@ std::vector<glm::vec2> Pathfinder::find_path(const TileLayer& layer,
     }
 
     return {};  // no path found
+}
+
+std::vector<glm::vec2> Pathfinder::find_path_grid(
+    const CollisionGrid& grid,
+    glm::vec2 world_origin,
+    glm::vec2 start_world,
+    glm::vec2 goal_world) {
+
+    int w = static_cast<int>(grid.width);
+    int h = static_cast<int>(grid.height);
+    float cs = grid.cell_size;
+
+    auto to_grid = [&](glm::vec2 wp) -> glm::ivec2 {
+        return {static_cast<int>((wp.x - world_origin.x) / cs),
+                static_cast<int>((wp.y - world_origin.y) / cs)};
+    };
+    auto to_world = [&](int gx, int gz) -> glm::vec2 {
+        return {world_origin.x + (static_cast<float>(gx) + 0.5f) * cs,
+                world_origin.y + (static_cast<float>(gz) + 0.5f) * cs};
+    };
+    auto in_bounds = [&](int x, int z) { return x >= 0 && x < w && z >= 0 && z < h; };
+    auto idx = [&](int x, int z) { return z * w + x; };
+
+    auto sg = to_grid(start_world);
+    auto gg = to_grid(goal_world);
+    if (!in_bounds(sg.x, sg.y) || !in_bounds(gg.x, gg.y)) return {};
+    if (grid.is_solid(static_cast<uint32_t>(gg.x), static_cast<uint32_t>(gg.y))) return {};
+
+    int total = w * h;
+    struct Node { int x, z, f; };
+    auto cmp = [](const Node& a, const Node& b) { return a.f > b.f; };
+    std::priority_queue<Node, std::vector<Node>, decltype(cmp)> open(cmp);
+
+    std::vector<int> g_cost(total, INT_MAX);
+    std::vector<int> came_from(total, -1);
+    std::vector<bool> closed(total, false);
+
+    int si = idx(sg.x, sg.y);
+    g_cost[si] = 0;
+    auto heuristic = [&](int x, int z) { return std::abs(x - gg.x) + std::abs(z - gg.y); };
+    open.push({sg.x, sg.y, heuristic(sg.x, sg.y)});
+
+    constexpr int dx[] = {0, 0, -1, 1};
+    constexpr int dz[] = {-1, 1, 0, 0};
+
+    while (!open.empty()) {
+        auto cur = open.top();
+        open.pop();
+        int ci = idx(cur.x, cur.z);
+        if (closed[ci]) continue;
+        closed[ci] = true;
+
+        if (cur.x == gg.x && cur.z == gg.y) {
+            std::vector<glm::vec2> path;
+            int i = ci;
+            while (i != si) {
+                int gx = i % w, gz = i / w;
+                path.push_back(to_world(gx, gz));
+                i = came_from[i];
+            }
+            std::reverse(path.begin(), path.end());
+            return path;
+        }
+
+        for (int d = 0; d < 4; ++d) {
+            int nx = cur.x + dx[d];
+            int nz = cur.z + dz[d];
+            if (!in_bounds(nx, nz)) continue;
+            if (grid.is_solid(static_cast<uint32_t>(nx), static_cast<uint32_t>(nz))) continue;
+            int ni = idx(nx, nz);
+            if (closed[ni]) continue;
+
+            int new_g = g_cost[ci] + 1;
+            if (new_g < g_cost[ni]) {
+                g_cost[ni] = new_g;
+                came_from[ni] = ci;
+                open.push({nx, nz, new_g + heuristic(nx, nz)});
+            }
+        }
+    }
+
+    return {};
 }
 
 }  // namespace gseurat

@@ -102,6 +102,10 @@ private:
     // Scene layers demo (N key)
     bool scene_layers_active_ = false;
     CollisionGrid scene_grid_;
+    glm::vec2 grid_origin_{0.0f};  // world XZ origin of the grid
+    std::vector<glm::vec3> demo_markers_;  // marker positions (world, Y=elevation)
+    std::vector<glm::vec4> demo_marker_colors_;  // per-marker color (from light probe)
+    std::vector<glm::vec2> demo_path_;  // A* path waypoints (XZ)
     void generate_scene_layers(AppBase& app);
 };
 

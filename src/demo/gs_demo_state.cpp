@@ -2,6 +2,7 @@
 #include "gseurat/engine/app_base.hpp"
 #include "gseurat/engine/gaussian_cloud.hpp"
 #include "gseurat/engine/gs_chunk_grid.hpp"
+#include "gseurat/engine/pathfinder.hpp"
 
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
@@ -593,6 +594,74 @@ void GsDemoState::build_draw_lists(AppBase& app) {
         auto probe = scene_grid_.get_light_probe(cx, cy);
         std::snprintf(buf, sizeof(buf), "Probe@center: (%.2f, %.2f, %.2f)", probe.x, probe.y, probe.z);
         ui.label(buf, lx, y, scale, layer_color);
+        y -= 16.0f;
+
+        // Show marker info
+        std::snprintf(buf, sizeof(buf), "Markers: %zu  Path: %zu waypoints",
+                      demo_markers_.size(), demo_path_.size());
+        ui.label(buf, lx, y, scale, layer_color);
+
+        // Render markers and path as projected UI panels
+        auto& gs = app.renderer().gs_renderer();
+        if (gs.has_cloud()) {
+            // Get current camera matrices for world→screen projection
+            float cam_x = distance_ * std::cos(elevation_) * std::sin(azimuth_);
+            float cam_y = distance_ * std::sin(elevation_);
+            float cam_z = distance_ * std::cos(elevation_) * std::cos(azimuth_);
+            glm::vec3 cam_pos = target_ + glm::vec3(cam_x, cam_y, cam_z);
+            auto view = glm::lookAt(cam_pos, target_, glm::vec3(0, 1, 0));
+
+            float aspect = static_cast<float>(gs.output_width()) / static_cast<float>(gs.output_height());
+            auto proj = glm::perspective(glm::radians(45.0f), aspect, 0.1f, 1000.0f);
+            proj[1][1] *= -1.0f;
+            auto vp = proj * view;
+
+            // Screen dimensions (assume 1280x720 UI space)
+            constexpr float screen_w = 1280.0f;
+            constexpr float screen_h = 720.0f;
+
+            auto project = [&](glm::vec3 world) -> std::pair<float, float> {
+                auto clip = vp * glm::vec4(world, 1.0f);
+                if (clip.w <= 0.0f) return {-999.0f, -999.0f};
+                float nx = clip.x / clip.w;
+                float ny = clip.y / clip.w;
+                // NDC → screen (Y-up in UI space)
+                float sx = (nx * 0.5f + 0.5f) * screen_w;
+                float sy = (1.0f - (ny * 0.5f + 0.5f)) * screen_h;
+                return {sx, sy};
+            };
+
+            // Draw path dots (yellow)
+            for (const auto& wp : demo_path_) {
+                // Get elevation at this waypoint
+                int gx = static_cast<int>((wp.x - grid_origin_.x) / scene_grid_.cell_size);
+                int gz = static_cast<int>((wp.y - grid_origin_.y) / scene_grid_.cell_size);
+                float wy = scene_grid_.get_elevation(
+                    static_cast<uint32_t>(std::max(0, gx)),
+                    static_cast<uint32_t>(std::max(0, gz)));
+                auto [sx, sy] = project({wp.x, wy + 1.0f, wp.y});
+                if (sx > 0 && sx < screen_w && sy > 0 && sy < screen_h) {
+                    ui.panel(sx, sy, 4.0f, 4.0f, {1.0f, 0.9f, 0.2f, 0.7f});
+                }
+            }
+
+            // Draw markers (colored by light probe, larger)
+            for (size_t i = 0; i < demo_markers_.size(); ++i) {
+                auto& m = demo_markers_[i];
+                auto& c = demo_marker_colors_[i];
+                auto [sx, sy] = project({m.x, m.y + 2.0f, m.z});
+                if (sx > 0 && sx < screen_w && sy > 0 && sy < screen_h) {
+                    // Marker background
+                    ui.panel(sx, sy, 12.0f, 12.0f, {c.x, c.y, c.z, 0.8f});
+                    // White border
+                    ui.panel(sx, sy, 14.0f, 14.0f, {1.0f, 1.0f, 1.0f, 0.3f});
+                    // Label
+                    char mlabel[8];
+                    std::snprintf(mlabel, sizeof(mlabel), "M%zu", i);
+                    ui.label(mlabel, sx - 6.0f, sy + 10.0f, 0.3f, white);
+                }
+            }
+        }
     }
 }
 
@@ -848,16 +917,54 @@ void GsDemoState::generate_scene_layers(AppBase& app) {
     uint32_t gh = std::max(1u, static_cast<uint32_t>(extent_z / cell));
 
     scene_grid_ = generate_collision_from_gaussians(cloud, gw, gh, cell, cell * 2.0f);
+    grid_origin_ = {aabb.min.x, aabb.min.z};
 
     // Count stats
     uint32_t walkable = 0;
-    for (uint32_t i = 0; i < gw * gh; ++i) {
-        if (!scene_grid_.solid[i]) walkable++;
+    std::vector<std::pair<uint32_t, uint32_t>> walkable_cells;
+    for (uint32_t gz = 0; gz < gh; ++gz) {
+        for (uint32_t gx = 0; gx < gw; ++gx) {
+            if (!scene_grid_.is_solid(gx, gz)) {
+                walkable++;
+                walkable_cells.push_back({gx, gz});
+            }
+        }
+    }
+
+    // Place demo markers at random walkable positions
+    demo_markers_.clear();
+    demo_marker_colors_.clear();
+    if (walkable_cells.size() >= 5) {
+        // Pick 5 evenly spaced walkable cells
+        for (int i = 0; i < 5; ++i) {
+            size_t idx = (i * walkable_cells.size()) / 5;
+            auto [gx, gz] = walkable_cells[idx];
+            float wx = aabb.min.x + (static_cast<float>(gx) + 0.5f) * cell;
+            float wz = aabb.min.z + (static_cast<float>(gz) + 0.5f) * cell;
+            float wy = scene_grid_.get_elevation(gx, gz);
+            demo_markers_.push_back({wx, wy, wz});
+
+            // Tint marker by light probe at this position
+            auto probe = scene_grid_.get_light_probe(gx, gz);
+            demo_marker_colors_.push_back({probe.x, probe.y, probe.z, 1.0f});
+        }
+
+        // Find A* path between first and last marker
+        if (demo_markers_.size() >= 2) {
+            auto& first = demo_markers_.front();
+            auto& last = demo_markers_.back();
+            demo_path_ = Pathfinder::find_path_grid(
+                scene_grid_, grid_origin_,
+                {first.x, first.z}, {last.x, last.z});
+            std::fprintf(stderr, "  Path: %zu waypoints from (%.0f,%.0f) to (%.0f,%.0f)\n",
+                         demo_path_.size(), first.x, first.z, last.x, last.z);
+        }
     }
 
     std::fprintf(stderr, "Scene layers: ON\n");
     std::fprintf(stderr, "  Grid: %ux%u (cell_size=%.1f)\n", gw, gh, cell);
     std::fprintf(stderr, "  Walkable: %u/%u cells\n", walkable, gw * gh);
+    std::fprintf(stderr, "  Markers: %zu placed at elevation\n", demo_markers_.size());
     std::fprintf(stderr, "  Elevation + light probes auto-generated from %u Gaussians\n", cloud.count());
 }
 
