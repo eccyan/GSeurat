@@ -103,6 +103,7 @@ SceneData SceneLoader::from_json(const nlohmann::json& j) {
         grid.width = col.value("width", 0u);
         grid.height = col.value("height", 0u);
         grid.cell_size = col.value("cell_size", 1.0f);
+        size_t total = static_cast<size_t>(grid.width) * grid.height;
         if (col.contains("solid")) {
             const auto& solid_arr = col["solid"];
             grid.solid.resize(solid_arr.size(), false);
@@ -110,7 +111,16 @@ SceneData SceneLoader::from_json(const nlohmann::json& j) {
                 grid.solid[i] = solid_arr[i].get<bool>();
             }
         } else {
-            grid.solid.resize(static_cast<size_t>(grid.width) * grid.height, false);
+            grid.solid.resize(total, false);
+        }
+        if (col.contains("elevation")) {
+            const auto& elev_arr = col["elevation"];
+            grid.elevation.resize(elev_arr.size(), 0.0f);
+            for (size_t i = 0; i < elev_arr.size(); ++i) {
+                grid.elevation[i] = elev_arr[i].get<float>();
+            }
+        } else {
+            grid.elevation.resize(total, 0.0f);
         }
         data.collision = std::move(grid);
     }
@@ -436,6 +446,11 @@ nlohmann::json SceneLoader::to_json(const SceneData& data) {
         nlohmann::json solid_arr = nlohmann::json::array();
         for (bool s : grid.solid) solid_arr.push_back(s);
         col["solid"] = solid_arr;
+        if (!grid.elevation.empty()) {
+            nlohmann::json elev_arr = nlohmann::json::array();
+            for (float e : grid.elevation) elev_arr.push_back(e);
+            col["elevation"] = elev_arr;
+        }
         j["collision"] = col;
     }
 
