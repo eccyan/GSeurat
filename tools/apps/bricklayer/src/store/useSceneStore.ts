@@ -21,6 +21,9 @@ import type {
   Snapshot,
   BricklayerFile,
   CollisionGridData,
+  TerrainEntry,
+  AssetEntry,
+  NavigationNode,
 } from './types.js';
 import { voxelKey, parseKey, floodFill3D, brushPositions } from '../lib/voxelUtils.js';
 
@@ -177,6 +180,14 @@ export interface SceneStoreState {
   colorPalettes: [number, number, number, number][][];
   activePaletteIndex: number;
 
+  // Project
+  projectName: string;
+  projectHandle: FileSystemDirectoryHandle | null;
+  terrains: TerrainEntry[];
+  currentTerrainId: string | null;
+  assets: AssetEntry[];
+  activeNode: NavigationNode | null;
+
   // Undo/redo
   undoStack: Snapshot[];
   redoStack: Snapshot[];
@@ -258,6 +269,16 @@ export interface SceneStoreState {
   addColorToPalette: (paletteIdx: number, color: [number, number, number, number]) => void;
   extractColorsFromImage: (imageData: ImageData, filename: string) => void;
 
+  // Actions – project
+  setProjectName: (name: string) => void;
+  setProjectHandle: (handle: FileSystemDirectoryHandle | null) => void;
+  addTerrain: (name: string) => void;
+  removeTerrain: (id: string) => void;
+  switchTerrain: (id: string) => void;
+  addAsset: (entry: AssetEntry) => void;
+  removeAsset: (id: string) => void;
+  setActiveNode: (node: NavigationNode | null) => void;
+
   // Actions – undo/redo
   undo: () => void;
   redo: () => void;
@@ -306,6 +327,13 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
   collisionHeight: 0,
   activeNavZone: 0,
   selectedSettingsCategory: 'gs_camera',
+  projectName: 'Untitled',
+  projectHandle: null,
+  terrains: [],
+  currentTerrainId: null,
+  assets: [],
+  activeNode: null,
+
   collisionBoxFill: false,
   collisionBoxStart: null,
   grabMode: false,
@@ -786,6 +814,26 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
     const newPalettes = [...colorPalettes, topColors];
     set({ colorPalettes: newPalettes, activePaletteIndex: newPalettes.length - 1 });
   },
+
+  // ── Project actions ──
+  setProjectName: (name) => set({ projectName: name }),
+  setProjectHandle: (handle) => set({ projectHandle: handle }),
+  addTerrain: (name) => {
+    const id = `terrain_${Date.now()}`;
+    const entry: TerrainEntry = { id, name, voxelFile: '', collision: null, navZoneNames: [] };
+    set({ terrains: [...get().terrains, entry], currentTerrainId: id });
+  },
+  removeTerrain: (id) => {
+    const filtered = get().terrains.filter((t) => t.id !== id);
+    const nextId = get().currentTerrainId === id ? (filtered[0]?.id ?? null) : get().currentTerrainId;
+    set({ terrains: filtered, currentTerrainId: nextId });
+  },
+  switchTerrain: (id) => {
+    if (get().terrains.some((t) => t.id === id)) set({ currentTerrainId: id });
+  },
+  addAsset: (entry) => set({ assets: [...get().assets, entry] }),
+  removeAsset: (id) => set({ assets: get().assets.filter((a) => a.id !== id) }),
+  setActiveNode: (node) => set({ activeNode: node }),
 
   // ── File actions ──
   newScene: (width, depth) => set({

@@ -216,6 +216,16 @@ export interface AssetEntry {
   type: 'ply' | 'image' | 'other';
 }
 
+export type NavigationNode =
+  | { type: 'terrain'; terrainId: string }
+  | { type: 'collision'; terrainId: string }
+  | { type: 'scene' }
+  | { type: 'scene_category'; category: 'objects' | 'lights' | 'npcs' | 'portals' }
+  | { type: 'scene_item'; entityType: string; entityId: string }
+  | { type: 'player' }
+  | { type: 'settings' }
+  | { type: 'settings_category'; category: SettingsCategory };
+
 export interface SelectedEntity {
   type: string;
   id: string;
