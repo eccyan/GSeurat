@@ -60,7 +60,8 @@ export async function loadProject(handle: FileSystemDirectoryHandle): Promise<bo
     const data = JSON.parse(text) as BricklayerFile;
     useSceneStore.getState().loadProject(data);
     return true;
-  } catch {
+  } catch (err) {
+    console.error('Failed to load project:', err);
     return false;
   }
 }

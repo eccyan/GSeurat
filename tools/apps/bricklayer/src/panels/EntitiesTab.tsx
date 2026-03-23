@@ -228,7 +228,7 @@ export function EntitiesTab() {
 
       <div style={{ ...styles.row, marginBottom: 8 }}>
         <span style={{ ...styles.label, flex: 1 }}>NPCs ({npcs.length})</span>
-        <button style={styles.btn} onClick={addNpc}>+ Add</button>
+        <button style={styles.btn} onClick={() => addNpc()}>+ Add</button>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
         {npcs.map((n) => <NpcEditor key={n.id} npc={n} />)}
@@ -236,7 +236,7 @@ export function EntitiesTab() {
 
       <div style={{ ...styles.row, marginBottom: 8 }}>
         <span style={{ ...styles.label, flex: 1 }}>Portals ({portals.length})</span>
-        <button style={styles.btn} onClick={addPortal}>+ Add</button>
+        <button style={styles.btn} onClick={() => addPortal()}>+ Add</button>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {portals.map((p) => <PortalEditor key={p.id} portal={p} />)}

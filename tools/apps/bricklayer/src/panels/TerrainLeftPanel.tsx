@@ -4,17 +4,17 @@ import { useSceneStore } from '../store/useSceneStore.js';
 import { extractColorsFromFile } from '../lib/colorExtract.js';
 import type { ToolType } from '../store/types.js';
 
-const drawTools: { id: ToolType; label: string; key: string }[] = [
-  { id: 'place', label: 'Place', key: 'V' },
-  { id: 'paint', label: 'Paint', key: 'B' },
-  { id: 'erase', label: 'Erase', key: 'E' },
-  { id: 'fill', label: 'Fill', key: 'G' },
-  { id: 'extrude', label: 'Extrude', key: 'X' },
+const drawTools: { id: ToolType; label: string; key: string; icon: string }[] = [
+  { id: 'place', label: 'Place', key: 'V', icon: '\u25A3' },   // ▣
+  { id: 'paint', label: 'Paint', key: 'B', icon: '\u270E' },   // ✎
+  { id: 'erase', label: 'Erase', key: 'E', icon: '\u25AB' },   // ▫
+  { id: 'fill', label: 'Fill', key: 'G', icon: '\u25A7' },     // ▧
+  { id: 'extrude', label: 'Extrude', key: 'X', icon: '\u2B06' }, // ⬆
 ];
 
-const utilTools: { id: ToolType; label: string; key: string }[] = [
-  { id: 'eyedropper', label: 'Eyedrop', key: 'I' },
-  { id: 'select', label: 'Select', key: 'S' },
+const utilTools: { id: ToolType; label: string; key: string; icon: string }[] = [
+  { id: 'eyedropper', label: 'Eyedrop', key: 'I', icon: '\u25C9' }, // ◉
+  { id: 'select', label: 'Select', key: 'S', icon: '\u25AF' },     // ▯
 ];
 
 const styles: Record<string, React.CSSProperties> = {
@@ -31,29 +31,32 @@ const styles: Record<string, React.CSSProperties> = {
     letterSpacing: 1,
     marginBottom: 2,
   },
+  toolGrid: {
+    display: 'flex',
+    flexWrap: 'wrap' as const,
+    gap: 4,
+  },
   toolBtn: {
     display: 'flex',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: '5px 8px',
+    justifyContent: 'center',
+    width: 32,
+    height: 32,
     border: '1px solid #444',
     borderRadius: 4,
     background: '#2a2a4a',
     color: '#ddd',
     cursor: 'pointer',
-    fontSize: 12,
+    fontSize: 16,
+    padding: 0,
   },
   toolBtnActive: {
     background: '#4a4a8a',
     borderColor: '#77f',
   },
-  shortcut: {
-    fontSize: 10,
-    color: '#777',
-  },
   colorGrid: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(8, 1fr)',
+    gridTemplateColumns: 'repeat(16, 1fr)',
     gap: 2,
   },
   colorSwatch: {
@@ -123,37 +126,52 @@ export function TerrainLeftPanel() {
       {/* Draw Tools */}
       <div style={styles.section}>
         <span style={styles.label}>Draw</span>
-        {drawTools.map((t) => (
-          <button
-            key={t.id}
-            style={{
-              ...styles.toolBtn,
-              ...(activeTool === t.id ? styles.toolBtnActive : {}),
-            }}
-            onClick={() => setTool(t.id)}
-          >
-            {t.label}
-            <span style={styles.shortcut}>{t.key}</span>
-          </button>
-        ))}
+        <div style={styles.toolGrid}>
+          {drawTools.map((t) => (
+            <button
+              key={t.id}
+              title={`${t.label} (${t.key})`}
+              style={{
+                ...styles.toolBtn,
+                ...(activeTool === t.id ? styles.toolBtnActive : {}),
+              }}
+              onClick={() => setTool(t.id)}
+            >
+              {t.icon}
+            </button>
+          ))}
+        </div>
+        <div style={{ ...styles.row, marginTop: 4 }}>
+          <input
+            type="range"
+            min={1}
+            max={8}
+            value={brushSize}
+            onChange={(e) => setBrushSize(Number(e.target.value))}
+            style={{ flex: 1 }}
+          />
+          <span style={{ fontSize: 11, color: '#888', minWidth: 14 }}>{brushSize}</span>
+        </div>
       </div>
 
       {/* Utility Tools */}
       <div style={styles.section}>
         <span style={styles.label}>Utility</span>
-        {utilTools.map((t) => (
-          <button
-            key={t.id}
-            style={{
-              ...styles.toolBtn,
-              ...(activeTool === t.id ? styles.toolBtnActive : {}),
-            }}
-            onClick={() => setTool(t.id)}
-          >
-            {t.label}
-            <span style={styles.shortcut}>{t.key}</span>
-          </button>
-        ))}
+        <div style={styles.toolGrid}>
+          {utilTools.map((t) => (
+            <button
+              key={t.id}
+              title={`${t.label} (${t.key})`}
+              style={{
+                ...styles.toolBtn,
+                ...(activeTool === t.id ? styles.toolBtnActive : {}),
+              }}
+              onClick={() => setTool(t.id)}
+            >
+              {t.icon}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Color */}
@@ -215,11 +233,11 @@ export function TerrainLeftPanel() {
               input.onchange = async () => {
                 const file = input.files?.[0];
                 if (!file) return;
-                const colors = await extractColorsFromFile(file, 24);
-                if (colors.length > 0) {
-                  const palettes = [...useSceneStore.getState().colorPalettes, { name: file.name, colors }];
-                  useSceneStore.setState({ colorPalettes: palettes, activePaletteIndex: palettes.length - 1 });
-                }
+                const colors = await extractColorsFromFile(file, 256);
+                // Pad to 256 with empty slots
+                while (colors.length < 256) colors.push([0, 0, 0, 0]);
+                const palettes = [...useSceneStore.getState().colorPalettes, { name: file.name, colors }];
+                useSceneStore.setState({ colorPalettes: palettes, activePaletteIndex: palettes.length - 1 });
               };
               input.click();
             }}
@@ -228,38 +246,24 @@ export function TerrainLeftPanel() {
           </button>
         </div>
 
-        {/* 8-column color grid */}
+        {/* 16-column color grid (fixed 256 slots) */}
         <div style={styles.colorGrid}>
-          {(activePalette?.colors ?? []).map((c, i) => (
-            <div
-              key={i}
-              style={{
-                ...styles.colorSwatch,
-                background: `rgba(${c.join(',')})`,
-                borderColor:
-                  c[0] === activeColor[0] && c[1] === activeColor[1] && c[2] === activeColor[2]
-                    ? '#fff'
-                    : 'transparent',
-              }}
-              onClick={() => setActiveColor(c)}
-            />
-          ))}
-        </div>
-      </div>
-
-      {/* Brush Size */}
-      <div style={styles.section}>
-        <span style={styles.label}>Brush Size</span>
-        <div style={styles.row}>
-          <input
-            type="range"
-            min={1}
-            max={8}
-            value={brushSize}
-            onChange={(e) => setBrushSize(Number(e.target.value))}
-            style={{ flex: 1 }}
-          />
-          <span style={{ fontSize: 13 }}>{brushSize}</span>
+          {(activePalette?.colors ?? []).map((c, i) => {
+            const isEmpty = c[3] === 0;
+            const isSelected = !isEmpty &&
+              c[0] === activeColor[0] && c[1] === activeColor[1] && c[2] === activeColor[2];
+            return (
+              <div
+                key={i}
+                style={{
+                  ...styles.colorSwatch,
+                  background: isEmpty ? '#1a1a2e' : `rgba(${c.join(',')})`,
+                  borderColor: isSelected ? '#fff' : 'transparent',
+                }}
+                onClick={() => { if (!isEmpty) setActiveColor(c); }}
+              />
+            );
+          })}
         </div>
       </div>
 

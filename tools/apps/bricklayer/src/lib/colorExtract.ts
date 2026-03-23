@@ -4,10 +4,10 @@
  */
 export function extractColorsFromImage(
   imageData: ImageData,
-  maxColors: number = 24,
+  maxColors: number = 128,
 ): [number, number, number, number][] {
   const { data, width, height } = imageData;
-  const bucketBits = 4; // group into 16 bins per channel (4096 total buckets)
+  const bucketBits = 5; // group into 32 bins per channel (32768 total buckets)
   const shift = 8 - bucketBits;
   const bucketCount = (1 << bucketBits) ** 3;
 
@@ -62,14 +62,43 @@ export function extractColorsFromImage(
       const dr = entry.r - r;
       const dg = entry.g - g;
       const db = entry.b - b;
-      return (dr * dr + dg * dg + db * db) < 900; // ~30 distance threshold
+      return (dr * dr + dg * dg + db * db) < 200; // ~14 distance threshold
     });
     if (tooClose) continue;
 
     result.push([entry.r, entry.g, entry.b, 255]);
   }
 
+  // Sort by hue, then lightness for a natural palette layout
+  result.sort((a, b) => {
+    const ha = rgbToHsl(a[0], a[1], a[2]);
+    const hb = rgbToHsl(b[0], b[1], b[2]);
+    // Group grays (low saturation) first
+    const aGray = ha[1] < 0.1 ? 1 : 0;
+    const bGray = hb[1] < 0.1 ? 1 : 0;
+    if (aGray !== bGray) return bGray - aGray; // grays first
+    if (aGray && bGray) return ha[2] - hb[2];  // sort grays by lightness
+    // Sort chromatic by hue, then lightness
+    const hDiff = ha[0] - hb[0];
+    if (Math.abs(hDiff) > 10) return hDiff;
+    return ha[2] - hb[2];
+  });
+
   return result;
+}
+
+function rgbToHsl(r: number, g: number, b: number): [number, number, number] {
+  r /= 255; g /= 255; b /= 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  const l = (max + min) / 2;
+  if (max === min) return [0, 0, l];
+  const d = max - min;
+  const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+  let h = 0;
+  if (max === r) h = ((g - b) / d + (g < b ? 6 : 0)) * 60;
+  else if (max === g) h = ((b - r) / d + 2) * 60;
+  else h = ((r - g) / d + 4) * 60;
+  return [h, s, l];
 }
 
 /**
@@ -77,14 +106,14 @@ export function extractColorsFromImage(
  */
 export async function extractColorsFromFile(
   file: File,
-  maxColors: number = 24,
+  maxColors: number = 128,
 ): Promise<[number, number, number, number][]> {
   return new Promise((resolve) => {
     const img = new Image();
     const url = URL.createObjectURL(file);
     img.onload = () => {
-      // Sample at reduced resolution for performance
-      const maxDim = 256;
+      // Sample at higher resolution for more color detail
+      const maxDim = 512;
       const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
       const w = Math.round(img.width * scale);
       const h = Math.round(img.height * scale);

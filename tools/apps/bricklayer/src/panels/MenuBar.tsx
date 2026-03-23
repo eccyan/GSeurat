@@ -148,12 +148,38 @@ function DropdownMenu({
 
 export function MenuBar({ onImport }: { onImport: () => void }) {
   const [openMenu, setOpenMenu] = useState<string | null>(null);
+  const isDirty = useSceneStore((st) => st.isDirty);
+  const projectName = useSceneStore((st) => st.projectName);
+  const projectHandle = useSceneStore((st) => st.projectHandle);
 
   const closeMenu = useCallback(() => setOpenMenu(null), []);
   const toggleMenu = useCallback(
     (id: string) => setOpenMenu((prev) => (prev === id ? null : id)),
     [],
   );
+
+  // Warn before closing with unsaved changes
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      if (useSceneStore.getState().isDirty) e.preventDefault();
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, []);
+
+  // Auto-save every 60s when dirty + project directory set
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      const st = useSceneStore.getState();
+      if (st.isDirty && st.projectHandle) {
+        try {
+          await saveProjectDir(st.projectHandle);
+          st.markClean();
+        } catch { /* silent auto-save failure */ }
+      }
+    }, 60_000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Pick a working directory (shared by New/Open/Save)
   const pickDirectory = async (): Promise<FileSystemDirectoryHandle | null> => {
@@ -218,23 +244,27 @@ export function MenuBar({ onImport }: { onImport: () => void }) {
   };
 
   const handleSave = async () => {
-    const handle = useSceneStore.getState().projectHandle;
-    if (handle) {
-      // Auto-save to working directory
-      await saveProjectDir(handle);
-    } else if (hasFileSystemAccess()) {
-      // No directory set yet — prompt for one, then save
-      const newHandle = await pickDirectory();
-      if (newHandle) {
-        useSceneStore.getState().setProjectHandle(newHandle);
-        useSceneStore.getState().setProjectName(newHandle.name);
-        await saveProjectDir(newHandle);
+    try {
+      const handle = useSceneStore.getState().projectHandle;
+      if (handle) {
+        await saveProjectDir(handle);
+        useSceneStore.getState().markClean();
+      } else if (hasFileSystemAccess()) {
+        const newHandle = await pickDirectory();
+        if (newHandle) {
+          useSceneStore.getState().setProjectHandle(newHandle);
+          useSceneStore.getState().setProjectName(newHandle.name);
+          await saveProjectDir(newHandle);
+          useSceneStore.getState().markClean();
+        }
+      } else {
+        const blob = await saveProjectAsZip();
+        const name = useSceneStore.getState().projectName || 'project';
+        download(blob, `${name}.zip`);
+        useSceneStore.getState().markClean();
       }
-    } else {
-      // Zip fallback
-      const blob = await saveProjectAsZip();
-      const name = useSceneStore.getState().projectName || 'project';
-      download(blob, `${name}.zip`);
+    } catch (err) {
+      alert(`Save failed: ${err instanceof Error ? err.message : String(err)}`);
     }
   };
 
@@ -313,6 +343,13 @@ export function MenuBar({ onImport }: { onImport: () => void }) {
         s.setShowGizmos(!s.showGizmos);
       },
     },
+    {
+      label: `${useSceneStore.getState().xrayMode ? '\u2713 ' : ''}X-Ray (T)`,
+      action: () => {
+        const s = useSceneStore.getState();
+        s.setXrayMode(!s.xrayMode);
+      },
+    },
   ];
 
   return (
@@ -338,7 +375,10 @@ export function MenuBar({ onImport }: { onImport: () => void }) {
         onToggle={() => toggleMenu('view')}
         onClose={closeMenu}
       />
-      <span style={styles.title}>Bricklayer{useSceneStore.getState().projectHandle ? ` — ${useSceneStore.getState().projectName}` : ''}</span>
+      <span style={styles.title}>
+        Bricklayer{projectHandle ? ` \u2014 ${projectName}` : ''}
+        {isDirty && <span style={{ color: '#fa0', marginLeft: 6 }}>{'\u25CF'}</span>}
+      </span>
     </div>
   );
 }

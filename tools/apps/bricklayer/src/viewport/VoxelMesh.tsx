@@ -130,7 +130,7 @@ export function VoxelMesh() {
       case 'place': {
         if (!normal) return;
         const nx = x + Math.round(normal.x);
-        const ny = y + Math.round(normal.y);
+        const ny = store.yLevelLock ?? (y + Math.round(normal.y));
         const nz = z + Math.round(normal.z);
         store.pushUndo();
         if (store.brushSize > 1) {
@@ -183,18 +183,24 @@ export function VoxelMesh() {
     }
   }, [indexToKey]);
 
+  const xray = useSceneStore((s) => s.xrayMode);
+
+  const transparent = showCollision || xray;
+  const opacity = xray ? 0.15 : showCollision ? 0.3 : 1;
+
   // Key forces remount when count changes so buffer sizes match
+  // When xray: no event handlers so R3F skips raycasting this mesh
+  const events = xray ? {} : { onClick: handleClick, onContextMenu: handleClick };
   return (
     <instancedMesh
       key={count}
       ref={meshRef}
       args={[undefined, undefined, Math.max(count, 1)]}
-      onClick={handleClick}
-      onContextMenu={handleClick}
+      {...events}
       frustumCulled={false}
     >
       <boxGeometry args={[1, 1, 1]} />
-      <meshLambertMaterial transparent={showCollision} opacity={showCollision ? 0.3 : 1} />
+      <meshLambertMaterial key={transparent ? 'tr' : 'op'} transparent={transparent} opacity={opacity} depthWrite={!xray} />
     </instancedMesh>
   );
 }
