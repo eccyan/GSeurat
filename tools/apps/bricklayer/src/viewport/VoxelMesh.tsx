@@ -1,4 +1,4 @@
-import React, { useRef, useMemo, useCallback, useEffect } from 'react';
+import React, { useRef, useMemo, useCallback, useEffect, useState } from 'react';
 import { ThreeEvent } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useSceneStore } from '../store/useSceneStore.js';
@@ -183,6 +183,20 @@ export function VoxelMesh() {
     }
   }, [indexToKey]);
 
+  // Alt key: hold to make voxels transparent and click-through (for selecting objects behind)
+  const [xray, setXray] = useState(false);
+  useEffect(() => {
+    const down = (e: KeyboardEvent) => { if (e.altKey) setXray(true); };
+    const up = (e: KeyboardEvent) => { if (!e.altKey) setXray(false); };
+    window.addEventListener('keydown', down);
+    window.addEventListener('keyup', up);
+    return () => { window.removeEventListener('keydown', down); window.removeEventListener('keyup', up); };
+  }, []);
+
+  const transparent = showCollision || xray;
+  const opacity = xray ? 0.15 : showCollision ? 0.3 : 1;
+  const noRaycast = useCallback(() => {}, []);
+
   // Key forces remount when count changes so buffer sizes match
   return (
     <instancedMesh
@@ -192,9 +206,10 @@ export function VoxelMesh() {
       onClick={handleClick}
       onContextMenu={handleClick}
       frustumCulled={false}
+      raycast={xray ? noRaycast : undefined}
     >
       <boxGeometry args={[1, 1, 1]} />
-      <meshLambertMaterial transparent={showCollision} opacity={showCollision ? 0.3 : 1} />
+      <meshLambertMaterial transparent={transparent} opacity={opacity} />
     </instancedMesh>
   );
 }
