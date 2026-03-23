@@ -183,14 +183,21 @@ export function VoxelMesh() {
     }
   }, [indexToKey]);
 
-  // Alt key: hold to make voxels transparent and click-through (for selecting objects behind)
+  // Alt/Option key: hold to make voxels transparent and click-through
   const [xray, setXray] = useState(false);
   useEffect(() => {
-    const down = (e: KeyboardEvent) => { if (e.altKey) setXray(true); };
-    const up = (e: KeyboardEvent) => { if (!e.altKey) setXray(false); };
+    const down = (e: KeyboardEvent) => { if (e.key === 'Alt') setXray(true); };
+    const up = (e: KeyboardEvent) => { if (e.key === 'Alt') setXray(false); };
+    // Also clear on blur (user switches windows while holding Alt)
+    const blur = () => setXray(false);
     window.addEventListener('keydown', down);
     window.addEventListener('keyup', up);
-    return () => { window.removeEventListener('keydown', down); window.removeEventListener('keyup', up); };
+    window.addEventListener('blur', blur);
+    return () => {
+      window.removeEventListener('keydown', down);
+      window.removeEventListener('keyup', up);
+      window.removeEventListener('blur', blur);
+    };
   }, []);
 
   const transparent = showCollision || xray;
