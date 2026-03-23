@@ -200,7 +200,7 @@ export function VoxelMesh() {
       frustumCulled={false}
     >
       <boxGeometry args={[1, 1, 1]} />
-      <meshLambertMaterial transparent={transparent} opacity={opacity} />
+      <meshLambertMaterial key={transparent ? 'tr' : 'op'} transparent={transparent} opacity={opacity} depthWrite={!xray} />
     </instancedMesh>
   );
 }
