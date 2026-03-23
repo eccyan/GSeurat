@@ -152,17 +152,6 @@ void DemoApp::init_scene(const std::string& scene_path) {
 
             renderer_.init_gs(cloud, gs_w, gs_h);
 
-            // Add a test light at the camera target to verify glow rendering
-            {
-                PointLight test_light;
-                test_light.position_and_radius = {gs.camera_target.x, gs.camera_target.z,
-                                                   gs.camera_target.y + 3.0f, 10.0f};
-                test_light.color = {1.0f, 0.8f, 0.4f, 3.0f};  // warm orange, high intensity
-                scene_.add_light(test_light);
-                std::fprintf(stderr, "Test light at camera target (%.1f, %.1f, %.1f)\n",
-                             gs.camera_target.x, gs.camera_target.y + 3.0f, gs.camera_target.z);
-            }
-
             // Set up 3D perspective camera for GS rendering
             float aspect = static_cast<float>(gs_w) / static_cast<float>(gs_h);
             auto gs_view = glm::lookAt(gs.camera_position, gs.camera_target, glm::vec3(0, 1, 0));

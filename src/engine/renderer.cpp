@@ -879,13 +879,6 @@ void Renderer::record_light_glow(VkCommandBuffer cmd, const Scene& scene,
         float screen_x = (ndc.x * 0.5f + 0.5f) * sw;
         float screen_y = (1.0f - (ndc.y * 0.5f + 0.5f)) * sh;  // flip Y
 
-        // Log projection for all lights (first 3 frames)
-        if (light_glow_log_counter_ < 3) {
-            std::fprintf(stderr, "LightGlow[%zu]: world=(%.1f,%.1f,%.1f) screen=(%.0f, %.0f) ndc=(%.2f, %.2f) w=%.1f\n",
-                         li, world_pos.x, world_pos.y, world_pos.z,
-                         screen_x, screen_y, ndc.x, ndc.y, clip.w);
-        }
-        if (li == lights.size() - 1) light_glow_log_counter_++;
 
         // Glow size in pixels based on world radius and depth
         float glow_size = (radius * 6.0f * sw) / clip.w;
