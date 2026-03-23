@@ -35,6 +35,18 @@ export async function saveProject(handle: FileSystemDirectoryHandle): Promise<vo
   const writable = await fileHandle.createWritable();
   await writable.write(json);
   await writable.close();
+
+  // Write asset blobs to assets/ directory
+  if (store.assetBlobs.size > 0) {
+    const assetsDir = await handle.getDirectoryHandle('assets', { create: true });
+    for (const [path, blob] of store.assetBlobs) {
+      const name = path.startsWith('assets/') ? path.slice(7) : path;
+      const assetHandle = await assetsDir.getFileHandle(name, { create: true });
+      const w = await assetHandle.createWritable();
+      await w.write(blob);
+      await w.close();
+    }
+  }
 }
 
 /**
@@ -88,9 +100,17 @@ export async function saveProjectAsZip(): Promise<Blob> {
   const zip = new JSZip();
   zip.file('scene.bricklayer', JSON.stringify(data, null, 2));
 
-  // Also include the engine scene export
+  // Include the engine scene export
   const scene = exportSceneJson(store);
   zip.file('scene.json', JSON.stringify(scene, null, 2));
+
+  // Include all asset blobs (PLY files, textures, etc.)
+  const assetsFolder = zip.folder('assets');
+  for (const [path, blob] of store.assetBlobs) {
+    // path is "assets/filename.ply" — strip the "assets/" prefix
+    const name = path.startsWith('assets/') ? path.slice(7) : path;
+    assetsFolder!.file(name, blob);
+  }
 
   return zip.generateAsync({ type: 'blob' });
 }
@@ -106,6 +126,20 @@ export async function loadProjectFromZip(file: File): Promise<boolean> {
     const text = await sceneFile.async('text');
     const data = JSON.parse(text) as BricklayerFile;
     useSceneStore.getState().loadProject(data);
+
+    // Restore asset blobs from zip
+    const assetsFolder = zip.folder('assets');
+    if (assetsFolder) {
+      const store = useSceneStore.getState();
+      assetsFolder.forEach((relativePath, zipEntry) => {
+        if (!zipEntry.dir) {
+          zipEntry.async('blob').then((blob) => {
+            store.storeAssetBlob(`assets/${relativePath}`, blob);
+          });
+        }
+      });
+    }
+
     return true;
   } catch {
     return false;

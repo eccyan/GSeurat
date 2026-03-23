@@ -179,9 +179,17 @@ export function ProjectTree() {
                 const input = document.createElement('input');
                 input.type = 'file';
                 input.accept = '.ply';
-                input.onchange = () => {
+                input.onchange = async () => {
                   const file = input.files?.[0];
-                  if (file) addPlacedObject(file.name);
+                  if (!file) return;
+                  // Store PLY blob and add object
+                  addPlacedObject(file.name, file);
+                  // Copy to FSAPI project directory if available
+                  const handle = useSceneStore.getState().projectHandle;
+                  if (handle) {
+                    const { importAssetToProject } = await import('../lib/projectIO.js');
+                    await importAssetToProject(handle, file);
+                  }
                 };
                 input.click();
               }}>+</button>

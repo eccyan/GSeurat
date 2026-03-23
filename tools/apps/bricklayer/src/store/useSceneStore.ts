@@ -144,6 +144,7 @@ export interface SceneStoreState {
   terrains: TerrainEntry[];
   currentTerrainId: string;
   assets: AssetEntry[];
+  assetBlobs: Map<string, Blob>;
   activeNode: NavigationNode | null;
 
   // Collision box fill
@@ -236,7 +237,8 @@ export interface SceneStoreState {
   addPortal: () => void;
   updatePortal: (id: string, patch: Partial<PortalData>) => void;
   removePortal: (id: string) => void;
-  addPlacedObject: (plyFile: string) => void;
+  addPlacedObject: (plyFile: string, blob?: Blob) => void;
+  storeAssetBlob: (path: string, blob: Blob) => void;
   updatePlacedObject: (id: string, patch: Partial<PlacedObjectData>) => void;
   removePlacedObject: (id: string) => void;
   updatePlayer: (patch: Partial<PlayerData>) => void;
@@ -353,6 +355,7 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
   terrains: [],
   currentTerrainId: '',
   assets: [],
+  assetBlobs: new Map(),
   activeNode: null,
 
   collisionBoxFill: false,
@@ -610,7 +613,7 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
     portals: get().portals.filter((p) => p.id !== id),
   }),
 
-  addPlacedObject: (plyFile) => {
+  addPlacedObject: (plyFile, blob?) => {
     const obj: PlacedObjectData = {
       id: genId('obj'),
       ply_file: plyFile,
@@ -620,7 +623,20 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
       is_static: true,
       character_manifest: '',
     };
-    set({ placedObjects: [...get().placedObjects, obj] });
+    const s = get();
+    const updates: Partial<typeof s> = { placedObjects: [...s.placedObjects, obj] };
+    if (blob) {
+      const path = `assets/${plyFile}`;
+      const blobs = new Map(s.assetBlobs);
+      blobs.set(path, blob);
+      (updates as any).assetBlobs = blobs;
+    }
+    set(updates as any);
+  },
+  storeAssetBlob: (path, blob) => {
+    const blobs = new Map(get().assetBlobs);
+    blobs.set(path, blob);
+    set({ assetBlobs: blobs });
   },
   updatePlacedObject: (id, patch) => set({
     placedObjects: get().placedObjects.map((o) => (o.id === id ? { ...o, ...patch } : o)),
