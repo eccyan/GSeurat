@@ -222,11 +222,11 @@ export function TerrainLeftPanel() {
               input.onchange = async () => {
                 const file = input.files?.[0];
                 if (!file) return;
-                const colors = await extractColorsFromFile(file, 128);
-                if (colors.length > 0) {
-                  const palettes = [...useSceneStore.getState().colorPalettes, { name: file.name, colors }];
-                  useSceneStore.setState({ colorPalettes: palettes, activePaletteIndex: palettes.length - 1 });
-                }
+                const colors = await extractColorsFromFile(file, 256);
+                // Pad to 256 with empty slots
+                while (colors.length < 256) colors.push([0, 0, 0, 0]);
+                const palettes = [...useSceneStore.getState().colorPalettes, { name: file.name, colors }];
+                useSceneStore.setState({ colorPalettes: palettes, activePaletteIndex: palettes.length - 1 });
               };
               input.click();
             }}
@@ -235,22 +235,24 @@ export function TerrainLeftPanel() {
           </button>
         </div>
 
-        {/* 8-column color grid */}
+        {/* 16-column color grid (fixed 256 slots) */}
         <div style={styles.colorGrid}>
-          {(activePalette?.colors ?? []).map((c, i) => (
-            <div
-              key={i}
-              style={{
-                ...styles.colorSwatch,
-                background: `rgba(${c.join(',')})`,
-                borderColor:
-                  c[0] === activeColor[0] && c[1] === activeColor[1] && c[2] === activeColor[2]
-                    ? '#fff'
-                    : 'transparent',
-              }}
-              onClick={() => setActiveColor(c)}
-            />
-          ))}
+          {(activePalette?.colors ?? []).map((c, i) => {
+            const isEmpty = c[3] === 0;
+            const isSelected = !isEmpty &&
+              c[0] === activeColor[0] && c[1] === activeColor[1] && c[2] === activeColor[2];
+            return (
+              <div
+                key={i}
+                style={{
+                  ...styles.colorSwatch,
+                  background: isEmpty ? '#1a1a2e' : `rgba(${c.join(',')})`,
+                  borderColor: isSelected ? '#fff' : 'transparent',
+                }}
+                onClick={() => { if (!isEmpty) setActiveColor(c); }}
+              />
+            );
+          })}
         </div>
       </div>
 

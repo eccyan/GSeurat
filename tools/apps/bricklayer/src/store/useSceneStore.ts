@@ -867,7 +867,9 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
 
   // ── Palette actions ──
   addPalette: (name) => {
-    const palettes = [...get().colorPalettes, { name, colors: [] }];
+    // Create with 256 empty (transparent black) slots
+    const emptyColors: [number, number, number, number][] = Array.from({ length: 256 }, () => [0, 0, 0, 0]);
+    const palettes = [...get().colorPalettes, { name, colors: emptyColors }];
     set({ colorPalettes: palettes, activePaletteIndex: palettes.length - 1 });
   },
 
@@ -894,15 +896,22 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
   addColorToPalette: (paletteIndex, color) => {
     const palettes = [...get().colorPalettes];
     if (!palettes[paletteIndex]) return;
-    palettes[paletteIndex] = {
-      ...palettes[paletteIndex],
-      colors: [...palettes[paletteIndex].colors, color],
-    };
+    const colors = [...palettes[paletteIndex].colors];
+    // Replace first empty slot (alpha === 0), or do nothing if full
+    const emptyIdx = colors.findIndex((c) => c[3] === 0);
+    if (emptyIdx >= 0) {
+      colors[emptyIdx] = color;
+    } else if (colors.length < 256) {
+      colors.push(color);
+    }
+    palettes[paletteIndex] = { ...palettes[paletteIndex], colors };
     set({ colorPalettes: palettes });
   },
 
   extractColorsFromImage: (imageData, maxColors) => {
-    const colors = extractColorsFromImageData(imageData, maxColors);
+    const colors = extractColorsFromImageData(imageData, Math.min(maxColors, 256));
+    // Pad to 256 with empty slots
+    while (colors.length < 256) colors.push([0, 0, 0, 0]);
     const palettes = [...get().colorPalettes];
     palettes.push({ name: 'Extracted', colors });
     set({ colorPalettes: palettes, activePaletteIndex: palettes.length - 1 });
