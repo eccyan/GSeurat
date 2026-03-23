@@ -661,6 +661,36 @@ void GsDemoState::build_draw_lists(AppBase& app) {
                     ui.label(mlabel, sx - 6.0f, sy + 10.0f, 0.3f, white);
                 }
             }
+
+            // Draw light markers
+            auto& scene_lights = app.scene().lights();
+            for (size_t i = 0; i < scene_lights.size(); ++i) {
+                const auto& pl = scene_lights[i];
+                glm::vec3 light_world(pl.position_and_radius.x,
+                                      pl.position_and_radius.z,  // height
+                                      pl.position_and_radius.y);
+                float radius = pl.position_and_radius.w;
+                auto [sx, sy] = project(light_world);
+                if (sx > 0 && sx < screen_w && sy > 0 && sy < screen_h) {
+                    // Glow circle (large, semi-transparent)
+                    float glow_r = glm::clamp(radius * 8.0f, 30.0f, 200.0f);
+                    ui.panel(sx, sy, glow_r, glow_r,
+                             {pl.color.r, pl.color.g, pl.color.b, 0.15f * pl.color.a});
+                    // Inner glow
+                    ui.panel(sx, sy, glow_r * 0.5f, glow_r * 0.5f,
+                             {pl.color.r, pl.color.g, pl.color.b, 0.3f * pl.color.a});
+                    // Center dot
+                    ui.panel(sx, sy, 10.0f, 10.0f,
+                             {pl.color.r, pl.color.g, pl.color.b, 0.9f});
+                    // White center
+                    ui.panel(sx, sy, 4.0f, 4.0f, {1.0f, 1.0f, 1.0f, 1.0f});
+                    // Label
+                    char llabel[16];
+                    std::snprintf(llabel, sizeof(llabel), "L%zu", i);
+                    ui.label(llabel, sx - 4.0f, sy + 10.0f, 0.3f,
+                             {pl.color.r, pl.color.g, pl.color.b, 1.0f});
+                }
+            }
         }
     }
 }

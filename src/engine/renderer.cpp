@@ -459,7 +459,7 @@ void Renderer::draw_scene(Scene& scene,
     post_process_.record_post_process(cmd, image_index, pp_params);
 
     record_gs_blit(cmd, flags);
-    record_light_glow(cmd, scene, flags);
+    // Light glow is now rendered via the UI system in GsDemoState
     record_ui_pass(cmd, ui_batches);
 
     // End composite render pass
