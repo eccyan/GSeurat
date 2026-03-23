@@ -3,29 +3,17 @@ import { NumberInput } from '../components/NumberInput.js';
 import { useSceneStore } from '../store/useSceneStore.js';
 import type { ToolType, CollisionLayer } from '../store/types.js';
 
-const tools: { id: ToolType; label: string; key: string }[] = [
+const drawTools: { id: ToolType; label: string; key: string }[] = [
   { id: 'place', label: 'Place', key: 'V' },
   { id: 'paint', label: 'Paint', key: 'B' },
   { id: 'erase', label: 'Erase', key: 'E' },
   { id: 'fill', label: 'Fill', key: 'G' },
   { id: 'extrude', label: 'Extrude', key: 'X' },
-  { id: 'eyedropper', label: 'Eyedrop', key: 'I' },
-  { id: 'select', label: 'Select', key: 'S' },
 ];
 
-const presetColors: [number, number, number, number][] = [
-  [34, 139, 34, 255],
-  [139, 90, 43, 255],
-  [100, 100, 100, 255],
-  [200, 200, 200, 255],
-  [60, 60, 180, 255],
-  [180, 60, 60, 255],
-  [180, 180, 60, 255],
-  [60, 180, 180, 255],
-  [220, 160, 80, 255],
-  [80, 40, 20, 255],
-  [160, 80, 160, 255],
-  [20, 20, 20, 255],
+const utilTools: { id: ToolType; label: string; key: string }[] = [
+  { id: 'eyedropper', label: 'Eyedrop', key: 'I' },
+  { id: 'select', label: 'Select', key: 'S' },
 ];
 
 const collisionLayers: { id: CollisionLayer; label: string }[] = [
@@ -52,32 +40,32 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: '6px 10px',
+    padding: '5px 8px',
     border: '1px solid #444',
     borderRadius: 4,
     background: '#2a2a4a',
     color: '#ddd',
     cursor: 'pointer',
-    fontSize: 13,
+    fontSize: 12,
   },
   toolBtnActive: {
     background: '#4a4a8a',
     borderColor: '#77f',
   },
   shortcut: {
-    fontSize: 11,
+    fontSize: 10,
     color: '#777',
   },
   colorGrid: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(4, 1fr)',
-    gap: 4,
+    gridTemplateColumns: 'repeat(8, 1fr)',
+    gap: 2,
   },
   colorSwatch: {
     width: '100%',
     aspectRatio: '1',
     border: '2px solid transparent',
-    borderRadius: 4,
+    borderRadius: 3,
     cursor: 'pointer',
   },
   row: {
@@ -128,6 +116,15 @@ const styles: Record<string, React.CSSProperties> = {
     borderColor: '#77f',
     color: '#fff',
   },
+  select: {
+    flex: 1,
+    padding: '4px 6px',
+    background: '#2a2a4a',
+    border: '1px solid #444',
+    borderRadius: 4,
+    color: '#ddd',
+    fontSize: 12,
+  },
 };
 
 export function TerrainLeftPanel() {
@@ -150,20 +147,48 @@ export function TerrainLeftPanel() {
   const navZoneNames = useSceneStore((s) => s.navZoneNames);
   const addNavZoneName = useSceneStore((s) => s.addNavZoneName);
   const initCollisionGrid = useSceneStore((s) => s.initCollisionGrid);
+  const collisionBoxFill = useSceneStore((s) => s.collisionBoxFill);
+  const setCollisionBoxFill = useSceneStore((s) => s.setCollisionBoxFill);
+  const autoGenerateCollision = useSceneStore((s) => s.autoGenerateCollision);
+  const colorPalettes = useSceneStore((s) => s.colorPalettes);
+  const activePaletteIndex = useSceneStore((s) => s.activePaletteIndex);
+  const setActivePalette = useSceneStore((s) => s.setActivePalette);
+  const addPalette = useSceneStore((s) => s.addPalette);
+  const addColorToPalette = useSceneStore((s) => s.addColorToPalette);
 
   const [gridW, setGridW] = useState(32);
   const [gridH, setGridH] = useState(32);
   const [cellSize, setCellSize] = useState(1.0);
   const [newZoneName, setNewZoneName] = useState('');
+  const [slopeThreshold, setSlopeThreshold] = useState(2.0);
 
   const hexColor = `#${activeColor.slice(0, 3).map((c) => c.toString(16).padStart(2, '0')).join('')}`;
+  const activePalette = colorPalettes[activePaletteIndex] ?? colorPalettes[0];
 
   return (
     <div style={{ flex: 1, overflowY: 'auto', padding: 0 }}>
-      {/* Tools */}
+      {/* Draw Tools */}
       <div style={styles.section}>
-        <span style={styles.label}>Tools</span>
-        {tools.map((t) => (
+        <span style={styles.label}>Draw</span>
+        {drawTools.map((t) => (
+          <button
+            key={t.id}
+            style={{
+              ...styles.toolBtn,
+              ...(activeTool === t.id ? styles.toolBtnActive : {}),
+            }}
+            onClick={() => setTool(t.id)}
+          >
+            {t.label}
+            <span style={styles.shortcut}>{t.key}</span>
+          </button>
+        ))}
+      </div>
+
+      {/* Utility Tools */}
+      <div style={styles.section}>
+        <span style={styles.label}>Utility</span>
+        {utilTools.map((t) => (
           <button
             key={t.id}
             style={{
@@ -192,20 +217,47 @@ export function TerrainLeftPanel() {
               const b = parseInt(hex.slice(5, 7), 16);
               setActiveColor([r, g, b, activeColor[3]]);
             }}
-            style={{ width: 40, height: 30, border: 'none', cursor: 'pointer' }}
+            style={{ width: 30, height: 24, border: 'none', cursor: 'pointer' }}
           />
           <div
             style={{
-              width: 30,
-              height: 30,
-              borderRadius: 4,
+              width: 24,
+              height: 24,
+              borderRadius: 3,
               background: `rgba(${activeColor.join(',')})`,
               border: '1px solid #666',
             }}
           />
+          <button
+            style={{ ...styles.btn, fontSize: 11, padding: '2px 6px' }}
+            onClick={() => addColorToPalette(activePaletteIndex, [...activeColor] as [number, number, number, number])}
+          >
+            + Palette
+          </button>
         </div>
+
+        {/* Palette selector */}
+        <div style={styles.row}>
+          <select
+            value={activePaletteIndex}
+            onChange={(e) => setActivePalette(Number(e.target.value))}
+            style={styles.select}
+          >
+            {colorPalettes.map((p, i) => (
+              <option key={i} value={i}>{p.name}</option>
+            ))}
+          </select>
+          <button
+            style={{ ...styles.btn, fontSize: 11, padding: '2px 6px' }}
+            onClick={() => addPalette(`Palette ${colorPalettes.length + 1}`)}
+          >
+            New
+          </button>
+        </div>
+
+        {/* 8-column color grid */}
         <div style={styles.colorGrid}>
-          {presetColors.map((c, i) => (
+          {(activePalette?.colors ?? []).map((c, i) => (
             <div
               key={i}
               style={{
@@ -257,7 +309,7 @@ export function TerrainLeftPanel() {
         </div>
       </div>
 
-      {/* Collision section — always shown in TERRAIN mode */}
+      {/* Collision section — always visible in TERRAIN mode */}
       <div style={styles.section}>
         <span style={styles.label}>Collision Grid</span>
         {!showCollision && (
@@ -302,6 +354,7 @@ export function TerrainLeftPanel() {
             </>
           ) : (
             <>
+              {/* Layer selector */}
               <div style={styles.row}>
                 {collisionLayers.map((cl) => (
                   <button
@@ -315,6 +368,34 @@ export function TerrainLeftPanel() {
                     {cl.label}
                   </button>
                 ))}
+              </div>
+
+              {/* Box fill toggle */}
+              <label style={{ ...styles.row, fontSize: 12, cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={collisionBoxFill}
+                  onChange={(e) => setCollisionBoxFill(e.target.checked)}
+                />
+                Box Fill
+              </label>
+
+              {/* Auto-generate */}
+              <div style={styles.row}>
+                <NumberInput
+                  label="Slope"
+                  step={0.5}
+                  min={0}
+                  value={slopeThreshold}
+                  onChange={(v) => setSlopeThreshold(v)}
+                  style={{ ...styles.inputFlex, maxWidth: 60 }}
+                />
+                <button style={styles.btn} onClick={() => {
+                  useSceneStore.getState().pushUndo();
+                  autoGenerateCollision(slopeThreshold);
+                }}>
+                  Auto
+                </button>
               </div>
 
               {collisionLayer === 'elevation' && (

@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useSceneStore } from '../store/useSceneStore.js';
 import { exportPly } from '../lib/plyExport.js';
 import { exportSceneJson } from '../lib/sceneExport.js';
+import { hasFileSystemAccess, openProjectDirectory, saveProject as saveProjectDir, loadProject as loadProjectDir } from '../lib/projectIO.js';
 import type { BricklayerFile } from '../store/types.js';
 
 const styles: Record<string, React.CSSProperties> = {
@@ -193,13 +194,61 @@ export function MenuBar({ onImport }: { onImport: () => void }) {
     download(new Blob([json], { type: 'application/json' }), 'scene.json');
   };
 
+  const handleOpenProject = async () => {
+    if (!hasFileSystemAccess()) {
+      alert('File System Access API not available in this browser.');
+      return;
+    }
+    const handle = await openProjectDirectory();
+    if (handle) {
+      useSceneStore.getState().setProjectHandle(handle);
+      useSceneStore.getState().setProjectName(handle.name);
+      await loadProjectDir(handle);
+    }
+  };
+
+  const handleSaveProject = async () => {
+    const handle = useSceneStore.getState().projectHandle;
+    if (!handle) {
+      // Fall back to regular save
+      handleSave();
+      return;
+    }
+    await saveProjectDir(handle);
+  };
+
+  const handleImportAsset = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.ply,.png,.jpg,.jpeg,.wav,.mp3';
+    input.onchange = async () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      const handle = useSceneStore.getState().projectHandle;
+      if (handle) {
+        const { importAssetToProject } = await import('../lib/projectIO.js');
+        const path = await importAssetToProject(handle, file);
+        useSceneStore.getState().addAsset({
+          id: `asset_${Date.now()}`,
+          name: file.name,
+          type: file.name.endsWith('.ply') ? 'ply' : file.name.match(/\.(wav|mp3)$/i) ? 'audio' : 'texture',
+          path,
+        });
+      }
+    };
+    input.click();
+  };
+
   const fileItems: MenuItem[] = [
-    { label: 'New', action: handleNew },
-    { label: 'Save', action: handleSave },
-    { label: 'Load', action: handleLoad },
-    { label: 'Import Image...', action: onImport, separator: true },
+    { label: 'New Project', action: handleNew },
+    { label: 'Open Project...', action: handleOpenProject },
+    { label: 'Save Project', action: handleSaveProject },
+    { label: 'Import Asset...', action: handleImportAsset },
+    { label: 'Export Scene...', action: handleExportScene, separator: true },
+    { label: 'Import Image...', action: onImport },
     { label: 'Export PLY...', action: handleExportPly, separator: true },
-    { label: 'Export Scene...', action: handleExportScene },
+    { label: 'Save File', action: handleSave, separator: true },
+    { label: 'Load File', action: handleLoad },
   ];
 
   const editItems: MenuItem[] = [

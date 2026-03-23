@@ -182,6 +182,46 @@ export interface SelectedEntity {
   id: string;
 }
 
+// ── Project management ──
+
+export interface ProjectManifest {
+  name: string;
+  terrains: TerrainEntry[];
+  assets: AssetEntry[];
+}
+
+export interface TerrainEntry {
+  id: string;
+  name: string;
+  file: string;
+}
+
+export interface AssetEntry {
+  id: string;
+  name: string;
+  type: 'ply' | 'texture' | 'audio';
+  path: string;
+}
+
+// ── Navigation tree ──
+
+export type NavigationNode =
+  | { kind: 'terrain'; terrainId: string }
+  | { kind: 'collision'; terrainId: string }
+  | { kind: 'scene' }
+  | { kind: 'scene_category'; category: 'objects' | 'lights' | 'npcs' | 'portals' }
+  | { kind: 'scene_item'; entityType: string; entityId: string }
+  | { kind: 'player' }
+  | { kind: 'settings' }
+  | { kind: 'settings_category'; category: SettingsCategory };
+
+// ── Color palettes ──
+
+export interface ColorPalette {
+  name: string;
+  colors: [number, number, number, number][];
+}
+
 export interface Snapshot {
   voxels: [VoxelKey, Voxel][];
   collisionGridData: CollisionGridData | null;

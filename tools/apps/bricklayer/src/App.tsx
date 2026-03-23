@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Viewport, getOrbitControls } from './viewport/Viewport.js';
 import { MenuBar } from './panels/MenuBar.js';
 import { ImportDialog } from './panels/ImportDialog.js';
+import { ProjectTree } from './panels/ProjectTree.js';
 import { TerrainLeftPanel } from './panels/TerrainLeftPanel.js';
 import { TerrainRightPanel } from './panels/TerrainRightPanel.js';
 import { SceneTreePanel } from './panels/SceneTreePanel.js';
@@ -9,7 +10,7 @@ import { ScenePropertiesPanel } from './panels/ScenePropertiesPanel.js';
 import { SettingsLeftPanel } from './panels/SettingsLeftPanel.js';
 import { SettingsRightPanel } from './panels/SettingsRightPanel.js';
 import { useSceneStore } from './store/useSceneStore.js';
-import type { BricklayerMode, ToolType } from './store/types.js';
+import type { ToolType } from './store/types.js';
 
 // ── ResizeHandle ──
 
@@ -68,34 +69,6 @@ function ResizeHandle({
 
 // ── Mode tabs ──
 
-const modeItems: { id: BricklayerMode; label: string }[] = [
-  { id: 'terrain', label: 'TERRAIN' },
-  { id: 'scene', label: 'SCENE' },
-  { id: 'settings', label: 'SETTINGS' },
-];
-
-function ModeTabs() {
-  const mode = useSceneStore((s) => s.mode);
-  const setMode = useSceneStore((s) => s.setMode);
-
-  return (
-    <div style={modeTabsStyles.bar}>
-      {modeItems.map((m) => (
-        <button
-          key={m.id}
-          onClick={() => setMode(m.id)}
-          style={{
-            ...modeTabsStyles.tab,
-            ...(mode === m.id ? modeTabsStyles.tabActive : {}),
-          }}
-        >
-          {m.label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
 const modeTabsStyles: Record<string, React.CSSProperties> = {
   bar: {
     display: 'flex',
@@ -127,11 +100,46 @@ const toolKeys: Record<string, ToolType> = {
   v: 'place',
   b: 'paint',
   e: 'erase',
-  g: 'fill',
+  // G is now grab in scene mode, fill in terrain mode
   x: 'extrude',
   i: 'eyedropper',
   s: 'select',
 };
+
+// ── GrabOverlay ──
+
+function GrabOverlay() {
+  const grabMode = useSceneStore((s) => s.grabMode);
+  if (!grabMode) return null;
+
+  return (
+    <div style={{
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      zIndex: 10,
+      cursor: 'move',
+      display: 'flex',
+      alignItems: 'flex-end',
+      justifyContent: 'center',
+      paddingBottom: 12,
+      pointerEvents: 'none',
+    }}>
+      <div style={{
+        background: 'rgba(0,0,0,0.7)',
+        color: '#ffcc00',
+        padding: '4px 12px',
+        borderRadius: 4,
+        fontSize: 12,
+        pointerEvents: 'none',
+      }}>
+        GRAB: Click to confirm, Esc to cancel
+      </div>
+    </div>
+  );
+}
 
 // ── App styles ──
 
@@ -153,6 +161,12 @@ const styles: Record<string, React.CSSProperties> = {
     flexDirection: 'column',
     overflow: 'hidden',
     flexShrink: 0,
+  },
+  leftTop: {
+    overflowY: 'auto',
+    padding: 8,
+    borderBottom: '1px solid #333',
+    maxHeight: '40%',
   },
   leftContent: {
     flex: 1,
@@ -182,10 +196,11 @@ const styles: Record<string, React.CSSProperties> = {
 
 export function App() {
   const [showImport, setShowImport] = useState(false);
-  const [leftWidth, setLeftWidth] = useState(220);
+  const [leftWidth, setLeftWidth] = useState(240);
   const [rightWidth, setRightWidth] = useState(320);
 
   const mode = useSceneStore((s) => s.mode);
+  const activeNode = useSceneStore((s) => s.activeNode);
 
   const handleLeftDrag = useCallback((delta: number) => {
     setLeftWidth((w) => Math.max(160, Math.min(500, w + delta)));
@@ -211,6 +226,56 @@ export function App() {
       if (meta && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) {
         e.preventDefault();
         store.redo();
+        return;
+      }
+
+      // Escape: cancel grab mode
+      if (e.key === 'Escape' && store.grabMode) {
+        // Restore original position
+        if (store.grabOriginalPosition && store.selectedEntity) {
+          const pos = store.grabOriginalPosition;
+          const sel = store.selectedEntity;
+          if (sel.type === 'object') store.updatePlacedObject(sel.id, { position: pos });
+          else if (sel.type === 'npc') store.updateNpc(sel.id, { position: pos });
+          else if (sel.type === 'light') store.updateLight(sel.id, { position: [pos[0], pos[2]] });
+          else if (sel.type === 'portal') store.updatePortal(sel.id, { position: [pos[0], pos[2]] });
+          else if (sel.type === 'player') store.updatePlayer({ position: pos });
+        }
+        store.setGrabMode(false);
+        store.setGrabOriginalPosition(null);
+        return;
+      }
+
+      // G key: grab in scene mode, fill in terrain mode
+      if (e.key.toLowerCase() === 'g' && !meta) {
+        if (store.mode === 'scene' && store.selectedEntity) {
+          e.preventDefault();
+          // Start grab mode
+          const sel = store.selectedEntity;
+          let pos: [number, number, number] | null = null;
+          if (sel.type === 'object') {
+            const obj = store.placedObjects.find((o) => o.id === sel.id);
+            if (obj) pos = [...obj.position];
+          } else if (sel.type === 'npc') {
+            const npc = store.npcs.find((n) => n.id === sel.id);
+            if (npc) pos = [...npc.position];
+          } else if (sel.type === 'light') {
+            const light = store.staticLights.find((l) => l.id === sel.id);
+            if (light) pos = [light.position[0], light.height, light.position[1]];
+          } else if (sel.type === 'portal') {
+            const portal = store.portals.find((p) => p.id === sel.id);
+            if (portal) pos = [portal.position[0], 0, portal.position[1]];
+          } else if (sel.type === 'player') {
+            pos = [...store.player.position];
+          }
+          if (pos) {
+            store.setGrabOriginalPosition(pos);
+            store.setGrabMode(true);
+          }
+          return;
+        }
+        // Fall through to tool shortcut for terrain mode
+        store.setTool('fill');
         return;
       }
 
@@ -277,17 +342,33 @@ export function App() {
     return () => window.removeEventListener('keydown', handler);
   }, []);
 
+  // Determine which contextual panel to show in left below ProjectTree
+  const showTerrainTools = mode === 'terrain' || (activeNode?.kind === 'terrain') || (activeNode?.kind === 'collision');
+  const showSceneTree = mode === 'scene' && !showTerrainTools;
+  const showSettingsList = mode === 'settings' && !showTerrainTools;
+
+  // Determine right panel content
+  const rightContent = (() => {
+    if (activeNode?.kind === 'settings_category' || mode === 'settings') return <SettingsRightPanel />;
+    if (activeNode?.kind === 'scene_item' || activeNode?.kind === 'player' || (mode === 'scene')) return <ScenePropertiesPanel />;
+    return <TerrainRightPanel />;
+  })();
+
   return (
     <div style={styles.root}>
       <MenuBar onImport={() => setShowImport(true)} />
       <div style={styles.body}>
         {/* Left panel */}
         <div style={{ ...styles.leftPanel, width: leftWidth }}>
-          <ModeTabs />
+          {/* Project tree at top */}
+          <div style={styles.leftTop}>
+            <ProjectTree />
+          </div>
+          {/* Contextual tools below */}
           <div style={styles.leftContent}>
-            {mode === 'terrain' && <TerrainLeftPanel />}
-            {mode === 'scene' && <SceneTreePanel />}
-            {mode === 'settings' && <SettingsLeftPanel />}
+            {showTerrainTools && <TerrainLeftPanel />}
+            {showSceneTree && <SceneTreePanel />}
+            {showSettingsList && <SettingsLeftPanel />}
           </div>
         </div>
 
@@ -296,6 +377,7 @@ export function App() {
         {/* Center viewport */}
         <div style={styles.viewport}>
           <Viewport />
+          <GrabOverlay />
         </div>
 
         <ResizeHandle side="right" onDrag={handleRightDrag} />
@@ -303,9 +385,7 @@ export function App() {
         {/* Right panel */}
         <div style={{ ...styles.rightPanel, width: rightWidth }}>
           <div style={styles.rightContent}>
-            {mode === 'terrain' && <TerrainRightPanel />}
-            {mode === 'scene' && <ScenePropertiesPanel />}
-            {mode === 'settings' && <SettingsRightPanel />}
+            {rightContent}
           </div>
         </div>
       </div>
