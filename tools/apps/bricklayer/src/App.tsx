@@ -186,6 +186,7 @@ export function App() {
   const [rightWidth, setRightWidth] = useState(320);
 
   const mode = useSceneStore((s) => s.mode);
+  const grabMode = useSceneStore((s) => s.grabMode);
 
   const handleLeftDrag = useCallback((delta: number) => {
     setLeftWidth((w) => Math.max(160, Math.min(500, w + delta)));
@@ -214,8 +215,36 @@ export function App() {
         return;
       }
 
+      // Escape: cancel grab mode
+      if (e.key === 'Escape' && store.grabMode) {
+        // Revert to original position
+        const orig = store.grabOriginalPosition;
+        const sel = store.selectedEntity;
+        if (orig && sel) {
+          if (sel.type === 'object' && orig.length === 3) {
+            store.updatePlacedObject(sel.id, { position: orig as [number, number, number] });
+          } else if (sel.type === 'npc' && orig.length === 3) {
+            store.updateNpc(sel.id, { position: orig as [number, number, number] });
+          } else if (sel.type === 'portal' && orig.length === 2) {
+            store.updatePortal(sel.id, { position: orig as [number, number] });
+          } else if (sel.type === 'light' && orig.length === 2) {
+            store.updateLight(sel.id, { position: orig as [number, number] });
+          } else if (sel.type === 'player' && orig.length === 3) {
+            store.updatePlayer({ position: orig as [number, number, number] });
+          }
+        }
+        store.setGrabMode(false);
+        return;
+      }
+
+      // G key: grab mode (Blender style) — only in scene mode with selected entity
+      if (e.key.toLowerCase() === 'g' && !meta && store.mode === 'scene' && store.selectedEntity && !store.grabMode) {
+        store.setGrabMode(true);
+        return;
+      }
+
       const tool = toolKeys[e.key.toLowerCase()];
-      if (tool) {
+      if (tool && !store.grabMode) {
         store.setTool(tool);
         return;
       }
@@ -296,6 +325,24 @@ export function App() {
         {/* Center viewport */}
         <div style={styles.viewport}>
           <Viewport />
+          {grabMode && (
+            <div style={{
+              position: 'absolute',
+              top: 8,
+              left: '50%',
+              transform: 'translateX(-50%)',
+              background: 'rgba(0,0,0,0.8)',
+              color: '#ffcc00',
+              padding: '4px 12px',
+              borderRadius: 4,
+              fontSize: 12,
+              fontWeight: 600,
+              zIndex: 10,
+              pointerEvents: 'none',
+            }}>
+              GRAB MODE — Click to confirm, Escape to cancel
+            </div>
+          )}
         </div>
 
         <ResizeHandle side="right" onDrag={handleRightDrag} />

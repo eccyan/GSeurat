@@ -1,6 +1,7 @@
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { useSceneStore } from '../store/useSceneStore.js';
 import { ThreeEvent } from '@react-three/fiber';
+import * as THREE from 'three';
 
 // HSL hue per nav zone (golden angle spacing for good contrast)
 function zoneColor(zone: number): string {
@@ -39,6 +40,20 @@ function Cell({ x, z, cellSize, elevation, color, opacity }: CellProps) {
 export function CollisionOverlay() {
   const collisionGridData = useSceneStore((s) => s.collisionGridData);
   const showCollision = useSceneStore((s) => s.showCollision);
+  const collisionBoxFill = useSceneStore((s) => s.collisionBoxFill);
+  const collisionBoxStart = useSceneStore((s) => s.collisionBoxStart);
+  const [hoverCell, setHoverCell] = useState<[number, number] | null>(null);
+
+  const handlePointerMove = useCallback((e: ThreeEvent<PointerEvent>) => {
+    const store = useSceneStore.getState();
+    const grid = store.collisionGridData;
+    if (!grid || !store.collisionBoxFill || !store.collisionBoxStart) return;
+    const point = e.point;
+    const cellX = Math.round(point.x / grid.cell_size);
+    const cellZ = Math.round(point.z / grid.cell_size);
+    if (cellX < 0 || cellX >= grid.width || cellZ < 0 || cellZ >= grid.height) return;
+    setHoverCell([cellX, cellZ]);
+  }, []);
 
   const handleClick = useCallback((e: ThreeEvent<MouseEvent>) => {
     e.stopPropagation();
@@ -54,6 +69,38 @@ export function CollisionOverlay() {
     const cellZ = Math.round(point.z / grid.cell_size);
 
     if (cellX < 0 || cellX >= grid.width || cellZ < 0 || cellZ >= grid.height) return;
+
+    // Box fill mode
+    if (store.collisionBoxFill) {
+      if (store.collisionBoxStart) {
+        const [sx, sz] = store.collisionBoxStart;
+        store.pushUndo();
+        const minX = Math.min(sx, cellX);
+        const maxX = Math.max(sx, cellX);
+        const minZ = Math.min(sz, cellZ);
+        const maxZ = Math.max(sz, cellZ);
+        for (let x = minX; x <= maxX; x++) {
+          for (let z = minZ; z <= maxZ; z++) {
+            switch (store.collisionLayer) {
+              case 'solid':
+                store.setCellSolid(x, z, true);
+                break;
+              case 'elevation':
+                store.setCellElevation(x, z, store.collisionHeight);
+                break;
+              case 'nav_zone':
+                store.setCellNavZone(x, z, store.activeNavZone);
+                break;
+            }
+          }
+        }
+        store.setCollisionBoxStart(null);
+        setHoverCell(null);
+      } else {
+        store.setCollisionBoxStart([cellX, cellZ]);
+      }
+      return;
+    }
 
     store.pushUndo();
 
@@ -139,6 +186,31 @@ export function CollisionOverlay() {
     return result;
   }, [collisionGridData, showCollision]);
 
+  // Box fill preview rectangle
+  const boxPreview = useMemo(() => {
+    if (!collisionBoxFill || !collisionBoxStart || !hoverCell || !collisionGridData) return null;
+    const [sx, sz] = collisionBoxStart;
+    const [hx, hz] = hoverCell;
+    const cs = collisionGridData.cell_size;
+    const minX = Math.min(sx, hx);
+    const maxX = Math.max(sx, hx);
+    const minZ = Math.min(sz, hz);
+    const maxZ = Math.max(sz, hz);
+    const w = (maxX - minX + 1) * cs;
+    const d = (maxZ - minZ + 1) * cs;
+    const cx = (minX + maxX) / 2 * cs;
+    const cz = (minZ + maxZ) / 2 * cs;
+    return { cx, cz, w, d };
+  }, [collisionBoxFill, collisionBoxStart, hoverCell, collisionGridData]);
+
+  // Start marker
+  const startMarker = useMemo(() => {
+    if (!collisionBoxFill || !collisionBoxStart || !collisionGridData) return null;
+    const [sx, sz] = collisionBoxStart;
+    const cs = collisionGridData.cell_size;
+    return { x: sx * cs, z: sz * cs };
+  }, [collisionBoxFill, collisionBoxStart, collisionGridData]);
+
   if (!showCollision || !collisionGridData) return null;
 
   return (
@@ -152,6 +224,7 @@ export function CollisionOverlay() {
         ]}
         rotation={[-Math.PI / 2, 0, 0]}
         onClick={handleClick}
+        onPointerMove={handlePointerMove}
       >
         <planeGeometry args={[
           collisionGridData.width * collisionGridData.cell_size,
@@ -171,6 +244,22 @@ export function CollisionOverlay() {
           opacity={c.opacity}
         />
       ))}
+
+      {/* Box fill start marker */}
+      {startMarker && (
+        <mesh position={[startMarker.x, 0.05, startMarker.z]} rotation={[-Math.PI / 2, 0, 0]}>
+          <planeGeometry args={[collisionGridData.cell_size, collisionGridData.cell_size]} />
+          <meshBasicMaterial color="#ffcc00" transparent opacity={0.6} depthWrite={false} />
+        </mesh>
+      )}
+
+      {/* Box fill preview rectangle */}
+      {boxPreview && (
+        <mesh position={[boxPreview.cx, 0.03, boxPreview.cz]} rotation={[-Math.PI / 2, 0, 0]}>
+          <planeGeometry args={[boxPreview.w, boxPreview.d]} />
+          <meshBasicMaterial color="#ffcc00" transparent opacity={0.25} depthWrite={false} />
+        </mesh>
+      )}
     </group>
   );
 }

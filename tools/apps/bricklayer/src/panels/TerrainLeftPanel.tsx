@@ -3,12 +3,15 @@ import { NumberInput } from '../components/NumberInput.js';
 import { useSceneStore } from '../store/useSceneStore.js';
 import type { ToolType, CollisionLayer } from '../store/types.js';
 
-const tools: { id: ToolType; label: string; key: string }[] = [
+const drawTools: { id: ToolType; label: string; key: string }[] = [
   { id: 'place', label: 'Place', key: 'V' },
   { id: 'paint', label: 'Paint', key: 'B' },
   { id: 'erase', label: 'Erase', key: 'E' },
   { id: 'fill', label: 'Fill', key: 'G' },
   { id: 'extrude', label: 'Extrude', key: 'X' },
+];
+
+const utilityTools: { id: ToolType; label: string; key: string }[] = [
   { id: 'eyedropper', label: 'Eyedrop', key: 'I' },
   { id: 'select', label: 'Select', key: 'S' },
 ];
@@ -70,14 +73,14 @@ const styles: Record<string, React.CSSProperties> = {
   },
   colorGrid: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(4, 1fr)',
-    gap: 4,
+    gridTemplateColumns: 'repeat(8, 1fr)',
+    gap: 3,
   },
   colorSwatch: {
-    width: '100%',
-    aspectRatio: '1',
+    width: 24,
+    height: 24,
     border: '2px solid transparent',
-    borderRadius: 4,
+    borderRadius: 3,
     cursor: 'pointer',
   },
   row: {
@@ -128,7 +131,38 @@ const styles: Record<string, React.CSSProperties> = {
     borderColor: '#77f',
     color: '#fff',
   },
+  separator: {
+    height: 1,
+    background: '#444',
+    margin: '6px 0',
+  },
 };
+
+function ToolGroup({ tools, activeTool, setTool, label }: {
+  tools: { id: ToolType; label: string; key: string }[];
+  activeTool: ToolType;
+  setTool: (t: ToolType) => void;
+  label: string;
+}) {
+  return (
+    <>
+      <span style={{ fontSize: 10, color: '#666', letterSpacing: 1, textTransform: 'uppercase' as const }}>{label}</span>
+      {tools.map((t) => (
+        <button
+          key={t.id}
+          style={{
+            ...styles.toolBtn,
+            ...(activeTool === t.id ? styles.toolBtnActive : {}),
+          }}
+          onClick={() => setTool(t.id)}
+        >
+          {t.label}
+          <span style={styles.shortcut}>{t.key}</span>
+        </button>
+      ))}
+    </>
+  );
+}
 
 export function TerrainLeftPanel() {
   const activeTool = useSceneStore((s) => s.activeTool);
@@ -150,32 +184,35 @@ export function TerrainLeftPanel() {
   const navZoneNames = useSceneStore((s) => s.navZoneNames);
   const addNavZoneName = useSceneStore((s) => s.addNavZoneName);
   const initCollisionGrid = useSceneStore((s) => s.initCollisionGrid);
+  const collisionBoxFill = useSceneStore((s) => s.collisionBoxFill);
+  const setCollisionBoxFill = useSceneStore((s) => s.setCollisionBoxFill);
+  const autoGenerateCollision = useSceneStore((s) => s.autoGenerateCollision);
+  const colorPalettes = useSceneStore((s) => s.colorPalettes);
+  const activePaletteIndex = useSceneStore((s) => s.activePaletteIndex);
+  const addPalette = useSceneStore((s) => s.addPalette);
+  const removePalette = useSceneStore((s) => s.removePalette);
+  const setActivePalette = useSceneStore((s) => s.setActivePalette);
+  const addColorToPalette = useSceneStore((s) => s.addColorToPalette);
 
   const [gridW, setGridW] = useState(32);
   const [gridH, setGridH] = useState(32);
   const [cellSize, setCellSize] = useState(1.0);
   const [newZoneName, setNewZoneName] = useState('');
+  const [slopeThreshold, setSlopeThreshold] = useState(5.0);
 
   const hexColor = `#${activeColor.slice(0, 3).map((c) => c.toString(16).padStart(2, '0')).join('')}`;
 
+  // Active palette colors (preset if -1, or custom palette)
+  const displayColors = activePaletteIndex < 0 ? presetColors : (colorPalettes[activePaletteIndex] ?? []);
+
   return (
     <div style={{ flex: 1, overflowY: 'auto', padding: 0 }}>
-      {/* Tools */}
+      {/* Tools — split into draw + utility */}
       <div style={styles.section}>
         <span style={styles.label}>Tools</span>
-        {tools.map((t) => (
-          <button
-            key={t.id}
-            style={{
-              ...styles.toolBtn,
-              ...(activeTool === t.id ? styles.toolBtnActive : {}),
-            }}
-            onClick={() => setTool(t.id)}
-          >
-            {t.label}
-            <span style={styles.shortcut}>{t.key}</span>
-          </button>
-        ))}
+        <ToolGroup tools={drawTools} activeTool={activeTool} setTool={setTool} label="Draw" />
+        <div style={styles.separator} />
+        <ToolGroup tools={utilityTools} activeTool={activeTool} setTool={setTool} label="Utility" />
       </div>
 
       {/* Color */}
@@ -203,9 +240,38 @@ export function TerrainLeftPanel() {
               border: '1px solid #666',
             }}
           />
+          {/* Add current color to active palette */}
+          {activePaletteIndex >= 0 && (
+            <button
+              style={styles.btn}
+              title="Add color to palette"
+              onClick={() => addColorToPalette(activePaletteIndex, [...activeColor])}
+            >
+              +
+            </button>
+          )}
         </div>
+
+        {/* Palette selector */}
+        <div style={{ ...styles.row, marginTop: 4 }}>
+          <select
+            value={activePaletteIndex}
+            onChange={(e) => setActivePalette(Number(e.target.value))}
+            style={{ ...styles.inputFlex, fontSize: 12 }}
+          >
+            <option value={-1}>Default</option>
+            {colorPalettes.map((_, i) => (
+              <option key={i} value={i}>Palette {i + 1} ({colorPalettes[i].length})</option>
+            ))}
+          </select>
+          <button style={styles.btn} onClick={addPalette} title="New Palette">New</button>
+          {activePaletteIndex >= 0 && (
+            <button style={styles.btn} onClick={() => removePalette(activePaletteIndex)} title="Delete Palette">Del</button>
+          )}
+        </div>
+
         <div style={styles.colorGrid}>
-          {presetColors.map((c, i) => (
+          {displayColors.map((c, i) => (
             <div
               key={i}
               style={{
@@ -257,7 +323,7 @@ export function TerrainLeftPanel() {
         </div>
       </div>
 
-      {/* Collision section — always shown in TERRAIN mode */}
+      {/* Collision section */}
       <div style={styles.section}>
         <span style={styles.label}>Collision Grid</span>
         {!showCollision && (
@@ -317,6 +383,16 @@ export function TerrainLeftPanel() {
                 ))}
               </div>
 
+              {/* Box Fill toggle */}
+              <div style={styles.row}>
+                <input
+                  type="checkbox"
+                  checked={collisionBoxFill}
+                  onChange={(e) => setCollisionBoxFill(e.target.checked)}
+                />
+                <span style={{ fontSize: 12 }}>Box Fill</span>
+              </div>
+
               {collisionLayer === 'elevation' && (
                 <div style={styles.row}>
                   <span style={{ fontSize: 12, minWidth: 50 }}>Height</span>
@@ -374,6 +450,31 @@ export function TerrainLeftPanel() {
                   </div>
                 </>
               )}
+
+              {/* Auto-generate from terrain */}
+              <div style={styles.separator} />
+              <div style={styles.row}>
+                <span style={{ fontSize: 12, minWidth: 50 }}>Slope</span>
+                <input
+                  type="range"
+                  min={0.5}
+                  max={20}
+                  step={0.5}
+                  value={slopeThreshold}
+                  onChange={(e) => setSlopeThreshold(Number(e.target.value))}
+                  style={{ flex: 1 }}
+                />
+                <span style={{ fontSize: 11, minWidth: 30 }}>{slopeThreshold}</span>
+              </div>
+              <button
+                style={styles.btn}
+                onClick={() => {
+                  useSceneStore.getState().pushUndo();
+                  autoGenerateCollision(slopeThreshold);
+                }}
+              >
+                Auto-generate
+              </button>
             </>
           )}
         </div>

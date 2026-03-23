@@ -11,6 +11,7 @@ import { PortalMarkers } from './PortalMarkers.js';
 import { ObjectMarkers } from './ObjectMarkers.js';
 import { PlayerMarker } from './PlayerMarker.js';
 import { CollisionOverlay } from './CollisionOverlay.js';
+import { GrabOverlay } from './GrabOverlay.js';
 import { useSceneStore } from '../store/useSceneStore.js';
 
 // Module-level ref so App.tsx can access the orbit controls for F/Home keys
@@ -68,6 +69,7 @@ function SceneContent() {
   const gridWidth = useSceneStore((s) => s.gridWidth);
   const gridDepth = useSceneStore((s) => s.gridDepth);
   const showGrid = useSceneStore((s) => s.showGrid);
+  const grabMode = useSceneStore((s) => s.grabMode);
   const controlsRef = useRef<OrbitControlsRef | null>(null);
 
   return (
@@ -100,6 +102,7 @@ function SceneContent() {
       <ObjectMarkers />
       <PlayerMarker />
       <CollisionOverlay />
+      <GrabOverlay />
       <TeleportPlane />
 
       <OrbitControls
@@ -107,6 +110,7 @@ function SceneContent() {
           controlsRef.current = r;
           orbitControlsRef = r;
         }}
+        enabled={!grabMode}
         target={[gridWidth / 2, 0, gridDepth / 2]}
         makeDefault
         screenSpacePanning

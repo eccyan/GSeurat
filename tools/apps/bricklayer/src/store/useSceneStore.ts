@@ -168,6 +168,14 @@ export interface SceneStoreState {
   collisionHeight: number;
   activeNavZone: number;
   selectedSettingsCategory: SettingsCategory;
+  collisionBoxFill: boolean;
+  collisionBoxStart: [number, number] | null;
+  grabMode: boolean;
+  grabOriginalPosition: [number, number, number] | [number, number] | null;
+
+  // Palettes
+  colorPalettes: [number, number, number, number][][];
+  activePaletteIndex: number;
 
   // Undo/redo
   undoStack: Snapshot[];
@@ -219,10 +227,12 @@ export interface SceneStoreState {
   setGaussianSplat: (g: Partial<GaussianSplatConfig>) => void;
   initCollisionGrid: (width: number, height: number, cellSize: number) => void;
   toggleCellSolid: (x: number, z: number) => void;
+  setCellSolid: (x: number, z: number, solid: boolean) => void;
   setCellElevation: (x: number, z: number, value: number) => void;
   setCellNavZone: (x: number, z: number, zone: number) => void;
   addNavZoneName: (name: string) => void;
   removeNavZoneName: (index: number) => void;
+  autoGenerateCollision: (slopeThreshold: number) => void;
 
   // Actions – editor
   setMode: (mode: BricklayerMode) => void;
@@ -235,6 +245,18 @@ export interface SceneStoreState {
   setCollisionHeight: (h: number) => void;
   setActiveNavZone: (zone: number) => void;
   setSelectedSettingsCategory: (cat: SettingsCategory) => void;
+  setCollisionBoxFill: (on: boolean) => void;
+  setCollisionBoxStart: (start: [number, number] | null) => void;
+  setGrabMode: (on: boolean) => void;
+  setGrabOriginalPosition: (pos: [number, number, number] | [number, number] | null) => void;
+
+  // Actions – palettes
+  addPalette: () => void;
+  removePalette: (index: number) => void;
+  setActivePalette: (index: number) => void;
+  setPaletteColor: (paletteIdx: number, colorIdx: number, color: [number, number, number, number]) => void;
+  addColorToPalette: (paletteIdx: number, color: [number, number, number, number]) => void;
+  extractColorsFromImage: (imageData: ImageData, filename: string) => void;
 
   // Actions – undo/redo
   undo: () => void;
@@ -284,6 +306,13 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
   collisionHeight: 0,
   activeNavZone: 0,
   selectedSettingsCategory: 'gs_camera',
+  collisionBoxFill: false,
+  collisionBoxStart: null,
+  grabMode: false,
+  grabOriginalPosition: null,
+
+  colorPalettes: [],
+  activePaletteIndex: -1,
 
   undoStack: [],
   redoStack: [],
@@ -560,6 +589,16 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
     set({ collisionGridData: { ...collisionGridData, solid } });
   },
 
+  setCellSolid: (x, z, value) => {
+    const { collisionGridData } = get();
+    if (!collisionGridData) return;
+    const idx = z * collisionGridData.width + x;
+    if (idx < 0 || idx >= collisionGridData.solid.length) return;
+    const solid = [...collisionGridData.solid];
+    solid[idx] = value;
+    set({ collisionGridData: { ...collisionGridData, solid } });
+  },
+
   setCellElevation: (x, z, value) => {
     const { collisionGridData } = get();
     if (!collisionGridData) return;
@@ -588,6 +627,56 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
     set({ navZoneNames: get().navZoneNames.filter((_, i) => i !== index) });
   },
 
+  autoGenerateCollision: (slopeThreshold) => {
+    const { voxels, collisionGridData } = get();
+    if (!collisionGridData) return;
+    const g = collisionGridData;
+
+    // Find highest Y per XZ cell
+    const highestY = new Map<string, number>();
+    for (const key of voxels.keys()) {
+      const [x, y, z] = parseKey(key);
+      const cellX = Math.round(x / g.cell_size);
+      const cellZ = Math.round(z / g.cell_size);
+      if (cellX < 0 || cellX >= g.width || cellZ < 0 || cellZ >= g.height) continue;
+      const ck = `${cellX},${cellZ}`;
+      const prev = highestY.get(ck);
+      if (prev === undefined || y > prev) highestY.set(ck, y);
+    }
+
+    const solid = [...g.solid];
+    const elevation = [...g.elevation];
+
+    for (let z = 0; z < g.height; z++) {
+      for (let x = 0; x < g.width; x++) {
+        const idx = z * g.width + x;
+        const ck = `${x},${z}`;
+        const h = highestY.get(ck);
+        if (h === undefined) {
+          // No voxels -> solid (unwalkable)
+          solid[idx] = true;
+          elevation[idx] = 0;
+        } else {
+          elevation[idx] = h;
+          // Check slope: compare to neighbors
+          let maxSlope = 0;
+          for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as [number, number][]) {
+            const nx = x + dx;
+            const nz = z + dz;
+            if (nx < 0 || nx >= g.width || nz < 0 || nz >= g.height) continue;
+            const nh = highestY.get(`${nx},${nz}`);
+            if (nh !== undefined) {
+              maxSlope = Math.max(maxSlope, Math.abs(h - nh));
+            }
+          }
+          solid[idx] = maxSlope > slopeThreshold;
+        }
+      }
+    }
+
+    set({ collisionGridData: { ...g, solid, elevation } });
+  },
+
   // ── Editor actions ──
   setMode: (mode) => set({ mode }),
   setSelectedEntity: (e) => set({ selectedEntity: e }),
@@ -599,6 +688,104 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
   setCollisionHeight: (h) => set({ collisionHeight: h }),
   setActiveNavZone: (zone) => set({ activeNavZone: zone }),
   setSelectedSettingsCategory: (cat) => set({ selectedSettingsCategory: cat }),
+  setCollisionBoxFill: (on) => set({ collisionBoxFill: on, collisionBoxStart: null }),
+  setCollisionBoxStart: (start) => set({ collisionBoxStart: start }),
+  setGrabMode: (on) => {
+    if (on) {
+      // Store original position for cancel
+      const { selectedEntity, placedObjects, npcs, portals, staticLights, player } = get();
+      let pos: [number, number, number] | [number, number] | null = null;
+      if (selectedEntity) {
+        if (selectedEntity.type === 'object') {
+          const obj = placedObjects.find((o) => o.id === selectedEntity.id);
+          if (obj) pos = [...obj.position];
+        } else if (selectedEntity.type === 'npc') {
+          const npc = npcs.find((n) => n.id === selectedEntity.id);
+          if (npc) pos = [...npc.position];
+        } else if (selectedEntity.type === 'portal') {
+          const portal = portals.find((p) => p.id === selectedEntity.id);
+          if (portal) pos = [...portal.position];
+        } else if (selectedEntity.type === 'light') {
+          const light = staticLights.find((l) => l.id === selectedEntity.id);
+          if (light) pos = [...light.position];
+        } else if (selectedEntity.type === 'player') {
+          pos = [...player.position];
+        }
+      }
+      set({ grabMode: true, grabOriginalPosition: pos });
+    } else {
+      set({ grabMode: false, grabOriginalPosition: null });
+    }
+  },
+  setGrabOriginalPosition: (pos) => set({ grabOriginalPosition: pos }),
+
+  // ── Palette actions ──
+  addPalette: () => {
+    const { colorPalettes } = get();
+    set({ colorPalettes: [...colorPalettes, []], activePaletteIndex: colorPalettes.length });
+  },
+  removePalette: (index) => {
+    const { colorPalettes, activePaletteIndex } = get();
+    const next = colorPalettes.filter((_, i) => i !== index);
+    const nextActive = activePaletteIndex >= next.length
+      ? next.length - 1
+      : (activePaletteIndex > index ? activePaletteIndex - 1 : activePaletteIndex);
+    set({ colorPalettes: next, activePaletteIndex: nextActive });
+  },
+  setActivePalette: (index) => set({ activePaletteIndex: index }),
+  setPaletteColor: (paletteIdx, colorIdx, color) => {
+    const palettes = [...get().colorPalettes];
+    if (!palettes[paletteIdx]) return;
+    const palette = [...palettes[paletteIdx]];
+    palette[colorIdx] = color;
+    palettes[paletteIdx] = palette;
+    set({ colorPalettes: palettes });
+  },
+  addColorToPalette: (paletteIdx, color) => {
+    const palettes = [...get().colorPalettes];
+    if (!palettes[paletteIdx]) return;
+    palettes[paletteIdx] = [...palettes[paletteIdx], color];
+    set({ colorPalettes: palettes });
+  },
+  extractColorsFromImage: (imageData, filename) => {
+    // Bucket RGB into 4-bit per channel (4096 buckets)
+    const buckets = new Map<number, { count: number; r: number; g: number; b: number }>();
+    const data = imageData.data;
+    for (let i = 0; i < data.length; i += 4) {
+      const a = data[i + 3];
+      if (a < 10) continue;
+      const r = data[i];
+      const g = data[i + 1];
+      const b = data[i + 2];
+      const rq = (r >> 4) & 0xf;
+      const gq = (g >> 4) & 0xf;
+      const bq = (b >> 4) & 0xf;
+      const key = (rq << 8) | (gq << 4) | bq;
+      const existing = buckets.get(key);
+      if (existing) {
+        existing.count++;
+        // Accumulate for averaging
+        existing.r += r;
+        existing.g += g;
+        existing.b += b;
+      } else {
+        buckets.set(key, { count: 1, r, g, b });
+      }
+    }
+
+    // Sort by frequency, pick top 20
+    const sorted = Array.from(buckets.values()).sort((a, b) => b.count - a.count);
+    const topColors: [number, number, number, number][] = sorted.slice(0, 20).map((b) => [
+      Math.round(b.r / b.count),
+      Math.round(b.g / b.count),
+      Math.round(b.b / b.count),
+      255,
+    ]);
+
+    const { colorPalettes } = get();
+    const newPalettes = [...colorPalettes, topColors];
+    set({ colorPalettes: newPalettes, activePaletteIndex: newPalettes.length - 1 });
+  },
 
   // ── File actions ──
   newScene: (width, depth) => set({

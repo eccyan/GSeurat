@@ -23,6 +23,9 @@ const NEIGHBORS: [number, number, number][] = [
 export function VoxelMesh() {
   const meshRef = useRef<THREE.InstancedMesh>(null!);
   const voxels = useSceneStore((s) => s.voxels);
+  const showCollision = useSceneStore((s) => s.showCollision);
+  const collisionLayer = useSceneStore((s) => s.collisionLayer);
+  const isCollisionMode = showCollision;
 
   // Filter to surface-only voxels (at least one exposed face)
   const surfaceEntries = useMemo(() => {
@@ -179,7 +182,7 @@ export function VoxelMesh() {
       frustumCulled={false}
     >
       <boxGeometry args={[1, 1, 1]} />
-      <meshLambertMaterial />
+      <meshLambertMaterial transparent={isCollisionMode} opacity={isCollisionMode ? 0.3 : 1.0} />
     </instancedMesh>
   );
 }

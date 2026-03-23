@@ -128,6 +128,9 @@ export function ImportDialog({ onClose }: { onClose: () => void }) {
       const store = useSceneStore.getState();
       store.pushUndo();
 
+      // Extract palette colors from the image
+      store.extractColorsFromImage(imageData, file.name);
+
       if (mode === 'depth') {
         setLoading(true);
         setProgress(0);

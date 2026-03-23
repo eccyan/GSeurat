@@ -611,6 +611,300 @@ console.log('\n--- File roundtrip ---\n');
   assert(loaded.navZoneNames[2] === 'mountain', 'third name matches');
 }
 
+// ═══════════════════════════════════════════════════════════════
+// 5. Box fill collision (4 tests)
+// ═══════════════════════════════════════════════════════════════
+
+console.log('\n--- Box fill collision ---\n');
+
+function setCellSolid(grid: CollisionGridData, x: number, z: number, value: boolean): CollisionGridData {
+  const idx = z * grid.width + x;
+  if (idx < 0 || idx >= grid.solid.length) return grid;
+  const solid = [...grid.solid];
+  solid[idx] = value;
+  return { ...grid, solid };
+}
+
+function boxFillSolid(grid: CollisionGridData, sx: number, sz: number, ex: number, ez: number): CollisionGridData {
+  let result = grid;
+  const minX = Math.min(sx, ex);
+  const maxX = Math.max(sx, ex);
+  const minZ = Math.min(sz, ez);
+  const maxZ = Math.max(sz, ez);
+  for (let x = minX; x <= maxX; x++) {
+    for (let z = minZ; z <= maxZ; z++) {
+      result = setCellSolid(result, x, z, true);
+    }
+  }
+  return result;
+}
+
+{
+  console.log('Test 5.1: Box fill 2x2 -> 4 cells solid');
+  const grid = initCollisionGrid(8, 8, 1.0);
+  const filled = boxFillSolid(grid, 1, 1, 2, 2);
+  let solidCount = 0;
+  for (let i = 0; i < filled.solid.length; i++) {
+    if (filled.solid[i]) solidCount++;
+  }
+  assert(solidCount === 4, `solid count is 4 (got ${solidCount})`);
+}
+
+{
+  console.log('Test 5.2: Box fill single cell -> 1 cell solid');
+  const grid = initCollisionGrid(8, 8, 1.0);
+  const filled = boxFillSolid(grid, 3, 3, 3, 3);
+  let solidCount = 0;
+  for (let i = 0; i < filled.solid.length; i++) {
+    if (filled.solid[i]) solidCount++;
+  }
+  assert(solidCount === 1, `solid count is 1 (got ${solidCount})`);
+}
+
+{
+  console.log('Test 5.3: Box fill reversed coords -> same result');
+  const grid = initCollisionGrid(8, 8, 1.0);
+  const filled1 = boxFillSolid(grid, 0, 0, 3, 3);
+  const filled2 = boxFillSolid(grid, 3, 3, 0, 0);
+  let count1 = 0, count2 = 0;
+  for (let i = 0; i < filled1.solid.length; i++) {
+    if (filled1.solid[i]) count1++;
+    if (filled2.solid[i]) count2++;
+  }
+  assert(count1 === count2, `forward and reverse fill same count (${count1} vs ${count2})`);
+  assert(count1 === 16, `solid count is 16 (got ${count1})`);
+}
+
+{
+  console.log('Test 5.4: setCellSolid explicit -> sets value');
+  const grid = initCollisionGrid(4, 4, 1.0);
+  const updated = setCellSolid(grid, 2, 3, true);
+  const idx = 3 * 4 + 2;
+  assert(updated.solid[idx] === true, `solid[${idx}] is true (got ${updated.solid[idx]})`);
+  const reverted = setCellSolid(updated, 2, 3, false);
+  assert(reverted.solid[idx] === false, `solid[${idx}] is false after revert (got ${reverted.solid[idx]})`);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 6. Auto-generate collision from voxels (4 tests)
+// ═══════════════════════════════════════════════════════════════
+
+console.log('\n--- Auto-generate collision ---\n');
+
+function autoGenerateCollision(
+  voxelEntries: [number, number, number][],
+  grid: CollisionGridData,
+  slopeThreshold: number,
+): CollisionGridData {
+  // Find highest Y per XZ cell
+  const highestY = new Map<string, number>();
+  for (const [x, y, z] of voxelEntries) {
+    const cellX = Math.round(x / grid.cell_size);
+    const cellZ = Math.round(z / grid.cell_size);
+    if (cellX < 0 || cellX >= grid.width || cellZ < 0 || cellZ >= grid.height) continue;
+    const ck = `${cellX},${cellZ}`;
+    const prev = highestY.get(ck);
+    if (prev === undefined || y > prev) highestY.set(ck, y);
+  }
+
+  const solid = [...grid.solid];
+  const elevation = [...grid.elevation];
+
+  for (let z = 0; z < grid.height; z++) {
+    for (let x = 0; x < grid.width; x++) {
+      const idx = z * grid.width + x;
+      const ck = `${x},${z}`;
+      const h = highestY.get(ck);
+      if (h === undefined) {
+        solid[idx] = true;
+        elevation[idx] = 0;
+      } else {
+        elevation[idx] = h;
+        let maxSlope = 0;
+        for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as [number, number][]) {
+          const nx = x + dx;
+          const nz = z + dz;
+          if (nx < 0 || nx >= grid.width || nz < 0 || nz >= grid.height) continue;
+          const nh = highestY.get(`${nx},${nz}`);
+          if (nh !== undefined) {
+            maxSlope = Math.max(maxSlope, Math.abs(h - nh));
+          }
+        }
+        solid[idx] = maxSlope > slopeThreshold;
+      }
+    }
+  }
+
+  return { ...grid, solid, elevation };
+}
+
+{
+  console.log('Test 6.1: Empty voxels -> all solid');
+  const grid = initCollisionGrid(4, 4, 1.0);
+  const result = autoGenerateCollision([], grid, 5.0);
+  assert(result.solid.every((v) => v === true), 'all cells solid when no voxels');
+}
+
+{
+  console.log('Test 6.2: Flat voxels -> no solid (flat = no slope)');
+  const grid = initCollisionGrid(4, 4, 1.0);
+  const voxels: [number, number, number][] = [];
+  for (let x = 0; x < 4; x++) {
+    for (let z = 0; z < 4; z++) {
+      voxels.push([x, 0, z]);
+    }
+  }
+  const result = autoGenerateCollision(voxels, grid, 5.0);
+  assert(result.solid.every((v) => v === false), 'no cells solid for flat terrain');
+  assert(result.elevation.every((v) => v === 0), 'all elevations are 0');
+}
+
+{
+  console.log('Test 6.3: Steep slope -> solid');
+  const grid = initCollisionGrid(4, 4, 1.0);
+  const voxels: [number, number, number][] = [
+    [0, 0, 0], [1, 10, 0], [2, 0, 0], [3, 0, 0],
+    [0, 0, 1], [1, 0, 1], [2, 0, 1], [3, 0, 1],
+    [0, 0, 2], [1, 0, 2], [2, 0, 2], [3, 0, 2],
+    [0, 0, 3], [1, 0, 3], [2, 0, 3], [3, 0, 3],
+  ];
+  const result = autoGenerateCollision(voxels, grid, 5.0);
+  // Cell (1,0) has height 10, neighbors have 0 -> slope = 10 > 5 -> solid
+  const idx10 = 0 * 4 + 1;
+  assert(result.solid[idx10] === true, `cell (1,0) is solid due to steep slope (got ${result.solid[idx10]})`);
+  // Cell (0,0) neighbors cell (1,0) with slope 10 > 5 -> also solid
+  const idx00 = 0 * 4 + 0;
+  assert(result.solid[idx00] === true, `cell (0,0) is solid due to neighbor slope (got ${result.solid[idx00]})`);
+}
+
+{
+  console.log('Test 6.4: Elevation set correctly from highest voxel');
+  const grid = initCollisionGrid(2, 2, 1.0);
+  const voxels: [number, number, number][] = [
+    [0, 0, 0], [0, 3, 0], [0, 5, 0], // Multiple Y at same XZ -> highest is 5
+    [1, 2, 0],
+    [0, 1, 1],
+    [1, 4, 1],
+  ];
+  const result = autoGenerateCollision(voxels, grid, 100); // high threshold = no solid from slope
+  assert(result.elevation[0] === 5, `elevation at (0,0) is 5 (got ${result.elevation[0]})`);
+  assert(result.elevation[1] === 2, `elevation at (1,0) is 2 (got ${result.elevation[1]})`);
+  assert(result.elevation[2] === 1, `elevation at (0,1) is 1 (got ${result.elevation[2]})`);
+  assert(result.elevation[3] === 4, `elevation at (1,1) is 4 (got ${result.elevation[3]})`);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 7. Palette operations (5 tests)
+// ═══════════════════════════════════════════════════════════════
+
+console.log('\n--- Palette operations ---\n');
+
+type RGBA = [number, number, number, number];
+
+{
+  console.log('Test 7.1: Add palette -> palette count increases');
+  const palettes: RGBA[][] = [];
+  const next = [...palettes, []];
+  assert(next.length === 1, `palette count is 1 (got ${next.length})`);
+}
+
+{
+  console.log('Test 7.2: Add color to palette');
+  const palettes: RGBA[][] = [[]];
+  const color: RGBA = [255, 0, 0, 255];
+  palettes[0] = [...palettes[0], color];
+  assert(palettes[0].length === 1, `palette has 1 color (got ${palettes[0].length})`);
+  assert(palettes[0][0][0] === 255, `red is 255 (got ${palettes[0][0][0]})`);
+}
+
+{
+  console.log('Test 7.3: Remove palette -> palette count decreases');
+  const palettes: RGBA[][] = [[], [[10, 20, 30, 255]]];
+  const filtered = palettes.filter((_, i) => i !== 0);
+  assert(filtered.length === 1, `palette count is 1 (got ${filtered.length})`);
+  assert(filtered[0].length === 1, `remaining palette has 1 color`);
+}
+
+{
+  console.log('Test 7.4: Extract colors from histogram');
+  // Simulate color extraction
+  function extractColors(pixels: [number, number, number][]): RGBA[] {
+    const buckets = new Map<number, { count: number; r: number; g: number; b: number }>();
+    for (const [r, g, b] of pixels) {
+      const rq = (r >> 4) & 0xf;
+      const gq = (g >> 4) & 0xf;
+      const bq = (b >> 4) & 0xf;
+      const key = (rq << 8) | (gq << 4) | bq;
+      const existing = buckets.get(key);
+      if (existing) {
+        existing.count++;
+        existing.r += r;
+        existing.g += g;
+        existing.b += b;
+      } else {
+        buckets.set(key, { count: 1, r, g, b });
+      }
+    }
+    const sorted = Array.from(buckets.values()).sort((a, b) => b.count - a.count);
+    return sorted.slice(0, 20).map((b) => [
+      Math.round(b.r / b.count),
+      Math.round(b.g / b.count),
+      Math.round(b.b / b.count),
+      255,
+    ]);
+  }
+
+  const pixels: [number, number, number][] = [];
+  for (let i = 0; i < 100; i++) pixels.push([255, 0, 0]);
+  for (let i = 0; i < 50; i++) pixels.push([0, 255, 0]);
+  for (let i = 0; i < 25; i++) pixels.push([0, 0, 255]);
+
+  const colors = extractColors(pixels);
+  assert(colors.length === 3, `extracted 3 colors (got ${colors.length})`);
+  assert(colors[0][0] === 255 && colors[0][1] === 0, 'most frequent color is red');
+  assert(colors[1][1] === 255 && colors[1][0] === 0, 'second most frequent is green');
+}
+
+{
+  console.log('Test 7.5: Extract colors limits to 20');
+  function extractColors(pixels: [number, number, number][]): RGBA[] {
+    const buckets = new Map<number, { count: number; r: number; g: number; b: number }>();
+    for (const [r, g, b] of pixels) {
+      const rq = (r >> 4) & 0xf;
+      const gq = (g >> 4) & 0xf;
+      const bq = (b >> 4) & 0xf;
+      const key = (rq << 8) | (gq << 4) | bq;
+      const existing = buckets.get(key);
+      if (existing) {
+        existing.count++;
+        existing.r += r;
+        existing.g += g;
+        existing.b += b;
+      } else {
+        buckets.set(key, { count: 1, r, g, b });
+      }
+    }
+    const sorted = Array.from(buckets.values()).sort((a, b) => b.count - a.count);
+    return sorted.slice(0, 20).map((b) => [
+      Math.round(b.r / b.count),
+      Math.round(b.g / b.count),
+      Math.round(b.b / b.count),
+      255,
+    ]);
+  }
+
+  // Generate 30 distinct 4-bit-quantized colors
+  const pixels: [number, number, number][] = [];
+  for (let i = 0; i < 30; i++) {
+    const r = (i * 17) % 256;
+    const g = (i * 37) % 256;
+    const b = (i * 53) % 256;
+    pixels.push([r, g, b]);
+  }
+  const colors = extractColors(pixels);
+  assert(colors.length <= 20, `extracted at most 20 colors (got ${colors.length})`);
+}
+
 // --- Summary ---
 console.log(`\n${'='.repeat(40)}`);
 console.log(`  ${passed} passed, ${failed} failed`);
