@@ -1,37 +1,19 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { NumberInput } from '../components/NumberInput.js';
 import { useSceneStore } from '../store/useSceneStore.js';
-import type { ToolType, CollisionLayer } from '../store/types.js';
+import type { ToolType } from '../store/types.js';
 
-const tools: { id: ToolType; label: string; key: string }[] = [
+const drawTools: { id: ToolType; label: string; key: string }[] = [
   { id: 'place', label: 'Place', key: 'V' },
   { id: 'paint', label: 'Paint', key: 'B' },
   { id: 'erase', label: 'Erase', key: 'E' },
   { id: 'fill', label: 'Fill', key: 'G' },
   { id: 'extrude', label: 'Extrude', key: 'X' },
+];
+
+const utilTools: { id: ToolType; label: string; key: string }[] = [
   { id: 'eyedropper', label: 'Eyedrop', key: 'I' },
   { id: 'select', label: 'Select', key: 'S' },
-];
-
-const presetColors: [number, number, number, number][] = [
-  [34, 139, 34, 255],
-  [139, 90, 43, 255],
-  [100, 100, 100, 255],
-  [200, 200, 200, 255],
-  [60, 60, 180, 255],
-  [180, 60, 60, 255],
-  [180, 180, 60, 255],
-  [60, 180, 180, 255],
-  [220, 160, 80, 255],
-  [80, 40, 20, 255],
-  [160, 80, 160, 255],
-  [20, 20, 20, 255],
-];
-
-const collisionLayers: { id: CollisionLayer; label: string }[] = [
-  { id: 'solid', label: 'Solid' },
-  { id: 'elevation', label: 'Elevation' },
-  { id: 'nav_zone', label: 'NavZone' },
 ];
 
 const styles: Record<string, React.CSSProperties> = {
@@ -52,32 +34,32 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: '6px 10px',
+    padding: '5px 8px',
     border: '1px solid #444',
     borderRadius: 4,
     background: '#2a2a4a',
     color: '#ddd',
     cursor: 'pointer',
-    fontSize: 13,
+    fontSize: 12,
   },
   toolBtnActive: {
     background: '#4a4a8a',
     borderColor: '#77f',
   },
   shortcut: {
-    fontSize: 11,
+    fontSize: 10,
     color: '#777',
   },
   colorGrid: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(4, 1fr)',
-    gap: 4,
+    gridTemplateColumns: 'repeat(8, 1fr)',
+    gap: 2,
   },
   colorSwatch: {
     width: '100%',
     aspectRatio: '1',
     border: '2px solid transparent',
-    borderRadius: 4,
+    borderRadius: 3,
     cursor: 'pointer',
   },
   row: {
@@ -94,15 +76,6 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#ddd',
     fontSize: 13,
   },
-  inputFlex: {
-    flex: 1,
-    padding: '4px 6px',
-    background: '#2a2a4a',
-    border: '1px solid #444',
-    borderRadius: 4,
-    color: '#ddd',
-    fontSize: 13,
-  },
   btn: {
     padding: '4px 10px',
     border: '1px solid #555',
@@ -112,21 +85,14 @@ const styles: Record<string, React.CSSProperties> = {
     cursor: 'pointer',
     fontSize: 12,
   },
-  layerBtn: {
+  select: {
     flex: 1,
     padding: '4px 6px',
+    background: '#2a2a4a',
     border: '1px solid #444',
     borderRadius: 4,
-    background: '#2a2a4a',
     color: '#ddd',
-    cursor: 'pointer',
     fontSize: 12,
-    textAlign: 'center' as const,
-  },
-  layerBtnActive: {
-    background: '#4a4a8a',
-    borderColor: '#77f',
-    color: '#fff',
   },
 };
 
@@ -139,31 +105,39 @@ export function TerrainLeftPanel() {
   const setActiveColor = useSceneStore((s) => s.setActiveColor);
   const setBrushSize = useSceneStore((s) => s.setBrushSize);
   const setYLevelLock = useSceneStore((s) => s.setYLevelLock);
-  const showCollision = useSceneStore((s) => s.showCollision);
-  const collisionGridData = useSceneStore((s) => s.collisionGridData);
-  const collisionLayer = useSceneStore((s) => s.collisionLayer);
-  const setCollisionLayer = useSceneStore((s) => s.setCollisionLayer);
-  const collisionHeight = useSceneStore((s) => s.collisionHeight);
-  const setCollisionHeight = useSceneStore((s) => s.setCollisionHeight);
-  const activeNavZone = useSceneStore((s) => s.activeNavZone);
-  const setActiveNavZone = useSceneStore((s) => s.setActiveNavZone);
-  const navZoneNames = useSceneStore((s) => s.navZoneNames);
-  const addNavZoneName = useSceneStore((s) => s.addNavZoneName);
-  const initCollisionGrid = useSceneStore((s) => s.initCollisionGrid);
-
-  const [gridW, setGridW] = useState(32);
-  const [gridH, setGridH] = useState(32);
-  const [cellSize, setCellSize] = useState(1.0);
-  const [newZoneName, setNewZoneName] = useState('');
+  const colorPalettes = useSceneStore((s) => s.colorPalettes);
+  const activePaletteIndex = useSceneStore((s) => s.activePaletteIndex);
+  const setActivePalette = useSceneStore((s) => s.setActivePalette);
+  const addPalette = useSceneStore((s) => s.addPalette);
+  const addColorToPalette = useSceneStore((s) => s.addColorToPalette);
 
   const hexColor = `#${activeColor.slice(0, 3).map((c) => c.toString(16).padStart(2, '0')).join('')}`;
+  const activePalette = colorPalettes[activePaletteIndex] ?? colorPalettes[0];
 
   return (
     <div style={{ flex: 1, overflowY: 'auto', padding: 0 }}>
-      {/* Tools */}
+      {/* Draw Tools */}
       <div style={styles.section}>
-        <span style={styles.label}>Tools</span>
-        {tools.map((t) => (
+        <span style={styles.label}>Draw</span>
+        {drawTools.map((t) => (
+          <button
+            key={t.id}
+            style={{
+              ...styles.toolBtn,
+              ...(activeTool === t.id ? styles.toolBtnActive : {}),
+            }}
+            onClick={() => setTool(t.id)}
+          >
+            {t.label}
+            <span style={styles.shortcut}>{t.key}</span>
+          </button>
+        ))}
+      </div>
+
+      {/* Utility Tools */}
+      <div style={styles.section}>
+        <span style={styles.label}>Utility</span>
+        {utilTools.map((t) => (
           <button
             key={t.id}
             style={{
@@ -192,20 +166,47 @@ export function TerrainLeftPanel() {
               const b = parseInt(hex.slice(5, 7), 16);
               setActiveColor([r, g, b, activeColor[3]]);
             }}
-            style={{ width: 40, height: 30, border: 'none', cursor: 'pointer' }}
+            style={{ width: 30, height: 24, border: 'none', cursor: 'pointer' }}
           />
           <div
             style={{
-              width: 30,
-              height: 30,
-              borderRadius: 4,
+              width: 24,
+              height: 24,
+              borderRadius: 3,
               background: `rgba(${activeColor.join(',')})`,
               border: '1px solid #666',
             }}
           />
+          <button
+            style={{ ...styles.btn, fontSize: 11, padding: '2px 6px' }}
+            onClick={() => addColorToPalette(activePaletteIndex, [...activeColor] as [number, number, number, number])}
+          >
+            + Palette
+          </button>
         </div>
+
+        {/* Palette selector */}
+        <div style={styles.row}>
+          <select
+            value={activePaletteIndex}
+            onChange={(e) => setActivePalette(Number(e.target.value))}
+            style={styles.select}
+          >
+            {colorPalettes.map((p, i) => (
+              <option key={i} value={i}>{p.name}</option>
+            ))}
+          </select>
+          <button
+            style={{ ...styles.btn, fontSize: 11, padding: '2px 6px' }}
+            onClick={() => addPalette(`Palette ${colorPalettes.length + 1}`)}
+          >
+            New
+          </button>
+        </div>
+
+        {/* 8-column color grid */}
         <div style={styles.colorGrid}>
-          {presetColors.map((c, i) => (
+          {(activePalette?.colors ?? []).map((c, i) => (
             <div
               key={i}
               style={{
@@ -257,126 +258,6 @@ export function TerrainLeftPanel() {
         </div>
       </div>
 
-      {/* Collision section — always shown in TERRAIN mode */}
-      <div style={styles.section}>
-        <span style={styles.label}>Collision Grid</span>
-        {!showCollision && (
-          <button
-            style={{ ...styles.btn, marginBottom: 8 }}
-            onClick={() => useSceneStore.getState().setShowCollision(true)}
-          >
-            Show Overlay
-          </button>
-        )}
-        {!collisionGridData ? (
-            <>
-              <div style={styles.row}>
-                <NumberInput
-                  label="W"
-                  value={gridW}
-                  min={1}
-                  onChange={(v) => setGridW(v)}
-                  style={{ ...styles.inputFlex, maxWidth: 60 }}
-                />
-                <NumberInput
-                  label="H"
-                  value={gridH}
-                  min={1}
-                  onChange={(v) => setGridH(v)}
-                  style={{ ...styles.inputFlex, maxWidth: 60 }}
-                />
-              </div>
-              <div style={styles.row}>
-                <NumberInput
-                  label="Cell"
-                  value={cellSize}
-                  step={0.1}
-                  min={0.1}
-                  onChange={(v) => setCellSize(v)}
-                  style={{ ...styles.inputFlex, maxWidth: 60 }}
-                />
-              </div>
-              <button style={styles.btn} onClick={() => initCollisionGrid(gridW, gridH, cellSize)}>
-                Init Grid
-              </button>
-            </>
-          ) : (
-            <>
-              <div style={styles.row}>
-                {collisionLayers.map((cl) => (
-                  <button
-                    key={cl.id}
-                    style={{
-                      ...styles.layerBtn,
-                      ...(collisionLayer === cl.id ? styles.layerBtnActive : {}),
-                    }}
-                    onClick={() => setCollisionLayer(cl.id)}
-                  >
-                    {cl.label}
-                  </button>
-                ))}
-              </div>
-
-              {collisionLayer === 'elevation' && (
-                <div style={styles.row}>
-                  <span style={{ fontSize: 12, minWidth: 50 }}>Height</span>
-                  <NumberInput
-                    step={0.5}
-                    value={collisionHeight}
-                    onChange={setCollisionHeight}
-                    style={styles.inputFlex}
-                  />
-                </div>
-              )}
-
-              {collisionLayer === 'nav_zone' && (
-                <>
-                  <div style={styles.row}>
-                    <span style={{ fontSize: 12, minWidth: 50 }}>Zone</span>
-                    <select
-                      value={activeNavZone}
-                      onChange={(e) => setActiveNavZone(Number(e.target.value))}
-                      style={styles.inputFlex}
-                    >
-                      <option value={0}>0: default</option>
-                      {navZoneNames.map((name, i) => (
-                        <option key={i + 1} value={i + 1}>
-                          {i + 1}: {name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div style={styles.row}>
-                    <input
-                      type="text"
-                      value={newZoneName}
-                      placeholder="new zone name"
-                      onChange={(e) => setNewZoneName(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' && newZoneName.trim()) {
-                          addNavZoneName(newZoneName.trim());
-                          setNewZoneName('');
-                        }
-                      }}
-                      style={styles.inputFlex}
-                    />
-                    <button
-                      style={styles.btn}
-                      onClick={() => {
-                        if (newZoneName.trim()) {
-                          addNavZoneName(newZoneName.trim());
-                          setNewZoneName('');
-                        }
-                      }}
-                    >
-                      +
-                    </button>
-                  </div>
-                </>
-              )}
-            </>
-          )}
-        </div>
     </div>
   );
 }

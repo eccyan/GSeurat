@@ -54,6 +54,11 @@ interface GaussianSplatConfig {
   render_height: number;
 }
 
+interface ColorPalette {
+  name: string;
+  colors: [number, number, number, number][];
+}
+
 // ── Collision grid operations (mirrors store logic) ──
 
 function initCollisionGrid(width: number, height: number, cellSize: number): CollisionGridData {
@@ -76,6 +81,14 @@ function toggleCellSolid(grid: CollisionGridData, x: number, z: number): Collisi
   return { ...grid, solid };
 }
 
+function setCellSolid(grid: CollisionGridData, x: number, z: number, val: boolean): CollisionGridData {
+  const idx = z * grid.width + x;
+  if (idx < 0 || idx >= grid.solid.length) return grid;
+  const solid = [...grid.solid];
+  solid[idx] = val;
+  return { ...grid, solid };
+}
+
 function setCellElevation(grid: CollisionGridData, x: number, z: number, value: number): CollisionGridData {
   const idx = z * grid.width + x;
   if (idx < 0 || idx >= grid.elevation.length) return grid;
@@ -90,6 +103,46 @@ function setCellNavZone(grid: CollisionGridData, x: number, z: number, zone: num
   const nav_zone = [...grid.nav_zone];
   nav_zone[idx] = zone;
   return { ...grid, nav_zone };
+}
+
+function boxFillSolid(grid: CollisionGridData, x1: number, z1: number, x2: number, z2: number): CollisionGridData {
+  const minX = Math.min(x1, x2);
+  const maxX = Math.max(x1, x2);
+  const minZ = Math.min(z1, z2);
+  const maxZ = Math.max(z1, z2);
+  let result = grid;
+  for (let z = minZ; z <= maxZ; z++) {
+    for (let x = minX; x <= maxX; x++) {
+      result = setCellSolid(result, x, z, true);
+    }
+  }
+  return result;
+}
+
+function autoGenerateCollision(
+  grid: CollisionGridData,
+  heightMap: Map<string, number>,
+  slopeThreshold: number,
+): CollisionGridData {
+  const solid = [...grid.solid];
+  const elevation = [...grid.elevation];
+
+  for (let cz = 0; cz < grid.height; cz++) {
+    for (let cx = 0; cx < grid.width; cx++) {
+      const idx = cz * grid.width + cx;
+      const h = heightMap.get(`${cx},${cz}`) ?? 0;
+      elevation[idx] = h;
+
+      let maxSlope = 0;
+      for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nh = heightMap.get(`${cx + dx},${cz + dz}`) ?? 0;
+        maxSlope = Math.max(maxSlope, Math.abs(h - nh));
+      }
+      solid[idx] = maxSlope > slopeThreshold;
+    }
+  }
+
+  return { ...grid, solid, elevation };
 }
 
 // ── Scene export (mirrors lib/sceneExport.ts logic) ──
@@ -252,6 +305,37 @@ function loadProject(data: BricklayerFile): {
   };
 }
 
+// ── Palette operations (mirrors store logic) ──
+
+function addPalette(palettes: ColorPalette[], name: string): ColorPalette[] {
+  return [...palettes, { name, colors: [] }];
+}
+
+function removePalette(palettes: ColorPalette[], index: number): ColorPalette[] {
+  const result = palettes.filter((_, i) => i !== index);
+  if (result.length === 0) return [{ name: 'Default', colors: [] }];
+  return result;
+}
+
+function addColorToPalette(palettes: ColorPalette[], paletteIndex: number, color: [number, number, number, number]): ColorPalette[] {
+  const result = [...palettes];
+  if (!result[paletteIndex]) return result;
+  result[paletteIndex] = {
+    ...result[paletteIndex],
+    colors: [...result[paletteIndex].colors, color],
+  };
+  return result;
+}
+
+function setPaletteColor(palettes: ColorPalette[], paletteIndex: number, colorIndex: number, color: [number, number, number, number]): ColorPalette[] {
+  const result = [...palettes];
+  if (!result[paletteIndex]) return result;
+  const colors = [...result[paletteIndex].colors];
+  colors[colorIndex] = color;
+  result[paletteIndex] = { ...result[paletteIndex], colors };
+  return result;
+}
+
 // ---------- Test helpers ----------
 
 let passed = 0;
@@ -272,7 +356,7 @@ function assert(condition: boolean, message: string) {
 console.log('\n=== Bricklayer Store Tests ===\n');
 
 // ═══════════════════════════════════════════════════════════════
-// 1. CollisionGridData operations (8 tests)
+// 1. CollisionGridData operations (10 tests)
 // ═══════════════════════════════════════════════════════════════
 
 console.log('--- CollisionGridData operations ---\n');
@@ -344,6 +428,23 @@ console.log('--- CollisionGridData operations ---\n');
   const twice = toggleCellSolid(once, 1, 2);
   const idx = 2 * 4 + 1;
   assert(twice.solid[idx] === false, `solid[${idx}] is false after double toggle (got ${twice.solid[idx]})`);
+}
+
+{
+  console.log('Test 1.9: setCellSolid explicitly sets value');
+  const grid = initCollisionGrid(4, 4, 1.0);
+  const set1 = setCellSolid(grid, 2, 1, true);
+  const idx = 1 * 4 + 2;
+  assert(set1.solid[idx] === true, `solid[${idx}] is true after setCellSolid(true)`);
+  const set2 = setCellSolid(set1, 2, 1, false);
+  assert(set2.solid[idx] === false, `solid[${idx}] is false after setCellSolid(false)`);
+}
+
+{
+  console.log('Test 1.10: setCellSolid out-of-bounds returns grid unchanged');
+  const grid = initCollisionGrid(4, 4, 1.0);
+  const updated = setCellSolid(grid, 99, 99, true);
+  assert(updated.solid.every((v) => v === false), 'no cells changed on OOB setCellSolid');
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -609,6 +710,334 @@ console.log('\n--- File roundtrip ---\n');
   assert(loaded.navZoneNames[0] === 'forest', 'first name matches');
   assert(loaded.navZoneNames[1] === 'river', 'second name matches');
   assert(loaded.navZoneNames[2] === 'mountain', 'third name matches');
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 5. Box fill (6 tests)
+// ═══════════════════════════════════════════════════════════════
+
+console.log('\n--- Box fill ---\n');
+
+{
+  console.log('Test 5.1: Box fill 2x2 area');
+  const grid = initCollisionGrid(8, 8, 1.0);
+  const filled = boxFillSolid(grid, 1, 1, 2, 2);
+  assert(filled.solid[1 * 8 + 1] === true, '(1,1) is solid');
+  assert(filled.solid[1 * 8 + 2] === true, '(2,1) is solid');
+  assert(filled.solid[2 * 8 + 1] === true, '(1,2) is solid');
+  assert(filled.solid[2 * 8 + 2] === true, '(2,2) is solid');
+  assert(filled.solid[0 * 8 + 0] === false, '(0,0) is still walkable');
+}
+
+{
+  console.log('Test 5.2: Box fill with reversed coordinates');
+  const grid = initCollisionGrid(8, 8, 1.0);
+  const filled = boxFillSolid(grid, 3, 3, 1, 1);
+  let count = 0;
+  for (const s of filled.solid) if (s) count++;
+  assert(count === 9, `3x3 box = 9 solid cells (got ${count})`);
+}
+
+{
+  console.log('Test 5.3: Box fill single cell');
+  const grid = initCollisionGrid(4, 4, 1.0);
+  const filled = boxFillSolid(grid, 2, 2, 2, 2);
+  let count = 0;
+  for (const s of filled.solid) if (s) count++;
+  assert(count === 1, `single cell box fill = 1 solid (got ${count})`);
+}
+
+{
+  console.log('Test 5.4: Box fill full row');
+  const grid = initCollisionGrid(4, 4, 1.0);
+  const filled = boxFillSolid(grid, 0, 0, 3, 0);
+  assert(filled.solid[0] === true, '(0,0) solid');
+  assert(filled.solid[1] === true, '(1,0) solid');
+  assert(filled.solid[2] === true, '(2,0) solid');
+  assert(filled.solid[3] === true, '(3,0) solid');
+  assert(filled.solid[4] === false, '(0,1) walkable');
+}
+
+{
+  console.log('Test 5.5: Box fill full column');
+  const grid = initCollisionGrid(4, 4, 1.0);
+  const filled = boxFillSolid(grid, 0, 0, 0, 3);
+  assert(filled.solid[0] === true, '(0,0) solid');
+  assert(filled.solid[4] === true, '(0,1) solid');
+  assert(filled.solid[8] === true, '(0,2) solid');
+  assert(filled.solid[12] === true, '(0,3) solid');
+  assert(filled.solid[1] === false, '(1,0) walkable');
+}
+
+{
+  console.log('Test 5.6: Box fill does not affect already-solid cells');
+  const grid = initCollisionGrid(4, 4, 1.0);
+  const preFilled = setCellSolid(grid, 1, 1, true);
+  const filled = boxFillSolid(preFilled, 0, 0, 2, 2);
+  let count = 0;
+  for (const s of filled.solid) if (s) count++;
+  assert(count === 9, `3x3 box fill = 9 solid (got ${count})`);
+  assert(filled.solid[1 * 4 + 1] === true, '(1,1) still solid');
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 6. Auto-generate collision (5 tests)
+// ═══════════════════════════════════════════════════════════════
+
+console.log('\n--- Auto-generate collision ---\n');
+
+{
+  console.log('Test 6.1: Flat terrain -> interior cells not solid');
+  const grid = initCollisionGrid(4, 4, 1.0);
+  const heightMap = new Map<string, number>();
+  // Fill including neighbors outside grid to avoid edge effects
+  for (let z = -1; z <= 4; z++) for (let x = -1; x <= 4; x++) heightMap.set(`${x},${z}`, 5);
+  const result = autoGenerateCollision(grid, heightMap, 1.0);
+  // Interior cells (1,1), (2,2) should not be solid since all neighbors have same height
+  assert(result.solid[1 * 4 + 1] === false, 'interior cell (1,1) is not solid');
+  assert(result.solid[2 * 4 + 2] === false, 'interior cell (2,2) is not solid');
+}
+
+{
+  console.log('Test 6.2: Cliff face -> solid cells');
+  const grid = initCollisionGrid(4, 4, 1.0);
+  const heightMap = new Map<string, number>();
+  for (let z = 0; z < 4; z++) {
+    for (let x = 0; x < 4; x++) {
+      heightMap.set(`${x},${z}`, x >= 2 ? 10 : 0);
+    }
+  }
+  const result = autoGenerateCollision(grid, heightMap, 1.0);
+  // Cells at x=1 and x=2 should be solid (adjacent to cliff)
+  assert(result.solid[0 * 4 + 1] === true, '(1,0) is solid at cliff edge');
+  assert(result.solid[0 * 4 + 2] === true, '(2,0) is solid at cliff top');
+}
+
+{
+  console.log('Test 6.3: Elevation values are set from height map');
+  const grid = initCollisionGrid(4, 4, 1.0);
+  const heightMap = new Map<string, number>();
+  heightMap.set('2,1', 7.5);
+  const result = autoGenerateCollision(grid, heightMap, 100);
+  const idx = 1 * 4 + 2;
+  assert(result.elevation[idx] === 7.5, `elevation at (2,1) is 7.5 (got ${result.elevation[idx]})`);
+}
+
+{
+  console.log('Test 6.4: High threshold -> no solid');
+  const grid = initCollisionGrid(4, 4, 1.0);
+  const heightMap = new Map<string, number>();
+  for (let z = 0; z < 4; z++) for (let x = 0; x < 4; x++) heightMap.set(`${x},${z}`, x);
+  const result = autoGenerateCollision(grid, heightMap, 10.0);
+  assert(result.solid.every((v) => v === false), 'high threshold = no solid cells');
+}
+
+{
+  console.log('Test 6.5: Zero threshold -> all cells with any neighbor difference are solid');
+  const grid = initCollisionGrid(3, 1, 1.0);
+  const heightMap = new Map<string, number>();
+  heightMap.set('0,0', 0);
+  heightMap.set('1,0', 1);
+  heightMap.set('2,0', 1);
+  const result = autoGenerateCollision(grid, heightMap, 0);
+  // Cell (0,0) neighbors (1,0) with diff 1 > 0 -> solid
+  assert(result.solid[0] === true, '(0,0) is solid with zero threshold');
+  // Cell (1,0) neighbors (0,0) with diff 1 > 0 -> solid
+  assert(result.solid[1] === true, '(1,0) is solid with zero threshold');
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 7. Color palettes (10 tests)
+// ═══════════════════════════════════════════════════════════════
+
+console.log('\n--- Color palettes ---\n');
+
+{
+  console.log('Test 7.1: Add palette');
+  const palettes = addPalette([], 'Nature');
+  assert(palettes.length === 1, `palette count is 1 (got ${palettes.length})`);
+  assert(palettes[0].name === 'Nature', 'palette name matches');
+  assert(palettes[0].colors.length === 0, 'palette starts empty');
+}
+
+{
+  console.log('Test 7.2: Add color to palette');
+  let palettes: ColorPalette[] = [{ name: 'P1', colors: [] }];
+  palettes = addColorToPalette(palettes, 0, [255, 0, 0, 255]);
+  assert(palettes[0].colors.length === 1, 'color added');
+  assert(palettes[0].colors[0][0] === 255, 'red channel is 255');
+}
+
+{
+  console.log('Test 7.3: Set palette color');
+  let palettes: ColorPalette[] = [{ name: 'P1', colors: [[255, 0, 0, 255]] }];
+  palettes = setPaletteColor(palettes, 0, 0, [0, 255, 0, 255]);
+  assert(palettes[0].colors[0][1] === 255, 'green channel is 255 after set');
+}
+
+{
+  console.log('Test 7.4: Remove palette reverts to default');
+  let palettes: ColorPalette[] = [{ name: 'P1', colors: [] }];
+  palettes = removePalette(palettes, 0);
+  assert(palettes.length === 1, 'at least one palette remains');
+  assert(palettes[0].name === 'Default', 'fallback palette is named Default');
+}
+
+{
+  console.log('Test 7.5: Multiple palettes maintain independence');
+  let palettes = addPalette([], 'A');
+  palettes = addPalette(palettes, 'B');
+  palettes = addColorToPalette(palettes, 0, [1, 2, 3, 4]);
+  palettes = addColorToPalette(palettes, 1, [5, 6, 7, 8]);
+  assert(palettes[0].colors.length === 1, 'palette A has 1 color');
+  assert(palettes[1].colors.length === 1, 'palette B has 1 color');
+  assert(palettes[0].colors[0][0] === 1, 'palette A color[0] = 1');
+  assert(palettes[1].colors[0][0] === 5, 'palette B color[0] = 5');
+}
+
+{
+  console.log('Test 7.6: Remove palette by index preserves others');
+  let palettes = addPalette([], 'A');
+  palettes = addPalette(palettes, 'B');
+  palettes = addPalette(palettes, 'C');
+  palettes = removePalette(palettes, 1);
+  assert(palettes.length === 2, '2 palettes remain');
+  assert(palettes[0].name === 'A', 'first is A');
+  assert(palettes[1].name === 'C', 'second is C');
+}
+
+{
+  console.log('Test 7.7: Add multiple colors to same palette');
+  let palettes: ColorPalette[] = [{ name: 'P', colors: [] }];
+  palettes = addColorToPalette(palettes, 0, [10, 20, 30, 255]);
+  palettes = addColorToPalette(palettes, 0, [40, 50, 60, 255]);
+  palettes = addColorToPalette(palettes, 0, [70, 80, 90, 255]);
+  assert(palettes[0].colors.length === 3, '3 colors in palette');
+}
+
+{
+  console.log('Test 7.8: setPaletteColor on invalid index is safe');
+  let palettes: ColorPalette[] = [{ name: 'P', colors: [[1, 2, 3, 4]] }];
+  palettes = setPaletteColor(palettes, 5, 0, [9, 9, 9, 9]);
+  assert(palettes.length === 1, 'no crash on invalid palette index');
+  assert(palettes[0].colors[0][0] === 1, 'original color unchanged');
+}
+
+{
+  console.log('Test 7.9: addColorToPalette on invalid index is safe');
+  let palettes: ColorPalette[] = [{ name: 'P', colors: [] }];
+  palettes = addColorToPalette(palettes, 99, [1, 2, 3, 4]);
+  assert(palettes[0].colors.length === 0, 'no color added to invalid index');
+}
+
+{
+  console.log('Test 7.10: Palette serialization roundtrip');
+  let palettes: ColorPalette[] = [{ name: 'Test', colors: [[10, 20, 30, 255], [40, 50, 60, 128]] }];
+  const json = JSON.stringify(palettes);
+  const restored: ColorPalette[] = JSON.parse(json);
+  assert(restored[0].name === 'Test', 'name preserved');
+  assert(restored[0].colors.length === 2, '2 colors preserved');
+  assert(restored[0].colors[1][3] === 128, 'alpha preserved');
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 8. Large grid and edge cases (8 tests)
+// ═══════════════════════════════════════════════════════════════
+
+console.log('\n--- Large grid and edge cases ---\n');
+
+{
+  console.log('Test 8.1: Large grid (128x128) initializes correctly');
+  const grid = initCollisionGrid(128, 128, 0.5);
+  assert(grid.solid.length === 128 * 128, `solid length is ${128 * 128} (got ${grid.solid.length})`);
+  assert(grid.cell_size === 0.5, 'cell_size is 0.5');
+}
+
+{
+  console.log('Test 8.2: Toggle corner cells');
+  const grid = initCollisionGrid(10, 10, 1.0);
+  let g = toggleCellSolid(grid, 0, 0);
+  g = toggleCellSolid(g, 9, 9);
+  g = toggleCellSolid(g, 0, 9);
+  g = toggleCellSolid(g, 9, 0);
+  assert(g.solid[0] === true, 'top-left corner solid');
+  assert(g.solid[99] === true, 'bottom-right corner solid');
+  assert(g.solid[90] === true, 'bottom-left corner solid');
+  assert(g.solid[9] === true, 'top-right corner solid');
+}
+
+{
+  console.log('Test 8.3: Grid with non-unit cell size');
+  const grid = initCollisionGrid(16, 16, 2.5);
+  assert(grid.cell_size === 2.5, 'cell_size preserved');
+  assert(grid.width === 16, 'width preserved');
+}
+
+{
+  console.log('Test 8.4: Voxel roundtrip preserves color precision');
+  const voxels = new Map<VoxelKey, Voxel>();
+  voxels.set(voxelKey(0, 0, 0), { color: [127, 63, 191, 200] });
+  const file = saveProject(voxels, 10, 10, null, [], []);
+  const loaded = loadProject(JSON.parse(JSON.stringify(file)));
+  const v = loaded.voxels.get(voxelKey(0, 0, 0));
+  assert(v !== undefined, 'voxel loaded');
+  assert(v!.color[0] === 127, 'red=127');
+  assert(v!.color[1] === 63, 'green=63');
+  assert(v!.color[2] === 191, 'blue=191');
+  assert(v!.color[3] === 200, 'alpha=200');
+}
+
+{
+  console.log('Test 8.5: Multiple nav zones on same grid');
+  const grid = initCollisionGrid(4, 4, 1.0);
+  let g = setCellNavZone(grid, 0, 0, 1);
+  g = setCellNavZone(g, 1, 0, 2);
+  g = setCellNavZone(g, 2, 0, 3);
+  assert(g.nav_zone[0] === 1, 'zone 1');
+  assert(g.nav_zone[1] === 2, 'zone 2');
+  assert(g.nav_zone[2] === 3, 'zone 3');
+  assert(g.nav_zone[3] === 0, 'zone 0 (default)');
+}
+
+{
+  console.log('Test 8.6: Collision and elevation on same cell');
+  const grid = initCollisionGrid(4, 4, 1.0);
+  let g = toggleCellSolid(grid, 1, 1);
+  g = setCellElevation(g, 1, 1, 3.0);
+  const idx = 1 * 4 + 1;
+  assert(g.solid[idx] === true, 'cell is solid');
+  assert(g.elevation[idx] === 3.0, 'cell has elevation 3.0');
+}
+
+{
+  console.log('Test 8.7: Export with all entity types');
+  const input = baseInput();
+  input.staticLights = [{ position: [0, 0], radius: 5, height: 2, color: [1, 1, 1], intensity: 1 }];
+  input.npcs = [{ name: 'A', position: [0, 0, 0], facing: 'down' }];
+  input.portals = [{ position: [0, 0], size: [2, 2], target_scene: 'x', spawn_position: [0, 0, 0] }];
+  input.placedObjects = [{ id: 'o', ply_file: 'a.ply', position: [0, 0, 0], rotation: [0, 0, 0], scale: 1, is_static: true }];
+  const result = exportScene(input);
+  assert('static_lights' in result, 'has lights');
+  assert('npcs' in result, 'has npcs');
+  assert('portals' in result, 'has portals');
+  assert('placed_objects' in result, 'has objects');
+}
+
+{
+  console.log('Test 8.8: File roundtrip with collision + voxels + zones + objects');
+  const voxels = new Map<VoxelKey, Voxel>();
+  voxels.set(voxelKey(5, 5, 5), { color: [128, 64, 32, 255] });
+  const grid = initCollisionGrid(4, 4, 1.0);
+  grid.solid[0] = true;
+  grid.nav_zone[3] = 2;
+  const objs: PlacedObjectData[] = [{ id: 'x', ply_file: 'test.ply', position: [0, 0, 0], rotation: [0, 0, 0], scale: 1, is_static: false }];
+  const file = saveProject(voxels, 64, 48, grid, ['zone1'], objs);
+  const loaded = loadProject(JSON.parse(JSON.stringify(file)));
+  assert(loaded.voxels.size === 1, '1 voxel');
+  assert(loaded.collisionGridData!.solid[0] === true, 'solid preserved');
+  assert(loaded.collisionGridData!.nav_zone[3] === 2, 'nav_zone preserved');
+  assert(loaded.navZoneNames[0] === 'zone1', 'zone name preserved');
+  assert(loaded.placedObjects[0].ply_file === 'test.ply', 'object preserved');
 }
 
 // --- Summary ---

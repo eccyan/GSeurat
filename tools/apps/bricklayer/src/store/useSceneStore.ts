@@ -21,6 +21,10 @@ import type {
   Snapshot,
   BricklayerFile,
   CollisionGridData,
+  TerrainEntry,
+  AssetEntry,
+  NavigationNode,
+  ColorPalette,
 } from './types.js';
 import { voxelKey, parseKey, floodFill3D, brushPositions } from '../lib/voxelUtils.js';
 
@@ -133,6 +137,26 @@ export interface SceneStoreState {
   gridWidth: number;
   gridDepth: number;
 
+  // Project management
+  projectName: string;
+  projectHandle: FileSystemDirectoryHandle | null;
+  terrains: TerrainEntry[];
+  currentTerrainId: string;
+  assets: AssetEntry[];
+  activeNode: NavigationNode | null;
+
+  // Collision box fill
+  collisionBoxFill: boolean;
+  collisionBoxStart: [number, number] | null;
+
+  // Grab mode
+  grabMode: boolean;
+  grabOriginalPosition: [number, number, number] | null;
+
+  // Color palettes
+  colorPalettes: ColorPalette[];
+  activePaletteIndex: number;
+
   // Voxel tools
   activeTool: ToolType;
   activeColor: [number, number, number, number];
@@ -224,6 +248,34 @@ export interface SceneStoreState {
   addNavZoneName: (name: string) => void;
   removeNavZoneName: (index: number) => void;
 
+  // Actions – project
+  setProjectName: (name: string) => void;
+  setProjectHandle: (handle: FileSystemDirectoryHandle | null) => void;
+  addTerrain: (terrain: TerrainEntry) => void;
+  removeTerrain: (id: string) => void;
+  switchTerrain: (id: string) => void;
+  addAsset: (asset: AssetEntry) => void;
+  removeAsset: (id: string) => void;
+  setActiveNode: (node: NavigationNode | null) => void;
+
+  // Actions – collision box fill
+  setCollisionBoxFill: (v: boolean) => void;
+  setCollisionBoxStart: (pos: [number, number] | null) => void;
+  setCellSolid: (x: number, z: number, val: boolean) => void;
+  autoGenerateCollision: (slopeThreshold: number) => void;
+
+  // Actions – grab
+  setGrabMode: (v: boolean) => void;
+  setGrabOriginalPosition: (pos: [number, number, number] | null) => void;
+
+  // Actions – palettes
+  addPalette: (name: string) => void;
+  removePalette: (index: number) => void;
+  setActivePalette: (index: number) => void;
+  setPaletteColor: (paletteIndex: number, colorIndex: number, color: [number, number, number, number]) => void;
+  addColorToPalette: (paletteIndex: number, color: [number, number, number, number]) => void;
+  extractColorsFromImage: (imageData: ImageData, maxColors: number) => void;
+
   // Actions – editor
   setMode: (mode: BricklayerMode) => void;
   setSelectedEntity: (e: SelectedEntity | null) => void;
@@ -247,10 +299,44 @@ export interface SceneStoreState {
   loadProject: (data: BricklayerFile) => void;
 }
 
+const defaultPalette: ColorPalette = {
+  name: 'Default',
+  colors: [
+    [34, 139, 34, 255],
+    [139, 90, 43, 255],
+    [100, 100, 100, 255],
+    [200, 200, 200, 255],
+    [60, 60, 180, 255],
+    [180, 60, 60, 255],
+    [180, 180, 60, 255],
+    [60, 180, 180, 255],
+    [220, 160, 80, 255],
+    [80, 40, 20, 255],
+    [160, 80, 160, 255],
+    [20, 20, 20, 255],
+  ],
+};
+
 export const useSceneStore = create<SceneStoreState>((set, get) => ({
   voxels: new Map(),
   gridWidth: 128,
   gridDepth: 96,
+
+  projectName: 'Untitled',
+  projectHandle: null,
+  terrains: [],
+  currentTerrainId: '',
+  assets: [],
+  activeNode: null,
+
+  collisionBoxFill: false,
+  collisionBoxStart: null,
+
+  grabMode: false,
+  grabOriginalPosition: null,
+
+  colorPalettes: [defaultPalette],
+  activePaletteIndex: 0,
 
   activeTool: 'place',
   activeColor: [34, 139, 34, 255],
@@ -586,6 +672,134 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
 
   removeNavZoneName: (index) => {
     set({ navZoneNames: get().navZoneNames.filter((_, i) => i !== index) });
+  },
+
+  // ── Project actions ──
+  setProjectName: (name) => set({ projectName: name }),
+  setProjectHandle: (handle) => set({ projectHandle: handle }),
+  addTerrain: (terrain) => set({ terrains: [...get().terrains, terrain] }),
+  removeTerrain: (id) => set({ terrains: get().terrains.filter((t) => t.id !== id) }),
+  switchTerrain: (id) => set({ currentTerrainId: id }),
+  addAsset: (asset) => set({ assets: [...get().assets, asset] }),
+  removeAsset: (id) => set({ assets: get().assets.filter((a) => a.id !== id) }),
+  setActiveNode: (node) => set({ activeNode: node }),
+
+  // ── Collision box fill ──
+  setCollisionBoxFill: (v) => set({ collisionBoxFill: v, collisionBoxStart: null }),
+  setCollisionBoxStart: (pos) => set({ collisionBoxStart: pos }),
+
+  setCellSolid: (x, z, val) => {
+    const { collisionGridData } = get();
+    if (!collisionGridData) return;
+    const idx = z * collisionGridData.width + x;
+    if (idx < 0 || idx >= collisionGridData.solid.length) return;
+    const solid = [...collisionGridData.solid];
+    solid[idx] = val;
+    set({ collisionGridData: { ...collisionGridData, solid } });
+  },
+
+  autoGenerateCollision: (slopeThreshold) => {
+    const { voxels, collisionGridData } = get();
+    if (!collisionGridData) return;
+    const g = collisionGridData;
+    const solid = [...g.solid];
+    const elevation = [...g.elevation];
+
+    // Build height map from voxels
+    const heightMap = new Map<string, number>();
+    for (const key of voxels.keys()) {
+      const parts = key.split(',');
+      const x = Number(parts[0]);
+      const y = Number(parts[1]);
+      const z = Number(parts[2]);
+      const mapKey = `${x},${z}`;
+      const existing = heightMap.get(mapKey) ?? -Infinity;
+      if (y > existing) heightMap.set(mapKey, y);
+    }
+
+    for (let cz = 0; cz < g.height; cz++) {
+      for (let cx = 0; cx < g.width; cx++) {
+        const idx = cz * g.width + cx;
+        const h = heightMap.get(`${cx},${cz}`) ?? 0;
+        elevation[idx] = h;
+
+        // Check slope against neighbors
+        let maxSlope = 0;
+        for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+          const nh = heightMap.get(`${cx + dx},${cz + dz}`) ?? 0;
+          maxSlope = Math.max(maxSlope, Math.abs(h - nh));
+        }
+        solid[idx] = maxSlope > slopeThreshold;
+      }
+    }
+
+    set({ collisionGridData: { ...g, solid, elevation } });
+  },
+
+  // ── Grab actions ──
+  setGrabMode: (v) => set({ grabMode: v }),
+  setGrabOriginalPosition: (pos) => set({ grabOriginalPosition: pos }),
+
+  // ── Palette actions ──
+  addPalette: (name) => {
+    const palettes = [...get().colorPalettes, { name, colors: [] }];
+    set({ colorPalettes: palettes, activePaletteIndex: palettes.length - 1 });
+  },
+
+  removePalette: (index) => {
+    const palettes = get().colorPalettes.filter((_, i) => i !== index);
+    if (palettes.length === 0) palettes.push({ name: 'Default', colors: [] });
+    set({
+      colorPalettes: palettes,
+      activePaletteIndex: Math.min(get().activePaletteIndex, palettes.length - 1),
+    });
+  },
+
+  setActivePalette: (index) => set({ activePaletteIndex: index }),
+
+  setPaletteColor: (paletteIndex, colorIndex, color) => {
+    const palettes = [...get().colorPalettes];
+    if (!palettes[paletteIndex]) return;
+    const colors = [...palettes[paletteIndex].colors];
+    colors[colorIndex] = color;
+    palettes[paletteIndex] = { ...palettes[paletteIndex], colors };
+    set({ colorPalettes: palettes });
+  },
+
+  addColorToPalette: (paletteIndex, color) => {
+    const palettes = [...get().colorPalettes];
+    if (!palettes[paletteIndex]) return;
+    palettes[paletteIndex] = {
+      ...palettes[paletteIndex],
+      colors: [...palettes[paletteIndex].colors, color],
+    };
+    set({ colorPalettes: palettes });
+  },
+
+  extractColorsFromImage: (imageData, maxColors) => {
+    // Simple color quantization: sample unique colors
+    const colorSet = new Map<string, [number, number, number, number]>();
+    const data = imageData.data;
+    const step = Math.max(1, Math.floor(data.length / 4 / 1000)); // sample at most 1000 pixels
+    for (let i = 0; i < data.length; i += 4 * step) {
+      const r = data[i];
+      const g = data[i + 1];
+      const b = data[i + 2];
+      const a = data[i + 3];
+      if (a < 10) continue;
+      // Quantize to 5-bit
+      const qr = (r >> 3) << 3;
+      const qg = (g >> 3) << 3;
+      const qb = (b >> 3) << 3;
+      const key = `${qr},${qg},${qb}`;
+      if (!colorSet.has(key)) {
+        colorSet.set(key, [qr, qg, qb, 255]);
+      }
+    }
+    const colors = Array.from(colorSet.values()).slice(0, maxColors);
+    const palettes = [...get().colorPalettes];
+    palettes.push({ name: 'Extracted', colors });
+    set({ colorPalettes: palettes, activePaletteIndex: palettes.length - 1 });
   },
 
   // ── Editor actions ──
