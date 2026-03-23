@@ -31,35 +31,28 @@ const styles: Record<string, React.CSSProperties> = {
     letterSpacing: 1,
     marginBottom: 2,
   },
+  toolGrid: {
+    display: 'flex',
+    flexWrap: 'wrap' as const,
+    gap: 4,
+  },
   toolBtn: {
     display: 'flex',
     alignItems: 'center',
-    gap: 6,
-    padding: '5px 8px',
+    justifyContent: 'center',
+    width: 32,
+    height: 32,
     border: '1px solid #444',
     borderRadius: 4,
     background: '#2a2a4a',
     color: '#ddd',
     cursor: 'pointer',
-    fontSize: 12,
-  },
-  toolIcon: {
-    fontSize: 14,
-    width: 18,
-    textAlign: 'center' as const,
-    opacity: 0.8,
-    flexShrink: 0,
-  },
-  toolLabel: {
-    flex: 1,
+    fontSize: 16,
+    padding: 0,
   },
   toolBtnActive: {
     background: '#4a4a8a',
     borderColor: '#77f',
-  },
-  shortcut: {
-    fontSize: 10,
-    color: '#777',
   },
   colorGrid: {
     display: 'grid',
@@ -133,39 +126,41 @@ export function TerrainLeftPanel() {
       {/* Draw Tools */}
       <div style={styles.section}>
         <span style={styles.label}>Draw</span>
-        {drawTools.map((t) => (
-          <button
-            key={t.id}
-            style={{
-              ...styles.toolBtn,
-              ...(activeTool === t.id ? styles.toolBtnActive : {}),
-            }}
-            onClick={() => setTool(t.id)}
-          >
-            <span style={styles.toolIcon}>{t.icon}</span>
-            <span style={styles.toolLabel}>{t.label}</span>
-            <span style={styles.shortcut}>{t.key}</span>
-          </button>
-        ))}
+        <div style={styles.toolGrid}>
+          {drawTools.map((t) => (
+            <button
+              key={t.id}
+              title={`${t.label} (${t.key})`}
+              style={{
+                ...styles.toolBtn,
+                ...(activeTool === t.id ? styles.toolBtnActive : {}),
+              }}
+              onClick={() => setTool(t.id)}
+            >
+              {t.icon}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Utility Tools */}
       <div style={styles.section}>
         <span style={styles.label}>Utility</span>
-        {utilTools.map((t) => (
-          <button
-            key={t.id}
-            style={{
-              ...styles.toolBtn,
-              ...(activeTool === t.id ? styles.toolBtnActive : {}),
-            }}
-            onClick={() => setTool(t.id)}
-          >
-            <span style={styles.toolIcon}>{t.icon}</span>
-            <span style={styles.toolLabel}>{t.label}</span>
-            <span style={styles.shortcut}>{t.key}</span>
-          </button>
-        ))}
+        <div style={styles.toolGrid}>
+          {utilTools.map((t) => (
+            <button
+              key={t.id}
+              title={`${t.label} (${t.key})`}
+              style={{
+                ...styles.toolBtn,
+                ...(activeTool === t.id ? styles.toolBtnActive : {}),
+              }}
+              onClick={() => setTool(t.id)}
+            >
+              {t.icon}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Color */}
