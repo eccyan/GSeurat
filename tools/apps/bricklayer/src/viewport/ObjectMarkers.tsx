@@ -67,10 +67,16 @@ function DraggableMarker({ id, position, scale, color, isSelected, onSelect }: {
 
   return (
     <>
+      {/* Invisible solid mesh for click/drag detection */}
       <mesh
         position={displayPos}
         onPointerDown={handlePointerDown}
       >
+        <boxGeometry args={[scale * 1.2, scale * 1.2, scale * 1.2]} />
+        <meshBasicMaterial visible={false} />
+      </mesh>
+      {/* Visible wireframe */}
+      <mesh position={displayPos}>
         <boxGeometry args={[scale, scale, scale]} />
         <meshBasicMaterial
           color={dragging ? '#ffcc00' : isSelected ? '#ffffff' : color}
