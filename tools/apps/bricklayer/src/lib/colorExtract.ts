@@ -69,7 +69,36 @@ export function extractColorsFromImage(
     result.push([entry.r, entry.g, entry.b, 255]);
   }
 
+  // Sort by hue, then lightness for a natural palette layout
+  result.sort((a, b) => {
+    const ha = rgbToHsl(a[0], a[1], a[2]);
+    const hb = rgbToHsl(b[0], b[1], b[2]);
+    // Group grays (low saturation) first
+    const aGray = ha[1] < 0.1 ? 1 : 0;
+    const bGray = hb[1] < 0.1 ? 1 : 0;
+    if (aGray !== bGray) return bGray - aGray; // grays first
+    if (aGray && bGray) return ha[2] - hb[2];  // sort grays by lightness
+    // Sort chromatic by hue, then lightness
+    const hDiff = ha[0] - hb[0];
+    if (Math.abs(hDiff) > 10) return hDiff;
+    return ha[2] - hb[2];
+  });
+
   return result;
+}
+
+function rgbToHsl(r: number, g: number, b: number): [number, number, number] {
+  r /= 255; g /= 255; b /= 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  const l = (max + min) / 2;
+  if (max === min) return [0, 0, l];
+  const d = max - min;
+  const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+  let h = 0;
+  if (max === r) h = ((g - b) / d + (g < b ? 6 : 0)) * 60;
+  else if (max === g) h = ((b - r) / d + 2) * 60;
+  else h = ((r - g) / d + 4) * 60;
+  return [h, s, l];
 }
 
 /**
