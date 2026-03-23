@@ -271,14 +271,14 @@ export function MenuBar({ onImport }: { onImport: () => void }) {
   const handleExportPly = () => {
     const s = useSceneStore.getState();
     const blob = exportPly(s.voxels, s.gridWidth, s.gridDepth);
-    download(blob, 'map.ply');
+    download(blob, `${s.projectName || 'map'}.ply`);
   };
 
   const handleExportScene = () => {
     const s = useSceneStore.getState();
     const scene = exportSceneJson(s);
     const json = JSON.stringify(scene, null, 2);
-    download(new Blob([json], { type: 'application/json' }), 'scene.json');
+    download(new Blob([json], { type: 'application/json' }), `${s.projectName || 'scene'}.json`);
   };
 
   const handleImportAsset = () => {
