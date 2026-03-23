@@ -97,9 +97,21 @@ export function exportSceneJson(state: SceneStoreState): object {
 
   // Terrain PLY path: assets/maps/<project_name>.ply
   const terrainPly = `assets/maps/${state.projectName || 'map'}.ply`;
+
+  // Auto-compute camera to look at scene center if using default target
+  const cam = state.gaussianSplat.camera;
+  const isDefaultCamera = cam.target[0] === 0 && cam.target[1] === 0 && cam.target[2] === 0;
+  const centerX = state.gridWidth / 2;
+  const centerZ = state.gridDepth / 2;
+  const autoCamera = isDefaultCamera ? {
+    position: [centerX, Math.max(state.gridWidth, state.gridDepth) * 0.4, centerZ + Math.max(state.gridWidth, state.gridDepth) * 0.5],
+    target: [centerX, 0, centerZ],
+    fov: cam.fov,
+  } : cam;
+
   scene.gaussian_splat = {
     ply_file: terrainPly,
-    camera: state.gaussianSplat.camera,
+    camera: autoCamera,
     render_width: state.gaussianSplat.render_width,
     render_height: state.gaussianSplat.render_height,
     scale_multiplier: state.gaussianSplat.scale_multiplier,
