@@ -440,6 +440,7 @@ void Renderer::draw_scene(Scene& scene,
     post_process_.record_post_process(cmd, image_index, pp_params);
 
     record_gs_blit(cmd, flags);
+    record_light_glow(cmd, scene, flags);
     record_ui_pass(cmd, ui_batches);
 
     // End composite render pass
@@ -817,6 +818,74 @@ void Renderer::record_gs_blit(VkCommandBuffer cmd, const FeatureFlags& flags) {
                                 sprite_pipeline_layout_, 0, 1,
                                 &gs_ui_descriptor_sets_[current_frame_], 0, nullptr);
         vkCmdDrawIndexed(cmd, gs_flush.index_count, 1, 0, gs_flush.vertex_offset, 0);
+    }
+}
+
+void Renderer::record_light_glow(VkCommandBuffer cmd, const Scene& scene,
+                                  const FeatureFlags& flags) {
+    if (!flags.gs_rendering || !gs_initialized_ || !font_initialized_) return;
+    auto& lights = scene.lights();
+    if (lights.empty()) return;
+
+    glm::mat4 gs_vp = gs_proj_ * gs_view_;
+    float sw = static_cast<float>(kWindowWidth);
+    float sh = static_cast<float>(kWindowHeight);
+
+    // Use additive pipeline (the sprite pipeline uses alpha blending which
+    // produces additive-like results for bright colors on dark backgrounds)
+    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, ui_pipeline_);
+    sprite_batch_.bind(cmd, current_frame_);
+
+    VkRect2D full_scissor{};
+    full_scissor.offset = {0, 0};
+    full_scissor.extent = swapchain_.extent();
+    vkCmdSetScissor(cmd, 0, 1, &full_scissor);
+
+    sprite_batch_.begin();
+
+    for (const auto& light : lights) {
+        glm::vec3 world_pos(light.position_and_radius.x,
+                            light.position_and_radius.z,  // height = Y
+                            light.position_and_radius.y); // Z = scene Y
+        float radius = light.position_and_radius.w;
+
+        // Project to clip space
+        glm::vec4 clip = gs_vp * glm::vec4(world_pos, 1.0f);
+        if (clip.w <= 0.01f) continue;  // behind camera
+
+        // NDC to screen pixels
+        glm::vec2 ndc(clip.x / clip.w, clip.y / clip.w);
+        float screen_x = (ndc.x * 0.5f + 0.5f) * sw;
+        float screen_y = (1.0f - (ndc.y * 0.5f + 0.5f)) * sh;  // flip Y
+
+        // Glow size in pixels based on world radius and depth
+        float glow_size = (radius * 4.0f * sw) / clip.w;
+        glow_size = glm::clamp(glow_size, 20.0f, sw * 0.6f);
+
+        // Draw a large semi-transparent colored quad
+        // The font texture has white pixels at (0,0) UV that we can tint
+        SpriteDrawInfo glow{};
+        glow.position = {screen_x, screen_y, 0.0f};
+        glow.size = {glow_size, glow_size};
+        glow.uv_min = {0.0f, 0.0f};  // top-left of font atlas = white pixel
+        glow.uv_max = {1.0f / 256.0f, 1.0f / 256.0f};  // tiny white region
+        glow.color = {
+            light.color.r * light.color.a * 0.4f,
+            light.color.g * light.color.a * 0.4f,
+            light.color.b * light.color.a * 0.4f,
+            0.3f  // soft alpha for blending
+        };
+
+        sprite_batch_.draw(glow);
+    }
+
+    auto flush = sprite_batch_.flush(current_frame_);
+    if (flush.index_count > 0) {
+        // Use font descriptor set (has white pixels we can tint)
+        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                sprite_pipeline_layout_, 0, 1,
+                                &font_descriptor_sets_[current_frame_], 0, nullptr);
+        vkCmdDrawIndexed(cmd, flush.index_count, 1, 0, flush.vertex_offset, 0);
     }
 }
 

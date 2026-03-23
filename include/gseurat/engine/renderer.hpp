@@ -94,6 +94,8 @@ private:
     void record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
                            const FeatureFlags& flags);
     void record_gs_blit(VkCommandBuffer cmd, const FeatureFlags& flags);
+    void record_light_glow(VkCommandBuffer cmd, const Scene& scene,
+                           const FeatureFlags& flags);
     void record_ui_pass(VkCommandBuffer cmd,
                         const std::vector<ui::UIDrawBatch>& ui_batches);
 

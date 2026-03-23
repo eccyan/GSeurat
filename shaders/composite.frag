@@ -80,14 +80,15 @@ vec3 compute_light_glow() {
 
         // Radius in screen space: approximate from world radius and depth
         float depth = clip.w;
-        float screen_radius = radius / (depth * 2.0);  // rough projection
-        screen_radius = clamp(screen_radius, 0.02, 0.5);
+        float screen_radius = (radius * 3.0) / max(depth, 0.1);
+        screen_radius = clamp(screen_radius, 0.05, 1.0);
 
-        // Soft radial falloff
+        // Soft radial falloff (cubic for gentle glow)
         float falloff = 1.0 - smoothstep(0.0, screen_radius, dist);
-        falloff *= falloff;  // quadratic for softer edges
+        falloff = falloff * falloff * falloff;
 
-        total += light_color * intensity * falloff;
+        // Strong glow with intensity multiplier
+        total += light_color * intensity * falloff * 2.0;
     }
 
     return total;
@@ -135,9 +136,6 @@ void main() {
 
     // Additive bloom
     color = color + bloom * pc.bloom_intensity;
-
-    // Screen-space light glow (additive, before tone mapping for HDR bloom interaction)
-    color += compute_light_glow();
 
     // Reinhard tone mapping
     color = vec3(1.0) - exp(-color * pc.exposure);
