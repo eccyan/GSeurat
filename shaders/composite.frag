@@ -8,6 +8,17 @@ layout(set = 0, binding = 1) uniform sampler2D bloom_tex;
 layout(set = 0, binding = 2) uniform sampler2D dof_tex;
 layout(set = 0, binding = 3) uniform sampler2D depth_tex;
 
+struct PointLight {
+    vec4 position_and_radius;  // xy = world XZ, z = unused, w = radius
+    vec4 color;                // rgb = color, a = intensity
+};
+
+layout(set = 0, binding = 4) uniform LightGlow {
+    mat4 vp;                   // GS camera view-projection
+    ivec4 light_params;        // x = count, y = screen_w, z = screen_h
+    PointLight lights[8];
+} glow;
+
 layout(push_constant) uniform PushConstants {
     // vec4 0: bloom params
     float bloom_intensity;
@@ -35,6 +46,53 @@ layout(push_constant) uniform PushConstants {
     float flash_g;
     float flash_b;
 } pc;
+
+// Compute screen-space light glow contribution
+vec3 compute_light_glow() {
+    int count = glow.light_params.x;
+    if (count <= 0) return vec3(0.0);
+
+    vec3 total = vec3(0.0);
+
+    for (int i = 0; i < count && i < 8; i++) {
+        vec2 light_xz = glow.lights[i].position_and_radius.xy;
+        float radius = glow.lights[i].position_and_radius.w;
+        vec3 light_color = glow.lights[i].color.rgb;
+        float intensity = glow.lights[i].color.a;
+        float height = glow.lights[i].position_and_radius.z;
+
+        // Project light 3D position to clip space via GS camera VP
+        // Light world pos: (x, height, z) — using XZ from scene data
+        vec4 clip = glow.vp * vec4(light_xz.x, height, light_xz.y, 1.0);
+        if (clip.w <= 0.0) continue;  // behind camera
+
+        // NDC to UV
+        vec2 ndc = clip.xy / clip.w;
+        vec2 light_uv = ndc * 0.5 + 0.5;
+
+        // Distance from fragment to light center in UV space
+        // Scale by aspect ratio for circular glow
+        float aspect = float(glow.light_params.y) / float(max(glow.light_params.z, 1));
+        vec2 diff = frag_uv - light_uv;
+        diff.x *= aspect;
+
+        float dist = length(diff);
+
+        // Radius in screen space: approximate from world radius and depth
+        float depth = clip.w;
+        float screen_radius = (radius * 3.0) / max(depth, 0.1);
+        screen_radius = clamp(screen_radius, 0.05, 1.0);
+
+        // Soft radial falloff (cubic for gentle glow)
+        float falloff = 1.0 - smoothstep(0.0, screen_radius, dist);
+        falloff = falloff * falloff * falloff;
+
+        // Strong glow with intensity multiplier
+        total += light_color * intensity * falloff * 2.0;
+    }
+
+    return total;
+}
 
 void main() {
     // Chromatic aberration: radial R/B channel offset

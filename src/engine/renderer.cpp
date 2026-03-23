@@ -78,6 +78,25 @@ void Renderer::init_font(const FontAtlas& atlas, ResourceManager& resources) {
         font_texture_->image_view(), font_texture_->sampler(),
         flat_normal_texture_->image_view(), flat_normal_texture_->sampler());
 
+    // Create 1x1 white pixel texture for light glow rendering
+    {
+        uint8_t white_pixel[4] = {255, 255, 255, 255};
+        white_pixel_tex_ = Texture::load_from_memory(
+            context_.device(), context_.allocator(),
+            command_pool_.pool(), context_.graphics_queue(),
+            white_pixel, 1, 1);
+
+        std::array<VkBuffer, kMaxFramesInFlight> ui_ubo_temp;
+        for (uint32_t i = 0; i < kMaxFramesInFlight; i++) {
+            ui_ubo_temp[i] = uniform_buffers_[i].buffer();
+        }
+        white_pixel_descriptor_sets_ = descriptors_.allocate_sprite_sets(
+            context_.device(), ui_ubo_temp, sizeof(UniformBufferObject),
+            white_pixel_tex_.image_view(), white_pixel_tex_.sampler(),
+            flat_normal_texture_->image_view(), flat_normal_texture_->sampler());
+        white_pixel_initialized_ = true;
+    }
+
     // UI uniform buffers with orthographic projection
     for (auto& buf : ui_uniform_buffers_) {
         buf = Buffer::create_uniform(context_.allocator(), sizeof(UniformBufferObject));
@@ -421,9 +440,26 @@ void Renderer::draw_scene(Scene& scene,
         pp_params.flash_b = flash_b_;
     }
 
+    // Update light glow UBO with GS camera VP and scene lights
+    {
+        LightGlowData glow{};
+        glow.vp = gs_proj_ * gs_view_;
+        auto& scene_lights = scene.lights();
+        int glow_count = static_cast<int>(std::min(scene_lights.size(),
+                                                    static_cast<size_t>(kMaxLights)));
+        glow.light_params = glm::ivec4(glow_count,
+                                       static_cast<int>(swapchain_.extent().width),
+                                       static_cast<int>(swapchain_.extent().height), 0);
+        for (int i = 0; i < glow_count; i++) {
+            glow.lights[i] = scene_lights[i];
+        }
+        post_process_.update_light_glow(context_.allocator(), glow);
+    }
+
     post_process_.record_post_process(cmd, image_index, pp_params);
 
     record_gs_blit(cmd, flags);
+    // Light glow is now rendered via the UI system in GsDemoState
     record_ui_pass(cmd, ui_batches);
 
     // End composite render pass
@@ -803,6 +839,7 @@ void Renderer::record_gs_blit(VkCommandBuffer cmd, const FeatureFlags& flags) {
         vkCmdDrawIndexed(cmd, gs_flush.index_count, 1, 0, gs_flush.vertex_offset, 0);
     }
 }
+
 
 void Renderer::record_ui_pass(VkCommandBuffer cmd,
                                const std::vector<ui::UIDrawBatch>& ui_batches) {

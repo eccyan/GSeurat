@@ -62,6 +62,16 @@ void DemoApp::init_scene(const std::string& scene_path) {
     current_scene_path_ = scene_path;
     auto scene_data = SceneLoader::load(scene_path);
 
+    // Populate scene lights for the glow overlay
+    scene_.clear_lights();
+    scene_.set_ambient_color(scene_data.ambient_color);
+    for (const auto& pl : scene_data.static_lights) {
+        scene_.add_light(pl);
+    }
+    if (!scene_data.static_lights.empty()) {
+        std::fprintf(stderr, "Loaded %zu static lights\n", scene_data.static_lights.size());
+    }
+
     // Only load GS data — no player, NPCs, tilemap, weather
     if (scene_data.gaussian_splat) {
         const auto& gs = *scene_data.gaussian_splat;
