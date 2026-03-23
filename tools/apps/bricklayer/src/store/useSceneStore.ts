@@ -396,7 +396,7 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
   colorPalettes: [defaultPalette],
   activePaletteIndex: 0,
 
-  activeTool: 'place',
+  activeTool: 'select',
   activeColor: [34, 139, 34, 255],
   brushSize: 1,
   yLevelLock: null,
