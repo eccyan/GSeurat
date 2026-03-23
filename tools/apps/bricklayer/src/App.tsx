@@ -4,6 +4,7 @@ import { MenuBar } from './panels/MenuBar.js';
 import { ImportDialog } from './panels/ImportDialog.js';
 import { ProjectTree } from './panels/ProjectTree.js';
 import { TerrainLeftPanel } from './panels/TerrainLeftPanel.js';
+import { CollisionLeftPanel } from './panels/CollisionLeftPanel.js';
 import { TerrainRightPanel } from './panels/TerrainRightPanel.js';
 import { SceneTreePanel } from './panels/SceneTreePanel.js';
 import { ScenePropertiesPanel } from './panels/ScenePropertiesPanel.js';
@@ -343,14 +344,17 @@ export function App() {
   }, []);
 
   // Determine which contextual panel to show in left below ProjectTree
-  const showTerrainTools = mode === 'terrain' || (activeNode?.kind === 'terrain') || (activeNode?.kind === 'collision');
-  const showSceneTree = mode === 'scene' && !showTerrainTools;
-  const showSettingsList = mode === 'settings' && !showTerrainTools;
+  const isCollisionMode = activeNode?.kind === 'collision';
+  const showTerrainTools = !isCollisionMode && (mode === 'terrain' || (activeNode?.kind === 'terrain'));
+  const showCollisionTools = isCollisionMode;
+  const showSceneTree = mode === 'scene' && !showTerrainTools && !showCollisionTools;
+  const showSettingsList = mode === 'settings' && !showTerrainTools && !showCollisionTools;
 
   // Determine right panel content
   const rightContent = (() => {
     if (activeNode?.kind === 'settings_category' || mode === 'settings') return <SettingsRightPanel />;
     if (activeNode?.kind === 'scene_item' || activeNode?.kind === 'player' || (mode === 'scene')) return <ScenePropertiesPanel />;
+    if (activeNode?.kind === 'collision') return <TerrainRightPanel />;
     return <TerrainRightPanel />;
   })();
 
@@ -367,6 +371,7 @@ export function App() {
           {/* Contextual tools below */}
           <div style={styles.leftContent}>
             {showTerrainTools && <TerrainLeftPanel />}
+            {showCollisionTools && <CollisionLeftPanel />}
             {showSceneTree && <SceneTreePanel />}
             {showSettingsList && <SettingsLeftPanel />}
           </div>
