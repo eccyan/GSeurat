@@ -2,60 +2,113 @@ import React, { useState } from 'react';
 import { useSceneStore } from '../store/useSceneStore.js';
 import type { NavigationNode, SettingsCategory } from '../store/types.js';
 
-const styles: Record<string, React.CSSProperties> = {
-  tree: { fontSize: 12, userSelect: 'none' },
+// ── Icons ──
+
+const icons: Record<string, string> = {
+  terrain: '\u25A6',     // ▦
+  collision: '\u25A9',   // ▩
+  scene: '\u25C9',       // ◉
+  objects: '\u25A3',     // ▣
+  lights: '\u2600',      // ☀
+  npcs: '\u263A',        // ☺
+  portals: '\u29C9',     // ⧉
+  player: '\u2666',      // ♦
+  settings: '\u2699',    // ⚙
+  gs_camera: '\u25CE',   // ◎
+  ambient: '\u2601',     // ☁
+  weather: '\u2602',     // ☂
+  day_night: '\u263D',   // ☽
+  vfx: '\u2605',         // ★
+  backgrounds: '\u25A1', // □
+  file: '\u25C7',        // ◇
+};
+
+// ── Styles ──
+
+const s = {
+  tree: { fontSize: 12, userSelect: 'none' as const, padding: '4px 0' },
+  heading: {
+    fontSize: 10, color: '#666', textTransform: 'uppercase' as const,
+    letterSpacing: 1.5, padding: '6px 8px 4px', fontWeight: 600 as const,
+  },
+  section: { marginBottom: 2 },
+  indent: {
+    marginLeft: 10,
+    paddingLeft: 8,
+    borderLeft: '1px solid #2a2a4a',
+  },
   node: {
-    padding: '3px 6px',
+    padding: '4px 8px',
     cursor: 'pointer',
     borderRadius: 3,
-    color: '#aaa',
+    color: '#999',
     display: 'flex',
     alignItems: 'center',
-    gap: 4,
+    gap: 5,
     overflow: 'hidden',
-  },
-  nodeLabel: {
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap' as const,
-    flex: 1,
-    minWidth: 0,
-  },
-  nodeActive: { background: '#3a3a6a', color: '#fff' },
-  indent: { paddingLeft: 16 },
-  indent2: { paddingLeft: 32 },
-  arrow: { fontSize: 10, width: 12, textAlign: 'center' as const, color: '#888' },
-  count: { fontSize: 10, color: '#666', marginLeft: 4 },
+    marginBottom: 1,
+    borderLeft: '3px solid transparent',
+    transition: 'background 0.1s, color 0.1s',
+  } as React.CSSProperties,
+  nodeHover: { background: '#252550', color: '#ccc' },
+  nodeActive: { background: '#2e2e5a', color: '#fff', borderLeftColor: '#77f' },
+  icon: { fontSize: 12, width: 16, textAlign: 'center' as const, opacity: 0.7, flexShrink: 0 },
+  arrow: { fontSize: 9, width: 10, textAlign: 'center' as const, color: '#555', flexShrink: 0 },
+  label: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const, flex: 1, minWidth: 0 },
+  count: { fontSize: 10, color: '#555', marginLeft: 2 },
   addBtn: {
-    marginLeft: 'auto',
-    padding: '0 4px',
-    border: 'none',
-    background: 'transparent',
-    color: '#77f',
-    cursor: 'pointer',
-    fontSize: 14,
-    lineHeight: '1',
-  },
+    marginLeft: 'auto', padding: '0 3px', border: 'none', background: 'transparent',
+    color: '#77f', cursor: 'pointer', fontSize: 13, lineHeight: '1', flexShrink: 0,
+    borderRadius: 3,
+  } as React.CSSProperties,
   removeBtn: {
-    marginLeft: 'auto',
-    padding: '0 4px',
-    border: 'none',
-    background: 'transparent',
-    color: '#c66',
-    cursor: 'pointer',
-    fontSize: 12,
-    lineHeight: '1',
-  },
-  heading: {
-    fontSize: 11,
-    color: '#888',
-    textTransform: 'uppercase' as const,
-    letterSpacing: 1,
-    padding: '8px 0 4px',
-    borderBottom: '1px solid #333',
-    marginBottom: 4,
-  },
+    padding: '0 3px', border: 'none', background: 'transparent',
+    color: '#844', cursor: 'pointer', fontSize: 11, lineHeight: '1', flexShrink: 0,
+    borderRadius: 3,
+  } as React.CSSProperties,
 };
+
+// ── TreeNode sub-component ──
+
+function TreeNode({
+  icon, label, isActive, onClick, arrow, count, actions, children, isOpen,
+}: {
+  icon?: string;
+  label: string;
+  isActive: boolean;
+  onClick: () => void;
+  arrow?: string;
+  count?: number;
+  actions?: React.ReactNode;
+  children?: React.ReactNode;
+  isOpen?: boolean;
+}) {
+  const [hover, setHover] = useState(false);
+
+  return (
+    <>
+      <div
+        style={{
+          ...s.node,
+          ...(hover && !isActive ? s.nodeHover : {}),
+          ...(isActive ? s.nodeActive : {}),
+        }}
+        onClick={onClick}
+        onMouseEnter={() => setHover(true)}
+        onMouseLeave={() => setHover(false)}
+      >
+        {arrow !== undefined && <span style={s.arrow}>{arrow}</span>}
+        {icon && <span style={s.icon}>{icon}</span>}
+        <span style={s.label}>{label}</span>
+        {count !== undefined && <span style={s.count}>({count})</span>}
+        {actions}
+      </div>
+      {isOpen && children && <div style={s.indent}>{children}</div>}
+    </>
+  );
+}
+
+// ── Helpers ──
 
 function nodesEqual(a: NavigationNode | null, b: NavigationNode): boolean {
   if (!a) return false;
@@ -72,23 +125,34 @@ function nodesEqual(a: NavigationNode | null, b: NavigationNode): boolean {
   }
 }
 
+const settingsCategories: { id: SettingsCategory; label: string; icon: string }[] = [
+  { id: 'gs_camera', label: 'GS Camera', icon: icons.gs_camera },
+  { id: 'ambient', label: 'Ambient', icon: icons.ambient },
+  { id: 'weather', label: 'Weather', icon: icons.weather },
+  { id: 'day_night', label: 'Day/Night', icon: icons.day_night },
+  { id: 'vfx', label: 'VFX', icon: icons.vfx },
+  { id: 'backgrounds', label: 'Backgrounds', icon: icons.backgrounds },
+];
+
+// ── Main component ──
+
 export function ProjectTree() {
-  const projectName = useSceneStore((s) => s.projectName);
-  const activeNode = useSceneStore((s) => s.activeNode);
-  const setActiveNode = useSceneStore((s) => s.setActiveNode);
-  const placedObjects = useSceneStore((s) => s.placedObjects);
-  const staticLights = useSceneStore((s) => s.staticLights);
-  const npcs = useSceneStore((s) => s.npcs);
-  const portals = useSceneStore((s) => s.portals);
-  const addLight = useSceneStore((s) => s.addLight);
-  const addNpc = useSceneStore((s) => s.addNpc);
-  const addPortal = useSceneStore((s) => s.addPortal);
-  const addPlacedObject = useSceneStore((s) => s.addPlacedObject);
-  const removePlacedObject = useSceneStore((s) => s.removePlacedObject);
-  const removeLight = useSceneStore((s) => s.removeLight);
-  const removeNpc = useSceneStore((s) => s.removeNpc);
-  const removePortal = useSceneStore((s) => s.removePortal);
-  const collisionGridData = useSceneStore((s) => s.collisionGridData);
+  const projectName = useSceneStore((st) => st.projectName);
+  const activeNode = useSceneStore((st) => st.activeNode);
+  const setActiveNode = useSceneStore((st) => st.setActiveNode);
+  const placedObjects = useSceneStore((st) => st.placedObjects);
+  const staticLights = useSceneStore((st) => st.staticLights);
+  const npcs = useSceneStore((st) => st.npcs);
+  const portals = useSceneStore((st) => st.portals);
+  const addLight = useSceneStore((st) => st.addLight);
+  const addNpc = useSceneStore((st) => st.addNpc);
+  const addPortal = useSceneStore((st) => st.addPortal);
+  const addPlacedObject = useSceneStore((st) => st.addPlacedObject);
+  const removePlacedObject = useSceneStore((st) => st.removePlacedObject);
+  const removeLight = useSceneStore((st) => st.removeLight);
+  const removeNpc = useSceneStore((st) => st.removeNpc);
+  const removePortal = useSceneStore((st) => st.removePortal);
+  const collisionGridData = useSceneStore((st) => st.collisionGridData);
 
   const [sceneOpen, setSceneOpen] = useState(true);
   const [objOpen, setObjOpen] = useState(true);
@@ -99,231 +163,188 @@ export function ProjectTree() {
 
   const click = (node: NavigationNode) => {
     setActiveNode(node);
-    // Also update mode and selectedEntity for backward compat
     const store = useSceneStore.getState();
     if (node.kind === 'terrain' || node.kind === 'collision') {
       store.setMode('terrain');
       if (node.kind === 'collision') store.setShowCollision(true);
     } else if (node.kind === 'scene' || node.kind === 'scene_category' || node.kind === 'scene_item' || node.kind === 'player') {
       store.setMode('scene');
-      if (node.kind === 'scene_item') {
-        store.setSelectedEntity({ type: node.entityType, id: node.entityId });
-      } else if (node.kind === 'player') {
-        store.setSelectedEntity({ type: 'player', id: 'player' });
-      }
+      if (node.kind === 'scene_item') store.setSelectedEntity({ type: node.entityType, id: node.entityId });
+      else if (node.kind === 'player') store.setSelectedEntity({ type: 'player', id: 'player' });
     } else if (node.kind === 'settings' || node.kind === 'settings_category') {
       store.setMode('settings');
-      if (node.kind === 'settings_category') {
-        store.setSelectedSettingsCategory(node.category);
-      }
+      if (node.kind === 'settings_category') store.setSelectedSettingsCategory(node.category);
     }
   };
 
   const isActive = (node: NavigationNode) => nodesEqual(activeNode, node);
 
-  const settingsCategories: { id: SettingsCategory; label: string }[] = [
-    { id: 'gs_camera', label: 'GS Camera' },
-    { id: 'ambient', label: 'Ambient' },
-    { id: 'weather', label: 'Weather' },
-    { id: 'day_night', label: 'Day/Night' },
-    { id: 'vfx', label: 'VFX' },
-    { id: 'backgrounds', label: 'Backgrounds' },
-  ];
+  const addBtn = (onClick: (e: React.MouseEvent) => void) => (
+    <button style={s.addBtn} onClick={(e) => { e.stopPropagation(); onClick(e); }}>+</button>
+  );
+
+  const removeBtn = (onClick: () => void) => (
+    <button style={s.removeBtn} onClick={(e) => { e.stopPropagation(); onClick(); }}>&times;</button>
+  );
 
   return (
-    <div style={styles.tree}>
-      {/* Project name */}
-      <div style={styles.heading}>{projectName}</div>
+    <div style={s.tree}>
+      <div style={s.heading}>{projectName}</div>
 
       {/* Terrain */}
-      <div
-        style={{ ...styles.node, ...(isActive({ kind: 'terrain', terrainId: 'main' }) ? styles.nodeActive : {}) }}
+      <TreeNode
+        icon={icons.terrain} label="Terrain"
+        isActive={isActive({ kind: 'terrain', terrainId: 'main' })}
         onClick={() => click({ kind: 'terrain', terrainId: 'main' })}
-      >
-        Terrain
-      </div>
-      <div
-        style={{
-          ...styles.node,
-          ...styles.indent,
-          ...(isActive({ kind: 'collision', terrainId: 'main' }) ? styles.nodeActive : {}),
-        }}
-        onClick={() => click({ kind: 'collision', terrainId: 'main' })}
-      >
-        Collision
-        {!collisionGridData && <span style={styles.count}>(none)</span>}
+      />
+
+      {/* Collision (child of terrain) */}
+      <div style={s.indent}>
+        <TreeNode
+          icon={icons.collision}
+          label={collisionGridData ? 'Collision' : 'Collision (none)'}
+          isActive={isActive({ kind: 'collision', terrainId: 'main' })}
+          onClick={() => click({ kind: 'collision', terrainId: 'main' })}
+        />
       </div>
 
       {/* Scene */}
-      <div
-        style={{ ...styles.node, ...(isActive({ kind: 'scene' }) ? styles.nodeActive : {}), marginTop: 8 }}
-        onClick={() => { setSceneOpen(!sceneOpen); click({ kind: 'scene' }); }}
-      >
-        <span style={styles.arrow}>{sceneOpen ? '\u25BE' : '\u25B8'}</span>
-        Scene
-      </div>
-
-      {sceneOpen && (
-        <>
+      <div style={{ marginTop: 6 }}>
+        <TreeNode
+          icon={icons.scene} label="Scene"
+          arrow={sceneOpen ? '\u25BE' : '\u25B8'}
+          isActive={isActive({ kind: 'scene' })}
+          onClick={() => { setSceneOpen(!sceneOpen); click({ kind: 'scene' }); }}
+          isOpen={sceneOpen}
+        >
           {/* Objects */}
-          <div style={{ ...styles.indent }}>
-            <div
-              style={{ ...styles.node, ...(isActive({ kind: 'scene_category', category: 'objects' }) ? styles.nodeActive : {}) }}
-              onClick={() => { setObjOpen(!objOpen); click({ kind: 'scene_category', category: 'objects' }); }}
-            >
-              <span style={styles.arrow}>{objOpen ? '\u25BE' : '\u25B8'}</span>
-              Objects
-              <span style={styles.count}>({placedObjects.length})</span>
-              <button style={styles.addBtn} onClick={(e) => {
-                e.stopPropagation();
-                const input = document.createElement('input');
-                input.type = 'file';
-                input.accept = '.ply';
-                input.onchange = async () => {
-                  const file = input.files?.[0];
-                  if (!file) return;
-                  // Store PLY blob and add object
-                  addPlacedObject(file.name, file);
-                  // Copy to FSAPI project directory if available
-                  const handle = useSceneStore.getState().projectHandle;
-                  if (handle) {
-                    const { importAssetToProject } = await import('../lib/projectIO.js');
-                    await importAssetToProject(handle, file);
-                  }
-                };
-                input.click();
-              }}>+</button>
-            </div>
-            {objOpen && (
-              <div style={styles.indent}>
-                {placedObjects.map((obj) => (
-                  <div
-                    key={obj.id}
-                    style={{ ...styles.node, ...(isActive({ kind: 'scene_item', entityType: 'object', entityId: obj.id }) ? styles.nodeActive : {}) }}
-                    onClick={() => click({ kind: 'scene_item', entityType: 'object', entityId: obj.id })}
-                  >
-                    <span style={styles.nodeLabel}>{obj.ply_file || obj.id.slice(0, 12)}</span>
-                    <button style={styles.removeBtn} onClick={(e) => { e.stopPropagation(); removePlacedObject(obj.id); }}>&times;</button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+          <TreeNode
+            icon={icons.objects} label="Objects" count={placedObjects.length}
+            arrow={objOpen ? '\u25BE' : '\u25B8'}
+            isActive={isActive({ kind: 'scene_category', category: 'objects' })}
+            onClick={() => { setObjOpen(!objOpen); click({ kind: 'scene_category', category: 'objects' }); }}
+            actions={addBtn(() => {
+              const input = document.createElement('input');
+              input.type = 'file';
+              input.accept = '.ply';
+              input.onchange = async () => {
+                const file = input.files?.[0];
+                if (!file) return;
+                addPlacedObject(file.name, file);
+                const handle = useSceneStore.getState().projectHandle;
+                if (handle) {
+                  const { importAssetToProject } = await import('../lib/projectIO.js');
+                  await importAssetToProject(handle, file);
+                }
+              };
+              input.click();
+            })}
+            isOpen={objOpen}
+          >
+            {placedObjects.map((obj) => (
+              <TreeNode
+                key={obj.id}
+                icon={icons.file}
+                label={obj.ply_file || obj.id.slice(0, 12)}
+                isActive={isActive({ kind: 'scene_item', entityType: 'object', entityId: obj.id })}
+                onClick={() => click({ kind: 'scene_item', entityType: 'object', entityId: obj.id })}
+                actions={removeBtn(() => removePlacedObject(obj.id))}
+              />
+            ))}
+          </TreeNode>
 
           {/* Lights */}
-          <div style={{ ...styles.indent }}>
-            <div
-              style={{ ...styles.node, ...(isActive({ kind: 'scene_category', category: 'lights' }) ? styles.nodeActive : {}) }}
-              onClick={() => { setLightOpen(!lightOpen); click({ kind: 'scene_category', category: 'lights' }); }}
-            >
-              <span style={styles.arrow}>{lightOpen ? '\u25BE' : '\u25B8'}</span>
-              Lights
-              <span style={styles.count}>({staticLights.length})</span>
-              <button style={styles.addBtn} onClick={(e) => { e.stopPropagation(); addLight(); }}>+</button>
-            </div>
-            {lightOpen && (
-              <div style={styles.indent}>
-                {staticLights.map((l, i) => (
-                  <div
-                    key={l.id}
-                    style={{ ...styles.node, ...(isActive({ kind: 'scene_item', entityType: 'light', entityId: l.id }) ? styles.nodeActive : {}) }}
-                    onClick={() => click({ kind: 'scene_item', entityType: 'light', entityId: l.id })}
-                  >
-                    <span style={styles.nodeLabel}>Light {i + 1}</span>
-                    <button style={styles.removeBtn} onClick={(e) => { e.stopPropagation(); removeLight(l.id); }}>&times;</button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+          <TreeNode
+            icon={icons.lights} label="Lights" count={staticLights.length}
+            arrow={lightOpen ? '\u25BE' : '\u25B8'}
+            isActive={isActive({ kind: 'scene_category', category: 'lights' })}
+            onClick={() => { setLightOpen(!lightOpen); click({ kind: 'scene_category', category: 'lights' }); }}
+            actions={addBtn(() => addLight())}
+            isOpen={lightOpen}
+          >
+            {staticLights.map((l, i) => (
+              <TreeNode
+                key={l.id}
+                icon={icons.lights}
+                label={`Light ${i + 1}`}
+                isActive={isActive({ kind: 'scene_item', entityType: 'light', entityId: l.id })}
+                onClick={() => click({ kind: 'scene_item', entityType: 'light', entityId: l.id })}
+                actions={removeBtn(() => removeLight(l.id))}
+              />
+            ))}
+          </TreeNode>
 
           {/* NPCs */}
-          <div style={{ ...styles.indent }}>
-            <div
-              style={{ ...styles.node, ...(isActive({ kind: 'scene_category', category: 'npcs' }) ? styles.nodeActive : {}) }}
-              onClick={() => { setNpcOpen(!npcOpen); click({ kind: 'scene_category', category: 'npcs' }); }}
-            >
-              <span style={styles.arrow}>{npcOpen ? '\u25BE' : '\u25B8'}</span>
-              NPCs
-              <span style={styles.count}>({npcs.length})</span>
-              <button style={styles.addBtn} onClick={(e) => { e.stopPropagation(); addNpc(); }}>+</button>
-            </div>
-            {npcOpen && (
-              <div style={styles.indent}>
-                {npcs.map((n) => (
-                  <div
-                    key={n.id}
-                    style={{ ...styles.node, ...(isActive({ kind: 'scene_item', entityType: 'npc', entityId: n.id }) ? styles.nodeActive : {}) }}
-                    onClick={() => click({ kind: 'scene_item', entityType: 'npc', entityId: n.id })}
-                  >
-                    <span style={styles.nodeLabel}>{n.name || n.id.slice(0, 12)}</span>
-                    <button style={styles.removeBtn} onClick={(e) => { e.stopPropagation(); removeNpc(n.id); }}>&times;</button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+          <TreeNode
+            icon={icons.npcs} label="NPCs" count={npcs.length}
+            arrow={npcOpen ? '\u25BE' : '\u25B8'}
+            isActive={isActive({ kind: 'scene_category', category: 'npcs' })}
+            onClick={() => { setNpcOpen(!npcOpen); click({ kind: 'scene_category', category: 'npcs' }); }}
+            actions={addBtn(() => addNpc())}
+            isOpen={npcOpen}
+          >
+            {npcs.map((n) => (
+              <TreeNode
+                key={n.id}
+                icon={icons.npcs}
+                label={n.name || n.id.slice(0, 12)}
+                isActive={isActive({ kind: 'scene_item', entityType: 'npc', entityId: n.id })}
+                onClick={() => click({ kind: 'scene_item', entityType: 'npc', entityId: n.id })}
+                actions={removeBtn(() => removeNpc(n.id))}
+              />
+            ))}
+          </TreeNode>
 
           {/* Portals */}
-          <div style={{ ...styles.indent }}>
-            <div
-              style={{ ...styles.node, ...(isActive({ kind: 'scene_category', category: 'portals' }) ? styles.nodeActive : {}) }}
-              onClick={() => { setPortalOpen(!portalOpen); click({ kind: 'scene_category', category: 'portals' }); }}
-            >
-              <span style={styles.arrow}>{portalOpen ? '\u25BE' : '\u25B8'}</span>
-              Portals
-              <span style={styles.count}>({portals.length})</span>
-              <button style={styles.addBtn} onClick={(e) => { e.stopPropagation(); addPortal(); }}>+</button>
-            </div>
-            {portalOpen && (
-              <div style={styles.indent}>
-                {portals.map((p, i) => (
-                  <div
-                    key={p.id}
-                    style={{ ...styles.node, ...(isActive({ kind: 'scene_item', entityType: 'portal', entityId: p.id }) ? styles.nodeActive : {}) }}
-                    onClick={() => click({ kind: 'scene_item', entityType: 'portal', entityId: p.id })}
-                  >
-                    <span style={styles.nodeLabel}>{p.target_scene || `Portal ${i + 1}`}</span>
-                    <button style={styles.removeBtn} onClick={(e) => { e.stopPropagation(); removePortal(p.id); }}>&times;</button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+          <TreeNode
+            icon={icons.portals} label="Portals" count={portals.length}
+            arrow={portalOpen ? '\u25BE' : '\u25B8'}
+            isActive={isActive({ kind: 'scene_category', category: 'portals' })}
+            onClick={() => { setPortalOpen(!portalOpen); click({ kind: 'scene_category', category: 'portals' }); }}
+            actions={addBtn(() => addPortal())}
+            isOpen={portalOpen}
+          >
+            {portals.map((p, i) => (
+              <TreeNode
+                key={p.id}
+                icon={icons.portals}
+                label={p.target_scene || `Portal ${i + 1}`}
+                isActive={isActive({ kind: 'scene_item', entityType: 'portal', entityId: p.id })}
+                onClick={() => click({ kind: 'scene_item', entityType: 'portal', entityId: p.id })}
+                actions={removeBtn(() => removePortal(p.id))}
+              />
+            ))}
+          </TreeNode>
 
           {/* Player */}
-          <div style={{ ...styles.indent }}>
-            <div
-              style={{ ...styles.node, ...(isActive({ kind: 'player' }) ? styles.nodeActive : {}) }}
-              onClick={() => click({ kind: 'player' })}
-            >
-              Player
-            </div>
-          </div>
-        </>
-      )}
+          <TreeNode
+            icon={icons.player} label="Player"
+            isActive={isActive({ kind: 'player' })}
+            onClick={() => click({ kind: 'player' })}
+          />
+        </TreeNode>
+      </div>
 
       {/* Settings */}
-      <div
-        style={{ ...styles.node, ...(isActive({ kind: 'settings' }) ? styles.nodeActive : {}), marginTop: 8 }}
-        onClick={() => { setSettingsOpen(!settingsOpen); click({ kind: 'settings' }); }}
-      >
-        <span style={styles.arrow}>{settingsOpen ? '\u25BE' : '\u25B8'}</span>
-        Settings
-      </div>
-      {settingsOpen && (
-        <div style={styles.indent}>
+      <div style={{ marginTop: 6 }}>
+        <TreeNode
+          icon={icons.settings} label="Settings"
+          arrow={settingsOpen ? '\u25BE' : '\u25B8'}
+          isActive={isActive({ kind: 'settings' })}
+          onClick={() => { setSettingsOpen(!settingsOpen); click({ kind: 'settings' }); }}
+          isOpen={settingsOpen}
+        >
           {settingsCategories.map((cat) => (
-            <div
+            <TreeNode
               key={cat.id}
-              style={{ ...styles.node, ...(isActive({ kind: 'settings_category', category: cat.id }) ? styles.nodeActive : {}) }}
+              icon={cat.icon}
+              label={cat.label}
+              isActive={isActive({ kind: 'settings_category', category: cat.id })}
               onClick={() => click({ kind: 'settings_category', category: cat.id })}
-            >
-              {cat.label}
-            </div>
+            />
           ))}
-        </div>
-      )}
+        </TreeNode>
+      </div>
     </div>
   );
 }

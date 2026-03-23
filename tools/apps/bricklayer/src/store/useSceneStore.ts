@@ -147,6 +147,10 @@ export interface SceneStoreState {
   assetBlobs: Map<string, Blob>;
   activeNode: NavigationNode | null;
 
+  // Save state
+  isDirty: boolean;
+  lastSavedAt: number | null;
+
   // Collision box fill
   collisionBoxFill: boolean;
   collisionFloodFillMode: boolean;
@@ -271,6 +275,8 @@ export interface SceneStoreState {
   addAsset: (asset: AssetEntry) => void;
   removeAsset: (id: string) => void;
   setActiveNode: (node: NavigationNode | null) => void;
+  markDirty: () => void;
+  markClean: () => void;
 
   // Actions – collision box fill
   setCollisionBoxFill: (v: boolean) => void;
@@ -327,23 +333,43 @@ function mirrorPositions(
   return positions;
 }
 
-const defaultPalette: ColorPalette = {
-  name: 'Default',
-  colors: [
-    [34, 139, 34, 255],
-    [139, 90, 43, 255],
-    [100, 100, 100, 255],
-    [200, 200, 200, 255],
-    [60, 60, 180, 255],
-    [180, 60, 60, 255],
-    [180, 180, 60, 255],
-    [60, 180, 180, 255],
-    [220, 160, 80, 255],
-    [80, 40, 20, 255],
-    [160, 80, 160, 255],
-    [20, 20, 20, 255],
-  ],
-};
+function hslToRgb(h: number, s: number, l: number): [number, number, number] {
+  const c = (1 - Math.abs(2 * l - 1)) * s;
+  const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+  const m = l - c / 2;
+  let r = 0, g = 0, b = 0;
+  if (h < 60) { r = c; g = x; }
+  else if (h < 120) { r = x; g = c; }
+  else if (h < 180) { g = c; b = x; }
+  else if (h < 240) { g = x; b = c; }
+  else if (h < 300) { r = x; b = c; }
+  else { r = c; b = x; }
+  return [Math.round((r + m) * 255), Math.round((g + m) * 255), Math.round((b + m) * 255)];
+}
+
+function generateDefaultPalette(): ColorPalette {
+  const colors: [number, number, number, number][] = [];
+  // 16 grayscale: black to white
+  for (let i = 0; i < 16; i++) {
+    const v = Math.round((i / 15) * 255);
+    colors.push([v, v, v, 255]);
+  }
+  // 240 chromatic: 12 hues × 4 saturations × 5 lightness levels
+  const hues = [0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330];
+  const sats = [0.3, 0.5, 0.75, 1.0];
+  const lights = [0.2, 0.35, 0.5, 0.65, 0.8];
+  for (const sat of sats) {
+    for (const light of lights) {
+      for (const hue of hues) {
+        const [r, g, b] = hslToRgb(hue, sat, light);
+        colors.push([r, g, b, 255]);
+      }
+    }
+  }
+  return { name: 'Default (256)', colors };
+}
+
+const defaultPalette = generateDefaultPalette();
 
 export const useSceneStore = create<SceneStoreState>((set, get) => ({
   voxels: new Map(),
@@ -357,6 +383,8 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
   assets: [],
   assetBlobs: new Map(),
   activeNode: null,
+  isDirty: false,
+  lastSavedAt: null,
 
   collisionBoxFill: false,
   collisionFloodFillMode: false,
@@ -450,7 +478,7 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
     for (const [mx, my, mz] of positions) {
       next.set(voxelKey(mx, my, mz), { color: [...s.activeColor] });
     }
-    set({ voxels: next });
+    set({ voxels: next, isDirty: true });
   },
 
   placeVoxels: (positions) => {
@@ -461,7 +489,7 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
         next.set(voxelKey(mx, my, mz), { color: [...s.activeColor] });
       }
     }
-    set({ voxels: next });
+    set({ voxels: next, isDirty: true });
   },
 
   paintVoxel: (x, y, z) => {
@@ -471,7 +499,7 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
       const key = voxelKey(mx, my, mz);
       if (next.has(key)) next.set(key, { color: [...s.activeColor] });
     }
-    set({ voxels: next });
+    set({ voxels: next, isDirty: true });
   },
 
   eraseVoxel: (x, y, z) => {
@@ -480,7 +508,7 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
     for (const [mx, my, mz] of mirrorPositions(x, y, z, s.mirrorX, s.mirrorZ, s.gridWidth, s.gridDepth)) {
       next.delete(voxelKey(mx, my, mz));
     }
-    set({ voxels: next });
+    set({ voxels: next, isDirty: true });
   },
 
   eraseVoxels: (positions) => {
@@ -491,7 +519,7 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
         next.delete(voxelKey(mx, my, mz));
       }
     }
-    set({ voxels: next });
+    set({ voxels: next, isDirty: true });
   },
 
   fillVoxels: (x, y, z) => {
@@ -510,7 +538,7 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
     for (const k of keys) {
       next.set(k, { color: [...activeColor] });
     }
-    set({ voxels: next });
+    set({ voxels: next, isDirty: true });
   },
 
   extrudeVoxels: (positions, direction) => {
@@ -525,7 +553,7 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
         next.set(voxelKey(mx, ny, mz), { color: existing.color });
       }
     }
-    set({ voxels: next });
+    set({ voxels: next, isDirty: true });
   },
 
   eyedrop: (x, y, z) => {
@@ -556,13 +584,13 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
       color: [1, 0.9, 0.7],
       intensity: 1,
     };
-    set({ staticLights: [...get().staticLights, light] });
+    set({ staticLights: [...get().staticLights, light], isDirty: true });
   },
   updateLight: (id, patch) => set({
-    staticLights: get().staticLights.map((l) => (l.id === id ? { ...l, ...patch } : l)),
+    staticLights: get().staticLights.map((l) => (l.id === id ? { ...l, ...patch } : l)), isDirty: true,
   }),
   removeLight: (id) => set({
-    staticLights: get().staticLights.filter((l) => l.id !== id),
+    staticLights: get().staticLights.filter((l) => l.id !== id), isDirty: true,
   }),
 
   addNpc: () => {
@@ -586,13 +614,13 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
       script_module: '',
       script_class: '',
     };
-    set({ npcs: [...get().npcs, npc] });
+    set({ npcs: [...get().npcs, npc], isDirty: true });
   },
   updateNpc: (id, patch) => set({
-    npcs: get().npcs.map((n) => (n.id === id ? { ...n, ...patch } : n)),
+    npcs: get().npcs.map((n) => (n.id === id ? { ...n, ...patch } : n)), isDirty: true,
   }),
   removeNpc: (id) => set({
-    npcs: get().npcs.filter((n) => n.id !== id),
+    npcs: get().npcs.filter((n) => n.id !== id), isDirty: true,
   }),
 
   addPortal: () => {
@@ -604,13 +632,13 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
       spawn_position: [0, 0, 0],
       spawn_facing: 'down',
     };
-    set({ portals: [...get().portals, portal] });
+    set({ portals: [...get().portals, portal], isDirty: true });
   },
   updatePortal: (id, patch) => set({
-    portals: get().portals.map((p) => (p.id === id ? { ...p, ...patch } : p)),
+    portals: get().portals.map((p) => (p.id === id ? { ...p, ...patch } : p)), isDirty: true,
   }),
   removePortal: (id) => set({
-    portals: get().portals.filter((p) => p.id !== id),
+    portals: get().portals.filter((p) => p.id !== id), isDirty: true,
   }),
 
   addPlacedObject: (plyFile, blob?) => {
@@ -631,6 +659,7 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
       blobs.set(path, blob);
       (updates as any).assetBlobs = blobs;
     }
+    (updates as any).isDirty = true;
     set(updates as any);
   },
   storeAssetBlob: (path, blob) => {
@@ -639,13 +668,13 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
     set({ assetBlobs: blobs });
   },
   updatePlacedObject: (id, patch) => set({
-    placedObjects: get().placedObjects.map((o) => (o.id === id ? { ...o, ...patch } : o)),
+    placedObjects: get().placedObjects.map((o) => (o.id === id ? { ...o, ...patch } : o)), isDirty: true,
   }),
   removePlacedObject: (id) => set({
-    placedObjects: get().placedObjects.filter((o) => o.id !== id),
+    placedObjects: get().placedObjects.filter((o) => o.id !== id), isDirty: true,
   }),
 
-  updatePlayer: (patch) => set({ player: { ...get().player, ...patch } }),
+  updatePlayer: (patch) => set({ player: { ...get().player, ...patch }, isDirty: true }),
 
   addBackgroundLayer: () => {
     const layer: BackgroundLayer = {
@@ -745,6 +774,8 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
   addAsset: (asset) => set({ assets: [...get().assets, asset] }),
   removeAsset: (id) => set({ assets: get().assets.filter((a) => a.id !== id) }),
   setActiveNode: (node) => set({ activeNode: node }),
+  markDirty: () => set({ isDirty: true }),
+  markClean: () => set({ isDirty: false, lastSavedAt: Date.now() }),
 
   // ── Collision box fill ──
   setCollisionBoxFill: (v) => set({ collisionBoxFill: v, collisionBoxStart: null, collisionFloodFillMode: false }),

@@ -3,12 +3,11 @@ import { Viewport, getOrbitControls } from './viewport/Viewport.js';
 import { MenuBar } from './panels/MenuBar.js';
 import { ImportDialog } from './panels/ImportDialog.js';
 import { ProjectTree } from './panels/ProjectTree.js';
+import { hasFileSystemAccess, saveProject as saveProjectDir, saveProjectAsZip } from './lib/projectIO.js';
 import { TerrainLeftPanel } from './panels/TerrainLeftPanel.js';
 import { CollisionLeftPanel } from './panels/CollisionLeftPanel.js';
 import { TerrainRightPanel } from './panels/TerrainRightPanel.js';
-import { SceneTreePanel } from './panels/SceneTreePanel.js';
 import { ScenePropertiesPanel } from './panels/ScenePropertiesPanel.js';
-import { SettingsLeftPanel } from './panels/SettingsLeftPanel.js';
 import { SettingsRightPanel } from './panels/SettingsRightPanel.js';
 import { useSceneStore } from './store/useSceneStore.js';
 import type { ToolType } from './store/types.js';
@@ -219,6 +218,32 @@ export function App() {
       const store = useSceneStore.getState();
       const meta = e.metaKey || e.ctrlKey;
 
+      // Ctrl/Cmd+S: save project
+      if (meta && e.key === 's') {
+        e.preventDefault();
+        (async () => {
+          try {
+            if (store.projectHandle) {
+              await saveProjectDir(store.projectHandle);
+              store.markClean();
+            } else if (hasFileSystemAccess()) {
+              // No handle — handled by MenuBar's Save flow
+            } else {
+              const blob = await saveProjectAsZip();
+              const a = document.createElement('a');
+              a.href = URL.createObjectURL(blob);
+              a.download = `${store.projectName || 'project'}.zip`;
+              a.click();
+              URL.revokeObjectURL(a.href);
+              store.markClean();
+            }
+          } catch (err) {
+            alert(`Save failed: ${err instanceof Error ? err.message : String(err)}`);
+          }
+        })();
+        return;
+      }
+
       if (meta && e.key === 'z' && !e.shiftKey) {
         e.preventDefault();
         store.undo();
@@ -347,9 +372,6 @@ export function App() {
   const isCollisionMode = activeNode?.kind === 'collision';
   const showTerrainTools = !isCollisionMode && (mode === 'terrain' || (activeNode?.kind === 'terrain'));
   const showCollisionTools = isCollisionMode;
-  const showSceneTree = mode === 'scene' && !showTerrainTools && !showCollisionTools;
-  const showSettingsList = mode === 'settings' && !showTerrainTools && !showCollisionTools;
-
   // Determine right panel content
   const rightContent = (() => {
     if (activeNode?.kind === 'settings_category' || mode === 'settings') return <SettingsRightPanel />;
@@ -372,8 +394,6 @@ export function App() {
           <div style={styles.leftContent}>
             {showTerrainTools && <TerrainLeftPanel />}
             {showCollisionTools && <CollisionLeftPanel />}
-            {showSceneTree && <SceneTreePanel />}
-            {showSettingsList && <SettingsLeftPanel />}
           </div>
         </div>
 

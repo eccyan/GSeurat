@@ -4,17 +4,17 @@ import { useSceneStore } from '../store/useSceneStore.js';
 import { extractColorsFromFile } from '../lib/colorExtract.js';
 import type { ToolType } from '../store/types.js';
 
-const drawTools: { id: ToolType; label: string; key: string }[] = [
-  { id: 'place', label: 'Place', key: 'V' },
-  { id: 'paint', label: 'Paint', key: 'B' },
-  { id: 'erase', label: 'Erase', key: 'E' },
-  { id: 'fill', label: 'Fill', key: 'G' },
-  { id: 'extrude', label: 'Extrude', key: 'X' },
+const drawTools: { id: ToolType; label: string; key: string; icon: string }[] = [
+  { id: 'place', label: 'Place', key: 'V', icon: '\u25A3' },   // ▣
+  { id: 'paint', label: 'Paint', key: 'B', icon: '\u270E' },   // ✎
+  { id: 'erase', label: 'Erase', key: 'E', icon: '\u25AB' },   // ▫
+  { id: 'fill', label: 'Fill', key: 'G', icon: '\u25A7' },     // ▧
+  { id: 'extrude', label: 'Extrude', key: 'X', icon: '\u2B06' }, // ⬆
 ];
 
-const utilTools: { id: ToolType; label: string; key: string }[] = [
-  { id: 'eyedropper', label: 'Eyedrop', key: 'I' },
-  { id: 'select', label: 'Select', key: 'S' },
+const utilTools: { id: ToolType; label: string; key: string; icon: string }[] = [
+  { id: 'eyedropper', label: 'Eyedrop', key: 'I', icon: '\u25C9' }, // ◉
+  { id: 'select', label: 'Select', key: 'S', icon: '\u25AF' },     // ▯
 ];
 
 const styles: Record<string, React.CSSProperties> = {
@@ -34,7 +34,7 @@ const styles: Record<string, React.CSSProperties> = {
   toolBtn: {
     display: 'flex',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    gap: 6,
     padding: '5px 8px',
     border: '1px solid #444',
     borderRadius: 4,
@@ -42,6 +42,16 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#ddd',
     cursor: 'pointer',
     fontSize: 12,
+  },
+  toolIcon: {
+    fontSize: 14,
+    width: 18,
+    textAlign: 'center' as const,
+    opacity: 0.8,
+    flexShrink: 0,
+  },
+  toolLabel: {
+    flex: 1,
   },
   toolBtnActive: {
     background: '#4a4a8a',
@@ -53,7 +63,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   colorGrid: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(8, 1fr)',
+    gridTemplateColumns: 'repeat(16, 1fr)',
     gap: 2,
   },
   colorSwatch: {
@@ -132,7 +142,8 @@ export function TerrainLeftPanel() {
             }}
             onClick={() => setTool(t.id)}
           >
-            {t.label}
+            <span style={styles.toolIcon}>{t.icon}</span>
+            <span style={styles.toolLabel}>{t.label}</span>
             <span style={styles.shortcut}>{t.key}</span>
           </button>
         ))}
@@ -150,7 +161,8 @@ export function TerrainLeftPanel() {
             }}
             onClick={() => setTool(t.id)}
           >
-            {t.label}
+            <span style={styles.toolIcon}>{t.icon}</span>
+            <span style={styles.toolLabel}>{t.label}</span>
             <span style={styles.shortcut}>{t.key}</span>
           </button>
         ))}
