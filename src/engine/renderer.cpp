@@ -853,15 +853,6 @@ void Renderer::record_light_glow(VkCommandBuffer cmd, const Scene& scene,
         // Project to clip space
         glm::vec4 clip = gs_vp * glm::vec4(world_pos, 1.0f);
 
-        // Debug: print once
-        static bool printed = false;
-        if (!printed) {
-            printf("Light %zu: world=(%.1f, %.1f, %.1f) radius=%.1f clip=(%.1f, %.1f, %.1f, %.1f)\n",
-                   li, world_pos.x, world_pos.y, world_pos.z, radius,
-                   clip.x, clip.y, clip.z, clip.w);
-            printed = true;
-        }
-
         if (clip.w <= 0.01f) continue;  // behind camera
 
         // NDC to screen pixels

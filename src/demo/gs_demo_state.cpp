@@ -966,6 +966,15 @@ void GsDemoState::generate_scene_layers(AppBase& app) {
     std::fprintf(stderr, "  Walkable: %u/%u cells\n", walkable, gw * gh);
     std::fprintf(stderr, "  Markers: %zu placed at elevation\n", demo_markers_.size());
     std::fprintf(stderr, "  Elevation + light probes auto-generated from %u Gaussians\n", cloud.count());
+    auto& lights = app.scene().lights();
+    std::fprintf(stderr, "  Lights: %zu static\n", lights.size());
+    for (size_t i = 0; i < lights.size(); i++) {
+        const auto& pl = lights[i];
+        std::fprintf(stderr, "    [%zu] pos=(%.1f, %.1f) height=%.1f radius=%.1f color=(%.2f,%.2f,%.2f) intensity=%.1f\n",
+                     i, pl.position_and_radius.x, pl.position_and_radius.y,
+                     pl.position_and_radius.z, pl.position_and_radius.w,
+                     pl.color.r, pl.color.g, pl.color.b, pl.color.a);
+    }
 }
 
 }  // namespace gseurat
