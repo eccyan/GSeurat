@@ -343,6 +343,13 @@ export function MenuBar({ onImport }: { onImport: () => void }) {
         s.setShowGizmos(!s.showGizmos);
       },
     },
+    {
+      label: `${useSceneStore.getState().xrayMode ? '\u2713 ' : ''}X-Ray (T)`,
+      action: () => {
+        const s = useSceneStore.getState();
+        s.setXrayMode(!s.xrayMode);
+      },
+    },
   ];
 
   return (

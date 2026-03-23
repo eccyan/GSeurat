@@ -1,4 +1,4 @@
-import React, { useRef, useMemo, useCallback, useEffect, useState } from 'react';
+import React, { useRef, useMemo, useCallback, useEffect } from 'react';
 import { ThreeEvent } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useSceneStore } from '../store/useSceneStore.js';
@@ -183,22 +183,7 @@ export function VoxelMesh() {
     }
   }, [indexToKey]);
 
-  // Alt/Option key: hold to make voxels transparent and click-through
-  const [xray, setXray] = useState(false);
-  useEffect(() => {
-    const down = (e: KeyboardEvent) => { if (e.key === 'Alt') setXray(true); };
-    const up = (e: KeyboardEvent) => { if (e.key === 'Alt') setXray(false); };
-    // Also clear on blur (user switches windows while holding Alt)
-    const blur = () => setXray(false);
-    window.addEventListener('keydown', down);
-    window.addEventListener('keyup', up);
-    window.addEventListener('blur', blur);
-    return () => {
-      window.removeEventListener('keydown', down);
-      window.removeEventListener('keyup', up);
-      window.removeEventListener('blur', blur);
-    };
-  }, []);
+  const xray = useSceneStore((s) => s.xrayMode);
 
   const transparent = showCollision || xray;
   const opacity = xray ? 0.15 : showCollision ? 0.3 : 1;

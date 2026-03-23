@@ -200,6 +200,7 @@ export interface SceneStoreState {
   showGrid: boolean;
   showCollision: boolean;
   showGizmos: boolean;
+  xrayMode: boolean;
   collisionLayer: CollisionLayer;
   collisionHeight: number;
   activeNavZone: number;
@@ -305,6 +306,7 @@ export interface SceneStoreState {
   setShowGrid: (v: boolean) => void;
   setShowCollision: (v: boolean) => void;
   setShowGizmos: (v: boolean) => void;
+  setXrayMode: (v: boolean) => void;
   setCollisionLayer: (layer: CollisionLayer) => void;
   setCollisionHeight: (h: number) => void;
   setActiveNavZone: (zone: number) => void;
@@ -429,6 +431,7 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
   showGrid: true,
   showCollision: false,
   showGizmos: true,
+  xrayMode: false,
   collisionLayer: 'solid',
   collisionHeight: 0,
   activeNavZone: 0,
@@ -925,6 +928,7 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
   setShowGrid: (v) => set({ showGrid: v }),
   setShowCollision: (v) => set({ showCollision: v }),
   setShowGizmos: (v) => set({ showGizmos: v }),
+  setXrayMode: (v) => set({ xrayMode: v }),
   setCollisionLayer: (layer) => set({ collisionLayer: layer }),
   setCollisionHeight: (h) => set({ collisionHeight: h }),
   setActiveNavZone: (zone) => set({ activeNavZone: zone }),

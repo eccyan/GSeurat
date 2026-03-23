@@ -311,6 +311,12 @@ export function App() {
         return;
       }
 
+      // T key: toggle X-ray mode (voxels transparent + click-through)
+      if (e.key.toLowerCase() === 't' && !meta) {
+        store.setXrayMode(!store.xrayMode);
+        return;
+      }
+
       if (e.key === '[') {
         store.setBrushSize(store.brushSize - 1);
       } else if (e.key === ']') {
