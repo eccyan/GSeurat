@@ -1,11 +1,139 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Viewport } from './viewport/Viewport.js';
 import { MenuBar } from './panels/MenuBar.js';
-import { ToolBar } from './panels/ToolBar.js';
-import { Inspector } from './panels/Inspector.js';
 import { ImportDialog } from './panels/ImportDialog.js';
+import { TerrainLeftPanel } from './panels/TerrainLeftPanel.js';
+import { TerrainRightPanel } from './panels/TerrainRightPanel.js';
+import { SceneTreePanel } from './panels/SceneTreePanel.js';
+import { ScenePropertiesPanel } from './panels/ScenePropertiesPanel.js';
+import { SettingsLeftPanel } from './panels/SettingsLeftPanel.js';
+import { SettingsRightPanel } from './panels/SettingsRightPanel.js';
 import { useSceneStore } from './store/useSceneStore.js';
-import type { ToolType } from './store/types.js';
+import type { BricklayerMode, ToolType } from './store/types.js';
+
+// ── ResizeHandle ──
+
+function ResizeHandle({
+  side,
+  onDrag,
+}: {
+  side: 'left' | 'right';
+  onDrag: (delta: number) => void;
+}) {
+  const [hovering, setHovering] = useState(false);
+  const dragging = useRef(false);
+  const lastX = useRef(0);
+
+  const onPointerDown = useCallback(
+    (e: React.PointerEvent) => {
+      e.preventDefault();
+      dragging.current = true;
+      lastX.current = e.clientX;
+      (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    },
+    [],
+  );
+
+  const onPointerMove = useCallback(
+    (e: React.PointerEvent) => {
+      if (!dragging.current) return;
+      const dx = e.clientX - lastX.current;
+      lastX.current = e.clientX;
+      onDrag(side === 'left' ? dx : -dx);
+    },
+    [onDrag, side],
+  );
+
+  const onPointerUp = useCallback(() => {
+    dragging.current = false;
+  }, []);
+
+  return (
+    <div
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerEnter={() => setHovering(true)}
+      onPointerLeave={() => { setHovering(false); dragging.current = false; }}
+      style={{
+        width: 5,
+        cursor: 'col-resize',
+        background: hovering || dragging.current ? '#77f' : '#333',
+        flexShrink: 0,
+        transition: 'background 0.15s',
+      }}
+    />
+  );
+}
+
+// ── Mode tabs ──
+
+const modeItems: { id: BricklayerMode; label: string }[] = [
+  { id: 'terrain', label: 'TERRAIN' },
+  { id: 'scene', label: 'SCENE' },
+  { id: 'settings', label: 'SETTINGS' },
+];
+
+function ModeTabs() {
+  const mode = useSceneStore((s) => s.mode);
+  const setMode = useSceneStore((s) => s.setMode);
+
+  return (
+    <div style={modeTabsStyles.bar}>
+      {modeItems.map((m) => (
+        <button
+          key={m.id}
+          onClick={() => setMode(m.id)}
+          style={{
+            ...modeTabsStyles.tab,
+            ...(mode === m.id ? modeTabsStyles.tabActive : {}),
+          }}
+        >
+          {m.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+const modeTabsStyles: Record<string, React.CSSProperties> = {
+  bar: {
+    display: 'flex',
+    borderBottom: '1px solid #333',
+    flexShrink: 0,
+  },
+  tab: {
+    flex: 1,
+    padding: '8px 4px',
+    border: 'none',
+    background: 'transparent',
+    color: '#888',
+    cursor: 'pointer',
+    fontSize: 11,
+    fontWeight: 600,
+    textAlign: 'center',
+    letterSpacing: 1,
+  },
+  tabActive: {
+    color: '#fff',
+    borderBottom: '2px solid #77f',
+    background: '#2a2a4a',
+  },
+};
+
+// ── Keyboard shortcuts ──
+
+const toolKeys: Record<string, ToolType> = {
+  v: 'place',
+  b: 'paint',
+  e: 'erase',
+  g: 'fill',
+  x: 'extrude',
+  i: 'eyedropper',
+  s: 'select',
+};
+
+// ── App styles ──
 
 const styles: Record<string, React.CSSProperties> = {
   root: {
@@ -19,24 +147,53 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     overflow: 'hidden',
   },
+  leftPanel: {
+    background: '#1e1e3a',
+    display: 'flex',
+    flexDirection: 'column',
+    overflow: 'hidden',
+    flexShrink: 0,
+  },
+  leftContent: {
+    flex: 1,
+    overflowY: 'auto',
+    padding: 12,
+  },
   viewport: {
     flex: 1,
     position: 'relative',
+    minWidth: 100,
+  },
+  rightPanel: {
+    background: '#1e1e3a',
+    display: 'flex',
+    flexDirection: 'column',
+    overflow: 'hidden',
+    flexShrink: 0,
+  },
+  rightContent: {
+    flex: 1,
+    overflowY: 'auto',
+    padding: 12,
   },
 };
 
-const toolKeys: Record<string, ToolType> = {
-  v: 'place',
-  b: 'paint',
-  e: 'erase',
-  g: 'fill',
-  x: 'extrude',
-  i: 'eyedropper',
-  s: 'select',
-};
+// ── App ──
 
 export function App() {
   const [showImport, setShowImport] = useState(false);
+  const [leftWidth, setLeftWidth] = useState(220);
+  const [rightWidth, setRightWidth] = useState(320);
+
+  const mode = useSceneStore((s) => s.mode);
+
+  const handleLeftDrag = useCallback((delta: number) => {
+    setLeftWidth((w) => Math.max(160, Math.min(500, w + delta)));
+  }, []);
+
+  const handleRightDrag = useCallback((delta: number) => {
+    setRightWidth((w) => Math.max(200, Math.min(600, w + delta)));
+  }, []);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -78,11 +235,33 @@ export function App() {
     <div style={styles.root}>
       <MenuBar onImport={() => setShowImport(true)} />
       <div style={styles.body}>
-        <ToolBar />
+        {/* Left panel */}
+        <div style={{ ...styles.leftPanel, width: leftWidth }}>
+          <ModeTabs />
+          <div style={styles.leftContent}>
+            {mode === 'terrain' && <TerrainLeftPanel />}
+            {mode === 'scene' && <SceneTreePanel />}
+            {mode === 'settings' && <SettingsLeftPanel />}
+          </div>
+        </div>
+
+        <ResizeHandle side="left" onDrag={handleLeftDrag} />
+
+        {/* Center viewport */}
         <div style={styles.viewport}>
           <Viewport />
         </div>
-        <Inspector />
+
+        <ResizeHandle side="right" onDrag={handleRightDrag} />
+
+        {/* Right panel */}
+        <div style={{ ...styles.rightPanel, width: rightWidth }}>
+          <div style={styles.rightContent}>
+            {mode === 'terrain' && <TerrainRightPanel />}
+            {mode === 'scene' && <ScenePropertiesPanel />}
+            {mode === 'settings' && <SettingsRightPanel />}
+          </div>
+        </div>
       </div>
       {showImport && <ImportDialog onClose={() => setShowImport(false)} />}
     </div>

@@ -1,5 +1,6 @@
-import React, { useMemo } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { useSceneStore } from '../store/useSceneStore.js';
+import { ThreeEvent } from '@react-three/fiber';
 
 // HSL hue per nav zone (golden angle spacing for good contrast)
 function zoneColor(zone: number): string {
@@ -38,6 +39,34 @@ function Cell({ x, z, cellSize, elevation, color, opacity }: CellProps) {
 export function CollisionOverlay() {
   const collisionGridData = useSceneStore((s) => s.collisionGridData);
   const showCollision = useSceneStore((s) => s.showCollision);
+
+  const handleClick = useCallback((e: ThreeEvent<MouseEvent>) => {
+    e.stopPropagation();
+    const store = useSceneStore.getState();
+    const grid = store.collisionGridData;
+    if (!grid) return;
+
+    // Raycast hit point on the click plane
+    const point = e.point;
+    const cellX = Math.round(point.x / grid.cell_size);
+    const cellZ = Math.round(point.z / grid.cell_size);
+
+    if (cellX < 0 || cellX >= grid.width || cellZ < 0 || cellZ >= grid.height) return;
+
+    store.pushUndo();
+
+    switch (store.collisionLayer) {
+      case 'solid':
+        store.toggleCellSolid(cellX, cellZ);
+        break;
+      case 'elevation':
+        store.setCellElevation(cellX, cellZ, store.collisionHeight);
+        break;
+      case 'nav_zone':
+        store.setCellNavZone(cellX, cellZ, store.activeNavZone);
+        break;
+    }
+  }, []);
 
   const cells = useMemo(() => {
     if (!showCollision || !collisionGridData) return [];
@@ -94,6 +123,23 @@ export function CollisionOverlay() {
 
   return (
     <group>
+      {/* Invisible click plane covering the full grid */}
+      <mesh
+        position={[
+          (collisionGridData.width * collisionGridData.cell_size) / 2 - collisionGridData.cell_size / 2,
+          0,
+          (collisionGridData.height * collisionGridData.cell_size) / 2 - collisionGridData.cell_size / 2,
+        ]}
+        rotation={[-Math.PI / 2, 0, 0]}
+        onClick={handleClick}
+      >
+        <planeGeometry args={[
+          collisionGridData.width * collisionGridData.cell_size,
+          collisionGridData.height * collisionGridData.cell_size,
+        ]} />
+        <meshBasicMaterial visible={false} />
+      </mesh>
+
       {cells.map((c) => (
         <Cell
           key={c.key}

@@ -126,6 +126,8 @@ export interface PlayerData {
   character_id: string;
 }
 
+export type BricklayerMode = 'terrain' | 'scene' | 'settings';
+
 export type ToolType =
   | 'place'
   | 'paint'
@@ -145,6 +147,16 @@ export type InspectorTab =
   | 'backgrounds'
   | 'gaussian'
   | 'nav_zone';
+
+export type CollisionLayer = 'solid' | 'elevation' | 'nav_zone';
+
+export type SettingsCategory =
+  | 'gs_camera'
+  | 'ambient'
+  | 'weather'
+  | 'day_night'
+  | 'vfx'
+  | 'backgrounds';
 
 export interface PlacedObjectData {
   id: string;

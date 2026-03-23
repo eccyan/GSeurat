@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useSceneStore } from '../store/useSceneStore.js';
 import { exportPly } from '../lib/plyExport.js';
 import { exportSceneJson } from '../lib/sceneExport.js';
@@ -11,10 +11,12 @@ const styles: Record<string, React.CSSProperties> = {
     borderBottom: '1px solid #333',
     display: 'flex',
     alignItems: 'center',
-    padding: '0 12px',
-    gap: 4,
+    padding: '0 4px',
+    gap: 0,
+    position: 'relative',
+    zIndex: 50,
   },
-  btn: {
+  menuBtn: {
     padding: '4px 12px',
     background: 'transparent',
     border: '1px solid transparent',
@@ -22,11 +24,45 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#ccc',
     cursor: 'pointer',
     fontSize: 13,
+    position: 'relative',
+  },
+  menuBtnOpen: {
+    background: '#2a2a4a',
+    borderColor: '#444',
+  },
+  dropdown: {
+    position: 'absolute',
+    top: '100%',
+    left: 0,
+    background: '#1e1e3a',
+    border: '1px solid #444',
+    borderRadius: 4,
+    minWidth: 180,
+    padding: '4px 0',
+    zIndex: 100,
+    boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+  },
+  menuItem: {
+    display: 'block',
+    width: '100%',
+    padding: '6px 16px',
+    background: 'transparent',
+    border: 'none',
+    color: '#ccc',
+    cursor: 'pointer',
+    fontSize: 13,
+    textAlign: 'left',
+  },
+  separator: {
+    height: 1,
+    background: '#333',
+    margin: '4px 0',
   },
   title: {
     marginLeft: 'auto',
     fontSize: 12,
     color: '#666',
+    paddingRight: 8,
   },
 };
 
@@ -39,8 +75,83 @@ function download(blob: Blob, name: string) {
   URL.revokeObjectURL(url);
 }
 
+interface MenuItem {
+  label: string;
+  action: () => void;
+  separator?: boolean;
+}
+
+function DropdownMenu({
+  label,
+  items,
+  isOpen,
+  onToggle,
+  onClose,
+}: {
+  label: string;
+  items: MenuItem[];
+  isOpen: boolean;
+  onToggle: () => void;
+  onClose: () => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        onClose();
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [isOpen, onClose]);
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <button
+        style={{ ...styles.menuBtn, ...(isOpen ? styles.menuBtnOpen : {}) }}
+        onClick={onToggle}
+      >
+        {label}
+      </button>
+      {isOpen && (
+        <div style={styles.dropdown}>
+          {items.map((item, i) => (
+            <React.Fragment key={i}>
+              {item.separator && <div style={styles.separator} />}
+              <button
+                style={styles.menuItem}
+                onClick={() => {
+                  item.action();
+                  onClose();
+                }}
+                onMouseEnter={(e) => {
+                  (e.target as HTMLElement).style.background = '#3a3a6a';
+                }}
+                onMouseLeave={(e) => {
+                  (e.target as HTMLElement).style.background = 'transparent';
+                }}
+              >
+                {item.label}
+              </button>
+            </React.Fragment>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function MenuBar({ onImport }: { onImport: () => void }) {
   const fileRef = useRef<HTMLInputElement>(null);
+  const [openMenu, setOpenMenu] = useState<string | null>(null);
+
+  const closeMenu = useCallback(() => setOpenMenu(null), []);
+  const toggleMenu = useCallback(
+    (id: string) => setOpenMenu((prev) => (prev === id ? null : id)),
+    [],
+  );
 
   const handleNew = () => {
     if (!confirm('Create new scene? Unsaved changes will be lost.')) return;
@@ -82,15 +193,74 @@ export function MenuBar({ onImport }: { onImport: () => void }) {
     download(new Blob([json], { type: 'application/json' }), 'scene.json');
   };
 
+  const fileItems: MenuItem[] = [
+    { label: 'New', action: handleNew },
+    { label: 'Save', action: handleSave },
+    { label: 'Load', action: handleLoad },
+    { label: 'Import Image...', action: onImport, separator: true },
+    { label: 'Export PLY...', action: handleExportPly, separator: true },
+    { label: 'Export Scene...', action: handleExportScene },
+  ];
+
+  const editItems: MenuItem[] = [
+    { label: 'Undo', action: () => useSceneStore.getState().undo() },
+    { label: 'Redo', action: () => useSceneStore.getState().redo() },
+  ];
+
+  const viewItems: MenuItem[] = [
+    {
+      label: `${useSceneStore.getState().showGrid ? '\u2713 ' : ''}Grid`,
+      action: () => {
+        const s = useSceneStore.getState();
+        s.setShowGrid(!s.showGrid);
+      },
+    },
+    {
+      label: `${useSceneStore.getState().showCollision ? '\u2713 ' : ''}Collision`,
+      action: () => {
+        const s = useSceneStore.getState();
+        s.setShowCollision(!s.showCollision);
+      },
+    },
+    {
+      label: `${useSceneStore.getState().showGizmos ? '\u2713 ' : ''}Gizmos`,
+      action: () => {
+        const s = useSceneStore.getState();
+        s.setShowGizmos(!s.showGizmos);
+      },
+    },
+  ];
+
   return (
     <div style={styles.bar}>
-      <button style={styles.btn} onClick={handleNew}>New</button>
-      <button style={styles.btn} onClick={handleSave}>Save</button>
-      <button style={styles.btn} onClick={handleLoad}>Load</button>
-      <button style={styles.btn} onClick={onImport}>Import Image</button>
-      <button style={styles.btn} onClick={handleExportPly}>Export PLY</button>
-      <button style={styles.btn} onClick={handleExportScene}>Export Scene</button>
-      <input ref={fileRef} type="file" accept=".bricklayer,.json" style={{ display: 'none' }} onChange={handleFileChange} />
+      <DropdownMenu
+        label="File"
+        items={fileItems}
+        isOpen={openMenu === 'file'}
+        onToggle={() => toggleMenu('file')}
+        onClose={closeMenu}
+      />
+      <DropdownMenu
+        label="Edit"
+        items={editItems}
+        isOpen={openMenu === 'edit'}
+        onToggle={() => toggleMenu('edit')}
+        onClose={closeMenu}
+      />
+      <DropdownMenu
+        label="View"
+        items={viewItems}
+        isOpen={openMenu === 'view'}
+        onToggle={() => toggleMenu('view')}
+        onClose={closeMenu}
+      />
+      <input
+        ref={fileRef}
+        type="file"
+        accept=".bricklayer,.json"
+        style={{ display: 'none' }}
+        onChange={handleFileChange}
+      />
       <span style={styles.title}>Bricklayer</span>
     </div>
   );

@@ -14,6 +14,9 @@ import type {
   PlayerData,
   ToolType,
   InspectorTab,
+  BricklayerMode,
+  CollisionLayer,
+  SettingsCategory,
   SelectedEntity,
   Snapshot,
   BricklayerFile,
@@ -155,11 +158,16 @@ export interface SceneStoreState {
   navZoneNames: string[];
 
   // Editor state
+  mode: BricklayerMode;
   selectedEntity: SelectedEntity | null;
   inspectorTab: InspectorTab;
   showGrid: boolean;
   showCollision: boolean;
   showGizmos: boolean;
+  collisionLayer: CollisionLayer;
+  collisionHeight: number;
+  activeNavZone: number;
+  selectedSettingsCategory: SettingsCategory;
 
   // Undo/redo
   undoStack: Snapshot[];
@@ -217,11 +225,16 @@ export interface SceneStoreState {
   removeNavZoneName: (index: number) => void;
 
   // Actions – editor
+  setMode: (mode: BricklayerMode) => void;
   setSelectedEntity: (e: SelectedEntity | null) => void;
   setInspectorTab: (tab: InspectorTab) => void;
   setShowGrid: (v: boolean) => void;
   setShowCollision: (v: boolean) => void;
   setShowGizmos: (v: boolean) => void;
+  setCollisionLayer: (layer: CollisionLayer) => void;
+  setCollisionHeight: (h: number) => void;
+  setActiveNavZone: (zone: number) => void;
+  setSelectedSettingsCategory: (cat: SettingsCategory) => void;
 
   // Actions – undo/redo
   undo: () => void;
@@ -261,11 +274,16 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
   collisionGridData: null,
   navZoneNames: [],
 
+  mode: 'terrain',
   selectedEntity: null,
   inspectorTab: 'scene',
   showGrid: true,
   showCollision: false,
   showGizmos: true,
+  collisionLayer: 'solid',
+  collisionHeight: 0,
+  activeNavZone: 0,
+  selectedSettingsCategory: 'gs_camera',
 
   undoStack: [],
   redoStack: [],
@@ -570,11 +588,16 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
   },
 
   // ── Editor actions ──
+  setMode: (mode) => set({ mode }),
   setSelectedEntity: (e) => set({ selectedEntity: e }),
   setInspectorTab: (tab) => set({ inspectorTab: tab }),
   setShowGrid: (v) => set({ showGrid: v }),
   setShowCollision: (v) => set({ showCollision: v }),
   setShowGizmos: (v) => set({ showGizmos: v }),
+  setCollisionLayer: (layer) => set({ collisionLayer: layer }),
+  setCollisionHeight: (h) => set({ collisionHeight: h }),
+  setActiveNavZone: (zone) => set({ activeNavZone: zone }),
+  setSelectedSettingsCategory: (cat) => set({ selectedSettingsCategory: cat }),
 
   // ── File actions ──
   newScene: (width, depth) => set({
