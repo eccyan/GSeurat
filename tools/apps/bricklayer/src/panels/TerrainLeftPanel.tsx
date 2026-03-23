@@ -141,6 +141,17 @@ export function TerrainLeftPanel() {
             </button>
           ))}
         </div>
+        <div style={{ ...styles.row, marginTop: 4 }}>
+          <input
+            type="range"
+            min={1}
+            max={8}
+            value={brushSize}
+            onChange={(e) => setBrushSize(Number(e.target.value))}
+            style={{ flex: 1 }}
+          />
+          <span style={{ fontSize: 11, color: '#888', minWidth: 14 }}>{brushSize}</span>
+        </div>
       </div>
 
       {/* Utility Tools */}
@@ -253,22 +264,6 @@ export function TerrainLeftPanel() {
               />
             );
           })}
-        </div>
-      </div>
-
-      {/* Brush Size */}
-      <div style={styles.section}>
-        <span style={styles.label}>Brush Size</span>
-        <div style={styles.row}>
-          <input
-            type="range"
-            min={1}
-            max={8}
-            value={brushSize}
-            onChange={(e) => setBrushSize(Number(e.target.value))}
-            style={{ flex: 1 }}
-          />
-          <span style={{ fontSize: 13 }}>{brushSize}</span>
         </div>
       </div>
 
