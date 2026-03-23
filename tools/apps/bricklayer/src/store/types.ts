@@ -185,6 +185,7 @@ export interface SelectedEntity {
 // ── Project management ──
 
 export interface ProjectManifest {
+  version: number;
   name: string;
   terrains: TerrainEntry[];
   assets: AssetEntry[];
@@ -235,6 +236,9 @@ export interface BricklayerFile {
   collision: string[];  // legacy format
   collisionGridData?: CollisionGridData;
   nav_zone_names?: string[];
+  color_palettes?: ColorPalette[];
+  terrains?: TerrainEntry[];
+  assets?: AssetEntry[];
   scene: {
     ambientColor: [number, number, number, number];
     staticLights: StaticLight[];

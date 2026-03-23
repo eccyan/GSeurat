@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useSceneStore } from '../store/useSceneStore.js';
 import { exportPly } from '../lib/plyExport.js';
 import { exportSceneJson } from '../lib/sceneExport.js';
-import { hasFileSystemAccess, openProjectDirectory, saveProject as saveProjectDir, loadProject as loadProjectDir } from '../lib/projectIO.js';
+import { hasFileSystemAccess, openProjectDirectory, saveProject as saveProjectDir, loadProject as loadProjectDir, saveProjectAsZip, loadProjectFromZip, importAssetToProject } from '../lib/projectIO.js';
 import type { BricklayerFile } from '../store/types.js';
 
 const styles: Record<string, React.CSSProperties> = {
@@ -20,7 +20,9 @@ const styles: Record<string, React.CSSProperties> = {
   menuBtn: {
     padding: '4px 12px',
     background: 'transparent',
-    border: '1px solid transparent',
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: 'transparent',
     borderRadius: 4,
     color: '#ccc',
     cursor: 'pointer',
@@ -145,7 +147,6 @@ function DropdownMenu({
 }
 
 export function MenuBar({ onImport }: { onImport: () => void }) {
-  const fileRef = useRef<HTMLInputElement>(null);
   const [openMenu, setOpenMenu] = useState<string | null>(null);
 
   const closeMenu = useCallback(() => setOpenMenu(null), []);
@@ -154,31 +155,87 @@ export function MenuBar({ onImport }: { onImport: () => void }) {
     [],
   );
 
-  const handleNew = () => {
-    if (!confirm('Create new scene? Unsaved changes will be lost.')) return;
-    useSceneStore.getState().newScene(128, 96);
+  // Pick a working directory (shared by New/Open/Save)
+  const pickDirectory = async (): Promise<FileSystemDirectoryHandle | null> => {
+    if (!hasFileSystemAccess()) {
+      alert('Your browser does not support the File System Access API.\nUse Chrome or Edge for directory-based projects.\nFalling back to zip download/upload.');
+      return null;
+    }
+    return openProjectDirectory();
   };
 
-  const handleSave = () => {
-    const data = useSceneStore.getState().saveProject();
-    const json = JSON.stringify(data, null, 2);
-    download(new Blob([json], { type: 'application/json' }), 'scene.bricklayer');
+  const handleNew = async () => {
+    if (!confirm('Create new project? Unsaved changes will be lost.')) return;
+    const handle = await pickDirectory();
+    if (handle) {
+      useSceneStore.getState().newScene(128, 96);
+      useSceneStore.getState().setProjectHandle(handle);
+      useSceneStore.getState().setProjectName(handle.name);
+      await saveProjectDir(handle);
+    } else if (!hasFileSystemAccess()) {
+      useSceneStore.getState().newScene(128, 96);
+      useSceneStore.getState().setProjectHandle(null);
+      useSceneStore.getState().setProjectName('Untitled');
+    }
   };
 
-  const handleLoad = () => {
-    fileRef.current?.click();
+  const handleOpen = async () => {
+    if (hasFileSystemAccess()) {
+      const handle = await pickDirectory();
+      if (handle) {
+        useSceneStore.getState().setProjectHandle(handle);
+        useSceneStore.getState().setProjectName(handle.name);
+        await loadProjectDir(handle);
+      }
+    } else {
+      // Zip fallback
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = '.zip,.bricklayer,.json';
+      input.onchange = async () => {
+        const file = input.files?.[0];
+        if (!file) return;
+        if (file.name.endsWith('.zip')) {
+          const ok = await loadProjectFromZip(file);
+          if (ok) {
+            useSceneStore.getState().setProjectName(file.name.replace(/\.zip$/, ''));
+          } else {
+            alert('Failed to load project zip.');
+          }
+        } else {
+          // Legacy .bricklayer/.json file
+          const reader = new FileReader();
+          reader.onload = () => {
+            const data = JSON.parse(reader.result as string) as BricklayerFile;
+            useSceneStore.getState().loadProject(data);
+            useSceneStore.getState().setProjectName(file.name.replace(/\.(bricklayer|json)$/, ''));
+          };
+          reader.readAsText(file);
+        }
+      };
+      input.click();
+    }
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      const data = JSON.parse(reader.result as string) as BricklayerFile;
-      useSceneStore.getState().loadProject(data);
-    };
-    reader.readAsText(file);
-    e.target.value = '';
+  const handleSave = async () => {
+    const handle = useSceneStore.getState().projectHandle;
+    if (handle) {
+      // Auto-save to working directory
+      await saveProjectDir(handle);
+    } else if (hasFileSystemAccess()) {
+      // No directory set yet — prompt for one, then save
+      const newHandle = await pickDirectory();
+      if (newHandle) {
+        useSceneStore.getState().setProjectHandle(newHandle);
+        useSceneStore.getState().setProjectName(newHandle.name);
+        await saveProjectDir(newHandle);
+      }
+    } else {
+      // Zip fallback
+      const blob = await saveProjectAsZip();
+      const name = useSceneStore.getState().projectName || 'project';
+      download(blob, `${name}.zip`);
+    }
   };
 
   const handleExportPly = () => {
@@ -194,29 +251,6 @@ export function MenuBar({ onImport }: { onImport: () => void }) {
     download(new Blob([json], { type: 'application/json' }), 'scene.json');
   };
 
-  const handleOpenProject = async () => {
-    if (!hasFileSystemAccess()) {
-      alert('File System Access API not available in this browser.');
-      return;
-    }
-    const handle = await openProjectDirectory();
-    if (handle) {
-      useSceneStore.getState().setProjectHandle(handle);
-      useSceneStore.getState().setProjectName(handle.name);
-      await loadProjectDir(handle);
-    }
-  };
-
-  const handleSaveProject = async () => {
-    const handle = useSceneStore.getState().projectHandle;
-    if (!handle) {
-      // Fall back to regular save
-      handleSave();
-      return;
-    }
-    await saveProjectDir(handle);
-  };
-
   const handleImportAsset = () => {
     const input = document.createElement('input');
     input.type = 'file';
@@ -224,31 +258,32 @@ export function MenuBar({ onImport }: { onImport: () => void }) {
     input.onchange = async () => {
       const file = input.files?.[0];
       if (!file) return;
+      // Store blob in memory
+      const path = `assets/${file.name}`;
+      useSceneStore.getState().storeAssetBlob(path, file);
+      useSceneStore.getState().addAsset({
+        id: `asset_${Date.now()}`,
+        name: file.name,
+        type: file.name.endsWith('.ply') ? 'ply' : file.name.match(/\.(wav|mp3)$/i) ? 'audio' : 'texture',
+        path,
+      });
+      // Copy to FSAPI project directory if available
       const handle = useSceneStore.getState().projectHandle;
       if (handle) {
-        const { importAssetToProject } = await import('../lib/projectIO.js');
-        const path = await importAssetToProject(handle, file);
-        useSceneStore.getState().addAsset({
-          id: `asset_${Date.now()}`,
-          name: file.name,
-          type: file.name.endsWith('.ply') ? 'ply' : file.name.match(/\.(wav|mp3)$/i) ? 'audio' : 'texture',
-          path,
-        });
+        await importAssetToProject(handle, file);
       }
     };
     input.click();
   };
 
   const fileItems: MenuItem[] = [
-    { label: 'New Project', action: handleNew },
-    { label: 'Open Project...', action: handleOpenProject },
-    { label: 'Save Project', action: handleSaveProject },
-    { label: 'Import Asset...', action: handleImportAsset },
-    { label: 'Export Scene...', action: handleExportScene, separator: true },
+    { label: 'New Project...', action: handleNew },
+    { label: 'Open Project...', action: handleOpen },
+    { label: 'Save Project', action: handleSave },
+    { label: 'Import Asset...', action: handleImportAsset, separator: true },
     { label: 'Import Image...', action: onImport },
-    { label: 'Export PLY...', action: handleExportPly, separator: true },
-    { label: 'Save File', action: handleSave, separator: true },
-    { label: 'Load File', action: handleLoad },
+    { label: 'Export Scene...', action: handleExportScene, separator: true },
+    { label: 'Export PLY...', action: handleExportPly },
   ];
 
   const editItems: MenuItem[] = [
@@ -303,14 +338,7 @@ export function MenuBar({ onImport }: { onImport: () => void }) {
         onToggle={() => toggleMenu('view')}
         onClose={closeMenu}
       />
-      <input
-        ref={fileRef}
-        type="file"
-        accept=".bricklayer,.json"
-        style={{ display: 'none' }}
-        onChange={handleFileChange}
-      />
-      <span style={styles.title}>Bricklayer</span>
+      <span style={styles.title}>Bricklayer{useSceneStore.getState().projectHandle ? ` — ${useSceneStore.getState().projectName}` : ''}</span>
     </div>
   );
 }

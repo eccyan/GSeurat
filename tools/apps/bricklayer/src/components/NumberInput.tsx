@@ -150,22 +150,22 @@ export function NumberInput({
         onBlur={handleBlur}
         onKeyDown={handleKeyDown}
         onPointerDown={(e) => {
-          // Only initiate drag if not already focused (typing mode)
+          // Only initiate drag tracking if not already focused (typing mode)
           if (document.activeElement !== e.currentTarget) {
+            e.preventDefault(); // prevent focus on mousedown — we'll focus on click
             dragStartX.current = e.clientX;
             dragStartValue.current = value;
-            dragging.current = false;  // Will become true on first move
-            (e.target as HTMLElement).setPointerCapture(e.pointerId);
+            dragging.current = false;
           }
         }}
         onPointerMove={(e) => {
-          if (!(e.target as HTMLElement).hasPointerCapture(e.pointerId)) return;
+          // Only track if we started from an unfocused state
+          if (focused) return;
           const dx = e.clientX - dragStartX.current;
-          // Start dragging only after 3px threshold (allows click-to-focus)
           if (!dragging.current && Math.abs(dx) < 3) return;
           if (!dragging.current) {
             dragging.current = true;
-            e.preventDefault();
+            (e.target as HTMLElement).setPointerCapture(e.pointerId);
           }
           const delta = Math.round(dx / 2) * step;
           const newVal = clamp(dragStartValue.current + delta, min, max);
@@ -174,11 +174,11 @@ export function NumberInput({
         onPointerUp={(e) => {
           if (dragging.current) {
             dragging.current = false;
-          } else {
+            try { (e.target as HTMLElement).releasePointerCapture(e.pointerId); } catch {}
+          } else if (!focused) {
             // No drag happened — allow focus for typing
             (e.target as HTMLInputElement).focus();
           }
-          try { (e.target as HTMLElement).releasePointerCapture(e.pointerId); } catch {}
         }}
         style={{ ...defaultInputStyle, cursor: focused ? 'text' : 'ew-resize', ...style }}
       />

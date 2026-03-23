@@ -1,6 +1,7 @@
 import React from 'react';
 import { NumberInput } from '../components/NumberInput.js';
 import { useSceneStore } from '../store/useSceneStore.js';
+import { extractColorsFromFile } from '../lib/colorExtract.js';
 import type { ToolType } from '../store/types.js';
 
 const drawTools: { id: ToolType; label: string; key: string }[] = [
@@ -87,12 +88,15 @@ const styles: Record<string, React.CSSProperties> = {
   },
   select: {
     flex: 1,
+    minWidth: 0,
     padding: '4px 6px',
     background: '#2a2a4a',
     border: '1px solid #444',
     borderRadius: 4,
     color: '#ddd',
     fontSize: 12,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
   },
 };
 
@@ -201,6 +205,26 @@ export function TerrainLeftPanel() {
             onClick={() => addPalette(`Palette ${colorPalettes.length + 1}`)}
           >
             New
+          </button>
+          <button
+            style={{ ...styles.btn, fontSize: 11, padding: '2px 6px' }}
+            onClick={() => {
+              const input = document.createElement('input');
+              input.type = 'file';
+              input.accept = 'image/*';
+              input.onchange = async () => {
+                const file = input.files?.[0];
+                if (!file) return;
+                const colors = await extractColorsFromFile(file, 24);
+                if (colors.length > 0) {
+                  const palettes = [...useSceneStore.getState().colorPalettes, { name: file.name, colors }];
+                  useSceneStore.setState({ colorPalettes: palettes, activePaletteIndex: palettes.length - 1 });
+                }
+              };
+              input.click();
+            }}
+          >
+            From Image
           </button>
         </div>
 

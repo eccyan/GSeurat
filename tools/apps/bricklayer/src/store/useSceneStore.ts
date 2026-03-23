@@ -27,6 +27,7 @@ import type {
   ColorPalette,
 } from './types.js';
 import { voxelKey, parseKey, floodFill3D, brushPositions } from '../lib/voxelUtils.js';
+import { extractColorsFromImage as extractColorsFromImageData } from '../lib/colorExtract.js';
 
 function defaultEmitter(): EmitterConfig {
   return {
@@ -143,10 +144,12 @@ export interface SceneStoreState {
   terrains: TerrainEntry[];
   currentTerrainId: string;
   assets: AssetEntry[];
+  assetBlobs: Map<string, Blob>;
   activeNode: NavigationNode | null;
 
   // Collision box fill
   collisionBoxFill: boolean;
+  collisionFloodFillMode: boolean;
   collisionBoxStart: [number, number] | null;
 
   // Grab mode
@@ -162,6 +165,10 @@ export interface SceneStoreState {
   activeColor: [number, number, number, number];
   brushSize: number;
   yLevelLock: number | null;
+  yClipMin: number;
+  yClipMax: number;
+  mirrorX: boolean;
+  mirrorZ: boolean;
 
   // Scene elements
   ambientColor: [number, number, number, number];
@@ -184,6 +191,7 @@ export interface SceneStoreState {
   // Editor state
   mode: BricklayerMode;
   selectedEntity: SelectedEntity | null;
+  selectedVoxel: { x: number; y: number; z: number; color: [number, number, number, number] } | null;
   inspectorTab: InspectorTab;
   showGrid: boolean;
   showCollision: boolean;
@@ -213,6 +221,10 @@ export interface SceneStoreState {
   setActiveColor: (color: [number, number, number, number]) => void;
   setBrushSize: (size: number) => void;
   setYLevelLock: (y: number | null) => void;
+  setYClipMin: (v: number) => void;
+  setYClipMax: (v: number) => void;
+  setMirrorX: (v: boolean) => void;
+  setMirrorZ: (v: boolean) => void;
 
   // Actions – scene
   setAmbientColor: (c: [number, number, number, number]) => void;
@@ -225,7 +237,8 @@ export interface SceneStoreState {
   addPortal: () => void;
   updatePortal: (id: string, patch: Partial<PortalData>) => void;
   removePortal: (id: string) => void;
-  addPlacedObject: (plyFile: string) => void;
+  addPlacedObject: (plyFile: string, blob?: Blob) => void;
+  storeAssetBlob: (path: string, blob: Blob) => void;
   updatePlacedObject: (id: string, patch: Partial<PlacedObjectData>) => void;
   removePlacedObject: (id: string) => void;
   updatePlayer: (patch: Partial<PlayerData>) => void;
@@ -247,6 +260,7 @@ export interface SceneStoreState {
   setCellNavZone: (x: number, z: number, zone: number) => void;
   addNavZoneName: (name: string) => void;
   removeNavZoneName: (index: number) => void;
+  collisionFloodFill: (x: number, z: number, fillSolid: boolean) => void;
 
   // Actions – project
   setProjectName: (name: string) => void;
@@ -260,6 +274,7 @@ export interface SceneStoreState {
 
   // Actions – collision box fill
   setCollisionBoxFill: (v: boolean) => void;
+  setCollisionFloodFillMode: (v: boolean) => void;
   setCollisionBoxStart: (pos: [number, number] | null) => void;
   setCellSolid: (x: number, z: number, val: boolean) => void;
   autoGenerateCollision: (slopeThreshold: number) => void;
@@ -279,6 +294,7 @@ export interface SceneStoreState {
   // Actions – editor
   setMode: (mode: BricklayerMode) => void;
   setSelectedEntity: (e: SelectedEntity | null) => void;
+  setSelectedVoxel: (v: { x: number; y: number; z: number; color: [number, number, number, number] } | null) => void;
   setInspectorTab: (tab: InspectorTab) => void;
   setShowGrid: (v: boolean) => void;
   setShowCollision: (v: boolean) => void;
@@ -297,6 +313,18 @@ export interface SceneStoreState {
   importImage: (imageData: ImageData, mode: 'flat' | 'luminance' | 'depth', maxHeight: number, depthMap?: Float32Array, budget?: number) => void;
   saveProject: () => BricklayerFile;
   loadProject: (data: BricklayerFile) => void;
+}
+
+function mirrorPositions(
+  x: number, y: number, z: number,
+  mirrorX: boolean, mirrorZ: boolean,
+  gridWidth: number, gridDepth: number,
+): [number, number, number][] {
+  const positions: [number, number, number][] = [[x, y, z]];
+  if (mirrorX) positions.push([gridWidth - 1 - x, y, z]);
+  if (mirrorZ) positions.push([x, y, gridDepth - 1 - z]);
+  if (mirrorX && mirrorZ) positions.push([gridWidth - 1 - x, y, gridDepth - 1 - z]);
+  return positions;
 }
 
 const defaultPalette: ColorPalette = {
@@ -327,9 +355,11 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
   terrains: [],
   currentTerrainId: '',
   assets: [],
+  assetBlobs: new Map(),
   activeNode: null,
 
   collisionBoxFill: false,
+  collisionFloodFillMode: false,
   collisionBoxStart: null,
 
   grabMode: false,
@@ -342,6 +372,10 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
   activeColor: [34, 139, 34, 255],
   brushSize: 1,
   yLevelLock: null,
+  yClipMin: 0,
+  yClipMax: 255,
+  mirrorX: false,
+  mirrorZ: false,
 
   ambientColor: [0.25, 0.28, 0.45, 1],
   staticLights: [],
@@ -362,6 +396,7 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
 
   mode: 'terrain',
   selectedEntity: null,
+  selectedVoxel: null,
   inspectorTab: 'scene',
   showGrid: true,
   showCollision: false,
@@ -409,44 +444,52 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
 
   // ── Voxel actions ──
   placeVoxel: (x, y, z) => {
-    const { voxels, activeColor } = get();
-    const next = new Map(voxels);
-    next.set(voxelKey(x, y, z), { color: [...activeColor] });
+    const s = get();
+    const next = new Map(s.voxels);
+    const positions = mirrorPositions(x, y, z, s.mirrorX, s.mirrorZ, s.gridWidth, s.gridDepth);
+    for (const [mx, my, mz] of positions) {
+      next.set(voxelKey(mx, my, mz), { color: [...s.activeColor] });
+    }
     set({ voxels: next });
   },
 
   placeVoxels: (positions) => {
-    const { voxels, activeColor } = get();
-    const next = new Map(voxels);
+    const s = get();
+    const next = new Map(s.voxels);
     for (const [x, y, z] of positions) {
-      next.set(voxelKey(x, y, z), { color: [...activeColor] });
+      for (const [mx, my, mz] of mirrorPositions(x, y, z, s.mirrorX, s.mirrorZ, s.gridWidth, s.gridDepth)) {
+        next.set(voxelKey(mx, my, mz), { color: [...s.activeColor] });
+      }
     }
     set({ voxels: next });
   },
 
   paintVoxel: (x, y, z) => {
-    const { voxels, activeColor } = get();
-    const key = voxelKey(x, y, z);
-    if (!voxels.has(key)) return;
-    const next = new Map(voxels);
-    next.set(key, { color: [...activeColor] });
+    const s = get();
+    const next = new Map(s.voxels);
+    for (const [mx, my, mz] of mirrorPositions(x, y, z, s.mirrorX, s.mirrorZ, s.gridWidth, s.gridDepth)) {
+      const key = voxelKey(mx, my, mz);
+      if (next.has(key)) next.set(key, { color: [...s.activeColor] });
+    }
     set({ voxels: next });
   },
 
   eraseVoxel: (x, y, z) => {
-    const { voxels } = get();
-    const key = voxelKey(x, y, z);
-    if (!voxels.has(key)) return;
-    const next = new Map(voxels);
-    next.delete(key);
+    const s = get();
+    const next = new Map(s.voxels);
+    for (const [mx, my, mz] of mirrorPositions(x, y, z, s.mirrorX, s.mirrorZ, s.gridWidth, s.gridDepth)) {
+      next.delete(voxelKey(mx, my, mz));
+    }
     set({ voxels: next });
   },
 
   eraseVoxels: (positions) => {
-    const { voxels } = get();
-    const next = new Map(voxels);
+    const s = get();
+    const next = new Map(s.voxels);
     for (const [x, y, z] of positions) {
-      next.delete(voxelKey(x, y, z));
+      for (const [mx, my, mz] of mirrorPositions(x, y, z, s.mirrorX, s.mirrorZ, s.gridWidth, s.gridDepth)) {
+        next.delete(voxelKey(mx, my, mz));
+      }
     }
     set({ voxels: next });
   },
@@ -471,14 +514,16 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
   },
 
   extrudeVoxels: (positions, direction) => {
-    const { voxels, activeColor } = get();
-    const next = new Map(voxels);
+    const s = get();
+    const next = new Map(s.voxels);
     for (const [x, y, z] of positions) {
-      const existing = voxels.get(voxelKey(x, y, z));
+      const existing = s.voxels.get(voxelKey(x, y, z));
       if (!existing) continue;
       const ny = direction === 'up' ? y + 1 : y - 1;
       if (ny < 0) continue;
-      next.set(voxelKey(x, ny, z), { color: existing.color });
+      for (const [mx, , mz] of mirrorPositions(x, ny, z, s.mirrorX, s.mirrorZ, s.gridWidth, s.gridDepth)) {
+        next.set(voxelKey(mx, ny, mz), { color: existing.color });
+      }
     }
     set({ voxels: next });
   },
@@ -494,6 +539,10 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
   setActiveColor: (color) => set({ activeColor: color }),
   setBrushSize: (size) => set({ brushSize: Math.max(1, Math.min(8, size)) }),
   setYLevelLock: (y) => set({ yLevelLock: y }),
+  setYClipMin: (v) => set({ yClipMin: v }),
+  setYClipMax: (v) => set({ yClipMax: v }),
+  setMirrorX: (v) => set({ mirrorX: v }),
+  setMirrorZ: (v) => set({ mirrorZ: v }),
 
   // ── Scene actions ──
   setAmbientColor: (c) => set({ ambientColor: c }),
@@ -564,7 +613,7 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
     portals: get().portals.filter((p) => p.id !== id),
   }),
 
-  addPlacedObject: (plyFile) => {
+  addPlacedObject: (plyFile, blob?) => {
     const obj: PlacedObjectData = {
       id: genId('obj'),
       ply_file: plyFile,
@@ -574,7 +623,20 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
       is_static: true,
       character_manifest: '',
     };
-    set({ placedObjects: [...get().placedObjects, obj] });
+    const s = get();
+    const updates: Partial<typeof s> = { placedObjects: [...s.placedObjects, obj] };
+    if (blob) {
+      const path = `assets/${plyFile}`;
+      const blobs = new Map(s.assetBlobs);
+      blobs.set(path, blob);
+      (updates as any).assetBlobs = blobs;
+    }
+    set(updates as any);
+  },
+  storeAssetBlob: (path, blob) => {
+    const blobs = new Map(get().assetBlobs);
+    blobs.set(path, blob);
+    set({ assetBlobs: blobs });
   },
   updatePlacedObject: (id, patch) => set({
     placedObjects: get().placedObjects.map((o) => (o.id === id ? { ...o, ...patch } : o)),
@@ -685,7 +747,8 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
   setActiveNode: (node) => set({ activeNode: node }),
 
   // ── Collision box fill ──
-  setCollisionBoxFill: (v) => set({ collisionBoxFill: v, collisionBoxStart: null }),
+  setCollisionBoxFill: (v) => set({ collisionBoxFill: v, collisionBoxStart: null, collisionFloodFillMode: false }),
+  setCollisionFloodFillMode: (v) => set({ collisionFloodFillMode: v, collisionBoxFill: false, collisionBoxStart: null }),
   setCollisionBoxStart: (pos) => set({ collisionBoxStart: pos }),
 
   setCellSolid: (x, z, val) => {
@@ -695,6 +758,37 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
     if (idx < 0 || idx >= collisionGridData.solid.length) return;
     const solid = [...collisionGridData.solid];
     solid[idx] = val;
+    set({ collisionGridData: { ...collisionGridData, solid } });
+  },
+
+  collisionFloodFill: (startX, startZ, fillSolid) => {
+    const { collisionGridData } = get();
+    if (!collisionGridData) return;
+    const { width, height, solid: origSolid } = collisionGridData;
+    const idx = (x: number, z: number) => z * width + x;
+    const startIdx = idx(startX, startZ);
+    if (startIdx < 0 || startIdx >= origSolid.length) return;
+    const targetState = origSolid[startIdx];
+    if (targetState === fillSolid) return; // already the target state
+    const solid = [...origSolid];
+    const visited = new Uint8Array(solid.length);
+    const queue: [number, number][] = [[startX, startZ]];
+    visited[startIdx] = 1;
+    while (queue.length > 0) {
+      const [cx, cz] = queue.pop()!;
+      const ci = idx(cx, cz);
+      solid[ci] = fillSolid;
+      for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+        const nx = cx + dx;
+        const nz = cz + dz;
+        if (nx < 0 || nx >= width || nz < 0 || nz >= height) continue;
+        const ni = idx(nx, nz);
+        if (visited[ni]) continue;
+        if (solid[ni] !== targetState) continue;
+        visited[ni] = 1;
+        queue.push([nx, nz]);
+      }
+    }
     set({ collisionGridData: { ...collisionGridData, solid } });
   },
 
@@ -777,26 +871,7 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
   },
 
   extractColorsFromImage: (imageData, maxColors) => {
-    // Simple color quantization: sample unique colors
-    const colorSet = new Map<string, [number, number, number, number]>();
-    const data = imageData.data;
-    const step = Math.max(1, Math.floor(data.length / 4 / 1000)); // sample at most 1000 pixels
-    for (let i = 0; i < data.length; i += 4 * step) {
-      const r = data[i];
-      const g = data[i + 1];
-      const b = data[i + 2];
-      const a = data[i + 3];
-      if (a < 10) continue;
-      // Quantize to 5-bit
-      const qr = (r >> 3) << 3;
-      const qg = (g >> 3) << 3;
-      const qb = (b >> 3) << 3;
-      const key = `${qr},${qg},${qb}`;
-      if (!colorSet.has(key)) {
-        colorSet.set(key, [qr, qg, qb, 255]);
-      }
-    }
-    const colors = Array.from(colorSet.values()).slice(0, maxColors);
+    const colors = extractColorsFromImageData(imageData, maxColors);
     const palettes = [...get().colorPalettes];
     palettes.push({ name: 'Extracted', colors });
     set({ colorPalettes: palettes, activePaletteIndex: palettes.length - 1 });
@@ -805,6 +880,7 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
   // ── Editor actions ──
   setMode: (mode) => set({ mode }),
   setSelectedEntity: (e) => set({ selectedEntity: e }),
+  setSelectedVoxel: (v) => set({ selectedVoxel: v }),
   setInspectorTab: (tab) => set({ inspectorTab: tab }),
   setShowGrid: (v) => set({ showGrid: v }),
   setShowCollision: (v) => set({ showCollision: v }),
@@ -923,6 +999,9 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
       collision: [],
       collisionGridData: s.collisionGridData ?? undefined,
       nav_zone_names: s.navZoneNames.length > 0 ? s.navZoneNames : undefined,
+      color_palettes: s.colorPalettes.length > 0 ? s.colorPalettes : undefined,
+      terrains: s.terrains.length > 0 ? s.terrains : undefined,
+      assets: s.assets.length > 0 ? s.assets : undefined,
       scene: {
         ambientColor: s.ambientColor,
         staticLights: s.staticLights,
@@ -953,6 +1032,10 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
       gridDepth: data.gridDepth,
       collisionGridData: data.collisionGridData ?? null,
       navZoneNames: data.nav_zone_names ?? [],
+      colorPalettes: data.color_palettes ?? [defaultPalette],
+      activePaletteIndex: 0,
+      terrains: data.terrains ?? [],
+      assets: data.assets ?? [],
       ambientColor: data.scene.ambientColor,
       staticLights: data.scene.staticLights,
       npcs: data.scene.npcs,

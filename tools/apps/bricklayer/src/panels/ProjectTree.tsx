@@ -12,6 +12,14 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     alignItems: 'center',
     gap: 4,
+    overflow: 'hidden',
+  },
+  nodeLabel: {
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap' as const,
+    flex: 1,
+    minWidth: 0,
   },
   nodeActive: { background: '#3a3a6a', color: '#fff' },
   indent: { paddingLeft: 16 },
@@ -166,7 +174,25 @@ export function ProjectTree() {
               <span style={styles.arrow}>{objOpen ? '\u25BE' : '\u25B8'}</span>
               Objects
               <span style={styles.count}>({placedObjects.length})</span>
-              <button style={styles.addBtn} onClick={(e) => { e.stopPropagation(); const f = window.prompt('PLY file:'); if (f) addPlacedObject(f); }}>+</button>
+              <button style={styles.addBtn} onClick={(e) => {
+                e.stopPropagation();
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.accept = '.ply';
+                input.onchange = async () => {
+                  const file = input.files?.[0];
+                  if (!file) return;
+                  // Store PLY blob and add object
+                  addPlacedObject(file.name, file);
+                  // Copy to FSAPI project directory if available
+                  const handle = useSceneStore.getState().projectHandle;
+                  if (handle) {
+                    const { importAssetToProject } = await import('../lib/projectIO.js');
+                    await importAssetToProject(handle, file);
+                  }
+                };
+                input.click();
+              }}>+</button>
             </div>
             {objOpen && (
               <div style={styles.indent}>
@@ -176,7 +202,7 @@ export function ProjectTree() {
                     style={{ ...styles.node, ...(isActive({ kind: 'scene_item', entityType: 'object', entityId: obj.id }) ? styles.nodeActive : {}) }}
                     onClick={() => click({ kind: 'scene_item', entityType: 'object', entityId: obj.id })}
                   >
-                    {obj.ply_file || obj.id.slice(0, 12)}
+                    <span style={styles.nodeLabel}>{obj.ply_file || obj.id.slice(0, 12)}</span>
                     <button style={styles.removeBtn} onClick={(e) => { e.stopPropagation(); removePlacedObject(obj.id); }}>&times;</button>
                   </div>
                 ))}
@@ -197,13 +223,13 @@ export function ProjectTree() {
             </div>
             {lightOpen && (
               <div style={styles.indent}>
-                {staticLights.map((l) => (
+                {staticLights.map((l, i) => (
                   <div
                     key={l.id}
                     style={{ ...styles.node, ...(isActive({ kind: 'scene_item', entityType: 'light', entityId: l.id }) ? styles.nodeActive : {}) }}
                     onClick={() => click({ kind: 'scene_item', entityType: 'light', entityId: l.id })}
                   >
-                    {l.id.slice(0, 12)}
+                    <span style={styles.nodeLabel}>Light {i + 1}</span>
                     <button style={styles.removeBtn} onClick={(e) => { e.stopPropagation(); removeLight(l.id); }}>&times;</button>
                   </div>
                 ))}
@@ -230,7 +256,7 @@ export function ProjectTree() {
                     style={{ ...styles.node, ...(isActive({ kind: 'scene_item', entityType: 'npc', entityId: n.id }) ? styles.nodeActive : {}) }}
                     onClick={() => click({ kind: 'scene_item', entityType: 'npc', entityId: n.id })}
                   >
-                    {n.name || n.id.slice(0, 12)}
+                    <span style={styles.nodeLabel}>{n.name || n.id.slice(0, 12)}</span>
                     <button style={styles.removeBtn} onClick={(e) => { e.stopPropagation(); removeNpc(n.id); }}>&times;</button>
                   </div>
                 ))}
@@ -251,13 +277,13 @@ export function ProjectTree() {
             </div>
             {portalOpen && (
               <div style={styles.indent}>
-                {portals.map((p) => (
+                {portals.map((p, i) => (
                   <div
                     key={p.id}
                     style={{ ...styles.node, ...(isActive({ kind: 'scene_item', entityType: 'portal', entityId: p.id }) ? styles.nodeActive : {}) }}
                     onClick={() => click({ kind: 'scene_item', entityType: 'portal', entityId: p.id })}
                   >
-                    {p.target_scene || p.id.slice(0, 12)}
+                    <span style={styles.nodeLabel}>{p.target_scene || `Portal ${i + 1}`}</span>
                     <button style={styles.removeBtn} onClick={(e) => { e.stopPropagation(); removePortal(p.id); }}>&times;</button>
                   </div>
                 ))}
