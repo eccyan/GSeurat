@@ -68,6 +68,7 @@ function SceneContent() {
   const gridWidth = useSceneStore((s) => s.gridWidth);
   const gridDepth = useSceneStore((s) => s.gridDepth);
   const showGrid = useSceneStore((s) => s.showGrid);
+  const grabMode = useSceneStore((s) => s.grabMode);
   const controlsRef = useRef<OrbitControlsRef | null>(null);
 
   return (
@@ -107,6 +108,7 @@ function SceneContent() {
           controlsRef.current = r;
           orbitControlsRef = r;
         }}
+        enabled={!grabMode}
         target={[gridWidth / 2, 0, gridDepth / 2]}
         makeDefault
         screenSpacePanning

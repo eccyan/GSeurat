@@ -80,12 +80,18 @@ export function exportSceneJsonBlob(): Blob {
 
 /**
  * Save the current project as a zip file (fallback for browsers without FSAPI).
+ * Includes scene data and engine scene export.
  */
 export async function saveProjectAsZip(): Promise<Blob> {
   const store = useSceneStore.getState();
   const data = store.saveProject();
   const zip = new JSZip();
   zip.file('scene.bricklayer', JSON.stringify(data, null, 2));
+
+  // Also include the engine scene export
+  const scene = exportSceneJson(store);
+  zip.file('scene.json', JSON.stringify(scene, null, 2));
+
   return zip.generateAsync({ type: 'blob' });
 }
 

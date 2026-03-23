@@ -123,6 +123,9 @@ export function VoxelMesh() {
       store.setSelectedVoxel({ x, y, z, color: vox.color });
     }
 
+    // Only process brush tools in terrain mode (not collision or scene)
+    if (store.mode !== 'terrain' || store.activeNode?.kind === 'collision') return;
+
     switch (store.activeTool) {
       case 'place': {
         if (!normal) return;

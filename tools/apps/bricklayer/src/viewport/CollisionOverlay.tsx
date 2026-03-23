@@ -68,8 +68,8 @@ export function CollisionOverlay() {
   const handleClick = useCallback((e: ThreeEvent<MouseEvent>) => {
     e.stopPropagation();
     const store = useSceneStore.getState();
-    // Only handle clicks in TERRAIN mode
-    if (store.mode !== 'terrain') return;
+    // Only handle clicks in collision editing mode
+    if (store.activeNode?.kind !== 'collision') return;
     const grid = store.collisionGridData;
     if (!grid) return;
 
@@ -81,7 +81,7 @@ export function CollisionOverlay() {
     if (cellX < 0 || cellX >= grid.width || cellZ < 0 || cellZ >= grid.height) return;
 
     // Box fill mode
-    if (store.collisionBoxFill && store.collisionLayer === 'solid') {
+    if (store.collisionBoxFill) {
       if (!store.collisionBoxStart) {
         store.setCollisionBoxStart([cellX, cellZ]);
         return;
@@ -96,7 +96,11 @@ export function CollisionOverlay() {
       store.pushUndo();
       for (let z = minZ; z <= maxZ; z++) {
         for (let x = minX; x <= maxX; x++) {
-          store.setCellSolid(x, z, true);
+          switch (store.collisionLayer) {
+            case 'solid': store.setCellSolid(x, z, true); break;
+            case 'elevation': store.setCellElevation(x, z, store.collisionHeight); break;
+            case 'nav_zone': store.setCellNavZone(x, z, store.activeNavZone); break;
+          }
         }
       }
       store.setCollisionBoxStart(null);
@@ -105,7 +109,7 @@ export function CollisionOverlay() {
 
     store.pushUndo();
 
-    // Flood fill mode
+    // Flood fill mode (solid layer only — elevation/nav_zone don't have contiguous regions)
     if (store.collisionFloodFillMode && store.collisionLayer === 'solid') {
       const currentState = grid.solid[cellZ * grid.width + cellX];
       store.collisionFloodFill(cellX, cellZ, !currentState);

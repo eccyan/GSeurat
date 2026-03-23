@@ -88,12 +88,15 @@ const styles: Record<string, React.CSSProperties> = {
   },
   select: {
     flex: 1,
+    minWidth: 0,
     padding: '4px 6px',
     background: '#2a2a4a',
     border: '1px solid #444',
     borderRadius: 4,
     color: '#ddd',
     fontSize: 12,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
   },
 };
 

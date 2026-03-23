@@ -511,14 +511,16 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
   },
 
   extrudeVoxels: (positions, direction) => {
-    const { voxels, activeColor } = get();
-    const next = new Map(voxels);
+    const s = get();
+    const next = new Map(s.voxels);
     for (const [x, y, z] of positions) {
-      const existing = voxels.get(voxelKey(x, y, z));
+      const existing = s.voxels.get(voxelKey(x, y, z));
       if (!existing) continue;
       const ny = direction === 'up' ? y + 1 : y - 1;
       if (ny < 0) continue;
-      next.set(voxelKey(x, ny, z), { color: existing.color });
+      for (const [mx, , mz] of mirrorPositions(x, ny, z, s.mirrorX, s.mirrorZ, s.gridWidth, s.gridDepth)) {
+        next.set(voxelKey(mx, ny, mz), { color: existing.color });
+      }
     }
     set({ voxels: next });
   },

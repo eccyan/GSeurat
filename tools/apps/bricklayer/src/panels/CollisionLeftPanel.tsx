@@ -82,7 +82,12 @@ export function CollisionLeftPanel() {
         <div style={styles.row}>
           <NumberInput label="Slope" value={slopeThreshold} step={0.5} min={0.5} max={20} onChange={setSlopeThreshold} style={{ maxWidth: 60 }} />
         </div>
-        <button style={styles.btn} onClick={() => autoGenerateCollision(slopeThreshold)}>
+        <button style={styles.btn} onClick={() => {
+          // Create grid first if it doesn't exist, then auto-generate
+          initCollisionGrid(gridW, gridH, cellSize);
+          // Use setTimeout to ensure grid state is set before auto-generate runs
+          setTimeout(() => autoGenerateCollision(slopeThreshold), 0);
+        }}>
           Auto-generate from Terrain
         </button>
       </div>
