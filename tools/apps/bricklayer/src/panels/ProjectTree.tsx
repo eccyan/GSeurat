@@ -134,18 +134,17 @@ export function ProjectTree() {
       >
         Terrain
       </div>
-      {collisionGridData && (
-        <div
-          style={{
-            ...styles.node,
-            ...styles.indent,
-            ...(isActive({ kind: 'collision', terrainId: 'main' }) ? styles.nodeActive : {}),
-          }}
-          onClick={() => click({ kind: 'collision', terrainId: 'main' })}
-        >
-          Collision
-        </div>
-      )}
+      <div
+        style={{
+          ...styles.node,
+          ...styles.indent,
+          ...(isActive({ kind: 'collision', terrainId: 'main' }) ? styles.nodeActive : {}),
+        }}
+        onClick={() => click({ kind: 'collision', terrainId: 'main' })}
+      >
+        Collision
+        {!collisionGridData && <span style={styles.count}>(none)</span>}
+      </div>
 
       {/* Scene */}
       <div

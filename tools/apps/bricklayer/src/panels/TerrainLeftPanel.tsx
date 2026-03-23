@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { NumberInput } from '../components/NumberInput.js';
 import { useSceneStore } from '../store/useSceneStore.js';
-import type { ToolType, CollisionLayer } from '../store/types.js';
+import type { ToolType } from '../store/types.js';
 
 const drawTools: { id: ToolType; label: string; key: string }[] = [
   { id: 'place', label: 'Place', key: 'V' },
@@ -14,12 +14,6 @@ const drawTools: { id: ToolType; label: string; key: string }[] = [
 const utilTools: { id: ToolType; label: string; key: string }[] = [
   { id: 'eyedropper', label: 'Eyedrop', key: 'I' },
   { id: 'select', label: 'Select', key: 'S' },
-];
-
-const collisionLayers: { id: CollisionLayer; label: string }[] = [
-  { id: 'solid', label: 'Solid' },
-  { id: 'elevation', label: 'Elevation' },
-  { id: 'nav_zone', label: 'NavZone' },
 ];
 
 const styles: Record<string, React.CSSProperties> = {
@@ -82,15 +76,6 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#ddd',
     fontSize: 13,
   },
-  inputFlex: {
-    flex: 1,
-    padding: '4px 6px',
-    background: '#2a2a4a',
-    border: '1px solid #444',
-    borderRadius: 4,
-    color: '#ddd',
-    fontSize: 13,
-  },
   btn: {
     padding: '4px 10px',
     border: '1px solid #555',
@@ -99,22 +84,6 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#ddd',
     cursor: 'pointer',
     fontSize: 12,
-  },
-  layerBtn: {
-    flex: 1,
-    padding: '4px 6px',
-    border: '1px solid #444',
-    borderRadius: 4,
-    background: '#2a2a4a',
-    color: '#ddd',
-    cursor: 'pointer',
-    fontSize: 12,
-    textAlign: 'center' as const,
-  },
-  layerBtnActive: {
-    background: '#4a4a8a',
-    borderColor: '#77f',
-    color: '#fff',
   },
   select: {
     flex: 1,
@@ -136,31 +105,11 @@ export function TerrainLeftPanel() {
   const setActiveColor = useSceneStore((s) => s.setActiveColor);
   const setBrushSize = useSceneStore((s) => s.setBrushSize);
   const setYLevelLock = useSceneStore((s) => s.setYLevelLock);
-  const showCollision = useSceneStore((s) => s.showCollision);
-  const collisionGridData = useSceneStore((s) => s.collisionGridData);
-  const collisionLayer = useSceneStore((s) => s.collisionLayer);
-  const setCollisionLayer = useSceneStore((s) => s.setCollisionLayer);
-  const collisionHeight = useSceneStore((s) => s.collisionHeight);
-  const setCollisionHeight = useSceneStore((s) => s.setCollisionHeight);
-  const activeNavZone = useSceneStore((s) => s.activeNavZone);
-  const setActiveNavZone = useSceneStore((s) => s.setActiveNavZone);
-  const navZoneNames = useSceneStore((s) => s.navZoneNames);
-  const addNavZoneName = useSceneStore((s) => s.addNavZoneName);
-  const initCollisionGrid = useSceneStore((s) => s.initCollisionGrid);
-  const collisionBoxFill = useSceneStore((s) => s.collisionBoxFill);
-  const setCollisionBoxFill = useSceneStore((s) => s.setCollisionBoxFill);
-  const autoGenerateCollision = useSceneStore((s) => s.autoGenerateCollision);
   const colorPalettes = useSceneStore((s) => s.colorPalettes);
   const activePaletteIndex = useSceneStore((s) => s.activePaletteIndex);
   const setActivePalette = useSceneStore((s) => s.setActivePalette);
   const addPalette = useSceneStore((s) => s.addPalette);
   const addColorToPalette = useSceneStore((s) => s.addColorToPalette);
-
-  const [gridW, setGridW] = useState(32);
-  const [gridH, setGridH] = useState(32);
-  const [cellSize, setCellSize] = useState(1.0);
-  const [newZoneName, setNewZoneName] = useState('');
-  const [slopeThreshold, setSlopeThreshold] = useState(2.0);
 
   const hexColor = `#${activeColor.slice(0, 3).map((c) => c.toString(16).padStart(2, '0')).join('')}`;
   const activePalette = colorPalettes[activePaletteIndex] ?? colorPalettes[0];
@@ -309,155 +258,6 @@ export function TerrainLeftPanel() {
         </div>
       </div>
 
-      {/* Collision section — always visible in TERRAIN mode */}
-      <div style={styles.section}>
-        <span style={styles.label}>Collision Grid</span>
-        {!showCollision && (
-          <button
-            style={{ ...styles.btn, marginBottom: 8 }}
-            onClick={() => useSceneStore.getState().setShowCollision(true)}
-          >
-            Show Overlay
-          </button>
-        )}
-        {!collisionGridData ? (
-            <>
-              <div style={styles.row}>
-                <NumberInput
-                  label="W"
-                  value={gridW}
-                  min={1}
-                  onChange={(v) => setGridW(v)}
-                  style={{ ...styles.inputFlex, maxWidth: 60 }}
-                />
-                <NumberInput
-                  label="H"
-                  value={gridH}
-                  min={1}
-                  onChange={(v) => setGridH(v)}
-                  style={{ ...styles.inputFlex, maxWidth: 60 }}
-                />
-              </div>
-              <div style={styles.row}>
-                <NumberInput
-                  label="Cell"
-                  value={cellSize}
-                  step={0.1}
-                  min={0.1}
-                  onChange={(v) => setCellSize(v)}
-                  style={{ ...styles.inputFlex, maxWidth: 60 }}
-                />
-              </div>
-              <button style={styles.btn} onClick={() => initCollisionGrid(gridW, gridH, cellSize)}>
-                Init Grid
-              </button>
-            </>
-          ) : (
-            <>
-              {/* Layer selector */}
-              <div style={styles.row}>
-                {collisionLayers.map((cl) => (
-                  <button
-                    key={cl.id}
-                    style={{
-                      ...styles.layerBtn,
-                      ...(collisionLayer === cl.id ? styles.layerBtnActive : {}),
-                    }}
-                    onClick={() => setCollisionLayer(cl.id)}
-                  >
-                    {cl.label}
-                  </button>
-                ))}
-              </div>
-
-              {/* Box fill toggle */}
-              <label style={{ ...styles.row, fontSize: 12, cursor: 'pointer' }}>
-                <input
-                  type="checkbox"
-                  checked={collisionBoxFill}
-                  onChange={(e) => setCollisionBoxFill(e.target.checked)}
-                />
-                Box Fill
-              </label>
-
-              {/* Auto-generate */}
-              <div style={styles.row}>
-                <NumberInput
-                  label="Slope"
-                  step={0.5}
-                  min={0}
-                  value={slopeThreshold}
-                  onChange={(v) => setSlopeThreshold(v)}
-                  style={{ ...styles.inputFlex, maxWidth: 60 }}
-                />
-                <button style={styles.btn} onClick={() => {
-                  useSceneStore.getState().pushUndo();
-                  autoGenerateCollision(slopeThreshold);
-                }}>
-                  Auto
-                </button>
-              </div>
-
-              {collisionLayer === 'elevation' && (
-                <div style={styles.row}>
-                  <span style={{ fontSize: 12, minWidth: 50 }}>Height</span>
-                  <NumberInput
-                    step={0.5}
-                    value={collisionHeight}
-                    onChange={setCollisionHeight}
-                    style={styles.inputFlex}
-                  />
-                </div>
-              )}
-
-              {collisionLayer === 'nav_zone' && (
-                <>
-                  <div style={styles.row}>
-                    <span style={{ fontSize: 12, minWidth: 50 }}>Zone</span>
-                    <select
-                      value={activeNavZone}
-                      onChange={(e) => setActiveNavZone(Number(e.target.value))}
-                      style={styles.inputFlex}
-                    >
-                      <option value={0}>0: default</option>
-                      {navZoneNames.map((name, i) => (
-                        <option key={i + 1} value={i + 1}>
-                          {i + 1}: {name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div style={styles.row}>
-                    <input
-                      type="text"
-                      value={newZoneName}
-                      placeholder="new zone name"
-                      onChange={(e) => setNewZoneName(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' && newZoneName.trim()) {
-                          addNavZoneName(newZoneName.trim());
-                          setNewZoneName('');
-                        }
-                      }}
-                      style={styles.inputFlex}
-                    />
-                    <button
-                      style={styles.btn}
-                      onClick={() => {
-                        if (newZoneName.trim()) {
-                          addNavZoneName(newZoneName.trim());
-                          setNewZoneName('');
-                        }
-                      }}
-                    >
-                      +
-                    </button>
-                  </div>
-                </>
-              )}
-            </>
-          )}
-        </div>
     </div>
   );
 }
