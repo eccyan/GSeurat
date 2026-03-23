@@ -706,6 +706,15 @@ void GsDemoState::build_draw_lists(AppBase& app) {
                          {pl.color.r, pl.color.g, pl.color.b, 0.25f * pl.color.a});
                 ui.panel(sx, sy, glow_r * 0.2f, glow_r * 0.2f,
                          {pl.color.r, pl.color.g, pl.color.b, 0.5f * pl.color.a});
+                // Center dot
+                ui.panel(sx, sy, 10.0f, 10.0f,
+                         {pl.color.r, pl.color.g, pl.color.b, 0.9f});
+                ui.panel(sx, sy, 4.0f, 4.0f, {1.0f, 1.0f, 1.0f, 1.0f});
+                // Label
+                char llabel[16];
+                std::snprintf(llabel, sizeof(llabel), "L%zu", i);
+                ui.label(llabel, sx - 4.0f, sy + 10.0f, 0.3f,
+                         {pl.color.r, pl.color.g, pl.color.b, 1.0f});
             }
         }
     }
