@@ -177,6 +177,45 @@ export interface CollisionGridData {
   nav_zone: number[];       // per-cell zone ID (0=default)
 }
 
+export interface ProjectManifest {
+  name: string;
+  version: number;
+  terrains: TerrainEntry[];
+  assets: AssetEntry[];
+  globalSettings: {
+    ambientColor: [number, number, number, number];
+    gaussianSplat: GaussianSplatConfig;
+    weather: WeatherData;
+    dayNight: DayNightData;
+    backgroundLayers: BackgroundLayer[];
+    torchEmitter: EmitterConfig;
+    torchPositions: [number, number][];
+    footstepEmitter: EmitterConfig;
+    npcAuraEmitter: EmitterConfig;
+  };
+  scene: {
+    placedObjects: PlacedObjectData[];
+    staticLights: StaticLight[];
+    npcs: NpcData[];
+    portals: PortalData[];
+    player: PlayerData;
+  };
+}
+
+export interface TerrainEntry {
+  id: string;
+  name: string;
+  voxelFile: string;     // relative path to .bricklayer voxel data file
+  collision: CollisionGridData | null;
+  navZoneNames: string[];
+}
+
+export interface AssetEntry {
+  id: string;
+  path: string;          // relative path within project assets/
+  type: 'ply' | 'image' | 'other';
+}
+
 export interface SelectedEntity {
   type: string;
   id: string;

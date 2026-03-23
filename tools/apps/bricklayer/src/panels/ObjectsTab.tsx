@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import { NumberInput } from '../components/NumberInput.js';
 import { useSceneStore } from '../store/useSceneStore.js';
 import type { PlacedObjectData } from '../store/types.js';
+import { hasFileSystemAccess, importAssetToProject } from '../lib/projectIO.js';
 
 const styles: Record<string, React.CSSProperties> = {
   section: { display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 },
@@ -134,16 +135,47 @@ function ObjectEditor({ obj }: { obj: PlacedObjectData }) {
 export function ObjectsTab() {
   const placedObjects = useSceneStore((s) => s.placedObjects);
   const addPlacedObject = useSceneStore((s) => s.addPlacedObject);
+  const plyInputRef = useRef<HTMLInputElement>(null);
 
   const handleAdd = () => {
-    const plyFile = window.prompt('PLY file path:', '');
-    if (plyFile) {
-      addPlacedObject(plyFile);
+    // Use file picker for PLY selection
+    plyInputRef.current?.click();
+  };
+
+  const handlePlyFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const store = useSceneStore.getState();
+    const handle = store.projectHandle;
+
+    if (handle && hasFileSystemAccess()) {
+      // Copy PLY into project assets/ and use relative path
+      const relativePath = await importAssetToProject(handle, file, 'ply');
+      addPlacedObject(relativePath);
+
+      store.addAsset({
+        id: `asset_${Date.now()}`,
+        path: relativePath,
+        type: 'ply',
+      });
+    } else {
+      // No project directory: use filename as-is
+      addPlacedObject(file.name);
     }
+
+    e.target.value = '';
   };
 
   return (
     <div>
+      <input
+        ref={plyInputRef}
+        type="file"
+        accept=".ply"
+        style={{ display: 'none' }}
+        onChange={handlePlyFileChange}
+      />
       <div style={{ ...styles.row, marginBottom: 8 }}>
         <span style={{ ...styles.label, flex: 1 }}>Placed Objects ({placedObjects.length})</span>
         <button style={styles.btn} onClick={handleAdd}>+ Add</button>

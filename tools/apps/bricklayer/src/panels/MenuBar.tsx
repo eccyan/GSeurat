@@ -1,8 +1,16 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useSceneStore } from '../store/useSceneStore.js';
 import { exportPly } from '../lib/plyExport.js';
-import { exportSceneJson } from '../lib/sceneExport.js';
-import type { BricklayerFile } from '../store/types.js';
+import { exportSceneJson as buildSceneJson } from '../lib/sceneExport.js';
+import type { BricklayerFile, ProjectManifest } from '../store/types.js';
+import {
+  hasFileSystemAccess,
+  openProjectDirectory,
+  saveProject as saveProjectDir,
+  loadProject as loadProjectDir,
+  importAssetToProject,
+  exportSceneJson as writeSceneJson,
+} from '../lib/projectIO.js';
 
 const styles: Record<string, React.CSSProperties> = {
   bar: {
@@ -65,6 +73,33 @@ const styles: Record<string, React.CSSProperties> = {
     paddingRight: 8,
   },
 };
+
+function buildProjectManifest(store: ReturnType<typeof useSceneStore.getState>): ProjectManifest {
+  return {
+    name: store.projectName,
+    version: 1,
+    terrains: store.terrains,
+    assets: store.assets,
+    globalSettings: {
+      ambientColor: store.ambientColor,
+      gaussianSplat: store.gaussianSplat,
+      weather: store.weather,
+      dayNight: store.dayNight,
+      backgroundLayers: store.backgroundLayers,
+      torchEmitter: store.torchEmitter,
+      torchPositions: store.torchPositions,
+      footstepEmitter: store.footstepEmitter,
+      npcAuraEmitter: store.npcAuraEmitter,
+    },
+    scene: {
+      placedObjects: store.placedObjects,
+      staticLights: store.staticLights,
+      npcs: store.npcs,
+      portals: store.portals,
+      player: store.player,
+    },
+  };
+}
 
 function download(blob: Blob, name: string) {
   const url = URL.createObjectURL(blob);
@@ -145,6 +180,7 @@ function DropdownMenu({
 
 export function MenuBar({ onImport }: { onImport: () => void }) {
   const fileRef = useRef<HTMLInputElement>(null);
+  const assetRef = useRef<HTMLInputElement>(null);
   const [openMenu, setOpenMenu] = useState<string | null>(null);
 
   const closeMenu = useCallback(() => setOpenMenu(null), []);
@@ -188,18 +224,173 @@ export function MenuBar({ onImport }: { onImport: () => void }) {
 
   const handleExportScene = () => {
     const s = useSceneStore.getState();
-    const scene = exportSceneJson(s);
+    const scene = buildSceneJson(s);
     const json = JSON.stringify(scene, null, 2);
     download(new Blob([json], { type: 'application/json' }), 'scene.json');
   };
 
+  // ── Project directory operations ──
+
+  const handleNewProject = async () => {
+    if (!hasFileSystemAccess()) {
+      alert('Project directories require Chrome or Edge (File System Access API not available in this browser).');
+      return;
+    }
+    if (!confirm('Create new project? Unsaved changes will be lost.')) return;
+    const handle = await openProjectDirectory();
+    if (!handle) return;
+    const store = useSceneStore.getState();
+    store.newScene(128, 96);
+    store.setProjectHandle(handle);
+    store.setProjectName(handle.name || 'Untitled');
+  };
+
+  const handleOpenProject = async () => {
+    if (!hasFileSystemAccess()) {
+      alert('Project directories require Chrome or Edge (File System Access API not available in this browser).');
+      return;
+    }
+    const handle = await openProjectDirectory();
+    if (!handle) return;
+    const result = await loadProjectDir(handle);
+    if (!result) {
+      alert('No valid project.json found in the selected directory.');
+      return;
+    }
+    const store = useSceneStore.getState();
+    store.setProjectHandle(handle);
+    store.setProjectName(result.manifest.name);
+
+    // Restore terrains and assets from manifest
+    // For now, load first terrain's voxel data into the editor
+    const state: Record<string, unknown> = {
+      terrains: result.manifest.terrains,
+      assets: result.manifest.assets,
+      currentTerrainId: result.manifest.terrains.length > 0 ? result.manifest.terrains[0].id : null,
+      ambientColor: result.manifest.globalSettings.ambientColor,
+      gaussianSplat: result.manifest.globalSettings.gaussianSplat,
+      weather: result.manifest.globalSettings.weather,
+      dayNight: result.manifest.globalSettings.dayNight,
+      backgroundLayers: result.manifest.globalSettings.backgroundLayers,
+      torchEmitter: result.manifest.globalSettings.torchEmitter,
+      torchPositions: result.manifest.globalSettings.torchPositions,
+      footstepEmitter: result.manifest.globalSettings.footstepEmitter,
+      npcAuraEmitter: result.manifest.globalSettings.npcAuraEmitter,
+      placedObjects: result.manifest.scene.placedObjects,
+      staticLights: result.manifest.scene.staticLights,
+      npcs: result.manifest.scene.npcs,
+      portals: result.manifest.scene.portals,
+      player: result.manifest.scene.player,
+    };
+
+    // Load voxels for the first terrain
+    if (result.manifest.terrains.length > 0) {
+      const firstId = result.manifest.terrains[0].id;
+      const voxelEntries = result.voxelDataMap.get(firstId);
+      if (voxelEntries) {
+        (state as Record<string, unknown>).voxels = new Map(voxelEntries);
+      }
+      const firstTerrain = result.manifest.terrains[0];
+      if (firstTerrain.collision) {
+        (state as Record<string, unknown>).collisionGridData = firstTerrain.collision;
+      }
+      (state as Record<string, unknown>).navZoneNames = firstTerrain.navZoneNames;
+    }
+
+    useSceneStore.setState(state as Partial<typeof store>);
+  };
+
+  const handleSaveProject = async () => {
+    const store = useSceneStore.getState();
+    let handle = store.projectHandle;
+    if (!handle) {
+      if (!hasFileSystemAccess()) {
+        alert('Project directories require Chrome or Edge (File System Access API not available in this browser).');
+        return;
+      }
+      handle = await openProjectDirectory();
+      if (!handle) return;
+      store.setProjectHandle(handle);
+      store.setProjectName(handle.name || store.projectName);
+    }
+
+    const manifest = buildProjectManifest(store);
+    const voxelDataMap = new Map<string, [import('../store/types.js').VoxelKey, import('../store/types.js').Voxel][]>();
+
+    // Save current terrain voxel data
+    if (store.currentTerrainId) {
+      voxelDataMap.set(store.currentTerrainId, Array.from(store.voxels.entries()));
+    } else if (manifest.terrains.length === 0) {
+      // Auto-create a default terrain for existing voxels
+      const id = `terrain_${Date.now()}`;
+      const terrain = {
+        id,
+        name: 'Default Terrain',
+        voxelFile: `terrains/${id}.bricklayer`,
+        collision: store.collisionGridData,
+        navZoneNames: store.navZoneNames,
+      };
+      manifest.terrains.push(terrain);
+      voxelDataMap.set(id, Array.from(store.voxels.entries()));
+    }
+
+    await saveProjectDir(handle, manifest, voxelDataMap);
+  };
+
+  const handleImportAsset = () => {
+    if (!useSceneStore.getState().projectHandle) {
+      alert('Open or create a project first before importing assets.');
+      return;
+    }
+    assetRef.current?.click();
+  };
+
+  const handleAssetFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const handle = useSceneStore.getState().projectHandle;
+    if (!handle) return;
+
+    const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
+    const subdir = ext === 'ply' ? 'ply' : undefined;
+    const relativePath = await importAssetToProject(handle, file, subdir);
+
+    const assetType: 'ply' | 'image' | 'other' =
+      ext === 'ply' ? 'ply' :
+      ['png', 'jpg', 'jpeg', 'bmp', 'gif', 'webp'].includes(ext) ? 'image' :
+      'other';
+
+    useSceneStore.getState().addAsset({
+      id: `asset_${Date.now()}`,
+      path: relativePath,
+      type: assetType,
+    });
+
+    e.target.value = '';
+  };
+
+  const handleExportProjectScene = async () => {
+    const store = useSceneStore.getState();
+    const handle = store.projectHandle;
+    if (!handle) {
+      alert('Open or create a project first before exporting scene.');
+      return;
+    }
+    const scene = buildSceneJson(store);
+    await writeSceneJson(handle, scene);
+  };
+
   const fileItems: MenuItem[] = [
-    { label: 'New', action: handleNew },
-    { label: 'Save', action: handleSave },
-    { label: 'Load', action: handleLoad },
+    { label: 'New Project', action: handleNewProject },
+    { label: 'Open Project...', action: handleOpenProject },
+    { label: 'Save Project', action: handleSaveProject },
+    { label: 'Import Asset...', action: handleImportAsset },
+    { label: 'Export Scene', action: handleExportProjectScene },
+    { label: 'Save File...', action: handleSave, separator: true },
+    { label: 'Open File...', action: handleLoad },
     { label: 'Import Image...', action: onImport, separator: true },
     { label: 'Export PLY...', action: handleExportPly, separator: true },
-    { label: 'Export Scene...', action: handleExportScene },
+    { label: 'Export Scene (Download)...', action: handleExportScene },
   ];
 
   const editItems: MenuItem[] = [
@@ -261,7 +452,16 @@ export function MenuBar({ onImport }: { onImport: () => void }) {
         style={{ display: 'none' }}
         onChange={handleFileChange}
       />
-      <span style={styles.title}>Bricklayer</span>
+      <input
+        ref={assetRef}
+        type="file"
+        accept=".ply,.png,.jpg,.jpeg,.bmp,.gif,.webp"
+        style={{ display: 'none' }}
+        onChange={handleAssetFileChange}
+      />
+      <span style={styles.title}>
+        Bricklayer — {useSceneStore.getState().projectName}
+      </span>
     </div>
   );
 }

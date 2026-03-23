@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { useSceneStore } from '../store/useSceneStore.js';
+import { hasFileSystemAccess, importAssetToProject } from '../lib/projectIO.js';
 
 const styles: Record<string, React.CSSProperties> = {
   section: {
@@ -139,6 +140,7 @@ export function SceneTreePanel() {
 
   const [showAdd, setShowAdd] = useState(false);
   const addRef = useRef<HTMLDivElement>(null);
+  const plyInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!showAdd) return;
@@ -152,13 +154,41 @@ export function SceneTreePanel() {
   }, [showAdd]);
 
   const handleAddObject = () => {
-    const plyFile = window.prompt('PLY file path:', '');
-    if (plyFile) addPlacedObject(plyFile);
+    plyInputRef.current?.click();
     setShowAdd(false);
+  };
+
+  const handlePlyFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const store = useSceneStore.getState();
+    const handle = store.projectHandle;
+
+    if (handle && hasFileSystemAccess()) {
+      const relativePath = await importAssetToProject(handle, file, 'ply');
+      addPlacedObject(relativePath);
+      store.addAsset({
+        id: `asset_${Date.now()}`,
+        path: relativePath,
+        type: 'ply',
+      });
+    } else {
+      addPlacedObject(file.name);
+    }
+
+    e.target.value = '';
   };
 
   return (
     <div>
+      <input
+        ref={plyInputRef}
+        type="file"
+        accept=".ply"
+        style={{ display: 'none' }}
+        onChange={handlePlyFileChange}
+      />
       {/* Add button */}
       <div style={styles.addRow}>
         <div ref={addRef} style={{ position: 'relative' }}>
