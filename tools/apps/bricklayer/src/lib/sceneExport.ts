@@ -95,8 +95,10 @@ export function exportSceneJson(state: SceneStoreState): object {
     };
   }
 
+  // Terrain PLY path: assets/maps/<project_name>.ply
+  const terrainPly = `assets/maps/${state.projectName || 'map'}.ply`;
   scene.gaussian_splat = {
-    ply_file: 'map.ply',
+    ply_file: terrainPly,
     camera: state.gaussianSplat.camera,
     render_width: state.gaussianSplat.render_width,
     render_height: state.gaussianSplat.render_height,
@@ -106,15 +108,19 @@ export function exportSceneJson(state: SceneStoreState): object {
   };
 
   if (state.placedObjects.length > 0) {
-    scene.placed_objects = state.placedObjects.map((obj) => ({
-      id: obj.id,
-      ply_file: obj.ply_file,
-      position: obj.position,
-      rotation: obj.rotation,
-      scale: obj.scale,
-      is_static: obj.is_static,
-      ...(obj.character_manifest ? { character_manifest: obj.character_manifest } : {}),
-    }));
+    scene.placed_objects = state.placedObjects.map((obj) => {
+      // Ensure placed object PLY paths have assets/ prefix
+      const plyPath = obj.ply_file.startsWith('assets/') ? obj.ply_file : `assets/${obj.ply_file}`;
+      return {
+        id: obj.id,
+        ply_file: plyPath,
+        position: obj.position,
+        rotation: obj.rotation,
+        scale: obj.scale,
+        is_static: obj.is_static,
+        ...(obj.character_manifest ? { character_manifest: obj.character_manifest } : {}),
+      };
+    });
   }
 
   if (state.collisionGridData) {

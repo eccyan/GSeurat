@@ -1,6 +1,7 @@
 import JSZip from 'jszip';
 import { useSceneStore } from '../store/useSceneStore.js';
 import { exportSceneJson } from './sceneExport.js';
+import { exportPly } from './plyExport.js';
 import type { BricklayerFile } from '../store/types.js';
 
 /**
@@ -31,17 +32,42 @@ export async function saveProject(handle: FileSystemDirectoryHandle): Promise<vo
   const data = store.saveProject();
   const json = JSON.stringify(data, null, 2);
 
+  // Write bricklayer project file
   const fileHandle = await handle.getFileHandle('scene.bricklayer', { create: true });
   const writable = await fileHandle.createWritable();
   await writable.write(json);
   await writable.close();
+
+  // Write engine scene.json
+  const sceneJson = JSON.stringify(exportSceneJson(store), null, 2);
+  const sceneHandle = await handle.getFileHandle(`${store.projectName || 'scene'}.json`, { create: true });
+  const sw = await sceneHandle.createWritable();
+  await sw.write(sceneJson);
+  await sw.close();
+
+  // Write terrain PLY to assets/maps/
+  if (store.voxels.size > 0) {
+    const assetsDir = await handle.getDirectoryHandle('assets', { create: true });
+    const mapsDir = await assetsDir.getDirectoryHandle('maps', { create: true });
+    const plyBlob = exportPly(store.voxels, store.gridWidth, store.gridDepth);
+    const plyHandle = await mapsDir.getFileHandle(`${store.projectName || 'map'}.ply`, { create: true });
+    const pw = await plyHandle.createWritable();
+    await pw.write(plyBlob);
+    await pw.close();
+  }
 
   // Write asset blobs to assets/ directory
   if (store.assetBlobs.size > 0) {
     const assetsDir = await handle.getDirectoryHandle('assets', { create: true });
     for (const [path, blob] of store.assetBlobs) {
       const name = path.startsWith('assets/') ? path.slice(7) : path;
-      const assetHandle = await assetsDir.getFileHandle(name, { create: true });
+      // Create subdirectories if needed (e.g., "props/house.ply")
+      const parts = name.split('/');
+      let dir = assetsDir;
+      for (let i = 0; i < parts.length - 1; i++) {
+        dir = await dir.getDirectoryHandle(parts[i], { create: true });
+      }
+      const assetHandle = await dir.getFileHandle(parts[parts.length - 1], { create: true });
       const w = await assetHandle.createWritable();
       await w.write(blob);
       await w.close();
@@ -103,12 +129,17 @@ export async function saveProjectAsZip(): Promise<Blob> {
 
   // Include the engine scene export
   const scene = exportSceneJson(store);
-  zip.file('scene.json', JSON.stringify(scene, null, 2));
+  zip.file(`${store.projectName || 'scene'}.json`, JSON.stringify(scene, null, 2));
+
+  // Include terrain PLY
+  if (store.voxels.size > 0) {
+    const plyBlob = exportPly(store.voxels, store.gridWidth, store.gridDepth);
+    zip.file(`assets/maps/${store.projectName || 'map'}.ply`, plyBlob);
+  }
 
   // Include all asset blobs (PLY files, textures, etc.)
   const assetsFolder = zip.folder('assets');
   for (const [path, blob] of store.assetBlobs) {
-    // path is "assets/filename.ply" — strip the "assets/" prefix
     const name = path.startsWith('assets/') ? path.slice(7) : path;
     assetsFolder!.file(name, blob);
   }
