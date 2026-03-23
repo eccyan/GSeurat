@@ -1,6 +1,18 @@
 import React, { useState } from 'react';
 import { useSceneStore } from '../store/useSceneStore.js';
+import { getOrbitControls } from '../viewport/Viewport.js';
 import type { NavigationNode, SettingsCategory } from '../store/types.js';
+
+/** Get the orbit controls target as a rounded [x, z] pair */
+function getCameraTarget(): { xz: [number, number]; xyz: [number, number, number] } {
+  const controls = getOrbitControls();
+  if (!controls) return { xz: [0, 0], xyz: [0, 0, 0] };
+  const t = controls.target;
+  return {
+    xz: [Math.round(t.x * 10) / 10, Math.round(t.z * 10) / 10],
+    xyz: [Math.round(t.x * 10) / 10, Math.round(t.y * 10) / 10, Math.round(t.z * 10) / 10],
+  };
+}
 
 // ── Icons ──
 
@@ -229,7 +241,7 @@ export function ProjectTree() {
               input.onchange = async () => {
                 const file = input.files?.[0];
                 if (!file) return;
-                addPlacedObject(file.name, file);
+                addPlacedObject(file.name, file, getCameraTarget().xyz);
                 const handle = useSceneStore.getState().projectHandle;
                 if (handle) {
                   const { importAssetToProject } = await import('../lib/projectIO.js');
@@ -258,7 +270,7 @@ export function ProjectTree() {
             arrow={lightOpen ? '\u25BE' : '\u25B8'}
             isActive={isActive({ kind: 'scene_category', category: 'lights' })}
             onClick={() => { setLightOpen(!lightOpen); click({ kind: 'scene_category', category: 'lights' }); }}
-            actions={addBtn(() => addLight())}
+            actions={addBtn(() => addLight(getCameraTarget().xz))}
             isOpen={lightOpen}
           >
             {staticLights.map((l, i) => (
@@ -279,7 +291,7 @@ export function ProjectTree() {
             arrow={npcOpen ? '\u25BE' : '\u25B8'}
             isActive={isActive({ kind: 'scene_category', category: 'npcs' })}
             onClick={() => { setNpcOpen(!npcOpen); click({ kind: 'scene_category', category: 'npcs' }); }}
-            actions={addBtn(() => addNpc())}
+            actions={addBtn(() => addNpc(getCameraTarget().xyz))}
             isOpen={npcOpen}
           >
             {npcs.map((n) => (
@@ -300,7 +312,7 @@ export function ProjectTree() {
             arrow={portalOpen ? '\u25BE' : '\u25B8'}
             isActive={isActive({ kind: 'scene_category', category: 'portals' })}
             onClick={() => { setPortalOpen(!portalOpen); click({ kind: 'scene_category', category: 'portals' }); }}
-            actions={addBtn(() => addPortal())}
+            actions={addBtn(() => addPortal(getCameraTarget().xz))}
             isOpen={portalOpen}
           >
             {portals.map((p, i) => (

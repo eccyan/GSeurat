@@ -232,16 +232,16 @@ export interface SceneStoreState {
 
   // Actions – scene
   setAmbientColor: (c: [number, number, number, number]) => void;
-  addLight: () => void;
+  addLight: (position?: [number, number]) => void;
   updateLight: (id: string, patch: Partial<StaticLight>) => void;
   removeLight: (id: string) => void;
-  addNpc: () => void;
+  addNpc: (position?: [number, number, number]) => void;
   updateNpc: (id: string, patch: Partial<NpcData>) => void;
   removeNpc: (id: string) => void;
-  addPortal: () => void;
+  addPortal: (position?: [number, number]) => void;
   updatePortal: (id: string, patch: Partial<PortalData>) => void;
   removePortal: (id: string) => void;
-  addPlacedObject: (plyFile: string, blob?: Blob) => void;
+  addPlacedObject: (plyFile: string, blob?: Blob, position?: [number, number, number]) => void;
   storeAssetBlob: (path: string, blob: Blob) => void;
   updatePlacedObject: (id: string, patch: Partial<PlacedObjectData>) => void;
   removePlacedObject: (id: string) => void;
@@ -575,10 +575,10 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
   // ── Scene actions ──
   setAmbientColor: (c) => set({ ambientColor: c }),
 
-  addLight: () => {
+  addLight: (pos?) => {
     const light: StaticLight = {
       id: genId('light'),
-      position: [0, 0],
+      position: pos ?? [0, 0],
       radius: 5,
       height: 2,
       color: [1, 0.9, 0.7],
@@ -593,11 +593,11 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
     staticLights: get().staticLights.filter((l) => l.id !== id), isDirty: true,
   }),
 
-  addNpc: () => {
+  addNpc: (pos?) => {
     const npc: NpcData = {
       id: genId('npc'),
       name: 'New NPC',
-      position: [0, 0, 0],
+      position: pos ?? [0, 0, 0],
       tint: [1, 1, 1, 1],
       facing: 'down',
       reverse_facing: 'up',
@@ -623,10 +623,10 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
     npcs: get().npcs.filter((n) => n.id !== id), isDirty: true,
   }),
 
-  addPortal: () => {
+  addPortal: (pos?) => {
     const portal: PortalData = {
       id: genId('portal'),
-      position: [0, 0],
+      position: pos ?? [0, 0],
       size: [2, 2],
       target_scene: '',
       spawn_position: [0, 0, 0],
@@ -641,11 +641,11 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
     portals: get().portals.filter((p) => p.id !== id), isDirty: true,
   }),
 
-  addPlacedObject: (plyFile, blob?) => {
+  addPlacedObject: (plyFile, blob?, pos?) => {
     const obj: PlacedObjectData = {
       id: genId('obj'),
       ply_file: plyFile,
-      position: [0, 0, 0],
+      position: pos ?? [0, 0, 0],
       rotation: [0, 0, 0],
       scale: 1,
       is_static: true,

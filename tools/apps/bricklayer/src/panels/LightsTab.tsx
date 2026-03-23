@@ -118,7 +118,7 @@ export function LightsTab() {
     <div>
       <div style={{ ...styles.row, marginBottom: 12 }}>
         <span style={{ ...styles.label, flex: 1 }}>Static Lights ({lights.length})</span>
-        <button style={styles.btn} onClick={addLight}>+ Add</button>
+        <button style={styles.btn} onClick={() => addLight()}>+ Add</button>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {lights.map((l) => <LightEditor key={l.id} light={l} />)}
