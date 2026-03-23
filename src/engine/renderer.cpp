@@ -843,7 +843,8 @@ void Renderer::record_light_glow(VkCommandBuffer cmd, const Scene& scene,
 
     sprite_batch_.begin();
 
-    for (const auto& light : lights) {
+    for (size_t li = 0; li < lights.size(); li++) {
+        const auto& light = lights[li];
         glm::vec3 world_pos(light.position_and_radius.x,
                             light.position_and_radius.z,  // height = Y
                             light.position_and_radius.y); // Z = scene Y
@@ -851,6 +852,16 @@ void Renderer::record_light_glow(VkCommandBuffer cmd, const Scene& scene,
 
         // Project to clip space
         glm::vec4 clip = gs_vp * glm::vec4(world_pos, 1.0f);
+
+        // Debug: print once
+        static bool printed = false;
+        if (!printed) {
+            printf("Light %zu: world=(%.1f, %.1f, %.1f) radius=%.1f clip=(%.1f, %.1f, %.1f, %.1f)\n",
+                   li, world_pos.x, world_pos.y, world_pos.z, radius,
+                   clip.x, clip.y, clip.z, clip.w);
+            printed = true;
+        }
+
         if (clip.w <= 0.01f) continue;  // behind camera
 
         // NDC to screen pixels
@@ -859,21 +870,20 @@ void Renderer::record_light_glow(VkCommandBuffer cmd, const Scene& scene,
         float screen_y = (1.0f - (ndc.y * 0.5f + 0.5f)) * sh;  // flip Y
 
         // Glow size in pixels based on world radius and depth
-        float glow_size = (radius * 4.0f * sw) / clip.w;
-        glow_size = glm::clamp(glow_size, 20.0f, sw * 0.6f);
+        float glow_size = (radius * 6.0f * sw) / clip.w;
+        glow_size = glm::clamp(glow_size, 40.0f, sw * 0.8f);
 
-        // Draw a large semi-transparent colored quad
-        // The font texture has white pixels at (0,0) UV that we can tint
+        // Draw a large colored quad using font texture white pixels
         SpriteDrawInfo glow{};
         glow.position = {screen_x, screen_y, 0.0f};
         glow.size = {glow_size, glow_size};
-        glow.uv_min = {0.0f, 0.0f};  // top-left of font atlas = white pixel
-        glow.uv_max = {1.0f / 256.0f, 1.0f / 256.0f};  // tiny white region
+        glow.uv_min = {0.0f, 0.0f};
+        glow.uv_max = {1.0f / 256.0f, 1.0f / 256.0f};
         glow.color = {
-            light.color.r * light.color.a * 0.4f,
-            light.color.g * light.color.a * 0.4f,
-            light.color.b * light.color.a * 0.4f,
-            0.3f  // soft alpha for blending
+            light.color.r * light.color.a,
+            light.color.g * light.color.a,
+            light.color.b * light.color.a,
+            0.5f
         };
 
         sprite_batch_.draw(glow);
