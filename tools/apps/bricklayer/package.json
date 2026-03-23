@@ -9,17 +9,18 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@gseurat/asset-types": "workspace:*",
+    "@gseurat/engine-client": "workspace:*",
+    "@gseurat/test-harness": "workspace:*",
+    "@gseurat/ui-kit": "workspace:*",
+    "@huggingface/transformers": "^3.4.0",
+    "@react-three/drei": "^9.117.0",
+    "@react-three/fiber": "^8.17.0",
+    "jszip": "^3.10.1",
     "react": "^18.3.0",
     "react-dom": "^18.3.0",
-    "zustand": "^4.5.0",
     "three": "^0.170.0",
-    "@react-three/fiber": "^8.17.0",
-    "@react-three/drei": "^9.117.0",
-    "@huggingface/transformers": "^3.4.0",
-    "@gseurat/engine-client": "workspace:*",
-    "@gseurat/asset-types": "workspace:*",
-    "@gseurat/ui-kit": "workspace:*",
-    "@gseurat/test-harness": "workspace:*"
+    "zustand": "^4.5.0"
   },
   "devDependencies": {
     "@types/react": "^18.3.0",

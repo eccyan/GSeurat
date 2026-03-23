@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useSceneStore } from '../store/useSceneStore.js';
 import { exportPly } from '../lib/plyExport.js';
 import { exportSceneJson } from '../lib/sceneExport.js';
-import { hasFileSystemAccess, openProjectDirectory, saveProject as saveProjectDir, loadProject as loadProjectDir } from '../lib/projectIO.js';
+import { hasFileSystemAccess, openProjectDirectory, saveProject as saveProjectDir, loadProject as loadProjectDir, saveProjectAsZip, loadProjectFromZip } from '../lib/projectIO.js';
 import type { BricklayerFile } from '../store/types.js';
 
 const styles: Record<string, React.CSSProperties> = {
@@ -195,26 +195,43 @@ export function MenuBar({ onImport }: { onImport: () => void }) {
   };
 
   const handleOpenProject = async () => {
-    if (!hasFileSystemAccess()) {
-      alert('File System Access API not available in this browser.');
-      return;
-    }
-    const handle = await openProjectDirectory();
-    if (handle) {
-      useSceneStore.getState().setProjectHandle(handle);
-      useSceneStore.getState().setProjectName(handle.name);
-      await loadProjectDir(handle);
+    if (hasFileSystemAccess()) {
+      const handle = await openProjectDirectory();
+      if (handle) {
+        useSceneStore.getState().setProjectHandle(handle);
+        useSceneStore.getState().setProjectName(handle.name);
+        await loadProjectDir(handle);
+      }
+    } else {
+      // Zip fallback
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = '.zip';
+      input.onchange = async () => {
+        const file = input.files?.[0];
+        if (file) {
+          const ok = await loadProjectFromZip(file);
+          if (ok) {
+            useSceneStore.getState().setProjectName(file.name.replace(/\.zip$/, ''));
+          } else {
+            alert('Failed to load project zip.');
+          }
+        }
+      };
+      input.click();
     }
   };
 
   const handleSaveProject = async () => {
     const handle = useSceneStore.getState().projectHandle;
-    if (!handle) {
-      // Fall back to regular save
-      handleSave();
-      return;
+    if (handle) {
+      await saveProjectDir(handle);
+    } else {
+      // Zip fallback
+      const blob = await saveProjectAsZip();
+      const name = useSceneStore.getState().projectName || 'project';
+      download(blob, `${name}.zip`);
     }
-    await saveProjectDir(handle);
   };
 
   const handleImportAsset = () => {

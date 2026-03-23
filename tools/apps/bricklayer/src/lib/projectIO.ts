@@ -1,3 +1,4 @@
+import JSZip from 'jszip';
 import { useSceneStore } from '../store/useSceneStore.js';
 import { exportSceneJson } from './sceneExport.js';
 import type { BricklayerFile } from '../store/types.js';
@@ -75,4 +76,32 @@ export function exportSceneJsonBlob(): Blob {
   const scene = exportSceneJson(state);
   const json = JSON.stringify(scene, null, 2);
   return new Blob([json], { type: 'application/json' });
+}
+
+/**
+ * Save the current project as a zip file (fallback for browsers without FSAPI).
+ */
+export async function saveProjectAsZip(): Promise<Blob> {
+  const store = useSceneStore.getState();
+  const data = store.saveProject();
+  const zip = new JSZip();
+  zip.file('scene.bricklayer', JSON.stringify(data, null, 2));
+  return zip.generateAsync({ type: 'blob' });
+}
+
+/**
+ * Load a project from a zip file (fallback for browsers without FSAPI).
+ */
+export async function loadProjectFromZip(file: File): Promise<boolean> {
+  try {
+    const zip = await JSZip.loadAsync(file);
+    const sceneFile = zip.file('scene.bricklayer');
+    if (!sceneFile) return false;
+    const text = await sceneFile.async('text');
+    const data = JSON.parse(text) as BricklayerFile;
+    useSceneStore.getState().loadProject(data);
+    return true;
+  } catch {
+    return false;
+  }
 }

@@ -166,7 +166,17 @@ export function ProjectTree() {
               <span style={styles.arrow}>{objOpen ? '\u25BE' : '\u25B8'}</span>
               Objects
               <span style={styles.count}>({placedObjects.length})</span>
-              <button style={styles.addBtn} onClick={(e) => { e.stopPropagation(); const f = window.prompt('PLY file:'); if (f) addPlacedObject(f); }}>+</button>
+              <button style={styles.addBtn} onClick={(e) => {
+                e.stopPropagation();
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.accept = '.ply';
+                input.onchange = () => {
+                  const file = input.files?.[0];
+                  if (file) addPlacedObject(file.name);
+                };
+                input.click();
+              }}>+</button>
             </div>
             {objOpen && (
               <div style={styles.indent}>

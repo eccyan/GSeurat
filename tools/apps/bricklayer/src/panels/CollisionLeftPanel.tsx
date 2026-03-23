@@ -38,12 +38,14 @@ export function CollisionLeftPanel() {
   const activeNavZone = useSceneStore((s) => s.activeNavZone);
   const navZoneNames = useSceneStore((s) => s.navZoneNames);
   const collisionBoxFill = useSceneStore((s) => s.collisionBoxFill);
+  const collisionFloodFillMode = useSceneStore((s) => s.collisionFloodFillMode);
   const showCollision = useSceneStore((s) => s.showCollision);
   const initCollisionGrid = useSceneStore((s) => s.initCollisionGrid);
   const setCollisionLayer = useSceneStore((s) => s.setCollisionLayer);
   const setCollisionHeight = useSceneStore((s) => s.setCollisionHeight);
   const setActiveNavZone = useSceneStore((s) => s.setActiveNavZone);
   const setCollisionBoxFill = useSceneStore((s) => s.setCollisionBoxFill);
+  const setCollisionFloodFillMode = useSceneStore((s) => s.setCollisionFloodFillMode);
   const addNavZoneName = useSceneStore((s) => s.addNavZoneName);
   const autoGenerateCollision = useSceneStore((s) => s.autoGenerateCollision);
 
@@ -131,6 +133,16 @@ export function CollisionLeftPanel() {
             onChange={(e) => setCollisionBoxFill(e.target.checked)}
           />
           Box Fill (click two corners)
+        </label>
+
+        {/* Flood fill toggle */}
+        <label style={{ ...styles.row, cursor: 'pointer', fontSize: 12 }}>
+          <input
+            type="checkbox"
+            checked={collisionFloodFillMode}
+            onChange={(e) => setCollisionFloodFillMode(e.target.checked)}
+          />
+          Flood Fill (click region)
         </label>
 
         {collisionLayer === 'elevation' && (

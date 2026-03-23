@@ -24,10 +24,15 @@ export function VoxelMesh() {
   const meshRef = useRef<THREE.InstancedMesh>(null!);
   const voxels = useSceneStore((s) => s.voxels);
   const showCollision = useSceneStore((s) => s.showCollision);
+  const yClipMin = useSceneStore((s) => s.yClipMin);
+  const yClipMax = useSceneStore((s) => s.yClipMax);
 
-  // Filter to surface-only voxels (at least one exposed face)
+  // Filter to surface-only voxels (at least one exposed face), respecting Y-clip
   const surfaceEntries = useMemo(() => {
-    const all = Array.from(voxels.entries());
+    const all = Array.from(voxels.entries()).filter(([key]) => {
+      const [, y] = parseKey(key);
+      return y >= yClipMin && y <= yClipMax;
+    });
     if (all.length < 1000) return all; // skip culling for small sets
 
     return all.filter(([key]) => {
@@ -39,7 +44,7 @@ export function VoxelMesh() {
       }
       return false; // fully enclosed — cull
     });
-  }, [voxels]);
+  }, [voxels, yClipMin, yClipMax]);
 
   const count = surfaceEntries.length;
 
@@ -111,6 +116,12 @@ export function VoxelMesh() {
     const [x, y, z] = parseKey(key);
     const store = useSceneStore.getState();
     const normal = e.face?.normal;
+
+    // Update selected voxel info for right panel
+    const vox = store.voxels.get(key);
+    if (vox) {
+      store.setSelectedVoxel({ x, y, z, color: vox.color });
+    }
 
     switch (store.activeTool) {
       case 'place': {

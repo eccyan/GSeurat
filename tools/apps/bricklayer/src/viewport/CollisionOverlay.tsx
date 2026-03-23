@@ -105,6 +105,13 @@ export function CollisionOverlay() {
 
     store.pushUndo();
 
+    // Flood fill mode
+    if (store.collisionFloodFillMode && store.collisionLayer === 'solid') {
+      const currentState = grid.solid[cellZ * grid.width + cellX];
+      store.collisionFloodFill(cellX, cellZ, !currentState);
+      return;
+    }
+
     switch (store.collisionLayer) {
       case 'solid':
         store.toggleCellSolid(cellX, cellZ);
