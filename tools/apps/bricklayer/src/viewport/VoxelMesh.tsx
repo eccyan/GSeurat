@@ -202,18 +202,17 @@ export function VoxelMesh() {
 
   const transparent = showCollision || xray;
   const opacity = xray ? 0.15 : showCollision ? 0.3 : 1;
-  const noRaycast = useCallback(() => {}, []);
 
   // Key forces remount when count changes so buffer sizes match
+  // When xray: no event handlers so R3F skips raycasting this mesh
+  const events = xray ? {} : { onClick: handleClick, onContextMenu: handleClick };
   return (
     <instancedMesh
       key={count}
       ref={meshRef}
       args={[undefined, undefined, Math.max(count, 1)]}
-      onClick={handleClick}
-      onContextMenu={handleClick}
+      {...events}
       frustumCulled={false}
-      raycast={xray ? noRaycast : undefined}
     >
       <boxGeometry args={[1, 1, 1]} />
       <meshLambertMaterial transparent={transparent} opacity={opacity} />
