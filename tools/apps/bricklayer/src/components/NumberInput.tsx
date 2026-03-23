@@ -55,6 +55,7 @@ export function NumberInput({
   const dragStartX = useRef(0);
   const dragStartValue = useRef(0);
   const dragging = useRef(false);
+  const pointerIsDown = useRef(false);
 
   // Keep text in sync with external value changes when not focused
   if (!focused && value !== prevValue.current) {
@@ -155,14 +156,14 @@ export function NumberInput({
           // Only initiate drag tracking if not already focused (typing mode)
           if (document.activeElement !== e.currentTarget) {
             e.preventDefault(); // prevent focus on mousedown — we'll focus on click
+            pointerIsDown.current = true;
             dragStartX.current = e.clientX;
             dragStartValue.current = value;
             dragging.current = false;
           }
         }}
         onPointerMove={(e) => {
-          // Only track if we started from an unfocused state
-          if (focused) return;
+          if (!pointerIsDown.current || focused) return;
           const dx = e.clientX - dragStartX.current;
           if (!dragging.current && Math.abs(dx) < 3) return;
           if (!dragging.current) {
@@ -174,6 +175,7 @@ export function NumberInput({
           onChange(newVal);
         }}
         onPointerUp={(e) => {
+          pointerIsDown.current = false;
           if (dragging.current) {
             dragging.current = false;
             try { (e.target as HTMLElement).releasePointerCapture(e.pointerId); } catch {}
