@@ -8,15 +8,15 @@
   "static_lights": [
     {
       "position": [
-        0,
-        -90
+        30,
+        40
       ],
-      "radius": 15,
-      "height": 5,
+      "radius": 12,
+      "height": 10,
       "color": [
-        0.7843137254901961,
-        0,
-        1
+        1.0,
+        0.6,
+        0.2
       ],
       "intensity": 2.0
     }
