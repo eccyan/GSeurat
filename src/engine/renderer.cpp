@@ -860,11 +860,22 @@ void Renderer::record_light_glow(VkCommandBuffer cmd, const Scene& scene,
         float screen_x = (ndc.x * 0.5f + 0.5f) * sw;
         float screen_y = (1.0f - (ndc.y * 0.5f + 0.5f)) * sh;  // flip Y
 
+        // Log projection once per frame for first light
+        if (li == 0 && light_glow_log_counter_ < 3) {
+            std::fprintf(stderr, "LightGlow[%zu]: screen=(%.0f, %.0f) ndc=(%.2f, %.2f) w=%.1f\n",
+                         li, screen_x, screen_y, ndc.x, ndc.y, clip.w);
+            light_glow_log_counter_++;
+        }
+
         // Glow size in pixels based on world radius and depth
         float glow_size = (radius * 6.0f * sw) / clip.w;
         glow_size = glm::clamp(glow_size, 40.0f, sw * 0.8f);
 
-        // Draw a large colored quad using font texture white pixels
+        // Skip if completely off-screen (with margin for glow)
+        if (screen_x < -glow_size || screen_x > sw + glow_size ||
+            screen_y < -glow_size || screen_y > sh + glow_size) continue;
+
+        // Draw glow quad
         SpriteDrawInfo glow{};
         glow.position = {screen_x, screen_y, 0.0f};
         glow.size = {glow_size, glow_size};
@@ -876,8 +887,16 @@ void Renderer::record_light_glow(VkCommandBuffer cmd, const Scene& scene,
             light.color.b * light.color.a,
             0.5f
         };
-
         sprite_batch_.draw(glow);
+
+        // Draw bright center marker (8x8 dot)
+        SpriteDrawInfo marker{};
+        marker.position = {screen_x, screen_y, 0.0f};
+        marker.size = {8.0f, 8.0f};
+        marker.uv_min = {0.0f, 0.0f};
+        marker.uv_max = {1.0f / 256.0f, 1.0f / 256.0f};
+        marker.color = {1.0f, 1.0f, 1.0f, 1.0f};  // bright white dot
+        sprite_batch_.draw(marker);
     }
 
     auto flush = sprite_batch_.flush(current_frame_);

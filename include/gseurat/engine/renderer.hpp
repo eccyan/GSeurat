@@ -155,6 +155,7 @@ private:
     // GS camera (3D perspective, independent of sprite camera)
     glm::mat4 gs_view_{1.0f};
     glm::mat4 gs_proj_{1.0f};
+    int light_glow_log_counter_ = 0;
     uint32_t output_width_ = 320;
     uint32_t output_height_ = 240;
 
