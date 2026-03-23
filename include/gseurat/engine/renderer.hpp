@@ -156,6 +156,9 @@ private:
     glm::mat4 gs_view_{1.0f};
     glm::mat4 gs_proj_{1.0f};
     int light_glow_log_counter_ = 0;
+    Texture white_pixel_tex_;
+    std::array<VkDescriptorSet, kMaxFramesInFlight> white_pixel_descriptor_sets_{};
+    bool white_pixel_initialized_ = false;
     uint32_t output_width_ = 320;
     uint32_t output_height_ = 240;
 

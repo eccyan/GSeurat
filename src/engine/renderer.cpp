@@ -78,6 +78,25 @@ void Renderer::init_font(const FontAtlas& atlas, ResourceManager& resources) {
         font_texture_->image_view(), font_texture_->sampler(),
         flat_normal_texture_->image_view(), flat_normal_texture_->sampler());
 
+    // Create 1x1 white pixel texture for light glow rendering
+    {
+        uint8_t white_pixel[4] = {255, 255, 255, 255};
+        white_pixel_tex_ = Texture::load_from_memory(
+            context_.device(), context_.allocator(),
+            command_pool_.pool(), context_.graphics_queue(),
+            white_pixel, 1, 1);
+
+        std::array<VkBuffer, kMaxFramesInFlight> ui_ubo_temp;
+        for (uint32_t i = 0; i < kMaxFramesInFlight; i++) {
+            ui_ubo_temp[i] = uniform_buffers_[i].buffer();
+        }
+        white_pixel_descriptor_sets_ = descriptors_.allocate_sprite_sets(
+            context_.device(), ui_ubo_temp, sizeof(UniformBufferObject),
+            white_pixel_tex_.image_view(), white_pixel_tex_.sampler(),
+            flat_normal_texture_->image_view(), flat_normal_texture_->sampler());
+        white_pixel_initialized_ = true;
+    }
+
     // UI uniform buffers with orthographic projection
     for (auto& buf : ui_uniform_buffers_) {
         buf = Buffer::create_uniform(context_.allocator(), sizeof(UniformBufferObject));
@@ -823,7 +842,7 @@ void Renderer::record_gs_blit(VkCommandBuffer cmd, const FeatureFlags& flags) {
 
 void Renderer::record_light_glow(VkCommandBuffer cmd, const Scene& scene,
                                   const FeatureFlags& flags) {
-    if (!flags.gs_rendering || !gs_initialized_ || !font_initialized_) return;
+    if (!flags.gs_rendering || !gs_initialized_ || !white_pixel_initialized_) return;
     auto& lights = scene.lights();
     if (lights.empty()) return;
 
@@ -904,10 +923,10 @@ void Renderer::record_light_glow(VkCommandBuffer cmd, const Scene& scene,
 
     auto flush = sprite_batch_.flush(current_frame_);
     if (flush.index_count > 0) {
-        // Use font descriptor set (has white pixels we can tint)
+        // Use white pixel texture descriptor set for clean tinting
         vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
                                 sprite_pipeline_layout_, 0, 1,
-                                &font_descriptor_sets_[current_frame_], 0, nullptr);
+                                &white_pixel_descriptor_sets_[current_frame_], 0, nullptr);
         vkCmdDrawIndexed(cmd, flush.index_count, 1, 0, flush.vertex_offset, 0);
     }
 }
