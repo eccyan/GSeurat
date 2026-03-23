@@ -6,10 +6,13 @@ import { brushPositions } from '../lib/voxelUtils.js';
 export function GroundPlane() {
   const gridWidth = useSceneStore((s) => s.gridWidth);
   const gridDepth = useSceneStore((s) => s.gridDepth);
+  const yLevelLock = useSceneStore((s) => s.yLevelLock);
 
   const handleClick = useCallback((e: ThreeEvent<MouseEvent>) => {
     e.stopPropagation();
     const store = useSceneStore.getState();
+    // Only handle clicks in terrain mode
+    if (store.mode !== 'terrain' || store.activeNode?.kind === 'collision') return;
     if (store.activeTool !== 'place') return;
 
     const point = e.point;
@@ -27,10 +30,13 @@ export function GroundPlane() {
     }
   }, []);
 
+  // Position the ground plane at the locked Y level (or just below origin)
+  const planeY = yLevelLock !== null ? yLevelLock - 0.5 : -0.5;
+
   return (
     <mesh
       rotation={[-Math.PI / 2, 0, 0]}
-      position={[gridWidth / 2 - 0.5, -0.5, gridDepth / 2 - 0.5]}
+      position={[gridWidth / 2 - 0.5, planeY, gridDepth / 2 - 0.5]}
       onClick={handleClick}
     >
       <planeGeometry args={[gridWidth, gridDepth]} />

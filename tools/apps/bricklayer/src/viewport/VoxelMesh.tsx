@@ -130,7 +130,7 @@ export function VoxelMesh() {
       case 'place': {
         if (!normal) return;
         const nx = x + Math.round(normal.x);
-        const ny = y + Math.round(normal.y);
+        const ny = store.yLevelLock ?? (y + Math.round(normal.y));
         const nz = z + Math.round(normal.z);
         store.pushUndo();
         if (store.brushSize > 1) {
