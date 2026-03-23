@@ -227,7 +227,7 @@ export function TerrainLeftPanel() {
               input.onchange = async () => {
                 const file = input.files?.[0];
                 if (!file) return;
-                const colors = await extractColorsFromFile(file, 24);
+                const colors = await extractColorsFromFile(file, 128);
                 if (colors.length > 0) {
                   const palettes = [...useSceneStore.getState().colorPalettes, { name: file.name, colors }];
                   useSceneStore.setState({ colorPalettes: palettes, activePaletteIndex: palettes.length - 1 });

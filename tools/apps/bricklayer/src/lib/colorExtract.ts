@@ -4,10 +4,10 @@
  */
 export function extractColorsFromImage(
   imageData: ImageData,
-  maxColors: number = 24,
+  maxColors: number = 128,
 ): [number, number, number, number][] {
   const { data, width, height } = imageData;
-  const bucketBits = 4; // group into 16 bins per channel (4096 total buckets)
+  const bucketBits = 5; // group into 32 bins per channel (32768 total buckets)
   const shift = 8 - bucketBits;
   const bucketCount = (1 << bucketBits) ** 3;
 
@@ -62,7 +62,7 @@ export function extractColorsFromImage(
       const dr = entry.r - r;
       const dg = entry.g - g;
       const db = entry.b - b;
-      return (dr * dr + dg * dg + db * db) < 900; // ~30 distance threshold
+      return (dr * dr + dg * dg + db * db) < 200; // ~14 distance threshold
     });
     if (tooClose) continue;
 
@@ -77,14 +77,14 @@ export function extractColorsFromImage(
  */
 export async function extractColorsFromFile(
   file: File,
-  maxColors: number = 24,
+  maxColors: number = 128,
 ): Promise<[number, number, number, number][]> {
   return new Promise((resolve) => {
     const img = new Image();
     const url = URL.createObjectURL(file);
     img.onload = () => {
-      // Sample at reduced resolution for performance
-      const maxDim = 256;
+      // Sample at higher resolution for more color detail
+      const maxDim = 512;
       const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
       const w = Math.round(img.width * scale);
       const h = Math.round(img.height * scale);
