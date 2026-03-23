@@ -3,6 +3,7 @@
 #include "gseurat/engine/swapchain.hpp"
 
 #include <array>
+#include <cstring>
 #include <stdexcept>
 
 namespace gseurat {
@@ -23,9 +24,53 @@ void PostProcessPipeline::init(VkDevice device, VmaAllocator allocator,
     create_framebuffers(device, swapchain);
     create_descriptor_resources(device);
     create_pipelines(device);
+
+    // Create light glow UBO (host-visible for easy update)
+    {
+        VkBufferCreateInfo buf_info{};
+        buf_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+        buf_info.size = sizeof(LightGlowData);
+        buf_info.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+
+        VmaAllocationCreateInfo alloc_info{};
+        alloc_info.usage = VMA_MEMORY_USAGE_CPU_TO_GPU;
+        alloc_info.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT;
+
+        if (vmaCreateBuffer(allocator, &buf_info, &alloc_info,
+                            &light_glow_buffer_, &light_glow_alloc_, nullptr) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to create light glow UBO");
+        }
+
+        // Zero-init (no lights by default)
+        LightGlowData zero{};
+        void* mapped = nullptr;
+        vmaMapMemory(allocator, light_glow_alloc_, &mapped);
+        std::memcpy(mapped, &zero, sizeof(zero));
+        vmaUnmapMemory(allocator, light_glow_alloc_);
+
+        // Write UBO descriptor for composite set binding 4
+        VkDescriptorBufferInfo buf_desc{};
+        buf_desc.buffer = light_glow_buffer_;
+        buf_desc.offset = 0;
+        buf_desc.range = sizeof(LightGlowData);
+
+        VkWriteDescriptorSet ubo_write{};
+        ubo_write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        ubo_write.dstSet = ds_composite_;
+        ubo_write.dstBinding = 4;
+        ubo_write.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        ubo_write.descriptorCount = 1;
+        ubo_write.pBufferInfo = &buf_desc;
+
+        vkUpdateDescriptorSets(device, 1, &ubo_write, 0, nullptr);
+    }
 }
 
 void PostProcessPipeline::shutdown(VkDevice device, VmaAllocator allocator) {
+    if (light_glow_buffer_) {
+        vmaDestroyBuffer(allocator, light_glow_buffer_, light_glow_alloc_);
+    }
+
     vkDestroyPipeline(device, composite_pipeline_, nullptr);
     vkDestroyPipeline(device, dof_blur_pipeline_, nullptr);
     vkDestroyPipeline(device, bloom_blur_pipeline_, nullptr);
@@ -467,15 +512,20 @@ void PostProcessPipeline::create_descriptor_resources(VkDevice device) {
         }
     }
 
-    // Layout for composite (4 samplers: scene + bloom + dof + depth)
+    // Layout for composite (4 samplers + 1 UBO for light glow)
     {
-        std::array<VkDescriptorSetLayoutBinding, 4> bindings{};
+        std::array<VkDescriptorSetLayoutBinding, 5> bindings{};
         for (uint32_t i = 0; i < 4; i++) {
             bindings[i].binding = i;
             bindings[i].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
             bindings[i].descriptorCount = 1;
             bindings[i].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
         }
+        // binding 4: light glow UBO
+        bindings[4].binding = 4;
+        bindings[4].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        bindings[4].descriptorCount = 1;
+        bindings[4].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 
         VkDescriptorSetLayoutCreateInfo info{};
         info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
@@ -488,16 +538,18 @@ void PostProcessPipeline::create_descriptor_resources(VkDevice device) {
         }
     }
 
-    // Descriptor pool: 6 sets total, 10 combined image samplers
+    // Descriptor pool: 6 sets total, 10 combined image samplers + 1 uniform buffer
     {
-        VkDescriptorPoolSize pool_size{};
-        pool_size.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        pool_size.descriptorCount = 10;
+        std::array<VkDescriptorPoolSize, 2> pool_sizes{};
+        pool_sizes[0].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        pool_sizes[0].descriptorCount = 10;
+        pool_sizes[1].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        pool_sizes[1].descriptorCount = 1;
 
         VkDescriptorPoolCreateInfo info{};
         info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-        info.poolSizeCount = 1;
-        info.pPoolSizes = &pool_size;
+        info.poolSizeCount = static_cast<uint32_t>(pool_sizes.size());
+        info.pPoolSizes = pool_sizes.data();
         info.maxSets = 6;
 
         if (vkCreateDescriptorPool(device, &info, nullptr, &pp_pool_) != VK_SUCCESS) {
@@ -597,6 +649,8 @@ void PostProcessPipeline::create_descriptor_resources(VkDevice device) {
 
         vkUpdateDescriptorSets(device, static_cast<uint32_t>(writes.size()),
                                writes.data(), 0, nullptr);
+
+        // binding 4: light glow UBO (written later when buffer is created)
     }
 }
 
@@ -901,6 +955,15 @@ void PostProcessPipeline::record_post_process(VkCommandBuffer cmd, uint32_t swap
         vkCmdDraw(cmd, 3, 1, 0, 0);
         // NOTE: render pass left open for UI drawing. Caller must end it.
     }
+}
+
+void PostProcessPipeline::update_light_glow(VmaAllocator allocator,
+                                             const LightGlowData& data) {
+    if (!light_glow_buffer_) return;
+    void* mapped = nullptr;
+    vmaMapMemory(allocator, light_glow_alloc_, &mapped);
+    std::memcpy(mapped, &data, sizeof(data));
+    vmaUnmapMemory(allocator, light_glow_alloc_);
 }
 
 }  // namespace gseurat

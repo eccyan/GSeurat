@@ -46,4 +46,11 @@ struct UniformBufferObject {
     PointLight lights[kMaxLights];        // 256 bytes
 };  // 352 bytes total, std140 aligned
 
+// UBO for screen-space light glow in composite pass (GS scenes)
+struct LightGlowData {
+    glm::mat4 vp;                         // 64 bytes: GS camera view-projection
+    glm::ivec4 light_params;              // 16 bytes: x = light_count, y = screen_w, z = screen_h
+    PointLight lights[kMaxLights];        // 256 bytes
+};  // 336 bytes total
+
 }  // namespace gseurat

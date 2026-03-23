@@ -421,6 +421,22 @@ void Renderer::draw_scene(Scene& scene,
         pp_params.flash_b = flash_b_;
     }
 
+    // Update light glow UBO with GS camera VP and scene lights
+    {
+        LightGlowData glow{};
+        glow.vp = gs_proj_ * gs_view_;
+        auto& scene_lights = scene.lights();
+        int glow_count = static_cast<int>(std::min(scene_lights.size(),
+                                                    static_cast<size_t>(kMaxLights)));
+        glow.light_params = glm::ivec4(glow_count,
+                                       static_cast<int>(swapchain_.extent().width),
+                                       static_cast<int>(swapchain_.extent().height), 0);
+        for (int i = 0; i < glow_count; i++) {
+            glow.lights[i] = scene_lights[i];
+        }
+        post_process_.update_light_glow(context_.allocator(), glow);
+    }
+
     post_process_.record_post_process(cmd, image_index, pp_params);
 
     record_gs_blit(cmd, flags);

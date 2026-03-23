@@ -5,6 +5,8 @@
 
 #include <vector>
 
+#include "gseurat/engine/types.hpp"
+
 namespace gseurat {
 
 class Swapchain;
@@ -48,6 +50,9 @@ public:
     // Caller draws UI sprites into the open composite pass, then ends it.
     void record_post_process(VkCommandBuffer cmd, uint32_t swapchain_index,
                              const PostProcessParams& params);
+
+    // Update light glow UBO for screen-space light rendering in composite
+    void update_light_glow(VmaAllocator allocator, const LightGlowData& data);
 
 
 private:
@@ -123,6 +128,10 @@ private:
     uint32_t bloom_height_ = 0;
     uint32_t dof_width_ = 0;
     uint32_t dof_height_ = 0;
+
+    // Light glow UBO for composite pass
+    VkBuffer light_glow_buffer_ = VK_NULL_HANDLE;
+    VmaAllocation light_glow_alloc_ = VK_NULL_HANDLE;
 };
 
 }  // namespace gseurat
