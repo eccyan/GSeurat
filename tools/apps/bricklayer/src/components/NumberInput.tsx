@@ -24,7 +24,9 @@ function clamp(v: number, min?: number, max?: number): number {
 const defaultInputStyle: React.CSSProperties = {
   padding: '4px 6px',
   background: '#2a2a4a',
-  border: '1px solid #444',
+  borderWidth: '1px 1px 3px 1px',
+  borderStyle: 'solid',
+  borderColor: '#444 #444 #77f #444',
   borderRadius: 4,
   color: '#ddd',
   fontSize: 13,
