@@ -546,6 +546,7 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
         elevation: new Array(count).fill(0),
         nav_zone: new Array(count).fill(0),
       },
+      showCollision: true,
     });
   },
 
