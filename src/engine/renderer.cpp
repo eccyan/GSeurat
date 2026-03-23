@@ -876,27 +876,29 @@ void Renderer::record_light_glow(VkCommandBuffer cmd, const Scene& scene,
         if (screen_x < -glow_size || screen_x > sw + glow_size ||
             screen_y < -glow_size || screen_y > sh + glow_size) continue;
 
-        // Draw glow quad
+        // Draw glow quad — use full UV range of font texture
+        // (the font atlas has white background pixels we can tint)
         SpriteDrawInfo glow{};
         glow.position = {screen_x, screen_y, 0.0f};
         glow.size = {glow_size, glow_size};
         glow.uv_min = {0.0f, 0.0f};
-        glow.uv_max = {1.0f / 256.0f, 1.0f / 256.0f};
+        glow.uv_max = {0.01f, 0.01f};
+        float glow_alpha = glm::clamp(light.color.a * 0.3f, 0.1f, 0.8f);
         glow.color = {
-            light.color.r * light.color.a,
-            light.color.g * light.color.a,
-            light.color.b * light.color.a,
-            0.5f
+            light.color.r,
+            light.color.g,
+            light.color.b,
+            glow_alpha
         };
         sprite_batch_.draw(glow);
 
-        // Draw bright center marker (8x8 dot)
+        // Draw bright center marker (20x20 solid dot)
         SpriteDrawInfo marker{};
         marker.position = {screen_x, screen_y, 0.0f};
-        marker.size = {8.0f, 8.0f};
+        marker.size = {20.0f, 20.0f};
         marker.uv_min = {0.0f, 0.0f};
-        marker.uv_max = {1.0f / 256.0f, 1.0f / 256.0f};
-        marker.color = {1.0f, 1.0f, 1.0f, 1.0f};  // bright white dot
+        marker.uv_max = {0.01f, 0.01f};
+        marker.color = {1.0f, 1.0f, 0.0f, 1.0f};  // bright yellow
         sprite_batch_.draw(marker);
     }
 
