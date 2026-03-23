@@ -20,7 +20,9 @@ const styles: Record<string, React.CSSProperties> = {
   menuBtn: {
     padding: '4px 12px',
     background: 'transparent',
-    border: '1px solid transparent',
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: 'transparent',
     borderRadius: 4,
     color: '#ccc',
     cursor: 'pointer',
