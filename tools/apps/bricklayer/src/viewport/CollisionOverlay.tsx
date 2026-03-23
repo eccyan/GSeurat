@@ -43,6 +43,8 @@ export function CollisionOverlay() {
   const handleClick = useCallback((e: ThreeEvent<MouseEvent>) => {
     e.stopPropagation();
     const store = useSceneStore.getState();
+    // Only handle clicks in TERRAIN mode
+    if (store.mode !== 'terrain') return;
     const grid = store.collisionGridData;
     if (!grid) return;
 

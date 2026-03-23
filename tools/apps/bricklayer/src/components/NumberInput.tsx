@@ -149,7 +149,25 @@ export function NumberInput({
         onFocus={handleFocus}
         onBlur={handleBlur}
         onKeyDown={handleKeyDown}
-        style={{ ...defaultInputStyle, ...style }}
+        onPointerDown={(e) => {
+          // Allow drag-to-scrub on the input when not focused
+          if (document.activeElement !== e.currentTarget) {
+            e.preventDefault();
+            dragging.current = true;
+            dragStartX.current = e.clientX;
+            dragStartValue.current = value;
+            (e.target as HTMLElement).setPointerCapture(e.pointerId);
+          }
+        }}
+        onPointerMove={(e) => {
+          if (!dragging.current) return;
+          const dx = e.clientX - dragStartX.current;
+          const delta = Math.round(dx / 2) * step;
+          const newVal = clamp(dragStartValue.current + delta, min, max);
+          onChange(newVal);
+        }}
+        onPointerUp={() => { dragging.current = false; }}
+        style={{ ...defaultInputStyle, cursor: focused ? 'text' : 'ew-resize', ...style }}
       />
     </>
   );

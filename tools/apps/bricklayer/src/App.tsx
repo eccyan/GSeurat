@@ -257,8 +257,8 @@ export function App() {
         return;
       }
 
-      // Home key: reset camera to default
-      if (e.key === 'Home') {
+      // H key: reset camera to home (default view)
+      if (e.key.toLowerCase() === 'h' && !meta) {
         const controls = getOrbitControls();
         if (!controls) return;
 
