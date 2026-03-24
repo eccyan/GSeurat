@@ -153,12 +153,15 @@ void main() {
                 base_color *= ambient + (1.0 - ambient) * NdotL * intensity;
             } else {
                 // Mode 2: World-space point lights
-                // Reconstruct approximate world position from pixel + depth
+                // Reconstruct world position from pixel + view-space Z depth
                 vec2 ndc = (vec2(pixel) + 0.5) / vec2(float(width), float(height)) * 2.0 - 1.0;
                 ndc.y = -ndc.y;  // Vulkan Y-flip
                 vec4 clip_pos = inverse(proj) * vec4(ndc, 0.5, 1.0);
                 vec3 view_dir = normalize(clip_pos.xyz / clip_pos.w);
-                vec3 view_pos = (inverse(view) * vec4(view_dir * first_hit_depth, 1.0)).xyz;
+                // Scale ray so its Z component matches the view-space depth
+                // (first_hit_depth = -view_z, view_dir.z < 0)
+                float t = first_hit_depth / max(-view_dir.z, 0.001);
+                vec3 world_pos = (inverse(view) * vec4(view_dir * t, 1.0)).xyz;
 
                 vec3 total_light = vec3(0.3);  // ambient base
 
@@ -171,7 +174,7 @@ void main() {
                     vec3 light_col = pl_color[li].rgb;
                     float light_intensity = pl_color[li].a;
 
-                    vec3 to_light = light_pos - view_pos;
+                    vec3 to_light = light_pos - world_pos;
                     float dist = length(to_light);
                     vec3 light_dir = to_light / max(dist, 0.001);
 
