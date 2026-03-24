@@ -26,7 +26,9 @@ function DraggablePortal({ id, position, size, isSelected, onSelect, targetScene
     e.stopPropagation();
     onSelect();
 
-    if (useSceneStore.getState().mode !== 'scene') return;
+    const storeState = useSceneStore.getState();
+    if (storeState.mode !== 'scene') return;
+    if (storeState.grabMode) return; // Grab plane handles movement
 
     const el = gl.domElement;
     _plane.set(new THREE.Vector3(0, 1, 0), -1);

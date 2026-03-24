@@ -1,6 +1,6 @@
-import React, { useRef, useCallback } from 'react';
-import { Canvas, useThree } from '@react-three/fiber';
-import { OrbitControls, Grid } from '@react-three/drei';
+import React, { useRef, useCallback, useEffect, useState } from 'react';
+import { Canvas, useThree, ThreeEvent } from '@react-three/fiber';
+import { OrbitControls, Grid, Html } from '@react-three/drei';
 import * as THREE from 'three';
 import { VoxelMesh } from './VoxelMesh.js';
 import { GroundPlane } from './GroundPlane.js';
@@ -64,11 +64,196 @@ function TeleportPlane() {
   );
 }
 
+/**
+ * Helper: get the 3D position and Y height of the currently grabbed entity.
+ */
+function getGrabbedEntityY(): number {
+  const store = useSceneStore.getState();
+  const sel = store.selectedEntity;
+  if (!sel) return 0;
+
+  if (sel.type === 'object') {
+    const obj = store.placedObjects.find((o) => o.id === sel.id);
+    return obj?.position[1] ?? 0;
+  }
+  if (sel.type === 'npc') {
+    const npc = store.npcs.find((n) => n.id === sel.id);
+    return npc?.position[1] ?? 0;
+  }
+  if (sel.type === 'light') {
+    const light = store.staticLights.find((l) => l.id === sel.id);
+    return light?.height ?? 0;
+  }
+  if (sel.type === 'player') {
+    return store.player.position[1];
+  }
+  // portal: always Y=0
+  return 0;
+}
+
+/**
+ * Updates the grabbed entity's position in the store.
+ */
+function updateGrabbedEntity(x: number, y: number, z: number) {
+  const store = useSceneStore.getState();
+  const sel = store.selectedEntity;
+  if (!sel) return;
+
+  if (sel.type === 'object') {
+    store.updatePlacedObject(sel.id, { position: [x, y, z] });
+  } else if (sel.type === 'npc') {
+    store.updateNpc(sel.id, { position: [x, y, z] });
+  } else if (sel.type === 'light') {
+    store.updateLight(sel.id, { position: [x, z], height: y });
+  } else if (sel.type === 'portal') {
+    store.updatePortal(sel.id, { position: [x, z] });
+  } else if (sel.type === 'player') {
+    store.updatePlayer({ position: [x, y, z] });
+  }
+}
+
+/**
+ * Blender-style grab plane: object follows mouse on XZ plane.
+ * Hold Shift to adjust Y height via vertical mouse movement.
+ * Click to confirm, Esc to cancel (handled in App.tsx).
+ */
+function GrabPlane() {
+  const grabMode = useSceneStore((s) => s.grabMode);
+  const selectedEntity = useSceneStore((s) => s.selectedEntity);
+  const { camera, gl } = useThree();
+  const [shiftHeld, setShiftHeld] = useState(false);
+  const lastClientY = useRef(0);
+  const currentY = useRef(0);
+  const labelPos = useRef<[number, number, number]>([0, 0, 0]);
+  const [labelText, setLabelText] = useState('');
+
+  // Track Shift key
+  useEffect(() => {
+    if (!grabMode) return;
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Shift') setShiftHeld(true);
+    };
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.key === 'Shift') setShiftHeld(false);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
+    };
+  }, [grabMode]);
+
+  // Initialize currentY when grab starts
+  useEffect(() => {
+    if (grabMode) {
+      currentY.current = getGrabbedEntityY();
+    }
+  }, [grabMode]);
+
+  // Pointer tracking via DOM events for smooth grab
+  useEffect(() => {
+    if (!grabMode || !selectedEntity) return;
+
+    const el = gl.domElement;
+    const plane = new THREE.Plane();
+    const raycaster = new THREE.Raycaster();
+    const intersection = new THREE.Vector3();
+
+    const onMove = (ev: PointerEvent) => {
+      if (shiftHeld) {
+        // Shift mode: vertical mouse movement adjusts Y
+        const deltaY = (lastClientY.current - ev.clientY) * 0.05;
+        lastClientY.current = ev.clientY;
+        currentY.current = Math.round((currentY.current + deltaY) * 10) / 10;
+
+        // Get current XZ from entity
+        const store = useSceneStore.getState();
+        const sel = store.selectedEntity;
+        if (!sel) return;
+
+        let cx = 0, cz = 0;
+        if (sel.type === 'object') {
+          const obj = store.placedObjects.find((o) => o.id === sel.id);
+          if (obj) { cx = obj.position[0]; cz = obj.position[2]; }
+        } else if (sel.type === 'npc') {
+          const npc = store.npcs.find((n) => n.id === sel.id);
+          if (npc) { cx = npc.position[0]; cz = npc.position[2]; }
+        } else if (sel.type === 'light') {
+          const light = store.staticLights.find((l) => l.id === sel.id);
+          if (light) { cx = light.position[0]; cz = light.position[1]; }
+        } else if (sel.type === 'portal') {
+          const portal = store.portals.find((p) => p.id === sel.id);
+          if (portal) { cx = portal.position[0]; cz = portal.position[1]; }
+        } else if (sel.type === 'player') {
+          cx = store.player.position[0]; cz = store.player.position[2];
+        }
+
+        updateGrabbedEntity(cx, currentY.current, cz);
+        labelPos.current = [cx, currentY.current + 1.5, cz];
+        setLabelText(`${cx.toFixed(1)}, Y:${currentY.current.toFixed(1)}, ${cz.toFixed(1)}`);
+      } else {
+        // Normal mode: XZ plane follow
+        lastClientY.current = ev.clientY;
+        const rect = el.getBoundingClientRect();
+        const pointer = new THREE.Vector2(
+          ((ev.clientX - rect.left) / rect.width) * 2 - 1,
+          -((ev.clientY - rect.top) / rect.height) * 2 + 1,
+        );
+        plane.set(new THREE.Vector3(0, 1, 0), -currentY.current);
+        raycaster.setFromCamera(pointer, camera);
+        if (raycaster.ray.intersectPlane(plane, intersection)) {
+          const sx = Math.round(intersection.x * 10) / 10;
+          const sz = Math.round(intersection.z * 10) / 10;
+          updateGrabbedEntity(sx, currentY.current, sz);
+          labelPos.current = [sx, currentY.current + 1.5, sz];
+          setLabelText(`${sx.toFixed(1)}, ${currentY.current.toFixed(1)}, ${sz.toFixed(1)}`);
+        }
+      }
+    };
+
+    const onClick = () => {
+      // Confirm grab — position is already committed
+      const store = useSceneStore.getState();
+      store.setGrabMode(false);
+      store.setGrabOriginalPosition(null);
+      setLabelText('');
+    };
+
+    el.addEventListener('pointermove', onMove);
+    el.addEventListener('click', onClick);
+    return () => {
+      el.removeEventListener('pointermove', onMove);
+      el.removeEventListener('click', onClick);
+    };
+  }, [grabMode, selectedEntity, shiftHeld, camera, gl]);
+
+  if (!grabMode || !labelText) return null;
+
+  return (
+    <Html position={labelPos.current} center>
+      <div style={{
+        background: 'rgba(0,0,0,0.8)',
+        color: shiftHeld ? '#88aaff' : '#ffcc00',
+        padding: '2px 6px',
+        borderRadius: 4,
+        fontSize: 11,
+        whiteSpace: 'nowrap',
+        pointerEvents: 'none',
+      }}>
+        {labelText}
+      </div>
+    </Html>
+  );
+}
+
 function SceneContent() {
   const gridWidth = useSceneStore((s) => s.gridWidth);
   const gridDepth = useSceneStore((s) => s.gridDepth);
   const showGrid = useSceneStore((s) => s.showGrid);
   const grabMode = useSceneStore((s) => s.grabMode);
+  const orbitLocked = useSceneStore((s) => s.orbitLocked);
   const controlsRef = useRef<OrbitControlsRef | null>(null);
 
   return (
@@ -102,13 +287,14 @@ function SceneContent() {
       <PlayerMarker />
       <CollisionOverlay />
       <TeleportPlane />
+      <GrabPlane />
 
       <OrbitControls
         ref={(r: OrbitControlsRef | null) => {
           controlsRef.current = r;
           orbitControlsRef = r;
         }}
-        enabled={!grabMode}
+        enabled={!grabMode && !orbitLocked}
         target={[gridWidth / 2, 0, gridDepth / 2]}
         makeDefault
         screenSpacePanning

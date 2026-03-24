@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { useThree } from '@react-three/fiber';
 import { Html } from '@react-three/drei';
@@ -19,6 +19,10 @@ function DraggableMarker({ id, position, scale, color, isSelected, onSelect }: {
   const { camera, gl } = useThree();
   const [dragging, setDragging] = useState(false);
   const [dragPos, setDragPos] = useState<[number, number, number] | null>(null);
+  const [heightMode, setHeightMode] = useState(false);
+  const lastClientY = useRef(0);
+  const currentY = useRef(0);
+  const currentXZ = useRef<[number, number]>([0, 0]);
 
   const displayPos = dragPos ?? position;
 
@@ -26,25 +30,43 @@ function DraggableMarker({ id, position, scale, color, isSelected, onSelect }: {
     e.stopPropagation();
     onSelect();
 
-    if (useSceneStore.getState().mode !== 'scene') return;
+    const storeState = useSceneStore.getState();
+    if (storeState.mode !== 'scene') return;
+    if (storeState.grabMode) return; // Grab plane handles movement
 
     const el = gl.domElement;
+    currentY.current = position[1];
+    currentXZ.current = [position[0], position[2]];
+    lastClientY.current = e.clientY;
     _plane.set(new THREE.Vector3(0, 1, 0), -position[1]);
     setDragging(true);
+    setHeightMode(false);
 
     const onMove = (ev: PointerEvent) => {
-      const rect = el.getBoundingClientRect();
-      const pointer = new THREE.Vector2(
-        ((ev.clientX - rect.left) / rect.width) * 2 - 1,
-        -((ev.clientY - rect.top) / rect.height) * 2 + 1,
-      );
-      _raycaster.setFromCamera(pointer, camera);
-      if (_raycaster.ray.intersectPlane(_plane, _intersection)) {
-        setDragPos([
-          Math.round(_intersection.x * 10) / 10,
-          position[1],
-          Math.round(_intersection.z * 10) / 10,
-        ]);
+      if (ev.shiftKey) {
+        // Shift held: vertical mouse movement adjusts Y
+        setHeightMode(true);
+        const deltaY = (lastClientY.current - ev.clientY) * 0.05;
+        lastClientY.current = ev.clientY;
+        currentY.current = Math.round((currentY.current + deltaY) * 10) / 10;
+        setDragPos([currentXZ.current[0], currentY.current, currentXZ.current[1]]);
+      } else {
+        // Normal XZ plane drag
+        setHeightMode(false);
+        lastClientY.current = ev.clientY;
+        const rect = el.getBoundingClientRect();
+        const pointer = new THREE.Vector2(
+          ((ev.clientX - rect.left) / rect.width) * 2 - 1,
+          -((ev.clientY - rect.top) / rect.height) * 2 + 1,
+        );
+        _plane.set(new THREE.Vector3(0, 1, 0), -currentY.current);
+        _raycaster.setFromCamera(pointer, camera);
+        if (_raycaster.ray.intersectPlane(_plane, _intersection)) {
+          const sx = Math.round(_intersection.x * 10) / 10;
+          const sz = Math.round(_intersection.z * 10) / 10;
+          currentXZ.current = [sx, sz];
+          setDragPos([sx, currentY.current, sz]);
+        }
       }
     };
 
@@ -52,10 +74,11 @@ function DraggableMarker({ id, position, scale, color, isSelected, onSelect }: {
       el.removeEventListener('pointermove', onMove);
       el.removeEventListener('pointerup', onUp);
       setDragging(false);
+      setHeightMode(false);
       const snapped: [number, number, number] = [
-        Math.round(_intersection.x * 10) / 10,
-        position[1],
-        Math.round(_intersection.z * 10) / 10,
+        currentXZ.current[0],
+        currentY.current,
+        currentXZ.current[1],
       ];
       useSceneStore.getState().updatePlacedObject(id, { position: snapped });
       setDragPos(null);
@@ -88,10 +111,10 @@ function DraggableMarker({ id, position, scale, color, isSelected, onSelect }: {
       {dragging && (
         <Html position={[displayPos[0], displayPos[1] + scale + 0.5, displayPos[2]]} center>
           <div style={{
-            background: 'rgba(0,0,0,0.8)', color: '#ffcc00',
+            background: 'rgba(0,0,0,0.8)', color: heightMode ? '#88aaff' : '#ffcc00',
             padding: '2px 6px', borderRadius: 4, fontSize: 11, whiteSpace: 'nowrap',
           }}>
-            {displayPos[0].toFixed(1)}, {displayPos[1].toFixed(1)}, {displayPos[2].toFixed(1)}
+            {displayPos[0].toFixed(1)}, {heightMode ? `Y:${displayPos[1].toFixed(1)}` : displayPos[1].toFixed(1)}, {displayPos[2].toFixed(1)}
           </div>
         </Html>
       )}
