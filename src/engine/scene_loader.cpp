@@ -204,6 +204,15 @@ SceneData SceneLoader::from_json(const nlohmann::json& j) {
             auto color = parse_vec4(light_j["color"]);
             float intensity = light_j.value("intensity", 1.0f);
             pl.color = {color.r, color.g, color.b, intensity};
+            // Spot light: optional direction + cone_angle (degrees)
+            if (light_j.contains("direction")) {
+                auto dir = parse_vec3(light_j["direction"]);
+                float len = glm::length(dir);
+                if (len > 0.001f) dir /= len;  // normalize
+                float cone_deg = light_j.value("cone_angle", 180.0f);
+                float cone_cos = std::cos(glm::radians(cone_deg * 0.5f));
+                pl.direction_and_cone = {dir.x, dir.y, dir.z, cone_cos};
+            }
             data.static_lights.push_back(pl);
         }
     }
@@ -539,13 +548,25 @@ nlohmann::json SceneLoader::to_json(const SceneData& data) {
     if (!data.static_lights.empty()) {
         nlohmann::json lights = nlohmann::json::array();
         for (const auto& pl : data.static_lights) {
-            lights.push_back({
+            nlohmann::json light_obj = {
                 {"position", {pl.position_and_radius.x, pl.position_and_radius.y}},
                 {"radius", pl.position_and_radius.w},
                 {"height", pl.position_and_radius.z},
                 {"color", {pl.color.r, pl.color.g, pl.color.b}},
                 {"intensity", pl.color.a}
-            });
+            };
+            // Save spot light fields if not a point light (cone_cos == -1)
+            float cone_cos = pl.direction_and_cone.w;
+            if (cone_cos > -0.99f) {
+                light_obj["direction"] = {
+                    pl.direction_and_cone.x,
+                    pl.direction_and_cone.y,
+                    pl.direction_and_cone.z
+                };
+                float cone_deg = glm::degrees(std::acos(cone_cos)) * 2.0f;
+                light_obj["cone_angle"] = cone_deg;
+            }
+            lights.push_back(light_obj);
         }
         j["static_lights"] = lights;
     }

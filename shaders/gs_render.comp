@@ -40,6 +40,7 @@ layout(set = 0, binding = 2) uniform Uniforms {
     vec4 point_light_params; // x = count, yzw = unused
     vec4 pl_pos_rad[8];     // per-light: xy = world XZ, z = height (Y), w = radius
     vec4 pl_color[8];       // per-light: rgb = color, a = intensity
+    vec4 pl_dir_cone[8];    // per-light: xyz = spot direction, w = cos(cone_half_angle); -1 = point
 };
 
 layout(set = 0, binding = 3, rgba16f) uniform writeonly image2D output_image;
@@ -182,6 +183,17 @@ void main() {
                     // Smooth radial falloff
                     float atten = max(0.0, 1.0 - dist / light_radius);
                     atten *= atten;  // quadratic
+
+                    // Spot cone attenuation (cone_cos == -1 means point light, skip)
+                    vec3 spot_dir = pl_dir_cone[li].xyz;
+                    float cone_cos = pl_dir_cone[li].w;
+                    if (cone_cos > -0.99) {
+                        float cos_angle = dot(normalize(-to_light), spot_dir);
+                        float outer = cone_cos;
+                        float inner = min(outer + 0.1, 1.0);
+                        float spot_atten = clamp((cos_angle - outer) / max(inner - outer, 0.001), 0.0, 1.0);
+                        atten *= spot_atten;
+                    }
 
                     // Half-Lambert wrap lighting: pseudo-normals from depth gradients
                     // mostly point toward the camera, so pure NdotL would be ~0 for
