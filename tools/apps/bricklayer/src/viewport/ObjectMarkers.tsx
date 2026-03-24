@@ -15,12 +15,12 @@ function Marker({ position, scale, color, isSelected, onSelect }: {
         position={position}
         onPointerDown={(e) => { e.stopPropagation(); onSelect(); }}
       >
-        <boxGeometry args={[scale * 1.2, scale * 1.2, scale * 1.2]} />
+        <boxGeometry args={[scale * 1.5, scale * 1.5, scale * 1.5]} />
         <meshBasicMaterial visible={false} />
       </mesh>
       {/* Visible wireframe */}
       <mesh position={position}>
-        <boxGeometry args={[scale, scale, scale]} />
+        <boxGeometry args={[scale * 1.2, scale * 1.2, scale * 1.2]} />
         <meshBasicMaterial
           color={isSelected ? '#ffffff' : color}
           wireframe

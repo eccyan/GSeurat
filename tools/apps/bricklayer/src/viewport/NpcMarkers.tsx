@@ -13,12 +13,12 @@ function NpcMarker({ id, position, isSelected, onSelect, waypoints }: {
     <group key={id}>
       {/* Invisible hit box */}
       <mesh position={position} onPointerDown={(e) => { e.stopPropagation(); onSelect(); }}>
-        <cylinderGeometry args={[0.5, 0.5, 1.8, 8]} />
+        <cylinderGeometry args={[1.0, 1.0, 2.5, 12]} />
         <meshBasicMaterial visible={false} />
       </mesh>
       {/* Visible mesh */}
       <mesh position={position}>
-        <cylinderGeometry args={[0.3, 0.3, 1.5, 8]} />
+        <cylinderGeometry args={[0.6, 0.6, 2.0, 12]} />
         <meshStandardMaterial
           color={isSelected ? '#ffffff' : '#4fc3f7'}
           transparent
@@ -29,7 +29,7 @@ function NpcMarker({ id, position, isSelected, onSelect, waypoints }: {
         <Line
           points={waypoints.map(([wx, wz]) => [wx, position[1] + 0.1, wz] as [number, number, number])}
           color="#4fc3f7"
-          lineWidth={2}
+          lineWidth={4}
           dashed
           dashSize={0.5}
           gapSize={0.3}

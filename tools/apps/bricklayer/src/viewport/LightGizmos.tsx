@@ -15,17 +15,17 @@ function LightMarker({ position, height, radius, color, isSelected, onSelect }: 
     <group position={[position[0], height, position[1]]}>
       {/* Invisible hit box for pointer events */}
       <mesh onPointerDown={(e) => { e.stopPropagation(); onSelect(); }}>
-        <sphereGeometry args={[0.5, 8, 8]} />
+        <sphereGeometry args={[1.0, 12, 12]} />
         <meshBasicMaterial visible={false} />
       </mesh>
       {/* Visible sphere */}
       <mesh>
-        <sphereGeometry args={[0.3, 8, 8]} />
+        <sphereGeometry args={[0.6, 12, 12]} />
         <meshBasicMaterial color={isSelected ? '#ffffff' : colorStr} />
       </mesh>
       {/* Radius ring */}
       <mesh rotation={[-Math.PI / 2, 0, 0]}>
-        <ringGeometry args={[radius - 0.05, radius + 0.05, 32]} />
+        <ringGeometry args={[radius - 0.1, radius + 0.1, 32]} />
         <meshBasicMaterial color={colorStr} transparent opacity={0.5} side={2} />
       </mesh>
     </group>
