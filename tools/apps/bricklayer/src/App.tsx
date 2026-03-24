@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Viewport, getOrbitControls } from './viewport/Viewport.js';
 import { MenuBar } from './panels/MenuBar.js';
 import { ImportDialog } from './panels/ImportDialog.js';
@@ -110,6 +110,25 @@ const toolKeys: Record<string, ToolType> = {
 
 function GrabOverlay() {
   const grabMode = useSceneStore((s) => s.grabMode);
+
+  // Window-level listener — immune to R3F pointer capture
+  useEffect(() => {
+    if (!grabMode) return;
+
+    const handleConfirm = (e: PointerEvent) => {
+      if (e.button !== 0) return; // Only primary click
+      const store = useSceneStore.getState();
+      store.setGrabMode(false);
+      store.setGrabOriginalPosition(null);
+    };
+
+    // Use capture phase to guarantee we get the event first
+    window.addEventListener('pointerdown', handleConfirm, { capture: true });
+    return () => {
+      window.removeEventListener('pointerdown', handleConfirm, { capture: true });
+    };
+  }, [grabMode]);
+
   if (!grabMode) return null;
 
   return (
@@ -135,7 +154,33 @@ function GrabOverlay() {
         fontSize: 12,
         pointerEvents: 'none',
       }}>
-        GRAB: Click to confirm, Esc to cancel
+        GRAB: Click to confirm, Esc to cancel, Shift = height
+      </div>
+    </div>
+  );
+}
+
+function OrbitLockIndicator() {
+  const orbitLocked = useSceneStore((s) => s.orbitLocked);
+  if (!orbitLocked) return null;
+
+  return (
+    <div style={{
+      position: 'absolute',
+      top: 8,
+      left: '50%',
+      transform: 'translateX(-50%)',
+      zIndex: 10,
+      pointerEvents: 'none',
+    }}>
+      <div style={{
+        background: 'rgba(0,0,0,0.7)',
+        color: '#88aaff',
+        padding: '3px 10px',
+        borderRadius: 4,
+        fontSize: 11,
+      }}>
+        ORBIT LOCKED
       </div>
     </div>
   );
@@ -354,6 +399,12 @@ export function App() {
         return;
       }
 
+      // Shift: lock orbit in terrain mode for drawing
+      if (e.key === 'Shift' && (store.mode === 'terrain' || store.activeNode?.kind === 'collision')) {
+        store.setOrbitLocked(true);
+        return;
+      }
+
       // H key: reset camera to home (default view)
       if (e.key.toLowerCase() === 'h' && !meta) {
         const controls = getOrbitControls();
@@ -370,8 +421,18 @@ export function App() {
       }
     };
 
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.key === 'Shift') {
+        useSceneStore.getState().setOrbitLocked(false);
+      }
+    };
+
     window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
+    window.addEventListener('keyup', handleKeyUp);
+    return () => {
+      window.removeEventListener('keydown', handler);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
   }, []);
 
   // Determine which contextual panel to show in left below ProjectTree
@@ -409,6 +470,7 @@ export function App() {
         <div style={styles.viewport}>
           <Viewport />
           <GrabOverlay />
+          <OrbitLockIndicator />
         </div>
 
         <ResizeHandle side="right" onDrag={handleRightDrag} />
