@@ -213,7 +213,9 @@ function GrabPlane() {
       }
     };
 
-    const onClick = () => {
+    const onConfirm = (ev: PointerEvent) => {
+      // Only confirm on left button
+      if (ev.button !== 0) return;
       // Confirm grab — position is already committed
       const store = useSceneStore.getState();
       store.setGrabMode(false);
@@ -222,10 +224,11 @@ function GrabPlane() {
     };
 
     el.addEventListener('pointermove', onMove);
-    el.addEventListener('click', onClick);
+    // Use pointerdown instead of click — click doesn't fire when mouse moved
+    el.addEventListener('pointerdown', onConfirm);
     return () => {
       el.removeEventListener('pointermove', onMove);
-      el.removeEventListener('click', onClick);
+      el.removeEventListener('pointerdown', onConfirm);
     };
   }, [grabMode, selectedEntity, shiftHeld, camera, gl]);
 
