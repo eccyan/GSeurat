@@ -4,7 +4,7 @@ A Vulkan-based 3D Gaussian Splatting engine built with C++23. Named after **3DGS
 
 ## Features
 
-- **3D Gaussian Splatting** — GPU compute pipeline for rendering `.ply` point clouds with tile-based rasterization
+- **3D Gaussian Splatting** — GPU compute pipeline for rendering `.ply` point clouds with tile-based rasterization, dynamic point light support
 - **Voxel character pipeline** — MagicaVoxel import, rigid-body-part posing, GPU bone skinning in compute shader
 - **Sprite overlay** — Sprite-based entities over GS backgrounds with bloom, depth-of-field, and tone mapping
 - **Entity Component System** — Header-only ECS with archetype storage, typed views, and system functions
