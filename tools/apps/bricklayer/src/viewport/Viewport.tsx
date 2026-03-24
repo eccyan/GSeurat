@@ -35,6 +35,7 @@ function TeleportPlane() {
 
   const handleDoubleClick = useCallback(() => {
     if (!planeRef.current || !orbitControlsRef) return;
+    if (useSceneStore.getState().orbitLocked || useSceneStore.getState().grabMode) return;
 
     raycaster.setFromCamera(pointer, camera);
 
