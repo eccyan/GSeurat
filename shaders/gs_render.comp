@@ -182,7 +182,10 @@ void main() {
                     float atten = max(0.0, 1.0 - dist / light_radius);
                     atten *= atten;  // quadratic
 
-                    float NdotL = max(dot(normal, light_dir), 0.0);
+                    // Half-Lambert wrap lighting: pseudo-normals from depth gradients
+                    // mostly point toward the camera, so pure NdotL would be ~0 for
+                    // lights at similar depth. Wrap to [0,1] for soft omnidirectional tint.
+                    float NdotL = dot(normal, light_dir) * 0.5 + 0.5;
                     total_light += light_col * light_intensity * atten * NdotL;
                 }
 
