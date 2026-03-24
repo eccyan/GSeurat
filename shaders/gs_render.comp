@@ -37,6 +37,9 @@ layout(set = 0, binding = 2) uniform Uniforms {
     vec4 touch_point;   // xyz = world_pos, w = radius
     vec4 effect_params; // x = water_y, y = fire_y_min, z = fire_y_max, w = strength
     vec4 effect_params2; // x = pulse_t, y = xray_depth, z = swirl_t, w = unused
+    vec4 point_light_params; // x = count, yzw = unused
+    vec4 pl_pos_rad[8];     // per-light: xy = world XZ, z = height (Y), w = radius
+    vec4 pl_color[8];       // per-light: rgb = color, a = intensity
 };
 
 layout(set = 0, binding = 3, rgba16f) uniform writeonly image2D output_image;
@@ -142,21 +145,53 @@ void main() {
 
             vec3 normal = normalize(vec3(-dz_dx, -dz_dy, 1.0));
 
-            float NdotL;
             if (light_mode < 1.5) {
-                // Directional light
-                NdotL = max(dot(normal, light_params.xyz), 0.0);
+                // Mode 1: Directional light
+                float NdotL = max(dot(normal, light_params.xyz), 0.0);
+                float ambient = 0.3;
+                float intensity = light_params.w;
+                base_color *= ambient + (1.0 - ambient) * NdotL * intensity;
             } else {
-                // Point light (simplified screen-space)
-                vec2 light_screen = vec2(float(width) * 0.5, float(height) * 0.5);
-                vec2 to_light = normalize(light_screen - vec2(pixel));
-                vec3 light_dir_ss = normalize(vec3(to_light, 0.5));
-                NdotL = max(dot(normal, light_dir_ss), 0.0);
-            }
+                // Mode 2: World-space point lights
+                // Reconstruct world position from pixel + view-space Z depth
+                vec2 ndc = (vec2(pixel) + 0.5) / vec2(float(width), float(height)) * 2.0 - 1.0;
+                // No manual Y-flip: proj already has Vulkan Y-flip baked in,
+                // so inverse(proj) correctly maps pixel NDC → view space.
+                vec4 clip_pos = inverse(proj) * vec4(ndc, 0.5, 1.0);
+                vec3 view_dir = normalize(clip_pos.xyz / clip_pos.w);
+                // Scale ray so its Z component matches the view-space depth
+                // (first_hit_depth = -view_z, view_dir.z < 0)
+                float t = first_hit_depth / max(-view_dir.z, 0.001);
+                vec3 world_pos = (inverse(view) * vec4(view_dir * t, 1.0)).xyz;
 
-            float ambient = 0.3;
-            float intensity = light_params.w;
-            base_color *= ambient + (1.0 - ambient) * NdotL * intensity;
+                vec3 total_light = vec3(0.3);  // ambient base
+
+                int pl_count = int(point_light_params.x);
+                for (int li = 0; li < pl_count && li < 8; li++) {
+                    vec3 light_pos = vec3(pl_pos_rad[li].x,   // world X
+                                          pl_pos_rad[li].z,   // height → Y
+                                          pl_pos_rad[li].y);  // world Z
+                    float light_radius = pl_pos_rad[li].w;
+                    vec3 light_col = pl_color[li].rgb;
+                    float light_intensity = pl_color[li].a;
+
+                    vec3 to_light = light_pos - world_pos;
+                    float dist = length(to_light);
+                    vec3 light_dir = to_light / max(dist, 0.001);
+
+                    // Smooth radial falloff
+                    float atten = max(0.0, 1.0 - dist / light_radius);
+                    atten *= atten;  // quadratic
+
+                    // Half-Lambert wrap lighting: pseudo-normals from depth gradients
+                    // mostly point toward the camera, so pure NdotL would be ~0 for
+                    // lights at similar depth. Wrap to [0,1] for soft omnidirectional tint.
+                    float NdotL = dot(normal, light_dir) * 0.5 + 0.5;
+                    total_light += light_col * light_intensity * atten * NdotL;
+                }
+
+                base_color *= total_light;
+            }
         }
 
         // --- Toon / cel shading ---

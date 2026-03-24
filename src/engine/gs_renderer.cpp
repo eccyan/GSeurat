@@ -27,7 +27,11 @@ struct ProjectedSplat {
     glm::vec4 color;          // rgb + alpha
 };  // 48 bytes
 
-// Uniform data for compute shaders (256 bytes, aligned)
+inline constexpr uint32_t kMaxGsPointLights = 8;
+
+// Uniform data for compute shaders
+// NOTE: point light arrays are flat (all positions, then all colors) to match
+// the GLSL std140 layout in gs_render.comp / gs_preprocess.comp.
 struct GsUniforms {
     glm::mat4 view;
     glm::mat4 proj;
@@ -40,6 +44,9 @@ struct GsUniforms {
     glm::vec4 touch_point;   // xyz = world_pos, w = radius
     glm::vec4 effect_params; // x = water_y, y = fire_y_min, z = fire_y_max, w = strength
     glm::vec4 effect_params2; // x = pulse_t, y = xray_depth, z = swirl_t, w = unused
+    glm::vec4 point_light_params; // x = count, yzw = unused
+    glm::vec4 pl_pos_rad[kMaxGsPointLights];   // per-light: xy = world XZ, z = height (Y), w = radius
+    glm::vec4 pl_color[kMaxGsPointLights];      // per-light: rgb = color, a = intensity
 };
 
 // Sort key: depth packed with index
@@ -595,6 +602,14 @@ void GsRenderer::render(VkCommandBuffer cmd, const glm::mat4& view, const glm::m
     uniforms.touch_point = glm::vec4(touch_point_, touch_radius_);
     uniforms.effect_params = glm::vec4(water_y_, fire_y_min_, fire_y_max_, effect_strength_);
     uniforms.effect_params2 = glm::vec4(pulse_t_, xray_depth_, swirl_t_, burn_t_);
+
+    // Point lights — flat arrays matching shader layout
+    uniforms.point_light_params = glm::vec4(static_cast<float>(point_lights_.size()), 0, 0, 0);
+    for (size_t i = 0; i < point_lights_.size() && i < kMaxGsPointLights; i++) {
+        uniforms.pl_pos_rad[i] = point_lights_[i].position_and_radius;
+        uniforms.pl_color[i] = point_lights_[i].color;
+    }
+
     std::memcpy(uniform_buffer_.mapped(), &uniforms, sizeof(uniforms));
 
     // In skip-sort mode, skip the entire compute pipeline after the first
@@ -739,6 +754,12 @@ void GsRenderer::clear_shadow_box_params() {
     shadow_box_active_ = false;
     shadow_box_margin_ = 128.0f;
     num_sort_passes_ = 2;
+}
+
+void GsRenderer::set_point_lights(const std::vector<PointLight>& lights) {
+    point_lights_.assign(lights.begin(),
+                         lights.begin() + std::min(lights.size(),
+                                                    static_cast<size_t>(kMaxGsPointLights)));
 }
 
 void GsRenderer::shutdown(VmaAllocator allocator) {

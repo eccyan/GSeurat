@@ -186,3 +186,32 @@ tools/apps/bricklayer/
 - Three.js via `@react-three/fiber` + `@react-three/drei`
 - `@huggingface/transformers` for in-browser depth estimation
 - Port 5180 (same as old map-painter)
+
+## GS Lighting
+
+Static lights placed in Bricklayer affect the Gaussian Splatting scene at runtime.
+The engine supports 3 light modes (toggle with **L** key in demo):
+
+| Mode | Description |
+|------|-------------|
+| **0 — Off** | No lighting applied; raw baked GS colors |
+| **1 — Directional** | Single directional light with pseudo-normal shading from depth gradients |
+| **2 — Point Lights** | Up to 8 point lights from scene data, with distance-based attenuation |
+
+### How Point Lights Work
+
+The GS tile rasterizer compute shader (`gs_render.comp`):
+1. Reconstructs approximate world position from pixel coordinates + first-hit depth
+2. Computes pseudo-surface-normal from tile depth gradients (16×16 shared memory)
+3. For each point light: calculates distance, quadratic attenuation (`(1 - dist/radius)²`), and NdotL
+4. Tints the Gaussian's baked color by the accumulated light contribution
+
+### Limitations
+
+- **Pseudo-normals**: Surface normals are estimated from screen-space depth discontinuities,
+  not from true geometry. This works well for large surfaces but can produce artifacts at
+  silhouette edges and thin features.
+- **No shadows**: Point lights illuminate through geometry. Occluded areas still receive light.
+- **Max 8 lights**: Limited by the uniform buffer size. Additional lights are ignored.
+- **Light_mode=2 auto-enabled**: When a scene has `static_lights`, point light mode activates
+  automatically on load.

@@ -49,6 +49,9 @@ layout(set = 0, binding = 3) uniform Uniforms {
     vec4 touch_point;   // xyz = world_pos, w = radius
     vec4 effect_params; // x = water_y, y = fire_y_min, z = fire_y_max, w = strength
     vec4 effect_params2; // x = pulse_t, y = xray_depth, z = swirl_t, w = unused
+    vec4 point_light_params; // x = count (unused in preprocess)
+    vec4 pl_pos_rad[8];
+    vec4 pl_color[8];
 };
 
 layout(set = 0, binding = 4) buffer VisibleCountBuffer {

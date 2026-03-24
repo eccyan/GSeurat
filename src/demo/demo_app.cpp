@@ -68,9 +68,7 @@ void DemoApp::init_scene(const std::string& scene_path) {
     for (const auto& pl : scene_data.static_lights) {
         scene_.add_light(pl);
     }
-    if (!scene_data.static_lights.empty()) {
-        std::fprintf(stderr, "Loaded %zu static lights\n", scene_data.static_lights.size());
-    }
+    // Defer GS point light setup until after cloud is loaded (need AABB for coord transform)
 
     // Only load GS data — no player, NPCs, tilemap, weather
     if (scene_data.gaussian_splat) {
@@ -158,6 +156,46 @@ void DemoApp::init_scene(const std::string& scene_path) {
             auto gs_proj = glm::perspective(glm::radians(gs.camera_fov), aspect, 0.1f, 1000.0f);
             gs_proj[1][1] *= -1.0f;  // Vulkan Y-flip
             renderer_.set_gs_camera(gs_view, gs_proj);
+
+            // Transform scene lights from voxel coordinates to PLY/world coordinates.
+            // Bricklayer PLY export centers X by -gridWidth/2 and Y by -maxY/2;
+            // the cloud AABB min approximates that offset.
+            auto aabb = cloud.bounds();
+            std::vector<PointLight> gs_lights;
+            for (const auto& pl : scene_data.static_lights) {
+                PointLight transformed = pl;
+                // position_and_radius: x=scene_x, y=scene_z, z=height, w=radius
+                // PLY X = scene_x + aabb.min.x, PLY Y(height) = height + aabb.min.y, PLY Z = scene_z
+                transformed.position_and_radius.x = pl.position_and_radius.x + aabb.min.x;
+                transformed.position_and_radius.z = pl.position_and_radius.z + aabb.min.y;
+                gs_lights.push_back(transformed);
+            }
+
+            // Add a default test light at the cloud center if no scene lights
+            if (gs_lights.empty()) {
+                PointLight test_light;
+                auto center = aabb.center();
+                float max_extent = std::max({aabb.max.x - aabb.min.x,
+                                              aabb.max.y - aabb.min.y,
+                                              aabb.max.z - aabb.min.z});
+                test_light.position_and_radius = glm::vec4(center.x, center.z, center.y, max_extent * 0.5f);
+                test_light.color = glm::vec4(0.2f, 1.0f, 0.3f, 5.0f);  // bright green, intensity 5
+                gs_lights.push_back(test_light);
+                std::fprintf(stderr, "GS: Default test light at cloud center (%.1f,%.1f,%.1f) r=%.1f\n",
+                             center.x, center.y, center.z, max_extent * 0.5f);
+            }
+
+            if (!gs_lights.empty()) {
+                renderer_.gs_renderer().set_light_mode(2);
+                renderer_.gs_renderer().set_point_lights(gs_lights);
+                for (size_t i = 0; i < gs_lights.size(); i++) {
+                    const auto& l = gs_lights[i];
+                    std::fprintf(stderr, "GS: Point light[%zu] pos_rad=(%.1f,%.1f,%.1f,%.1f) color=(%.2f,%.2f,%.2f) intensity=%.1f\n",
+                                 i, l.position_and_radius.x, l.position_and_radius.y,
+                                 l.position_and_radius.z, l.position_and_radius.w,
+                                 l.color.r, l.color.g, l.color.b, l.color.a);
+                }
+            }
         }
 
         // Load background image if specified

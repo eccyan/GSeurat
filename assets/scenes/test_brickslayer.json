@@ -8,17 +8,17 @@
   "static_lights": [
     {
       "position": [
-        30,
-        40
+        128,
+        20
       ],
-      "radius": 12,
+      "radius": 100,
       "height": 10,
       "color": [
+        0.2,
         1.0,
-        0.6,
-        0.2
+        0.3
       ],
-      "intensity": 2.0
+      "intensity": 10.0
     }
   ],
   "player_position": [
