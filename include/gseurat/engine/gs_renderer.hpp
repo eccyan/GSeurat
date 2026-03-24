@@ -2,10 +2,12 @@
 
 #include "gseurat/engine/buffer.hpp"
 #include "gseurat/engine/gaussian_cloud.hpp"
+#include "gseurat/engine/types.hpp"
 
 #include <vk_mem_alloc.h>
 #include <vulkan/vulkan.h>
 #include <glm/glm.hpp>
+#include <vector>
 
 namespace gseurat {
 
@@ -45,6 +47,8 @@ public:
     int light_mode() const { return light_mode_; }
     void set_light_dir(const glm::vec3& d) { light_dir_ = d; }
     void set_light_intensity(float i) { light_intensity_ = i; }
+    void set_point_lights(const std::vector<PointLight>& lights);
+    const std::vector<PointLight>& point_lights() const { return point_lights_; }
     void set_touch_point(const glm::vec3& p, float radius, float timer = 0.0f) {
         touch_point_ = p; touch_radius_ = radius; touch_active_ = true; touch_time_ = timer;
     }
@@ -187,6 +191,9 @@ private:
     float xray_depth_ = 0.0f;
     float swirl_t_ = 0.0f;
     float burn_t_ = 0.0f;
+
+    // Point lights for GS scene lighting
+    std::vector<PointLight> point_lights_;
 };
 
 }  // namespace gseurat

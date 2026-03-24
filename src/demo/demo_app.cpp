@@ -70,6 +70,9 @@ void DemoApp::init_scene(const std::string& scene_path) {
     }
     if (!scene_data.static_lights.empty()) {
         std::fprintf(stderr, "Loaded %zu static lights\n", scene_data.static_lights.size());
+        // Enable point light mode by default when scene has lights
+        renderer_.gs_renderer().set_light_mode(2);
+        renderer_.gs_renderer().set_point_lights(scene_data.static_lights);
     }
 
     // Only load GS data — no player, NPCs, tilemap, weather

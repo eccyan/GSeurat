@@ -665,60 +665,8 @@ void GsDemoState::build_draw_lists(AppBase& app) {
         }
     }
 
-    // Always render light glow overlay (independent of scene layers toggle)
-    auto& gs_for_lights = app.renderer().gs_renderer();
-    if (gs_for_lights.has_cloud() && !app.scene().lights().empty()) {
-        float cam_lx = distance_ * std::cos(elevation_) * std::sin(azimuth_);
-        float cam_ly = distance_ * std::sin(elevation_);
-        float cam_lz = distance_ * std::cos(elevation_) * std::cos(azimuth_);
-        glm::vec3 cam_lpos = target_ + glm::vec3(cam_lx, cam_ly, cam_lz);
-        auto l_view = glm::lookAt(cam_lpos, target_, glm::vec3(0, 1, 0));
-        float l_aspect = static_cast<float>(gs_for_lights.output_width()) /
-                         static_cast<float>(gs_for_lights.output_height());
-        auto l_proj = glm::perspective(glm::radians(45.0f), l_aspect, 0.1f, 1000.0f);
-        l_proj[1][1] *= -1.0f;
-        auto l_vp = l_proj * l_view;
-        constexpr float lsw = 1280.0f;
-        constexpr float lsh = 720.0f;
-
-        auto project_light = [&](glm::vec3 world) -> std::pair<float, float> {
-            auto clip = l_vp * glm::vec4(world, 1.0f);
-            if (clip.w <= 0.0f) return {-999.0f, -999.0f};
-            float nx = clip.x / clip.w;
-            float ny = clip.y / clip.w;
-            return {(nx * 0.5f + 0.5f) * lsw, (1.0f - (ny * 0.5f + 0.5f)) * lsh};
-        };
-
-        auto& scene_lights = app.scene().lights();
-        for (size_t i = 0; i < scene_lights.size(); ++i) {
-            const auto& pl = scene_lights[i];
-            glm::vec3 light_world(pl.position_and_radius.x,
-                                  pl.position_and_radius.z,
-                                  pl.position_and_radius.y);
-            float radius = pl.position_and_radius.w;
-            auto [sx, sy] = project_light(light_world);
-            if (sx > -100 && sx < lsw + 100 && sy > -100 && sy < lsh + 100) {
-                // Glow panels (large, semi-transparent)
-                float glow_r = glm::clamp(radius * 10.0f, 40.0f, 300.0f);
-                ui.panel(sx, sy, glow_r, glow_r,
-                         {pl.color.r, pl.color.g, pl.color.b, 0.12f * pl.color.a});
-                ui.panel(sx, sy, glow_r * 0.5f, glow_r * 0.5f,
-                         {pl.color.r, pl.color.g, pl.color.b, 0.25f * pl.color.a});
-                ui.panel(sx, sy, glow_r * 0.2f, glow_r * 0.2f,
-                         {pl.color.r, pl.color.g, pl.color.b, 0.5f * pl.color.a});
-                // Center dot + label (only when scene layers active)
-                if (scene_layers_active_) {
-                    ui.panel(sx, sy, 10.0f, 10.0f,
-                             {pl.color.r, pl.color.g, pl.color.b, 0.9f});
-                    ui.panel(sx, sy, 4.0f, 4.0f, {1.0f, 1.0f, 1.0f, 1.0f});
-                    char llabel[16];
-                    std::snprintf(llabel, sizeof(llabel), "L%zu", i);
-                    ui.label(llabel, sx - 4.0f, sy + 10.0f, 0.3f,
-                             {1.0f, 1.0f, 1.0f, 1.0f});
-                }
-            }
-        }
-    }
+    // Light markers are now only shown in scene layers debug (N key)
+    // Actual lighting is handled by the GS compute shader (light_mode=2)
 }
 
 void GsDemoState::enter_streaming_mode(AppBase& app) {
