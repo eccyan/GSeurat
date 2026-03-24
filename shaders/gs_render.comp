@@ -155,7 +155,8 @@ void main() {
                 // Mode 2: World-space point lights
                 // Reconstruct world position from pixel + view-space Z depth
                 vec2 ndc = (vec2(pixel) + 0.5) / vec2(float(width), float(height)) * 2.0 - 1.0;
-                ndc.y = -ndc.y;  // Vulkan Y-flip
+                // No manual Y-flip: proj already has Vulkan Y-flip baked in,
+                // so inverse(proj) correctly maps pixel NDC → view space.
                 vec4 clip_pos = inverse(proj) * vec4(ndc, 0.5, 1.0);
                 vec3 view_dir = normalize(clip_pos.xyz / clip_pos.w);
                 // Scale ray so its Z component matches the view-space depth

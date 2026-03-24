@@ -662,10 +662,10 @@ void GsDemoState::build_draw_lists(AppBase& app) {
                 }
             }
 
-            // Draw light markers (L0, L1, ...)
-            auto& scene_lights = app.scene().lights();
-            for (size_t i = 0; i < scene_lights.size(); ++i) {
-                const auto& pl = scene_lights[i];
+            // Draw light markers (L0, L1, ...) using PLY-transformed positions
+            auto& gs_lights = app.renderer().gs_renderer().point_lights();
+            for (size_t i = 0; i < gs_lights.size(); ++i) {
+                const auto& pl = gs_lights[i];
                 glm::vec3 light_world(pl.position_and_radius.x,
                                       pl.position_and_radius.z,  // height → Y
                                       pl.position_and_radius.y); // Z
