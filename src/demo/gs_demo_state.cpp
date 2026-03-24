@@ -662,11 +662,26 @@ void GsDemoState::build_draw_lists(AppBase& app) {
                 }
             }
 
+            // Draw light markers (L0, L1, ...)
+            auto& scene_lights = app.scene().lights();
+            for (size_t i = 0; i < scene_lights.size(); ++i) {
+                const auto& pl = scene_lights[i];
+                glm::vec3 light_world(pl.position_and_radius.x,
+                                      pl.position_and_radius.z,  // height → Y
+                                      pl.position_and_radius.y); // Z
+                auto [sx, sy] = project(light_world);
+                if (sx > 0 && sx < screen_w && sy > 0 && sy < screen_h) {
+                    ui.panel(sx, sy, 10.0f, 10.0f,
+                             {pl.color.r, pl.color.g, pl.color.b, 0.9f});
+                    ui.panel(sx, sy, 4.0f, 4.0f, {1.0f, 1.0f, 1.0f, 1.0f});
+                    char llabel[16];
+                    std::snprintf(llabel, sizeof(llabel), "L%zu", i);
+                    ui.label(llabel, sx - 4.0f, sy + 10.0f, 0.3f,
+                             {1.0f, 1.0f, 1.0f, 1.0f});
+                }
+            }
         }
     }
-
-    // Light markers are now only shown in scene layers debug (N key)
-    // Actual lighting is handled by the GS compute shader (light_mode=2)
 }
 
 void GsDemoState::enter_streaming_mode(AppBase& app) {
