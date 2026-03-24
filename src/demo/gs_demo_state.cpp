@@ -611,8 +611,8 @@ void GsDemoState::build_draw_lists(AppBase& app) {
             glm::vec3 cam_pos = target_ + glm::vec3(cam_x, cam_y, cam_z);
             auto view = glm::lookAt(cam_pos, target_, glm::vec3(0, 1, 0));
 
-            float aspect = static_cast<float>(gs.output_width()) / static_cast<float>(gs.output_height());
-            auto proj = glm::perspective(glm::radians(45.0f), aspect, 0.1f, 1000.0f);
+            // Must match the camera FOV and window aspect used in update_camera()
+            auto proj = glm::perspective(glm::radians(60.0f), 1280.0f / 720.0f, 0.1f, 1000.0f);
             proj[1][1] *= -1.0f;
             auto vp = proj * view;
 
