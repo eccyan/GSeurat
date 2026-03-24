@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { useThree } from '@react-three/fiber';
 import { Html, Line } from '@react-three/drei';
@@ -22,6 +22,16 @@ function DraggableNpc({ id, position, isSelected, onSelect, waypoints }: {
   const lastClientY = useRef(0);
   const currentY = useRef(0);
   const currentXZ = useRef<[number, number]>([0, 0]);
+
+  const grabMode = useSceneStore((s) => s.grabMode);
+
+  useEffect(() => {
+    if (grabMode) {
+      setDragging(false);
+      setDragPos(null);
+      setHeightMode(false);
+    }
+  }, [grabMode]);
 
   const displayPos = dragPos ?? position;
 

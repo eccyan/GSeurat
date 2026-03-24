@@ -146,10 +146,12 @@ function GrabPlane() {
     };
   }, [grabMode]);
 
-  // Initialize currentY when grab starts
+  // Initialize currentY when grab starts, clear label when grab ends
   useEffect(() => {
     if (grabMode) {
       currentY.current = getGrabbedEntityY();
+    } else {
+      setLabelText('');
     }
   }, [grabMode]);
 

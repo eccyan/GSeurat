@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { useThree } from '@react-three/fiber';
 import { Html } from '@react-three/drei';
@@ -22,6 +22,16 @@ export function PlayerMarker() {
   const currentXZ = useRef<[number, number]>([0, 0]);
 
   const isSelected = selectedEntity?.type === 'player';
+  const grabMode = useSceneStore((s) => s.grabMode);
+
+  useEffect(() => {
+    if (grabMode) {
+      setDragging(false);
+      setDragPos(null);
+      setHeightMode(false);
+    }
+  }, [grabMode]);
+
   const displayPos = dragPos ?? player.position;
 
   const handlePointerDown = useCallback((e: any) => {

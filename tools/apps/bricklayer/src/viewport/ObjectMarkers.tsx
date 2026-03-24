@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { useThree } from '@react-three/fiber';
 import { Html } from '@react-three/drei';
@@ -23,6 +23,17 @@ function DraggableMarker({ id, position, scale, color, isSelected, onSelect }: {
   const lastClientY = useRef(0);
   const currentY = useRef(0);
   const currentXZ = useRef<[number, number]>([0, 0]);
+
+  const grabMode = useSceneStore((s) => s.grabMode);
+
+  // Clear local drag state when grab mode activates
+  useEffect(() => {
+    if (grabMode) {
+      setDragging(false);
+      setDragPos(null);
+      setHeightMode(false);
+    }
+  }, [grabMode]);
 
   const displayPos = dragPos ?? position;
 
