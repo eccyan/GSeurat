@@ -112,21 +112,30 @@ function GrabOverlay() {
   const grabMode = useSceneStore((s) => s.grabMode);
   if (!grabMode) return null;
 
+  const handleConfirm = (e: React.PointerEvent) => {
+    if (e.button !== 0) return; // Only primary click
+    const store = useSceneStore.getState();
+    store.setGrabMode(false);
+    store.setGrabOriginalPosition(null);
+  };
+
   return (
-    <div style={{
-      position: 'absolute',
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      zIndex: 10,
-      cursor: 'move',
-      display: 'flex',
-      alignItems: 'flex-end',
-      justifyContent: 'center',
-      paddingBottom: 12,
-      pointerEvents: 'none',
-    }}>
+    <div
+      onPointerDown={handleConfirm}
+      style={{
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        zIndex: 10,
+        cursor: 'move',
+        display: 'flex',
+        alignItems: 'flex-end',
+        justifyContent: 'center',
+        paddingBottom: 12,
+      }}
+    >
       <div style={{
         background: 'rgba(0,0,0,0.7)',
         color: '#ffcc00',

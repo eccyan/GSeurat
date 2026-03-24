@@ -153,7 +153,8 @@ function GrabPlane() {
     }
   }, [grabMode]);
 
-  // Pointer tracking via DOM events for smooth grab
+  // Pointer tracking via window events for smooth grab
+  // Uses window so the overlay div doesn't block pointermove
   useEffect(() => {
     if (!grabMode || !selectedEntity) return;
 
@@ -214,22 +215,9 @@ function GrabPlane() {
       }
     };
 
-    const onConfirm = (ev: PointerEvent) => {
-      // Only confirm on left button
-      if (ev.button !== 0) return;
-      // Confirm grab — position is already committed
-      const store = useSceneStore.getState();
-      store.setGrabMode(false);
-      store.setGrabOriginalPosition(null);
-      setLabelText('');
-    };
-
-    el.addEventListener('pointermove', onMove);
-    // Use pointerdown instead of click — click doesn't fire when mouse moved
-    el.addEventListener('pointerdown', onConfirm);
+    window.addEventListener('pointermove', onMove);
     return () => {
-      el.removeEventListener('pointermove', onMove);
-      el.removeEventListener('pointerdown', onConfirm);
+      window.removeEventListener('pointermove', onMove);
     };
   }, [grabMode, selectedEntity, shiftHeld, camera, gl]);
 
