@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Viewport, getOrbitControls } from './viewport/Viewport.js';
 import { MenuBar } from './panels/MenuBar.js';
 import { ImportDialog } from './panels/ImportDialog.js';
@@ -110,32 +110,42 @@ const toolKeys: Record<string, ToolType> = {
 
 function GrabOverlay() {
   const grabMode = useSceneStore((s) => s.grabMode);
+
+  // Window-level listener — immune to R3F pointer capture
+  useEffect(() => {
+    if (!grabMode) return;
+
+    const handleConfirm = (e: PointerEvent) => {
+      if (e.button !== 0) return; // Only primary click
+      const store = useSceneStore.getState();
+      store.setGrabMode(false);
+      store.setGrabOriginalPosition(null);
+    };
+
+    // Use capture phase to guarantee we get the event first
+    window.addEventListener('pointerdown', handleConfirm, { capture: true });
+    return () => {
+      window.removeEventListener('pointerdown', handleConfirm, { capture: true });
+    };
+  }, [grabMode]);
+
   if (!grabMode) return null;
 
-  const handleConfirm = (e: React.PointerEvent) => {
-    if (e.button !== 0) return; // Only primary click
-    const store = useSceneStore.getState();
-    store.setGrabMode(false);
-    store.setGrabOriginalPosition(null);
-  };
-
   return (
-    <div
-      onPointerDown={handleConfirm}
-      style={{
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        zIndex: 10,
-        cursor: 'move',
-        display: 'flex',
-        alignItems: 'flex-end',
-        justifyContent: 'center',
-        paddingBottom: 12,
-      }}
-    >
+    <div style={{
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      zIndex: 10,
+      cursor: 'move',
+      display: 'flex',
+      alignItems: 'flex-end',
+      justifyContent: 'center',
+      paddingBottom: 12,
+      pointerEvents: 'none',
+    }}>
       <div style={{
         background: 'rgba(0,0,0,0.7)',
         color: '#ffcc00',
