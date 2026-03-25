@@ -204,6 +204,15 @@ SceneData SceneLoader::from_json(const nlohmann::json& j) {
             auto color = parse_vec4(light_j["color"]);
             float intensity = light_j.value("intensity", 1.0f);
             pl.color = {color.r, color.g, color.b, intensity};
+            // Spot light: optional direction + cone_angle (degrees)
+            if (light_j.contains("direction")) {
+                auto dir = parse_vec3(light_j["direction"]);
+                float len = glm::length(dir);
+                if (len > 0.001f) dir /= len;  // normalize
+                float cone_deg = light_j.value("cone_angle", 180.0f);
+                float cone_cos = std::cos(glm::radians(cone_deg * 0.5f));
+                pl.direction_and_cone = {dir.x, dir.y, dir.z, cone_cos};
+            }
             // Area light: optional width/height/normal
             if (light_j.contains("area_width")) {
                 float aw = light_j.value("area_width", 0.0f);
@@ -558,6 +567,17 @@ nlohmann::json SceneLoader::to_json(const SceneData& data) {
                 {"color", {pl.color.r, pl.color.g, pl.color.b}},
                 {"intensity", pl.color.a}
             };
+            // Save spot light fields if not a point light (cone_cos == -1)
+            float cone_cos = pl.direction_and_cone.w;
+            if (cone_cos > -0.99f) {
+                light_obj["direction"] = {
+                    pl.direction_and_cone.x,
+                    pl.direction_and_cone.y,
+                    pl.direction_and_cone.z
+                };
+                float cone_deg = glm::degrees(std::acos(cone_cos)) * 2.0f;
+                light_obj["cone_angle"] = cone_deg;
+            }
             if (pl.area_params.x > 0.001f || pl.area_params.y > 0.001f) {
                 light_obj["area_width"] = pl.area_params.x;
                 light_obj["area_height"] = pl.area_params.y;

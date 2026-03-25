@@ -3,17 +3,17 @@ import * as THREE from 'three';
 import { Html } from '@react-three/drei';
 import { useSceneStore } from '../store/useSceneStore.js';
 
-function LightMarker({ position, height, radius, color, isSelected, onSelect, areaWidth, areaHeight, coneAngle, direction }: {
+function LightMarker({ position, height, radius, color, isSelected, onSelect, coneAngle, direction, areaWidth, areaHeight }: {
   position: [number, number];
   height: number;
   radius: number;
   color: [number, number, number];
   isSelected: boolean;
   onSelect: () => void;
-  areaWidth: number;
-  areaHeight: number;
   coneAngle: number;
   direction: [number, number, number];
+  areaWidth: number;
+  areaHeight: number;
 }) {
   const colorStr = `rgb(${Math.round(color[0] * 255)},${Math.round(color[1] * 255)},${Math.round(color[2] * 255)})`;
   const isArea = areaWidth > 0 && areaHeight > 0;
@@ -50,7 +50,7 @@ function LightMarker({ position, height, radius, color, isSelected, onSelect, ar
           <meshBasicMaterial color={colorStr} transparent opacity={0.5} side={2} />
         </mesh>
       )}
-      {/* Spot light: cone wireframe + base ring + angle label */}
+      {/* Spot light: cone wireframe + angle label */}
       {isSpot && coneRotation && (
         <>
           <mesh rotation={coneRotation}>
@@ -62,7 +62,6 @@ function LightMarker({ position, height, radius, color, isSelected, onSelect, ar
               opacity={0.6}
             />
           </mesh>
-          {/* Angle label */}
           {isSelected && (
             <Html position={[0, -coneLength * 0.5, 0]} center>
               <div style={{
@@ -123,10 +122,10 @@ export function LightGizmos() {
           color={light.color}
           isSelected={selectedEntity?.type === 'light' && selectedEntity.id === light.id}
           onSelect={() => setSelectedEntity({ type: 'light', id: light.id })}
-          areaWidth={light.area_width ?? 0}
-          areaHeight={light.area_height ?? 0}
           coneAngle={light.cone_angle ?? 180}
           direction={light.direction ?? [0, -1, 0]}
+          areaWidth={light.area_width ?? 0}
+          areaHeight={light.area_height ?? 0}
         />
       ))}
     </group>

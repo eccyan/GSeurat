@@ -439,6 +439,7 @@ void Renderer::draw_scene(Scene& scene,
         pp_params.flash_g = flash_g_;
         pp_params.flash_b = flash_b_;
     }
+    pp_params.god_rays_intensity = god_rays_intensity_;
 
     // Update light glow UBO with GS camera VP and scene lights
     {

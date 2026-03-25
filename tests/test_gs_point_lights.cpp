@@ -68,7 +68,70 @@ int main() {
         std::printf("PASS: Light count capped at 8\n");
     }
 
-    // 5. Area light defaults to point light (area_params = 0)
+    // 5. Spot light: direction_and_cone defaults to point light
+    {
+        PointLight pl;
+        pl.position_and_radius = {10.0f, 20.0f, 5.0f, 8.0f};
+        pl.color = {1.0f, 1.0f, 1.0f, 1.0f};
+        // Default: direction (0,-1,0), cone_cos -1 (point light)
+        assert(pl.direction_and_cone.x == 0.0f);
+        assert(pl.direction_and_cone.y == -1.0f);
+        assert(pl.direction_and_cone.z == 0.0f);
+        assert(pl.direction_and_cone.w == -1.0f);  // cos(180/2) = cos(90) ≈ 0, but -1 = sentinel
+
+        std::printf("PASS: Spot light default = point light (cone_cos -1)\n");
+    }
+
+    // 6. Spot light: explicit direction and cone angle
+    {
+        PointLight pl;
+        pl.position_and_radius = {0.0f, 0.0f, 10.0f, 20.0f};
+        pl.color = {1.0f, 1.0f, 1.0f, 5.0f};
+        // 45-degree cone, pointing straight down
+        float cone_deg = 45.0f;
+        float cone_cos = std::cos(cone_deg * 0.5f * 3.14159265f / 180.0f);
+        pl.direction_and_cone = {0.0f, -1.0f, 0.0f, cone_cos};
+
+        assert(pl.direction_and_cone.y == -1.0f);  // direction Y
+        assert(pl.direction_and_cone.w > 0.9f);     // cos(22.5°) ≈ 0.924
+        assert(pl.direction_and_cone.w < 1.0f);     // not exactly 1
+        assert(pl.direction_and_cone.w > -0.99f);   // not a point light
+
+        std::printf("PASS: Spot light 45° cone (cos=%.3f)\n", cone_cos);
+    }
+
+    // 7. Spot cone attenuation logic (mirrors shader)
+    {
+        // Simulate the shader's spot attenuation calculation
+        auto spot_atten = [](float cos_angle, float cone_cos) -> float {
+            if (cone_cos <= -0.99f) return 1.0f;  // point light
+            float outer = cone_cos;
+            float inner = std::min(outer + 0.1f, 1.0f);
+            float denom = inner - outer;
+            if (denom < 0.001f) denom = 0.001f;
+            float a = (cos_angle - outer) / denom;
+            return std::max(0.0f, std::min(1.0f, a));
+        };
+
+        // Point light (cone_cos = -1): always full
+        assert(spot_atten(0.5f, -1.0f) == 1.0f);
+
+        // 90° cone (cos(45°) ≈ 0.707): center of cone = full
+        float cone_cos_90 = std::cos(45.0f * 3.14159265f / 180.0f);
+        assert(spot_atten(1.0f, cone_cos_90) > 0.99f);  // dead center
+
+        // Outside cone = 0
+        assert(spot_atten(0.0f, cone_cos_90) == 0.0f);  // perpendicular
+        assert(spot_atten(-0.5f, cone_cos_90) == 0.0f);  // behind
+
+        // At cone edge
+        float at_edge = spot_atten(cone_cos_90, cone_cos_90);
+        assert(at_edge >= 0.0f && at_edge <= 0.01f);  // right at outer edge
+
+        std::printf("PASS: Spot cone attenuation logic\n");
+    }
+
+    // 8. Area light defaults to point light (area_params = 0)
     {
         PointLight pl;
         pl.position_and_radius = {10.0f, 20.0f, 5.0f, 8.0f};
@@ -81,7 +144,7 @@ int main() {
         std::printf("PASS: Area light default = point light (size 0)\n");
     }
 
-    // 6. Area light with explicit dimensions
+    // 9. Area light with explicit dimensions
     {
         PointLight pl;
         pl.position_and_radius = {0.0f, 0.0f, 10.0f, 30.0f};
@@ -96,6 +159,6 @@ int main() {
         std::printf("PASS: Area light 5x3, normal (+1,0)\n");
     }
 
-    std::printf("\nAll GS point/area light tests passed.\n");
+    std::printf("\nAll GS point/spot/area light tests passed.\n");
     return 0;
 }

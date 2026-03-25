@@ -188,6 +188,7 @@ void DemoApp::init_scene(const std::string& scene_path) {
             if (!gs_lights.empty()) {
                 renderer_.gs_renderer().set_light_mode(2);
                 renderer_.gs_renderer().set_point_lights(gs_lights);
+                renderer_.set_god_rays_intensity(1.0f);
                 for (size_t i = 0; i < gs_lights.size(); i++) {
                     const auto& l = gs_lights[i];
                     std::fprintf(stderr, "GS: Point light[%zu] pos_rad=(%.1f,%.1f,%.1f,%.1f) color=(%.2f,%.2f,%.2f) intensity=%.1f\n",

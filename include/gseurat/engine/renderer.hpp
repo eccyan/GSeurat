@@ -72,6 +72,8 @@ public:
 
     void set_ca_intensity(float v) { ca_intensity_ = v; }
     void set_flash_color(float r, float g, float b) { flash_r_ = r; flash_g_ = g; flash_b_ = b; }
+    void set_god_rays_intensity(float v) { god_rays_intensity_ = v; }
+    float god_rays_intensity() const { return god_rays_intensity_; }
 
     void request_screenshot(const std::string& path) { screenshot_.request(path); }
     bool screenshot_write_ok() const { return screenshot_.write_ok(); }
@@ -136,6 +138,7 @@ private:
     float flash_r_ = 0.0f;
     float flash_g_ = 0.0f;
     float flash_b_ = 0.0f;
+    float god_rays_intensity_ = 0.0f;
 
     uint32_t current_frame_ = 0;
     uint32_t acquire_semaphore_index_ = 0;
