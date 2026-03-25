@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import * as THREE from 'three';
+import { Html } from '@react-three/drei';
 import { useSceneStore } from '../store/useSceneStore.js';
 
 function LightMarker({ position, height, radius, color, isSelected, onSelect, areaWidth, areaHeight, coneAngle, direction }: {
@@ -49,30 +50,55 @@ function LightMarker({ position, height, radius, color, isSelected, onSelect, ar
           <meshBasicMaterial color={colorStr} transparent opacity={0.5} side={2} />
         </mesh>
       )}
-      {/* Spot light: cone wireframe */}
+      {/* Spot light: cone wireframe + base ring + angle label */}
       {isSpot && coneRotation && (
-        <mesh rotation={coneRotation}>
-          <coneGeometry args={[coneRadius, coneLength, 16, 1, true]} />
-          <meshBasicMaterial
-            color={isSelected ? '#ffffff' : colorStr}
-            wireframe
-            transparent
-            opacity={0.6}
-          />
-        </mesh>
+        <>
+          <mesh rotation={coneRotation}>
+            <coneGeometry args={[coneRadius, coneLength, 16, 1, true]} />
+            <meshBasicMaterial
+              color={isSelected ? '#ffffff' : colorStr}
+              wireframe
+              transparent
+              opacity={0.6}
+            />
+          </mesh>
+          {/* Angle label */}
+          {isSelected && (
+            <Html position={[0, -coneLength * 0.5, 0]} center>
+              <div style={{
+                background: 'rgba(0,0,0,0.7)', color: '#ffcc00',
+                padding: '1px 5px', borderRadius: 3, fontSize: 10, whiteSpace: 'nowrap',
+              }}>
+                {coneAngle}°
+              </div>
+            </Html>
+          )}
+        </>
       )}
-      {/* Area light: rectangle wireframe */}
+      {/* Area light: rectangle wireframe + size label */}
       {isArea && (
-        <mesh rotation={[-Math.PI / 2, 0, 0]}>
-          <planeGeometry args={[areaWidth, areaHeight]} />
-          <meshBasicMaterial
-            color={isSelected ? '#ffffff' : colorStr}
-            wireframe
-            transparent
-            opacity={0.7}
-            side={2}
-          />
-        </mesh>
+        <>
+          <mesh rotation={[-Math.PI / 2, 0, 0]}>
+            <planeGeometry args={[areaWidth, areaHeight]} />
+            <meshBasicMaterial
+              color={isSelected ? '#ffffff' : colorStr}
+              wireframe
+              transparent
+              opacity={0.7}
+              side={2}
+            />
+          </mesh>
+          {isSelected && (
+            <Html position={[0, 1.2, 0]} center>
+              <div style={{
+                background: 'rgba(0,0,0,0.7)', color: '#ffcc00',
+                padding: '1px 5px', borderRadius: 3, fontSize: 10, whiteSpace: 'nowrap',
+              }}>
+                {areaWidth}x{areaHeight}
+              </div>
+            </Html>
+          )}
+        </>
       )}
     </group>
   );

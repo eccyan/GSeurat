@@ -131,9 +131,54 @@ function ObjectProperties({ obj }: { obj: PlacedObjectData }) {
   );
 }
 
+type LightType = 'point' | 'spot' | 'area';
+
+function getLightType(light: StaticLight): LightType {
+  if ((light.area_width ?? 0) > 0) return 'area';
+  if ((light.cone_angle ?? 180) < 180) return 'spot';
+  return 'point';
+}
+
+const lightTypeLabels: Record<LightType, string> = {
+  point: 'Point Light',
+  spot: 'Spot Light',
+  area: 'Area Light',
+};
+
+const lightTypeDescriptions: Record<LightType, string> = {
+  point: 'Emits light equally in all directions, like a light bulb.',
+  spot: 'Projects light within a cone, like a flashlight or streetlamp.',
+  area: 'Emits light from a rectangular surface, like a window or fluorescent panel.',
+};
+
 function LightProperties({ light }: { light: StaticLight }) {
   const update = useSceneStore((s) => s.updateLight);
   const remove = useSceneStore((s) => s.removeLight);
+  const lightType = getLightType(light);
+
+  const setLightType = (type: LightType) => {
+    switch (type) {
+      case 'point':
+        update(light.id, {
+          cone_angle: undefined, direction: undefined,
+          area_width: undefined, area_height: undefined, area_normal: undefined,
+        });
+        break;
+      case 'spot':
+        update(light.id, {
+          cone_angle: 45, direction: light.direction ?? [0, -1, 0],
+          area_width: undefined, area_height: undefined, area_normal: undefined,
+        });
+        break;
+      case 'area':
+        update(light.id, {
+          cone_angle: undefined, direction: undefined,
+          area_width: light.area_width || 5, area_height: light.area_height || 3,
+          area_normal: light.area_normal ?? [0, 0],
+        });
+        break;
+    }
+  };
 
   return (
     <div>
@@ -142,6 +187,27 @@ function LightProperties({ light }: { light: StaticLight }) {
         <button style={styles.btnDanger} onClick={() => remove(light.id)}>Remove</button>
       </div>
 
+      {/* Type selector */}
+      <div style={styles.section}>
+        <span style={styles.label}>Type</span>
+        <select
+          value={lightType}
+          onChange={(e) => setLightType(e.target.value as LightType)}
+          style={{
+            padding: '4px 6px', background: '#2a2a4a', border: '1px solid #444',
+            borderRadius: 4, color: '#ddd', fontSize: 13, width: '100%',
+          }}
+        >
+          {(['point', 'spot', 'area'] as LightType[]).map((t) => (
+            <option key={t} value={t}>{lightTypeLabels[t]}</option>
+          ))}
+        </select>
+        <span style={{ fontSize: 10, color: '#666', marginTop: 4 }}>
+          {lightTypeDescriptions[lightType]}
+        </span>
+      </div>
+
+      {/* Common fields */}
       <div style={styles.section}>
         <span style={styles.label}>Position</span>
         <div style={styles.row}>
@@ -209,99 +275,96 @@ function LightProperties({ light }: { light: StaticLight }) {
         />
       </div>
 
-      <div style={styles.section}>
-        <span style={styles.label}>Cone Angle</span>
-        <NumberInput
-          step={5}
-          min={1}
-          max={180}
-          value={light.cone_angle ?? 180}
-          onChange={(v) => {
-            const angle = Math.max(1, Math.min(180, v));
-            if (angle >= 180) {
-              update(light.id, { cone_angle: undefined, direction: undefined });
-            } else {
-              update(light.id, {
-                cone_angle: angle,
-                direction: light.direction ?? [0, -1, 0],
-              });
-            }
-          }}
-          style={styles.input}
-        />
-      </div>
-
-      {(light.cone_angle ?? 180) < 180 && (
-        <div style={styles.section}>
-          <span style={styles.label}>Direction</span>
-          <div style={styles.row}>
+      {/* Spot light fields */}
+      {lightType === 'spot' && (
+        <>
+          <div style={styles.section}>
+            <span style={styles.label}>Cone Angle</span>
             <NumberInput
-              label="X"
-              step={0.1}
-              value={light.direction?.[0] ?? 0}
-              onChange={(v) => update(light.id, { direction: [v, light.direction?.[1] ?? -1, light.direction?.[2] ?? 0] })}
-              style={styles.input}
-            />
-            <NumberInput
-              label="Y"
-              step={0.1}
-              value={light.direction?.[1] ?? -1}
-              onChange={(v) => update(light.id, { direction: [light.direction?.[0] ?? 0, v, light.direction?.[2] ?? 0] })}
-              style={styles.input}
-            />
-            <NumberInput
-              label="Z"
-              step={0.1}
-              value={light.direction?.[2] ?? 0}
-              onChange={(v) => update(light.id, { direction: [light.direction?.[0] ?? 0, light.direction?.[1] ?? -1, v] })}
+              step={5}
+              min={1}
+              max={179}
+              value={light.cone_angle ?? 45}
+              onChange={(v) => update(light.id, { cone_angle: Math.max(1, Math.min(179, v)) })}
               style={styles.input}
             />
           </div>
-        </div>
+          <div style={styles.section}>
+            <span style={styles.label}>Direction</span>
+            <div style={styles.row}>
+              <NumberInput
+                label="X"
+                step={0.1}
+                value={light.direction?.[0] ?? 0}
+                onChange={(v) => update(light.id, { direction: [v, light.direction?.[1] ?? -1, light.direction?.[2] ?? 0] })}
+                style={styles.input}
+              />
+              <NumberInput
+                label="Y"
+                step={0.1}
+                value={light.direction?.[1] ?? -1}
+                onChange={(v) => update(light.id, { direction: [light.direction?.[0] ?? 0, v, light.direction?.[2] ?? 0] })}
+                style={styles.input}
+              />
+              <NumberInput
+                label="Z"
+                step={0.1}
+                value={light.direction?.[2] ?? 0}
+                onChange={(v) => update(light.id, { direction: [light.direction?.[0] ?? 0, light.direction?.[1] ?? -1, v] })}
+                style={styles.input}
+              />
+            </div>
+          </div>
+        </>
       )}
 
-      <div style={styles.section}>
-        <span style={styles.label}>Area Size</span>
-        <div style={styles.row}>
-          <NumberInput
-            label="W"
-            step={0.5}
-            min={0}
-            value={light.area_width ?? 0}
-            onChange={(v) => update(light.id, { area_width: Math.max(0, v), area_height: light.area_height ?? Math.max(0, v) })}
-            style={styles.input}
-          />
-          <NumberInput
-            label="H"
-            step={0.5}
-            min={0}
-            value={light.area_height ?? 0}
-            onChange={(v) => update(light.id, { area_height: Math.max(0, v) })}
-            style={styles.input}
-          />
-        </div>
-      </div>
-
-      {(light.area_width ?? 0) > 0 && (
-        <div style={styles.section}>
-          <span style={styles.label}>Area Normal</span>
-          <div style={styles.row}>
-            <NumberInput
-              label="X"
-              step={0.1}
-              value={light.area_normal?.[0] ?? 0}
-              onChange={(v) => update(light.id, { area_normal: [v, light.area_normal?.[1] ?? 0] })}
-              style={styles.input}
-            />
-            <NumberInput
-              label="Z"
-              step={0.1}
-              value={light.area_normal?.[1] ?? 0}
-              onChange={(v) => update(light.id, { area_normal: [light.area_normal?.[0] ?? 0, v] })}
-              style={styles.input}
-            />
+      {/* Area light fields */}
+      {lightType === 'area' && (
+        <>
+          <div style={styles.section}>
+            <span style={styles.label}>Area Size</span>
+            <div style={styles.row}>
+              <NumberInput
+                label="W"
+                step={0.5}
+                min={0.1}
+                value={light.area_width ?? 5}
+                onChange={(v) => update(light.id, { area_width: Math.max(0.1, v) })}
+                style={styles.input}
+              />
+              <NumberInput
+                label="H"
+                step={0.5}
+                min={0.1}
+                value={light.area_height ?? 3}
+                onChange={(v) => update(light.id, { area_height: Math.max(0.1, v) })}
+                style={styles.input}
+              />
+            </div>
           </div>
-        </div>
+          <div style={styles.section}>
+            <span style={styles.label}>Face Direction</span>
+            <div style={styles.row}>
+              <NumberInput
+                label="X"
+                step={0.1}
+                value={light.area_normal?.[0] ?? 0}
+                onChange={(v) => update(light.id, { area_normal: [v, light.area_normal?.[1] ?? 0] })}
+                style={styles.input}
+              />
+              <NumberInput
+                label="Z"
+                step={0.1}
+                value={light.area_normal?.[1] ?? 0}
+                onChange={(v) => update(light.id, { area_normal: [light.area_normal?.[0] ?? 0, v] })}
+                style={styles.input}
+              />
+            </div>
+            <span style={{ fontSize: 10, color: '#666', marginTop: 2 }}>
+              XZ direction the light panel faces. Leave 0,0 for downward.
+            </span>
+          </div>
+        </>
       )}
     </div>
   );

@@ -66,7 +66,10 @@ export function SceneTab() {
       </div>
 
       <div style={styles.section}>
-        <span style={styles.label}>God Rays</span>
+        <span style={styles.label}>God Rays (Volume Light)</span>
+        <span style={{ fontSize: 10, color: '#666', marginBottom: 4 }}>
+          Visible light shafts from scene lights through geometry. Set to 0 to disable.
+        </span>
         <div style={styles.row}>
           <NumberInput
             step={0.1}
@@ -76,7 +79,7 @@ export function SceneTab() {
             onChange={(v) => setGodRaysIntensity(Math.max(0, v))}
             style={styles.input}
           />
-          <span style={{ fontSize: 11, color: '#666', minWidth: 20 }}>
+          <span style={{ fontSize: 11, color: godRaysIntensity > 0 ? '#8f8' : '#666', minWidth: 20 }}>
             {godRaysIntensity > 0 ? 'ON' : 'OFF'}
           </span>
         </div>
