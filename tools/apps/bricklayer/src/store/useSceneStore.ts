@@ -179,6 +179,7 @@ export interface SceneStoreState {
 
   // Scene elements
   ambientColor: [number, number, number, number];
+  godRaysIntensity: number;
   staticLights: StaticLight[];
   npcs: NpcData[];
   portals: PortalData[];
@@ -236,6 +237,7 @@ export interface SceneStoreState {
 
   // Actions – scene
   setAmbientColor: (c: [number, number, number, number]) => void;
+  setGodRaysIntensity: (v: number) => void;
   addLight: (position?: [number, number]) => void;
   updateLight: (id: string, patch: Partial<StaticLight>) => void;
   removeLight: (id: string) => void;
@@ -413,6 +415,7 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
   mirrorZ: false,
 
   ambientColor: [0.25, 0.28, 0.45, 1],
+  godRaysIntensity: 0,
   staticLights: [],
   npcs: [],
   portals: [],
@@ -582,6 +585,7 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
 
   // ── Scene actions ──
   setAmbientColor: (c) => set({ ambientColor: c }),
+  setGodRaysIntensity: (v: number) => set({ godRaysIntensity: v, isDirty: true }),
 
   addLight: (pos?) => {
     const light: StaticLight = {
@@ -1054,6 +1058,7 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
       assets: s.assets.length > 0 ? s.assets : undefined,
       scene: {
         ambientColor: s.ambientColor,
+        godRaysIntensity: s.godRaysIntensity,
         staticLights: s.staticLights,
         npcs: s.npcs,
         portals: s.portals,
@@ -1087,6 +1092,7 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
       terrains: data.terrains ?? [],
       assets: data.assets ?? [],
       ambientColor: data.scene.ambientColor,
+      godRaysIntensity: data.scene.godRaysIntensity ?? 0,
       staticLights: data.scene.staticLights,
       npcs: data.scene.npcs,
       portals: data.scene.portals,

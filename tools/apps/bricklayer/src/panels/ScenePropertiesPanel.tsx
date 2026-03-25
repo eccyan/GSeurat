@@ -210,6 +210,57 @@ function LightProperties({ light }: { light: StaticLight }) {
       </div>
 
       <div style={styles.section}>
+        <span style={styles.label}>Cone Angle</span>
+        <NumberInput
+          step={5}
+          min={1}
+          max={180}
+          value={light.cone_angle ?? 180}
+          onChange={(v) => {
+            const angle = Math.max(1, Math.min(180, v));
+            if (angle >= 180) {
+              update(light.id, { cone_angle: undefined, direction: undefined });
+            } else {
+              update(light.id, {
+                cone_angle: angle,
+                direction: light.direction ?? [0, -1, 0],
+              });
+            }
+          }}
+          style={styles.input}
+        />
+      </div>
+
+      {(light.cone_angle ?? 180) < 180 && (
+        <div style={styles.section}>
+          <span style={styles.label}>Direction</span>
+          <div style={styles.row}>
+            <NumberInput
+              label="X"
+              step={0.1}
+              value={light.direction?.[0] ?? 0}
+              onChange={(v) => update(light.id, { direction: [v, light.direction?.[1] ?? -1, light.direction?.[2] ?? 0] })}
+              style={styles.input}
+            />
+            <NumberInput
+              label="Y"
+              step={0.1}
+              value={light.direction?.[1] ?? -1}
+              onChange={(v) => update(light.id, { direction: [light.direction?.[0] ?? 0, v, light.direction?.[2] ?? 0] })}
+              style={styles.input}
+            />
+            <NumberInput
+              label="Z"
+              step={0.1}
+              value={light.direction?.[2] ?? 0}
+              onChange={(v) => update(light.id, { direction: [light.direction?.[0] ?? 0, light.direction?.[1] ?? -1, v] })}
+              style={styles.input}
+            />
+          </div>
+        </div>
+      )}
+
+      <div style={styles.section}>
         <span style={styles.label}>Area Size</span>
         <div style={styles.row}>
           <NumberInput

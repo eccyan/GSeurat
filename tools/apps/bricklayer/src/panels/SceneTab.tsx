@@ -32,6 +32,8 @@ function hexToColor(hex: string, alpha: number): [number, number, number, number
 export function SceneTab() {
   const ambientColor = useSceneStore((s) => s.ambientColor);
   const setAmbientColor = useSceneStore((s) => s.setAmbientColor);
+  const godRaysIntensity = useSceneStore((s) => s.godRaysIntensity);
+  const setGodRaysIntensity = useSceneStore((s) => s.setGodRaysIntensity);
   const gridWidth = useSceneStore((s) => s.gridWidth);
   const gridDepth = useSceneStore((s) => s.gridDepth);
   const voxels = useSceneStore((s) => s.voxels);
@@ -59,6 +61,23 @@ export function SceneTab() {
           />
           <span style={{ fontSize: 12, color: '#aaa' }}>
             [{ambientColor.map((v) => v.toFixed(2)).join(', ')}]
+          </span>
+        </div>
+      </div>
+
+      <div style={styles.section}>
+        <span style={styles.label}>God Rays</span>
+        <div style={styles.row}>
+          <NumberInput
+            step={0.1}
+            min={0}
+            max={5}
+            value={godRaysIntensity}
+            onChange={(v) => setGodRaysIntensity(Math.max(0, v))}
+            style={styles.input}
+          />
+          <span style={{ fontSize: 11, color: '#666', minWidth: 20 }}>
+            {godRaysIntensity > 0 ? 'ON' : 'OFF'}
           </span>
         </div>
       </div>
