@@ -6,13 +6,21 @@ export function exportSceneJson(state: SceneStoreState): object {
   };
 
   if (state.staticLights.length > 0) {
-    scene.static_lights = state.staticLights.map((l) => ({
-      position: l.position,
-      radius: l.radius,
-      height: l.height,
-      color: l.color,
-      intensity: l.intensity,
-    }));
+    scene.static_lights = state.staticLights.map((l) => {
+      const out: Record<string, unknown> = {
+        position: l.position,
+        radius: l.radius,
+        height: l.height,
+        color: l.color,
+        intensity: l.intensity,
+      };
+      if (l.area_width && l.area_width > 0) {
+        out.area_width = l.area_width;
+        out.area_height = l.area_height ?? l.area_width;
+        if (l.area_normal) out.area_normal = l.area_normal;
+      }
+      return out;
+    });
   }
 
   if (state.npcs.length > 0) {

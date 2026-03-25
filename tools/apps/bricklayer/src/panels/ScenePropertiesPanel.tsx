@@ -208,6 +208,50 @@ function LightProperties({ light }: { light: StaticLight }) {
           style={styles.input}
         />
       </div>
+
+      <div style={styles.section}>
+        <span style={styles.label}>Area Size</span>
+        <div style={styles.row}>
+          <NumberInput
+            label="W"
+            step={0.5}
+            min={0}
+            value={light.area_width ?? 0}
+            onChange={(v) => update(light.id, { area_width: Math.max(0, v), area_height: light.area_height ?? Math.max(0, v) })}
+            style={styles.input}
+          />
+          <NumberInput
+            label="H"
+            step={0.5}
+            min={0}
+            value={light.area_height ?? 0}
+            onChange={(v) => update(light.id, { area_height: Math.max(0, v) })}
+            style={styles.input}
+          />
+        </div>
+      </div>
+
+      {(light.area_width ?? 0) > 0 && (
+        <div style={styles.section}>
+          <span style={styles.label}>Area Normal</span>
+          <div style={styles.row}>
+            <NumberInput
+              label="X"
+              step={0.1}
+              value={light.area_normal?.[0] ?? 0}
+              onChange={(v) => update(light.id, { area_normal: [v, light.area_normal?.[1] ?? 0] })}
+              style={styles.input}
+            />
+            <NumberInput
+              label="Z"
+              step={0.1}
+              value={light.area_normal?.[1] ?? 0}
+              onChange={(v) => update(light.id, { area_normal: [light.area_normal?.[0] ?? 0, v] })}
+              style={styles.input}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

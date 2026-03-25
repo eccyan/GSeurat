@@ -68,6 +68,34 @@ int main() {
         std::printf("PASS: Light count capped at 8\n");
     }
 
-    std::printf("\nAll GS point light tests passed.\n");
+    // 5. Area light defaults to point light (area_params = 0)
+    {
+        PointLight pl;
+        pl.position_and_radius = {10.0f, 20.0f, 5.0f, 8.0f};
+        pl.color = {1.0f, 1.0f, 1.0f, 1.0f};
+        assert(pl.area_params.x == 0.0f);  // width = 0
+        assert(pl.area_params.y == 0.0f);  // height = 0
+        assert(pl.area_params.z == 0.0f);  // normal X = 0
+        assert(pl.area_params.w == 0.0f);  // normal Z = 0
+
+        std::printf("PASS: Area light default = point light (size 0)\n");
+    }
+
+    // 6. Area light with explicit dimensions
+    {
+        PointLight pl;
+        pl.position_and_radius = {0.0f, 0.0f, 10.0f, 30.0f};
+        pl.color = {1.0f, 0.9f, 0.8f, 2.0f};
+        pl.area_params = {5.0f, 3.0f, 1.0f, 0.0f};  // 5x3 panel, facing +X
+
+        assert(pl.area_params.x == 5.0f);   // width
+        assert(pl.area_params.y == 3.0f);   // height
+        assert(pl.area_params.z == 1.0f);   // normal X
+        assert(pl.area_params.w == 0.0f);   // normal Z
+
+        std::printf("PASS: Area light 5x3, normal (+1,0)\n");
+    }
+
+    std::printf("\nAll GS point/area light tests passed.\n");
     return 0;
 }

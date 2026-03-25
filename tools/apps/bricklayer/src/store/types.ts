@@ -15,6 +15,9 @@ export interface StaticLight {
   height: number;
   color: [number, number, number];
   intensity: number;
+  area_width?: number;                  // 0 or omit = point light
+  area_height?: number;                 // 0 or omit = point light
+  area_normal?: [number, number];       // XZ direction of area face
 }
 
 export interface NpcData {

@@ -1,15 +1,18 @@
 import React from 'react';
 import { useSceneStore } from '../store/useSceneStore.js';
 
-function LightMarker({ position, height, radius, color, isSelected, onSelect }: {
+function LightMarker({ position, height, radius, color, isSelected, onSelect, areaWidth, areaHeight }: {
   position: [number, number];
   height: number;
   radius: number;
   color: [number, number, number];
   isSelected: boolean;
   onSelect: () => void;
+  areaWidth: number;
+  areaHeight: number;
 }) {
   const colorStr = `rgb(${Math.round(color[0] * 255)},${Math.round(color[1] * 255)},${Math.round(color[2] * 255)})`;
+  const isArea = areaWidth > 0 && areaHeight > 0;
 
   return (
     <group position={[position[0], height, position[1]]}>
@@ -18,16 +21,31 @@ function LightMarker({ position, height, radius, color, isSelected, onSelect }: 
         <sphereGeometry args={[1.0, 12, 12]} />
         <meshBasicMaterial visible={false} />
       </mesh>
-      {/* Visible sphere */}
+      {/* Visible sphere (center marker) */}
       <mesh>
-        <sphereGeometry args={[0.6, 12, 12]} />
+        <sphereGeometry args={[isArea ? 0.4 : 0.6, 12, 12]} />
         <meshBasicMaterial color={isSelected ? '#ffffff' : colorStr} />
       </mesh>
-      {/* Radius ring */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]}>
-        <ringGeometry args={[radius - 0.1, radius + 0.1, 32]} />
-        <meshBasicMaterial color={colorStr} transparent opacity={0.5} side={2} />
-      </mesh>
+      {/* Point light: radius ring */}
+      {!isArea && (
+        <mesh rotation={[-Math.PI / 2, 0, 0]}>
+          <ringGeometry args={[radius - 0.1, radius + 0.1, 32]} />
+          <meshBasicMaterial color={colorStr} transparent opacity={0.5} side={2} />
+        </mesh>
+      )}
+      {/* Area light: rectangle wireframe (horizontal plane) */}
+      {isArea && (
+        <mesh rotation={[-Math.PI / 2, 0, 0]}>
+          <planeGeometry args={[areaWidth, areaHeight]} />
+          <meshBasicMaterial
+            color={isSelected ? '#ffffff' : colorStr}
+            wireframe
+            transparent
+            opacity={0.7}
+            side={2}
+          />
+        </mesh>
+      )}
     </group>
   );
 }
@@ -51,6 +69,8 @@ export function LightGizmos() {
           color={light.color}
           isSelected={selectedEntity?.type === 'light' && selectedEntity.id === light.id}
           onSelect={() => setSelectedEntity({ type: 'light', id: light.id })}
+          areaWidth={light.area_width ?? 0}
+          areaHeight={light.area_height ?? 0}
         />
       ))}
     </group>
