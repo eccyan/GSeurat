@@ -33,8 +33,9 @@ struct Vertex {
 };
 
 struct PointLight {
-    glm::vec4 position_and_radius;  // xy = world pos, z = unused, w = radius
+    glm::vec4 position_and_radius;  // xy = world pos, z = height (Y), w = radius
     glm::vec4 color;                // rgb = color, a = intensity
+    glm::vec4 direction_and_cone{0.0f, -1.0f, 0.0f, -1.0f};  // xyz = direction (normalized), w = cos(cone_half_angle); -1 = point light
 };
 
 inline constexpr uint32_t kMaxLights = 8;

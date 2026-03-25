@@ -30,11 +30,11 @@ layout(push_constant) uniform PushConstants {
     float dof_focus_range;
     float dof_max_blur;
     float _pad0;
-    // vec4 2: depth + fog density
+    // vec4 2: depth + fog + god rays
     float depth_A;  // far / (far - near)
     float depth_B;  // near * far / (far - near)
     float fog_density;
-    float _pad1;
+    float god_rays_intensity;
     // vec4 3: fog color + fade
     float fog_r;
     float fog_g;
@@ -94,6 +94,64 @@ vec3 compute_light_glow() {
     return total;
 }
 
+// Screen-space volumetric light shafts (god rays)
+// Ray-marches from each fragment toward each light in screen space,
+// sampling depth to detect open sky (light contribution).
+vec3 compute_god_rays() {
+    int count = glow.light_params.x;
+    if (count <= 0 || pc.god_rays_intensity <= 0.0) return vec3(0.0);
+
+    const int NUM_SAMPLES = 24;
+    const float DECAY = 0.96;
+
+    vec3 total_rays = vec3(0.0);
+    float aspect = float(glow.light_params.y) / float(max(glow.light_params.z, 1));
+
+    for (int i = 0; i < count && i < 8; i++) {
+        vec2 light_xz = glow.lights[i].position_and_radius.xy;
+        float height = glow.lights[i].position_and_radius.z;
+        vec3 light_color = glow.lights[i].color.rgb;
+        float intensity = glow.lights[i].color.a;
+
+        // Project light to screen UV
+        vec4 clip = glow.vp * vec4(light_xz.x, height, light_xz.y, 1.0);
+        if (clip.w <= 0.0) continue;  // behind camera
+
+        vec2 light_uv = clip.xy / clip.w * 0.5 + 0.5;
+
+        // Distance-based strength: fade rays for distant/off-screen lights
+        vec2 to_light = light_uv - frag_uv;
+        float screen_dist = length(to_light);
+        if (screen_dist < 0.001) continue;
+
+        // Ray march from fragment toward light
+        vec2 step_uv = to_light / float(NUM_SAMPLES);
+        float illumination = 0.0;
+        float decay = 1.0;
+        vec2 sample_uv = frag_uv;
+
+        for (int s = 0; s < NUM_SAMPLES; s++) {
+            sample_uv += step_uv;
+            vec2 clamped = clamp(sample_uv, vec2(0.001), vec2(0.999));
+            float d = texture(depth_tex, clamped).r;
+            // Far depth (near 1.0) = open sky / no geometry = light passes through
+            if (d > 0.999) {
+                illumination += decay;
+            }
+            decay *= DECAY;
+        }
+
+        illumination /= float(NUM_SAMPLES);
+
+        // Fade based on distance from light center (closer = stronger)
+        float dist_fade = 1.0 - smoothstep(0.0, 1.5, screen_dist);
+
+        total_rays += light_color * intensity * illumination * dist_fade * 0.5;
+    }
+
+    return total_rays;
+}
+
 void main() {
     // Chromatic aberration: radial R/B channel offset
     vec3 scene;
@@ -136,6 +194,11 @@ void main() {
 
     // Additive bloom
     color = color + bloom * pc.bloom_intensity;
+
+    // God rays (volumetric light shafts)
+    if (pc.god_rays_intensity > 0.0) {
+        color += compute_god_rays() * pc.god_rays_intensity;
+    }
 
     // Reinhard tone mapping
     color = vec3(1.0) - exp(-color * pc.exposure);

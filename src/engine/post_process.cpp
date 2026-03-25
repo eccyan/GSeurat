@@ -923,7 +923,7 @@ void PostProcessPipeline::record_post_process(VkCommandBuffer cmd, uint32_t swap
             float dof_focus_distance; float dof_focus_range;
             float dof_max_blur; float pad0;
             float depth_A; float depth_B;
-            float fog_density; float pad1;
+            float fog_density; float god_rays_intensity;
             float fog_r; float fog_g;
             float fog_b; float fade_amount;
             float ca_intensity; float flash_r;
@@ -940,7 +940,7 @@ void PostProcessPipeline::record_post_process(VkCommandBuffer cmd, uint32_t swap
         comp_pc.depth_A = far / (far - near);
         comp_pc.depth_B = (near * far) / (far - near);
         comp_pc.fog_density = params.fog_density;
-        comp_pc.pad1 = 0.0f;
+        comp_pc.god_rays_intensity = params.god_rays_intensity;
         comp_pc.fog_r = params.fog_color_r;
         comp_pc.fog_g = params.fog_color_g;
         comp_pc.fog_b = params.fog_color_b;

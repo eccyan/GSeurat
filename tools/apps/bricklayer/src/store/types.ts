@@ -15,6 +15,8 @@ export interface StaticLight {
   height: number;
   color: [number, number, number];
   intensity: number;
+  direction?: [number, number, number];  // normalized; omit for point light
+  cone_angle?: number;                   // degrees (full angle); omit or 180 for point light
 }
 
 export interface NpcData {
