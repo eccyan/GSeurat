@@ -16,7 +16,8 @@ struct Gaussian {
     float opacity;         // 4 bytes
     float importance;      // 4 bytes (opacity * max_scale, for LOD decimation)
     uint32_t bone_index;   // 4 bytes (body part index for skeletal posing, 0 = no bone)
-};  // 64 bytes
+    float emission = 0.0f; // 4 bytes (emissive intensity, 0 = not emissive)
+};  // 68 bytes
 
 struct AABB {
     glm::vec3 min{std::numeric_limits<float>::max()};

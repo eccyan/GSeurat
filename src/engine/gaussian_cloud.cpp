@@ -160,6 +160,9 @@ GaussianCloud GaussianCloud::load_ply(const std::string& path) {
     // Bone index (character skeletal posing)
     auto* bi = find_prop({"bone_index"});
 
+    // Emissive intensity
+    auto* em = find_prop({"emission"});
+
     if (!px || !py || !pz) {
         throw std::runtime_error("PLY file missing position properties (x, y, z)");
     }
@@ -245,6 +248,9 @@ GaussianCloud GaussianCloud::load_ply(const std::string& path) {
             g.bone_index = 0;
         }
 
+        // Emission
+        g.emission = em ? read_float(row, *em) : 0.0f;
+
         cloud.bounds_.expand(g.position);
     }
 
@@ -286,6 +292,7 @@ void GaussianCloud::write_ply(const std::string& path,
     file << "property float f_dc_1\n";
     file << "property float f_dc_2\n";
     file << "property float opacity\n";
+    file << "property float emission\n";
     file << "end_header\n";
 
     // Write binary vertex data
@@ -328,6 +335,10 @@ void GaussianCloud::write_ply(const std::string& path,
         float op_clamped = std::clamp(g.opacity, 1e-6f, 1.0f - 1e-6f);
         float logit = std::log(op_clamped / (1.0f - op_clamped));
         file.write(reinterpret_cast<const char*>(&logit), 4);
+
+        // Emission (stored directly)
+        float em = g.emission;
+        file.write(reinterpret_cast<const char*>(&em), 4);
     }
 }
 
