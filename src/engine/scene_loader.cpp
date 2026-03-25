@@ -213,6 +213,18 @@ SceneData SceneLoader::from_json(const nlohmann::json& j) {
                 float cone_cos = std::cos(glm::radians(cone_deg * 0.5f));
                 pl.direction_and_cone = {dir.x, dir.y, dir.z, cone_cos};
             }
+            // Area light: optional width/height/normal
+            if (light_j.contains("area_width")) {
+                float aw = light_j.value("area_width", 0.0f);
+                float ah = light_j.value("area_height", 0.0f);
+                float nx = 0.0f, nz = 0.0f;
+                if (light_j.contains("area_normal")) {
+                    auto an = light_j["area_normal"];
+                    nx = an[0].get<float>();
+                    nz = an[1].get<float>();
+                }
+                pl.area_params = {aw, ah, nx, nz};
+            }
             data.static_lights.push_back(pl);
         }
     }
@@ -565,6 +577,13 @@ nlohmann::json SceneLoader::to_json(const SceneData& data) {
                 };
                 float cone_deg = glm::degrees(std::acos(cone_cos)) * 2.0f;
                 light_obj["cone_angle"] = cone_deg;
+            }
+            if (pl.area_params.x > 0.001f || pl.area_params.y > 0.001f) {
+                light_obj["area_width"] = pl.area_params.x;
+                light_obj["area_height"] = pl.area_params.y;
+                if (std::abs(pl.area_params.z) > 0.001f || std::abs(pl.area_params.w) > 0.001f) {
+                    light_obj["area_normal"] = {pl.area_params.z, pl.area_params.w};
+                }
             }
             lights.push_back(light_obj);
         }

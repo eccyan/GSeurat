@@ -53,6 +53,7 @@ layout(set = 0, binding = 3) uniform Uniforms {
     vec4 pl_pos_rad[8];
     vec4 pl_color[8];
     vec4 pl_dir_cone[8];  // spot direction + cone (unused in preprocess, must match layout)
+    vec4 pl_area[8];  // area size + normal (unused in preprocess, must match layout)
 };
 
 layout(set = 0, binding = 4) buffer VisibleCountBuffer {

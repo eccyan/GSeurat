@@ -15,8 +15,11 @@ export interface StaticLight {
   height: number;
   color: [number, number, number];
   intensity: number;
-  direction?: [number, number, number];  // normalized; omit for point light
-  cone_angle?: number;                   // degrees (full angle); omit or 180 for point light
+  direction?: [number, number, number];  // spot light direction (normalized); omit for point/area
+  cone_angle?: number;                   // spot light cone degrees; omit or 180 for point/area
+  area_width?: number;                   // area light width; 0 or omit = point/spot light
+  area_height?: number;                  // area light height; 0 or omit = point/spot light
+  area_normal?: [number, number];        // area light face direction XZ
 }
 
 export interface NpcData {
@@ -243,6 +246,7 @@ export interface BricklayerFile {
   assets?: AssetEntry[];
   scene: {
     ambientColor: [number, number, number, number];
+    godRaysIntensity?: number;
     staticLights: StaticLight[];
     npcs: NpcData[];
     portals: PortalData[];

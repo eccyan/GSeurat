@@ -5,6 +5,10 @@ export function exportSceneJson(state: SceneStoreState): object {
     ambient_color: state.ambientColor,
   };
 
+  if (state.godRaysIntensity > 0) {
+    scene.god_rays_intensity = state.godRaysIntensity;
+  }
+
   if (state.staticLights.length > 0) {
     scene.static_lights = state.staticLights.map((l) => {
       const out: Record<string, unknown> = {
@@ -17,6 +21,11 @@ export function exportSceneJson(state: SceneStoreState): object {
       if (l.direction && l.cone_angle !== undefined && l.cone_angle < 180) {
         out.direction = l.direction;
         out.cone_angle = l.cone_angle;
+      }
+      if (l.area_width && l.area_width > 0) {
+        out.area_width = l.area_width;
+        out.area_height = l.area_height ?? l.area_width;
+        if (l.area_normal) out.area_normal = l.area_normal;
       }
       return out;
     });

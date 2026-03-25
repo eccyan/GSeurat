@@ -48,6 +48,7 @@ struct GsUniforms {
     glm::vec4 pl_pos_rad[kMaxGsPointLights];   // per-light: xy = world XZ, z = height (Y), w = radius
     glm::vec4 pl_color[kMaxGsPointLights];      // per-light: rgb = color, a = intensity
     glm::vec4 pl_dir_cone[kMaxGsPointLights];   // per-light: xyz = direction, w = cos(cone_half_angle)
+    glm::vec4 pl_area[kMaxGsPointLights];       // per-light: xy = area size (0=point), zw = normal XZ
 };
 
 // Sort key: depth packed with index
@@ -610,6 +611,7 @@ void GsRenderer::render(VkCommandBuffer cmd, const glm::mat4& view, const glm::m
         uniforms.pl_pos_rad[i] = point_lights_[i].position_and_radius;
         uniforms.pl_color[i] = point_lights_[i].color;
         uniforms.pl_dir_cone[i] = point_lights_[i].direction_and_cone;
+        uniforms.pl_area[i] = point_lights_[i].area_params;
     }
 
     std::memcpy(uniform_buffer_.mapped(), &uniforms, sizeof(uniforms));
