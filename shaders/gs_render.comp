@@ -53,6 +53,25 @@ layout(set = 0, binding = 4) readonly buffer VisibleCountBuffer {
 // Shared tile depth for edge detection and pseudo-normal lighting
 shared float tile_depth[16][16];
 
+// Screen-space contact shadow ray-march within tile bounds.
+// Returns shadow factor: 0.0 = fully shadowed, 1.0 = fully lit.
+float tile_contact_shadow(uvec2 local_id, float surface_depth, vec2 light_screen_dir) {
+    const int STEPS = 4;
+    float shadow = 1.0;
+    for (int s = 1; s <= STEPS; s++) {
+        ivec2 sp = ivec2(local_id) + ivec2(round(light_screen_dir * float(s)));
+        if (sp.x < 0 || sp.x > 15 || sp.y < 0 || sp.y > 15) break;
+        float sd = tile_depth[sp.y][sp.x];
+        if (sd <= 0.0) continue;  // no geometry at sample
+        // If sampled geometry is closer than current surface, it occludes
+        if (surface_depth - sd > 0.5) {
+            float step_fade = 1.0 - float(s) / float(STEPS + 1);
+            shadow = min(shadow, 1.0 - step_fade * 0.7);
+        }
+    }
+    return shadow;
+}
+
 void main() {
     uvec2 tile_id = gl_WorkGroupID.xy;
     uvec2 local_id = gl_LocalInvocationID.xy;
@@ -229,7 +248,20 @@ void main() {
                     // mostly point toward the camera, so pure NdotL would be ~0 for
                     // lights at similar depth. Wrap to [0,1] for soft omnidirectional tint.
                     float NdotL = dot(normal, light_dir) * 0.5 + 0.5;
-                    total_light += light_col * light_intensity * atten * NdotL;
+
+                    // Screen-space contact shadow
+                    vec4 lc = proj * view * vec4(effective_light_pos, 1.0);
+                    float shadow = 1.0;
+                    if (lc.w > 0.0) {
+                        vec2 ls = (lc.xy / lc.w * 0.5 + 0.5) * vec2(float(width), float(height));
+                        vec2 ss_dir = ls - vec2(pixel);
+                        float ss_len = length(ss_dir);
+                        if (ss_len > 0.5) {
+                            shadow = tile_contact_shadow(local_id, depth_c, ss_dir / ss_len);
+                        }
+                    }
+
+                    total_light += light_col * light_intensity * atten * NdotL * shadow;
                 }
 
                 base_color *= total_light;
