@@ -970,6 +970,13 @@ function GsAnimationProperties({ anim }: { anim: GsAnimationGroupData }) {
       </div>
 
       <div style={styles.section}>
+        <span style={styles.label}>Height Rise</span>
+        <NumberInput value={anim.params.height_rise} min={0} step={0.1}
+          onChange={(v) => update(anim.id, { params: { ...anim.params, height_rise: v } })} style={styles.input} />
+        <span style={{ fontSize: 10, color: '#666' }}>0 = flat orbit, 1 = default rise</span>
+      </div>
+
+      <div style={styles.section}>
         <span style={styles.label}>Opacity Fade</span>
         <NumberInput value={anim.params.opacity_fade} min={0} max={1} step={0.05}
           onChange={(v) => update(anim.id, { params: { ...anim.params, opacity_fade: v } })} style={styles.input} />

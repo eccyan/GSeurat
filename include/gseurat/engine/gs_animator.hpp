@@ -32,6 +32,7 @@ struct GsAnimParams {
     float orbit_speed = 1.0f;       // rotation speed multiplier (Orbit)
     float orbit_acceleration = 0.0f; // angular acceleration (Orbit): >0 speeds up, <0 slows down
     float expansion = 1.0f;         // radius growth scale (Orbit)
+    float height_rise = 1.0f;       // vertical rise scale (Orbit): 0=flat, 1=default rise
     float opacity_fade = 1.0f;      // 0=no fade, 1=full fade to 0
     float scale_shrink = 1.0f;      // 0=no shrink, 1=full shrink
 };

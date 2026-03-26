@@ -181,7 +181,7 @@ void GaussianAnimator::apply_orbit(AnimGroup& group, std::vector<Gaussian>& gaus
         float angle = gt * base_speed + 0.5f * p.orbit_acceleration * gt * gt;
         float cs = std::cos(angle), sn = std::sin(angle);
         float age_factor = std::min(s.age * 0.2f, 1.0f);  // ramp over ~5 seconds, then plateau
-        glm::vec3 rotated{rel.x * cs - rel.z * sn, rel.y + age_factor * 5.0f * p.expansion, rel.x * sn + rel.z * cs};
+        glm::vec3 rotated{rel.x * cs - rel.z * sn, rel.y + age_factor * 5.0f * p.height_rise, rel.x * sn + rel.z * cs};
 
         auto& g = gaussians[idx];
         g.position = center + rotated * (1.0f + age_factor * 0.5f * p.expansion);

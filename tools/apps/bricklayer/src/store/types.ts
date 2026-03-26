@@ -172,6 +172,7 @@ export interface GsAnimParams {
   orbit_speed: number;
   orbit_acceleration: number;
   expansion: number;
+  height_rise: number;
   opacity_fade: number;
   scale_shrink: number;
 }

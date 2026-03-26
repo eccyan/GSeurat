@@ -202,6 +202,7 @@ export function exportSceneJson(state: SceneStoreState): object {
       if (p.orbit_speed !== 1) params.orbit_speed = p.orbit_speed;
       if (p.orbit_acceleration !== 0) params.orbit_acceleration = p.orbit_acceleration;
       if (p.expansion !== 1) params.expansion = p.expansion;
+      if (p.height_rise !== 1) params.height_rise = p.height_rise;
       if (p.opacity_fade !== 1) params.opacity_fade = p.opacity_fade;
       if (p.scale_shrink !== 1) params.scale_shrink = p.scale_shrink;
       if (Object.keys(params).length > 0) out.params = params;
