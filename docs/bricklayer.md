@@ -363,6 +363,10 @@ modify existing Gaussians in-place — scattering, floating, orbiting, dissolvin
 | `orbit` | Swirl around region center, increasing radius |
 | `dissolve` | Shrink to zero, fade opacity, slight drift |
 | `reform` | Restore to original position, scale, and color |
+| `pulse` | Scale oscillates rhythmically (crystals, magic objects) |
+| `vortex` | Spiral inward/upward with tightening radius (tornado) |
+| `wave` | Sinusoidal ripple propagating from center (shockwave) |
+| `scatter` | Explosive outward burst (impacts, shattering) |
 
 ### Parameters
 
