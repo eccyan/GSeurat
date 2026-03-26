@@ -36,7 +36,11 @@ void GaussianParticleEmitter::set_position(const glm::vec3& pos) {
 
 void GaussianParticleEmitter::set_active(bool active) {
     active_ = active;
-    if (!active) spawn_accum_ = 0.0f;
+    if (active) {
+        burst_elapsed_ = 0.0f;
+    } else {
+        spawn_accum_ = 0.0f;
+    }
 }
 
 void GaussianParticleEmitter::spawn_particle() {
@@ -62,10 +66,20 @@ void GaussianParticleEmitter::spawn_particle() {
 void GaussianParticleEmitter::update(float dt) {
     // Spawn new particles
     if (active_) {
-        spawn_accum_ += config_.spawn_rate * dt;
-        while (spawn_accum_ >= 1.0f) {
-            spawn_particle();
-            spawn_accum_ -= 1.0f;
+        // Auto-deactivate after burst duration
+        if (config_.burst_duration > 0.0f) {
+            burst_elapsed_ += dt;
+            if (burst_elapsed_ >= config_.burst_duration) {
+                active_ = false;
+            }
+        }
+
+        if (active_) {
+            spawn_accum_ += config_.spawn_rate * dt;
+            while (spawn_accum_ >= 1.0f) {
+                spawn_particle();
+                spawn_accum_ -= 1.0f;
+            }
         }
     }
 
@@ -125,7 +139,7 @@ uint32_t GaussianParticleEmitter::alive_count() const {
 
 GsEmitterConfig gs_preset_dust_puff() {
     GsEmitterConfig c;
-    c.spawn_rate = 100.0f;
+    c.spawn_rate = 120.0f;
     c.lifetime_min = 1.0f;
     c.lifetime_max = 2.5f;
     c.velocity_min = {-3.0f, 1.0f, -3.0f};
@@ -133,55 +147,58 @@ GsEmitterConfig gs_preset_dust_puff() {
     c.acceleration = {0.0f, -2.0f, 0.0f};
     c.color_start = {0.6f, 0.55f, 0.45f};
     c.color_end = {0.5f, 0.48f, 0.4f};
-    c.scale_min = {0.3f, 0.3f, 0.3f};
-    c.scale_max = {0.8f, 0.8f, 0.8f};
+    c.scale_min = {0.8f, 0.8f, 0.8f};
+    c.scale_max = {1.5f, 1.5f, 1.5f};
     c.scale_end_factor = 0.1f;
     c.opacity_start = 0.8f;
     c.opacity_end = 0.0f;
     c.spawn_offset_min = {-2.0f, 0.0f, -2.0f};
     c.spawn_offset_max = { 2.0f, 1.0f,  2.0f};
+    c.burst_duration = 0.3f;
     return c;
 }
 
 GsEmitterConfig gs_preset_spark_shower() {
     GsEmitterConfig c;
-    c.spawn_rate = 60.0f;
-    c.lifetime_min = 0.3f;
-    c.lifetime_max = 1.0f;
-    c.velocity_min = {-2.0f, 5.0f, -2.0f};
-    c.velocity_max = { 2.0f, 10.0f, 2.0f};
+    c.spawn_rate = 80.0f;
+    c.lifetime_min = 0.5f;
+    c.lifetime_max = 1.5f;
+    c.velocity_min = {-4.0f, 8.0f, -4.0f};
+    c.velocity_max = { 4.0f, 15.0f, 4.0f};
     c.acceleration = {0.0f, -15.0f, 0.0f};
     c.color_start = {1.0f, 0.9f, 0.4f};
     c.color_end = {1.0f, 0.3f, 0.0f};
-    c.scale_min = {0.1f, 0.1f, 0.1f};
-    c.scale_max = {0.25f, 0.25f, 0.25f};
+    c.scale_min = {0.5f, 0.5f, 0.5f};
+    c.scale_max = {1.0f, 1.0f, 1.0f};
     c.scale_end_factor = 0.0f;
     c.opacity_start = 1.0f;
     c.opacity_end = 0.0f;
     c.emission = 3.0f;
-    c.spawn_offset_min = {-0.5f, 0.0f, -0.5f};
-    c.spawn_offset_max = { 0.5f, 0.5f,  0.5f};
+    c.spawn_offset_min = {-1.0f, 0.0f, -1.0f};
+    c.spawn_offset_max = { 1.0f, 1.0f,  1.0f};
+    c.burst_duration = 0.5f;  // half-second burst then stop
     return c;
 }
 
 GsEmitterConfig gs_preset_magic_spiral() {
     GsEmitterConfig c;
-    c.spawn_rate = 40.0f;
+    c.spawn_rate = 50.0f;
     c.lifetime_min = 1.5f;
     c.lifetime_max = 3.0f;
-    c.velocity_min = {-1.0f, 2.0f, -1.0f};
-    c.velocity_max = { 1.0f, 4.0f,  1.0f};
-    c.acceleration = {0.0f, 0.5f, 0.0f};  // slight upward drift
+    c.velocity_min = {-2.0f, 3.0f, -2.0f};
+    c.velocity_max = { 2.0f, 6.0f,  2.0f};
+    c.acceleration = {0.0f, 0.5f, 0.0f};
     c.color_start = {0.4f, 0.6f, 1.0f};
     c.color_end = {0.8f, 0.3f, 1.0f};
-    c.scale_min = {0.2f, 0.2f, 0.2f};
-    c.scale_max = {0.5f, 0.5f, 0.5f};
+    c.scale_min = {0.5f, 0.5f, 0.5f};
+    c.scale_max = {1.0f, 1.0f, 1.0f};
     c.scale_end_factor = 0.3f;
     c.opacity_start = 0.9f;
     c.opacity_end = 0.0f;
     c.emission = 2.0f;
     c.spawn_offset_min = {-1.0f, -0.5f, -1.0f};
     c.spawn_offset_max = { 1.0f,  0.5f,  1.0f};
+    c.burst_duration = 1.0f;
     return c;
 }
 

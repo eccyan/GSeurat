@@ -46,6 +46,7 @@ struct GsEmitterConfig {
     float emission = 0.0f;
     glm::vec3 spawn_offset_min{0.0f};
     glm::vec3 spawn_offset_max{0.0f};
+    float burst_duration = 0.0f;  // >0 = auto-deactivate after this many seconds, 0 = continuous
 };
 
 class GaussianParticleEmitter {
@@ -74,6 +75,7 @@ private:
     uint32_t next_index_ = 0;
     bool active_ = false;
     float spawn_accum_ = 0.0f;
+    float burst_elapsed_ = 0.0f;
     uint32_t rng_ = 0x12345678u;
 };
 

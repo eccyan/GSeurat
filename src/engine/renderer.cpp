@@ -2,6 +2,7 @@
 #include "gseurat/engine/pipeline.hpp"
 #include "gseurat/engine/resource_manager.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cstring>
 #include <stdexcept>
@@ -749,12 +750,18 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
             glm::mat4 gs_vp = gs_proj_ * gs_view_;
             auto visible = gs_chunk_grid_.visible_chunks(gs_vp);
 
-            if (visible != gs_prev_visible_) {
-                if (gs_budget_locked_) {
-                    gs_budget_locked_ = false;
-                    gs_stable_frame_count_ = 0;
+            // Check if particles/animator need per-frame re-upload
+            bool has_particles = !gs_particle_emitters_.empty() || gs_animator_.has_active_groups();
+
+            if (visible != gs_prev_visible_ || has_particles) {
+                if (visible != gs_prev_visible_) {
+                    if (gs_budget_locked_) {
+                        gs_budget_locked_ = false;
+                        gs_stable_frame_count_ = 0;
+                    }
+                    gs_prev_visible_ = visible;
                 }
-                gs_prev_visible_ = visible;
+                // Re-gather scene Gaussians
                 if (flags.gs_lod && gs_gaussian_budget_ > 0) {
                     glm::vec3 cam_pos = glm::vec3(glm::inverse(gs_view_)[3]);
                     gs_chunk_grid_.gather_lod(visible, cam_pos, gs_gaussian_budget_,
@@ -772,6 +779,12 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
                     emitter.update(dt);
                     emitter.gather(gs_active_buffer_);
                 }
+                // Remove dead emitters (burst mode: no alive particles + inactive)
+                gs_particle_emitters_.erase(
+                    std::remove_if(gs_particle_emitters_.begin(), gs_particle_emitters_.end(),
+                        [](const GaussianParticleEmitter& e) { return !e.active() && e.alive_count() == 0; }),
+                    gs_particle_emitters_.end());
+
                 // Clamp to allocated SSBO capacity
                 if (gs_active_buffer_.size() > gs_renderer_.max_gaussian_count()) {
                     gs_active_buffer_.resize(gs_renderer_.max_gaussian_count());
