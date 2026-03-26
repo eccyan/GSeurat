@@ -249,4 +249,11 @@ bool GaussianAnimator::has_active_groups() const {
     return !groups_.empty();
 }
 
+bool GaussianAnimator::has_group(uint32_t group_id) const {
+    for (const auto& g : groups_) {
+        if (g.id == group_id) return true;
+    }
+    return false;
+}
+
 }  // namespace gseurat

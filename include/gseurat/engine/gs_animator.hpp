@@ -55,6 +55,7 @@ public:
     void clear(std::vector<Gaussian>& gaussians);
 
     bool has_active_groups() const;
+    bool has_group(uint32_t group_id) const;
 
 private:
     struct AnimGroup {
