@@ -149,10 +149,10 @@ GsEmitterConfig gs_preset_dust_puff() {
     c.acceleration = {0.0f, -2.0f, 0.0f};
     c.color_start = {0.6f, 0.55f, 0.45f};
     c.color_end = {0.5f, 0.48f, 0.4f};
-    c.scale_min = {0.8f, 0.8f, 0.8f};
-    c.scale_max = {1.5f, 1.5f, 1.5f};
+    c.scale_min = {0.1f, 0.1f, 0.1f};
+    c.scale_max = {0.3f, 0.3f, 0.3f};
     c.scale_end_factor = 0.1f;
-    c.opacity_start = 0.8f;
+    c.opacity_start = 0.4f;
     c.opacity_end = 0.0f;
     c.spawn_offset_min = {-2.0f, 0.0f, -2.0f};
     c.spawn_offset_max = { 2.0f, 1.0f,  2.0f};
@@ -162,18 +162,18 @@ GsEmitterConfig gs_preset_dust_puff() {
 
 GsEmitterConfig gs_preset_spark_shower() {
     GsEmitterConfig c;
-    c.spawn_rate = 80.0f;
-    c.lifetime_min = 0.5f;
-    c.lifetime_max = 1.5f;
+    c.spawn_rate = 40.0f;
+    c.lifetime_min = 0.3f;
+    c.lifetime_max = 0.8f;
     c.velocity_min = {-4.0f, 8.0f, -4.0f};
     c.velocity_max = { 4.0f, 15.0f, 4.0f};
     c.acceleration = {0.0f, -15.0f, 0.0f};
-    c.color_start = {1.0f, 0.9f, 0.4f};
-    c.color_end = {1.0f, 0.3f, 0.0f};
-    c.scale_min = {0.3f, 0.3f, 0.3f};
-    c.scale_max = {0.6f, 0.6f, 0.6f};
+    c.color_start = {0.8f, 0.6f, 0.3f};
+    c.color_end = {0.5f, 0.2f, 0.0f};
+    c.scale_min = {0.05f, 0.05f, 0.05f};
+    c.scale_max = {0.15f, 0.15f, 0.15f};
     c.scale_end_factor = 0.0f;
-    c.opacity_start = 0.9f;
+    c.opacity_start = 0.5f;
     c.opacity_end = 0.0f;
     c.emission = 0.8f;
     c.spawn_offset_min = {-1.0f, 0.0f, -1.0f};
