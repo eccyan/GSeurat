@@ -218,7 +218,11 @@ void DemoApp::init_scene(const std::string& scene_path) {
                 auto region = anim.region;
                 region.center.x += aabb.min.x;
                 region.center.y += aabb.min.y;
-                renderer_.add_gs_animation(anim.effect, region, anim.lifetime, anim.loop, anim.params);
+                std::optional<Renderer::ReformConfig> reform;
+                if (anim.reform) {
+                    reform = Renderer::ReformConfig{anim.reform->lifetime, anim.reform->speed};
+                }
+                renderer_.add_gs_animation(anim.effect, region, anim.lifetime, anim.loop, anim.params, reform);
             }
         }
 

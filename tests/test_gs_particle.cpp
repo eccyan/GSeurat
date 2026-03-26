@@ -384,6 +384,36 @@ int main() {
         std::printf("PASS: Scene JSON round-trip for gs_animations\n");
     }
 
+    // --- Test: gs_animation reform config round-trip ---
+    {
+        SceneData data;
+        GsAnimationData anim;
+        anim.effect = "scatter";
+        anim.region.center = glm::vec3(5.0f, 3.0f, 7.0f);
+        anim.lifetime = 2.0f;
+        anim.loop = true;
+        anim.reform = GsAnimReformConfig{3.0f, 0.5f};
+        data.gs_animations.push_back(anim);
+
+        auto j = SceneLoader::to_json(data);
+        auto rt = SceneLoader::from_json(j);
+
+        assert(rt.gs_animations.size() == 1);
+        assert(rt.gs_animations[0].reform.has_value());
+        assert(std::fabs(rt.gs_animations[0].reform->lifetime - 3.0f) < 0.01f);
+        assert(std::fabs(rt.gs_animations[0].reform->speed - 0.5f) < 0.01f);
+
+        // Without reform
+        GsAnimationData anim2;
+        anim2.effect = "orbit";
+        data.gs_animations.push_back(anim2);
+        auto j2 = SceneLoader::to_json(data);
+        auto rt2 = SceneLoader::from_json(j2);
+        assert(!rt2.gs_animations[1].reform.has_value());
+
+        std::printf("PASS: gs_animation reform config round-trip\n");
+    }
+
     std::printf("\nAll GS particle/animator tests passed.\n");
     return 0;
 }

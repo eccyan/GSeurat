@@ -24,6 +24,7 @@
 #include "gseurat/engine/vk_context.hpp"
 
 #include <array>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -87,16 +88,25 @@ public:
     const std::vector<Gaussian>& gs_active_buffer() const { return gs_active_buffer_; }
 
     // Scene-placed animations (with loop support)
+    struct ReformConfig {
+        float lifetime = 2.0f;
+        float speed = 1.0f;
+    };
     struct SceneAnimation {
         std::string effect;
         GsAnimRegion region;
         float lifetime = 3.0f;
         bool loop = false;
         GsAnimParams params;
+        std::optional<ReformConfig> reform;
+        enum class Phase { Effect, Reforming, Idle };
+        Phase phase = Phase::Effect;
         uint32_t group_id = 0;
+        uint32_t reform_group_id = 0;
     };
     void add_gs_animation(const std::string& effect, const GsAnimRegion& region,
-                          float lifetime, bool loop, const GsAnimParams& params = {});
+                          float lifetime, bool loop, const GsAnimParams& params = {},
+                          const std::optional<ReformConfig>& reform = std::nullopt);
     void clear_gs_animations();
     const std::vector<SceneAnimation>& gs_scene_animations() const { return gs_scene_animations_; }
 

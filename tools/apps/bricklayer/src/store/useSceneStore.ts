@@ -745,6 +745,9 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
         noise_amplitude: 1, orbit_speed: 1, orbit_acceleration: 0,
         expansion: 1, height_rise: 1, opacity_fade: 1, scale_shrink: 1,
       },
+      reform_enabled: false,
+      reform_lifetime: 2,
+      reform_speed: 1,
     };
     set({ gsAnimations: [...get().gsAnimations, anim], isDirty: true });
   },

@@ -98,12 +98,18 @@ struct GsEmitterData {
     GsEmitterConfig config;      // full config (preset values overridden by explicit fields)
 };
 
+struct GsAnimReformConfig {
+    float lifetime = 2.0f;
+    float speed = 1.0f;
+};
+
 struct GsAnimationData {
-    std::string effect;          // "detach", "float", "orbit", "dissolve", "reform"
+    std::string effect;          // "detach", "float", "orbit", "dissolve", etc.
     GsAnimRegion region;
     float lifetime = 3.0f;
     bool loop = false;
     GsAnimParams params;
+    std::optional<GsAnimReformConfig> reform;  // auto-reform after effect finishes
 };
 
 struct PortalData {
