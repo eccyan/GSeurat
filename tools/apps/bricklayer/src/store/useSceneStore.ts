@@ -740,6 +740,11 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
       half_extents: [5, 5, 5],
       lifetime: 4,
       loop: true,
+      params: {
+        speed: 1, gravity: [0, -9.8, 0], velocity_scale: 1,
+        noise_amplitude: 1, orbit_speed: 1, expansion: 1,
+        opacity_fade: 1, scale_shrink: 1,
+      },
     };
     set({ gsAnimations: [...get().gsAnimations, anim], isDirty: true });
   },

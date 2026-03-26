@@ -103,6 +103,7 @@ struct GsAnimationData {
     GsAnimRegion region;
     float lifetime = 3.0f;
     bool loop = false;
+    GsAnimParams params;
 };
 
 struct PortalData {

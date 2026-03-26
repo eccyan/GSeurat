@@ -24,6 +24,17 @@ struct GsAnimRegion {
     glm::vec3 half_extents{5.0f};    // for Box
 };
 
+struct GsAnimParams {
+    float speed = 1.0f;             // time multiplier (scales dt)
+    glm::vec3 gravity{0.0f, -9.8f, 0.0f};  // gravity vector (Detach)
+    float velocity_scale = 1.0f;    // scales initial velocity (Detach/Float)
+    float noise_amplitude = 1.0f;   // horizontal wander scale (Float/Dissolve)
+    float orbit_speed = 1.0f;       // rotation speed multiplier (Orbit)
+    float expansion = 1.0f;         // radius growth scale (Orbit)
+    float opacity_fade = 1.0f;      // 0=no fade, 1=full fade to 0
+    float scale_shrink = 1.0f;      // 0=no shrink, 1=full shrink
+};
+
 struct GsParticleState {
     glm::vec3 velocity{0.0f};
     glm::vec3 original_position{0.0f};
@@ -42,7 +53,8 @@ public:
     uint32_t tag_region(const std::vector<Gaussian>& gaussians,
                         const GsAnimRegion& region,
                         GsAnimEffect effect,
-                        float lifetime = 3.0f);
+                        float lifetime = 3.0f,
+                        const GsAnimParams& params = {});
 
     // Apply animations to the Gaussian buffer (modifies in place).
     // Indices refer to the active buffer provided.
@@ -61,6 +73,7 @@ private:
     struct AnimGroup {
         uint32_t id = 0;
         GsAnimEffect effect;
+        GsAnimParams params;
         std::vector<uint32_t> indices;       // indices into the Gaussian array
         std::vector<GsParticleState> states;
         float global_time = 0.0f;

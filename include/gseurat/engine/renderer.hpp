@@ -92,10 +92,11 @@ public:
         GsAnimRegion region;
         float lifetime = 3.0f;
         bool loop = false;
+        GsAnimParams params;
         uint32_t group_id = 0;
     };
     void add_gs_animation(const std::string& effect, const GsAnimRegion& region,
-                          float lifetime, bool loop);
+                          float lifetime, bool loop, const GsAnimParams& params = {});
     void clear_gs_animations();
     const std::vector<SceneAnimation>& gs_scene_animations() const { return gs_scene_animations_; }
 
