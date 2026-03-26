@@ -957,6 +957,13 @@ function GsAnimationProperties({ anim }: { anim: GsAnimationGroupData }) {
       </div>
 
       <div style={styles.section}>
+        <span style={styles.label}>Orbit Acceleration</span>
+        <NumberInput value={anim.params.orbit_acceleration} step={0.1}
+          onChange={(v) => update(anim.id, { params: { ...anim.params, orbit_acceleration: v } })} style={styles.input} />
+        <span style={{ fontSize: 10, color: '#666' }}>{'>'}0 = spin up, {'<'}0 = spin down</span>
+      </div>
+
+      <div style={styles.section}>
         <span style={styles.label}>Expansion</span>
         <NumberInput value={anim.params.expansion} min={0} step={0.1}
           onChange={(v) => update(anim.id, { params: { ...anim.params, expansion: v } })} style={styles.input} />

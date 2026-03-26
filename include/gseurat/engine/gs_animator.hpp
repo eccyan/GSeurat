@@ -30,6 +30,7 @@ struct GsAnimParams {
     float velocity_scale = 1.0f;    // scales initial velocity (Detach/Float)
     float noise_amplitude = 1.0f;   // horizontal wander scale (Float/Dissolve)
     float orbit_speed = 1.0f;       // rotation speed multiplier (Orbit)
+    float orbit_acceleration = 0.0f; // angular acceleration (Orbit): >0 speeds up, <0 slows down
     float expansion = 1.0f;         // radius growth scale (Orbit)
     float opacity_fade = 1.0f;      // 0=no fade, 1=full fade to 0
     float scale_shrink = 1.0f;      // 0=no shrink, 1=full shrink

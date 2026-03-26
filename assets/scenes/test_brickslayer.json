@@ -306,9 +306,11 @@
           60,
           0
         ],
-        "radius": 15
+        "radius": 100
       },
-      "lifetime": 4,
+      "speed": 0.01,
+      "expansion": 20,
+      "lifetime": 10,
       "loop": true
     }
   ]

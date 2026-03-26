@@ -532,6 +532,7 @@ GsAnimationData SceneLoader::parse_gs_animation(const nlohmann::json& j) {
         anim.params.velocity_scale = p.value("velocity_scale", anim.params.velocity_scale);
         anim.params.noise_amplitude = p.value("noise_amplitude", anim.params.noise_amplitude);
         anim.params.orbit_speed = p.value("orbit_speed", anim.params.orbit_speed);
+        anim.params.orbit_acceleration = p.value("orbit_acceleration", anim.params.orbit_acceleration);
         anim.params.expansion = p.value("expansion", anim.params.expansion);
         anim.params.opacity_fade = p.value("opacity_fade", anim.params.opacity_fade);
         anim.params.scale_shrink = p.value("scale_shrink", anim.params.scale_shrink);
@@ -569,6 +570,7 @@ nlohmann::json SceneLoader::gs_animation_json(const GsAnimationData& anim) {
     if (p.velocity_scale != def.velocity_scale) params["velocity_scale"] = p.velocity_scale;
     if (p.noise_amplitude != def.noise_amplitude) params["noise_amplitude"] = p.noise_amplitude;
     if (p.orbit_speed != def.orbit_speed) params["orbit_speed"] = p.orbit_speed;
+    if (p.orbit_acceleration != def.orbit_acceleration) params["orbit_acceleration"] = p.orbit_acceleration;
     if (p.expansion != def.expansion) params["expansion"] = p.expansion;
     if (p.opacity_fade != def.opacity_fade) params["opacity_fade"] = p.opacity_fade;
     if (p.scale_shrink != def.scale_shrink) params["scale_shrink"] = p.scale_shrink;
