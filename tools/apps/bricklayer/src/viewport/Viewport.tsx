@@ -197,6 +197,9 @@ function GrabPlane() {
         } else if (sel.type === 'portal') {
           const portal = store.portals.find((p) => p.id === sel.id);
           if (portal) { cx = portal.position[0]; cz = portal.position[1]; }
+        } else if (sel.type === 'gs_emitter') {
+          const em = store.gsParticleEmitters.find((e) => e.id === sel.id);
+          if (em) { cx = em.position[0]; cz = em.position[2]; }
         } else if (sel.type === 'player') {
           cx = store.player.position[0]; cz = store.player.position[2];
         }
