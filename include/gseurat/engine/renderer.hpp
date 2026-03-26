@@ -4,6 +4,8 @@
 #include "gseurat/engine/camera.hpp"
 #include "gseurat/engine/screenshot.hpp"
 #include "gseurat/engine/gs_chunk_grid.hpp"
+#include "gseurat/engine/gs_animator.hpp"
+#include "gseurat/engine/gs_particle.hpp"
 #include "gseurat/engine/gs_renderer.hpp"
 #include "gseurat/engine/command_pool.hpp"
 #include "gseurat/engine/descriptor.hpp"
@@ -74,6 +76,15 @@ public:
     void set_flash_color(float r, float g, float b) { flash_r_ = r; flash_g_ = g; flash_b_ = b; }
     void set_god_rays_intensity(float v) { god_rays_intensity_ = v; }
     float god_rays_intensity() const { return god_rays_intensity_; }
+
+    // Gaussian particle emitters
+    void add_gs_particle_emitter(const GsEmitterConfig& config);
+    void clear_gs_particle_emitters();
+    std::vector<GaussianParticleEmitter>& gs_particle_emitters() { return gs_particle_emitters_; }
+
+    // Gaussian animator (animate existing scene Gaussians)
+    GaussianAnimator& gs_animator() { return gs_animator_; }
+    const std::vector<Gaussian>& gs_active_buffer() const { return gs_active_buffer_; }
 
     void request_screenshot(const std::string& path) { screenshot_.request(path); }
     bool screenshot_write_ok() const { return screenshot_.write_ok(); }
@@ -166,6 +177,9 @@ private:
     // Spatial chunk grid for GS frustum culling
     GsChunkGrid gs_chunk_grid_;
     std::vector<Gaussian> gs_active_buffer_;
+    std::vector<Gaussian> gs_scene_buffer_;   // cached scene-only Gaussians (no particles/anim)
+    std::vector<GaussianParticleEmitter> gs_particle_emitters_;
+    GaussianAnimator gs_animator_;
     std::vector<uint32_t> gs_prev_visible_;
     bool gs_skip_chunk_cull_ = false;
     uint32_t gs_gaussian_budget_ = 0;  // 0 = unlimited (no LOD decimation)

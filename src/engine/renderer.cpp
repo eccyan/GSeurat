@@ -2,6 +2,7 @@
 #include "gseurat/engine/pipeline.hpp"
 #include "gseurat/engine/resource_manager.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cstring>
 #include <stdexcept>
@@ -755,6 +756,8 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
                     gs_stable_frame_count_ = 0;
                 }
                 gs_prev_visible_ = visible;
+
+                // Re-gather scene Gaussians (only on visibility change)
                 if (flags.gs_lod && gs_gaussian_budget_ > 0) {
                     glm::vec3 cam_pos = glm::vec3(glm::inverse(gs_view_)[3]);
                     gs_chunk_grid_.gather_lod(visible, cam_pos, gs_gaussian_budget_,
@@ -762,13 +765,45 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
                 } else {
                     gs_chunk_grid_.gather(visible, gs_active_buffer_);
                 }
+                gs_scene_buffer_ = gs_active_buffer_;  // cache scene-only buffer
+
                 if (!gs_active_buffer_.empty()) {
-                    // Frame fence (waited at frame start) guarantees the GPU
-                    // is done with these SSBOs — no need for vkDeviceWaitIdle.
                     gs_renderer_.update_active_gaussians(
                         gs_active_buffer_.data(),
                         static_cast<uint32_t>(gs_active_buffer_.size()));
                 }
+            }
+
+            // Update particles/animations separately (no re-sort of scene)
+            bool has_particles = !gs_particle_emitters_.empty() || gs_animator_.has_active_groups();
+            if (has_particles) {
+                // Start from cached scene buffer
+                gs_active_buffer_ = gs_scene_buffer_;
+
+                // Animate tagged scene Gaussians (Mode 2)
+                if (gs_animator_.has_active_groups()) {
+                    gs_animator_.update(dt, gs_active_buffer_);
+                }
+
+                // Update and append Gaussian particles from emitters
+                for (auto& emitter : gs_particle_emitters_) {
+                    emitter.update(dt);
+                    emitter.gather(gs_active_buffer_);
+                }
+                // Remove dead emitters
+                gs_particle_emitters_.erase(
+                    std::remove_if(gs_particle_emitters_.begin(), gs_particle_emitters_.end(),
+                        [](const GaussianParticleEmitter& e) { return !e.active() && e.alive_count() == 0; }),
+                    gs_particle_emitters_.end());
+
+                // Clamp to allocated SSBO capacity
+                if (gs_active_buffer_.size() > gs_renderer_.max_gaussian_count()) {
+                    gs_active_buffer_.resize(gs_renderer_.max_gaussian_count());
+                }
+
+                gs_renderer_.update_active_gaussians(
+                    gs_active_buffer_.data(),
+                    static_cast<uint32_t>(gs_active_buffer_.size()));
             }
         }
 
@@ -884,6 +919,16 @@ void Renderer::record_ui_pass(VkCommandBuffer cmd,
     }
 
     vkCmdSetScissor(cmd, 0, 1, &full_scissor);
+}
+
+void Renderer::add_gs_particle_emitter(const GsEmitterConfig& config) {
+    auto& emitter = gs_particle_emitters_.emplace_back();
+    emitter.configure(config);
+    emitter.set_active(true);
+}
+
+void Renderer::clear_gs_particle_emitters() {
+    gs_particle_emitters_.clear();
 }
 
 }  // namespace gseurat

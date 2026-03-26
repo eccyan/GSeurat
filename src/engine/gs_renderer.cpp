@@ -316,18 +316,18 @@ void GsRenderer::load_cloud(const GaussianCloud& cloud) {
 
     sort_done_once_ = false;
     gaussian_count_ = cloud.count();
-    max_gaussian_count_ = gaussian_count_;
+    max_gaussian_count_ = gaussian_count_ + kParticleHeadroom;
 
     // Round up to next multiple of 1024 for radix sort workgroups (256 threads × 4 elements)
-    sort_size_ = ((gaussian_count_ + 1023) / 1024) * 1024;
-    if (sort_size_ < gaussian_count_) sort_size_ = gaussian_count_;  // safety
+    sort_size_ = ((max_gaussian_count_ + 1023) / 1024) * 1024;
+    if (sort_size_ < max_gaussian_count_) sort_size_ = max_gaussian_count_;  // safety
     num_sort_workgroups_ = sort_size_ / 1024;
     if (num_sort_workgroups_ == 0) num_sort_workgroups_ = 1;
     // Ensure sort_size_ is at least num_sort_workgroups_ * 1024
     sort_size_ = num_sort_workgroups_ * 1024;
 
-    VkDeviceSize gaussian_buf_size = static_cast<VkDeviceSize>(gaussian_count_) * sizeof(GpuGaussian);
-    VkDeviceSize projected_buf_size = static_cast<VkDeviceSize>(gaussian_count_) * sizeof(ProjectedSplat);
+    VkDeviceSize gaussian_buf_size = static_cast<VkDeviceSize>(max_gaussian_count_) * sizeof(GpuGaussian);
+    VkDeviceSize projected_buf_size = static_cast<VkDeviceSize>(max_gaussian_count_) * sizeof(ProjectedSplat);
     VkDeviceSize sort_buf_size = static_cast<VkDeviceSize>(sort_size_) * sizeof(SortEntry);
     VkDeviceSize histogram_buf_size = static_cast<VkDeviceSize>(256) * num_sort_workgroups_ * sizeof(uint32_t);
 

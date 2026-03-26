@@ -57,6 +57,8 @@ shared float tile_depth[16][16];
 // Returns shadow factor: 0.0 = fully shadowed, 1.0 = fully lit.
 float tile_contact_shadow(uvec2 local_id, float surface_depth, vec2 light_screen_dir) {
     const int STEPS = 4;
+    // Depth threshold scales with distance to avoid noise at far range
+    float threshold = max(0.5, surface_depth * 0.02);
     float shadow = 1.0;
     for (int s = 1; s <= STEPS; s++) {
         ivec2 sp = ivec2(local_id) + ivec2(round(light_screen_dir * float(s)));
@@ -64,9 +66,9 @@ float tile_contact_shadow(uvec2 local_id, float surface_depth, vec2 light_screen
         float sd = tile_depth[sp.y][sp.x];
         if (sd <= 0.0) continue;  // no geometry at sample
         // If sampled geometry is closer than current surface, it occludes
-        if (surface_depth - sd > 0.5) {
+        if (surface_depth - sd > threshold) {
             float step_fade = 1.0 - float(s) / float(STEPS + 1);
-            shadow = min(shadow, 1.0 - step_fade * 0.7);
+            shadow = min(shadow, 1.0 - step_fade * 0.5);
         }
     }
     return shadow;
@@ -89,8 +91,9 @@ void main() {
     float xray_depth = effect_params2.y;
 
     // Accumulate color front-to-back
-    vec3 color = vec3(0.0);
-    vec3 emission = vec3(0.0);  // emissive glow (additive, bypasses lighting)
+    vec3 color = vec3(0.0);        // non-emissive color (receives lighting)
+    vec3 emission = vec3(0.0);     // emissive glow (self-lit, bypasses lighting)
+    float emission_alpha = 0.0;    // tracks how much of the pixel is emissive
     float alpha_accum = 0.0;
     float first_hit_depth = 0.0;
     bool has_first_hit = false;
@@ -133,14 +136,18 @@ void main() {
 
         // Front-to-back compositing
         float weight = alpha * (1.0 - alpha_accum);
-        color += weight * splat.color.rgb;
-        alpha_accum += weight;
-
-        // Accumulate emission (additive HDR, triggers bloom automatically)
         float em = splat.color.a;  // emission intensity from preprocess
+
         if (em > 0.0) {
-            emission += weight * splat.color.rgb * em;
+            // Emissive/self-lit Gaussian: base color at full brightness + emission bonus
+            // Bypasses scene lighting entirely (particles, glowing materials)
+            emission += weight * splat.color.rgb * (1.0 + em);
+            emission_alpha += weight;
+        } else {
+            // Non-emissive: normal color (will receive scene lighting)
+            color += weight * splat.color.rgb;
         }
+        alpha_accum += weight;
 
         // Early termination when pixel is saturated
         if (alpha_accum > 0.999) break;
@@ -154,9 +161,10 @@ void main() {
     float toon_bands = effect_flags.x;
     float light_mode = effect_flags.y;
 
-    if (alpha_accum > 0.001 && (light_mode > 0.5 || toon_bands > 0.5)) {
-        // Un-premultiply color for effect processing
-        vec3 base_color = color / max(alpha_accum, 0.001);
+    float non_emissive_alpha = alpha_accum - emission_alpha;
+    if (non_emissive_alpha > 0.001 && (light_mode > 0.5 || toon_bands > 0.5)) {
+        // Un-premultiply non-emissive color only for lighting
+        vec3 base_color = color / max(non_emissive_alpha, 0.001);
 
         // --- Pseudo-normal from depth gradient (for lighting) ---
         if (light_mode > 0.5) {
@@ -317,8 +325,8 @@ void main() {
             }
         }
 
-        // Re-premultiply
-        color = base_color * alpha_accum;
+        // Re-premultiply (non-emissive portion only)
+        color = base_color * non_emissive_alpha;
     }
 
     // --- X-Ray color treatment ---
