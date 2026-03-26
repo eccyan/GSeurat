@@ -59,6 +59,7 @@ public:
     void set_position(const glm::vec3& pos);
     void set_active(bool active);
     bool active() const { return active_; }
+    const GsEmitterConfig& config() const { return config_; }
     void update(float dt);
 
     // Append alive particles as Gaussians to output. Returns count appended.
