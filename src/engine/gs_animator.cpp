@@ -173,14 +173,16 @@ void GaussianAnimator::apply_orbit(AnimGroup& group, std::vector<Gaussian>& gaus
         s.age += dt;
         float t = std::clamp(s.age / s.lifetime, 0.0f, 1.0f);
 
-        // Rotate around center
+        // Rotate around center — use age directly for orbit dynamics
+        // so expansion/height aren't coupled to lifetime
         glm::vec3 rel = s.original_position - center;
         float angle = group.global_time * (2.0f * p.orbit_speed + s.phase * 0.5f);
         float cs = std::cos(angle), sn = std::sin(angle);
-        glm::vec3 rotated{rel.x * cs - rel.z * sn, rel.y + t * 5.0f * p.expansion, rel.x * sn + rel.z * cs};
+        float age_factor = std::min(s.age * 0.2f, 1.0f);  // ramp over ~5 seconds, then plateau
+        glm::vec3 rotated{rel.x * cs - rel.z * sn, rel.y + age_factor * 5.0f * p.expansion, rel.x * sn + rel.z * cs};
 
         auto& g = gaussians[idx];
-        g.position = center + rotated * (1.0f + t * 0.5f * p.expansion);
+        g.position = center + rotated * (1.0f + age_factor * 0.5f * p.expansion);
         g.opacity = s.original_opacity * (1.0f - t * 0.3f * p.opacity_fade);
         g.emission = 0.01f;
     }
