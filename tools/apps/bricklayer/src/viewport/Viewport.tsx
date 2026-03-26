@@ -9,6 +9,7 @@ import { LightGizmos } from './LightGizmos.js';
 import { NpcMarkers } from './NpcMarkers.js';
 import { PortalMarkers } from './PortalMarkers.js';
 import { ObjectMarkers } from './ObjectMarkers.js';
+import { GsEmitterMarkers } from './GsEmitterMarkers.js';
 import { PlayerMarker } from './PlayerMarker.js';
 import { CollisionOverlay } from './CollisionOverlay.js';
 import { useSceneStore } from '../store/useSceneStore.js';
@@ -88,6 +89,10 @@ function getGrabbedEntityY(): number {
   if (sel.type === 'player') {
     return store.player.position[1];
   }
+  if (sel.type === 'gs_emitter') {
+    const em = store.gsParticleEmitters.find((e) => e.id === sel.id);
+    return em?.position[1] ?? 0;
+  }
   // portal: always Y=0
   return 0;
 }
@@ -108,6 +113,8 @@ function updateGrabbedEntity(x: number, y: number, z: number) {
     store.updateLight(sel.id, { position: [x, z], height: y });
   } else if (sel.type === 'portal') {
     store.updatePortal(sel.id, { position: [x, z] });
+  } else if (sel.type === 'gs_emitter') {
+    store.updateGsEmitter(sel.id, { position: [x, y, z] });
   } else if (sel.type === 'player') {
     store.updatePlayer({ position: [x, y, z] });
   }
@@ -277,6 +284,7 @@ function SceneContent() {
       <LightGizmos />
       <NpcMarkers />
       <PortalMarkers />
+      <GsEmitterMarkers />
       <ObjectMarkers />
       <PlayerMarker />
       <CollisionOverlay />

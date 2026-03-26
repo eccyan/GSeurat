@@ -151,6 +151,33 @@ export function exportSceneJson(state: SceneStoreState): object {
     });
   }
 
+  if (state.gsParticleEmitters.length > 0) {
+    scene.gs_particle_emitters = state.gsParticleEmitters.map((e) => {
+      const out: Record<string, unknown> = {
+        position: e.position,
+        spawn_rate: e.spawn_rate,
+        lifetime_min: e.lifetime_min,
+        lifetime_max: e.lifetime_max,
+        velocity_min: e.velocity_min,
+        velocity_max: e.velocity_max,
+        acceleration: e.acceleration,
+        color_start: e.color_start,
+        color_end: e.color_end,
+        scale_min: e.scale_min,
+        scale_max: e.scale_max,
+        scale_end_factor: e.scale_end_factor,
+        opacity_start: e.opacity_start,
+        opacity_end: e.opacity_end,
+        emission: e.emission,
+        spawn_offset_min: e.spawn_offset_min,
+        spawn_offset_max: e.spawn_offset_max,
+      };
+      if (e.preset) out.preset = e.preset;
+      if (e.burst_duration > 0) out.burst_duration = e.burst_duration;
+      return out;
+    });
+  }
+
   if (state.collisionGridData) {
     const g = state.collisionGridData;
     scene.collision = {
