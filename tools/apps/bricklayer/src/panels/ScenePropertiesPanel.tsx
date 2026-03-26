@@ -837,13 +837,17 @@ function GsEmitterProperties({ emitter }: { emitter: GsParticleEmitterData }) {
   );
 }
 
-const effectOptions = ['detach', 'float', 'orbit', 'dissolve', 'reform'];
+const effectOptions = ['detach', 'float', 'orbit', 'dissolve', 'reform', 'pulse', 'vortex', 'wave', 'scatter'];
 const effectDescriptions: Record<string, string> = {
   detach: 'Scatter outward with gravity, fade opacity',
   float: 'Drift upward with horizontal noise, shrink',
   orbit: 'Swirl around region center',
   dissolve: 'Shrink to zero, fade opacity',
   reform: 'Restore to original position and color',
+  pulse: 'Scale oscillates rhythmically (crystals, magic)',
+  vortex: 'Spiral inward/upward, tightening radius (tornado)',
+  wave: 'Sinusoidal ripple propagating from center (shockwave)',
+  scatter: 'Explosive outward burst (impacts, shattering)',
 };
 
 function GsAnimationProperties({ anim }: { anim: GsAnimationGroupData }) {

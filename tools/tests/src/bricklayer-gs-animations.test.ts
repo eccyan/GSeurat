@@ -280,8 +280,8 @@ console.log('\n--- Grab mode ---\n');
 console.log('\n--- Effect types ---\n');
 
 {
-  console.log('Test 5.1: All 5 effects are valid');
-  const effects = ['detach', 'float', 'orbit', 'dissolve', 'reform'];
+  console.log('Test 5.1: All 9 effects are valid');
+  const effects = ['detach', 'float', 'orbit', 'dissolve', 'reform', 'pulse', 'vortex', 'wave', 'scatter'];
   for (const e of effects) {
     let list: GsAnimationGroupData[] = [];
     list = addAnimation(list);

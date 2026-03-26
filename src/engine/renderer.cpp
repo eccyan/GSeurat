@@ -18,6 +18,10 @@ static GsAnimEffect parse_effect_name(const std::string& name) {
     if (name == "orbit")    return GsAnimEffect::Orbit;
     if (name == "dissolve") return GsAnimEffect::Dissolve;
     if (name == "reform")   return GsAnimEffect::Reform;
+    if (name == "pulse")    return GsAnimEffect::Pulse;
+    if (name == "vortex")   return GsAnimEffect::Vortex;
+    if (name == "wave")     return GsAnimEffect::Wave;
+    if (name == "scatter")  return GsAnimEffect::Scatter;
     return GsAnimEffect::Detach;
 }
 

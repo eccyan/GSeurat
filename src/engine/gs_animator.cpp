@@ -61,7 +61,13 @@ uint32_t GaussianAnimator::tag_region(const std::vector<Gaussian>& gaussians,
         else dir = glm::vec3(0.0f, 1.0f, 0.0f);
 
         float vs = params.velocity_scale;
-        if (effect == GsAnimEffect::Detach) {
+        if (effect == GsAnimEffect::Scatter) {
+            state.velocity = dir * rand_float(rng_, 10.0f * vs, 25.0f * vs);
+            state.velocity += glm::vec3(
+                rand_float(rng_, -5.0f * vs, 5.0f * vs),
+                rand_float(rng_, 5.0f * vs, 15.0f * vs),
+                rand_float(rng_, -5.0f * vs, 5.0f * vs));
+        } else if (effect == GsAnimEffect::Detach) {
             state.velocity = dir * rand_float(rng_, 3.0f * vs, 8.0f * vs);
             state.velocity.y += rand_float(rng_, 2.0f * vs, 5.0f * vs);
         } else if (effect == GsAnimEffect::Float) {
@@ -95,6 +101,10 @@ void GaussianAnimator::update(float dt, std::vector<Gaussian>& gaussians) {
             case GsAnimEffect::Orbit:   apply_orbit(group, gaussians, dt); break;
             case GsAnimEffect::Dissolve: apply_dissolve(group, gaussians, dt); break;
             case GsAnimEffect::Reform:  apply_reform(group, gaussians, dt); break;
+            case GsAnimEffect::Pulse:   apply_pulse(group, gaussians, dt); break;
+            case GsAnimEffect::Vortex:  apply_vortex(group, gaussians, dt); break;
+            case GsAnimEffect::Wave:    apply_wave(group, gaussians, dt); break;
+            case GsAnimEffect::Scatter: apply_scatter(group, gaussians, dt); break;
         }
 
         // Check if all states have expired
@@ -235,6 +245,119 @@ void GaussianAnimator::apply_reform(AnimGroup& group, std::vector<Gaussian>& gau
         g.opacity = s.original_opacity * std::min(1.0f, t * 2.0f);
         g.color = glm::mix(g.color, s.original_color, smooth_t);
         g.emission = 0.01f * (1.0f - smooth_t);
+    }
+}
+
+void GaussianAnimator::apply_pulse(AnimGroup& group, std::vector<Gaussian>& gaussians, float dt) {
+    const auto& p = group.params;
+    dt *= p.speed;
+    for (size_t i = 0; i < group.indices.size(); ++i) {
+        auto& s = group.states[i];
+        if (!s.active || s.age >= s.lifetime) continue;
+        uint32_t idx = group.indices[i];
+        if (idx >= gaussians.size()) continue;
+
+        s.age += dt;
+        // Sinusoidal oscillation: frequency from speed, amplitude from scale_shrink
+        float wave = std::sin(s.age * 4.0f + s.phase) * 0.5f + 0.5f;  // 0..1
+        float scale_factor = 1.0f + (wave - 0.5f) * p.scale_shrink;   // oscillate around 1.0
+
+        auto& g = gaussians[idx];
+        g.position = s.original_position;  // no movement
+        g.scale = s.original_scale * scale_factor;
+        g.opacity = s.original_opacity * (1.0f - (wave - 0.5f) * 0.3f * p.opacity_fade);
+        g.color = s.original_color;
+    }
+}
+
+void GaussianAnimator::apply_vortex(AnimGroup& group, std::vector<Gaussian>& gaussians, float dt) {
+    const auto& p = group.params;
+    dt *= p.speed;
+    glm::vec3 center{0.0f};
+    for (const auto& s : group.states) center += s.original_position;
+    if (!group.states.empty()) center /= static_cast<float>(group.states.size());
+
+    for (size_t i = 0; i < group.indices.size(); ++i) {
+        auto& s = group.states[i];
+        if (!s.active || s.age >= s.lifetime) continue;
+        uint32_t idx = group.indices[i];
+        if (idx >= gaussians.size()) continue;
+
+        s.age += dt;
+        float t = std::clamp(s.age / s.lifetime, 0.0f, 1.0f);
+
+        glm::vec3 rel = s.original_position - center;
+        float gt = group.global_time;
+        float base_speed = 2.0f * p.orbit_speed + s.phase * 0.5f;
+        float angle = gt * base_speed + 0.5f * p.orbit_acceleration * gt * gt;
+        float cs = std::cos(angle), sn = std::sin(angle);
+
+        // Contract inward over time (radius shrinks)
+        float contract = 1.0f - t * std::clamp(1.0f - p.expansion, 0.0f, 1.0f);
+        glm::vec3 rotated{
+            rel.x * cs * contract - rel.z * sn * contract,
+            rel.y + t * 5.0f * p.height_rise,
+            rel.x * sn * contract + rel.z * cs * contract};
+
+        auto& g = gaussians[idx];
+        g.position = center + rotated;
+        g.opacity = s.original_opacity * (1.0f - t * p.opacity_fade);
+        g.scale = s.original_scale * (1.0f - t * p.scale_shrink);
+        g.emission = 0.01f;
+    }
+}
+
+void GaussianAnimator::apply_wave(AnimGroup& group, std::vector<Gaussian>& gaussians, float dt) {
+    const auto& p = group.params;
+    dt *= p.speed;
+    glm::vec3 center{0.0f};
+    for (const auto& s : group.states) center += s.original_position;
+    if (!group.states.empty()) center /= static_cast<float>(group.states.size());
+
+    for (size_t i = 0; i < group.indices.size(); ++i) {
+        auto& s = group.states[i];
+        if (!s.active || s.age >= s.lifetime) continue;
+        uint32_t idx = group.indices[i];
+        if (idx >= gaussians.size()) continue;
+
+        s.age += dt;
+
+        // Distance from center in XZ plane
+        glm::vec3 rel = s.original_position - center;
+        float dist = std::sqrt(rel.x * rel.x + rel.z * rel.z);
+
+        // Traveling sine wave: propagates outward from center
+        float freq = 3.0f;  // base frequency
+        float propagation = 5.0f * p.velocity_scale;  // wave speed
+        float amplitude = 1.0f * p.noise_amplitude;
+        float y_offset = std::sin(dist * freq - group.global_time * propagation + s.phase * 0.2f) * amplitude;
+
+        auto& g = gaussians[idx];
+        g.position = s.original_position + glm::vec3(0.0f, y_offset, 0.0f);
+        g.scale = s.original_scale;
+        g.opacity = s.original_opacity;
+        g.color = s.original_color;
+    }
+}
+
+void GaussianAnimator::apply_scatter(AnimGroup& group, std::vector<Gaussian>& gaussians, float dt) {
+    const auto& p = group.params;
+    dt *= p.speed;
+    for (size_t i = 0; i < group.indices.size(); ++i) {
+        auto& s = group.states[i];
+        if (!s.active || s.age >= s.lifetime) continue;
+        uint32_t idx = group.indices[i];
+        if (idx >= gaussians.size()) continue;
+
+        s.age += dt;
+        s.velocity += p.gravity * dt * 0.3f;  // light gravity for dramatic hang time
+        float t = std::clamp(s.age / s.lifetime, 0.0f, 1.0f);
+
+        auto& g = gaussians[idx];
+        g.position = s.original_position + s.velocity * s.age;
+        g.opacity = s.original_opacity * (1.0f - t * p.opacity_fade);
+        g.scale = s.original_scale * (1.0f - t * p.scale_shrink * 0.8f);
+        g.emission = 0.01f;
     }
 }
 

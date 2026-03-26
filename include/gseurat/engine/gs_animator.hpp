@@ -14,6 +14,10 @@ enum class GsAnimEffect {
     Orbit,     // swirl around region center, stretch along velocity
     Dissolve,  // shrink to zero, fade opacity, slight drift
     Reform,    // reverse of dissolve — lerp back to original position
+    Pulse,     // scale oscillates rhythmically (crystals, magic)
+    Vortex,    // spiral inward/upward with tightening radius (tornado)
+    Wave,      // sinusoidal ripple propagating from center (shockwave)
+    Scatter,   // explosive outward burst (impacts, shattering)
 };
 
 struct GsAnimRegion {
@@ -87,6 +91,10 @@ private:
     void apply_orbit(AnimGroup& group, std::vector<Gaussian>& gaussians, float dt);
     void apply_dissolve(AnimGroup& group, std::vector<Gaussian>& gaussians, float dt);
     void apply_reform(AnimGroup& group, std::vector<Gaussian>& gaussians, float dt);
+    void apply_pulse(AnimGroup& group, std::vector<Gaussian>& gaussians, float dt);
+    void apply_vortex(AnimGroup& group, std::vector<Gaussian>& gaussians, float dt);
+    void apply_wave(AnimGroup& group, std::vector<Gaussian>& gaussians, float dt);
+    void apply_scatter(AnimGroup& group, std::vector<Gaussian>& gaussians, float dt);
 
     std::vector<AnimGroup> groups_;
     uint32_t next_group_id_ = 1;
