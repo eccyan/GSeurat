@@ -151,6 +151,7 @@ export type InspectorTab =
   | 'objects'
   | 'backgrounds'
   | 'gaussian'
+  | 'gs_emitters'
   | 'nav_zone';
 
 export type CollisionLayer = 'solid' | 'elevation' | 'nav_zone';
@@ -162,6 +163,29 @@ export type SettingsCategory =
   | 'day_night'
   | 'vfx'
   | 'backgrounds';
+
+export interface GsParticleEmitterData {
+  id: string;
+  preset: string;  // '' | 'dust_puff' | 'spark_shower' | 'magic_spiral'
+  position: [number, number, number];  // [scene_x, height, scene_z]
+  spawn_rate: number;
+  lifetime_min: number;
+  lifetime_max: number;
+  velocity_min: [number, number, number];
+  velocity_max: [number, number, number];
+  acceleration: [number, number, number];
+  color_start: [number, number, number];
+  color_end: [number, number, number];
+  scale_min: [number, number, number];
+  scale_max: [number, number, number];
+  scale_end_factor: number;
+  opacity_start: number;
+  opacity_end: number;
+  emission: number;
+  spawn_offset_min: [number, number, number];
+  spawn_offset_max: [number, number, number];
+  burst_duration: number;
+}
 
 export interface PlacedObjectData {
   id: string;
@@ -260,5 +284,6 @@ export interface BricklayerFile {
     dayNight: DayNightData;
     gaussianSplat: GaussianSplatConfig;
     placedObjects: PlacedObjectData[];
+    gsParticleEmitters?: GsParticleEmitterData[];
   };
 }

@@ -22,7 +22,8 @@
     "test:pose-templates": "node --import tsx/esm --conditions source src/pose-templates.test.ts",
     "test:echidna-ply-export": "node --import tsx/esm --conditions source src/echidna-ply-export.test.ts",
     "test:bricklayer-store": "node --import tsx/esm --conditions source src/bricklayer-store.test.ts",
-    "test:bricklayer-grab": "node --import tsx/esm --conditions source src/bricklayer-grab.test.ts"
+    "test:bricklayer-grab": "node --import tsx/esm --conditions source src/bricklayer-grab.test.ts",
+    "test:bricklayer-gs-emitters": "node --import tsx/esm --conditions source src/bricklayer-gs-emitters.test.ts"
   },
   "dependencies": {
     "@gseurat/test-harness": "workspace:*",

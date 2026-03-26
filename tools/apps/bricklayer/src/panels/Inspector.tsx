@@ -9,6 +9,7 @@ import { EntitiesTab } from './EntitiesTab.js';
 import { BackgroundTab } from './BackgroundTab.js';
 import { GaussianTab } from './GaussianTab.js';
 import { ObjectsTab } from './ObjectsTab.js';
+import { GsEmittersTab } from './GsEmittersTab.js';
 import { NavZoneTab } from './NavZoneTab.js';
 
 const tabs: { id: InspectorTab; label: string }[] = [
@@ -20,6 +21,7 @@ const tabs: { id: InspectorTab; label: string }[] = [
   { id: 'objects', label: 'Objects' },
   { id: 'backgrounds', label: 'BG' },
   { id: 'gaussian', label: 'GS' },
+  { id: 'gs_emitters', label: 'Emit' },
   { id: 'nav_zone', label: 'Nav' },
 ];
 
@@ -85,6 +87,7 @@ export function Inspector() {
         {inspectorTab === 'objects' && <ObjectsTab />}
         {inspectorTab === 'backgrounds' && <BackgroundTab />}
         {inspectorTab === 'gaussian' && <GaussianTab />}
+        {inspectorTab === 'gs_emitters' && <GsEmittersTab />}
         {inspectorTab === 'nav_zone' && <NavZoneTab />}
       </div>
     </div>

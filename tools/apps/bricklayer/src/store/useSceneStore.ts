@@ -6,6 +6,7 @@ import type {
   NpcData,
   PortalData,
   PlacedObjectData,
+  GsParticleEmitterData,
   EmitterConfig,
   BackgroundLayer,
   WeatherData,
@@ -184,6 +185,7 @@ export interface SceneStoreState {
   npcs: NpcData[];
   portals: PortalData[];
   placedObjects: PlacedObjectData[];
+  gsParticleEmitters: GsParticleEmitterData[];
   player: PlayerData;
   backgroundLayers: BackgroundLayer[];
   torchEmitter: EmitterConfig;
@@ -251,6 +253,9 @@ export interface SceneStoreState {
   storeAssetBlob: (path: string, blob: Blob) => void;
   updatePlacedObject: (id: string, patch: Partial<PlacedObjectData>) => void;
   removePlacedObject: (id: string) => void;
+  addGsEmitter: (position?: [number, number, number]) => void;
+  updateGsEmitter: (id: string, patch: Partial<GsParticleEmitterData>) => void;
+  removeGsEmitter: (id: string) => void;
   updatePlayer: (patch: Partial<PlayerData>) => void;
   addBackgroundLayer: () => void;
   updateBackgroundLayer: (id: string, patch: Partial<BackgroundLayer>) => void;
@@ -420,6 +425,7 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
   npcs: [],
   portals: [],
   placedObjects: [],
+  gsParticleEmitters: [],
   player: defaultPlayer(),
   backgroundLayers: [],
   torchEmitter: defaultEmitter(),
@@ -684,6 +690,38 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
   }),
   removePlacedObject: (id) => set({
     placedObjects: get().placedObjects.filter((o) => o.id !== id), isDirty: true,
+  }),
+
+  addGsEmitter: (pos?) => {
+    const emitter: GsParticleEmitterData = {
+      id: genId('gs_emitter'),
+      preset: '',
+      position: pos ?? [0, 2, 0],
+      spawn_rate: 10,
+      lifetime_min: 0.5,
+      lifetime_max: 1.5,
+      velocity_min: [-1, 1, -1],
+      velocity_max: [1, 3, 1],
+      acceleration: [0, -9.8, 0],
+      color_start: [1, 0.8, 0.3],
+      color_end: [1, 0.2, 0],
+      scale_min: [0.3, 0.3, 0.3],
+      scale_max: [0.6, 0.6, 0.6],
+      scale_end_factor: 0,
+      opacity_start: 1,
+      opacity_end: 0,
+      emission: 0,
+      spawn_offset_min: [0, 0, 0],
+      spawn_offset_max: [0, 0, 0],
+      burst_duration: 0,
+    };
+    set({ gsParticleEmitters: [...get().gsParticleEmitters, emitter], isDirty: true });
+  },
+  updateGsEmitter: (id, patch) => set({
+    gsParticleEmitters: get().gsParticleEmitters.map((e) => (e.id === id ? { ...e, ...patch } : e)), isDirty: true,
+  }),
+  removeGsEmitter: (id) => set({
+    gsParticleEmitters: get().gsParticleEmitters.filter((e) => e.id !== id), isDirty: true,
   }),
 
   updatePlayer: (patch) => set({ player: { ...get().player, ...patch }, isDirty: true }),
@@ -955,6 +993,7 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
     npcs: [],
     portals: [],
     placedObjects: [],
+    gsParticleEmitters: [],
     player: defaultPlayer(),
     backgroundLayers: [],
     torchPositions: [],
@@ -1072,6 +1111,7 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
         dayNight: s.dayNight,
         gaussianSplat: s.gaussianSplat,
         placedObjects: s.placedObjects,
+        gsParticleEmitters: s.gsParticleEmitters,
       },
     };
   },
@@ -1097,6 +1137,7 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
       npcs: data.scene.npcs,
       portals: data.scene.portals,
       placedObjects: data.scene.placedObjects ?? [],
+      gsParticleEmitters: data.scene.gsParticleEmitters ?? [],
       player: data.scene.player,
       backgroundLayers: data.scene.backgroundLayers,
       torchEmitter: data.scene.torchEmitter,

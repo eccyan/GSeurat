@@ -24,6 +24,7 @@ const icons: Record<string, string> = {
   lights: '\u2600',      // ☀
   npcs: '\u263A',        // ☺
   portals: '\u29C9',     // ⧉
+  emitters: '\u2728',     // ✨
   player: '\u2666',      // ♦
   settings: '\u2699',    // ⚙
   gs_camera: '\u25CE',   // ◎
@@ -158,11 +159,14 @@ export function ProjectTree() {
   const addLight = useSceneStore((st) => st.addLight);
   const addNpc = useSceneStore((st) => st.addNpc);
   const addPortal = useSceneStore((st) => st.addPortal);
+  const gsParticleEmitters = useSceneStore((st) => st.gsParticleEmitters);
   const addPlacedObject = useSceneStore((st) => st.addPlacedObject);
   const removePlacedObject = useSceneStore((st) => st.removePlacedObject);
   const removeLight = useSceneStore((st) => st.removeLight);
   const removeNpc = useSceneStore((st) => st.removeNpc);
   const removePortal = useSceneStore((st) => st.removePortal);
+  const addGsEmitter = useSceneStore((st) => st.addGsEmitter);
+  const removeGsEmitter = useSceneStore((st) => st.removeGsEmitter);
   const collisionGridData = useSceneStore((st) => st.collisionGridData);
 
   const [sceneOpen, setSceneOpen] = useState(true);
@@ -170,6 +174,7 @@ export function ProjectTree() {
   const [lightOpen, setLightOpen] = useState(true);
   const [npcOpen, setNpcOpen] = useState(true);
   const [portalOpen, setPortalOpen] = useState(true);
+  const [emitterOpen, setEmitterOpen] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   const click = (node: NavigationNode) => {
@@ -323,6 +328,27 @@ export function ProjectTree() {
                 isActive={isActive({ kind: 'scene_item', entityType: 'portal', entityId: p.id })}
                 onClick={() => click({ kind: 'scene_item', entityType: 'portal', entityId: p.id })}
                 actions={removeBtn(() => removePortal(p.id))}
+              />
+            ))}
+          </TreeNode>
+
+          {/* Emitters */}
+          <TreeNode
+            icon={icons.emitters} label="Emitters" count={gsParticleEmitters.length}
+            arrow={emitterOpen ? '\u25BE' : '\u25B8'}
+            isActive={isActive({ kind: 'scene_category', category: 'emitters' as any })}
+            onClick={() => { setEmitterOpen(!emitterOpen); click({ kind: 'scene_category', category: 'emitters' as any }); }}
+            actions={addBtn(() => addGsEmitter(getCameraTarget().xyz))}
+            isOpen={emitterOpen}
+          >
+            {gsParticleEmitters.map((e, i) => (
+              <TreeNode
+                key={e.id}
+                icon={icons.emitters}
+                label={e.preset || `Emitter ${i + 1}`}
+                isActive={isActive({ kind: 'scene_item', entityType: 'gs_emitter', entityId: e.id })}
+                onClick={() => click({ kind: 'scene_item', entityType: 'gs_emitter', entityId: e.id })}
+                actions={removeBtn(() => removeGsEmitter(e.id))}
               />
             ))}
           </TreeNode>

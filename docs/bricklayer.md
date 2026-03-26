@@ -269,3 +269,80 @@ The GS tile rasterizer compute shader (`gs_render.comp`):
   ]
 }
 ```
+
+## Gaussian Particle Emitters
+
+Scene files can include a `gs_particle_emitters` array to place continuous 3D Gaussian
+particle effects (dust, sparks, magic) directly in the scene. Emitters spawn new Gaussian
+splats each frame — they are self-lit (bypass scene lighting) and render through the same
+compute pipeline as the scene.
+
+### Presets
+
+Three built-in presets provide common effects. Use `"preset"` and override any fields:
+
+| Preset | Description | Spawn Rate | Lifetime | Emission |
+|--------|-------------|------------|----------|----------|
+| `dust_puff` | Brown dust cloud, burst, slow fall | 120/s | 1-2.5s | 0 (scene-lit) |
+| `spark_shower` | Orange sparks with gravity, self-lit | 40/s | 0.3-0.8s | 0.8 |
+| `magic_spiral` | Blue-to-magenta rising particles | 50/s | 1.5-3s | 0 (scene-lit) |
+
+### Parameters
+
+All fields are optional. When `preset` is specified, its values load first, then explicit fields override.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `preset` | string | — | `"dust_puff"`, `"spark_shower"`, or `"magic_spiral"` |
+| `position` | [x,y,z] | [0,0,0] | Scene/voxel coordinates (same system as lights) |
+| `spawn_rate` | float | 10 | Particles spawned per second |
+| `lifetime_min` | float | 0.5 | Minimum particle lifetime (seconds) |
+| `lifetime_max` | float | 1.5 | Maximum particle lifetime (seconds) |
+| `velocity_min` | [x,y,z] | [-1,1,-1] | Minimum initial velocity |
+| `velocity_max` | [x,y,z] | [1,3,1] | Maximum initial velocity |
+| `acceleration` | [x,y,z] | [0,-9.8,0] | Constant acceleration (default: gravity) |
+| `color_start` | [r,g,b] | [1,0.8,0.3] | Color at birth |
+| `color_end` | [r,g,b] | [1,0.2,0] | Color at death |
+| `scale_min` | [x,y,z] | [0.3,0.3,0.3] | Minimum initial scale |
+| `scale_max` | [x,y,z] | [0.6,0.6,0.6] | Maximum initial scale |
+| `scale_end_factor` | float | 0 | Scale multiplier at death (0 = vanish) |
+| `opacity_start` | float | 1.0 | Opacity at birth |
+| `opacity_end` | float | 0.0 | Opacity at death |
+| `emission` | float | 0 | Self-illumination (>0 bypasses lighting, triggers bloom) |
+| `spawn_offset_min` | [x,y,z] | [0,0,0] | Min random offset from position |
+| `spawn_offset_max` | [x,y,z] | [0,0,0] | Max random offset from position |
+| `burst_duration` | float | 0 | 0 = continuous loop; >0 = auto-stop after N seconds |
+
+### Scene JSON Format
+
+```json
+{
+  "gs_particle_emitters": [
+    { "preset": "spark_shower", "position": [32, 8, 32] },
+    { "preset": "dust_puff", "position": [20, 2, 50], "spawn_rate": 50 },
+    {
+      "position": [10, 5, 10],
+      "spawn_rate": 20,
+      "color_start": [0.2, 0.8, 1.0],
+      "color_end": [0.0, 0.2, 0.5],
+      "emission": 2.0,
+      "scale_min": [0.1, 0.1, 0.1],
+      "velocity_min": [-0.5, 0.5, -0.5],
+      "velocity_max": [0.5, 2.0, 0.5]
+    }
+  ]
+}
+```
+
+### Coordinate System
+
+Emitter positions use the same scene/voxel coordinate system as lights:
+`[scene_x, height, scene_z]`. The engine transforms these to PLY world coordinates
+at load time using the cloud AABB offset.
+
+### Demo Visualization
+
+In the GS demo, press **N** to toggle the scene layer overlay. Particle emitters appear
+as magenta markers labeled **P0**, **P1**, etc. The HUD shows the total emitter count.
+Press **J** to spawn a spark shower at the camera target (runtime, not saved to scene).
+```
