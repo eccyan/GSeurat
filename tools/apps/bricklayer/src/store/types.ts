@@ -164,6 +164,17 @@ export type SettingsCategory =
   | 'vfx'
   | 'backgrounds';
 
+export interface GsAnimationGroupData {
+  id: string;
+  effect: string;  // 'detach' | 'float' | 'orbit' | 'dissolve' | 'reform'
+  shape: string;   // 'sphere' | 'box'
+  center: [number, number, number];
+  radius: number;
+  half_extents: [number, number, number];
+  lifetime: number;
+  loop: boolean;
+}
+
 export interface GsParticleEmitterData {
   id: string;
   preset: string;  // '' | 'dust_puff' | 'spark_shower' | 'magic_spiral'
@@ -285,5 +296,6 @@ export interface BricklayerFile {
     gaussianSplat: GaussianSplatConfig;
     placedObjects: PlacedObjectData[];
     gsParticleEmitters?: GsParticleEmitterData[];
+    gsAnimations?: GsAnimationGroupData[];
   };
 }

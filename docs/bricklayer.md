@@ -348,6 +348,59 @@ Emitter positions use the same scene/voxel coordinate system as lights:
 `[scene_x, height, scene_z]`. The engine transforms these to PLY world coordinates
 at load time using the cloud AABB offset.
 
+## Gaussian Animations
+
+Scene files can include a `gs_animations` array to apply particle-like effects to existing
+scene Gaussians within a region. Unlike particle emitters (which spawn new splats), animations
+modify existing Gaussians in-place — scattering, floating, orbiting, dissolving, or reforming them.
+
+### Effects
+
+| Effect | Description |
+|--------|-------------|
+| `detach` | Scatter outward from region center with gravity, fade opacity |
+| `float` | Drift upward with horizontal noise, shrink scale |
+| `orbit` | Swirl around region center, increasing radius |
+| `dissolve` | Shrink to zero, fade opacity, slight drift |
+| `reform` | Restore to original position, scale, and color |
+
+### Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `effect` | string | `"detach"` | One of: detach, float, orbit, dissolve, reform |
+| `region.shape` | string | `"sphere"` | `"sphere"` or `"box"` |
+| `region.center` | [x,y,z] | [0,0,0] | Scene/voxel coordinates (same as lights/emitters) |
+| `region.radius` | float | 5.0 | Sphere radius (when shape=sphere) |
+| `region.half_extents` | [x,y,z] | [5,5,5] | Box half-extents (when shape=box) |
+| `lifetime` | float | 3.0 | Duration in seconds before effect completes |
+| `loop` | boolean | false | Restart automatically when finished |
+
+### Scene JSON Format
+
+```json
+{
+  "gs_animations": [
+    {
+      "effect": "orbit",
+      "region": { "shape": "sphere", "center": [32, 8, 32], "radius": 5 },
+      "lifetime": 4.0,
+      "loop": true
+    },
+    {
+      "effect": "dissolve",
+      "region": { "shape": "box", "center": [10, 3, 20], "half_extents": [2, 2, 2] },
+      "lifetime": 3.0
+    }
+  ]
+}
+```
+
+### Bricklayer Integration
+
+In Bricklayer, animations appear in the project tree under "Animations" with cyan wireframe
+sphere/box gizmos showing the animation region. Click to select, G to grab, Shift for height.
+
 ### Demo Visualization
 
 In the GS demo, press **N** to toggle the scene layer overlay. Particle emitters appear

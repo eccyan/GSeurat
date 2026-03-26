@@ -341,6 +341,49 @@ int main() {
         std::printf("PASS: Scene JSON round-trip for gs_particle_emitters\n");
     }
 
+    // --- Test: Scene JSON round-trip for gs_animations ---
+    {
+        SceneData data;
+        GsAnimationData anim1;
+        anim1.effect = "orbit";
+        anim1.region.shape = GsAnimRegion::Shape::Sphere;
+        anim1.region.center = glm::vec3(10.0f, 5.0f, 20.0f);
+        anim1.region.radius = 8.0f;
+        anim1.lifetime = 4.0f;
+        anim1.loop = true;
+        data.gs_animations.push_back(anim1);
+
+        GsAnimationData anim2;
+        anim2.effect = "dissolve";
+        anim2.region.shape = GsAnimRegion::Shape::Box;
+        anim2.region.center = glm::vec3(1.0f, 2.0f, 3.0f);
+        anim2.region.half_extents = glm::vec3(2.0f, 3.0f, 4.0f);
+        anim2.lifetime = 5.0f;
+        anim2.loop = false;
+        data.gs_animations.push_back(anim2);
+
+        auto j = SceneLoader::to_json(data);
+        auto rt = SceneLoader::from_json(j);
+
+        assert(rt.gs_animations.size() == 2);
+
+        const auto& r1 = rt.gs_animations[0];
+        assert(r1.effect == "orbit");
+        assert(r1.region.shape == GsAnimRegion::Shape::Sphere);
+        assert(std::fabs(r1.region.center.x - 10.0f) < 0.01f);
+        assert(std::fabs(r1.region.radius - 8.0f) < 0.01f);
+        assert(std::fabs(r1.lifetime - 4.0f) < 0.01f);
+        assert(r1.loop == true);
+
+        const auto& r2 = rt.gs_animations[1];
+        assert(r2.effect == "dissolve");
+        assert(r2.region.shape == GsAnimRegion::Shape::Box);
+        assert(std::fabs(r2.region.half_extents.z - 4.0f) < 0.01f);
+        assert(r2.loop == false);
+
+        std::printf("PASS: Scene JSON round-trip for gs_animations\n");
+    }
+
     std::printf("\nAll GS particle/animator tests passed.\n");
     return 0;
 }

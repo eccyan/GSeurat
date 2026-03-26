@@ -10,6 +10,7 @@ import { NpcMarkers } from './NpcMarkers.js';
 import { PortalMarkers } from './PortalMarkers.js';
 import { ObjectMarkers } from './ObjectMarkers.js';
 import { GsEmitterMarkers } from './GsEmitterMarkers.js';
+import { GsAnimationMarkers } from './GsAnimationMarkers.js';
 import { PlayerMarker } from './PlayerMarker.js';
 import { CollisionOverlay } from './CollisionOverlay.js';
 import { useSceneStore } from '../store/useSceneStore.js';
@@ -93,6 +94,10 @@ function getGrabbedEntityY(): number {
     const em = store.gsParticleEmitters.find((e) => e.id === sel.id);
     return em?.position[1] ?? 0;
   }
+  if (sel.type === 'gs_animation') {
+    const anim = store.gsAnimations.find((a) => a.id === sel.id);
+    return anim?.center[1] ?? 0;
+  }
   // portal: always Y=0
   return 0;
 }
@@ -115,6 +120,8 @@ function updateGrabbedEntity(x: number, y: number, z: number) {
     store.updatePortal(sel.id, { position: [x, z] });
   } else if (sel.type === 'gs_emitter') {
     store.updateGsEmitter(sel.id, { position: [x, y, z] });
+  } else if (sel.type === 'gs_animation') {
+    store.updateGsAnimation(sel.id, { center: [x, y, z] });
   } else if (sel.type === 'player') {
     store.updatePlayer({ position: [x, y, z] });
   }
@@ -200,6 +207,9 @@ function GrabPlane() {
         } else if (sel.type === 'gs_emitter') {
           const em = store.gsParticleEmitters.find((e) => e.id === sel.id);
           if (em) { cx = em.position[0]; cz = em.position[2]; }
+        } else if (sel.type === 'gs_animation') {
+          const anim = store.gsAnimations.find((a) => a.id === sel.id);
+          if (anim) { cx = anim.center[0]; cz = anim.center[2]; }
         } else if (sel.type === 'player') {
           cx = store.player.position[0]; cz = store.player.position[2];
         }
@@ -288,6 +298,7 @@ function SceneContent() {
       <NpcMarkers />
       <PortalMarkers />
       <GsEmitterMarkers />
+      <GsAnimationMarkers />
       <ObjectMarkers />
       <PlayerMarker />
       <CollisionOverlay />

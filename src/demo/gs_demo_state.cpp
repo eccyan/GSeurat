@@ -621,9 +621,10 @@ void GsDemoState::build_draw_lists(AppBase& app) {
         y -= 16.0f;
 
         // Show marker info
-        std::snprintf(buf, sizeof(buf), "Markers: %zu  Path: %zu  Emitters: %zu",
+        std::snprintf(buf, sizeof(buf), "Markers: %zu  Path: %zu  Emitters: %zu  Anims: %zu",
                       demo_markers_.size(), demo_path_.size(),
-                      app.renderer().gs_particle_emitters().size());
+                      app.renderer().gs_particle_emitters().size(),
+                      app.renderer().gs_scene_animations().size());
         ui.label(buf, lx, y, scale, layer_color);
 
         // Render markers and path as projected UI panels
@@ -721,6 +722,24 @@ void GsDemoState::build_draw_lists(AppBase& app) {
                     std::snprintf(plabel, sizeof(plabel), "P%zu", i);
                     ui.label(plabel, sx - 4.0f, sy + 10.0f, 0.3f,
                              {1.0f, 0.5f, 0.9f, 1.0f});
+                }
+            }
+
+            // Draw animation region markers (A0, A1, ...) — cyan
+            auto& anims = app.renderer().gs_scene_animations();
+            for (size_t i = 0; i < anims.size(); ++i) {
+                auto [sx, sy] = project(anims[i].region.center);
+                if (sx > 0 && sx < screen_w && sy > 0 && sy < screen_h) {
+                    // Outer ring
+                    ui.panel(sx, sy, 16.0f, 16.0f, {0.0f, 0.8f, 1.0f, 0.2f});
+                    // Inner marker
+                    ui.panel(sx, sy, 8.0f, 8.0f, {0.0f, 0.8f, 1.0f, 0.8f});
+                    // Center dot
+                    ui.panel(sx, sy, 3.0f, 3.0f, {1.0f, 1.0f, 1.0f, 1.0f});
+                    char alabel[16];
+                    std::snprintf(alabel, sizeof(alabel), "A%zu", i);
+                    ui.label(alabel, sx - 4.0f, sy + 10.0f, 0.3f,
+                             {0.0f, 0.9f, 1.0f, 1.0f});
                 }
             }
         }
