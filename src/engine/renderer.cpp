@@ -790,9 +790,9 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
                 // Start from cached scene buffer
                 gs_active_buffer_ = gs_scene_buffer_;
 
-                // Re-tag looping scene animations that have finished
+                // Tag scene animations that haven't started yet, or re-tag looping ones
                 for (auto& sa : gs_scene_animations_) {
-                    if (sa.loop && sa.group_id > 0 && !gs_animator_.has_active_groups()) {
+                    if (sa.group_id == 0 || (sa.loop && !gs_animator_.has_active_groups())) {
                         sa.group_id = gs_animator_.tag_region(
                             gs_scene_buffer_, sa.region,
                             parse_effect_name(sa.effect), sa.lifetime);
