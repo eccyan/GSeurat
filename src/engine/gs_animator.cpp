@@ -125,6 +125,7 @@ void GaussianAnimator::apply_detach(AnimGroup& group, std::vector<Gaussian>& gau
         g.position = s.original_position + s.velocity * s.age;
         g.opacity = s.original_opacity * (1.0f - t);
         g.scale = s.original_scale * (1.0f - t * 0.5f);
+        g.emission = 0.01f;  // self-lit: prevent scene lights from amplifying scattered Gaussians
     }
 }
 
@@ -145,6 +146,7 @@ void GaussianAnimator::apply_float(AnimGroup& group, std::vector<Gaussian>& gaus
         g.position.z += std::cos(s.age * 1.5f + s.phase) * 0.5f;
         g.opacity = s.original_opacity * (1.0f - t);
         g.scale = s.original_scale * (1.0f - t * 0.7f);
+        g.emission = 0.01f;
     }
 }
 
@@ -172,6 +174,7 @@ void GaussianAnimator::apply_orbit(AnimGroup& group, std::vector<Gaussian>& gaus
         auto& g = gaussians[idx];
         g.position = center + rotated * (1.0f + t * 0.5f);
         g.opacity = s.original_opacity * (1.0f - t * 0.3f);
+        g.emission = 0.01f;
     }
 }
 
@@ -193,6 +196,7 @@ void GaussianAnimator::apply_dissolve(AnimGroup& group, std::vector<Gaussian>& g
             std::cos(s.phase + s.age) * t * 2.0f);
         g.scale = s.original_scale * (1.0f - t);
         g.opacity = s.original_opacity * (1.0f - t);
+        g.emission = 0.01f;
     }
 }
 
@@ -213,6 +217,8 @@ void GaussianAnimator::apply_reform(AnimGroup& group, std::vector<Gaussian>& gau
         g.scale = glm::mix(g.scale, s.original_scale, smooth_t * dt * 3.0f);
         g.opacity = s.original_opacity * std::min(1.0f, t * 2.0f);
         g.color = glm::mix(g.color, s.original_color, smooth_t);
+        // Reform restores emission to 0 gradually (back to scene-lit)
+        g.emission = 0.01f * (1.0f - smooth_t);
     }
 }
 
