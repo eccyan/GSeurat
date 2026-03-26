@@ -19,8 +19,15 @@ cd apps/bricklayer && pnpm dev
 | Left click + drag        | Orbit camera   |
 | Middle click / two-finger drag | Pan (X,Y translation) |
 | Scroll                   | Zoom           |
-| V / B / E / G / X / I / S | Tool shortcuts (Place/Paint/Erase/Fill/Extrude/Eyedropper/Select) |
+| V / B / E / X / I / S   | Tool shortcuts (Place/Paint/Erase/Extrude/Eyedropper/Select) |
+| G                        | Grab mode (Scene) / Fill (Terrain) |
+| Shift (hold, Terrain)    | Lock orbit for drawing |
+| Shift (hold, Grab)       | Adjust Y height |
+| F                        | Frame selected entity |
+| H                        | Home (reset camera) |
+| Double-click             | Teleport camera to point |
 | `[` / `]`               | Decrease / increase brush size |
+| T                        | Toggle X-ray mode |
 | Cmd+Z / Cmd+Shift+Z     | Undo / Redo    |
 
 ## Image Import
@@ -82,7 +89,7 @@ The right sidebar has seven tabs:
 | Tab         | Contents |
 |-------------|----------|
 | **Scene**       | Grid info, ambient color, day/night cycle, auto-generate collision |
-| **Lights**      | Static lights list with position, radius, height, color, intensity |
+| **Lights**      | Static lights (Point/Spot/Area) with type selector, position, color, per-type controls |
 | **Weather**     | Weather type (rain/snow/ash/leaves), fog, ambient override, emitter config |
 | **VFX**         | Torch/footstep/aura particle emitters, torch position list |
 | **Entities**    | Player spawn, NPC list, portal list |
@@ -93,12 +100,14 @@ The right sidebar has seven tabs:
 
 When "Gizmos" is checked in the View section:
 
-- **Lights** — yellow spheres with radius rings
+- **Point Lights** — sphere + radius ring
+- **Spot Lights** — sphere + wireframe cone (shows angle label when selected)
+- **Area Lights** — sphere + wireframe rectangle (shows size label when selected)
 - **NPCs** — blue cylinders with dashed waypoint polylines
 - **Portals** — purple wireframe boxes
 - **Player** — green cylinder with arrow cone
 
-Click a gizmo to select the entity and jump to its Inspector tab.
+Click a gizmo to select the entity. Press **G** to grab and move (Blender-style: object follows mouse, click to confirm, Esc to cancel). Hold **Shift** during grab to adjust Y height.
 
 ## Export
 
@@ -196,22 +205,67 @@ The engine supports 3 light modes (toggle with **L** key in demo):
 |------|-------------|
 | **0 — Off** | No lighting applied; raw baked GS colors |
 | **1 — Directional** | Single directional light with pseudo-normal shading from depth gradients |
-| **2 — Point Lights** | Up to 8 point lights from scene data, with distance-based attenuation |
+| **2 — Point/Spot/Area** | Up to 8 lights from scene data, with per-type attenuation |
 
-### How Point Lights Work
+### Light Types
+
+| Type | Description | Bricklayer Fields |
+|------|-------------|-------------------|
+| **Point** | Omnidirectional (light bulb). Quadratic distance falloff. | Position, Radius, Height, Color, Intensity |
+| **Spot** | Cone-shaped beam (flashlight). Smooth inner/outer edge falloff. | + Direction XYZ, Cone Angle (1-179°) |
+| **Area** | Rectangular surface (window/panel). Closest-point-on-rectangle technique. | + Area Size (W/H), Face Direction (XZ) |
+
+Bricklayer provides a **Type dropdown** (Point/Spot/Area) per light with type-specific descriptions and controls. Gizmos: radius ring (point), wireframe cone with angle label (spot), wireframe rectangle with size label (area).
+
+### Screen-Space Contact Shadows
+
+Each light casts approximate shadows via tile-local depth ray-marching:
+1. For each pixel, project the light to screen space
+2. March 4 steps within the 16×16 tile toward the light
+3. If a step's depth indicates closer geometry (occlusion), reduce the light contribution
+
+Short-range contact shadows only (tile-bounded) but adds depth perception at near-zero cost.
+
+### Emissive Gaussians
+
+PLY files can include an `emission` float property (default 0). Emissive Gaussians add HDR color values > 1.0 to the output, which the existing bloom extract pipeline automatically picks up for glow effects. No extra render passes needed.
+
+Test scene: `assets/scenes/emissive_test.json` — 6 colored glowing pillars with 2 point lights.
+
+### God Rays (Volume Light)
+
+Screen-space volumetric light shafts in the composite shader. For each light, radial-samples the depth buffer (24 samples) from each fragment toward the light's screen position. Open sky (far depth) contributes light, creating visible beams through geometry.
+
+Controlled via `god_rays_intensity` (0 = off, 0.5-2.0 typical). Configured in Bricklayer under Settings > Ambient & Lighting.
+
+### How Lighting Works
 
 The GS tile rasterizer compute shader (`gs_render.comp`):
 1. Reconstructs approximate world position from pixel coordinates + first-hit depth
 2. Computes pseudo-surface-normal from tile depth gradients (16×16 shared memory)
-3. For each point light: calculates distance, quadratic attenuation (`(1 - dist/radius)²`), and NdotL
+3. For each light: calculates distance attenuation, spot cone / area rectangle falloff, contact shadow, and half-Lambert NdotL
 4. Tints the Gaussian's baked color by the accumulated light contribution
+5. Adds emissive glow additively (bypasses lighting, feeds into bloom)
 
 ### Limitations
 
 - **Pseudo-normals**: Surface normals are estimated from screen-space depth discontinuities,
-  not from true geometry. This works well for large surfaces but can produce artifacts at
-  silhouette edges and thin features.
-- **No shadows**: Point lights illuminate through geometry. Occluded areas still receive light.
+  not from true geometry. Works well for large surfaces but can produce artifacts at edges.
+- **Contact shadows are tile-local**: Limited to 16×16 pixel range (~15 pixel max shadow length).
 - **Max 8 lights**: Limited by the uniform buffer size. Additional lights are ignored.
 - **Light_mode=2 auto-enabled**: When a scene has `static_lights`, point light mode activates
   automatically on load.
+
+### Scene JSON Light Format
+
+```json
+{
+  "static_lights": [
+    { "position": [x, z], "radius": 100, "height": 3, "color": [r,g,b], "intensity": 5 },
+    { "position": [x, z], "radius": 50, "height": 5, "color": [r,g,b], "intensity": 3,
+      "direction": [0, -1, 0], "cone_angle": 45 },
+    { "position": [x, z], "radius": 30, "height": 3, "color": [r,g,b], "intensity": 2,
+      "area_width": 5, "area_height": 3, "area_normal": [1, 0] }
+  ]
+}
+```

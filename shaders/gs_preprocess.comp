@@ -7,7 +7,7 @@ struct GpuGaussian {
     vec4 pos_opacity;    // xyz = position, w = opacity
     vec4 scale_pad;      // xyz = scale, w = unused
     vec4 rot;            // xyzw = quaternion (x,y,z,w)
-    vec4 color_pad;      // rgb = color, w = unused
+    vec4 color_pad;      // rgb = color, w = emission intensity
 };
 
 // Output projected splat
@@ -460,7 +460,7 @@ void main() {
     splat.depth = -view_pos.z;
     splat.radius = radius_px;
     splat.conic_opacity = vec4(conic_a, conic_b, conic_c, opacity);
-    splat.color = vec4(col, 1.0);
+    splat.color = vec4(col, g.color_pad.w);  // a = emission intensity
     projected[idx] = splat;
 
     // Write sort entry — quantize depth to 16-bit key for 2-pass radix sort

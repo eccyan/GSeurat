@@ -15,7 +15,7 @@ struct GpuGaussian {
     glm::vec4 pos_opacity;    // xyz = position, w = opacity
     glm::vec4 scale_pad;      // xyz = scale, w = unused
     glm::vec4 rot;            // xyzw = quaternion
-    glm::vec4 color_pad;      // rgb = color, w = unused
+    glm::vec4 color_pad;      // rgb = color, w = emission intensity
 };  // 64 bytes, aligned
 
 // Projected 2D splat (output of preprocess, input to render)
@@ -370,7 +370,7 @@ void GsRenderer::load_cloud(const GaussianCloud& cloud) {
             std::memcpy(&bone_as_float, &bone_idx, sizeof(float));
             gpu_data[i].scale_pad = glm::vec4(g.scale, bone_as_float);
             gpu_data[i].rot = glm::vec4(g.rotation.x, g.rotation.y, g.rotation.z, g.rotation.w);
-            gpu_data[i].color_pad = glm::vec4(g.color, 1.0f);
+            gpu_data[i].color_pad = glm::vec4(g.color, g.emission);
         }
     }
 
@@ -403,7 +403,7 @@ void GsRenderer::update_active_gaussians(const Gaussian* data, uint32_t count) {
         gpu_data[i].scale_pad = glm::vec4(data[i].scale, bone_f);
         gpu_data[i].rot = glm::vec4(data[i].rotation.x, data[i].rotation.y,
                                      data[i].rotation.z, data[i].rotation.w);
-        gpu_data[i].color_pad = glm::vec4(data[i].color, 1.0f);
+        gpu_data[i].color_pad = glm::vec4(data[i].color, data[i].emission);
     }
 
     // Reinitialize both sort buffers
