@@ -57,6 +57,8 @@ shared float tile_depth[16][16];
 // Returns shadow factor: 0.0 = fully shadowed, 1.0 = fully lit.
 float tile_contact_shadow(uvec2 local_id, float surface_depth, vec2 light_screen_dir) {
     const int STEPS = 4;
+    // Depth threshold scales with distance to avoid noise at far range
+    float threshold = max(0.5, surface_depth * 0.02);
     float shadow = 1.0;
     for (int s = 1; s <= STEPS; s++) {
         ivec2 sp = ivec2(local_id) + ivec2(round(light_screen_dir * float(s)));
@@ -64,9 +66,9 @@ float tile_contact_shadow(uvec2 local_id, float surface_depth, vec2 light_screen
         float sd = tile_depth[sp.y][sp.x];
         if (sd <= 0.0) continue;  // no geometry at sample
         // If sampled geometry is closer than current surface, it occludes
-        if (surface_depth - sd > 0.5) {
+        if (surface_depth - sd > threshold) {
             float step_fade = 1.0 - float(s) / float(STEPS + 1);
-            shadow = min(shadow, 1.0 - step_fade * 0.7);
+            shadow = min(shadow, 1.0 - step_fade * 0.5);
         }
     }
     return shadow;
