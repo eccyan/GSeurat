@@ -272,3 +272,5 @@ add_gseurat_test(test_staging_uploader src/engine/staging_uploader.cpp)
 add_gseurat_test(test_tilemap          src/engine/tilemap.cpp)
 add_gseurat_test(test_gs_point_lights)
 add_gseurat_test(test_gs_emission     src/engine/gaussian_cloud.cpp)
+add_gseurat_test(test_gs_particle    src/engine/gs_particle.cpp src/engine/gs_animator.cpp
+                                      src/engine/gaussian_cloud.cpp)
