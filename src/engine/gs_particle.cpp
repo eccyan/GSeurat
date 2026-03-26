@@ -112,7 +112,9 @@ uint32_t GaussianParticleEmitter::gather(std::vector<Gaussian>& out) const {
         g.rotation = p.rotation;
         g.color = glm::mix(p.color_start, p.color_end, t);
         g.opacity = p.opacity_start + (p.opacity_end - p.opacity_start) * t;
-        g.emission = p.emission;
+        // Particles are always self-lit (bypass scene lighting).
+        // Use at least a tiny emission so the shader skips lighting for them.
+        g.emission = std::max(p.emission, 0.01f);
         g.bone_index = 0;
         g.importance = g.opacity * std::max({g.scale.x, g.scale.y, g.scale.z});
 
@@ -195,7 +197,7 @@ GsEmitterConfig gs_preset_magic_spiral() {
     c.scale_end_factor = 0.3f;
     c.opacity_start = 0.9f;
     c.opacity_end = 0.0f;
-    c.emission = 0.5f;
+    c.emission = 0.0f;
     c.spawn_offset_min = {-1.0f, -0.5f, -1.0f};
     c.spawn_offset_max = { 1.0f,  0.5f,  1.0f};
     c.burst_duration = 1.0f;

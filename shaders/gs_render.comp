@@ -139,8 +139,9 @@ void main() {
         float em = splat.color.a;  // emission intensity from preprocess
 
         if (em > 0.0) {
-            // Emissive Gaussian: accumulate separately (self-lit, no scene lighting)
-            emission += weight * splat.color.rgb * em;
+            // Emissive/self-lit Gaussian: base color at full brightness + emission bonus
+            // Bypasses scene lighting entirely (particles, glowing materials)
+            emission += weight * splat.color.rgb * (1.0 + em);
             emission_alpha += weight;
         } else {
             // Non-emissive: normal color (will receive scene lighting)
