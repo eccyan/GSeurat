@@ -262,10 +262,37 @@ int main() {
         auto magic = gs_resolve_preset("magic_spiral");
         assert(magic.has_value());
 
+        auto fire = gs_resolve_preset("fire");
+        assert(fire.has_value());
+        assert(fire->emission == 1.5f);
+
+        auto smoke = gs_resolve_preset("smoke");
+        assert(smoke.has_value());
+
+        auto rain = gs_resolve_preset("rain");
+        assert(rain.has_value());
+        assert(rain->spawn_rate == 200.0f);
+
+        auto snow = gs_resolve_preset("snow");
+        assert(snow.has_value());
+
+        auto leaves = gs_resolve_preset("leaves");
+        assert(leaves.has_value());
+
+        auto fireflies = gs_resolve_preset("fireflies");
+        assert(fireflies.has_value());
+        assert(fireflies->emission == 1.0f);
+
+        auto steam = gs_resolve_preset("steam");
+        assert(steam.has_value());
+
+        auto mist = gs_resolve_preset("waterfall_mist");
+        assert(mist.has_value());
+
         auto unknown = gs_resolve_preset("nonexistent");
         assert(!unknown.has_value());
 
-        std::printf("PASS: gs_resolve_preset known/unknown\n");
+        std::printf("PASS: gs_resolve_preset known/unknown (11 presets)\n");
     }
 
     // --- Test: Scene JSON round-trip for gs_particle_emitters ---

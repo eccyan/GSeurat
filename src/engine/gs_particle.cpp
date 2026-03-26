@@ -204,10 +204,194 @@ GsEmitterConfig gs_preset_magic_spiral() {
     return c;
 }
 
+GsEmitterConfig gs_preset_fire() {
+    GsEmitterConfig c;
+    c.spawn_rate = 80.0f;
+    c.lifetime_min = 0.4f;
+    c.lifetime_max = 1.2f;
+    c.velocity_min = {-1.5f, 3.0f, -1.5f};
+    c.velocity_max = { 1.5f, 8.0f,  1.5f};
+    c.acceleration = {0.0f, 1.0f, 0.0f};
+    c.color_start = {1.0f, 0.6f, 0.1f};
+    c.color_end = {0.8f, 0.1f, 0.0f};
+    c.scale_min = {0.2f, 0.2f, 0.2f};
+    c.scale_max = {0.5f, 0.5f, 0.5f};
+    c.scale_end_factor = 0.0f;
+    c.opacity_start = 0.8f;
+    c.opacity_end = 0.0f;
+    c.emission = 1.5f;
+    c.spawn_offset_min = {-0.5f, 0.0f, -0.5f};
+    c.spawn_offset_max = { 0.5f, 0.5f,  0.5f};
+    c.burst_duration = 0.0f;
+    return c;
+}
+
+GsEmitterConfig gs_preset_smoke() {
+    GsEmitterConfig c;
+    c.spawn_rate = 30.0f;
+    c.lifetime_min = 2.0f;
+    c.lifetime_max = 4.0f;
+    c.velocity_min = {-0.5f, 1.0f, -0.5f};
+    c.velocity_max = { 0.5f, 3.0f,  0.5f};
+    c.acceleration = {0.0f, 0.3f, 0.0f};
+    c.color_start = {0.4f, 0.4f, 0.42f};
+    c.color_end = {0.3f, 0.3f, 0.32f};
+    c.scale_min = {0.3f, 0.3f, 0.3f};
+    c.scale_max = {0.8f, 0.8f, 0.8f};
+    c.scale_end_factor = 2.0f;
+    c.opacity_start = 0.5f;
+    c.opacity_end = 0.0f;
+    c.emission = 0.0f;
+    c.spawn_offset_min = {-1.0f, 0.0f, -1.0f};
+    c.spawn_offset_max = { 1.0f, 0.5f,  1.0f};
+    c.burst_duration = 0.0f;
+    return c;
+}
+
+GsEmitterConfig gs_preset_rain() {
+    GsEmitterConfig c;
+    c.spawn_rate = 200.0f;
+    c.lifetime_min = 0.5f;
+    c.lifetime_max = 1.0f;
+    c.velocity_min = {-0.5f, -20.0f, -0.5f};
+    c.velocity_max = { 0.5f, -15.0f,  0.5f};
+    c.acceleration = {0.0f, 0.0f, 0.0f};
+    c.color_start = {0.7f, 0.75f, 0.9f};
+    c.color_end = {0.5f, 0.55f, 0.8f};
+    c.scale_min = {0.02f, 0.15f, 0.02f};
+    c.scale_max = {0.03f, 0.25f, 0.03f};
+    c.scale_end_factor = 1.0f;
+    c.opacity_start = 0.4f;
+    c.opacity_end = 0.1f;
+    c.emission = 0.0f;
+    c.spawn_offset_min = {-15.0f, 10.0f, -15.0f};
+    c.spawn_offset_max = { 15.0f, 15.0f,  15.0f};
+    c.burst_duration = 0.0f;
+    return c;
+}
+
+GsEmitterConfig gs_preset_snow() {
+    GsEmitterConfig c;
+    c.spawn_rate = 60.0f;
+    c.lifetime_min = 3.0f;
+    c.lifetime_max = 6.0f;
+    c.velocity_min = {-1.0f, -2.0f, -1.0f};
+    c.velocity_max = { 1.0f, -0.5f,  1.0f};
+    c.acceleration = {0.0f, -0.1f, 0.0f};
+    c.color_start = {0.95f, 0.95f, 1.0f};
+    c.color_end = {0.9f, 0.9f, 0.95f};
+    c.scale_min = {0.05f, 0.05f, 0.05f};
+    c.scale_max = {0.15f, 0.15f, 0.15f};
+    c.scale_end_factor = 0.5f;
+    c.opacity_start = 0.7f;
+    c.opacity_end = 0.0f;
+    c.emission = 0.0f;
+    c.spawn_offset_min = {-12.0f, 8.0f, -12.0f};
+    c.spawn_offset_max = { 12.0f, 12.0f,  12.0f};
+    c.burst_duration = 0.0f;
+    return c;
+}
+
+GsEmitterConfig gs_preset_leaves() {
+    GsEmitterConfig c;
+    c.spawn_rate = 15.0f;
+    c.lifetime_min = 3.0f;
+    c.lifetime_max = 6.0f;
+    c.velocity_min = {-2.0f, -1.5f, -2.0f};
+    c.velocity_max = { 2.0f, -0.5f,  2.0f};
+    c.acceleration = {0.0f, -0.3f, 0.0f};
+    c.color_start = {0.4f, 0.6f, 0.15f};
+    c.color_end = {0.5f, 0.35f, 0.1f};
+    c.scale_min = {0.1f, 0.02f, 0.1f};
+    c.scale_max = {0.2f, 0.04f, 0.2f};
+    c.scale_end_factor = 0.8f;
+    c.opacity_start = 0.9f;
+    c.opacity_end = 0.2f;
+    c.emission = 0.0f;
+    c.spawn_offset_min = {-8.0f, 5.0f, -8.0f};
+    c.spawn_offset_max = { 8.0f, 10.0f,  8.0f};
+    c.burst_duration = 0.0f;
+    return c;
+}
+
+GsEmitterConfig gs_preset_fireflies() {
+    GsEmitterConfig c;
+    c.spawn_rate = 8.0f;
+    c.lifetime_min = 3.0f;
+    c.lifetime_max = 7.0f;
+    c.velocity_min = {-0.5f, -0.3f, -0.5f};
+    c.velocity_max = { 0.5f,  0.5f,  0.5f};
+    c.acceleration = {0.0f, 0.0f, 0.0f};
+    c.color_start = {0.8f, 1.0f, 0.3f};
+    c.color_end = {0.6f, 0.9f, 0.2f};
+    c.scale_min = {0.03f, 0.03f, 0.03f};
+    c.scale_max = {0.06f, 0.06f, 0.06f};
+    c.scale_end_factor = 0.5f;
+    c.opacity_start = 0.8f;
+    c.opacity_end = 0.0f;
+    c.emission = 1.0f;
+    c.spawn_offset_min = {-6.0f, 0.5f, -6.0f};
+    c.spawn_offset_max = { 6.0f, 4.0f,  6.0f};
+    c.burst_duration = 0.0f;
+    return c;
+}
+
+GsEmitterConfig gs_preset_steam() {
+    GsEmitterConfig c;
+    c.spawn_rate = 40.0f;
+    c.lifetime_min = 0.5f;
+    c.lifetime_max = 1.5f;
+    c.velocity_min = {-0.8f, 2.0f, -0.8f};
+    c.velocity_max = { 0.8f, 5.0f,  0.8f};
+    c.acceleration = {0.0f, 0.5f, 0.0f};
+    c.color_start = {0.9f, 0.9f, 0.92f};
+    c.color_end = {0.85f, 0.85f, 0.88f};
+    c.scale_min = {0.15f, 0.15f, 0.15f};
+    c.scale_max = {0.4f, 0.4f, 0.4f};
+    c.scale_end_factor = 2.5f;
+    c.opacity_start = 0.4f;
+    c.opacity_end = 0.0f;
+    c.emission = 0.0f;
+    c.spawn_offset_min = {-0.5f, 0.0f, -0.5f};
+    c.spawn_offset_max = { 0.5f, 0.3f,  0.5f};
+    c.burst_duration = 0.0f;
+    return c;
+}
+
+GsEmitterConfig gs_preset_waterfall_mist() {
+    GsEmitterConfig c;
+    c.spawn_rate = 100.0f;
+    c.lifetime_min = 1.0f;
+    c.lifetime_max = 2.5f;
+    c.velocity_min = {-4.0f, 0.5f, -4.0f};
+    c.velocity_max = { 4.0f, 3.0f,  4.0f};
+    c.acceleration = {0.0f, -1.0f, 0.0f};
+    c.color_start = {0.75f, 0.8f, 0.95f};
+    c.color_end = {0.7f, 0.75f, 0.9f};
+    c.scale_min = {0.1f, 0.1f, 0.1f};
+    c.scale_max = {0.3f, 0.3f, 0.3f};
+    c.scale_end_factor = 1.5f;
+    c.opacity_start = 0.35f;
+    c.opacity_end = 0.0f;
+    c.emission = 0.0f;
+    c.spawn_offset_min = {-3.0f, -0.5f, -3.0f};
+    c.spawn_offset_max = { 3.0f,  1.0f,  3.0f};
+    c.burst_duration = 0.0f;
+    return c;
+}
+
 std::optional<GsEmitterConfig> gs_resolve_preset(const std::string& name) {
-    if (name == "dust_puff")     return gs_preset_dust_puff();
-    if (name == "spark_shower")  return gs_preset_spark_shower();
-    if (name == "magic_spiral")  return gs_preset_magic_spiral();
+    if (name == "dust_puff")       return gs_preset_dust_puff();
+    if (name == "spark_shower")    return gs_preset_spark_shower();
+    if (name == "magic_spiral")    return gs_preset_magic_spiral();
+    if (name == "fire")            return gs_preset_fire();
+    if (name == "smoke")           return gs_preset_smoke();
+    if (name == "rain")            return gs_preset_rain();
+    if (name == "snow")            return gs_preset_snow();
+    if (name == "leaves")          return gs_preset_leaves();
+    if (name == "fireflies")       return gs_preset_fireflies();
+    if (name == "steam")           return gs_preset_steam();
+    if (name == "waterfall_mist")  return gs_preset_waterfall_mist();
     return std::nullopt;
 }
 

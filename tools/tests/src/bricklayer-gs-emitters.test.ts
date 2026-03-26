@@ -87,13 +87,16 @@ const PRESETS: Record<string, Partial<GsParticleEmitterData>> = {
     scale_end_factor: 0.1, opacity_start: 0.4, opacity_end: 0, emission: 0,
     spawn_offset_min: [-2, 0, -2], spawn_offset_max: [2, 1, 2],
   },
-  spark_shower: {
-    spawn_rate: 40, lifetime_min: 0.3, lifetime_max: 0.8,
-    emission: 0.8,
-  },
-  magic_spiral: {
-    spawn_rate: 50, lifetime_min: 1.5, lifetime_max: 3,
-  },
+  spark_shower: { spawn_rate: 40, emission: 0.8 },
+  magic_spiral: { spawn_rate: 50 },
+  fire: { spawn_rate: 80, emission: 1.5 },
+  smoke: { spawn_rate: 30 },
+  rain: { spawn_rate: 200 },
+  snow: { spawn_rate: 60 },
+  leaves: { spawn_rate: 15 },
+  fireflies: { spawn_rate: 8, emission: 1 },
+  steam: { spawn_rate: 40 },
+  waterfall_mist: { spawn_rate: 100 },
 };
 
 function applyPreset(emitter: GsParticleEmitterData, presetName: string): GsParticleEmitterData {
@@ -276,7 +279,29 @@ console.log('\n--- Preset application ---\n');
 }
 
 {
-  console.log('Test 2.3: Apply unknown preset -> clears preset name');
+  console.log('Test 2.3: Apply fire preset -> self-lit');
+  let list: GsParticleEmitterData[] = [];
+  list = addEmitter(list);
+  const updated = applyPreset(list[0], 'fire');
+  assert(updated.preset === 'fire', 'preset name set');
+  assert(updated.spawn_rate === 80, 'spawn_rate from fire preset');
+  assert(updated.emission === 1.5, 'emission from fire preset');
+}
+
+{
+  console.log('Test 2.4: Apply all presets -> each has valid spawn_rate');
+  const names = ['dust_puff', 'spark_shower', 'magic_spiral', 'fire', 'smoke', 'rain', 'snow', 'leaves', 'fireflies', 'steam', 'waterfall_mist'];
+  for (const name of names) {
+    let list: GsParticleEmitterData[] = [];
+    list = addEmitter(list);
+    const updated = applyPreset(list[0], name);
+    assert(updated.preset === name, `preset '${name}' name set`);
+    assert(updated.spawn_rate > 0, `preset '${name}' has positive spawn_rate`);
+  }
+}
+
+{
+  console.log('Test 2.5: Apply unknown preset -> clears preset name');
   let list: GsParticleEmitterData[] = [];
   list = addEmitter(list);
   const withPreset = applyPreset(list[0], 'dust_puff');
@@ -285,7 +310,7 @@ console.log('\n--- Preset application ---\n');
 }
 
 {
-  console.log('Test 2.4: Preset preserves position');
+  console.log('Test 2.6: Preset preserves position');
   let list: GsParticleEmitterData[] = [];
   list = addEmitter(list, [99, 88, 77]);
   const updated = applyPreset(list[0], 'dust_puff');

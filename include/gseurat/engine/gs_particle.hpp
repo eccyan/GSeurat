@@ -87,6 +87,14 @@ private:
 GsEmitterConfig gs_preset_dust_puff();
 GsEmitterConfig gs_preset_spark_shower();
 GsEmitterConfig gs_preset_magic_spiral();
+GsEmitterConfig gs_preset_fire();
+GsEmitterConfig gs_preset_smoke();
+GsEmitterConfig gs_preset_rain();
+GsEmitterConfig gs_preset_snow();
+GsEmitterConfig gs_preset_leaves();
+GsEmitterConfig gs_preset_fireflies();
+GsEmitterConfig gs_preset_steam();
+GsEmitterConfig gs_preset_waterfall_mist();
 
 // Resolve a preset name to its config. Returns std::nullopt if name is unknown.
 std::optional<GsEmitterConfig> gs_resolve_preset(const std::string& name);
