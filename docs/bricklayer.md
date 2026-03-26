@@ -286,6 +286,14 @@ Three built-in presets provide common effects. Use `"preset"` and override any f
 | `dust_puff` | Brown dust cloud, burst, slow fall | 120/s | 1-2.5s | 0 (scene-lit) |
 | `spark_shower` | Orange sparks with gravity, self-lit | 40/s | 0.3-0.8s | 0.8 |
 | `magic_spiral` | Blue-to-magenta rising particles | 50/s | 1.5-3s | 0 (scene-lit) |
+| `fire` | Rising orange-red flames, self-lit | 80/s | 0.4-1.2s | 1.5 |
+| `smoke` | Slow gray plume, expanding scale | 30/s | 2-4s | 0 (scene-lit) |
+| `rain` | Fast downward blue-white streaks, wide area | 200/s | 0.5-1s | 0 (scene-lit) |
+| `snow` | Gentle white drift with horizontal sway | 60/s | 3-6s | 0 (scene-lit) |
+| `leaves` | Falling green-to-brown leaves, slow | 15/s | 3-6s | 0 (scene-lit) |
+| `fireflies` | Tiny glowing yellow-green dots, random drift | 8/s | 3-7s | 1.0 |
+| `steam` | White rising wisps, fast fade, expanding | 40/s | 0.5-1.5s | 0 (scene-lit) |
+| `waterfall_mist` | Blue-white spray, horizontal spread | 100/s | 1-2.5s | 0 (scene-lit) |
 
 ### Parameters
 
