@@ -525,18 +525,21 @@ GsAnimationData SceneLoader::parse_gs_animation(const nlohmann::json& j) {
         if (r.contains("half_extents")) anim.region.half_extents = parse_vec3(r["half_extents"]);
     }
 
-    // Animation parameters
-    if (j.contains("params")) {
-        const auto& p = j["params"];
-        anim.params.speed = p.value("speed", 1.0f);
+    // Animation parameters — check both nested "params" block and top-level fields
+    auto read_params = [&](const nlohmann::json& p) {
+        anim.params.speed = p.value("speed", anim.params.speed);
         if (p.contains("gravity")) anim.params.gravity = parse_vec3(p["gravity"]);
-        anim.params.velocity_scale = p.value("velocity_scale", 1.0f);
-        anim.params.noise_amplitude = p.value("noise_amplitude", 1.0f);
-        anim.params.orbit_speed = p.value("orbit_speed", 1.0f);
-        anim.params.expansion = p.value("expansion", 1.0f);
-        anim.params.opacity_fade = p.value("opacity_fade", 1.0f);
-        anim.params.scale_shrink = p.value("scale_shrink", 1.0f);
-    }
+        anim.params.velocity_scale = p.value("velocity_scale", anim.params.velocity_scale);
+        anim.params.noise_amplitude = p.value("noise_amplitude", anim.params.noise_amplitude);
+        anim.params.orbit_speed = p.value("orbit_speed", anim.params.orbit_speed);
+        anim.params.expansion = p.value("expansion", anim.params.expansion);
+        anim.params.opacity_fade = p.value("opacity_fade", anim.params.opacity_fade);
+        anim.params.scale_shrink = p.value("scale_shrink", anim.params.scale_shrink);
+    };
+    // Top-level fields (flat format)
+    read_params(j);
+    // Nested "params" block overrides top-level
+    if (j.contains("params")) read_params(j["params"]);
 
     return anim;
 }
