@@ -168,12 +168,12 @@ GsEmitterConfig gs_preset_spark_shower() {
     c.acceleration = {0.0f, -15.0f, 0.0f};
     c.color_start = {1.0f, 0.9f, 0.4f};
     c.color_end = {1.0f, 0.3f, 0.0f};
-    c.scale_min = {0.5f, 0.5f, 0.5f};
-    c.scale_max = {1.0f, 1.0f, 1.0f};
+    c.scale_min = {0.3f, 0.3f, 0.3f};
+    c.scale_max = {0.6f, 0.6f, 0.6f};
     c.scale_end_factor = 0.0f;
-    c.opacity_start = 1.0f;
+    c.opacity_start = 0.9f;
     c.opacity_end = 0.0f;
-    c.emission = 3.0f;
+    c.emission = 0.8f;
     c.spawn_offset_min = {-1.0f, 0.0f, -1.0f};
     c.spawn_offset_max = { 1.0f, 1.0f,  1.0f};
     c.burst_duration = 0.5f;  // half-second burst then stop
@@ -195,7 +195,7 @@ GsEmitterConfig gs_preset_magic_spiral() {
     c.scale_end_factor = 0.3f;
     c.opacity_start = 0.9f;
     c.opacity_end = 0.0f;
-    c.emission = 2.0f;
+    c.emission = 0.5f;
     c.spawn_offset_min = {-1.0f, -0.5f, -1.0f};
     c.spawn_offset_max = { 1.0f,  0.5f,  1.0f};
     c.burst_duration = 1.0f;
