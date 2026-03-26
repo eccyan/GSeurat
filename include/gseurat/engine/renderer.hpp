@@ -4,6 +4,7 @@
 #include "gseurat/engine/camera.hpp"
 #include "gseurat/engine/screenshot.hpp"
 #include "gseurat/engine/gs_chunk_grid.hpp"
+#include "gseurat/engine/gs_animator.hpp"
 #include "gseurat/engine/gs_particle.hpp"
 #include "gseurat/engine/gs_renderer.hpp"
 #include "gseurat/engine/command_pool.hpp"
@@ -80,6 +81,10 @@ public:
     void add_gs_particle_emitter(const GsEmitterConfig& config);
     void clear_gs_particle_emitters();
     std::vector<GaussianParticleEmitter>& gs_particle_emitters() { return gs_particle_emitters_; }
+
+    // Gaussian animator (animate existing scene Gaussians)
+    GaussianAnimator& gs_animator() { return gs_animator_; }
+    const std::vector<Gaussian>& gs_active_buffer() const { return gs_active_buffer_; }
 
     void request_screenshot(const std::string& path) { screenshot_.request(path); }
     bool screenshot_write_ok() const { return screenshot_.write_ok(); }
@@ -173,6 +178,7 @@ private:
     GsChunkGrid gs_chunk_grid_;
     std::vector<Gaussian> gs_active_buffer_;
     std::vector<GaussianParticleEmitter> gs_particle_emitters_;
+    GaussianAnimator gs_animator_;
     std::vector<uint32_t> gs_prev_visible_;
     bool gs_skip_chunk_cull_ = false;
     uint32_t gs_gaussian_budget_ = 0;  // 0 = unlimited (no LOD decimation)

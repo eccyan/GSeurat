@@ -762,6 +762,11 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
                 } else {
                     gs_chunk_grid_.gather(visible, gs_active_buffer_);
                 }
+                // Animate tagged scene Gaussians (Mode 2)
+                if (gs_animator_.has_active_groups()) {
+                    gs_animator_.update(dt, gs_active_buffer_);
+                }
+
                 // Update and append Gaussian particles from emitters
                 for (auto& emitter : gs_particle_emitters_) {
                     emitter.update(dt);

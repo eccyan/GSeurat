@@ -180,6 +180,7 @@ add_library(gseurat_core OBJECT
     src/engine/staging_uploader.cpp
     src/engine/gs_chunk_streamer.cpp
     src/engine/gs_particle.cpp
+    src/engine/gs_animator.cpp
 )
 
 if(NOT WIN32)
