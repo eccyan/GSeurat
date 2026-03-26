@@ -200,6 +200,17 @@ void DemoApp::init_scene(const std::string& scene_path) {
                                  l.color.r, l.color.g, l.color.b, l.color.a);
                 }
             }
+
+            // Instantiate GS particle emitters from scene
+            // Transform from scene/voxel coordinates to PLY/world coordinates
+            // Scene JSON: position = [scene_x, height, scene_z]
+            // PLY world:  X = scene_x + aabb.min.x, Y = height + aabb.min.y, Z = scene_z
+            for (const auto& em : scene_data.gs_particle_emitters) {
+                auto config = em.config;
+                config.position.x += aabb.min.x;
+                config.position.y += aabb.min.y;
+                renderer_.add_gs_particle_emitter(config);
+            }
         }
 
         // Load background image if specified
@@ -231,11 +242,6 @@ void DemoApp::init_scene(const std::string& scene_path) {
             gs_parallax_active_ = false;
             renderer_.set_gs_skip_chunk_cull(false);
             renderer_.gs_renderer().clear_shadow_box_params();
-        }
-
-        // Instantiate GS particle emitters from scene
-        for (const auto& em : scene_data.gs_particle_emitters) {
-            renderer_.add_gs_particle_emitter(em.config);
         }
     }
 }
