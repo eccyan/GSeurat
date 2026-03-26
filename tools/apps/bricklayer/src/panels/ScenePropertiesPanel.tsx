@@ -7,6 +7,7 @@ import type {
   PortalData,
   PlacedObjectData,
   PlayerData,
+  GsParticleEmitterData,
 } from '../store/types.js';
 
 const styles: Record<string, React.CSSProperties> = {
@@ -588,6 +589,181 @@ function PlayerProperties({ player }: { player: PlayerData }) {
   );
 }
 
+const GS_PRESETS: Record<string, Partial<GsParticleEmitterData>> = {
+  dust_puff: {
+    spawn_rate: 120, lifetime_min: 1, lifetime_max: 2.5,
+    velocity_min: [-3, 1, -3], velocity_max: [3, 5, 3], acceleration: [0, -2, 0],
+    color_start: [0.6, 0.55, 0.45], color_end: [0.5, 0.48, 0.4],
+    scale_min: [0.1, 0.1, 0.1], scale_max: [0.3, 0.3, 0.3],
+    scale_end_factor: 0.1, opacity_start: 0.4, opacity_end: 0, emission: 0,
+    spawn_offset_min: [-2, 0, -2], spawn_offset_max: [2, 1, 2],
+  },
+  spark_shower: {
+    spawn_rate: 40, lifetime_min: 0.3, lifetime_max: 0.8,
+    velocity_min: [-4, 8, -4], velocity_max: [4, 15, 4], acceleration: [0, -15, 0],
+    color_start: [0.8, 0.6, 0.3], color_end: [0.5, 0.2, 0],
+    scale_min: [0.05, 0.05, 0.05], scale_max: [0.15, 0.15, 0.15],
+    scale_end_factor: 0, opacity_start: 0.5, opacity_end: 0, emission: 0.8,
+    spawn_offset_min: [-1, 0, -1], spawn_offset_max: [1, 1, 1],
+  },
+  magic_spiral: {
+    spawn_rate: 50, lifetime_min: 1.5, lifetime_max: 3,
+    velocity_min: [-2, 3, -2], velocity_max: [2, 6, 2], acceleration: [0, 0.5, 0],
+    color_start: [0.4, 0.6, 1], color_end: [0.8, 0.3, 1],
+    scale_min: [0.5, 0.5, 0.5], scale_max: [1, 1, 1],
+    scale_end_factor: 0.3, opacity_start: 0.9, opacity_end: 0, emission: 0,
+    spawn_offset_min: [-1, -0.5, -1], spawn_offset_max: [1, 0.5, 1],
+  },
+};
+
+function rgbToHex(c: [number, number, number]): string {
+  return '#' + c.map((v) => Math.round(v * 255).toString(16).padStart(2, '0')).join('');
+}
+
+function hexToRgb(hex: string): [number, number, number] {
+  return [
+    parseInt(hex.slice(1, 3), 16) / 255,
+    parseInt(hex.slice(3, 5), 16) / 255,
+    parseInt(hex.slice(5, 7), 16) / 255,
+  ];
+}
+
+function GsEmitterProperties({ emitter }: { emitter: GsParticleEmitterData }) {
+  const update = useSceneStore((s) => s.updateGsEmitter);
+  const remove = useSceneStore((s) => s.removeGsEmitter);
+
+  const applyPreset = (name: string) => {
+    const preset = GS_PRESETS[name];
+    if (preset) {
+      update(emitter.id, { ...preset, preset: name });
+    } else {
+      update(emitter.id, { preset: '' });
+    }
+  };
+
+  return (
+    <div>
+      <div style={{ ...styles.row, marginBottom: 12 }}>
+        <span style={{ ...styles.label, flex: 1 }}>Particle Emitter</span>
+        <button style={styles.btnDanger} onClick={() => remove(emitter.id)}>Remove</button>
+      </div>
+
+      <div style={styles.section}>
+        <span style={styles.label}>Preset</span>
+        <select
+          style={styles.select}
+          value={emitter.preset}
+          onChange={(e) => applyPreset(e.target.value)}
+        >
+          <option value="">Custom</option>
+          <option value="dust_puff">Dust Puff</option>
+          <option value="spark_shower">Spark Shower</option>
+          <option value="magic_spiral">Magic Spiral</option>
+        </select>
+      </div>
+
+      <div style={styles.section}>
+        <span style={styles.label}>Position</span>
+        <Vec3Input value={emitter.position} onChange={(v) => update(emitter.id, { position: v })} />
+      </div>
+
+      <div style={styles.section}>
+        <span style={styles.label}>Spawn Rate</span>
+        <NumberInput value={emitter.spawn_rate} min={0} step={1}
+          onChange={(v) => update(emitter.id, { spawn_rate: v })} style={styles.input} />
+      </div>
+
+      <div style={styles.section}>
+        <span style={styles.label}>Lifetime</span>
+        <div style={styles.row}>
+          <NumberInput label="Min" value={emitter.lifetime_min} min={0} step={0.1}
+            onChange={(v) => update(emitter.id, { lifetime_min: v })} style={styles.input} />
+          <NumberInput label="Max" value={emitter.lifetime_max} min={0} step={0.1}
+            onChange={(v) => update(emitter.id, { lifetime_max: v })} style={styles.input} />
+        </div>
+      </div>
+
+      <div style={styles.section}>
+        <span style={styles.label}>Velocity Min</span>
+        <Vec3Input value={emitter.velocity_min} onChange={(v) => update(emitter.id, { velocity_min: v })} />
+      </div>
+      <div style={styles.section}>
+        <span style={styles.label}>Velocity Max</span>
+        <Vec3Input value={emitter.velocity_max} onChange={(v) => update(emitter.id, { velocity_max: v })} />
+      </div>
+
+      <div style={styles.section}>
+        <span style={styles.label}>Acceleration</span>
+        <Vec3Input value={emitter.acceleration} onChange={(v) => update(emitter.id, { acceleration: v })} />
+      </div>
+
+      <div style={styles.section}>
+        <span style={styles.label}>Spawn Offset Min</span>
+        <Vec3Input value={emitter.spawn_offset_min} onChange={(v) => update(emitter.id, { spawn_offset_min: v })} />
+      </div>
+      <div style={styles.section}>
+        <span style={styles.label}>Spawn Offset Max</span>
+        <Vec3Input value={emitter.spawn_offset_max} onChange={(v) => update(emitter.id, { spawn_offset_max: v })} />
+      </div>
+
+      <div style={styles.section}>
+        <span style={styles.label}>Color</span>
+        <div style={styles.row}>
+          <span style={{ fontSize: 12 }}>Start</span>
+          <input type="color" value={rgbToHex(emitter.color_start)}
+            onChange={(e) => update(emitter.id, { color_start: hexToRgb(e.target.value) })}
+            style={{ width: 40, height: 24, border: 'none', cursor: 'pointer' }} />
+          <span style={{ fontSize: 12 }}>End</span>
+          <input type="color" value={rgbToHex(emitter.color_end)}
+            onChange={(e) => update(emitter.id, { color_end: hexToRgb(e.target.value) })}
+            style={{ width: 40, height: 24, border: 'none', cursor: 'pointer' }} />
+        </div>
+      </div>
+
+      <div style={styles.section}>
+        <span style={styles.label}>Scale Min</span>
+        <Vec3Input value={emitter.scale_min} onChange={(v) => update(emitter.id, { scale_min: v })} />
+      </div>
+      <div style={styles.section}>
+        <span style={styles.label}>Scale Max</span>
+        <Vec3Input value={emitter.scale_max} onChange={(v) => update(emitter.id, { scale_max: v })} />
+      </div>
+
+      <div style={styles.section}>
+        <span style={styles.label}>Scale End Factor</span>
+        <NumberInput value={emitter.scale_end_factor} min={0} max={1} step={0.05}
+          onChange={(v) => update(emitter.id, { scale_end_factor: v })} style={styles.input} />
+      </div>
+
+      <div style={styles.section}>
+        <span style={styles.label}>Opacity</span>
+        <div style={styles.row}>
+          <NumberInput label="Start" value={emitter.opacity_start} min={0} max={1} step={0.05}
+            onChange={(v) => update(emitter.id, { opacity_start: v })} style={styles.input} />
+          <NumberInput label="End" value={emitter.opacity_end} min={0} max={1} step={0.05}
+            onChange={(v) => update(emitter.id, { opacity_end: v })} style={styles.input} />
+        </div>
+      </div>
+
+      <div style={styles.section}>
+        <span style={styles.label}>Emission</span>
+        <NumberInput value={emitter.emission} min={0} step={0.1}
+          onChange={(v) => update(emitter.id, { emission: v })} style={styles.input} />
+        <span style={{ fontSize: 10, color: '#666' }}>
+          {'> 0 = self-lit (bypasses scene lighting, triggers bloom)'}
+        </span>
+      </div>
+
+      <div style={styles.section}>
+        <span style={styles.label}>Burst Duration</span>
+        <NumberInput value={emitter.burst_duration} min={0} step={0.1}
+          onChange={(v) => update(emitter.id, { burst_duration: v })} style={styles.input} />
+        <span style={{ fontSize: 10, color: '#666' }}>0 = continuous loop</span>
+      </div>
+    </div>
+  );
+}
+
 // ── Main component ──
 
 export function ScenePropertiesPanel() {
@@ -596,6 +772,7 @@ export function ScenePropertiesPanel() {
   const staticLights = useSceneStore((s) => s.staticLights);
   const npcs = useSceneStore((s) => s.npcs);
   const portals = useSceneStore((s) => s.portals);
+  const gsParticleEmitters = useSceneStore((s) => s.gsParticleEmitters);
   const player = useSceneStore((s) => s.player);
 
   if (!selectedEntity) {
@@ -624,6 +801,12 @@ export function ScenePropertiesPanel() {
     const portal = portals.find((p) => p.id === selectedEntity.id);
     if (!portal) return <div style={styles.empty}>Portal not found</div>;
     return <PortalProperties portal={portal} />;
+  }
+
+  if (selectedEntity.type === 'gs_emitter') {
+    const emitter = gsParticleEmitters.find((e) => e.id === selectedEntity.id);
+    if (!emitter) return <div style={styles.empty}>Emitter not found</div>;
+    return <GsEmitterProperties emitter={emitter} />;
   }
 
   if (selectedEntity.type === 'player') {

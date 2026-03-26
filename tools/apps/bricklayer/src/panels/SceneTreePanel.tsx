@@ -132,10 +132,12 @@ export function SceneTreePanel() {
   const player = useSceneStore((s) => s.player);
   const selectedEntity = useSceneStore((s) => s.selectedEntity);
   const setSelectedEntity = useSceneStore((s) => s.setSelectedEntity);
+  const gsParticleEmitters = useSceneStore((s) => s.gsParticleEmitters);
   const addPlacedObject = useSceneStore((s) => s.addPlacedObject);
   const addLight = useSceneStore((s) => s.addLight);
   const addNpc = useSceneStore((s) => s.addNpc);
   const addPortal = useSceneStore((s) => s.addPortal);
+  const addGsEmitter = useSceneStore((s) => s.addGsEmitter);
 
   const [showAdd, setShowAdd] = useState(false);
   const addRef = useRef<HTMLDivElement>(null);
@@ -199,6 +201,14 @@ export function SceneTreePanel() {
               >
                 Portal
               </button>
+              <button
+                style={styles.dropdownItem}
+                onClick={() => { addGsEmitter(); setShowAdd(false); }}
+                onMouseEnter={(e) => { (e.target as HTMLElement).style.background = '#3a3a6a'; }}
+                onMouseLeave={(e) => { (e.target as HTMLElement).style.background = 'transparent'; }}
+              >
+                Particle Emitter
+              </button>
             </div>
           )}
         </div>
@@ -248,6 +258,18 @@ export function SceneTreePanel() {
             label={p.target_scene || p.id.slice(0, 16)}
             selected={selectedEntity?.type === 'portal' && selectedEntity.id === p.id}
             onClick={() => setSelectedEntity({ type: 'portal', id: p.id })}
+          />
+        ))}
+      </CollapsibleSection>
+
+      {/* Particle Emitters */}
+      <CollapsibleSection title="Emitters" count={gsParticleEmitters.length}>
+        {gsParticleEmitters.map((e) => (
+          <TreeItem
+            key={e.id}
+            label={e.preset || 'Custom Emitter'}
+            selected={selectedEntity?.type === 'gs_emitter' && selectedEntity.id === e.id}
+            onClick={() => setSelectedEntity({ type: 'gs_emitter', id: e.id })}
           />
         ))}
       </CollapsibleSection>
