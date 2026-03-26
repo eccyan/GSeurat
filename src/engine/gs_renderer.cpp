@@ -418,6 +418,26 @@ void GsRenderer::update_active_gaussians(const Gaussian* data, uint32_t count) {
     init_sort_buf(sort_b_ssbo_);
 }
 
+void GsRenderer::update_gaussian_data(const Gaussian* data, uint32_t count) {
+    if (count == 0 || count > max_gaussian_count_) return;
+
+    gaussian_count_ = count;
+
+    auto* gpu_data = static_cast<GpuGaussian*>(gaussian_ssbo_.mapped());
+    for (uint32_t i = 0; i < count; ++i) {
+        gpu_data[i].pos_opacity = glm::vec4(data[i].position, data[i].opacity);
+        float bone_f;
+        uint32_t bi = data[i].bone_index;
+        std::memcpy(&bone_f, &bi, sizeof(float));
+        gpu_data[i].scale_pad = glm::vec4(data[i].scale, bone_f);
+        gpu_data[i].rot = glm::vec4(data[i].rotation.x, data[i].rotation.y,
+                                     data[i].rotation.z, data[i].rotation.w);
+        gpu_data[i].color_pad = glm::vec4(data[i].color, data[i].emission);
+    }
+    // Sort keys are NOT reset — preprocess shader will recompute depth keys,
+    // and the radix sort will re-sort naturally without losing convergence.
+}
+
 void GsRenderer::upload_bone_transforms(const glm::mat4* transforms, uint32_t count) {
     if (!bone_ssbo_.mapped() || count == 0) return;
     uint32_t n = std::min(count, kMaxBones);

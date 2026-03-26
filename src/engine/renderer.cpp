@@ -801,7 +801,7 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
                     gs_active_buffer_.resize(gs_renderer_.max_gaussian_count());
                 }
 
-                gs_renderer_.update_active_gaussians(
+                gs_renderer_.update_gaussian_data(
                     gs_active_buffer_.data(),
                     static_cast<uint32_t>(gs_active_buffer_.size()));
             }
