@@ -164,6 +164,19 @@ export type SettingsCategory =
   | 'vfx'
   | 'backgrounds';
 
+export interface GsAnimParams {
+  speed: number;
+  gravity: [number, number, number];
+  velocity_scale: number;
+  noise_amplitude: number;
+  orbit_speed: number;
+  orbit_acceleration: number;
+  expansion: number;
+  height_rise: number;
+  opacity_fade: number;
+  scale_shrink: number;
+}
+
 export interface GsAnimationGroupData {
   id: string;
   effect: string;  // 'detach' | 'float' | 'orbit' | 'dissolve' | 'reform'
@@ -173,6 +186,7 @@ export interface GsAnimationGroupData {
   half_extents: [number, number, number];
   lifetime: number;
   loop: boolean;
+  params: GsAnimParams;
 }
 
 export interface GsParticleEmitterData {

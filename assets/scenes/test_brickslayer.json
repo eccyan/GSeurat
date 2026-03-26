@@ -294,8 +294,9 @@
         ],
         "radius": 50
       },
-      "lifetime": 4,
-      "loop": true
+      "speed": 1,
+      "lifetime": 100,
+      "loop": false
     },
     {
       "effect": "orbit",
@@ -304,12 +305,15 @@
         "center": [
           128,
           60,
-          0
+          30
         ],
-        "radius": 15
+        "radius": 50
       },
-      "lifetime": 4,
-      "loop": true
+      "speed": 0.1,
+      "expansion": 30,
+      "orbit_acceleration": 0.1,
+      "lifetime": 5,
+      "loop": false
     }
   ]
 }

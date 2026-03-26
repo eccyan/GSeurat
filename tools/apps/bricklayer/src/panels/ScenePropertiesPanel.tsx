@@ -921,6 +921,74 @@ function GsAnimationProperties({ anim }: { anim: GsAnimationGroupData }) {
           Loop (restart when finished)
         </label>
       </div>
+
+      <div style={styles.section}>
+        <span style={{ ...styles.label, marginTop: 8 }}>Parameters</span>
+      </div>
+
+      <div style={styles.section}>
+        <span style={styles.label}>Speed</span>
+        <NumberInput value={anim.params.speed} min={0.01} step={0.1}
+          onChange={(v) => update(anim.id, { params: { ...anim.params, speed: v } })} style={styles.input} />
+      </div>
+
+      <div style={styles.section}>
+        <span style={styles.label}>Gravity</span>
+        <Vec3Input value={anim.params.gravity}
+          onChange={(v) => update(anim.id, { params: { ...anim.params, gravity: v } })} />
+      </div>
+
+      <div style={styles.section}>
+        <span style={styles.label}>Velocity Scale</span>
+        <NumberInput value={anim.params.velocity_scale} min={0} step={0.1}
+          onChange={(v) => update(anim.id, { params: { ...anim.params, velocity_scale: v } })} style={styles.input} />
+      </div>
+
+      <div style={styles.section}>
+        <span style={styles.label}>Noise Amplitude</span>
+        <NumberInput value={anim.params.noise_amplitude} min={0} step={0.1}
+          onChange={(v) => update(anim.id, { params: { ...anim.params, noise_amplitude: v } })} style={styles.input} />
+      </div>
+
+      <div style={styles.section}>
+        <span style={styles.label}>Orbit Speed</span>
+        <NumberInput value={anim.params.orbit_speed} min={0} step={0.1}
+          onChange={(v) => update(anim.id, { params: { ...anim.params, orbit_speed: v } })} style={styles.input} />
+      </div>
+
+      <div style={styles.section}>
+        <span style={styles.label}>Orbit Acceleration</span>
+        <NumberInput value={anim.params.orbit_acceleration} step={0.1}
+          onChange={(v) => update(anim.id, { params: { ...anim.params, orbit_acceleration: v } })} style={styles.input} />
+        <span style={{ fontSize: 10, color: '#666' }}>{'>'}0 = spin up, {'<'}0 = spin down</span>
+      </div>
+
+      <div style={styles.section}>
+        <span style={styles.label}>Expansion</span>
+        <NumberInput value={anim.params.expansion} min={0} step={0.1}
+          onChange={(v) => update(anim.id, { params: { ...anim.params, expansion: v } })} style={styles.input} />
+      </div>
+
+      <div style={styles.section}>
+        <span style={styles.label}>Height Rise</span>
+        <NumberInput value={anim.params.height_rise} min={0} step={0.1}
+          onChange={(v) => update(anim.id, { params: { ...anim.params, height_rise: v } })} style={styles.input} />
+        <span style={{ fontSize: 10, color: '#666' }}>0 = flat orbit, 1 = default rise</span>
+      </div>
+
+      <div style={styles.section}>
+        <span style={styles.label}>Opacity Fade</span>
+        <NumberInput value={anim.params.opacity_fade} min={0} max={1} step={0.05}
+          onChange={(v) => update(anim.id, { params: { ...anim.params, opacity_fade: v } })} style={styles.input} />
+        <span style={{ fontSize: 10, color: '#666' }}>0 = no fade, 1 = full fade to transparent</span>
+      </div>
+
+      <div style={styles.section}>
+        <span style={styles.label}>Scale Shrink</span>
+        <NumberInput value={anim.params.scale_shrink} min={0} max={1} step={0.05}
+          onChange={(v) => update(anim.id, { params: { ...anim.params, scale_shrink: v } })} style={styles.input} />
+        <span style={{ fontSize: 10, color: '#666' }}>0 = no shrink, 1 = full shrink to zero</span>
+      </div>
     </div>
   );
 }

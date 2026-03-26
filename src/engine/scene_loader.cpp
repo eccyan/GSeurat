@@ -525,6 +525,24 @@ GsAnimationData SceneLoader::parse_gs_animation(const nlohmann::json& j) {
         if (r.contains("half_extents")) anim.region.half_extents = parse_vec3(r["half_extents"]);
     }
 
+    // Animation parameters — check both nested "params" block and top-level fields
+    auto read_params = [&](const nlohmann::json& p) {
+        anim.params.speed = p.value("speed", anim.params.speed);
+        if (p.contains("gravity")) anim.params.gravity = parse_vec3(p["gravity"]);
+        anim.params.velocity_scale = p.value("velocity_scale", anim.params.velocity_scale);
+        anim.params.noise_amplitude = p.value("noise_amplitude", anim.params.noise_amplitude);
+        anim.params.orbit_speed = p.value("orbit_speed", anim.params.orbit_speed);
+        anim.params.orbit_acceleration = p.value("orbit_acceleration", anim.params.orbit_acceleration);
+        anim.params.expansion = p.value("expansion", anim.params.expansion);
+        anim.params.height_rise = p.value("height_rise", anim.params.height_rise);
+        anim.params.opacity_fade = p.value("opacity_fade", anim.params.opacity_fade);
+        anim.params.scale_shrink = p.value("scale_shrink", anim.params.scale_shrink);
+    };
+    // Top-level fields (flat format)
+    read_params(j);
+    // Nested "params" block overrides top-level
+    if (j.contains("params")) read_params(j["params"]);
+
     return anim;
 }
 
@@ -543,6 +561,22 @@ nlohmann::json SceneLoader::gs_animation_json(const GsAnimationData& anim) {
         region["half_extents"] = vec3_json(anim.region.half_extents);
     }
     j["region"] = region;
+
+    // Only write params if any differ from defaults
+    const auto& p = anim.params;
+    GsAnimParams def;
+    nlohmann::json params;
+    if (p.speed != def.speed) params["speed"] = p.speed;
+    if (p.gravity != def.gravity) params["gravity"] = vec3_json(p.gravity);
+    if (p.velocity_scale != def.velocity_scale) params["velocity_scale"] = p.velocity_scale;
+    if (p.noise_amplitude != def.noise_amplitude) params["noise_amplitude"] = p.noise_amplitude;
+    if (p.orbit_speed != def.orbit_speed) params["orbit_speed"] = p.orbit_speed;
+    if (p.orbit_acceleration != def.orbit_acceleration) params["orbit_acceleration"] = p.orbit_acceleration;
+    if (p.expansion != def.expansion) params["expansion"] = p.expansion;
+    if (p.height_rise != def.height_rise) params["height_rise"] = p.height_rise;
+    if (p.opacity_fade != def.opacity_fade) params["opacity_fade"] = p.opacity_fade;
+    if (p.scale_shrink != def.scale_shrink) params["scale_shrink"] = p.scale_shrink;
+    if (!params.empty()) j["params"] = params;
 
     return j;
 }

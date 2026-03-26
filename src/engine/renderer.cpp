@@ -795,7 +795,7 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
                     if (sa.group_id == 0 || (sa.loop && !gs_animator_.has_group(sa.group_id))) {
                         sa.group_id = gs_animator_.tag_region(
                             gs_scene_buffer_, sa.region,
-                            parse_effect_name(sa.effect), sa.lifetime);
+                            parse_effect_name(sa.effect), sa.lifetime, sa.params);
                     }
                 }
 
@@ -951,16 +951,16 @@ void Renderer::clear_gs_particle_emitters() {
 }
 
 void Renderer::add_gs_animation(const std::string& effect, const GsAnimRegion& region,
-                                 float lifetime, bool loop) {
+                                 float lifetime, bool loop, const GsAnimParams& params) {
     SceneAnimation sa;
     sa.effect = effect;
     sa.region = region;
     sa.lifetime = lifetime;
     sa.loop = loop;
-    // Tag immediately if we have a scene buffer
+    sa.params = params;
     if (!gs_scene_buffer_.empty()) {
         sa.group_id = gs_animator_.tag_region(
-            gs_scene_buffer_, region, parse_effect_name(effect), lifetime);
+            gs_scene_buffer_, region, parse_effect_name(effect), lifetime, params);
     }
     gs_scene_animations_.push_back(std::move(sa));
 }

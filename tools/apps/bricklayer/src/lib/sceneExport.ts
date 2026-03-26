@@ -192,6 +192,20 @@ export function exportSceneJson(state: SceneStoreState): object {
         lifetime: a.lifetime,
       };
       if (a.loop) out.loop = true;
+      // Only write params that differ from defaults
+      const p = a.params;
+      const params: Record<string, unknown> = {};
+      if (p.speed !== 1) params.speed = p.speed;
+      if (p.gravity[0] !== 0 || p.gravity[1] !== -9.8 || p.gravity[2] !== 0) params.gravity = p.gravity;
+      if (p.velocity_scale !== 1) params.velocity_scale = p.velocity_scale;
+      if (p.noise_amplitude !== 1) params.noise_amplitude = p.noise_amplitude;
+      if (p.orbit_speed !== 1) params.orbit_speed = p.orbit_speed;
+      if (p.orbit_acceleration !== 0) params.orbit_acceleration = p.orbit_acceleration;
+      if (p.expansion !== 1) params.expansion = p.expansion;
+      if (p.height_rise !== 1) params.height_rise = p.height_rise;
+      if (p.opacity_fade !== 1) params.opacity_fade = p.opacity_fade;
+      if (p.scale_shrink !== 1) params.scale_shrink = p.scale_shrink;
+      if (Object.keys(params).length > 0) out.params = params;
       return out;
     });
   }
