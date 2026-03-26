@@ -750,18 +750,14 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
             glm::mat4 gs_vp = gs_proj_ * gs_view_;
             auto visible = gs_chunk_grid_.visible_chunks(gs_vp);
 
-            // Check if particles/animator need per-frame re-upload
-            bool has_particles = !gs_particle_emitters_.empty() || gs_animator_.has_active_groups();
-
-            if (visible != gs_prev_visible_ || has_particles) {
-                if (visible != gs_prev_visible_) {
-                    if (gs_budget_locked_) {
-                        gs_budget_locked_ = false;
-                        gs_stable_frame_count_ = 0;
-                    }
-                    gs_prev_visible_ = visible;
+            if (visible != gs_prev_visible_) {
+                if (gs_budget_locked_) {
+                    gs_budget_locked_ = false;
+                    gs_stable_frame_count_ = 0;
                 }
-                // Re-gather scene Gaussians
+                gs_prev_visible_ = visible;
+
+                // Re-gather scene Gaussians (only on visibility change)
                 if (flags.gs_lod && gs_gaussian_budget_ > 0) {
                     glm::vec3 cam_pos = glm::vec3(glm::inverse(gs_view_)[3]);
                     gs_chunk_grid_.gather_lod(visible, cam_pos, gs_gaussian_budget_,
@@ -769,6 +765,21 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
                 } else {
                     gs_chunk_grid_.gather(visible, gs_active_buffer_);
                 }
+                gs_scene_buffer_ = gs_active_buffer_;  // cache scene-only buffer
+
+                if (!gs_active_buffer_.empty()) {
+                    gs_renderer_.update_active_gaussians(
+                        gs_active_buffer_.data(),
+                        static_cast<uint32_t>(gs_active_buffer_.size()));
+                }
+            }
+
+            // Update particles/animations separately (no re-sort of scene)
+            bool has_particles = !gs_particle_emitters_.empty() || gs_animator_.has_active_groups();
+            if (has_particles) {
+                // Start from cached scene buffer
+                gs_active_buffer_ = gs_scene_buffer_;
+
                 // Animate tagged scene Gaussians (Mode 2)
                 if (gs_animator_.has_active_groups()) {
                     gs_animator_.update(dt, gs_active_buffer_);
@@ -779,7 +790,7 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
                     emitter.update(dt);
                     emitter.gather(gs_active_buffer_);
                 }
-                // Remove dead emitters (burst mode: no alive particles + inactive)
+                // Remove dead emitters
                 gs_particle_emitters_.erase(
                     std::remove_if(gs_particle_emitters_.begin(), gs_particle_emitters_.end(),
                         [](const GaussianParticleEmitter& e) { return !e.active() && e.alive_count() == 0; }),
@@ -790,13 +801,9 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
                     gs_active_buffer_.resize(gs_renderer_.max_gaussian_count());
                 }
 
-                if (!gs_active_buffer_.empty()) {
-                    // Frame fence (waited at frame start) guarantees the GPU
-                    // is done with these SSBOs — no need for vkDeviceWaitIdle.
-                    gs_renderer_.update_active_gaussians(
-                        gs_active_buffer_.data(),
-                        static_cast<uint32_t>(gs_active_buffer_.size()));
-                }
+                gs_renderer_.update_active_gaussians(
+                    gs_active_buffer_.data(),
+                    static_cast<uint32_t>(gs_active_buffer_.size()));
             }
         }
 

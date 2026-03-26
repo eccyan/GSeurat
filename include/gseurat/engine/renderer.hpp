@@ -177,6 +177,7 @@ private:
     // Spatial chunk grid for GS frustum culling
     GsChunkGrid gs_chunk_grid_;
     std::vector<Gaussian> gs_active_buffer_;
+    std::vector<Gaussian> gs_scene_buffer_;   // cached scene-only Gaussians (no particles/anim)
     std::vector<GaussianParticleEmitter> gs_particle_emitters_;
     GaussianAnimator gs_animator_;
     std::vector<uint32_t> gs_prev_visible_;
