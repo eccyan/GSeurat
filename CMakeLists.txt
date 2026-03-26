@@ -179,6 +179,7 @@ add_library(gseurat_core OBJECT
     src/engine/async_loader.cpp
     src/engine/staging_uploader.cpp
     src/engine/gs_chunk_streamer.cpp
+    src/engine/gs_particle.cpp
 )
 
 if(NOT WIN32)
