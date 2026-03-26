@@ -621,8 +621,9 @@ void GsDemoState::build_draw_lists(AppBase& app) {
         y -= 16.0f;
 
         // Show marker info
-        std::snprintf(buf, sizeof(buf), "Markers: %zu  Path: %zu waypoints",
-                      demo_markers_.size(), demo_path_.size());
+        std::snprintf(buf, sizeof(buf), "Markers: %zu  Path: %zu  Emitters: %zu",
+                      demo_markers_.size(), demo_path_.size(),
+                      app.renderer().gs_particle_emitters().size());
         ui.label(buf, lx, y, scale, layer_color);
 
         // Render markers and path as projected UI panels
@@ -702,6 +703,24 @@ void GsDemoState::build_draw_lists(AppBase& app) {
                     std::snprintf(llabel, sizeof(llabel), "L%zu", i);
                     ui.label(llabel, sx - 4.0f, sy + 10.0f, 0.3f,
                              {1.0f, 1.0f, 1.0f, 1.0f});
+                }
+            }
+
+            // Draw particle emitter markers (P0, P1, ...) — magenta diamond
+            auto& emitters = app.renderer().gs_particle_emitters();
+            for (size_t i = 0; i < emitters.size(); ++i) {
+                auto [sx, sy] = project(emitters[i].config().position);
+                if (sx > 0 && sx < screen_w && sy > 0 && sy < screen_h) {
+                    // Outer glow
+                    ui.panel(sx, sy, 14.0f, 14.0f, {1.0f, 0.3f, 0.8f, 0.3f});
+                    // Inner marker
+                    ui.panel(sx, sy, 8.0f, 8.0f, {1.0f, 0.3f, 0.8f, 0.9f});
+                    // Center dot
+                    ui.panel(sx, sy, 3.0f, 3.0f, {1.0f, 1.0f, 1.0f, 1.0f});
+                    char plabel[16];
+                    std::snprintf(plabel, sizeof(plabel), "P%zu", i);
+                    ui.label(plabel, sx - 4.0f, sy + 10.0f, 0.3f,
+                             {1.0f, 0.5f, 0.9f, 1.0f});
                 }
             }
         }

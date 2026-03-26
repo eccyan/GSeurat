@@ -204,4 +204,11 @@ GsEmitterConfig gs_preset_magic_spiral() {
     return c;
 }
 
+std::optional<GsEmitterConfig> gs_resolve_preset(const std::string& name) {
+    if (name == "dust_puff")     return gs_preset_dust_puff();
+    if (name == "spark_shower")  return gs_preset_spark_shower();
+    if (name == "magic_spiral")  return gs_preset_magic_spiral();
+    return std::nullopt;
+}
+
 }  // namespace gseurat

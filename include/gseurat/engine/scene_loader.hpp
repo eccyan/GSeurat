@@ -4,6 +4,7 @@
 #include "gseurat/engine/day_night_system.hpp"
 #include "gseurat/engine/dialog.hpp"
 #include "gseurat/engine/direction.hpp"
+#include "gseurat/engine/gs_particle.hpp"
 #include "gseurat/engine/minimap.hpp"
 #include "gseurat/engine/particle.hpp"
 #include "gseurat/engine/tilemap.hpp"
@@ -91,6 +92,11 @@ struct PlacedObjectData {
     std::string character_manifest;          // if animated, path to Echidna manifest JSON
 };
 
+struct GsEmitterData {
+    std::string preset;          // optional preset name ("dust_puff", "spark_shower", "magic_spiral")
+    GsEmitterConfig config;      // full config (preset values overridden by explicit fields)
+};
+
 struct PortalData {
     glm::vec2 position{0.0f};
     glm::vec2 size{1.0f};
@@ -125,6 +131,9 @@ struct SceneData {
 
     // Placed objects (terrain chunks, props, characters)
     std::vector<PlacedObjectData> placed_objects;
+
+    // Gaussian particle emitters (continuous effects in the scene)
+    std::vector<GsEmitterData> gs_particle_emitters;
 
     // Minimap
     std::optional<Minimap::Config> minimap_config;
@@ -165,6 +174,8 @@ private:
     static nlohmann::json vec3_json(const glm::vec3& v);
     static nlohmann::json vec4_json(const glm::vec4& v);
     static nlohmann::json emitter_json(const EmitterConfig& cfg);
+    static GsEmitterConfig parse_gs_emitter_config(const nlohmann::json& j);
+    static nlohmann::json gs_emitter_config_json(const GsEmitterData& em);
 };
 
 }  // namespace gseurat

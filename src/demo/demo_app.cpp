@@ -62,6 +62,9 @@ void DemoApp::init_scene(const std::string& scene_path) {
     current_scene_path_ = scene_path;
     auto scene_data = SceneLoader::load(scene_path);
 
+    // Clear previous scene state
+    renderer_.clear_gs_particle_emitters();
+
     // Populate scene lights for the glow overlay
     scene_.clear_lights();
     scene_.set_ambient_color(scene_data.ambient_color);
@@ -196,6 +199,17 @@ void DemoApp::init_scene(const std::string& scene_path) {
                                  l.position_and_radius.z, l.position_and_radius.w,
                                  l.color.r, l.color.g, l.color.b, l.color.a);
                 }
+            }
+
+            // Instantiate GS particle emitters from scene
+            // Transform from scene/voxel coordinates to PLY/world coordinates
+            // Scene JSON: position = [scene_x, height, scene_z]
+            // PLY world:  X = scene_x + aabb.min.x, Y = height + aabb.min.y, Z = scene_z
+            for (const auto& em : scene_data.gs_particle_emitters) {
+                auto config = em.config;
+                config.position.x += aabb.min.x;
+                config.position.y += aabb.min.y;
+                renderer_.add_gs_particle_emitter(config);
             }
         }
 
