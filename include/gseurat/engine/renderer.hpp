@@ -97,6 +97,7 @@ public:
     void add_gs_animation(const std::string& effect, const GsAnimRegion& region,
                           float lifetime, bool loop);
     void clear_gs_animations();
+    const std::vector<SceneAnimation>& gs_scene_animations() const { return gs_scene_animations_; }
 
     void request_screenshot(const std::string& path) { screenshot_.request(path); }
     bool screenshot_write_ok() const { return screenshot_.write_ok(); }
