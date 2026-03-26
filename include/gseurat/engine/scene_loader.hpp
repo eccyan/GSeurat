@@ -4,6 +4,7 @@
 #include "gseurat/engine/day_night_system.hpp"
 #include "gseurat/engine/dialog.hpp"
 #include "gseurat/engine/direction.hpp"
+#include "gseurat/engine/gs_animator.hpp"
 #include "gseurat/engine/gs_particle.hpp"
 #include "gseurat/engine/minimap.hpp"
 #include "gseurat/engine/particle.hpp"
@@ -97,6 +98,13 @@ struct GsEmitterData {
     GsEmitterConfig config;      // full config (preset values overridden by explicit fields)
 };
 
+struct GsAnimationData {
+    std::string effect;          // "detach", "float", "orbit", "dissolve", "reform"
+    GsAnimRegion region;
+    float lifetime = 3.0f;
+    bool loop = false;
+};
+
 struct PortalData {
     glm::vec2 position{0.0f};
     glm::vec2 size{1.0f};
@@ -134,6 +142,9 @@ struct SceneData {
 
     // Gaussian particle emitters (continuous effects in the scene)
     std::vector<GsEmitterData> gs_particle_emitters;
+
+    // Gaussian animations (effects applied to existing scene Gaussians within a region)
+    std::vector<GsAnimationData> gs_animations;
 
     // Minimap
     std::optional<Minimap::Config> minimap_config;
@@ -176,6 +187,8 @@ private:
     static nlohmann::json emitter_json(const EmitterConfig& cfg);
     static GsEmitterConfig parse_gs_emitter_config(const nlohmann::json& j);
     static nlohmann::json gs_emitter_config_json(const GsEmitterData& em);
+    static GsAnimationData parse_gs_animation(const nlohmann::json& j);
+    static nlohmann::json gs_animation_json(const GsAnimationData& anim);
 };
 
 }  // namespace gseurat

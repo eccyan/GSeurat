@@ -25,6 +25,7 @@ const icons: Record<string, string> = {
   npcs: '\u263A',        // ☺
   portals: '\u29C9',     // ⧉
   emitters: '\u2728',     // ✨
+  animations: '\u21BB',   // ↻
   player: '\u2666',      // ♦
   settings: '\u2699',    // ⚙
   gs_camera: '\u25CE',   // ◎
@@ -165,8 +166,11 @@ export function ProjectTree() {
   const removeLight = useSceneStore((st) => st.removeLight);
   const removeNpc = useSceneStore((st) => st.removeNpc);
   const removePortal = useSceneStore((st) => st.removePortal);
+  const gsAnimations = useSceneStore((st) => st.gsAnimations);
   const addGsEmitter = useSceneStore((st) => st.addGsEmitter);
   const removeGsEmitter = useSceneStore((st) => st.removeGsEmitter);
+  const addGsAnimation = useSceneStore((st) => st.addGsAnimation);
+  const removeGsAnimation = useSceneStore((st) => st.removeGsAnimation);
   const collisionGridData = useSceneStore((st) => st.collisionGridData);
 
   const [sceneOpen, setSceneOpen] = useState(true);
@@ -175,6 +179,7 @@ export function ProjectTree() {
   const [npcOpen, setNpcOpen] = useState(true);
   const [portalOpen, setPortalOpen] = useState(true);
   const [emitterOpen, setEmitterOpen] = useState(true);
+  const [animOpen, setAnimOpen] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   const click = (node: NavigationNode) => {
@@ -349,6 +354,27 @@ export function ProjectTree() {
                 isActive={isActive({ kind: 'scene_item', entityType: 'gs_emitter', entityId: e.id })}
                 onClick={() => click({ kind: 'scene_item', entityType: 'gs_emitter', entityId: e.id })}
                 actions={removeBtn(() => removeGsEmitter(e.id))}
+              />
+            ))}
+          </TreeNode>
+
+          {/* Animations */}
+          <TreeNode
+            icon={icons.animations} label="Animations" count={gsAnimations.length}
+            arrow={animOpen ? '\u25BE' : '\u25B8'}
+            isActive={isActive({ kind: 'scene_category', category: 'animations' as any })}
+            onClick={() => { setAnimOpen(!animOpen); click({ kind: 'scene_category', category: 'animations' as any }); }}
+            actions={addBtn(() => addGsAnimation(getCameraTarget().xyz))}
+            isOpen={animOpen}
+          >
+            {gsAnimations.map((a, i) => (
+              <TreeNode
+                key={a.id}
+                icon={icons.animations}
+                label={`${a.effect.charAt(0).toUpperCase() + a.effect.slice(1)} ${i + 1}`}
+                isActive={isActive({ kind: 'scene_item', entityType: 'gs_animation', entityId: a.id })}
+                onClick={() => click({ kind: 'scene_item', entityType: 'gs_animation', entityId: a.id })}
+                actions={removeBtn(() => removeGsAnimation(a.id))}
               />
             ))}
           </TreeNode>

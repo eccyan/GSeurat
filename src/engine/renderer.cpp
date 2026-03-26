@@ -13,6 +13,14 @@
 #include <glm/gtc/matrix_transform.hpp>
 namespace gseurat {
 
+static GsAnimEffect parse_effect_name(const std::string& name) {
+    if (name == "float")    return GsAnimEffect::Float;
+    if (name == "orbit")    return GsAnimEffect::Orbit;
+    if (name == "dissolve") return GsAnimEffect::Dissolve;
+    if (name == "reform")   return GsAnimEffect::Reform;
+    return GsAnimEffect::Detach;
+}
+
 void Renderer::init(GLFWwindow* window, ResourceManager& resources) {
     context_.init(window);
     swapchain_.init(context_, kWindowWidth, kWindowHeight);
@@ -775,10 +783,21 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
             }
 
             // Update particles/animations separately (no re-sort of scene)
-            bool has_particles = !gs_particle_emitters_.empty() || gs_animator_.has_active_groups();
+            bool has_particles = !gs_particle_emitters_.empty()
+                || gs_animator_.has_active_groups()
+                || !gs_scene_animations_.empty();
             if (has_particles) {
                 // Start from cached scene buffer
                 gs_active_buffer_ = gs_scene_buffer_;
+
+                // Re-tag looping scene animations that have finished
+                for (auto& sa : gs_scene_animations_) {
+                    if (sa.loop && sa.group_id > 0 && !gs_animator_.has_active_groups()) {
+                        sa.group_id = gs_animator_.tag_region(
+                            gs_scene_buffer_, sa.region,
+                            parse_effect_name(sa.effect), sa.lifetime);
+                    }
+                }
 
                 // Animate tagged scene Gaussians (Mode 2)
                 if (gs_animator_.has_active_groups()) {
@@ -929,6 +948,25 @@ void Renderer::add_gs_particle_emitter(const GsEmitterConfig& config) {
 
 void Renderer::clear_gs_particle_emitters() {
     gs_particle_emitters_.clear();
+}
+
+void Renderer::add_gs_animation(const std::string& effect, const GsAnimRegion& region,
+                                 float lifetime, bool loop) {
+    SceneAnimation sa;
+    sa.effect = effect;
+    sa.region = region;
+    sa.lifetime = lifetime;
+    sa.loop = loop;
+    // Tag immediately if we have a scene buffer
+    if (!gs_scene_buffer_.empty()) {
+        sa.group_id = gs_animator_.tag_region(
+            gs_scene_buffer_, region, parse_effect_name(effect), lifetime);
+    }
+    gs_scene_animations_.push_back(std::move(sa));
+}
+
+void Renderer::clear_gs_animations() {
+    gs_scene_animations_.clear();
 }
 
 }  // namespace gseurat

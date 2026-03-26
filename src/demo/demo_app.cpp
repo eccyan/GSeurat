@@ -64,6 +64,7 @@ void DemoApp::init_scene(const std::string& scene_path) {
 
     // Clear previous scene state
     renderer_.clear_gs_particle_emitters();
+    renderer_.clear_gs_animations();
 
     // Populate scene lights for the glow overlay
     scene_.clear_lights();
@@ -210,6 +211,14 @@ void DemoApp::init_scene(const std::string& scene_path) {
                 config.position.x += aabb.min.x;
                 config.position.y += aabb.min.y;
                 renderer_.add_gs_particle_emitter(config);
+            }
+
+            // Instantiate GS animations from scene
+            for (const auto& anim : scene_data.gs_animations) {
+                auto region = anim.region;
+                region.center.x += aabb.min.x;
+                region.center.y += aabb.min.y;
+                renderer_.add_gs_animation(anim.effect, region, anim.lifetime, anim.loop);
             }
         }
 

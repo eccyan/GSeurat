@@ -8,6 +8,7 @@ import type {
   PlacedObjectData,
   PlayerData,
   GsParticleEmitterData,
+  GsAnimationGroupData,
 } from '../store/types.js';
 
 const styles: Record<string, React.CSSProperties> = {
@@ -836,6 +837,94 @@ function GsEmitterProperties({ emitter }: { emitter: GsParticleEmitterData }) {
   );
 }
 
+const effectOptions = ['detach', 'float', 'orbit', 'dissolve', 'reform'];
+const effectDescriptions: Record<string, string> = {
+  detach: 'Scatter outward with gravity, fade opacity',
+  float: 'Drift upward with horizontal noise, shrink',
+  orbit: 'Swirl around region center',
+  dissolve: 'Shrink to zero, fade opacity',
+  reform: 'Restore to original position and color',
+};
+
+function GsAnimationProperties({ anim }: { anim: GsAnimationGroupData }) {
+  const update = useSceneStore((s) => s.updateGsAnimation);
+  const remove = useSceneStore((s) => s.removeGsAnimation);
+
+  return (
+    <div>
+      <div style={{ ...styles.row, marginBottom: 12 }}>
+        <span style={{ ...styles.label, flex: 1 }}>GS Animation</span>
+        <button style={styles.btnDanger} onClick={() => remove(anim.id)}>Remove</button>
+      </div>
+
+      <div style={styles.section}>
+        <span style={styles.label}>Effect</span>
+        <select
+          style={styles.select}
+          value={anim.effect}
+          onChange={(e) => update(anim.id, { effect: e.target.value })}
+        >
+          {effectOptions.map((e) => <option key={e} value={e}>{e.charAt(0).toUpperCase() + e.slice(1)}</option>)}
+        </select>
+        <span style={{ fontSize: 10, color: '#666', marginTop: 4 }}>
+          {effectDescriptions[anim.effect] ?? ''}
+        </span>
+      </div>
+
+      <div style={styles.section}>
+        <span style={styles.label}>Region Shape</span>
+        <select
+          style={styles.select}
+          value={anim.shape}
+          onChange={(e) => update(anim.id, { shape: e.target.value })}
+        >
+          <option value="sphere">Sphere</option>
+          <option value="box">Box</option>
+        </select>
+      </div>
+
+      <div style={styles.section}>
+        <span style={styles.label}>Center</span>
+        <Vec3Input value={anim.center} onChange={(v) => update(anim.id, { center: v })} />
+      </div>
+
+      {anim.shape === 'sphere' && (
+        <div style={styles.section}>
+          <span style={styles.label}>Radius</span>
+          <NumberInput value={anim.radius} min={0.1} step={0.5}
+            onChange={(v) => update(anim.id, { radius: v })} style={styles.input} />
+        </div>
+      )}
+
+      {anim.shape === 'box' && (
+        <div style={styles.section}>
+          <span style={styles.label}>Half Extents</span>
+          <Vec3Input value={anim.half_extents} step={0.5}
+            onChange={(v) => update(anim.id, { half_extents: v })} />
+        </div>
+      )}
+
+      <div style={styles.section}>
+        <span style={styles.label}>Lifetime (seconds)</span>
+        <NumberInput value={anim.lifetime} min={0.1} step={0.5}
+          onChange={(v) => update(anim.id, { lifetime: v })} style={styles.input} />
+      </div>
+
+      <div style={styles.section}>
+        <label style={{ fontSize: 12, color: '#ddd', display: 'flex', alignItems: 'center' }}>
+          <input
+            type="checkbox"
+            checked={anim.loop}
+            onChange={(e) => update(anim.id, { loop: e.target.checked })}
+            style={styles.checkbox}
+          />
+          Loop (restart when finished)
+        </label>
+      </div>
+    </div>
+  );
+}
+
 // ── Main component ──
 
 export function ScenePropertiesPanel() {
@@ -845,6 +934,7 @@ export function ScenePropertiesPanel() {
   const npcs = useSceneStore((s) => s.npcs);
   const portals = useSceneStore((s) => s.portals);
   const gsParticleEmitters = useSceneStore((s) => s.gsParticleEmitters);
+  const gsAnimations = useSceneStore((s) => s.gsAnimations);
   const player = useSceneStore((s) => s.player);
 
   if (!selectedEntity) {
@@ -879,6 +969,12 @@ export function ScenePropertiesPanel() {
     const emitter = gsParticleEmitters.find((e) => e.id === selectedEntity.id);
     if (!emitter) return <div style={styles.empty}>Emitter not found</div>;
     return <GsEmitterProperties emitter={emitter} />;
+  }
+
+  if (selectedEntity.type === 'gs_animation') {
+    const anim = gsAnimations.find((a) => a.id === selectedEntity.id);
+    if (!anim) return <div style={styles.empty}>Animation not found</div>;
+    return <GsAnimationProperties anim={anim} />;
   }
 
   if (selectedEntity.type === 'player') {

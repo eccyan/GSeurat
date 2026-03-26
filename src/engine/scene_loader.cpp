@@ -363,6 +363,13 @@ SceneData SceneLoader::from_json(const nlohmann::json& j) {
         }
     }
 
+    // Gaussian animations
+    if (j.contains("gs_animations")) {
+        for (const auto& anim_j : j["gs_animations"]) {
+            data.gs_animations.push_back(parse_gs_animation(anim_j));
+        }
+    }
+
     // Weather
     if (j.contains("weather")) {
         const auto& w = j["weather"];
@@ -499,6 +506,44 @@ nlohmann::json SceneLoader::gs_emitter_config_json(const GsEmitterData& em) {
     j["spawn_offset_min"] = vec3_json(c.spawn_offset_min);
     j["spawn_offset_max"] = vec3_json(c.spawn_offset_max);
     if (c.burst_duration > 0.0f) j["burst_duration"] = c.burst_duration;
+    return j;
+}
+
+GsAnimationData SceneLoader::parse_gs_animation(const nlohmann::json& j) {
+    GsAnimationData anim;
+    anim.effect = j.value("effect", "detach");
+    anim.lifetime = j.value("lifetime", 3.0f);
+    anim.loop = j.value("loop", false);
+
+    if (j.contains("region")) {
+        const auto& r = j["region"];
+        std::string shape_str = r.value("shape", "sphere");
+        anim.region.shape = (shape_str == "box")
+            ? GsAnimRegion::Shape::Box : GsAnimRegion::Shape::Sphere;
+        if (r.contains("center")) anim.region.center = parse_vec3(r["center"]);
+        anim.region.radius = r.value("radius", 5.0f);
+        if (r.contains("half_extents")) anim.region.half_extents = parse_vec3(r["half_extents"]);
+    }
+
+    return anim;
+}
+
+nlohmann::json SceneLoader::gs_animation_json(const GsAnimationData& anim) {
+    nlohmann::json j;
+    j["effect"] = anim.effect;
+    j["lifetime"] = anim.lifetime;
+    if (anim.loop) j["loop"] = true;
+
+    nlohmann::json region;
+    region["shape"] = (anim.region.shape == GsAnimRegion::Shape::Box) ? "box" : "sphere";
+    region["center"] = vec3_json(anim.region.center);
+    if (anim.region.shape == GsAnimRegion::Shape::Sphere) {
+        region["radius"] = anim.region.radius;
+    } else {
+        region["half_extents"] = vec3_json(anim.region.half_extents);
+    }
+    j["region"] = region;
+
     return j;
 }
 
@@ -791,6 +836,15 @@ nlohmann::json SceneLoader::to_json(const SceneData& data) {
             emitters.push_back(gs_emitter_config_json(em));
         }
         j["gs_particle_emitters"] = emitters;
+    }
+
+    // Gaussian animations
+    if (!data.gs_animations.empty()) {
+        nlohmann::json anims = nlohmann::json::array();
+        for (const auto& anim : data.gs_animations) {
+            anims.push_back(gs_animation_json(anim));
+        }
+        j["gs_animations"] = anims;
     }
 
     // Navigation zone names

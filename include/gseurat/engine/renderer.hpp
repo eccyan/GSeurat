@@ -86,6 +86,18 @@ public:
     GaussianAnimator& gs_animator() { return gs_animator_; }
     const std::vector<Gaussian>& gs_active_buffer() const { return gs_active_buffer_; }
 
+    // Scene-placed animations (with loop support)
+    struct SceneAnimation {
+        std::string effect;
+        GsAnimRegion region;
+        float lifetime = 3.0f;
+        bool loop = false;
+        uint32_t group_id = 0;
+    };
+    void add_gs_animation(const std::string& effect, const GsAnimRegion& region,
+                          float lifetime, bool loop);
+    void clear_gs_animations();
+
     void request_screenshot(const std::string& path) { screenshot_.request(path); }
     bool screenshot_write_ok() const { return screenshot_.write_ok(); }
     uint32_t screenshot_width() const { return screenshot_.width(); }
@@ -180,6 +192,7 @@ private:
     std::vector<Gaussian> gs_scene_buffer_;   // cached scene-only Gaussians (no particles/anim)
     std::vector<GaussianParticleEmitter> gs_particle_emitters_;
     GaussianAnimator gs_animator_;
+    std::vector<SceneAnimation> gs_scene_animations_;
     std::vector<uint32_t> gs_prev_visible_;
     bool gs_skip_chunk_cull_ = false;
     uint32_t gs_gaussian_budget_ = 0;  // 0 = unlimited (no LOD decimation)

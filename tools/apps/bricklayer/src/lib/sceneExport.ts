@@ -178,6 +178,24 @@ export function exportSceneJson(state: SceneStoreState): object {
     });
   }
 
+  if (state.gsAnimations.length > 0) {
+    scene.gs_animations = state.gsAnimations.map((a) => {
+      const region: Record<string, unknown> = {
+        shape: a.shape,
+        center: a.center,
+      };
+      if (a.shape === 'sphere') region.radius = a.radius;
+      else region.half_extents = a.half_extents;
+      const out: Record<string, unknown> = {
+        effect: a.effect,
+        region,
+        lifetime: a.lifetime,
+      };
+      if (a.loop) out.loop = true;
+      return out;
+    });
+  }
+
   if (state.collisionGridData) {
     const g = state.collisionGridData;
     scene.collision = {
