@@ -791,8 +791,20 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
                 || gs_animator_.has_active_groups()
                 || !gs_scene_animations_.empty();
             if (has_particles) {
-                // Start from cached scene buffer
-                gs_active_buffer_ = gs_scene_buffer_;
+                // Check if any animation is in reforming phase
+                bool any_reforming = false;
+                for (const auto& sa : gs_scene_animations_) {
+                    if (sa.phase == SceneAnimation::Phase::Reforming) {
+                        any_reforming = true;
+                        break;
+                    }
+                }
+
+                // Only reset to scene buffer if no reform is in progress
+                // (reform needs displaced positions to lerp from)
+                if (!any_reforming) {
+                    gs_active_buffer_ = gs_scene_buffer_;
+                }
 
                 // Phase-based state machine for scene animations
                 for (auto& sa : gs_scene_animations_) {
@@ -806,7 +818,8 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
                         } else if (!gs_animator_.has_group(sa.group_id)) {
                             // Effect finished
                             if (sa.reform) {
-                                // Transition to reforming phase
+                                // Tag reform from scene buffer (original positions)
+                                // but active buffer retains displaced positions
                                 GsAnimParams reform_params;
                                 reform_params.speed = sa.reform->speed;
                                 reform_params.velocity_scale = sa.reform->speed;
@@ -824,7 +837,8 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
                         }
                     } else if (sa.phase == Phase::Reforming) {
                         if (!gs_animator_.has_group(sa.reform_group_id)) {
-                            // Reform finished
+                            // Reform finished — reset buffer to clean state
+                            gs_active_buffer_ = gs_scene_buffer_;
                             if (sa.loop) {
                                 sa.group_id = gs_animator_.tag_region(
                                     gs_scene_buffer_, sa.region,
