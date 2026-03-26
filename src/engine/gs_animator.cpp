@@ -184,7 +184,8 @@ void GaussianAnimator::apply_orbit(AnimGroup& group, std::vector<Gaussian>& gaus
         glm::vec3 rotated{rel.x * cs - rel.z * sn, rel.y + age_factor * 5.0f * p.height_rise, rel.x * sn + rel.z * cs};
 
         auto& g = gaussians[idx];
-        g.position = center + rotated * (1.0f + age_factor * 0.5f * p.expansion);
+        float radius_scale = 1.0f + age_factor * 0.5f * p.expansion;
+        g.position = center + glm::vec3(rotated.x * radius_scale, rotated.y, rotated.z * radius_scale);
         g.opacity = s.original_opacity * (1.0f - t * 0.3f * p.opacity_fade);
         g.emission = 0.01f;
     }
