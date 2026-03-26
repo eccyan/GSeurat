@@ -762,6 +762,16 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
                 } else {
                     gs_chunk_grid_.gather(visible, gs_active_buffer_);
                 }
+                // Update and append Gaussian particles from emitters
+                for (auto& emitter : gs_particle_emitters_) {
+                    emitter.update(dt);
+                    emitter.gather(gs_active_buffer_);
+                }
+                // Clamp to allocated SSBO capacity
+                if (gs_active_buffer_.size() > gs_renderer_.max_gaussian_count()) {
+                    gs_active_buffer_.resize(gs_renderer_.max_gaussian_count());
+                }
+
                 if (!gs_active_buffer_.empty()) {
                     // Frame fence (waited at frame start) guarantees the GPU
                     // is done with these SSBOs — no need for vkDeviceWaitIdle.
@@ -884,6 +894,16 @@ void Renderer::record_ui_pass(VkCommandBuffer cmd,
     }
 
     vkCmdSetScissor(cmd, 0, 1, &full_scissor);
+}
+
+void Renderer::add_gs_particle_emitter(const GsEmitterConfig& config) {
+    auto& emitter = gs_particle_emitters_.emplace_back();
+    emitter.configure(config);
+    emitter.set_active(true);
+}
+
+void Renderer::clear_gs_particle_emitters() {
+    gs_particle_emitters_.clear();
 }
 
 }  // namespace gseurat

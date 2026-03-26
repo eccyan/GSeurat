@@ -2,6 +2,7 @@
 #include "gseurat/engine/app_base.hpp"
 #include "gseurat/engine/gaussian_cloud.hpp"
 #include "gseurat/engine/gs_chunk_grid.hpp"
+#include "gseurat/engine/gs_particle.hpp"
 #include "gseurat/engine/pathfinder.hpp"
 
 #define GLFW_INCLUDE_VULKAN
@@ -437,6 +438,15 @@ void GsDemoState::update(AppBase& app, float dt) {
             scene_grid_ = {};
             std::fprintf(stderr, "Scene layers: OFF\n");
         }
+    }
+
+    // J → spawn Gaussian particle burst at camera target
+    if (app.input().was_key_pressed(GLFW_KEY_J)) {
+        auto preset = gs_preset_spark_shower();
+        preset.position = target_;
+        app.renderer().add_gs_particle_emitter(preset);
+        std::fprintf(stderr, "GS Particles: spark shower at (%.1f, %.1f, %.1f)\n",
+                     target_.x, target_.y, target_.z);
     }
 
     if (character_demo_) {
