@@ -62,6 +62,9 @@ void DemoApp::init_scene(const std::string& scene_path) {
     current_scene_path_ = scene_path;
     auto scene_data = SceneLoader::load(scene_path);
 
+    // Clear previous scene state
+    renderer_.clear_gs_particle_emitters();
+
     // Populate scene lights for the glow overlay
     scene_.clear_lights();
     scene_.set_ambient_color(scene_data.ambient_color);
@@ -228,6 +231,11 @@ void DemoApp::init_scene(const std::string& scene_path) {
             gs_parallax_active_ = false;
             renderer_.set_gs_skip_chunk_cull(false);
             renderer_.gs_renderer().clear_shadow_box_params();
+        }
+
+        // Instantiate GS particle emitters from scene
+        for (const auto& em : scene_data.gs_particle_emitters) {
+            renderer_.add_gs_particle_emitter(em.config);
         }
     }
 }

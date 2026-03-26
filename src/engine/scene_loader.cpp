@@ -349,6 +349,20 @@ SceneData SceneLoader::from_json(const nlohmann::json& j) {
         }
     }
 
+    // Gaussian particle emitters
+    if (j.contains("gs_particle_emitters")) {
+        for (const auto& em_j : j["gs_particle_emitters"]) {
+            GsEmitterData em;
+            em.preset = em_j.value("preset", "");
+            em.config = parse_gs_emitter_config(em_j);
+            // Scene emitters default to continuous (loop forever)
+            if (!em_j.contains("burst_duration")) {
+                em.config.burst_duration = 0.0f;
+            }
+            data.gs_particle_emitters.push_back(std::move(em));
+        }
+    }
+
     // Weather
     if (j.contains("weather")) {
         const auto& w = j["weather"];
@@ -429,6 +443,63 @@ nlohmann::json SceneLoader::vec3_json(const glm::vec3& v) {
 
 nlohmann::json SceneLoader::vec4_json(const glm::vec4& v) {
     return {v.x, v.y, v.z, v.w};
+}
+
+GsEmitterConfig SceneLoader::parse_gs_emitter_config(const nlohmann::json& j) {
+    GsEmitterConfig cfg;
+
+    // Start from preset if specified
+    if (j.contains("preset")) {
+        auto preset = gs_resolve_preset(j["preset"].get<std::string>());
+        if (preset) cfg = *preset;
+    }
+
+    // Override individual fields (all optional)
+    if (j.contains("spawn_rate"))       cfg.spawn_rate = j["spawn_rate"];
+    if (j.contains("lifetime_min"))     cfg.lifetime_min = j["lifetime_min"];
+    if (j.contains("lifetime_max"))     cfg.lifetime_max = j["lifetime_max"];
+    if (j.contains("position"))         cfg.position = parse_vec3(j["position"]);
+    if (j.contains("velocity_min"))     cfg.velocity_min = parse_vec3(j["velocity_min"]);
+    if (j.contains("velocity_max"))     cfg.velocity_max = parse_vec3(j["velocity_max"]);
+    if (j.contains("acceleration"))     cfg.acceleration = parse_vec3(j["acceleration"]);
+    if (j.contains("color_start"))      cfg.color_start = parse_vec3(j["color_start"]);
+    if (j.contains("color_end"))        cfg.color_end = parse_vec3(j["color_end"]);
+    if (j.contains("scale_min"))        cfg.scale_min = parse_vec3(j["scale_min"]);
+    if (j.contains("scale_max"))        cfg.scale_max = parse_vec3(j["scale_max"]);
+    if (j.contains("scale_end_factor")) cfg.scale_end_factor = j["scale_end_factor"];
+    if (j.contains("opacity_start"))    cfg.opacity_start = j["opacity_start"];
+    if (j.contains("opacity_end"))      cfg.opacity_end = j["opacity_end"];
+    if (j.contains("emission"))         cfg.emission = j["emission"];
+    if (j.contains("spawn_offset_min")) cfg.spawn_offset_min = parse_vec3(j["spawn_offset_min"]);
+    if (j.contains("spawn_offset_max")) cfg.spawn_offset_max = parse_vec3(j["spawn_offset_max"]);
+    if (j.contains("burst_duration"))   cfg.burst_duration = j["burst_duration"];
+
+    return cfg;
+}
+
+nlohmann::json SceneLoader::gs_emitter_config_json(const GsEmitterData& em) {
+    nlohmann::json j;
+    if (!em.preset.empty()) j["preset"] = em.preset;
+    const auto& c = em.config;
+    j["position"] = vec3_json(c.position);
+    j["spawn_rate"] = c.spawn_rate;
+    j["lifetime_min"] = c.lifetime_min;
+    j["lifetime_max"] = c.lifetime_max;
+    j["velocity_min"] = vec3_json(c.velocity_min);
+    j["velocity_max"] = vec3_json(c.velocity_max);
+    j["acceleration"] = vec3_json(c.acceleration);
+    j["color_start"] = vec3_json(c.color_start);
+    j["color_end"] = vec3_json(c.color_end);
+    j["scale_min"] = vec3_json(c.scale_min);
+    j["scale_max"] = vec3_json(c.scale_max);
+    j["scale_end_factor"] = c.scale_end_factor;
+    j["opacity_start"] = c.opacity_start;
+    j["opacity_end"] = c.opacity_end;
+    j["emission"] = c.emission;
+    j["spawn_offset_min"] = vec3_json(c.spawn_offset_min);
+    j["spawn_offset_max"] = vec3_json(c.spawn_offset_max);
+    if (c.burst_duration > 0.0f) j["burst_duration"] = c.burst_duration;
+    return j;
 }
 
 nlohmann::json SceneLoader::emitter_json(const EmitterConfig& cfg) {
@@ -711,6 +782,15 @@ nlohmann::json SceneLoader::to_json(const SceneData& data) {
             objects.push_back(obj_j);
         }
         j["placed_objects"] = objects;
+    }
+
+    // Gaussian particle emitters
+    if (!data.gs_particle_emitters.empty()) {
+        nlohmann::json emitters = nlohmann::json::array();
+        for (const auto& em : data.gs_particle_emitters) {
+            emitters.push_back(gs_emitter_config_json(em));
+        }
+        j["gs_particle_emitters"] = emitters;
     }
 
     // Navigation zone names

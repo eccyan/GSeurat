@@ -173,6 +173,16 @@
       0
     ]
   },
+  "gs_particle_emitters": [
+    {
+      "preset": "spark_shower",
+      "position": [32.0, 8.0, 32.0]
+    },
+    {
+      "preset": "dust_puff",
+      "position": [20.0, 2.0, 50.0]
+    }
+  ],
   "gaussian_splat": {
     "ply_file": "assets/maps/emissive_test.ply",
     "camera": {

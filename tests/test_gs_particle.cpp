@@ -5,8 +5,10 @@
 
 #include "gseurat/engine/gs_particle.hpp"
 #include "gseurat/engine/gs_animator.hpp"
+#include "gseurat/engine/scene_loader.hpp"
 
 #include <cassert>
+#include <cmath>
 #include <cstdio>
 #include <vector>
 
@@ -245,6 +247,71 @@ int main() {
         assert(id > 0);
 
         std::printf("PASS: Box region tags Gaussians\n");
+    }
+
+    // --- Test: gs_resolve_preset known/unknown ---
+    {
+        auto dust = gs_resolve_preset("dust_puff");
+        assert(dust.has_value());
+        assert(dust->spawn_rate == 120.0f);
+
+        auto spark = gs_resolve_preset("spark_shower");
+        assert(spark.has_value());
+        assert(spark->emission == 0.8f);
+
+        auto magic = gs_resolve_preset("magic_spiral");
+        assert(magic.has_value());
+
+        auto unknown = gs_resolve_preset("nonexistent");
+        assert(!unknown.has_value());
+
+        std::printf("PASS: gs_resolve_preset known/unknown\n");
+    }
+
+    // --- Test: Scene JSON round-trip for gs_particle_emitters ---
+    {
+        SceneData data;
+        GsEmitterData em1;
+        em1.preset = "spark_shower";
+        em1.config = *gs_resolve_preset("spark_shower");
+        em1.config.position = glm::vec3(10.0f, 5.0f, -3.0f);
+        em1.config.burst_duration = 0.0f;  // scene emitters default to continuous
+        data.gs_particle_emitters.push_back(em1);
+
+        GsEmitterData em2;
+        em2.preset = "";
+        em2.config.spawn_rate = 25.0f;
+        em2.config.position = glm::vec3(1.0f, 2.0f, 3.0f);
+        em2.config.color_start = glm::vec3(0.5f, 0.5f, 1.0f);
+        em2.config.emission = 1.5f;
+        data.gs_particle_emitters.push_back(em2);
+
+        auto j = SceneLoader::to_json(data);
+        auto round_tripped = SceneLoader::from_json(j);
+
+        assert(round_tripped.gs_particle_emitters.size() == 2);
+
+        const auto& rt1 = round_tripped.gs_particle_emitters[0];
+        assert(rt1.preset == "spark_shower");
+        assert(std::fabs(rt1.config.position.x - 10.0f) < 0.01f);
+        assert(std::fabs(rt1.config.emission - 0.8f) < 0.01f);
+
+        const auto& rt2 = round_tripped.gs_particle_emitters[1];
+        assert(rt2.preset.empty());
+        assert(std::fabs(rt2.config.spawn_rate - 25.0f) < 0.01f);
+        assert(std::fabs(rt2.config.emission - 1.5f) < 0.01f);
+        assert(std::fabs(rt2.config.position.y - 2.0f) < 0.01f);
+
+        // First emitter: preset spark_shower has burst_duration=0.5, but scene loading
+        // defaults to 0 (continuous) when burst_duration is absent from JSON.
+        // After to_json (which omits burst_duration when 0), round-trip restores to 0.
+        // But em1 was created with burst_duration=0 (scene default), so to_json omits it,
+        // and from_json defaults to 0 again.
+        assert(rt1.config.burst_duration == 0.0f);
+        // Second emitter: no burst_duration set, defaults to 0
+        assert(rt2.config.burst_duration == 0.0f);
+
+        std::printf("PASS: Scene JSON round-trip for gs_particle_emitters\n");
     }
 
     std::printf("\nAll GS particle/animator tests passed.\n");

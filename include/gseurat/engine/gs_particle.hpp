@@ -5,6 +5,8 @@
 #include <array>
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
+#include <optional>
+#include <string>
 #include <vector>
 
 namespace gseurat {
@@ -84,5 +86,8 @@ private:
 GsEmitterConfig gs_preset_dust_puff();
 GsEmitterConfig gs_preset_spark_shower();
 GsEmitterConfig gs_preset_magic_spiral();
+
+// Resolve a preset name to its config. Returns std::nullopt if name is unknown.
+std::optional<GsEmitterConfig> gs_resolve_preset(const std::string& name);
 
 }  // namespace gseurat
