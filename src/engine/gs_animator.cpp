@@ -87,7 +87,7 @@ uint32_t GaussianAnimator::tag_region(const std::vector<Gaussian>& gaussians,
 void GaussianAnimator::update(float dt, std::vector<Gaussian>& gaussians) {
     for (auto& group : groups_) {
         if (group.finished) continue;
-        group.global_time += dt;
+        group.global_time += dt * group.params.speed;
 
         switch (group.effect) {
             case GsAnimEffect::Detach:  apply_detach(group, gaussians, dt); break;
