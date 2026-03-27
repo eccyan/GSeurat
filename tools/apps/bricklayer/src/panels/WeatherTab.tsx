@@ -1,17 +1,9 @@
 import React from 'react';
 import { NumberInput } from '../components/NumberInput.js';
 import { useSceneStore } from '../store/useSceneStore.js';
+import { panelStyles } from '../styles/panel.js';
 
-const styles: Record<string, React.CSSProperties> = {
-  section: { display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 },
-  label: { fontSize: 11, color: '#888', textTransform: 'uppercase' as const, letterSpacing: 1 },
-  row: { display: 'flex', alignItems: 'center', gap: 8 },
-  input: { flex: 1, padding: '3px 5px', fontSize: 12 },
-  select: {
-    flex: 1, padding: '4px 6px', background: '#2a2a4a', border: '1px solid #444',
-    borderRadius: 4, color: '#ddd', fontSize: 13,
-  },
-};
+const styles = { ...panelStyles };
 
 export function WeatherTab() {
   const weather = useSceneStore((s) => s.weather);

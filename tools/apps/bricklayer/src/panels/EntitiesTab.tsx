@@ -1,63 +1,13 @@
 import React from 'react';
 import { NumberInput } from '../components/NumberInput.js';
+import { Vec3Input } from '../components/Vec3Input.js';
 import { useSceneStore } from '../store/useSceneStore.js';
 import type { NpcData, PortalData } from '../store/types.js';
+import { panelStyles } from '../styles/panel.js';
 
-const styles: Record<string, React.CSSProperties> = {
-  section: { display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 },
-  label: { fontSize: 11, color: '#888', textTransform: 'uppercase' as const, letterSpacing: 1 },
-  row: { display: 'flex', alignItems: 'center', gap: 8 },
-  input: { flex: 1, padding: '3px 5px', fontSize: 12 },
-  select: {
-    flex: 1, padding: '4px 6px', background: '#2a2a4a', border: '1px solid #444',
-    borderRadius: 4, color: '#ddd', fontSize: 13,
-  },
-  btn: {
-    padding: '4px 10px', border: '1px solid #555', borderRadius: 4,
-    background: '#3a3a6a', color: '#ddd', cursor: 'pointer', fontSize: 12,
-  },
-  btnDanger: {
-    padding: '4px 10px', border: '1px solid #c33', borderRadius: 4,
-    background: '#4a2020', color: '#faa', cursor: 'pointer', fontSize: 12,
-  },
-  item: {
-    padding: 8, border: '1px solid #444', borderRadius: 4, background: '#22223a',
-    display: 'flex', flexDirection: 'column', gap: 6,
-  },
-  itemSelected: { borderColor: '#77f' },
-};
+const styles = { ...panelStyles };
 
 const facings = ['up', 'down', 'left', 'right'];
-
-function Vec3Input({
-  value,
-  onChange,
-  labelPrefix,
-}: {
-  value: [number, number, number];
-  onChange: (v: [number, number, number]) => void;
-  labelPrefix?: string;
-}) {
-  return (
-    <div style={styles.row}>
-      {['X', 'Y', 'Z'].map((axis, i) => (
-        <React.Fragment key={axis}>
-          <NumberInput
-            label={`${labelPrefix ?? ''}${axis}`}
-            step={0.1}
-            value={value[i]}
-            onChange={(v) => {
-              const next = [...value] as [number, number, number];
-              next[i] = v;
-              onChange(next);
-            }}
-            style={{ ...styles.input, maxWidth: 55 }}
-          />
-        </React.Fragment>
-      ))}
-    </div>
-  );
-}
 
 function NpcEditor({ npc }: { npc: NpcData }) {
   const updateNpc = useSceneStore((s) => s.updateNpc);

@@ -1,17 +1,8 @@
 import React, { useState } from 'react';
 import { useSceneStore } from '../store/useSceneStore.js';
+import { panelStyles } from '../styles/panel.js';
 
-const styles: Record<string, React.CSSProperties> = {
-  section: { display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 },
-  label: { fontSize: 11, color: '#888', textTransform: 'uppercase' as const, letterSpacing: 1 },
-  row: { display: 'flex', alignItems: 'center', gap: 8 },
-  input: { flex: 1, padding: '3px 5px', fontSize: 12 },
-  btn: {
-    padding: '4px 10px', background: '#3a3a6a', border: '1px solid #555',
-    borderRadius: 4, color: '#ddd', fontSize: 12, cursor: 'pointer',
-  },
-  info: { fontSize: 11, color: '#aaa', lineHeight: 1.5 },
-};
+const styles: Record<string, React.CSSProperties> = { ...panelStyles, info: { fontSize: 11, color: '#aaa', lineHeight: 1.5 } };
 
 export function NavZoneTab() {
   const navZoneNames = useSceneStore((s) => s.navZoneNames);
