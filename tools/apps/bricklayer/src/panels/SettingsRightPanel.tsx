@@ -74,10 +74,7 @@ function DayNightSettings() {
   const dayNight = useSceneStore((s) => s.dayNight);
   const setDayNight = useSceneStore((s) => s.setDayNight);
 
-  const inputStyle: React.CSSProperties = {
-    flex: 1, padding: '4px 6px', background: '#2a2a4a', border: '1px solid #444',
-    borderRadius: 4, color: '#ddd', fontSize: 13,
-  };
+  const inputStyle: React.CSSProperties = { flex: 1, padding: '3px 5px', fontSize: 12 };
   const row: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 8 };
   const section: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 };
 

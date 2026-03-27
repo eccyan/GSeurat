@@ -23,10 +23,7 @@ const styles: Record<string, React.CSSProperties> = {
     padding: '4px 10px', border: '1px solid #555', borderRadius: 4,
     background: '#3a3a6a', color: '#ddd', cursor: 'pointer', fontSize: 11,
   },
-  input: {
-    flex: 1, padding: '4px 6px', background: '#2a2a4a', border: '1px solid #444',
-    borderRadius: 4, color: '#ddd', fontSize: 13,
-  },
+  input: { flex: 1, padding: '3px 5px', fontSize: 12 },
   info: { fontSize: 11, color: '#888', marginBottom: 4 },
   divider: { borderTop: '1px solid #333', margin: '12px 0' },
 };
