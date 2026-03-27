@@ -12,18 +12,22 @@ export async function loadPly(file: File): Promise<PlyPoint[]> {
   const buffer = await file.arrayBuffer();
   const bytes = new Uint8Array(buffer);
 
-  // Parse header (ASCII)
-  let headerEnd = 0;
+  // Parse header (ASCII) — find end_header line and split into lines
   const decoder = new TextDecoder();
-  for (let i = 0; i < Math.min(bytes.length, 4096); i++) {
+  let headerEnd = 0;
+  let lineStart = 0;
+  for (let i = 0; i < Math.min(bytes.length, 8192); i++) {
     if (bytes[i] === 0x0a) { // newline
-      const line = decoder.decode(bytes.slice(headerEnd, i)).trim();
+      const line = decoder.decode(bytes.slice(lineStart, i)).trim();
+      lineStart = i + 1;
       if (line === 'end_header') {
         headerEnd = i + 1;
         break;
       }
     }
   }
+
+  if (headerEnd === 0) return [];
 
   const headerText = decoder.decode(bytes.slice(0, headerEnd));
   const lines = headerText.split('\n').map((l) => l.trim());
@@ -62,24 +66,15 @@ export async function loadPly(file: File): Promise<PlyPoint[]> {
 
   if (xi < 0 || yi < 0 || zi < 0) return [];
 
-  // Calculate stride (all float32 except uchar properties)
-  // Simple approach: count properties × 4 bytes (assume all float32)
-  // This works for GSeurat PLY files
+  // Calculate stride and property offsets
   let stride = 0;
-  for (const line of lines) {
-    if (!line.startsWith('property') || !inVertex) continue;
-    if (line.includes('uchar')) stride += 1;
-    else stride += 4;
-  }
-  // Recalculate properly
-  stride = 0;
-  inVertex = false;
+  let inVertexCalc = false;
   const propOffsets: number[] = [];
   const propSizes: number[] = [];
   for (const line of lines) {
-    if (line.startsWith('element vertex')) { inVertex = true; continue; }
-    if (line.startsWith('element ') && line !== 'element vertex') { inVertex = false; continue; }
-    if (!line.startsWith('property') || !inVertex) continue;
+    if (line.startsWith('element vertex')) { inVertexCalc = true; continue; }
+    if (line.startsWith('element ') && inVertexCalc) { inVertexCalc = false; continue; }
+    if (!line.startsWith('property') || !inVertexCalc) continue;
     propOffsets.push(stride);
     if (line.includes('uchar') || line.includes('uint8')) {
       propSizes.push(1);
