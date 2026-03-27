@@ -847,30 +847,46 @@ function composeEasing(type: string, dir: string): string {
   return `${dir}_${type}`;
 }
 
-function EasingPicker({ value, onChange, style }: {
-  value: string;
-  onChange: (v: string) => void;
-  style?: React.CSSProperties;
+function ParamRow({ label, value, onChange, min, max, step, easing, onEasingChange, hint }: {
+  label: string;
+  value: number;
+  onChange: (v: number) => void;
+  min?: number;
+  max?: number;
+  step?: number;
+  easing?: string;
+  onEasingChange?: (v: string) => void;
+  hint?: string;
 }) {
-  const { type, dir } = parseEasing(value);
+  const easingParts = easing ? parseEasing(easing) : null;
   return (
-    <div style={{ display: 'flex', gap: 4, ...style }}>
-      <select
-        style={{ flex: 1, padding: '3px 4px', background: '#2a2a4a', border: '1px solid #444', borderRadius: 4, color: '#ddd', fontSize: 11 }}
-        value={type}
-        onChange={(e) => onChange(composeEasing(e.target.value, dir))}
-      >
-        {easingTypes.map((t) => <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>)}
-      </select>
-      {type !== 'linear' && (
-        <select
-          style={{ width: 60, padding: '3px 4px', background: '#2a2a4a', border: '1px solid #444', borderRadius: 4, color: '#ddd', fontSize: 11 }}
-          value={dir}
-          onChange={(e) => onChange(composeEasing(type, e.target.value))}
-        >
-          {easingDirs.map((d) => <option key={d} value={d}>{easingDirLabels[d]}</option>)}
-        </select>
-      )}
+    <div style={{ marginBottom: 6 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+        <span style={{ fontSize: 11, minWidth: 60, color: '#aaa' }}>{label}</span>
+        <NumberInput value={value} min={min} max={max} step={step ?? 0.1}
+          onChange={onChange} style={{ flex: 1, padding: '3px 5px', background: '#2a2a4a', border: '1px solid #444', borderRadius: 4, color: '#ddd', fontSize: 12 }} />
+        {easingParts && onEasingChange && (
+          <>
+            <select
+              style={{ width: 62, padding: '2px 2px', background: '#2a2a4a', border: '1px solid #444', borderRadius: 4, color: '#999', fontSize: 10 }}
+              value={easingParts.type}
+              onChange={(e) => onEasingChange(composeEasing(e.target.value, easingParts.dir))}
+            >
+              {easingTypes.map((t) => <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>)}
+            </select>
+            {easingParts.type !== 'linear' && (
+              <select
+                style={{ width: 46, padding: '2px 2px', background: '#2a2a4a', border: '1px solid #444', borderRadius: 4, color: '#999', fontSize: 10 }}
+                value={easingParts.dir}
+                onChange={(e) => onEasingChange(composeEasing(easingParts.type, e.target.value))}
+              >
+                {easingDirs.map((d) => <option key={d} value={d}>{easingDirLabels[d]}</option>)}
+              </select>
+            )}
+          </>
+        )}
+      </div>
+      {hint && <span style={{ fontSize: 9, color: '#555', marginLeft: 64 }}>{hint}</span>}
     </div>
   );
 }
@@ -976,93 +992,48 @@ function GsAnimationProperties({ anim }: { anim: GsAnimationGroupData }) {
         </>
       )}
 
-      <div style={styles.section}>
-        <span style={{ ...styles.label, marginTop: 8 }}>Parameters</span>
+      <div style={{ marginTop: 8, marginBottom: 4 }}>
+        <span style={styles.label}>Parameters</span>
       </div>
 
-      <div style={styles.section}>
-        <div style={styles.row}>
-          <span style={{ fontSize: 12, minWidth: 80 }}>Rotations</span>
-          <NumberInput value={params.rotations} min={0} step={0.5}
-            onChange={(v) => update(anim.id, { params: { ...params, rotations: v } })} style={styles.input} />
-          <EasingPicker value={params.rotations_easing}
-            onChange={(v) => update(anim.id, { params: { ...params, rotations_easing: v as any } })} />
-        </div>
-      </div>
+      <ParamRow label="Rotations" value={params.rotations} min={0} step={0.5}
+        onChange={(v) => update(anim.id, { params: { ...params, rotations: v } })}
+        easing={params.rotations_easing}
+        onEasingChange={(v) => update(anim.id, { params: { ...params, rotations_easing: v as any } })} />
+      <ParamRow label="Expansion" value={params.expansion} min={0} step={0.1}
+        onChange={(v) => update(anim.id, { params: { ...params, expansion: v } })}
+        easing={params.expansion_easing}
+        onEasingChange={(v) => update(anim.id, { params: { ...params, expansion_easing: v as any } })}
+        hint="1=none 2=double" />
+      <ParamRow label="Height" value={params.height_rise} step={0.5}
+        onChange={(v) => update(anim.id, { params: { ...params, height_rise: v } })}
+        easing={params.height_easing}
+        onEasingChange={(v) => update(anim.id, { params: { ...params, height_easing: v as any } })}
+        hint="Y offset (units)" />
+      <ParamRow label="Opacity" value={params.opacity_end} min={0} max={1} step={0.05}
+        onChange={(v) => update(anim.id, { params: { ...params, opacity_end: v } })}
+        easing={params.opacity_easing}
+        onEasingChange={(v) => update(anim.id, { params: { ...params, opacity_easing: v as any } })}
+        hint="0=gone 1=keep" />
+      <ParamRow label="Scale" value={params.scale_end} min={0} max={1} step={0.05}
+        onChange={(v) => update(anim.id, { params: { ...params, scale_end: v } })}
+        easing={params.scale_easing}
+        onEasingChange={(v) => update(anim.id, { params: { ...params, scale_easing: v as any } })}
+        hint="0=vanish 1=keep" />
+      <ParamRow label="Velocity" value={params.velocity} min={0} step={0.1}
+        onChange={(v) => update(anim.id, { params: { ...params, velocity: v } })} />
+      <ParamRow label="Noise" value={params.noise} min={0} step={0.1}
+        onChange={(v) => update(anim.id, { params: { ...params, noise: v } })} />
+      <ParamRow label="Wave Spd" value={params.wave_speed} min={0} step={0.5}
+        onChange={(v) => update(anim.id, { params: { ...params, wave_speed: v } })} />
+      <ParamRow label="Pulse Hz" value={params.pulse_frequency} min={0.1} step={0.5}
+        onChange={(v) => update(anim.id, { params: { ...params, pulse_frequency: v } })} />
 
-      <div style={styles.section}>
-        <div style={styles.row}>
-          <span style={{ fontSize: 12, minWidth: 80 }}>Expansion</span>
-          <NumberInput value={params.expansion} min={0} step={0.1}
-            onChange={(v) => update(anim.id, { params: { ...params, expansion: v } })} style={styles.input} />
-          <EasingPicker value={params.expansion_easing}
-            onChange={(v) => update(anim.id, { params: { ...params, expansion_easing: v as any } })} />
-        </div>
-        <span style={{ fontSize: 10, color: '#666' }}>1 = no change, 2 = double radius at end</span>
+      <div style={{ marginTop: 4, marginBottom: 4 }}>
+        <span style={{ fontSize: 11, color: '#555' }}>Gravity</span>
       </div>
-
-      <div style={styles.section}>
-        <div style={styles.row}>
-          <span style={{ fontSize: 12, minWidth: 80 }}>Height Rise</span>
-          <NumberInput value={params.height_rise} step={0.5}
-            onChange={(v) => update(anim.id, { params: { ...params, height_rise: v } })} style={styles.input} />
-          <EasingPicker value={params.height_easing}
-            onChange={(v) => update(anim.id, { params: { ...params, height_easing: v as any } })} />
-        </div>
-        <span style={{ fontSize: 10, color: '#666' }}>Total Y offset at end (units)</span>
-      </div>
-
-      <div style={styles.section}>
-        <div style={styles.row}>
-          <span style={{ fontSize: 12, minWidth: 80 }}>Opacity End</span>
-          <NumberInput value={params.opacity_end} min={0} max={1} step={0.05}
-            onChange={(v) => update(anim.id, { params: { ...params, opacity_end: v } })} style={styles.input} />
-          <EasingPicker value={params.opacity_easing}
-            onChange={(v) => update(anim.id, { params: { ...params, opacity_easing: v as any } })} />
-        </div>
-        <span style={{ fontSize: 10, color: '#666' }}>0 = fully transparent, 1 = unchanged</span>
-      </div>
-
-      <div style={styles.section}>
-        <div style={styles.row}>
-          <span style={{ fontSize: 12, minWidth: 80 }}>Scale End</span>
-          <NumberInput value={params.scale_end} min={0} max={1} step={0.05}
-            onChange={(v) => update(anim.id, { params: { ...params, scale_end: v } })} style={styles.input} />
-          <EasingPicker value={params.scale_easing}
-            onChange={(v) => update(anim.id, { params: { ...params, scale_easing: v as any } })} />
-        </div>
-        <span style={{ fontSize: 10, color: '#666' }}>0 = vanish, 1 = unchanged</span>
-      </div>
-
-      <div style={styles.section}>
-        <span style={styles.label}>Velocity</span>
-        <NumberInput value={params.velocity} min={0} step={0.1}
-          onChange={(v) => update(anim.id, { params: { ...params, velocity: v } })} style={styles.input} />
-      </div>
-
-      <div style={styles.section}>
-        <span style={styles.label}>Gravity</span>
-        <Vec3Input value={params.gravity}
-          onChange={(v) => update(anim.id, { params: { ...params, gravity: v } })} />
-      </div>
-
-      <div style={styles.section}>
-        <span style={styles.label}>Noise</span>
-        <NumberInput value={params.noise} min={0} step={0.1}
-          onChange={(v) => update(anim.id, { params: { ...params, noise: v } })} style={styles.input} />
-      </div>
-
-      <div style={styles.section}>
-        <span style={styles.label}>Wave Speed</span>
-        <NumberInput value={params.wave_speed} min={0} step={0.5}
-          onChange={(v) => update(anim.id, { params: { ...params, wave_speed: v } })} style={styles.input} />
-      </div>
-
-      <div style={styles.section}>
-        <span style={styles.label}>Pulse Frequency</span>
-        <NumberInput value={params.pulse_frequency} min={0.1} step={0.5}
-          onChange={(v) => update(anim.id, { params: { ...params, pulse_frequency: v } })} style={styles.input} />
-      </div>
+      <Vec3Input value={params.gravity}
+        onChange={(v) => update(anim.id, { params: { ...params, gravity: v } })} />
     </div>
   );
 }
