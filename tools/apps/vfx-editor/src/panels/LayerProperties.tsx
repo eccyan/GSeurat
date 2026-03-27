@@ -384,44 +384,66 @@ function AnimationEditor({ layer, update }: {
 
       <SectionHeader>Parameters</SectionHeader>
 
-      <ParamRow label="Rotations" value={params.rotations} min={0} step={0.5}
-        onChange={(v) => setParams({ rotations: v })}
-        easing={params.rotations_easing}
-        onEasingChange={(v) => setParams({ rotations_easing: v })} />
-      <ParamRow label="Expansion" value={params.expansion} min={0} step={0.1}
-        onChange={(v) => setParams({ expansion: v })}
-        easing={params.expansion_easing}
-        onEasingChange={(v) => setParams({ expansion_easing: v })}
-        hint="1=none 2=double" />
-      <ParamRow label="Height" value={params.height_rise} step={0.5}
-        onChange={(v) => setParams({ height_rise: v })}
-        easing={params.height_easing}
-        onEasingChange={(v) => setParams({ height_easing: v })}
-        hint="Y offset (units)" />
-      <ParamRow label="Opacity" value={params.opacity_end} min={0} max={1} step={0.05}
-        onChange={(v) => setParams({ opacity_end: v })}
-        easing={params.opacity_easing}
-        onEasingChange={(v) => setParams({ opacity_easing: v })}
-        hint="0=gone 1=keep" />
-      <ParamRow label="Scale" value={params.scale_end} min={0} max={1} step={0.05}
-        onChange={(v) => setParams({ scale_end: v })}
-        easing={params.scale_easing}
-        onEasingChange={(v) => setParams({ scale_easing: v })}
-        hint="0=vanish 1=keep" />
-      <ParamRow label="Velocity" value={params.velocity} min={0} step={0.1}
-        onChange={(v) => setParams({ velocity: v })} />
-      <ParamRow label="Noise" value={params.noise} min={0} step={0.1}
-        onChange={(v) => setParams({ noise: v })} />
-      <ParamRow label="Wave Spd" value={params.wave_speed} min={0} step={0.5}
-        onChange={(v) => setParams({ wave_speed: v })} />
-      <ParamRow label="Pulse Hz" value={params.pulse_frequency} min={0.1} step={0.5}
-        onChange={(v) => setParams({ pulse_frequency: v })} />
-
-      <div style={{ marginTop: 4, marginBottom: 4 }}>
-        <span style={{ fontSize: 11, color: '#555' }}>Gravity</span>
-      </div>
-      <Vec3Input value={params.gravity} step={0.5}
-        onChange={(v) => setParams({ gravity: v })} />
+      {/* Only show params relevant to the selected effect */}
+      {['orbit', 'vortex'].includes(effect) && (
+        <ParamRow label="Rotations" value={params.rotations} min={0} step={0.5}
+          onChange={(v) => setParams({ rotations: v })}
+          easing={params.rotations_easing}
+          onEasingChange={(v) => setParams({ rotations_easing: v })} />
+      )}
+      {['orbit', 'vortex'].includes(effect) && (
+        <ParamRow label="Expansion" value={params.expansion} min={0} step={0.1}
+          onChange={(v) => setParams({ expansion: v })}
+          easing={params.expansion_easing}
+          onEasingChange={(v) => setParams({ expansion_easing: v })}
+          hint="1=none 2=double" />
+      )}
+      {['orbit', 'vortex'].includes(effect) && (
+        <ParamRow label="Height" value={params.height_rise} step={0.5}
+          onChange={(v) => setParams({ height_rise: v })}
+          easing={params.height_easing}
+          onEasingChange={(v) => setParams({ height_easing: v })}
+          hint="Y offset (units)" />
+      )}
+      {['detach', 'float', 'orbit', 'dissolve', 'pulse', 'vortex', 'scatter'].includes(effect) && (
+        <ParamRow label="Opacity" value={params.opacity_end} min={0} max={1} step={0.05}
+          onChange={(v) => setParams({ opacity_end: v })}
+          easing={params.opacity_easing}
+          onEasingChange={(v) => setParams({ opacity_easing: v })}
+          hint="0=gone 1=keep" />
+      )}
+      {['detach', 'float', 'dissolve', 'pulse', 'vortex', 'scatter'].includes(effect) && (
+        <ParamRow label="Scale" value={params.scale_end} min={0} max={1} step={0.05}
+          onChange={(v) => setParams({ scale_end: v })}
+          easing={params.scale_easing}
+          onEasingChange={(v) => setParams({ scale_easing: v })}
+          hint="0=vanish 1=keep" />
+      )}
+      {['detach', 'float', 'reform', 'scatter'].includes(effect) && (
+        <ParamRow label="Velocity" value={params.velocity} min={0} step={0.1}
+          onChange={(v) => setParams({ velocity: v })} />
+      )}
+      {['float', 'dissolve', 'wave'].includes(effect) && (
+        <ParamRow label="Noise" value={params.noise} min={0} step={0.1}
+          onChange={(v) => setParams({ noise: v })} />
+      )}
+      {effect === 'wave' && (
+        <ParamRow label="Wave Spd" value={params.wave_speed} min={0} step={0.5}
+          onChange={(v) => setParams({ wave_speed: v })} />
+      )}
+      {effect === 'pulse' && (
+        <ParamRow label="Pulse Hz" value={params.pulse_frequency} min={0.1} step={0.5}
+          onChange={(v) => setParams({ pulse_frequency: v })} />
+      )}
+      {['detach', 'scatter'].includes(effect) && (
+        <>
+          <div style={{ marginTop: 4, marginBottom: 4 }}>
+            <span style={{ fontSize: 11, color: '#555' }}>Gravity</span>
+          </div>
+          <Vec3Input value={params.gravity} step={0.5}
+            onChange={(v) => setParams({ gravity: v })} />
+        </>
+      )}
 
       <SectionHeader>Reform</SectionHeader>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
