@@ -850,9 +850,18 @@ const effectDescriptions: Record<string, string> = {
   scatter: 'Explosive outward burst (impacts, shattering)',
 };
 
+const defaultAnimParams = {
+  speed: 1, gravity: [0, -9.8, 0] as [number, number, number], velocity_scale: 1,
+  noise_amplitude: 1, orbit_speed: 1, orbit_acceleration: 0,
+  expansion: 1, height_rise: 1, opacity_fade: 1, scale_shrink: 1,
+};
+
 function GsAnimationProperties({ anim }: { anim: GsAnimationGroupData }) {
   const update = useSceneStore((s) => s.updateGsAnimation);
   const remove = useSceneStore((s) => s.removeGsAnimation);
+
+  // Ensure params exists (backward compat with old saved data)
+  const params = anim.params ?? defaultAnimParams;
 
   return (
     <div>
@@ -959,65 +968,65 @@ function GsAnimationProperties({ anim }: { anim: GsAnimationGroupData }) {
 
       <div style={styles.section}>
         <span style={styles.label}>Speed</span>
-        <NumberInput value={anim.params.speed} min={0.01} step={0.1}
-          onChange={(v) => update(anim.id, { params: { ...anim.params, speed: v } })} style={styles.input} />
+        <NumberInput value={params.speed} min={0.01} step={0.1}
+          onChange={(v) => update(anim.id, { params: { ...params, speed: v } })} style={styles.input} />
       </div>
 
       <div style={styles.section}>
         <span style={styles.label}>Gravity</span>
-        <Vec3Input value={anim.params.gravity}
-          onChange={(v) => update(anim.id, { params: { ...anim.params, gravity: v } })} />
+        <Vec3Input value={params.gravity}
+          onChange={(v) => update(anim.id, { params: { ...params, gravity: v } })} />
       </div>
 
       <div style={styles.section}>
         <span style={styles.label}>Velocity Scale</span>
-        <NumberInput value={anim.params.velocity_scale} min={0} step={0.1}
-          onChange={(v) => update(anim.id, { params: { ...anim.params, velocity_scale: v } })} style={styles.input} />
+        <NumberInput value={params.velocity_scale} min={0} step={0.1}
+          onChange={(v) => update(anim.id, { params: { ...params, velocity_scale: v } })} style={styles.input} />
       </div>
 
       <div style={styles.section}>
         <span style={styles.label}>Noise Amplitude</span>
-        <NumberInput value={anim.params.noise_amplitude} min={0} step={0.1}
-          onChange={(v) => update(anim.id, { params: { ...anim.params, noise_amplitude: v } })} style={styles.input} />
+        <NumberInput value={params.noise_amplitude} min={0} step={0.1}
+          onChange={(v) => update(anim.id, { params: { ...params, noise_amplitude: v } })} style={styles.input} />
       </div>
 
       <div style={styles.section}>
         <span style={styles.label}>Orbit Speed</span>
-        <NumberInput value={anim.params.orbit_speed} min={0} step={0.1}
-          onChange={(v) => update(anim.id, { params: { ...anim.params, orbit_speed: v } })} style={styles.input} />
+        <NumberInput value={params.orbit_speed} min={0} step={0.1}
+          onChange={(v) => update(anim.id, { params: { ...params, orbit_speed: v } })} style={styles.input} />
       </div>
 
       <div style={styles.section}>
         <span style={styles.label}>Orbit Acceleration</span>
-        <NumberInput value={anim.params.orbit_acceleration} step={0.1}
-          onChange={(v) => update(anim.id, { params: { ...anim.params, orbit_acceleration: v } })} style={styles.input} />
+        <NumberInput value={params.orbit_acceleration} step={0.1}
+          onChange={(v) => update(anim.id, { params: { ...params, orbit_acceleration: v } })} style={styles.input} />
         <span style={{ fontSize: 10, color: '#666' }}>{'>'}0 = spin up, {'<'}0 = spin down</span>
       </div>
 
       <div style={styles.section}>
         <span style={styles.label}>Expansion</span>
-        <NumberInput value={anim.params.expansion} min={0} step={0.1}
-          onChange={(v) => update(anim.id, { params: { ...anim.params, expansion: v } })} style={styles.input} />
+        <NumberInput value={params.expansion} min={0} step={0.1}
+          onChange={(v) => update(anim.id, { params: { ...params, expansion: v } })} style={styles.input} />
       </div>
 
       <div style={styles.section}>
         <span style={styles.label}>Height Rise</span>
-        <NumberInput value={anim.params.height_rise} min={0} step={0.1}
-          onChange={(v) => update(anim.id, { params: { ...anim.params, height_rise: v } })} style={styles.input} />
+        <NumberInput value={params.height_rise} min={0} step={0.1}
+          onChange={(v) => update(anim.id, { params: { ...params, height_rise: v } })} style={styles.input} />
         <span style={{ fontSize: 10, color: '#666' }}>0 = flat orbit, 1 = default rise</span>
       </div>
 
       <div style={styles.section}>
         <span style={styles.label}>Opacity Fade</span>
-        <NumberInput value={anim.params.opacity_fade} min={0} max={1} step={0.05}
-          onChange={(v) => update(anim.id, { params: { ...anim.params, opacity_fade: v } })} style={styles.input} />
+        <NumberInput value={params.opacity_fade} min={0} max={1} step={0.05}
+          onChange={(v) => update(anim.id, { params: { ...params, opacity_fade: v } })} style={styles.input} />
         <span style={{ fontSize: 10, color: '#666' }}>0 = no fade, 1 = full fade to transparent</span>
       </div>
 
       <div style={styles.section}>
         <span style={styles.label}>Scale Shrink</span>
-        <NumberInput value={anim.params.scale_shrink} min={0} max={1} step={0.05}
-          onChange={(v) => update(anim.id, { params: { ...anim.params, scale_shrink: v } })} style={styles.input} />
+        <NumberInput value={params.scale_shrink} min={0} max={1} step={0.05}
+          onChange={(v) => update(anim.id, { params: { ...params, scale_shrink: v } })} style={styles.input} />
         <span style={{ fontSize: 10, color: '#666' }}>0 = no shrink, 1 = full shrink to zero</span>
       </div>
     </div>
