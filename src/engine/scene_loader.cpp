@@ -529,19 +529,30 @@ GsAnimationData SceneLoader::parse_gs_animation(const nlohmann::json& j) {
         if (r.contains("half_extents")) anim.region.half_extents = parse_vec3(r["half_extents"]);
     }
 
-    // Animation parameters — only nested "params" block (v2 format)
+    // Animation parameters — lifetime-centric with per-parameter easing
+    auto parse_easing = [](const std::string& s) -> GsEasing {
+        if (s == "ease_in")     return GsEasing::EaseIn;
+        if (s == "ease_out")    return GsEasing::EaseOut;
+        if (s == "ease_in_out") return GsEasing::EaseInOut;
+        return GsEasing::Linear;
+    };
     if (j.contains("params")) {
         const auto& p = j["params"];
-        anim.params.speed = p.value("speed", anim.params.speed);
-        if (p.contains("gravity")) anim.params.gravity = parse_vec3(p["gravity"]);
-        anim.params.velocity_scale = p.value("velocity_scale", anim.params.velocity_scale);
-        anim.params.noise_amplitude = p.value("noise_amplitude", anim.params.noise_amplitude);
-        anim.params.orbit_speed = p.value("orbit_speed", anim.params.orbit_speed);
-        anim.params.orbit_acceleration = p.value("orbit_acceleration", anim.params.orbit_acceleration);
+        anim.params.rotations = p.value("rotations", anim.params.rotations);
+        if (p.contains("rotations_easing")) anim.params.rotations_easing = parse_easing(p["rotations_easing"]);
         anim.params.expansion = p.value("expansion", anim.params.expansion);
+        if (p.contains("expansion_easing")) anim.params.expansion_easing = parse_easing(p["expansion_easing"]);
         anim.params.height_rise = p.value("height_rise", anim.params.height_rise);
-        anim.params.opacity_fade = p.value("opacity_fade", anim.params.opacity_fade);
-        anim.params.scale_shrink = p.value("scale_shrink", anim.params.scale_shrink);
+        if (p.contains("height_easing")) anim.params.height_easing = parse_easing(p["height_easing"]);
+        anim.params.opacity_end = p.value("opacity_end", anim.params.opacity_end);
+        if (p.contains("opacity_easing")) anim.params.opacity_easing = parse_easing(p["opacity_easing"]);
+        anim.params.scale_end = p.value("scale_end", anim.params.scale_end);
+        if (p.contains("scale_easing")) anim.params.scale_easing = parse_easing(p["scale_easing"]);
+        anim.params.velocity = p.value("velocity", anim.params.velocity);
+        if (p.contains("gravity")) anim.params.gravity = parse_vec3(p["gravity"]);
+        anim.params.noise = p.value("noise", anim.params.noise);
+        anim.params.wave_speed = p.value("wave_speed", anim.params.wave_speed);
+        anim.params.pulse_frequency = p.value("pulse_frequency", anim.params.pulse_frequency);
     }
 
     // Optional reform config
@@ -573,19 +584,32 @@ nlohmann::json SceneLoader::gs_animation_json(const GsAnimationData& anim) {
     j["region"] = region;
 
     // Only write params if any differ from defaults
+    auto easing_str = [](GsEasing e) -> std::string {
+        switch (e) {
+            case GsEasing::EaseIn:    return "ease_in";
+            case GsEasing::EaseOut:   return "ease_out";
+            case GsEasing::EaseInOut: return "ease_in_out";
+            default:                  return "linear";
+        }
+    };
     const auto& p = anim.params;
     GsAnimParams def;
     nlohmann::json params;
-    if (p.speed != def.speed) params["speed"] = p.speed;
-    if (p.gravity != def.gravity) params["gravity"] = vec3_json(p.gravity);
-    if (p.velocity_scale != def.velocity_scale) params["velocity_scale"] = p.velocity_scale;
-    if (p.noise_amplitude != def.noise_amplitude) params["noise_amplitude"] = p.noise_amplitude;
-    if (p.orbit_speed != def.orbit_speed) params["orbit_speed"] = p.orbit_speed;
-    if (p.orbit_acceleration != def.orbit_acceleration) params["orbit_acceleration"] = p.orbit_acceleration;
+    if (p.rotations != def.rotations) params["rotations"] = p.rotations;
+    if (p.rotations_easing != def.rotations_easing) params["rotations_easing"] = easing_str(p.rotations_easing);
     if (p.expansion != def.expansion) params["expansion"] = p.expansion;
+    if (p.expansion_easing != def.expansion_easing) params["expansion_easing"] = easing_str(p.expansion_easing);
     if (p.height_rise != def.height_rise) params["height_rise"] = p.height_rise;
-    if (p.opacity_fade != def.opacity_fade) params["opacity_fade"] = p.opacity_fade;
-    if (p.scale_shrink != def.scale_shrink) params["scale_shrink"] = p.scale_shrink;
+    if (p.height_easing != def.height_easing) params["height_easing"] = easing_str(p.height_easing);
+    if (p.opacity_end != def.opacity_end) params["opacity_end"] = p.opacity_end;
+    if (p.opacity_easing != def.opacity_easing) params["opacity_easing"] = easing_str(p.opacity_easing);
+    if (p.scale_end != def.scale_end) params["scale_end"] = p.scale_end;
+    if (p.scale_easing != def.scale_easing) params["scale_easing"] = easing_str(p.scale_easing);
+    if (p.velocity != def.velocity) params["velocity"] = p.velocity;
+    if (p.gravity != def.gravity) params["gravity"] = vec3_json(p.gravity);
+    if (p.noise != def.noise) params["noise"] = p.noise;
+    if (p.wave_speed != def.wave_speed) params["wave_speed"] = p.wave_speed;
+    if (p.pulse_frequency != def.pulse_frequency) params["pulse_frequency"] = p.pulse_frequency;
     if (!params.empty()) j["params"] = params;
 
     if (anim.reform) {

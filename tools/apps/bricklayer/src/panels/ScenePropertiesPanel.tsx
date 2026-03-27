@@ -821,9 +821,18 @@ const effectDescriptions: Record<string, string> = {
 };
 
 const defaultAnimParams = {
-  speed: 1, gravity: [0, -9.8, 0] as [number, number, number], velocity_scale: 1,
-  noise_amplitude: 1, orbit_speed: 1, orbit_acceleration: 0,
-  expansion: 1, height_rise: 1, opacity_fade: 1, scale_shrink: 1,
+  rotations: 1, rotations_easing: 'linear' as const,
+  expansion: 1, expansion_easing: 'linear' as const,
+  height_rise: 0, height_easing: 'linear' as const,
+  opacity_end: 0, opacity_easing: 'linear' as const,
+  scale_end: 0, scale_easing: 'linear' as const,
+  velocity: 1, gravity: [0, -9.8, 0] as [number, number, number],
+  noise: 1, wave_speed: 5, pulse_frequency: 4,
+};
+
+const easingOptions = ['linear', 'ease_in', 'ease_out', 'ease_in_out'];
+const easingLabels: Record<string, string> = {
+  linear: 'Linear', ease_in: 'Ease In', ease_out: 'Ease Out', ease_in_out: 'Ease In/Out',
 };
 
 function GsAnimationProperties({ anim }: { anim: GsAnimationGroupData }) {
@@ -937,9 +946,73 @@ function GsAnimationProperties({ anim }: { anim: GsAnimationGroupData }) {
       </div>
 
       <div style={styles.section}>
-        <span style={styles.label}>Speed</span>
-        <NumberInput value={params.speed} min={0.01} step={0.1}
-          onChange={(v) => update(anim.id, { params: { ...params, speed: v } })} style={styles.input} />
+        <div style={styles.row}>
+          <span style={{ fontSize: 12, minWidth: 80 }}>Rotations</span>
+          <NumberInput value={params.rotations} min={0} step={0.5}
+            onChange={(v) => update(anim.id, { params: { ...params, rotations: v } })} style={styles.input} />
+          <select style={{ ...styles.select, maxWidth: 90 }} value={params.rotations_easing}
+            onChange={(e) => update(anim.id, { params: { ...params, rotations_easing: e.target.value as any } })}>
+            {easingOptions.map((e) => <option key={e} value={e}>{easingLabels[e]}</option>)}
+          </select>
+        </div>
+      </div>
+
+      <div style={styles.section}>
+        <div style={styles.row}>
+          <span style={{ fontSize: 12, minWidth: 80 }}>Expansion</span>
+          <NumberInput value={params.expansion} min={0} step={0.1}
+            onChange={(v) => update(anim.id, { params: { ...params, expansion: v } })} style={styles.input} />
+          <select style={{ ...styles.select, maxWidth: 90 }} value={params.expansion_easing}
+            onChange={(e) => update(anim.id, { params: { ...params, expansion_easing: e.target.value as any } })}>
+            {easingOptions.map((e) => <option key={e} value={e}>{easingLabels[e]}</option>)}
+          </select>
+        </div>
+        <span style={{ fontSize: 10, color: '#666' }}>1 = no change, 2 = double radius at end</span>
+      </div>
+
+      <div style={styles.section}>
+        <div style={styles.row}>
+          <span style={{ fontSize: 12, minWidth: 80 }}>Height Rise</span>
+          <NumberInput value={params.height_rise} step={0.5}
+            onChange={(v) => update(anim.id, { params: { ...params, height_rise: v } })} style={styles.input} />
+          <select style={{ ...styles.select, maxWidth: 90 }} value={params.height_easing}
+            onChange={(e) => update(anim.id, { params: { ...params, height_easing: e.target.value as any } })}>
+            {easingOptions.map((e) => <option key={e} value={e}>{easingLabels[e]}</option>)}
+          </select>
+        </div>
+        <span style={{ fontSize: 10, color: '#666' }}>Total Y offset at end (units)</span>
+      </div>
+
+      <div style={styles.section}>
+        <div style={styles.row}>
+          <span style={{ fontSize: 12, minWidth: 80 }}>Opacity End</span>
+          <NumberInput value={params.opacity_end} min={0} max={1} step={0.05}
+            onChange={(v) => update(anim.id, { params: { ...params, opacity_end: v } })} style={styles.input} />
+          <select style={{ ...styles.select, maxWidth: 90 }} value={params.opacity_easing}
+            onChange={(e) => update(anim.id, { params: { ...params, opacity_easing: e.target.value as any } })}>
+            {easingOptions.map((e) => <option key={e} value={e}>{easingLabels[e]}</option>)}
+          </select>
+        </div>
+        <span style={{ fontSize: 10, color: '#666' }}>0 = fully transparent, 1 = unchanged</span>
+      </div>
+
+      <div style={styles.section}>
+        <div style={styles.row}>
+          <span style={{ fontSize: 12, minWidth: 80 }}>Scale End</span>
+          <NumberInput value={params.scale_end} min={0} max={1} step={0.05}
+            onChange={(v) => update(anim.id, { params: { ...params, scale_end: v } })} style={styles.input} />
+          <select style={{ ...styles.select, maxWidth: 90 }} value={params.scale_easing}
+            onChange={(e) => update(anim.id, { params: { ...params, scale_easing: e.target.value as any } })}>
+            {easingOptions.map((e) => <option key={e} value={e}>{easingLabels[e]}</option>)}
+          </select>
+        </div>
+        <span style={{ fontSize: 10, color: '#666' }}>0 = vanish, 1 = unchanged</span>
+      </div>
+
+      <div style={styles.section}>
+        <span style={styles.label}>Velocity</span>
+        <NumberInput value={params.velocity} min={0} step={0.1}
+          onChange={(v) => update(anim.id, { params: { ...params, velocity: v } })} style={styles.input} />
       </div>
 
       <div style={styles.section}>
@@ -949,55 +1022,21 @@ function GsAnimationProperties({ anim }: { anim: GsAnimationGroupData }) {
       </div>
 
       <div style={styles.section}>
-        <span style={styles.label}>Velocity Scale</span>
-        <NumberInput value={params.velocity_scale} min={0} step={0.1}
-          onChange={(v) => update(anim.id, { params: { ...params, velocity_scale: v } })} style={styles.input} />
+        <span style={styles.label}>Noise</span>
+        <NumberInput value={params.noise} min={0} step={0.1}
+          onChange={(v) => update(anim.id, { params: { ...params, noise: v } })} style={styles.input} />
       </div>
 
       <div style={styles.section}>
-        <span style={styles.label}>Noise Amplitude</span>
-        <NumberInput value={params.noise_amplitude} min={0} step={0.1}
-          onChange={(v) => update(anim.id, { params: { ...params, noise_amplitude: v } })} style={styles.input} />
+        <span style={styles.label}>Wave Speed</span>
+        <NumberInput value={params.wave_speed} min={0} step={0.5}
+          onChange={(v) => update(anim.id, { params: { ...params, wave_speed: v } })} style={styles.input} />
       </div>
 
       <div style={styles.section}>
-        <span style={styles.label}>Orbit Speed</span>
-        <NumberInput value={params.orbit_speed} min={0} step={0.1}
-          onChange={(v) => update(anim.id, { params: { ...params, orbit_speed: v } })} style={styles.input} />
-      </div>
-
-      <div style={styles.section}>
-        <span style={styles.label}>Orbit Acceleration</span>
-        <NumberInput value={params.orbit_acceleration} step={0.1}
-          onChange={(v) => update(anim.id, { params: { ...params, orbit_acceleration: v } })} style={styles.input} />
-        <span style={{ fontSize: 10, color: '#666' }}>{'>'}0 = spin up, {'<'}0 = spin down</span>
-      </div>
-
-      <div style={styles.section}>
-        <span style={styles.label}>Expansion</span>
-        <NumberInput value={params.expansion} min={0} step={0.1}
-          onChange={(v) => update(anim.id, { params: { ...params, expansion: v } })} style={styles.input} />
-      </div>
-
-      <div style={styles.section}>
-        <span style={styles.label}>Height Rise</span>
-        <NumberInput value={params.height_rise} min={0} step={0.1}
-          onChange={(v) => update(anim.id, { params: { ...params, height_rise: v } })} style={styles.input} />
-        <span style={{ fontSize: 10, color: '#666' }}>0 = flat orbit, 1 = default rise</span>
-      </div>
-
-      <div style={styles.section}>
-        <span style={styles.label}>Opacity Fade</span>
-        <NumberInput value={params.opacity_fade} min={0} max={1} step={0.05}
-          onChange={(v) => update(anim.id, { params: { ...params, opacity_fade: v } })} style={styles.input} />
-        <span style={{ fontSize: 10, color: '#666' }}>0 = no fade, 1 = full fade to transparent</span>
-      </div>
-
-      <div style={styles.section}>
-        <span style={styles.label}>Scale Shrink</span>
-        <NumberInput value={params.scale_shrink} min={0} max={1} step={0.05}
-          onChange={(v) => update(anim.id, { params: { ...params, scale_shrink: v } })} style={styles.input} />
-        <span style={{ fontSize: 10, color: '#666' }}>0 = no shrink, 1 = full shrink to zero</span>
+        <span style={styles.label}>Pulse Frequency</span>
+        <NumberInput value={params.pulse_frequency} min={0.1} step={0.5}
+          onChange={(v) => update(anim.id, { params: { ...params, pulse_frequency: v } })} style={styles.input} />
       </div>
     </div>
   );

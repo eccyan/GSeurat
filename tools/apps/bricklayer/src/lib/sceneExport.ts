@@ -199,21 +199,30 @@ export function exportSceneJson(state: SceneStoreState): object {
       if (a.loop) out.loop = true;
       // Only write params that differ from defaults
       const p = a.params ?? {
-        speed: 1, gravity: [0, -9.8, 0], velocity_scale: 1,
-        noise_amplitude: 1, orbit_speed: 1, orbit_acceleration: 0,
-        expansion: 1, height_rise: 1, opacity_fade: 1, scale_shrink: 1,
+        rotations: 1, rotations_easing: 'linear',
+        expansion: 1, expansion_easing: 'linear',
+        height_rise: 0, height_easing: 'linear',
+        opacity_end: 0, opacity_easing: 'linear',
+        scale_end: 0, scale_easing: 'linear',
+        velocity: 1, gravity: [0, -9.8, 0],
+        noise: 1, wave_speed: 5, pulse_frequency: 4,
       };
       const params: Record<string, unknown> = {};
-      if (p.speed !== 1) params.speed = p.speed;
-      if (p.gravity[0] !== 0 || p.gravity[1] !== -9.8 || p.gravity[2] !== 0) params.gravity = p.gravity;
-      if (p.velocity_scale !== 1) params.velocity_scale = p.velocity_scale;
-      if (p.noise_amplitude !== 1) params.noise_amplitude = p.noise_amplitude;
-      if (p.orbit_speed !== 1) params.orbit_speed = p.orbit_speed;
-      if (p.orbit_acceleration !== 0) params.orbit_acceleration = p.orbit_acceleration;
+      if (p.rotations !== 1) params.rotations = p.rotations;
+      if (p.rotations_easing !== 'linear') params.rotations_easing = p.rotations_easing;
       if (p.expansion !== 1) params.expansion = p.expansion;
-      if (p.height_rise !== 1) params.height_rise = p.height_rise;
-      if (p.opacity_fade !== 1) params.opacity_fade = p.opacity_fade;
-      if (p.scale_shrink !== 1) params.scale_shrink = p.scale_shrink;
+      if (p.expansion_easing !== 'linear') params.expansion_easing = p.expansion_easing;
+      if (p.height_rise !== 0) params.height_rise = p.height_rise;
+      if (p.height_easing !== 'linear') params.height_easing = p.height_easing;
+      if (p.opacity_end !== 0) params.opacity_end = p.opacity_end;
+      if (p.opacity_easing !== 'linear') params.opacity_easing = p.opacity_easing;
+      if (p.scale_end !== 0) params.scale_end = p.scale_end;
+      if (p.scale_easing !== 'linear') params.scale_easing = p.scale_easing;
+      if (p.velocity !== 1) params.velocity = p.velocity;
+      if (p.gravity[0] !== 0 || p.gravity[1] !== -9.8 || p.gravity[2] !== 0) params.gravity = p.gravity;
+      if (p.noise !== 1) params.noise = p.noise;
+      if (p.wave_speed !== 5) params.wave_speed = p.wave_speed;
+      if (p.pulse_frequency !== 4) params.pulse_frequency = p.pulse_frequency;
       if (Object.keys(params).length > 0) out.params = params;
       if (a.reform_enabled) {
         out.reform = { lifetime: a.reform_lifetime, speed: a.reform_speed };

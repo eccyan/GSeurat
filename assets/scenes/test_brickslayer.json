@@ -149,9 +149,6 @@
       "reform": {
         "lifetime": 5,
         "speed": 1
-      },
-      "params": {
-        "speed": 1
       }
     },
     {
@@ -172,7 +169,6 @@
         "speed": 1
       },
       "params": {
-        "speed": 0.5,
         "expansion": 30
       }
     }

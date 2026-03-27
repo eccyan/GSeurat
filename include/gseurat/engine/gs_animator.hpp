@@ -28,17 +28,37 @@ struct GsAnimRegion {
     glm::vec3 half_extents{5.0f};    // for Box
 };
 
+enum class GsEasing { Linear, EaseIn, EaseOut, EaseInOut };
+
+float apply_easing(float t, GsEasing easing);
+
 struct GsAnimParams {
-    float speed = 1.0f;             // time multiplier (scales dt)
-    glm::vec3 gravity{0.0f, -9.8f, 0.0f};  // gravity vector (Detach)
-    float velocity_scale = 1.0f;    // scales initial velocity (Detach/Float)
-    float noise_amplitude = 1.0f;   // horizontal wander scale (Float/Dissolve)
-    float orbit_speed = 1.0f;       // rotation speed multiplier (Orbit)
-    float orbit_acceleration = 0.0f; // angular acceleration (Orbit): >0 speeds up, <0 slows down
-    float expansion = 1.0f;         // radius growth scale (Orbit)
-    float height_rise = 1.0f;       // vertical rise scale (Orbit): 0=flat, 1=default rise
-    float opacity_fade = 1.0f;      // 0=no fade, 1=full fade to 0
-    float scale_shrink = 1.0f;      // 0=no shrink, 1=full shrink
+    // Rotation (Orbit, Vortex)
+    float rotations = 1.0f;                          // full rotations over lifetime
+    GsEasing rotations_easing = GsEasing::Linear;
+
+    // Spatial (Orbit, Vortex)
+    float expansion = 1.0f;                           // radius multiplier at end (1=no change)
+    GsEasing expansion_easing = GsEasing::Linear;
+    float height_rise = 0.0f;                         // total Y offset at end (units)
+    GsEasing height_easing = GsEasing::Linear;
+
+    // Appearance (most effects)
+    float opacity_end = 0.0f;                         // opacity at end (0=gone, 1=unchanged)
+    GsEasing opacity_easing = GsEasing::Linear;
+    float scale_end = 0.0f;                           // scale at end (0=vanish, 1=unchanged)
+    GsEasing scale_easing = GsEasing::Linear;
+
+    // Physics (Detach, Float, Scatter)
+    float velocity = 1.0f;                            // initial velocity magnitude
+    glm::vec3 gravity{0.0f, -9.8f, 0.0f};
+
+    // Noise (Float, Dissolve, Wave)
+    float noise = 1.0f;                               // wander/drift amplitude
+    float wave_speed = 5.0f;                          // wave propagation speed
+
+    // Pulse
+    float pulse_frequency = 4.0f;                     // oscillation frequency
 };
 
 struct GsParticleState {
