@@ -35,3 +35,7 @@ compile_commands.json
 
 # ComfyUI installation (large model weights)
 tools/ComfyUI/
+
+# WASM build artifacts
+tools/packages/simulation-wasm/dist/simulation.mjs
+tools/packages/simulation-wasm/dist/simulation.wasm
