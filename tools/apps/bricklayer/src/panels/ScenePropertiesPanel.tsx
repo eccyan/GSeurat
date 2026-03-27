@@ -12,20 +12,20 @@ import type {
 } from '../store/types.js';
 
 const styles: Record<string, React.CSSProperties> = {
-  section: { display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 },
+  section: { display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 },
   label: { fontSize: 11, color: '#888', textTransform: 'uppercase' as const, letterSpacing: 1 },
-  row: { display: 'flex', alignItems: 'center', gap: 8 },
+  row: { display: 'flex', alignItems: 'center', gap: 6 },
   input: {
-    flex: 1, padding: '4px 6px', background: '#2a2a4a', border: '1px solid #444',
-    borderRadius: 4, color: '#ddd', fontSize: 13,
+    flex: 1, maxWidth: 80, padding: '3px 5px', background: '#2a2a4a', border: '1px solid #444',
+    borderRadius: 4, color: '#ddd', fontSize: 12,
   },
   select: {
-    flex: 1, padding: '4px 6px', background: '#2a2a4a', border: '1px solid #444',
-    borderRadius: 4, color: '#ddd', fontSize: 13,
+    flex: 1, padding: '3px 5px', background: '#2a2a4a', border: '1px solid #444',
+    borderRadius: 4, color: '#ddd', fontSize: 12,
   },
   btnDanger: {
-    padding: '4px 10px', border: '1px solid #c33', borderRadius: 4,
-    background: '#4a2020', color: '#faa', cursor: 'pointer', fontSize: 12,
+    padding: '3px 8px', border: '1px solid #c33', borderRadius: 4,
+    background: '#4a2020', color: '#faa', cursor: 'pointer', fontSize: 11,
   },
   empty: { fontSize: 12, color: '#666', textAlign: 'center' as const, paddingTop: 40 },
   checkbox: { marginRight: 4 },
