@@ -191,49 +191,132 @@ function MenuBar({ onImportScene }: { onImportScene?: () => void }) {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// VfxList (left panel)
+// Navigation Tree (left panel)
 // ═══════════════════════════════════════════════════════════════
 
-function VfxList() {
+const treeStyles = {
+  node: {
+    padding: '4px 8px', cursor: 'pointer', borderRadius: 3, color: T.textDim,
+    display: 'flex', alignItems: 'center', gap: 5, overflow: 'hidden',
+    marginBottom: 1, fontSize: 12, transition: 'background 0.1s',
+  } as React.CSSProperties,
+  nodeActive: { background: T.surface, color: T.text, boxShadow: `inset 3px 0 0 ${T.accent}` },
+  indent: { marginLeft: 10, paddingLeft: 8, borderLeft: `1px solid ${T.border}` },
+  arrow: { fontSize: 9, width: 10, textAlign: 'center' as const, color: T.textMuted, flexShrink: 0 },
+  icon: { fontSize: 11, width: 14, textAlign: 'center' as const, opacity: 0.7, flexShrink: 0 },
+  label: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const, flex: 1 },
+  count: { fontSize: 10, color: T.textMuted, marginLeft: 2 },
+  addBtn: {
+    marginLeft: 'auto', padding: '0 3px', border: 'none', background: 'transparent',
+    color: T.accent, cursor: 'pointer', fontSize: 13, lineHeight: '1', flexShrink: 0,
+  } as React.CSSProperties,
+  removeBtn: {
+    padding: '0 3px', border: 'none', background: 'transparent',
+    color: '#844', cursor: 'pointer', fontSize: 11, lineHeight: '1', flexShrink: 0,
+  } as React.CSSProperties,
+};
+
+const layerIcons: Record<string, string> = {
+  emitter: '✦', animation: '↻', light: '☀',
+};
+
+function VfxTree() {
   const presets = useVfxStore((s) => s.presets);
-  const selectedId = useVfxStore((s) => s.selectedPresetId);
+  const selectedPresetId = useVfxStore((s) => s.selectedPresetId);
+  const selectedLayerId = useVfxStore((s) => s.selectedLayerId);
   const selectPreset = useVfxStore((s) => s.selectPreset);
+  const selectLayer = useVfxStore((s) => s.selectLayer);
   const addPreset = useVfxStore((s) => s.addPreset);
   const removePreset = useVfxStore((s) => s.removePreset);
+  const addLayer = useVfxStore((s) => s.addLayer);
+  const removeLayer = useVfxStore((s) => s.removeLayer);
+  const [openPresets, setOpenPresets] = useState<Set<string>>(new Set());
+
+  const toggleOpen = (id: string) => {
+    setOpenPresets((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
 
   return (
     <div style={{
       width: 200, background: T.panel, borderRight: `1px solid ${T.border}`,
       display: 'flex', flexDirection: 'column', overflow: 'hidden',
     }}>
+      {/* Header */}
       <div style={{
-        padding: '8px 12px', borderBottom: `1px solid ${T.border}`,
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '6px 8px', borderBottom: `1px solid ${T.border}`,
+        fontSize: 10, color: T.textMuted, letterSpacing: 1.5, textTransform: 'uppercase',
       }}>
-        <span style={{ fontSize: 10, color: T.textMuted, textTransform: 'uppercase', letterSpacing: 1.5 }}>
-          VFX Presets
-        </span>
-        <button onClick={() => addPreset()} style={{
-          background: 'none', border: 'none', color: T.accent, cursor: 'pointer',
-          fontSize: 16, lineHeight: 1, padding: '0 4px',
-        }}>+</button>
+        VFX Editor
       </div>
+
+      {/* Tree */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '4px 0' }}>
-        {presets.map((p) => (
-          <div key={p.id} onClick={() => selectPreset(p.id)} style={{
-            padding: '6px 12px', cursor: 'pointer', fontSize: 12,
-            color: selectedId === p.id ? T.text : T.textDim,
-            background: selectedId === p.id ? T.surface : 'transparent',
-            borderLeft: selectedId === p.id ? `3px solid ${T.accent}` : '3px solid transparent',
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          }}>
-            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span>
-            <button onClick={(e) => { e.stopPropagation(); removePreset(p.id); }} style={{
-              background: 'none', border: 'none', color: T.textMuted, cursor: 'pointer',
-              fontSize: 11, padding: '0 2px', opacity: 0.5,
-            }}>&times;</button>
-          </div>
-        ))}
+        {/* VFX Presets section */}
+        <div style={{ ...treeStyles.node, color: T.textDim }}
+          onClick={() => {}}>
+          <span style={treeStyles.icon}>◆</span>
+          <span style={treeStyles.label}>VFX Presets</span>
+          <span style={treeStyles.count}>({presets.length})</span>
+          <button style={treeStyles.addBtn} onClick={(e) => { e.stopPropagation(); addPreset(); }}>+</button>
+        </div>
+
+        <div style={treeStyles.indent}>
+          {presets.map((preset) => {
+            const isOpen = openPresets.has(preset.id) || selectedPresetId === preset.id;
+            const isActive = selectedPresetId === preset.id && !selectedLayerId;
+            return (
+              <React.Fragment key={preset.id}>
+                {/* Preset node */}
+                <div
+                  style={{ ...treeStyles.node, ...(isActive ? treeStyles.nodeActive : {}) }}
+                  onClick={() => { selectPreset(preset.id); selectLayer(null); toggleOpen(preset.id); }}
+                >
+                  <span style={treeStyles.arrow}>{isOpen ? '▾' : '▸'}</span>
+                  <span style={treeStyles.icon}>◇</span>
+                  <span style={treeStyles.label}>{preset.name}</span>
+                  <span style={treeStyles.count}>({preset.layers.length})</span>
+                  <button style={treeStyles.removeBtn}
+                    onClick={(e) => { e.stopPropagation(); removePreset(preset.id); }}>&times;</button>
+                </div>
+
+                {/* Layers (when expanded) */}
+                {isOpen && (
+                  <div style={treeStyles.indent}>
+                    {preset.layers.map((layer, i) => {
+                      const layerActive = selectedLayerId === layer.id;
+                      const color = layerColor(layer.type);
+                      return (
+                        <div key={layer.id}
+                          style={{ ...treeStyles.node, ...(layerActive ? treeStyles.nodeActive : {}) }}
+                          onClick={() => { selectPreset(preset.id); selectLayer(layer.id); }}
+                        >
+                          <span style={{ ...treeStyles.icon, color }}>{layerIcons[layer.type] ?? '?'}</span>
+                          <span style={treeStyles.label}>{layer.name}</span>
+                          <button style={treeStyles.removeBtn}
+                            onClick={(e) => { e.stopPropagation(); removeLayer(preset.id, layer.id); }}>&times;</button>
+                        </div>
+                      );
+                    })}
+                    {/* Add layer buttons */}
+                    <div style={{ display: 'flex', gap: 2, padding: '2px 4px' }}>
+                      <button onClick={() => addLayer(preset.id, 'emitter', 'Emitter', 0, 1, 'custom')}
+                        style={{ ...treeStyles.addBtn, color: T.layerEmitter, fontSize: 9 }}>+✦</button>
+                      <button onClick={() => addLayer(preset.id, 'animation', 'Animation', 0, 1, 'custom')}
+                        style={{ ...treeStyles.addBtn, color: T.layerAnimation, fontSize: 9 }}>+↻</button>
+                      <button onClick={() => addLayer(preset.id, 'light', 'Light', 0, 0.2, 'custom')}
+                        style={{ ...treeStyles.addBtn, color: T.layerLight, fontSize: 9 }}>+☀</button>
+                    </div>
+                  </div>
+                )}
+              </React.Fragment>
+            );
+          })}
+        </div>
+
         {presets.length === 0 && (
           <div style={{ padding: 16, textAlign: 'center', color: T.textMuted, fontSize: 11 }}>
             No VFX presets.<br />Click + to create one.
@@ -307,8 +390,6 @@ function Timeline() {
   }
 
   const dur = preset.duration;
-  const pxPerSec = 120;
-  const totalWidth = dur * pxPerSec;
   const antPct = (preset.phases.anticipation / dur) * 100;
   const impPct = ((preset.phases.impact - preset.phases.anticipation) / dur) * 100;
   const resPct = 100 - antPct - impPct;
@@ -349,17 +430,55 @@ function Timeline() {
         }}>+ Light</button>
       </div>
 
+      {/* Scrubber bar — click to seek */}
+      <div
+        style={{ height: 12, background: T.bg, cursor: 'pointer', position: 'relative', borderBottom: `1px solid ${T.border}` }}
+        onClick={(e) => {
+          const rect = e.currentTarget.getBoundingClientRect();
+          const t = ((e.clientX - rect.left) / rect.width) * dur;
+          setPlaybackTime(Math.max(0, Math.min(dur, t)));
+        }}
+        onPointerDown={(e) => {
+          e.preventDefault();
+          const el = e.currentTarget;
+          const rect = el.getBoundingClientRect();
+          const move = (ev: PointerEvent) => {
+            const t = ((ev.clientX - rect.left) / rect.width) * dur;
+            setPlaybackTime(Math.max(0, Math.min(dur, t)));
+          };
+          const up = () => {
+            window.removeEventListener('pointermove', move);
+            window.removeEventListener('pointerup', up);
+          };
+          window.addEventListener('pointermove', move);
+          window.addEventListener('pointerup', up);
+          move(e.nativeEvent);
+        }}
+      >
+        {/* Phase colors in scrubber */}
+        <div style={{ display: 'flex', height: '100%' }}>
+          <div style={{ width: `${antPct}%`, background: `${T.phaseAnticipation}30` }} />
+          <div style={{ width: `${impPct}%`, background: `${T.phaseImpact}30` }} />
+          <div style={{ width: `${resPct}%`, background: `${T.phaseResidual}30` }} />
+        </div>
+        {/* Scrubber playhead */}
+        <div style={{
+          position: 'absolute', top: 0, bottom: 0, width: 2, background: '#fff',
+          left: `${(playbackTime / dur) * 100}%`, pointerEvents: 'none',
+        }} />
+      </div>
+
       {/* Timeline area */}
-      <div style={{ flex: 1, overflowX: 'auto', overflowY: 'auto', position: 'relative' }}>
-        {/* Phase background */}
-        <div style={{ display: 'flex', height: '100%', position: 'absolute', top: 0, left: 0, width: totalWidth, zIndex: 0 }}>
+      <div style={{ flex: 1, overflowY: 'auto', position: 'relative' }}>
+        {/* Phase background — use 100% width, not fixed px */}
+        <div style={{ display: 'flex', height: '100%', position: 'absolute', top: 0, left: 0, width: '100%', zIndex: 0 }}>
           <div style={{ width: `${antPct}%`, background: `${T.phaseAnticipation}08`, borderRight: `1px dashed ${T.phaseAnticipation}30` }} />
           <div style={{ width: `${impPct}%`, background: `${T.phaseImpact}08`, borderRight: `1px dashed ${T.phaseImpact}30` }} />
           <div style={{ width: `${resPct}%`, background: `${T.phaseResidual}08` }} />
         </div>
 
         {/* Phase labels */}
-        <div style={{ display: 'flex', height: 16, position: 'relative', zIndex: 1, width: totalWidth }}>
+        <div style={{ display: 'flex', height: 16, position: 'relative', zIndex: 1 }}>
           <div style={{ width: `${antPct}%`, textAlign: 'center', fontSize: 8, color: T.phaseAnticipation, lineHeight: '16px', letterSpacing: 1, textTransform: 'uppercase' }}>
             Anticipation
           </div>
@@ -372,7 +491,7 @@ function Timeline() {
         </div>
 
         {/* Layer tracks with drag handles */}
-        <div ref={tracksRef} style={{ position: 'relative', zIndex: 1, padding: '2px 0', width: totalWidth }}>
+        <div ref={tracksRef} style={{ position: 'relative', zIndex: 1, padding: '2px 0' }}>
           {preset.layers.map((layer) => {
             const left = (layer.start / dur) * 100;
             const width = (layer.duration / dur) * 100;
@@ -477,7 +596,7 @@ function Timeline() {
         </div>
 
         {/* Time ruler ticks */}
-        <div style={{ position: 'absolute', top: 0, left: 0, width: totalWidth, height: '100%', pointerEvents: 'none', zIndex: 0 }}>
+        <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 0 }}>
           {Array.from({ length: Math.ceil(dur) + 1 }, (_, i) => (
             <div key={i} style={{
               position: 'absolute', left: `${(i / dur) * 100}%`, top: 0, bottom: 0,
@@ -560,7 +679,7 @@ export function App() {
     <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', background: T.bg }}>
       <MenuBar onImportScene={handleImportScene} />
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
-        <VfxList />
+        <VfxTree />
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
           <Preview scenePoints={scenePoints} />
           <Timeline />
