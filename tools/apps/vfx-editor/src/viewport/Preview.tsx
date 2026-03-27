@@ -2,7 +2,7 @@ import React, { useRef, useMemo, useEffect, useState, useCallback } from 'react'
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls, Grid } from '@react-three/drei';
 import * as THREE from 'three';
-import { useVfxStore } from '../store/useVfxStore.js';
+import { useVfxStore, playbackTimeRef } from '../store/useVfxStore.js';
 import type { VfxLayer } from '../store/types.js';
 import type { PlyPoint } from '../lib/plyLoader.js';
 import { ParticleSystem } from './ParticleSystem.js';
@@ -173,12 +173,13 @@ function LayerGizmos() {
   const selectedLayerId = useVfxStore((s) => s.selectedLayerId);
   const lightRef = useRef<THREE.PointLight>(null);
 
-  // Update dynamic point light for light layers
+  // Update dynamic point light for light layers (read ref, no React re-render)
   useFrame(() => {
     if (!lightRef.current || !preset) return;
+    const t = playbackTimeRef.current;
     const activeLight = preset.layers.find((l) =>
       l.type === 'light' && l.light &&
-      playbackTime >= l.start && playbackTime < l.start + l.duration
+      t >= l.start && t < l.start + l.duration
     );
     if (activeLight?.light) {
       lightRef.current.visible = true;
@@ -230,10 +231,14 @@ export function Preview({ scenePoints }: { scenePoints: PlyPoint[] }) {
     posAttr.needsUpdate = true;
     colAttr.needsUpdate = true;
     if (scales) {
-      // Replace the entire attribute to force WebGL buffer re-creation.
-      // BufferAttribute.set() + needsUpdate doesn't reliably update
-      // single-component custom attributes in Three.js ShaderMaterial.
-      geo.setAttribute('aScale', new THREE.BufferAttribute(scales, 1).setUsage(THREE.DynamicDrawUsage));
+      const scaleAttr = geo.getAttribute('aScale') as THREE.BufferAttribute;
+      if (scaleAttr) {
+        // Swap backing array and force re-upload without creating a new WebGL buffer.
+        // BufferAttribute.set() + needsUpdate alone doesn't work for single-component
+        // custom attributes — but replacing .array does trigger a full re-upload.
+        (scaleAttr as any).array = scales;
+        scaleAttr.needsUpdate = true;
+      }
     }
   }, []);
 

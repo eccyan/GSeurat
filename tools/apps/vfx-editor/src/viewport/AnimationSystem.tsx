@@ -9,7 +9,7 @@
 import React, { useRef, useEffect, useState, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
-import { useVfxStore } from '../store/useVfxStore.js';
+import { useVfxStore, playbackTimeRef } from '../store/useVfxStore.js';
 import type { VfxLayer } from '../store/types.js';
 import type { PlyPoint } from '../lib/plyLoader.js';
 
@@ -35,7 +35,6 @@ export function AnimationSystem({ scenePoints, onUpdateGeometry }: {
   onUpdateGeometry: (positions: Float32Array, colors: Float32Array, scales?: Float32Array) => void;
 }) {
   const preset = useVfxStore((s) => s.presets.find((p) => p.id === s.selectedPresetId));
-  const playbackTime = useVfxStore((s) => s.playbackTime);
   const playing = useVfxStore((s) => s.playing);
 
   // One animator per animation layer for isolation
@@ -43,7 +42,9 @@ export function AnimationSystem({ scenePoints, onUpdateGeometry }: {
   const scenePositionsRef = useRef<Float32Array | null>(null);
   const sceneColorsRef = useRef<Float32Array | null>(null);
   const sceneCountRef = useRef(0);
-  const initialScaleRef = useRef(0.01); // avg scale of loaded scene for normalization
+  // Pre-allocated buffers for restore-original path (avoid per-frame allocation)
+  const origColorsRef = useRef<Float32Array | null>(null);   // count * 4
+  const origScalesRef = useRef<Float32Array | null>(null);   // count, filled with 1.0
   const [wasmReady, setWasmReady] = useState(false);
 
   // Load WASM
@@ -68,6 +69,16 @@ export function AnimationSystem({ scenePoints, onUpdateGeometry }: {
     scenePositionsRef.current = positions;
     sceneColorsRef.current = colors;
     sceneCountRef.current = count;
+    // Pre-allocate restore buffers
+    const oc = new Float32Array(count * 4);
+    for (let i = 0; i < count; i++) {
+      oc[i * 4] = colors[i * 3];
+      oc[i * 4 + 1] = colors[i * 3 + 1];
+      oc[i * 4 + 2] = colors[i * 3 + 2];
+      oc[i * 4 + 3] = 1.0;
+    }
+    origColorsRef.current = oc;
+    origScalesRef.current = new Float32Array(count).fill(1.0);
   }, [scenePoints]);
 
   // Cleanup all animators
@@ -86,6 +97,9 @@ export function AnimationSystem({ scenePoints, onUpdateGeometry }: {
     const animators = animatorsRef.current;
     const count = sceneCountRef.current;
     let anyActive = false;
+
+    // Read playback time from ref (no React re-render)
+    const playbackTime = playbackTimeRef.current;
 
     // Manage per-layer animators
     for (const layer of preset.layers) {
@@ -136,28 +150,11 @@ export function AnimationSystem({ scenePoints, onUpdateGeometry }: {
     }
 
     if (lastData) {
-      // Normalize scales to ratio (1.0 = original size)
-      const initScale = initialScaleRef.current;
-      if (lastData.scales && initScale > 0) {
-        const normalized = new Float32Array(lastData.scales.length);
-        for (let i = 0; i < lastData.scales.length; i++) {
-          normalized[i] = lastData.scales[i] / initScale;
-        }
-        onUpdateGeometry(lastData.positions, lastData.colors, normalized);
-      } else {
-        onUpdateGeometry(lastData.positions, lastData.colors, lastData.scales);
-      }
+      // Scales are pre-normalized in WASM (ratio: 1.0 = original size)
+      onUpdateGeometry(lastData.positions, lastData.colors, lastData.scales);
     } else if (!anyActive && animators.size === 0) {
-      // No animations active — restore original
-      const origColors = new Float32Array(count * 4);
-      for (let i = 0; i < count; i++) {
-        origColors[i * 4] = sceneColorsRef.current![i * 3];
-        origColors[i * 4 + 1] = sceneColorsRef.current![i * 3 + 1];
-        origColors[i * 4 + 2] = sceneColorsRef.current![i * 3 + 2];
-        origColors[i * 4 + 3] = 1.0;
-      }
-      const origScales = new Float32Array(count).fill(1.0);
-      onUpdateGeometry(scenePositionsRef.current!, origColors, origScales);
+      // No animations active — restore original (pre-allocated buffers, no alloc)
+      onUpdateGeometry(scenePositionsRef.current!, origColorsRef.current!, origScalesRef.current!);
     }
   });
 
@@ -166,17 +163,9 @@ export function AnimationSystem({ scenePoints, onUpdateGeometry }: {
     if (!playing) {
       for (const { animator } of animatorsRef.current.values()) animator.delete();
       animatorsRef.current.clear();
-      // Restore original geometry
-      if (scenePositionsRef.current && sceneColorsRef.current) {
-        const count = sceneCountRef.current;
-        const origColors = new Float32Array(count * 4);
-        for (let i = 0; i < count; i++) {
-          origColors[i * 4] = sceneColorsRef.current[i * 3];
-          origColors[i * 4 + 1] = sceneColorsRef.current[i * 3 + 1];
-          origColors[i * 4 + 2] = sceneColorsRef.current[i * 3 + 2];
-          origColors[i * 4 + 3] = 1.0;
-        }
-        onUpdateGeometry(scenePositionsRef.current, origColors);
+      // Restore original geometry (pre-allocated buffers, no alloc)
+      if (scenePositionsRef.current && origColorsRef.current) {
+        onUpdateGeometry(scenePositionsRef.current, origColorsRef.current, origScalesRef.current!);
       }
     }
   }, [playing]);

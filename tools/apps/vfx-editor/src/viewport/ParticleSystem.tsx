@@ -10,7 +10,7 @@
 import React, { useRef, useEffect, useState, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
-import { useVfxStore } from '../store/useVfxStore.js';
+import { useVfxStore, playbackTimeRef } from '../store/useVfxStore.js';
 import type { VfxLayer } from '../store/types.js';
 
 // Dynamic import — WASM module may not be available
@@ -110,7 +110,10 @@ function EmitterRenderer({ layer, active }: { layer: VfxLayer; active: boolean }
     }
 
     const emitter = emitterRef.current;
-    if (!emitter || !active) {
+    // Check time window using ref (no React re-render on playback tick)
+    const t = playbackTimeRef.current;
+    const inTimeWindow = active && t >= layer.start && t < layer.start + layer.duration;
+    if (!emitter || !inTimeWindow) {
       geo.setDrawRange(0, 0);
       return;
     }
@@ -185,7 +188,6 @@ export function ParticleSystem() {
   const preset = useVfxStore((s) => {
     return s.presets.find((p) => p.id === s.selectedPresetId);
   });
-  const playbackTime = useVfxStore((s) => s.playbackTime);
   const playing = useVfxStore((s) => s.playing);
   const [wasmReady, setWasmReady] = useState(false);
 
@@ -203,9 +205,8 @@ export function ParticleSystem() {
       {preset.layers
         .filter((l) => l.type === 'emitter')
         .map((layer) => {
-          const active = playing &&
-            playbackTime >= layer.start &&
-            playbackTime < layer.start + layer.duration;
+          // Active state computed per-frame in EmitterRenderer via playbackTimeRef
+          const active = playing;
           return (
             <EmitterRenderer
               key={layer.id}

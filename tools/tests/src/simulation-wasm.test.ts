@@ -488,6 +488,130 @@ async function main() {
     animator.delete();
   }
 
+  // 7. Animator regression tests (performance optimization validation)
+
+  console.log('\n--- Animator Regression (perf) ---\n');
+
+  {
+    console.log('Test 7.1: getSceneData repeated calls return consistent data');
+    const animator = new sim.Animator();
+    const count = 100;
+    const positions = new Float32Array(count * 3);
+    const colors = new Float32Array(count * 3);
+    for (let i = 0; i < count; i++) {
+      positions[i * 3] = Math.random() * 10 - 5;
+      positions[i * 3 + 1] = Math.random() * 10 - 5;
+      positions[i * 3 + 2] = Math.random() * 10 - 5;
+      colors[i * 3] = Math.random();
+      colors[i * 3 + 1] = Math.random();
+      colors[i * 3 + 2] = Math.random();
+    }
+    animator.loadScene(positions, colors, count);
+    animator.tagSphere(0, 0, 0, 20, sim.EFFECT_ORBIT, 5.0);
+    for (let i = 0; i < 10; i++) animator.update(1 / 60);
+
+    const data1 = animator.getSceneData();
+    const data2 = animator.getSceneData();
+    assert(data1 !== null && data2 !== null, 'both calls return data');
+    if (data1 && data2) {
+      assert(data1.count === data2.count, `count matches (${data1.count} vs ${data2.count})`);
+      let posMatch = true;
+      for (let i = 0; i < count * 3; i++) {
+        if (Math.abs(data1.positions[i] - data2.positions[i]) > 1e-6) { posMatch = false; break; }
+      }
+      assert(posMatch, 'positions identical on repeated calls');
+      let colMatch = true;
+      for (let i = 0; i < count * 4; i++) {
+        if (Math.abs(data1.colors[i] - data2.colors[i]) > 1e-6) { colMatch = false; break; }
+      }
+      assert(colMatch, 'colors identical on repeated calls');
+    }
+    animator.delete();
+  }
+
+  {
+    console.log('Test 7.2: All 9 effects produce valid getSceneData');
+    const effects = [
+      { name: 'DETACH', val: sim.EFFECT_DETACH },
+      { name: 'FLOAT', val: sim.EFFECT_FLOAT },
+      { name: 'ORBIT', val: sim.EFFECT_ORBIT },
+      { name: 'DISSOLVE', val: sim.EFFECT_DISSOLVE },
+      { name: 'REFORM', val: sim.EFFECT_REFORM },
+      { name: 'PULSE', val: sim.EFFECT_PULSE },
+      { name: 'VORTEX', val: sim.EFFECT_VORTEX },
+      { name: 'WAVE', val: sim.EFFECT_WAVE },
+      { name: 'SCATTER', val: sim.EFFECT_SCATTER },
+    ];
+    const count = 10;
+    const positions = new Float32Array(count * 3);
+    const colors = new Float32Array(count * 3);
+    for (let i = 0; i < count; i++) {
+      positions[i * 3] = i; positions[i * 3 + 1] = 0; positions[i * 3 + 2] = 0;
+      colors[i * 3] = 1; colors[i * 3 + 1] = 1; colors[i * 3 + 2] = 1;
+    }
+    for (const { name, val: effect } of effects) {
+      const animator = new sim.Animator();
+      animator.loadScene(positions, colors, count);
+      animator.tagSphere(0, 0, 0, 100, effect, 5.0);
+      for (let i = 0; i < 30; i++) animator.update(1 / 60);
+      const data = animator.getSceneData();
+      assert(data !== null, `${name}: getSceneData non-null`);
+      if (data) {
+        assert(data.count === count, `${name}: count=${count}`);
+        assert(data.positions.length === count * 3, `${name}: positions length`);
+        assert(data.colors.length === count * 4, `${name}: colors length (RGBA)`);
+        assert(data.scales.length === count, `${name}: scales length`);
+      }
+      animator.delete();
+    }
+  }
+
+  {
+    console.log('Test 7.3: Repeated getSceneData calls (stress test)');
+    const animator = new sim.Animator();
+    const count = 1000;
+    const positions = new Float32Array(count * 3);
+    const colors = new Float32Array(count * 3);
+    for (let i = 0; i < count * 3; i++) { positions[i] = Math.random(); colors[i] = Math.random(); }
+    animator.loadScene(positions, colors, count);
+    animator.tagSphere(0, 0, 0, 100, sim.EFFECT_WAVE, 10.0);
+
+    let lastData: any = null;
+    for (let frame = 0; frame < 100; frame++) {
+      animator.update(1 / 60);
+      lastData = animator.getSceneData();
+    }
+    assert(lastData !== null, 'data after 100 frames');
+    if (lastData) {
+      assert(lastData.count === count, `count still ${count} after stress`);
+      // Verify no NaN in output
+      let hasNaN = false;
+      for (let i = 0; i < count * 3; i++) { if (isNaN(lastData.positions[i])) { hasNaN = true; break; } }
+      assert(!hasNaN, 'no NaN in positions after 100 frames');
+    }
+    animator.delete();
+  }
+
+  {
+    console.log('Test 7.4: Scale values are in valid range');
+    const animator = new sim.Animator();
+    const positions = new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]);
+    const colors = new Float32Array([1, 1, 1, 1, 1, 1, 1, 1, 1]);
+    animator.loadScene(positions, colors, 3);
+    animator.tagSphereWithParams(0, 0, 0, 100, sim.EFFECT_PULSE, 5.0,
+      { scale_end: 0, pulse_frequency: 10 });
+    for (let i = 0; i < 30; i++) animator.update(1 / 60);
+    const data = animator.getSceneData();
+    if (data) {
+      let allValid = true;
+      for (let i = 0; i < data.scales.length; i++) {
+        if (isNaN(data.scales[i]) || data.scales[i] < 0) { allValid = false; break; }
+      }
+      assert(allValid, 'all scale values >= 0 and not NaN');
+    }
+    animator.delete();
+  }
+
   // ═══════════════════════════════════════════════════════════════
 
   console.log(`\n${'='.repeat(40)}`);
