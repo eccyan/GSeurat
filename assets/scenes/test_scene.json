@@ -1,4 +1,25 @@
 {
+  "version": 2,
+  "ambient_color": [
+    0.4,
+    0.42,
+    0.5,
+    1
+  ],
+  "player": {
+    "position": [
+      0,
+      0,
+      0
+    ],
+    "tint": [
+      1,
+      1,
+      1,
+      1
+    ],
+    "facing": "down"
+  },
   "gaussian_splat": {
     "ply_file": "maps/map.ply",
     "camera": {
@@ -1047,28 +1068,5 @@
       false,
       false
     ]
-  },
-  "ambient_color": [
-    0.4,
-    0.42,
-    0.5,
-    1
-  ],
-  "static_lights": [],
-  "npcs": [],
-  "portals": [],
-  "player": {
-    "position": [
-      0,
-      0,
-      0
-    ],
-    "tint": [
-      1,
-      1,
-      1,
-      1
-    ],
-    "facing": "down"
   }
 }

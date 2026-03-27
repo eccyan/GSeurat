@@ -256,15 +256,16 @@ The GS tile rasterizer compute shader (`gs_render.comp`):
 - **Light_mode=2 auto-enabled**: When a scene has `static_lights`, point light mode activates
   automatically on load.
 
-### Scene JSON Light Format
+### Scene JSON Light Format (v2)
 
 ```json
 {
-  "static_lights": [
-    { "position": [x, z], "radius": 100, "height": 3, "color": [r,g,b], "intensity": 5 },
-    { "position": [x, z], "radius": 50, "height": 5, "color": [r,g,b], "intensity": 3,
+  "version": 2,
+  "lights": [
+    { "position": [x, y, z], "radius": 100, "color": [r,g,b], "intensity": 5 },
+    { "position": [x, y, z], "radius": 50, "color": [r,g,b], "intensity": 3,
       "direction": [0, -1, 0], "cone_angle": 45 },
-    { "position": [x, z], "radius": 30, "height": 3, "color": [r,g,b], "intensity": 2,
+    { "position": [x, y, z], "radius": 30, "color": [r,g,b], "intensity": 2,
       "area_width": 5, "area_height": 3, "area_normal": [1, 0] }
   ]
 }

@@ -149,12 +149,17 @@ function PortalEditor({ portal }: { portal: PortalData }) {
         <span style={{ fontSize: 12, minWidth: 40 }}>Pos</span>
         <NumberInput
           value={portal.position[0]}
-          onChange={(v) => updatePortal(portal.id, { position: [v, portal.position[1]] })}
+          onChange={(v) => updatePortal(portal.id, { position: [v, portal.position[1], portal.position[2]] })}
           style={{ ...styles.input, maxWidth: 60 }}
         />
         <NumberInput
           value={portal.position[1]}
-          onChange={(v) => updatePortal(portal.id, { position: [portal.position[0], v] })}
+          onChange={(v) => updatePortal(portal.id, { position: [portal.position[0], v, portal.position[2]] })}
+          style={{ ...styles.input, maxWidth: 60 }}
+        />
+        <NumberInput
+          value={portal.position[2]}
+          onChange={(v) => updatePortal(portal.id, { position: [portal.position[0], portal.position[1], v] })}
           style={{ ...styles.input, maxWidth: 60 }}
         />
       </div>

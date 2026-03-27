@@ -309,8 +309,8 @@ export function App() {
           const sel = store.selectedEntity;
           if (sel.type === 'object') store.updatePlacedObject(sel.id, { position: pos });
           else if (sel.type === 'npc') store.updateNpc(sel.id, { position: pos });
-          else if (sel.type === 'light') store.updateLight(sel.id, { position: [pos[0], pos[2]] });
-          else if (sel.type === 'portal') store.updatePortal(sel.id, { position: [pos[0], pos[2]] });
+          else if (sel.type === 'light') store.updateLight(sel.id, { position: pos });
+          else if (sel.type === 'portal') store.updatePortal(sel.id, { position: pos });
           else if (sel.type === 'gs_emitter') store.updateGsEmitter(sel.id, { position: pos });
           else if (sel.type === 'gs_animation') store.updateGsAnimation(sel.id, { center: pos });
           else if (sel.type === 'player') store.updatePlayer({ position: pos });
@@ -346,10 +346,10 @@ export function App() {
             if (npc) pos = [...npc.position];
           } else if (sel.type === 'light') {
             const light = store.staticLights.find((l) => l.id === sel.id);
-            if (light) pos = [light.position[0], light.height, light.position[1]];
+            if (light) pos = [...light.position];
           } else if (sel.type === 'portal') {
             const portal = store.portals.find((p) => p.id === sel.id);
-            if (portal) pos = [portal.position[0], 0, portal.position[1]];
+            if (portal) pos = [...portal.position];
           } else if (sel.type === 'gs_emitter') {
             const em = store.gsParticleEmitters.find((e) => e.id === sel.id);
             if (em) pos = [...em.position];
@@ -405,10 +405,10 @@ export function App() {
           if (npc) pos = npc.position;
         } else if (sel.type === 'portal') {
           const portal = store.portals.find((p) => p.id === sel.id);
-          if (portal) pos = [portal.position[0], 0, portal.position[1]];
+          if (portal) pos = [...portal.position];
         } else if (sel.type === 'light') {
           const light = store.staticLights.find((l) => l.id === sel.id);
-          if (light) pos = [light.position[0], light.height, light.position[1]];
+          if (light) pos = [...light.position];
         } else if (sel.type === 'player') {
           pos = store.player.position;
         }

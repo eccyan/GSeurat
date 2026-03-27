@@ -35,7 +35,7 @@ struct NpcData {
     glm::vec4 aura_color_end{0.0f};
     std::string script_module;  // empty = no script
     std::string script_class;
-    std::vector<glm::vec2> waypoints;  // empty = use NpcPatrol
+    std::vector<glm::vec3> waypoints;  // empty = use NpcPatrol
     float waypoint_pause = 1.0f;
     std::string character_id;  // empty = use hardcoded anim setup
 };
@@ -113,7 +113,7 @@ struct GsAnimationData {
 };
 
 struct PortalData {
-    glm::vec2 position{0.0f};
+    glm::vec3 position{0.0f};
     glm::vec2 size{1.0f};
     std::string target_scene;
     glm::vec3 spawn_position{0.0f};
@@ -161,7 +161,7 @@ struct SceneData {
 
     // Emitter templates
     EmitterConfig torch_emitter;
-    std::vector<glm::vec2> torch_positions;
+    std::vector<glm::vec3> torch_positions;
     std::vector<glm::vec3> torch_audio_positions;
     EmitterConfig footstep_emitter;
     EmitterConfig npc_aura_emitter;

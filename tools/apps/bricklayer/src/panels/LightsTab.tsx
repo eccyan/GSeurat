@@ -48,16 +48,23 @@ function LightEditor({ light }: { light: StaticLight }) {
         </button>
       </div>
       <div style={styles.row}>
-        <span style={{ fontSize: 12, minWidth: 60 }}>Pos X</span>
+        <span style={{ fontSize: 12, minWidth: 60 }}>Pos</span>
         <NumberInput
+          label="X"
           value={light.position[0]}
-          onChange={(v) => updateLight(light.id, { position: [v, light.position[1]] })}
+          onChange={(v) => updateLight(light.id, { position: [v, light.position[1], light.position[2]] })}
+          style={styles.input}
+        />
+        <NumberInput
+          label="Y"
+          value={light.position[1]}
+          onChange={(v) => updateLight(light.id, { position: [light.position[0], v, light.position[2]] })}
           style={styles.input}
         />
         <NumberInput
           label="Z"
-          value={light.position[1]}
-          onChange={(v) => updateLight(light.id, { position: [light.position[0], v] })}
+          value={light.position[2]}
+          onChange={(v) => updateLight(light.id, { position: [light.position[0], light.position[1], v] })}
           style={styles.input}
         />
       </div>
@@ -67,15 +74,6 @@ function LightEditor({ light }: { light: StaticLight }) {
           step={0.5}
           value={light.radius}
           onChange={(v) => updateLight(light.id, { radius: v })}
-          style={styles.input}
-        />
-      </div>
-      <div style={styles.row}>
-        <span style={{ fontSize: 12, minWidth: 60 }}>Height</span>
-        <NumberInput
-          step={0.5}
-          value={light.height}
-          onChange={(v) => updateLight(light.id, { height: v })}
           style={styles.input}
         />
       </div>

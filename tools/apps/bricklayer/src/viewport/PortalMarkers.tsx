@@ -2,7 +2,7 @@ import React from 'react';
 import { useSceneStore } from '../store/useSceneStore.js';
 
 function PortalMarker({ position, size, isSelected, onSelect }: {
-  position: [number, number];
+  position: [number, number, number];
   size: [number, number];
   isSelected: boolean;
   onSelect: () => void;
@@ -11,14 +11,14 @@ function PortalMarker({ position, size, isSelected, onSelect }: {
     <>
       {/* Invisible hit box */}
       <mesh
-        position={[position[0] + size[0] / 2, 1, position[1] + size[1] / 2]}
+        position={[position[0] + size[0] / 2, position[1] + 1, position[2] + size[1] / 2]}
         onPointerDown={(e) => { e.stopPropagation(); onSelect(); }}
       >
         <boxGeometry args={[size[0] + 0.8, 3.0, size[1] + 0.8]} />
         <meshBasicMaterial visible={false} />
       </mesh>
       {/* Visible wireframe */}
-      <mesh position={[position[0] + size[0] / 2, 1, position[1] + size[1] / 2]}>
+      <mesh position={[position[0] + size[0] / 2, position[1] + 1, position[2] + size[1] / 2]}>
         <boxGeometry args={[size[0] + 0.2, 2.4, size[1] + 0.2]} />
         <meshBasicMaterial
           color={isSelected ? '#ffffff' : '#ab47bc'}

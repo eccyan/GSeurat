@@ -3,9 +3,8 @@ import * as THREE from 'three';
 import { Html } from '@react-three/drei';
 import { useSceneStore } from '../store/useSceneStore.js';
 
-function LightMarker({ position, height, radius, color, isSelected, onSelect, coneAngle, direction, areaWidth, areaHeight }: {
-  position: [number, number];
-  height: number;
+function LightMarker({ position, radius, color, isSelected, onSelect, coneAngle, direction, areaWidth, areaHeight }: {
+  position: [number, number, number];
   radius: number;
   color: [number, number, number];
   isSelected: boolean;
@@ -32,7 +31,7 @@ function LightMarker({ position, height, radius, color, isSelected, onSelect, co
   const coneRadius = isSpot ? coneLength * Math.tan((coneAngle / 2) * Math.PI / 180) : 0;
 
   return (
-    <group position={[position[0], height, position[1]]}>
+    <group position={[position[0], position[1], position[2]]}>
       {/* Invisible hit box */}
       <mesh onPointerDown={(e) => { e.stopPropagation(); onSelect(); }}>
         <sphereGeometry args={[1.0, 12, 12]} />
@@ -117,7 +116,6 @@ export function LightGizmos() {
         <LightMarker
           key={light.id}
           position={light.position}
-          height={light.height}
           radius={light.radius}
           color={light.color}
           isSelected={selectedEntity?.type === 'light' && selectedEntity.id === light.id}
