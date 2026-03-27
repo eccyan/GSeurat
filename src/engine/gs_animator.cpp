@@ -239,22 +239,25 @@ void GaussianAnimator::apply_dissolve(AnimGroup& group, std::vector<Gaussian>& g
 }
 
 void GaussianAnimator::apply_reform(AnimGroup& group, std::vector<Gaussian>& gaussians, float dt) {
-    const auto& p = group.params;
     for (size_t i = 0; i < group.indices.size(); ++i) {
         auto& s = group.states[i];
         if (!s.active || s.age >= s.lifetime) continue;
         uint32_t idx = group.indices[i];
         if (idx >= gaussians.size()) continue;
 
+        // On first frame, capture displaced position in velocity field
+        if (s.age == 0.0f) {
+            s.velocity = gaussians[idx].position;
+        }
+
         s.age += dt;
         float t = std::clamp(s.age / s.lifetime, 0.0f, 1.0f);
-        float smooth_t = t * t * (3.0f - 2.0f * t);
+        float smooth_t = t * t * (3.0f - 2.0f * t);  // ease-in-out
 
         auto& g = gaussians[idx];
-        float lerp_rate = smooth_t * dt * 3.0f * p.velocity;
-        g.position = glm::mix(g.position, s.original_position, lerp_rate);
-        g.scale = glm::mix(g.scale, s.original_scale, lerp_rate);
-        g.opacity = s.original_opacity * std::min(1.0f, t * 2.0f);
+        g.position = glm::mix(s.velocity, s.original_position, smooth_t);
+        g.scale = glm::mix(s.original_scale * 0.1f, s.original_scale, smooth_t);
+        g.opacity = s.original_opacity * smooth_t;
         g.color = glm::mix(g.color, s.original_color, smooth_t);
         g.emission = 0.01f * (1.0f - smooth_t);
     }

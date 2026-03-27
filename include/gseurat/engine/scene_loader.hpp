@@ -100,7 +100,6 @@ struct GsEmitterData {
 
 struct GsAnimReformConfig {
     float lifetime = 2.0f;
-    float speed = 1.0f;
 };
 
 struct GsAnimationData {

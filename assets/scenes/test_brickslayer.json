@@ -145,10 +145,9 @@
         "radius": 50
       },
       "lifetime": 5,
-      "loop": false,
+      "loop": true,
       "reform": {
-        "lifetime": 5,
-        "speed": 1
+        "lifetime": 5
       }
     },
     {
@@ -162,14 +161,15 @@
         ],
         "radius": 50
       },
-      "lifetime": 2.5,
-      "loop": false,
-      "reform": {
-        "lifetime": 5,
-        "speed": 1
-      },
+      "lifetime": 5,
+      "loop": true,
       "params": {
-        "expansion": 30
+        "expansion": 10,
+        "rotation_easing": "ease_in",
+        "expansion_easing": "ease_in"
+      },
+      "reform": {
+        "lifetime": 5
       }
     }
   ],

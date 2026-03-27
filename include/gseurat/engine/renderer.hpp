@@ -90,7 +90,6 @@ public:
     // Scene-placed animations (with loop support)
     struct ReformConfig {
         float lifetime = 2.0f;
-        float speed = 1.0f;
     };
     struct SceneAnimation {
         std::string effect;

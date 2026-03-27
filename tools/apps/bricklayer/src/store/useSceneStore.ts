@@ -753,7 +753,6 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
       },
       reform_enabled: false,
       reform_lifetime: 2,
-      reform_speed: 1,
     };
     set({ gsAnimations: [...get().gsAnimations, anim], isDirty: true });
   },

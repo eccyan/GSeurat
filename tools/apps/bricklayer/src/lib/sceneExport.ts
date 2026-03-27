@@ -225,7 +225,7 @@ export function exportSceneJson(state: SceneStoreState): object {
       if (p.pulse_frequency !== 4) params.pulse_frequency = p.pulse_frequency;
       if (Object.keys(params).length > 0) out.params = params;
       if (a.reform_enabled) {
-        out.reform = { lifetime: a.reform_lifetime, speed: a.reform_speed };
+        out.reform = { lifetime: a.reform_lifetime };
       }
       return out;
     });

@@ -560,7 +560,6 @@ GsAnimationData SceneLoader::parse_gs_animation(const nlohmann::json& j) {
         GsAnimReformConfig reform;
         const auto& r = j["reform"];
         reform.lifetime = r.value("lifetime", 2.0f);
-        reform.speed = r.value("speed", 1.0f);
         anim.reform = reform;
     }
 
@@ -615,7 +614,6 @@ nlohmann::json SceneLoader::gs_animation_json(const GsAnimationData& anim) {
     if (anim.reform) {
         nlohmann::json reform;
         reform["lifetime"] = anim.reform->lifetime;
-        reform["speed"] = anim.reform->speed;
         j["reform"] = reform;
     }
 

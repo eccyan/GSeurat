@@ -933,11 +933,6 @@ function GsAnimationProperties({ anim }: { anim: GsAnimationGroupData }) {
             <NumberInput value={anim.reform_lifetime} min={0.1} step={0.5}
               onChange={(v) => update(anim.id, { reform_lifetime: v })} style={styles.input} />
           </div>
-          <div style={styles.section}>
-            <span style={styles.label}>Reform Speed</span>
-            <NumberInput value={anim.reform_speed} min={0.01} step={0.1}
-              onChange={(v) => update(anim.id, { reform_speed: v })} style={styles.input} />
-          </div>
         </>
       )}
 
