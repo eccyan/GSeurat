@@ -864,11 +864,28 @@ function ParamRow({ label, value, onChange, min, max, step, easing, onEasingChan
       <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
         <span style={{ fontSize: 11, minWidth: 60, color: '#aaa' }}>{label}</span>
         {hint && (
-          <span title={hint} style={{
-            fontSize: 9, color: '#666', cursor: 'help', width: 12, height: 12,
+          <span style={{
+            position: 'relative', fontSize: 9, color: '#666', cursor: 'help', width: 12, height: 12,
             display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
             border: '1px solid #555', borderRadius: '50%', flexShrink: 0,
-          }}>?</span>
+          }}
+            onMouseEnter={(e) => {
+              const tip = e.currentTarget.querySelector('[data-tip]') as HTMLElement;
+              if (tip) tip.style.display = 'block';
+            }}
+            onMouseLeave={(e) => {
+              const tip = e.currentTarget.querySelector('[data-tip]') as HTMLElement;
+              if (tip) tip.style.display = 'none';
+            }}
+          >
+            ?
+            <span data-tip="" style={{
+              display: 'none', position: 'absolute', bottom: '100%', left: '50%', transform: 'translateX(-50%)',
+              marginBottom: 4, padding: '4px 8px', background: '#111', color: '#ccc', fontSize: 10,
+              borderRadius: 4, whiteSpace: 'nowrap', zIndex: 100, boxShadow: '0 2px 8px rgba(0,0,0,0.5)',
+              pointerEvents: 'none',
+            }}>{hint}</span>
+          </span>
         )}
         <NumberInput value={value} min={min} max={max} step={step ?? 0.1}
           onChange={onChange} style={{ flex: 1, maxWidth: 80, padding: '3px 5px', background: '#2a2a4a', border: '1px solid #444', borderRadius: 4, color: '#ddd', fontSize: 12 }} />
