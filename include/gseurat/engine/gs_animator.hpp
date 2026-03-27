@@ -28,7 +28,19 @@ struct GsAnimRegion {
     glm::vec3 half_extents{5.0f};    // for Box
 };
 
-enum class GsEasing { Linear, EaseIn, EaseOut, EaseInOut };
+enum class GsEasing {
+    Linear,
+    InQuad, OutQuad, InOutQuad,
+    InCubic, OutCubic, InOutCubic,
+    InQuart, OutQuart, InOutQuart,
+    InQuint, OutQuint, InOutQuint,
+    InSine, OutSine, InOutSine,
+    InExpo, OutExpo, InOutExpo,
+    InCirc, OutCirc, InOutCirc,
+    InBack, OutBack, InOutBack,
+    InElastic, OutElastic, InOutElastic,
+    InBounce, OutBounce, InOutBounce,
+};
 
 float apply_easing(float t, GsEasing easing);
 

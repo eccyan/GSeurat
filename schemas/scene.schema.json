@@ -223,8 +223,21 @@
     },
     "easing": {
       "type": "string",
-      "enum": ["linear", "ease_in", "ease_out", "ease_in_out"],
-      "description": "Easing curve: linear (default), ease_in (t²), ease_out (1-(1-t)²), ease_in_out (smoothstep)"
+      "enum": [
+        "linear",
+        "in_quad", "out_quad", "in_out_quad",
+        "in_cubic", "out_cubic", "in_out_cubic",
+        "in_quart", "out_quart", "in_out_quart",
+        "in_quint", "out_quint", "in_out_quint",
+        "in_sine", "out_sine", "in_out_sine",
+        "in_expo", "out_expo", "in_out_expo",
+        "in_circ", "out_circ", "in_out_circ",
+        "in_back", "out_back", "in_out_back",
+        "in_elastic", "out_elastic", "in_out_elastic",
+        "in_bounce", "out_bounce", "in_out_bounce",
+        "ease_in", "ease_out", "ease_in_out"
+      ],
+      "description": "Easing curve (see easings.net). Format: {direction}_{type}. Aliases: ease_in=in_quad, ease_out=out_quad, ease_in_out=in_out_quad"
     },
     "animation_params": {
       "type": "object",

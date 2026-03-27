@@ -531,9 +531,36 @@ GsAnimationData SceneLoader::parse_gs_animation(const nlohmann::json& j) {
 
     // Animation parameters — lifetime-centric with per-parameter easing
     auto parse_easing = [](const std::string& s) -> GsEasing {
-        if (s == "ease_in")     return GsEasing::EaseIn;
-        if (s == "ease_out")    return GsEasing::EaseOut;
-        if (s == "ease_in_out") return GsEasing::EaseInOut;
+        if (s == "in_quad"      || s == "ease_in")     return GsEasing::InQuad;
+        if (s == "out_quad"     || s == "ease_out")    return GsEasing::OutQuad;
+        if (s == "in_out_quad"  || s == "ease_in_out") return GsEasing::InOutQuad;
+        if (s == "in_cubic")     return GsEasing::InCubic;
+        if (s == "out_cubic")    return GsEasing::OutCubic;
+        if (s == "in_out_cubic") return GsEasing::InOutCubic;
+        if (s == "in_quart")     return GsEasing::InQuart;
+        if (s == "out_quart")    return GsEasing::OutQuart;
+        if (s == "in_out_quart") return GsEasing::InOutQuart;
+        if (s == "in_quint")     return GsEasing::InQuint;
+        if (s == "out_quint")    return GsEasing::OutQuint;
+        if (s == "in_out_quint") return GsEasing::InOutQuint;
+        if (s == "in_sine")      return GsEasing::InSine;
+        if (s == "out_sine")     return GsEasing::OutSine;
+        if (s == "in_out_sine")  return GsEasing::InOutSine;
+        if (s == "in_expo")      return GsEasing::InExpo;
+        if (s == "out_expo")     return GsEasing::OutExpo;
+        if (s == "in_out_expo")  return GsEasing::InOutExpo;
+        if (s == "in_circ")      return GsEasing::InCirc;
+        if (s == "out_circ")     return GsEasing::OutCirc;
+        if (s == "in_out_circ")  return GsEasing::InOutCirc;
+        if (s == "in_back")      return GsEasing::InBack;
+        if (s == "out_back")     return GsEasing::OutBack;
+        if (s == "in_out_back")  return GsEasing::InOutBack;
+        if (s == "in_elastic")      return GsEasing::InElastic;
+        if (s == "out_elastic")     return GsEasing::OutElastic;
+        if (s == "in_out_elastic")  return GsEasing::InOutElastic;
+        if (s == "in_bounce")       return GsEasing::InBounce;
+        if (s == "out_bounce")      return GsEasing::OutBounce;
+        if (s == "in_out_bounce")   return GsEasing::InOutBounce;
         return GsEasing::Linear;
     };
     if (j.contains("params")) {
@@ -585,10 +612,37 @@ nlohmann::json SceneLoader::gs_animation_json(const GsAnimationData& anim) {
     // Only write params if any differ from defaults
     auto easing_str = [](GsEasing e) -> std::string {
         switch (e) {
-            case GsEasing::EaseIn:    return "ease_in";
-            case GsEasing::EaseOut:   return "ease_out";
-            case GsEasing::EaseInOut: return "ease_in_out";
-            default:                  return "linear";
+            case GsEasing::InQuad:      return "in_quad";
+            case GsEasing::OutQuad:     return "out_quad";
+            case GsEasing::InOutQuad:   return "in_out_quad";
+            case GsEasing::InCubic:     return "in_cubic";
+            case GsEasing::OutCubic:    return "out_cubic";
+            case GsEasing::InOutCubic:  return "in_out_cubic";
+            case GsEasing::InQuart:     return "in_quart";
+            case GsEasing::OutQuart:    return "out_quart";
+            case GsEasing::InOutQuart:  return "in_out_quart";
+            case GsEasing::InQuint:     return "in_quint";
+            case GsEasing::OutQuint:    return "out_quint";
+            case GsEasing::InOutQuint:  return "in_out_quint";
+            case GsEasing::InSine:      return "in_sine";
+            case GsEasing::OutSine:     return "out_sine";
+            case GsEasing::InOutSine:   return "in_out_sine";
+            case GsEasing::InExpo:      return "in_expo";
+            case GsEasing::OutExpo:     return "out_expo";
+            case GsEasing::InOutExpo:   return "in_out_expo";
+            case GsEasing::InCirc:      return "in_circ";
+            case GsEasing::OutCirc:     return "out_circ";
+            case GsEasing::InOutCirc:   return "in_out_circ";
+            case GsEasing::InBack:      return "in_back";
+            case GsEasing::OutBack:     return "out_back";
+            case GsEasing::InOutBack:   return "in_out_back";
+            case GsEasing::InElastic:   return "in_elastic";
+            case GsEasing::OutElastic:  return "out_elastic";
+            case GsEasing::InOutElastic:return "in_out_elastic";
+            case GsEasing::InBounce:    return "in_bounce";
+            case GsEasing::OutBounce:   return "out_bounce";
+            case GsEasing::InOutBounce: return "in_out_bounce";
+            default:                    return "linear";
         }
     };
     const auto& p = anim.params;

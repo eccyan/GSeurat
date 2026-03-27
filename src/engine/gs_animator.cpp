@@ -5,14 +5,81 @@
 
 namespace gseurat {
 
+static constexpr float kPI = 3.14159265358979323846f;
+static constexpr float kC1 = 1.70158f;
+static constexpr float kC2 = kC1 * 1.525f;
+static constexpr float kC3 = kC1 + 1.0f;
+static constexpr float kC4 = (2.0f * kPI) / 3.0f;
+static constexpr float kC5 = (2.0f * kPI) / 4.5f;
+
+static float bounce_out(float t) {
+    constexpr float n1 = 7.5625f, d1 = 2.75f;
+    if (t < 1.0f / d1)          return n1 * t * t;
+    if (t < 2.0f / d1) { t -= 1.5f / d1;   return n1 * t * t + 0.75f; }
+    if (t < 2.5f / d1) { t -= 2.25f / d1;  return n1 * t * t + 0.9375f; }
+    t -= 2.625f / d1; return n1 * t * t + 0.984375f;
+}
+
 float apply_easing(float t, GsEasing easing) {
     t = std::clamp(t, 0.0f, 1.0f);
     switch (easing) {
-        case GsEasing::EaseIn:    return t * t;
-        case GsEasing::EaseOut:   return 1.0f - (1.0f - t) * (1.0f - t);
-        case GsEasing::EaseInOut: return t * t * (3.0f - 2.0f * t);
-        default:                  return t;
+        case GsEasing::Linear:      return t;
+        // Quad
+        case GsEasing::InQuad:      return t * t;
+        case GsEasing::OutQuad:     return 1.0f - (1.0f - t) * (1.0f - t);
+        case GsEasing::InOutQuad:   return t < 0.5f ? 2.0f * t * t : 1.0f - std::pow(-2.0f * t + 2.0f, 2.0f) / 2.0f;
+        // Cubic
+        case GsEasing::InCubic:     return t * t * t;
+        case GsEasing::OutCubic:    return 1.0f - std::pow(1.0f - t, 3.0f);
+        case GsEasing::InOutCubic:  return t < 0.5f ? 4.0f * t * t * t : 1.0f - std::pow(-2.0f * t + 2.0f, 3.0f) / 2.0f;
+        // Quart
+        case GsEasing::InQuart:     return t * t * t * t;
+        case GsEasing::OutQuart:    return 1.0f - std::pow(1.0f - t, 4.0f);
+        case GsEasing::InOutQuart:  return t < 0.5f ? 8.0f * t * t * t * t : 1.0f - std::pow(-2.0f * t + 2.0f, 4.0f) / 2.0f;
+        // Quint
+        case GsEasing::InQuint:     return t * t * t * t * t;
+        case GsEasing::OutQuint:    return 1.0f - std::pow(1.0f - t, 5.0f);
+        case GsEasing::InOutQuint:  return t < 0.5f ? 16.0f * t * t * t * t * t : 1.0f - std::pow(-2.0f * t + 2.0f, 5.0f) / 2.0f;
+        // Sine
+        case GsEasing::InSine:      return 1.0f - std::cos(t * kPI / 2.0f);
+        case GsEasing::OutSine:     return std::sin(t * kPI / 2.0f);
+        case GsEasing::InOutSine:   return -(std::cos(kPI * t) - 1.0f) / 2.0f;
+        // Expo
+        case GsEasing::InExpo:      return t == 0.0f ? 0.0f : std::pow(2.0f, 10.0f * t - 10.0f);
+        case GsEasing::OutExpo:     return t == 1.0f ? 1.0f : 1.0f - std::pow(2.0f, -10.0f * t);
+        case GsEasing::InOutExpo:
+            if (t == 0.0f || t == 1.0f) return t;
+            return t < 0.5f ? std::pow(2.0f, 20.0f * t - 10.0f) / 2.0f
+                            : (2.0f - std::pow(2.0f, -20.0f * t + 10.0f)) / 2.0f;
+        // Circ
+        case GsEasing::InCirc:      return 1.0f - std::sqrt(1.0f - t * t);
+        case GsEasing::OutCirc:     return std::sqrt(1.0f - (t - 1.0f) * (t - 1.0f));
+        case GsEasing::InOutCirc:
+            return t < 0.5f ? (1.0f - std::sqrt(1.0f - std::pow(2.0f * t, 2.0f))) / 2.0f
+                            : (std::sqrt(1.0f - std::pow(-2.0f * t + 2.0f, 2.0f)) + 1.0f) / 2.0f;
+        // Back
+        case GsEasing::InBack:      return kC3 * t * t * t - kC1 * t * t;
+        case GsEasing::OutBack:     { float u = t - 1.0f; return 1.0f + kC3 * u * u * u + kC1 * u * u; }
+        case GsEasing::InOutBack:
+            return t < 0.5f ? (std::pow(2.0f * t, 2.0f) * ((kC2 + 1.0f) * 2.0f * t - kC2)) / 2.0f
+                            : (std::pow(2.0f * t - 2.0f, 2.0f) * ((kC2 + 1.0f) * (t * 2.0f - 2.0f) + kC2) + 2.0f) / 2.0f;
+        // Elastic
+        case GsEasing::InElastic:
+            return t == 0.0f || t == 1.0f ? t : -std::pow(2.0f, 10.0f * t - 10.0f) * std::sin((10.0f * t - 10.75f) * kC4);
+        case GsEasing::OutElastic:
+            return t == 0.0f || t == 1.0f ? t : std::pow(2.0f, -10.0f * t) * std::sin((10.0f * t - 0.75f) * kC4) + 1.0f;
+        case GsEasing::InOutElastic:
+            if (t == 0.0f || t == 1.0f) return t;
+            return t < 0.5f ? -(std::pow(2.0f, 20.0f * t - 10.0f) * std::sin((20.0f * t - 11.125f) * kC5)) / 2.0f
+                            : (std::pow(2.0f, -20.0f * t + 10.0f) * std::sin((20.0f * t - 11.125f) * kC5)) / 2.0f + 1.0f;
+        // Bounce
+        case GsEasing::InBounce:    return 1.0f - bounce_out(1.0f - t);
+        case GsEasing::OutBounce:   return bounce_out(t);
+        case GsEasing::InOutBounce:
+            return t < 0.5f ? (1.0f - bounce_out(1.0f - 2.0f * t)) / 2.0f
+                            : (1.0f + bounce_out(2.0f * t - 1.0f)) / 2.0f;
     }
+    return t;
 }
 
 static uint32_t xorshift(uint32_t& state) {
