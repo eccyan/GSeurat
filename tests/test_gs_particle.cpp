@@ -392,7 +392,7 @@ int main() {
         anim.region.center = glm::vec3(5.0f, 3.0f, 7.0f);
         anim.lifetime = 2.0f;
         anim.loop = true;
-        anim.reform = GsAnimReformConfig{3.0f, 0.5f};
+        anim.reform = GsAnimReformConfig{3.0f};
         data.gs_animations.push_back(anim);
 
         auto j = SceneLoader::to_json(data);
@@ -401,7 +401,6 @@ int main() {
         assert(rt.gs_animations.size() == 1);
         assert(rt.gs_animations[0].reform.has_value());
         assert(std::fabs(rt.gs_animations[0].reform->lifetime - 3.0f) < 0.01f);
-        assert(std::fabs(rt.gs_animations[0].reform->speed - 0.5f) < 0.01f);
 
         // Without reform
         GsAnimationData anim2;

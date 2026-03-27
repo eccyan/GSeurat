@@ -79,17 +79,64 @@ def migrate_npc(npc: dict) -> dict:
 
 
 def migrate_animation(anim: dict) -> dict:
-    """Move top-level param fields into nested params block."""
+    """Move top-level param fields into nested params block and convert to lifetime-centric."""
     out = copy.deepcopy(anim)
-    params = out.pop("params", {})
+    old_params = out.pop("params", {})
 
     # Move top-level param keys into params block
     for key in list(out.keys()):
         if key in ANIM_PARAM_KEYS:
-            params[key] = out.pop(key)
+            old_params[key] = out.pop(key)
 
-    if params:
-        out["params"] = params
+    # Convert old params to new lifetime-centric format
+    new_params = {}
+    lifetime = out.get("lifetime", 3.0)
+
+    # orbit_speed -> rotations (approximate: rotations ~ orbit_speed * lifetime / (2*pi))
+    if "orbit_speed" in old_params:
+        os = old_params["orbit_speed"]
+        new_params["rotations"] = round(os * lifetime * 2.0 / 6.2832, 2)
+
+    # orbit_acceleration -> rotations_easing
+    if "orbit_acceleration" in old_params:
+        oa = old_params["orbit_acceleration"]
+        if oa > 0:
+            new_params["rotations_easing"] = "ease_in"
+        elif oa < 0:
+            new_params["rotations_easing"] = "ease_out"
+
+    # expansion (keep as-is, already a multiplier)
+    if "expansion" in old_params:
+        new_params["expansion"] = old_params["expansion"]
+
+    # height_rise (keep as-is)
+    if "height_rise" in old_params:
+        new_params["height_rise"] = old_params["height_rise"]
+
+    # opacity_fade -> opacity_end (inverted: fade=1 means end=0)
+    if "opacity_fade" in old_params:
+        new_params["opacity_end"] = round(max(0, 1.0 - old_params["opacity_fade"]), 2)
+
+    # scale_shrink -> scale_end (inverted: shrink=1 means end=0)
+    if "scale_shrink" in old_params:
+        new_params["scale_end"] = round(max(0, 1.0 - old_params["scale_shrink"]), 2)
+
+    # velocity_scale -> velocity
+    if "velocity_scale" in old_params:
+        new_params["velocity"] = old_params["velocity_scale"]
+
+    # noise_amplitude -> noise
+    if "noise_amplitude" in old_params:
+        new_params["noise"] = old_params["noise_amplitude"]
+
+    # gravity (keep as-is)
+    if "gravity" in old_params:
+        new_params["gravity"] = old_params["gravity"]
+
+    # speed -> drop (absorbed into lifetime-centric model)
+
+    if new_params:
+        out["params"] = new_params
     return out
 
 

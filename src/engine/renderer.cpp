@@ -802,12 +802,9 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
                                 parse_effect_name(sa.effect), sa.lifetime, sa.params);
                         } else if (!gs_animator_.has_group(sa.group_id)) {
                             if (sa.reform) {
-                                GsAnimParams reform_params;
-                                reform_params.speed = sa.reform->speed;
-                                reform_params.velocity_scale = sa.reform->speed;
                                 sa.reform_group_id = gs_animator_.tag_region(
                                     gs_scene_buffer_, sa.region,
-                                    GsAnimEffect::Reform, sa.reform->lifetime, reform_params);
+                                    GsAnimEffect::Reform, sa.reform->lifetime);
                                 sa.phase = Phase::Reforming;
                             } else if (sa.loop) {
                                 sa.group_id = gs_animator_.tag_region(

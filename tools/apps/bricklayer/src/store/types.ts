@@ -163,17 +163,24 @@ export type SettingsCategory =
   | 'vfx'
   | 'backgrounds';
 
+export type GsEasing = 'linear' | 'ease_in' | 'ease_out' | 'ease_in_out';
+
 export interface GsAnimParams {
-  speed: number;
-  gravity: [number, number, number];
-  velocity_scale: number;
-  noise_amplitude: number;
-  orbit_speed: number;
-  orbit_acceleration: number;
+  rotations: number;
+  rotations_easing: GsEasing;
   expansion: number;
+  expansion_easing: GsEasing;
   height_rise: number;
-  opacity_fade: number;
-  scale_shrink: number;
+  height_easing: GsEasing;
+  opacity_end: number;
+  opacity_easing: GsEasing;
+  scale_end: number;
+  scale_easing: GsEasing;
+  velocity: number;
+  gravity: [number, number, number];
+  noise: number;
+  wave_speed: number;
+  pulse_frequency: number;
 }
 
 export interface GsAnimationGroupData {
@@ -188,7 +195,6 @@ export interface GsAnimationGroupData {
   params: GsAnimParams;
   reform_enabled: boolean;
   reform_lifetime: number;
-  reform_speed: number;
 }
 
 export interface GsParticleEmitterData {
