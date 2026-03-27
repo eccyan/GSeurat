@@ -5,49 +5,7 @@ import { NumberInput } from '../components/NumberInput.js';
 import { Vec3Input } from '../components/Vec3Input.js';
 import { emitterPresets, defaultEmitterConfig } from '../data/emitterPresets.js';
 import type { EmitterConfig } from '../data/emitterPresets.js';
-
-// ── Theme (matches App.tsx) ──
-
-const T = {
-  panel: '#161628',
-  surface: '#22223a',
-  border: '#2a2a44',
-  text: '#c8c8d8',
-  textDim: '#7878a0',
-  textMuted: '#50506a',
-  accent: '#6366f1',
-  danger: '#ef4444',
-  layerEmitter: '#ec4899',
-  layerAnimation: '#06b6d4',
-  layerLight: '#eab308',
-  phaseAnticipation: '#f59e0b',
-  phaseImpact: '#ef4444',
-  phaseResidual: '#3b82f6',
-};
-
-const input: React.CSSProperties = {
-  padding: '4px 8px', background: T.surface, border: `1px solid ${T.border}`,
-  borderRadius: 4, color: T.text, fontSize: 12, outline: 'none', width: '100%',
-};
-
-const selectStyle: React.CSSProperties = {
-  ...input, cursor: 'pointer', appearance: 'none' as const,
-  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5'%3E%3Cpath d='M0 0l4 5 4-5z' fill='%237878a0'/%3E%3C/svg%3E")`,
-  backgroundRepeat: 'no-repeat', backgroundPosition: 'right 8px center', paddingRight: 24,
-};
-
-const sectionLabel: React.CSSProperties = {
-  fontSize: 10, color: T.textMuted, textTransform: 'uppercase', letterSpacing: 1,
-  display: 'block', marginBottom: 4,
-};
-
-const layerColor = (type: LayerType) =>
-  type === 'emitter' ? T.layerEmitter : type === 'animation' ? T.layerAnimation : T.layerLight;
-
-const phaseColor = (phase: Phase) =>
-  phase === 'anticipation' ? T.phaseAnticipation
-    : phase === 'impact' ? T.phaseImpact
-    : phase === 'residual' ? T.phaseResidual : T.textMuted;
+import { T, inputStyle, selectStyle, sectionLabel, layerColor, phaseColor } from '../styles/theme.js';
 
 // ── Easing helpers ──
 
@@ -115,7 +73,7 @@ function ParamRow({ label, value, onChange, min, max, step, easing, onEasingChan
   return (
     <div style={{ marginBottom: 6 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-        <span style={{ fontSize: 11, minWidth: 60, color: '#aaa' }}>{label}</span>
+        <span style={{ fontSize: 11, minWidth: 60, color: T.textDim }}>{label}</span>
         {hint && (
           <span style={{
             position: 'relative', fontSize: 9, color: '#666', cursor: 'help', width: 12, height: 12,
@@ -145,7 +103,7 @@ function ParamRow({ label, value, onChange, min, max, step, easing, onEasingChan
         {easingParts && onEasingChange && (
           <>
             <select
-              style={{ width: 62, padding: '2px 2px', background: '#2a2a4a', border: '1px solid #444', borderRadius: 4, color: '#999', fontSize: 10 }}
+              style={{ width: 62, padding: '2px 2px', background: T.surface, border: `1px solid ${T.border}`, borderRadius: 4, color: T.textDim, fontSize: 10 }}
               value={easingParts.type}
               onChange={(e) => onEasingChange(composeEasing(e.target.value, easingParts.dir))}
             >
@@ -153,7 +111,7 @@ function ParamRow({ label, value, onChange, min, max, step, easing, onEasingChan
             </select>
             {easingParts.type !== 'linear' && (
               <select
-                style={{ width: 46, padding: '2px 2px', background: '#2a2a4a', border: '1px solid #444', borderRadius: 4, color: '#999', fontSize: 10 }}
+                style={{ width: 46, padding: '2px 2px', background: T.surface, border: `1px solid ${T.border}`, borderRadius: 4, color: T.textDim, fontSize: 10 }}
                 value={easingParts.dir}
                 onChange={(e) => onEasingChange(composeEasing(easingParts.type, e.target.value))}
               >
@@ -221,12 +179,12 @@ function EmitterEditor({ layer, update }: {
         <div style={{ flex: 1 }}>
           <label style={sectionLabel}>Spawn Rate</label>
           <NumberInput value={cfg.spawn_rate} min={0} step={5}
-            onChange={(v) => set({ spawn_rate: v })} style={{ ...input, width: 'auto' }} />
+            onChange={(v) => set({ spawn_rate: v })} style={{ ...inputStyle, width: 'auto' }} />
         </div>
         <div style={{ flex: 1 }}>
           <label style={sectionLabel}>Emission</label>
           <NumberInput value={cfg.emission} min={0} step={0.1}
-            onChange={(v) => set({ emission: v })} style={{ ...input, width: 'auto' }} />
+            onChange={(v) => set({ emission: v })} style={{ ...inputStyle, width: 'auto' }} />
         </div>
       </div>
 
@@ -234,12 +192,12 @@ function EmitterEditor({ layer, update }: {
         <div style={{ flex: 1 }}>
           <label style={sectionLabel}>Lifetime Min</label>
           <NumberInput value={cfg.lifetime_min} min={0} step={0.1}
-            onChange={(v) => set({ lifetime_min: v })} style={{ ...input, width: 'auto' }} />
+            onChange={(v) => set({ lifetime_min: v })} style={{ ...inputStyle, width: 'auto' }} />
         </div>
         <div style={{ flex: 1 }}>
           <label style={sectionLabel}>Lifetime Max</label>
           <NumberInput value={cfg.lifetime_max} min={0} step={0.1}
-            onChange={(v) => set({ lifetime_max: v })} style={{ ...input, width: 'auto' }} />
+            onChange={(v) => set({ lifetime_max: v })} style={{ ...inputStyle, width: 'auto' }} />
         </div>
       </div>
 
@@ -281,19 +239,19 @@ function EmitterEditor({ layer, update }: {
       <div>
         <label style={sectionLabel}>Scale End Factor</label>
         <NumberInput value={cfg.scale_end_factor} min={0} step={0.1}
-          onChange={(v) => set({ scale_end_factor: v })} style={{ ...input, width: 'auto' }} />
+          onChange={(v) => set({ scale_end_factor: v })} style={{ ...inputStyle, width: 'auto' }} />
       </div>
 
       <div style={{ display: 'flex', gap: 8 }}>
         <div style={{ flex: 1 }}>
           <label style={sectionLabel}>Opacity Start</label>
           <NumberInput value={cfg.opacity_start} min={0} max={1} step={0.05}
-            onChange={(v) => set({ opacity_start: v })} style={{ ...input, width: 'auto' }} />
+            onChange={(v) => set({ opacity_start: v })} style={{ ...inputStyle, width: 'auto' }} />
         </div>
         <div style={{ flex: 1 }}>
           <label style={sectionLabel}>Opacity End</label>
           <NumberInput value={cfg.opacity_end} min={0} max={1} step={0.05}
-            onChange={(v) => set({ opacity_end: v })} style={{ ...input, width: 'auto' }} />
+            onChange={(v) => set({ opacity_end: v })} style={{ ...inputStyle, width: 'auto' }} />
         </div>
       </div>
 
@@ -311,7 +269,7 @@ function EmitterEditor({ layer, update }: {
       <div>
         <label style={sectionLabel}>Burst Duration</label>
         <NumberInput value={cfg.burst_duration} min={0} step={0.1}
-          onChange={(v) => set({ burst_duration: v })} style={{ ...input, width: 'auto' }} />
+          onChange={(v) => set({ burst_duration: v })} style={{ ...inputStyle, width: 'auto' }} />
       </div>
     </>
   );
@@ -456,7 +414,7 @@ function AnimationEditor({ layer, update }: {
         <div>
           <label style={sectionLabel}>Reform Lifetime</label>
           <NumberInput value={reformLifetime} min={0.1} step={0.1}
-            onChange={(v) => setAnim({ reform_lifetime: v })} style={{ ...input, width: 'auto' }} />
+            onChange={(v) => setAnim({ reform_lifetime: v })} style={{ ...inputStyle, width: 'auto' }} />
         </div>
       )}
     </>
@@ -483,13 +441,13 @@ function LightEditor({ layer, update }: {
         <div style={{ flex: 1 }}>
           <label style={sectionLabel}>Intensity</label>
           <NumberInput value={light.intensity} min={0} step={1}
-            onChange={(v) => setLight({ intensity: v })} style={{ ...input, width: 'auto' }} />
+            onChange={(v) => setLight({ intensity: v })} style={{ ...inputStyle, width: 'auto' }} />
         </div>
       </div>
       <div>
         <label style={sectionLabel}>Radius</label>
         <NumberInput value={light.radius} min={0} step={5}
-          onChange={(v) => setLight({ radius: v })} style={{ ...input, width: 'auto' }} />
+          onChange={(v) => setLight({ radius: v })} style={{ ...inputStyle, width: 'auto' }} />
       </div>
     </>
   );
@@ -543,7 +501,7 @@ export function LayerProperties() {
       {/* Name */}
       <div>
         <label style={sectionLabel}>Name</label>
-        <input type="text" value={layer.name} onChange={(e) => update({ name: e.target.value })} style={input} />
+        <input type="text" value={layer.name} onChange={(e) => update({ name: e.target.value })} style={inputStyle} />
       </div>
 
       {/* Type */}
@@ -578,12 +536,12 @@ export function LayerProperties() {
         <div style={{ flex: 1 }}>
           <label style={sectionLabel}>Start (s)</label>
           <NumberInput value={layer.start} min={0} step={0.1}
-            onChange={(v) => update({ start: v })} style={{ ...input, width: 'auto' }} />
+            onChange={(v) => update({ start: v })} style={{ ...inputStyle, width: 'auto' }} />
         </div>
         <div style={{ flex: 1 }}>
           <label style={sectionLabel}>Duration (s)</label>
           <NumberInput value={layer.duration} min={0.01} step={0.1}
-            onChange={(v) => update({ duration: v })} style={{ ...input, width: 'auto' }} />
+            onChange={(v) => update({ duration: v })} style={{ ...inputStyle, width: 'auto' }} />
         </div>
       </div>
 
