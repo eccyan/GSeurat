@@ -307,8 +307,6 @@ function Timeline() {
   }
 
   const dur = preset.duration;
-  const pxPerSec = 120;
-  const totalWidth = dur * pxPerSec;
   const antPct = (preset.phases.anticipation / dur) * 100;
   const impPct = ((preset.phases.impact - preset.phases.anticipation) / dur) * 100;
   const resPct = 100 - antPct - impPct;
@@ -349,17 +347,55 @@ function Timeline() {
         }}>+ Light</button>
       </div>
 
+      {/* Scrubber bar — click to seek */}
+      <div
+        style={{ height: 12, background: T.bg, cursor: 'pointer', position: 'relative', borderBottom: `1px solid ${T.border}` }}
+        onClick={(e) => {
+          const rect = e.currentTarget.getBoundingClientRect();
+          const t = ((e.clientX - rect.left) / rect.width) * dur;
+          setPlaybackTime(Math.max(0, Math.min(dur, t)));
+        }}
+        onPointerDown={(e) => {
+          e.preventDefault();
+          const el = e.currentTarget;
+          const rect = el.getBoundingClientRect();
+          const move = (ev: PointerEvent) => {
+            const t = ((ev.clientX - rect.left) / rect.width) * dur;
+            setPlaybackTime(Math.max(0, Math.min(dur, t)));
+          };
+          const up = () => {
+            window.removeEventListener('pointermove', move);
+            window.removeEventListener('pointerup', up);
+          };
+          window.addEventListener('pointermove', move);
+          window.addEventListener('pointerup', up);
+          move(e.nativeEvent);
+        }}
+      >
+        {/* Phase colors in scrubber */}
+        <div style={{ display: 'flex', height: '100%' }}>
+          <div style={{ width: `${antPct}%`, background: `${T.phaseAnticipation}30` }} />
+          <div style={{ width: `${impPct}%`, background: `${T.phaseImpact}30` }} />
+          <div style={{ width: `${resPct}%`, background: `${T.phaseResidual}30` }} />
+        </div>
+        {/* Scrubber playhead */}
+        <div style={{
+          position: 'absolute', top: 0, bottom: 0, width: 2, background: '#fff',
+          left: `${(playbackTime / dur) * 100}%`, pointerEvents: 'none',
+        }} />
+      </div>
+
       {/* Timeline area */}
-      <div style={{ flex: 1, overflowX: 'auto', overflowY: 'auto', position: 'relative' }}>
-        {/* Phase background */}
-        <div style={{ display: 'flex', height: '100%', position: 'absolute', top: 0, left: 0, width: totalWidth, zIndex: 0 }}>
+      <div style={{ flex: 1, overflowY: 'auto', position: 'relative' }}>
+        {/* Phase background — use 100% width, not fixed px */}
+        <div style={{ display: 'flex', height: '100%', position: 'absolute', top: 0, left: 0, width: '100%', zIndex: 0 }}>
           <div style={{ width: `${antPct}%`, background: `${T.phaseAnticipation}08`, borderRight: `1px dashed ${T.phaseAnticipation}30` }} />
           <div style={{ width: `${impPct}%`, background: `${T.phaseImpact}08`, borderRight: `1px dashed ${T.phaseImpact}30` }} />
           <div style={{ width: `${resPct}%`, background: `${T.phaseResidual}08` }} />
         </div>
 
         {/* Phase labels */}
-        <div style={{ display: 'flex', height: 16, position: 'relative', zIndex: 1, width: totalWidth }}>
+        <div style={{ display: 'flex', height: 16, position: 'relative', zIndex: 1 }}>
           <div style={{ width: `${antPct}%`, textAlign: 'center', fontSize: 8, color: T.phaseAnticipation, lineHeight: '16px', letterSpacing: 1, textTransform: 'uppercase' }}>
             Anticipation
           </div>
@@ -372,7 +408,7 @@ function Timeline() {
         </div>
 
         {/* Layer tracks with drag handles */}
-        <div ref={tracksRef} style={{ position: 'relative', zIndex: 1, padding: '2px 0', width: totalWidth }}>
+        <div ref={tracksRef} style={{ position: 'relative', zIndex: 1, padding: '2px 0' }}>
           {preset.layers.map((layer) => {
             const left = (layer.start / dur) * 100;
             const width = (layer.duration / dur) * 100;
@@ -477,7 +513,7 @@ function Timeline() {
         </div>
 
         {/* Time ruler ticks */}
-        <div style={{ position: 'absolute', top: 0, left: 0, width: totalWidth, height: '100%', pointerEvents: 'none', zIndex: 0 }}>
+        <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 0 }}>
           {Array.from({ length: Math.ceil(dur) + 1 }, (_, i) => (
             <div key={i} style={{
               position: 'absolute', left: `${(i / dur) * 100}%`, top: 0, bottom: 0,
