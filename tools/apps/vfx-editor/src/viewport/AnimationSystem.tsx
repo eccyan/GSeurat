@@ -102,11 +102,17 @@ export function AnimationSystem({ scenePoints, onUpdateGeometry }: {
         const effect = EFFECT_MAP[(anim.effect as string) ?? 'detach'] ?? 0;
         const params = anim.params as Record<string, unknown> | undefined;
 
+        // Use large lifetime for continuous effects (wave, pulse, orbit)
+        // so particles don't "die" — the layer timing handles duration
+        const continuousEffects = ['wave', 'pulse', 'orbit', 'vortex'];
+        const effectName = (anim.effect as string) ?? 'detach';
+        const lifetime = continuousEffects.includes(effectName) ? 9999 : layer.duration;
+
         let groupId: number;
         if (params && Object.keys(params).length > 0) {
-          groupId = animator.tagSphereWithParams(0, 0, 0, 999, effect, layer.duration, params);
+          groupId = animator.tagSphereWithParams(0, 0, 0, 999, effect, lifetime, params);
         } else {
-          groupId = animator.tagSphere(0, 0, 0, 999, effect, layer.duration);
+          groupId = animator.tagSphere(0, 0, 0, 999, effect, lifetime);
         }
         animators.set(layer.id, { animator, groupId });
       } else if (!isActive && hasAnimator) {
