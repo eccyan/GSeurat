@@ -1,52 +1,100 @@
 {
+  "version": 2,
   "ambient_color": [
     0.15,
     0.15,
     0.2,
     1
   ],
-  "static_lights": [
+  "lights": [
     {
-      "position": [
-        32,
-        32
-      ],
       "radius": 80,
-      "height": 20,
       "color": [
         1.0,
         0.95,
         0.8
       ],
-      "intensity": 3
+      "intensity": 3,
+      "position": [
+        32,
+        20,
+        32
+      ]
     },
     {
-      "position": [
-        20,
-        50
-      ],
       "radius": 60,
-      "height": 15,
       "color": [
         0.6,
         0.7,
         1.0
       ],
-      "intensity": 2
+      "intensity": 2,
+      "position": [
+        20,
+        15,
+        50
+      ]
     }
   ],
-  "player_position": [
-    0,
-    0,
-    0
+  "player": {
+    "position": [
+      0,
+      0,
+      0
+    ],
+    "tint": [
+      1,
+      1,
+      1,
+      1
+    ],
+    "facing": "down"
+  },
+  "particle_emitters": [
+    {
+      "preset": "spark_shower",
+      "position": [
+        32.0,
+        8.0,
+        32.0
+      ]
+    },
+    {
+      "preset": "dust_puff",
+      "position": [
+        20.0,
+        2.0,
+        50.0
+      ]
+    }
   ],
-  "player_tint": [
-    1,
-    1,
-    1,
-    1
-  ],
-  "player_facing": "down",
+  "gaussian_splat": {
+    "ply_file": "assets/maps/emissive_test.ply",
+    "camera": {
+      "position": [
+        32,
+        40,
+        80
+      ],
+      "target": [
+        32,
+        4,
+        32
+      ],
+      "fov": 45
+    },
+    "render_width": 320,
+    "render_height": 240,
+    "scale_multiplier": 1,
+    "background_image": "",
+    "parallax": {
+      "azimuth_range": 15,
+      "elevation_min": -5,
+      "elevation_max": 5,
+      "distance_range": 2,
+      "parallax_strength": 1
+    }
+  },
   "torch_emitter": {
     "spawn_rate": 0,
     "particle_lifetime_min": 0.5,
@@ -172,42 +220,5 @@
       0,
       0
     ]
-  },
-  "gs_particle_emitters": [
-    {
-      "preset": "spark_shower",
-      "position": [32.0, 8.0, 32.0]
-    },
-    {
-      "preset": "dust_puff",
-      "position": [20.0, 2.0, 50.0]
-    }
-  ],
-  "gaussian_splat": {
-    "ply_file": "assets/maps/emissive_test.ply",
-    "camera": {
-      "position": [
-        32,
-        40,
-        80
-      ],
-      "target": [
-        32,
-        4,
-        32
-      ],
-      "fov": 45
-    },
-    "render_width": 320,
-    "render_height": 240,
-    "scale_multiplier": 1,
-    "background_image": "",
-    "parallax": {
-      "azimuth_range": 15,
-      "elevation_min": -5,
-      "elevation_max": 5,
-      "distance_range": 2,
-      "parallax_strength": 1
-    }
   }
 }

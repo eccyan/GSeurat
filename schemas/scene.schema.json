@@ -1,0 +1,381 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/eccyan/GSeurat/schemas/scene.schema.json",
+  "title": "GSeurat Scene",
+  "description": "Scene file format for the GSeurat engine (v2)",
+  "type": "object",
+  "required": ["version"],
+  "properties": {
+    "version": {
+      "type": "integer",
+      "const": 2,
+      "description": "Scene format version"
+    },
+    "ambient_color": {
+      "$ref": "#/definitions/color4",
+      "description": "Global ambient light color [r, g, b, a]"
+    },
+    "god_rays_intensity": {
+      "type": "number",
+      "minimum": 0,
+      "description": "God rays volumetric light intensity (0 = off)"
+    },
+    "lights": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/light" },
+      "description": "Static scene lights (max 8)"
+    },
+    "player": {
+      "$ref": "#/definitions/player",
+      "description": "Player spawn configuration"
+    },
+    "npcs": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/npc" }
+    },
+    "portals": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/portal" }
+    },
+    "objects": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/placed_object" },
+      "description": "Placed PLY objects (merged into terrain at load)"
+    },
+    "particle_emitters": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/particle_emitter" },
+      "description": "Gaussian particle emitters"
+    },
+    "animations": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/animation" },
+      "description": "Gaussian animation effects on scene regions"
+    },
+    "gaussian_splat": {
+      "$ref": "#/definitions/gaussian_splat",
+      "description": "3D Gaussian Splatting configuration"
+    },
+    "collision": {
+      "$ref": "#/definitions/collision_grid"
+    },
+    "weather": {
+      "$ref": "#/definitions/weather"
+    },
+    "day_night": {
+      "$ref": "#/definitions/day_night"
+    },
+    "background_layers": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/background_layer" }
+    },
+    "torch_emitter": { "$ref": "#/definitions/emitter_config_2d" },
+    "torch_positions": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/vec3" },
+      "description": "Torch light positions [x, y, z]"
+    },
+    "torch_audio_positions": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/vec3" }
+    },
+    "footstep_emitter": { "$ref": "#/definitions/emitter_config_2d" },
+    "npc_aura_emitter": { "$ref": "#/definitions/emitter_config_2d" },
+    "nav_zones": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Navigation zone names (index 0 = default)"
+    },
+    "tilemap": { "type": "object" },
+    "tile_animations": { "type": "array" }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "vec2": {
+      "type": "array",
+      "items": { "type": "number" },
+      "minItems": 2,
+      "maxItems": 2
+    },
+    "vec3": {
+      "type": "array",
+      "items": { "type": "number" },
+      "minItems": 3,
+      "maxItems": 3
+    },
+    "color3": {
+      "type": "array",
+      "items": { "type": "number", "minimum": 0, "maximum": 1 },
+      "minItems": 3,
+      "maxItems": 3
+    },
+    "color4": {
+      "type": "array",
+      "items": { "type": "number", "minimum": 0, "maximum": 1 },
+      "minItems": 4,
+      "maxItems": 4
+    },
+    "direction": {
+      "type": "string",
+      "enum": ["up", "down", "left", "right"]
+    },
+    "light": {
+      "type": "object",
+      "required": ["position", "radius", "color", "intensity"],
+      "properties": {
+        "position": { "$ref": "#/definitions/vec3", "description": "Light position [x, y, z]" },
+        "radius": { "type": "number", "minimum": 0 },
+        "color": { "$ref": "#/definitions/color3" },
+        "intensity": { "type": "number", "minimum": 0 },
+        "direction": { "$ref": "#/definitions/vec3", "description": "Spot light direction (normalized)" },
+        "cone_angle": { "type": "number", "minimum": 1, "maximum": 179, "description": "Spot light cone angle in degrees" },
+        "area_width": { "type": "number", "minimum": 0 },
+        "area_height": { "type": "number", "minimum": 0 },
+        "area_normal": { "$ref": "#/definitions/vec2", "description": "Area light face direction [x, z]" }
+      },
+      "additionalProperties": false
+    },
+    "player": {
+      "type": "object",
+      "properties": {
+        "position": { "$ref": "#/definitions/vec3" },
+        "tint": { "$ref": "#/definitions/color4" },
+        "facing": { "$ref": "#/definitions/direction" },
+        "character_id": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "npc": {
+      "type": "object",
+      "required": ["name", "position"],
+      "properties": {
+        "name": { "type": "string" },
+        "position": { "$ref": "#/definitions/vec3" },
+        "tint": { "$ref": "#/definitions/color4" },
+        "facing": { "$ref": "#/definitions/direction" },
+        "reverse_facing": { "$ref": "#/definitions/direction" },
+        "patrol_interval": { "type": "number" },
+        "patrol_speed": { "type": "number" },
+        "waypoints": { "type": "array", "items": { "$ref": "#/definitions/vec3" } },
+        "waypoint_pause": { "type": "number" },
+        "dialog": { "type": "array" },
+        "light_color": { "$ref": "#/definitions/color4" },
+        "light_radius": { "type": "number" },
+        "aura_color_start": { "$ref": "#/definitions/color4" },
+        "aura_color_end": { "$ref": "#/definitions/color4" },
+        "character_id": { "type": "string" },
+        "script_module": { "type": "string" },
+        "script_class": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "portal": {
+      "type": "object",
+      "required": ["position", "size", "target_scene"],
+      "properties": {
+        "position": { "$ref": "#/definitions/vec3", "description": "Portal position [x, y, z]" },
+        "size": { "$ref": "#/definitions/vec2" },
+        "target_scene": { "type": "string" },
+        "spawn_position": { "$ref": "#/definitions/vec3" },
+        "spawn_facing": { "$ref": "#/definitions/direction" }
+      },
+      "additionalProperties": false
+    },
+    "placed_object": {
+      "type": "object",
+      "required": ["id", "ply_file"],
+      "properties": {
+        "id": { "type": "string" },
+        "ply_file": { "type": "string" },
+        "position": { "$ref": "#/definitions/vec3" },
+        "rotation": { "$ref": "#/definitions/vec3", "description": "Euler angles in degrees" },
+        "scale": { "type": "number" },
+        "is_static": { "type": "boolean" },
+        "character_manifest": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "particle_emitter": {
+      "type": "object",
+      "required": ["position"],
+      "properties": {
+        "preset": { "type": "string", "enum": ["dust_puff", "spark_shower", "magic_spiral", "fire", "smoke", "rain", "snow", "leaves", "fireflies", "steam", "waterfall_mist"] },
+        "position": { "$ref": "#/definitions/vec3" },
+        "spawn_rate": { "type": "number", "minimum": 0 },
+        "lifetime_min": { "type": "number", "minimum": 0 },
+        "lifetime_max": { "type": "number", "minimum": 0 },
+        "velocity_min": { "$ref": "#/definitions/vec3" },
+        "velocity_max": { "$ref": "#/definitions/vec3" },
+        "acceleration": { "$ref": "#/definitions/vec3" },
+        "color_start": { "$ref": "#/definitions/color3" },
+        "color_end": { "$ref": "#/definitions/color3" },
+        "scale_min": { "$ref": "#/definitions/vec3" },
+        "scale_max": { "$ref": "#/definitions/vec3" },
+        "scale_end_factor": { "type": "number" },
+        "opacity_start": { "type": "number", "minimum": 0, "maximum": 1 },
+        "opacity_end": { "type": "number", "minimum": 0, "maximum": 1 },
+        "emission": { "type": "number", "minimum": 0 },
+        "spawn_offset_min": { "$ref": "#/definitions/vec3" },
+        "spawn_offset_max": { "$ref": "#/definitions/vec3" },
+        "burst_duration": { "type": "number", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "animation_params": {
+      "type": "object",
+      "properties": {
+        "speed": { "type": "number" },
+        "gravity": { "$ref": "#/definitions/vec3" },
+        "velocity_scale": { "type": "number" },
+        "noise_amplitude": { "type": "number" },
+        "orbit_speed": { "type": "number" },
+        "orbit_acceleration": { "type": "number" },
+        "expansion": { "type": "number" },
+        "height_rise": { "type": "number" },
+        "opacity_fade": { "type": "number", "minimum": 0, "maximum": 1 },
+        "scale_shrink": { "type": "number", "minimum": 0, "maximum": 1 }
+      },
+      "additionalProperties": false
+    },
+    "animation_reform": {
+      "type": "object",
+      "properties": {
+        "lifetime": { "type": "number", "minimum": 0 },
+        "speed": { "type": "number" }
+      },
+      "additionalProperties": false
+    },
+    "animation": {
+      "type": "object",
+      "required": ["effect", "region"],
+      "properties": {
+        "effect": { "type": "string", "enum": ["detach", "float", "orbit", "dissolve", "reform", "pulse", "vortex", "wave", "scatter"] },
+        "region": {
+          "type": "object",
+          "required": ["shape", "center"],
+          "properties": {
+            "shape": { "type": "string", "enum": ["sphere", "box"] },
+            "center": { "$ref": "#/definitions/vec3" },
+            "radius": { "type": "number", "minimum": 0 },
+            "half_extents": { "$ref": "#/definitions/vec3" }
+          },
+          "additionalProperties": false
+        },
+        "lifetime": { "type": "number", "minimum": 0 },
+        "loop": { "type": "boolean" },
+        "params": { "$ref": "#/definitions/animation_params" },
+        "reform": { "$ref": "#/definitions/animation_reform" }
+      },
+      "additionalProperties": false
+    },
+    "gaussian_splat": {
+      "type": "object",
+      "required": ["ply_file"],
+      "properties": {
+        "ply_file": { "type": "string" },
+        "camera": {
+          "type": "object",
+          "properties": {
+            "position": { "$ref": "#/definitions/vec3" },
+            "target": { "$ref": "#/definitions/vec3" },
+            "fov": { "type": "number" }
+          }
+        },
+        "render_width": { "type": "integer" },
+        "render_height": { "type": "integer" },
+        "scale_multiplier": { "type": "number" },
+        "background_image": { "type": "string" },
+        "parallax": {
+          "type": "object",
+          "properties": {
+            "azimuth_range": { "type": "number" },
+            "elevation_min": { "type": "number" },
+            "elevation_max": { "type": "number" },
+            "distance_range": { "type": "number" },
+            "parallax_strength": { "type": "number" }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "collision_grid": {
+      "type": "object",
+      "required": ["width", "height", "cell_size"],
+      "properties": {
+        "width": { "type": "integer" },
+        "height": { "type": "integer" },
+        "cell_size": { "type": "number" },
+        "solid": { "type": "array", "items": { "type": "boolean" } },
+        "elevation": { "type": "array", "items": { "type": "number" } },
+        "nav_zone": { "type": "array", "items": { "type": "integer" } },
+        "light_probe": { "type": "array", "items": { "type": "number" } }
+      }
+    },
+    "weather": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "type": { "type": "string" },
+        "emitter": { "$ref": "#/definitions/emitter_config_2d" },
+        "ambient_override": { "$ref": "#/definitions/color4" },
+        "fog_density": { "type": "number" },
+        "fog_color": { "$ref": "#/definitions/color3" },
+        "transition_speed": { "type": "number" }
+      }
+    },
+    "day_night": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "cycle_speed": { "type": "number" },
+        "initial_time": { "type": "number" },
+        "keyframes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "time": { "type": "number" },
+              "ambient": { "$ref": "#/definitions/color4" },
+              "torch_intensity": { "type": "number" }
+            }
+          }
+        }
+      }
+    },
+    "background_layer": {
+      "type": "object",
+      "properties": {
+        "texture": { "type": "string" },
+        "z": { "type": "number" },
+        "parallax_factor": { "type": "number" },
+        "quad_width": { "type": "number" },
+        "quad_height": { "type": "number" },
+        "uv_repeat_x": { "type": "number" },
+        "uv_repeat_y": { "type": "number" },
+        "tint": { "$ref": "#/definitions/color4" },
+        "wall": { "type": "boolean" },
+        "wall_y_offset": { "type": "number" }
+      }
+    },
+    "emitter_config_2d": {
+      "type": "object",
+      "properties": {
+        "spawn_rate": { "type": "number" },
+        "particle_lifetime_min": { "type": "number" },
+        "particle_lifetime_max": { "type": "number" },
+        "velocity_min": { "$ref": "#/definitions/vec2" },
+        "velocity_max": { "$ref": "#/definitions/vec2" },
+        "acceleration": { "$ref": "#/definitions/vec2" },
+        "size_min": { "type": "number" },
+        "size_max": { "type": "number" },
+        "size_end_scale": { "type": "number" },
+        "color_start": { "$ref": "#/definitions/color4" },
+        "color_end": { "$ref": "#/definitions/color4" },
+        "tile": { "type": "string" },
+        "z": { "type": "number" },
+        "spawn_offset_min": { "$ref": "#/definitions/vec2" },
+        "spawn_offset_max": { "$ref": "#/definitions/vec2" }
+      }
+    }
+  }
+}

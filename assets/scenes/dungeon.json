@@ -1,94 +1,382 @@
 {
-  "tilemap": {
-    "tileset": {
-      "tile_width": 16, "tile_height": 16, "columns": 8,
-      "sheet_width": 128, "sheet_height": 48
+  "version": 2,
+  "ambient_color": [
+    0.35,
+    0.25,
+    0.15,
+    1.0
+  ],
+  "lights": [
+    {
+      "radius": 5.0,
+      "color": [
+        1.0,
+        0.85,
+        0.4
+      ],
+      "intensity": 1.5,
+      "position": [
+        -3.5,
+        0,
+        0.0
+      ]
     },
-    "width": 10, "height": 10,
-    "tile_size": 1.0, "z": 1.0,
-    "tiles": [
-      1,1,1,1,0,0,1,1,1,1,
-      1,0,0,0,0,0,0,0,0,1,
-      1,0,0,0,0,0,0,0,0,1,
-      1,0,0,0,0,0,0,0,0,1,
-      1,0,0,0,0,0,0,0,0,1,
-      1,0,0,0,0,0,0,5,5,1,
-      1,0,0,0,0,0,0,5,5,1,
-      1,0,0,0,0,0,0,0,0,1,
-      1,0,0,0,0,0,0,0,0,1,
-      1,1,1,1,1,1,1,1,1,1
-    ],
-    "tile_animations": [
-      { "base_tile": 5, "frames": [5, 6, 7], "frame_duration": 0.2 }
-    ]
-  },
-  "ambient_color": [0.35, 0.25, 0.15, 1.0],
-  "static_lights": [
-    {"position": [-3.5, 0.0], "radius": 5.0, "color": [1.0, 0.85, 0.4], "intensity": 1.5},
-    {"position": [3.5, 0.0], "radius": 5.0, "color": [1.0, 0.85, 0.4], "intensity": 1.5}
+    {
+      "radius": 5.0,
+      "color": [
+        1.0,
+        0.85,
+        0.4
+      ],
+      "intensity": 1.5,
+      "position": [
+        3.5,
+        0,
+        0.0
+      ]
+    }
   ],
-  "torch_emitter": {
-    "spawn_rate": 8.0,
-    "particle_lifetime_min": 0.8, "particle_lifetime_max": 1.6,
-    "velocity_min": [-0.3, 0.5], "velocity_max": [0.3, 1.5],
-    "acceleration": [0.0, 0.2],
-    "size_min": 0.04, "size_max": 0.10, "size_end_scale": 0.1,
-    "color_start": [1.0, 0.75, 0.2, 0.9], "color_end": [1.0, 0.3, 0.0, 0.0],
-    "tile": "SoftGlow", "z": -0.05,
-    "spawn_offset_min": [-0.15, -0.1], "spawn_offset_max": [0.15, 0.1]
-  },
-  "torch_positions": [
-    [-3.5, 0.0], [3.5, 0.0]
-  ],
-  "torch_audio_positions": [
-    [-3.5, 0.0, 0.0], [3.5, 0.0, 0.0]
-  ],
-  "footstep_emitter": {
-    "spawn_rate": 12.0,
-    "particle_lifetime_min": 0.3, "particle_lifetime_max": 0.6,
-    "velocity_min": [-0.5, -0.1], "velocity_max": [0.5, 0.3],
-    "size_min": 0.06, "size_max": 0.12, "size_end_scale": 1.5,
-    "color_start": [0.6, 0.55, 0.45, 0.6], "color_end": [0.5, 0.48, 0.40, 0.0],
-    "tile": "SmokePuff", "z": -0.02,
-    "spawn_offset_min": [-0.15, -0.4], "spawn_offset_max": [0.15, -0.3]
-  },
   "player": {
-    "position": [0.0, 3.5, 0.0],
-    "tint": [1.0, 1.0, 1.0, 1.0],
+    "position": [
+      0.0,
+      3.5,
+      0.0
+    ],
+    "tint": [
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ],
     "facing": "down"
   },
   "npcs": [
     {
       "name": "keeper",
-      "position": [0.0, -1.0, 0.0],
-      "tint": [0.9, 0.8, 1.0, 1.0],
-      "facing": "up", "reverse_facing": "down",
-      "patrol_interval": 4.0, "patrol_speed": 1.5,
-      "dialog": [
-        {"speaker_key": "keeper_name", "text_key": "keeper_line_1"},
-        {"speaker_key": "keeper_name", "text_key": "keeper_line_2"}
+      "position": [
+        0.0,
+        -1.0,
+        0.0
       ],
-      "light_color": [0.8, 0.6, 1.0, 0.8], "light_radius": 3.0,
-      "aura_color_start": [0.7, 0.5, 1.0, 0.8],
-      "aura_color_end": [0.8, 0.6, 1.0, 0.0]
+      "tint": [
+        0.9,
+        0.8,
+        1.0,
+        1.0
+      ],
+      "facing": "up",
+      "reverse_facing": "down",
+      "patrol_interval": 4.0,
+      "patrol_speed": 1.5,
+      "dialog": [
+        {
+          "speaker_key": "keeper_name",
+          "text_key": "keeper_line_1"
+        },
+        {
+          "speaker_key": "keeper_name",
+          "text_key": "keeper_line_2"
+        }
+      ],
+      "light_color": [
+        0.8,
+        0.6,
+        1.0,
+        0.8
+      ],
+      "light_radius": 3.0,
+      "aura_color_start": [
+        0.7,
+        0.5,
+        1.0,
+        0.8
+      ],
+      "aura_color_end": [
+        0.8,
+        0.6,
+        1.0,
+        0.0
+      ]
     }
   ],
-  "npc_aura_emitter": {
-    "spawn_rate": 6.0,
-    "particle_lifetime_min": 0.6, "particle_lifetime_max": 1.2,
-    "velocity_min": [-0.4, -0.2], "velocity_max": [0.4, 0.5],
-    "acceleration": [0.0, 0.1],
-    "size_min": 0.03, "size_max": 0.07, "size_end_scale": 0.2,
-    "tile": "Spark", "z": -0.04,
-    "spawn_offset_min": [-0.4, -0.3], "spawn_offset_max": [0.4, 0.3]
-  },
   "portals": [
     {
-      "position": [0.0, 4.5],
-      "size": [2.0, 1.0],
+      "position": [
+        0.0,
+        0,
+        4.5
+      ],
+      "size": [
+        2.0,
+        1.0
+      ],
       "target_scene": "assets/scenes/test_scene.json",
-      "spawn_position": [0.0, -6.5, 0.0],
+      "spawn_position": [
+        0.0,
+        -6.5,
+        0.0
+      ],
       "spawn_facing": "up"
     }
-  ]
+  ],
+  "torch_emitter": {
+    "spawn_rate": 8.0,
+    "particle_lifetime_min": 0.8,
+    "particle_lifetime_max": 1.6,
+    "velocity_min": [
+      -0.3,
+      0.5
+    ],
+    "velocity_max": [
+      0.3,
+      1.5
+    ],
+    "acceleration": [
+      0.0,
+      0.2
+    ],
+    "size_min": 0.04,
+    "size_max": 0.1,
+    "size_end_scale": 0.1,
+    "color_start": [
+      1.0,
+      0.75,
+      0.2,
+      0.9
+    ],
+    "color_end": [
+      1.0,
+      0.3,
+      0.0,
+      0.0
+    ],
+    "tile": "SoftGlow",
+    "z": -0.05,
+    "spawn_offset_min": [
+      -0.15,
+      -0.1
+    ],
+    "spawn_offset_max": [
+      0.15,
+      0.1
+    ]
+  },
+  "footstep_emitter": {
+    "spawn_rate": 12.0,
+    "particle_lifetime_min": 0.3,
+    "particle_lifetime_max": 0.6,
+    "velocity_min": [
+      -0.5,
+      -0.1
+    ],
+    "velocity_max": [
+      0.5,
+      0.3
+    ],
+    "size_min": 0.06,
+    "size_max": 0.12,
+    "size_end_scale": 1.5,
+    "color_start": [
+      0.6,
+      0.55,
+      0.45,
+      0.6
+    ],
+    "color_end": [
+      0.5,
+      0.48,
+      0.4,
+      0.0
+    ],
+    "tile": "SmokePuff",
+    "z": -0.02,
+    "spawn_offset_min": [
+      -0.15,
+      -0.4
+    ],
+    "spawn_offset_max": [
+      0.15,
+      -0.3
+    ]
+  },
+  "npc_aura_emitter": {
+    "spawn_rate": 6.0,
+    "particle_lifetime_min": 0.6,
+    "particle_lifetime_max": 1.2,
+    "velocity_min": [
+      -0.4,
+      -0.2
+    ],
+    "velocity_max": [
+      0.4,
+      0.5
+    ],
+    "acceleration": [
+      0.0,
+      0.1
+    ],
+    "size_min": 0.03,
+    "size_max": 0.07,
+    "size_end_scale": 0.2,
+    "tile": "Spark",
+    "z": -0.04,
+    "spawn_offset_min": [
+      -0.4,
+      -0.3
+    ],
+    "spawn_offset_max": [
+      0.4,
+      0.3
+    ]
+  },
+  "torch_positions": [
+    [
+      -3.5,
+      0,
+      0.0
+    ],
+    [
+      3.5,
+      0,
+      0.0
+    ]
+  ],
+  "torch_audio_positions": [
+    [
+      -3.5,
+      0.0,
+      0.0
+    ],
+    [
+      3.5,
+      0.0,
+      0.0
+    ]
+  ],
+  "tilemap": {
+    "tileset": {
+      "tile_width": 16,
+      "tile_height": 16,
+      "columns": 8,
+      "sheet_width": 128,
+      "sheet_height": 48
+    },
+    "width": 10,
+    "height": 10,
+    "tile_size": 1.0,
+    "z": 1.0,
+    "tiles": [
+      1,
+      1,
+      1,
+      1,
+      0,
+      0,
+      1,
+      1,
+      1,
+      1,
+      1,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      1,
+      1,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      1,
+      1,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      1,
+      1,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      1,
+      1,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      5,
+      5,
+      1,
+      1,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      5,
+      5,
+      1,
+      1,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      1,
+      1,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1
+    ],
+    "tile_animations": [
+      {
+        "base_tile": 5,
+        "frames": [
+          5,
+          6,
+          7
+        ],
+        "frame_duration": 0.2
+      }
+    ]
+  }
 }

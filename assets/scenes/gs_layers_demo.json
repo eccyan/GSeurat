@@ -1,24 +1,20 @@
 {
-  "gaussian_splat": {
-    "ply_file": "assets/maps/test_terrain.ply",
-    "camera": {
-      "position": [
-        32.0,
-        30.0,
-        80.0
-      ],
-      "target": [
-        32.0,
-        0.0,
-        32.0
-      ],
-      "fov": 45
-    },
-    "render_width": 320,
-    "render_height": 240,
-    "scale_multiplier": 1.0
+  "version": 2,
+  "ambient_color": [
+    0.8,
+    0.85,
+    0.95,
+    1.0
+  ],
+  "player": {
+    "position": [
+      32.0,
+      6.77,
+      32.0
+    ],
+    "facing": "down"
   },
-  "placed_objects": [
+  "objects": [
     {
       "id": "house_1",
       "ply_file": "assets/props/house.ply",
@@ -132,6 +128,25 @@
       "is_static": true
     }
   ],
+  "gaussian_splat": {
+    "ply_file": "assets/maps/test_terrain.ply",
+    "camera": {
+      "position": [
+        32.0,
+        30.0,
+        80.0
+      ],
+      "target": [
+        32.0,
+        0.0,
+        32.0
+      ],
+      "fov": 45
+    },
+    "render_width": 320,
+    "render_height": 240,
+    "scale_multiplier": 1.0
+  },
   "collision": {
     "width": 64,
     "height": 64,
@@ -8334,23 +8349,9 @@
       0
     ]
   },
-  "nav_zone_names": [
+  "nav_zones": [
     "default",
     "town",
     "forest"
-  ],
-  "ambient_color": [
-    0.8,
-    0.85,
-    0.95,
-    1.0
-  ],
-  "player": {
-    "position": [
-      32.0,
-      6.77,
-      32.0
-    ],
-    "facing": "down"
-  }
+  ]
 }
