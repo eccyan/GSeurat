@@ -137,22 +137,10 @@ function GrabPlane() {
   const selectedEntity = useSceneStore((s) => s.selectedEntity);
   const axisLock = useSceneStore((s) => s.grabAxisLock);
   const { camera, gl } = useThree();
-  const [shiftHeld, setShiftHeld] = useState(false);
-  const lastClientY = useRef(0);
   const currentPos = useRef<[number, number, number]>([0, 0, 0]);
-  const grabOffset = useRef<THREE.Vector3 | null>(null);  // cursor-to-entity offset at grab start
+  const grabOffset = useRef<THREE.Vector3 | null>(null);
   const labelPos = useRef<[number, number, number]>([0, 0, 0]);
   const [labelText, setLabelText] = useState('');
-
-  // Track Shift key
-  useEffect(() => {
-    if (!grabMode) return;
-    const onKeyDown = (e: KeyboardEvent) => { if (e.key === 'Shift') setShiftHeld(true); };
-    const onKeyUp = (e: KeyboardEvent) => { if (e.key === 'Shift') setShiftHeld(false); };
-    window.addEventListener('keydown', onKeyDown);
-    window.addEventListener('keyup', onKeyUp);
-    return () => { window.removeEventListener('keydown', onKeyDown); window.removeEventListener('keyup', onKeyUp); };
-  }, [grabMode]);
 
   // Initialize position when grab starts
   useEffect(() => {
@@ -180,19 +168,6 @@ function GrabPlane() {
       const store = useSceneStore.getState();
       const lock = store.grabAxisLock;
 
-      if (shiftHeld && lock === 'free') {
-        // Shift mode: vertical mouse movement adjusts Y (backward compat)
-        const deltaY = (lastClientY.current - ev.clientY) * 0.05;
-        lastClientY.current = ev.clientY;
-        const newY = Math.round((currentPos.current[1] + deltaY) * 10) / 10;
-        currentPos.current[1] = newY;
-        updateGrabbedEntity(currentPos.current[0], newY, currentPos.current[2]);
-        labelPos.current = [currentPos.current[0], newY + 1.5, currentPos.current[2]];
-        setLabelText(`${currentPos.current[0].toFixed(1)}, Y:${newY.toFixed(1)}, ${currentPos.current[2].toFixed(1)}`);
-        return;
-      }
-
-      lastClientY.current = ev.clientY;
       const rect = el.getBoundingClientRect();
       const pointer = new THREE.Vector2(
         ((ev.clientX - rect.left) / rect.width) * 2 - 1,
@@ -220,7 +195,7 @@ function GrabPlane() {
           currentPos.current = [sx, sy, sz];
           updateGrabbedEntity(sx, sy, sz);
           labelPos.current = [sx, sy + 1.5, sz];
-          setLabelText(`${sx.toFixed(1)}, ${sy.toFixed(1)}, ${sz.toFixed(1)}`);
+          setLabelText(`X:${sx.toFixed(1)}  Y:${sy.toFixed(1)}  Z:${sz.toFixed(1)}`);
         }
       } else {
         // Axis-locked: plane containing the axis, facing the camera
@@ -251,7 +226,8 @@ function GrabPlane() {
           updateGrabbedEntity(sx, sy, sz);
           labelPos.current = [sx, sy + 1.5, sz];
           const axisLabel = lock.toUpperCase();
-          setLabelText(`[${axisLabel}] ${sx.toFixed(1)}, ${sy.toFixed(1)}, ${sz.toFixed(1)}`);
+          const val = lock === 'x' ? sx : lock === 'y' ? sy : sz;
+          setLabelText(`${axisLabel}: ${val.toFixed(1)}`);
         }
       }
     };
@@ -261,7 +237,7 @@ function GrabPlane() {
 
     window.addEventListener('pointermove', onMove);
     return () => { window.removeEventListener('pointermove', onMove); };
-  }, [grabMode, selectedEntity, shiftHeld, camera, gl, axisLock]);
+  }, [grabMode, selectedEntity, camera, gl, axisLock]);
 
   if (!grabMode || !labelText) return null;
 
@@ -271,7 +247,7 @@ function GrabPlane() {
     <Html position={labelPos.current} center>
       <div style={{
         background: 'rgba(0,0,0,0.8)',
-        color: shiftHeld ? '#88aaff' : (axisColors[axisLock] ?? '#ffcc00'),
+        color: axisColors[axisLock] ?? '#ffcc00',
         padding: '2px 6px',
         borderRadius: 4,
         fontSize: 11,
