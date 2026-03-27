@@ -143,10 +143,6 @@ export function AnimationSystem({ scenePoints, onUpdateGeometry }: {
         for (let i = 0; i < lastData.scales.length; i++) {
           normalized[i] = lastData.scales[i] / initScale;
         }
-        // Debug: log first few scale values once per second
-        if (Math.floor(playbackTime * 2) !== Math.floor((playbackTime - dt) * 2)) {
-          console.log(`[Scale] raw=${lastData.scales[0].toFixed(6)} init=${initScale} norm=${normalized[0].toFixed(3)} min=${Math.min(...Array.from(normalized.slice(0, 100))).toFixed(3)} max=${Math.max(...Array.from(normalized.slice(0, 100))).toFixed(3)}`);
-        }
         onUpdateGeometry(lastData.positions, lastData.colors, normalized);
       } else {
         onUpdateGeometry(lastData.positions, lastData.colors, lastData.scales);
