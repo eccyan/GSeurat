@@ -17,7 +17,7 @@ const sceneShaderMaterial = new THREE.ShaderMaterial({
     void main() {
       vColor = color;
       vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-      gl_PointSize = max(aScale * 20.0, 1.0) * (300.0 / -mvPosition.z);
+      gl_PointSize = max(aScale * 5.0, 0.5) * (300.0 / -mvPosition.z);
       gl_Position = projectionMatrix * mvPosition;
     }
   `,
