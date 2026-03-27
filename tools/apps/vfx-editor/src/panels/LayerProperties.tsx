@@ -1,11 +1,11 @@
 import React from 'react';
 import { useVfxStore } from '../store/useVfxStore.js';
-import type { VfxLayer, LayerType, Phase } from '../store/types.js';
+import type { VfxLayer, LayerType } from '../store/types.js';
 import { NumberInput } from '../components/NumberInput.js';
 import { Vec3Input } from '../components/Vec3Input.js';
 import { emitterPresets, defaultEmitterConfig } from '../data/emitterPresets.js';
 import type { EmitterConfig } from '../data/emitterPresets.js';
-import { T, inputStyle, selectStyle, sectionLabel, layerColor, phaseColor } from '../styles/theme.js';
+import { T, inputStyle, selectStyle, sectionLabel, layerColor } from '../styles/theme.js';
 
 // ── Easing helpers ──
 
@@ -512,23 +512,6 @@ export function LayerProperties() {
           <option value="animation">Animation</option>
           <option value="light">Light</option>
         </select>
-      </div>
-
-      {/* Phase */}
-      <div>
-        <label style={sectionLabel}>Phase</label>
-        <select value={layer.phase} onChange={(e) => update({ phase: e.target.value as Phase })} style={selectStyle}>
-          <option value="anticipation">Anticipation</option>
-          <option value="impact">Impact</option>
-          <option value="residual">Residual</option>
-          <option value="custom">Custom</option>
-        </select>
-        <div style={{ marginTop: 2, fontSize: 9, color: phaseColor(layer.phase) }}>
-          {layer.phase === 'anticipation' ? 'Buildup — signals something is coming'
-            : layer.phase === 'impact' ? 'Peak energy — the main event'
-            : layer.phase === 'residual' ? 'Dissipation and aftermath'
-            : 'Manual timing'}
-        </div>
       </div>
 
       {/* Timing */}

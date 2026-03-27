@@ -4,10 +4,10 @@ function exportLayer(layer: VfxLayer): Record<string, unknown> {
   const out: Record<string, unknown> = {
     name: layer.name,
     type: layer.type,
-    phase: layer.phase,
     start: layer.start,
     duration: layer.duration,
   };
+  if (layer.tags && layer.tags.length > 0) out.tags = layer.tags;
   if (layer.emitter && Object.keys(layer.emitter).length > 0) out.emitter = layer.emitter;
   if (layer.animation && Object.keys(layer.animation).length > 0) out.animation = layer.animation;
   if (layer.light) out.light = layer.light;
@@ -18,7 +18,6 @@ export function exportVfx(preset: VfxPreset): Record<string, unknown> {
   return {
     name: preset.name,
     duration: preset.duration,
-    phases: preset.phases,
     layers: preset.layers.map(exportLayer),
   };
 }

@@ -1,4 +1,4 @@
-import type { LayerType, Phase } from '../store/types.js';
+import type { LayerType } from '../store/types.js';
 
 // ── Shared theme — single source of truth for Méliès UI ──
 
@@ -48,7 +48,3 @@ export const labelStyle: React.CSSProperties = {
 export const layerColor = (type: LayerType) =>
   type === 'emitter' ? T.layerEmitter : type === 'animation' ? T.layerAnimation : T.layerLight;
 
-export const phaseColor = (phase: Phase) =>
-  phase === 'anticipation' ? T.phaseAnticipation
-    : phase === 'impact' ? T.phaseImpact
-    : phase === 'residual' ? T.phaseResidual : T.textMuted;

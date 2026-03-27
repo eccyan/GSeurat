@@ -65,7 +65,8 @@ export async function loadProject(handle: FileSystemDirectoryHandle): Promise<bo
     const fileHandle = await handle.getFileHandle('project.json');
     const file = await fileHandle.getFile();
     const text = await file.text();
-    const data = JSON.parse(text) as VfxProject;
+    const raw = JSON.parse(text);
+    const data = migrateProject(raw) as VfxProject;
     useVfxStore.getState().loadProjectData(data);
     return true;
   } catch (err) {
@@ -96,10 +97,39 @@ export function downloadProject(): void {
 export async function uploadProject(file: File): Promise<boolean> {
   try {
     const text = await file.text();
-    const data = JSON.parse(text) as VfxProject;
+    const raw = JSON.parse(text);
+    const data = migrateProject(raw);
     useVfxStore.getState().loadProjectData(data);
     return true;
   } catch {
     return false;
   }
+}
+
+/**
+ * Migrate project data from older versions.
+ * v1 → v2: remove phases from presets, convert layer.phase to tags.
+ */
+function migrateProject(data: Record<string, unknown>): VfxProject {
+  const version = (data.version as number) ?? 1;
+  if (version >= 2) return data as unknown as VfxProject;
+
+  // v1 → v2 migration
+  const presets = (data.presets as Record<string, unknown>[]) ?? [];
+  return {
+    version: 2,
+    presets: presets.map((p) => {
+      const layers = (p.layers as Record<string, unknown>[]) ?? [];
+      const { phases: _, ...rest } = p;
+      return {
+        ...rest,
+        layers: layers.map((l) => {
+          const phase = l.phase as string | undefined;
+          const tags = phase && phase !== 'custom' ? [phase] : undefined;
+          const { phase: __, ...layerRest } = l;
+          return { ...layerRest, ...(tags ? { tags } : {}) };
+        }),
+      };
+    }),
+  } as unknown as VfxProject;
 }
