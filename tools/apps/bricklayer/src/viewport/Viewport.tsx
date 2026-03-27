@@ -140,6 +140,7 @@ function GrabPlane() {
   const [shiftHeld, setShiftHeld] = useState(false);
   const lastClientY = useRef(0);
   const currentPos = useRef<[number, number, number]>([0, 0, 0]);
+  const grabOffset = useRef<THREE.Vector3 | null>(null);  // cursor-to-entity offset at grab start
   const labelPos = useRef<[number, number, number]>([0, 0, 0]);
   const [labelText, setLabelText] = useState('');
 
@@ -159,8 +160,10 @@ function GrabPlane() {
       const store = useSceneStore.getState();
       const pos = store.grabOriginalPosition;
       if (pos) currentPos.current = [...pos];
+      grabOffset.current = null;  // will be computed on first move
     } else {
       setLabelText('');
+      grabOffset.current = null;
     }
   }, [grabMode]);
 
@@ -197,42 +200,50 @@ function GrabPlane() {
       );
       raycaster.setFromCamera(pointer, camera);
 
+      // Compute grab plane at entity position
+      const entityPos = new THREE.Vector3(currentPos.current[0], currentPos.current[1], currentPos.current[2]);
+      const camDir = camera.getWorldDirection(new THREE.Vector3());
+
       if (lock === 'free') {
-        // Screen-aligned plane: perpendicular to camera view at entity distance
-        const entityPos = new THREE.Vector3(currentPos.current[0], currentPos.current[1], currentPos.current[2]);
-        const camDir = camera.getWorldDirection(new THREE.Vector3());
+        // Screen-aligned plane at entity distance
         plane.setFromNormalAndCoplanarPoint(camDir, entityPos);
 
         if (raycaster.ray.intersectPlane(plane, intersection)) {
-          const sx = Math.round(intersection.x * 10) / 10;
-          const sy = Math.round(intersection.y * 10) / 10;
-          const sz = Math.round(intersection.z * 10) / 10;
+          // On first move, compute offset so entity doesn't jump to cursor
+          if (!grabOffset.current) {
+            grabOffset.current = intersection.clone().sub(entityPos);
+          }
+          const adjusted = intersection.clone().sub(grabOffset.current);
+          const sx = Math.round(adjusted.x * 10) / 10;
+          const sy = Math.round(adjusted.y * 10) / 10;
+          const sz = Math.round(adjusted.z * 10) / 10;
           currentPos.current = [sx, sy, sz];
           updateGrabbedEntity(sx, sy, sz);
           labelPos.current = [sx, sy + 1.5, sz];
           setLabelText(`${sx.toFixed(1)}, ${sy.toFixed(1)}, ${sz.toFixed(1)}`);
         }
       } else {
-        // Axis-locked: use camera-perpendicular plane containing the locked axis
-        const entityPos = new THREE.Vector3(currentPos.current[0], currentPos.current[1], currentPos.current[2]);
-        const camDir = camera.getWorldDirection(new THREE.Vector3());
-
-        // Create a plane that contains the axis direction and faces the camera
+        // Axis-locked: plane containing the axis, facing the camera
         const axisDir = lock === 'x' ? new THREE.Vector3(1, 0, 0)
                       : lock === 'y' ? new THREE.Vector3(0, 1, 0)
                       : new THREE.Vector3(0, 0, 1);
         const planeNormal = new THREE.Vector3().crossVectors(axisDir, camDir).cross(axisDir).normalize();
         if (planeNormal.lengthSq() < 0.001) {
-          // Camera is looking along the axis — use a fallback plane
           planeNormal.set(camDir.x, camDir.y, camDir.z);
         }
         plane.setFromNormalAndCoplanarPoint(planeNormal, entityPos);
 
         if (raycaster.ray.intersectPlane(plane, intersection)) {
-          // Project intersection onto the axis through entity position
-          const delta = intersection.clone().sub(entityPos);
+          // On first move, compute offset along axis
+          if (!grabOffset.current) {
+            grabOffset.current = intersection.clone().sub(entityPos);
+          }
+          const adjusted = intersection.clone().sub(grabOffset.current);
+          // Project onto axis through original entity position
+          const origPos = new THREE.Vector3(...(useSceneStore.getState().grabOriginalPosition ?? [0, 0, 0]));
+          const delta = adjusted.clone().sub(origPos);
           const projected = axisDir.clone().multiplyScalar(delta.dot(axisDir));
-          const result = entityPos.clone().add(projected);
+          const result = origPos.clone().add(projected);
           const sx = Math.round(result.x * 10) / 10;
           const sy = Math.round(result.y * 10) / 10;
           const sz = Math.round(result.z * 10) / 10;
@@ -244,6 +255,9 @@ function GrabPlane() {
         }
       }
     };
+
+    // Reset offset when axis lock changes so entity doesn't jump
+    grabOffset.current = null;
 
     window.addEventListener('pointermove', onMove);
     return () => { window.removeEventListener('pointermove', onMove); };
