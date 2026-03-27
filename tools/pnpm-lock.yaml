@@ -317,6 +317,9 @@ importers:
 
   apps/vfx-editor:
     dependencies:
+      '@gseurat/simulation-wasm':
+        specifier: workspace:*
+        version: link:../../packages/simulation-wasm
       '@gseurat/test-harness':
         specifier: workspace:*
         version: link:../../packages/test-harness
@@ -400,6 +403,8 @@ importers:
       typescript:
         specifier: ^5.4.0
         version: 5.9.3
+
+  packages/simulation-wasm: {}
 
   packages/test-harness:
     dependencies:
