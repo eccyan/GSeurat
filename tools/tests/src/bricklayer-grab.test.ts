@@ -43,9 +43,12 @@ interface PlayerData {
 
 // ── Minimal grab-mode state machine (mirrors store + GrabPlane logic) ──
 
+type AxisLock = 'free' | 'x' | 'y' | 'z';
+
 interface GrabState {
   grabMode: boolean;
   grabOriginalPosition: [number, number, number] | null;
+  grabAxisLock: AxisLock;
   selectedEntity: SelectedEntity | null;
   placedObjects: PlacedObject[];
   staticLights: StaticLight[];
@@ -59,6 +62,7 @@ function createInitialState(): GrabState {
   return {
     grabMode: false,
     grabOriginalPosition: null,
+    grabAxisLock: 'free' as AxisLock,
     selectedEntity: null,
     placedObjects: [
       { id: 'obj1', position: [10, 5, 20] },
@@ -107,7 +111,7 @@ function enterGrab(state: GrabState): GrabState | null {
   }
 
   if (!pos) return null;
-  return { ...state, grabMode: true, grabOriginalPosition: pos };
+  return { ...state, grabMode: true, grabOriginalPosition: pos, grabAxisLock: 'free' as AxisLock };
 }
 
 /** Update grabbed entity position (mirrors GrabPlane pointermove). */
@@ -155,17 +159,17 @@ function updateGrabbedEntity(state: GrabState, x: number, y: number, z: number):
 
 /** Confirm grab — clears grab mode, keeps new position. */
 function confirmGrab(state: GrabState): GrabState {
-  return { ...state, grabMode: false, grabOriginalPosition: null };
+  return { ...state, grabMode: false, grabOriginalPosition: null, grabAxisLock: 'free' as AxisLock };
 }
 
 /** Cancel grab — restores original position. */
 function cancelGrab(state: GrabState): GrabState {
   if (!state.grabOriginalPosition || !state.selectedEntity) {
-    return { ...state, grabMode: false, grabOriginalPosition: null };
+    return { ...state, grabMode: false, grabOriginalPosition: null, grabAxisLock: 'free' as AxisLock };
   }
   const pos = state.grabOriginalPosition;
   const restored = updateGrabbedEntity(state, pos[0], pos[1], pos[2]);
-  return { ...restored, grabMode: false, grabOriginalPosition: null };
+  return { ...restored, grabMode: false, grabOriginalPosition: null, grabAxisLock: 'free' as AxisLock };
 }
 
 /** Simulate XZ move during grab (non-shift). Snaps to 0.1. */
@@ -646,6 +650,114 @@ console.log('\n--- 7. Orbit lock ---\n');
   assert(state.orbitLocked === true, 'orbit still locked');
   state = confirmGrab(state);
   assert(state.orbitLocked === true, 'orbit lock persists through grab');
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 8. Axis lock (10 tests)
+// ═══════════════════════════════════════════════════════════════
+
+console.log('\n--- Axis lock ---\n');
+
+function toggleAxisLock(state: GrabState, axis: 'x' | 'y' | 'z'): GrabState {
+  if (!state.grabMode) return state;
+  return { ...state, grabAxisLock: state.grabAxisLock === axis ? 'free' : axis };
+}
+
+{
+  console.log('Test 8.1: Toggle X axis lock on');
+  let state = createInitialState();
+  state = selectEntity(state, { type: 'object', id: 'obj1' });
+  state = enterGrab(state)!;
+  state = toggleAxisLock(state, 'x');
+  assert(state.grabAxisLock === 'x', 'axis lock is x');
+}
+
+{
+  console.log('Test 8.2: Toggle X again -> free');
+  let state = createInitialState();
+  state = selectEntity(state, { type: 'object', id: 'obj1' });
+  state = enterGrab(state)!;
+  state = toggleAxisLock(state, 'x');
+  state = toggleAxisLock(state, 'x');
+  assert(state.grabAxisLock === 'free', 'axis lock back to free');
+}
+
+{
+  console.log('Test 8.3: Switch from X to Y');
+  let state = createInitialState();
+  state = selectEntity(state, { type: 'object', id: 'obj1' });
+  state = enterGrab(state)!;
+  state = toggleAxisLock(state, 'x');
+  state = toggleAxisLock(state, 'y');
+  assert(state.grabAxisLock === 'y', 'axis lock switched to y');
+}
+
+{
+  console.log('Test 8.4: Z axis lock');
+  let state = createInitialState();
+  state = selectEntity(state, { type: 'object', id: 'obj1' });
+  state = enterGrab(state)!;
+  state = toggleAxisLock(state, 'z');
+  assert(state.grabAxisLock === 'z', 'axis lock is z');
+}
+
+{
+  console.log('Test 8.5: Axis lock resets on grab start');
+  let state = createInitialState();
+  state = selectEntity(state, { type: 'object', id: 'obj1' });
+  state = enterGrab(state)!;
+  state = toggleAxisLock(state, 'x');
+  assert(state.grabAxisLock === 'x', 'x locked');
+  state = confirmGrab(state);
+  state = enterGrab(state)!;
+  assert(state.grabAxisLock === 'free', 'axis lock reset on new grab');
+}
+
+{
+  console.log('Test 8.6: Axis lock resets on confirm');
+  let state = createInitialState();
+  state = selectEntity(state, { type: 'object', id: 'obj1' });
+  state = enterGrab(state)!;
+  state = toggleAxisLock(state, 'y');
+  state = confirmGrab(state);
+  assert(state.grabAxisLock === 'free', 'axis lock reset after confirm');
+}
+
+{
+  console.log('Test 8.7: Axis lock resets on cancel');
+  let state = createInitialState();
+  state = selectEntity(state, { type: 'object', id: 'obj1' });
+  state = enterGrab(state)!;
+  state = toggleAxisLock(state, 'z');
+  state = cancelGrab(state);
+  assert(state.grabAxisLock === 'free', 'axis lock reset after cancel');
+}
+
+{
+  console.log('Test 8.8: Toggle axis outside grab mode -> no effect');
+  let state = createInitialState();
+  state = toggleAxisLock(state, 'x');
+  assert(state.grabAxisLock === 'free', 'no axis lock outside grab');
+}
+
+{
+  console.log('Test 8.9: Default is free');
+  const state = createInitialState();
+  assert(state.grabAxisLock === 'free', 'default is free');
+}
+
+{
+  console.log('Test 8.10: Axis-locked movement constrains to axis');
+  let state = createInitialState();
+  state = selectEntity(state, { type: 'object', id: 'obj1' });
+  state = enterGrab(state)!;
+  state = toggleAxisLock(state, 'x');
+  // Simulate axis-locked move: only X changes, Y and Z stay at original
+  const orig = state.grabOriginalPosition!;
+  // In real code, axis lock constrains via projection. Here we test the store toggle works.
+  assert(state.grabAxisLock === 'x', 'axis locked to X before movement');
+  // The actual constraint is in the 3D raycast code (Viewport.tsx), not testable here.
+  // We verify the state machine is correct.
 }
 
 // --- Summary ---

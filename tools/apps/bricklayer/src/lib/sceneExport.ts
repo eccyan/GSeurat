@@ -193,7 +193,11 @@ export function exportSceneJson(state: SceneStoreState): object {
       };
       if (a.loop) out.loop = true;
       // Only write params that differ from defaults
-      const p = a.params;
+      const p = a.params ?? {
+        speed: 1, gravity: [0, -9.8, 0], velocity_scale: 1,
+        noise_amplitude: 1, orbit_speed: 1, orbit_acceleration: 0,
+        expansion: 1, height_rise: 1, opacity_fade: 1, scale_shrink: 1,
+      };
       const params: Record<string, unknown> = {};
       if (p.speed !== 1) params.speed = p.speed;
       if (p.gravity[0] !== 0 || p.gravity[1] !== -9.8 || p.gravity[2] !== 0) params.gravity = p.gravity;

@@ -161,6 +161,7 @@ export interface SceneStoreState {
   // Grab mode
   grabMode: boolean;
   grabOriginalPosition: [number, number, number] | null;
+  grabAxisLock: 'free' | 'x' | 'y' | 'z';
 
   // Orbit lock (Shift-held drawing lock)
   orbitLocked: boolean;
@@ -304,6 +305,7 @@ export interface SceneStoreState {
   // Actions – grab
   setGrabMode: (v: boolean) => void;
   setGrabOriginalPosition: (pos: [number, number, number] | null) => void;
+  setGrabAxisLock: (axis: 'free' | 'x' | 'y' | 'z') => void;
   setOrbitLocked: (v: boolean) => void;
 
   // Actions – palettes
@@ -410,6 +412,7 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
 
   grabMode: false,
   grabOriginalPosition: null,
+  grabAxisLock: 'free' as const,
   orbitLocked: false,
 
   colorPalettes: [defaultPalette],
@@ -948,6 +951,7 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
   // ── Grab actions ──
   setGrabMode: (v) => set({ grabMode: v }),
   setGrabOriginalPosition: (pos) => set({ grabOriginalPosition: pos }),
+  setGrabAxisLock: (axis) => set({ grabAxisLock: axis }),
   setOrbitLocked: (v) => set({ orbitLocked: v }),
 
   // ── Palette actions ──
