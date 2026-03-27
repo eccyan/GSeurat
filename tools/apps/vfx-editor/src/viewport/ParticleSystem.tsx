@@ -150,7 +150,7 @@ function EmitterRenderer({ layer, active }: { layer: VfxLayer; active: boolean }
         void main() {
           vColor = color;
           vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-          gl_PointSize = aSize * 80.0 * (300.0 / -mvPosition.z);
+          gl_PointSize = aSize * 20.0 * (300.0 / -mvPosition.z);
           gl_Position = projectionMatrix * mvPosition;
         }
       `,
