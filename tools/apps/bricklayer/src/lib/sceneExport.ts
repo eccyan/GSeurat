@@ -2,6 +2,7 @@ import type { SceneStoreState } from '../store/useSceneStore.js';
 
 export function exportSceneJson(state: SceneStoreState): object {
   const scene: Record<string, unknown> = {
+    version: 2,
     ambient_color: state.ambientColor,
   };
 
@@ -10,11 +11,10 @@ export function exportSceneJson(state: SceneStoreState): object {
   }
 
   if (state.staticLights.length > 0) {
-    scene.static_lights = state.staticLights.map((l) => {
+    scene.lights = state.staticLights.map((l) => {
       const out: Record<string, unknown> = {
         position: l.position,
         radius: l.radius,
-        height: l.height,
         color: l.color,
         intensity: l.intensity,
       };
@@ -63,12 +63,15 @@ export function exportSceneJson(state: SceneStoreState): object {
     }));
   }
 
-  scene.player_position = state.player.position;
-  scene.player_tint = state.player.tint;
-  scene.player_facing = state.player.facing;
+  const playerObj: Record<string, unknown> = {
+    position: state.player.position,
+    tint: state.player.tint,
+    facing: state.player.facing,
+  };
   if (state.player.character_id) {
-    scene.player_character_id = state.player.character_id;
+    playerObj.character_id = state.player.character_id;
   }
+  scene.player = playerObj;
 
   if (state.backgroundLayers.length > 0) {
     scene.background_layers = state.backgroundLayers.map((l) => ({
@@ -87,7 +90,9 @@ export function exportSceneJson(state: SceneStoreState): object {
 
   scene.torch_emitter = state.torchEmitter;
   if (state.torchPositions.length > 0) {
-    scene.torch_positions = state.torchPositions;
+    scene.torch_positions = state.torchPositions.map((p) =>
+      p.length === 2 ? [p[0], 0, p[1]] : p,
+    );
   }
   scene.footstep_emitter = state.footstepEmitter;
   scene.npc_aura_emitter = state.npcAuraEmitter;
@@ -136,7 +141,7 @@ export function exportSceneJson(state: SceneStoreState): object {
   };
 
   if (state.placedObjects.length > 0) {
-    scene.placed_objects = state.placedObjects.map((obj) => {
+    scene.objects = state.placedObjects.map((obj) => {
       // Ensure placed object PLY paths have assets/ prefix
       const plyPath = obj.ply_file.startsWith('assets/') ? obj.ply_file : `assets/${obj.ply_file}`;
       return {
@@ -152,7 +157,7 @@ export function exportSceneJson(state: SceneStoreState): object {
   }
 
   if (state.gsParticleEmitters.length > 0) {
-    scene.gs_particle_emitters = state.gsParticleEmitters.map((e) => {
+    scene.particle_emitters = state.gsParticleEmitters.map((e) => {
       const out: Record<string, unknown> = {
         position: e.position,
         spawn_rate: e.spawn_rate,
@@ -179,7 +184,7 @@ export function exportSceneJson(state: SceneStoreState): object {
   }
 
   if (state.gsAnimations.length > 0) {
-    scene.gs_animations = state.gsAnimations.map((a) => {
+    scene.animations = state.gsAnimations.map((a) => {
       const region: Record<string, unknown> = {
         shape: a.shape,
         center: a.center,
@@ -227,6 +232,10 @@ export function exportSceneJson(state: SceneStoreState): object {
       elevation: g.elevation,
       nav_zone: g.nav_zone,
     };
+  }
+
+  if (state.navZoneNames && state.navZoneNames.length > 0) {
+    scene.nav_zones = state.navZoneNames;
   }
 
   return scene;

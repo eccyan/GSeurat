@@ -85,7 +85,7 @@ function getGrabbedEntityY(): number {
   }
   if (sel.type === 'light') {
     const light = store.staticLights.find((l) => l.id === sel.id);
-    return light?.height ?? 0;
+    return light?.position[1] ?? 0;
   }
   if (sel.type === 'player') {
     return store.player.position[1];
@@ -115,9 +115,9 @@ function updateGrabbedEntity(x: number, y: number, z: number) {
   } else if (sel.type === 'npc') {
     store.updateNpc(sel.id, { position: [x, y, z] });
   } else if (sel.type === 'light') {
-    store.updateLight(sel.id, { position: [x, z], height: y });
+    store.updateLight(sel.id, { position: [x, y, z] });
   } else if (sel.type === 'portal') {
-    store.updatePortal(sel.id, { position: [x, z] });
+    store.updatePortal(sel.id, { position: [x, y, z] });
   } else if (sel.type === 'gs_emitter') {
     store.updateGsEmitter(sel.id, { position: [x, y, z] });
   } else if (sel.type === 'gs_animation') {

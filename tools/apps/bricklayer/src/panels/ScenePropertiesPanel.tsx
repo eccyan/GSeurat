@@ -212,20 +212,10 @@ function LightProperties({ light }: { light: StaticLight }) {
       {/* Common fields */}
       <div style={styles.section}>
         <span style={styles.label}>Position</span>
-        <div style={styles.row}>
-          <NumberInput
-            label="X"
-            value={light.position[0]}
-            onChange={(v) => update(light.id, { position: [v, light.position[1]] })}
-            style={styles.input}
-          />
-          <NumberInput
-            label="Z"
-            value={light.position[1]}
-            onChange={(v) => update(light.id, { position: [light.position[0], v] })}
-            style={styles.input}
-          />
-        </div>
+        <Vec3Input
+          value={light.position}
+          onChange={(v) => update(light.id, { position: v })}
+        />
       </div>
 
       <div style={styles.section}>
@@ -234,16 +224,6 @@ function LightProperties({ light }: { light: StaticLight }) {
           step={0.5}
           value={light.radius}
           onChange={(v) => update(light.id, { radius: v })}
-          style={styles.input}
-        />
-      </div>
-
-      <div style={styles.section}>
-        <span style={styles.label}>Height</span>
-        <NumberInput
-          step={0.5}
-          value={light.height}
-          onChange={(v) => update(light.id, { height: v })}
           style={styles.input}
         />
       </div>
@@ -465,20 +445,10 @@ function PortalProperties({ portal }: { portal: PortalData }) {
 
       <div style={styles.section}>
         <span style={styles.label}>Position</span>
-        <div style={styles.row}>
-          <NumberInput
-            label="X"
-            value={portal.position[0]}
-            onChange={(v) => update(portal.id, { position: [v, portal.position[1]] })}
-            style={styles.input}
-          />
-          <NumberInput
-            label="Z"
-            value={portal.position[1]}
-            onChange={(v) => update(portal.id, { position: [portal.position[0], v] })}
-            style={styles.input}
-          />
-        </div>
+        <Vec3Input
+          value={portal.position}
+          onChange={(v) => update(portal.id, { position: v })}
+        />
       </div>
 
       <div style={styles.section}>

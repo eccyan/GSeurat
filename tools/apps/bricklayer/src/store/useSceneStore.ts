@@ -243,13 +243,13 @@ export interface SceneStoreState {
   // Actions – scene
   setAmbientColor: (c: [number, number, number, number]) => void;
   setGodRaysIntensity: (v: number) => void;
-  addLight: (position?: [number, number]) => void;
+  addLight: (position?: [number, number, number]) => void;
   updateLight: (id: string, patch: Partial<StaticLight>) => void;
   removeLight: (id: string) => void;
   addNpc: (position?: [number, number, number]) => void;
   updateNpc: (id: string, patch: Partial<NpcData>) => void;
   removeNpc: (id: string) => void;
-  addPortal: (position?: [number, number]) => void;
+  addPortal: (position?: [number, number, number]) => void;
   updatePortal: (id: string, patch: Partial<PortalData>) => void;
   removePortal: (id: string) => void;
   addPlacedObject: (plyFile: string, blob?: Blob, position?: [number, number, number]) => void;
@@ -605,9 +605,8 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
   addLight: (pos?) => {
     const light: StaticLight = {
       id: genId('light'),
-      position: pos ?? [0, 0],
+      position: pos ?? [0, 2, 0],
       radius: 5,
-      height: 2,
       color: [1, 0.9, 0.7],
       intensity: 1,
     };
@@ -653,7 +652,7 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
   addPortal: (pos?) => {
     const portal: PortalData = {
       id: genId('portal'),
-      position: pos ?? [0, 0],
+      position: pos ?? [0, 0, 0],
       size: [2, 2],
       target_scene: '',
       spawn_position: [0, 0, 0],
@@ -1160,6 +1159,27 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
     for (const v of data.voxels) {
       voxels.set(voxelKey(v.x, v.y, v.z), { color: [v.r, v.g, v.b, v.a] });
     }
+    // Migrate old vec2 positions to vec3
+    const migratedLights: StaticLight[] = data.scene.staticLights.map((l) => {
+      const raw = l as StaticLight & { height?: number };
+      const pos = raw.position as unknown as number[];
+      if (pos.length === 2) {
+        // Old format: position=[x, z], height=y
+        const h = raw.height ?? 2;
+        const { height: _, ...rest } = raw;
+        return { ...rest, position: [pos[0], h, pos[1]] as [number, number, number] };
+      }
+      // Already vec3 — strip height if present
+      const { height: _, ...rest } = raw;
+      return rest as StaticLight;
+    });
+    const migratedPortals: PortalData[] = data.scene.portals.map((p) => {
+      const pos = p.position as unknown as number[];
+      if (pos.length === 2) {
+        return { ...p, position: [pos[0], 0, pos[1]] as [number, number, number] };
+      }
+      return p;
+    });
     set({
       voxels,
       gridWidth: data.gridWidth,
@@ -1172,9 +1192,9 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
       assets: data.assets ?? [],
       ambientColor: data.scene.ambientColor,
       godRaysIntensity: data.scene.godRaysIntensity ?? 0,
-      staticLights: data.scene.staticLights,
+      staticLights: migratedLights,
       npcs: data.scene.npcs,
-      portals: data.scene.portals,
+      portals: migratedPortals,
       placedObjects: data.scene.placedObjects ?? [],
       gsParticleEmitters: data.scene.gsParticleEmitters ?? [],
       gsAnimations: data.scene.gsAnimations ?? [],

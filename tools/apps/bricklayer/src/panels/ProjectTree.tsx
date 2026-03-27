@@ -280,7 +280,7 @@ export function ProjectTree() {
             arrow={lightOpen ? '\u25BE' : '\u25B8'}
             isActive={isActive({ kind: 'scene_category', category: 'lights' })}
             onClick={() => { setLightOpen(!lightOpen); click({ kind: 'scene_category', category: 'lights' }); }}
-            actions={addBtn(() => addLight(getCameraTarget().xz))}
+            actions={addBtn(() => addLight(getCameraTarget().xyz))}
             isOpen={lightOpen}
           >
             {staticLights.map((l, i) => (
@@ -322,7 +322,7 @@ export function ProjectTree() {
             arrow={portalOpen ? '\u25BE' : '\u25B8'}
             isActive={isActive({ kind: 'scene_category', category: 'portals' })}
             onClick={() => { setPortalOpen(!portalOpen); click({ kind: 'scene_category', category: 'portals' }); }}
-            actions={addBtn(() => addPortal(getCameraTarget().xz))}
+            actions={addBtn(() => addPortal(getCameraTarget().xyz))}
             isOpen={portalOpen}
           >
             {portals.map((p, i) => (

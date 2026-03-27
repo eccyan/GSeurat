@@ -10,9 +10,8 @@ export type VoxelKey = `${number},${number},${number}`;
 
 export interface StaticLight {
   id: string;
-  position: [number, number];
+  position: [number, number, number];
   radius: number;
-  height: number;
   color: [number, number, number];
   intensity: number;
   direction?: [number, number, number];  // spot light direction (normalized); omit for point/area
@@ -45,7 +44,7 @@ export interface NpcData {
 
 export interface PortalData {
   id: string;
-  position: [number, number];
+  position: [number, number, number];
   size: [number, number];
   target_scene: string;
   spawn_position: [number, number, number];
