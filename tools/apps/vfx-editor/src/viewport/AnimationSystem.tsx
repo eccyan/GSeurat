@@ -102,11 +102,12 @@ export function AnimationSystem({ scenePoints, onUpdateGeometry }: {
         const effect = EFFECT_MAP[(anim.effect as string) ?? 'detach'] ?? 0;
         const params = anim.params as Record<string, unknown> | undefined;
 
-        // Use large lifetime for continuous effects (wave, pulse, orbit)
-        // so particles don't "die" — the layer timing handles duration
-        const continuousEffects = ['wave', 'pulse', 'orbit', 'vortex'];
+        // Wave/Pulse are truly continuous — use large lifetime so particles don't die.
+        // Orbit/Vortex use t=age/lifetime for rotation progress — need real duration.
+        // Destructive effects (detach/scatter/dissolve/float) need real duration for fade.
         const effectName = (anim.effect as string) ?? 'detach';
-        const lifetime = continuousEffects.includes(effectName) ? 9999 : layer.duration;
+        const infiniteLifetimeEffects = ['wave', 'pulse'];
+        const lifetime = infiniteLifetimeEffects.includes(effectName) ? 9999 : layer.duration;
 
         let groupId: number;
         if (params && Object.keys(params).length > 0) {
