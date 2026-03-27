@@ -242,22 +242,6 @@ export function Preview({ scenePoints }: { scenePoints: PlyPoint[] }) {
     }
   }, []);
 
-  // Determine current phase for overlay
-  let phaseName = '';
-  let phaseColor = '#666';
-  if (preset) {
-    if (playbackTime < preset.phases.anticipation) {
-      phaseName = 'Anticipation';
-      phaseColor = '#f59e0b';
-    } else if (playbackTime < preset.phases.impact) {
-      phaseName = 'Impact';
-      phaseColor = '#ef4444';
-    } else if (playbackTime < preset.duration) {
-      phaseName = 'Residual';
-      phaseColor = '#3b82f6';
-    }
-  }
-
   return (
     <div style={{ flex: 1, position: 'relative' }}>
       <Canvas camera={{ position: [10, 10, 10], fov: 50 }} style={{ background: '#0f0f1e' }}>
@@ -270,19 +254,6 @@ export function Preview({ scenePoints }: { scenePoints: PlyPoint[] }) {
         <AnimationSystem scenePoints={scenePoints} onUpdateGeometry={handleUpdateGeometry} />
         <OrbitControls />
       </Canvas>
-
-      {/* Phase overlay */}
-      {phaseName && (
-        <div style={{
-          position: 'absolute', top: 8, left: 8,
-          padding: '2px 8px', borderRadius: 3,
-          background: `${phaseColor}20`, border: `1px solid ${phaseColor}40`,
-          color: phaseColor, fontSize: 10, letterSpacing: 1,
-          textTransform: 'uppercase', pointerEvents: 'none',
-        }}>
-          {phaseName}
-        </div>
-      )}
 
       {/* Scene info */}
       <div style={{

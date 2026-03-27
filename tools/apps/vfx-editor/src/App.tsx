@@ -1,13 +1,13 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { useVfxStore, playbackTimeRef } from './store/useVfxStore.js';
-import type { VfxPreset, VfxLayer, LayerType, Phase } from './store/types.js';
+import type { VfxPreset, VfxLayer, LayerType } from './store/types.js';
 import { serializeVfx } from './lib/vfxExport.js';
 import { parseVfx } from './lib/vfxImport.js';
 import { hasFileSystemAccess, openProjectDirectory, saveProject, loadProject, downloadProject, uploadProject } from './lib/projectIO.js';
 import { loadPly, type PlyPoint } from './lib/plyLoader.js';
 import { Preview } from './viewport/Preview.js';
 import { LayerProperties } from './panels/LayerProperties.js';
-import { T, inputStyle, selectStyle, layerColor, phaseColor } from './styles/theme.js';
+import { T, inputStyle, selectStyle, layerColor } from './styles/theme.js';
 
 // ═══════════════════════════════════════════════════════════════
 // MenuBar
@@ -258,11 +258,11 @@ function VfxTree() {
                     })}
                     {/* Add layer buttons */}
                     <div style={{ display: 'flex', gap: 2, padding: '2px 4px' }}>
-                      <button onClick={() => addLayer(preset.id, 'emitter', 'Emitter', 0, 1, 'custom')}
+                      <button onClick={() => addLayer(preset.id, 'emitter', 'Emitter', 0, 1)}
                         style={{ ...treeStyles.addBtn, color: T.layerEmitter, fontSize: 9 }}>+✦</button>
-                      <button onClick={() => addLayer(preset.id, 'animation', 'Animation', 0, 1, 'custom')}
+                      <button onClick={() => addLayer(preset.id, 'animation', 'Animation', 0, 1)}
                         style={{ ...treeStyles.addBtn, color: T.layerAnimation, fontSize: 9 }}>+↻</button>
-                      <button onClick={() => addLayer(preset.id, 'light', 'Light', 0, 0.2, 'custom')}
+                      <button onClick={() => addLayer(preset.id, 'light', 'Light', 0, 0.2)}
                         style={{ ...treeStyles.addBtn, color: T.layerLight, fontSize: 9 }}>+☀</button>
                     </div>
                   </div>
@@ -353,9 +353,6 @@ function Timeline() {
   }
 
   const dur = preset.duration;
-  const antPct = (preset.phases.anticipation / dur) * 100;
-  const impPct = ((preset.phases.impact - preset.phases.anticipation) / dur) * 100;
-  const resPct = 100 - antPct - impPct;
 
   return (
     <div style={{
@@ -379,15 +376,15 @@ function Timeline() {
           {playbackTime.toFixed(2)}s / {dur.toFixed(1)}s
         </span>
         <div style={{ flex: 1 }} />
-        <button onClick={() => addLayer(preset.id, 'emitter', 'New Emitter', 0, 1, 'custom')} style={{
+        <button onClick={() => addLayer(preset.id, 'emitter', 'New Emitter', 0, 1)} style={{
           background: 'none', border: `1px solid ${T.layerEmitter}40`, borderRadius: 3,
           color: T.layerEmitter, padding: '2px 8px', cursor: 'pointer', fontSize: 10,
         }}>+ Emitter</button>
-        <button onClick={() => addLayer(preset.id, 'animation', 'New Animation', 0, 1, 'custom')} style={{
+        <button onClick={() => addLayer(preset.id, 'animation', 'New Animation', 0, 1)} style={{
           background: 'none', border: `1px solid ${T.layerAnimation}40`, borderRadius: 3,
           color: T.layerAnimation, padding: '2px 8px', cursor: 'pointer', fontSize: 10,
         }}>+ Anim</button>
-        <button onClick={() => addLayer(preset.id, 'light', 'New Light', 0, 0.2, 'custom')} style={{
+        <button onClick={() => addLayer(preset.id, 'light', 'New Light', 0, 0.2)} style={{
           background: 'none', border: `1px solid ${T.layerLight}40`, borderRadius: 3,
           color: T.layerLight, padding: '2px 8px', cursor: 'pointer', fontSize: 10,
         }}>+ Light</button>
@@ -418,12 +415,6 @@ function Timeline() {
           move(e.nativeEvent);
         }}
       >
-        {/* Phase colors in scrubber */}
-        <div style={{ display: 'flex', height: '100%' }}>
-          <div style={{ width: `${antPct}%`, background: `${T.phaseAnticipation}30` }} />
-          <div style={{ width: `${impPct}%`, background: `${T.phaseImpact}30` }} />
-          <div style={{ width: `${resPct}%`, background: `${T.phaseResidual}30` }} />
-        </div>
         {/* Scrubber playhead */}
         <div style={{
           position: 'absolute', top: 0, bottom: 0, width: 2, background: '#fff',
@@ -433,26 +424,6 @@ function Timeline() {
 
       {/* Timeline area */}
       <div style={{ flex: 1, overflowY: 'auto', position: 'relative' }}>
-        {/* Phase background — use 100% width, not fixed px */}
-        <div style={{ display: 'flex', height: '100%', position: 'absolute', top: 0, left: 0, width: '100%', zIndex: 0 }}>
-          <div style={{ width: `${antPct}%`, background: `${T.phaseAnticipation}08`, borderRight: `1px dashed ${T.phaseAnticipation}30` }} />
-          <div style={{ width: `${impPct}%`, background: `${T.phaseImpact}08`, borderRight: `1px dashed ${T.phaseImpact}30` }} />
-          <div style={{ width: `${resPct}%`, background: `${T.phaseResidual}08` }} />
-        </div>
-
-        {/* Phase labels */}
-        <div style={{ display: 'flex', height: 16, position: 'relative', zIndex: 1 }}>
-          <div style={{ width: `${antPct}%`, textAlign: 'center', fontSize: 8, color: T.phaseAnticipation, lineHeight: '16px', letterSpacing: 1, textTransform: 'uppercase' }}>
-            Anticipation
-          </div>
-          <div style={{ width: `${impPct}%`, textAlign: 'center', fontSize: 8, color: T.phaseImpact, lineHeight: '16px', letterSpacing: 1, textTransform: 'uppercase' }}>
-            Impact
-          </div>
-          <div style={{ width: `${resPct}%`, textAlign: 'center', fontSize: 8, color: T.phaseResidual, lineHeight: '16px', letterSpacing: 1, textTransform: 'uppercase' }}>
-            Residual
-          </div>
-        </div>
-
         {/* Layer tracks with drag handles */}
         <div ref={tracksRef} style={{ position: 'relative', zIndex: 1, padding: '2px 0' }}>
           {preset.layers.map((layer) => {

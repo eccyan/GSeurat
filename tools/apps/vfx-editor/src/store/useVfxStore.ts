@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { VfxPreset, VfxLayer, VfxPhases, VfxProject, LayerType, Phase } from './types.js';
+import type { VfxPreset, VfxLayer, VfxProject, LayerType } from './types.js';
 
 let idCounter = 0;
 function genId(prefix: string): string {
@@ -41,7 +41,7 @@ export interface VfxStoreState {
   selectPreset: (id: string | null) => void;
 
   // Actions — layers
-  addLayer: (presetId: string, type: LayerType, name: string, start: number, duration: number, phase?: Phase) => void;
+  addLayer: (presetId: string, type: LayerType, name: string, start: number, duration: number) => void;
   updateLayer: (presetId: string, layerId: string, patch: Partial<VfxLayer>) => void;
   removeLayer: (presetId: string, layerId: string) => void;
   selectLayer: (id: string | null) => void;
@@ -71,7 +71,7 @@ export const useVfxStore = create<VfxStoreState>((set, get) => ({
   setProjectName: (name) => set({ projectName: name }),
 
   saveProjectData: () => ({
-    version: 1 as const,
+    version: 2 as const,
     presets: get().presets,
   }),
 
@@ -89,7 +89,6 @@ export const useVfxStore = create<VfxStoreState>((set, get) => ({
       id: genId('vfx'),
       name: name ?? 'New VFX',
       duration: 3.0,
-      phases: { anticipation: 0.9, impact: 1.5 },
       layers: [],
     };
     set({ presets: [...get().presets, preset], selectedPresetId: preset.id });
@@ -109,12 +108,11 @@ export const useVfxStore = create<VfxStoreState>((set, get) => ({
 
   selectPreset: (id) => set({ selectedPresetId: id, selectedLayerId: null }),
 
-  addLayer: (presetId, type, name, start, duration, phase = 'custom') => {
+  addLayer: (presetId, type, name, start, duration) => {
     const layer: VfxLayer = {
       id: genId('layer'),
       name,
       type,
-      phase,
       start,
       duration,
     };

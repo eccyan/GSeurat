@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://github.com/eccyan/GSeurat/schemas/vfx.schema.json",
   "title": "GSeurat VFX Preset",
-  "description": "Visual effect preset composing emitters, animations, and lights with timeline and phases",
+  "description": "Visual effect preset composing emitters, animations, and lights with timeline",
   "type": "object",
   "required": ["name", "duration", "layers"],
   "properties": {
@@ -15,10 +15,6 @@
       "minimum": 0.1,
       "description": "Total duration in seconds"
     },
-    "phases": {
-      "$ref": "#/definitions/phases",
-      "description": "Three-phase timing: anticipation, impact, residual"
-    },
     "layers": {
       "type": "array",
       "items": { "$ref": "#/definitions/layer" },
@@ -27,23 +23,6 @@
   },
   "additionalProperties": false,
   "definitions": {
-    "phases": {
-      "type": "object",
-      "required": ["anticipation", "impact"],
-      "properties": {
-        "anticipation": {
-          "type": "number",
-          "minimum": 0,
-          "description": "End time of anticipation phase (seconds). Residual runs from impact to duration."
-        },
-        "impact": {
-          "type": "number",
-          "minimum": 0,
-          "description": "End time of impact phase (seconds). Must be >= anticipation."
-        }
-      },
-      "additionalProperties": false
-    },
     "layer": {
       "type": "object",
       "required": ["name", "type", "start", "duration"],
@@ -57,10 +36,10 @@
           "enum": ["emitter", "animation", "light"],
           "description": "Layer type"
         },
-        "phase": {
-          "type": "string",
-          "enum": ["anticipation", "impact", "residual", "custom"],
-          "description": "Which phase this layer belongs to"
+        "tags": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Free-form tags for organization"
         },
         "start": {
           "type": "number",
