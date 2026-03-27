@@ -44,7 +44,7 @@ function EmitterRenderer({ layer, active }: { layer: VfxLayer; active: boolean }
 
   // Pre-allocate buffers
   const positionBuffer = useMemo(() => new Float32Array(MAX_PARTICLES * 3), []);
-  const colorBuffer = useMemo(() => new Float32Array(MAX_PARTICLES * 3), []);
+  const colorBuffer = useMemo(() => new Float32Array(MAX_PARTICLES * 4), []); // RGBA for per-particle opacity
   const [particleCount, setParticleCount] = useState(0);
 
   // Create/destroy emitter
@@ -102,7 +102,7 @@ function EmitterRenderer({ layer, active }: { layer: VfxLayer; active: boolean }
     // Lazy init geometry attributes (can't use useEffect — component may remount)
     if (!geoInitialized.current) {
       geo.setAttribute('position', new THREE.BufferAttribute(positionBuffer, 3).setUsage(THREE.DynamicDrawUsage));
-      geo.setAttribute('color', new THREE.BufferAttribute(colorBuffer, 3).setUsage(THREE.DynamicDrawUsage));
+      geo.setAttribute('color', new THREE.BufferAttribute(colorBuffer, 4).setUsage(THREE.DynamicDrawUsage)); // RGBA
       geo.setDrawRange(0, 0);
       geoInitialized.current = true;
     }
@@ -120,12 +120,12 @@ function EmitterRenderer({ layer, active }: { layer: VfxLayer; active: boolean }
       const count = Math.min(data.count, MAX_PARTICLES);
       positionBuffer.set(data.positions.subarray(0, count * 3));
 
-      // Multiply color by opacity for per-particle fade
+      // Write RGBA colors with per-particle opacity
       for (let i = 0; i < count; i++) {
-        const opacity = data.opacities[i];
-        colorBuffer[i * 3] = data.colors[i * 3] * opacity;
-        colorBuffer[i * 3 + 1] = data.colors[i * 3 + 1] * opacity;
-        colorBuffer[i * 3 + 2] = data.colors[i * 3 + 2] * opacity;
+        colorBuffer[i * 4] = data.colors[i * 3];
+        colorBuffer[i * 4 + 1] = data.colors[i * 3 + 1];
+        colorBuffer[i * 4 + 2] = data.colors[i * 3 + 2];
+        colorBuffer[i * 4 + 3] = data.opacities[i];
       }
 
       (geo.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true;
@@ -149,9 +149,8 @@ function EmitterRenderer({ layer, active }: { layer: VfxLayer; active: boolean }
         vertexColors
         sizeAttenuation
         transparent
-        opacity={0.9}
         blending={hasEmission ? THREE.AdditiveBlending : THREE.NormalBlending}
-        depthWrite={!hasEmission}
+        depthWrite={false}
       />
     </points>
   );
