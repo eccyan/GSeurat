@@ -830,10 +830,50 @@ const defaultAnimParams = {
   noise: 1, wave_speed: 5, pulse_frequency: 4,
 };
 
-const easingOptions = ['linear', 'ease_in', 'ease_out', 'ease_in_out'];
-const easingLabels: Record<string, string> = {
-  linear: 'Linear', ease_in: 'Ease In', ease_out: 'Ease Out', ease_in_out: 'Ease In/Out',
-};
+const easingTypes = ['linear', 'quad', 'cubic', 'quart', 'quint', 'sine', 'expo', 'circ', 'back', 'elastic', 'bounce'];
+const easingDirs = ['in', 'out', 'in_out'];
+const easingDirLabels: Record<string, string> = { in: 'In', out: 'Out', in_out: 'In Out' };
+
+function parseEasing(value: string): { type: string; dir: string } {
+  if (value === 'linear') return { type: 'linear', dir: 'in' };
+  for (const dir of ['in_out', 'out', 'in']) {
+    if (value.startsWith(dir + '_')) return { type: value.slice(dir.length + 1), dir };
+  }
+  return { type: 'linear', dir: 'in' };
+}
+
+function composeEasing(type: string, dir: string): string {
+  if (type === 'linear') return 'linear';
+  return `${dir}_${type}`;
+}
+
+function EasingPicker({ value, onChange, style }: {
+  value: string;
+  onChange: (v: string) => void;
+  style?: React.CSSProperties;
+}) {
+  const { type, dir } = parseEasing(value);
+  return (
+    <div style={{ display: 'flex', gap: 4, ...style }}>
+      <select
+        style={{ flex: 1, padding: '3px 4px', background: '#2a2a4a', border: '1px solid #444', borderRadius: 4, color: '#ddd', fontSize: 11 }}
+        value={type}
+        onChange={(e) => onChange(composeEasing(e.target.value, dir))}
+      >
+        {easingTypes.map((t) => <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>)}
+      </select>
+      {type !== 'linear' && (
+        <select
+          style={{ width: 60, padding: '3px 4px', background: '#2a2a4a', border: '1px solid #444', borderRadius: 4, color: '#ddd', fontSize: 11 }}
+          value={dir}
+          onChange={(e) => onChange(composeEasing(type, e.target.value))}
+        >
+          {easingDirs.map((d) => <option key={d} value={d}>{easingDirLabels[d]}</option>)}
+        </select>
+      )}
+    </div>
+  );
+}
 
 function GsAnimationProperties({ anim }: { anim: GsAnimationGroupData }) {
   const update = useSceneStore((s) => s.updateGsAnimation);
@@ -945,10 +985,8 @@ function GsAnimationProperties({ anim }: { anim: GsAnimationGroupData }) {
           <span style={{ fontSize: 12, minWidth: 80 }}>Rotations</span>
           <NumberInput value={params.rotations} min={0} step={0.5}
             onChange={(v) => update(anim.id, { params: { ...params, rotations: v } })} style={styles.input} />
-          <select style={{ ...styles.select, maxWidth: 90 }} value={params.rotations_easing}
-            onChange={(e) => update(anim.id, { params: { ...params, rotations_easing: e.target.value as any } })}>
-            {easingOptions.map((e) => <option key={e} value={e}>{easingLabels[e]}</option>)}
-          </select>
+          <EasingPicker value={params.rotations_easing}
+            onChange={(v) => update(anim.id, { params: { ...params, rotations_easing: v as any } })} />
         </div>
       </div>
 
@@ -957,10 +995,8 @@ function GsAnimationProperties({ anim }: { anim: GsAnimationGroupData }) {
           <span style={{ fontSize: 12, minWidth: 80 }}>Expansion</span>
           <NumberInput value={params.expansion} min={0} step={0.1}
             onChange={(v) => update(anim.id, { params: { ...params, expansion: v } })} style={styles.input} />
-          <select style={{ ...styles.select, maxWidth: 90 }} value={params.expansion_easing}
-            onChange={(e) => update(anim.id, { params: { ...params, expansion_easing: e.target.value as any } })}>
-            {easingOptions.map((e) => <option key={e} value={e}>{easingLabels[e]}</option>)}
-          </select>
+          <EasingPicker value={params.expansion_easing}
+            onChange={(v) => update(anim.id, { params: { ...params, expansion_easing: v as any } })} />
         </div>
         <span style={{ fontSize: 10, color: '#666' }}>1 = no change, 2 = double radius at end</span>
       </div>
@@ -970,10 +1006,8 @@ function GsAnimationProperties({ anim }: { anim: GsAnimationGroupData }) {
           <span style={{ fontSize: 12, minWidth: 80 }}>Height Rise</span>
           <NumberInput value={params.height_rise} step={0.5}
             onChange={(v) => update(anim.id, { params: { ...params, height_rise: v } })} style={styles.input} />
-          <select style={{ ...styles.select, maxWidth: 90 }} value={params.height_easing}
-            onChange={(e) => update(anim.id, { params: { ...params, height_easing: e.target.value as any } })}>
-            {easingOptions.map((e) => <option key={e} value={e}>{easingLabels[e]}</option>)}
-          </select>
+          <EasingPicker value={params.height_easing}
+            onChange={(v) => update(anim.id, { params: { ...params, height_easing: v as any } })} />
         </div>
         <span style={{ fontSize: 10, color: '#666' }}>Total Y offset at end (units)</span>
       </div>
@@ -983,10 +1017,8 @@ function GsAnimationProperties({ anim }: { anim: GsAnimationGroupData }) {
           <span style={{ fontSize: 12, minWidth: 80 }}>Opacity End</span>
           <NumberInput value={params.opacity_end} min={0} max={1} step={0.05}
             onChange={(v) => update(anim.id, { params: { ...params, opacity_end: v } })} style={styles.input} />
-          <select style={{ ...styles.select, maxWidth: 90 }} value={params.opacity_easing}
-            onChange={(e) => update(anim.id, { params: { ...params, opacity_easing: e.target.value as any } })}>
-            {easingOptions.map((e) => <option key={e} value={e}>{easingLabels[e]}</option>)}
-          </select>
+          <EasingPicker value={params.opacity_easing}
+            onChange={(v) => update(anim.id, { params: { ...params, opacity_easing: v as any } })} />
         </div>
         <span style={{ fontSize: 10, color: '#666' }}>0 = fully transparent, 1 = unchanged</span>
       </div>
@@ -996,10 +1028,8 @@ function GsAnimationProperties({ anim }: { anim: GsAnimationGroupData }) {
           <span style={{ fontSize: 12, minWidth: 80 }}>Scale End</span>
           <NumberInput value={params.scale_end} min={0} max={1} step={0.05}
             onChange={(v) => update(anim.id, { params: { ...params, scale_end: v } })} style={styles.input} />
-          <select style={{ ...styles.select, maxWidth: 90 }} value={params.scale_easing}
-            onChange={(e) => update(anim.id, { params: { ...params, scale_easing: e.target.value as any } })}>
-            {easingOptions.map((e) => <option key={e} value={e}>{easingLabels[e]}</option>)}
-          </select>
+          <EasingPicker value={params.scale_easing}
+            onChange={(v) => update(anim.id, { params: { ...params, scale_easing: v as any } })} />
         </div>
         <span style={{ fontSize: 10, color: '#666' }}>0 = vanish, 1 = unchanged</span>
       </div>

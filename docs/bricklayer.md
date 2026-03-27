@@ -406,12 +406,24 @@ All params describe **targets** at the end of the lifetime. Each can have an ind
 
 ### Easing Curves
 
-| Easing | Formula | Description |
-|--------|---------|-------------|
-| `"linear"` | t | Constant rate (default) |
-| `"ease_in"` | t² | Slow start, fast end |
-| `"ease_out"` | 1-(1-t)² | Fast start, slow end |
-| `"ease_in_out"` | 3t²-2t³ | Smooth start and end |
+31 easing functions from [easings.net](https://easings.net/). Format: `{direction}_{type}`.
+
+| Type | In | Out | In Out |
+|------|----|----|--------|
+| Quad | `in_quad` | `out_quad` | `in_out_quad` |
+| Cubic | `in_cubic` | `out_cubic` | `in_out_cubic` |
+| Quart | `in_quart` | `out_quart` | `in_out_quart` |
+| Quint | `in_quint` | `out_quint` | `in_out_quint` |
+| Sine | `in_sine` | `out_sine` | `in_out_sine` |
+| Expo | `in_expo` | `out_expo` | `in_out_expo` |
+| Circ | `in_circ` | `out_circ` | `in_out_circ` |
+| Back | `in_back` | `out_back` | `in_out_back` |
+| Elastic | `in_elastic` | `out_elastic` | `in_out_elastic` |
+| Bounce | `in_bounce` | `out_bounce` | `in_out_bounce` |
+
+Plus `"linear"` (constant rate). Aliases: `ease_in` = `in_quad`, `ease_out` = `out_quad`, `ease_in_out` = `in_out_quad`.
+
+In Bricklayer, each easing is selected via two dropdowns: **[Type]** + **[Direction]**.
 
 ### Scene JSON Format
 
