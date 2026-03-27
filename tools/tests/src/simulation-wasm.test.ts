@@ -335,6 +335,160 @@ async function main() {
   // ═══════════════════════════════════════════════════════════════
   // Summary
   // ═══════════════════════════════════════════════════════════════
+  // 6. Animator (10 tests)
+  // ═══════════════════════════════════════════════════════════════
+
+  console.log('\n--- Animator ---\n');
+
+  {
+    console.log('Test 6.1: Create animator');
+    const animator = new sim.Animator();
+    assert(animator !== null, 'animator created');
+    assert(animator.sceneCount() === 0, 'empty scene');
+    animator.delete();
+  }
+
+  {
+    console.log('Test 6.2: Load scene');
+    const animator = new sim.Animator();
+    const positions = new Float32Array([0, 0, 0, 1, 1, 1, 2, 2, 2]);
+    const colors = new Float32Array([1, 0, 0, 0, 1, 0, 0, 0, 1]);
+    animator.loadScene(positions, colors, 3);
+    assert(animator.sceneCount() === 3, 'scene has 3 points');
+    animator.delete();
+  }
+
+  {
+    console.log('Test 6.3: Tag sphere and check active');
+    const animator = new sim.Animator();
+    const count = 100;
+    const positions = new Float32Array(count * 3);
+    const colors = new Float32Array(count * 3);
+    for (let i = 0; i < count; i++) {
+      positions[i * 3] = Math.random() * 10 - 5;
+      positions[i * 3 + 1] = Math.random() * 10 - 5;
+      positions[i * 3 + 2] = Math.random() * 10 - 5;
+      colors[i * 3] = 0.5;
+      colors[i * 3 + 1] = 0.5;
+      colors[i * 3 + 2] = 0.5;
+    }
+    animator.loadScene(positions, colors, count);
+    const groupId = animator.tagSphere(0, 0, 0, 10, sim.EFFECT_ORBIT, 3.0);
+    assert(groupId > 0, `group created (id=${groupId})`);
+    assert(animator.hasActiveGroups(), 'has active groups');
+    assert(animator.hasGroup(groupId), 'has specific group');
+    animator.delete();
+  }
+
+  {
+    console.log('Test 6.4: Update modifies positions');
+    const animator = new sim.Animator();
+    const positions = new Float32Array([1, 0, 0, -1, 0, 0, 0, 1, 0]);
+    const colors = new Float32Array([1, 1, 1, 1, 1, 1, 1, 1, 1]);
+    animator.loadScene(positions, colors, 3);
+    animator.tagSphere(0, 0, 0, 10, sim.EFFECT_SCATTER, 2.0);
+
+    // Update a few frames
+    for (let i = 0; i < 10; i++) animator.update(1 / 60);
+
+    const data = animator.getSceneData();
+    assert(data !== null, 'scene data returned');
+    if (data) {
+      // Positions should have changed (scatter moves points)
+      const movedX = Math.abs(data.positions[0] - 1) > 0.01;
+      assert(movedX, `position changed (was 1, now ${data.positions[0].toFixed(3)})`);
+    }
+    animator.delete();
+  }
+
+  {
+    console.log('Test 6.5: Reset scene restores positions');
+    const animator = new sim.Animator();
+    const positions = new Float32Array([5, 5, 5]);
+    const colors = new Float32Array([1, 0, 0]);
+    animator.loadScene(positions, colors, 1);
+    animator.tagSphere(5, 5, 5, 10, sim.EFFECT_SCATTER, 2.0);
+    for (let i = 0; i < 30; i++) animator.update(1 / 60);
+    animator.resetScene();
+    const data = animator.getSceneData();
+    if (data) {
+      assert(approx(data.positions[0], 5, 0.01), `x restored to 5 (got ${data.positions[0].toFixed(3)})`);
+      assert(approx(data.positions[1], 5, 0.01), `y restored to 5`);
+    }
+    animator.delete();
+  }
+
+  {
+    console.log('Test 6.6: Orbit effect rotates points');
+    const animator = new sim.Animator();
+    // Two points offset from each other — centroid will be at (0,0,0)
+    const positions = new Float32Array([3, 0, 0, -3, 0, 0]);
+    const colors = new Float32Array([1, 1, 1, 1, 1, 1]);
+    animator.loadScene(positions, colors, 2);
+    animator.tagSphere(0, 0, 0, 10, sim.EFFECT_ORBIT, 5.0);
+    // Run 1 second of simulation
+    for (let i = 0; i < 60; i++) animator.update(1 / 60);
+    const data = animator.getSceneData();
+    if (data) {
+      // First point should have rotated — z should be non-zero
+      const z = data.positions[2];
+      assert(Math.abs(z) > 0.1, `orbit moved z (${z.toFixed(3)})`);
+    }
+    animator.delete();
+  }
+
+  {
+    console.log('Test 6.7: Pulse effect preserves position');
+    const animator = new sim.Animator();
+    const positions = new Float32Array([2, 3, 4]);
+    const colors = new Float32Array([1, 1, 1]);
+    animator.loadScene(positions, colors, 1);
+    animator.tagSphere(2, 3, 4, 10, sim.EFFECT_PULSE, 3.0);
+    for (let i = 0; i < 30; i++) animator.update(1 / 60);
+    const data = animator.getSceneData();
+    if (data) {
+      assert(approx(data.positions[0], 2, 0.01), 'pulse keeps x');
+      assert(approx(data.positions[1], 3, 0.01), 'pulse keeps y');
+      assert(approx(data.positions[2], 4, 0.01), 'pulse keeps z');
+    }
+    animator.delete();
+  }
+
+  {
+    console.log('Test 6.8: Effect constants exist');
+    assert(sim.EFFECT_DETACH === 0, 'DETACH=0');
+    assert(sim.EFFECT_ORBIT === 2, 'ORBIT=2');
+    assert(sim.EFFECT_SCATTER === 8, 'SCATTER=8');
+    assert(sim.EFFECT_PULSE === 5, 'PULSE=5');
+  }
+
+  {
+    console.log('Test 6.9: Tag with params');
+    const animator = new sim.Animator();
+    const positions = new Float32Array([1, 0, 0]);
+    const colors = new Float32Array([1, 1, 1]);
+    animator.loadScene(positions, colors, 1);
+    const groupId = animator.tagSphereWithParams(0, 0, 0, 10, sim.EFFECT_ORBIT, 3.0,
+      { rotations: 5, expansion: 2.0, opacity_end: 0.5 });
+    assert(groupId > 0, 'group with params created');
+    animator.delete();
+  }
+
+  {
+    console.log('Test 6.10: Groups expire after lifetime');
+    const animator = new sim.Animator();
+    const positions = new Float32Array([1, 0, 0]);
+    const colors = new Float32Array([1, 1, 1]);
+    animator.loadScene(positions, colors, 1);
+    animator.tagSphere(0, 0, 0, 10, sim.EFFECT_DISSOLVE, 0.5);
+    assert(animator.hasActiveGroups(), 'active at start');
+    // Run past lifetime
+    for (let i = 0; i < 60; i++) animator.update(1 / 60);
+    assert(!animator.hasActiveGroups(), 'expired after 1s (lifetime=0.5s)');
+    animator.delete();
+  }
+
+  // ═══════════════════════════════════════════════════════════════
 
   console.log(`\n${'='.repeat(40)}`);
   console.log(`  ${passed} passed, ${failed} failed`);
