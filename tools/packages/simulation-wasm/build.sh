@@ -5,11 +5,12 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT_DIR="$SCRIPT_DIR/../.."
 SRC_DIR="$ROOT_DIR/.."
 
-# Find GLM include path
+# Find GLM include path (search all build presets)
 GLM_DIR=""
-for d in "$SRC_DIR/build/macos-debug/_deps/glm-src" \
-         "$SRC_DIR/build/macos-release/_deps/glm-src" \
-         "/opt/homebrew/include"; do
+for d in "$SRC_DIR"/build/*/deps/glm-src \
+         "$SRC_DIR"/build/*/_deps/glm-src \
+         /opt/homebrew/include \
+         /usr/include; do
     if [ -d "$d/glm" ]; then
         GLM_DIR="$d"
         break
