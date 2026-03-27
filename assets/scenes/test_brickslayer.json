@@ -161,12 +161,12 @@
         ],
         "radius": 50
       },
-      "lifetime": 5,
+      "lifetime": 10,
       "loop": true,
       "params": {
         "expansion": 10,
         "rotation_easing": "ease_in",
-        "expansion_easing": "ease_in"
+        "expansion_easing": "in_elastic"
       },
       "reform": {
         "lifetime": 5
