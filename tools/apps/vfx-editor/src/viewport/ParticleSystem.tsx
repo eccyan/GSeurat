@@ -62,11 +62,24 @@ function EmitterRenderer({ layer, active }: { layer: VfxLayer; active: boolean }
     const cfg = layer.emitter as Record<string, unknown> | undefined;
 
     if (cfg?.preset) {
-      emitter.configurePreset(cfg.preset as string);
+      // Start from preset, then apply any custom overrides
+      const presetCfg = wasmModule.resolvePreset(cfg.preset as string);
+      if (presetCfg) {
+        // Merge: preset defaults + layer overrides
+        const merged = { ...presetCfg };
+        for (const [key, val] of Object.entries(cfg)) {
+          if (key !== 'preset' && val !== undefined) {
+            (merged as any)[key] = val;
+          }
+        }
+        emitter.configure(merged);
+      } else {
+        emitter.configure(cfg);
+      }
     } else if (cfg) {
       emitter.configure(cfg);
     } else {
-      emitter.configurePreset('fire'); // fallback
+      emitter.configurePreset('fire');
     }
 
     emitter.setActive(true);
