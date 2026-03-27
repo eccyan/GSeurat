@@ -94,8 +94,9 @@ function EmitterRenderer({ layer, active }: { layer: VfxLayer; active: boolean }
       positionBuffer.set(data.positions.subarray(0, count * 3));
       colorBuffer.set(data.colors.subarray(0, count * 3));
 
-      const posAttr = geoRef.current.getAttribute('position') as THREE.BufferAttribute;
-      const colAttr = geoRef.current.getAttribute('color') as THREE.BufferAttribute;
+      const posAttr = geoRef.current.getAttribute('position');
+      const colAttr = geoRef.current.getAttribute('color');
+      if (!posAttr || !colAttr) return;
       posAttr.needsUpdate = true;
       colAttr.needsUpdate = true;
       geoRef.current.setDrawRange(0, count);
