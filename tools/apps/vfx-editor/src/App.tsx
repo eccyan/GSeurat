@@ -1,6 +1,8 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { useVfxStore } from './store/useVfxStore.js';
 import type { VfxPreset, VfxLayer, LayerType, Phase } from './store/types.js';
+import { serializeVfx } from './lib/vfxExport.js';
+import { parseVfx } from './lib/vfxImport.js';
 import { LayerProperties } from './panels/LayerProperties.js';
 
 // ═══════════════════════════════════════════════════════════════
@@ -58,6 +60,48 @@ function MenuBar() {
   const [fileOpen, setFileOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
+  const handleSave = () => {
+    const store = useVfxStore.getState();
+    const preset = store.presets.find((p) => p.id === store.selectedPresetId);
+    if (!preset) return;
+    const json = serializeVfx(preset);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${preset.name.replace(/\s+/g, '_').toLowerCase()}.vfx.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    setFileOpen(false);
+  };
+
+  const handleOpen = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.vfx.json,.json';
+    input.onchange = async () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      const text = await file.text();
+      try {
+        const preset = parseVfx(text);
+        const store = useVfxStore.getState();
+        store.addPreset(preset.name);
+        // Replace the just-added preset with the loaded one
+        const added = store.presets[store.presets.length - 1];
+        if (added) {
+          useVfxStore.setState({
+            presets: store.presets.map((p) => p.id === added.id ? { ...preset, id: added.id } : p),
+          });
+        }
+      } catch (e) {
+        console.error('Failed to parse VFX file:', e);
+      }
+    };
+    input.click();
+    setFileOpen(false);
+  };
+
   useEffect(() => {
     if (!fileOpen) return;
     const handler = (e: MouseEvent) => {
@@ -84,8 +128,8 @@ function MenuBar() {
           }}>
             {[
               { label: 'New VFX', action: () => { addPreset(); setFileOpen(false); } },
-              { label: 'Open...', action: () => setFileOpen(false) },
-              { label: 'Save', action: () => setFileOpen(false) },
+              { label: 'Open...', action: handleOpen },
+              { label: 'Save', action: handleSave },
               { label: 'Import Scene...', action: () => setFileOpen(false) },
             ].map((item) => (
               <div key={item.label} onClick={item.action}
@@ -208,6 +252,17 @@ function Timeline() {
   const stop = useVfxStore((s) => s.stop);
   const setPlaybackTime = useVfxStore((s) => s.setPlaybackTime);
   const addLayer = useVfxStore((s) => s.addLayer);
+  const updateLayer = useVfxStore((s) => s.updateLayer);
+
+  // Drag state for timeline layer bars
+  const dragState = useRef<{
+    layerId: string;
+    mode: 'move' | 'resize-left' | 'resize-right';
+    startX: number;
+    originalStart: number;
+    originalDuration: number;
+  } | null>(null);
+  const tracksRef = useRef<HTMLDivElement>(null);
 
   // Playback animation
   const rafRef = useRef<number>(0);
@@ -306,26 +361,86 @@ function Timeline() {
           </div>
         </div>
 
-        {/* Layer tracks */}
-        <div style={{ position: 'relative', zIndex: 1, padding: '2px 0', width: totalWidth }}>
+        {/* Layer tracks with drag handles */}
+        <div ref={tracksRef} style={{ position: 'relative', zIndex: 1, padding: '2px 0', width: totalWidth }}>
           {preset.layers.map((layer) => {
             const left = (layer.start / dur) * 100;
             const width = (layer.duration / dur) * 100;
             const color = layerColor(layer.type);
             const selected = selectedLayerId === layer.id;
+            const isDragging = dragState.current?.layerId === layer.id;
             return (
               <div key={layer.id} style={{ height: 22, position: 'relative', marginBottom: 2 }}>
                 <div
                   onClick={() => selectLayer(layer.id)}
+                  onPointerDown={(e) => {
+                    e.preventDefault();
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const relX = e.clientX - rect.left;
+                    const barWidth = rect.width;
+                    const edge = 8; // px zone for resize handles
+                    let mode: 'move' | 'resize-left' | 'resize-right' = 'move';
+                    if (relX < edge) mode = 'resize-left';
+                    else if (relX > barWidth - edge) mode = 'resize-right';
+
+                    dragState.current = {
+                      layerId: layer.id,
+                      mode,
+                      startX: e.clientX,
+                      originalStart: layer.start,
+                      originalDuration: layer.duration,
+                    };
+                    selectLayer(layer.id);
+                    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+                  }}
+                  onPointerMove={(e) => {
+                    if (!dragState.current || dragState.current.layerId !== layer.id) {
+                      // Cursor feedback for edges
+                      const rect = e.currentTarget.getBoundingClientRect();
+                      const relX = e.clientX - rect.left;
+                      const barWidth = rect.width;
+                      if (relX < 8 || relX > barWidth - 8) {
+                        e.currentTarget.style.cursor = 'ew-resize';
+                      } else {
+                        e.currentTarget.style.cursor = 'grab';
+                      }
+                      return;
+                    }
+                    const ds = dragState.current;
+                    const tracksEl = tracksRef.current;
+                    if (!tracksEl) return;
+                    const pxWidth = tracksEl.clientWidth;
+                    const dxPx = e.clientX - ds.startX;
+                    const dxSec = (dxPx / pxWidth) * dur;
+                    const snap = (v: number) => Math.round(v / 0.05) * 0.05;
+
+                    if (ds.mode === 'move') {
+                      const newStart = snap(Math.max(0, ds.originalStart + dxSec));
+                      updateLayer(preset.id, layer.id, { start: newStart });
+                    } else if (ds.mode === 'resize-left') {
+                      const newStart = snap(Math.max(0, Math.min(ds.originalStart + ds.originalDuration - 0.05, ds.originalStart + dxSec)));
+                      const newDuration = snap(Math.max(0.05, ds.originalDuration - (newStart - ds.originalStart)));
+                      updateLayer(preset.id, layer.id, { start: newStart, duration: newDuration });
+                    } else if (ds.mode === 'resize-right') {
+                      const newDuration = snap(Math.max(0.05, ds.originalDuration + dxSec));
+                      updateLayer(preset.id, layer.id, { duration: newDuration });
+                    }
+                    e.currentTarget.style.cursor = ds.mode === 'move' ? 'grabbing' : 'ew-resize';
+                  }}
+                  onPointerUp={(e) => {
+                    dragState.current = null;
+                    try { (e.target as HTMLElement).releasePointerCapture(e.pointerId); } catch {}
+                  }}
                   style={{
                     position: 'absolute', left: `${left}%`, width: `${width}%`,
-                    height: 20, borderRadius: 3, cursor: 'pointer',
-                    background: `${color}${selected ? '40' : '20'}`,
-                    border: `1px solid ${color}${selected ? 'cc' : '60'}`,
+                    height: 20, borderRadius: 3, cursor: 'grab',
+                    background: `${color}${selected || isDragging ? '40' : '20'}`,
+                    border: `1px solid ${color}${selected || isDragging ? 'cc' : '60'}`,
                     display: 'flex', alignItems: 'center', padding: '0 6px',
                     fontSize: 9, color: color, overflow: 'hidden', whiteSpace: 'nowrap',
                     boxShadow: selected ? `0 0 8px ${color}30` : 'none',
-                    transition: 'box-shadow 0.15s, border-color 0.15s',
+                    transition: isDragging ? 'none' : 'box-shadow 0.15s, border-color 0.15s',
+                    userSelect: 'none',
                   }}
                 >
                   <span style={{ opacity: 0.6, marginRight: 4 }}>
