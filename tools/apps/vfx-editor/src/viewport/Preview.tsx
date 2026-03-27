@@ -14,17 +14,18 @@ function GaussianPointCloud({ points, geoRef }: { points: PlyPoint[]; geoRef: Re
   const geometry = useMemo(() => {
     const geo = new THREE.BufferGeometry();
     const positions = new Float32Array(points.length * 3);
-    const colors = new Float32Array(points.length * 3);
+    const colors = new Float32Array(points.length * 4); // RGBA
     for (let i = 0; i < points.length; i++) {
       positions[i * 3] = points[i].position[0];
       positions[i * 3 + 1] = points[i].position[1];
       positions[i * 3 + 2] = points[i].position[2];
-      colors[i * 3] = points[i].color[0];
-      colors[i * 3 + 1] = points[i].color[1];
-      colors[i * 3 + 2] = points[i].color[2];
+      colors[i * 4] = points[i].color[0];
+      colors[i * 4 + 1] = points[i].color[1];
+      colors[i * 4 + 2] = points[i].color[2];
+      colors[i * 4 + 3] = 1.0; // full opacity by default
     }
     geo.setAttribute('position', new THREE.BufferAttribute(positions, 3).setUsage(THREE.DynamicDrawUsage));
-    geo.setAttribute('color', new THREE.BufferAttribute(colors, 3).setUsage(THREE.DynamicDrawUsage));
+    geo.setAttribute('color', new THREE.BufferAttribute(colors, 4).setUsage(THREE.DynamicDrawUsage));
     return geo;
   }, [points]);
 
@@ -32,7 +33,7 @@ function GaussianPointCloud({ points, geoRef }: { points: PlyPoint[]; geoRef: Re
 
   return (
     <points geometry={geometry}>
-      <pointsMaterial size={0.15} vertexColors sizeAttenuation />
+      <pointsMaterial size={0.15} vertexColors sizeAttenuation transparent depthWrite={false} />
     </points>
   );
 }
@@ -187,7 +188,7 @@ export function Preview({ scenePoints }: { scenePoints: PlyPoint[] }) {
   const playbackTime = useVfxStore((s) => s.playbackTime);
   const sceneGeoRef = useRef<THREE.BufferGeometry | null>(null);
 
-  // Callback for AnimationSystem to update point cloud geometry
+  // Callback for AnimationSystem to update point cloud geometry (RGBA colors)
   const handleUpdateGeometry = useCallback((positions: Float32Array, colors: Float32Array) => {
     const geo = sceneGeoRef.current;
     if (!geo) return;
