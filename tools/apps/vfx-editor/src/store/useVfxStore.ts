@@ -6,6 +6,13 @@ function genId(prefix: string): string {
   return `${prefix}_${Date.now()}_${++idCounter}`;
 }
 
+/**
+ * Mutable ref for high-frequency playback time updates.
+ * R3F useFrame callbacks read this directly (no React re-render).
+ * Zustand state is synced at lower frequency (~10Hz) for UI updates.
+ */
+export const playbackTimeRef = { current: 0 };
+
 export interface VfxStoreState {
   // Data
   presets: VfxPreset[];
@@ -141,8 +148,8 @@ export const useVfxStore = create<VfxStoreState>((set, get) => ({
 
   play: () => set({ playing: true }),
   pause: () => set({ playing: false }),
-  stop: () => set({ playing: false, playbackTime: 0 }),
-  setPlaybackTime: (t) => set({ playbackTime: t }),
+  stop: () => { playbackTimeRef.current = 0; set({ playing: false, playbackTime: 0 }); },
+  setPlaybackTime: (t) => { playbackTimeRef.current = t; set({ playbackTime: t }); },
 
   selectedPreset: () => {
     const state = get();

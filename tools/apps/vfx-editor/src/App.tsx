@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { useVfxStore } from './store/useVfxStore.js';
+import { useVfxStore, playbackTimeRef } from './store/useVfxStore.js';
 import type { VfxPreset, VfxLayer, LayerType, Phase } from './store/types.js';
 import { serializeVfx } from './lib/vfxExport.js';
 import { parseVfx } from './lib/vfxImport.js';
@@ -357,20 +357,28 @@ function Timeline() {
   } | null>(null);
   const tracksRef = useRef<HTMLDivElement>(null);
 
-  // Playback animation
+  // Playback animation — ref for high-frequency, Zustand sync throttled to ~10Hz
   const rafRef = useRef<number>(0);
   const lastTimeRef = useRef<number>(0);
+  const lastSyncRef = useRef<number>(0);
 
   useEffect(() => {
     if (!playing || !preset) return;
     lastTimeRef.current = performance.now();
+    lastSyncRef.current = 0;
+    const dur = preset?.duration ?? 3;
     const tick = (now: number) => {
       const dt = (now - lastTimeRef.current) / 1000;
       lastTimeRef.current = now;
-      const store = useVfxStore.getState();
-      let next = store.playbackTime + dt;
-      if (next > (preset?.duration ?? 3)) next = 0;
-      store.setPlaybackTime(next);
+      let next = playbackTimeRef.current + dt;
+      if (next > dur) next = 0;
+      playbackTimeRef.current = next;
+      // Sync to Zustand at ~10Hz for UI updates (scrubber, phase overlay)
+      lastSyncRef.current += dt;
+      if (lastSyncRef.current >= 0.1) {
+        lastSyncRef.current = 0;
+        useVfxStore.getState().setPlaybackTime(next);
+      }
       rafRef.current = requestAnimationFrame(tick);
     };
     rafRef.current = requestAnimationFrame(tick);

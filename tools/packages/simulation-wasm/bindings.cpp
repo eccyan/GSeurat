@@ -135,6 +135,7 @@ public:
     void loadScene(val jsPositions, val jsColors, int count) {
         scene_.clear();
         scene_.resize(count);
+        initial_avg_scale_ = 0.01f;  // default scale assigned below
         for (int i = 0; i < count; ++i) {
             scene_[i].position = {
                 jsPositions[i * 3].as<float>(),
@@ -151,6 +152,11 @@ public:
             scene_[i].rotation = {1, 0, 0, 0};
         }
         original_ = scene_;  // save original state
+
+        // Pre-allocate JS output buffers (reused every getSceneData call)
+        js_positions_ = val::global("Float32Array").new_(count * 3);
+        js_colors_ = val::global("Float32Array").new_(count * 4);
+        js_scales_ = val::global("Float32Array").new_(count);
     }
 
     int sceneCount() { return static_cast<int>(scene_.size()); }
@@ -215,31 +221,31 @@ public:
         animator_.clear(scene_);
     }
 
-    // Get current scene positions/colors as Float32Arrays
+    // Get current scene positions/colors — writes into pre-allocated Float32Arrays
     val getSceneData() {
         if (scene_.empty()) return val::null();
         size_t count = scene_.size();
-        val positions = val::global("Float32Array").new_(count * 3);
-        val colors = val::global("Float32Array").new_(count * 4); // RGBA
-        val scales = val::global("Float32Array").new_(count);
+        float inv_scale = (initial_avg_scale_ > 0.0f) ? 1.0f / initial_avg_scale_ : 1.0f;
 
         for (size_t i = 0; i < count; ++i) {
             const auto& g = scene_[i];
-            positions.set(i * 3,     g.position.x);
-            positions.set(i * 3 + 1, g.position.y);
-            positions.set(i * 3 + 2, g.position.z);
+            js_positions_.set(i * 3,     g.position.x);
+            js_positions_.set(i * 3 + 1, g.position.y);
+            js_positions_.set(i * 3 + 2, g.position.z);
             float opacity = g.opacity < 0.0f ? 0.0f : (g.opacity > 1.0f ? 1.0f : g.opacity);
-            colors.set(i * 4,     g.color.x);
-            colors.set(i * 4 + 1, g.color.y);
-            colors.set(i * 4 + 2, g.color.z);
-            colors.set(i * 4 + 3, opacity);
-            scales.set(i, (g.scale.x + g.scale.y + g.scale.z) / 3.0f);
+            js_colors_.set(i * 4,     g.color.x);
+            js_colors_.set(i * 4 + 1, g.color.y);
+            js_colors_.set(i * 4 + 2, g.color.z);
+            js_colors_.set(i * 4 + 3, opacity);
+            // Pre-normalize: return ratio (1.0 = original size) instead of raw avg scale
+            float avg_scale = (g.scale.x + g.scale.y + g.scale.z) / 3.0f;
+            js_scales_.set(i, avg_scale * inv_scale);
         }
 
         val result = val::object();
-        result.set("positions", positions);
-        result.set("colors", colors);
-        result.set("scales", scales);
+        result.set("positions", js_positions_);
+        result.set("colors", js_colors_);
+        result.set("scales", js_scales_);
         result.set("count", static_cast<int>(count));
         return result;
     }
@@ -248,6 +254,11 @@ private:
     std::vector<Gaussian> scene_;
     std::vector<Gaussian> original_;
     GaussianAnimator animator_;
+    float initial_avg_scale_ = 0.01f;
+    // Pre-allocated JS output buffers (avoid per-frame allocation)
+    val js_positions_ = val::undefined();
+    val js_colors_ = val::undefined();
+    val js_scales_ = val::undefined();
 };
 
 // ── Easing wrapper ──

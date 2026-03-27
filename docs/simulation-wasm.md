@@ -85,7 +85,7 @@ animator.update(dt);
 const data = animator.getSceneData();
 // data.positions: Float32Array [x0,y0,z0, ...]  (3 per point)
 // data.colors:    Float32Array [r0,g0,b0,a0, ...] (4 per point, RGBA)
-// data.scales:    Float32Array [s0, s1, ...]  (avg scale per point)
+// data.scales:    Float32Array [s0, s1, ...]  (pre-normalized ratio, 1.0 = original)
 // data.count:     number
 
 animator.hasActiveGroups();  // any effects still running?
@@ -148,5 +148,6 @@ cd tools/packages/simulation-wasm && bash build.sh
 
 ```bash
 cd tools/tests && pnpm test:simulation-wasm
-# 73 tests: module loading, emitter lifecycle, presets, easing, integration
+# 147 tests: module loading, emitter lifecycle, presets, easing, integration,
+#            animator (all 9 effects), buffer reuse regression, stress tests
 ```

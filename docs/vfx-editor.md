@@ -158,7 +158,14 @@ as the engine, compiled to WebAssembly.
   `uPixelRatio` uniform for Retina display support
 - Continuous effects (Wave, Pulse) use large lifetime; rotation effects (Orbit,
   Vortex) use actual layer duration for correct progress
-- Scale values normalized from WASM output (avg scale ratio) to shader units
+- Scale values pre-normalized in C++ (ratio: 1.0 = original size)
+
+### Performance
+- WASM output buffers pre-allocated in `loadScene()`, reused every frame (zero
+  JS-side allocation during playback)
+- Playback time stored in mutable ref for 60Hz R3F reads; Zustand state synced
+  at ~10Hz for UI updates, reducing React fiber mutations by ~60x
+- Smooth animation at ~90K points; GPU-bound above ~200K
 
 ### Import scene geometry
 **File > Import Scene PLY** loads a `.ply` file into the viewport for context.
