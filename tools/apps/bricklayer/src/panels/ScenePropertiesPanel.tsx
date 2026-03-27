@@ -16,8 +16,7 @@ const styles: Record<string, React.CSSProperties> = {
   label: { fontSize: 11, color: '#888', textTransform: 'uppercase' as const, letterSpacing: 1 },
   row: { display: 'flex', alignItems: 'center', gap: 6 },
   input: {
-    flex: 1, maxWidth: 80, padding: '3px 5px', background: '#2a2a4a', border: '1px solid #444',
-    borderRadius: 4, color: '#ddd', fontSize: 12,
+    flex: 1, maxWidth: 80, padding: '3px 5px', fontSize: 12,
   },
   select: {
     flex: 1, padding: '3px 5px', background: '#2a2a4a', border: '1px solid #444',
@@ -888,7 +887,7 @@ function ParamRow({ label, value, onChange, min, max, step, easing, onEasingChan
           </span>
         )}
         <NumberInput value={value} min={min} max={max} step={step ?? 0.1}
-          onChange={onChange} style={{ flex: 1, maxWidth: 80, padding: '3px 5px', background: '#2a2a4a', border: '1px solid #444', borderRadius: 4, color: '#ddd', fontSize: 12 }} />
+          onChange={onChange} style={{ flex: 1, maxWidth: 80, padding: '3px 5px', fontSize: 12 }} />
         {easingParts && onEasingChange && (
           <>
             <select

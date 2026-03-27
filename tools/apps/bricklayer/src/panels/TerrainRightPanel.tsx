@@ -10,10 +10,7 @@ const styles: Record<string, React.CSSProperties> = {
   colorSwatch: {
     width: 20, height: 20, borderRadius: 3, border: '1px solid #666', flexShrink: 0,
   },
-  input: {
-    width: 60, padding: '4px 6px', background: '#2a2a4a', border: '1px solid #444',
-    borderRadius: 4, color: '#ddd', fontSize: 13,
-  },
+  input: { width: 60, padding: '3px 5px', fontSize: 12 },
 };
 
 export function TerrainRightPanel() {
