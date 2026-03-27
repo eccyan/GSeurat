@@ -1,5 +1,5 @@
 /**
- * WASM-powered particle rendering for VFX Editor.
+ * WASM-powered particle rendering for Méliès (VFX Editor).
  *
  * Uses the exact same C++ simulation code as the engine,
  * compiled to WebAssembly. Each active emitter layer gets

@@ -2,7 +2,7 @@
 
 The simulation WASM module compiles the GSeurat particle emitter and animation
 engine to WebAssembly, providing the exact same simulation logic to web tools
-(VFX Editor, Bricklayer) with zero code divergence from the native engine.
+(Méliès, Bricklayer) with zero code divergence from the native engine.
 
 ## Quick Start
 

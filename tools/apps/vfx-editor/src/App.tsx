@@ -185,7 +185,7 @@ function MenuBar({ onImportScene }: { onImportScene?: () => void }) {
       <span style={{ cursor: 'pointer', padding: '4px 8px' }}>Edit</span>
       <span style={{ cursor: 'pointer', padding: '4px 8px' }}>View</span>
       <div style={{ flex: 1 }} />
-      <span style={{ fontSize: 11, color: T.textMuted, letterSpacing: 1 }}>VFX Editor</span>
+      <span style={{ fontSize: 11, color: T.textMuted, letterSpacing: 1 }}>Méliès</span>
     </div>
   );
 }
@@ -250,7 +250,7 @@ function VfxTree() {
         padding: '6px 8px', borderBottom: `1px solid ${T.border}`,
         fontSize: 10, color: T.textMuted, letterSpacing: 1.5, textTransform: 'uppercase',
       }}>
-        VFX Editor
+        Méliès
       </div>
 
       {/* Tree */}
