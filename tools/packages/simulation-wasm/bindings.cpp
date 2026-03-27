@@ -127,6 +127,125 @@ private:
     GaussianParticleEmitter emitter_;
 };
 
+// ── Animator wrapper ──
+
+class AnimatorWrapper {
+public:
+    // Load scene points from JS Float32Arrays (positions + colors)
+    void loadScene(val jsPositions, val jsColors, int count) {
+        scene_.clear();
+        scene_.resize(count);
+        for (int i = 0; i < count; ++i) {
+            scene_[i].position = {
+                jsPositions[i * 3].as<float>(),
+                jsPositions[i * 3 + 1].as<float>(),
+                jsPositions[i * 3 + 2].as<float>()
+            };
+            scene_[i].color = {
+                jsColors[i * 3].as<float>(),
+                jsColors[i * 3 + 1].as<float>(),
+                jsColors[i * 3 + 2].as<float>()
+            };
+            scene_[i].opacity = 1.0f;
+            scene_[i].scale = {0.01f, 0.01f, 0.01f};
+            scene_[i].rotation = {1, 0, 0, 0};
+        }
+        original_ = scene_;  // save original state
+    }
+
+    int sceneCount() { return static_cast<int>(scene_.size()); }
+
+    // Tag a spherical region for animation
+    int tagSphere(float cx, float cy, float cz, float radius,
+                  int effect, float lifetime) {
+        GsAnimRegion region;
+        region.shape = GsAnimRegion::Shape::Sphere;
+        region.center = {cx, cy, cz};
+        region.radius = radius;
+        return animator_.tag_region(
+            scene_, region,
+            static_cast<GsAnimEffect>(effect),
+            lifetime);
+    }
+
+    // Tag with params
+    int tagSphereWithParams(float cx, float cy, float cz, float radius,
+                            int effect, float lifetime, val jsParams) {
+        GsAnimRegion region;
+        region.shape = GsAnimRegion::Shape::Sphere;
+        region.center = {cx, cy, cz};
+        region.radius = radius;
+
+        GsAnimParams params;
+        if (jsParams.hasOwnProperty("rotations")) params.rotations = jsParams["rotations"].as<float>();
+        if (jsParams.hasOwnProperty("expansion")) params.expansion = jsParams["expansion"].as<float>();
+        if (jsParams.hasOwnProperty("height_rise")) params.height_rise = jsParams["height_rise"].as<float>();
+        if (jsParams.hasOwnProperty("opacity_end")) params.opacity_end = jsParams["opacity_end"].as<float>();
+        if (jsParams.hasOwnProperty("scale_end")) params.scale_end = jsParams["scale_end"].as<float>();
+        if (jsParams.hasOwnProperty("velocity")) params.velocity = jsParams["velocity"].as<float>();
+        if (jsParams.hasOwnProperty("noise")) params.noise = jsParams["noise"].as<float>();
+        if (jsParams.hasOwnProperty("wave_speed")) params.wave_speed = jsParams["wave_speed"].as<float>();
+        if (jsParams.hasOwnProperty("pulse_frequency")) params.pulse_frequency = jsParams["pulse_frequency"].as<float>();
+        // Easing params
+        auto readEasing = [](val v) -> GsEasing {
+            if (v.isNumber()) return static_cast<GsEasing>(v.as<int>());
+            return GsEasing::Linear;
+        };
+        if (jsParams.hasOwnProperty("rotations_easing")) params.rotations_easing = readEasing(jsParams["rotations_easing"]);
+        if (jsParams.hasOwnProperty("expansion_easing")) params.expansion_easing = readEasing(jsParams["expansion_easing"]);
+        if (jsParams.hasOwnProperty("height_easing")) params.height_easing = readEasing(jsParams["height_easing"]);
+        if (jsParams.hasOwnProperty("opacity_easing")) params.opacity_easing = readEasing(jsParams["opacity_easing"]);
+        if (jsParams.hasOwnProperty("scale_easing")) params.scale_easing = readEasing(jsParams["scale_easing"]);
+
+        return animator_.tag_region(
+            scene_, region,
+            static_cast<GsAnimEffect>(effect),
+            lifetime, params);
+    }
+
+    void update(float dt) {
+        animator_.update(dt, scene_);
+    }
+
+    bool hasActiveGroups() { return animator_.has_active_groups(); }
+    bool hasGroup(int groupId) { return animator_.has_group(static_cast<uint32_t>(groupId)); }
+
+    void resetScene() {
+        scene_ = original_;
+        animator_.clear(scene_);
+    }
+
+    // Get current scene positions/colors as Float32Arrays
+    val getSceneData() {
+        if (scene_.empty()) return val::null();
+        size_t count = scene_.size();
+        val positions = val::global("Float32Array").new_(count * 3);
+        val colors = val::global("Float32Array").new_(count * 3);
+
+        for (size_t i = 0; i < count; ++i) {
+            const auto& g = scene_[i];
+            positions.set(i * 3,     g.position.x);
+            positions.set(i * 3 + 1, g.position.y);
+            positions.set(i * 3 + 2, g.position.z);
+            float opacity = g.opacity < 0.0f ? 0.0f : (g.opacity > 1.0f ? 1.0f : g.opacity);
+            colors.set(i * 3,     g.color.x * opacity);
+            colors.set(i * 3 + 1, g.color.y * opacity);
+            colors.set(i * 3 + 2, g.color.z * opacity);
+        }
+
+        val result = val::object();
+        result.set("positions", positions);
+        result.set("colors", colors);
+        result.set("count", static_cast<int>(count));
+        return result;
+    }
+
+private:
+    std::vector<Gaussian> scene_;
+    std::vector<Gaussian> original_;
+    GaussianAnimator animator_;
+};
+
 // ── Easing wrapper ──
 
 float easingJs(float t, int easing) {
@@ -148,6 +267,30 @@ EMSCRIPTEN_BINDINGS(gseurat_simulation) {
         .function("clear", &EmitterWrapper::clear)
         .function("active", &EmitterWrapper::active)
         .function("gather", &EmitterWrapper::gather);
+
+    // Animator
+    class_<AnimatorWrapper>("Animator")
+        .constructor()
+        .function("loadScene", &AnimatorWrapper::loadScene)
+        .function("sceneCount", &AnimatorWrapper::sceneCount)
+        .function("tagSphere", &AnimatorWrapper::tagSphere)
+        .function("tagSphereWithParams", &AnimatorWrapper::tagSphereWithParams)
+        .function("update", &AnimatorWrapper::update)
+        .function("hasActiveGroups", &AnimatorWrapper::hasActiveGroups)
+        .function("hasGroup", &AnimatorWrapper::hasGroup)
+        .function("resetScene", &AnimatorWrapper::resetScene)
+        .function("getSceneData", &AnimatorWrapper::getSceneData);
+
+    // Animation effect enum constants
+    constant("EFFECT_DETACH", 0);
+    constant("EFFECT_FLOAT", 1);
+    constant("EFFECT_ORBIT", 2);
+    constant("EFFECT_DISSOLVE", 3);
+    constant("EFFECT_REFORM", 4);
+    constant("EFFECT_PULSE", 5);
+    constant("EFFECT_VORTEX", 6);
+    constant("EFFECT_WAVE", 7);
+    constant("EFFECT_SCATTER", 8);
 
     // Preset resolver
     function("resolvePreset", &resolvePresetJs);

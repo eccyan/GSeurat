@@ -1,4 +1,4 @@
-import React, { useRef, useMemo, useEffect } from 'react';
+import React, { useRef, useMemo, useEffect, useState, useCallback } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls, Grid } from '@react-three/drei';
 import * as THREE from 'three';
@@ -6,10 +6,11 @@ import { useVfxStore } from '../store/useVfxStore.js';
 import type { VfxLayer } from '../store/types.js';
 import type { PlyPoint } from '../lib/plyLoader.js';
 import { ParticleSystem } from './ParticleSystem.js';
+import { AnimationSystem } from './AnimationSystem.js';
 
-// ── Gaussian Point Cloud (imported PLY data) ──
+// ── Gaussian Point Cloud (imported PLY data, updatable by AnimationSystem) ──
 
-function GaussianPointCloud({ points }: { points: PlyPoint[] }) {
+function GaussianPointCloud({ points, geoRef }: { points: PlyPoint[]; geoRef: React.MutableRefObject<THREE.BufferGeometry | null> }) {
   const geometry = useMemo(() => {
     const geo = new THREE.BufferGeometry();
     const positions = new Float32Array(points.length * 3);
@@ -22,10 +23,12 @@ function GaussianPointCloud({ points }: { points: PlyPoint[] }) {
       colors[i * 3 + 1] = points[i].color[1];
       colors[i * 3 + 2] = points[i].color[2];
     }
-    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3).setUsage(THREE.DynamicDrawUsage));
+    geo.setAttribute('color', new THREE.BufferAttribute(colors, 3).setUsage(THREE.DynamicDrawUsage));
     return geo;
   }, [points]);
+
+  useEffect(() => { geoRef.current = geometry; }, [geometry, geoRef]);
 
   return (
     <points geometry={geometry}>
@@ -182,6 +185,20 @@ export function Preview({ scenePoints }: { scenePoints: PlyPoint[] }) {
     return p;
   });
   const playbackTime = useVfxStore((s) => s.playbackTime);
+  const sceneGeoRef = useRef<THREE.BufferGeometry | null>(null);
+
+  // Callback for AnimationSystem to update point cloud geometry
+  const handleUpdateGeometry = useCallback((positions: Float32Array, colors: Float32Array) => {
+    const geo = sceneGeoRef.current;
+    if (!geo) return;
+    const posAttr = geo.getAttribute('position');
+    const colAttr = geo.getAttribute('color');
+    if (!posAttr || !colAttr) return;
+    (posAttr as THREE.BufferAttribute).set(positions);
+    (colAttr as THREE.BufferAttribute).set(colors);
+    posAttr.needsUpdate = true;
+    colAttr.needsUpdate = true;
+  }, []);
 
   // Determine current phase for overlay
   let phaseName = '';
@@ -205,9 +222,10 @@ export function Preview({ scenePoints }: { scenePoints: PlyPoint[] }) {
         <ambientLight intensity={0.4} />
         <directionalLight position={[10, 20, 10]} intensity={0.6} />
         <Grid args={[40, 40]} cellSize={1} cellColor="#1a1a3a" sectionSize={5} sectionColor="#2a2a4a" fadeDistance={30} infiniteGrid={false} />
-        {scenePoints.length > 0 && <GaussianPointCloud points={scenePoints} />}
+        {scenePoints.length > 0 && <GaussianPointCloud points={scenePoints} geoRef={sceneGeoRef} />}
         <LayerGizmos />
         <ParticleSystem />
+        <AnimationSystem scenePoints={scenePoints} onUpdateGeometry={handleUpdateGeometry} />
         <OrbitControls />
       </Canvas>
 
