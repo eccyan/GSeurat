@@ -1,4 +1,5 @@
 import React, { useCallback, useRef, useState } from 'react';
+import { inputStyle as themeInputStyle, labelStyle as themeLabelStyle } from '../styles/theme.js';
 
 export interface NumberInputProps {
   value: number;
@@ -21,24 +22,8 @@ function clamp(v: number, min?: number, max?: number): number {
   return v;
 }
 
-const defaultInputStyle: React.CSSProperties = {
-  padding: '4px 6px',
-  background: '#2a2a4a',
-  borderWidth: '1px 1px 3px 1px',
-  borderStyle: 'solid',
-  borderColor: '#444 #444 #77f #444',
-  borderRadius: 4,
-  color: '#ddd',
-  fontSize: 13,
-  outline: 'none',
-};
-
-const labelStyle: React.CSSProperties = {
-  fontSize: 12,
-  color: '#888',
-  userSelect: 'none',
-  cursor: 'ew-resize',
-};
+const defaultInputStyle: React.CSSProperties = themeInputStyle;
+const labelStyle: React.CSSProperties = themeLabelStyle;
 
 export function NumberInput({
   value,

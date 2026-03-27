@@ -7,52 +7,7 @@ import { hasFileSystemAccess, openProjectDirectory, saveProject, loadProject, do
 import { loadPly, type PlyPoint } from './lib/plyLoader.js';
 import { Preview } from './viewport/Preview.js';
 import { LayerProperties } from './panels/LayerProperties.js';
-
-// ═══════════════════════════════════════════════════════════════
-// Theme
-// ═══════════════════════════════════════════════════════════════
-
-const T = {
-  bg: '#0f0f1e',
-  panel: '#161628',
-  panelAlt: '#1c1c34',
-  surface: '#22223a',
-  border: '#2a2a44',
-  borderLight: '#3a3a5a',
-  text: '#c8c8d8',
-  textDim: '#7878a0',
-  textMuted: '#50506a',
-  accent: '#6366f1',
-  accentDim: '#4f46e5',
-  danger: '#ef4444',
-  // Phase colors
-  phaseAnticipation: '#f59e0b',
-  phaseImpact: '#ef4444',
-  phaseResidual: '#3b82f6',
-  // Layer type colors
-  layerEmitter: '#ec4899',
-  layerAnimation: '#06b6d4',
-  layerLight: '#eab308',
-};
-
-const input: React.CSSProperties = {
-  padding: '4px 8px', background: T.surface, border: `1px solid ${T.border}`,
-  borderRadius: 4, color: T.text, fontSize: 12, outline: 'none', width: '100%',
-};
-
-const selectStyle: React.CSSProperties = {
-  ...input, cursor: 'pointer', appearance: 'none' as const,
-  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5'%3E%3Cpath d='M0 0l4 5 4-5z' fill='%237878a0'/%3E%3C/svg%3E")`,
-  backgroundRepeat: 'no-repeat', backgroundPosition: 'right 8px center', paddingRight: 24,
-};
-
-const layerColor = (type: LayerType) =>
-  type === 'emitter' ? T.layerEmitter : type === 'animation' ? T.layerAnimation : T.layerLight;
-
-const phaseColor = (phase: Phase) =>
-  phase === 'anticipation' ? T.phaseAnticipation
-    : phase === 'impact' ? T.phaseImpact
-    : phase === 'residual' ? T.phaseResidual : T.textMuted;
+import { T, inputStyle, selectStyle, layerColor, phaseColor } from './styles/theme.js';
 
 // ═══════════════════════════════════════════════════════════════
 // MenuBar
