@@ -107,6 +107,15 @@ function EmitterRenderer({ layer, active }: { layer: VfxLayer; active: boolean }
     }
   });
 
+  // Set up geometry imperatively for reliable color attribute binding
+  useEffect(() => {
+    if (!geoRef.current) return;
+    const geo = geoRef.current;
+    geo.setAttribute('position', new THREE.BufferAttribute(positionBuffer, 3).setUsage(THREE.DynamicDrawUsage));
+    geo.setAttribute('color', new THREE.BufferAttribute(colorBuffer, 3).setUsage(THREE.DynamicDrawUsage));
+    geo.setDrawRange(0, 0);
+  }, []);
+
   if (!active || !wasmModule) return null;
 
   // Check if emitter has emission (self-lit)
@@ -115,24 +124,9 @@ function EmitterRenderer({ layer, active }: { layer: VfxLayer; active: boolean }
 
   return (
     <points ref={pointsRef}>
-      <bufferGeometry ref={geoRef}>
-        <bufferAttribute
-          attach="attributes-position"
-          array={positionBuffer}
-          count={MAX_PARTICLES}
-          itemSize={3}
-          usage={THREE.DynamicDrawUsage}
-        />
-        <bufferAttribute
-          attach="attributes-color"
-          array={colorBuffer}
-          count={MAX_PARTICLES}
-          itemSize={3}
-          usage={THREE.DynamicDrawUsage}
-        />
-      </bufferGeometry>
+      <bufferGeometry ref={geoRef} />
       <pointsMaterial
-        size={hasEmission ? 0.25 : 0.15}
+        size={hasEmission ? 0.3 : 0.2}
         vertexColors
         sizeAttenuation
         transparent
