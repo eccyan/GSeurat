@@ -864,7 +864,7 @@ function ParamRow({ label, value, onChange, min, max, step, easing, onEasingChan
       <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
         <span style={{ fontSize: 11, minWidth: 60, color: '#aaa' }}>{label}</span>
         <NumberInput value={value} min={min} max={max} step={step ?? 0.1}
-          onChange={onChange} style={{ flex: 1, padding: '3px 5px', background: '#2a2a4a', border: '1px solid #444', borderRadius: 4, color: '#ddd', fontSize: 12 }} />
+          onChange={onChange} style={{ flex: 1, maxWidth: 80, padding: '3px 5px', background: '#2a2a4a', border: '1px solid #444', borderRadius: 4, color: '#ddd', fontSize: 12 }} />
         {easingParts && onEasingChange && (
           <>
             <select
