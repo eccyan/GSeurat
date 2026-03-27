@@ -527,6 +527,43 @@ function Timeline() {
 // ═══════════════════════════════════════════════════════════════
 
 export function App() {
+  useEffect(() => {
+    const handler = async (e: KeyboardEvent) => {
+      const meta = e.metaKey || e.ctrlKey;
+      if (!meta) return;
+
+      if (e.key === 's') {
+        e.preventDefault();
+        const store = useVfxStore.getState();
+        if (hasFileSystemAccess()) {
+          let handle = store.projectHandle;
+          if (!handle) {
+            handle = await openProjectDirectory();
+            if (!handle) return;
+            store.setProjectHandle(handle);
+          }
+          await saveProject(handle);
+        } else {
+          downloadProject();
+        }
+      } else if (e.key === 'o') {
+        e.preventDefault();
+        if (hasFileSystemAccess()) {
+          const handle = await openProjectDirectory();
+          if (!handle) return;
+          const ok = await loadProject(handle);
+          if (ok) useVfxStore.getState().setProjectHandle(handle);
+        }
+      } else if (e.key === 'z' && !e.shiftKey) {
+        // Future: undo
+      } else if ((e.key === 'z' && e.shiftKey) || e.key === 'y') {
+        // Future: redo
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
   return (
     <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', background: T.bg }}>
       <MenuBar />
