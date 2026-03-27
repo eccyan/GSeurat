@@ -863,6 +863,13 @@ function ParamRow({ label, value, onChange, min, max, step, easing, onEasingChan
     <div style={{ marginBottom: 6 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
         <span style={{ fontSize: 11, minWidth: 60, color: '#aaa' }}>{label}</span>
+        {hint && (
+          <span title={hint} style={{
+            fontSize: 9, color: '#666', cursor: 'help', width: 12, height: 12,
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+            border: '1px solid #555', borderRadius: '50%', flexShrink: 0,
+          }}>?</span>
+        )}
         <NumberInput value={value} min={min} max={max} step={step ?? 0.1}
           onChange={onChange} style={{ flex: 1, maxWidth: 80, padding: '3px 5px', background: '#2a2a4a', border: '1px solid #444', borderRadius: 4, color: '#ddd', fontSize: 12 }} />
         {easingParts && onEasingChange && (
@@ -886,7 +893,6 @@ function ParamRow({ label, value, onChange, min, max, step, easing, onEasingChan
           </>
         )}
       </div>
-      {hint && <span style={{ fontSize: 9, color: '#555', marginLeft: 64 }}>{hint}</span>}
     </div>
   );
 }
