@@ -221,27 +221,38 @@
       },
       "additionalProperties": false
     },
+    "easing": {
+      "type": "string",
+      "enum": ["linear", "ease_in", "ease_out", "ease_in_out"],
+      "description": "Easing curve: linear (default), ease_in (t²), ease_out (1-(1-t)²), ease_in_out (smoothstep)"
+    },
     "animation_params": {
       "type": "object",
+      "description": "Lifetime-centric parameters. All describe targets at end of lifetime with optional per-parameter easing.",
       "properties": {
-        "speed": { "type": "number" },
-        "gravity": { "$ref": "#/definitions/vec3" },
-        "velocity_scale": { "type": "number" },
-        "noise_amplitude": { "type": "number" },
-        "orbit_speed": { "type": "number" },
-        "orbit_acceleration": { "type": "number" },
-        "expansion": { "type": "number" },
-        "height_rise": { "type": "number" },
-        "opacity_fade": { "type": "number", "minimum": 0, "maximum": 1 },
-        "scale_shrink": { "type": "number", "minimum": 0, "maximum": 1 }
+        "rotations": { "type": "number", "description": "Full rotations over lifetime (Orbit, Vortex)" },
+        "rotations_easing": { "$ref": "#/definitions/easing" },
+        "expansion": { "type": "number", "description": "Radius multiplier at end (1=no change, 2=double)" },
+        "expansion_easing": { "$ref": "#/definitions/easing" },
+        "height_rise": { "type": "number", "description": "Total Y offset at end (units)" },
+        "height_easing": { "$ref": "#/definitions/easing" },
+        "opacity_end": { "type": "number", "minimum": 0, "maximum": 1, "description": "Opacity at end (0=gone, 1=unchanged)" },
+        "opacity_easing": { "$ref": "#/definitions/easing" },
+        "scale_end": { "type": "number", "minimum": 0, "maximum": 1, "description": "Scale at end (0=vanish, 1=unchanged)" },
+        "scale_easing": { "$ref": "#/definitions/easing" },
+        "velocity": { "type": "number", "description": "Initial velocity magnitude (Detach, Float, Scatter)" },
+        "gravity": { "$ref": "#/definitions/vec3", "description": "Physics gravity (Detach, Scatter)" },
+        "noise": { "type": "number", "description": "Wander/drift amplitude (Float, Dissolve, Wave)" },
+        "wave_speed": { "type": "number", "description": "Wave propagation speed (Wave)" },
+        "pulse_frequency": { "type": "number", "description": "Oscillation frequency (Pulse)" }
       },
       "additionalProperties": false
     },
     "animation_reform": {
       "type": "object",
+      "description": "Auto-restore Gaussians to original positions after effect finishes",
       "properties": {
-        "lifetime": { "type": "number", "minimum": 0 },
-        "speed": { "type": "number" }
+        "lifetime": { "type": "number", "minimum": 0, "description": "Reform duration in seconds" }
       },
       "additionalProperties": false
     },
