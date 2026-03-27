@@ -1,17 +1,9 @@
 import React from 'react';
 import { NumberInput } from '../components/NumberInput.js';
 import { useSceneStore } from '../store/useSceneStore.js';
+import { panelStyles } from '../styles/panel.js';
 
-const styles: Record<string, React.CSSProperties> = {
-  section: { display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 },
-  label: { fontSize: 11, color: '#888', textTransform: 'uppercase' as const, letterSpacing: 1 },
-  row: { display: 'flex', alignItems: 'center', gap: 8 },
-  input: { flex: 1, padding: '3px 5px', fontSize: 12 },
-  btn: {
-    padding: '4px 10px', border: '1px solid #555', borderRadius: 4,
-    background: '#3a3a6a', color: '#ddd', cursor: 'pointer', fontSize: 12,
-  },
-};
+const styles = { ...panelStyles };
 
 function colorToHex(c: [number, number, number, number]): string {
   return '#' + [c[0], c[1], c[2]].map((v) =>

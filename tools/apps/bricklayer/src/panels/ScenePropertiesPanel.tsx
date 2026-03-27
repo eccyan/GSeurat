@@ -1,5 +1,6 @@
 import React from 'react';
 import { NumberInput } from '../components/NumberInput.js';
+import { Vec3Input } from '../components/Vec3Input.js';
 import { useSceneStore } from '../store/useSceneStore.js';
 import type {
   StaticLight,
@@ -10,57 +11,11 @@ import type {
   GsParticleEmitterData,
   GsAnimationGroupData,
 } from '../store/types.js';
+import { panelStyles } from '../styles/panel.js';
 
-const styles: Record<string, React.CSSProperties> = {
-  section: { display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 },
-  label: { fontSize: 11, color: '#888', textTransform: 'uppercase' as const, letterSpacing: 1 },
-  row: { display: 'flex', alignItems: 'center', gap: 6 },
-  input: {
-    flex: 1, maxWidth: 80, padding: '3px 5px', fontSize: 12,
-  },
-  select: {
-    flex: 1, padding: '3px 5px', background: '#2a2a4a', border: '1px solid #444',
-    borderRadius: 4, color: '#ddd', fontSize: 12,
-  },
-  btnDanger: {
-    padding: '3px 8px', border: '1px solid #c33', borderRadius: 4,
-    background: '#4a2020', color: '#faa', cursor: 'pointer', fontSize: 11,
-  },
-  empty: { fontSize: 12, color: '#666', textAlign: 'center' as const, paddingTop: 40 },
-  checkbox: { marginRight: 4 },
-};
+const styles = { ...panelStyles };
 
 const facings = ['up', 'down', 'left', 'right'];
-
-function Vec3Input({
-  value,
-  onChange,
-  step,
-}: {
-  value: [number, number, number];
-  onChange: (v: [number, number, number]) => void;
-  step?: number;
-}) {
-  return (
-    <div style={styles.row}>
-      {['X', 'Y', 'Z'].map((axis, i) => (
-        <React.Fragment key={axis}>
-          <NumberInput
-            label={axis}
-            step={step ?? 0.1}
-            value={value[i]}
-            onChange={(v) => {
-              const next = [...value] as [number, number, number];
-              next[i] = v;
-              onChange(next);
-            }}
-            style={{ ...styles.input, maxWidth: 55 }}
-          />
-        </React.Fragment>
-      ))}
-    </div>
-  );
-}
 
 // ── Per-entity property editors ──
 
