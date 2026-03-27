@@ -116,7 +116,7 @@ export function AnimationSystem({ scenePoints, onUpdateGeometry }: {
         }
         activeGroups.set(layer.id, groupId);
       } else if (!isActive && hasGroup) {
-        // Layer deactivated — will expire naturally
+        // Layer deactivated
         activeGroups.delete(layer.id);
       }
     }
@@ -124,8 +124,13 @@ export function AnimationSystem({ scenePoints, onUpdateGeometry }: {
     // Update animation
     if (animator.hasActiveGroups()) {
       animator.update(Math.min(dt, 0.05));
-
-      // Get modified scene data
+      const data = animator.getSceneData();
+      if (data) {
+        onUpdateGeometry(data.positions, data.colors);
+      }
+    } else if (activeGroups.size === 0) {
+      // No active animations — reset to original positions
+      animator.resetScene();
       const data = animator.getSceneData();
       if (data) {
         onUpdateGeometry(data.positions, data.colors);
