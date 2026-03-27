@@ -53,9 +53,17 @@ Each effect is composed of parallel layers:
 | Input | Action |
 |-------|--------|
 | File > New VFX | Create new preset |
+| File > Open Project / Cmd+O | Open project directory |
+| File > Save Project / Cmd+S | Save project to directory |
+| File > Import .vfx.json | Load single VFX file |
+| File > Export .vfx.json | Download selected preset |
+| File > Import Scene PLY | Load PLY for 3D preview |
 | + Emitter / + Anim / + Light | Add layer to timeline |
 | Click layer bar | Select for editing |
-| ▶ Play / ■ Pause | Preview playback |
+| Drag layer bar | Move layer in time |
+| Drag layer edges | Resize layer duration |
+| Click scrubber | Seek to time |
+| ▶ Play / ■ Pause | Preview playback with real particles |
 | ↺ Reset | Return to start |
 
 ## File Format: `.vfx.json`
@@ -121,6 +129,32 @@ See [Bricklayer docs](bricklayer.md#gaussian-animations).
 Instantaneous or brief light flash. Color, intensity, and radius.
 Useful for impact moments (explosions, magic hits).
 
+## Real-time Preview (WASM-powered)
+
+The 3D viewport renders actual particles during playback using the
+`@gseurat/simulation-wasm` module — the exact same C++ simulation code
+as the engine, compiled to WebAssembly.
+
+### What renders during playback
+- **Emitter layers**: Real particles with per-particle color, opacity, and scale
+- **Light layers**: Dynamic point light flash
+- **Animation layers**: Region gizmos (animation preview on geometry planned)
+- **Imported PLY**: Scene geometry as colored point cloud
+
+### Particle rendering
+- Custom `ShaderMaterial` with per-vertex RGBA colors (opacity fade) and per-vertex
+  point sizes (scale_min/max)
+- Soft circle fragment shader with smoothstep edges
+- Additive blending for emissive particles (fire, sparks)
+- All 11 presets work with custom overrides
+
+### Import scene geometry
+**File > Import Scene PLY** loads a `.ply` file into the viewport for context.
+Particles render on top of the imported scene.
+
+### Prerequisites
+Build WASM module: `cd tools/packages/simulation-wasm && bash build.sh`
+
 ## Scene Integration
 
 Scenes reference VFX presets via `vfx_instances`:
@@ -143,18 +177,34 @@ Scenes reference VFX presets via `vfx_instances`:
 ```
 tools/apps/vfx-editor/
 ├── src/
-│   ├── App.tsx              — Main layout
+│   ├── App.tsx                    — Layout, MenuBar, VfxTree, Timeline
 │   ├── store/
-│   │   ├── types.ts         — VfxPreset, VfxLayer types
-│   │   └── useVfxStore.ts   — Zustand state management
-│   ├── panels/              — (future) Extracted panel components
-│   ├── timeline/            — (future) Timeline sub-components
-│   ├── viewport/            — (future) 3D preview
-│   └── lib/                 — (future) Export, PLY loader
+│   │   ├── types.ts               — VfxPreset, VfxLayer, VfxProject
+│   │   └── useVfxStore.ts         — Zustand (presets, layers, playback, project)
+│   ├── panels/
+│   │   └── LayerProperties.tsx    — Full type-specific editors (578 lines)
+│   ├── viewport/
+│   │   ├── Preview.tsx            — R3F Canvas, PLY point cloud, gizmos
+│   │   └── ParticleSystem.tsx     — WASM-powered particle rendering
+│   ├── components/
+│   │   ├── NumberInput.tsx         — Drag-to-scrub number input
+│   │   └── Vec3Input.tsx           — 3-axis vector input
+│   ├── data/
+│   │   └── emitterPresets.ts       — 11 particle presets
+│   ├── styles/
+│   │   └── panel.ts                — Shared panel styles
+│   └── lib/
+│       ├── vfxExport.ts            — Serialize preset to JSON
+│       ├── vfxImport.ts            — Parse JSON to preset
+│       ├── plyLoader.ts            — Binary PLY parser
+│       └── projectIO.ts            — Project directory save/load
 ├── index.html
 ├── package.json
 ├── vite.config.ts
 └── tsconfig.json
 ```
 
-Schema: `schemas/vfx.schema.json`
+Related:
+- `schemas/vfx.schema.json` — VFX preset format
+- `tools/packages/simulation-wasm/` — C++ simulation compiled to WASM
+- `docs/simulation-wasm.md` — WASM module documentation
