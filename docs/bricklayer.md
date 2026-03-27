@@ -273,7 +273,7 @@ The GS tile rasterizer compute shader (`gs_render.comp`):
 
 ## Gaussian Particle Emitters
 
-Scene files can include a `gs_particle_emitters` array to place continuous 3D Gaussian
+Scene files can include a `particle_emitters` array to place continuous 3D Gaussian
 particle effects (dust, sparks, magic) directly in the scene. Emitters spawn new Gaussian
 splats each frame — they are self-lit (bypass scene lighting) and render through the same
 compute pipeline as the scene.
@@ -326,7 +326,7 @@ All fields are optional. When `preset` is specified, its values load first, then
 
 ```json
 {
-  "gs_particle_emitters": [
+  "particle_emitters": [
     { "preset": "spark_shower", "position": [32, 8, 32] },
     { "preset": "dust_puff", "position": [20, 2, 50], "spawn_rate": 50 },
     {
@@ -345,13 +345,13 @@ All fields are optional. When `preset` is specified, its values load first, then
 
 ### Coordinate System
 
-Emitter positions use the same scene/voxel coordinate system as lights:
-`[scene_x, height, scene_z]`. The engine transforms these to PLY world coordinates
-at load time using the cloud AABB offset.
+All positions use voxel coordinates `[x, y, z]` (same system as lights, objects, and
+animations). The engine transforms these to PLY world coordinates at load time using
+the cloud AABB offset.
 
 ## Gaussian Animations
 
-Scene files can include a `gs_animations` array to apply particle-like effects to existing
+Scene files can include an `animations` array to apply particle-like effects to existing
 scene Gaussians within a region. Unlike particle emitters (which spawn new splats), animations
 modify existing Gaussians in-place — scattering, floating, orbiting, dissolving, or reforming them.
 
@@ -369,28 +369,68 @@ modify existing Gaussians in-place — scattering, floating, orbiting, dissolvin
 | `wave` | Sinusoidal ripple propagating from center (shockwave) |
 | `scatter` | Explosive outward burst (impacts, shattering) |
 
-### Parameters
+### Region Parameters
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `effect` | string | `"detach"` | One of: detach, float, orbit, dissolve, reform |
+| `effect` | string | `"detach"` | Effect type (see Effects table) |
 | `region.shape` | string | `"sphere"` | `"sphere"` or `"box"` |
 | `region.center` | [x,y,z] | [0,0,0] | Scene/voxel coordinates (same as lights/emitters) |
 | `region.radius` | float | 5.0 | Sphere radius (when shape=sphere) |
 | `region.half_extents` | [x,y,z] | [5,5,5] | Box half-extents (when shape=box) |
-| `lifetime` | float | 3.0 | Duration in seconds before effect completes |
+| `lifetime` | float | 3.0 | Duration in seconds |
 | `loop` | boolean | false | Restart automatically when finished |
+| `reform` | object | — | Optional: auto-restore after effect (`{ "lifetime": 3, "speed": 1 }`) |
+
+### Animation Parameters (lifetime-centric)
+
+All params describe **targets** at the end of the lifetime. Each can have an independent easing curve.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `rotations` | float | 1.0 | Full rotations over lifetime (Orbit, Vortex) |
+| `rotations_easing` | string | `"linear"` | Easing for rotation |
+| `expansion` | float | 1.0 | Radius multiplier at end (1=no change, 2=double) |
+| `expansion_easing` | string | `"linear"` | Easing for expansion |
+| `height_rise` | float | 0.0 | Total Y offset at end (units) |
+| `height_easing` | string | `"linear"` | Easing for height |
+| `opacity_end` | float | 0.0 | Opacity at end (0=gone, 1=unchanged) |
+| `opacity_easing` | string | `"linear"` | Easing for opacity |
+| `scale_end` | float | 0.0 | Scale at end (0=vanish, 1=unchanged) |
+| `scale_easing` | string | `"linear"` | Easing for scale |
+| `velocity` | float | 1.0 | Initial velocity magnitude (Detach, Float, Scatter) |
+| `gravity` | [x,y,z] | [0,-9.8,0] | Physics gravity (Detach, Scatter) |
+| `noise` | float | 1.0 | Wander/drift amplitude (Float, Dissolve, Wave) |
+| `wave_speed` | float | 5.0 | Wave propagation speed (Wave) |
+| `pulse_frequency` | float | 4.0 | Oscillation frequency (Pulse) |
+
+### Easing Curves
+
+| Easing | Formula | Description |
+|--------|---------|-------------|
+| `"linear"` | t | Constant rate (default) |
+| `"ease_in"` | t² | Slow start, fast end |
+| `"ease_out"` | 1-(1-t)² | Fast start, slow end |
+| `"ease_in_out"` | 3t²-2t³ | Smooth start and end |
 
 ### Scene JSON Format
 
 ```json
 {
-  "gs_animations": [
+  "animations": [
     {
       "effect": "orbit",
       "region": { "shape": "sphere", "center": [32, 8, 32], "radius": 5 },
       "lifetime": 4.0,
-      "loop": true
+      "loop": true,
+      "params": {
+        "rotations": 3,
+        "rotations_easing": "ease_in",
+        "expansion": 2.0,
+        "opacity_end": 0.7,
+        "opacity_easing": "ease_in_out"
+      },
+      "reform": { "lifetime": 3, "speed": 1 }
     },
     {
       "effect": "dissolve",
