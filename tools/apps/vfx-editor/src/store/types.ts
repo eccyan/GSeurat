@@ -25,3 +25,8 @@ export interface VfxPreset {
   phases: VfxPhases;
   layers: VfxLayer[];
 }
+
+export interface VfxProject {
+  version: 1;
+  presets: VfxPreset[];
+}

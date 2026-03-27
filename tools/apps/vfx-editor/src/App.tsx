@@ -3,6 +3,7 @@ import { useVfxStore } from './store/useVfxStore.js';
 import type { VfxPreset, VfxLayer, LayerType, Phase } from './store/types.js';
 import { serializeVfx } from './lib/vfxExport.js';
 import { parseVfx } from './lib/vfxImport.js';
+import { hasFileSystemAccess, openProjectDirectory, saveProject, loadProject, downloadProject, uploadProject } from './lib/projectIO.js';
 import { LayerProperties } from './panels/LayerProperties.js';
 
 // ═══════════════════════════════════════════════════════════════
@@ -60,34 +61,54 @@ function MenuBar() {
   const [fileOpen, setFileOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
-  const handleSave = () => {
+  const handleSaveProject = async () => {
     const store = useVfxStore.getState();
-    const preset = store.presets.find((p) => p.id === store.selectedPresetId);
-    if (!preset) return;
-    const json = serializeVfx(preset);
-    const blob = new Blob([json], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${preset.name.replace(/\s+/g, '_').toLowerCase()}.vfx.json`;
-    a.click();
-    URL.revokeObjectURL(url);
+    if (hasFileSystemAccess()) {
+      let handle = store.projectHandle;
+      if (!handle) {
+        handle = await openProjectDirectory();
+        if (!handle) return;
+        store.setProjectHandle(handle);
+      }
+      await saveProject(handle);
+    } else {
+      downloadProject();
+    }
     setFileOpen(false);
   };
 
-  const handleOpen = () => {
+  const handleOpenProject = async () => {
+    if (hasFileSystemAccess()) {
+      const handle = await openProjectDirectory();
+      if (!handle) return;
+      const ok = await loadProject(handle);
+      if (ok) {
+        useVfxStore.getState().setProjectHandle(handle);
+      }
+    } else {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = '.json';
+      input.onchange = async () => {
+        const file = input.files?.[0];
+        if (file) await uploadProject(file);
+      };
+      input.click();
+    }
+    setFileOpen(false);
+  };
+
+  const handleImportVfx = () => {
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = '.vfx.json,.json';
     input.onchange = async () => {
       const file = input.files?.[0];
       if (!file) return;
-      const text = await file.text();
       try {
-        const preset = parseVfx(text);
+        const preset = parseVfx(await file.text());
         const store = useVfxStore.getState();
         store.addPreset(preset.name);
-        // Replace the just-added preset with the loaded one
         const added = store.presets[store.presets.length - 1];
         if (added) {
           useVfxStore.setState({
@@ -99,6 +120,21 @@ function MenuBar() {
       }
     };
     input.click();
+    setFileOpen(false);
+  };
+
+  const handleExportVfx = () => {
+    const store = useVfxStore.getState();
+    const preset = store.presets.find((p) => p.id === store.selectedPresetId);
+    if (!preset) return;
+    const json = serializeVfx(preset);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${preset.name.replace(/\s+/g, '_').toLowerCase()}.vfx.json`;
+    a.click();
+    URL.revokeObjectURL(url);
     setFileOpen(false);
   };
 
@@ -128,8 +164,10 @@ function MenuBar() {
           }}>
             {[
               { label: 'New VFX', action: () => { addPreset(); setFileOpen(false); } },
-              { label: 'Open...', action: handleOpen },
-              { label: 'Save', action: handleSave },
+              { label: 'Open Project...', action: handleOpenProject },
+              { label: 'Save Project', action: handleSaveProject },
+              { label: 'Import .vfx.json...', action: handleImportVfx },
+              { label: 'Export .vfx.json', action: handleExportVfx },
               { label: 'Import Scene...', action: () => setFileOpen(false) },
             ].map((item) => (
               <div key={item.label} onClick={item.action}

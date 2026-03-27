@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { VfxPreset, VfxLayer, VfxPhases, LayerType, Phase } from './types.js';
+import type { VfxPreset, VfxLayer, VfxPhases, VfxProject, LayerType, Phase } from './types.js';
 
 let idCounter = 0;
 function genId(prefix: string): string {
@@ -12,9 +12,20 @@ export interface VfxStoreState {
   selectedPresetId: string | null;
   selectedLayerId: string | null;
 
+  // Project
+  projectHandle: FileSystemDirectoryHandle | null;
+  projectName: string;
+  isDirty: boolean;
+
   // Playback
   playing: boolean;
   playbackTime: number;
+
+  // Actions — project
+  setProjectHandle: (handle: FileSystemDirectoryHandle | null) => void;
+  setProjectName: (name: string) => void;
+  saveProjectData: () => VfxProject;
+  loadProjectData: (data: VfxProject) => void;
 
   // Actions — presets
   addPreset: (name?: string) => void;
@@ -41,10 +52,30 @@ export interface VfxStoreState {
 
 export const useVfxStore = create<VfxStoreState>((set, get) => ({
   presets: [],
+  projectHandle: null,
+  projectName: 'Untitled',
+  isDirty: false,
   selectedPresetId: null,
   selectedLayerId: null,
   playing: false,
   playbackTime: 0,
+
+  setProjectHandle: (handle) => set({ projectHandle: handle }),
+  setProjectName: (name) => set({ projectName: name }),
+
+  saveProjectData: () => ({
+    version: 1 as const,
+    presets: get().presets,
+  }),
+
+  loadProjectData: (data) => {
+    set({
+      presets: data.presets ?? [],
+      selectedPresetId: data.presets.length > 0 ? data.presets[0].id : null,
+      selectedLayerId: null,
+      isDirty: false,
+    });
+  },
 
   addPreset: (name?) => {
     const preset: VfxPreset = {
