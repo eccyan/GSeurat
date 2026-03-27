@@ -32,15 +32,18 @@ async function ensureWasm() {
 
 export function AnimationSystem({ scenePoints, onUpdateGeometry }: {
   scenePoints: PlyPoint[];
-  onUpdateGeometry: (positions: Float32Array, colors: Float32Array) => void;
+  onUpdateGeometry: (positions: Float32Array, colors: Float32Array, scales?: Float32Array) => void;
 }) {
   const preset = useVfxStore((s) => s.presets.find((p) => p.id === s.selectedPresetId));
   const playbackTime = useVfxStore((s) => s.playbackTime);
   const playing = useVfxStore((s) => s.playing);
 
-  const animatorRef = useRef<any>(null);
-  const activeGroupsRef = useRef<Map<string, number>>(new Map()); // layerId → groupId
-  const sceneLoadedRef = useRef(false);
+  // One animator per animation layer for isolation
+  const animatorsRef = useRef<Map<string, { animator: any; groupId: number }>>(new Map());
+  const scenePositionsRef = useRef<Float32Array | null>(null);
+  const sceneColorsRef = useRef<Float32Array | null>(null);
+  const sceneCountRef = useRef(0);
+  const initialScaleRef = useRef(0.01); // avg scale of loaded scene for normalization
   const [wasmReady, setWasmReady] = useState(false);
 
   // Load WASM
@@ -48,17 +51,9 @@ export function AnimationSystem({ scenePoints, onUpdateGeometry }: {
     ensureWasm().then((sim) => { if (sim) setWasmReady(true); });
   }, []);
 
-  // Create animator and load scene when points change
+  // Cache scene data for creating per-layer animators
   useEffect(() => {
-    if (!wasmReady || !wasmModule || scenePoints.length === 0) return;
-
-    // Create or reuse animator
-    if (animatorRef.current) {
-      animatorRef.current.delete();
-    }
-    const animator = new wasmModule.Animator();
-
-    // Build position/color arrays from PlyPoints
+    if (scenePoints.length === 0) return;
     const count = scenePoints.length;
     const positions = new Float32Array(count * 3);
     const colors = new Float32Array(count * 3);
@@ -70,79 +65,118 @@ export function AnimationSystem({ scenePoints, onUpdateGeometry }: {
       colors[i * 3 + 1] = scenePoints[i].color[1];
       colors[i * 3 + 2] = scenePoints[i].color[2];
     }
-    animator.loadScene(positions, colors, count);
-    animatorRef.current = animator;
-    sceneLoadedRef.current = true;
-    activeGroupsRef.current.clear();
+    scenePositionsRef.current = positions;
+    sceneColorsRef.current = colors;
+    sceneCountRef.current = count;
+  }, [scenePoints]);
 
+  // Cleanup all animators
+  useEffect(() => {
     return () => {
-      animator.delete();
-      animatorRef.current = null;
-      sceneLoadedRef.current = false;
+      for (const { animator } of animatorsRef.current.values()) animator.delete();
+      animatorsRef.current.clear();
     };
-  }, [wasmReady, scenePoints]);
+  }, []);
 
-  // Each frame: manage animation groups and update
+  // Each frame: one animator per active animation layer, compose results
   useFrame((_, dt) => {
-    const animator = animatorRef.current;
-    if (!animator || !preset || !playing || scenePoints.length === 0) return;
+    if (!wasmReady || !wasmModule || !preset || !playing || scenePoints.length === 0) return;
+    if (!scenePositionsRef.current || !sceneColorsRef.current) return;
 
-    const activeGroups = activeGroupsRef.current;
+    const animators = animatorsRef.current;
+    const count = sceneCountRef.current;
+    let anyActive = false;
 
-    // Check each animation layer
+    // Manage per-layer animators
     for (const layer of preset.layers) {
       if (layer.type !== 'animation') continue;
 
       const isActive = playbackTime >= layer.start && playbackTime < layer.start + layer.duration;
-      const hasGroup = activeGroups.has(layer.id);
+      const hasAnimator = animators.has(layer.id);
 
-      if (isActive && !hasGroup) {
-        // Layer just became active — tag region
+      if (isActive && !hasAnimator) {
+        // Create fresh animator for this layer
+        const animator = new wasmModule.Animator();
+        animator.loadScene(scenePositionsRef.current, sceneColorsRef.current, count);
+
         const anim = (layer.animation ?? {}) as Record<string, unknown>;
         const effect = EFFECT_MAP[(anim.effect as string) ?? 'detach'] ?? 0;
         const params = anim.params as Record<string, unknown> | undefined;
 
+        // Wave/Pulse are truly continuous — use large lifetime so particles don't die.
+        // Orbit/Vortex use t=age/lifetime for rotation progress — need real duration.
+        // Destructive effects (detach/scatter/dissolve/float) need real duration for fade.
+        const effectName = (anim.effect as string) ?? 'detach';
+        const infiniteLifetimeEffects = ['wave', 'pulse'];
+        const lifetime = infiniteLifetimeEffects.includes(effectName) ? 9999 : layer.duration;
+
         let groupId: number;
         if (params && Object.keys(params).length > 0) {
-          groupId = animator.tagSphereWithParams(
-            0, 0, 0, // center (relative to scene)
-            999, // large radius to capture all points in region
-            effect,
-            layer.duration,
-            params
-          );
+          groupId = animator.tagSphereWithParams(0, 0, 0, 999, effect, lifetime, params);
         } else {
-          groupId = animator.tagSphere(0, 0, 0, 999, effect, layer.duration);
+          groupId = animator.tagSphere(0, 0, 0, 999, effect, lifetime);
         }
-        activeGroups.set(layer.id, groupId);
-      } else if (!isActive && hasGroup) {
-        // Layer deactivated
-        activeGroups.delete(layer.id);
+        animators.set(layer.id, { animator, groupId });
+      } else if (!isActive && hasAnimator) {
+        // Destroy animator for this layer
+        animators.get(layer.id)!.animator.delete();
+        animators.delete(layer.id);
       }
+
+      if (isActive) anyActive = true;
     }
 
-    // Update animation
-    if (animator.hasActiveGroups()) {
+    // Update all active animators and compose: use the LAST active layer's output
+    // (layers later in the list take precedence)
+    let lastData: any = null;
+    for (const [, { animator }] of animators) {
       animator.update(Math.min(dt, 0.05));
       const data = animator.getSceneData();
-      if (data) {
-        onUpdateGeometry(data.positions, data.colors);
+      if (data) lastData = data;
+    }
+
+    if (lastData) {
+      // Normalize scales to ratio (1.0 = original size)
+      const initScale = initialScaleRef.current;
+      if (lastData.scales && initScale > 0) {
+        const normalized = new Float32Array(lastData.scales.length);
+        for (let i = 0; i < lastData.scales.length; i++) {
+          normalized[i] = lastData.scales[i] / initScale;
+        }
+        onUpdateGeometry(lastData.positions, lastData.colors, normalized);
+      } else {
+        onUpdateGeometry(lastData.positions, lastData.colors, lastData.scales);
       }
-    } else {
-      // Groups expired but keep the final state (faded/scattered)
-      // Scene resets only when playback stops (handled in useEffect below)
+    } else if (!anyActive && animators.size === 0) {
+      // No animations active — restore original
+      const origColors = new Float32Array(count * 4);
+      for (let i = 0; i < count; i++) {
+        origColors[i * 4] = sceneColorsRef.current![i * 3];
+        origColors[i * 4 + 1] = sceneColorsRef.current![i * 3 + 1];
+        origColors[i * 4 + 2] = sceneColorsRef.current![i * 3 + 2];
+        origColors[i * 4 + 3] = 1.0;
+      }
+      const origScales = new Float32Array(count).fill(1.0);
+      onUpdateGeometry(scenePositionsRef.current!, origColors, origScales);
     }
   });
 
-  // Reset when playback stops or resets
+  // Reset when playback stops
   useEffect(() => {
-    if (!playing && animatorRef.current && sceneLoadedRef.current) {
-      animatorRef.current.resetScene();
-      activeGroupsRef.current.clear();
+    if (!playing) {
+      for (const { animator } of animatorsRef.current.values()) animator.delete();
+      animatorsRef.current.clear();
       // Restore original geometry
-      const data = animatorRef.current.getSceneData();
-      if (data) {
-        onUpdateGeometry(data.positions, data.colors);
+      if (scenePositionsRef.current && sceneColorsRef.current) {
+        const count = sceneCountRef.current;
+        const origColors = new Float32Array(count * 4);
+        for (let i = 0; i < count; i++) {
+          origColors[i * 4] = sceneColorsRef.current[i * 3];
+          origColors[i * 4 + 1] = sceneColorsRef.current[i * 3 + 1];
+          origColors[i * 4 + 2] = sceneColorsRef.current[i * 3 + 2];
+          origColors[i * 4 + 3] = 1.0;
+        }
+        onUpdateGeometry(scenePositionsRef.current, origColors);
       }
     }
   }, [playing]);

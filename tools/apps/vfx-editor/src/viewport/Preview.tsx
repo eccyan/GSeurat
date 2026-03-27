@@ -13,29 +13,55 @@ import { AnimationSystem } from './AnimationSystem.js';
 function GaussianPointCloud({ points, geoRef }: { points: PlyPoint[]; geoRef: React.MutableRefObject<THREE.BufferGeometry | null> }) {
   const geometry = useMemo(() => {
     const geo = new THREE.BufferGeometry();
-    const positions = new Float32Array(points.length * 3);
-    const colors = new Float32Array(points.length * 4); // RGBA
-    for (let i = 0; i < points.length; i++) {
+    const n = points.length;
+    const positions = new Float32Array(n * 3);
+    const aColor = new Float32Array(n * 4);
+    const aScale = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
       positions[i * 3] = points[i].position[0];
       positions[i * 3 + 1] = points[i].position[1];
       positions[i * 3 + 2] = points[i].position[2];
-      colors[i * 4] = points[i].color[0];
-      colors[i * 4 + 1] = points[i].color[1];
-      colors[i * 4 + 2] = points[i].color[2];
-      colors[i * 4 + 3] = 1.0; // full opacity by default
+      aColor[i * 4] = points[i].color[0];
+      aColor[i * 4 + 1] = points[i].color[1];
+      aColor[i * 4 + 2] = points[i].color[2];
+      aColor[i * 4 + 3] = 1.0;
+      aScale[i] = 1.0;
     }
     geo.setAttribute('position', new THREE.BufferAttribute(positions, 3).setUsage(THREE.DynamicDrawUsage));
-    geo.setAttribute('color', new THREE.BufferAttribute(colors, 4).setUsage(THREE.DynamicDrawUsage));
+    geo.setAttribute('aColor', new THREE.BufferAttribute(aColor, 4).setUsage(THREE.DynamicDrawUsage));
+    geo.setAttribute('aScale', new THREE.BufferAttribute(aScale, 1).setUsage(THREE.DynamicDrawUsage));
     return geo;
   }, [points]);
 
+  const material = useMemo(() => new THREE.ShaderMaterial({
+    uniforms: {},
+    vertexShader: `
+      attribute vec4 aColor;
+      attribute float aScale;
+      varying vec4 vColor;
+      void main() {
+        vColor = aColor;
+        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+        gl_PointSize = max(3.0 * aScale, 0.5) * (300.0 / -mvPosition.z);
+        gl_Position = projectionMatrix * mvPosition;
+      }
+    `,
+    fragmentShader: `
+      varying vec4 vColor;
+      void main() {
+        float d = length(gl_PointCoord - vec2(0.5));
+        if (d > 0.5) discard;
+        float alpha = vColor.a * smoothstep(0.5, 0.2, d);
+        gl_FragColor = vec4(vColor.rgb, alpha);
+      }
+    `,
+    transparent: true,
+    depthWrite: false,
+  }), []);
+
   useEffect(() => { geoRef.current = geometry; }, [geometry, geoRef]);
 
-  return (
-    <points geometry={geometry}>
-      <pointsMaterial size={0.15} vertexColors sizeAttenuation transparent depthWrite={false} />
-    </points>
-  );
+  return <points geometry={geometry} material={material} />;
 }
 
 // ── Layer Gizmos ──
@@ -188,17 +214,22 @@ export function Preview({ scenePoints }: { scenePoints: PlyPoint[] }) {
   const playbackTime = useVfxStore((s) => s.playbackTime);
   const sceneGeoRef = useRef<THREE.BufferGeometry | null>(null);
 
-  // Callback for AnimationSystem to update point cloud geometry (RGBA colors)
-  const handleUpdateGeometry = useCallback((positions: Float32Array, colors: Float32Array) => {
+  // Callback for AnimationSystem to update point cloud geometry
+  const handleUpdateGeometry = useCallback((positions: Float32Array, colors: Float32Array, scales?: Float32Array) => {
     const geo = sceneGeoRef.current;
     if (!geo) return;
     const posAttr = geo.getAttribute('position');
-    const colAttr = geo.getAttribute('color');
+    const colAttr = geo.getAttribute('aColor');
+    const scaleAttr = geo.getAttribute('aScale');
     if (!posAttr || !colAttr) return;
     (posAttr as THREE.BufferAttribute).set(positions);
     (colAttr as THREE.BufferAttribute).set(colors);
     posAttr.needsUpdate = true;
     colAttr.needsUpdate = true;
+    if (scaleAttr && scales) {
+      (scaleAttr as THREE.BufferAttribute).set(scales);
+      scaleAttr.needsUpdate = true;
+    }
   }, []);
 
   // Determine current phase for overlay

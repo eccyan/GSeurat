@@ -338,16 +338,16 @@ interface AnimParams {
 }
 
 const defaultAnimParams: AnimParams = {
-  rotations: 0, rotations_easing: 'linear',
+  rotations: 1, rotations_easing: 'linear',
   expansion: 1, expansion_easing: 'linear',
   height_rise: 0, height_easing: 'linear',
-  opacity_end: 1, opacity_easing: 'linear',
-  scale_end: 1, scale_easing: 'linear',
-  velocity: 0,
-  gravity: [0, 0, 0],
-  noise: 0,
-  wave_speed: 0,
-  pulse_frequency: 1,
+  opacity_end: 0.2, opacity_easing: 'linear',
+  scale_end: 0.5, scale_easing: 'linear',
+  velocity: 1,
+  gravity: [0, -9.8, 0],
+  noise: 1,
+  wave_speed: 5,
+  pulse_frequency: 10,
 };
 
 function AnimationEditor({ layer, update }: {
