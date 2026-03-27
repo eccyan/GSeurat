@@ -340,12 +340,14 @@ void GaussianAnimator::apply_pulse(AnimGroup& group, std::vector<Gaussian>& gaus
 
         s.age += dt;
         float wave = std::sin(s.age * p.pulse_frequency + s.phase) * 0.5f + 0.5f;  // 0..1
-        float scale_factor = glm::mix(1.0f, p.scale_end, wave);
+        float wave_scale = apply_easing(wave, p.scale_easing);
+        float wave_opacity = apply_easing(wave, p.opacity_easing);
+        float scale_factor = glm::mix(1.0f, p.scale_end, wave_scale);
 
         auto& g = gaussians[idx];
         g.position = s.original_position;
         g.scale = s.original_scale * std::max(scale_factor, 0.01f);
-        g.opacity = s.original_opacity * glm::mix(1.0f, p.opacity_end, wave);
+        g.opacity = s.original_opacity * glm::mix(1.0f, p.opacity_end, wave_opacity);
         g.color = s.original_color;
     }
 }
