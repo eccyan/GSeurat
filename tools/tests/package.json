@@ -25,7 +25,8 @@
     "test:bricklayer-grab": "node --import tsx/esm --conditions source src/bricklayer-grab.test.ts",
     "test:bricklayer-gs-emitters": "node --import tsx/esm --conditions source src/bricklayer-gs-emitters.test.ts",
     "test:bricklayer-gs-animations": "node --import tsx/esm --conditions source src/bricklayer-gs-animations.test.ts",
-    "test:bricklayer-ui-refactor": "node --import tsx/esm --conditions source src/bricklayer-ui-refactor.test.ts"
+    "test:bricklayer-ui-refactor": "node --import tsx/esm --conditions source src/bricklayer-ui-refactor.test.ts",
+    "test:vfx-editor": "node --import tsx/esm --conditions source src/vfx-editor.test.ts"
   },
   "dependencies": {
     "@gseurat/test-harness": "workspace:*",

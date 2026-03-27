@@ -1,0 +1,152 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/eccyan/GSeurat/schemas/vfx.schema.json",
+  "title": "GSeurat VFX Preset",
+  "description": "Visual effect preset composing emitters, animations, and lights with timeline and phases",
+  "type": "object",
+  "required": ["name", "duration", "layers"],
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Display name for the VFX preset"
+    },
+    "duration": {
+      "type": "number",
+      "minimum": 0.1,
+      "description": "Total duration in seconds"
+    },
+    "phases": {
+      "$ref": "#/definitions/phases",
+      "description": "Three-phase timing: anticipation, impact, residual"
+    },
+    "layers": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/layer" },
+      "description": "Effect layers composing the VFX"
+    }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "phases": {
+      "type": "object",
+      "required": ["anticipation", "impact"],
+      "properties": {
+        "anticipation": {
+          "type": "number",
+          "minimum": 0,
+          "description": "End time of anticipation phase (seconds). Residual runs from impact to duration."
+        },
+        "impact": {
+          "type": "number",
+          "minimum": 0,
+          "description": "End time of impact phase (seconds). Must be >= anticipation."
+        }
+      },
+      "additionalProperties": false
+    },
+    "layer": {
+      "type": "object",
+      "required": ["name", "type", "start", "duration"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Display name (e.g. 'Core Fire', 'Spark Debris', 'Flash Glow')"
+        },
+        "type": {
+          "type": "string",
+          "enum": ["emitter", "animation", "light"],
+          "description": "Layer type"
+        },
+        "phase": {
+          "type": "string",
+          "enum": ["anticipation", "impact", "residual", "custom"],
+          "description": "Which phase this layer belongs to"
+        },
+        "start": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Start time in seconds from VFX start"
+        },
+        "duration": {
+          "type": "number",
+          "minimum": 0.01,
+          "description": "Layer duration in seconds"
+        },
+        "emitter": {
+          "type": "object",
+          "description": "Particle emitter config (when type=emitter)",
+          "properties": {
+            "preset": { "type": "string" },
+            "position": { "type": "array", "items": { "type": "number" }, "minItems": 3, "maxItems": 3 },
+            "spawn_rate": { "type": "number", "minimum": 0 },
+            "lifetime_min": { "type": "number", "minimum": 0 },
+            "lifetime_max": { "type": "number", "minimum": 0 },
+            "velocity_min": { "type": "array", "items": { "type": "number" }, "minItems": 3, "maxItems": 3 },
+            "velocity_max": { "type": "array", "items": { "type": "number" }, "minItems": 3, "maxItems": 3 },
+            "acceleration": { "type": "array", "items": { "type": "number" }, "minItems": 3, "maxItems": 3 },
+            "color_start": { "type": "array", "items": { "type": "number" }, "minItems": 3, "maxItems": 3 },
+            "color_end": { "type": "array", "items": { "type": "number" }, "minItems": 3, "maxItems": 3 },
+            "scale_min": { "type": "array", "items": { "type": "number" }, "minItems": 3, "maxItems": 3 },
+            "scale_max": { "type": "array", "items": { "type": "number" }, "minItems": 3, "maxItems": 3 },
+            "scale_end_factor": { "type": "number" },
+            "opacity_start": { "type": "number", "minimum": 0, "maximum": 1 },
+            "opacity_end": { "type": "number", "minimum": 0, "maximum": 1 },
+            "emission": { "type": "number", "minimum": 0 },
+            "spawn_offset_min": { "type": "array", "items": { "type": "number" }, "minItems": 3, "maxItems": 3 },
+            "spawn_offset_max": { "type": "array", "items": { "type": "number" }, "minItems": 3, "maxItems": 3 },
+            "burst_duration": { "type": "number", "minimum": 0 }
+          }
+        },
+        "animation": {
+          "type": "object",
+          "description": "GS animation config (when type=animation)",
+          "required": ["effect"],
+          "properties": {
+            "effect": {
+              "type": "string",
+              "enum": ["detach", "float", "orbit", "dissolve", "reform", "pulse", "vortex", "wave", "scatter"]
+            },
+            "params": {
+              "type": "object",
+              "properties": {
+                "rotations": { "type": "number" },
+                "rotations_easing": { "type": "string" },
+                "expansion": { "type": "number" },
+                "expansion_easing": { "type": "string" },
+                "height_rise": { "type": "number" },
+                "height_easing": { "type": "string" },
+                "opacity_end": { "type": "number", "minimum": 0, "maximum": 1 },
+                "opacity_easing": { "type": "string" },
+                "scale_end": { "type": "number", "minimum": 0, "maximum": 1 },
+                "scale_easing": { "type": "string" },
+                "velocity": { "type": "number" },
+                "gravity": { "type": "array", "items": { "type": "number" }, "minItems": 3, "maxItems": 3 },
+                "noise": { "type": "number" },
+                "wave_speed": { "type": "number" },
+                "pulse_frequency": { "type": "number" }
+              }
+            },
+            "reform": {
+              "type": "object",
+              "properties": {
+                "lifetime": { "type": "number", "minimum": 0 }
+              }
+            }
+          }
+        },
+        "light": {
+          "type": "object",
+          "description": "Flash light config (when type=light)",
+          "required": ["color", "intensity", "radius"],
+          "properties": {
+            "color": { "type": "array", "items": { "type": "number", "minimum": 0, "maximum": 1 }, "minItems": 3, "maxItems": 3 },
+            "intensity": { "type": "number", "minimum": 0 },
+            "radius": { "type": "number", "minimum": 0 }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}
