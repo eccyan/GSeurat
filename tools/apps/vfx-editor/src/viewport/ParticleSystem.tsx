@@ -119,7 +119,14 @@ function EmitterRenderer({ layer, active }: { layer: VfxLayer; active: boolean }
     if (data && data.count > 0) {
       const count = Math.min(data.count, MAX_PARTICLES);
       positionBuffer.set(data.positions.subarray(0, count * 3));
-      colorBuffer.set(data.colors.subarray(0, count * 3));
+
+      // Multiply color by opacity for per-particle fade
+      for (let i = 0; i < count; i++) {
+        const opacity = data.opacities[i];
+        colorBuffer[i * 3] = data.colors[i * 3] * opacity;
+        colorBuffer[i * 3 + 1] = data.colors[i * 3 + 1] * opacity;
+        colorBuffer[i * 3 + 2] = data.colors[i * 3 + 2] * opacity;
+      }
 
       (geo.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true;
       (geo.getAttribute('color') as THREE.BufferAttribute).needsUpdate = true;
