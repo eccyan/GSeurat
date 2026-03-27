@@ -135,42 +135,36 @@ function updateGrabbedEntity(x: number, y: number, z: number) {
 function GrabPlane() {
   const grabMode = useSceneStore((s) => s.grabMode);
   const selectedEntity = useSceneStore((s) => s.selectedEntity);
+  const axisLock = useSceneStore((s) => s.grabAxisLock);
   const { camera, gl } = useThree();
   const [shiftHeld, setShiftHeld] = useState(false);
   const lastClientY = useRef(0);
-  const currentY = useRef(0);
+  const currentPos = useRef<[number, number, number]>([0, 0, 0]);
   const labelPos = useRef<[number, number, number]>([0, 0, 0]);
   const [labelText, setLabelText] = useState('');
 
   // Track Shift key
   useEffect(() => {
     if (!grabMode) return;
-
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Shift') setShiftHeld(true);
-    };
-    const onKeyUp = (e: KeyboardEvent) => {
-      if (e.key === 'Shift') setShiftHeld(false);
-    };
+    const onKeyDown = (e: KeyboardEvent) => { if (e.key === 'Shift') setShiftHeld(true); };
+    const onKeyUp = (e: KeyboardEvent) => { if (e.key === 'Shift') setShiftHeld(false); };
     window.addEventListener('keydown', onKeyDown);
     window.addEventListener('keyup', onKeyUp);
-    return () => {
-      window.removeEventListener('keydown', onKeyDown);
-      window.removeEventListener('keyup', onKeyUp);
-    };
+    return () => { window.removeEventListener('keydown', onKeyDown); window.removeEventListener('keyup', onKeyUp); };
   }, [grabMode]);
 
-  // Initialize currentY when grab starts, clear label when grab ends
+  // Initialize position when grab starts
   useEffect(() => {
     if (grabMode) {
-      currentY.current = getGrabbedEntityY();
+      const store = useSceneStore.getState();
+      const pos = store.grabOriginalPosition;
+      if (pos) currentPos.current = [...pos];
     } else {
       setLabelText('');
     }
   }, [grabMode]);
 
-  // Pointer tracking via window events for smooth grab
-  // Uses window so the overlay div doesn't block pointermove
+  // Pointer tracking
   useEffect(() => {
     if (!grabMode || !selectedEntity) return;
 
@@ -180,76 +174,90 @@ function GrabPlane() {
     const intersection = new THREE.Vector3();
 
     const onMove = (ev: PointerEvent) => {
-      if (shiftHeld) {
-        // Shift mode: vertical mouse movement adjusts Y
+      const store = useSceneStore.getState();
+      const lock = store.grabAxisLock;
+
+      if (shiftHeld && lock === 'free') {
+        // Shift mode: vertical mouse movement adjusts Y (backward compat)
         const deltaY = (lastClientY.current - ev.clientY) * 0.05;
         lastClientY.current = ev.clientY;
-        currentY.current = Math.round((currentY.current + deltaY) * 10) / 10;
+        const newY = Math.round((currentPos.current[1] + deltaY) * 10) / 10;
+        currentPos.current[1] = newY;
+        updateGrabbedEntity(currentPos.current[0], newY, currentPos.current[2]);
+        labelPos.current = [currentPos.current[0], newY + 1.5, currentPos.current[2]];
+        setLabelText(`${currentPos.current[0].toFixed(1)}, Y:${newY.toFixed(1)}, ${currentPos.current[2].toFixed(1)}`);
+        return;
+      }
 
-        // Get current XZ from entity
-        const store = useSceneStore.getState();
-        const sel = store.selectedEntity;
-        if (!sel) return;
+      lastClientY.current = ev.clientY;
+      const rect = el.getBoundingClientRect();
+      const pointer = new THREE.Vector2(
+        ((ev.clientX - rect.left) / rect.width) * 2 - 1,
+        -((ev.clientY - rect.top) / rect.height) * 2 + 1,
+      );
+      raycaster.setFromCamera(pointer, camera);
 
-        let cx = 0, cz = 0;
-        if (sel.type === 'object') {
-          const obj = store.placedObjects.find((o) => o.id === sel.id);
-          if (obj) { cx = obj.position[0]; cz = obj.position[2]; }
-        } else if (sel.type === 'npc') {
-          const npc = store.npcs.find((n) => n.id === sel.id);
-          if (npc) { cx = npc.position[0]; cz = npc.position[2]; }
-        } else if (sel.type === 'light') {
-          const light = store.staticLights.find((l) => l.id === sel.id);
-          if (light) { cx = light.position[0]; cz = light.position[1]; }
-        } else if (sel.type === 'portal') {
-          const portal = store.portals.find((p) => p.id === sel.id);
-          if (portal) { cx = portal.position[0]; cz = portal.position[1]; }
-        } else if (sel.type === 'gs_emitter') {
-          const em = store.gsParticleEmitters.find((e) => e.id === sel.id);
-          if (em) { cx = em.position[0]; cz = em.position[2]; }
-        } else if (sel.type === 'gs_animation') {
-          const anim = store.gsAnimations.find((a) => a.id === sel.id);
-          if (anim) { cx = anim.center[0]; cz = anim.center[2]; }
-        } else if (sel.type === 'player') {
-          cx = store.player.position[0]; cz = store.player.position[2];
-        }
+      if (lock === 'free') {
+        // Screen-aligned plane: perpendicular to camera view at entity distance
+        const entityPos = new THREE.Vector3(currentPos.current[0], currentPos.current[1], currentPos.current[2]);
+        const camDir = camera.getWorldDirection(new THREE.Vector3());
+        plane.setFromNormalAndCoplanarPoint(camDir, entityPos);
 
-        updateGrabbedEntity(cx, currentY.current, cz);
-        labelPos.current = [cx, currentY.current + 1.5, cz];
-        setLabelText(`${cx.toFixed(1)}, Y:${currentY.current.toFixed(1)}, ${cz.toFixed(1)}`);
-      } else {
-        // Normal mode: XZ plane follow
-        lastClientY.current = ev.clientY;
-        const rect = el.getBoundingClientRect();
-        const pointer = new THREE.Vector2(
-          ((ev.clientX - rect.left) / rect.width) * 2 - 1,
-          -((ev.clientY - rect.top) / rect.height) * 2 + 1,
-        );
-        plane.set(new THREE.Vector3(0, 1, 0), -currentY.current);
-        raycaster.setFromCamera(pointer, camera);
         if (raycaster.ray.intersectPlane(plane, intersection)) {
           const sx = Math.round(intersection.x * 10) / 10;
+          const sy = Math.round(intersection.y * 10) / 10;
           const sz = Math.round(intersection.z * 10) / 10;
-          updateGrabbedEntity(sx, currentY.current, sz);
-          labelPos.current = [sx, currentY.current + 1.5, sz];
-          setLabelText(`${sx.toFixed(1)}, ${currentY.current.toFixed(1)}, ${sz.toFixed(1)}`);
+          currentPos.current = [sx, sy, sz];
+          updateGrabbedEntity(sx, sy, sz);
+          labelPos.current = [sx, sy + 1.5, sz];
+          setLabelText(`${sx.toFixed(1)}, ${sy.toFixed(1)}, ${sz.toFixed(1)}`);
+        }
+      } else {
+        // Axis-locked: use camera-perpendicular plane containing the locked axis
+        const entityPos = new THREE.Vector3(currentPos.current[0], currentPos.current[1], currentPos.current[2]);
+        const camDir = camera.getWorldDirection(new THREE.Vector3());
+
+        // Create a plane that contains the axis direction and faces the camera
+        const axisDir = lock === 'x' ? new THREE.Vector3(1, 0, 0)
+                      : lock === 'y' ? new THREE.Vector3(0, 1, 0)
+                      : new THREE.Vector3(0, 0, 1);
+        const planeNormal = new THREE.Vector3().crossVectors(axisDir, camDir).cross(axisDir).normalize();
+        if (planeNormal.lengthSq() < 0.001) {
+          // Camera is looking along the axis — use a fallback plane
+          planeNormal.set(camDir.x, camDir.y, camDir.z);
+        }
+        plane.setFromNormalAndCoplanarPoint(planeNormal, entityPos);
+
+        if (raycaster.ray.intersectPlane(plane, intersection)) {
+          // Project intersection onto the axis through entity position
+          const delta = intersection.clone().sub(entityPos);
+          const projected = axisDir.clone().multiplyScalar(delta.dot(axisDir));
+          const result = entityPos.clone().add(projected);
+          const sx = Math.round(result.x * 10) / 10;
+          const sy = Math.round(result.y * 10) / 10;
+          const sz = Math.round(result.z * 10) / 10;
+          currentPos.current = [sx, sy, sz];
+          updateGrabbedEntity(sx, sy, sz);
+          labelPos.current = [sx, sy + 1.5, sz];
+          const axisLabel = lock.toUpperCase();
+          setLabelText(`[${axisLabel}] ${sx.toFixed(1)}, ${sy.toFixed(1)}, ${sz.toFixed(1)}`);
         }
       }
     };
 
     window.addEventListener('pointermove', onMove);
-    return () => {
-      window.removeEventListener('pointermove', onMove);
-    };
-  }, [grabMode, selectedEntity, shiftHeld, camera, gl]);
+    return () => { window.removeEventListener('pointermove', onMove); };
+  }, [grabMode, selectedEntity, shiftHeld, camera, gl, axisLock]);
 
   if (!grabMode || !labelText) return null;
+
+  const axisColors: Record<string, string> = { free: '#ffcc00', x: '#ff4444', y: '#44ff44', z: '#4488ff' };
 
   return (
     <Html position={labelPos.current} center>
       <div style={{
         background: 'rgba(0,0,0,0.8)',
-        color: shiftHeld ? '#88aaff' : '#ffcc00',
+        color: shiftHeld ? '#88aaff' : (axisColors[axisLock] ?? '#ffcc00'),
         padding: '2px 6px',
         borderRadius: 4,
         fontSize: 11,

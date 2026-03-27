@@ -120,6 +120,7 @@ function GrabOverlay() {
       const store = useSceneStore.getState();
       store.setGrabMode(false);
       store.setGrabOriginalPosition(null);
+      store.setGrabAxisLock('free');
     };
 
     // Use capture phase to guarantee we get the event first
@@ -316,7 +317,18 @@ export function App() {
         }
         store.setGrabMode(false);
         store.setGrabOriginalPosition(null);
+        store.setGrabAxisLock('free');
         return;
+      }
+
+      // X/Y/Z keys during grab: toggle axis lock
+      if (store.grabMode && !meta) {
+        const key = e.key.toLowerCase();
+        if (key === 'x' || key === 'y' || key === 'z') {
+          e.preventDefault();
+          store.setGrabAxisLock(store.grabAxisLock === key ? 'free' : key as 'x' | 'y' | 'z');
+          return;
+        }
       }
 
       // G key: grab in scene mode, fill in terrain mode
@@ -349,6 +361,7 @@ export function App() {
           }
           if (pos) {
             store.setGrabOriginalPosition(pos);
+            store.setGrabAxisLock('free');
             store.setGrabMode(true);
           }
           return;
@@ -359,7 +372,7 @@ export function App() {
       }
 
       const tool = toolKeys[e.key.toLowerCase()];
-      if (tool) {
+      if (tool && !store.grabMode) {
         store.setTool(tool);
         return;
       }
