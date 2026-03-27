@@ -32,7 +32,7 @@ async function ensureWasm() {
 
 export function AnimationSystem({ scenePoints, onUpdateGeometry }: {
   scenePoints: PlyPoint[];
-  onUpdateGeometry: (positions: Float32Array, colors: Float32Array) => void;
+  onUpdateGeometry: (positions: Float32Array, colors: Float32Array, scales?: Float32Array) => void;
 }) {
   const preset = useVfxStore((s) => s.presets.find((p) => p.id === s.selectedPresetId));
   const playbackTime = useVfxStore((s) => s.playbackTime);
@@ -135,7 +135,7 @@ export function AnimationSystem({ scenePoints, onUpdateGeometry }: {
     }
 
     if (lastData) {
-      onUpdateGeometry(lastData.positions, lastData.colors);
+      onUpdateGeometry(lastData.positions, lastData.colors, lastData.scales);
     } else if (!anyActive && animators.size === 0) {
       // No animations active — restore original
       const origColors = new Float32Array(count * 4);

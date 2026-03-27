@@ -221,6 +221,7 @@ public:
         size_t count = scene_.size();
         val positions = val::global("Float32Array").new_(count * 3);
         val colors = val::global("Float32Array").new_(count * 4); // RGBA
+        val scales = val::global("Float32Array").new_(count);
 
         for (size_t i = 0; i < count; ++i) {
             const auto& g = scene_[i];
@@ -232,11 +233,13 @@ public:
             colors.set(i * 4 + 1, g.color.y);
             colors.set(i * 4 + 2, g.color.z);
             colors.set(i * 4 + 3, opacity);
+            scales.set(i, (g.scale.x + g.scale.y + g.scale.z) / 3.0f);
         }
 
         val result = val::object();
         result.set("positions", positions);
         result.set("colors", colors);
+        result.set("scales", scales);
         result.set("count", static_cast<int>(count));
         return result;
     }
