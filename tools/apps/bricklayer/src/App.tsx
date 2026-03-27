@@ -321,8 +321,8 @@ export function App() {
         return;
       }
 
-      // X/Y/Z keys during grab: toggle axis lock
-      if (store.grabMode && !meta) {
+      // X/Y/Z keys during grab: toggle axis lock (ignore key repeat)
+      if (store.grabMode && !meta && !e.repeat) {
         const key = e.key.toLowerCase();
         if (key === 'x' || key === 'y' || key === 'z') {
           e.preventDefault();
