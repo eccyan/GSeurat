@@ -68,6 +68,10 @@ SceneData SceneLoader::load(const std::string& path) {
 SceneData SceneLoader::from_json(const nlohmann::json& j) {
     SceneData data;
 
+    // Check version (v2 format expected)
+    int version = j.value("version", 1);
+    (void)version;  // Currently we only support v2 layout below
+
     // Gaussian splatting
     if (j.contains("gaussian_splat")) {
         const auto& gs = j["gaussian_splat"];
@@ -147,8 +151,8 @@ SceneData SceneLoader::from_json(const nlohmann::json& j) {
     }
 
     // Navigation zone names
-    if (j.contains("nav_zone_names")) {
-        for (const auto& name : j["nav_zone_names"]) {
+    if (j.contains("nav_zones")) {
+        for (const auto& name : j["nav_zones"]) {
             data.nav_zone_names.push_back(name.get<std::string>());
         }
     }
@@ -193,14 +197,14 @@ SceneData SceneLoader::from_json(const nlohmann::json& j) {
         data.ambient_color = parse_vec4(j["ambient_color"]);
     }
 
-    // Static lights
-    if (j.contains("static_lights")) {
-        for (const auto& light_j : j["static_lights"]) {
+    // Lights
+    if (j.contains("lights")) {
+        for (const auto& light_j : j["lights"]) {
             PointLight pl;
-            auto pos = parse_vec2(light_j["position"]);
+            auto pos = parse_vec3(light_j["position"]);
             float radius = light_j["radius"];
-            float height = light_j.value("height", 3.0f);
-            pl.position_and_radius = {pos.x, pos.y, height, radius};
+            // Internal format: {x, z, y(height), radius}
+            pl.position_and_radius = {pos[0], pos[2], pos[1], radius};
             auto color = parse_vec4(light_j["color"]);
             float intensity = light_j.value("intensity", 1.0f);
             pl.color = {color.r, color.g, color.b, intensity};
@@ -235,7 +239,7 @@ SceneData SceneLoader::from_json(const nlohmann::json& j) {
     }
     if (j.contains("torch_positions")) {
         for (const auto& p : j["torch_positions"]) {
-            data.torch_positions.push_back(parse_vec2(p));
+            data.torch_positions.push_back(parse_vec3(p));
         }
     }
     if (j.contains("torch_audio_positions")) {
@@ -293,7 +297,7 @@ SceneData SceneLoader::from_json(const nlohmann::json& j) {
             npc.script_class = npc_j.value("script_class", "");
             if (npc_j.contains("waypoints")) {
                 for (const auto& wp : npc_j["waypoints"]) {
-                    npc.waypoints.push_back(parse_vec2(wp));
+                    npc.waypoints.push_back(parse_vec3(wp));
                 }
             }
             npc.waypoint_pause = npc_j.value("waypoint_pause", 1.0f);
@@ -324,7 +328,7 @@ SceneData SceneLoader::from_json(const nlohmann::json& j) {
     if (j.contains("portals")) {
         for (const auto& portal_j : j["portals"]) {
             PortalData portal;
-            portal.position = parse_vec2(portal_j["position"]);
+            portal.position = parse_vec3(portal_j["position"]);
             if (portal_j.contains("size")) portal.size = parse_vec2(portal_j["size"]);
             portal.target_scene = portal_j["target_scene"].get<std::string>();
             portal.spawn_position = parse_vec3(portal_j["spawn_position"]);
@@ -335,8 +339,8 @@ SceneData SceneLoader::from_json(const nlohmann::json& j) {
     }
 
     // Placed objects
-    if (j.contains("placed_objects")) {
-        for (const auto& obj_j : j["placed_objects"]) {
+    if (j.contains("objects")) {
+        for (const auto& obj_j : j["objects"]) {
             PlacedObjectData obj;
             obj.id = obj_j.value("id", "");
             obj.ply_file = obj_j["ply_file"].get<std::string>();
@@ -350,8 +354,8 @@ SceneData SceneLoader::from_json(const nlohmann::json& j) {
     }
 
     // Gaussian particle emitters
-    if (j.contains("gs_particle_emitters")) {
-        for (const auto& em_j : j["gs_particle_emitters"]) {
+    if (j.contains("particle_emitters")) {
+        for (const auto& em_j : j["particle_emitters"]) {
             GsEmitterData em;
             em.preset = em_j.value("preset", "");
             em.config = parse_gs_emitter_config(em_j);
@@ -364,8 +368,8 @@ SceneData SceneLoader::from_json(const nlohmann::json& j) {
     }
 
     // Gaussian animations
-    if (j.contains("gs_animations")) {
-        for (const auto& anim_j : j["gs_animations"]) {
+    if (j.contains("animations")) {
+        for (const auto& anim_j : j["animations"]) {
             data.gs_animations.push_back(parse_gs_animation(anim_j));
         }
     }
@@ -525,8 +529,9 @@ GsAnimationData SceneLoader::parse_gs_animation(const nlohmann::json& j) {
         if (r.contains("half_extents")) anim.region.half_extents = parse_vec3(r["half_extents"]);
     }
 
-    // Animation parameters — check both nested "params" block and top-level fields
-    auto read_params = [&](const nlohmann::json& p) {
+    // Animation parameters — only nested "params" block (v2 format)
+    if (j.contains("params")) {
+        const auto& p = j["params"];
         anim.params.speed = p.value("speed", anim.params.speed);
         if (p.contains("gravity")) anim.params.gravity = parse_vec3(p["gravity"]);
         anim.params.velocity_scale = p.value("velocity_scale", anim.params.velocity_scale);
@@ -537,11 +542,7 @@ GsAnimationData SceneLoader::parse_gs_animation(const nlohmann::json& j) {
         anim.params.height_rise = p.value("height_rise", anim.params.height_rise);
         anim.params.opacity_fade = p.value("opacity_fade", anim.params.opacity_fade);
         anim.params.scale_shrink = p.value("scale_shrink", anim.params.scale_shrink);
-    };
-    // Top-level fields (flat format)
-    read_params(j);
-    // Nested "params" block overrides top-level
-    if (j.contains("params")) read_params(j["params"]);
+    }
 
     // Optional reform config
     if (j.contains("reform")) {
@@ -619,6 +620,7 @@ nlohmann::json SceneLoader::emitter_json(const EmitterConfig& cfg) {
 
 nlohmann::json SceneLoader::to_json(const SceneData& data) {
     nlohmann::json j;
+    j["version"] = 2;
 
     // Gaussian splatting
     if (data.gaussian_splat) {
@@ -722,14 +724,15 @@ nlohmann::json SceneLoader::to_json(const SceneData& data) {
     // Ambient color
     j["ambient_color"] = vec4_json(data.ambient_color);
 
-    // Static lights
+    // Lights
     if (!data.static_lights.empty()) {
         nlohmann::json lights = nlohmann::json::array();
         for (const auto& pl : data.static_lights) {
+            // Internal format: position_and_radius = {x, z, height, radius}
+            // JSON v2 format: position = [x, height, z]
             nlohmann::json light_obj = {
-                {"position", {pl.position_and_radius.x, pl.position_and_radius.y}},
+                {"position", {pl.position_and_radius.x, pl.position_and_radius.z, pl.position_and_radius.y}},
                 {"radius", pl.position_and_radius.w},
-                {"height", pl.position_and_radius.z},
                 {"color", {pl.color.r, pl.color.g, pl.color.b}},
                 {"intensity", pl.color.a}
             };
@@ -753,14 +756,14 @@ nlohmann::json SceneLoader::to_json(const SceneData& data) {
             }
             lights.push_back(light_obj);
         }
-        j["static_lights"] = lights;
+        j["lights"] = lights;
     }
 
     // Torch emitter + positions
     j["torch_emitter"] = emitter_json(data.torch_emitter);
     if (!data.torch_positions.empty()) {
         nlohmann::json positions = nlohmann::json::array();
-        for (const auto& p : data.torch_positions) positions.push_back(vec2_json(p));
+        for (const auto& p : data.torch_positions) positions.push_back(vec3_json(p));
         j["torch_positions"] = positions;
     }
     if (!data.torch_audio_positions.empty()) {
@@ -815,7 +818,7 @@ nlohmann::json SceneLoader::to_json(const SceneData& data) {
             }
             if (!npc.waypoints.empty()) {
                 nlohmann::json wps = nlohmann::json::array();
-                for (const auto& wp : npc.waypoints) wps.push_back(vec2_json(wp));
+                for (const auto& wp : npc.waypoints) wps.push_back(vec3_json(wp));
                 npc_j["waypoints"] = wps;
                 npc_j["waypoint_pause"] = npc.waypoint_pause;
             }
@@ -851,7 +854,7 @@ nlohmann::json SceneLoader::to_json(const SceneData& data) {
         nlohmann::json portals = nlohmann::json::array();
         for (const auto& portal : data.portals) {
             portals.push_back({
-                {"position", vec2_json(portal.position)},
+                {"position", vec3_json(portal.position)},
                 {"size", vec2_json(portal.size)},
                 {"target_scene", portal.target_scene},
                 {"spawn_position", vec3_json(portal.spawn_position)},
@@ -876,7 +879,7 @@ nlohmann::json SceneLoader::to_json(const SceneData& data) {
                 obj_j["character_manifest"] = obj.character_manifest;
             objects.push_back(obj_j);
         }
-        j["placed_objects"] = objects;
+        j["objects"] = objects;
     }
 
     // Gaussian particle emitters
@@ -885,7 +888,7 @@ nlohmann::json SceneLoader::to_json(const SceneData& data) {
         for (const auto& em : data.gs_particle_emitters) {
             emitters.push_back(gs_emitter_config_json(em));
         }
-        j["gs_particle_emitters"] = emitters;
+        j["particle_emitters"] = emitters;
     }
 
     // Gaussian animations
@@ -894,12 +897,12 @@ nlohmann::json SceneLoader::to_json(const SceneData& data) {
         for (const auto& anim : data.gs_animations) {
             anims.push_back(gs_animation_json(anim));
         }
-        j["gs_animations"] = anims;
+        j["animations"] = anims;
     }
 
     // Navigation zone names
     if (!data.nav_zone_names.empty()) {
-        j["nav_zone_names"] = data.nav_zone_names;
+        j["nav_zones"] = data.nav_zone_names;
     }
 
     // Weather
