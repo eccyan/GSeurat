@@ -543,6 +543,15 @@ GsAnimationData SceneLoader::parse_gs_animation(const nlohmann::json& j) {
     // Nested "params" block overrides top-level
     if (j.contains("params")) read_params(j["params"]);
 
+    // Optional reform config
+    if (j.contains("reform")) {
+        GsAnimReformConfig reform;
+        const auto& r = j["reform"];
+        reform.lifetime = r.value("lifetime", 2.0f);
+        reform.speed = r.value("speed", 1.0f);
+        anim.reform = reform;
+    }
+
     return anim;
 }
 
@@ -577,6 +586,13 @@ nlohmann::json SceneLoader::gs_animation_json(const GsAnimationData& anim) {
     if (p.opacity_fade != def.opacity_fade) params["opacity_fade"] = p.opacity_fade;
     if (p.scale_shrink != def.scale_shrink) params["scale_shrink"] = p.scale_shrink;
     if (!params.empty()) j["params"] = params;
+
+    if (anim.reform) {
+        nlohmann::json reform;
+        reform["lifetime"] = anim.reform->lifetime;
+        reform["speed"] = anim.reform->speed;
+        j["reform"] = reform;
+    }
 
     return j;
 }

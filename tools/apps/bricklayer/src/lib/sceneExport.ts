@@ -206,6 +206,9 @@ export function exportSceneJson(state: SceneStoreState): object {
       if (p.opacity_fade !== 1) params.opacity_fade = p.opacity_fade;
       if (p.scale_shrink !== 1) params.scale_shrink = p.scale_shrink;
       if (Object.keys(params).length > 0) out.params = params;
+      if (a.reform_enabled) {
+        out.reform = { lifetime: a.reform_lifetime, speed: a.reform_speed };
+      }
       return out;
     });
   }

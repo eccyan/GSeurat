@@ -791,16 +791,58 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
                 || gs_animator_.has_active_groups()
                 || !gs_scene_animations_.empty();
             if (has_particles) {
-                // Start from cached scene buffer
-                gs_active_buffer_ = gs_scene_buffer_;
-
-                // Tag scene animations that haven't started yet, or re-tag looping ones
+                // Phase-based state machine for scene animations
+                // Run BEFORE buffer reset so we can detect transitions to Reforming
                 for (auto& sa : gs_scene_animations_) {
-                    if (sa.group_id == 0 || (sa.loop && !gs_animator_.has_group(sa.group_id))) {
-                        sa.group_id = gs_animator_.tag_region(
-                            gs_scene_buffer_, sa.region,
-                            parse_effect_name(sa.effect), sa.lifetime, sa.params);
+                    using Phase = SceneAnimation::Phase;
+                    if (sa.phase == Phase::Effect) {
+                        if (sa.group_id == 0) {
+                            sa.group_id = gs_animator_.tag_region(
+                                gs_scene_buffer_, sa.region,
+                                parse_effect_name(sa.effect), sa.lifetime, sa.params);
+                        } else if (!gs_animator_.has_group(sa.group_id)) {
+                            if (sa.reform) {
+                                GsAnimParams reform_params;
+                                reform_params.speed = sa.reform->speed;
+                                reform_params.velocity_scale = sa.reform->speed;
+                                sa.reform_group_id = gs_animator_.tag_region(
+                                    gs_scene_buffer_, sa.region,
+                                    GsAnimEffect::Reform, sa.reform->lifetime, reform_params);
+                                sa.phase = Phase::Reforming;
+                            } else if (sa.loop) {
+                                sa.group_id = gs_animator_.tag_region(
+                                    gs_scene_buffer_, sa.region,
+                                    parse_effect_name(sa.effect), sa.lifetime, sa.params);
+                            } else {
+                                sa.phase = Phase::Idle;
+                            }
+                        }
+                    } else if (sa.phase == Phase::Reforming) {
+                        if (!gs_animator_.has_group(sa.reform_group_id)) {
+                            if (sa.loop) {
+                                sa.group_id = gs_animator_.tag_region(
+                                    gs_scene_buffer_, sa.region,
+                                    parse_effect_name(sa.effect), sa.lifetime, sa.params);
+                                sa.phase = Phase::Effect;
+                            } else {
+                                sa.phase = Phase::Idle;
+                            }
+                        }
                     }
+                }
+
+                // Check if any animation is reforming AFTER state transitions
+                bool any_reforming = false;
+                for (const auto& sa : gs_scene_animations_) {
+                    if (sa.phase == SceneAnimation::Phase::Reforming) {
+                        any_reforming = true;
+                        break;
+                    }
+                }
+
+                // Skip buffer reset during reform so displaced positions persist
+                if (!any_reforming) {
+                    gs_active_buffer_ = gs_scene_buffer_;
                 }
 
                 // Animate tagged scene Gaussians (Mode 2)
@@ -955,13 +997,15 @@ void Renderer::clear_gs_particle_emitters() {
 }
 
 void Renderer::add_gs_animation(const std::string& effect, const GsAnimRegion& region,
-                                 float lifetime, bool loop, const GsAnimParams& params) {
+                                 float lifetime, bool loop, const GsAnimParams& params,
+                                 const std::optional<ReformConfig>& reform) {
     SceneAnimation sa;
     sa.effect = effect;
     sa.region = region;
     sa.lifetime = lifetime;
     sa.loop = loop;
     sa.params = params;
+    sa.reform = reform;
     if (!gs_scene_buffer_.empty()) {
         sa.group_id = gs_animator_.tag_region(
             gs_scene_buffer_, region, parse_effect_name(effect), lifetime, params);

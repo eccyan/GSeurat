@@ -927,6 +927,33 @@ function GsAnimationProperties({ anim }: { anim: GsAnimationGroupData }) {
       </div>
 
       <div style={styles.section}>
+        <label style={{ fontSize: 12, color: '#ddd', display: 'flex', alignItems: 'center' }}>
+          <input
+            type="checkbox"
+            checked={anim.reform_enabled}
+            onChange={(e) => update(anim.id, { reform_enabled: e.target.checked })}
+            style={styles.checkbox}
+          />
+          Reform after effect (restore to original)
+        </label>
+      </div>
+
+      {anim.reform_enabled && (
+        <>
+          <div style={styles.section}>
+            <span style={styles.label}>Reform Lifetime</span>
+            <NumberInput value={anim.reform_lifetime} min={0.1} step={0.5}
+              onChange={(v) => update(anim.id, { reform_lifetime: v })} style={styles.input} />
+          </div>
+          <div style={styles.section}>
+            <span style={styles.label}>Reform Speed</span>
+            <NumberInput value={anim.reform_speed} min={0.01} step={0.1}
+              onChange={(v) => update(anim.id, { reform_speed: v })} style={styles.input} />
+          </div>
+        </>
+      )}
+
+      <div style={styles.section}>
         <span style={{ ...styles.label, marginTop: 8 }}>Parameters</span>
       </div>
 

@@ -187,6 +187,9 @@ export interface GsAnimationGroupData {
   lifetime: number;
   loop: boolean;
   params: GsAnimParams;
+  reform_enabled: boolean;
+  reform_lifetime: number;
+  reform_speed: number;
 }
 
 export interface GsParticleEmitterData {
