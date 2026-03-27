@@ -156,7 +156,8 @@ export function AnimationSystem({ scenePoints, onUpdateGeometry }: {
         origColors[i * 4 + 2] = sceneColorsRef.current![i * 3 + 2];
         origColors[i * 4 + 3] = 1.0;
       }
-      onUpdateGeometry(scenePositionsRef.current!, origColors);
+      const origScales = new Float32Array(count).fill(1.0);
+      onUpdateGeometry(scenePositionsRef.current!, origColors, origScales);
     }
   });
 
