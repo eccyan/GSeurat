@@ -155,7 +155,7 @@ function GrabOverlay() {
         fontSize: 12,
         pointerEvents: 'none',
       }}>
-        GRAB: Click to confirm, Esc to cancel, Shift = height
+        GRAB: Click to confirm, Esc to cancel, X/Y/Z = axis lock
       </div>
     </div>
   );
