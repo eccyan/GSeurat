@@ -10,32 +10,35 @@ import { AnimationSystem } from './AnimationSystem.js';
 
 // ── Gaussian Point Cloud (imported PLY data, updatable by AnimationSystem) ──
 
-const sceneShaderMaterial = new THREE.ShaderMaterial({
-  vertexShader: `
-    attribute float aScale;
-    varying vec4 vColor;
-    void main() {
-      vColor = color;
-      vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-      // aScale: 1.0 = normal size, 0.5 = half, 2.0 = double
-      float baseSize = 3.0;
-      gl_PointSize = max(baseSize * aScale, 0.5) * (300.0 / -mvPosition.z);
-      gl_Position = projectionMatrix * mvPosition;
-    }
-  `,
-  fragmentShader: `
-    varying vec4 vColor;
-    void main() {
-      float d = length(gl_PointCoord - vec2(0.5));
-      if (d > 0.5) discard;
-      float alpha = vColor.a * smoothstep(0.5, 0.2, d);
-      gl_FragColor = vec4(vColor.rgb, alpha);
-    }
-  `,
-  vertexColors: true,
-  transparent: true,
-  depthWrite: false,
-});
+function createSceneShader() {
+  return new THREE.ShaderMaterial({
+    vertexShader: `
+      attribute vec4 color;
+      attribute float aScale;
+      varying vec4 vColor;
+      void main() {
+        vColor = color;
+        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+        float baseSize = 3.0;
+        gl_PointSize = max(baseSize * aScale, 0.5) * (300.0 / -mvPosition.z);
+        gl_Position = projectionMatrix * mvPosition;
+      }
+    `,
+    fragmentShader: `
+      varying vec4 vColor;
+      void main() {
+        float d = length(gl_PointCoord - vec2(0.5));
+        if (d > 0.5) discard;
+        float alpha = vColor.a * smoothstep(0.5, 0.2, d);
+        gl_FragColor = vec4(vColor.rgb, alpha);
+      }
+    `,
+    transparent: true,
+    depthWrite: false,
+  });
+}
+
+const sceneShaderMaterial = createSceneShader();
 
 function GaussianPointCloud({ points, geoRef }: { points: PlyPoint[]; geoRef: React.MutableRefObject<THREE.BufferGeometry | null> }) {
   const geometry = useMemo(() => {
