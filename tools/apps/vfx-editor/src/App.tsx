@@ -4,6 +4,8 @@ import type { VfxPreset, VfxLayer, LayerType, Phase } from './store/types.js';
 import { serializeVfx } from './lib/vfxExport.js';
 import { parseVfx } from './lib/vfxImport.js';
 import { hasFileSystemAccess, openProjectDirectory, saveProject, loadProject, downloadProject, uploadProject } from './lib/projectIO.js';
+import { loadPly, type PlyPoint } from './lib/plyLoader.js';
+import { Preview } from './viewport/Preview.js';
 import { LayerProperties } from './panels/LayerProperties.js';
 
 // ═══════════════════════════════════════════════════════════════
@@ -56,7 +58,7 @@ const phaseColor = (phase: Phase) =>
 // MenuBar
 // ═══════════════════════════════════════════════════════════════
 
-function MenuBar() {
+function MenuBar({ onImportScene }: { onImportScene?: () => void }) {
   const addPreset = useVfxStore((s) => s.addPreset);
   const [fileOpen, setFileOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -168,7 +170,7 @@ function MenuBar() {
               { label: 'Save Project', action: handleSaveProject },
               { label: 'Import .vfx.json...', action: handleImportVfx },
               { label: 'Export .vfx.json', action: handleExportVfx },
-              { label: 'Import Scene...', action: () => setFileOpen(false) },
+              { label: 'Import Scene PLY...', action: () => { onImportScene?.(); setFileOpen(false); } },
             ].map((item) => (
               <div key={item.label} onClick={item.action}
                 style={{ padding: '6px 16px', cursor: 'pointer', fontSize: 12, color: T.text }}
@@ -237,36 +239,6 @@ function VfxList() {
             No VFX presets.<br />Click + to create one.
           </div>
         )}
-      </div>
-    </div>
-  );
-}
-
-// ═══════════════════════════════════════════════════════════════
-// Viewport (center top)
-// ═══════════════════════════════════════════════════════════════
-
-function Viewport() {
-  return (
-    <div style={{
-      flex: 1, background: T.bg, display: 'flex', alignItems: 'center', justifyContent: 'center',
-      position: 'relative', borderBottom: `1px solid ${T.border}`,
-    }}>
-      <div style={{
-        color: T.textMuted, fontSize: 13, textAlign: 'center', userSelect: 'none',
-      }}>
-        <div style={{ fontSize: 32, marginBottom: 8, opacity: 0.3 }}>&#9670;</div>
-        3D Preview<br />
-        <span style={{ fontSize: 10, opacity: 0.5 }}>Import a PLY or Bricklayer file to preview effects</span>
-      </div>
-      {/* Phase indicator overlay */}
-      <div style={{
-        position: 'absolute', top: 8, left: 8, display: 'flex', gap: 8, fontSize: 9,
-        color: T.textMuted, letterSpacing: 0.5,
-      }}>
-        <span>&#9679; <span style={{ color: T.phaseAnticipation }}>Anticipation</span></span>
-        <span>&#9679; <span style={{ color: T.phaseImpact }}>Impact</span></span>
-        <span>&#9679; <span style={{ color: T.phaseResidual }}>Residual</span></span>
       </div>
     </div>
   );
@@ -527,6 +499,26 @@ function Timeline() {
 // ═══════════════════════════════════════════════════════════════
 
 export function App() {
+  const [scenePoints, setScenePoints] = useState<PlyPoint[]>([]);
+
+  const handleImportScene = useCallback(() => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.ply';
+    input.onchange = async () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      try {
+        const points = await loadPly(file);
+        setScenePoints(points);
+        console.log(`Loaded ${points.length} points from ${file.name}`);
+      } catch (e) {
+        console.error('Failed to load PLY:', e);
+      }
+    };
+    input.click();
+  }, []);
+
   useEffect(() => {
     const handler = async (e: KeyboardEvent) => {
       const meta = e.metaKey || e.ctrlKey;
@@ -566,11 +558,11 @@ export function App() {
 
   return (
     <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', background: T.bg }}>
-      <MenuBar />
+      <MenuBar onImportScene={handleImportScene} />
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
         <VfxList />
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-          <Viewport />
+          <Preview scenePoints={scenePoints} />
           <Timeline />
         </div>
         <LayerProperties />
