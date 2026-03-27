@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { useVfxStore } from '../store/useVfxStore.js';
 import type { VfxLayer } from '../store/types.js';
 import type { PlyPoint } from '../lib/plyLoader.js';
+import { ParticleSystem } from './ParticleSystem.js';
 
 // ── Gaussian Point Cloud (imported PLY data) ──
 
@@ -206,6 +207,7 @@ export function Preview({ scenePoints }: { scenePoints: PlyPoint[] }) {
         <Grid args={[40, 40]} cellSize={1} cellColor="#1a1a3a" sectionSize={5} sectionColor="#2a2a4a" fadeDistance={30} infiniteGrid={false} />
         {scenePoints.length > 0 && <GaussianPointCloud points={scenePoints} />}
         <LayerGizmos />
+        <ParticleSystem />
         <OrbitControls />
       </Canvas>
 

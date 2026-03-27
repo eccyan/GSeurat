@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@gseurat/simulation-wasm": "workspace:*",
     "@gseurat/test-harness": "workspace:*",
     "@gseurat/ui-kit": "workspace:*",
     "@react-three/drei": "^9.117.0",
