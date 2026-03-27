@@ -27,7 +27,7 @@ export async function loadPly(file: File): Promise<PlyPoint[]> {
     }
   }
 
-  if (headerEnd === 0) { console.warn('[PLY] No header found'); return []; }
+  if (headerEnd === 0) return [];
 
   const headerText = decoder.decode(bytes.slice(0, headerEnd));
   const lines = headerText.split('\n').map((l) => l.trim());
@@ -49,8 +49,7 @@ export async function loadPly(file: File): Promise<PlyPoint[]> {
     }
   }
 
-  if (vertexCount === 0) { console.warn('[PLY] vertexCount=0'); return []; }
-  console.log(`[PLY] vertexCount=${vertexCount}, properties=[${properties.join(',')}]`);
+  if (vertexCount === 0) return [];
 
   // Find property indices
   const xi = properties.indexOf('x');
@@ -65,8 +64,7 @@ export async function loadPly(file: File): Promise<PlyPoint[]> {
   const gi = properties.indexOf('green');
   const bi = properties.indexOf('blue');
 
-  if (xi < 0 || yi < 0 || zi < 0) { console.warn(`[PLY] Missing xyz: xi=${xi} yi=${yi} zi=${zi}`); return []; }
-  console.log(`[PLY] f_dc indices: ${f0i},${f1i},${f2i}  rgb indices: ${ri},${gi},${bi}`);
+  if (xi < 0 || yi < 0 || zi < 0) return [];
 
   // Calculate stride and property offsets
   let stride = 0;
@@ -87,7 +85,6 @@ export async function loadPly(file: File): Promise<PlyPoint[]> {
     }
   }
 
-  console.log(`[PLY] stride=${stride}, propOffsets=[${propOffsets.join(',')}], headerEnd=${headerEnd}, dataBytes=${buffer.byteLength - headerEnd}`);
   const dataView = new DataView(buffer, headerEnd);
   const points: PlyPoint[] = [];
 
