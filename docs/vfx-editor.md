@@ -139,8 +139,10 @@ as the engine, compiled to WebAssembly.
 
 ### What renders during playback
 - **Emitter layers**: Real particles with per-particle color, opacity, and scale
+- **Animation layers**: WASM-powered effects on imported scene geometry (per-point
+  position, color, opacity, and scale). One WASM Animator per active layer for
+  isolation; last active layer takes visual precedence.
 - **Light layers**: Dynamic point light flash
-- **Animation layers**: Region gizmos (animation preview on geometry planned)
 - **Imported PLY**: Scene geometry as colored point cloud
 
 ### Particle rendering
@@ -149,6 +151,14 @@ as the engine, compiled to WebAssembly.
 - Soft circle fragment shader with smoothstep edges
 - Additive blending for emissive particles (fire, sparks)
 - All 11 presets work with custom overrides
+
+### Animation rendering
+- Per-layer WASM `Animator` instances apply effects to the imported point cloud
+- Custom `ShaderMaterial` with `aScale` attribute for per-point sizing and
+  `uPixelRatio` uniform for Retina display support
+- Continuous effects (Wave, Pulse) use large lifetime; rotation effects (Orbit,
+  Vortex) use actual layer duration for correct progress
+- Scale values normalized from WASM output (avg scale ratio) to shader units
 
 ### Import scene geometry
 **File > Import Scene PLY** loads a `.ply` file into the viewport for context.
@@ -187,7 +197,8 @@ tools/apps/vfx-editor/
 │   │   └── LayerProperties.tsx    — Full type-specific editors (578 lines)
 │   ├── viewport/
 │   │   ├── Preview.tsx            — R3F Canvas, PLY point cloud, gizmos
-│   │   └── ParticleSystem.tsx     — WASM-powered particle rendering
+│   │   ├── ParticleSystem.tsx     — WASM-powered particle rendering
+│   │   └── AnimationSystem.tsx    — WASM-powered animation on scene geometry
 │   ├── components/
 │   │   ├── NumberInput.tsx         — Drag-to-scrub number input
 │   │   └── Vec3Input.tsx           — 3-axis vector input

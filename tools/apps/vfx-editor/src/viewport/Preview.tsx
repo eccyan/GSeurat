@@ -34,15 +34,18 @@ function GaussianPointCloud({ points, geoRef }: { points: PlyPoint[]; geoRef: Re
   }, [points]);
 
   const material = useMemo(() => new THREE.ShaderMaterial({
-    uniforms: {},
+    uniforms: {
+      uPixelRatio: { value: window.devicePixelRatio || 1.0 },
+    },
     vertexShader: `
       attribute vec4 aColor;
       attribute float aScale;
+      uniform float uPixelRatio;
       varying vec4 vColor;
       void main() {
         vColor = aColor;
         vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-        gl_PointSize = max(3.0 * aScale, 0.5) * (300.0 / -mvPosition.z);
+        gl_PointSize = max(3.0 * aScale, 0.5) * uPixelRatio * (300.0 / -mvPosition.z);
         gl_Position = projectionMatrix * mvPosition;
       }
     `,
@@ -226,9 +229,11 @@ export function Preview({ scenePoints }: { scenePoints: PlyPoint[] }) {
     (colAttr as THREE.BufferAttribute).set(colors);
     posAttr.needsUpdate = true;
     colAttr.needsUpdate = true;
-    if (scaleAttr && scales) {
-      (scaleAttr as THREE.BufferAttribute).set(scales);
-      scaleAttr.needsUpdate = true;
+    if (scales) {
+      // Replace the entire attribute to force WebGL buffer re-creation.
+      // BufferAttribute.set() + needsUpdate doesn't reliably update
+      // single-component custom attributes in Three.js ShaderMaterial.
+      geo.setAttribute('aScale', new THREE.BufferAttribute(scales, 1).setUsage(THREE.DynamicDrawUsage));
     }
   }, []);
 

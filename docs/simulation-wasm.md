@@ -60,6 +60,44 @@ const config = sim.resolvePreset('fire');
 //             rain, snow, leaves, fireflies, steam, waterfall_mist
 ```
 
+### Animator
+
+```ts
+const animator = new sim.Animator();
+
+// Load scene points (positions + colors as flat Float32Arrays)
+animator.loadScene(positions, colors, count);
+
+// Tag a spherical region for animation effect
+const groupId = animator.tagSphere(cx, cy, cz, radius, sim.EFFECT_ORBIT, lifetime);
+
+// Or with per-parameter control and easing
+const groupId2 = animator.tagSphereWithParams(0, 0, 0, 999, sim.EFFECT_PULSE, 3.0, {
+  opacity_end: 0.2,
+  scale_end: 0.5,
+  pulse_frequency: 10,
+  opacity_easing: sim.EASING_OUT_QUAD,
+  scale_easing: sim.EASING_IN_OUT_CUBIC,
+});
+
+// Each frame:
+animator.update(dt);
+const data = animator.getSceneData();
+// data.positions: Float32Array [x0,y0,z0, ...]  (3 per point)
+// data.colors:    Float32Array [r0,g0,b0,a0, ...] (4 per point, RGBA)
+// data.scales:    Float32Array [s0, s1, ...]  (avg scale per point)
+// data.count:     number
+
+animator.hasActiveGroups();  // any effects still running?
+animator.hasGroup(groupId);  // specific group still active?
+animator.resetScene();       // restore original positions/colors
+
+animator.delete();  // free WASM memory
+```
+
+9 effects: `EFFECT_DETACH`, `EFFECT_FLOAT`, `EFFECT_ORBIT`, `EFFECT_DISSOLVE`,
+`EFFECT_REFORM`, `EFFECT_PULSE`, `EFFECT_VORTEX`, `EFFECT_WAVE`, `EFFECT_SCATTER`.
+
 ### Easing Functions
 
 ```ts
