@@ -128,13 +128,9 @@ export function AnimationSystem({ scenePoints, onUpdateGeometry }: {
       if (data) {
         onUpdateGeometry(data.positions, data.colors);
       }
-    } else if (activeGroups.size === 0) {
-      // No active animations — reset to original positions
-      animator.resetScene();
-      const data = animator.getSceneData();
-      if (data) {
-        onUpdateGeometry(data.positions, data.colors);
-      }
+    } else {
+      // Groups expired but keep the final state (faded/scattered)
+      // Scene resets only when playback stops (handled in useEffect below)
     }
   });
 
