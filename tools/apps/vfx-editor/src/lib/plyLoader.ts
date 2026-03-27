@@ -62,24 +62,15 @@ export async function loadPly(file: File): Promise<PlyPoint[]> {
 
   if (xi < 0 || yi < 0 || zi < 0) return [];
 
-  // Calculate stride (all float32 except uchar properties)
-  // Simple approach: count properties × 4 bytes (assume all float32)
-  // This works for GSeurat PLY files
+  // Calculate stride and property offsets
   let stride = 0;
-  for (const line of lines) {
-    if (!line.startsWith('property') || !inVertex) continue;
-    if (line.includes('uchar')) stride += 1;
-    else stride += 4;
-  }
-  // Recalculate properly
-  stride = 0;
-  inVertex = false;
+  let inVertexCalc = false;
   const propOffsets: number[] = [];
   const propSizes: number[] = [];
   for (const line of lines) {
-    if (line.startsWith('element vertex')) { inVertex = true; continue; }
-    if (line.startsWith('element ') && line !== 'element vertex') { inVertex = false; continue; }
-    if (!line.startsWith('property') || !inVertex) continue;
+    if (line.startsWith('element vertex')) { inVertexCalc = true; continue; }
+    if (line.startsWith('element ') && inVertexCalc) { inVertexCalc = false; continue; }
+    if (!line.startsWith('property') || !inVertexCalc) continue;
     propOffsets.push(stride);
     if (line.includes('uchar') || line.includes('uint8')) {
       propSizes.push(1);
