@@ -1,6 +1,8 @@
-# VFX Editor — Visual Effect Composition Tool
+# Méliès — Visual Effect Composition Tool
 
-The VFX Editor composes particle emitters, animations, and light flashes into
+Méliès (named after [Georges Méliès](https://en.wikipedia.org/wiki/Georges_M%C3%A9li%C3%A8s),
+the pioneer of cinematic special effects) composes particle emitters, animations,
+and light flashes into
 reusable VFX presets with timeline-based authoring.
 
 ## Quick Start
