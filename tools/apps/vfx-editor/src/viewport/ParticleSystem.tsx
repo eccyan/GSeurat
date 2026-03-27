@@ -79,52 +79,50 @@ function EmitterRenderer({ layer, active }: { layer: VfxLayer; active: boolean }
     };
   }, [active, layer.id, layer.emitter]);
 
+  const geoInitialized = useRef(false);
+
   // Update each frame
   useFrame((_, dt) => {
-    const emitter = emitterRef.current;
-    if (!emitter || !active) return;
+    const geo = geoRef.current;
+    if (!geo) return;
 
-    emitter.update(Math.min(dt, 0.05)); // cap dt to avoid burst on tab refocus
+    // Lazy init geometry attributes (can't use useEffect — component may remount)
+    if (!geoInitialized.current) {
+      geo.setAttribute('position', new THREE.BufferAttribute(positionBuffer, 3).setUsage(THREE.DynamicDrawUsage));
+      geo.setAttribute('color', new THREE.BufferAttribute(colorBuffer, 3).setUsage(THREE.DynamicDrawUsage));
+      geo.setDrawRange(0, 0);
+      geoInitialized.current = true;
+    }
+
+    const emitter = emitterRef.current;
+    if (!emitter || !active) {
+      geo.setDrawRange(0, 0);
+      return;
+    }
+
+    emitter.update(Math.min(dt, 0.05));
     const data = emitter.gather();
 
-    if (data && data.count > 0 && geoRef.current) {
+    if (data && data.count > 0) {
       const count = Math.min(data.count, MAX_PARTICLES);
-
-      // Copy data into pre-allocated buffers
       positionBuffer.set(data.positions.subarray(0, count * 3));
       colorBuffer.set(data.colors.subarray(0, count * 3));
 
-      const posAttr = geoRef.current.getAttribute('position');
-      const colAttr = geoRef.current.getAttribute('color');
-      if (!posAttr || !colAttr) return;
-      posAttr.needsUpdate = true;
-      colAttr.needsUpdate = true;
-      geoRef.current.setDrawRange(0, count);
-
-      if (particleCount !== count) setParticleCount(count);
-    } else if (geoRef.current) {
-      geoRef.current.setDrawRange(0, 0);
-      if (particleCount !== 0) setParticleCount(0);
+      (geo.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true;
+      (geo.getAttribute('color') as THREE.BufferAttribute).needsUpdate = true;
+      geo.setDrawRange(0, count);
+    } else {
+      geo.setDrawRange(0, 0);
     }
   });
 
-  // Set up geometry imperatively for reliable color attribute binding
-  useEffect(() => {
-    if (!geoRef.current) return;
-    const geo = geoRef.current;
-    geo.setAttribute('position', new THREE.BufferAttribute(positionBuffer, 3).setUsage(THREE.DynamicDrawUsage));
-    geo.setAttribute('color', new THREE.BufferAttribute(colorBuffer, 3).setUsage(THREE.DynamicDrawUsage));
-    geo.setDrawRange(0, 0);
-  }, []);
+  if (!wasmModule) return null;
 
-  if (!active || !wasmModule) return null;
-
-  // Check if emitter has emission (self-lit)
   const cfg = layer.emitter as Record<string, unknown> | undefined;
   const hasEmission = ((cfg?.emission as number) ?? 0) > 0;
 
   return (
-    <points ref={pointsRef}>
+    <points ref={pointsRef} visible={active}>
       <bufferGeometry ref={geoRef} />
       <pointsMaterial
         size={hasEmission ? 0.3 : 0.2}
