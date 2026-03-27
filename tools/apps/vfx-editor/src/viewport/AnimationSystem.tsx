@@ -43,6 +43,7 @@ export function AnimationSystem({ scenePoints, onUpdateGeometry }: {
   const scenePositionsRef = useRef<Float32Array | null>(null);
   const sceneColorsRef = useRef<Float32Array | null>(null);
   const sceneCountRef = useRef(0);
+  const initialScaleRef = useRef(0.01); // avg scale of loaded scene for normalization
   const [wasmReady, setWasmReady] = useState(false);
 
   // Load WASM
@@ -135,7 +136,17 @@ export function AnimationSystem({ scenePoints, onUpdateGeometry }: {
     }
 
     if (lastData) {
-      onUpdateGeometry(lastData.positions, lastData.colors, lastData.scales);
+      // Normalize scales to ratio (1.0 = original size)
+      const initScale = initialScaleRef.current;
+      if (lastData.scales && initScale > 0) {
+        const normalized = new Float32Array(lastData.scales.length);
+        for (let i = 0; i < lastData.scales.length; i++) {
+          normalized[i] = lastData.scales[i] / initScale;
+        }
+        onUpdateGeometry(lastData.positions, lastData.colors, normalized);
+      } else {
+        onUpdateGeometry(lastData.positions, lastData.colors, lastData.scales);
+      }
     } else if (!anyActive && animators.size === 0) {
       // No animations active — restore original
       const origColors = new Float32Array(count * 4);

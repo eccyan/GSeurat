@@ -17,7 +17,9 @@ const sceneShaderMaterial = new THREE.ShaderMaterial({
     void main() {
       vColor = color;
       vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-      gl_PointSize = max(aScale * 5.0, 0.5) * (300.0 / -mvPosition.z);
+      // aScale: 1.0 = normal size, 0.5 = half, 2.0 = double
+      float baseSize = 3.0;
+      gl_PointSize = max(baseSize * aScale, 0.5) * (300.0 / -mvPosition.z);
       gl_Position = projectionMatrix * mvPosition;
     }
   `,
@@ -49,7 +51,7 @@ function GaussianPointCloud({ points, geoRef }: { points: PlyPoint[]; geoRef: Re
       colors[i * 4 + 1] = points[i].color[1];
       colors[i * 4 + 2] = points[i].color[2];
       colors[i * 4 + 3] = 1.0;
-      scales[i] = 0.01; // default point scale
+      scales[i] = 1.0; // 1.0 = normal size, Pulse scales this up/down
     }
     geo.setAttribute('position', new THREE.BufferAttribute(positions, 3).setUsage(THREE.DynamicDrawUsage));
     geo.setAttribute('color', new THREE.BufferAttribute(colors, 4).setUsage(THREE.DynamicDrawUsage));
