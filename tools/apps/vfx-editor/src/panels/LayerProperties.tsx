@@ -341,13 +341,13 @@ const defaultAnimParams: AnimParams = {
   rotations: 1, rotations_easing: 'linear',
   expansion: 1, expansion_easing: 'linear',
   height_rise: 0, height_easing: 'linear',
-  opacity_end: 0, opacity_easing: 'linear',
-  scale_end: 0, scale_easing: 'linear',
+  opacity_end: 0.2, opacity_easing: 'linear',
+  scale_end: 0.5, scale_easing: 'linear',
   velocity: 1,
   gravity: [0, -9.8, 0],
   noise: 1,
   wave_speed: 5,
-  pulse_frequency: 4,
+  pulse_frequency: 10,
 };
 
 function AnimationEditor({ layer, update }: {

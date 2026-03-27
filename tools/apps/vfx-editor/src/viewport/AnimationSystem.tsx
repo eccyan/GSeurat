@@ -111,10 +111,8 @@ export function AnimationSystem({ scenePoints, onUpdateGeometry }: {
 
         let groupId: number;
         if (params && Object.keys(params).length > 0) {
-          console.log(`[AnimSys] tagSphere effect=${effectName} lifetime=${lifetime} params=`, JSON.stringify(params));
           groupId = animator.tagSphereWithParams(0, 0, 0, 999, effect, lifetime, params);
         } else {
-          console.log(`[AnimSys] tagSphere effect=${effectName} lifetime=${lifetime} (no params)`);
           groupId = animator.tagSphere(0, 0, 0, 999, effect, lifetime);
         }
         animators.set(layer.id, { animator, groupId });
