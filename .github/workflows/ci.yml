@@ -107,5 +107,56 @@ jobs:
       - name: Install dependencies
         run: cd tools && pnpm install
 
-      - name: Run tests
-        run: cd tools && pnpm --filter @gseurat/tests test:echidna-ply-export
+      - name: Run standalone tests
+        run: |
+          cd tools
+          pnpm --filter @gseurat/tests test:echidna-ply-export
+          pnpm --filter @gseurat/tests test:bricklayer-store
+          pnpm --filter @gseurat/tests test:bricklayer-grab
+          pnpm --filter @gseurat/tests test:bricklayer-gs-emitters
+          pnpm --filter @gseurat/tests test:bricklayer-gs-animations
+          pnpm --filter @gseurat/tests test:bricklayer-ui-refactor
+          pnpm --filter @gseurat/tests test:vfx-editor
+
+  test-wasm:
+    runs-on: ubuntu-24.04
+    name: Test (WASM Simulation)
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Install Emscripten
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 3.1.61
+
+      - name: Install Ninja
+        uses: seanmiddleditch/gha-setup-ninja@v5
+
+      - name: Build C++ (for GLM headers)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libvulkan-dev glslc libgl-dev \
+            libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev \
+            libwayland-dev libxkbcommon-dev
+          cmake --preset linux-release
+          cmake --build --preset linux-release
+
+      - name: Build WASM module
+        run: cd tools/packages/simulation-wasm && bash build.sh
+
+      - name: Install dependencies
+        run: cd tools && pnpm install
+
+      - name: Run WASM tests
+        run: cd tools && pnpm --filter @gseurat/tests test:simulation-wasm
