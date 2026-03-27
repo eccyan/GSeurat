@@ -12,18 +12,22 @@ export async function loadPly(file: File): Promise<PlyPoint[]> {
   const buffer = await file.arrayBuffer();
   const bytes = new Uint8Array(buffer);
 
-  // Parse header (ASCII)
-  let headerEnd = 0;
+  // Parse header (ASCII) — find end_header line and split into lines
   const decoder = new TextDecoder();
-  for (let i = 0; i < Math.min(bytes.length, 4096); i++) {
+  let headerEnd = 0;
+  let lineStart = 0;
+  for (let i = 0; i < Math.min(bytes.length, 8192); i++) {
     if (bytes[i] === 0x0a) { // newline
-      const line = decoder.decode(bytes.slice(headerEnd, i)).trim();
+      const line = decoder.decode(bytes.slice(lineStart, i)).trim();
+      lineStart = i + 1;
       if (line === 'end_header') {
         headerEnd = i + 1;
         break;
       }
     }
   }
+
+  if (headerEnd === 0) return []; // no header found
 
   const headerText = decoder.decode(bytes.slice(0, headerEnd));
   const lines = headerText.split('\n').map((l) => l.trim());
