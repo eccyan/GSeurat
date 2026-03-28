@@ -113,6 +113,7 @@ public:
     // VFX instances (Méliès presets placed on map)
     void add_vfx_instance(VfxInstance&& inst);
     void clear_vfx_instances();
+    const std::vector<VfxInstance>& vfx_instances() const { return vfx_instances_; }
 
     void request_screenshot(const std::string& path) { screenshot_.request(path); }
     bool screenshot_write_ok() const { return screenshot_.write_ok(); }

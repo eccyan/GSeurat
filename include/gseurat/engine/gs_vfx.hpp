@@ -53,6 +53,8 @@ public:
     void update(float dt, std::vector<Gaussian>& out_buffer);
 
     bool is_finished() const { return finished_; }
+    const glm::vec3& position() const { return position_; }
+    const VfxPreset& preset() const { return preset_; }
 
 private:
     VfxPreset preset_;

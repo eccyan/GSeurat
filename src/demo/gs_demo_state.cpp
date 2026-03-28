@@ -621,10 +621,11 @@ void GsDemoState::build_draw_lists(AppBase& app) {
         y -= 16.0f;
 
         // Show marker info
-        std::snprintf(buf, sizeof(buf), "Markers: %zu  Path: %zu  Emitters: %zu  Anims: %zu",
+        std::snprintf(buf, sizeof(buf), "Markers: %zu  Path: %zu  Emitters: %zu  Anims: %zu  VFX: %zu",
                       demo_markers_.size(), demo_path_.size(),
                       app.renderer().gs_particle_emitters().size(),
-                      app.renderer().gs_scene_animations().size());
+                      app.renderer().gs_scene_animations().size(),
+                      app.renderer().vfx_instances().size());
         ui.label(buf, lx, y, scale, layer_color);
 
         // Render markers and path as projected UI panels
@@ -740,6 +741,24 @@ void GsDemoState::build_draw_lists(AppBase& app) {
                     std::snprintf(alabel, sizeof(alabel), "A%zu", i);
                     ui.label(alabel, sx - 4.0f, sy + 10.0f, 0.3f,
                              {0.0f, 0.9f, 1.0f, 1.0f});
+                }
+            }
+
+            // Draw VFX instance markers (V0, V1, ...) — amber/orange star
+            auto& vfx_insts = app.renderer().vfx_instances();
+            for (size_t i = 0; i < vfx_insts.size(); ++i) {
+                auto [sx, sy] = project(vfx_insts[i].position());
+                if (sx > 0 && sx < screen_w && sy > 0 && sy < screen_h) {
+                    // Outer glow
+                    ui.panel(sx, sy, 18.0f, 18.0f, {1.0f, 0.6f, 0.0f, 0.2f});
+                    // Diamond shape (using panels)
+                    ui.panel(sx, sy, 10.0f, 10.0f, {1.0f, 0.6f, 0.0f, 0.8f});
+                    // Center dot
+                    ui.panel(sx, sy, 3.0f, 3.0f, {1.0f, 1.0f, 1.0f, 1.0f});
+                    char vlabel[16];
+                    std::snprintf(vlabel, sizeof(vlabel), "V%zu", i);
+                    ui.label(vlabel, sx - 4.0f, sy + 12.0f, 0.3f,
+                             {1.0f, 0.7f, 0.1f, 1.0f});
                 }
             }
         }
