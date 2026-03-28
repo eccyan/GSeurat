@@ -10,6 +10,7 @@ import type {
   PlayerData,
   GsParticleEmitterData,
   GsAnimationGroupData,
+  VfxInstanceData,
 } from '../store/types.js';
 import { panelStyles } from '../styles/panel.js';
 
@@ -1017,6 +1018,67 @@ function GsAnimationProperties({ anim }: { anim: GsAnimationGroupData }) {
 
 // ── Main component ──
 
+function VfxInstanceProperties({ vfx }: { vfx: VfxInstanceData }) {
+  const update = useSceneStore((s) => s.updateVfxInstance);
+  const remove = useSceneStore((s) => s.removeVfxInstance);
+
+  return (
+    <div>
+      <div style={{ ...styles.row, marginBottom: 12 }}>
+        <span style={{ ...styles.label, flex: 1 }}>VFX Instance</span>
+        <button style={styles.btnDanger} onClick={() => remove(vfx.id)}>Remove</button>
+      </div>
+
+      <div style={styles.section}>
+        <span style={styles.label}>Name</span>
+        <input type="text" value={vfx.name}
+          onChange={(e) => update(vfx.id, { name: e.target.value })}
+          style={styles.input} />
+      </div>
+
+      <div style={styles.section}>
+        <span style={styles.label}>VFX File</span>
+        <input type="text" value={vfx.vfx_file} readOnly style={{ ...styles.input, opacity: 0.6 }} />
+      </div>
+
+      <div style={styles.section}>
+        <span style={styles.label}>Position</span>
+        <Vec3Input value={vfx.position} onChange={(v) => update(vfx.id, { position: v })} />
+      </div>
+
+      <div style={styles.section}>
+        <span style={styles.label}>Radius</span>
+        <NumberInput step={0.5} min={0.1} value={vfx.radius}
+          onChange={(v) => update(vfx.id, { radius: v })}
+          style={{ ...styles.input, maxWidth: 80 }} />
+      </div>
+
+      <div style={styles.section}>
+        <span style={styles.label}>Trigger</span>
+        <select value={vfx.trigger}
+          onChange={(e) => update(vfx.id, { trigger: e.target.value as 'auto' | 'event' })}
+          style={styles.select}>
+          <option value="auto">Auto (always active)</option>
+          <option value="event">Event (triggered)</option>
+        </select>
+      </div>
+
+      <div style={styles.section}>
+        <span style={styles.label}>Loop</span>
+        <input type="checkbox" checked={vfx.loop}
+          onChange={(e) => update(vfx.id, { loop: e.target.checked })} />
+      </div>
+
+      <div style={styles.section}>
+        <span style={styles.label}>Preset</span>
+        <div style={{ fontSize: 10, color: '#888', marginTop: 2 }}>
+          {vfx.vfx_preset.name} ({vfx.vfx_preset.layers.length} layers, {vfx.vfx_preset.duration}s)
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function ScenePropertiesPanel() {
   const selectedEntity = useSceneStore((s) => s.selectedEntity);
   const placedObjects = useSceneStore((s) => s.placedObjects);
@@ -1025,6 +1087,7 @@ export function ScenePropertiesPanel() {
   const portals = useSceneStore((s) => s.portals);
   const gsParticleEmitters = useSceneStore((s) => s.gsParticleEmitters);
   const gsAnimations = useSceneStore((s) => s.gsAnimations);
+  const vfxInstances = useSceneStore((s) => s.vfxInstances);
   const player = useSceneStore((s) => s.player);
 
   if (!selectedEntity) {
@@ -1065,6 +1128,12 @@ export function ScenePropertiesPanel() {
     const anim = gsAnimations.find((a) => a.id === selectedEntity.id);
     if (!anim) return <div style={styles.empty}>Animation not found</div>;
     return <GsAnimationProperties anim={anim} />;
+  }
+
+  if (selectedEntity.type === 'vfx_instance') {
+    const vfx = vfxInstances.find((v) => v.id === selectedEntity.id);
+    if (!vfx) return <div style={styles.empty}>VFX instance not found</div>;
+    return <VfxInstanceProperties vfx={vfx} />;
   }
 
   if (selectedEntity.type === 'player') {
