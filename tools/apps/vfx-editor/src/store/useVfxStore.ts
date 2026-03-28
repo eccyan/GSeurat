@@ -24,6 +24,9 @@ export interface VfxStoreState {
   projectName: string;
   isDirty: boolean;
 
+  // UI
+  selectedView: 'layer' | 'preset-settings';
+
   // Playback
   playing: boolean;
   playbackTime: number;
@@ -45,6 +48,7 @@ export interface VfxStoreState {
   updateLayer: (presetId: string, layerId: string, patch: Partial<VfxLayer>) => void;
   removeLayer: (presetId: string, layerId: string) => void;
   selectLayer: (id: string | null) => void;
+  setSelectedView: (view: 'layer' | 'preset-settings') => void;
 
   // Actions — playback
   play: () => void;
@@ -64,6 +68,7 @@ export const useVfxStore = create<VfxStoreState>((set, get) => ({
   isDirty: false,
   selectedPresetId: null,
   selectedLayerId: null,
+  selectedView: 'layer' as const,
   playing: false,
   playbackTime: 0,
 
@@ -142,7 +147,8 @@ export const useVfxStore = create<VfxStoreState>((set, get) => ({
     });
   },
 
-  selectLayer: (id) => set({ selectedLayerId: id }),
+  selectLayer: (id) => set({ selectedLayerId: id, selectedView: 'layer' }),
+  setSelectedView: (view) => set({ selectedView: view }),
 
   play: () => set({ playing: true }),
   pause: () => set({ playing: false }),
