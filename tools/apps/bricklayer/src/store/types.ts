@@ -231,6 +231,35 @@ export interface GsParticleEmitterData {
   burst_duration: number;
 }
 
+// ── VFX Instances (Méliès preset placed on map) ──
+
+export interface VfxLayerData {
+  name: string;
+  type: 'emitter' | 'animation' | 'light';
+  start: number;
+  duration: number;
+  emitter?: Record<string, unknown>;
+  animation?: Record<string, unknown>;
+  light?: { color: [number, number, number]; intensity: number; radius: number };
+}
+
+export interface VfxPresetData {
+  name: string;
+  duration: number;
+  layers: VfxLayerData[];
+}
+
+export interface VfxInstanceData {
+  id: string;
+  name: string;
+  vfx_file: string;
+  vfx_preset: VfxPresetData;
+  position: [number, number, number];
+  radius: number;
+  trigger: 'auto' | 'event';
+  loop: boolean;
+}
+
 export interface PlacedObjectData {
   id: string;
   ply_file: string;
@@ -330,5 +359,6 @@ export interface BricklayerFile {
     placedObjects: PlacedObjectData[];
     gsParticleEmitters?: GsParticleEmitterData[];
     gsAnimations?: GsAnimationGroupData[];
+    vfxInstances?: VfxInstanceData[];
   };
 }

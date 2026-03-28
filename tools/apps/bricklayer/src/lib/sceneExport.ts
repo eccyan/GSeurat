@@ -231,6 +231,19 @@ export function exportSceneJson(state: SceneStoreState): object {
     });
   }
 
+  if (state.vfxInstances.length > 0) {
+    scene.vfx_instances = state.vfxInstances.map((v) => {
+      const out: Record<string, unknown> = {
+        vfx_file: v.vfx_file,
+        position: v.position,
+      };
+      if (v.radius !== 5) out.radius = v.radius;
+      if (v.trigger !== 'auto') out.trigger = v.trigger;
+      if (!v.loop) out.loop = false;
+      return out;
+    });
+  }
+
   if (state.collisionGridData) {
     const g = state.collisionGridData;
     scene.collision = {

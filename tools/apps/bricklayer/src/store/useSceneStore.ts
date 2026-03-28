@@ -8,6 +8,7 @@ import type {
   PlacedObjectData,
   GsParticleEmitterData,
   GsAnimationGroupData,
+  VfxInstanceData,
   EmitterConfig,
   BackgroundLayer,
   WeatherData,
@@ -189,6 +190,7 @@ export interface SceneStoreState {
   placedObjects: PlacedObjectData[];
   gsParticleEmitters: GsParticleEmitterData[];
   gsAnimations: GsAnimationGroupData[];
+  vfxInstances: VfxInstanceData[];
   player: PlayerData;
   backgroundLayers: BackgroundLayer[];
   torchEmitter: EmitterConfig;
@@ -262,6 +264,9 @@ export interface SceneStoreState {
   addGsAnimation: (center?: [number, number, number]) => void;
   updateGsAnimation: (id: string, patch: Partial<GsAnimationGroupData>) => void;
   removeGsAnimation: (id: string) => void;
+  addVfxInstance: (data: VfxInstanceData) => void;
+  updateVfxInstance: (id: string, patch: Partial<VfxInstanceData>) => void;
+  removeVfxInstance: (id: string) => void;
   updatePlayer: (patch: Partial<PlayerData>) => void;
   addBackgroundLayer: () => void;
   updateBackgroundLayer: (id: string, patch: Partial<BackgroundLayer>) => void;
@@ -435,6 +440,7 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
   placedObjects: [],
   gsParticleEmitters: [],
   gsAnimations: [],
+  vfxInstances: [] as VfxInstanceData[],
   player: defaultPlayer(),
   backgroundLayers: [],
   torchEmitter: defaultEmitter(),
@@ -762,6 +768,13 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
   removeGsAnimation: (id) => set({
     gsAnimations: get().gsAnimations.filter((a) => a.id !== id), isDirty: true,
   }),
+  addVfxInstance: (data) => set({ vfxInstances: [...get().vfxInstances, data], isDirty: true }),
+  updateVfxInstance: (id, patch) => set({
+    vfxInstances: get().vfxInstances.map((v) => (v.id === id ? { ...v, ...patch } : v)), isDirty: true,
+  }),
+  removeVfxInstance: (id) => set({
+    vfxInstances: get().vfxInstances.filter((v) => v.id !== id), isDirty: true,
+  }),
 
   updatePlayer: (patch) => set({ player: { ...get().player, ...patch }, isDirty: true }),
 
@@ -1034,6 +1047,7 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
     portals: [],
     placedObjects: [],
     gsParticleEmitters: [],
+    vfxInstances: [],
     player: defaultPlayer(),
     backgroundLayers: [],
     torchPositions: [],
@@ -1153,6 +1167,7 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
         placedObjects: s.placedObjects,
         gsParticleEmitters: s.gsParticleEmitters,
         gsAnimations: s.gsAnimations,
+        vfxInstances: s.vfxInstances.length > 0 ? s.vfxInstances : undefined,
       },
     };
   },
@@ -1201,6 +1216,7 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
       placedObjects: data.scene.placedObjects ?? [],
       gsParticleEmitters: data.scene.gsParticleEmitters ?? [],
       gsAnimations: data.scene.gsAnimations ?? [],
+      vfxInstances: data.scene.vfxInstances ?? [],
       player: data.scene.player,
       backgroundLayers: data.scene.backgroundLayers,
       torchEmitter: data.scene.torchEmitter,
