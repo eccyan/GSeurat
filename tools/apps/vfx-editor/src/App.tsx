@@ -257,13 +257,13 @@ function VfxTree() {
               style={{ ...treeStyles.node, ...(activeSceneId === scene.id ? treeStyles.nodeActive : {}) }}
               onClick={async () => {
                 setActiveScene(scene.id);
-                // Load PLY if we have a project handle
+                // If not cached, try loading from project directory
                 const store = useVfxStore.getState();
-                if (store.projectHandle) {
+                if (store.scenePoints.length === 0 && store.projectHandle) {
                   const file = await loadPlyFromProject(store.projectHandle, scene.path);
                   if (file) {
                     const points = await loadPly(file);
-                    setScenePoints(points);
+                    store.setScenePoints(points);
                   }
                 }
               }}

@@ -14,6 +14,9 @@ function genId(prefix: string): string {
  */
 export const playbackTimeRef = { current: 0 };
 
+/** In-memory cache of loaded PLY points per scene ID (not persisted). */
+export const scenePointsCache = new Map<string, PlyPoint[]>();
+
 export interface VfxStoreState {
   // Data
   presets: VfxPreset[];
@@ -170,13 +173,25 @@ export const useVfxStore = create<VfxStoreState>((set, get) => ({
   setSelectedView: (view) => set({ selectedView: view }),
 
   addScene: (ref) => set((s) => ({ scenes: [...s.scenes, ref] })),
-  removeScene: (id) => set((s) => ({
-    scenes: s.scenes.filter((sc) => sc.id !== id),
-    activeSceneId: s.activeSceneId === id ? null : s.activeSceneId,
-    scenePoints: s.activeSceneId === id ? [] : s.scenePoints,
-  })),
-  setActiveScene: (id) => set({ activeSceneId: id }),
-  setScenePoints: (points) => set({ scenePoints: points }),
+  removeScene: (id) => {
+    scenePointsCache.delete(id);
+    set((s) => ({
+      scenes: s.scenes.filter((sc) => sc.id !== id),
+      activeSceneId: s.activeSceneId === id ? null : s.activeSceneId,
+      scenePoints: s.activeSceneId === id ? [] : s.scenePoints,
+    }));
+  },
+  setActiveScene: (id) => {
+    // Restore cached points if available
+    const cached = id ? scenePointsCache.get(id) : undefined;
+    set({ activeSceneId: id, scenePoints: cached ?? [] });
+  },
+  setScenePoints: (points) => {
+    // Cache points for the active scene
+    const id = get().activeSceneId;
+    if (id) scenePointsCache.set(id, points);
+    set({ scenePoints: points });
+  },
 
   play: () => set({ playing: true }),
   pause: () => set({ playing: false }),
