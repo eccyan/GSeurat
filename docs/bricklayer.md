@@ -458,6 +458,52 @@ In Bricklayer, each easing is selected via two dropdowns: **[Type]** + **[Direct
 In Bricklayer, animations appear in the project tree under "Animations" with cyan wireframe
 sphere/box gizmos showing the animation region. Click to select, G to grab, Shift for height.
 
+## VFX Instances (Méliès Integration)
+
+VFX presets authored in [Méliès](melies.md) can be placed on the map as instances.
+Each instance references a `.vfx.json` file and renders live in the viewport.
+
+### Import Flow
+1. Create a VFX effect in Méliès (particles + animations + lights)
+2. Export as `.vfx.json` (File > Export .vfx.json)
+3. In Bricklayer, click **+** on the "VFX Instances" section in the project tree
+4. Select the `.vfx.json` file — instance appears at camera position
+5. Drag to reposition (G key for grab mode)
+
+### Instance Properties
+| Property | Description |
+|----------|-------------|
+| Position | World position [x, y, z] |
+| Radius | Area-of-effect for GS animation layers |
+| Trigger | `auto` (always active) or `event` (triggered by game logic) |
+| Loop | Repeat after duration ends |
+
+### Live Preview
+Emitter layers render live particles using `@gseurat/simulation-wasm` — the same
+C++ simulation as the engine. Particles spawn at the instance position with full
+preset configuration (colors, emission, scale, opacity).
+
+### Scene Export
+```json
+{
+  "vfx_instances": [
+    {
+      "vfx_file": "assets/vfx/campfire.vfx.json",
+      "position": [32, 5, 20],
+      "radius": 5,
+      "trigger": "auto",
+      "loop": true
+    }
+  ]
+}
+```
+
+### Use Cases
+- **Water bubbles**: GS animation (float/orbit) in a specific area
+- **Burning house**: flame particles (emission) + flickering animation (pulse)
+- **Snow weather**: snow particle preset covering the scene
+- **Glowing cave moss**: green emissive particles with low spawn rate
+
 ### Demo Visualization
 
 In the GS demo, press **N** to toggle the scene layer overlay. Particle emitters appear

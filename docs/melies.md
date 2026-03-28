@@ -174,7 +174,15 @@ Particles render on top of the imported scene.
 ### Prerequisites
 Build WASM module: `cd tools/packages/simulation-wasm && bash build.sh`
 
-## Scene Integration
+## Bricklayer Integration
+
+VFX presets are placed on maps via [Bricklayer](bricklayer.md#vfx-instances-méliès-integration):
+1. Export preset: **File > Export .vfx.json**
+2. In Bricklayer: click **+** on "VFX Instances" → select the `.vfx.json` file
+3. Drag to position, set radius/trigger/loop
+4. Emitter layers render live in Bricklayer's viewport (same WASM simulation)
+
+### Scene Integration
 
 Scenes reference VFX presets via `vfx_instances`:
 
@@ -184,8 +192,9 @@ Scenes reference VFX presets via `vfx_instances`:
     {
       "vfx_file": "assets/vfx/lightning_strike.vfx.json",
       "position": [32, 5, 20],
+      "radius": 5,
       "trigger": "auto",
-      "loop": false
+      "loop": true
     }
   ]
 }
