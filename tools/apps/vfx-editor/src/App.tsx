@@ -639,11 +639,13 @@ export function App() {
           }
           break;
         }
-        case 'Home':
-        case 'Numpad0':
+        case 'Home':    // Fn+Left on Mac
+        case 'Comma':   // , — seek to beginning (no Home key on MacBook)
           store.setPlaybackTime(0);
           break;
-        case 'End': {
+        case 'End':     // Fn+Right on Mac
+        case 'Period':  // . — seek to end (no End key on MacBook)
+        {
           const preset = store.presets.find((p) => p.id === store.selectedPresetId);
           if (preset) store.setPlaybackTime(preset.duration);
           break;
