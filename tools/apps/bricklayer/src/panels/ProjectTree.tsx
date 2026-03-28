@@ -421,17 +421,25 @@ export function ProjectTree() {
                   try {
                     const text = reader.result as string;
                     const data = JSON.parse(text);
+                    // Parse v2 elements or v1 layers
+                    const rawElements = data.elements ?? data.layers ?? [];
                     const preset = {
                       name: data.name ?? 'Unnamed VFX',
-                      duration: data.duration ?? 3.0,
-                      layers: (data.layers ?? []).map((l: Record<string, unknown>) => ({
-                        name: (l.name as string) ?? 'Unnamed',
-                        type: (l.type as string) ?? 'emitter',
-                        start: (l.start as number) ?? 0,
-                        duration: (l.duration as number) ?? 1,
-                        emitter: l.emitter,
-                        animation: l.animation,
-                        light: l.light,
+                      duration: data.duration as number | undefined,
+                      category: data.category as string | undefined,
+                      elements: rawElements.map((el: Record<string, unknown>) => ({
+                        name: (el.name as string) ?? 'Unnamed',
+                        type: (el.type as string) ?? 'emitter',
+                        position: el.position as [number, number, number] | undefined,
+                        start: el.start as number | undefined,
+                        duration: el.duration as number | undefined,
+                        loop: el.loop as boolean | undefined,
+                        ply_file: el.ply_file as string | undefined,
+                        scale: el.scale as number | undefined,
+                        emitter: el.emitter,
+                        animation: el.animation,
+                        region: el.region,
+                        light: el.light,
                       })),
                     };
                     // vfx_file is derived from name on save — no original path needed

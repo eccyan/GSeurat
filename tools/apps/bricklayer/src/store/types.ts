@@ -235,20 +235,29 @@ export interface GsParticleEmitterData {
 
 // ── VFX Instances (Méliès preset placed on map) ──
 
-export interface VfxLayerData {
+export interface VfxElementData {
   name: string;
-  type: 'emitter' | 'animation' | 'light';
-  start: number;
-  duration: number;
+  type: 'object' | 'emitter' | 'animation' | 'light';
+  position?: [number, number, number];
+  start?: number;
+  duration?: number;
+  loop?: boolean;
+  ply_file?: string;
+  scale?: number;
   emitter?: Record<string, unknown>;
   animation?: Record<string, unknown>;
+  region?: { shape: string; radius?: number; half_extents?: [number, number, number] };
   light?: { color: [number, number, number]; intensity: number; radius: number };
 }
 
+/** @deprecated Use VfxElementData */
+export type VfxLayerData = VfxElementData;
+
 export interface VfxPresetData {
   name: string;
-  duration: number;
-  layers: VfxLayerData[];
+  duration?: number;
+  category?: string;
+  elements: VfxElementData[];
 }
 
 export interface VfxInstanceData {

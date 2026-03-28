@@ -9,22 +9,31 @@
 
 namespace gseurat {
 
-// ── VFX layer data (parsed from .vfx.json) ──
+// ── VFX element data (parsed from .vfx.json) ──
 
-struct VfxLayerData {
+struct VfxElementData {
     std::string name;
-    std::string type;  // "emitter" | "animation" | "light"
+    std::string type;  // "object" | "emitter" | "animation" | "light"
+    glm::vec3 position{0.0f};            // relative to prefab origin
     float start = 0.0f;
-    float duration = 1.0f;
-    GsEmitterConfig emitter_config;      // populated if type=="emitter"
-    std::string emitter_preset;          // optional preset name
-    GsAnimationData animation_config;    // populated if type=="animation"
+    float duration = 0.0f;              // 0 = no duration (derived or infinite)
+    bool loop = false;
+    // type=object
+    std::string ply_file;
+    float scale = 1.0f;
+    // type=emitter
+    GsEmitterConfig emitter_config;
+    std::string emitter_preset;
+    // type=animation
+    GsAnimationData animation_config;
+    GsAnimRegion region;                 // animation area-of-effect
 };
 
 struct VfxPreset {
     std::string name;
-    float duration = 3.0f;
-    std::vector<VfxLayerData> layers;
+    float duration = 0.0f;              // 0 = derived from elements
+    std::string category;
+    std::vector<VfxElementData> elements;
 };
 
 // ── VFX instance data (from scene.json vfx_instances) ──
@@ -65,7 +74,7 @@ private:
 
     struct EmitterState {
         GaussianParticleEmitter emitter;
-        size_t layer_index;
+        size_t element_index;
         bool activated = false;
     };
     std::vector<EmitterState> emitter_states_;

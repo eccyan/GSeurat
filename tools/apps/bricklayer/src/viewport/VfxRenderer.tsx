@@ -10,7 +10,7 @@ import React, { useRef, useEffect, useState, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useSceneStore } from '../store/useSceneStore.js';
-import type { VfxInstanceData, VfxLayerData } from '../store/types.js';
+import type { VfxInstanceData, VfxElementData } from '../store/types.js';
 
 // Dynamic import — WASM module may not be available
 let wasmModule: any = null;
@@ -34,7 +34,7 @@ const MAX_PARTICLES = 2048;
 // ── Single emitter layer renderer ──
 
 function EmitterLayerRenderer({ layer, instancePos }: {
-  layer: VfxLayerData;
+  layer: VfxElementData;
   instancePos: [number, number, number];
 }) {
   const geoRef = useRef<THREE.BufferGeometry>(null);
@@ -160,7 +160,7 @@ function EmitterLayerRenderer({ layer, instancePos }: {
 // ── Per-instance renderer ──
 
 function InstanceRenderer({ instance }: { instance: VfxInstanceData }) {
-  const emitterLayers = instance.vfx_preset.layers.filter((l) => l.type === 'emitter');
+  const emitterLayers = (instance.vfx_preset.elements ?? []).filter((l) => l.type === 'emitter');
 
   return (
     <group>
