@@ -1,16 +1,14 @@
 /**
  * WASM-powered GS animation preview for Méliès.
  *
- * When animation layers are active during playback, applies effects
- * (orbit, scatter, dissolve, etc.) to the imported scene point cloud
- * using the exact same C++ code as the engine.
+ * Uses a single shared Animator so multiple animation layers compose
+ * naturally (e.g., Pulse + Wave). The C++ GaussianAnimator resets to
+ * baselines then accumulates each effect additively/multiplicatively.
  */
 
-import React, { useRef, useEffect, useState, useMemo } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
-import * as THREE from 'three';
 import { useVfxStore, playbackTimeRef } from '../store/useVfxStore.js';
-import type { VfxLayer } from '../store/types.js';
 import type { PlyPoint } from '../lib/plyLoader.js';
 
 // Effect name → WASM constant mapping
@@ -38,14 +36,15 @@ export function AnimationSystem({ scenePoints, onUpdateGeometry }: {
   const playing = useVfxStore((s) => s.playing);
   const isLayerVisible = useVfxStore((s) => s.isLayerVisible);
 
-  // One animator per animation layer for isolation
-  const animatorsRef = useRef<Map<string, { animator: any; groupId: number }>>(new Map());
+  // Single shared animator — multiple tagSphere calls compose via reset-then-accumulate
+  const animatorRef = useRef<any>(null);
+  const activeGroupsRef = useRef<Map<string, number>>(new Map()); // layerId → groupId
   const scenePositionsRef = useRef<Float32Array | null>(null);
   const sceneColorsRef = useRef<Float32Array | null>(null);
   const sceneCountRef = useRef(0);
-  // Pre-allocated buffers for restore-original path (avoid per-frame allocation)
-  const origColorsRef = useRef<Float32Array | null>(null);   // count * 4
-  const origScalesRef = useRef<Float32Array | null>(null);   // count, filled with 1.0
+  // Pre-allocated buffers for restore-original path
+  const origColorsRef = useRef<Float32Array | null>(null);
+  const origScalesRef = useRef<Float32Array | null>(null);
   const [wasmReady, setWasmReady] = useState(false);
 
   // Load WASM
@@ -53,7 +52,7 @@ export function AnimationSystem({ scenePoints, onUpdateGeometry }: {
     ensureWasm().then((sim) => { if (sim) setWasmReady(true); });
   }, []);
 
-  // Cache scene data for creating per-layer animators
+  // Cache scene data
   useEffect(() => {
     if (scenePoints.length === 0) return;
     const count = scenePoints.length;
@@ -70,7 +69,6 @@ export function AnimationSystem({ scenePoints, onUpdateGeometry }: {
     scenePositionsRef.current = positions;
     sceneColorsRef.current = colors;
     sceneCountRef.current = count;
-    // Pre-allocate restore buffers
     const oc = new Float32Array(count * 4);
     for (let i = 0; i < count; i++) {
       oc[i * 4] = colors[i * 3];
@@ -82,79 +80,75 @@ export function AnimationSystem({ scenePoints, onUpdateGeometry }: {
     origScalesRef.current = new Float32Array(count).fill(1.0);
   }, [scenePoints]);
 
-  // Cleanup all animators
+  // Cleanup
   useEffect(() => {
     return () => {
-      for (const { animator } of animatorsRef.current.values()) animator.delete();
-      animatorsRef.current.clear();
+      if (animatorRef.current) { animatorRef.current.delete(); animatorRef.current = null; }
+      activeGroupsRef.current.clear();
     };
   }, []);
 
-  // Each frame: one animator per active animation layer, compose results
   useFrame((_, dt) => {
     if (!wasmReady || !wasmModule || !preset || !playing || scenePoints.length === 0) return;
     if (!scenePositionsRef.current || !sceneColorsRef.current) return;
 
-    const animators = animatorsRef.current;
     const count = sceneCountRef.current;
+    const playbackTime = playbackTimeRef.current;
+    const activeGroups = activeGroupsRef.current;
     let anyActive = false;
 
-    // Read playback time from ref (no React re-render)
-    const playbackTime = playbackTimeRef.current;
-
-    // Manage per-layer animators
+    // Manage animation layers — tag/untag on the shared animator
     for (const layer of preset.layers) {
       if (layer.type !== 'animation') continue;
 
       const isActive = isLayerVisible(layer.id) && playbackTime >= layer.start && playbackTime < layer.start + layer.duration;
-      const hasAnimator = animators.has(layer.id);
+      const hasGroup = activeGroups.has(layer.id);
 
-      if (isActive && !hasAnimator) {
-        // Create fresh animator for this layer
-        const animator = new wasmModule.Animator();
-        animator.loadScene(scenePositionsRef.current, sceneColorsRef.current, count);
+      if (isActive && !hasGroup) {
+        // Create shared animator on first active layer
+        if (!animatorRef.current) {
+          animatorRef.current = new wasmModule.Animator();
+          animatorRef.current.loadScene(scenePositionsRef.current, sceneColorsRef.current, count);
+        }
 
         const anim = (layer.animation ?? {}) as Record<string, unknown>;
         const effect = EFFECT_MAP[(anim.effect as string) ?? 'detach'] ?? 0;
         const params = anim.params as Record<string, unknown> | undefined;
 
-        // Wave/Pulse are truly continuous — use large lifetime so particles don't die.
-        // Orbit/Vortex use t=age/lifetime for rotation progress — need real duration.
-        // Destructive effects (detach/scatter/dissolve/float) need real duration for fade.
         const effectName = (anim.effect as string) ?? 'detach';
         const infiniteLifetimeEffects = ['wave', 'pulse'];
         const lifetime = infiniteLifetimeEffects.includes(effectName) ? 9999 : layer.duration;
 
         let groupId: number;
         if (params && Object.keys(params).length > 0) {
-          groupId = animator.tagSphereWithParams(0, 0, 0, 999, effect, lifetime, params);
+          groupId = animatorRef.current.tagSphereWithParams(0, 0, 0, 999, effect, lifetime, params);
         } else {
-          groupId = animator.tagSphere(0, 0, 0, 999, effect, lifetime);
+          groupId = animatorRef.current.tagSphere(0, 0, 0, 999, effect, lifetime);
         }
-        animators.set(layer.id, { animator, groupId });
-      } else if (!isActive && hasAnimator) {
-        // Destroy animator for this layer
-        animators.get(layer.id)!.animator.delete();
-        animators.delete(layer.id);
+        activeGroups.set(layer.id, groupId);
+      } else if (!isActive && hasGroup) {
+        // Group expired or layer deactivated — remove tracking
+        // (the C++ animator handles group expiration naturally)
+        activeGroups.delete(layer.id);
       }
 
       if (isActive) anyActive = true;
     }
 
-    // Update all active animators and compose: use the LAST active layer's output
-    // (layers later in the list take precedence)
-    let lastData: any = null;
-    for (const [, { animator }] of animators) {
-      animator.update(Math.min(dt, 0.05));
-      const data = animator.getSceneData();
-      if (data) lastData = data;
-    }
-
-    if (lastData) {
-      // Scales are pre-normalized in WASM (ratio: 1.0 = original size)
-      onUpdateGeometry(lastData.positions, lastData.colors, lastData.scales);
-    } else if (!anyActive && animators.size === 0) {
-      // No animations active — restore original (pre-allocated buffers, no alloc)
+    // Update the single shared animator — all effects compose via reset-then-accumulate
+    if (animatorRef.current && anyActive) {
+      animatorRef.current.update(Math.min(dt, 0.05));
+      const data = animatorRef.current.getSceneData();
+      if (data) {
+        onUpdateGeometry(data.positions, data.colors, data.scales);
+      }
+    } else if (!anyActive) {
+      // No animations active — clean up animator and restore original
+      if (animatorRef.current) {
+        animatorRef.current.delete();
+        animatorRef.current = null;
+        activeGroups.clear();
+      }
       onUpdateGeometry(scenePositionsRef.current!, origColorsRef.current!, origScalesRef.current!);
     }
   });
@@ -162,14 +156,16 @@ export function AnimationSystem({ scenePoints, onUpdateGeometry }: {
   // Reset when playback stops
   useEffect(() => {
     if (!playing) {
-      for (const { animator } of animatorsRef.current.values()) animator.delete();
-      animatorsRef.current.clear();
-      // Restore original geometry (pre-allocated buffers, no alloc)
+      if (animatorRef.current) {
+        animatorRef.current.delete();
+        animatorRef.current = null;
+      }
+      activeGroupsRef.current.clear();
       if (scenePositionsRef.current && origColorsRef.current) {
         onUpdateGeometry(scenePositionsRef.current, origColorsRef.current, origScalesRef.current!);
       }
     }
   }, [playing]);
 
-  return null; // This component doesn't render — it modifies the parent's geometry
+  return null;
 }
