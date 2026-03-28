@@ -370,8 +370,10 @@ function VfxTree() {
                         </div>
                       );
                     })}
-                    {/* Add layer buttons */}
+                    {/* Add element buttons */}
                     <div style={{ display: 'flex', gap: 2, padding: '2px 4px' }}>
+                      <button onClick={() => addLayer(preset.id, 'object', 'Object', 0, 0)}
+                        style={{ ...treeStyles.addBtn, color: T.textDim, fontSize: 9 }}>+&#9651;</button>
                       <button onClick={() => addLayer(preset.id, 'emitter', 'Emitter', 0, 1)}
                         style={{ ...treeStyles.addBtn, color: T.layerEmitter, fontSize: 9 }}>+✦</button>
                       <button onClick={() => addLayer(preset.id, 'animation', 'Animation', 0, 1)}
