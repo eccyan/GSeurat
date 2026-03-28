@@ -36,6 +36,7 @@ export function AnimationSystem({ scenePoints, onUpdateGeometry }: {
 }) {
   const preset = useVfxStore((s) => s.presets.find((p) => p.id === s.selectedPresetId));
   const playing = useVfxStore((s) => s.playing);
+  const isLayerVisible = useVfxStore((s) => s.isLayerVisible);
 
   // One animator per animation layer for isolation
   const animatorsRef = useRef<Map<string, { animator: any; groupId: number }>>(new Map());
@@ -105,7 +106,7 @@ export function AnimationSystem({ scenePoints, onUpdateGeometry }: {
     for (const layer of preset.layers) {
       if (layer.type !== 'animation') continue;
 
-      const isActive = playbackTime >= layer.start && playbackTime < layer.start + layer.duration;
+      const isActive = isLayerVisible(layer.id) && playbackTime >= layer.start && playbackTime < layer.start + layer.duration;
       const hasAnimator = animators.has(layer.id);
 
       if (isActive && !hasAnimator) {

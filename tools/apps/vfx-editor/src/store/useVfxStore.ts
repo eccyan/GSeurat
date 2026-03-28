@@ -27,6 +27,12 @@ export interface VfxStoreState {
   // UI
   selectedView: 'layer' | 'preset-settings';
 
+  // Visibility
+  showGizmos: boolean;
+  showPointCloud: boolean;
+  mutedLayerIds: string[];
+  soloLayerIds: string[];
+
   // Playback
   playing: boolean;
   playbackTime: number;
@@ -50,6 +56,13 @@ export interface VfxStoreState {
   selectLayer: (id: string | null) => void;
   setSelectedView: (view: 'layer' | 'preset-settings') => void;
 
+  // Actions — visibility
+  toggleGizmos: () => void;
+  togglePointCloud: () => void;
+  toggleLayerMute: (layerId: string) => void;
+  toggleLayerSolo: (layerId: string) => void;
+  isLayerVisible: (layerId: string) => boolean;
+
   // Actions — playback
   play: () => void;
   pause: () => void;
@@ -69,6 +82,10 @@ export const useVfxStore = create<VfxStoreState>((set, get) => ({
   selectedPresetId: null,
   selectedLayerId: null,
   selectedView: 'layer' as const,
+  showGizmos: true,
+  showPointCloud: true,
+  mutedLayerIds: [] as string[],
+  soloLayerIds: [] as string[],
   playing: false,
   playbackTime: 0,
 
@@ -149,6 +166,27 @@ export const useVfxStore = create<VfxStoreState>((set, get) => ({
 
   selectLayer: (id) => set({ selectedLayerId: id, selectedView: 'layer' }),
   setSelectedView: (view) => set({ selectedView: view }),
+
+  toggleGizmos: () => set((s) => ({ showGizmos: !s.showGizmos })),
+  togglePointCloud: () => set((s) => ({ showPointCloud: !s.showPointCloud })),
+  toggleLayerMute: (layerId) => set((s) => {
+    const muted = [...s.mutedLayerIds];
+    const idx = muted.indexOf(layerId);
+    if (idx >= 0) muted.splice(idx, 1); else muted.push(layerId);
+    return { mutedLayerIds: muted };
+  }),
+  toggleLayerSolo: (layerId) => set((s) => {
+    const solo = [...s.soloLayerIds];
+    const idx = solo.indexOf(layerId);
+    if (idx >= 0) solo.splice(idx, 1); else solo.push(layerId);
+    return { soloLayerIds: solo };
+  }),
+  isLayerVisible: (layerId) => {
+    const s = get();
+    if (s.mutedLayerIds.includes(layerId)) return false;
+    if (s.soloLayerIds.length > 0 && !s.soloLayerIds.includes(layerId)) return false;
+    return true;
+  },
 
   play: () => set({ playing: true }),
   pause: () => set({ playing: false }),
