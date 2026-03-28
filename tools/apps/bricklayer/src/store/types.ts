@@ -196,6 +196,7 @@ export interface GsAnimParams {
 
 export interface GsAnimationGroupData {
   id: string;
+  muted?: boolean;
   effect: string;  // 'detach' | 'float' | 'orbit' | 'dissolve' | 'reform'
   shape: string;   // 'sphere' | 'box'
   center: [number, number, number];
@@ -210,6 +211,7 @@ export interface GsAnimationGroupData {
 
 export interface GsParticleEmitterData {
   id: string;
+  muted?: boolean;
   preset: string;  // '' | 'dust_puff' | 'spark_shower' | 'magic_spiral'
   position: [number, number, number];  // [scene_x, height, scene_z]
   spawn_rate: number;
@@ -251,6 +253,7 @@ export interface VfxPresetData {
 
 export interface VfxInstanceData {
   id: string;
+  muted?: boolean;
   name: string;
   vfx_file: string;
   vfx_preset: VfxPresetData;

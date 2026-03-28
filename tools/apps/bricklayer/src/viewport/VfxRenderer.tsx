@@ -69,13 +69,9 @@ function EmitterLayerRenderer({ layer, instancePos }: {
       emitter.configurePreset('fire');
     }
 
-    // Position emitter at instance + any layer-specific offset
-    const pos = cfg?.position as [number, number, number] | undefined;
-    emitter.setPosition(
-      instancePos[0] + (pos?.[0] ?? 0),
-      instancePos[1] + (pos?.[1] ?? 0),
-      instancePos[2] + (pos?.[2] ?? 0),
-    );
+    // Position emitter at the instance's map position.
+    // Ignore the emitter config's position (that's Méliès authoring context).
+    emitter.setPosition(instancePos[0], instancePos[1], instancePos[2]);
     emitter.setActive(true);
     emitterRef.current = emitter;
 
@@ -186,8 +182,8 @@ export function VfxRenderer() {
 
   if (!wasmReady || instances.length === 0) return null;
 
-  // Only render auto-trigger instances (event-triggered ones need game logic)
-  const autoInstances = instances.filter((v) => v.trigger === 'auto');
+  // Only render auto-trigger, non-muted instances
+  const autoInstances = instances.filter((v) => v.trigger === 'auto' && !v.muted);
 
   return (
     <group>
