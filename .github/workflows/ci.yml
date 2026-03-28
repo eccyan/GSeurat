@@ -116,6 +116,7 @@ jobs:
           pnpm --filter @gseurat/tests test:bricklayer-gs-emitters
           pnpm --filter @gseurat/tests test:bricklayer-gs-animations
           pnpm --filter @gseurat/tests test:bricklayer-ui-refactor
+          pnpm --filter @gseurat/tests test:bricklayer-vfx
           pnpm --filter @gseurat/tests test:melies
 
   test-wasm:

@@ -1,0 +1,122 @@
+{
+  "name": "vfx1",
+  "duration": 30,
+  "layers": [
+    {
+      "name": "Emitter 1",
+      "type": "emitter",
+      "start": 0,
+      "duration": 30,
+      "emitter": {
+        "spawn_rate": 3,
+        "lifetime_min": 10,
+        "lifetime_max": 30,
+        "velocity_min": [
+          -0.5,
+          -1,
+          -0.5
+        ],
+        "velocity_max": [
+          4,
+          -8,
+          4
+        ],
+        "acceleration": [
+          0,
+          -2,
+          0
+        ],
+        "color_start": [
+          0.4,
+          0.6,
+          0.15
+        ],
+        "color_end": [
+          0.5,
+          0.35,
+          0.1
+        ],
+        "scale_min": [
+          1,
+          1,
+          1
+        ],
+        "scale_max": [
+          5,
+          5,
+          5
+        ],
+        "scale_end_factor": 1,
+        "opacity_start": 0.9,
+        "opacity_end": 0.2,
+        "emission": 0.4,
+        "spawn_offset_min": [
+          64,
+          192,
+          64
+        ],
+        "spawn_offset_max": [
+          128,
+          256,
+          128
+        ],
+        "burst_duration": 0,
+        "preset": "leaves"
+      },
+      "animation": {
+        "effect": "float",
+        "params": {
+          "rotations": 0,
+          "rotations_easing": "linear",
+          "expansion": 1,
+          "expansion_easing": "linear",
+          "height_rise": 0,
+          "height_easing": "linear",
+          "opacity_end": 1,
+          "opacity_easing": "in_bounce",
+          "scale_end": 1,
+          "scale_easing": "in_cubic",
+          "velocity": 0,
+          "gravity": [
+            0,
+            0,
+            0
+          ],
+          "noise": 0,
+          "wave_speed": 0,
+          "pulse_frequency": 1
+        }
+      }
+    },
+    {
+      "name": "Animation",
+      "type": "animation",
+      "start": 0,
+      "duration": 30,
+      "animation": {
+        "effect": "pulse",
+        "params": {
+          "rotations": 1,
+          "rotations_easing": "linear",
+          "expansion": 1,
+          "expansion_easing": "linear",
+          "height_rise": 0,
+          "height_easing": "linear",
+          "opacity_end": 0,
+          "opacity_easing": "in_bounce",
+          "scale_end": 0,
+          "scale_easing": "in_bounce",
+          "velocity": 1,
+          "gravity": [
+            0,
+            -9.8,
+            0
+          ],
+          "noise": 1,
+          "wave_speed": 10,
+          "pulse_frequency": 8
+        }
+      }
+    }
+  ]
+}

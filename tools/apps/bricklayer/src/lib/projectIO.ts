@@ -73,6 +73,34 @@ export async function saveProject(handle: FileSystemDirectoryHandle): Promise<vo
       await w.close();
     }
   }
+
+  // Write VFX instance files to assets/vfx/ with edited names
+  if (store.vfxInstances.length > 0) {
+    const assetsDir = await handle.getDirectoryHandle('assets', { create: true });
+    const vfxDir = await assetsDir.getDirectoryHandle('vfx', { create: true });
+    const updatedBlobs = new Map(store.assetBlobs);
+    for (const inst of store.vfxInstances) {
+      // Use the Bricklayer-edited name for the filename
+      const fileName = `${inst.name.replace(/\s+/g, '_').toLowerCase()}.vfx.json`;
+      const newPath = `assets/vfx/${fileName}`;
+      // Re-serialize the preset data (applies any name edits)
+      const vfxJson = JSON.stringify({
+        name: inst.name,
+        duration: inst.vfx_preset.duration,
+        layers: inst.vfx_preset.layers,
+      }, null, 2);
+      const fh = await vfxDir.getFileHandle(fileName, { create: true });
+      const w = await fh.createWritable();
+      await w.write(vfxJson);
+      await w.close();
+      // Update vfx_file path if name changed
+      if (inst.vfx_file !== newPath) {
+        // Remove old blob entry
+        updatedBlobs.delete(inst.vfx_file);
+        store.updateVfxInstance(inst.id, { vfx_file: newPath });
+      }
+    }
+  }
 }
 
 /**

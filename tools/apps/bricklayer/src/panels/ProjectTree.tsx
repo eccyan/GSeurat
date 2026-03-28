@@ -79,12 +79,16 @@ const s = {
     color: '#844', cursor: 'pointer', fontSize: 11, lineHeight: '1', flexShrink: 0,
     borderRadius: 3,
   } as React.CSSProperties,
+  muteBtn: {
+    padding: '0 2px', border: 'none', background: 'transparent',
+    color: '#666', cursor: 'pointer', fontSize: 8, fontWeight: 700, lineHeight: '1', flexShrink: 0,
+  } as React.CSSProperties,
 };
 
 // ── TreeNode sub-component ──
 
 function TreeNode({
-  icon, label, isActive, onClick, arrow, count, actions, children, isOpen,
+  icon, label, isActive, onClick, arrow, count, actions, children, isOpen, dimmed,
 }: {
   icon?: string;
   label: string;
@@ -95,6 +99,7 @@ function TreeNode({
   actions?: React.ReactNode;
   children?: React.ReactNode;
   isOpen?: boolean;
+  dimmed?: boolean;
 }) {
   const [hover, setHover] = useState(false);
 
@@ -105,6 +110,7 @@ function TreeNode({
           ...s.node,
           ...(hover && !isActive ? s.nodeHover : {}),
           ...(isActive ? s.nodeActive : {}),
+          ...(dimmed ? { opacity: 0.4 } : {}),
         }}
         onClick={onClick}
         onMouseEnter={() => setHover(true)}
@@ -168,9 +174,15 @@ export function ProjectTree() {
   const removePortal = useSceneStore((st) => st.removePortal);
   const gsAnimations = useSceneStore((st) => st.gsAnimations);
   const addGsEmitter = useSceneStore((st) => st.addGsEmitter);
+  const updateGsEmitter = useSceneStore((st) => st.updateGsEmitter);
   const removeGsEmitter = useSceneStore((st) => st.removeGsEmitter);
   const addGsAnimation = useSceneStore((st) => st.addGsAnimation);
+  const updateGsAnimation = useSceneStore((st) => st.updateGsAnimation);
   const removeGsAnimation = useSceneStore((st) => st.removeGsAnimation);
+  const vfxInstances = useSceneStore((st) => st.vfxInstances);
+  const addVfxInstance = useSceneStore((st) => st.addVfxInstance);
+  const updateVfxInstance = useSceneStore((st) => st.updateVfxInstance);
+  const removeVfxInstance = useSceneStore((st) => st.removeVfxInstance);
   const collisionGridData = useSceneStore((st) => st.collisionGridData);
 
   const [sceneOpen, setSceneOpen] = useState(true);
@@ -180,6 +192,7 @@ export function ProjectTree() {
   const [portalOpen, setPortalOpen] = useState(true);
   const [emitterOpen, setEmitterOpen] = useState(true);
   const [animOpen, setAnimOpen] = useState(true);
+  const [vfxOpen, setVfxOpen] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   const click = (node: NavigationNode) => {
@@ -353,7 +366,12 @@ export function ProjectTree() {
                 label={e.preset || `Emitter ${i + 1}`}
                 isActive={isActive({ kind: 'scene_item', entityType: 'gs_emitter', entityId: e.id })}
                 onClick={() => click({ kind: 'scene_item', entityType: 'gs_emitter', entityId: e.id })}
-                actions={removeBtn(() => removeGsEmitter(e.id))}
+                dimmed={e.muted}
+                actions={<>
+                  <button style={{ ...s.muteBtn, color: e.muted ? '#f44' : undefined }} title={e.muted ? 'Unmute' : 'Mute'}
+                    onClick={(ev) => { ev.stopPropagation(); updateGsEmitter(e.id, { muted: !e.muted }); }}>M</button>
+                  {removeBtn(() => removeGsEmitter(e.id))}
+                </>}
               />
             ))}
           </TreeNode>
@@ -374,7 +392,84 @@ export function ProjectTree() {
                 label={`${a.effect.charAt(0).toUpperCase() + a.effect.slice(1)} ${i + 1}`}
                 isActive={isActive({ kind: 'scene_item', entityType: 'gs_animation', entityId: a.id })}
                 onClick={() => click({ kind: 'scene_item', entityType: 'gs_animation', entityId: a.id })}
-                actions={removeBtn(() => removeGsAnimation(a.id))}
+                dimmed={a.muted}
+                actions={<>
+                  <button style={{ ...s.muteBtn, color: a.muted ? '#f44' : undefined }} title={a.muted ? 'Unmute' : 'Mute'}
+                    onClick={(ev) => { ev.stopPropagation(); updateGsAnimation(a.id, { muted: !a.muted }); }}>M</button>
+                  {removeBtn(() => removeGsAnimation(a.id))}
+                </>}
+              />
+            ))}
+          </TreeNode>
+
+          {/* VFX Instances */}
+          <TreeNode
+            icon={icons.vfx} label="VFX Instances" count={vfxInstances.length}
+            arrow={vfxOpen ? '\u25BE' : '\u25B8'}
+            isActive={isActive({ kind: 'scene_category', category: 'vfx_instances' as any })}
+            onClick={() => { setVfxOpen(!vfxOpen); click({ kind: 'scene_category', category: 'vfx_instances' as any }); }}
+            actions={<button style={s.addBtn} title="Import .vfx.json" onClick={(e) => {
+              e.stopPropagation();
+              const input = document.createElement('input');
+              input.type = 'file';
+              input.accept = '.vfx.json,.json';
+              input.onchange = () => {
+                const file = input.files?.[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = () => {
+                  try {
+                    const text = reader.result as string;
+                    const data = JSON.parse(text);
+                    const preset = {
+                      name: data.name ?? 'Unnamed VFX',
+                      duration: data.duration ?? 3.0,
+                      layers: (data.layers ?? []).map((l: Record<string, unknown>) => ({
+                        name: (l.name as string) ?? 'Unnamed',
+                        type: (l.type as string) ?? 'emitter',
+                        start: (l.start as number) ?? 0,
+                        duration: (l.duration as number) ?? 1,
+                        emitter: l.emitter,
+                        animation: l.animation,
+                        light: l.light,
+                      })),
+                    };
+                    // vfx_file is derived from name on save — no original path needed
+                    const safeName = preset.name.replace(/\s+/g, '_').toLowerCase();
+                    const target = getCameraTarget();
+                    addVfxInstance({
+                      id: `vfx_${Date.now()}`,
+                      name: preset.name,
+                      vfx_file: `assets/vfx/${safeName}.vfx.json`,
+                      vfx_preset: preset,
+                      position: target.xyz,
+                      radius: 5,
+                      trigger: 'auto',
+                      loop: true,
+                    });
+                  } catch (err) {
+                    console.error('Failed to parse .vfx.json:', err);
+                  }
+                };
+                reader.readAsText(file);
+              };
+              input.click();
+            }}>+</button>}
+            isOpen={vfxOpen}
+          >
+            {vfxInstances.map((v) => (
+              <TreeNode
+                key={v.id}
+                icon={icons.vfx}
+                label={v.name}
+                isActive={isActive({ kind: 'scene_item', entityType: 'vfx_instance', entityId: v.id })}
+                onClick={() => click({ kind: 'scene_item', entityType: 'vfx_instance', entityId: v.id })}
+                dimmed={v.muted}
+                actions={<>
+                  <button style={{ ...s.muteBtn, color: v.muted ? '#f44' : undefined }} title={v.muted ? 'Unmute' : 'Mute'}
+                    onClick={(ev) => { ev.stopPropagation(); updateVfxInstance(v.id, { muted: !v.muted }); }}>M</button>
+                  {removeBtn(() => removeVfxInstance(v.id))}
+                </>}
               />
             ))}
           </TreeNode>

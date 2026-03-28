@@ -313,6 +313,7 @@ export function App() {
           else if (sel.type === 'portal') store.updatePortal(sel.id, { position: pos });
           else if (sel.type === 'gs_emitter') store.updateGsEmitter(sel.id, { position: pos });
           else if (sel.type === 'gs_animation') store.updateGsAnimation(sel.id, { center: pos });
+          else if (sel.type === 'vfx_instance') store.updateVfxInstance(sel.id, { position: pos });
           else if (sel.type === 'player') store.updatePlayer({ position: pos });
         }
         store.setGrabMode(false);
@@ -356,6 +357,9 @@ export function App() {
           } else if (sel.type === 'gs_animation') {
             const anim = store.gsAnimations.find((a) => a.id === sel.id);
             if (anim) pos = [...anim.center];
+          } else if (sel.type === 'vfx_instance') {
+            const vfx = store.vfxInstances.find((v) => v.id === sel.id);
+            if (vfx) pos = [...vfx.position];
           } else if (sel.type === 'player') {
             pos = [...store.player.position];
           }

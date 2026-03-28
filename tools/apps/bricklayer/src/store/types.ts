@@ -196,6 +196,7 @@ export interface GsAnimParams {
 
 export interface GsAnimationGroupData {
   id: string;
+  muted?: boolean;
   effect: string;  // 'detach' | 'float' | 'orbit' | 'dissolve' | 'reform'
   shape: string;   // 'sphere' | 'box'
   center: [number, number, number];
@@ -210,6 +211,7 @@ export interface GsAnimationGroupData {
 
 export interface GsParticleEmitterData {
   id: string;
+  muted?: boolean;
   preset: string;  // '' | 'dust_puff' | 'spark_shower' | 'magic_spiral'
   position: [number, number, number];  // [scene_x, height, scene_z]
   spawn_rate: number;
@@ -229,6 +231,36 @@ export interface GsParticleEmitterData {
   spawn_offset_min: [number, number, number];
   spawn_offset_max: [number, number, number];
   burst_duration: number;
+}
+
+// ── VFX Instances (Méliès preset placed on map) ──
+
+export interface VfxLayerData {
+  name: string;
+  type: 'emitter' | 'animation' | 'light';
+  start: number;
+  duration: number;
+  emitter?: Record<string, unknown>;
+  animation?: Record<string, unknown>;
+  light?: { color: [number, number, number]; intensity: number; radius: number };
+}
+
+export interface VfxPresetData {
+  name: string;
+  duration: number;
+  layers: VfxLayerData[];
+}
+
+export interface VfxInstanceData {
+  id: string;
+  muted?: boolean;
+  name: string;
+  vfx_file: string;
+  vfx_preset: VfxPresetData;
+  position: [number, number, number];
+  radius: number;
+  trigger: 'auto' | 'event';
+  loop: boolean;
 }
 
 export interface PlacedObjectData {
@@ -330,5 +362,6 @@ export interface BricklayerFile {
     placedObjects: PlacedObjectData[];
     gsParticleEmitters?: GsParticleEmitterData[];
     gsAnimations?: GsAnimationGroupData[];
+    vfxInstances?: VfxInstanceData[];
   };
 }

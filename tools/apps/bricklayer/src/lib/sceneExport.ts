@@ -156,8 +156,9 @@ export function exportSceneJson(state: SceneStoreState): object {
     });
   }
 
-  if (state.gsParticleEmitters.length > 0) {
-    scene.particle_emitters = state.gsParticleEmitters.map((e) => {
+  const activeEmitters = state.gsParticleEmitters.filter((e) => !e.muted);
+  if (activeEmitters.length > 0) {
+    scene.particle_emitters = activeEmitters.map((e) => {
       const out: Record<string, unknown> = {
         position: e.position,
         spawn_rate: e.spawn_rate,
@@ -183,8 +184,9 @@ export function exportSceneJson(state: SceneStoreState): object {
     });
   }
 
-  if (state.gsAnimations.length > 0) {
-    scene.animations = state.gsAnimations.map((a) => {
+  const activeAnimations = state.gsAnimations.filter((a) => !a.muted);
+  if (activeAnimations.length > 0) {
+    scene.animations = activeAnimations.map((a) => {
       const region: Record<string, unknown> = {
         shape: a.shape,
         center: a.center,
@@ -227,6 +229,20 @@ export function exportSceneJson(state: SceneStoreState): object {
       if (a.reform_enabled) {
         out.reform = { lifetime: a.reform_lifetime };
       }
+      return out;
+    });
+  }
+
+  const activeVfx = state.vfxInstances.filter((v) => !v.muted);
+  if (activeVfx.length > 0) {
+    scene.vfx_instances = activeVfx.map((v) => {
+      const out: Record<string, unknown> = {
+        vfx_file: v.vfx_file,
+        position: v.position,
+      };
+      if (v.radius !== 5) out.radius = v.radius;
+      if (v.trigger !== 'auto') out.trigger = v.trigger;
+      if (!v.loop) out.loop = false;
       return out;
     });
   }
