@@ -177,7 +177,7 @@ function LayerGizmos() {
   useFrame(() => {
     if (!lightRef.current || !preset) return;
     const t = playbackTimeRef.current;
-    const activeLight = preset.elements.find((l) =>
+    const activeLight = (preset.elements ?? []).find((l) =>
       l.type === 'light' && l.light &&
       t >= (l.start ?? 0) && t < (l.start ?? 0) + (l.duration ?? 9999)
     );
@@ -196,7 +196,7 @@ function LayerGizmos() {
   return (
     <group>
       <pointLight ref={lightRef} position={[0, 2, 0]} visible={false} />
-      {preset.elements.map((layer) => {
+      {(preset.elements ?? []).map((layer) => {
         const active = playbackTime >= (layer.start ?? 0) && playbackTime < (layer.start ?? 0) + (layer.duration ?? 9999);
         const selected = selectedLayerId === layer.id;
         if (layer.type === 'emitter') return <EmitterGizmo key={layer.id} layer={layer} active={active} selected={selected} />;

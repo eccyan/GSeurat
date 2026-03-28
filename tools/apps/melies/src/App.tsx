@@ -333,7 +333,7 @@ function VfxTree() {
                   <span style={treeStyles.arrow}>{isOpen ? '▾' : '▸'}</span>
                   <span style={treeStyles.icon}>◇</span>
                   <span style={treeStyles.label}>{preset.name}</span>
-                  <span style={treeStyles.count}>({preset.elements.length})</span>
+                  <span style={treeStyles.count}>({(preset.elements ?? []).length})</span>
                   <button style={treeStyles.removeBtn}
                     onClick={(e) => { e.stopPropagation(); removePreset(preset.id); }}>&times;</button>
                 </div>
@@ -349,7 +349,7 @@ function VfxTree() {
                       <span style={treeStyles.icon}>&#9881;</span>
                       <span style={treeStyles.label}>Settings</span>
                     </div>
-                    {preset.elements.map((layer, i) => {
+                    {(preset.elements ?? []).map((layer, i) => {
                       const layerActive = selectedLayerId === layer.id;
                       const color = layerColor(layer.type);
                       const isMuted = mutedLayerIds.includes(layer.id);
@@ -467,7 +467,7 @@ function Timeline() {
   }
 
   // Duration: explicit or derived from max element end time
-  const dur = preset.duration ?? Math.max(3, ...preset.elements.map((e) => (e.start ?? 0) + (e.duration ?? 0)));
+  const dur = preset.duration ?? Math.max(3, ...(preset.elements ?? []).map((e) => (e.start ?? 0) + (e.duration ?? 0)));
 
   return (
     <div style={{
@@ -541,7 +541,7 @@ function Timeline() {
       <div style={{ flex: 1, overflowY: 'auto', position: 'relative' }}>
         {/* Layer tracks with drag handles */}
         <div ref={tracksRef} style={{ position: 'relative', zIndex: 1, padding: '2px 0' }}>
-          {preset.elements.map((layer) => {
+          {(preset.elements ?? []).map((layer) => {
             const layerStart = layer.start ?? 0;
             const layerDuration = layer.duration ?? dur;
             const left = (layerStart / dur) * 100;

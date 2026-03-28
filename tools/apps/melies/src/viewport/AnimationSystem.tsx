@@ -98,7 +98,7 @@ export function AnimationSystem({ scenePoints, onUpdateGeometry }: {
     let anyActive = false;
 
     // Manage animation layers — tag/untag on the shared animator
-    for (const layer of preset.elements) {
+    for (const layer of (preset.elements ?? [])) {
       if (layer.type !== 'animation') continue;
 
       const ls = layer.start ?? 0;

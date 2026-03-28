@@ -121,8 +121,14 @@ export const useVfxStore = create<VfxStoreState>((set, get) => ({
   }),
 
   loadProjectData: (data) => {
+    // Migrate v1 presets: "layers" → "elements"
+    const presets = (data.presets ?? []).map((p: any) => ({
+      ...p,
+      elements: p.elements ?? p.layers ?? [],
+      layers: undefined,
+    }));
     set({
-      presets: data.presets ?? [],
+      presets,
       scenes: data.scenes ?? [],
       activeSceneId: data.activeSceneId ?? null,
       selectedPresetId: data.presets.length > 0 ? data.presets[0].id : null,

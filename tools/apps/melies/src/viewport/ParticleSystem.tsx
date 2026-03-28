@@ -204,7 +204,7 @@ export function ParticleSystem() {
 
   return (
     <group>
-      {preset.elements
+      {(preset.elements ?? [])
         .filter((l) => l.type === 'emitter')
         .map((layer) => {
           // Active state computed per-frame in EmitterRenderer via playbackTimeRef
