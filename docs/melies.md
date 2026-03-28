@@ -9,7 +9,7 @@ reusable VFX presets with timeline-based authoring.
 
 ```bash
 cd tools && pnpm install
-cd apps/vfx-editor && pnpm dev
+cd apps/melies && pnpm dev
 # Opens on http://localhost:5181
 ```
 
@@ -194,7 +194,7 @@ Scenes reference VFX presets via `vfx_instances`:
 ## Architecture
 
 ```
-tools/apps/vfx-editor/
+tools/apps/melies/
 ├── src/
 │   ├── App.tsx                    — Layout, MenuBar, VfxTree, Timeline
 │   ├── store/
