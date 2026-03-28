@@ -7,6 +7,7 @@ import { hasFileSystemAccess, openProjectDirectory, saveProject, loadProject, do
 import { loadPly, type PlyPoint } from './lib/plyLoader.js';
 import { Preview } from './viewport/Preview.js';
 import { LayerProperties } from './panels/LayerProperties.js';
+import { PresetSettings } from './panels/PresetSettings.js';
 import { T, inputStyle, selectStyle, layerColor } from './styles/theme.js';
 
 // ═══════════════════════════════════════════════════════════════
@@ -185,6 +186,8 @@ function VfxTree() {
   const removePreset = useVfxStore((s) => s.removePreset);
   const addLayer = useVfxStore((s) => s.addLayer);
   const removeLayer = useVfxStore((s) => s.removeLayer);
+  const selectedView = useVfxStore((s) => s.selectedView);
+  const setSelectedView = useVfxStore((s) => s.setSelectedView);
   const [openPresets, setOpenPresets] = useState<Set<string>>(new Set());
 
   const toggleOpen = (id: string) => {
@@ -238,9 +241,17 @@ function VfxTree() {
                     onClick={(e) => { e.stopPropagation(); removePreset(preset.id); }}>&times;</button>
                 </div>
 
-                {/* Layers (when expanded) */}
+                {/* Settings + Layers (when expanded) */}
                 {isOpen && (
                   <div style={treeStyles.indent}>
+                    {/* Settings node */}
+                    <div
+                      style={{ ...treeStyles.node, ...(selectedView === 'preset-settings' && selectedPresetId === preset.id && !selectedLayerId ? treeStyles.nodeActive : {}) }}
+                      onClick={() => { selectPreset(preset.id); selectLayer(null); setSelectedView('preset-settings'); }}
+                    >
+                      <span style={treeStyles.icon}>&#9881;</span>
+                      <span style={treeStyles.label}>Settings</span>
+                    </div>
                     {preset.layers.map((layer, i) => {
                       const layerActive = selectedLayerId === layer.id;
                       const color = layerColor(layer.type);
@@ -551,6 +562,12 @@ function Timeline() {
 // App
 // ═══════════════════════════════════════════════════════════════
 
+function RightPanel() {
+  const selectedView = useVfxStore((s) => s.selectedView);
+  if (selectedView === 'preset-settings') return <PresetSettings />;
+  return <LayerProperties />;
+}
+
 export function App() {
   const [scenePoints, setScenePoints] = useState<PlyPoint[]>([]);
 
@@ -618,7 +635,7 @@ export function App() {
           <Preview scenePoints={scenePoints} />
           <Timeline />
         </div>
-        <LayerProperties />
+        <RightPanel />
       </div>
     </div>
   );
