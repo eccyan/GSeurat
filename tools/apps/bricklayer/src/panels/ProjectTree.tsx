@@ -171,6 +171,9 @@ export function ProjectTree() {
   const removeGsEmitter = useSceneStore((st) => st.removeGsEmitter);
   const addGsAnimation = useSceneStore((st) => st.addGsAnimation);
   const removeGsAnimation = useSceneStore((st) => st.removeGsAnimation);
+  const vfxInstances = useSceneStore((st) => st.vfxInstances);
+  const addVfxInstance = useSceneStore((st) => st.addVfxInstance);
+  const removeVfxInstance = useSceneStore((st) => st.removeVfxInstance);
   const collisionGridData = useSceneStore((st) => st.collisionGridData);
 
   const [sceneOpen, setSceneOpen] = useState(true);
@@ -180,6 +183,7 @@ export function ProjectTree() {
   const [portalOpen, setPortalOpen] = useState(true);
   const [emitterOpen, setEmitterOpen] = useState(true);
   const [animOpen, setAnimOpen] = useState(true);
+  const [vfxOpen, setVfxOpen] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   const click = (node: NavigationNode) => {
@@ -375,6 +379,70 @@ export function ProjectTree() {
                 isActive={isActive({ kind: 'scene_item', entityType: 'gs_animation', entityId: a.id })}
                 onClick={() => click({ kind: 'scene_item', entityType: 'gs_animation', entityId: a.id })}
                 actions={removeBtn(() => removeGsAnimation(a.id))}
+              />
+            ))}
+          </TreeNode>
+
+          {/* VFX Instances */}
+          <TreeNode
+            icon={icons.vfx} label="VFX Instances" count={vfxInstances.length}
+            arrow={vfxOpen ? '\u25BE' : '\u25B8'}
+            isActive={isActive({ kind: 'scene_category', category: 'vfx_instances' as any })}
+            onClick={() => { setVfxOpen(!vfxOpen); click({ kind: 'scene_category', category: 'vfx_instances' as any }); }}
+            actions={<button style={s.addBtn} title="Import .vfx.json" onClick={(e) => {
+              e.stopPropagation();
+              const input = document.createElement('input');
+              input.type = 'file';
+              input.accept = '.vfx.json,.json';
+              input.onchange = () => {
+                const file = input.files?.[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = () => {
+                  try {
+                    const data = JSON.parse(reader.result as string);
+                    const preset = {
+                      name: data.name ?? 'Unnamed VFX',
+                      duration: data.duration ?? 3.0,
+                      layers: (data.layers ?? []).map((l: Record<string, unknown>) => ({
+                        name: (l.name as string) ?? 'Unnamed',
+                        type: (l.type as string) ?? 'emitter',
+                        start: (l.start as number) ?? 0,
+                        duration: (l.duration as number) ?? 1,
+                        emitter: l.emitter,
+                        animation: l.animation,
+                        light: l.light,
+                      })),
+                    };
+                    const target = getCameraTarget();
+                    addVfxInstance({
+                      id: `vfx_${Date.now()}`,
+                      name: preset.name,
+                      vfx_file: `assets/vfx/${file.name}`,
+                      vfx_preset: preset,
+                      position: target.xyz,
+                      radius: 5,
+                      trigger: 'auto',
+                      loop: true,
+                    });
+                  } catch (err) {
+                    console.error('Failed to parse .vfx.json:', err);
+                  }
+                };
+                reader.readAsText(file);
+              };
+              input.click();
+            }}>+</button>}
+            isOpen={vfxOpen}
+          >
+            {vfxInstances.map((v) => (
+              <TreeNode
+                key={v.id}
+                icon={icons.vfx}
+                label={v.name}
+                isActive={isActive({ kind: 'scene_item', entityType: 'vfx_instance', entityId: v.id })}
+                onClick={() => click({ kind: 'scene_item', entityType: 'vfx_instance', entityId: v.id })}
+                actions={removeBtn(() => removeVfxInstance(v.id))}
               />
             ))}
           </TreeNode>

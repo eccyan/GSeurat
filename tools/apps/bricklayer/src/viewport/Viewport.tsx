@@ -11,6 +11,8 @@ import { PortalMarkers } from './PortalMarkers.js';
 import { ObjectMarkers } from './ObjectMarkers.js';
 import { GsEmitterMarkers } from './GsEmitterMarkers.js';
 import { GsAnimationMarkers } from './GsAnimationMarkers.js';
+import { VfxInstanceMarkers } from './VfxInstanceMarkers.js';
+import { VfxRenderer } from './VfxRenderer.js';
 import { PlayerMarker } from './PlayerMarker.js';
 import { CollisionOverlay } from './CollisionOverlay.js';
 import { useSceneStore } from '../store/useSceneStore.js';
@@ -98,6 +100,10 @@ function getGrabbedEntityY(): number {
     const anim = store.gsAnimations.find((a) => a.id === sel.id);
     return anim?.center[1] ?? 0;
   }
+  if (sel.type === 'vfx_instance') {
+    const vfx = store.vfxInstances.find((v) => v.id === sel.id);
+    return vfx?.position[1] ?? 0;
+  }
   // portal: always Y=0
   return 0;
 }
@@ -122,6 +128,8 @@ function updateGrabbedEntity(x: number, y: number, z: number) {
     store.updateGsEmitter(sel.id, { position: [x, y, z] });
   } else if (sel.type === 'gs_animation') {
     store.updateGsAnimation(sel.id, { center: [x, y, z] });
+  } else if (sel.type === 'vfx_instance') {
+    store.updateVfxInstance(sel.id, { position: [x, y, z] });
   } else if (sel.type === 'player') {
     store.updatePlayer({ position: [x, y, z] });
   }
@@ -297,6 +305,8 @@ function SceneContent() {
       <PortalMarkers />
       <GsEmitterMarkers />
       <GsAnimationMarkers />
+      <VfxInstanceMarkers />
+      <VfxRenderer />
       <ObjectMarkers />
       <PlayerMarker />
       <CollisionOverlay />
