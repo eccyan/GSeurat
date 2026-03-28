@@ -181,6 +181,7 @@ add_library(gseurat_core OBJECT
     src/engine/gs_chunk_streamer.cpp
     src/engine/gs_particle.cpp
     src/engine/gs_animator.cpp
+    src/engine/gs_vfx.cpp
 )
 
 if(NOT WIN32)

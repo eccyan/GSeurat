@@ -3,6 +3,7 @@
 #include "gseurat/engine/gaussian_cloud.hpp"
 #include "gseurat/engine/gs_parallax_camera.hpp"
 #include "gseurat/engine/scene_loader.hpp"
+#include "gseurat/engine/gs_vfx.hpp"
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include <stb_image_write.h>
@@ -65,6 +66,7 @@ void DemoApp::init_scene(const std::string& scene_path) {
     // Clear previous scene state
     renderer_.clear_gs_particle_emitters();
     renderer_.clear_gs_animations();
+    renderer_.clear_vfx_instances();
 
     // Populate scene lights for the glow overlay
     scene_.clear_lights();
@@ -223,6 +225,22 @@ void DemoApp::init_scene(const std::string& scene_path) {
                     reform = Renderer::ReformConfig{anim.reform->lifetime};
                 }
                 renderer_.add_gs_animation(anim.effect, region, anim.lifetime, anim.loop, anim.params, reform);
+            }
+
+            // Instantiate VFX instances from scene
+            renderer_.clear_vfx_instances();
+            for (const auto& vi : scene_data.vfx_instances) {
+                if (vi.trigger != "auto") continue;
+                auto preset = load_vfx_preset(vi.vfx_file);
+                if (preset.layers.empty()) continue;
+                VfxInstance inst;
+                auto pos = vi.position;
+                pos.x += aabb.min.x;
+                pos.y += aabb.min.y;
+                inst.init(preset, pos, vi.loop);
+                std::fprintf(stderr, "VFX: Loaded '%s' at (%.1f, %.1f, %.1f) with %zu layers\n",
+                    preset.name.c_str(), pos.x, pos.y, pos.z, preset.layers.size());
+                renderer_.add_vfx_instance(std::move(inst));
             }
         }
 

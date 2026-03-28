@@ -374,6 +374,19 @@ SceneData SceneLoader::from_json(const nlohmann::json& j) {
         }
     }
 
+    // VFX instances (Méliès presets placed on map)
+    if (j.contains("vfx_instances")) {
+        for (const auto& vi : j["vfx_instances"]) {
+            SceneData::VfxInstanceRef inst;
+            inst.vfx_file = vi.value("vfx_file", "");
+            if (vi.contains("position")) inst.position = parse_vec3(vi["position"]);
+            inst.radius = vi.value("radius", 5.0f);
+            inst.trigger = vi.value("trigger", "auto");
+            inst.loop = vi.value("loop", true);
+            data.vfx_instances.push_back(std::move(inst));
+        }
+    }
+
     // Weather
     if (j.contains("weather")) {
         const auto& w = j["weather"];
@@ -529,7 +542,23 @@ GsAnimationData SceneLoader::parse_gs_animation(const nlohmann::json& j) {
         if (r.contains("half_extents")) anim.region.half_extents = parse_vec3(r["half_extents"]);
     }
 
-    // Animation parameters — lifetime-centric with per-parameter easing
+    if (j.contains("params")) {
+        anim.params = parse_gs_anim_params(j["params"]);
+    }
+
+    // Optional reform config
+    if (j.contains("reform")) {
+        GsAnimReformConfig reform;
+        const auto& r = j["reform"];
+        reform.lifetime = r.value("lifetime", 2.0f);
+        anim.reform = reform;
+    }
+
+    return anim;
+}
+
+GsAnimParams SceneLoader::parse_gs_anim_params(const nlohmann::json& p) {
+    GsAnimParams params;
     auto parse_easing = [](const std::string& s) -> GsEasing {
         if (s == "in_quad"      || s == "ease_in")     return GsEasing::InQuad;
         if (s == "out_quad"     || s == "ease_out")    return GsEasing::OutQuad;
@@ -563,34 +592,22 @@ GsAnimationData SceneLoader::parse_gs_animation(const nlohmann::json& j) {
         if (s == "in_out_bounce")   return GsEasing::InOutBounce;
         return GsEasing::Linear;
     };
-    if (j.contains("params")) {
-        const auto& p = j["params"];
-        anim.params.rotations = p.value("rotations", anim.params.rotations);
-        if (p.contains("rotations_easing")) anim.params.rotations_easing = parse_easing(p["rotations_easing"]);
-        anim.params.expansion = p.value("expansion", anim.params.expansion);
-        if (p.contains("expansion_easing")) anim.params.expansion_easing = parse_easing(p["expansion_easing"]);
-        anim.params.height_rise = p.value("height_rise", anim.params.height_rise);
-        if (p.contains("height_easing")) anim.params.height_easing = parse_easing(p["height_easing"]);
-        anim.params.opacity_end = p.value("opacity_end", anim.params.opacity_end);
-        if (p.contains("opacity_easing")) anim.params.opacity_easing = parse_easing(p["opacity_easing"]);
-        anim.params.scale_end = p.value("scale_end", anim.params.scale_end);
-        if (p.contains("scale_easing")) anim.params.scale_easing = parse_easing(p["scale_easing"]);
-        anim.params.velocity = p.value("velocity", anim.params.velocity);
-        if (p.contains("gravity")) anim.params.gravity = parse_vec3(p["gravity"]);
-        anim.params.noise = p.value("noise", anim.params.noise);
-        anim.params.wave_speed = p.value("wave_speed", anim.params.wave_speed);
-        anim.params.pulse_frequency = p.value("pulse_frequency", anim.params.pulse_frequency);
-    }
-
-    // Optional reform config
-    if (j.contains("reform")) {
-        GsAnimReformConfig reform;
-        const auto& r = j["reform"];
-        reform.lifetime = r.value("lifetime", 2.0f);
-        anim.reform = reform;
-    }
-
-    return anim;
+    params.rotations = p.value("rotations", params.rotations);
+    if (p.contains("rotations_easing")) params.rotations_easing = parse_easing(p["rotations_easing"]);
+    params.expansion = p.value("expansion", params.expansion);
+    if (p.contains("expansion_easing")) params.expansion_easing = parse_easing(p["expansion_easing"]);
+    params.height_rise = p.value("height_rise", params.height_rise);
+    if (p.contains("height_easing")) params.height_easing = parse_easing(p["height_easing"]);
+    params.opacity_end = p.value("opacity_end", params.opacity_end);
+    if (p.contains("opacity_easing")) params.opacity_easing = parse_easing(p["opacity_easing"]);
+    params.scale_end = p.value("scale_end", params.scale_end);
+    if (p.contains("scale_easing")) params.scale_easing = parse_easing(p["scale_easing"]);
+    params.velocity = p.value("velocity", params.velocity);
+    if (p.contains("gravity")) params.gravity = parse_vec3(p["gravity"]);
+    params.noise = p.value("noise", params.noise);
+    params.wave_speed = p.value("wave_speed", params.wave_speed);
+    params.pulse_frequency = p.value("pulse_frequency", params.pulse_frequency);
+    return params;
 }
 
 nlohmann::json SceneLoader::gs_animation_json(const GsAnimationData& anim) {

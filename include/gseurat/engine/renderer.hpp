@@ -6,6 +6,7 @@
 #include "gseurat/engine/gs_chunk_grid.hpp"
 #include "gseurat/engine/gs_animator.hpp"
 #include "gseurat/engine/gs_particle.hpp"
+#include "gseurat/engine/gs_vfx.hpp"
 #include "gseurat/engine/gs_renderer.hpp"
 #include "gseurat/engine/command_pool.hpp"
 #include "gseurat/engine/descriptor.hpp"
@@ -109,6 +110,11 @@ public:
     void clear_gs_animations();
     const std::vector<SceneAnimation>& gs_scene_animations() const { return gs_scene_animations_; }
 
+    // VFX instances (Méliès presets placed on map)
+    void add_vfx_instance(VfxInstance&& inst);
+    void clear_vfx_instances();
+    const std::vector<VfxInstance>& vfx_instances() const { return vfx_instances_; }
+
     void request_screenshot(const std::string& path) { screenshot_.request(path); }
     bool screenshot_write_ok() const { return screenshot_.write_ok(); }
     uint32_t screenshot_width() const { return screenshot_.width(); }
@@ -204,6 +210,7 @@ private:
     std::vector<GaussianParticleEmitter> gs_particle_emitters_;
     GaussianAnimator gs_animator_;
     std::vector<SceneAnimation> gs_scene_animations_;
+    std::vector<VfxInstance> vfx_instances_;
     std::vector<uint32_t> gs_prev_visible_;
     bool gs_skip_chunk_cull_ = false;
     uint32_t gs_gaussian_budget_ = 0;  // 0 = unlimited (no LOD decimation)

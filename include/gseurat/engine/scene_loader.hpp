@@ -152,6 +152,16 @@ struct SceneData {
     // Gaussian animations (effects applied to existing scene Gaussians within a region)
     std::vector<GsAnimationData> gs_animations;
 
+    // VFX instances (Méliès presets placed at map positions)
+    struct VfxInstanceRef {
+        std::string vfx_file;
+        glm::vec3 position{0.0f};
+        float radius = 5.0f;
+        std::string trigger = "auto";
+        bool loop = true;
+    };
+    std::vector<VfxInstanceRef> vfx_instances;
+
     // Minimap
     std::optional<Minimap::Config> minimap_config;
 
@@ -175,8 +185,11 @@ public:
     static SceneData from_json(const nlohmann::json& j);
     static nlohmann::json to_json(const SceneData& data);
 
-    // Public parse helpers (used by control server commands)
+    // Public parse helpers (used by control server, VFX loader)
     static EmitterConfig parse_emitter(const nlohmann::json& j);
+    static GsEmitterConfig parse_gs_emitter_config(const nlohmann::json& j);
+    static GsAnimationData parse_gs_animation(const nlohmann::json& j);
+    static GsAnimParams parse_gs_anim_params(const nlohmann::json& j);
 
 private:
     static Direction parse_direction(const std::string& s);
@@ -191,9 +204,7 @@ private:
     static nlohmann::json vec3_json(const glm::vec3& v);
     static nlohmann::json vec4_json(const glm::vec4& v);
     static nlohmann::json emitter_json(const EmitterConfig& cfg);
-    static GsEmitterConfig parse_gs_emitter_config(const nlohmann::json& j);
     static nlohmann::json gs_emitter_config_json(const GsEmitterData& em);
-    static GsAnimationData parse_gs_animation(const nlohmann::json& j);
     static nlohmann::json gs_animation_json(const GsAnimationData& anim);
 };
 
