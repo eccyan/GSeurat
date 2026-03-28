@@ -4,7 +4,7 @@
  * Tests VFX preset CRUD, layer management, phase calculations,
  * timeline logic, export format, and file roundtrip.
  *
- * Run: pnpm test:vfx-editor
+ * Run: pnpm test:melies
  */
 
 // ═══════════════════════════════════════════════════════════════

@@ -26,7 +26,7 @@
     "test:bricklayer-gs-emitters": "node --import tsx/esm --conditions source src/bricklayer-gs-emitters.test.ts",
     "test:bricklayer-gs-animations": "node --import tsx/esm --conditions source src/bricklayer-gs-animations.test.ts",
     "test:bricklayer-ui-refactor": "node --import tsx/esm --conditions source src/bricklayer-ui-refactor.test.ts",
-    "test:vfx-editor": "node --import tsx/esm --conditions source src/vfx-editor.test.ts",
+    "test:melies": "node --import tsx/esm --conditions source src/melies.test.ts",
     "test:simulation-wasm": "node --import tsx/esm --conditions source src/simulation-wasm.test.ts"
   },
   "dependencies": {
