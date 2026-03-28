@@ -651,29 +651,29 @@ export function App() {
           break;
         }
         case 'ArrowLeft':
-          store.setPlaybackTime(Math.max(0, store.playbackTime - 0.1));
-          break;
-        case 'ArrowRight': {
-          const preset = store.presets.find((p) => p.id === store.selectedPresetId);
-          const max = preset?.duration ?? 999;
-          store.setPlaybackTime(Math.min(max, store.playbackTime + 0.1));
-          break;
-        }
-        case 'BracketLeft': {
-          // Nudge selected layer start left
-          const preset = store.presets.find((p) => p.id === store.selectedPresetId);
-          const layer = preset?.layers.find((l) => l.id === store.selectedLayerId);
-          if (preset && layer) {
-            store.updateLayer(preset.id, layer.id, { start: Math.max(0, layer.start - 0.05) });
+          if (e.shiftKey) {
+            // Shift+Left: nudge selected layer start left
+            const preset = store.presets.find((p) => p.id === store.selectedPresetId);
+            const layer = preset?.layers.find((l) => l.id === store.selectedLayerId);
+            if (preset && layer) {
+              store.updateLayer(preset.id, layer.id, { start: Math.max(0, layer.start - 0.05) });
+            }
+          } else {
+            store.setPlaybackTime(Math.max(0, store.playbackTime - 0.1));
           }
           break;
-        }
-        case 'BracketRight': {
-          // Nudge selected layer start right
-          const preset = store.presets.find((p) => p.id === store.selectedPresetId);
-          const layer = preset?.layers.find((l) => l.id === store.selectedLayerId);
-          if (preset && layer) {
-            store.updateLayer(preset.id, layer.id, { start: layer.start + 0.05 });
+        case 'ArrowRight': {
+          if (e.shiftKey) {
+            // Shift+Right: nudge selected layer start right
+            const preset = store.presets.find((p) => p.id === store.selectedPresetId);
+            const layer = preset?.layers.find((l) => l.id === store.selectedLayerId);
+            if (preset && layer) {
+              store.updateLayer(preset.id, layer.id, { start: layer.start + 0.05 });
+            }
+          } else {
+            const preset = store.presets.find((p) => p.id === store.selectedPresetId);
+            const max = preset?.duration ?? 999;
+            store.setPlaybackTime(Math.min(max, store.playbackTime + 0.1));
           }
           break;
         }
