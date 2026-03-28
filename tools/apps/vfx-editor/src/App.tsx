@@ -592,34 +592,108 @@ export function App() {
   useEffect(() => {
     const handler = async (e: KeyboardEvent) => {
       const meta = e.metaKey || e.ctrlKey;
-      if (!meta) return;
+      // Check if user is typing in an input field
+      const el = document.activeElement;
+      const typing = el?.tagName === 'INPUT' || el?.tagName === 'TEXTAREA' || el?.tagName === 'SELECT';
 
-      if (e.key === 's') {
-        e.preventDefault();
-        const store = useVfxStore.getState();
-        if (hasFileSystemAccess()) {
-          let handle = store.projectHandle;
-          if (!handle) {
-            handle = await openProjectDirectory();
-            if (!handle) return;
-            store.setProjectHandle(handle);
+      // ── Modifier shortcuts (always active) ──
+      if (meta) {
+        if (e.key === 's') {
+          e.preventDefault();
+          const store = useVfxStore.getState();
+          if (hasFileSystemAccess()) {
+            let handle = store.projectHandle;
+            if (!handle) {
+              handle = await openProjectDirectory();
+              if (!handle) return;
+              store.setProjectHandle(handle);
+            }
+            await saveProject(handle);
+          } else {
+            downloadProject();
           }
-          await saveProject(handle);
-        } else {
-          downloadProject();
+        } else if (e.key === 'o') {
+          e.preventDefault();
+          if (hasFileSystemAccess()) {
+            const handle = await openProjectDirectory();
+            if (!handle) return;
+            const ok = await loadProject(handle);
+            if (ok) useVfxStore.getState().setProjectHandle(handle);
+          }
+        } else if (e.key === 'd') {
+          e.preventDefault();
+          // Duplicate selected layer
+          const store = useVfxStore.getState();
+          const preset = store.presets.find((p) => p.id === store.selectedPresetId);
+          const layer = preset?.layers.find((l) => l.id === store.selectedLayerId);
+          if (preset && layer) {
+            store.addLayer(preset.id, layer.type, `${layer.name} Copy`, layer.start, layer.duration);
+          }
         }
-      } else if (e.key === 'o') {
-        e.preventDefault();
-        if (hasFileSystemAccess()) {
-          const handle = await openProjectDirectory();
-          if (!handle) return;
-          const ok = await loadProject(handle);
-          if (ok) useVfxStore.getState().setProjectHandle(handle);
+        return;
+      }
+
+      // ── Non-modifier shortcuts (skip when typing) ──
+      if (typing) return;
+
+      const store = useVfxStore.getState();
+
+      // Use event.code for layout-independent keys (JIS keyboard support)
+      switch (e.code) {
+        case 'Space':
+          e.preventDefault();
+          if (store.playing) store.pause(); else store.play();
+          break;
+        case 'Escape':
+          store.stop();
+          break;
+        case 'Delete':
+        case 'Backspace': {
+          // Remove selected layer
+          const preset = store.presets.find((p) => p.id === store.selectedPresetId);
+          if (preset && store.selectedLayerId) {
+            store.removeLayer(preset.id, store.selectedLayerId);
+          }
+          break;
         }
-      } else if (e.key === 'z' && !e.shiftKey) {
-        // Future: undo
-      } else if ((e.key === 'z' && e.shiftKey) || e.key === 'y') {
-        // Future: redo
+        case 'Home':    // Fn+Left on Mac
+        case 'Comma':   // , — seek to beginning (no Home key on MacBook)
+          store.setPlaybackTime(0);
+          break;
+        case 'End':     // Fn+Right on Mac
+        case 'Period':  // . — seek to end (no End key on MacBook)
+        {
+          const preset = store.presets.find((p) => p.id === store.selectedPresetId);
+          if (preset) store.setPlaybackTime(preset.duration);
+          break;
+        }
+        case 'ArrowLeft':
+          if (e.shiftKey) {
+            // Shift+Left: nudge selected layer start left
+            const preset = store.presets.find((p) => p.id === store.selectedPresetId);
+            const layer = preset?.layers.find((l) => l.id === store.selectedLayerId);
+            if (preset && layer) {
+              store.updateLayer(preset.id, layer.id, { start: Math.max(0, layer.start - 0.05) });
+            }
+          } else {
+            store.setPlaybackTime(Math.max(0, store.playbackTime - 0.1));
+          }
+          break;
+        case 'ArrowRight': {
+          if (e.shiftKey) {
+            // Shift+Right: nudge selected layer start right
+            const preset = store.presets.find((p) => p.id === store.selectedPresetId);
+            const layer = preset?.layers.find((l) => l.id === store.selectedLayerId);
+            if (preset && layer) {
+              store.updateLayer(preset.id, layer.id, { start: layer.start + 0.05 });
+            }
+          } else {
+            const preset = store.presets.find((p) => p.id === store.selectedPresetId);
+            const max = preset?.duration ?? 999;
+            store.setPlaybackTime(Math.min(max, store.playbackTime + 0.1));
+          }
+          break;
+        }
       }
     };
     window.addEventListener('keydown', handler);
