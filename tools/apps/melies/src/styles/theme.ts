@@ -47,5 +47,8 @@ export const labelStyle: React.CSSProperties = {
 };
 
 export const layerColor = (type: LayerType) =>
-  type === 'emitter' ? T.layerEmitter : type === 'animation' ? T.layerAnimation : T.layerLight;
+  type === 'object' ? T.textDim
+    : type === 'emitter' ? T.layerEmitter
+    : type === 'animation' ? T.layerAnimation
+    : T.layerLight;
 
