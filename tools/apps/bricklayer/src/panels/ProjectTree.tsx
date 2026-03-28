@@ -400,7 +400,8 @@ export function ProjectTree() {
                 const reader = new FileReader();
                 reader.onload = () => {
                   try {
-                    const data = JSON.parse(reader.result as string);
+                    const text = reader.result as string;
+                    const data = JSON.parse(text);
                     const preset = {
                       name: data.name ?? 'Unnamed VFX',
                       duration: data.duration ?? 3.0,
@@ -414,17 +415,23 @@ export function ProjectTree() {
                         light: l.light,
                       })),
                     };
+                    const vfxPath = `assets/vfx/${file.name}`;
                     const target = getCameraTarget();
                     addVfxInstance({
                       id: `vfx_${Date.now()}`,
                       name: preset.name,
-                      vfx_file: `assets/vfx/${file.name}`,
+                      vfx_file: vfxPath,
                       vfx_preset: preset,
                       position: target.xyz,
                       radius: 5,
                       trigger: 'auto',
                       loop: true,
                     });
+                    // Store blob for project save (writes to assets/vfx/)
+                    const store = useSceneStore.getState();
+                    const blobs = new Map(store.assetBlobs);
+                    blobs.set(vfxPath, new Blob([text], { type: 'application/json' }));
+                    useSceneStore.setState({ assetBlobs: blobs });
                   } catch (err) {
                     console.error('Failed to parse .vfx.json:', err);
                   }
