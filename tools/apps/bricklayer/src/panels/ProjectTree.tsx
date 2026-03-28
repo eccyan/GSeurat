@@ -415,23 +415,19 @@ export function ProjectTree() {
                         light: l.light,
                       })),
                     };
-                    const vfxPath = `assets/vfx/${file.name}`;
+                    // vfx_file is derived from name on save — no original path needed
+                    const safeName = preset.name.replace(/\s+/g, '_').toLowerCase();
                     const target = getCameraTarget();
                     addVfxInstance({
                       id: `vfx_${Date.now()}`,
                       name: preset.name,
-                      vfx_file: vfxPath,
+                      vfx_file: `assets/vfx/${safeName}.vfx.json`,
                       vfx_preset: preset,
                       position: target.xyz,
                       radius: 5,
                       trigger: 'auto',
                       loop: true,
                     });
-                    // Store blob for project save (writes to assets/vfx/)
-                    const store = useSceneStore.getState();
-                    const blobs = new Map(store.assetBlobs);
-                    blobs.set(vfxPath, new Blob([text], { type: 'application/json' }));
-                    useSceneStore.setState({ assetBlobs: blobs });
                   } catch (err) {
                     console.error('Failed to parse .vfx.json:', err);
                   }
