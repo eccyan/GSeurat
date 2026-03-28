@@ -84,11 +84,13 @@ export async function saveProject(handle: FileSystemDirectoryHandle): Promise<vo
       const fileName = `${inst.name.replace(/\s+/g, '_').toLowerCase()}.vfx.json`;
       const newPath = `assets/vfx/${fileName}`;
       // Re-serialize the preset data (applies any name edits)
-      const vfxJson = JSON.stringify({
+      const out: Record<string, unknown> = {
         name: inst.name,
-        duration: inst.vfx_preset.duration,
-        layers: inst.vfx_preset.layers,
-      }, null, 2);
+        elements: inst.vfx_preset.elements,
+      };
+      if (inst.vfx_preset.duration !== undefined) out.duration = inst.vfx_preset.duration;
+      if (inst.vfx_preset.category) out.category = inst.vfx_preset.category;
+      const vfxJson = JSON.stringify(out, null, 2);
       const fh = await vfxDir.getFileHandle(fileName, { create: true });
       const w = await fh.createWritable();
       await w.write(vfxJson);

@@ -232,14 +232,14 @@ void DemoApp::init_scene(const std::string& scene_path) {
             for (const auto& vi : scene_data.vfx_instances) {
                 if (vi.trigger != "auto") continue;
                 auto preset = load_vfx_preset(vi.vfx_file);
-                if (preset.layers.empty()) continue;
+                if (preset.elements.empty()) continue;
                 VfxInstance inst;
                 auto pos = vi.position;
                 pos.x += aabb.min.x;
                 pos.y += aabb.min.y;
                 inst.init(preset, pos, vi.loop);
-                std::fprintf(stderr, "VFX: Loaded '%s' at (%.1f, %.1f, %.1f) with %zu layers\n",
-                    preset.name.c_str(), pos.x, pos.y, pos.z, preset.layers.size());
+                std::fprintf(stderr, "VFX: Loaded '%s' at (%.1f, %.1f, %.1f) with %zu elements\n",
+                    preset.name.c_str(), pos.x, pos.y, pos.z, preset.elements.size());
                 renderer_.add_vfx_instance(std::move(inst));
             }
         }
