@@ -3,7 +3,7 @@ import { useVfxStore, playbackTimeRef } from './store/useVfxStore.js';
 import type { VfxPreset, VfxLayer, LayerType } from './store/types.js';
 import { serializeVfx } from './lib/vfxExport.js';
 import { parseVfx } from './lib/vfxImport.js';
-import { hasFileSystemAccess, openProjectDirectory, saveProject, loadProject, downloadProject, uploadProject } from './lib/projectIO.js';
+import { hasFileSystemAccess, openProjectDirectory, saveProject, loadProject, downloadProject, uploadProject, copyPlyToProject, loadPlyFromProject } from './lib/projectIO.js';
 import { loadPly, type PlyPoint } from './lib/plyLoader.js';
 import { Preview } from './viewport/Preview.js';
 import { LayerProperties } from './panels/LayerProperties.js';
@@ -216,6 +216,12 @@ function VfxTree() {
   const removeLayer = useVfxStore((s) => s.removeLayer);
   const selectedView = useVfxStore((s) => s.selectedView);
   const setSelectedView = useVfxStore((s) => s.setSelectedView);
+  const scenes = useVfxStore((s) => s.scenes);
+  const activeSceneId = useVfxStore((s) => s.activeSceneId);
+  const addScene = useVfxStore((s) => s.addScene);
+  const removeScene = useVfxStore((s) => s.removeScene);
+  const setActiveScene = useVfxStore((s) => s.setActiveScene);
+  const setScenePoints = useVfxStore((s) => s.setScenePoints);
   const toggleLayerMute = useVfxStore((s) => s.toggleLayerMute);
   const toggleLayerSolo = useVfxStore((s) => s.toggleLayerSolo);
   const mutedLayerIds = useVfxStore((s) => s.mutedLayerIds);
@@ -245,6 +251,63 @@ function VfxTree() {
 
       {/* Tree */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '4px 0' }}>
+        {/* Scenes section */}
+        <div style={{ ...treeStyles.node, color: T.textDim }}>
+          <span style={treeStyles.icon}>&#9650;</span>
+          <span style={treeStyles.label}>Scenes</span>
+          <span style={treeStyles.count}>({scenes.length})</span>
+          <button style={treeStyles.addBtn} onClick={(e) => {
+            e.stopPropagation();
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = '.ply';
+            input.onchange = async () => {
+              const file = input.files?.[0];
+              if (!file) return;
+              try {
+                const points = await loadPly(file);
+                const id = `scene_${Date.now()}`;
+                const store = useVfxStore.getState();
+                // If project has a directory handle, copy PLY into scene/ folder
+                let path = file.name;
+                if (store.projectHandle) {
+                  path = await copyPlyToProject(store.projectHandle, file);
+                }
+                addScene({ id, name: file.name.replace(/\.ply$/i, ''), path });
+                setActiveScene(id);
+                setScenePoints(points);
+              } catch (err) {
+                console.error('Failed to load PLY:', err);
+              }
+            };
+            input.click();
+          }}>+</button>
+        </div>
+        <div style={treeStyles.indent}>
+          {scenes.map((scene) => (
+            <div key={scene.id}
+              style={{ ...treeStyles.node, ...(activeSceneId === scene.id ? treeStyles.nodeActive : {}) }}
+              onClick={async () => {
+                setActiveScene(scene.id);
+                // If not cached, try loading from project directory
+                const store = useVfxStore.getState();
+                if (store.scenePoints.length === 0 && store.projectHandle) {
+                  const file = await loadPlyFromProject(store.projectHandle, scene.path);
+                  if (file) {
+                    const points = await loadPly(file);
+                    store.setScenePoints(points);
+                  }
+                }
+              }}
+            >
+              <span style={treeStyles.icon}>&#9653;</span>
+              <span style={treeStyles.label}>{scene.name}</span>
+              <button style={treeStyles.removeBtn}
+                onClick={(e) => { e.stopPropagation(); removeScene(scene.id); }}>&times;</button>
+            </div>
+          ))}
+        </div>
+
         {/* VFX Presets section */}
         <div style={{ ...treeStyles.node, color: T.textDim }}
           onClick={() => {}}>
@@ -607,7 +670,8 @@ function RightPanel() {
 }
 
 export function App() {
-  const [scenePoints, setScenePoints] = useState<PlyPoint[]>([]);
+  const scenePoints = useVfxStore((s) => s.scenePoints);
+  const storeSetScenePoints = useVfxStore((s) => s.setScenePoints);
 
   const handleImportScene = useCallback(() => {
     const input = document.createElement('input');
@@ -618,14 +682,23 @@ export function App() {
       if (!file) return;
       try {
         const points = await loadPly(file);
-        setScenePoints(points);
+        const store = useVfxStore.getState();
+        // Add as scene reference + set active
+        const id = `scene_${Date.now()}`;
+        let path = file.name;
+        if (store.projectHandle) {
+          path = await copyPlyToProject(store.projectHandle, file);
+        }
+        store.addScene({ id, name: file.name.replace(/\.ply$/i, ''), path });
+        store.setActiveScene(id);
+        storeSetScenePoints(points);
         console.log(`Loaded ${points.length} points from ${file.name}`);
       } catch (e) {
         console.error('Failed to load PLY:', e);
       }
     };
     input.click();
-  }, []);
+  }, [storeSetScenePoints]);
 
   useEffect(() => {
     const handler = async (e: KeyboardEvent) => {
