@@ -52,6 +52,11 @@
       "items": { "$ref": "#/definitions/animation" },
       "description": "Gaussian animation effects on scene regions"
     },
+    "vfx_instances": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/vfx_instance" },
+      "description": "Placed VFX preset instances (authored in Méliès)"
+    },
     "gaussian_splat": {
       "$ref": "#/definitions/gaussian_splat",
       "description": "3D Gaussian Splatting configuration"
@@ -91,6 +96,35 @@
   },
   "additionalProperties": false,
   "definitions": {
+    "vfx_instance": {
+      "type": "object",
+      "required": ["vfx_file", "position"],
+      "properties": {
+        "vfx_file": {
+          "type": "string",
+          "description": "Path to .vfx.json preset file (relative to assets)"
+        },
+        "position": {
+          "$ref": "#/definitions/vec3",
+          "description": "World position [x, y, z]"
+        },
+        "radius": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Area-of-effect radius for GS animation layers"
+        },
+        "trigger": {
+          "type": "string",
+          "enum": ["auto", "event"],
+          "description": "auto = always active, event = triggered by game logic"
+        },
+        "loop": {
+          "type": "boolean",
+          "description": "Repeat after duration ends"
+        }
+      },
+      "additionalProperties": false
+    },
     "vec2": {
       "type": "array",
       "items": { "type": "number" },
