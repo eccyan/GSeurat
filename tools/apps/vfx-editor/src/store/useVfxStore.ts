@@ -1,5 +1,6 @@
 import { create } from 'zustand';
-import type { VfxPreset, VfxLayer, VfxProject, LayerType } from './types.js';
+import type { VfxPreset, VfxLayer, VfxProject, LayerType, PlyReference } from './types.js';
+import type { PlyPoint } from '../lib/plyLoader.js';
 
 let idCounter = 0;
 function genId(prefix: string): string {
@@ -23,6 +24,11 @@ export interface VfxStoreState {
   projectHandle: FileSystemDirectoryHandle | null;
   projectName: string;
   isDirty: boolean;
+
+  // Scenes (PLY)
+  scenes: PlyReference[];
+  activeSceneId: string | null;
+  scenePoints: PlyPoint[];
 
   // UI
   selectedView: 'layer' | 'preset-settings';
@@ -50,6 +56,12 @@ export interface VfxStoreState {
   selectLayer: (id: string | null) => void;
   setSelectedView: (view: 'layer' | 'preset-settings') => void;
 
+  // Actions — scenes
+  addScene: (ref: PlyReference) => void;
+  removeScene: (id: string) => void;
+  setActiveScene: (id: string | null) => void;
+  setScenePoints: (points: PlyPoint[]) => void;
+
   // Actions — playback
   play: () => void;
   pause: () => void;
@@ -68,6 +80,9 @@ export const useVfxStore = create<VfxStoreState>((set, get) => ({
   isDirty: false,
   selectedPresetId: null,
   selectedLayerId: null,
+  scenes: [] as PlyReference[],
+  activeSceneId: null,
+  scenePoints: [] as PlyPoint[],
   selectedView: 'layer' as const,
   playing: false,
   playbackTime: 0,
@@ -78,11 +93,15 @@ export const useVfxStore = create<VfxStoreState>((set, get) => ({
   saveProjectData: () => ({
     version: 2 as const,
     presets: get().presets,
+    scenes: get().scenes.length > 0 ? get().scenes : undefined,
+    activeSceneId: get().activeSceneId ?? undefined,
   }),
 
   loadProjectData: (data) => {
     set({
       presets: data.presets ?? [],
+      scenes: data.scenes ?? [],
+      activeSceneId: data.activeSceneId ?? null,
       selectedPresetId: data.presets.length > 0 ? data.presets[0].id : null,
       selectedLayerId: null,
       isDirty: false,
@@ -149,6 +168,15 @@ export const useVfxStore = create<VfxStoreState>((set, get) => ({
 
   selectLayer: (id) => set({ selectedLayerId: id, selectedView: 'layer' }),
   setSelectedView: (view) => set({ selectedView: view }),
+
+  addScene: (ref) => set((s) => ({ scenes: [...s.scenes, ref] })),
+  removeScene: (id) => set((s) => ({
+    scenes: s.scenes.filter((sc) => sc.id !== id),
+    activeSceneId: s.activeSceneId === id ? null : s.activeSceneId,
+    scenePoints: s.activeSceneId === id ? [] : s.scenePoints,
+  })),
+  setActiveScene: (id) => set({ activeSceneId: id }),
+  setScenePoints: (points) => set({ scenePoints: points }),
 
   play: () => set({ playing: true }),
   pause: () => set({ playing: false }),

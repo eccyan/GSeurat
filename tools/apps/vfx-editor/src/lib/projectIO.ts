@@ -53,8 +53,38 @@ export async function saveProject(handle: FileSystemDirectoryHandle): Promise<vo
     await w.close();
   }
 
-  // Create scene/ directory (for future PLY import)
+  // Create scene/ directory
   await handle.getDirectoryHandle('scene', { create: true });
+}
+
+/**
+ * Copy a PLY file into the project's scene/ directory and return the relative path.
+ */
+export async function copyPlyToProject(handle: FileSystemDirectoryHandle, file: File): Promise<string> {
+  const sceneDir = await handle.getDirectoryHandle('scene', { create: true });
+  const fh = await sceneDir.getFileHandle(file.name, { create: true });
+  const w = await fh.createWritable();
+  await w.write(file);
+  await w.close();
+  return `scene/${file.name}`;
+}
+
+/**
+ * Load a PLY file from the project's scene/ directory.
+ */
+export async function loadPlyFromProject(handle: FileSystemDirectoryHandle, relativePath: string): Promise<File | null> {
+  try {
+    // relativePath is like "scene/blub.ply"
+    const parts = relativePath.split('/');
+    let dir: FileSystemDirectoryHandle = handle;
+    for (let i = 0; i < parts.length - 1; i++) {
+      dir = await dir.getDirectoryHandle(parts[i]);
+    }
+    const fh = await dir.getFileHandle(parts[parts.length - 1]);
+    return await fh.getFile();
+  } catch {
+    return null;
+  }
 }
 
 /**

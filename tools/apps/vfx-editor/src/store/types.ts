@@ -19,7 +19,15 @@ export interface VfxPreset {
   layers: VfxLayer[];
 }
 
+export interface PlyReference {
+  id: string;
+  name: string;
+  path: string;  // relative path in project (e.g., "scene/blub.ply")
+}
+
 export interface VfxProject {
   version: 2;
   presets: VfxPreset[];
+  scenes?: PlyReference[];
+  activeSceneId?: string;
 }
