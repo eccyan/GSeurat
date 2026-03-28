@@ -1,6 +1,8 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { useVfxStore, playbackTimeRef } from './store/useVfxStore.js';
-import type { VfxPreset, VfxLayer, LayerType } from './store/types.js';
+import type { VfxPreset, VfxElement, ElementType } from './store/types.js';
+type VfxLayer = VfxElement;
+type LayerType = ElementType;
 import { serializeVfx } from './lib/vfxExport.js';
 import { parseVfx } from './lib/vfxImport.js';
 import { hasFileSystemAccess, openProjectDirectory, saveProject, loadProject, downloadProject, uploadProject, copyPlyToProject, loadPlyFromProject } from './lib/projectIO.js';
@@ -331,7 +333,7 @@ function VfxTree() {
                   <span style={treeStyles.arrow}>{isOpen ? '▾' : '▸'}</span>
                   <span style={treeStyles.icon}>◇</span>
                   <span style={treeStyles.label}>{preset.name}</span>
-                  <span style={treeStyles.count}>({preset.layers.length})</span>
+                  <span style={treeStyles.count}>({preset.elements.length})</span>
                   <button style={treeStyles.removeBtn}
                     onClick={(e) => { e.stopPropagation(); removePreset(preset.id); }}>&times;</button>
                 </div>
@@ -347,7 +349,7 @@ function VfxTree() {
                       <span style={treeStyles.icon}>&#9881;</span>
                       <span style={treeStyles.label}>Settings</span>
                     </div>
-                    {preset.layers.map((layer, i) => {
+                    {preset.elements.map((layer, i) => {
                       const layerActive = selectedLayerId === layer.id;
                       const color = layerColor(layer.type);
                       const isMuted = mutedLayerIds.includes(layer.id);
@@ -464,7 +466,8 @@ function Timeline() {
     );
   }
 
-  const dur = preset.duration;
+  // Duration: explicit or derived from max element end time
+  const dur = preset.duration ?? Math.max(3, ...preset.elements.map((e) => (e.start ?? 0) + (e.duration ?? 0)));
 
   return (
     <div style={{
@@ -538,9 +541,11 @@ function Timeline() {
       <div style={{ flex: 1, overflowY: 'auto', position: 'relative' }}>
         {/* Layer tracks with drag handles */}
         <div ref={tracksRef} style={{ position: 'relative', zIndex: 1, padding: '2px 0' }}>
-          {preset.layers.map((layer) => {
-            const left = (layer.start / dur) * 100;
-            const width = (layer.duration / dur) * 100;
+          {preset.elements.map((layer) => {
+            const layerStart = layer.start ?? 0;
+            const layerDuration = layer.duration ?? dur;
+            const left = (layerStart / dur) * 100;
+            const width = (layerDuration / dur) * 100;
             const color = layerColor(layer.type);
             const selected = selectedLayerId === layer.id;
             const isDragging = dragState.current?.layerId === layer.id;
@@ -562,8 +567,8 @@ function Timeline() {
                       layerId: layer.id,
                       mode,
                       startX: e.clientX,
-                      originalStart: layer.start,
-                      originalDuration: layer.duration,
+                      originalStart: layer.start ?? 0,
+                      originalDuration: layer.duration ?? dur,
                     };
                     selectLayer(layer.id);
                     (e.target as HTMLElement).setPointerCapture(e.pointerId);
@@ -736,9 +741,9 @@ export function App() {
           // Duplicate selected layer
           const store = useVfxStore.getState();
           const preset = store.presets.find((p) => p.id === store.selectedPresetId);
-          const layer = preset?.layers.find((l) => l.id === store.selectedLayerId);
+          const layer = preset?.elements.find((l) => l.id === store.selectedLayerId);
           if (preset && layer) {
-            store.addLayer(preset.id, layer.type, `${layer.name} Copy`, layer.start, layer.duration);
+            store.addLayer(preset.id, layer.type, `${layer.name} Copy`, layer.start ?? 0, layer.duration ?? 1);
           }
         }
         return;
@@ -775,16 +780,16 @@ export function App() {
         case 'Period':  // . — seek to end (no End key on MacBook)
         {
           const preset = store.presets.find((p) => p.id === store.selectedPresetId);
-          if (preset) store.setPlaybackTime(preset.duration);
+          if (preset) store.setPlaybackTime(preset.duration ?? 3);
           break;
         }
         case 'ArrowLeft':
           if (e.shiftKey) {
             // Shift+Left: nudge selected layer start left
             const preset = store.presets.find((p) => p.id === store.selectedPresetId);
-            const layer = preset?.layers.find((l) => l.id === store.selectedLayerId);
+            const layer = preset?.elements.find((l) => l.id === store.selectedLayerId);
             if (preset && layer) {
-              store.updateLayer(preset.id, layer.id, { start: Math.max(0, layer.start - 0.05) });
+              store.updateLayer(preset.id, layer.id, { start: Math.max(0, (layer.start ?? 0) - 0.05) });
             }
           } else {
             store.setPlaybackTime(Math.max(0, store.playbackTime - 0.1));
@@ -794,9 +799,9 @@ export function App() {
           if (e.shiftKey) {
             // Shift+Right: nudge selected layer start right
             const preset = store.presets.find((p) => p.id === store.selectedPresetId);
-            const layer = preset?.layers.find((l) => l.id === store.selectedLayerId);
+            const layer = preset?.elements.find((l) => l.id === store.selectedLayerId);
             if (preset && layer) {
-              store.updateLayer(preset.id, layer.id, { start: layer.start + 0.05 });
+              store.updateLayer(preset.id, layer.id, { start: (layer.start ?? 0) + 0.05 });
             }
           } else {
             const preset = store.presets.find((p) => p.id === store.selectedPresetId);

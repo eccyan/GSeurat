@@ -1,6 +1,8 @@
 import React from 'react';
 import { useVfxStore } from '../store/useVfxStore.js';
-import type { VfxLayer, LayerType } from '../store/types.js';
+import type { VfxElement, ElementType } from '../store/types.js';
+type VfxLayer = VfxElement;
+type LayerType = ElementType;
 import { NumberInput } from '../components/NumberInput.js';
 import { Vec3Input } from '../components/Vec3Input.js';
 import { emitterPresets, defaultEmitterConfig } from '../data/emitterPresets.js';
@@ -459,7 +461,7 @@ export function LayerProperties() {
   const preset = useVfxStore((s) => s.presets.find((p) => p.id === s.selectedPresetId));
   const layer = useVfxStore((s) => {
     const p = s.presets.find((p) => p.id === s.selectedPresetId);
-    return p?.layers.find((l) => l.id === s.selectedLayerId);
+    return p?.elements.find((l) => l.id === s.selectedLayerId);
   });
   const updateLayer = useVfxStore((s) => s.updateLayer);
   const removeLayer = useVfxStore((s) => s.removeLayer);
@@ -518,12 +520,12 @@ export function LayerProperties() {
       <div style={{ display: 'flex', gap: 8 }}>
         <div style={{ flex: 1 }}>
           <label style={sectionLabel}>Start (s)</label>
-          <NumberInput value={layer.start} min={0} step={0.1}
+          <NumberInput value={layer.start ?? 0} min={0} step={0.1}
             onChange={(v) => update({ start: v })} style={{ ...inputStyle, width: 'auto' }} />
         </div>
         <div style={{ flex: 1 }}>
           <label style={sectionLabel}>Duration (s)</label>
-          <NumberInput value={layer.duration} min={0.01} step={0.1}
+          <NumberInput value={layer.duration ?? 1} min={0.01} step={0.1}
             onChange={(v) => update({ duration: v })} style={{ ...inputStyle, width: 'auto' }} />
         </div>
       </div>

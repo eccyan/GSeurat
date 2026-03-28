@@ -53,7 +53,7 @@ export function PresetSettings() {
       <div>
         <label style={sectionLabel}>Duration (s)</label>
         <NumberInput
-          value={preset.duration}
+          value={preset.duration ?? 3}
           min={0.1}
           step={0.5}
           onChange={(v) => updatePreset(preset.id, { duration: v })}

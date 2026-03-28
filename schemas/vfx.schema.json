@@ -1,62 +1,111 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://github.com/eccyan/GSeurat/schemas/vfx.schema.json",
-  "title": "GSeurat VFX Preset",
-  "description": "Visual effect preset composing emitters, animations, and lights with timeline",
+  "title": "GSeurat VFX Prefab",
+  "description": "VFX prefab composing geometry, emitters, animations, and lights with relative positioning",
   "type": "object",
-  "required": ["name", "duration", "layers"],
+  "required": ["name", "elements"],
   "properties": {
     "name": {
       "type": "string",
-      "description": "Display name for the VFX preset"
+      "description": "Display name for the VFX prefab"
     },
     "duration": {
       "type": "number",
-      "minimum": 0.1,
-      "description": "Total duration in seconds"
+      "minimum": 0,
+      "description": "Override max duration. If omitted, derived from max(element.start + element.duration)."
+    },
+    "category": {
+      "type": "string",
+      "description": "Library category (e.g., 'environmental', 'combat', 'ambient')"
+    },
+    "elements": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/element" },
+      "description": "Positioned components of the prefab"
     },
     "layers": {
       "type": "array",
-      "items": { "$ref": "#/definitions/layer" },
-      "description": "Effect layers composing the VFX"
+      "description": "Deprecated v1 format — migrated to elements on import"
     }
   },
   "additionalProperties": false,
   "definitions": {
-    "layer": {
+    "element": {
       "type": "object",
-      "required": ["name", "type", "start", "duration"],
+      "required": ["name", "type"],
       "properties": {
         "name": {
           "type": "string",
-          "description": "Display name (e.g. 'Core Fire', 'Spark Debris', 'Flash Glow')"
+          "description": "Display name"
         },
         "type": {
           "type": "string",
-          "enum": ["emitter", "animation", "light"],
-          "description": "Layer type"
+          "enum": ["object", "emitter", "animation", "light"],
+          "description": "Element type"
+        },
+        "position": {
+          "type": "array",
+          "items": { "type": "number" },
+          "minItems": 3,
+          "maxItems": 3,
+          "description": "Position relative to prefab origin [x, y, z]"
+        },
+        "start": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Start time in seconds (for timeline effects)"
+        },
+        "duration": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Duration of one cycle in seconds"
+        },
+        "loop": {
+          "type": "boolean",
+          "description": "true = repeats after duration. For continuous effects."
         },
         "tags": {
           "type": "array",
           "items": { "type": "string" },
           "description": "Free-form tags for organization"
         },
-        "start": {
+        "ply_file": {
+          "type": "string",
+          "description": "PLY file path relative to the .vfx.json file (type=object)"
+        },
+        "scale": {
           "type": "number",
           "minimum": 0,
-          "description": "Start time in seconds from VFX start"
+          "description": "Scale factor for PLY geometry (type=object)"
         },
-        "duration": {
-          "type": "number",
-          "minimum": 0.01,
-          "description": "Layer duration in seconds"
+        "region": {
+          "type": "object",
+          "description": "Animation region shape (type=animation)",
+          "properties": {
+            "shape": {
+              "type": "string",
+              "enum": ["sphere", "box"]
+            },
+            "radius": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Sphere radius"
+            },
+            "half_extents": {
+              "type": "array",
+              "items": { "type": "number" },
+              "minItems": 3,
+              "maxItems": 3,
+              "description": "Box half-extents [x, y, z]"
+            }
+          }
         },
         "emitter": {
           "type": "object",
-          "description": "Particle emitter config (when type=emitter)",
+          "description": "Particle emitter config (type=emitter)",
           "properties": {
             "preset": { "type": "string" },
-            "position": { "type": "array", "items": { "type": "number" }, "minItems": 3, "maxItems": 3 },
             "spawn_rate": { "type": "number", "minimum": 0 },
             "lifetime_min": { "type": "number", "minimum": 0 },
             "lifetime_max": { "type": "number", "minimum": 0 },
@@ -78,7 +127,7 @@
         },
         "animation": {
           "type": "object",
-          "description": "GS animation config (when type=animation)",
+          "description": "GS animation config (type=animation)",
           "required": ["effect"],
           "properties": {
             "effect": {
@@ -115,7 +164,7 @@
         },
         "light": {
           "type": "object",
-          "description": "Flash light config (when type=light)",
+          "description": "Light config (type=light)",
           "required": ["color", "intensity", "radius"],
           "properties": {
             "color": { "type": "array", "items": { "type": "number", "minimum": 0, "maximum": 1 }, "minItems": 3, "maxItems": 3 },

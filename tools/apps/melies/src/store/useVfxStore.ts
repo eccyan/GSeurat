@@ -1,5 +1,8 @@
 import { create } from 'zustand';
-import type { VfxPreset, VfxLayer, VfxProject, LayerType, PlyReference } from './types.js';
+import type { VfxPreset, VfxElement, VfxProject, ElementType, PlyReference } from './types.js';
+// Keep aliases for compatibility during migration
+type VfxLayer = VfxElement;
+type LayerType = ElementType;
 import type { PlyPoint } from '../lib/plyLoader.js';
 
 let idCounter = 0;
@@ -133,7 +136,7 @@ export const useVfxStore = create<VfxStoreState>((set, get) => ({
       id: genId('vfx'),
       name: name ?? 'New VFX',
       duration: 3.0,
-      layers: [],
+      elements: [],
     };
     set({ presets: [...get().presets, preset], selectedPresetId: preset.id });
   },
@@ -162,7 +165,7 @@ export const useVfxStore = create<VfxStoreState>((set, get) => ({
     };
     set({
       presets: get().presets.map((p) =>
-        p.id === presetId ? { ...p, layers: [...p.layers, layer] } : p
+        p.id === presetId ? { ...p, elements: [...p.elements, layer] } : p
       ),
       selectedLayerId: layer.id,
     });
@@ -171,7 +174,7 @@ export const useVfxStore = create<VfxStoreState>((set, get) => ({
   updateLayer: (presetId, layerId, patch) => set({
     presets: get().presets.map((p) =>
       p.id === presetId
-        ? { ...p, layers: p.layers.map((l) => (l.id === layerId ? { ...l, ...patch } : l)) }
+        ? { ...p, layers: p.elements.map((l) => (l.id === layerId ? { ...l, ...patch } : l)) }
         : p
     ),
   }),
@@ -180,7 +183,7 @@ export const useVfxStore = create<VfxStoreState>((set, get) => ({
     const state = get();
     set({
       presets: state.presets.map((p) =>
-        p.id === presetId ? { ...p, layers: p.layers.filter((l) => l.id !== layerId) } : p
+        p.id === presetId ? { ...p, layers: p.elements.filter((l) => l.id !== layerId) } : p
       ),
       selectedLayerId: state.selectedLayerId === layerId ? null : state.selectedLayerId,
     });
@@ -241,6 +244,6 @@ export const useVfxStore = create<VfxStoreState>((set, get) => ({
   selectedLayer: () => {
     const state = get();
     const preset = state.presets.find((p) => p.id === state.selectedPresetId);
-    return preset?.layers.find((l) => l.id === state.selectedLayerId);
+    return preset?.elements.find((l) => l.id === state.selectedLayerId);
   },
 }));

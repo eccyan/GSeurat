@@ -98,10 +98,12 @@ export function AnimationSystem({ scenePoints, onUpdateGeometry }: {
     let anyActive = false;
 
     // Manage animation layers — tag/untag on the shared animator
-    for (const layer of preset.layers) {
+    for (const layer of preset.elements) {
       if (layer.type !== 'animation') continue;
 
-      const isActive = isLayerVisible(layer.id) && playbackTime >= layer.start && playbackTime < layer.start + layer.duration;
+      const ls = layer.start ?? 0;
+      const ld = layer.duration ?? 9999;
+      const isActive = isLayerVisible(layer.id) && playbackTime >= ls && playbackTime < ls + ld;
       const hasGroup = activeGroups.has(layer.id);
 
       if (isActive && !hasGroup) {
@@ -117,7 +119,7 @@ export function AnimationSystem({ scenePoints, onUpdateGeometry }: {
 
         const effectName = (anim.effect as string) ?? 'detach';
         const infiniteLifetimeEffects = ['wave', 'pulse'];
-        const lifetime = infiniteLifetimeEffects.includes(effectName) ? 9999 : layer.duration;
+        const lifetime = infiniteLifetimeEffects.includes(effectName) ? 9999 : (layer.duration ?? 9999);
 
         let groupId: number;
         if (params && Object.keys(params).length > 0) {
