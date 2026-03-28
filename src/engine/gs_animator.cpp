@@ -162,12 +162,33 @@ uint32_t GaussianAnimator::tag_region(const std::vector<Gaussian>& gaussians,
 
     if (group.indices.empty()) return 0;
 
+    // Save baselines for composition (first tag wins — preserves original state)
+    for (size_t i = 0; i < group.indices.size(); ++i) {
+        uint32_t idx = group.indices[i];
+        if (baselines_.find(idx) == baselines_.end()) {
+            baselines_[idx] = group.states[i];
+        }
+    }
+
     uint32_t id = group.id;
     groups_.push_back(std::move(group));
     return id;
 }
 
 void GaussianAnimator::update(float dt, std::vector<Gaussian>& gaussians) {
+    // Reset all animated Gaussians to baselines before applying effects.
+    // This enables composition: each effect accumulates on top of the baseline.
+    for (const auto& [idx, baseline] : baselines_) {
+        if (idx < static_cast<uint32_t>(gaussians.size())) {
+            auto& g = gaussians[idx];
+            g.position = baseline.original_position;
+            g.scale = baseline.original_scale;
+            g.opacity = baseline.original_opacity;
+            g.color = baseline.original_color;
+            g.emission = 0.0f;
+        }
+    }
+
     for (auto& group : groups_) {
         if (group.finished) continue;
         group.global_time += dt;
@@ -192,11 +213,15 @@ void GaussianAnimator::update(float dt, std::vector<Gaussian>& gaussians) {
         if (all_done) group.finished = true;
     }
 
-    // Remove finished groups
+    // Remove finished groups and clean up baselines for Gaussians no longer in any group
     groups_.erase(
         std::remove_if(groups_.begin(), groups_.end(),
                         [](const AnimGroup& g) { return g.finished; }),
         groups_.end());
+
+    if (groups_.empty()) {
+        baselines_.clear();
+    }
 }
 
 void GaussianAnimator::apply_detach(AnimGroup& group, std::vector<Gaussian>& gaussians, float dt) {
@@ -214,10 +239,10 @@ void GaussianAnimator::apply_detach(AnimGroup& group, std::vector<Gaussian>& gau
         float t_scale = apply_easing(t, p.scale_easing);
 
         auto& g = gaussians[idx];
-        g.position = s.original_position + s.velocity * s.age;
-        g.opacity = s.original_opacity * glm::mix(1.0f, p.opacity_end, t_opacity);
-        g.scale = s.original_scale * glm::mix(1.0f, p.scale_end, t_scale);
-        g.emission = 0.01f;
+        g.position += s.velocity * s.age;
+        g.opacity *= glm::mix(1.0f, p.opacity_end, t_opacity);
+        g.scale *= glm::mix(1.0f, p.scale_end, t_scale);
+        g.emission = std::max(g.emission, 0.01f);
     }
 }
 
@@ -235,13 +260,13 @@ void GaussianAnimator::apply_float(AnimGroup& group, std::vector<Gaussian>& gaus
         float t_scale = apply_easing(t, p.scale_easing);
 
         auto& g = gaussians[idx];
-        g.position = s.original_position + s.velocity * s.age;
+        g.position += s.velocity * s.age;
         float na = 0.5f * p.noise;
         g.position.x += std::sin(s.age * 2.0f + s.phase) * na;
         g.position.z += std::cos(s.age * 1.5f + s.phase) * na;
-        g.opacity = s.original_opacity * glm::mix(1.0f, p.opacity_end, t_opacity);
-        g.scale = s.original_scale * glm::mix(1.0f, p.scale_end, t_scale);
-        g.emission = 0.01f;
+        g.opacity *= glm::mix(1.0f, p.opacity_end, t_opacity);
+        g.scale *= glm::mix(1.0f, p.scale_end, t_scale);
+        g.emission = std::max(g.emission, 0.01f);
     }
 }
 
@@ -271,12 +296,13 @@ void GaussianAnimator::apply_orbit(AnimGroup& group, std::vector<Gaussian>& gaus
         float y_offset = t_height * p.height_rise;
 
         auto& g = gaussians[idx];
+        // Orbit uses absolute position (overrides additive effects)
         g.position = center + glm::vec3(
             (rel.x * cs - rel.z * sn) * radius_scale,
             rel.y + y_offset,
             (rel.x * sn + rel.z * cs) * radius_scale);
-        g.opacity = s.original_opacity * glm::mix(1.0f, p.opacity_end, t_opacity);
-        g.emission = 0.01f;
+        g.opacity *= glm::mix(1.0f, p.opacity_end, t_opacity);
+        g.emission = std::max(g.emission, 0.01f);
     }
 }
 
@@ -295,13 +321,13 @@ void GaussianAnimator::apply_dissolve(AnimGroup& group, std::vector<Gaussian>& g
 
         auto& g = gaussians[idx];
         float na = p.noise;
-        g.position = s.original_position + glm::vec3(
+        g.position += glm::vec3(
             std::sin(s.phase + s.age) * t * 2.0f * na,
             t * 1.0f * na,
             std::cos(s.phase + s.age) * t * 2.0f * na);
-        g.scale = s.original_scale * glm::mix(1.0f, p.scale_end, t_scale);
-        g.opacity = s.original_opacity * glm::mix(1.0f, p.opacity_end, t_opacity);
-        g.emission = 0.01f;
+        g.scale *= glm::mix(1.0f, p.scale_end, t_scale);
+        g.opacity *= glm::mix(1.0f, p.opacity_end, t_opacity);
+        g.emission = std::max(g.emission, 0.01f);
     }
 }
 
@@ -325,8 +351,8 @@ void GaussianAnimator::apply_reform(AnimGroup& group, std::vector<Gaussian>& gau
         g.position = glm::mix(s.velocity, s.original_position, smooth_t);
         g.scale = glm::mix(s.original_scale * 0.1f, s.original_scale, smooth_t);
         g.opacity = s.original_opacity * smooth_t;
-        g.color = glm::mix(g.color, s.original_color, smooth_t);
-        g.emission = 0.01f * (1.0f - smooth_t);
+        g.color = s.original_color;
+        g.emission = std::max(g.emission, 0.01f * (1.0f - smooth_t));
     }
 }
 
@@ -345,10 +371,9 @@ void GaussianAnimator::apply_pulse(AnimGroup& group, std::vector<Gaussian>& gaus
         float scale_factor = glm::mix(1.0f, p.scale_end, wave_scale);
 
         auto& g = gaussians[idx];
-        g.position = s.original_position;
-        g.scale = s.original_scale * std::max(scale_factor, 0.01f);
-        g.opacity = s.original_opacity * glm::mix(1.0f, p.opacity_end, wave_opacity);
-        g.color = s.original_color;
+        // Pulse: no position change, multiplicative scale/opacity
+        g.scale *= std::max(scale_factor, 0.01f);
+        g.opacity *= glm::mix(1.0f, p.opacity_end, wave_opacity);
     }
 }
 
@@ -379,13 +404,14 @@ void GaussianAnimator::apply_vortex(AnimGroup& group, std::vector<Gaussian>& gau
         float contract = glm::mix(1.0f, p.expansion, t_exp);
 
         auto& g = gaussians[idx];
+        // Vortex uses absolute position (overrides additive effects)
         g.position = center + glm::vec3(
             (rel.x * cs - rel.z * sn) * contract,
             rel.y + t_height * p.height_rise,
             (rel.x * sn + rel.z * cs) * contract);
-        g.opacity = s.original_opacity * glm::mix(1.0f, p.opacity_end, t_opacity);
-        g.scale = s.original_scale * glm::mix(1.0f, p.scale_end, t_scale);
-        g.emission = 0.01f;
+        g.opacity *= glm::mix(1.0f, p.opacity_end, t_opacity);
+        g.scale *= glm::mix(1.0f, p.scale_end, t_scale);
+        g.emission = std::max(g.emission, 0.01f);
     }
 }
 
@@ -408,10 +434,8 @@ void GaussianAnimator::apply_wave(AnimGroup& group, std::vector<Gaussian>& gauss
         float y_offset = std::sin(dist * freq - group.global_time * p.wave_speed + s.phase * 0.2f) * p.noise;
 
         auto& g = gaussians[idx];
-        g.position = s.original_position + glm::vec3(0.0f, y_offset, 0.0f);
-        g.scale = s.original_scale;
-        g.opacity = s.original_opacity;
-        g.color = s.original_color;
+        // Wave: additive position displacement only
+        g.position.y += y_offset;
     }
 }
 
@@ -430,10 +454,10 @@ void GaussianAnimator::apply_scatter(AnimGroup& group, std::vector<Gaussian>& ga
         float t_scale = apply_easing(t, p.scale_easing);
 
         auto& g = gaussians[idx];
-        g.position = s.original_position + s.velocity * s.age;
-        g.opacity = s.original_opacity * glm::mix(1.0f, p.opacity_end, t_opacity);
-        g.scale = s.original_scale * glm::mix(1.0f, p.scale_end, t_scale);
-        g.emission = 0.01f;
+        g.position += s.velocity * s.age;
+        g.opacity *= glm::mix(1.0f, p.opacity_end, t_opacity);
+        g.scale *= glm::mix(1.0f, p.scale_end, t_scale);
+        g.emission = std::max(g.emission, 0.01f);
     }
 }
 
@@ -458,6 +482,7 @@ void GaussianAnimator::clear(std::vector<Gaussian>& gaussians) {
         }
     }
     groups_.clear();
+    baselines_.clear();
 }
 
 bool GaussianAnimator::has_active_groups() const {

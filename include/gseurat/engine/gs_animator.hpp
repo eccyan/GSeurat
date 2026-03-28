@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <glm/glm.hpp>
+#include <unordered_map>
 #include <vector>
 
 namespace gseurat {
@@ -129,6 +130,9 @@ private:
     void apply_scatter(AnimGroup& group, std::vector<Gaussian>& gaussians, float dt);
 
     std::vector<AnimGroup> groups_;
+    // Per-Gaussian baselines: saved on first tag, shared across all groups.
+    // Enables reset-then-accumulate for composing multiple effects.
+    std::unordered_map<uint32_t, GsParticleState> baselines_;
     uint32_t next_group_id_ = 1;
     uint32_t rng_ = 0xDEADBEEFu;
 };
