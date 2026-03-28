@@ -216,6 +216,8 @@ export function Preview({ scenePoints }: { scenePoints: PlyPoint[] }) {
     return p;
   });
   const playbackTime = useVfxStore((s) => s.playbackTime);
+  const showGizmos = useVfxStore((s) => s.showGizmos);
+  const showPointCloud = useVfxStore((s) => s.showPointCloud);
   const sceneGeoRef = useRef<THREE.BufferGeometry | null>(null);
 
   // Callback for AnimationSystem to update point cloud geometry
@@ -247,9 +249,9 @@ export function Preview({ scenePoints }: { scenePoints: PlyPoint[] }) {
       <Canvas camera={{ position: [10, 10, 10], fov: 50 }} style={{ background: '#0f0f1e' }}>
         <ambientLight intensity={0.4} />
         <directionalLight position={[10, 20, 10]} intensity={0.6} />
-        <Grid args={[40, 40]} cellSize={1} cellColor="#1a1a3a" sectionSize={5} sectionColor="#2a2a4a" fadeDistance={30} infiniteGrid={false} />
-        {scenePoints.length > 0 && <GaussianPointCloud points={scenePoints} geoRef={sceneGeoRef} />}
-        <LayerGizmos />
+        <Grid args={[40, 40]} cellSize={1} cellColor="#2a2a4a" sectionSize={5} sectionColor="#3a3a5a" fadeDistance={30} infiniteGrid={false} />
+        {scenePoints.length > 0 && showPointCloud && <GaussianPointCloud points={scenePoints} geoRef={sceneGeoRef} />}
+        {showGizmos && <LayerGizmos />}
         <ParticleSystem />
         <AnimationSystem scenePoints={scenePoints} onUpdateGeometry={handleUpdateGeometry} />
         <OrbitControls />

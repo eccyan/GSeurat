@@ -189,6 +189,7 @@ export function ParticleSystem() {
     return s.presets.find((p) => p.id === s.selectedPresetId);
   });
   const playing = useVfxStore((s) => s.playing);
+  const isLayerVisible = useVfxStore((s) => s.isLayerVisible);
   const [wasmReady, setWasmReady] = useState(false);
 
   // Load WASM on mount
@@ -206,7 +207,7 @@ export function ParticleSystem() {
         .filter((l) => l.type === 'emitter')
         .map((layer) => {
           // Active state computed per-frame in EmitterRenderer via playbackTimeRef
-          const active = playing;
+          const active = playing && isLayerVisible(layer.id);
           return (
             <EmitterRenderer
               key={layer.id}

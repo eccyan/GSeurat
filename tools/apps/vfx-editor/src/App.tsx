@@ -17,6 +17,7 @@ import { T, inputStyle, selectStyle, layerColor } from './styles/theme.js';
 function MenuBar({ onImportScene }: { onImportScene?: () => void }) {
   const addPreset = useVfxStore((s) => s.addPreset);
   const [fileOpen, setFileOpen] = useState(false);
+  const [openMenu, setOpenMenu] = useState<string | null>(null);
   const ref = useRef<HTMLDivElement>(null);
 
   const handleSaveProject = async () => {
@@ -139,7 +140,29 @@ function MenuBar({ onImportScene }: { onImportScene?: () => void }) {
         )}
       </div>
       <span style={{ cursor: 'pointer', padding: '4px 8px' }}>Edit</span>
-      <span style={{ cursor: 'pointer', padding: '4px 8px' }}>View</span>
+      <div style={{ position: 'relative' }}
+        onMouseEnter={() => setOpenMenu('view')} onMouseLeave={() => setOpenMenu(null)}>
+        <span style={{ cursor: 'pointer', padding: '4px 8px' }}>View</span>
+        {openMenu === 'view' && (
+          <div style={{
+            position: 'absolute', top: '100%', left: 0, minWidth: 180, background: T.panel,
+            border: `1px solid ${T.border}`, borderRadius: 4, zIndex: 100, padding: '4px 0',
+            boxShadow: '0 4px 16px rgba(0,0,0,0.5)',
+          }}>
+            {[
+              { label: `${useVfxStore.getState().showGizmos ? '✓' : '  '} Show Gizmos`, action: () => useVfxStore.getState().toggleGizmos() },
+              { label: `${useVfxStore.getState().showPointCloud ? '✓' : '  '} Show Point Cloud`, action: () => useVfxStore.getState().togglePointCloud() },
+            ].map((item) => (
+              <div key={item.label} onClick={item.action}
+                style={{ padding: '6px 16px', cursor: 'pointer', fontSize: 12, color: T.text, fontFamily: 'monospace' }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = T.surface)}
+                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}>
+                {item.label}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
       <div style={{ flex: 1 }} />
       <span style={{ fontSize: 11, color: T.textMuted, letterSpacing: 1 }}>Méliès</span>
     </div>
@@ -176,6 +199,11 @@ const layerIcons: Record<string, string> = {
   emitter: '✦', animation: '↻', light: '☀',
 };
 
+const smBtnStyle: React.CSSProperties = {
+  padding: '0 2px', border: 'none', background: 'transparent',
+  cursor: 'pointer', fontSize: 8, fontWeight: 700, lineHeight: '1', flexShrink: 0,
+};
+
 function VfxTree() {
   const presets = useVfxStore((s) => s.presets);
   const selectedPresetId = useVfxStore((s) => s.selectedPresetId);
@@ -194,6 +222,10 @@ function VfxTree() {
   const removeScene = useVfxStore((s) => s.removeScene);
   const setActiveScene = useVfxStore((s) => s.setActiveScene);
   const setScenePoints = useVfxStore((s) => s.setScenePoints);
+  const toggleLayerMute = useVfxStore((s) => s.toggleLayerMute);
+  const toggleLayerSolo = useVfxStore((s) => s.toggleLayerSolo);
+  const mutedLayerIds = useVfxStore((s) => s.mutedLayerIds);
+  const soloLayerIds = useVfxStore((s) => s.soloLayerIds);
   const [openPresets, setOpenPresets] = useState<Set<string>>(new Set());
 
   const toggleOpen = (id: string) => {
@@ -318,13 +350,19 @@ function VfxTree() {
                     {preset.layers.map((layer, i) => {
                       const layerActive = selectedLayerId === layer.id;
                       const color = layerColor(layer.type);
+                      const isMuted = mutedLayerIds.includes(layer.id);
+                      const isSolod = soloLayerIds.includes(layer.id);
                       return (
                         <div key={layer.id}
-                          style={{ ...treeStyles.node, ...(layerActive ? treeStyles.nodeActive : {}) }}
+                          style={{ ...treeStyles.node, ...(layerActive ? treeStyles.nodeActive : {}), ...(isMuted ? { opacity: 0.4 } : {}) }}
                           onClick={() => { selectPreset(preset.id); selectLayer(layer.id); }}
                         >
                           <span style={{ ...treeStyles.icon, color }}>{layerIcons[layer.type] ?? '?'}</span>
                           <span style={treeStyles.label}>{layer.name}</span>
+                          <button title="Solo" style={{ ...smBtnStyle, color: isSolod ? T.accent : T.textMuted }}
+                            onClick={(e) => { e.stopPropagation(); toggleLayerSolo(layer.id); }}>S</button>
+                          <button title="Mute" style={{ ...smBtnStyle, color: isMuted ? T.danger : T.textMuted }}
+                            onClick={(e) => { e.stopPropagation(); toggleLayerMute(layer.id); }}>M</button>
                           <button style={treeStyles.removeBtn}
                             onClick={(e) => { e.stopPropagation(); removeLayer(preset.id, layer.id); }}>&times;</button>
                         </div>
