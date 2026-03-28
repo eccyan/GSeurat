@@ -789,7 +789,8 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
             // Update particles/animations separately (no re-sort of scene)
             bool has_particles = !gs_particle_emitters_.empty()
                 || gs_animator_.has_active_groups()
-                || !gs_scene_animations_.empty();
+                || !gs_scene_animations_.empty()
+                || !vfx_instances_.empty();
             if (has_particles) {
                 // Phase-based state machine for scene animations
                 // Run BEFORE buffer reset so we can detect transitions to Reforming
@@ -857,6 +858,13 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
                     std::remove_if(gs_particle_emitters_.begin(), gs_particle_emitters_.end(),
                         [](const GaussianParticleEmitter& e) { return !e.active() && e.alive_count() == 0; }),
                     gs_particle_emitters_.end());
+
+                // Update VFX instances (timeline + emitters)
+                for (auto& inst : vfx_instances_) {
+                    inst.update(dt, gs_active_buffer_);
+                }
+                std::erase_if(vfx_instances_,
+                    [](const VfxInstance& i) { return i.is_finished(); });
 
                 // Clamp to allocated SSBO capacity
                 if (gs_active_buffer_.size() > gs_renderer_.max_gaussian_count()) {
@@ -1012,6 +1020,14 @@ void Renderer::add_gs_animation(const std::string& effect, const GsAnimRegion& r
 
 void Renderer::clear_gs_animations() {
     gs_scene_animations_.clear();
+}
+
+void Renderer::add_vfx_instance(VfxInstance&& inst) {
+    vfx_instances_.push_back(std::move(inst));
+}
+
+void Renderer::clear_vfx_instances() {
+    vfx_instances_.clear();
 }
 
 }  // namespace gseurat
