@@ -52,25 +52,30 @@ function EmitterLayerRenderer({ layer, instancePos }: {
     const emitter = new wasmModule.ParticleEmitter();
     const cfg = layer.emitter as Record<string, unknown> | undefined;
 
-    if (cfg?.preset) {
-      const presetCfg = wasmModule.resolvePreset(cfg.preset as string);
+    // Strip position/spawn_offset from config — placement is controlled by the
+    // instance position in Bricklayer, not the Méliès authoring offsets.
+    const stripped = { ...cfg };
+    delete stripped.position;
+    delete stripped.spawn_offset_min;
+    delete stripped.spawn_offset_max;
+
+    if (stripped.preset) {
+      const presetCfg = wasmModule.resolvePreset(stripped.preset as string);
       if (presetCfg) {
         const merged = { ...presetCfg };
-        for (const [key, val] of Object.entries(cfg)) {
+        for (const [key, val] of Object.entries(stripped)) {
           if (key !== 'preset' && val !== undefined) (merged as any)[key] = val;
         }
         emitter.configure(merged);
       } else {
-        emitter.configure(cfg);
+        emitter.configure(stripped);
       }
-    } else if (cfg) {
-      emitter.configure(cfg);
+    } else if (Object.keys(stripped).length > 0) {
+      emitter.configure(stripped);
     } else {
       emitter.configurePreset('fire');
     }
 
-    // Position emitter at the instance's map position.
-    // Ignore the emitter config's position (that's Méliès authoring context).
     emitter.setPosition(instancePos[0], instancePos[1], instancePos[2]);
     emitter.setActive(true);
     emitterRef.current = emitter;
