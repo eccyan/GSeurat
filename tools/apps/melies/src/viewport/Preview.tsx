@@ -3,7 +3,7 @@ import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls, Grid } from '@react-three/drei';
 import * as THREE from 'three';
 import { useVfxStore, playbackTimeRef } from '../store/useVfxStore.js';
-import type { VfxLayer } from '../store/types.js';
+import type { VfxElement as VfxLayer } from '../store/types.js';
 import type { PlyPoint } from '../lib/plyLoader.js';
 import { ParticleSystem } from './ParticleSystem.js';
 import { AnimationSystem } from './AnimationSystem.js';
@@ -177,9 +177,9 @@ function LayerGizmos() {
   useFrame(() => {
     if (!lightRef.current || !preset) return;
     const t = playbackTimeRef.current;
-    const activeLight = preset.layers.find((l) =>
+    const activeLight = (preset.elements ?? []).find((l) =>
       l.type === 'light' && l.light &&
-      t >= l.start && t < l.start + l.duration
+      t >= (l.start ?? 0) && t < (l.start ?? 0) + (l.duration ?? 9999)
     );
     if (activeLight?.light) {
       lightRef.current.visible = true;
@@ -196,8 +196,8 @@ function LayerGizmos() {
   return (
     <group>
       <pointLight ref={lightRef} position={[0, 2, 0]} visible={false} />
-      {preset.layers.map((layer) => {
-        const active = playbackTime >= layer.start && playbackTime < layer.start + layer.duration;
+      {(preset.elements ?? []).map((layer) => {
+        const active = playbackTime >= (layer.start ?? 0) && playbackTime < (layer.start ?? 0) + (layer.duration ?? 9999);
         const selected = selectedLayerId === layer.id;
         if (layer.type === 'emitter') return <EmitterGizmo key={layer.id} layer={layer} active={active} selected={selected} />;
         if (layer.type === 'animation') return <AnimationGizmo key={layer.id} layer={layer} active={active} selected={selected} />;

@@ -1,4 +1,5 @@
-import type { LayerType } from '../store/types.js';
+import type { ElementType } from '../store/types.js';
+type LayerType = ElementType;
 
 // ── Shared theme — single source of truth for Méliès UI ──
 

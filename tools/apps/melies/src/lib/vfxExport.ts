@@ -1,25 +1,38 @@
-import type { VfxPreset, VfxLayer } from '../store/types.js';
+import type { VfxPreset, VfxElement } from '../store/types.js';
 
-function exportLayer(layer: VfxLayer): Record<string, unknown> {
+function exportElement(el: VfxElement): Record<string, unknown> {
   const out: Record<string, unknown> = {
-    name: layer.name,
-    type: layer.type,
-    start: layer.start,
-    duration: layer.duration,
+    name: el.name,
+    type: el.type,
   };
-  if (layer.tags && layer.tags.length > 0) out.tags = layer.tags;
-  if (layer.emitter && Object.keys(layer.emitter).length > 0) out.emitter = layer.emitter;
-  if (layer.animation && Object.keys(layer.animation).length > 0) out.animation = layer.animation;
-  if (layer.light) out.light = layer.light;
+  if (el.position && (el.position[0] !== 0 || el.position[1] !== 0 || el.position[2] !== 0)) {
+    out.position = el.position;
+  }
+  if (el.start !== undefined && el.start !== 0) out.start = el.start;
+  if (el.duration !== undefined) out.duration = el.duration;
+  if (el.loop) out.loop = true;
+  if (el.tags && el.tags.length > 0) out.tags = el.tags;
+  // type=object
+  if (el.ply_file) out.ply_file = el.ply_file;
+  if (el.scale !== undefined && el.scale !== 1) out.scale = el.scale;
+  // type=emitter
+  if (el.emitter && Object.keys(el.emitter).length > 0) out.emitter = el.emitter;
+  // type=animation
+  if (el.animation && Object.keys(el.animation).length > 0) out.animation = el.animation;
+  if (el.region) out.region = el.region;
+  // type=light
+  if (el.light) out.light = el.light;
   return out;
 }
 
 export function exportVfx(preset: VfxPreset): Record<string, unknown> {
-  return {
+  const out: Record<string, unknown> = {
     name: preset.name,
-    duration: preset.duration,
-    layers: preset.layers.map(exportLayer),
+    elements: preset.elements.map(exportElement),
   };
+  if (preset.duration !== undefined) out.duration = preset.duration;
+  if (preset.category) out.category = preset.category;
+  return out;
 }
 
 export function serializeVfx(preset: VfxPreset): string {

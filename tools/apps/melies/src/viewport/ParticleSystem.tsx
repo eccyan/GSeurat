@@ -11,7 +11,7 @@ import React, { useRef, useEffect, useState, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useVfxStore, playbackTimeRef } from '../store/useVfxStore.js';
-import type { VfxLayer } from '../store/types.js';
+import type { VfxElement as VfxLayer } from '../store/types.js';
 
 // Dynamic import — WASM module may not be available
 let wasmModule: any = null;
@@ -112,7 +112,8 @@ function EmitterRenderer({ layer, active }: { layer: VfxLayer; active: boolean }
     const emitter = emitterRef.current;
     // Check time window using ref (no React re-render on playback tick)
     const t = playbackTimeRef.current;
-    const inTimeWindow = active && t >= layer.start && t < layer.start + layer.duration;
+    const ls = layer.start ?? 0;
+    const inTimeWindow = active && t >= ls && t < ls + (layer.duration ?? 9999);
     if (!emitter || !inTimeWindow) {
       geo.setDrawRange(0, 0);
       return;
@@ -203,7 +204,7 @@ export function ParticleSystem() {
 
   return (
     <group>
-      {preset.layers
+      {(preset.elements ?? [])
         .filter((l) => l.type === 'emitter')
         .map((layer) => {
           // Active state computed per-frame in EmitterRenderer via playbackTimeRef
