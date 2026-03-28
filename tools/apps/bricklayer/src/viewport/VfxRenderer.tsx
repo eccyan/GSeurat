@@ -52,30 +52,30 @@ function EmitterLayerRenderer({ layer, instancePos }: {
     const emitter = new wasmModule.ParticleEmitter();
     const cfg = layer.emitter as Record<string, unknown> | undefined;
 
-    // Strip position/spawn_offset from config — placement is controlled by the
-    // instance position in Bricklayer, not the Méliès authoring offsets.
-    const stripped = { ...cfg };
-    delete stripped.position;
-    delete stripped.spawn_offset_min;
-    delete stripped.spawn_offset_max;
+    // Configure emitter — spawn_offset_min/max are relative to emitter position,
+    // so they're kept as part of the VFX design.
+    // Only strip 'position' (Méliès authoring context) since Bricklayer controls placement.
+    const cfgWithoutPos = { ...cfg };
+    delete cfgWithoutPos.position;
 
-    if (stripped.preset) {
-      const presetCfg = wasmModule.resolvePreset(stripped.preset as string);
+    if (cfgWithoutPos.preset) {
+      const presetCfg = wasmModule.resolvePreset(cfgWithoutPos.preset as string);
       if (presetCfg) {
         const merged = { ...presetCfg };
-        for (const [key, val] of Object.entries(stripped)) {
+        for (const [key, val] of Object.entries(cfgWithoutPos)) {
           if (key !== 'preset' && val !== undefined) (merged as any)[key] = val;
         }
         emitter.configure(merged);
       } else {
-        emitter.configure(stripped);
+        emitter.configure(cfgWithoutPos);
       }
-    } else if (Object.keys(stripped).length > 0) {
-      emitter.configure(stripped);
+    } else if (cfg) {
+      emitter.configure(cfgWithoutPos);
     } else {
       emitter.configurePreset('fire');
     }
 
+    // Set emitter at instance position — spawn offsets are relative to this
     emitter.setPosition(instancePos[0], instancePos[1], instancePos[2]);
     emitter.setActive(true);
     emitterRef.current = emitter;
