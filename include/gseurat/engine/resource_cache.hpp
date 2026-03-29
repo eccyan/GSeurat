@@ -45,6 +45,16 @@ public:
 
     void clear() { cache_.clear(); }
 
+    // Call fn for each live (non-expired) resource
+    template <typename Fn>
+    void for_each_live(Fn fn) {
+        for (auto& [key, wp] : cache_) {
+            if (auto sp = wp.lock()) {
+                fn(key, *sp);
+            }
+        }
+    }
+
 private:
     LoaderFn loader_;
     std::unordered_map<std::string, std::weak_ptr<T>> cache_;

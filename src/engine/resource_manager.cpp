@@ -25,6 +25,10 @@ void ResourceManager::init(VkDevice device, VmaAllocator allocator,
 }
 
 void ResourceManager::shutdown() {
+    // Destroy VMA resources for all live textures before allocator is torn down
+    texture_cache_.for_each_live([&](const std::string& /*key*/, Texture& tex) {
+        tex.destroy(device_, allocator_);
+    });
     placeholder_ = {};
     pending_async_.clear();
     texture_cache_.clear();
