@@ -1,18 +1,17 @@
 {
   "name": "vfx1",
-  "duration": 30,
-  "layers": [
+  "elements": [
     {
       "name": "Emitter 1",
       "type": "emitter",
-      "start": 0,
       "duration": 30,
+      "loop": true,
       "emitter": {
         "spawn_rate": 3,
         "lifetime_min": 10,
         "lifetime_max": 30,
         "velocity_min": [
-          -0.5,
+          -4.5,
           -1,
           -0.5
         ],
@@ -42,26 +41,40 @@
           0.1
         ],
         "scale_max": [
-          0.5,
-          0.5,
-          0.5
+          1,
+          1,
+          1
         ],
         "scale_end_factor": 0.1,
         "opacity_start": 0.9,
         "opacity_end": 0.2,
         "emission": 0.4,
+        "burst_duration": 0,
         "spawn_offset_min": [
-          64,
-          192,
-          64
+          -64,
+          128,
+          -64
         ],
         "spawn_offset_max": [
+          64,
           128,
-          256,
-          128
+          -64
         ],
-        "burst_duration": 0,
-        "preset": "leaves"
+        "preset": "leaves",
+        "region": {
+          "shape": "sphere",
+          "half_extents": [
+            128,
+            128,
+            128
+          ],
+          "center": [
+            0,
+            0,
+            0
+          ],
+          "radius": 128
+        }
       },
       "animation": {
         "effect": "float",
@@ -91,10 +104,15 @@
     {
       "name": "Animation",
       "type": "animation",
-      "start": 0,
+      "position": [
+        0,
+        5,
+        0
+      ],
       "duration": 30,
+      "loop": true,
       "animation": {
-        "effect": "pulse",
+        "effect": "float",
         "params": {
           "rotations": 1,
           "rotations_easing": "linear",
@@ -116,7 +134,32 @@
           "wave_speed": 10,
           "pulse_frequency": 8
         }
+      },
+      "region": {
+        "shape": "sphere",
+        "radius": 64
       }
+    },
+    {
+      "name": "Animation",
+      "type": "animation",
+      "position": [
+        0,
+        6,
+        0
+      ],
+      "duration": 30,
+      "loop": true,
+      "region": {
+        "shape": "sphere",
+        "radius": 64
+      }
+    },
+    {
+      "name": "Object",
+      "type": "object",
+      "duration": 0
     }
-  ]
+  ],
+  "duration": 30
 }
