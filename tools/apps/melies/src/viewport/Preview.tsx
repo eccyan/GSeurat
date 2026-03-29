@@ -4,7 +4,8 @@ import { OrbitControls, Grid } from '@react-three/drei';
 import * as THREE from 'three';
 import { useVfxStore, playbackTimeRef } from '../store/useVfxStore.js';
 import type { VfxElement as VfxLayer } from '../store/types.js';
-import type { PlyPoint } from '../lib/plyLoader.js';
+import { loadPly, type PlyPoint } from '../lib/plyLoader.js';
+import { loadPlyFromProject } from '../lib/projectIO.js';
 import { ParticleSystem } from './ParticleSystem.js';
 import { AnimationSystem } from './AnimationSystem.js';
 
@@ -73,13 +74,79 @@ type GizmoProps = { layer: VfxLayer; active: boolean; selected: boolean; onSelec
 
 function ObjectGizmo({ layer, selected, onSelect }: GizmoProps) {
   const pos = layer.position ?? [0, 0, 0];
-  const color = selected ? '#ffffff' : '#aaaaaa';
+  const scale = layer.scale ?? 1;
+  const [points, setPoints] = useState<PlyPoint[]>([]);
+
+  // Load PLY file from project directory
+  useEffect(() => {
+    if (!layer.ply_file) return;
+    const store = useVfxStore.getState();
+    if (store.projectHandle) {
+      loadPlyFromProject(store.projectHandle, layer.ply_file).then(async (file) => {
+        if (file) {
+          const pts = await loadPly(file);
+          setPoints(pts);
+        }
+      });
+    }
+  }, [layer.ply_file]);
+
+  const geometry = useMemo(() => {
+    if (points.length === 0) return null;
+    const geo = new THREE.BufferGeometry();
+    const n = points.length;
+    const positions = new Float32Array(n * 3);
+    const colors = new Float32Array(n * 4);
+    for (let i = 0; i < n; i++) {
+      positions[i * 3] = points[i].position[0] * scale;
+      positions[i * 3 + 1] = points[i].position[1] * scale;
+      positions[i * 3 + 2] = points[i].position[2] * scale;
+      colors[i * 4] = points[i].color[0];
+      colors[i * 4 + 1] = points[i].color[1];
+      colors[i * 4 + 2] = points[i].color[2];
+      colors[i * 4 + 3] = 1.0;
+    }
+    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geo.setAttribute('aColor', new THREE.BufferAttribute(colors, 4));
+    geo.setAttribute('aScale', new THREE.BufferAttribute(new Float32Array(n).fill(1.0), 1));
+    return geo;
+  }, [points, scale]);
+
+  const material = useMemo(() => new THREE.ShaderMaterial({
+    uniforms: { uPixelRatio: { value: window.devicePixelRatio || 1.0 } },
+    vertexShader: `
+      attribute vec4 aColor;
+      attribute float aScale;
+      uniform float uPixelRatio;
+      varying vec4 vColor;
+      void main() {
+        vColor = aColor;
+        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+        gl_PointSize = max(3.0 * aScale, 0.5) * uPixelRatio * (300.0 / -mvPosition.z);
+        gl_Position = projectionMatrix * mvPosition;
+      }
+    `,
+    fragmentShader: `
+      varying vec4 vColor;
+      void main() {
+        float d = length(gl_PointCoord - vec2(0.5));
+        if (d > 0.5) discard;
+        float alpha = vColor.a * smoothstep(0.5, 0.2, d);
+        gl_FragColor = vec4(vColor.rgb, alpha);
+      }
+    `,
+    transparent: true, depthWrite: false,
+  }), []);
+
   return (
     <group position={pos}>
+      {/* Clickable marker (always visible) */}
       <mesh onPointerDown={(e) => { e.stopPropagation(); onSelect(); }}>
-        <octahedronGeometry args={[0.5]} />
-        <meshBasicMaterial color={color} transparent opacity={selected ? 0.9 : 0.5} />
+        <octahedronGeometry args={[0.3]} />
+        <meshBasicMaterial color={selected ? '#ffffff' : '#aaaaaa'} transparent opacity={selected ? 0.9 : 0.4} />
       </mesh>
+      {/* PLY point cloud */}
+      {geometry && <points geometry={geometry} material={material} />}
     </group>
   );
 }
