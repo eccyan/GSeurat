@@ -229,6 +229,8 @@ void Renderer::init_gs(const GaussianCloud& cloud, uint32_t width, uint32_t heig
 void Renderer::set_gs_background(const ResourceHandle<Texture>& texture) {
     if (!font_initialized_) return;  // need UI UBOs
 
+    gs_bg_texture_ = texture;  // keep alive for proper cleanup
+
     std::array<VkBuffer, kMaxFramesInFlight> ui_ubo_buffers;
     for (uint32_t i = 0; i < kMaxFramesInFlight; i++) {
         ui_ubo_buffers[i] = ui_uniform_buffers_[i].buffer();
@@ -571,6 +573,10 @@ void Renderer::shutdown() {
         }
     }
 
+    if (gs_bg_texture_) {
+        gs_bg_texture_->destroy(context_.device(), context_.allocator());
+        gs_bg_texture_ = {};
+    }
     if (gs_initialized_) {
         gs_renderer_.shutdown(context_.allocator());
     }

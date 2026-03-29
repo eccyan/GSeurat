@@ -201,6 +201,7 @@ private:
     std::array<VkDescriptorSet, kMaxFramesInFlight> gs_descriptor_sets_{};    // scene UBO (unused now)
     std::array<VkDescriptorSet, kMaxFramesInFlight> gs_ui_descriptor_sets_{}; // UI orthographic UBO
     bool gs_initialized_ = false;
+    ResourceHandle<Texture> gs_bg_texture_;
     std::array<VkDescriptorSet, kMaxFramesInFlight> gs_bg_descriptor_sets_{};
     bool gs_bg_initialized_ = false;
 
