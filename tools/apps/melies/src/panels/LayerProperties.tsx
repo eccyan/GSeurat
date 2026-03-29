@@ -587,9 +587,34 @@ export function LayerProperties() {
           <SectionHeader>Object Config</SectionHeader>
           <div>
             <label style={sectionLabel}>PLY File</label>
-            <input type="text" value={layer.ply_file ?? ''}
-              onChange={(e) => update({ ply_file: e.target.value })}
-              placeholder="path/to/model.ply" style={inputStyle} />
+            <div style={{ display: 'flex', gap: 4 }}>
+              <input type="text" value={layer.ply_file ?? ''} readOnly
+                style={{ ...inputStyle, flex: 1, opacity: layer.ply_file ? 1 : 0.5 }}
+                placeholder="No file selected" />
+              <button onClick={() => {
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.accept = '.ply';
+                input.onchange = async () => {
+                  const file = input.files?.[0];
+                  if (!file) return;
+                  const store = useVfxStore.getState();
+                  if (store.projectHandle) {
+                    // Copy PLY into project directory
+                    const { copyPlyToProject } = await import('../lib/projectIO.js');
+                    const path = await copyPlyToProject(store.projectHandle, file);
+                    update({ ply_file: path });
+                  } else {
+                    // No project directory — just use filename
+                    update({ ply_file: file.name });
+                  }
+                };
+                input.click();
+              }} style={{
+                padding: '4px 8px', background: T.surface, border: `1px solid ${T.border}`,
+                borderRadius: 4, color: T.accent, cursor: 'pointer', fontSize: 11, whiteSpace: 'nowrap',
+              }}>Import</button>
+            </div>
           </div>
           <div>
             <label style={sectionLabel}>Scale</label>
