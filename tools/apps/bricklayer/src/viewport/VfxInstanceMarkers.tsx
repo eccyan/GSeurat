@@ -23,12 +23,26 @@ function ElementGizmo({ element }: { element: VfxElementData }) {
         <meshBasicMaterial color={color} transparent opacity={0.8} />
       </mesh>
       {/* Type-specific gizmo */}
-      {element.type === 'emitter' && element.emitter && (
-        <mesh>
-          <sphereGeometry args={[0.5, 8, 8]} />
-          <meshBasicMaterial color={color} transparent opacity={0.15} />
-        </mesh>
-      )}
+      {element.type === 'emitter' && (() => {
+        const region = (element.emitter as Record<string, any>)?.region;
+        if (!region) return (
+          <mesh>
+            <sphereGeometry args={[0.5, 8, 8]} />
+            <meshBasicMaterial color={color} transparent opacity={0.15} />
+          </mesh>
+        );
+        const center = region.center ?? [0, 0, 0];
+        return (
+          <mesh position={center}>
+            {region.shape === 'sphere' ? (
+              <sphereGeometry args={[region.radius ?? 1, 16, 12]} />
+            ) : (
+              <boxGeometry args={((region.half_extents ?? [1, 1, 1]) as [number, number, number]).map((v: number) => v * 2) as [number, number, number]} />
+            )}
+            <meshBasicMaterial color={color} wireframe transparent opacity={0.2} />
+          </mesh>
+        );
+      })()}
       {element.type === 'animation' && (
         <mesh>
           {element.region?.shape === 'box' ? (
