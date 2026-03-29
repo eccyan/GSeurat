@@ -1,14 +1,75 @@
 import React from 'react';
 import { Html } from '@react-three/drei';
 import { useSceneStore } from '../store/useSceneStore.js';
+import type { VfxInstanceData, VfxElementData } from '../store/types.js';
 
-function VfxMarker({ position, name, radius, isSelected, onSelect }: {
-  position: [number, number, number];
-  name: string;
-  radius: number;
+// Element type colors
+const ELEMENT_COLORS: Record<string, string> = {
+  object: '#aaaaaa',
+  emitter: '#ec4899',
+  animation: '#06b6d4',
+  light: '#eab308',
+};
+
+function ElementGizmo({ element }: { element: VfxElementData }) {
+  const pos = element.position ?? [0, 0, 0];
+  const color = ELEMENT_COLORS[element.type] ?? '#888';
+
+  return (
+    <group position={pos}>
+      {/* Center dot */}
+      <mesh>
+        <sphereGeometry args={[0.2, 8, 8]} />
+        <meshBasicMaterial color={color} transparent opacity={0.8} />
+      </mesh>
+      {/* Type-specific gizmo */}
+      {element.type === 'emitter' && element.emitter && (
+        <mesh>
+          <sphereGeometry args={[0.5, 8, 8]} />
+          <meshBasicMaterial color={color} transparent opacity={0.15} />
+        </mesh>
+      )}
+      {element.type === 'animation' && (
+        <mesh>
+          {element.region?.shape === 'box' ? (
+            <boxGeometry args={((element.region?.half_extents ?? [2, 2, 2]) as [number, number, number]).map((v) => v * 2) as [number, number, number]} />
+          ) : (
+            <sphereGeometry args={[element.region?.radius ?? 2, 16, 12]} />
+          )}
+          <meshBasicMaterial color={color} wireframe transparent opacity={0.25} />
+        </mesh>
+      )}
+      {element.type === 'object' && (
+        <mesh rotation={[0, Math.PI / 4, 0]}>
+          <octahedronGeometry args={[0.3]} />
+          <meshBasicMaterial color={color} transparent opacity={0.5} />
+        </mesh>
+      )}
+      {element.type === 'light' && (
+        <mesh>
+          <sphereGeometry args={[0.3, 8, 8]} />
+          <meshBasicMaterial color={color} transparent opacity={0.7} />
+        </mesh>
+      )}
+      {/* Label */}
+      <Html position={[0, 0.5, 0]} center>
+        <div style={{
+          fontSize: 8, color, whiteSpace: 'nowrap', opacity: 0.7,
+          textShadow: '0 0 3px rgba(0,0,0,0.8)',
+        }}>
+          {element.name}
+        </div>
+      </Html>
+    </group>
+  );
+}
+
+function VfxMarker({ instance, isSelected, onSelect }: {
+  instance: VfxInstanceData;
   isSelected: boolean;
   onSelect: () => void;
 }) {
+  const { position, name, radius } = instance;
   const color = isSelected ? '#ffffff' : '#f59e0b';
 
   return (
@@ -39,6 +100,10 @@ function VfxMarker({ position, name, radius, isSelected, onSelect }: {
           </div>
         </Html>
       )}
+      {/* Element gizmos (shown when selected) */}
+      {isSelected && (instance.vfx_preset.elements ?? []).map((el, i) => (
+        <ElementGizmo key={`${instance.id}_el_${i}`} element={el} />
+      ))}
     </group>
   );
 }
@@ -56,9 +121,7 @@ export function VfxInstanceMarkers() {
       {instances.map((v) => (
         <VfxMarker
           key={v.id}
-          position={v.position}
-          name={v.name}
-          radius={v.radius}
+          instance={v}
           isSelected={selectedEntity?.type === 'vfx_instance' && selectedEntity.id === v.id}
           onSelect={() => setSelectedEntity({ type: 'vfx_instance', id: v.id })}
         />
