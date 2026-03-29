@@ -83,6 +83,9 @@ function EmitterRenderer({ layer, active }: { layer: VfxLayer; active: boolean }
       emitter.configurePreset('fire');
     }
 
+    // Set position from element's position field
+    const pos = layer.position ?? [0, 0, 0];
+    emitter.setPosition(pos[0], pos[1], pos[2]);
     emitter.setActive(true);
     emitterRef.current = emitter;
 
@@ -91,7 +94,7 @@ function EmitterRenderer({ layer, active }: { layer: VfxLayer; active: boolean }
       emitterRef.current = null;
       setParticleCount(0);
     };
-  }, [active, layer.id, layer.emitter]);
+  }, [active, layer.id, layer.emitter, layer.position]);
 
   const geoInitialized = useRef(false);
 
