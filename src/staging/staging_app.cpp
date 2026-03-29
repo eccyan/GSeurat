@@ -375,6 +375,8 @@ void StagingApp::init_scene(const std::string& scene_path) {
             renderer_.set_gs_camera(gs_view, gs_proj);
 
             // Transform lights
+            // Only load scene-defined lights — no default test light.
+            // Users place lights via the Staging UI.
             auto aabb = cloud.bounds();
             std::vector<PointLight> gs_lights;
             for (const auto& pl : scene_data.static_lights) {
@@ -383,17 +385,10 @@ void StagingApp::init_scene(const std::string& scene_path) {
                 t.position_and_radius.z = pl.position_and_radius.z + aabb.min.y;
                 gs_lights.push_back(t);
             }
-            if (gs_lights.empty()) {
-                PointLight test_light;
-                auto center = aabb.center();
-                float r = std::max({aabb.max.x - aabb.min.x, aabb.max.y - aabb.min.y, aabb.max.z - aabb.min.z}) * 0.5f;
-                test_light.position_and_radius = glm::vec4(center.x, center.z, center.y, r);
-                test_light.color = glm::vec4(0.2f, 1.0f, 0.3f, 5.0f);
-                gs_lights.push_back(test_light);
+            if (!gs_lights.empty()) {
+                renderer_.gs_renderer().set_light_mode(2);
+                renderer_.gs_renderer().set_point_lights(gs_lights);
             }
-            renderer_.gs_renderer().set_light_mode(2);
-            renderer_.gs_renderer().set_point_lights(gs_lights);
-            renderer_.set_god_rays_intensity(1.0f);
 
             // Emitters
             for (const auto& em : scene_data.gs_particle_emitters) {
