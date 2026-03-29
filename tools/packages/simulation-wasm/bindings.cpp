@@ -235,6 +235,42 @@ public:
             lifetime, params);
     }
 
+    // Tag a region (sphere or box) with params — generic method
+    int tagRegionWithParams(val jsRegion, int effect, float lifetime, val jsParams) {
+        GsAnimRegion region;
+        std::string shape = jsRegion.hasOwnProperty("shape") ? jsRegion["shape"].as<std::string>() : "sphere";
+        region.shape = (shape == "box") ? GsAnimRegion::Shape::Box : GsAnimRegion::Shape::Sphere;
+        if (jsRegion.hasOwnProperty("center")) {
+            region.center = {jsRegion["center"][0].as<float>(), jsRegion["center"][1].as<float>(), jsRegion["center"][2].as<float>()};
+        }
+        if (jsRegion.hasOwnProperty("radius")) region.radius = jsRegion["radius"].as<float>();
+        if (jsRegion.hasOwnProperty("half_extents")) {
+            region.half_extents = {jsRegion["half_extents"][0].as<float>(), jsRegion["half_extents"][1].as<float>(), jsRegion["half_extents"][2].as<float>()};
+        }
+
+        GsAnimParams params;
+        if (jsParams.hasOwnProperty("rotations")) params.rotations = jsParams["rotations"].as<float>();
+        if (jsParams.hasOwnProperty("expansion")) params.expansion = jsParams["expansion"].as<float>();
+        if (jsParams.hasOwnProperty("height_rise")) params.height_rise = jsParams["height_rise"].as<float>();
+        if (jsParams.hasOwnProperty("opacity_end")) params.opacity_end = jsParams["opacity_end"].as<float>();
+        if (jsParams.hasOwnProperty("scale_end")) params.scale_end = jsParams["scale_end"].as<float>();
+        if (jsParams.hasOwnProperty("velocity")) params.velocity = jsParams["velocity"].as<float>();
+        if (jsParams.hasOwnProperty("noise")) params.noise = jsParams["noise"].as<float>();
+        if (jsParams.hasOwnProperty("wave_speed")) params.wave_speed = jsParams["wave_speed"].as<float>();
+        if (jsParams.hasOwnProperty("pulse_frequency")) params.pulse_frequency = jsParams["pulse_frequency"].as<float>();
+        auto readEasing = [](val v) -> GsEasing {
+            if (v.isNumber()) return static_cast<GsEasing>(v.as<int>());
+            return GsEasing::Linear;
+        };
+        if (jsParams.hasOwnProperty("rotations_easing")) params.rotations_easing = readEasing(jsParams["rotations_easing"]);
+        if (jsParams.hasOwnProperty("expansion_easing")) params.expansion_easing = readEasing(jsParams["expansion_easing"]);
+        if (jsParams.hasOwnProperty("height_easing")) params.height_easing = readEasing(jsParams["height_easing"]);
+        if (jsParams.hasOwnProperty("opacity_easing")) params.opacity_easing = readEasing(jsParams["opacity_easing"]);
+        if (jsParams.hasOwnProperty("scale_easing")) params.scale_easing = readEasing(jsParams["scale_easing"]);
+
+        return animator_.tag_region(scene_, region, static_cast<GsAnimEffect>(effect), lifetime, params);
+    }
+
     void update(float dt) {
         animator_.update(dt, scene_);
     }
@@ -316,6 +352,7 @@ EMSCRIPTEN_BINDINGS(gseurat_simulation) {
         .function("sceneCount", &AnimatorWrapper::sceneCount)
         .function("tagSphere", &AnimatorWrapper::tagSphere)
         .function("tagSphereWithParams", &AnimatorWrapper::tagSphereWithParams)
+        .function("tagRegionWithParams", &AnimatorWrapper::tagRegionWithParams)
         .function("update", &AnimatorWrapper::update)
         .function("hasActiveGroups", &AnimatorWrapper::hasActiveGroups)
         .function("hasGroup", &AnimatorWrapper::hasGroup)
