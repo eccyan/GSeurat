@@ -331,9 +331,9 @@ Texture Texture::create_from_image(VkDevice device,
 }
 
 void Texture::destroy(VkDevice device, VmaAllocator allocator) {
-    vkDestroySampler(device, sampler_, nullptr);
-    vkDestroyImageView(device, image_view_, nullptr);
-    vmaDestroyImage(allocator, image_, allocation_);
+    if (sampler_) { vkDestroySampler(device, sampler_, nullptr); sampler_ = VK_NULL_HANDLE; }
+    if (image_view_) { vkDestroyImageView(device, image_view_, nullptr); image_view_ = VK_NULL_HANDLE; }
+    if (image_) { vmaDestroyImage(allocator, image_, allocation_); image_ = VK_NULL_HANDLE; allocation_ = VK_NULL_HANDLE; }
 }
 
 }  // namespace gseurat
