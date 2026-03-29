@@ -392,6 +392,9 @@ void GsRenderer::ensure_capacity(uint32_t needed_total) {
     uint32_t new_max = needed_total + kParticleHeadroom;
     if (new_max <= max_gaussian_count_) return;  // already large enough
 
+    // Wait for GPU to finish before destroying buffers
+    vkDeviceWaitIdle(device_);
+
     max_gaussian_count_ = new_max;
 
     // Recalculate sort sizes
