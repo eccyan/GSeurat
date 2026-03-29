@@ -207,6 +207,11 @@ void VfxInstance::update(float dt, std::vector<Gaussian>& out_buffer, GaussianAn
             in_window = elapsed_ >= el_start && elapsed_ < el_end;
         }
 
+        // For looping animations: re-tag when previous group has expired
+        if (as.activated && el.loop && !animator.has_group(as.group_id)) {
+            as.activated = false;  // allow re-tag
+        }
+
         if (in_window && !as.activated) {
             // Tag region on the shared animator
             auto region = el.region;
@@ -222,12 +227,12 @@ void VfxInstance::update(float dt, std::vector<Gaussian>& out_buffer, GaussianAn
             else if (effect_name == "wave") effect = GsAnimEffect::Wave;
             else if (effect_name == "scatter") effect = GsAnimEffect::Scatter;
 
-            float lifetime = el.loop ? 9999.0f : (el.duration > 0.0f ? el.duration : 9999.0f);
+            // Looping: use element duration so the group expires and re-tags with fresh baselines
+            float lifetime = el.duration > 0.0f ? el.duration : 9999.0f;
             as.group_id = animator.tag_region(out_buffer, region, effect, lifetime, el.animation_config.params);
             as.activated = true;
         } else if (!in_window && as.activated) {
             as.activated = false;
-            // Group expires naturally via lifetime
         }
     }
 }
