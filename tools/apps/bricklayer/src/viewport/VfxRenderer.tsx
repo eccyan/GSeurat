@@ -75,8 +75,13 @@ function EmitterLayerRenderer({ layer, instancePos }: {
       emitter.configurePreset('fire');
     }
 
-    // Set emitter at instance position — spawn offsets are relative to this
-    emitter.setPosition(instancePos[0], instancePos[1], instancePos[2]);
+    // Set emitter at instance position + element relative position
+    const elPos = layer.position ?? [0, 0, 0];
+    emitter.setPosition(
+      instancePos[0] + elPos[0],
+      instancePos[1] + elPos[1],
+      instancePos[2] + elPos[2],
+    );
     emitter.setActive(true);
     emitterRef.current = emitter;
 
