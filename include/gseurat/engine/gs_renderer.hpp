@@ -23,6 +23,8 @@ public:
     VkSampler output_sampler() const { return output_sampler_; }
     static constexpr uint32_t kParticleHeadroom = 2048;
 
+    void ensure_capacity(uint32_t needed_total);
+
     bool has_cloud() const { return gaussian_count_ > 0; }
     uint32_t gaussian_count() const { return gaussian_count_; }
     uint32_t max_gaussian_count() const { return max_gaussian_count_; }

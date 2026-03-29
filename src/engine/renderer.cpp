@@ -1023,6 +1023,21 @@ void Renderer::clear_gs_animations() {
 }
 
 void Renderer::add_vfx_instance(VfxInstance&& inst) {
+    // Object PLY Gaussians are static scene data — add them to the scene buffer
+    // and grow SSBO capacity so they don't consume particle headroom.
+    const auto& obj_gs = inst.object_gaussians();
+    if (!obj_gs.empty()) {
+        // Grow SSBO to fit scene + all existing object Gaussians + this batch
+        uint32_t new_scene_total = static_cast<uint32_t>(gs_scene_buffer_.size() + obj_gs.size());
+        gs_renderer_.ensure_capacity(new_scene_total);
+
+        // Append to scene buffer so they persist across frames
+        gs_scene_buffer_.insert(gs_scene_buffer_.end(), obj_gs.begin(), obj_gs.end());
+
+        std::fprintf(stderr, "VFX: Added %zu object Gaussians to scene buffer (total scene: %zu)\n",
+                     obj_gs.size(), gs_scene_buffer_.size());
+    }
+
     vfx_instances_.push_back(std::move(inst));
 }
 

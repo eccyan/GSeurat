@@ -65,6 +65,7 @@ public:
     bool is_finished() const { return finished_; }
     const glm::vec3& position() const { return position_; }
     const VfxPreset& preset() const { return preset_; }
+    const std::vector<Gaussian>& object_gaussians() const { return object_gaussians_; }
 
 private:
     VfxPreset preset_;
