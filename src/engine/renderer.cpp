@@ -229,6 +229,8 @@ void Renderer::init_gs(const GaussianCloud& cloud, uint32_t width, uint32_t heig
 void Renderer::set_gs_background(const ResourceHandle<Texture>& texture) {
     if (!font_initialized_) return;  // need UI UBOs
 
+    gs_bg_texture_ = texture;  // keep alive for proper cleanup
+
     std::array<VkBuffer, kMaxFramesInFlight> ui_ubo_buffers;
     for (uint32_t i = 0; i < kMaxFramesInFlight; i++) {
         ui_ubo_buffers[i] = ui_uniform_buffers_[i].buffer();
@@ -431,13 +433,17 @@ void Renderer::draw_scene(Scene& scene,
     }
 
     // ===== Pass 2-4: Post-processing (bloom extract, blur H, blur V) + begin composite =====
-    PostProcessParams pp_params;
+    // Start from persistent params (modified by Staging panels), then apply per-frame overrides
+    PostProcessParams pp_params = pp_params_;
     pp_params.dof_near_plane = camera_.near_plane();
     pp_params.dof_far_plane = camera_.far_plane();
-    pp_params.fog_density = scene.fog_density();
-    pp_params.fog_color_r = scene.fog_color().r;
-    pp_params.fog_color_g = scene.fog_color().g;
-    pp_params.fog_color_b = scene.fog_color().b;
+    // Only override fog from scene if not already set by panels
+    if (pp_params.fog_density == 0.0f) {
+        pp_params.fog_density = scene.fog_density();
+        pp_params.fog_color_r = scene.fog_color().r;
+        pp_params.fog_color_g = scene.fog_color().g;
+        pp_params.fog_color_b = scene.fog_color().b;
+    }
 
     // Apply feature flags to post-process
     if (!flags.bloom) pp_params.bloom_intensity = 0.0f;
@@ -478,6 +484,11 @@ void Renderer::draw_scene(Scene& scene,
 
     // End composite render pass
     vkCmdEndRenderPass(cmd);
+
+    // Overlay callback (e.g., ImGui render pass)
+    if (overlay_callback_) {
+        overlay_callback_(cmd, image_index);
+    }
 
     // Screenshot: copy swapchain image to staging buffer
     bool screenshot_requested = screenshot_.has_pending();
@@ -557,11 +568,18 @@ void Renderer::shutdown() {
     bg_descriptor_sets_.clear();
     if (font_initialized_) {
         destroy_tex(font_texture_);
+        if (white_pixel_initialized_) {
+            white_pixel_tex_.destroy(context_.device(), context_.allocator());
+        }
         for (auto& buf : ui_uniform_buffers_) {
             buf.destroy(context_.allocator());
         }
     }
 
+    if (gs_bg_texture_) {
+        gs_bg_texture_->destroy(context_.device(), context_.allocator());
+        gs_bg_texture_ = {};
+    }
     if (gs_initialized_) {
         gs_renderer_.shutdown(context_.allocator());
     }
@@ -762,7 +780,13 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
             glm::mat4 gs_vp = gs_proj_ * gs_view_;
             auto visible = gs_chunk_grid_.visible_chunks(gs_vp);
 
-            if (visible != gs_prev_visible_) {
+            // Force re-gather when LOD budget changes
+            bool budget_changed = (gs_gaussian_budget_ != gs_prev_budget_);
+            if (budget_changed) {
+                gs_prev_budget_ = gs_gaussian_budget_;
+            }
+
+            if (visible != gs_prev_visible_ || budget_changed) {
                 if (gs_budget_locked_) {
                     gs_budget_locked_ = false;
                     gs_stable_frame_count_ = 0;
@@ -850,27 +874,31 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
                 }
 
                 // Animate tagged scene + object Gaussians (Mode 2)
-                if (gs_animator_.has_active_groups()) {
+                if (flags.animation && gs_animator_.has_active_groups()) {
                     gs_animator_.update(dt, gs_active_buffer_);
                 }
 
                 // Update and append Gaussian particles from emitters
-                for (auto& emitter : gs_particle_emitters_) {
-                    emitter.update(dt);
-                    emitter.gather(gs_active_buffer_);
+                if (flags.particles) {
+                    for (auto& emitter : gs_particle_emitters_) {
+                        emitter.update(dt);
+                        emitter.gather(gs_active_buffer_);
+                    }
+                    // Remove dead emitters
+                    gs_particle_emitters_.erase(
+                        std::remove_if(gs_particle_emitters_.begin(), gs_particle_emitters_.end(),
+                            [](const GaussianParticleEmitter& e) { return !e.active() && e.alive_count() == 0; }),
+                        gs_particle_emitters_.end());
                 }
-                // Remove dead emitters
-                gs_particle_emitters_.erase(
-                    std::remove_if(gs_particle_emitters_.begin(), gs_particle_emitters_.end(),
-                        [](const GaussianParticleEmitter& e) { return !e.active() && e.alive_count() == 0; }),
-                    gs_particle_emitters_.end());
 
                 // Update VFX instances (timeline + emitters + animation tagging)
-                for (auto& inst : vfx_instances_) {
-                    inst.update(dt, gs_active_buffer_, gs_animator_);
+                if (flags.particles || flags.animation) {
+                    for (auto& inst : vfx_instances_) {
+                        inst.update(dt, gs_active_buffer_, gs_animator_);
+                    }
+                    std::erase_if(vfx_instances_,
+                        [](const VfxInstance& i) { return i.is_finished(); });
                 }
-                std::erase_if(vfx_instances_,
-                    [](const VfxInstance& i) { return i.is_finished(); });
 
                 // Clamp to allocated SSBO capacity
                 if (gs_active_buffer_.size() > gs_renderer_.max_gaussian_count()) {

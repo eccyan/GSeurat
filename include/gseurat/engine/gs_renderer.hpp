@@ -52,6 +52,7 @@ public:
     int light_mode() const { return light_mode_; }
     void set_light_dir(const glm::vec3& d) { light_dir_ = d; }
     void set_light_intensity(float i) { light_intensity_ = i; }
+    float light_intensity() const { return light_intensity_; }
     void set_point_lights(const std::vector<PointLight>& lights);
     const std::vector<PointLight>& point_lights() const { return point_lights_; }
     void set_touch_point(const glm::vec3& p, float radius, float timer = 0.0f) {

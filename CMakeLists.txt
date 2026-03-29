@@ -71,6 +71,31 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(wren)
 
+FetchContent_Declare(
+    imgui
+    GIT_REPOSITORY https://github.com/ocornut/imgui.git
+    GIT_TAG        v1.91.8
+    CONFIGURE_COMMAND ""
+    BUILD_COMMAND ""
+)
+FetchContent_MakeAvailable(imgui)
+
+# Build Dear ImGui as a static library with Vulkan + GLFW backends
+add_library(imgui_lib STATIC
+    ${imgui_SOURCE_DIR}/imgui.cpp
+    ${imgui_SOURCE_DIR}/imgui_demo.cpp
+    ${imgui_SOURCE_DIR}/imgui_draw.cpp
+    ${imgui_SOURCE_DIR}/imgui_tables.cpp
+    ${imgui_SOURCE_DIR}/imgui_widgets.cpp
+    ${imgui_SOURCE_DIR}/backends/imgui_impl_glfw.cpp
+    ${imgui_SOURCE_DIR}/backends/imgui_impl_vulkan.cpp
+)
+target_include_directories(imgui_lib PUBLIC
+    ${imgui_SOURCE_DIR}
+    ${imgui_SOURCE_DIR}/backends
+)
+target_link_libraries(imgui_lib PUBLIC Vulkan::Vulkan glfw)
+
 # Build wren as a static library from C sources
 add_library(wren_lib STATIC
     ${wren_SOURCE_DIR}/src/vm/wren_compiler.c
@@ -226,6 +251,23 @@ add_executable(gseurat_demo
 target_compile_definitions(gseurat_demo PRIVATE VG_BUILD_PROFILE=1)
 target_link_libraries(gseurat_demo PRIVATE gseurat_core)
 add_dependencies(gseurat_demo shaders)
+
+# --- Staging executable (ImGui-based rendering review tool) -----------------
+
+add_executable(gseurat_staging
+    src/staging_main.cpp
+    src/staging/staging_app.cpp
+    src/staging/staging_state.cpp
+)
+target_link_libraries(gseurat_staging PRIVATE gseurat_core imgui_lib)
+add_dependencies(gseurat_staging shaders)
+
+add_custom_command(TARGET gseurat_staging POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${PROJECT_SOURCE_DIR}/assets
+        $<TARGET_FILE_DIR:gseurat_staging>/assets
+    COMMENT "Copying assets to staging build directory"
+)
 
 # --- Copy assets to build directory -----------------------------------------
 

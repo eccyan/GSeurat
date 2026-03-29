@@ -2,6 +2,9 @@
 
 #include "gseurat/engine/async_loader.hpp"
 #include "gseurat/engine/audio_system.hpp"
+#ifndef _WIN32
+#include "gseurat/engine/control_server.hpp"
+#endif
 #include "gseurat/engine/collision_gen.hpp"
 #include "gseurat/engine/gaussian_cloud.hpp"
 #include "gseurat/engine/day_night_system.hpp"
@@ -216,6 +219,13 @@ protected:
     // Scripting
     WrenVM wren_vm_;
     ScriptSystem script_system_;
+
+    // Control server (bridge integration)
+#ifndef _WIN32
+    ControlServer control_server_;
+#endif
+    virtual void dispatch_command(const nlohmann::json& cmd, nlohmann::json& response);
+    void poll_control_server();
 
     // Step mode / control
     bool step_mode_ = false;
