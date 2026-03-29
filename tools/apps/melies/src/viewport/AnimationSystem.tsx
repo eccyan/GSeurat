@@ -95,9 +95,10 @@ export function AnimationSystem({ scenePoints, objectPointsMap, objectGeoRefs, o
     for (const { id, points, scale, pos } of objectEntries) {
       offsets.set(id, { offset, count: points.length });
       for (let i = 0; i < points.length; i++) {
-        positions[(offset + i) * 3] = points[i].position[0] * scale + pos[0];
-        positions[(offset + i) * 3 + 1] = points[i].position[1] * scale + pos[1];
-        positions[(offset + i) * 3 + 2] = points[i].position[2] * scale + pos[2];
+        // Object-local coordinates (element position handled by Three.js group transform)
+        positions[(offset + i) * 3] = points[i].position[0] * scale;
+        positions[(offset + i) * 3 + 1] = points[i].position[1] * scale;
+        positions[(offset + i) * 3 + 2] = points[i].position[2] * scale;
         colors[(offset + i) * 3] = points[i].color[0];
         colors[(offset + i) * 3 + 1] = points[i].color[1];
         colors[(offset + i) * 3 + 2] = points[i].color[2];
