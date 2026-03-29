@@ -843,7 +843,13 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
                     gs_active_buffer_ = gs_scene_buffer_;
                 }
 
-                // Animate tagged scene Gaussians (Mode 2)
+                // Append VFX object Gaussians BEFORE animator runs,
+                // so animation tag indices remain valid.
+                for (auto& inst : vfx_instances_) {
+                    inst.append_objects(gs_active_buffer_);
+                }
+
+                // Animate tagged scene + object Gaussians (Mode 2)
                 if (gs_animator_.has_active_groups()) {
                     gs_animator_.update(dt, gs_active_buffer_);
                 }
@@ -859,7 +865,7 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
                         [](const GaussianParticleEmitter& e) { return !e.active() && e.alive_count() == 0; }),
                     gs_particle_emitters_.end());
 
-                // Update VFX instances (timeline + emitters + animations)
+                // Update VFX instances (timeline + emitters + animation tagging)
                 for (auto& inst : vfx_instances_) {
                     inst.update(dt, gs_active_buffer_, gs_animator_);
                 }
@@ -1023,6 +1029,14 @@ void Renderer::clear_gs_animations() {
 }
 
 void Renderer::add_vfx_instance(VfxInstance&& inst) {
+    // Grow SSBO capacity to fit object PLY Gaussians (appended per-frame in update)
+    const auto& obj_gs = inst.object_gaussians();
+    if (!obj_gs.empty()) {
+        uint32_t current_base = gs_renderer_.max_gaussian_count() - GsRenderer::kParticleHeadroom;
+        uint32_t new_base = current_base + static_cast<uint32_t>(obj_gs.size());
+        gs_renderer_.ensure_capacity(new_base);
+        std::fprintf(stderr, "VFX: Grew capacity for %zu object Gaussians\n", obj_gs.size());
+    }
     vfx_instances_.push_back(std::move(inst));
 }
 

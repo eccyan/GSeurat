@@ -388,6 +388,55 @@ void GsRenderer::load_cloud(const GaussianCloud& cloud) {
     update_descriptors();
 }
 
+void GsRenderer::ensure_capacity(uint32_t needed_total) {
+    uint32_t new_max = needed_total + kParticleHeadroom;
+    if (new_max <= max_gaussian_count_) return;  // already large enough
+
+    max_gaussian_count_ = new_max;
+
+    // Recalculate sort sizes
+    sort_size_ = ((max_gaussian_count_ + 1023) / 1024) * 1024;
+    if (sort_size_ < max_gaussian_count_) sort_size_ = max_gaussian_count_;
+    num_sort_workgroups_ = sort_size_ / 1024;
+    if (num_sort_workgroups_ == 0) num_sort_workgroups_ = 1;
+    sort_size_ = num_sort_workgroups_ * 1024;
+
+    VkDeviceSize gaussian_buf_size = static_cast<VkDeviceSize>(max_gaussian_count_) * sizeof(GpuGaussian);
+    VkDeviceSize projected_buf_size = static_cast<VkDeviceSize>(max_gaussian_count_) * sizeof(ProjectedSplat);
+    VkDeviceSize sort_buf_size = static_cast<VkDeviceSize>(sort_size_) * sizeof(SortEntry);
+    VkDeviceSize histogram_buf_size = static_cast<VkDeviceSize>(256) * num_sort_workgroups_ * sizeof(uint32_t);
+
+    // Reallocate GPU buffers
+    gaussian_ssbo_.destroy(allocator_);
+    projected_ssbo_.destroy(allocator_);
+    sort_keys_ssbo_.destroy(allocator_);
+    sort_b_ssbo_.destroy(allocator_);
+    histogram_ssbo_.destroy(allocator_);
+
+    gaussian_ssbo_ = Buffer::create_storage(allocator_, gaussian_buf_size);
+    projected_ssbo_ = Buffer::create_storage(allocator_, projected_buf_size);
+    sort_keys_ssbo_ = Buffer::create_storage(allocator_, sort_buf_size);
+    sort_b_ssbo_ = Buffer::create_storage(allocator_, sort_buf_size);
+    histogram_ssbo_ = Buffer::create_storage(allocator_, histogram_buf_size);
+
+    // Reinitialize sort buffers
+    auto init_sort_buf = [&](Buffer& buf) {
+        auto* sort = static_cast<SortEntry*>(buf.mapped());
+        for (uint32_t i = 0; i < sort_size_; ++i) {
+            sort[i].key = 0xFFFFFFFF;
+            sort[i].index = i < gaussian_count_ ? i : 0;
+        }
+    };
+    init_sort_buf(sort_keys_ssbo_);
+    init_sort_buf(sort_b_ssbo_);
+
+    sort_done_once_ = false;
+    update_descriptors();
+
+    std::fprintf(stderr, "GS: Grew SSBO capacity to %u (sort_size=%u)\n",
+                 max_gaussian_count_, sort_size_);
+}
+
 void GsRenderer::update_active_gaussians(const Gaussian* data, uint32_t count) {
     if (count == 0 || count > max_gaussian_count_) return;
 

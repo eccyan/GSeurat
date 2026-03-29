@@ -57,6 +57,9 @@ class VfxInstance {
 public:
     void init(const VfxPreset& preset, const glm::vec3& position, bool loop);
 
+    /// Append static object Gaussians to the buffer (call before animator runs).
+    void append_objects(std::vector<Gaussian>& out_buffer);
+
     /// Update timeline, activate/deactivate emitter layers.
     /// Appends active particles to out_buffer.
     /// Tags animation regions on the provided animator.
@@ -65,6 +68,7 @@ public:
     bool is_finished() const { return finished_; }
     const glm::vec3& position() const { return position_; }
     const VfxPreset& preset() const { return preset_; }
+    const std::vector<Gaussian>& object_gaussians() const { return object_gaussians_; }
 
 private:
     VfxPreset preset_;
@@ -86,6 +90,9 @@ private:
         bool activated = false;
     };
     std::vector<AnimState> anim_states_;
+
+    // Object PLY Gaussians (static geometry, appended to buffer each frame)
+    std::vector<Gaussian> object_gaussians_;
 };
 
 }  // namespace gseurat
