@@ -314,6 +314,11 @@ void GsRenderer::create_compute_pipelines() {
 void GsRenderer::load_cloud(const GaussianCloud& cloud) {
     if (cloud.empty()) return;
 
+    // Wait for GPU before destroying existing buffers
+    if (initialized_) {
+        vkDeviceWaitIdle(device_);
+    }
+
     sort_done_once_ = false;
     gaussian_count_ = cloud.count();
     max_gaussian_count_ = gaussian_count_ + kParticleHeadroom;

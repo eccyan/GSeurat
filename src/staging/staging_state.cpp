@@ -214,26 +214,26 @@ void StagingState::draw_render_settings(AppBase& app) {
     auto& pp = app.renderer().post_process_params();
 
     if (ImGui::CollapsingHeader("Bloom", ImGuiTreeNodeFlags_DefaultOpen)) {
-        ImGui::SliderFloat("Threshold", &pp.bloom_threshold, 0.0f, 5.0f);
-        ImGui::SliderFloat("Soft Knee", &pp.bloom_soft_knee, 0.0f, 1.0f);
-        ImGui::SliderFloat("Intensity", &pp.bloom_intensity, 0.0f, 2.0f);
+        ImGui::SliderFloat("Threshold##bloom", &pp.bloom_threshold, 0.0f, 5.0f);
+        ImGui::SliderFloat("Soft Knee##bloom", &pp.bloom_soft_knee, 0.0f, 1.0f);
+        ImGui::SliderFloat("Intensity##bloom", &pp.bloom_intensity, 0.0f, 2.0f);
     }
     if (ImGui::CollapsingHeader("Exposure")) {
-        ImGui::SliderFloat("Exposure", &pp.exposure, 0.1f, 5.0f);
+        ImGui::SliderFloat("Exposure##pp", &pp.exposure, 0.1f, 5.0f);
     }
     if (ImGui::CollapsingHeader("Depth of Field")) {
-        ImGui::SliderFloat("Focus Distance", &pp.dof_focus_distance, 0.1f, 200.0f);
-        ImGui::SliderFloat("Focus Range", &pp.dof_focus_range, 0.1f, 50.0f);
-        ImGui::SliderFloat("Max Blur", &pp.dof_max_blur, 0.0f, 2.0f);
+        ImGui::SliderFloat("Focus Distance##dof", &pp.dof_focus_distance, 0.1f, 200.0f);
+        ImGui::SliderFloat("Focus Range##dof", &pp.dof_focus_range, 0.1f, 50.0f);
+        ImGui::SliderFloat("Max Blur##dof", &pp.dof_max_blur, 0.0f, 2.0f);
     }
     if (ImGui::CollapsingHeader("Vignette")) {
-        ImGui::SliderFloat("Radius", &pp.vignette_radius, 0.0f, 1.5f);
-        ImGui::SliderFloat("Softness", &pp.vignette_softness, 0.0f, 1.0f);
+        ImGui::SliderFloat("Radius##vig", &pp.vignette_radius, 0.0f, 1.5f);
+        ImGui::SliderFloat("Softness##vig", &pp.vignette_softness, 0.0f, 1.0f);
     }
     if (ImGui::CollapsingHeader("Fog")) {
-        ImGui::SliderFloat("Density", &pp.fog_density, 0.0f, 1.0f);
+        ImGui::SliderFloat("Density##fog", &pp.fog_density, 0.0f, 1.0f);
         float fog_color[3] = {pp.fog_color_r, pp.fog_color_g, pp.fog_color_b};
-        if (ImGui::ColorEdit3("Color", fog_color)) {
+        if (ImGui::ColorEdit3("Color##fog", fog_color)) {
             pp.fog_color_r = fog_color[0];
             pp.fog_color_g = fog_color[1];
             pp.fog_color_b = fog_color[2];
@@ -241,7 +241,7 @@ void StagingState::draw_render_settings(AppBase& app) {
     }
     if (ImGui::CollapsingHeader("God Rays")) {
         float gr = app.renderer().god_rays_intensity();
-        if (ImGui::SliderFloat("Intensity##gr", &gr, 0.0f, 3.0f)) {
+        if (ImGui::SliderFloat("Intensity##godrays", &gr, 0.0f, 3.0f)) {
             app.renderer().set_god_rays_intensity(gr);
         }
     }
