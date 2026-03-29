@@ -72,7 +72,10 @@ function GaussianPointCloud({ points, geoRef }: { points: PlyPoint[]; geoRef: Re
 
 type GizmoProps = { layer: VfxLayer; active: boolean; selected: boolean; onSelect: () => void };
 
-function ObjectGizmo({ layer, selected, onSelect }: GizmoProps) {
+function ObjectGizmo({ layer, selected, onSelect, onPointsLoaded, externalGeoRef }: GizmoProps & {
+  onPointsLoaded?: (layerId: string, points: PlyPoint[], scale: number) => void;
+  externalGeoRef?: React.MutableRefObject<THREE.BufferGeometry | null>;
+}) {
   const pos = layer.position ?? [0, 0, 0];
   const scale = layer.scale ?? 1;
   const [points, setPoints] = useState<PlyPoint[]>([]);
@@ -91,6 +94,11 @@ function ObjectGizmo({ layer, selected, onSelect }: GizmoProps) {
     }
   }, [layer.ply_file]);
 
+  // Report loaded points to parent for animation
+  useEffect(() => {
+    if (points.length > 0) onPointsLoaded?.(layer.id, points, scale);
+  }, [points, scale, layer.id, onPointsLoaded]);
+
   const geometry = useMemo(() => {
     if (points.length === 0) return null;
     const geo = new THREE.BufferGeometry();
@@ -106,11 +114,16 @@ function ObjectGizmo({ layer, selected, onSelect }: GizmoProps) {
       colors[i * 4 + 2] = points[i].color[2];
       colors[i * 4 + 3] = 1.0;
     }
-    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    geo.setAttribute('aColor', new THREE.BufferAttribute(colors, 4));
-    geo.setAttribute('aScale', new THREE.BufferAttribute(new Float32Array(n).fill(1.0), 1));
+    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3).setUsage(THREE.DynamicDrawUsage));
+    geo.setAttribute('aColor', new THREE.BufferAttribute(colors, 4).setUsage(THREE.DynamicDrawUsage));
+    geo.setAttribute('aScale', new THREE.BufferAttribute(new Float32Array(n).fill(1.0), 1).setUsage(THREE.DynamicDrawUsage));
     return geo;
   }, [points, scale]);
+
+  // Expose geometry ref to parent for animation updates
+  useEffect(() => {
+    if (externalGeoRef) externalGeoRef.current = geometry;
+  }, [geometry, externalGeoRef]);
 
   const material = useMemo(() => new THREE.ShaderMaterial({
     uniforms: { uPixelRatio: { value: window.devicePixelRatio || 1.0 } },
@@ -238,7 +251,11 @@ function LightGizmo({ layer, active, selected, onSelect }: GizmoProps) {
   );
 }
 
-function LayerGizmos({ showGizmos }: { showGizmos: boolean }) {
+function LayerGizmos({ showGizmos, onObjectPointsLoaded, objectGeoRefs }: {
+  showGizmos: boolean;
+  onObjectPointsLoaded?: (layerId: string, points: PlyPoint[], scale: number) => void;
+  objectGeoRefs?: React.MutableRefObject<Map<string, React.MutableRefObject<THREE.BufferGeometry | null>>>;
+}) {
   const preset = useVfxStore((s) => {
     return s.presets.find((p) => p.id === s.selectedPresetId);
   });
@@ -275,7 +292,16 @@ function LayerGizmos({ showGizmos }: { showGizmos: boolean }) {
         const selected = selectedLayerId === layer.id;
         const onSelect = () => selectLayer(layer.id);
         // Object PLYs always render (they're geometry, not gizmos)
-        if (layer.type === 'object') return <ObjectGizmo key={layer.id} layer={layer} active={true} selected={selected} onSelect={onSelect} />;
+        if (layer.type === 'object') {
+          // Get or create a geoRef for this object
+          let geoRef = objectGeoRefs?.current.get(layer.id);
+          if (!geoRef && objectGeoRefs) {
+            geoRef = { current: null };
+            objectGeoRefs.current.set(layer.id, geoRef);
+          }
+          return <ObjectGizmo key={layer.id} layer={layer} active={true} selected={selected} onSelect={onSelect}
+            onPointsLoaded={onObjectPointsLoaded} externalGeoRef={geoRef} />;
+        }
         // Other gizmos respect showGizmos toggle
         if (!showGizmos) return null;
         if (layer.type === 'emitter') return <EmitterGizmo key={layer.id} layer={layer} active={active} selected={selected} onSelect={onSelect} />;
@@ -298,6 +324,12 @@ export function Preview({ scenePoints }: { scenePoints: PlyPoint[] }) {
   const showGizmos = useVfxStore((s) => s.showGizmos);
   const showPointCloud = useVfxStore((s) => s.showPointCloud);
   const sceneGeoRef = useRef<THREE.BufferGeometry | null>(null);
+  const objectPointsRef = useRef<Map<string, { points: PlyPoint[]; scale: number }>>(new Map());
+  const objectGeoRefsRef = useRef<Map<string, React.MutableRefObject<THREE.BufferGeometry | null>>>(new Map());
+
+  const handleObjectPointsLoaded = useCallback((layerId: string, points: PlyPoint[], scale: number) => {
+    objectPointsRef.current.set(layerId, { points, scale });
+  }, []);
 
   // Callback for AnimationSystem to update point cloud geometry
   const handleUpdateGeometry = useCallback((positions: Float32Array, colors: Float32Array, scales?: Float32Array) => {
@@ -330,9 +362,10 @@ export function Preview({ scenePoints }: { scenePoints: PlyPoint[] }) {
         <directionalLight position={[10, 20, 10]} intensity={0.6} />
         <Grid args={[40, 40]} cellSize={1} cellColor="#2a2a4a" sectionSize={5} sectionColor="#3a3a5a" fadeDistance={30} infiniteGrid={false} />
         {scenePoints.length > 0 && showPointCloud && <GaussianPointCloud points={scenePoints} geoRef={sceneGeoRef} />}
-        <LayerGizmos showGizmos={showGizmos} />
+        <LayerGizmos showGizmos={showGizmos} onObjectPointsLoaded={handleObjectPointsLoaded} objectGeoRefs={objectGeoRefsRef} />
         <ParticleSystem />
-        <AnimationSystem scenePoints={scenePoints} onUpdateGeometry={handleUpdateGeometry} />
+        <AnimationSystem scenePoints={scenePoints} objectPointsMap={objectPointsRef.current}
+          objectGeoRefs={objectGeoRefsRef.current} onUpdateGeometry={handleUpdateGeometry} />
         <OrbitControls />
       </Canvas>
 
