@@ -1,8 +1,10 @@
 #include <gseurat/engine/gs_vfx.hpp>
+#include <gseurat/engine/gaussian_cloud.hpp>
 #include <nlohmann/json.hpp>
 #include <fstream>
 #include <iostream>
 #include <algorithm>
+#include <filesystem>
 
 namespace gseurat {
 
@@ -96,9 +98,11 @@ void VfxInstance::init(const VfxPreset& preset, const glm::vec3& position, bool 
     elapsed_ = 0.0f;
     finished_ = false;
 
-    // Pre-create emitter states for all emitter elements
+    // Pre-create states for all elements
     emitter_states_.clear();
     anim_states_.clear();
+    object_gaussians_.clear();
+
     for (size_t i = 0; i < preset_.elements.size(); ++i) {
         const auto& el = preset_.elements[i];
         if (el.type == "emitter") {
@@ -113,12 +117,38 @@ void VfxInstance::init(const VfxPreset& preset, const glm::vec3& position, bool 
             as.element_index = i;
             as.activated = false;
             anim_states_.push_back(std::move(as));
+        } else if (el.type == "object" && !el.ply_file.empty()) {
+            // Load PLY file — try exact path, then assets/vfx/filename
+            std::string ply_path = el.ply_file;
+            if (!std::filesystem::exists(ply_path)) {
+                auto filename = std::filesystem::path(el.ply_file).filename().string();
+                ply_path = "assets/vfx/" + filename;
+            }
+            if (std::filesystem::exists(ply_path)) {
+                auto cloud = GaussianCloud::load_ply(ply_path);
+                const auto& gs = cloud.gaussians();
+                glm::vec3 offset = position_ + el.position;
+                for (const auto& src : gs) {
+                    Gaussian g = src;
+                    g.position = g.position * el.scale + offset;
+                    object_gaussians_.push_back(g);
+                }
+                std::fprintf(stderr, "VFX: Object '%s' loaded %zu Gaussians from %s\n",
+                    el.name.c_str(), gs.size(), el.ply_file.c_str());
+            } else {
+                std::fprintf(stderr, "VFX: Object PLY not found: %s\n", el.ply_file.c_str());
+            }
         }
     }
 }
 
 void VfxInstance::update(float dt, std::vector<Gaussian>& out_buffer, GaussianAnimator& animator) {
     if (finished_) return;
+
+    // Append static object Gaussians to the buffer every frame
+    if (!object_gaussians_.empty()) {
+        out_buffer.insert(out_buffer.end(), object_gaussians_.begin(), object_gaussians_.end());
+    }
 
     elapsed_ += dt;
 

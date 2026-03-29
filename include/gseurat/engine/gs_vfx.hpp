@@ -86,6 +86,9 @@ private:
         bool activated = false;
     };
     std::vector<AnimState> anim_states_;
+
+    // Object PLY Gaussians (static geometry, appended to buffer each frame)
+    std::vector<Gaussian> object_gaussians_;
 };
 
 }  // namespace gseurat
