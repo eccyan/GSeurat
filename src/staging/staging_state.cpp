@@ -264,6 +264,19 @@ void StagingState::draw_gs_params(AppBase& app) {
         gs.set_toon_bands(toon);
     }
 
+    ImGui::Separator();
+
+    int budget = static_cast<int>(app.renderer().gs_gaussian_budget());
+    if (ImGui::SliderInt("LOD Budget", &budget, 0, 500000, "%d", ImGuiSliderFlags_Logarithmic)) {
+        app.renderer().set_gs_gaussian_budget(static_cast<uint32_t>(budget));
+    }
+    ImGui::SameLine();
+    ImGui::TextDisabled("(0 = unlimited)");
+
+    if (budget > 0 && app.renderer().has_gs_cloud()) {
+        ImGui::Text("Active: %u / %u", gs.gaussian_count(), gs.max_gaussian_count());
+    }
+
     ImGui::End();
 }
 
