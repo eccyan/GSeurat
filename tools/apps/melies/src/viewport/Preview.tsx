@@ -87,8 +87,12 @@ function ObjectGizmo({ layer, selected, onSelect }: GizmoProps) {
 function EmitterGizmo({ layer, active, selected, onSelect }: GizmoProps) {
   const pos = layer.position ?? [0, 0, 0];
   const color = selected ? '#ffffff' : '#ec4899';
+  const cfg = layer.emitter as Record<string, unknown> | undefined;
+  const region = cfg?.region as { shape?: string; center?: [number, number, number]; radius?: number; half_extents?: [number, number, number] } | undefined;
+  const regionCenter = region?.center ?? [0, 0, 0];
   return (
     <group position={pos}>
+      {/* Center sphere */}
       <mesh onPointerDown={(e) => { e.stopPropagation(); onSelect(); }}>
         <sphereGeometry args={[0.3, 12, 12]} />
         <meshBasicMaterial color={color} transparent opacity={active ? 0.8 : 0.3} />
@@ -97,6 +101,17 @@ function EmitterGizmo({ layer, active, selected, onSelect }: GizmoProps) {
         <mesh>
           <sphereGeometry args={[0.5, 12, 12]} />
           <meshBasicMaterial color="#ec4899" transparent opacity={0.2} />
+        </mesh>
+      )}
+      {/* Spawn region wireframe */}
+      {region && (
+        <mesh position={regionCenter}>
+          {region.shape === 'sphere' ? (
+            <sphereGeometry args={[region.radius ?? 1, 16, 12]} />
+          ) : (
+            <boxGeometry args={((region.half_extents ?? [1, 1, 1]) as [number, number, number]).map((v) => v * 2) as [number, number, number]} />
+          )}
+          <meshBasicMaterial color="#ec4899" wireframe transparent opacity={selected ? 0.4 : 0.15} />
         </mesh>
       )}
     </group>
