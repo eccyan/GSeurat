@@ -98,20 +98,26 @@ void VfxInstance::init(const VfxPreset& preset, const glm::vec3& position, bool 
 
     // Pre-create emitter states for all emitter elements
     emitter_states_.clear();
+    anim_states_.clear();
     for (size_t i = 0; i < preset_.elements.size(); ++i) {
         const auto& el = preset_.elements[i];
-        if (el.type != "emitter") continue;
-        EmitterState es;
-        es.element_index = i;
-        es.activated = false;
-        es.emitter.configure(el.emitter_config);
-        // Position: instance position + element relative position
-        es.emitter.set_position(position_ + el.position);
-        emitter_states_.push_back(std::move(es));
+        if (el.type == "emitter") {
+            EmitterState es;
+            es.element_index = i;
+            es.activated = false;
+            es.emitter.configure(el.emitter_config);
+            es.emitter.set_position(position_ + el.position);
+            emitter_states_.push_back(std::move(es));
+        } else if (el.type == "animation") {
+            AnimState as;
+            as.element_index = i;
+            as.activated = false;
+            anim_states_.push_back(std::move(as));
+        }
     }
 }
 
-void VfxInstance::update(float dt, std::vector<Gaussian>& out_buffer) {
+void VfxInstance::update(float dt, std::vector<Gaussian>& out_buffer, GaussianAnimator& animator) {
     if (finished_) return;
 
     elapsed_ += dt;
@@ -156,6 +162,42 @@ void VfxInstance::update(float dt, std::vector<Gaussian>& out_buffer) {
         if (es.activated) {
             es.emitter.update(dt);
             es.emitter.gather(out_buffer);
+        }
+    }
+
+    // Activate/deactivate animation elements
+    for (auto& as : anim_states_) {
+        const auto& el = preset_.elements[as.element_index];
+        float el_start = el.start;
+        bool in_window;
+        if (el.loop) {
+            in_window = elapsed_ >= el_start;
+        } else {
+            float el_end = el.duration > 0.0f ? el.start + el.duration : preset_.duration;
+            in_window = elapsed_ >= el_start && elapsed_ < el_end;
+        }
+
+        if (in_window && !as.activated) {
+            // Tag region on the shared animator
+            auto region = el.region;
+            region.center += position_ + el.position;  // offset by instance + element position
+            auto effect_name = el.animation_config.effect;
+            auto effect = GsAnimEffect::Detach;
+            if (effect_name == "float") effect = GsAnimEffect::Float;
+            else if (effect_name == "orbit") effect = GsAnimEffect::Orbit;
+            else if (effect_name == "dissolve") effect = GsAnimEffect::Dissolve;
+            else if (effect_name == "reform") effect = GsAnimEffect::Reform;
+            else if (effect_name == "pulse") effect = GsAnimEffect::Pulse;
+            else if (effect_name == "vortex") effect = GsAnimEffect::Vortex;
+            else if (effect_name == "wave") effect = GsAnimEffect::Wave;
+            else if (effect_name == "scatter") effect = GsAnimEffect::Scatter;
+
+            float lifetime = el.loop ? 9999.0f : (el.duration > 0.0f ? el.duration : 9999.0f);
+            as.group_id = animator.tag_region(out_buffer, region, effect, lifetime, el.animation_config.params);
+            as.activated = true;
+        } else if (!in_window && as.activated) {
+            as.activated = false;
+            // Group expires naturally via lifetime
         }
     }
 }

@@ -59,7 +59,8 @@ public:
 
     /// Update timeline, activate/deactivate emitter layers.
     /// Appends active particles to out_buffer.
-    void update(float dt, std::vector<Gaussian>& out_buffer);
+    /// Tags animation regions on the provided animator.
+    void update(float dt, std::vector<Gaussian>& out_buffer, GaussianAnimator& animator);
 
     bool is_finished() const { return finished_; }
     const glm::vec3& position() const { return position_; }
@@ -78,6 +79,13 @@ private:
         bool activated = false;
     };
     std::vector<EmitterState> emitter_states_;
+
+    struct AnimState {
+        size_t element_index;
+        uint32_t group_id = 0;
+        bool activated = false;
+    };
+    std::vector<AnimState> anim_states_;
 };
 
 }  // namespace gseurat
