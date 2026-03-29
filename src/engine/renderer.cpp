@@ -873,22 +873,24 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
                 }
 
                 // Update and append Gaussian particles from emitters
-                for (auto& emitter : gs_particle_emitters_) {
-                    emitter.update(dt);
-                    emitter.gather(gs_active_buffer_);
-                }
-                // Remove dead emitters
-                gs_particle_emitters_.erase(
-                    std::remove_if(gs_particle_emitters_.begin(), gs_particle_emitters_.end(),
-                        [](const GaussianParticleEmitter& e) { return !e.active() && e.alive_count() == 0; }),
-                    gs_particle_emitters_.end());
+                if (flags.particles) {
+                    for (auto& emitter : gs_particle_emitters_) {
+                        emitter.update(dt);
+                        emitter.gather(gs_active_buffer_);
+                    }
+                    // Remove dead emitters
+                    gs_particle_emitters_.erase(
+                        std::remove_if(gs_particle_emitters_.begin(), gs_particle_emitters_.end(),
+                            [](const GaussianParticleEmitter& e) { return !e.active() && e.alive_count() == 0; }),
+                        gs_particle_emitters_.end());
 
-                // Update VFX instances (timeline + emitters + animation tagging)
-                for (auto& inst : vfx_instances_) {
-                    inst.update(dt, gs_active_buffer_, gs_animator_);
+                    // Update VFX instances (timeline + emitters + animation tagging)
+                    for (auto& inst : vfx_instances_) {
+                        inst.update(dt, gs_active_buffer_, gs_animator_);
+                    }
+                    std::erase_if(vfx_instances_,
+                        [](const VfxInstance& i) { return i.is_finished(); });
                 }
-                std::erase_if(vfx_instances_,
-                    [](const VfxInstance& i) { return i.is_finished(); });
 
                 // Clamp to allocated SSBO capacity
                 if (gs_active_buffer_.size() > gs_renderer_.max_gaussian_count()) {
