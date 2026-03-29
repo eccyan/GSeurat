@@ -868,7 +868,7 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
                 }
 
                 // Animate tagged scene + object Gaussians (Mode 2)
-                if (gs_animator_.has_active_groups()) {
+                if (flags.animation && gs_animator_.has_active_groups()) {
                     gs_animator_.update(dt, gs_active_buffer_);
                 }
 
@@ -883,8 +883,10 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
                         std::remove_if(gs_particle_emitters_.begin(), gs_particle_emitters_.end(),
                             [](const GaussianParticleEmitter& e) { return !e.active() && e.alive_count() == 0; }),
                         gs_particle_emitters_.end());
+                }
 
-                    // Update VFX instances (timeline + emitters + animation tagging)
+                // Update VFX instances (timeline + emitters + animation tagging)
+                if (flags.particles || flags.animation) {
                     for (auto& inst : vfx_instances_) {
                         inst.update(dt, gs_active_buffer_, gs_animator_);
                     }

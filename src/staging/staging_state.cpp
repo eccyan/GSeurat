@@ -199,6 +199,8 @@ void StagingState::draw_viewport_info(AppBase& app) {
     ImGui::Separator();
     ImGui::Text("Az: %.1f  El: %.1f  Dist: %.1f", azimuth_ * 57.2958f, elevation_ * 57.2958f, distance_);
     ImGui::Text("Target: %.1f, %.1f, %.1f", target_.x, target_.y, target_.z);
+    ImGui::Separator();
+    ImGui::TextDisabled("Drag: Orbit  Shift+Drag: Pan  Scroll: Zoom  R: Reset");
 
     ImGui::End();
 }
@@ -290,6 +292,7 @@ void StagingState::draw_feature_toggles(AppBase& app) {
     }
     if (ImGui::CollapsingHeader("Scene")) {
         ImGui::Checkbox("Particles", &f.particles);
+        ImGui::Checkbox("Animation", &f.animation);
     }
 
     ImGui::End();
