@@ -238,7 +238,7 @@ function LightGizmo({ layer, active, selected, onSelect }: GizmoProps) {
   );
 }
 
-function LayerGizmos() {
+function LayerGizmos({ showGizmos }: { showGizmos: boolean }) {
   const preset = useVfxStore((s) => {
     return s.presets.find((p) => p.id === s.selectedPresetId);
   });
@@ -274,7 +274,10 @@ function LayerGizmos() {
         const active = playbackTime >= (layer.start ?? 0) && playbackTime < (layer.start ?? 0) + (layer.duration ?? 9999);
         const selected = selectedLayerId === layer.id;
         const onSelect = () => selectLayer(layer.id);
+        // Object PLYs always render (they're geometry, not gizmos)
         if (layer.type === 'object') return <ObjectGizmo key={layer.id} layer={layer} active={true} selected={selected} onSelect={onSelect} />;
+        // Other gizmos respect showGizmos toggle
+        if (!showGizmos) return null;
         if (layer.type === 'emitter') return <EmitterGizmo key={layer.id} layer={layer} active={active} selected={selected} onSelect={onSelect} />;
         if (layer.type === 'animation') return <AnimationGizmo key={layer.id} layer={layer} active={active} selected={selected} onSelect={onSelect} />;
         if (layer.type === 'light') return <LightGizmo key={layer.id} layer={layer} active={active} selected={selected} onSelect={onSelect} />;
@@ -327,7 +330,7 @@ export function Preview({ scenePoints }: { scenePoints: PlyPoint[] }) {
         <directionalLight position={[10, 20, 10]} intensity={0.6} />
         <Grid args={[40, 40]} cellSize={1} cellColor="#2a2a4a" sectionSize={5} sectionColor="#3a3a5a" fadeDistance={30} infiniteGrid={false} />
         {scenePoints.length > 0 && showPointCloud && <GaussianPointCloud points={scenePoints} geoRef={sceneGeoRef} />}
-        {showGizmos && <LayerGizmos />}
+        <LayerGizmos showGizmos={showGizmos} />
         <ParticleSystem />
         <AnimationSystem scenePoints={scenePoints} onUpdateGeometry={handleUpdateGeometry} />
         <OrbitControls />
