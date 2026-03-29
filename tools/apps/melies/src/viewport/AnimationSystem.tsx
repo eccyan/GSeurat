@@ -121,11 +121,15 @@ export function AnimationSystem({ scenePoints, onUpdateGeometry }: {
         const infiniteLifetimeEffects = ['wave', 'pulse'];
         const lifetime = infiniteLifetimeEffects.includes(effectName) ? 9999 : (layer.duration ?? 9999);
 
+        // Use element position + region (default: sphere at origin, radius 999 for full scene)
+        const pos = layer.position ?? [0, 0, 0];
+        const radius = layer.region?.radius ?? 999;
+
         let groupId: number;
         if (params && Object.keys(params).length > 0) {
-          groupId = animatorRef.current.tagSphereWithParams(0, 0, 0, 999, effect, lifetime, params);
+          groupId = animatorRef.current.tagSphereWithParams(pos[0], pos[1], pos[2], radius, effect, lifetime, params);
         } else {
-          groupId = animatorRef.current.tagSphere(0, 0, 0, 999, effect, lifetime);
+          groupId = animatorRef.current.tagSphere(pos[0], pos[1], pos[2], radius, effect, lifetime);
         }
         activeGroups.set(layer.id, groupId);
       } else if (!isActive && hasGroup) {

@@ -69,83 +69,75 @@ function GaussianPointCloud({ points, geoRef }: { points: PlyPoint[]; geoRef: Re
 
 // ── Layer Gizmos ──
 
-function EmitterGizmo({ layer, active, selected }: { layer: VfxLayer; active: boolean; selected: boolean }) {
-  const cfg = layer.emitter as Record<string, unknown> | undefined;
-  const pos: [number, number, number] = (cfg?.position as [number, number, number]) ?? [0, 1, 0];
-  const offsetMin = (cfg?.spawn_offset_min as [number, number, number]) ?? [0, 0, 0];
-  const offsetMax = (cfg?.spawn_offset_max as [number, number, number]) ?? [0, 0, 0];
-  const hasOffset = offsetMin.some((v) => v !== 0) || offsetMax.some((v) => v !== 0);
-  const boxSize: [number, number, number] = [
-    offsetMax[0] - offsetMin[0] || 0.5,
-    offsetMax[1] - offsetMin[1] || 0.5,
-    offsetMax[2] - offsetMin[2] || 0.5,
-  ];
-  const boxCenter: [number, number, number] = [
-    pos[0] + (offsetMin[0] + offsetMax[0]) / 2,
-    pos[1] + (offsetMin[1] + offsetMax[1]) / 2,
-    pos[2] + (offsetMin[2] + offsetMax[2]) / 2,
-  ];
-  const opacity = active ? 0.7 : 0.2;
-  const color = selected ? '#ffffff' : '#ec4899';
+type GizmoProps = { layer: VfxLayer; active: boolean; selected: boolean; onSelect: () => void };
 
+function ObjectGizmo({ layer, selected, onSelect }: GizmoProps) {
+  const pos = layer.position ?? [0, 0, 0];
+  const color = selected ? '#ffffff' : '#aaaaaa';
   return (
-    <group>
-      {/* Center sphere */}
-      <mesh position={pos}>
+    <group position={pos}>
+      <mesh onPointerDown={(e) => { e.stopPropagation(); onSelect(); }}>
+        <octahedronGeometry args={[0.5]} />
+        <meshBasicMaterial color={color} transparent opacity={selected ? 0.9 : 0.5} />
+      </mesh>
+    </group>
+  );
+}
+
+function EmitterGizmo({ layer, active, selected, onSelect }: GizmoProps) {
+  const pos = layer.position ?? [0, 0, 0];
+  const color = selected ? '#ffffff' : '#ec4899';
+  return (
+    <group position={pos}>
+      <mesh onPointerDown={(e) => { e.stopPropagation(); onSelect(); }}>
         <sphereGeometry args={[0.3, 12, 12]} />
         <meshBasicMaterial color={color} transparent opacity={active ? 0.8 : 0.3} />
       </mesh>
-      {/* Outer glow when active */}
       {active && (
-        <mesh position={pos}>
+        <mesh>
           <sphereGeometry args={[0.5, 12, 12]} />
           <meshBasicMaterial color="#ec4899" transparent opacity={0.2} />
         </mesh>
       )}
-      {/* Spawn offset box */}
-      {hasOffset && (
-        <mesh position={boxCenter}>
-          <boxGeometry args={boxSize} />
-          <meshBasicMaterial color="#ec4899" wireframe transparent opacity={opacity * 0.5} />
-        </mesh>
-      )}
     </group>
   );
 }
 
-function AnimationGizmo({ layer, active, selected }: { layer: VfxLayer; active: boolean; selected: boolean }) {
-  const anim = layer.animation as Record<string, unknown> | undefined;
-  const effect = (anim?.effect as string) ?? 'detach';
+function AnimationGizmo({ layer, active, selected, onSelect }: GizmoProps) {
+  const pos = layer.position ?? [0, 0, 0];
+  const radius = layer.region?.radius ?? 2;
   const opacity = active ? 0.5 : 0.15;
   const color = selected ? '#ffffff' : '#06b6d4';
-
   return (
-    <group position={[0, 1, 0]}>
-      {/* Region sphere */}
-      <mesh>
-        <sphereGeometry args={[2, 16, 12]} />
-        <meshBasicMaterial color={color} wireframe transparent opacity={opacity} />
-      </mesh>
-      {/* Center dot */}
-      <mesh>
+    <group position={pos}>
+      <mesh onPointerDown={(e) => { e.stopPropagation(); onSelect(); }}>
         <sphereGeometry args={[0.15, 8, 8]} />
         <meshBasicMaterial color="#06b6d4" transparent opacity={active ? 1 : 0.4} />
       </mesh>
+      <mesh>
+        {layer.region?.shape === 'box' ? (
+          <boxGeometry args={((layer.region?.half_extents ?? [2, 2, 2]) as [number, number, number]).map((v) => v * 2) as [number, number, number]} />
+        ) : (
+          <sphereGeometry args={[radius, 16, 12]} />
+        )}
+        <meshBasicMaterial color={color} wireframe transparent opacity={opacity} />
+      </mesh>
     </group>
   );
 }
 
-function LightGizmo({ layer, active, selected }: { layer: VfxLayer; active: boolean; selected: boolean }) {
+function LightGizmo({ layer, active, selected, onSelect }: GizmoProps) {
+  const pos = layer.position ?? [0, 0, 0];
   const light = layer.light;
   const radius = light?.radius ?? 50;
   const color = light ? `rgb(${Math.round(light.color[0] * 255)},${Math.round(light.color[1] * 255)},${Math.round(light.color[2] * 255)})` : '#ffff00';
-  const displayRadius = Math.min(radius * 0.1, 5); // Scale down for viewport
+  const displayRadius = Math.min(radius * 0.1, 5);
   const opacity = active ? 0.7 : 0.2;
 
   return (
-    <group position={[0, 2, 0]}>
+    <group position={pos}>
       {/* Center sphere */}
-      <mesh>
+      <mesh onPointerDown={(e) => { e.stopPropagation(); onSelect(); }}>
         <sphereGeometry args={[0.3, 12, 12]} />
         <meshBasicMaterial color={selected ? '#ffffff' : color} transparent opacity={active ? 0.9 : 0.4} />
       </mesh>
@@ -171,6 +163,7 @@ function LayerGizmos() {
   });
   const playbackTime = useVfxStore((s) => s.playbackTime);
   const selectedLayerId = useVfxStore((s) => s.selectedLayerId);
+  const selectLayer = useVfxStore((s) => s.selectLayer);
   const lightRef = useRef<THREE.PointLight>(null);
 
   // Update dynamic point light for light layers (read ref, no React re-render)
@@ -199,9 +192,11 @@ function LayerGizmos() {
       {(preset.elements ?? []).map((layer) => {
         const active = playbackTime >= (layer.start ?? 0) && playbackTime < (layer.start ?? 0) + (layer.duration ?? 9999);
         const selected = selectedLayerId === layer.id;
-        if (layer.type === 'emitter') return <EmitterGizmo key={layer.id} layer={layer} active={active} selected={selected} />;
-        if (layer.type === 'animation') return <AnimationGizmo key={layer.id} layer={layer} active={active} selected={selected} />;
-        if (layer.type === 'light') return <LightGizmo key={layer.id} layer={layer} active={active} selected={selected} />;
+        const onSelect = () => selectLayer(layer.id);
+        if (layer.type === 'object') return <ObjectGizmo key={layer.id} layer={layer} active={true} selected={selected} onSelect={onSelect} />;
+        if (layer.type === 'emitter') return <EmitterGizmo key={layer.id} layer={layer} active={active} selected={selected} onSelect={onSelect} />;
+        if (layer.type === 'animation') return <AnimationGizmo key={layer.id} layer={layer} active={active} selected={selected} onSelect={onSelect} />;
+        if (layer.type === 'light') return <LightGizmo key={layer.id} layer={layer} active={active} selected={selected} onSelect={onSelect} />;
         return null;
       })}
     </group>

@@ -510,33 +510,106 @@ export function LayerProperties() {
       <div>
         <label style={sectionLabel}>Type</label>
         <select value={layer.type} onChange={(e) => update({ type: e.target.value as LayerType })} style={selectStyle}>
+          <option value="object">Object (PLY)</option>
           <option value="emitter">Emitter</option>
           <option value="animation">Animation</option>
           <option value="light">Light</option>
         </select>
       </div>
 
-      {/* Timing */}
-      <div style={{ display: 'flex', gap: 8 }}>
-        <div style={{ flex: 1 }}>
-          <label style={sectionLabel}>Start (s)</label>
-          <NumberInput value={layer.start ?? 0} min={0} step={0.1}
-            onChange={(v) => update({ start: v })} style={{ ...inputStyle, width: 'auto' }} />
-        </div>
-        <div style={{ flex: 1 }}>
-          <label style={sectionLabel}>Duration (s)</label>
-          <NumberInput value={layer.duration ?? 1} min={0.01} step={0.1}
-            onChange={(v) => update({ duration: v })} style={{ ...inputStyle, width: 'auto' }} />
-        </div>
+      {/* Position (relative to prefab origin) */}
+      <div>
+        <label style={sectionLabel}>Position</label>
+        <Vec3Input value={layer.position ?? [0, 0, 0]}
+          onChange={(v) => update({ position: v })} step={0.5} />
       </div>
 
-      <SectionHeader>
-        {layer.type === 'emitter' ? 'Emitter Config' : layer.type === 'animation' ? 'Animation Config' : 'Light Config'}
-      </SectionHeader>
+      {/* Timing (not for object type) */}
+      {layer.type !== 'object' && (
+        <>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <div style={{ flex: 1 }}>
+              <label style={sectionLabel}>Start (s)</label>
+              <NumberInput value={layer.start ?? 0} min={0} step={0.1}
+                onChange={(v) => update({ start: v })} style={{ ...inputStyle, width: 'auto' }} />
+            </div>
+            <div style={{ flex: 1 }}>
+              <label style={sectionLabel}>Duration (s)</label>
+              <NumberInput value={layer.duration ?? 1} min={0.01} step={0.1}
+                onChange={(v) => update({ duration: v })} style={{ ...inputStyle, width: 'auto' }} />
+            </div>
+          </div>
+
+          {/* Loop */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <label style={sectionLabel}>Loop</label>
+            <input type="checkbox" checked={layer.loop ?? false}
+              onChange={(e) => update({ loop: e.target.checked })} />
+            <span style={{ fontSize: 9, color: T.textMuted }}>
+              {layer.loop ? 'Repeats continuously' : 'Plays once'}
+            </span>
+          </div>
+        </>
+      )}
+
+      {/* Type-specific config */}
+      {layer.type !== 'object' && (
+        <SectionHeader>
+          {layer.type === 'emitter' ? 'Emitter Config' : layer.type === 'animation' ? 'Animation Config' : 'Light Config'}
+        </SectionHeader>
+      )}
+
+      {/* Object editor */}
+      {layer.type === 'object' && (
+        <>
+          <SectionHeader>Object Config</SectionHeader>
+          <div>
+            <label style={sectionLabel}>PLY File</label>
+            <input type="text" value={layer.ply_file ?? ''}
+              onChange={(e) => update({ ply_file: e.target.value })}
+              placeholder="path/to/model.ply" style={inputStyle} />
+          </div>
+          <div>
+            <label style={sectionLabel}>Scale</label>
+            <NumberInput value={layer.scale ?? 1} min={0.01} step={0.1}
+              onChange={(v) => update({ scale: v })} style={{ ...inputStyle, width: 'auto' }} />
+          </div>
+        </>
+      )}
 
       {/* Type-specific config editors */}
       {layer.type === 'emitter' && <EmitterEditor layer={layer} update={update} />}
-      {layer.type === 'animation' && <AnimationEditor layer={layer} update={update} />}
+      {layer.type === 'animation' && (
+        <>
+          <AnimationEditor layer={layer} update={update} />
+          <SectionHeader>Region</SectionHeader>
+          <div>
+            <label style={sectionLabel}>Shape</label>
+            <select value={layer.region?.shape ?? 'sphere'}
+              onChange={(e) => update({ region: { ...layer.region, shape: e.target.value, radius: layer.region?.radius ?? 5 } })}
+              style={selectStyle}>
+              <option value="sphere">Sphere</option>
+              <option value="box">Box</option>
+            </select>
+          </div>
+          {(layer.region?.shape ?? 'sphere') === 'sphere' && (
+            <div>
+              <label style={sectionLabel}>Radius</label>
+              <NumberInput value={layer.region?.radius ?? 5} min={0.1} step={0.5}
+                onChange={(v) => update({ region: { ...layer.region, shape: 'sphere', radius: v } })}
+                style={{ ...inputStyle, width: 'auto' }} />
+            </div>
+          )}
+          {layer.region?.shape === 'box' && (
+            <div>
+              <label style={sectionLabel}>Half Extents</label>
+              <Vec3Input value={layer.region?.half_extents ?? [2, 2, 2]}
+                onChange={(v) => update({ region: { ...layer.region, shape: 'box', half_extents: v } })}
+                step={0.5} />
+            </div>
+          )}
+        </>
+      )}
       {layer.type === 'light' && <LightEditor layer={layer} update={update} />}
     </div>
   );
