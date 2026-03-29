@@ -780,7 +780,13 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
             glm::mat4 gs_vp = gs_proj_ * gs_view_;
             auto visible = gs_chunk_grid_.visible_chunks(gs_vp);
 
-            if (visible != gs_prev_visible_) {
+            // Force re-gather when LOD budget changes
+            bool budget_changed = (gs_gaussian_budget_ != gs_prev_budget_);
+            if (budget_changed) {
+                gs_prev_budget_ = gs_gaussian_budget_;
+            }
+
+            if (visible != gs_prev_visible_ || budget_changed) {
                 if (gs_budget_locked_) {
                     gs_budget_locked_ = false;
                     gs_stable_frame_count_ = 0;

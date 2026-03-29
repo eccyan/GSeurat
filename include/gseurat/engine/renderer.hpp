@@ -236,6 +236,7 @@ private:
     static constexpr uint32_t kGsStableFramesNeeded = 30;  // ~0.5s at 60fps
     float gs_blit_offset_x_ = 0.0f;
     float gs_blit_offset_y_ = 0.0f;
+    uint32_t gs_prev_budget_ = 0;
 
     // Persistent post-process params (modified by Staging panels)
     PostProcessParams pp_params_;
