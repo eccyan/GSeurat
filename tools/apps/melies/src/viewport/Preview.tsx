@@ -122,7 +122,7 @@ function ObjectGizmo({ layer, selected, onSelect }: GizmoProps) {
       void main() {
         vColor = aColor;
         vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-        gl_PointSize = max(1.5 * aScale, 0.5) * uPixelRatio * (100.0 / -mvPosition.z);
+        gl_PointSize = max(0.5 * aScale, 0.5) * uPixelRatio * (20.0 / -mvPosition.z);
         gl_Position = projectionMatrix * mvPosition;
       }
     `,
