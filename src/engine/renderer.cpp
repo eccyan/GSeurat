@@ -568,6 +568,9 @@ void Renderer::shutdown() {
     bg_descriptor_sets_.clear();
     if (font_initialized_) {
         destroy_tex(font_texture_);
+        if (white_pixel_initialized_) {
+            white_pixel_tex_.destroy(context_.device(), context_.allocator());
+        }
         for (auto& buf : ui_uniform_buffers_) {
             buf.destroy(context_.allocator());
         }

@@ -28,6 +28,16 @@ void VkContext::init(GLFWwindow* window) {
 }
 
 void VkContext::shutdown() {
+#ifndef NDEBUG
+    // Log remaining VMA allocations to help diagnose leaks
+    VmaTotalStatistics stats{};
+    vmaCalculateStatistics(allocator_, &stats);
+    if (stats.total.statistics.allocationCount > 0) {
+        std::cerr << "[VMA] WARNING: " << stats.total.statistics.allocationCount
+                  << " allocations still alive ("
+                  << stats.total.statistics.allocationBytes << " bytes) at shutdown\n";
+    }
+#endif
     vmaDestroyAllocator(allocator_);
     vkDestroyDevice(device_, nullptr);
     vkDestroySurfaceKHR(instance_, surface_, nullptr);
