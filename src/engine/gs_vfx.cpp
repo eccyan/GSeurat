@@ -145,8 +145,10 @@ void VfxInstance::init(const VfxPreset& preset, const glm::vec3& position, bool 
 void VfxInstance::update(float dt, std::vector<Gaussian>& out_buffer, GaussianAnimator& animator) {
     if (finished_) return;
 
-    // Object Gaussians are added to the scene buffer by the Renderer
-    // (not appended per-frame) so they don't consume particle headroom.
+    // Append static object Gaussians (SSBO capacity grown by Renderer on init)
+    if (!object_gaussians_.empty()) {
+        out_buffer.insert(out_buffer.end(), object_gaussians_.begin(), object_gaussians_.end());
+    }
 
     elapsed_ += dt;
 
