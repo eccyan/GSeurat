@@ -859,9 +859,9 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
                         [](const GaussianParticleEmitter& e) { return !e.active() && e.alive_count() == 0; }),
                     gs_particle_emitters_.end());
 
-                // Update VFX instances (timeline + emitters)
+                // Update VFX instances (timeline + emitters + animations)
                 for (auto& inst : vfx_instances_) {
-                    inst.update(dt, gs_active_buffer_);
+                    inst.update(dt, gs_active_buffer_, gs_animator_);
                 }
                 std::erase_if(vfx_instances_,
                     [](const VfxInstance& i) { return i.is_finished(); });

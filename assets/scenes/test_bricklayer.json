@@ -177,9 +177,9 @@
     {
       "vfx_file": "assets/vfx/vfx1.vfx.json",
       "position": [
+        128,
         64,
-        0,
-        0
+        24
       ]
     }
   ]
