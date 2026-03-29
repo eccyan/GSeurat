@@ -324,11 +324,15 @@ export function Preview({ scenePoints }: { scenePoints: PlyPoint[] }) {
   const showGizmos = useVfxStore((s) => s.showGizmos);
   const showPointCloud = useVfxStore((s) => s.showPointCloud);
   const sceneGeoRef = useRef<THREE.BufferGeometry | null>(null);
-  const objectPointsRef = useRef<Map<string, { points: PlyPoint[]; scale: number }>>(new Map());
+  const [objectPointsMap, setObjectPointsMap] = useState<Map<string, { points: PlyPoint[]; scale: number }>>(new Map());
   const objectGeoRefsRef = useRef<Map<string, React.MutableRefObject<THREE.BufferGeometry | null>>>(new Map());
 
   const handleObjectPointsLoaded = useCallback((layerId: string, points: PlyPoint[], scale: number) => {
-    objectPointsRef.current.set(layerId, { points, scale });
+    setObjectPointsMap((prev) => {
+      const next = new Map(prev);
+      next.set(layerId, { points, scale });
+      return next;
+    });
   }, []);
 
   // Callback for AnimationSystem to update point cloud geometry
@@ -364,7 +368,7 @@ export function Preview({ scenePoints }: { scenePoints: PlyPoint[] }) {
         {scenePoints.length > 0 && showPointCloud && <GaussianPointCloud points={scenePoints} geoRef={sceneGeoRef} />}
         <LayerGizmos showGizmos={showGizmos} onObjectPointsLoaded={handleObjectPointsLoaded} objectGeoRefs={objectGeoRefsRef} />
         <ParticleSystem />
-        <AnimationSystem scenePoints={scenePoints} objectPointsMap={objectPointsRef.current}
+        <AnimationSystem scenePoints={scenePoints} objectPointsMap={objectPointsMap}
           objectGeoRefs={objectGeoRefsRef.current} onUpdateGeometry={handleUpdateGeometry} />
         <OrbitControls />
       </Canvas>
