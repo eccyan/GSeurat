@@ -121,15 +121,22 @@ export function AnimationSystem({ scenePoints, onUpdateGeometry }: {
         const infiniteLifetimeEffects = ['wave', 'pulse'];
         const lifetime = infiniteLifetimeEffects.includes(effectName) ? 9999 : (layer.duration ?? 9999);
 
-        // Use element position + region (default: sphere at origin, radius 999 for full scene)
+        // Build region object with element position as center
         const pos = layer.position ?? [0, 0, 0];
-        const radius = layer.region?.radius ?? 999;
+        const regionObj: Record<string, unknown> = {
+          shape: layer.region?.shape ?? 'sphere',
+          center: pos,
+          radius: layer.region?.radius ?? 999,
+        };
+        if (layer.region?.half_extents) regionObj.half_extents = layer.region.half_extents;
 
         let groupId: number;
-        if (params && Object.keys(params).length > 0) {
-          groupId = animatorRef.current.tagSphereWithParams(pos[0], pos[1], pos[2], radius, effect, lifetime, params);
+        if (animatorRef.current.tagRegionWithParams) {
+          groupId = animatorRef.current.tagRegionWithParams(regionObj, effect, lifetime, params ?? {});
+        } else if (params && Object.keys(params).length > 0) {
+          groupId = animatorRef.current.tagSphereWithParams(pos[0], pos[1], pos[2], regionObj.radius as number, effect, lifetime, params);
         } else {
-          groupId = animatorRef.current.tagSphere(pos[0], pos[1], pos[2], radius, effect, lifetime);
+          groupId = animatorRef.current.tagSphere(pos[0], pos[1], pos[2], regionObj.radius as number, effect, lifetime);
         }
         activeGroups.set(layer.id, groupId);
       } else if (!isActive && hasGroup) {
