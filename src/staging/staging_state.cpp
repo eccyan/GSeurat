@@ -230,15 +230,6 @@ void StagingState::draw_render_settings(AppBase& app) {
         ImGui::SliderFloat("Radius##vig", &pp.vignette_radius, 0.0f, 1.5f);
         ImGui::SliderFloat("Softness##vig", &pp.vignette_softness, 0.0f, 1.0f);
     }
-    if (ImGui::CollapsingHeader("Fog")) {
-        ImGui::SliderFloat("Density##fog", &pp.fog_density, 0.0f, 1.0f);
-        float fog_color[3] = {pp.fog_color_r, pp.fog_color_g, pp.fog_color_b};
-        if (ImGui::ColorEdit3("Color##fog", fog_color)) {
-            pp.fog_color_r = fog_color[0];
-            pp.fog_color_g = fog_color[1];
-            pp.fog_color_b = fog_color[2];
-        }
-    }
     if (ImGui::CollapsingHeader("God Rays")) {
         float gr = app.renderer().god_rays_intensity();
         if (ImGui::SliderFloat("Intensity##godrays", &gr, 0.0f, 3.0f)) {
@@ -295,31 +286,22 @@ void StagingState::draw_feature_toggles(AppBase& app) {
 
     auto& f = app.feature_flags();
 
-    if (ImGui::CollapsingHeader("Rendering", ImGuiTreeNodeFlags_DefaultOpen)) {
+    if (ImGui::CollapsingHeader("Post-Process", ImGuiTreeNodeFlags_DefaultOpen)) {
         ImGui::Checkbox("Bloom", &f.bloom);
         ImGui::Checkbox("Depth of Field", &f.depth_of_field);
         ImGui::Checkbox("Vignette", &f.vignette);
         ImGui::Checkbox("Tone Mapping", &f.tone_mapping);
-        ImGui::Checkbox("Fog", &f.fog);
         ImGui::Checkbox("Point Lights", &f.point_lights);
+        ImGui::Checkbox("Screen Effects", &f.screen_effects);
     }
-    if (ImGui::CollapsingHeader("GS")) {
+    if (ImGui::CollapsingHeader("GS Pipeline")) {
         ImGui::Checkbox("GS Rendering", &f.gs_rendering);
         ImGui::Checkbox("Chunk Culling", &f.gs_chunk_culling);
         ImGui::Checkbox("LOD", &f.gs_lod);
         ImGui::Checkbox("Adaptive Budget", &f.gs_adaptive_budget);
-        ImGui::Checkbox("Parallax", &f.gs_parallax);
     }
-    if (ImGui::CollapsingHeader("Effects")) {
+    if (ImGui::CollapsingHeader("Scene")) {
         ImGui::Checkbox("Particles", &f.particles);
-        ImGui::Checkbox("Weather", &f.weather);
-        ImGui::Checkbox("Animated Tiles", &f.animated_tiles);
-        ImGui::Checkbox("Screen Effects", &f.screen_effects);
-        ImGui::Checkbox("Camera Shake", &f.camera_shake);
-    }
-    if (ImGui::CollapsingHeader("Audio")) {
-        ImGui::Checkbox("Music", &f.music);
-        ImGui::Checkbox("SFX", &f.sfx);
     }
 
     ImGui::End();
