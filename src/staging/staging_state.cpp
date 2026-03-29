@@ -262,17 +262,6 @@ void StagingState::draw_gs_params(AppBase& app) {
         gs.set_toon_bands(toon);
     }
 
-    int light_mode = gs.light_mode();
-    const char* light_modes[] = {"Off", "Directional", "Point Lights"};
-    if (ImGui::Combo("Light Mode", &light_mode, light_modes, 3)) {
-        gs.set_light_mode(light_mode);
-    }
-
-    float intensity = gs.light_intensity();
-    if (ImGui::SliderFloat("Light Intensity", &intensity, 0.0f, 5.0f)) {
-        gs.set_light_intensity(intensity);
-    }
-
     ImGui::End();
 }
 
@@ -291,7 +280,6 @@ void StagingState::draw_feature_toggles(AppBase& app) {
         ImGui::Checkbox("Depth of Field", &f.depth_of_field);
         ImGui::Checkbox("Vignette", &f.vignette);
         ImGui::Checkbox("Tone Mapping", &f.tone_mapping);
-        ImGui::Checkbox("Point Lights", &f.point_lights);
         ImGui::Checkbox("Screen Effects", &f.screen_effects);
     }
     if (ImGui::CollapsingHeader("GS Pipeline")) {
@@ -308,20 +296,94 @@ void StagingState::draw_feature_toggles(AppBase& app) {
 }
 
 void StagingState::draw_lighting(AppBase& app) {
+    if (!app.renderer().has_gs_cloud()) return;
+
     ImGui::SetNextWindowPos(ImVec2(270, 30), ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize(ImVec2(280, 200), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(ImVec2(300, 400), ImGuiCond_FirstUseEver);
     if (!ImGui::Begin("Lighting")) {
         ImGui::End();
         return;
     }
 
+    auto& gs = app.renderer().gs_renderer();
+
+    // Light mode
+    int light_mode = gs.light_mode();
+    const char* light_modes[] = {"Off", "Directional", "Point Lights"};
+    if (ImGui::Combo("Light Mode", &light_mode, light_modes, 3)) {
+        gs.set_light_mode(light_mode);
+    }
+
+    float intensity = gs.light_intensity();
+    if (ImGui::SliderFloat("Global Intensity", &intensity, 0.0f, 5.0f)) {
+        gs.set_light_intensity(intensity);
+    }
+
+    ImGui::Separator();
+
+    // Ambient
     auto ambient = app.scene().ambient_color();
     float amb[4] = {ambient.r, ambient.g, ambient.b, ambient.a};
     if (ImGui::ColorEdit4("Ambient", amb)) {
         app.scene().set_ambient_color({amb[0], amb[1], amb[2], amb[3]});
     }
 
-    ImGui::Text("Lights: %zu / 8", app.scene().lights().size());
+    ImGui::Separator();
+
+    // Point lights list
+    auto lights = gs.point_lights();  // copy for editing
+    bool lights_changed = false;
+    ImGui::Text("Point Lights: %zu / 8", lights.size());
+
+    for (size_t i = 0; i < lights.size(); i++) {
+        ImGui::PushID(static_cast<int>(i));
+        if (ImGui::CollapsingHeader(("Light " + std::to_string(i)).c_str())) {
+            float pos[3] = {lights[i].position_and_radius.x,
+                            lights[i].position_and_radius.y,
+                            lights[i].position_and_radius.z};
+            if (ImGui::DragFloat3("Position", pos, 0.5f)) {
+                lights[i].position_and_radius.x = pos[0];
+                lights[i].position_and_radius.y = pos[1];
+                lights[i].position_and_radius.z = pos[2];
+                lights_changed = true;
+            }
+            if (ImGui::DragFloat("Radius", &lights[i].position_and_radius.w, 0.5f, 0.1f, 500.0f)) {
+                lights_changed = true;
+            }
+            float col[3] = {lights[i].color.r, lights[i].color.g, lights[i].color.b};
+            if (ImGui::ColorEdit3("Color", col)) {
+                lights[i].color.r = col[0];
+                lights[i].color.g = col[1];
+                lights[i].color.b = col[2];
+                lights_changed = true;
+            }
+            if (ImGui::DragFloat("Intensity##light", &lights[i].color.a, 0.1f, 0.0f, 20.0f)) {
+                lights_changed = true;
+            }
+            if (ImGui::Button("Remove")) {
+                lights.erase(lights.begin() + static_cast<ptrdiff_t>(i));
+                lights_changed = true;
+                ImGui::PopID();
+                break;
+            }
+        }
+        ImGui::PopID();
+    }
+
+    if (lights.size() < 8 && ImGui::Button("+ Add Light")) {
+        PointLight new_light;
+        new_light.position_and_radius = glm::vec4(0.0f, 0.0f, 0.0f, 50.0f);
+        new_light.color = glm::vec4(1.0f, 1.0f, 1.0f, 5.0f);
+        lights.push_back(new_light);
+        lights_changed = true;
+        if (light_mode == 0) {
+            gs.set_light_mode(2);
+        }
+    }
+
+    if (lights_changed) {
+        gs.set_point_lights(lights);
+    }
 
     ImGui::End();
 }
