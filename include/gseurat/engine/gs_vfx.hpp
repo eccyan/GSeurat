@@ -57,6 +57,9 @@ class VfxInstance {
 public:
     void init(const VfxPreset& preset, const glm::vec3& position, bool loop);
 
+    /// Append static object Gaussians to the buffer (call before animator runs).
+    void append_objects(std::vector<Gaussian>& out_buffer);
+
     /// Update timeline, activate/deactivate emitter layers.
     /// Appends active particles to out_buffer.
     /// Tags animation regions on the provided animator.

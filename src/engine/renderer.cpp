@@ -843,7 +843,13 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
                     gs_active_buffer_ = gs_scene_buffer_;
                 }
 
-                // Animate tagged scene Gaussians (Mode 2)
+                // Append VFX object Gaussians BEFORE animator runs,
+                // so animation tag indices remain valid.
+                for (auto& inst : vfx_instances_) {
+                    inst.append_objects(gs_active_buffer_);
+                }
+
+                // Animate tagged scene + object Gaussians (Mode 2)
                 if (gs_animator_.has_active_groups()) {
                     gs_animator_.update(dt, gs_active_buffer_);
                 }
@@ -859,7 +865,7 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
                         [](const GaussianParticleEmitter& e) { return !e.active() && e.alive_count() == 0; }),
                     gs_particle_emitters_.end());
 
-                // Update VFX instances (timeline + emitters + animations)
+                // Update VFX instances (timeline + emitters + animation tagging)
                 for (auto& inst : vfx_instances_) {
                     inst.update(dt, gs_active_buffer_, gs_animator_);
                 }
