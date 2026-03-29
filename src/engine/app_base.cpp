@@ -144,8 +144,8 @@ void AppBase::cleanup() {
     staging_uploader_.shutdown();
     wren_vm_.shutdown();
     audio_.shutdown();
-    renderer_.shutdown();
     resources_.shutdown();
+    renderer_.shutdown();
     glfwDestroyWindow(window_);
     glfwTerminate();
 }

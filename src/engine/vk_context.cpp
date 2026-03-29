@@ -29,7 +29,6 @@ void VkContext::init(GLFWwindow* window) {
 
 void VkContext::shutdown() {
 #ifndef NDEBUG
-    // Log remaining VMA allocations to help diagnose leaks
     VmaTotalStatistics stats{};
     vmaCalculateStatistics(allocator_, &stats);
     if (stats.total.statistics.allocationCount > 0) {

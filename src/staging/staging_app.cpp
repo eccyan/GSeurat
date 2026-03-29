@@ -156,8 +156,10 @@ void StagingApp::cleanup() {
     staging_uploader_.shutdown();
     wren_vm_.shutdown();
     audio_.shutdown();
-    renderer_.shutdown();
+    // ResourceManager must shut down before Renderer, because Renderer::shutdown()
+    // destroys the VMA allocator — any textures still in cache would leak.
     resources_.shutdown();
+    renderer_.shutdown();
     glfwDestroyWindow(window_);
     glfwTerminate();
 }
