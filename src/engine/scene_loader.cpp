@@ -494,8 +494,23 @@ GsEmitterConfig SceneLoader::parse_gs_emitter_config(const nlohmann::json& j) {
     if (j.contains("opacity_start"))    cfg.opacity_start = j["opacity_start"];
     if (j.contains("opacity_end"))      cfg.opacity_end = j["opacity_end"];
     if (j.contains("emission"))         cfg.emission = j["emission"];
-    if (j.contains("spawn_offset_min")) cfg.spawn_offset_min = parse_vec3(j["spawn_offset_min"]);
-    if (j.contains("spawn_offset_max")) cfg.spawn_offset_max = parse_vec3(j["spawn_offset_max"]);
+    // Region-based spawn area (v2) or backward-compat spawn_offset (v1)
+    if (j.contains("region")) {
+        const auto& r = j["region"];
+        std::string shape_str = r.value("shape", "box");
+        cfg.spawn_region.shape = (shape_str == "sphere")
+            ? GsAnimRegion::Shape::Sphere : GsAnimRegion::Shape::Box;
+        if (r.contains("center")) cfg.spawn_region.center = parse_vec3(r["center"]);
+        cfg.spawn_region.radius = r.value("radius", 0.0f);
+        if (r.contains("half_extents")) cfg.spawn_region.half_extents = parse_vec3(r["half_extents"]);
+    } else if (j.contains("spawn_offset_min") && j.contains("spawn_offset_max")) {
+        // Backward compat: convert old offset min/max to box region
+        auto omin = parse_vec3(j["spawn_offset_min"]);
+        auto omax = parse_vec3(j["spawn_offset_max"]);
+        cfg.spawn_region.shape = GsAnimRegion::Shape::Box;
+        cfg.spawn_region.center = (omin + omax) * 0.5f;
+        cfg.spawn_region.half_extents = (omax - omin) * 0.5f;
+    }
     if (j.contains("burst_duration"))   cfg.burst_duration = j["burst_duration"];
 
     return cfg;
@@ -520,8 +535,18 @@ nlohmann::json SceneLoader::gs_emitter_config_json(const GsEmitterData& em) {
     j["opacity_start"] = c.opacity_start;
     j["opacity_end"] = c.opacity_end;
     j["emission"] = c.emission;
-    j["spawn_offset_min"] = vec3_json(c.spawn_offset_min);
-    j["spawn_offset_max"] = vec3_json(c.spawn_offset_max);
+    // Write region instead of deprecated spawn_offset_min/max
+    {
+        nlohmann::json region;
+        region["shape"] = (c.spawn_region.shape == GsAnimRegion::Shape::Sphere) ? "sphere" : "box";
+        if (c.spawn_region.center != glm::vec3(0.0f)) region["center"] = vec3_json(c.spawn_region.center);
+        if (c.spawn_region.shape == GsAnimRegion::Shape::Sphere) {
+            region["radius"] = c.spawn_region.radius;
+        } else {
+            region["half_extents"] = vec3_json(c.spawn_region.half_extents);
+        }
+        j["region"] = region;
+    }
     if (c.burst_duration > 0.0f) j["burst_duration"] = c.burst_duration;
     return j;
 }
