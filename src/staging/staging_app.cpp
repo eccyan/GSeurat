@@ -47,7 +47,10 @@ void StagingApp::init_game_content() {
     renderer_.init_shadows(resources_);
 
     ui_ctx_.init(font_atlas_, text_renderer_);
-    audio_.init("assets");
+
+    // Disable audio in Staging — review tool doesn't need sound
+    feature_flags_.music = false;
+    feature_flags_.sfx = false;
 
     init_imgui();
 }
