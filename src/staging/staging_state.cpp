@@ -168,6 +168,10 @@ void StagingState::draw_imgui(AppBase& app) {
             ImGui::MenuItem("Lighting", nullptr, &show_lighting_);
             ImGui::MenuItem("Camera", nullptr, &show_camera_);
             ImGui::MenuItem("Performance", nullptr, &show_performance_);
+            ImGui::Separator();
+            ImGui::MenuItem("Gizmo: Lights", nullptr, &show_gizmo_lights_);
+            ImGui::MenuItem("Gizmo: Emitters", nullptr, &show_gizmo_emitters_);
+            ImGui::MenuItem("Gizmo: VFX", nullptr, &show_gizmo_vfx_);
             ImGui::EndMenu();
         }
         ImGui::EndMainMenuBar();
@@ -180,6 +184,7 @@ void StagingState::draw_imgui(AppBase& app) {
     draw_lighting(app);
     draw_camera_panel(app);
     draw_performance(app);
+    draw_gizmos(app);
 }
 
 void StagingState::draw_viewport_info(AppBase& app) {
@@ -406,7 +411,7 @@ void StagingState::draw_lighting(AppBase& app) {
 
 void StagingState::draw_camera_panel(AppBase& app) {
     ImGui::SetNextWindowPos(ImVec2(270, 240), ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize(ImVec2(280, 150), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(ImVec2(280, 250), ImGuiCond_FirstUseEver);
     if (!ImGui::Begin("Camera")) {
         ImGui::End();
         return;
@@ -422,6 +427,47 @@ void StagingState::draw_camera_panel(AppBase& app) {
         elevation_ = 0.3f;
         distance_ = 100.0f;
         target_ = glm::vec3(0.0f);
+    }
+
+    // ── Bookmarks ──
+    ImGui::Separator();
+    ImGui::Text("Bookmarks");
+
+    if (ImGui::Button("Save Current")) {
+        CameraBookmark bm;
+        bm.name = "Bookmark " + std::to_string(bookmarks_.size() + 1);
+        bm.azimuth = azimuth_;
+        bm.elevation = elevation_;
+        bm.distance = distance_;
+        bm.target = target_;
+        bookmarks_.push_back(bm);
+    }
+
+    int to_remove = -1;
+    for (size_t i = 0; i < bookmarks_.size(); i++) {
+        ImGui::PushID(static_cast<int>(i));
+        if (ImGui::Button("Go")) {
+            azimuth_ = bookmarks_[i].azimuth;
+            elevation_ = bookmarks_[i].elevation;
+            distance_ = bookmarks_[i].distance;
+            target_ = bookmarks_[i].target;
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("X")) {
+            to_remove = static_cast<int>(i);
+        }
+        ImGui::SameLine();
+        // Editable name
+        char buf[64];
+        std::snprintf(buf, sizeof(buf), "%s", bookmarks_[i].name.c_str());
+        ImGui::SetNextItemWidth(150);
+        if (ImGui::InputText("##name", buf, sizeof(buf))) {
+            bookmarks_[i].name = buf;
+        }
+        ImGui::PopID();
+    }
+    if (to_remove >= 0) {
+        bookmarks_.erase(bookmarks_.begin() + to_remove);
     }
 
     ImGui::End();
@@ -452,6 +498,119 @@ void StagingState::draw_performance(AppBase& app) {
     }
 
     ImGui::End();
+}
+
+// ── Gizmos ──
+
+bool StagingState::project_to_screen(const glm::vec3& world_pos, const glm::mat4& vp,
+                                      float screen_w, float screen_h,
+                                      float& out_x, float& out_y) const {
+    glm::vec4 clip = vp * glm::vec4(world_pos, 1.0f);
+    if (clip.w <= 0.001f) return false;  // behind camera
+    glm::vec3 ndc = glm::vec3(clip) / clip.w;
+    out_x = (ndc.x * 0.5f + 0.5f) * screen_w;
+    out_y = (1.0f - (ndc.y * 0.5f + 0.5f)) * screen_h;  // flip Y
+    return ndc.z >= 0.0f && ndc.z <= 1.0f;
+}
+
+void StagingState::draw_gizmos(AppBase& app) {
+    if (!app.renderer().has_gs_cloud()) return;
+
+    auto& gs = app.renderer().gs_renderer();
+    float aspect = static_cast<float>(gs.output_width()) /
+                   static_cast<float>(gs.output_height());
+
+    // Build VP matrix matching the camera
+    float cos_el = std::cos(elevation_);
+    glm::vec3 eye{
+        target_.x + distance_ * cos_el * std::sin(azimuth_),
+        target_.y + distance_ * std::sin(elevation_),
+        target_.z + distance_ * cos_el * std::cos(azimuth_)
+    };
+    auto view = glm::lookAt(eye, target_, glm::vec3(0, 1, 0));
+    auto proj = glm::perspective(glm::radians(45.0f), aspect, 0.1f, 1000.0f);
+    proj[1][1] *= -1.0f;  // Vulkan Y-flip
+    // But for screen projection we need standard NDC (Y up), so undo the flip
+    proj[1][1] *= -1.0f;
+    glm::mat4 vp = proj * view;
+
+    auto& io = ImGui::GetIO();
+    float sw = io.DisplaySize.x;
+    float sh = io.DisplaySize.y;
+
+    ImDrawList* draw_list = ImGui::GetForegroundDrawList();
+
+    // ── Light gizmos ──
+    if (show_gizmo_lights_) {
+        const auto& lights = gs.point_lights();
+        for (size_t i = 0; i < lights.size(); i++) {
+            // Light position: (x, y=scene_z, z=height)
+            glm::vec3 pos(lights[i].position_and_radius.x,
+                          lights[i].position_and_radius.z,  // height stored in z
+                          lights[i].position_and_radius.y);
+            float sx, sy;
+            if (!project_to_screen(pos, vp, sw, sh, sx, sy)) continue;
+
+            ImU32 col = ImGui::ColorConvertFloat4ToU32(
+                ImVec4(lights[i].color.r, lights[i].color.g, lights[i].color.b, 0.8f));
+
+            // Outer circle (radius indicator — approximate screen-space size)
+            float radius_world = lights[i].position_and_radius.w;
+            glm::vec3 edge_pos = pos + glm::vec3(radius_world, 0.0f, 0.0f);
+            float ex, ey;
+            float screen_radius = 20.0f;  // fallback
+            if (project_to_screen(edge_pos, vp, sw, sh, ex, ey)) {
+                screen_radius = std::abs(ex - sx);
+                screen_radius = std::clamp(screen_radius, 5.0f, 200.0f);
+            }
+
+            draw_list->AddCircle(ImVec2(sx, sy), screen_radius, col, 32, 1.5f);
+            draw_list->AddCircleFilled(ImVec2(sx, sy), 4.0f, col);
+
+            // Label
+            char label[32];
+            std::snprintf(label, sizeof(label), "L%zu", i);
+            draw_list->AddText(ImVec2(sx + 6, sy - 12), col, label);
+        }
+    }
+
+    // ── Emitter gizmos ──
+    if (show_gizmo_emitters_) {
+        ImU32 emitter_col = IM_COL32(255, 100, 50, 200);  // orange
+        auto& emitters = app.renderer().gs_particle_emitters();
+        for (size_t i = 0; i < emitters.size(); i++) {
+            auto pos = emitters[i].config().position;
+            float sx, sy;
+            if (!project_to_screen(pos, vp, sw, sh, sx, sy)) continue;
+
+            draw_list->AddCircleFilled(ImVec2(sx, sy), 5.0f, emitter_col);
+            draw_list->AddCircle(ImVec2(sx, sy), 10.0f, emitter_col, 16, 1.0f);
+
+            char label[32];
+            std::snprintf(label, sizeof(label), "E%zu", i);
+            draw_list->AddText(ImVec2(sx + 8, sy - 10), emitter_col, label);
+        }
+    }
+
+    // ── VFX instance gizmos ──
+    if (show_gizmo_vfx_) {
+        ImU32 vfx_col = IM_COL32(100, 200, 255, 200);  // cyan
+        const auto& vfx = app.renderer().vfx_instances();
+        for (size_t i = 0; i < vfx.size(); i++) {
+            auto pos = vfx[i].position();
+            float sx, sy;
+            if (!project_to_screen(pos, vp, sw, sh, sx, sy)) continue;
+
+            // Diamond shape
+            float d = 7.0f;
+            draw_list->AddQuadFilled(
+                ImVec2(sx, sy - d), ImVec2(sx + d, sy),
+                ImVec2(sx, sy + d), ImVec2(sx - d, sy), vfx_col);
+
+            const char* name = vfx[i].preset().name.c_str();
+            draw_list->AddText(ImVec2(sx + 10, sy - 8), vfx_col, name);
+        }
+    }
 }
 
 }  // namespace gseurat
