@@ -431,13 +431,17 @@ void Renderer::draw_scene(Scene& scene,
     }
 
     // ===== Pass 2-4: Post-processing (bloom extract, blur H, blur V) + begin composite =====
-    PostProcessParams pp_params;
+    // Start from persistent params (modified by Staging panels), then apply per-frame overrides
+    PostProcessParams pp_params = pp_params_;
     pp_params.dof_near_plane = camera_.near_plane();
     pp_params.dof_far_plane = camera_.far_plane();
-    pp_params.fog_density = scene.fog_density();
-    pp_params.fog_color_r = scene.fog_color().r;
-    pp_params.fog_color_g = scene.fog_color().g;
-    pp_params.fog_color_b = scene.fog_color().b;
+    // Only override fog from scene if not already set by panels
+    if (pp_params.fog_density == 0.0f) {
+        pp_params.fog_density = scene.fog_density();
+        pp_params.fog_color_r = scene.fog_color().r;
+        pp_params.fog_color_g = scene.fog_color().g;
+        pp_params.fog_color_b = scene.fog_color().b;
+    }
 
     // Apply feature flags to post-process
     if (!flags.bloom) pp_params.bloom_intensity = 0.0f;
@@ -478,6 +482,11 @@ void Renderer::draw_scene(Scene& scene,
 
     // End composite render pass
     vkCmdEndRenderPass(cmd);
+
+    // Overlay callback (e.g., ImGui render pass)
+    if (overlay_callback_) {
+        overlay_callback_(cmd, image_index);
+    }
 
     // Screenshot: copy swapchain image to staging buffer
     bool screenshot_requested = screenshot_.has_pending();

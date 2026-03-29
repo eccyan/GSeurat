@@ -25,6 +25,7 @@
 #include "gseurat/engine/vk_context.hpp"
 
 #include <array>
+#include <functional>
 #include <optional>
 #include <string>
 #include <vector>
@@ -79,6 +80,9 @@ public:
     void set_god_rays_intensity(float v) { god_rays_intensity_ = v; }
     float god_rays_intensity() const { return god_rays_intensity_; }
 
+    PostProcessParams& post_process_params() { return pp_params_; }
+    const PostProcessParams& post_process_params() const { return pp_params_; }
+
     // Gaussian particle emitters
     void add_gs_particle_emitter(const GsEmitterConfig& config);
     void clear_gs_particle_emitters();
@@ -122,6 +126,13 @@ public:
 
     VkContext& context() { return context_; }
     CommandPool& command_pool() { return command_pool_; }
+    Swapchain& swapchain() { return swapchain_; }
+    PostProcessPipeline& post_process() { return post_process_; }
+
+    // Overlay callback: called after composite pass with (cmd, swapchain_image_index)
+    // Used by Staging app to inject ImGui render pass
+    using OverlayCallback = std::function<void(VkCommandBuffer, uint32_t)>;
+    void set_overlay_callback(OverlayCallback cb) { overlay_callback_ = std::move(cb); }
 
 private:
     void create_sprite_pipeline();
@@ -225,8 +236,14 @@ private:
     float gs_blit_offset_x_ = 0.0f;
     float gs_blit_offset_y_ = 0.0f;
 
+    // Persistent post-process params (modified by Staging panels)
+    PostProcessParams pp_params_;
+
     // Screenshot capture
     ScreenshotCapture screenshot_;
+
+    // Overlay callback (ImGui rendering hook)
+    OverlayCallback overlay_callback_;
 };
 
 }  // namespace gseurat
