@@ -257,16 +257,38 @@ function EmitterEditor({ layer, update }: {
         </div>
       </div>
 
+      {/* Spawn Region */}
+      <SectionHeader>Spawn Region</SectionHeader>
       <div>
-        <label style={sectionLabel}>Spawn Offset Min</label>
-        <Vec3Input value={cfg.spawn_offset_min} step={0.5}
-          onChange={(v) => set({ spawn_offset_min: v })} />
+        <label style={sectionLabel}>Shape</label>
+        <select value={cfg.region?.shape ?? 'box'}
+          onChange={(e) => set({ region: { ...cfg.region, shape: e.target.value as 'sphere' | 'box' } })}
+          style={selectStyle}>
+          <option value="box">Box</option>
+          <option value="sphere">Sphere</option>
+        </select>
       </div>
-      <div>
-        <label style={sectionLabel}>Spawn Offset Max</label>
-        <Vec3Input value={cfg.spawn_offset_max} step={0.5}
-          onChange={(v) => set({ spawn_offset_max: v })} />
-      </div>
+      {(cfg.region?.shape ?? 'box') === 'sphere' ? (
+        <div>
+          <label style={sectionLabel}>Radius</label>
+          <NumberInput value={cfg.region?.radius ?? 1} min={0} step={0.5}
+            onChange={(v) => set({ region: { ...cfg.region, shape: 'sphere', radius: v } })}
+            style={{ ...inputStyle, width: 'auto' }} />
+        </div>
+      ) : (
+        <>
+          <div>
+            <label style={sectionLabel}>Half Extents</label>
+            <Vec3Input value={cfg.region?.half_extents ?? [1, 1, 1]} step={0.5}
+              onChange={(v) => set({ region: { ...cfg.region, shape: 'box', half_extents: v } })} />
+          </div>
+          <div>
+            <label style={sectionLabel}>Center Offset</label>
+            <Vec3Input value={cfg.region?.center ?? [0, 0, 0]} step={0.5}
+              onChange={(v) => set({ region: { ...cfg.region, shape: 'box', center: v } })} />
+          </div>
+        </>
+      )}
 
       <div>
         <label style={sectionLabel}>Burst Duration</label>

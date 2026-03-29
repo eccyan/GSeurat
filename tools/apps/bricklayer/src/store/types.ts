@@ -228,8 +228,7 @@ export interface GsParticleEmitterData {
   opacity_start: number;
   opacity_end: number;
   emission: number;
-  spawn_offset_min: [number, number, number];
-  spawn_offset_max: [number, number, number];
+  spawn_region: { shape: string; center?: [number, number, number]; radius?: number; half_extents?: [number, number, number] };
   burst_duration: number;
 }
 

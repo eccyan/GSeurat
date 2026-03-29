@@ -72,8 +72,26 @@ GsEmitterConfig configFromJs(val jsConfig) {
     if (jsConfig.hasOwnProperty("color_end")) cfg.color_end = readVec3("color_end");
     if (jsConfig.hasOwnProperty("scale_min")) cfg.scale_min = readVec3("scale_min");
     if (jsConfig.hasOwnProperty("scale_max")) cfg.scale_max = readVec3("scale_max");
-    if (jsConfig.hasOwnProperty("spawn_offset_min")) cfg.spawn_offset_min = readVec3("spawn_offset_min");
-    if (jsConfig.hasOwnProperty("spawn_offset_max")) cfg.spawn_offset_max = readVec3("spawn_offset_max");
+    // Region-based spawn area (v2) or backward-compat spawn_offset (v1)
+    if (jsConfig.hasOwnProperty("region")) {
+        val r = jsConfig["region"];
+        std::string shape = r.hasOwnProperty("shape") ? r["shape"].as<std::string>() : "box";
+        cfg.spawn_region.shape = (shape == "sphere")
+            ? GsAnimRegion::Shape::Sphere : GsAnimRegion::Shape::Box;
+        if (r.hasOwnProperty("center")) {
+            cfg.spawn_region.center = {r["center"][0].as<float>(), r["center"][1].as<float>(), r["center"][2].as<float>()};
+        }
+        if (r.hasOwnProperty("radius")) cfg.spawn_region.radius = r["radius"].as<float>();
+        if (r.hasOwnProperty("half_extents")) {
+            cfg.spawn_region.half_extents = {r["half_extents"][0].as<float>(), r["half_extents"][1].as<float>(), r["half_extents"][2].as<float>()};
+        }
+    } else if (jsConfig.hasOwnProperty("spawn_offset_min") && jsConfig.hasOwnProperty("spawn_offset_max")) {
+        auto omin = readVec3("spawn_offset_min");
+        auto omax = readVec3("spawn_offset_max");
+        cfg.spawn_region.shape = GsAnimRegion::Shape::Box;
+        cfg.spawn_region.center = (omin + omax) * 0.5f;
+        cfg.spawn_region.half_extents = (omax - omin) * 0.5f;
+    }
     return cfg;
 }
 
@@ -100,8 +118,16 @@ val resolvePresetJs(const std::string& name) {
     obj.set("color_end", toArr(cfg->color_end));
     obj.set("scale_min", toArr(cfg->scale_min));
     obj.set("scale_max", toArr(cfg->scale_max));
-    obj.set("spawn_offset_min", toArr(cfg->spawn_offset_min));
-    obj.set("spawn_offset_max", toArr(cfg->spawn_offset_max));
+    // Write region instead of deprecated spawn_offset
+    val region = val::object();
+    region.set("shape", cfg->spawn_region.shape == GsAnimRegion::Shape::Sphere ? std::string("sphere") : std::string("box"));
+    if (cfg->spawn_region.center != glm::vec3(0.0f)) region.set("center", toArr(cfg->spawn_region.center));
+    if (cfg->spawn_region.shape == GsAnimRegion::Shape::Sphere) {
+        region.set("radius", cfg->spawn_region.radius);
+    } else {
+        region.set("half_extents", toArr(cfg->spawn_region.half_extents));
+    }
+    obj.set("region", region);
     return obj;
 }
 

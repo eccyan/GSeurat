@@ -43,11 +43,26 @@ void GaussianParticleEmitter::set_active(bool active) {
     }
 }
 
+glm::vec3 GaussianParticleEmitter::sample_point_in_region(const GsAnimRegion& region) {
+    if (region.shape == GsAnimRegion::Shape::Box) {
+        return region.center + random_vec3(-region.half_extents, region.half_extents);
+    }
+    // Sphere: uniform volume sampling via cbrt for radial component
+    float u = random_float(0.0f, 1.0f);
+    float r = region.radius * std::cbrt(u);  // uniform volume distribution
+    float theta = random_float(0.0f, 6.2831853f);
+    float phi = std::acos(random_float(-1.0f, 1.0f));
+    return region.center + glm::vec3(
+        r * std::sin(phi) * std::cos(theta),
+        r * std::cos(phi),
+        r * std::sin(phi) * std::sin(theta));
+}
+
 void GaussianParticleEmitter::spawn_particle() {
     auto& p = pool_[next_index_ % kMaxGsParticles];
     next_index_++;
 
-    p.position = config_.position + random_vec3(config_.spawn_offset_min, config_.spawn_offset_max);
+    p.position = config_.position + sample_point_in_region(config_.spawn_region);
     p.velocity = random_vec3(config_.velocity_min, config_.velocity_max);
     p.acceleration = config_.acceleration;
     p.color_start = config_.color_start;
@@ -137,6 +152,15 @@ uint32_t GaussianParticleEmitter::alive_count() const {
     return n;
 }
 
+// Helper: convert old min/max offset to box region
+static GsAnimRegion box_region_from_offsets(const glm::vec3& min, const glm::vec3& max) {
+    GsAnimRegion r;
+    r.shape = GsAnimRegion::Shape::Box;
+    r.center = (min + max) * 0.5f;
+    r.half_extents = (max - min) * 0.5f;
+    return r;
+}
+
 // --- Presets ---
 
 GsEmitterConfig gs_preset_dust_puff() {
@@ -154,8 +178,7 @@ GsEmitterConfig gs_preset_dust_puff() {
     c.scale_end_factor = 0.1f;
     c.opacity_start = 0.4f;
     c.opacity_end = 0.0f;
-    c.spawn_offset_min = {-2.0f, 0.0f, -2.0f};
-    c.spawn_offset_max = { 2.0f, 1.0f,  2.0f};
+    c.spawn_region = box_region_from_offsets({-2.0f, 0.0f, -2.0f}, {2.0f, 1.0f, 2.0f});
     c.burst_duration = 0.3f;
     return c;
 }
@@ -176,8 +199,7 @@ GsEmitterConfig gs_preset_spark_shower() {
     c.opacity_start = 0.5f;
     c.opacity_end = 0.0f;
     c.emission = 0.8f;
-    c.spawn_offset_min = {-1.0f, 0.0f, -1.0f};
-    c.spawn_offset_max = { 1.0f, 1.0f,  1.0f};
+    c.spawn_region = box_region_from_offsets({-1.0f, 0.0f, -1.0f}, {1.0f, 1.0f, 1.0f});
     c.burst_duration = 0.5f;  // half-second burst then stop
     return c;
 }
@@ -198,8 +220,7 @@ GsEmitterConfig gs_preset_magic_spiral() {
     c.opacity_start = 0.9f;
     c.opacity_end = 0.0f;
     c.emission = 0.0f;
-    c.spawn_offset_min = {-1.0f, -0.5f, -1.0f};
-    c.spawn_offset_max = { 1.0f,  0.5f,  1.0f};
+    c.spawn_region = box_region_from_offsets({-1.0f, -0.5f, -1.0f}, {1.0f, 0.5f, 1.0f});
     c.burst_duration = 1.0f;
     return c;
 }
@@ -220,8 +241,7 @@ GsEmitterConfig gs_preset_fire() {
     c.opacity_start = 0.8f;
     c.opacity_end = 0.0f;
     c.emission = 1.5f;
-    c.spawn_offset_min = {-0.5f, 0.0f, -0.5f};
-    c.spawn_offset_max = { 0.5f, 0.5f,  0.5f};
+    c.spawn_region = box_region_from_offsets({-0.5f, 0.0f, -0.5f}, {0.5f, 0.5f, 0.5f});
     c.burst_duration = 0.0f;
     return c;
 }
@@ -242,8 +262,7 @@ GsEmitterConfig gs_preset_smoke() {
     c.opacity_start = 0.5f;
     c.opacity_end = 0.0f;
     c.emission = 0.0f;
-    c.spawn_offset_min = {-1.0f, 0.0f, -1.0f};
-    c.spawn_offset_max = { 1.0f, 0.5f,  1.0f};
+    c.spawn_region = box_region_from_offsets({-1.0f, 0.0f, -1.0f}, {1.0f, 0.5f, 1.0f});
     c.burst_duration = 0.0f;
     return c;
 }
@@ -264,8 +283,7 @@ GsEmitterConfig gs_preset_rain() {
     c.opacity_start = 0.4f;
     c.opacity_end = 0.1f;
     c.emission = 0.0f;
-    c.spawn_offset_min = {-15.0f, 10.0f, -15.0f};
-    c.spawn_offset_max = { 15.0f, 15.0f,  15.0f};
+    c.spawn_region = box_region_from_offsets({-15.0f, 10.0f, -15.0f}, {15.0f, 15.0f, 15.0f});
     c.burst_duration = 0.0f;
     return c;
 }
@@ -286,8 +304,7 @@ GsEmitterConfig gs_preset_snow() {
     c.opacity_start = 0.7f;
     c.opacity_end = 0.0f;
     c.emission = 0.0f;
-    c.spawn_offset_min = {-12.0f, 8.0f, -12.0f};
-    c.spawn_offset_max = { 12.0f, 12.0f,  12.0f};
+    c.spawn_region = box_region_from_offsets({-12.0f, 8.0f, -12.0f}, {12.0f, 12.0f, 12.0f});
     c.burst_duration = 0.0f;
     return c;
 }
@@ -308,8 +325,7 @@ GsEmitterConfig gs_preset_leaves() {
     c.opacity_start = 0.9f;
     c.opacity_end = 0.2f;
     c.emission = 0.0f;
-    c.spawn_offset_min = {-8.0f, 5.0f, -8.0f};
-    c.spawn_offset_max = { 8.0f, 10.0f,  8.0f};
+    c.spawn_region = box_region_from_offsets({-8.0f, 5.0f, -8.0f}, {8.0f, 10.0f, 8.0f});
     c.burst_duration = 0.0f;
     return c;
 }
@@ -330,8 +346,7 @@ GsEmitterConfig gs_preset_fireflies() {
     c.opacity_start = 0.8f;
     c.opacity_end = 0.0f;
     c.emission = 1.0f;
-    c.spawn_offset_min = {-6.0f, 0.5f, -6.0f};
-    c.spawn_offset_max = { 6.0f, 4.0f,  6.0f};
+    c.spawn_region = box_region_from_offsets({-6.0f, 0.5f, -6.0f}, {6.0f, 4.0f, 6.0f});
     c.burst_duration = 0.0f;
     return c;
 }
@@ -352,8 +367,7 @@ GsEmitterConfig gs_preset_steam() {
     c.opacity_start = 0.4f;
     c.opacity_end = 0.0f;
     c.emission = 0.0f;
-    c.spawn_offset_min = {-0.5f, 0.0f, -0.5f};
-    c.spawn_offset_max = { 0.5f, 0.3f,  0.5f};
+    c.spawn_region = box_region_from_offsets({-0.5f, 0.0f, -0.5f}, {0.5f, 0.3f, 0.5f});
     c.burst_duration = 0.0f;
     return c;
 }
@@ -374,8 +388,7 @@ GsEmitterConfig gs_preset_waterfall_mist() {
     c.opacity_start = 0.35f;
     c.opacity_end = 0.0f;
     c.emission = 0.0f;
-    c.spawn_offset_min = {-3.0f, -0.5f, -3.0f};
-    c.spawn_offset_max = { 3.0f,  1.0f,  3.0f};
+    c.spawn_region = box_region_from_offsets({-3.0f, -0.5f, -3.0f}, {3.0f, 1.0f, 3.0f});
     c.burst_duration = 0.0f;
     return c;
 }

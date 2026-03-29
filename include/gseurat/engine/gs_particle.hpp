@@ -1,6 +1,7 @@
 #pragma once
 
 #include "gseurat/engine/gaussian_cloud.hpp"
+#include "gseurat/engine/gs_animator.hpp"  // for GsAnimRegion
 
 #include <array>
 #include <glm/glm.hpp>
@@ -46,8 +47,7 @@ struct GsEmitterConfig {
     float opacity_start = 1.0f;
     float opacity_end = 0.0f;
     float emission = 0.0f;
-    glm::vec3 spawn_offset_min{0.0f};
-    glm::vec3 spawn_offset_max{0.0f};
+    GsAnimRegion spawn_region;  // particles spawn randomly within this region (default: point)
     float burst_duration = 0.0f;  // >0 = auto-deactivate after this many seconds, 0 = continuous
 };
 
@@ -71,6 +71,7 @@ public:
 private:
     float random_float(float min_val, float max_val);
     glm::vec3 random_vec3(const glm::vec3& min_val, const glm::vec3& max_val);
+    glm::vec3 sample_point_in_region(const GsAnimRegion& region);
     void spawn_particle();
 
     GsEmitterConfig config_;

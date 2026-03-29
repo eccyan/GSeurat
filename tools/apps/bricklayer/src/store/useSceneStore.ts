@@ -725,8 +725,7 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
       opacity_start: 1,
       opacity_end: 0,
       emission: 0,
-      spawn_offset_min: [0, 0, 0],
-      spawn_offset_max: [0, 0, 0],
+      spawn_region: { shape: 'box', half_extents: [0, 0, 0] },
       burst_duration: 0,
     };
     set({ gsParticleEmitters: [...get().gsParticleEmitters, emitter], isDirty: true });
