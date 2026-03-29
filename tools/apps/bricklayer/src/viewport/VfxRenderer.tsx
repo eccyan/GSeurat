@@ -157,13 +157,141 @@ function EmitterLayerRenderer({ layer, instancePos }: {
   );
 }
 
+// ── Object PLY renderer (loads and renders a PLY point cloud) ──
+
+function ObjectLayerRenderer({ layer, instancePos }: {
+  layer: VfxElementData;
+  instancePos: [number, number, number];
+}) {
+  const [geometry, setGeometry] = useState<THREE.BufferGeometry | null>(null);
+  const elPos = layer.position ?? [0, 0, 0];
+  const scale = layer.scale ?? 1;
+
+  useEffect(() => {
+    if (!layer.ply_file) return;
+    // Try loading PLY from project directory
+    const store = useSceneStore.getState();
+    const handle = store.projectHandle;
+    if (!handle) return;
+
+    (async () => {
+      try {
+        // Navigate to the file
+        const parts = layer.ply_file!.split('/');
+        let dir: FileSystemDirectoryHandle = handle;
+        for (let i = 0; i < parts.length - 1; i++) {
+          dir = await dir.getDirectoryHandle(parts[i]);
+        }
+        const fh = await dir.getFileHandle(parts[parts.length - 1]);
+        const file = await fh.getFile();
+        const buffer = await file.arrayBuffer();
+
+        // Minimal PLY parser (binary, expects f_dc_0/1/2 or red/green/blue)
+        const headerEnd = new TextDecoder().decode(new Uint8Array(buffer, 0, Math.min(2048, buffer.byteLength)));
+        const headerLines = headerEnd.split('\n');
+        let vertexCount = 0;
+        let propNames: string[] = [];
+        let dataStart = 0;
+        for (const line of headerLines) {
+          dataStart += line.length + 1;
+          if (line.startsWith('element vertex')) vertexCount = parseInt(line.split(' ')[2]);
+          if (line.startsWith('property float')) propNames.push(line.split(' ')[2]);
+          if (line.trim() === 'end_header') break;
+        }
+
+        const stride = propNames.length * 4;
+        const dataView = new DataView(buffer, dataStart);
+        const geo = new THREE.BufferGeometry();
+        const positions = new Float32Array(vertexCount * 3);
+        const colors = new Float32Array(vertexCount * 4);
+
+        const xIdx = propNames.indexOf('x');
+        const yIdx = propNames.indexOf('y');
+        const zIdx = propNames.indexOf('z');
+        const dcR = propNames.indexOf('f_dc_0');
+        const dcG = propNames.indexOf('f_dc_1');
+        const dcB = propNames.indexOf('f_dc_2');
+        const rIdx = propNames.indexOf('red');
+        const gIdx = propNames.indexOf('green');
+        const bIdx = propNames.indexOf('blue');
+
+        for (let i = 0; i < vertexCount; i++) {
+          const off = i * stride;
+          positions[i * 3] = dataView.getFloat32(off + xIdx * 4, true) * scale;
+          positions[i * 3 + 1] = dataView.getFloat32(off + yIdx * 4, true) * scale;
+          positions[i * 3 + 2] = dataView.getFloat32(off + zIdx * 4, true) * scale;
+          if (dcR >= 0) {
+            colors[i * 4] = 0.5 + 0.2820948 * dataView.getFloat32(off + dcR * 4, true);
+            colors[i * 4 + 1] = 0.5 + 0.2820948 * dataView.getFloat32(off + dcG * 4, true);
+            colors[i * 4 + 2] = 0.5 + 0.2820948 * dataView.getFloat32(off + dcB * 4, true);
+          } else if (rIdx >= 0) {
+            colors[i * 4] = dataView.getUint8(off + rIdx) / 255;
+            colors[i * 4 + 1] = dataView.getUint8(off + gIdx) / 255;
+            colors[i * 4 + 2] = dataView.getUint8(off + bIdx) / 255;
+          } else {
+            colors[i * 4] = 0.7; colors[i * 4 + 1] = 0.7; colors[i * 4 + 2] = 0.7;
+          }
+          colors[i * 4 + 3] = 1.0;
+        }
+
+        geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geo.setAttribute('color', new THREE.BufferAttribute(colors, 4));
+        setGeometry(geo);
+      } catch (e) {
+        console.warn('[VfxRenderer] Failed to load Object PLY:', layer.ply_file, e);
+      }
+    })();
+  }, [layer.ply_file, scale]);
+
+  const material = useMemo(() => new THREE.ShaderMaterial({
+    vertexShader: `
+      varying vec4 vColor;
+      void main() {
+        vColor = color;
+        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+        gl_PointSize = max(0.5, 0.5) * (20.0 / -mvPosition.z);
+        gl_Position = projectionMatrix * mvPosition;
+      }
+    `,
+    fragmentShader: `
+      varying vec4 vColor;
+      void main() {
+        float d = length(gl_PointCoord - vec2(0.5));
+        if (d > 0.5) discard;
+        gl_FragColor = vec4(vColor.rgb, vColor.a);
+      }
+    `,
+    vertexColors: true,
+    transparent: true,
+    depthWrite: false,
+  }), []);
+
+  if (!geometry) return null;
+
+  return (
+    <points
+      geometry={geometry}
+      material={material}
+      position={[instancePos[0] + elPos[0], instancePos[1] + elPos[1], instancePos[2] + elPos[2]]}
+    />
+  );
+}
+
 // ── Per-instance renderer ──
 
 function InstanceRenderer({ instance }: { instance: VfxInstanceData }) {
   const emitterLayers = (instance.vfx_preset.elements ?? []).filter((l) => l.type === 'emitter');
+  const objectLayers = (instance.vfx_preset.elements ?? []).filter((l) => l.type === 'object');
 
   return (
     <group>
+      {objectLayers.map((layer, i) => (
+        <ObjectLayerRenderer
+          key={`${instance.id}_obj_${i}`}
+          layer={layer}
+          instancePos={instance.position}
+        />
+      ))}
       {emitterLayers.map((layer, i) => (
         <EmitterLayerRenderer
           key={`${instance.id}_${i}`}
