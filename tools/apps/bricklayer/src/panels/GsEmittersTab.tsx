@@ -88,10 +88,8 @@ function EmitterEditor({ emitter }: { emitter: GsParticleEmitterData }) {
         <NumberInput value={emitter.lifetime_max} min={0} step={0.1}
           onChange={(v) => updateGsEmitter(emitter.id, { lifetime_max: v })} style={styles.input} />
       </div>
-      <Vec3Input label="Offset Min" value={emitter.spawn_offset_min}
-        onChange={(v) => updateGsEmitter(emitter.id, { spawn_offset_min: v })} style={styles.input} />
-      <Vec3Input label="Offset Max" value={emitter.spawn_offset_max}
-        onChange={(v) => updateGsEmitter(emitter.id, { spawn_offset_max: v })} style={styles.input} />
+      <Vec3Input label="Region" value={emitter.spawn_region?.half_extents ?? [0, 0, 0]}
+        onChange={(v) => updateGsEmitter(emitter.id, { spawn_region: { ...emitter.spawn_region, shape: 'box', half_extents: v } })} style={styles.input} />
 
       {/* Motion */}
       <span style={styles.sectionLabel}>Motion</span>

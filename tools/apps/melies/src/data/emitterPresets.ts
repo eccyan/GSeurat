@@ -14,8 +14,7 @@ export interface EmitterConfig {
   opacity_start: number;
   opacity_end: number;
   emission: number;
-  spawn_offset_min: [number, number, number];
-  spawn_offset_max: [number, number, number];
+  region?: { shape: 'sphere' | 'box'; center?: [number, number, number]; radius?: number; half_extents?: [number, number, number] };
   burst_duration: number;
 }
 
@@ -26,7 +25,6 @@ export const defaultEmitterConfig: EmitterConfig = {
   color_start: [1, 1, 1], color_end: [1, 1, 1],
   scale_min: [0.1, 0.1, 0.1], scale_max: [0.3, 0.3, 0.3],
   scale_end_factor: 0.5, opacity_start: 1, opacity_end: 0, emission: 0,
-  spawn_offset_min: [0, 0, 0], spawn_offset_max: [0, 0, 0],
   burst_duration: 0,
 };
 
@@ -38,7 +36,7 @@ export const emitterPresets: Record<string, Partial<EmitterConfig>> = {
     color_start: [0.6, 0.55, 0.45], color_end: [0.5, 0.48, 0.4],
     scale_min: [0.1, 0.1, 0.1], scale_max: [0.3, 0.3, 0.3],
     scale_end_factor: 0.1, opacity_start: 0.4, opacity_end: 0, emission: 0,
-    spawn_offset_min: [-2, 0, -2], spawn_offset_max: [2, 1, 2],
+    region: { shape: 'box', center: [0, 0.5, 0], half_extents: [2, 0.5, 2] },
   },
   spark_shower: {
     spawn_rate: 40, lifetime_min: 0.3, lifetime_max: 0.8,
@@ -47,7 +45,7 @@ export const emitterPresets: Record<string, Partial<EmitterConfig>> = {
     color_start: [0.8, 0.6, 0.3], color_end: [0.5, 0.2, 0],
     scale_min: [0.05, 0.05, 0.05], scale_max: [0.15, 0.15, 0.15],
     scale_end_factor: 0, opacity_start: 0.5, opacity_end: 0, emission: 0.8,
-    spawn_offset_min: [-1, 0, -1], spawn_offset_max: [1, 1, 1],
+    region: { shape: 'box', center: [0, 0.5, 0], half_extents: [1, 0.5, 1] },
   },
   magic_spiral: {
     spawn_rate: 50, lifetime_min: 1.5, lifetime_max: 3,
@@ -56,7 +54,7 @@ export const emitterPresets: Record<string, Partial<EmitterConfig>> = {
     color_start: [0.4, 0.6, 1], color_end: [0.8, 0.3, 1],
     scale_min: [0.5, 0.5, 0.5], scale_max: [1, 1, 1],
     scale_end_factor: 0.3, opacity_start: 0.9, opacity_end: 0, emission: 0,
-    spawn_offset_min: [-1, -0.5, -1], spawn_offset_max: [1, 0.5, 1],
+    region: { shape: 'box', half_extents: [1, 0.5, 1] },
   },
   fire: {
     spawn_rate: 80, lifetime_min: 0.4, lifetime_max: 1.2,
@@ -65,7 +63,7 @@ export const emitterPresets: Record<string, Partial<EmitterConfig>> = {
     color_start: [1, 0.6, 0.1], color_end: [0.8, 0.1, 0],
     scale_min: [0.2, 0.2, 0.2], scale_max: [0.5, 0.5, 0.5],
     scale_end_factor: 0, opacity_start: 0.8, opacity_end: 0, emission: 1.5,
-    spawn_offset_min: [-0.5, 0, -0.5], spawn_offset_max: [0.5, 0.5, 0.5],
+    region: { shape: 'box', center: [0, 0.25, 0], half_extents: [0.5, 0.25, 0.5] },
   },
   smoke: {
     spawn_rate: 30, lifetime_min: 2, lifetime_max: 4,
@@ -74,7 +72,7 @@ export const emitterPresets: Record<string, Partial<EmitterConfig>> = {
     color_start: [0.4, 0.4, 0.42], color_end: [0.3, 0.3, 0.32],
     scale_min: [0.3, 0.3, 0.3], scale_max: [0.8, 0.8, 0.8],
     scale_end_factor: 2, opacity_start: 0.5, opacity_end: 0, emission: 0,
-    spawn_offset_min: [-1, 0, -1], spawn_offset_max: [1, 0.5, 1],
+    region: { shape: 'box', center: [0, 0.25, 0], half_extents: [1, 0.25, 1] },
   },
   rain: {
     spawn_rate: 200, lifetime_min: 0.5, lifetime_max: 1,
@@ -83,7 +81,7 @@ export const emitterPresets: Record<string, Partial<EmitterConfig>> = {
     color_start: [0.7, 0.75, 0.9], color_end: [0.5, 0.55, 0.8],
     scale_min: [0.02, 0.15, 0.02], scale_max: [0.03, 0.25, 0.03],
     scale_end_factor: 1, opacity_start: 0.4, opacity_end: 0.1, emission: 0,
-    spawn_offset_min: [-15, 10, -15], spawn_offset_max: [15, 15, 15],
+    region: { shape: 'box', center: [0, 12.5, 0], half_extents: [15, 2.5, 15] },
   },
   snow: {
     spawn_rate: 60, lifetime_min: 3, lifetime_max: 6,
@@ -92,7 +90,7 @@ export const emitterPresets: Record<string, Partial<EmitterConfig>> = {
     color_start: [0.95, 0.95, 1], color_end: [0.9, 0.9, 0.95],
     scale_min: [0.05, 0.05, 0.05], scale_max: [0.15, 0.15, 0.15],
     scale_end_factor: 0.5, opacity_start: 0.7, opacity_end: 0, emission: 0,
-    spawn_offset_min: [-12, 8, -12], spawn_offset_max: [12, 12, 12],
+    region: { shape: 'box', center: [0, 10, 0], half_extents: [12, 2, 12] },
   },
   leaves: {
     spawn_rate: 15, lifetime_min: 3, lifetime_max: 6,
@@ -101,7 +99,7 @@ export const emitterPresets: Record<string, Partial<EmitterConfig>> = {
     color_start: [0.4, 0.6, 0.15], color_end: [0.5, 0.35, 0.1],
     scale_min: [0.1, 0.02, 0.1], scale_max: [0.2, 0.04, 0.2],
     scale_end_factor: 0.8, opacity_start: 0.9, opacity_end: 0.2, emission: 0,
-    spawn_offset_min: [-8, 5, -8], spawn_offset_max: [8, 10, 8],
+    region: { shape: 'box', center: [0, 7.5, 0], half_extents: [8, 2.5, 8] },
   },
   fireflies: {
     spawn_rate: 8, lifetime_min: 3, lifetime_max: 7,
@@ -110,7 +108,7 @@ export const emitterPresets: Record<string, Partial<EmitterConfig>> = {
     color_start: [0.8, 1, 0.3], color_end: [0.6, 0.9, 0.2],
     scale_min: [0.03, 0.03, 0.03], scale_max: [0.06, 0.06, 0.06],
     scale_end_factor: 0.5, opacity_start: 0.8, opacity_end: 0, emission: 1,
-    spawn_offset_min: [-6, 0.5, -6], spawn_offset_max: [6, 4, 6],
+    region: { shape: 'box', center: [0, 2.25, 0], half_extents: [6, 1.75, 6] },
   },
   steam: {
     spawn_rate: 40, lifetime_min: 0.5, lifetime_max: 1.5,
@@ -119,7 +117,7 @@ export const emitterPresets: Record<string, Partial<EmitterConfig>> = {
     color_start: [0.9, 0.9, 0.92], color_end: [0.85, 0.85, 0.88],
     scale_min: [0.15, 0.15, 0.15], scale_max: [0.4, 0.4, 0.4],
     scale_end_factor: 2.5, opacity_start: 0.4, opacity_end: 0, emission: 0,
-    spawn_offset_min: [-0.5, 0, -0.5], spawn_offset_max: [0.5, 0.3, 0.5],
+    region: { shape: 'box', center: [0, 0.15, 0], half_extents: [0.5, 0.15, 0.5] },
   },
   waterfall_mist: {
     spawn_rate: 100, lifetime_min: 1, lifetime_max: 2.5,
@@ -128,6 +126,6 @@ export const emitterPresets: Record<string, Partial<EmitterConfig>> = {
     color_start: [0.75, 0.8, 0.95], color_end: [0.7, 0.75, 0.9],
     scale_min: [0.1, 0.1, 0.1], scale_max: [0.3, 0.3, 0.3],
     scale_end_factor: 1.5, opacity_start: 0.35, opacity_end: 0, emission: 0,
-    spawn_offset_min: [-3, -0.5, -3], spawn_offset_max: [3, 1, 3],
+    region: { shape: 'box', center: [0, 0.25, 0], half_extents: [3, 0.75, 3] },
   },
 };

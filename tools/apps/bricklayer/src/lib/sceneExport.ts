@@ -175,8 +175,7 @@ export function exportSceneJson(state: SceneStoreState): object {
         opacity_start: e.opacity_start,
         opacity_end: e.opacity_end,
         emission: e.emission,
-        spawn_offset_min: e.spawn_offset_min,
-        spawn_offset_max: e.spawn_offset_max,
+        region: e.spawn_region,
       };
       if (e.preset) out.preset = e.preset;
       if (e.burst_duration > 0) out.burst_duration = e.burst_duration;
