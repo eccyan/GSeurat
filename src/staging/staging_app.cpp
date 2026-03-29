@@ -68,8 +68,16 @@ void StagingApp::main_loop() {
             resources_.texture_cache().insert(cache_key, std::move(sp));
         });
 
+    // Start control server for bridge integration
+#ifndef _WIN32
+    control_server_.start();
+#endif
+
     while (!glfwWindowShouldClose(window_)) {
         glfwPollEvents();
+
+        // Poll control server for bridge commands
+        poll_control_server();
 
         resources_.process_async_results(async_loader_, staging_uploader_);
         staging_uploader_.flush();
@@ -141,6 +149,9 @@ void StagingApp::cleanup() {
     while (!state_stack_.empty()) {
         state_stack_.pop(*this);
     }
+#ifndef _WIN32
+    control_server_.stop();
+#endif
     async_loader_.shutdown();
     staging_uploader_.shutdown();
     wren_vm_.shutdown();
