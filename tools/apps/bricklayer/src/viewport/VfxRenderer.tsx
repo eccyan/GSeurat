@@ -176,14 +176,26 @@ function ObjectLayerRenderer({ layer, instancePos }: {
 
     (async () => {
       try {
-        // Navigate to the file
-        const parts = layer.ply_file!.split('/');
-        let dir: FileSystemDirectoryHandle = handle;
-        for (let i = 0; i < parts.length - 1; i++) {
-          dir = await dir.getDirectoryHandle(parts[i]);
+        // Try loading from project directory: first the exact path, then assets/vfx/
+        let file: File | null = null;
+        const tryPaths = [
+          layer.ply_file!,
+          `assets/vfx/${layer.ply_file!.split('/').pop()}`,
+          layer.ply_file!.split('/').pop()!,
+        ];
+        for (const tryPath of tryPaths) {
+          try {
+            const parts = tryPath.split('/');
+            let dir: FileSystemDirectoryHandle = handle;
+            for (let i = 0; i < parts.length - 1; i++) {
+              dir = await dir.getDirectoryHandle(parts[i]);
+            }
+            const fh = await dir.getFileHandle(parts[parts.length - 1]);
+            file = await fh.getFile();
+            break;
+          } catch { /* try next path */ }
         }
-        const fh = await dir.getFileHandle(parts[parts.length - 1]);
-        const file = await fh.getFile();
+        if (!file) { console.warn('[VfxRenderer] Object PLY not found:', layer.ply_file); return; }
         const buffer = await file.arrayBuffer();
 
         // Minimal PLY parser (binary, expects f_dc_0/1/2 or red/green/blue)
