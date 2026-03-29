@@ -48,9 +48,9 @@ void StagingApp::init_game_content() {
 
     ui_ctx_.init(font_atlas_, text_renderer_);
 
-    // Disable audio in Staging — review tool doesn't need sound
-    feature_flags_.music = false;
-    feature_flags_.sfx = false;
+    // Start with all post-process/effects off — user enables what they want to review.
+    // GS pipeline flags (rendering, chunk culling, LOD, adaptive budget) stay on.
+    feature_flags_ = FeatureFlags::gs_viewer();
 
     init_imgui();
 }
