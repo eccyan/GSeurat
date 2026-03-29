@@ -122,7 +122,7 @@ function ObjectGizmo({ layer, selected, onSelect }: GizmoProps) {
       void main() {
         vColor = aColor;
         vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-        gl_PointSize = max(3.0 * aScale, 0.5) * uPixelRatio * (300.0 / -mvPosition.z);
+        gl_PointSize = max(1.5 * aScale, 0.5) * uPixelRatio * (100.0 / -mvPosition.z);
         gl_Position = projectionMatrix * mvPosition;
       }
     `,
@@ -131,8 +131,7 @@ function ObjectGizmo({ layer, selected, onSelect }: GizmoProps) {
       void main() {
         float d = length(gl_PointCoord - vec2(0.5));
         if (d > 0.5) discard;
-        float alpha = vColor.a * smoothstep(0.5, 0.2, d);
-        gl_FragColor = vec4(vColor.rgb, alpha);
+        gl_FragColor = vec4(vColor.rgb, vColor.a);
       }
     `,
     transparent: true, depthWrite: false,
