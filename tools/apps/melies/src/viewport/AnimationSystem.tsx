@@ -56,7 +56,7 @@ export function AnimationSystem({ scenePoints, objectPointsMap, objectGeoRefs, o
   }, []);
 
   // Track object point offsets for splitting output
-  const objectOffsetsRef = useRef<Map<string, { offset: number; count: number }>>(new Map());
+  const objectOffsetsRef = useRef<Map<string, { offset: number; count: number; pos: [number, number, number] }>>(new Map());
 
   // Cache scene + object data merged into one buffer
   useEffect(() => {
@@ -91,14 +91,14 @@ export function AnimationSystem({ scenePoints, objectPointsMap, objectGeoRefs, o
     offset += scenePoints.length;
 
     // Object points after scene
-    const offsets = new Map<string, { offset: number; count: number }>();
+    const offsets = new Map<string, { offset: number; count: number; pos: [number, number, number] }>();
     for (const { id, points, scale, pos } of objectEntries) {
-      offsets.set(id, { offset, count: points.length });
+      offsets.set(id, { offset, count: points.length, pos });
       for (let i = 0; i < points.length; i++) {
-        // Object-local coordinates (element position handled by Three.js group transform)
-        positions[(offset + i) * 3] = points[i].position[0] * scale;
-        positions[(offset + i) * 3 + 1] = points[i].position[1] * scale;
-        positions[(offset + i) * 3 + 2] = points[i].position[2] * scale;
+        // Prefab-space coordinates (element position included so animation regions overlap correctly)
+        positions[(offset + i) * 3] = points[i].position[0] * scale + pos[0];
+        positions[(offset + i) * 3 + 1] = points[i].position[1] * scale + pos[1];
+        positions[(offset + i) * 3 + 2] = points[i].position[2] * scale + pos[2];
         colors[(offset + i) * 3] = points[i].color[0];
         colors[(offset + i) * 3 + 1] = points[i].color[1];
         colors[(offset + i) * 3 + 2] = points[i].color[2];
@@ -206,15 +206,23 @@ export function AnimationSystem({ scenePoints, objectPointsMap, objectGeoRefs, o
         }
         // Object geometry updates (remaining points, split by offset)
         if (objectGeoRefs) {
-          for (const [objId, { offset, count: objCount }] of objectOffsetsRef.current) {
+          for (const [objId, { offset, count: objCount, pos: objPos }] of objectOffsetsRef.current) {
             const geo = objectGeoRefs.get(objId)?.current;
             if (!geo) continue;
             const posAttr = geo.getAttribute('position') as THREE.BufferAttribute;
             const colAttr = geo.getAttribute('aColor') as THREE.BufferAttribute;
             const scaleAttr = geo.getAttribute('aScale') as THREE.BufferAttribute;
             if (!posAttr || !colAttr) continue;
-            // Copy subset of positions (3 floats per point)
-            posAttr.set(data.positions.subarray(offset * 3, (offset + objCount) * 3));
+            // Copy subset of positions, subtracting element position
+            // (ObjectGizmo's <group position={pos}> adds it back in Three.js)
+            const objPositions = data.positions.subarray(offset * 3, (offset + objCount) * 3);
+            const localPositions = new Float32Array(objCount * 3);
+            for (let i = 0; i < objCount; i++) {
+              localPositions[i * 3] = objPositions[i * 3] - objPos[0];
+              localPositions[i * 3 + 1] = objPositions[i * 3 + 1] - objPos[1];
+              localPositions[i * 3 + 2] = objPositions[i * 3 + 2] - objPos[2];
+            }
+            posAttr.set(localPositions);
             posAttr.needsUpdate = true;
             // Copy subset of colors (4 floats per point — RGBA)
             colAttr.set(data.colors.subarray(offset * 4, (offset + objCount) * 4));
