@@ -28,6 +28,8 @@ glm::vec3 GaussianParticleEmitter::random_vec3(const glm::vec3& min_val, const g
 
 void GaussianParticleEmitter::configure(const GsEmitterConfig& config) {
     config_ = config;
+    base_position_ = config.position;
+    spline_time_ = 0.0f;
 }
 
 void GaussianParticleEmitter::set_position(const glm::vec3& pos) {
@@ -75,10 +77,32 @@ void GaussianParticleEmitter::spawn_particle() {
     p.emission = config_.emission;
     p.lifetime = random_float(config_.lifetime_min, config_.lifetime_max);
     p.age = 0.0f;
+    p.spline_t_offset = 0.0f;
     p.alive = true;
+
+    // ParticlePath: particles start at spline origin, velocity/acceleration unused
+    if (config_.spline && config_.spline->mode == SplineMode::ParticlePath
+        && config_.spline->path.valid()) {
+        p.position = base_position_ + config_.spline->path.evaluate(0.0f);
+        p.velocity = glm::vec3(0.0f);
+        p.acceleration = glm::vec3(0.0f);
+        if (config_.spline->path_spread > 0.0f) {
+            p.spline_t_offset = random_float(-config_.spline->path_spread,
+                                              config_.spline->path_spread);
+        }
+    }
 }
 
 void GaussianParticleEmitter::update(float dt) {
+    // EmitterPath: move emitter position along spline
+    if (config_.spline && config_.spline->mode == SplineMode::EmitterPath
+        && config_.spline->path.valid()) {
+        spline_time_ += config_.spline->emitter_speed * dt;
+        spline_time_ = std::fmod(spline_time_, 1.0f);
+        if (spline_time_ < 0.0f) spline_time_ += 1.0f;
+        config_.position = base_position_ + config_.spline->path.evaluate(spline_time_);
+    }
+
     // Spawn new particles
     if (active_) {
         // Auto-deactivate after burst duration
@@ -99,6 +123,10 @@ void GaussianParticleEmitter::update(float dt) {
     }
 
     // Update existing particles
+    bool particle_path = config_.spline
+        && config_.spline->mode == SplineMode::ParticlePath
+        && config_.spline->path.valid();
+
     for (auto& p : pool_) {
         if (!p.alive) continue;
 
@@ -108,8 +136,33 @@ void GaussianParticleEmitter::update(float dt) {
             continue;
         }
 
-        p.velocity += p.acceleration * dt;
-        p.position += p.velocity * dt;
+        if (particle_path) {
+            // Particle follows spline: t maps age to full curve
+            float t = p.age / std::max(p.lifetime, 0.001f);
+            t = std::clamp(t, 0.0f, 1.0f);
+            glm::vec3 spline_pos = base_position_ + config_.spline->path.evaluate(t);
+
+            // Optional lateral spread perpendicular to tangent
+            if (p.spline_t_offset != 0.0f) {
+                glm::vec3 tan = config_.spline->path.tangent(t);
+                float tan_len = glm::length(tan);
+                if (tan_len > 0.001f) {
+                    tan /= tan_len;
+                    glm::vec3 up(0.0f, 1.0f, 0.0f);
+                    glm::vec3 right = glm::cross(tan, up);
+                    float right_len = glm::length(right);
+                    if (right_len > 0.001f) {
+                        right /= right_len;
+                        spline_pos += right * p.spline_t_offset;
+                    }
+                }
+            }
+            p.position = spline_pos;
+        } else {
+            // Standard kinematic update
+            p.velocity += p.acceleration * dt;
+            p.position += p.velocity * dt;
+        }
     }
 }
 
