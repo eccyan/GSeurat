@@ -59,12 +59,22 @@ function ElementGizmo({ element }: { element: VfxElementData }) {
           <meshBasicMaterial color={color} transparent opacity={0.5} />
         </mesh>
       )}
-      {element.type === 'light' && (
-        <mesh>
-          <sphereGeometry args={[0.3, 8, 8]} />
-          <meshBasicMaterial color={color} transparent opacity={0.7} />
-        </mesh>
-      )}
+      {element.type === 'light' && (() => {
+        const light = element.light as Record<string, any> | undefined;
+        const radius = light?.radius ?? 5;
+        return (
+          <>
+            <mesh>
+              <sphereGeometry args={[0.3, 8, 8]} />
+              <meshBasicMaterial color={color} transparent opacity={0.7} />
+            </mesh>
+            <mesh>
+              <sphereGeometry args={[radius, 16, 12]} />
+              <meshBasicMaterial color={color} wireframe transparent opacity={0.15} />
+            </mesh>
+          </>
+        );
+      })()}
       {/* Label */}
       <Html position={[0, 0.5, 0]} center>
         <div style={{

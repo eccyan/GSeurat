@@ -203,6 +203,10 @@ void Renderer::init_gs(const GaussianCloud& cloud, uint32_t width, uint32_t heig
         gs_smoothed_fps_ = 60.0f;
     }
 
+    // Free old GS descriptor sets before reallocating (prevents pool exhaustion on reload)
+    descriptors_.free_sprite_sets(context_.device(), gs_descriptor_sets_);
+    descriptors_.free_sprite_sets(context_.device(), gs_ui_descriptor_sets_);
+
     // Create descriptor sets for sampling the GS output as a sprite texture
     std::array<VkBuffer, kMaxFramesInFlight> ubo_buffers;
     for (uint32_t i = 0; i < kMaxFramesInFlight; i++) {

@@ -1,17 +1,19 @@
 import React from 'react';
 import { Html } from '@react-three/drei';
 import { useSceneStore } from '../store/useSceneStore.js';
+import type { GsParticleEmitterData } from '../store/types.js';
 
-function EmitterMarker({ position, preset, isSelected, onSelect }: {
-  position: [number, number, number];
-  preset: string;
+function EmitterMarker({ emitter, isSelected, onSelect }: {
+  emitter: GsParticleEmitterData;
   isSelected: boolean;
   onSelect: () => void;
 }) {
-  const label = preset || 'Custom';
+  const label = emitter.preset || 'Custom';
+  const region = emitter.spawn_region;
+  const regionCenter = region?.center ?? [0, 0, 0];
 
   return (
-    <group position={[position[0], position[1], position[2]]}>
+    <group position={[emitter.position[0], emitter.position[1], emitter.position[2]]}>
       {/* Invisible hit box */}
       <mesh onPointerDown={(e) => { e.stopPropagation(); onSelect(); }}>
         <sphereGeometry args={[1.0, 12, 12]} />
@@ -31,6 +33,26 @@ function EmitterMarker({ position, preset, isSelected, onSelect }: {
         <sphereGeometry args={[0.4, 12, 12]} />
         <meshBasicMaterial color={isSelected ? '#ffffff' : '#ff4dc8'} />
       </mesh>
+      {/* Spawn region wireframe */}
+      {region && (
+        <mesh position={[regionCenter[0], regionCenter[1], regionCenter[2]]}>
+          {(region.shape ?? 'sphere') === 'sphere' ? (
+            <sphereGeometry args={[region.radius ?? 1, 16, 12]} />
+          ) : (
+            <boxGeometry args={[
+              (region.half_extents?.[0] ?? 1) * 2,
+              (region.half_extents?.[1] ?? 1) * 2,
+              (region.half_extents?.[2] ?? 1) * 2,
+            ]} />
+          )}
+          <meshBasicMaterial
+            color={isSelected ? '#ffffff' : '#ff4dc8'}
+            wireframe
+            transparent
+            opacity={isSelected ? 0.3 : 0.15}
+          />
+        </mesh>
+      )}
       {/* Label */}
       {isSelected && (
         <Html position={[0, 1.2, 0]} center>
@@ -59,8 +81,7 @@ export function GsEmitterMarkers() {
       {emitters.map((e) => (
         <EmitterMarker
           key={e.id}
-          position={e.position}
-          preset={e.preset}
+          emitter={e}
           isSelected={selectedEntity?.type === 'gs_emitter' && selectedEntity.id === e.id}
           onSelect={() => setSelectedEntity({ type: 'gs_emitter', id: e.id })}
         />

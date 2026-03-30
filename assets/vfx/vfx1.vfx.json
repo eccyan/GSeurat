@@ -4,6 +4,11 @@
     {
       "name": "Emitter 1",
       "type": "emitter",
+      "position": [
+        0,
+        0,
+        64
+      ],
       "duration": 30,
       "loop": true,
       "emitter": {
@@ -102,17 +107,17 @@
       }
     },
     {
-      "name": "Animation",
+      "name": "Sway",
       "type": "animation",
       "position": [
         0,
-        5,
-        0
+        64,
+        96
       ],
       "duration": 30,
       "loop": true,
       "animation": {
-        "effect": "float",
+        "effect": "pulse",
         "params": {
           "rotations": 1,
           "rotations_easing": "linear",
@@ -136,29 +141,14 @@
         }
       },
       "region": {
-        "shape": "sphere",
-        "radius": 64
+        "shape": "box",
+        "radius": 64,
+        "half_extents": [
+          140,
+          16,
+          64
+        ]
       }
-    },
-    {
-      "name": "Animation",
-      "type": "animation",
-      "position": [
-        0,
-        6,
-        0
-      ],
-      "duration": 30,
-      "loop": true,
-      "region": {
-        "shape": "sphere",
-        "radius": 64
-      }
-    },
-    {
-      "name": "Object",
-      "type": "object",
-      "duration": 0
     }
   ],
   "duration": 30

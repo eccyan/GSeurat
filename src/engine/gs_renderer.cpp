@@ -131,14 +131,14 @@ void GsRenderer::create_output_image(uint32_t width, uint32_t height) {
 void GsRenderer::create_descriptor_resources() {
     // Descriptor pool — enough for all sets
     VkDescriptorPoolSize pool_sizes[] = {
-        {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 32},
-        {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 2},
-        {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 3},
+        {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 128},
+        {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 16},
+        {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 16},
     };
 
     VkDescriptorPoolCreateInfo pool_info{};
     pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-    pool_info.maxSets = 10;
+    pool_info.maxSets = 64;
     pool_info.poolSizeCount = 3;
     pool_info.pPoolSizes = pool_sizes;
 
@@ -232,6 +232,9 @@ void GsRenderer::create_descriptor_resources() {
     }
 
     // Allocate all descriptor sets
+    // Reset pool to free previously allocated sets before reallocating
+    vkResetDescriptorPool(device_, gs_pool_, 0);
+
     VkDescriptorSetLayout layouts[] = {
         preprocess_layout_, sort_layout_, render_layout_,
         radix_histogram_layout_, radix_histogram_layout_,  // A and B

@@ -308,23 +308,12 @@ export function MenuBar({ onImport }: { onImport: () => void }) {
     const unsub = useSceneStore.subscribe(() => {
       if (autoSyncTimer.current) clearTimeout(autoSyncTimer.current);
       autoSyncTimer.current = setTimeout(() => {
+        // Full scene push — covers all entity types (VFX, emitters, animations, lights)
         const s = useSceneStore.getState();
-        // Send lightweight scene data update (VFX positions + lights)
-        const vfx = s.vfxInstances.filter((v) => !v.muted).map((v) => ({
-          position: v.position,
-        }));
-        const lights = s.staticLights.map((l) => ({
-          x: l.position[0],
-          y: l.position[2],  // height
-          z: l.position[1],  // scene_z
-          radius: l.radius,
-          r: l.color[0],
-          g: l.color[1],
-          b: l.color[2],
-          intensity: l.intensity,
-        }));
-        sendBridgeCommand({ cmd: 'update_scene_data', vfx_instances: vfx, lights });
-      }, 500);  // 500ms debounce
+        const scene = exportSceneJson(s);
+        const json = JSON.stringify(scene);
+        sendBridgeCommand({ cmd: 'load_scene_json', json });
+      }, 2000);  // 2s debounce to avoid rapid reloads
     });
     return () => {
       unsub();

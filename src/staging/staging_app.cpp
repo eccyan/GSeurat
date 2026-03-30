@@ -480,15 +480,8 @@ void StagingApp::clear_scene() {
     renderer_.clear_vfx_instances();
     scene_.clear_lights();
     gs_aabb_offset_ = glm::vec2(0.0f);
-
-    // Reset GS cloud so viewport is empty
-    if (renderer_.has_gs_cloud()) {
-        std::vector<Gaussian> dummy(1);
-        dummy[0].opacity = 0.0f;
-        dummy[0].scale = glm::vec3(0.001f);
-        auto cloud = GaussianCloud::from_gaussians(std::move(dummy));
-        renderer_.init_gs(cloud, 320, 240);
-    }
+    // Don't re-init GS here — init_scene() will do it if needed.
+    // For empty viewport on standalone launch, on_enter() handles it.
 }
 
 }  // namespace gseurat
