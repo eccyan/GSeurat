@@ -324,10 +324,38 @@ export function MenuBar({ onImport }: { onImport: () => void }) {
   const handleImportAsset = () => {
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = '.ply,.png,.jpg,.jpeg,.wav,.mp3';
+    input.accept = '.ply,.png,.jpg,.jpeg,.wav,.mp3,.json,.vfx.json';
     input.onchange = async () => {
       const file = input.files?.[0];
       if (!file) return;
+
+      // VFX preset import — load and add as VFX instance
+      if (file.name.endsWith('.vfx.json')) {
+        try {
+          const text = await file.text();
+          const preset = JSON.parse(text);
+          const store = useSceneStore.getState();
+          store.addVfxInstance({
+            id: `vfx_${Date.now()}`,
+            name: preset.name ?? file.name.replace('.vfx.json', ''),
+            vfx_file: `assets/vfx/${file.name}`,
+            vfx_preset: preset,
+            position: [0, 0, 0],
+            radius: 5,
+            trigger: 'auto',
+            loop: true,
+          });
+          // Copy to project directory
+          const handle = store.projectHandle;
+          if (handle) {
+            await importAssetToProject(handle, file);
+          }
+        } catch (e) {
+          console.warn('[Bricklayer] Failed to import VFX:', e);
+        }
+        return;
+      }
+
       // Store blob in memory
       const path = `assets/${file.name}`;
       useSceneStore.getState().storeAssetBlob(path, file);
