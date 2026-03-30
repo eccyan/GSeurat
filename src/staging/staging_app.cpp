@@ -51,6 +51,8 @@ void StagingApp::init_game_content() {
     // Start with all post-process/effects off — user enables what they want to review.
     // GS pipeline flags (rendering, chunk culling, LOD, adaptive budget) stay on.
     feature_flags_ = FeatureFlags::gs_viewer();
+    feature_flags_.particles = true;
+    feature_flags_.animation = true;
 
     init_imgui();
 }

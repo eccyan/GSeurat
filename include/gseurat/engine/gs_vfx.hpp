@@ -70,6 +70,9 @@ public:
     const VfxPreset& preset() const { return preset_; }
     const std::vector<Gaussian>& object_gaussians() const { return object_gaussians_; }
 
+    /// Reset animation states so they re-tag on next update
+    void reset_animations();
+
 private:
     VfxPreset preset_;
     glm::vec3 position_{0.0f};

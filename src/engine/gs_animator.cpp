@@ -485,6 +485,11 @@ void GaussianAnimator::clear(std::vector<Gaussian>& gaussians) {
     baselines_.clear();
 }
 
+void GaussianAnimator::reset() {
+    groups_.clear();
+    baselines_.clear();
+}
+
 bool GaussianAnimator::has_active_groups() const {
     return !groups_.empty();
 }

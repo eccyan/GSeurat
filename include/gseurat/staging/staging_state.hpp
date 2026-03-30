@@ -3,11 +3,20 @@
 #include "gseurat/engine/game_state.hpp"
 
 #include <glm/vec3.hpp>
+#include <glm/mat4x4.hpp>
 #include <array>
 #include <string>
 #include <vector>
 
 namespace gseurat {
+
+struct CameraBookmark {
+    std::string name;
+    float azimuth;
+    float elevation;
+    float distance;
+    glm::vec3 target;
+};
 
 class StagingState : public GameState {
 public:
@@ -15,6 +24,11 @@ public:
     void on_exit(AppBase& app) override;
     void update(AppBase& app, float dt) override;
     void build_draw_lists(AppBase& app) override;
+
+    // 3D → 2D projection (public for gizmo helpers)
+    bool project_to_screen(const glm::vec3& world_pos, const glm::mat4& vp,
+                           float screen_w, float screen_h,
+                           float& out_x, float& out_y) const;
 
 private:
     void draw_imgui(AppBase& app);
@@ -26,6 +40,7 @@ private:
     void draw_camera_panel(AppBase& app);
     void draw_scene_panel(AppBase& app);
     void draw_performance(AppBase& app);
+    void draw_gizmos(AppBase& app);
 
     // Camera orbit state
     float azimuth_ = 0.0f;
@@ -51,6 +66,9 @@ private:
     int selected_scene_ = -1;
     bool scenes_loaded_ = false;
 
+    // Camera bookmarks
+    std::vector<CameraBookmark> bookmarks_;
+
     // Panel visibility
     bool show_viewport_info_ = true;
     bool show_render_settings_ = true;
@@ -59,6 +77,14 @@ private:
     bool show_lighting_ = true;
     bool show_camera_ = true;
     bool show_performance_ = true;
+
+    // Gizmo visibility
+    bool show_gizmo_lights_ = true;
+    bool show_gizmo_emitters_ = true;
+    bool show_gizmo_vfx_ = true;
+
+    // Hide all UI (Tab key toggle)
+    bool hide_ui_ = false;
 };
 
 }  // namespace gseurat
