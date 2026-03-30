@@ -7,7 +7,7 @@ import { serializeVfx } from './lib/vfxExport.js';
 import { parseVfx } from './lib/vfxImport.js';
 import { hasFileSystemAccess, openProjectDirectory, saveProject, loadProject, downloadProject, uploadProject, copyPlyToProject, loadPlyFromProject } from './lib/projectIO.js';
 import { loadPly, type PlyPoint } from './lib/plyLoader.js';
-import { sendBridgeCommands } from '@gseurat/engine-client';
+import { sendBridgeCommands, sendBridgeCommand } from '@gseurat/engine-client';
 import { Preview } from './viewport/Preview.js';
 import { LayerProperties } from './panels/LayerProperties.js';
 import { PresetSettings } from './panels/PresetSettings.js';
@@ -150,6 +150,49 @@ function MenuBar({ onImportScene }: { onImportScene?: () => void }) {
     setFileOpen(false);
   };
 
+  // ── Auto-sync to Staging (debounced) ──
+  const stagingAutoSync = useVfxStore((s) => s.stagingAutoSync);
+  const autoSyncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (!stagingAutoSync) return;
+    const unsub = useVfxStore.subscribe(() => {
+      if (autoSyncTimer.current) clearTimeout(autoSyncTimer.current);
+      autoSyncTimer.current = setTimeout(() => {
+        const store = useVfxStore.getState();
+        const preset = store.presets.find((p) => p.id === store.selectedPresetId);
+        if (!preset) return;
+
+        const scene: Record<string, unknown> = {
+          version: 2,
+          ambient_color: [1, 1, 1, 1],
+          vfx_instances: [] as Record<string, unknown>[],
+        };
+        const activeScene = store.scenes.find((s) => s.id === store.activeSceneId);
+        if (activeScene) {
+          scene.gaussian_splat = {
+            ply_file: activeScene.path,
+            camera: { position: [0, 50, 100], target: [0, 0, 0], fov: 45 },
+            render_width: 320, render_height: 240, scale_multiplier: 1,
+          };
+        }
+        const vfxJson = serializeVfx(preset);
+        const tempVfxPath = `/tmp/melies_preview_${preset.name.replace(/\s+/g, '_').toLowerCase()}.vfx.json`;
+        (scene.vfx_instances as Record<string, unknown>[]).push({
+          vfx_file: tempVfxPath, position: [0, 0, 0], loop: true,
+        });
+        sendBridgeCommands([
+          { cmd: 'write_temp_file', path: tempVfxPath, content: vfxJson },
+          { cmd: 'load_scene_json', json: JSON.stringify(scene) },
+        ]).catch(() => {});
+      }, 2000);
+    });
+    return () => {
+      unsub();
+      if (autoSyncTimer.current) clearTimeout(autoSyncTimer.current);
+    };
+  }, [stagingAutoSync]);
+
   useEffect(() => {
     if (!fileOpen) return;
     const handler = (e: MouseEvent) => {
@@ -206,6 +249,10 @@ function MenuBar({ onImportScene }: { onImportScene?: () => void }) {
             {[
               { label: `${useVfxStore.getState().showGizmos ? '✓' : '  '} Show Gizmos`, action: () => useVfxStore.getState().toggleGizmos() },
               { label: `${useVfxStore.getState().showPointCloud ? '✓' : '  '} Show Point Cloud`, action: () => useVfxStore.getState().togglePointCloud() },
+              { label: `${useVfxStore.getState().stagingAutoSync ? '✓' : '  '} Auto-Sync Staging`, action: () => {
+                const s = useVfxStore.getState();
+                s.setStagingAutoSync(!s.stagingAutoSync);
+              }},
             ].map((item) => (
               <div key={item.label} onClick={item.action}
                 style={{ padding: '6px 16px', cursor: 'pointer', fontSize: 12, color: T.text, fontFamily: 'monospace' }}
