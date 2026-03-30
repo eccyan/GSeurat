@@ -514,6 +514,26 @@ GsEmitterConfig SceneLoader::parse_gs_emitter_config(const nlohmann::json& j) {
     }
     if (j.contains("burst_duration"))   cfg.burst_duration = j["burst_duration"];
 
+    // Spline path (optional)
+    if (j.contains("spline")) {
+        const auto& s = j["spline"];
+        SplineConfig sc;
+        std::string mode_str = s.value("mode", "none");
+        if (mode_str == "emitter_path") sc.mode = SplineMode::EmitterPath;
+        else if (mode_str == "particle_path") sc.mode = SplineMode::ParticlePath;
+        if (s.contains("control_points")) {
+            for (const auto& pt : s["control_points"]) {
+                sc.path.control_points.push_back(parse_vec3(pt));
+            }
+        }
+        sc.emitter_speed = s.value("emitter_speed", 1.0f);
+        sc.path_spread = s.value("path_spread", 0.0f);
+        sc.align_to_tangent = s.value("align_to_tangent", false);
+        if (sc.mode != SplineMode::None && sc.path.valid()) {
+            cfg.spline = sc;
+        }
+    }
+
     return cfg;
 }
 
@@ -549,6 +569,22 @@ nlohmann::json SceneLoader::gs_emitter_config_json(const GsEmitterData& em) {
         j["region"] = region;
     }
     if (c.burst_duration > 0.0f) j["burst_duration"] = c.burst_duration;
+
+    // Spline path
+    if (c.spline && c.spline->mode != SplineMode::None && c.spline->path.valid()) {
+        nlohmann::json spline;
+        spline["mode"] = (c.spline->mode == SplineMode::EmitterPath) ? "emitter_path" : "particle_path";
+        nlohmann::json pts = nlohmann::json::array();
+        for (const auto& pt : c.spline->path.control_points) {
+            pts.push_back(vec3_json(pt));
+        }
+        spline["control_points"] = pts;
+        if (c.spline->emitter_speed != 1.0f) spline["emitter_speed"] = c.spline->emitter_speed;
+        if (c.spline->path_spread > 0.0f) spline["path_spread"] = c.spline->path_spread;
+        if (c.spline->align_to_tangent) spline["align_to_tangent"] = true;
+        j["spline"] = spline;
+    }
+
     return j;
 }
 
