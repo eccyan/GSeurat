@@ -94,6 +94,11 @@ void StagingState::update(AppBase& app, float dt) {
             distance_ = std::max(1.0f, distance_);
         }
 
+        // Toggle UI visibility (Tab)
+        if (app.input().was_key_pressed(GLFW_KEY_TAB)) {
+            hide_ui_ = !hide_ui_;
+        }
+
         // Reset camera
         if (glfwGetKey(window, GLFW_KEY_R) == GLFW_PRESS && !io.WantCaptureKeyboard) {
             azimuth_ = 0.0f;
@@ -129,8 +134,10 @@ void StagingState::update(AppBase& app, float dt) {
         app.renderer().set_gs_camera(view, proj);
     }
 
-    // Draw ImGui
-    draw_imgui(app);
+    // Draw ImGui (hidden with Tab)
+    if (!hide_ui_) {
+        draw_imgui(app);
+    }
 
     // Update screen effects
     app.screen_effects().update(dt);
@@ -205,7 +212,8 @@ void StagingState::draw_viewport_info(AppBase& app) {
     ImGui::Text("Az: %.1f  El: %.1f  Dist: %.1f", azimuth_ * 57.2958f, elevation_ * 57.2958f, distance_);
     ImGui::Text("Target: %.1f, %.1f, %.1f", target_.x, target_.y, target_.z);
     ImGui::Separator();
-    ImGui::TextDisabled("Drag: Orbit  Shift+Drag: Pan  Scroll: Zoom  R: Reset");
+    ImGui::TextDisabled("Drag: Orbit  Shift+Drag: Pan  Scroll: Zoom");
+    ImGui::TextDisabled("R: Reset  Tab: Hide UI");
 
     ImGui::End();
 }
