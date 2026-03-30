@@ -613,6 +613,138 @@ async function main() {
   }
 
   // ═══════════════════════════════════════════════════════════════
+  // 8. Emitter Region (sphere/box) (6 tests)
+  // ═══════════════════════════════════════════════════════════════
+
+  console.log('\n--- Emitter Region ---\n');
+
+  {
+    console.log('Test 8.1: Configure emitter with box region');
+    const emitter = new sim.ParticleEmitter();
+    emitter.configure({
+      spawn_rate: 100,
+      lifetime_min: 1, lifetime_max: 2,
+      velocity_min: [0, 1, 0], velocity_max: [0, 2, 0],
+      color_start: [1, 1, 1], color_end: [1, 1, 1],
+      scale_min: [0.1, 0.1, 0.1], scale_max: [0.2, 0.2, 0.2],
+      opacity_start: 1, opacity_end: 0,
+      region: { shape: 'box', center: [0, 0, 0], half_extents: [5, 2, 5] },
+    });
+    emitter.setActive(true);
+    emitter.update(0.1);
+    assert(emitter.aliveCount() > 0, 'box region emitter spawns particles');
+    emitter.delete();
+  }
+
+  {
+    console.log('Test 8.2: Configure emitter with sphere region');
+    const emitter = new sim.ParticleEmitter();
+    emitter.configure({
+      spawn_rate: 100,
+      lifetime_min: 1, lifetime_max: 2,
+      velocity_min: [0, 1, 0], velocity_max: [0, 2, 0],
+      color_start: [1, 0, 0], color_end: [0, 0, 1],
+      scale_min: [0.1, 0.1, 0.1], scale_max: [0.2, 0.2, 0.2],
+      opacity_start: 1, opacity_end: 0,
+      region: { shape: 'sphere', radius: 3 },
+    });
+    emitter.setActive(true);
+    emitter.update(0.1);
+    assert(emitter.aliveCount() > 0, 'sphere region emitter spawns particles');
+    emitter.delete();
+  }
+
+  {
+    console.log('Test 8.3: Sphere region with center offset');
+    const emitter = new sim.ParticleEmitter();
+    emitter.configure({
+      spawn_rate: 200,
+      lifetime_min: 1, lifetime_max: 2,
+      velocity_min: [0, 0, 0], velocity_max: [0, 0, 0],
+      color_start: [1, 1, 1], color_end: [1, 1, 1],
+      scale_min: [0.1, 0.1, 0.1], scale_max: [0.1, 0.1, 0.1],
+      opacity_start: 1, opacity_end: 1,
+      region: { shape: 'sphere', radius: 1, center: [10, 20, 30] },
+    });
+    emitter.setPosition(0, 0, 0);
+    emitter.setActive(true);
+    emitter.update(0.1);
+    const data = emitter.gather();
+    if (data && data.count > 0) {
+      // Particles should be near center offset (10, 20, 30)
+      const avgX = data.positions.subarray(0, data.count * 3).reduce(
+        (sum: number, v: number, i: number) => i % 3 === 0 ? sum + v : sum, 0) / data.count;
+      assert(Math.abs(avgX - 10) < 3, `avg X near 10 (got ${avgX.toFixed(1)})`);
+    }
+    emitter.delete();
+  }
+
+  {
+    console.log('Test 8.4: Backward compat — spawn_offset_min/max');
+    const emitter = new sim.ParticleEmitter();
+    emitter.configure({
+      spawn_rate: 100,
+      lifetime_min: 1, lifetime_max: 2,
+      velocity_min: [0, 1, 0], velocity_max: [0, 2, 0],
+      color_start: [1, 1, 1], color_end: [1, 1, 1],
+      scale_min: [0.1, 0.1, 0.1], scale_max: [0.2, 0.2, 0.2],
+      opacity_start: 1, opacity_end: 0,
+      spawn_offset_min: [-2, 0, -2],
+      spawn_offset_max: [2, 1, 2],
+    });
+    emitter.setActive(true);
+    emitter.update(0.1);
+    assert(emitter.aliveCount() > 0, 'legacy spawn_offset emitter works');
+    emitter.delete();
+  }
+
+  {
+    console.log('Test 8.5: Animator tagRegionWithParams — box region');
+    const animator = new sim.Animator();
+    const count = 50;
+    const positions = new Float32Array(count * 3);
+    const colors = new Float32Array(count * 3);
+    for (let i = 0; i < count; i++) {
+      positions[i * 3] = (i / count) * 10 - 5;
+      positions[i * 3 + 1] = 0;
+      positions[i * 3 + 2] = 0;
+      colors[i * 3] = 1; colors[i * 3 + 1] = 1; colors[i * 3 + 2] = 1;
+    }
+    animator.loadScene(positions, colors, count);
+    const groupId = animator.tagRegionWithParams(
+      { shape: 'box', center: [0, 0, 0], half_extents: [3, 3, 3] },
+      sim.EFFECT_WAVE, 5.0, { wave_speed: 5, noise: 0.5 });
+    assert(groupId > 0, `box region tagged (group ${groupId})`);
+    animator.update(0.1);
+    const data = animator.getSceneData();
+    assert(data !== null, 'scene data after box region tag');
+    animator.delete();
+  }
+
+  {
+    console.log('Test 8.6: Animator tagRegionWithParams — sphere region');
+    const animator = new sim.Animator();
+    const count = 50;
+    const positions = new Float32Array(count * 3);
+    const colors = new Float32Array(count * 3);
+    for (let i = 0; i < count; i++) {
+      positions[i * 3] = (i / count) * 10 - 5;
+      positions[i * 3 + 1] = 0;
+      positions[i * 3 + 2] = 0;
+      colors[i * 3] = 1; colors[i * 3 + 1] = 0; colors[i * 3 + 2] = 0;
+    }
+    animator.loadScene(positions, colors, count);
+    const groupId = animator.tagRegionWithParams(
+      { shape: 'sphere', center: [0, 0, 0], radius: 5 },
+      sim.EFFECT_PULSE, 3.0, { pulse_frequency: 8 });
+    assert(groupId > 0, `sphere region tagged (group ${groupId})`);
+    animator.update(0.1);
+    const data = animator.getSceneData();
+    assert(data !== null, 'scene data after sphere region tag');
+    animator.delete();
+  }
+
+  // ═══════════════════════════════════════════════════════════════
 
   console.log(`\n${'='.repeat(40)}`);
   console.log(`  ${passed} passed, ${failed} failed`);

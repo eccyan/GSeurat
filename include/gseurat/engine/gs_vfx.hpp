@@ -27,6 +27,10 @@ struct VfxElementData {
     // type=animation
     GsAnimationData animation_config;
     GsAnimRegion region;                 // animation area-of-effect
+    // type=light
+    glm::vec3 light_color{1.0f};
+    float light_intensity = 5.0f;
+    float light_radius = 10.0f;
 };
 
 struct VfxPreset {
@@ -70,6 +74,9 @@ public:
     const VfxPreset& preset() const { return preset_; }
     const std::vector<Gaussian>& object_gaussians() const { return object_gaussians_; }
 
+    /// Active lights from VFX light elements (collected by Renderer)
+    const std::vector<PointLight>& active_lights() const { return active_lights_; }
+
     /// Reset animation states so they re-tag on next update
     void reset_animations();
 
@@ -93,6 +100,13 @@ private:
         bool activated = false;
     };
     std::vector<AnimState> anim_states_;
+
+    struct LightState {
+        size_t element_index;
+        bool activated = false;
+    };
+    std::vector<LightState> light_states_;
+    std::vector<PointLight> active_lights_;
 
     // Object PLY Gaussians (static geometry, appended to buffer each frame)
     std::vector<Gaussian> object_gaussians_;

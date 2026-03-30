@@ -40,6 +40,17 @@ VfxPreset parse_vfx_preset(const nlohmann::json& j) {
             if (ej["emitter"].contains("preset")) {
                 el.emitter_preset = ej["emitter"]["preset"].get<std::string>();
             }
+        } else if (el.type == "light") {
+            if (ej.contains("light")) {
+                const auto& lj = ej["light"];
+                if (lj.contains("color")) {
+                    el.light_color = {lj["color"][0].get<float>(),
+                                      lj["color"][1].get<float>(),
+                                      lj["color"][2].get<float>()};
+                }
+                el.light_intensity = lj.value("intensity", 5.0f);
+                el.light_radius = lj.value("radius", 10.0f);
+            }
         } else if (el.type == "animation" && ej.contains("animation")) {
             auto& anim = el.animation_config;
             const auto& aj = ej["animation"];
@@ -101,6 +112,8 @@ void VfxInstance::init(const VfxPreset& preset, const glm::vec3& position, bool 
     // Pre-create states for all elements
     emitter_states_.clear();
     anim_states_.clear();
+    light_states_.clear();
+    active_lights_.clear();
     object_gaussians_.clear();
 
     for (size_t i = 0; i < preset_.elements.size(); ++i) {
@@ -138,6 +151,11 @@ void VfxInstance::init(const VfxPreset& preset, const glm::vec3& position, bool 
             } else {
                 std::fprintf(stderr, "VFX: Object PLY not found: %s\n", el.ply_file.c_str());
             }
+        } else if (el.type == "light") {
+            LightState ls;
+            ls.element_index = i;
+            ls.activated = false;
+            light_states_.push_back(ls);
         }
     }
 }
@@ -233,6 +251,30 @@ void VfxInstance::update(float dt, std::vector<Gaussian>& out_buffer, GaussianAn
             as.activated = true;
         } else if (!in_window && as.activated) {
             as.activated = false;
+        }
+    }
+
+    // Activate/deactivate light elements and build active lights list
+    active_lights_.clear();
+    for (auto& ls : light_states_) {
+        const auto& el = preset_.elements[ls.element_index];
+        float el_start = el.start;
+        bool in_window;
+        if (el.loop) {
+            in_window = elapsed_ >= el_start;
+        } else {
+            float el_end = el.duration > 0.0f ? el.start + el.duration : preset_.duration;
+            in_window = elapsed_ >= el_start && elapsed_ < el_end;
+        }
+        ls.activated = in_window;
+
+        if (ls.activated) {
+            PointLight pl;
+            glm::vec3 world_pos = position_ + el.position;
+            // PointLight uses: x=world_x, y=scene_z, z=height, w=radius
+            pl.position_and_radius = glm::vec4(world_pos.x, world_pos.z, world_pos.y, el.light_radius);
+            pl.color = glm::vec4(el.light_color, el.light_intensity);
+            active_lights_.push_back(pl);
         }
     }
 }

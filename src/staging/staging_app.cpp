@@ -392,6 +392,7 @@ void StagingApp::init_scene(const std::string& scene_path) {
                 renderer_.gs_renderer().set_light_mode(2);
                 renderer_.gs_renderer().set_point_lights(gs_lights);
             }
+            renderer_.set_gs_static_lights(gs_lights);
 
             // Emitters
             for (const auto& em : scene_data.gs_particle_emitters) {

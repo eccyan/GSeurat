@@ -194,6 +194,7 @@ void DemoApp::init_scene(const std::string& scene_path) {
             if (!gs_lights.empty()) {
                 renderer_.gs_renderer().set_light_mode(2);
                 renderer_.gs_renderer().set_point_lights(gs_lights);
+                renderer_.set_gs_static_lights(gs_lights);
                 renderer_.set_god_rays_intensity(1.0f);
                 for (size_t i = 0; i < gs_lights.size(); i++) {
                     const auto& l = gs_lights[i];

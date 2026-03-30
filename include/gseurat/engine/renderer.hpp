@@ -119,6 +119,7 @@ public:
     void clear_vfx_instances();
     const std::vector<VfxInstance>& vfx_instances() const { return vfx_instances_; }
     std::vector<VfxInstance>& vfx_instances_mutable() { return vfx_instances_; }
+    void set_gs_static_lights(const std::vector<PointLight>& lights) { gs_static_lights_ = lights; }
 
     void request_screenshot(const std::string& path) { screenshot_.request(path); }
     bool screenshot_write_ok() const { return screenshot_.write_ok(); }
@@ -238,6 +239,7 @@ private:
     float gs_blit_offset_x_ = 0.0f;
     float gs_blit_offset_y_ = 0.0f;
     uint32_t gs_prev_budget_ = 0;
+    std::vector<PointLight> gs_static_lights_;  // Scene-defined lights (for VFX light merging)
 
     // Persistent post-process params (modified by Staging panels)
     PostProcessParams pp_params_;
