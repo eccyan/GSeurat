@@ -441,8 +441,8 @@ void Renderer::draw_scene(Scene& scene,
     PostProcessParams pp_params = pp_params_;
     pp_params.dof_near_plane = camera_.near_plane();
     pp_params.dof_far_plane = camera_.far_plane();
-    // Only override fog from scene if not already set by panels
-    if (pp_params.fog_density == 0.0f) {
+    // Use scene fog unless panels have explicitly overridden it
+    if (!pp_params.fog_override) {
         pp_params.fog_density = scene.fog_density();
         pp_params.fog_color_r = scene.fog_color().r;
         pp_params.fog_color_g = scene.fog_color().g;

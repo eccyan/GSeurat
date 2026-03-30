@@ -177,6 +177,12 @@ void AppBase::load_gs_scene(const SceneData& scene_data, const GsSceneOptions& o
         scene_.add_light(pl);
     }
 
+    // Apply weather fog to scene (picked up by renderer each frame)
+    if (scene_data.weather.fog_density > 0.0f) {
+        scene_.set_fog_density(scene_data.weather.fog_density);
+        scene_.set_fog_color(scene_data.weather.fog_color);
+    }
+
     if (scene_data.gaussian_splat) {
         const auto& gs = *scene_data.gaussian_splat;
         GaussianCloud cloud;
@@ -572,6 +578,12 @@ void AppBase::dispatch_command(const nlohmann::json& cmd, nlohmann::json& respon
                     renderer_.set_gs_static_lights(gs_lights);
                 } else {
                     renderer_.gs_renderer().set_light_mode(0);
+                }
+
+                // Apply weather fog directly to scene (no WeatherSystem in Staging)
+                if (scene_data.weather.fog_density > 0.0f) {
+                    scene_.set_fog_density(scene_data.weather.fog_density);
+                    scene_.set_fog_color(scene_data.weather.fog_color);
                 }
 
                 // Rebuild emitters
