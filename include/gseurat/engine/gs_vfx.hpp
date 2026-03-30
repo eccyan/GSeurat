@@ -111,7 +111,7 @@ private:
     std::vector<LightState> light_states_;
     std::vector<PointLight> active_lights_;
 
-    // Object PLY Gaussians (static geometry, appended to buffer each frame)
+    // Object PLY Gaussians (static geometry, included in scene buffer at init/gather)
     std::vector<Gaussian> object_gaussians_;
 };
 
