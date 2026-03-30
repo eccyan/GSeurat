@@ -90,6 +90,13 @@ public:
     // Public methods used by states (virtual — game overrides)
     virtual void init_scene(const std::string& scene_path);
     virtual void clear_scene();
+
+    // Shared GS scene loading: PLY + placed objects + lights + emitters + animations + VFX
+    struct GsSceneOptions {
+        bool add_default_light;
+        bool set_god_rays;
+    };
+    void load_gs_scene(const SceneData& scene_data, const GsSceneOptions& opts = {false, false});
     virtual void update_game(float dt);
     virtual void update_audio(float dt);
 
