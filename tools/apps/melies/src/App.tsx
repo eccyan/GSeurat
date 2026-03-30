@@ -7,6 +7,7 @@ import { serializeVfx } from './lib/vfxExport.js';
 import { parseVfx } from './lib/vfxImport.js';
 import { hasFileSystemAccess, openProjectDirectory, saveProject, loadProject, downloadProject, uploadProject, copyPlyToProject, loadPlyFromProject } from './lib/projectIO.js';
 import { loadPly, type PlyPoint } from './lib/plyLoader.js';
+import { sendBridgeCommands } from '@gseurat/engine-client';
 import { Preview } from './viewport/Preview.js';
 import { LayerProperties } from './panels/LayerProperties.js';
 import { PresetSettings } from './panels/PresetSettings.js';
@@ -138,31 +139,13 @@ function MenuBar({ onImportScene }: { onImportScene?: () => void }) {
         loop: true,
       });
 
-      // Send both the VFX file content and the scene JSON
-      try {
-        const ws = new WebSocket('ws://localhost:9100');
-        ws.onopen = () => {
-          // First write the VFX preset file
-          ws.send(JSON.stringify({
-            cmd: 'write_temp_file',
-            path: tempVfxPath,
-            content: vfxJson,
-          }));
-          // Then load the scene
-          setTimeout(() => {
-            ws.send(JSON.stringify({
-              cmd: 'load_scene_json',
-              json: JSON.stringify(scene),
-            }));
-            setTimeout(() => ws.close(), 500);
-          }, 100);
-        };
-        ws.onerror = () => {
-          console.warn('[Méliès] Could not connect to bridge — is Staging running?');
-        };
-      } catch {
-        console.warn('[Méliès] WebSocket not available');
-      }
+      // Send both the VFX file content and the scene JSON via persistent bridge
+      sendBridgeCommands([
+        { cmd: 'write_temp_file', path: tempVfxPath, content: vfxJson },
+        { cmd: 'load_scene_json', json: JSON.stringify(scene) },
+      ]).catch(() => {
+        console.warn('[Méliès] Could not connect to bridge — is Staging running?');
+      });
     }
     setFileOpen(false);
   };

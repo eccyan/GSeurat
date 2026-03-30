@@ -4,6 +4,7 @@ import { exportPly } from '../lib/plyExport.js';
 import { exportSceneJson } from '../lib/sceneExport.js';
 import { computeFingerprint, isStructuralChange, type SceneFingerprint } from '../lib/sceneFingerprint.js';
 import { hasFileSystemAccess, openProjectDirectory, saveProject as saveProjectDir, loadProject as loadProjectDir, saveProjectAsZip, loadProjectFromZip, importAssetToProject } from '../lib/projectIO.js';
+import { sendBridgeCommand } from '@gseurat/engine-client';
 import type { BricklayerFile } from '../store/types.js';
 
 const styles: Record<string, React.CSSProperties> = {
@@ -282,17 +283,6 @@ export function MenuBar({ onImport }: { onImport: () => void }) {
     download(new Blob([json], { type: 'application/json' }), `${s.projectName || 'scene'}.json`);
   };
 
-  const sendBridgeCommand = useCallback((payload: Record<string, unknown>) => {
-    try {
-      const ws = new WebSocket('ws://localhost:9100');
-      ws.onopen = () => {
-        ws.send(JSON.stringify(payload));
-        setTimeout(() => ws.close(), 500);
-      };
-      ws.onerror = () => {};
-    } catch { /* ignore */ }
-  }, []);
-
   const handleOpenInStaging = () => {
     const s = useSceneStore.getState();
     const scene = exportSceneJson(s);
@@ -335,7 +325,7 @@ export function MenuBar({ onImport }: { onImport: () => void }) {
       unsub();
       if (autoSyncTimer.current) clearTimeout(autoSyncTimer.current);
     };
-  }, [stagingAutoSync, sendBridgeCommand]);
+  }, [stagingAutoSync]);
 
   const handleImportAsset = () => {
     const input = document.createElement('input');
