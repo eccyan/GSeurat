@@ -229,25 +229,25 @@ void StagingState::draw_render_settings(AppBase& app) {
     auto& pp = app.renderer().post_process_params();
 
     if (ImGui::CollapsingHeader("Bloom", ImGuiTreeNodeFlags_DefaultOpen)) {
-        ImGui::SliderFloat("Threshold##bloom", &pp.bloom_threshold, 0.0f, 5.0f);
-        ImGui::SliderFloat("Soft Knee##bloom", &pp.bloom_soft_knee, 0.0f, 1.0f);
-        ImGui::SliderFloat("Intensity##bloom", &pp.bloom_intensity, 0.0f, 2.0f);
+        ImGui::SliderFloat("Threshold##bloom", &pp.bloom_threshold, 0.0f, 5.0f, "%.3f", ImGuiSliderFlags_NoInput);
+        ImGui::SliderFloat("Soft Knee##bloom", &pp.bloom_soft_knee, 0.0f, 1.0f, "%.3f", ImGuiSliderFlags_NoInput);
+        ImGui::SliderFloat("Intensity##bloom", &pp.bloom_intensity, 0.0f, 2.0f, "%.3f", ImGuiSliderFlags_NoInput);
     }
     if (ImGui::CollapsingHeader("Exposure")) {
-        ImGui::SliderFloat("Exposure##pp", &pp.exposure, 0.1f, 5.0f);
+        ImGui::SliderFloat("Exposure##pp", &pp.exposure, 0.1f, 5.0f, "%.3f", ImGuiSliderFlags_NoInput);
     }
     if (ImGui::CollapsingHeader("Depth of Field")) {
-        ImGui::SliderFloat("Focus Distance##dof", &pp.dof_focus_distance, 0.1f, 200.0f);
-        ImGui::SliderFloat("Focus Range##dof", &pp.dof_focus_range, 0.1f, 50.0f);
-        ImGui::SliderFloat("Max Blur##dof", &pp.dof_max_blur, 0.0f, 2.0f);
+        ImGui::SliderFloat("Focus Distance##dof", &pp.dof_focus_distance, 0.1f, 200.0f, "%.3f", ImGuiSliderFlags_NoInput);
+        ImGui::SliderFloat("Focus Range##dof", &pp.dof_focus_range, 0.1f, 50.0f, "%.3f", ImGuiSliderFlags_NoInput);
+        ImGui::SliderFloat("Max Blur##dof", &pp.dof_max_blur, 0.0f, 2.0f, "%.3f", ImGuiSliderFlags_NoInput);
     }
     if (ImGui::CollapsingHeader("Vignette")) {
-        ImGui::SliderFloat("Radius##vig", &pp.vignette_radius, 0.0f, 1.5f);
-        ImGui::SliderFloat("Softness##vig", &pp.vignette_softness, 0.0f, 1.0f);
+        ImGui::SliderFloat("Radius##vig", &pp.vignette_radius, 0.0f, 1.5f, "%.3f", ImGuiSliderFlags_NoInput);
+        ImGui::SliderFloat("Softness##vig", &pp.vignette_softness, 0.0f, 1.0f, "%.3f", ImGuiSliderFlags_NoInput);
     }
     if (ImGui::CollapsingHeader("God Rays")) {
         float gr = app.renderer().god_rays_intensity();
-        if (ImGui::SliderFloat("Intensity##godrays", &gr, 0.0f, 3.0f)) {
+        if (ImGui::SliderFloat("Intensity##godrays", &gr, 0.0f, 3.0f, "%.3f", ImGuiSliderFlags_NoInput)) {
             app.renderer().set_god_rays_intensity(gr);
         }
     }
@@ -268,19 +268,19 @@ void StagingState::draw_gs_params(AppBase& app) {
     auto& gs = app.renderer().gs_renderer();
 
     float scale = gs.scale_multiplier();
-    if (ImGui::SliderFloat("Scale", &scale, 0.1f, 10.0f)) {
+    if (ImGui::SliderFloat("Scale", &scale, 0.1f, 10.0f, "%.3f", ImGuiSliderFlags_NoInput)) {
         gs.set_scale_multiplier(scale);
     }
 
     int toon = gs.toon_bands();
-    if (ImGui::SliderInt("Toon Bands", &toon, 0, 5)) {
+    if (ImGui::SliderInt("Toon Bands", &toon, 0, 5, "%d", ImGuiSliderFlags_NoInput)) {
         gs.set_toon_bands(toon);
     }
 
     ImGui::Separator();
 
     int budget = static_cast<int>(app.renderer().gs_gaussian_budget());
-    if (ImGui::SliderInt("LOD Budget", &budget, 0, 500000, "%d", ImGuiSliderFlags_Logarithmic)) {
+    if (ImGui::SliderInt("LOD Budget", &budget, 0, 500000, "%d", ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_NoInput)) {
         app.renderer().set_gs_gaussian_budget(static_cast<uint32_t>(budget));
     }
     ImGui::SameLine();
@@ -344,7 +344,7 @@ void StagingState::draw_lighting(AppBase& app) {
     }
 
     float intensity = gs.light_intensity();
-    if (ImGui::SliderFloat("Global Intensity", &intensity, 0.0f, 5.0f)) {
+    if (ImGui::SliderFloat("Global Intensity", &intensity, 0.0f, 5.0f, "%.3f", ImGuiSliderFlags_NoInput)) {
         gs.set_light_intensity(intensity);
     }
 
