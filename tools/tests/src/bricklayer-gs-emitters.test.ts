@@ -9,8 +9,16 @@
 
 // ── Types (inlined to avoid React/Three.js imports) ──
 
+interface SpawnRegion {
+  shape: string;
+  center?: [number, number, number];
+  radius?: number;
+  half_extents?: [number, number, number];
+}
+
 interface GsParticleEmitterData {
   id: string;
+  muted?: boolean;
   preset: string;
   position: [number, number, number];
   spawn_rate: number;
@@ -27,6 +35,7 @@ interface GsParticleEmitterData {
   opacity_start: number;
   opacity_end: number;
   emission: number;
+  spawn_region: SpawnRegion;
   spawn_offset_min: [number, number, number];
   spawn_offset_max: [number, number, number];
   burst_duration: number;
@@ -58,6 +67,7 @@ function defaultEmitter(pos?: [number, number, number]): GsParticleEmitterData {
     opacity_start: 1,
     opacity_end: 0,
     emission: 0,
+    spawn_region: { shape: 'sphere', radius: 1, center: [0, 0, 0], half_extents: [1, 1, 1] },
     spawn_offset_min: [0, 0, 0],
     spawn_offset_max: [0, 0, 0],
     burst_duration: 0,
@@ -126,9 +136,15 @@ function exportEmitters(list: GsParticleEmitterData[]): Record<string, unknown>[
       opacity_start: e.opacity_start,
       opacity_end: e.opacity_end,
       emission: e.emission,
-      spawn_offset_min: e.spawn_offset_min,
-      spawn_offset_max: e.spawn_offset_max,
     };
+    // Export region (new format)
+    if (e.spawn_region) {
+      const region: Record<string, unknown> = { shape: e.spawn_region.shape };
+      if (e.spawn_region.center) region.center = e.spawn_region.center;
+      if (e.spawn_region.shape === 'sphere') region.radius = e.spawn_region.radius ?? 1;
+      else region.half_extents = e.spawn_region.half_extents ?? [1, 1, 1];
+      out.region = region;
+    }
     if (e.preset) out.preset = e.preset;
     if (e.burst_duration > 0) out.burst_duration = e.burst_duration;
     return out;
@@ -438,6 +454,95 @@ console.log('\n--- Grab mode ---\n');
   assert(list[0].position[0] === 15, 'x updated');
   assert(list[0].position[1] === 10, 'y updated');
   assert(list[0].position[2] === 25, 'z updated');
+}
+
+// 6. Spawn region
+console.log('\n--- Spawn region ---\n');
+
+{
+  console.log('Test 6.1: Default emitter has spawn_region with shape');
+  let list: GsParticleEmitterData[] = [];
+  list = addEmitter(list);
+  assert(list[0].spawn_region !== undefined, 'spawn_region exists');
+  assert(list[0].spawn_region.shape === 'sphere', `default shape is sphere (got ${list[0].spawn_region.shape})`);
+  assert(list[0].spawn_region.radius === 1, 'default radius is 1');
+}
+
+{
+  console.log('Test 6.2: Update region to box shape');
+  let list: GsParticleEmitterData[] = [];
+  list = addEmitter(list);
+  const id = list[0].id;
+  list = updateEmitter(list, id, {
+    spawn_region: { shape: 'box', half_extents: [2, 3, 4], center: [0, 0, 0] },
+  });
+  assert(list[0].spawn_region.shape === 'box', 'shape changed to box');
+  assert(list[0].spawn_region.half_extents![0] === 2, 'half_extents x = 2');
+  assert(list[0].spawn_region.half_extents![1] === 3, 'half_extents y = 3');
+  assert(list[0].spawn_region.half_extents![2] === 4, 'half_extents z = 4');
+}
+
+{
+  console.log('Test 6.3: Update region to sphere with radius');
+  let list: GsParticleEmitterData[] = [];
+  list = addEmitter(list);
+  const id = list[0].id;
+  list = updateEmitter(list, id, {
+    spawn_region: { shape: 'sphere', radius: 5.5, center: [1, 2, 3] },
+  });
+  assert(list[0].spawn_region.shape === 'sphere', 'shape is sphere');
+  assert(list[0].spawn_region.radius === 5.5, 'radius is 5.5');
+  assert(list[0].spawn_region.center![0] === 1, 'center x = 1');
+}
+
+{
+  console.log('Test 6.4: Export sphere region');
+  let list: GsParticleEmitterData[] = [];
+  list = addEmitter(list);
+  const result = exportEmitters(list)!;
+  const region = result[0].region as Record<string, unknown>;
+  assert(region !== undefined, 'region exported');
+  assert(region.shape === 'sphere', 'exported shape is sphere');
+  assert(region.radius === 1, 'exported radius is 1');
+  assert(!('half_extents' in region), 'no half_extents for sphere');
+}
+
+{
+  console.log('Test 6.5: Export box region');
+  let list: GsParticleEmitterData[] = [];
+  list = addEmitter(list);
+  list = updateEmitter(list, list[0].id, {
+    spawn_region: { shape: 'box', half_extents: [5, 6, 7], center: [0, 0, 0] },
+  });
+  const result = exportEmitters(list)!;
+  const region = result[0].region as Record<string, unknown>;
+  assert(region.shape === 'box', 'exported shape is box');
+  assert(!('radius' in region), 'no radius for box');
+  const he = region.half_extents as number[];
+  assert(he[0] === 5 && he[1] === 6 && he[2] === 7, 'half_extents exported correctly');
+}
+
+{
+  console.log('Test 6.6: Export does not include spawn_offset_min/max');
+  let list: GsParticleEmitterData[] = [];
+  list = addEmitter(list);
+  const result = exportEmitters(list)!;
+  assert(!('spawn_offset_min' in result[0]), 'no spawn_offset_min in export');
+  assert(!('spawn_offset_max' in result[0]), 'no spawn_offset_max in export');
+}
+
+{
+  console.log('Test 6.7: Region survives save/load roundtrip');
+  let list: GsParticleEmitterData[] = [];
+  list = addEmitter(list);
+  list = updateEmitter(list, list[0].id, {
+    spawn_region: { shape: 'box', half_extents: [10, 20, 30], center: [1, 2, 3] },
+  });
+  const saved = saveEmitters(list);
+  const loaded = loadEmitters(JSON.parse(JSON.stringify(saved)));
+  assert(loaded[0].spawn_region.shape === 'box', 'shape preserved after roundtrip');
+  assert(loaded[0].spawn_region.half_extents![0] === 10, 'half_extents preserved');
+  assert(loaded[0].spawn_region.center![0] === 1, 'center preserved');
 }
 
 // --- Summary ---
