@@ -805,7 +805,13 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
                 } else {
                     gs_chunk_grid_.gather(visible, gs_active_buffer_);
                 }
-                gs_scene_buffer_ = gs_active_buffer_;  // cache scene-only buffer
+                gs_scene_buffer_ = gs_active_buffer_;  // cache pure-scene Gaussians
+                gs_scene_base_count_ = static_cast<uint32_t>(gs_scene_buffer_.size());
+
+                // Append VFX object Gaussians to scene buffer (static PLY geometry)
+                for (auto& inst : vfx_instances_) {
+                    inst.append_objects(gs_scene_buffer_);
+                }
 
                 // Scene buffer changed — animator indices are stale.
                 // Reset so VFX animations re-tag on the new buffer.
@@ -816,10 +822,10 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
                     inst.reset_animations();
                 }
 
-                if (!gs_active_buffer_.empty()) {
+                if (!gs_scene_buffer_.empty()) {
                     gs_renderer_.update_active_gaussians(
-                        gs_active_buffer_.data(),
-                        static_cast<uint32_t>(gs_active_buffer_.size()));
+                        gs_scene_buffer_.data(),
+                        static_cast<uint32_t>(gs_scene_buffer_.size()));
                 }
             }
 
@@ -880,11 +886,8 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
                     gs_active_buffer_ = gs_scene_buffer_;
                 }
 
-                // Append VFX object Gaussians BEFORE animator runs,
-                // so animation tag indices remain valid.
-                for (auto& inst : vfx_instances_) {
-                    inst.append_objects(gs_active_buffer_);
-                }
+                // VFX object Gaussians are already in gs_scene_buffer_
+                // (appended at gather time), so no per-frame append needed.
 
                 // Animate tagged scene + object Gaussians (Mode 2)
                 if (flags.animation && gs_animator_.has_active_groups()) {
@@ -1091,19 +1094,23 @@ void Renderer::clear_gs_animations() {
 }
 
 void Renderer::add_vfx_instance(VfxInstance&& inst) {
-    // Grow SSBO capacity to fit object PLY Gaussians (appended per-frame in update)
+    // Grow SSBO capacity to fit object PLY Gaussians
     const auto& obj_gs = inst.object_gaussians();
     if (!obj_gs.empty()) {
         uint32_t current_base = gs_renderer_.max_gaussian_count() - GsRenderer::kParticleHeadroom;
         uint32_t new_base = current_base + static_cast<uint32_t>(obj_gs.size());
         gs_renderer_.ensure_capacity(new_base);
-        std::fprintf(stderr, "VFX: Grew capacity for %zu object Gaussians\n", obj_gs.size());
+        // Include in cached scene buffer so no per-frame append is needed
+        gs_scene_buffer_.insert(gs_scene_buffer_.end(), obj_gs.begin(), obj_gs.end());
+        std::fprintf(stderr, "VFX: Added %zu object Gaussians to scene buffer\n", obj_gs.size());
     }
     vfx_instances_.push_back(std::move(inst));
 }
 
 void Renderer::clear_vfx_instances() {
     vfx_instances_.clear();
+    // Remove VFX object Gaussians from scene buffer (trim to pure-scene count)
+    gs_scene_buffer_.resize(gs_scene_base_count_);
 }
 
 }  // namespace gseurat

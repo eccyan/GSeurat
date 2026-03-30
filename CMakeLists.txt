@@ -324,3 +324,4 @@ add_gseurat_test(test_scene_loading  src/engine/scene_loader.cpp src/engine/tile
 add_gseurat_test(test_incremental_sync src/engine/scene_loader.cpp src/engine/tilemap.cpp
                                         src/engine/gaussian_cloud.cpp src/engine/gs_particle.cpp
                                         src/engine/gs_animator.cpp)
+add_gseurat_test(test_vfx_scene_buffer src/engine/gaussian_cloud.cpp)
