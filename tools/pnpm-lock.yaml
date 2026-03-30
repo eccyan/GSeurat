@@ -234,6 +234,9 @@ importers:
 
   apps/melies:
     dependencies:
+      '@gseurat/engine-client':
+        specifier: workspace:*
+        version: link:../../packages/engine-client
       '@gseurat/simulation-wasm':
         specifier: workspace:*
         version: link:../../packages/simulation-wasm

@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@gseurat/engine-client": "workspace:*",
     "@gseurat/simulation-wasm": "workspace:*",
     "@gseurat/test-harness": "workspace:*",
     "@gseurat/ui-kit": "workspace:*",
