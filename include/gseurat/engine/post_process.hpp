@@ -28,6 +28,7 @@ struct PostProcessParams {
     float fog_color_r = 0.3f;
     float fog_color_g = 0.35f;
     float fog_color_b = 0.45f;
+    bool fog_override = false;  // true = panels explicitly set fog; skip scene fog
     float fade_amount = 0.0f;
     float ca_intensity = 0.0f;
     float flash_r = 0.0f;
