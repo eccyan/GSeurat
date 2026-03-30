@@ -249,8 +249,19 @@
         "opacity_start": { "type": "number", "minimum": 0, "maximum": 1 },
         "opacity_end": { "type": "number", "minimum": 0, "maximum": 1 },
         "emission": { "type": "number", "minimum": 0 },
-        "spawn_offset_min": { "$ref": "#/definitions/vec3" },
-        "spawn_offset_max": { "$ref": "#/definitions/vec3" },
+        "region": {
+          "type": "object",
+          "description": "Spawn region (sphere or box). Replaces spawn_offset_min/max.",
+          "properties": {
+            "shape": { "type": "string", "enum": ["sphere", "box"] },
+            "center": { "$ref": "#/definitions/vec3" },
+            "radius": { "type": "number", "minimum": 0 },
+            "half_extents": { "$ref": "#/definitions/vec3" }
+          },
+          "additionalProperties": false
+        },
+        "spawn_offset_min": { "$ref": "#/definitions/vec3", "description": "Deprecated: use region instead" },
+        "spawn_offset_max": { "$ref": "#/definitions/vec3", "description": "Deprecated: use region instead" },
         "burst_duration": { "type": "number", "minimum": 0 }
       },
       "additionalProperties": false
