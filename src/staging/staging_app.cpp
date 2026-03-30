@@ -474,10 +474,21 @@ void StagingApp::init_scene(const std::string& scene_path) {
 }
 
 void StagingApp::clear_scene() {
+    vkDeviceWaitIdle(renderer_.context().device());
     renderer_.clear_gs_particle_emitters();
     renderer_.clear_gs_animations();
     renderer_.clear_vfx_instances();
     scene_.clear_lights();
+    gs_aabb_offset_ = glm::vec2(0.0f);
+
+    // Reset GS cloud so viewport is empty
+    if (renderer_.has_gs_cloud()) {
+        std::vector<Gaussian> dummy(1);
+        dummy[0].opacity = 0.0f;
+        dummy[0].scale = glm::vec3(0.001f);
+        auto cloud = GaussianCloud::from_gaussians(std::move(dummy));
+        renderer_.init_gs(cloud, 320, 240);
+    }
 }
 
 }  // namespace gseurat
