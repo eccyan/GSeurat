@@ -829,123 +829,124 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
                 }
             }
 
-            // Update particles/animations separately (no re-sort of scene)
-            bool has_particles = !gs_particle_emitters_.empty()
-                || gs_animator_.has_active_groups()
-                || !gs_scene_animations_.empty()
-                || !vfx_instances_.empty();
-            if (has_particles) {
-                // Phase-based state machine for scene animations
-                // Run BEFORE buffer reset so we can detect transitions to Reforming
-                for (auto& sa : gs_scene_animations_) {
-                    using Phase = SceneAnimation::Phase;
-                    if (sa.phase == Phase::Effect) {
-                        if (sa.group_id == 0) {
+        }
+
+        // Update particles/animations/VFX (runs regardless of chunk culling)
+        bool has_particles = !gs_particle_emitters_.empty()
+            || gs_animator_.has_active_groups()
+            || !gs_scene_animations_.empty()
+            || !vfx_instances_.empty();
+        if (has_particles) {
+            // Phase-based state machine for scene animations
+            // Run BEFORE buffer reset so we can detect transitions to Reforming
+            for (auto& sa : gs_scene_animations_) {
+                using Phase = SceneAnimation::Phase;
+                if (sa.phase == Phase::Effect) {
+                    if (sa.group_id == 0) {
+                        sa.group_id = gs_animator_.tag_region(
+                            gs_scene_buffer_, sa.region,
+                            parse_effect_name(sa.effect), sa.lifetime, sa.params);
+                    } else if (!gs_animator_.has_group(sa.group_id)) {
+                        if (sa.reform) {
+                            sa.reform_group_id = gs_animator_.tag_region(
+                                gs_scene_buffer_, sa.region,
+                                GsAnimEffect::Reform, sa.reform->lifetime);
+                            sa.phase = Phase::Reforming;
+                        } else if (sa.loop) {
                             sa.group_id = gs_animator_.tag_region(
                                 gs_scene_buffer_, sa.region,
                                 parse_effect_name(sa.effect), sa.lifetime, sa.params);
-                        } else if (!gs_animator_.has_group(sa.group_id)) {
-                            if (sa.reform) {
-                                sa.reform_group_id = gs_animator_.tag_region(
-                                    gs_scene_buffer_, sa.region,
-                                    GsAnimEffect::Reform, sa.reform->lifetime);
-                                sa.phase = Phase::Reforming;
-                            } else if (sa.loop) {
-                                sa.group_id = gs_animator_.tag_region(
-                                    gs_scene_buffer_, sa.region,
-                                    parse_effect_name(sa.effect), sa.lifetime, sa.params);
-                            } else {
-                                sa.phase = Phase::Idle;
-                            }
+                        } else {
+                            sa.phase = Phase::Idle;
                         }
-                    } else if (sa.phase == Phase::Reforming) {
-                        if (!gs_animator_.has_group(sa.reform_group_id)) {
-                            if (sa.loop) {
-                                sa.group_id = gs_animator_.tag_region(
-                                    gs_scene_buffer_, sa.region,
-                                    parse_effect_name(sa.effect), sa.lifetime, sa.params);
-                                sa.phase = Phase::Effect;
-                            } else {
-                                sa.phase = Phase::Idle;
-                            }
+                    }
+                } else if (sa.phase == Phase::Reforming) {
+                    if (!gs_animator_.has_group(sa.reform_group_id)) {
+                        if (sa.loop) {
+                            sa.group_id = gs_animator_.tag_region(
+                                gs_scene_buffer_, sa.region,
+                                parse_effect_name(sa.effect), sa.lifetime, sa.params);
+                            sa.phase = Phase::Effect;
+                        } else {
+                            sa.phase = Phase::Idle;
                         }
                     }
                 }
-
-                // Check if any animation is reforming AFTER state transitions
-                bool any_reforming = false;
-                for (const auto& sa : gs_scene_animations_) {
-                    if (sa.phase == SceneAnimation::Phase::Reforming) {
-                        any_reforming = true;
-                        break;
-                    }
-                }
-
-                // Skip buffer reset during reform so displaced positions persist
-                if (!any_reforming) {
-                    gs_active_buffer_ = gs_scene_buffer_;
-                }
-
-                // VFX object Gaussians are already in gs_scene_buffer_
-                // (appended at gather time), so no per-frame append needed.
-
-                // Animate tagged scene + object Gaussians (Mode 2)
-                if (flags.animation && gs_animator_.has_active_groups()) {
-                    gs_animator_.update(dt, gs_active_buffer_);
-                }
-
-                // Update and append Gaussian particles from emitters
-                if (flags.particles) {
-                    for (auto& emitter : gs_particle_emitters_) {
-                        emitter.update(dt);
-                        emitter.gather(gs_active_buffer_);
-                    }
-                    // Remove dead emitters
-                    gs_particle_emitters_.erase(
-                        std::remove_if(gs_particle_emitters_.begin(), gs_particle_emitters_.end(),
-                            [](const GaussianParticleEmitter& e) { return !e.active() && e.alive_count() == 0; }),
-                        gs_particle_emitters_.end());
-                }
-
-                // Update VFX instances (timeline + emitters + animation tagging)
-                if (flags.particles || flags.animation) {
-                    for (auto& inst : vfx_instances_) {
-                        inst.update(dt, gs_active_buffer_, gs_animator_);
-                    }
-                    std::erase_if(vfx_instances_,
-                        [](const VfxInstance& i) { return i.is_finished(); });
-                }
-
-                // Collect VFX dynamic lights and merge with existing lights
-                {
-                    // Start from static scene lights (set via set_gs_static_lights)
-                    auto all_lights = gs_static_lights_;
-                    // Append VFX instance lights
-                    for (const auto& inst : vfx_instances_) {
-                        for (const auto& vl : inst.active_lights()) {
-                            if (all_lights.size() < 8) {
-                                all_lights.push_back(vl);
-                            }
-                        }
-                    }
-                    if (!all_lights.empty()) {
-                        // Auto-enable point light mode if VFX lights are present
-                        if (gs_renderer_.light_mode() < 2) {
-                            gs_renderer_.set_light_mode(2);
-                        }
-                        gs_renderer_.set_point_lights(all_lights);
-                    }
-                }
-
-                // Clamp to allocated SSBO capacity
-                if (gs_active_buffer_.size() > gs_renderer_.max_gaussian_count()) {
-                    gs_active_buffer_.resize(gs_renderer_.max_gaussian_count());
-                }
-
-                gs_renderer_.update_gaussian_data(
-                    gs_active_buffer_.data(),
-                    static_cast<uint32_t>(gs_active_buffer_.size()));
             }
+
+            // Check if any animation is reforming AFTER state transitions
+            bool any_reforming = false;
+            for (const auto& sa : gs_scene_animations_) {
+                if (sa.phase == SceneAnimation::Phase::Reforming) {
+                    any_reforming = true;
+                    break;
+                }
+            }
+
+            // Skip buffer reset during reform so displaced positions persist
+            if (!any_reforming) {
+                gs_active_buffer_ = gs_scene_buffer_;
+            }
+
+            // VFX object Gaussians are already in gs_scene_buffer_
+            // (appended at gather time), so no per-frame append needed.
+
+            // Animate tagged scene + object Gaussians (Mode 2)
+            if (flags.animation && gs_animator_.has_active_groups()) {
+                gs_animator_.update(dt, gs_active_buffer_);
+            }
+
+            // Update and append Gaussian particles from emitters
+            if (flags.particles) {
+                for (auto& emitter : gs_particle_emitters_) {
+                    emitter.update(dt);
+                    emitter.gather(gs_active_buffer_);
+                }
+                // Remove dead emitters
+                gs_particle_emitters_.erase(
+                    std::remove_if(gs_particle_emitters_.begin(), gs_particle_emitters_.end(),
+                        [](const GaussianParticleEmitter& e) { return !e.active() && e.alive_count() == 0; }),
+                    gs_particle_emitters_.end());
+            }
+
+            // Update VFX instances (timeline + emitters + animation tagging)
+            if (flags.particles || flags.animation) {
+                for (auto& inst : vfx_instances_) {
+                    inst.update(dt, gs_active_buffer_, gs_animator_);
+                }
+                std::erase_if(vfx_instances_,
+                    [](const VfxInstance& i) { return i.is_finished(); });
+            }
+
+            // Collect VFX dynamic lights and merge with existing lights
+            {
+                // Start from static scene lights (set via set_gs_static_lights)
+                auto all_lights = gs_static_lights_;
+                // Append VFX instance lights
+                for (const auto& inst : vfx_instances_) {
+                    for (const auto& vl : inst.active_lights()) {
+                        if (all_lights.size() < 8) {
+                            all_lights.push_back(vl);
+                        }
+                    }
+                }
+                if (!all_lights.empty()) {
+                    // Auto-enable point light mode if VFX lights are present
+                    if (gs_renderer_.light_mode() < 2) {
+                        gs_renderer_.set_light_mode(2);
+                    }
+                    gs_renderer_.set_point_lights(all_lights);
+                }
+            }
+
+            // Clamp to allocated SSBO capacity
+            if (gs_active_buffer_.size() > gs_renderer_.max_gaussian_count()) {
+                gs_active_buffer_.resize(gs_renderer_.max_gaussian_count());
+            }
+
+            gs_renderer_.update_gaussian_data(
+                gs_active_buffer_.data(),
+                static_cast<uint32_t>(gs_active_buffer_.size()));
         }
 
         gs_renderer_.render(cmd, gs_view_, gs_proj_);
