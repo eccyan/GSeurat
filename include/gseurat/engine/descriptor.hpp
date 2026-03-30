@@ -25,6 +25,9 @@ public:
         VkImageView normal_view = VK_NULL_HANDLE,
         VkSampler normal_sampler = VK_NULL_HANDLE);
 
+    void free_sprite_sets(VkDevice device,
+                          std::array<VkDescriptorSet, kMaxFramesInFlight>& sets);
+
 private:
     VkDescriptorPool pool_ = VK_NULL_HANDLE;
     VkDescriptorSetLayout sprite_layout_ = VK_NULL_HANDLE;

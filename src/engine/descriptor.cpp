@@ -45,6 +45,7 @@ void DescriptorManager::init(VkDevice device) {
 
     VkDescriptorPoolCreateInfo pool_info{};
     pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    pool_info.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
     pool_info.poolSizeCount = static_cast<uint32_t>(pool_sizes.size());
     pool_info.pPoolSizes = pool_sizes.data();
     pool_info.maxSets = kMaxFramesInFlight * 16;
@@ -121,6 +122,18 @@ std::array<VkDescriptorSet, kMaxFramesInFlight> DescriptorManager::allocate_spri
     }
 
     return sets;
+}
+
+void DescriptorManager::free_sprite_sets(VkDevice device,
+                                          std::array<VkDescriptorSet, kMaxFramesInFlight>& sets) {
+    std::vector<VkDescriptorSet> valid;
+    for (auto s : sets) {
+        if (s != VK_NULL_HANDLE) valid.push_back(s);
+    }
+    if (!valid.empty()) {
+        vkFreeDescriptorSets(device, pool_, static_cast<uint32_t>(valid.size()), valid.data());
+    }
+    sets.fill(VK_NULL_HANDLE);
 }
 
 }  // namespace gseurat
