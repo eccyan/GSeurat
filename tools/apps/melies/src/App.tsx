@@ -99,6 +99,74 @@ function MenuBar({ onImportScene }: { onImportScene?: () => void }) {
     setFileOpen(false);
   };
 
+  const handleOpenInStaging = () => {
+    const store = useVfxStore.getState();
+    const preset = store.presets.find((p) => p.id === store.selectedPresetId);
+
+    // Build a minimal scene with the selected VFX preset at origin
+    const scene: Record<string, unknown> = {
+      version: 2,
+      ambient_color: [1, 1, 1, 1],
+      vfx_instances: [] as Record<string, unknown>[],
+    };
+
+    // Add scene PLY if loaded
+    const activeScene = store.scenes.find((s) => s.id === store.activeSceneId);
+    if (activeScene) {
+      scene.gaussian_splat = {
+        ply_file: activeScene.path,
+        camera: { position: [0, 50, 100], target: [0, 0, 0], fov: 45 },
+        render_width: 320,
+        render_height: 240,
+        scale_multiplier: 1,
+      };
+    }
+
+    // Export the selected VFX preset to a temp file via the bridge REST API,
+    // then reference it. For simplicity, write inline as a temp .vfx.json.
+    if (preset) {
+      const vfxJson = serializeVfx(preset);
+      // Write preset to temp path
+      const tempVfxPath = `/tmp/melies_preview_${preset.name.replace(/\s+/g, '_').toLowerCase()}.vfx.json`;
+
+      // We need to write the VFX file so the engine can load it.
+      // Use a data approach: write directly via fetch to the bridge REST API is complex.
+      // Simpler: send the VFX JSON inline and let the engine write it.
+      (scene.vfx_instances as Record<string, unknown>[]).push({
+        vfx_file: tempVfxPath,
+        position: [0, 0, 0],
+        loop: true,
+      });
+
+      // Send both the VFX file content and the scene JSON
+      try {
+        const ws = new WebSocket('ws://localhost:9100');
+        ws.onopen = () => {
+          // First write the VFX preset file
+          ws.send(JSON.stringify({
+            cmd: 'write_temp_file',
+            path: tempVfxPath,
+            content: vfxJson,
+          }));
+          // Then load the scene
+          setTimeout(() => {
+            ws.send(JSON.stringify({
+              cmd: 'load_scene_json',
+              json: JSON.stringify(scene),
+            }));
+            setTimeout(() => ws.close(), 500);
+          }, 100);
+        };
+        ws.onerror = () => {
+          console.warn('[Méliès] Could not connect to bridge — is Staging running?');
+        };
+      } catch {
+        console.warn('[Méliès] WebSocket not available');
+      }
+    }
+    setFileOpen(false);
+  };
+
   useEffect(() => {
     if (!fileOpen) return;
     const handler = (e: MouseEvent) => {
@@ -130,6 +198,7 @@ function MenuBar({ onImportScene }: { onImportScene?: () => void }) {
               { label: 'Import .vfx.json...', action: handleImportVfx },
               { label: 'Export .vfx.json', action: handleExportVfx },
               { label: 'Import Scene PLY...', action: () => { onImportScene?.(); setFileOpen(false); } },
+              { label: 'Open in Staging', action: handleOpenInStaging },
             ].map((item) => (
               <div key={item.label} onClick={item.action}
                 style={{ padding: '6px 16px', cursor: 'pointer', fontSize: 12, color: T.text }}

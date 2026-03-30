@@ -281,6 +281,57 @@ export function MenuBar({ onImport }: { onImport: () => void }) {
     download(new Blob([json], { type: 'application/json' }), `${s.projectName || 'scene'}.json`);
   };
 
+  const sendBridgeCommand = useCallback((payload: Record<string, unknown>) => {
+    try {
+      const ws = new WebSocket('ws://localhost:9100');
+      ws.onopen = () => {
+        ws.send(JSON.stringify(payload));
+        setTimeout(() => ws.close(), 500);
+      };
+      ws.onerror = () => {};
+    } catch { /* ignore */ }
+  }, []);
+
+  const handleOpenInStaging = () => {
+    const s = useSceneStore.getState();
+    const scene = exportSceneJson(s);
+    const json = JSON.stringify(scene);
+    sendBridgeCommand({ cmd: 'load_scene_json', json });
+  };
+
+  // Auto-sync: debounced lightweight position update to Staging
+  const stagingAutoSync = useSceneStore((s) => s.stagingAutoSync);
+  const autoSyncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (!stagingAutoSync) return;
+    const unsub = useSceneStore.subscribe(() => {
+      if (autoSyncTimer.current) clearTimeout(autoSyncTimer.current);
+      autoSyncTimer.current = setTimeout(() => {
+        const s = useSceneStore.getState();
+        // Send lightweight scene data update (VFX positions + lights)
+        const vfx = s.vfxInstances.filter((v) => !v.muted).map((v) => ({
+          position: v.position,
+        }));
+        const lights = s.staticLights.map((l) => ({
+          x: l.position[0],
+          y: l.position[2],  // height
+          z: l.position[1],  // scene_z
+          radius: l.radius,
+          r: l.color[0],
+          g: l.color[1],
+          b: l.color[2],
+          intensity: l.intensity,
+        }));
+        sendBridgeCommand({ cmd: 'update_scene_data', vfx_instances: vfx, lights });
+      }, 500);  // 500ms debounce
+    });
+    return () => {
+      unsub();
+      if (autoSyncTimer.current) clearTimeout(autoSyncTimer.current);
+    };
+  }, [stagingAutoSync, sendBridgeCommand]);
+
   const handleImportAsset = () => {
     const input = document.createElement('input');
     input.type = 'file';
@@ -313,7 +364,8 @@ export function MenuBar({ onImport }: { onImport: () => void }) {
     { label: 'Import Asset...', action: handleImportAsset, separator: true },
     { label: 'Import Image...', action: onImport },
     { label: 'Export Scene...', action: handleExportScene, separator: true },
-    { label: 'Export PLY...', action: handleExportPly },
+    { label: 'Export PLY...', action: handleExportPly, separator: true },
+    { label: 'Open in Staging', action: handleOpenInStaging },
   ];
 
   const editItems: MenuItem[] = [
@@ -348,6 +400,14 @@ export function MenuBar({ onImport }: { onImport: () => void }) {
       action: () => {
         const s = useSceneStore.getState();
         s.setXrayMode(!s.xrayMode);
+      },
+      separator: true,
+    },
+    {
+      label: `${useSceneStore.getState().stagingAutoSync ? '\u2713 ' : ''}Auto-Sync Staging`,
+      action: () => {
+        const s = useSceneStore.getState();
+        s.setStagingAutoSync(!s.stagingAutoSync);
       },
     },
   ];

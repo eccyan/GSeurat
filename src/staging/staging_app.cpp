@@ -376,10 +376,11 @@ void StagingApp::init_scene(const std::string& scene_path) {
             gs_proj[1][1] *= -1.0f;
             renderer_.set_gs_camera(gs_view, gs_proj);
 
-            // Transform lights
-            // Only load scene-defined lights — no default test light.
-            // Users place lights via the Staging UI.
+            // Store AABB offset for voxel→world coordinate transform
             auto aabb = cloud.bounds();
+            gs_aabb_offset_ = glm::vec2(aabb.min.x, aabb.min.y);
+
+            // Transform lights — only scene-defined, no default test light.
             std::vector<PointLight> gs_lights;
             for (const auto& pl : scene_data.static_lights) {
                 PointLight t = pl;
@@ -410,18 +411,7 @@ void StagingApp::init_scene(const std::string& scene_path) {
                 renderer_.add_gs_animation(anim.effect, region, anim.lifetime, anim.loop, anim.params, reform);
             }
 
-            // VFX instances
-            for (const auto& vi : scene_data.vfx_instances) {
-                if (vi.trigger != "auto") continue;
-                auto preset = load_vfx_preset(vi.vfx_file);
-                if (preset.elements.empty()) continue;
-                VfxInstance inst;
-                auto pos = vi.position;
-                pos.x += aabb.min.x;
-                pos.y += aabb.min.y;
-                inst.init(preset, pos, vi.loop);
-                renderer_.add_vfx_instance(std::move(inst));
-            }
+            // VFX instances loaded below (outside gaussian_splat block)
 
             // Background
             if (!gs.background_image.empty()) {
@@ -445,13 +435,60 @@ void StagingApp::init_scene(const std::string& scene_path) {
                          scene_path.c_str(), cloud.count());
         }
     }
+
+    // Load VFX instances (even without a scene PLY)
+    if (!scene_data.vfx_instances.empty()) {
+        // Initialize minimal GS renderer if not already active (for VFX-only scenes)
+        if (!renderer_.has_gs_cloud()) {
+            GaussianCloud empty_cloud = GaussianCloud::from_gaussians({});
+            // Create a single dummy Gaussian so the renderer initializes
+            std::vector<Gaussian> dummy(1);
+            dummy[0].position = glm::vec3(0.0f);
+            dummy[0].opacity = 0.0f;  // invisible
+            dummy[0].scale = glm::vec3(0.001f);
+            auto cloud = GaussianCloud::from_gaussians(std::move(dummy));
+            renderer_.init_gs(cloud, 320, 240);
+
+            float aspect = 320.0f / 240.0f;
+            auto view = glm::lookAt(glm::vec3(0, 50, 100), glm::vec3(0, 0, 0), glm::vec3(0, 1, 0));
+            auto proj = glm::perspective(glm::radians(45.0f), aspect, 0.1f, 1000.0f);
+            proj[1][1] *= -1.0f;
+            renderer_.set_gs_camera(view, proj);
+        }
+
+        auto aabb_offset = gs_aabb_offset_;
+        for (const auto& vi : scene_data.vfx_instances) {
+            if (vi.trigger != "auto") continue;
+            auto preset = load_vfx_preset(vi.vfx_file);
+            if (preset.elements.empty()) continue;
+            VfxInstance inst;
+            auto pos = vi.position;
+            pos.x += aabb_offset.x;
+            pos.y += aabb_offset.y;
+            inst.init(preset, pos, vi.loop);
+            std::fprintf(stderr, "VFX: Loaded '%s' at (%.1f, %.1f, %.1f) with %zu elements\n",
+                preset.name.c_str(), pos.x, pos.y, pos.z, preset.elements.size());
+            renderer_.add_vfx_instance(std::move(inst));
+        }
+    }
 }
 
 void StagingApp::clear_scene() {
+    vkDeviceWaitIdle(renderer_.context().device());
     renderer_.clear_gs_particle_emitters();
     renderer_.clear_gs_animations();
     renderer_.clear_vfx_instances();
     scene_.clear_lights();
+    gs_aabb_offset_ = glm::vec2(0.0f);
+
+    // Reset GS cloud so viewport is empty
+    if (renderer_.has_gs_cloud()) {
+        std::vector<Gaussian> dummy(1);
+        dummy[0].opacity = 0.0f;
+        dummy[0].scale = glm::vec3(0.001f);
+        auto cloud = GaussianCloud::from_gaussians(std::move(dummy));
+        renderer_.init_gs(cloud, 320, 240);
+    }
 }
 
 }  // namespace gseurat

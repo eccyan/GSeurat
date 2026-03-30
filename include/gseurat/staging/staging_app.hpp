@@ -23,7 +23,7 @@ private:
     void shutdown_imgui();
     void create_imgui_render_pass();
 
-    std::string scene_path_ = "assets/scenes/gs_demo.json";
+    std::string scene_path_;
 
     // ImGui Vulkan resources
     VkDescriptorPool imgui_pool_ = VK_NULL_HANDLE;

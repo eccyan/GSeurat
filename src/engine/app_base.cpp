@@ -5,6 +5,7 @@
 
 #include <chrono>
 #include <filesystem>
+#include <fstream>
 
 namespace gseurat {
 
@@ -317,6 +318,121 @@ void AppBase::dispatch_command(const nlohmann::json& cmd, nlohmann::json& respon
         clear_scene();
         init_scene(current_scene_path_);
         response["type"] = "ok";
+
+    } else if (cmd_name == "write_temp_file") {
+        auto path = cmd.value("path", "");
+        auto content = cmd.value("content", "");
+        if (!path.empty() && !content.empty()) {
+            std::ofstream ofs(path);
+            if (ofs.is_open()) {
+                ofs << content;
+                ofs.close();
+                response["type"] = "ok";
+            } else {
+                response["type"] = "error";
+                response["message"] = "Failed to write file: " + path;
+            }
+        } else {
+            response["type"] = "error";
+            response["message"] = "Missing 'path' or 'content'";
+        }
+
+    } else if (cmd_name == "load_scene_json") {
+        auto json_str = cmd.value("json", "");
+        if (!json_str.empty()) {
+            try {
+                std::string temp_path = "/tmp/gseurat_live_scene.json";
+                std::ofstream ofs(temp_path);
+                ofs << json_str;
+                ofs.close();
+                vkDeviceWaitIdle(renderer_.context().device());
+                clear_scene();
+                init_scene(temp_path);
+                current_scene_path_ = temp_path;
+                response["type"] = "ok";
+            } catch (const std::exception& e) {
+                response["type"] = "error";
+                response["message"] = std::string("Failed to load scene: ") + e.what();
+            }
+        } else {
+            response["type"] = "error";
+            response["message"] = "Missing 'json' parameter";
+        }
+
+    } else if (cmd_name == "update_scene_data") {
+        // Lightweight sync: update VFX positions and lights without full reload
+        if (cmd.contains("vfx_instances")) {
+            auto& vfx = renderer_.vfx_instances_mutable();
+            const auto& vi_arr = cmd["vfx_instances"];
+            for (size_t i = 0; i < std::min(vfx.size(), vi_arr.size()); i++) {
+                if (vi_arr[i].contains("position")) {
+                    auto pos = vi_arr[i]["position"];
+                    glm::vec3 new_pos{pos[0].get<float>(), pos[1].get<float>(), pos[2].get<float>()};
+                    new_pos.x += gs_aabb_offset_.x;
+                    new_pos.y += gs_aabb_offset_.y;
+                    auto preset = vfx[i].preset();
+                    vfx[i].init(preset, new_pos, true);
+                }
+            }
+        }
+        if (cmd.contains("lights")) {
+            std::vector<PointLight> gs_lights;
+            for (const auto& lj : cmd["lights"]) {
+                PointLight pl;
+                float x = lj.value("x", 0.0f) + gs_aabb_offset_.x;
+                float y = lj.value("y", 0.0f);
+                float z = lj.value("z", 0.0f) + gs_aabb_offset_.y;
+                float r = lj.value("radius", 50.0f);
+                pl.position_and_radius = glm::vec4(x, y, z, r);
+                float cr = lj.value("r", 1.0f);
+                float cg = lj.value("g", 1.0f);
+                float cb = lj.value("b", 1.0f);
+                float ci = lj.value("intensity", 5.0f);
+                pl.color = glm::vec4(cr, cg, cb, ci);
+                gs_lights.push_back(pl);
+            }
+            if (!gs_lights.empty()) {
+                renderer_.gs_renderer().set_light_mode(2);
+                renderer_.gs_renderer().set_point_lights(gs_lights);
+            } else {
+                renderer_.gs_renderer().set_light_mode(0);
+            }
+        }
+        response["type"] = "ok";
+
+    } else if (cmd_name == "update_vfx_positions") {
+        // Lightweight update: only change VFX instance positions without full reload
+        if (cmd.contains("vfx_instances")) {
+            auto& vfx = renderer_.vfx_instances_mutable();
+            const auto& vi_arr = cmd["vfx_instances"];
+            for (size_t i = 0; i < std::min(vfx.size(), vi_arr.size()); i++) {
+                if (vi_arr[i].contains("position")) {
+                    auto pos = vi_arr[i]["position"];
+                    glm::vec3 new_pos{pos[0].get<float>(), pos[1].get<float>(), pos[2].get<float>()};
+                    // Apply voxel→world coordinate transform (same as init_scene)
+                    new_pos.x += gs_aabb_offset_.x;
+                    new_pos.y += gs_aabb_offset_.y;
+                    auto preset = vfx[i].preset();
+                    vfx[i].init(preset, new_pos, true);
+                }
+            }
+            response["type"] = "ok";
+        } else {
+            response["type"] = "error";
+            response["message"] = "Missing 'vfx_instances' array";
+        }
+
+    } else if (cmd_name == "open_scene") {
+        auto scene = cmd.value("scene", "");
+        if (!scene.empty()) {
+            clear_scene();
+            init_scene(scene);
+            current_scene_path_ = scene;
+            response["type"] = "ok";
+        } else {
+            response["type"] = "error";
+            response["message"] = "Missing 'scene' parameter";
+        }
 
     } else if (cmd_name == "list_scenes") {
         response["type"] = "scenes";
