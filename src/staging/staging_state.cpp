@@ -1,5 +1,6 @@
 #include "gseurat/staging/staging_state.hpp"
 #include "gseurat/engine/app_base.hpp"
+#include "gseurat/engine/gaussian_cloud.hpp"
 #include "gseurat/engine/post_process.hpp"
 
 #include <imgui.h>
@@ -31,8 +32,23 @@ void StagingState::on_enter(AppBase& app) {
     std::sort(scene_files_.begin(), scene_files_.end());
     scenes_loaded_ = true;
 
-    // Initialize scene
-    app.init_scene(app.current_scene_path());
+    // Initialize scene (or start with empty viewport)
+    if (!app.current_scene_path().empty()) {
+        app.init_scene(app.current_scene_path());
+    } else {
+        // Empty scene: init minimal GS renderer for VFX preview
+        std::vector<Gaussian> dummy(1);
+        dummy[0].opacity = 0.0f;
+        dummy[0].scale = glm::vec3(0.001f);
+        auto cloud = GaussianCloud::from_gaussians(std::move(dummy));
+        app.renderer().init_gs(cloud, 320, 240);
+
+        float aspect = 320.0f / 240.0f;
+        auto view = glm::lookAt(glm::vec3(0, 50, 100), glm::vec3(0, 0, 0), glm::vec3(0, 1, 0));
+        auto proj = glm::perspective(glm::radians(45.0f), aspect, 0.1f, 1000.0f);
+        proj[1][1] *= -1.0f;
+        app.renderer().set_gs_camera(view, proj);
+    }
     std::fprintf(stderr, "[Staging] Ready\n");
 }
 
