@@ -281,14 +281,11 @@ export function MenuBar({ onImport }: { onImport: () => void }) {
     download(new Blob([json], { type: 'application/json' }), `${s.projectName || 'scene'}.json`);
   };
 
-  const pushToStaging = useCallback(() => {
-    const s = useSceneStore.getState();
-    const scene = exportSceneJson(s);
-    const json = JSON.stringify(scene);
+  const sendBridgeCommand = useCallback((payload: Record<string, unknown>) => {
     try {
       const ws = new WebSocket('ws://localhost:9100');
       ws.onopen = () => {
-        ws.send(JSON.stringify({ cmd: 'load_scene_json', json }));
+        ws.send(JSON.stringify(payload));
         setTimeout(() => ws.close(), 500);
       };
       ws.onerror = () => {};
@@ -296,10 +293,13 @@ export function MenuBar({ onImport }: { onImport: () => void }) {
   }, []);
 
   const handleOpenInStaging = () => {
-    pushToStaging();
+    const s = useSceneStore.getState();
+    const scene = exportSceneJson(s);
+    const json = JSON.stringify(scene);
+    sendBridgeCommand({ cmd: 'load_scene_json', json });
   };
 
-  // Auto-sync: debounced push to Staging on state changes
+  // Auto-sync: debounced lightweight position update to Staging
   const stagingAutoSync = useSceneStore((s) => s.stagingAutoSync);
   const autoSyncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -308,14 +308,19 @@ export function MenuBar({ onImport }: { onImport: () => void }) {
     const unsub = useSceneStore.subscribe(() => {
       if (autoSyncTimer.current) clearTimeout(autoSyncTimer.current);
       autoSyncTimer.current = setTimeout(() => {
-        pushToStaging();
-      }, 1000);  // 1s debounce
+        const s = useSceneStore.getState();
+        // Send lightweight VFX position update instead of full reload
+        const vfx = s.vfxInstances.filter((v) => !v.muted).map((v) => ({
+          position: v.position,
+        }));
+        sendBridgeCommand({ cmd: 'update_vfx_positions', vfx_instances: vfx });
+      }, 500);  // 500ms debounce
     });
     return () => {
       unsub();
       if (autoSyncTimer.current) clearTimeout(autoSyncTimer.current);
     };
-  }, [stagingAutoSync, pushToStaging]);
+  }, [stagingAutoSync, sendBridgeCommand]);
 
   const handleImportAsset = () => {
     const input = document.createElement('input');

@@ -323,11 +323,11 @@ void AppBase::dispatch_command(const nlohmann::json& cmd, nlohmann::json& respon
         auto json_str = cmd.value("json", "");
         if (!json_str.empty()) {
             try {
-                // Write to temp file so init_scene can load it (PLY paths are relative)
                 std::string temp_path = "/tmp/gseurat_live_scene.json";
                 std::ofstream ofs(temp_path);
                 ofs << json_str;
                 ofs.close();
+                vkDeviceWaitIdle(renderer_.context().device());
                 clear_scene();
                 init_scene(temp_path);
                 current_scene_path_ = temp_path;
@@ -339,6 +339,27 @@ void AppBase::dispatch_command(const nlohmann::json& cmd, nlohmann::json& respon
         } else {
             response["type"] = "error";
             response["message"] = "Missing 'json' parameter";
+        }
+
+    } else if (cmd_name == "update_vfx_positions") {
+        // Lightweight update: only change VFX instance positions without full reload
+        if (cmd.contains("vfx_instances")) {
+            auto& vfx = renderer_.vfx_instances_mutable();
+            const auto& vi_arr = cmd["vfx_instances"];
+            for (size_t i = 0; i < std::min(vfx.size(), vi_arr.size()); i++) {
+                if (vi_arr[i].contains("position")) {
+                    auto pos = vi_arr[i]["position"];
+                    glm::vec3 new_pos{pos[0].get<float>(), pos[1].get<float>(), pos[2].get<float>()};
+                    // Re-init the VFX instance at the new position
+                    auto preset = vfx[i].preset();
+                    bool loop = true;  // VFX instances from scene are always looping
+                    vfx[i].init(preset, new_pos, loop);
+                }
+            }
+            response["type"] = "ok";
+        } else {
+            response["type"] = "error";
+            response["message"] = "Missing 'vfx_instances' array";
         }
 
     } else if (cmd_name == "open_scene") {
