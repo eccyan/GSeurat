@@ -351,6 +351,7 @@ void AppBase::dispatch_command(const nlohmann::json& cmd, nlohmann::json& respon
                 current_scene_path_ = temp_path;
                 response["type"] = "ok";
             } catch (const std::exception& e) {
+                std::fprintf(stderr, "[load_scene_json] ERROR: %s\n", e.what());
                 response["type"] = "error";
                 response["message"] = std::string("Failed to load scene: ") + e.what();
             }
