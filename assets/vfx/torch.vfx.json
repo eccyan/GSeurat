@@ -201,6 +201,18 @@
         "radius": 1
       }
     }
+    ,
+    {
+      "name": "Flame Light",
+      "type": "light",
+      "position": [3, 14, -0.5],
+      "loop": true,
+      "light": {
+        "color": [1.0, 0.7, 0.3],
+        "intensity": 8,
+        "radius": 15
+      }
+    }
   ],
   "duration": 3
 }
