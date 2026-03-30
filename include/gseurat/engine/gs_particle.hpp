@@ -2,6 +2,7 @@
 
 #include "gseurat/engine/gaussian_cloud.hpp"
 #include "gseurat/engine/gs_animator.hpp"  // for GsAnimRegion
+#include "gseurat/engine/gs_spline.hpp"
 
 #include <array>
 #include <glm/glm.hpp>
@@ -26,6 +27,7 @@ struct GsParticle {
     float emission = 0.0f;
     float lifetime = 1.0f;
     float age = 0.0f;
+    float spline_t_offset = 0.0f;  // lateral offset for ParticlePath spread
     bool alive = false;
 };
 
@@ -49,6 +51,7 @@ struct GsEmitterConfig {
     float emission = 0.0f;
     GsAnimRegion spawn_region;  // particles spawn randomly within this region (default: point)
     float burst_duration = 0.0f;  // >0 = auto-deactivate after this many seconds, 0 = continuous
+    std::optional<SplineConfig> spline;  // optional spline path for emitter or particle movement
 };
 
 class GaussianParticleEmitter {
@@ -81,6 +84,8 @@ private:
     float spawn_accum_ = 0.0f;
     float burst_elapsed_ = 0.0f;
     uint32_t rng_ = 0x12345678u;
+    glm::vec3 base_position_{0.0f};  // original position before spline offset
+    float spline_time_ = 0.0f;      // current position along spline (EmitterPath)
 };
 
 // --- Preset emitter configurations ---

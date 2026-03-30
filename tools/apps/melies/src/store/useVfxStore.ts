@@ -39,9 +39,10 @@ export interface VfxStoreState {
   // UI
   selectedView: 'layer' | 'preset-settings';
 
-  // Visibility
+  // Visibility & sync
   showGizmos: boolean;
   showPointCloud: boolean;
+  stagingAutoSync: boolean;
   mutedLayerIds: string[];
   soloLayerIds: string[];
 
@@ -77,6 +78,7 @@ export interface VfxStoreState {
   // Actions — visibility
   toggleGizmos: () => void;
   togglePointCloud: () => void;
+  setStagingAutoSync: (v: boolean) => void;
   toggleLayerMute: (layerId: string) => void;
   toggleLayerSolo: (layerId: string) => void;
   isLayerVisible: (layerId: string) => boolean;
@@ -105,6 +107,7 @@ export const useVfxStore = create<VfxStoreState>((set, get) => ({
   selectedView: 'layer' as const,
   showGizmos: true,
   showPointCloud: true,
+  stagingAutoSync: false,
   mutedLayerIds: [] as string[],
   soloLayerIds: [] as string[],
   playing: false,
@@ -219,6 +222,7 @@ export const useVfxStore = create<VfxStoreState>((set, get) => ({
 
   toggleGizmos: () => set((s) => ({ showGizmos: !s.showGizmos })),
   togglePointCloud: () => set((s) => ({ showPointCloud: !s.showPointCloud })),
+  setStagingAutoSync: (v) => set({ stagingAutoSync: v }),
   toggleLayerMute: (layerId) => set((s) => {
     const muted = [...s.mutedLayerIds];
     const idx = muted.indexOf(layerId);
