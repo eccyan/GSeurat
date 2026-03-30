@@ -1,5 +1,13 @@
 export type ElementType = 'object' | 'emitter' | 'animation' | 'light';
 
+export interface SplineConfig {
+  mode: 'emitter_path' | 'particle_path';
+  control_points: [number, number, number][];
+  emitter_speed?: number;       // cycles/sec along spline (emitter_path)
+  path_spread?: number;         // lateral offset from spline (particle_path)
+  align_to_tangent?: boolean;   // orient particles along spline tangent
+}
+
 /** @deprecated Use ElementType */
 export type LayerType = ElementType;
 
