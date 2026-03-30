@@ -1,7 +1,12 @@
 #include "gseurat/engine/app_base.hpp"
+#include "gseurat/engine/gaussian_cloud.hpp"
+#include "gseurat/engine/gs_vfx.hpp"
 
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
+
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/quaternion.hpp>
 
 #include <chrono>
 #include <filesystem>
@@ -158,6 +163,180 @@ void AppBase::update_game(float /*dt*/) {}
 void AppBase::update_audio(float /*dt*/) {}
 SaveData AppBase::build_save_data() const { return {}; }
 void AppBase::apply_save_data(const SaveData& /*data*/) {}
+
+// ── Shared GS scene loading ──
+
+void AppBase::load_gs_scene(const SceneData& scene_data, const GsSceneOptions& opts) {
+    renderer_.clear_gs_particle_emitters();
+    renderer_.clear_gs_animations();
+    renderer_.clear_vfx_instances();
+
+    scene_.clear_lights();
+    scene_.set_ambient_color(scene_data.ambient_color);
+    for (const auto& pl : scene_data.static_lights) {
+        scene_.add_light(pl);
+    }
+
+    if (scene_data.gaussian_splat) {
+        const auto& gs = *scene_data.gaussian_splat;
+        GaussianCloud cloud;
+        try {
+            cloud = GaussianCloud::load_ply(gs.ply_file);
+        } catch (const std::runtime_error& e) {
+            std::fprintf(stderr, "[GS] Warning: %s\n", e.what());
+        }
+        if (!cloud.empty()) {
+            renderer_.gs_renderer().set_scale_multiplier(gs.scale_multiplier);
+
+            // Merge static placed objects
+            if (!scene_data.placed_objects.empty()) {
+                auto merged = cloud.gaussians();
+                uint32_t merged_count = 0;
+                for (const auto& obj : scene_data.placed_objects) {
+                    if (!obj.is_static) continue;
+                    try {
+                        auto placed_cloud = GaussianCloud::load_ply(obj.ply_file);
+                        if (placed_cloud.empty()) continue;
+                        auto transform = glm::translate(glm::mat4(1.0f), obj.position);
+                        transform = glm::rotate(transform, glm::radians(obj.rotation.x), {1,0,0});
+                        transform = glm::rotate(transform, glm::radians(obj.rotation.y), {0,1,0});
+                        transform = glm::rotate(transform, glm::radians(obj.rotation.z), {0,0,1});
+                        transform = glm::scale(transform, glm::vec3(obj.scale));
+                        auto rot_q = glm::quat(glm::radians(obj.rotation));
+                        auto placed_gs = placed_cloud.gaussians();
+                        for (auto& g : placed_gs) {
+                            g.position = glm::vec3(transform * glm::vec4(g.position, 1.0f));
+                            g.scale *= obj.scale;
+                            g.rotation = rot_q * g.rotation;
+                        }
+                        merged.insert(merged.end(), placed_gs.begin(), placed_gs.end());
+                        merged_count++;
+                    } catch (const std::runtime_error& e) {
+                        std::fprintf(stderr, "[GS] Warning: placed object '%s': %s\n",
+                                     obj.id.c_str(), e.what());
+                    }
+                }
+                if (merged_count > 0) {
+                    cloud = GaussianCloud::from_gaussians(std::move(merged));
+                }
+            }
+
+            // Auto-scale render resolution
+            uint32_t gs_w = gs.render_width;
+            uint32_t gs_h = gs.render_height;
+            if (cloud.count() > 100000 && gs_w >= 320) { gs_w = 160; gs_h = 120; }
+            else if (cloud.count() > 50000 && gs_w >= 320) { gs_w = 240; gs_h = 180; }
+
+            renderer_.init_gs(cloud, gs_w, gs_h);
+
+            // Camera
+            float aspect = static_cast<float>(gs_w) / static_cast<float>(gs_h);
+            auto gs_view = glm::lookAt(gs.camera_position, gs.camera_target, glm::vec3(0, 1, 0));
+            auto gs_proj = glm::perspective(glm::radians(gs.camera_fov), aspect, 0.1f, 1000.0f);
+            gs_proj[1][1] *= -1.0f;
+            renderer_.set_gs_camera(gs_view, gs_proj);
+
+            // Transform lights with AABB offset
+            auto aabb = cloud.bounds();
+            gs_aabb_offset_ = glm::vec2(aabb.min.x, aabb.min.y);
+
+            std::vector<PointLight> gs_lights;
+            for (const auto& pl : scene_data.static_lights) {
+                PointLight t = pl;
+                t.position_and_radius.x += aabb.min.x;
+                t.position_and_radius.z += aabb.min.y;
+                gs_lights.push_back(t);
+            }
+
+            if (opts.add_default_light && gs_lights.empty()) {
+                PointLight test_light;
+                auto center = aabb.center();
+                float r = std::max({aabb.max.x - aabb.min.x, aabb.max.y - aabb.min.y,
+                                    aabb.max.z - aabb.min.z}) * 0.5f;
+                test_light.position_and_radius = glm::vec4(center.x, center.z, center.y, r);
+                test_light.color = glm::vec4(0.2f, 1.0f, 0.3f, 5.0f);
+                gs_lights.push_back(test_light);
+            }
+
+            if (!gs_lights.empty()) {
+                renderer_.gs_renderer().set_light_mode(2);
+                renderer_.gs_renderer().set_point_lights(gs_lights);
+                renderer_.set_gs_static_lights(gs_lights);
+                if (opts.set_god_rays) renderer_.set_god_rays_intensity(1.0f);
+            }
+
+            // Emitters (AABB offset)
+            for (const auto& em : scene_data.gs_particle_emitters) {
+                auto config = em.config;
+                config.position.x += aabb.min.x;
+                config.position.y += aabb.min.y;
+                renderer_.add_gs_particle_emitter(config);
+            }
+
+            // Animations (AABB offset)
+            for (const auto& anim : scene_data.gs_animations) {
+                auto region = anim.region;
+                region.center.x += aabb.min.x;
+                region.center.y += aabb.min.y;
+                std::optional<Renderer::ReformConfig> reform;
+                if (anim.reform) reform = Renderer::ReformConfig{anim.reform->lifetime};
+                renderer_.add_gs_animation(anim.effect, region, anim.lifetime, anim.loop, anim.params, reform);
+            }
+
+            // Background
+            if (!gs.background_image.empty()) {
+                auto bg_tex = resources_.load_texture(gs.background_image);
+                renderer_.set_gs_background(bg_tex);
+            }
+
+            // Parallax
+            if (feature_flags_.gs_parallax && gs.parallax) {
+                gs_parallax_camera_.configure(
+                    gs.camera_position, gs.camera_target,
+                    gs.camera_fov, gs_w, gs_h, *gs.parallax);
+                set_gs_parallax_active(true);
+                gs_frame_counter_ = 0;
+                renderer_.set_gs_skip_chunk_cull(true);
+                renderer_.gs_renderer().set_skip_sort(false);
+                auto cam_fwd = glm::normalize(gs.camera_target - gs.camera_position);
+                renderer_.gs_renderer().set_shadow_box_params(cam_fwd, 0.0f, gs.camera_position, 32.0f);
+            } else {
+                set_gs_parallax_active(false);
+                renderer_.set_gs_skip_chunk_cull(false);
+                renderer_.gs_renderer().clear_shadow_box_params();
+            }
+
+            std::fprintf(stderr, "[GS] Loaded %u Gaussians from %s\n", cloud.count(), gs.ply_file.c_str());
+        }
+    }
+
+    // VFX instances (load even without gaussian_splat)
+    if (!scene_data.vfx_instances.empty()) {
+        if (!renderer_.has_gs_cloud()) {
+            // Minimal GS renderer for VFX-only scenes
+            std::vector<Gaussian> dummy(1);
+            dummy[0].opacity = 0.0f;
+            dummy[0].scale = glm::vec3(0.001f);
+            auto cloud = GaussianCloud::from_gaussians(std::move(dummy));
+            renderer_.init_gs(cloud, 320, 240);
+            auto view = glm::lookAt(glm::vec3(0, 50, 100), glm::vec3(0), glm::vec3(0, 1, 0));
+            auto proj = glm::perspective(glm::radians(45.0f), 320.0f / 240.0f, 0.1f, 1000.0f);
+            proj[1][1] *= -1.0f;
+            renderer_.set_gs_camera(view, proj);
+        }
+        for (const auto& vi : scene_data.vfx_instances) {
+            if (vi.trigger != "auto") continue;
+            auto preset = load_vfx_preset(vi.vfx_file);
+            if (preset.elements.empty()) continue;
+            VfxInstance inst;
+            auto pos = vi.position;
+            pos.x += gs_aabb_offset_.x;
+            pos.y += gs_aabb_offset_.y;
+            inst.init(preset, pos, vi.loop, vi.rotation_y);
+            renderer_.add_vfx_instance(std::move(inst));
+        }
+    }
+}
 
 // ── Control Server ──
 
