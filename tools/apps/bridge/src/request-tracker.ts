@@ -6,6 +6,7 @@
 
 interface TrackedRequest {
   clientId: string;
+  originalId: unknown;  // client's original `id` field (number, string, or undefined)
   expiresAt: number;
 }
 
@@ -25,11 +26,13 @@ export class RequestTracker {
   }
 
   /**
-   * Record that bridgeId was sent by clientId.
+   * Record that bridgeId was sent by clientId, preserving the client's
+   * original `id` field so it can be reattached to the response.
    */
-  track(bridgeId: string, clientId: string): void {
+  track(bridgeId: string, clientId: string, originalId?: unknown): void {
     this.pending.set(bridgeId, {
       clientId,
+      originalId,
       expiresAt: Date.now() + this.timeoutMs,
     });
   }
@@ -38,12 +41,12 @@ export class RequestTracker {
    * Look up which clientId originated bridgeId, then remove the entry.
    * Returns undefined if not found or already expired.
    */
-  resolve(bridgeId: string): string | undefined {
+  resolve(bridgeId: string): { clientId: string; originalId: unknown } | undefined {
     const entry = this.pending.get(bridgeId);
     if (!entry) return undefined;
     this.pending.delete(bridgeId);
     if (Date.now() > entry.expiresAt) return undefined;
-    return entry.clientId;
+    return { clientId: entry.clientId, originalId: entry.originalId };
   }
 
   /**

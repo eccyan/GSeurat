@@ -80,13 +80,18 @@ wsServer.onMessage((rawMsg: string, clientId: string) => {
   // If a tool client sends back a message with _bridge_id, route it like an engine response.
   const bridgeIdFromTool = parsed['_bridge_id'];
   if (typeof bridgeIdFromTool === 'string') {
-    const originClientId = tracker.resolve(bridgeIdFromTool);
+    const resolved = tracker.resolve(bridgeIdFromTool);
     delete parsed['_bridge_id'];
+
+    // Reattach the client's original `id` so EngineClient can match responses.
+    if (resolved?.originalId !== undefined) {
+      parsed['id'] = resolved.originalId;
+    }
     const outgoing = JSON.stringify(parsed);
 
-    if (originClientId) {
-      console.log(`[Bridge] Tool->WS [${originClientId}] id=${bridgeIdFromTool} type=${String(parsed['type'] ?? '?')}`);
-      const sent = wsServer.sendTo(originClientId, outgoing);
+    if (resolved) {
+      console.log(`[Bridge] Tool->WS [${resolved.clientId}] id=${bridgeIdFromTool} type=${String(parsed['type'] ?? '?')}`);
+      const sent = wsServer.sendTo(resolved.clientId, outgoing);
       if (!sent) {
         console.warn(`[Bridge] Origin client gone for id=${bridgeIdFromTool}, broadcasting.`);
         wsServer.broadcast(outgoing);
@@ -112,8 +117,10 @@ wsServer.onMessage((rawMsg: string, clientId: string) => {
 
     // Attach correlation ID for response routing
     const bridgeId = randomUUID();
+    const origId = parsed['id'];
     parsed['_bridge_id'] = bridgeId;
-    tracker.track(bridgeId, clientId);
+    delete parsed['id'];  // strip client id before forwarding
+    tracker.track(bridgeId, clientId, origId);
 
     // Remove the target field before forwarding (tool doesn't need it)
     delete parsed['target'];
@@ -126,8 +133,10 @@ wsServer.onMessage((rawMsg: string, clientId: string) => {
 
   // --- Default: forward to engine via Unix socket ---
   const bridgeId = randomUUID();
+  const origId = parsed['id'];
   parsed['_bridge_id'] = bridgeId;
-  tracker.track(bridgeId, clientId);
+  delete parsed['id'];  // strip client id before forwarding to engine
+  tracker.track(bridgeId, clientId, origId);
 
   const serialised = JSON.stringify(parsed);
   console.log(`[Bridge] WS->Unix [${clientId}] id=${bridgeId} cmd=${String(parsed['cmd'] ?? '?')}`);
@@ -153,15 +162,20 @@ unixClient.onData((line: string) => {
 
   if (typeof bridgeId === 'string') {
     // This is a response to a request: route back to originating client.
-    const clientId = tracker.resolve(bridgeId);
+    const resolved = tracker.resolve(bridgeId);
 
     // Strip the internal field before forwarding.
     delete parsed['_bridge_id'];
+
+    // Reattach the client's original `id` so EngineClient can match responses.
+    if (resolved?.originalId !== undefined) {
+      parsed['id'] = resolved.originalId;
+    }
     const outgoing = JSON.stringify(parsed);
 
-    if (clientId) {
-      console.log(`[Bridge] Unix->WS [${clientId}] id=${bridgeId} type=${String(parsed['type'] ?? '?')}`);
-      const sent = wsServer.sendTo(clientId, outgoing);
+    if (resolved) {
+      console.log(`[Bridge] Unix->WS [${resolved.clientId}] id=${bridgeId} type=${String(parsed['type'] ?? '?')}`);
+      const sent = wsServer.sendTo(resolved.clientId, outgoing);
       if (!sent) {
         // Client disconnected before response arrived; broadcast as fallback.
         console.warn(`[Bridge] Client gone, broadcasting response for id=${bridgeId}`);
