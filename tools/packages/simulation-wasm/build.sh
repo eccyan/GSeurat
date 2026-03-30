@@ -41,6 +41,7 @@ em++ -std=c++23 \
     "$SCRIPT_DIR/bindings.cpp" \
     "$SRC_DIR/src/engine/gs_particle.cpp" \
     "$SRC_DIR/src/engine/gs_animator.cpp" \
+    "$SRC_DIR/src/engine/gs_spline.cpp" \
     -o "$SCRIPT_DIR/dist/simulation.mjs"
 
 echo "Built: dist/simulation.mjs + dist/simulation.wasm"
