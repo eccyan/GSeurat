@@ -148,6 +148,10 @@ void StagingState::update(AppBase& app, float dt) {
         auto proj = glm::perspective(glm::radians(45.0f), aspect, 0.1f, 1000.0f);
         proj[1][1] *= -1.0f;  // Vulkan Y-flip
         app.renderer().set_gs_camera(view, proj);
+
+        // Cache VP for gizmo projection (without Vulkan Y-flip)
+        auto proj_gizmo = glm::perspective(glm::radians(45.0f), aspect, 0.1f, 1000.0f);
+        gs_vp_ = proj_gizmo * view;
     }
 
     // Draw ImGui (hidden with Tab)
@@ -605,20 +609,8 @@ static void draw_region_gizmo(ImDrawList* dl, const GsAnimRegion& region,
 void StagingState::draw_gizmos(AppBase& app) {
     if (!app.renderer().has_gs_cloud()) return;
 
+    const glm::mat4& vp = gs_vp_;  // computed once in update()
     auto& gs = app.renderer().gs_renderer();
-    float aspect = static_cast<float>(gs.output_width()) /
-                   static_cast<float>(gs.output_height());
-
-    // Build VP matrix for projection
-    float cos_el = std::cos(elevation_);
-    glm::vec3 eye{
-        target_.x + distance_ * cos_el * std::sin(azimuth_),
-        target_.y + distance_ * std::sin(elevation_),
-        target_.z + distance_ * cos_el * std::cos(azimuth_)
-    };
-    auto view = glm::lookAt(eye, target_, glm::vec3(0, 1, 0));
-    auto proj = glm::perspective(glm::radians(45.0f), aspect, 0.1f, 1000.0f);
-    glm::mat4 vp = proj * view;
 
     auto& io = ImGui::GetIO();
     float sw = io.DisplaySize.x;

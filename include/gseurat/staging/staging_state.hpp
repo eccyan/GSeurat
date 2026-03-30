@@ -48,6 +48,7 @@ private:
     float distance_ = 100.0f;
     glm::vec3 target_{0.0f};
     bool camera_initialized_ = false;
+    glm::mat4 gs_vp_{1.0f};  // cached view-projection matrix (computed in update)
 
     // Performance tracking
     float fps_ = 0.0f;
