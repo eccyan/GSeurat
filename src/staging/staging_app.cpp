@@ -376,10 +376,11 @@ void StagingApp::init_scene(const std::string& scene_path) {
             gs_proj[1][1] *= -1.0f;
             renderer_.set_gs_camera(gs_view, gs_proj);
 
-            // Transform lights
-            // Only load scene-defined lights — no default test light.
-            // Users place lights via the Staging UI.
+            // Store AABB offset for voxel→world coordinate transform
             auto aabb = cloud.bounds();
+            gs_aabb_offset_ = glm::vec2(aabb.min.x, aabb.min.y);
+
+            // Transform lights — only scene-defined, no default test light.
             std::vector<PointLight> gs_lights;
             for (const auto& pl : scene_data.static_lights) {
                 PointLight t = pl;

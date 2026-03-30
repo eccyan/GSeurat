@@ -227,6 +227,9 @@ protected:
     virtual void dispatch_command(const nlohmann::json& cmd, nlohmann::json& response);
     void poll_control_server();
 
+    // GS scene AABB offset (voxel→world coordinate transform)
+    glm::vec2 gs_aabb_offset_{0.0f};
+
     // Step mode / control
     bool step_mode_ = false;
     int pending_steps_ = 0;

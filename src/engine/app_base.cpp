@@ -350,10 +350,11 @@ void AppBase::dispatch_command(const nlohmann::json& cmd, nlohmann::json& respon
                 if (vi_arr[i].contains("position")) {
                     auto pos = vi_arr[i]["position"];
                     glm::vec3 new_pos{pos[0].get<float>(), pos[1].get<float>(), pos[2].get<float>()};
-                    // Re-init the VFX instance at the new position
+                    // Apply voxel→world coordinate transform (same as init_scene)
+                    new_pos.x += gs_aabb_offset_.x;
+                    new_pos.y += gs_aabb_offset_.y;
                     auto preset = vfx[i].preset();
-                    bool loop = true;  // VFX instances from scene are always looping
-                    vfx[i].init(preset, new_pos, loop);
+                    vfx[i].init(preset, new_pos, true);
                 }
             }
             response["type"] = "ok";
