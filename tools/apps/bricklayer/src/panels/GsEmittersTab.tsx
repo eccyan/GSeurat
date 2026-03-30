@@ -88,8 +88,36 @@ function EmitterEditor({ emitter }: { emitter: GsParticleEmitterData }) {
         <NumberInput value={emitter.lifetime_max} min={0} step={0.1}
           onChange={(v) => updateGsEmitter(emitter.id, { lifetime_max: v })} style={styles.input} />
       </div>
-      <Vec3Input label="Region" value={emitter.spawn_region?.half_extents ?? [0, 0, 0]}
-        onChange={(v) => updateGsEmitter(emitter.id, { spawn_region: { ...emitter.spawn_region, shape: 'box', half_extents: v } })} style={styles.input} />
+      {/* Spawn Region */}
+      <div style={styles.row}>
+        <span style={{ fontSize: 12, minWidth: 70 }}>Region</span>
+        <select style={styles.select}
+          value={emitter.spawn_region?.shape ?? 'sphere'}
+          onChange={(e) => updateGsEmitter(emitter.id, {
+            spawn_region: { ...emitter.spawn_region, shape: e.target.value },
+          })}>
+          <option value="sphere">Sphere</option>
+          <option value="box">Box</option>
+        </select>
+      </div>
+      <Vec3Input label="Center" value={emitter.spawn_region?.center ?? [0, 0, 0]}
+        onChange={(v) => updateGsEmitter(emitter.id, {
+          spawn_region: { ...emitter.spawn_region, center: v },
+        })} style={styles.input} />
+      {(emitter.spawn_region?.shape ?? 'sphere') === 'sphere' ? (
+        <div style={styles.row}>
+          <span style={{ fontSize: 12, minWidth: 70 }}>Radius</span>
+          <NumberInput value={emitter.spawn_region?.radius ?? 1} min={0} step={0.5}
+            onChange={(v) => updateGsEmitter(emitter.id, {
+              spawn_region: { ...emitter.spawn_region, radius: v },
+            })} style={styles.input} />
+        </div>
+      ) : (
+        <Vec3Input label="Extents" value={emitter.spawn_region?.half_extents ?? [1, 1, 1]}
+          onChange={(v) => updateGsEmitter(emitter.id, {
+            spawn_region: { ...emitter.spawn_region, half_extents: v },
+          })} style={styles.input} />
+      )}
 
       {/* Motion */}
       <span style={styles.sectionLabel}>Motion</span>
