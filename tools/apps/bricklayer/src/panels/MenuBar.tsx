@@ -281,7 +281,7 @@ export function MenuBar({ onImport }: { onImport: () => void }) {
     download(new Blob([json], { type: 'application/json' }), `${s.projectName || 'scene'}.json`);
   };
 
-  const handleOpenInStaging = () => {
+  const pushToStaging = useCallback(() => {
     const s = useSceneStore.getState();
     const scene = exportSceneJson(s);
     const json = JSON.stringify(scene);
@@ -291,13 +291,31 @@ export function MenuBar({ onImport }: { onImport: () => void }) {
         ws.send(JSON.stringify({ cmd: 'load_scene_json', json }));
         setTimeout(() => ws.close(), 500);
       };
-      ws.onerror = () => {
-        console.warn('[Bricklayer] Could not connect to bridge — is Staging running?');
-      };
-    } catch {
-      console.warn('[Bricklayer] WebSocket not available');
-    }
+      ws.onerror = () => {};
+    } catch { /* ignore */ }
+  }, []);
+
+  const handleOpenInStaging = () => {
+    pushToStaging();
   };
+
+  // Auto-sync: debounced push to Staging on state changes
+  const stagingAutoSync = useSceneStore((s) => s.stagingAutoSync);
+  const autoSyncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (!stagingAutoSync) return;
+    const unsub = useSceneStore.subscribe(() => {
+      if (autoSyncTimer.current) clearTimeout(autoSyncTimer.current);
+      autoSyncTimer.current = setTimeout(() => {
+        pushToStaging();
+      }, 1000);  // 1s debounce
+    });
+    return () => {
+      unsub();
+      if (autoSyncTimer.current) clearTimeout(autoSyncTimer.current);
+    };
+  }, [stagingAutoSync, pushToStaging]);
 
   const handleImportAsset = () => {
     const input = document.createElement('input');
@@ -367,6 +385,14 @@ export function MenuBar({ onImport }: { onImport: () => void }) {
       action: () => {
         const s = useSceneStore.getState();
         s.setXrayMode(!s.xrayMode);
+      },
+      separator: true,
+    },
+    {
+      label: `${useSceneStore.getState().stagingAutoSync ? '\u2713 ' : ''}Auto-Sync Staging`,
+      action: () => {
+        const s = useSceneStore.getState();
+        s.setStagingAutoSync(!s.stagingAutoSync);
       },
     },
   ];
