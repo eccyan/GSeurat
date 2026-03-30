@@ -5,6 +5,7 @@
 
 #include <chrono>
 #include <filesystem>
+#include <fstream>
 
 namespace gseurat {
 
@@ -317,6 +318,28 @@ void AppBase::dispatch_command(const nlohmann::json& cmd, nlohmann::json& respon
         clear_scene();
         init_scene(current_scene_path_);
         response["type"] = "ok";
+
+    } else if (cmd_name == "load_scene_json") {
+        auto json_str = cmd.value("json", "");
+        if (!json_str.empty()) {
+            try {
+                // Write to temp file so init_scene can load it (PLY paths are relative)
+                std::string temp_path = "/tmp/gseurat_live_scene.json";
+                std::ofstream ofs(temp_path);
+                ofs << json_str;
+                ofs.close();
+                clear_scene();
+                init_scene(temp_path);
+                current_scene_path_ = temp_path;
+                response["type"] = "ok";
+            } catch (const std::exception& e) {
+                response["type"] = "error";
+                response["message"] = std::string("Failed to load scene: ") + e.what();
+            }
+        } else {
+            response["type"] = "error";
+            response["message"] = "Missing 'json' parameter";
+        }
 
     } else if (cmd_name == "open_scene") {
         auto scene = cmd.value("scene", "");

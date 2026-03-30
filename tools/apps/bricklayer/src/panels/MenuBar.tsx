@@ -283,12 +283,12 @@ export function MenuBar({ onImport }: { onImport: () => void }) {
 
   const handleOpenInStaging = () => {
     const s = useSceneStore.getState();
-    const name = s.projectName || 'scene';
-    const scenePath = `assets/scenes/${name}.json`;
+    const scene = exportSceneJson(s);
+    const json = JSON.stringify(scene);
     try {
       const ws = new WebSocket('ws://localhost:9100');
       ws.onopen = () => {
-        ws.send(JSON.stringify({ cmd: 'open_scene', scene: scenePath }));
+        ws.send(JSON.stringify({ cmd: 'load_scene_json', json }));
         setTimeout(() => ws.close(), 500);
       };
       ws.onerror = () => {
