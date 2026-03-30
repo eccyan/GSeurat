@@ -179,7 +179,16 @@
       "position": [
         128,
         64,
-        24
+        0
+      ],
+      "radius": 128
+    },
+    {
+      "vfx_file": "assets/vfx/torch.vfx.json",
+      "position": [
+        122.3,
+        46.7,
+        110.4
       ]
     }
   ]

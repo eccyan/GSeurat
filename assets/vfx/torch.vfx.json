@@ -1,0 +1,206 @@
+{
+  "name": "torch",
+  "elements": [
+    {
+      "name": "Object",
+      "type": "object",
+      "position": [
+        -13.5,
+        0,
+        -10
+      ],
+      "duration": 0,
+      "ply_file": "scene/torch.ply",
+      "scale": 10
+    },
+    {
+      "name": "wave",
+      "type": "animation",
+      "position": [
+        3.7,
+        12.5,
+        -0.6
+      ],
+      "duration": 3,
+      "loop": true,
+      "animation": {
+        "effect": "wave",
+        "params": {
+          "rotations": 1,
+          "rotations_easing": "linear",
+          "expansion": 1,
+          "expansion_easing": "linear",
+          "height_rise": 0,
+          "height_easing": "linear",
+          "opacity_end": 0.2,
+          "opacity_easing": "linear",
+          "scale_end": 0.5,
+          "scale_easing": "linear",
+          "velocity": 1,
+          "gravity": [
+            0,
+            -9.8,
+            0
+          ],
+          "noise": 0.2,
+          "wave_speed": 5,
+          "pulse_frequency": 10
+        }
+      },
+      "region": {
+        "shape": "sphere",
+        "radius": 1.2
+      }
+    },
+    {
+      "name": "Emitter",
+      "type": "emitter",
+      "position": [
+        3,
+        15,
+        -0.5
+      ],
+      "duration": 3,
+      "loop": true,
+      "emitter": {
+        "spawn_rate": 30,
+        "lifetime_min": 2,
+        "lifetime_max": 4,
+        "velocity_min": [
+          -0.5,
+          1,
+          -0.5
+        ],
+        "velocity_max": [
+          0.5,
+          3,
+          0.5
+        ],
+        "acceleration": [
+          0,
+          0.3,
+          0
+        ],
+        "color_start": [
+          0.4,
+          0.4,
+          0.42
+        ],
+        "color_end": [
+          0.1450980392156863,
+          0.1450980392156863,
+          0.15294117647058825
+        ],
+        "scale_min": [
+          0.3,
+          0.3,
+          0.3
+        ],
+        "scale_max": [
+          0.8,
+          0.8,
+          0.8
+        ],
+        "scale_end_factor": 2,
+        "opacity_start": 0.3,
+        "opacity_end": 0,
+        "emission": 0,
+        "burst_duration": 0,
+        "region": {
+          "shape": "box",
+          "center": [
+            0,
+            0.25,
+            0
+          ],
+          "half_extents": [
+            1,
+            0.25,
+            1
+          ]
+        },
+        "preset": "smoke"
+      }
+    },
+    {
+      "name": "float",
+      "type": "animation",
+      "position": [
+        4.7,
+        13,
+        -0.6
+      ],
+      "duration": 2,
+      "loop": true,
+      "animation": {
+        "effect": "float",
+        "reform_enabled": false,
+        "params": {
+          "rotations": 1,
+          "rotations_easing": "linear",
+          "expansion": 1,
+          "expansion_easing": "linear",
+          "height_rise": 0,
+          "height_easing": "linear",
+          "opacity_end": 0.2,
+          "opacity_easing": "in_out_elastic",
+          "scale_end": 1,
+          "scale_easing": "in_out_bounce",
+          "velocity": 0.2,
+          "gravity": [
+            0,
+            -9.8,
+            0
+          ],
+          "noise": 0.5,
+          "wave_speed": 5,
+          "pulse_frequency": 10
+        }
+      },
+      "region": {
+        "shape": "sphere",
+        "radius": 2
+      }
+    },
+    {
+      "name": "reform",
+      "type": "animation",
+      "position": [
+        4.7,
+        13,
+        -0.6
+      ],
+      "start": 2,
+      "duration": 1,
+      "animation": {
+        "effect": "reform",
+        "params": {
+          "rotations": 1,
+          "rotations_easing": "linear",
+          "expansion": 1,
+          "expansion_easing": "linear",
+          "height_rise": 0,
+          "height_easing": "linear",
+          "opacity_end": 0.2,
+          "opacity_easing": "linear",
+          "scale_end": 0.5,
+          "scale_easing": "linear",
+          "velocity": 0.1,
+          "gravity": [
+            0,
+            -9.8,
+            0
+          ],
+          "noise": 1,
+          "wave_speed": 5,
+          "pulse_frequency": 10
+        }
+      },
+      "region": {
+        "shape": "sphere",
+        "radius": 1
+      }
+    }
+  ],
+  "duration": 3
+}
