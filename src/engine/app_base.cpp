@@ -540,45 +540,84 @@ void AppBase::dispatch_command(const nlohmann::json& cmd, nlohmann::json& respon
         }
 
     } else if (cmd_name == "update_scene_data") {
-        // Lightweight sync: update VFX positions and lights without full reload
-        if (cmd.contains("vfx_instances")) {
-            auto& vfx = renderer_.vfx_instances_mutable();
-            const auto& vi_arr = cmd["vfx_instances"];
-            for (size_t i = 0; i < std::min(vfx.size(), vi_arr.size()); i++) {
-                if (vi_arr[i].contains("position")) {
-                    auto pos = vi_arr[i]["position"];
-                    glm::vec3 new_pos{pos[0].get<float>(), pos[1].get<float>(), pos[2].get<float>()};
-                    new_pos.x += gs_aabb_offset_.x;
-                    new_pos.y += gs_aabb_offset_.y;
-                    auto preset = vfx[i].preset();
-                    vfx[i].init(preset, new_pos, true);
+        // Incremental sync: re-apply lights, emitters, animations, VFX
+        // without reloading the PLY cloud or re-initializing the GS renderer.
+        auto json_str = cmd.value("json", "");
+        if (!json_str.empty()) {
+            try {
+                std::string temp_path = "/tmp/gseurat_live_scene.json";
+                std::ofstream ofs(temp_path);
+                ofs << json_str;
+                ofs.close();
+                auto scene_data = SceneLoader::load(temp_path);
+
+                // Update ambient + lights
+                scene_.clear_lights();
+                scene_.set_ambient_color(scene_data.ambient_color);
+                for (const auto& pl : scene_data.static_lights) {
+                    scene_.add_light(pl);
                 }
+
+                // Transform lights with AABB offset and push to GS renderer
+                std::vector<PointLight> gs_lights;
+                for (const auto& pl : scene_data.static_lights) {
+                    PointLight t = pl;
+                    t.position_and_radius.x += gs_aabb_offset_.x;
+                    t.position_and_radius.z += gs_aabb_offset_.y;
+                    gs_lights.push_back(t);
+                }
+                if (!gs_lights.empty()) {
+                    renderer_.gs_renderer().set_light_mode(2);
+                    renderer_.gs_renderer().set_point_lights(gs_lights);
+                    renderer_.set_gs_static_lights(gs_lights);
+                } else {
+                    renderer_.gs_renderer().set_light_mode(0);
+                }
+
+                // Rebuild emitters
+                renderer_.clear_gs_particle_emitters();
+                for (const auto& em : scene_data.gs_particle_emitters) {
+                    auto config = em.config;
+                    config.position.x += gs_aabb_offset_.x;
+                    config.position.y += gs_aabb_offset_.y;
+                    renderer_.add_gs_particle_emitter(config);
+                }
+
+                // Rebuild animations
+                renderer_.clear_gs_animations();
+                for (const auto& anim : scene_data.gs_animations) {
+                    auto region = anim.region;
+                    region.center.x += gs_aabb_offset_.x;
+                    region.center.y += gs_aabb_offset_.y;
+                    std::optional<Renderer::ReformConfig> reform;
+                    if (anim.reform) reform = Renderer::ReformConfig{anim.reform->lifetime};
+                    renderer_.add_gs_animation(anim.effect, region, anim.lifetime, anim.loop, anim.params, reform);
+                }
+
+                // Rebuild VFX instances
+                renderer_.clear_vfx_instances();
+                for (const auto& vi : scene_data.vfx_instances) {
+                    if (vi.trigger != "auto") continue;
+                    auto preset = load_vfx_preset(vi.vfx_file);
+                    if (preset.elements.empty()) continue;
+                    VfxInstance inst;
+                    auto pos = vi.position;
+                    pos.x += gs_aabb_offset_.x;
+                    pos.y += gs_aabb_offset_.y;
+                    inst.init(preset, pos, vi.loop, vi.rotation_y);
+                    renderer_.add_vfx_instance(std::move(inst));
+                }
+
+                response["type"] = "ok";
+            } catch (const std::exception& e) {
+                std::fprintf(stderr, "[update_scene_data] ERROR: %s\n", e.what());
+                response["type"] = "error";
+                response["message"] = std::string("Failed: ") + e.what();
             }
+        } else {
+            response["type"] = "error";
+            response["message"] = "Missing 'json' parameter";
         }
-        if (cmd.contains("lights")) {
-            std::vector<PointLight> gs_lights;
-            for (const auto& lj : cmd["lights"]) {
-                PointLight pl;
-                float x = lj.value("x", 0.0f) + gs_aabb_offset_.x;
-                float y = lj.value("y", 0.0f);
-                float z = lj.value("z", 0.0f) + gs_aabb_offset_.y;
-                float r = lj.value("radius", 50.0f);
-                pl.position_and_radius = glm::vec4(x, y, z, r);
-                float cr = lj.value("r", 1.0f);
-                float cg = lj.value("g", 1.0f);
-                float cb = lj.value("b", 1.0f);
-                float ci = lj.value("intensity", 5.0f);
-                pl.color = glm::vec4(cr, cg, cb, ci);
-                gs_lights.push_back(pl);
-            }
-            if (!gs_lights.empty()) {
-                renderer_.gs_renderer().set_light_mode(2);
-                renderer_.gs_renderer().set_point_lights(gs_lights);
-            } else {
-                renderer_.gs_renderer().set_light_mode(0);
-            }
-        }
-        response["type"] = "ok";
 
     } else if (cmd_name == "update_vfx_positions") {
         // Lightweight update: only change VFX instance positions without full reload

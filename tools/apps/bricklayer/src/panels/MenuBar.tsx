@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useSceneStore } from '../store/useSceneStore.js';
 import { exportPly } from '../lib/plyExport.js';
 import { exportSceneJson } from '../lib/sceneExport.js';
+import { computeFingerprint, isStructuralChange, type SceneFingerprint } from '../lib/sceneFingerprint.js';
 import { hasFileSystemAccess, openProjectDirectory, saveProject as saveProjectDir, loadProject as loadProjectDir, saveProjectAsZip, loadProjectFromZip, importAssetToProject } from '../lib/projectIO.js';
 import type { BricklayerFile } from '../store/types.js';
 
@@ -299,21 +300,36 @@ export function MenuBar({ onImport }: { onImport: () => void }) {
     sendBridgeCommand({ cmd: 'load_scene_json', json });
   };
 
-  // Auto-sync: debounced lightweight position update to Staging
+  // Auto-sync: debounced incremental update to Staging.
+  // Tracks a "fingerprint" of structural properties (PLY, camera, objects, resolution).
+  // Property-only changes (lights, emitters, animations, VFX) use the lightweight
+  // update_scene_data command; structural changes use full load_scene_json.
   const stagingAutoSync = useSceneStore((s) => s.stagingAutoSync);
   const autoSyncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const prevFingerprint = useRef<SceneFingerprint | null>(null);
 
   useEffect(() => {
-    if (!stagingAutoSync) return;
+    if (!stagingAutoSync) {
+      prevFingerprint.current = null; // reset on disable so next enable does full sync
+      return;
+    }
     const unsub = useSceneStore.subscribe(() => {
       if (autoSyncTimer.current) clearTimeout(autoSyncTimer.current);
       autoSyncTimer.current = setTimeout(() => {
-        // Full scene push — covers all entity types (VFX, emitters, animations, lights)
         const s = useSceneStore.getState();
-        const scene = exportSceneJson(s);
+        const scene = exportSceneJson(s) as Record<string, unknown>;
         const json = JSON.stringify(scene);
-        sendBridgeCommand({ cmd: 'load_scene_json', json });
-      }, 2000);  // 2s debounce to avoid rapid reloads
+        const fp = computeFingerprint(scene);
+
+        if (isStructuralChange(prevFingerprint.current, fp)) {
+          // Structural change: full reload (re-uploads PLY)
+          sendBridgeCommand({ cmd: 'load_scene_json', json });
+        } else {
+          // Property-only change: lightweight update (no PLY reload)
+          sendBridgeCommand({ cmd: 'update_scene_data', json });
+        }
+        prevFingerprint.current = fp;
+      }, 2000);  // 2s debounce
     });
     return () => {
       unsub();
