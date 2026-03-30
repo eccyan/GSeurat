@@ -697,8 +697,42 @@ function GsEmitterProperties({ emitter }: { emitter: GsParticleEmitterData }) {
 
       <div style={styles.section}>
         <span style={styles.label}>Spawn Region</span>
-        <Vec3Input value={emitter.spawn_region?.half_extents ?? [0, 0, 0]}
-          onChange={(v) => update(emitter.id, { spawn_region: { ...emitter.spawn_region, shape: 'box', half_extents: v } })} />
+        <select
+          style={styles.select}
+          value={emitter.spawn_region?.shape ?? 'sphere'}
+          onChange={(e) => update(emitter.id, {
+            spawn_region: { ...emitter.spawn_region, shape: e.target.value },
+          })}
+        >
+          <option value="sphere">Sphere</option>
+          <option value="box">Box</option>
+        </select>
+      </div>
+
+      {(emitter.spawn_region?.shape ?? 'sphere') === 'sphere' ? (
+        <div style={styles.section}>
+          <span style={styles.label}>Radius</span>
+          <NumberInput value={emitter.spawn_region?.radius ?? 1} min={0} step={0.5}
+            onChange={(v) => update(emitter.id, {
+              spawn_region: { ...emitter.spawn_region, radius: v },
+            })} style={styles.input} />
+        </div>
+      ) : (
+        <div style={styles.section}>
+          <span style={styles.label}>Half Extents</span>
+          <Vec3Input value={emitter.spawn_region?.half_extents ?? [1, 1, 1]} step={0.5}
+            onChange={(v) => update(emitter.id, {
+              spawn_region: { ...emitter.spawn_region, half_extents: v },
+            })} />
+        </div>
+      )}
+
+      <div style={styles.section}>
+        <span style={styles.label}>Center Offset</span>
+        <Vec3Input value={emitter.spawn_region?.center ?? [0, 0, 0]}
+          onChange={(v) => update(emitter.id, {
+            spawn_region: { ...emitter.spawn_region, center: v },
+          })} />
       </div>
 
       <div style={styles.section}>
