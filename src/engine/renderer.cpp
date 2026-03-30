@@ -913,6 +913,23 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
                         [](const VfxInstance& i) { return i.is_finished(); });
                 }
 
+                // Collect VFX dynamic lights and merge with existing lights
+                {
+                    // Start from static scene lights (set via set_gs_static_lights)
+                    auto all_lights = gs_static_lights_;
+                    // Append VFX instance lights
+                    for (const auto& inst : vfx_instances_) {
+                        for (const auto& vl : inst.active_lights()) {
+                            if (all_lights.size() < 8) {
+                                all_lights.push_back(vl);
+                            }
+                        }
+                    }
+                    if (!all_lights.empty() && gs_renderer_.light_mode() >= 2) {
+                        gs_renderer_.set_point_lights(all_lights);
+                    }
+                }
+
                 // Clamp to allocated SSBO capacity
                 if (gs_active_buffer_.size() > gs_renderer_.max_gaussian_count()) {
                     gs_active_buffer_.resize(gs_renderer_.max_gaussian_count());
