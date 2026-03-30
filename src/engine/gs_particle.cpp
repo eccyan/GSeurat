@@ -80,11 +80,13 @@ void GaussianParticleEmitter::spawn_particle() {
     p.spline_t_offset = 0.0f;
     p.alive = true;
 
-    // ParticlePath: particles start at spline origin, velocity/acceleration unused
+    // ParticlePath: particles spawn with region offset, then follow spline.
+    // velocity stores the spawn region offset (reused each frame since v/a unused).
     if (config_.spline && config_.spline->mode == SplineMode::ParticlePath
         && config_.spline->path.valid()) {
-        p.position = base_position_ + config_.spline->path.evaluate(0.0f);
-        p.velocity = glm::vec3(0.0f);
+        glm::vec3 region_offset = sample_point_in_region(config_.spawn_region);
+        p.position = base_position_ + config_.spline->path.evaluate(0.0f) + region_offset;
+        p.velocity = region_offset;  // stash region offset for per-frame use
         p.acceleration = glm::vec3(0.0f);
         if (config_.spline->path_spread > 0.0f) {
             p.spline_t_offset = random_float(-config_.spline->path_spread,
@@ -140,7 +142,8 @@ void GaussianParticleEmitter::update(float dt) {
             // Particle follows spline: t maps age to full curve
             float t = p.age / std::max(p.lifetime, 0.001f);
             t = std::clamp(t, 0.0f, 1.0f);
-            glm::vec3 spline_pos = base_position_ + config_.spline->path.evaluate(t);
+            // p.velocity stores the spawn region offset (set at spawn time)
+            glm::vec3 spline_pos = base_position_ + config_.spline->path.evaluate(t) + p.velocity;
 
             // Optional lateral spread perpendicular to tangent
             if (p.spline_t_offset != 0.0f) {
