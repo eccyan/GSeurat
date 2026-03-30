@@ -53,6 +53,7 @@ void StagingApp::init_game_content() {
     feature_flags_ = FeatureFlags::gs_viewer();
     feature_flags_.particles = true;
     feature_flags_.animation = true;
+    feature_flags_.fog = true;
 
     init_imgui();
 }
