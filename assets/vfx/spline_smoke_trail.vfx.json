@@ -1,0 +1,41 @@
+{
+  "name": "spline_smoke_trail",
+  "duration": 5,
+  "category": "environmental",
+  "elements": [
+    {
+      "name": "Smoke Trail",
+      "type": "emitter",
+      "position": [0, 0, 0],
+      "duration": 5,
+      "loop": true,
+      "emitter": {
+        "preset": "smoke",
+        "spawn_rate": 40,
+        "lifetime_min": 1.5,
+        "lifetime_max": 3,
+        "velocity_min": [-0.2, 0.5, -0.2],
+        "velocity_max": [0.2, 1.5, 0.2],
+        "acceleration": [0, 0.3, 0],
+        "color_start": [0.4, 0.4, 0.42],
+        "color_end": [0.15, 0.15, 0.15],
+        "scale_min": [0.3, 0.3, 0.3],
+        "scale_max": [0.6, 0.6, 0.6],
+        "scale_end_factor": 2.5,
+        "opacity_start": 0.4,
+        "opacity_end": 0,
+        "spline": {
+          "mode": "emitter_path",
+          "control_points": [
+            [0, 0, 0],
+            [5, 3, 2],
+            [10, 0, -2],
+            [15, 4, 0],
+            [20, 0, 0]
+          ],
+          "emitter_speed": 0.3
+        }
+      }
+    }
+  ]
+}
