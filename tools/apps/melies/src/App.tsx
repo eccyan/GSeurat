@@ -99,6 +99,23 @@ function MenuBar({ onImportScene }: { onImportScene?: () => void }) {
     setFileOpen(false);
   };
 
+  const handleOpenInStaging = () => {
+    try {
+      const ws = new WebSocket('ws://localhost:9100');
+      ws.onopen = () => {
+        // Send the current VFX preset name as a hint — Staging loads the scene
+        ws.send(JSON.stringify({ cmd: 'reload_scene' }));
+        setTimeout(() => ws.close(), 500);
+      };
+      ws.onerror = () => {
+        console.warn('[Méliès] Could not connect to bridge — is Staging running?');
+      };
+    } catch {
+      console.warn('[Méliès] WebSocket not available');
+    }
+    setFileOpen(false);
+  };
+
   useEffect(() => {
     if (!fileOpen) return;
     const handler = (e: MouseEvent) => {
@@ -130,6 +147,7 @@ function MenuBar({ onImportScene }: { onImportScene?: () => void }) {
               { label: 'Import .vfx.json...', action: handleImportVfx },
               { label: 'Export .vfx.json', action: handleExportVfx },
               { label: 'Import Scene PLY...', action: () => { onImportScene?.(); setFileOpen(false); } },
+              { label: 'Open in Staging', action: handleOpenInStaging },
             ].map((item) => (
               <div key={item.label} onClick={item.action}
                 style={{ padding: '6px 16px', cursor: 'pointer', fontSize: 12, color: T.text }}

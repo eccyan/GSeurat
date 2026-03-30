@@ -318,6 +318,18 @@ void AppBase::dispatch_command(const nlohmann::json& cmd, nlohmann::json& respon
         init_scene(current_scene_path_);
         response["type"] = "ok";
 
+    } else if (cmd_name == "open_scene") {
+        auto scene = cmd.value("scene", "");
+        if (!scene.empty()) {
+            clear_scene();
+            init_scene(scene);
+            current_scene_path_ = scene;
+            response["type"] = "ok";
+        } else {
+            response["type"] = "error";
+            response["message"] = "Missing 'scene' parameter";
+        }
+
     } else if (cmd_name == "list_scenes") {
         response["type"] = "scenes";
         response["files"] = nlohmann::json::array();

@@ -281,6 +281,24 @@ export function MenuBar({ onImport }: { onImport: () => void }) {
     download(new Blob([json], { type: 'application/json' }), `${s.projectName || 'scene'}.json`);
   };
 
+  const handleOpenInStaging = () => {
+    const s = useSceneStore.getState();
+    const name = s.projectName || 'scene';
+    const scenePath = `assets/scenes/${name}.json`;
+    try {
+      const ws = new WebSocket('ws://localhost:9100');
+      ws.onopen = () => {
+        ws.send(JSON.stringify({ cmd: 'open_scene', scene: scenePath }));
+        setTimeout(() => ws.close(), 500);
+      };
+      ws.onerror = () => {
+        console.warn('[Bricklayer] Could not connect to bridge — is Staging running?');
+      };
+    } catch {
+      console.warn('[Bricklayer] WebSocket not available');
+    }
+  };
+
   const handleImportAsset = () => {
     const input = document.createElement('input');
     input.type = 'file';
@@ -313,7 +331,8 @@ export function MenuBar({ onImport }: { onImport: () => void }) {
     { label: 'Import Asset...', action: handleImportAsset, separator: true },
     { label: 'Import Image...', action: onImport },
     { label: 'Export Scene...', action: handleExportScene, separator: true },
-    { label: 'Export PLY...', action: handleExportPly },
+    { label: 'Export PLY...', action: handleExportPly, separator: true },
+    { label: 'Open in Staging', action: handleOpenInStaging },
   ];
 
   const editItems: MenuItem[] = [

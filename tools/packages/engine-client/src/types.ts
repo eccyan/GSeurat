@@ -268,6 +268,28 @@ export interface GetTimeCommand {
 /**
  * Union of all protocol command objects.
  */
+// ---------------------------------------------------------------------------
+// Staging / render review commands
+// ---------------------------------------------------------------------------
+
+export interface GetRenderParamsCommand {
+  cmd: "get_render_params";
+}
+
+export interface SetRenderParamCommand {
+  cmd: "set_render_param";
+  name: string;
+  value: number;
+}
+
+export interface GetPerfCommand {
+  cmd: "get_perf";
+}
+
+export interface ListScenesCommand {
+  cmd: "list_scenes";
+}
+
 export type Command =
   | GetStateCommand
   | GetMapCommand
@@ -308,7 +330,11 @@ export type Command =
   | FlashCommand
   | ChromaticCommand
   | SetTimeCommand
-  | GetTimeCommand;
+  | GetTimeCommand
+  | GetRenderParamsCommand
+  | SetRenderParamCommand
+  | GetPerfCommand
+  | ListScenesCommand;
 
 // ---------------------------------------------------------------------------
 // Response types
@@ -472,6 +498,26 @@ export interface ScreenshotResponse {
   height: number;
 }
 
+export interface RenderParamsResponse {
+  type: "render_params";
+  id?: number;
+  params: Record<string, number>;
+}
+
+export interface PerfResponse {
+  type: "perf";
+  id?: number;
+  gaussian_count: number;
+  visible_count: number;
+  max_capacity: number;
+}
+
+export interface ScenesResponse {
+  type: "scenes";
+  id?: number;
+  files: string[];
+}
+
 /**
  * All possible response shapes from the engine.
  */
@@ -485,7 +531,10 @@ export type Response =
   | FeaturesResponse
   | EmittersResponse
   | TimeResponse
-  | ScreenshotResponse;
+  | ScreenshotResponse
+  | RenderParamsResponse
+  | PerfResponse
+  | ScenesResponse;
 
 // ---------------------------------------------------------------------------
 // Event types
