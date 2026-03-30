@@ -232,6 +232,9 @@ void GsRenderer::create_descriptor_resources() {
     }
 
     // Allocate all descriptor sets
+    // Reset pool to free previously allocated sets before reallocating
+    vkResetDescriptorPool(device_, gs_pool_, 0);
+
     VkDescriptorSetLayout layouts[] = {
         preprocess_layout_, sort_layout_, render_layout_,
         radix_histogram_layout_, radix_histogram_layout_,  // A and B
