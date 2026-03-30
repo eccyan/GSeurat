@@ -3,6 +3,7 @@ import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls, Grid } from '@react-three/drei';
 import * as THREE from 'three';
 import { useVfxStore, playbackTimeRef } from '../store/useVfxStore.js';
+import { SplineGizmo } from './SplineGizmo.js';
 import type { VfxElement as VfxLayer } from '../store/types.js';
 import { loadPly, type PlyPoint } from '../lib/plyLoader.js';
 import { loadPlyFromProject } from '../lib/projectIO.js';
@@ -304,7 +305,12 @@ function LayerGizmos({ showGizmos, onObjectPointsLoaded, objectGeoRefs }: {
         }
         // Other gizmos respect showGizmos toggle
         if (!showGizmos) return null;
-        if (layer.type === 'emitter') return <EmitterGizmo key={layer.id} layer={layer} active={active} selected={selected} onSelect={onSelect} />;
+        if (layer.type === 'emitter') return (
+          <React.Fragment key={layer.id}>
+            <EmitterGizmo layer={layer} active={active} selected={selected} onSelect={onSelect} />
+            <SplineGizmo layer={layer} selected={selected} />
+          </React.Fragment>
+        );
         if (layer.type === 'animation') return <AnimationGizmo key={layer.id} layer={layer} active={active} selected={selected} onSelect={onSelect} />;
         if (layer.type === 'light') return <LightGizmo key={layer.id} layer={layer} active={active} selected={selected} onSelect={onSelect} />;
         return null;

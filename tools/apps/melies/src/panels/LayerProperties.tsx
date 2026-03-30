@@ -1,6 +1,6 @@
 import React from 'react';
 import { useVfxStore } from '../store/useVfxStore.js';
-import type { VfxElement, ElementType } from '../store/types.js';
+import type { VfxElement, ElementType, SplineConfig } from '../store/types.js';
 type VfxLayer = VfxElement;
 type LayerType = ElementType;
 import { NumberInput } from '../components/NumberInput.js';
@@ -295,6 +295,130 @@ function EmitterEditor({ layer, update }: {
         <NumberInput value={cfg.burst_duration} min={0} step={0.1}
           onChange={(v) => set({ burst_duration: v })} style={{ ...inputStyle, width: 'auto' }} />
       </div>
+    </>
+  );
+}
+
+// ── Spline path editor ──
+
+function SplineEditor({ layer, update }: {
+  layer: VfxLayer;
+  update: (patch: Partial<VfxLayer>) => void;
+}) {
+  const cfg = (layer.emitter ?? {}) as Record<string, unknown>;
+  const spline = cfg.spline as SplineConfig | undefined;
+  const mode = spline?.mode ?? 'none';
+  const points = spline?.control_points ?? [];
+
+  const set = (splinePatch: Partial<SplineConfig>) => {
+    update({ emitter: { ...cfg, spline: { ...spline, ...splinePatch } } });
+  };
+
+  const setMode = (newMode: string) => {
+    if (newMode === 'none') {
+      const { spline: _, ...rest } = cfg;
+      update({ emitter: rest });
+    } else {
+      set({
+        mode: newMode as SplineConfig['mode'],
+        control_points: points.length >= 2 ? points : [[0, 0, 0], [5, 0, 0]],
+      });
+    }
+  };
+
+  const updatePoint = (index: number, value: [number, number, number]) => {
+    const pts = [...points];
+    pts[index] = value;
+    set({ control_points: pts });
+  };
+
+  const addPoint = () => {
+    const last = points[points.length - 1] ?? [0, 0, 0];
+    const prev = points[points.length - 2] ?? [0, 0, 0];
+    // Extrapolate from last two points
+    const next: [number, number, number] = [
+      last[0] + (last[0] - prev[0]),
+      last[1] + (last[1] - prev[1]),
+      last[2] + (last[2] - prev[2]),
+    ];
+    set({ control_points: [...points, next] });
+  };
+
+  const removePoint = (index: number) => {
+    if (points.length <= 2) return;
+    set({ control_points: points.filter((_, i) => i !== index) });
+  };
+
+  return (
+    <>
+      <SectionHeader>Spline Path</SectionHeader>
+      <div>
+        <label style={sectionLabel}>Mode</label>
+        <select value={mode} onChange={(e) => setMode(e.target.value)} style={selectStyle}>
+          <option value="none">None</option>
+          <option value="emitter_path">Emitter Path</option>
+          <option value="particle_path">Particle Path</option>
+        </select>
+      </div>
+
+      {mode !== 'none' && (
+        <>
+          {/* Control points */}
+          {points.map((pt, i) => (
+            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <span style={{ fontSize: 10, color: T.textMuted, minWidth: 16 }}>P{i}</span>
+              <Vec3Input value={pt} step={0.5} onChange={(v) => updatePoint(i, v)} />
+              <button
+                onClick={() => removePoint(i)}
+                disabled={points.length <= 2}
+                style={{
+                  background: 'transparent', border: 'none', color: T.textMuted,
+                  cursor: points.length <= 2 ? 'not-allowed' : 'pointer',
+                  fontSize: 14, padding: '0 4px', opacity: points.length <= 2 ? 0.3 : 0.7,
+                }}
+              >
+                ×
+              </button>
+            </div>
+          ))}
+          <button
+            onClick={addPoint}
+            style={{
+              background: T.surface, border: `1px solid ${T.border}`, borderRadius: 3,
+              color: T.textDim, fontSize: 11, padding: '4px 10px', cursor: 'pointer',
+              marginTop: 4,
+            }}
+          >
+            + Add Point
+          </button>
+
+          {/* Mode-specific parameters */}
+          {mode === 'emitter_path' && (
+            <div>
+              <label style={sectionLabel}>Speed (cycles/sec)</label>
+              <NumberInput value={spline?.emitter_speed ?? 1} min={0} step={0.1}
+                onChange={(v) => set({ emitter_speed: v })}
+                style={{ ...inputStyle, width: 'auto' }} />
+            </div>
+          )}
+          {mode === 'particle_path' && (
+            <>
+              <div>
+                <label style={sectionLabel}>Path Spread</label>
+                <NumberInput value={spline?.path_spread ?? 0} min={0} step={0.1}
+                  onChange={(v) => set({ path_spread: v })}
+                  style={{ ...inputStyle, width: 'auto' }} />
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
+                <input type="checkbox"
+                  checked={spline?.align_to_tangent ?? false}
+                  onChange={(e) => set({ align_to_tangent: e.target.checked })} />
+                <label style={{ fontSize: 12, color: T.text }}>Align to tangent</label>
+              </div>
+            </>
+          )}
+        </>
+      )}
     </>
   );
 }
@@ -626,6 +750,7 @@ export function LayerProperties() {
 
       {/* Type-specific config editors */}
       {layer.type === 'emitter' && <EmitterEditor layer={layer} update={update} />}
+      {layer.type === 'emitter' && <SplineEditor layer={layer} update={update} />}
       {layer.type === 'animation' && (
         <>
           <AnimationEditor layer={layer} update={update} />
