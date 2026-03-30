@@ -102,9 +102,18 @@ VfxPreset load_vfx_preset(const std::string& path) {
 
 // ── VfxInstance ──
 
-void VfxInstance::init(const VfxPreset& preset, const glm::vec3& position, bool loop) {
+// Rotate a vec3 around the Y axis by angle (radians)
+static glm::vec3 rotate_y(const glm::vec3& v, float angle_rad) {
+    float c = std::cos(angle_rad);
+    float s = std::sin(angle_rad);
+    return {v.x * c + v.z * s, v.y, -v.x * s + v.z * c};
+}
+
+void VfxInstance::init(const VfxPreset& preset, const glm::vec3& position, bool loop,
+                       float rotation_y) {
     preset_ = preset;
     position_ = position;
+    rotation_y_ = rotation_y;
     loop_ = loop;
     elapsed_ = 0.0f;
     finished_ = false;
@@ -116,14 +125,18 @@ void VfxInstance::init(const VfxPreset& preset, const glm::vec3& position, bool 
     active_lights_.clear();
     object_gaussians_.clear();
 
+    float rot_rad = glm::radians(rotation_y_);
+
     for (size_t i = 0; i < preset_.elements.size(); ++i) {
         const auto& el = preset_.elements[i];
+        glm::vec3 rotated_pos = rotate_y(el.position, rot_rad);
+
         if (el.type == "emitter") {
             EmitterState es;
             es.element_index = i;
             es.activated = false;
             es.emitter.configure(el.emitter_config);
-            es.emitter.set_position(position_ + el.position);
+            es.emitter.set_position(position_ + rotated_pos);
             emitter_states_.push_back(std::move(es));
         } else if (el.type == "animation") {
             AnimState as;
@@ -140,10 +153,11 @@ void VfxInstance::init(const VfxPreset& preset, const glm::vec3& position, bool 
             if (std::filesystem::exists(ply_path)) {
                 auto cloud = GaussianCloud::load_ply(ply_path);
                 const auto& gs = cloud.gaussians();
-                glm::vec3 offset = position_ + el.position;
+                glm::vec3 offset = position_ + rotated_pos;
                 for (const auto& src : gs) {
                     Gaussian g = src;
-                    g.position = g.position * el.scale + offset;
+                    // Rotate Gaussian position around prefab origin, then offset
+                    g.position = rotate_y(g.position * el.scale, rot_rad) + position_ + rotated_pos;
                     object_gaussians_.push_back(g);
                 }
                 std::fprintf(stderr, "VFX: Object '%s' loaded %zu Gaussians from %s\n",
@@ -233,7 +247,7 @@ void VfxInstance::update(float dt, std::vector<Gaussian>& out_buffer, GaussianAn
         if (in_window && !as.activated) {
             // Tag region on the shared animator
             auto region = el.region;
-            region.center += position_ + el.position;  // offset by instance + element position
+            region.center += position_ + rotate_y(el.position, glm::radians(rotation_y_));
             auto effect_name = el.animation_config.effect;
             auto effect = GsAnimEffect::Detach;
             if (effect_name == "float") effect = GsAnimEffect::Float;
@@ -270,7 +284,7 @@ void VfxInstance::update(float dt, std::vector<Gaussian>& out_buffer, GaussianAn
 
         if (ls.activated) {
             PointLight pl;
-            glm::vec3 world_pos = position_ + el.position;
+            glm::vec3 world_pos = position_ + rotate_y(el.position, glm::radians(rotation_y_));
             // PointLight uses: x=world_x, y=scene_z, z=height, w=radius
             pl.position_and_radius = glm::vec4(world_pos.x, world_pos.z, world_pos.y, el.light_radius);
             pl.color = glm::vec4(el.light_color, el.light_intensity);

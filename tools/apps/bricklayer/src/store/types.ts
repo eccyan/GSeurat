@@ -266,6 +266,7 @@ export interface VfxInstanceData {
   vfx_file: string;
   vfx_preset: VfxPresetData;
   position: [number, number, number];
+  rotation_y: number;  // Y-axis rotation in degrees
   radius: number;
   trigger: 'auto' | 'event';
   loop: boolean;

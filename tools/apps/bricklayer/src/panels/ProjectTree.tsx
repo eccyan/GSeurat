@@ -451,6 +451,7 @@ export function ProjectTree() {
                       vfx_file: `assets/vfx/${safeName}.vfx.json`,
                       vfx_preset: preset,
                       position: target.xyz,
+                      rotation_y: 0,
                       radius: 5,
                       trigger: 'auto',
                       loop: true,

@@ -156,6 +156,7 @@ struct SceneData {
     struct VfxInstanceRef {
         std::string vfx_file;
         glm::vec3 position{0.0f};
+        float rotation_y = 0.0f;
         float radius = 5.0f;
         std::string trigger = "auto";
         bool loop = true;

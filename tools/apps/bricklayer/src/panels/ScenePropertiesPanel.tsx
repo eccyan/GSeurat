@@ -1078,6 +1078,14 @@ function VfxInstanceProperties({ vfx }: { vfx: VfxInstanceData }) {
       </div>
 
       <div style={styles.section}>
+        <span style={styles.label}>Rotation Y</span>
+        <NumberInput step={15} value={vfx.rotation_y ?? 0}
+          onChange={(v) => update(vfx.id, { rotation_y: v })}
+          style={{ ...styles.input, maxWidth: 80 }} />
+        <span style={{ fontSize: 10, color: '#666' }}>degrees</span>
+      </div>
+
+      <div style={styles.section}>
         <span style={styles.label}>Radius</span>
         <NumberInput step={0.5} min={0.1} value={vfx.radius}
           onChange={(v) => update(vfx.id, { radius: v })}

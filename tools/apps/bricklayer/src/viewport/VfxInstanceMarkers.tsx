@@ -94,10 +94,11 @@ function VfxMarker({ instance, isSelected, onSelect }: {
   onSelect: () => void;
 }) {
   const { position, name, radius } = instance;
+  const rotY = (instance.rotation_y ?? 0) * Math.PI / 180;
   const color = isSelected ? '#ffffff' : '#f59e0b';
 
   return (
-    <group position={[position[0], position[1], position[2]]}>
+    <group position={[position[0], position[1], position[2]]} rotation={[0, rotY, 0]}>
       {/* Invisible hit box */}
       <mesh onPointerDown={(e) => { e.stopPropagation(); onSelect(); }}>
         <sphereGeometry args={[1.0, 12, 12]} />

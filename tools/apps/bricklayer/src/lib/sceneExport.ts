@@ -239,6 +239,7 @@ export function exportSceneJson(state: SceneStoreState): object {
         vfx_file: v.vfx_file,
         position: v.position,
       };
+      if (v.rotation_y) out.rotation_y = v.rotation_y;
       if (v.radius !== 5) out.radius = v.radius;
       if (v.trigger !== 'auto') out.trigger = v.trigger;
       if (!v.loop) out.loop = false;

@@ -341,6 +341,7 @@ export function MenuBar({ onImport }: { onImport: () => void }) {
             vfx_file: `assets/vfx/${file.name}`,
             vfx_preset: preset,
             position: [0, 0, 0],
+            rotation_y: 0,
             radius: 5,
             trigger: 'auto',
             loop: true,
