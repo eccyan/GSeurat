@@ -319,6 +319,24 @@ void AppBase::dispatch_command(const nlohmann::json& cmd, nlohmann::json& respon
         init_scene(current_scene_path_);
         response["type"] = "ok";
 
+    } else if (cmd_name == "write_temp_file") {
+        auto path = cmd.value("path", "");
+        auto content = cmd.value("content", "");
+        if (!path.empty() && !content.empty()) {
+            std::ofstream ofs(path);
+            if (ofs.is_open()) {
+                ofs << content;
+                ofs.close();
+                response["type"] = "ok";
+            } else {
+                response["type"] = "error";
+                response["message"] = "Failed to write file: " + path;
+            }
+        } else {
+            response["type"] = "error";
+            response["message"] = "Missing 'path' or 'content'";
+        }
+
     } else if (cmd_name == "load_scene_json") {
         auto json_str = cmd.value("json", "");
         if (!json_str.empty()) {
