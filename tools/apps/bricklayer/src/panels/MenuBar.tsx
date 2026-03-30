@@ -309,11 +309,21 @@ export function MenuBar({ onImport }: { onImport: () => void }) {
       if (autoSyncTimer.current) clearTimeout(autoSyncTimer.current);
       autoSyncTimer.current = setTimeout(() => {
         const s = useSceneStore.getState();
-        // Send lightweight VFX position update instead of full reload
+        // Send lightweight scene data update (VFX positions + lights)
         const vfx = s.vfxInstances.filter((v) => !v.muted).map((v) => ({
           position: v.position,
         }));
-        sendBridgeCommand({ cmd: 'update_vfx_positions', vfx_instances: vfx });
+        const lights = s.staticLights.map((l) => ({
+          x: l.position[0],
+          y: l.position[2],  // height
+          z: l.position[1],  // scene_z
+          radius: l.radius,
+          r: l.color[0],
+          g: l.color[1],
+          b: l.color[2],
+          intensity: l.intensity,
+        }));
+        sendBridgeCommand({ cmd: 'update_scene_data', vfx_instances: vfx, lights });
       }, 500);  // 500ms debounce
     });
     return () => {
