@@ -925,7 +925,11 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
                             }
                         }
                     }
-                    if (!all_lights.empty() && gs_renderer_.light_mode() >= 2) {
+                    if (!all_lights.empty()) {
+                        // Auto-enable point light mode if VFX lights are present
+                        if (gs_renderer_.light_mode() < 2) {
+                            gs_renderer_.set_light_mode(2);
+                        }
                         gs_renderer_.set_point_lights(all_lights);
                     }
                 }
