@@ -121,6 +121,10 @@
         "loop": {
           "type": "boolean",
           "description": "Repeat after duration ends"
+        },
+        "rotation_y": {
+          "type": "number",
+          "description": "Y-axis rotation in degrees (turntable orientation)"
         }
       },
       "additionalProperties": false

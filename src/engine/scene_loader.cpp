@@ -380,6 +380,7 @@ SceneData SceneLoader::from_json(const nlohmann::json& j) {
             SceneData::VfxInstanceRef inst;
             inst.vfx_file = vi.value("vfx_file", "");
             if (vi.contains("position")) inst.position = parse_vec3(vi["position"]);
+            inst.rotation_y = vi.value("rotation_y", 0.0f);
             inst.radius = vi.value("radius", 5.0f);
             inst.trigger = vi.value("trigger", "auto");
             inst.loop = vi.value("loop", true);

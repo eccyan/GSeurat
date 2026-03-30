@@ -45,6 +45,7 @@ struct VfxPreset {
 struct VfxInstanceData {
     std::string vfx_file;
     glm::vec3 position{0.0f};
+    float rotation_y = 0.0f;  // Y-axis rotation in degrees
     float radius = 5.0f;
     std::string trigger = "auto";
     bool loop = true;
@@ -59,7 +60,8 @@ VfxPreset parse_vfx_preset(const nlohmann::json& j);
 
 class VfxInstance {
 public:
-    void init(const VfxPreset& preset, const glm::vec3& position, bool loop);
+    void init(const VfxPreset& preset, const glm::vec3& position, bool loop,
+              float rotation_y = 0.0f);
 
     /// Append static object Gaussians to the buffer (call before animator runs).
     void append_objects(std::vector<Gaussian>& out_buffer);
@@ -83,6 +85,7 @@ public:
 private:
     VfxPreset preset_;
     glm::vec3 position_{0.0f};
+    float rotation_y_ = 0.0f;
     bool loop_ = true;
     float elapsed_ = 0.0f;
     bool finished_ = false;

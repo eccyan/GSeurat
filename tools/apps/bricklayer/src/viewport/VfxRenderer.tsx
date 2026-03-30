@@ -299,21 +299,22 @@ function ObjectLayerRenderer({ layer, instancePos }: {
 function InstanceRenderer({ instance }: { instance: VfxInstanceData }) {
   const emitterLayers = (instance.vfx_preset.elements ?? []).filter((l) => l.type === 'emitter');
   const objectLayers = (instance.vfx_preset.elements ?? []).filter((l) => l.type === 'object');
+  const rotY = ((instance.rotation_y ?? 0) * Math.PI) / 180;
 
   return (
-    <group>
+    <group position={instance.position} rotation={[0, rotY, 0]}>
       {objectLayers.map((layer, i) => (
         <ObjectLayerRenderer
           key={`${instance.id}_obj_${i}`}
           layer={layer}
-          instancePos={instance.position}
+          instancePos={[0, 0, 0]}
         />
       ))}
       {emitterLayers.map((layer, i) => (
         <EmitterLayerRenderer
           key={`${instance.id}_${i}`}
           layer={layer}
-          instancePos={instance.position}
+          instancePos={[0, 0, 0]}
         />
       ))}
     </group>
