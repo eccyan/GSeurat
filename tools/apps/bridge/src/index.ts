@@ -1,6 +1,6 @@
 /**
  * Bridge proxy — relays JSON messages between:
- *   - The Vulkan game engine via /tmp/vulkan_game.sock (Unix domain socket)
+ *   - The GSeurat engine via /tmp/gseurat.sock (Unix domain socket)
  *   - Creative tool clients via ws://localhost:9100 (WebSocket)
  *   - Registered tool apps (e.g. pixel-painter) via WebSocket tool routing
  *
@@ -22,7 +22,7 @@ import { RequestTracker } from './request-tracker.js';
 // Constants
 // ---------------------------------------------------------------------------
 
-const UNIX_SOCKET_PATH = '/tmp/vulkan_game.sock';
+const UNIX_SOCKET_PATH = '/tmp/gseurat.sock';
 const WS_PORT = 9100;
 const HTTP_PORT = 9101;
 
