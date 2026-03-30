@@ -25,6 +25,11 @@ public:
     void update(AppBase& app, float dt) override;
     void build_draw_lists(AppBase& app) override;
 
+    // 3D → 2D projection (public for gizmo helpers)
+    bool project_to_screen(const glm::vec3& world_pos, const glm::mat4& vp,
+                           float screen_w, float screen_h,
+                           float& out_x, float& out_y) const;
+
 private:
     void draw_imgui(AppBase& app);
     void draw_viewport_info(AppBase& app);
@@ -36,11 +41,6 @@ private:
     void draw_scene_panel(AppBase& app);
     void draw_performance(AppBase& app);
     void draw_gizmos(AppBase& app);
-
-    // 3D → 2D projection helper (returns false if behind camera)
-    bool project_to_screen(const glm::vec3& world_pos, const glm::mat4& vp,
-                           float screen_w, float screen_h,
-                           float& out_x, float& out_y) const;
 
     // Camera orbit state
     float azimuth_ = 0.0f;

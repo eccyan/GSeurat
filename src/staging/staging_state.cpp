@@ -506,11 +506,76 @@ bool StagingState::project_to_screen(const glm::vec3& world_pos, const glm::mat4
                                       float screen_w, float screen_h,
                                       float& out_x, float& out_y) const {
     glm::vec4 clip = vp * glm::vec4(world_pos, 1.0f);
-    if (clip.w <= 0.001f) return false;  // behind camera
+    if (clip.w <= 0.001f) return false;
     glm::vec3 ndc = glm::vec3(clip) / clip.w;
     out_x = (ndc.x * 0.5f + 0.5f) * screen_w;
-    out_y = (1.0f - (ndc.y * 0.5f + 0.5f)) * screen_h;  // flip Y
+    out_y = (1.0f - (ndc.y * 0.5f + 0.5f)) * screen_h;
     return ndc.z >= 0.0f && ndc.z <= 1.0f;
+}
+
+// Draw a wireframe sphere (projected as circle from center + edge point)
+static void draw_sphere_gizmo(ImDrawList* dl, const glm::vec3& center, float radius,
+                               const glm::mat4& vp, float sw, float sh, ImU32 col,
+                               bool (*proj_fn)(const glm::vec3&, const glm::mat4&, float, float, float&, float&, const void*),
+                               const void* self) {
+    float cx, cy;
+    if (!proj_fn(center, vp, sw, sh, cx, cy, self)) return;
+    glm::vec3 edge = center + glm::vec3(radius, 0.0f, 0.0f);
+    float ex, ey;
+    float sr = 15.0f;
+    if (proj_fn(edge, vp, sw, sh, ex, ey, self)) {
+        sr = std::abs(ex - cx);
+        sr = std::clamp(sr, 3.0f, 300.0f);
+    }
+    dl->AddCircle(ImVec2(cx, cy), sr, col, 24, 1.5f);
+}
+
+// Draw a wireframe box (8 corners projected, 12 edges)
+static void draw_box_gizmo(ImDrawList* dl, const glm::vec3& center, const glm::vec3& half,
+                             const glm::mat4& vp, float sw, float sh, ImU32 col,
+                             bool (*proj_fn)(const glm::vec3&, const glm::mat4&, float, float, float&, float&, const void*),
+                             const void* self) {
+    glm::vec3 corners[8] = {
+        center + glm::vec3(-half.x, -half.y, -half.z),
+        center + glm::vec3( half.x, -half.y, -half.z),
+        center + glm::vec3( half.x,  half.y, -half.z),
+        center + glm::vec3(-half.x,  half.y, -half.z),
+        center + glm::vec3(-half.x, -half.y,  half.z),
+        center + glm::vec3( half.x, -half.y,  half.z),
+        center + glm::vec3( half.x,  half.y,  half.z),
+        center + glm::vec3(-half.x,  half.y,  half.z),
+    };
+    ImVec2 pts[8];
+    bool vis[8];
+    for (int i = 0; i < 8; i++) {
+        vis[i] = proj_fn(corners[i], vp, sw, sh, pts[i].x, pts[i].y, self);
+    }
+    constexpr int edges[12][2] = {
+        {0,1},{1,2},{2,3},{3,0}, {4,5},{5,6},{6,7},{7,4}, {0,4},{1,5},{2,6},{3,7}
+    };
+    for (const auto& e : edges) {
+        if (vis[e[0]] && vis[e[1]]) {
+            dl->AddLine(pts[e[0]], pts[e[1]], col, 1.0f);
+        }
+    }
+}
+
+// Static wrapper for project_to_screen (needed for function pointers)
+static bool project_wrapper(const glm::vec3& pos, const glm::mat4& vp,
+                             float sw, float sh, float& ox, float& oy, const void* self) {
+    return static_cast<const StagingState*>(self)->project_to_screen(pos, vp, sw, sh, ox, oy);
+}
+
+// Draw region wireframe (sphere or box)
+static void draw_region_gizmo(ImDrawList* dl, const GsAnimRegion& region,
+                                const glm::vec3& offset, const glm::mat4& vp,
+                                float sw, float sh, ImU32 col, const void* self) {
+    glm::vec3 center = region.center + offset;
+    if (region.shape == GsAnimRegion::Shape::Box) {
+        draw_box_gizmo(dl, center, region.half_extents, vp, sw, sh, col, project_wrapper, self);
+    } else {
+        draw_sphere_gizmo(dl, center, region.radius, vp, sw, sh, col, project_wrapper, self);
+    }
 }
 
 void StagingState::draw_gizmos(AppBase& app) {
@@ -520,7 +585,7 @@ void StagingState::draw_gizmos(AppBase& app) {
     float aspect = static_cast<float>(gs.output_width()) /
                    static_cast<float>(gs.output_height());
 
-    // Build VP matrix matching the camera
+    // Build VP matrix for projection
     float cos_el = std::cos(elevation_);
     glm::vec3 eye{
         target_.x + distance_ * cos_el * std::sin(azimuth_),
@@ -529,24 +594,20 @@ void StagingState::draw_gizmos(AppBase& app) {
     };
     auto view = glm::lookAt(eye, target_, glm::vec3(0, 1, 0));
     auto proj = glm::perspective(glm::radians(45.0f), aspect, 0.1f, 1000.0f);
-    proj[1][1] *= -1.0f;  // Vulkan Y-flip
-    // But for screen projection we need standard NDC (Y up), so undo the flip
-    proj[1][1] *= -1.0f;
     glm::mat4 vp = proj * view;
 
     auto& io = ImGui::GetIO();
     float sw = io.DisplaySize.x;
     float sh = io.DisplaySize.y;
 
-    ImDrawList* draw_list = ImGui::GetForegroundDrawList();
+    ImDrawList* dl = ImGui::GetForegroundDrawList();
 
     // ── Light gizmos ──
     if (show_gizmo_lights_) {
         const auto& lights = gs.point_lights();
         for (size_t i = 0; i < lights.size(); i++) {
-            // Light position: (x, y=scene_z, z=height)
             glm::vec3 pos(lights[i].position_and_radius.x,
-                          lights[i].position_and_radius.z,  // height stored in z
+                          lights[i].position_and_radius.z,
                           lights[i].position_and_radius.y);
             float sx, sy;
             if (!project_to_screen(pos, vp, sw, sh, sx, sy)) continue;
@@ -554,61 +615,106 @@ void StagingState::draw_gizmos(AppBase& app) {
             ImU32 col = ImGui::ColorConvertFloat4ToU32(
                 ImVec4(lights[i].color.r, lights[i].color.g, lights[i].color.b, 0.8f));
 
-            // Outer circle (radius indicator — approximate screen-space size)
-            float radius_world = lights[i].position_and_radius.w;
-            glm::vec3 edge_pos = pos + glm::vec3(radius_world, 0.0f, 0.0f);
-            float ex, ey;
-            float screen_radius = 20.0f;  // fallback
-            if (project_to_screen(edge_pos, vp, sw, sh, ex, ey)) {
-                screen_radius = std::abs(ex - sx);
-                screen_radius = std::clamp(screen_radius, 5.0f, 200.0f);
-            }
+            draw_sphere_gizmo(dl, pos, lights[i].position_and_radius.w,
+                              vp, sw, sh, col, project_wrapper, this);
+            dl->AddCircleFilled(ImVec2(sx, sy), 4.0f, col);
 
-            draw_list->AddCircle(ImVec2(sx, sy), screen_radius, col, 32, 1.5f);
-            draw_list->AddCircleFilled(ImVec2(sx, sy), 4.0f, col);
-
-            // Label
             char label[32];
             std::snprintf(label, sizeof(label), "L%zu", i);
-            draw_list->AddText(ImVec2(sx + 6, sy - 12), col, label);
+            dl->AddText(ImVec2(sx + 6, sy - 12), col, label);
         }
     }
 
-    // ── Emitter gizmos ──
+    // ── Standalone emitter gizmos (with spawn region) ──
     if (show_gizmo_emitters_) {
-        ImU32 emitter_col = IM_COL32(255, 100, 50, 200);  // orange
+        ImU32 emitter_col = IM_COL32(236, 72, 153, 200);  // pink
         auto& emitters = app.renderer().gs_particle_emitters();
         for (size_t i = 0; i < emitters.size(); i++) {
-            auto pos = emitters[i].config().position;
+            auto& cfg = emitters[i].config();
             float sx, sy;
-            if (!project_to_screen(pos, vp, sw, sh, sx, sy)) continue;
+            if (!project_to_screen(cfg.position, vp, sw, sh, sx, sy)) continue;
 
-            draw_list->AddCircleFilled(ImVec2(sx, sy), 5.0f, emitter_col);
-            draw_list->AddCircle(ImVec2(sx, sy), 10.0f, emitter_col, 16, 1.0f);
+            dl->AddCircleFilled(ImVec2(sx, sy), 5.0f, emitter_col);
+
+            // Draw spawn region
+            draw_region_gizmo(dl, cfg.spawn_region, cfg.position, vp, sw, sh, emitter_col, this);
 
             char label[32];
             std::snprintf(label, sizeof(label), "E%zu", i);
-            draw_list->AddText(ImVec2(sx + 8, sy - 10), emitter_col, label);
+            dl->AddText(ImVec2(sx + 8, sy - 10), emitter_col, label);
         }
     }
 
-    // ── VFX instance gizmos ──
+    // ── Scene animation gizmos (region wireframes) ──
     if (show_gizmo_vfx_) {
-        ImU32 vfx_col = IM_COL32(100, 200, 255, 200);  // cyan
+        ImU32 anim_col = IM_COL32(6, 182, 212, 180);  // cyan
+        const auto& anims = app.renderer().gs_scene_animations();
+        for (size_t i = 0; i < anims.size(); i++) {
+            float sx, sy;
+            if (!project_to_screen(anims[i].region.center, vp, sw, sh, sx, sy)) continue;
+
+            draw_region_gizmo(dl, anims[i].region, glm::vec3(0.0f), vp, sw, sh, anim_col, this);
+            dl->AddCircleFilled(ImVec2(sx, sy), 3.0f, anim_col);
+
+            char label[64];
+            std::snprintf(label, sizeof(label), "Anim:%s", anims[i].effect.c_str());
+            dl->AddText(ImVec2(sx + 6, sy - 10), anim_col, label);
+        }
+    }
+
+    // ── VFX instance gizmos (with element details) ──
+    if (show_gizmo_vfx_) {
         const auto& vfx = app.renderer().vfx_instances();
         for (size_t i = 0; i < vfx.size(); i++) {
-            auto pos = vfx[i].position();
+            auto inst_pos = vfx[i].position();
             float sx, sy;
-            if (!project_to_screen(pos, vp, sw, sh, sx, sy)) continue;
+            if (!project_to_screen(inst_pos, vp, sw, sh, sx, sy)) continue;
 
-            // Diamond shape
+            ImU32 vfx_col = IM_COL32(100, 200, 255, 220);
+            // Diamond for instance origin
             float d = 7.0f;
-            draw_list->AddQuadFilled(
+            dl->AddQuadFilled(
                 ImVec2(sx, sy - d), ImVec2(sx + d, sy),
                 ImVec2(sx, sy + d), ImVec2(sx - d, sy), vfx_col);
 
             const char* name = vfx[i].preset().name.c_str();
-            draw_list->AddText(ImVec2(sx + 10, sy - 8), vfx_col, name);
+            dl->AddText(ImVec2(sx + 10, sy - 8), vfx_col, name);
+
+            // Draw each element inside the VFX instance
+            for (const auto& el : vfx[i].preset().elements) {
+                glm::vec3 el_world = inst_pos + el.position;
+                float ex, ey;
+                if (!project_to_screen(el_world, vp, sw, sh, ex, ey)) continue;
+
+                if (el.type == "object") {
+                    ImU32 obj_col = IM_COL32(170, 170, 170, 180);
+                    dl->AddCircle(ImVec2(ex, ey), 4.0f, obj_col, 6, 1.5f);  // hexagon
+                    dl->AddText(ImVec2(ex + 6, ey - 8), obj_col, el.name.c_str());
+
+                } else if (el.type == "emitter") {
+                    ImU32 em_col = IM_COL32(236, 72, 153, 180);  // pink
+                    dl->AddCircleFilled(ImVec2(ex, ey), 3.0f, em_col);
+                    // Draw emitter spawn region
+                    draw_region_gizmo(dl, el.emitter_config.spawn_region, el_world,
+                                      vp, sw, sh, em_col, this);
+                    dl->AddText(ImVec2(ex + 6, ey - 8), em_col, el.name.c_str());
+
+                } else if (el.type == "animation") {
+                    ImU32 an_col = IM_COL32(6, 182, 212, 180);  // cyan
+                    dl->AddCircleFilled(ImVec2(ex, ey), 3.0f, an_col);
+                    // Draw animation region
+                    draw_region_gizmo(dl, el.region, el_world, vp, sw, sh, an_col, this);
+                    char label[64];
+                    std::snprintf(label, sizeof(label), "%s [%s]",
+                                  el.name.c_str(), el.animation_config.effect.c_str());
+                    dl->AddText(ImVec2(ex + 6, ey - 8), an_col, label);
+
+                } else if (el.type == "light") {
+                    ImU32 lt_col = IM_COL32(234, 179, 8, 180);  // yellow
+                    dl->AddCircleFilled(ImVec2(ex, ey), 4.0f, lt_col);
+                    dl->AddText(ImVec2(ex + 6, ey - 8), lt_col, el.name.c_str());
+                }
+            }
         }
     }
 }
