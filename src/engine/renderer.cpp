@@ -803,6 +803,15 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
                 }
                 gs_scene_buffer_ = gs_active_buffer_;  // cache scene-only buffer
 
+                // Scene buffer changed — animator indices are stale.
+                // Reset so VFX animations re-tag on the new buffer.
+                gs_animator_.reset();
+
+                // Reset VFX animation states so they re-tag
+                for (auto& inst : vfx_instances_) {
+                    inst.reset_animations();
+                }
+
                 if (!gs_active_buffer_.empty()) {
                     gs_renderer_.update_active_gaussians(
                         gs_active_buffer_.data(),

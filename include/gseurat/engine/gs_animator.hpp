@@ -105,6 +105,9 @@ public:
     // Clear all animation groups, restoring original state
     void clear(std::vector<Gaussian>& gaussians);
 
+    // Drop all groups without restoring (use when buffer has changed)
+    void reset();
+
     bool has_active_groups() const;
     bool has_group(uint32_t group_id) const;
 

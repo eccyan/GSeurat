@@ -237,4 +237,11 @@ void VfxInstance::update(float dt, std::vector<Gaussian>& out_buffer, GaussianAn
     }
 }
 
+void VfxInstance::reset_animations() {
+    for (auto& as : anim_states_) {
+        as.activated = false;
+        as.group_id = 0;
+    }
+}
+
 }  // namespace gseurat
