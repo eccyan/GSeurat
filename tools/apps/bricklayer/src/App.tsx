@@ -307,8 +307,7 @@ export function App() {
         if (store.grabOriginalPosition && store.selectedEntity) {
           const pos = store.grabOriginalPosition;
           const sel = store.selectedEntity;
-          if (sel.type === 'object') store.updatePlacedObject(sel.id, { position: pos });
-          else if (sel.type === 'npc') store.updateNpc(sel.id, { position: pos });
+          if (sel.type === 'game_object') store.updateGameObject(sel.id, { position: pos });
           else if (sel.type === 'light') store.updateLight(sel.id, { position: pos });
           else if (sel.type === 'portal') store.updatePortal(sel.id, { position: pos });
           else if (sel.type === 'gs_emitter') store.updateGsEmitter(sel.id, { position: pos });
@@ -339,12 +338,9 @@ export function App() {
           // Start grab mode
           const sel = store.selectedEntity;
           let pos: [number, number, number] | null = null;
-          if (sel.type === 'object') {
-            const obj = store.placedObjects.find((o) => o.id === sel.id);
+          if (sel.type === 'game_object') {
+            const obj = store.gameObjects.find((o) => o.id === sel.id);
             if (obj) pos = [...obj.position];
-          } else if (sel.type === 'npc') {
-            const npc = store.npcs.find((n) => n.id === sel.id);
-            if (npc) pos = [...npc.position];
           } else if (sel.type === 'light') {
             const light = store.staticLights.find((l) => l.id === sel.id);
             if (light) pos = [...light.position];
@@ -401,12 +397,9 @@ export function App() {
         const sel = store.selectedEntity;
         let pos: [number, number, number] | null = null;
 
-        if (sel.type === 'object') {
-          const obj = store.placedObjects.find((o) => o.id === sel.id);
+        if (sel.type === 'game_object') {
+          const obj = store.gameObjects.find((o) => o.id === sel.id);
           if (obj) pos = obj.position;
-        } else if (sel.type === 'npc') {
-          const npc = store.npcs.find((n) => n.id === sel.id);
-          if (npc) pos = npc.position;
         } else if (sel.type === 'portal') {
           const portal = store.portals.find((p) => p.id === sel.id);
           if (portal) pos = [...portal.position];

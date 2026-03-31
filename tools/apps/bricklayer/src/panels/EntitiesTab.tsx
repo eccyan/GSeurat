@@ -2,77 +2,12 @@ import React from 'react';
 import { NumberInput } from '../components/NumberInput.js';
 import { Vec3Input } from '../components/Vec3Input.js';
 import { useSceneStore } from '../store/useSceneStore.js';
-import type { NpcData, PortalData } from '../store/types.js';
+import type { PortalData } from '../store/types.js';
 import { panelStyles } from '../styles/panel.js';
 
 const styles = { ...panelStyles };
 
 const facings = ['up', 'down', 'left', 'right'];
-
-function NpcEditor({ npc }: { npc: NpcData }) {
-  const updateNpc = useSceneStore((s) => s.updateNpc);
-  const removeNpc = useSceneStore((s) => s.removeNpc);
-  const selectedEntity = useSceneStore((s) => s.selectedEntity);
-  const setSelectedEntity = useSceneStore((s) => s.setSelectedEntity);
-  const isSelected = selectedEntity?.type === 'npc' && selectedEntity.id === npc.id;
-
-  return (
-    <div
-      style={{ ...styles.item, ...(isSelected ? styles.itemSelected : {}) }}
-      onClick={() => setSelectedEntity({ type: 'npc', id: npc.id })}
-    >
-      <div style={styles.row}>
-        <input
-          type="text"
-          value={npc.name}
-          onChange={(e) => updateNpc(npc.id, { name: e.target.value })}
-          style={{ ...styles.input, fontWeight: 600 }}
-        />
-        <button style={styles.btnDanger} onClick={(e) => { e.stopPropagation(); removeNpc(npc.id); }}>
-          Remove
-        </button>
-      </div>
-      <Vec3Input
-        value={npc.position}
-        onChange={(v) => updateNpc(npc.id, { position: v })}
-      />
-      <div style={styles.row}>
-        <span style={{ fontSize: 12, minWidth: 50 }}>Facing</span>
-        <select
-          style={styles.select}
-          value={npc.facing}
-          onChange={(e) => updateNpc(npc.id, { facing: e.target.value })}
-        >
-          {facings.map((f) => <option key={f} value={f}>{f}</option>)}
-        </select>
-      </div>
-      <div style={styles.row}>
-        <span style={{ fontSize: 12, minWidth: 50 }}>Char ID</span>
-        <input
-          type="text"
-          value={npc.character_id}
-          onChange={(e) => updateNpc(npc.id, { character_id: e.target.value })}
-          style={styles.input}
-        />
-      </div>
-      <div style={styles.row}>
-        <span style={{ fontSize: 12, minWidth: 50 }}>Patrol</span>
-        <NumberInput
-          step={0.1}
-          value={npc.patrol_interval}
-          onChange={(v) => updateNpc(npc.id, { patrol_interval: v })}
-          style={{ ...styles.input, maxWidth: 60 }}
-        />
-        <NumberInput
-          step={0.1}
-          value={npc.patrol_speed}
-          onChange={(v) => updateNpc(npc.id, { patrol_speed: v })}
-          style={{ ...styles.input, maxWidth: 60 }}
-        />
-      </div>
-    </div>
-  );
-}
 
 function PortalEditor({ portal }: { portal: PortalData }) {
   const updatePortal = useSceneStore((s) => s.updatePortal);
@@ -144,8 +79,6 @@ function PortalEditor({ portal }: { portal: PortalData }) {
 export function EntitiesTab() {
   const player = useSceneStore((s) => s.player);
   const updatePlayer = useSceneStore((s) => s.updatePlayer);
-  const npcs = useSceneStore((s) => s.npcs);
-  const addNpc = useSceneStore((s) => s.addNpc);
   const portals = useSceneStore((s) => s.portals);
   const addPortal = useSceneStore((s) => s.addPortal);
 
@@ -176,14 +109,6 @@ export function EntitiesTab() {
             style={styles.input}
           />
         </div>
-      </div>
-
-      <div style={{ ...styles.row, marginBottom: 8 }}>
-        <span style={{ ...styles.label, flex: 1 }}>NPCs ({npcs.length})</span>
-        <button style={styles.btn} onClick={() => addNpc()}>+ Add</button>
-      </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
-        {npcs.map((n) => <NpcEditor key={n.id} npc={n} />)}
       </div>
 
       <div style={{ ...styles.row, marginBottom: 8 }}>
