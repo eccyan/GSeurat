@@ -54,6 +54,11 @@ void IslandDemoState::on_enter(AppBase& app) {
     app.world().add<ecs::Transform>(player_entity_, {player_pos, {1.0f, 1.0f}});
     app.world().add<PlayerController>(player_entity_, {kPlayerSpeed, kPlayerAccel});
 
+    // Register island systems in scheduler
+    app.system_scheduler().add_system({"proximity_trigger", proximity_trigger_system, {}, {}});
+    app.system_scheduler().add_system({"linked_trigger", linked_trigger_system, {}, {}});
+    app.system_scheduler().add_system({"emissive_toggle", emissive_toggle_system, {}, {}});
+
     // Initialize camera centered on player
     camera_target_ = player_pos + glm::vec3(0, kCameraYOffset, 0);
     azimuth_ = 0.0f;
@@ -116,6 +121,12 @@ void IslandDemoState::update(AppBase& app, float dt) {
 
     // Player movement
     update_player(app, dt);
+
+    // Run ECS systems (proximity triggers, linked triggers, emissive toggle)
+    app.system_scheduler().run_all(app.world(), dt);
+
+    // Effect systems (EmitterToggle, LightToggle, BurstEffect)
+    update_effects(app, dt);
 
     // Camera follow
     update_camera(app, dt);
@@ -210,6 +221,67 @@ void IslandDemoState::update_camera(AppBase& app, float dt) {
     proj[1][1] *= -1.0f;
 
     app.renderer().set_gs_camera(view, proj);
+}
+
+// ── Effect systems (EmitterToggle, LightToggle, BurstEffect) ──
+
+void IslandDemoState::update_effects(AppBase& app, float dt) {
+    (void)dt;
+    auto& world = app.world();
+
+    // EmitterToggle: toggle emitter spawn_rate based on proximity trigger
+    world.view<EmitterToggle, ProximityTrigger>().each(
+        [&](ecs::Entity, EmitterToggle& et, ProximityTrigger& pt) {
+            auto& emitters = app.renderer().gs_particle_emitters();
+            if (et.emitter_index >= emitters.size()) return;
+            auto& emitter = emitters[et.emitter_index];
+            if (pt.triggered && !et.active) {
+                et.active = true;
+                auto cfg = emitter.config();
+                cfg.spawn_rate = 10.0f;  // default active rate
+                emitter.configure(cfg);
+            } else if (!pt.triggered && et.active) {
+                et.active = false;
+                auto cfg = emitter.config();
+                cfg.spawn_rate = 0.0f;
+                emitter.configure(cfg);
+            }
+        });
+
+    // LightToggle: toggle scene light based on proximity
+    world.view<LightToggle, ProximityTrigger, ecs::Transform>().each(
+        [&](ecs::Entity, LightToggle& lt, ProximityTrigger& pt, ecs::Transform& t) {
+            if (pt.triggered && !lt.active) {
+                lt.active = true;
+                PointLight pl{};
+                pl.position_and_radius = glm::vec4(
+                    t.position.x, t.position.y, t.position.z, lt.radius);
+                pl.color = glm::vec4(
+                    lt.color_r * lt.intensity,
+                    lt.color_g * lt.intensity,
+                    lt.color_b * lt.intensity, 1.0f);
+                app.scene().add_light(pl);
+            } else if (!pt.triggered && lt.active) {
+                lt.active = false;
+                // Simple approach: toggled lights remain until scene reload
+            }
+        });
+
+    // BurstEffect: one-shot particle burst on trigger
+    world.view<BurstEffect, ProximityTrigger, ecs::Transform>().each(
+        [&](ecs::Entity, BurstEffect& be, ProximityTrigger& pt, ecs::Transform& t) {
+            if (pt.triggered && !be.fired) {
+                be.fired = true;
+                auto& emitters = app.renderer().gs_particle_emitters();
+                if (be.emitter_index < emitters.size()) {
+                    auto& emitter = emitters[be.emitter_index];
+                    auto cfg = emitter.config();
+                    cfg.position = t.position;
+                    cfg.spawn_rate = 100.0f;  // burst
+                    emitter.configure(cfg);
+                }
+            }
+        });
 }
 
 // ── build_draw_lists (stub for now) ──

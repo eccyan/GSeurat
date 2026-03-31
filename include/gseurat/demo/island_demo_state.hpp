@@ -24,6 +24,7 @@ public:
 private:
     void update_player(AppBase& app, float dt);
     void update_camera(AppBase& app, float dt);
+    void update_effects(AppBase& app, float dt);
 
     // Scene
     std::string scene_path_ = "assets/scenes/seurat_island.json";
