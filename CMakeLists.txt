@@ -214,6 +214,7 @@ add_executable(gseurat_demo
     src/demo_main.cpp
     src/demo/demo_app.cpp
     src/demo/gs_demo_state.cpp
+    src/demo/island_demo_state.cpp
 )
 target_compile_definitions(gseurat_demo PRIVATE VG_BUILD_PROFILE=1)
 target_link_libraries(gseurat_demo PRIVATE gseurat_core)

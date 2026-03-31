@@ -1,5 +1,6 @@
 #include "gseurat/demo/demo_app.hpp"
 #include "gseurat/demo/gs_demo_state.hpp"
+#include "gseurat/demo/island_demo_state.hpp"
 #include "gseurat/engine/gaussian_cloud.hpp"
 #include "gseurat/engine/gs_parallax_camera.hpp"
 #include "gseurat/engine/scene_loader.hpp"
@@ -24,14 +25,25 @@ void DemoApp::parse_args(int argc, char* argv[]) {
         std::string_view arg(argv[i]);
         if (arg == "--scene" && i + 1 < argc) {
             scene_path_ = argv[++i];
+        } else if (arg == "--viewer") {
+            viewer_mode_ = true;
         }
     }
 }
 
 void DemoApp::run() {
     set_current_scene_path(scene_path_);
+    init_game_object_system();
     init_game_content();
-    state_stack_.push(std::make_unique<GsDemoState>(), *this);
+
+    if (viewer_mode_) {
+        state_stack_.push(std::make_unique<GsDemoState>(), *this);
+    } else {
+        auto state = std::make_unique<IslandDemoState>();
+        state->set_scene_path(scene_path_);
+        state_stack_.push(std::move(state), *this);
+    }
+
     main_loop();
     cleanup();
 }

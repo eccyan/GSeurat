@@ -20,6 +20,7 @@ private:
     static void generate_shadow_texture();
     static void generate_flat_normal_texture();
     std::string scene_path_ = "assets/scenes/gs_demo.json";
+    bool viewer_mode_ = false;
 };
 
 }  // namespace gseurat
