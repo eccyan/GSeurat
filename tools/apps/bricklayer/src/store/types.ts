@@ -21,25 +21,32 @@ export interface StaticLight {
   area_normal?: [number, number];        // area light face direction XZ
 }
 
-export interface NpcData {
+export interface ComponentFieldSchema {
+  name: string;
+  type: 'float' | 'int' | 'bool' | 'string' | 'vec3' | 'color' | 'enum' | 'vec3[]';
+  default: unknown;
+  min?: number;
+  max?: number;
+  step?: number;
+  enum_values?: string[];
+  description?: string;
+}
+
+export interface ComponentSchema {
+  name: string;
+  description: string;
+  category: string;
+  fields: ComponentFieldSchema[];
+}
+
+export interface GameObjectData {
   id: string;
   name: string;
   position: [number, number, number];
-  tint: [number, number, number, number];
-  facing: string;
-  reverse_facing: string;
-  patrol_interval: number;
-  patrol_speed: number;
-  waypoints: [number, number][];
-  waypoint_pause: number;
-  dialog: { speaker_key: string; text_key: string }[];
-  light_color: [number, number, number, number];
-  light_radius: number;
-  aura_color_start: [number, number, number, number];
-  aura_color_end: [number, number, number, number];
-  character_id: string;
-  script_module: string;
-  script_class: string;
+  rotation: [number, number, number];
+  scale: number;
+  ply_file: string;
+  components: Record<string, Record<string, unknown>>;
 }
 
 export interface PortalData {
@@ -279,15 +286,6 @@ export interface VfxInstanceData {
   loop: boolean;
 }
 
-export interface PlacedObjectData {
-  id: string;
-  ply_file: string;
-  position: [number, number, number];
-  rotation: [number, number, number];
-  scale: number;
-  is_static: boolean;
-  character_manifest: string;
-}
 
 export interface CollisionGridData {
   width: number;
@@ -364,7 +362,9 @@ export interface BricklayerFile {
     ambientColor: [number, number, number, number];
     godRaysIntensity?: number;
     staticLights: StaticLight[];
-    npcs: NpcData[];
+    gameObjects?: GameObjectData[];
+    npcs?: unknown[];         // legacy migration support
+    placedObjects?: unknown[]; // legacy migration support
     portals: PortalData[];
     player: PlayerData;
     backgroundLayers: BackgroundLayer[];
@@ -375,7 +375,6 @@ export interface BricklayerFile {
     weather: WeatherData;
     dayNight: DayNightData;
     gaussianSplat: GaussianSplatConfig;
-    placedObjects: PlacedObjectData[];
     gsParticleEmitters?: GsParticleEmitterData[];
     gsAnimations?: GsAnimationGroupData[];
     vfxInstances?: VfxInstanceData[];
