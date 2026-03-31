@@ -1,7 +1,8 @@
-import React from 'react';
-import { Html } from '@react-three/drei';
+import React, { useMemo } from 'react';
+import { Html, Line } from '@react-three/drei';
 import { useSceneStore } from '../store/useSceneStore.js';
 import type { VfxInstanceData, VfxElementData } from '../store/types.js';
+import { sampleCatmullRom } from '../lib/catmullRom.js';
 
 // Element type colors
 const ELEMENT_COLORS: Record<string, string> = {
@@ -10,6 +11,26 @@ const ELEMENT_COLORS: Record<string, string> = {
   animation: '#06b6d4',
   light: '#eab308',
 };
+
+function EmitterSplineGizmo({ points, mode }: {
+  points: [number, number, number][];
+  mode: string;
+}) {
+  const curvePoints = useMemo(() => sampleCatmullRom(points, 64), [points]);
+  const color = mode === 'emitter_path' ? '#22c55e' : '#f97316';
+
+  return (
+    <>
+      <Line points={curvePoints} color={color} lineWidth={2} opacity={0.7} transparent />
+      {points.map((pt, i) => (
+        <mesh key={i} position={pt}>
+          <sphereGeometry args={[0.2, 8, 8]} />
+          <meshBasicMaterial color={color} opacity={0.7} transparent />
+        </mesh>
+      ))}
+    </>
+  );
+}
 
 function ElementGizmo({ element }: { element: VfxElementData }) {
   const pos = element.position ?? [0, 0, 0];
@@ -24,23 +45,30 @@ function ElementGizmo({ element }: { element: VfxElementData }) {
       </mesh>
       {/* Type-specific gizmo */}
       {element.type === 'emitter' && (() => {
-        const region = (element.emitter as Record<string, any>)?.region;
-        if (!region) return (
-          <mesh>
-            <sphereGeometry args={[0.5, 8, 8]} />
-            <meshBasicMaterial color={color} transparent opacity={0.15} />
-          </mesh>
-        );
-        const center = region.center ?? [0, 0, 0];
+        const emitterData = element.emitter as Record<string, any> | undefined;
+        const region = emitterData?.region;
+        const spline = emitterData?.spline as { mode?: string; control_points?: [number, number, number][] } | undefined;
         return (
-          <mesh position={center}>
-            {region.shape === 'sphere' ? (
-              <sphereGeometry args={[region.radius ?? 1, 16, 12]} />
+          <>
+            {region ? (
+              <mesh position={region.center ?? [0, 0, 0]}>
+                {region.shape === 'sphere' ? (
+                  <sphereGeometry args={[region.radius ?? 1, 16, 12]} />
+                ) : (
+                  <boxGeometry args={((region.half_extents ?? [1, 1, 1]) as [number, number, number]).map((v: number) => v * 2) as [number, number, number]} />
+                )}
+                <meshBasicMaterial color={color} wireframe transparent opacity={0.2} />
+              </mesh>
             ) : (
-              <boxGeometry args={((region.half_extents ?? [1, 1, 1]) as [number, number, number]).map((v: number) => v * 2) as [number, number, number]} />
+              <mesh>
+                <sphereGeometry args={[0.5, 8, 8]} />
+                <meshBasicMaterial color={color} transparent opacity={0.15} />
+              </mesh>
             )}
-            <meshBasicMaterial color={color} wireframe transparent opacity={0.2} />
-          </mesh>
+            {spline?.control_points && spline.control_points.length >= 2 && (
+              <EmitterSplineGizmo points={spline.control_points} mode={spline.mode ?? 'emitter_path'} />
+            )}
+          </>
         );
       })()}
       {element.type === 'animation' && (
