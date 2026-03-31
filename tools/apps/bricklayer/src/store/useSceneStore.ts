@@ -3,9 +3,9 @@ import type {
   Voxel,
   VoxelKey,
   StaticLight,
-  NpcData,
   PortalData,
-  PlacedObjectData,
+  GameObjectData,
+  ComponentSchema,
   GsParticleEmitterData,
   GsAnimationGroupData,
   VfxInstanceData,
@@ -31,6 +31,38 @@ import type {
 } from './types.js';
 import { voxelKey, parseKey, floodFill3D, brushPositions } from '../lib/voxelUtils.js';
 import { extractColorsFromImage as extractColorsFromImageData } from '../lib/colorExtract.js';
+
+export const BUILTIN_SCHEMAS: ComponentSchema[] = [
+  { name: 'Health', description: 'Destructible entity', category: 'Gameplay',
+    fields: [
+      { name: 'max_hp', type: 'float', default: 100, min: 0 },
+      { name: 'current_hp', type: 'float', default: 100, min: 0 },
+    ]},
+  { name: 'Interactable', description: 'Player interaction', category: 'Gameplay',
+    fields: [
+      { name: 'prompt', type: 'string', default: 'Interact' },
+      { name: 'radius', type: 'float', default: 2.0, min: 0.1, max: 50 },
+      { name: 'one_shot', type: 'bool', default: false },
+    ]},
+  { name: 'Facing', description: 'Direction entity faces', category: 'Core',
+    fields: [
+      { name: 'direction', type: 'enum', default: 'down', enum_values: ['up', 'down', 'left', 'right'] },
+    ]},
+  { name: 'Patrol', description: 'Patrol between waypoints', category: 'AI',
+    fields: [
+      { name: 'speed', type: 'float', default: 2.0, min: 0 },
+      { name: 'pause', type: 'float', default: 1.0, min: 0 },
+    ]},
+  { name: 'Dialog', description: 'Entity speaks dialog', category: 'Narrative',
+    fields: [
+      { name: 'dialog_id', type: 'string', default: '' },
+    ]},
+  { name: 'CharacterModel', description: 'Voxel character', category: 'Visual',
+    fields: [
+      { name: 'character_id', type: 'string', default: '' },
+      { name: 'manifest', type: 'string', default: '' },
+    ]},
+];
 
 function defaultEmitter(): EmitterConfig {
   return {
@@ -185,9 +217,9 @@ export interface SceneStoreState {
   ambientColor: [number, number, number, number];
   godRaysIntensity: number;
   staticLights: StaticLight[];
-  npcs: NpcData[];
+  gameObjects: GameObjectData[];
+  componentSchemas: ComponentSchema[];
   portals: PortalData[];
-  placedObjects: PlacedObjectData[];
   gsParticleEmitters: GsParticleEmitterData[];
   gsAnimations: GsAnimationGroupData[];
   vfxInstances: VfxInstanceData[];
@@ -249,16 +281,14 @@ export interface SceneStoreState {
   addLight: (position?: [number, number, number]) => void;
   updateLight: (id: string, patch: Partial<StaticLight>) => void;
   removeLight: (id: string) => void;
-  addNpc: (position?: [number, number, number]) => void;
-  updateNpc: (id: string, patch: Partial<NpcData>) => void;
-  removeNpc: (id: string) => void;
+  addGameObject: (position?: [number, number, number]) => void;
+  updateGameObject: (id: string, patch: Partial<GameObjectData>) => void;
+  removeGameObject: (id: string) => void;
+  loadComponentSchemas: (schemas: ComponentSchema[]) => void;
   addPortal: (position?: [number, number, number]) => void;
   updatePortal: (id: string, patch: Partial<PortalData>) => void;
   removePortal: (id: string) => void;
-  addPlacedObject: (plyFile: string, blob?: Blob, position?: [number, number, number]) => void;
   storeAssetBlob: (path: string, blob: Blob) => void;
-  updatePlacedObject: (id: string, patch: Partial<PlacedObjectData>) => void;
-  removePlacedObject: (id: string) => void;
   addGsEmitter: (position?: [number, number, number]) => void;
   updateGsEmitter: (id: string, patch: Partial<GsParticleEmitterData>) => void;
   removeGsEmitter: (id: string) => void;
@@ -437,9 +467,9 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
   ambientColor: [0.25, 0.28, 0.45, 1],
   godRaysIntensity: 0,
   staticLights: [],
-  npcs: [],
+  gameObjects: [] as GameObjectData[],
+  componentSchemas: [] as ComponentSchema[],
   portals: [],
-  placedObjects: [],
   gsParticleEmitters: [],
   gsAnimations: [],
   vfxInstances: [] as VfxInstanceData[],
@@ -628,35 +658,27 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
     staticLights: get().staticLights.filter((l) => l.id !== id), isDirty: true,
   }),
 
-  addNpc: (pos?) => {
-    const npc: NpcData = {
-      id: genId('npc'),
-      name: 'New NPC',
-      position: pos ?? [0, 0, 0],
-      tint: [1, 1, 1, 1],
-      facing: 'down',
-      reverse_facing: 'up',
-      patrol_interval: 0,
-      patrol_speed: 1,
-      waypoints: [],
-      waypoint_pause: 1,
-      dialog: [],
-      light_color: [0, 0, 0, 0],
-      light_radius: 0,
-      aura_color_start: [0, 0, 0, 0],
-      aura_color_end: [0, 0, 0, 0],
-      character_id: '',
-      script_module: '',
-      script_class: '',
+  addGameObject: (pos?) => {
+    const obj: GameObjectData = {
+      id: `go_${Date.now()}`,
+      name: 'New Object',
+      position: (pos ?? [0, 0, 0]) as [number, number, number],
+      rotation: [0, 0, 0],
+      scale: 1,
+      ply_file: '',
+      components: {},
     };
-    set({ npcs: [...get().npcs, npc], isDirty: true });
+    set({ gameObjects: [...get().gameObjects, obj], isDirty: true });
   },
-  updateNpc: (id, patch) => set({
-    npcs: get().npcs.map((n) => (n.id === id ? { ...n, ...patch } : n)), isDirty: true,
+  updateGameObject: (id, patch) => set({
+    gameObjects: get().gameObjects.map((o) => (o.id === id ? { ...o, ...patch } : o)),
+    isDirty: true,
   }),
-  removeNpc: (id) => set({
-    npcs: get().npcs.filter((n) => n.id !== id), isDirty: true,
+  removeGameObject: (id) => set({
+    gameObjects: get().gameObjects.filter((o) => o.id !== id),
+    isDirty: true,
   }),
+  loadComponentSchemas: (schemas) => set({ componentSchemas: schemas }),
 
   addPortal: (pos?) => {
     const portal: PortalData = {
@@ -676,38 +698,11 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
     portals: get().portals.filter((p) => p.id !== id), isDirty: true,
   }),
 
-  addPlacedObject: (plyFile, blob?, pos?) => {
-    const obj: PlacedObjectData = {
-      id: genId('obj'),
-      ply_file: plyFile,
-      position: pos ?? [0, 0, 0],
-      rotation: [0, 0, 0],
-      scale: 1,
-      is_static: true,
-      character_manifest: '',
-    };
-    const s = get();
-    const updates: Partial<typeof s> = { placedObjects: [...s.placedObjects, obj] };
-    if (blob) {
-      const path = `assets/${plyFile}`;
-      const blobs = new Map(s.assetBlobs);
-      blobs.set(path, blob);
-      (updates as any).assetBlobs = blobs;
-    }
-    (updates as any).isDirty = true;
-    set(updates as any);
-  },
   storeAssetBlob: (path, blob) => {
     const blobs = new Map(get().assetBlobs);
     blobs.set(path, blob);
     set({ assetBlobs: blobs });
   },
-  updatePlacedObject: (id, patch) => set({
-    placedObjects: get().placedObjects.map((o) => (o.id === id ? { ...o, ...patch } : o)), isDirty: true,
-  }),
-  removePlacedObject: (id) => set({
-    placedObjects: get().placedObjects.filter((o) => o.id !== id), isDirty: true,
-  }),
 
   addGsEmitter: (pos?) => {
     const emitter: GsParticleEmitterData = {
@@ -1046,9 +1041,9 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
     collisionGridData: null,
     navZoneNames: [],
     staticLights: [],
-    npcs: [],
+    gameObjects: [],
+    componentSchemas: BUILTIN_SCHEMAS,
     portals: [],
-    placedObjects: [],
     gsParticleEmitters: [],
     vfxInstances: [],
     player: defaultPlayer(),
@@ -1156,7 +1151,7 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
         ambientColor: s.ambientColor,
         godRaysIntensity: s.godRaysIntensity,
         staticLights: s.staticLights,
-        npcs: s.npcs,
+        gameObjects: s.gameObjects.length > 0 ? s.gameObjects : undefined,
         portals: s.portals,
         player: s.player,
         backgroundLayers: s.backgroundLayers,
@@ -1167,7 +1162,6 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
         weather: s.weather,
         dayNight: s.dayNight,
         gaussianSplat: s.gaussianSplat,
-        placedObjects: s.placedObjects,
         gsParticleEmitters: s.gsParticleEmitters,
         gsAnimations: s.gsAnimations,
         vfxInstances: s.vfxInstances.length > 0 ? s.vfxInstances : undefined,
@@ -1214,9 +1208,43 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
       ambientColor: data.scene.ambientColor,
       godRaysIntensity: data.scene.godRaysIntensity ?? 0,
       staticLights: migratedLights,
-      npcs: data.scene.npcs,
+      gameObjects: (() => {
+        let gameObjects: GameObjectData[] = data.scene.gameObjects ?? [];
+        if (gameObjects.length === 0) {
+          if (data.scene.placedObjects) {
+            for (const obj of data.scene.placedObjects as any[]) {
+              gameObjects.push({
+                id: obj.id || `go_${Date.now()}_${Math.random()}`,
+                name: obj.id || 'Object',
+                position: obj.position,
+                rotation: obj.rotation ?? [0, 0, 0],
+                scale: obj.scale ?? 1,
+                ply_file: obj.ply_file ?? '',
+                components: obj.character_manifest ? { CharacterModel: { manifest: obj.character_manifest } } : {},
+              });
+            }
+          }
+          if (data.scene.npcs) {
+            for (const npc of data.scene.npcs as any[]) {
+              const comps: Record<string, Record<string, unknown>> = {};
+              if (npc.facing) comps.Facing = { direction: npc.facing };
+              if (npc.waypoints?.length) comps.Patrol = { speed: npc.patrol_speed, waypoints: npc.waypoints, pause: npc.waypoint_pause };
+              if (npc.character_id) comps.CharacterModel = { character_id: npc.character_id };
+              gameObjects.push({
+                id: `npc_${npc.name || Date.now()}`,
+                name: npc.name || 'NPC',
+                position: npc.position,
+                rotation: [0, 0, 0],
+                scale: 1,
+                ply_file: '',
+                components: comps,
+              });
+            }
+          }
+        }
+        return gameObjects;
+      })(),
       portals: migratedPortals,
-      placedObjects: data.scene.placedObjects ?? [],
       gsParticleEmitters: data.scene.gsParticleEmitters ?? [],
       gsAnimations: data.scene.gsAnimations ?? [],
       vfxInstances: data.scene.vfxInstances ?? [],

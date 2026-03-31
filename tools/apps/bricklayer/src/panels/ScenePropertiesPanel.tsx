@@ -4,10 +4,11 @@ import { Vec3Input } from '../components/Vec3Input.js';
 import { useSceneStore } from '../store/useSceneStore.js';
 import type {
   StaticLight,
-  NpcData,
   PortalData,
-  PlacedObjectData,
   PlayerData,
+  GameObjectData,
+  ComponentSchema,
+  ComponentFieldSchema,
   GsParticleEmitterData,
   GsAnimationGroupData,
   VfxInstanceData,
@@ -20,15 +21,166 @@ const facings = ['up', 'down', 'left', 'right'];
 
 // ── Per-entity property editors ──
 
-function ObjectProperties({ obj }: { obj: PlacedObjectData }) {
-  const update = useSceneStore((s) => s.updatePlacedObject);
-  const remove = useSceneStore((s) => s.removePlacedObject);
+// ── Dynamic Component Editor ──
+
+function ComponentFieldEditor({ field, value, onChange }: {
+  field: ComponentFieldSchema;
+  value: unknown;
+  onChange: (v: unknown) => void;
+}) {
+  switch (field.type) {
+    case 'float':
+    case 'int':
+      return (
+        <NumberInput
+          value={(value as number) ?? (field.default as number) ?? 0}
+          min={field.min}
+          max={field.max}
+          step={field.step ?? (field.type === 'int' ? 1 : 0.1)}
+          onChange={(v) => onChange(v)}
+          style={styles.input}
+        />
+      );
+    case 'string':
+      return (
+        <input
+          type="text"
+          value={(value as string) ?? (field.default as string) ?? ''}
+          onChange={(e) => onChange(e.target.value)}
+          style={styles.input}
+        />
+      );
+    case 'bool':
+      return (
+        <label style={{ fontSize: 12, color: '#ddd', display: 'flex', alignItems: 'center' }}>
+          <input
+            type="checkbox"
+            checked={(value as boolean) ?? (field.default as boolean) ?? false}
+            onChange={(e) => onChange(e.target.checked)}
+            style={styles.checkbox}
+          />
+          {field.description || field.name}
+        </label>
+      );
+    case 'vec3':
+      return (
+        <Vec3Input
+          value={(value as [number, number, number]) ?? (field.default as [number, number, number]) ?? [0, 0, 0]}
+          onChange={(v) => onChange(v)}
+        />
+      );
+    case 'color':
+      return (
+        <input
+          type="color"
+          value={(() => {
+            const c = (value as [number, number, number]) ?? (field.default as [number, number, number]) ?? [1, 1, 1];
+            return '#' + c.map((v: number) => Math.round(v * 255).toString(16).padStart(2, '0')).join('');
+          })()}
+          onChange={(e) => {
+            const hex = e.target.value;
+            onChange([
+              parseInt(hex.slice(1, 3), 16) / 255,
+              parseInt(hex.slice(3, 5), 16) / 255,
+              parseInt(hex.slice(5, 7), 16) / 255,
+            ]);
+          }}
+          style={{ width: 40, height: 24, border: 'none', cursor: 'pointer' }}
+        />
+      );
+    case 'enum':
+      return (
+        <select
+          style={styles.select}
+          value={(value as string) ?? (field.default as string) ?? ''}
+          onChange={(e) => onChange(e.target.value)}
+        >
+          {(field.enum_values ?? []).map((v) => (
+            <option key={v} value={v}>{v}</option>
+          ))}
+        </select>
+      );
+    default:
+      return (
+        <span style={{ fontSize: 11, color: '#666' }}>Unsupported type: {field.type}</span>
+      );
+  }
+}
+
+function ComponentEditor({ schema, data, onChange, onRemove }: {
+  schema: ComponentSchema;
+  data: Record<string, unknown>;
+  onChange: (field: string, value: unknown) => void;
+  onRemove: () => void;
+}) {
+  const [open, setOpen] = React.useState(true);
+
+  return (
+    <div style={{ border: '1px solid #333', borderRadius: 4, marginBottom: 8, background: '#1a1a2e' }}>
+      <div
+        style={{
+          display: 'flex', alignItems: 'center', gap: 6, padding: '6px 8px',
+          cursor: 'pointer', borderBottom: open ? '1px solid #333' : 'none',
+        }}
+        onClick={() => setOpen(!open)}
+      >
+        <span style={{ fontSize: 9, color: '#555' }}>{open ? '\u25BE' : '\u25B8'}</span>
+        <span style={{ fontSize: 12, color: '#ccc', flex: 1 }}>{schema.name}</span>
+        <button
+          style={{
+            padding: '0 4px', border: 'none', background: 'transparent',
+            color: '#844', cursor: 'pointer', fontSize: 13, lineHeight: '1',
+          }}
+          onClick={(e) => { e.stopPropagation(); onRemove(); }}
+        >&times;</button>
+      </div>
+      {open && (
+        <div style={{ padding: '6px 8px' }}>
+          {schema.description && (
+            <div style={{ fontSize: 10, color: '#666', marginBottom: 6 }}>{schema.description}</div>
+          )}
+          {schema.fields.map((field) => (
+            <div key={field.name} style={styles.section}>
+              <span style={styles.label}>{field.name}</span>
+              {field.description && field.type !== 'bool' && (
+                <span style={{ fontSize: 10, color: '#555' }}>{field.description}</span>
+              )}
+              <ComponentFieldEditor
+                field={field}
+                value={data[field.name]}
+                onChange={(v) => onChange(field.name, v)}
+              />
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function GameObjectProperties({ obj }: { obj: GameObjectData }) {
+  const update = useSceneStore((s) => s.updateGameObject);
+  const remove = useSceneStore((s) => s.removeGameObject);
+  const componentSchemas = useSceneStore((s) => s.componentSchemas);
+
+  const attachedNames = Object.keys(obj.components);
+  const availableSchemas = componentSchemas.filter((s) => !attachedNames.includes(s.name));
 
   return (
     <div>
       <div style={{ ...styles.row, marginBottom: 12 }}>
-        <span style={{ ...styles.label, flex: 1 }}>Placed Object</span>
+        <span style={{ ...styles.label, flex: 1 }}>Game Object</span>
         <button style={styles.btnDanger} onClick={() => remove(obj.id)}>Remove</button>
+      </div>
+
+      <div style={styles.section}>
+        <span style={styles.label}>Name</span>
+        <input
+          type="text"
+          value={obj.name}
+          onChange={(e) => update(obj.id, { name: e.target.value })}
+          style={styles.input}
+        />
       </div>
 
       <div style={styles.section}>
@@ -62,27 +214,69 @@ function ObjectProperties({ obj }: { obj: PlacedObjectData }) {
         />
       </div>
 
-      <div style={styles.section}>
-        <label style={{ fontSize: 12, color: '#ddd', display: 'flex', alignItems: 'center' }}>
-          <input
-            type="checkbox"
-            checked={obj.is_static}
-            onChange={(e) => update(obj.id, { is_static: e.target.checked })}
-            style={styles.checkbox}
-          />
-          Static (merge into terrain)
-        </label>
-      </div>
+      {/* Components */}
+      <div style={{ ...styles.section, marginTop: 16 }}>
+        <div style={{ ...styles.row, marginBottom: 8 }}>
+          <span style={{ ...styles.label, flex: 1 }}>Components</span>
+          {availableSchemas.length > 0 && (
+            <select
+              style={{ ...styles.select, maxWidth: 140 }}
+              value=""
+              onChange={(e) => {
+                const name = e.target.value;
+                if (!name) return;
+                const schema = componentSchemas.find((s) => s.name === name);
+                if (!schema) return;
+                const defaults: Record<string, unknown> = {};
+                for (const field of schema.fields) {
+                  if (field.default !== undefined) defaults[field.name] = field.default;
+                }
+                update(obj.id, {
+                  components: { ...obj.components, [name]: defaults },
+                });
+              }}
+            >
+              <option value="">+ Add Component</option>
+              {availableSchemas.map((s) => (
+                <option key={s.name} value={s.name}>{s.name}</option>
+              ))}
+            </select>
+          )}
+        </div>
 
-      <div style={styles.section}>
-        <span style={styles.label}>Character Manifest</span>
-        <input
-          type="text"
-          value={obj.character_manifest}
-          onChange={(e) => update(obj.id, { character_manifest: e.target.value })}
-          style={styles.input}
-          placeholder="character manifest JSON"
-        />
+        {attachedNames.map((name) => {
+          const schema = componentSchemas.find((s) => s.name === name);
+          if (!schema) {
+            return (
+              <div key={name} style={{ fontSize: 11, color: '#666', marginBottom: 4 }}>
+                {name} (no schema)
+              </div>
+            );
+          }
+          return (
+            <ComponentEditor
+              key={name}
+              schema={schema}
+              data={obj.components[name]}
+              onChange={(field, value) => {
+                update(obj.id, {
+                  components: {
+                    ...obj.components,
+                    [name]: { ...obj.components[name], [field]: value },
+                  },
+                });
+              }}
+              onRemove={() => {
+                const { [name]: _, ...rest } = obj.components;
+                update(obj.id, { components: rest });
+              }}
+            />
+          );
+        })}
+
+        {attachedNames.length === 0 && (
+          <span style={{ fontSize: 11, color: '#555' }}>No components attached</span>
+        )}
       </div>
     </div>
   );
@@ -303,86 +497,6 @@ function LightProperties({ light }: { light: StaticLight }) {
           </div>
         </>
       )}
-    </div>
-  );
-}
-
-function NpcProperties({ npc }: { npc: NpcData }) {
-  const update = useSceneStore((s) => s.updateNpc);
-  const remove = useSceneStore((s) => s.removeNpc);
-
-  return (
-    <div>
-      <div style={{ ...styles.row, marginBottom: 12 }}>
-        <span style={{ ...styles.label, flex: 1 }}>NPC</span>
-        <button style={styles.btnDanger} onClick={() => remove(npc.id)}>Remove</button>
-      </div>
-
-      <div style={styles.section}>
-        <span style={styles.label}>Name</span>
-        <input
-          type="text"
-          value={npc.name}
-          onChange={(e) => update(npc.id, { name: e.target.value })}
-          style={styles.input}
-        />
-      </div>
-
-      <div style={styles.section}>
-        <span style={styles.label}>Position</span>
-        <Vec3Input value={npc.position} onChange={(v) => update(npc.id, { position: v })} />
-      </div>
-
-      <div style={styles.section}>
-        <span style={styles.label}>Facing</span>
-        <select
-          style={styles.select}
-          value={npc.facing}
-          onChange={(e) => update(npc.id, { facing: e.target.value })}
-        >
-          {facings.map((f) => <option key={f} value={f}>{f}</option>)}
-        </select>
-      </div>
-
-      <div style={styles.section}>
-        <span style={styles.label}>Character ID</span>
-        <input
-          type="text"
-          value={npc.character_id}
-          onChange={(e) => update(npc.id, { character_id: e.target.value })}
-          style={styles.input}
-        />
-      </div>
-
-      <div style={styles.section}>
-        <span style={styles.label}>Patrol</span>
-        <div style={styles.row}>
-          <span style={{ fontSize: 12, minWidth: 50 }}>Interval</span>
-          <NumberInput
-            step={0.1}
-            value={npc.patrol_interval}
-            onChange={(v) => update(npc.id, { patrol_interval: v })}
-            style={styles.input}
-          />
-        </div>
-        <div style={styles.row}>
-          <span style={{ fontSize: 12, minWidth: 50 }}>Speed</span>
-          <NumberInput
-            step={0.1}
-            value={npc.patrol_speed}
-            onChange={(v) => update(npc.id, { patrol_speed: v })}
-            style={styles.input}
-          />
-        </div>
-      </div>
-
-      <div style={styles.section}>
-        <span style={styles.label}>Dialog ({npc.dialog.length} entries)</span>
-      </div>
-
-      <div style={styles.section}>
-        <span style={styles.label}>Waypoints ({npc.waypoints.length})</span>
-      </div>
     </div>
   );
 }
@@ -1241,9 +1355,8 @@ function VfxInstanceProperties({ vfx }: { vfx: VfxInstanceData }) {
 
 export function ScenePropertiesPanel() {
   const selectedEntity = useSceneStore((s) => s.selectedEntity);
-  const placedObjects = useSceneStore((s) => s.placedObjects);
+  const gameObjects = useSceneStore((s) => s.gameObjects);
   const staticLights = useSceneStore((s) => s.staticLights);
-  const npcs = useSceneStore((s) => s.npcs);
   const portals = useSceneStore((s) => s.portals);
   const gsParticleEmitters = useSceneStore((s) => s.gsParticleEmitters);
   const gsAnimations = useSceneStore((s) => s.gsAnimations);
@@ -1254,22 +1367,16 @@ export function ScenePropertiesPanel() {
     return <div style={styles.empty}>Select an entity in the scene tree</div>;
   }
 
-  if (selectedEntity.type === 'object') {
-    const obj = placedObjects.find((o) => o.id === selectedEntity.id);
-    if (!obj) return <div style={styles.empty}>Object not found</div>;
-    return <ObjectProperties obj={obj} />;
+  if (selectedEntity.type === 'game_object') {
+    const obj = gameObjects.find((o) => o.id === selectedEntity.id);
+    if (!obj) return <div style={styles.empty}>Game object not found</div>;
+    return <GameObjectProperties obj={obj} />;
   }
 
   if (selectedEntity.type === 'light') {
     const light = staticLights.find((l) => l.id === selectedEntity.id);
     if (!light) return <div style={styles.empty}>Light not found</div>;
     return <LightProperties light={light} />;
-  }
-
-  if (selectedEntity.type === 'npc') {
-    const npc = npcs.find((n) => n.id === selectedEntity.id);
-    if (!npc) return <div style={styles.empty}>NPC not found</div>;
-    return <NpcProperties npc={npc} />;
   }
 
   if (selectedEntity.type === 'portal') {
