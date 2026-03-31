@@ -25,6 +25,7 @@ private:
     void update_player(AppBase& app, float dt);
     void update_camera(AppBase& app, float dt);
     void update_effects(AppBase& app, float dt);
+    void update_walk_animation(AppBase& app, float dt);
 
     // Scene
     std::string scene_path_ = "assets/scenes/seurat_island.json";
@@ -32,6 +33,12 @@ private:
     // Player entity
     ecs::Entity player_entity_ = ecs::kNullEntity;
     glm::vec3 player_velocity_{0.0f};
+    float walk_anim_time_ = 0.0f;
+
+    // Character Gaussians (for walk animation bone transforms)
+    bool character_spawned_ = false;
+    glm::vec3 character_origin_{0.0f};
+    std::vector<Gaussian> map_gaussians_;  // original map data before character merge
 
     // Collision grid (loaded from scene JSON)
     CollisionGrid collision_grid_;
@@ -47,10 +54,17 @@ private:
     glm::vec2 last_mouse_{0.0f};
     bool dragging_ = false;
 
+    // Debug HUD
+    bool show_hud_ = false;
+
     // FPS tracking
     std::chrono::steady_clock::time_point fps_clock_{};
     int fps_frame_count_ = 0;
     float fps_ = 0.0f;
+
+    // Hybrid re-render
+    uint32_t gs_frame_counter_ = 0;
+    uint32_t gs_render_interval_ = 4;
 
     // Constants
     static constexpr float kMinElevation = 0.175f;
