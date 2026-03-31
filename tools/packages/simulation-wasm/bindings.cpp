@@ -9,6 +9,7 @@
 #include <emscripten/val.h>
 #include "gseurat/engine/gs_particle.hpp"
 #include "gseurat/engine/gs_animator.hpp"
+#include "gseurat/engine/gs_spline.hpp"
 #include <vector>
 
 using namespace emscripten;
@@ -91,6 +92,33 @@ GsEmitterConfig configFromJs(val jsConfig) {
         cfg.spawn_region.shape = GsAnimRegion::Shape::Box;
         cfg.spawn_region.center = (omin + omax) * 0.5f;
         cfg.spawn_region.half_extents = (omax - omin) * 0.5f;
+    }
+    // Spline path configuration
+    if (jsConfig.hasOwnProperty("spline")) {
+        val s = jsConfig["spline"];
+        SplineConfig spline;
+        if (s.hasOwnProperty("mode")) {
+            std::string mode = s["mode"].as<std::string>();
+            if (mode == "emitter_path") spline.mode = SplineMode::EmitterPath;
+            else if (mode == "particle_path") spline.mode = SplineMode::ParticlePath;
+            else spline.mode = SplineMode::None;
+        }
+        if (s.hasOwnProperty("control_points")) {
+            val pts = s["control_points"];
+            int len = pts["length"].as<int>();
+            for (int i = 0; i < len; ++i) {
+                val p = pts[i];
+                spline.path.control_points.push_back({
+                    p[0].as<float>(), p[1].as<float>(), p[2].as<float>()
+                });
+            }
+        }
+        if (s.hasOwnProperty("emitter_speed")) spline.emitter_speed = s["emitter_speed"].as<float>();
+        if (s.hasOwnProperty("path_spread")) spline.path_spread = s["path_spread"].as<float>();
+        if (s.hasOwnProperty("align_to_tangent")) spline.align_to_tangent = s["align_to_tangent"].as<bool>();
+        if (spline.mode != SplineMode::None && spline.path.valid()) {
+            cfg.spline = spline;
+        }
     }
     return cfg;
 }
