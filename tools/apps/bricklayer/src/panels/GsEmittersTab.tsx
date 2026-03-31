@@ -196,8 +196,27 @@ function EmitterEditor({ emitter }: { emitter: GsParticleEmitterData }) {
       {emitter.spline && (
         <>
           {emitter.spline.control_points.map((pt, i) => (
-            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              <span style={{ fontSize: 10, color: '#666', minWidth: 20 }}>P{i}</span>
+            <div key={i}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: 10, color: '#666' }}>P{i}</span>
+                <button
+                  onClick={() => {
+                    if (emitter.spline!.control_points.length <= 2) return;
+                    const pts = emitter.spline!.control_points.filter((_, idx) => idx !== i);
+                    updateGsEmitter(emitter.id, {
+                      spline: { ...emitter.spline!, control_points: pts },
+                    });
+                  }}
+                  disabled={emitter.spline!.control_points.length <= 2}
+                  style={{
+                    background: 'transparent', border: 'none', color: '#666',
+                    cursor: emitter.spline!.control_points.length <= 2 ? 'not-allowed' : 'pointer',
+                    fontSize: 14, padding: '0 4px',
+                    opacity: emitter.spline!.control_points.length <= 2 ? 0.3 : 0.7,
+                  }}>
+                  x
+                </button>
+              </div>
               <Vec3Input value={pt} step={0.5}
                 onChange={(v) => {
                   const pts = [...emitter.spline!.control_points];
@@ -206,23 +225,6 @@ function EmitterEditor({ emitter }: { emitter: GsParticleEmitterData }) {
                     spline: { ...emitter.spline!, control_points: pts },
                   });
                 }} style={styles.input} />
-              <button
-                onClick={() => {
-                  if (emitter.spline!.control_points.length <= 2) return;
-                  const pts = emitter.spline!.control_points.filter((_, idx) => idx !== i);
-                  updateGsEmitter(emitter.id, {
-                    spline: { ...emitter.spline!, control_points: pts },
-                  });
-                }}
-                disabled={emitter.spline!.control_points.length <= 2}
-                style={{
-                  background: 'transparent', border: 'none', color: '#666',
-                  cursor: emitter.spline!.control_points.length <= 2 ? 'not-allowed' : 'pointer',
-                  fontSize: 14, padding: '0 4px',
-                  opacity: emitter.spline!.control_points.length <= 2 ? 0.3 : 0.7,
-                }}>
-                x
-              </button>
             </div>
           ))}
           <button
