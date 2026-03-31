@@ -1,0 +1,10 @@
+{
+  "name": "Interactable",
+  "description": "Can be activated by the player",
+  "category": "Gameplay",
+  "fields": [
+    { "name": "prompt", "type": "string", "default": "Interact" },
+    { "name": "radius", "type": "float", "default": 2.0, "min": 0.1, "max": 50 },
+    { "name": "one_shot", "type": "bool", "default": false }
+  ]
+}

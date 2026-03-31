@@ -1,0 +1,10 @@
+{
+  "name": "Patrol",
+  "description": "Entity patrols between waypoints",
+  "category": "AI",
+  "fields": [
+    { "name": "speed", "type": "float", "default": 2.0, "min": 0 },
+    { "name": "waypoints", "type": "vec3[]", "default": [] },
+    { "name": "pause", "type": "float", "default": 1.0, "min": 0, "description": "Seconds to pause at each waypoint" }
+  ]
+}

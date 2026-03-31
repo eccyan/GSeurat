@@ -1,0 +1,8 @@
+{
+  "name": "Facing",
+  "description": "Direction the entity faces",
+  "category": "Core",
+  "fields": [
+    { "name": "direction", "type": "enum", "default": "down", "enum_values": ["up", "down", "left", "right"] }
+  ]
+}
