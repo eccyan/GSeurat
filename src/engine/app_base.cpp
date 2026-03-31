@@ -506,6 +506,11 @@ void AppBase::dispatch_command(const nlohmann::json& cmd, nlohmann::json& respon
         auto path = cmd.value("path", "");
         auto content = cmd.value("content", "");
         if (!path.empty() && !content.empty()) {
+            // Create parent directories if they don't exist
+            auto parent = std::filesystem::path(path).parent_path();
+            if (!parent.empty()) {
+                std::filesystem::create_directories(parent);
+            }
             std::ofstream ofs(path);
             if (ofs.is_open()) {
                 ofs << content;
