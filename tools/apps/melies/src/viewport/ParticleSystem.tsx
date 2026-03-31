@@ -37,7 +37,7 @@ async function loadWasm() {
 
 const MAX_PARTICLES = 2048;
 
-function EmitterRenderer({ layer, active }: { layer: VfxLayer; active: boolean }) {
+function EmitterRenderer({ layer, active, wasm }: { layer: VfxLayer; active: boolean; wasm: any }) {
   const pointsRef = useRef<THREE.Points>(null);
   const emitterRef = useRef<any>(null);
   const geoRef = useRef<THREE.BufferGeometry>(null);
@@ -50,7 +50,7 @@ function EmitterRenderer({ layer, active }: { layer: VfxLayer; active: boolean }
 
   // Create/destroy emitter
   useEffect(() => {
-    if (!wasmModule || !active) {
+    if (!wasm || !active) {
       if (emitterRef.current) {
         emitterRef.current.delete();
         emitterRef.current = null;
@@ -59,12 +59,12 @@ function EmitterRenderer({ layer, active }: { layer: VfxLayer; active: boolean }
       return;
     }
 
-    const emitter = new wasmModule.ParticleEmitter();
+    const emitter = new wasm.ParticleEmitter();
     const cfg = layer.emitter as Record<string, unknown> | undefined;
 
     if (cfg?.preset) {
       // Start from preset, then apply any custom overrides
-      const presetCfg = wasmModule.resolvePreset(cfg.preset as string);
+      const presetCfg = wasm.resolvePreset(cfg.preset as string);
       if (presetCfg) {
         // Merge: preset defaults + layer overrides
         const merged = { ...presetCfg };
@@ -94,7 +94,7 @@ function EmitterRenderer({ layer, active }: { layer: VfxLayer; active: boolean }
       emitterRef.current = null;
       setParticleCount(0);
     };
-  }, [active, layer.id, layer.emitter, layer.position]);
+  }, [wasm, active, layer.id, layer.emitter, layer.position]);
 
   const geoInitialized = useRef(false);
 
@@ -177,7 +177,7 @@ function EmitterRenderer({ layer, active }: { layer: VfxLayer; active: boolean }
     });
   }, [layer.emitter]);
 
-  if (!wasmModule) return null;
+  if (!wasm) return null;
 
   return (
     <points ref={pointsRef} visible={active} material={shaderMaterial}>
@@ -194,16 +194,16 @@ export function ParticleSystem() {
   });
   const playing = useVfxStore((s) => s.playing);
   const isLayerVisible = useVfxStore((s) => s.isLayerVisible);
-  const [wasmReady, setWasmReady] = useState(false);
+  const [wasm, setWasm] = useState<any>(null);
 
   // Load WASM on mount
   useEffect(() => {
     loadWasm().then(() => {
-      if (wasmModule) setWasmReady(true);
+      if (wasmModule) setWasm(wasmModule);
     });
   }, []);
 
-  if (!wasmReady || !preset) return null;
+  if (!wasm || !preset) return null;
 
   return (
     <group>
@@ -217,6 +217,7 @@ export function ParticleSystem() {
               key={layer.id}
               layer={layer}
               active={active}
+              wasm={wasm}
             />
           );
         })}
