@@ -1,0 +1,217 @@
+#version 450
+
+// GS post-process compute shader.
+// Reads raw HDR color + depth from gs_render.comp, applies screen-space
+// effects (fog, tone mapping, vignette, bloom, CA, DoF, flash, fade),
+// and writes the final processed image for blit.
+//
+// One workgroup per 16×16 tile (matches gs_render.comp tile size).
+layout(local_size_x = 16, local_size_y = 16) in;
+
+layout(set = 0, binding = 0, rgba16f) uniform readonly image2D input_image;
+layout(set = 0, binding = 1, r16f)    uniform readonly image2D depth_image;
+layout(set = 0, binding = 2, rgba16f) uniform writeonly image2D output_image;
+
+layout(set = 0, binding = 3) uniform PostProcessUBO {
+    vec4 fog_params;         // density, r, g, b
+    vec4 exposure_vignette;  // exposure, radius, softness, bloom_intensity
+    vec4 bloom_fade;         // bloom_threshold, fade_amount, flash_r, flash_g
+    vec4 effects;            // flash_b, ca_intensity, dof_focus_dist, dof_focus_range
+    vec4 dimensions;         // dof_max_blur, width, height, far_plane
+};
+
+// Shared memory for tile-based effects (DoF blur, bloom)
+shared vec4 tile_color[16][16];
+shared float tile_depth_s[16][16];
+
+void main() {
+    uvec2 pixel = gl_WorkGroupID.xy * 16 + gl_LocalInvocationID.xy;
+    uvec2 local_id = gl_LocalInvocationID.xy;
+
+    uint width = uint(dimensions.y);
+    uint height = uint(dimensions.z);
+
+    if (pixel.x >= width || pixel.y >= height) return;
+
+    // Load raw HDR color and depth
+    vec4 raw = imageLoad(input_image, ivec2(pixel));
+    float depth = imageLoad(depth_image, ivec2(pixel)).r;
+    float alpha = raw.a;
+
+    // Transparent pixels pass through unchanged
+    if (alpha < 0.001) {
+        imageStore(output_image, ivec2(pixel), raw);
+        return;
+    }
+
+    vec3 color = raw.rgb;
+
+    // Store into shared memory for tile-based effects
+    tile_color[local_id.y][local_id.x] = vec4(color, alpha);
+    tile_depth_s[local_id.y][local_id.x] = depth;
+    barrier();
+
+    // Unpack parameters
+    float fog_density       = fog_params.x;
+    vec3  fog_col           = fog_params.yzw;
+    float exposure          = exposure_vignette.x;
+    float vignette_radius   = exposure_vignette.y;
+    float vignette_softness = exposure_vignette.z;
+    float bloom_intensity   = exposure_vignette.w;
+    float bloom_threshold   = bloom_fade.x;
+    float fade_amount       = bloom_fade.y;
+    float flash_r           = bloom_fade.z;
+    float flash_g           = bloom_fade.w;
+    float flash_b           = effects.x;
+    float ca_intensity      = effects.y;
+    float dof_focus_dist    = effects.z;
+    float dof_focus_range   = effects.w;
+    float dof_max_blur      = dimensions.x;
+
+    // ── 1. Chromatic aberration ──
+    if (ca_intensity > 0.0001) {
+        vec2 uv = (vec2(pixel) + 0.5) / vec2(float(width), float(height));
+        vec2 center = uv - 0.5;
+        float dist_from_center = length(center);
+        vec2 dir = (dist_from_center > 0.0001)
+            ? normalize(center) * ca_intensity * dist_from_center
+            : vec2(0.0);
+
+        // Offset coordinates in pixel space
+        ivec2 offset_r = ivec2(clamp(vec2(pixel) + dir * vec2(float(width), float(height)),
+                                     vec2(0.0), vec2(float(width) - 1.0, float(height) - 1.0)));
+        ivec2 offset_b = ivec2(clamp(vec2(pixel) - dir * vec2(float(width), float(height)),
+                                     vec2(0.0), vec2(float(width) - 1.0, float(height) - 1.0)));
+
+        color.r = imageLoad(input_image, offset_r).r;
+        // color.g stays as-is (center channel)
+        color.b = imageLoad(input_image, offset_b).b;
+    }
+
+    // ── 2. Depth of Field (approximate) ──
+    if (dof_max_blur > 0.001 && depth > 0.0) {
+        float coc = smoothstep(0.0, dof_focus_range,
+                               abs(depth - dof_focus_dist)) * dof_max_blur;
+
+        // Tilt-shift Y-bias for diorama look (matching composite.frag)
+        float uv_y = (float(pixel.y) + 0.5) / float(height);
+        coc += abs(uv_y - 0.45) * 0.3 * dof_max_blur;
+        coc = clamp(coc, 0.0, 1.0);
+
+        if (coc > 0.01) {
+            // 3×3 tap blur using shared memory within tile
+            vec3 blur_sum = vec3(0.0);
+            float weight_sum = 0.0;
+            for (int dy = -1; dy <= 1; dy++) {
+                for (int dx = -1; dx <= 1; dx++) {
+                    int sx = int(local_id.x) + dx;
+                    int sy = int(local_id.y) + dy;
+                    if (sx >= 0 && sx < 16 && sy >= 0 && sy < 16) {
+                        vec4 neighbor = tile_color[sy][sx];
+                        if (neighbor.a > 0.001) {
+                            float w = (dx == 0 && dy == 0) ? 4.0 : 1.0;
+                            blur_sum += neighbor.rgb * w;
+                            weight_sum += w;
+                        }
+                    }
+                }
+            }
+            if (weight_sum > 0.0) {
+                vec3 blurred = blur_sum / weight_sum;
+                color = mix(color, blurred, coc);
+            }
+        }
+    }
+
+    // ── 3. Fog (exponential squared, depth normalized to composite range) ──
+    if (fog_density > 0.0 && depth > 0.0) {
+        // GS depth is raw view-space distance (0..far_plane, e.g. 0..1000).
+        // Composite shader fog uses linearized depth in ~[0, 100] range.
+        // Normalize GS depth to match so the same density values produce
+        // consistent fog across both pipelines.
+        float far_plane = max(dimensions.w, 1.0);
+        float fog_z = (depth / far_plane) * 100.0;
+        float fog_amount = 1.0 - exp(-fog_density * fog_z * fog_z);
+        fog_amount = clamp(fog_amount, 0.0, 1.0);
+        // Un-premultiply, apply fog, re-premultiply
+        vec3 base = color / max(alpha, 0.001);
+        base = mix(base, fog_col, fog_amount);
+        color = base * alpha;
+    }
+
+    // ── 4. Bloom (tile-based bright extract + cross blur) ──
+    if (bloom_intensity > 0.001) {
+        // Extract bright pixels above threshold
+        float lum = dot(color / max(alpha, 0.001), vec3(0.2126, 0.7152, 0.0722));
+        float bright = max(0.0, lum - bloom_threshold);
+        vec3 bloom_color = color * (bright / max(lum, 0.001));
+
+        // 5-tap cross blur from shared memory (approximate)
+        vec3 bloom_sum = bloom_color;
+        float bloom_weight = 1.0;
+
+        // Sample neighbors for bloom spread
+        int lx = int(local_id.x);
+        int ly = int(local_id.y);
+        for (int r = 1; r <= 2; r++) {
+            float w = 1.0 / float(r + 1);
+            // Horizontal
+            if (lx - r >= 0) {
+                vec4 n = tile_color[ly][lx - r];
+                float nl = dot(n.rgb / max(n.a, 0.001), vec3(0.2126, 0.7152, 0.0722));
+                float nb = max(0.0, nl - bloom_threshold);
+                bloom_sum += n.rgb * (nb / max(nl, 0.001)) * w;
+                bloom_weight += w;
+            }
+            if (lx + r < 16) {
+                vec4 n = tile_color[ly][lx + r];
+                float nl = dot(n.rgb / max(n.a, 0.001), vec3(0.2126, 0.7152, 0.0722));
+                float nb = max(0.0, nl - bloom_threshold);
+                bloom_sum += n.rgb * (nb / max(nl, 0.001)) * w;
+                bloom_weight += w;
+            }
+            // Vertical
+            if (ly - r >= 0) {
+                vec4 n = tile_color[ly - r][lx];
+                float nl = dot(n.rgb / max(n.a, 0.001), vec3(0.2126, 0.7152, 0.0722));
+                float nb = max(0.0, nl - bloom_threshold);
+                bloom_sum += n.rgb * (nb / max(nl, 0.001)) * w;
+                bloom_weight += w;
+            }
+            if (ly + r < 16) {
+                vec4 n = tile_color[ly + r][lx];
+                float nl = dot(n.rgb / max(n.a, 0.001), vec3(0.2126, 0.7152, 0.0722));
+                float nb = max(0.0, nl - bloom_threshold);
+                bloom_sum += n.rgb * (nb / max(nl, 0.001)) * w;
+                bloom_weight += w;
+            }
+        }
+
+        color += (bloom_sum / bloom_weight) * bloom_intensity;
+    }
+
+    // ── 5. Tone mapping (Reinhard) ──
+    {
+        // Un-premultiply for tone mapping
+        vec3 base = color / max(alpha, 0.001);
+        base = vec3(1.0) - exp(-base * exposure);
+        color = base * alpha;
+    }
+
+    // ── 6. Screen flash (additive) ──
+    color += vec3(flash_r, flash_g, flash_b) * alpha;
+
+    // ── 7. Vignette ──
+    {
+        vec2 uv = (vec2(pixel) + 0.5) / vec2(float(width), float(height));
+        vec2 uv_centered = uv - 0.5;
+        float dist = length(uv_centered);
+        float vignette = smoothstep(vignette_radius, vignette_radius - vignette_softness, dist);
+        color *= vignette;
+    }
+
+    // ── 8. Scene fade ──
+    color *= (1.0 - fade_amount);
+
+    imageStore(output_image, ivec2(pixel), vec4(color, alpha));
+}

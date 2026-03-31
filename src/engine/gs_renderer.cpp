@@ -126,19 +126,90 @@ void GsRenderer::create_output_image(uint32_t width, uint32_t height) {
     if (vkCreateSampler(device_, &sampler_info, nullptr, &output_sampler_) != VK_SUCCESS) {
         throw std::runtime_error("Failed to create GS output sampler");
     }
+
+    // Depth storage image (R16F, per-pixel view-space depth)
+    {
+        VkImageCreateInfo depth_info{};
+        depth_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+        depth_info.imageType = VK_IMAGE_TYPE_2D;
+        depth_info.format = VK_FORMAT_R16_SFLOAT;
+        depth_info.extent = {width, height, 1};
+        depth_info.mipLevels = 1;
+        depth_info.arrayLayers = 1;
+        depth_info.samples = VK_SAMPLE_COUNT_1_BIT;
+        depth_info.tiling = VK_IMAGE_TILING_OPTIMAL;
+        depth_info.usage = VK_IMAGE_USAGE_STORAGE_BIT;
+
+        VmaAllocationCreateInfo depth_alloc{};
+        depth_alloc.usage = VMA_MEMORY_USAGE_GPU_ONLY;
+
+        if (vmaCreateImage(allocator_, &depth_info, &depth_alloc,
+                           &depth_image_, &depth_allocation_, nullptr) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to create GS depth image");
+        }
+
+        VkImageViewCreateInfo dv_info{};
+        dv_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+        dv_info.image = depth_image_;
+        dv_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
+        dv_info.format = VK_FORMAT_R16_SFLOAT;
+        dv_info.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+
+        if (vkCreateImageView(device_, &dv_info, nullptr, &depth_view_) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to create GS depth image view");
+        }
+    }
+
+    // Post-processed output image (RGBA16F, same dimensions)
+    {
+        VkImageCreateInfo proc_info{};
+        proc_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+        proc_info.imageType = VK_IMAGE_TYPE_2D;
+        proc_info.format = VK_FORMAT_R16G16B16A16_SFLOAT;
+        proc_info.extent = {width, height, 1};
+        proc_info.mipLevels = 1;
+        proc_info.arrayLayers = 1;
+        proc_info.samples = VK_SAMPLE_COUNT_1_BIT;
+        proc_info.tiling = VK_IMAGE_TILING_OPTIMAL;
+        proc_info.usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+
+        VmaAllocationCreateInfo proc_alloc{};
+        proc_alloc.usage = VMA_MEMORY_USAGE_GPU_ONLY;
+
+        if (vmaCreateImage(allocator_, &proc_info, &proc_alloc,
+                           &processed_image_, &processed_allocation_, nullptr) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to create GS processed image");
+        }
+
+        VkImageViewCreateInfo pv_info{};
+        pv_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+        pv_info.image = processed_image_;
+        pv_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
+        pv_info.format = VK_FORMAT_R16G16B16A16_SFLOAT;
+        pv_info.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+
+        if (vkCreateImageView(device_, &pv_info, nullptr, &processed_view_) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to create GS processed image view");
+        }
+    }
+
+    // Post-process UBO buffer (80 bytes)
+    if (!pp_ubo_buffer_.buffer()) {
+        pp_ubo_buffer_ = Buffer::create_uniform(allocator_, sizeof(GsPostProcessUbo));
+    }
 }
 
 void GsRenderer::create_descriptor_resources() {
-    // Descriptor pool — enough for all sets
+    // Descriptor pool — enough for all sets (including post-process)
     VkDescriptorPoolSize pool_sizes[] = {
         {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 128},
-        {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 16},
-        {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 16},
+        {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 24},   // +8 for post-process (input, depth, output + headroom)
+        {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 20},   // +4 for post-process UBO
     };
 
     VkDescriptorPoolCreateInfo pool_info{};
     pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-    pool_info.maxSets = 64;
+    pool_info.maxSets = 72;  // +8 for post-process set
     pool_info.poolSizeCount = 3;
     pool_info.pPoolSizes = pool_sizes;
 
@@ -176,7 +247,7 @@ void GsRenderer::create_descriptor_resources() {
         vkCreateDescriptorSetLayout(device_, &ci, nullptr, &sort_layout_);
     }
 
-    // Render layout: { projected, sort_keys, uniforms, output_image, visible_count }
+    // Render layout: { projected, sort_keys, uniforms, output_image, visible_count, depth_image }
     {
         VkDescriptorSetLayoutBinding bindings[] = {
             {0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
@@ -184,10 +255,11 @@ void GsRenderer::create_descriptor_resources() {
             {2, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
             {3, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
             {4, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
+            {5, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},  // depth
         };
         VkDescriptorSetLayoutCreateInfo ci{};
         ci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-        ci.bindingCount = 5;
+        ci.bindingCount = 6;
         ci.pBindings = bindings;
         vkCreateDescriptorSetLayout(device_, &ci, nullptr, &render_layout_);
     }
@@ -231,6 +303,21 @@ void GsRenderer::create_descriptor_resources() {
         vkCreateDescriptorSetLayout(device_, &ci, nullptr, &radix_scatter_layout_);
     }
 
+    // Post-process layout: { input_image(readonly), depth_image(readonly), output_image(writeonly), ubo }
+    {
+        VkDescriptorSetLayoutBinding bindings[] = {
+            {0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},   // input
+            {1, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},   // depth
+            {2, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},   // output
+            {3, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},  // UBO
+        };
+        VkDescriptorSetLayoutCreateInfo ci{};
+        ci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+        ci.bindingCount = 4;
+        ci.pBindings = bindings;
+        vkCreateDescriptorSetLayout(device_, &ci, nullptr, &post_process_layout_);
+    }
+
     // Allocate all descriptor sets
     // Reset pool to free previously allocated sets before reallocating
     vkResetDescriptorPool(device_, gs_pool_, 0);
@@ -240,12 +327,13 @@ void GsRenderer::create_descriptor_resources() {
         radix_histogram_layout_, radix_histogram_layout_,  // A and B
         radix_scan_layout_,
         radix_scatter_layout_, radix_scatter_layout_,      // AB and BA
+        post_process_layout_,
     };
-    VkDescriptorSet sets[8];
+    VkDescriptorSet sets[9];
     VkDescriptorSetAllocateInfo alloc_info{};
     alloc_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
     alloc_info.descriptorPool = gs_pool_;
-    alloc_info.descriptorSetCount = 8;
+    alloc_info.descriptorSetCount = 9;
     alloc_info.pSetLayouts = layouts;
     vkAllocateDescriptorSets(device_, &alloc_info, sets);
 
@@ -257,6 +345,7 @@ void GsRenderer::create_descriptor_resources() {
     radix_scan_set_ = sets[5];
     radix_scatter_set_ab_ = sets[6];
     radix_scatter_set_ba_ = sets[7];
+    post_process_set_ = sets[8];
 }
 
 void GsRenderer::create_compute_pipelines() {
@@ -304,6 +393,10 @@ void GsRenderer::create_compute_pipelines() {
                     sort_pipeline_layout_, sort_pipeline_);
     create_pipeline("shaders/gs_render.comp.spv", render_layout_, 0,
                     render_pipeline_layout_, render_pipeline_);
+
+    // Post-process pipeline (no push constants — dimensions in UBO)
+    create_pipeline("shaders/gs_post_process.comp.spv", post_process_layout_, 0,
+                    post_process_pipeline_layout_, post_process_pipeline_);
 
     // Radix sort pipelines
     create_pipeline("shaders/gs_radix_histogram.comp.spv", radix_histogram_layout_, 8,
@@ -554,13 +647,14 @@ void GsRenderer::update_descriptors() {
         vkUpdateDescriptorSets(device_, 2, writes, 0, nullptr);
     }
 
-    // Render set: projected(0), sort_keys_A(1), uniforms(2), output_image(3), visible_count(4)
+    // Render set: projected(0), sort_keys_A(1), uniforms(2), output_image(3), visible_count(4), depth_image(5)
     {
         VkDescriptorBufferInfo projected_info{projected_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo sort_info{sort_keys_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo uniform_info{uniform_buffer_.buffer(), 0, sizeof(GsUniforms)};
         VkDescriptorImageInfo image_info{VK_NULL_HANDLE, output_view_, VK_IMAGE_LAYOUT_GENERAL};
         VkDescriptorBufferInfo visible_count_info{visible_count_ssbo_.buffer(), 0, sizeof(uint32_t)};
+        VkDescriptorImageInfo depth_img_info{VK_NULL_HANDLE, depth_view_, VK_IMAGE_LAYOUT_GENERAL};
 
         VkWriteDescriptorSet writes[] = {
             {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, render_set_, 0, 0, 1,
@@ -573,8 +667,30 @@ void GsRenderer::update_descriptors() {
              VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, &image_info, nullptr, nullptr},
             {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, render_set_, 4, 0, 1,
              VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &visible_count_info, nullptr},
+            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, render_set_, 5, 0, 1,
+             VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, &depth_img_info, nullptr, nullptr},
         };
-        vkUpdateDescriptorSets(device_, 5, writes, 0, nullptr);
+        vkUpdateDescriptorSets(device_, 6, writes, 0, nullptr);
+    }
+
+    // Post-process set: input_image(0), depth_image(1), processed_image(2), pp_ubo(3)
+    {
+        VkDescriptorImageInfo input_info{VK_NULL_HANDLE, output_view_, VK_IMAGE_LAYOUT_GENERAL};
+        VkDescriptorImageInfo depth_info{VK_NULL_HANDLE, depth_view_, VK_IMAGE_LAYOUT_GENERAL};
+        VkDescriptorImageInfo proc_info{VK_NULL_HANDLE, processed_view_, VK_IMAGE_LAYOUT_GENERAL};
+        VkDescriptorBufferInfo ubo_info{pp_ubo_buffer_.buffer(), 0, sizeof(GsPostProcessUbo)};
+
+        VkWriteDescriptorSet writes[] = {
+            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, post_process_set_, 0, 0, 1,
+             VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, &input_info, nullptr, nullptr},
+            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, post_process_set_, 1, 0, 1,
+             VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, &depth_info, nullptr, nullptr},
+            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, post_process_set_, 2, 0, 1,
+             VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, &proc_info, nullptr, nullptr},
+            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, post_process_set_, 3, 0, 1,
+             VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, nullptr, &ubo_info, nullptr},
+        };
+        vkUpdateDescriptorSets(device_, 4, writes, 0, nullptr);
     }
 
     // Radix histogram set A: reads sort_keys_ssbo_ (A), writes histogram
@@ -652,6 +768,10 @@ void GsRenderer::resize_output(uint32_t width, uint32_t height) {
     if (output_sampler_) { vkDestroySampler(device_, output_sampler_, nullptr); output_sampler_ = VK_NULL_HANDLE; }
     if (output_view_) { vkDestroyImageView(device_, output_view_, nullptr); output_view_ = VK_NULL_HANDLE; }
     if (output_image_) { vmaDestroyImage(allocator_, output_image_, output_allocation_); output_image_ = VK_NULL_HANDLE; }
+    if (depth_view_) { vkDestroyImageView(device_, depth_view_, nullptr); depth_view_ = VK_NULL_HANDLE; }
+    if (depth_image_) { vmaDestroyImage(allocator_, depth_image_, depth_allocation_); depth_image_ = VK_NULL_HANDLE; }
+    if (processed_view_) { vkDestroyImageView(device_, processed_view_, nullptr); processed_view_ = VK_NULL_HANDLE; }
+    if (processed_image_) { vmaDestroyImage(allocator_, processed_image_, processed_allocation_); processed_image_ = VK_NULL_HANDLE; }
 
     create_output_image(width, height);
 
@@ -696,114 +816,171 @@ void GsRenderer::render(VkCommandBuffer cmd, const glm::mat4& view, const glm::m
 
     std::memcpy(uniform_buffer_.mapped(), &uniforms, sizeof(uniforms));
 
-    // In skip-sort mode, skip the entire compute pipeline after the first
-    // render.  The cached output image is reused, and parallax is applied by
-    // shifting the blit quad in the composite pass (essentially free).
-    // The image is already in SHADER_READ_ONLY_OPTIMAL from the previous frame's
-    // transition — no layout change needed, just a memory dependency.
-    if (skip_sort_ && sort_done_once_) {
-        return;
-    }
+    // In skip-sort mode, skip GS compute but still run post-process
+    // (parameters like fade_amount change continuously).
+    bool skip_gs_compute = skip_sort_ && sort_done_once_;
 
-    // Transition output image to GENERAL layout for compute write
-    {
-        VkImageMemoryBarrier barrier{};
-        barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-        barrier.srcAccessMask = 0;
-        barrier.dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-        barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-        barrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
-        barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        barrier.image = output_image_;
-        barrier.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+    if (!skip_gs_compute) {
+        // Transition output + depth images to GENERAL layout for compute write
+        VkImageMemoryBarrier barriers[2]{};
+        barriers[0].sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        barriers[0].srcAccessMask = 0;
+        barriers[0].dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+        barriers[0].oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        barriers[0].newLayout = VK_IMAGE_LAYOUT_GENERAL;
+        barriers[0].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barriers[0].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barriers[0].image = output_image_;
+        barriers[0].subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+
+        barriers[1] = barriers[0];
+        barriers[1].image = depth_image_;
 
         vkCmdPipelineBarrier(cmd,
             VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-            0, 0, nullptr, 0, nullptr, 1, &barrier);
+            0, 0, nullptr, 0, nullptr, 2, barriers);
     }
 
-    // Reset visible count to 0 on GPU timeline
-    vkCmdFillBuffer(cmd, visible_count_ssbo_.buffer(), 0, sizeof(uint32_t), 0);
-    {
-        VkMemoryBarrier fill_barrier{};
-        fill_barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
-        fill_barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-        fill_barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
-        vkCmdPipelineBarrier(cmd,
-            VK_PIPELINE_STAGE_TRANSFER_BIT,
-            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-            0, 1, &fill_barrier, 0, nullptr, 0, nullptr);
-    }
+    if (!skip_gs_compute) {
+        // Reset visible count to 0 on GPU timeline
+        vkCmdFillBuffer(cmd, visible_count_ssbo_.buffer(), 0, sizeof(uint32_t), 0);
+        {
+            VkMemoryBarrier fill_barrier{};
+            fill_barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+            fill_barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+            fill_barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+            vkCmdPipelineBarrier(cmd,
+                VK_PIPELINE_STAGE_TRANSFER_BIT,
+                VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                0, 1, &fill_barrier, 0, nullptr, 0, nullptr);
+        }
 
-    // Pass 1: Preprocess — project Gaussians to 2D, frustum cull
-    {
-        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, preprocess_pipeline_);
-        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
-                                preprocess_pipeline_layout_, 0, 1, &preprocess_set_, 0, nullptr);
-        vkCmdDispatch(cmd, (gaussian_count_ + 255) / 256, 1, 1);
-    }
+        // Pass 1: Preprocess — project Gaussians to 2D, frustum cull
+        {
+            vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, preprocess_pipeline_);
+            vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
+                                    preprocess_pipeline_layout_, 0, 1, &preprocess_set_, 0, nullptr);
+            vkCmdDispatch(cmd, (gaussian_count_ + 255) / 256, 1, 1);
+        }
 
-    // Barrier: preprocess → radix sort
-    insert_compute_barrier(cmd);
-
-    // Pass 2: Radix sort (num_sort_passes_ digit passes × 3 dispatches each)
-    uint32_t histogram_count = 256 * num_sort_workgroups_;
-    for (uint32_t digit = 0; digit < num_sort_passes_; ++digit) {
-        uint32_t digit_shift = digit * 8;
-        bool read_from_a = (digit % 2 == 0);
-        uint32_t push_data[2] = {sort_size_, digit_shift};
-
-        // Histogram
-        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, radix_histogram_pipeline_);
-        auto hist_set = read_from_a ? radix_histogram_set_a_ : radix_histogram_set_b_;
-        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
-                                radix_histogram_pipeline_layout_, 0, 1, &hist_set, 0, nullptr);
-        vkCmdPushConstants(cmd, radix_histogram_pipeline_layout_, VK_SHADER_STAGE_COMPUTE_BIT,
-                           0, 8, push_data);
-        vkCmdDispatch(cmd, num_sort_workgroups_, 1, 1);
-
+        // Barrier: preprocess → radix sort
         insert_compute_barrier(cmd);
 
-        // Prefix scan (single workgroup)
-        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, radix_scan_pipeline_);
-        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
-                                radix_scan_pipeline_layout_, 0, 1, &radix_scan_set_, 0, nullptr);
-        vkCmdPushConstants(cmd, radix_scan_pipeline_layout_, VK_SHADER_STAGE_COMPUTE_BIT,
-                           0, 4, &histogram_count);
-        vkCmdDispatch(cmd, 1, 1, 1);
+        // Pass 2: Radix sort (num_sort_passes_ digit passes × 3 dispatches each)
+        uint32_t histogram_count = 256 * num_sort_workgroups_;
+        for (uint32_t digit = 0; digit < num_sort_passes_; ++digit) {
+            uint32_t digit_shift = digit * 8;
+            bool read_from_a = (digit % 2 == 0);
+            uint32_t push_data[2] = {sort_size_, digit_shift};
 
-        insert_compute_barrier(cmd);
+            // Histogram
+            vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, radix_histogram_pipeline_);
+            auto hist_set = read_from_a ? radix_histogram_set_a_ : radix_histogram_set_b_;
+            vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
+                                    radix_histogram_pipeline_layout_, 0, 1, &hist_set, 0, nullptr);
+            vkCmdPushConstants(cmd, radix_histogram_pipeline_layout_, VK_SHADER_STAGE_COMPUTE_BIT,
+                               0, 8, push_data);
+            vkCmdDispatch(cmd, num_sort_workgroups_, 1, 1);
 
-        // Scatter
-        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, radix_scatter_pipeline_);
-        auto scatter_set = read_from_a ? radix_scatter_set_ab_ : radix_scatter_set_ba_;
-        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
-                                radix_scatter_pipeline_layout_, 0, 1, &scatter_set, 0, nullptr);
-        vkCmdPushConstants(cmd, radix_scatter_pipeline_layout_, VK_SHADER_STAGE_COMPUTE_BIT,
-                           0, 8, push_data);
-        vkCmdDispatch(cmd, num_sort_workgroups_, 1, 1);
+            insert_compute_barrier(cmd);
 
-        // Barrier before next digit pass (or render)
+            // Prefix scan (single workgroup)
+            vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, radix_scan_pipeline_);
+            vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
+                                    radix_scan_pipeline_layout_, 0, 1, &radix_scan_set_, 0, nullptr);
+            vkCmdPushConstants(cmd, radix_scan_pipeline_layout_, VK_SHADER_STAGE_COMPUTE_BIT,
+                               0, 4, &histogram_count);
+            vkCmdDispatch(cmd, 1, 1, 1);
+
+            insert_compute_barrier(cmd);
+
+            // Scatter
+            vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, radix_scatter_pipeline_);
+            auto scatter_set = read_from_a ? radix_scatter_set_ab_ : radix_scatter_set_ba_;
+            vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
+                                    radix_scatter_pipeline_layout_, 0, 1, &scatter_set, 0, nullptr);
+            vkCmdPushConstants(cmd, radix_scatter_pipeline_layout_, VK_SHADER_STAGE_COMPUTE_BIT,
+                               0, 8, push_data);
+            vkCmdDispatch(cmd, num_sort_workgroups_, 1, 1);
+
+            // Barrier before next digit pass (or render)
+            insert_compute_barrier(cmd);
+        }
+
+        sort_done_once_ = true;
+
+        // After even number of passes, result is back in buffer A (sort_keys_ssbo_)
+
+        // Pass 3: Tile-based rasterization (writes output_image + depth_image)
+        {
+            vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, render_pipeline_);
+            vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
+                                    render_pipeline_layout_, 0, 1, &render_set_, 0, nullptr);
+            uint32_t tiles_x = (width + 15) / 16;
+            uint32_t tiles_y = (height + 15) / 16;
+            vkCmdDispatch(cmd, tiles_x, tiles_y, 1);
+        }
+
+        // Barrier: tile rasterize → post-process (output+depth readable)
         insert_compute_barrier(cmd);
     }
 
-    sort_done_once_ = true;
-
-    // After even number of passes, result is back in buffer A (sort_keys_ssbo_)
-
-    // Pass 3: Tile-based rasterization
+    // Pass 4: Post-process (always runs — params like fade_amount change every frame)
     {
-        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, render_pipeline_);
+        // Update post-process UBO
+        GsPostProcessUbo pp_ubo{};
+        pp_ubo.fog_params = glm::vec4(gs_pp_params_.fog_density,
+                                       gs_pp_params_.fog_color_r,
+                                       gs_pp_params_.fog_color_g,
+                                       gs_pp_params_.fog_color_b);
+        pp_ubo.exposure_vignette = glm::vec4(gs_pp_params_.exposure,
+                                              gs_pp_params_.vignette_radius,
+                                              gs_pp_params_.vignette_softness,
+                                              gs_pp_params_.bloom_intensity);
+        pp_ubo.bloom_fade = glm::vec4(gs_pp_params_.bloom_threshold,
+                                       gs_pp_params_.fade_amount,
+                                       gs_pp_params_.flash_r,
+                                       gs_pp_params_.flash_g);
+        pp_ubo.effects = glm::vec4(gs_pp_params_.flash_b,
+                                    gs_pp_params_.ca_intensity,
+                                    gs_pp_params_.dof_focus_distance,
+                                    gs_pp_params_.dof_focus_range);
+        pp_ubo.dimensions = glm::vec4(gs_pp_params_.dof_max_blur,
+                                       static_cast<float>(width),
+                                       static_cast<float>(height),
+                                       gs_pp_params_.far_plane);
+        std::memcpy(pp_ubo_buffer_.mapped(), &pp_ubo, sizeof(pp_ubo));
+
+        // Transition processed image to GENERAL for compute write
+        {
+            VkImageMemoryBarrier barrier{};
+            barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+            barrier.srcAccessMask = 0;
+            barrier.dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+            barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+            barrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
+            barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            barrier.image = processed_image_;
+            barrier.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+
+            vkCmdPipelineBarrier(cmd,
+                VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+                VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                0, 0, nullptr, 0, nullptr, 1, &barrier);
+        }
+
+        // Dispatch post-process (same tile grid as render)
+        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, post_process_pipeline_);
         vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
-                                render_pipeline_layout_, 0, 1, &render_set_, 0, nullptr);
+                                post_process_pipeline_layout_, 0, 1, &post_process_set_, 0, nullptr);
         uint32_t tiles_x = (width + 15) / 16;
         uint32_t tiles_y = (height + 15) / 16;
         vkCmdDispatch(cmd, tiles_x, tiles_y, 1);
     }
 
-    // Transition output image → SHADER_READ_ONLY for fragment sampling
+    // Transition processed image → SHADER_READ_ONLY for fragment sampling (blit)
     {
         VkImageMemoryBarrier barrier{};
         barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
@@ -813,7 +990,7 @@ void GsRenderer::render(VkCommandBuffer cmd, const glm::mat4& view, const glm::m
         barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
         barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        barrier.image = output_image_;
+        barrier.image = processed_image_;
         barrier.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
 
         vkCmdPipelineBarrier(cmd,
@@ -858,9 +1035,15 @@ void GsRenderer::shutdown(VmaAllocator allocator) {
     visible_count_ssbo_.destroy(allocator);
     bone_ssbo_.destroy(allocator);
 
+    pp_ubo_buffer_.destroy(allocator);
+
     if (output_sampler_) vkDestroySampler(device_, output_sampler_, nullptr);
     if (output_view_) vkDestroyImageView(device_, output_view_, nullptr);
     if (output_image_) vmaDestroyImage(allocator, output_image_, output_allocation_);
+    if (depth_view_) vkDestroyImageView(device_, depth_view_, nullptr);
+    if (depth_image_) vmaDestroyImage(allocator, depth_image_, depth_allocation_);
+    if (processed_view_) vkDestroyImageView(device_, processed_view_, nullptr);
+    if (processed_image_) vmaDestroyImage(allocator, processed_image_, processed_allocation_);
 
     auto destroy_pipeline = [&](VkPipeline& p) { if (p) { vkDestroyPipeline(device_, p, nullptr); p = VK_NULL_HANDLE; } };
     auto destroy_layout = [&](VkPipelineLayout& l) { if (l) { vkDestroyPipelineLayout(device_, l, nullptr); l = VK_NULL_HANDLE; } };
@@ -869,6 +1052,7 @@ void GsRenderer::shutdown(VmaAllocator allocator) {
     destroy_pipeline(preprocess_pipeline_);
     destroy_pipeline(sort_pipeline_);
     destroy_pipeline(render_pipeline_);
+    destroy_pipeline(post_process_pipeline_);
     destroy_pipeline(radix_histogram_pipeline_);
     destroy_pipeline(radix_scan_pipeline_);
     destroy_pipeline(radix_scatter_pipeline_);
@@ -876,6 +1060,7 @@ void GsRenderer::shutdown(VmaAllocator allocator) {
     destroy_layout(preprocess_pipeline_layout_);
     destroy_layout(sort_pipeline_layout_);
     destroy_layout(render_pipeline_layout_);
+    destroy_layout(post_process_pipeline_layout_);
     destroy_layout(radix_histogram_pipeline_layout_);
     destroy_layout(radix_scan_pipeline_layout_);
     destroy_layout(radix_scatter_pipeline_layout_);
@@ -883,6 +1068,7 @@ void GsRenderer::shutdown(VmaAllocator allocator) {
     destroy_set_layout(preprocess_layout_);
     destroy_set_layout(sort_layout_);
     destroy_set_layout(render_layout_);
+    destroy_set_layout(post_process_layout_);
     destroy_set_layout(radix_histogram_layout_);
     destroy_set_layout(radix_scan_layout_);
     destroy_set_layout(radix_scatter_layout_);

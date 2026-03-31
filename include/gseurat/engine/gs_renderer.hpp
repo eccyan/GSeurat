@@ -11,6 +11,38 @@
 
 namespace gseurat {
 
+// Post-process parameters forwarded from the composite pipeline to GS compute.
+// Mirrors relevant fields from PostProcessParams for consistent visual treatment.
+struct GsPostProcessParams {
+    float fog_density = 0.0f;
+    float fog_color_r = 0.3f;
+    float fog_color_g = 0.35f;
+    float fog_color_b = 0.45f;
+    float exposure = 1.2f;
+    float vignette_radius = 0.75f;
+    float vignette_softness = 0.45f;
+    float bloom_intensity = 0.35f;
+    float bloom_threshold = 1.0f;
+    float fade_amount = 0.0f;
+    float flash_r = 0.0f;
+    float flash_g = 0.0f;
+    float flash_b = 0.0f;
+    float ca_intensity = 0.0f;
+    float dof_focus_distance = 12.0f;
+    float dof_focus_range = 3.0f;
+    float dof_max_blur = 0.5f;
+    float far_plane = 1000.0f;  // GS camera far plane for depth normalization
+};
+
+// GPU UBO layout for gs_post_process.comp (std140, 5 × vec4 = 80 bytes)
+struct GsPostProcessUbo {
+    glm::vec4 fog_params;         // density, r, g, b
+    glm::vec4 exposure_vignette;  // exposure, radius, softness, bloom_intensity
+    glm::vec4 bloom_fade;         // bloom_threshold, fade_amount, flash_r, flash_g
+    glm::vec4 effects;            // flash_b, ca_intensity, dof_focus_dist, dof_focus_range
+    glm::vec4 dimensions;         // dof_max_blur, width, height, far_plane
+};
+
 class GsRenderer {
 public:
     void init(VkDevice device, VmaAllocator allocator, VkDescriptorPool pool);
@@ -19,7 +51,8 @@ public:
     void update_gaussian_data(const Gaussian* data, uint32_t count);
     void resize_output(uint32_t width, uint32_t height);
     void render(VkCommandBuffer cmd, const glm::mat4& view, const glm::mat4& proj);
-    VkImageView output_view() const { return output_view_; }
+    VkImageView output_view() const { return processed_view_ ? processed_view_ : output_view_; }
+    VkImageView raw_output_view() const { return output_view_; }
     VkSampler output_sampler() const { return output_sampler_; }
     static constexpr uint32_t kParticleHeadroom = 2048;
 
@@ -92,6 +125,10 @@ public:
     void upload_bone_transforms(const glm::mat4* transforms, uint32_t count);
     void clear_bone_transforms();
 
+    // Post-process parameters (fog, tone mapping, vignette, etc.)
+    void set_post_process_params(const GsPostProcessParams& p) { gs_pp_params_ = p; }
+    const GsPostProcessParams& post_process_params() const { return gs_pp_params_; }
+
     void shutdown(VmaAllocator allocator);
 
 private:
@@ -103,13 +140,23 @@ private:
     VkDevice device_ = VK_NULL_HANDLE;
     VmaAllocator allocator_ = VK_NULL_HANDLE;
 
-    // Output storage image
+    // Output storage image (raw HDR from tile rasterizer)
     VkImage output_image_ = VK_NULL_HANDLE;
     VmaAllocation output_allocation_ = VK_NULL_HANDLE;
     VkImageView output_view_ = VK_NULL_HANDLE;
     VkSampler output_sampler_ = VK_NULL_HANDLE;
     uint32_t output_width_ = 0;
     uint32_t output_height_ = 0;
+
+    // Depth storage image (R16F, per-pixel view-space depth from tile rasterizer)
+    VkImage depth_image_ = VK_NULL_HANDLE;
+    VmaAllocation depth_allocation_ = VK_NULL_HANDLE;
+    VkImageView depth_view_ = VK_NULL_HANDLE;
+
+    // Post-processed output image (RGBA16F, final result after effects)
+    VkImage processed_image_ = VK_NULL_HANDLE;
+    VmaAllocation processed_allocation_ = VK_NULL_HANDLE;
+    VkImageView processed_view_ = VK_NULL_HANDLE;
 
     // GPU buffers
     Buffer gaussian_ssbo_;           // Input Gaussians
@@ -155,6 +202,14 @@ private:
     VkPipeline radix_histogram_pipeline_ = VK_NULL_HANDLE;
     VkPipeline radix_scan_pipeline_ = VK_NULL_HANDLE;
     VkPipeline radix_scatter_pipeline_ = VK_NULL_HANDLE;
+
+    // Post-process pipeline
+    VkDescriptorSetLayout post_process_layout_ = VK_NULL_HANDLE;
+    VkPipelineLayout post_process_pipeline_layout_ = VK_NULL_HANDLE;
+    VkPipeline post_process_pipeline_ = VK_NULL_HANDLE;
+    VkDescriptorSet post_process_set_ = VK_NULL_HANDLE;
+    Buffer pp_ubo_buffer_;
+    GsPostProcessParams gs_pp_params_;
 
     // Legacy sort (kept for fallback, not dispatched)
     VkDescriptorSetLayout sort_layout_ = VK_NULL_HANDLE;

@@ -50,6 +50,8 @@ layout(set = 0, binding = 4) readonly buffer VisibleCountBuffer {
     uint visible_count;
 };
 
+layout(set = 0, binding = 5, r16f) uniform writeonly image2D depth_image;
+
 // Shared tile depth for edge detection and pseudo-normal lighting
 shared float tile_depth[16][16];
 
@@ -344,6 +346,7 @@ void main() {
     // Add emission to color (HDR values > 1.0 trigger bloom automatically)
     color += emission;
 
-    // Write output (premultiplied alpha)
+    // Write output (premultiplied alpha) + depth for post-processing
     imageStore(output_image, ivec2(pixel), vec4(color, alpha_accum));
+    imageStore(depth_image, ivec2(pixel), vec4(first_hit_depth, 0.0, 0.0, 0.0));
 }

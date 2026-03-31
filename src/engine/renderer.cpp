@@ -287,6 +287,52 @@ void Renderer::draw_scene(Scene& scene,
     begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     vkBeginCommandBuffer(cmd, &begin_info);
 
+    // Forward post-process params to GS pipeline before GS compute runs
+    {
+        GsPostProcessParams gs_pp{};
+        gs_pp.fog_density = pp_params_.fog_density;
+        gs_pp.fog_color_r = pp_params_.fog_color_r;
+        gs_pp.fog_color_g = pp_params_.fog_color_g;
+        gs_pp.fog_color_b = pp_params_.fog_color_b;
+        if (!pp_params_.fog_override) {
+            gs_pp.fog_density = scene.fog_density();
+            gs_pp.fog_color_r = scene.fog_color().r;
+            gs_pp.fog_color_g = scene.fog_color().g;
+            gs_pp.fog_color_b = scene.fog_color().b;
+        }
+        gs_pp.exposure = pp_params_.exposure;
+        gs_pp.vignette_radius = pp_params_.vignette_radius;
+        gs_pp.vignette_softness = pp_params_.vignette_softness;
+        gs_pp.bloom_intensity = pp_params_.bloom_intensity;
+        gs_pp.bloom_threshold = pp_params_.bloom_threshold;
+        gs_pp.fade_amount = fade_amount_;
+        gs_pp.flash_r = pp_params_.flash_r;
+        gs_pp.flash_g = pp_params_.flash_g;
+        gs_pp.flash_b = pp_params_.flash_b;
+        gs_pp.ca_intensity = pp_params_.ca_intensity;
+        gs_pp.dof_focus_distance = pp_params_.dof_focus_distance;
+        gs_pp.dof_focus_range = pp_params_.dof_focus_range;
+        gs_pp.dof_max_blur = pp_params_.dof_max_blur;
+        // Extract GS camera far plane from projection matrix for fog depth normalization
+        // For perspective: proj[2][2] = -(f+n)/(f-n), proj[3][2] = -2fn/(f-n)
+        // Vulkan Y-flip: proj[1][1] is negated, but [2][2] and [3][2] are unaffected.
+        // far = proj[3][2] / (proj[2][2] + 1)  (derived from perspective formula)
+        float p22 = gs_proj_[2][2];
+        float p32 = gs_proj_[3][2];
+        float denom = p22 + 1.0f;
+        gs_pp.far_plane = (std::abs(denom) > 0.001f) ? (p32 / denom) : 1000.0f;
+        if (!flags.bloom) gs_pp.bloom_intensity = 0.0f;
+        if (!flags.depth_of_field) gs_pp.dof_max_blur = 0.0f;
+        if (!flags.vignette) gs_pp.vignette_radius = 2.0f;
+        if (!flags.tone_mapping) gs_pp.exposure = 1.0f;
+        if (!flags.fog) gs_pp.fog_density = 0.0f;
+        if (!flags.screen_effects) {
+            gs_pp.ca_intensity = 0.0f;
+            gs_pp.flash_r = gs_pp.flash_g = gs_pp.flash_b = 0.0f;
+        }
+        gs_renderer_.set_post_process_params(gs_pp);
+    }
+
     record_gs_prepass(cmd, device, dt, flags);
 
     // ===== Pass 1: Scene render pass (offscreen HDR) =====
