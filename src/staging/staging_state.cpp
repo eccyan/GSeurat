@@ -199,6 +199,7 @@ void StagingState::draw_imgui(AppBase& app) {
             ImGui::MenuItem("Gizmo: Lights", nullptr, &show_gizmo_lights_);
             ImGui::MenuItem("Gizmo: Emitters", nullptr, &show_gizmo_emitters_);
             ImGui::MenuItem("Gizmo: VFX", nullptr, &show_gizmo_vfx_);
+            ImGui::MenuItem("Gizmo: Game Objects", nullptr, &show_gizmo_game_objects_);
             ImGui::EndMenu();
         }
         ImGui::EndMainMenuBar();
@@ -731,6 +732,35 @@ void StagingState::draw_gizmos(AppBase& app) {
                     dl->AddText(ImVec2(ex + 6, ey - 8), lt_col, el.name.c_str());
                 }
             }
+        }
+    }
+
+    // ── Game Object gizmos ──
+    if (show_gizmo_game_objects_) {
+        ImU32 go_col = IM_COL32(68, 136, 255, 200);       // blue
+        ImU32 go_col_static = IM_COL32(136, 136, 136, 150); // gray for no-component
+        const auto& game_objects = app.scene_game_objects();
+        auto aabb_off = app.gs_aabb_offset();
+        for (size_t i = 0; i < game_objects.size(); i++) {
+            const auto& go = game_objects[i];
+            // Apply AABB offset (same as emitters — raw scene coords + offset)
+            glm::vec3 pos(go.position.x + aabb_off.x,
+                          go.position.y + aabb_off.y,
+                          go.position.z);
+            float sx, sy;
+            if (!project_to_screen(pos, vp, sw, sh, sx, sy)) continue;
+
+            bool has_components = !go.components.empty() && !go.components.is_null();
+            ImU32 col = has_components ? go_col : go_col_static;
+
+            // Draw box outline
+            draw_box_gizmo(dl, pos, glm::vec3(go.scale * 0.5f),
+                           vp, sw, sh, col, project_wrapper, this);
+            dl->AddRectFilled(ImVec2(sx - 3, sy - 3), ImVec2(sx + 3, sy + 3), col);
+
+            char label[64];
+            std::snprintf(label, sizeof(label), "%s", go.name.c_str());
+            dl->AddText(ImVec2(sx + 6, sy - 10), col, label);
         }
     }
 }

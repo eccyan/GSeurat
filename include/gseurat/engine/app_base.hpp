@@ -202,6 +202,10 @@ protected:
 
     // Scene data storage for round-trip serialization (kept in sync with ECS)
     std::vector<GameObjectData> scene_game_object_data_;
+public:
+    const std::vector<GameObjectData>& scene_game_objects() const { return scene_game_object_data_; }
+    glm::vec2 gs_aabb_offset() const { return gs_aabb_offset_; }
+protected:
     std::vector<PointLight> static_lights_;
 
     // Particles & Weather
