@@ -2,6 +2,8 @@
 
 #include "gseurat/engine/async_loader.hpp"
 #include "gseurat/engine/audio_system.hpp"
+#include "gseurat/engine/component_registry.hpp"
+#include "gseurat/engine/system_scheduler.hpp"
 #ifndef _WIN32
 #include "gseurat/engine/control_server.hpp"
 #endif
@@ -139,6 +141,10 @@ public:
     AsyncLoader& async_loader() { return async_loader_; }
     StagingUploader& staging_uploader() { return staging_uploader_; }
 
+    // Game object system accessors
+    ComponentRegistry& component_registry() { return component_registry_; }
+    SystemScheduler& system_scheduler() { return system_scheduler_; }
+
 protected:
     void init_window();
     virtual void init_game_content();
@@ -245,6 +251,11 @@ protected:
     // Async asset loading
     AsyncLoader async_loader_;
     StagingUploader staging_uploader_;
+
+    // Game object system
+    ComponentRegistry component_registry_;
+    SystemScheduler system_scheduler_;
+    void init_game_object_system();
 };
 
 }  // namespace gseurat

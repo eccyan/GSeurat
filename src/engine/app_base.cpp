@@ -19,6 +19,7 @@ void AppBase::set_start_state(std::unique_ptr<GameState> state) {
 }
 
 void AppBase::run() {
+    init_game_object_system();
     init_game_content();
 
     if (custom_start_state_) {
@@ -158,10 +159,35 @@ void AppBase::cleanup() {
 // Virtual no-op stubs
 void AppBase::init_scene(const std::string& /*scene_path*/) {}
 void AppBase::clear_scene() {}
-void AppBase::update_game(float /*dt*/) {}
+void AppBase::update_game(float dt) { system_scheduler_.run_all(world_, dt); }
 void AppBase::update_audio(float /*dt*/) {}
 SaveData AppBase::build_save_data() const { return {}; }
 void AppBase::apply_save_data(const SaveData& /*data*/) {}
+
+void AppBase::init_game_object_system() {
+    component_registry_.register_component<ecs::Facing>("Facing",
+        [](const nlohmann::json& j) -> ecs::Facing {
+            ecs::Facing f;
+            if (j.contains("direction")) {
+                std::string dir = j["direction"].get<std::string>();
+                if (dir == "up") f.dir = Direction::Up;
+                else if (dir == "down") f.dir = Direction::Down;
+                else if (dir == "left") f.dir = Direction::Left;
+                else if (dir == "right") f.dir = Direction::Right;
+            }
+            return f;
+        },
+        [](const ecs::Facing& f) -> nlohmann::json {
+            std::string dir = "down";
+            switch (f.dir) {
+                case Direction::Up: dir = "up"; break;
+                case Direction::Down: dir = "down"; break;
+                case Direction::Left: dir = "left"; break;
+                case Direction::Right: dir = "right"; break;
+            }
+            return {{"direction", dir}};
+        });
+}
 
 // ── Shared GS scene loading ──
 
@@ -222,6 +248,16 @@ void AppBase::load_gs_scene(const SceneData& scene_data, const GsSceneOptions& o
                 }
                 if (merged_count > 0) {
                     cloud = GaussianCloud::from_gaussians(std::move(merged));
+                }
+            }
+
+            // Create ECS entities for game objects with components
+            for (const auto& go : scene_data.game_objects) {
+                if (go.components.empty() || go.components.is_null()) continue;
+                auto entity = world_.create();
+                world_.add<ecs::Transform>(entity, {{go.position}, {go.scale, go.scale}});
+                for (auto& [name, data] : go.components.items()) {
+                    component_registry_.attach(world_, entity, name, data);
                 }
             }
 
