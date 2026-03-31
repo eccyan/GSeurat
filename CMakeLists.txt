@@ -297,3 +297,4 @@ add_gseurat_test(test_vfx_lights_rotation src/engine/gs_vfx.cpp src/engine/gs_pa
                                            src/engine/gs_spline.cpp)
 add_gseurat_test(test_gs_spline src/engine/gs_spline.cpp)
 add_gseurat_test(test_gs_post_process)
+add_gseurat_test(test_component_registry src/engine/component_registry.cpp)
