@@ -24,7 +24,11 @@ export function computeFingerprint(scene: Record<string, unknown>): SceneFingerp
   return {
     ply_file: (gs.ply_file as string) ?? '',
     camera_json: gs.camera ? JSON.stringify(gs.camera) : '',
-    objects_json: scene.objects ? JSON.stringify(scene.objects) : '',
+    objects_json: scene.game_objects ? JSON.stringify(
+      (scene.game_objects as Array<Record<string, unknown>>)
+        .filter((go) => !!go.ply_file)
+        .map((go) => ({ id: go.id, ply_file: go.ply_file, position: go.position, rotation: go.rotation, scale: go.scale }))
+    ) : '',
     render_width: (gs.render_width as number) ?? 320,
     render_height: (gs.render_height as number) ?? 240,
   };

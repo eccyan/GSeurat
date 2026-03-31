@@ -83,6 +83,7 @@ private:
     bool show_gizmo_lights_ = true;
     bool show_gizmo_emitters_ = true;
     bool show_gizmo_vfx_ = true;
+    bool show_gizmo_game_objects_ = true;
 
     // Hide all UI (Tab key toggle)
     bool hide_ui_ = false;

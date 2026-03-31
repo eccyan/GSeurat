@@ -192,6 +192,8 @@ void AppBase::init_game_object_system() {
 // ── Shared GS scene loading ──
 
 void AppBase::load_gs_scene(const SceneData& scene_data, const GsSceneOptions& opts) {
+    scene_game_object_data_ = scene_data.game_objects;
+
     renderer_.clear_gs_particle_emitters();
     renderer_.clear_gs_animations();
     renderer_.clear_vfx_instances();
@@ -217,12 +219,11 @@ void AppBase::load_gs_scene(const SceneData& scene_data, const GsSceneOptions& o
         if (!cloud.empty()) {
             renderer_.gs_renderer().set_scale_multiplier(gs.scale_multiplier);
 
-            // Merge static game objects (those with empty components)
+            // Merge all game objects with PLY visuals into the GS cloud
             {
                 auto merged = cloud.gaussians();
                 uint32_t merged_count = 0;
                 for (const auto& go : scene_data.game_objects) {
-                    if (!go.components.empty() && !go.components.is_null()) continue;  // has components = live entity
                     if (go.ply_file.empty()) continue;
                     try {
                         auto placed_cloud = GaussianCloud::load_ply(go.ply_file);
@@ -655,6 +656,21 @@ void AppBase::dispatch_command(const nlohmann::json& cmd, nlohmann::json& respon
                     pos.y += gs_aabb_offset_.y;
                     inst.init(preset, pos, vi.loop, vi.rotation_y);
                     renderer_.add_vfx_instance(std::move(inst));
+                }
+
+                // Update stored game object data for gizmo rendering
+                scene_game_object_data_ = scene_data.game_objects;
+
+                // Rebuild game object ECS entities (non-static only)
+                {
+                    for (const auto& go : scene_data.game_objects) {
+                        if (go.components.empty() || go.components.is_null()) continue;
+                        auto entity = world_.create();
+                        world_.add<ecs::Transform>(entity, {{go.position}, {go.scale, go.scale}});
+                        for (auto& [name, data] : go.components.items()) {
+                            component_registry_.attach(world_, entity, name, data);
+                        }
+                    }
                 }
 
                 response["type"] = "ok";
