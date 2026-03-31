@@ -33,9 +33,10 @@ const MAX_PARTICLES = 2048;
 
 // ── Single emitter layer renderer ──
 
-function EmitterLayerRenderer({ layer, instancePos }: {
+function EmitterLayerRenderer({ layer, instancePos, wasm }: {
   layer: VfxElementData;
   instancePos: [number, number, number];
+  wasm: any;
 }) {
   const geoRef = useRef<THREE.BufferGeometry>(null);
   const emitterRef = useRef<any>(null);
@@ -45,11 +46,11 @@ function EmitterLayerRenderer({ layer, instancePos }: {
   const colorBuffer = useMemo(() => new Float32Array(MAX_PARTICLES * 4), []);
   const sizeBuffer = useMemo(() => new Float32Array(MAX_PARTICLES), []);
 
-  // Create/destroy emitter when layer config changes
+  // Create/destroy emitter when layer config or WASM module changes
   useEffect(() => {
-    if (!wasmModule) return;
+    if (!wasm) return;
 
-    const emitter = new wasmModule.ParticleEmitter();
+    const emitter = new wasm.ParticleEmitter();
     const cfg = layer.emitter as Record<string, unknown> | undefined;
 
     // Configure emitter — spawn_offset_min/max are relative to emitter position,
@@ -59,7 +60,7 @@ function EmitterLayerRenderer({ layer, instancePos }: {
     delete cfgWithoutPos.position;
 
     if (cfgWithoutPos.preset) {
-      const presetCfg = wasmModule.resolvePreset(cfgWithoutPos.preset as string);
+      const presetCfg = wasm.resolvePreset(cfgWithoutPos.preset as string);
       if (presetCfg) {
         const merged = { ...presetCfg };
         for (const [key, val] of Object.entries(cfgWithoutPos)) {
@@ -89,7 +90,7 @@ function EmitterLayerRenderer({ layer, instancePos }: {
       emitter.delete();
       emitterRef.current = null;
     };
-  }, [layer, instancePos]);
+  }, [wasm, layer, instancePos]);
 
   useFrame((_, dt) => {
     const geo = geoRef.current;
@@ -296,7 +297,7 @@ function ObjectLayerRenderer({ layer, instancePos }: {
 
 // ── Per-instance renderer ──
 
-function InstanceRenderer({ instance }: { instance: VfxInstanceData }) {
+function InstanceRenderer({ instance, wasm }: { instance: VfxInstanceData; wasm: any }) {
   const emitterLayers = (instance.vfx_preset.elements ?? []).filter((l) => l.type === 'emitter');
   const objectLayers = (instance.vfx_preset.elements ?? []).filter((l) => l.type === 'object');
   const rotY = ((instance.rotation_y ?? 0) * Math.PI) / 180;
@@ -315,6 +316,7 @@ function InstanceRenderer({ instance }: { instance: VfxInstanceData }) {
           key={`${instance.id}_${i}`}
           layer={layer}
           instancePos={[0, 0, 0]}
+          wasm={wasm}
         />
       ))}
     </group>
@@ -325,13 +327,13 @@ function InstanceRenderer({ instance }: { instance: VfxInstanceData }) {
 
 export function VfxRenderer() {
   const instances = useSceneStore((s) => s.vfxInstances);
-  const [wasmReady, setWasmReady] = useState(false);
+  const [wasm, setWasm] = useState<any>(null);
 
   useEffect(() => {
-    loadWasm().then(() => { if (wasmModule) setWasmReady(true); });
+    loadWasm().then(() => { if (wasmModule) setWasm(wasmModule); });
   }, []);
 
-  if (!wasmReady || instances.length === 0) return null;
+  if (!wasm || instances.length === 0) return null;
 
   // Only render auto-trigger, non-muted instances
   const autoInstances = instances.filter((v) => v.trigger === 'auto' && !v.muted);
@@ -339,7 +341,7 @@ export function VfxRenderer() {
   return (
     <group>
       {autoInstances.map((inst) => (
-        <InstanceRenderer key={inst.id} instance={inst} />
+        <InstanceRenderer key={inst.id} instance={inst} wasm={wasm} />
       ))}
     </group>
   );
