@@ -7,15 +7,16 @@ A Vulkan-based 3D Gaussian Splatting engine built with C++23. Named after **3DGS
 - **3D Gaussian Splatting** — GPU compute pipeline for rendering `.ply` point clouds with tile-based rasterization, dynamic point light support
 - **Voxel character pipeline** — MagicaVoxel import, rigid-body-part posing, GPU bone skinning in compute shader
 - **Sprite overlay** — Sprite-based entities over GS backgrounds with bloom, depth-of-field, and tone mapping
+- **Game Object System** — Unified entity model with component composition. Developers define C++ component structs + JSON schemas; level designers compose objects in Bricklayer
+- **Component Registry** — Type-erased component registration with JSON attach/serialize. SystemScheduler with read/write dependency declarations (parallel-ready)
 - **Entity Component System** — Header-only ECS with archetype storage, typed views, and system functions
 - **Async asset streaming** — Background thread loading with budget-limited GPU uploads for open-world support
-- **Particle system** — Configurable emitters with ring-buffer pool (600 particles)
+- **GS Particle system** — WASM-compiled C++ simulation for preview in web tools, spline path support (emitter path + particle path modes)
 - **Audio** — 4-layer music + spatial SFX via miniaudio
-- **Scripting** — Wren 0.4.0 VM for NPC behavior and game logic
 - **Day/night cycle** — Ambient color interpolation with weather system
 - **Save system** — JSON-based save/load with game flags
 - **AI debugging** — Unix socket control server for deterministic step-mode testing
-- **Creative tooling** — 7 web-based tools for content authoring (level design, characters, particles, audio, maps)
+- **Creative tooling** — Web-based editors: Bricklayer (map/scene), Méliès (VFX), Echidna (characters), plus legacy tile-based tools
 
 ## Prerequisites
 
@@ -81,13 +82,34 @@ Offscreen HDR (RGBA16F) → Bloom → DoF → Composite (tone mapping + vignette
 
 Draw order: GS compute → GS blit → backgrounds → tilemap → reflections → shadows → outlines → entities → particles → overlay. UI is rendered in the composite pass (unprocessed).
 
+### Game Object System
+
+Everything in the scene is a **Game Object** — a unified entity with position, rotation, scale, optional PLY visual, and zero or more **components** from a schema catalog.
+
+- **Component schemas** (`assets/components/*.schema.json`) define data shapes — Bricklayer auto-generates property editors from them
+- **ComponentRegistry** maps string names to type-erased ECS attach/serialize operations
+- **SystemScheduler** runs C++ systems each frame with declared read/write dependencies (serial for now, parallel-ready API)
+- **Scene JSON** uses `game_objects[]` array with a `components` map per object
+
+```json
+{
+  "game_objects": [
+    {
+      "id": "chest_01", "name": "Treasure Chest",
+      "position": [10, 0, 5], "rotation": [0, 90, 0], "scale": 1.0,
+      "ply_file": "assets/models/chest.ply",
+      "components": {
+        "Health": { "max_hp": 50 },
+        "Interactable": { "prompt": "Open", "radius": 2.0 }
+      }
+    }
+  ]
+}
+```
+
 ### ECS
 
-Header-only (`include/gseurat/engine/ecs/`): archetype-based storage with typed views.
-
-**Components:** Transform, Sprite, PlayerTag, Facing, Animation, NpcPatrol, NpcWaypoints, DialogRef, DynamicLight, ParticleEmitterRef, FootstepEmitterRef, ScriptRef
-
-**Systems:** player_movement, player_collision, npc_patrol, npc_pathfind, animation_update, lighting_rebuild, particle_sync, sprite_collect, shadow_collect, reflection_collect, outline_collect
+Header-only (`include/gseurat/engine/ecs/`): archetype-based storage with typed views. Note: archetype storage uses `memcpy` — components must be trivially copyable.
 
 ### Async Asset Streaming
 
@@ -169,20 +191,21 @@ Engine: PLY load → bone_index per Gaussian → preprocess shader → skeletal 
 - Bone 0 = identity (map Gaussians pass through untouched)
 - Rigid body part animation (action-figure style, no smooth skinning)
 
-### Scene Composition (PlacedObjects)
+### Scene Composition (Game Objects)
 
 Scenes are composed from separate PLY files — terrain, props, and characters authored independently:
 
 ```
 Bricklayer (terrain.ply) + Echidna (character.ply) + props (tree.ply, rock.ply)
                           ↓
-                   scene.json (placed_objects references)
+                   scene.json (game_objects references)
                           ↓
-              Engine: merge static PLYs at load, animate characters separately
+              Engine: merge PLY visuals into cloud, create ECS entities for objects with components
 ```
 
-- **Static objects** (is_static=true): merged into the terrain cloud at load time
-- **Animated objects** (with character_manifest): rendered as separate GS passes with bone transforms
+- **Game Objects with PLY**: merged into the terrain cloud at load time for rendering
+- **Game Objects with components**: also become ECS entities with attached component data
+- **Game Objects without PLY or components**: logical-only entities (triggers, zones)
 
 ### Scene Layers
 
@@ -206,15 +229,19 @@ Auto-generated from Gaussian data via `generate_collision_from_gaussians()`, or 
     "camera": { "position": [32, 30, 80], "target": [32, 0, 32], "fov": 45 },
     "render_width": 320, "render_height": 240
   },
-  "placed_objects": [
-    { "id": "house", "ply_file": "assets/props/house.ply",
-      "position": [32, 0, 32], "rotation": [0, 0, 0], "scale": 1.0, "is_static": true },
-    { "id": "tree_1", "ply_file": "assets/props/tree.ply",
-      "position": [20, 0, 25], "rotation": [0, 45, 0], "scale": 1.0, "is_static": true }
+  "game_objects": [
+    { "id": "house", "name": "House", "ply_file": "assets/props/house.ply",
+      "position": [32, 0, 32], "rotation": [0, 0, 0], "scale": 1.0, "components": {} },
+    { "id": "guard", "name": "Town Guard",
+      "position": [20, 0, 25], "rotation": [0, 0, 0], "scale": 1.0,
+      "components": {
+        "Facing": { "direction": "left" },
+        "Patrol": { "speed": 2.0, "waypoints": [[20, 0, 25], [30, 0, 25]] }
+      }}
   ],
   "collision": {
     "width": 64, "height": 64, "cell_size": 1.0,
-    "solid": [...], "elevation": [...], "nav_zone": [...]
+    "solid": ["..."], "elevation": ["..."], "nav_zone": ["..."]
   },
   "nav_zone_names": ["default", "town", "forest"],
   "ambient_color": [0.8, 0.85, 0.95, 1.0]
@@ -286,12 +313,14 @@ Engine (Vulkan) ←→ Unix Socket ←→ Bridge Proxy (ws://localhost:9100) ←
 | Tool | Port | Description |
 |------|------|-------------|
 | **Bridge Proxy** | 9100/9101 | Node.js relay between Unix socket and WebSocket clients |
-| **Level Designer** | 5173 | Tile painting, NPC/light/portal placement, AI level generation |
-| **Particle Designer** | 5176 | Visual EmitterConfig editor with live engine preview |
-| **Audio Composer** | 5177 | 4-layer interactive music editor with MusicGen AI |
-| **SFX Designer** | 5178 | Waveform editor, procedural synthesis, AI SFX generation |
-| **Echidna** | 5179 | Voxel character editor with body parts, bone posing, .vox import, PLY export |
-| **Bricklayer** | 5180 | 3D map editor with terrain/scene/settings modes, collision grid, placed objects |
+| **Bricklayer** | 5180 | 3DGS map editor: voxel terrain, Game Objects with component composition, emitters, animations, VFX, lights |
+| **Méliès** | 5181 | VFX editor: particle emitters, GS animations, spline paths, object layers, light layers |
+| **Echidna** | 5179 | Voxel character editor: .vox import, body parts, bone posing, PLY export |
+| **Staging** | C++ app | ImGui rendering review: live scene preview, gizmos for lights/emitters/VFX/game objects, bridge auto-sync |
+| Level Designer | 5173 | Tile painting, NPC/light/portal placement (legacy tile-based) |
+| Particle Designer | 5176 | Visual EmitterConfig editor with live engine preview |
+| Audio Composer | 5177 | 4-layer interactive music editor with MusicGen AI |
+| SFX Designer | 5178 | Waveform editor, procedural synthesis, AI SFX generation |
 
 ```bash
 # Prerequisites: Node.js 18+, pnpm
@@ -308,7 +337,7 @@ cd tools/apps/level-designer && pnpm dev
 
 ### C++ Engine Tests
 
-All 10 test suites are CMake targets, run via `ctest`:
+All 21 test suites are CMake targets, run via `ctest`:
 
 ```bash
 cmake --preset <platform>-debug
