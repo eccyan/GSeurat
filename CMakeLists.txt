@@ -172,6 +172,7 @@ add_library(gseurat_core OBJECT
     src/engine/gs_animator.cpp
     src/engine/gs_vfx.cpp
     src/engine/gs_spline.cpp
+    src/engine/component_registry.cpp
 )
 
 if(NOT WIN32)
