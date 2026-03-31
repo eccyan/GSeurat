@@ -1,0 +1,8 @@
+{
+  "name": "LinkedTrigger",
+  "description": "Links this entity to another entity as a trigger target",
+  "category": "Gameplay",
+  "fields": [
+    { "name": "target_entity", "type": "int", "default": 0 }
+  ]
+}

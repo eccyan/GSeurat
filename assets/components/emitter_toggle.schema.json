@@ -1,0 +1,8 @@
+{
+  "name": "EmitterToggle",
+  "description": "Toggles a particle emitter on or off",
+  "category": "Effects",
+  "fields": [
+    { "name": "emitter_index", "type": "int", "default": 0, "min": 0 }
+  ]
+}

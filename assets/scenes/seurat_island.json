@@ -8228,9 +8228,9 @@
   ],
   "player": {
     "position": [
-      64,
+      57,
       0,
-      64
+      55
     ],
     "facing": "down"
   },
@@ -8375,9 +8375,9 @@
       "id": "torch_1",
       "name": "Torch",
       "position": [
-        65,
-        -3.1672,
-        55
+        67,
+        0.4717,
+        61
       ],
       "rotation": [
         0,
@@ -8405,9 +8405,9 @@
       "id": "torch_2",
       "name": "Torch",
       "position": [
-        71,
-        1.339,
-        61
+        61,
+        4.6957,
+        55
       ],
       "rotation": [
         0,
@@ -8435,9 +8435,9 @@
       "id": "torch_3",
       "name": "Torch",
       "position": [
-        60,
-        -1.4904,
-        68
+        57,
+        14.4451,
+        53
       ],
       "rotation": [
         0,
@@ -8465,9 +8465,9 @@
       "id": "torch_4",
       "name": "Torch",
       "position": [
-        73,
-        -13.3443,
-        52
+        53,
+        7.1198,
+        59
       ],
       "rotation": [
         0,
@@ -8495,9 +8495,9 @@
       "id": "crystal_1",
       "name": "Crystal",
       "position": [
-        50,
-        -5.2147,
-        35
+        53,
+        14.9949,
+        51
       ],
       "rotation": [
         0,
@@ -8522,9 +8522,9 @@
       "id": "crystal_2",
       "name": "Crystal",
       "position": [
-        85,
-        -4.6063,
-        55
+        81,
+        14.2631,
+        75
       ],
       "rotation": [
         0,
@@ -8549,9 +8549,9 @@
       "id": "crystal_3",
       "name": "Crystal",
       "position": [
-        45,
-        -1.4564,
-        78
+        77,
+        13.0714,
+        77
       ],
       "rotation": [
         0,
@@ -8577,8 +8577,8 @@
       "name": "Chest",
       "position": [
         55,
-        -1.4508,
-        42
+        14.3959,
+        55
       ],
       "rotation": [
         0,
@@ -8604,9 +8604,9 @@
       "id": "chest_2",
       "name": "Chest",
       "position": [
-        78,
-        12.5549,
-        73
+        75,
+        10.5933,
+        75
       ],
       "rotation": [
         0,
@@ -8632,9 +8632,9 @@
       "id": "fountain",
       "name": "Fountain",
       "position": [
-        64,
-        3.4686,
-        64
+        57,
+        14.4451,
+        53
       ],
       "rotation": [
         0,
@@ -8655,9 +8655,9 @@
       "id": "pressure_plate",
       "name": "Pressure Plate",
       "position": [
-        82,
-        -4.7782,
-        58
+        83,
+        13.2774,
+        75
       ],
       "rotation": [
         0,
@@ -8679,9 +8679,9 @@
       "id": "crystal_hidden",
       "name": "Hidden Crystal",
       "position": [
-        88,
-        -2.7143,
-        62
+        85,
+        11.2094,
+        75
       ],
       "rotation": [
         0,

@@ -1,0 +1,9 @@
+{
+  "name": "ScatterEffect",
+  "description": "Scatters particles in a radius for a limited lifetime",
+  "category": "Effects",
+  "fields": [
+    { "name": "radius", "type": "float", "default": 2, "min": 0 },
+    { "name": "lifetime", "type": "float", "default": 2, "min": 0 }
+  ]
+}

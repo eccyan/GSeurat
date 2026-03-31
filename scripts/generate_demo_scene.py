@@ -88,12 +88,12 @@ def build_interactive_objects(collision):
         y = lookup_elevation(x, z, collision)
         return [x, y, z]
 
-    # Torches (4) — near house and paths
+    # Torches (4) — near house and on walkable land
     torch_positions = [
-        [65, 0, 55],
-        [71, 0, 61],
-        [60, 0, 68],
-        [73, 0, 52],
+        [67, 0, 61],
+        [61, 0, 55],
+        [57, 0, 53],
+        [53, 0, 59],
     ]
     torches = []
     for i, (tx, _, tz) in enumerate(torch_positions):
@@ -120,9 +120,9 @@ def build_interactive_objects(collision):
 
     # Crystals (3) — on rocky areas
     crystal_positions = [
-        [50, 0, 35],
-        [85, 0, 55],
-        [45, 0, 78],
+        [53, 0, 51],
+        [81, 0, 75],
+        [77, 0, 77],
     ]
     crystals = []
     for i, (cx, _, cz) in enumerate(crystal_positions):
@@ -148,8 +148,8 @@ def build_interactive_objects(collision):
 
     # Chests (2)
     chest_positions = [
-        [55, 0, 42],
-        [78, 0, 73],
+        [55, 0, 55],
+        [75, 0, 75],
     ]
     chests = []
     for i, (bx, _, bz) in enumerate(chest_positions):
@@ -168,8 +168,8 @@ def build_interactive_objects(collision):
             }
         )
 
-    # Fountain (1) — center of island
-    fx, fz = 64, 64
+    # Fountain (1) — near center on walkable land
+    fx, fz = 57, 53
     fountain = {
         "id": "fountain",
         "name": "Fountain",
@@ -183,7 +183,7 @@ def build_interactive_objects(collision):
     }
 
     # Pressure plate (1)
-    ppx, ppz = 82, 58
+    ppx, ppz = 83, 75
     pressure_plate = {
         "id": "pressure_plate",
         "name": "Pressure Plate",
@@ -197,7 +197,7 @@ def build_interactive_objects(collision):
     }
 
     # Hidden crystal (1)
-    hcx, hcz = 88, 62
+    hcx, hcz = 85, 75
     crystal_hidden = {
         "id": "crystal_hidden",
         "name": "Hidden Crystal",
@@ -315,7 +315,7 @@ def main():
         },
         "collision": collision,
         "ambient_color": [0.3, 0.35, 0.5, 1.0],
-        "player": {"position": [64, 0, 64], "facing": "down"},
+        "player": {"position": [57, 0, 55], "facing": "down"},
         "game_objects": game_objects,
         "particle_emitters": particle_emitters,
     }

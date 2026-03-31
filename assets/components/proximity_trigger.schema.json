@@ -1,0 +1,9 @@
+{
+  "name": "ProximityTrigger",
+  "description": "Triggers when a player enters proximity radius",
+  "category": "Gameplay",
+  "fields": [
+    { "name": "radius", "type": "float", "default": 5, "min": 0.1 },
+    { "name": "one_shot", "type": "bool", "default": false }
+  ]
+}
