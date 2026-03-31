@@ -148,7 +148,6 @@ void AppBase::cleanup() {
 #endif
     async_loader_.shutdown();
     staging_uploader_.shutdown();
-    wren_vm_.shutdown();
     audio_.shutdown();
     resources_.shutdown();
     renderer_.shutdown();

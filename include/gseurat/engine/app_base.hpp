@@ -25,8 +25,6 @@
 #include "gseurat/engine/gs_parallax_camera.hpp"
 #include "gseurat/engine/scene_loader.hpp"
 #include "gseurat/engine/staging_uploader.hpp"
-#include "gseurat/engine/scripting/script_system.hpp"
-#include "gseurat/engine/scripting/wren_bindings.hpp"
 #include "gseurat/engine/scene.hpp"
 #include "gseurat/engine/screen_effects.hpp"
 #include "gseurat/engine/weather_system.hpp"
@@ -222,10 +220,6 @@ protected:
     SaveSystem save_system_;
     std::unordered_map<std::string, bool> game_flags_;
     float play_time_ = 0.0f;
-
-    // Scripting
-    WrenVM wren_vm_;
-    ScriptSystem script_system_;
 
     // Control server (bridge integration)
 #ifndef _WIN32
