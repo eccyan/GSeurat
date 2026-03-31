@@ -4,9 +4,9 @@
     "name": "Tree",
     "ply_file": "assets/props/island_tree_1.ply",
     "position": [
-      40,
+      80,
       0,
-      50
+      100
     ],
     "rotation": [
       0,
@@ -20,9 +20,9 @@
     "name": "Tree",
     "ply_file": "assets/props/island_tree_2.ply",
     "position": [
-      80,
+      160,
       0,
-      45
+      90
     ],
     "rotation": [
       0,
@@ -36,9 +36,9 @@
     "name": "Tree",
     "ply_file": "assets/props/island_tree_3.ply",
     "position": [
-      55,
+      110,
       0,
-      85
+      170
     ],
     "rotation": [
       0,
@@ -52,9 +52,9 @@
     "name": "Tree",
     "ply_file": "assets/props/island_tree_4.ply",
     "position": [
-      75,
+      150,
       0,
-      70
+      140
     ],
     "rotation": [
       0,
@@ -68,9 +68,9 @@
     "name": "Rock",
     "ply_file": "assets/props/island_rock_1.ply",
     "position": [
-      50,
+      100,
       0,
-      35
+      70
     ],
     "rotation": [
       0,
@@ -84,9 +84,9 @@
     "name": "Rock",
     "ply_file": "assets/props/island_rock_2.ply",
     "position": [
-      85,
+      170,
       0,
-      60
+      120
     ],
     "rotation": [
       0,
@@ -100,9 +100,9 @@
     "name": "Rock",
     "ply_file": "assets/props/island_rock_3.ply",
     "position": [
-      45,
+      90,
       0,
-      75
+      150
     ],
     "rotation": [
       0,
@@ -116,9 +116,9 @@
     "name": "House",
     "ply_file": "assets/props/island_house.ply",
     "position": [
-      68,
+      136,
       0,
-      58
+      116
     ],
     "rotation": [
       0,

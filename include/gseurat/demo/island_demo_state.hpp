@@ -38,7 +38,8 @@ private:
     // Character Gaussians (for walk animation bone transforms)
     bool character_spawned_ = false;
     uint32_t debug_frame_ = 0;
-    glm::vec3 character_origin_{0.0f};
+    glm::vec3 character_spawn_pos_{0.0f};  // where Gaussians were placed
+    glm::vec3 character_origin_{0.0f};     // current player position
     std::vector<Gaussian> map_gaussians_;  // original map data before character merge
 
     // Collision grid (loaded from scene JSON)
@@ -47,8 +48,8 @@ private:
 
     // Orbit camera (third-person around player)
     float azimuth_ = 0.0f;
-    float elevation_ = 0.5f;
-    float distance_ = 30.0f;
+    float elevation_ = 0.65f;   // ~37 deg — dramatic 3/4 perspective
+    float distance_ = 30.0f;   // closer view with gentle 8-unit hills
     glm::vec3 camera_target_{0.0f};  // smoothed target
 
     // Mouse drag state
@@ -70,14 +71,14 @@ private:
     // Constants
     static constexpr float kMinElevation = 0.175f;
     static constexpr float kMaxElevation = 1.396f;
-    static constexpr float kMinDistance = 15.0f;
-    static constexpr float kMaxDistance = 50.0f;
+    static constexpr float kMinDistance = 8.0f;
+    static constexpr float kMaxDistance = 80.0f;
     static constexpr float kOrbitSensitivity = 0.005f;
     static constexpr float kZoomSensitivity = 2.0f;
-    static constexpr float kPlayerSpeed = 10.0f;
-    static constexpr float kPlayerAccel = 10.0f;
+    static constexpr float kPlayerSpeed = 12.0f;
+    static constexpr float kPlayerAccel = 12.0f;
     static constexpr float kCameraSmoothing = 8.0f;
-    static constexpr float kCameraYOffset = 5.0f;
+    static constexpr float kCameraYOffset = 3.0f;
 };
 
 }  // namespace gseurat

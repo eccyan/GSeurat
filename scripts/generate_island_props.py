@@ -210,24 +210,24 @@ def generate_house(seed=456):
     return gaussians
 
 
-# Island prop layout
-# Trees at lowland positions (terrain height < 5)
+# Island prop layout (256x256 world, center at 128, 128)
+# Trees at lowland positions
 TREE_POSITIONS = [
-    [40, 0, 50],
-    [80, 0, 45],
-    [55, 0, 85],
-    [75, 0, 70],
+    [80, 0, 100],
+    [160, 0, 90],
+    [110, 0, 170],
+    [150, 0, 140],
 ]
 
-# Rocks at slope positions (height 6-12)
+# Rocks at slope positions
 ROCK_POSITIONS = [
-    [50, 0, 35],
-    [85, 0, 60],
-    [45, 0, 75],
+    [100, 0, 70],
+    [170, 0, 120],
+    [90, 0, 150],
 ]
 
 # House near center on flat ground
-HOUSE_POSITION = [68, 0, 58]
+HOUSE_POSITION = [136, 0, 116]
 
 
 def main():

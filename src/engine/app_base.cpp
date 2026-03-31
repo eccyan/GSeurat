@@ -834,6 +834,45 @@ void AppBase::dispatch_command(const nlohmann::json& cmd, nlohmann::json& respon
         response["type"] = "ok";
         response["path"] = path;
 
+    } else if (cmd_name == "inject_key") {
+        int key = cmd.value("key", 0);
+        bool down = cmd.value("down", true);
+        if (key > 0 && key < kKeyCount) {
+            input_.inject_key(key, down);
+            response["type"] = "ok";
+        } else {
+            response["type"] = "error";
+            response["message"] = "Invalid key code";
+        }
+
+    } else if (cmd_name == "inject_key_once") {
+        int key = cmd.value("key", 0);
+        if (key > 0 && key < kKeyCount) {
+            input_.inject_key_once(key);
+            response["type"] = "ok";
+        } else {
+            response["type"] = "error";
+            response["message"] = "Invalid key code";
+        }
+
+    } else if (cmd_name == "clear_keys") {
+        input_.clear_injections();
+        response["type"] = "ok";
+
+    } else if (cmd_name == "get_player_state") {
+        // Return player entity state from active game state (if island demo)
+        // Generic approach: iterate ECS world for PlayerController
+        response["type"] = "player_state";
+        bool found = false;
+        world_.view<ecs::Transform, PlayerController>().each(
+            [&](ecs::Entity, ecs::Transform& t, PlayerController&) {
+                response["position"] = {t.position.x, t.position.y, t.position.z};
+                found = true;
+            });
+        if (!found) {
+            response["position"] = nullptr;
+        }
+
     } else {
         response["type"] = "error";
         response["message"] = "Unknown command: " + cmd_name;

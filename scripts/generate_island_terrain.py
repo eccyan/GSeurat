@@ -15,15 +15,15 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from ply_utils import write_ply
 
 # Island parameters
-GRID_SIZE = 64          # cells in X and Z
+GRID_SIZE = 128         # cells in X and Z
 CELL_SIZE = 2.0         # world units per cell
-ISLAND_RADIUS = 55.0    # radius for the island mask falloff
-HEIGHT_SCALE = 14.0     # max height before masking (~14-18 world units)
-STEP = 1.0              # Gaussian placement step (density)
+ISLAND_RADIUS = 110.0   # radius for the island mask falloff
+HEIGHT_SCALE = 8.0      # gentle rolling hills (was 20 — too mountainous)
+STEP = 1.5              # Gaussian placement step (density — larger for perf)
 
 # Height thresholds for coloring
-COLOR_MID_THRESHOLD = 5.0
-COLOR_PEAK_THRESHOLD = 12.0
+COLOR_MID_THRESHOLD = 3.0
+COLOR_PEAK_THRESHOLD = 6.5
 
 # Colors
 COLOR_GREEN = (0.20, 0.52, 0.12)   # low ground / grass
@@ -95,11 +95,73 @@ def generate_island(grid_size, cell_size, height_scale, island_radius, step):
             gaussians.append({
                 "pos": (x, y, z),
                 "color": color,
-                "scale": 0.5,
+                "scale": 1.0,
                 "opacity": 1.0,
             })
             z += step
         x += step
+
+    # Volumetric water: 3 stacked layers with varying color/opacity for depth
+    water_layers = [
+        {"y": -0.5, "color": (0.05, 0.12, 0.35), "opacity": 0.9, "scale": 1.5, "step": 2.5},   # deep
+        {"y": -0.1, "color": (0.12, 0.25, 0.50), "opacity": 0.7, "scale": 1.3, "step": 2.5},   # mid
+        {"y":  0.2, "color": (0.20, 0.40, 0.55), "opacity": 0.5, "scale": 1.1, "step": 3.0},   # surface
+    ]
+    # Shore shallows: greenish tint near coastline
+    shore_layer = {"y": 0.1, "color": (0.15, 0.40, 0.35), "opacity": 0.4, "scale": 0.8, "step": 2.0}
+
+    for layer in water_layers:
+        wx = 0.0
+        while wx <= world_size:
+            wz = 0.0
+            while wz <= world_size:
+                terrain_y = height_at(wx, wz, cx, cz, height_scale, island_radius)
+                if terrain_y < 0.5:
+                    gaussians.append({
+                        "pos": (wx, layer["y"], wz),
+                        "color": layer["color"],
+                        "scale": layer["scale"],
+                        "opacity": layer["opacity"],
+                    })
+                wz += layer["step"]
+            wx += layer["step"]
+
+    # Shore shallows (only near coastline: terrain between 0.0 and 2.0)
+    wx = 0.0
+    while wx <= world_size:
+        wz = 0.0
+        while wz <= world_size:
+            terrain_y = height_at(wx, wz, cx, cz, height_scale, island_radius)
+            if 0.0 < terrain_y < 2.0:
+                gaussians.append({
+                    "pos": (wx, shore_layer["y"], wz),
+                    "color": shore_layer["color"],
+                    "scale": shore_layer["scale"],
+                    "opacity": shore_layer["opacity"],
+                })
+            wz += shore_layer["step"]
+        wx += shore_layer["step"]
+
+    # Specular highlights on water surface (sparse bright spots)
+    import random as _rng
+    _rng.seed(777)
+    spec_count = 0
+    sx = 0.0
+    while sx <= world_size:
+        sz = 0.0
+        while sz <= world_size:
+            terrain_y = height_at(sx, sz, cx, cz, height_scale, island_radius)
+            if terrain_y < 0.3 and _rng.random() < 0.15:
+                gaussians.append({
+                    "pos": (sx + _rng.uniform(-1, 1), 0.3 + _rng.uniform(0, 0.2), sz + _rng.uniform(-1, 1)),
+                    "color": (0.8, 0.85, 0.95),
+                    "scale": 0.4,
+                    "opacity": 0.6,
+                    "emission": 1.5,
+                })
+                spec_count += 1
+            sz += 5.0
+        sx += 5.0
 
     return gaussians, cx, cz
 
@@ -123,7 +185,8 @@ def generate_collision_grid(grid_size, cell_size, cx, cz, height_scale, island_r
 
             elevation.append(round(y, 4))
             # Cells with negligible height are sea — treat as solid (impassable water)
-            solid.append(y < 0.5)
+            # Use low threshold (0.2) so more coastal area is walkable
+            solid.append(y < 0.2)
 
     return {
         "width": grid_size,

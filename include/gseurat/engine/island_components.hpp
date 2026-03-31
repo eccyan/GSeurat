@@ -38,6 +38,7 @@ struct EmissiveToggle {
     float color_b = 1.0f;
     float effect_radius = 3.0f;
     float current_emission = 0.0f;
+    bool applied = false;  // one-shot: add point light once triggered
 };
 
 struct BurstEffect {

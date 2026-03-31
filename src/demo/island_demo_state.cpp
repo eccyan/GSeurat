@@ -27,6 +27,22 @@ void IslandDemoState::on_enter(AppBase& app) {
 
     // Disable app-level parallax — we manage our own camera
     app.set_gs_parallax_active(false);
+
+    // Enable bloom, disable fog/DoF for visual clarity
+    app.feature_flags().bloom = true;
+    app.feature_flags().fog = false;
+    app.feature_flags().depth_of_field = false;
+    app.feature_flags().tone_mapping = true;
+    app.feature_flags().vignette = true;
+    auto& pp = app.renderer().post_process_params();
+    pp.fog_density = 0.0f;
+    pp.dof_max_blur = 0.0f;
+    pp.exposure = 1.1f;
+    pp.bloom_threshold = 0.3f;
+    pp.bloom_intensity = 1.2f;
+    pp.bloom_soft_knee = 0.5f;
+    pp.vignette_radius = 0.8f;
+    pp.vignette_softness = 0.3f;
     app.renderer().set_gs_skip_chunk_cull(false);
     app.renderer().gs_renderer().set_skip_sort(false);
 
@@ -66,15 +82,17 @@ void IslandDemoState::on_enter(AppBase& app) {
         std::vector<Gaussian> merged = map_gaussians_;
         uint32_t map_count = static_cast<uint32_t>(merged.size());
 
+        // Character scale: 0.8x — visible from the far camera distance
+        constexpr float kCharScale = 0.8f;
         auto add_box = [&](float cx, float cy, float cz, int w, int h, int d,
                            glm::vec3 color, uint32_t bone) {
             for (int x = 0; x < w; ++x) {
                 for (int y = 0; y < h; ++y) {
                     for (int z = 0; z < d; ++z) {
                         Gaussian g{};
-                        g.position = player_pos + glm::vec3(
+                        g.position = player_pos + kCharScale * glm::vec3(
                             cx + x - w / 2.0f, cy + y, cz + z - d / 2.0f);
-                        g.scale = glm::vec3(0.5f);
+                        g.scale = glm::vec3(0.5f * kCharScale);
                         g.rotation = glm::quat(1, 0, 0, 0);
                         g.color = color;
                         g.opacity = 1.0f;
@@ -86,12 +104,12 @@ void IslandDemoState::on_enter(AppBase& app) {
             }
         };
 
-        add_box(0, 4, 0, 4, 6, 2, {0.2f, 0.5f, 0.8f}, 1);    // Torso
-        add_box(0, 10, 0, 3, 3, 2, {0.9f, 0.75f, 0.6f}, 2);   // Head
-        add_box(-3.5f, 5, 0, 2, 5, 2, {0.2f, 0.5f, 0.8f}, 3); // Left arm
-        add_box(3.5f, 5, 0, 2, 5, 2, {0.2f, 0.5f, 0.8f}, 4);  // Right arm
-        add_box(-1.0f, 0, 0, 2, 4, 2, {0.3f, 0.3f, 0.5f}, 5); // Left leg
-        add_box(1.0f, 0, 0, 2, 4, 2, {0.3f, 0.3f, 0.5f}, 6);  // Right leg
+        add_box(0, 4, 0, 4, 6, 2, {1.0f, 0.15f, 0.1f}, 1);    // Torso (bright red)
+        add_box(0, 10, 0, 3, 3, 2, {0.95f, 0.8f, 0.65f}, 2);   // Head (warm skin)
+        add_box(-3.5f, 5, 0, 2, 5, 2, {1.0f, 0.15f, 0.1f}, 3); // Left arm
+        add_box(3.5f, 5, 0, 2, 5, 2, {1.0f, 0.15f, 0.1f}, 4);  // Right arm
+        add_box(-1.0f, 0, 0, 2, 4, 2, {0.1f, 0.1f, 0.35f}, 5); // Left leg (navy)
+        add_box(1.0f, 0, 0, 2, 4, 2, {0.1f, 0.1f, 0.35f}, 6);  // Right leg (navy)
 
         uint32_t char_count = static_cast<uint32_t>(merged.size()) - map_count;
         auto cloud = GaussianCloud::from_gaussians(std::move(merged));
@@ -101,11 +119,11 @@ void IslandDemoState::on_enter(AppBase& app) {
         if (gs_w == 0) { gs_w = 320; gs_h = 240; }
         app.renderer().init_gs(cloud, gs_w, gs_h);
 
+        character_spawn_pos_ = player_pos;
         character_origin_ = player_pos;
         character_spawned_ = true;
 
-        std::fprintf(stderr, "[Island] Player character: %u Gaussians at (%.1f, %.1f, %.1f)\n",
-                     char_count, player_pos.x, player_pos.y, player_pos.z);
+        (void)char_count;
     }
 
     // Initialize camera centered on player
@@ -114,7 +132,7 @@ void IslandDemoState::on_enter(AppBase& app) {
     elevation_ = 0.5f;
     distance_ = 30.0f;
 
-    std::fprintf(stderr, "[Island] IslandDemoState entered, scene: %s\n", scene_path_.c_str());
+    // Scene loaded — ready for play
 }
 
 void IslandDemoState::on_exit(AppBase& app) {
@@ -240,11 +258,7 @@ void IslandDemoState::update_player(AppBase& app, float dt) {
             // Check solid — if solid, undo movement
             bool solid = collision_grid_.is_solid(static_cast<uint32_t>(gx),
                                                    static_cast<uint32_t>(gz));
-            if (debug_frame_++ % 120 == 0) {
-                std::fprintf(stderr, "[Island] pos=(%.1f,%.1f,%.1f) local=(%.1f,%.1f) grid=(%d,%d) solid=%d vel=(%.2f,%.2f)\n",
-                    transform->position.x, transform->position.y, transform->position.z,
-                    local_x, local_z, gx, gz, solid, player_velocity_.x, player_velocity_.z);
-            }
+            (void)debug_frame_; // reserved for future debug use
             if (solid) {
                 transform->position -= player_velocity_ * dt;
             } else {
@@ -285,6 +299,25 @@ void IslandDemoState::update_camera(AppBase& app, float dt) {
         distance_ * cos_elev * cos_azi
     );
     glm::vec3 eye = camera_target_ + offset;
+
+    // Gentle camera nudge: sample midpoint of eye-to-target ray.
+    // If terrain occludes, nudge camera up just enough to clear.
+    if (collision_grid_.width > 0 && !collision_grid_.elevation.empty()) {
+        glm::vec3 mid = (eye + camera_target_) * 0.5f;
+        float lx = mid.x - grid_origin_.x;
+        float lz = mid.z - grid_origin_.y;
+        int gx = static_cast<int>(lx / collision_grid_.cell_size);
+        int gz = static_cast<int>(lz / collision_grid_.cell_size);
+        if (gx >= 0 && gx < static_cast<int>(collision_grid_.width) &&
+            gz >= 0 && gz < static_cast<int>(collision_grid_.height)) {
+            float terrain_y = collision_grid_.get_elevation(
+                static_cast<uint32_t>(gx), static_cast<uint32_t>(gz));
+            float mid_y = mid.y;
+            if (mid_y < terrain_y + 3.0f) {
+                eye.y += (terrain_y + 3.0f - mid_y) * 2.0f;
+            }
+        }
+    }
 
     glm::mat4 view = glm::lookAt(eye, camera_target_, glm::vec3(0.0f, 1.0f, 0.0f));
     glm::mat4 proj = glm::perspective(
@@ -344,6 +377,23 @@ void IslandDemoState::update_effects(AppBase& app, float dt) {
             }
         });
 
+    // EmissiveToggle: add point lights for emissive objects (bloom source)
+    world.view<EmissiveToggle, ProximityTrigger, ecs::Transform>().each(
+        [&](ecs::Entity, EmissiveToggle& et, ProximityTrigger& pt, ecs::Transform& t) {
+            if (pt.triggered && !et.applied) {
+                et.applied = true;
+                PointLight pl{};
+                pl.position_and_radius = glm::vec4(
+                    t.position.x, t.position.y + 1.0f, t.position.z,
+                    et.effect_radius * 3.0f);
+                pl.color = glm::vec4(
+                    et.color_r * et.emission,
+                    et.color_g * et.emission,
+                    et.color_b * et.emission, 1.0f);
+                app.scene().add_light(pl);
+            }
+        });
+
     // BurstEffect: one-shot particle burst on trigger
     world.view<BurstEffect, ProximityTrigger, ecs::Transform>().each(
         [&](ecs::Entity, BurstEffect& be, ProximityTrigger& pt, ecs::Transform& t) {
@@ -368,34 +418,39 @@ void IslandDemoState::update_walk_animation(AppBase& app, float dt) {
     if (!character_spawned_) return;
 
     float speed = glm::length(glm::vec2(player_velocity_.x, player_velocity_.z));
-    const glm::vec3& o = character_origin_;
+
+    // Root translation: move character Gaussians from spawn to current position
+    glm::vec3 root_offset = character_origin_ - character_spawn_pos_;
+    glm::mat4 root_translate = glm::translate(glm::mat4(1.0f), root_offset);
 
     if (speed > 0.5f) {
         walk_anim_time_ += dt;
     } else {
-        // Lerp back toward zero
         walk_anim_time_ *= std::max(0.0f, 1.0f - dt * 5.0f);
     }
 
     float swing = std::sin(walk_anim_time_ * 8.0f) * 0.5f;
-    // Scale swing by movement speed (0 when stopped)
     float swing_scale = std::min(speed / kPlayerSpeed, 1.0f);
     swing *= swing_scale;
 
     glm::mat4 bones[7];
-    bones[0] = glm::mat4(1.0f);  // map Gaussians (bone 0)
+    bones[0] = glm::mat4(1.0f);  // map Gaussians (bone 0) — stay put
+
+    // All character bones get root translation + local animation
+    constexpr float kCharScale = 0.8f;
 
     // Torso bob
-    bones[1] = glm::translate(glm::mat4(1.0f), {0, std::abs(swing) * 0.3f, 0});
-    // Head follows torso
-    bones[2] = bones[1];
+    glm::mat4 bob = glm::translate(glm::mat4(1.0f), {0, std::abs(swing) * 0.3f * kCharScale, 0});
+    bones[1] = root_translate * bob;
+    bones[2] = bones[1];  // Head follows torso
 
-    // Pivot rotation: translate to joint, rotate, translate back
+    // Pivot rotation around joint (in spawn-space, scaled), then root translate
+    const glm::vec3& sp = character_spawn_pos_;
     auto pivot_rotate = [&](glm::vec3 pivot_local, float angle) {
-        glm::vec3 world_pivot = o + pivot_local;
+        glm::vec3 world_pivot = sp + kCharScale * pivot_local;
         auto t = glm::translate(glm::mat4(1.0f), world_pivot);
         auto r = glm::rotate(glm::mat4(1.0f), angle, {1, 0, 0});
-        return t * r * glm::translate(glm::mat4(1.0f), -world_pivot);
+        return root_translate * t * r * glm::translate(glm::mat4(1.0f), -world_pivot);
     };
 
     bones[3] = pivot_rotate({-3.5f, 9.0f, 0.0f}, swing);    // Left arm
