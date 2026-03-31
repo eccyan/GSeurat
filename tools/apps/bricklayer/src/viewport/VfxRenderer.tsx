@@ -11,23 +11,7 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useSceneStore } from '../store/useSceneStore.js';
 import type { VfxInstanceData, VfxElementData } from '../store/types.js';
-
-// Dynamic import — WASM module may not be available
-let wasmModule: any = null;
-let wasmLoading = false;
-
-async function loadWasm() {
-  if (wasmModule || wasmLoading) return;
-  wasmLoading = true;
-  try {
-    const createModule = (await import('@gseurat/simulation-wasm')).default;
-    wasmModule = await createModule();
-    console.log('[VfxRenderer] WASM simulation loaded');
-  } catch (e) {
-    console.warn('[VfxRenderer] WASM not available:', e);
-  }
-  wasmLoading = false;
-}
+import { loadSimulationWasm } from '@gseurat/vfx-utils';
 
 const MAX_PARTICLES = 2048;
 
@@ -330,7 +314,7 @@ export function VfxRenderer() {
   const [wasm, setWasm] = useState<any>(null);
 
   useEffect(() => {
-    loadWasm().then(() => { if (wasmModule) setWasm(wasmModule); });
+    loadSimulationWasm().then((m) => { if (m) setWasm(m); });
   }, []);
 
   if (!wasm || instances.length === 0) return null;

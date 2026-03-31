@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { Line } from '@react-three/drei';
 import type { VfxElement, SplineConfig } from '../store/types.js';
-import { sampleCatmullRom } from '../lib/catmullRom.js';
+import { sampleCatmullRom } from '@gseurat/vfx-utils';
 
 export function SplineGizmo({ layer, selected }: { layer: VfxElement; selected: boolean }) {
   const spline = layer.emitter?.spline as SplineConfig | undefined;

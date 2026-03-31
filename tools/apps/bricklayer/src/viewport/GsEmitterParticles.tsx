@@ -10,21 +10,7 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useSceneStore } from '../store/useSceneStore.js';
 import type { GsParticleEmitterData } from '../store/types.js';
-
-let wasmModule: any = null;
-let wasmLoading = false;
-
-async function loadWasm() {
-  if (wasmModule || wasmLoading) return;
-  wasmLoading = true;
-  try {
-    const createModule = (await import('@gseurat/simulation-wasm')).default;
-    wasmModule = await createModule();
-  } catch (e) {
-    console.warn('[GsEmitterParticles] WASM not available:', e);
-  }
-  wasmLoading = false;
-}
+import { loadSimulationWasm } from '@gseurat/vfx-utils';
 
 const MAX_PARTICLES = 2048;
 
@@ -167,7 +153,7 @@ export function GsEmitterParticles() {
   const [wasm, setWasm] = useState<any>(null);
 
   useEffect(() => {
-    loadWasm().then(() => { if (wasmModule) setWasm(wasmModule); });
+    loadSimulationWasm().then((m) => { if (m) setWasm(m); });
   }, []);
 
   if (!wasm || emitters.length === 0) return null;
