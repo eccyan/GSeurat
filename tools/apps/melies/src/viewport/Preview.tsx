@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { useVfxStore, playbackTimeRef } from '../store/useVfxStore.js';
 import { SplineGizmo } from './SplineGizmo.js';
 import type { VfxElement as VfxLayer } from '../store/types.js';
-import { loadPly, type PlyPoint } from '../lib/plyLoader.js';
+import { loadPly, type PlyPoint } from '@gseurat/vfx-utils';
 import { loadPlyFromProject } from '../lib/projectIO.js';
 import { ParticleSystem } from './ParticleSystem.js';
 import { AnimationSystem } from './AnimationSystem.js';

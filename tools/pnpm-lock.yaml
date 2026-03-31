@@ -68,6 +68,9 @@ importers:
       '@gseurat/ui-kit':
         specifier: workspace:*
         version: link:../../packages/ui-kit
+      '@gseurat/vfx-utils':
+        specifier: workspace:*
+        version: link:../../packages/vfx-utils
       '@huggingface/transformers':
         specifier: ^3.4.0
         version: 3.8.1
@@ -246,6 +249,9 @@ importers:
       '@gseurat/ui-kit':
         specifier: workspace:*
         version: link:../../packages/ui-kit
+      '@gseurat/vfx-utils':
+        specifier: workspace:*
+        version: link:../../packages/vfx-utils
       '@react-three/drei':
         specifier: ^9.117.0
         version: 9.122.0(@react-three/fiber@8.18.0(@types/react@18.3.28)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(three@0.170.0))(@types/react@18.3.28)(@types/three@0.170.0)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(three@0.170.0)(use-sync-external-store@1.6.0(react@18.3.1))
@@ -438,6 +444,16 @@ importers:
         version: 18.3.1
       typescript:
         specifier: ^5.0.0
+        version: 5.9.3
+
+  packages/vfx-utils:
+    dependencies:
+      '@gseurat/simulation-wasm':
+        specifier: workspace:*
+        version: link:../simulation-wasm
+    devDependencies:
+      typescript:
+        specifier: ^5.4.0
         version: 5.9.3
 
   tests:

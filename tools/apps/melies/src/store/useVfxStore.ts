@@ -3,7 +3,7 @@ import type { VfxPreset, VfxElement, VfxProject, ElementType, PlyReference } fro
 // Keep aliases for compatibility during migration
 type VfxLayer = VfxElement;
 type LayerType = ElementType;
-import type { PlyPoint } from '../lib/plyLoader.js';
+import type { PlyPoint } from '@gseurat/vfx-utils';
 
 let idCounter = 0;
 function genId(prefix: string): string {

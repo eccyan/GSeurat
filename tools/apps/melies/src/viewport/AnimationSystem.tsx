@@ -10,24 +10,14 @@ import React, { useRef, useEffect, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useVfxStore, playbackTimeRef } from '../store/useVfxStore.js';
-import type { PlyPoint } from '../lib/plyLoader.js';
+import type { PlyPoint } from '@gseurat/vfx-utils';
+import { loadSimulationWasm } from '@gseurat/vfx-utils';
 
 // Effect name → WASM constant mapping
 const EFFECT_MAP: Record<string, number> = {
   detach: 0, float: 1, orbit: 2, dissolve: 3, reform: 4,
   pulse: 5, vortex: 6, wave: 7, scatter: 8,
 };
-
-let wasmModule: any = null;
-
-async function ensureWasm() {
-  if (wasmModule) return wasmModule;
-  try {
-    const createModule = (await import('@gseurat/simulation-wasm')).default;
-    wasmModule = await createModule();
-  } catch {}
-  return wasmModule;
-}
 
 export function AnimationSystem({ scenePoints, objectPointsMap, objectGeoRefs, onUpdateGeometry }: {
   scenePoints: PlyPoint[];
@@ -48,11 +38,11 @@ export function AnimationSystem({ scenePoints, objectPointsMap, objectGeoRefs, o
   // Pre-allocated buffers for restore-original path
   const origColorsRef = useRef<Float32Array | null>(null);
   const origScalesRef = useRef<Float32Array | null>(null);
-  const [wasmReady, setWasmReady] = useState(false);
+  const [wasm, setWasm] = useState<any>(null);
 
   // Load WASM
   useEffect(() => {
-    ensureWasm().then((sim) => { if (sim) setWasmReady(true); });
+    loadSimulationWasm().then((m) => { if (m) setWasm(m); });
   }, []);
 
   // Track object point offsets for splitting output
@@ -131,7 +121,7 @@ export function AnimationSystem({ scenePoints, objectPointsMap, objectGeoRefs, o
 
   useFrame((_, dt) => {
     const hasPoints = scenePoints.length > 0 || (objectPointsMap && objectPointsMap.size > 0);
-    if (!wasmReady || !wasmModule || !preset || !playing || !hasPoints) return;
+    if (!wasm || !preset || !playing || !hasPoints) return;
     if (!scenePositionsRef.current || !sceneColorsRef.current) return;
 
     const count = sceneCountRef.current;
@@ -151,7 +141,7 @@ export function AnimationSystem({ scenePoints, objectPointsMap, objectGeoRefs, o
       if (isActive && !hasGroup) {
         // Create shared animator on first active layer
         if (!animatorRef.current) {
-          animatorRef.current = new wasmModule.Animator();
+          animatorRef.current = new wasm.Animator();
           animatorRef.current.loadScene(scenePositionsRef.current, sceneColorsRef.current, count);
         }
 

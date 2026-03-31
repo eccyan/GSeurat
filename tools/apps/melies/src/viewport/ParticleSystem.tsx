@@ -12,26 +12,7 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useVfxStore, playbackTimeRef } from '../store/useVfxStore.js';
 import type { VfxElement as VfxLayer } from '../store/types.js';
-
-// Dynamic import — WASM module may not be available
-let wasmModule: any = null;
-let wasmLoading = false;
-let wasmError: string | null = null;
-
-async function loadWasm() {
-  if (wasmModule || wasmLoading) return;
-  wasmLoading = true;
-  try {
-    const createModule = (await import('@gseurat/simulation-wasm')).default;
-    wasmModule = await createModule();
-    console.log('[ParticleSystem] WASM simulation loaded');
-  } catch (e) {
-    wasmError = String(e);
-    console.warn('[ParticleSystem] WASM not available:', e);
-    console.warn('Run: cd tools/packages/simulation-wasm && bash build.sh');
-  }
-  wasmLoading = false;
-}
+import { loadSimulationWasm } from '@gseurat/vfx-utils';
 
 // ── Single Emitter Renderer ──
 
@@ -198,9 +179,7 @@ export function ParticleSystem() {
 
   // Load WASM on mount
   useEffect(() => {
-    loadWasm().then(() => {
-      if (wasmModule) setWasm(wasmModule);
-    });
+    loadSimulationWasm().then((m) => { if (m) setWasm(m); });
   }, []);
 
   if (!wasm || !preset) return null;

@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { Html, Line } from '@react-three/drei';
 import { useSceneStore } from '../store/useSceneStore.js';
 import type { VfxInstanceData, VfxElementData } from '../store/types.js';
-import { sampleCatmullRom } from '../lib/catmullRom.js';
+import { sampleCatmullRom } from '@gseurat/vfx-utils';
 
 // Element type colors
 const ELEMENT_COLORS: Record<string, string> = {

@@ -6,7 +6,7 @@ type LayerType = ElementType;
 import { serializeVfx } from './lib/vfxExport.js';
 import { parseVfx } from './lib/vfxImport.js';
 import { hasFileSystemAccess, openProjectDirectory, saveProject, loadProject, downloadProject, uploadProject, copyPlyToProject, loadPlyFromProject } from './lib/projectIO.js';
-import { loadPly, type PlyPoint } from './lib/plyLoader.js';
+import { loadPly, type PlyPoint } from '@gseurat/vfx-utils';
 import { sendBridgeCommands, sendBridgeCommand } from '@gseurat/engine-client';
 import { Preview } from './viewport/Preview.js';
 import { LayerProperties } from './panels/LayerProperties.js';

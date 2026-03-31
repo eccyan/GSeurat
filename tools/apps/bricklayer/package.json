@@ -13,6 +13,7 @@
     "@gseurat/engine-client": "workspace:*",
     "@gseurat/test-harness": "workspace:*",
     "@gseurat/simulation-wasm": "workspace:*",
+    "@gseurat/vfx-utils": "workspace:*",
     "@gseurat/ui-kit": "workspace:*",
     "@huggingface/transformers": "^3.4.0",
     "@react-three/drei": "^9.117.0",
