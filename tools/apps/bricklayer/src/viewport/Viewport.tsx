@@ -6,9 +6,8 @@ import { VoxelMesh } from './VoxelMesh.js';
 import { GroundPlane } from './GroundPlane.js';
 import { GhostVoxel } from './GhostVoxel.js';
 import { LightGizmos } from './LightGizmos.js';
-import { NpcMarkers } from './NpcMarkers.js';
+import { GameObjectMarkers } from './GameObjectMarkers.js';
 import { PortalMarkers } from './PortalMarkers.js';
-import { ObjectMarkers } from './ObjectMarkers.js';
 import { GsEmitterMarkers } from './GsEmitterMarkers.js';
 import { GsEmitterParticles } from './GsEmitterParticles.js';
 import { GsAnimationMarkers } from './GsAnimationMarkers.js';
@@ -78,13 +77,9 @@ function getGrabbedEntityY(): number {
   const sel = store.selectedEntity;
   if (!sel) return 0;
 
-  if (sel.type === 'object') {
-    const obj = store.placedObjects.find((o) => o.id === sel.id);
+  if (sel.type === 'game_object') {
+    const obj = store.gameObjects.find((o) => o.id === sel.id);
     return obj?.position[1] ?? 0;
-  }
-  if (sel.type === 'npc') {
-    const npc = store.npcs.find((n) => n.id === sel.id);
-    return npc?.position[1] ?? 0;
   }
   if (sel.type === 'light') {
     const light = store.staticLights.find((l) => l.id === sel.id);
@@ -117,10 +112,8 @@ function updateGrabbedEntity(x: number, y: number, z: number) {
   const sel = store.selectedEntity;
   if (!sel) return;
 
-  if (sel.type === 'object') {
-    store.updatePlacedObject(sel.id, { position: [x, y, z] });
-  } else if (sel.type === 'npc') {
-    store.updateNpc(sel.id, { position: [x, y, z] });
+  if (sel.type === 'game_object') {
+    store.updateGameObject(sel.id, { position: [x, y, z] });
   } else if (sel.type === 'light') {
     store.updateLight(sel.id, { position: [x, y, z] });
   } else if (sel.type === 'portal') {
@@ -302,14 +295,13 @@ function SceneContent() {
       <GroundPlane />
       <GhostVoxel />
       <LightGizmos />
-      <NpcMarkers />
+      <GameObjectMarkers />
       <PortalMarkers />
       <GsEmitterMarkers />
       <GsEmitterParticles />
       <GsAnimationMarkers />
       <VfxInstanceMarkers />
       <VfxRenderer />
-      <ObjectMarkers />
       <PlayerMarker />
       <CollisionOverlay />
       <TeleportPlane />
