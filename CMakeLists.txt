@@ -63,15 +63,6 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(miniaudio)
 
 FetchContent_Declare(
-    wren
-    GIT_REPOSITORY https://github.com/wren-lang/wren.git
-    GIT_TAG        0.4.0
-    CONFIGURE_COMMAND ""
-    BUILD_COMMAND ""
-)
-FetchContent_MakeAvailable(wren)
-
-FetchContent_Declare(
     imgui
     GIT_REPOSITORY https://github.com/ocornut/imgui.git
     GIT_TAG        v1.91.8
@@ -95,30 +86,6 @@ target_include_directories(imgui_lib PUBLIC
     ${imgui_SOURCE_DIR}/backends
 )
 target_link_libraries(imgui_lib PUBLIC Vulkan::Vulkan glfw)
-
-# Build wren as a static library from C sources
-add_library(wren_lib STATIC
-    ${wren_SOURCE_DIR}/src/vm/wren_compiler.c
-    ${wren_SOURCE_DIR}/src/vm/wren_core.c
-    ${wren_SOURCE_DIR}/src/vm/wren_debug.c
-    ${wren_SOURCE_DIR}/src/vm/wren_primitive.c
-    ${wren_SOURCE_DIR}/src/vm/wren_utils.c
-    ${wren_SOURCE_DIR}/src/vm/wren_value.c
-    ${wren_SOURCE_DIR}/src/vm/wren_vm.c
-    ${wren_SOURCE_DIR}/src/optional/wren_opt_meta.c
-    ${wren_SOURCE_DIR}/src/optional/wren_opt_random.c
-)
-target_include_directories(wren_lib PUBLIC
-    ${wren_SOURCE_DIR}/src/include
-)
-target_include_directories(wren_lib PRIVATE
-    ${wren_SOURCE_DIR}/src/vm
-    ${wren_SOURCE_DIR}/src/optional
-)
-set_target_properties(wren_lib PROPERTIES
-    C_STANDARD 99
-    POSITION_INDEPENDENT_CODE ON
-)
 
 # --- Download font if not present -------------------------------------------
 
@@ -198,9 +165,6 @@ add_library(gseurat_core OBJECT
     src/engine/gs_parallax_camera.cpp
     src/engine/collision_gen.cpp
     src/engine/save_system.cpp
-    src/engine/scripting/wren_vm.cpp
-    src/engine/scripting/wren_bindings.cpp
-    src/engine/scripting/script_system.cpp
     src/engine/async_loader.cpp
     src/engine/staging_uploader.cpp
     src/engine/gs_chunk_streamer.cpp
@@ -208,6 +172,8 @@ add_library(gseurat_core OBJECT
     src/engine/gs_animator.cpp
     src/engine/gs_vfx.cpp
     src/engine/gs_spline.cpp
+    src/engine/component_registry.cpp
+    src/engine/system_scheduler.cpp
 )
 
 if(NOT WIN32)
@@ -231,7 +197,6 @@ target_link_libraries(gseurat_core
         glm::glm
         GPUOpen::VulkanMemoryAllocator
         nlohmann_json::nlohmann_json
-        wren_lib
 )
 
 if(APPLE)
@@ -334,3 +299,5 @@ add_gseurat_test(test_vfx_lights_rotation src/engine/gs_vfx.cpp src/engine/gs_pa
                                            src/engine/gs_spline.cpp)
 add_gseurat_test(test_gs_spline src/engine/gs_spline.cpp)
 add_gseurat_test(test_gs_post_process)
+add_gseurat_test(test_component_registry src/engine/component_registry.cpp)
+add_gseurat_test(test_system_scheduler  src/engine/system_scheduler.cpp)

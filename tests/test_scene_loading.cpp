@@ -297,6 +297,101 @@ int main() {
         check(approx(scene.gs_animations[0].region.half_extents.x, 5), "half_extents x = 5");
     }
 
+    // ── 6. GameObjectData round-trip ──
+    std::printf("\n--- GameObjectData round-trip ---\n\n");
+    {
+        std::printf("Test 6.1: game_objects round-trip\n");
+        gseurat::SceneData data;
+        gseurat::GameObjectData go1;
+        go1.id = "obj_tree";
+        go1.name = "Pine Tree";
+        go1.position = {10.0f, 5.0f, 3.0f};
+        go1.rotation = {0.0f, 45.0f, 0.0f};
+        go1.scale = 2.0f;
+        go1.ply_file = "assets/objects/tree.ply";
+        go1.components = nlohmann::json::object();
+        data.game_objects.push_back(go1);
+
+        gseurat::GameObjectData go2;
+        go2.id = "npc_guard";
+        go2.name = "Guard";
+        go2.position = {20.0f, 0.0f, 15.0f};
+        go2.components = {{"Facing", {{"direction", "left"}}}, {"Patrol", {{"speed", 3.0f}}}};
+        data.game_objects.push_back(go2);
+
+        auto j = gseurat::SceneLoader::to_json(data);
+        auto rt = gseurat::SceneLoader::from_json(j);
+
+        check(rt.game_objects.size() == 2, "2 game objects round-tripped");
+        check(rt.game_objects[0].id == "obj_tree", "go1 id preserved");
+        check(rt.game_objects[0].name == "Pine Tree", "go1 name preserved");
+        check(approx(rt.game_objects[0].position.x, 10.0f), "go1 position.x preserved");
+        check(approx(rt.game_objects[0].rotation.y, 45.0f), "go1 rotation.y preserved");
+        check(approx(rt.game_objects[0].scale, 2.0f), "go1 scale preserved");
+        check(rt.game_objects[0].ply_file == "assets/objects/tree.ply", "go1 ply_file preserved");
+        check(rt.game_objects[0].components.empty(), "go1 empty components preserved");
+
+        check(rt.game_objects[1].id == "npc_guard", "go2 id preserved");
+        check(rt.game_objects[1].components.contains("Facing"), "go2 Facing component preserved");
+        check(rt.game_objects[1].components["Patrol"]["speed"] == 3.0f, "go2 Patrol speed preserved");
+    }
+
+    // ── 7. Legacy migration ──
+    std::printf("\n--- Legacy migration ---\n\n");
+    {
+        std::printf("Test 7.1: Legacy objects[] migration\n");
+        const char* json = R"({
+            "version": 2,
+            "objects": [
+                {"id": "rock1", "ply_file": "assets/objects/rock.ply", "position": [1,2,3], "scale": 1.5, "character_manifest": "assets/chars/rock.json"}
+            ]
+        })";
+        std::ofstream("/tmp/test_scene_legacy_obj.json") << json;
+        auto scene = gseurat::SceneLoader::load("/tmp/test_scene_legacy_obj.json");
+        check(scene.game_objects.size() == 1, "1 game object from legacy objects[]");
+        check(scene.game_objects[0].id == "rock1", "migrated object id");
+        check(scene.game_objects[0].name == "rock1", "migrated object name = id");
+        check(approx(scene.game_objects[0].scale, 1.5f), "migrated object scale");
+        check(scene.game_objects[0].ply_file == "assets/objects/rock.ply", "migrated ply_file");
+        check(scene.game_objects[0].components.contains("CharacterModel"), "migrated character_manifest → CharacterModel");
+        check(scene.game_objects[0].components["CharacterModel"]["manifest"] == "assets/chars/rock.json", "manifest path preserved");
+    }
+
+    {
+        std::printf("Test 7.2: Legacy npcs[] migration\n");
+        const char* json = R"({
+            "version": 2,
+            "npcs": [
+                {"name": "bob", "position": [5,0,10], "facing": "left", "patrol_speed": 3.0, "waypoints": [[5,0,10],[15,0,10]], "waypoint_pause": 2.0, "character_id": "guard"}
+            ]
+        })";
+        std::ofstream("/tmp/test_scene_legacy_npc.json") << json;
+        auto scene = gseurat::SceneLoader::load("/tmp/test_scene_legacy_npc.json");
+        check(scene.game_objects.size() == 1, "1 game object from legacy npcs[]");
+        check(scene.game_objects[0].id == "npc_bob", "migrated npc id = npc_ + name");
+        check(scene.game_objects[0].name == "bob", "migrated npc name");
+        check(approx(scene.game_objects[0].position.x, 5.0f), "migrated npc position.x");
+        check(scene.game_objects[0].components.contains("Facing"), "migrated facing → Facing component");
+        check(scene.game_objects[0].components["Facing"]["direction"] == "left", "facing direction preserved");
+        check(scene.game_objects[0].components.contains("Patrol"), "migrated waypoints → Patrol component");
+        check(scene.game_objects[0].components["Patrol"]["speed"] == 3.0f, "patrol speed preserved");
+        check(scene.game_objects[0].components["Patrol"]["pause"] == 2.0f, "waypoint pause preserved");
+        check(scene.game_objects[0].components.contains("CharacterModel"), "migrated character_id → CharacterModel");
+        check(scene.game_objects[0].components["CharacterModel"]["character_id"] == "guard", "character_id preserved");
+    }
+
+    {
+        std::printf("Test 7.3: Both legacy npcs[] and objects[] combined\n");
+        const char* json = R"({
+            "version": 2,
+            "npcs": [{"name": "alice", "position": [0,0,0]}],
+            "objects": [{"id": "tree1", "ply_file": "tree.ply", "position": [10,0,0]}]
+        })";
+        std::ofstream("/tmp/test_scene_legacy_both.json") << json;
+        auto scene = gseurat::SceneLoader::load("/tmp/test_scene_legacy_both.json");
+        check(scene.game_objects.size() == 2, "2 game objects from combined legacy npcs + objects");
+    }
+
     // ── Summary ──
     std::printf("\n========================================\n");
     std::printf("  %d passed, %d failed\n", passed, failed);

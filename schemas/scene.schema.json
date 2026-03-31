@@ -29,18 +29,14 @@
       "$ref": "#/definitions/player",
       "description": "Player spawn configuration"
     },
-    "npcs": {
+    "game_objects": {
       "type": "array",
-      "items": { "$ref": "#/definitions/npc" }
+      "items": { "$ref": "#/definitions/game_object" },
+      "description": "Unified game objects (replaces legacy npcs[] and objects[])"
     },
     "portals": {
       "type": "array",
       "items": { "$ref": "#/definitions/portal" }
-    },
-    "objects": {
-      "type": "array",
-      "items": { "$ref": "#/definitions/placed_object" },
-      "description": "Placed PLY objects (merged into terrain at load)"
     },
     "particle_emitters": {
       "type": "array",
@@ -183,27 +179,20 @@
       },
       "additionalProperties": false
     },
-    "npc": {
+    "game_object": {
       "type": "object",
-      "required": ["name", "position"],
+      "required": ["id", "name", "position"],
       "properties": {
+        "id": { "type": "string" },
         "name": { "type": "string" },
         "position": { "$ref": "#/definitions/vec3" },
-        "tint": { "$ref": "#/definitions/color4" },
-        "facing": { "$ref": "#/definitions/direction" },
-        "reverse_facing": { "$ref": "#/definitions/direction" },
-        "patrol_interval": { "type": "number" },
-        "patrol_speed": { "type": "number" },
-        "waypoints": { "type": "array", "items": { "$ref": "#/definitions/vec3" } },
-        "waypoint_pause": { "type": "number" },
-        "dialog": { "type": "array" },
-        "light_color": { "$ref": "#/definitions/color4" },
-        "light_radius": { "type": "number" },
-        "aura_color_start": { "$ref": "#/definitions/color4" },
-        "aura_color_end": { "$ref": "#/definitions/color4" },
-        "character_id": { "type": "string" },
-        "script_module": { "type": "string" },
-        "script_class": { "type": "string" }
+        "rotation": { "$ref": "#/definitions/vec3" },
+        "scale": { "type": "number", "default": 1.0 },
+        "ply_file": { "type": "string" },
+        "components": {
+          "type": "object",
+          "additionalProperties": { "type": "object" }
+        }
       },
       "additionalProperties": false
     },
@@ -216,20 +205,6 @@
         "target_scene": { "type": "string" },
         "spawn_position": { "$ref": "#/definitions/vec3" },
         "spawn_facing": { "$ref": "#/definitions/direction" }
-      },
-      "additionalProperties": false
-    },
-    "placed_object": {
-      "type": "object",
-      "required": ["id", "ply_file"],
-      "properties": {
-        "id": { "type": "string" },
-        "ply_file": { "type": "string" },
-        "position": { "$ref": "#/definitions/vec3" },
-        "rotation": { "$ref": "#/definitions/vec3", "description": "Euler angles in degrees" },
-        "scale": { "type": "number" },
-        "is_static": { "type": "boolean" },
-        "character_manifest": { "type": "string" }
       },
       "additionalProperties": false
     },

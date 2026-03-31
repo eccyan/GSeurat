@@ -1,0 +1,9 @@
+{
+  "name": "Health",
+  "description": "Destructible entity with hit points",
+  "category": "Gameplay",
+  "fields": [
+    { "name": "max_hp", "type": "float", "default": 100, "min": 0 },
+    { "name": "current_hp", "type": "float", "default": 100, "min": 0 }
+  ]
+}

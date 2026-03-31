@@ -1,0 +1,8 @@
+{
+  "name": "Dialog",
+  "description": "Entity can speak dialog",
+  "category": "Narrative",
+  "fields": [
+    { "name": "dialog_id", "type": "string", "default": "" }
+  ]
+}

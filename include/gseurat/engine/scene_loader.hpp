@@ -20,24 +20,14 @@
 
 namespace gseurat {
 
-struct NpcData {
+struct GameObjectData {
+    std::string id;
     std::string name;
     glm::vec3 position{0.0f};
-    glm::vec4 tint{1.0f};
-    Direction facing = Direction::Down;
-    Direction reverse_facing = Direction::Up;
-    float patrol_interval = 2.0f;
-    float patrol_speed = 2.0f;
-    DialogScript dialog;
-    glm::vec4 light_color{1.0f};
-    float light_radius = 3.0f;
-    glm::vec4 aura_color_start{1.0f};
-    glm::vec4 aura_color_end{0.0f};
-    std::string script_module;  // empty = no script
-    std::string script_class;
-    std::vector<glm::vec3> waypoints;  // empty = use NpcPatrol
-    float waypoint_pause = 1.0f;
-    std::string character_id;  // empty = use hardcoded anim setup
+    glm::vec3 rotation{0.0f};         // euler angles in degrees
+    float scale = 1.0f;
+    std::string ply_file;              // optional PLY visual
+    nlohmann::json components;         // { "Health": { "max_hp": 50 }, ... }
 };
 
 struct ParallaxLayerData {
@@ -83,15 +73,6 @@ struct GaussianSplatData {
     std::string background_image;  // Optional background behind GS (sky, mountains, etc.)
 };
 
-struct PlacedObjectData {
-    std::string id;
-    std::string ply_file;                    // path to PLY asset
-    glm::vec3 position{0.0f};
-    glm::vec3 rotation{0.0f};               // euler angles in degrees
-    float scale = 1.0f;
-    bool is_static = true;                   // static = merge into terrain cloud
-    std::string character_manifest;          // if animated, path to Echidna manifest JSON
-};
 
 struct GsEmitterData {
     std::string preset;          // optional preset name ("dust_puff", "spark_shower", "magic_spiral")
@@ -137,14 +118,11 @@ struct SceneData {
     Direction player_facing = Direction::Down;
     std::string player_character_id;  // empty = use hardcoded anim setup
 
-    // NPCs
-    std::vector<NpcData> npcs;
-
     // Portals
     std::vector<PortalData> portals;
 
-    // Placed objects (terrain chunks, props, characters)
-    std::vector<PlacedObjectData> placed_objects;
+    // Game objects (unified: replaces legacy npcs[] and objects[])
+    std::vector<GameObjectData> game_objects;
 
     // Gaussian particle emitters (continuous effects in the scene)
     std::vector<GsEmitterData> gs_particle_emitters;

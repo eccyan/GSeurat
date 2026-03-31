@@ -2,6 +2,8 @@
 
 #include "gseurat/engine/async_loader.hpp"
 #include "gseurat/engine/audio_system.hpp"
+#include "gseurat/engine/component_registry.hpp"
+#include "gseurat/engine/system_scheduler.hpp"
 #ifndef _WIN32
 #include "gseurat/engine/control_server.hpp"
 #endif
@@ -25,8 +27,6 @@
 #include "gseurat/engine/gs_parallax_camera.hpp"
 #include "gseurat/engine/scene_loader.hpp"
 #include "gseurat/engine/staging_uploader.hpp"
-#include "gseurat/engine/scripting/script_system.hpp"
-#include "gseurat/engine/scripting/wren_bindings.hpp"
 #include "gseurat/engine/scene.hpp"
 #include "gseurat/engine/screen_effects.hpp"
 #include "gseurat/engine/weather_system.hpp"
@@ -141,6 +141,10 @@ public:
     AsyncLoader& async_loader() { return async_loader_; }
     StagingUploader& staging_uploader() { return staging_uploader_; }
 
+    // Game object system accessors
+    ComponentRegistry& component_registry() { return component_registry_; }
+    SystemScheduler& system_scheduler() { return system_scheduler_; }
+
 protected:
     void init_window();
     virtual void init_game_content();
@@ -197,7 +201,7 @@ protected:
     bool transitioning_ = false;
 
     // Scene data storage for round-trip serialization (kept in sync with ECS)
-    std::vector<NpcData> scene_npc_data_;
+    std::vector<GameObjectData> scene_game_object_data_;
     std::vector<PointLight> static_lights_;
 
     // Particles & Weather
@@ -223,10 +227,6 @@ protected:
     std::unordered_map<std::string, bool> game_flags_;
     float play_time_ = 0.0f;
 
-    // Scripting
-    WrenVM wren_vm_;
-    ScriptSystem script_system_;
-
     // Control server (bridge integration)
 #ifndef _WIN32
     ControlServer control_server_;
@@ -251,6 +251,11 @@ protected:
     // Async asset loading
     AsyncLoader async_loader_;
     StagingUploader staging_uploader_;
+
+    // Game object system
+    ComponentRegistry component_registry_;
+    SystemScheduler system_scheduler_;
+    void init_game_object_system();
 };
 
 }  // namespace gseurat

@@ -1,0 +1,9 @@
+{
+  "name": "CharacterModel",
+  "description": "Voxel character with animation manifest",
+  "category": "Visual",
+  "fields": [
+    { "name": "character_id", "type": "string", "default": "" },
+    { "name": "manifest", "type": "string", "default": "" }
+  ]
+}

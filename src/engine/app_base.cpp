@@ -19,6 +19,7 @@ void AppBase::set_start_state(std::unique_ptr<GameState> state) {
 }
 
 void AppBase::run() {
+    init_game_object_system();
     init_game_content();
 
     if (custom_start_state_) {
@@ -148,7 +149,6 @@ void AppBase::cleanup() {
 #endif
     async_loader_.shutdown();
     staging_uploader_.shutdown();
-    wren_vm_.shutdown();
     audio_.shutdown();
     resources_.shutdown();
     renderer_.shutdown();
@@ -159,10 +159,35 @@ void AppBase::cleanup() {
 // Virtual no-op stubs
 void AppBase::init_scene(const std::string& /*scene_path*/) {}
 void AppBase::clear_scene() {}
-void AppBase::update_game(float /*dt*/) {}
+void AppBase::update_game(float dt) { system_scheduler_.run_all(world_, dt); }
 void AppBase::update_audio(float /*dt*/) {}
 SaveData AppBase::build_save_data() const { return {}; }
 void AppBase::apply_save_data(const SaveData& /*data*/) {}
+
+void AppBase::init_game_object_system() {
+    component_registry_.register_component<ecs::Facing>("Facing",
+        [](const nlohmann::json& j) -> ecs::Facing {
+            ecs::Facing f;
+            if (j.contains("direction")) {
+                std::string dir = j["direction"].get<std::string>();
+                if (dir == "up") f.dir = Direction::Up;
+                else if (dir == "down") f.dir = Direction::Down;
+                else if (dir == "left") f.dir = Direction::Left;
+                else if (dir == "right") f.dir = Direction::Right;
+            }
+            return f;
+        },
+        [](const ecs::Facing& f) -> nlohmann::json {
+            std::string dir = "down";
+            switch (f.dir) {
+                case Direction::Up: dir = "up"; break;
+                case Direction::Down: dir = "down"; break;
+                case Direction::Left: dir = "left"; break;
+                case Direction::Right: dir = "right"; break;
+            }
+            return {{"direction", dir}};
+        });
+}
 
 // ── Shared GS scene loading ──
 
@@ -192,36 +217,47 @@ void AppBase::load_gs_scene(const SceneData& scene_data, const GsSceneOptions& o
         if (!cloud.empty()) {
             renderer_.gs_renderer().set_scale_multiplier(gs.scale_multiplier);
 
-            // Merge static placed objects
-            if (!scene_data.placed_objects.empty()) {
+            // Merge static game objects (those with empty components)
+            {
                 auto merged = cloud.gaussians();
                 uint32_t merged_count = 0;
-                for (const auto& obj : scene_data.placed_objects) {
-                    if (!obj.is_static) continue;
+                for (const auto& go : scene_data.game_objects) {
+                    if (!go.components.empty() && !go.components.is_null()) continue;  // has components = live entity
+                    if (go.ply_file.empty()) continue;
                     try {
-                        auto placed_cloud = GaussianCloud::load_ply(obj.ply_file);
+                        auto placed_cloud = GaussianCloud::load_ply(go.ply_file);
                         if (placed_cloud.empty()) continue;
-                        auto transform = glm::translate(glm::mat4(1.0f), obj.position);
-                        transform = glm::rotate(transform, glm::radians(obj.rotation.x), {1,0,0});
-                        transform = glm::rotate(transform, glm::radians(obj.rotation.y), {0,1,0});
-                        transform = glm::rotate(transform, glm::radians(obj.rotation.z), {0,0,1});
-                        transform = glm::scale(transform, glm::vec3(obj.scale));
-                        auto rot_q = glm::quat(glm::radians(obj.rotation));
+                        auto transform = glm::translate(glm::mat4(1.0f), go.position);
+                        transform = glm::rotate(transform, glm::radians(go.rotation.x), {1,0,0});
+                        transform = glm::rotate(transform, glm::radians(go.rotation.y), {0,1,0});
+                        transform = glm::rotate(transform, glm::radians(go.rotation.z), {0,0,1});
+                        transform = glm::scale(transform, glm::vec3(go.scale));
+                        auto rot_q = glm::quat(glm::radians(go.rotation));
                         auto placed_gs = placed_cloud.gaussians();
                         for (auto& g : placed_gs) {
                             g.position = glm::vec3(transform * glm::vec4(g.position, 1.0f));
-                            g.scale *= obj.scale;
+                            g.scale *= go.scale;
                             g.rotation = rot_q * g.rotation;
                         }
                         merged.insert(merged.end(), placed_gs.begin(), placed_gs.end());
                         merged_count++;
                     } catch (const std::runtime_error& e) {
-                        std::fprintf(stderr, "[GS] Warning: placed object '%s': %s\n",
-                                     obj.id.c_str(), e.what());
+                        std::fprintf(stderr, "[GS] Warning: game object '%s': %s\n",
+                                     go.id.c_str(), e.what());
                     }
                 }
                 if (merged_count > 0) {
                     cloud = GaussianCloud::from_gaussians(std::move(merged));
+                }
+            }
+
+            // Create ECS entities for game objects with components
+            for (const auto& go : scene_data.game_objects) {
+                if (go.components.empty() || go.components.is_null()) continue;
+                auto entity = world_.create();
+                world_.add<ecs::Transform>(entity, {{go.position}, {go.scale, go.scale}});
+                for (auto& [name, data] : go.components.items()) {
+                    component_registry_.attach(world_, entity, name, data);
                 }
             }
 

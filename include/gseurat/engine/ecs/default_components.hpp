@@ -24,9 +24,5 @@ struct Facing {
     Direction dir = Direction::Down;
 };
 
-struct ScriptRef {
-    std::string module_name;
-    std::string class_name;
-};
 
 }  // namespace gseurat::ecs
