@@ -179,6 +179,7 @@ export function exportSceneJson(state: SceneStoreState): object {
       };
       if (e.preset) out.preset = e.preset;
       if (e.burst_duration > 0) out.burst_duration = e.burst_duration;
+      if (e.spline) out.spline = e.spline;
       return out;
     });
   }
