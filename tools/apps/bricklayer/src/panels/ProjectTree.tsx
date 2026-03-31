@@ -159,18 +159,15 @@ export function ProjectTree() {
   const projectName = useSceneStore((st) => st.projectName);
   const activeNode = useSceneStore((st) => st.activeNode);
   const setActiveNode = useSceneStore((st) => st.setActiveNode);
-  const placedObjects = useSceneStore((st) => st.placedObjects);
+  const gameObjects = useSceneStore((st) => st.gameObjects);
+  const addGameObject = useSceneStore((st) => st.addGameObject);
+  const removeGameObject = useSceneStore((st) => st.removeGameObject);
   const staticLights = useSceneStore((st) => st.staticLights);
-  const npcs = useSceneStore((st) => st.npcs);
   const portals = useSceneStore((st) => st.portals);
   const addLight = useSceneStore((st) => st.addLight);
-  const addNpc = useSceneStore((st) => st.addNpc);
   const addPortal = useSceneStore((st) => st.addPortal);
   const gsParticleEmitters = useSceneStore((st) => st.gsParticleEmitters);
-  const addPlacedObject = useSceneStore((st) => st.addPlacedObject);
-  const removePlacedObject = useSceneStore((st) => st.removePlacedObject);
   const removeLight = useSceneStore((st) => st.removeLight);
-  const removeNpc = useSceneStore((st) => st.removeNpc);
   const removePortal = useSceneStore((st) => st.removePortal);
   const gsAnimations = useSceneStore((st) => st.gsAnimations);
   const addGsEmitter = useSceneStore((st) => st.addGsEmitter);
@@ -186,9 +183,8 @@ export function ProjectTree() {
   const collisionGridData = useSceneStore((st) => st.collisionGridData);
 
   const [sceneOpen, setSceneOpen] = useState(true);
-  const [objOpen, setObjOpen] = useState(true);
+  const [gameObjOpen, setGameObjOpen] = useState(true);
   const [lightOpen, setLightOpen] = useState(true);
-  const [npcOpen, setNpcOpen] = useState(true);
   const [portalOpen, setPortalOpen] = useState(true);
   const [emitterOpen, setEmitterOpen] = useState(true);
   const [animOpen, setAnimOpen] = useState(true);
@@ -251,38 +247,23 @@ export function ProjectTree() {
           onClick={() => { setSceneOpen(!sceneOpen); click({ kind: 'scene' }); }}
           isOpen={sceneOpen}
         >
-          {/* Objects */}
+          {/* Game Objects */}
           <TreeNode
-            icon={icons.objects} label="Objects" count={placedObjects.length}
-            arrow={objOpen ? '\u25BE' : '\u25B8'}
+            icon={icons.objects} label="Game Objects" count={gameObjects.length}
+            arrow={gameObjOpen ? '\u25BE' : '\u25B8'}
             isActive={isActive({ kind: 'scene_category', category: 'objects' })}
-            onClick={() => { setObjOpen(!objOpen); click({ kind: 'scene_category', category: 'objects' }); }}
-            actions={addBtn(() => {
-              const input = document.createElement('input');
-              input.type = 'file';
-              input.accept = '.ply';
-              input.onchange = async () => {
-                const file = input.files?.[0];
-                if (!file) return;
-                addPlacedObject(file.name, file, getCameraTarget().xyz);
-                const handle = useSceneStore.getState().projectHandle;
-                if (handle) {
-                  const { importAssetToProject } = await import('../lib/projectIO.js');
-                  await importAssetToProject(handle, file);
-                }
-              };
-              input.click();
-            })}
-            isOpen={objOpen}
+            onClick={() => { setGameObjOpen(!gameObjOpen); click({ kind: 'scene_category', category: 'objects' }); }}
+            actions={addBtn(() => addGameObject(getCameraTarget().xyz))}
+            isOpen={gameObjOpen}
           >
-            {placedObjects.map((obj) => (
+            {gameObjects.map((obj) => (
               <TreeNode
                 key={obj.id}
-                icon={icons.file}
-                label={obj.ply_file || obj.id.slice(0, 12)}
-                isActive={isActive({ kind: 'scene_item', entityType: 'object', entityId: obj.id })}
-                onClick={() => click({ kind: 'scene_item', entityType: 'object', entityId: obj.id })}
-                actions={removeBtn(() => removePlacedObject(obj.id))}
+                icon={icons.objects}
+                label={obj.name || obj.id.slice(0, 12)}
+                isActive={isActive({ kind: 'scene_item', entityType: 'game_object', entityId: obj.id })}
+                onClick={() => click({ kind: 'scene_item', entityType: 'game_object', entityId: obj.id })}
+                actions={removeBtn(() => removeGameObject(obj.id))}
               />
             ))}
           </TreeNode>
@@ -304,27 +285,6 @@ export function ProjectTree() {
                 isActive={isActive({ kind: 'scene_item', entityType: 'light', entityId: l.id })}
                 onClick={() => click({ kind: 'scene_item', entityType: 'light', entityId: l.id })}
                 actions={removeBtn(() => removeLight(l.id))}
-              />
-            ))}
-          </TreeNode>
-
-          {/* NPCs */}
-          <TreeNode
-            icon={icons.npcs} label="NPCs" count={npcs.length}
-            arrow={npcOpen ? '\u25BE' : '\u25B8'}
-            isActive={isActive({ kind: 'scene_category', category: 'npcs' })}
-            onClick={() => { setNpcOpen(!npcOpen); click({ kind: 'scene_category', category: 'npcs' }); }}
-            actions={addBtn(() => addNpc(getCameraTarget().xyz))}
-            isOpen={npcOpen}
-          >
-            {npcs.map((n) => (
-              <TreeNode
-                key={n.id}
-                icon={icons.npcs}
-                label={n.name || n.id.slice(0, 12)}
-                isActive={isActive({ kind: 'scene_item', entityType: 'npc', entityId: n.id })}
-                onClick={() => click({ kind: 'scene_item', entityType: 'npc', entityId: n.id })}
-                actions={removeBtn(() => removeNpc(n.id))}
               />
             ))}
           </TreeNode>
