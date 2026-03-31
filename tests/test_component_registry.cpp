@@ -12,8 +12,8 @@ struct Health {
 };
 
 struct Interactable {
-    std::string prompt = "Interact";
     float radius = 2.0f;
+    float range = 5.0f;
     bool one_shot = false;
 };
 
@@ -104,23 +104,23 @@ int main() {
         reg.register_component<Interactable>("Interactable",
             [](const nlohmann::json& j) -> Interactable {
                 Interactable i;
-                if (j.contains("prompt")) i.prompt = j["prompt"].get<std::string>();
                 if (j.contains("radius")) i.radius = j["radius"].get<float>();
+                if (j.contains("range")) i.range = j["range"].get<float>();
                 if (j.contains("one_shot")) i.one_shot = j["one_shot"].get<bool>();
                 return i;
             },
             [](const Interactable& i) -> nlohmann::json {
-                return {{"prompt", i.prompt}, {"radius", i.radius}, {"one_shot", i.one_shot}};
+                return {{"radius", i.radius}, {"range", i.range}, {"one_shot", i.one_shot}};
             });
 
         ecs::World world;
         auto entity = world.create();
         reg.attach(world, entity, "Health", {{"max_hp", 200}});
-        reg.attach(world, entity, "Interactable", {{"prompt", "Open"}, {"radius", 3.0f}});
+        reg.attach(world, entity, "Interactable", {{"radius", 3.0f}, {"range", 10.0f}});
 
         assert(world.try_get<Health>(entity)->max_hp == 200.0f);
-        assert(world.try_get<Interactable>(entity)->prompt == "Open");
         assert(world.try_get<Interactable>(entity)->radius == 3.0f);
+        assert(world.try_get<Interactable>(entity)->range == 10.0f);
 
         auto names = reg.registered_names();
         assert(names.size() == 2);
