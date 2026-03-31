@@ -267,42 +267,46 @@ SceneData SceneLoader::from_json(const nlohmann::json& j) {
         data.player_character_id = p.value("character_id", "");
     }
 
-    // NPCs
+    // Game objects (new format)
+    if (j.contains("game_objects")) {
+        for (const auto& go : j["game_objects"]) {
+            GameObjectData obj;
+            obj.id = go.value("id", "");
+            obj.name = go.value("name", "");
+            if (go.contains("position")) obj.position = parse_vec3(go["position"]);
+            if (go.contains("rotation")) obj.rotation = parse_vec3(go["rotation"]);
+            obj.scale = go.value("scale", 1.0f);
+            obj.ply_file = go.value("ply_file", "");
+            if (go.contains("components")) obj.components = go["components"];
+            else obj.components = nlohmann::json::object();
+            data.game_objects.push_back(std::move(obj));
+        }
+    }
+
+    // Migrate legacy npcs[] → game_objects[]
     if (j.contains("npcs")) {
         for (const auto& npc_j : j["npcs"]) {
-            NpcData npc;
-            npc.name = npc_j.value("name", "");
-            npc.position = parse_vec3(npc_j["position"]);
-            if (npc_j.contains("tint")) npc.tint = parse_vec4(npc_j["tint"]);
-            if (npc_j.contains("facing")) npc.facing = parse_direction(npc_j["facing"]);
-            if (npc_j.contains("reverse_facing"))
-                npc.reverse_facing = parse_direction(npc_j["reverse_facing"]);
-            npc.patrol_interval = npc_j.value("patrol_interval", 2.0f);
-            npc.patrol_speed = npc_j.value("patrol_speed", 2.0f);
-            if (npc_j.contains("dialog")) {
-                for (const auto& line_j : npc_j["dialog"]) {
-                    npc.dialog.lines.push_back({
-                        line_j["speaker_key"].get<std::string>(),
-                        line_j["text_key"].get<std::string>()
-                    });
-                }
+            GameObjectData go;
+            go.id = "npc_" + npc_j.value("name", "unnamed");
+            go.name = npc_j.value("name", "");
+            if (npc_j.contains("position")) go.position = parse_vec3(npc_j["position"]);
+            go.scale = 1.0f;
+            go.components = nlohmann::json::object();
+            if (npc_j.contains("facing")) {
+                go.components["Facing"] = {{"direction", npc_j["facing"]}};
             }
-            if (npc_j.contains("light_color")) npc.light_color = parse_vec4(npc_j["light_color"]);
-            npc.light_radius = npc_j.value("light_radius", 3.0f);
-            if (npc_j.contains("aura_color_start"))
-                npc.aura_color_start = parse_vec4(npc_j["aura_color_start"]);
-            if (npc_j.contains("aura_color_end"))
-                npc.aura_color_end = parse_vec4(npc_j["aura_color_end"]);
-            npc.script_module = npc_j.value("script_module", "");
-            npc.script_class = npc_j.value("script_class", "");
-            if (npc_j.contains("waypoints")) {
-                for (const auto& wp : npc_j["waypoints"]) {
-                    npc.waypoints.push_back(parse_vec3(wp));
-                }
+            if (npc_j.contains("waypoints") && npc_j["waypoints"].is_array() && !npc_j["waypoints"].empty()) {
+                go.components["Patrol"] = {
+                    {"speed", npc_j.value("patrol_speed", 2.0f)},
+                    {"waypoints", npc_j["waypoints"]},
+                    {"pause", npc_j.value("waypoint_pause", 1.0f)}
+                };
             }
-            npc.waypoint_pause = npc_j.value("waypoint_pause", 1.0f);
-            npc.character_id = npc_j.value("character_id", "");
-            data.npcs.push_back(std::move(npc));
+            std::string char_id = npc_j.value("character_id", "");
+            if (!char_id.empty()) {
+                go.components["CharacterModel"] = {{"character_id", char_id}};
+            }
+            data.game_objects.push_back(std::move(go));
         }
     }
 
@@ -338,18 +342,22 @@ SceneData SceneLoader::from_json(const nlohmann::json& j) {
         }
     }
 
-    // Placed objects
+    // Migrate legacy objects[] → game_objects[]
     if (j.contains("objects")) {
         for (const auto& obj_j : j["objects"]) {
-            PlacedObjectData obj;
-            obj.id = obj_j.value("id", "");
-            obj.ply_file = obj_j["ply_file"].get<std::string>();
-            if (obj_j.contains("position")) obj.position = parse_vec3(obj_j["position"]);
-            if (obj_j.contains("rotation")) obj.rotation = parse_vec3(obj_j["rotation"]);
-            obj.scale = obj_j.value("scale", 1.0f);
-            obj.is_static = obj_j.value("is_static", true);
-            obj.character_manifest = obj_j.value("character_manifest", "");
-            data.placed_objects.push_back(std::move(obj));
+            GameObjectData go;
+            go.id = obj_j.value("id", "");
+            go.name = go.id;
+            if (obj_j.contains("position")) go.position = parse_vec3(obj_j["position"]);
+            if (obj_j.contains("rotation")) go.rotation = parse_vec3(obj_j["rotation"]);
+            go.scale = obj_j.value("scale", 1.0f);
+            go.ply_file = obj_j.value("ply_file", "");
+            go.components = nlohmann::json::object();
+            std::string manifest = obj_j.value("character_manifest", "");
+            if (!manifest.empty()) {
+                go.components["CharacterModel"] = {{"manifest", manifest}};
+            }
+            data.game_objects.push_back(std::move(go));
         }
     }
 
@@ -944,44 +952,21 @@ nlohmann::json SceneLoader::to_json(const SceneData& data) {
         j["player"] = p;
     }
 
-    // NPCs
-    if (!data.npcs.empty()) {
-        nlohmann::json npcs = nlohmann::json::array();
-        for (const auto& npc : data.npcs) {
-            nlohmann::json npc_j;
-            npc_j["name"] = npc.name;
-            npc_j["position"] = vec3_json(npc.position);
-            npc_j["tint"] = vec4_json(npc.tint);
-            npc_j["facing"] = direction_to_string(npc.facing);
-            npc_j["reverse_facing"] = direction_to_string(npc.reverse_facing);
-            npc_j["patrol_interval"] = npc.patrol_interval;
-            npc_j["patrol_speed"] = npc.patrol_speed;
-            if (!npc.dialog.lines.empty()) {
-                nlohmann::json dialog = nlohmann::json::array();
-                for (const auto& line : npc.dialog.lines) {
-                    dialog.push_back({{"speaker_key", line.speaker_key}, {"text_key", line.text_key}});
-                }
-                npc_j["dialog"] = dialog;
-            }
-            npc_j["light_color"] = vec4_json(npc.light_color);
-            npc_j["light_radius"] = npc.light_radius;
-            npc_j["aura_color_start"] = vec4_json(npc.aura_color_start);
-            npc_j["aura_color_end"] = vec4_json(npc.aura_color_end);
-            if (!npc.script_module.empty()) {
-                npc_j["script_module"] = npc.script_module;
-                npc_j["script_class"] = npc.script_class;
-            }
-            if (!npc.waypoints.empty()) {
-                nlohmann::json wps = nlohmann::json::array();
-                for (const auto& wp : npc.waypoints) wps.push_back(vec3_json(wp));
-                npc_j["waypoints"] = wps;
-                npc_j["waypoint_pause"] = npc.waypoint_pause;
-            }
-            if (!npc.character_id.empty())
-                npc_j["character_id"] = npc.character_id;
-            npcs.push_back(npc_j);
+    // Game objects
+    if (!data.game_objects.empty()) {
+        nlohmann::json arr = nlohmann::json::array();
+        for (const auto& go : data.game_objects) {
+            nlohmann::json obj;
+            obj["id"] = go.id;
+            obj["name"] = go.name;
+            obj["position"] = vec3_json(go.position);
+            obj["rotation"] = vec3_json(go.rotation);
+            obj["scale"] = go.scale;
+            if (!go.ply_file.empty()) obj["ply_file"] = go.ply_file;
+            obj["components"] = go.components.is_null() ? nlohmann::json::object() : go.components;
+            arr.push_back(obj);
         }
-        j["npcs"] = npcs;
+        j["game_objects"] = arr;
     }
 
     // Background parallax layers
@@ -1019,23 +1004,6 @@ nlohmann::json SceneLoader::to_json(const SceneData& data) {
         j["portals"] = portals;
     }
 
-    // Placed objects
-    if (!data.placed_objects.empty()) {
-        nlohmann::json objects = nlohmann::json::array();
-        for (const auto& obj : data.placed_objects) {
-            nlohmann::json obj_j;
-            obj_j["id"] = obj.id;
-            obj_j["ply_file"] = obj.ply_file;
-            obj_j["position"] = vec3_json(obj.position);
-            obj_j["rotation"] = vec3_json(obj.rotation);
-            obj_j["scale"] = obj.scale;
-            obj_j["is_static"] = obj.is_static;
-            if (!obj.character_manifest.empty())
-                obj_j["character_manifest"] = obj.character_manifest;
-            objects.push_back(obj_j);
-        }
-        j["objects"] = objects;
-    }
 
     // Gaussian particle emitters
     if (!data.gs_particle_emitters.empty()) {

@@ -195,7 +195,7 @@ protected:
     bool transitioning_ = false;
 
     // Scene data storage for round-trip serialization (kept in sync with ECS)
-    std::vector<NpcData> scene_npc_data_;
+    std::vector<GameObjectData> scene_game_object_data_;
     std::vector<PointLight> static_lights_;
 
     // Particles & Weather
