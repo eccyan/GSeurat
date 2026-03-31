@@ -10,6 +10,7 @@ import { NpcMarkers } from './NpcMarkers.js';
 import { PortalMarkers } from './PortalMarkers.js';
 import { ObjectMarkers } from './ObjectMarkers.js';
 import { GsEmitterMarkers } from './GsEmitterMarkers.js';
+import { GsEmitterParticles } from './GsEmitterParticles.js';
 import { GsAnimationMarkers } from './GsAnimationMarkers.js';
 import { VfxInstanceMarkers } from './VfxInstanceMarkers.js';
 import { VfxRenderer } from './VfxRenderer.js';
@@ -304,6 +305,7 @@ function SceneContent() {
       <NpcMarkers />
       <PortalMarkers />
       <GsEmitterMarkers />
+      <GsEmitterParticles />
       <GsAnimationMarkers />
       <VfxInstanceMarkers />
       <VfxRenderer />
