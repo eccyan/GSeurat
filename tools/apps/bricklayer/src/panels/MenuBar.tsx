@@ -4,7 +4,7 @@ import { exportPly } from '../lib/plyExport.js';
 import { exportSceneJson } from '../lib/sceneExport.js';
 import { computeFingerprint, isStructuralChange, type SceneFingerprint } from '../lib/sceneFingerprint.js';
 import { hasFileSystemAccess, openProjectDirectory, saveProject as saveProjectDir, loadProject as loadProjectDir, saveProjectAsZip, loadProjectFromZip, importAssetToProject } from '../lib/projectIO.js';
-import { sendBridgeCommand } from '@gseurat/engine-client';
+import { sendBridgeCommand, sendBridgeCommands } from '@gseurat/engine-client';
 import type { BricklayerFile } from '../store/types.js';
 
 const styles: Record<string, React.CSSProperties> = {
@@ -283,11 +283,32 @@ export function MenuBar({ onImport }: { onImport: () => void }) {
     download(new Blob([json], { type: 'application/json' }), `${s.projectName || 'scene'}.json`);
   };
 
+  // Push VFX preset files to engine via write_temp_file before scene load.
+  // The engine resolves vfx_file paths relative to its working directory,
+  // so we write them to the expected paths before the scene references them.
+  const pushVfxFiles = (state: ReturnType<typeof useSceneStore.getState>) => {
+    const cmds: Record<string, unknown>[] = [];
+    for (const inst of state.vfxInstances) {
+      if (inst.vfx_preset && inst.vfx_file) {
+        cmds.push({
+          cmd: 'write_temp_file',
+          path: inst.vfx_file,
+          content: JSON.stringify(inst.vfx_preset, null, 2),
+        });
+      }
+    }
+    return cmds;
+  };
+
   const handleOpenInStaging = () => {
     const s = useSceneStore.getState();
     const scene = exportSceneJson(s);
     const json = JSON.stringify(scene);
-    sendBridgeCommand({ cmd: 'load_scene_json', json });
+    const cmds: Record<string, unknown>[] = [
+      ...pushVfxFiles(s),
+      { cmd: 'load_scene_json', json },
+    ];
+    sendBridgeCommands(cmds);
   };
 
   // Auto-sync: debounced incremental update to Staging.
@@ -311,12 +332,13 @@ export function MenuBar({ onImport }: { onImport: () => void }) {
         const json = JSON.stringify(scene);
         const fp = computeFingerprint(scene);
 
+        const vfxCmds = pushVfxFiles(s);
         if (isStructuralChange(prevFingerprint.current, fp)) {
           // Structural change: full reload (re-uploads PLY)
-          sendBridgeCommand({ cmd: 'load_scene_json', json });
+          sendBridgeCommands([...vfxCmds, { cmd: 'load_scene_json', json }]);
         } else {
           // Property-only change: lightweight update (no PLY reload)
-          sendBridgeCommand({ cmd: 'update_scene_data', json });
+          sendBridgeCommands([...vfxCmds, { cmd: 'update_scene_data', json }]);
         }
         prevFingerprint.current = fp;
       }, 2000);  // 2s debounce
