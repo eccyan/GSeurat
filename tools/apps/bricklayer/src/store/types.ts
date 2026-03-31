@@ -230,6 +230,13 @@ export interface GsParticleEmitterData {
   emission: number;
   spawn_region: { shape: string; center?: [number, number, number]; radius?: number; half_extents?: [number, number, number] };
   burst_duration: number;
+  spline?: {
+    mode: 'emitter_path' | 'particle_path';
+    control_points: [number, number, number][];
+    emitter_speed?: number;
+    path_spread?: number;
+    align_to_tangent?: boolean;
+  };
 }
 
 // ── VFX Instances (Méliès preset placed on map) ──

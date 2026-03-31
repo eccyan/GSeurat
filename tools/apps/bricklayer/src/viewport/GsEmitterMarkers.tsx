@@ -1,7 +1,46 @@
-import React from 'react';
-import { Html } from '@react-three/drei';
+import React, { useMemo } from 'react';
+import { Html, Line } from '@react-three/drei';
 import { useSceneStore } from '../store/useSceneStore.js';
 import type { GsParticleEmitterData } from '../store/types.js';
+import { sampleCatmullRom } from '../lib/catmullRom.js';
+
+function SplineGizmo({ emitter, isSelected }: {
+  emitter: GsParticleEmitterData;
+  isSelected: boolean;
+}) {
+  const spline = emitter.spline;
+  const points = spline?.control_points;
+
+  const curvePoints = useMemo(
+    () => (points && points.length >= 2) ? sampleCatmullRom(points, 64) : null,
+    [points],
+  );
+
+  if (!spline || !curvePoints) return null;
+
+  const color = spline.mode === 'emitter_path' ? '#22c55e' : '#f97316';
+  const opacity = isSelected ? 0.8 : 0.3;
+
+  return (
+    <>
+      {/* Smooth spline curve */}
+      <Line
+        points={curvePoints}
+        color={color}
+        lineWidth={isSelected ? 3 : 1.5}
+        opacity={opacity}
+        transparent
+      />
+      {/* Control point handles */}
+      {spline.control_points.map((pt, i) => (
+        <mesh key={i} position={pt}>
+          <sphereGeometry args={[isSelected ? 0.25 : 0.15, 8, 8]} />
+          <meshBasicMaterial color={color} opacity={opacity} transparent />
+        </mesh>
+      ))}
+    </>
+  );
+}
 
 function EmitterMarker({ emitter, isSelected, onSelect }: {
   emitter: GsParticleEmitterData;
@@ -53,6 +92,8 @@ function EmitterMarker({ emitter, isSelected, onSelect }: {
           />
         </mesh>
       )}
+      {/* Spline path gizmo */}
+      <SplineGizmo emitter={emitter} isSelected={isSelected} />
       {/* Label */}
       {isSelected && (
         <Html position={[0, 1.2, 0]} center>

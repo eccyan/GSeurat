@@ -266,7 +266,25 @@
         },
         "spawn_offset_min": { "$ref": "#/definitions/vec3", "description": "Deprecated: use region instead" },
         "spawn_offset_max": { "$ref": "#/definitions/vec3", "description": "Deprecated: use region instead" },
-        "burst_duration": { "type": "number", "minimum": 0 }
+        "burst_duration": { "type": "number", "minimum": 0 },
+        "spline": {
+          "type": "object",
+          "description": "Optional spline path for emitter movement or particle flight",
+          "required": ["mode", "control_points"],
+          "properties": {
+            "mode": { "type": "string", "enum": ["emitter_path", "particle_path"] },
+            "control_points": {
+              "type": "array",
+              "items": { "$ref": "#/definitions/vec3" },
+              "minItems": 2,
+              "description": "3D control points in local space (minimum 2)"
+            },
+            "emitter_speed": { "type": "number", "minimum": 0, "description": "Cycles/sec along spline (emitter_path)" },
+            "path_spread": { "type": "number", "minimum": 0, "description": "Lateral offset from spline (particle_path)" },
+            "align_to_tangent": { "type": "boolean", "description": "Orient particles along spline tangent" }
+          },
+          "additionalProperties": false
+        }
       },
       "additionalProperties": false
     },

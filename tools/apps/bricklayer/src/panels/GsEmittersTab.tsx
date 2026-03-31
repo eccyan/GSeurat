@@ -164,6 +164,120 @@ function EmitterEditor({ emitter }: { emitter: GsParticleEmitterData }) {
         <NumberInput value={emitter.burst_duration} min={0} step={0.1}
           onChange={(v) => updateGsEmitter(emitter.id, { burst_duration: v })} style={styles.input} />
       </div>
+
+      {/* Spline Path */}
+      <span style={styles.sectionLabel}>Spline Path</span>
+      <div style={styles.row}>
+        <span style={{ fontSize: 12, minWidth: 70 }}>Mode</span>
+        <select style={styles.select}
+          value={emitter.spline?.mode ?? 'none'}
+          onChange={(e) => {
+            const mode = e.target.value;
+            if (mode === 'none') {
+              updateGsEmitter(emitter.id, { spline: undefined });
+            } else {
+              const pts = emitter.spline?.control_points?.length
+                ? emitter.spline.control_points
+                : [[0, 0, 0], [0, 5, 0]] as [number, number, number][];
+              updateGsEmitter(emitter.id, {
+                spline: {
+                  ...emitter.spline,
+                  mode: mode as 'emitter_path' | 'particle_path',
+                  control_points: pts,
+                },
+              });
+            }
+          }}>
+          <option value="none">None</option>
+          <option value="emitter_path">Emitter Path</option>
+          <option value="particle_path">Particle Path</option>
+        </select>
+      </div>
+      {emitter.spline && (
+        <>
+          {emitter.spline.control_points.map((pt, i) => (
+            <div key={i}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: 10, color: '#666' }}>P{i}</span>
+                <button
+                  onClick={() => {
+                    if (emitter.spline!.control_points.length <= 2) return;
+                    const pts = emitter.spline!.control_points.filter((_, idx) => idx !== i);
+                    updateGsEmitter(emitter.id, {
+                      spline: { ...emitter.spline!, control_points: pts },
+                    });
+                  }}
+                  disabled={emitter.spline!.control_points.length <= 2}
+                  style={{
+                    background: 'transparent', border: 'none', color: '#666',
+                    cursor: emitter.spline!.control_points.length <= 2 ? 'not-allowed' : 'pointer',
+                    fontSize: 14, padding: '0 4px',
+                    opacity: emitter.spline!.control_points.length <= 2 ? 0.3 : 0.7,
+                  }}>
+                  x
+                </button>
+              </div>
+              <Vec3Input value={pt} step={0.5}
+                onChange={(v) => {
+                  const pts = [...emitter.spline!.control_points];
+                  pts[i] = v;
+                  updateGsEmitter(emitter.id, {
+                    spline: { ...emitter.spline!, control_points: pts },
+                  });
+                }} style={styles.input} />
+            </div>
+          ))}
+          <button
+            onClick={() => {
+              const pts = emitter.spline!.control_points;
+              const last = pts[pts.length - 1];
+              const prev = pts[pts.length - 2] ?? last;
+              const next: [number, number, number] = [
+                last[0] + (last[0] - prev[0]),
+                last[1] + (last[1] - prev[1]),
+                last[2] + (last[2] - prev[2]),
+              ];
+              updateGsEmitter(emitter.id, {
+                spline: { ...emitter.spline!, control_points: [...pts, next] },
+              });
+            }}
+            style={{
+              background: '#1a1a2e', border: '1px solid #333', borderRadius: 3,
+              color: '#999', fontSize: 11, padding: '3px 8px', cursor: 'pointer',
+              marginTop: 2,
+            }}>
+            + Add Point
+          </button>
+          {emitter.spline.mode === 'emitter_path' && (
+            <div style={styles.row}>
+              <span style={{ fontSize: 12, minWidth: 70 }}>Speed</span>
+              <NumberInput value={emitter.spline.emitter_speed ?? 1} min={0} step={0.1}
+                onChange={(v) => updateGsEmitter(emitter.id, {
+                  spline: { ...emitter.spline!, emitter_speed: v },
+                })} style={styles.input} />
+            </div>
+          )}
+          {emitter.spline.mode === 'particle_path' && (
+            <>
+              <div style={styles.row}>
+                <span style={{ fontSize: 12, minWidth: 70 }}>Spread</span>
+                <NumberInput value={emitter.spline.path_spread ?? 0} min={0} step={0.1}
+                  onChange={(v) => updateGsEmitter(emitter.id, {
+                    spline: { ...emitter.spline!, path_spread: v },
+                  })} style={styles.input} />
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                <input type="checkbox"
+                  checked={emitter.spline.align_to_tangent ?? false}
+                  onChange={(e) => updateGsEmitter(emitter.id, {
+                    spline: { ...emitter.spline!, align_to_tangent: e.target.checked },
+                  })} />
+                <span style={{ fontSize: 12, color: '#ccc' }}>Align to tangent</span>
+              </div>
+            </>
+          )}
+        </>
+      )}
     </div>
   );
 }
