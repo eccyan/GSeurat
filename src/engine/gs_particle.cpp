@@ -34,6 +34,7 @@ void GaussianParticleEmitter::configure(const GsEmitterConfig& config) {
 
 void GaussianParticleEmitter::set_position(const glm::vec3& pos) {
     config_.position = pos;
+    base_position_ = pos;  // keep spline origin in sync
 }
 
 void GaussianParticleEmitter::set_active(bool active) {
