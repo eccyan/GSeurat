@@ -413,6 +413,166 @@ int main() {
         std::printf("PASS: gs_animation reform config round-trip\n");
     }
 
+    // ═══════════════════════════════════════════════
+    // 3. Spline-based particle emission
+    // ═══════════════════════════════════════════════
+
+    // 3.1 EmitterPath: emitter position moves along spline
+    {
+        GaussianParticleEmitter emitter;
+        GsEmitterConfig config;
+        config.spawn_rate = 100.0f;
+        config.lifetime_min = 2.0f;
+        config.lifetime_max = 2.0f;
+        config.position = {0.0f, 0.0f, 0.0f};
+        config.velocity_min = {0.0f, 0.0f, 0.0f};
+        config.velocity_max = {0.0f, 0.0f, 0.0f};
+        config.acceleration = {0.0f, 0.0f, 0.0f};
+
+        SplineConfig spline;
+        spline.mode = SplineMode::EmitterPath;
+        spline.emitter_speed = 1.0f;  // 1 cycle/sec
+        spline.path.control_points = {
+            {0.0f, 0.0f, 0.0f},
+            {10.0f, 0.0f, 0.0f},
+            {10.0f, 10.0f, 0.0f},
+        };
+        config.spline = spline;
+        emitter.configure(config);
+        emitter.set_active(true);
+
+        // After 0.5s at 1 cycle/sec, emitter should be midway along spline
+        emitter.update(0.5f);
+
+        std::vector<Gaussian> out;
+        emitter.gather(out);
+        assert(!out.empty());
+
+        // Particles should be near the spline midpoint, not all at origin
+        bool found_offset = false;
+        for (const auto& g : out) {
+            if (g.position.x > 2.0f) { found_offset = true; break; }
+        }
+        assert(found_offset);
+
+        std::printf("PASS: EmitterPath moves emitter along spline\n");
+    }
+
+    // 3.2 ParticlePath: particles follow spline over lifetime
+    {
+        GaussianParticleEmitter emitter;
+        GsEmitterConfig config;
+        config.spawn_rate = 50.0f;
+        config.lifetime_min = 1.0f;
+        config.lifetime_max = 1.0f;
+        config.position = {0.0f, 0.0f, 0.0f};
+        config.velocity_min = {0.0f, 0.0f, 0.0f};
+        config.velocity_max = {0.0f, 0.0f, 0.0f};
+        config.acceleration = {0.0f, 0.0f, 0.0f};
+        config.spawn_region.radius = 0.0f;  // point spawn
+
+        SplineConfig spline;
+        spline.mode = SplineMode::ParticlePath;
+        spline.path.control_points = {
+            {0.0f, 0.0f, 0.0f},
+            {0.0f, 10.0f, 0.0f},
+        };
+        config.spline = spline;
+        emitter.configure(config);
+        emitter.set_active(true);
+
+        // Spawn particles, then let them age
+        emitter.update(0.05f);  // spawn some
+        emitter.set_active(false);
+        emitter.update(0.5f);   // age to ~50% of lifetime
+
+        std::vector<Gaussian> out;
+        emitter.gather(out);
+        assert(!out.empty());
+
+        // Particles at ~50% lifetime should be around y=5 (midpoint of spline)
+        for (const auto& g : out) {
+            assert(g.position.y > 2.0f);  // should have moved along spline
+        }
+
+        std::printf("PASS: ParticlePath moves particles along spline\n");
+    }
+
+    // 3.3 ParticlePath with path_spread gives lateral offset
+    {
+        GaussianParticleEmitter emitter;
+        GsEmitterConfig config;
+        config.spawn_rate = 200.0f;
+        config.lifetime_min = 1.0f;
+        config.lifetime_max = 1.0f;
+        config.position = {0.0f, 0.0f, 0.0f};
+        config.velocity_min = {0.0f, 0.0f, 0.0f};
+        config.velocity_max = {0.0f, 0.0f, 0.0f};
+        config.acceleration = {0.0f, 0.0f, 0.0f};
+        config.spawn_region.radius = 0.0f;
+
+        SplineConfig spline;
+        spline.mode = SplineMode::ParticlePath;
+        spline.path_spread = 5.0f;  // significant lateral spread
+        // Use a horizontal spline so tangent cross up-vector is non-zero
+        spline.path.control_points = {
+            {0.0f, 0.0f, 0.0f},
+            {10.0f, 0.0f, 0.0f},
+        };
+        config.spline = spline;
+        emitter.configure(config);
+        emitter.set_active(true);
+
+        emitter.update(0.1f);
+        emitter.set_active(false);
+        emitter.update(0.3f);
+
+        std::vector<Gaussian> out;
+        emitter.gather(out);
+        assert(!out.empty());
+
+        // With spread=5 and horizontal tangent, some particles should have z offset
+        bool found_lateral = false;
+        for (const auto& g : out) {
+            if (std::fabs(g.position.z) > 0.1f) {
+                found_lateral = true;
+                break;
+            }
+        }
+        assert(found_lateral);
+
+        std::printf("PASS: ParticlePath with path_spread gives lateral offset\n");
+    }
+
+    // 3.4 No spline: standard kinematic update (regression check)
+    {
+        GaussianParticleEmitter emitter;
+        GsEmitterConfig config;
+        config.spawn_rate = 50.0f;
+        config.lifetime_min = 2.0f;
+        config.lifetime_max = 2.0f;
+        config.position = {0.0f, 0.0f, 0.0f};
+        config.velocity_min = {0.0f, 5.0f, 0.0f};
+        config.velocity_max = {0.0f, 5.0f, 0.0f};
+        config.acceleration = {0.0f, 0.0f, 0.0f};
+        config.spawn_region.radius = 0.0f;  // point spawn at origin
+        // No spline
+        emitter.configure(config);
+        emitter.set_active(true);
+        emitter.update(0.1f);
+
+        std::vector<Gaussian> out;
+        emitter.gather(out);
+        assert(!out.empty());
+
+        // Particles should have moved in +Y via velocity (no spline override)
+        for (const auto& g : out) {
+            assert(g.position.y > 0.0f);
+        }
+
+        std::printf("PASS: No spline uses standard kinematic update\n");
+    }
+
     std::printf("\nAll GS particle/animator tests passed.\n");
     return 0;
 }
