@@ -61,24 +61,31 @@ tools/
 
 ### Packages
 
-| Package | Port | Description |
-|---|---|---|
-| `packages/engine-client` | — | WebSocket client with typed command/event API for all engine control server messages |
-| `packages/asset-types` | — | Shared TypeScript types for scenes, tilesets, animations, particles, audio configs |
-| `packages/ai-providers` | — | Unified async interface to Ollama, ComfyUI, and AudioCraft with availability detection |
-| `packages/ui-kit` | — | Shared React components: canvas, timeline, color picker, property panel, toolbar |
+| Package | Description |
+|---|---|
+| `packages/engine-client` | WebSocket client with typed command/event API for all engine control server messages |
+| `packages/asset-types` | Shared TypeScript types for scenes, tilesets, animations, particles, audio configs |
+| `packages/ai-providers` | Unified async interface to Ollama, ComfyUI, and AudioCraft with availability detection |
+| `packages/ui-kit` | Shared React components: canvas, timeline, color picker, property panel, toolbar |
+| `packages/simulation-wasm` | C++ particle + animation simulation compiled to WebAssembly for web tool previews |
+| `packages/vfx-utils` | Shared utilities: Catmull-Rom spline evaluation, PLY loader, WASM module loader |
 
 ### Apps
 
 | App | Dev Port | Description |
 |---|---|---|
 | `apps/bridge` | 9100 / 9101 | Unix socket to WebSocket bridge and REST file API |
-| `apps/level-designer` | 5173 | Tile painting, NPC/light/portal placement, live engine sync |
+| `apps/bricklayer` | 5180 | 3DGS map editor: voxel terrain, Game Objects with component composition, emitters, animations, VFX, lights |
+| `apps/melies` | 5181 | VFX editor: particle emitters, GS animations, spline paths, object PLY layers, light layers |
+| `apps/echidna` | 5179 | Voxel character editor: .vox import, body parts, bone posing, PLY export |
+| `apps/level-designer` | 5173 | Tile painting, NPC/light/portal placement, live engine sync (legacy tile-based) |
 | `apps/pixel-painter` | 5174 | 16x16 pixel art editor for tiles and sprite sheets |
 | `apps/keyframe-animator` | 5175 | Animation clip and state machine editor |
 | `apps/particle-designer` | 5176 | Visual EmitterConfig editor with canvas simulation |
 | `apps/audio-composer` | 5177 | 4-layer interactive music editor and WAV exporter |
 | `apps/sfx-designer` | 5178 | Procedural SFX synthesis and waveform editor |
+
+The C++ **Staging** app (`gseurat_staging`) is built alongside the engine, not as a web tool. It connects to the bridge for live scene preview with ImGui panels.
 
 ## Shared Packages
 
