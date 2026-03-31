@@ -37,6 +37,7 @@ private:
 
     // Character Gaussians (for walk animation bone transforms)
     bool character_spawned_ = false;
+    uint32_t debug_frame_ = 0;
     glm::vec3 character_origin_{0.0f};
     std::vector<Gaussian> map_gaussians_;  // original map data before character merge
 

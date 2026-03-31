@@ -34,11 +34,8 @@ void IslandDemoState::on_enter(AppBase& app) {
     auto scene_data = SceneLoader::load(scene_path_);
     if (scene_data.collision) {
         collision_grid_ = *scene_data.collision;
-        // Grid origin comes from AABB min XZ of the cloud
-        if (app.renderer().has_gs_cloud()) {
-            auto aabb = app.renderer().gs_chunk_grid().cloud_bounds();
-            grid_origin_ = {aabb.min.x, aabb.min.z};
-        }
+        // Grid origin is (0,0) — scene coordinates match grid coordinates
+        grid_origin_ = {0.0f, 0.0f};
     }
 
     // Determine player start position
@@ -48,9 +45,8 @@ void IslandDemoState::on_enter(AppBase& app) {
         auto aabb = app.renderer().gs_chunk_grid().cloud_bounds();
         player_pos = aabb.center();
     }
-    // Apply AABB offset (voxel→world coordinate transform)
-    player_pos.x += app.gs_aabb_offset().x;
-    player_pos.z += app.gs_aabb_offset().y;
+    // Note: player_pos is in scene/terrain coordinates — no AABB offset needed.
+    // The collision grid also uses scene coordinates.
 
     // Create player entity
     player_entity_ = app.world().create();
@@ -242,8 +238,14 @@ void IslandDemoState::update_player(AppBase& app, float dt) {
         if (gx >= 0 && gx < static_cast<int>(collision_grid_.width) &&
             gz >= 0 && gz < static_cast<int>(collision_grid_.height)) {
             // Check solid — if solid, undo movement
-            if (collision_grid_.is_solid(static_cast<uint32_t>(gx),
-                                          static_cast<uint32_t>(gz))) {
+            bool solid = collision_grid_.is_solid(static_cast<uint32_t>(gx),
+                                                   static_cast<uint32_t>(gz));
+            if (debug_frame_++ % 120 == 0) {
+                std::fprintf(stderr, "[Island] pos=(%.1f,%.1f,%.1f) local=(%.1f,%.1f) grid=(%d,%d) solid=%d vel=(%.2f,%.2f)\n",
+                    transform->position.x, transform->position.y, transform->position.z,
+                    local_x, local_z, gx, gz, solid, player_velocity_.x, player_velocity_.z);
+            }
+            if (solid) {
                 transform->position -= player_velocity_ * dt;
             } else {
                 // Snap to elevation
