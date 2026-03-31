@@ -31,26 +31,19 @@ export function exportSceneJson(state: SceneStoreState): object {
     });
   }
 
-  if (state.npcs.length > 0) {
-    scene.npcs = state.npcs.map((n) => ({
-      name: n.name,
-      position: n.position,
-      tint: n.tint,
-      facing: n.facing,
-      reverse_facing: n.reverse_facing,
-      patrol_interval: n.patrol_interval,
-      patrol_speed: n.patrol_speed,
-      waypoints: n.waypoints,
-      waypoint_pause: n.waypoint_pause,
-      dialog: n.dialog,
-      light_color: n.light_color,
-      light_radius: n.light_radius,
-      aura_color_start: n.aura_color_start,
-      aura_color_end: n.aura_color_end,
-      character_id: n.character_id,
-      script_module: n.script_module,
-      script_class: n.script_class,
-    }));
+  if (state.gameObjects.length > 0) {
+    scene.game_objects = state.gameObjects.map((go) => {
+      const out: Record<string, unknown> = {
+        id: go.id,
+        name: go.name,
+        position: go.position,
+        rotation: go.rotation,
+        scale: go.scale,
+      };
+      if (go.ply_file) out.ply_file = go.ply_file;
+      out.components = go.components;
+      return out;
+    });
   }
 
   if (state.portals.length > 0) {
@@ -139,22 +132,6 @@ export function exportSceneJson(state: SceneStoreState): object {
     background_image: state.gaussianSplat.background_image,
     parallax: state.gaussianSplat.parallax,
   };
-
-  if (state.placedObjects.length > 0) {
-    scene.objects = state.placedObjects.map((obj) => {
-      // Ensure placed object PLY paths have assets/ prefix
-      const plyPath = obj.ply_file.startsWith('assets/') ? obj.ply_file : `assets/${obj.ply_file}`;
-      return {
-        id: obj.id,
-        ply_file: plyPath,
-        position: obj.position,
-        rotation: obj.rotation,
-        scale: obj.scale,
-        is_static: obj.is_static,
-        ...(obj.character_manifest ? { character_manifest: obj.character_manifest } : {}),
-      };
-    });
-  }
 
   const activeEmitters = state.gsParticleEmitters.filter((e) => !e.muted);
   if (activeEmitters.length > 0) {
