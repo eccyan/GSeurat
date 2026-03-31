@@ -173,6 +173,7 @@ add_library(gseurat_core OBJECT
     src/engine/gs_vfx.cpp
     src/engine/gs_spline.cpp
     src/engine/component_registry.cpp
+    src/engine/system_scheduler.cpp
 )
 
 if(NOT WIN32)
@@ -299,3 +300,4 @@ add_gseurat_test(test_vfx_lights_rotation src/engine/gs_vfx.cpp src/engine/gs_pa
 add_gseurat_test(test_gs_spline src/engine/gs_spline.cpp)
 add_gseurat_test(test_gs_post_process)
 add_gseurat_test(test_component_registry src/engine/component_registry.cpp)
+add_gseurat_test(test_system_scheduler  src/engine/system_scheduler.cpp)
