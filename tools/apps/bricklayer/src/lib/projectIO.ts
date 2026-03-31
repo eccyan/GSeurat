@@ -1,8 +1,8 @@
 import JSZip from 'jszip';
-import { useSceneStore } from '../store/useSceneStore.js';
+import { useSceneStore, BUILTIN_SCHEMAS } from '../store/useSceneStore.js';
 import { exportSceneJson } from './sceneExport.js';
 import { exportPly } from './plyExport.js';
-import type { BricklayerFile } from '../store/types.js';
+import type { BricklayerFile, ComponentSchema } from '../store/types.js';
 
 /**
  * Check if the File System Access API is available.
@@ -115,6 +115,32 @@ export async function loadProject(handle: FileSystemDirectoryHandle): Promise<bo
     const text = await file.text();
     const data = JSON.parse(text) as BricklayerFile;
     useSceneStore.getState().loadProject(data);
+
+    // Load component schemas from project
+    try {
+      const assetsDir = await handle.getDirectoryHandle('assets').catch(() => null);
+      const componentsDir = assetsDir ? await assetsDir.getDirectoryHandle('components').catch(() => null) : null;
+      if (componentsDir) {
+        const schemas: ComponentSchema[] = [];
+        for await (const entry of (componentsDir as any).values()) {
+          if (entry.kind === 'file' && entry.name.endsWith('.schema.json')) {
+            const schemaFile = await entry.getFile();
+            const schemaText = await schemaFile.text();
+            try { schemas.push(JSON.parse(schemaText)); } catch {}
+          }
+        }
+        if (schemas.length > 0) {
+          useSceneStore.getState().loadComponentSchemas(schemas);
+        } else {
+          useSceneStore.getState().loadComponentSchemas(BUILTIN_SCHEMAS);
+        }
+      } else {
+        useSceneStore.getState().loadComponentSchemas(BUILTIN_SCHEMAS);
+      }
+    } catch {
+      useSceneStore.getState().loadComponentSchemas(BUILTIN_SCHEMAS);
+    }
+
     return true;
   } catch (err) {
     console.error('Failed to load project:', err);

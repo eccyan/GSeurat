@@ -32,6 +32,38 @@ import type {
 import { voxelKey, parseKey, floodFill3D, brushPositions } from '../lib/voxelUtils.js';
 import { extractColorsFromImage as extractColorsFromImageData } from '../lib/colorExtract.js';
 
+export const BUILTIN_SCHEMAS: ComponentSchema[] = [
+  { name: 'Health', description: 'Destructible entity', category: 'Gameplay',
+    fields: [
+      { name: 'max_hp', type: 'float', default: 100, min: 0 },
+      { name: 'current_hp', type: 'float', default: 100, min: 0 },
+    ]},
+  { name: 'Interactable', description: 'Player interaction', category: 'Gameplay',
+    fields: [
+      { name: 'prompt', type: 'string', default: 'Interact' },
+      { name: 'radius', type: 'float', default: 2.0, min: 0.1, max: 50 },
+      { name: 'one_shot', type: 'bool', default: false },
+    ]},
+  { name: 'Facing', description: 'Direction entity faces', category: 'Core',
+    fields: [
+      { name: 'direction', type: 'enum', default: 'down', enum_values: ['up', 'down', 'left', 'right'] },
+    ]},
+  { name: 'Patrol', description: 'Patrol between waypoints', category: 'AI',
+    fields: [
+      { name: 'speed', type: 'float', default: 2.0, min: 0 },
+      { name: 'pause', type: 'float', default: 1.0, min: 0 },
+    ]},
+  { name: 'Dialog', description: 'Entity speaks dialog', category: 'Narrative',
+    fields: [
+      { name: 'dialog_id', type: 'string', default: '' },
+    ]},
+  { name: 'CharacterModel', description: 'Voxel character', category: 'Visual',
+    fields: [
+      { name: 'character_id', type: 'string', default: '' },
+      { name: 'manifest', type: 'string', default: '' },
+    ]},
+];
+
 function defaultEmitter(): EmitterConfig {
   return {
     spawn_rate: 10,
@@ -1010,6 +1042,7 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
     navZoneNames: [],
     staticLights: [],
     gameObjects: [],
+    componentSchemas: BUILTIN_SCHEMAS,
     portals: [],
     gsParticleEmitters: [],
     vfxInstances: [],
