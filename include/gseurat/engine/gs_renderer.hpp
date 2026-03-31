@@ -31,6 +31,7 @@ struct GsPostProcessParams {
     float dof_focus_distance = 12.0f;
     float dof_focus_range = 3.0f;
     float dof_max_blur = 0.5f;
+    float far_plane = 1000.0f;  // GS camera far plane for depth normalization
 };
 
 // GPU UBO layout for gs_post_process.comp (std140, 5 × vec4 = 80 bytes)
@@ -39,7 +40,7 @@ struct GsPostProcessUbo {
     glm::vec4 exposure_vignette;  // exposure, radius, softness, bloom_intensity
     glm::vec4 bloom_fade;         // bloom_threshold, fade_amount, flash_r, flash_g
     glm::vec4 effects;            // flash_b, ca_intensity, dof_focus_dist, dof_focus_range
-    glm::vec4 dimensions;         // dof_max_blur, width, height, unused
+    glm::vec4 dimensions;         // dof_max_blur, width, height, far_plane
 };
 
 class GsRenderer {

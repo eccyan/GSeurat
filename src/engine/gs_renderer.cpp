@@ -949,7 +949,7 @@ void GsRenderer::render(VkCommandBuffer cmd, const glm::mat4& view, const glm::m
         pp_ubo.dimensions = glm::vec4(gs_pp_params_.dof_max_blur,
                                        static_cast<float>(width),
                                        static_cast<float>(height),
-                                       0.0f);
+                                       gs_pp_params_.far_plane);
         std::memcpy(pp_ubo_buffer_.mapped(), &pp_ubo, sizeof(pp_ubo));
 
         // Transition processed image to GENERAL for compute write

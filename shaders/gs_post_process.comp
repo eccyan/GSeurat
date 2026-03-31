@@ -17,7 +17,7 @@ layout(set = 0, binding = 3) uniform PostProcessUBO {
     vec4 exposure_vignette;  // exposure, radius, softness, bloom_intensity
     vec4 bloom_fade;         // bloom_threshold, fade_amount, flash_r, flash_g
     vec4 effects;            // flash_b, ca_intensity, dof_focus_dist, dof_focus_range
-    vec4 dimensions;         // dof_max_blur, width, height, unused
+    vec4 dimensions;         // dof_max_blur, width, height, far_plane
 };
 
 // Shared memory for tile-based effects (DoF blur, bloom)
@@ -123,9 +123,15 @@ void main() {
         }
     }
 
-    // ── 3. Fog (exponential squared) ──
+    // ── 3. Fog (exponential squared, depth normalized to composite range) ──
     if (fog_density > 0.0 && depth > 0.0) {
-        float fog_amount = 1.0 - exp(-fog_density * depth * depth);
+        // GS depth is raw view-space distance (0..far_plane, e.g. 0..1000).
+        // Composite shader fog uses linearized depth in ~[0, 100] range.
+        // Normalize GS depth to match so the same density values produce
+        // consistent fog across both pipelines.
+        float far_plane = max(dimensions.w, 1.0);
+        float fog_z = (depth / far_plane) * 100.0;
+        float fog_amount = 1.0 - exp(-fog_density * fog_z * fog_z);
         fog_amount = clamp(fog_amount, 0.0, 1.0);
         // Un-premultiply, apply fog, re-premultiply
         vec3 base = color / max(alpha, 0.001);

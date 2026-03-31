@@ -65,7 +65,7 @@ static gseurat::GsPostProcessUbo pack_ubo(const gseurat::GsPostProcessParams& p,
                                        p.bloom_intensity);
     ubo.bloom_fade = glm::vec4(p.bloom_threshold, p.fade_amount, p.flash_r, p.flash_g);
     ubo.effects = glm::vec4(p.flash_b, p.ca_intensity, p.dof_focus_distance, p.dof_focus_range);
-    ubo.dimensions = glm::vec4(p.dof_max_blur, width, height, 0.0f);
+    ubo.dimensions = glm::vec4(p.dof_max_blur, width, height, p.far_plane);
     return ubo;
 }
 
@@ -174,6 +174,7 @@ static void test_ubo_packing() {
     check(approx(ubo.effects.z, 15.0f), "UBO dof_focus_distance packed at effects.z");
     check(approx(ubo.dimensions.y, 320.0f), "UBO width packed at dimensions.y");
     check(approx(ubo.dimensions.z, 240.0f), "UBO height packed at dimensions.z");
+    check(approx(ubo.dimensions.w, 1000.0f), "UBO far_plane packed at dimensions.w");
 }
 
 // ── Feature flag interaction ──

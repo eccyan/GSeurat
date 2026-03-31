@@ -313,6 +313,14 @@ void Renderer::draw_scene(Scene& scene,
         gs_pp.dof_focus_distance = pp_params_.dof_focus_distance;
         gs_pp.dof_focus_range = pp_params_.dof_focus_range;
         gs_pp.dof_max_blur = pp_params_.dof_max_blur;
+        // Extract GS camera far plane from projection matrix for fog depth normalization
+        // For perspective: proj[2][2] = -(f+n)/(f-n), proj[3][2] = -2fn/(f-n)
+        // Vulkan Y-flip: proj[1][1] is negated, but [2][2] and [3][2] are unaffected.
+        // far = proj[3][2] / (proj[2][2] + 1)  (derived from perspective formula)
+        float p22 = gs_proj_[2][2];
+        float p32 = gs_proj_[3][2];
+        float denom = p22 + 1.0f;
+        gs_pp.far_plane = (std::abs(denom) > 0.001f) ? (p32 / denom) : 1000.0f;
         if (!flags.bloom) gs_pp.bloom_intensity = 0.0f;
         if (!flags.depth_of_field) gs_pp.dof_max_blur = 0.0f;
         if (!flags.vignette) gs_pp.vignette_radius = 2.0f;
