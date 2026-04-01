@@ -341,13 +341,15 @@ def build_particle_emitters(collision):
         }
     )
 
-    # Fireflies emitter (index 7) — ambient "living dots" around the island center
-    emitters.append(
-        {
-            "preset": "fireflies",
-            "position": pos(128, 120),
-        }
-    )
+    # Fireflies emitters — spread across island for ambient activity in every frame
+    firefly_positions = [
+        [125, 121],  # near spawn
+        [135, 115],  # north of house
+        [115, 130],  # south
+        [145, 125],  # east
+    ]
+    for fx, fz in firefly_positions:
+        emitters.append({"preset": "fireflies", "position": pos(fx, fz)})
 
     return emitters
 

@@ -33480,9 +33480,33 @@
     {
       "preset": "fireflies",
       "position": [
-        129.0,
-        3.3999,
+        125.0,
+        1.5077,
         121.0
+      ]
+    },
+    {
+      "preset": "fireflies",
+      "position": [
+        135.0,
+        4.6313,
+        115.0
+      ]
+    },
+    {
+      "preset": "fireflies",
+      "position": [
+        113.0,
+        1.1829,
+        131.0
+      ]
+    },
+    {
+      "preset": "fireflies",
+      "position": [
+        143.0,
+        1.4328,
+        123.0
       ]
     }
   ]

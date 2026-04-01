@@ -40,8 +40,8 @@ void IslandDemoState::on_enter(AppBase& app) {
     pp.fog_density = 0.0f;
     pp.dof_max_blur = 0.0f;
     pp.exposure = 1.0f;
-    pp.bloom_threshold = 0.6f;
-    pp.bloom_intensity = 0.4f;
+    pp.bloom_threshold = 0.55f;
+    pp.bloom_intensity = 0.45f;
     pp.bloom_soft_knee = 0.3f;
     pp.vignette_radius = 0.85f;
     pp.vignette_softness = 0.3f;
