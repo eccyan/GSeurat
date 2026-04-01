@@ -195,7 +195,7 @@ def generate_collision_grid(grid_size, cell_size, cx, cz, height_scale, island_r
             elevation.append(round(y, 4))
             # Cells with negligible height are sea — treat as solid (impassable water)
             # Use low threshold (0.2) so more coastal area is walkable
-            solid.append(y < 0.2)
+            solid.append(y < -0.3)  # only deep water is solid — player can walk to shoreline
 
     return {
         "width": grid_size,
