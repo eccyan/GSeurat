@@ -108,7 +108,7 @@ def generate_island(grid_size, cell_size, height_scale, island_radius, step):
             gaussians.append({
                 "pos": (x, y, z),
                 "color": color,
-                "scale": 0.35,
+                "scale": 0.8,  # must be >= STEP so splats overlap even under LOD decimation
                 "opacity": 1.0,
             })
             z += step
