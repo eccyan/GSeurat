@@ -37,11 +37,11 @@ void IslandDemoState::on_enter(AppBase& app) {
     auto& pp = app.renderer().post_process_params();
     pp.fog_density = 0.0f;
     pp.dof_max_blur = 0.0f;
-    pp.exposure = 1.1f;
-    pp.bloom_threshold = 0.3f;
-    pp.bloom_intensity = 1.2f;
-    pp.bloom_soft_knee = 0.5f;
-    pp.vignette_radius = 0.8f;
+    pp.exposure = 1.0f;
+    pp.bloom_threshold = 0.6f;
+    pp.bloom_intensity = 0.4f;
+    pp.bloom_soft_knee = 0.3f;
+    pp.vignette_radius = 0.85f;
     pp.vignette_softness = 0.3f;
     app.renderer().set_gs_skip_chunk_cull(false);
     app.renderer().gs_renderer().set_skip_sort(false);
@@ -204,6 +204,9 @@ void IslandDemoState::update(AppBase& app, float dt) {
 
     // Effect systems (EmitterToggle, LightToggle)
     update_effects(app, dt);
+
+    // Environment animation (water waves, foliage sway)
+    update_environment_animation(app, dt);
 
     // Walk animation
     update_walk_animation(app, dt);
@@ -423,24 +426,27 @@ void IslandDemoState::update_walk_animation(AppBase& app, float dt) {
     glm::vec3 root_offset = character_origin_ - character_spawn_pos_;
     glm::mat4 root_translate = glm::translate(glm::mat4(1.0f), root_offset);
 
-    if (speed > 0.5f) {
-        walk_anim_time_ += dt;
-    } else {
-        walk_anim_time_ *= std::max(0.0f, 1.0f - dt * 5.0f);
-    }
+    walk_anim_time_ += dt;  // always increment for idle breathing
 
-    float swing = std::sin(walk_anim_time_ * 8.0f) * 0.5f;
-    float swing_scale = std::min(speed / kPlayerSpeed, 1.0f);
-    swing *= swing_scale;
+    float walk_swing = std::sin(walk_anim_time_ * 8.0f) * 0.5f;
+    float walk_scale = std::min(speed / kPlayerSpeed, 1.0f);
+    walk_swing *= walk_scale;
+
+    // Idle breathing when not walking
+    float breathe = std::sin(walk_anim_time_ * 1.5f) * 0.15f * (1.0f - walk_scale);
 
     glm::mat4 bones[7];
-    bones[0] = glm::mat4(1.0f);  // map Gaussians (bone 0) — stay put
+    // Bone 0 = all map Gaussians: very subtle sway (visible in motion, not blur)
+    float terrain_sway_y = std::sin(env_anim_time_ * 0.8f) * 0.02f;
+    bones[0] = glm::translate(glm::mat4(1.0f),
+        glm::vec3(0.0f, terrain_sway_y, 0.0f));
 
     // All character bones get root translation + local animation
     constexpr float kCharScale = 0.8f;
 
-    // Torso bob
-    glm::mat4 bob = glm::translate(glm::mat4(1.0f), {0, std::abs(swing) * 0.3f * kCharScale, 0});
+    // Torso bob = walk bob + idle breathe
+    glm::mat4 bob = glm::translate(glm::mat4(1.0f),
+        {0, (std::abs(walk_swing) * 0.3f + breathe) * kCharScale, 0});
     bones[1] = root_translate * bob;
     bones[2] = bones[1];  // Head follows torso
 
@@ -453,12 +459,21 @@ void IslandDemoState::update_walk_animation(AppBase& app, float dt) {
         return root_translate * t * r * glm::translate(glm::mat4(1.0f), -world_pivot);
     };
 
-    bones[3] = pivot_rotate({-3.5f, 9.0f, 0.0f}, swing);    // Left arm
-    bones[4] = pivot_rotate({3.5f, 9.0f, 0.0f}, -swing);     // Right arm
-    bones[5] = pivot_rotate({-1.0f, 4.0f, 0.0f}, -swing);    // Left leg
-    bones[6] = pivot_rotate({1.0f, 4.0f, 0.0f}, swing);      // Right leg
+    bones[3] = pivot_rotate({-3.5f, 9.0f, 0.0f}, walk_swing);    // Left arm
+    bones[4] = pivot_rotate({3.5f, 9.0f, 0.0f}, -walk_swing);   // Right arm
+    bones[5] = pivot_rotate({-1.0f, 4.0f, 0.0f}, -walk_swing);  // Left leg
+    bones[6] = pivot_rotate({1.0f, 4.0f, 0.0f}, walk_swing);    // Right leg
 
     app.renderer().gs_renderer().upload_bone_transforms(bones, 7);
+}
+
+// ── Environment animation (terrain sway) ──
+
+void IslandDemoState::update_environment_animation(AppBase& /*app*/, float dt) {
+    env_anim_time_ += dt;
+    // Time accumulation only — the actual terrain sway is applied via bone 0
+    // in update_walk_animation, creating visible "movement of the dots" across
+    // the entire Gaussian Splatting scene.
 }
 
 // ── build_draw_lists (debug HUD) ──

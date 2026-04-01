@@ -9,6 +9,7 @@ import argparse
 import json
 import math
 import os
+import random
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -19,16 +20,16 @@ GRID_SIZE = 128         # cells in X and Z
 CELL_SIZE = 2.0         # world units per cell
 ISLAND_RADIUS = 110.0   # radius for the island mask falloff
 HEIGHT_SCALE = 8.0      # gentle rolling hills (was 20 — too mountainous)
-STEP = 1.5              # Gaussian placement step (density — larger for perf)
+STEP = 0.8              # Gaussian placement step (dense for continuous surfaces)
 
 # Height thresholds for coloring
 COLOR_MID_THRESHOLD = 3.0
 COLOR_PEAK_THRESHOLD = 6.5
 
-# Colors
-COLOR_GREEN = (0.20, 0.52, 0.12)   # low ground / grass
-COLOR_BROWN = (0.48, 0.34, 0.16)   # mid elevation / dirt/rock
-COLOR_GRAY  = (0.60, 0.58, 0.58)   # peaks / rocky
+# Colors — saturated for SNES-like vibrancy
+COLOR_GREEN = (0.15, 0.58, 0.08)   # low ground / vivid grass
+COLOR_BROWN = (0.55, 0.35, 0.12)   # mid elevation / warm earth
+COLOR_GRAY  = (0.65, 0.60, 0.55)   # peaks / warm stone
 
 
 def lerp_color(c1, c2, t):
@@ -84,6 +85,8 @@ def generate_island(grid_size, cell_size, height_scale, island_radius, step):
     cx = world_size / 2.0              # 64.0
     cz = world_size / 2.0              # 64.0
 
+    _terrain_rng = random.Random(42)
+
     gaussians = []
 
     x = 0.0
@@ -92,10 +95,16 @@ def generate_island(grid_size, cell_size, height_scale, island_radius, step):
         while z <= world_size:
             y = height_at(x, z, cx, cz, height_scale, island_radius)
             color = color_by_height(y)
+            noise = _terrain_rng.uniform(-0.08, 0.08)
+            color = (
+                max(0.0, min(1.0, color[0] + noise + _terrain_rng.uniform(-0.03, 0.03))),
+                max(0.0, min(1.0, color[1] + noise + _terrain_rng.uniform(-0.03, 0.03))),
+                max(0.0, min(1.0, color[2] + noise * 0.5)),
+            )
             gaussians.append({
                 "pos": (x, y, z),
                 "color": color,
-                "scale": 1.0,
+                "scale": 0.6,
                 "opacity": 1.0,
             })
             z += step

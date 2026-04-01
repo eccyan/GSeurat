@@ -66,7 +66,7 @@
   {
     "id": "rock_1",
     "name": "Rock",
-    "ply_file": "assets/props/island_rock_1.ply",
+    "ply_file": "assets/props/island_rock1.ply",
     "position": [
       100,
       0,
@@ -82,7 +82,7 @@
   {
     "id": "rock_2",
     "name": "Rock",
-    "ply_file": "assets/props/island_rock_2.ply",
+    "ply_file": "assets/props/island_rock2.ply",
     "position": [
       170,
       0,
@@ -98,7 +98,7 @@
   {
     "id": "rock_3",
     "name": "Rock",
-    "ply_file": "assets/props/island_rock_3.ply",
+    "ply_file": "assets/props/island_rock1.ply",
     "position": [
       90,
       0,
@@ -114,7 +114,7 @@
   {
     "id": "house",
     "name": "House",
-    "ply_file": "assets/props/island_house.ply",
+    "ply_file": "assets/props/island_house1.ply",
     "position": [
       136,
       0,

@@ -26,6 +26,7 @@ private:
     void update_camera(AppBase& app, float dt);
     void update_effects(AppBase& app, float dt);
     void update_walk_animation(AppBase& app, float dt);
+    void update_environment_animation(AppBase& app, float dt);
 
     // Scene
     std::string scene_path_ = "assets/scenes/seurat_island.json";
@@ -34,6 +35,7 @@ private:
     ecs::Entity player_entity_ = ecs::kNullEntity;
     glm::vec3 player_velocity_{0.0f};
     float walk_anim_time_ = 0.0f;
+    float env_anim_time_ = 0.0f;
 
     // Character Gaussians (for walk animation bone transforms)
     bool character_spawned_ = false;

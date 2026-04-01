@@ -174,21 +174,29 @@ def playtest(output_dir: str = "playtest_output"):
     # 2. Toggle debug HUD
     step("toggle_hud", lambda: inject_key_once(GLFW_KEY_TAB))
 
-    # 3. Walk in each direction
+    # 3. Walk a tour route past interactive objects (torches, crystal, fountain)
     start_state = get_player_state()
     start_pos = start_state.get("position", [0, 0, 0])
 
-    for d in ["forward", "right", "back", "left"]:
+    walk_sequence = [
+        ("forward", 2.0, "toward_torches"),        # toward torch area
+        ("right",   1.5, "toward_house"),           # toward house/lanterns
+        ("forward", 1.5, "explore_north"),          # explore north area
+        ("left",    2.0, "sweep_across_island"),    # sweep across island
+        ("back",    2.5, "return_to_start"),         # return toward start
+    ]
+
+    for d, secs, label in walk_sequence:
         before = get_player_state().get("position", [0, 0, 0])
-        walk(d, 1.5)
+        walk(d, secs)
         after = get_player_state().get("position", [0, 0, 0])
 
         moved = any(abs(a - b) > 0.1 for a, b in zip(before, after))
-        entry = step(f"after_walk_{d}")
+        entry = step(f"after_{label}")
         entry["moved"] = moved
         if not moved:
-            report["issues"].append(f"Player did not move when walking {d}")
-            print(f"  *** ISSUE: Player stuck walking {d}!")
+            report["issues"].append(f"Player did not move during {label} (walking {d})")
+            print(f"  *** ISSUE: Player stuck during {label}!")
 
     # 4. Final state
     clear_keys()
