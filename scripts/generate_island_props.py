@@ -271,8 +271,13 @@ def main():
         filename = f"island_tree_{tree_id}.ply"
         ply_path = os.path.join(args.output_dir, filename)
 
-        gaussians = generate_tree(seed=tree_seeds[i])
-        count = write_ply(ply_path, gaussians)
+        # Skip if mesh-converted PLY exists (> 100KB = not procedural)
+        if os.path.exists(ply_path) and os.path.getsize(ply_path) > 100_000:
+            count = 0  # already converted from mesh
+            print(f"Tree {tree_id}: {ply_path} (mesh-converted, skipping procedural)")
+        else:
+            gaussians = generate_tree(seed=tree_seeds[i])
+            count = write_ply(ply_path, gaussians)
         total_gaussians += count
 
         rotation_y = round(tree_meta_rng.uniform(0, 360), 1)
@@ -296,8 +301,12 @@ def main():
         filename = f"island_rock_{rock_id}.ply"
         ply_path = os.path.join(args.output_dir, filename)
 
-        gaussians = generate_rock(seed=rock_seeds[i])
-        count = write_ply(ply_path, gaussians)
+        if os.path.exists(ply_path) and os.path.getsize(ply_path) > 100_000:
+            count = 0
+            print(f"Rock {rock_id}: {ply_path} (mesh-converted, skipping procedural)")
+        else:
+            gaussians = generate_rock(seed=rock_seeds[i])
+            count = write_ply(ply_path, gaussians)
         total_gaussians += count
 
         rotation_y = round(rock_meta_rng.uniform(0, 360), 1)
@@ -317,8 +326,12 @@ def main():
     filename = "island_house1.ply"
     ply_path = os.path.join(args.output_dir, filename)
 
-    gaussians = generate_house(seed=456)
-    count = write_ply(ply_path, gaussians)
+    if os.path.exists(ply_path) and os.path.getsize(ply_path) > 100_000:
+        count = 0
+        print(f"House: {ply_path} (mesh-converted, skipping procedural)")
+    else:
+        gaussians = generate_house(seed=456)
+        count = write_ply(ply_path, gaussians)
     total_gaussians += count
 
     manifest.append({
