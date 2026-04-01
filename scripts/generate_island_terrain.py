@@ -20,7 +20,7 @@ GRID_SIZE = 192         # cells in X and Z
 CELL_SIZE = 2.0         # world units per cell
 ISLAND_RADIUS = 170.0   # radius for the island mask falloff
 HEIGHT_SCALE = 6.0      # flatter for more walkable area
-STEP = 0.8              # Gaussian placement step (dense for continuous surfaces)
+STEP = 0.5              # dense placement — no visible gaps between splats
 
 # Height thresholds for coloring
 COLOR_MID_THRESHOLD = 3.0
