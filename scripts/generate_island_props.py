@@ -276,7 +276,7 @@ def main():
         total_gaussians += count
 
         rotation_y = round(tree_meta_rng.uniform(0, 360), 1)
-        scale = round(tree_meta_rng.uniform(0.8, 1.4), 2)  # 6-12u tall (2-3x character)
+        scale = round(tree_meta_rng.uniform(1.5, 2.5), 2)  # 12-21u tall (2-3x 6.5u character)
 
         manifest.append({
             "id": f"tree_{tree_id}",
@@ -301,7 +301,7 @@ def main():
         total_gaussians += count
 
         rotation_y = round(rock_meta_rng.uniform(0, 360), 1)
-        scale = round(rock_meta_rng.uniform(0.8, 1.5), 2)  # 1-2u tall (~character height)
+        scale = round(rock_meta_rng.uniform(1.5, 2.5), 2)  # 2-4u tall (~half character)
 
         manifest.append({
             "id": f"rock_{rock_id}",
@@ -327,7 +327,7 @@ def main():
         "ply_file": f"assets/props/{filename}",
         "position": HOUSE_POSITION,
         "rotation": [0, 0, 0],
-        "scale": 1.5,  # house ~6u tall (2x character)
+        "scale": 2.5,  # house ~10u tall (1.5x character)
     })
     print(f"House: {ply_path} ({count} Gaussians)")
 

@@ -417,7 +417,7 @@ def main():
             },
         ],
         "player": {
-            "position": (lambda sx, sz: [sx, lookup_elevation(sx, sz, collision), sz])(*snap_to_walkable(192, 185, collision)),
+            "position": (lambda sx, sz: [sx, lookup_elevation(sx, sz, collision), sz])(*snap_to_walkable(187, 197, collision)),
             "facing": "down",
         },
         "game_objects": game_objects,

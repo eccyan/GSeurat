@@ -43,8 +43,12 @@ def lerp_color(c1, c2, t):
 
 
 def base_hills(x, z):
-    """Overlapping sine waves giving rolling hill variation."""
-    return math.sin(x * 0.15) * math.cos(z * 0.12) + 0.3 * math.sin(x * 0.3 + z * 0.2)
+    """Rolling hill variation — always positive (no underwater valleys)."""
+    # Base dome: always 0.5+ so island is continuous
+    hills = 0.5 + 0.3 * math.sin(x * 0.08) * math.cos(z * 0.06)
+    hills += 0.15 * math.sin(x * 0.15 + z * 0.1)
+    hills += 0.05 * math.sin(x * 0.25 - z * 0.2)
+    return hills
 
 
 def island_mask(x, z, cx, cz, radius):
@@ -195,7 +199,7 @@ def generate_collision_grid(grid_size, cell_size, cx, cz, height_scale, island_r
             elevation.append(round(y, 4))
             # Cells with negligible height are sea — treat as solid (impassable water)
             # Use low threshold (0.2) so more coastal area is walkable
-            solid.append(y < -0.3)  # only deep water is solid — player can walk to shoreline
+            solid.append(y < 0.3)  # water/low shore is solid — keeps player on the island
 
     return {
         "width": grid_size,

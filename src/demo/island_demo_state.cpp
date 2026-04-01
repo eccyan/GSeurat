@@ -85,7 +85,7 @@ void IslandDemoState::on_enter(AppBase& app) {
         uint32_t map_count = static_cast<uint32_t>(merged.size());
 
         // Load mesh-converted character model
-        constexpr float kCharScale = 0.35f;  // ~4.5 units tall — prominent in TPS close camera
+        constexpr float kCharScale = 0.5f;   // ~6.5 units tall — fills 1/4 screen at dist 8
         auto char_cloud = GaussianCloud::load_ply("assets/props/boy_character.ply");
         if (!char_cloud.empty()) {
             // Scale and position character at player spawn
@@ -431,7 +431,7 @@ void IslandDemoState::update_walk_animation(AppBase& app, float dt) {
         glm::vec3(terrain_sway_x, terrain_sway_y, 0.0f));
 
     // All character bones get root translation + local animation
-    constexpr float kCharScale = 0.35f;
+    constexpr float kCharScale = 0.5f;
 
     // Torso bob = walk bob + idle breathe
     glm::mat4 bob = glm::translate(glm::mat4(1.0f),
