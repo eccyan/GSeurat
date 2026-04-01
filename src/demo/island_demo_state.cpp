@@ -511,7 +511,7 @@ void IslandDemoState::build_draw_lists(AppBase& app) {
 
     constexpr float panel_x = 10.0f;
     constexpr float panel_w = 260.0f;
-    constexpr float panel_h = 120.0f;
+    constexpr float panel_h = 140.0f;
     constexpr float panel_top = 720.0f - 10.0f;
     constexpr float panel_cy = panel_top - panel_h * 0.5f;
 
@@ -558,6 +558,12 @@ void IslandDemoState::build_draw_lists(AppBase& app) {
     uint32_t visible = app.renderer().gs_renderer().visible_count();
     ui.label("GS: " + std::to_string(visible) + " / " + std::to_string(total),
              lx, y, scale, white);
+    y -= 18.0f;
+
+    // Toggle status
+    std::string toggles = std::string("Particles[P]:") + (app.feature_flags().particles ? "ON" : "OFF") +
+                           "  Anim[N]:" + (anim_enabled_ ? "ON" : "OFF");
+    ui.label(toggles, lx, y, scale, {0.8f, 0.8f, 0.4f, 1.0f});
 }
 
 }  // namespace gseurat
