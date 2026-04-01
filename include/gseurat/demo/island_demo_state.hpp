@@ -61,6 +61,9 @@ private:
     // Debug HUD
     bool show_hud_ = false;
 
+    // Toggle flags (P = particles, N = animation)
+    bool anim_enabled_ = true;
+
     // FPS tracking
     std::chrono::steady_clock::time_point fps_clock_{};
     int fps_frame_count_ = 0;

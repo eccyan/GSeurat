@@ -145,6 +145,17 @@ void IslandDemoState::update(AppBase& app, float dt) {
         show_hud_ = !show_hud_;
     }
 
+    // P → toggle particles/emitters
+    if (app.input().was_key_pressed(GLFW_KEY_P)) {
+        auto& f = app.feature_flags();
+        f.particles = !f.particles;
+    }
+
+    // N → toggle terrain sway + walk animation
+    if (app.input().was_key_pressed(GLFW_KEY_N)) {
+        anim_enabled_ = !anim_enabled_;
+    }
+
     // FPS counter
     {
         auto now = std::chrono::steady_clock::now();
@@ -193,11 +204,11 @@ void IslandDemoState::update(AppBase& app, float dt) {
     // Effect systems (EmitterToggle, LightToggle)
     update_effects(app, dt);
 
-    // Environment animation (water waves, foliage sway)
-    update_environment_animation(app, dt);
-
-    // Walk animation
-    update_walk_animation(app, dt);
+    // Environment animation + walk animation (N key toggles)
+    if (anim_enabled_) {
+        update_environment_animation(app, dt);
+        update_walk_animation(app, dt);
+    }
 
     // Camera follow
     update_camera(app, dt);
