@@ -111,15 +111,19 @@ def snap_to_walkable(x, z, collision, search_radius=20):
     return x, z  # fallback
 
 
-def build_static_props(manifest):
-    """Convert prop manifest entries to game_objects with empty components."""
+def build_static_props(manifest, collision):
+    """Convert prop manifest entries to game_objects with elevation-corrected Y."""
     objects = []
     for prop in manifest:
+        pos = list(prop["position"])
+        # Look up terrain elevation at prop XZ and add manifest Y offset
+        terrain_y = lookup_elevation(pos[0], pos[2], collision)
+        pos[1] = terrain_y + pos[1]  # manifest Y is offset above terrain
         obj = {
             "id": prop["id"],
             "name": prop["name"],
             "ply_file": prop["ply_file"],
-            "position": prop["position"],
+            "position": pos,
             "rotation": prop["rotation"],
             "scale": prop["scale"],
             "components": {},
@@ -379,7 +383,7 @@ def main():
         manifest = json.load(f)
 
     # Build game objects: static props + interactive objects
-    static_props = build_static_props(manifest)
+    static_props = build_static_props(manifest, collision)
     interactive_objects = build_interactive_objects(collision)
     game_objects = static_props + interactive_objects
 

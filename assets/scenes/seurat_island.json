@@ -73807,7 +73807,7 @@
       "ply_file": "assets/props/island_tree_1.ply",
       "position": [
         120,
-        0,
+        2.0004,
         150
       ],
       "rotation": [
@@ -73824,7 +73824,7 @@
       "ply_file": "assets/props/island_tree_2.ply",
       "position": [
         200,
-        0,
+        1.8697,
         130
       ],
       "rotation": [
@@ -73841,7 +73841,7 @@
       "ply_file": "assets/props/island_tree_3.ply",
       "position": [
         160,
-        0,
+        3.3616,
         220
       ],
       "rotation": [
@@ -73858,7 +73858,7 @@
       "ply_file": "assets/props/island_tree_4.ply",
       "position": [
         220,
-        0,
+        3.6725,
         180
       ],
       "rotation": [
@@ -73875,7 +73875,7 @@
       "ply_file": "assets/props/island_tree_5.ply",
       "position": [
         140,
-        0,
+        0.7472,
         100
       ],
       "rotation": [
@@ -73892,7 +73892,7 @@
       "ply_file": "assets/props/island_tree_6.ply",
       "position": [
         250,
-        0,
+        1.6443,
         160
       ],
       "rotation": [
@@ -73909,7 +73909,7 @@
       "ply_file": "assets/props/island_tree_7.ply",
       "position": [
         180,
-        0,
+        2.1204,
         250
       ],
       "rotation": [
@@ -73926,7 +73926,7 @@
       "ply_file": "assets/props/island_tree_8.ply",
       "position": [
         130,
-        0,
+        1.8561,
         200
       ],
       "rotation": [
@@ -73943,7 +73943,7 @@
       "ply_file": "assets/props/island_tree_9.ply",
       "position": [
         210,
-        0,
+        3.7203,
         240
       ],
       "rotation": [
@@ -73960,7 +73960,7 @@
       "ply_file": "assets/props/island_tree_10.ply",
       "position": [
         170,
-        0,
+        4.3758,
         140
       ],
       "rotation": [
@@ -73977,7 +73977,7 @@
       "ply_file": "assets/props/island_tree_11.ply",
       "position": [
         240,
-        0,
+        2.5612,
         200
       ],
       "rotation": [
@@ -73994,7 +73994,7 @@
       "ply_file": "assets/props/island_tree_12.ply",
       "position": [
         150,
-        0,
+        1.4526,
         170
       ],
       "rotation": [
@@ -74011,7 +74011,7 @@
       "ply_file": "assets/props/island_rock_1.ply",
       "position": [
         150,
-        4.38,
+        5.9757,
         110
       ],
       "rotation": [
@@ -74028,7 +74028,7 @@
       "ply_file": "assets/props/island_rock_2.ply",
       "position": [
         230,
-        11.124,
+        13.5795,
         170
       ],
       "rotation": [
@@ -74045,7 +74045,7 @@
       "ply_file": "assets/props/island_rock_3.ply",
       "position": [
         130,
-        5.212199999999999,
+        8.5884,
         210
       ],
       "rotation": [
@@ -74062,7 +74062,7 @@
       "ply_file": "assets/props/island_rock_4.ply",
       "position": [
         200,
-        8.100000000000001,
+        10.767300000000002,
         100
       ],
       "rotation": [
@@ -74079,7 +74079,7 @@
       "ply_file": "assets/props/island_rock_5.ply",
       "position": [
         170,
-        4.4018999999999995,
+        5.669099999999999,
         260
       ],
       "rotation": [
@@ -74096,7 +74096,7 @@
       "ply_file": "assets/props/island_rock_6.ply",
       "position": [
         260,
-        8.370000000000001,
+        9.762200000000002,
         190
       ],
       "rotation": [
@@ -74113,7 +74113,7 @@
       "ply_file": "assets/props/island_house1.ply",
       "position": [
         192,
-        0,
+        4.5658,
         175
       ],
       "rotation": [
@@ -74130,7 +74130,7 @@
       "ply_file": "assets/props/island_flower1.ply",
       "position": [
         160,
-        0.5474000000000001,
+        3.5864000000000003,
         160
       ],
       "rotation": [
@@ -74147,7 +74147,7 @@
       "ply_file": "assets/props/island_flower1.ply",
       "position": [
         200,
-        0.5152,
+        2.7409,
         200
       ],
       "rotation": [
@@ -74164,7 +74164,7 @@
       "ply_file": "assets/props/island_flower1.ply",
       "position": [
         180,
-        0.6118,
+        3.5151000000000003,
         130
       ],
       "rotation": [
@@ -74181,7 +74181,7 @@
       "ply_file": "assets/props/island_flower1.ply",
       "position": [
         220,
-        0.6118,
+        3.2845,
         150
       ],
       "rotation": [
@@ -74198,7 +74198,7 @@
       "ply_file": "assets/props/island_flower1.ply",
       "position": [
         140,
-        0.3864,
+        1.6401000000000001,
         180
       ],
       "rotation": [
@@ -74215,7 +74215,7 @@
       "ply_file": "assets/props/island_flower1.ply",
       "position": [
         190,
-        0.6118,
+        3.0744000000000002,
         230
       ],
       "rotation": [
@@ -74232,7 +74232,7 @@
       "ply_file": "assets/props/island_flower1.ply",
       "position": [
         170,
-        0.5796,
+        4.1552,
         190
       ],
       "rotation": [
@@ -74249,7 +74249,7 @@
       "ply_file": "assets/props/island_flower1.ply",
       "position": [
         210,
-        0.3542,
+        5.3064,
         170
       ],
       "rotation": [
@@ -74266,7 +74266,7 @@
       "ply_file": "assets/props/island_crystal1.ply",
       "position": [
         155,
-        0,
+        3.3481,
         145
       ],
       "rotation": [
@@ -74283,7 +74283,7 @@
       "ply_file": "assets/props/island_crystal1.ply",
       "position": [
         225,
-        0,
+        3.6947,
         195
       ],
       "rotation": [
@@ -74300,7 +74300,7 @@
       "ply_file": "assets/props/island_crystal1.ply",
       "position": [
         175,
-        0,
+        3.0535,
         235
       ],
       "rotation": [
@@ -74317,7 +74317,7 @@
       "ply_file": "assets/props/island_crystal1.ply",
       "position": [
         195,
-        0,
+        2.0418,
         120
       ],
       "rotation": [
