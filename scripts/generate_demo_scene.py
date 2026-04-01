@@ -401,19 +401,19 @@ def main():
             "scale_multiplier": 1.0,
         },
         "collision": collision,
-        "ambient_color": [0.08, 0.08, 0.15, 1.0],
+        "ambient_color": [0.12, 0.12, 0.18, 1.0],
         "lights": [
             {
                 "position": [90, 60, 300],
-                "color": [1.0, 0.85, 0.6],
+                "color": [1.0, 0.9, 0.7],
                 "radius": 500,
-                "intensity": 3.5,
+                "intensity": 2.0,
             },
             {
                 "position": [300, 40, 90],
-                "color": [0.8, 0.6, 0.4],
+                "color": [0.7, 0.55, 0.4],
                 "radius": 400,
-                "intensity": 1.5,
+                "intensity": 0.8,
             },
         ],
         "player": {

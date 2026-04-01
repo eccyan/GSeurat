@@ -408,9 +408,18 @@ void IslandDemoState::update_walk_animation(AppBase& app, float dt) {
 
     float speed = glm::length(glm::vec2(player_velocity_.x, player_velocity_.z));
 
-    // Root translation: move character Gaussians from spawn to current position
+    // Root transform: translate from spawn to current + rotate to face away from camera
     glm::vec3 root_offset = character_origin_ - character_spawn_pos_;
     glm::mat4 root_translate = glm::translate(glm::mat4(1.0f), root_offset);
+    // Rotate character around spawn point Y-axis to match camera azimuth
+    // Character was spawned facing -Z (after 180° flip). Camera azimuth=0 looks from +Z.
+    // To always show character's back: rotate by azimuth_ around Y at spawn pos.
+    glm::vec3 spawn = character_spawn_pos_;
+    glm::mat4 root_rotate =
+        glm::translate(glm::mat4(1.0f), spawn) *
+        glm::rotate(glm::mat4(1.0f), azimuth_, {0, 1, 0}) *
+        glm::translate(glm::mat4(1.0f), -spawn);
+    glm::mat4 root_xform = root_translate * root_rotate;
 
     walk_anim_time_ += dt;  // always increment for idle breathing
 
@@ -434,7 +443,7 @@ void IslandDemoState::update_walk_animation(AppBase& app, float dt) {
     // Torso bob = walk bob + idle breathe
     glm::mat4 bob = glm::translate(glm::mat4(1.0f),
         {0, (std::abs(walk_swing) * 0.3f + breathe) * kCharScale, 0});
-    bones[1] = root_translate * bob;
+    bones[1] = root_xform * bob;
     bones[2] = bones[1];  // Head follows torso
 
     // Pivot rotation around joint (in spawn-space, scaled), then root translate
@@ -450,7 +459,7 @@ void IslandDemoState::update_walk_animation(AppBase& app, float dt) {
         auto r_down = glm::rotate(glm::mat4(1.0f), arm_down_sign * 1.4f, {0, 0, 1});
         // 2) Walk swing: rotate around X
         auto r_swing = glm::rotate(glm::mat4(1.0f), swing, {1, 0, 0});
-        return root_translate * t * r_swing * r_down * glm::translate(glm::mat4(1.0f), -world_pivot);
+        return root_xform * t * r_swing * r_down * glm::translate(glm::mat4(1.0f), -world_pivot);
     };
 
     // Leg rotation: just swing around X at hip pivot
@@ -458,11 +467,11 @@ void IslandDemoState::update_walk_animation(AppBase& app, float dt) {
         glm::vec3 world_pivot = sp + kCharScale * pivot_local;
         auto t = glm::translate(glm::mat4(1.0f), world_pivot);
         auto r = glm::rotate(glm::mat4(1.0f), swing, {1, 0, 0});
-        return root_translate * t * r * glm::translate(glm::mat4(1.0f), -world_pivot);
+        return root_xform * t * r * glm::translate(glm::mat4(1.0f), -world_pivot);
     };
 
-    bones[3] = arm_transform({1.5f, 6.5f, 0.0f}, 1.0f, walk_swing * 0.5f);    // Left arm
-    bones[4] = arm_transform({-1.5f, 6.5f, 0.0f}, -1.0f, -walk_swing * 0.5f); // Right arm
+    bones[3] = arm_transform({1.2f, 6.0f, 0.0f}, -1.0f, walk_swing * 0.5f);    // Left arm (sign flipped — was detaching)
+    bones[4] = arm_transform({-1.2f, 6.0f, 0.0f}, 1.0f, -walk_swing * 0.5f); // Right arm
     bones[5] = leg_transform({0.5f, 3.5f, 0.0f}, -walk_swing);   // Left leg
     bones[6] = leg_transform({-0.5f, 3.5f, 0.0f}, walk_swing);    // Right leg
 

@@ -873,6 +873,11 @@ void AppBase::dispatch_command(const nlohmann::json& cmd, nlohmann::json& respon
             response["position"] = nullptr;
         }
 
+    } else if (cmd_name == "quit") {
+        response["type"] = "ok";
+        response["message"] = "Shutting down";
+        glfwSetWindowShouldClose(window_, GLFW_TRUE);
+
     } else {
         response["type"] = "error";
         response["message"] = "Unknown command: " + cmd_name;
