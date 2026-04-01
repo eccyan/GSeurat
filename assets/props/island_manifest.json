@@ -4,9 +4,9 @@
     "name": "Tree",
     "ply_file": "assets/props/island_tree_1.ply",
     "position": [
-      80,
+      120,
       0,
-      100
+      150
     ],
     "rotation": [
       0,
@@ -20,9 +20,9 @@
     "name": "Tree",
     "ply_file": "assets/props/island_tree_2.ply",
     "position": [
-      160,
+      200,
       0,
-      90
+      130
     ],
     "rotation": [
       0,
@@ -36,9 +36,9 @@
     "name": "Tree",
     "ply_file": "assets/props/island_tree_3.ply",
     "position": [
-      110,
+      160,
       0,
-      170
+      220
     ],
     "rotation": [
       0,
@@ -52,9 +52,9 @@
     "name": "Tree",
     "ply_file": "assets/props/island_tree_4.ply",
     "position": [
-      150,
+      220,
       0,
-      140
+      180
     ],
     "rotation": [
       0,
@@ -64,13 +64,141 @@
     "scale": 1.0
   },
   {
+    "id": "tree_5",
+    "name": "Tree",
+    "ply_file": "assets/props/island_tree_5.ply",
+    "position": [
+      140,
+      0,
+      100
+    ],
+    "rotation": [
+      0,
+      134.8,
+      0
+    ],
+    "scale": 1.12
+  },
+  {
+    "id": "tree_6",
+    "name": "Tree",
+    "ply_file": "assets/props/island_tree_6.ply",
+    "position": [
+      250,
+      0,
+      160
+    ],
+    "rotation": [
+      0,
+      144.3,
+      0
+    ],
+    "scale": 1.09
+  },
+  {
+    "id": "tree_7",
+    "name": "Tree",
+    "ply_file": "assets/props/island_tree_7.ply",
+    "position": [
+      180,
+      0,
+      250
+    ],
+    "rotation": [
+      0,
+      218.8,
+      0
+    ],
+    "scale": 0.83
+  },
+  {
+    "id": "tree_8",
+    "name": "Tree",
+    "ply_file": "assets/props/island_tree_8.ply",
+    "position": [
+      130,
+      0,
+      200
+    ],
+    "rotation": [
+      0,
+      265.4,
+      0
+    ],
+    "scale": 1.15
+  },
+  {
+    "id": "tree_9",
+    "name": "Tree",
+    "ply_file": "assets/props/island_tree_9.ply",
+    "position": [
+      210,
+      0,
+      240
+    ],
+    "rotation": [
+      0,
+      332.0,
+      0
+    ],
+    "scale": 1.16
+  },
+  {
+    "id": "tree_10",
+    "name": "Tree",
+    "ply_file": "assets/props/island_tree_10.ply",
+    "position": [
+      170,
+      0,
+      140
+    ],
+    "rotation": [
+      0,
+      236.1,
+      0
+    ],
+    "scale": 1.17
+  },
+  {
+    "id": "tree_11",
+    "name": "Tree",
+    "ply_file": "assets/props/island_tree_11.ply",
+    "position": [
+      240,
+      0,
+      200
+    ],
+    "rotation": [
+      0,
+      67.5,
+      0
+    ],
+    "scale": 1.05
+  },
+  {
+    "id": "tree_12",
+    "name": "Tree",
+    "ply_file": "assets/props/island_tree_12.ply",
+    "position": [
+      150,
+      0,
+      170
+    ],
+    "rotation": [
+      0,
+      322.2,
+      0
+    ],
+    "scale": 1.26
+  },
+  {
     "id": "rock_1",
     "name": "Rock",
-    "ply_file": "assets/props/island_rock1.ply",
+    "ply_file": "assets/props/island_rock_1.ply",
     "position": [
-      100,
+      150,
       0,
-      70
+      110
     ],
     "rotation": [
       0,
@@ -82,11 +210,11 @@
   {
     "id": "rock_2",
     "name": "Rock",
-    "ply_file": "assets/props/island_rock2.ply",
+    "ply_file": "assets/props/island_rock_2.ply",
     "position": [
-      170,
+      230,
       0,
-      120
+      170
     ],
     "rotation": [
       0,
@@ -98,11 +226,11 @@
   {
     "id": "rock_3",
     "name": "Rock",
-    "ply_file": "assets/props/island_rock1.ply",
+    "ply_file": "assets/props/island_rock_3.ply",
     "position": [
-      90,
+      130,
       0,
-      150
+      210
     ],
     "rotation": [
       0,
@@ -112,13 +240,61 @@
     "scale": 1.41
   },
   {
+    "id": "rock_4",
+    "name": "Rock",
+    "ply_file": "assets/props/island_rock_4.ply",
+    "position": [
+      200,
+      0,
+      100
+    ],
+    "rotation": [
+      0,
+      215.4,
+      0
+    ],
+    "scale": 0.7
+  },
+  {
+    "id": "rock_5",
+    "name": "Rock",
+    "ply_file": "assets/props/island_rock_5.ply",
+    "position": [
+      170,
+      0,
+      260
+    ],
+    "rotation": [
+      0,
+      96.2,
+      0
+    ],
+    "scale": 1.11
+  },
+  {
+    "id": "rock_6",
+    "name": "Rock",
+    "ply_file": "assets/props/island_rock_6.ply",
+    "position": [
+      260,
+      0,
+      190
+    ],
+    "rotation": [
+      0,
+      357.7,
+      0
+    ],
+    "scale": 0.74
+  },
+  {
     "id": "house",
     "name": "House",
-    "ply_file": "assets/props/island_house1.ply",
+    "ply_file": "assets/props/island_house.ply",
     "position": [
-      136,
+      192,
       0,
-      116
+      175
     ],
     "rotation": [
       0,
@@ -126,5 +302,197 @@
       0
     ],
     "scale": 1.0
+  },
+  {
+    "id": "flower_1",
+    "name": "Flower",
+    "ply_file": "assets/props/island_flower1.ply",
+    "position": [
+      160,
+      0,
+      160
+    ],
+    "rotation": [
+      0,
+      200.1,
+      0
+    ],
+    "scale": 1.09
+  },
+  {
+    "id": "flower_2",
+    "name": "Flower",
+    "ply_file": "assets/props/island_flower1.ply",
+    "position": [
+      200,
+      0,
+      200
+    ],
+    "rotation": [
+      0,
+      241.5,
+      0
+    ],
+    "scale": 1.03
+  },
+  {
+    "id": "flower_3",
+    "name": "Flower",
+    "ply_file": "assets/props/island_flower1.ply",
+    "position": [
+      180,
+      0,
+      130
+    ],
+    "rotation": [
+      0,
+      320.6,
+      0
+    ],
+    "scale": 1.16
+  },
+  {
+    "id": "flower_4",
+    "name": "Flower",
+    "ply_file": "assets/props/island_flower1.ply",
+    "position": [
+      220,
+      0,
+      150
+    ],
+    "rotation": [
+      0,
+      19.6,
+      0
+    ],
+    "scale": 1.17
+  },
+  {
+    "id": "flower_5",
+    "name": "Flower",
+    "ply_file": "assets/props/island_flower1.ply",
+    "position": [
+      140,
+      0,
+      180
+    ],
+    "rotation": [
+      0,
+      20.0,
+      0
+    ],
+    "scale": 0.9
+  },
+  {
+    "id": "flower_6",
+    "name": "Flower",
+    "ply_file": "assets/props/island_flower1.ply",
+    "position": [
+      190,
+      0,
+      230
+    ],
+    "rotation": [
+      0,
+      191.6,
+      0
+    ],
+    "scale": 1.16
+  },
+  {
+    "id": "flower_7",
+    "name": "Flower",
+    "ply_file": "assets/props/island_flower1.ply",
+    "position": [
+      170,
+      0,
+      190
+    ],
+    "rotation": [
+      0,
+      3.5,
+      0
+    ],
+    "scale": 1.11
+  },
+  {
+    "id": "flower_8",
+    "name": "Flower",
+    "ply_file": "assets/props/island_flower1.ply",
+    "position": [
+      210,
+      0,
+      170
+    ],
+    "rotation": [
+      0,
+      255.2,
+      0
+    ],
+    "scale": 0.82
+  },
+  {
+    "id": "crystal_1",
+    "name": "Crystal",
+    "ply_file": "assets/props/island_crystal1.ply",
+    "position": [
+      155,
+      0,
+      145
+    ],
+    "rotation": [
+      0,
+      171.2,
+      0
+    ],
+    "scale": 1.04
+  },
+  {
+    "id": "crystal_2",
+    "name": "Crystal",
+    "ply_file": "assets/props/island_crystal1.ply",
+    "position": [
+      225,
+      0,
+      195
+    ],
+    "rotation": [
+      0,
+      183.8,
+      0
+    ],
+    "scale": 1.21
+  },
+  {
+    "id": "crystal_3",
+    "name": "Crystal",
+    "ply_file": "assets/props/island_crystal1.ply",
+    "position": [
+      175,
+      0,
+      235
+    ],
+    "rotation": [
+      0,
+      143.9,
+      0
+    ],
+    "scale": 1.08
+  },
+  {
+    "id": "crystal_4",
+    "name": "Crystal",
+    "ply_file": "assets/props/island_crystal1.ply",
+    "position": [
+      195,
+      0,
+      120
+    ],
+    "rotation": [
+      0,
+      0.5,
+      0
+    ],
+    "scale": 1.17
   }
 ]

@@ -84,34 +84,20 @@ void IslandDemoState::on_enter(AppBase& app) {
         std::vector<Gaussian> merged = map_gaussians_;
         uint32_t map_count = static_cast<uint32_t>(merged.size());
 
-        // Character scale: 0.8x — visible from the far camera distance
-        constexpr float kCharScale = 0.8f;
-        auto add_box = [&](float cx, float cy, float cz, int w, int h, int d,
-                           glm::vec3 color, uint32_t bone) {
-            for (int x = 0; x < w; ++x) {
-                for (int y = 0; y < h; ++y) {
-                    for (int z = 0; z < d; ++z) {
-                        Gaussian g{};
-                        g.position = player_pos + kCharScale * glm::vec3(
-                            cx + x - w / 2.0f, cy + y, cz + z - d / 2.0f);
-                        g.scale = glm::vec3(0.5f * kCharScale);
-                        g.rotation = glm::quat(1, 0, 0, 0);
-                        g.color = color;
-                        g.opacity = 1.0f;
-                        g.importance = 1.0f;
-                        g.bone_index = bone;
-                        merged.push_back(g);
-                    }
-                }
+        // Load mesh-converted character model
+        constexpr float kCharScale = 0.4f;  // smaller relative to larger island
+        auto char_cloud = GaussianCloud::load_ply("assets/props/boy_character.ply");
+        if (!char_cloud.empty()) {
+            // Scale and position character at player spawn
+            const auto& char_gs = char_cloud.gaussians();
+            for (const auto& g : char_gs) {
+                Gaussian cg = g;
+                cg.position = player_pos + cg.position * kCharScale;
+                cg.scale *= kCharScale;
+                // bone_index is already set from the PLY conversion
+                merged.push_back(cg);
             }
-        };
-
-        add_box(0, 4, 0, 4, 6, 2, {1.0f, 0.15f, 0.1f}, 1);    // Torso (bright red)
-        add_box(0, 10, 0, 3, 3, 2, {0.95f, 0.8f, 0.65f}, 2);   // Head (warm skin)
-        add_box(-3.5f, 5, 0, 2, 5, 2, {1.0f, 0.15f, 0.1f}, 3); // Left arm
-        add_box(3.5f, 5, 0, 2, 5, 2, {1.0f, 0.15f, 0.1f}, 4);  // Right arm
-        add_box(-1.0f, 0, 0, 2, 4, 2, {0.1f, 0.1f, 0.35f}, 5); // Left leg (navy)
-        add_box(1.0f, 0, 0, 2, 4, 2, {0.1f, 0.1f, 0.35f}, 6);  // Right leg (navy)
+        }
 
         uint32_t char_count = static_cast<uint32_t>(merged.size()) - map_count;
         auto cloud = GaussianCloud::from_gaussians(std::move(merged));
@@ -132,7 +118,7 @@ void IslandDemoState::on_enter(AppBase& app) {
     camera_target_ = player_pos + glm::vec3(0, kCameraYOffset, 0);
     azimuth_ = 0.0f;
     elevation_ = 0.5f;
-    distance_ = 30.0f;
+    distance_ = 35.0f;
 
     // Scene loaded — ready for play
 }
@@ -445,7 +431,7 @@ void IslandDemoState::update_walk_animation(AppBase& app, float dt) {
         glm::vec3(terrain_sway_x, terrain_sway_y, 0.0f));
 
     // All character bones get root translation + local animation
-    constexpr float kCharScale = 0.8f;
+    constexpr float kCharScale = 0.4f;
 
     // Torso bob = walk bob + idle breathe
     glm::mat4 bob = glm::translate(glm::mat4(1.0f),

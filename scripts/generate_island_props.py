@@ -210,24 +210,35 @@ def generate_house(seed=456):
     return gaussians
 
 
-# Island prop layout (256x256 world, center at 128, 128)
-# Trees at lowland positions
+# Island prop layout (384x384 world, center at 192, 192)
+# Trees spread across the larger island
 TREE_POSITIONS = [
-    [80, 0, 100],
-    [160, 0, 90],
-    [110, 0, 170],
-    [150, 0, 140],
+    [120, 0, 150], [200, 0, 130], [160, 0, 220],
+    [220, 0, 180], [140, 0, 100], [250, 0, 160],
+    [180, 0, 250], [130, 0, 200], [210, 0, 240],
+    [170, 0, 140], [240, 0, 200], [150, 0, 170],
 ]
 
 # Rocks at slope positions
 ROCK_POSITIONS = [
-    [100, 0, 70],
-    [170, 0, 120],
-    [90, 0, 150],
+    [150, 0, 110], [230, 0, 170], [130, 0, 210],
+    [200, 0, 100], [170, 0, 260], [260, 0, 190],
 ]
 
 # House near center on flat ground
-HOUSE_POSITION = [136, 0, 116]
+HOUSE_POSITION = [192, 0, 175]
+
+# Flowers scattered across the island
+FLOWER_POSITIONS = [
+    [160, 0, 160], [200, 0, 200], [180, 0, 130],
+    [220, 0, 150], [140, 0, 180], [190, 0, 230],
+    [170, 0, 190], [210, 0, 170],
+]
+
+# Crystals at special locations
+CRYSTAL_POSITIONS = [
+    [155, 0, 145], [225, 0, 195], [175, 0, 235], [195, 0, 120],
+]
 
 
 def main():
@@ -252,7 +263,7 @@ def main():
 
     # --- Trees ---
     # Use per-tree seeds so each tree looks distinct.
-    tree_seeds = [42, 137, 251, 389]
+    tree_seeds = [42, 137, 251, 389, 503, 617, 733, 841, 953, 1061, 1173, 1289]
     # Pre-determined rotation and scale variations per tree (seeded for reproducibility).
     tree_meta_rng = random.Random(1001)
     for i, pos in enumerate(TREE_POSITIONS):
@@ -278,7 +289,7 @@ def main():
         print(f"Tree {tree_id}: {ply_path} ({count} Gaussians, rot_y={rotation_y}, scale={scale})")
 
     # --- Rocks ---
-    rock_seeds = [123, 217, 344]
+    rock_seeds = [123, 217, 344, 461, 578, 692]
     rock_meta_rng = random.Random(2002)
     for i, pos in enumerate(ROCK_POSITIONS):
         rock_id = i + 1
@@ -319,6 +330,40 @@ def main():
         "scale": 1.0,
     })
     print(f"House: {ply_path} ({count} Gaussians)")
+
+    # --- Flowers ---
+    flower_meta_rng = random.Random(3003)
+    for i, pos in enumerate(FLOWER_POSITIONS):
+        flower_id = i + 1
+        rotation_y = round(flower_meta_rng.uniform(0, 360), 1)
+        scale = round(flower_meta_rng.uniform(0.8, 1.2), 2)
+
+        manifest.append({
+            "id": f"flower_{flower_id}",
+            "name": "Flower",
+            "ply_file": "assets/props/island_flower1.ply",
+            "position": pos,
+            "rotation": [0, rotation_y, 0],
+            "scale": scale,
+        })
+        print(f"Flower {flower_id}: island_flower1.ply (rot_y={rotation_y}, scale={scale})")
+
+    # --- Crystals ---
+    crystal_meta_rng = random.Random(4004)
+    for i, pos in enumerate(CRYSTAL_POSITIONS):
+        crystal_id = i + 1
+        rotation_y = round(crystal_meta_rng.uniform(0, 360), 1)
+        scale = round(crystal_meta_rng.uniform(0.9, 1.3), 2)
+
+        manifest.append({
+            "id": f"crystal_{crystal_id}",
+            "name": "Crystal",
+            "ply_file": "assets/props/island_crystal1.ply",
+            "position": pos,
+            "rotation": [0, rotation_y, 0],
+            "scale": scale,
+        })
+        print(f"Crystal {crystal_id}: island_crystal1.ply (rot_y={rotation_y}, scale={scale})")
 
     # --- Manifest ---
     manifest_path = os.path.abspath(args.manifest)

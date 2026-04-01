@@ -137,12 +137,12 @@ def build_interactive_objects(collision):
         y = lookup_elevation(sx, sz, collision)
         return [sx, y, sz]
 
-    # Torches (4) — near house and on walkable land (256x256 world)
+    # Torches (4) — near house and on walkable land (384x384 world)
     torch_positions = [
-        [134, 0, 122],
-        [122, 0, 110],
-        [114, 0, 106],
-        [106, 0, 118],
+        [195, 0, 180],
+        [185, 0, 172],
+        [200, 0, 190],
+        [210, 0, 185],
     ]
     torches = []
     for i, (tx, _, tz) in enumerate(torch_positions):
@@ -167,11 +167,11 @@ def build_interactive_objects(collision):
             }
         )
 
-    # Crystals (3) — on rocky areas
+    # Crystals (3) — on rocky areas (384x384 world)
     crystal_positions = [
-        [106, 0, 102],
-        [162, 0, 150],
-        [154, 0, 154],
+        [155, 0, 145],
+        [225, 0, 195],
+        [175, 0, 235],
     ]
     crystals = []
     for i, (cx, _, cz) in enumerate(crystal_positions):
@@ -195,10 +195,10 @@ def build_interactive_objects(collision):
             }
         )
 
-    # Chests (2)
+    # Chests (2) — (384x384 world)
     chest_positions = [
-        [110, 0, 110],
-        [150, 0, 150],
+        [175, 0, 160],
+        [215, 0, 210],
     ]
     chests = []
     for i, (bx, _, bz) in enumerate(chest_positions):
@@ -217,8 +217,8 @@ def build_interactive_objects(collision):
             }
         )
 
-    # Fountain (1) — near center on walkable land
-    fx, fz = 114, 106
+    # Fountain (1) — near center on walkable land (384x384 world)
+    fx, fz = 192, 165
     fountain = {
         "id": "fountain",
         "name": "Fountain",
@@ -231,8 +231,8 @@ def build_interactive_objects(collision):
         },
     }
 
-    # Pressure plate (1)
-    ppx, ppz = 166, 150
+    # Pressure plate (1) — (384x384 world)
+    ppx, ppz = 230, 200
     pressure_plate = {
         "id": "pressure_plate",
         "name": "Pressure Plate",
@@ -245,8 +245,8 @@ def build_interactive_objects(collision):
         },
     }
 
-    # Hidden crystal (1)
-    hcx, hcz = 170, 150
+    # Hidden crystal (1) — (384x384 world)
+    hcx, hcz = 235, 200
     crystal_hidden = {
         "id": "crystal_hidden",
         "name": "Hidden Crystal",
@@ -264,12 +264,12 @@ def build_interactive_objects(collision):
         },
     }
 
-    # Glowing lanterns along paths — demonstrate emissive bloom
+    # Glowing lanterns along paths — demonstrate emissive bloom (384x384 world)
     lantern_positions = [
-        [130, 0, 121],  # near house
-        [125, 0, 130],  # path south
-        [135, 0, 115],  # path north
-        [120, 0, 120],  # junction
+        [190, 0, 178],  # near house
+        [188, 0, 185],  # path south
+        [196, 0, 170],  # path north
+        [200, 0, 180],  # junction
     ]
     lanterns = []
     for i, (lx, _, lz) in enumerate(lantern_positions):
@@ -302,12 +302,12 @@ def build_particle_emitters(collision):
         y = lookup_elevation(sx, sz, collision)
         return [sx, y, sz]
 
-    # Torch fire emitters (index 0-3) — match torch game object positions
+    # Torch fire emitters (index 0-3) — match torch game object positions (384x384 world)
     torch_positions = [
-        [134, 122],
-        [122, 110],
-        [114, 106],
-        [106, 118],
+        [195, 180],
+        [185, 172],
+        [200, 190],
+        [210, 185],
     ]
     emitters = []
     for i, (tx, tz) in enumerate(torch_positions):
@@ -318,10 +318,10 @@ def build_particle_emitters(collision):
             e["spawn_rate"] = 0
         emitters.append(e)
 
-    # Chest spark shower emitters (index 4-5)
+    # Chest spark shower emitters (index 4-5) — (384x384 world)
     chest_positions = [
-        [110, 110],
-        [150, 150],
+        [175, 160],
+        [215, 210],
     ]
     for cx, cz in chest_positions:
         emitters.append(
@@ -333,20 +333,22 @@ def build_particle_emitters(collision):
             }
         )
 
-    # Fountain geyser emitter (index 6) — large-scale mist, always active
+    # Fountain geyser emitter (index 6) — large-scale mist, always active (384x384 world)
     emitters.append(
         {
             "preset": "geyser",
-            "position": pos(114, 106),
+            "position": pos(192, 165),
         }
     )
 
-    # Fireflies emitters — spread across island for ambient activity in every frame
+    # Fireflies emitters — spread across island for ambient activity (384x384 world)
     firefly_positions = [
-        [125, 121],  # near spawn
-        [135, 115],  # north of house
-        [115, 130],  # south
-        [145, 125],  # east
+        [190, 185],  # near spawn
+        [200, 170],  # north of house
+        [170, 200],  # south
+        [220, 180],  # east
+        [160, 160],  # southwest
+        [240, 210],  # far east
     ]
     for fx, fz in firefly_positions:
         emitters.append({"preset": "fireflies", "position": pos(fx, fz)})
@@ -390,8 +392,8 @@ def main():
         "gaussian_splat": {
             "ply_file": "assets/maps/seurat_island.ply",
             "camera": {
-                "position": [128, 40, 180],
-                "target": [128, 0, 128],
+                "position": [192, 40, 260],
+                "target": [192, 0, 192],
                 "fov": 45,
             },
             "render_width": 640,
@@ -402,20 +404,20 @@ def main():
         "ambient_color": [0.08, 0.08, 0.15, 1.0],
         "lights": [
             {
-                "position": [60, 60, 200],
+                "position": [90, 60, 300],
                 "color": [1.0, 0.85, 0.6],
-                "radius": 400,
+                "radius": 500,
                 "intensity": 3.5,
             },
             {
-                "position": [200, 40, 60],
+                "position": [300, 40, 90],
                 "color": [0.8, 0.6, 0.4],
-                "radius": 300,
+                "radius": 400,
                 "intensity": 1.5,
             },
         ],
         "player": {
-            "position": [125.0, lookup_elevation(125, 121, collision), 121.0],
+            "position": (lambda sx, sz: [sx, lookup_elevation(sx, sz, collision), sz])(*snap_to_walkable(192, 185, collision)),
             "facing": "down",
         },
         "game_objects": game_objects,

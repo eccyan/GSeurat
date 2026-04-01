@@ -16,10 +16,10 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from ply_utils import write_ply
 
 # Island parameters
-GRID_SIZE = 128         # cells in X and Z
+GRID_SIZE = 192         # cells in X and Z
 CELL_SIZE = 2.0         # world units per cell
-ISLAND_RADIUS = 110.0   # radius for the island mask falloff
-HEIGHT_SCALE = 8.0      # gentle rolling hills (was 20 — too mountainous)
+ISLAND_RADIUS = 170.0   # radius for the island mask falloff
+HEIGHT_SCALE = 6.0      # flatter for more walkable area
 STEP = 0.8              # Gaussian placement step (dense for continuous surfaces)
 
 # Height thresholds for coloring
