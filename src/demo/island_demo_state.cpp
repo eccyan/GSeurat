@@ -36,6 +36,8 @@ void IslandDemoState::on_enter(AppBase& app) {
     app.feature_flags().vignette = true;
     app.feature_flags().particles = true;
     app.feature_flags().point_lights = true;
+    app.feature_flags().gs_lod = false;             // disable LOD decimation — max quality
+    app.feature_flags().gs_adaptive_budget = false;  // disable budget throttling
     auto& pp = app.renderer().post_process_params();
     pp.fog_density = 0.0f;
     pp.dof_max_blur = 0.0f;
