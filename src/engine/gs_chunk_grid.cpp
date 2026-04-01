@@ -226,13 +226,29 @@ uint32_t GsChunkGrid::gather_lod(const std::vector<uint32_t>& chunk_indices,
         total_wanted += keep;
     }
 
-    // If total exceeds budget, scale all ratios proportionally
+    // If total exceeds budget, scale down far chunks first — protect near ones
     if (total_wanted > budget) {
-        float scale = static_cast<float>(budget) / static_cast<float>(total_wanted);
+        // Count how many Gaussians near chunks need (ratio == 1.0)
+        uint32_t near_total = 0;
+        uint32_t far_total = 0;
+        for (const auto& lod : lods) {
+            if (lod.ratio >= 0.99f)
+                near_total += lod.keep_count;
+            else
+                far_total += lod.keep_count;
+        }
+
+        // Scale only far chunks; near chunks keep full detail
+        uint32_t far_budget = (budget > near_total) ? (budget - near_total) : 0;
+        float far_scale = (far_total > 0) ? static_cast<float>(far_budget) / static_cast<float>(far_total) : 0.0f;
+        far_scale = std::min(far_scale, 1.0f);
+
         total_wanted = 0;
         for (auto& lod : lods) {
-            const auto& chunk = chunks_[lod.idx];
-            lod.keep_count = std::max(1u, static_cast<uint32_t>(chunk.count * lod.ratio * scale));
+            if (lod.ratio < 0.99f) {
+                const auto& chunk = chunks_[lod.idx];
+                lod.keep_count = std::max(1u, static_cast<uint32_t>(chunk.count * lod.ratio * far_scale));
+            }
             total_wanted += lod.keep_count;
         }
     }
