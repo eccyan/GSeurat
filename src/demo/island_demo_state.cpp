@@ -470,8 +470,8 @@ void IslandDemoState::update_walk_animation(AppBase& app, float dt) {
         return root_xform * t * r * glm::translate(glm::mat4(1.0f), -world_pivot);
     };
 
-    bones[3] = arm_transform({0.7f, 6.0f, 0.0f}, 1.0f, walk_swing * 0.5f);    // Left arm — pivot near shoulder
-    bones[4] = arm_transform({-0.7f, 6.0f, 0.0f}, -1.0f, -walk_swing * 0.5f); // Right arm
+    bones[3] = arm_transform({0.7f, 6.8f, 0.0f}, 1.0f, walk_swing * 0.5f);    // Left arm — higher pivot
+    bones[4] = arm_transform({-1.0f, 6.8f, 0.0f}, -1.0f, -walk_swing * 0.5f); // Right arm — wider X
     bones[5] = leg_transform({0.5f, 3.5f, 0.0f}, -walk_swing);   // Left leg
     bones[6] = leg_transform({-0.5f, 3.5f, 0.0f}, walk_swing);    // Right leg
 
