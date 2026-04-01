@@ -283,11 +283,16 @@ def main():
         rotation_y = round(tree_meta_rng.uniform(0, 360), 1)
         scale = round(tree_meta_rng.uniform(1.5, 2.5), 2)  # 12-21u tall (2-3x 6.5u character)
 
+        # Tree models float above origin — pull down to ground
+        # tree1 (odd): min_y=2.38, tree2 (even): min_y=8.28
+        tree_y_offset = -2.38 if (tree_id % 2 == 1) else -8.28
+        adjusted_pos = [pos[0], pos[1] + tree_y_offset * scale, pos[2]]
+
         manifest.append({
             "id": f"tree_{tree_id}",
             "name": "Tree",
             "ply_file": f"assets/props/{filename}",
-            "position": pos,
+            "position": adjusted_pos,
             "rotation": [0, rotation_y, 0],
             "scale": scale,
         })
@@ -312,11 +317,16 @@ def main():
         rotation_y = round(rock_meta_rng.uniform(0, 360), 1)
         scale = round(rock_meta_rng.uniform(1.5, 2.5), 2)  # 2-4u tall (~half character)
 
+        # Rock models have negative Y (rock1: -2.19, rock2: -5.40) — lift to ground
+        rock_y_offsets = {1: 2.19, 2: 5.40, 3: 2.19, 4: 5.40, 5: 2.19, 6: 5.40}
+        y_off = rock_y_offsets.get(rock_id, 2.19) * scale
+        adjusted_pos = [pos[0], pos[1] + y_off, pos[2]]
+
         manifest.append({
             "id": f"rock_{rock_id}",
             "name": "Rock",
             "ply_file": f"assets/props/{filename}",
-            "position": pos,
+            "position": adjusted_pos,
             "rotation": [0, rotation_y, 0],
             "scale": scale,
         })
@@ -345,17 +355,20 @@ def main():
     print(f"House: {ply_path} ({count} Gaussians)")
 
     # --- Flowers ---
+    # Flower model Y range: [-3.22, -0.84] — entirely below origin, needs Y lift
+    FLOWER_Y_OFFSET = 3.22  # lift by min_y so bottom sits on ground
     flower_meta_rng = random.Random(3003)
     for i, pos in enumerate(FLOWER_POSITIONS):
         flower_id = i + 1
         rotation_y = round(flower_meta_rng.uniform(0, 360), 1)
         scale = round(flower_meta_rng.uniform(0.1, 0.2), 2)
+        adjusted_pos = [pos[0], pos[1] + FLOWER_Y_OFFSET * scale, pos[2]]
 
         manifest.append({
             "id": f"flower_{flower_id}",
             "name": "Flower",
             "ply_file": "assets/props/island_flower1.ply",
-            "position": pos,
+            "position": adjusted_pos,
             "rotation": [0, rotation_y, 0],
             "scale": scale,
         })

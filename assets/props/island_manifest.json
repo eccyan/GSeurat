@@ -5,7 +5,7 @@
     "ply_file": "assets/props/island_tree_1.ply",
     "position": [
       120,
-      0,
+      -3.7128,
       150
     ],
     "rotation": [
@@ -21,7 +21,7 @@
     "ply_file": "assets/props/island_tree_2.ply",
     "position": [
       200,
-      0,
+      -19.540799999999997,
       130
     ],
     "rotation": [
@@ -37,7 +37,7 @@
     "ply_file": "assets/props/island_tree_3.ply",
     "position": [
       160,
-      0,
+      -5.712,
       220
     ],
     "rotation": [
@@ -53,7 +53,7 @@
     "ply_file": "assets/props/island_tree_4.ply",
     "position": [
       220,
-      0,
+      -15.814799999999998,
       180
     ],
     "rotation": [
@@ -69,7 +69,7 @@
     "ply_file": "assets/props/island_tree_5.ply",
     "position": [
       140,
-      0,
+      -5.117,
       100
     ],
     "rotation": [
@@ -85,7 +85,7 @@
     "ply_file": "assets/props/island_tree_6.ply",
     "position": [
       250,
-      0,
+      -17.139599999999998,
       160
     ],
     "rotation": [
@@ -101,7 +101,7 @@
     "ply_file": "assets/props/island_tree_7.ply",
     "position": [
       180,
-      0,
+      -3.689,
       250
     ],
     "rotation": [
@@ -117,7 +117,7 @@
     "ply_file": "assets/props/island_tree_8.ply",
     "position": [
       130,
-      0,
+      -18.2988,
       200
     ],
     "rotation": [
@@ -133,7 +133,7 @@
     "ply_file": "assets/props/island_tree_9.ply",
     "position": [
       210,
-      0,
+      -5.259799999999999,
       240
     ],
     "rotation": [
@@ -149,7 +149,7 @@
     "ply_file": "assets/props/island_tree_10.ply",
     "position": [
       170,
-      0,
+      -18.5472,
       140
     ],
     "rotation": [
@@ -165,7 +165,7 @@
     "ply_file": "assets/props/island_tree_11.ply",
     "position": [
       240,
-      0,
+      -4.76,
       200
     ],
     "rotation": [
@@ -181,7 +181,7 @@
     "ply_file": "assets/props/island_tree_12.ply",
     "position": [
       150,
-      0,
+      -20.1204,
       170
     ],
     "rotation": [
@@ -197,7 +197,7 @@
     "ply_file": "assets/props/island_rock_1.ply",
     "position": [
       150,
-      0,
+      4.38,
       110
     ],
     "rotation": [
@@ -213,7 +213,7 @@
     "ply_file": "assets/props/island_rock_2.ply",
     "position": [
       230,
-      0,
+      11.124,
       170
     ],
     "rotation": [
@@ -229,7 +229,7 @@
     "ply_file": "assets/props/island_rock_3.ply",
     "position": [
       130,
-      0,
+      5.212199999999999,
       210
     ],
     "rotation": [
@@ -245,7 +245,7 @@
     "ply_file": "assets/props/island_rock_4.ply",
     "position": [
       200,
-      0,
+      8.100000000000001,
       100
     ],
     "rotation": [
@@ -261,7 +261,7 @@
     "ply_file": "assets/props/island_rock_5.ply",
     "position": [
       170,
-      0,
+      4.4018999999999995,
       260
     ],
     "rotation": [
@@ -277,7 +277,7 @@
     "ply_file": "assets/props/island_rock_6.ply",
     "position": [
       260,
-      0,
+      8.370000000000001,
       190
     ],
     "rotation": [
@@ -309,7 +309,7 @@
     "ply_file": "assets/props/island_flower1.ply",
     "position": [
       160,
-      0,
+      0.5474000000000001,
       160
     ],
     "rotation": [
@@ -325,7 +325,7 @@
     "ply_file": "assets/props/island_flower1.ply",
     "position": [
       200,
-      0,
+      0.5152,
       200
     ],
     "rotation": [
@@ -341,7 +341,7 @@
     "ply_file": "assets/props/island_flower1.ply",
     "position": [
       180,
-      0,
+      0.6118,
       130
     ],
     "rotation": [
@@ -357,7 +357,7 @@
     "ply_file": "assets/props/island_flower1.ply",
     "position": [
       220,
-      0,
+      0.6118,
       150
     ],
     "rotation": [
@@ -373,7 +373,7 @@
     "ply_file": "assets/props/island_flower1.ply",
     "position": [
       140,
-      0,
+      0.3864,
       180
     ],
     "rotation": [
@@ -389,7 +389,7 @@
     "ply_file": "assets/props/island_flower1.ply",
     "position": [
       190,
-      0,
+      0.6118,
       230
     ],
     "rotation": [
@@ -405,7 +405,7 @@
     "ply_file": "assets/props/island_flower1.ply",
     "position": [
       170,
-      0,
+      0.5796,
       190
     ],
     "rotation": [
@@ -421,7 +421,7 @@
     "ply_file": "assets/props/island_flower1.ply",
     "position": [
       210,
-      0,
+      0.3542,
       170
     ],
     "rotation": [
