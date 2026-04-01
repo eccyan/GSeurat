@@ -28,12 +28,14 @@ void IslandDemoState::on_enter(AppBase& app) {
     // Disable app-level parallax — we manage our own camera
     app.set_gs_parallax_active(false);
 
-    // Enable bloom, disable fog/DoF for visual clarity
+    // Enable rendering features for the demo
     app.feature_flags().bloom = true;
     app.feature_flags().fog = false;
     app.feature_flags().depth_of_field = false;
     app.feature_flags().tone_mapping = true;
     app.feature_flags().vignette = true;
+    app.feature_flags().particles = true;
+    app.feature_flags().point_lights = true;
     auto& pp = app.renderer().post_process_params();
     pp.fog_density = 0.0f;
     pp.dof_max_blur = 0.0f;
@@ -436,10 +438,11 @@ void IslandDemoState::update_walk_animation(AppBase& app, float dt) {
     float breathe = std::sin(walk_anim_time_ * 1.5f) * 0.15f * (1.0f - walk_scale);
 
     glm::mat4 bones[7];
-    // Bone 0 = all map Gaussians: very subtle sway (visible in motion, not blur)
-    float terrain_sway_y = std::sin(env_anim_time_ * 0.8f) * 0.02f;
+    // Bone 0 = all map Gaussians: gentle wave motion shows "living world"
+    float terrain_sway_y = std::sin(env_anim_time_ * 1.0f) * 0.05f;
+    float terrain_sway_x = std::sin(env_anim_time_ * 0.6f) * 0.02f;
     bones[0] = glm::translate(glm::mat4(1.0f),
-        glm::vec3(0.0f, terrain_sway_y, 0.0f));
+        glm::vec3(terrain_sway_x, terrain_sway_y, 0.0f));
 
     // All character bones get root translation + local animation
     constexpr float kCharScale = 0.8f;
