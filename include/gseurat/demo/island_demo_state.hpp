@@ -71,7 +71,7 @@ private:
 
     // Hybrid re-render
     uint32_t gs_frame_counter_ = 0;
-    uint32_t gs_render_interval_ = 4;
+    uint32_t gs_render_interval_ = 1;  // render every frame (no cached blit = no flickering/ghosts)
 
     // Constants
     static constexpr float kMinElevation = 0.1f;
