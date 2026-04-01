@@ -33416,25 +33416,23 @@
   ],
   "particle_emitters": [
     {
-      "preset": "fire",
+      "preset": "bonfire",
       "position": [
         135.0,
         4.8164,
         123.0
-      ],
-      "spawn_rate": 8.0
+      ]
     },
     {
-      "preset": "fire",
+      "preset": "bonfire",
       "position": [
         123.0,
         5.9579,
         111.0
-      ],
-      "spawn_rate": 8.0
+      ]
     },
     {
-      "preset": "fire",
+      "preset": "bonfire",
       "position": [
         111.0,
         2.0465,
@@ -33443,7 +33441,7 @@
       "spawn_rate": 0
     },
     {
-      "preset": "fire",
+      "preset": "bonfire",
       "position": [
         105.0,
         1.3699,
@@ -33472,13 +33470,20 @@
       "burst_duration": 0.5
     },
     {
-      "preset": "waterfall_mist",
+      "preset": "geyser",
       "position": [
         111.0,
         2.0465,
         103.0
-      ],
-      "spawn_rate": 5.0
+      ]
+    },
+    {
+      "preset": "fireflies",
+      "position": [
+        129.0,
+        3.3999,
+        121.0
+      ]
     }
   ]
 }

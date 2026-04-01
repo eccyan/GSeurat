@@ -311,15 +311,12 @@ def build_particle_emitters(collision):
     ]
     emitters = []
     for i, (tx, tz) in enumerate(torch_positions):
+        # "bonfire" preset has large-scale particles visible from isometric camera
         # First 2 torches always lit, last 2 start dark (proximity-triggered)
-        rate = 8.0 if i < 2 else 0
-        emitters.append(
-            {
-                "preset": "fire",
-                "position": pos(tx, tz),
-                "spawn_rate": rate,
-            }
-        )
+        e = {"preset": "bonfire", "position": pos(tx, tz)}
+        if i >= 2:
+            e["spawn_rate"] = 0
+        emitters.append(e)
 
     # Chest spark shower emitters (index 4-5)
     chest_positions = [
@@ -336,12 +333,19 @@ def build_particle_emitters(collision):
             }
         )
 
-    # Fountain waterfall mist emitter (index 6) — always active
+    # Fountain geyser emitter (index 6) — large-scale mist, always active
     emitters.append(
         {
-            "preset": "waterfall_mist",
+            "preset": "geyser",
             "position": pos(114, 106),
-            "spawn_rate": 5.0,
+        }
+    )
+
+    # Fireflies emitter (index 7) — ambient "living dots" around the island center
+    emitters.append(
+        {
+            "preset": "fireflies",
+            "position": pos(128, 120),
         }
     )
 

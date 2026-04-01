@@ -450,11 +450,57 @@ GsEmitterConfig gs_preset_waterfall_mist() {
     return c;
 }
 
+// Large-scale fire for isometric/far camera views
+GsEmitterConfig gs_preset_bonfire() {
+    GsEmitterConfig c;
+    c.spawn_rate = 60.0f;
+    c.lifetime_min = 0.6f;
+    c.lifetime_max = 1.8f;
+    c.velocity_min = {-2.0f, 4.0f, -2.0f};
+    c.velocity_max = { 2.0f, 10.0f,  2.0f};
+    c.acceleration = {0.0f, 2.0f, 0.0f};
+    c.color_start = {1.0f, 0.7f, 0.15f};
+    c.color_end = {0.9f, 0.15f, 0.0f};
+    c.scale_min = {0.8f, 0.8f, 0.8f};
+    c.scale_max = {1.5f, 1.5f, 1.5f};
+    c.scale_end_factor = 0.2f;
+    c.opacity_start = 0.9f;
+    c.opacity_end = 0.0f;
+    c.emission = 3.0f;
+    c.spawn_region = box_region_from_offsets({-1.0f, 0.0f, -1.0f}, {1.0f, 1.0f, 1.0f});
+    c.burst_duration = 0.0f;
+    return c;
+}
+
+// Large-scale mist for isometric/far camera views
+GsEmitterConfig gs_preset_geyser() {
+    GsEmitterConfig c;
+    c.spawn_rate = 50.0f;
+    c.lifetime_min = 1.5f;
+    c.lifetime_max = 3.0f;
+    c.velocity_min = {-3.0f, 2.0f, -3.0f};
+    c.velocity_max = { 3.0f, 6.0f,  3.0f};
+    c.acceleration = {0.0f, -0.5f, 0.0f};
+    c.color_start = {0.8f, 0.85f, 0.95f};
+    c.color_end = {0.7f, 0.8f, 0.92f};
+    c.scale_min = {0.6f, 0.6f, 0.6f};
+    c.scale_max = {1.2f, 1.2f, 1.2f};
+    c.scale_end_factor = 2.0f;
+    c.opacity_start = 0.5f;
+    c.opacity_end = 0.0f;
+    c.emission = 0.5f;
+    c.spawn_region = box_region_from_offsets({-2.0f, 0.0f, -2.0f}, {2.0f, 1.0f, 2.0f});
+    c.burst_duration = 0.0f;
+    return c;
+}
+
 std::optional<GsEmitterConfig> gs_resolve_preset(const std::string& name) {
     if (name == "dust_puff")       return gs_preset_dust_puff();
     if (name == "spark_shower")    return gs_preset_spark_shower();
     if (name == "magic_spiral")    return gs_preset_magic_spiral();
     if (name == "fire")            return gs_preset_fire();
+    if (name == "bonfire")         return gs_preset_bonfire();
+    if (name == "geyser")          return gs_preset_geyser();
     if (name == "smoke")           return gs_preset_smoke();
     if (name == "rain")            return gs_preset_rain();
     if (name == "snow")            return gs_preset_snow();
