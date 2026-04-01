@@ -114,11 +114,8 @@ void IslandDemoState::on_enter(AppBase& app) {
         (void)char_count;
     }
 
-    // Initialize camera centered on player
+    // Initialize camera centered on player (use header defaults for elevation/distance)
     camera_target_ = player_pos + glm::vec3(0, kCameraYOffset, 0);
-    azimuth_ = 0.0f;
-    elevation_ = 0.5f;
-    distance_ = 25.0f;
 
     // Scene loaded — ready for play
 }

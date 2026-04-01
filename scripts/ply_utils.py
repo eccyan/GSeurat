@@ -38,13 +38,12 @@ def write_ply(path, gaussians):
             color: (r, g, b) tuple, 0-1 range
             scale: float or (sx, sy, sz) tuple (world-space size)
             opacity: float 0-1
+            bone: (optional) int 0-255 bone index for skeletal animation
     """
     count = len(gaussians)
+    has_bones = any("bone" in g for g in gaussians)
 
-    header = (
-        "ply\n"
-        "format binary_little_endian 1.0\n"
-        f"element vertex {count}\n"
+    props = (
         "property float x\n"
         "property float y\n"
         "property float z\n"
@@ -59,6 +58,15 @@ def write_ply(path, gaussians):
         "property float f_dc_1\n"
         "property float f_dc_2\n"
         "property float opacity\n"
+    )
+    if has_bones:
+        props += "property uchar bone_index\n"
+
+    header = (
+        "ply\n"
+        "format binary_little_endian 1.0\n"
+        f"element vertex {count}\n"
+        + props +
         "end_header\n"
     )
 
@@ -95,5 +103,7 @@ def write_ply(path, gaussians):
                 dc0, dc1, dc2,
                 op,
             ))
+            if has_bones:
+                f.write(struct.pack("<B", g.get("bone", 0)))
 
     return count
