@@ -88,13 +88,14 @@ void IslandDemoState::on_enter(AppBase& app) {
         constexpr float kCharScale = 0.5f;   // ~6.5 units tall — fills 1/4 screen at dist 8
         auto char_cloud = GaussianCloud::load_ply("assets/props/boy_character.ply");
         if (!char_cloud.empty()) {
-            // Scale and position character at player spawn
+            // Scale, rotate 180° (face away from camera), and position at spawn
             const auto& char_gs = char_cloud.gaussians();
             for (const auto& g : char_gs) {
                 Gaussian cg = g;
-                cg.position = player_pos + cg.position * kCharScale;
+                // Rotate 180° around Y: (x,y,z) → (-x, y, -z)
+                glm::vec3 rotated(-cg.position.x, cg.position.y, -cg.position.z);
+                cg.position = player_pos + rotated * kCharScale;
                 cg.scale *= kCharScale;
-                // bone_index is already set from the PLY conversion
                 merged.push_back(cg);
             }
         }
@@ -437,18 +438,33 @@ void IslandDemoState::update_walk_animation(AppBase& app, float dt) {
     bones[2] = bones[1];  // Head follows torso
 
     // Pivot rotation around joint (in spawn-space, scaled), then root translate
+    // Mesh boy: 8.4 units tall, rotated 180° so pivots use flipped X
+    // Shoulder at ~Y=6.5, hip at ~Y=3.5 (in mesh local coords)
     const glm::vec3& sp = character_spawn_pos_;
-    auto pivot_rotate = [&](glm::vec3 pivot_local, float angle) {
+    // Arm rotation: T-pose arms extend along ±X. Rotate around Z to bring down,
+    // then around X for walk swing.
+    auto arm_transform = [&](glm::vec3 pivot_local, float arm_down_sign, float swing) {
         glm::vec3 world_pivot = sp + kCharScale * pivot_local;
         auto t = glm::translate(glm::mat4(1.0f), world_pivot);
-        auto r = glm::rotate(glm::mat4(1.0f), angle, {1, 0, 0});
+        // 1) Bring arm down from T-pose: rotate ~80° around Z axis
+        auto r_down = glm::rotate(glm::mat4(1.0f), arm_down_sign * 1.4f, {0, 0, 1});
+        // 2) Walk swing: rotate around X
+        auto r_swing = glm::rotate(glm::mat4(1.0f), swing, {1, 0, 0});
+        return root_translate * t * r_swing * r_down * glm::translate(glm::mat4(1.0f), -world_pivot);
+    };
+
+    // Leg rotation: just swing around X at hip pivot
+    auto leg_transform = [&](glm::vec3 pivot_local, float swing) {
+        glm::vec3 world_pivot = sp + kCharScale * pivot_local;
+        auto t = glm::translate(glm::mat4(1.0f), world_pivot);
+        auto r = glm::rotate(glm::mat4(1.0f), swing, {1, 0, 0});
         return root_translate * t * r * glm::translate(glm::mat4(1.0f), -world_pivot);
     };
 
-    bones[3] = pivot_rotate({-3.5f, 9.0f, 0.0f}, walk_swing);    // Left arm
-    bones[4] = pivot_rotate({3.5f, 9.0f, 0.0f}, -walk_swing);   // Right arm
-    bones[5] = pivot_rotate({-1.0f, 4.0f, 0.0f}, -walk_swing);  // Left leg
-    bones[6] = pivot_rotate({1.0f, 4.0f, 0.0f}, walk_swing);    // Right leg
+    bones[3] = arm_transform({1.5f, 6.5f, 0.0f}, 1.0f, walk_swing * 0.5f);    // Left arm
+    bones[4] = arm_transform({-1.5f, 6.5f, 0.0f}, -1.0f, -walk_swing * 0.5f); // Right arm
+    bones[5] = leg_transform({0.5f, 3.5f, 0.0f}, -walk_swing);   // Left leg
+    bones[6] = leg_transform({-0.5f, 3.5f, 0.0f}, walk_swing);    // Right leg
 
     app.renderer().gs_renderer().upload_bone_transforms(bones, 7);
 }
