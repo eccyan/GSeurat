@@ -204,11 +204,13 @@ void IslandDemoState::update(AppBase& app, float dt) {
     // Effect systems (EmitterToggle, LightToggle)
     update_effects(app, dt);
 
-    // Environment animation + walk animation (N key toggles)
+    // Environment animation (N key toggles)
     if (anim_enabled_) {
         update_environment_animation(app, dt);
-        update_walk_animation(app, dt);
     }
+
+    // Walk animation always runs (handles character root transform + bone poses)
+    update_walk_animation(app, dt);
 
     // Camera follow
     update_camera(app, dt);
