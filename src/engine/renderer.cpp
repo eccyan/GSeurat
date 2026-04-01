@@ -836,8 +836,10 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
                 gs_prev_budget_ = gs_gaussian_budget_;
             }
 
-            if (visible != gs_prev_visible_ || budget_changed) {
-                if (gs_budget_locked_) {
+            // Always re-gather: camera movement changes LOD distance-based selection
+            // even when the same chunks are visible (ghost artifact fix)
+            {
+                if ((visible != gs_prev_visible_ || budget_changed) && gs_budget_locked_) {
                     gs_budget_locked_ = false;
                     gs_stable_frame_count_ = 0;
                 }
