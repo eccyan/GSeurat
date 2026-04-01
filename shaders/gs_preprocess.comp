@@ -322,8 +322,9 @@ void main() {
     // Transform to view space
     vec4 view_pos = view * vec4(pos, 1.0);
 
-    // Frustum cull: discard if behind near plane (view space z is negative for visible objects)
-    if (view_pos.z > -0.1) {
+    // Frustum cull: discard if behind near plane or too close to camera
+    // (near Gaussians expand to fill screen, causing blurry foreground artifacts)
+    if (view_pos.z > -1.5) {
         sort_entries[idx].key = 0xFFFF;
         sort_entries[idx].index = idx;
         return;
