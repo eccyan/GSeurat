@@ -276,7 +276,7 @@ def main():
         total_gaussians += count
 
         rotation_y = round(tree_meta_rng.uniform(0, 360), 1)
-        scale = round(tree_meta_rng.uniform(0.8, 1.3), 2)
+        scale = round(tree_meta_rng.uniform(0.8, 1.4), 2)  # 6-12u tall (2-3x character)
 
         manifest.append({
             "id": f"tree_{tree_id}",
@@ -301,7 +301,7 @@ def main():
         total_gaussians += count
 
         rotation_y = round(rock_meta_rng.uniform(0, 360), 1)
-        scale = round(rock_meta_rng.uniform(0.7, 1.5), 2)
+        scale = round(rock_meta_rng.uniform(0.8, 1.5), 2)  # 1-2u tall (~character height)
 
         manifest.append({
             "id": f"rock_{rock_id}",
@@ -327,7 +327,7 @@ def main():
         "ply_file": f"assets/props/{filename}",
         "position": HOUSE_POSITION,
         "rotation": [0, 0, 0],
-        "scale": 1.0,
+        "scale": 1.5,  # house ~6u tall (2x character)
     })
     print(f"House: {ply_path} ({count} Gaussians)")
 
@@ -336,7 +336,7 @@ def main():
     for i, pos in enumerate(FLOWER_POSITIONS):
         flower_id = i + 1
         rotation_y = round(flower_meta_rng.uniform(0, 360), 1)
-        scale = round(flower_meta_rng.uniform(0.8, 1.2), 2)
+        scale = round(flower_meta_rng.uniform(0.1, 0.2), 2)
 
         manifest.append({
             "id": f"flower_{flower_id}",
@@ -353,7 +353,7 @@ def main():
     for i, pos in enumerate(CRYSTAL_POSITIONS):
         crystal_id = i + 1
         rotation_y = round(crystal_meta_rng.uniform(0, 360), 1)
-        scale = round(crystal_meta_rng.uniform(0.9, 1.3), 2)
+        scale = round(crystal_meta_rng.uniform(1.0, 1.8), 2)
 
         manifest.append({
             "id": f"crystal_{crystal_id}",

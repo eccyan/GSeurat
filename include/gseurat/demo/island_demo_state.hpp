@@ -51,7 +51,7 @@ private:
     // Orbit camera (third-person around player)
     float azimuth_ = 0.0f;
     float elevation_ = 0.65f;   // ~37 deg — dramatic 3/4 perspective
-    float distance_ = 35.0f;   // further back for bigger island
+    float distance_ = 18.0f;   // close enough to see character detail
     glm::vec3 camera_target_{0.0f};  // smoothed target
 
     // Mouse drag state
@@ -73,14 +73,14 @@ private:
     // Constants
     static constexpr float kMinElevation = 0.175f;
     static constexpr float kMaxElevation = 1.396f;
-    static constexpr float kMinDistance = 12.0f;
+    static constexpr float kMinDistance = 10.0f;
     static constexpr float kMaxDistance = 120.0f;
     static constexpr float kOrbitSensitivity = 0.005f;
     static constexpr float kZoomSensitivity = 2.0f;
     static constexpr float kPlayerSpeed = 12.0f;
     static constexpr float kPlayerAccel = 12.0f;
     static constexpr float kCameraSmoothing = 8.0f;
-    static constexpr float kCameraYOffset = 2.0f;
+    static constexpr float kCameraYOffset = 1.5f;
 };
 
 }  // namespace gseurat
