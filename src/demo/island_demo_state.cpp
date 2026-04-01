@@ -96,7 +96,7 @@ void IslandDemoState::on_enter(AppBase& app) {
                 Gaussian cg = g;
                 // Rotate 180° around Y: (x,y,z) → (-x, y, -z)
                 glm::vec3 rotated(-cg.position.x, cg.position.y, -cg.position.z);
-                cg.position = player_pos + rotated * kCharScale;
+                cg.position = player_pos + rotated * kCharScale + glm::vec3(0, 0.3f, 0);
                 cg.scale *= kCharScale;
                 merged.push_back(cg);
             }
