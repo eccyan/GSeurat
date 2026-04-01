@@ -73807,7 +73807,7 @@
       "ply_file": "assets/props/island_tree_1.ply",
       "position": [
         120,
-        -3.7128,
+        0,
         150
       ],
       "rotation": [
@@ -73824,7 +73824,7 @@
       "ply_file": "assets/props/island_tree_2.ply",
       "position": [
         200,
-        -19.540799999999997,
+        0,
         130
       ],
       "rotation": [
@@ -73841,7 +73841,7 @@
       "ply_file": "assets/props/island_tree_3.ply",
       "position": [
         160,
-        -5.712,
+        0,
         220
       ],
       "rotation": [
@@ -73858,7 +73858,7 @@
       "ply_file": "assets/props/island_tree_4.ply",
       "position": [
         220,
-        -15.814799999999998,
+        0,
         180
       ],
       "rotation": [
@@ -73875,7 +73875,7 @@
       "ply_file": "assets/props/island_tree_5.ply",
       "position": [
         140,
-        -5.117,
+        0,
         100
       ],
       "rotation": [
@@ -73892,7 +73892,7 @@
       "ply_file": "assets/props/island_tree_6.ply",
       "position": [
         250,
-        -17.139599999999998,
+        0,
         160
       ],
       "rotation": [
@@ -73909,7 +73909,7 @@
       "ply_file": "assets/props/island_tree_7.ply",
       "position": [
         180,
-        -3.689,
+        0,
         250
       ],
       "rotation": [
@@ -73926,7 +73926,7 @@
       "ply_file": "assets/props/island_tree_8.ply",
       "position": [
         130,
-        -18.2988,
+        0,
         200
       ],
       "rotation": [
@@ -73943,7 +73943,7 @@
       "ply_file": "assets/props/island_tree_9.ply",
       "position": [
         210,
-        -5.259799999999999,
+        0,
         240
       ],
       "rotation": [
@@ -73960,7 +73960,7 @@
       "ply_file": "assets/props/island_tree_10.ply",
       "position": [
         170,
-        -18.5472,
+        0,
         140
       ],
       "rotation": [
@@ -73977,7 +73977,7 @@
       "ply_file": "assets/props/island_tree_11.ply",
       "position": [
         240,
-        -4.76,
+        0,
         200
       ],
       "rotation": [
@@ -73994,7 +73994,7 @@
       "ply_file": "assets/props/island_tree_12.ply",
       "position": [
         150,
-        -20.1204,
+        0,
         170
       ],
       "rotation": [

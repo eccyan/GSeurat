@@ -283,16 +283,11 @@ def main():
         rotation_y = round(tree_meta_rng.uniform(0, 360), 1)
         scale = round(tree_meta_rng.uniform(1.5, 2.5), 2)  # 12-21u tall (2-3x 6.5u character)
 
-        # Tree models float above origin — pull down to ground
-        # tree1 (odd): min_y=2.38, tree2 (even): min_y=8.28
-        tree_y_offset = -2.38 if (tree_id % 2 == 1) else -8.28
-        adjusted_pos = [pos[0], pos[1] + tree_y_offset * scale, pos[2]]
-
         manifest.append({
             "id": f"tree_{tree_id}",
             "name": "Tree",
             "ply_file": f"assets/props/{filename}",
-            "position": adjusted_pos,
+            "position": pos,
             "rotation": [0, rotation_y, 0],
             "scale": scale,
         })
