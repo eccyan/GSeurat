@@ -843,6 +843,12 @@ void GsRenderer::render(VkCommandBuffer cmd, const glm::mat4& view, const glm::m
     }
 
     if (!skip_gs_compute) {
+        // Clear output + depth images to transparent black (prevents ghost artifacts)
+        VkClearColorValue clear_color = {{0.0f, 0.0f, 0.0f, 0.0f}};
+        VkImageSubresourceRange range = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+        vkCmdClearColorImage(cmd, output_image_, VK_IMAGE_LAYOUT_GENERAL, &clear_color, 1, &range);
+        vkCmdClearColorImage(cmd, depth_image_, VK_IMAGE_LAYOUT_GENERAL, &clear_color, 1, &range);
+
         // Reset visible count to 0 on GPU timeline
         vkCmdFillBuffer(cmd, visible_count_ssbo_.buffer(), 0, sizeof(uint32_t), 0);
         {
