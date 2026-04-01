@@ -314,7 +314,7 @@ def main():
         print(f"Rock {rock_id}: {ply_path} ({count} Gaussians, rot_y={rotation_y}, scale={scale})")
 
     # --- House ---
-    filename = "island_house.ply"
+    filename = "island_house1.ply"
     ply_path = os.path.join(args.output_dir, filename)
 
     gaussians = generate_house(seed=456)
