@@ -201,9 +201,11 @@ uint32_t GsChunkGrid::gather_lod(const std::vector<uint32_t>& chunk_indices,
     float far_dist = 8.0f * chunk_size_;
     float min_ratio = 0.1f;  // 10% kept at far distance
 
-    // Fade-out zone: chunks beyond fade_start lose opacity; fully culled at fade_end.
+    // Opacity fade-out zone: distant chunks get reduced opacity for smooth edges.
+    // No hard cull — all frustum-visible chunks keep at least min_ratio Gaussians
+    // so there's never a sharp cutoff line in the viewport.
     float fade_start = 6.0f * chunk_size_;
-    float fade_end = 10.0f * chunk_size_;
+    float fade_range = 4.0f * chunk_size_;  // opacity fades over this distance
 
     // --- Pass 1: estimate total Gaussians at full core radius ---
     // Core radius starts at 1.5x chunk_size (modest protection zone).
@@ -236,10 +238,6 @@ uint32_t GsChunkGrid::gather_lod(const std::vector<uint32_t>& chunk_indices,
             if (lod.dist <= core_r) {
                 lod.ratio = 1.0f;
                 lod.is_core = true;
-            } else if (lod.dist >= fade_end) {
-                // Beyond fade-out — fully culled
-                lod.ratio = 0.0f;
-                lod.is_core = false;
             } else if (lod.dist >= far_dist) {
                 lod.ratio = min_ratio;
                 lod.is_core = false;
@@ -251,9 +249,7 @@ uint32_t GsChunkGrid::gather_lod(const std::vector<uint32_t>& chunk_indices,
                 lod.ratio = 1.0f - t * (1.0f - min_ratio);
                 lod.is_core = false;
             }
-            lod.keep_count = (lod.ratio > 0.0f)
-                ? std::max(1u, static_cast<uint32_t>(chunk.count * lod.ratio))
-                : 0;
+            lod.keep_count = std::max(1u, static_cast<uint32_t>(chunk.count * lod.ratio));
             total += lod.keep_count;
         }
         return total;
@@ -309,11 +305,11 @@ uint32_t GsChunkGrid::gather_lod(const std::vector<uint32_t>& chunk_indices,
         const auto& chunk = chunks_[lod.idx];
         uint32_t count = std::min(lod.keep_count, chunk.count);
 
-        // Opacity fade for distant chunks (smooth fade-out at world edges)
+        // Opacity fade for distant chunks (smooth visual falloff, never hard-cuts)
         float opacity_mult = 1.0f;
-        if (lod.dist > fade_start && fade_end > fade_start) {
-            opacity_mult = 1.0f - (lod.dist - fade_start) / (fade_end - fade_start);
-            opacity_mult = std::max(0.0f, opacity_mult);
+        if (lod.dist > fade_start && fade_range > 0.0f) {
+            opacity_mult = 1.0f - (lod.dist - fade_start) / fade_range;
+            opacity_mult = std::clamp(opacity_mult, 0.1f, 1.0f);  // floor at 10% — never invisible
         }
 
         if (count == chunk.count && opacity_mult >= 1.0f) {
