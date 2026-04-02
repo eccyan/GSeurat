@@ -232,6 +232,9 @@ void IslandDemoState::update(AppBase& app, float dt) {
     // Walk animation always runs (handles character root transform + bone poses)
     update_walk_animation(app, dt);
 
+    // Set player position as LOD focus for foveated culling
+    app.renderer().set_gs_lod_focus(character_origin_);
+
     // Camera follow
     update_camera(app, dt);
 }

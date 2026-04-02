@@ -24,7 +24,8 @@ public:
     uint32_t gather_lod(const std::vector<uint32_t>& chunk_indices,
                         const glm::vec3& camera_pos,
                         uint32_t budget,
-                        std::vector<Gaussian>& out) const;
+                        std::vector<Gaussian>& out,
+                        const glm::vec3* focus_pos = nullptr) const;
     bool empty() const { return chunks_.empty(); }
     AABB cloud_bounds() const { return cloud_bounds_; }
     const std::vector<Gaussian>& all_gaussians() const { return sorted_gaussians_; }

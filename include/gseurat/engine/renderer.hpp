@@ -57,6 +57,8 @@ public:
     void set_gs_blit_offset(float x, float y) { gs_blit_offset_x_ = x; gs_blit_offset_y_ = y; }
     void set_gs_gaussian_budget(uint32_t b) { gs_gaussian_budget_ = b; }
     uint32_t gs_gaussian_budget() const { return gs_gaussian_budget_; }
+    void set_gs_lod_focus(const glm::vec3& pos) { gs_lod_focus_pos_ = pos; gs_has_lod_focus_ = true; }
+    void clear_gs_lod_focus() { gs_has_lod_focus_ = false; }
 
     void draw_scene(Scene& scene,
                     const std::vector<SpriteDrawInfo>& entity_sprites = {},
@@ -241,6 +243,8 @@ private:
     float gs_blit_offset_x_ = 0.0f;
     float gs_blit_offset_y_ = 0.0f;
     uint32_t gs_prev_budget_ = 0;
+    glm::vec3 gs_lod_focus_pos_{0.0f};  // Player position for foveated LOD
+    bool gs_has_lod_focus_ = false;
     std::vector<PointLight> gs_static_lights_;  // Scene-defined lights (for VFX light merging)
 
     // Persistent post-process params (modified by Staging panels)

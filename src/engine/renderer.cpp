@@ -854,8 +854,9 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
             // Re-gather scene Gaussians
             if (flags.gs_lod && gs_gaussian_budget_ > 0) {
                 glm::vec3 cam_pos = glm::vec3(glm::inverse(gs_view_)[3]);
+                const glm::vec3* focus = gs_has_lod_focus_ ? &gs_lod_focus_pos_ : nullptr;
                 gs_chunk_grid_.gather_lod(visible, cam_pos, gs_gaussian_budget_,
-                                          gs_static_buffer_);
+                                          gs_static_buffer_, focus);
             } else {
                 gs_chunk_grid_.gather(visible, gs_static_buffer_);
             }

@@ -185,78 +185,155 @@ uint32_t GsChunkGrid::gather(const std::vector<uint32_t>& chunk_indices,
 uint32_t GsChunkGrid::gather_lod(const std::vector<uint32_t>& chunk_indices,
                                   const glm::vec3& camera_pos,
                                   uint32_t budget,
-                                  std::vector<Gaussian>& out) const {
+                                  std::vector<Gaussian>& out,
+                                  const glm::vec3* focus_pos) const {
     if (chunk_indices.empty()) {
         out.clear();
         return 0;
     }
 
+    // LOD distance is measured from focus point (player) if provided,
+    // otherwise falls back to camera position.
+    glm::vec3 lod_origin = focus_pos ? *focus_pos : camera_pos;
+
     // Distance thresholds based on chunk size
-    float near_dist = 2.0f * chunk_size_;
     float far_dist = 8.0f * chunk_size_;
     float min_ratio = 0.1f;  // 10% kept at far distance
 
-    // Compute per-chunk distances and initial keep ratios
+    // Fade-out zone: chunks beyond fade_start lose opacity; fully culled at fade_end.
+    float fade_start = 6.0f * chunk_size_;
+    float fade_end = 10.0f * chunk_size_;
+
+    // --- Pass 1: estimate total Gaussians at full core radius ---
+    // Core radius starts at 1.5x chunk_size (modest protection zone).
+    static constexpr float kMaxCoreMult = 1.5f;
+    static constexpr float kMinCoreMult = 0.5f;
+    float core_mult = kMaxCoreMult;
+
+    // Compute per-chunk distances (reused across passes)
     struct ChunkLod {
         uint32_t idx;
+        float dist;
         float ratio;
         uint32_t keep_count;
+        bool is_core;
     };
     std::vector<ChunkLod> lods(chunk_indices.size());
 
-    uint32_t total_wanted = 0;
     for (size_t i = 0; i < chunk_indices.size(); ++i) {
         const auto& chunk = chunks_[chunk_indices[i]];
-        glm::vec3 center = chunk.bounds.center();
-        float dist = glm::length(center - camera_pos);
-
-        float ratio;
-        if (dist <= near_dist) {
-            ratio = 1.0f;
-        } else if (dist >= far_dist) {
-            ratio = min_ratio;
-        } else {
-            // Linear interpolation
-            float t = (dist - near_dist) / (far_dist - near_dist);
-            ratio = 1.0f - t * (1.0f - min_ratio);
-        }
-
-        uint32_t keep = std::max(1u, static_cast<uint32_t>(chunk.count * ratio));
-        lods[i] = {chunk_indices[i], ratio, keep};
-        total_wanted += keep;
+        lods[i].idx = chunk_indices[i];
+        lods[i].dist = glm::length(chunk.bounds.center() - lod_origin);
     }
 
-    // If total exceeds budget, scale all ratios proportionally
-    if (total_wanted > budget) {
-        float scale = static_cast<float>(budget) / static_cast<float>(total_wanted);
-        total_wanted = 0;
+    // Lambda to compute ratios for a given core radius
+    auto compute_ratios = [&](float core_r) {
+        float near_dist = std::max(core_r, 2.0f * chunk_size_);
+        uint32_t total = 0;
         for (auto& lod : lods) {
             const auto& chunk = chunks_[lod.idx];
-            lod.keep_count = std::max(1u, static_cast<uint32_t>(chunk.count * lod.ratio * scale));
-            total_wanted += lod.keep_count;
+            if (lod.dist <= core_r) {
+                lod.ratio = 1.0f;
+                lod.is_core = true;
+            } else if (lod.dist >= fade_end) {
+                // Beyond fade-out — fully culled
+                lod.ratio = 0.0f;
+                lod.is_core = false;
+            } else if (lod.dist >= far_dist) {
+                lod.ratio = min_ratio;
+                lod.is_core = false;
+            } else if (lod.dist <= near_dist) {
+                lod.ratio = 1.0f;
+                lod.is_core = false;
+            } else {
+                float t = (lod.dist - near_dist) / (far_dist - near_dist);
+                lod.ratio = 1.0f - t * (1.0f - min_ratio);
+                lod.is_core = false;
+            }
+            lod.keep_count = (lod.ratio > 0.0f)
+                ? std::max(1u, static_cast<uint32_t>(chunk.count * lod.ratio))
+                : 0;
+            total += lod.keep_count;
+        }
+        return total;
+    };
+
+    uint32_t total_wanted = compute_ratios(core_mult * chunk_size_);
+
+    // --- Dynamic core radius: shrink if way over budget ---
+    if (total_wanted > budget * 2 && core_mult > kMinCoreMult) {
+        // Budget pressure is high — shrink core radius
+        float pressure = static_cast<float>(total_wanted) / static_cast<float>(budget);
+        core_mult = std::max(kMinCoreMult, kMaxCoreMult / pressure);
+        total_wanted = compute_ratios(core_mult * chunk_size_);
+    }
+
+    // --- Budget scaling: reduce non-core chunks proportionally ---
+    if (total_wanted > budget) {
+        uint32_t core_total = 0;
+        uint32_t non_core_wanted = 0;
+        for (const auto& lod : lods) {
+            if (lod.is_core) core_total += lod.keep_count;
+            else non_core_wanted += lod.keep_count;
+        }
+
+        uint32_t remaining = (budget > core_total) ? (budget - core_total) : 0;
+        float scale = (non_core_wanted > 0)
+            ? static_cast<float>(remaining) / static_cast<float>(non_core_wanted)
+            : 0.0f;
+
+        total_wanted = 0;
+        for (auto& lod : lods) {
+            if (lod.is_core) {
+                total_wanted += lod.keep_count;
+            } else if (lod.keep_count > 0) {
+                const auto& chunk = chunks_[lod.idx];
+                lod.keep_count = std::max(1u, static_cast<uint32_t>(chunk.count * lod.ratio * scale));
+                total_wanted += lod.keep_count;
+            }
         }
     }
 
     out.resize(total_wanted);
 
-    // Stride-based decimation: evenly sample across each chunk to avoid
-    // spatial bias when importance values are uniform (e.g. voxel data)
+    // Scale compensation cap: prevent massive splats that destroy fill rate.
+    // sqrt(stride) is theoretically correct for area, but values > 2.0 cause
+    // enormous overdraw in the tile rasterizer.
+    static constexpr float kMaxScaleComp = 2.0f;
+
+    // Stride-based decimation with scale compensation and opacity fading
     uint32_t offset = 0;
     for (const auto& lod : lods) {
+        if (lod.keep_count == 0) continue;
         const auto& chunk = chunks_[lod.idx];
         uint32_t count = std::min(lod.keep_count, chunk.count);
-        if (count == chunk.count) {
-            // Full copy — no decimation needed
+
+        // Opacity fade for distant chunks (smooth fade-out at world edges)
+        float opacity_mult = 1.0f;
+        if (lod.dist > fade_start && fade_end > fade_start) {
+            opacity_mult = 1.0f - (lod.dist - fade_start) / (fade_end - fade_start);
+            opacity_mult = std::max(0.0f, opacity_mult);
+        }
+
+        if (count == chunk.count && opacity_mult >= 1.0f) {
+            // Full copy — no decimation or fading needed
             std::memcpy(out.data() + offset,
                         sorted_gaussians_.data() + chunk.start_index,
                         count * sizeof(Gaussian));
         } else {
-            // Stride through chunk to ensure spatial uniformity
             float stride = static_cast<float>(chunk.count) / static_cast<float>(count);
+            // Clamped scale compensation: sqrt(stride) capped to limit overdraw
+            float scale_comp = std::min(std::sqrt(stride), kMaxScaleComp);
             for (uint32_t i = 0; i < count; ++i) {
                 uint32_t src = std::min(static_cast<uint32_t>(i * stride),
                                         chunk.count - 1);
                 out[offset + i] = sorted_gaussians_[chunk.start_index + src];
+                if (scale_comp > 1.0f) {
+                    out[offset + i].scale *= scale_comp;
+                }
+                if (opacity_mult < 1.0f) {
+                    out[offset + i].opacity *= opacity_mult;
+                }
             }
         }
         offset += count;
