@@ -144,8 +144,9 @@ static bool aabb_in_frustum(const AABB& aabb, const std::array<glm::vec4, 6>& pl
 std::vector<uint32_t> GsChunkGrid::visible_chunks(const glm::mat4& view_proj) const {
     auto planes = extract_frustum_planes(view_proj);
 
-    // Safety margin: 1 chunk size for Gaussian splat radius bleeding
-    float margin = chunk_size_;
+    // Safety margin: account for scale compensation (up to kMaxScaleComp = 2.0x)
+    // expanding Gaussians beyond their original chunk bounds.
+    float margin = chunk_size_ * 2.0f;
 
     std::vector<uint32_t> result;
     result.reserve(chunks_.size());
@@ -185,7 +186,8 @@ uint32_t GsChunkGrid::gather(const std::vector<uint32_t>& chunk_indices,
 uint32_t GsChunkGrid::gather_lod(const std::vector<uint32_t>& chunk_indices,
                                   const glm::vec3& camera_pos,
                                   uint32_t budget,
-                                  std::vector<Gaussian>& out) const {
+                                  std::vector<Gaussian>& out,
+                                  const glm::vec3* focus_pos) const {
     if (chunk_indices.empty()) {
         out.clear();
         return 0;
@@ -196,9 +198,14 @@ uint32_t GsChunkGrid::gather_lod(const std::vector<uint32_t>& chunk_indices,
     float far_dist = 8.0f * chunk_size_;
     float min_ratio = 0.1f;  // 10% kept at far distance
 
+    // Player-centric LOD: use player position for distance if provided,
+    // camera position otherwise.
+    glm::vec3 lod_origin = focus_pos ? *focus_pos : camera_pos;
+
     // Compute per-chunk distances and initial keep ratios
     struct ChunkLod {
         uint32_t idx;
+        float dist;
         float ratio;
         uint32_t keep_count;
     };
@@ -208,7 +215,7 @@ uint32_t GsChunkGrid::gather_lod(const std::vector<uint32_t>& chunk_indices,
     for (size_t i = 0; i < chunk_indices.size(); ++i) {
         const auto& chunk = chunks_[chunk_indices[i]];
         glm::vec3 center = chunk.bounds.center();
-        float dist = glm::length(center - camera_pos);
+        float dist = glm::length(center - lod_origin);
 
         float ratio;
         if (dist <= near_dist) {
@@ -216,13 +223,12 @@ uint32_t GsChunkGrid::gather_lod(const std::vector<uint32_t>& chunk_indices,
         } else if (dist >= far_dist) {
             ratio = min_ratio;
         } else {
-            // Linear interpolation
             float t = (dist - near_dist) / (far_dist - near_dist);
             ratio = 1.0f - t * (1.0f - min_ratio);
         }
 
         uint32_t keep = std::max(1u, static_cast<uint32_t>(chunk.count * ratio));
-        lods[i] = {chunk_indices[i], ratio, keep};
+        lods[i] = {chunk_indices[i], dist, ratio, keep};
         total_wanted += keep;
     }
 
@@ -239,8 +245,11 @@ uint32_t GsChunkGrid::gather_lod(const std::vector<uint32_t>& chunk_indices,
 
     out.resize(total_wanted);
 
-    // Stride-based decimation: evenly sample across each chunk to avoid
-    // spatial bias when importance values are uniform (e.g. voxel data)
+    // Scale compensation cap: sqrt(stride) fills holes from decimation,
+    // capped at 2.0 to prevent fill-rate explosion from massive splats.
+    static constexpr float kMaxScaleComp = 2.0f;
+
+    // Stride-based decimation with capped scale compensation
     uint32_t offset = 0;
     for (const auto& lod : lods) {
         const auto& chunk = chunks_[lod.idx];
@@ -253,10 +262,14 @@ uint32_t GsChunkGrid::gather_lod(const std::vector<uint32_t>& chunk_indices,
         } else {
             // Stride through chunk to ensure spatial uniformity
             float stride = static_cast<float>(chunk.count) / static_cast<float>(count);
+            float scale_comp = std::min(std::sqrt(stride), kMaxScaleComp);
             for (uint32_t i = 0; i < count; ++i) {
                 uint32_t src = std::min(static_cast<uint32_t>(i * stride),
                                         chunk.count - 1);
                 out[offset + i] = sorted_gaussians_[chunk.start_index + src];
+                if (scale_comp > 1.0f) {
+                    out[offset + i].scale *= scale_comp;
+                }
             }
         }
         offset += count;

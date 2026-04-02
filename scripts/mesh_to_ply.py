@@ -83,6 +83,7 @@ def parse_obj(path):
     """
     vertices = []
     normals = []
+    texcoords = []
     objects = []
     current_obj = {"name": "default", "faces": [], "material": None}
     current_material = None
@@ -98,6 +99,9 @@ def parse_obj(path):
                 current_obj = {"name": name, "faces": [], "material": current_material}
             elif line.startswith("mtllib "):
                 mtllib_path = line[7:].strip()
+            elif line.startswith("vt "):
+                parts = line.split()
+                texcoords.append((float(parts[1]), float(parts[2])))
             elif line.startswith("v "):
                 parts = line.split()
                 vertices.append((float(parts[1]), float(parts[2]), float(parts[3])))
@@ -112,16 +116,19 @@ def parse_obj(path):
             elif line.startswith("f "):
                 parts = line.split()[1:]
                 face_verts = []
+                face_uvs = []
                 for p in parts:
                     # Format: v, v/vt, v/vt/vn, v//vn
-                    idx = int(p.split("/")[0]) - 1  # OBJ is 1-indexed
-                    face_verts.append(idx)
-                current_obj["faces"].append(face_verts)
+                    indices = p.split("/")
+                    face_verts.append(int(indices[0]) - 1)
+                    if len(indices) > 1 and indices[1]:
+                        face_uvs.append(int(indices[1]) - 1)
+                current_obj["faces"].append((face_verts, face_uvs))
 
     if current_obj["faces"]:
         objects.append(current_obj)
 
-    return vertices, normals, objects, mtllib_path
+    return vertices, normals, texcoords, objects, mtllib_path
 
 
 def triangle_area(v0, v1, v2):
@@ -178,17 +185,21 @@ def guess_color(obj_name, material_name=None):
 
 
 def sample_mesh(vertices, objects, density, scale, gaussian_scale=None,
-                mtl_colors=None, assign_bones=False):
+                mtl_colors=None, assign_bones=False, texcoords=None,
+                tex_images=None):
     """Surface-sample the mesh to generate Gaussians.
 
     Args:
         vertices: list of (x,y,z) tuples
         objects: list of {"name", "faces", "material"} dicts
+                 faces are (vert_indices, uv_indices) tuples
         density: target Gaussians per square unit of surface area
         scale: scale multiplier for the output
         gaussian_scale: override Gaussian splat scale (auto if None)
         mtl_colors: dict of material_name -> (r, g, b) from MTL file
         assign_bones: if True, assign bone indices from group names
+        texcoords: list of (u, v) tuples from OBJ
+        tex_images: dict of material_name -> PIL.Image (base color textures)
     """
     gaussians = []
     rng = random.Random(42)
@@ -196,43 +207,62 @@ def sample_mesh(vertices, objects, density, scale, gaussian_scale=None,
     # Compute total surface area for reporting
     total_area = 0
     for obj in objects:
-        for face in obj["faces"]:
-            if len(face) < 3:
+        for face_verts, face_uvs in obj["faces"]:
+            if len(face_verts) < 3:
                 continue
-            v0 = vertices[face[0]]
-            for i in range(1, len(face) - 1):
-                v1 = vertices[face[i]]
-                v2 = vertices[face[i + 1]]
+            v0 = vertices[face_verts[0]]
+            for i in range(1, len(face_verts) - 1):
+                v1 = vertices[face_verts[i]]
+                v2 = vertices[face_verts[i + 1]]
                 total_area += triangle_area(v0, v1, v2)
 
     # Auto gaussian scale based on density
     if gaussian_scale is None:
         gaussian_scale = max(0.05, 0.5 / math.sqrt(density))
 
+    def sample_texture(img, uv_u, uv_v):
+        """Sample a PIL image at UV coordinates, return (r, g, b) in 0-1."""
+        w, h = img.size
+        px = int(uv_u % 1.0 * w) % w
+        py = int((1.0 - uv_v % 1.0) * h) % h  # OBJ V is flipped
+        pixel = img.getpixel((px, py))
+        return (pixel[0] / 255.0, pixel[1] / 255.0, pixel[2] / 255.0)
+
     for obj in objects:
-        # Determine color source: MTL colors take priority over heuristics
+        # Determine color source: texture > MTL > heuristics
         mat_name = obj.get("material")
+        tex_img = tex_images.get(mat_name) if tex_images and mat_name else None
         mtl_color = None
         if mtl_colors and mat_name and mat_name in mtl_colors:
             mtl_color = mtl_colors[mat_name]
 
-        if mtl_color is not None:
+        if tex_img is None and mtl_color is not None:
             base_color = mtl_color
-        else:
+        elif tex_img is None:
             base_color = guess_color(obj["name"], mat_name)
+        else:
+            base_color = None  # will sample texture per-Gaussian
 
         # Bone index for this group
         bone_idx = get_bone_index(obj["name"]) if assign_bones else 0
 
-        for face in obj["faces"]:
-            if len(face) < 3:
+        for face_verts, face_uvs in obj["faces"]:
+            if len(face_verts) < 3:
                 continue
 
-            v0 = vertices[face[0]]
+            v0 = vertices[face_verts[0]]
+            has_uvs = tex_img is not None and texcoords and len(face_uvs) == len(face_verts)
+            if has_uvs:
+                uv0 = texcoords[face_uvs[0]]
+
             # Triangulate (fan from first vertex)
-            for i in range(1, len(face) - 1):
-                v1 = vertices[face[i]]
-                v2 = vertices[face[i + 1]]
+            for i in range(1, len(face_verts) - 1):
+                v1 = vertices[face_verts[i]]
+                v2 = vertices[face_verts[i + 1]]
+
+                if has_uvs:
+                    uv1 = texcoords[face_uvs[i]]
+                    uv2 = texcoords[face_uvs[i + 1]]
 
                 area = triangle_area(v0, v1, v2)
                 expected = area * density * scale * scale
@@ -250,8 +280,17 @@ def sample_mesh(vertices, objects, density, scale, gaussian_scale=None,
                     py = (v0[1] * w + v1[1] * u + v2[1] * v) * scale
                     pz = (v0[2] * w + v1[2] * u + v2[2] * v) * scale
 
-                    # Color: use base or generate green variation for foliage
-                    if base_color is None:
+                    # Color: texture > base > foliage fallback
+                    if has_uvs:
+                        su = uv0[0] * w + uv1[0] * u + uv2[0] * v
+                        sv = uv0[1] * w + uv1[1] * u + uv2[1] * v
+                        color = sample_texture(tex_img, su, sv)
+                        # Add slight noise
+                        color = tuple(
+                            max(0.0, min(1.0, c + rng.uniform(-0.02, 0.02)))
+                            for c in color
+                        )
+                    elif base_color is None:
                         color = (
                             0.15 + rng.random() * 0.20,
                             0.40 + rng.random() * 0.25,
@@ -296,9 +335,11 @@ def main():
     args = parser.parse_args()
 
     print(f"Loading: {args.input}")
-    vertices, normals, objects, mtllib_name = parse_obj(args.input)
+    vertices, normals, texcoords, objects, mtllib_name = parse_obj(args.input)
 
     print(f"  Vertices: {len(vertices)}")
+    if texcoords:
+        print(f"  Texcoords: {len(texcoords)}")
     print(f"  Objects/Groups: {len(objects)}")
     for obj in objects:
         mat_info = f" [mtl: {obj['material']}]" if obj.get("material") else ""
@@ -322,10 +363,25 @@ def main():
     if args.info:
         return
 
+    # Load base color textures if available
+    tex_images = {}
+    if texcoords:
+        try:
+            from PIL import Image
+            obj_dir = os.path.dirname(os.path.abspath(args.input))
+            for mat_name in (mtl_colors or {}):
+                tex_path = os.path.join(obj_dir, f"{mat_name}_Base_Color.png")
+                if os.path.isfile(tex_path):
+                    tex_images[mat_name] = Image.open(tex_path).convert("RGB")
+                    print(f"  Texture: {mat_name} -> {tex_path} ({tex_images[mat_name].size})")
+        except ImportError:
+            print("  (PIL not available — using MTL/heuristic colors)")
+
     print(f"\nSampling at density={args.density}, scale={args.scale}...")
     gaussians, total_area = sample_mesh(
         vertices, objects, args.density, args.scale, args.gs_scale,
         mtl_colors=mtl_colors, assign_bones=args.bones,
+        texcoords=texcoords, tex_images=tex_images if tex_images else None,
     )
 
     os.makedirs(os.path.dirname(os.path.abspath(args.output)), exist_ok=True)

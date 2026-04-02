@@ -54,16 +54,17 @@ private:
 
     // Orbit camera (third-person around player)
     float azimuth_ = 0.0f;
-    float elevation_ = 0.45f;   // ~26 deg — higher angle reduces foreground Gaussian blobs
-    float distance_ = 12.0f;   // pulled back to show more terrain
+    float elevation_ = 0.6f;    // ~34 deg — higher angle reduces foreground Gaussian blobs
+    float distance_ = 20.0f;   // pulled back for isometric overview
     glm::vec3 camera_target_{0.0f};  // smoothed target
 
     // Mouse drag state
     glm::vec2 last_mouse_{0.0f};
     bool dragging_ = false;
 
-    // Debug HUD
-    bool show_hud_ = false;
+    // Debug HUD: OFF → COMPACT → FULL (Tab cycles)
+    enum class HudMode { kOff, kCompact, kFull };
+    HudMode hud_mode_ = HudMode::kOff;
 
     // Toggle flags (P = particles, N = animation)
     bool anim_enabled_ = true;
@@ -84,8 +85,8 @@ private:
     static constexpr float kMaxDistance = 40.0f;
     static constexpr float kOrbitSensitivity = 0.005f;
     static constexpr float kZoomSensitivity = 2.0f;
-    static constexpr float kPlayerSpeed = 12.0f;
-    static constexpr float kPlayerAccel = 12.0f;
+    static constexpr float kPlayerSpeed = 20.0f;   // faster for island-scale exploration
+    static constexpr float kPlayerAccel = 20.0f;
     static constexpr float kCameraSmoothing = 8.0f;
     static constexpr float kCameraYOffset = 2.5f;  // above character head for TPS
 };
