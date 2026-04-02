@@ -1507,13 +1507,13 @@ void GsRenderer::shutdown(VmaAllocator allocator) {
 
     pp_ubo_buffer_.destroy(allocator);
 
-    if (output_sampler_) vkDestroySampler(device_, output_sampler_, nullptr);
-    if (output_view_) vkDestroyImageView(device_, output_view_, nullptr);
-    if (output_image_) vmaDestroyImage(allocator, output_image_, output_allocation_);
-    if (depth_view_) vkDestroyImageView(device_, depth_view_, nullptr);
-    if (depth_image_) vmaDestroyImage(allocator, depth_image_, depth_allocation_);
-    if (processed_view_) vkDestroyImageView(device_, processed_view_, nullptr);
-    if (processed_image_) vmaDestroyImage(allocator, processed_image_, processed_allocation_);
+    if (output_sampler_) { vkDestroySampler(device_, output_sampler_, nullptr); output_sampler_ = VK_NULL_HANDLE; }
+    if (output_view_) { vkDestroyImageView(device_, output_view_, nullptr); output_view_ = VK_NULL_HANDLE; }
+    if (output_image_) { vmaDestroyImage(allocator, output_image_, output_allocation_); output_image_ = VK_NULL_HANDLE; }
+    if (depth_view_) { vkDestroyImageView(device_, depth_view_, nullptr); depth_view_ = VK_NULL_HANDLE; }
+    if (depth_image_) { vmaDestroyImage(allocator, depth_image_, depth_allocation_); depth_image_ = VK_NULL_HANDLE; }
+    if (processed_view_) { vkDestroyImageView(device_, processed_view_, nullptr); processed_view_ = VK_NULL_HANDLE; }
+    if (processed_image_) { vmaDestroyImage(allocator, processed_image_, processed_allocation_); processed_image_ = VK_NULL_HANDLE; }
 
     auto destroy_pipeline = [&](VkPipeline& p) { if (p) { vkDestroyPipeline(device_, p, nullptr); p = VK_NULL_HANDLE; } };
     auto destroy_layout = [&](VkPipelineLayout& l) { if (l) { vkDestroyPipelineLayout(device_, l, nullptr); l = VK_NULL_HANDLE; } };
