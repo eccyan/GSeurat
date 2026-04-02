@@ -676,25 +676,25 @@ void IslandDemoState::build_draw_lists(AppBase& app) {
         return;
     }
 
-    // ── FULL: comprehensive engine values ──
-    constexpr float panel_x = 10.0f;
-    constexpr float panel_w = 300.0f;
-    constexpr float panel_h = 520.0f;
-    constexpr float panel_top = 720.0f - 10.0f;
+    // ── FULL: comprehensive engine values (compact panel) ──
+    constexpr float panel_x = 6.0f;
+    constexpr float panel_w = 250.0f;
+    constexpr float panel_h = 400.0f;
+    constexpr float panel_top = 720.0f - 6.0f;
     constexpr float panel_cy = panel_top - panel_h * 0.5f;
     ui.panel(panel_x + panel_w * 0.5f, panel_cy, panel_w, panel_h,
-             {0.0f, 0.0f, 0.0f, 0.7f});
+             {0.0f, 0.0f, 0.0f, 0.65f});
 
-    float y = panel_top - 20.0f;
-    constexpr float lx = panel_x + 12.0f;
-    constexpr float vx = panel_x + 155.0f;  // value column
-    constexpr float s = 0.40f;
-    constexpr float line = 16.0f;
-    constexpr float section_gap = 6.0f;
+    float y = panel_top - 16.0f;
+    constexpr float lx = panel_x + 8.0f;
+    constexpr float vx = panel_x + 125.0f;  // value column
+    constexpr float s = 0.35f;
+    constexpr float line = 13.0f;
+    constexpr float section_gap = 4.0f;
 
     // Title + FPS
-    ui.label("ISLAND DEMO", lx, y, 0.55f, cyan);
-    ui.label(f1(fps_) + " FPS", panel_x + panel_w - 80.0f, y, s, fps_color);
+    ui.label("ISLAND DEMO", lx, y, 0.45f, cyan);
+    ui.label(f1(fps_) + " FPS", panel_x + panel_w - 65.0f, y, s, fps_color);
     y -= line + section_gap;
 
     // ── Camera ──
