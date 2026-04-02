@@ -5,6 +5,8 @@
 #include "gseurat/demo/island_components.hpp"
 #include "gseurat/demo/island_systems.hpp"
 #include "gseurat/engine/scene_loader.hpp"
+#include "gseurat/engine/gs_particle.hpp"
+#include "gseurat/engine/gs_animator.hpp"
 
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
@@ -37,6 +39,11 @@ void IslandDemoState::on_enter(AppBase& app) {
     app.feature_flags().particles = true;
     app.feature_flags().point_lights = true;
     app.feature_flags().gs_lod = true;
+
+    // Enable GS lighting: directional sun + point lights for interactive effects
+    app.renderer().gs_renderer().set_light_mode(2);  // point light mode (includes directional)
+    app.renderer().gs_renderer().set_light_dir(glm::normalize(glm::vec3(0.5f, 1.0f, 0.7f)));
+    app.renderer().gs_renderer().set_light_intensity(1.2f);  // moderate sun so point lights show
     app.feature_flags().gs_adaptive_budget = true;
     auto& pp = app.renderer().post_process_params();
     pp.fog_density = 0.0f;
@@ -77,6 +84,14 @@ void IslandDemoState::on_enter(AppBase& app) {
     app.system_scheduler().add_system({"proximity_trigger", proximity_trigger_system, {}, {}});
     app.system_scheduler().add_system({"linked_trigger", linked_trigger_system, {}, {}});
     app.system_scheduler().add_system({"emissive_toggle", emissive_toggle_system, {}, {}});
+
+    // Capture base scene lights (before dynamic emissive lights are added)
+    // Note: GS renderer gets lights during record_gs_prepass, not at init.
+    // Scene lights come from SceneData via AppBase::load_gs_scene → set_gs_static_lights.
+    // We need to read from the Renderer's static list, not GsRenderer's current list.
+    // For now, start empty — the scene's directional/ambient lights are set separately.
+    scene_lights_ = {};
+    std::fprintf(stderr, "[IslandDemo] scene_lights_ captured: %zu lights\n", scene_lights_.size());
 
     // Spawn player character (procedural humanoid)
     if (app.renderer().has_gs_cloud()) {
@@ -396,44 +411,41 @@ void IslandDemoState::update_effects(AppBase& app, float dt) {
         if (!logged) { std::fprintf(stderr, "[LightToggle] %d entities\n", count); logged = true; }
     }
 
-    // EmissiveToggle: add dynamic point lights for emissive objects (GS lighting)
+    // EmissiveToggle: spawn glowing particles around triggered crystals
     {
         int count = 0;
-        std::vector<PointLight> emissive_lights;
         world.view<EmissiveToggle, ProximityTrigger, ecs::Transform>().each(
             [&](ecs::Entity, EmissiveToggle& et, ProximityTrigger& pt, ecs::Transform& t) {
                 count++;
-                if (pt.triggered && et.current_emission > 0.1f) {
-                    if (!et.applied) {
-                        et.applied = true;
-                        std::fprintf(stderr, "[EmissiveToggle] LIGHT ON at (%.1f, %.1f, %.1f) emission=%.1f color=(%.1f,%.1f,%.1f)\n",
-                            t.position.x, t.position.y, t.position.z, et.emission, et.color_r, et.color_g, et.color_b);
-                    }
-                    PointLight pl{};
-                    pl.position_and_radius = glm::vec4(
-                        t.position.x, t.position.y + 3.0f, t.position.z,
-                        et.effect_radius * 4.0f);
-                    float brightness = et.current_emission / et.emission;  // 0→1 fade-in
-                    pl.color = glm::vec4(
-                        et.color_r * et.emission * brightness * 2.0f,
-                        et.color_g * et.emission * brightness * 2.0f,
-                        et.color_b * et.emission * brightness * 2.0f, 1.0f);
-                    emissive_lights.push_back(pl);
-                } else if (!pt.triggered && et.applied && et.current_emission < 0.1f) {
+                if (pt.triggered && !et.applied) {
+                    et.applied = true;
+                    std::fprintf(stderr, "[EmissiveToggle] SPARKLE at (%.1f, %.1f, %.1f) color=(%.1f,%.1f,%.1f)\n",
+                        t.position.x, t.position.y, t.position.z, et.color_r, et.color_g, et.color_b);
+                    // Spawn glowing particles rising from the crystal
+                    GsEmitterConfig cfg;
+                    cfg.position = t.position + glm::vec3(0, 2.0f, 0);
+                    cfg.spawn_rate = 25.0f;
+                    cfg.lifetime_min = 1.5f;
+                    cfg.lifetime_max = 3.0f;
+                    cfg.velocity_min = {-1.5f, 2.0f, -1.5f};
+                    cfg.velocity_max = { 1.5f, 5.0f,  1.5f};
+                    cfg.acceleration = {0.0f, 0.5f, 0.0f};  // float upward
+                    cfg.color_start = {et.color_r, et.color_g, et.color_b};
+                    cfg.color_end = {et.color_r * 0.3f, et.color_g * 0.1f, et.color_b * 0.1f};
+                    cfg.scale_min = {0.3f, 0.3f, 0.3f};
+                    cfg.scale_max = {0.5f, 0.5f, 0.5f};
+                    cfg.scale_end_factor = 0.2f;
+                    cfg.opacity_start = 0.95f;
+                    cfg.opacity_end = 0.0f;
+                    cfg.emission = et.emission;
+                    cfg.burst_duration = 0.0f;  // continuous
+                    app.renderer().add_gs_particle_emitter(cfg);
+                }
+                if (!pt.triggered && et.applied) {
                     et.applied = false;
-                    std::fprintf(stderr, "[EmissiveToggle] LIGHT OFF\n");
+                    // Emitter will die naturally when particles expire
                 }
             });
-        // Push emissive lights directly to GS renderer (bypasses scene system)
-        if (!emissive_lights.empty()) {
-            auto& gs = app.renderer().gs_renderer();
-            auto existing = gs.point_lights();
-            for (auto& pl : emissive_lights) {
-                if (existing.size() < 8) existing.push_back(pl);
-            }
-            gs.set_point_lights(existing);
-            if (gs.light_mode() < 2) gs.set_light_mode(2);
-        }
         static bool logged = false;
         if (!logged) { std::fprintf(stderr, "[EmissiveToggle effect] %d entities\n", count); logged = true; }
     }

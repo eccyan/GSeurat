@@ -3,6 +3,7 @@
 #include "gseurat/engine/collision_gen.hpp"
 #include "gseurat/engine/game_state.hpp"
 #include "gseurat/engine/gaussian_cloud.hpp"
+#include "gseurat/engine/types.hpp"
 #include "gseurat/engine/ecs/types.hpp"
 
 #include <glm/glm.hpp>
@@ -43,6 +44,9 @@ private:
     glm::vec3 character_spawn_pos_{0.0f};  // where Gaussians were placed
     glm::vec3 character_origin_{0.0f};     // current player position
     std::vector<Gaussian> map_gaussians_;  // original map data before character merge
+
+    // Base scene lights (saved at init, used as base for dynamic emissive lights)
+    std::vector<PointLight> scene_lights_;
 
     // Collision grid (loaded from scene JSON)
     CollisionGrid collision_grid_;

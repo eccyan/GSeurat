@@ -189,11 +189,11 @@ def build_interactive_objects(collision):
                 "components": {
                     "ProximityTrigger": {"radius": 8},
                     "EmissiveToggle": {
-                        "emission": 6.0,
-                        "color_r": 0.2,
-                        "color_g": 0.4,
-                        "color_b": 1.0,
-                        "effect_radius": 8.0,
+                        "emission": 8.0,
+                        "color_r": 1.0,
+                        "color_g": 0.15,
+                        "color_b": 0.05,
+                        "effect_radius": 10.0,
                     },
                 },
             }
