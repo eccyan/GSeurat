@@ -100,24 +100,24 @@ std::optional<CharacterData> load_character_manifest(const std::string& path) {
     // --- Animations ---
     if (root.contains("animations") && root["animations"].is_object()) {
         for (auto& [clip_name, jc] : root["animations"].items()) {
-            AnimationClip clip;
-            clip.name = clip_name;
-            clip.duration = jc.value("duration", 1.0f);
-            clip.looping = jc.value("looping", true);
-
+            // Build keyframes first as a standalone vector
+            std::vector<AnimKeyframe> keyframes;
             if (jc.contains("keyframes") && jc["keyframes"].is_array()) {
+                keyframes.reserve(jc["keyframes"].size());
                 for (auto& jk : jc["keyframes"]) {
-                    AnimKeyframe kf;
+                    AnimKeyframe kf{};
                     kf.time = jk.value("time", 0.0f);
-
-                    // Resolve pose name to index
                     const auto pose_name = jk.value("pose", "");
                     kf.pose_index = data.find_pose(pose_name);
-
-                    clip.keyframes.push_back(kf);
+                    keyframes.push_back(kf);
                 }
             }
 
+            AnimationClip clip{};
+            clip.name = clip_name;
+            clip.duration = jc.value("duration", 1.0f);
+            clip.looping = jc.value("looping", true);
+            clip.keyframes = std::move(keyframes);
             data.clips.push_back(std::move(clip));
         }
     }

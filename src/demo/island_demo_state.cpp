@@ -100,6 +100,10 @@ void IslandDemoState::on_enter(AppBase& app) {
     scene_lights_ = {};
     std::fprintf(stderr, "[IslandDemo] scene_lights_ captured: %zu lights\n", scene_lights_.size());
 
+    // Load character manifest early (before heavy Gaussian allocation)
+    character_data_ = gseurat::load_character_manifest(
+        "assets/characters/warm_robot/warm_robot.manifest.json");
+
     // Spawn player character (procedural humanoid)
     if (app.renderer().has_gs_cloud()) {
         const auto& all = app.renderer().gs_chunk_grid().all_gaussians();
@@ -136,9 +140,7 @@ void IslandDemoState::on_enter(AppBase& app) {
         character_origin_ = player_pos;
         character_spawned_ = true;
 
-        // Load character manifest for data-driven bone animation
-        character_data_ = gseurat::load_character_manifest(
-            "assets/characters/warm_robot/warm_robot.manifest.json");
+        // Initialize data-driven bone animation (manifest loaded earlier)
         if (character_data_) {
             anim_player_ = std::make_unique<gseurat::BoneAnimationPlayer>(*character_data_);
             anim_sm_ = std::make_unique<gseurat::BoneAnimationStateMachine>(*anim_player_);
