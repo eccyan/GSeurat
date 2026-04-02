@@ -47,6 +47,7 @@ struct GsPostProcessUbo {
 struct GsPreprocessPush {
     uint32_t projected_offset;
     uint32_t gaussian_count;
+    uint32_t counts_index;  // 0 for static, 1 for dynamic
 };
 
 class GsRenderer {

@@ -955,7 +955,7 @@ void GsRenderer::update_descriptors() {
         VkDescriptorBufferInfo projected_info{projected_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo sort_info{static_sort_a_.buffer(), 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo uniform_info{uniform_buffer_.buffer(), 0, sizeof(GsUniforms)};
-        VkDescriptorBufferInfo counts_info{counts_ssbo_.buffer(), 0, 4};  // offset 0, range 4 → writes counts[0]
+        VkDescriptorBufferInfo counts_info{counts_ssbo_.buffer(), 0, VK_WHOLE_SIZE};  // full counts buffer, shader indexes by push constant
         VkDescriptorBufferInfo bone_info{bone_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
 
         VkWriteDescriptorSet writes[] = {
@@ -981,7 +981,7 @@ void GsRenderer::update_descriptors() {
         VkDescriptorBufferInfo projected_info{projected_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo sort_info{dynamic_sort_a_.buffer(), 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo uniform_info{uniform_buffer_.buffer(), 0, sizeof(GsUniforms)};
-        VkDescriptorBufferInfo counts_info{counts_ssbo_.buffer(), 4, 4};  // offset 4, range 4 → writes counts[1]
+        VkDescriptorBufferInfo counts_info{counts_ssbo_.buffer(), 0, VK_WHOLE_SIZE};  // full counts buffer, shader indexes by push constant
         VkDescriptorBufferInfo bone_info{bone_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
 
         VkWriteDescriptorSet writes[] = {
@@ -1236,26 +1236,33 @@ void GsRenderer::render(VkCommandBuffer cmd, const glm::mat4& view, const glm::m
         bool use_split = static_gaussian_ssbo_.buffer() && counts_ssbo_.buffer();
 
         if (use_split) {
+            // Reset counts that will be written this frame
+            // counts[0]=static_visible (reset if static dirty), counts[1]=dynamic_visible (always reset)
+            // vkCmdFillBuffer requires offset/size to be multiples of 4 (satisfied)
+            if (static_dirty_ && static_count_ > 0) {
+                // Reset all 3 counts (static + dynamic + merged)
+                vkCmdFillBuffer(cmd, counts_ssbo_.buffer(), 0, 12, 0);
+            } else {
+                // Reset only dynamic visible count (counts[1]) and merged (counts[2])
+                vkCmdFillBuffer(cmd, counts_ssbo_.buffer(), 4, 8, 0);
+            }
+            {
+                VkMemoryBarrier fill_barrier{};
+                fill_barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+                fill_barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+                fill_barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+                vkCmdPipelineBarrier(cmd,
+                    VK_PIPELINE_STAGE_TRANSFER_BIT,
+                    VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                    0, 1, &fill_barrier, 0, nullptr, 0, nullptr);
+            }
+
             // === Phase 1: Dynamic preprocess + sort (every frame, if dynamic_count_ > 0) ===
             if (dynamic_count_ > 0) {
-                // Reset dynamic visible count (counts[1]) to 0
-                vkCmdFillBuffer(cmd, counts_ssbo_.buffer(), 4, 4, 0);
-                {
-                    VkMemoryBarrier fill_barrier{};
-                    fill_barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
-                    fill_barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-                    fill_barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
-                    vkCmdPipelineBarrier(cmd,
-                        VK_PIPELINE_STAGE_TRANSFER_BIT,
-                        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                        0, 1, &fill_barrier, 0, nullptr, 0, nullptr);
-                }
-
-                // Preprocess dynamic Gaussians
                 vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, preprocess_pipeline_);
                 vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
                                         preprocess_pipeline_layout_, 0, 1, &dynamic_preprocess_set_, 0, nullptr);
-                GsPreprocessPush dyn_push{max_static_count_, dynamic_count_};
+                GsPreprocessPush dyn_push{max_static_count_, dynamic_count_, 1};
                 vkCmdPushConstants(cmd, preprocess_pipeline_layout_, VK_SHADER_STAGE_COMPUTE_BIT,
                                    0, sizeof(GsPreprocessPush), &dyn_push);
                 vkCmdDispatch(cmd, (dynamic_count_ + 255) / 256, 1, 1);
@@ -1271,24 +1278,10 @@ void GsRenderer::render(VkCommandBuffer cmd, const glm::mat4& view, const glm::m
 
             // === Phase 2: Static preprocess + sort (only when static_dirty_) ===
             if (static_dirty_ && static_count_ > 0) {
-                // Reset static visible count (counts[0]) to 0
-                vkCmdFillBuffer(cmd, counts_ssbo_.buffer(), 0, 4, 0);
-                {
-                    VkMemoryBarrier fill_barrier{};
-                    fill_barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
-                    fill_barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-                    fill_barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
-                    vkCmdPipelineBarrier(cmd,
-                        VK_PIPELINE_STAGE_TRANSFER_BIT,
-                        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                        0, 1, &fill_barrier, 0, nullptr, 0, nullptr);
-                }
-
-                // Preprocess static Gaussians
                 vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, preprocess_pipeline_);
                 vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
                                         preprocess_pipeline_layout_, 0, 1, &static_preprocess_set_, 0, nullptr);
-                GsPreprocessPush stat_push{0, static_count_};
+                GsPreprocessPush stat_push{0, static_count_, 0};
                 vkCmdPushConstants(cmd, preprocess_pipeline_layout_, VK_SHADER_STAGE_COMPUTE_BIT,
                                    0, sizeof(GsPreprocessPush), &stat_push);
                 vkCmdDispatch(cmd, (static_count_ + 255) / 256, 1, 1);
@@ -1305,11 +1298,15 @@ void GsRenderer::render(VkCommandBuffer cmd, const glm::mat4& view, const glm::m
             }
 
             // === Phase 3: Merge (every frame) ===
+            // Merge uses actual visible counts from counts SSBO (written by preprocess shaders)
+            // Thread 0 computes merged_visible_count = static_count + dynamic_count
             {
                 vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, merge_pipeline_);
                 vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
                                         merge_pipeline_layout_, 0, 1, &merge_set_, 0, nullptr);
-                uint32_t total = max_static_count_ + max_dynamic_count_;
+                // Dispatch enough threads to cover possible visible count
+                // Use sort sizes as upper bound (actual count determined by shader from counts SSBO)
+                uint32_t total = static_sort_size_ + dynamic_sort_size_;
                 vkCmdDispatch(cmd, (total + 255) / 256, 1, 1);
             }
 
@@ -1343,7 +1340,7 @@ void GsRenderer::render(VkCommandBuffer cmd, const glm::mat4& view, const glm::m
             vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, preprocess_pipeline_);
             vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
                                     preprocess_pipeline_layout_, 0, 1, &preprocess_set_, 0, nullptr);
-            GsPreprocessPush legacy_push{0, gaussian_count_};
+            GsPreprocessPush legacy_push{0, gaussian_count_, 0};
             vkCmdPushConstants(cmd, preprocess_pipeline_layout_, VK_SHADER_STAGE_COMPUTE_BIT,
                                0, sizeof(GsPreprocessPush), &legacy_push);
             vkCmdDispatch(cmd, (gaussian_count_ + 255) / 256, 1, 1);

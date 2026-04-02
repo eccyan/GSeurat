@@ -56,8 +56,8 @@ layout(set = 0, binding = 3) uniform Uniforms {
     vec4 pl_area[8];  // area size + normal (unused in preprocess, must match layout)
 };
 
-layout(set = 0, binding = 4) buffer VisibleCountBuffer {
-    uint visible_count;
+layout(set = 0, binding = 4) buffer CountsBuffer {
+    uint counts[];  // [0]=static_visible, [1]=dynamic_visible, [2]=merged_visible
 };
 
 layout(set = 0, binding = 5) readonly buffer BoneBuffer {
@@ -67,6 +67,7 @@ layout(set = 0, binding = 5) readonly buffer BoneBuffer {
 layout(push_constant) uniform PushConstants {
     uint projected_offset;  // 0 for static, max_static_count for dynamic
     uint gaussian_count;    // number of Gaussians in this layer
+    uint counts_index;      // 0 for static, 1 for dynamic
 };
 
 // Simple hash for per-Gaussian variation
@@ -476,5 +477,5 @@ void main() {
     sort_entries[idx].index = projected_offset + idx;
 
     // Count visible (non-culled) Gaussians
-    atomicAdd(visible_count, 1u);
+    atomicAdd(counts[counts_index], 1u);
 }
