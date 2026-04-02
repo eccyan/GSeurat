@@ -62,8 +62,9 @@ private:
     glm::vec2 last_mouse_{0.0f};
     bool dragging_ = false;
 
-    // Debug HUD
-    bool show_hud_ = false;
+    // Debug HUD: OFF → COMPACT → FULL (Tab cycles)
+    enum class HudMode { kOff, kCompact, kFull };
+    HudMode hud_mode_ = HudMode::kOff;
 
     // Toggle flags (P = particles, N = animation)
     bool anim_enabled_ = true;

@@ -46,14 +46,18 @@ void IslandDemoState::on_enter(AppBase& app) {
     app.renderer().gs_renderer().set_light_intensity(0.7f);  // softer sun, preserves original colors
     app.feature_flags().gs_adaptive_budget = true;
     auto& pp = app.renderer().post_process_params();
-    pp.fog_density = 0.0f;
+    pp.fog_density = 0.008f;       // light atmospheric fog for depth
+    pp.fog_color_r = 0.55f;        // warm horizon haze
+    pp.fog_color_g = 0.6f;
+    pp.fog_color_b = 0.7f;
     pp.dof_max_blur = 0.0f;        // DoF disabled — blurs foreground Gaussians into larger blobs
-    pp.exposure = 0.85f;       // slightly lower to prevent character washout
-    pp.bloom_threshold = 1.0f;  // only bloom on truly bright emissive
-    pp.bloom_intensity = 0.3f;
-    pp.bloom_soft_knee = 0.2f;
-    pp.vignette_radius = 0.85f;
-    pp.vignette_softness = 0.3f;
+    pp.exposure = 0.85f;           // slightly lower to prevent character washout
+    pp.bloom_threshold = 0.9f;     // catch bright emissive + sun-lit edges
+    pp.bloom_intensity = 0.35f;    // slightly more bloom for atmosphere
+    pp.bloom_soft_knee = 0.3f;     // smoother bloom falloff
+    pp.vignette_radius = 0.75f;    // tighter vignette for cinematic framing
+    pp.vignette_softness = 0.4f;   // soft falloff
+    pp.ca_intensity = 0.15f;       // subtle chromatic aberration at edges
     app.renderer().set_gs_skip_chunk_cull(false);
     app.renderer().gs_renderer().set_skip_sort(false);
 
@@ -155,9 +159,10 @@ void IslandDemoState::update(AppBase& app, float dt) {
         return;
     }
 
-    // Tab → toggle debug HUD
+    // Tab → cycle HUD mode: OFF → COMPACT → FULL → OFF
     if (app.input().was_key_pressed(GLFW_KEY_TAB)) {
-        show_hud_ = !show_hud_;
+        hud_mode_ = static_cast<HudMode>(
+            (static_cast<int>(hud_mode_) + 1) % 3);
     }
 
     // P → toggle particles/emitters
@@ -590,65 +595,190 @@ void IslandDemoState::update_environment_animation(AppBase& /*app*/, float dt) {
 // ── build_draw_lists (debug HUD) ──
 
 void IslandDemoState::build_draw_lists(AppBase& app) {
-    if (!show_hud_) return;
+    if (hud_mode_ == HudMode::kOff) return;
 
     auto& ui = app.ui_ctx();
 
+    // Helper formatters
+    auto f1 = [](float v) {
+        char buf[16]; std::snprintf(buf, sizeof(buf), "%.1f", v); return std::string(buf);
+    };
+    auto f2 = [](float v) {
+        char buf[16]; std::snprintf(buf, sizeof(buf), "%.2f", v); return std::string(buf);
+    };
+    auto on_off = [](bool v) -> const char* { return v ? "ON" : "OFF"; };
+
+    // Colors
+    glm::vec4 white{1.0f, 1.0f, 1.0f, 1.0f};
+    glm::vec4 cyan{0.4f, 0.8f, 1.0f, 1.0f};
+    glm::vec4 yellow{1.0f, 0.9f, 0.4f, 1.0f};
+    glm::vec4 dim{0.6f, 0.6f, 0.6f, 1.0f};
+    glm::vec4 green{0.2f, 1.0f, 0.3f, 1.0f};
+    glm::vec4 red{1.0f, 0.3f, 0.2f, 1.0f};
+    glm::vec4 fps_color = fps_ >= 30.0f ? green : red;
+
+    // Shared data
+    auto& gs = app.renderer().gs_renderer();
+    auto& pp = app.renderer().post_process_params();
+    auto& ff = app.feature_flags();
+    uint32_t gs_total = gs.gaussian_count();
+    uint32_t gs_visible = gs.visible_count();
+    size_t emitter_count = app.renderer().gs_particle_emitters().size();
+
+    if (hud_mode_ == HudMode::kCompact) {
+        // ── COMPACT: single-line status bar at top ──
+        constexpr float bar_x = 0.0f;
+        constexpr float bar_w = 1280.0f;
+        constexpr float bar_h = 24.0f;
+        constexpr float bar_y = 720.0f;
+        ui.panel(bar_w * 0.5f, bar_y - bar_h * 0.5f, bar_w, bar_h,
+                 {0.0f, 0.0f, 0.0f, 0.5f});
+
+        float x = 10.0f;
+        float y = bar_y - 7.0f;
+        constexpr float s = 0.38f;
+
+        ui.label(f1(fps_) + " FPS", x, y, s, fps_color);
+        x += 75.0f;
+
+        ui.label("GS:" + std::to_string(gs_visible) + "/" + std::to_string(gs_total), x, y, s, white);
+        x += 130.0f;
+
+        ui.label("Emitters:" + std::to_string(emitter_count), x, y, s, white);
+        x += 100.0f;
+
+        ui.label("Light:" + f1(gs.light_intensity()), x, y, s, white);
+        x += 85.0f;
+
+        ui.label("Exp:" + f2(pp.exposure), x, y, s, white);
+        x += 75.0f;
+
+        auto* t = app.world().try_get<ecs::Transform>(player_entity_);
+        if (t) {
+            ui.label("(" + f1(t->position.x) + "," + f1(t->position.y) + "," + f1(t->position.z) + ")",
+                     x, y, s, dim);
+        }
+
+        // Mode hint at far right
+        ui.label("[Tab]", bar_w - 50.0f, y, s, dim);
+        return;
+    }
+
+    // ── FULL: comprehensive engine values ──
     constexpr float panel_x = 10.0f;
-    constexpr float panel_w = 260.0f;
-    constexpr float panel_h = 140.0f;
+    constexpr float panel_w = 300.0f;
+    constexpr float panel_h = 460.0f;
     constexpr float panel_top = 720.0f - 10.0f;
     constexpr float panel_cy = panel_top - panel_h * 0.5f;
-
     ui.panel(panel_x + panel_w * 0.5f, panel_cy, panel_w, panel_h,
-             {0.0f, 0.0f, 0.0f, 0.6f});
+             {0.0f, 0.0f, 0.0f, 0.7f});
 
     float y = panel_top - 20.0f;
     constexpr float lx = panel_x + 12.0f;
-    constexpr float scale = 0.45f;
-    glm::vec4 white{1.0f, 1.0f, 1.0f, 1.0f};
-    glm::vec4 title_color{0.4f, 0.8f, 1.0f, 1.0f};
+    constexpr float vx = panel_x + 155.0f;  // value column
+    constexpr float s = 0.40f;
+    constexpr float line = 16.0f;
+    constexpr float section_gap = 6.0f;
 
-    auto fmt = [](float v) {
-        char buf[16];
-        std::snprintf(buf, sizeof(buf), "%.1f", v);
-        return std::string(buf);
-    };
+    // Title + FPS
+    ui.label("ISLAND DEMO", lx, y, 0.55f, cyan);
+    ui.label(f1(fps_) + " FPS", panel_x + panel_w - 80.0f, y, s, fps_color);
+    y -= line + section_gap;
 
-    ui.label("ISLAND DEMO", lx, y, 0.6f, title_color);
-
-    // FPS
-    glm::vec4 fps_color = fps_ >= 30.0f ? glm::vec4{0.2f, 1.0f, 0.3f, 1.0f}
-                                         : glm::vec4{1.0f, 0.3f, 0.2f, 1.0f};
-    ui.label(fmt(fps_) + " FPS", panel_x + panel_w - 80.0f, y, scale, fps_color);
-    y -= 22.0f;
-
-    // Player position
+    // ── Camera ──
+    ui.label("CAMERA", lx, y, s, yellow);
+    y -= line;
     auto* transform = app.world().try_get<ecs::Transform>(player_entity_);
     if (transform) {
-        ui.label("Pos: " + fmt(transform->position.x) + ", " +
-                 fmt(transform->position.y) + ", " +
-                 fmt(transform->position.z), lx, y, scale, white);
-        y -= 18.0f;
+        ui.label("Position", lx, y, s, dim);
+        ui.label(f1(transform->position.x) + ", " + f1(transform->position.y) +
+                 ", " + f1(transform->position.z), vx, y, s, white);
+        y -= line;
     }
+    ui.label("Azimuth", lx, y, s, dim);
+    ui.label(f1(glm::degrees(azimuth_)) + "deg", vx, y, s, white);
+    y -= line;
+    ui.label("Elevation", lx, y, s, dim);
+    ui.label(f1(glm::degrees(elevation_)) + "deg", vx, y, s, white);
+    y -= line;
+    ui.label("Distance", lx, y, s, dim);
+    ui.label(f2(distance_), vx, y, s, white);
+    y -= line + section_gap;
 
-    // Camera info
-    ui.label("Az:" + fmt(glm::degrees(azimuth_)) +
-             "  El:" + fmt(glm::degrees(elevation_)) +
-             "  Dist:" + fmt(distance_), lx, y, scale, white);
-    y -= 18.0f;
+    // ── Gaussian Splatting ──
+    ui.label("GAUSSIANS", lx, y, s, yellow);
+    y -= line;
+    ui.label("Visible / Total", lx, y, s, dim);
+    ui.label(std::to_string(gs_visible) + " / " + std::to_string(gs_total), vx, y, s, white);
+    y -= line;
+    ui.label("Budget (max)", lx, y, s, dim);
+    ui.label(std::to_string(gs.max_gaussian_count()), vx, y, s, white);
+    y -= line;
+    ui.label("Scale Multiplier", lx, y, s, dim);
+    ui.label(f2(gs.scale_multiplier()), vx, y, s, white);
+    y -= line;
+    ui.label("Emitters", lx, y, s, dim);
+    ui.label(std::to_string(emitter_count), vx, y, s, white);
+    y -= line + section_gap;
 
-    // Gaussians
-    uint32_t total = app.renderer().gs_renderer().gaussian_count();
-    uint32_t visible = app.renderer().gs_renderer().visible_count();
-    ui.label("GS: " + std::to_string(visible) + " / " + std::to_string(total),
-             lx, y, scale, white);
-    y -= 18.0f;
+    // ── Lighting ──
+    ui.label("LIGHTING", lx, y, s, yellow);
+    y -= line;
+    const char* light_modes[] = {"Off", "Directional", "Point+Dir"};
+    int lm = gs.light_mode();
+    ui.label("Mode", lx, y, s, dim);
+    ui.label(lm >= 0 && lm <= 2 ? light_modes[lm] : "?", vx, y, s, white);
+    y -= line;
+    ui.label("Intensity", lx, y, s, dim);
+    ui.label(f2(gs.light_intensity()), vx, y, s, white);
+    y -= line;
+    ui.label("Toon Bands", lx, y, s, dim);
+    ui.label(gs.toon_bands() > 0 ? std::to_string(gs.toon_bands()) : "Off", vx, y, s, white);
+    y -= line + section_gap;
 
-    // Toggle status
-    std::string toggles = std::string("Particles[P]:") + (app.feature_flags().particles ? "ON" : "OFF") +
-                           "  Anim[N]:" + (anim_enabled_ ? "ON" : "OFF");
-    ui.label(toggles, lx, y, scale, {0.8f, 0.8f, 0.4f, 1.0f});
+    // ── Post-Process ──
+    ui.label("POST-PROCESS", lx, y, s, yellow);
+    y -= line;
+    ui.label("Exposure", lx, y, s, dim);
+    ui.label(f2(pp.exposure), vx, y, s, white);
+    y -= line;
+    ui.label("Bloom", lx, y, s, dim);
+    ui.label(f2(pp.bloom_intensity) + " thr:" + f2(pp.bloom_threshold), vx, y, s,
+             ff.bloom ? white : red);
+    y -= line;
+    ui.label("Vignette", lx, y, s, dim);
+    ui.label("r:" + f2(pp.vignette_radius) + " s:" + f2(pp.vignette_softness), vx, y, s,
+             ff.vignette ? white : red);
+    y -= line;
+    ui.label("DoF", lx, y, s, dim);
+    ui.label(pp.dof_max_blur > 0.01f
+             ? "f:" + f1(pp.dof_focus_distance) + " r:" + f1(pp.dof_focus_range) + " b:" + f2(pp.dof_max_blur)
+             : "Off", vx, y, s, white);
+    y -= line;
+    ui.label("Fog", lx, y, s, dim);
+    ui.label(pp.fog_density > 0.001f ? f2(pp.fog_density) : "Off", vx, y, s, white);
+    y -= line;
+    ui.label("Chromatic Aberr.", lx, y, s, dim);
+    ui.label(pp.ca_intensity > 0.001f ? f2(pp.ca_intensity) : "Off", vx, y, s, white);
+    y -= line + section_gap;
+
+    // ── Features ──
+    ui.label("FEATURES", lx, y, s, yellow);
+    y -= line;
+    ui.label("Particles [P]", lx, y, s, dim);
+    ui.label(on_off(ff.particles), vx, y, s, ff.particles ? green : red);
+    y -= line;
+    ui.label("Animation [N]", lx, y, s, dim);
+    ui.label(on_off(anim_enabled_), vx, y, s, anim_enabled_ ? green : red);
+    y -= line;
+    ui.label("LOD", lx, y, s, dim);
+    ui.label(on_off(ff.gs_lod), vx, y, s, ff.gs_lod ? green : red);
+    y -= line;
+    ui.label("Adaptive Budget", lx, y, s, dim);
+    ui.label(on_off(ff.gs_adaptive_budget), vx, y, s, ff.gs_adaptive_budget ? green : red);
+    y -= line;
+    ui.label("Chunk Culling", lx, y, s, dim);
+    ui.label(on_off(ff.gs_chunk_culling), vx, y, s, ff.gs_chunk_culling ? green : red);
 }
 
 }  // namespace gseurat
