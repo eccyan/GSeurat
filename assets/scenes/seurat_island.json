@@ -74545,11 +74545,11 @@
       "scale": 1.0,
       "components": {
         "ProximityTrigger": {
-          "radius": 10
+          "radius": 16
         },
         "AnimationTrigger": {
           "effect_name": "pulse",
-          "anim_radius": 6.0,
+          "anim_radius": 9.6,
           "lifetime": 4.0,
           "loop": true
         }
@@ -74571,11 +74571,11 @@
       "scale": 1.0,
       "components": {
         "ProximityTrigger": {
-          "radius": 10
+          "radius": 16
         },
         "AnimationTrigger": {
           "effect_name": "wave",
-          "anim_radius": 8.0,
+          "anim_radius": 12.8,
           "lifetime": 5.0,
           "loop": true
         }
@@ -74597,11 +74597,11 @@
       "scale": 1.0,
       "components": {
         "ProximityTrigger": {
-          "radius": 10
+          "radius": 16
         },
         "AnimationTrigger": {
           "effect_name": "vortex",
-          "anim_radius": 5.0,
+          "anim_radius": 8.0,
           "lifetime": 3.0,
           "loop": true
         }
@@ -74623,11 +74623,11 @@
       "scale": 1.0,
       "components": {
         "ProximityTrigger": {
-          "radius": 10
+          "radius": 16
         },
         "AnimationTrigger": {
           "effect_name": "float",
-          "anim_radius": 7.0,
+          "anim_radius": 11.2,
           "lifetime": 6.0,
           "loop": true
         }

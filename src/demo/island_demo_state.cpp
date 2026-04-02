@@ -625,6 +625,15 @@ void IslandDemoState::build_draw_lists(AppBase& app) {
     uint32_t gs_visible = gs.visible_count();
     size_t emitter_count = app.renderer().gs_particle_emitters().size();
 
+    // Count triggered proximity triggers
+    int triggered_count = 0;
+    int total_triggers = 0;
+    app.world().view<ProximityTrigger>().each(
+        [&](ecs::Entity, ProximityTrigger& pt) {
+            total_triggers++;
+            if (pt.triggered) triggered_count++;
+        });
+
     if (hud_mode_ == HudMode::kCompact) {
         // ── COMPACT: single-line status bar at top ──
         constexpr float bar_x = 0.0f;
@@ -647,8 +656,11 @@ void IslandDemoState::build_draw_lists(AppBase& app) {
         ui.label("Emitters:" + std::to_string(emitter_count), x, y, s, white);
         x += 100.0f;
 
-        ui.label("Light:" + f1(gs.light_intensity()), x, y, s, white);
-        x += 85.0f;
+        // Triggered objects indicator
+        glm::vec4 trig_color = triggered_count > 0 ? green : dim;
+        ui.label("Trig:" + std::to_string(triggered_count) + "/" + std::to_string(total_triggers),
+                 x, y, s, trig_color);
+        x += 80.0f;
 
         ui.label("Exp:" + f2(pp.exposure), x, y, s, white);
         x += 75.0f;
@@ -667,7 +679,7 @@ void IslandDemoState::build_draw_lists(AppBase& app) {
     // ── FULL: comprehensive engine values ──
     constexpr float panel_x = 10.0f;
     constexpr float panel_w = 300.0f;
-    constexpr float panel_h = 460.0f;
+    constexpr float panel_h = 520.0f;
     constexpr float panel_top = 720.0f - 10.0f;
     constexpr float panel_cy = panel_top - panel_h * 0.5f;
     ui.panel(panel_x + panel_w * 0.5f, panel_cy, panel_w, panel_h,
@@ -779,6 +791,18 @@ void IslandDemoState::build_draw_lists(AppBase& app) {
     y -= line;
     ui.label("Chunk Culling", lx, y, s, dim);
     ui.label(on_off(ff.gs_chunk_culling), vx, y, s, ff.gs_chunk_culling ? green : red);
+    y -= line + section_gap;
+
+    // ── Triggers ──
+    ui.label("TRIGGERS", lx, y, s, yellow);
+    y -= line;
+    ui.label("Active / Total", lx, y, s, dim);
+    glm::vec4 trig_col = triggered_count > 0 ? green : white;
+    ui.label(std::to_string(triggered_count) + " / " + std::to_string(total_triggers),
+             vx, y, s, trig_col);
+    y -= line;
+    ui.label("Emitters", lx, y, s, dim);
+    ui.label(std::to_string(emitter_count), vx, y, s, white);
 }
 
 }  // namespace gseurat
