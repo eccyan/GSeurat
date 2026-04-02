@@ -452,14 +452,30 @@ void main() {
     float conic_b = -b * inv_det;
     float conic_c = a * inv_det;
 
+    // Cull splats with near-zero conic (projection breakdown).
+    // When conic values approach zero, exp(-0.5 * power) ≈ 1.0 everywhere,
+    // rendering the splat as a solid-color quad (golden square artifacts).
+    float conic_min = min(conic_a, conic_c);
+    if (conic_min < 1e-4) {
+        sort_entries[idx].key = 0xFFFF;
+        sort_entries[idx].index = projected_offset + idx;
+        return;
+    }
+
     // Compute bounding radius (3 sigma)
     float mid = 0.5 * (a + c);
     float disc = max(0.1, mid * mid - det);
     float lambda_max = mid + sqrt(disc);
     float radius_px = ceil(3.0 * sqrt(lambda_max));
 
-    // Clamp radius to reasonable bounds
-    radius_px = min(radius_px, float(max(params.x, params.y)));
+    // Cull screen-filling splats: if radius exceeds half the screen dimension,
+    // the Gaussian is too large for meaningful splatting (degenerate projection).
+    float max_radius = float(max(params.x, params.y)) * 0.5;
+    if (radius_px > max_radius) {
+        sort_entries[idx].key = 0xFFFF;
+        sort_entries[idx].index = projected_offset + idx;
+        return;
+    }
 
     // Write projected splat
     ProjectedSplat splat;
