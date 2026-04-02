@@ -82,6 +82,9 @@ public:
     /// Reset animation states so they re-tag on next update
     void reset_animations();
 
+    /// Tag animation regions on the static buffer (call after append_objects, before animator update)
+    void tag_animations(std::vector<Gaussian>& static_buffer, GaussianAnimator& animator);
+
 private:
     VfxPreset preset_;
     glm::vec3 position_{0.0f};

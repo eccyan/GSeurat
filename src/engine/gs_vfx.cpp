@@ -227,46 +227,8 @@ void VfxInstance::update(float dt, std::vector<Gaussian>& out_buffer, GaussianAn
         }
     }
 
-    // Activate/deactivate animation elements
-    for (auto& as : anim_states_) {
-        const auto& el = preset_.elements[as.element_index];
-        float el_start = el.start;
-        bool in_window;
-        if (el.loop) {
-            in_window = elapsed_ >= el_start;
-        } else {
-            float el_end = el.duration > 0.0f ? el.start + el.duration : preset_.duration;
-            in_window = elapsed_ >= el_start && elapsed_ < el_end;
-        }
-
-        // For looping animations: re-tag when previous group has expired
-        if (as.activated && el.loop && !animator.has_group(as.group_id)) {
-            as.activated = false;  // allow re-tag
-        }
-
-        if (in_window && !as.activated) {
-            // Tag region on the shared animator
-            auto region = el.region;
-            region.center += position_ + rotate_y(el.position, glm::radians(rotation_y_));
-            auto effect_name = el.animation_config.effect;
-            auto effect = GsAnimEffect::Detach;
-            if (effect_name == "float") effect = GsAnimEffect::Float;
-            else if (effect_name == "orbit") effect = GsAnimEffect::Orbit;
-            else if (effect_name == "dissolve") effect = GsAnimEffect::Dissolve;
-            else if (effect_name == "reform") effect = GsAnimEffect::Reform;
-            else if (effect_name == "pulse") effect = GsAnimEffect::Pulse;
-            else if (effect_name == "vortex") effect = GsAnimEffect::Vortex;
-            else if (effect_name == "wave") effect = GsAnimEffect::Wave;
-            else if (effect_name == "scatter") effect = GsAnimEffect::Scatter;
-
-            // Looping: use element duration so the group expires and re-tags with fresh baselines
-            float lifetime = el.duration > 0.0f ? el.duration : 9999.0f;
-            as.group_id = animator.tag_region(out_buffer, region, effect, lifetime, el.animation_config.params);
-            as.activated = true;
-        } else if (!in_window && as.activated) {
-            as.activated = false;
-        }
-    }
+    // Animation tagging is now handled by tag_animations() on the static buffer.
+    // See renderer.cpp camera_dirty block.
 
     // Activate/deactivate light elements and build active lights list
     active_lights_.clear();
@@ -297,6 +259,48 @@ void VfxInstance::reset_animations() {
     for (auto& as : anim_states_) {
         as.activated = false;
         as.group_id = 0;
+    }
+}
+
+void VfxInstance::tag_animations(std::vector<Gaussian>& static_buffer, GaussianAnimator& animator) {
+    if (finished_) return;
+
+    for (auto& as : anim_states_) {
+        const auto& el = preset_.elements[as.element_index];
+        float el_start = el.start;
+        bool in_window;
+        if (el.loop) {
+            in_window = elapsed_ >= el_start;
+        } else {
+            float el_end = el.duration > 0.0f ? el.start + el.duration : preset_.duration;
+            in_window = elapsed_ >= el_start && elapsed_ < el_end;
+        }
+
+        // For looping animations: re-tag when previous group has expired
+        if (as.activated && el.loop && !animator.has_group(as.group_id)) {
+            as.activated = false;
+        }
+
+        if (in_window && !as.activated) {
+            auto region = el.region;
+            region.center += position_ + rotate_y(el.position, glm::radians(rotation_y_));
+            auto effect_name = el.animation_config.effect;
+            auto effect = GsAnimEffect::Detach;
+            if (effect_name == "float") effect = GsAnimEffect::Float;
+            else if (effect_name == "orbit") effect = GsAnimEffect::Orbit;
+            else if (effect_name == "dissolve") effect = GsAnimEffect::Dissolve;
+            else if (effect_name == "reform") effect = GsAnimEffect::Reform;
+            else if (effect_name == "pulse") effect = GsAnimEffect::Pulse;
+            else if (effect_name == "vortex") effect = GsAnimEffect::Vortex;
+            else if (effect_name == "wave") effect = GsAnimEffect::Wave;
+            else if (effect_name == "scatter") effect = GsAnimEffect::Scatter;
+
+            float lifetime = el.duration > 0.0f ? el.duration : 9999.0f;
+            as.group_id = animator.tag_region(static_buffer, region, effect, lifetime, el.animation_config.params);
+            as.activated = true;
+        } else if (!in_window && as.activated) {
+            as.activated = false;
+        }
     }
 }
 

@@ -870,9 +870,14 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
             // Reset so VFX animations re-tag on the new buffer.
             gs_animator_.reset();
 
-            // Reset VFX animation states so they re-tag
+            // Reset VFX animation states so they re-tag on the fresh static buffer
             for (auto& inst : vfx_instances_) {
                 inst.reset_animations();
+            }
+
+            // Tag VFX animations on the static buffer (where object PLYs live)
+            for (auto& inst : vfx_instances_) {
+                inst.tag_animations(gs_static_buffer_, gs_animator_);
             }
 
             // Phase-based state machine for scene animations
