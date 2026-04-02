@@ -2,8 +2,8 @@
 #include "gseurat/engine/app_base.hpp"
 #include "gseurat/engine/gaussian_cloud.hpp"
 #include "gseurat/engine/gs_chunk_grid.hpp"
-#include "gseurat/engine/island_components.hpp"
-#include "gseurat/engine/island_systems.hpp"
+#include "gseurat/demo/island_components.hpp"
+#include "gseurat/demo/island_systems.hpp"
 #include "gseurat/engine/scene_loader.hpp"
 
 #define GLFW_INCLUDE_VULKAN

@@ -1,5 +1,5 @@
-#include "gseurat/engine/island_systems.hpp"
-#include "gseurat/engine/island_components.hpp"
+#include "gseurat/demo/island_systems.hpp"
+#include "gseurat/demo/island_components.hpp"
 #include "gseurat/engine/ecs/default_components.hpp"
 #include "gseurat/engine/ecs/world.hpp"
 #include <cassert>

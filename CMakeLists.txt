@@ -174,8 +174,8 @@ add_library(gseurat_core OBJECT
     src/engine/gs_spline.cpp
     src/engine/component_registry.cpp
     src/engine/system_scheduler.cpp
-    src/engine/island_systems.cpp
 )
+
 
 if(NOT WIN32)
     target_sources(gseurat_core PRIVATE src/engine/control_server.cpp)
@@ -215,6 +215,7 @@ add_executable(gseurat_demo
     src/demo/demo_app.cpp
     src/demo/gs_demo_state.cpp
     src/demo/island_demo_state.cpp
+    src/demo/island_systems.cpp
 )
 target_compile_definitions(gseurat_demo PRIVATE VG_BUILD_PROFILE=1)
 target_link_libraries(gseurat_demo PRIVATE gseurat_core)
@@ -303,4 +304,4 @@ add_gseurat_test(test_gs_spline src/engine/gs_spline.cpp)
 add_gseurat_test(test_gs_post_process)
 add_gseurat_test(test_component_registry src/engine/component_registry.cpp)
 add_gseurat_test(test_system_scheduler  src/engine/system_scheduler.cpp)
-add_gseurat_test(test_island_systems    src/engine/island_systems.cpp)
+add_gseurat_test(test_island_systems    src/demo/island_systems.cpp)
