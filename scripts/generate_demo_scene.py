@@ -295,18 +295,22 @@ def build_interactive_objects(collision):
             },
         })
 
-    return torches + crystals + chests + [fountain, pressure_plate, crystal_hidden] + lanterns
+    # Only include objects with visible PLY models or visible particle effects
+    # Torches: no PLY but create visible fire + light (compelling demo)
+    # Crystals: have PLY (island_crystal1.ply in static props) + glow effect
+    # Removed: chests, fountain, pressure plate, hidden crystal, lanterns (no PLY = invisible)
+    return torches + crystals
 
 
 def build_particle_emitters(collision):
-    """Build 7 particle emitters matching the emitter_index references."""
+    """Build particle emitters matching the emitter_index references."""
 
     def pos(x, z):
         sx, sz = snap_to_walkable(x, z, collision)
         y = lookup_elevation(sx, sz, collision)
         return [sx, y, sz]
 
-    # Torch fire emitters (index 0-3) — match torch game object positions (384x384 world)
+    # Torch fire emitters (index 0-3) — match torch game object positions
     torch_positions = [
         [195, 180],
         [185, 172],
@@ -315,35 +319,11 @@ def build_particle_emitters(collision):
     ]
     emitters = []
     for i, (tx, tz) in enumerate(torch_positions):
-        # "bonfire" preset has large-scale particles visible from isometric camera
         # First 2 torches always lit, last 2 start dark (proximity-triggered)
         e = {"preset": "bonfire", "position": pos(tx, tz)}
         if i >= 2:
             e["spawn_rate"] = 0
         emitters.append(e)
-
-    # Chest spark shower emitters (index 4-5) — (384x384 world)
-    chest_positions = [
-        [175, 160],
-        [215, 210],
-    ]
-    for cx, cz in chest_positions:
-        emitters.append(
-            {
-                "preset": "spark_shower",
-                "position": pos(cx, cz),
-                "spawn_rate": 0,
-                "burst_duration": 0.5,
-            }
-        )
-
-    # Fountain geyser emitter (index 6) — large-scale mist, always active (384x384 world)
-    emitters.append(
-        {
-            "preset": "geyser",
-            "position": pos(192, 165),
-        }
-    )
 
     # Fireflies emitters — spread across island for ambient activity (384x384 world)
     firefly_positions = [
