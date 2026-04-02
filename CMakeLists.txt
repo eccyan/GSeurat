@@ -174,6 +174,7 @@ add_library(gseurat_core OBJECT
     src/engine/gs_spline.cpp
     src/engine/component_registry.cpp
     src/engine/system_scheduler.cpp
+    src/character/character_manifest.cpp
 )
 
 
@@ -305,3 +306,4 @@ add_gseurat_test(test_gs_post_process)
 add_gseurat_test(test_component_registry src/engine/component_registry.cpp)
 add_gseurat_test(test_system_scheduler  src/engine/system_scheduler.cpp)
 add_gseurat_test(test_island_systems    src/demo/island_systems.cpp)
+add_gseurat_test(test_character_manifest src/character/character_manifest.cpp)
