@@ -144,8 +144,9 @@ static bool aabb_in_frustum(const AABB& aabb, const std::array<glm::vec4, 6>& pl
 std::vector<uint32_t> GsChunkGrid::visible_chunks(const glm::mat4& view_proj) const {
     auto planes = extract_frustum_planes(view_proj);
 
-    // Safety margin: 1 chunk size for Gaussian splat radius bleeding
-    float margin = chunk_size_;
+    // Safety margin: account for scale compensation (up to kMaxScaleComp = 2.0x)
+    // expanding Gaussians beyond their original chunk bounds.
+    float margin = chunk_size_ * 2.0f;
 
     std::vector<uint32_t> result;
     result.reserve(chunks_.size());
