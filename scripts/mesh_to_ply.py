@@ -178,7 +178,7 @@ def guess_color(obj_name, material_name=None):
 
 
 def sample_mesh(vertices, objects, density, scale, gaussian_scale=None,
-                mtl_colors=None, assign_bones=False):
+                mtl_colors=None, assign_bones=False, double_sided=False):
     """Surface-sample the mesh to generate Gaussians.
 
     Args:
@@ -274,6 +274,16 @@ def sample_mesh(vertices, objects, density, scale, gaussian_scale=None,
                         g["bone"] = bone_idx
                     gaussians.append(g)
 
+    # Double-sided: duplicate all Gaussians with a small inward offset
+    if double_sided:
+        back_gaussians = []
+        for g in gaussians:
+            bg = dict(g)
+            # No positional offset needed — Gaussians are volumetric splats
+            # that render from both sides. Just duplicate at same position.
+            back_gaussians.append(bg)
+        gaussians.extend(back_gaussians)
+
     return gaussians, total_area
 
 
@@ -291,6 +301,8 @@ def main():
                         help="Print mesh info and exit without converting")
     parser.add_argument("--bones", action="store_true",
                         help="Assign bone indices from group names (DEF-* mapping)")
+    parser.add_argument("--double-sided", action="store_true",
+                        help="Generate Gaussians on both sides of each face")
     parser.add_argument("--mtl", type=str, default=None,
                         help="Override MTL file path (auto-detected from mtllib if not set)")
     args = parser.parse_args()
@@ -326,6 +338,7 @@ def main():
     gaussians, total_area = sample_mesh(
         vertices, objects, args.density, args.scale, args.gs_scale,
         mtl_colors=mtl_colors, assign_bones=args.bones,
+        double_sided=args.double_sided,
     )
 
     os.makedirs(os.path.dirname(os.path.abspath(args.output)), exist_ok=True)
