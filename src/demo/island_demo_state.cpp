@@ -43,12 +43,12 @@ void IslandDemoState::on_enter(AppBase& app) {
     // Enable GS lighting: directional sun + point lights for interactive effects
     app.renderer().gs_renderer().set_light_mode(2);  // point light mode (includes directional)
     app.renderer().gs_renderer().set_light_dir(glm::normalize(glm::vec3(0.5f, 1.0f, 0.7f)));
-    app.renderer().gs_renderer().set_light_intensity(0.8f);  // softer sun, preserves original colors
+    app.renderer().gs_renderer().set_light_intensity(0.7f);  // softer sun, preserves original colors
     app.feature_flags().gs_adaptive_budget = true;
     auto& pp = app.renderer().post_process_params();
     pp.fog_density = 0.0f;
-    pp.dof_max_blur = 0.0f;
-    pp.exposure = 0.9f;        // slightly lower to prevent character washout
+    pp.dof_max_blur = 0.0f;        // DoF disabled — blurs foreground Gaussians into larger blobs
+    pp.exposure = 0.85f;       // slightly lower to prevent character washout
     pp.bloom_threshold = 1.0f;  // only bloom on truly bright emissive
     pp.bloom_intensity = 0.3f;
     pp.bloom_soft_knee = 0.2f;

@@ -330,7 +330,7 @@ void main() {
 
     // Frustum cull: discard if behind near plane or too close to camera
     // (near Gaussians expand to fill screen, causing blurry foreground artifacts)
-    if (view_pos.z > -3.0) {
+    if (view_pos.z > -6.0) {
         sort_entries[idx].key = 0xFFFF;
         sort_entries[idx].index = projected_offset + idx;
         return;

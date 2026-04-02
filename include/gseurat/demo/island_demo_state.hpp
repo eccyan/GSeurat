@@ -54,8 +54,8 @@ private:
 
     // Orbit camera (third-person around player)
     float azimuth_ = 0.0f;
-    float elevation_ = 0.45f;   // ~26 deg — higher angle reduces foreground Gaussian blobs
-    float distance_ = 12.0f;   // pulled back to show more terrain
+    float elevation_ = 0.6f;    // ~34 deg — higher angle reduces foreground Gaussian blobs
+    float distance_ = 20.0f;   // pulled back for isometric overview
     glm::vec3 camera_target_{0.0f};  // smoothed target
 
     // Mouse drag state
