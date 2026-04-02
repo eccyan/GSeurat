@@ -191,6 +191,9 @@ importers:
       vite:
         specifier: ^5.4.0
         version: 5.4.21(@types/node@20.19.35)
+      vitest:
+        specifier: ^4.0.18
+        version: 4.0.18(@types/node@20.19.35)(tsx@4.21.0)
 
   apps/level-designer:
     dependencies:
