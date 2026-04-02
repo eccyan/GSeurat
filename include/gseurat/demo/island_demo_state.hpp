@@ -85,8 +85,8 @@ private:
     static constexpr float kMaxDistance = 40.0f;
     static constexpr float kOrbitSensitivity = 0.005f;
     static constexpr float kZoomSensitivity = 2.0f;
-    static constexpr float kPlayerSpeed = 12.0f;
-    static constexpr float kPlayerAccel = 12.0f;
+    static constexpr float kPlayerSpeed = 20.0f;   // faster for island-scale exploration
+    static constexpr float kPlayerAccel = 20.0f;
     static constexpr float kCameraSmoothing = 8.0f;
     static constexpr float kCameraYOffset = 2.5f;  // above character head for TPS
 };
