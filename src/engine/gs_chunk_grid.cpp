@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
-#include <cstdio>
 #include <cstring>
 #include <unordered_map>
 
@@ -277,15 +276,6 @@ uint32_t GsChunkGrid::gather_lod(const std::vector<uint32_t>& chunk_indices,
     }
 
     out.resize(offset);
-
-    // Diagnostic: log every 60th call to avoid spam
-    static uint32_t log_counter = 0;
-    if (++log_counter % 60 == 1) {
-        std::fprintf(stderr, "[GS LOD] chunks=%zu budget=%u total=%u offset=%u focus=%s\n",
-                     chunk_indices.size(), budget, total_wanted, offset,
-                     focus_pos ? "player" : "camera");
-    }
-
     return offset;
 }
 
