@@ -644,7 +644,7 @@ void IslandDemoState::build_draw_lists(AppBase& app) {
                  {0.0f, 0.0f, 0.0f, 0.5f});
 
         float x = 10.0f;
-        float y = bar_y - 7.0f;
+        float y = bar_y - bar_h * 0.5f - 2.0f;  // vertically center text in bar
         constexpr float s = 0.38f;
 
         ui.label(f1(fps_) + " FPS", x, y, s, fps_color);
