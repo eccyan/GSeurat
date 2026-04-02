@@ -85,7 +85,7 @@ void main() {
 
     uint width = params.x;
     uint height = params.y;
-    uint count = merged_visible_count;
+    uint count = static_count + dynamic_count;  // compute directly, bypass merge shader's thread 0 write
 
     if (pixel.x >= width || pixel.y >= height) return;
 

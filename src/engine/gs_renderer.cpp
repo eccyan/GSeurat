@@ -1235,6 +1235,18 @@ void GsRenderer::render(VkCommandBuffer cmd, const glm::mat4& view, const glm::m
         // Use split pipeline if split buffers are allocated, otherwise legacy path
         bool use_split = static_gaussian_ssbo_.buffer() && counts_ssbo_.buffer();
 
+        // Debug: print counts from previous frame (CPU-visible mapped memory)
+        if (use_split && counts_ssbo_.mapped()) {
+            auto* c = static_cast<const uint32_t*>(counts_ssbo_.mapped());
+            static int frame_counter = 0;
+            if (frame_counter++ % 60 == 0) {
+                std::fprintf(stderr, "[GS Split] static=%u dynamic=%u merged=%u "
+                    "static_dirty=%d static_count=%u dynamic_count=%u\n",
+                    c[0], c[1], c[2], static_dirty_ ? 1 : 0,
+                    static_count_, dynamic_count_);
+            }
+        }
+
         if (use_split) {
             // Reset counts that will be written this frame
             // counts[0]=static_visible (reset if static dirty), counts[1]=dynamic_visible (always reset)

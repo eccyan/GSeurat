@@ -83,6 +83,10 @@ public:
     uint32_t output_width() const { return output_width_; }
     uint32_t output_height() const { return output_height_; }
     uint32_t visible_count() const {
+        if (counts_ssbo_.mapped()) {
+            auto* c = static_cast<const uint32_t*>(counts_ssbo_.mapped());
+            return c[0] + c[1];  // static_visible + dynamic_visible
+        }
         if (visible_count_ssbo_.mapped())
             return *static_cast<const uint32_t*>(visible_count_ssbo_.mapped());
         return 0;

@@ -27,11 +27,8 @@ layout(set = 0, binding = 3) buffer Counts {
 void main() {
     uint tid = gl_GlobalInvocationID.x;
 
-    // Thread 0 computes total for render shader
-    if (tid == 0) {
-        merged_visible_count = static_count + dynamic_count;
-    }
-
+    // Render shader computes total directly from static_count + dynamic_count,
+    // so no need for thread 0 to write merged_visible_count here.
     uint total = static_count + dynamic_count;
     if (tid >= total) return;
 
