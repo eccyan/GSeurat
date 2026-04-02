@@ -122,6 +122,7 @@ export interface CharacterStoreState {
   pushUndo: () => void;
   placeVoxel: (x: number, y: number, z: number) => void;
   placeVoxels: (positions: [number, number, number][]) => void;
+  batchPlaceVoxels: (voxels: Array<{ x: number; y: number; z: number; color?: [number, number, number, number] }>) => void;
   paintVoxel: (x: number, y: number, z: number) => void;
   eraseVoxel: (x: number, y: number, z: number) => void;
   eraseVoxels: (positions: [number, number, number][]) => void;
@@ -277,6 +278,17 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
       if (m) next.set(voxelKey(m[0], m[1], m[2]), { color: [...activeColor] });
     }
     set({ voxels: next });
+  },
+
+  /** Batch-place voxels in a single state update. Programmatic API — does not apply mirror axis. */
+  batchPlaceVoxels: (batch) => {
+    const { voxels, activeColor } = get();
+    const newVoxels = new Map(voxels);
+    for (const { x, y, z, color } of batch) {
+      const key = voxelKey(x, y, z);
+      newVoxels.set(key, { color: color ? [...color] : [...activeColor] });
+    }
+    set({ voxels: newVoxels });
   },
 
   paintVoxel: (x, y, z) => {
@@ -586,3 +598,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
     });
   },
 }));
+
+if (import.meta.env.DEV) {
+  (window as any).__debugStore = useCharacterStore;
+}
