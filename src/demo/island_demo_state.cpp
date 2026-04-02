@@ -639,7 +639,7 @@ void IslandDemoState::build_draw_lists(AppBase& app) {
         constexpr float bar_x = 0.0f;
         constexpr float bar_w = 1280.0f;
         constexpr float bar_h = 24.0f;
-        constexpr float bar_y = 720.0f;
+        constexpr float bar_y = 720.0f - 30.0f;  // below macOS title bar
         ui.panel(bar_w * 0.5f, bar_y - bar_h * 0.5f, bar_w, bar_h,
                  {0.0f, 0.0f, 0.0f, 0.5f});
 
@@ -680,7 +680,7 @@ void IslandDemoState::build_draw_lists(AppBase& app) {
     constexpr float panel_x = 6.0f;
     constexpr float panel_w = 250.0f;
     constexpr float panel_h = 400.0f;
-    constexpr float panel_top = 720.0f - 6.0f;
+    constexpr float panel_top = 720.0f - 36.0f;  // below macOS title bar
     constexpr float panel_cy = panel_top - panel_h * 0.5f;
     ui.panel(panel_x + panel_w * 0.5f, panel_cy, panel_w, panel_h,
              {0.0f, 0.0f, 0.0f, 0.65f});
