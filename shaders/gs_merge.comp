@@ -1,0 +1,63 @@
+#version 450
+layout(local_size_x = 256) in;
+
+struct SortEntry {
+    uint key;
+    uint index;
+};
+
+layout(set = 0, binding = 0) readonly buffer StaticSort {
+    SortEntry static_entries[];
+};
+
+layout(set = 0, binding = 1) readonly buffer DynamicSort {
+    SortEntry dynamic_entries[];
+};
+
+layout(set = 0, binding = 2) writeonly buffer MergedSort {
+    SortEntry merged_entries[];
+};
+
+layout(set = 0, binding = 3) buffer Counts {
+    uint static_count;
+    uint dynamic_count;
+    uint merged_visible_count;
+};
+
+void main() {
+    uint tid = gl_GlobalInvocationID.x;
+
+    // Thread 0 computes total for render shader
+    if (tid == 0) {
+        merged_visible_count = static_count + dynamic_count;
+    }
+
+    uint total = static_count + dynamic_count;
+    if (tid >= total) return;
+
+    // Merge path: binary search for partition point
+    // lo/hi bound the number of static elements in merged[0..tid-1]
+    uint lo = (tid > dynamic_count) ? (tid - dynamic_count) : 0;
+    uint hi = min(tid, static_count);
+
+    while (lo < hi) {
+        uint mid = (lo + hi) / 2;
+        uint d_idx = tid - mid;
+        // Ascending sort (near first). Stable: static wins on equal depth.
+        if (d_idx > 0 && static_entries[mid].key <= dynamic_entries[d_idx - 1].key) {
+            lo = mid + 1;
+        } else {
+            hi = mid;
+        }
+    }
+
+    uint s_idx = lo;
+    uint d_idx = tid - s_idx;
+
+    if (s_idx < static_count &&
+        (d_idx >= dynamic_count || static_entries[s_idx].key <= dynamic_entries[d_idx].key)) {
+        merged_entries[tid] = static_entries[s_idx];
+    } else {
+        merged_entries[tid] = dynamic_entries[d_idx];
+    }
+}
