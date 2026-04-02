@@ -42,9 +42,9 @@ void IslandDemoState::on_enter(AppBase& app) {
     pp.fog_density = 0.0f;
     pp.dof_max_blur = 0.0f;
     pp.exposure = 1.0f;
-    pp.bloom_threshold = 1.2f;
-    pp.bloom_intensity = 0.25f;
-    pp.bloom_soft_knee = 0.2f;
+    pp.bloom_threshold = 0.9f;
+    pp.bloom_intensity = 0.4f;
+    pp.bloom_soft_knee = 0.3f;
     pp.vignette_radius = 0.85f;
     pp.vignette_softness = 0.3f;
     app.renderer().set_gs_skip_chunk_cull(false);
@@ -396,27 +396,44 @@ void IslandDemoState::update_effects(AppBase& app, float dt) {
         if (!logged) { std::fprintf(stderr, "[LightToggle] %d entities\n", count); logged = true; }
     }
 
-    // EmissiveToggle: add point lights for emissive objects (bloom source)
+    // EmissiveToggle: add dynamic point lights for emissive objects (GS lighting)
     {
         int count = 0;
+        std::vector<PointLight> emissive_lights;
         world.view<EmissiveToggle, ProximityTrigger, ecs::Transform>().each(
             [&](ecs::Entity, EmissiveToggle& et, ProximityTrigger& pt, ecs::Transform& t) {
                 count++;
-                if (pt.triggered && !et.applied) {
-                    et.applied = true;
-                    std::fprintf(stderr, "[EmissiveToggle] LIGHT added at (%.1f, %.1f, %.1f) emission=%.1f color=(%.1f,%.1f,%.1f) radius=%.1f\n",
-                        t.position.x, t.position.y, t.position.z, et.emission, et.color_r, et.color_g, et.color_b, et.effect_radius);
+                if (pt.triggered && et.current_emission > 0.1f) {
+                    if (!et.applied) {
+                        et.applied = true;
+                        std::fprintf(stderr, "[EmissiveToggle] LIGHT ON at (%.1f, %.1f, %.1f) emission=%.1f color=(%.1f,%.1f,%.1f)\n",
+                            t.position.x, t.position.y, t.position.z, et.emission, et.color_r, et.color_g, et.color_b);
+                    }
                     PointLight pl{};
                     pl.position_and_radius = glm::vec4(
-                        t.position.x, t.position.y + 1.0f, t.position.z,
-                        et.effect_radius * 3.0f);
+                        t.position.x, t.position.y + 3.0f, t.position.z,
+                        et.effect_radius * 4.0f);
+                    float brightness = et.current_emission / et.emission;  // 0→1 fade-in
                     pl.color = glm::vec4(
-                        et.color_r * et.emission,
-                        et.color_g * et.emission,
-                        et.color_b * et.emission, 1.0f);
-                    app.scene().add_light(pl);
+                        et.color_r * et.emission * brightness * 2.0f,
+                        et.color_g * et.emission * brightness * 2.0f,
+                        et.color_b * et.emission * brightness * 2.0f, 1.0f);
+                    emissive_lights.push_back(pl);
+                } else if (!pt.triggered && et.applied && et.current_emission < 0.1f) {
+                    et.applied = false;
+                    std::fprintf(stderr, "[EmissiveToggle] LIGHT OFF\n");
                 }
             });
+        // Push emissive lights directly to GS renderer (bypasses scene system)
+        if (!emissive_lights.empty()) {
+            auto& gs = app.renderer().gs_renderer();
+            auto existing = gs.point_lights();
+            for (auto& pl : emissive_lights) {
+                if (existing.size() < 8) existing.push_back(pl);
+            }
+            gs.set_point_lights(existing);
+            if (gs.light_mode() < 2) gs.set_light_mode(2);
+        }
         static bool logged = false;
         if (!logged) { std::fprintf(stderr, "[EmissiveToggle effect] %d entities\n", count); logged = true; }
     }
