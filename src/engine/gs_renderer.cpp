@@ -533,7 +533,7 @@ void GsRenderer::load_cloud(const GaussianCloud& cloud) {
     static_histogram_ssbo_ = Buffer::create_storage(allocator_, static_hist_size);
     dynamic_histogram_ssbo_ = Buffer::create_storage(allocator_, dynamic_hist_size);
     merged_sort_ssbo_ = Buffer::create_storage(allocator_, merged_sort_buf_size);
-    counts_ssbo_ = Buffer::create_storage(allocator_, 3 * sizeof(uint32_t));  // {static_visible, dynamic_visible, merged_visible}
+    counts_ssbo_ = Buffer::create_storage_readback(allocator_, 3 * sizeof(uint32_t));  // {static_visible, dynamic_visible, merged_visible}
     uniform_buffer_ = Buffer::create_uniform(allocator_, sizeof(GsUniforms));
     visible_count_ssbo_ = Buffer::create_storage_readback(allocator_, sizeof(uint32_t));
 
