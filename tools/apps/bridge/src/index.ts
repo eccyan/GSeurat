@@ -600,13 +600,13 @@ app.get('/api/characters/:id/pixel-image', async (req: Request, res: Response) =
 
 // POST /api/characters/:id/file/:filename — save an arbitrary file to character directory
 // Accepts base64 JSON { "data": "<base64>" } or raw binary body.
-// Filename must end with .png or .json for safety.
+// Filename must end with .png, .json, or .ply for safety.
 app.post('/api/characters/:id/file/:filename', async (req: Request, res: Response) => {
   try {
     const charDir = safeResolve(getCharactersDir(), req.params['id']!);
     const filename = req.params['filename']!;
     // Whitelist safe extensions
-    if (!/\.(png|json)$/.test(filename)) {
+    if (!/\.(png|json|ply)$/.test(filename)) {
       res.status(400).json({ error: `Unsupported file type: ${filename}` });
       return;
     }
