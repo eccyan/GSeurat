@@ -1,0 +1,128 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "character_manifest.schema.json",
+  "title": "GSeurat Character Manifest",
+  "description": "Defines a voxel character with bone hierarchy, poses, and animation clips for the GSeurat engine.",
+  "type": "object",
+  "required": ["name", "ply_file", "bones"],
+  "properties": {
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Character display name."
+    },
+    "ply_file": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Path to the PLY file, relative to the manifest file location."
+    },
+    "scale": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "default": 1.0,
+      "description": "Uniform scale applied to all positions and joint coordinates at load time."
+    },
+    "bones": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 32,
+      "description": "Bone hierarchy. Order defines bone indices (0-based). Max 32 (GPU limit).",
+      "items": {
+        "$ref": "#/$defs/bone"
+      }
+    },
+    "poses": {
+      "type": "object",
+      "description": "Named poses. Each pose maps bone IDs to Euler rotation [rx, ry, rz] in degrees.",
+      "additionalProperties": {
+        "$ref": "#/$defs/pose"
+      }
+    },
+    "animations": {
+      "type": "object",
+      "description": "Named animation clips referencing poses at keyframe timestamps.",
+      "additionalProperties": {
+        "$ref": "#/$defs/animation_clip"
+      }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "vec3": {
+      "type": "array",
+      "items": { "type": "number" },
+      "minItems": 3,
+      "maxItems": 3,
+      "description": "A 3-component vector [x, y, z]."
+    },
+    "bone": {
+      "type": "object",
+      "required": ["id", "joint"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Unique bone identifier."
+        },
+        "parent": {
+          "type": ["string", "null"],
+          "description": "Parent bone ID, or null for root bone."
+        },
+        "joint": {
+          "$ref": "#/$defs/vec3",
+          "description": "Joint pivot point in voxel grid coordinates. Scaled by manifest scale at load time."
+        }
+      },
+      "additionalProperties": false
+    },
+    "pose": {
+      "type": "object",
+      "description": "Per-bone Euler rotations in degrees [rx, ry, rz]. Bones not listed default to [0, 0, 0].",
+      "additionalProperties": {
+        "$ref": "#/$defs/vec3"
+      }
+    },
+    "animation_clip": {
+      "type": "object",
+      "required": ["duration", "keyframes"],
+      "properties": {
+        "duration": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "Total clip duration in seconds."
+        },
+        "looping": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether the clip loops when playback reaches the end."
+        },
+        "keyframes": {
+          "type": "array",
+          "minItems": 1,
+          "description": "Keyframes sorted by time. Each references a named pose.",
+          "items": {
+            "$ref": "#/$defs/keyframe"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "keyframe": {
+      "type": "object",
+      "required": ["time", "pose"],
+      "properties": {
+        "time": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Timestamp in seconds from clip start."
+        },
+        "pose": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Name of a pose defined in the manifest's poses object."
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}
