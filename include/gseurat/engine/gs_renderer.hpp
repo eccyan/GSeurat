@@ -43,18 +43,36 @@ struct GsPostProcessUbo {
     glm::vec4 dimensions;         // dof_max_blur, width, height, far_plane
 };
 
+// Push constants for preprocess shader (static/dynamic offset)
+struct GsPreprocessPush {
+    uint32_t projected_offset;
+    uint32_t gaussian_count;
+};
+
 class GsRenderer {
 public:
     void init(VkDevice device, VmaAllocator allocator, VkDescriptorPool pool);
     void load_cloud(const GaussianCloud& cloud);
     void update_active_gaussians(const Gaussian* data, uint32_t count);
     void update_gaussian_data(const Gaussian* data, uint32_t count);
+
+    // Static/dynamic split API
+    void update_static_gaussians(const Gaussian* data, uint32_t count);
+    void update_dynamic_gaussians(const Gaussian* data, uint32_t count);
+    uint32_t max_static_count() const { return max_static_count_; }
+    uint32_t max_dynamic_count() const { return max_dynamic_count_; }
+    uint32_t static_count() const { return static_count_; }
+    uint32_t dynamic_count() const { return dynamic_count_; }
+    bool static_dirty() const { return static_dirty_; }
+    void set_static_dirty(bool d) { static_dirty_ = d; }
+
     void resize_output(uint32_t width, uint32_t height);
     void render(VkCommandBuffer cmd, const glm::mat4& view, const glm::mat4& proj);
     VkImageView output_view() const { return processed_view_ ? processed_view_ : output_view_; }
     VkImageView raw_output_view() const { return output_view_; }
     VkSampler output_sampler() const { return output_sampler_; }
     static constexpr uint32_t kParticleHeadroom = 2048;
+    static constexpr uint32_t kDynamicHeadroom = 8192;  // particles + character + animated regions
 
     void ensure_capacity(uint32_t needed_total);
 
@@ -136,6 +154,9 @@ private:
     void create_compute_pipelines();
     void create_descriptor_resources();
     void update_descriptors();
+    void dispatch_radix_sort(VkCommandBuffer cmd, uint32_t sort_size, uint32_t num_workgroups,
+        VkDescriptorSet hist_a, VkDescriptorSet hist_b, VkDescriptorSet scan,
+        VkDescriptorSet scatter_ab, VkDescriptorSet scatter_ba);
 
     VkDevice device_ = VK_NULL_HANDLE;
     VmaAllocator allocator_ = VK_NULL_HANDLE;
@@ -168,6 +189,29 @@ private:
     Buffer visible_count_ssbo_;      // Atomic counter: visible Gaussians after frustum cull
     Buffer bone_ssbo_;               // Bone transforms for character skinning
     uint32_t bone_count_ = 0;
+
+    // Static/dynamic split buffers
+    Buffer static_gaussian_ssbo_;
+    Buffer dynamic_gaussian_ssbo_;
+    Buffer static_sort_a_;
+    Buffer static_sort_b_;
+    Buffer dynamic_sort_a_;
+    Buffer dynamic_sort_b_;
+    Buffer static_histogram_ssbo_;
+    Buffer dynamic_histogram_ssbo_;
+    Buffer merged_sort_ssbo_;
+    Buffer counts_ssbo_;  // {static_visible, dynamic_visible, merged_visible}
+
+    uint32_t static_count_ = 0;
+    uint32_t dynamic_count_ = 0;
+    uint32_t max_static_count_ = 0;
+    uint32_t max_dynamic_count_ = 0;
+    uint32_t static_sort_size_ = 0;
+    uint32_t dynamic_sort_size_ = 0;
+    uint32_t static_sort_workgroups_ = 0;
+    uint32_t dynamic_sort_workgroups_ = 0;
+    bool static_dirty_ = true;
+
     uint32_t gaussian_count_ = 0;
     uint32_t max_gaussian_count_ = 0;
     uint32_t sort_size_ = 0;         // Power-of-2 padded count
@@ -189,6 +233,26 @@ private:
     VkDescriptorSet radix_scan_set_ = VK_NULL_HANDLE;
     VkDescriptorSet radix_scatter_set_ab_ = VK_NULL_HANDLE;   // A → B
     VkDescriptorSet radix_scatter_set_ba_ = VK_NULL_HANDLE;   // B → A
+
+    // Merge pipeline
+    VkDescriptorSetLayout merge_layout_ = VK_NULL_HANDLE;
+    VkPipelineLayout merge_pipeline_layout_ = VK_NULL_HANDLE;
+    VkPipeline merge_pipeline_ = VK_NULL_HANDLE;
+    VkDescriptorSet merge_set_ = VK_NULL_HANDLE;
+
+    // Static/dynamic preprocess and sort descriptor sets
+    VkDescriptorSet static_preprocess_set_ = VK_NULL_HANDLE;
+    VkDescriptorSet dynamic_preprocess_set_ = VK_NULL_HANDLE;
+    VkDescriptorSet static_histogram_set_a_ = VK_NULL_HANDLE;
+    VkDescriptorSet static_histogram_set_b_ = VK_NULL_HANDLE;
+    VkDescriptorSet static_scatter_set_ab_ = VK_NULL_HANDLE;
+    VkDescriptorSet static_scatter_set_ba_ = VK_NULL_HANDLE;
+    VkDescriptorSet static_scan_set_ = VK_NULL_HANDLE;
+    VkDescriptorSet dynamic_histogram_set_a_ = VK_NULL_HANDLE;
+    VkDescriptorSet dynamic_histogram_set_b_ = VK_NULL_HANDLE;
+    VkDescriptorSet dynamic_scatter_set_ab_ = VK_NULL_HANDLE;
+    VkDescriptorSet dynamic_scatter_set_ba_ = VK_NULL_HANDLE;
+    VkDescriptorSet dynamic_scan_set_ = VK_NULL_HANDLE;
 
     // Compute pipelines
     VkPipelineLayout preprocess_pipeline_layout_ = VK_NULL_HANDLE;
