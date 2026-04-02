@@ -286,6 +286,26 @@ void AppBase::init_game_object_system() {
         [](const LinkedTrigger& c) -> nlohmann::json {
             return {{"target_entity", c.target_entity}};
         });
+
+    component_registry_.register_component<AnimationTrigger>("AnimationTrigger",
+        [](const nlohmann::json& j) -> AnimationTrigger {
+            AnimationTrigger c;
+            if (j.contains("effect_name")) {
+                auto name = j["effect_name"].get<std::string>();
+                std::strncpy(c.effect_name, name.c_str(), sizeof(c.effect_name) - 1);
+                c.effect_name[sizeof(c.effect_name) - 1] = '\0';
+            }
+            if (j.contains("anim_radius")) c.anim_radius = j["anim_radius"].get<float>();
+            if (j.contains("lifetime")) c.lifetime = j["lifetime"].get<float>();
+            if (j.contains("loop")) c.loop = j["loop"].get<bool>();
+            return c;
+        },
+        [](const AnimationTrigger& c) -> nlohmann::json {
+            return {{"effect_name", std::string(c.effect_name)},
+                    {"anim_radius", c.anim_radius},
+                    {"lifetime", c.lifetime},
+                    {"loop", c.loop}};
+        });
 }
 
 // ── Shared GS scene loading ──

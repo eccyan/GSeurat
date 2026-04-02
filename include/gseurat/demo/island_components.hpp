@@ -57,4 +57,16 @@ struct LinkedTrigger {
     bool fired = false;
 };
 
+// Triggers a GS animation effect on nearby Gaussians when player approaches.
+// effect_name: "float", "orbit", "dissolve", "pulse", "vortex", "wave", "scatter"
+struct AnimationTrigger {
+    // Which effect to apply (matches GsAnimEffect names)
+    // Stored as char array for trivially-copyable ECS requirement
+    char effect_name[16] = "pulse";
+    float anim_radius = 5.0f;   // radius of affected Gaussian region
+    float lifetime = 3.0f;      // animation duration
+    bool loop = false;           // restart when done
+    bool fired = false;          // runtime state
+};
+
 }  // namespace gseurat

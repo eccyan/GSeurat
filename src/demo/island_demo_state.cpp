@@ -473,6 +473,32 @@ void IslandDemoState::update_effects(AppBase& app, float dt) {
         static bool logged = false;
         if (!logged) { std::fprintf(stderr, "[BurstEffect] %d entities\n", count); logged = true; }
     }
+
+    // AnimationTrigger: apply GS animation effect to nearby Gaussians on proximity
+    {
+        int count = 0;
+        world.view<AnimationTrigger, ProximityTrigger, ecs::Transform>().each(
+            [&](ecs::Entity, AnimationTrigger& at, ProximityTrigger& pt, ecs::Transform& t) {
+                count++;
+                if (pt.triggered && !at.fired) {
+                    at.fired = true;
+                    GsAnimRegion region;
+                    region.shape = GsAnimRegion::Shape::Sphere;
+                    region.center = t.position;
+                    region.radius = at.anim_radius;
+                    std::string effect(at.effect_name);
+                    std::fprintf(stderr, "[AnimationTrigger] FIRE '%s' at (%.1f, %.1f, %.1f) radius=%.1f lifetime=%.1f\n",
+                        at.effect_name, t.position.x, t.position.y, t.position.z, at.anim_radius, at.lifetime);
+                    app.renderer().add_gs_animation(effect, region, at.lifetime, at.loop);
+                }
+                // Reset when player leaves (for looping or re-triggerable effects)
+                if (!pt.triggered && at.fired && !pt.one_shot) {
+                    at.fired = false;
+                }
+            });
+        static bool logged = false;
+        if (!logged) { std::fprintf(stderr, "[AnimationTrigger] %d entities\n", count); logged = true; }
+    }
 }
 
 // ── Walk animation ──

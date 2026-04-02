@@ -74528,6 +74528,110 @@
           "effect_radius": 10.0
         }
       }
+    },
+    {
+      "id": "anim_trigger_1",
+      "name": "Animation (pulse)",
+      "position": [
+        151.0,
+        1.5957,
+        111.0
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": 1.0,
+      "components": {
+        "ProximityTrigger": {
+          "radius": 10
+        },
+        "AnimationTrigger": {
+          "effect_name": "pulse",
+          "anim_radius": 6.0,
+          "lifetime": 4.0,
+          "loop": true
+        }
+      }
+    },
+    {
+      "id": "anim_trigger_2",
+      "name": "Animation (wave)",
+      "position": [
+        231.0,
+        2.4555,
+        171.0
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": 1.0,
+      "components": {
+        "ProximityTrigger": {
+          "radius": 10
+        },
+        "AnimationTrigger": {
+          "effect_name": "wave",
+          "anim_radius": 8.0,
+          "lifetime": 5.0,
+          "loop": true
+        }
+      }
+    },
+    {
+      "id": "anim_trigger_3",
+      "name": "Animation (vortex)",
+      "position": [
+        131.0,
+        3.3762,
+        211.0
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": 1.0,
+      "components": {
+        "ProximityTrigger": {
+          "radius": 10
+        },
+        "AnimationTrigger": {
+          "effect_name": "vortex",
+          "anim_radius": 5.0,
+          "lifetime": 3.0,
+          "loop": true
+        }
+      }
+    },
+    {
+      "id": "anim_trigger_4",
+      "name": "Animation (float)",
+      "position": [
+        171.0,
+        1.2672,
+        261.0
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": 1.0,
+      "components": {
+        "ProximityTrigger": {
+          "radius": 10
+        },
+        "AnimationTrigger": {
+          "effect_name": "float",
+          "anim_radius": 7.0,
+          "lifetime": 6.0,
+          "loop": true
+        }
+      }
     }
   ],
   "particle_emitters": [

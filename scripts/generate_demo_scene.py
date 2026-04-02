@@ -295,11 +295,34 @@ def build_interactive_objects(collision):
             },
         })
 
-    # Only include objects with visible PLY models or visible particle effects
-    # Torches: no PLY but create visible fire + light (compelling demo)
-    # Crystals: have PLY (island_crystal1.ply in static props) + glow effect
-    # Removed: chests, fountain, pressure plate, hidden crystal, lanterns (no PLY = invisible)
-    return torches + crystals
+    # Animation triggers on rocks — Gaussians pulse/wave/vortex when player approaches
+    anim_objects = [
+        {"pos": [150, 110], "effect": "pulse", "radius": 6.0, "lifetime": 4.0, "loop": True},
+        {"pos": [230, 170], "effect": "wave",  "radius": 8.0, "lifetime": 5.0, "loop": True},
+        {"pos": [130, 210], "effect": "vortex", "radius": 5.0, "lifetime": 3.0, "loop": True},
+        {"pos": [170, 260], "effect": "float", "radius": 7.0, "lifetime": 6.0, "loop": True},
+    ]
+    anim_triggers = []
+    for i, ao in enumerate(anim_objects):
+        ax, az = ao["pos"]
+        anim_triggers.append({
+            "id": f"anim_trigger_{i + 1}",
+            "name": f"Animation ({ao['effect']})",
+            "position": pos(ax, az),
+            "rotation": [0, 0, 0],
+            "scale": 1.0,
+            "components": {
+                "ProximityTrigger": {"radius": 10},
+                "AnimationTrigger": {
+                    "effect_name": ao["effect"],
+                    "anim_radius": ao["radius"],
+                    "lifetime": ao["lifetime"],
+                    "loop": ao["loop"],
+                },
+            },
+        })
+
+    return torches + crystals + anim_triggers
 
 
 def build_particle_emitters(collision):
