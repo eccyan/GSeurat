@@ -639,7 +639,7 @@ void IslandDemoState::build_draw_lists(AppBase& app) {
         constexpr float bar_x = 0.0f;
         constexpr float bar_w = 1280.0f;
         constexpr float bar_h = 24.0f;
-        constexpr float bar_y = 720.0f - 30.0f;  // below macOS title bar
+        constexpr float bar_y = 720.0f;
         ui.panel(bar_w * 0.5f, bar_y - bar_h * 0.5f, bar_w, bar_h,
                  {0.0f, 0.0f, 0.0f, 0.5f});
 
