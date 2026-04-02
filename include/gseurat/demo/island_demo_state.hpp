@@ -3,6 +3,7 @@
 #include "gseurat/engine/collision_gen.hpp"
 #include "gseurat/engine/game_state.hpp"
 #include "gseurat/engine/gaussian_cloud.hpp"
+#include "gseurat/engine/types.hpp"
 #include "gseurat/engine/ecs/types.hpp"
 
 #include <glm/glm.hpp>
@@ -44,14 +45,17 @@ private:
     glm::vec3 character_origin_{0.0f};     // current player position
     std::vector<Gaussian> map_gaussians_;  // original map data before character merge
 
+    // Base scene lights (saved at init, used as base for dynamic emissive lights)
+    std::vector<PointLight> scene_lights_;
+
     // Collision grid (loaded from scene JSON)
     CollisionGrid collision_grid_;
     glm::vec2 grid_origin_{0.0f};  // world XZ origin
 
     // Orbit camera (third-person around player)
     float azimuth_ = 0.0f;
-    float elevation_ = 0.25f;   // ~14 deg — TPS behind-and-slightly-above (per CEO sketch)
-    float distance_ = 8.0f;    // close TPS — character fills ~1/4 screen height
+    float elevation_ = 0.45f;   // ~26 deg — higher angle reduces foreground Gaussian blobs
+    float distance_ = 12.0f;   // pulled back to show more terrain
     glm::vec3 camera_target_{0.0f};  // smoothed target
 
     // Mouse drag state

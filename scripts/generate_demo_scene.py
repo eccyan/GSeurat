@@ -187,13 +187,13 @@ def build_interactive_objects(collision):
                 "rotation": [0, 0, 0],
                 "scale": 1.0,
                 "components": {
-                    "ProximityTrigger": {"radius": 6},
+                    "ProximityTrigger": {"radius": 8},
                     "EmissiveToggle": {
-                        "emission": 2.0,
-                        "color_r": 0.3,
-                        "color_g": 0.5,
-                        "color_b": 1.0,
-                        "effect_radius": 3.0,
+                        "emission": 8.0,
+                        "color_r": 1.0,
+                        "color_g": 0.15,
+                        "color_b": 0.05,
+                        "effect_radius": 10.0,
                     },
                 },
             }
@@ -295,18 +295,45 @@ def build_interactive_objects(collision):
             },
         })
 
-    return torches + crystals + chests + [fountain, pressure_plate, crystal_hidden] + lanterns
+    # Animation triggers on rocks — Gaussians pulse/wave/vortex when player approaches
+    anim_objects = [
+        {"pos": [150, 110], "effect": "pulse", "radius": 6.0, "lifetime": 4.0, "loop": True},
+        {"pos": [230, 170], "effect": "wave",  "radius": 8.0, "lifetime": 5.0, "loop": True},
+        {"pos": [130, 210], "effect": "vortex", "radius": 5.0, "lifetime": 3.0, "loop": True},
+        {"pos": [170, 260], "effect": "float", "radius": 7.0, "lifetime": 6.0, "loop": True},
+    ]
+    anim_triggers = []
+    for i, ao in enumerate(anim_objects):
+        ax, az = ao["pos"]
+        anim_triggers.append({
+            "id": f"anim_trigger_{i + 1}",
+            "name": f"Animation ({ao['effect']})",
+            "position": pos(ax, az),
+            "rotation": [0, 0, 0],
+            "scale": 1.0,
+            "components": {
+                "ProximityTrigger": {"radius": 10},
+                "AnimationTrigger": {
+                    "effect_name": ao["effect"],
+                    "anim_radius": ao["radius"],
+                    "lifetime": ao["lifetime"],
+                    "loop": ao["loop"],
+                },
+            },
+        })
+
+    return torches + crystals + anim_triggers
 
 
 def build_particle_emitters(collision):
-    """Build 7 particle emitters matching the emitter_index references."""
+    """Build particle emitters matching the emitter_index references."""
 
     def pos(x, z):
         sx, sz = snap_to_walkable(x, z, collision)
         y = lookup_elevation(sx, sz, collision)
         return [sx, y, sz]
 
-    # Torch fire emitters (index 0-3) — match torch game object positions (384x384 world)
+    # Torch fire emitters (index 0-3) — match torch game object positions
     torch_positions = [
         [195, 180],
         [185, 172],
@@ -315,35 +342,11 @@ def build_particle_emitters(collision):
     ]
     emitters = []
     for i, (tx, tz) in enumerate(torch_positions):
-        # "bonfire" preset has large-scale particles visible from isometric camera
         # First 2 torches always lit, last 2 start dark (proximity-triggered)
         e = {"preset": "bonfire", "position": pos(tx, tz)}
         if i >= 2:
             e["spawn_rate"] = 0
         emitters.append(e)
-
-    # Chest spark shower emitters (index 4-5) — (384x384 world)
-    chest_positions = [
-        [175, 160],
-        [215, 210],
-    ]
-    for cx, cz in chest_positions:
-        emitters.append(
-            {
-                "preset": "spark_shower",
-                "position": pos(cx, cz),
-                "spawn_rate": 0,
-                "burst_duration": 0.5,
-            }
-        )
-
-    # Fountain geyser emitter (index 6) — large-scale mist, always active (384x384 world)
-    emitters.append(
-        {
-            "preset": "geyser",
-            "position": pos(192, 165),
-        }
-    )
 
     # Fireflies emitters — spread across island for ambient activity (384x384 world)
     firefly_positions = [

@@ -5,6 +5,8 @@
 #include "gseurat/demo/island_components.hpp"
 #include "gseurat/demo/island_systems.hpp"
 #include "gseurat/engine/scene_loader.hpp"
+#include "gseurat/engine/gs_particle.hpp"
+#include "gseurat/engine/gs_animator.hpp"
 
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
@@ -37,14 +39,19 @@ void IslandDemoState::on_enter(AppBase& app) {
     app.feature_flags().particles = true;
     app.feature_flags().point_lights = true;
     app.feature_flags().gs_lod = true;
+
+    // Enable GS lighting: directional sun + point lights for interactive effects
+    app.renderer().gs_renderer().set_light_mode(2);  // point light mode (includes directional)
+    app.renderer().gs_renderer().set_light_dir(glm::normalize(glm::vec3(0.5f, 1.0f, 0.7f)));
+    app.renderer().gs_renderer().set_light_intensity(0.8f);  // softer sun, preserves original colors
     app.feature_flags().gs_adaptive_budget = true;
     auto& pp = app.renderer().post_process_params();
     pp.fog_density = 0.0f;
     pp.dof_max_blur = 0.0f;
-    pp.exposure = 1.0f;
-    pp.bloom_threshold = 0.55f;
-    pp.bloom_intensity = 0.45f;
-    pp.bloom_soft_knee = 0.3f;
+    pp.exposure = 0.9f;        // slightly lower to prevent character washout
+    pp.bloom_threshold = 1.0f;  // only bloom on truly bright emissive
+    pp.bloom_intensity = 0.3f;
+    pp.bloom_soft_knee = 0.2f;
     pp.vignette_radius = 0.85f;
     pp.vignette_softness = 0.3f;
     app.renderer().set_gs_skip_chunk_cull(false);
@@ -77,6 +84,14 @@ void IslandDemoState::on_enter(AppBase& app) {
     app.system_scheduler().add_system({"proximity_trigger", proximity_trigger_system, {}, {}});
     app.system_scheduler().add_system({"linked_trigger", linked_trigger_system, {}, {}});
     app.system_scheduler().add_system({"emissive_toggle", emissive_toggle_system, {}, {}});
+
+    // Capture base scene lights (before dynamic emissive lights are added)
+    // Note: GS renderer gets lights during record_gs_prepass, not at init.
+    // Scene lights come from SceneData via AppBase::load_gs_scene → set_gs_static_lights.
+    // We need to read from the Renderer's static list, not GsRenderer's current list.
+    // For now, start empty — the scene's directional/ambient lights are set separately.
+    scene_lights_ = {};
+    std::fprintf(stderr, "[IslandDemo] scene_lights_ captured: %zu lights\n", scene_lights_.size());
 
     // Spawn player character (procedural humanoid)
     if (app.renderer().has_gs_cloud()) {
@@ -342,78 +357,148 @@ void IslandDemoState::update_effects(AppBase& app, float dt) {
     auto& world = app.world();
 
     // EmitterToggle: toggle emitter spawn_rate based on proximity trigger
-    world.view<EmitterToggle, ProximityTrigger>().each(
-        [&](ecs::Entity, EmitterToggle& et, ProximityTrigger& pt) {
-            auto& emitters = app.renderer().gs_particle_emitters();
-            if (et.emitter_index >= emitters.size()) return;
-            auto& emitter = emitters[et.emitter_index];
-            if (pt.triggered && !et.active) {
-                et.active = true;
-                // Re-enable: restore original spawn rate from config
-                auto cfg = emitter.config();
-                cfg.spawn_rate = 10.0f;  // default active rate
-                emitter.configure(cfg);
-            } else if (!pt.triggered && et.active) {
-                et.active = false;
-                auto cfg = emitter.config();
-                cfg.spawn_rate = 0.0f;
-                emitter.configure(cfg);
-            }
-        });
-
-    // LightToggle: toggle scene light based on proximity
-    world.view<LightToggle, ProximityTrigger, ecs::Transform>().each(
-        [&](ecs::Entity, LightToggle& lt, ProximityTrigger& pt, ecs::Transform& t) {
-            if (pt.triggered && !lt.active) {
-                lt.active = true;
-                PointLight pl{};
-                pl.position_and_radius = glm::vec4(
-                    t.position.x, t.position.y, t.position.z, lt.radius);
-                pl.color = glm::vec4(
-                    lt.color_r * lt.intensity,
-                    lt.color_g * lt.intensity,
-                    lt.color_b * lt.intensity, 1.0f);
-                app.scene().add_light(pl);
-            } else if (!pt.triggered && lt.active) {
-                lt.active = false;
-                // Simple: clear and re-add all non-toggled lights
-                // (in production you'd track the light index)
-            }
-        });
-
-    // EmissiveToggle: add point lights for emissive objects (bloom source)
-    world.view<EmissiveToggle, ProximityTrigger, ecs::Transform>().each(
-        [&](ecs::Entity, EmissiveToggle& et, ProximityTrigger& pt, ecs::Transform& t) {
-            if (pt.triggered && !et.applied) {
-                et.applied = true;
-                PointLight pl{};
-                pl.position_and_radius = glm::vec4(
-                    t.position.x, t.position.y + 1.0f, t.position.z,
-                    et.effect_radius * 3.0f);
-                pl.color = glm::vec4(
-                    et.color_r * et.emission,
-                    et.color_g * et.emission,
-                    et.color_b * et.emission, 1.0f);
-                app.scene().add_light(pl);
-            }
-        });
-
-    // BurstEffect: one-shot particle burst on trigger
-    world.view<BurstEffect, ProximityTrigger, ecs::Transform>().each(
-        [&](ecs::Entity, BurstEffect& be, ProximityTrigger& pt, ecs::Transform& t) {
-            if (pt.triggered && !be.fired) {
-                be.fired = true;
+    {
+        int count = 0;
+        world.view<EmitterToggle, ProximityTrigger>().each(
+            [&](ecs::Entity, EmitterToggle& et, ProximityTrigger& pt) {
+                count++;
                 auto& emitters = app.renderer().gs_particle_emitters();
-                if (be.emitter_index < emitters.size()) {
-                    // Temporarily boost spawn rate for a burst
-                    auto& emitter = emitters[be.emitter_index];
+                if (et.emitter_index >= emitters.size()) return;
+                auto& emitter = emitters[et.emitter_index];
+                if (pt.triggered && !et.active) {
+                    et.active = true;
+                    std::fprintf(stderr, "[EmitterToggle] ON emitter_index=%u\n", et.emitter_index);
                     auto cfg = emitter.config();
-                    cfg.position = t.position;
-                    cfg.spawn_rate = 100.0f;  // burst
+                    cfg.spawn_rate = 10.0f;
+                    emitter.configure(cfg);
+                } else if (!pt.triggered && et.active) {
+                    et.active = false;
+                    std::fprintf(stderr, "[EmitterToggle] OFF emitter_index=%u\n", et.emitter_index);
+                    auto cfg = emitter.config();
+                    cfg.spawn_rate = 0.0f;
                     emitter.configure(cfg);
                 }
-            }
-        });
+            });
+        static bool logged = false;
+        if (!logged) { std::fprintf(stderr, "[EmitterToggle] %d entities\n", count); logged = true; }
+    }
+
+    // LightToggle: toggle scene light based on proximity
+    {
+        int count = 0;
+        world.view<LightToggle, ProximityTrigger, ecs::Transform>().each(
+            [&](ecs::Entity, LightToggle& lt, ProximityTrigger& pt, ecs::Transform& t) {
+                count++;
+                if (pt.triggered && !lt.active) {
+                    lt.active = true;
+                    std::fprintf(stderr, "[LightToggle] ON at (%.1f, %.1f, %.1f) color=(%.1f,%.1f,%.1f) radius=%.1f\n",
+                        t.position.x, t.position.y, t.position.z, lt.color_r, lt.color_g, lt.color_b, lt.radius);
+                    PointLight pl{};
+                    pl.position_and_radius = glm::vec4(
+                        t.position.x, t.position.y, t.position.z, lt.radius);
+                    pl.color = glm::vec4(
+                        lt.color_r * lt.intensity,
+                        lt.color_g * lt.intensity,
+                        lt.color_b * lt.intensity, 1.0f);
+                    app.scene().add_light(pl);
+                } else if (!pt.triggered && lt.active) {
+                    lt.active = false;
+                    std::fprintf(stderr, "[LightToggle] OFF at (%.1f, %.1f, %.1f)\n",
+                        t.position.x, t.position.y, t.position.z);
+                }
+            });
+        static bool logged = false;
+        if (!logged) { std::fprintf(stderr, "[LightToggle] %d entities\n", count); logged = true; }
+    }
+
+    // EmissiveToggle: spawn glowing particles around triggered crystals
+    {
+        int count = 0;
+        world.view<EmissiveToggle, ProximityTrigger, ecs::Transform>().each(
+            [&](ecs::Entity, EmissiveToggle& et, ProximityTrigger& pt, ecs::Transform& t) {
+                count++;
+                if (pt.triggered && !et.applied) {
+                    et.applied = true;
+                    std::fprintf(stderr, "[EmissiveToggle] SPARKLE at (%.1f, %.1f, %.1f) color=(%.1f,%.1f,%.1f)\n",
+                        t.position.x, t.position.y, t.position.z, et.color_r, et.color_g, et.color_b);
+                    // Spawn glowing particles rising from the crystal
+                    GsEmitterConfig cfg;
+                    cfg.position = t.position + glm::vec3(0, 2.0f, 0);
+                    cfg.spawn_rate = 25.0f;
+                    cfg.lifetime_min = 1.5f;
+                    cfg.lifetime_max = 3.0f;
+                    cfg.velocity_min = {-1.5f, 2.0f, -1.5f};
+                    cfg.velocity_max = { 1.5f, 5.0f,  1.5f};
+                    cfg.acceleration = {0.0f, 0.5f, 0.0f};  // float upward
+                    cfg.color_start = {et.color_r, et.color_g, et.color_b};
+                    cfg.color_end = {et.color_r * 0.3f, et.color_g * 0.1f, et.color_b * 0.1f};
+                    cfg.scale_min = {0.3f, 0.3f, 0.3f};
+                    cfg.scale_max = {0.5f, 0.5f, 0.5f};
+                    cfg.scale_end_factor = 0.2f;
+                    cfg.opacity_start = 0.95f;
+                    cfg.opacity_end = 0.0f;
+                    cfg.emission = et.emission;
+                    cfg.burst_duration = 0.0f;  // continuous
+                    app.renderer().add_gs_particle_emitter(cfg);
+                }
+                if (!pt.triggered && et.applied) {
+                    et.applied = false;
+                    // Emitter will die naturally when particles expire
+                }
+            });
+        static bool logged = false;
+        if (!logged) { std::fprintf(stderr, "[EmissiveToggle effect] %d entities\n", count); logged = true; }
+    }
+
+    // BurstEffect: one-shot particle burst on trigger
+    {
+        int count = 0;
+        world.view<BurstEffect, ProximityTrigger, ecs::Transform>().each(
+            [&](ecs::Entity, BurstEffect& be, ProximityTrigger& pt, ecs::Transform& t) {
+                count++;
+                if (pt.triggered && !be.fired) {
+                    be.fired = true;
+                    std::fprintf(stderr, "[BurstEffect] FIRED at (%.1f, %.1f, %.1f) emitter_index=%u\n",
+                        t.position.x, t.position.y, t.position.z, be.emitter_index);
+                    auto& emitters = app.renderer().gs_particle_emitters();
+                    if (be.emitter_index < emitters.size()) {
+                        auto& emitter = emitters[be.emitter_index];
+                        auto cfg = emitter.config();
+                        cfg.position = t.position;
+                        cfg.spawn_rate = 100.0f;
+                        emitter.configure(cfg);
+                    }
+                }
+            });
+        static bool logged = false;
+        if (!logged) { std::fprintf(stderr, "[BurstEffect] %d entities\n", count); logged = true; }
+    }
+
+    // AnimationTrigger: apply GS animation effect to nearby Gaussians on proximity
+    {
+        int count = 0;
+        world.view<AnimationTrigger, ProximityTrigger, ecs::Transform>().each(
+            [&](ecs::Entity, AnimationTrigger& at, ProximityTrigger& pt, ecs::Transform& t) {
+                count++;
+                if (pt.triggered && !at.fired) {
+                    at.fired = true;
+                    GsAnimRegion region;
+                    region.shape = GsAnimRegion::Shape::Sphere;
+                    region.center = t.position;
+                    region.radius = at.anim_radius;
+                    std::string effect(at.effect_name);
+                    std::fprintf(stderr, "[AnimationTrigger] FIRE '%s' at (%.1f, %.1f, %.1f) radius=%.1f lifetime=%.1f\n",
+                        at.effect_name, t.position.x, t.position.y, t.position.z, at.anim_radius, at.lifetime);
+                    app.renderer().add_gs_animation(effect, region, at.lifetime, at.loop);
+                }
+                // Reset when player leaves (for looping or re-triggerable effects)
+                if (!pt.triggered && at.fired && !pt.one_shot) {
+                    at.fired = false;
+                }
+            });
+        static bool logged = false;
+        if (!logged) { std::fprintf(stderr, "[AnimationTrigger] %d entities\n", count); logged = true; }
+    }
 }
 
 // ── Walk animation ──
@@ -485,8 +570,8 @@ void IslandDemoState::update_walk_animation(AppBase& app, float dt) {
         return root_xform * t * r * glm::translate(glm::mat4(1.0f), -world_pivot);
     };
 
-    bones[3] = arm_transform({1.9f, 7.0f, 0.0f}, 1.0f, -walk_swing * 0.5f);    // Left arm — higher pivot
-    bones[4] = arm_transform({0.0f, 7.0f, 0.0f}, -1.0f, walk_swing * 0.5f); // Right arm — wider X
+    bones[3] = arm_transform({2.0f, 7.5f, 0.0f}, 1.0f, -walk_swing * 0.5f);    // Left arm — higher pivot
+    bones[4] = arm_transform({-0.5f, 7.5f, 0.0f}, -1.0f, walk_swing * 0.5f); // Right arm — wider X
     bones[5] = leg_transform({0.5f, 3.5f, 0.0f}, -walk_swing);   // Left leg
     bones[6] = leg_transform({-0.5f, 3.5f, 0.0f}, walk_swing);    // Right leg
 

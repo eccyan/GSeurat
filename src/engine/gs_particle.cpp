@@ -397,12 +397,12 @@ GsEmitterConfig gs_preset_fireflies() {
     c.acceleration = {0.0f, 0.0f, 0.0f};
     c.color_start = {1.0f, 1.0f, 0.3f};     // bright yellow-green
     c.color_end = {0.5f, 1.0f, 0.2f};
-    c.scale_min = {0.4f, 0.4f, 0.4f};        // visible from far camera
-    c.scale_max = {0.8f, 0.8f, 0.8f};
+    c.scale_min = {0.1f, 0.1f, 0.1f};
+    c.scale_max = {0.2f, 0.2f, 0.2f};
     c.scale_end_factor = 0.3f;
     c.opacity_start = 0.9f;
     c.opacity_end = 0.0f;
-    c.emission = 3.0f;                         // glow visible with bloom
+    c.emission = 1.5f;
     c.spawn_region = box_region_from_offsets({-12.0f, 1.0f, -12.0f}, {12.0f, 6.0f, 12.0f});
     c.burst_duration = 0.0f;
     return c;
@@ -461,12 +461,12 @@ GsEmitterConfig gs_preset_bonfire() {
     c.acceleration = {0.0f, 2.0f, 0.0f};
     c.color_start = {1.0f, 0.8f, 0.1f};     // bright yellow-orange
     c.color_end = {1.0f, 0.2f, 0.0f};       // red-orange
-    c.scale_min = {0.8f, 0.8f, 0.8f};
-    c.scale_max = {1.8f, 1.8f, 1.8f};
+    c.scale_min = {0.15f, 0.15f, 0.15f};
+    c.scale_max = {0.35f, 0.35f, 0.35f};
     c.scale_end_factor = 0.15f;
     c.opacity_start = 0.9f;
     c.opacity_end = 0.0f;
-    c.emission = 3.5f;
+    c.emission = 2.0f;
     c.spawn_region = box_region_from_offsets({-0.5f, 0.0f, -0.5f}, {0.5f, 0.5f, 0.5f});
     c.burst_duration = 0.0f;
     return c;
@@ -483,12 +483,12 @@ GsEmitterConfig gs_preset_geyser() {
     c.acceleration = {0.0f, -4.0f, 0.0f};   // gravity arc
     c.color_start = {0.9f, 0.95f, 1.0f};    // bright white
     c.color_end = {0.5f, 0.7f, 0.9f};       // fades blue
-    c.scale_min = {0.6f, 0.6f, 0.6f};
-    c.scale_max = {1.5f, 1.5f, 1.5f};
+    c.scale_min = {0.1f, 0.1f, 0.1f};
+    c.scale_max = {0.3f, 0.3f, 0.3f};
     c.scale_end_factor = 1.5f;
     c.opacity_start = 0.6f;
     c.opacity_end = 0.0f;
-    c.emission = 1.0f;
+    c.emission = 0.8f;
     c.spawn_region = box_region_from_offsets({-0.5f, 0.0f, -0.5f}, {0.5f, 0.3f, 0.5f});
     c.burst_duration = 0.0f;
     return c;

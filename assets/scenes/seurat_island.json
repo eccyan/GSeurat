@@ -74464,14 +74464,14 @@
       "scale": 1.0,
       "components": {
         "ProximityTrigger": {
-          "radius": 6
+          "radius": 8
         },
         "EmissiveToggle": {
-          "emission": 2.0,
-          "color_r": 0.3,
-          "color_g": 0.5,
-          "color_b": 1.0,
-          "effect_radius": 3.0
+          "emission": 8.0,
+          "color_r": 1.0,
+          "color_g": 0.15,
+          "color_b": 0.05,
+          "effect_radius": 10.0
         }
       }
     },
@@ -74491,14 +74491,14 @@
       "scale": 1.0,
       "components": {
         "ProximityTrigger": {
-          "radius": 6
+          "radius": 8
         },
         "EmissiveToggle": {
-          "emission": 2.0,
-          "color_r": 0.3,
-          "color_g": 0.5,
-          "color_b": 1.0,
-          "effect_radius": 3.0
+          "emission": 8.0,
+          "color_r": 1.0,
+          "color_g": 0.15,
+          "color_b": 0.05,
+          "effect_radius": 10.0
         }
       }
     },
@@ -74518,80 +74518,24 @@
       "scale": 1.0,
       "components": {
         "ProximityTrigger": {
-          "radius": 6
+          "radius": 8
         },
         "EmissiveToggle": {
-          "emission": 2.0,
-          "color_r": 0.3,
-          "color_g": 0.5,
-          "color_b": 1.0,
-          "effect_radius": 3.0
+          "emission": 8.0,
+          "color_r": 1.0,
+          "color_g": 0.15,
+          "color_b": 0.05,
+          "effect_radius": 10.0
         }
       }
     },
     {
-      "id": "chest_1",
-      "name": "Chest",
+      "id": "anim_trigger_1",
+      "name": "Animation (pulse)",
       "position": [
-        175.0,
-        1.7478,
-        161.0
-      ],
-      "rotation": [
-        0,
-        0,
-        0
-      ],
-      "scale": 1.0,
-      "components": {
-        "ProximityTrigger": {
-          "radius": 4,
-          "one_shot": true
-        },
-        "BurstEffect": {
-          "emitter_index": 4
-        },
-        "ScatterEffect": {
-          "radius": 1.5,
-          "lifetime": 2.0
-        }
-      }
-    },
-    {
-      "id": "chest_2",
-      "name": "Chest",
-      "position": [
-        215.0,
-        1.5174,
-        211.0
-      ],
-      "rotation": [
-        0,
-        0,
-        0
-      ],
-      "scale": 1.0,
-      "components": {
-        "ProximityTrigger": {
-          "radius": 4,
-          "one_shot": true
-        },
-        "BurstEffect": {
-          "emitter_index": 5
-        },
-        "ScatterEffect": {
-          "radius": 1.5,
-          "lifetime": 2.0
-        }
-      }
-    },
-    {
-      "id": "fountain",
-      "name": "Fountain",
-      "position": [
-        193.0,
-        3.6947,
-        165.0
+        151.0,
+        1.5957,
+        111.0
       ],
       "rotation": [
         0,
@@ -74603,119 +74547,20 @@
         "ProximityTrigger": {
           "radius": 10
         },
-        "EmitterToggle": {
-          "emitter_index": 6
+        "AnimationTrigger": {
+          "effect_name": "pulse",
+          "anim_radius": 6.0,
+          "lifetime": 4.0,
+          "loop": true
         }
       }
     },
     {
-      "id": "pressure_plate",
-      "name": "Pressure Plate",
+      "id": "anim_trigger_2",
+      "name": "Animation (wave)",
       "position": [
         231.0,
-        2.5741,
-        201.0
-      ],
-      "rotation": [
-        0,
-        0,
-        0
-      ],
-      "scale": 1.0,
-      "components": {
-        "ProximityTrigger": {
-          "radius": 2,
-          "one_shot": true
-        },
-        "LinkedTrigger": {
-          "target_id": "crystal_hidden"
-        }
-      }
-    },
-    {
-      "id": "crystal_hidden",
-      "name": "Hidden Crystal",
-      "position": [
-        235.0,
-        2.5446,
-        201.0
-      ],
-      "rotation": [
-        0,
-        0,
-        0
-      ],
-      "scale": 1.0,
-      "components": {
-        "EmissiveToggle": {
-          "emission": 3.0,
-          "color_r": 1.0,
-          "color_g": 0.2,
-          "color_b": 1.0,
-          "effect_radius": 4.0
-        }
-      }
-    },
-    {
-      "id": "lantern_1",
-      "name": "Lantern",
-      "position": [
-        191.0,
-        4.6743,
-        179.0
-      ],
-      "rotation": [
-        0,
-        0,
-        0
-      ],
-      "scale": 1.0,
-      "components": {
-        "ProximityTrigger": {
-          "radius": 999
-        },
-        "EmissiveToggle": {
-          "emission": 5.0,
-          "color_r": 1.0,
-          "color_g": 0.7,
-          "color_b": 0.3,
-          "effect_radius": 3.0
-        }
-      }
-    },
-    {
-      "id": "lantern_2",
-      "name": "Lantern",
-      "position": [
-        189.0,
-        4.1298,
-        185.0
-      ],
-      "rotation": [
-        0,
-        0,
-        0
-      ],
-      "scale": 1.0,
-      "components": {
-        "ProximityTrigger": {
-          "radius": 999
-        },
-        "EmissiveToggle": {
-          "emission": 5.0,
-          "color_r": 1.0,
-          "color_g": 0.7,
-          "color_b": 0.3,
-          "effect_radius": 3.0
-        }
-      }
-    },
-    {
-      "id": "lantern_3",
-      "name": "Lantern",
-      "position": [
-        197.0,
-        4.9245,
+        2.4555,
         171.0
       ],
       "rotation": [
@@ -74726,24 +74571,23 @@
       "scale": 1.0,
       "components": {
         "ProximityTrigger": {
-          "radius": 999
+          "radius": 10
         },
-        "EmissiveToggle": {
-          "emission": 5.0,
-          "color_r": 1.0,
-          "color_g": 0.7,
-          "color_b": 0.3,
-          "effect_radius": 3.0
+        "AnimationTrigger": {
+          "effect_name": "wave",
+          "anim_radius": 8.0,
+          "lifetime": 5.0,
+          "loop": true
         }
       }
     },
     {
-      "id": "lantern_4",
-      "name": "Lantern",
+      "id": "anim_trigger_3",
+      "name": "Animation (vortex)",
       "position": [
-        201.0,
-        4.0577,
-        181.0
+        131.0,
+        3.3762,
+        211.0
       ],
       "rotation": [
         0,
@@ -74753,14 +74597,39 @@
       "scale": 1.0,
       "components": {
         "ProximityTrigger": {
-          "radius": 999
+          "radius": 10
         },
-        "EmissiveToggle": {
-          "emission": 5.0,
-          "color_r": 1.0,
-          "color_g": 0.7,
-          "color_b": 0.3,
-          "effect_radius": 3.0
+        "AnimationTrigger": {
+          "effect_name": "vortex",
+          "anim_radius": 5.0,
+          "lifetime": 3.0,
+          "loop": true
+        }
+      }
+    },
+    {
+      "id": "anim_trigger_4",
+      "name": "Animation (float)",
+      "position": [
+        171.0,
+        1.2672,
+        261.0
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": 1.0,
+      "components": {
+        "ProximityTrigger": {
+          "radius": 10
+        },
+        "AnimationTrigger": {
+          "effect_name": "float",
+          "anim_radius": 7.0,
+          "lifetime": 6.0,
+          "loop": true
         }
       }
     }
@@ -74799,34 +74668,6 @@
         185.0
       ],
       "spawn_rate": 0
-    },
-    {
-      "preset": "spark_shower",
-      "position": [
-        175.0,
-        1.7478,
-        161.0
-      ],
-      "spawn_rate": 0,
-      "burst_duration": 0.5
-    },
-    {
-      "preset": "spark_shower",
-      "position": [
-        215.0,
-        1.5174,
-        211.0
-      ],
-      "spawn_rate": 0,
-      "burst_duration": 0.5
-    },
-    {
-      "preset": "geyser",
-      "position": [
-        193.0,
-        3.6947,
-        165.0
-      ]
     },
     {
       "preset": "fireflies",
