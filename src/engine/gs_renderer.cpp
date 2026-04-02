@@ -94,7 +94,7 @@ void GsRenderer::create_output_image(uint32_t width, uint32_t height) {
     image_info.arrayLayers = 1;
     image_info.samples = VK_SAMPLE_COUNT_1_BIT;
     image_info.tiling = VK_IMAGE_TILING_OPTIMAL;
-    image_info.usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+    image_info.usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
 
     VmaAllocationCreateInfo alloc_info{};
     alloc_info.usage = VMA_MEMORY_USAGE_GPU_ONLY;
@@ -138,7 +138,7 @@ void GsRenderer::create_output_image(uint32_t width, uint32_t height) {
         depth_info.arrayLayers = 1;
         depth_info.samples = VK_SAMPLE_COUNT_1_BIT;
         depth_info.tiling = VK_IMAGE_TILING_OPTIMAL;
-        depth_info.usage = VK_IMAGE_USAGE_STORAGE_BIT;
+        depth_info.usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
 
         VmaAllocationCreateInfo depth_alloc{};
         depth_alloc.usage = VMA_MEMORY_USAGE_GPU_ONLY;
