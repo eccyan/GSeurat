@@ -448,7 +448,7 @@ void GsDemoState::update(AppBase& app, float dt) {
         region.center = target_;
         region.radius = 10.0f;
         auto id = app.renderer().gs_animator().tag_region(
-            app.renderer().gs_active_buffer(),
+            app.renderer().gs_static_buffer(),
             region, GsAnimEffect::Detach, 3.0f);
         std::fprintf(stderr, "GS Animator: Detach group %u at (%.1f, %.1f, %.1f)\n",
                      id, target_.x, target_.y, target_.z);

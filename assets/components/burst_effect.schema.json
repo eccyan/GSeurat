@@ -1,0 +1,8 @@
+{
+  "name": "BurstEffect",
+  "description": "Fires a one-shot burst from a particle emitter",
+  "category": "Effects",
+  "fields": [
+    { "name": "emitter_index", "type": "int", "default": 0, "min": 0 }
+  ]
+}

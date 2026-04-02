@@ -21,8 +21,8 @@ layout(set = 0, binding = 0) readonly buffer ProjectedBuffer {
     ProjectedSplat projected[];
 };
 
-layout(set = 0, binding = 1) readonly buffer SortBuffer {
-    SortEntry sort_entries[];
+layout(set = 0, binding = 1) readonly buffer MergedSortBuffer {
+    SortEntry merged_entries[];
 };
 
 layout(set = 0, binding = 2) uniform Uniforms {
@@ -46,8 +46,10 @@ layout(set = 0, binding = 2) uniform Uniforms {
 
 layout(set = 0, binding = 3, rgba16f) uniform writeonly image2D output_image;
 
-layout(set = 0, binding = 4) readonly buffer VisibleCountBuffer {
-    uint visible_count;
+layout(set = 0, binding = 4) readonly buffer CountsBuffer {
+    uint static_count;
+    uint dynamic_count;
+    uint merged_visible_count;
 };
 
 layout(set = 0, binding = 5, r16f) uniform writeonly image2D depth_image;
@@ -83,7 +85,7 @@ void main() {
 
     uint width = params.x;
     uint height = params.y;
-    uint count = visible_count;
+    uint count = static_count + dynamic_count;  // compute directly, bypass merge shader's thread 0 write
 
     if (pixel.x >= width || pixel.y >= height) return;
 
@@ -102,10 +104,10 @@ void main() {
 
     // Iterate through sorted Gaussians
     for (uint s = 0; s < count; ++s) {
-        uint idx = sort_entries[s].index;
+        uint idx = merged_entries[s].index;
 
         // Culled Gaussians (key == 0xFFFF) are sorted to the end — stop immediately
-        if (sort_entries[s].key == 0xFFFF) break;
+        if (merged_entries[s].key == 0xFFFF) break;
 
         ProjectedSplat splat = projected[idx];
 

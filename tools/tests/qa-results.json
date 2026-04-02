@@ -1,31 +1,57 @@
 [
   {
+    "tool": "level-designer",
+    "port": 6173,
+    "results": []
+  },
+  {
+    "tool": "particle-designer",
+    "port": 6176,
+    "results": []
+  },
+  {
+    "tool": "audio-composer",
+    "port": 6177,
+    "results": []
+  },
+  {
+    "tool": "sfx-designer",
+    "port": 6178,
+    "results": []
+  },
+  {
     "tool": "map-painter",
     "port": 6180,
     "results": [
       {
         "name": "Store is accessible",
-        "passed": true
+        "passed": false,
+        "error": "Assertion failed: State should have width"
       },
       {
         "name": "Default map dimensions are 32x32",
-        "passed": true
+        "passed": false,
+        "error": "Default width: expected 32, got undefined"
       },
       {
         "name": "initMap creates new map with correct dimensions",
-        "passed": true
+        "passed": false,
+        "error": "Action \"initMap\" is not a function"
       },
       {
         "name": "setPixel updates pixel data",
-        "passed": true
+        "passed": false,
+        "error": "Action \"initMap\" is not a function"
       },
       {
         "name": "erasePixel clears pixel data",
-        "passed": true
+        "passed": false,
+        "error": "Action \"erasePixel\" is not a function"
       },
       {
         "name": "setHeight updates height data",
-        "passed": true
+        "passed": false,
+        "error": "Action \"setHeight\" is not a function"
       },
       {
         "name": "Tool selection works",
@@ -33,43 +59,53 @@
       },
       {
         "name": "Layer selection works",
-        "passed": true
+        "passed": false,
+        "error": "Action \"setActiveLayer\" is not a function"
       },
       {
         "name": "Color selection works",
-        "passed": true
+        "passed": false,
+        "error": "Action \"setColor\" is not a function"
       },
       {
         "name": "Height brush value updates",
-        "passed": true
+        "passed": false,
+        "error": "Action \"setHeightBrushValue\" is not a function"
       },
       {
         "name": "Zoom clamps to valid range",
-        "passed": true
+        "passed": false,
+        "error": "Action \"setZoom\" is not a function"
       },
       {
         "name": "Collision toggle works",
-        "passed": true
+        "passed": false,
+        "error": "Action \"initMap\" is not a function"
       },
       {
         "name": "Auto-generate collision from heights",
-        "passed": true
+        "passed": false,
+        "error": "Action \"initMap\" is not a function"
       },
       {
         "name": "Undo/redo works for pixel operations",
-        "passed": true
+        "passed": false,
+        "error": "Action \"initMap\" is not a function"
       },
       {
         "name": "resizeMap preserves existing data",
-        "passed": true
+        "passed": false,
+        "error": "Action \"initMap\" is not a function"
       },
       {
         "name": "fillArea floods connected region",
-        "passed": true
+        "passed": false,
+        "error": "Action \"initMap\" is not a function"
       },
       {
         "name": "Preview camera updates",
-        "passed": true
+        "passed": false,
+        "error": "Action \"setPreviewCamera\" is not a function"
       },
       {
         "name": "showCollision toggle works",
@@ -77,19 +113,23 @@
       },
       {
         "name": "Multiple layers are independent",
-        "passed": true
+        "passed": false,
+        "error": "Action \"initMap\" is not a function"
       },
       {
         "name": "[Scenario] Create a village map with terrain and walls",
-        "passed": true
+        "passed": false,
+        "error": "Action \"initMap\" is not a function"
       },
       {
         "name": "[Scenario] Undo/redo across layers and tools",
-        "passed": true
+        "passed": false,
+        "error": "Action \"initMap\" is not a function"
       },
       {
         "name": "[Scenario] Manual collision refinement",
-        "passed": true
+        "passed": false,
+        "error": "Action \"initMap\" is not a function"
       }
     ]
   }

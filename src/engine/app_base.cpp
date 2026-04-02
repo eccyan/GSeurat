@@ -1,6 +1,7 @@
 #include "gseurat/engine/app_base.hpp"
 #include "gseurat/engine/gaussian_cloud.hpp"
 #include "gseurat/engine/gs_vfx.hpp"
+#include "gseurat/demo/island_components.hpp"
 
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
@@ -186,6 +187,104 @@ void AppBase::init_game_object_system() {
                 case Direction::Right: dir = "right"; break;
             }
             return {{"direction", dir}};
+        });
+
+    component_registry_.register_component<PlayerController>("PlayerController",
+        [](const nlohmann::json& j) -> PlayerController {
+            PlayerController c;
+            if (j.contains("speed")) c.speed = j["speed"].get<float>();
+            if (j.contains("acceleration")) c.acceleration = j["acceleration"].get<float>();
+            return c;
+        },
+        [](const PlayerController& c) -> nlohmann::json {
+            return {{"speed", c.speed}, {"acceleration", c.acceleration}};
+        });
+
+    component_registry_.register_component<ProximityTrigger>("ProximityTrigger",
+        [](const nlohmann::json& j) -> ProximityTrigger {
+            ProximityTrigger c;
+            if (j.contains("radius")) c.radius = j["radius"].get<float>();
+            if (j.contains("one_shot")) c.one_shot = j["one_shot"].get<bool>();
+            return c;
+        },
+        [](const ProximityTrigger& c) -> nlohmann::json {
+            return {{"radius", c.radius}, {"one_shot", c.one_shot}};
+        });
+
+    component_registry_.register_component<EmitterToggle>("EmitterToggle",
+        [](const nlohmann::json& j) -> EmitterToggle {
+            EmitterToggle c;
+            if (j.contains("emitter_index")) c.emitter_index = j["emitter_index"].get<uint32_t>();
+            return c;
+        },
+        [](const EmitterToggle& c) -> nlohmann::json {
+            return {{"emitter_index", c.emitter_index}};
+        });
+
+    component_registry_.register_component<LightToggle>("LightToggle",
+        [](const nlohmann::json& j) -> LightToggle {
+            LightToggle c;
+            if (j.contains("color_r")) c.color_r = j["color_r"].get<float>();
+            if (j.contains("color_g")) c.color_g = j["color_g"].get<float>();
+            if (j.contains("color_b")) c.color_b = j["color_b"].get<float>();
+            if (j.contains("radius")) c.radius = j["radius"].get<float>();
+            if (j.contains("intensity")) c.intensity = j["intensity"].get<float>();
+            return c;
+        },
+        [](const LightToggle& c) -> nlohmann::json {
+            return {
+                {"color_r", c.color_r}, {"color_g", c.color_g}, {"color_b", c.color_b},
+                {"radius", c.radius}, {"intensity", c.intensity}
+            };
+        });
+
+    component_registry_.register_component<EmissiveToggle>("EmissiveToggle",
+        [](const nlohmann::json& j) -> EmissiveToggle {
+            EmissiveToggle c;
+            if (j.contains("emission")) c.emission = j["emission"].get<float>();
+            if (j.contains("color_r")) c.color_r = j["color_r"].get<float>();
+            if (j.contains("color_g")) c.color_g = j["color_g"].get<float>();
+            if (j.contains("color_b")) c.color_b = j["color_b"].get<float>();
+            if (j.contains("effect_radius")) c.effect_radius = j["effect_radius"].get<float>();
+            return c;
+        },
+        [](const EmissiveToggle& c) -> nlohmann::json {
+            return {
+                {"emission", c.emission},
+                {"color_r", c.color_r}, {"color_g", c.color_g}, {"color_b", c.color_b},
+                {"effect_radius", c.effect_radius}
+            };
+        });
+
+    component_registry_.register_component<BurstEffect>("BurstEffect",
+        [](const nlohmann::json& j) -> BurstEffect {
+            BurstEffect c;
+            if (j.contains("emitter_index")) c.emitter_index = j["emitter_index"].get<uint32_t>();
+            return c;
+        },
+        [](const BurstEffect& c) -> nlohmann::json {
+            return {{"emitter_index", c.emitter_index}};
+        });
+
+    component_registry_.register_component<ScatterEffect>("ScatterEffect",
+        [](const nlohmann::json& j) -> ScatterEffect {
+            ScatterEffect c;
+            if (j.contains("radius")) c.radius = j["radius"].get<float>();
+            if (j.contains("lifetime")) c.lifetime = j["lifetime"].get<float>();
+            return c;
+        },
+        [](const ScatterEffect& c) -> nlohmann::json {
+            return {{"radius", c.radius}, {"lifetime", c.lifetime}};
+        });
+
+    component_registry_.register_component<LinkedTrigger>("LinkedTrigger",
+        [](const nlohmann::json& j) -> LinkedTrigger {
+            LinkedTrigger c;
+            if (j.contains("target_entity")) c.target_entity = j["target_entity"].get<uint32_t>();
+            return c;
+        },
+        [](const LinkedTrigger& c) -> nlohmann::json {
+            return {{"target_entity", c.target_entity}};
         });
 }
 
@@ -734,6 +833,50 @@ void AppBase::dispatch_command(const nlohmann::json& cmd, nlohmann::json& respon
         renderer_.request_screenshot(path);
         response["type"] = "ok";
         response["path"] = path;
+
+    } else if (cmd_name == "inject_key") {
+        int key = cmd.value("key", 0);
+        bool down = cmd.value("down", true);
+        if (key > 0 && key < kKeyCount) {
+            input_.inject_key(key, down);
+            response["type"] = "ok";
+        } else {
+            response["type"] = "error";
+            response["message"] = "Invalid key code";
+        }
+
+    } else if (cmd_name == "inject_key_once") {
+        int key = cmd.value("key", 0);
+        if (key > 0 && key < kKeyCount) {
+            input_.inject_key_once(key);
+            response["type"] = "ok";
+        } else {
+            response["type"] = "error";
+            response["message"] = "Invalid key code";
+        }
+
+    } else if (cmd_name == "clear_keys") {
+        input_.clear_injections();
+        response["type"] = "ok";
+
+    } else if (cmd_name == "get_player_state") {
+        // Return player entity state from active game state (if island demo)
+        // Generic approach: iterate ECS world for PlayerController
+        response["type"] = "player_state";
+        bool found = false;
+        world_.view<ecs::Transform, PlayerController>().each(
+            [&](ecs::Entity, ecs::Transform& t, PlayerController&) {
+                response["position"] = {t.position.x, t.position.y, t.position.z};
+                found = true;
+            });
+        if (!found) {
+            response["position"] = nullptr;
+        }
+
+    } else if (cmd_name == "quit") {
+        response["type"] = "ok";
+        response["message"] = "Shutting down";
+        glfwSetWindowShouldClose(window_, GLFW_TRUE);
 
     } else {
         response["type"] = "error";

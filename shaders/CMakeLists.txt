@@ -28,6 +28,7 @@ set(SHADER_SOURCES
     ${SHADER_SOURCE_DIR}/gs_radix_histogram.comp
     ${SHADER_SOURCE_DIR}/gs_radix_scan.comp
     ${SHADER_SOURCE_DIR}/gs_radix_scatter.comp
+    ${SHADER_SOURCE_DIR}/gs_merge.comp
     ${SHADER_SOURCE_DIR}/gs_post_process.comp
 )
 

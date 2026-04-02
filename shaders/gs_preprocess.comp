@@ -56,12 +56,18 @@ layout(set = 0, binding = 3) uniform Uniforms {
     vec4 pl_area[8];  // area size + normal (unused in preprocess, must match layout)
 };
 
-layout(set = 0, binding = 4) buffer VisibleCountBuffer {
-    uint visible_count;
+layout(set = 0, binding = 4) buffer CountsBuffer {
+    uint counts[];  // [0]=static_visible, [1]=dynamic_visible, [2]=merged_visible
 };
 
 layout(set = 0, binding = 5) readonly buffer BoneBuffer {
     mat4 bone_transforms[];
+};
+
+layout(push_constant) uniform PushConstants {
+    uint projected_offset;  // 0 for static, max_static_count for dynamic
+    uint gaussian_count;    // number of Gaussians in this layer
+    uint counts_index;      // 0 for static, 1 for dynamic
 };
 
 // Simple hash for per-Gaussian variation
@@ -117,7 +123,7 @@ mat3 quat_to_mat(vec4 q) {
 
 void main() {
     uint idx = gl_GlobalInvocationID.x;
-    if (idx >= params.z) return;
+    if (idx >= gaussian_count) return;
 
     GpuGaussian g = gaussians[idx];
     vec3 pos = g.pos_opacity.xyz;
@@ -322,10 +328,11 @@ void main() {
     // Transform to view space
     vec4 view_pos = view * vec4(pos, 1.0);
 
-    // Frustum cull: discard if behind near plane (view space z is negative for visible objects)
-    if (view_pos.z > -0.1) {
+    // Frustum cull: discard if behind near plane or too close to camera
+    // (near Gaussians expand to fill screen, causing blurry foreground artifacts)
+    if (view_pos.z > -1.5) {
         sort_entries[idx].key = 0xFFFF;
-        sort_entries[idx].index = idx;
+        sort_entries[idx].index = projected_offset + idx;
         return;
     }
 
@@ -333,7 +340,7 @@ void main() {
     vec4 clip_pos = proj * view_pos;
     if (clip_pos.w <= 0.0) {
         sort_entries[idx].key = 0xFFFF;
-        sort_entries[idx].index = idx;
+        sort_entries[idx].index = projected_offset + idx;
         return;
     }
 
@@ -350,7 +357,7 @@ void main() {
     if (screen_x < -margin || screen_x > float(params.x) + margin ||
         screen_y < -margin || screen_y > float(params.y) + margin) {
         sort_entries[idx].key = 0xFFFF;
-        sort_entries[idx].index = idx;
+        sort_entries[idx].index = projected_offset + idx;
         return;
     }
 
@@ -359,7 +366,7 @@ void main() {
         vec3 to_gaussian = normalize(pos - cam_pos.xyz);
         if (dot(to_gaussian, cone_dir.xyz) < shadow_box.y) {
             sort_entries[idx].key = 0xFFFF;
-            sort_entries[idx].index = idx;
+            sort_entries[idx].index = projected_offset + idx;
             return;
         }
     }
@@ -437,7 +444,7 @@ void main() {
     float det = a * c - b * b;
     if (det <= 1e-6) {
         sort_entries[idx].key = 0xFFFF;
-        sort_entries[idx].index = idx;
+        sort_entries[idx].index = projected_offset + idx;
         return;
     }
     float inv_det = 1.0 / det;
@@ -461,14 +468,14 @@ void main() {
     splat.radius = radius_px;
     splat.conic_opacity = vec4(conic_a, conic_b, conic_c, opacity);
     splat.color = vec4(col, g.color_pad.w);  // a = emission intensity
-    projected[idx] = splat;
+    projected[projected_offset + idx] = splat;
 
     // Write sort entry — quantize depth to 16-bit key for 2-pass radix sort
     // Camera range [0.1, 1000] → ~0.015 unit resolution, sufficient for 320×240 pixel art
     float depth_norm = clamp(splat.depth / 1000.0, 0.0, 1.0);
     sort_entries[idx].key = uint(depth_norm * 65535.0);
-    sort_entries[idx].index = idx;
+    sort_entries[idx].index = projected_offset + idx;
 
     // Count visible (non-culled) Gaussians
-    atomicAdd(visible_count, 1u);
+    atomicAdd(counts[counts_index], 1u);
 }

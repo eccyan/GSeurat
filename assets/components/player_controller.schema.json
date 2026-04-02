@@ -1,0 +1,9 @@
+{
+  "name": "PlayerController",
+  "description": "Player movement controller with speed and acceleration",
+  "category": "Player",
+  "fields": [
+    { "name": "speed", "type": "float", "default": 10, "min": 0 },
+    { "name": "acceleration", "type": "float", "default": 10, "min": 0 }
+  ]
+}

@@ -90,7 +90,7 @@ public:
 
     // Gaussian animator (animate existing scene Gaussians)
     GaussianAnimator& gs_animator() { return gs_animator_; }
-    const std::vector<Gaussian>& gs_active_buffer() const { return gs_active_buffer_; }
+    const std::vector<Gaussian>& gs_static_buffer() const { return gs_static_buffer_; }
 
     // Scene-placed animations (with loop support)
     struct ReformConfig {
@@ -219,9 +219,10 @@ private:
 
     // Spatial chunk grid for GS frustum culling
     GsChunkGrid gs_chunk_grid_;
-    std::vector<Gaussian> gs_active_buffer_;
-    std::vector<Gaussian> gs_scene_buffer_;   // cached scene + VFX object Gaussians
-    uint32_t gs_scene_base_count_ = 0;        // pure-scene Gaussian count (before VFX objects)
+    std::vector<Gaussian> gs_static_buffer_;
+    std::vector<Gaussian> gs_dynamic_buffer_;
+    glm::mat4 gs_prev_view_{0.0f};  // for camera dirty detection
+    bool gs_static_force_dirty_ = false;
     std::vector<GaussianParticleEmitter> gs_particle_emitters_;
     GaussianAnimator gs_animator_;
     std::vector<SceneAnimation> gs_scene_animations_;
@@ -235,7 +236,7 @@ private:
     float gs_smoothed_fps_ = 60.0f;
     float gs_target_fps_ = 30.0f;
     uint32_t gs_stable_frame_count_ = 0;
-    static constexpr uint32_t kGsBudgetMin = 50000;
+    static constexpr uint32_t kGsBudgetMin = 200000;  // higher floor for quality
     static constexpr uint32_t kGsStableFramesNeeded = 30;  // ~0.5s at 60fps
     float gs_blit_offset_x_ = 0.0f;
     float gs_blit_offset_y_ = 0.0f;

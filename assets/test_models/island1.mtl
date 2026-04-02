@@ -1,0 +1,33 @@
+# Blender 5.1.0 MTL File: 'None'
+# www.blender.org
+
+newmtl Material.002
+Ks 0.064955 0.064955 0.064955
+Ke 0.000000 0.000000 0.000000
+Ni 1.450000
+d 1.000000
+illum 2
+Pm 0.000000
+Ps 0.000000
+Pc 0.000000
+Pcr 0.030000
+aniso 0.000000
+anisor 0.000000
+map_Kd island oct623_Colormap_0_0.jpg
+map_Pr island oct623_Roughness Map_0_0.jpg
+map_Bump -bm 0.700000 island oct623_Normal Map_0_0.jpg
+
+newmtl Material.003
+Kd 0.009909 0.084597 0.096691
+Ks 0.500000 0.500000 0.500000
+Ke 0.000000 0.000000 0.000000
+Ni 1.450000
+d 1.000000
+illum 2
+Pr 0.000000
+Pm 0.000000
+Ps 0.000000
+Pc 0.000000
+Pcr 0.030000
+aniso 0.000000
+anisor 0.000000
