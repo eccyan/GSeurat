@@ -2,7 +2,10 @@ import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { useCharacterStore } from '../store/useCharacterStore.js';
 import { exportPly } from '../lib/plyExport.js';
 import { parseVox } from '../lib/voxImport.js';
+import { sendBridgeCommand } from '@gseurat/engine-client';
 import type { EchidnaFile } from '../store/types.js';
+
+const BRIDGE_REST_URL = 'http://localhost:9101';
 
 const styles: Record<string, React.CSSProperties> = {
   bar: {
@@ -72,6 +75,27 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 12,
     color: '#666',
     marginLeft: 12,
+  },
+  toast: {
+    position: 'fixed' as const,
+    top: 48,
+    right: 16,
+    padding: '8px 16px',
+    borderRadius: 4,
+    fontSize: 13,
+    color: '#fff',
+    zIndex: 1000,
+    pointerEvents: 'none' as const,
+    transition: 'opacity 0.3s',
+  },
+  toastSuccess: {
+    background: '#2a6e3f',
+  },
+  toastError: {
+    background: '#8b2a2a',
+  },
+  toastLoading: {
+    background: '#3a3a6a',
   },
 };
 
@@ -152,13 +176,25 @@ function DropdownMenu({ label, items, open, onOpen, onClose }: DropdownMenuProps
   );
 }
 
+type ToastState = { message: string; type: 'success' | 'error' | 'loading' } | null;
+
 export function MenuBar() {
   const loadRef = useRef<HTMLInputElement>(null);
   const voxRef = useRef<HTMLInputElement>(null);
   const [openMenu, setOpenMenu] = useState<string | null>(null);
+  const [toast, setToast] = useState<ToastState>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const showGrid = useCharacterStore((s) => s.showGrid);
   const showGizmos = useCharacterStore((s) => s.showGizmos);
+
+  const showToast = useCallback((message: string, type: 'success' | 'error' | 'loading', duration = 3000) => {
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    setToast({ message, type });
+    if (type !== 'loading') {
+      toastTimer.current = setTimeout(() => setToast(null), duration);
+    }
+  }, []);
 
   const handleNew = useCallback(() => {
     if (!confirm('Create new character? Unsaved changes will be lost.')) return;
@@ -230,6 +266,56 @@ export function MenuBar() {
     download(blob, `${name}.ply`);
   }, []);
 
+  const handlePreviewInStaging = useCallback(async () => {
+    const s = useCharacterStore.getState();
+    if (s.voxels.size === 0) {
+      showToast('No voxels to preview', 'error');
+      return;
+    }
+
+    showToast('Sending to Staging...', 'loading');
+
+    try {
+      const charId = s.characterName.replace(/\s+/g, '_').toLowerCase() || 'character';
+      const plyBlob = exportPly(s.voxels, s.gridWidth, s.gridDepth, s.characterParts);
+
+      // Upload PLY binary to bridge REST API
+      const plyRes = await fetch(
+        `${BRIDGE_REST_URL}/api/characters/${encodeURIComponent(charId)}/file/${encodeURIComponent(charId + '.ply')}`,
+        { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: plyBlob },
+      );
+      if (!plyRes.ok) {
+        const err = await plyRes.json().catch(() => ({ error: plyRes.statusText }));
+        throw new Error(err.error || 'Failed to upload PLY');
+      }
+      const { path: plyPath } = await plyRes.json() as { path: string };
+
+      // Build a minimal scene JSON that shows the character as a game object
+      const scene = {
+        version: 2,
+        gaussian_splat: {
+          ply_file: plyPath,
+          camera: {
+            position: [0, 5, 20],
+            target: [0, 0, 0],
+            fov: 45,
+          },
+          render_width: 320,
+          render_height: 240,
+        },
+        game_objects: [],
+      };
+
+      // Send load_scene_json to Staging via bridge WebSocket
+      await sendBridgeCommand({ cmd: 'load_scene_json', json: JSON.stringify(scene) });
+
+      showToast('Character sent to Staging', 'success');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      showToast(`Preview failed: ${msg}`, 'error', 5000);
+    }
+  }, [showToast]);
+
   const fileItems = [
     { label: 'New', shortcut: '\u2318N', action: handleNew },
     { separator: true as const },
@@ -239,6 +325,8 @@ export function MenuBar() {
     { separator: true as const },
     { label: 'Import .vox...', action: handleImportVox },
     { label: 'Export PLY...', action: handleExportPly },
+    { separator: true as const },
+    { label: 'Preview in Staging', action: handlePreviewInStaging },
   ];
 
   const editItems = [
@@ -281,6 +369,17 @@ export function MenuBar() {
 
       <input ref={loadRef} type="file" accept=".echidna,.json" style={{ display: 'none' }} onChange={handleLoadChange} />
       <input ref={voxRef} type="file" accept=".vox" style={{ display: 'none' }} onChange={handleVoxChange} />
+
+      {toast && (
+        <div style={{
+          ...styles.toast,
+          ...(toast.type === 'success' ? styles.toastSuccess :
+              toast.type === 'error' ? styles.toastError :
+              styles.toastLoading),
+        }}>
+          {toast.message}
+        </div>
+      )}
     </div>
   );
 }
