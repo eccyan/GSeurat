@@ -17,6 +17,8 @@ import { randomUUID } from 'node:crypto';
 import { UnixSocketClient } from './unix-client.js';
 import { WSServer } from './ws-server.js';
 import { RequestTracker } from './request-tracker.js';
+import { exportPlyFromProject } from './ply-export.js';
+import type { EchidnaProject } from './ply-export.js';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -887,6 +889,45 @@ app.post('/api/characters/:id/assemble', async (req: Request, res: Response) => 
     const validate = req.body?.validate === true;
     const result = await mod.assembleCharacterAtlas(req.params['id']!, { validate });
     res.json(result);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: message });
+  }
+});
+
+// POST /api/characters/:name/export-ply — export Echidna project as PLY binary
+// Body: { echidnaProject: EchidnaProject, outputPath?: string }
+// If outputPath is provided, writes the PLY to that path and returns JSON metadata.
+// Otherwise returns the raw PLY binary with Content-Type: application/octet-stream.
+app.post('/api/characters/:name/export-ply', async (req: Request, res: Response) => {
+  try {
+    const { echidnaProject, outputPath } = req.body as {
+      echidnaProject?: EchidnaProject;
+      outputPath?: string;
+    };
+
+    if (!echidnaProject) {
+      res.status(400).json({ error: 'echidnaProject is required in request body' });
+      return;
+    }
+
+    const plyBuffer = exportPlyFromProject(echidnaProject);
+
+    if (outputPath) {
+      // Write to the specified filesystem path
+      const resolved = resolveUserPath(outputPath);
+      await fs.mkdir(path.dirname(resolved), { recursive: true });
+      await fs.writeFile(resolved, plyBuffer);
+      console.log(`[REST] PLY exported: ${resolved} (${plyBuffer.length} bytes)`);
+      res.json({ success: true, path: resolved, size: plyBuffer.length });
+    } else {
+      // Return raw binary
+      const charName = req.params['name'] ?? 'character';
+      const safeName = charName.replace(/[^a-zA-Z0-9_-]/g, '_');
+      res.setHeader('Content-Type', 'application/octet-stream');
+      res.setHeader('Content-Disposition', `attachment; filename="${safeName}.ply"`);
+      res.send(plyBuffer);
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     res.status(500).json({ error: message });
