@@ -554,31 +554,34 @@ void GsRenderer::load_cloud(const GaussianCloud& cloud) {
         for (uint32_t i = 0; i < kMaxBones; ++i) bones[i] = glm::mat4(1.0f);
     }
 
-    // Upload Gaussian data to static buffer
+    // Upload Gaussian data to static buffer via staging to avoid -O3 write-reordering
     {
-        auto* gpu_data = static_cast<GpuGaussian*>(static_gaussian_ssbo_.mapped());
+        std::vector<GpuGaussian> staging(static_count_);
         for (uint32_t i = 0; i < static_count_; ++i) {
             const auto& g = cloud.gaussians()[i];
-            gpu_data[i].pos_opacity = glm::vec4(g.position, g.opacity);
             float bone_as_float;
             uint32_t bone_idx = g.bone_index;
             std::memcpy(&bone_as_float, &bone_idx, sizeof(float));
-            gpu_data[i].scale_pad = glm::vec4(g.scale, bone_as_float);
-            gpu_data[i].rot = glm::vec4(g.rotation.x, g.rotation.y, g.rotation.z, g.rotation.w);
-            gpu_data[i].color_pad = glm::vec4(g.color, g.emission);
+            staging[i].pos_opacity = glm::vec4(g.position, g.opacity);
+            staging[i].scale_pad = glm::vec4(g.scale, bone_as_float);
+            staging[i].rot = glm::vec4(g.rotation.x, g.rotation.y, g.rotation.z, g.rotation.w);
+            staging[i].color_pad = glm::vec4(g.color, g.emission);
         }
+        std::memcpy(static_gaussian_ssbo_.mapped(), staging.data(), static_count_ * sizeof(GpuGaussian));
         // Also mirror to legacy buffer for backward compat
-        auto* legacy = static_cast<GpuGaussian*>(gaussian_ssbo_.mapped());
-        std::memcpy(legacy, gpu_data, static_count_ * sizeof(GpuGaussian));
+        if (gaussian_ssbo_.mapped() && gaussian_ssbo_.mapped() != static_gaussian_ssbo_.mapped()) {
+            std::memcpy(gaussian_ssbo_.mapped(), staging.data(), static_count_ * sizeof(GpuGaussian));
+        }
     }
 
-    // Initialize sort buffers with sentinel keys
+    // Initialize sort buffers with sentinel keys via staging memcpy
     auto init_sort_buf = [](Buffer& buf, uint32_t sort_size, uint32_t valid_count) {
-        auto* sort = static_cast<SortEntry*>(buf.mapped());
+        std::vector<SortEntry> staging(sort_size);
         for (uint32_t i = 0; i < sort_size; ++i) {
-            sort[i].key = 0xFFFFFFFF;
-            sort[i].index = i < valid_count ? i : 0;
+            staging[i].key = 0xFFFFFFFF;
+            staging[i].index = i < valid_count ? i : 0;
         }
+        std::memcpy(buf.mapped(), staging.data(), sort_size * sizeof(SortEntry));
     };
     init_sort_buf(static_sort_a_, static_sort_size_, static_count_);
     init_sort_buf(static_sort_b_, static_sort_size_, static_count_);
@@ -608,25 +611,29 @@ void GsRenderer::update_static_gaussians(const Gaussian* data, uint32_t count) {
     static_dirty_ = true;
     sort_done_once_ = false;
 
-    auto* gpu_data = static_cast<GpuGaussian*>(static_gaussian_ssbo_.mapped());
+    // Build GPU data in a local buffer first, then memcpy to mapped memory.
+    // This avoids -O3 write-reordering issues with mapped GPU memory.
+    std::vector<GpuGaussian> staging(count);
     for (uint32_t i = 0; i < count; ++i) {
-        gpu_data[i].pos_opacity = glm::vec4(data[i].position, data[i].opacity);
         float bone_f;
         uint32_t bi = data[i].bone_index;
         std::memcpy(&bone_f, &bi, sizeof(float));
-        gpu_data[i].scale_pad = glm::vec4(data[i].scale, bone_f);
-        gpu_data[i].rot = glm::vec4(data[i].rotation.x, data[i].rotation.y,
-                                     data[i].rotation.z, data[i].rotation.w);
-        gpu_data[i].color_pad = glm::vec4(data[i].color, data[i].emission);
+        staging[i].pos_opacity = glm::vec4(data[i].position, data[i].opacity);
+        staging[i].scale_pad = glm::vec4(data[i].scale, bone_f);
+        staging[i].rot = glm::vec4(data[i].rotation.x, data[i].rotation.y,
+                                    data[i].rotation.z, data[i].rotation.w);
+        staging[i].color_pad = glm::vec4(data[i].color, data[i].emission);
     }
+    std::memcpy(static_gaussian_ssbo_.mapped(), staging.data(), count * sizeof(GpuGaussian));
 
-    // Reinitialize static sort buffers
+    // Reinitialize static sort buffers via memcpy for consistency
     auto init_sort_buf = [](Buffer& buf, uint32_t sort_size, uint32_t valid_count) {
-        auto* sort = static_cast<SortEntry*>(buf.mapped());
+        std::vector<SortEntry> staging_sort(sort_size);
         for (uint32_t i = 0; i < sort_size; ++i) {
-            sort[i].key = 0xFFFFFFFF;
-            sort[i].index = i < valid_count ? i : 0;
+            staging_sort[i].key = 0xFFFFFFFF;
+            staging_sort[i].index = i < valid_count ? i : 0;
         }
+        std::memcpy(buf.mapped(), staging_sort.data(), sort_size * sizeof(SortEntry));
     };
     init_sort_buf(static_sort_a_, static_sort_size_, count);
     init_sort_buf(static_sort_b_, static_sort_size_, count);
@@ -641,25 +648,28 @@ void GsRenderer::update_dynamic_gaussians(const Gaussian* data, uint32_t count) 
 
     dynamic_count_ = count;
 
-    auto* gpu_data = static_cast<GpuGaussian*>(dynamic_gaussian_ssbo_.mapped());
+    // Build GPU data in local buffer, then memcpy to mapped memory
+    std::vector<GpuGaussian> staging(count);
     for (uint32_t i = 0; i < count; ++i) {
-        gpu_data[i].pos_opacity = glm::vec4(data[i].position, data[i].opacity);
         float bone_f;
         uint32_t bi = data[i].bone_index;
         std::memcpy(&bone_f, &bi, sizeof(float));
-        gpu_data[i].scale_pad = glm::vec4(data[i].scale, bone_f);
-        gpu_data[i].rot = glm::vec4(data[i].rotation.x, data[i].rotation.y,
-                                     data[i].rotation.z, data[i].rotation.w);
-        gpu_data[i].color_pad = glm::vec4(data[i].color, data[i].emission);
+        staging[i].pos_opacity = glm::vec4(data[i].position, data[i].opacity);
+        staging[i].scale_pad = glm::vec4(data[i].scale, bone_f);
+        staging[i].rot = glm::vec4(data[i].rotation.x, data[i].rotation.y,
+                                    data[i].rotation.z, data[i].rotation.w);
+        staging[i].color_pad = glm::vec4(data[i].color, data[i].emission);
     }
+    std::memcpy(dynamic_gaussian_ssbo_.mapped(), staging.data(), count * sizeof(GpuGaussian));
 
-    // Reinitialize dynamic sort buffers
+    // Reinitialize dynamic sort buffers via memcpy
     auto init_sort_buf = [](Buffer& buf, uint32_t sort_size, uint32_t valid_count) {
-        auto* sort = static_cast<SortEntry*>(buf.mapped());
+        std::vector<SortEntry> staging_sort(sort_size);
         for (uint32_t i = 0; i < sort_size; ++i) {
-            sort[i].key = 0xFFFFFFFF;
-            sort[i].index = i < valid_count ? i : 0;
+            staging_sort[i].key = 0xFFFFFFFF;
+            staging_sort[i].index = i < valid_count ? i : 0;
         }
+        std::memcpy(buf.mapped(), staging_sort.data(), sort_size * sizeof(SortEntry));
     };
     init_sort_buf(dynamic_sort_a_, dynamic_sort_size_, count);
     init_sort_buf(dynamic_sort_b_, dynamic_sort_size_, count);
@@ -731,25 +741,28 @@ void GsRenderer::update_active_gaussians(const Gaussian* data, uint32_t count) {
     sort_done_once_ = false;
     gaussian_count_ = count;
 
-    auto* gpu_data = static_cast<GpuGaussian*>(gaussian_ssbo_.mapped());
+    // Stage in local buffer, then memcpy to mapped memory (avoids -O3 reordering)
+    std::vector<GpuGaussian> staging(count);
     for (uint32_t i = 0; i < count; ++i) {
-        gpu_data[i].pos_opacity = glm::vec4(data[i].position, data[i].opacity);
         float bone_f;
         uint32_t bi = data[i].bone_index;
         std::memcpy(&bone_f, &bi, sizeof(float));
-        gpu_data[i].scale_pad = glm::vec4(data[i].scale, bone_f);
-        gpu_data[i].rot = glm::vec4(data[i].rotation.x, data[i].rotation.y,
-                                     data[i].rotation.z, data[i].rotation.w);
-        gpu_data[i].color_pad = glm::vec4(data[i].color, data[i].emission);
+        staging[i].pos_opacity = glm::vec4(data[i].position, data[i].opacity);
+        staging[i].scale_pad = glm::vec4(data[i].scale, bone_f);
+        staging[i].rot = glm::vec4(data[i].rotation.x, data[i].rotation.y,
+                                    data[i].rotation.z, data[i].rotation.w);
+        staging[i].color_pad = glm::vec4(data[i].color, data[i].emission);
     }
+    std::memcpy(gaussian_ssbo_.mapped(), staging.data(), count * sizeof(GpuGaussian));
 
-    // Reinitialize both sort buffers
+    // Reinitialize both sort buffers via staging
     auto init_sort_buf = [&](Buffer& buf) {
-        auto* sort = static_cast<SortEntry*>(buf.mapped());
+        std::vector<SortEntry> staging_sort(sort_size_);
         for (uint32_t i = 0; i < sort_size_; ++i) {
-            sort[i].key = 0xFFFFFFFF;
-            sort[i].index = i < gaussian_count_ ? i : 0;
+            staging_sort[i].key = 0xFFFFFFFF;
+            staging_sort[i].index = i < gaussian_count_ ? i : 0;
         }
+        std::memcpy(buf.mapped(), staging_sort.data(), sort_size_ * sizeof(SortEntry));
     };
     init_sort_buf(sort_keys_ssbo_);
     init_sort_buf(sort_b_ssbo_);
@@ -760,17 +773,19 @@ void GsRenderer::update_gaussian_data(const Gaussian* data, uint32_t count) {
 
     gaussian_count_ = count;
 
-    auto* gpu_data = static_cast<GpuGaussian*>(gaussian_ssbo_.mapped());
+    // Stage in local buffer, then memcpy to mapped memory (avoids -O3 reordering)
+    std::vector<GpuGaussian> staging(count);
     for (uint32_t i = 0; i < count; ++i) {
-        gpu_data[i].pos_opacity = glm::vec4(data[i].position, data[i].opacity);
         float bone_f;
         uint32_t bi = data[i].bone_index;
         std::memcpy(&bone_f, &bi, sizeof(float));
-        gpu_data[i].scale_pad = glm::vec4(data[i].scale, bone_f);
-        gpu_data[i].rot = glm::vec4(data[i].rotation.x, data[i].rotation.y,
-                                     data[i].rotation.z, data[i].rotation.w);
-        gpu_data[i].color_pad = glm::vec4(data[i].color, data[i].emission);
+        staging[i].pos_opacity = glm::vec4(data[i].position, data[i].opacity);
+        staging[i].scale_pad = glm::vec4(data[i].scale, bone_f);
+        staging[i].rot = glm::vec4(data[i].rotation.x, data[i].rotation.y,
+                                    data[i].rotation.z, data[i].rotation.w);
+        staging[i].color_pad = glm::vec4(data[i].color, data[i].emission);
     }
+    std::memcpy(gaussian_ssbo_.mapped(), staging.data(), count * sizeof(GpuGaussian));
     // Sort keys are NOT reset — preprocess shader will recompute depth keys,
     // and the radix sort will re-sort naturally without losing convergence.
 }
@@ -1234,18 +1249,6 @@ void GsRenderer::render(VkCommandBuffer cmd, const glm::mat4& view, const glm::m
 
         // Use split pipeline if split buffers are allocated, otherwise legacy path
         bool use_split = static_gaussian_ssbo_.buffer() && counts_ssbo_.buffer();
-
-        // Debug: print counts from previous frame (CPU-visible mapped memory)
-        if (use_split && counts_ssbo_.mapped()) {
-            auto* c = static_cast<const uint32_t*>(counts_ssbo_.mapped());
-            static int frame_counter = 0;
-            if (frame_counter++ % 60 == 0) {
-                std::fprintf(stderr, "[GS Split] static=%u dynamic=%u merged=%u "
-                    "static_dirty=%d static_count=%u dynamic_count=%u\n",
-                    c[0], c[1], c[2], static_dirty_ ? 1 : 0,
-                    static_count_, dynamic_count_);
-            }
-        }
 
         if (use_split) {
             // Reset counts that will be written this frame
