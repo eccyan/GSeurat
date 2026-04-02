@@ -679,7 +679,7 @@ void IslandDemoState::build_draw_lists(AppBase& app) {
     // ── FULL: comprehensive engine values (compact panel) ──
     constexpr float panel_x = 6.0f;
     constexpr float panel_w = 250.0f;
-    constexpr float panel_h = 400.0f;
+    constexpr float panel_h = 420.0f;
     constexpr float panel_top = 720.0f - 36.0f;  // below macOS title bar
     constexpr float panel_cy = panel_top - panel_h * 0.5f;
     ui.panel(panel_x + panel_w * 0.5f, panel_cy, panel_w, panel_h,
@@ -791,18 +791,10 @@ void IslandDemoState::build_draw_lists(AppBase& app) {
     y -= line;
     ui.label("Chunk Culling", lx, y, s, dim);
     ui.label(on_off(ff.gs_chunk_culling), vx, y, s, ff.gs_chunk_culling ? green : red);
-    y -= line + section_gap;
-
-    // ── Triggers ──
-    ui.label("TRIGGERS", lx, y, s, yellow);
     y -= line;
-    ui.label("Active / Total", lx, y, s, dim);
-    glm::vec4 trig_col = triggered_count > 0 ? green : white;
-    ui.label(std::to_string(triggered_count) + " / " + std::to_string(total_triggers),
-             vx, y, s, trig_col);
-    y -= line;
-    ui.label("Emitters", lx, y, s, dim);
-    ui.label(std::to_string(emitter_count), vx, y, s, white);
+    glm::vec4 trig_col = triggered_count > 0 ? green : dim;
+    ui.label("Triggers", lx, y, s, dim);
+    ui.label(std::to_string(triggered_count) + "/" + std::to_string(total_triggers), vx, y, s, trig_col);
 }
 
 }  // namespace gseurat
