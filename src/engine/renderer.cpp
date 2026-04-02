@@ -920,10 +920,15 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
             if (!gs_static_buffer_.empty()) {
                 auto count = static_cast<uint32_t>(gs_static_buffer_.size());
                 if (count > gs_renderer_.max_static_count()) {
+                    std::fprintf(stderr, "[GS LOD] static buffer %u > max %u, clamping\n",
+                                 count, gs_renderer_.max_static_count());
                     gs_static_buffer_.resize(gs_renderer_.max_static_count());
                     count = gs_renderer_.max_static_count();
                 }
                 gs_renderer_.update_static_gaussians(gs_static_buffer_.data(), count);
+            } else if (camera_dirty) {
+                std::fprintf(stderr, "[GS LOD] WARNING: static buffer empty! visible_chunks=%zu budget=%u\n",
+                             visible.size(), gs_gaussian_budget_);
             }
 
             gs_prev_view_ = gs_view_;
