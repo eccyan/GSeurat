@@ -426,23 +426,23 @@ void IslandDemoState::update_effects(AppBase& app, float dt) {
                     et.applied = true;
                     std::fprintf(stderr, "[EmissiveToggle] SPARKLE at (%.1f, %.1f, %.1f) color=(%.1f,%.1f,%.1f)\n",
                         t.position.x, t.position.y, t.position.z, et.color_r, et.color_g, et.color_b);
-                    // Spawn glowing particles rising from the crystal
+                    // Spawn glowing particles rising from the crystal — sized for distance-20 camera
                     GsEmitterConfig cfg;
-                    cfg.position = t.position + glm::vec3(0, 2.0f, 0);
-                    cfg.spawn_rate = 25.0f;
-                    cfg.lifetime_min = 1.5f;
-                    cfg.lifetime_max = 3.0f;
-                    cfg.velocity_min = {-1.5f, 2.0f, -1.5f};
-                    cfg.velocity_max = { 1.5f, 5.0f,  1.5f};
-                    cfg.acceleration = {0.0f, 0.5f, 0.0f};  // float upward
+                    cfg.position = t.position + glm::vec3(0, 3.0f, 0);
+                    cfg.spawn_rate = 40.0f;        // dense particle cloud
+                    cfg.lifetime_min = 2.0f;
+                    cfg.lifetime_max = 4.0f;
+                    cfg.velocity_min = {-2.5f, 3.0f, -2.5f};
+                    cfg.velocity_max = { 2.5f, 7.0f,  2.5f};
+                    cfg.acceleration = {0.0f, 1.0f, 0.0f};  // float upward fast
                     cfg.color_start = {et.color_r, et.color_g, et.color_b};
-                    cfg.color_end = {et.color_r * 0.3f, et.color_g * 0.1f, et.color_b * 0.1f};
-                    cfg.scale_min = {0.3f, 0.3f, 0.3f};
-                    cfg.scale_max = {0.5f, 0.5f, 0.5f};
-                    cfg.scale_end_factor = 0.2f;
-                    cfg.opacity_start = 0.95f;
+                    cfg.color_end = {et.color_r * 0.5f, et.color_g * 0.2f, et.color_b * 0.2f};
+                    cfg.scale_min = {0.6f, 0.6f, 0.6f};     // larger for visibility
+                    cfg.scale_max = {1.0f, 1.0f, 1.0f};
+                    cfg.scale_end_factor = 0.3f;
+                    cfg.opacity_start = 0.9f;
                     cfg.opacity_end = 0.0f;
-                    cfg.emission = et.emission;
+                    cfg.emission = et.emission * 1.5f;  // extra glow for bloom
                     cfg.burst_duration = 0.0f;  // continuous
                     app.renderer().add_gs_particle_emitter(cfg);
                 }
