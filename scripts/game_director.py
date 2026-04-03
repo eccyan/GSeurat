@@ -65,11 +65,11 @@ POIS = {
     "treasure":  (235, 145, "Hidden treasure chest (gold burst)"),
     "mushrooms": (135, 215, "Glowing mushroom grove"),
     "slime":     (183, 190, "Friendly slime NPC"),
-    "secret_summit": (160, 110, "Secret: Summit (fireworks!)"),
+    "secret_summit": (165, 120, "Secret: Summit (fireworks!)"),
     "secret_cove":   (250, 230, "Secret: Hidden Cove"),
     "secret_grove":  (120, 160, "Secret: Ancient Grove"),
     "shore_n":   (180, 100, "Northern shore"),
-    "shore_s":   (180, 280, "Southern shore"),
+    "shore_s":   (180, 260, "Southern shore"),
 }
 
 
@@ -248,13 +248,16 @@ def tour(output_dir: str = "tour_output"):
     }
     step_num = [0]
 
+    # Use absolute path so the demo process can write regardless of its CWD
+    abs_output_dir = os.path.abspath(output_dir)
+
     def snap(name: str, check_triggers: bool = False):
         """Take screenshot and record state at current position."""
         pos = get_player_pos()
         perf = get_perf()
         trig = get_triggers() if check_triggers else {}
 
-        ss_path = os.path.join(output_dir,
+        ss_path = os.path.join(abs_output_dir,
                                f"{step_num[0]:02d}_{name.replace(' ', '_')}.png")
         screenshot(ss_path)
 
@@ -287,7 +290,7 @@ def tour(output_dir: str = "tour_output"):
             return None
         x, z, desc = POIS[poi_name]
         print(f"\n=== {poi_name}: {desc} ===")
-        reached = walk_to(x, z)
+        reached = walk_to(x, z, tolerance=5.0)
         if not reached:
             report["issues"].append(f"Could not reach {poi_name} ({desc})")
         time.sleep(wait)  # let effects trigger
@@ -390,6 +393,7 @@ def tour(output_dir: str = "tour_output"):
 
 def playtest(output_dir: str = "playtest_output"):
     """Quick playtest: walk a route, take screenshots, check basics."""
+    output_dir = os.path.abspath(output_dir)
     os.makedirs(output_dir, exist_ok=True)
     report = {
         "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),

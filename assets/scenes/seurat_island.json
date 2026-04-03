@@ -74920,9 +74920,9 @@
       "id": "secret_summit",
       "name": "Secret: Summit",
       "position": [
-        160.0,
-        6.0,
-        110.0
+        165.0,
+        2.0,
+        120.0
       ],
       "rotation": [0, 0, 0],
       "scale": 1.0,
