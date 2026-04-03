@@ -32,15 +32,23 @@ struct GsPostProcessParams {
     float dof_focus_range = 3.0f;
     float dof_max_blur = 0.5f;
     float far_plane = 1000.0f;  // GS camera far plane for depth normalization
+
+    // Hybrid background (ground plane + sky gradient)
+    glm::vec3 ground_color{0.0f};  // RGB ground color (0 = disabled)
+    glm::vec3 sky_color{0.0f};     // RGB sky color (0 = disabled)
+    float horizon_y = 0.5f;        // Normalized screen Y of horizon (0=top, 1=bottom)
+    bool background_enabled = false;
 };
 
-// GPU UBO layout for gs_post_process.comp (std140, 5 × vec4 = 80 bytes)
+// GPU UBO layout for gs_post_process.comp (std140, 7 × vec4 = 112 bytes)
 struct GsPostProcessUbo {
     glm::vec4 fog_params;         // density, r, g, b
     glm::vec4 exposure_vignette;  // exposure, radius, softness, bloom_intensity
     glm::vec4 bloom_fade;         // bloom_threshold, fade_amount, flash_r, flash_g
     glm::vec4 effects;            // flash_b, ca_intensity, dof_focus_dist, dof_focus_range
     glm::vec4 dimensions;         // dof_max_blur, width, height, far_plane
+    glm::vec4 ground_sky;         // ground_r, ground_g, ground_b, horizon_y
+    glm::vec4 sky_enable;         // sky_r, sky_g, sky_b, enable (> 0.5 = on)
 };
 
 // Push constants for preprocess shader (static/dynamic offset)
