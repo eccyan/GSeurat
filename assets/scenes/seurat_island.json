@@ -74142,6 +74142,57 @@
       "components": {}
     },
     {
+      "id": "treasure_chest",
+      "name": "Treasure Chest",
+      "ply_file": "assets/props/treasure_chest.ply",
+      "position": [
+        235,
+        4.0,
+        145
+      ],
+      "rotation": [
+        0,
+        210,
+        0
+      ],
+      "scale": 0.7,
+      "components": {}
+    },
+    {
+      "id": "mushroom_cluster",
+      "name": "Glowing Mushrooms",
+      "ply_file": "assets/props/glow_mushrooms.ply",
+      "position": [
+        135,
+        2.5,
+        215
+      ],
+      "rotation": [
+        0,
+        120,
+        0
+      ],
+      "scale": 0.4,
+      "components": {}
+    },
+    {
+      "id": "slime_npc",
+      "name": "Slime",
+      "ply_file": "assets/characters/slime/slime.ply",
+      "position": [
+        183,
+        3.0,
+        190
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": 0.6,
+      "components": {}
+    },
+    {
       "id": "flower_1",
       "name": "Flower",
       "ply_file": "assets/props/island_flower1.ply",
@@ -74700,6 +74751,75 @@
           "effect_name": "float",
           "anim_radius": 11.2,
           "lifetime": 6.0,
+          "loop": true
+        }
+      }
+    },
+    {
+      "id": "treasure_chest",
+      "name": "Treasure Chest",
+      "position": [
+        235.0,
+        4.0,
+        145.0
+      ],
+      "rotation": [0, 0, 0],
+      "scale": 1.0,
+      "components": {
+        "ProximityTrigger": {
+          "radius": 8,
+          "one_shot": true
+        },
+        "EmissiveToggle": {
+          "emission": 12.0,
+          "color_r": 1.0,
+          "color_g": 0.85,
+          "color_b": 0.2,
+          "effect_radius": 5.0
+        }
+      }
+    },
+    {
+      "id": "mushroom_glow",
+      "name": "Glowing Mushrooms",
+      "position": [
+        135.0,
+        2.5,
+        215.0
+      ],
+      "rotation": [0, 0, 0],
+      "scale": 1.0,
+      "components": {
+        "ProximityTrigger": {
+          "radius": 12
+        },
+        "EmissiveToggle": {
+          "emission": 6.0,
+          "color_r": 0.3,
+          "color_g": 1.0,
+          "color_b": 0.85,
+          "effect_radius": 8.0
+        }
+      }
+    },
+    {
+      "id": "slime_bounce",
+      "name": "Slime",
+      "position": [
+        183.0,
+        3.0,
+        190.0
+      ],
+      "rotation": [0, 0, 0],
+      "scale": 1.0,
+      "components": {
+        "ProximityTrigger": {
+          "radius": 8
+        },
+        "AnimationTrigger": {
+          "effect_name": "pulse",
+          "anim_radius": 4.0,
+          "lifetime": 2.0,
           "loop": true
         }
       }

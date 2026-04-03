@@ -62,6 +62,9 @@ POIS = {
     "anim_wave":  (231, 171, "Wave animation trigger"),
     "anim_vortex":(131, 211, "Vortex animation trigger"),
     "anim_float": (171, 261, "Float animation trigger"),
+    "treasure":  (235, 145, "Hidden treasure chest (gold burst)"),
+    "mushrooms": (135, 215, "Glowing mushroom grove"),
+    "slime":     (183, 190, "Friendly slime NPC"),
     "shore_n":   (180, 100, "Northern shore"),
     "shore_s":   (180, 280, "Southern shore"),
 }
@@ -322,19 +325,32 @@ def tour(output_dir: str = "tour_output"):
         if entry and entry.get("triggered", 0) == 0:
             report["issues"].append(f"{name}: no triggers fired on approach")
 
-    # 5. Visit animation triggers
+    # 5. Discover fun objects
+    entry = visit("slime", wait=2.0)
+    if entry and entry.get("triggered", 0) == 0:
+        report["issues"].append("slime: no pulse trigger on approach")
+
+    entry = visit("treasure", wait=2.5)
+    if entry and entry.get("triggered", 0) == 0:
+        report["issues"].append("treasure: no gold burst on approach")
+
+    entry = visit("mushrooms", wait=2.0)
+    if entry and entry.get("triggered", 0) == 0:
+        report["issues"].append("mushrooms: no glow trigger on approach")
+
+    # 6. Visit animation triggers
     for effect in ["pulse", "wave", "vortex", "float"]:
         name = f"anim_{effect}"
         visit(name, wait=2.5)
 
-    # 6. Visit shores for boundary check
+    # 7. Visit shores for boundary check
     visit("shore_n", wait=0.5, check_triggers=False)
     visit("shore_s", wait=0.5, check_triggers=False)
 
-    # 7. Return to spawn
+    # 8. Return to spawn
     visit("spawn", wait=0.5, check_triggers=False)
 
-    # 8. Final state
+    # 9. Final state
     snap("final_state", check_triggers=True)
 
     # ── Performance summary ──

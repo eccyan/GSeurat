@@ -1,0 +1,20 @@
+{
+  "name": "treasure_chest",
+  "type": "static_prop",
+  "ply_file": "treasure_chest.ply",
+  "parts": [
+    {
+      "id": "body",
+      "label": "Chest Body",
+      "parent": null,
+      "joint": [
+        0.0,
+        0.0,
+        0.0
+      ]
+    }
+  ],
+  "poses": {
+    "default": {}
+  }
+}
