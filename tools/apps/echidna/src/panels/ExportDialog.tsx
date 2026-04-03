@@ -60,7 +60,8 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
   const [density, setDensity] = useState(1);
 
   const characterName = useCharacterStore((s) => s.characterName);
-  const voxelCount = useCharacterStore((s) => s.voxels.size);
+  const voxels = useCharacterStore((s) => s.voxels);
+  const voxelCount = voxels.size;
   const estimatedGaussians = voxelCount * density * density * density;
   const baseName = characterName.replace(/\s+/g, '_').toLowerCase() || 'character';
   const filename = format === 'ply_manifest' ? `${baseName}.ply` : `${baseName}_posed.ply`;

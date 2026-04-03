@@ -7,6 +7,7 @@ import { sendBridgeCommand } from '@gseurat/engine-client';
 import type { EchidnaFile } from '../store/types.js';
 import { NewProjectDialog } from './NewProjectDialog.js';
 import { ResizeGridDialog } from './ResizeGridDialog.js';
+import { ExportDialog } from './ExportDialog.js';
 
 const BRIDGE_REST_URL = 'http://localhost:9101';
 
@@ -188,6 +189,7 @@ export function MenuBar() {
   const [toast, setToast] = useState<ToastState>(null);
   const [showNewDialog, setShowNewDialog] = useState(false);
   const [showResizeDialog, setShowResizeDialog] = useState(false);
+  const [showExportDialog, setShowExportDialog] = useState(false);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const showGrid = useCharacterStore((s) => s.showGrid);
@@ -343,6 +345,7 @@ export function MenuBar() {
     { label: 'Load...', shortcut: '\u2318O', action: handleLoad },
     { separator: true as const },
     { label: 'Import .vox...', action: handleImportVox },
+    { label: 'Export...', action: () => setShowExportDialog(true) },
     { label: 'Export PLY...', action: handleExportPly },
     { label: 'Export Manifest...', action: handleExportManifest },
     { separator: true as const },
@@ -405,6 +408,7 @@ export function MenuBar() {
 
       {showNewDialog && <NewProjectDialog onClose={() => setShowNewDialog(false)} />}
       {showResizeDialog && <ResizeGridDialog onClose={() => setShowResizeDialog(false)} />}
+      {showExportDialog && <ExportDialog onClose={() => setShowExportDialog(false)} />}
     </div>
   );
 }
