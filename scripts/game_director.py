@@ -49,6 +49,7 @@ PLAYER_SPEED = 20.0
 POIS = {
     "spawn":     (187, 197, "Player spawn point"),
     "house":     (192, 175, "Central house"),
+    "fountain":  (178, 185, "Stone fountain (water sparkle)"),
     "torch_1":   (195, 181, "Torch near house (east)"),
     "torch_2":   (185, 173, "Torch near house (south)"),
     "torch_3":   (201, 191, "Torch (northeast)"),
@@ -299,8 +300,11 @@ def tour(output_dir: str = "tour_output"):
     time.sleep(0.2)
     snap("hud_on")
 
-    # 2. Visit house area
+    # 2. Visit house and fountain
     visit("house", wait=0.5, check_triggers=False)
+    entry = visit("fountain", wait=2.0)
+    if entry and entry.get("triggered", 0) == 0:
+        report["issues"].append("fountain: no triggers fired on approach")
 
     # 3. Visit torches (should trigger EmitterToggle + LightToggle)
     for i in range(1, 5):

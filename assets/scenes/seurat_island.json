@@ -74125,6 +74125,23 @@
       "components": {}
     },
     {
+      "id": "fountain",
+      "name": "Fountain",
+      "ply_file": "assets/props/island_fountain.ply",
+      "position": [
+        178,
+        3.2,
+        185
+      ],
+      "rotation": [
+        0,
+        45,
+        0
+      ],
+      "scale": 0.5,
+      "components": {}
+    },
+    {
       "id": "flower_1",
       "name": "Flower",
       "ply_file": "assets/props/island_flower1.ply",
@@ -74526,6 +74543,33 @@
           "color_g": 0.15,
           "color_b": 0.05,
           "effect_radius": 10.0
+        }
+      }
+    },
+    {
+      "id": "fountain",
+      "name": "Fountain",
+      "position": [
+        178.0,
+        3.2,
+        185.0
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": 1.0,
+      "components": {
+        "ProximityTrigger": {
+          "radius": 10
+        },
+        "EmissiveToggle": {
+          "emission": 4.0,
+          "color_r": 0.4,
+          "color_g": 0.7,
+          "color_b": 1.0,
+          "effect_radius": 6.0
         }
       }
     },
