@@ -44,6 +44,7 @@ void IslandDemoState::on_enter(AppBase& app) {
     app.feature_flags().particles = true;
     app.feature_flags().point_lights = true;
     app.feature_flags().gs_lod = true;
+    app.feature_flags().animation = true;  // GS animation effects (orbit, wave, etc.)
 
     // Enable GS lighting: directional sun + point lights for interactive effects
     app.renderer().gs_renderer().set_light_mode(2);  // point light mode (includes directional)
@@ -72,6 +73,21 @@ void IslandDemoState::on_enter(AppBase& app) {
         collision_grid_ = *scene_data.collision;
         // Grid origin is (0,0) — scene coordinates match grid coordinates
         grid_origin_ = {0.0f, 0.0f};
+
+        // Mark cells under the house as solid (collision box)
+        // House at ~(192, 175), roughly 18×14 voxels at scale 0.8 ≈ 14×11 world units
+        float house_x = 192.0f, house_z = 175.0f;
+        float house_hw = 7.0f, house_hd = 6.0f;  // half-extents
+        for (float x = house_x - house_hw; x <= house_x + house_hw; x += collision_grid_.cell_size) {
+            for (float z = house_z - house_hd; z <= house_z + house_hd; z += collision_grid_.cell_size) {
+                int gx = static_cast<int>(x / collision_grid_.cell_size);
+                int gz = static_cast<int>(z / collision_grid_.cell_size);
+                if (gx >= 0 && gx < static_cast<int>(collision_grid_.width) &&
+                    gz >= 0 && gz < static_cast<int>(collision_grid_.height)) {
+                    collision_grid_.solid[gz * collision_grid_.width + gx] = true;
+                }
+            }
+        }
     }
 
     // Create collision grid reference entity for NPC system
@@ -120,6 +136,10 @@ void IslandDemoState::on_enter(AppBase& app) {
         if (loaded) {
             character_data_ = std::make_unique<gseurat::CharacterData>(std::move(*loaded));
             ShutdownAuditor::record<gseurat::CharacterData>(character_data_.get());
+            std::fprintf(stderr, "[IslandDemo] Character manifest loaded: %zu bones, %zu clips\n",
+                         character_data_->bones.size(), character_data_->clips.size());
+        } else {
+            std::fprintf(stderr, "[IslandDemo] WARNING: Failed to load character manifest!\n");
         }
     }
 

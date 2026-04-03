@@ -406,7 +406,17 @@ void AppBase::load_gs_scene(const SceneData& scene_data, const GsSceneOptions& o
                     try {
                         auto placed_cloud = GaussianCloud::load_ply(go.ply_file);
                         if (placed_cloud.empty()) continue;
-                        auto transform = glm::translate(glm::mat4(1.0f), go.position);
+                        // Compute local AABB min Y so we can offset the prop
+                        // to sit ON the terrain (PLY origins are often at center)
+                        float local_min_y = 1e9f;
+                        for (const auto& g : placed_cloud.gaussians()) {
+                            if (g.position.y < local_min_y) local_min_y = g.position.y;
+                        }
+                        glm::vec3 adjusted_pos = go.position;
+                        if (local_min_y < -0.01f) {
+                            adjusted_pos.y -= local_min_y * go.scale;  // lift by |minY| * scale
+                        }
+                        auto transform = glm::translate(glm::mat4(1.0f), adjusted_pos);
                         transform = glm::rotate(transform, glm::radians(go.rotation.x), {1,0,0});
                         transform = glm::rotate(transform, glm::radians(go.rotation.y), {0,1,0});
                         transform = glm::rotate(transform, glm::radians(go.rotation.z), {0,0,1});

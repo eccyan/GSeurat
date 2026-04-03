@@ -74122,7 +74122,14 @@
         0
       ],
       "scale": 0.8,
-      "components": {}
+      "components": {
+        "ProximityTrigger": {
+          "radius": 30
+        },
+        "VfxTrigger": {
+          "vfx_path": "assets/vfx/chimney_smoke.vfx.json"
+        }
+      }
     },
     {
       "id": "fountain",
