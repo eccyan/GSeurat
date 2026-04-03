@@ -289,6 +289,10 @@ def main():
             state = get_player_state()
             print(f"Player: {state}")
 
+        elif cmd == "quit":
+            result = send_command({"cmd": "quit"})
+            print(f"Quit: {result.get('message', 'sent')}")
+
         else:
             print(f"Unknown command: {cmd}")
             print(__doc__)
