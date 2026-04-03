@@ -306,6 +306,20 @@ void AppBase::init_game_object_system() {
                     {"lifetime", c.lifetime},
                     {"loop", c.loop}};
         });
+
+    component_registry_.register_component<DiscoveryZone>("DiscoveryZone",
+        [](const nlohmann::json& j) -> DiscoveryZone {
+            DiscoveryZone c;
+            if (j.contains("color_r")) c.color_r = j["color_r"].get<float>();
+            if (j.contains("color_g")) c.color_g = j["color_g"].get<float>();
+            if (j.contains("color_b")) c.color_b = j["color_b"].get<float>();
+            if (j.contains("burst_height")) c.burst_height = j["burst_height"].get<float>();
+            return c;
+        },
+        [](const DiscoveryZone& c) -> nlohmann::json {
+            return {{"color_r", c.color_r}, {"color_g", c.color_g},
+                    {"color_b", c.color_b}, {"burst_height", c.burst_height}};
+        });
 }
 
 // ── Shared GS scene loading ──

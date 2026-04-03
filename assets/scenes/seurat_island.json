@@ -74193,6 +74193,42 @@
       "components": {}
     },
     {
+      "id": "lantern_1",
+      "name": "Lantern Post",
+      "ply_file": "assets/props/lantern_post.ply",
+      "position": [186, 3.5, 192],
+      "rotation": [0, 0, 0],
+      "scale": 0.35,
+      "components": {}
+    },
+    {
+      "id": "lantern_2",
+      "name": "Lantern Post",
+      "ply_file": "assets/props/lantern_post.ply",
+      "position": [189, 3.8, 186],
+      "rotation": [0, 45, 0],
+      "scale": 0.35,
+      "components": {}
+    },
+    {
+      "id": "lantern_3",
+      "name": "Lantern Post",
+      "ply_file": "assets/props/lantern_post.ply",
+      "position": [191, 4.0, 180],
+      "rotation": [0, 90, 0],
+      "scale": 0.35,
+      "components": {}
+    },
+    {
+      "id": "lantern_4",
+      "name": "Lantern Post",
+      "ply_file": "assets/props/lantern_post.ply",
+      "position": [175, 3.0, 195],
+      "rotation": [0, 180, 0],
+      "scale": 0.35,
+      "components": {}
+    },
+    {
       "id": "flower_1",
       "name": "Flower",
       "ply_file": "assets/props/island_flower1.ply",
@@ -74821,6 +74857,131 @@
           "anim_radius": 4.0,
           "lifetime": 2.0,
           "loop": true
+        }
+      }
+    },
+    {
+      "id": "lantern_1",
+      "name": "Path Lantern",
+      "position": [186.0, 3.5, 192.0],
+      "rotation": [0, 0, 0],
+      "scale": 1.0,
+      "components": {
+        "ProximityTrigger": { "radius": 10 },
+        "LightToggle": {
+          "color_r": 1.0, "color_g": 0.85, "color_b": 0.5,
+          "radius": 15.0, "intensity": 1.2
+        }
+      }
+    },
+    {
+      "id": "lantern_2",
+      "name": "Path Lantern",
+      "position": [189.0, 3.8, 186.0],
+      "rotation": [0, 0, 0],
+      "scale": 1.0,
+      "components": {
+        "ProximityTrigger": { "radius": 10 },
+        "LightToggle": {
+          "color_r": 1.0, "color_g": 0.85, "color_b": 0.5,
+          "radius": 15.0, "intensity": 1.2
+        }
+      }
+    },
+    {
+      "id": "lantern_3",
+      "name": "Path Lantern",
+      "position": [191.0, 4.0, 180.0],
+      "rotation": [0, 0, 0],
+      "scale": 1.0,
+      "components": {
+        "ProximityTrigger": { "radius": 10 },
+        "LightToggle": {
+          "color_r": 1.0, "color_g": 0.85, "color_b": 0.5,
+          "radius": 15.0, "intensity": 1.2
+        }
+      }
+    },
+    {
+      "id": "lantern_4",
+      "name": "Path Lantern",
+      "position": [175.0, 3.0, 195.0],
+      "rotation": [0, 0, 0],
+      "scale": 1.0,
+      "components": {
+        "ProximityTrigger": { "radius": 10 },
+        "LightToggle": {
+          "color_r": 1.0, "color_g": 0.85, "color_b": 0.5,
+          "radius": 15.0, "intensity": 1.2
+        }
+      }
+    },
+    {
+      "id": "secret_summit",
+      "name": "Secret: Summit",
+      "position": [
+        160.0,
+        6.0,
+        110.0
+      ],
+      "rotation": [0, 0, 0],
+      "scale": 1.0,
+      "components": {
+        "ProximityTrigger": {
+          "radius": 6,
+          "one_shot": true
+        },
+        "DiscoveryZone": {
+          "color_r": 1.0,
+          "color_g": 0.4,
+          "color_b": 0.1,
+          "burst_height": 12.0
+        }
+      }
+    },
+    {
+      "id": "secret_cove",
+      "name": "Secret: Hidden Cove",
+      "position": [
+        250.0,
+        1.5,
+        230.0
+      ],
+      "rotation": [0, 0, 0],
+      "scale": 1.0,
+      "components": {
+        "ProximityTrigger": {
+          "radius": 6,
+          "one_shot": true
+        },
+        "DiscoveryZone": {
+          "color_r": 0.2,
+          "color_g": 0.6,
+          "color_b": 1.0,
+          "burst_height": 10.0
+        }
+      }
+    },
+    {
+      "id": "secret_grove",
+      "name": "Secret: Ancient Grove",
+      "position": [
+        120.0,
+        3.0,
+        160.0
+      ],
+      "rotation": [0, 0, 0],
+      "scale": 1.0,
+      "components": {
+        "ProximityTrigger": {
+          "radius": 6,
+          "one_shot": true
+        },
+        "DiscoveryZone": {
+          "color_r": 0.4,
+          "color_g": 1.0,
+          "color_b": 0.3,
+          "burst_height": 8.0
         }
       }
     }

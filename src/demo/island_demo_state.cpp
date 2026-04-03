@@ -544,6 +544,45 @@ void IslandDemoState::update_effects(AppBase& app, float dt) {
         static bool logged = false;
         if (!logged) { std::fprintf(stderr, "[AnimationTrigger] %d entities\n", count); logged = true; }
     }
+
+    // DiscoveryZone: celebration fireworks burst when player finds a hidden spot
+    {
+        world.view<DiscoveryZone, ProximityTrigger, ecs::Transform>().each(
+            [&](ecs::Entity, DiscoveryZone& dz, ProximityTrigger& pt, ecs::Transform& t) {
+                if (pt.triggered && !dz.discovered) {
+                    dz.discovered = true;
+                    std::fprintf(stderr, "[DiscoveryZone] DISCOVERED at (%.1f, %.1f, %.1f)!\n",
+                        t.position.x, t.position.y, t.position.z);
+
+                    // Celebration burst — upward shower of colored particles
+                    GsEmitterConfig cfg;
+                    cfg.position = t.position + glm::vec3(0, 2.0f, 0);
+                    cfg.spawn_rate = 80.0f;
+                    cfg.lifetime_min = 1.5f;
+                    cfg.lifetime_max = 3.5f;
+                    cfg.velocity_min = {-5.0f, 8.0f, -5.0f};
+                    cfg.velocity_max = { 5.0f, dz.burst_height + 8.0f, 5.0f};
+                    cfg.acceleration = {0.0f, -4.0f, 0.0f};  // gravity arc
+                    cfg.color_start = {dz.color_r, dz.color_g, dz.color_b};
+                    cfg.color_end = {dz.color_r * 0.3f, dz.color_g * 0.3f, dz.color_b * 0.8f};
+                    cfg.scale_min = {0.4f, 0.4f, 0.4f};
+                    cfg.scale_max = {0.8f, 0.8f, 0.8f};
+                    cfg.scale_end_factor = 0.1f;
+                    cfg.opacity_start = 1.0f;
+                    cfg.opacity_end = 0.0f;
+                    cfg.emission = 8.0f;  // bright glow for bloom
+                    cfg.burst_duration = 0.8f;  // short burst, not continuous
+                    app.renderer().add_gs_particle_emitter(cfg);
+
+                    // Add a bright celebration light
+                    PointLight pl{};
+                    pl.position_and_radius = glm::vec4(
+                        t.position.x, t.position.y + 5.0f, t.position.z, 25.0f);
+                    pl.color = glm::vec4(dz.color_r * 2.0f, dz.color_g * 2.0f, dz.color_b * 2.0f, 1.0f);
+                    app.scene().add_light(pl);
+                }
+            });
+    }
 }
 
 // ── Walk animation ──
@@ -640,6 +679,15 @@ void IslandDemoState::build_draw_lists(AppBase& app) {
             if (pt.triggered) triggered_count++;
         });
 
+    // Count discovered secrets
+    int secrets_found = 0;
+    int secrets_total = 0;
+    app.world().view<DiscoveryZone>().each(
+        [&](ecs::Entity, DiscoveryZone& dz) {
+            secrets_total++;
+            if (dz.discovered) secrets_found++;
+        });
+
     if (hud_mode_ == HudMode::kCompact) {
         // ── COMPACT: single-line status bar at top ──
         constexpr float bar_x = 0.0f;
@@ -668,8 +716,13 @@ void IslandDemoState::build_draw_lists(AppBase& app) {
                  x, y, s, trig_color);
         x += 80.0f;
 
-        ui.label("Exp:" + f2(pp.exposure), x, y, s, white);
-        x += 75.0f;
+        // Secrets counter (gold when all found!)
+        if (secrets_total > 0) {
+            glm::vec4 sec_color = (secrets_found == secrets_total) ? yellow : dim;
+            ui.label("Secrets:" + std::to_string(secrets_found) + "/" + std::to_string(secrets_total),
+                     x, y, s, sec_color);
+            x += 90.0f;
+        }
 
         auto* t = app.world().try_get<ecs::Transform>(player_entity_);
         if (t) {

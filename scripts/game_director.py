@@ -65,6 +65,9 @@ POIS = {
     "treasure":  (235, 145, "Hidden treasure chest (gold burst)"),
     "mushrooms": (135, 215, "Glowing mushroom grove"),
     "slime":     (183, 190, "Friendly slime NPC"),
+    "secret_summit": (160, 110, "Secret: Summit (fireworks!)"),
+    "secret_cove":   (250, 230, "Secret: Hidden Cove"),
+    "secret_grove":  (120, 160, "Secret: Ancient Grove"),
     "shore_n":   (180, 100, "Northern shore"),
     "shore_s":   (180, 280, "Southern shore"),
 }
@@ -343,7 +346,13 @@ def tour(output_dir: str = "tour_output"):
         name = f"anim_{effect}"
         visit(name, wait=2.5)
 
-    # 7. Visit shores for boundary check
+    # 7. Discover secrets!
+    for secret in ["secret_summit", "secret_cove", "secret_grove"]:
+        entry = visit(secret, wait=3.0)
+        if entry and entry.get("triggered", 0) == 0:
+            report["issues"].append(f"{secret}: discovery zone did not trigger")
+
+    # 8. Visit shores for boundary check
     visit("shore_n", wait=0.5, check_triggers=False)
     visit("shore_s", wait=0.5, check_triggers=False)
 
