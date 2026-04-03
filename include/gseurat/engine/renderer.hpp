@@ -60,6 +60,9 @@ public:
         gs_bg_sky_color_ = sky;
         gs_bg_colors_enabled_ = (ground != glm::vec3(0.0f) || sky != glm::vec3(0.0f));
     }
+    glm::vec3 gs_bg_ground_color() const { return gs_bg_ground_color_; }
+    glm::vec3 gs_bg_sky_color() const { return gs_bg_sky_color_; }
+    bool gs_bg_colors_enabled() const { return gs_bg_colors_enabled_; }
     void set_gs_gaussian_budget(uint32_t b) { gs_gaussian_budget_ = b; }
     uint32_t gs_gaussian_budget() const { return gs_gaussian_budget_; }
     void set_gs_lod_focus(const glm::vec3& pos) { gs_lod_focus_pos_ = pos; gs_has_lod_focus_ = true; }

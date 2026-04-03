@@ -663,6 +663,13 @@ void AppBase::dispatch_command(const nlohmann::json& cmd, nlohmann::json& respon
             {"toon_bands", renderer_.gs_renderer().toon_bands()},
             {"light_mode", renderer_.gs_renderer().light_mode()},
             {"light_intensity", renderer_.gs_renderer().light_intensity()},
+            {"ground_color_r", renderer_.gs_bg_ground_color().r},
+            {"ground_color_g", renderer_.gs_bg_ground_color().g},
+            {"ground_color_b", renderer_.gs_bg_ground_color().b},
+            {"sky_color_r", renderer_.gs_bg_sky_color().r},
+            {"sky_color_g", renderer_.gs_bg_sky_color().g},
+            {"sky_color_b", renderer_.gs_bg_sky_color().b},
+            {"background_enabled", renderer_.gs_bg_colors_enabled() ? 1.0f : 0.0f},
         };
 
     } else if (cmd_name == "set_render_param") {
@@ -687,6 +694,30 @@ void AppBase::dispatch_command(const nlohmann::json& cmd, nlohmann::json& respon
         else if (name == "toon_bands") renderer_.gs_renderer().set_toon_bands(static_cast<int>(value));
         else if (name == "light_mode") renderer_.gs_renderer().set_light_mode(static_cast<int>(value));
         else if (name == "light_intensity") renderer_.gs_renderer().set_light_intensity(value);
+        else if (name == "ground_color_r") {
+            auto c = renderer_.gs_bg_ground_color(); c.r = value;
+            renderer_.set_gs_background_colors(c, renderer_.gs_bg_sky_color());
+        }
+        else if (name == "ground_color_g") {
+            auto c = renderer_.gs_bg_ground_color(); c.g = value;
+            renderer_.set_gs_background_colors(c, renderer_.gs_bg_sky_color());
+        }
+        else if (name == "ground_color_b") {
+            auto c = renderer_.gs_bg_ground_color(); c.b = value;
+            renderer_.set_gs_background_colors(c, renderer_.gs_bg_sky_color());
+        }
+        else if (name == "sky_color_r") {
+            auto c = renderer_.gs_bg_sky_color(); c.r = value;
+            renderer_.set_gs_background_colors(renderer_.gs_bg_ground_color(), c);
+        }
+        else if (name == "sky_color_g") {
+            auto c = renderer_.gs_bg_sky_color(); c.g = value;
+            renderer_.set_gs_background_colors(renderer_.gs_bg_ground_color(), c);
+        }
+        else if (name == "sky_color_b") {
+            auto c = renderer_.gs_bg_sky_color(); c.b = value;
+            renderer_.set_gs_background_colors(renderer_.gs_bg_ground_color(), c);
+        }
         response["type"] = "ok";
 
     } else if (cmd_name == "get_perf") {
