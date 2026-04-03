@@ -74121,7 +74121,7 @@
         0,
         0
       ],
-      "scale": 0.6,
+      "scale": 0.8,
       "components": {}
     },
     {
@@ -74138,7 +74138,7 @@
         45,
         0
       ],
-      "scale": 0.5,
+      "scale": 0.65,
       "components": {}
     },
     {
@@ -74155,7 +74155,7 @@
         210,
         0
       ],
-      "scale": 0.7,
+      "scale": 0.8,
       "components": {}
     },
     {
@@ -74172,7 +74172,7 @@
         120,
         0
       ],
-      "scale": 0.4,
+      "scale": 0.5,
       "components": {}
     },
     {
@@ -74189,43 +74189,75 @@
         0,
         0
       ],
-      "scale": 0.6,
+      "scale": 0.5,
       "components": {}
     },
     {
       "id": "lantern_1",
       "name": "Lantern Post",
       "ply_file": "assets/props/lantern_post.ply",
-      "position": [186, 3.5, 192],
-      "rotation": [0, 0, 0],
-      "scale": 0.35,
+      "position": [
+        186,
+        3.5,
+        192
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": 0.45,
       "components": {}
     },
     {
       "id": "lantern_2",
       "name": "Lantern Post",
       "ply_file": "assets/props/lantern_post.ply",
-      "position": [189, 3.8, 186],
-      "rotation": [0, 45, 0],
-      "scale": 0.35,
+      "position": [
+        189,
+        3.8,
+        186
+      ],
+      "rotation": [
+        0,
+        45,
+        0
+      ],
+      "scale": 0.45,
       "components": {}
     },
     {
       "id": "lantern_3",
       "name": "Lantern Post",
       "ply_file": "assets/props/lantern_post.ply",
-      "position": [191, 4.0, 180],
-      "rotation": [0, 90, 0],
-      "scale": 0.35,
+      "position": [
+        191,
+        4.0,
+        180
+      ],
+      "rotation": [
+        0,
+        90,
+        0
+      ],
+      "scale": 0.45,
       "components": {}
     },
     {
       "id": "lantern_4",
       "name": "Lantern Post",
       "ply_file": "assets/props/lantern_post.ply",
-      "position": [175, 3.0, 195],
-      "rotation": [0, 180, 0],
-      "scale": 0.35,
+      "position": [
+        175,
+        3.0,
+        195
+      ],
+      "rotation": [
+        0,
+        180,
+        0
+      ],
+      "scale": 0.45,
       "components": {}
     },
     {
@@ -74646,7 +74678,7 @@
         0,
         0
       ],
-      "scale": 1.0,
+      "scale": 0.65,
       "components": {
         "ProximityTrigger": {
           "radius": 10
@@ -74799,8 +74831,12 @@
         4.0,
         145.0
       ],
-      "rotation": [0, 0, 0],
-      "scale": 1.0,
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": 0.8,
       "components": {
         "ProximityTrigger": {
           "radius": 8,
@@ -74823,7 +74859,11 @@
         2.5,
         215.0
       ],
-      "rotation": [0, 0, 0],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
       "scale": 1.0,
       "components": {
         "ProximityTrigger": {
@@ -74846,7 +74886,11 @@
         3.0,
         190.0
       ],
-      "rotation": [0, 0, 0],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
       "scale": 1.0,
       "components": {
         "ProximityTrigger": {
@@ -74863,56 +74907,108 @@
     {
       "id": "lantern_1",
       "name": "Path Lantern",
-      "position": [186.0, 3.5, 192.0],
-      "rotation": [0, 0, 0],
-      "scale": 1.0,
+      "position": [
+        186.0,
+        3.5,
+        192.0
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": 0.45,
       "components": {
-        "ProximityTrigger": { "radius": 10 },
+        "ProximityTrigger": {
+          "radius": 10
+        },
         "LightToggle": {
-          "color_r": 1.0, "color_g": 0.85, "color_b": 0.5,
-          "radius": 15.0, "intensity": 1.2
+          "color_r": 1.0,
+          "color_g": 0.85,
+          "color_b": 0.5,
+          "radius": 15.0,
+          "intensity": 1.2
         }
       }
     },
     {
       "id": "lantern_2",
       "name": "Path Lantern",
-      "position": [189.0, 3.8, 186.0],
-      "rotation": [0, 0, 0],
-      "scale": 1.0,
+      "position": [
+        189.0,
+        3.8,
+        186.0
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": 0.45,
       "components": {
-        "ProximityTrigger": { "radius": 10 },
+        "ProximityTrigger": {
+          "radius": 10
+        },
         "LightToggle": {
-          "color_r": 1.0, "color_g": 0.85, "color_b": 0.5,
-          "radius": 15.0, "intensity": 1.2
+          "color_r": 1.0,
+          "color_g": 0.85,
+          "color_b": 0.5,
+          "radius": 15.0,
+          "intensity": 1.2
         }
       }
     },
     {
       "id": "lantern_3",
       "name": "Path Lantern",
-      "position": [191.0, 4.0, 180.0],
-      "rotation": [0, 0, 0],
-      "scale": 1.0,
+      "position": [
+        191.0,
+        4.0,
+        180.0
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": 0.45,
       "components": {
-        "ProximityTrigger": { "radius": 10 },
+        "ProximityTrigger": {
+          "radius": 10
+        },
         "LightToggle": {
-          "color_r": 1.0, "color_g": 0.85, "color_b": 0.5,
-          "radius": 15.0, "intensity": 1.2
+          "color_r": 1.0,
+          "color_g": 0.85,
+          "color_b": 0.5,
+          "radius": 15.0,
+          "intensity": 1.2
         }
       }
     },
     {
       "id": "lantern_4",
       "name": "Path Lantern",
-      "position": [175.0, 3.0, 195.0],
-      "rotation": [0, 0, 0],
-      "scale": 1.0,
+      "position": [
+        175.0,
+        3.0,
+        195.0
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": 0.45,
       "components": {
-        "ProximityTrigger": { "radius": 10 },
+        "ProximityTrigger": {
+          "radius": 10
+        },
         "LightToggle": {
-          "color_r": 1.0, "color_g": 0.85, "color_b": 0.5,
-          "radius": 15.0, "intensity": 1.2
+          "color_r": 1.0,
+          "color_g": 0.85,
+          "color_b": 0.5,
+          "radius": 15.0,
+          "intensity": 1.2
         }
       }
     },
@@ -74924,7 +75020,11 @@
         2.0,
         120.0
       ],
-      "rotation": [0, 0, 0],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
       "scale": 1.0,
       "components": {
         "ProximityTrigger": {
@@ -74947,7 +75047,11 @@
         1.5,
         230.0
       ],
-      "rotation": [0, 0, 0],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
       "scale": 1.0,
       "components": {
         "ProximityTrigger": {
@@ -74970,7 +75074,11 @@
         3.0,
         160.0
       ],
-      "rotation": [0, 0, 0],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
       "scale": 1.0,
       "components": {
         "ProximityTrigger": {
