@@ -465,6 +465,9 @@ void AppBase::load_gs_scene(const SceneData& scene_data, const GsSceneOptions& o
             gs_proj[1][1] *= -1.0f;
             renderer_.set_gs_camera(gs_view, gs_proj);
 
+            // Hybrid background colors (ground plane + sky gradient)
+            renderer_.set_gs_background_colors(gs.ground_color, gs.sky_color);
+
             // Transform lights with AABB offset
             auto aabb = cloud.bounds();
             gs_aabb_offset_ = glm::vec2(aabb.min.x, aabb.min.y);

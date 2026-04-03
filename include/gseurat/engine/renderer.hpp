@@ -55,6 +55,11 @@ public:
     bool has_gs_cloud() const { return gs_renderer_.has_cloud(); }
     void set_gs_skip_chunk_cull(bool skip) { gs_skip_chunk_cull_ = skip; }
     void set_gs_blit_offset(float x, float y) { gs_blit_offset_x_ = x; gs_blit_offset_y_ = y; }
+    void set_gs_background_colors(const glm::vec3& ground, const glm::vec3& sky) {
+        gs_bg_ground_color_ = ground;
+        gs_bg_sky_color_ = sky;
+        gs_bg_colors_enabled_ = (ground != glm::vec3(0.0f) || sky != glm::vec3(0.0f));
+    }
     void set_gs_gaussian_budget(uint32_t b) { gs_gaussian_budget_ = b; }
     uint32_t gs_gaussian_budget() const { return gs_gaussian_budget_; }
     void set_gs_lod_focus(const glm::vec3& pos) { gs_lod_focus_pos_ = pos; gs_has_lod_focus_ = true; }
@@ -212,6 +217,9 @@ private:
     // GS camera (3D perspective, independent of sprite camera)
     glm::mat4 gs_view_{1.0f};
     glm::mat4 gs_proj_{1.0f};
+    glm::vec3 gs_bg_ground_color_{0.0f};
+    glm::vec3 gs_bg_sky_color_{0.0f};
+    bool gs_bg_colors_enabled_ = false;
     int light_glow_log_counter_ = 0;
     Texture white_pixel_tex_;
     std::array<VkDescriptorSet, kMaxFramesInFlight> white_pixel_descriptor_sets_{};

@@ -330,6 +330,27 @@ void Renderer::draw_scene(Scene& scene,
             gs_pp.ca_intensity = 0.0f;
             gs_pp.flash_r = gs_pp.flash_g = gs_pp.flash_b = 0.0f;
         }
+        // Hybrid background colors
+        gs_pp.ground_color = gs_bg_ground_color_;
+        gs_pp.sky_color = gs_bg_sky_color_;
+        gs_pp.background_enabled = gs_bg_colors_enabled_;
+        if (gs_bg_colors_enabled_) {
+            // Compute horizon Y from camera: project a ground-plane point far ahead
+            glm::vec3 cam_pos = glm::vec3(glm::inverse(gs_view_)[3]);
+            glm::vec3 forward = -glm::vec3(gs_view_[0][2], gs_view_[1][2], gs_view_[2][2]);
+            glm::vec3 horizon_world = glm::vec3(
+                cam_pos.x + forward.x * 100.0f,
+                0.0f,  // ground Y
+                cam_pos.z + forward.z * 100.0f
+            );
+            glm::vec4 clip = gs_proj_ * gs_view_ * glm::vec4(horizon_world, 1.0f);
+            if (std::abs(clip.w) > 0.001f) {
+                float ndc_y = clip.y / clip.w;
+                // Vulkan NDC with Y-flip: ndc_y=-1 is top, ndc_y=+1 is bottom
+                gs_pp.horizon_y = (ndc_y + 1.0f) * 0.5f;
+                gs_pp.horizon_y = glm::clamp(gs_pp.horizon_y, 0.0f, 1.0f);
+            }
+        }
         gs_renderer_.set_post_process_params(gs_pp);
     }
 
