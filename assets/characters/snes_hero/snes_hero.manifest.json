@@ -68,137 +68,122 @@
     }
   ],
   "poses": {
-    "rest": [],
-    "breathe": [
-      {
-        "bone": "left_arm",
-        "rotation": [
-          0,
-          0,
-          -3
-        ]
-      },
-      {
-        "bone": "right_arm",
-        "rotation": [
-          0,
-          0,
-          3
-        ]
-      },
-      {
-        "bone": "cape",
-        "rotation": [
-          3,
-          0,
-          0
-        ]
-      }
-    ],
-    "walk_1": [
-      {
-        "bone": "left_arm",
-        "rotation": [
-          25,
-          0,
-          0
-        ]
-      },
-      {
-        "bone": "right_arm",
-        "rotation": [
-          -25,
-          0,
-          0
-        ]
-      },
-      {
-        "bone": "left_leg",
-        "rotation": [
-          -20,
-          0,
-          0
-        ]
-      },
-      {
-        "bone": "right_leg",
-        "rotation": [
-          20,
-          0,
-          0
-        ]
-      },
-      {
-        "bone": "cape",
-        "rotation": [
-          -8,
-          0,
-          0
-        ]
-      }
-    ],
-    "walk_2": [
-      {
-        "bone": "left_arm",
-        "rotation": [
-          -25,
-          0,
-          0
-        ]
-      },
-      {
-        "bone": "right_arm",
-        "rotation": [
-          25,
-          0,
-          0
-        ]
-      },
-      {
-        "bone": "left_leg",
-        "rotation": [
-          20,
-          0,
-          0
-        ]
-      },
-      {
-        "bone": "right_leg",
-        "rotation": [
-          -20,
-          0,
-          0
-        ]
-      },
-      {
-        "bone": "cape",
-        "rotation": [
-          8,
-          0,
-          0
-        ]
-      }
-    ]
+    "rest": {},
+    "breathe": {
+      "left_arm": [
+        0,
+        0,
+        -3
+      ],
+      "right_arm": [
+        0,
+        0,
+        3
+      ],
+      "cape": [
+        3,
+        0,
+        0
+      ]
+    },
+    "walk_1": {
+      "left_arm": [
+        25,
+        0,
+        0
+      ],
+      "right_arm": [
+        -25,
+        0,
+        0
+      ],
+      "left_leg": [
+        -20,
+        0,
+        0
+      ],
+      "right_leg": [
+        20,
+        0,
+        0
+      ],
+      "cape": [
+        -8,
+        0,
+        0
+      ]
+    },
+    "walk_2": {
+      "left_arm": [
+        -25,
+        0,
+        0
+      ],
+      "right_arm": [
+        25,
+        0,
+        0
+      ],
+      "left_leg": [
+        20,
+        0,
+        0
+      ],
+      "right_leg": [
+        -20,
+        0,
+        0
+      ],
+      "cape": [
+        8,
+        0,
+        0
+      ]
+    }
   },
   "animations": {
     "idle": {
       "duration": 1.0,
       "looping": true,
       "keyframes": [
-        { "time": 0, "pose": "rest" },
-        { "time": 0.5, "pose": "breathe" },
-        { "time": 1.0, "pose": "rest" }
+        {
+          "time": 0,
+          "pose": "rest"
+        },
+        {
+          "time": 0.5,
+          "pose": "breathe"
+        },
+        {
+          "time": 1.0,
+          "pose": "rest"
+        }
       ]
     },
     "walk": {
       "duration": 0.6,
       "looping": true,
       "keyframes": [
-        { "time": 0, "pose": "walk_1" },
-        { "time": 0.15, "pose": "rest" },
-        { "time": 0.3, "pose": "walk_2" },
-        { "time": 0.45, "pose": "rest" },
-        { "time": 0.6, "pose": "walk_1" }
+        {
+          "time": 0,
+          "pose": "walk_1"
+        },
+        {
+          "time": 0.15,
+          "pose": "rest"
+        },
+        {
+          "time": 0.3,
+          "pose": "walk_2"
+        },
+        {
+          "time": 0.45,
+          "pose": "rest"
+        },
+        {
+          "time": 0.6,
+          "pose": "walk_1"
+        }
       ]
     }
   }
