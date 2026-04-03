@@ -325,7 +325,6 @@ void AppBase::init_game_object_system() {
 // ── Shared GS scene loading ──
 
 void AppBase::load_gs_scene(const SceneData& scene_data, const GsSceneOptions& opts) {
-    scene_game_object_data_ = scene_data.game_objects;
 
     renderer_.clear_gs_particle_emitters();
     renderer_.clear_gs_animations();
@@ -352,11 +351,29 @@ void AppBase::load_gs_scene(const SceneData& scene_data, const GsSceneOptions& o
         if (!cloud.empty()) {
             renderer_.gs_renderer().set_scale_multiplier(gs.scale_multiplier);
 
+            // Snap game object positions to terrain elevation
+            auto snapped_objects = scene_data.game_objects;
+            if (scene_data.collision) {
+                const auto& grid = *scene_data.collision;
+                if (grid.width > 0 && !grid.elevation.empty()) {
+                    for (auto& go : snapped_objects) {
+                        int gx = static_cast<int>(go.position.x / grid.cell_size);
+                        int gz = static_cast<int>(go.position.z / grid.cell_size);
+                        if (gx >= 0 && gx < static_cast<int>(grid.width) &&
+                            gz >= 0 && gz < static_cast<int>(grid.height)) {
+                            go.position.y = grid.get_elevation(
+                                static_cast<uint32_t>(gx), static_cast<uint32_t>(gz));
+                        }
+                    }
+                }
+            }
+            scene_game_object_data_ = snapped_objects;
+
             // Merge all game objects with PLY visuals into the GS cloud
             {
                 auto merged = cloud.gaussians();
                 uint32_t merged_count = 0;
-                for (const auto& go : scene_data.game_objects) {
+                for (const auto& go : snapped_objects) {
                     if (go.ply_file.empty()) continue;
                     try {
                         auto placed_cloud = GaussianCloud::load_ply(go.ply_file);
@@ -386,7 +403,7 @@ void AppBase::load_gs_scene(const SceneData& scene_data, const GsSceneOptions& o
             }
 
             // Create ECS entities for game objects with components
-            for (const auto& go : scene_data.game_objects) {
+            for (const auto& go : snapped_objects) {
                 if (go.components.empty() || go.components.is_null()) continue;
                 auto entity = world_.create();
                 world_.add<ecs::Transform>(entity, {{go.position}, {go.scale, go.scale}});
