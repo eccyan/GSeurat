@@ -334,6 +334,20 @@ void AppBase::init_game_object_system() {
         [](const VfxTrigger& c) -> nlohmann::json {
             return {{"vfx_path", std::string(c.vfx_path)}};
         });
+
+    component_registry_.register_component<NpcWalker>("NpcWalker",
+        [](const nlohmann::json& j) -> NpcWalker {
+            NpcWalker c;
+            if (j.contains("patrol_radius")) c.patrol_radius = j["patrol_radius"].get<float>();
+            if (j.contains("speed")) c.speed = j["speed"].get<float>();
+            if (j.contains("pause_duration")) c.pause_duration = j["pause_duration"].get<float>();
+            return c;
+        },
+        [](const NpcWalker& c) -> nlohmann::json {
+            return {{"patrol_radius", c.patrol_radius},
+                    {"speed", c.speed},
+                    {"pause_duration", c.pause_duration}};
+        });
 }
 
 // ── Shared GS scene loading ──
