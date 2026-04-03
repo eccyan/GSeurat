@@ -118,7 +118,7 @@ void IslandDemoState::on_enter(AppBase& app) {
         uint32_t map_count = static_cast<uint32_t>(merged.size());
 
         // Load mesh-converted character model
-        constexpr float kCharScale = 2.5f;   // warm robot: 9 voxels tall × 2.5 = ~22.5 units
+        constexpr float kCharScale = 1.8f;   // warm robot 3x density: denser Gaussians, less scale needed
         auto char_cloud = GaussianCloud::load_ply("assets/characters/warm_robot/warm_robot.ply");
         if (!char_cloud.empty()) {
             // Scale, rotate 180° (face away from camera), and position at spawn
