@@ -74110,7 +74110,7 @@
     {
       "id": "house",
       "name": "House",
-      "ply_file": "assets/props/island_house1.ply",
+      "ply_file": "assets/props/island_house.ply",
       "position": [
         192,
         4.5658,
