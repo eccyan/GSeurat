@@ -320,6 +320,20 @@ void AppBase::init_game_object_system() {
             return {{"color_r", c.color_r}, {"color_g", c.color_g},
                     {"color_b", c.color_b}, {"burst_height", c.burst_height}};
         });
+
+    component_registry_.register_component<VfxTrigger>("VfxTrigger",
+        [](const nlohmann::json& j) -> VfxTrigger {
+            VfxTrigger c;
+            if (j.contains("vfx_path")) {
+                auto path = j["vfx_path"].get<std::string>();
+                std::strncpy(c.vfx_path, path.c_str(), sizeof(c.vfx_path) - 1);
+                c.vfx_path[sizeof(c.vfx_path) - 1] = '\0';
+            }
+            return c;
+        },
+        [](const VfxTrigger& c) -> nlohmann::json {
+            return {{"vfx_path", std::string(c.vfx_path)}};
+        });
 }
 
 // ── Shared GS scene loading ──

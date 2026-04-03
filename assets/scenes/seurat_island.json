@@ -74139,7 +74139,14 @@
         0
       ],
       "scale": 0.65,
-      "components": {}
+      "components": {
+        "ProximityTrigger": {
+          "radius": 10
+        },
+        "VfxTrigger": {
+          "vfx_path": "assets/vfx/fountain_spray.vfx.json"
+        }
+      }
     },
     {
       "id": "treasure_chest",
@@ -74156,7 +74163,18 @@
         0
       ],
       "scale": 0.8,
-      "components": {}
+      "components": {
+        "ProximityTrigger": {
+          "radius": 8,
+          "one_shot": true
+        },
+        "AnimationTrigger": {
+          "effect_name": "scatter",
+          "anim_radius": 4.0,
+          "lifetime": 2.0,
+          "loop": false
+        }
+      }
     },
     {
       "id": "mushroom_cluster",
@@ -74411,7 +74429,17 @@
         0
       ],
       "scale": 1.28,
-      "components": {}
+      "components": {
+        "ProximityTrigger": {
+          "radius": 14
+        },
+        "AnimationTrigger": {
+          "effect_name": "orbit",
+          "anim_radius": 6.0,
+          "lifetime": 4.0,
+          "loop": true
+        }
+      }
     },
     {
       "id": "crystal_2",
@@ -74428,7 +74456,17 @@
         0
       ],
       "scale": 1.63,
-      "components": {}
+      "components": {
+        "ProximityTrigger": {
+          "radius": 14
+        },
+        "AnimationTrigger": {
+          "effect_name": "wave",
+          "anim_radius": 8.0,
+          "lifetime": 3.0,
+          "loop": true
+        }
+      }
     },
     {
       "id": "crystal_3",
@@ -74445,7 +74483,17 @@
         0
       ],
       "scale": 1.36,
-      "components": {}
+      "components": {
+        "ProximityTrigger": {
+          "radius": 14
+        },
+        "AnimationTrigger": {
+          "effect_name": "float",
+          "anim_radius": 5.0,
+          "lifetime": 5.0,
+          "loop": true
+        }
+      }
     },
     {
       "id": "crystal_4",
@@ -74462,7 +74510,14 @@
         0
       ],
       "scale": 1.53,
-      "components": {}
+      "components": {
+        "ProximityTrigger": {
+          "radius": 14
+        },
+        "VfxTrigger": {
+          "vfx_path": "assets/vfx/crystal_burst.vfx.json"
+        }
+      }
     },
     {
       "id": "torch_1",
@@ -74602,12 +74657,11 @@
         "ProximityTrigger": {
           "radius": 14
         },
-        "EmissiveToggle": {
-          "emission": 8.0,
-          "color_r": 1.0,
-          "color_g": 0.15,
-          "color_b": 0.05,
-          "effect_radius": 10.0
+        "AnimationTrigger": {
+          "effect_name": "orbit",
+          "anim_radius": 6.0,
+          "lifetime": 4.0,
+          "loop": true
         }
       }
     },
@@ -74629,12 +74683,11 @@
         "ProximityTrigger": {
           "radius": 14
         },
-        "EmissiveToggle": {
-          "emission": 8.0,
-          "color_r": 1.0,
-          "color_g": 0.15,
-          "color_b": 0.05,
-          "effect_radius": 10.0
+        "AnimationTrigger": {
+          "effect_name": "wave",
+          "anim_radius": 8.0,
+          "lifetime": 3.0,
+          "loop": true
         }
       }
     },
@@ -74656,12 +74709,11 @@
         "ProximityTrigger": {
           "radius": 14
         },
-        "EmissiveToggle": {
-          "emission": 8.0,
-          "color_r": 1.0,
-          "color_g": 0.15,
-          "color_b": 0.05,
-          "effect_radius": 10.0
+        "AnimationTrigger": {
+          "effect_name": "float",
+          "anim_radius": 5.0,
+          "lifetime": 5.0,
+          "loop": true
         }
       }
     },
@@ -74683,12 +74735,8 @@
         "ProximityTrigger": {
           "radius": 10
         },
-        "EmissiveToggle": {
-          "emission": 4.0,
-          "color_r": 0.4,
-          "color_g": 0.7,
-          "color_b": 1.0,
-          "effect_radius": 6.0
+        "VfxTrigger": {
+          "vfx_path": "assets/vfx/fountain_spray.vfx.json"
         }
       }
     },
@@ -74710,12 +74758,8 @@
         "ProximityTrigger": {
           "radius": 14
         },
-        "EmissiveToggle": {
-          "emission": 8.0,
-          "color_r": 0.2,
-          "color_g": 0.8,
-          "color_b": 1.0,
-          "effect_radius": 10.0
+        "VfxTrigger": {
+          "vfx_path": "assets/vfx/crystal_burst.vfx.json"
         }
       }
     },
@@ -74842,12 +74886,11 @@
           "radius": 8,
           "one_shot": true
         },
-        "EmissiveToggle": {
-          "emission": 12.0,
-          "color_r": 1.0,
-          "color_g": 0.85,
-          "color_b": 0.2,
-          "effect_radius": 5.0
+        "AnimationTrigger": {
+          "effect_name": "scatter",
+          "anim_radius": 4.0,
+          "lifetime": 2.0,
+          "loop": false
         }
       }
     },
@@ -74869,12 +74912,11 @@
         "ProximityTrigger": {
           "radius": 12
         },
-        "EmissiveToggle": {
-          "emission": 6.0,
-          "color_r": 0.3,
-          "color_g": 1.0,
-          "color_b": 0.85,
-          "effect_radius": 8.0
+        "AnimationTrigger": {
+          "effect_name": "dissolve",
+          "anim_radius": 5.0,
+          "lifetime": 3.0,
+          "loop": true
         }
       }
     },
@@ -75036,6 +75078,12 @@
           "color_g": 0.4,
           "color_b": 0.1,
           "burst_height": 12.0
+        },
+        "AnimationTrigger": {
+          "effect_name": "vortex",
+          "anim_radius": 6.0,
+          "lifetime": 4.0,
+          "loop": false
         }
       }
     },
@@ -75063,6 +75111,12 @@
           "color_g": 0.6,
           "color_b": 1.0,
           "burst_height": 10.0
+        },
+        "AnimationTrigger": {
+          "effect_name": "vortex",
+          "anim_radius": 6.0,
+          "lifetime": 4.0,
+          "loop": false
         }
       }
     },
@@ -75090,6 +75144,12 @@
           "color_g": 1.0,
           "color_b": 0.3,
           "burst_height": 8.0
+        },
+        "AnimationTrigger": {
+          "effect_name": "vortex",
+          "anim_radius": 6.0,
+          "lifetime": 4.0,
+          "loop": false
         }
       }
     }

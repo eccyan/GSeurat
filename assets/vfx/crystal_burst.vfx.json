@@ -1,0 +1,49 @@
+{
+  "name": "crystal_burst",
+  "duration": 6.0,
+  "category": "environment",
+  "elements": [
+    {
+      "name": "sparkle_emitter",
+      "type": "emitter",
+      "position": [0, 2, 0],
+      "start": 0,
+      "duration": 6.0,
+      "loop": true,
+      "spawn_rate": 30,
+      "lifetime_min": 1.5,
+      "lifetime_max": 3.0,
+      "velocity_min": [-2, 3, -2],
+      "velocity_max": [2, 8, 2],
+      "acceleration": [0, 1, 0],
+      "color_start": [0.2, 0.8, 1.0],
+      "color_end": [0.1, 0.3, 0.8],
+      "scale_min": [0.3, 0.3, 0.3],
+      "scale_max": [0.6, 0.6, 0.6],
+      "opacity_start": 0.9,
+      "opacity_end": 0.0,
+      "emission": 5.0
+    },
+    {
+      "name": "pulse_anim",
+      "type": "animation",
+      "position": [0, 0, 0],
+      "start": 0,
+      "duration": 4.0,
+      "loop": true,
+      "effect": "pulse",
+      "region": { "shape": "sphere", "radius": 6.0 }
+    },
+    {
+      "name": "glow_light",
+      "type": "light",
+      "position": [0, 3, 0],
+      "start": 0,
+      "duration": 6.0,
+      "loop": true,
+      "color": [0.2, 0.8, 1.0],
+      "intensity": 3.0,
+      "radius": 20.0
+    }
+  ]
+}

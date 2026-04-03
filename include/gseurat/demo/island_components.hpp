@@ -79,4 +79,10 @@ struct DiscoveryZone {
     bool discovered = false;
 };
 
+// Triggers a VFX instance (multi-element composition) on proximity.
+struct VfxTrigger {
+    char vfx_path[64] = "";
+    bool fired = false;
+};
+
 }  // namespace gseurat

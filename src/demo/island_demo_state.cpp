@@ -11,6 +11,7 @@
 #include "gseurat/engine/scene_loader.hpp"
 #include "gseurat/engine/gs_particle.hpp"
 #include "gseurat/engine/gs_animator.hpp"
+#include "gseurat/engine/gs_vfx.hpp"
 
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
@@ -556,6 +557,30 @@ void IslandDemoState::update_effects(AppBase& app, float dt) {
             });
         static bool logged = false;
         if (!logged) { std::fprintf(stderr, "[AnimationTrigger] %d entities\n", count); logged = true; }
+    }
+
+    // VfxTrigger: spawn a VFX instance when player approaches
+    {
+        world.view<VfxTrigger, ProximityTrigger, ecs::Transform>().each(
+            [&](ecs::Entity, VfxTrigger& vt, ProximityTrigger& pt, ecs::Transform& t) {
+                if (pt.triggered && !vt.fired) {
+                    vt.fired = true;
+                    std::string path(vt.vfx_path);
+                    std::fprintf(stderr, "[VfxTrigger] SPAWN '%s' at (%.1f, %.1f, %.1f)\n",
+                        vt.vfx_path, t.position.x, t.position.y, t.position.z);
+                    try {
+                        auto preset = load_vfx_preset(path);
+                        VfxInstance inst;
+                        inst.init(preset, t.position, true);
+                        app.renderer().add_vfx_instance(std::move(inst));
+                    } catch (const std::exception& e) {
+                        std::fprintf(stderr, "[VfxTrigger] ERROR: %s\n", e.what());
+                    }
+                }
+                if (!pt.triggered && vt.fired && !pt.one_shot) {
+                    vt.fired = false;
+                }
+            });
     }
 
     // DiscoveryZone: celebration fireworks burst when player finds a hidden spot
