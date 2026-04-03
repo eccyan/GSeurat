@@ -1,0 +1,18 @@
+{
+  "name": "island_house",
+  "type": "static_prop",
+  "ply_file": "island_house.ply",
+  "parts": [
+    {
+      "id": "house",
+      "label": "Cottage House",
+      "parent": null,
+      "joint": [
+        0,
+        0,
+        0
+      ]
+    }
+  ],
+  "poses": {}
+}
