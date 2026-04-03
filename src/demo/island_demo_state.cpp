@@ -77,17 +77,22 @@ void IslandDemoState::on_enter(AppBase& app) {
         // Mark cells under the house as solid (collision box)
         // House at ~(192, 175), roughly 18×14 voxels at scale 0.8 ≈ 14×11 world units
         float house_x = 192.0f, house_z = 175.0f;
-        float house_hw = 7.0f, house_hd = 6.0f;  // half-extents
-        for (float x = house_x - house_hw; x <= house_x + house_hw; x += collision_grid_.cell_size) {
-            for (float z = house_z - house_hd; z <= house_z + house_hd; z += collision_grid_.cell_size) {
-                int gx = static_cast<int>(x / collision_grid_.cell_size);
-                int gz = static_cast<int>(z / collision_grid_.cell_size);
+        float house_hw = 8.0f, house_hd = 7.0f;  // half-extents (generous)
+        int marked = 0;
+        for (float wx = house_x - house_hw; wx <= house_x + house_hw; wx += collision_grid_.cell_size * 0.5f) {
+            for (float wz = house_z - house_hd; wz <= house_z + house_hd; wz += collision_grid_.cell_size * 0.5f) {
+                float lx = wx - grid_origin_.x;
+                float lz = wz - grid_origin_.y;
+                int gx = static_cast<int>(lx / collision_grid_.cell_size);
+                int gz = static_cast<int>(lz / collision_grid_.cell_size);
                 if (gx >= 0 && gx < static_cast<int>(collision_grid_.width) &&
                     gz >= 0 && gz < static_cast<int>(collision_grid_.height)) {
                     collision_grid_.solid[gz * collision_grid_.width + gx] = true;
+                    marked++;
                 }
             }
         }
+        std::fprintf(stderr, "[IslandDemo] Marked %d cells solid for house collision\n", marked);
     }
 
     // Create collision grid reference entity for NPC system

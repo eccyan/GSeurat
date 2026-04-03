@@ -180,52 +180,26 @@
       }
     ]
   },
-  "animations": [
-    {
-      "name": "idle",
+  "animations": {
+    "idle": {
       "duration": 1.0,
       "looping": true,
       "keyframes": [
-        {
-          "time": 0,
-          "pose": "rest"
-        },
-        {
-          "time": 0.5,
-          "pose": "breathe"
-        },
-        {
-          "time": 1.0,
-          "pose": "rest"
-        }
+        { "time": 0, "pose": "rest" },
+        { "time": 0.5, "pose": "breathe" },
+        { "time": 1.0, "pose": "rest" }
       ]
     },
-    {
-      "name": "walk",
+    "walk": {
       "duration": 0.6,
       "looping": true,
       "keyframes": [
-        {
-          "time": 0,
-          "pose": "walk_1"
-        },
-        {
-          "time": 0.15,
-          "pose": "rest"
-        },
-        {
-          "time": 0.3,
-          "pose": "walk_2"
-        },
-        {
-          "time": 0.45,
-          "pose": "rest"
-        },
-        {
-          "time": 0.6,
-          "pose": "walk_1"
-        }
+        { "time": 0, "pose": "walk_1" },
+        { "time": 0.15, "pose": "rest" },
+        { "time": 0.3, "pose": "walk_2" },
+        { "time": 0.45, "pose": "rest" },
+        { "time": 0.6, "pose": "walk_1" }
       ]
     }
-  ]
+  }
 }
