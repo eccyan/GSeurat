@@ -74194,23 +74194,6 @@
       "components": {}
     },
     {
-      "id": "slime_npc",
-      "name": "Slime",
-      "ply_file": "assets/characters/slime/slime.ply",
-      "position": [
-        183,
-        3.0,
-        190
-      ],
-      "rotation": [
-        0,
-        0,
-        0
-      ],
-      "scale": 0.5,
-      "components": {}
-    },
-    {
       "id": "lantern_1",
       "name": "Lantern Post",
       "ply_file": "assets/props/lantern_post.ply",
@@ -74921,32 +74904,6 @@
       }
     },
     {
-      "id": "slime_bounce",
-      "name": "Slime",
-      "position": [
-        183.0,
-        3.0,
-        190.0
-      ],
-      "rotation": [
-        0,
-        0,
-        0
-      ],
-      "scale": 1.0,
-      "components": {
-        "ProximityTrigger": {
-          "radius": 8
-        },
-        "AnimationTrigger": {
-          "effect_name": "pulse",
-          "anim_radius": 4.0,
-          "lifetime": 2.0,
-          "loop": true
-        }
-      }
-    },
-    {
       "id": "lantern_1",
       "name": "Path Lantern",
       "position": [
@@ -75150,6 +75107,102 @@
           "anim_radius": 6.0,
           "lifetime": 4.0,
           "loop": false
+        }
+      }
+    },
+    {
+      "id": "slime_npc_1",
+      "name": "Slime (patrol)",
+      "ply_file": "assets/characters/slime/slime.ply",
+      "position": [
+        170.0,
+        3.0,
+        195.0
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": 0.5,
+      "components": {
+        "NpcWalker": {
+          "patrol_radius": 10.0,
+          "speed": 4.0,
+          "pause_duration": 2.0
+        },
+        "ProximityTrigger": {
+          "radius": 6
+        },
+        "AnimationTrigger": {
+          "effect_name": "pulse",
+          "anim_radius": 4.0,
+          "lifetime": 2.0,
+          "loop": true
+        }
+      }
+    },
+    {
+      "id": "slime_npc_2",
+      "name": "Slime (guard)",
+      "ply_file": "assets/characters/slime/slime.ply",
+      "position": [
+        210.0,
+        3.0,
+        180.0
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": 0.5,
+      "components": {
+        "NpcWalker": {
+          "patrol_radius": 8.0,
+          "speed": 3.0,
+          "pause_duration": 3.0
+        },
+        "ProximityTrigger": {
+          "radius": 6
+        },
+        "AnimationTrigger": {
+          "effect_name": "orbit",
+          "anim_radius": 3.0,
+          "lifetime": 3.0,
+          "loop": true
+        }
+      }
+    },
+    {
+      "id": "slime_npc_3",
+      "name": "Slime (wanderer)",
+      "ply_file": "assets/characters/slime/slime.ply",
+      "position": [
+        145.0,
+        3.0,
+        200.0
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": 0.5,
+      "components": {
+        "NpcWalker": {
+          "patrol_radius": 12.0,
+          "speed": 6.0,
+          "pause_duration": 1.5
+        },
+        "ProximityTrigger": {
+          "radius": 6
+        },
+        "AnimationTrigger": {
+          "effect_name": "wave",
+          "anim_radius": 5.0,
+          "lifetime": 2.0,
+          "loop": true
         }
       }
     }

@@ -74,6 +74,16 @@ void IslandDemoState::on_enter(AppBase& app) {
         grid_origin_ = {0.0f, 0.0f};
     }
 
+    // Create collision grid reference entity for NPC system
+    {
+        auto grid_entity = app.world().create();
+        CollisionGridRef ref;
+        ref.grid = &collision_grid_;
+        ref.origin_x = grid_origin_.x;
+        ref.origin_z = grid_origin_.y;
+        app.world().add<CollisionGridRef>(grid_entity, ref);
+    }
+
     // Determine player start position
     glm::vec3 player_pos = scene_data.player_position;
     // If player_position is zero, place at map center
@@ -93,6 +103,7 @@ void IslandDemoState::on_enter(AppBase& app) {
     app.system_scheduler().add_system({"proximity_trigger", proximity_trigger_system, {}, {}});
     app.system_scheduler().add_system({"linked_trigger", linked_trigger_system, {}, {}});
     app.system_scheduler().add_system({"emissive_toggle", emissive_toggle_system, {}, {}});
+    app.system_scheduler().add_system({"npc_walker", npc_walker_system, {}, {}});
 
     // Capture base scene lights (before dynamic emissive lights are added)
     // Note: GS renderer gets lights during record_gs_prepass, not at init.
@@ -134,6 +145,38 @@ void IslandDemoState::on_enter(AppBase& app) {
                 cg.scale *= kCharScale;
                 merged.push_back(cg);
             }
+        }
+
+        // Load NPC slime Gaussians with unique bone indices
+        auto slime_cloud = GaussianCloud::load_ply("assets/characters/slime/slime.ply");
+        if (!slime_cloud.empty()) {
+            int player_bone_count = character_data_
+                ? static_cast<int>(character_data_->bones.size()) : 1;
+            next_bone_index_ = static_cast<uint32_t>(player_bone_count + 1);
+
+            app.world().view<NpcWalker, ecs::Transform>().each(
+                [&](ecs::Entity entity, NpcWalker&, ecs::Transform& t) {
+                    if (next_bone_index_ >= 31) return;
+
+                    NpcInfo info;
+                    info.entity = entity;
+                    info.spawn_pos = t.position;
+                    info.bone_index = next_bone_index_;
+
+                    constexpr float kSlimeScale = 0.5f;
+                    const auto& slime_gs = slime_cloud.gaussians();
+                    for (const auto& g : slime_gs) {
+                        Gaussian sg = g;
+                        glm::vec3 rotated(-sg.position.x, sg.position.y, -sg.position.z);
+                        sg.position = t.position + rotated * kSlimeScale + glm::vec3(0, 0.5f, 0);
+                        sg.scale *= kSlimeScale;
+                        sg.bone_index = next_bone_index_;
+                        merged.push_back(sg);
+                    }
+
+                    npc_infos_.push_back(info);
+                    next_bone_index_++;
+                });
         }
 
         uint32_t char_count = static_cast<uint32_t>(merged.size()) - map_count;
@@ -657,7 +700,19 @@ void IslandDemoState::update_walk_animation(AppBase& app, float dt) {
         for (int i = 0; i < bone_count && i < 31; ++i) {
             bones[i + 1] = root_xform * anim_bones[i];
         }
-        app.renderer().gs_renderer().upload_bone_transforms(bones, bone_count + 1);
+
+        // NPC bone transforms — translate from spawn to current position
+        for (const auto& npc : npc_infos_) {
+            if (npc.bone_index >= 32) continue;
+            auto* npc_t = app.world().try_get<ecs::Transform>(npc.entity);
+            if (!npc_t) continue;
+            glm::vec3 npc_offset = npc_t->position - npc.spawn_pos;
+            bones[npc.bone_index] = glm::translate(glm::mat4(1.0f), npc_offset);
+        }
+
+        int total_bones = static_cast<int>(next_bone_index_);
+        if (total_bones < bone_count + 1) total_bones = bone_count + 1;
+        app.renderer().gs_renderer().upload_bone_transforms(bones, total_bones);
     } else {
         glm::mat4 bones[2];
         bones[0] = terrain_bone;
