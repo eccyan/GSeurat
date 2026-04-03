@@ -50,8 +50,8 @@ private:
     glm::vec3 character_origin_{0.0f};     // current player position
     std::vector<Gaussian> map_gaussians_;  // original map data before character merge
 
-    // Data-driven bone animation (replaces procedural walk animation)
-    std::optional<gseurat::CharacterData> character_data_;
+    // Data-driven bone animation
+    std::unique_ptr<gseurat::CharacterData> character_data_;
     std::unique_ptr<gseurat::BoneAnimationPlayer> anim_player_;
     std::unique_ptr<gseurat::BoneAnimationStateMachine> anim_sm_;
 

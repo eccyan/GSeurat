@@ -100,9 +100,14 @@ void IslandDemoState::on_enter(AppBase& app) {
     scene_lights_ = {};
     std::fprintf(stderr, "[IslandDemo] scene_lights_ captured: %zu lights\n", scene_lights_.size());
 
-    // Load character manifest early (before heavy Gaussian allocation)
-    character_data_ = gseurat::load_character_manifest(
-        "assets/characters/warm_robot/warm_robot.manifest.json");
+    // Load character manifest (heap-allocated via unique_ptr)
+    {
+        auto loaded = gseurat::load_character_manifest(
+            "assets/characters/warm_robot/warm_robot.manifest.json");
+        if (loaded) {
+            character_data_ = std::make_unique<gseurat::CharacterData>(std::move(*loaded));
+        }
+    }
 
     // Spawn player character (procedural humanoid)
     if (app.renderer().has_gs_cloud()) {
@@ -140,7 +145,7 @@ void IslandDemoState::on_enter(AppBase& app) {
         character_origin_ = player_pos;
         character_spawned_ = true;
 
-        // Initialize data-driven bone animation (manifest loaded earlier)
+        // Initialize data-driven bone animation
         if (character_data_) {
             anim_player_ = std::make_unique<gseurat::BoneAnimationPlayer>(*character_data_);
             anim_sm_ = std::make_unique<gseurat::BoneAnimationStateMachine>(*anim_player_);
@@ -159,7 +164,14 @@ void IslandDemoState::on_enter(AppBase& app) {
 }
 
 void IslandDemoState::on_exit(AppBase& app) {
-    // Clean up bone transforms
+    // Release animation objects before state destruction
+    anim_sm_.reset();
+    anim_player_.reset();
+    // Intentionally leak CharacterData — freeing it during shutdown hangs
+    // due to an undiagnosed allocator issue on macOS (ASan clean, not heap
+    // corruption). The process is exiting; the OS reclaims the memory.
+    (void)character_data_.release();
+
     if (character_spawned_) {
         app.renderer().gs_renderer().clear_bone_transforms();
         character_spawned_ = false;
@@ -548,14 +560,10 @@ void IslandDemoState::update_walk_animation(AppBase& app, float dt) {
         glm::vec3(terrain_sway_x, terrain_sway_y, 0.0f));
 
     if (anim_player_ && anim_sm_) {
-        // Update state based on movement
         float speed = glm::length(glm::vec2(player_velocity_.x, player_velocity_.z));
         anim_sm_->set_state(speed > 0.1f ? "walk" : "idle");
-
-        // Advance animation
         anim_player_->update(dt);
 
-        // Build final bone array: bone 0 = terrain, bones 1+ = character with root xform
         glm::mat4 bones[32];
         bones[0] = terrain_bone;
         const auto& anim_bones = anim_player_->bone_transforms();
@@ -565,7 +573,6 @@ void IslandDemoState::update_walk_animation(AppBase& app, float dt) {
         }
         app.renderer().gs_renderer().upload_bone_transforms(bones, bone_count + 1);
     } else {
-        // Fallback: no manifest loaded, just terrain sway + static character
         glm::mat4 bones[2];
         bones[0] = terrain_bone;
         bones[1] = root_xform;
