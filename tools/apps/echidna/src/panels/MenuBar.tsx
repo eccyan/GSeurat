@@ -5,6 +5,8 @@ import { buildManifest } from '../lib/manifestExport.js';
 import { parseVox } from '../lib/voxImport.js';
 import { sendBridgeCommand } from '@gseurat/engine-client';
 import type { EchidnaFile } from '../store/types.js';
+import { NewProjectDialog } from './NewProjectDialog.js';
+import { ResizeGridDialog } from './ResizeGridDialog.js';
 
 const BRIDGE_REST_URL = 'http://localhost:9101';
 
@@ -184,6 +186,8 @@ export function MenuBar() {
   const voxRef = useRef<HTMLInputElement>(null);
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [toast, setToast] = useState<ToastState>(null);
+  const [showNewDialog, setShowNewDialog] = useState(false);
+  const [showResizeDialog, setShowResizeDialog] = useState(false);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const showGrid = useCharacterStore((s) => s.showGrid);
@@ -198,8 +202,7 @@ export function MenuBar() {
   }, []);
 
   const handleNew = useCallback(() => {
-    if (!confirm('Create new character? Unsaved changes will be lost.')) return;
-    useCharacterStore.getState().newCharacter();
+    setShowNewDialog(true);
   }, []);
 
   const handleSave = useCallback(() => {
@@ -349,6 +352,8 @@ export function MenuBar() {
   const editItems = [
     { label: 'Undo', shortcut: '\u2318Z', action: () => useCharacterStore.getState().undo() },
     { label: 'Redo', shortcut: '\u21e7\u2318Z', action: () => useCharacterStore.getState().redo() },
+    { separator: true as const },
+    { label: 'Resize Grid...', action: () => setShowResizeDialog(true) },
   ];
 
   const viewItems = [
@@ -397,6 +402,9 @@ export function MenuBar() {
           {toast.message}
         </div>
       )}
+
+      {showNewDialog && <NewProjectDialog onClose={() => setShowNewDialog(false)} />}
+      {showResizeDialog && <ResizeGridDialog onClose={() => setShowResizeDialog(false)} />}
     </div>
   );
 }
