@@ -87,6 +87,12 @@ SceneData SceneLoader::from_json(const nlohmann::json& j) {
         gsd.render_height = gs.value("render_height", 240u);
         gsd.scale_multiplier = gs.value("scale_multiplier", 1.0f);
         gsd.background_image = gs.value("background_image", "");
+        if (gs.contains("ground_color")) {
+            gsd.ground_color = parse_vec3(gs["ground_color"]);
+        }
+        if (gs.contains("sky_color")) {
+            gsd.sky_color = parse_vec3(gs["sky_color"]);
+        }
         if (gs.contains("parallax")) {
             const auto& px = gs["parallax"];
             GsParallaxConfig pcfg;
@@ -802,6 +808,12 @@ nlohmann::json SceneLoader::to_json(const SceneData& data) {
         }
         if (!gs.background_image.empty()) {
             gs_j["background_image"] = gs.background_image;
+        }
+        if (gs.ground_color != glm::vec3(0.0f)) {
+            gs_j["ground_color"] = vec3_json(gs.ground_color);
+        }
+        if (gs.sky_color != glm::vec3(0.0f)) {
+            gs_j["sky_color"] = vec3_json(gs.sky_color);
         }
         if (gs.parallax) {
             const auto& px = *gs.parallax;
