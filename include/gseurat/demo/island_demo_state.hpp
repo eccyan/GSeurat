@@ -42,6 +42,7 @@ private:
     glm::vec3 player_velocity_{0.0f};
     float walk_anim_time_ = 0.0f;
     float env_anim_time_ = 0.0f;
+    float facing_angle_ = 0.0f;  // character facing direction (independent of camera)
 
     // Character Gaussians (for walk animation bone transforms)
     bool character_spawned_ = false;
@@ -49,6 +50,15 @@ private:
     glm::vec3 character_spawn_pos_{0.0f};  // where Gaussians were placed
     glm::vec3 character_origin_{0.0f};     // current player position
     std::vector<Gaussian> map_gaussians_;  // original map data before character merge
+
+    // NPC tracking (for bone animation)
+    struct NpcInfo {
+        ecs::Entity entity = ecs::kNullEntity;
+        glm::vec3 spawn_pos{0.0f};
+        uint32_t bone_index = 0;
+    };
+    std::vector<NpcInfo> npc_infos_;
+    uint32_t next_bone_index_ = 0;
 
     // Data-driven bone animation
     std::unique_ptr<gseurat::CharacterData> character_data_;

@@ -64,7 +64,9 @@ POIS = {
     "anim_float": (171, 261, "Float animation trigger"),
     "treasure":  (235, 145, "Hidden treasure chest (gold burst)"),
     "mushrooms": (135, 215, "Glowing mushroom grove"),
-    "slime":     (183, 190, "Friendly slime NPC"),
+    "slime_1":   (170, 195, "Slime NPC (patrol, pulse)"),
+    "slime_2":   (210, 180, "Slime NPC (guard, orbit)"),
+    "slime_3":   (145, 200, "Slime NPC (wanderer, wave)"),
     "secret_summit": (165, 120, "Secret: Summit (fireworks!)"),
     "secret_cove":   (250, 230, "Secret: Hidden Cove"),
     "secret_grove":  (120, 160, "Secret: Ancient Grove"),
@@ -331,10 +333,12 @@ def tour(output_dir: str = "tour_output"):
         if entry and entry.get("triggered", 0) == 0:
             report["issues"].append(f"{name}: no triggers fired on approach")
 
-    # 5. Discover fun objects
-    entry = visit("slime", wait=2.0)
-    if entry and entry.get("triggered", 0) == 0:
-        report["issues"].append("slime: no pulse trigger on approach")
+    # 5. Discover fun objects — slime NPCs
+    for i in range(1, 4):
+        name = f"slime_{i}"
+        entry = visit(name, wait=2.0)
+        if entry and entry.get("triggered", 0) == 0:
+            report["issues"].append(f"{name}: no trigger on approach")
 
     entry = visit("treasure", wait=2.5)
     if entry and entry.get("triggered", 0) == 0:

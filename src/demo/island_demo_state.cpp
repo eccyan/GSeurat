@@ -11,6 +11,7 @@
 #include "gseurat/engine/scene_loader.hpp"
 #include "gseurat/engine/gs_particle.hpp"
 #include "gseurat/engine/gs_animator.hpp"
+#include "gseurat/engine/gs_vfx.hpp"
 
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
@@ -43,6 +44,7 @@ void IslandDemoState::on_enter(AppBase& app) {
     app.feature_flags().particles = true;
     app.feature_flags().point_lights = true;
     app.feature_flags().gs_lod = true;
+    app.feature_flags().animation = true;  // GS animation effects (orbit, wave, etc.)
 
     // Enable GS lighting: directional sun + point lights for interactive effects
     app.renderer().gs_renderer().set_light_mode(2);  // point light mode (includes directional)
@@ -71,6 +73,41 @@ void IslandDemoState::on_enter(AppBase& app) {
         collision_grid_ = *scene_data.collision;
         // Grid origin is (0,0) — scene coordinates match grid coordinates
         grid_origin_ = {0.0f, 0.0f};
+
+        // Mark cells under the house as solid (collision box)
+        // House at ~(192, 175), roughly 18×14 voxels at scale 0.8 ≈ 14×11 world units
+        float house_x = 192.0f, house_z = 175.0f;
+        float house_hw = 8.0f, house_hd = 7.0f;  // half-extents (generous)
+        int marked = 0;
+        for (float wx = house_x - house_hw; wx <= house_x + house_hw; wx += collision_grid_.cell_size * 0.5f) {
+            for (float wz = house_z - house_hd; wz <= house_z + house_hd; wz += collision_grid_.cell_size * 0.5f) {
+                float lx = wx - grid_origin_.x;
+                float lz = wz - grid_origin_.y;
+                int gx = static_cast<int>(lx / collision_grid_.cell_size);
+                int gz = static_cast<int>(lz / collision_grid_.cell_size);
+                if (gx >= 0 && gx < static_cast<int>(collision_grid_.width) &&
+                    gz >= 0 && gz < static_cast<int>(collision_grid_.height)) {
+                    collision_grid_.solid[gz * collision_grid_.width + gx] = true;
+                    marked++;
+                }
+            }
+        }
+        int gx_min = static_cast<int>((house_x - house_hw) / collision_grid_.cell_size);
+        int gx_max = static_cast<int>((house_x + house_hw) / collision_grid_.cell_size);
+        int gz_min = static_cast<int>((house_z - house_hd) / collision_grid_.cell_size);
+        int gz_max = static_cast<int>((house_z + house_hd) / collision_grid_.cell_size);
+        std::fprintf(stderr, "[IslandDemo] House collision: grid[%d-%d, %d-%d] (%d cells marked)\n",
+                     gx_min, gx_max, gz_min, gz_max, marked);
+    }
+
+    // Create collision grid reference entity for NPC system
+    {
+        auto grid_entity = app.world().create();
+        CollisionGridRef ref;
+        ref.grid = &collision_grid_;
+        ref.origin_x = grid_origin_.x;
+        ref.origin_z = grid_origin_.y;
+        app.world().add<CollisionGridRef>(grid_entity, ref);
     }
 
     // Determine player start position
@@ -92,6 +129,7 @@ void IslandDemoState::on_enter(AppBase& app) {
     app.system_scheduler().add_system({"proximity_trigger", proximity_trigger_system, {}, {}});
     app.system_scheduler().add_system({"linked_trigger", linked_trigger_system, {}, {}});
     app.system_scheduler().add_system({"emissive_toggle", emissive_toggle_system, {}, {}});
+    app.system_scheduler().add_system({"npc_walker", npc_walker_system, {}, {}});
 
     // Capture base scene lights (before dynamic emissive lights are added)
     // Note: GS renderer gets lights during record_gs_prepass, not at init.
@@ -108,6 +146,10 @@ void IslandDemoState::on_enter(AppBase& app) {
         if (loaded) {
             character_data_ = std::make_unique<gseurat::CharacterData>(std::move(*loaded));
             ShutdownAuditor::record<gseurat::CharacterData>(character_data_.get());
+            std::fprintf(stderr, "[IslandDemo] Character manifest loaded: %zu bones, %zu clips\n",
+                         character_data_->bones.size(), character_data_->clips.size());
+        } else {
+            std::fprintf(stderr, "[IslandDemo] WARNING: Failed to load character manifest!\n");
         }
     }
 
@@ -120,7 +162,7 @@ void IslandDemoState::on_enter(AppBase& app) {
         uint32_t map_count = static_cast<uint32_t>(merged.size());
 
         // Load mesh-converted character model
-        constexpr float kCharScale = 0.8f;   // snes_hero: 20 voxels tall × 9558 Gaussians at 3x density
+        constexpr float kCharScale = 0.45f;  // smaller to match prop proportions
         auto char_cloud = GaussianCloud::load_ply("assets/characters/snes_hero/snes_hero.ply");
         if (!char_cloud.empty()) {
             // Scale, rotate 180° (face away from camera), and position at spawn
@@ -129,10 +171,42 @@ void IslandDemoState::on_enter(AppBase& app) {
                 Gaussian cg = g;
                 // Rotate 180° around Y: (x,y,z) → (-x, y, -z)
                 glm::vec3 rotated(-cg.position.x, cg.position.y, -cg.position.z);
-                cg.position = player_pos + rotated * kCharScale + glm::vec3(0, 0.3f, 0);
+                cg.position = player_pos + rotated * kCharScale + glm::vec3(0, 2.0f, 0);
                 cg.scale *= kCharScale;
                 merged.push_back(cg);
             }
+        }
+
+        // Load NPC slime Gaussians with unique bone indices
+        auto slime_cloud = GaussianCloud::load_ply("assets/characters/slime/slime.ply");
+        if (!slime_cloud.empty()) {
+            int player_bone_count = character_data_
+                ? static_cast<int>(character_data_->bones.size()) : 1;
+            next_bone_index_ = static_cast<uint32_t>(player_bone_count + 1);
+
+            app.world().view<NpcWalker, ecs::Transform>().each(
+                [&](ecs::Entity entity, NpcWalker&, ecs::Transform& t) {
+                    if (next_bone_index_ >= 31) return;
+
+                    NpcInfo info;
+                    info.entity = entity;
+                    info.spawn_pos = t.position;
+                    info.bone_index = next_bone_index_;
+
+                    constexpr float kSlimeScale = 0.5f;
+                    const auto& slime_gs = slime_cloud.gaussians();
+                    for (const auto& g : slime_gs) {
+                        Gaussian sg = g;
+                        glm::vec3 rotated(-sg.position.x, sg.position.y, -sg.position.z);
+                        sg.position = t.position + rotated * kSlimeScale + glm::vec3(0, 0.5f, 0);
+                        sg.scale *= kSlimeScale;
+                        sg.bone_index = next_bone_index_;
+                        merged.push_back(sg);
+                    }
+
+                    npc_infos_.push_back(info);
+                    next_bone_index_++;
+                });
         }
 
         uint32_t char_count = static_cast<uint32_t>(merged.size()) - map_count;
@@ -173,12 +247,13 @@ void IslandDemoState::on_exit(AppBase& app) {
     anim_player_.reset();
 
     // Attempt guarded free of CharacterData.
-    // Previously this hung in the macOS allocator (ASan clean, not heap
-    // corruption). try_free logs before/after so we can identify the exact
-    // point of hang if it recurs. If it still hangs, fall back to release().
+    // macOS allocator hangs when freeing CharacterData with populated vectors
+    // during Vulkan/VMA teardown (ASan clean — not heap corruption).
+    // Intentionally leak on exit: process teardown reclaims the memory anyway.
     if (character_data_) {
-        auto* raw = character_data_.release();
-        ShutdownAuditor::try_free(raw, "CharacterData");
+        ShutdownAuditor::remove(character_data_.get());
+        (void)character_data_.release();  // leak — delete hangs on macOS
+        std::fprintf(stderr, "[IslandDemo] CharacterData leaked (macOS allocator hang workaround)\n");
     }
 
     if (character_spawned_) {
@@ -322,8 +397,12 @@ void IslandDemoState::update_player(AppBase& app, float dt) {
             // Check solid — if solid, undo movement
             bool solid = collision_grid_.is_solid(static_cast<uint32_t>(gx),
                                                    static_cast<uint32_t>(gz));
-            (void)debug_frame_; // reserved for future debug use
+            debug_frame_++;
             if (solid) {
+                if (debug_frame_ % 60 == 0) {
+                    std::fprintf(stderr, "[Collision] BLOCKED at grid(%d,%d) pos=(%.1f,%.1f)\n",
+                                 gx, gz, transform->position.x, transform->position.z);
+                }
                 transform->position -= player_velocity_ * dt;
             } else {
                 // Snap to elevation
@@ -338,6 +417,19 @@ void IslandDemoState::update_player(AppBase& app, float dt) {
 
     // Update character origin for bone transforms
     character_origin_ = transform->position;
+
+    // Update facing angle from movement direction
+    float speed_xz = std::sqrt(player_velocity_.x * player_velocity_.x +
+                                player_velocity_.z * player_velocity_.z);
+    if (speed_xz > 0.5f) {
+        float target_facing = std::atan2(player_velocity_.x, player_velocity_.z);
+        // Smooth interpolation toward target facing
+        float diff = target_facing - facing_angle_;
+        // Wrap to [-pi, pi]
+        while (diff > 3.14159f) diff -= 6.28318f;
+        while (diff < -3.14159f) diff += 6.28318f;
+        facing_angle_ += diff * std::min(1.0f, 10.0f * dt);
+    }
 }
 
 // ── Camera follow ──
@@ -545,6 +637,30 @@ void IslandDemoState::update_effects(AppBase& app, float dt) {
         if (!logged) { std::fprintf(stderr, "[AnimationTrigger] %d entities\n", count); logged = true; }
     }
 
+    // VfxTrigger: spawn a VFX instance when player approaches
+    {
+        world.view<VfxTrigger, ProximityTrigger, ecs::Transform>().each(
+            [&](ecs::Entity, VfxTrigger& vt, ProximityTrigger& pt, ecs::Transform& t) {
+                if (pt.triggered && !vt.fired) {
+                    vt.fired = true;
+                    std::string path(vt.vfx_path);
+                    std::fprintf(stderr, "[VfxTrigger] SPAWN '%s' at (%.1f, %.1f, %.1f)\n",
+                        vt.vfx_path, t.position.x, t.position.y, t.position.z);
+                    try {
+                        auto preset = load_vfx_preset(path);
+                        VfxInstance inst;
+                        inst.init(preset, t.position, true);
+                        app.renderer().add_vfx_instance(std::move(inst));
+                    } catch (const std::exception& e) {
+                        std::fprintf(stderr, "[VfxTrigger] ERROR: %s\n", e.what());
+                    }
+                }
+                if (!pt.triggered && vt.fired && !pt.one_shot) {
+                    vt.fired = false;
+                }
+            });
+    }
+
     // DiscoveryZone: celebration fireworks burst when player finds a hidden spot
     {
         world.view<DiscoveryZone, ProximityTrigger, ecs::Transform>().each(
@@ -596,7 +712,7 @@ void IslandDemoState::update_walk_animation(AppBase& app, float dt) {
     glm::vec3 spawn = character_spawn_pos_;
     glm::mat4 root_rotate =
         glm::translate(glm::mat4(1.0f), spawn) *
-        glm::rotate(glm::mat4(1.0f), azimuth_, {0, 1, 0}) *
+        glm::rotate(glm::mat4(1.0f), facing_angle_, {0, 1, 0}) *
         glm::translate(glm::mat4(1.0f), -spawn);
     glm::mat4 root_xform = root_translate * root_rotate;
 
@@ -619,7 +735,19 @@ void IslandDemoState::update_walk_animation(AppBase& app, float dt) {
         for (int i = 0; i < bone_count && i < 31; ++i) {
             bones[i + 1] = root_xform * anim_bones[i];
         }
-        app.renderer().gs_renderer().upload_bone_transforms(bones, bone_count + 1);
+
+        // NPC bone transforms — translate from spawn to current position
+        for (const auto& npc : npc_infos_) {
+            if (npc.bone_index >= 32) continue;
+            auto* npc_t = app.world().try_get<ecs::Transform>(npc.entity);
+            if (!npc_t) continue;
+            glm::vec3 npc_offset = npc_t->position - npc.spawn_pos;
+            bones[npc.bone_index] = glm::translate(glm::mat4(1.0f), npc_offset);
+        }
+
+        int total_bones = static_cast<int>(next_bone_index_);
+        if (total_bones < bone_count + 1) total_bones = bone_count + 1;
+        app.renderer().gs_renderer().upload_bone_transforms(bones, total_bones);
     } else {
         glm::mat4 bones[2];
         bones[0] = terrain_bone;

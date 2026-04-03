@@ -320,12 +320,39 @@ void AppBase::init_game_object_system() {
             return {{"color_r", c.color_r}, {"color_g", c.color_g},
                     {"color_b", c.color_b}, {"burst_height", c.burst_height}};
         });
+
+    component_registry_.register_component<VfxTrigger>("VfxTrigger",
+        [](const nlohmann::json& j) -> VfxTrigger {
+            VfxTrigger c;
+            if (j.contains("vfx_path")) {
+                auto path = j["vfx_path"].get<std::string>();
+                std::strncpy(c.vfx_path, path.c_str(), sizeof(c.vfx_path) - 1);
+                c.vfx_path[sizeof(c.vfx_path) - 1] = '\0';
+            }
+            return c;
+        },
+        [](const VfxTrigger& c) -> nlohmann::json {
+            return {{"vfx_path", std::string(c.vfx_path)}};
+        });
+
+    component_registry_.register_component<NpcWalker>("NpcWalker",
+        [](const nlohmann::json& j) -> NpcWalker {
+            NpcWalker c;
+            if (j.contains("patrol_radius")) c.patrol_radius = j["patrol_radius"].get<float>();
+            if (j.contains("speed")) c.speed = j["speed"].get<float>();
+            if (j.contains("pause_duration")) c.pause_duration = j["pause_duration"].get<float>();
+            return c;
+        },
+        [](const NpcWalker& c) -> nlohmann::json {
+            return {{"patrol_radius", c.patrol_radius},
+                    {"speed", c.speed},
+                    {"pause_duration", c.pause_duration}};
+        });
 }
 
 // ── Shared GS scene loading ──
 
 void AppBase::load_gs_scene(const SceneData& scene_data, const GsSceneOptions& opts) {
-    scene_game_object_data_ = scene_data.game_objects;
 
     renderer_.clear_gs_particle_emitters();
     renderer_.clear_gs_animations();
@@ -352,16 +379,44 @@ void AppBase::load_gs_scene(const SceneData& scene_data, const GsSceneOptions& o
         if (!cloud.empty()) {
             renderer_.gs_renderer().set_scale_multiplier(gs.scale_multiplier);
 
+            // Snap game object positions to terrain elevation
+            auto snapped_objects = scene_data.game_objects;
+            if (scene_data.collision) {
+                const auto& grid = *scene_data.collision;
+                if (grid.width > 0 && !grid.elevation.empty()) {
+                    for (auto& go : snapped_objects) {
+                        int gx = static_cast<int>(go.position.x / grid.cell_size);
+                        int gz = static_cast<int>(go.position.z / grid.cell_size);
+                        if (gx >= 0 && gx < static_cast<int>(grid.width) &&
+                            gz >= 0 && gz < static_cast<int>(grid.height)) {
+                            go.position.y = grid.get_elevation(
+                                static_cast<uint32_t>(gx), static_cast<uint32_t>(gz));
+                        }
+                    }
+                }
+            }
+            scene_game_object_data_ = snapped_objects;
+
             // Merge all game objects with PLY visuals into the GS cloud
             {
                 auto merged = cloud.gaussians();
                 uint32_t merged_count = 0;
-                for (const auto& go : scene_data.game_objects) {
+                for (const auto& go : snapped_objects) {
                     if (go.ply_file.empty()) continue;
                     try {
                         auto placed_cloud = GaussianCloud::load_ply(go.ply_file);
                         if (placed_cloud.empty()) continue;
-                        auto transform = glm::translate(glm::mat4(1.0f), go.position);
+                        // Compute local AABB min Y so we can offset the prop
+                        // to sit ON the terrain (PLY origins are often at center)
+                        float local_min_y = 1e9f;
+                        for (const auto& g : placed_cloud.gaussians()) {
+                            if (g.position.y < local_min_y) local_min_y = g.position.y;
+                        }
+                        glm::vec3 adjusted_pos = go.position;
+                        if (local_min_y < -0.01f) {
+                            adjusted_pos.y -= local_min_y * go.scale;  // lift by |minY| * scale
+                        }
+                        auto transform = glm::translate(glm::mat4(1.0f), adjusted_pos);
                         transform = glm::rotate(transform, glm::radians(go.rotation.x), {1,0,0});
                         transform = glm::rotate(transform, glm::radians(go.rotation.y), {0,1,0});
                         transform = glm::rotate(transform, glm::radians(go.rotation.z), {0,0,1});
@@ -386,7 +441,7 @@ void AppBase::load_gs_scene(const SceneData& scene_data, const GsSceneOptions& o
             }
 
             // Create ECS entities for game objects with components
-            for (const auto& go : scene_data.game_objects) {
+            for (const auto& go : snapped_objects) {
                 if (go.components.empty() || go.components.is_null()) continue;
                 auto entity = world_.create();
                 world_.add<ecs::Transform>(entity, {{go.position}, {go.scale, go.scale}});

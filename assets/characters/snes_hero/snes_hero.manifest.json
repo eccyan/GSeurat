@@ -7,182 +7,142 @@
       "id": "torso",
       "parent": null,
       "joint": [
-        32,
-        8,
-        32
+        0.0,
+        -0.9,
+        0.0
       ]
     },
     {
       "id": "head",
       "parent": "torso",
       "joint": [
-        32,
-        12,
-        32
+        0.0,
+        0.9,
+        0.0
       ]
     },
     {
       "id": "left_arm",
       "parent": "torso",
       "joint": [
-        29,
-        11,
-        32
+        -1.35,
+        0.45,
+        0.0
       ]
     },
     {
       "id": "right_arm",
       "parent": "torso",
       "joint": [
-        35,
-        11,
-        32
+        1.35,
+        0.45,
+        0.0
       ]
     },
     {
       "id": "left_leg",
       "parent": "torso",
       "joint": [
-        31,
-        4,
-        32
+        -0.45,
+        -2.7,
+        0.0
       ]
     },
     {
       "id": "right_leg",
       "parent": "torso",
       "joint": [
-        33,
-        4,
-        32
+        0.45,
+        -2.7,
+        0.0
       ]
     },
     {
       "id": "cape",
       "parent": "torso",
       "joint": [
-        32,
-        11,
-        34
+        0.0,
+        0.45,
+        0.9
       ]
     }
   ],
   "poses": {
-    "rest": [],
-    "breathe": [
-      {
-        "bone": "left_arm",
-        "rotation": [
-          0,
-          0,
-          -3
-        ]
-      },
-      {
-        "bone": "right_arm",
-        "rotation": [
-          0,
-          0,
-          3
-        ]
-      },
-      {
-        "bone": "cape",
-        "rotation": [
-          3,
-          0,
-          0
-        ]
-      }
-    ],
-    "walk_1": [
-      {
-        "bone": "left_arm",
-        "rotation": [
-          25,
-          0,
-          0
-        ]
-      },
-      {
-        "bone": "right_arm",
-        "rotation": [
-          -25,
-          0,
-          0
-        ]
-      },
-      {
-        "bone": "left_leg",
-        "rotation": [
-          -20,
-          0,
-          0
-        ]
-      },
-      {
-        "bone": "right_leg",
-        "rotation": [
-          20,
-          0,
-          0
-        ]
-      },
-      {
-        "bone": "cape",
-        "rotation": [
-          -8,
-          0,
-          0
-        ]
-      }
-    ],
-    "walk_2": [
-      {
-        "bone": "left_arm",
-        "rotation": [
-          -25,
-          0,
-          0
-        ]
-      },
-      {
-        "bone": "right_arm",
-        "rotation": [
-          25,
-          0,
-          0
-        ]
-      },
-      {
-        "bone": "left_leg",
-        "rotation": [
-          20,
-          0,
-          0
-        ]
-      },
-      {
-        "bone": "right_leg",
-        "rotation": [
-          -20,
-          0,
-          0
-        ]
-      },
-      {
-        "bone": "cape",
-        "rotation": [
-          8,
-          0,
-          0
-        ]
-      }
-    ]
+    "rest": {},
+    "breathe": {
+      "left_arm": [
+        0,
+        0,
+        -2
+      ],
+      "right_arm": [
+        0,
+        0,
+        2
+      ],
+      "cape": [
+        2,
+        0,
+        0
+      ]
+    },
+    "walk_1": {
+      "left_arm": [
+        8,
+        0,
+        0
+      ],
+      "right_arm": [
+        -8,
+        0,
+        0
+      ],
+      "left_leg": [
+        -6,
+        0,
+        0
+      ],
+      "right_leg": [
+        6,
+        0,
+        0
+      ],
+      "cape": [
+        -3,
+        0,
+        0
+      ]
+    },
+    "walk_2": {
+      "left_arm": [
+        -8,
+        0,
+        0
+      ],
+      "right_arm": [
+        8,
+        0,
+        0
+      ],
+      "left_leg": [
+        6,
+        0,
+        0
+      ],
+      "right_leg": [
+        -6,
+        0,
+        0
+      ],
+      "cape": [
+        3,
+        0,
+        0
+      ]
+    }
   },
-  "animations": [
-    {
-      "name": "idle",
+  "animations": {
+    "idle": {
       "duration": 1.0,
       "looping": true,
       "keyframes": [
@@ -200,8 +160,7 @@
         }
       ]
     },
-    {
-      "name": "walk",
+    "walk": {
       "duration": 0.6,
       "looping": true,
       "keyframes": [
@@ -227,5 +186,5 @@
         }
       ]
     }
-  ]
+  }
 }

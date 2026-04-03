@@ -234,20 +234,15 @@ add_executable(gseurat_staging
 target_link_libraries(gseurat_staging PRIVATE gseurat_core imgui_lib)
 add_dependencies(gseurat_staging shaders)
 
-add_custom_command(TARGET gseurat_staging POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${PROJECT_SOURCE_DIR}/assets
-        $<TARGET_FILE_DIR:gseurat_staging>/assets
-    COMMENT "Copying assets to staging build directory"
-)
 
 # --- Copy assets to build directory -----------------------------------------
+# Always-run target so asset changes are synced even without relinking.
 
-add_custom_command(TARGET gseurat_demo POST_BUILD
+add_custom_target(sync_assets ALL
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         ${PROJECT_SOURCE_DIR}/assets
-        $<TARGET_FILE_DIR:gseurat_demo>/assets
-    COMMENT "Copying assets to demo build directory"
+        ${CMAKE_CURRENT_BINARY_DIR}/assets
+    COMMENT "Syncing assets to build directory"
 )
 
 # --- Tests ------------------------------------------------------------------
