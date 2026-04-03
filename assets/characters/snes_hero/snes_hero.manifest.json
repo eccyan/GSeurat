@@ -7,63 +7,63 @@
       "id": "torso",
       "parent": null,
       "joint": [
-        32,
-        8,
-        32
+        0,
+        -2,
+        0
       ]
     },
     {
       "id": "head",
       "parent": "torso",
       "joint": [
-        32,
-        12,
-        32
+        0,
+        2,
+        0
       ]
     },
     {
       "id": "left_arm",
       "parent": "torso",
       "joint": [
-        29,
-        11,
-        32
+        -3,
+        1,
+        0
       ]
     },
     {
       "id": "right_arm",
       "parent": "torso",
       "joint": [
-        35,
-        11,
-        32
+        3,
+        1,
+        0
       ]
     },
     {
       "id": "left_leg",
       "parent": "torso",
       "joint": [
-        31,
-        4,
-        32
+        -1,
+        -6,
+        0
       ]
     },
     {
       "id": "right_leg",
       "parent": "torso",
       "joint": [
-        33,
-        4,
-        32
+        1,
+        -6,
+        0
       ]
     },
     {
       "id": "cape",
       "parent": "torso",
       "joint": [
-        32,
-        11,
-        34
+        0,
+        1,
+        2
       ]
     }
   ],
