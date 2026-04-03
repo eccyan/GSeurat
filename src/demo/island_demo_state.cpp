@@ -242,12 +242,13 @@ void IslandDemoState::on_exit(AppBase& app) {
     anim_player_.reset();
 
     // Attempt guarded free of CharacterData.
-    // Previously this hung in the macOS allocator (ASan clean, not heap
-    // corruption). try_free logs before/after so we can identify the exact
-    // point of hang if it recurs. If it still hangs, fall back to release().
+    // macOS allocator hangs when freeing CharacterData with populated vectors
+    // during Vulkan/VMA teardown (ASan clean — not heap corruption).
+    // Intentionally leak on exit: process teardown reclaims the memory anyway.
     if (character_data_) {
-        auto* raw = character_data_.release();
-        ShutdownAuditor::try_free(raw, "CharacterData");
+        ShutdownAuditor::remove(character_data_.get());
+        (void)character_data_.release();  // leak — delete hangs on macOS
+        std::fprintf(stderr, "[IslandDemo] CharacterData leaked (macOS allocator hang workaround)\n");
     }
 
     if (character_spawned_) {
