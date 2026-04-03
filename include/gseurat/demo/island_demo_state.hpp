@@ -42,6 +42,7 @@ private:
     glm::vec3 player_velocity_{0.0f};
     float walk_anim_time_ = 0.0f;
     float env_anim_time_ = 0.0f;
+    float facing_angle_ = 0.0f;  // character facing direction (independent of camera)
 
     // Character Gaussians (for walk animation bone transforms)
     bool character_spawned_ = false;

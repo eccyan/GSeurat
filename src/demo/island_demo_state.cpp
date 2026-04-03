@@ -120,7 +120,7 @@ void IslandDemoState::on_enter(AppBase& app) {
         uint32_t map_count = static_cast<uint32_t>(merged.size());
 
         // Load mesh-converted character model
-        constexpr float kCharScale = 0.8f;   // snes_hero: 20 voxels tall × 9558 Gaussians at 3x density
+        constexpr float kCharScale = 0.45f;  // smaller to match prop proportions
         auto char_cloud = GaussianCloud::load_ply("assets/characters/snes_hero/snes_hero.ply");
         if (!char_cloud.empty()) {
             // Scale, rotate 180° (face away from camera), and position at spawn
@@ -129,7 +129,7 @@ void IslandDemoState::on_enter(AppBase& app) {
                 Gaussian cg = g;
                 // Rotate 180° around Y: (x,y,z) → (-x, y, -z)
                 glm::vec3 rotated(-cg.position.x, cg.position.y, -cg.position.z);
-                cg.position = player_pos + rotated * kCharScale + glm::vec3(0, 0.3f, 0);
+                cg.position = player_pos + rotated * kCharScale + glm::vec3(0, 0.8f, 0);
                 cg.scale *= kCharScale;
                 merged.push_back(cg);
             }
@@ -338,6 +338,19 @@ void IslandDemoState::update_player(AppBase& app, float dt) {
 
     // Update character origin for bone transforms
     character_origin_ = transform->position;
+
+    // Update facing angle from movement direction
+    float speed_xz = std::sqrt(player_velocity_.x * player_velocity_.x +
+                                player_velocity_.z * player_velocity_.z);
+    if (speed_xz > 0.5f) {
+        float target_facing = std::atan2(player_velocity_.x, player_velocity_.z);
+        // Smooth interpolation toward target facing
+        float diff = target_facing - facing_angle_;
+        // Wrap to [-pi, pi]
+        while (diff > 3.14159f) diff -= 6.28318f;
+        while (diff < -3.14159f) diff += 6.28318f;
+        facing_angle_ += diff * std::min(1.0f, 10.0f * dt);
+    }
 }
 
 // ── Camera follow ──
@@ -596,7 +609,7 @@ void IslandDemoState::update_walk_animation(AppBase& app, float dt) {
     glm::vec3 spawn = character_spawn_pos_;
     glm::mat4 root_rotate =
         glm::translate(glm::mat4(1.0f), spawn) *
-        glm::rotate(glm::mat4(1.0f), azimuth_, {0, 1, 0}) *
+        glm::rotate(glm::mat4(1.0f), facing_angle_, {0, 1, 0}) *
         glm::translate(glm::mat4(1.0f), -spawn);
     glm::mat4 root_xform = root_translate * root_rotate;
 
