@@ -6,7 +6,7 @@
     {
       "name": "smoke_plume",
       "type": "emitter",
-      "position": [5, 14, 4],
+      "position": [5, 19, 4],
       "start": 0,
       "duration": 8.0,
       "loop": true,
