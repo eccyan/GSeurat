@@ -23,6 +23,7 @@ export function exportPly(
   gridWidth: number,
   gridHeight: number,
   parts?: BodyPart[],
+  density: number = 1,
 ): Blob {
   // Surface culling: skip interior voxels enclosed by 6 neighbors
   const allEntries = Array.from(voxels.entries());
@@ -35,7 +36,9 @@ export function exportPly(
     }
     return false; // fully enclosed
   });
-  const count = entries.length;
+
+  const n = Math.max(1, Math.floor(density));
+  const count = entries.length * n * n * n;
 
   const hasBones = parts && parts.length > 0;
   const boneMap = hasBones ? buildBoneMap(parts) : null;
@@ -71,7 +74,8 @@ export function exportPly(
 
   let offset = headerBytes.length;
   const halfW = gridWidth / 2;
-  const voxelScale = Math.log(0.5);
+  // Scale: log(0.5 / n) so each sub-gaussian is 1/n the size of the voxel
+  const subScale = Math.log(0.5) - Math.log(n);
 
   // Find max Y for centering vertically
   let maxY = 0;
@@ -84,42 +88,55 @@ export function exportPly(
   for (const [key, voxel] of entries) {
     const [vx, vy, vz] = parseKey(key);
 
-    // Center X and Y, depth along +Z
-    const px = vx - halfW;
-    const py = vy - halfH;
-    const pz = vz;
-
-    view.setFloat32(offset, px, true); offset += 4;
-    view.setFloat32(offset, py, true); offset += 4;
-    view.setFloat32(offset, pz, true); offset += 4;
-
     // SH DC coefficients (color as 0..1 scaled by SH factor)
     const shFactor = 0.2820947917738781; // 0.5 / sqrt(pi)
-    view.setFloat32(offset, (voxel.color[0] / 255 - 0.5) / shFactor, true); offset += 4;
-    view.setFloat32(offset, (voxel.color[1] / 255 - 0.5) / shFactor, true); offset += 4;
-    view.setFloat32(offset, (voxel.color[2] / 255 - 0.5) / shFactor, true); offset += 4;
+    const sh0 = (voxel.color[0] / 255 - 0.5) / shFactor;
+    const sh1 = (voxel.color[1] / 255 - 0.5) / shFactor;
+    const sh2 = (voxel.color[2] / 255 - 0.5) / shFactor;
 
     // Opacity (pre-sigmoid: use a high value for opaque voxels)
     const alpha = voxel.color[3] / 255;
     const logitOpacity = Math.log(Math.max(alpha, 0.001) / Math.max(1 - alpha, 0.001));
-    view.setFloat32(offset, logitOpacity, true); offset += 4;
 
-    // Scale (pre-exp: log of half-voxel-size)
-    view.setFloat32(offset, voxelScale, true); offset += 4;
-    view.setFloat32(offset, voxelScale, true); offset += 4;
-    view.setFloat32(offset, voxelScale, true); offset += 4;
+    const bone = boneMap ? (boneMap.get(key) ?? 0) : 0;
 
-    // Rotation quaternion (identity)
-    view.setFloat32(offset, 1, true); offset += 4;
-    view.setFloat32(offset, 0, true); offset += 4;
-    view.setFloat32(offset, 0, true); offset += 4;
-    view.setFloat32(offset, 0, true); offset += 4;
+    for (let sx = 0; sx < n; sx++) {
+      for (let sy = 0; sy < n; sy++) {
+        for (let sz = 0; sz < n; sz++) {
+          // Center X and Y, depth along +Z
+          // Sub-gaussian position: centered within the subdivided cell
+          const px = (vx + (sx + 0.5) / n - 0.5) - halfW;
+          const py = (vy + (sy + 0.5) / n - 0.5) - halfH;
+          const pz = vz + (sz + 0.5) / n - 0.5;
 
-    // Bone index (optional)
-    if (boneMap) {
-      const bone = boneMap.get(key) ?? 0;
-      view.setUint8(offset, bone);
-      offset += 1;
+          view.setFloat32(offset, px, true); offset += 4;
+          view.setFloat32(offset, py, true); offset += 4;
+          view.setFloat32(offset, pz, true); offset += 4;
+
+          view.setFloat32(offset, sh0, true); offset += 4;
+          view.setFloat32(offset, sh1, true); offset += 4;
+          view.setFloat32(offset, sh2, true); offset += 4;
+
+          view.setFloat32(offset, logitOpacity, true); offset += 4;
+
+          // Scale (pre-exp: log(0.5/n))
+          view.setFloat32(offset, subScale, true); offset += 4;
+          view.setFloat32(offset, subScale, true); offset += 4;
+          view.setFloat32(offset, subScale, true); offset += 4;
+
+          // Rotation quaternion (identity)
+          view.setFloat32(offset, 1, true); offset += 4;
+          view.setFloat32(offset, 0, true); offset += 4;
+          view.setFloat32(offset, 0, true); offset += 4;
+          view.setFloat32(offset, 0, true); offset += 4;
+
+          // Bone index (optional)
+          if (boneMap) {
+            view.setUint8(offset, bone);
+            offset += 1;
+          }
+        }
+      }
     }
   }
 
