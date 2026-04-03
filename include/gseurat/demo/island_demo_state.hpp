@@ -1,5 +1,8 @@
 #pragma once
 
+#include "gseurat/character/bone_animation_player.hpp"
+#include "gseurat/character/bone_animation_state_machine.hpp"
+#include "gseurat/character/character_manifest.hpp"
 #include "gseurat/engine/collision_gen.hpp"
 #include "gseurat/engine/game_state.hpp"
 #include "gseurat/engine/gaussian_cloud.hpp"
@@ -8,6 +11,8 @@
 
 #include <glm/glm.hpp>
 #include <chrono>
+#include <memory>
+#include <optional>
 #include <string>
 
 namespace gseurat {
@@ -44,6 +49,11 @@ private:
     glm::vec3 character_spawn_pos_{0.0f};  // where Gaussians were placed
     glm::vec3 character_origin_{0.0f};     // current player position
     std::vector<Gaussian> map_gaussians_;  // original map data before character merge
+
+    // Data-driven bone animation
+    std::unique_ptr<gseurat::CharacterData> character_data_;
+    std::unique_ptr<gseurat::BoneAnimationPlayer> anim_player_;
+    std::unique_ptr<gseurat::BoneAnimationStateMachine> anim_sm_;
 
     // Base scene lights (saved at init, used as base for dynamic emissive lights)
     std::vector<PointLight> scene_lights_;

@@ -1,6 +1,7 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { useCharacterStore } from '../store/useCharacterStore.js';
 import { exportPly } from '../lib/plyExport.js';
+import { buildManifest } from '../lib/manifestExport.js';
 import { parseVox } from '../lib/voxImport.js';
 import { sendBridgeCommand } from '@gseurat/engine-client';
 import type { EchidnaFile } from '../store/types.js';
@@ -266,6 +267,21 @@ export function MenuBar() {
     download(blob, `${name}.ply`);
   }, []);
 
+  const handleExportManifest = useCallback(() => {
+    const s = useCharacterStore.getState();
+    const name = s.characterName.replace(/\s+/g, '_').toLowerCase() || 'character';
+    const manifest = buildManifest(
+      name,
+      `${name}.ply`,
+      1.0,
+      s.characterParts,
+      s.characterPoses,
+      s.animations,
+    );
+    const blob = new Blob([JSON.stringify(manifest, null, 2)], { type: 'application/json' });
+    download(blob, `${name}.manifest.json`);
+  }, []);
+
   const handlePreviewInStaging = useCallback(async () => {
     const s = useCharacterStore.getState();
     if (s.voxels.size === 0) {
@@ -325,6 +341,7 @@ export function MenuBar() {
     { separator: true as const },
     { label: 'Import .vox...', action: handleImportVox },
     { label: 'Export PLY...', action: handleExportPly },
+    { label: 'Export Manifest...', action: handleExportManifest },
     { separator: true as const },
     { label: 'Preview in Staging', action: handlePreviewInStaging },
   ];

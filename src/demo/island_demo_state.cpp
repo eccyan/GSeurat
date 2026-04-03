@@ -1,4 +1,7 @@
 #include "gseurat/demo/island_demo_state.hpp"
+#include "gseurat/character/character_manifest.hpp"
+#include "gseurat/character/bone_animation_player.hpp"
+#include "gseurat/character/bone_animation_state_machine.hpp"
 #include "gseurat/engine/app_base.hpp"
 #include "gseurat/engine/gaussian_cloud.hpp"
 #include "gseurat/engine/gs_chunk_grid.hpp"
@@ -97,6 +100,15 @@ void IslandDemoState::on_enter(AppBase& app) {
     scene_lights_ = {};
     std::fprintf(stderr, "[IslandDemo] scene_lights_ captured: %zu lights\n", scene_lights_.size());
 
+    // Load character manifest (heap-allocated via unique_ptr)
+    {
+        auto loaded = gseurat::load_character_manifest(
+            "assets/characters/warm_robot/warm_robot.manifest.json");
+        if (loaded) {
+            character_data_ = std::make_unique<gseurat::CharacterData>(std::move(*loaded));
+        }
+    }
+
     // Spawn player character (procedural humanoid)
     if (app.renderer().has_gs_cloud()) {
         const auto& all = app.renderer().gs_chunk_grid().all_gaussians();
@@ -133,6 +145,15 @@ void IslandDemoState::on_enter(AppBase& app) {
         character_origin_ = player_pos;
         character_spawned_ = true;
 
+        // Initialize data-driven bone animation
+        if (character_data_) {
+            anim_player_ = std::make_unique<gseurat::BoneAnimationPlayer>(*character_data_);
+            anim_sm_ = std::make_unique<gseurat::BoneAnimationStateMachine>(*anim_player_);
+            anim_sm_->add_state("idle", "idle");
+            anim_sm_->add_state("walk", "walk");
+            anim_sm_->set_state("idle");
+        }
+
         (void)char_count;
     }
 
@@ -143,7 +164,14 @@ void IslandDemoState::on_enter(AppBase& app) {
 }
 
 void IslandDemoState::on_exit(AppBase& app) {
-    // Clean up bone transforms
+    // Release animation objects before state destruction
+    anim_sm_.reset();
+    anim_player_.reset();
+    // Intentionally leak CharacterData — freeing it during shutdown hangs
+    // due to an undiagnosed allocator issue on macOS (ASan clean, not heap
+    // corruption). The process is exiting; the OS reclaims the memory.
+    (void)character_data_.release();
+
     if (character_spawned_) {
         app.renderer().gs_renderer().clear_bone_transforms();
         character_spawned_ = false;
@@ -514,14 +542,9 @@ void IslandDemoState::update_effects(AppBase& app, float dt) {
 void IslandDemoState::update_walk_animation(AppBase& app, float dt) {
     if (!character_spawned_) return;
 
-    float speed = glm::length(glm::vec2(player_velocity_.x, player_velocity_.z));
-
-    // Root transform: translate from spawn to current + rotate to face away from camera
+    // Root transform: translate + rotate to match camera
     glm::vec3 root_offset = character_origin_ - character_spawn_pos_;
     glm::mat4 root_translate = glm::translate(glm::mat4(1.0f), root_offset);
-    // Rotate character around spawn point Y-axis to match camera azimuth
-    // Character was spawned facing -Z (after 180° flip). Camera azimuth=0 looks from +Z.
-    // To always show character's back: rotate by azimuth_ around Y at spawn pos.
     glm::vec3 spawn = character_spawn_pos_;
     glm::mat4 root_rotate =
         glm::translate(glm::mat4(1.0f), spawn) *
@@ -529,61 +552,32 @@ void IslandDemoState::update_walk_animation(AppBase& app, float dt) {
         glm::translate(glm::mat4(1.0f), -spawn);
     glm::mat4 root_xform = root_translate * root_rotate;
 
-    walk_anim_time_ += dt;  // always increment for idle breathing
-
-    float walk_swing = std::sin(walk_anim_time_ * 8.0f) * 0.5f;
-    float walk_scale = std::min(speed / kPlayerSpeed, 1.0f);
-    walk_swing *= walk_scale;
-
-    // Idle breathing when not walking
-    float breathe = std::sin(walk_anim_time_ * 1.5f) * 0.15f * (1.0f - walk_scale);
-
-    glm::mat4 bones[7];
-    // Bone 0 = all map Gaussians: gentle wave motion shows "living world"
+    // Terrain sway (bone 0 — map Gaussians)
+    env_anim_time_ += dt;
     float terrain_sway_y = std::sin(env_anim_time_ * 1.0f) * 0.05f;
     float terrain_sway_x = std::sin(env_anim_time_ * 0.6f) * 0.02f;
-    bones[0] = glm::translate(glm::mat4(1.0f),
+    glm::mat4 terrain_bone = glm::translate(glm::mat4(1.0f),
         glm::vec3(terrain_sway_x, terrain_sway_y, 0.0f));
 
-    // All character bones get root translation + local animation
-    constexpr float kCharScale = 0.5f;
+    if (anim_player_ && anim_sm_) {
+        float speed = glm::length(glm::vec2(player_velocity_.x, player_velocity_.z));
+        anim_sm_->set_state(speed > 0.1f ? "walk" : "idle");
+        anim_player_->update(dt);
 
-    // Torso bob = walk bob + idle breathe
-    glm::mat4 bob = glm::translate(glm::mat4(1.0f),
-        {0, (std::abs(walk_swing) * 0.3f + breathe) * kCharScale, 0});
-    bones[1] = root_xform * bob;
-    bones[2] = bones[1];  // Head follows torso
-
-    // Pivot rotation around joint (in spawn-space, scaled), then root translate
-    // Mesh boy: 8.4 units tall, rotated 180° so pivots use flipped X
-    // Shoulder at ~Y=6.5, hip at ~Y=3.5 (in mesh local coords)
-    const glm::vec3& sp = character_spawn_pos_;
-    // Arm rotation: T-pose arms extend along ±X. Rotate around Z to bring down,
-    // then around X for walk swing.
-    auto arm_transform = [&](glm::vec3 pivot_local, float arm_down_sign, float swing) {
-        glm::vec3 world_pivot = sp + kCharScale * pivot_local;
-        auto t = glm::translate(glm::mat4(1.0f), world_pivot);
-        // 1) Bring arm down from T-pose: rotate ~80° around Z axis
-        auto r_down = glm::rotate(glm::mat4(1.0f), arm_down_sign * 1.4f, {0, 0, 1});
-        // 2) Walk swing: rotate around X
-        auto r_swing = glm::rotate(glm::mat4(1.0f), swing, {1, 0, 0});
-        return root_xform * t * r_swing * r_down * glm::translate(glm::mat4(1.0f), -world_pivot);
-    };
-
-    // Leg rotation: just swing around X at hip pivot
-    auto leg_transform = [&](glm::vec3 pivot_local, float swing) {
-        glm::vec3 world_pivot = sp + kCharScale * pivot_local;
-        auto t = glm::translate(glm::mat4(1.0f), world_pivot);
-        auto r = glm::rotate(glm::mat4(1.0f), swing, {1, 0, 0});
-        return root_xform * t * r * glm::translate(glm::mat4(1.0f), -world_pivot);
-    };
-
-    bones[3] = arm_transform({2.0f, 7.5f, 0.0f}, 1.0f, -walk_swing * 0.5f);    // Left arm — higher pivot
-    bones[4] = arm_transform({-0.5f, 7.5f, 0.0f}, -1.0f, walk_swing * 0.5f); // Right arm — wider X
-    bones[5] = leg_transform({0.5f, 3.5f, 0.0f}, -walk_swing);   // Left leg
-    bones[6] = leg_transform({-0.5f, 3.5f, 0.0f}, walk_swing);    // Right leg
-
-    app.renderer().gs_renderer().upload_bone_transforms(bones, 7);
+        glm::mat4 bones[32];
+        bones[0] = terrain_bone;
+        const auto& anim_bones = anim_player_->bone_transforms();
+        int bone_count = static_cast<int>(character_data_->bones.size());
+        for (int i = 0; i < bone_count && i < 31; ++i) {
+            bones[i + 1] = root_xform * anim_bones[i];
+        }
+        app.renderer().gs_renderer().upload_bone_transforms(bones, bone_count + 1);
+    } else {
+        glm::mat4 bones[2];
+        bones[0] = terrain_bone;
+        bones[1] = root_xform;
+        app.renderer().gs_renderer().upload_bone_transforms(bones, 2);
+    }
 }
 
 // ── Environment animation (terrain sway) ──
