@@ -1,0 +1,58 @@
+{
+  "name": "slime",
+  "ply_file": "slime.ply",
+  "scale": 1.0,
+  "bones": [
+    {
+      "id": "body",
+      "parent": null,
+      "joint": [
+        16,
+        3,
+        16
+      ]
+    }
+  ],
+  "poses": {
+    "rest": {},
+    "squish": {
+      "body": [
+        0,
+        0,
+        0
+      ]
+    },
+    "bounce": {
+      "body": [
+        0,
+        0,
+        5
+      ]
+    }
+  },
+  "animations": [
+    {
+      "name": "idle",
+      "duration": 1.2,
+      "looping": true,
+      "keyframes": [
+        {
+          "time": 0.0,
+          "pose": "rest"
+        },
+        {
+          "time": 0.3,
+          "pose": "squish"
+        },
+        {
+          "time": 0.6,
+          "pose": "bounce"
+        },
+        {
+          "time": 0.9,
+          "pose": "rest"
+        }
+      ]
+    }
+  ]
+}

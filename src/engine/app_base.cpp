@@ -306,6 +306,20 @@ void AppBase::init_game_object_system() {
                     {"lifetime", c.lifetime},
                     {"loop", c.loop}};
         });
+
+    component_registry_.register_component<DiscoveryZone>("DiscoveryZone",
+        [](const nlohmann::json& j) -> DiscoveryZone {
+            DiscoveryZone c;
+            if (j.contains("color_r")) c.color_r = j["color_r"].get<float>();
+            if (j.contains("color_g")) c.color_g = j["color_g"].get<float>();
+            if (j.contains("color_b")) c.color_b = j["color_b"].get<float>();
+            if (j.contains("burst_height")) c.burst_height = j["burst_height"].get<float>();
+            return c;
+        },
+        [](const DiscoveryZone& c) -> nlohmann::json {
+            return {{"color_r", c.color_r}, {"color_g", c.color_g},
+                    {"color_b", c.color_b}, {"burst_height", c.burst_height}};
+        });
 }
 
 // ── Shared GS scene loading ──
@@ -892,6 +906,23 @@ void AppBase::dispatch_command(const nlohmann::json& cmd, nlohmann::json& respon
         if (!found) {
             response["position"] = nullptr;
         }
+
+    } else if (cmd_name == "get_triggers") {
+        response["type"] = "triggers";
+        auto triggers = nlohmann::json::array();
+        world_.view<ProximityTrigger, ecs::Transform>().each(
+            [&](ecs::Entity, ProximityTrigger& pt, ecs::Transform& t) {
+                nlohmann::json tj;
+                tj["x"] = t.position.x;
+                tj["y"] = t.position.y;
+                tj["z"] = t.position.z;
+                tj["radius"] = pt.radius;
+                tj["triggered"] = pt.triggered;
+                tj["one_shot"] = pt.one_shot;
+                triggers.push_back(tj);
+            });
+        response["triggers"] = triggers;
+        response["emitter_count"] = renderer_.gs_particle_emitters().size();
 
     } else if (cmd_name == "quit") {
         response["type"] = "ok";

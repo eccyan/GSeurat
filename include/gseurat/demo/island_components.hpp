@@ -69,4 +69,14 @@ struct AnimationTrigger {
     bool fired = false;          // runtime state
 };
 
+// Hidden discovery zone — rewards exploration with a celebration burst.
+// Places a multi-color fireworks particle effect + bright point light.
+struct DiscoveryZone {
+    float color_r = 1.0f;
+    float color_g = 0.8f;
+    float color_b = 0.2f;
+    float burst_height = 8.0f;  // how high particles shoot
+    bool discovered = false;
+};
+
 }  // namespace gseurat
