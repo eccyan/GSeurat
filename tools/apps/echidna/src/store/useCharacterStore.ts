@@ -177,7 +177,8 @@ export interface CharacterStoreState {
   setPlaybackSpeed: (speed: number) => void;
 
   // Actions – file
-  newCharacter: () => void;
+  newCharacter: (gridSize?: number) => void;
+  resizeGrid: (size: number) => void;
   saveProject: () => EchidnaFile;
   loadProject: (data: EchidnaFile) => void;
   setCurrentFilename: (name: string | null) => void;
@@ -531,28 +532,49 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
   // ── File actions ──
   setCurrentFilename: (name) => set({ currentFilename: name }),
 
-  newCharacter: () => set({
-    voxels: new Map(),
-    gridWidth: 32,
-    gridDepth: 32,
-    characterName: 'Untitled',
-    characterParts: [],
-    characterPoses: {},
-    selectedPart: null,
-    selectedPose: null,
-    previewPose: false,
-    undoStack: [],
-    redoStack: [],
-    animations: {},
-    selectedAnimation: null,
-    playbackTime: 0,
-    isPlaying: false,
-    currentFilename: null,
-    boxSelection: null,
-    mirrorAxis: null,
-    colorByPart: false,
-    partColors: {},
-  }),
+  newCharacter: (gridSize?: number) => {
+    const size = gridSize ?? 32;
+    set({
+      voxels: new Map(),
+      gridWidth: size,
+      gridDepth: size,
+      characterName: 'Untitled',
+      characterParts: [],
+      characterPoses: {},
+      animations: {},
+      selectedPart: null,
+      selectedPose: null,
+      selectedAnimation: null,
+      previewPose: false,
+      undoStack: [],
+      redoStack: [],
+      playbackTime: 0,
+      isPlaying: false,
+      boxSelection: null,
+      colorByPart: false,
+      partColors: {},
+    });
+  },
+
+  resizeGrid: (size: number) => {
+    const { voxels, characterParts, gridWidth } = get();
+    if (size === gridWidth) return;
+    const next = new Map<VoxelKey, Voxel>();
+    for (const [key, vox] of voxels) {
+      const [x, , z] = parseKey(key);
+      if (x >= 0 && x < size && z >= 0 && z < size) {
+        next.set(key, vox);
+      }
+    }
+    const nextParts = characterParts.map((p) => ({
+      ...p,
+      voxelKeys: p.voxelKeys.filter((k) => {
+        const [x, , z] = parseKey(k);
+        return x >= 0 && x < size && z >= 0 && z < size;
+      }),
+    }));
+    set({ voxels: next, gridWidth: size, gridDepth: size, characterParts: nextParts });
+  },
 
   saveProject: () => {
     const s = get();

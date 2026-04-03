@@ -3,6 +3,10 @@ import { useCharacterStore } from '../store/useCharacterStore.js';
 import { exportPly } from '../lib/plyExport.js';
 
 const styles: Record<string, React.CSSProperties> = {
+  select: {
+    background: '#2a2a4a', color: '#ddd', border: '1px solid #555',
+    borderRadius: 4, padding: '4px 8px', fontSize: 13,
+  },
   overlay: {
     position: 'fixed',
     inset: 0,
@@ -53,15 +57,18 @@ type ExportFormat = 'ply_manifest' | 'ply_baked';
 export function ExportDialog({ onClose }: { onClose: () => void }) {
   const [format, setFormat] = useState<ExportFormat>('ply_manifest');
   const [includeBoneIndex, setIncludeBoneIndex] = useState(true);
+  const [density, setDensity] = useState(1);
 
   const characterName = useCharacterStore((s) => s.characterName);
+  const voxelCount = useCharacterStore((s) => s.voxels.size);
+  const estimatedGaussians = voxelCount * density * density * density;
   const baseName = characterName.replace(/\s+/g, '_').toLowerCase() || 'character';
   const filename = format === 'ply_manifest' ? `${baseName}.ply` : `${baseName}_posed.ply`;
 
   const handleExport = () => {
     const s = useCharacterStore.getState();
     const parts = includeBoneIndex ? s.characterParts : undefined;
-    const blob = exportPly(s.voxels, s.gridWidth, s.gridDepth, parts);
+    const blob = exportPly(s.voxels, s.gridWidth, s.gridDepth, parts, density);
     download(blob, filename);
 
     // If PLY + Manifest, also export the manifest JSON
@@ -89,6 +96,21 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
             <input type="radio" checked={format === 'ply_baked'} onChange={() => setFormat('ply_baked')} />
             Posed PLY (baked)
           </label>
+        </div>
+
+        <div style={styles.section}>
+          <span style={styles.label}>Density</span>
+          <select
+            style={styles.select}
+            value={density}
+            onChange={(e) => setDensity(Number(e.target.value))}
+          >
+            <option value={1}>1x (1 per voxel)</option>
+            <option value={2}>2x (8 per voxel)</option>
+            <option value={3}>3x (27 per voxel)</option>
+            <option value={4}>4x (64 per voxel)</option>
+          </select>
+          <span style={{ fontSize: 12, color: '#aaa' }}>~{estimatedGaussians.toLocaleString()} Gaussians</span>
         </div>
 
         <div style={styles.section}>
