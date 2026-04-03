@@ -92,7 +92,12 @@ void IslandDemoState::on_enter(AppBase& app) {
                 }
             }
         }
-        std::fprintf(stderr, "[IslandDemo] Marked %d cells solid for house collision\n", marked);
+        int gx_min = static_cast<int>((house_x - house_hw) / collision_grid_.cell_size);
+        int gx_max = static_cast<int>((house_x + house_hw) / collision_grid_.cell_size);
+        int gz_min = static_cast<int>((house_z - house_hd) / collision_grid_.cell_size);
+        int gz_max = static_cast<int>((house_z + house_hd) / collision_grid_.cell_size);
+        std::fprintf(stderr, "[IslandDemo] House collision: grid[%d-%d, %d-%d] (%d cells marked)\n",
+                     gx_min, gx_max, gz_min, gz_max, marked);
     }
 
     // Create collision grid reference entity for NPC system
@@ -392,8 +397,12 @@ void IslandDemoState::update_player(AppBase& app, float dt) {
             // Check solid — if solid, undo movement
             bool solid = collision_grid_.is_solid(static_cast<uint32_t>(gx),
                                                    static_cast<uint32_t>(gz));
-            (void)debug_frame_; // reserved for future debug use
+            debug_frame_++;
             if (solid) {
+                if (debug_frame_ % 60 == 0) {
+                    std::fprintf(stderr, "[Collision] BLOCKED at grid(%d,%d) pos=(%.1f,%.1f)\n",
+                                 gx, gz, transform->position.x, transform->position.z);
+                }
                 transform->position -= player_velocity_ * dt;
             } else {
                 // Snap to elevation

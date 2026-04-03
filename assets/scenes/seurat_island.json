@@ -74110,7 +74110,7 @@
     {
       "id": "house",
       "name": "House",
-      "ply_file": "assets/props/island_house.ply",
+      "ply_file": "assets/props/island_house1.ply",
       "position": [
         192,
         4.5658,
@@ -75120,7 +75120,6 @@
     {
       "id": "slime_npc_1",
       "name": "Slime (patrol)",
-      "ply_file": "assets/characters/slime/slime.ply",
       "position": [
         170.0,
         3.0,
@@ -75152,7 +75151,6 @@
     {
       "id": "slime_npc_2",
       "name": "Slime (guard)",
-      "ply_file": "assets/characters/slime/slime.ply",
       "position": [
         210.0,
         3.0,
@@ -75184,7 +75182,6 @@
     {
       "id": "slime_npc_3",
       "name": "Slime (wanderer)",
-      "ply_file": "assets/characters/slime/slime.ply",
       "position": [
         145.0,
         3.0,
