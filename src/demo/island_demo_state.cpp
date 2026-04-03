@@ -1,4 +1,5 @@
 #include "gseurat/demo/island_demo_state.hpp"
+#include "gseurat/engine/shutdown_auditor.hpp"
 #include "gseurat/character/character_manifest.hpp"
 #include "gseurat/character/bone_animation_player.hpp"
 #include "gseurat/character/bone_animation_state_machine.hpp"
@@ -106,6 +107,7 @@ void IslandDemoState::on_enter(AppBase& app) {
             "assets/characters/warm_robot/warm_robot.manifest.json");
         if (loaded) {
             character_data_ = std::make_unique<gseurat::CharacterData>(std::move(*loaded));
+            ShutdownAuditor::record<gseurat::CharacterData>(character_data_.get());
         }
     }
 
@@ -164,13 +166,20 @@ void IslandDemoState::on_enter(AppBase& app) {
 }
 
 void IslandDemoState::on_exit(AppBase& app) {
+    ShutdownAuditor::report();
+
     // Release animation objects before state destruction
     anim_sm_.reset();
     anim_player_.reset();
-    // Intentionally leak CharacterData — freeing it during shutdown hangs
-    // due to an undiagnosed allocator issue on macOS (ASan clean, not heap
-    // corruption). The process is exiting; the OS reclaims the memory.
-    (void)character_data_.release();
+
+    // Attempt guarded free of CharacterData.
+    // Previously this hung in the macOS allocator (ASan clean, not heap
+    // corruption). try_free logs before/after so we can identify the exact
+    // point of hang if it recurs. If it still hangs, fall back to release().
+    if (character_data_) {
+        auto* raw = character_data_.release();
+        ShutdownAuditor::try_free(raw, "CharacterData");
+    }
 
     if (character_spawned_) {
         app.renderer().gs_renderer().clear_bone_transforms();
