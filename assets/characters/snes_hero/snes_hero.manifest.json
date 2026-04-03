@@ -1,0 +1,231 @@
+{
+  "name": "snes_hero",
+  "ply_file": "snes_hero.ply",
+  "scale": 1.0,
+  "bones": [
+    {
+      "id": "torso",
+      "parent": null,
+      "joint": [
+        32,
+        8,
+        32
+      ]
+    },
+    {
+      "id": "head",
+      "parent": "torso",
+      "joint": [
+        32,
+        12,
+        32
+      ]
+    },
+    {
+      "id": "left_arm",
+      "parent": "torso",
+      "joint": [
+        29,
+        11,
+        32
+      ]
+    },
+    {
+      "id": "right_arm",
+      "parent": "torso",
+      "joint": [
+        35,
+        11,
+        32
+      ]
+    },
+    {
+      "id": "left_leg",
+      "parent": "torso",
+      "joint": [
+        31,
+        4,
+        32
+      ]
+    },
+    {
+      "id": "right_leg",
+      "parent": "torso",
+      "joint": [
+        33,
+        4,
+        32
+      ]
+    },
+    {
+      "id": "cape",
+      "parent": "torso",
+      "joint": [
+        32,
+        11,
+        34
+      ]
+    }
+  ],
+  "poses": {
+    "rest": [],
+    "breathe": [
+      {
+        "bone": "left_arm",
+        "rotation": [
+          0,
+          0,
+          -3
+        ]
+      },
+      {
+        "bone": "right_arm",
+        "rotation": [
+          0,
+          0,
+          3
+        ]
+      },
+      {
+        "bone": "cape",
+        "rotation": [
+          3,
+          0,
+          0
+        ]
+      }
+    ],
+    "walk_1": [
+      {
+        "bone": "left_arm",
+        "rotation": [
+          25,
+          0,
+          0
+        ]
+      },
+      {
+        "bone": "right_arm",
+        "rotation": [
+          -25,
+          0,
+          0
+        ]
+      },
+      {
+        "bone": "left_leg",
+        "rotation": [
+          -20,
+          0,
+          0
+        ]
+      },
+      {
+        "bone": "right_leg",
+        "rotation": [
+          20,
+          0,
+          0
+        ]
+      },
+      {
+        "bone": "cape",
+        "rotation": [
+          -8,
+          0,
+          0
+        ]
+      }
+    ],
+    "walk_2": [
+      {
+        "bone": "left_arm",
+        "rotation": [
+          -25,
+          0,
+          0
+        ]
+      },
+      {
+        "bone": "right_arm",
+        "rotation": [
+          25,
+          0,
+          0
+        ]
+      },
+      {
+        "bone": "left_leg",
+        "rotation": [
+          20,
+          0,
+          0
+        ]
+      },
+      {
+        "bone": "right_leg",
+        "rotation": [
+          -20,
+          0,
+          0
+        ]
+      },
+      {
+        "bone": "cape",
+        "rotation": [
+          8,
+          0,
+          0
+        ]
+      }
+    ]
+  },
+  "animations": [
+    {
+      "name": "idle",
+      "duration": 1.0,
+      "looping": true,
+      "keyframes": [
+        {
+          "time": 0,
+          "pose": "rest"
+        },
+        {
+          "time": 0.5,
+          "pose": "breathe"
+        },
+        {
+          "time": 1.0,
+          "pose": "rest"
+        }
+      ]
+    },
+    {
+      "name": "walk",
+      "duration": 0.6,
+      "looping": true,
+      "keyframes": [
+        {
+          "time": 0,
+          "pose": "walk_1"
+        },
+        {
+          "time": 0.15,
+          "pose": "rest"
+        },
+        {
+          "time": 0.3,
+          "pose": "walk_2"
+        },
+        {
+          "time": 0.45,
+          "pose": "rest"
+        },
+        {
+          "time": 0.6,
+          "pose": "walk_1"
+        }
+      ]
+    }
+  ]
+}

@@ -104,7 +104,7 @@ void IslandDemoState::on_enter(AppBase& app) {
     // Load character manifest (heap-allocated via unique_ptr)
     {
         auto loaded = gseurat::load_character_manifest(
-            "assets/characters/warm_robot/warm_robot.manifest.json");
+            "assets/characters/snes_hero/snes_hero.manifest.json");
         if (loaded) {
             character_data_ = std::make_unique<gseurat::CharacterData>(std::move(*loaded));
             ShutdownAuditor::record<gseurat::CharacterData>(character_data_.get());
@@ -120,8 +120,8 @@ void IslandDemoState::on_enter(AppBase& app) {
         uint32_t map_count = static_cast<uint32_t>(merged.size());
 
         // Load mesh-converted character model
-        constexpr float kCharScale = 1.8f;   // warm robot 3x density: denser Gaussians, less scale needed
-        auto char_cloud = GaussianCloud::load_ply("assets/characters/warm_robot/warm_robot.ply");
+        constexpr float kCharScale = 0.8f;   // snes_hero: 20 voxels tall × 9558 Gaussians at 3x density
+        auto char_cloud = GaussianCloud::load_ply("assets/characters/snes_hero/snes_hero.ply");
         if (!char_cloud.empty()) {
             // Scale, rotate 180° (face away from camera), and position at spawn
             const auto& char_gs = char_cloud.gaussians();

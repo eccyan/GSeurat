@@ -74530,6 +74530,33 @@
       }
     },
     {
+      "id": "crystal_4",
+      "name": "Crystal",
+      "position": [
+        195.0,
+        2.0418,
+        120.0
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": 1.0,
+      "components": {
+        "ProximityTrigger": {
+          "radius": 14
+        },
+        "EmissiveToggle": {
+          "emission": 8.0,
+          "color_r": 0.2,
+          "color_g": 0.8,
+          "color_b": 1.0,
+          "effect_radius": 10.0
+        }
+      }
+    },
+    {
       "id": "anim_trigger_1",
       "name": "Animation (pulse)",
       "position": [

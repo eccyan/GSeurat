@@ -893,6 +893,23 @@ void AppBase::dispatch_command(const nlohmann::json& cmd, nlohmann::json& respon
             response["position"] = nullptr;
         }
 
+    } else if (cmd_name == "get_triggers") {
+        response["type"] = "triggers";
+        auto triggers = nlohmann::json::array();
+        world_.view<ProximityTrigger, ecs::Transform>().each(
+            [&](ecs::Entity, ProximityTrigger& pt, ecs::Transform& t) {
+                nlohmann::json tj;
+                tj["x"] = t.position.x;
+                tj["y"] = t.position.y;
+                tj["z"] = t.position.z;
+                tj["radius"] = pt.radius;
+                tj["triggered"] = pt.triggered;
+                tj["one_shot"] = pt.one_shot;
+                triggers.push_back(tj);
+            });
+        response["triggers"] = triggers;
+        response["emitter_count"] = renderer_.gs_particle_emitters().size();
+
     } else if (cmd_name == "quit") {
         response["type"] = "ok";
         response["message"] = "Shutting down";
