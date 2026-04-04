@@ -225,8 +225,8 @@ void main() {
         float horizon = ground_sky.w;  // normalized Y (0=top, 1=bottom)
 
         // Vertical gradient: sky above horizon, ground below
-        // Smooth 10% band transition centered on horizon
-        float band = 0.05;
+        // Wide 30% band for a soft, natural horizon transition
+        float band = 0.15;
         float t = smoothstep(horizon - band, horizon + band, uv.y);
         vec3 bg = mix(sky_enable.rgb, ground_sky.rgb, t);
 
