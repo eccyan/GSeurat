@@ -163,6 +163,9 @@ void IslandDemoState::on_enter(AppBase& app) {
 
         // Load mesh-converted character model
         constexpr float kCharScale = 0.45f;  // smaller to match prop proportions
+        const float gs_scale = scene_data.gaussian_splat
+            ? scene_data.gaussian_splat->scale_multiplier : 1.0f;
+        const float char_y_offset = 2.0f * gs_scale;
         auto char_cloud = GaussianCloud::load_ply("assets/characters/snes_hero/snes_hero.ply");
         if (!char_cloud.empty()) {
             // Scale, rotate 180° (face away from camera), and position at spawn
@@ -171,7 +174,7 @@ void IslandDemoState::on_enter(AppBase& app) {
                 Gaussian cg = g;
                 // Rotate 180° around Y: (x,y,z) → (-x, y, -z)
                 glm::vec3 rotated(-cg.position.x, cg.position.y, -cg.position.z);
-                cg.position = player_pos + rotated * kCharScale + glm::vec3(0, 2.0f, 0);
+                cg.position = player_pos + rotated * kCharScale + glm::vec3(0, char_y_offset, 0);
                 cg.scale *= kCharScale;
                 merged.push_back(cg);
             }
@@ -179,6 +182,8 @@ void IslandDemoState::on_enter(AppBase& app) {
 
         // Load NPC slime Gaussians with unique bone indices
         auto slime_cloud = GaussianCloud::load_ply("assets/characters/slime/slime.ply");
+        std::fprintf(stderr, "[IslandDemo] Slime PLY: %u Gaussians\n",
+                     slime_cloud.count());
         if (!slime_cloud.empty()) {
             int player_bone_count = character_data_
                 ? static_cast<int>(character_data_->bones.size()) : 1;
@@ -205,6 +210,10 @@ void IslandDemoState::on_enter(AppBase& app) {
                     }
 
                     npc_infos_.push_back(info);
+                    std::fprintf(stderr, "[IslandDemo] NPC bone=%u at (%.1f, %.1f, %.1f) +%u gs\n",
+                                 next_bone_index_,
+                                 t.position.x, t.position.y, t.position.z,
+                                 static_cast<uint32_t>(slime_gs.size()));
                     next_bone_index_++;
                 });
         }
