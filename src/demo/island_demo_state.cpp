@@ -162,7 +162,7 @@ void IslandDemoState::on_enter(AppBase& app) {
         uint32_t map_count = static_cast<uint32_t>(merged.size());
 
         // Load mesh-converted character model
-        constexpr float kCharScale = 0.45f;  // smaller to match prop proportions
+        // kCharScale defined as static constexpr on the class
         const float gs_scale = scene_data.gaussian_splat
             ? scene_data.gaussian_splat->scale_multiplier : 1.0f;
         gs_scale_ = gs_scale;
@@ -733,9 +733,9 @@ void IslandDemoState::update_walk_animation(AppBase& app, float dt) {
         // During spawning, character Gaussians were placed at:
         //   world = spawn + Ry(pi) * model * S + (0, 2, 0)
         // where S = diag(kCharScale, kCharScale * gs_scale, kCharScale).
+        // (Y scale is applied in two steps in the spawn loop: uniform * gs_scale.)
         // The animation FK chain computes pivot rotations in model space,
         // so we must convert: world → model → animate → world.
-        constexpr float kCharScale = 0.45f;
         const glm::vec3 y_off(0.0f, 2.0f, 0.0f);
         const glm::vec3 scale_vec(kCharScale, kCharScale * gs_scale_, kCharScale);
         const glm::vec3 inv_scale(1.0f / scale_vec.x, 1.0f / scale_vec.y, 1.0f / scale_vec.z);

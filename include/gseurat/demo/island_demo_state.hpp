@@ -110,6 +110,7 @@ private:
     static constexpr float kPlayerAccel = 20.0f;
     static constexpr float kCameraSmoothing = 8.0f;
     static constexpr float kCameraYOffset = 2.5f;  // above character head for TPS
+    static constexpr float kCharScale = 0.45f;     // character model scale (shared with spawn + animation)
 };
 
 }  // namespace gseurat
