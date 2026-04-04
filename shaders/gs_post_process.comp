@@ -18,6 +18,8 @@ layout(set = 0, binding = 3) uniform PostProcessUBO {
     vec4 bloom_fade;         // bloom_threshold, fade_amount, flash_r, flash_g
     vec4 effects;            // flash_b, ca_intensity, dof_focus_dist, dof_focus_range
     vec4 dimensions;         // dof_max_blur, width, height, far_plane
+    vec4 ground_sky;         // ground_r, ground_g, ground_b, horizon_y
+    vec4 sky_enable;         // sky_r, sky_g, sky_b, enable (> 0.5 = on)
 };
 
 // Shared memory for tile-based effects (DoF blur, bloom)
@@ -38,8 +40,10 @@ void main() {
     float depth = imageLoad(depth_image, ivec2(pixel)).r;
     float alpha = raw.a;
 
-    // Transparent pixels pass through unchanged
-    if (alpha < 0.001) {
+    // ── 0. Hybrid background (ground plane + sky gradient) ──
+    bool bg_enabled = sky_enable.w > 0.5;
+    if (alpha < 0.001 && !bg_enabled) {
+        // No background configured — pass through transparent
         imageStore(output_image, ivec2(pixel), raw);
         return;
     }
@@ -212,6 +216,24 @@ void main() {
 
     // ── 8. Scene fade ──
     color *= (1.0 - fade_amount);
+
+    // ── 9. Hybrid background compositing ──
+    // Composite processed GS output (premultiplied alpha) over procedural background.
+    // Ground color below horizon, sky gradient above, smooth blend at horizon line.
+    if (bg_enabled) {
+        vec2 uv = (vec2(pixel) + 0.5) / vec2(float(width), float(height));
+        float horizon = ground_sky.w;  // normalized Y (0=top, 1=bottom)
+
+        // Vertical gradient: sky above horizon, ground below
+        // Wide 30% band for a soft, natural horizon transition
+        float band = 0.15;
+        float t = smoothstep(horizon - band, horizon + band, uv.y);
+        vec3 bg = mix(sky_enable.rgb, ground_sky.rgb, t);
+
+        // Premultiplied alpha composite: GS over background
+        color = color + bg * (1.0 - alpha);
+        alpha = 1.0;  // output is fully opaque
+    }
 
     imageStore(output_image, ivec2(pixel), vec4(color, alpha));
 }

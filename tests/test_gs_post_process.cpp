@@ -3,7 +3,7 @@
 // Validates:
 // 1. GsPostProcessParams default values match PostProcessParams
 // 2. Parameter forwarding round-trip
-// 3. GsPostProcessUbo packing matches std140 layout (5 × vec4 = 80 bytes)
+// 3. GsPostProcessUbo packing matches std140 layout (7 × vec4 = 112 bytes)
 // 4. Feature flag interaction (disabled effects → zero values)
 //
 // Run: ctest -R test_gs_post_process
@@ -143,8 +143,8 @@ static void test_parameter_forwarding() {
 static void test_ubo_packing() {
     std::printf("=== UBO packing (std140 layout) ===\n");
 
-    // UBO must be exactly 5 × vec4 = 80 bytes
-    check(sizeof(gseurat::GsPostProcessUbo) == 80, "UBO size is 80 bytes");
+    // UBO must be exactly 7 × vec4 = 112 bytes
+    check(sizeof(gseurat::GsPostProcessUbo) == 112, "UBO size is 112 bytes");
 
     // Verify field offsets match std140 vec4 alignment
     check(offsetof(gseurat::GsPostProcessUbo, fog_params) == 0, "fog_params at offset 0");
@@ -223,6 +223,34 @@ static void test_dof_max_blur_default() {
     check(approx(gs.dof_max_blur, 0.5f), "GsPostProcessParams dof_max_blur default is 0.5");
 }
 
+// ── Background UBO packing ──
+
+static void test_background_ubo_packing() {
+    std::printf("\n== test_background_ubo_packing ==\n");
+
+    // UBO should be 7 × vec4 = 112 bytes (was 5 × vec4 = 80)
+    check(sizeof(gseurat::GsPostProcessUbo) == 112,
+          "GsPostProcessUbo is 112 bytes (7 x vec4)");
+
+    // Check that background fields pack correctly
+    gseurat::GsPostProcessUbo ubo{};
+    ubo.ground_sky = glm::vec4(0.4f, 0.3f, 0.2f, 0.5f);  // ground rgb + horizon_y
+    ubo.sky_enable = glm::vec4(0.5f, 0.6f, 0.8f, 1.0f);   // sky rgb + enable flag
+
+    // Verify field offsets via pointer arithmetic
+    const auto* base = reinterpret_cast<const char*>(&ubo);
+    const auto* ground_ptr = reinterpret_cast<const char*>(&ubo.ground_sky);
+    const auto* sky_ptr = reinterpret_cast<const char*>(&ubo.sky_enable);
+
+    check(ground_ptr - base == 80, "ground_sky at offset 80 (after 5 existing vec4s)");
+    check(sky_ptr - base == 96, "sky_enable at offset 96");
+
+    check(approx(ubo.ground_sky.x, 0.4f), "ground_sky.x = ground_r");
+    check(approx(ubo.ground_sky.w, 0.5f), "ground_sky.w = horizon_y");
+    check(approx(ubo.sky_enable.z, 0.8f), "sky_enable.z = sky_b");
+    check(approx(ubo.sky_enable.w, 1.0f), "sky_enable.w = enable flag");
+}
+
 int main() {
     std::printf("test_gs_post_process\n");
 
@@ -231,6 +259,7 @@ int main() {
     test_ubo_packing();
     test_feature_flags_disable_effects();
     test_dof_max_blur_default();
+    test_background_ubo_packing();
 
     std::printf("\n%d passed, %d failed\n", passed, failed);
     return failed > 0 ? 1 : 0;

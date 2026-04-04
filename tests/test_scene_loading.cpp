@@ -70,6 +70,48 @@ static SceneLoadResult load_gs_scene(const gseurat::SceneData& scene_data,
     return result;
 }
 
+static void test_background_colors() {
+    std::printf("\n== test_background_colors ==\n");
+
+    const char* json_str = R"({
+        "version": 2,
+        "gaussian_splat": {
+            "ply_file": "test.ply",
+            "ground_color": [0.4, 0.3, 0.2],
+            "sky_color": [0.5, 0.6, 0.8]
+        }
+    })";
+
+    auto j = nlohmann::json::parse(json_str);
+    auto scene = gseurat::SceneLoader::from_json(j);
+
+    check(scene.gaussian_splat.has_value(), "gaussian_splat parsed");
+    const auto& gs = *scene.gaussian_splat;
+    check(approx(gs.ground_color.r, 0.4f), "ground_color.r");
+    check(approx(gs.ground_color.g, 0.3f), "ground_color.g");
+    check(approx(gs.ground_color.b, 0.2f), "ground_color.b");
+    check(approx(gs.sky_color.r, 0.5f), "sky_color.r");
+    check(approx(gs.sky_color.g, 0.6f), "sky_color.g");
+    check(approx(gs.sky_color.b, 0.8f), "sky_color.b");
+
+    // Round-trip serialization
+    auto out_j = gseurat::SceneLoader::to_json(scene);
+    check(out_j["gaussian_splat"].contains("ground_color"), "ground_color serialized");
+    check(out_j["gaussian_splat"].contains("sky_color"), "sky_color serialized");
+
+    // Defaults: when omitted, colors should be zero (disabled)
+    const char* minimal_json = R"({
+        "version": 2,
+        "gaussian_splat": { "ply_file": "test.ply" }
+    })";
+    auto minimal = gseurat::SceneLoader::from_json(nlohmann::json::parse(minimal_json));
+    const auto& gs2 = *minimal.gaussian_splat;
+    check(approx(gs2.ground_color.r, 0.0f) && approx(gs2.ground_color.g, 0.0f),
+          "default ground_color is black (disabled)");
+    check(approx(gs2.sky_color.r, 0.0f) && approx(gs2.sky_color.g, 0.0f),
+          "default sky_color is black (disabled)");
+}
+
 int main() {
     std::printf("\n=== Scene Loading Tests ===\n\n");
 
@@ -391,6 +433,9 @@ int main() {
         auto scene = gseurat::SceneLoader::load("/tmp/test_scene_legacy_both.json");
         check(scene.game_objects.size() == 2, "2 game objects from combined legacy npcs + objects");
     }
+
+    // ── 8. Background colors ──
+    test_background_colors();
 
     // ── Summary ──
     std::printf("\n========================================\n");

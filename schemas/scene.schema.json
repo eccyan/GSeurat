@@ -351,6 +351,20 @@
         "render_height": { "type": "integer" },
         "scale_multiplier": { "type": "number" },
         "background_image": { "type": "string" },
+        "ground_color": {
+          "type": "array",
+          "items": { "type": "number" },
+          "minItems": 3,
+          "maxItems": 3,
+          "description": "RGB ground plane color beneath Gaussians (0,0,0 = disabled)"
+        },
+        "sky_color": {
+          "type": "array",
+          "items": { "type": "number" },
+          "minItems": 3,
+          "maxItems": 3,
+          "description": "RGB sky gradient color above horizon (0,0,0 = disabled)"
+        },
         "parallax": {
           "type": "object",
           "properties": {

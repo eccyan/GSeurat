@@ -1407,6 +1407,10 @@ void GsRenderer::render(VkCommandBuffer cmd, const glm::mat4& view, const glm::m
                                        static_cast<float>(width),
                                        static_cast<float>(height),
                                        gs_pp_params_.far_plane);
+        pp_ubo.ground_sky = glm::vec4(gs_pp_params_.ground_color,
+                                       gs_pp_params_.horizon_y);
+        pp_ubo.sky_enable = glm::vec4(gs_pp_params_.sky_color,
+                                       gs_pp_params_.background_enabled ? 1.0f : 0.0f);
         std::memcpy(pp_ubo_buffer_.mapped(), &pp_ubo, sizeof(pp_ubo));
 
         // Transition processed image to GENERAL for compute write

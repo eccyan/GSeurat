@@ -17,7 +17,9 @@
     },
     "render_width": 1280,
     "render_height": 720,
-    "scale_multiplier": 1.0
+    "scale_multiplier": 0.8,
+    "ground_color": [0.48, 0.46, 0.38],
+    "sky_color": [0.55, 0.60, 0.68]
   },
   "collision": {
     "width": 192,

@@ -71,6 +71,8 @@ struct GaussianSplatData {
     float scale_multiplier = 1.0f;   // Applied to Gaussian scales at load time
     std::optional<GsParallaxConfig> parallax;  // Shadow-box parallax camera config
     std::string background_image;  // Optional background behind GS (sky, mountains, etc.)
+    glm::vec3 ground_color{0.0f};  // Hybrid BG: solid ground beneath Gaussians (0 = disabled)
+    glm::vec3 sky_color{0.0f};     // Hybrid BG: sky gradient above horizon (0 = disabled)
 };
 
 
