@@ -49,6 +49,7 @@ private:
     uint32_t debug_frame_ = 0;
     glm::vec3 character_spawn_pos_{0.0f};  // where Gaussians were placed
     glm::vec3 character_origin_{0.0f};     // current player position
+    float gs_scale_ = 1.0f;               // scene scale_multiplier (for bone coord conversion)
     std::vector<Gaussian> map_gaussians_;  // original map data before character merge
 
     // NPC tracking (for bone animation)

@@ -165,6 +165,7 @@ void IslandDemoState::on_enter(AppBase& app) {
         constexpr float kCharScale = 0.45f;  // smaller to match prop proportions
         const float gs_scale = scene_data.gaussian_splat
             ? scene_data.gaussian_splat->scale_multiplier : 1.0f;
+        gs_scale_ = gs_scale;
         auto char_cloud = GaussianCloud::load_ply("assets/characters/snes_hero/snes_hero.ply");
         if (!char_cloud.empty()) {
             // Scale, rotate 180° (face away from camera), and position at spawn
