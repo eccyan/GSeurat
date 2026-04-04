@@ -165,7 +165,6 @@ void IslandDemoState::on_enter(AppBase& app) {
         constexpr float kCharScale = 0.45f;  // smaller to match prop proportions
         const float gs_scale = scene_data.gaussian_splat
             ? scene_data.gaussian_splat->scale_multiplier : 1.0f;
-        const float char_y_offset = 2.0f * gs_scale;
         auto char_cloud = GaussianCloud::load_ply("assets/characters/snes_hero/snes_hero.ply");
         if (!char_cloud.empty()) {
             // Scale, rotate 180° (face away from camera), and position at spawn
@@ -174,7 +173,9 @@ void IslandDemoState::on_enter(AppBase& app) {
                 Gaussian cg = g;
                 // Rotate 180° around Y: (x,y,z) → (-x, y, -z)
                 glm::vec3 rotated(-cg.position.x, cg.position.y, -cg.position.z);
-                cg.position = player_pos + rotated * kCharScale + glm::vec3(0, char_y_offset, 0);
+                glm::vec3 offset = rotated * kCharScale;
+                offset.y *= gs_scale;
+                cg.position = player_pos + offset + glm::vec3(0, 2.0f, 0);
                 cg.scale *= kCharScale;
                 merged.push_back(cg);
             }
