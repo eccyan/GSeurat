@@ -586,6 +586,7 @@ void GsRenderer::load_cloud(const GaussianCloud& cloud) {
         kMaxPbdConstraints * sizeof(PbdConstraint));
     pbd_count_ = 0;
     pbd_constraint_count_ = 0;
+    // Zero-initialize all PBD buffers
     {
         auto* states = static_cast<PbdPhysicsState*>(pbd_state_ssbo_.mapped());
         for (uint32_t i = 0; i < kMaxPbdElements; ++i) {
@@ -594,6 +595,10 @@ void GsRenderer::load_cloud(const GaussianCloud& cloud) {
             states[i].velocity = glm::vec4(0.0f);
             states[i].params = glm::vec4(0.0f);
         }
+        std::memset(pbd_params_ssbo_.mapped(), 0,
+                    kMaxPbdElements * sizeof(PbdElementParams));
+        std::memset(pbd_constraint_ssbo_.mapped(), 0,
+                    kMaxPbdConstraints * sizeof(PbdConstraint));
     }
     pbd_uniform_buffer_ = Buffer::create_storage(allocator_, 32);
 
@@ -1615,6 +1620,10 @@ void GsRenderer::clear_pbd() {
         auto* s = static_cast<PbdPhysicsState*>(pbd_state_ssbo_.mapped());
         for (uint32_t i = 0; i < kMaxPbdElements; ++i) s[i] = PbdPhysicsState{};
     }
+    if (pbd_params_ssbo_.mapped())
+        std::memset(pbd_params_ssbo_.mapped(), 0, kMaxPbdElements * sizeof(PbdElementParams));
+    if (pbd_constraint_ssbo_.mapped())
+        std::memset(pbd_constraint_ssbo_.mapped(), 0, kMaxPbdConstraints * sizeof(PbdConstraint));
 }
 
 void GsRenderer::set_point_lights(const std::vector<PointLight>& lights) {
