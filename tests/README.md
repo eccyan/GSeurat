@@ -291,6 +291,37 @@ c++ -std=c++23 -I include \
 | 6 | active_set_dirty flag | Set on load, cleared by assemble_active() |
 | 7 | Assemble with frustum culling | Narrow VP returns fewer Gaussians than wide VP |
 
+### test_pbd_solver
+
+Tests PBD solver struct layout, index segmentation, and quaternion math used in the GPU PBD pipeline.
+
+**Build:**
+```bash
+c++ -std=c++23 -I include \
+    -I build/macos-debug/_deps/glm-src \
+    -I build/macos-debug/_deps/stb-src \
+    -I build/macos-debug/_deps/vma-src/include \
+    $(pkg-config --cflags vulkan 2>/dev/null || echo "-I$VULKAN_SDK/include") \
+    tests/test_pbd_solver.cpp \
+    -o build/test_pbd_solver
+```
+
+**Run:**
+```bash
+./build/test_pbd_solver
+```
+
+**Tests (7):**
+| # | Test | What it verifies |
+|---|------|------------------|
+| 1 | PbdState struct layout | 32 bytes (2 x vec4), correct field offsets for GPU std430 |
+| 2 | Index segmentation | Round-trip encoding, correct routing: 0=none, 1-31=bone, 32-63=PBD |
+| 3 | Quaternion multiplication | Identity, composition, unit length preservation |
+| 4 | Quaternion-vector rotation | Axis rotations (90deg Y, 90deg Z, 180deg X), magnitude preservation |
+| 5 | PBD transform composition | Anchor-relative rotation preserves inter-Gaussian distances (rigid body) |
+| 6 | Axis-angle to quaternion | Zero angle → identity, unit length, 180deg edge case |
+| 7 | Wind sway output | Unit quaternions, bounded sway angles, spatial variation between anchors |
+
 ### test_character_data
 
 Tests character animation JSON loading.

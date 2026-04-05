@@ -30,6 +30,7 @@ set(SHADER_SOURCES
     ${SHADER_SOURCE_DIR}/gs_radix_scatter.comp
     ${SHADER_SOURCE_DIR}/gs_merge.comp
     ${SHADER_SOURCE_DIR}/gs_post_process.comp
+    ${SHADER_SOURCE_DIR}/pbd_solver.comp
 )
 
 set(SHADER_OUTPUTS "")

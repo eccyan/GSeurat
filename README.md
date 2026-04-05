@@ -5,6 +5,7 @@ A Vulkan-based 3D Gaussian Splatting engine built with C++23. Named after **3DGS
 ## Features
 
 - **3D Gaussian Splatting** — GPU compute pipeline for rendering `.ply` point clouds with tile-based rasterization, dynamic point light support
+- **GPU PBD solver** — Position Based Dynamics compute shader for foliage sway, with quaternion rotation to preserve Gaussian orientation
 - **Voxel character pipeline** — MagicaVoxel import, rigid-body-part posing, GPU bone skinning in compute shader
 - **Sprite overlay** — Sprite-based entities over GS backgrounds with bloom, depth-of-field, and tone mapping
 - **Game Object System** — Unified entity model with component composition. Developers define C++ component structs + JSON schemas; level designers compose objects in Bricklayer
@@ -137,9 +138,10 @@ All disk I/O and CPU parsing runs on the worker thread. All Vulkan API calls sta
 PLY file → GaussianCloud → GsRenderer (compute) → Storage Image → Fullscreen Blit
 ```
 
-Three compute passes before the main render pass:
+Compute passes before the main render pass:
 
-1. **Preprocess** — project 3D Gaussians to 2D, frustum cull, compute 2D covariance
+0. **PBD Solver** (optional) — GPU-driven Position Based Dynamics for foliage sway, writes position + rotation deltas
+1. **Preprocess** — project 3D Gaussians to 2D, frustum cull, compute 2D covariance (reads PBD + bone transforms)
 2. **Bitonic Sort** — depth-sort projected splats front-to-back
 3. **Tile Rasterizer** — 16x16 tile-based splatting into a 320x240 HDR storage image
 
@@ -186,10 +188,14 @@ Engine: PLY load → bone_index per Gaussian → preprocess shader → skeletal 
 
 **Runtime** (Engine):
 - `bone_index` packed into `GpuGaussian.scale_pad.w` (no SSBO size change)
+- Index segmentation: 0 = no transform, 1-31 = bone skinning (binding 5), 32-63 = PBD dynamics (binding 6)
 - Bone transform SSBO at binding 5 (max 32 bones)
-- Preprocess shader applies `mat4` per bone: transforms position + rotates Gaussian orientation
+- PBD state SSBO at binding 6 (max 32 elements) — position anchors + rotation quaternions
+- Preprocess shader applies `mat4` per bone or PBD quaternion rotation per element
 - Bone 0 = identity (map Gaussians pass through untouched)
 - Rigid body part animation (action-figure style, no smooth skinning)
+
+See [docs/pbd-solver.md](docs/pbd-solver.md) for full PBD architecture and API reference.
 
 ### Scene Composition (Game Objects)
 
@@ -337,7 +343,7 @@ cd tools/apps/level-designer && pnpm dev
 
 ### C++ Engine Tests
 
-All 21 test suites are CMake targets, run via `ctest`:
+All 22 test suites are CMake targets, run via `ctest`:
 
 ```bash
 cmake --preset <platform>-debug
@@ -357,6 +363,7 @@ ctest --test-dir build/<platform>-debug --output-on-failure
 | `test_gs_parallax_camera` | 6 | Camera configuration, Y-flip, smoothing convergence |
 | `test_screenshot` | 5 | State machine, BGRA→RGBA swizzle |
 | `test_character_data` | 12 | Character animation JSON loading |
+| `test_pbd_solver` | 7 | PBD struct layout, index segmentation, quaternion math, wind sway |
 
 ### TypeScript Tool Tests
 

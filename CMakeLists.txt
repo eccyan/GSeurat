@@ -300,6 +300,7 @@ add_gseurat_test(test_vfx_lights_rotation src/engine/gs_vfx.cpp src/engine/gs_pa
                                            src/engine/gs_spline.cpp)
 add_gseurat_test(test_gs_spline src/engine/gs_spline.cpp)
 add_gseurat_test(test_gs_post_process)
+add_gseurat_test(test_pbd_solver)
 add_gseurat_test(test_component_registry src/engine/component_registry.cpp)
 add_gseurat_test(test_system_scheduler  src/engine/system_scheduler.cpp)
 add_gseurat_test(test_island_systems    src/demo/island_systems.cpp)

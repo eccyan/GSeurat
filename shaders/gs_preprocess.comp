@@ -64,6 +64,16 @@ layout(set = 0, binding = 5) readonly buffer BoneBuffer {
     mat4 bone_transforms[];
 };
 
+// PBD (Position Based Dynamics) state — written by pbd_solver.comp
+struct PbdState {
+    vec4 position; // xyz = anchor position, w = unused
+    vec4 rotation; // xyzw = delta quaternion (identity = no change)
+};
+
+layout(set = 0, binding = 6) readonly buffer PbdBuffer {
+    PbdState pbd_states[];
+};
+
 layout(push_constant) uniform PushConstants {
     uint projected_offset;  // 0 for static, max_static_count for dynamic
     uint gaussian_count;    // number of Gaussians in this layer
@@ -131,9 +141,25 @@ void main() {
     vec3 col = g.color_pad.rgb;
     vec4 rot_q = g.rot;
 
-    // --- Bone skinning ---
+    // --- Bone skinning / PBD dynamics ---
     uint bone_idx = floatBitsToUint(g.scale_pad.w);
-    if (bone_idx > 0 && bone_idx < 32) {
+    if (bone_idx >= 32 && bone_idx < 64) {
+        // PBD-driven Gaussian: index 32-63 maps to pbd_states[0-31]
+        uint pbd_idx = bone_idx - 32;
+        PbdState pbd = pbd_states[pbd_idx];
+
+        // Apply PBD: rotate the local offset around the anchor, then translate
+        // This preserves relative structure while allowing bending/swaying
+        vec4 pbd_q = normalize(pbd.rotation);
+        vec3 local_offset = pos - pbd.position.xyz;
+        // Rotate local offset by PBD quaternion
+        vec3 t = 2.0 * cross(pbd_q.xyz, local_offset);
+        pos = pbd.position.xyz + local_offset + pbd_q.w * t + cross(pbd_q.xyz, t);
+
+        // Compose PBD rotation with original Gaussian rotation
+        rot_q = quat_mul(pbd_q, rot_q);
+    } else if (bone_idx > 0 && bone_idx < 32) {
+        // Standard bone skinning
         mat4 bone_tf = bone_transforms[bone_idx];
         pos = (bone_tf * vec4(pos, 1.0)).xyz;
         mat3 bone_rot = mat3(bone_tf);
