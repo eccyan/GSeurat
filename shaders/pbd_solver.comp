@@ -56,116 +56,121 @@ vec4 axis_angle_to_quat(vec3 axis, float angle) {
 
 void main() {
     uint idx = gl_GlobalInvocationID.x;
-    if (idx >= pbd_count) return;
 
-    PbdPhysicsState state = states[idx];
-    PbdElementParams ep = elem_params[idx];
+    // All threads must participate in barrier() calls.
+    // Out-of-range threads skip work but still hit barriers.
+    bool is_valid = (idx < pbd_count);
 
-    float inv_mass = state.position.w;
-    vec3 pos = state.position.xyz;
-    vec3 prev_pos = state.prev_position.xyz;
+    float inv_mass = 0.0;
+    vec3 pos = vec3(0.0);
+    vec3 prev_pos = vec3(0.0);
+    PbdElementParams ep;
 
-    // Store original position for rotation derivation
-    vec3 original_pos = pos;
+    if (is_valid) {
+        PbdPhysicsState state = states[idx];
+        ep = elem_params[idx];
 
-    // Skip pinned elements (inv_mass == 0)
-    if (inv_mass > 0.0) {
-        // --- External forces ---
-        vec3 accel = ep.gravity.xyz;
-        float damping = ep.gravity.w;
+        inv_mass = state.position.w;
+        pos = state.position.xyz;
+        prev_pos = state.prev_position.xyz;
 
-        // Wind force (sinusoidal, per-element phase variation)
-        float wind_strength = ep.wind.w;
-        if (wind_strength > 0.0) {
-            vec3 wind_dir = normalize(ep.wind.xyz);
-            float freq = ep.dynamics.x;
-            float phase = dot(pos, vec3(0.37, 0.13, 0.71));
-            float wind_force = sin(time * freq + phase) * wind_strength;
-            accel += wind_dir * wind_force;
-        }
+        // Physics integration for free elements
+        if (inv_mass > 0.0) {
+            vec3 accel = ep.gravity.xyz;
+            float damping = ep.gravity.w;
 
-        // --- Verlet integration ---
-        vec3 vel = (pos - prev_pos) * damping;
-        vec3 predicted = pos + vel + accel * dt * dt;
+            // Wind force
+            float wind_strength = ep.wind.w;
+            if (wind_strength > 0.0) {
+                vec3 wind_dir = normalize(ep.wind.xyz);
+                float freq = ep.dynamics.x;
+                float phase = dot(pos, vec3(0.37, 0.13, 0.71));
+                float wind_force = sin(time * freq + phase) * wind_strength;
+                accel += wind_dir * wind_force;
+            }
 
-        prev_pos = pos;
-        pos = predicted;
+            // Verlet integration
+            vec3 vel = (pos - prev_pos) * damping;
+            vec3 predicted = pos + vel + accel * dt * dt;
+            prev_pos = pos;
+            pos = predicted;
 
-        // --- Ground collision ---
-        float ground_y = ep.dynamics.y;
-        float bounce = ep.dynamics.z;
-        if (pos.y < ground_y) {
-            pos.y = ground_y;
-            if (prev_pos.y > ground_y) {
-                float penetration_vel = (prev_pos.y - ground_y);
-                prev_pos.y = pos.y + penetration_vel * bounce;
+            // Ground collision
+            float ground_y = ep.dynamics.y;
+            float bounce = ep.dynamics.z;
+            if (pos.y < ground_y) {
+                pos.y = ground_y;
+                if (prev_pos.y > ground_y) {
+                    prev_pos.y = pos.y + (prev_pos.y - ground_y) * bounce;
+                }
             }
         }
+
+        states[idx].prev_position = vec4(prev_pos, 0.0);
+        states[idx].position = vec4(pos, inv_mass);
     }
 
-    // Write predicted position (constraints will correct it)
-    states[idx].prev_position = vec4(prev_pos, 0.0);
-    states[idx].position = vec4(pos, inv_mass);
-
-    // --- Synchronize before constraint solving ---
+    // All threads must hit this barrier
     memoryBarrierBuffer();
     barrier();
 
-    // --- Constraint projection (iterative) ---
+    // Constraint projection (iterative)
     for (uint iter = 0; iter < iterations; iter++) {
-        for (uint ci = 0; ci < constraint_count; ci++) {
-            PbdConstraint c = constraints[ci];
-            uint a = c.indices.x;
-            uint b = c.indices.y;
+        if (is_valid) {
+            for (uint ci = 0; ci < constraint_count; ci++) {
+                PbdConstraint c = constraints[ci];
+                uint a = c.indices.x;
+                uint b = c.indices.y;
+                if (a != idx && b != idx) continue;
 
-            if (a != idx && b != idx) continue;
+                float rest_length = c.params.x;
+                float stiffness = c.params.y;
 
-            float rest_length = c.params.x;
-            float stiffness = c.params.y;
+                vec3 pos_a = states[a].position.xyz;
+                vec3 pos_b = states[b].position.xyz;
+                float inv_mass_a = states[a].position.w;
+                float inv_mass_b = states[b].position.w;
 
-            vec3 pos_a = states[a].position.xyz;
-            vec3 pos_b = states[b].position.xyz;
-            float inv_mass_a = states[a].position.w;
-            float inv_mass_b = states[b].position.w;
+                vec3 delta = pos_b - pos_a;
+                float dist = length(delta);
+                if (dist < 1e-6) continue;
 
-            vec3 delta = pos_b - pos_a;
-            float dist = length(delta);
-            if (dist < 1e-6) continue;
+                float w_sum = inv_mass_a + inv_mass_b;
+                if (w_sum < 1e-6) continue;
 
-            float w_sum = inv_mass_a + inv_mass_b;
-            if (w_sum < 1e-6) continue;
+                float error = (dist - rest_length) / dist;
+                vec3 correction = delta * error * stiffness / float(iterations);
 
-            float error = (dist - rest_length) / dist;
-            vec3 correction = delta * error * stiffness / float(iterations);
-
-            if (a == idx && inv_mass_a > 0.0) {
-                pos = states[idx].position.xyz + correction * (inv_mass_a / w_sum);
-                states[idx].position = vec4(pos, inv_mass);
-            }
-            if (b == idx && inv_mass_b > 0.0) {
-                pos = states[idx].position.xyz - correction * (inv_mass_b / w_sum);
-                states[idx].position = vec4(pos, inv_mass);
+                if (a == idx && inv_mass_a > 0.0) {
+                    vec3 p = states[idx].position.xyz + correction * (inv_mass_a / w_sum);
+                    states[idx].position = vec4(p, inv_mass);
+                }
+                if (b == idx && inv_mass_b > 0.0) {
+                    vec3 p = states[idx].position.xyz - correction * (inv_mass_b / w_sum);
+                    states[idx].position = vec4(p, inv_mass);
+                }
             }
         }
 
+        // All threads must hit this barrier
         memoryBarrierBuffer();
         barrier();
     }
 
-    // --- Update velocity from position change ---
+    if (!is_valid) return;
+
+    // Update velocity
     pos = states[idx].position.xyz;
     prev_pos = states[idx].prev_position.xyz;
     vec3 final_vel = (pos - prev_pos) / max(dt, 1e-6);
     states[idx].velocity = vec4(final_vel, 0.0);
 
-    // --- Compute rotation for preprocess shader ---
-    // For wind sway (no constraints): use sine-wave rotation as before
-    // For constrained elements: derive rotation from displacement
+    // Compute rotation for preprocess shader
     vec4 rot = vec4(0.0, 0.0, 0.0, 1.0);  // identity
 
     if (inv_mass > 0.0) {
         if (constraint_count == 0) {
-            // Wind sway mode: procedural rotation from wind params
+            // Wind sway mode
             float wind_strength = ep.wind.w;
             if (wind_strength > 0.0) {
                 vec3 wind_dir = normalize(ep.wind.xyz);
@@ -177,20 +182,19 @@ void main() {
                 rot = axis_angle_to_quat(sway_axis, sway_angle);
             }
         } else {
-            // Constraint mode: derive rotation from velocity direction
+            // Constraint mode: tilt based on velocity
             float speed = length(final_vel);
             if (speed > 0.1) {
                 vec3 vel_dir = final_vel / speed;
-                // Tilt rotation: lean in direction of movement
                 vec3 tilt_axis = normalize(cross(vec3(0, 1, 0), vel_dir));
                 if (length(tilt_axis) > 0.001) {
-                    float tilt_angle = min(speed * 0.02, 0.5);  // cap at ~28 degrees
+                    float tilt_angle = min(speed * 0.02, 0.5);
                     rot = axis_angle_to_quat(tilt_axis, tilt_angle);
                 }
             }
         }
     }
 
-    // Write rotation into prev_position slot — preprocess reads this as PbdState.rotation
+    // Write rotation into prev_position slot for preprocess compatibility
     states[idx].prev_position = rot;
 }
