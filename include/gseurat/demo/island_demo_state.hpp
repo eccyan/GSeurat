@@ -88,8 +88,9 @@ private:
     enum class HudMode { kOff, kCompact, kFull };
     HudMode hud_mode_ = HudMode::kOff;
 
-    // Toggle flags (P = particles, N = animation)
+    // Toggle flags (P = particles, N = animation, J = PBD chain)
     bool anim_enabled_ = true;
+    bool pbd_chain_active_ = false;
 
     // FPS tracking
     std::chrono::steady_clock::time_point fps_clock_{};
