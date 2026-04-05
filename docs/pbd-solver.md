@@ -210,6 +210,81 @@ When `pbd_count_ == 0`, Phase 0 is skipped entirely -- zero overhead for scenes 
 ctest --test-dir build/macos-debug -R test_pbd_solver
 ```
 
+## Scene Format
+
+PBD behavior is configured per game object via the optional `pbd` block in scene JSON. This replaces the earlier hardcoded tree detection that inferred sway behavior from object names.
+
+### Wind Sway Mode
+
+For foliage and gentle oscillation, use `"mode": "wind_sway"`:
+
+```json
+{
+  "id": "oak_tree", "name": "Oak Tree",
+  "position": [10, 0, 15], "ply_file": "assets/props/tree.ply",
+  "pbd": {
+    "mode": "wind_sway",
+    "wind_strength": 0.06,
+    "wind_frequency": 0.8,
+    "wind_direction": [1, 0, 0],
+    "sway_threshold": 0.7
+  }
+}
+```
+
+### Physics Mode
+
+For constraint-based dynamics (chains, pendulums, hanging objects), use `"mode": "physics"`:
+
+```json
+{
+  "id": "chain_anchor", "name": "Chain Anchor",
+  "position": [5, 10, 5], "ply_file": "assets/props/chain_link.ply",
+  "pbd": {
+    "mode": "physics",
+    "pinned": true,
+    "gravity": [0, -9.8, 0],
+    "damping": 0.98,
+    "constraints": [
+      { "target": "chain_link_1", "rest_length": 2.0, "stiffness": 0.9 }
+    ]
+  }
+}
+```
+
+### Field Reference
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `mode` | `"wind_sway"` \| `"physics"` | *(required)* | Simulation mode |
+| `sway_threshold` | number | 0.7 | Height fraction above which Gaussians sway (wind_sway mode) |
+| `wind_direction` | vec3 | [1, 0, 0] | Wind direction vector |
+| `wind_strength` | number | 0.06 | Wind force amplitude |
+| `wind_frequency` | number | 0.8 | Wind oscillation frequency |
+| `gravity` | vec3 | [0, -9.8, 0] | Gravity acceleration (physics mode) |
+| `damping` | number | 0.98 | Velocity damping per frame (0 = full damp, 1 = none) |
+| `ground_y` | number | -1000 | Ground collision plane Y (-1000 effectively disables) |
+| `bounce` | number | 0.3 | Restitution coefficient (0-1) |
+| `pinned` | boolean | false | If true, element is an immovable anchor (inv_mass = 0) |
+| `constraints` | array | [] | Distance constraints to other game objects (physics mode) |
+| `constraints[].target` | string | *(required)* | ID of the connected game object |
+| `constraints[].rest_length` | number | 3.0 | Target distance between elements |
+| `constraints[].stiffness` | number | 0.8 | Constraint stiffness (0-1) |
+
+### Replacing Hardcoded Tree Detection
+
+Before the `pbd` block, the engine used heuristic name matching (e.g., objects named "tree" or "palm") to decide which game objects received wind sway. This was fragile and prevented non-tree objects from using PBD.
+
+Now, the scene loader checks `GameObjectData.pbd` directly. If present, the config drives PBD element setup. If absent, the object has no PBD behavior -- no name-based guessing.
+
+### Mutual Exclusion with GS Animations
+
+PBD elements use `bone_index` values 32-63 (see [Index Segmentation](#index-segmentation)). The GS animation system (`GsAnimator`) skips any Gaussian with `bone_index >= 32`, ensuring PBD-driven Gaussians are never double-transformed by both the animation and physics systems.
+
+### Bricklayer UI
+
+The Bricklayer map editor (port 5180) exposes PBD configuration in the game object inspector panel. When a game object has a PLY file, a **PBD Mode** dropdown appears with three options: *None*, *Wind Sway*, and *Physics*. Selecting a mode reveals the relevant parameter fields. Changes are saved into the `pbd` block of the scene JSON.
+
 ## Future Extensions
 
 - **Bending constraints**: Resist angular change between three connected elements (stiff branches, hair)

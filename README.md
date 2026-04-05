@@ -238,6 +238,9 @@ Auto-generated from Gaussian data via `generate_collision_from_gaussians()`, or 
     "render_width": 320, "render_height": 240
   },
   "game_objects": [
+    { "id": "tree", "name": "Oak Tree", "ply_file": "assets/props/tree.ply",
+      "position": [15, 0, 20], "rotation": [0, 0, 0], "scale": 1.0,
+      "pbd": { "mode": "wind_sway", "wind_strength": 0.06 } },
     { "id": "house", "name": "House", "ply_file": "assets/props/house.ply",
       "position": [32, 0, 32], "rotation": [0, 0, 0], "scale": 1.0, "components": {} },
     { "id": "guard", "name": "Town Guard",
@@ -321,7 +324,7 @@ Engine (Vulkan) ←→ Unix Socket ←→ Bridge Proxy (ws://localhost:9100) ←
 | Tool | Port | Description |
 |------|------|-------------|
 | **Bridge Proxy** | 9100/9101 | Node.js relay between Unix socket and WebSocket clients |
-| **Bricklayer** | 5180 | 3DGS map editor: voxel terrain, Game Objects with component composition, emitters, animations, VFX, lights |
+| **Bricklayer** | 5180 | 3DGS map editor: voxel terrain, Game Objects with component composition, PBD physics configuration, emitters, animations, VFX, lights |
 | **Méliès** | 5181 | VFX editor: particle emitters, GS animations, spline paths, object layers, light layers |
 | **Echidna** | 5179 | Voxel character editor: .vox import, body parts, bone posing, PLY export |
 | **Staging** | C++ app | ImGui rendering review: live scene preview, gizmos for lights/emitters/VFX/game objects, bridge auto-sync |
