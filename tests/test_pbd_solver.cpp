@@ -16,6 +16,10 @@
 #include <cstdio>
 #include <cstring>
 
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
 static int passed = 0;
 static int failed = 0;
 
@@ -137,7 +141,7 @@ static void test_quat_multiplication() {
     std::printf("=== Quaternion multiplication ===\n");
 
     // Identity * identity = identity
-    glm::vec4 id(0, 0, 0, 1);
+    glm::vec4 id(0.0f, 0.0f, 0.0f, 1.0f);
     check(approx_vec4(quat_mul(id, id), id), "identity * identity = identity");
 
     // q * identity = q
@@ -162,7 +166,7 @@ static void test_quat_vector_rotation() {
     std::printf("=== Quaternion-vector rotation ===\n");
 
     // Identity rotation leaves vector unchanged
-    glm::vec4 id(0, 0, 0, 1);
+    glm::vec4 id(0.0f, 0.0f, 0.0f, 1.0f);
     glm::vec3 v(1, 2, 3);
     check(approx_vec3(quat_rotate_vec(id, v), v), "identity rotation preserves vector");
 
@@ -202,7 +206,7 @@ static void test_pbd_transform_composition() {
 
     glm::vec3 anchor(10, 0, 0);
     glm::vec3 pos(11, 0, 0);  // 1 unit to the right of anchor
-    glm::vec4 orig_rot(0, 0, 0, 1);  // identity
+    glm::vec4 orig_rot(0.0f, 0.0f, 0.0f, 1.0f);  // identity
 
     // PBD rotation: 90deg around Y
     glm::vec4 pbd_q(0, std::sin(M_PI / 4.0f), 0, std::cos(M_PI / 4.0f));
@@ -240,13 +244,13 @@ static void test_axis_angle_to_quat() {
 
     // Zero angle → identity
     glm::vec4 q = axis_angle_to_quat(glm::vec3(1, 0, 0), 0.0f);
-    check(approx_vec4(q, glm::vec4(0, 0, 0, 1)), "zero angle → identity quaternion");
+    check(approx_vec4(q, glm::vec4(0.0f, 0.0f, 0.0f, 1.0f)), "zero angle → identity quaternion");
 
     // 90deg around Z
     q = axis_angle_to_quat(glm::vec3(0, 0, 1), static_cast<float>(M_PI / 2.0));
     float expected_s = std::sin(M_PI / 4.0f);
     float expected_c = std::cos(M_PI / 4.0f);
-    check(approx_vec4(q, glm::vec4(0, 0, expected_s, expected_c)),
+    check(approx_vec4(q, glm::vec4(0.0f, 0.0f, expected_s, expected_c)),
           "90deg around Z produces correct quaternion");
 
     // Result is unit length
