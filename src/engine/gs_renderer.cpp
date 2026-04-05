@@ -371,7 +371,7 @@ void GsRenderer::create_descriptor_resources() {
         render_layout_,                                    // new render with merged sort
         pbd_layout_,                                       // PBD solver
     };
-    constexpr uint32_t kSetCount = 23;
+    constexpr uint32_t kSetCount = 24;
     VkDescriptorSet sets[kSetCount];
     VkDescriptorSetAllocateInfo alloc_info{};
     alloc_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
@@ -405,7 +405,8 @@ void GsRenderer::create_descriptor_resources() {
     dynamic_scatter_set_ab_ = sets[19];
     dynamic_scatter_set_ba_ = sets[20];
     merge_set_ = sets[21];
-    pbd_set_ = sets[22];
+    // sets[22] is the merged render set (render_layout_)
+    pbd_set_ = sets[23];
     // Re-use render_set_ for merged rendering (set 2 already has correct layout)
 }
 
@@ -600,7 +601,7 @@ void GsRenderer::load_cloud(const GaussianCloud& cloud) {
         std::memset(pbd_constraint_ssbo_.mapped(), 0,
                     kMaxPbdConstraints * sizeof(PbdConstraint));
     }
-    pbd_uniform_buffer_ = Buffer::create_storage(allocator_, 32);
+    pbd_uniform_buffer_ = Buffer::create_uniform(allocator_, 32);
 
     // Upload Gaussian data to static buffer via staging to avoid -O3 write-reordering
     {
