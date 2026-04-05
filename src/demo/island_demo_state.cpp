@@ -254,8 +254,8 @@ void IslandDemoState::on_enter(AppBase& app) {
             std::vector<PbdPhysicsState> states(count);
             std::vector<PbdElementParams> params(count);
             for (uint32_t i = 0; i < count; ++i) {
-                states[i].position = glm::vec4(anchors[i], 0.0f);
-                states[i].prev_position = glm::vec4(anchors[i], 0.0f);
+                states[i].position = glm::vec4(anchors[i], 1.0f);  // inv_mass=1 (free, for wind sway)
+                states[i].prev_position = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);  // identity quat
                 states[i].velocity = glm::vec4(0.0f);
                 states[i].params = glm::vec4(0.0f);
                 params[i].gravity = glm::vec4(0.0f, 0.0f, 0.0f, 0.98f);  // damping
