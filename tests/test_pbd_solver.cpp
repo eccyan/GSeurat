@@ -10,6 +10,7 @@
 // Run: ctest -R test_pbd_solver
 
 #include "gseurat/engine/gs_renderer.hpp"
+#include "gseurat/engine/pbd_types.hpp"
 
 #include <cassert>
 #include <cmath>
@@ -307,10 +308,31 @@ static void test_wind_sway_output() {
           "different anchors produce different sway (spatial variation)");
 }
 
+static void test_pbd_physics_state_layout() {
+    std::printf("=== PbdPhysicsState struct layout ===\n");
+    using namespace gseurat;
+
+    check(sizeof(PbdPhysicsState) == 64, "PbdPhysicsState is 64 bytes (4 x vec4)");
+    check(offsetof(PbdPhysicsState, position) == 0, "position at offset 0");
+    check(offsetof(PbdPhysicsState, prev_position) == 16, "prev_position at offset 16");
+    check(offsetof(PbdPhysicsState, velocity) == 32, "velocity at offset 32");
+    check(offsetof(PbdPhysicsState, params) == 48, "params at offset 48");
+
+    check(sizeof(PbdConstraint) == 32, "PbdConstraint is 32 bytes (2 x vec4)");
+    check(offsetof(PbdConstraint, indices) == 0, "indices at offset 0");
+    check(offsetof(PbdConstraint, params) == 16, "params at offset 16");
+
+    check(sizeof(PbdElementParams) == 48, "PbdElementParams is 48 bytes (3 x vec4)");
+    check(offsetof(PbdElementParams, gravity) == 0, "gravity at offset 0");
+    check(offsetof(PbdElementParams, wind) == 16, "wind at offset 16");
+    check(offsetof(PbdElementParams, dynamics) == 32, "dynamics at offset 32");
+}
+
 int main() {
     std::printf("test_pbd_solver\n");
 
     test_pbd_state_layout();
+    test_pbd_physics_state_layout();
     test_index_segmentation();
     test_quat_multiplication();
     test_quat_vector_rotation();
