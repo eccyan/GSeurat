@@ -535,6 +535,10 @@ void GsRenderer::load_cloud(const GaussianCloud& cloud) {
     uniform_buffer_.destroy(allocator_);
     visible_count_ssbo_.destroy(allocator_);
     bone_ssbo_.destroy(allocator_);
+    pbd_state_ssbo_.destroy(allocator_);
+    pbd_params_ssbo_.destroy(allocator_);
+    pbd_constraint_ssbo_.destroy(allocator_);
+    pbd_uniform_buffer_.destroy(allocator_);
     static_gaussian_ssbo_.destroy(allocator_);
     dynamic_gaussian_ssbo_.destroy(allocator_);
     static_sort_a_.destroy(allocator_);
