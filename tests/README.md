@@ -293,7 +293,7 @@ c++ -std=c++23 -I include \
 
 ### test_pbd_solver
 
-Tests PBD solver struct layout, index segmentation, and quaternion math used in the GPU PBD pipeline.
+Tests PBD physics solver: struct layouts for GPU std430 compatibility, index segmentation, quaternion math, Verlet integration, and distance constraint projection.
 
 **Build:**
 ```bash
@@ -311,16 +311,19 @@ c++ -std=c++23 -I include \
 ./build/test_pbd_solver
 ```
 
-**Tests (7):**
+**Tests (10):**
 | # | Test | What it verifies |
 |---|------|------------------|
-| 1 | PbdState struct layout | 32 bytes (2 x vec4), correct field offsets for GPU std430 |
-| 2 | Index segmentation | Round-trip encoding, correct routing: 0=none, 1-31=bone, 32-63=PBD |
-| 3 | Quaternion multiplication | Identity, composition, unit length preservation |
-| 4 | Quaternion-vector rotation | Axis rotations (90deg Y, 90deg Z, 180deg X), magnitude preservation |
-| 5 | PBD transform composition | Anchor-relative rotation preserves inter-Gaussian distances (rigid body) |
-| 6 | Axis-angle to quaternion | Zero angle → identity, unit length, 180deg edge case |
-| 7 | Wind sway output | Unit quaternions, bounded sway angles, spatial variation between anchors |
+| 1 | PbdPhysicsState layout | 64 bytes (4 x vec4), correct field offsets for GPU std430 |
+| 2 | PbdElementParams layout | 48 bytes (3 x vec4), correct field offsets |
+| 3 | PbdConstraint layout | 32 bytes (2 x vec4), correct field offsets |
+| 4 | Index segmentation | Round-trip encoding, correct routing: 0=none, 1-31=bone, 32-63=PBD |
+| 5 | Quaternion multiplication | Identity, composition, unit length preservation |
+| 6 | Quaternion-vector rotation | Axis rotations (90deg Y, 90deg Z, 180deg X), magnitude preservation |
+| 7 | PBD transform composition | Anchor-relative rotation preserves inter-Gaussian distances (rigid body) |
+| 8 | Axis-angle to quaternion | Zero angle → identity, unit length, 180deg edge case |
+| 9 | Verlet integration | Position prediction with gravity and damping, pinned elements unchanged |
+| 10 | Constraint projection | Distance correction toward rest length, mass-weighted distribution, pinned elements stay fixed |
 
 ### test_character_data
 

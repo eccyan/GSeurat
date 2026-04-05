@@ -250,13 +250,21 @@ void IslandDemoState::on_enter(AppBase& app) {
     {
         const auto& anchors = app.pbd_anchors();
         if (!anchors.empty()) {
-            app.renderer().gs_renderer().set_pbd_anchors(
-                anchors.data(), static_cast<uint32_t>(anchors.size()));
-            app.renderer().gs_renderer().set_pbd_wind(
-                glm::vec3(1.0f, 0.0f, 0.3f),  // wind direction (mostly +X)
-                0.06f,                           // strength (gentle sway angle)
-                0.8f);                           // frequency (slow, natural rhythm)
-            std::fprintf(stderr, "[IslandDemo] PBD tree sway: %zu trees, wind=(1,0,0.3) str=0.08 freq=1.5\n",
+            uint32_t count = static_cast<uint32_t>(anchors.size());
+            std::vector<PbdPhysicsState> states(count);
+            std::vector<PbdElementParams> params(count);
+            for (uint32_t i = 0; i < count; ++i) {
+                states[i].position = glm::vec4(anchors[i], 1.0f);  // inv_mass=1 (free, for wind sway)
+                states[i].prev_position = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);  // identity quat
+                states[i].velocity = glm::vec4(0.0f);
+                states[i].params = glm::vec4(0.0f);
+                params[i].gravity = glm::vec4(0.0f, 0.0f, 0.0f, 0.98f);  // damping
+                params[i].wind = glm::vec4(1.0f, 0.0f, 0.3f, 0.06f);     // dir + strength
+                params[i].dynamics = glm::vec4(0.8f, -1000.0f, 0.0f, 0.0f);  // freq, ground, bounce
+            }
+            app.renderer().gs_renderer().upload_pbd_elements(
+                states.data(), params.data(), count);
+            std::fprintf(stderr, "[IslandDemo] PBD tree sway: %zu trees, wind=(1,0,0.3) str=0.06 freq=0.8\n",
                          anchors.size());
         }
     }
@@ -315,6 +323,42 @@ void IslandDemoState::update(AppBase& app, float dt) {
     // N → toggle terrain sway + walk animation
     if (app.input().was_key_pressed(GLFW_KEY_N)) {
         anim_enabled_ = !anim_enabled_;
+    }
+
+    // J → toggle PBD chain demo
+    if (app.input().was_key_pressed(GLFW_KEY_J)) {
+        if (pbd_chain_active_) {
+            app.renderer().gs_renderer().clear_pbd();
+            pbd_chain_active_ = false;
+            std::fprintf(stderr, "[IslandDemo] PBD chain demo OFF\n");
+        } else {
+            glm::vec3 top = character_origin_ + glm::vec3(3.0f, 8.0f, 0.0f);
+            PbdPhysicsState states[3];
+            PbdElementParams params[3];
+
+            for (int i = 0; i < 3; ++i) {
+                glm::vec3 p = top - glm::vec3(0.0f, static_cast<float>(i) * 3.0f, 0.0f);
+                states[i].position = glm::vec4(p, i == 0 ? 0.0f : 1.0f);
+                states[i].prev_position = glm::vec4(p, 0.0f);
+                states[i].velocity = glm::vec4(0.0f);
+                states[i].params = glm::vec4(0.0f);
+
+                params[i].gravity = glm::vec4(0.0f, -9.8f, 0.0f, 0.98f);
+                params[i].wind = glm::vec4(0.0f);
+                params[i].dynamics = glm::vec4(0.0f, top.y - 10.0f, 0.3f, 0.0f);
+            }
+
+            PbdConstraint constraints[2];
+            constraints[0].indices = glm::uvec4(0, 1, 0, 0);
+            constraints[0].params = glm::vec4(3.0f, 0.8f, 0.0f, 0.0f);
+            constraints[1].indices = glm::uvec4(1, 2, 0, 0);
+            constraints[1].params = glm::vec4(3.0f, 0.8f, 0.0f, 0.0f);
+
+            app.renderer().gs_renderer().upload_pbd_elements(states, params, 3);
+            app.renderer().gs_renderer().upload_pbd_constraints(constraints, 2);
+            pbd_chain_active_ = true;
+            std::fprintf(stderr, "[IslandDemo] PBD chain demo ON (3 elements, 2 constraints)\n");
+        }
     }
 
     // FPS counter

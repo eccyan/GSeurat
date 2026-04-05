@@ -2,6 +2,7 @@
 
 #include "gseurat/engine/buffer.hpp"
 #include "gseurat/engine/gaussian_cloud.hpp"
+#include "gseurat/engine/pbd_types.hpp"
 #include "gseurat/engine/types.hpp"
 
 #include <vk_mem_alloc.h>
@@ -157,15 +158,13 @@ public:
     void clear_bone_transforms();
 
     // PBD (Position Based Dynamics) solver
-    static constexpr uint32_t kMaxPbdElements = 32;
-    struct PbdState {
-        glm::vec4 position;  // xyz = anchor, w = unused
-        glm::vec4 rotation;  // xyzw = delta quaternion
-    };
-    void set_pbd_anchors(const glm::vec3* anchors, uint32_t count);
-    void set_pbd_wind(const glm::vec3& direction, float strength, float frequency);
+    void upload_pbd_elements(const PbdPhysicsState* states,
+                             const PbdElementParams* params,
+                             uint32_t count);
+    void upload_pbd_constraints(const PbdConstraint* constraints, uint32_t count);
     void clear_pbd();
     uint32_t pbd_count() const { return pbd_count_; }
+    uint32_t pbd_constraint_count() const { return pbd_constraint_count_; }
 
     // Post-process parameters (fog, tone mapping, vignette, etc.)
     void set_post_process_params(const GsPostProcessParams& p) { gs_pp_params_ = p; }
@@ -215,12 +214,12 @@ private:
     uint32_t bone_count_ = 0;
 
     // PBD solver resources
-    Buffer pbd_ssbo_;                // PbdState array (read/write by solver, read by preprocess)
-    Buffer pbd_uniform_buffer_;      // PBD solver uniforms (time, wind params)
+    Buffer pbd_state_ssbo_;
+    Buffer pbd_params_ssbo_;
+    Buffer pbd_constraint_ssbo_;
+    Buffer pbd_uniform_buffer_;
     uint32_t pbd_count_ = 0;
-    glm::vec3 pbd_wind_dir_{1.0f, 0.0f, 0.0f};
-    float pbd_wind_strength_ = 0.0f;
-    float pbd_wind_freq_ = 2.0f;
+    uint32_t pbd_constraint_count_ = 0;
 
     // Static/dynamic split buffers
     Buffer static_gaussian_ssbo_;

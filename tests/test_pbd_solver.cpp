@@ -10,6 +10,7 @@
 // Run: ctest -R test_pbd_solver
 
 #include "gseurat/engine/gs_renderer.hpp"
+#include "gseurat/engine/pbd_types.hpp"
 
 #include <cassert>
 #include <cmath>
@@ -73,19 +74,11 @@ static glm::vec4 axis_angle_to_quat(glm::vec3 axis, float angle) {
 // ── PbdState struct layout ──
 
 static void test_pbd_state_layout() {
-    std::printf("=== PbdState struct layout ===\n");
-    using PbdState = gseurat::GsRenderer::PbdState;
-
-    // Must be 2 * vec4 = 32 bytes for GPU std430 layout
-    check(sizeof(PbdState) == 32, "PbdState is 32 bytes (2 x vec4)");
-
-    // Verify field offsets
-    check(offsetof(PbdState, position) == 0, "position at offset 0");
-    check(offsetof(PbdState, rotation) == 16, "rotation at offset 16");
-
-    // Max elements constant
-    check(gseurat::GsRenderer::kMaxPbdElements == 32,
-          "kMaxPbdElements is 32 (matches bone_idx range 32-63)");
+    std::printf("=== PbdPhysicsState struct layout ===\n");
+    using namespace gseurat;
+    check(sizeof(PbdPhysicsState) == 64, "PbdPhysicsState is 64 bytes (4 x vec4)");
+    check(kMaxPbdElements == 64, "kMaxPbdElements is 64");
+    check(kMaxPbdConstraints == 128, "kMaxPbdConstraints is 128");
 }
 
 // ── Index segmentation ──
@@ -307,16 +300,123 @@ static void test_wind_sway_output() {
           "different anchors produce different sway (spatial variation)");
 }
 
+static void test_pbd_physics_state_layout() {
+    std::printf("=== PbdPhysicsState struct layout ===\n");
+    using namespace gseurat;
+
+    check(sizeof(PbdPhysicsState) == 64, "PbdPhysicsState is 64 bytes (4 x vec4)");
+    check(offsetof(PbdPhysicsState, position) == 0, "position at offset 0");
+    check(offsetof(PbdPhysicsState, prev_position) == 16, "prev_position at offset 16");
+    check(offsetof(PbdPhysicsState, velocity) == 32, "velocity at offset 32");
+    check(offsetof(PbdPhysicsState, params) == 48, "params at offset 48");
+
+    check(sizeof(PbdConstraint) == 32, "PbdConstraint is 32 bytes (2 x vec4)");
+    check(offsetof(PbdConstraint, indices) == 0, "indices at offset 0");
+    check(offsetof(PbdConstraint, params) == 16, "params at offset 16");
+
+    check(sizeof(PbdElementParams) == 48, "PbdElementParams is 48 bytes (3 x vec4)");
+    check(offsetof(PbdElementParams, gravity) == 0, "gravity at offset 0");
+    check(offsetof(PbdElementParams, wind) == 16, "wind at offset 16");
+    check(offsetof(PbdElementParams, dynamics) == 32, "dynamics at offset 32");
+}
+
+// CPU mirror of Verlet integration (matches pbd_solver.comp)
+static glm::vec3 verlet_integrate(glm::vec3 pos, glm::vec3 prev_pos,
+                                   glm::vec3 accel, float dt, float damping) {
+    glm::vec3 velocity = (pos - prev_pos) * damping;
+    return pos + velocity + accel * dt * dt;
+}
+
+// CPU mirror of distance constraint projection
+static void project_distance_constraint(
+    glm::vec3& pos_a, glm::vec3& pos_b,
+    float inv_mass_a, float inv_mass_b,
+    float rest_length, float stiffness) {
+    glm::vec3 delta = pos_b - pos_a;
+    float dist = glm::length(delta);
+    if (dist < 1e-6f) return;
+    float error = (dist - rest_length) / dist;
+    float w_sum = inv_mass_a + inv_mass_b;
+    if (w_sum < 1e-6f) return;
+    glm::vec3 correction = delta * error * stiffness;
+    pos_a += correction * (inv_mass_a / w_sum);
+    pos_b -= correction * (inv_mass_b / w_sum);
+}
+
+static void test_verlet_integration() {
+    std::printf("=== Verlet integration ===\n");
+    float dt = 1.0f / 60.0f;
+
+    // Free fall from rest
+    glm::vec3 pos(0, 10, 0);
+    glm::vec3 prev(0, 10, 0);
+    glm::vec3 gravity(0, -9.8f, 0);
+    glm::vec3 new_pos = verlet_integrate(pos, prev, gravity, dt, 1.0f);
+    check(new_pos.x == 0.0f, "free fall: x unchanged");
+    check(new_pos.z == 0.0f, "free fall: z unchanged");
+    check(new_pos.y < 10.0f, "free fall: y decreased");
+    check(approx(new_pos.y, 10.0f + gravity.y * dt * dt, 0.001f), "free fall: correct displacement");
+
+    // With velocity (prev != pos)
+    pos = glm::vec3(1, 0, 0);
+    prev = glm::vec3(0, 0, 0);
+    new_pos = verlet_integrate(pos, prev, glm::vec3(0), dt, 1.0f);
+    check(new_pos.x > 1.0f, "velocity: continues moving right");
+    check(approx(new_pos.x, 2.0f, 0.01f), "velocity: x ≈ 2.0");
+
+    // Damping reduces velocity
+    new_pos = verlet_integrate(pos, prev, glm::vec3(0), dt, 0.5f);
+    check(new_pos.x < 2.0f, "damping: reduced forward motion");
+    check(approx(new_pos.x, 1.5f, 0.01f), "damping: x ≈ 1.5");
+}
+
+static void test_distance_constraint() {
+    std::printf("=== Distance constraint projection ===\n");
+
+    // Equal mass, stretched
+    glm::vec3 a(0, 0, 0);
+    glm::vec3 b(2, 0, 0);
+    project_distance_constraint(a, b, 1.0f, 1.0f, 1.0f, 1.0f);
+    float dist = glm::length(b - a);
+    check(approx(dist, 1.0f, 0.01f), "equal mass: distance corrected to rest_length");
+    check(approx(a.x, 0.5f, 0.01f), "equal mass: a moved to 0.5");
+    check(approx(b.x, 1.5f, 0.01f), "equal mass: b moved to 1.5");
+
+    // One pinned (inv_mass=0)
+    a = glm::vec3(0, 0, 0);
+    b = glm::vec3(2, 0, 0);
+    project_distance_constraint(a, b, 0.0f, 1.0f, 1.0f, 1.0f);
+    check(approx(a.x, 0.0f, 0.01f), "pinned a: didn't move");
+    check(approx(b.x, 1.0f, 0.01f), "pinned a: b moved to rest_length");
+
+    // Compressed
+    a = glm::vec3(0, 0, 0);
+    b = glm::vec3(0.5f, 0, 0);
+    project_distance_constraint(a, b, 1.0f, 1.0f, 1.0f, 1.0f);
+    dist = glm::length(b - a);
+    check(approx(dist, 1.0f, 0.01f), "compressed: pushed to rest_length");
+
+    // Partial stiffness
+    a = glm::vec3(0, 0, 0);
+    b = glm::vec3(2, 0, 0);
+    project_distance_constraint(a, b, 1.0f, 1.0f, 1.0f, 0.5f);
+    dist = glm::length(b - a);
+    check(approx(dist, 1.5f, 0.01f), "half stiffness: corrected halfway");
+}
+
 int main() {
     std::printf("test_pbd_solver\n");
 
     test_pbd_state_layout();
+    test_pbd_physics_state_layout();
     test_index_segmentation();
     test_quat_multiplication();
     test_quat_vector_rotation();
     test_pbd_transform_composition();
     test_axis_angle_to_quat();
     test_wind_sway_output();
+    test_verlet_integration();
+    test_distance_constraint();
 
     std::printf("\n%d passed, %d failed\n", passed, failed);
     return failed > 0 ? 1 : 0;

@@ -1,175 +1,210 @@
-# PBD Solver — GPU-Driven Position Based Dynamics
+# PBD Solver -- GPU-Driven Position Based Dynamics
 
 ## Overview
 
-The PBD solver adds a GPU-driven physics simulation pipeline for Gaussian Splatting objects that need dynamic motion — swaying trees, rustling foliage, flapping banners, etc. It runs as a compute shader dispatched **before** the GS preprocess pass, writing per-element position and rotation deltas that the preprocess shader consumes.
+Position Based Dynamics (PBD) is a physics simulation method that works directly on particle positions rather than forces and accelerations. The GSeurat PBD solver runs as a GPU compute shader, enabling physically plausible motion for Gaussian Splatting objects: swaying foliage, dangling chains, falling objects, flapping flags, and more.
 
-## The Rotation Trap
-
-In 3DGS, each Gaussian has a position and a rotation quaternion that defines its orientation. Naive physics simulation that only updates position causes Gaussians to translate while keeping their original orientation, visually tearing apart structured objects like branches and leaves.
-
-The PBD solver avoids this by providing **both position anchors and rotation quaternions**. The preprocess shader:
-1. Rotates each Gaussian's local offset (relative to its anchor) by the PBD quaternion
-2. Composes the PBD rotation with the Gaussian's original rotation
-
-This preserves rigid-body structure during bending and swaying.
+The solver implements Verlet integration for time-stepping, iterative distance constraint projection for connectivity, and ground plane collision. It dispatches before the GS preprocess pass, writing per-element positions and rotations that the preprocess shader consumes to transform attached Gaussians.
 
 ## Architecture
 
 ```
-CPU (per frame)                    GPU Pipeline
-────────────────                   ──────────────────────────────────
-set_pbd_anchors()  ──►  pbd_ssbo_
-set_pbd_wind()     ──►  pbd_ubo_
-                                   ┌─────────────────┐
-                                   │  pbd_solver.comp │  Phase 0 (new)
-                                   │  writes rotation │
-                                   │  + position      │
-                                   └────────┬────────┘
-                                            │ barrier
-                                   ┌────────▼────────┐
-                                   │ gs_preprocess    │  Phase 1-2
-                                   │ reads pbd_states │
-                                   │ at binding 6     │
-                                   └────────┬────────┘
-                                            │
-                                   ┌────────▼────────┐
-                                   │ sort → merge →   │  Phase 3-4
-                                   │ tile rasterize   │
-                                   └─────────────────┘
+CPU (per frame)                         GPU Pipeline
+------------------------------------    ------------------------------------------
+upload_pbd_elements()  -->  states_ssbo_    (binding 0, read/write)
+                       -->  params_ssbo_    (binding 1, read-only)
+upload_pbd_constraints() -> constraints_ssbo_ (binding 2, read-only)
+                            pbd_ubo_        (binding 3, time/dt/iterations/counts)
+
+                                        +---------------------+
+                                        |  pbd_solver.comp    |  Phase 0
+                                        |  Verlet predict     |
+                                        |  ground collision   |
+                                        |  constraint project |
+                                        |  rotation output    |
+                                        +---------+-----------+
+                                                  | barrier (SHADER_WRITE -> SHADER_READ)
+                                        +---------+-----------+
+                                        | gs_preprocess.comp  |  Phase 1-2
+                                        | reads pbd_states[]  |
+                                        | at binding 6        |
+                                        +---------+-----------+
+                                                  |
+                                        +---------+-----------+
+                                        | sort -> merge ->    |  Phase 3-4
+                                        | tile rasterize      |
+                                        +---------------------+
 ```
+
+The preprocess shader sees PBD output as a `PbdState { vec4 position; vec4 rotation; }` at binding 6. The solver writes the rotation quaternion into the `prev_position` slot of `PbdPhysicsState`, which aligns with the `rotation` field of the preprocess `PbdState` struct (both are the second vec4).
+
+## GPU Buffers
+
+### PbdPhysicsState (binding 0, read/write, 64 bytes)
+
+```glsl
+struct PbdPhysicsState {
+    vec4 position;       // xyz = current position, w = inv_mass (0 = pinned)
+    vec4 prev_position;  // xyz = previous frame position, w = unused
+    vec4 velocity;       // xyz = current velocity, w = unused
+    vec4 params;         // x = sway_threshold, yzw = reserved
+};
+```
+
+- **inv_mass** (position.w): Inverse mass. Zero means pinned (immovable anchor). Positive values allow motion; higher values = lighter.
+- **prev_position**: Used for Verlet velocity estimation. After the solver finishes, this slot is overwritten with the output rotation quaternion for the preprocess shader.
+- Max elements: 64 (`kMaxPbdElements`)
+
+### PbdElementParams (binding 1, read-only, 48 bytes)
+
+```glsl
+struct PbdElementParams {
+    vec4 gravity;   // xyz = gravity vector, w = damping (0-1)
+    vec4 wind;      // xyz = wind direction, w = wind_strength
+    vec4 dynamics;  // x = wind_frequency, y = ground_y, z = bounce, w = unused
+};
+```
+
+Each element has its own gravity, wind, and collision parameters, allowing different behavior per object (e.g., heavy chains vs. light foliage).
+
+### PbdConstraint (binding 2, read-only, 32 bytes)
+
+```glsl
+struct PbdConstraint {
+    uvec4 indices;  // x = element_a, y = element_b, zw = unused
+    vec4 params;    // x = rest_length, y = stiffness (0-1), zw = unused
+};
+```
+
+Distance constraints maintain a target rest length between two elements. Max constraints: 128 (`kMaxPbdConstraints`).
+
+### PBD Uniforms (binding 3)
+
+```glsl
+layout(set = 0, binding = 3) uniform PbdUniforms {
+    float time;              // elapsed time (for wind phase)
+    float dt;                // frame delta time
+    uint  iterations;        // constraint solver iterations (default 4)
+    uint  count;             // number of active elements
+    uint  constraint_count;  // number of active constraints
+    uint  pad0, pad1, pad2;  // alignment padding
+};
+```
+
+## Solver Algorithm
+
+The solver executes in a single compute dispatch (`local_size_x = 64`). Each thread processes one PBD element:
+
+1. **External forces**: Accumulate gravity and sinusoidal wind force. Wind uses per-element phase variation via `dot(pos, hash_vec)` to prevent synchronized motion.
+
+2. **Verlet integration**: Predict the next position from the current and previous positions:
+   ```
+   velocity = (position - prev_position) * damping
+   predicted = position + velocity + acceleration * dt^2
+   ```
+
+3. **Ground collision**: If `predicted.y < ground_y`, clamp to the ground plane. Reflect the previous position above ground scaled by the bounce coefficient for restitution.
+
+4. **Write predicted position** and synchronize (`memoryBarrierBuffer` + `barrier`).
+
+5. **Constraint projection** (N iterations, default 4): For each constraint involving this element, compute the position correction:
+   ```
+   error = (distance - rest_length) / distance
+   correction = delta * error * stiffness / iterations
+   ```
+   Corrections are distributed between the two elements proportional to their inverse masses. Each iteration is followed by a barrier.
+
+6. **Velocity update**: Derive the post-solve velocity from the position change: `velocity = (position - prev_position) / dt`.
+
+7. **Rotation output**: Compute a quaternion and write it into `prev_position` for the preprocess shader:
+   - In wind sway mode (no constraints): procedural sine-wave axis-angle rotation
+   - In constraint mode: velocity-derived tilt rotation (lean in direction of movement, capped at ~28 degrees)
+   - Pinned elements: identity quaternion (no rotation)
 
 ## Index Segmentation
 
-The `bone_index` field in each Gaussian (packed into `GpuGaussian.scale_pad.w` as a float-encoded uint32) determines how it is transformed:
+The `bone_index` field in each Gaussian determines how it is transformed by the preprocess shader:
 
 | Range | Behavior | Maps to |
 |-------|----------|---------|
 | 0 | No transform | Pass-through |
-| 1 - 31 | Bone skinning | `bone_transforms[bone_idx]` |
-| 32 - 63 | PBD dynamics | `pbd_states[bone_idx - 32]` |
+| 1-31 | Bone skinning | `bone_transforms[bone_idx]` |
+| 32-63 | PBD dynamics | `pbd_states[bone_idx - 32]` |
 
-This gives 32 PBD elements, each controlling a group of Gaussians. A single PBD element (e.g., index 32) can drive hundreds of Gaussians — all foliage Gaussians belonging to one tree branch would share the same PBD index.
-
-## GPU Buffers
-
-### PbdState SSBO (binding 6 in preprocess)
-
-```glsl
-struct PbdState {
-    vec4 position;  // xyz = anchor position, w = unused
-    vec4 rotation;  // xyzw = delta quaternion (identity = no change)
-};
-
-layout(set = 0, binding = 6) readonly buffer PbdBuffer {
-    PbdState pbd_states[];  // max 32 elements
-};
-```
-
-- 32 bytes per element, 1024 bytes total
-- The PBD solver writes rotation quaternions; the preprocess shader reads them
-- Identity quaternion `(0, 0, 0, 1)` = no rotation applied
-
-### PBD Uniforms (binding 1 in solver)
-
-```glsl
-layout(set = 0, binding = 1) uniform PbdUniforms {
-    vec4 params;    // x = time, y = wind_strength, z = wind_freq, w = pbd_count
-    vec4 wind_dir;  // xyz = normalized wind direction, w = unused
-};
-```
-
-## Preprocess Shader Integration
-
-In `gs_preprocess.comp`, the PBD path applies anchor-relative rotation:
-
-```glsl
-if (bone_idx >= 32 && bone_idx < 64) {
-    uint pbd_idx = bone_idx - 32;
-    PbdState pbd = pbd_states[pbd_idx];
-    vec4 pbd_q = normalize(pbd.rotation);
-
-    // Rotate local offset around anchor point
-    vec3 local_offset = pos - pbd.position.xyz;
-    vec3 t = 2.0 * cross(pbd_q.xyz, local_offset);
-    pos = pbd.position.xyz + local_offset + pbd_q.w * t + cross(pbd_q.xyz, t);
-
-    // Compose with original Gaussian rotation
-    rot_q = quat_mul(pbd_q, rot_q);
-}
-```
-
-The vector rotation uses the optimized quaternion rotation formula (`q * v * q^-1` expanded) — no matrix conversion needed.
-
-## PBD Solver Shader
-
-`pbd_solver.comp` currently implements a wind sway placeholder:
-
-- Each PBD element receives a sinusoidal oscillation based on its anchor position
-- The sway axis is perpendicular to wind direction and world up
-- Spatial phase variation via `dot(anchor, hash_vec)` prevents synchronized motion
-- Output: axis-angle quaternion written to `pbd_states[].rotation`
-
-This is designed to be replaced or extended with a full PBD constraint solver (distance constraints, bending constraints, collision) when needed.
+A single PBD element can drive hundreds of Gaussians. All foliage Gaussians belonging to one tree branch share the same PBD index. Set `bone_index` to values 32-63 when creating Gaussian data.
 
 ## C++ API
 
 ```cpp
-// Set anchor positions for PBD elements (max 32)
-// Each anchor is the pivot point around which attached Gaussians rotate
-gs_renderer.set_pbd_anchors(anchors, count);
+#include <gseurat/engine/pbd_types.hpp>
 
-// Configure wind parameters
-gs_renderer.set_pbd_wind(
-    glm::vec3(1, 0, 0),  // wind direction
-    0.3f,                  // strength (max sway angle in radians)
-    2.0f                   // frequency (oscillations per second)
-);
+// Upload element states and per-element parameters (max kMaxPbdElements = 64)
+gs_renderer.upload_pbd_elements(states, params, count);
 
-// Reset all PBD state to identity (no simulation)
+// Upload distance constraints (max kMaxPbdConstraints = 128)
+gs_renderer.upload_pbd_constraints(constraints, count);
+
+// Reset all PBD state (zero elements and constraints)
 gs_renderer.clear_pbd();
+
+// Query
+gs_renderer.pbd_count();             // active element count
+gs_renderer.pbd_constraint_count();  // active constraint count
 ```
 
-## Assigning PBD Indices to Gaussians
+## Parameters Reference
 
-When creating Gaussian data (e.g., in scene loading or procedural generation), set `bone_index` to values in the 32-63 range:
+| Parameter | Location | Description | Typical Value |
+|-----------|----------|-------------|---------------|
+| inv_mass | PbdPhysicsState.position.w | Inverse mass (0 = pinned/anchor) | 0.0 (pinned) or 1.0 |
+| gravity | PbdElementParams.gravity.xyz | Gravity acceleration vector | (0, -9.8, 0) |
+| damping | PbdElementParams.gravity.w | Velocity damping per frame (0 = full damp, 1 = none) | 0.98 |
+| wind_dir | PbdElementParams.wind.xyz | Wind direction (normalized) | (1, 0, 0) |
+| wind_strength | PbdElementParams.wind.w | Wind force amplitude | 0.3 |
+| wind_freq | PbdElementParams.dynamics.x | Wind oscillation frequency | 2.0 |
+| ground_y | PbdElementParams.dynamics.y | Ground collision plane Y | -100.0 (disabled) |
+| bounce | PbdElementParams.dynamics.z | Restitution coefficient (0-1) | 0.3 |
+| rest_length | PbdConstraint.params.x | Target distance between elements | Varies |
+| stiffness | PbdConstraint.params.y | Constraint stiffness (0-1) | 0.8 |
 
-```cpp
-Gaussian g;
-g.position = glm::vec3(10, 5, 0);
-g.bone_index = 32;  // First PBD element — tree trunk
-// Other Gaussians on the same branch also use bone_index = 32
-```
+## Wind Sway Mode
 
-Multiple Gaussians sharing the same PBD index move as a rigid group around the anchor point. Use different indices (32, 33, 34, ...) for independently moving parts (e.g., separate branches).
+When `constraint_count == 0`, the solver falls back to a backward-compatible wind sway mode. Instead of deriving rotation from velocity, it generates procedural sine-wave rotations from the wind parameters -- the same visual behavior as the original pre-physics placeholder. This means existing scenes that only use `upload_pbd_elements()` without constraints continue to work unchanged.
 
 ## Dispatch Order
 
 The PBD solver is dispatched as **Phase 0** in the GS compute pipeline:
 
-1. **Phase 0**: PBD solver (if `pbd_count_ > 0`) — writes `pbd_states[]`
-2. Memory barrier (`SHADER_WRITE → SHADER_READ`)
+1. **Phase 0**: PBD solver (if `pbd_count_ > 0`) -- writes element states
+2. Memory barrier (`SHADER_WRITE -> SHADER_READ`)
 3. **Phase 1**: Dynamic preprocess + sort
 4. **Phase 2**: Static preprocess + sort (if dirty)
 5. **Phase 3**: Merge
 6. **Phase 4**: Tile rasterization
 7. Post-process
 
-When `pbd_count_ == 0`, Phase 0 is skipped entirely — zero overhead for scenes without PBD.
+When `pbd_count_ == 0`, Phase 0 is skipped entirely -- zero overhead for scenes without PBD.
+
+## Demo Controls
+
+- **J key** (island demo): Toggles a dangling chain demo. Spawns 3 PBD elements (1 pinned anchor + 2 free-hanging) connected by 2 distance constraints near the player character. Press J again to clear.
 
 ## Testing
 
-`test_pbd_solver` validates the CPU-side contracts without requiring a GPU:
+`test_pbd_solver` validates CPU-side contracts without requiring a GPU:
 
 | Test | What it verifies |
 |------|------------------|
-| PbdState layout | 32 bytes, correct field offsets for GPU std430 |
+| PbdPhysicsState layout | 64 bytes, correct field offsets for GPU std430 |
+| PbdElementParams layout | 48 bytes, correct field offsets |
+| PbdConstraint layout | 32 bytes, correct field offsets |
 | Index segmentation | Round-trip encoding, correct range routing (0/1-31/32-63) |
 | Quaternion multiplication | Identity, composition, unit length preservation |
 | Quaternion-vector rotation | Axis rotations, magnitude preservation |
 | PBD transform composition | Anchor-relative rotation, rigid-body distance preservation |
-| Axis-angle conversion | Zero angle → identity, unit length, 180deg edge case |
-| Wind sway output | Unit quaternions, bounded angles, spatial variation |
+| Axis-angle conversion | Zero angle -> identity, unit length, 180deg edge case |
+| Verlet integration | Position prediction with gravity and damping |
+| Constraint projection | Distance correction, mass-weighted distribution, pinned elements |
 
 ```bash
 ctest --test-dir build/macos-debug -R test_pbd_solver
@@ -177,10 +212,8 @@ ctest --test-dir build/macos-debug -R test_pbd_solver
 
 ## Future Extensions
 
-The current wind sway placeholder establishes the GPU pipeline. Future work may include:
-
-- **Distance constraints**: maintain rest-length between connected PBD elements (chain/rope simulation)
-- **Bending constraints**: resist angular change between parent-child elements (stiff branches)
-- **Collision constraints**: prevent PBD elements from penetrating terrain or other objects
-- **Multi-iteration solver**: multiple constraint projection passes per frame for stability
-- **Scale/covariance updates**: soft-body deformation (stretching, squashing) for advanced VFX
+- **Bending constraints**: Resist angular change between three connected elements (stiff branches, hair)
+- **Cloth grids**: 2D constraint grids for flags and fabric simulation
+- **Bricklayer UI**: Visual PBD element placement, constraint wiring, parameter tuning in the map editor
+- **Scale/covariance updates**: Soft-body deformation (stretching, squashing) for advanced VFX
+- **Self-collision**: Prevent PBD elements from overlapping each other

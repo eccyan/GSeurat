@@ -5,7 +5,7 @@ A Vulkan-based 3D Gaussian Splatting engine built with C++23. Named after **3DGS
 ## Features
 
 - **3D Gaussian Splatting** — GPU compute pipeline for rendering `.ply` point clouds with tile-based rasterization, dynamic point light support
-- **GPU PBD solver** — Position Based Dynamics compute shader for foliage sway, with quaternion rotation to preserve Gaussian orientation
+- **GPU PBD solver** — Position Based Dynamics compute shader with Verlet integration, iterative distance constraints, and ground collision. Dual-mode: wind-only (backward-compatible foliage sway) and full physics (dangling chains, pendulums)
 - **Voxel character pipeline** — MagicaVoxel import, rigid-body-part posing, GPU bone skinning in compute shader
 - **Sprite overlay** — Sprite-based entities over GS backgrounds with bloom, depth-of-field, and tone mapping
 - **Game Object System** — Unified entity model with component composition. Developers define C++ component structs + JSON schemas; level designers compose objects in Bricklayer
@@ -140,7 +140,7 @@ PLY file → GaussianCloud → GsRenderer (compute) → Storage Image → Fullsc
 
 Compute passes before the main render pass:
 
-0. **PBD Solver** (optional) — GPU-driven Position Based Dynamics for foliage sway, writes position + rotation deltas
+0. **PBD Solver** (optional) — GPU-driven Position Based Dynamics physics solver: Verlet integration, distance constraint projection, ground collision. Writes position + rotation deltas
 1. **Preprocess** — project 3D Gaussians to 2D, frustum cull, compute 2D covariance (reads PBD + bone transforms)
 2. **Bitonic Sort** — depth-sort projected splats front-to-back
 3. **Tile Rasterizer** — 16x16 tile-based splatting into a 320x240 HDR storage image
@@ -166,6 +166,7 @@ Output is sampled with nearest-neighbor filtering for stylized upscale.
 | P | Toggle shadow box (parallax) mode |
 | T/L/F/G/X | Toon / Light / Fire / Water / Touch |
 | E/V/H/Y/C/B | Explode / Voxel / Pulse / X-Ray / Swirl / Burn |
+| J | Toggle chain demo (3 PBD elements, 2 distance constraints) |
 | K | Toggle character demo (procedural walking humanoid) |
 | N | Toggle scene layers (auto-generate heightmap, nav, light probes) |
 
@@ -190,7 +191,8 @@ Engine: PLY load → bone_index per Gaussian → preprocess shader → skeletal 
 - `bone_index` packed into `GpuGaussian.scale_pad.w` (no SSBO size change)
 - Index segmentation: 0 = no transform, 1-31 = bone skinning (binding 5), 32-63 = PBD dynamics (binding 6)
 - Bone transform SSBO at binding 5 (max 32 bones)
-- PBD state SSBO at binding 6 (max 32 elements) — position anchors + rotation quaternions
+- PBD state SSBO at binding 6 (max 64 elements) — position anchors + rotation quaternions
+- PBD API: `upload_pbd_elements()`, `upload_pbd_constraints()`, `clear_pbd()` on `GsRenderer`
 - Preprocess shader applies `mat4` per bone or PBD quaternion rotation per element
 - Bone 0 = identity (map Gaussians pass through untouched)
 - Rigid body part animation (action-figure style, no smooth skinning)
@@ -363,7 +365,7 @@ ctest --test-dir build/<platform>-debug --output-on-failure
 | `test_gs_parallax_camera` | 6 | Camera configuration, Y-flip, smoothing convergence |
 | `test_screenshot` | 5 | State machine, BGRA→RGBA swizzle |
 | `test_character_data` | 12 | Character animation JSON loading |
-| `test_pbd_solver` | 7 | PBD struct layout, index segmentation, quaternion math, wind sway |
+| `test_pbd_solver` | 10 | PBD struct layouts (64/48/32 bytes), index segmentation, quaternion math, Verlet integration, distance constraint projection, wind sway |
 
 ### TypeScript Tool Tests
 
