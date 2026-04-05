@@ -252,8 +252,8 @@ void IslandDemoState::on_enter(AppBase& app) {
                 anchors.data(), static_cast<uint32_t>(anchors.size()));
             app.renderer().gs_renderer().set_pbd_wind(
                 glm::vec3(1.0f, 0.0f, 0.3f),  // wind direction (mostly +X)
-                0.15f,                           // strength (visible but natural sway)
-                1.5f);                           // frequency (gentle rhythm)
+                0.06f,                           // strength (gentle sway angle)
+                0.8f);                           // frequency (slow, natural rhythm)
             std::fprintf(stderr, "[IslandDemo] PBD tree sway: %zu trees, wind=(1,0,0.3) str=0.08 freq=1.5\n",
                          anchors.size());
         }

@@ -432,8 +432,9 @@ void AppBase::load_gs_scene(const SceneData& scene_data, const GsSceneOptions& o
                             pbd_idx = 32 + static_cast<uint32_t>(pbd_anchors_.size());
                             pbd_anchors_.push_back(adjusted_pos);
                         }
-                        // Sway threshold: upper 60% of the tree (canopy)
-                        float sway_threshold = local_min_y + (local_max_y - local_min_y) * 0.4f;
+                        // Sway threshold: upper 30% of the tree (canopy tips only)
+                        // Higher threshold = less of the tree sways, avoiding visible seam
+                        float sway_threshold = local_min_y + (local_max_y - local_min_y) * 0.7f;
 
                         auto placed_gs = placed_cloud.gaussians();
                         for (auto& g : placed_gs) {
