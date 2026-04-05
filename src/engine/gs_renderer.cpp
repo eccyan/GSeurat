@@ -1304,7 +1304,10 @@ void GsRenderer::render(VkCommandBuffer cmd, const glm::mat4& view, const glm::m
         vkCmdClearColorImage(cmd, depth_image_, VK_IMAGE_LAYOUT_GENERAL, &clear_color, 1, &range);
 
         // === PBD solver dispatch (before any preprocess) ===
+        // PBD-tagged Gaussians live in the static buffer but need re-preprocessing
+        // every frame since their positions/rotations change continuously.
         if (pbd_count_ > 0) {
+            static_dirty_ = true;
             // Update PBD uniform buffer: params(time, strength, freq, count) + wind_dir
             struct { glm::vec4 params; glm::vec4 wind_dir; } pbd_ubo;
             pbd_ubo.params = glm::vec4(time_, pbd_wind_strength_, pbd_wind_freq_,

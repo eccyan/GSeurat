@@ -252,7 +252,7 @@ void IslandDemoState::on_enter(AppBase& app) {
                 anchors.data(), static_cast<uint32_t>(anchors.size()));
             app.renderer().gs_renderer().set_pbd_wind(
                 glm::vec3(1.0f, 0.0f, 0.3f),  // wind direction (mostly +X)
-                0.08f,                           // strength (subtle sway angle)
+                0.15f,                           // strength (visible but natural sway)
                 1.5f);                           // frequency (gentle rhythm)
             std::fprintf(stderr, "[IslandDemo] PBD tree sway: %zu trees, wind=(1,0,0.3) str=0.08 freq=1.5\n",
                          anchors.size());
@@ -367,6 +367,9 @@ void IslandDemoState::update(AppBase& app, float dt) {
     if (anim_enabled_) {
         update_environment_animation(app, dt);
     }
+
+    // Drive GS effect time for PBD solver (wind sway needs advancing time)
+    app.renderer().gs_renderer().set_effect_time(env_anim_time_);
 
     // Walk animation always runs (handles character root transform + bone poses)
     update_walk_animation(app, dt);
