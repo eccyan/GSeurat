@@ -74,8 +74,12 @@ void main() {
         pos = state.position.xyz;
         prev_pos = state.prev_position.xyz;
 
-        // Physics integration for free elements
-        if (inv_mass > 0.0) {
+        // Wind-only mode: no constraints → skip physics, just compute rotation
+        // (prev_position is reused as rotation output, so Verlet can't read it)
+        if (constraint_count == 0) {
+            // Rotation computed after barriers — don't touch state here
+        } else if (inv_mass > 0.0) {
+            // Full physics mode: Verlet integration for constrained elements
             vec3 accel = ep.gravity.xyz;
             float damping = ep.gravity.w;
 
@@ -104,10 +108,10 @@ void main() {
                     prev_pos.y = pos.y + (prev_pos.y - ground_y) * bounce;
                 }
             }
-        }
 
-        states[idx].prev_position = vec4(prev_pos, 0.0);
-        states[idx].position = vec4(pos, inv_mass);
+            states[idx].prev_position = vec4(prev_pos, 0.0);
+            states[idx].position = vec4(pos, inv_mass);
+        }
     }
 
     // All threads must hit this barrier
