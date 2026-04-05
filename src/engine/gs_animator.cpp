@@ -116,6 +116,8 @@ uint32_t GaussianAnimator::tag_region(const std::vector<Gaussian>& gaussians,
 
     for (uint32_t i = 0; i < static_cast<uint32_t>(gaussians.size()); ++i) {
         const auto& g = gaussians[i];
+        // Skip PBD-tagged Gaussians — mutual exclusion with physics simulation
+        if (g.bone_index >= 32) continue;
         bool hit = (region.shape == GsAnimRegion::Shape::Sphere)
                        ? in_sphere(g.position, region.center, region.radius)
                        : in_box(g.position, region.center, region.half_extents);
