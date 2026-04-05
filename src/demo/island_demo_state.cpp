@@ -211,6 +211,8 @@ void IslandDemoState::on_enter(AppBase& app) {
                         merged.push_back(sg);
                     }
 
+                    // Random phase offset so slimes don't bounce in sync
+                    info.squish_phase = static_cast<float>(npc_infos_.size()) * 1.7f;
                     npc_infos_.push_back(info);
                     std::fprintf(stderr, "[IslandDemo] NPC bone=%u at (%.1f, %.1f, %.1f) +%u gs\n",
                                  next_bone_index_,
@@ -782,13 +784,40 @@ void IslandDemoState::update_walk_animation(AppBase& app, float dt) {
             bones[i + 1] = to_world * anim_bones[i] * from_world;
         }
 
-        // NPC bone transforms — translate from spawn to current position
-        for (const auto& npc : npc_infos_) {
+        // NPC bone transforms — translate + squish animation
+        for (auto& npc : npc_infos_) {
             if (npc.bone_index >= 32) continue;
             auto* npc_t = app.world().try_get<ecs::Transform>(npc.entity);
             if (!npc_t) continue;
             glm::vec3 npc_offset = npc_t->position - npc.spawn_pos;
-            bones[npc.bone_index] = glm::translate(glm::mat4(1.0f), npc_offset);
+
+            // Slime squish: periodic bounce (flatten Y, expand XZ)
+            // Uses a sharp "land" pulse followed by slow recovery
+            float t = env_anim_time_ + npc.squish_phase;
+            float bounce_cycle = std::fmod(t * 0.8f, 1.0f);  // 0→1 over ~1.25s
+            // Sharp squish at start of cycle, ease back to normal
+            float squish = 0.0f;
+            if (bounce_cycle < 0.15f) {
+                // Quick squash down (0→0.15)
+                float p = bounce_cycle / 0.15f;
+                squish = p * p;  // ease-in
+            } else if (bounce_cycle < 0.35f) {
+                // Hold squish briefly then spring up (0.15→0.35)
+                float p = (bounce_cycle - 0.15f) / 0.2f;
+                squish = 1.0f - p * p;  // ease-out
+            }
+            // squish: 0 = normal, 1 = max deformation
+            float scale_y = 1.0f - squish * 0.35f;   // flatten to 65%
+            float scale_xz = 1.0f + squish * 0.2f;   // expand to 120%
+
+            // Compose: translate to current pos, then scale around spawn pos
+            // T(offset) * T(spawn) * S * T(-spawn) = squish around world-space spawn
+            glm::mat4 bone_tf = glm::translate(glm::mat4(1.0f), npc_offset);
+            bone_tf = bone_tf * glm::translate(glm::mat4(1.0f), npc.spawn_pos);
+            bone_tf = bone_tf * glm::scale(glm::mat4(1.0f),
+                                            glm::vec3(scale_xz, scale_y, scale_xz));
+            bone_tf = bone_tf * glm::translate(glm::mat4(1.0f), -npc.spawn_pos);
+            bones[npc.bone_index] = bone_tf;
         }
 
         int total_bones = static_cast<int>(next_bone_index_);

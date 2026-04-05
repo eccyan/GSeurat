@@ -57,6 +57,7 @@ private:
         ecs::Entity entity = ecs::kNullEntity;
         glm::vec3 spawn_pos{0.0f};
         uint32_t bone_index = 0;
+        float squish_phase = 0.0f;  // per-slime animation phase offset
     };
     std::vector<NpcInfo> npc_infos_;
     uint32_t next_bone_index_ = 0;
