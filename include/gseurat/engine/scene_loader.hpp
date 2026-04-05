@@ -20,6 +20,26 @@
 
 namespace gseurat {
 
+struct PbdConstraintRef {
+    std::string target;       // game object ID
+    float rest_length = 3.0f;
+    float stiffness = 0.8f;
+};
+
+struct PbdConfig {
+    std::string mode;                         // "wind_sway" or "physics"
+    float sway_threshold = 0.7f;
+    glm::vec3 wind_direction{1.0f, 0.0f, 0.0f};
+    float wind_strength = 0.06f;
+    float wind_frequency = 0.8f;
+    glm::vec3 gravity{0.0f, -9.8f, 0.0f};
+    float damping = 0.98f;
+    float ground_y = -1000.0f;
+    float bounce = 0.3f;
+    bool pinned = false;
+    std::vector<PbdConstraintRef> constraints;
+};
+
 struct GameObjectData {
     std::string id;
     std::string name;
@@ -28,6 +48,7 @@ struct GameObjectData {
     float scale = 1.0f;
     std::string ply_file;              // optional PLY visual
     nlohmann::json components;         // { "Health": { "max_hp": 50 }, ... }
+    std::optional<PbdConfig> pbd;
 };
 
 struct ParallaxLayerData {
