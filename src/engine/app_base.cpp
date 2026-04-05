@@ -428,7 +428,7 @@ void AppBase::load_gs_scene(const SceneData& scene_data, const GsSceneOptions& o
                         // Assign PBD index to tree game objects (upper canopy sways)
                         bool is_tree = go.id.find("tree") != std::string::npos;
                         uint32_t pbd_idx = 0;
-                        if (is_tree && pbd_anchors_.size() < GsRenderer::kMaxPbdElements) {
+                        if (is_tree && pbd_anchors_.size() < kMaxPbdElements) {
                             pbd_idx = 32 + static_cast<uint32_t>(pbd_anchors_.size());
                             pbd_anchors_.push_back(adjusted_pos);
                         }

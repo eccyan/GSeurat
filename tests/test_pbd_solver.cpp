@@ -74,19 +74,11 @@ static glm::vec4 axis_angle_to_quat(glm::vec3 axis, float angle) {
 // ── PbdState struct layout ──
 
 static void test_pbd_state_layout() {
-    std::printf("=== PbdState struct layout ===\n");
-    using PbdState = gseurat::GsRenderer::PbdState;
-
-    // Must be 2 * vec4 = 32 bytes for GPU std430 layout
-    check(sizeof(PbdState) == 32, "PbdState is 32 bytes (2 x vec4)");
-
-    // Verify field offsets
-    check(offsetof(PbdState, position) == 0, "position at offset 0");
-    check(offsetof(PbdState, rotation) == 16, "rotation at offset 16");
-
-    // Max elements constant
-    check(gseurat::GsRenderer::kMaxPbdElements == 32,
-          "kMaxPbdElements is 32 (matches bone_idx range 32-63)");
+    std::printf("=== PbdPhysicsState struct layout ===\n");
+    using namespace gseurat;
+    check(sizeof(PbdPhysicsState) == 64, "PbdPhysicsState is 64 bytes (4 x vec4)");
+    check(kMaxPbdElements == 64, "kMaxPbdElements is 64");
+    check(kMaxPbdConstraints == 128, "kMaxPbdConstraints is 128");
 }
 
 // ── Index segmentation ──

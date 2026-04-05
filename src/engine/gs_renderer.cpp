@@ -334,15 +334,17 @@ void GsRenderer::create_descriptor_resources() {
         vkCreateDescriptorSetLayout(device_, &ci, nullptr, &merge_layout_);
     }
 
-    // PBD solver layout: { pbd_states (rw), pbd_uniforms }
+    // PBD solver layout: { pbd_states (rw), pbd_params (ro), pbd_constraints (ro), pbd_uniforms }
     {
         VkDescriptorSetLayoutBinding bindings[] = {
             {0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
-            {1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
+            {1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
+            {2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
+            {3, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
         };
         VkDescriptorSetLayoutCreateInfo ci{};
         ci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-        ci.bindingCount = 2;
+        ci.bindingCount = 4;
         ci.pBindings = bindings;
         vkCreateDescriptorSetLayout(device_, &ci, nullptr, &pbd_layout_);
     }
@@ -575,17 +577,24 @@ void GsRenderer::load_cloud(const GaussianCloud& cloud) {
         for (uint32_t i = 0; i < kMaxBones; ++i) bones[i] = glm::mat4(1.0f);
     }
 
-    // PBD state SSBO (always allocated, identity rotation if unused)
-    pbd_ssbo_ = Buffer::create_storage(allocator_, kMaxPbdElements * sizeof(PbdState));
+    // PBD state, params, and constraint SSBOs (always allocated, zeroed if unused)
+    pbd_state_ssbo_ = Buffer::create_storage(allocator_,
+        kMaxPbdElements * sizeof(PbdPhysicsState));
+    pbd_params_ssbo_ = Buffer::create_storage(allocator_,
+        kMaxPbdElements * sizeof(PbdElementParams));
+    pbd_constraint_ssbo_ = Buffer::create_storage(allocator_,
+        kMaxPbdConstraints * sizeof(PbdConstraint));
     pbd_count_ = 0;
+    pbd_constraint_count_ = 0;
     {
-        auto* states = static_cast<PbdState*>(pbd_ssbo_.mapped());
+        auto* states = static_cast<PbdPhysicsState*>(pbd_state_ssbo_.mapped());
         for (uint32_t i = 0; i < kMaxPbdElements; ++i) {
-            states[i].position = glm::vec4(0.0f);
-            states[i].rotation = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);  // identity quat
+            states[i].position = glm::vec4(0.0f, 0.0f, 0.0f, 0.0f);
+            states[i].prev_position = glm::vec4(0.0f);
+            states[i].velocity = glm::vec4(0.0f);
+            states[i].params = glm::vec4(0.0f);
         }
     }
-    // PBD uniform buffer: params (vec4) + wind_dir (vec4) = 32 bytes
     pbd_uniform_buffer_ = Buffer::create_storage(allocator_, 32);
 
     // Upload Gaussian data to static buffer via staging to avoid -O3 write-reordering
@@ -849,7 +858,7 @@ void GsRenderer::update_descriptors() {
         VkDescriptorBufferInfo uniform_info{uniform_buffer_.buffer(), 0, sizeof(GsUniforms)};
         VkDescriptorBufferInfo visible_count_info{visible_count_ssbo_.buffer(), 0, sizeof(uint32_t)};
         VkDescriptorBufferInfo bone_info{bone_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
-        VkDescriptorBufferInfo pbd_info{pbd_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo pbd_info{pbd_state_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
 
         VkWriteDescriptorSet writes[] = {
             {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, preprocess_set_, 0, 0, 1,
@@ -1009,7 +1018,7 @@ void GsRenderer::update_descriptors() {
         VkDescriptorBufferInfo uniform_info{uniform_buffer_.buffer(), 0, sizeof(GsUniforms)};
         VkDescriptorBufferInfo counts_info{counts_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo bone_info{bone_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
-        VkDescriptorBufferInfo pbd_info{pbd_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo pbd_info{pbd_state_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
 
         VkWriteDescriptorSet writes[] = {
             {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, static_preprocess_set_, 0, 0, 1,
@@ -1038,7 +1047,7 @@ void GsRenderer::update_descriptors() {
         VkDescriptorBufferInfo uniform_info{uniform_buffer_.buffer(), 0, sizeof(GsUniforms)};
         VkDescriptorBufferInfo counts_info{counts_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo bone_info{bone_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
-        VkDescriptorBufferInfo pbd_info{pbd_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo pbd_info{pbd_state_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
 
         VkWriteDescriptorSet writes[] = {
             {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, dynamic_preprocess_set_, 0, 0, 1,
@@ -1059,17 +1068,23 @@ void GsRenderer::update_descriptors() {
         vkUpdateDescriptorSets(device_, 7, writes, 0, nullptr);
     }
 
-    // PBD solver descriptor set: pbd_states(0), pbd_uniforms(1)
+    // PBD solver descriptor set: pbd_states(0), pbd_params(1), pbd_constraints(2), pbd_uniforms(3)
     {
-        VkDescriptorBufferInfo pbd_buf_info{pbd_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo pbd_state_info{pbd_state_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo pbd_params_info{pbd_params_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo pbd_constraint_info{pbd_constraint_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo pbd_ubo_info{pbd_uniform_buffer_.buffer(), 0, 32};
         VkWriteDescriptorSet writes[] = {
             {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, pbd_set_, 0, 0, 1,
-             VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &pbd_buf_info, nullptr},
+             VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &pbd_state_info, nullptr},
             {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, pbd_set_, 1, 0, 1,
+             VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &pbd_params_info, nullptr},
+            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, pbd_set_, 2, 0, 1,
+             VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &pbd_constraint_info, nullptr},
+            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, pbd_set_, 3, 0, 1,
              VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, nullptr, &pbd_ubo_info, nullptr},
         };
-        vkUpdateDescriptorSets(device_, 2, writes, 0, nullptr);
+        vkUpdateDescriptorSets(device_, 4, writes, 0, nullptr);
     }
 
     // Helper to write radix histogram/scan/scatter sets
@@ -1308,11 +1323,20 @@ void GsRenderer::render(VkCommandBuffer cmd, const glm::mat4& view, const glm::m
         // every frame since their positions/rotations change continuously.
         if (pbd_count_ > 0) {
             static_dirty_ = true;
-            // Update PBD uniform buffer: params(time, strength, freq, count) + wind_dir
-            struct { glm::vec4 params; glm::vec4 wind_dir; } pbd_ubo;
-            pbd_ubo.params = glm::vec4(time_, pbd_wind_strength_, pbd_wind_freq_,
-                                        static_cast<float>(pbd_count_));
-            pbd_ubo.wind_dir = glm::vec4(pbd_wind_dir_, 0.0f);
+            struct {
+                float time;
+                float dt;
+                uint32_t iterations;
+                uint32_t count;
+                uint32_t constraint_count;
+                uint32_t pad[3];
+            } pbd_ubo;
+            pbd_ubo.time = time_;
+            pbd_ubo.dt = 1.0f / 60.0f;
+            pbd_ubo.iterations = kPbdSolverIterations;
+            pbd_ubo.count = pbd_count_;
+            pbd_ubo.constraint_count = pbd_constraint_count_;
+            pbd_ubo.pad[0] = pbd_ubo.pad[1] = pbd_ubo.pad[2] = 0;
             std::memcpy(pbd_uniform_buffer_.mapped(), &pbd_ubo, sizeof(pbd_ubo));
 
             vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pbd_pipeline_);
@@ -1564,31 +1588,32 @@ void GsRenderer::clear_shadow_box_params() {
     num_sort_passes_ = 2;
 }
 
-void GsRenderer::set_pbd_anchors(const glm::vec3* anchors, uint32_t count) {
-    if (!pbd_ssbo_.mapped() || count == 0) return;
+void GsRenderer::upload_pbd_elements(const PbdPhysicsState* states,
+                                      const PbdElementParams* params,
+                                      uint32_t count) {
+    if (count == 0) return;
     uint32_t n = std::min(count, kMaxPbdElements);
-    auto* states = static_cast<PbdState*>(pbd_ssbo_.mapped());
-    for (uint32_t i = 0; i < n; ++i) {
-        states[i].position = glm::vec4(anchors[i], 0.0f);
-        states[i].rotation = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);  // identity
-    }
+    if (pbd_state_ssbo_.mapped())
+        std::memcpy(pbd_state_ssbo_.mapped(), states, n * sizeof(PbdPhysicsState));
+    if (pbd_params_ssbo_.mapped())
+        std::memcpy(pbd_params_ssbo_.mapped(), params, n * sizeof(PbdElementParams));
     pbd_count_ = n;
 }
 
-void GsRenderer::set_pbd_wind(const glm::vec3& direction, float strength, float frequency) {
-    pbd_wind_dir_ = glm::length(direction) > 0.001f ? glm::normalize(direction) : glm::vec3(1, 0, 0);
-    pbd_wind_strength_ = strength;
-    pbd_wind_freq_ = frequency;
+void GsRenderer::upload_pbd_constraints(const PbdConstraint* constraints, uint32_t count) {
+    if (count == 0) return;
+    uint32_t n = std::min(count, kMaxPbdConstraints);
+    if (pbd_constraint_ssbo_.mapped())
+        std::memcpy(pbd_constraint_ssbo_.mapped(), constraints, n * sizeof(PbdConstraint));
+    pbd_constraint_count_ = n;
 }
 
 void GsRenderer::clear_pbd() {
     pbd_count_ = 0;
-    if (pbd_ssbo_.mapped()) {
-        auto* states = static_cast<PbdState*>(pbd_ssbo_.mapped());
-        for (uint32_t i = 0; i < kMaxPbdElements; ++i) {
-            states[i].position = glm::vec4(0.0f);
-            states[i].rotation = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
-        }
+    pbd_constraint_count_ = 0;
+    if (pbd_state_ssbo_.mapped()) {
+        auto* s = static_cast<PbdPhysicsState*>(pbd_state_ssbo_.mapped());
+        for (uint32_t i = 0; i < kMaxPbdElements; ++i) s[i] = PbdPhysicsState{};
     }
 }
 
@@ -1610,7 +1635,9 @@ void GsRenderer::shutdown(VmaAllocator allocator) {
     uniform_buffer_.destroy(allocator);
     visible_count_ssbo_.destroy(allocator);
     bone_ssbo_.destroy(allocator);
-    pbd_ssbo_.destroy(allocator);
+    pbd_state_ssbo_.destroy(allocator);
+    pbd_params_ssbo_.destroy(allocator);
+    pbd_constraint_ssbo_.destroy(allocator);
     pbd_uniform_buffer_.destroy(allocator);
 
     // Split buffers
