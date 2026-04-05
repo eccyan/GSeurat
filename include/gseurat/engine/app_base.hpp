@@ -202,8 +202,13 @@ protected:
 
     // Scene data storage for round-trip serialization (kept in sync with ECS)
     std::vector<GameObjectData> scene_game_object_data_;
+
+    // PBD anchor positions assigned during game object merge (tree sway, etc.)
+    // Index in vector = pbd element index (bone_idx 32 + i)
+    std::vector<glm::vec3> pbd_anchors_;
 public:
     const std::vector<GameObjectData>& scene_game_objects() const { return scene_game_object_data_; }
+    const std::vector<glm::vec3>& pbd_anchors() const { return pbd_anchors_; }
     glm::vec2 gs_aabb_offset() const { return gs_aabb_offset_; }
 protected:
     std::vector<PointLight> static_lights_;
