@@ -65,9 +65,12 @@ layout(set = 0, binding = 5) readonly buffer BoneBuffer {
 };
 
 // PBD (Position Based Dynamics) state — written by pbd_solver.comp
+// Must match PbdPhysicsState layout (64 bytes) for correct array stride
 struct PbdState {
-    vec4 position; // xyz = anchor position, w = unused
-    vec4 rotation; // xyzw = delta quaternion (identity = no change)
+    vec4 position; // xyz = position, w = inv_mass
+    vec4 rotation; // xyzw = delta quaternion (solver writes rotation here)
+    vec4 _pad0;    // velocity (unused by preprocess)
+    vec4 _pad1;    // params (unused by preprocess)
 };
 
 layout(set = 0, binding = 6) readonly buffer PbdBuffer {

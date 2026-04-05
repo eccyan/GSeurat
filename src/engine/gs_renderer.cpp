@@ -592,7 +592,7 @@ void GsRenderer::load_cloud(const GaussianCloud& cloud) {
         auto* states = static_cast<PbdPhysicsState*>(pbd_state_ssbo_.mapped());
         for (uint32_t i = 0; i < kMaxPbdElements; ++i) {
             states[i].position = glm::vec4(0.0f, 0.0f, 0.0f, 0.0f);
-            states[i].prev_position = glm::vec4(0.0f);
+            states[i].prev_position = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);  // identity quaternion (preprocess reads as rotation)
             states[i].velocity = glm::vec4(0.0f);
             states[i].params = glm::vec4(0.0f);
         }
@@ -1619,7 +1619,10 @@ void GsRenderer::clear_pbd() {
     pbd_constraint_count_ = 0;
     if (pbd_state_ssbo_.mapped()) {
         auto* s = static_cast<PbdPhysicsState*>(pbd_state_ssbo_.mapped());
-        for (uint32_t i = 0; i < kMaxPbdElements; ++i) s[i] = PbdPhysicsState{};
+        for (uint32_t i = 0; i < kMaxPbdElements; ++i) {
+            s[i] = PbdPhysicsState{};
+            s[i].prev_position = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);  // identity quat
+        }
     }
     if (pbd_params_ssbo_.mapped())
         std::memset(pbd_params_ssbo_.mapped(), 0, kMaxPbdElements * sizeof(PbdElementParams));
