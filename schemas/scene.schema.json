@@ -192,6 +192,34 @@
         "components": {
           "type": "object",
           "additionalProperties": { "type": "object" }
+        },
+        "pbd": {
+          "type": "object",
+          "required": ["mode"],
+          "properties": {
+            "mode": { "type": "string", "enum": ["wind_sway", "physics"] },
+            "sway_threshold": { "type": "number", "default": 0.7 },
+            "wind_direction": { "$ref": "#/definitions/vec3" },
+            "wind_strength": { "type": "number", "default": 0.06 },
+            "wind_frequency": { "type": "number", "default": 0.8 },
+            "gravity": { "$ref": "#/definitions/vec3" },
+            "damping": { "type": "number", "default": 0.98 },
+            "ground_y": { "type": "number", "default": -1000 },
+            "bounce": { "type": "number", "default": 0.3 },
+            "pinned": { "type": "boolean", "default": false },
+            "constraints": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["target", "rest_length"],
+                "properties": {
+                  "target": { "type": "string" },
+                  "rest_length": { "type": "number" },
+                  "stiffness": { "type": "number", "default": 0.8 }
+                }
+              }
+            }
+          }
         }
       },
       "additionalProperties": false
