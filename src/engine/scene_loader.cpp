@@ -285,6 +285,30 @@ SceneData SceneLoader::from_json(const nlohmann::json& j) {
             obj.ply_file = go.value("ply_file", "");
             if (go.contains("components")) obj.components = go["components"];
             else obj.components = nlohmann::json::object();
+            if (go.contains("pbd")) {
+                PbdConfig pbd;
+                const auto& p = go["pbd"];
+                pbd.mode = p.value("mode", "wind_sway");
+                pbd.sway_threshold = p.value("sway_threshold", 0.7f);
+                if (p.contains("wind_direction")) pbd.wind_direction = parse_vec3(p["wind_direction"]);
+                pbd.wind_strength = p.value("wind_strength", 0.06f);
+                pbd.wind_frequency = p.value("wind_frequency", 0.8f);
+                if (p.contains("gravity")) pbd.gravity = parse_vec3(p["gravity"]);
+                pbd.damping = p.value("damping", 0.98f);
+                pbd.ground_y = p.value("ground_y", -1000.0f);
+                pbd.bounce = p.value("bounce", 0.3f);
+                pbd.pinned = p.value("pinned", false);
+                if (p.contains("constraints")) {
+                    for (const auto& c : p["constraints"]) {
+                        PbdConstraintRef ref;
+                        ref.target = c.value("target", "");
+                        ref.rest_length = c.value("rest_length", 3.0f);
+                        ref.stiffness = c.value("stiffness", 0.8f);
+                        pbd.constraints.push_back(ref);
+                    }
+                }
+                obj.pbd = pbd;
+            }
             data.game_objects.push_back(std::move(obj));
         }
     }
@@ -976,6 +1000,35 @@ nlohmann::json SceneLoader::to_json(const SceneData& data) {
             obj["scale"] = go.scale;
             if (!go.ply_file.empty()) obj["ply_file"] = go.ply_file;
             obj["components"] = go.components.is_null() ? nlohmann::json::object() : go.components;
+            if (go.pbd) {
+                nlohmann::json pbd_j;
+                pbd_j["mode"] = go.pbd->mode;
+                if (go.pbd->mode == "wind_sway") {
+                    if (go.pbd->sway_threshold != 0.7f)
+                        pbd_j["sway_threshold"] = go.pbd->sway_threshold;
+                    pbd_j["wind_direction"] = vec3_json(go.pbd->wind_direction);
+                    pbd_j["wind_strength"] = go.pbd->wind_strength;
+                    pbd_j["wind_frequency"] = go.pbd->wind_frequency;
+                } else if (go.pbd->mode == "physics") {
+                    pbd_j["gravity"] = vec3_json(go.pbd->gravity);
+                    pbd_j["damping"] = go.pbd->damping;
+                    pbd_j["ground_y"] = go.pbd->ground_y;
+                    pbd_j["bounce"] = go.pbd->bounce;
+                    pbd_j["pinned"] = go.pbd->pinned;
+                    if (!go.pbd->constraints.empty()) {
+                        nlohmann::json constraints_arr = nlohmann::json::array();
+                        for (const auto& c : go.pbd->constraints) {
+                            nlohmann::json cj;
+                            cj["target"] = c.target;
+                            cj["rest_length"] = c.rest_length;
+                            cj["stiffness"] = c.stiffness;
+                            constraints_arr.push_back(cj);
+                        }
+                        pbd_j["constraints"] = constraints_arr;
+                    }
+                }
+                obj["pbd"] = pbd_j;
+            }
             arr.push_back(obj);
         }
         j["game_objects"] = arr;
