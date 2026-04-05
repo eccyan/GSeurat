@@ -1,0 +1,60 @@
+#version 450
+
+layout(local_size_x = 64) in;
+
+// PBD state output — consumed by gs_preprocess.comp at binding 6
+struct PbdState {
+    vec4 position; // xyz = anchor position, w = unused
+    vec4 rotation; // xyzw = delta quaternion (identity = no change)
+};
+
+layout(set = 0, binding = 0) buffer PbdBuffer {
+    PbdState pbd_states[];
+};
+
+layout(set = 0, binding = 1) uniform PbdUniforms {
+    vec4 params;       // x = time, y = wind_strength, z = wind_freq, w = pbd_count
+    vec4 wind_dir;     // xyz = wind direction (normalized), w = unused
+};
+
+layout(push_constant) uniform PushConstants {
+    uint pbd_count;
+};
+
+// Build quaternion from axis-angle
+vec4 axis_angle_to_quat(vec3 axis, float angle) {
+    float half_a = angle * 0.5;
+    float s = sin(half_a);
+    return vec4(axis * s, cos(half_a));
+}
+
+void main() {
+    uint idx = gl_GlobalInvocationID.x;
+    if (idx >= pbd_count) return;
+
+    PbdState state = pbd_states[idx];
+    vec3 anchor = state.position.xyz;
+
+    float time = params.x;
+    float wind_strength = params.y;
+    float wind_freq = params.z;
+    vec3 wind = normalize(wind_dir.xyz);
+
+    // --- Placeholder: sinusoidal wind sway ---
+    // Each PBD element gets a phase-shifted oscillation based on its anchor position
+    float phase = dot(anchor, vec3(0.37, 0.13, 0.71));  // spatial hash for variation
+    float sway_angle = sin(time * wind_freq + phase) * wind_strength;
+
+    // Rotation axis is perpendicular to wind direction and up
+    vec3 sway_axis = normalize(cross(wind, vec3(0.0, 1.0, 0.0)));
+    // Fallback if wind is exactly vertical
+    if (length(sway_axis) < 0.001) {
+        sway_axis = vec3(1.0, 0.0, 0.0);
+    }
+
+    // Write delta quaternion (rotation to apply in preprocess)
+    state.rotation = axis_angle_to_quat(sway_axis, sway_angle);
+
+    // Position anchor unchanged (PBD constraints would update this in a full solver)
+    pbd_states[idx] = state;
+}

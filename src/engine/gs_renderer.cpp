@@ -217,7 +217,7 @@ void GsRenderer::create_descriptor_resources() {
         throw std::runtime_error("Failed to create GS descriptor pool");
     }
 
-    // Preprocess layout: { gaussians, projected, sort_keys, uniforms, visible_count, bones }
+    // Preprocess layout: { gaussians, projected, sort_keys, uniforms, visible_count, bones, pbd_states }
     {
         VkDescriptorSetLayoutBinding bindings[] = {
             {0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
@@ -226,10 +226,11 @@ void GsRenderer::create_descriptor_resources() {
             {3, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
             {4, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
             {5, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
+            {6, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},  // PBD
         };
         VkDescriptorSetLayoutCreateInfo ci{};
         ci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-        ci.bindingCount = 6;
+        ci.bindingCount = 7;
         ci.pBindings = bindings;
         vkCreateDescriptorSetLayout(device_, &ci, nullptr, &preprocess_layout_);
     }
@@ -333,6 +334,19 @@ void GsRenderer::create_descriptor_resources() {
         vkCreateDescriptorSetLayout(device_, &ci, nullptr, &merge_layout_);
     }
 
+    // PBD solver layout: { pbd_states (rw), pbd_uniforms }
+    {
+        VkDescriptorSetLayoutBinding bindings[] = {
+            {0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
+            {1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
+        };
+        VkDescriptorSetLayoutCreateInfo ci{};
+        ci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+        ci.bindingCount = 2;
+        ci.pBindings = bindings;
+        vkCreateDescriptorSetLayout(device_, &ci, nullptr, &pbd_layout_);
+    }
+
     // Allocate all descriptor sets
     // Reset pool to free previously allocated sets before reallocating
     vkResetDescriptorPool(device_, gs_pool_, 0);
@@ -353,8 +367,9 @@ void GsRenderer::create_descriptor_resources() {
         radix_scatter_layout_, radix_scatter_layout_,      // dynamic scatter AB/BA
         merge_layout_,                                     // merge
         render_layout_,                                    // new render with merged sort
+        pbd_layout_,                                       // PBD solver
     };
-    constexpr uint32_t kSetCount = 22;
+    constexpr uint32_t kSetCount = 23;
     VkDescriptorSet sets[kSetCount];
     VkDescriptorSetAllocateInfo alloc_info{};
     alloc_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
@@ -388,6 +403,7 @@ void GsRenderer::create_descriptor_resources() {
     dynamic_scatter_set_ab_ = sets[19];
     dynamic_scatter_set_ba_ = sets[20];
     merge_set_ = sets[21];
+    pbd_set_ = sets[22];
     // Re-use render_set_ for merged rendering (set 2 already has correct layout)
 }
 
@@ -441,6 +457,11 @@ void GsRenderer::create_compute_pipelines() {
     // Post-process pipeline (no push constants — dimensions in UBO)
     create_pipeline("shaders/gs_post_process.comp.spv", post_process_layout_, 0,
                     post_process_pipeline_layout_, post_process_pipeline_);
+
+    // PBD solver pipeline (push constant = pbd_count)
+    create_pipeline("shaders/pbd_solver.comp.spv", pbd_layout_,
+                    static_cast<uint32_t>(sizeof(uint32_t)),
+                    pbd_pipeline_layout_, pbd_pipeline_);
 
     // Merge pipeline (no push constants)
     create_pipeline("shaders/gs_merge.comp.spv", merge_layout_, 0,
@@ -553,6 +574,19 @@ void GsRenderer::load_cloud(const GaussianCloud& cloud) {
         auto* bones = static_cast<glm::mat4*>(bone_ssbo_.mapped());
         for (uint32_t i = 0; i < kMaxBones; ++i) bones[i] = glm::mat4(1.0f);
     }
+
+    // PBD state SSBO (always allocated, identity rotation if unused)
+    pbd_ssbo_ = Buffer::create_storage(allocator_, kMaxPbdElements * sizeof(PbdState));
+    pbd_count_ = 0;
+    {
+        auto* states = static_cast<PbdState*>(pbd_ssbo_.mapped());
+        for (uint32_t i = 0; i < kMaxPbdElements; ++i) {
+            states[i].position = glm::vec4(0.0f);
+            states[i].rotation = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);  // identity quat
+        }
+    }
+    // PBD uniform buffer: params (vec4) + wind_dir (vec4) = 32 bytes
+    pbd_uniform_buffer_ = Buffer::create_storage(allocator_, 32);
 
     // Upload Gaussian data to static buffer via staging to avoid -O3 write-reordering
     {
@@ -807,7 +841,7 @@ void GsRenderer::clear_bone_transforms() {
 }
 
 void GsRenderer::update_descriptors() {
-    // Preprocess set: gaussians(0), projected(1), sort_keys_A(2), uniforms(3), visible_count(4), bones(5)
+    // Preprocess set: gaussians(0), projected(1), sort_keys_A(2), uniforms(3), visible_count(4), bones(5), pbd(6)
     {
         VkDescriptorBufferInfo gaussian_info{gaussian_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo projected_info{projected_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
@@ -815,6 +849,7 @@ void GsRenderer::update_descriptors() {
         VkDescriptorBufferInfo uniform_info{uniform_buffer_.buffer(), 0, sizeof(GsUniforms)};
         VkDescriptorBufferInfo visible_count_info{visible_count_ssbo_.buffer(), 0, sizeof(uint32_t)};
         VkDescriptorBufferInfo bone_info{bone_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo pbd_info{pbd_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
 
         VkWriteDescriptorSet writes[] = {
             {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, preprocess_set_, 0, 0, 1,
@@ -829,8 +864,10 @@ void GsRenderer::update_descriptors() {
              VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &visible_count_info, nullptr},
             {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, preprocess_set_, 5, 0, 1,
              VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &bone_info, nullptr},
+            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, preprocess_set_, 6, 0, 1,
+             VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &pbd_info, nullptr},
         };
-        vkUpdateDescriptorSets(device_, 6, writes, 0, nullptr);
+        vkUpdateDescriptorSets(device_, 7, writes, 0, nullptr);
     }
 
     // Legacy sort set
@@ -964,14 +1001,15 @@ void GsRenderer::update_descriptors() {
     // Only write these if the split buffers have been allocated
     if (!static_gaussian_ssbo_.buffer() || !counts_ssbo_.buffer()) return;
 
-    // Static preprocess set: static_gaussian(0), projected(1), static_sort_a(2), uniforms(3), counts[0](4), bones(5)
+    // Static preprocess set: static_gaussian(0), projected(1), static_sort_a(2), uniforms(3), counts[0](4), bones(5), pbd(6)
     {
         VkDescriptorBufferInfo gaussian_info{static_gaussian_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo projected_info{projected_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo sort_info{static_sort_a_.buffer(), 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo uniform_info{uniform_buffer_.buffer(), 0, sizeof(GsUniforms)};
-        VkDescriptorBufferInfo counts_info{counts_ssbo_.buffer(), 0, VK_WHOLE_SIZE};  // full counts buffer, shader indexes by push constant
+        VkDescriptorBufferInfo counts_info{counts_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo bone_info{bone_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo pbd_info{pbd_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
 
         VkWriteDescriptorSet writes[] = {
             {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, static_preprocess_set_, 0, 0, 1,
@@ -986,18 +1024,21 @@ void GsRenderer::update_descriptors() {
              VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &counts_info, nullptr},
             {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, static_preprocess_set_, 5, 0, 1,
              VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &bone_info, nullptr},
+            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, static_preprocess_set_, 6, 0, 1,
+             VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &pbd_info, nullptr},
         };
-        vkUpdateDescriptorSets(device_, 6, writes, 0, nullptr);
+        vkUpdateDescriptorSets(device_, 7, writes, 0, nullptr);
     }
 
-    // Dynamic preprocess set: dynamic_gaussian(0), projected(1), dynamic_sort_a(2), uniforms(3), counts[1](4), bones(5)
+    // Dynamic preprocess set: dynamic_gaussian(0), projected(1), dynamic_sort_a(2), uniforms(3), counts[1](4), bones(5), pbd(6)
     {
         VkDescriptorBufferInfo gaussian_info{dynamic_gaussian_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo projected_info{projected_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo sort_info{dynamic_sort_a_.buffer(), 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo uniform_info{uniform_buffer_.buffer(), 0, sizeof(GsUniforms)};
-        VkDescriptorBufferInfo counts_info{counts_ssbo_.buffer(), 0, VK_WHOLE_SIZE};  // full counts buffer, shader indexes by push constant
+        VkDescriptorBufferInfo counts_info{counts_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo bone_info{bone_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo pbd_info{pbd_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
 
         VkWriteDescriptorSet writes[] = {
             {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, dynamic_preprocess_set_, 0, 0, 1,
@@ -1012,8 +1053,23 @@ void GsRenderer::update_descriptors() {
              VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &counts_info, nullptr},
             {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, dynamic_preprocess_set_, 5, 0, 1,
              VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &bone_info, nullptr},
+            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, dynamic_preprocess_set_, 6, 0, 1,
+             VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &pbd_info, nullptr},
         };
-        vkUpdateDescriptorSets(device_, 6, writes, 0, nullptr);
+        vkUpdateDescriptorSets(device_, 7, writes, 0, nullptr);
+    }
+
+    // PBD solver descriptor set: pbd_states(0), pbd_uniforms(1)
+    {
+        VkDescriptorBufferInfo pbd_buf_info{pbd_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo pbd_ubo_info{pbd_uniform_buffer_.buffer(), 0, 32};
+        VkWriteDescriptorSet writes[] = {
+            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, pbd_set_, 0, 0, 1,
+             VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &pbd_buf_info, nullptr},
+            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, pbd_set_, 1, 0, 1,
+             VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, nullptr, &pbd_ubo_info, nullptr},
+        };
+        vkUpdateDescriptorSets(device_, 2, writes, 0, nullptr);
     }
 
     // Helper to write radix histogram/scan/scatter sets
@@ -1247,6 +1303,36 @@ void GsRenderer::render(VkCommandBuffer cmd, const glm::mat4& view, const glm::m
         vkCmdClearColorImage(cmd, output_image_, VK_IMAGE_LAYOUT_GENERAL, &clear_color, 1, &range);
         vkCmdClearColorImage(cmd, depth_image_, VK_IMAGE_LAYOUT_GENERAL, &clear_color, 1, &range);
 
+        // === PBD solver dispatch (before any preprocess) ===
+        // PBD-tagged Gaussians live in the static buffer but need re-preprocessing
+        // every frame since their positions/rotations change continuously.
+        if (pbd_count_ > 0) {
+            static_dirty_ = true;
+            // Update PBD uniform buffer: params(time, strength, freq, count) + wind_dir
+            struct { glm::vec4 params; glm::vec4 wind_dir; } pbd_ubo;
+            pbd_ubo.params = glm::vec4(time_, pbd_wind_strength_, pbd_wind_freq_,
+                                        static_cast<float>(pbd_count_));
+            pbd_ubo.wind_dir = glm::vec4(pbd_wind_dir_, 0.0f);
+            std::memcpy(pbd_uniform_buffer_.mapped(), &pbd_ubo, sizeof(pbd_ubo));
+
+            vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pbd_pipeline_);
+            vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
+                                    pbd_pipeline_layout_, 0, 1, &pbd_set_, 0, nullptr);
+            vkCmdPushConstants(cmd, pbd_pipeline_layout_, VK_SHADER_STAGE_COMPUTE_BIT,
+                               0, sizeof(uint32_t), &pbd_count_);
+            vkCmdDispatch(cmd, (pbd_count_ + 63) / 64, 1, 1);
+
+            // Barrier: PBD write → preprocess read
+            VkMemoryBarrier pbd_barrier{};
+            pbd_barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+            pbd_barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+            pbd_barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+            vkCmdPipelineBarrier(cmd,
+                VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                0, 1, &pbd_barrier, 0, nullptr, 0, nullptr);
+        }
+
         // Use split pipeline if split buffers are allocated, otherwise legacy path
         bool use_split = static_gaussian_ssbo_.buffer() && counts_ssbo_.buffer();
 
@@ -1478,6 +1564,34 @@ void GsRenderer::clear_shadow_box_params() {
     num_sort_passes_ = 2;
 }
 
+void GsRenderer::set_pbd_anchors(const glm::vec3* anchors, uint32_t count) {
+    if (!pbd_ssbo_.mapped() || count == 0) return;
+    uint32_t n = std::min(count, kMaxPbdElements);
+    auto* states = static_cast<PbdState*>(pbd_ssbo_.mapped());
+    for (uint32_t i = 0; i < n; ++i) {
+        states[i].position = glm::vec4(anchors[i], 0.0f);
+        states[i].rotation = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);  // identity
+    }
+    pbd_count_ = n;
+}
+
+void GsRenderer::set_pbd_wind(const glm::vec3& direction, float strength, float frequency) {
+    pbd_wind_dir_ = glm::length(direction) > 0.001f ? glm::normalize(direction) : glm::vec3(1, 0, 0);
+    pbd_wind_strength_ = strength;
+    pbd_wind_freq_ = frequency;
+}
+
+void GsRenderer::clear_pbd() {
+    pbd_count_ = 0;
+    if (pbd_ssbo_.mapped()) {
+        auto* states = static_cast<PbdState*>(pbd_ssbo_.mapped());
+        for (uint32_t i = 0; i < kMaxPbdElements; ++i) {
+            states[i].position = glm::vec4(0.0f);
+            states[i].rotation = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+        }
+    }
+}
+
 void GsRenderer::set_point_lights(const std::vector<PointLight>& lights) {
     point_lights_.assign(lights.begin(),
                          lights.begin() + std::min(lights.size(),
@@ -1496,6 +1610,8 @@ void GsRenderer::shutdown(VmaAllocator allocator) {
     uniform_buffer_.destroy(allocator);
     visible_count_ssbo_.destroy(allocator);
     bone_ssbo_.destroy(allocator);
+    pbd_ssbo_.destroy(allocator);
+    pbd_uniform_buffer_.destroy(allocator);
 
     // Split buffers
     static_gaussian_ssbo_.destroy(allocator);
@@ -1528,6 +1644,7 @@ void GsRenderer::shutdown(VmaAllocator allocator) {
     destroy_pipeline(render_pipeline_);
     destroy_pipeline(post_process_pipeline_);
     destroy_pipeline(merge_pipeline_);
+    destroy_pipeline(pbd_pipeline_);
     destroy_pipeline(radix_histogram_pipeline_);
     destroy_pipeline(radix_scan_pipeline_);
     destroy_pipeline(radix_scatter_pipeline_);
@@ -1537,6 +1654,7 @@ void GsRenderer::shutdown(VmaAllocator allocator) {
     destroy_layout(render_pipeline_layout_);
     destroy_layout(post_process_pipeline_layout_);
     destroy_layout(merge_pipeline_layout_);
+    destroy_layout(pbd_pipeline_layout_);
     destroy_layout(radix_histogram_pipeline_layout_);
     destroy_layout(radix_scan_pipeline_layout_);
     destroy_layout(radix_scatter_pipeline_layout_);
@@ -1546,6 +1664,7 @@ void GsRenderer::shutdown(VmaAllocator allocator) {
     destroy_set_layout(render_layout_);
     destroy_set_layout(post_process_layout_);
     destroy_set_layout(merge_layout_);
+    destroy_set_layout(pbd_layout_);
     destroy_set_layout(radix_histogram_layout_);
     destroy_set_layout(radix_scan_layout_);
     destroy_set_layout(radix_scatter_layout_);

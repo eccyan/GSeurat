@@ -398,6 +398,7 @@ void AppBase::load_gs_scene(const SceneData& scene_data, const GsSceneOptions& o
             scene_game_object_data_ = snapped_objects;
 
             // Merge all game objects with PLY visuals into the GS cloud
+            pbd_anchors_.clear();
             {
                 auto merged = cloud.gaussians();
                 uint32_t merged_count = 0;
@@ -406,11 +407,12 @@ void AppBase::load_gs_scene(const SceneData& scene_data, const GsSceneOptions& o
                     try {
                         auto placed_cloud = GaussianCloud::load_ply(go.ply_file);
                         if (placed_cloud.empty()) continue;
-                        // Compute local AABB min Y so we can offset the prop
-                        // to sit ON the terrain (PLY origins are often at center)
+                        // Compute local AABB min/max Y
                         float local_min_y = 1e9f;
+                        float local_max_y = -1e9f;
                         for (const auto& g : placed_cloud.gaussians()) {
                             if (g.position.y < local_min_y) local_min_y = g.position.y;
+                            if (g.position.y > local_max_y) local_max_y = g.position.y;
                         }
                         glm::vec3 adjusted_pos = go.position;
                         if (local_min_y < -0.01f) {
@@ -422,11 +424,28 @@ void AppBase::load_gs_scene(const SceneData& scene_data, const GsSceneOptions& o
                         transform = glm::rotate(transform, glm::radians(go.rotation.z), {0,0,1});
                         transform = glm::scale(transform, glm::vec3(go.scale));
                         auto rot_q = glm::quat(glm::radians(go.rotation));
+
+                        // Assign PBD index to tree game objects (upper canopy sways)
+                        bool is_tree = go.id.find("tree") != std::string::npos;
+                        uint32_t pbd_idx = 0;
+                        if (is_tree && pbd_anchors_.size() < GsRenderer::kMaxPbdElements) {
+                            pbd_idx = 32 + static_cast<uint32_t>(pbd_anchors_.size());
+                            pbd_anchors_.push_back(adjusted_pos);
+                        }
+                        // Sway threshold: upper 30% of the tree (canopy tips only)
+                        // Higher threshold = less of the tree sways, avoiding visible seam
+                        float sway_threshold = local_min_y + (local_max_y - local_min_y) * 0.7f;
+
                         auto placed_gs = placed_cloud.gaussians();
                         for (auto& g : placed_gs) {
+                            float local_y = g.position.y;  // before transform
                             g.position = glm::vec3(transform * glm::vec4(g.position, 1.0f));
                             g.scale *= go.scale;
                             g.rotation = rot_q * g.rotation;
+                            // Tag canopy Gaussians with PBD index
+                            if (pbd_idx > 0 && local_y > sway_threshold) {
+                                g.bone_index = pbd_idx;
+                            }
                         }
                         merged.insert(merged.end(), placed_gs.begin(), placed_gs.end());
                         merged_count++;
@@ -437,6 +456,11 @@ void AppBase::load_gs_scene(const SceneData& scene_data, const GsSceneOptions& o
                 }
                 if (merged_count > 0) {
                     cloud = GaussianCloud::from_gaussians(std::move(merged));
+                }
+                if (!pbd_anchors_.empty()) {
+                    std::fprintf(stderr, "[GS] PBD: %zu tree anchors assigned (idx 32-%u)\n",
+                                 pbd_anchors_.size(),
+                                 31 + static_cast<uint32_t>(pbd_anchors_.size()));
                 }
             }
 

@@ -156,6 +156,17 @@ public:
     void upload_bone_transforms(const glm::mat4* transforms, uint32_t count);
     void clear_bone_transforms();
 
+    // PBD (Position Based Dynamics) solver
+    static constexpr uint32_t kMaxPbdElements = 32;
+    struct PbdState {
+        glm::vec4 position;  // xyz = anchor, w = unused
+        glm::vec4 rotation;  // xyzw = delta quaternion
+    };
+    void set_pbd_anchors(const glm::vec3* anchors, uint32_t count);
+    void set_pbd_wind(const glm::vec3& direction, float strength, float frequency);
+    void clear_pbd();
+    uint32_t pbd_count() const { return pbd_count_; }
+
     // Post-process parameters (fog, tone mapping, vignette, etc.)
     void set_post_process_params(const GsPostProcessParams& p) { gs_pp_params_ = p; }
     const GsPostProcessParams& post_process_params() const { return gs_pp_params_; }
@@ -202,6 +213,14 @@ private:
     Buffer visible_count_ssbo_;      // Atomic counter: visible Gaussians after frustum cull
     Buffer bone_ssbo_;               // Bone transforms for character skinning
     uint32_t bone_count_ = 0;
+
+    // PBD solver resources
+    Buffer pbd_ssbo_;                // PbdState array (read/write by solver, read by preprocess)
+    Buffer pbd_uniform_buffer_;      // PBD solver uniforms (time, wind params)
+    uint32_t pbd_count_ = 0;
+    glm::vec3 pbd_wind_dir_{1.0f, 0.0f, 0.0f};
+    float pbd_wind_strength_ = 0.0f;
+    float pbd_wind_freq_ = 2.0f;
 
     // Static/dynamic split buffers
     Buffer static_gaussian_ssbo_;
@@ -279,6 +298,12 @@ private:
     VkPipeline radix_histogram_pipeline_ = VK_NULL_HANDLE;
     VkPipeline radix_scan_pipeline_ = VK_NULL_HANDLE;
     VkPipeline radix_scatter_pipeline_ = VK_NULL_HANDLE;
+
+    // PBD solver pipeline
+    VkDescriptorSetLayout pbd_layout_ = VK_NULL_HANDLE;
+    VkPipelineLayout pbd_pipeline_layout_ = VK_NULL_HANDLE;
+    VkPipeline pbd_pipeline_ = VK_NULL_HANDLE;
+    VkDescriptorSet pbd_set_ = VK_NULL_HANDLE;
 
     // Post-process pipeline
     VkDescriptorSetLayout post_process_layout_ = VK_NULL_HANDLE;

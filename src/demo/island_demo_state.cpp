@@ -244,6 +244,21 @@ void IslandDemoState::on_enter(AppBase& app) {
         (void)char_count;
     }
 
+    // Set up PBD solver for tree sway (anchors assigned during scene load)
+    {
+        const auto& anchors = app.pbd_anchors();
+        if (!anchors.empty()) {
+            app.renderer().gs_renderer().set_pbd_anchors(
+                anchors.data(), static_cast<uint32_t>(anchors.size()));
+            app.renderer().gs_renderer().set_pbd_wind(
+                glm::vec3(1.0f, 0.0f, 0.3f),  // wind direction (mostly +X)
+                0.06f,                           // strength (gentle sway angle)
+                0.8f);                           // frequency (slow, natural rhythm)
+            std::fprintf(stderr, "[IslandDemo] PBD tree sway: %zu trees, wind=(1,0,0.3) str=0.08 freq=1.5\n",
+                         anchors.size());
+        }
+    }
+
     // Initialize camera centered on player (use header defaults for elevation/distance)
     camera_target_ = player_pos + glm::vec3(0, kCameraYOffset, 0);
 
@@ -269,6 +284,7 @@ void IslandDemoState::on_exit(AppBase& app) {
 
     if (character_spawned_) {
         app.renderer().gs_renderer().clear_bone_transforms();
+        app.renderer().gs_renderer().clear_pbd();
         character_spawned_ = false;
     }
 }
@@ -351,6 +367,9 @@ void IslandDemoState::update(AppBase& app, float dt) {
     if (anim_enabled_) {
         update_environment_animation(app, dt);
     }
+
+    // Drive GS effect time for PBD solver (wind sway needs advancing time)
+    app.renderer().gs_renderer().set_effect_time(env_anim_time_);
 
     // Walk animation always runs (handles character root transform + bone poses)
     update_walk_animation(app, dt);
