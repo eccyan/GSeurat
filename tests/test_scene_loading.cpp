@@ -437,6 +437,91 @@ int main() {
     // ── 8. Background colors ──
     test_background_colors();
 
+    // ── PBD config round-trip ──
+    std::printf("\n--- PBD config round-trip ---\n\n");
+    {
+        std::printf("Test: wind_sway PBD config round-trip\n");
+        gseurat::SceneData data;
+        gseurat::GameObjectData go;
+        go.id = "tree_1";
+        go.name = "Tree";
+        go.position = {10.0f, 0.0f, 5.0f};
+        go.ply_file = "assets/props/tree.ply";
+        go.components = nlohmann::json::object();
+        gseurat::PbdConfig pbd;
+        pbd.mode = "wind_sway";
+        pbd.sway_threshold = 0.6f;
+        pbd.wind_direction = {1.0f, 0.0f, 0.3f};
+        pbd.wind_strength = 0.08f;
+        pbd.wind_frequency = 1.2f;
+        go.pbd = pbd;
+        data.game_objects.push_back(go);
+
+        auto j = gseurat::SceneLoader::to_json(data);
+        auto rt = gseurat::SceneLoader::from_json(j);
+
+        check(rt.game_objects.size() == 1, "1 game object round-tripped");
+        check(rt.game_objects[0].pbd.has_value(), "pbd config present");
+        const auto& rt_pbd = *rt.game_objects[0].pbd;
+        check(rt_pbd.mode == "wind_sway", "mode preserved");
+        check(approx(rt_pbd.sway_threshold, 0.6f), "sway_threshold preserved");
+        check(approx(rt_pbd.wind_direction.x, 1.0f), "wind_direction.x preserved");
+        check(approx(rt_pbd.wind_direction.z, 0.3f), "wind_direction.z preserved");
+        check(approx(rt_pbd.wind_strength, 0.08f), "wind_strength preserved");
+        check(approx(rt_pbd.wind_frequency, 1.2f), "wind_frequency preserved");
+    }
+    {
+        std::printf("Test: physics PBD config round-trip\n");
+        gseurat::SceneData data;
+        gseurat::GameObjectData go;
+        go.id = "chain_1";
+        go.name = "Chain Link";
+        go.position = {5.0f, 10.0f, 0.0f};
+        go.ply_file = "assets/props/link.ply";
+        go.components = nlohmann::json::object();
+        gseurat::PbdConfig pbd;
+        pbd.mode = "physics";
+        pbd.gravity = {0.0f, -5.0f, 0.0f};
+        pbd.damping = 0.95f;
+        pbd.ground_y = 0.0f;
+        pbd.bounce = 0.5f;
+        pbd.pinned = true;
+        pbd.constraints.push_back({"chain_2", 3.0f, 0.9f});
+        go.pbd = pbd;
+        data.game_objects.push_back(go);
+
+        auto j = gseurat::SceneLoader::to_json(data);
+        auto rt = gseurat::SceneLoader::from_json(j);
+
+        check(rt.game_objects[0].pbd.has_value(), "physics pbd present");
+        const auto& rt_pbd = *rt.game_objects[0].pbd;
+        check(rt_pbd.mode == "physics", "physics mode preserved");
+        check(approx(rt_pbd.gravity.y, -5.0f), "gravity preserved");
+        check(approx(rt_pbd.damping, 0.95f), "damping preserved");
+        check(approx(rt_pbd.ground_y, 0.0f), "ground_y preserved");
+        check(approx(rt_pbd.bounce, 0.5f), "bounce preserved");
+        check(rt_pbd.pinned == true, "pinned preserved");
+        check(rt_pbd.constraints.size() == 1, "1 constraint preserved");
+        check(rt_pbd.constraints[0].target == "chain_2", "constraint target preserved");
+        check(approx(rt_pbd.constraints[0].rest_length, 3.0f), "constraint rest_length preserved");
+        check(approx(rt_pbd.constraints[0].stiffness, 0.9f), "constraint stiffness preserved");
+    }
+    {
+        std::printf("Test: no PBD config (backward compat)\n");
+        gseurat::SceneData data;
+        gseurat::GameObjectData go;
+        go.id = "rock_1";
+        go.name = "Rock";
+        go.position = {0.0f, 0.0f, 0.0f};
+        go.components = nlohmann::json::object();
+        data.game_objects.push_back(go);
+
+        auto j = gseurat::SceneLoader::to_json(data);
+        auto rt = gseurat::SceneLoader::from_json(j);
+
+        check(!rt.game_objects[0].pbd.has_value(), "no pbd config = nullopt");
+    }
+
     // ── Summary ──
     std::printf("\n========================================\n");
     std::printf("  %d passed, %d failed\n", passed, failed);
