@@ -416,11 +416,10 @@ void AppBase::load_gs_scene(const SceneData& scene_data, const GsSceneOptions& o
             }
         }
 
-        // Apply terrain AABB XZ offset to convert grid coords → world coords
+        // Apply terrain AABB offset to convert grid coords → world coords
         if (has_terrain) {
             for (auto& go : snapped_objects) {
-                go.position.x += terrain_aabb_min_.x;
-                go.position.z += terrain_aabb_min_.z;
+                go.position += terrain_aabb_min_;
             }
         }
         scene_game_object_data_ = snapped_objects;
@@ -990,8 +989,7 @@ void AppBase::dispatch_command(const nlohmann::json& cmd, nlohmann::json& respon
                 {
                     auto adjusted_objects = scene_data.game_objects;
                     for (auto& go : adjusted_objects) {
-                        go.position.x += terrain_aabb_min_.x;
-                        go.position.z += terrain_aabb_min_.z;
+                        go.position += terrain_aabb_min_;
                     }
                     scene_game_object_data_ = adjusted_objects;
 
