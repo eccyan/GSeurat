@@ -52,7 +52,14 @@ void StagingState::on_enter(AppBase& app) {
     std::fprintf(stderr, "[Staging] Ready\n");
 }
 
-void StagingState::on_exit(AppBase& /*app*/) {
+void StagingState::on_exit(AppBase& app) {
+    // Destroy animation player before character data (player holds a reference to data)
+    anim_player_.reset();
+    character_data_.reset();
+    // Clear bone transforms from GPU before renderer shuts down
+    if (app.renderer().has_gs_cloud()) {
+        app.renderer().gs_renderer().clear_bone_transforms();
+    }
 }
 
 void StagingState::update(AppBase& app, float dt) {
