@@ -2,6 +2,7 @@
 #include "gseurat/engine/app_base.hpp"
 #include "gseurat/engine/gaussian_cloud.hpp"
 #include "gseurat/engine/post_process.hpp"
+#include "gseurat/engine/shutdown_auditor.hpp"
 
 #include <imgui.h>
 
@@ -53,13 +54,19 @@ void StagingState::on_enter(AppBase& app) {
 }
 
 void StagingState::on_exit(AppBase& app) {
-    // Destroy animation player before character data (player holds a reference to data)
+    std::fprintf(stderr, "[Staging] on_exit: begin shutdown\n");
+    ShutdownAuditor::report();
+
+    std::fprintf(stderr, "[Staging] on_exit: resetting anim_player_\n");
     anim_player_.reset();
+    std::fprintf(stderr, "[Staging] on_exit: resetting character_data_\n");
     character_data_.reset();
-    // Clear bone transforms from GPU before renderer shuts down
+
     if (app.renderer().has_gs_cloud()) {
+        std::fprintf(stderr, "[Staging] on_exit: clearing bone transforms\n");
         app.renderer().gs_renderer().clear_bone_transforms();
     }
+    std::fprintf(stderr, "[Staging] on_exit: done\n");
 }
 
 void StagingState::update(AppBase& app, float dt) {
@@ -810,7 +817,9 @@ void StagingState::load_character(const std::string& manifest_path, AppBase& app
         data->name.c_str(), data->bones.size(), data->clips.size());
 
     character_data_ = std::move(*data);
+    ShutdownAuditor::record<CharacterData>(&*character_data_);
     anim_player_ = std::make_unique<BoneAnimationPlayer>(*character_data_);
+    ShutdownAuditor::record<BoneAnimationPlayer>(anim_player_.get());
     selected_clip_ = 0;
     anim_playing_ = false;
 
@@ -820,7 +829,9 @@ void StagingState::load_character(const std::string& manifest_path, AppBase& app
     }
 
     // Clear bone transforms (identity) until animation starts
+    std::fprintf(stderr, "[Staging] About to clear_bone_transforms after character load\n");
     app.renderer().gs_renderer().clear_bone_transforms();
+    std::fprintf(stderr, "[Staging] clear_bone_transforms done\n");
 }
 
 void StagingState::draw_character_panel(AppBase& app) {
