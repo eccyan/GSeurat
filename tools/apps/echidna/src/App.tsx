@@ -257,7 +257,10 @@ const modeTabStyles: Record<string, React.CSSProperties> = {
   tab: {
     flex: 1,
     padding: '8px 0',
-    border: 'none',
+    borderWidth: 0,
+    borderBottomWidth: 2,
+    borderBottomStyle: 'solid' as const,
+    borderBottomColor: 'transparent',
     background: 'transparent',
     color: '#888',
     cursor: 'pointer',
@@ -269,7 +272,7 @@ const modeTabStyles: Record<string, React.CSSProperties> = {
   tabActive: {
     color: '#fff',
     background: '#2a2a4a',
-    borderBottom: '2px solid #77f',
+    borderBottomColor: '#77f',
   },
 };
 

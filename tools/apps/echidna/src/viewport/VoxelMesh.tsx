@@ -151,18 +151,15 @@ function OnionGhost({ time, tint, opacity, surfaceEntries, characterParts, chara
       _dummy.rotation.set(0, 0, 0);
       _dummy.updateMatrix();
       mesh.setMatrixAt(i, _dummy.matrix);
-      const color = new THREE.Color(tint[0], tint[1], tint[2]);
-      mesh.setColorAt(i, color);
     }
     mesh.instanceMatrix.needsUpdate = true;
-    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-  }, [time, surfaceEntries, characterParts, characterPoses, voxelToPartId, keyframes, tint, count]);
+  }, [time, surfaceEntries, characterParts, characterPoses, voxelToPartId, keyframes, count]);
 
   if (count === 0) return null;
   return (
-    <instancedMesh ref={meshRef} args={[undefined, undefined, Math.max(count, 1)]} frustumCulled={false}>
+    <instancedMesh ref={meshRef} args={[undefined, undefined, Math.max(count, 1)]} frustumCulled={false} renderOrder={-1}>
       <boxGeometry args={[1, 1, 1]} />
-      <meshLambertMaterial transparent opacity={opacity} vertexColors />
+      <meshLambertMaterial transparent opacity={opacity} color={new THREE.Color(tint[0], tint[1], tint[2])} depthWrite={false} />
     </instancedMesh>
   );
 }
@@ -541,7 +538,7 @@ export function VoxelMesh() {
         frustumCulled={false}
       >
         <boxGeometry args={[1, 1, 1]} />
-        <meshLambertMaterial transparent={xrayMode || colorByPart || !!boxSelection} opacity={xrayMode ? 0.3 : 1} />
+        <meshLambertMaterial key={xrayMode ? 'xray' : 'solid'} transparent={xrayMode || colorByPart || !!boxSelection} opacity={xrayMode ? 0.3 : 1} depthWrite={!xrayMode} />
       </instancedMesh>
       {onionSkinning && prevKfTime !== null && (
         <OnionGhost time={prevKfTime} tint={[0.3, 0.3, 1.0]} opacity={0.2}

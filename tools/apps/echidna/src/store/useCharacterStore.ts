@@ -576,7 +576,15 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
     });
   },
 
-  selectAnimation: (name) => set({ selectedAnimation: name }),
+  selectAnimation: (name) => {
+    const clip = name ? get().animations[name] : null;
+    set({
+      selectedAnimation: name,
+      playbackTime: 0,
+      isPlaying: false,
+      playbackMode: clip?.playbackMode ?? 'loop',
+    });
+  },
 
   addKeyframe: (animName, keyframe) => {
     const anims = { ...get().animations };
