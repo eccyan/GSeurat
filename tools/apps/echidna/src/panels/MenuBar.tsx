@@ -431,9 +431,21 @@ export function MenuBar() {
       };
 
       // Upload manifest JSON for animation playback
+      // Joint positions must be centered to match PLY export centering
+      const halfW = s.gridWidth / 2;
+      let maxY = 0;
+      for (const [key] of s.voxels.entries()) {
+        const y = parseInt(key.split(',')[1], 10);
+        if (y > maxY) maxY = y;
+      }
+      const halfH = maxY / 2;
+      const centeredParts = s.characterParts.map((p) => ({
+        ...p,
+        joint: [p.joint[0] - halfW, p.joint[1] - halfH, p.joint[2]] as [number, number, number],
+      }));
       const manifest = buildManifest(
         charId, charId + '.ply', 1.0,
-        s.characterParts, s.characterPoses, s.animations,
+        centeredParts, s.characterPoses, s.animations,
       );
       const manifestJson = JSON.stringify(manifest, null, 2);
       const manifestRes = await fetch(
