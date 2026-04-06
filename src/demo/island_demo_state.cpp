@@ -111,7 +111,7 @@ void IslandDemoState::on_enter(AppBase& app) {
     }
 
     // Determine player start position
-    glm::vec3 player_pos = scene_data.player_position;
+    glm::vec3 player_pos = scene_data.player_position.vec();
     // If player_position is zero, place at map center
     if (glm::length(player_pos) < 0.001f && app.renderer().has_gs_cloud()) {
         auto aabb = app.renderer().gs_chunk_grid().cloud_bounds();

@@ -212,7 +212,7 @@ int main() {
         auto scene = gseurat::SceneLoader::load("/tmp/test_scene_vfx.json");
         check(scene.vfx_instances.size() == 1, "1 vfx instance loaded");
         check(approx(scene.vfx_instances[0].rotation_y, 90), "rotation_y = 90");
-        check(approx(scene.vfx_instances[0].position.x, 50), "position x = 50");
+        check(approx(scene.vfx_instances[0].position.x(), 50), "position x = 50");
         check(scene.vfx_instances[0].loop, "loop = true");
     }
 
@@ -347,7 +347,7 @@ int main() {
         gseurat::GameObjectData go1;
         go1.id = "obj_tree";
         go1.name = "Pine Tree";
-        go1.position = {10.0f, 5.0f, 3.0f};
+        go1.position = gseurat::coord::GridPos(10.0f, 5.0f, 3.0f);
         go1.rotation = {0.0f, 45.0f, 0.0f};
         go1.scale = 2.0f;
         go1.ply_file = "assets/objects/tree.ply";
@@ -357,7 +357,7 @@ int main() {
         gseurat::GameObjectData go2;
         go2.id = "npc_guard";
         go2.name = "Guard";
-        go2.position = {20.0f, 0.0f, 15.0f};
+        go2.position = gseurat::coord::GridPos(20.0f, 0.0f, 15.0f);
         go2.components = {{"Facing", {{"direction", "left"}}}, {"Patrol", {{"speed", 3.0f}}}};
         data.game_objects.push_back(go2);
 
@@ -367,7 +367,7 @@ int main() {
         check(rt.game_objects.size() == 2, "2 game objects round-tripped");
         check(rt.game_objects[0].id == "obj_tree", "go1 id preserved");
         check(rt.game_objects[0].name == "Pine Tree", "go1 name preserved");
-        check(approx(rt.game_objects[0].position.x, 10.0f), "go1 position.x preserved");
+        check(approx(rt.game_objects[0].position.x(), 10.0f), "go1 position.x preserved");
         check(approx(rt.game_objects[0].rotation.y, 45.0f), "go1 rotation.y preserved");
         check(approx(rt.game_objects[0].scale, 2.0f), "go1 scale preserved");
         check(rt.game_objects[0].ply_file == "assets/objects/tree.ply", "go1 ply_file preserved");
@@ -412,7 +412,7 @@ int main() {
         check(scene.game_objects.size() == 1, "1 game object from legacy npcs[]");
         check(scene.game_objects[0].id == "npc_bob", "migrated npc id = npc_ + name");
         check(scene.game_objects[0].name == "bob", "migrated npc name");
-        check(approx(scene.game_objects[0].position.x, 5.0f), "migrated npc position.x");
+        check(approx(scene.game_objects[0].position.x(), 5.0f), "migrated npc position.x");
         check(scene.game_objects[0].components.contains("Facing"), "migrated facing → Facing component");
         check(scene.game_objects[0].components["Facing"]["direction"] == "left", "facing direction preserved");
         check(scene.game_objects[0].components.contains("Patrol"), "migrated waypoints → Patrol component");
@@ -445,7 +445,7 @@ int main() {
         gseurat::GameObjectData go;
         go.id = "tree_1";
         go.name = "Tree";
-        go.position = {10.0f, 0.0f, 5.0f};
+        go.position = gseurat::coord::GridPos(10.0f, 0.0f, 5.0f);
         go.ply_file = "assets/props/tree.ply";
         go.components = nlohmann::json::object();
         gseurat::PbdConfig pbd;
@@ -476,7 +476,7 @@ int main() {
         gseurat::GameObjectData go;
         go.id = "chain_1";
         go.name = "Chain Link";
-        go.position = {5.0f, 10.0f, 0.0f};
+        go.position = gseurat::coord::GridPos(5.0f, 10.0f, 0.0f);
         go.ply_file = "assets/props/link.ply";
         go.components = nlohmann::json::object();
         gseurat::PbdConfig pbd;
@@ -512,7 +512,7 @@ int main() {
         gseurat::GameObjectData go;
         go.id = "rock_1";
         go.name = "Rock";
-        go.position = {0.0f, 0.0f, 0.0f};
+        go.position = gseurat::coord::GridPos(0.0f, 0.0f, 0.0f);
         go.components = nlohmann::json::object();
         data.game_objects.push_back(go);
 

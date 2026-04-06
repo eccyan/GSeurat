@@ -405,11 +405,11 @@ void AppBase::load_gs_scene(const SceneData& scene_data, const GsSceneOptions& o
             const auto& grid = *scene_data.collision;
             if (grid.width > 0 && !grid.elevation.empty()) {
                 for (auto& go : snapped_objects) {
-                    int gx = static_cast<int>(go.position.x / grid.cell_size);
-                    int gz = static_cast<int>(go.position.z / grid.cell_size);
+                    int gx = static_cast<int>(go.position.x() / grid.cell_size);
+                    int gz = static_cast<int>(go.position.z() / grid.cell_size);
                     if (gx >= 0 && gx < static_cast<int>(grid.width) &&
                         gz >= 0 && gz < static_cast<int>(grid.height)) {
-                        go.position.y = grid.get_elevation(
+                        go.position.vec().y = grid.get_elevation(  // TODO Task 5: replace with coord conversion
                             static_cast<uint32_t>(gx), static_cast<uint32_t>(gz));
                     }
                 }
@@ -419,7 +419,7 @@ void AppBase::load_gs_scene(const SceneData& scene_data, const GsSceneOptions& o
         // Apply terrain AABB offset to convert grid coords → world coords
         if (has_terrain) {
             for (auto& go : snapped_objects) {
-                go.position += terrain_aabb_min_;
+                go.position.vec() += terrain_aabb_min_;  // TODO Task 5: replace with coord::to_world()
             }
         }
         scene_game_object_data_ = snapped_objects;
@@ -447,7 +447,7 @@ void AppBase::load_gs_scene(const SceneData& scene_data, const GsSceneOptions& o
                         local_center.y = local_min.y;  // pivot at bottom, not center Y
                         float local_min_y = local_min.y;
                         float local_max_y = local_max.y;
-                        glm::vec3 adjusted_pos = go.position;
+                        glm::vec3 adjusted_pos = go.position.vec();
                         // Build transform: translate to position, rotate, scale, then center the model
                         auto transform = glm::translate(glm::mat4(1.0f), adjusted_pos);
                         transform = glm::rotate(transform, glm::radians(go.rotation.x), {1,0,0});
@@ -510,7 +510,7 @@ void AppBase::load_gs_scene(const SceneData& scene_data, const GsSceneOptions& o
             for (const auto& go : snapped_objects) {
                 if (go.components.empty() || go.components.is_null()) continue;
                 auto entity = world_.create();
-                world_.add<ecs::Transform>(entity, {{go.position}, {go.scale, go.scale}});
+                world_.add<ecs::Transform>(entity, {{go.position.vec()}, {go.scale, go.scale}});
                 for (auto& [name, data] : go.components.items()) {
                     component_registry_.attach(world_, entity, name, data);
                 }
@@ -678,7 +678,7 @@ void AppBase::load_gs_scene(const SceneData& scene_data, const GsSceneOptions& o
             auto preset = load_vfx_preset(vi.vfx_file);
             if (preset.elements.empty()) continue;
             VfxInstance inst;
-            auto pos = vi.position;
+            auto pos = vi.position.vec();  // TODO Task 5: replace with coord::to_world()
             pos.x += gs_aabb_offset_.x;
             pos.y += gs_aabb_offset_.y;
             inst.init(preset, pos, vi.loop, vi.rotation_y);
@@ -990,7 +990,7 @@ void AppBase::dispatch_command(const nlohmann::json& cmd, nlohmann::json& respon
                     auto preset = load_vfx_preset(vi.vfx_file);
                     if (preset.elements.empty()) continue;
                     VfxInstance inst;
-                    auto pos = vi.position;
+                    auto pos = vi.position.vec();  // TODO Task 5: replace with coord::to_world()
                     pos.x += gs_aabb_offset_.x;
                     pos.y += gs_aabb_offset_.y;
                     inst.init(preset, pos, vi.loop, vi.rotation_y);
@@ -1001,7 +1001,7 @@ void AppBase::dispatch_command(const nlohmann::json& cmd, nlohmann::json& respon
                 {
                     auto adjusted_objects = scene_data.game_objects;
                     for (auto& go : adjusted_objects) {
-                        go.position += terrain_aabb_min_;
+                        go.position.vec() += terrain_aabb_min_;  // TODO Task 5: replace with coord::to_world()
                     }
                     scene_game_object_data_ = adjusted_objects;
 
@@ -1009,7 +1009,7 @@ void AppBase::dispatch_command(const nlohmann::json& cmd, nlohmann::json& respon
                     for (const auto& go : adjusted_objects) {
                         if (go.components.empty() || go.components.is_null()) continue;
                         auto entity = world_.create();
-                        world_.add<ecs::Transform>(entity, {{go.position}, {go.scale, go.scale}});
+                        world_.add<ecs::Transform>(entity, {{go.position.vec()}, {go.scale, go.scale}});
                         for (auto& [name, data] : go.components.items()) {
                             component_registry_.attach(world_, entity, name, data);
                         }
