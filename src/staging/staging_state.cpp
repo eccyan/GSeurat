@@ -54,28 +54,17 @@ void StagingState::on_enter(AppBase& app) {
 }
 
 void StagingState::on_exit(AppBase& app) {
-    std::fprintf(stderr, "[Staging] on_exit: begin shutdown\n");
-    ShutdownAuditor::report();
-
-    std::fprintf(stderr, "[Staging] on_exit: resetting anim_player_\n");
+    // Release animation player first (holds reference to character data)
     anim_player_.reset();
-    std::fprintf(stderr, "[Staging] on_exit: resetting character_data_\n");
+
+    // Intentionally leak CharacterData on exit — macOS allocator crashes when
+    // freeing vectors during Vulkan/VMA teardown (known issue, same as IslandDemoState).
+    // Process teardown reclaims the memory anyway.
     if (character_data_) {
-        auto& cd = *character_data_;
-        std::fprintf(stderr, "[Staging]   name='%s' bones=%zu poses=%zu clips=%zu\n",
-            cd.name.c_str(), cd.bones.size(), cd.poses.size(), cd.clips.size());
-        std::fprintf(stderr, "[Staging]   clearing clips...\n");
-        cd.clips.clear();
-        std::fprintf(stderr, "[Staging]   clearing poses...\n");
-        cd.poses.clear();
-        std::fprintf(stderr, "[Staging]   clearing bones...\n");
-        cd.bones.clear();
-        std::fprintf(stderr, "[Staging]   clearing strings...\n");
-        cd.name.clear();
-        cd.ply_file.clear();
-        std::fprintf(stderr, "[Staging]   fields cleared, resetting optional...\n");
+        ShutdownAuditor::remove(character_data_.get());
+        (void)character_data_.release();  // leak — delete crashes on macOS
+        std::fprintf(stderr, "[Staging] CharacterData leaked (macOS allocator workaround)\n");
     }
-    character_data_.reset();
 
     if (app.renderer().has_gs_cloud()) {
         std::fprintf(stderr, "[Staging] on_exit: clearing bone transforms\n");
@@ -831,8 +820,8 @@ void StagingState::load_character(const std::string& manifest_path, AppBase& app
     std::fprintf(stderr, "[Staging] Loaded character '%s' (%zu bones, %zu clips)\n",
         data->name.c_str(), data->bones.size(), data->clips.size());
 
-    character_data_ = std::move(*data);
-    ShutdownAuditor::record<CharacterData>(&*character_data_);
+    character_data_ = std::make_unique<CharacterData>(std::move(*data));
+    ShutdownAuditor::record<CharacterData>(character_data_.get());
     anim_player_ = std::make_unique<BoneAnimationPlayer>(*character_data_);
     ShutdownAuditor::record<BoneAnimationPlayer>(anim_player_.get());
     selected_clip_ = 0;
