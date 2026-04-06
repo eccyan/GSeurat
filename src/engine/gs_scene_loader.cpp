@@ -1,0 +1,355 @@
+#include "gseurat/engine/gs_scene_loader.hpp"
+#include "gseurat/engine/app_base.hpp"
+#include "gseurat/engine/coordinate.hpp"
+#include "gseurat/engine/gaussian_cloud.hpp"
+#include "gseurat/engine/gs_vfx.hpp"
+#include "gseurat/engine/pbd_types.hpp"
+
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/quaternion.hpp>
+
+#include <algorithm>
+#include <cmath>
+#include <cstdio>
+
+namespace gseurat {
+
+void GsSceneLoader::load(const SceneData& scene_data, const GsSceneOptions& opts) {
+    auto& renderer = app_.renderer();
+    auto& scene = app_.scene();
+
+    renderer.clear_gs_particle_emitters();
+    renderer.clear_gs_animations();
+    renderer.clear_vfx_instances();
+
+    scene.clear_lights();
+    scene.set_ambient_color(scene_data.ambient_color);
+    for (const auto& pl : scene_data.static_lights) {
+        scene.add_light(pl);
+    }
+
+    // Apply weather fog to scene (picked up by renderer each frame)
+    scene.set_fog_density(scene_data.weather.fog_density);
+    scene.set_fog_color(scene_data.weather.fog_color);
+
+    // Load terrain PLY if present
+    GaussianCloud cloud;
+    bool has_terrain = false;
+    float gs_scale_multiplier = 1.0f;
+    if (scene_data.gaussian_splat) {
+        const auto& gs = *scene_data.gaussian_splat;
+        try {
+            cloud = GaussianCloud::load_ply(gs.ply_file);
+            has_terrain = !cloud.empty();
+        } catch (const std::runtime_error& e) {
+            std::fprintf(stderr, "[GS] Warning: %s\n", e.what());
+        }
+        gs_scale_multiplier = gs.scale_multiplier;
+    }
+
+    {
+        if (has_terrain) {
+            renderer.gs_renderer().set_scale_multiplier(gs_scale_multiplier);
+        }
+
+        // Compute terrain AABB (grid-to-world coordinate mapping)
+        AABB terrain_aabb{};
+        terrain_aabb.min = glm::vec3(0.0f);
+        terrain_aabb.max = glm::vec3(0.0f);
+        if (has_terrain) {
+            terrain_aabb = cloud.bounds();
+        }
+        app_.set_terrain_aabb(terrain_aabb);
+
+        // Snap game object positions to terrain elevation (in grid coordinates)
+        auto snapped_objects = scene_data.game_objects;
+        if (scene_data.collision) {
+            const auto& grid = *scene_data.collision;
+            if (grid.width > 0 && !grid.elevation.empty()) {
+                for (auto& go : snapped_objects) {
+                    int gx = static_cast<int>(go.position.x() / grid.cell_size);
+                    int gz = static_cast<int>(go.position.z() / grid.cell_size);
+                    if (gx >= 0 && gx < static_cast<int>(grid.width) &&
+                        gz >= 0 && gz < static_cast<int>(grid.height)) {
+                        go.position.vec().y = grid.get_elevation(
+                            static_cast<uint32_t>(gx), static_cast<uint32_t>(gz));
+                    }
+                }
+            }
+        }
+
+        // Convert grid positions to world positions via coord::to_world()
+        app_.scene_game_object_data_mutable() = snapped_objects;
+
+        std::vector<coord::WorldPos> world_positions;
+        world_positions.reserve(snapped_objects.size());
+        for (const auto& go : snapped_objects) {
+            world_positions.push_back(coord::to_world(go.position, terrain_aabb));
+        }
+
+        // Merge all game objects with PLY visuals into the GS cloud
+        auto& pbd_anchors = app_.pbd_anchors_mutable();
+        auto& pbd_configs = app_.pbd_configs_mutable();
+        pbd_anchors.clear();
+        pbd_configs.clear();
+            {
+                auto merged = cloud.gaussians();
+                uint32_t merged_count = 0;
+                for (size_t i = 0; i < snapped_objects.size(); ++i) {
+                    const auto& go = snapped_objects[i];
+                    if (go.ply_file.empty()) continue;
+                    try {
+                        auto placed_cloud = GaussianCloud::load_ply(go.ply_file);
+                        if (placed_cloud.empty()) continue;
+                        // Compute local AABB
+                        glm::vec3 local_min(1e9f);
+                        glm::vec3 local_max(-1e9f);
+                        for (const auto& g : placed_cloud.gaussians()) {
+                            local_min = glm::min(local_min, g.position);
+                            local_max = glm::max(local_max, g.position);
+                        }
+                        // Center the model at its XZ centroid, sit bottom on ground
+                        glm::vec3 local_center = (local_min + local_max) * 0.5f;
+                        local_center.y = local_min.y;  // pivot at bottom, not center Y
+                        float local_min_y = local_min.y;
+                        float local_max_y = local_max.y;
+                        glm::vec3 adjusted_pos = world_positions[i].vec();
+                        // Build transform: translate to position, rotate, scale, then center the model
+                        auto transform = glm::translate(glm::mat4(1.0f), adjusted_pos);
+                        transform = glm::rotate(transform, glm::radians(go.rotation.x), {1,0,0});
+                        transform = glm::rotate(transform, glm::radians(go.rotation.y), {0,1,0});
+                        transform = glm::rotate(transform, glm::radians(go.rotation.z), {0,0,1});
+                        transform = glm::scale(transform, glm::vec3(go.scale));
+                        transform = glm::translate(transform, -local_center);  // center model at origin
+                        auto rot_q = glm::quat(glm::radians(go.rotation));
+
+                        // Assign PBD index from game object config
+                        uint32_t pbd_idx = 0;
+                        float sway_threshold_frac = 0.7f;
+                        if (go.pbd && pbd_anchors.size() < kMaxPbdElements) {
+                            pbd_idx = 32 + static_cast<uint32_t>(pbd_anchors.size());
+                            pbd_anchors.push_back(adjusted_pos);
+                            pbd_configs.push_back(*go.pbd);
+                            sway_threshold_frac = go.pbd->sway_threshold;
+                        }
+                        float sway_threshold = local_min_y + (local_max_y - local_min_y) * sway_threshold_frac;
+
+                        auto placed_gs = placed_cloud.gaussians();
+                        uint32_t tagged_count = 0;
+                        for (auto& g : placed_gs) {
+                            float local_y = g.position.y;  // before transform
+                            g.position = glm::vec3(transform * glm::vec4(g.position, 1.0f));
+                            g.scale *= go.scale;
+                            g.rotation = rot_q * g.rotation;
+                            // Tag canopy Gaussians with PBD index
+                            if (pbd_idx > 0 && local_y > sway_threshold) {
+                                g.bone_index = pbd_idx;
+                                tagged_count++;
+                            }
+                        }
+                        if (pbd_idx > 0) {
+                            std::fprintf(stderr, "[GS] PBD '%s': idx=%u, threshold=%.2f (frac=%.2f), "
+                                         "model Y=[%.2f,%.2f], tagged=%u/%zu, anchor=(%.1f,%.1f,%.1f)\n",
+                                         go.name.c_str(), pbd_idx, sway_threshold, sway_threshold_frac,
+                                         local_min_y, local_max_y, tagged_count, placed_gs.size(),
+                                         adjusted_pos.x, adjusted_pos.y, adjusted_pos.z);
+                        }
+                        merged.insert(merged.end(), placed_gs.begin(), placed_gs.end());
+                        merged_count++;
+                    } catch (const std::runtime_error& e) {
+                        std::fprintf(stderr, "[GS] Warning: game object '%s': %s\n",
+                                     go.id.c_str(), e.what());
+                    }
+                }
+                if (merged_count > 0) {
+                    cloud = GaussianCloud::from_gaussians(std::move(merged));
+                }
+                if (!pbd_anchors.empty()) {
+                    std::fprintf(stderr, "[GS] PBD: %zu objects configured (idx 32-%u)\n",
+                                 pbd_anchors.size(),
+                                 31 + static_cast<uint32_t>(pbd_anchors.size()));
+                }
+            }
+
+            // Create ECS entities for game objects with components
+            auto& world = app_.world();
+            auto& component_registry = app_.component_registry();
+            for (size_t i = 0; i < snapped_objects.size(); ++i) {
+                const auto& go = snapped_objects[i];
+                if (go.components.empty() || go.components.is_null()) continue;
+                auto entity = world.create();
+                world.add<ecs::Transform>(entity, {world_positions[i], {go.scale, go.scale}});
+                for (auto& [name, data] : go.components.items()) {
+                    component_registry.attach(world, entity, name, data);
+                }
+            }
+
+        // Init GS renderer if we have any Gaussians (terrain and/or game objects)
+        if (!cloud.empty()) {
+            // Render resolution — use terrain config if available, else defaults
+            uint32_t gs_w = 320, gs_h = 240;
+            if (scene_data.gaussian_splat) {
+                gs_w = scene_data.gaussian_splat->render_width;
+                gs_h = scene_data.gaussian_splat->render_height;
+            }
+            if (cloud.count() > 100000 && gs_w >= 320) { gs_w = 160; gs_h = 120; }
+            else if (cloud.count() > 50000 && gs_w >= 320) { gs_w = 240; gs_h = 180; }
+
+            renderer.init_gs(cloud, gs_w, gs_h);
+
+            // Upload PBD elements AFTER init_gs (load_cloud resets pbd_count_)
+            if (!pbd_anchors.empty() && pbd_anchors.size() == pbd_configs.size()) {
+                uint32_t count = static_cast<uint32_t>(pbd_anchors.size());
+                std::vector<PbdPhysicsState> states(count);
+                std::vector<PbdElementParams> params(count);
+                for (uint32_t i = 0; i < count; ++i) {
+                    const auto& cfg = pbd_configs[i];
+                    float inv_mass = (cfg.mode == "physics" && cfg.pinned) ? 0.0f : 1.0f;
+                    states[i].position = glm::vec4(pbd_anchors[i], inv_mass);
+                    states[i].prev_position = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+                    states[i].velocity = glm::vec4(0.0f);
+                    states[i].params = glm::vec4(cfg.sway_threshold, 0.0f, 0.0f, 0.0f);
+                    params[i].gravity = glm::vec4(cfg.gravity, cfg.damping);
+                    params[i].wind = glm::vec4(cfg.wind_direction, cfg.wind_strength);
+                    params[i].dynamics = glm::vec4(cfg.wind_frequency, cfg.ground_y, cfg.bounce, 0.0f);
+                }
+                renderer.gs_renderer().upload_pbd_elements(states.data(), params.data(), count);
+                std::fprintf(stderr, "[GS] PBD upload: %u elements, wind=(%.2f,%.2f,%.2f) str=%.2f freq=%.2f\n",
+                             count, params[0].wind.x, params[0].wind.y, params[0].wind.z,
+                             params[0].wind.w, params[0].dynamics.x);
+            }
+
+            // Store cloud bounds for camera centering
+            auto cloud_aabb = cloud.bounds();
+            app_.set_gs_cloud_center((cloud_aabb.min + cloud_aabb.max) * 0.5f);
+            app_.set_gs_cloud_extent(glm::length(cloud_aabb.max - cloud_aabb.min) * 0.5f);
+
+            // Camera — use terrain config if available, else fit to cloud bounds
+            if (scene_data.gaussian_splat) {
+                const auto& gs = *scene_data.gaussian_splat;
+                float aspect = static_cast<float>(gs_w) / static_cast<float>(gs_h);
+                auto gs_view = glm::lookAt(gs.camera_position, gs.camera_target, glm::vec3(0, 1, 0));
+                auto gs_proj = glm::perspective(glm::radians(gs.camera_fov), aspect, 0.1f, 1000.0f);
+                gs_proj[1][1] *= -1.0f;
+                renderer.set_gs_camera(gs_view, gs_proj);
+                renderer.set_gs_background_colors(gs.ground_color, gs.sky_color);
+            } else {
+                // Auto-camera for object-only scenes
+                auto aabb = cloud.bounds();
+                auto center = aabb.center();
+                float extent = glm::length(aabb.max - aabb.min) * 0.5f;
+                float dist = std::max(extent * 2.0f, 5.0f);
+                glm::vec3 eye = center + glm::vec3(0, dist * 0.5f, dist);
+                float aspect = static_cast<float>(gs_w) / static_cast<float>(gs_h);
+                auto gs_view = glm::lookAt(eye, center, glm::vec3(0, 1, 0));
+                auto gs_proj = glm::perspective(glm::radians(45.0f), aspect, 0.1f, 1000.0f);
+                gs_proj[1][1] *= -1.0f;
+                renderer.set_gs_camera(gs_view, gs_proj);
+            }
+
+            // Transform lights with AABB offset
+            std::vector<PointLight> gs_lights;
+            for (const auto& pl : scene_data.static_lights) {
+                PointLight t = pl;
+                t.position_and_radius.x += terrain_aabb.min.x;
+                t.position_and_radius.z += terrain_aabb.min.y;
+                gs_lights.push_back(t);
+            }
+
+            if (opts.add_default_light && gs_lights.empty()) {
+                PointLight test_light;
+                auto center = terrain_aabb.center();
+                float r = std::max({terrain_aabb.max.x - terrain_aabb.min.x,
+                                    terrain_aabb.max.y - terrain_aabb.min.y,
+                                    terrain_aabb.max.z - terrain_aabb.min.z}) * 0.5f;
+                test_light.position_and_radius = glm::vec4(center.x, center.z, center.y, r);
+                test_light.color = glm::vec4(0.2f, 1.0f, 0.3f, 5.0f);
+                gs_lights.push_back(test_light);
+            }
+
+            if (!gs_lights.empty()) {
+                renderer.gs_renderer().set_light_mode(2);
+                renderer.gs_renderer().set_point_lights(gs_lights);
+                renderer.set_gs_static_lights(gs_lights);
+                if (opts.set_god_rays) renderer.set_god_rays_intensity(1.0f);
+            }
+
+            // Emitters (grid→world)
+            for (const auto& em : scene_data.gs_particle_emitters) {
+                auto config = em.config;
+                auto world_pos = coord::to_world(coord::GridPos(config.position), terrain_aabb);
+                config.position = world_pos.vec();
+                renderer.add_gs_particle_emitter(config);
+            }
+
+            // Animations (grid→world)
+            for (const auto& anim : scene_data.gs_animations) {
+                auto region = anim.region;
+                auto world_center = coord::to_world(coord::GridPos(region.center), terrain_aabb);
+                region.center = world_center.vec();
+                std::optional<Renderer::ReformConfig> reform;
+                if (anim.reform) reform = Renderer::ReformConfig{anim.reform->lifetime};
+                renderer.add_gs_animation(anim.effect, region, anim.lifetime, anim.loop, anim.params, reform);
+            }
+
+            // Terrain-specific features (background, parallax)
+            if (scene_data.gaussian_splat) {
+                const auto& gs = *scene_data.gaussian_splat;
+                if (!gs.background_image.empty()) {
+                    auto bg_tex = app_.resources().load_texture(gs.background_image);
+                    renderer.set_gs_background(bg_tex);
+                }
+                if (app_.feature_flags().gs_parallax && gs.parallax) {
+                    app_.gs_parallax_camera().configure(
+                        gs.camera_position, gs.camera_target,
+                        gs.camera_fov, gs_w, gs_h, *gs.parallax);
+                    app_.set_gs_parallax_active(true);
+                    app_.set_gs_frame_counter(0);
+                    renderer.set_gs_skip_chunk_cull(true);
+                    renderer.gs_renderer().set_skip_sort(false);
+                    auto cam_fwd = glm::normalize(gs.camera_target - gs.camera_position);
+                    renderer.gs_renderer().set_shadow_box_params(cam_fwd, 0.0f, gs.camera_position, 32.0f);
+                } else {
+                    app_.set_gs_parallax_active(false);
+                    renderer.set_gs_skip_chunk_cull(false);
+                    renderer.gs_renderer().clear_shadow_box_params();
+                }
+                std::fprintf(stderr, "[GS] Loaded %u Gaussians from %s\n", cloud.count(), gs.ply_file.c_str());
+            } else {
+                app_.set_gs_parallax_active(false);
+                renderer.set_gs_skip_chunk_cull(false);
+                renderer.gs_renderer().clear_shadow_box_params();
+                std::fprintf(stderr, "[GS] Loaded %u Gaussians from %zu game objects\n",
+                             cloud.count(), scene_data.game_objects.size());
+            }
+        }
+    }
+
+    // VFX instances (load even without gaussian_splat)
+    if (!scene_data.vfx_instances.empty()) {
+        if (!renderer.has_gs_cloud()) {
+            // Minimal GS renderer for VFX-only scenes
+            std::vector<Gaussian> dummy(1);
+            dummy[0].opacity = 0.0f;
+            dummy[0].scale = glm::vec3(0.001f);
+            auto vfx_cloud = GaussianCloud::from_gaussians(std::move(dummy));
+            renderer.init_gs(vfx_cloud, 320, 240);
+            auto view = glm::lookAt(glm::vec3(0, 50, 100), glm::vec3(0), glm::vec3(0, 1, 0));
+            auto proj = glm::perspective(glm::radians(45.0f), 320.0f / 240.0f, 0.1f, 1000.0f);
+            proj[1][1] *= -1.0f;
+            renderer.set_gs_camera(view, proj);
+        }
+        auto terrain_aabb = app_.terrain_aabb();
+        for (const auto& vi : scene_data.vfx_instances) {
+            if (vi.trigger != "auto") continue;
+            auto preset = load_vfx_preset(vi.vfx_file);
+            if (preset.elements.empty()) continue;
+            VfxInstance inst;
+            auto world_pos = coord::to_world(vi.position, terrain_aabb);
+            inst.init(preset, world_pos.vec(), vi.loop, vi.rotation_y);
+            renderer.add_vfx_instance(std::move(inst));
+        }
+    }
+}
+
+}  // namespace gseurat

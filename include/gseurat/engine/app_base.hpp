@@ -11,6 +11,7 @@
 #include "gseurat/engine/command_dispatcher.hpp"
 #include "gseurat/engine/coordinate.hpp"
 #include "gseurat/engine/gaussian_cloud.hpp"
+#include "gseurat/engine/gs_scene_loader.hpp"
 #include "gseurat/engine/day_night_system.hpp"
 #include "gseurat/engine/dialog.hpp"
 #include "gseurat/engine/direction.hpp"
@@ -93,12 +94,8 @@ public:
     virtual void init_scene(const std::string& scene_path);
     virtual void clear_scene();
 
-    // Shared GS scene loading: PLY + placed objects + lights + emitters + animations + VFX
-    struct GsSceneOptions {
-        bool add_default_light;
-        bool set_god_rays;
-    };
-    void load_gs_scene(const SceneData& scene_data, const GsSceneOptions& opts = {false, false});
+    // Shared GS scene loading (delegated to GsSceneLoader)
+    void load_gs_scene(const SceneData& scene_data, const GsSceneOptions& opts = {});
     virtual void update_game(float dt);
     virtual void update_audio(float dt);
 
@@ -219,10 +216,19 @@ public:
     const std::vector<GameObjectData>& scene_game_objects() const { return scene_game_object_data_; }
     const std::vector<glm::vec3>& pbd_anchors() const { return pbd_anchors_; }
     const std::vector<PbdConfig>& pbd_configs() const { return pbd_configs_; }
+    std::vector<glm::vec3>& pbd_anchors_mutable() { return pbd_anchors_; }
+    std::vector<PbdConfig>& pbd_configs_mutable() { return pbd_configs_; }
     glm::vec2 gs_aabb_offset() const { return glm::vec2(terrain_aabb_.min.x, terrain_aabb_.min.y); }
     const AABB& terrain_aabb() const { return terrain_aabb_; }
+    void set_terrain_aabb(const AABB& aabb) { terrain_aabb_ = aabb; }
     glm::vec3 gs_cloud_center() const { return gs_cloud_center_; }
+    void set_gs_cloud_center(const glm::vec3& c) { gs_cloud_center_ = c; }
     float gs_cloud_extent() const { return gs_cloud_extent_; }
+    void set_gs_cloud_extent(float e) { gs_cloud_extent_ = e; }
+    void set_gs_frame_counter(uint32_t v) { gs_frame_counter_ = v; }
+
+    // GS scene loader
+    GsSceneLoader& gs_scene_loader() { return gs_scene_loader_; }
 protected:
     std::vector<PointLight> static_lights_;
 
@@ -248,6 +254,9 @@ protected:
     SaveSystem save_system_;
     std::unordered_map<std::string, bool> game_flags_;
     float play_time_ = 0.0f;
+
+    // ── GS scene loading (extracted module) ──
+    GsSceneLoader gs_scene_loader_{*this};
 
     // ── Command dispatch (C++23 Command Pattern) ──
     CommandDispatcher command_dispatcher_{*this};
