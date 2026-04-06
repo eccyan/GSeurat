@@ -7,6 +7,7 @@
 // Run: ctest -R test_scene_loading
 
 #include "gseurat/engine/scene_loader.hpp"
+#include "gseurat/engine/coordinate.hpp"
 #include "gseurat/engine/gs_vfx.hpp"
 #include "gseurat/engine/gaussian_cloud.hpp"
 
@@ -522,27 +523,33 @@ int main() {
         check(!rt.game_objects[0].pbd.has_value(), "no pbd config = nullopt");
     }
 
-    // ── Section 10: Game object AABB offset ──
+    // ── Section 10: Game object AABB offset (typed coordinates) ──
     {
-        std::printf("\n== Section 10: game object AABB offset ==\n");
+        std::printf("\n== Section 10: game object AABB offset (typed) ==\n");
 
-        // Simulate a terrain PLY with AABB min at (-128, -70, 0)
-        // and a game object at grid position (50, 0, 64)
         gseurat::AABB terrain_aabb;
         terrain_aabb.min = glm::vec3(-128.0f, -70.0f, 0.0f);
         terrain_aabb.max = glm::vec3(127.0f, 70.0f, 127.0f);
 
-        // The grid-to-world mapping should shift XYZ by AABB min
-        glm::vec3 grid_pos(50.0f, 50.0f, 64.0f);
-        glm::vec3 world_pos = grid_pos + terrain_aabb.min;
+        // Game object at grid position (50, 50, 64) — this is a GridPos
+        gseurat::coord::GridPos grid_pos(50.0f, 50.0f, 64.0f);
 
-        check(approx(world_pos.x, -78.0f), "game object X shifted by terrain AABB min X");
-        check(approx(world_pos.y, -20.0f), "game object Y shifted by terrain AABB min Y");
-        check(approx(world_pos.z, 64.0f), "game object Z shifted by terrain AABB min Z (0)");
+        // Convert to world via typed function
+        auto world_pos = gseurat::coord::to_world(grid_pos, terrain_aabb);
+
+        check(approx(world_pos.x(), -78.0f), "typed: game object X shifted by terrain AABB min X");
+        check(approx(world_pos.y(), -20.0f), "typed: game object Y shifted by terrain AABB min Y");
+        check(approx(world_pos.z(), 64.0f),  "typed: game object Z shifted by terrain AABB min Z (0)");
+
+        // Verify round-trip
+        auto back = gseurat::coord::to_grid(world_pos, terrain_aabb);
+        check(approx(back.x(), 50.0f), "typed: round-trip X preserved");
+        check(approx(back.y(), 50.0f), "typed: round-trip Y preserved");
+        check(approx(back.z(), 64.0f), "typed: round-trip Z preserved");
 
         // Center of terrain in world space
         glm::vec3 terrain_center = (terrain_aabb.min + terrain_aabb.max) * 0.5f;
-        check(world_pos.x < terrain_center.x, "game object LEFT of terrain center");
+        check(world_pos.x() < terrain_center.x, "game object LEFT of terrain center");
     }
 
     // ── Summary ──

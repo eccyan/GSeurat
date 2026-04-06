@@ -290,10 +290,11 @@ add_gseurat_test(test_gs_particle    src/engine/gs_particle.cpp src/engine/gs_an
 add_gseurat_test(test_scene_loading  src/engine/scene_loader.cpp src/engine/tilemap.cpp
                                       src/engine/gs_particle.cpp src/engine/gs_animator.cpp
                                       src/engine/gaussian_cloud.cpp src/engine/gs_vfx.cpp
-                                      src/engine/gs_spline.cpp)
+                                      src/engine/gs_spline.cpp src/engine/coordinate.cpp)
 add_gseurat_test(test_incremental_sync src/engine/scene_loader.cpp src/engine/tilemap.cpp
                                         src/engine/gaussian_cloud.cpp src/engine/gs_particle.cpp
-                                        src/engine/gs_animator.cpp src/engine/gs_spline.cpp)
+                                        src/engine/gs_animator.cpp src/engine/gs_spline.cpp
+                                        src/engine/coordinate.cpp)
 add_gseurat_test(test_vfx_scene_buffer src/engine/gaussian_cloud.cpp)
 add_gseurat_test(test_vfx_lights_rotation src/engine/gs_vfx.cpp src/engine/gs_particle.cpp
                                            src/engine/gs_animator.cpp src/engine/gaussian_cloud.cpp
