@@ -33,8 +33,8 @@ void StagingState::on_enter(AppBase& app) {
     scenes_loaded_ = true;
 
     // Initialize scene (or start with empty viewport)
-    if (!app.current_scene_path().empty()) {
-        app.init_scene(app.current_scene_path());
+    if (!app.scene_objects().current_scene_path.empty()) {
+        app.init_scene(app.scene_objects().current_scene_path);
     } else {
         // Empty scene: init minimal GS renderer for VFX preview
         std::vector<Gaussian> dummy(1);
@@ -57,7 +57,7 @@ void StagingState::on_exit(AppBase& /*app*/) {
 
 void StagingState::update(AppBase& app, float dt) {
     // Detect scene change from load_scene_json (socket command)
-    const auto& current_path = app.current_scene_path();
+    const auto& current_path = app.scene_objects().current_scene_path;
     if (current_path != last_scene_path_) {
         last_scene_path_ = current_path;
         camera_initialized_ = false;
@@ -138,8 +138,8 @@ void StagingState::update(AppBase& app, float dt) {
 
     // Initialize camera from scene if not done
     if (!camera_initialized_ && app.renderer().has_gs_cloud()) {
-        target_ = app.gs_cloud_center();
-        distance_ = std::max(app.gs_cloud_extent() * 1.5f, 50.0f);
+        target_ = app.gs_terrain().cloud_center;
+        distance_ = std::max(app.gs_terrain().cloud_extent * 1.5f, 50.0f);
         camera_initialized_ = true;
     }
 
@@ -185,7 +185,7 @@ void StagingState::draw_imgui(AppBase& app) {
         if (ImGui::BeginMenu("Scene")) {
             if (ImGui::MenuItem("Reload")) {
                 app.clear_scene();
-                app.init_scene(app.current_scene_path());
+                app.init_scene(app.scene_objects().current_scene_path);
                 camera_initialized_ = false;
             }
             ImGui::Separator();
@@ -240,7 +240,7 @@ void StagingState::draw_viewport_info(AppBase& app) {
         auto& gs = app.renderer().gs_renderer();
         ImGui::Text("Gaussians: %u / %u", gs.visible_count(), gs.gaussian_count());
     }
-    ImGui::Text("Scene: %s", std::filesystem::path(app.current_scene_path()).filename().string().c_str());
+    ImGui::Text("Scene: %s", std::filesystem::path(app.scene_objects().current_scene_path).filename().string().c_str());
     ImGui::Separator();
     ImGui::Text("Az: %.1f  El: %.1f  Dist: %.1f", azimuth_ * 57.2958f, elevation_ * 57.2958f, distance_);
     ImGui::Text("Target: %.1f, %.1f, %.1f", target_.x, target_.y, target_.z);
@@ -751,8 +751,8 @@ void StagingState::draw_gizmos(AppBase& app) {
     if (show_gizmo_game_objects_) {
         ImU32 go_col = IM_COL32(68, 136, 255, 200);       // blue
         ImU32 go_col_static = IM_COL32(136, 136, 136, 150); // gray for no-component
-        const auto& game_objects = app.scene_game_objects();
-        auto aabb_off = app.gs_aabb_offset();
+        const auto& game_objects = app.scene_objects().game_objects;
+        auto aabb_off = app.gs_terrain().aabb_offset();
         for (size_t i = 0; i < game_objects.size(); i++) {
             const auto& go = game_objects[i];
             // Game object PLYs are merged at raw world coords (no AABB offset)

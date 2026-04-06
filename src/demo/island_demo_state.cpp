@@ -33,7 +33,7 @@ void IslandDemoState::on_enter(AppBase& app) {
     app.init_scene(scene_path_);
 
     // Disable app-level parallax — we manage our own camera
-    app.set_gs_parallax_active(false);
+    app.gs_terrain().parallax_active = false;
 
     // Enable rendering features for the demo
     app.feature_flags().bloom = true;
