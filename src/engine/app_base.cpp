@@ -417,22 +417,26 @@ void AppBase::load_gs_scene(const SceneData& scene_data, const GsSceneOptions& o
                     try {
                         auto placed_cloud = GaussianCloud::load_ply(go.ply_file);
                         if (placed_cloud.empty()) continue;
-                        // Compute local AABB min/max Y
-                        float local_min_y = 1e9f;
-                        float local_max_y = -1e9f;
+                        // Compute local AABB
+                        glm::vec3 local_min(1e9f);
+                        glm::vec3 local_max(-1e9f);
                         for (const auto& g : placed_cloud.gaussians()) {
-                            if (g.position.y < local_min_y) local_min_y = g.position.y;
-                            if (g.position.y > local_max_y) local_max_y = g.position.y;
+                            local_min = glm::min(local_min, g.position);
+                            local_max = glm::max(local_max, g.position);
                         }
+                        // Center the model at its XZ centroid, sit bottom on ground
+                        glm::vec3 local_center = (local_min + local_max) * 0.5f;
+                        local_center.y = local_min.y;  // pivot at bottom, not center Y
+                        float local_min_y = local_min.y;
+                        float local_max_y = local_max.y;
                         glm::vec3 adjusted_pos = go.position;
-                        if (local_min_y < -0.01f) {
-                            adjusted_pos.y -= local_min_y * go.scale;  // lift by |minY| * scale
-                        }
+                        // Build transform: translate to position, rotate, scale, then center the model
                         auto transform = glm::translate(glm::mat4(1.0f), adjusted_pos);
                         transform = glm::rotate(transform, glm::radians(go.rotation.x), {1,0,0});
                         transform = glm::rotate(transform, glm::radians(go.rotation.y), {0,1,0});
                         transform = glm::rotate(transform, glm::radians(go.rotation.z), {0,0,1});
                         transform = glm::scale(transform, glm::vec3(go.scale));
+                        transform = glm::translate(transform, -local_center);  // center model at origin
                         auto rot_q = glm::quat(glm::radians(go.rotation));
 
                         // Assign PBD index to tree game objects (upper canopy sways)
@@ -460,15 +464,6 @@ void AppBase::load_gs_scene(const SceneData& scene_data, const GsSceneOptions& o
                         }
                         merged.insert(merged.end(), placed_gs.begin(), placed_gs.end());
                         merged_count++;
-
-                        // Update stored position to match where Gaussians actually landed
-                        // (so Staging gizmos align with rendered Gaussians)
-                        for (auto& stored : scene_game_object_data_) {
-                            if (stored.id == go.id) {
-                                stored.position = adjusted_pos;
-                                break;
-                            }
-                        }
                     } catch (const std::runtime_error& e) {
                         std::fprintf(stderr, "[GS] Warning: game object '%s': %s\n",
                                      go.id.c_str(), e.what());
