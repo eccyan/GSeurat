@@ -1,36 +1,43 @@
 #include "gseurat/engine/gs_scene_loader.hpp"
-#include "gseurat/engine/app_base.hpp"
+#include "gseurat/engine/scene_load_context.hpp"
+#include "gseurat/engine/gs_terrain_state.hpp"
+#include "gseurat/engine/scene_object_state.hpp"
 #include "gseurat/engine/coordinate.hpp"
 #include "gseurat/engine/gaussian_cloud.hpp"
 #include "gseurat/engine/gs_vfx.hpp"
 #include "gseurat/engine/pbd_types.hpp"
+#include "gseurat/engine/renderer.hpp"
+#include "gseurat/engine/resource_manager.hpp"
+#include "gseurat/engine/scene.hpp"
+#include "gseurat/engine/feature_flags.hpp"
+#include "gseurat/engine/ecs/ecs.hpp"
+#include "gseurat/engine/ecs/default_components.hpp"
+#include "gseurat/engine/component_registry.hpp"
 
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
 
 #include <algorithm>
-#include <cmath>
 #include <cstdio>
 
 namespace gseurat {
 
-void GsSceneLoader::load(const SceneData& scene_data, const GsSceneOptions& opts) {
-    auto& renderer = app_.renderer();
-    auto& scene = app_.scene();
+void GsSceneLoader::load(SceneLoadContext& ctx, const SceneData& scene_data,
+                          const GsSceneOptions& opts) {
 
-    renderer.clear_gs_particle_emitters();
-    renderer.clear_gs_animations();
-    renderer.clear_vfx_instances();
+    ctx.renderer.clear_gs_particle_emitters();
+    ctx.renderer.clear_gs_animations();
+    ctx.renderer.clear_vfx_instances();
 
-    scene.clear_lights();
-    scene.set_ambient_color(scene_data.ambient_color);
+    ctx.scene.clear_lights();
+    ctx.scene.set_ambient_color(scene_data.ambient_color);
     for (const auto& pl : scene_data.static_lights) {
-        scene.add_light(pl);
+        ctx.scene.add_light(pl);
     }
 
     // Apply weather fog to scene (picked up by renderer each frame)
-    scene.set_fog_density(scene_data.weather.fog_density);
-    scene.set_fog_color(scene_data.weather.fog_color);
+    ctx.scene.set_fog_density(scene_data.weather.fog_density);
+    ctx.scene.set_fog_color(scene_data.weather.fog_color);
 
     // Load terrain PLY if present
     GaussianCloud cloud;
@@ -49,17 +56,16 @@ void GsSceneLoader::load(const SceneData& scene_data, const GsSceneOptions& opts
 
     {
         if (has_terrain) {
-            renderer.gs_renderer().set_scale_multiplier(gs_scale_multiplier);
+            ctx.renderer.gs_renderer().set_scale_multiplier(gs_scale_multiplier);
         }
 
         // Compute terrain AABB (grid-to-world coordinate mapping)
-        AABB terrain_aabb{};
-        terrain_aabb.min = glm::vec3(0.0f);
-        terrain_aabb.max = glm::vec3(0.0f);
+        ctx.terrain.terrain_aabb = AABB{};
+        ctx.terrain.terrain_aabb.min = glm::vec3(0.0f);
+        ctx.terrain.terrain_aabb.max = glm::vec3(0.0f);
         if (has_terrain) {
-            terrain_aabb = cloud.bounds();
+            ctx.terrain.terrain_aabb = cloud.bounds();
         }
-        app_.set_terrain_aabb(terrain_aabb);
 
         // Snap game object positions to terrain elevation (in grid coordinates)
         auto snapped_objects = scene_data.game_objects;
@@ -79,19 +85,17 @@ void GsSceneLoader::load(const SceneData& scene_data, const GsSceneOptions& opts
         }
 
         // Convert grid positions to world positions via coord::to_world()
-        app_.scene_game_object_data_mutable() = snapped_objects;
+        ctx.scene_objects.game_objects = snapped_objects;
 
         std::vector<coord::WorldPos> world_positions;
         world_positions.reserve(snapped_objects.size());
         for (const auto& go : snapped_objects) {
-            world_positions.push_back(coord::to_world(go.position, terrain_aabb));
+            world_positions.push_back(coord::to_world(go.position, ctx.terrain.terrain_aabb));
         }
 
         // Merge all game objects with PLY visuals into the GS cloud
-        auto& pbd_anchors = app_.pbd_anchors_mutable();
-        auto& pbd_configs = app_.pbd_configs_mutable();
-        pbd_anchors.clear();
-        pbd_configs.clear();
+        ctx.terrain.pbd_anchors.clear();
+        ctx.terrain.pbd_configs.clear();
             {
                 auto merged = cloud.gaussians();
                 uint32_t merged_count = 0;
@@ -126,10 +130,10 @@ void GsSceneLoader::load(const SceneData& scene_data, const GsSceneOptions& opts
                         // Assign PBD index from game object config
                         uint32_t pbd_idx = 0;
                         float sway_threshold_frac = 0.7f;
-                        if (go.pbd && pbd_anchors.size() < kMaxPbdElements) {
-                            pbd_idx = 32 + static_cast<uint32_t>(pbd_anchors.size());
-                            pbd_anchors.push_back(adjusted_pos);
-                            pbd_configs.push_back(*go.pbd);
+                        if (go.pbd && ctx.terrain.pbd_anchors.size() < kMaxPbdElements) {
+                            pbd_idx = 32 + static_cast<uint32_t>(ctx.terrain.pbd_anchors.size());
+                            ctx.terrain.pbd_anchors.push_back(adjusted_pos);
+                            ctx.terrain.pbd_configs.push_back(*go.pbd);
                             sway_threshold_frac = go.pbd->sway_threshold;
                         }
                         float sway_threshold = local_min_y + (local_max_y - local_min_y) * sway_threshold_frac;
@@ -164,29 +168,27 @@ void GsSceneLoader::load(const SceneData& scene_data, const GsSceneOptions& opts
                 if (merged_count > 0) {
                     cloud = GaussianCloud::from_gaussians(std::move(merged));
                 }
-                if (!pbd_anchors.empty()) {
+                if (!ctx.terrain.pbd_anchors.empty()) {
                     std::fprintf(stderr, "[GS] PBD: %zu objects configured (idx 32-%u)\n",
-                                 pbd_anchors.size(),
-                                 31 + static_cast<uint32_t>(pbd_anchors.size()));
+                                 ctx.terrain.pbd_anchors.size(),
+                                 31 + static_cast<uint32_t>(ctx.terrain.pbd_anchors.size()));
                 }
             }
 
             // Create ECS entities for game objects with components
-            auto& world = app_.world();
-            auto& component_registry = app_.component_registry();
             for (size_t i = 0; i < snapped_objects.size(); ++i) {
                 const auto& go = snapped_objects[i];
                 if (go.components.empty() || go.components.is_null()) continue;
-                auto entity = world.create();
-                world.add<ecs::Transform>(entity, {world_positions[i], {go.scale, go.scale}});
+                auto entity = ctx.world.create();
+                ctx.world.add<ecs::Transform>(entity, {world_positions[i], {go.scale, go.scale}});
                 for (auto& [name, data] : go.components.items()) {
-                    component_registry.attach(world, entity, name, data);
+                    ctx.components.attach(ctx.world, entity, name, data);
                 }
             }
 
         // Init GS renderer if we have any Gaussians (terrain and/or game objects)
         if (!cloud.empty()) {
-            // Render resolution — use terrain config if available, else defaults
+            // Render resolution -- use terrain config if available, else defaults
             uint32_t gs_w = 320, gs_h = 240;
             if (scene_data.gaussian_splat) {
                 gs_w = scene_data.gaussian_splat->render_width;
@@ -195,17 +197,17 @@ void GsSceneLoader::load(const SceneData& scene_data, const GsSceneOptions& opts
             if (cloud.count() > 100000 && gs_w >= 320) { gs_w = 160; gs_h = 120; }
             else if (cloud.count() > 50000 && gs_w >= 320) { gs_w = 240; gs_h = 180; }
 
-            renderer.init_gs(cloud, gs_w, gs_h);
+            ctx.renderer.init_gs(cloud, gs_w, gs_h);
 
             // Upload PBD elements AFTER init_gs (load_cloud resets pbd_count_)
-            if (!pbd_anchors.empty() && pbd_anchors.size() == pbd_configs.size()) {
-                uint32_t count = static_cast<uint32_t>(pbd_anchors.size());
+            if (!ctx.terrain.pbd_anchors.empty() && ctx.terrain.pbd_anchors.size() == ctx.terrain.pbd_configs.size()) {
+                uint32_t count = static_cast<uint32_t>(ctx.terrain.pbd_anchors.size());
                 std::vector<PbdPhysicsState> states(count);
                 std::vector<PbdElementParams> params(count);
                 for (uint32_t i = 0; i < count; ++i) {
-                    const auto& cfg = pbd_configs[i];
+                    const auto& cfg = ctx.terrain.pbd_configs[i];
                     float inv_mass = (cfg.mode == "physics" && cfg.pinned) ? 0.0f : 1.0f;
-                    states[i].position = glm::vec4(pbd_anchors[i], inv_mass);
+                    states[i].position = glm::vec4(ctx.terrain.pbd_anchors[i], inv_mass);
                     states[i].prev_position = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
                     states[i].velocity = glm::vec4(0.0f);
                     states[i].params = glm::vec4(cfg.sway_threshold, 0.0f, 0.0f, 0.0f);
@@ -213,7 +215,7 @@ void GsSceneLoader::load(const SceneData& scene_data, const GsSceneOptions& opts
                     params[i].wind = glm::vec4(cfg.wind_direction, cfg.wind_strength);
                     params[i].dynamics = glm::vec4(cfg.wind_frequency, cfg.ground_y, cfg.bounce, 0.0f);
                 }
-                renderer.gs_renderer().upload_pbd_elements(states.data(), params.data(), count);
+                ctx.renderer.gs_renderer().upload_pbd_elements(states.data(), params.data(), count);
                 std::fprintf(stderr, "[GS] PBD upload: %u elements, wind=(%.2f,%.2f,%.2f) str=%.2f freq=%.2f\n",
                              count, params[0].wind.x, params[0].wind.y, params[0].wind.z,
                              params[0].wind.w, params[0].dynamics.x);
@@ -221,18 +223,18 @@ void GsSceneLoader::load(const SceneData& scene_data, const GsSceneOptions& opts
 
             // Store cloud bounds for camera centering
             auto cloud_aabb = cloud.bounds();
-            app_.set_gs_cloud_center((cloud_aabb.min + cloud_aabb.max) * 0.5f);
-            app_.set_gs_cloud_extent(glm::length(cloud_aabb.max - cloud_aabb.min) * 0.5f);
+            ctx.terrain.cloud_center = (cloud_aabb.min + cloud_aabb.max) * 0.5f;
+            ctx.terrain.cloud_extent = glm::length(cloud_aabb.max - cloud_aabb.min) * 0.5f;
 
-            // Camera — use terrain config if available, else fit to cloud bounds
+            // Camera -- use terrain config if available, else fit to cloud bounds
             if (scene_data.gaussian_splat) {
                 const auto& gs = *scene_data.gaussian_splat;
                 float aspect = static_cast<float>(gs_w) / static_cast<float>(gs_h);
                 auto gs_view = glm::lookAt(gs.camera_position, gs.camera_target, glm::vec3(0, 1, 0));
                 auto gs_proj = glm::perspective(glm::radians(gs.camera_fov), aspect, 0.1f, 1000.0f);
                 gs_proj[1][1] *= -1.0f;
-                renderer.set_gs_camera(gs_view, gs_proj);
-                renderer.set_gs_background_colors(gs.ground_color, gs.sky_color);
+                ctx.renderer.set_gs_camera(gs_view, gs_proj);
+                ctx.renderer.set_gs_background_colors(gs.ground_color, gs.sky_color);
             } else {
                 // Auto-camera for object-only scenes
                 auto aabb = cloud.bounds();
@@ -244,81 +246,81 @@ void GsSceneLoader::load(const SceneData& scene_data, const GsSceneOptions& opts
                 auto gs_view = glm::lookAt(eye, center, glm::vec3(0, 1, 0));
                 auto gs_proj = glm::perspective(glm::radians(45.0f), aspect, 0.1f, 1000.0f);
                 gs_proj[1][1] *= -1.0f;
-                renderer.set_gs_camera(gs_view, gs_proj);
+                ctx.renderer.set_gs_camera(gs_view, gs_proj);
             }
 
             // Transform lights with AABB offset
             std::vector<PointLight> gs_lights;
             for (const auto& pl : scene_data.static_lights) {
                 PointLight t = pl;
-                t.position_and_radius.x += terrain_aabb.min.x;
-                t.position_and_radius.z += terrain_aabb.min.y;
+                t.position_and_radius.x += ctx.terrain.terrain_aabb.min.x;
+                t.position_and_radius.z += ctx.terrain.terrain_aabb.min.y;
                 gs_lights.push_back(t);
             }
 
             if (opts.add_default_light && gs_lights.empty()) {
                 PointLight test_light;
-                auto center = terrain_aabb.center();
-                float r = std::max({terrain_aabb.max.x - terrain_aabb.min.x,
-                                    terrain_aabb.max.y - terrain_aabb.min.y,
-                                    terrain_aabb.max.z - terrain_aabb.min.z}) * 0.5f;
+                auto center = ctx.terrain.terrain_aabb.center();
+                float r = std::max({ctx.terrain.terrain_aabb.max.x - ctx.terrain.terrain_aabb.min.x,
+                                    ctx.terrain.terrain_aabb.max.y - ctx.terrain.terrain_aabb.min.y,
+                                    ctx.terrain.terrain_aabb.max.z - ctx.terrain.terrain_aabb.min.z}) * 0.5f;
                 test_light.position_and_radius = glm::vec4(center.x, center.z, center.y, r);
                 test_light.color = glm::vec4(0.2f, 1.0f, 0.3f, 5.0f);
                 gs_lights.push_back(test_light);
             }
 
             if (!gs_lights.empty()) {
-                renderer.gs_renderer().set_light_mode(2);
-                renderer.gs_renderer().set_point_lights(gs_lights);
-                renderer.set_gs_static_lights(gs_lights);
-                if (opts.set_god_rays) renderer.set_god_rays_intensity(1.0f);
+                ctx.renderer.gs_renderer().set_light_mode(2);
+                ctx.renderer.gs_renderer().set_point_lights(gs_lights);
+                ctx.renderer.set_gs_static_lights(gs_lights);
+                if (opts.set_god_rays) ctx.renderer.set_god_rays_intensity(1.0f);
             }
 
-            // Emitters (grid→world)
+            // Emitters (grid->world)
             for (const auto& em : scene_data.gs_particle_emitters) {
                 auto config = em.config;
-                auto world_pos = coord::to_world(coord::GridPos(config.position), terrain_aabb);
+                auto world_pos = coord::to_world(coord::GridPos(config.position), ctx.terrain.terrain_aabb);
                 config.position = world_pos.vec();
-                renderer.add_gs_particle_emitter(config);
+                ctx.renderer.add_gs_particle_emitter(config);
             }
 
-            // Animations (grid→world)
+            // Animations (grid->world)
             for (const auto& anim : scene_data.gs_animations) {
                 auto region = anim.region;
-                auto world_center = coord::to_world(coord::GridPos(region.center), terrain_aabb);
+                auto world_center = coord::to_world(coord::GridPos(region.center), ctx.terrain.terrain_aabb);
                 region.center = world_center.vec();
                 std::optional<Renderer::ReformConfig> reform;
                 if (anim.reform) reform = Renderer::ReformConfig{anim.reform->lifetime};
-                renderer.add_gs_animation(anim.effect, region, anim.lifetime, anim.loop, anim.params, reform);
+                ctx.renderer.add_gs_animation(anim.effect, region, anim.lifetime, anim.loop, anim.params, reform);
             }
 
             // Terrain-specific features (background, parallax)
             if (scene_data.gaussian_splat) {
                 const auto& gs = *scene_data.gaussian_splat;
                 if (!gs.background_image.empty()) {
-                    auto bg_tex = app_.resources().load_texture(gs.background_image);
-                    renderer.set_gs_background(bg_tex);
+                    auto bg_tex = ctx.resources.load_texture(gs.background_image);
+                    ctx.renderer.set_gs_background(bg_tex);
                 }
-                if (app_.feature_flags().gs_parallax && gs.parallax) {
-                    app_.gs_parallax_camera().configure(
+                if (ctx.feature_flags.gs_parallax && gs.parallax) {
+                    ctx.terrain.parallax_camera.configure(
                         gs.camera_position, gs.camera_target,
                         gs.camera_fov, gs_w, gs_h, *gs.parallax);
-                    app_.set_gs_parallax_active(true);
-                    app_.set_gs_frame_counter(0);
-                    renderer.set_gs_skip_chunk_cull(true);
-                    renderer.gs_renderer().set_skip_sort(false);
+                    ctx.terrain.parallax_active = true;
+                    ctx.terrain.frame_counter = 0;
+                    ctx.renderer.set_gs_skip_chunk_cull(true);
+                    ctx.renderer.gs_renderer().set_skip_sort(false);
                     auto cam_fwd = glm::normalize(gs.camera_target - gs.camera_position);
-                    renderer.gs_renderer().set_shadow_box_params(cam_fwd, 0.0f, gs.camera_position, 32.0f);
+                    ctx.renderer.gs_renderer().set_shadow_box_params(cam_fwd, 0.0f, gs.camera_position, 32.0f);
                 } else {
-                    app_.set_gs_parallax_active(false);
-                    renderer.set_gs_skip_chunk_cull(false);
-                    renderer.gs_renderer().clear_shadow_box_params();
+                    ctx.terrain.parallax_active = false;
+                    ctx.renderer.set_gs_skip_chunk_cull(false);
+                    ctx.renderer.gs_renderer().clear_shadow_box_params();
                 }
                 std::fprintf(stderr, "[GS] Loaded %u Gaussians from %s\n", cloud.count(), gs.ply_file.c_str());
             } else {
-                app_.set_gs_parallax_active(false);
-                renderer.set_gs_skip_chunk_cull(false);
-                renderer.gs_renderer().clear_shadow_box_params();
+                ctx.terrain.parallax_active = false;
+                ctx.renderer.set_gs_skip_chunk_cull(false);
+                ctx.renderer.gs_renderer().clear_shadow_box_params();
                 std::fprintf(stderr, "[GS] Loaded %u Gaussians from %zu game objects\n",
                              cloud.count(), scene_data.game_objects.size());
             }
@@ -327,27 +329,26 @@ void GsSceneLoader::load(const SceneData& scene_data, const GsSceneOptions& opts
 
     // VFX instances (load even without gaussian_splat)
     if (!scene_data.vfx_instances.empty()) {
-        if (!renderer.has_gs_cloud()) {
+        if (!ctx.renderer.has_gs_cloud()) {
             // Minimal GS renderer for VFX-only scenes
             std::vector<Gaussian> dummy(1);
             dummy[0].opacity = 0.0f;
             dummy[0].scale = glm::vec3(0.001f);
             auto vfx_cloud = GaussianCloud::from_gaussians(std::move(dummy));
-            renderer.init_gs(vfx_cloud, 320, 240);
+            ctx.renderer.init_gs(vfx_cloud, 320, 240);
             auto view = glm::lookAt(glm::vec3(0, 50, 100), glm::vec3(0), glm::vec3(0, 1, 0));
             auto proj = glm::perspective(glm::radians(45.0f), 320.0f / 240.0f, 0.1f, 1000.0f);
             proj[1][1] *= -1.0f;
-            renderer.set_gs_camera(view, proj);
+            ctx.renderer.set_gs_camera(view, proj);
         }
-        auto terrain_aabb = app_.terrain_aabb();
         for (const auto& vi : scene_data.vfx_instances) {
             if (vi.trigger != "auto") continue;
             auto preset = load_vfx_preset(vi.vfx_file);
             if (preset.elements.empty()) continue;
             VfxInstance inst;
-            auto world_pos = coord::to_world(vi.position, terrain_aabb);
+            auto world_pos = coord::to_world(vi.position, ctx.terrain.terrain_aabb);
             inst.init(preset, world_pos.vec(), vi.loop, vi.rotation_y);
-            renderer.add_vfx_instance(std::move(inst));
+            ctx.renderer.add_vfx_instance(std::move(inst));
         }
     }
 }

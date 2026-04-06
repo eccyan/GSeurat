@@ -22,10 +22,10 @@ namespace gseurat {
 
 void GsDemoState::on_enter(AppBase& app) {
     app.feature_flags() = FeatureFlags::gs_viewer();
-    app.init_scene(app.current_scene_path());
+    app.init_scene(app.scene_objects().current_scene_path);
 
     // Disable app-level parallax — demo manages its own camera
-    app.set_gs_parallax_active(false);
+    app.gs_terrain().parallax_active = false;
     app.renderer().set_gs_skip_chunk_cull(false);
     app.renderer().gs_renderer().set_skip_sort(false);
 

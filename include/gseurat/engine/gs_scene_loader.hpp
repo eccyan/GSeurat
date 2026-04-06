@@ -2,11 +2,9 @@
 
 #include "gseurat/engine/scene_loader.hpp"
 
-#include <nlohmann/json.hpp>
-
 namespace gseurat {
 
-class AppBase;
+struct SceneLoadContext;
 
 struct GsSceneOptions {
     bool add_default_light = false;
@@ -15,12 +13,8 @@ struct GsSceneOptions {
 
 class GsSceneLoader {
 public:
-    explicit GsSceneLoader(AppBase& app) : app_(app) {}
-
-    void load(const SceneData& scene_data, const GsSceneOptions& opts = {});
-
-private:
-    AppBase& app_;
+    void load(SceneLoadContext& ctx, const SceneData& scene_data,
+              const GsSceneOptions& opts = {});
 };
 
 }  // namespace gseurat

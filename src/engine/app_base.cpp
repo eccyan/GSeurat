@@ -1,14 +1,12 @@
 #include "gseurat/engine/app_base.hpp"
+#include "gseurat/engine/gs_scene_loader.hpp"
+#include "gseurat/engine/scene_load_context.hpp"
 #include "gseurat/demo/island_components.hpp"
 
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
-#include <glm/gtc/matrix_transform.hpp>
-
 #include <chrono>
-#include <filesystem>
-#include <fstream>
 
 namespace gseurat {
 
@@ -73,8 +71,8 @@ void AppBase::main_loop() {
         staging_uploader_.flush();
 
         // Clear draw lists at frame start (states will rebuild them)
-        overlay_sprites_.clear();
-        ui_sprites_.clear();
+        draw_lists_.overlay.clear();
+        draw_lists_.ui.clear();
 
         input_.update();
 
@@ -85,7 +83,7 @@ void AppBase::main_loop() {
         if (dt > 0.1f) dt = 0.1f;
 
         state_stack_.update(*this, dt);
-        play_time_ += dt;
+        gameplay_.play_time += dt;
         tick_++;
 
         // Feed UI context with input state
@@ -112,15 +110,15 @@ void AppBase::main_loop() {
 
         // Build UI batches
         std::vector<ui::UIDrawBatch> ui_batches;
-        if (!ui_sprites_.empty()) {
-            ui_batches.push_back(ui::UIDrawBatch{ui_sprites_, std::nullopt});
+        if (!draw_lists_.ui.empty()) {
+            ui_batches.push_back(ui::UIDrawBatch{draw_lists_.ui, std::nullopt});
         }
         const auto& ctx_batches = ui_ctx_.draw_batches();
         for (const auto& b : ctx_batches) {
             if (!b.sprites.empty()) ui_batches.push_back(b);
         }
-        if (feature_flags_.minimap && !minimap_sprites_.empty()) {
-            ui_batches.push_back(ui::UIDrawBatch{minimap_sprites_, std::nullopt});
+        if (feature_flags_.minimap && !draw_lists_.minimap.empty()) {
+            ui_batches.push_back(ui::UIDrawBatch{draw_lists_.minimap, std::nullopt});
         }
 
         // Pass screen effects to renderer
@@ -133,8 +131,8 @@ void AppBase::main_loop() {
             renderer_.set_flash_color(0.0f, 0.0f, 0.0f);
         }
 
-        renderer_.draw_scene(scene_, entity_sprites_, outline_sprites_, reflection_sprites_,
-                             shadow_sprites_, particle_sprites, overlay_sprites_, ui_batches,
+        renderer_.draw_scene(scene_, draw_lists_.entity, draw_lists_.outline, draw_lists_.reflection,
+                             draw_lists_.shadow, particle_sprites, draw_lists_.overlay, ui_batches,
                              feature_flags_);
     }
 }
@@ -348,10 +346,33 @@ void AppBase::init_game_object_system() {
         });
 }
 
-// ── Shared GS scene loading (delegated to GsSceneLoader) ──
+// ── Command context builder ──
+
+CommandContext AppBase::build_command_context() {
+    return CommandContext{
+        .terrain = gs_terrain_,
+        .scene_objects = scene_objects_,
+        .renderer = renderer_,
+        .scene = scene_,
+        .world = world_,
+        .components = component_registry_,
+        .input = input_,
+        .feature_flags = feature_flags_,
+        .window = window_,
+        .init_scene = [this](const std::string& path) { init_scene(path); },
+        .clear_scene = [this]() { clear_scene(); },
+    };
+}
+
+// ── Shared GS scene loading ──
 
 void AppBase::load_gs_scene(const SceneData& scene_data, const GsSceneOptions& opts) {
-    gs_scene_loader_.load(scene_data, opts);
+    SceneLoadContext ctx{
+        gs_terrain_, scene_objects_, renderer_, scene_,
+        world_, component_registry_, resources_, feature_flags_
+    };
+    GsSceneLoader loader;
+    loader.load(ctx, scene_data, opts);
 }
 
 // ── Control Server ──

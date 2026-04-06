@@ -124,6 +124,7 @@ add_subdirectory(shaders)
 
 add_library(gseurat_core OBJECT
     src/engine/app_base.cpp
+    src/engine/gs_scene_loader.cpp
     src/engine/command_dispatcher.cpp
     src/engine/vk_context.cpp
     src/engine/swapchain.cpp

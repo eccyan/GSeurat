@@ -59,7 +59,7 @@ void StagingApp::init_game_content() {
 }
 
 void StagingApp::main_loop() {
-    set_current_scene_path(scene_path_);
+    scene_objects_.current_scene_path = scene_path_;
     state_stack_.push(std::make_unique<StagingState>(), *this);
 
     last_update_time_ = std::chrono::steady_clock::now();
@@ -88,8 +88,8 @@ void StagingApp::main_loop() {
         resources_.process_async_results(async_loader_, staging_uploader_);
         staging_uploader_.flush();
 
-        overlay_sprites_.clear();
-        ui_sprites_.clear();
+        draw_lists_.overlay.clear();
+        draw_lists_.ui.clear();
 
         input_.update();
 
@@ -104,7 +104,7 @@ void StagingApp::main_loop() {
         ImGui::NewFrame();
 
         state_stack_.update(*this, dt);
-        play_time_ += dt;
+        gameplay_.play_time += dt;
         tick_++;
 
         // Feed UI context
@@ -142,8 +142,8 @@ void StagingApp::main_loop() {
         // Finalize ImGui (before draw_scene so overlay callback can render it)
         ImGui::Render();
 
-        renderer_.draw_scene(scene_, entity_sprites_, outline_sprites_, reflection_sprites_,
-                             shadow_sprites_, particle_sprites, overlay_sprites_, ui_batches,
+        renderer_.draw_scene(scene_, draw_lists_.entity, draw_lists_.outline, draw_lists_.reflection,
+                             draw_lists_.shadow, particle_sprites, draw_lists_.overlay, ui_batches,
                              feature_flags_);
     }
 }
@@ -313,7 +313,7 @@ void StagingApp::shutdown_imgui() {
 // ── Scene loading (reuse from DemoApp pattern) ──
 
 void StagingApp::init_scene(const std::string& scene_path) {
-    current_scene_path_ = scene_path;
+    scene_objects_.current_scene_path = scene_path;
     auto scene_data = SceneLoader::load(scene_path);
     load_gs_scene(scene_data);
     std::fprintf(stderr, "[Staging] Loaded scene: %s\n", scene_path.c_str());
@@ -325,9 +325,9 @@ void StagingApp::clear_scene() {
     renderer_.clear_gs_animations();
     renderer_.clear_vfx_instances();
     scene_.clear_lights();
-    terrain_aabb_ = AABB{};
-    terrain_aabb_.min = glm::vec3(0.0f);
-    terrain_aabb_.max = glm::vec3(0.0f);
+    gs_terrain_.terrain_aabb = AABB{};
+    gs_terrain_.terrain_aabb.min = glm::vec3(0.0f);
+    gs_terrain_.terrain_aabb.max = glm::vec3(0.0f);
     // Don't re-init GS here — init_scene() will do it if needed.
     // For empty viewport on standalone launch, on_enter() handles it.
 }

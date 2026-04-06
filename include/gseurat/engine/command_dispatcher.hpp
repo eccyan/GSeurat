@@ -7,9 +7,9 @@
 
 #include <nlohmann/json.hpp>
 
-namespace gseurat {
+#include "gseurat/engine/command_context.hpp"
 
-class AppBase;  // forward declaration
+namespace gseurat {
 
 // ── C++23 Command Pattern types ──
 
@@ -20,19 +20,19 @@ using CommandResult = std::expected<nlohmann::json, std::string>;
 using CommandHandler = std::function<CommandResult(const nlohmann::json&)>;
 
 // ── CommandDispatcher ──
-// Self-contained dispatcher that holds a reference to AppBase.
+// Self-contained dispatcher that holds a CommandContext with references to subsystems.
 // All command handlers are registered as lambdas and looked up by name.
 
 class CommandDispatcher {
 public:
-    explicit CommandDispatcher(AppBase& app) : app_(app) {}
+    explicit CommandDispatcher(CommandContext ctx) : ctx_(std::move(ctx)) {}
 
     void register_command(std::string name, CommandHandler handler);
     void register_default_commands();
     void dispatch(const nlohmann::json& cmd, nlohmann::json& response);
 
 private:
-    AppBase& app_;
+    CommandContext ctx_;
     std::unordered_map<std::string, CommandHandler> handlers_;
 };
 
