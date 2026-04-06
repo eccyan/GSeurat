@@ -208,9 +208,9 @@ export function MenuBar() {
   const showToast = useCallback((message: string, type: 'success' | 'error' | 'loading', duration = 3000) => {
     if (toastTimer.current) clearTimeout(toastTimer.current);
     setToast({ message, type });
-    if (type !== 'loading') {
-      toastTimer.current = setTimeout(() => setToast(null), duration);
-    }
+    // Loading toasts auto-clear after 15s as a safety net; others use the specified duration
+    const timeout = type === 'loading' ? 15000 : duration;
+    toastTimer.current = setTimeout(() => setToast(null), timeout);
   }, []);
 
   const pushToStaging = useCallback(async () => {
@@ -430,8 +430,11 @@ export function MenuBar() {
         game_objects: [],
       };
 
-      // Send load_scene_json to Staging via bridge WebSocket
-      await sendBridgeCommand({ cmd: 'load_scene_json', json: JSON.stringify(scene) });
+      // Send load_scene_json to Staging via bridge WebSocket (with 5s timeout)
+      await Promise.race([
+        sendBridgeCommand({ cmd: 'load_scene_json', json: JSON.stringify(scene) }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Staging not responding (timed out after 5s)')), 5000)),
+      ]);
 
       showToast('Character sent to Staging', 'success');
     } catch (err) {
