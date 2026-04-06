@@ -432,7 +432,7 @@ export function MenuBar() {
 
       // Upload manifest JSON for animation playback
       const manifest = buildManifest(
-        charId, charId + '.ply', s.gridWidth,
+        charId, charId + '.ply', 1.0,
         s.characterParts, s.characterPoses, s.animations,
       );
       const manifestJson = JSON.stringify(manifest, null, 2);

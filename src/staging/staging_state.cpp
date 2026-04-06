@@ -189,9 +189,9 @@ void StagingState::update(AppBase& app, float dt) {
     // Update character animation and upload bone transforms
     if (anim_player_ && anim_playing_) {
         anim_player_->update(dt * anim_speed_);
+        auto bone_count = static_cast<uint32_t>(character_data_->bones.size());
         app.renderer().gs_renderer().upload_bone_transforms(
-            anim_player_->bone_transforms().data(),
-            static_cast<uint32_t>(character_data_->bones.size()));
+            anim_player_->bone_transforms().data(), bone_count);
     }
 
     // Draw ImGui (hidden with Tab)
@@ -823,11 +823,13 @@ void StagingState::load_character(const std::string& manifest_path, AppBase& app
     anim_player_ = std::make_unique<BoneAnimationPlayer>(*character_data_);
     ShutdownAuditor::record<BoneAnimationPlayer>(anim_player_.get());
     selected_clip_ = 0;
-    anim_playing_ = false;
 
-    // If there's at least one clip, select it
+    // Auto-play the first clip
     if (!character_data_->clips.empty()) {
         anim_player_->play(character_data_->clips[0].name);
+        anim_playing_ = true;
+    } else {
+        anim_playing_ = false;
     }
 
     // Clear bone transforms (identity) until animation starts
