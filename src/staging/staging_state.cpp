@@ -67,10 +67,8 @@ void StagingState::on_exit(AppBase& app) {
     }
 
     if (app.renderer().has_gs_cloud()) {
-        std::fprintf(stderr, "[Staging] on_exit: clearing bone transforms\n");
         app.renderer().gs_renderer().clear_bone_transforms();
     }
-    std::fprintf(stderr, "[Staging] on_exit: done\n");
 }
 
 void StagingState::update(AppBase& app, float dt) {
@@ -833,9 +831,7 @@ void StagingState::load_character(const std::string& manifest_path, AppBase& app
     }
 
     // Clear bone transforms (identity) until animation starts
-    std::fprintf(stderr, "[Staging] About to clear_bone_transforms after character load\n");
     app.renderer().gs_renderer().clear_bone_transforms();
-    std::fprintf(stderr, "[Staging] clear_bone_transforms done\n");
 }
 
 void StagingState::draw_character_panel(AppBase& app) {
