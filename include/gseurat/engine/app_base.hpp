@@ -18,6 +18,7 @@
 #include "gseurat/engine/ecs/default_components.hpp"
 #include "gseurat/engine/ecs/ecs.hpp"
 #include "gseurat/engine/feature_flags.hpp"
+#include "gseurat/engine/gs_scene_loader.hpp"
 #include "gseurat/engine/font_atlas.hpp"
 #include "gseurat/engine/game_state.hpp"
 #include "gseurat/engine/gameplay_state.hpp"
@@ -92,11 +93,7 @@ public:
     virtual void clear_scene();
 
     // Shared GS scene loading: PLY + placed objects + lights + emitters + animations + VFX
-    struct GsSceneOptions {
-        bool add_default_light;
-        bool set_god_rays;
-    };
-    void load_gs_scene(const SceneData& scene_data, const GsSceneOptions& opts = {false, false});
+    void load_gs_scene(const SceneData& scene_data, const GsSceneOptions& opts = {});
     virtual void update_game(float dt);
     virtual void update_audio(float dt);
 
