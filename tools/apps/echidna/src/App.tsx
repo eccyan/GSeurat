@@ -7,7 +7,7 @@ import { AnimateLeftPanel } from './panels/AnimateLeftPanel.js';
 import { AnimateRightPanel } from './panels/AnimateRightPanel.js';
 import { Timeline } from './panels/Timeline.js';
 import { useCharacterStore } from './store/useCharacterStore.js';
-import type { ToolType } from './store/types.js';
+import type { ToolType, EchidnaFile } from './store/types.js';
 
 const styles: Record<string, React.CSSProperties> = {
   root: {
@@ -215,6 +215,35 @@ export function App() {
 
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
+  }, []);
+
+  // URL parameter loading: ?load=filename.echidna
+  // Also supports window.postMessage({ type: 'echidna:load', data: {...} })
+  useEffect(() => {
+    // URL parameter: fetch file from public directory
+    const params = new URLSearchParams(window.location.search);
+    const loadFile = params.get('load');
+    if (loadFile) {
+      fetch(`/${loadFile}`)
+        .then((r) => r.json())
+        .then((data: EchidnaFile) => {
+          useCharacterStore.getState().loadProject(data);
+          useCharacterStore.getState().setCurrentFilename(loadFile);
+        })
+        .catch((err) => console.error('Failed to load file from URL param:', err));
+    }
+
+    // Window message API for programmatic loading
+    const messageHandler = (e: MessageEvent) => {
+      if (e.data?.type === 'echidna:load' && e.data?.data) {
+        useCharacterStore.getState().loadProject(e.data.data as EchidnaFile);
+        if (e.data.filename) {
+          useCharacterStore.getState().setCurrentFilename(e.data.filename);
+        }
+      }
+    };
+    window.addEventListener('message', messageHandler);
+    return () => window.removeEventListener('message', messageHandler);
   }, []);
 
   return (
