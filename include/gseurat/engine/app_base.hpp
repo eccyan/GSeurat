@@ -14,11 +14,14 @@
 #include "gseurat/engine/day_night_system.hpp"
 #include "gseurat/engine/dialog.hpp"
 #include "gseurat/engine/direction.hpp"
+#include "gseurat/engine/draw_lists.hpp"
 #include "gseurat/engine/ecs/default_components.hpp"
 #include "gseurat/engine/ecs/ecs.hpp"
 #include "gseurat/engine/feature_flags.hpp"
 #include "gseurat/engine/font_atlas.hpp"
 #include "gseurat/engine/game_state.hpp"
+#include "gseurat/engine/gameplay_state.hpp"
+#include "gseurat/engine/gs_terrain_state.hpp"
 #include "gseurat/engine/input_manager.hpp"
 #include "gseurat/engine/locale_manager.hpp"
 #include "gseurat/engine/minimap.hpp"
@@ -28,6 +31,7 @@
 #include "gseurat/engine/save_system.hpp"
 #include "gseurat/engine/gs_parallax_camera.hpp"
 #include "gseurat/engine/scene_loader.hpp"
+#include "gseurat/engine/scene_object_state.hpp"
 #include "gseurat/engine/staging_uploader.hpp"
 #include "gseurat/engine/scene.hpp"
 #include "gseurat/engine/screen_effects.hpp"
@@ -69,21 +73,35 @@ public:
     ecs::Entity player_id() const { return player_id_; }
     const std::vector<ecs::Entity>& npc_ids() const { return npc_ids_; }
 
-    // Game state
+    // State object accessors
+    GsTerrainState& gs_terrain() { return gs_terrain_; }
+    const GsTerrainState& gs_terrain() const { return gs_terrain_; }
+    SceneObjectState& scene_objects() { return scene_objects_; }
+    const SceneObjectState& scene_objects() const { return scene_objects_; }
+    DrawLists& draw_lists() { return draw_lists_; }
+    const DrawLists& draw_lists() const { return draw_lists_; }
+    GameplayState& gameplay() { return gameplay_; }
+    const GameplayState& gameplay() const { return gameplay_; }
+
+    // ── Temporary shim accessors (delegate to state objects) ──
+
+    // GameplayState shims
     enum class GameMode  { Explore, Dialog };
-    GameMode game_mode() const { return game_mode_; }
-    void set_game_mode(GameMode m) { game_mode_ = m; }
-    DialogState& dialog_state() { return dialog_state_; }
-    const std::vector<DialogScript>& npc_dialogs() const { return npc_dialogs_; }
+    GameMode game_mode() const {
+        return gameplay_.mode == GameplayState::Mode::Explore ? GameMode::Explore : GameMode::Dialog;
+    }
+    void set_game_mode(GameMode m) {
+        gameplay_.mode = (m == GameMode::Explore) ? GameplayState::Mode::Explore : GameplayState::Mode::Dialog;
+    }
+    DialogState& dialog_state() { return gameplay_.dialog; }
+    const std::vector<DialogScript>& npc_dialogs() const { return gameplay_.npc_dialogs; }
+    std::unordered_map<std::string, bool>& game_flags() { return gameplay_.flags; }
+    float play_time() const { return gameplay_.play_time; }
 
-    // Per-frame draw lists (populated by states, consumed by render)
-    std::vector<SpriteDrawInfo>& overlay_sprites() { return overlay_sprites_; }
-    std::vector<SpriteDrawInfo>& ui_sprites() { return ui_sprites_; }
-    std::vector<SpriteDrawInfo>& entity_sprites() { return entity_sprites_; }
-
-    // Game flags (used by save system and scripts)
-    std::unordered_map<std::string, bool>& game_flags() { return game_flags_; }
-    float play_time() const { return play_time_; }
+    // DrawLists shims
+    std::vector<SpriteDrawInfo>& overlay_sprites() { return draw_lists_.overlay; }
+    std::vector<SpriteDrawInfo>& ui_sprites() { return draw_lists_.ui; }
+    std::vector<SpriteDrawInfo>& entity_sprites() { return draw_lists_.entity; }
 
     // Save/load helpers (virtual — game overrides)
     virtual SaveData build_save_data() const;
@@ -102,11 +120,11 @@ public:
     virtual void update_game(float dt);
     virtual void update_audio(float dt);
 
-    // Scene transition support
-    const std::string& current_scene_path() const { return current_scene_path_; }
-    void set_current_scene_path(const std::string& path) { current_scene_path_ = path; }
-    bool is_transitioning() const { return transitioning_; }
-    void set_transitioning(bool t) { transitioning_ = t; }
+    // SceneObjectState shims
+    const std::string& current_scene_path() const { return scene_objects_.current_scene_path; }
+    void set_current_scene_path(const std::string& path) { scene_objects_.current_scene_path = path; }
+    bool is_transitioning() const { return scene_objects_.transitioning; }
+    void set_transitioning(bool t) { scene_objects_.transitioning = t; }
 
     // Audio state
     float& footstep_timer() { return footstep_timer_; }
@@ -135,9 +153,9 @@ public:
     // Screen effects accessor
     ScreenEffects& screen_effects() { return screen_effects_; }
 
-    // GS parallax accessors
-    void set_gs_parallax_active(bool active) { gs_parallax_active_ = active; }
-    GsParallaxCamera& gs_parallax_camera() { return gs_parallax_camera_; }
+    // GsTerrainState shims
+    void set_gs_parallax_active(bool active) { gs_terrain_.parallax_active = active; }
+    GsParallaxCamera& gs_parallax_camera() { return gs_terrain_.parallax_camera; }
 
     // Async loading accessors
     AsyncLoader& async_loader() { return async_loader_; }
@@ -151,7 +169,7 @@ public:
     CommandDispatcher& command_dispatcher() { return command_dispatcher_; }
 
     // Mutable scene game object data (used by CommandDispatcher for incremental sync)
-    std::vector<GameObjectData>& scene_game_object_data_mutable() { return scene_game_object_data_; }
+    std::vector<GameObjectData>& scene_game_object_data_mutable() { return scene_objects_.game_objects; }
 
 protected:
     void init_window();
@@ -177,52 +195,35 @@ protected:
     ecs::World world_;
     ecs::Entity player_id_ = ecs::kNullEntity;
     std::vector<ecs::Entity> npc_ids_;
-    std::vector<SpriteDrawInfo> entity_sprites_;
-    std::vector<SpriteDrawInfo> outline_sprites_;
-    std::vector<SpriteDrawInfo> shadow_sprites_;
-    std::vector<SpriteDrawInfo> reflection_sprites_;
 
     // UI context
     ui::UIContext ui_ctx_;
 
-    // Dialog & i18n
-    GameMode game_mode_ = GameMode::Explore;
+    // i18n
     LocaleManager locale_;
     FontAtlas font_atlas_;
     TextRenderer text_renderer_;
-    DialogState dialog_state_;
-    std::vector<DialogScript> npc_dialogs_;
 
-    // Gaussian splatting collision grid (when using GS scenes instead of tilemap)
-    CollisionGrid collision_grid_;
+    // State objects (replacing scattered members)
+    GsTerrainState gs_terrain_;
+    SceneObjectState scene_objects_;
+    DrawLists draw_lists_;
+    GameplayState gameplay_;
 
-    // Parallax camera for shadow-box GS effect
-    GsParallaxCamera gs_parallax_camera_;
-    bool gs_parallax_active_ = false;
-    uint32_t gs_frame_counter_ = 0;
-    uint32_t gs_render_interval_ = 4;
-    glm::vec2 gs_last_compute_offset_{0.0f};
-
-    // Scene transition
-    std::string current_scene_path_ = "assets/scenes/test_scene.json";
-    std::vector<PortalData> portals_;
-    bool transitioning_ = false;
-
-    // Scene data storage for round-trip serialization (kept in sync with ECS)
-    std::vector<GameObjectData> scene_game_object_data_;
-
-    // PBD anchor positions assigned during game object merge (tree sway, etc.)
-    // Index in vector = pbd element index (bone_idx 32 + i)
-    std::vector<glm::vec3> pbd_anchors_;
-    std::vector<PbdConfig> pbd_configs_;
 public:
-    const std::vector<GameObjectData>& scene_game_objects() const { return scene_game_object_data_; }
-    const std::vector<glm::vec3>& pbd_anchors() const { return pbd_anchors_; }
-    const std::vector<PbdConfig>& pbd_configs() const { return pbd_configs_; }
-    glm::vec2 gs_aabb_offset() const { return glm::vec2(terrain_aabb_.min.x, terrain_aabb_.min.y); }
-    const AABB& terrain_aabb() const { return terrain_aabb_; }
-    glm::vec3 gs_cloud_center() const { return gs_cloud_center_; }
-    float gs_cloud_extent() const { return gs_cloud_extent_; }
+    const std::vector<GameObjectData>& scene_game_objects() const { return scene_objects_.game_objects; }
+    const std::vector<glm::vec3>& pbd_anchors() const { return gs_terrain_.pbd_anchors; }
+    std::vector<glm::vec3>& pbd_anchors_mutable() { return gs_terrain_.pbd_anchors; }
+    const std::vector<PbdConfig>& pbd_configs() const { return gs_terrain_.pbd_configs; }
+    std::vector<PbdConfig>& pbd_configs_mutable() { return gs_terrain_.pbd_configs; }
+    glm::vec2 gs_aabb_offset() const { return gs_terrain_.aabb_offset(); }
+    const AABB& terrain_aabb() const { return gs_terrain_.terrain_aabb; }
+    void set_terrain_aabb(const AABB& aabb) { gs_terrain_.terrain_aabb = aabb; }
+    glm::vec3 gs_cloud_center() const { return gs_terrain_.cloud_center; }
+    void set_gs_cloud_center(const glm::vec3& c) { gs_terrain_.cloud_center = c; }
+    float gs_cloud_extent() const { return gs_terrain_.cloud_extent; }
+    void set_gs_cloud_extent(float e) { gs_terrain_.cloud_extent = e; }
+    void set_gs_frame_counter(uint32_t v) { gs_terrain_.frame_counter = v; }
 protected:
     std::vector<PointLight> static_lights_;
 
@@ -237,7 +238,6 @@ protected:
 
     // Minimap
     Minimap minimap_;
-    std::vector<SpriteDrawInfo> minimap_sprites_;
 
     // Audio
     AudioSystem audio_;
@@ -246,8 +246,6 @@ protected:
 
     // Save system
     SaveSystem save_system_;
-    std::unordered_map<std::string, bool> game_flags_;
-    float play_time_ = 0.0f;
 
     // ── Command dispatch (C++23 Command Pattern) ──
     CommandDispatcher command_dispatcher_{*this};
@@ -258,21 +256,12 @@ protected:
     ControlServer control_server_;
 #endif
 
-    // Terrain PLY AABB (for grid→world coordinate conversion)
-    AABB terrain_aabb_;
-    glm::vec3 gs_cloud_center_{0.0f};
-    float gs_cloud_extent_ = 100.0f;
-
     // Step mode / control
     bool step_mode_ = false;
     int pending_steps_ = 0;
     uint64_t tick_ = 0;
     static constexpr float kFixedDt = 1.0f / 60.0f;
     std::string screenshot_response_path_;
-
-    // Per-frame draw lists built in update_game, consumed by draw_scene
-    std::vector<SpriteDrawInfo> overlay_sprites_;
-    std::vector<SpriteDrawInfo> ui_sprites_;
 
     // Async asset loading
     AsyncLoader async_loader_;

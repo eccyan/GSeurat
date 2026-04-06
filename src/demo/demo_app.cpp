@@ -39,7 +39,7 @@ void DemoApp::run() {
 
     if (viewer_mode_) {
         std::string path = scene_path_explicit_ ? scene_path_ : "assets/scenes/gs_demo.json";
-        set_current_scene_path(path);
+        scene_objects_.current_scene_path = path;
         state_stack_.push(std::make_unique<GsDemoState>(), *this);
     } else {
         auto state = std::make_unique<IslandDemoState>();
@@ -75,7 +75,7 @@ void DemoApp::init_game_content() {
 }
 
 void DemoApp::init_scene(const std::string& scene_path) {
-    current_scene_path_ = scene_path;
+    scene_objects_.current_scene_path = scene_path;
     auto scene_data = SceneLoader::load(scene_path);
     load_gs_scene(scene_data, { .add_default_light = true, .set_god_rays = true });
 }

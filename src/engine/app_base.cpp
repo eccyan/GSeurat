@@ -77,8 +77,8 @@ void AppBase::main_loop() {
         staging_uploader_.flush();
 
         // Clear draw lists at frame start (states will rebuild them)
-        overlay_sprites_.clear();
-        ui_sprites_.clear();
+        draw_lists_.overlay.clear();
+        draw_lists_.ui.clear();
 
         input_.update();
 
@@ -89,7 +89,7 @@ void AppBase::main_loop() {
         if (dt > 0.1f) dt = 0.1f;
 
         state_stack_.update(*this, dt);
-        play_time_ += dt;
+        gameplay_.play_time += dt;
         tick_++;
 
         // Feed UI context with input state
@@ -116,15 +116,15 @@ void AppBase::main_loop() {
 
         // Build UI batches
         std::vector<ui::UIDrawBatch> ui_batches;
-        if (!ui_sprites_.empty()) {
-            ui_batches.push_back(ui::UIDrawBatch{ui_sprites_, std::nullopt});
+        if (!draw_lists_.ui.empty()) {
+            ui_batches.push_back(ui::UIDrawBatch{draw_lists_.ui, std::nullopt});
         }
         const auto& ctx_batches = ui_ctx_.draw_batches();
         for (const auto& b : ctx_batches) {
             if (!b.sprites.empty()) ui_batches.push_back(b);
         }
-        if (feature_flags_.minimap && !minimap_sprites_.empty()) {
-            ui_batches.push_back(ui::UIDrawBatch{minimap_sprites_, std::nullopt});
+        if (feature_flags_.minimap && !draw_lists_.minimap.empty()) {
+            ui_batches.push_back(ui::UIDrawBatch{draw_lists_.minimap, std::nullopt});
         }
 
         // Pass screen effects to renderer
@@ -137,8 +137,8 @@ void AppBase::main_loop() {
             renderer_.set_flash_color(0.0f, 0.0f, 0.0f);
         }
 
-        renderer_.draw_scene(scene_, entity_sprites_, outline_sprites_, reflection_sprites_,
-                             shadow_sprites_, particle_sprites, overlay_sprites_, ui_batches,
+        renderer_.draw_scene(scene_, draw_lists_.entity, draw_lists_.outline, draw_lists_.reflection,
+                             draw_lists_.shadow, particle_sprites, draw_lists_.overlay, ui_batches,
                              feature_flags_);
     }
 }
@@ -394,11 +394,11 @@ void AppBase::load_gs_scene(const SceneData& scene_data, const GsSceneOptions& o
         // Bricklayer uses 0-based grid coordinates, but the terrain PLY may have
         // a different origin (e.g., centered at X=0). The AABB provides
         // the context to convert grid coordinates to PLY world coordinates.
-        terrain_aabb_ = AABB{};
-        terrain_aabb_.min = glm::vec3(0.0f);
-        terrain_aabb_.max = glm::vec3(0.0f);
+        gs_terrain_.terrain_aabb = AABB{};
+        gs_terrain_.terrain_aabb.min = glm::vec3(0.0f);
+        gs_terrain_.terrain_aabb.max = glm::vec3(0.0f);
         if (has_terrain) {
-            terrain_aabb_ = cloud.bounds();
+            gs_terrain_.terrain_aabb = cloud.bounds();
         }
 
         // Snap game object positions to terrain elevation (in grid coordinates)
@@ -419,17 +419,17 @@ void AppBase::load_gs_scene(const SceneData& scene_data, const GsSceneOptions& o
         }
 
         // Convert grid positions to world positions via coord::to_world()
-        scene_game_object_data_ = snapped_objects;
+        scene_objects_.game_objects = snapped_objects;
 
         std::vector<coord::WorldPos> world_positions;
         world_positions.reserve(snapped_objects.size());
         for (const auto& go : snapped_objects) {
-            world_positions.push_back(coord::to_world(go.position, terrain_aabb_));
+            world_positions.push_back(coord::to_world(go.position, gs_terrain_.terrain_aabb));
         }
 
         // Merge all game objects with PLY visuals into the GS cloud
-        pbd_anchors_.clear();
-        pbd_configs_.clear();
+        gs_terrain_.pbd_anchors.clear();
+        gs_terrain_.pbd_configs.clear();
             {
                 auto merged = cloud.gaussians();
                 uint32_t merged_count = 0;
@@ -465,10 +465,10 @@ void AppBase::load_gs_scene(const SceneData& scene_data, const GsSceneOptions& o
                         // Assign PBD index from game object config
                         uint32_t pbd_idx = 0;
                         float sway_threshold_frac = 0.7f;
-                        if (go.pbd && pbd_anchors_.size() < kMaxPbdElements) {
-                            pbd_idx = 32 + static_cast<uint32_t>(pbd_anchors_.size());
-                            pbd_anchors_.push_back(adjusted_pos);
-                            pbd_configs_.push_back(*go.pbd);
+                        if (go.pbd && gs_terrain_.pbd_anchors.size() < kMaxPbdElements) {
+                            pbd_idx = 32 + static_cast<uint32_t>(gs_terrain_.pbd_anchors.size());
+                            gs_terrain_.pbd_anchors.push_back(adjusted_pos);
+                            gs_terrain_.pbd_configs.push_back(*go.pbd);
                             sway_threshold_frac = go.pbd->sway_threshold;
                         }
                         float sway_threshold = local_min_y + (local_max_y - local_min_y) * sway_threshold_frac;
@@ -503,10 +503,10 @@ void AppBase::load_gs_scene(const SceneData& scene_data, const GsSceneOptions& o
                 if (merged_count > 0) {
                     cloud = GaussianCloud::from_gaussians(std::move(merged));
                 }
-                if (!pbd_anchors_.empty()) {
+                if (!gs_terrain_.pbd_anchors.empty()) {
                     std::fprintf(stderr, "[GS] PBD: %zu objects configured (idx 32-%u)\n",
-                                 pbd_anchors_.size(),
-                                 31 + static_cast<uint32_t>(pbd_anchors_.size()));
+                                 gs_terrain_.pbd_anchors.size(),
+                                 31 + static_cast<uint32_t>(gs_terrain_.pbd_anchors.size()));
                 }
             }
 
@@ -535,14 +535,14 @@ void AppBase::load_gs_scene(const SceneData& scene_data, const GsSceneOptions& o
             renderer_.init_gs(cloud, gs_w, gs_h);
 
             // Upload PBD elements AFTER init_gs (load_cloud resets pbd_count_)
-            if (!pbd_anchors_.empty() && pbd_anchors_.size() == pbd_configs_.size()) {
-                uint32_t count = static_cast<uint32_t>(pbd_anchors_.size());
+            if (!gs_terrain_.pbd_anchors.empty() && gs_terrain_.pbd_anchors.size() == gs_terrain_.pbd_configs.size()) {
+                uint32_t count = static_cast<uint32_t>(gs_terrain_.pbd_anchors.size());
                 std::vector<PbdPhysicsState> states(count);
                 std::vector<PbdElementParams> params(count);
                 for (uint32_t i = 0; i < count; ++i) {
-                    const auto& cfg = pbd_configs_[i];
+                    const auto& cfg = gs_terrain_.pbd_configs[i];
                     float inv_mass = (cfg.mode == "physics" && cfg.pinned) ? 0.0f : 1.0f;
-                    states[i].position = glm::vec4(pbd_anchors_[i], inv_mass);
+                    states[i].position = glm::vec4(gs_terrain_.pbd_anchors[i], inv_mass);
                     states[i].prev_position = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
                     states[i].velocity = glm::vec4(0.0f);
                     states[i].params = glm::vec4(cfg.sway_threshold, 0.0f, 0.0f, 0.0f);
@@ -558,8 +558,8 @@ void AppBase::load_gs_scene(const SceneData& scene_data, const GsSceneOptions& o
 
             // Store cloud bounds for camera centering
             auto cloud_aabb = cloud.bounds();
-            gs_cloud_center_ = (cloud_aabb.min + cloud_aabb.max) * 0.5f;
-            gs_cloud_extent_ = glm::length(cloud_aabb.max - cloud_aabb.min) * 0.5f;
+            gs_terrain_.cloud_center = (cloud_aabb.min + cloud_aabb.max) * 0.5f;
+            gs_terrain_.cloud_extent = glm::length(cloud_aabb.max - cloud_aabb.min) * 0.5f;
 
             // Camera — use terrain config if available, else fit to cloud bounds
             if (scene_data.gaussian_splat) {
@@ -588,17 +588,17 @@ void AppBase::load_gs_scene(const SceneData& scene_data, const GsSceneOptions& o
             std::vector<PointLight> gs_lights;
             for (const auto& pl : scene_data.static_lights) {
                 PointLight t = pl;
-                t.position_and_radius.x += terrain_aabb_.min.x;
-                t.position_and_radius.z += terrain_aabb_.min.y;
+                t.position_and_radius.x += gs_terrain_.terrain_aabb.min.x;
+                t.position_and_radius.z += gs_terrain_.terrain_aabb.min.y;
                 gs_lights.push_back(t);
             }
 
             if (opts.add_default_light && gs_lights.empty()) {
                 PointLight test_light;
-                auto center = terrain_aabb_.center();
-                float r = std::max({terrain_aabb_.max.x - terrain_aabb_.min.x,
-                                    terrain_aabb_.max.y - terrain_aabb_.min.y,
-                                    terrain_aabb_.max.z - terrain_aabb_.min.z}) * 0.5f;
+                auto center = gs_terrain_.terrain_aabb.center();
+                float r = std::max({gs_terrain_.terrain_aabb.max.x - gs_terrain_.terrain_aabb.min.x,
+                                    gs_terrain_.terrain_aabb.max.y - gs_terrain_.terrain_aabb.min.y,
+                                    gs_terrain_.terrain_aabb.max.z - gs_terrain_.terrain_aabb.min.z}) * 0.5f;
                 test_light.position_and_radius = glm::vec4(center.x, center.z, center.y, r);
                 test_light.color = glm::vec4(0.2f, 1.0f, 0.3f, 5.0f);
                 gs_lights.push_back(test_light);
@@ -614,7 +614,7 @@ void AppBase::load_gs_scene(const SceneData& scene_data, const GsSceneOptions& o
             // Emitters (grid→world)
             for (const auto& em : scene_data.gs_particle_emitters) {
                 auto config = em.config;
-                auto world_pos = coord::to_world(coord::GridPos(config.position), terrain_aabb_);
+                auto world_pos = coord::to_world(coord::GridPos(config.position), gs_terrain_.terrain_aabb);
                 config.position = world_pos.vec();
                 renderer_.add_gs_particle_emitter(config);
             }
@@ -622,7 +622,7 @@ void AppBase::load_gs_scene(const SceneData& scene_data, const GsSceneOptions& o
             // Animations (grid→world)
             for (const auto& anim : scene_data.gs_animations) {
                 auto region = anim.region;
-                auto world_center = coord::to_world(coord::GridPos(region.center), terrain_aabb_);
+                auto world_center = coord::to_world(coord::GridPos(region.center), gs_terrain_.terrain_aabb);
                 region.center = world_center.vec();
                 std::optional<Renderer::ReformConfig> reform;
                 if (anim.reform) reform = Renderer::ReformConfig{anim.reform->lifetime};
@@ -637,11 +637,11 @@ void AppBase::load_gs_scene(const SceneData& scene_data, const GsSceneOptions& o
                     renderer_.set_gs_background(bg_tex);
                 }
                 if (feature_flags_.gs_parallax && gs.parallax) {
-                    gs_parallax_camera_.configure(
+                    gs_terrain_.parallax_camera.configure(
                         gs.camera_position, gs.camera_target,
                         gs.camera_fov, gs_w, gs_h, *gs.parallax);
                     set_gs_parallax_active(true);
-                    gs_frame_counter_ = 0;
+                    gs_terrain_.frame_counter = 0;
                     renderer_.set_gs_skip_chunk_cull(true);
                     renderer_.gs_renderer().set_skip_sort(false);
                     auto cam_fwd = glm::normalize(gs.camera_target - gs.camera_position);
@@ -681,7 +681,7 @@ void AppBase::load_gs_scene(const SceneData& scene_data, const GsSceneOptions& o
             auto preset = load_vfx_preset(vi.vfx_file);
             if (preset.elements.empty()) continue;
             VfxInstance inst;
-            auto world_pos = coord::to_world(vi.position, terrain_aabb_);
+            auto world_pos = coord::to_world(vi.position, gs_terrain_.terrain_aabb);
             inst.init(preset, world_pos.vec(), vi.loop, vi.rotation_y);
             renderer_.add_vfx_instance(std::move(inst));
         }
