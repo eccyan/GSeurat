@@ -47,6 +47,7 @@ function BoneProperties() {
   const parts = useCharacterStore((s) => s.characterParts);
   const selectedPart = useCharacterStore((s) => s.selectedPart);
   const updatePartJoint = useCharacterStore((s) => s.updatePartJoint);
+  const autoCenterJoint = useCharacterStore((s) => s.autoCenterJoint);
   const setPartParent = useCharacterStore((s) => s.setPartParent);
 
   const currentPart = parts.find((p) => p.id === selectedPart) ?? null;
@@ -89,6 +90,13 @@ function BoneProperties() {
             />
           </React.Fragment>
         ))}
+        <button
+          style={{ padding: '2px 6px', fontSize: 10, background: '#3a3a5a', color: '#aaa', borderWidth: 1, borderStyle: 'solid', borderColor: '#555', borderRadius: 3, cursor: 'pointer' }}
+          title="Center joint at voxel centroid"
+          onClick={() => autoCenterJoint(currentPart.id)}
+        >
+          Auto
+        </button>
       </div>
 
       <div style={{ color: '#666', fontSize: 10 }}>
@@ -107,6 +115,7 @@ function KeyframeEditor() {
   const addKeyframe = useCharacterStore((s) => s.addKeyframe);
   const removeKeyframe = useCharacterStore((s) => s.removeKeyframe);
   const updateKeyframeEasing = useCharacterStore((s) => s.updateKeyframeEasing);
+  const updateAnimationDuration = useCharacterStore((s) => s.updateAnimationDuration);
   const updatePoseRotation = useCharacterStore((s) => s.updatePoseRotation);
   const addPose = useCharacterStore((s) => s.addPose);
 
@@ -123,8 +132,17 @@ function KeyframeEditor() {
   return (
     <div style={styles.section}>
       <div style={styles.label}>Keyframes: {selectedAnimation}</div>
-      <div style={{ fontSize: 11, color: '#666', marginBottom: 4 }}>
-        Duration: {clip.duration}s | {clip.keyframes.length} keyframes
+      <div style={{ fontSize: 11, color: '#666', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
+        Duration:
+        <input
+          type="number"
+          style={{ width: 50, padding: '1px 4px', background: '#2a2a4a', borderWidth: 1, borderStyle: 'solid', borderColor: '#444', borderRadius: 3, color: '#ddd', fontSize: 11 }}
+          value={clip.duration}
+          step={0.1}
+          min={0.1}
+          onChange={(e) => updateAnimationDuration(selectedAnimation!, Math.max(0.1, Number(e.target.value)))}
+        />
+        s | {clip.keyframes.length} keyframes
       </div>
 
       {/* Add keyframe */}

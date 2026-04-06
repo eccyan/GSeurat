@@ -185,6 +185,9 @@ export interface CharacterStoreState {
   addKeyframe: (animName: string, keyframe: AnimationKeyframe) => void;
   removeKeyframe: (animName: string, index: number) => void;
   updateKeyframeEasing: (animName: string, index: number, easing: import('./types.js').EasingType) => void;
+  updateAnimationDuration: (animName: string, duration: number) => void;
+  updateAnimationPlaybackMode: (animName: string, mode: import('./types.js').PlaybackMode) => void;
+  autoCenterJoint: (partId: string) => void;
   setPlaybackTime: (time: number) => void;
   togglePlayback: () => void;
   setPlaybackSpeed: (speed: number) => void;
@@ -612,6 +615,37 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
     const keyframes = clip.keyframes.map((kf, i) => i === index ? { ...kf, easing } : kf);
     anims[animName] = { ...clip, keyframes };
     set({ animations: anims });
+  },
+
+  updateAnimationDuration: (animName, duration) => {
+    const anims = { ...get().animations };
+    const clip = anims[animName];
+    if (!clip) return;
+    anims[animName] = { ...clip, duration };
+    set({ animations: anims });
+  },
+
+  updateAnimationPlaybackMode: (animName, mode) => {
+    const anims = { ...get().animations };
+    const clip = anims[animName];
+    if (!clip) return;
+    anims[animName] = { ...clip, playbackMode: mode };
+    set({ animations: anims });
+  },
+
+  autoCenterJoint: (partId) => {
+    const { characterParts, voxels } = get();
+    const part = characterParts.find((p) => p.id === partId);
+    if (!part || part.voxelKeys.length === 0) return;
+    let jx = 0, jy = 0, jz = 0;
+    for (const key of part.voxelKeys) {
+      const [x, y, z] = parseKey(key);
+      jx += x; jy += y; jz += z;
+    }
+    const n = part.voxelKeys.length;
+    const joint: [number, number, number] = [Math.round(jx / n), Math.round(jy / n), Math.round(jz / n)];
+    const parts = characterParts.map((p) => p.id === partId ? { ...p, joint } : p);
+    set({ characterParts: parts });
   },
 
   setPlaybackTime: (time) => set({ playbackTime: time }),
