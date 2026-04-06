@@ -1,6 +1,7 @@
 #include "gseurat/engine/app_base.hpp"
 #include "gseurat/engine/gaussian_cloud.hpp"
 #include "gseurat/engine/gs_vfx.hpp"
+#include "gseurat/engine/pbd_types.hpp"
 #include "gseurat/demo/island_components.hpp"
 
 #define GLFW_INCLUDE_VULKAN
@@ -477,6 +478,25 @@ void AppBase::load_gs_scene(const SceneData& scene_data, const GsSceneOptions& o
                                  pbd_anchors_.size(),
                                  31 + static_cast<uint32_t>(pbd_anchors_.size()));
                 }
+            }
+
+            // Upload PBD elements to GS renderer (auto-setup for all scene loads)
+            if (!pbd_anchors_.empty() && pbd_anchors_.size() == pbd_configs_.size()) {
+                uint32_t count = static_cast<uint32_t>(pbd_anchors_.size());
+                std::vector<PbdPhysicsState> states(count);
+                std::vector<PbdElementParams> params(count);
+                for (uint32_t i = 0; i < count; ++i) {
+                    const auto& cfg = pbd_configs_[i];
+                    float inv_mass = (cfg.mode == "physics" && cfg.pinned) ? 0.0f : 1.0f;
+                    states[i].position = glm::vec4(pbd_anchors_[i], inv_mass);
+                    states[i].prev_position = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+                    states[i].velocity = glm::vec4(0.0f);
+                    states[i].params = glm::vec4(cfg.sway_threshold, 0.0f, 0.0f, 0.0f);
+                    params[i].gravity = glm::vec4(cfg.gravity, cfg.damping);
+                    params[i].wind = glm::vec4(cfg.wind_direction, cfg.wind_strength);
+                    params[i].dynamics = glm::vec4(cfg.wind_frequency, cfg.ground_y, cfg.bounce, 0.0f);
+                }
+                renderer_.gs_renderer().upload_pbd_elements(states.data(), params.data(), count);
             }
 
             // Create ECS entities for game objects with components
