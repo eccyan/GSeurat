@@ -137,6 +137,9 @@ public:
     // Command dispatch
     CommandDispatcher& command_dispatcher() { return command_dispatcher_; }
 
+    // Pending character load (set by load_character command, consumed by StagingState)
+    std::string pending_character_path;  // non-empty = load request pending
+
 protected:
     void init_window();
     virtual void init_game_content();

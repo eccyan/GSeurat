@@ -63,6 +63,12 @@ void StagingState::update(AppBase& app, float dt) {
         camera_initialized_ = false;
     }
 
+    // Check for pending character load from bridge command
+    if (!app.pending_character_path.empty()) {
+        load_character(app.pending_character_path, app);
+        app.pending_character_path.clear();
+    }
+
     // Drive GS effect time for PBD wind sway
     anim_time_ += dt;
     app.renderer().gs_renderer().set_effect_time(anim_time_);
@@ -164,6 +170,14 @@ void StagingState::update(AppBase& app, float dt) {
         gs_vp_ = proj_gizmo * view;
     }
 
+    // Update character animation and upload bone transforms
+    if (anim_player_ && anim_playing_) {
+        anim_player_->update(dt * anim_speed_);
+        app.renderer().gs_renderer().upload_bone_transforms(
+            anim_player_->bone_transforms().data(),
+            static_cast<uint32_t>(character_data_->bones.size()));
+    }
+
     // Draw ImGui (hidden with Tab)
     if (!hide_ui_) {
         draw_imgui(app);
@@ -207,6 +221,7 @@ void StagingState::draw_imgui(AppBase& app) {
             ImGui::MenuItem("Lighting", nullptr, &show_lighting_);
             ImGui::MenuItem("Camera", nullptr, &show_camera_);
             ImGui::MenuItem("Performance", nullptr, &show_performance_);
+            ImGui::MenuItem("Character", nullptr, &show_character_);
             ImGui::Separator();
             ImGui::MenuItem("Gizmo: Lights", nullptr, &show_gizmo_lights_);
             ImGui::MenuItem("Gizmo: Emitters", nullptr, &show_gizmo_emitters_);
@@ -224,6 +239,7 @@ void StagingState::draw_imgui(AppBase& app) {
     draw_lighting(app);
     draw_camera_panel(app);
     draw_performance(app);
+    draw_character_panel(app);
     draw_gizmos(app);
 }
 
@@ -775,6 +791,94 @@ void StagingState::draw_gizmos(AppBase& app) {
             dl->AddText(ImVec2(sx + 6, sy - 10), col, label);
         }
     }
+}
+
+void StagingState::load_character(const std::string& manifest_path, AppBase& app) {
+    auto data = load_character_manifest(manifest_path);
+    if (!data) {
+        std::fprintf(stderr, "[Staging] Failed to load character manifest: %s\n", manifest_path.c_str());
+        return;
+    }
+    std::fprintf(stderr, "[Staging] Loaded character '%s' (%zu bones, %zu clips)\n",
+        data->name.c_str(), data->bones.size(), data->clips.size());
+
+    character_data_ = std::move(*data);
+    anim_player_ = std::make_unique<BoneAnimationPlayer>(*character_data_);
+    selected_clip_ = 0;
+    anim_playing_ = false;
+
+    // If there's at least one clip, select it
+    if (!character_data_->clips.empty()) {
+        anim_player_->play(character_data_->clips[0].name);
+    }
+
+    // Clear bone transforms (identity) until animation starts
+    app.renderer().gs_renderer().clear_bone_transforms();
+}
+
+void StagingState::draw_character_panel(AppBase& app) {
+    if (!show_character_) return;
+
+    ImGui::SetNextWindowPos(ImVec2(10, 500), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(ImVec2(280, 200), ImGuiCond_FirstUseEver);
+    if (!ImGui::Begin("Character Animation", &show_character_)) {
+        ImGui::End();
+        return;
+    }
+
+    if (!character_data_) {
+        ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.6f, 1.0f), "No character loaded.");
+        ImGui::TextWrapped("Use 'Preview in Staging' from Echidna, or send load_character command.");
+        ImGui::End();
+        return;
+    }
+
+    ImGui::Text("Character: %s", character_data_->name.c_str());
+    ImGui::Text("Bones: %zu", character_data_->bones.size());
+    ImGui::Separator();
+
+    // Animation clip selection
+    if (!character_data_->clips.empty()) {
+        ImGui::Text("Animation Clips:");
+        for (int i = 0; i < static_cast<int>(character_data_->clips.size()); i++) {
+            const auto& clip = character_data_->clips[i];
+            bool is_selected = (i == selected_clip_);
+            if (ImGui::Selectable(clip.name.c_str(), is_selected)) {
+                selected_clip_ = i;
+                anim_player_->play(clip.name);
+                anim_playing_ = true;
+            }
+        }
+
+        ImGui::Separator();
+
+        // Playback controls
+        if (ImGui::Button(anim_playing_ ? "Pause" : "Play")) {
+            anim_playing_ = !anim_playing_;
+            if (anim_playing_ && anim_player_ && !anim_player_->is_playing()) {
+                if (selected_clip_ >= 0 && selected_clip_ < static_cast<int>(character_data_->clips.size())) {
+                    anim_player_->play(character_data_->clips[selected_clip_].name);
+                }
+            }
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Stop")) {
+            anim_playing_ = false;
+            app.renderer().gs_renderer().clear_bone_transforms();
+        }
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(80);
+        ImGui::SliderFloat("Speed", &anim_speed_, 0.25f, 2.0f, "%.2fx");
+
+        // Show current clip info
+        if (anim_player_ && anim_player_->is_playing()) {
+            ImGui::Text("Playing: %s", anim_player_->current_clip().c_str());
+        }
+    } else {
+        ImGui::TextColored(ImVec4(0.8f, 0.6f, 0.3f, 1.0f), "No animation clips defined.");
+    }
+
+    ImGui::End();
 }
 
 }  // namespace gseurat

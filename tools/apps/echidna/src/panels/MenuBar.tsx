@@ -430,11 +430,35 @@ export function MenuBar() {
         game_objects: [],
       };
 
+      // Upload manifest JSON for animation playback
+      const manifest = buildManifest(
+        charId, charId + '.ply', s.gridWidth,
+        s.characterParts, s.characterPoses, s.animations,
+      );
+      const manifestJson = JSON.stringify(manifest, null, 2);
+      const manifestRes = await fetch(
+        `${BRIDGE_REST_URL}/api/characters/${encodeURIComponent(charId)}/file/${encodeURIComponent(charId + '.manifest.json')}`,
+        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: manifestJson },
+      );
+      let manifestPath = '';
+      if (manifestRes.ok) {
+        const res = await manifestRes.json() as { path: string };
+        manifestPath = res.path;
+      }
+
       // Send load_scene_json to Staging via bridge WebSocket (with 5s timeout)
       await Promise.race([
         sendBridgeCommand({ cmd: 'load_scene_json', json: JSON.stringify(scene) }),
         new Promise((_, reject) => setTimeout(() => reject(new Error('Staging not responding (timed out after 5s)')), 5000)),
       ]);
+
+      // Send load_character to enable animation playback in Staging
+      if (manifestPath) {
+        await Promise.race([
+          sendBridgeCommand({ cmd: 'load_character', path: manifestPath }),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('load_character timed out')), 5000)),
+        ]).catch(() => { /* non-critical — animation just won't be available */ });
+      }
 
       showToast('Character sent to Staging', 'success');
     } catch (err) {

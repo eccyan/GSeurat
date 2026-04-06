@@ -29,6 +29,7 @@ struct CommandContext {
 
     std::function<void(const std::string&)> init_scene;
     std::function<void()> clear_scene;
+    std::function<void(const std::string&)> load_character;  // optional: for staging animation preview
 };
 
 }  // namespace gseurat

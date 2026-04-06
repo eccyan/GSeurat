@@ -361,6 +361,7 @@ CommandContext AppBase::build_command_context() {
         .window = window_,
         .init_scene = [this](const std::string& path) { init_scene(path); },
         .clear_scene = [this]() { clear_scene(); },
+        .load_character = [this](const std::string& path) { pending_character_path = path; },
     };
 }
 
