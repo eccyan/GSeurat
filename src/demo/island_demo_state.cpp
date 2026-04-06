@@ -246,26 +246,28 @@ void IslandDemoState::on_enter(AppBase& app) {
         (void)char_count;
     }
 
-    // Set up PBD solver for tree sway (anchors assigned during scene load)
+    // Set up PBD solver from per-element scene configs (anchors assigned during scene load)
     {
         const auto& anchors = app.pbd_anchors();
-        if (!anchors.empty()) {
+        const auto& configs = app.pbd_configs();
+        if (!anchors.empty() && anchors.size() == configs.size()) {
             uint32_t count = static_cast<uint32_t>(anchors.size());
             std::vector<PbdPhysicsState> states(count);
             std::vector<PbdElementParams> params(count);
             for (uint32_t i = 0; i < count; ++i) {
-                states[i].position = glm::vec4(anchors[i], 1.0f);  // inv_mass=1 (free, for wind sway)
-                states[i].prev_position = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);  // identity quat
+                const auto& cfg = configs[i];
+                float inv_mass = (cfg.mode == "physics" && cfg.pinned) ? 0.0f : 1.0f;
+                states[i].position = glm::vec4(anchors[i], inv_mass);
+                states[i].prev_position = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
                 states[i].velocity = glm::vec4(0.0f);
-                states[i].params = glm::vec4(0.0f);
-                params[i].gravity = glm::vec4(0.0f, 0.0f, 0.0f, 0.98f);  // damping
-                params[i].wind = glm::vec4(1.0f, 0.0f, 0.3f, 0.06f);     // dir + strength
-                params[i].dynamics = glm::vec4(0.8f, -1000.0f, 0.0f, 0.0f);  // freq, ground, bounce
+                states[i].params = glm::vec4(cfg.sway_threshold, 0.0f, 0.0f, 0.0f);
+                params[i].gravity = glm::vec4(cfg.gravity, cfg.damping);
+                params[i].wind = glm::vec4(cfg.wind_direction, cfg.wind_strength);
+                params[i].dynamics = glm::vec4(cfg.wind_frequency, cfg.ground_y, cfg.bounce, 0.0f);
             }
             app.renderer().gs_renderer().upload_pbd_elements(
                 states.data(), params.data(), count);
-            std::fprintf(stderr, "[IslandDemo] PBD tree sway: %zu trees, wind=(1,0,0.3) str=0.06 freq=0.8\n",
-                         anchors.size());
+            std::fprintf(stderr, "[IslandDemo] PBD: %u elements uploaded from scene config\n", count);
         }
     }
 

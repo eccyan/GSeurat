@@ -1040,6 +1040,113 @@ console.log('\n--- Large grid and edge cases ---\n');
   assert(loaded.placedObjects[0].ply_file === 'test.ply', 'object preserved');
 }
 
+// ── Section 9: PBD Config on Game Objects ──
+
+console.log('\n--- Section 9: PBD Config ---');
+
+interface PbdConstraintRef {
+  target: string;
+  rest_length: number;
+  stiffness: number;
+}
+
+interface PbdConfig {
+  mode: 'wind_sway' | 'physics';
+  sway_threshold: number;
+  wind_direction: [number, number, number];
+  wind_strength: number;
+  wind_frequency: number;
+  gravity: [number, number, number];
+  damping: number;
+  ground_y: number;
+  bounce: number;
+  pinned: boolean;
+  constraints: PbdConstraintRef[];
+}
+
+interface GameObjectWithPbd {
+  id: string;
+  name: string;
+  position: [number, number, number];
+  rotation: [number, number, number];
+  scale: number;
+  ply_file: string;
+  components: Record<string, Record<string, unknown>>;
+  pbd?: PbdConfig;
+}
+
+{
+  console.log('Test 9.1: Game object with wind_sway PBD serializes correctly');
+  const go: GameObjectWithPbd = {
+    id: 'tree_1', name: 'Tree', position: [10, 0, 5], rotation: [0, 0, 0], scale: 1.5,
+    ply_file: 'tree.ply', components: {},
+    pbd: {
+      mode: 'wind_sway', sway_threshold: 0.6, wind_direction: [1, 0, 0.3],
+      wind_strength: 0.08, wind_frequency: 1.2,
+      gravity: [0, -9.8, 0], damping: 0.98, ground_y: -1000, bounce: 0.3,
+      pinned: false, constraints: [],
+    },
+  };
+  const json = JSON.parse(JSON.stringify(go));
+  assert(json.pbd !== undefined, 'pbd present in JSON');
+  assert(json.pbd.mode === 'wind_sway', 'mode preserved');
+  assert(json.pbd.sway_threshold === 0.6, 'sway_threshold preserved');
+  assert(json.pbd.wind_direction[2] === 0.3, 'wind_direction.z preserved');
+  assert(json.pbd.wind_strength === 0.08, 'wind_strength preserved');
+  assert(json.pbd.wind_frequency === 1.2, 'wind_frequency preserved');
+}
+
+{
+  console.log('Test 9.2: Game object with physics PBD + constraints');
+  const go: GameObjectWithPbd = {
+    id: 'chain_1', name: 'Chain', position: [5, 10, 0], rotation: [0, 0, 0], scale: 1,
+    ply_file: 'link.ply', components: {},
+    pbd: {
+      mode: 'physics', sway_threshold: 0.7, wind_direction: [1, 0, 0],
+      wind_strength: 0, wind_frequency: 0,
+      gravity: [0, -5, 0], damping: 0.95, ground_y: 0, bounce: 0.5,
+      pinned: true, constraints: [{ target: 'chain_2', rest_length: 3, stiffness: 0.9 }],
+    },
+  };
+  const json = JSON.parse(JSON.stringify(go));
+  assert(json.pbd.mode === 'physics', 'physics mode preserved');
+  assert(json.pbd.gravity[1] === -5, 'gravity.y preserved');
+  assert(json.pbd.damping === 0.95, 'damping preserved');
+  assert(json.pbd.pinned === true, 'pinned preserved');
+  assert(json.pbd.constraints.length === 1, '1 constraint');
+  assert(json.pbd.constraints[0].target === 'chain_2', 'constraint target preserved');
+  assert(json.pbd.constraints[0].rest_length === 3, 'constraint rest_length preserved');
+  assert(json.pbd.constraints[0].stiffness === 0.9, 'constraint stiffness preserved');
+}
+
+{
+  console.log('Test 9.3: Game object without PBD has no pbd field');
+  const go: GameObjectWithPbd = {
+    id: 'rock_1', name: 'Rock', position: [0, 0, 0], rotation: [0, 0, 0], scale: 1,
+    ply_file: '', components: {},
+  };
+  const json = JSON.parse(JSON.stringify(go));
+  assert(json.pbd === undefined, 'no pbd field when undefined');
+}
+
+{
+  console.log('Test 9.4: PBD config round-trip through JSON preserves all fields');
+  const pbd: PbdConfig = {
+    mode: 'wind_sway', sway_threshold: 0.65, wind_direction: [0.5, 0, 0.5],
+    wind_strength: 0.1, wind_frequency: 2.0,
+    gravity: [0, -9.8, 0], damping: 0.98, ground_y: -1000, bounce: 0.3,
+    pinned: false, constraints: [],
+  };
+  const rt: PbdConfig = JSON.parse(JSON.stringify(pbd));
+  assert(rt.mode === pbd.mode, 'mode round-trips');
+  assert(rt.sway_threshold === pbd.sway_threshold, 'sway_threshold round-trips');
+  assert(rt.wind_direction[0] === pbd.wind_direction[0], 'wind_direction round-trips');
+  assert(rt.wind_strength === pbd.wind_strength, 'wind_strength round-trips');
+  assert(rt.wind_frequency === pbd.wind_frequency, 'wind_frequency round-trips');
+  assert(rt.pinned === pbd.pinned, 'pinned round-trips');
+  assert(rt.constraints.length === pbd.constraints.length, 'constraints round-trips');
+}
+
 // --- Summary ---
 console.log(`\n${'='.repeat(40)}`);
 console.log(`  ${passed} passed, ${failed} failed`);

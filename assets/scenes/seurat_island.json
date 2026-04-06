@@ -18,8 +18,16 @@
     "render_width": 1280,
     "render_height": 720,
     "scale_multiplier": 0.8,
-    "ground_color": [0.48, 0.46, 0.38],
-    "sky_color": [0.55, 0.60, 0.68]
+    "ground_color": [
+      0.48,
+      0.46,
+      0.38
+    ],
+    "sky_color": [
+      0.55,
+      0.6,
+      0.68
+    ]
   },
   "collision": {
     "width": 192,
@@ -73818,7 +73826,18 @@
         0
       ],
       "scale": 1.56,
-      "components": {}
+      "components": {},
+      "pbd": {
+        "mode": "wind_sway",
+        "sway_threshold": 0.7,
+        "wind_direction": [
+          1,
+          0,
+          0.3
+        ],
+        "wind_strength": 0.06,
+        "wind_frequency": 0.8
+      }
     },
     {
       "id": "tree_2",
@@ -73835,7 +73854,18 @@
         0
       ],
       "scale": 2.36,
-      "components": {}
+      "components": {},
+      "pbd": {
+        "mode": "wind_sway",
+        "sway_threshold": 0.7,
+        "wind_direction": [
+          1,
+          0,
+          0.3
+        ],
+        "wind_strength": 0.06,
+        "wind_frequency": 0.8
+      }
     },
     {
       "id": "tree_3",
@@ -73852,7 +73882,18 @@
         0
       ],
       "scale": 2.4,
-      "components": {}
+      "components": {},
+      "pbd": {
+        "mode": "wind_sway",
+        "sway_threshold": 0.7,
+        "wind_direction": [
+          1,
+          0,
+          0.3
+        ],
+        "wind_strength": 0.06,
+        "wind_frequency": 0.8
+      }
     },
     {
       "id": "tree_4",
@@ -73869,7 +73910,18 @@
         0
       ],
       "scale": 1.91,
-      "components": {}
+      "components": {},
+      "pbd": {
+        "mode": "wind_sway",
+        "sway_threshold": 0.7,
+        "wind_direction": [
+          1,
+          0,
+          0.3
+        ],
+        "wind_strength": 0.06,
+        "wind_frequency": 0.8
+      }
     },
     {
       "id": "tree_5",
@@ -73886,7 +73938,18 @@
         0
       ],
       "scale": 2.15,
-      "components": {}
+      "components": {},
+      "pbd": {
+        "mode": "wind_sway",
+        "sway_threshold": 0.7,
+        "wind_direction": [
+          1,
+          0,
+          0.3
+        ],
+        "wind_strength": 0.06,
+        "wind_frequency": 0.8
+      }
     },
     {
       "id": "tree_6",
@@ -73903,7 +73966,18 @@
         0
       ],
       "scale": 2.07,
-      "components": {}
+      "components": {},
+      "pbd": {
+        "mode": "wind_sway",
+        "sway_threshold": 0.7,
+        "wind_direction": [
+          1,
+          0,
+          0.3
+        ],
+        "wind_strength": 0.06,
+        "wind_frequency": 0.8
+      }
     },
     {
       "id": "tree_7",
@@ -73920,7 +73994,18 @@
         0
       ],
       "scale": 1.55,
-      "components": {}
+      "components": {},
+      "pbd": {
+        "mode": "wind_sway",
+        "sway_threshold": 0.7,
+        "wind_direction": [
+          1,
+          0,
+          0.3
+        ],
+        "wind_strength": 0.06,
+        "wind_frequency": 0.8
+      }
     },
     {
       "id": "tree_8",
@@ -73937,7 +74022,18 @@
         0
       ],
       "scale": 2.21,
-      "components": {}
+      "components": {},
+      "pbd": {
+        "mode": "wind_sway",
+        "sway_threshold": 0.7,
+        "wind_direction": [
+          1,
+          0,
+          0.3
+        ],
+        "wind_strength": 0.06,
+        "wind_frequency": 0.8
+      }
     },
     {
       "id": "tree_9",
@@ -73954,7 +74050,18 @@
         0
       ],
       "scale": 2.21,
-      "components": {}
+      "components": {},
+      "pbd": {
+        "mode": "wind_sway",
+        "sway_threshold": 0.7,
+        "wind_direction": [
+          1,
+          0,
+          0.3
+        ],
+        "wind_strength": 0.06,
+        "wind_frequency": 0.8
+      }
     },
     {
       "id": "tree_10",
@@ -73971,7 +74078,18 @@
         0
       ],
       "scale": 2.24,
-      "components": {}
+      "components": {},
+      "pbd": {
+        "mode": "wind_sway",
+        "sway_threshold": 0.7,
+        "wind_direction": [
+          1,
+          0,
+          0.3
+        ],
+        "wind_strength": 0.06,
+        "wind_frequency": 0.8
+      }
     },
     {
       "id": "tree_11",
@@ -73988,7 +74106,18 @@
         0
       ],
       "scale": 2.0,
-      "components": {}
+      "components": {},
+      "pbd": {
+        "mode": "wind_sway",
+        "sway_threshold": 0.7,
+        "wind_direction": [
+          1,
+          0,
+          0.3
+        ],
+        "wind_strength": 0.06,
+        "wind_frequency": 0.8
+      }
     },
     {
       "id": "tree_12",
@@ -74005,7 +74134,18 @@
         0
       ],
       "scale": 2.43,
-      "components": {}
+      "components": {},
+      "pbd": {
+        "mode": "wind_sway",
+        "sway_threshold": 0.7,
+        "wind_direction": [
+          1,
+          0,
+          0.3
+        ],
+        "wind_strength": 0.06,
+        "wind_frequency": 0.8
+      }
     },
     {
       "id": "rock_1",

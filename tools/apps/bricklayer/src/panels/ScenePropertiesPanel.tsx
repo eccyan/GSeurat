@@ -7,6 +7,7 @@ import type {
   PortalData,
   PlayerData,
   GameObjectData,
+  PbdConfig,
   ComponentSchema,
   ComponentFieldSchema,
   GsParticleEmitterData,
@@ -16,6 +17,20 @@ import type {
 import { panelStyles } from '../styles/panel.js';
 
 const styles = { ...panelStyles };
+
+const defaultPbdConfig: PbdConfig = {
+  mode: 'wind_sway',
+  sway_threshold: 0.7,
+  wind_direction: [1, 0, 0],
+  wind_strength: 0.06,
+  wind_frequency: 0.8,
+  gravity: [0, -9.8, 0],
+  damping: 0.98,
+  ground_y: -1000,
+  bounce: 0.3,
+  pinned: false,
+  constraints: [],
+};
 
 const facings = ['up', 'down', 'left', 'right'];
 
@@ -213,6 +228,120 @@ function GameObjectProperties({ obj }: { obj: GameObjectData }) {
           style={{ ...styles.input, maxWidth: 80 }}
         />
       </div>
+
+      {/* PBD Physics */}
+      {obj.ply_file && (
+        <div style={{ ...styles.section, marginTop: 16 }}>
+          <div style={{ ...styles.row, marginBottom: 8 }}>
+            <span style={{ ...styles.label, flex: 1 }}>PBD Physics</span>
+            <select
+              style={{ ...styles.select, maxWidth: 120 }}
+              value={obj.pbd?.mode ?? 'none'}
+              onChange={(e) => {
+                const mode = e.target.value;
+                if (mode === 'none') {
+                  update(obj.id, { pbd: undefined });
+                } else {
+                  update(obj.id, {
+                    pbd: { ...defaultPbdConfig, mode: mode as 'wind_sway' | 'physics' },
+                  });
+                }
+              }}
+            >
+              <option value="none">None</option>
+              <option value="wind_sway">Wind Sway</option>
+              <option value="physics">Physics</option>
+            </select>
+          </div>
+
+          {obj.pbd?.mode === 'wind_sway' && (
+            <>
+              <div style={styles.section}>
+                <span style={styles.label}>Sway Threshold</span>
+                <NumberInput
+                  step={0.05}
+                  value={obj.pbd.sway_threshold}
+                  onChange={(v) => update(obj.id, { pbd: { ...obj.pbd!, sway_threshold: v } })}
+                  style={{ ...styles.input, maxWidth: 80 }}
+                />
+              </div>
+              <div style={styles.section}>
+                <span style={styles.label}>Wind Direction</span>
+                <Vec3Input
+                  value={obj.pbd.wind_direction}
+                  onChange={(v) => update(obj.id, { pbd: { ...obj.pbd!, wind_direction: v } })}
+                />
+              </div>
+              <div style={styles.section}>
+                <span style={styles.label}>Wind Strength</span>
+                <NumberInput
+                  step={0.01}
+                  value={obj.pbd.wind_strength}
+                  onChange={(v) => update(obj.id, { pbd: { ...obj.pbd!, wind_strength: v } })}
+                  style={{ ...styles.input, maxWidth: 80 }}
+                />
+              </div>
+              <div style={styles.section}>
+                <span style={styles.label}>Wind Frequency</span>
+                <NumberInput
+                  step={0.1}
+                  value={obj.pbd.wind_frequency}
+                  onChange={(v) => update(obj.id, { pbd: { ...obj.pbd!, wind_frequency: v } })}
+                  style={{ ...styles.input, maxWidth: 80 }}
+                />
+              </div>
+            </>
+          )}
+
+          {obj.pbd?.mode === 'physics' && (
+            <>
+              <div style={styles.section}>
+                <span style={styles.label}>Gravity</span>
+                <Vec3Input
+                  value={obj.pbd.gravity}
+                  onChange={(v) => update(obj.id, { pbd: { ...obj.pbd!, gravity: v } })}
+                />
+              </div>
+              <div style={styles.section}>
+                <span style={styles.label}>Damping</span>
+                <NumberInput
+                  step={0.01}
+                  value={obj.pbd.damping}
+                  onChange={(v) => update(obj.id, { pbd: { ...obj.pbd!, damping: v } })}
+                  style={{ ...styles.input, maxWidth: 80 }}
+                />
+              </div>
+              <div style={styles.section}>
+                <span style={styles.label}>Ground Y</span>
+                <NumberInput
+                  step={1}
+                  value={obj.pbd.ground_y}
+                  onChange={(v) => update(obj.id, { pbd: { ...obj.pbd!, ground_y: v } })}
+                  style={{ ...styles.input, maxWidth: 80 }}
+                />
+              </div>
+              <div style={styles.section}>
+                <span style={styles.label}>Bounce</span>
+                <NumberInput
+                  step={0.05}
+                  value={obj.pbd.bounce}
+                  onChange={(v) => update(obj.id, { pbd: { ...obj.pbd!, bounce: v } })}
+                  style={{ ...styles.input, maxWidth: 80 }}
+                />
+              </div>
+              <div style={styles.section}>
+                <span style={styles.label}>
+                  <input
+                    type="checkbox"
+                    checked={obj.pbd.pinned}
+                    onChange={(e) => update(obj.id, { pbd: { ...obj.pbd!, pinned: e.target.checked } })}
+                  />{' '}Pinned
+                </span>
+              </div>
+            </>
+          )}
+        </div>
+      )}
 
       {/* Components */}
       <div style={{ ...styles.section, marginTop: 16 }}>

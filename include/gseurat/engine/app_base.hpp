@@ -206,9 +206,11 @@ protected:
     // PBD anchor positions assigned during game object merge (tree sway, etc.)
     // Index in vector = pbd element index (bone_idx 32 + i)
     std::vector<glm::vec3> pbd_anchors_;
+    std::vector<PbdConfig> pbd_configs_;
 public:
     const std::vector<GameObjectData>& scene_game_objects() const { return scene_game_object_data_; }
     const std::vector<glm::vec3>& pbd_anchors() const { return pbd_anchors_; }
+    const std::vector<PbdConfig>& pbd_configs() const { return pbd_configs_; }
     glm::vec2 gs_aabb_offset() const { return gs_aabb_offset_; }
 protected:
     std::vector<PointLight> static_lights_;

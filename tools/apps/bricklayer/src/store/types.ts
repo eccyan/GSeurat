@@ -39,6 +39,26 @@ export interface ComponentSchema {
   fields: ComponentFieldSchema[];
 }
 
+export interface PbdConstraintRef {
+  target: string;
+  rest_length: number;
+  stiffness: number;
+}
+
+export interface PbdConfig {
+  mode: 'wind_sway' | 'physics';
+  sway_threshold: number;
+  wind_direction: [number, number, number];
+  wind_strength: number;
+  wind_frequency: number;
+  gravity: [number, number, number];
+  damping: number;
+  ground_y: number;
+  bounce: number;
+  pinned: boolean;
+  constraints: PbdConstraintRef[];
+}
+
 export interface GameObjectData {
   id: string;
   name: string;
@@ -47,6 +67,7 @@ export interface GameObjectData {
   scale: number;
   ply_file: string;
   components: Record<string, Record<string, unknown>>;
+  pbd?: PbdConfig;
 }
 
 export interface PortalData {
