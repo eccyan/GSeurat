@@ -756,9 +756,9 @@ void StagingState::draw_gizmos(AppBase& app) {
         for (size_t i = 0; i < game_objects.size(); i++) {
             const auto& go = game_objects[i];
             // Game object PLYs are merged at raw world coords (no AABB offset)
-            glm::vec3 pos(go.position.x,
-                          go.position.y,
-                          go.position.z);
+            glm::vec3 pos(go.position.x(),
+                          go.position.y(),
+                          go.position.z());
             float sx, sy;
             if (!project_to_screen(pos, vp, sw, sh, sx, sy)) continue;
 

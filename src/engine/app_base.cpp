@@ -389,14 +389,15 @@ void AppBase::load_gs_scene(const SceneData& scene_data, const GsSceneOptions& o
             renderer_.gs_renderer().set_scale_multiplier(gs_scale_multiplier);
         }
 
-        // Compute terrain AABB offset (grid-to-world coordinate mapping)
+        // Compute terrain AABB (grid-to-world coordinate mapping)
         // Bricklayer uses 0-based grid coordinates, but the terrain PLY may have
-        // a different origin (e.g., centered at X=0). The AABB min XZ provides
-        // the offset to convert grid coordinates to PLY world coordinates.
-        terrain_aabb_min_ = glm::vec3(0.0f);
+        // a different origin (e.g., centered at X=0). The AABB provides
+        // the context to convert grid coordinates to PLY world coordinates.
+        terrain_aabb_ = AABB{};
+        terrain_aabb_.min = glm::vec3(0.0f);
+        terrain_aabb_.max = glm::vec3(0.0f);
         if (has_terrain) {
-            auto terrain_aabb = cloud.bounds();
-            terrain_aabb_min_ = terrain_aabb.min;
+            terrain_aabb_ = cloud.bounds();
         }
 
         // Snap game object positions to terrain elevation (in grid coordinates)
@@ -405,24 +406,25 @@ void AppBase::load_gs_scene(const SceneData& scene_data, const GsSceneOptions& o
             const auto& grid = *scene_data.collision;
             if (grid.width > 0 && !grid.elevation.empty()) {
                 for (auto& go : snapped_objects) {
-                    int gx = static_cast<int>(go.position.x / grid.cell_size);
-                    int gz = static_cast<int>(go.position.z / grid.cell_size);
+                    int gx = static_cast<int>(go.position.x() / grid.cell_size);
+                    int gz = static_cast<int>(go.position.z() / grid.cell_size);
                     if (gx >= 0 && gx < static_cast<int>(grid.width) &&
                         gz >= 0 && gz < static_cast<int>(grid.height)) {
-                        go.position.y = grid.get_elevation(
+                        go.position.vec().y = grid.get_elevation(
                             static_cast<uint32_t>(gx), static_cast<uint32_t>(gz));
                     }
                 }
             }
         }
 
-        // Apply terrain AABB offset to convert grid coords → world coords
-        if (has_terrain) {
-            for (auto& go : snapped_objects) {
-                go.position += terrain_aabb_min_;
-            }
-        }
+        // Convert grid positions to world positions via coord::to_world()
         scene_game_object_data_ = snapped_objects;
+
+        std::vector<coord::WorldPos> world_positions;
+        world_positions.reserve(snapped_objects.size());
+        for (const auto& go : snapped_objects) {
+            world_positions.push_back(coord::to_world(go.position, terrain_aabb_));
+        }
 
         // Merge all game objects with PLY visuals into the GS cloud
         pbd_anchors_.clear();
@@ -430,7 +432,8 @@ void AppBase::load_gs_scene(const SceneData& scene_data, const GsSceneOptions& o
             {
                 auto merged = cloud.gaussians();
                 uint32_t merged_count = 0;
-                for (const auto& go : snapped_objects) {
+                for (size_t i = 0; i < snapped_objects.size(); ++i) {
+                    const auto& go = snapped_objects[i];
                     if (go.ply_file.empty()) continue;
                     try {
                         auto placed_cloud = GaussianCloud::load_ply(go.ply_file);
@@ -447,7 +450,7 @@ void AppBase::load_gs_scene(const SceneData& scene_data, const GsSceneOptions& o
                         local_center.y = local_min.y;  // pivot at bottom, not center Y
                         float local_min_y = local_min.y;
                         float local_max_y = local_max.y;
-                        glm::vec3 adjusted_pos = go.position;
+                        glm::vec3 adjusted_pos = world_positions[i].vec();
                         // Build transform: translate to position, rotate, scale, then center the model
                         auto transform = glm::translate(glm::mat4(1.0f), adjusted_pos);
                         transform = glm::rotate(transform, glm::radians(go.rotation.x), {1,0,0});
@@ -507,10 +510,11 @@ void AppBase::load_gs_scene(const SceneData& scene_data, const GsSceneOptions& o
             }
 
             // Create ECS entities for game objects with components
-            for (const auto& go : snapped_objects) {
+            for (size_t i = 0; i < snapped_objects.size(); ++i) {
+                const auto& go = snapped_objects[i];
                 if (go.components.empty() || go.components.is_null()) continue;
                 auto entity = world_.create();
-                world_.add<ecs::Transform>(entity, {{go.position}, {go.scale, go.scale}});
+                world_.add<ecs::Transform>(entity, {world_positions[i], {go.scale, go.scale}});
                 for (auto& [name, data] : go.components.items()) {
                     component_registry_.attach(world_, entity, name, data);
                 }
@@ -580,22 +584,20 @@ void AppBase::load_gs_scene(const SceneData& scene_data, const GsSceneOptions& o
             }
 
             // Transform lights with AABB offset
-            auto aabb = cloud.bounds();
-            gs_aabb_offset_ = glm::vec2(aabb.min.x, aabb.min.y);
-
             std::vector<PointLight> gs_lights;
             for (const auto& pl : scene_data.static_lights) {
                 PointLight t = pl;
-                t.position_and_radius.x += aabb.min.x;
-                t.position_and_radius.z += aabb.min.y;
+                t.position_and_radius.x += terrain_aabb_.min.x;
+                t.position_and_radius.z += terrain_aabb_.min.y;
                 gs_lights.push_back(t);
             }
 
             if (opts.add_default_light && gs_lights.empty()) {
                 PointLight test_light;
-                auto center = aabb.center();
-                float r = std::max({aabb.max.x - aabb.min.x, aabb.max.y - aabb.min.y,
-                                    aabb.max.z - aabb.min.z}) * 0.5f;
+                auto center = terrain_aabb_.center();
+                float r = std::max({terrain_aabb_.max.x - terrain_aabb_.min.x,
+                                    terrain_aabb_.max.y - terrain_aabb_.min.y,
+                                    terrain_aabb_.max.z - terrain_aabb_.min.z}) * 0.5f;
                 test_light.position_and_radius = glm::vec4(center.x, center.z, center.y, r);
                 test_light.color = glm::vec4(0.2f, 1.0f, 0.3f, 5.0f);
                 gs_lights.push_back(test_light);
@@ -608,19 +610,19 @@ void AppBase::load_gs_scene(const SceneData& scene_data, const GsSceneOptions& o
                 if (opts.set_god_rays) renderer_.set_god_rays_intensity(1.0f);
             }
 
-            // Emitters (AABB offset)
+            // Emitters (grid→world)
             for (const auto& em : scene_data.gs_particle_emitters) {
                 auto config = em.config;
-                config.position.x += aabb.min.x;
-                config.position.y += aabb.min.y;
+                auto world_pos = coord::to_world(coord::GridPos(config.position), terrain_aabb_);
+                config.position = world_pos.vec();
                 renderer_.add_gs_particle_emitter(config);
             }
 
-            // Animations (AABB offset)
+            // Animations (grid→world)
             for (const auto& anim : scene_data.gs_animations) {
                 auto region = anim.region;
-                region.center.x += aabb.min.x;
-                region.center.y += aabb.min.y;
+                auto world_center = coord::to_world(coord::GridPos(region.center), terrain_aabb_);
+                region.center = world_center.vec();
                 std::optional<Renderer::ReformConfig> reform;
                 if (anim.reform) reform = Renderer::ReformConfig{anim.reform->lifetime};
                 renderer_.add_gs_animation(anim.effect, region, anim.lifetime, anim.loop, anim.params, reform);
@@ -678,10 +680,8 @@ void AppBase::load_gs_scene(const SceneData& scene_data, const GsSceneOptions& o
             auto preset = load_vfx_preset(vi.vfx_file);
             if (preset.elements.empty()) continue;
             VfxInstance inst;
-            auto pos = vi.position;
-            pos.x += gs_aabb_offset_.x;
-            pos.y += gs_aabb_offset_.y;
-            inst.init(preset, pos, vi.loop, vi.rotation_y);
+            auto world_pos = coord::to_world(vi.position, terrain_aabb_);
+            inst.init(preset, world_pos.vec(), vi.loop, vi.rotation_y);
             renderer_.add_vfx_instance(std::move(inst));
         }
     }
@@ -947,8 +947,8 @@ void AppBase::dispatch_command(const nlohmann::json& cmd, nlohmann::json& respon
                 std::vector<PointLight> gs_lights;
                 for (const auto& pl : scene_data.static_lights) {
                     PointLight t = pl;
-                    t.position_and_radius.x += gs_aabb_offset_.x;
-                    t.position_and_radius.z += gs_aabb_offset_.y;
+                    t.position_and_radius.x += terrain_aabb_.min.x;
+                    t.position_and_radius.z += terrain_aabb_.min.y;
                     gs_lights.push_back(t);
                 }
                 if (!gs_lights.empty()) {
@@ -967,8 +967,8 @@ void AppBase::dispatch_command(const nlohmann::json& cmd, nlohmann::json& respon
                 renderer_.clear_gs_particle_emitters();
                 for (const auto& em : scene_data.gs_particle_emitters) {
                     auto config = em.config;
-                    config.position.x += gs_aabb_offset_.x;
-                    config.position.y += gs_aabb_offset_.y;
+                    auto world_pos = coord::to_world(coord::GridPos(config.position), terrain_aabb_);
+                    config.position = world_pos.vec();
                     renderer_.add_gs_particle_emitter(config);
                 }
 
@@ -976,8 +976,8 @@ void AppBase::dispatch_command(const nlohmann::json& cmd, nlohmann::json& respon
                 renderer_.clear_gs_animations();
                 for (const auto& anim : scene_data.gs_animations) {
                     auto region = anim.region;
-                    region.center.x += gs_aabb_offset_.x;
-                    region.center.y += gs_aabb_offset_.y;
+                    auto world_center = coord::to_world(coord::GridPos(region.center), terrain_aabb_);
+                    region.center = world_center.vec();
                     std::optional<Renderer::ReformConfig> reform;
                     if (anim.reform) reform = Renderer::ReformConfig{anim.reform->lifetime};
                     renderer_.add_gs_animation(anim.effect, region, anim.lifetime, anim.loop, anim.params, reform);
@@ -990,26 +990,27 @@ void AppBase::dispatch_command(const nlohmann::json& cmd, nlohmann::json& respon
                     auto preset = load_vfx_preset(vi.vfx_file);
                     if (preset.elements.empty()) continue;
                     VfxInstance inst;
-                    auto pos = vi.position;
-                    pos.x += gs_aabb_offset_.x;
-                    pos.y += gs_aabb_offset_.y;
-                    inst.init(preset, pos, vi.loop, vi.rotation_y);
+                    auto world_pos = coord::to_world(vi.position, terrain_aabb_);
+                    inst.init(preset, world_pos.vec(), vi.loop, vi.rotation_y);
                     renderer_.add_vfx_instance(std::move(inst));
                 }
 
-                // Update stored game object data with AABB offset for gizmo rendering
+                // Update stored game object data with world positions for gizmo rendering
                 {
-                    auto adjusted_objects = scene_data.game_objects;
-                    for (auto& go : adjusted_objects) {
-                        go.position += terrain_aabb_min_;
+                    scene_game_object_data_ = scene_data.game_objects;
+
+                    std::vector<coord::WorldPos> world_positions;
+                    world_positions.reserve(scene_data.game_objects.size());
+                    for (const auto& go : scene_data.game_objects) {
+                        world_positions.push_back(coord::to_world(go.position, terrain_aabb_));
                     }
-                    scene_game_object_data_ = adjusted_objects;
 
                     // Rebuild game object ECS entities (non-static only)
-                    for (const auto& go : adjusted_objects) {
+                    for (size_t i = 0; i < scene_data.game_objects.size(); ++i) {
+                        const auto& go = scene_data.game_objects[i];
                         if (go.components.empty() || go.components.is_null()) continue;
                         auto entity = world_.create();
-                        world_.add<ecs::Transform>(entity, {{go.position}, {go.scale, go.scale}});
+                        world_.add<ecs::Transform>(entity, {world_positions[i], {go.scale, go.scale}});
                         for (auto& [name, data] : go.components.items()) {
                             component_registry_.attach(world_, entity, name, data);
                         }
@@ -1036,9 +1037,9 @@ void AppBase::dispatch_command(const nlohmann::json& cmd, nlohmann::json& respon
                 if (vi_arr[i].contains("position")) {
                     auto pos = vi_arr[i]["position"];
                     glm::vec3 new_pos{pos[0].get<float>(), pos[1].get<float>(), pos[2].get<float>()};
-                    // Apply voxel→world coordinate transform (same as init_scene)
-                    new_pos.x += gs_aabb_offset_.x;
-                    new_pos.y += gs_aabb_offset_.y;
+                    // Apply grid→world coordinate transform (same as init_scene)
+                    auto world_pos = coord::to_world(coord::GridPos(new_pos), terrain_aabb_);
+                    new_pos = world_pos.vec();
                     auto preset = vfx[i].preset();
                     vfx[i].init(preset, new_pos, true);
                 }
@@ -1110,7 +1111,7 @@ void AppBase::dispatch_command(const nlohmann::json& cmd, nlohmann::json& respon
         bool found = false;
         world_.view<ecs::Transform, PlayerController>().each(
             [&](ecs::Entity, ecs::Transform& t, PlayerController&) {
-                response["position"] = {t.position.x, t.position.y, t.position.z};
+                response["position"] = {t.position.x(), t.position.y(), t.position.z()};
                 found = true;
             });
         if (!found) {
@@ -1123,9 +1124,9 @@ void AppBase::dispatch_command(const nlohmann::json& cmd, nlohmann::json& respon
         world_.view<ProximityTrigger, ecs::Transform>().each(
             [&](ecs::Entity, ProximityTrigger& pt, ecs::Transform& t) {
                 nlohmann::json tj;
-                tj["x"] = t.position.x;
-                tj["y"] = t.position.y;
-                tj["z"] = t.position.z;
+                tj["x"] = t.position.x();
+                tj["y"] = t.position.y();
+                tj["z"] = t.position.z();
                 tj["radius"] = pt.radius;
                 tj["triggered"] = pt.triggered;
                 tj["one_shot"] = pt.one_shot;

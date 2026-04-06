@@ -9,6 +9,7 @@
 #include "gseurat/engine/minimap.hpp"
 #include "gseurat/engine/particle.hpp"
 #include "gseurat/engine/tilemap.hpp"
+#include "gseurat/engine/coordinate.hpp"
 #include "gseurat/engine/types.hpp"
 
 #include <glm/glm.hpp>
@@ -43,7 +44,7 @@ struct PbdConfig {
 struct GameObjectData {
     std::string id;
     std::string name;
-    glm::vec3 position{0.0f};
+    coord::GridPos position;
     glm::vec3 rotation{0.0f};         // euler angles in degrees
     float scale = 1.0f;
     std::string ply_file;              // optional PLY visual
@@ -116,10 +117,10 @@ struct GsAnimationData {
 };
 
 struct PortalData {
-    glm::vec3 position{0.0f};
+    coord::GridPos position;
     glm::vec2 size{1.0f};
     std::string target_scene;
-    glm::vec3 spawn_position{0.0f};
+    coord::GridPos spawn_position;
     Direction spawn_facing = Direction::Down;
 };
 
@@ -136,7 +137,7 @@ struct SceneData {
     WeatherData weather;
 
     // Player
-    glm::vec3 player_position{0.0f};
+    coord::GridPos player_position;
     glm::vec4 player_tint{1.0f};
     Direction player_facing = Direction::Down;
     std::string player_character_id;  // empty = use hardcoded anim setup
@@ -156,7 +157,7 @@ struct SceneData {
     // VFX instances (Méliès presets placed at map positions)
     struct VfxInstanceRef {
         std::string vfx_file;
-        glm::vec3 position{0.0f};
+        coord::GridPos position;
         float rotation_y = 0.0f;
         float radius = 5.0f;
         std::string trigger = "auto";

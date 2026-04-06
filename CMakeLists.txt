@@ -172,6 +172,7 @@ add_library(gseurat_core OBJECT
     src/engine/gs_animator.cpp
     src/engine/gs_vfx.cpp
     src/engine/gs_spline.cpp
+    src/engine/coordinate.cpp
     src/engine/component_registry.cpp
     src/engine/system_scheduler.cpp
     src/character/character_manifest.cpp
@@ -289,10 +290,11 @@ add_gseurat_test(test_gs_particle    src/engine/gs_particle.cpp src/engine/gs_an
 add_gseurat_test(test_scene_loading  src/engine/scene_loader.cpp src/engine/tilemap.cpp
                                       src/engine/gs_particle.cpp src/engine/gs_animator.cpp
                                       src/engine/gaussian_cloud.cpp src/engine/gs_vfx.cpp
-                                      src/engine/gs_spline.cpp)
+                                      src/engine/gs_spline.cpp src/engine/coordinate.cpp)
 add_gseurat_test(test_incremental_sync src/engine/scene_loader.cpp src/engine/tilemap.cpp
                                         src/engine/gaussian_cloud.cpp src/engine/gs_particle.cpp
-                                        src/engine/gs_animator.cpp src/engine/gs_spline.cpp)
+                                        src/engine/gs_animator.cpp src/engine/gs_spline.cpp
+                                        src/engine/coordinate.cpp)
 add_gseurat_test(test_vfx_scene_buffer src/engine/gaussian_cloud.cpp)
 add_gseurat_test(test_vfx_lights_rotation src/engine/gs_vfx.cpp src/engine/gs_particle.cpp
                                            src/engine/gs_animator.cpp src/engine/gaussian_cloud.cpp
@@ -307,3 +309,4 @@ add_gseurat_test(test_island_systems    src/demo/island_systems.cpp)
 add_gseurat_test(test_character_manifest src/character/character_manifest.cpp)
 add_gseurat_test(test_bone_animation_player src/character/character_manifest.cpp src/character/bone_animation_player.cpp)
 add_gseurat_test(test_bone_animation_state_machine src/character/character_manifest.cpp src/character/bone_animation_player.cpp src/character/bone_animation_state_machine.cpp)
+add_gseurat_test(test_coordinate      src/engine/coordinate.cpp)

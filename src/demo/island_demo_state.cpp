@@ -111,7 +111,7 @@ void IslandDemoState::on_enter(AppBase& app) {
     }
 
     // Determine player start position
-    glm::vec3 player_pos = scene_data.player_position;
+    glm::vec3 player_pos = scene_data.player_position.vec();
     // If player_position is zero, place at map center
     if (glm::length(player_pos) < 0.001f && app.renderer().has_gs_cloud()) {
         auto aabb = app.renderer().gs_chunk_grid().cloud_bounds();
@@ -122,7 +122,7 @@ void IslandDemoState::on_enter(AppBase& app) {
 
     // Create player entity
     player_entity_ = app.world().create();
-    app.world().add<ecs::Transform>(player_entity_, {player_pos, {1.0f, 1.0f}});
+    app.world().add<ecs::Transform>(player_entity_, {coord::WorldPos(player_pos), {1.0f, 1.0f}});
     app.world().add<PlayerController>(player_entity_, {kPlayerSpeed, kPlayerAccel});
 
     // Register island systems in scheduler
@@ -197,7 +197,7 @@ void IslandDemoState::on_enter(AppBase& app) {
 
                     NpcInfo info;
                     info.entity = entity;
-                    info.spawn_pos = t.position;
+                    info.spawn_pos = t.position.vec();
                     info.bone_index = next_bone_index_;
 
                     constexpr float kSlimeScale = 0.5f;
@@ -205,7 +205,7 @@ void IslandDemoState::on_enter(AppBase& app) {
                     for (const auto& g : slime_gs) {
                         Gaussian sg = g;
                         glm::vec3 rotated(-sg.position.x, sg.position.y, -sg.position.z);
-                        sg.position = t.position + rotated * kSlimeScale + glm::vec3(0, 0.5f, 0);
+                        sg.position = t.position.vec() + rotated * kSlimeScale + glm::vec3(0, 0.5f, 0);
                         sg.scale *= kSlimeScale;
                         sg.bone_index = next_bone_index_;
                         merged.push_back(sg);
@@ -216,7 +216,7 @@ void IslandDemoState::on_enter(AppBase& app) {
                     npc_infos_.push_back(info);
                     std::fprintf(stderr, "[IslandDemo] NPC bone=%u at (%.1f, %.1f, %.1f) +%u gs\n",
                                  next_bone_index_,
-                                 t.position.x, t.position.y, t.position.z,
+                                 t.position.x(), t.position.y(), t.position.z(),
                                  static_cast<uint32_t>(slime_gs.size()));
                     next_bone_index_++;
                 });
@@ -438,12 +438,12 @@ void IslandDemoState::update_player(AppBase& app, float dt) {
     player_velocity_.z += (target_vel.z - player_velocity_.z) * blend;
 
     // Update position
-    transform->position += player_velocity_ * dt;
+    transform->position.vec() += player_velocity_ * dt;
 
     // Snap Y to collision grid elevation if available
     if (collision_grid_.width > 0 && collision_grid_.height > 0) {
-        float local_x = transform->position.x - grid_origin_.x;
-        float local_z = transform->position.z - grid_origin_.y;
+        float local_x = transform->position.x() - grid_origin_.x;
+        float local_z = transform->position.z() - grid_origin_.y;
         int gx = static_cast<int>(local_x / collision_grid_.cell_size);
         int gz = static_cast<int>(local_z / collision_grid_.cell_size);
 
@@ -456,22 +456,22 @@ void IslandDemoState::update_player(AppBase& app, float dt) {
             if (solid) {
                 if (debug_frame_ % 60 == 0) {
                     std::fprintf(stderr, "[Collision] BLOCKED at grid(%d,%d) pos=(%.1f,%.1f)\n",
-                                 gx, gz, transform->position.x, transform->position.z);
+                                 gx, gz, transform->position.x(), transform->position.z());
                 }
-                transform->position -= player_velocity_ * dt;
+                transform->position.vec() -= player_velocity_ * dt;
             } else {
                 // Snap to elevation
                 float elev = collision_grid_.get_elevation(
                     static_cast<uint32_t>(gx), static_cast<uint32_t>(gz));
                 if (!collision_grid_.elevation.empty()) {
-                    transform->position.y = elev;
+                    transform->position.vec().y = elev;
                 }
             }
         }
     }
 
     // Update character origin for bone transforms
-    character_origin_ = transform->position;
+    character_origin_ = transform->position.vec();
 
     // Update facing angle from movement direction
     float speed_xz = std::sqrt(player_velocity_.x * player_velocity_.x +
@@ -494,7 +494,7 @@ void IslandDemoState::update_camera(AppBase& app, float dt) {
     if (!transform) return;
 
     // Smooth target follow
-    glm::vec3 desired_target = transform->position + glm::vec3(0, kCameraYOffset, 0);
+    glm::vec3 desired_target = transform->position.vec() + glm::vec3(0, kCameraYOffset, 0);
     float blend = std::min(1.0f, kCameraSmoothing * dt);
     camera_target_ += (desired_target - camera_target_) * blend;
 
@@ -584,10 +584,10 @@ void IslandDemoState::update_effects(AppBase& app, float dt) {
                 if (pt.triggered && !lt.active) {
                     lt.active = true;
                     std::fprintf(stderr, "[LightToggle] ON at (%.1f, %.1f, %.1f) color=(%.1f,%.1f,%.1f) radius=%.1f\n",
-                        t.position.x, t.position.y, t.position.z, lt.color_r, lt.color_g, lt.color_b, lt.radius);
+                        t.position.x(), t.position.y(), t.position.z(), lt.color_r, lt.color_g, lt.color_b, lt.radius);
                     PointLight pl{};
                     pl.position_and_radius = glm::vec4(
-                        t.position.x, t.position.y, t.position.z, lt.radius);
+                        t.position.x(), t.position.y(), t.position.z(), lt.radius);
                     pl.color = glm::vec4(
                         lt.color_r * lt.intensity,
                         lt.color_g * lt.intensity,
@@ -596,7 +596,7 @@ void IslandDemoState::update_effects(AppBase& app, float dt) {
                 } else if (!pt.triggered && lt.active) {
                     lt.active = false;
                     std::fprintf(stderr, "[LightToggle] OFF at (%.1f, %.1f, %.1f)\n",
-                        t.position.x, t.position.y, t.position.z);
+                        t.position.x(), t.position.y(), t.position.z());
                 }
             });
         static bool logged = false;
@@ -612,10 +612,10 @@ void IslandDemoState::update_effects(AppBase& app, float dt) {
                 if (pt.triggered && !et.applied) {
                     et.applied = true;
                     std::fprintf(stderr, "[EmissiveToggle] SPARKLE at (%.1f, %.1f, %.1f) color=(%.1f,%.1f,%.1f)\n",
-                        t.position.x, t.position.y, t.position.z, et.color_r, et.color_g, et.color_b);
+                        t.position.x(), t.position.y(), t.position.z(), et.color_r, et.color_g, et.color_b);
                     // Spawn glowing particles rising from the crystal — sized for distance-20 camera
                     GsEmitterConfig cfg;
-                    cfg.position = t.position + glm::vec3(0, 3.0f, 0);
+                    cfg.position = t.position.vec() + glm::vec3(0, 3.0f, 0);
                     cfg.spawn_rate = 40.0f;        // dense particle cloud
                     cfg.lifetime_min = 2.0f;
                     cfg.lifetime_max = 4.0f;
@@ -651,12 +651,12 @@ void IslandDemoState::update_effects(AppBase& app, float dt) {
                 if (pt.triggered && !be.fired) {
                     be.fired = true;
                     std::fprintf(stderr, "[BurstEffect] FIRED at (%.1f, %.1f, %.1f) emitter_index=%u\n",
-                        t.position.x, t.position.y, t.position.z, be.emitter_index);
+                        t.position.x(), t.position.y(), t.position.z(), be.emitter_index);
                     auto& emitters = app.renderer().gs_particle_emitters();
                     if (be.emitter_index < emitters.size()) {
                         auto& emitter = emitters[be.emitter_index];
                         auto cfg = emitter.config();
-                        cfg.position = t.position;
+                        cfg.position = t.position.vec();
                         cfg.spawn_rate = 100.0f;
                         emitter.configure(cfg);
                     }
@@ -676,11 +676,11 @@ void IslandDemoState::update_effects(AppBase& app, float dt) {
                     at.fired = true;
                     GsAnimRegion region;
                     region.shape = GsAnimRegion::Shape::Sphere;
-                    region.center = t.position;
+                    region.center = t.position.vec();
                     region.radius = at.anim_radius;
                     std::string effect(at.effect_name);
                     std::fprintf(stderr, "[AnimationTrigger] FIRE '%s' at (%.1f, %.1f, %.1f) radius=%.1f lifetime=%.1f\n",
-                        at.effect_name, t.position.x, t.position.y, t.position.z, at.anim_radius, at.lifetime);
+                        at.effect_name, t.position.x(), t.position.y(), t.position.z(), at.anim_radius, at.lifetime);
                     app.renderer().add_gs_animation(effect, region, at.lifetime, at.loop);
                 }
                 // Reset when player leaves (for looping or re-triggerable effects)
@@ -700,11 +700,11 @@ void IslandDemoState::update_effects(AppBase& app, float dt) {
                     vt.fired = true;
                     std::string path(vt.vfx_path);
                     std::fprintf(stderr, "[VfxTrigger] SPAWN '%s' at (%.1f, %.1f, %.1f)\n",
-                        vt.vfx_path, t.position.x, t.position.y, t.position.z);
+                        vt.vfx_path, t.position.x(), t.position.y(), t.position.z());
                     try {
                         auto preset = load_vfx_preset(path);
                         VfxInstance inst;
-                        inst.init(preset, t.position, true);
+                        inst.init(preset, t.position.vec(), true);
                         app.renderer().add_vfx_instance(std::move(inst));
                     } catch (const std::exception& e) {
                         std::fprintf(stderr, "[VfxTrigger] ERROR: %s\n", e.what());
@@ -723,11 +723,11 @@ void IslandDemoState::update_effects(AppBase& app, float dt) {
                 if (pt.triggered && !dz.discovered) {
                     dz.discovered = true;
                     std::fprintf(stderr, "[DiscoveryZone] DISCOVERED at (%.1f, %.1f, %.1f)!\n",
-                        t.position.x, t.position.y, t.position.z);
+                        t.position.x(), t.position.y(), t.position.z());
 
                     // Celebration burst — upward shower of colored particles
                     GsEmitterConfig cfg;
-                    cfg.position = t.position + glm::vec3(0, 2.0f, 0);
+                    cfg.position = t.position.vec() + glm::vec3(0, 2.0f, 0);
                     cfg.spawn_rate = 80.0f;
                     cfg.lifetime_min = 1.5f;
                     cfg.lifetime_max = 3.5f;
@@ -748,7 +748,7 @@ void IslandDemoState::update_effects(AppBase& app, float dt) {
                     // Add a bright celebration light
                     PointLight pl{};
                     pl.position_and_radius = glm::vec4(
-                        t.position.x, t.position.y + 5.0f, t.position.z, 25.0f);
+                        t.position.x(), t.position.y() + 5.0f, t.position.z(), 25.0f);
                     pl.color = glm::vec4(dz.color_r * 2.0f, dz.color_g * 2.0f, dz.color_b * 2.0f, 1.0f);
                     app.scene().add_light(pl);
                 }
@@ -812,7 +812,7 @@ void IslandDemoState::update_walk_animation(AppBase& app, float dt) {
             if (npc.bone_index >= 32) continue;
             auto* npc_t = app.world().try_get<ecs::Transform>(npc.entity);
             if (!npc_t) continue;
-            glm::vec3 npc_offset = npc_t->position - npc.spawn_pos;
+            glm::vec3 npc_offset = npc_t->position.vec() - npc.spawn_pos;
 
             // Slime squish: periodic bounce (flatten Y, expand XZ)
             // Uses a sharp "land" pulse followed by slow recovery
@@ -962,7 +962,7 @@ void IslandDemoState::build_draw_lists(AppBase& app) {
 
         auto* t = app.world().try_get<ecs::Transform>(player_entity_);
         if (t) {
-            ui.label("(" + f1(t->position.x) + "," + f1(t->position.y) + "," + f1(t->position.z) + ")",
+            ui.label("(" + f1(t->position.x()) + "," + f1(t->position.y()) + "," + f1(t->position.z()) + ")",
                      x, y, s, dim);
         }
 
@@ -998,8 +998,8 @@ void IslandDemoState::build_draw_lists(AppBase& app) {
     auto* transform = app.world().try_get<ecs::Transform>(player_entity_);
     if (transform) {
         ui.label("Position", lx, y, s, dim);
-        ui.label(f1(transform->position.x) + ", " + f1(transform->position.y) +
-                 ", " + f1(transform->position.z), vx, y, s, white);
+        ui.label(f1(transform->position.x()) + ", " + f1(transform->position.y()) +
+                 ", " + f1(transform->position.z()), vx, y, s, white);
         y -= line;
     }
     ui.label("Azimuth", lx, y, s, dim);

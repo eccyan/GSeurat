@@ -1,6 +1,7 @@
 #pragma once
 
 #include "gseurat/engine/ecs/types.hpp"
+#include "gseurat/engine/coordinate.hpp"
 #include "gseurat/engine/direction.hpp"
 
 #include <glm/glm.hpp>
@@ -10,7 +11,7 @@
 namespace gseurat::ecs {
 
 struct Transform {
-    glm::vec3 position{0.0f};
+    coord::WorldPos position;
     glm::vec2 scale{1.0f, 1.0f};
 };
 

@@ -325,8 +325,9 @@ void StagingApp::clear_scene() {
     renderer_.clear_gs_animations();
     renderer_.clear_vfx_instances();
     scene_.clear_lights();
-    gs_aabb_offset_ = glm::vec2(0.0f);
-    terrain_aabb_min_ = glm::vec3(0.0f);
+    terrain_aabb_ = AABB{};
+    terrain_aabb_.min = glm::vec3(0.0f);
+    terrain_aabb_.max = glm::vec3(0.0f);
     // Don't re-init GS here — init_scene() will do it if needed.
     // For empty viewport on standalone launch, on_enter() handles it.
 }

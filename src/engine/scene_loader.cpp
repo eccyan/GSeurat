@@ -267,7 +267,7 @@ SceneData SceneLoader::from_json(const nlohmann::json& j) {
     // Player
     if (j.contains("player")) {
         const auto& p = j["player"];
-        data.player_position = parse_vec3(p["position"]);
+        data.player_position = coord::GridPos(parse_vec3(p["position"]));
         if (p.contains("tint")) data.player_tint = parse_vec4(p["tint"]);
         if (p.contains("facing")) data.player_facing = parse_direction(p["facing"]);
         data.player_character_id = p.value("character_id", "");
@@ -279,7 +279,7 @@ SceneData SceneLoader::from_json(const nlohmann::json& j) {
             GameObjectData obj;
             obj.id = go.value("id", "");
             obj.name = go.value("name", "");
-            if (go.contains("position")) obj.position = parse_vec3(go["position"]);
+            if (go.contains("position")) obj.position = coord::GridPos(parse_vec3(go["position"]));
             if (go.contains("rotation")) obj.rotation = parse_vec3(go["rotation"]);
             obj.scale = go.value("scale", 1.0f);
             obj.ply_file = go.value("ply_file", "");
@@ -319,7 +319,7 @@ SceneData SceneLoader::from_json(const nlohmann::json& j) {
             GameObjectData go;
             go.id = "npc_" + npc_j.value("name", "unnamed");
             go.name = npc_j.value("name", "");
-            if (npc_j.contains("position")) go.position = parse_vec3(npc_j["position"]);
+            if (npc_j.contains("position")) go.position = coord::GridPos(parse_vec3(npc_j["position"]));
             go.scale = 1.0f;
             go.components = nlohmann::json::object();
             if (npc_j.contains("facing")) {
@@ -362,10 +362,10 @@ SceneData SceneLoader::from_json(const nlohmann::json& j) {
     if (j.contains("portals")) {
         for (const auto& portal_j : j["portals"]) {
             PortalData portal;
-            portal.position = parse_vec3(portal_j["position"]);
+            portal.position = coord::GridPos(parse_vec3(portal_j["position"]));
             if (portal_j.contains("size")) portal.size = parse_vec2(portal_j["size"]);
             portal.target_scene = portal_j["target_scene"].get<std::string>();
-            portal.spawn_position = parse_vec3(portal_j["spawn_position"]);
+            portal.spawn_position = coord::GridPos(parse_vec3(portal_j["spawn_position"]));
             if (portal_j.contains("spawn_facing"))
                 portal.spawn_facing = parse_direction(portal_j["spawn_facing"]);
             data.portals.push_back(std::move(portal));
@@ -378,7 +378,7 @@ SceneData SceneLoader::from_json(const nlohmann::json& j) {
             GameObjectData go;
             go.id = obj_j.value("id", "");
             go.name = go.id;
-            if (obj_j.contains("position")) go.position = parse_vec3(obj_j["position"]);
+            if (obj_j.contains("position")) go.position = coord::GridPos(parse_vec3(obj_j["position"]));
             if (obj_j.contains("rotation")) go.rotation = parse_vec3(obj_j["rotation"]);
             go.scale = obj_j.value("scale", 1.0f);
             go.ply_file = obj_j.value("ply_file", "");
@@ -417,7 +417,7 @@ SceneData SceneLoader::from_json(const nlohmann::json& j) {
         for (const auto& vi : j["vfx_instances"]) {
             SceneData::VfxInstanceRef inst;
             inst.vfx_file = vi.value("vfx_file", "");
-            if (vi.contains("position")) inst.position = parse_vec3(vi["position"]);
+            if (vi.contains("position")) inst.position = coord::GridPos(parse_vec3(vi["position"]));
             inst.rotation_y = vi.value("rotation_y", 0.0f);
             inst.radius = vi.value("radius", 5.0f);
             inst.trigger = vi.value("trigger", "auto");
@@ -980,7 +980,7 @@ nlohmann::json SceneLoader::to_json(const SceneData& data) {
     // Player
     {
         nlohmann::json p;
-        p["position"] = vec3_json(data.player_position);
+        p["position"] = vec3_json(data.player_position.vec());
         p["tint"] = vec4_json(data.player_tint);
         p["facing"] = direction_to_string(data.player_facing);
         if (!data.player_character_id.empty())
@@ -995,7 +995,7 @@ nlohmann::json SceneLoader::to_json(const SceneData& data) {
             nlohmann::json obj;
             obj["id"] = go.id;
             obj["name"] = go.name;
-            obj["position"] = vec3_json(go.position);
+            obj["position"] = vec3_json(go.position.vec());
             obj["rotation"] = vec3_json(go.rotation);
             obj["scale"] = go.scale;
             if (!go.ply_file.empty()) obj["ply_file"] = go.ply_file;
@@ -1059,10 +1059,10 @@ nlohmann::json SceneLoader::to_json(const SceneData& data) {
         nlohmann::json portals = nlohmann::json::array();
         for (const auto& portal : data.portals) {
             portals.push_back({
-                {"position", vec3_json(portal.position)},
+                {"position", vec3_json(portal.position.vec())},
                 {"size", vec2_json(portal.size)},
                 {"target_scene", portal.target_scene},
-                {"spawn_position", vec3_json(portal.spawn_position)},
+                {"spawn_position", vec3_json(portal.spawn_position.vec())},
                 {"spawn_facing", direction_to_string(portal.spawn_facing)}
             });
         }
