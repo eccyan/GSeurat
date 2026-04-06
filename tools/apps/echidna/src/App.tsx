@@ -50,6 +50,10 @@ const buildToolKeys: Record<string, ToolType> = {
   b: 'paint',
   e: 'erase',
   i: 'eyedropper',
+  g: 'fill',
+  x: 'extrude',
+  l: 'lasso_select',
+  s: 'box_select',
 };
 
 const animateToolKeys: Record<string, ToolType> = {
@@ -158,6 +162,13 @@ export function App() {
         store.redo();
         return;
       }
+      if (meta && e.key === 'c') {
+        if (store.boxSelection || store.lassoSelection) {
+          e.preventDefault();
+          store.copySelection();
+        }
+        return;
+      }
 
       // Space toggles playback in animate mode
       if (e.key === ' ' && store.mode === 'animate') {
@@ -166,9 +177,25 @@ export function App() {
         return;
       }
 
-      // Escape clears box selection
+      // T toggles x-ray mode
+      if (e.key === 't' || e.key === 'T') {
+        store.setXrayMode(!store.xrayMode);
+        return;
+      }
+
+      // Escape clears box/lasso selection
       if (e.key === 'Escape') {
         store.setBoxSelection(null);
+        store.setLassoSelection(null);
+        return;
+      }
+
+      // Delete/Backspace deletes selection
+      if (e.key === 'Backspace' || e.key === 'Delete') {
+        if (store.boxSelection || store.lassoSelection) {
+          store.pushUndo();
+          store.deleteSelection();
+        }
         return;
       }
 
