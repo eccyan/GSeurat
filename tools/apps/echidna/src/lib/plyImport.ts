@@ -12,7 +12,7 @@
  */
 
 import type { Voxel, VoxelKey, BodyPart } from '../store/types.js';
-import { voxelKey } from './voxelUtils.js';
+import { voxelKey, parseKey } from './voxelUtils.js';
 
 const SH_FACTOR = 0.2820947917738781; // 0.5 / sqrt(pi)
 
@@ -246,13 +246,20 @@ export function parsePlyToVoxels(buffer: ArrayBuffer, gridSize?: number): PlyImp
   let parts: BodyPart[];
 
   if (!hasBones) {
-    // Single root part containing all voxels
+    // Single root part containing all voxels — joint at centroid
+    const allKeys = Array.from(voxels.keys());
+    let jx = 0, jy = 0, jz = 0;
+    for (const key of allKeys) {
+      const [x, y, z] = parseKey(key);
+      jx += x; jy += y; jz += z;
+    }
+    const n = allKeys.length || 1;
     parts = [{
       id: 'root',
       name: 'root',
       parent: null,
-      joint: [0, 0, 0],
-      voxelKeys: Array.from(voxels.keys()),
+      joint: [Math.round(jx / n), Math.round(jy / n), Math.round(jz / n)],
+      voxelKeys: allKeys,
     }];
   } else {
     // Group by bone index
@@ -269,13 +276,23 @@ export function parsePlyToVoxels(buffer: ArrayBuffer, gridSize?: number): PlyImp
     // Sort by bone index for stable ordering
     const sortedBones = Array.from(boneToKeys.keys()).sort((a, b) => a - b);
 
-    parts = sortedBones.map((boneIdx, i) => ({
-      id: i === 0 ? 'root' : `part_${boneIdx}`,
-      name: i === 0 ? 'root' : `part_${boneIdx}`,
-      parent: i === 0 ? null : 'root',
-      joint: [0, 0, 0] as [number, number, number],
-      voxelKeys: boneToKeys.get(boneIdx) ?? [],
-    }));
+    parts = sortedBones.map((boneIdx, i) => {
+      const keys = boneToKeys.get(boneIdx) ?? [];
+      // Compute centroid of this part's voxels for joint position
+      let jx = 0, jy = 0, jz = 0;
+      for (const key of keys) {
+        const [x, y, z] = parseKey(key);
+        jx += x; jy += y; jz += z;
+      }
+      const n = keys.length || 1;
+      return {
+        id: i === 0 ? 'root' : `part_${boneIdx}`,
+        name: i === 0 ? 'root' : `part_${boneIdx}`,
+        parent: i === 0 ? null : 'root',
+        joint: [Math.round(jx / n), Math.round(jy / n), Math.round(jz / n)] as [number, number, number],
+        voxelKeys: keys,
+      };
+    });
   }
 
   return { voxels, parts, gridSize: gs };
