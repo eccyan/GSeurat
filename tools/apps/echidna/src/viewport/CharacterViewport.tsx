@@ -10,12 +10,21 @@ import { MirrorPlane } from './MirrorPlane.js';
 import { useCharacterStore } from '../store/useCharacterStore.js';
 import { parseKey } from '../lib/voxelUtils.js';
 
+/** Ensures R3F renders on first mount when the store has pre-loaded data.
+ *  Dispatches a resize event to kick-start the WebGL render loop. */
+function InitialInvalidator() {
+  useEffect(() => {
+    // R3F defers initial rendering until a resize/interaction event.
+    // Dispatch resize to ensure the first frame renders immediately.
+    requestAnimationFrame(() => window.dispatchEvent(new Event('resize')));
+  }, []);
+  return null;
+}
+
 /** Auto-fits the camera to the voxel bounding box when the voxel count changes significantly. */
 function CameraFitter() {
   const voxels = useCharacterStore((s) => s.voxels);
-  const gridWidth = useCharacterStore((s) => s.gridWidth);
-  const gridDepth = useCharacterStore((s) => s.gridDepth);
-  const { camera } = useThree();
+  const { camera, controls } = useThree();
   const prevCount = useRef(0);
 
   useEffect(() => {
@@ -34,10 +43,7 @@ function CameraFitter() {
       const cx = (minX + maxX) / 2;
       const cy = (minY + maxY) / 2;
       const cz = (minZ + maxZ) / 2;
-      const extentX = maxX - minX + 1;
-      const extentY = maxY - minY + 1;
-      const extentZ = maxZ - minZ + 1;
-      const maxExtent = Math.max(extentX, extentY, extentZ);
+      const maxExtent = Math.max(maxX - minX + 1, maxY - minY + 1, maxZ - minZ + 1);
 
       // Position camera to frame the model
       const dist = maxExtent * 1.8;
@@ -45,14 +51,14 @@ function CameraFitter() {
       (camera as THREE.PerspectiveCamera).lookAt(cx, cy, cz);
 
       // Update OrbitControls target
-      const controls = (camera as any).__r3f_controls;
-      if (controls?.target) {
-        controls.target.set(cx, cy, cz);
-        controls.update();
+      const orbitControls = controls as any;
+      if (orbitControls?.target) {
+        orbitControls.target.set(cx, cy, cz);
+        orbitControls.update();
       }
     }
     prevCount.current = count;
-  }, [voxels, camera, gridWidth, gridDepth]);
+  }, [voxels, camera, controls]);
 
   return null;
 }
@@ -64,6 +70,7 @@ export function CharacterViewport() {
 
   return (
     <Canvas
+      frameloop="always"
       camera={{ position: [gridWidth / 2, 20, gridDepth + 15], fov: 50 }}
       style={{ background: '#16162a' }}
       onContextMenu={(e) => e.preventDefault()}
@@ -93,6 +100,7 @@ export function CharacterViewport() {
       <JointGizmos />
       <MirrorPlane />
       <CameraFitter />
+      <InitialInvalidator />
 
       <OrbitControls
         target={[gridWidth / 2, 0, gridDepth / 2]}
