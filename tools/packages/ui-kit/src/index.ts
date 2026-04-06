@@ -1,3 +1,8 @@
+export { NumberInput } from "./NumberInput";
+export type { NumberInputProps } from "./NumberInput";
+
+export { panelStyles } from "./panelStyles";
+
 export { ColorPicker } from "./ColorPicker";
 export type { ColorPickerProps } from "./ColorPicker";
 
