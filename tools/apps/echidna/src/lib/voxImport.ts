@@ -15,6 +15,7 @@ export interface VoxModel {
   sizeY: number;
   sizeZ: number;
   voxels: Map<VoxelKey, Voxel>;
+  name?: string;
 }
 
 export interface VoxFile {
@@ -130,6 +131,31 @@ export function parseVox(buffer: ArrayBuffer): VoxFile {
   const sizes: { x: number; y: number; z: number }[] = [];
   const xyziChunks: { x: number; y: number; z: number; colorIndex: number }[][] = [];
   let palette: [number, number, number, number][] | null = null;
+  const layerNames = new Map<number, string>();
+
+  /**
+   * Read a MagicaVoxel DICT structure (array of key-value string pairs).
+   * Format: n: i32, then n * (key: STRING, value: STRING)
+   * where STRING = length: i32, then `length` bytes.
+   * Returns { dict, endOffset }.
+   */
+  function readDict(pos: number): { dict: Record<string, string>; endOffset: number } {
+    const n = view.getInt32(pos, true);
+    pos += 4;
+    const dict: Record<string, string> = {};
+    for (let i = 0; i < n; i++) {
+      const kLen = view.getInt32(pos, true);
+      pos += 4;
+      const key = readString(view, pos, kLen);
+      pos += kLen;
+      const vLen = view.getInt32(pos, true);
+      pos += 4;
+      const val = readString(view, pos, vLen);
+      pos += vLen;
+      dict[key] = val;
+    }
+    return { dict, endOffset: pos };
+  }
 
   function parseChunks(start: number, end: number) {
     let pos = start;
@@ -173,6 +199,13 @@ export function parseVox(buffer: ArrayBuffer): VoxFile {
             view.getUint8(base + 3),
           ]);
         }
+      } else if (chunkId === 'LAYR') {
+        // LAYR chunk: i32 layer_id, then DICT of attributes, then i32 reserved (-1)
+        const layerId = view.getInt32(contentStart, true);
+        const { dict } = readDict(contentStart + 4);
+        if (dict['_name']) {
+          layerNames.set(layerId, dict['_name']);
+        }
       } else if (chunkId === 'MAIN') {
         // MAIN chunk: recurse into children
         parseChunks(contentEnd, contentEnd + childrenSize);
@@ -209,6 +242,7 @@ export function parseVox(buffer: ArrayBuffer): VoxFile {
       sizeY: size.z,
       sizeZ: size.y,
       voxels: voxelMap,
+      name: layerNames.get(i) ?? `model_${i}`,
     });
   }
 

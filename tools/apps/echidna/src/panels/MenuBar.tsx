@@ -3,11 +3,15 @@ import { useCharacterStore } from '../store/useCharacterStore.js';
 import { exportPly } from '../lib/plyExport.js';
 import { buildManifest } from '../lib/manifestExport.js';
 import { parseVox } from '../lib/voxImport.js';
+import { parsePlyToVoxels } from '../lib/plyImport.js';
+import { parseObjToVoxels } from '../lib/objImport.js';
 import { sendBridgeCommand } from '@gseurat/engine-client';
 import type { EchidnaFile } from '../store/types.js';
 import { NewProjectDialog } from './NewProjectDialog.js';
 import { ResizeGridDialog } from './ResizeGridDialog.js';
 import { ExportDialog } from './ExportDialog.js';
+import { ImportDialog } from './ImportDialog.js';
+import type { ImportOptions } from './ImportDialog.js';
 
 const BRIDGE_REST_URL = 'http://localhost:9101';
 
@@ -190,10 +194,16 @@ export function MenuBar() {
   const [showNewDialog, setShowNewDialog] = useState(false);
   const [showResizeDialog, setShowResizeDialog] = useState(false);
   const [showExportDialog, setShowExportDialog] = useState(false);
+  const [showImportDialog, setShowImportDialog] = useState(false);
+  const [autoSync, setAutoSync] = useState(false);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const autoSyncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const showGrid = useCharacterStore((s) => s.showGrid);
   const showGizmos = useCharacterStore((s) => s.showGizmos);
+  const voxels = useCharacterStore((s) => s.voxels);
+  const characterParts = useCharacterStore((s) => s.characterParts);
+  const characterName = useCharacterStore((s) => s.characterName);
 
   const showToast = useCallback((message: string, type: 'success' | 'error' | 'loading', duration = 3000) => {
     if (toastTimer.current) clearTimeout(toastTimer.current);
@@ -202,6 +212,52 @@ export function MenuBar() {
       toastTimer.current = setTimeout(() => setToast(null), duration);
     }
   }, []);
+
+  const pushToStaging = useCallback(async () => {
+    const s = useCharacterStore.getState();
+    if (s.voxels.size === 0) return;
+
+    try {
+      const charId = s.characterName.replace(/\s+/g, '_').toLowerCase() || 'character';
+      const plyBlob = exportPly(s.voxels, s.gridWidth, s.gridDepth, s.characterParts);
+      const manifest = buildManifest(
+        charId,
+        `${charId}.ply`,
+        1.0,
+        s.characterParts,
+        s.characterPoses,
+        s.animations,
+      );
+
+      await fetch(
+        `${BRIDGE_REST_URL}/api/characters/${encodeURIComponent(charId)}/file/${encodeURIComponent(charId + '.ply')}`,
+        { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: plyBlob },
+      );
+
+      await fetch(
+        `${BRIDGE_REST_URL}/api/characters/${encodeURIComponent(charId)}/manifest`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(manifest),
+        },
+      );
+    } catch {
+      // Silently fail — bridge may not be running
+    }
+  }, []);
+
+  // Auto-sync: debounced push to staging when voxels or parts change
+  useEffect(() => {
+    if (!autoSync) return;
+    if (autoSyncTimer.current) clearTimeout(autoSyncTimer.current);
+    autoSyncTimer.current = setTimeout(() => {
+      pushToStaging();
+    }, 2000);
+    return () => {
+      if (autoSyncTimer.current) clearTimeout(autoSyncTimer.current);
+    };
+  }, [autoSync, voxels, characterParts, pushToStaging]);
 
   const handleNew = useCallback(() => {
     setShowNewDialog(true);
@@ -258,12 +314,59 @@ export function MenuBar() {
     const buffer = await file.arrayBuffer();
     const voxFile = parseVox(buffer);
     const models = voxFile.models.map((m, i) => ({
-      name: `part_${i}`,
+      name: m.name ?? `part_${i}`,
       voxels: m.voxels,
     }));
     useCharacterStore.getState().importVoxModels(models);
     e.target.value = '';
   };
+
+  const handleImport = useCallback(async (file: File, options: ImportOptions) => {
+    const ext = file.name.toLowerCase();
+    const store = useCharacterStore.getState();
+
+    if (ext.endsWith('.vox')) {
+      const buffer = await file.arrayBuffer();
+      const voxFile = parseVox(buffer);
+      const models = voxFile.models.map((m, i) => ({
+        name: m.name ?? `part_${i}`,
+        voxels: m.voxels,
+      }));
+      store.pushUndo();
+      store.importVoxModels(models);
+    } else if (ext.endsWith('.ply')) {
+      const buffer = await file.arrayBuffer();
+      const result = parsePlyToVoxels(buffer, options.gridSize);
+      store.importFromPly(result.voxels, result.parts, result.gridSize);
+    } else if (ext.endsWith('.obj')) {
+      const text = await file.text();
+      const result = parseObjToVoxels(text, options.voxelResolution);
+      store.importFromObj(result.voxels, result.parts, result.gridSize);
+    }
+
+    setShowImportDialog(false);
+  }, []);
+
+  const handleExportCharacter = useCallback(() => {
+    const s = useCharacterStore.getState();
+    const name = s.characterName.replace(/\s+/g, '_').toLowerCase() || 'character';
+
+    // Download PLY
+    const plyBlob = exportPly(s.voxels, s.gridWidth, s.gridDepth, s.characterParts);
+    download(plyBlob, `${name}.ply`);
+
+    // Download manifest JSON
+    const manifest = buildManifest(
+      name,
+      `${name}.ply`,
+      1.0,
+      s.characterParts,
+      s.characterPoses,
+      s.animations,
+    );
+    const manifestBlob = new Blob([JSON.stringify(manifest, null, 2)], { type: 'application/json' });
+    download(manifestBlob, `${name}.manifest.json`);
+  }, []);
 
   const handleExportPly = useCallback(() => {
     const s = useCharacterStore.getState();
@@ -344,7 +447,10 @@ export function MenuBar() {
     { label: 'Save As...', shortcut: '\u21e7\u2318S', action: handleSaveAs },
     { label: 'Load...', shortcut: '\u2318O', action: handleLoad },
     { separator: true as const },
+    { label: 'Import (PLY/VOX/OBJ)...', action: () => setShowImportDialog(true) },
     { label: 'Import .vox...', action: handleImportVox },
+    { separator: true as const },
+    { label: 'Export Character...', action: handleExportCharacter },
     { label: 'Export...', action: () => setShowExportDialog(true) },
     { label: 'Export PLY...', action: handleExportPly },
     { label: 'Export Manifest...', action: handleExportManifest },
@@ -362,7 +468,12 @@ export function MenuBar() {
   const viewItems = [
     { label: `${showGrid ? '\u2713 ' : '  '}Grid`, action: () => useCharacterStore.getState().setShowGrid(!showGrid) },
     { label: `${showGizmos ? '\u2713 ' : '  '}Gizmos`, action: () => useCharacterStore.getState().setShowGizmos(!showGizmos) },
+    { separator: true as const },
+    { label: `${autoSync ? '\u2713 ' : '  '}Auto-Sync Staging`, action: () => setAutoSync((v) => !v) },
   ];
+
+  // Suppress unused variable warning — characterName used for re-render when name changes for auto-sync
+  void characterName;
 
   return (
     <div style={styles.bar}>
@@ -409,6 +520,12 @@ export function MenuBar() {
       {showNewDialog && <NewProjectDialog onClose={() => setShowNewDialog(false)} />}
       {showResizeDialog && <ResizeGridDialog onClose={() => setShowResizeDialog(false)} />}
       {showExportDialog && <ExportDialog onClose={() => setShowExportDialog(false)} />}
+      {showImportDialog && (
+        <ImportDialog
+          onImport={handleImport}
+          onCancel={() => setShowImportDialog(false)}
+        />
+      )}
     </div>
   );
 }

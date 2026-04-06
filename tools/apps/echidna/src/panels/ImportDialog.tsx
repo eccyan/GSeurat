@@ -1,6 +1,16 @@
 import React, { useState, useRef } from 'react';
-import { useCharacterStore } from '../store/useCharacterStore.js';
-import { parseVox } from '../lib/voxImport.js';
+import { NumberInput, panelStyles } from '@gseurat/ui-kit';
+
+export interface ImportOptions {
+  gridSize: number;
+  loadManifest: boolean;
+  voxelResolution: number;
+}
+
+interface Props {
+  onImport: (file: File, options: ImportOptions) => void;
+  onCancel: () => void;
+}
 
 const styles: Record<string, React.CSSProperties> = {
   overlay: {
@@ -17,103 +27,132 @@ const styles: Record<string, React.CSSProperties> = {
     border: '1px solid #444',
     borderRadius: 8,
     padding: 24,
-    width: 400,
+    width: 420,
     color: '#ddd',
   },
   title: { fontSize: 16, fontWeight: 600, marginBottom: 16 },
   section: { display: 'flex', flexDirection: 'column' as const, gap: 8, marginBottom: 16 },
   label: { fontSize: 12, color: '#aaa' },
-  radio: { display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' },
+  row: { display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 },
+  fileBtn: {
+    padding: '6px 16px',
+    border: '1px dashed #555',
+    borderRadius: 4,
+    background: '#2a2a4a',
+    color: '#aaa',
+    cursor: 'pointer',
+    fontSize: 13,
+    textAlign: 'center' as const,
+  },
   btn: {
-    padding: '6px 16px', border: '1px solid #555', borderRadius: 4,
-    background: '#3a3a6a', color: '#ddd', cursor: 'pointer', fontSize: 13,
+    padding: '6px 16px',
+    border: '1px solid #555',
+    borderRadius: 4,
+    background: '#3a3a6a',
+    color: '#ddd',
+    cursor: 'pointer',
+    fontSize: 13,
   },
   btnPrimary: {
-    padding: '6px 16px', border: '1px solid #77f', borderRadius: 4,
-    background: '#4a4a8a', color: '#fff', cursor: 'pointer', fontSize: 13,
-  },
-  fileBtn: {
-    padding: '6px 16px', border: '1px dashed #555', borderRadius: 4,
-    background: '#2a2a4a', color: '#aaa', cursor: 'pointer', fontSize: 13,
-    textAlign: 'center' as const,
+    padding: '6px 16px',
+    border: '1px solid #77f',
+    borderRadius: 4,
+    background: '#4a4a8a',
+    color: '#fff',
+    cursor: 'pointer',
+    fontSize: 13,
   },
   footer: { display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 },
 };
 
-type ImportFormat = 'vox' | 'ply_bone';
+function detectFormat(file: File): 'ply' | 'vox' | 'obj' | 'unknown' {
+  const name = file.name.toLowerCase();
+  if (name.endsWith('.ply')) return 'ply';
+  if (name.endsWith('.vox')) return 'vox';
+  if (name.endsWith('.obj')) return 'obj';
+  return 'unknown';
+}
 
-export function ImportDialog({ onClose }: { onClose: () => void }) {
-  const [format, setFormat] = useState<ImportFormat>('vox');
+export function ImportDialog({ onImport, onCancel }: Props) {
   const [file, setFile] = useState<File | null>(null);
-  const [autoCreateParts, setAutoCreateParts] = useState(true);
+  const [gridSize, setGridSize] = useState(32);
+  const [loadManifest, setLoadManifest] = useState(true);
+  const [voxelResolution, setVoxelResolution] = useState(32);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const accept = format === 'vox' ? '.vox' : '.ply';
+  const format = file ? detectFormat(file) : null;
 
-  const handleImport = async () => {
+  const handleImport = () => {
     if (!file) return;
-
-    if (format === 'vox') {
-      const buffer = await file.arrayBuffer();
-      const voxFile = parseVox(buffer);
-      const models = voxFile.models.map((m, i) => ({
-        name: autoCreateParts ? `part_${i}` : `imported_${i}`,
-        voxels: m.voxels,
-      }));
-      useCharacterStore.getState().pushUndo();
-      useCharacterStore.getState().importVoxModels(models);
-    }
-    // PLY with bone_index import could be added in the future
-
-    onClose();
+    onImport(file, { gridSize, loadManifest, voxelResolution });
   };
 
   return (
-    <div style={styles.overlay} onClick={onClose}>
+    <div style={styles.overlay} onClick={onCancel}>
       <div style={styles.dialog} onClick={(e) => e.stopPropagation()}>
-        <div style={styles.title}>Import</div>
+        <div style={styles.title}>Import File</div>
 
         <div style={styles.section}>
-          <span style={styles.label}>Format</span>
-          <label style={styles.radio}>
-            <input type="radio" checked={format === 'vox'} onChange={() => setFormat('vox')} />
-            MagicaVoxel (.vox)
-          </label>
-          <label style={styles.radio}>
-            <input type="radio" checked={format === 'ply_bone'} onChange={() => setFormat('ply_bone')} />
-            PLY with bone_index
-          </label>
-        </div>
-
-        <div style={styles.section}>
-          <span style={styles.label}>File</span>
-          <div
-            style={styles.fileBtn}
-            onClick={() => fileRef.current?.click()}
-          >
+          <span style={styles.label}>File (.ply, .vox, .obj)</span>
+          <div style={styles.fileBtn} onClick={() => fileRef.current?.click()}>
             {file ? file.name : 'Choose file...'}
           </div>
           <input
             ref={fileRef}
             type="file"
-            accept={accept}
+            accept=".ply,.vox,.obj"
             style={{ display: 'none' }}
             onChange={(e) => setFile(e.target.files?.[0] ?? null)}
           />
         </div>
 
         <div style={styles.section}>
-          <span style={styles.label}>Options</span>
-          <label style={styles.radio}>
-            <input type="checkbox" checked={autoCreateParts} onChange={(e) => setAutoCreateParts(e.target.checked)} />
-            Auto-create parts
-          </label>
+          <span style={styles.label}>Grid Size</span>
+          <div style={styles.row}>
+            <NumberInput
+              value={gridSize}
+              onChange={setGridSize}
+              min={8}
+              max={1024}
+              step={1}
+            />
+          </div>
         </div>
 
+        {format === 'ply' && (
+          <div style={styles.section}>
+            <span style={styles.label}>PLY Options</span>
+            <label style={styles.row}>
+              <input
+                type="checkbox"
+                checked={loadManifest}
+                onChange={(e) => setLoadManifest(e.target.checked)}
+              />
+              Look for companion manifest
+            </label>
+          </div>
+        )}
+
+        {format === 'obj' && (
+          <div style={styles.section}>
+            <span style={styles.label}>OBJ Options</span>
+            <div style={styles.row}>
+              <span style={{ fontSize: 12, color: '#aaa', minWidth: 120 }}>Voxel resolution</span>
+              <NumberInput
+                value={voxelResolution}
+                onChange={setVoxelResolution}
+                min={8}
+                max={256}
+                step={1}
+              />
+            </div>
+          </div>
+        )}
+
         <div style={styles.footer}>
-          <button style={styles.btn} onClick={onClose}>Cancel</button>
+          <button style={styles.btn} onClick={onCancel}>Cancel</button>
           <button
-            style={styles.btnPrimary}
+            style={{ ...styles.btnPrimary, opacity: file ? 1 : 0.5 }}
             onClick={handleImport}
             disabled={!file}
           >

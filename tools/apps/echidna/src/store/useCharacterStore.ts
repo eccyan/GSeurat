@@ -175,6 +175,8 @@ export interface CharacterStoreState {
   updatePoseRotation: (poseName: string, partId: string, rotation: [number, number, number]) => void;
   setPreviewPose: (on: boolean) => void;
   importVoxModels: (models: { name: string; voxels: Map<VoxelKey, Voxel> }[]) => void;
+  importFromPly: (voxels: Map<VoxelKey, Voxel>, parts: BodyPart[], gridSize: number) => void;
+  importFromObj: (voxels: Map<VoxelKey, Voxel>, parts: BodyPart[], gridSize: number) => void;
 
   // Actions – animation
   addAnimation: (name: string) => void;
@@ -518,6 +520,42 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
     }
 
     set({ voxels, characterParts: parts });
+  },
+
+  importFromPly: (voxels, parts, gridSize) => {
+    set({
+      voxels,
+      characterParts: parts,
+      gridWidth: gridSize,
+      gridDepth: gridSize,
+      characterPoses: {},
+      animations: {},
+      selectedPart: null,
+      selectedPose: null,
+      selectedAnimation: null,
+      undoStack: [],
+      redoStack: [],
+      boxSelection: null,
+      lassoSelection: null,
+    });
+  },
+
+  importFromObj: (voxels, parts, gridSize) => {
+    set({
+      voxels,
+      characterParts: parts,
+      gridWidth: gridSize,
+      gridDepth: gridSize,
+      characterPoses: {},
+      animations: {},
+      selectedPart: null,
+      selectedPose: null,
+      selectedAnimation: null,
+      undoStack: [],
+      redoStack: [],
+      boxSelection: null,
+      lassoSelection: null,
+    });
   },
 
   // ── Animation actions ──
