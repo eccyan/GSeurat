@@ -1,6 +1,6 @@
 import React from 'react';
 import { useVfxStore } from '../store/useVfxStore.js';
-import { NumberInput } from '../components/NumberInput.js';
+import { NumberInput } from '@gseurat/ui-kit';
 import { T, inputStyle, sectionLabel } from '../styles/theme.js';
 
 export function PresetSettings() {
