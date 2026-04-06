@@ -33,6 +33,7 @@ void DemoApp::parse_args(int argc, char* argv[]) {
 }
 
 void DemoApp::run() {
+    command_dispatcher_.register_default_commands();
     init_game_object_system();
     init_game_content();
 

@@ -8,6 +8,7 @@
 #include "gseurat/engine/control_server.hpp"
 #endif
 #include "gseurat/engine/collision_gen.hpp"
+#include "gseurat/engine/command_dispatcher.hpp"
 #include "gseurat/engine/coordinate.hpp"
 #include "gseurat/engine/gaussian_cloud.hpp"
 #include "gseurat/engine/day_night_system.hpp"
@@ -146,6 +147,12 @@ public:
     ComponentRegistry& component_registry() { return component_registry_; }
     SystemScheduler& system_scheduler() { return system_scheduler_; }
 
+    // Command dispatch
+    CommandDispatcher& command_dispatcher() { return command_dispatcher_; }
+
+    // Mutable scene game object data (used by CommandDispatcher for incremental sync)
+    std::vector<GameObjectData>& scene_game_object_data_mutable() { return scene_game_object_data_; }
+
 protected:
     void init_window();
     virtual void init_game_content();
@@ -242,12 +249,14 @@ protected:
     std::unordered_map<std::string, bool> game_flags_;
     float play_time_ = 0.0f;
 
+    // ── Command dispatch (C++23 Command Pattern) ──
+    CommandDispatcher command_dispatcher_{*this};
+    void poll_control_server();
+
     // Control server (bridge integration)
 #ifndef _WIN32
     ControlServer control_server_;
 #endif
-    virtual void dispatch_command(const nlohmann::json& cmd, nlohmann::json& response);
-    void poll_control_server();
 
     // Terrain PLY AABB (for grid→world coordinate conversion)
     AABB terrain_aabb_;
