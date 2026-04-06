@@ -1,10 +1,14 @@
 #pragma once
 
 #include "gseurat/engine/game_state.hpp"
+#include "gseurat/character/character_manifest.hpp"
+#include "gseurat/character/bone_animation_player.hpp"
 
 #include <glm/vec3.hpp>
 #include <glm/mat4x4.hpp>
 #include <array>
+#include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -25,6 +29,9 @@ public:
     void update(AppBase& app, float dt) override;
     void build_draw_lists(AppBase& app) override;
 
+    // Load character manifest for animation preview
+    void load_character(const std::string& manifest_path, AppBase& app);
+
     // 3D → 2D projection (public for gizmo helpers)
     bool project_to_screen(const glm::vec3& world_pos, const glm::mat4& vp,
                            float screen_w, float screen_h,
@@ -41,6 +48,7 @@ private:
     void draw_scene_panel(AppBase& app);
     void draw_performance(AppBase& app);
     void draw_gizmos(AppBase& app);
+    void draw_character_panel(AppBase& app);
 
     // Camera orbit state
     float azimuth_ = 0.0f;
@@ -93,6 +101,14 @@ private:
 
     // Track scene path for auto-recentering camera on load_scene_json
     std::string last_scene_path_;
+
+    // Character animation
+    std::optional<CharacterData> character_data_;
+    std::unique_ptr<BoneAnimationPlayer> anim_player_;
+    int selected_clip_ = 0;
+    bool anim_playing_ = false;
+    float anim_speed_ = 1.0f;
+    bool show_character_ = true;
 };
 
 }  // namespace gseurat

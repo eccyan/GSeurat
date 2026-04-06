@@ -271,6 +271,20 @@ void CommandDispatcher::register_default_commands() {
         }
     });
 
+    register_command("load_character", [this, ok](const json& cmd) -> CommandResult {
+        auto path = cmd.value("path", "");
+        if (path.empty())
+            return std::unexpected(std::string("Missing 'path' parameter"));
+        if (ctx_.load_character) {
+            try {
+                ctx_.load_character(path);
+            } catch (const std::exception& e) {
+                return std::unexpected(std::string("Failed to load character: ") + e.what());
+            }
+        }
+        return ok();
+    });
+
     register_command("update_scene_data", [this](const json& cmd) -> CommandResult {
         auto json_str = cmd.value("json", "");
         if (json_str.empty())
