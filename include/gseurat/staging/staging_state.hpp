@@ -8,7 +8,6 @@
 #include <glm/mat4x4.hpp>
 #include <array>
 #include <memory>
-#include <optional>
 #include <string>
 #include <vector>
 
@@ -102,8 +101,8 @@ private:
     // Track scene path for auto-recentering camera on load_scene_json
     std::string last_scene_path_;
 
-    // Character animation
-    std::optional<CharacterData> character_data_;
+    // Character animation (unique_ptr so we can leak on exit — macOS allocator workaround)
+    std::unique_ptr<CharacterData> character_data_;
     std::unique_ptr<BoneAnimationPlayer> anim_player_;
     int selected_clip_ = 0;
     bool anim_playing_ = false;

@@ -2,6 +2,7 @@
 #include "gseurat/engine/app_base.hpp"
 #include "gseurat/engine/gaussian_cloud.hpp"
 #include "gseurat/engine/post_process.hpp"
+#include "gseurat/engine/shutdown_auditor.hpp"
 
 #include <imgui.h>
 
@@ -52,7 +53,22 @@ void StagingState::on_enter(AppBase& app) {
     std::fprintf(stderr, "[Staging] Ready\n");
 }
 
-void StagingState::on_exit(AppBase& /*app*/) {
+void StagingState::on_exit(AppBase& app) {
+    // Release animation player first (holds reference to character data)
+    anim_player_.reset();
+
+    // Intentionally leak CharacterData on exit — macOS allocator crashes when
+    // freeing vectors during Vulkan/VMA teardown (known issue, same as IslandDemoState).
+    // Process teardown reclaims the memory anyway.
+    if (character_data_) {
+        ShutdownAuditor::remove(character_data_.get());
+        (void)character_data_.release();  // leak — delete crashes on macOS
+        std::fprintf(stderr, "[Staging] CharacterData leaked (macOS allocator workaround)\n");
+    }
+
+    if (app.renderer().has_gs_cloud()) {
+        app.renderer().gs_renderer().clear_bone_transforms();
+    }
 }
 
 void StagingState::update(AppBase& app, float dt) {
@@ -802,14 +818,18 @@ void StagingState::load_character(const std::string& manifest_path, AppBase& app
     std::fprintf(stderr, "[Staging] Loaded character '%s' (%zu bones, %zu clips)\n",
         data->name.c_str(), data->bones.size(), data->clips.size());
 
-    character_data_ = std::move(*data);
+    character_data_ = std::make_unique<CharacterData>(std::move(*data));
+    ShutdownAuditor::record<CharacterData>(character_data_.get());
     anim_player_ = std::make_unique<BoneAnimationPlayer>(*character_data_);
+    ShutdownAuditor::record<BoneAnimationPlayer>(anim_player_.get());
     selected_clip_ = 0;
-    anim_playing_ = false;
 
-    // If there's at least one clip, select it
+    // Auto-play the first clip
     if (!character_data_->clips.empty()) {
         anim_player_->play(character_data_->clips[0].name);
+        anim_playing_ = true;
+    } else {
+        anim_playing_ = false;
     }
 
     // Clear bone transforms (identity) until animation starts
