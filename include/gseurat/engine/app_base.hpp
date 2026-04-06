@@ -83,26 +83,6 @@ public:
     GameplayState& gameplay() { return gameplay_; }
     const GameplayState& gameplay() const { return gameplay_; }
 
-    // ── Temporary shim accessors (delegate to state objects) ──
-
-    // GameplayState shims
-    enum class GameMode  { Explore, Dialog };
-    GameMode game_mode() const {
-        return gameplay_.mode == GameplayState::Mode::Explore ? GameMode::Explore : GameMode::Dialog;
-    }
-    void set_game_mode(GameMode m) {
-        gameplay_.mode = (m == GameMode::Explore) ? GameplayState::Mode::Explore : GameplayState::Mode::Dialog;
-    }
-    DialogState& dialog_state() { return gameplay_.dialog; }
-    const std::vector<DialogScript>& npc_dialogs() const { return gameplay_.npc_dialogs; }
-    std::unordered_map<std::string, bool>& game_flags() { return gameplay_.flags; }
-    float play_time() const { return gameplay_.play_time; }
-
-    // DrawLists shims
-    std::vector<SpriteDrawInfo>& overlay_sprites() { return draw_lists_.overlay; }
-    std::vector<SpriteDrawInfo>& ui_sprites() { return draw_lists_.ui; }
-    std::vector<SpriteDrawInfo>& entity_sprites() { return draw_lists_.entity; }
-
     // Save/load helpers (virtual — game overrides)
     virtual SaveData build_save_data() const;
     virtual void apply_save_data(const SaveData& data);
@@ -120,11 +100,9 @@ public:
     virtual void update_game(float dt);
     virtual void update_audio(float dt);
 
-    // SceneObjectState shims
+    // SceneObjectState shims (still used by CommandDispatcher — removed in Task 6)
     const std::string& current_scene_path() const { return scene_objects_.current_scene_path; }
     void set_current_scene_path(const std::string& path) { scene_objects_.current_scene_path = path; }
-    bool is_transitioning() const { return scene_objects_.transitioning; }
-    void set_transitioning(bool t) { scene_objects_.transitioning = t; }
 
     // Audio state
     float& footstep_timer() { return footstep_timer_; }
@@ -153,10 +131,6 @@ public:
     // Screen effects accessor
     ScreenEffects& screen_effects() { return screen_effects_; }
 
-    // GsTerrainState shims
-    void set_gs_parallax_active(bool active) { gs_terrain_.parallax_active = active; }
-    GsParallaxCamera& gs_parallax_camera() { return gs_terrain_.parallax_camera; }
-
     // Async loading accessors
     AsyncLoader& async_loader() { return async_loader_; }
     StagingUploader& staging_uploader() { return staging_uploader_; }
@@ -170,6 +144,8 @@ public:
 
     // Mutable scene game object data (used by CommandDispatcher for incremental sync)
     std::vector<GameObjectData>& scene_game_object_data_mutable() { return scene_objects_.game_objects; }
+    // GsTerrainState shim still used by CommandDispatcher (removed in Task 6)
+    const AABB& terrain_aabb() const { return gs_terrain_.terrain_aabb; }
 
 protected:
     void init_window();
@@ -210,21 +186,6 @@ protected:
     DrawLists draw_lists_;
     GameplayState gameplay_;
 
-public:
-    const std::vector<GameObjectData>& scene_game_objects() const { return scene_objects_.game_objects; }
-    const std::vector<glm::vec3>& pbd_anchors() const { return gs_terrain_.pbd_anchors; }
-    std::vector<glm::vec3>& pbd_anchors_mutable() { return gs_terrain_.pbd_anchors; }
-    const std::vector<PbdConfig>& pbd_configs() const { return gs_terrain_.pbd_configs; }
-    std::vector<PbdConfig>& pbd_configs_mutable() { return gs_terrain_.pbd_configs; }
-    glm::vec2 gs_aabb_offset() const { return gs_terrain_.aabb_offset(); }
-    const AABB& terrain_aabb() const { return gs_terrain_.terrain_aabb; }
-    void set_terrain_aabb(const AABB& aabb) { gs_terrain_.terrain_aabb = aabb; }
-    glm::vec3 gs_cloud_center() const { return gs_terrain_.cloud_center; }
-    void set_gs_cloud_center(const glm::vec3& c) { gs_terrain_.cloud_center = c; }
-    float gs_cloud_extent() const { return gs_terrain_.cloud_extent; }
-    void set_gs_cloud_extent(float e) { gs_terrain_.cloud_extent = e; }
-    void set_gs_frame_counter(uint32_t v) { gs_terrain_.frame_counter = v; }
-protected:
     std::vector<PointLight> static_lights_;
 
     // Particles & Weather
