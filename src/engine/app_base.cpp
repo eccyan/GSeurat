@@ -389,7 +389,17 @@ void AppBase::load_gs_scene(const SceneData& scene_data, const GsSceneOptions& o
             renderer_.gs_renderer().set_scale_multiplier(gs_scale_multiplier);
         }
 
-        // Snap game object positions to terrain elevation
+        // Compute terrain AABB offset (grid-to-world coordinate mapping)
+        // Bricklayer uses 0-based grid coordinates, but the terrain PLY may have
+        // a different origin (e.g., centered at X=0). The AABB min XZ provides
+        // the offset to convert grid coordinates to PLY world coordinates.
+        terrain_aabb_min_ = glm::vec3(0.0f);
+        if (has_terrain) {
+            auto terrain_aabb = cloud.bounds();
+            terrain_aabb_min_ = terrain_aabb.min;
+        }
+
+        // Snap game object positions to terrain elevation (in grid coordinates)
         auto snapped_objects = scene_data.game_objects;
         if (scene_data.collision) {
             const auto& grid = *scene_data.collision;
@@ -403,6 +413,13 @@ void AppBase::load_gs_scene(const SceneData& scene_data, const GsSceneOptions& o
                             static_cast<uint32_t>(gx), static_cast<uint32_t>(gz));
                     }
                 }
+            }
+        }
+
+        // Apply terrain AABB offset to convert grid coords → world coords
+        if (has_terrain) {
+            for (auto& go : snapped_objects) {
+                go.position += terrain_aabb_min_;
             }
         }
         scene_game_object_data_ = snapped_objects;
@@ -521,6 +538,11 @@ void AppBase::load_gs_scene(const SceneData& scene_data, const GsSceneOptions& o
             else if (cloud.count() > 50000 && gs_w >= 320) { gs_w = 240; gs_h = 180; }
 
             renderer_.init_gs(cloud, gs_w, gs_h);
+
+            // Store cloud bounds for camera centering
+            auto cloud_aabb = cloud.bounds();
+            gs_cloud_center_ = (cloud_aabb.min + cloud_aabb.max) * 0.5f;
+            gs_cloud_extent_ = glm::length(cloud_aabb.max - cloud_aabb.min) * 0.5f;
 
             // Camera — use terrain config if available, else fit to cloud bounds
             if (scene_data.gaussian_splat) {
@@ -963,12 +985,16 @@ void AppBase::dispatch_command(const nlohmann::json& cmd, nlohmann::json& respon
                     renderer_.add_vfx_instance(std::move(inst));
                 }
 
-                // Update stored game object data for gizmo rendering
-                scene_game_object_data_ = scene_data.game_objects;
-
-                // Rebuild game object ECS entities (non-static only)
+                // Update stored game object data with AABB offset for gizmo rendering
                 {
-                    for (const auto& go : scene_data.game_objects) {
+                    auto adjusted_objects = scene_data.game_objects;
+                    for (auto& go : adjusted_objects) {
+                        go.position += terrain_aabb_min_;
+                    }
+                    scene_game_object_data_ = adjusted_objects;
+
+                    // Rebuild game object ECS entities (non-static only)
+                    for (const auto& go : adjusted_objects) {
                         if (go.components.empty() || go.components.is_null()) continue;
                         auto entity = world_.create();
                         world_.add<ecs::Transform>(entity, {{go.position}, {go.scale, go.scale}});

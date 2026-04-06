@@ -41,6 +41,7 @@ export function exportSceneJson(state: SceneStoreState): object {
         scale: go.scale,
       };
       if (go.ply_file) out.ply_file = go.ply_file;
+      if (go.pbd) out.pbd = go.pbd;
       out.components = go.components;
       return out;
     });
