@@ -56,6 +56,13 @@ void StagingState::on_exit(AppBase& /*app*/) {
 }
 
 void StagingState::update(AppBase& app, float dt) {
+    // Detect scene change from load_scene_json (socket command)
+    const auto& current_path = app.current_scene_path();
+    if (current_path != last_scene_path_) {
+        last_scene_path_ = current_path;
+        camera_initialized_ = false;
+    }
+
     // Drive GS effect time for PBD wind sway
     anim_time_ += dt;
     app.renderer().gs_renderer().set_effect_time(anim_time_);
@@ -131,9 +138,8 @@ void StagingState::update(AppBase& app, float dt) {
 
     // Initialize camera from scene if not done
     if (!camera_initialized_ && app.renderer().has_gs_cloud()) {
-        auto& gs_renderer = app.renderer().gs_renderer();
-        // Start centered at the scene
-        distance_ = 100.0f;
+        target_ = app.gs_cloud_center();
+        distance_ = std::max(app.gs_cloud_extent() * 1.5f, 50.0f);
         camera_initialized_ = true;
     }
 
@@ -180,6 +186,7 @@ void StagingState::draw_imgui(AppBase& app) {
             if (ImGui::MenuItem("Reload")) {
                 app.clear_scene();
                 app.init_scene(app.current_scene_path());
+                camera_initialized_ = false;
             }
             ImGui::Separator();
             for (const auto& path : scene_files_) {
@@ -187,6 +194,7 @@ void StagingState::draw_imgui(AppBase& app) {
                 if (ImGui::MenuItem(name.c_str())) {
                     app.clear_scene();
                     app.init_scene(path);
+                    camera_initialized_ = false;
                 }
             }
             ImGui::EndMenu();

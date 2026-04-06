@@ -90,6 +90,9 @@ private:
 
     // Hide all UI (Tab key toggle)
     bool hide_ui_ = false;
+
+    // Track scene path for auto-recentering camera on load_scene_json
+    std::string last_scene_path_;
 };
 
 }  // namespace gseurat

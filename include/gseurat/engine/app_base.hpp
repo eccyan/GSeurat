@@ -212,6 +212,8 @@ public:
     const std::vector<glm::vec3>& pbd_anchors() const { return pbd_anchors_; }
     const std::vector<PbdConfig>& pbd_configs() const { return pbd_configs_; }
     glm::vec2 gs_aabb_offset() const { return gs_aabb_offset_; }
+    glm::vec3 gs_cloud_center() const { return gs_cloud_center_; }
+    float gs_cloud_extent() const { return gs_cloud_extent_; }
 protected:
     std::vector<PointLight> static_lights_;
 
@@ -247,6 +249,9 @@ protected:
 
     // GS scene AABB offset (voxel→world coordinate transform)
     glm::vec2 gs_aabb_offset_{0.0f};
+    glm::vec3 terrain_aabb_min_{0.0f};  // terrain PLY AABB min (for game object grid→world mapping)
+    glm::vec3 gs_cloud_center_{0.0f};
+    float gs_cloud_extent_ = 100.0f;
 
     // Step mode / control
     bool step_mode_ = false;

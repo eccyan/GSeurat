@@ -522,6 +522,31 @@ int main() {
         check(!rt.game_objects[0].pbd.has_value(), "no pbd config = nullopt");
     }
 
+    // ── Section 10: Game object AABB offset ──
+    {
+        std::printf("\n== Section 10: game object AABB offset ==\n");
+
+        // Simulate a terrain PLY with AABB min at (-128, -70, 0)
+        // and a game object at grid position (50, 0, 64)
+        gseurat::AABB terrain_aabb;
+        terrain_aabb.min = glm::vec3(-128.0f, -70.0f, 0.0f);
+        terrain_aabb.max = glm::vec3(127.0f, 70.0f, 127.0f);
+
+        // The grid-to-world mapping should shift XZ by AABB min
+        glm::vec3 grid_pos(50.0f, 0.0f, 64.0f);
+        glm::vec3 world_pos = grid_pos;
+        world_pos.x += terrain_aabb.min.x;
+        world_pos.z += terrain_aabb.min.z;
+
+        check(approx(world_pos.x, -78.0f), "game object X shifted by terrain AABB min X");
+        check(approx(world_pos.y, 0.0f), "game object Y unchanged (height not shifted)");
+        check(approx(world_pos.z, 64.0f), "game object Z shifted by terrain AABB min Z (0)");
+
+        // Center of terrain in world space
+        glm::vec3 terrain_center = (terrain_aabb.min + terrain_aabb.max) * 0.5f;
+        check(world_pos.x < terrain_center.x, "game object LEFT of terrain center");
+    }
+
     // ── Summary ──
     std::printf("\n========================================\n");
     std::printf("  %d passed, %d failed\n", passed, failed);
