@@ -37,7 +37,10 @@
 
 #include <chrono>
 #include <cstdint>
+#include <expected>
 #include <functional>
+#include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace gseurat {
@@ -242,12 +245,23 @@ protected:
     std::unordered_map<std::string, bool> game_flags_;
     float play_time_ = 0.0f;
 
+    // ── Command dispatch (C++23 Command Pattern) ──
+    // CommandResult: std::expected — success carries the JSON response,
+    // failure carries an error message string.
+    using CommandResult = std::expected<nlohmann::json, std::string>;
+    // std::move_only_function when compiler supports P1288R9; std::function for now.
+    using CommandHandler = std::function<CommandResult(const nlohmann::json&)>;
+
+    void register_command(std::string name, CommandHandler handler);
+    virtual void register_commands();
+    virtual void dispatch_command(const nlohmann::json& cmd, nlohmann::json& response);
+    void poll_control_server();
+
     // Control server (bridge integration)
 #ifndef _WIN32
     ControlServer control_server_;
 #endif
-    virtual void dispatch_command(const nlohmann::json& cmd, nlohmann::json& response);
-    void poll_control_server();
+    std::unordered_map<std::string, CommandHandler> command_handlers_;
 
     // Terrain PLY AABB (for grid→world coordinate conversion)
     AABB terrain_aabb_;

@@ -21,6 +21,7 @@ void AppBase::set_start_state(std::unique_ptr<GameState> state) {
 }
 
 void AppBase::run() {
+    register_commands();
     init_game_object_system();
     init_game_content();
 
@@ -706,37 +707,41 @@ void AppBase::poll_control_server() {
 #endif
 }
 
-void AppBase::dispatch_command(const nlohmann::json& cmd, nlohmann::json& response) {
-    const auto cmd_name = cmd.value("cmd", "");
+void AppBase::register_command(std::string name, CommandHandler handler) {
+    command_handlers_.emplace(std::move(name), std::move(handler));
+}
 
-    if (cmd_name == "get_features") {
+void AppBase::register_commands() {
+    using json = nlohmann::json;
+    auto ok = []() -> CommandResult { return json{{"type", "ok"}}; };
+
+    register_command("get_features", [this](const json&) -> CommandResult {
+        json response;
         response["type"] = "features";
-        auto add_feature = [&](const char* name, bool enabled, const char* label) {
-            nlohmann::json f;
-            f["name"] = name;
-            f["enabled"] = enabled;
-            f["label"] = label;
-            response["features"].push_back(f);
+        response["features"] = json::array();
+        auto add = [&](const char* name, bool enabled, const char* label) {
+            response["features"].push_back({{"name", name}, {"enabled", enabled}, {"label", label}});
         };
-        response["features"] = nlohmann::json::array();
-        add_feature("gs_rendering", feature_flags_.gs_rendering, "GS Rendering");
-        add_feature("gs_chunk_culling", feature_flags_.gs_chunk_culling, "Chunk Culling");
-        add_feature("gs_lod", feature_flags_.gs_lod, "LOD");
-        add_feature("gs_adaptive_budget", feature_flags_.gs_adaptive_budget, "Adaptive Budget");
-        add_feature("gs_parallax", feature_flags_.gs_parallax, "Parallax");
-        add_feature("bloom", feature_flags_.bloom, "Bloom");
-        add_feature("depth_of_field", feature_flags_.depth_of_field, "Depth of Field");
-        add_feature("vignette", feature_flags_.vignette, "Vignette");
-        add_feature("tone_mapping", feature_flags_.tone_mapping, "Tone Mapping");
-        add_feature("fog", feature_flags_.fog, "Fog");
-        add_feature("point_lights", feature_flags_.point_lights, "Point Lights");
-        add_feature("particles", feature_flags_.particles, "Particles");
-        add_feature("weather", feature_flags_.weather, "Weather");
-        add_feature("screen_effects", feature_flags_.screen_effects, "Screen Effects");
-        add_feature("music", feature_flags_.music, "Music");
-        add_feature("sfx", feature_flags_.sfx, "SFX");
+        add("gs_rendering", feature_flags_.gs_rendering, "GS Rendering");
+        add("gs_chunk_culling", feature_flags_.gs_chunk_culling, "Chunk Culling");
+        add("gs_lod", feature_flags_.gs_lod, "LOD");
+        add("gs_adaptive_budget", feature_flags_.gs_adaptive_budget, "Adaptive Budget");
+        add("gs_parallax", feature_flags_.gs_parallax, "Parallax");
+        add("bloom", feature_flags_.bloom, "Bloom");
+        add("depth_of_field", feature_flags_.depth_of_field, "Depth of Field");
+        add("vignette", feature_flags_.vignette, "Vignette");
+        add("tone_mapping", feature_flags_.tone_mapping, "Tone Mapping");
+        add("fog", feature_flags_.fog, "Fog");
+        add("point_lights", feature_flags_.point_lights, "Point Lights");
+        add("particles", feature_flags_.particles, "Particles");
+        add("weather", feature_flags_.weather, "Weather");
+        add("screen_effects", feature_flags_.screen_effects, "Screen Effects");
+        add("music", feature_flags_.music, "Music");
+        add("sfx", feature_flags_.sfx, "SFX");
+        return response;
+    });
 
-    } else if (cmd_name == "set_feature") {
+    register_command("set_feature", [this, ok](const json& cmd) -> CommandResult {
         auto name = cmd.value("feature", "");
         bool enabled = cmd.value("enabled", false);
         auto& f = feature_flags_;
@@ -756,40 +761,44 @@ void AppBase::dispatch_command(const nlohmann::json& cmd, nlohmann::json& respon
         else if (name == "screen_effects") f.screen_effects = enabled;
         else if (name == "music") f.music = enabled;
         else if (name == "sfx") f.sfx = enabled;
-        response["type"] = "ok";
+        return ok();
+    });
 
-    } else if (cmd_name == "get_render_params") {
-        response["type"] = "render_params";
+    register_command("get_render_params", [this](const json&) -> CommandResult {
         auto& pp = renderer_.post_process_params();
-        response["params"] = {
-            {"bloom_threshold", pp.bloom_threshold},
-            {"bloom_soft_knee", pp.bloom_soft_knee},
-            {"bloom_intensity", pp.bloom_intensity},
-            {"exposure", pp.exposure},
-            {"vignette_radius", pp.vignette_radius},
-            {"vignette_softness", pp.vignette_softness},
-            {"dof_focus_distance", pp.dof_focus_distance},
-            {"dof_focus_range", pp.dof_focus_range},
-            {"dof_max_blur", pp.dof_max_blur},
-            {"fog_density", pp.fog_density},
-            {"fog_color_r", pp.fog_color_r},
-            {"fog_color_g", pp.fog_color_g},
-            {"fog_color_b", pp.fog_color_b},
-            {"god_rays_intensity", renderer_.god_rays_intensity()},
-            {"scale_multiplier", renderer_.gs_renderer().scale_multiplier()},
-            {"toon_bands", renderer_.gs_renderer().toon_bands()},
-            {"light_mode", renderer_.gs_renderer().light_mode()},
-            {"light_intensity", renderer_.gs_renderer().light_intensity()},
-            {"ground_color_r", renderer_.gs_bg_ground_color().r},
-            {"ground_color_g", renderer_.gs_bg_ground_color().g},
-            {"ground_color_b", renderer_.gs_bg_ground_color().b},
-            {"sky_color_r", renderer_.gs_bg_sky_color().r},
-            {"sky_color_g", renderer_.gs_bg_sky_color().g},
-            {"sky_color_b", renderer_.gs_bg_sky_color().b},
-            {"background_enabled", renderer_.gs_bg_colors_enabled() ? 1.0f : 0.0f},
+        return json{
+            {"type", "render_params"},
+            {"params", {
+                {"bloom_threshold", pp.bloom_threshold},
+                {"bloom_soft_knee", pp.bloom_soft_knee},
+                {"bloom_intensity", pp.bloom_intensity},
+                {"exposure", pp.exposure},
+                {"vignette_radius", pp.vignette_radius},
+                {"vignette_softness", pp.vignette_softness},
+                {"dof_focus_distance", pp.dof_focus_distance},
+                {"dof_focus_range", pp.dof_focus_range},
+                {"dof_max_blur", pp.dof_max_blur},
+                {"fog_density", pp.fog_density},
+                {"fog_color_r", pp.fog_color_r},
+                {"fog_color_g", pp.fog_color_g},
+                {"fog_color_b", pp.fog_color_b},
+                {"god_rays_intensity", renderer_.god_rays_intensity()},
+                {"scale_multiplier", renderer_.gs_renderer().scale_multiplier()},
+                {"toon_bands", renderer_.gs_renderer().toon_bands()},
+                {"light_mode", renderer_.gs_renderer().light_mode()},
+                {"light_intensity", renderer_.gs_renderer().light_intensity()},
+                {"ground_color_r", renderer_.gs_bg_ground_color().r},
+                {"ground_color_g", renderer_.gs_bg_ground_color().g},
+                {"ground_color_b", renderer_.gs_bg_ground_color().b},
+                {"sky_color_r", renderer_.gs_bg_sky_color().r},
+                {"sky_color_g", renderer_.gs_bg_sky_color().g},
+                {"sky_color_b", renderer_.gs_bg_sky_color().b},
+                {"background_enabled", renderer_.gs_bg_colors_enabled() ? 1.0f : 0.0f},
+            }},
         };
+    });
 
-    } else if (cmd_name == "set_render_param") {
+    register_command("set_render_param", [this, ok](const json& cmd) -> CommandResult {
         auto name = cmd.value("name", "");
         float value = cmd.value("value", 0.0f);
         auto& pp = renderer_.post_process_params();
@@ -835,23 +844,29 @@ void AppBase::dispatch_command(const nlohmann::json& cmd, nlohmann::json& respon
             auto c = renderer_.gs_bg_sky_color(); c.b = value;
             renderer_.set_gs_background_colors(renderer_.gs_bg_ground_color(), c);
         }
-        response["type"] = "ok";
+        return ok();
+    });
 
-    } else if (cmd_name == "get_perf") {
-        response["type"] = "perf";
-        response["gaussian_count"] = renderer_.gs_renderer().gaussian_count();
-        response["visible_count"] = renderer_.gs_renderer().visible_count();
-        response["max_capacity"] = renderer_.gs_renderer().max_gaussian_count();
+    register_command("get_perf", [this](const json&) -> CommandResult {
+        return json{
+            {"type", "perf"},
+            {"gaussian_count", renderer_.gs_renderer().gaussian_count()},
+            {"visible_count", renderer_.gs_renderer().visible_count()},
+            {"max_capacity", renderer_.gs_renderer().max_gaussian_count()},
+        };
+    });
 
-    } else if (cmd_name == "set_ambient") {
+    register_command("set_ambient", [this, ok](const json& cmd) -> CommandResult {
         float r = cmd.value("r", 0.0f);
         float g = cmd.value("g", 0.0f);
         float b = cmd.value("b", 0.0f);
         float s = cmd.value("strength", 1.0f);
         scene_.set_ambient_color({r, g, b, s});
-        response["type"] = "ok";
+        return ok();
+    });
 
-    } else if (cmd_name == "get_scene") {
+    register_command("get_scene", [this](const json&) -> CommandResult {
+        json response;
         response["type"] = "scene";
         response["path"] = current_scene_path_;
         auto ac = scene_.ambient_color();
@@ -859,212 +874,198 @@ void AppBase::dispatch_command(const nlohmann::json& cmd, nlohmann::json& respon
         response["ambient_g"] = ac.g;
         response["ambient_b"] = ac.b;
         response["ambient_strength"] = ac.a;
-        response["lights"] = nlohmann::json::array();
+        response["lights"] = json::array();
         for (const auto& l : scene_.lights()) {
-            nlohmann::json lj;
-            lj["x"] = l.position_and_radius.x;
-            lj["y"] = l.position_and_radius.y;
-            lj["z"] = l.position_and_radius.z;
-            lj["radius"] = l.position_and_radius.w;
-            lj["r"] = l.color.r;
-            lj["g"] = l.color.g;
-            lj["b"] = l.color.b;
-            lj["intensity"] = l.color.a;
-            response["lights"].push_back(lj);
+            response["lights"].push_back({
+                {"x", l.position_and_radius.x},
+                {"y", l.position_and_radius.y},
+                {"z", l.position_and_radius.z},
+                {"radius", l.position_and_radius.w},
+                {"r", l.color.r},
+                {"g", l.color.g},
+                {"b", l.color.b},
+                {"intensity", l.color.a},
+            });
         }
+        return response;
+    });
 
-    } else if (cmd_name == "reload_scene") {
+    register_command("reload_scene", [this, ok](const json&) -> CommandResult {
         clear_scene();
         init_scene(current_scene_path_);
-        response["type"] = "ok";
+        return ok();
+    });
 
-    } else if (cmd_name == "write_temp_file") {
+    register_command("write_temp_file", [](const json& cmd) -> CommandResult {
         auto path = cmd.value("path", "");
         auto content = cmd.value("content", "");
-        if (!path.empty() && !content.empty()) {
-            // Create parent directories if they don't exist
-            auto parent = std::filesystem::path(path).parent_path();
-            if (!parent.empty()) {
-                std::filesystem::create_directories(parent);
-            }
-            std::ofstream ofs(path);
-            if (ofs.is_open()) {
-                ofs << content;
-                ofs.close();
-                response["type"] = "ok";
-            } else {
-                response["type"] = "error";
-                response["message"] = "Failed to write file: " + path;
-            }
-        } else {
-            response["type"] = "error";
-            response["message"] = "Missing 'path' or 'content'";
-        }
+        if (path.empty() || content.empty())
+            return std::unexpected(std::string("Missing 'path' or 'content'"));
 
-    } else if (cmd_name == "load_scene_json") {
+        auto parent = std::filesystem::path(path).parent_path();
+        if (!parent.empty())
+            std::filesystem::create_directories(parent);
+
+        std::ofstream ofs(path);
+        if (!ofs.is_open())
+            return std::unexpected("Failed to write file: " + path);
+
+        ofs << content;
+        return json{{"type", "ok"}};
+    });
+
+    register_command("load_scene_json", [this](const json& cmd) -> CommandResult {
         auto json_str = cmd.value("json", "");
-        if (!json_str.empty()) {
-            try {
-                std::string temp_path = "/tmp/gseurat_live_scene.json";
-                std::ofstream ofs(temp_path);
-                ofs << json_str;
-                ofs.close();
-                vkDeviceWaitIdle(renderer_.context().device());
-                clear_scene();
-                init_scene(temp_path);
-                current_scene_path_ = temp_path;
-                response["type"] = "ok";
-            } catch (const std::exception& e) {
-                std::fprintf(stderr, "[load_scene_json] ERROR: %s\n", e.what());
-                response["type"] = "error";
-                response["message"] = std::string("Failed to load scene: ") + e.what();
-            }
-        } else {
-            response["type"] = "error";
-            response["message"] = "Missing 'json' parameter";
-        }
+        if (json_str.empty())
+            return std::unexpected(std::string("Missing 'json' parameter"));
 
-    } else if (cmd_name == "update_scene_data") {
-        // Incremental sync: re-apply lights, emitters, animations, VFX
-        // without reloading the PLY cloud or re-initializing the GS renderer.
-        auto json_str = cmd.value("json", "");
-        if (!json_str.empty()) {
-            try {
-                std::string temp_path = "/tmp/gseurat_live_scene.json";
-                std::ofstream ofs(temp_path);
-                ofs << json_str;
-                ofs.close();
-                auto scene_data = SceneLoader::load(temp_path);
-
-                // Update ambient + lights
-                scene_.clear_lights();
-                scene_.set_ambient_color(scene_data.ambient_color);
-                for (const auto& pl : scene_data.static_lights) {
-                    scene_.add_light(pl);
-                }
-
-                // Transform lights with AABB offset and push to GS renderer
-                std::vector<PointLight> gs_lights;
-                for (const auto& pl : scene_data.static_lights) {
-                    PointLight t = pl;
-                    t.position_and_radius.x += terrain_aabb_.min.x;
-                    t.position_and_radius.z += terrain_aabb_.min.y;
-                    gs_lights.push_back(t);
-                }
-                if (!gs_lights.empty()) {
-                    renderer_.gs_renderer().set_light_mode(2);
-                    renderer_.gs_renderer().set_point_lights(gs_lights);
-                    renderer_.set_gs_static_lights(gs_lights);
-                } else {
-                    renderer_.gs_renderer().set_light_mode(0);
-                }
-
-                // Apply weather fog directly to scene (no WeatherSystem in Staging)
-                scene_.set_fog_density(scene_data.weather.fog_density);
-                scene_.set_fog_color(scene_data.weather.fog_color);
-
-                // Rebuild emitters
-                renderer_.clear_gs_particle_emitters();
-                for (const auto& em : scene_data.gs_particle_emitters) {
-                    auto config = em.config;
-                    auto world_pos = coord::to_world(coord::GridPos(config.position), terrain_aabb_);
-                    config.position = world_pos.vec();
-                    renderer_.add_gs_particle_emitter(config);
-                }
-
-                // Rebuild animations
-                renderer_.clear_gs_animations();
-                for (const auto& anim : scene_data.gs_animations) {
-                    auto region = anim.region;
-                    auto world_center = coord::to_world(coord::GridPos(region.center), terrain_aabb_);
-                    region.center = world_center.vec();
-                    std::optional<Renderer::ReformConfig> reform;
-                    if (anim.reform) reform = Renderer::ReformConfig{anim.reform->lifetime};
-                    renderer_.add_gs_animation(anim.effect, region, anim.lifetime, anim.loop, anim.params, reform);
-                }
-
-                // Rebuild VFX instances
-                renderer_.clear_vfx_instances();
-                for (const auto& vi : scene_data.vfx_instances) {
-                    if (vi.trigger != "auto") continue;
-                    auto preset = load_vfx_preset(vi.vfx_file);
-                    if (preset.elements.empty()) continue;
-                    VfxInstance inst;
-                    auto world_pos = coord::to_world(vi.position, terrain_aabb_);
-                    inst.init(preset, world_pos.vec(), vi.loop, vi.rotation_y);
-                    renderer_.add_vfx_instance(std::move(inst));
-                }
-
-                // Update stored game object data with world positions for gizmo rendering
-                {
-                    scene_game_object_data_ = scene_data.game_objects;
-
-                    std::vector<coord::WorldPos> world_positions;
-                    world_positions.reserve(scene_data.game_objects.size());
-                    for (const auto& go : scene_data.game_objects) {
-                        world_positions.push_back(coord::to_world(go.position, terrain_aabb_));
-                    }
-
-                    // Rebuild game object ECS entities (non-static only)
-                    for (size_t i = 0; i < scene_data.game_objects.size(); ++i) {
-                        const auto& go = scene_data.game_objects[i];
-                        if (go.components.empty() || go.components.is_null()) continue;
-                        auto entity = world_.create();
-                        world_.add<ecs::Transform>(entity, {world_positions[i], {go.scale, go.scale}});
-                        for (auto& [name, data] : go.components.items()) {
-                            component_registry_.attach(world_, entity, name, data);
-                        }
-                    }
-                }
-
-                response["type"] = "ok";
-            } catch (const std::exception& e) {
-                std::fprintf(stderr, "[update_scene_data] ERROR: %s\n", e.what());
-                response["type"] = "error";
-                response["message"] = std::string("Failed: ") + e.what();
-            }
-        } else {
-            response["type"] = "error";
-            response["message"] = "Missing 'json' parameter";
-        }
-
-    } else if (cmd_name == "update_vfx_positions") {
-        // Lightweight update: only change VFX instance positions without full reload
-        if (cmd.contains("vfx_instances")) {
-            auto& vfx = renderer_.vfx_instances_mutable();
-            const auto& vi_arr = cmd["vfx_instances"];
-            for (size_t i = 0; i < std::min(vfx.size(), vi_arr.size()); i++) {
-                if (vi_arr[i].contains("position")) {
-                    auto pos = vi_arr[i]["position"];
-                    glm::vec3 new_pos{pos[0].get<float>(), pos[1].get<float>(), pos[2].get<float>()};
-                    // Apply grid→world coordinate transform (same as init_scene)
-                    auto world_pos = coord::to_world(coord::GridPos(new_pos), terrain_aabb_);
-                    new_pos = world_pos.vec();
-                    auto preset = vfx[i].preset();
-                    vfx[i].init(preset, new_pos, true);
-                }
-            }
-            response["type"] = "ok";
-        } else {
-            response["type"] = "error";
-            response["message"] = "Missing 'vfx_instances' array";
-        }
-
-    } else if (cmd_name == "open_scene") {
-        auto scene = cmd.value("scene", "");
-        if (!scene.empty()) {
+        try {
+            std::string temp_path = "/tmp/gseurat_live_scene.json";
+            std::ofstream ofs(temp_path);
+            ofs << json_str;
+            ofs.close();
+            vkDeviceWaitIdle(renderer_.context().device());
             clear_scene();
-            init_scene(scene);
-            current_scene_path_ = scene;
-            response["type"] = "ok";
-        } else {
-            response["type"] = "error";
-            response["message"] = "Missing 'scene' parameter";
+            init_scene(temp_path);
+            current_scene_path_ = temp_path;
+            return json{{"type", "ok"}};
+        } catch (const std::exception& e) {
+            std::fprintf(stderr, "[load_scene_json] ERROR: %s\n", e.what());
+            return std::unexpected(std::string("Failed to load scene: ") + e.what());
         }
+    });
 
-    } else if (cmd_name == "list_scenes") {
+    register_command("update_scene_data", [this](const json& cmd) -> CommandResult {
+        auto json_str = cmd.value("json", "");
+        if (json_str.empty())
+            return std::unexpected(std::string("Missing 'json' parameter"));
+
+        try {
+            std::string temp_path = "/tmp/gseurat_live_scene.json";
+            std::ofstream ofs(temp_path);
+            ofs << json_str;
+            ofs.close();
+            auto scene_data = SceneLoader::load(temp_path);
+
+            // Update ambient + lights
+            scene_.clear_lights();
+            scene_.set_ambient_color(scene_data.ambient_color);
+            for (const auto& pl : scene_data.static_lights) {
+                scene_.add_light(pl);
+            }
+
+            // Transform lights with AABB offset and push to GS renderer
+            std::vector<PointLight> gs_lights;
+            for (const auto& pl : scene_data.static_lights) {
+                PointLight t = pl;
+                t.position_and_radius.x += terrain_aabb_.min.x;
+                t.position_and_radius.z += terrain_aabb_.min.y;
+                gs_lights.push_back(t);
+            }
+            if (!gs_lights.empty()) {
+                renderer_.gs_renderer().set_light_mode(2);
+                renderer_.gs_renderer().set_point_lights(gs_lights);
+                renderer_.set_gs_static_lights(gs_lights);
+            } else {
+                renderer_.gs_renderer().set_light_mode(0);
+            }
+
+            // Apply weather fog directly to scene (no WeatherSystem in Staging)
+            scene_.set_fog_density(scene_data.weather.fog_density);
+            scene_.set_fog_color(scene_data.weather.fog_color);
+
+            // Rebuild emitters
+            renderer_.clear_gs_particle_emitters();
+            for (const auto& em : scene_data.gs_particle_emitters) {
+                auto config = em.config;
+                auto world_pos = coord::to_world(coord::GridPos(config.position), terrain_aabb_);
+                config.position = world_pos.vec();
+                renderer_.add_gs_particle_emitter(config);
+            }
+
+            // Rebuild animations
+            renderer_.clear_gs_animations();
+            for (const auto& anim : scene_data.gs_animations) {
+                auto region = anim.region;
+                auto world_center = coord::to_world(coord::GridPos(region.center), terrain_aabb_);
+                region.center = world_center.vec();
+                std::optional<Renderer::ReformConfig> reform;
+                if (anim.reform) reform = Renderer::ReformConfig{anim.reform->lifetime};
+                renderer_.add_gs_animation(anim.effect, region, anim.lifetime, anim.loop, anim.params, reform);
+            }
+
+            // Rebuild VFX instances
+            renderer_.clear_vfx_instances();
+            for (const auto& vi : scene_data.vfx_instances) {
+                if (vi.trigger != "auto") continue;
+                auto preset = load_vfx_preset(vi.vfx_file);
+                if (preset.elements.empty()) continue;
+                VfxInstance inst;
+                auto world_pos = coord::to_world(vi.position, terrain_aabb_);
+                inst.init(preset, world_pos.vec(), vi.loop, vi.rotation_y);
+                renderer_.add_vfx_instance(std::move(inst));
+            }
+
+            // Update stored game object data with world positions for gizmo rendering
+            scene_game_object_data_ = scene_data.game_objects;
+
+            std::vector<coord::WorldPos> world_positions;
+            world_positions.reserve(scene_data.game_objects.size());
+            for (const auto& go : scene_data.game_objects) {
+                world_positions.push_back(coord::to_world(go.position, terrain_aabb_));
+            }
+
+            for (size_t i = 0; i < scene_data.game_objects.size(); ++i) {
+                const auto& go = scene_data.game_objects[i];
+                if (go.components.empty() || go.components.is_null()) continue;
+                auto entity = world_.create();
+                world_.add<ecs::Transform>(entity, {world_positions[i], {go.scale, go.scale}});
+                for (auto& [name, data] : go.components.items()) {
+                    component_registry_.attach(world_, entity, name, data);
+                }
+            }
+
+            return json{{"type", "ok"}};
+        } catch (const std::exception& e) {
+            std::fprintf(stderr, "[update_scene_data] ERROR: %s\n", e.what());
+            return std::unexpected(std::string("Failed: ") + e.what());
+        }
+    });
+
+    register_command("update_vfx_positions", [this](const json& cmd) -> CommandResult {
+        if (!cmd.contains("vfx_instances"))
+            return std::unexpected(std::string("Missing 'vfx_instances' array"));
+
+        auto& vfx = renderer_.vfx_instances_mutable();
+        const auto& vi_arr = cmd["vfx_instances"];
+        for (size_t i = 0; i < std::min(vfx.size(), vi_arr.size()); i++) {
+            if (vi_arr[i].contains("position")) {
+                auto pos = vi_arr[i]["position"];
+                glm::vec3 new_pos{pos[0].get<float>(), pos[1].get<float>(), pos[2].get<float>()};
+                auto world_pos = coord::to_world(coord::GridPos(new_pos), terrain_aabb_);
+                new_pos = world_pos.vec();
+                auto preset = vfx[i].preset();
+                vfx[i].init(preset, new_pos, true);
+            }
+        }
+        return json{{"type", "ok"}};
+    });
+
+    register_command("open_scene", [this](const json& cmd) -> CommandResult {
+        auto scene = cmd.value("scene", "");
+        if (scene.empty())
+            return std::unexpected(std::string("Missing 'scene' parameter"));
+
+        clear_scene();
+        init_scene(scene);
+        current_scene_path_ = scene;
+        return json{{"type", "ok"}};
+    });
+
+    register_command("list_scenes", [](const json&) -> CommandResult {
+        json response;
         response["type"] = "scenes";
-        response["files"] = nlohmann::json::array();
+        response["files"] = json::array();
         if (std::filesystem::exists("assets/scenes")) {
             for (const auto& entry : std::filesystem::directory_iterator("assets/scenes")) {
                 if (entry.path().extension() == ".json") {
@@ -1072,41 +1073,39 @@ void AppBase::dispatch_command(const nlohmann::json& cmd, nlohmann::json& respon
                 }
             }
         }
+        return response;
+    });
 
-    } else if (cmd_name == "screenshot") {
+    register_command("screenshot", [this](const json& cmd) -> CommandResult {
         auto path = cmd.value("path", "staging_screenshot.png");
         renderer_.request_screenshot(path);
-        response["type"] = "ok";
-        response["path"] = path;
+        return json{{"type", "ok"}, {"path", path}};
+    });
 
-    } else if (cmd_name == "inject_key") {
+    register_command("inject_key", [this](const json& cmd) -> CommandResult {
         int key = cmd.value("key", 0);
         bool down = cmd.value("down", true);
-        if (key > 0 && key < kKeyCount) {
-            input_.inject_key(key, down);
-            response["type"] = "ok";
-        } else {
-            response["type"] = "error";
-            response["message"] = "Invalid key code";
-        }
+        if (key <= 0 || key >= kKeyCount)
+            return std::unexpected(std::string("Invalid key code"));
+        input_.inject_key(key, down);
+        return json{{"type", "ok"}};
+    });
 
-    } else if (cmd_name == "inject_key_once") {
+    register_command("inject_key_once", [this](const json& cmd) -> CommandResult {
         int key = cmd.value("key", 0);
-        if (key > 0 && key < kKeyCount) {
-            input_.inject_key_once(key);
-            response["type"] = "ok";
-        } else {
-            response["type"] = "error";
-            response["message"] = "Invalid key code";
-        }
+        if (key <= 0 || key >= kKeyCount)
+            return std::unexpected(std::string("Invalid key code"));
+        input_.inject_key_once(key);
+        return json{{"type", "ok"}};
+    });
 
-    } else if (cmd_name == "clear_keys") {
+    register_command("clear_keys", [this](const json&) -> CommandResult {
         input_.clear_injections();
-        response["type"] = "ok";
+        return json{{"type", "ok"}};
+    });
 
-    } else if (cmd_name == "get_player_state") {
-        // Return player entity state from active game state (if island demo)
-        // Generic approach: iterate ECS world for PlayerController
+    register_command("get_player_state", [this](const json&) -> CommandResult {
+        json response;
         response["type"] = "player_state";
         bool found = false;
         world_.view<ecs::Transform, PlayerController>().each(
@@ -1114,35 +1113,52 @@ void AppBase::dispatch_command(const nlohmann::json& cmd, nlohmann::json& respon
                 response["position"] = {t.position.x(), t.position.y(), t.position.z()};
                 found = true;
             });
-        if (!found) {
+        if (!found)
             response["position"] = nullptr;
-        }
+        return response;
+    });
 
-    } else if (cmd_name == "get_triggers") {
+    register_command("get_triggers", [this](const json&) -> CommandResult {
+        json response;
         response["type"] = "triggers";
-        auto triggers = nlohmann::json::array();
+        auto triggers = json::array();
         world_.view<ProximityTrigger, ecs::Transform>().each(
             [&](ecs::Entity, ProximityTrigger& pt, ecs::Transform& t) {
-                nlohmann::json tj;
-                tj["x"] = t.position.x();
-                tj["y"] = t.position.y();
-                tj["z"] = t.position.z();
-                tj["radius"] = pt.radius;
-                tj["triggered"] = pt.triggered;
-                tj["one_shot"] = pt.one_shot;
-                triggers.push_back(tj);
+                triggers.push_back({
+                    {"x", t.position.x()},
+                    {"y", t.position.y()},
+                    {"z", t.position.z()},
+                    {"radius", pt.radius},
+                    {"triggered", pt.triggered},
+                    {"one_shot", pt.one_shot},
+                });
             });
         response["triggers"] = triggers;
         response["emitter_count"] = renderer_.gs_particle_emitters().size();
+        return response;
+    });
 
-    } else if (cmd_name == "quit") {
-        response["type"] = "ok";
-        response["message"] = "Shutting down";
+    register_command("quit", [this](const json&) -> CommandResult {
         glfwSetWindowShouldClose(window_, GLFW_TRUE);
+        return json{{"type", "ok"}, {"message", "Shutting down"}};
+    });
+}
 
-    } else {
+void AppBase::dispatch_command(const nlohmann::json& cmd, nlohmann::json& response) {
+    const auto cmd_name = cmd.value("cmd", "");
+    auto it = command_handlers_.find(cmd_name);
+    if (it == command_handlers_.end()) {
         response["type"] = "error";
         response["message"] = "Unknown command: " + cmd_name;
+        return;
+    }
+
+    auto result = it->second(cmd);
+    if (result) {
+        response = std::move(*result);
+    } else {
+        response["type"] = "error";
+        response["message"] = std::move(result.error());
     }
 }
 
