@@ -165,6 +165,7 @@ add_library(gseurat_core OBJECT
     src/engine/gs_renderer.cpp
     src/engine/gs_chunk_grid.cpp
     src/engine/gs_parallax_camera.cpp
+    src/engine/gs_scene_loader.cpp
     src/engine/collision_gen.cpp
     src/engine/save_system.cpp
     src/engine/async_loader.cpp

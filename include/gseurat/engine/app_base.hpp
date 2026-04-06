@@ -12,6 +12,7 @@
 #include "gseurat/engine/command_dispatcher.hpp"
 #include "gseurat/engine/coordinate.hpp"
 #include "gseurat/engine/gaussian_cloud.hpp"
+#include "gseurat/engine/gs_scene_loader.hpp"
 #include "gseurat/engine/day_night_system.hpp"
 #include "gseurat/engine/dialog.hpp"
 #include "gseurat/engine/direction.hpp"
