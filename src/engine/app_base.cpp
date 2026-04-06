@@ -346,6 +346,24 @@ void AppBase::init_game_object_system() {
         });
 }
 
+// ── Command context builder ──
+
+CommandContext AppBase::build_command_context() {
+    return CommandContext{
+        .terrain = gs_terrain_,
+        .scene_objects = scene_objects_,
+        .renderer = renderer_,
+        .scene = scene_,
+        .world = world_,
+        .components = component_registry_,
+        .input = input_,
+        .feature_flags = feature_flags_,
+        .window = window_,
+        .init_scene = [this](const std::string& path) { init_scene(path); },
+        .clear_scene = [this]() { clear_scene(); },
+    };
+}
+
 // ── Shared GS scene loading ──
 
 void AppBase::load_gs_scene(const SceneData& scene_data, const GsSceneOptions& opts) {

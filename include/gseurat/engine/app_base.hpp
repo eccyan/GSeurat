@@ -8,6 +8,7 @@
 #include "gseurat/engine/control_server.hpp"
 #endif
 #include "gseurat/engine/collision_gen.hpp"
+#include "gseurat/engine/command_context.hpp"
 #include "gseurat/engine/command_dispatcher.hpp"
 #include "gseurat/engine/coordinate.hpp"
 #include "gseurat/engine/gaussian_cloud.hpp"
@@ -97,10 +98,6 @@ public:
     virtual void update_game(float dt);
     virtual void update_audio(float dt);
 
-    // SceneObjectState shims (still used by CommandDispatcher — removed in Task 6)
-    const std::string& current_scene_path() const { return scene_objects_.current_scene_path; }
-    void set_current_scene_path(const std::string& path) { scene_objects_.current_scene_path = path; }
-
     // Audio state
     float& footstep_timer() { return footstep_timer_; }
     bool& was_moving() { return was_moving_; }
@@ -138,11 +135,6 @@ public:
 
     // Command dispatch
     CommandDispatcher& command_dispatcher() { return command_dispatcher_; }
-
-    // Mutable scene game object data (used by CommandDispatcher for incremental sync)
-    std::vector<GameObjectData>& scene_game_object_data_mutable() { return scene_objects_.game_objects; }
-    // GsTerrainState shim still used by CommandDispatcher (removed in Task 6)
-    const AABB& terrain_aabb() const { return gs_terrain_.terrain_aabb; }
 
 protected:
     void init_window();
@@ -206,7 +198,8 @@ protected:
     SaveSystem save_system_;
 
     // ── Command dispatch (C++23 Command Pattern) ──
-    CommandDispatcher command_dispatcher_{*this};
+    CommandContext build_command_context();
+    CommandDispatcher command_dispatcher_{build_command_context()};
     void poll_control_server();
 
     // Control server (bridge integration)
