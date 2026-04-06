@@ -147,6 +147,12 @@ public:
     ComponentRegistry& component_registry() { return component_registry_; }
     SystemScheduler& system_scheduler() { return system_scheduler_; }
 
+    // Command dispatch
+    CommandDispatcher& command_dispatcher() { return command_dispatcher_; }
+
+    // Mutable scene game object data (used by CommandDispatcher for incremental sync)
+    std::vector<GameObjectData>& scene_game_object_data_mutable() { return scene_game_object_data_; }
+
 protected:
     void init_window();
     virtual void init_game_content();
@@ -244,16 +250,13 @@ protected:
     float play_time_ = 0.0f;
 
     // ── Command dispatch (C++23 Command Pattern) ──
-    void register_command(std::string name, CommandHandler handler);
-    virtual void register_commands();
-    virtual void dispatch_command(const nlohmann::json& cmd, nlohmann::json& response);
+    CommandDispatcher command_dispatcher_{*this};
     void poll_control_server();
 
     // Control server (bridge integration)
 #ifndef _WIN32
     ControlServer control_server_;
 #endif
-    CommandTable command_handlers_;
 
     // Terrain PLY AABB (for grid→world coordinate conversion)
     AABB terrain_aabb_;

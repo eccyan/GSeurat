@@ -1,3 +1,4 @@
+#include "gseurat/engine/command_dispatch.hpp"
 #include "gseurat/engine/app_base.hpp"
 #include "gseurat/engine/gs_vfx.hpp"
 #include "gseurat/demo/island_components.hpp"
@@ -10,11 +11,29 @@
 
 namespace gseurat {
 
-void AppBase::register_command(std::string name, CommandHandler handler) {
-    command_handlers_.emplace(std::move(name), std::move(handler));
+void CommandDispatcher::register_command(std::string name, CommandHandler handler) {
+    handlers_.emplace(std::move(name), std::move(handler));
 }
 
-void AppBase::register_commands() {
+void CommandDispatcher::dispatch(const nlohmann::json& cmd, nlohmann::json& response) {
+    const auto cmd_name = cmd.value("cmd", "");
+    auto it = handlers_.find(cmd_name);
+    if (it == handlers_.end()) {
+        response["type"] = "error";
+        response["message"] = "Unknown command: " + cmd_name;
+        return;
+    }
+
+    auto result = it->second(cmd);
+    if (result) {
+        response = std::move(*result);
+    } else {
+        response["type"] = "error";
+        response["message"] = std::move(result.error());
+    }
+}
+
+void CommandDispatcher::register_default_commands() {
     using json = nlohmann::json;
     auto ok = []() -> CommandResult { return json{{"type", "ok"}}; };
 
@@ -25,29 +44,30 @@ void AppBase::register_commands() {
         auto add = [&](const char* name, bool enabled, const char* label) {
             response["features"].push_back({{"name", name}, {"enabled", enabled}, {"label", label}});
         };
-        add("gs_rendering", feature_flags_.gs_rendering, "GS Rendering");
-        add("gs_chunk_culling", feature_flags_.gs_chunk_culling, "Chunk Culling");
-        add("gs_lod", feature_flags_.gs_lod, "LOD");
-        add("gs_adaptive_budget", feature_flags_.gs_adaptive_budget, "Adaptive Budget");
-        add("gs_parallax", feature_flags_.gs_parallax, "Parallax");
-        add("bloom", feature_flags_.bloom, "Bloom");
-        add("depth_of_field", feature_flags_.depth_of_field, "Depth of Field");
-        add("vignette", feature_flags_.vignette, "Vignette");
-        add("tone_mapping", feature_flags_.tone_mapping, "Tone Mapping");
-        add("fog", feature_flags_.fog, "Fog");
-        add("point_lights", feature_flags_.point_lights, "Point Lights");
-        add("particles", feature_flags_.particles, "Particles");
-        add("weather", feature_flags_.weather, "Weather");
-        add("screen_effects", feature_flags_.screen_effects, "Screen Effects");
-        add("music", feature_flags_.music, "Music");
-        add("sfx", feature_flags_.sfx, "SFX");
+        auto& f = app_.feature_flags();
+        add("gs_rendering", f.gs_rendering, "GS Rendering");
+        add("gs_chunk_culling", f.gs_chunk_culling, "Chunk Culling");
+        add("gs_lod", f.gs_lod, "LOD");
+        add("gs_adaptive_budget", f.gs_adaptive_budget, "Adaptive Budget");
+        add("gs_parallax", f.gs_parallax, "Parallax");
+        add("bloom", f.bloom, "Bloom");
+        add("depth_of_field", f.depth_of_field, "Depth of Field");
+        add("vignette", f.vignette, "Vignette");
+        add("tone_mapping", f.tone_mapping, "Tone Mapping");
+        add("fog", f.fog, "Fog");
+        add("point_lights", f.point_lights, "Point Lights");
+        add("particles", f.particles, "Particles");
+        add("weather", f.weather, "Weather");
+        add("screen_effects", f.screen_effects, "Screen Effects");
+        add("music", f.music, "Music");
+        add("sfx", f.sfx, "SFX");
         return response;
     });
 
     register_command("set_feature", [this, ok](const json& cmd) -> CommandResult {
         auto name = cmd.value("feature", "");
         bool enabled = cmd.value("enabled", false);
-        auto& f = feature_flags_;
+        auto& f = app_.feature_flags();
         if (name == "gs_rendering") f.gs_rendering = enabled;
         else if (name == "gs_chunk_culling") f.gs_chunk_culling = enabled;
         else if (name == "gs_lod") f.gs_lod = enabled;
@@ -68,7 +88,8 @@ void AppBase::register_commands() {
     });
 
     register_command("get_render_params", [this](const json&) -> CommandResult {
-        auto& pp = renderer_.post_process_params();
+        auto& pp = app_.renderer().post_process_params();
+        auto& gs = app_.renderer().gs_renderer();
         return json{
             {"type", "render_params"},
             {"params", {
@@ -85,18 +106,18 @@ void AppBase::register_commands() {
                 {"fog_color_r", pp.fog_color_r},
                 {"fog_color_g", pp.fog_color_g},
                 {"fog_color_b", pp.fog_color_b},
-                {"god_rays_intensity", renderer_.god_rays_intensity()},
-                {"scale_multiplier", renderer_.gs_renderer().scale_multiplier()},
-                {"toon_bands", renderer_.gs_renderer().toon_bands()},
-                {"light_mode", renderer_.gs_renderer().light_mode()},
-                {"light_intensity", renderer_.gs_renderer().light_intensity()},
-                {"ground_color_r", renderer_.gs_bg_ground_color().r},
-                {"ground_color_g", renderer_.gs_bg_ground_color().g},
-                {"ground_color_b", renderer_.gs_bg_ground_color().b},
-                {"sky_color_r", renderer_.gs_bg_sky_color().r},
-                {"sky_color_g", renderer_.gs_bg_sky_color().g},
-                {"sky_color_b", renderer_.gs_bg_sky_color().b},
-                {"background_enabled", renderer_.gs_bg_colors_enabled() ? 1.0f : 0.0f},
+                {"god_rays_intensity", app_.renderer().god_rays_intensity()},
+                {"scale_multiplier", gs.scale_multiplier()},
+                {"toon_bands", gs.toon_bands()},
+                {"light_mode", gs.light_mode()},
+                {"light_intensity", gs.light_intensity()},
+                {"ground_color_r", app_.renderer().gs_bg_ground_color().r},
+                {"ground_color_g", app_.renderer().gs_bg_ground_color().g},
+                {"ground_color_b", app_.renderer().gs_bg_ground_color().b},
+                {"sky_color_r", app_.renderer().gs_bg_sky_color().r},
+                {"sky_color_g", app_.renderer().gs_bg_sky_color().g},
+                {"sky_color_b", app_.renderer().gs_bg_sky_color().b},
+                {"background_enabled", app_.renderer().gs_bg_colors_enabled() ? 1.0f : 0.0f},
             }},
         };
     });
@@ -104,7 +125,8 @@ void AppBase::register_commands() {
     register_command("set_render_param", [this, ok](const json& cmd) -> CommandResult {
         auto name = cmd.value("name", "");
         float value = cmd.value("value", 0.0f);
-        auto& pp = renderer_.post_process_params();
+        auto& pp = app_.renderer().post_process_params();
+        auto& gs = app_.renderer().gs_renderer();
         if (name == "bloom_threshold") pp.bloom_threshold = value;
         else if (name == "bloom_soft_knee") pp.bloom_soft_knee = value;
         else if (name == "bloom_intensity") pp.bloom_intensity = value;
@@ -118,44 +140,45 @@ void AppBase::register_commands() {
         else if (name == "fog_color_r") pp.fog_color_r = value;
         else if (name == "fog_color_g") pp.fog_color_g = value;
         else if (name == "fog_color_b") pp.fog_color_b = value;
-        else if (name == "god_rays_intensity") renderer_.set_god_rays_intensity(value);
-        else if (name == "scale_multiplier") renderer_.gs_renderer().set_scale_multiplier(value);
-        else if (name == "toon_bands") renderer_.gs_renderer().set_toon_bands(static_cast<int>(value));
-        else if (name == "light_mode") renderer_.gs_renderer().set_light_mode(static_cast<int>(value));
-        else if (name == "light_intensity") renderer_.gs_renderer().set_light_intensity(value);
+        else if (name == "god_rays_intensity") app_.renderer().set_god_rays_intensity(value);
+        else if (name == "scale_multiplier") gs.set_scale_multiplier(value);
+        else if (name == "toon_bands") gs.set_toon_bands(static_cast<int>(value));
+        else if (name == "light_mode") gs.set_light_mode(static_cast<int>(value));
+        else if (name == "light_intensity") gs.set_light_intensity(value);
         else if (name == "ground_color_r") {
-            auto c = renderer_.gs_bg_ground_color(); c.r = value;
-            renderer_.set_gs_background_colors(c, renderer_.gs_bg_sky_color());
+            auto c = app_.renderer().gs_bg_ground_color(); c.r = value;
+            app_.renderer().set_gs_background_colors(c, app_.renderer().gs_bg_sky_color());
         }
         else if (name == "ground_color_g") {
-            auto c = renderer_.gs_bg_ground_color(); c.g = value;
-            renderer_.set_gs_background_colors(c, renderer_.gs_bg_sky_color());
+            auto c = app_.renderer().gs_bg_ground_color(); c.g = value;
+            app_.renderer().set_gs_background_colors(c, app_.renderer().gs_bg_sky_color());
         }
         else if (name == "ground_color_b") {
-            auto c = renderer_.gs_bg_ground_color(); c.b = value;
-            renderer_.set_gs_background_colors(c, renderer_.gs_bg_sky_color());
+            auto c = app_.renderer().gs_bg_ground_color(); c.b = value;
+            app_.renderer().set_gs_background_colors(c, app_.renderer().gs_bg_sky_color());
         }
         else if (name == "sky_color_r") {
-            auto c = renderer_.gs_bg_sky_color(); c.r = value;
-            renderer_.set_gs_background_colors(renderer_.gs_bg_ground_color(), c);
+            auto c = app_.renderer().gs_bg_sky_color(); c.r = value;
+            app_.renderer().set_gs_background_colors(app_.renderer().gs_bg_ground_color(), c);
         }
         else if (name == "sky_color_g") {
-            auto c = renderer_.gs_bg_sky_color(); c.g = value;
-            renderer_.set_gs_background_colors(renderer_.gs_bg_ground_color(), c);
+            auto c = app_.renderer().gs_bg_sky_color(); c.g = value;
+            app_.renderer().set_gs_background_colors(app_.renderer().gs_bg_ground_color(), c);
         }
         else if (name == "sky_color_b") {
-            auto c = renderer_.gs_bg_sky_color(); c.b = value;
-            renderer_.set_gs_background_colors(renderer_.gs_bg_ground_color(), c);
+            auto c = app_.renderer().gs_bg_sky_color(); c.b = value;
+            app_.renderer().set_gs_background_colors(app_.renderer().gs_bg_ground_color(), c);
         }
         return ok();
     });
 
     register_command("get_perf", [this](const json&) -> CommandResult {
+        auto& gs = app_.renderer().gs_renderer();
         return json{
             {"type", "perf"},
-            {"gaussian_count", renderer_.gs_renderer().gaussian_count()},
-            {"visible_count", renderer_.gs_renderer().visible_count()},
-            {"max_capacity", renderer_.gs_renderer().max_gaussian_count()},
+            {"gaussian_count", gs.gaussian_count()},
+            {"visible_count", gs.visible_count()},
+            {"max_capacity", gs.max_gaussian_count()},
         };
     });
 
@@ -164,21 +187,21 @@ void AppBase::register_commands() {
         float g = cmd.value("g", 0.0f);
         float b = cmd.value("b", 0.0f);
         float s = cmd.value("strength", 1.0f);
-        scene_.set_ambient_color({r, g, b, s});
+        app_.scene().set_ambient_color({r, g, b, s});
         return ok();
     });
 
     register_command("get_scene", [this](const json&) -> CommandResult {
         json response;
         response["type"] = "scene";
-        response["path"] = current_scene_path_;
-        auto ac = scene_.ambient_color();
+        response["path"] = app_.current_scene_path();
+        auto ac = app_.scene().ambient_color();
         response["ambient_r"] = ac.r;
         response["ambient_g"] = ac.g;
         response["ambient_b"] = ac.b;
         response["ambient_strength"] = ac.a;
         response["lights"] = json::array();
-        for (const auto& l : scene_.lights()) {
+        for (const auto& l : app_.scene().lights()) {
             response["lights"].push_back({
                 {"x", l.position_and_radius.x},
                 {"y", l.position_and_radius.y},
@@ -194,8 +217,8 @@ void AppBase::register_commands() {
     });
 
     register_command("reload_scene", [this, ok](const json&) -> CommandResult {
-        clear_scene();
-        init_scene(current_scene_path_);
+        app_.clear_scene();
+        app_.init_scene(app_.current_scene_path());
         return ok();
     });
 
@@ -227,10 +250,10 @@ void AppBase::register_commands() {
             std::ofstream ofs(temp_path);
             ofs << json_str;
             ofs.close();
-            vkDeviceWaitIdle(renderer_.context().device());
-            clear_scene();
-            init_scene(temp_path);
-            current_scene_path_ = temp_path;
+            vkDeviceWaitIdle(app_.renderer().context().device());
+            app_.clear_scene();
+            app_.init_scene(temp_path);
+            app_.set_current_scene_path(temp_path);
             return json{{"type", "ok"}};
         } catch (const std::exception& e) {
             std::fprintf(stderr, "[load_scene_json] ERROR: %s\n", e.what());
@@ -250,81 +273,83 @@ void AppBase::register_commands() {
             ofs.close();
             auto scene_data = SceneLoader::load(temp_path);
 
+            const auto& aabb = app_.terrain_aabb();
+
             // Update ambient + lights
-            scene_.clear_lights();
-            scene_.set_ambient_color(scene_data.ambient_color);
+            app_.scene().clear_lights();
+            app_.scene().set_ambient_color(scene_data.ambient_color);
             for (const auto& pl : scene_data.static_lights) {
-                scene_.add_light(pl);
+                app_.scene().add_light(pl);
             }
 
             // Transform lights with AABB offset and push to GS renderer
             std::vector<PointLight> gs_lights;
             for (const auto& pl : scene_data.static_lights) {
                 PointLight t = pl;
-                t.position_and_radius.x += terrain_aabb_.min.x;
-                t.position_and_radius.z += terrain_aabb_.min.y;
+                t.position_and_radius.x += aabb.min.x;
+                t.position_and_radius.z += aabb.min.y;
                 gs_lights.push_back(t);
             }
             if (!gs_lights.empty()) {
-                renderer_.gs_renderer().set_light_mode(2);
-                renderer_.gs_renderer().set_point_lights(gs_lights);
-                renderer_.set_gs_static_lights(gs_lights);
+                app_.renderer().gs_renderer().set_light_mode(2);
+                app_.renderer().gs_renderer().set_point_lights(gs_lights);
+                app_.renderer().set_gs_static_lights(gs_lights);
             } else {
-                renderer_.gs_renderer().set_light_mode(0);
+                app_.renderer().gs_renderer().set_light_mode(0);
             }
 
             // Apply weather fog directly to scene (no WeatherSystem in Staging)
-            scene_.set_fog_density(scene_data.weather.fog_density);
-            scene_.set_fog_color(scene_data.weather.fog_color);
+            app_.scene().set_fog_density(scene_data.weather.fog_density);
+            app_.scene().set_fog_color(scene_data.weather.fog_color);
 
             // Rebuild emitters
-            renderer_.clear_gs_particle_emitters();
+            app_.renderer().clear_gs_particle_emitters();
             for (const auto& em : scene_data.gs_particle_emitters) {
                 auto config = em.config;
-                auto world_pos = coord::to_world(coord::GridPos(config.position), terrain_aabb_);
+                auto world_pos = coord::to_world(coord::GridPos(config.position), aabb);
                 config.position = world_pos.vec();
-                renderer_.add_gs_particle_emitter(config);
+                app_.renderer().add_gs_particle_emitter(config);
             }
 
             // Rebuild animations
-            renderer_.clear_gs_animations();
+            app_.renderer().clear_gs_animations();
             for (const auto& anim : scene_data.gs_animations) {
                 auto region = anim.region;
-                auto world_center = coord::to_world(coord::GridPos(region.center), terrain_aabb_);
+                auto world_center = coord::to_world(coord::GridPos(region.center), aabb);
                 region.center = world_center.vec();
                 std::optional<Renderer::ReformConfig> reform;
                 if (anim.reform) reform = Renderer::ReformConfig{anim.reform->lifetime};
-                renderer_.add_gs_animation(anim.effect, region, anim.lifetime, anim.loop, anim.params, reform);
+                app_.renderer().add_gs_animation(anim.effect, region, anim.lifetime, anim.loop, anim.params, reform);
             }
 
             // Rebuild VFX instances
-            renderer_.clear_vfx_instances();
+            app_.renderer().clear_vfx_instances();
             for (const auto& vi : scene_data.vfx_instances) {
                 if (vi.trigger != "auto") continue;
                 auto preset = load_vfx_preset(vi.vfx_file);
                 if (preset.elements.empty()) continue;
                 VfxInstance inst;
-                auto world_pos = coord::to_world(vi.position, terrain_aabb_);
+                auto world_pos = coord::to_world(vi.position, aabb);
                 inst.init(preset, world_pos.vec(), vi.loop, vi.rotation_y);
-                renderer_.add_vfx_instance(std::move(inst));
+                app_.renderer().add_vfx_instance(std::move(inst));
             }
 
             // Update stored game object data with world positions for gizmo rendering
-            scene_game_object_data_ = scene_data.game_objects;
+            app_.scene_game_object_data_mutable() = scene_data.game_objects;
 
             std::vector<coord::WorldPos> world_positions;
             world_positions.reserve(scene_data.game_objects.size());
             for (const auto& go : scene_data.game_objects) {
-                world_positions.push_back(coord::to_world(go.position, terrain_aabb_));
+                world_positions.push_back(coord::to_world(go.position, aabb));
             }
 
             for (size_t i = 0; i < scene_data.game_objects.size(); ++i) {
                 const auto& go = scene_data.game_objects[i];
                 if (go.components.empty() || go.components.is_null()) continue;
-                auto entity = world_.create();
-                world_.add<ecs::Transform>(entity, {world_positions[i], {go.scale, go.scale}});
+                auto entity = app_.world().create();
+                app_.world().add<ecs::Transform>(entity, {world_positions[i], {go.scale, go.scale}});
                 for (auto& [name, data] : go.components.items()) {
-                    component_registry_.attach(world_, entity, name, data);
+                    app_.component_registry().attach(app_.world(), entity, name, data);
                 }
             }
 
@@ -339,13 +364,14 @@ void AppBase::register_commands() {
         if (!cmd.contains("vfx_instances"))
             return std::unexpected(std::string("Missing 'vfx_instances' array"));
 
-        auto& vfx = renderer_.vfx_instances_mutable();
+        const auto& aabb = app_.terrain_aabb();
+        auto& vfx = app_.renderer().vfx_instances_mutable();
         const auto& vi_arr = cmd["vfx_instances"];
         for (size_t i = 0; i < std::min(vfx.size(), vi_arr.size()); i++) {
             if (vi_arr[i].contains("position")) {
                 auto pos = vi_arr[i]["position"];
                 glm::vec3 new_pos{pos[0].get<float>(), pos[1].get<float>(), pos[2].get<float>()};
-                auto world_pos = coord::to_world(coord::GridPos(new_pos), terrain_aabb_);
+                auto world_pos = coord::to_world(coord::GridPos(new_pos), aabb);
                 new_pos = world_pos.vec();
                 auto preset = vfx[i].preset();
                 vfx[i].init(preset, new_pos, true);
@@ -359,9 +385,9 @@ void AppBase::register_commands() {
         if (scene.empty())
             return std::unexpected(std::string("Missing 'scene' parameter"));
 
-        clear_scene();
-        init_scene(scene);
-        current_scene_path_ = scene;
+        app_.clear_scene();
+        app_.init_scene(scene);
+        app_.set_current_scene_path(scene);
         return json{{"type", "ok"}};
     });
 
@@ -381,7 +407,7 @@ void AppBase::register_commands() {
 
     register_command("screenshot", [this](const json& cmd) -> CommandResult {
         auto path = cmd.value("path", "staging_screenshot.png");
-        renderer_.request_screenshot(path);
+        app_.renderer().request_screenshot(path);
         return json{{"type", "ok"}, {"path", path}};
     });
 
@@ -390,7 +416,7 @@ void AppBase::register_commands() {
         bool down = cmd.value("down", true);
         if (key <= 0 || key >= kKeyCount)
             return std::unexpected(std::string("Invalid key code"));
-        input_.inject_key(key, down);
+        app_.input().inject_key(key, down);
         return json{{"type", "ok"}};
     });
 
@@ -398,12 +424,12 @@ void AppBase::register_commands() {
         int key = cmd.value("key", 0);
         if (key <= 0 || key >= kKeyCount)
             return std::unexpected(std::string("Invalid key code"));
-        input_.inject_key_once(key);
+        app_.input().inject_key_once(key);
         return json{{"type", "ok"}};
     });
 
     register_command("clear_keys", [this](const json&) -> CommandResult {
-        input_.clear_injections();
+        app_.input().clear_injections();
         return json{{"type", "ok"}};
     });
 
@@ -411,7 +437,7 @@ void AppBase::register_commands() {
         json response;
         response["type"] = "player_state";
         bool found = false;
-        world_.view<ecs::Transform, PlayerController>().each(
+        app_.world().view<ecs::Transform, PlayerController>().each(
             [&](ecs::Entity, ecs::Transform& t, PlayerController&) {
                 response["position"] = {t.position.x(), t.position.y(), t.position.z()};
                 found = true;
@@ -425,7 +451,7 @@ void AppBase::register_commands() {
         json response;
         response["type"] = "triggers";
         auto triggers = json::array();
-        world_.view<ProximityTrigger, ecs::Transform>().each(
+        app_.world().view<ProximityTrigger, ecs::Transform>().each(
             [&](ecs::Entity, ProximityTrigger& pt, ecs::Transform& t) {
                 triggers.push_back({
                     {"x", t.position.x()},
@@ -437,32 +463,14 @@ void AppBase::register_commands() {
                 });
             });
         response["triggers"] = triggers;
-        response["emitter_count"] = renderer_.gs_particle_emitters().size();
+        response["emitter_count"] = app_.renderer().gs_particle_emitters().size();
         return response;
     });
 
     register_command("quit", [this](const json&) -> CommandResult {
-        glfwSetWindowShouldClose(window_, GLFW_TRUE);
+        glfwSetWindowShouldClose(app_.window(), GLFW_TRUE);
         return json{{"type", "ok"}, {"message", "Shutting down"}};
     });
-}
-
-void AppBase::dispatch_command(const nlohmann::json& cmd, nlohmann::json& response) {
-    const auto cmd_name = cmd.value("cmd", "");
-    auto it = command_handlers_.find(cmd_name);
-    if (it == command_handlers_.end()) {
-        response["type"] = "error";
-        response["message"] = "Unknown command: " + cmd_name;
-        return;
-    }
-
-    auto result = it->second(cmd);
-    if (result) {
-        response = std::move(*result);
-    } else {
-        response["type"] = "error";
-        response["message"] = std::move(result.error());
-    }
 }
 
 }  // namespace gseurat

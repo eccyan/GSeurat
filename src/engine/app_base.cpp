@@ -21,7 +21,7 @@ void AppBase::set_start_state(std::unique_ptr<GameState> state) {
 }
 
 void AppBase::run() {
-    register_commands();
+    command_dispatcher_.register_default_commands();
     init_game_object_system();
     init_game_content();
 
@@ -695,7 +695,7 @@ void AppBase::poll_control_server() {
     auto commands = control_server_.poll();
     for (auto& cmd : commands) {
         nlohmann::json response;
-        dispatch_command(cmd, response);
+        command_dispatcher_.dispatch(cmd, response);
         if (!response.is_null()) {
             // Preserve bridge correlation ID
             if (cmd.contains("_bridge_id")) {
