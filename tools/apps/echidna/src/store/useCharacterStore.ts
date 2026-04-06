@@ -182,6 +182,7 @@ export interface CharacterStoreState {
   selectAnimation: (name: string | null) => void;
   addKeyframe: (animName: string, keyframe: AnimationKeyframe) => void;
   removeKeyframe: (animName: string, index: number) => void;
+  updateKeyframeEasing: (animName: string, index: number, easing: import('./types.js').EasingType) => void;
   setPlaybackTime: (time: number) => void;
   togglePlayback: () => void;
   setPlaybackSpeed: (speed: number) => void;
@@ -554,6 +555,15 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
     const clip = anims[animName];
     if (!clip) return;
     const keyframes = clip.keyframes.filter((_, i) => i !== index);
+    anims[animName] = { ...clip, keyframes };
+    set({ animations: anims });
+  },
+
+  updateKeyframeEasing: (animName, index, easing) => {
+    const anims = { ...get().animations };
+    const clip = anims[animName];
+    if (!clip) return;
+    const keyframes = clip.keyframes.map((kf, i) => i === index ? { ...kf, easing } : kf);
     anims[animName] = { ...clip, keyframes };
     set({ animations: anims });
   },

@@ -1,6 +1,16 @@
 import React, { useState } from 'react';
 import { Vec3Input } from '@gseurat/ui-kit';
 import { useCharacterStore } from '../store/useCharacterStore.js';
+import type { EasingType } from '../store/types.js';
+
+const easingOptions: { value: EasingType; label: string }[] = [
+  { value: 'linear', label: 'Linear' },
+  { value: 'ease-in-out', label: 'Ease In/Out' },
+  { value: 'bounce', label: 'Bounce' },
+  { value: 'elastic', label: 'Elastic' },
+  { value: 'step', label: 'Step' },
+  { value: 'custom', label: 'Custom' },
+];
 
 const styles: Record<string, React.CSSProperties> = {
   container: {
@@ -96,6 +106,7 @@ function KeyframeEditor() {
   const characterPoses = useCharacterStore((s) => s.characterPoses);
   const addKeyframe = useCharacterStore((s) => s.addKeyframe);
   const removeKeyframe = useCharacterStore((s) => s.removeKeyframe);
+  const updateKeyframeEasing = useCharacterStore((s) => s.updateKeyframeEasing);
   const updatePoseRotation = useCharacterStore((s) => s.updatePoseRotation);
   const addPose = useCharacterStore((s) => s.addPose);
 
@@ -160,13 +171,32 @@ function KeyframeEditor() {
       {clip.keyframes.map((kf, i) => (
         <div key={i} style={{
           ...styles.row,
+          flexWrap: 'wrap',
           background: currentKf === kf ? '#3a3a6a' : 'transparent',
           borderRadius: 4,
           padding: '2px 4px',
+          gap: 4,
         }}>
-          <span style={{ color: '#aaa', fontSize: 11, flex: 1 }}>
+          <span style={{ color: '#aaa', fontSize: 11, flex: 1, minWidth: 80 }}>
             t={kf.time.toFixed(2)}s - {kf.poseName}
           </span>
+          <select
+            style={{
+              padding: '1px 4px',
+              background: '#2a2a4a',
+              border: '1px solid #444',
+              borderRadius: 4,
+              color: '#ddd',
+              fontSize: 11,
+              cursor: 'pointer',
+            }}
+            value={kf.easing}
+            onChange={(e) => updateKeyframeEasing(selectedAnimation, i, e.target.value as EasingType)}
+          >
+            {easingOptions.map((opt) => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
           <button
             style={{ ...styles.btnDanger, padding: '1px 4px', fontSize: 10 }}
             onClick={() => removeKeyframe(selectedAnimation, i)}

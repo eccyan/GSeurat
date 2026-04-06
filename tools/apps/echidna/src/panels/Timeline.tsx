@@ -1,5 +1,12 @@
 import React, { useRef, useCallback } from 'react';
 import { useCharacterStore } from '../store/useCharacterStore.js';
+import type { PlaybackMode } from '../store/types.js';
+
+const playbackModeOptions: { value: PlaybackMode; label: string }[] = [
+  { value: 'loop', label: 'Loop' },
+  { value: 'ping-pong', label: 'Ping-Pong' },
+  { value: 'once', label: 'Once' },
+];
 
 const TIMELINE_HEIGHT = 80;
 const TRACK_Y = 40;
@@ -56,9 +63,13 @@ export function Timeline() {
   const playbackTime = useCharacterStore((s) => s.playbackTime);
   const isPlaying = useCharacterStore((s) => s.isPlaying);
   const playbackSpeed = useCharacterStore((s) => s.playbackSpeed);
+  const playbackMode = useCharacterStore((s) => s.playbackMode);
+  const onionSkinning = useCharacterStore((s) => s.onionSkinning);
   const setPlaybackTime = useCharacterStore((s) => s.setPlaybackTime);
   const togglePlayback = useCharacterStore((s) => s.togglePlayback);
   const setPlaybackSpeed = useCharacterStore((s) => s.setPlaybackSpeed);
+  const setPlaybackMode = useCharacterStore((s) => s.setPlaybackMode);
+  const setOnionSkinning = useCharacterStore((s) => s.setOnionSkinning);
 
   const clip = selectedAnimation ? animations[selectedAnimation] : null;
   const duration = clip?.duration ?? 1;
@@ -139,6 +150,36 @@ export function Timeline() {
           style={{ width: 80 }}
         />
         <span style={{ fontSize: 11, color: '#aaa' }}>{playbackSpeed.toFixed(1)}x</span>
+        <select
+          style={{
+            padding: '1px 4px',
+            background: '#2a2a4a',
+            border: '1px solid #444',
+            borderRadius: 4,
+            color: '#ddd',
+            fontSize: 11,
+            cursor: 'pointer',
+          }}
+          value={playbackMode}
+          onChange={(e) => setPlaybackMode(e.target.value as PlaybackMode)}
+        >
+          {playbackModeOptions.map((opt) => (
+            <option key={opt.value} value={opt.value}>{opt.label}</option>
+          ))}
+        </select>
+        <button
+          style={{
+            ...styles.btn,
+            background: onionSkinning ? '#4a3a7a' : '#2a2a4a',
+            border: onionSkinning ? '1px solid #77f' : '1px solid #444',
+            fontSize: 11,
+            padding: '2px 6px',
+          }}
+          onClick={() => setOnionSkinning(!onionSkinning)}
+          title="Toggle onion skinning"
+        >
+          Onion
+        </button>
       </div>
 
       <div

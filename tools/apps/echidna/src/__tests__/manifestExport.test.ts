@@ -92,8 +92,119 @@ describe('buildManifest', () => {
     expect(clip.looping).toBe(true);
     expect(clip.keyframes).toHaveLength(3);
 
+    // 'step' easing is the default and should be omitted from output
     expect(clip.keyframes[0]).toEqual({ time: 0, pose: 'idle' });
     expect(clip.keyframes[1]).toEqual({ time: 0.5, pose: 'wave' });
     expect(clip.keyframes[2]).toEqual({ time: 1.0, pose: 'idle' });
+  });
+
+  it('omits easing field when easing is "step" (default)', () => {
+    const manifest = buildManifest('char', 'char.ply', 1.0, mockParts, mockPoses, mockAnimations);
+    const clip = manifest.animations['wave_anim'];
+    for (const kf of clip.keyframes) {
+      expect(kf).not.toHaveProperty('easing');
+    }
+  });
+
+  it('includes easing field when easing is not "step"', () => {
+    const anims: Record<string, AnimationClip> = {
+      bounce_anim: {
+        name: 'bounce_anim',
+        duration: 1.0,
+        playbackMode: 'loop',
+        keyframes: [
+          { time: 0, poseName: 'idle', easing: 'linear' as const },
+          { time: 0.5, poseName: 'wave', easing: 'ease-in-out' as const },
+          { time: 1.0, poseName: 'idle', easing: 'bounce' as const },
+        ],
+      },
+    };
+    const manifest = buildManifest('char', 'char.ply', 1.0, mockParts, mockPoses, anims);
+    const clip = manifest.animations['bounce_anim'];
+
+    expect(clip.keyframes[0].easing).toBe('linear');
+    expect(clip.keyframes[1].easing).toBe('ease-in-out');
+    expect(clip.keyframes[2].easing).toBe('bounce');
+  });
+
+  it('includes curve field when present on keyframe', () => {
+    const curve: [number, number, number, number] = [0.25, 0.1, 0.25, 1.0];
+    const anims: Record<string, AnimationClip> = {
+      custom_anim: {
+        name: 'custom_anim',
+        duration: 1.0,
+        playbackMode: 'loop',
+        keyframes: [
+          { time: 0, poseName: 'idle', easing: 'custom' as const, curve },
+          { time: 1.0, poseName: 'wave', easing: 'step' as const },
+        ],
+      },
+    };
+    const manifest = buildManifest('char', 'char.ply', 1.0, mockParts, mockPoses, anims);
+    const clip = manifest.animations['custom_anim'];
+
+    expect(clip.keyframes[0].curve).toEqual(curve);
+    expect(clip.keyframes[1]).not.toHaveProperty('curve');
+  });
+
+  it('includes parts field when present on keyframe', () => {
+    const anims: Record<string, AnimationClip> = {
+      partial_anim: {
+        name: 'partial_anim',
+        duration: 1.0,
+        playbackMode: 'loop',
+        keyframes: [
+          { time: 0, poseName: 'idle', easing: 'linear' as const, parts: ['torso', 'head'] },
+          { time: 1.0, poseName: 'wave', easing: 'step' as const },
+        ],
+      },
+    };
+    const manifest = buildManifest('char', 'char.ply', 1.0, mockParts, mockPoses, anims);
+    const clip = manifest.animations['partial_anim'];
+
+    expect(clip.keyframes[0].parts).toEqual(['torso', 'head']);
+    expect(clip.keyframes[1]).not.toHaveProperty('parts');
+  });
+
+  it('sets looping: false when playbackMode is "once"', () => {
+    const anims: Record<string, AnimationClip> = {
+      oneshot: {
+        name: 'oneshot',
+        duration: 0.5,
+        playbackMode: 'once',
+        keyframes: [
+          { time: 0, poseName: 'idle', easing: 'step' as const },
+          { time: 0.5, poseName: 'wave', easing: 'step' as const },
+        ],
+      },
+    };
+    const manifest = buildManifest('char', 'char.ply', 1.0, mockParts, mockPoses, anims);
+    expect(manifest.animations['oneshot'].looping).toBe(false);
+  });
+
+  it('sets looping: true when playbackMode is "loop"', () => {
+    const anims: Record<string, AnimationClip> = {
+      looping_anim: {
+        name: 'looping_anim',
+        duration: 1.0,
+        playbackMode: 'loop',
+        keyframes: [{ time: 0, poseName: 'idle', easing: 'step' as const }],
+      },
+    };
+    const manifest = buildManifest('char', 'char.ply', 1.0, mockParts, mockPoses, anims);
+    expect(manifest.animations['looping_anim'].looping).toBe(true);
+  });
+
+  it('sets looping: true when playbackMode is "ping-pong"', () => {
+    const anims: Record<string, AnimationClip> = {
+      pingpong_anim: {
+        name: 'pingpong_anim',
+        duration: 1.0,
+        playbackMode: 'ping-pong',
+        keyframes: [{ time: 0, poseName: 'idle', easing: 'step' as const }],
+      },
+    };
+    const manifest = buildManifest('char', 'char.ply', 1.0, mockParts, mockPoses, anims);
+    expect(manifest.animations['pingpong_anim'].looping).toBe(true);
   });
 });
