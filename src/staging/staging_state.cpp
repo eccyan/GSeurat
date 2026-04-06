@@ -60,6 +60,21 @@ void StagingState::on_exit(AppBase& app) {
     std::fprintf(stderr, "[Staging] on_exit: resetting anim_player_\n");
     anim_player_.reset();
     std::fprintf(stderr, "[Staging] on_exit: resetting character_data_\n");
+    if (character_data_) {
+        auto& cd = *character_data_;
+        std::fprintf(stderr, "[Staging]   name='%s' bones=%zu poses=%zu clips=%zu\n",
+            cd.name.c_str(), cd.bones.size(), cd.poses.size(), cd.clips.size());
+        std::fprintf(stderr, "[Staging]   clearing clips...\n");
+        cd.clips.clear();
+        std::fprintf(stderr, "[Staging]   clearing poses...\n");
+        cd.poses.clear();
+        std::fprintf(stderr, "[Staging]   clearing bones...\n");
+        cd.bones.clear();
+        std::fprintf(stderr, "[Staging]   clearing strings...\n");
+        cd.name.clear();
+        cd.ply_file.clear();
+        std::fprintf(stderr, "[Staging]   fields cleared, resetting optional...\n");
+    }
     character_data_.reset();
 
     if (app.renderer().has_gs_cloud()) {
