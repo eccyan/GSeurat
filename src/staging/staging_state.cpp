@@ -189,27 +189,9 @@ void StagingState::update(AppBase& app, float dt) {
     // Update character animation and upload bone transforms
     if (anim_player_ && anim_playing_) {
         anim_player_->update(dt * anim_speed_);
-        auto bone_count = static_cast<uint32_t>(character_data_->bones.size());
-        const auto& tf = anim_player_->bone_transforms();
-        app.renderer().gs_renderer().upload_bone_transforms(tf.data(), bone_count);
-
-        // Debug: log non-identity transforms periodically
-        static float debug_timer = 0;
-        debug_timer += dt;
-        if (debug_timer > 2.0f) {
-            debug_timer = 0;
-            std::fprintf(stderr, "[Staging] Anim '%s' bones=%u playing=%d\n",
-                anim_player_->current_clip().c_str(), bone_count, anim_player_->is_playing());
-            for (uint32_t i = 0; i < bone_count && i < 6; i++) {
-                const auto& m = tf[i];
-                std::fprintf(stderr, "  bone[%u] '%s' joint=(%.1f,%.1f,%.1f): col3=(%.3f,%.3f,%.3f)\n",
-                    i, character_data_->bones[i].id.c_str(),
-                    character_data_->bones[i].joint.x,
-                    character_data_->bones[i].joint.y,
-                    character_data_->bones[i].joint.z,
-                    m[3][0], m[3][1], m[3][2]);
-            }
-        }
+        app.renderer().gs_renderer().upload_bone_transforms(
+            anim_player_->bone_transforms().data(),
+            static_cast<uint32_t>(character_data_->bones.size()));
     }
 
     // Draw ImGui (hidden with Tab)

@@ -849,6 +849,9 @@ void GsRenderer::upload_bone_transforms(const glm::mat4* transforms, uint32_t co
     auto* dst = static_cast<glm::mat4*>(bone_ssbo_.mapped());
     std::memcpy(dst, transforms, n * sizeof(glm::mat4));
     bone_count_ = n;
+    // Force static preprocess to re-run so bone skinning is applied.
+    // Without this, Index-Merge skips the preprocess dispatch when camera is static.
+    static_dirty_ = true;
 }
 
 void GsRenderer::clear_bone_transforms() {
