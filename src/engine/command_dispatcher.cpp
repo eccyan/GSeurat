@@ -1,4 +1,4 @@
-#include "gseurat/engine/command_dispatch.hpp"
+#include "gseurat/engine/command_dispatcher.hpp"
 #include "gseurat/engine/app_base.hpp"
 #include "gseurat/engine/gs_vfx.hpp"
 #include "gseurat/demo/island_components.hpp"

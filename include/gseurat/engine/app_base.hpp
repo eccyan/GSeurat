@@ -8,7 +8,7 @@
 #include "gseurat/engine/control_server.hpp"
 #endif
 #include "gseurat/engine/collision_gen.hpp"
-#include "gseurat/engine/command_dispatch.hpp"
+#include "gseurat/engine/command_dispatcher.hpp"
 #include "gseurat/engine/coordinate.hpp"
 #include "gseurat/engine/gaussian_cloud.hpp"
 #include "gseurat/engine/day_night_system.hpp"
