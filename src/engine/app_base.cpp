@@ -460,6 +460,15 @@ void AppBase::load_gs_scene(const SceneData& scene_data, const GsSceneOptions& o
                         }
                         merged.insert(merged.end(), placed_gs.begin(), placed_gs.end());
                         merged_count++;
+
+                        // Update stored position to match where Gaussians actually landed
+                        // (so Staging gizmos align with rendered Gaussians)
+                        for (auto& stored : scene_game_object_data_) {
+                            if (stored.id == go.id) {
+                                stored.position = adjusted_pos;
+                                break;
+                            }
+                        }
                     } catch (const std::runtime_error& e) {
                         std::fprintf(stderr, "[GS] Warning: game object '%s': %s\n",
                                      go.id.c_str(), e.what());
