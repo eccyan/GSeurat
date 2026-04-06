@@ -364,6 +364,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
     if (parts.some((p) => p.id === name)) return;
     const part: BodyPart = {
       id: name,
+      name: name,
       parent: get().selectedPart ?? (parts.length > 0 ? parts[0].id : null),
       joint: [0, 0, 0],
       voxelKeys: [],
@@ -478,6 +479,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
       }
       parts.push({
         id: model.name,
+        name: model.name,
         parent: parts.length > 0 ? parts[0].id : null,
         joint: [0, 0, 0],
         voxelKeys: keys,
@@ -491,7 +493,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
   addAnimation: (name) => {
     const anims = { ...get().animations };
     if (!anims[name]) {
-      anims[name] = { name, keyframes: [], duration: 1 };
+      anims[name] = { name, keyframes: [], duration: 1, playbackMode: 'loop' };
     }
     set({ animations: anims, selectedAnimation: name });
   },
@@ -511,7 +513,8 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
     const anims = { ...get().animations };
     const clip = anims[animName];
     if (!clip) return;
-    const keyframes = [...clip.keyframes, keyframe].sort((a, b) => a.time - b.time);
+    const kf = { easing: 'step' as const, ...keyframe };
+    const keyframes = [...clip.keyframes, kf].sort((a, b) => a.time - b.time);
     anims[animName] = { ...clip, keyframes };
     set({ animations: anims });
   },
@@ -584,7 +587,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
       voxelArr.push({ x, y, z, r: vox.color[0], g: vox.color[1], b: vox.color[2], a: vox.color[3] });
     }
     return {
-      version: 1,
+      version: 2,
       characterName: s.characterName,
       gridWidth: s.gridWidth,
       gridDepth: s.gridDepth,
@@ -600,14 +603,33 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
     for (const v of data.voxels) {
       voxels.set(voxelKey(v.x, v.y, v.z), { color: [v.r, v.g, v.b, v.a] });
     }
+    // Migrate v1 parts: add name field if missing
+    const parts = data.parts.map((p) => ({
+      ...p,
+      name: (p as any).name ?? p.id,
+    }));
+    // Migrate v1 animations: add easing + playbackMode defaults
+    const animations: Record<string, AnimationClip> = {};
+    if (data.animations) {
+      for (const [key, clip] of Object.entries(data.animations)) {
+        animations[key] = {
+          ...clip,
+          playbackMode: (clip as any).playbackMode ?? 'loop',
+          keyframes: clip.keyframes.map((kf) => ({
+            ...kf,
+            easing: (kf as any).easing ?? 'step',
+          })),
+        };
+      }
+    }
     set({
       voxels,
       gridWidth: data.gridWidth,
       gridDepth: data.gridDepth,
       characterName: data.characterName,
-      characterParts: data.parts,
+      characterParts: parts,
       characterPoses: data.poses,
-      animations: data.animations ?? {},
+      animations,
       selectedPart: null,
       selectedPose: null,
       selectedAnimation: null,
