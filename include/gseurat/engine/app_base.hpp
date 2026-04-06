@@ -8,6 +8,7 @@
 #include "gseurat/engine/control_server.hpp"
 #endif
 #include "gseurat/engine/collision_gen.hpp"
+#include "gseurat/engine/coordinate.hpp"
 #include "gseurat/engine/gaussian_cloud.hpp"
 #include "gseurat/engine/day_night_system.hpp"
 #include "gseurat/engine/dialog.hpp"
@@ -211,7 +212,8 @@ public:
     const std::vector<GameObjectData>& scene_game_objects() const { return scene_game_object_data_; }
     const std::vector<glm::vec3>& pbd_anchors() const { return pbd_anchors_; }
     const std::vector<PbdConfig>& pbd_configs() const { return pbd_configs_; }
-    glm::vec2 gs_aabb_offset() const { return gs_aabb_offset_; }
+    glm::vec2 gs_aabb_offset() const { return glm::vec2(terrain_aabb_.min.x, terrain_aabb_.min.y); }
+    const AABB& terrain_aabb() const { return terrain_aabb_; }
     glm::vec3 gs_cloud_center() const { return gs_cloud_center_; }
     float gs_cloud_extent() const { return gs_cloud_extent_; }
 protected:
@@ -247,9 +249,8 @@ protected:
     virtual void dispatch_command(const nlohmann::json& cmd, nlohmann::json& response);
     void poll_control_server();
 
-    // GS scene AABB offset (voxel→world coordinate transform)
-    glm::vec2 gs_aabb_offset_{0.0f};
-    glm::vec3 terrain_aabb_min_{0.0f};  // terrain PLY AABB min (for game object grid→world mapping)
+    // Terrain PLY AABB (for grid→world coordinate conversion)
+    AABB terrain_aabb_;
     glm::vec3 gs_cloud_center_{0.0f};
     float gs_cloud_extent_ = 100.0f;
 
