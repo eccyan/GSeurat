@@ -12,6 +12,7 @@
 #include "gseurat/engine/gs_particle.hpp"
 #include "gseurat/engine/gs_animator.hpp"
 #include "gseurat/engine/gs_vfx.hpp"
+#include "gseurat/engine/pbd_types.hpp"
 
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
@@ -246,7 +247,29 @@ void IslandDemoState::on_enter(AppBase& app) {
         (void)char_count;
     }
 
-    // PBD upload is now handled automatically by AppBase::load_gs_scene()
+    // Re-upload PBD elements — the second init_gs() above (for character merge)
+    // resets pbd_count_ to 0, wiping the upload from load_gs_scene().
+    {
+        const auto& anchors = app.gs_terrain().pbd_anchors;
+        const auto& configs = app.gs_terrain().pbd_configs;
+        if (!anchors.empty() && anchors.size() == configs.size()) {
+            uint32_t count = static_cast<uint32_t>(anchors.size());
+            std::vector<PbdPhysicsState> states(count);
+            std::vector<PbdElementParams> params(count);
+            for (uint32_t i = 0; i < count; ++i) {
+                const auto& cfg = configs[i];
+                float inv_mass = (cfg.mode == "physics" && cfg.pinned) ? 0.0f : 1.0f;
+                states[i].position = glm::vec4(anchors[i], inv_mass);
+                states[i].prev_position = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+                states[i].velocity = glm::vec4(0.0f);
+                states[i].params = glm::vec4(cfg.sway_threshold, 0.0f, 0.0f, 0.0f);
+                params[i].gravity = glm::vec4(cfg.gravity, cfg.damping);
+                params[i].wind = glm::vec4(cfg.wind_direction, cfg.wind_strength);
+                params[i].dynamics = glm::vec4(cfg.wind_frequency, cfg.ground_y, cfg.bounce, 0.0f);
+            }
+            app.renderer().gs_renderer().upload_pbd_elements(states.data(), params.data(), count);
+        }
+    }
 
     // Initialize camera centered on player (use header defaults for elevation/distance)
     camera_target_ = player_pos + glm::vec3(0, kCameraYOffset, 0);
