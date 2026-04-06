@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Vec3Input } from '@gseurat/ui-kit';
 import { useCharacterStore } from '../store/useCharacterStore.js';
 
 const styles: Record<string, React.CSSProperties> = {
@@ -131,7 +132,7 @@ function KeyframeEditor() {
           style={styles.btn}
           onClick={() => {
             if (!newPoseName) return;
-            addKeyframe(selectedAnimation, { time: playbackTime, poseName: newPoseName });
+            addKeyframe(selectedAnimation, { time: playbackTime, poseName: newPoseName, easing: 'linear' });
           }}
         >
           + KF
@@ -148,7 +149,7 @@ function KeyframeEditor() {
               const val = (e.target as HTMLInputElement).value.trim();
               if (!val) return;
               addPose(val);
-              addKeyframe(selectedAnimation, { time: playbackTime, poseName: val });
+              addKeyframe(selectedAnimation, { time: playbackTime, poseName: val, easing: 'linear' });
               (e.target as HTMLInputElement).value = '';
             }
           }}
@@ -180,27 +181,17 @@ function KeyframeEditor() {
         <div style={{ marginTop: 8 }}>
           <div style={styles.label}>Pose: {currentKf.poseName}</div>
           {parts.map((part) => {
-            const rot = currentPose.rotations[part.id] ?? [0, 0, 0];
+            const rot: [number, number, number] = currentPose.rotations[part.id] ?? [0, 0, 0];
             return (
               <div key={part.id} style={{ marginBottom: 4 }}>
                 <div style={{ color: '#aaa', fontSize: 11, marginBottom: 2 }}>{part.id}</div>
-                <div style={styles.row}>
-                  {(['X', 'Y', 'Z'] as const).map((axis, j) => (
-                    <React.Fragment key={axis}>
-                      <span style={{ color: '#666', fontSize: 10 }}>{axis}</span>
-                      <input
-                        type="number"
-                        style={styles.numInput}
-                        value={rot[j]}
-                        onChange={(e) => {
-                          const r: [number, number, number] = [...rot];
-                          r[j] = Number(e.target.value);
-                          updatePoseRotation(currentKf.poseName, part.id, r);
-                        }}
-                      />
-                    </React.Fragment>
-                  ))}
-                </div>
+                <Vec3Input
+                  value={rot}
+                  onChange={(v) => updatePoseRotation(currentKf.poseName, part.id, v)}
+                  step={1}
+                  min={-180}
+                  max={180}
+                />
               </div>
             );
           })}

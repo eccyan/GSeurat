@@ -1,4 +1,5 @@
 import React from 'react';
+import { NumberInput } from '@gseurat/ui-kit';
 import { useCharacterStore } from '../store/useCharacterStore.js';
 import type { ToolType } from '../store/types.js';
 
@@ -7,6 +8,13 @@ const tools: { id: ToolType; label: string; key: string }[] = [
   { id: 'paint', label: 'Paint', key: 'B' },
   { id: 'erase', label: 'Erase', key: 'E' },
   { id: 'eyedropper', label: 'Eyedrop', key: 'I' },
+  { id: 'fill', label: 'Fill', key: 'G' },
+  { id: 'extrude', label: 'Extrude', key: 'X' },
+];
+
+const selectionTools: { id: ToolType; label: string; key: string }[] = [
+  { id: 'box_select', label: 'Box Select', key: 'S' },
+  { id: 'lasso_select', label: 'Lasso', key: 'L' },
 ];
 
 const presetColors: [number, number, number, number][] = [
@@ -123,6 +131,23 @@ export function ToolBar() {
       </div>
 
       <div style={styles.section}>
+        <span style={styles.label}>Selection</span>
+        {selectionTools.map((t) => (
+          <button
+            key={t.id}
+            style={{
+              ...styles.toolBtn,
+              ...(activeTool === t.id ? styles.toolBtnActive : {}),
+            }}
+            onClick={() => setTool(t.id)}
+          >
+            {t.label}
+            <span style={styles.shortcut}>{t.key}</span>
+          </button>
+        ))}
+      </div>
+
+      <div style={styles.section}>
         <span style={styles.label}>Color</span>
         <div style={styles.row}>
           <input
@@ -167,17 +192,7 @@ export function ToolBar() {
 
       <div style={styles.section}>
         <span style={styles.label}>Brush Size</span>
-        <div style={styles.row}>
-          <input
-            type="range"
-            min={1}
-            max={8}
-            value={brushSize}
-            onChange={(e) => setBrushSize(Number(e.target.value))}
-            style={{ flex: 1 }}
-          />
-          <span style={{ fontSize: 13, color: '#ddd' }}>{brushSize}</span>
-        </div>
+        <NumberInput value={brushSize} onChange={setBrushSize} min={1} max={8} step={1} label="Size" />
       </div>
 
     </div>
