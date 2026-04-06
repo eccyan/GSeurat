@@ -50,6 +50,9 @@ private:
     bool camera_initialized_ = false;
     glm::mat4 gs_vp_{1.0f};  // cached view-projection matrix (computed in update)
 
+    // Animation time (drives PBD wind sway)
+    float anim_time_ = 0.0f;
+
     // Performance tracking
     float fps_ = 0.0f;
     float fps_timer_ = 0.0f;

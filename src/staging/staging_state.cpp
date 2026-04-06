@@ -56,6 +56,10 @@ void StagingState::on_exit(AppBase& /*app*/) {
 }
 
 void StagingState::update(AppBase& app, float dt) {
+    // Drive GS effect time for PBD wind sway
+    anim_time_ += dt;
+    app.renderer().gs_renderer().set_effect_time(anim_time_);
+
     // FPS tracking
     frame_count_++;
     fps_timer_ += dt;
@@ -743,9 +747,9 @@ void StagingState::draw_gizmos(AppBase& app) {
         auto aabb_off = app.gs_aabb_offset();
         for (size_t i = 0; i < game_objects.size(); i++) {
             const auto& go = game_objects[i];
-            // Apply AABB offset (same as emitters — raw scene coords + offset)
-            glm::vec3 pos(go.position.x + aabb_off.x,
-                          go.position.y + aabb_off.y,
+            // Game object PLYs are merged at raw world coords (no AABB offset)
+            glm::vec3 pos(go.position.x,
+                          go.position.y,
                           go.position.z);
             float sx, sy;
             if (!project_to_screen(pos, vp, sw, sh, sx, sy)) continue;
