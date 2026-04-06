@@ -470,6 +470,7 @@ void AppBase::load_gs_scene(const SceneData& scene_data, const GsSceneOptions& o
                         float sway_threshold = local_min_y + (local_max_y - local_min_y) * sway_threshold_frac;
 
                         auto placed_gs = placed_cloud.gaussians();
+                        uint32_t tagged_count = 0;
                         for (auto& g : placed_gs) {
                             float local_y = g.position.y;  // before transform
                             g.position = glm::vec3(transform * glm::vec4(g.position, 1.0f));
@@ -478,7 +479,15 @@ void AppBase::load_gs_scene(const SceneData& scene_data, const GsSceneOptions& o
                             // Tag canopy Gaussians with PBD index
                             if (pbd_idx > 0 && local_y > sway_threshold) {
                                 g.bone_index = pbd_idx;
+                                tagged_count++;
                             }
+                        }
+                        if (pbd_idx > 0) {
+                            std::fprintf(stderr, "[GS] PBD '%s': idx=%u, threshold=%.2f (frac=%.2f), "
+                                         "model Y=[%.2f,%.2f], tagged=%u/%zu, anchor=(%.1f,%.1f,%.1f)\n",
+                                         go.name.c_str(), pbd_idx, sway_threshold, sway_threshold_frac,
+                                         local_min_y, local_max_y, tagged_count, placed_gs.size(),
+                                         adjusted_pos.x, adjusted_pos.y, adjusted_pos.z);
                         }
                         merged.insert(merged.end(), placed_gs.begin(), placed_gs.end());
                         merged_count++;
@@ -495,25 +504,6 @@ void AppBase::load_gs_scene(const SceneData& scene_data, const GsSceneOptions& o
                                  pbd_anchors_.size(),
                                  31 + static_cast<uint32_t>(pbd_anchors_.size()));
                 }
-            }
-
-            // Upload PBD elements to GS renderer (auto-setup for all scene loads)
-            if (!pbd_anchors_.empty() && pbd_anchors_.size() == pbd_configs_.size()) {
-                uint32_t count = static_cast<uint32_t>(pbd_anchors_.size());
-                std::vector<PbdPhysicsState> states(count);
-                std::vector<PbdElementParams> params(count);
-                for (uint32_t i = 0; i < count; ++i) {
-                    const auto& cfg = pbd_configs_[i];
-                    float inv_mass = (cfg.mode == "physics" && cfg.pinned) ? 0.0f : 1.0f;
-                    states[i].position = glm::vec4(pbd_anchors_[i], inv_mass);
-                    states[i].prev_position = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
-                    states[i].velocity = glm::vec4(0.0f);
-                    states[i].params = glm::vec4(cfg.sway_threshold, 0.0f, 0.0f, 0.0f);
-                    params[i].gravity = glm::vec4(cfg.gravity, cfg.damping);
-                    params[i].wind = glm::vec4(cfg.wind_direction, cfg.wind_strength);
-                    params[i].dynamics = glm::vec4(cfg.wind_frequency, cfg.ground_y, cfg.bounce, 0.0f);
-                }
-                renderer_.gs_renderer().upload_pbd_elements(states.data(), params.data(), count);
             }
 
             // Create ECS entities for game objects with components
@@ -538,6 +528,28 @@ void AppBase::load_gs_scene(const SceneData& scene_data, const GsSceneOptions& o
             else if (cloud.count() > 50000 && gs_w >= 320) { gs_w = 240; gs_h = 180; }
 
             renderer_.init_gs(cloud, gs_w, gs_h);
+
+            // Upload PBD elements AFTER init_gs (load_cloud resets pbd_count_)
+            if (!pbd_anchors_.empty() && pbd_anchors_.size() == pbd_configs_.size()) {
+                uint32_t count = static_cast<uint32_t>(pbd_anchors_.size());
+                std::vector<PbdPhysicsState> states(count);
+                std::vector<PbdElementParams> params(count);
+                for (uint32_t i = 0; i < count; ++i) {
+                    const auto& cfg = pbd_configs_[i];
+                    float inv_mass = (cfg.mode == "physics" && cfg.pinned) ? 0.0f : 1.0f;
+                    states[i].position = glm::vec4(pbd_anchors_[i], inv_mass);
+                    states[i].prev_position = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+                    states[i].velocity = glm::vec4(0.0f);
+                    states[i].params = glm::vec4(cfg.sway_threshold, 0.0f, 0.0f, 0.0f);
+                    params[i].gravity = glm::vec4(cfg.gravity, cfg.damping);
+                    params[i].wind = glm::vec4(cfg.wind_direction, cfg.wind_strength);
+                    params[i].dynamics = glm::vec4(cfg.wind_frequency, cfg.ground_y, cfg.bounce, 0.0f);
+                }
+                renderer_.gs_renderer().upload_pbd_elements(states.data(), params.data(), count);
+                std::fprintf(stderr, "[GS] PBD upload: %u elements, wind=(%.2f,%.2f,%.2f) str=%.2f freq=%.2f\n",
+                             count, params[0].wind.x, params[0].wind.y, params[0].wind.z,
+                             params[0].wind.w, params[0].dynamics.x);
+            }
 
             // Store cloud bounds for camera centering
             auto cloud_aabb = cloud.bounds();
