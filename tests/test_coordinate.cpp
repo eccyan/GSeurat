@@ -96,6 +96,14 @@ int main() {
               "sizeof(GridPos) == sizeof(glm::vec3)");
         check(sizeof(gseurat::coord::WorldPos) == sizeof(glm::vec3),
               "sizeof(WorldPos) == sizeof(glm::vec3)");
+        check(sizeof(gseurat::coord::CellPos) == sizeof(glm::vec3),
+              "sizeof(CellPos) == sizeof(glm::vec3)");
+        check(sizeof(gseurat::coord::LocalPos) == sizeof(glm::vec3),
+              "sizeof(LocalPos) == sizeof(glm::vec3)");
+        check(sizeof(gseurat::coord::CameraPos) == sizeof(glm::vec3),
+              "sizeof(CameraPos) == sizeof(glm::vec3)");
+        check(sizeof(gseurat::coord::ScreenPos) == sizeof(glm::vec3),
+              "sizeof(ScreenPos) == sizeof(glm::vec3)");
     }
 
     // ── 6. Trivially copyable (required for ECS archetype memcpy) ──

@@ -1,6 +1,4 @@
 #include "gseurat/engine/coordinate.hpp"
-#include "gseurat/engine/gaussian_cloud.hpp"
-#include "gseurat/engine/collision_gen.hpp"
 
 namespace gseurat::coord {
 
