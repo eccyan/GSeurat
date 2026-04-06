@@ -3,9 +3,9 @@ import { buildManifest } from '../lib/manifestExport.js';
 import type { BodyPart, PoseData, AnimationClip } from '../store/types.js';
 
 const mockParts: BodyPart[] = [
-  { id: 'torso', parent: null, joint: [0, 0, 0], voxelKeys: [] },
-  { id: 'head', parent: 'torso', joint: [0, 4, 0], voxelKeys: [] },
-  { id: 'left_arm', parent: 'torso', joint: [-2, 3, 0], voxelKeys: [] },
+  { id: 'torso', name: 'torso', parent: null, joint: [0, 0, 0], voxelKeys: [] },
+  { id: 'head', name: 'head', parent: 'torso', joint: [0, 4, 0], voxelKeys: [] },
+  { id: 'left_arm', name: 'left_arm', parent: 'torso', joint: [-2, 3, 0], voxelKeys: [] },
 ];
 
 const mockPoses: Record<string, PoseData> = {
@@ -27,10 +27,11 @@ const mockAnimations: Record<string, AnimationClip> = {
   wave_anim: {
     name: 'wave_anim',
     duration: 1.0,
+    playbackMode: 'loop',
     keyframes: [
-      { time: 0, poseName: 'idle' },
-      { time: 0.5, poseName: 'wave' },
-      { time: 1.0, poseName: 'idle' },
+      { time: 0, poseName: 'idle', easing: 'step' as const },
+      { time: 0.5, poseName: 'wave', easing: 'step' as const },
+      { time: 1.0, poseName: 'idle', easing: 'step' as const },
     ],
   },
 };

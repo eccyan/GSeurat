@@ -543,7 +543,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
     const anims = { ...get().animations };
     const clip = anims[animName];
     if (!clip) return;
-    const kf = { easing: 'step' as const, ...keyframe };
+    const kf = { ...keyframe, easing: keyframe.easing ?? ('step' as const) };
     const keyframes = [...clip.keyframes, kf].sort((a, b) => a.time - b.time);
     anims[animName] = { ...clip, keyframes };
     set({ animations: anims });
