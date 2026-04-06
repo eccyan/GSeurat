@@ -172,6 +172,7 @@ add_library(gseurat_core OBJECT
     src/engine/gs_animator.cpp
     src/engine/gs_vfx.cpp
     src/engine/gs_spline.cpp
+    src/engine/coordinate.cpp
     src/engine/component_registry.cpp
     src/engine/system_scheduler.cpp
     src/character/character_manifest.cpp
