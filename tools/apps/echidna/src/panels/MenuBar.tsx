@@ -438,7 +438,7 @@ export function MenuBar() {
       const manifestJson = JSON.stringify(manifest, null, 2);
       const manifestRes = await fetch(
         `${BRIDGE_REST_URL}/api/characters/${encodeURIComponent(charId)}/file/${encodeURIComponent(charId + '.manifest.json')}`,
-        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: manifestJson },
+        { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: manifestJson },
       );
       let manifestPath = '';
       if (manifestRes.ok) {
