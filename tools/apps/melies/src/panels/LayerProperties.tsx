@@ -3,8 +3,7 @@ import { useVfxStore } from '../store/useVfxStore.js';
 import type { VfxElement, ElementType, SplineConfig } from '../store/types.js';
 type VfxLayer = VfxElement;
 type LayerType = ElementType;
-import { NumberInput } from '../components/NumberInput.js';
-import { Vec3Input } from '../components/Vec3Input.js';
+import { NumberInput, Vec3Input, ColorPicker as UiColorPicker } from '@gseurat/ui-kit';
 import { emitterPresets, defaultEmitterConfig } from '../data/emitterPresets.js';
 import type { EmitterConfig } from '../data/emitterPresets.js';
 import { T, inputStyle, selectStyle, sectionLabel, layerColor } from '../styles/theme.js';
@@ -45,16 +44,12 @@ function ColorPicker({ label, value, onChange }: {
   value: [number, number, number];
   onChange: (v: [number, number, number]) => void;
 }) {
-  const hex = '#' + value.map((c) => Math.round(c * 255).toString(16).padStart(2, '0')).join('');
   return (
     <div style={{ flex: 1 }}>
-      <label style={sectionLabel}>{label}</label>
-      <input type="color" value={hex}
-        onChange={(e) => {
-          const h = e.target.value;
-          onChange([parseInt(h.slice(1, 3), 16) / 255, parseInt(h.slice(3, 5), 16) / 255, parseInt(h.slice(5, 7), 16) / 255]);
-        }}
-        style={{ width: '100%', height: 28, border: 'none', borderRadius: 4, cursor: 'pointer' }}
+      <UiColorPicker
+        label={label}
+        value={[...value, 1]}
+        onChange={([r, g, b]) => onChange([r, g, b])}
       />
     </div>
   );
