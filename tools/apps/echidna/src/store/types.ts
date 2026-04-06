@@ -10,6 +10,7 @@ export type VoxelKey = `${number},${number},${number}`;
 
 export interface BodyPart {
   id: string;
+  name: string;
   parent: string | null;
   joint: [number, number, number];
   voxelKeys: VoxelKey[];
@@ -24,28 +25,48 @@ export type ToolType =
   | 'place'
   | 'paint'
   | 'erase'
+  | 'fill'
+  | 'extrude'
   | 'eyedropper'
   | 'assign_part'
-  | 'box_select';
+  | 'box_select'
+  | 'lasso_select';
 
 // ── Animation ──
+
+export type EasingType = 'linear' | 'ease-in-out' | 'bounce' | 'elastic' | 'step' | 'custom';
+
+export type PlaybackMode = 'loop' | 'ping-pong' | 'once';
 
 export interface AnimationKeyframe {
   time: number;
   poseName: string;
+  easing: EasingType;
+  curve?: [number, number, number, number];
+  parts?: string[];
 }
 
 export interface AnimationClip {
   name: string;
   keyframes: AnimationKeyframe[];
   duration: number;
+  playbackMode: PlaybackMode;
 }
 
 // ── App mode ──
 
 export type AppMode = 'build' | 'animate';
 
-// ── File format ──
+// ── Clipboard ──
+
+export interface ClipboardEntry {
+  dx: number;
+  dy: number;
+  dz: number;
+  color: [number, number, number, number];
+}
+
+// ── File format (v2) ──
 
 export interface EchidnaFile {
   version: number;

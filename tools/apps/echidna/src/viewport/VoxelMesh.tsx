@@ -4,6 +4,8 @@ import * as THREE from 'three';
 import { useCharacterStore } from '../store/useCharacterStore.js';
 import { voxelKey, parseKey, brushPositions } from '../lib/voxelUtils.js';
 import type { VoxelKey, BodyPart, PoseData } from '../store/types.js';
+import { applyEasing } from '../lib/easing.js';
+import type { AnimationKeyframe, EasingType } from '../store/types.js';
 
 const _dummy = new THREE.Object3D();
 const DEG2RAD = Math.PI / 180;
@@ -60,24 +62,106 @@ function computeFKTransforms(
   return result;
 }
 
-/** Interpolate between two poses. */
-function interpolatePoses(
-  poseA: PoseData,
-  poseB: PoseData,
-  t: number,
-  partIds: string[],
-): PoseData {
-  const rotations: Record<string, [number, number, number]> = {};
-  for (const id of partIds) {
-    const a = poseA.rotations[id] ?? [0, 0, 0];
-    const b = poseB.rotations[id] ?? [0, 0, 0];
-    rotations[id] = [
-      a[0] + (b[0] - a[0]) * t,
-      a[1] + (b[1] - a[1]) * t,
-      a[2] + (b[2] - a[2]) * t,
-    ];
+/** Get the interpolated rotation for a single part at a given time, applying easing. */
+function interpolatePartRotation(
+  keyframes: AnimationKeyframe[],
+  poses: Record<string, PoseData>,
+  time: number,
+  partId: string,
+): [number, number, number] {
+  if (keyframes.length === 0) return [0, 0, 0];
+
+  // Filter keyframes relevant to this part
+  const relevantKfs = keyframes.filter((kf) => !kf.parts || kf.parts.includes(partId));
+  if (relevantKfs.length === 0) return [0, 0, 0];
+
+  // Find the two keyframes surrounding `time`
+  let prevKf = relevantKfs[0];
+  let nextKf = relevantKfs[relevantKfs.length - 1];
+
+  for (let i = 0; i < relevantKfs.length - 1; i++) {
+    if (time >= relevantKfs[i].time && time < relevantKfs[i + 1].time) {
+      prevKf = relevantKfs[i];
+      nextKf = relevantKfs[i + 1];
+      break;
+    }
   }
-  return { rotations };
+
+  if (time <= prevKf.time) {
+    const pose = poses[prevKf.poseName];
+    return pose?.rotations[partId] ?? [0, 0, 0];
+  }
+  if (time >= nextKf.time) {
+    const pose = poses[nextKf.poseName];
+    return pose?.rotations[partId] ?? [0, 0, 0];
+  }
+
+  const fromPose = poses[prevKf.poseName];
+  const toPose = poses[nextKf.poseName];
+  const fromRot = fromPose?.rotations[partId] ?? [0, 0, 0];
+  const toRot = toPose?.rotations[partId] ?? [0, 0, 0];
+
+  const range = nextKf.time - prevKf.time;
+  const rawT = range > 0 ? (time - prevKf.time) / range : 0;
+  const easedT = applyEasing(prevKf.easing, rawT, prevKf.curve);
+
+  return [
+    fromRot[0] + (toRot[0] - fromRot[0]) * easedT,
+    fromRot[1] + (toRot[1] - fromRot[1]) * easedT,
+    fromRot[2] + (toRot[2] - fromRot[2]) * easedT,
+  ];
+}
+
+function OnionGhost({ time, tint, opacity, surfaceEntries, characterParts, characterPoses, voxelToPartId, keyframes }: {
+  time: number;
+  tint: [number, number, number];
+  opacity: number;
+  surfaceEntries: [VoxelKey, { color: [number, number, number, number] }][];
+  characterParts: BodyPart[];
+  characterPoses: Record<string, PoseData>;
+  voxelToPartId: Map<VoxelKey, string>;
+  keyframes: AnimationKeyframe[];
+}) {
+  const meshRef = useRef<THREE.InstancedMesh>(null!);
+  const count = surfaceEntries.length;
+
+  useEffect(() => {
+    const mesh = meshRef.current;
+    if (!mesh || count === 0) return;
+
+    const rotations: Record<string, [number, number, number]> = {};
+    for (const part of characterParts) {
+      rotations[part.id] = interpolatePartRotation(keyframes, characterPoses, time, part.id);
+    }
+    const fk = computeFKTransforms(characterParts, { rotations });
+    const pos = new THREE.Vector3();
+
+    mesh.count = count;
+    for (let i = 0; i < count; i++) {
+      const [key] = surfaceEntries[i];
+      const [x, y, z] = parseKey(key);
+      pos.set(x, y, z);
+      const partId = voxelToPartId.get(key);
+      if (partId) {
+        const tf = fk.get(partId);
+        if (tf) pos.applyMatrix4(tf);
+      }
+      _dummy.position.copy(pos);
+      _dummy.scale.set(1, 1, 1);
+      _dummy.rotation.set(0, 0, 0);
+      _dummy.updateMatrix();
+      mesh.setMatrixAt(i, _dummy.matrix);
+    }
+    mesh.instanceMatrix.needsUpdate = true;
+  }, [time, surfaceEntries, characterParts, characterPoses, voxelToPartId, keyframes, count]);
+
+  if (count === 0) return null;
+  return (
+    <instancedMesh ref={meshRef} args={[undefined, undefined, Math.max(count, 1)]} frustumCulled={false} renderOrder={-1}>
+      <boxGeometry args={[1, 1, 1]} />
+      <meshLambertMaterial transparent opacity={opacity} color={new THREE.Color(tint[0], tint[1], tint[2])} depthWrite={false} />
+    </instancedMesh>
+  );
 }
 
 export function VoxelMesh() {
@@ -97,6 +181,8 @@ export function VoxelMesh() {
   const animations = useCharacterStore((s) => s.animations);
   const playbackTime = useCharacterStore((s) => s.playbackTime);
   const mode = useCharacterStore((s) => s.mode);
+  const xrayMode = useCharacterStore((s) => s.xrayMode);
+  const onionSkinning = useCharacterStore((s) => s.onionSkinning);
 
   // Box select state
   const [boxStart, setBoxStart] = useState<[number, number, number] | null>(null);
@@ -108,7 +194,22 @@ export function VoxelMesh() {
     if (!clip) return;
     const store = useCharacterStore.getState();
     let newTime = store.playbackTime + delta * store.playbackSpeed;
-    if (newTime > clip.duration) newTime = newTime % clip.duration;
+
+    const playbackMode = store.playbackMode;
+    if (playbackMode === 'loop') {
+      if (newTime > clip.duration) newTime = newTime % clip.duration;
+    } else if (playbackMode === 'ping-pong') {
+      // Wrap within 2x duration, reverse direction in second half
+      const period = clip.duration * 2;
+      newTime = newTime % period;
+      if (newTime > clip.duration) newTime = period - newTime;
+    } else {
+      // 'once' — clamp and stop
+      if (newTime >= clip.duration) {
+        newTime = clip.duration;
+        store.togglePlayback(); // stop
+      }
+    }
     store.setPlaybackTime(newTime);
   });
 
@@ -120,31 +221,17 @@ export function VoxelMesh() {
 
     const kfs = clip.keyframes;
     const time = playbackTime;
-    const partIds = characterParts.map((p) => p.id);
 
     if (kfs.length === 1) {
       return characterPoses[kfs[0].poseName] ?? null;
     }
 
-    let before = kfs[0];
-    let after = kfs[kfs.length - 1];
-    for (let i = 0; i < kfs.length - 1; i++) {
-      if (kfs[i].time <= time && kfs[i + 1].time >= time) {
-        before = kfs[i];
-        after = kfs[i + 1];
-        break;
-      }
+    // Build a PoseData with per-part eased interpolation
+    const rotations: Record<string, [number, number, number]> = {};
+    for (const part of characterParts) {
+      rotations[part.id] = interpolatePartRotation(kfs, characterPoses, time, part.id);
     }
-
-    if (time <= before.time) return characterPoses[before.poseName] ?? null;
-    if (time >= after.time) return characterPoses[after.poseName] ?? null;
-
-    const poseA = characterPoses[before.poseName];
-    const poseB = characterPoses[after.poseName];
-    if (!poseA || !poseB) return poseA ?? poseB ?? null;
-
-    const t = (time - before.time) / (after.time - before.time);
-    return interpolatePoses(poseA, poseB, t, partIds);
+    return { rotations } as PoseData;
   }, [mode, selectedAnimation, animations, playbackTime, characterPoses, characterParts]);
 
   // Filter to surface-only voxels, then apply Y-clip
@@ -383,6 +470,25 @@ export function VoxelMesh() {
         store.assignVoxelsToPart(keys, partId);
         break;
       }
+      case 'fill': {
+        store.pushUndo();
+        store.fillVoxels(key);
+        break;
+      }
+      case 'extrude': {
+        const dy = e.button === 2 ? -1 : 1;
+        store.pushUndo();
+        // If there's a selection, extrude the selection; otherwise extrude the clicked voxel
+        if (store.boxSelection || store.lassoSelection) {
+          store.extrudeSelection(dy);
+        } else {
+          // Single voxel extrude: temporarily set selection to clicked voxel
+          store.setBoxSelection([key]);
+          store.extrudeSelection(dy);
+          store.setBoxSelection(null);
+        }
+        break;
+      }
       case 'box_select': {
         if (!boxStart) {
           setBoxStart([x, y, z]);
@@ -406,17 +512,46 @@ export function VoxelMesh() {
     }
   }, [indexToKey, boxStart]);
 
+  // Compute previous/next keyframe times for onion skinning
+  const { prevKfTime, nextKfTime } = useMemo(() => {
+    if (!selectedAnimation || !onionSkinning) return { prevKfTime: null, nextKfTime: null };
+    const clip = animations[selectedAnimation];
+    if (!clip || clip.keyframes.length < 2) return { prevKfTime: null, nextKfTime: null };
+    const kfs = clip.keyframes;
+    let prev: number | null = null;
+    let next: number | null = null;
+    for (let i = 0; i < kfs.length; i++) {
+      if (kfs[i].time < playbackTime) prev = kfs[i].time;
+      if (kfs[i].time > playbackTime && next === null) next = kfs[i].time;
+    }
+    return { prevKfTime: prev, nextKfTime: next };
+  }, [selectedAnimation, animations, playbackTime, onionSkinning]);
+
   return (
-    <instancedMesh
-      key={count}
-      ref={meshRef}
-      args={[undefined, undefined, Math.max(count, 1)]}
-      onClick={handleClick}
-      onContextMenu={handleClick}
-      frustumCulled={false}
-    >
-      <boxGeometry args={[1, 1, 1]} />
-      <meshLambertMaterial />
-    </instancedMesh>
+    <group>
+      <instancedMesh
+        key={count}
+        ref={meshRef}
+        args={[undefined, undefined, Math.max(count, 1)]}
+        onClick={handleClick}
+        onContextMenu={handleClick}
+        frustumCulled={false}
+      >
+        <boxGeometry args={[1, 1, 1]} />
+        <meshLambertMaterial key={xrayMode ? 'xray' : 'solid'} transparent={xrayMode || colorByPart || !!boxSelection} opacity={xrayMode ? 0.3 : 1} depthWrite={!xrayMode} />
+      </instancedMesh>
+      {onionSkinning && prevKfTime !== null && (
+        <OnionGhost time={prevKfTime} tint={[0.3, 0.3, 1.0]} opacity={0.2}
+          surfaceEntries={surfaceEntries} characterParts={characterParts}
+          characterPoses={characterPoses} voxelToPartId={voxelToPartId}
+          keyframes={animations[selectedAnimation!]?.keyframes ?? []} />
+      )}
+      {onionSkinning && nextKfTime !== null && (
+        <OnionGhost time={nextKfTime} tint={[1.0, 0.3, 0.3]} opacity={0.2}
+          surfaceEntries={surfaceEntries} characterParts={characterParts}
+          characterPoses={characterPoses} voxelToPartId={voxelToPartId}
+          keyframes={animations[selectedAnimation!]?.keyframes ?? []} />
+      )}
+    </group>
   );
 }

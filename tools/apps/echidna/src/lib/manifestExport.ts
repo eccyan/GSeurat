@@ -11,6 +11,9 @@ export interface ManifestBone {
 export interface ManifestKeyframe {
   time: number;
   pose: string;
+  easing?: string;
+  curve?: [number, number, number, number];
+  parts?: string[];
 }
 
 export interface ManifestAnimationClip {
@@ -53,11 +56,24 @@ export function buildManifest(
   for (const [animName, clip] of Object.entries(animations)) {
     manifestAnimations[animName] = {
       duration: clip.duration,
-      looping: true,
-      keyframes: clip.keyframes.map((kf) => ({
-        time: kf.time,
-        pose: kf.poseName,
-      })),
+      looping: clip.playbackMode !== 'once',
+      keyframes: clip.keyframes.map((kf) => {
+        const manifestKf: ManifestKeyframe = {
+          time: kf.time,
+          pose: kf.poseName,
+        };
+        // Omit easing if it's the default ('step')
+        if (kf.easing && kf.easing !== 'step') {
+          manifestKf.easing = kf.easing;
+        }
+        if (kf.curve) {
+          manifestKf.curve = kf.curve;
+        }
+        if (kf.parts) {
+          manifestKf.parts = kf.parts;
+        }
+        return manifestKf;
+      }),
     };
   }
 

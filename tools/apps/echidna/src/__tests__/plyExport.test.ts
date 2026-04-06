@@ -90,8 +90,8 @@ describe('exportPly density parameter', () => {
     voxels.set(key1, { color: [0, 255, 0, 255] });
 
     const parts: BodyPart[] = [
-      { id: 'part_a', parent: null, joint: [0, 0, 0], voxelKeys: [key0] },
-      { id: 'part_b', parent: null, joint: [0, 0, 0], voxelKeys: [key1] },
+      { id: 'part_a', name: 'part_a', parent: null, joint: [0, 0, 0], voxelKeys: [key0] },
+      { id: 'part_b', name: 'part_b', parent: null, joint: [0, 0, 0], voxelKeys: [key1] },
     ];
 
     const blob = exportPly(voxels, 10, 10, parts, 2);

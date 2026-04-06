@@ -1,87 +1,67 @@
-import React, { useCallback } from "react";
+import React from 'react';
+import { NumberInput } from './NumberInput.js';
+import { panelStyles } from './panelStyles.js';
 
 export interface Vec3InputProps {
   value: [number, number, number];
   onChange: (v: [number, number, number]) => void;
-  label?: string;
   step?: number;
+  label?: string;
+  labelPrefix?: string;
+  min?: number;
+  max?: number;
+  style?: React.CSSProperties;
 }
 
-export function Vec3Input({ value, onChange, label, step = 0.1 }: Vec3InputProps) {
-  const [x, y, z] = value;
+/**
+ * Shared 3-component vector input.
+ * - If `label` is provided, renders a label span followed by 3 bare NumberInputs (no axis labels).
+ * - Otherwise, renders 3 NumberInputs with X/Y/Z labels (optionally prefixed by `labelPrefix`).
+ */
+export function Vec3Input({
+  value,
+  onChange,
+  step = 0.1,
+  label,
+  labelPrefix,
+  min,
+  max,
+  style,
+}: Vec3InputProps) {
+  const inputStyle = style ?? { ...panelStyles.input, maxWidth: 55 };
 
-  const handleChange = useCallback(
-    (index: 0 | 1 | 2, raw: string) => {
-      const parsed = parseFloat(raw);
-      if (isNaN(parsed)) return;
-      const next: [number, number, number] = [x, y, z];
-      next[index] = parsed;
-      onChange(next);
-    },
-    [x, y, z, onChange]
-  );
-
-  const containerStyle: React.CSSProperties = {
-    display: "flex",
-    flexDirection: "column",
-    gap: "4px",
-    fontFamily: "monospace",
-    fontSize: "12px",
-    color: "#ccc",
-  };
-
-  const rowStyle: React.CSSProperties = {
-    display: "flex",
-    alignItems: "center",
-    gap: "6px",
-  };
-
-  const inputStyle: React.CSSProperties = {
-    background: "#1e1e1e",
-    border: "1px solid #444",
-    borderRadius: "3px",
-    color: "#eee",
-    fontFamily: "monospace",
-    fontSize: "12px",
-    padding: "2px 6px",
-    width: "64px",
-    textAlign: "right",
-  };
-
-  const axisLabelStyle: React.CSSProperties = {
-    minWidth: "14px",
-    textAlign: "center",
-  };
-
-  return (
-    <div style={containerStyle}>
-      {label && <span style={{ color: "#aaa" }}>{label}</span>}
-      <div style={rowStyle}>
-        <span style={{ ...axisLabelStyle, color: "#e06c75" }}>X</span>
-        <input
-          type="number"
-          value={x}
-          step={step}
-          onChange={(e) => handleChange(0, e.target.value)}
-          style={inputStyle}
-        />
-        <span style={{ ...axisLabelStyle, color: "#98c379" }}>Y</span>
-        <input
-          type="number"
-          value={y}
-          step={step}
-          onChange={(e) => handleChange(1, e.target.value)}
-          style={inputStyle}
-        />
-        <span style={{ ...axisLabelStyle, color: "#61afef" }}>Z</span>
-        <input
-          type="number"
-          value={z}
-          step={step}
-          onChange={(e) => handleChange(2, e.target.value)}
-          style={inputStyle}
-        />
+  if (label) {
+    // Compact mode: label + 3 bare inputs (used by GsEmittersTab)
+    return (
+      <div style={panelStyles.row}>
+        <span style={{ fontSize: 12, minWidth: 70 }}>{label}</span>
+        <NumberInput value={value[0]} onChange={(v) => onChange([v, value[1], value[2]])} step={step} min={min} max={max} style={inputStyle} />
+        <NumberInput value={value[1]} onChange={(v) => onChange([value[0], v, value[2]])} step={step} min={min} max={max} style={inputStyle} />
+        <NumberInput value={value[2]} onChange={(v) => onChange([value[0], value[1], v])} step={step} min={min} max={max} style={inputStyle} />
       </div>
+    );
+  }
+
+  // Axis-labeled mode: X / Y / Z (used by entities, objects, scene properties)
+  return (
+    <div style={panelStyles.row}>
+      {(['X', 'Y', 'Z'] as const).map((axis, i) => (
+        <React.Fragment key={axis}>
+          <NumberInput
+            label={`${labelPrefix ?? ''}${axis}`}
+            step={step}
+            min={min}
+            max={max}
+            value={value[i]}
+            onChange={(v) => {
+              const next = [...value] as [number, number, number];
+              next[i] = v;
+              onChange(next);
+            }}
+            style={inputStyle}
+          />
+        </React.Fragment>
+      ))}
     </div>
   );
 }

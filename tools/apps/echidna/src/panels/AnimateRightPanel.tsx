@@ -1,5 +1,16 @@
 import React, { useState } from 'react';
+import { Vec3Input } from '@gseurat/ui-kit';
 import { useCharacterStore } from '../store/useCharacterStore.js';
+import type { EasingType } from '../store/types.js';
+
+const easingOptions: { value: EasingType; label: string }[] = [
+  { value: 'linear', label: 'Linear' },
+  { value: 'ease-in-out', label: 'Ease In/Out' },
+  { value: 'bounce', label: 'Bounce' },
+  { value: 'elastic', label: 'Elastic' },
+  { value: 'step', label: 'Step' },
+  { value: 'custom', label: 'Custom' },
+];
 
 const styles: Record<string, React.CSSProperties> = {
   container: {
@@ -95,6 +106,7 @@ function KeyframeEditor() {
   const characterPoses = useCharacterStore((s) => s.characterPoses);
   const addKeyframe = useCharacterStore((s) => s.addKeyframe);
   const removeKeyframe = useCharacterStore((s) => s.removeKeyframe);
+  const updateKeyframeEasing = useCharacterStore((s) => s.updateKeyframeEasing);
   const updatePoseRotation = useCharacterStore((s) => s.updatePoseRotation);
   const addPose = useCharacterStore((s) => s.addPose);
 
@@ -131,7 +143,7 @@ function KeyframeEditor() {
           style={styles.btn}
           onClick={() => {
             if (!newPoseName) return;
-            addKeyframe(selectedAnimation, { time: playbackTime, poseName: newPoseName });
+            addKeyframe(selectedAnimation, { time: playbackTime, poseName: newPoseName, easing: 'linear' });
           }}
         >
           + KF
@@ -148,7 +160,7 @@ function KeyframeEditor() {
               const val = (e.target as HTMLInputElement).value.trim();
               if (!val) return;
               addPose(val);
-              addKeyframe(selectedAnimation, { time: playbackTime, poseName: val });
+              addKeyframe(selectedAnimation, { time: playbackTime, poseName: val, easing: 'linear' });
               (e.target as HTMLInputElement).value = '';
             }
           }}
@@ -159,13 +171,32 @@ function KeyframeEditor() {
       {clip.keyframes.map((kf, i) => (
         <div key={i} style={{
           ...styles.row,
+          flexWrap: 'wrap',
           background: currentKf === kf ? '#3a3a6a' : 'transparent',
           borderRadius: 4,
           padding: '2px 4px',
+          gap: 4,
         }}>
-          <span style={{ color: '#aaa', fontSize: 11, flex: 1 }}>
+          <span style={{ color: '#aaa', fontSize: 11, flex: 1, minWidth: 80 }}>
             t={kf.time.toFixed(2)}s - {kf.poseName}
           </span>
+          <select
+            style={{
+              padding: '1px 4px',
+              background: '#2a2a4a',
+              border: '1px solid #444',
+              borderRadius: 4,
+              color: '#ddd',
+              fontSize: 11,
+              cursor: 'pointer',
+            }}
+            value={kf.easing}
+            onChange={(e) => updateKeyframeEasing(selectedAnimation, i, e.target.value as EasingType)}
+          >
+            {easingOptions.map((opt) => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
           <button
             style={{ ...styles.btnDanger, padding: '1px 4px', fontSize: 10 }}
             onClick={() => removeKeyframe(selectedAnimation, i)}
@@ -180,27 +211,17 @@ function KeyframeEditor() {
         <div style={{ marginTop: 8 }}>
           <div style={styles.label}>Pose: {currentKf.poseName}</div>
           {parts.map((part) => {
-            const rot = currentPose.rotations[part.id] ?? [0, 0, 0];
+            const rot: [number, number, number] = currentPose.rotations[part.id] ?? [0, 0, 0];
             return (
               <div key={part.id} style={{ marginBottom: 4 }}>
                 <div style={{ color: '#aaa', fontSize: 11, marginBottom: 2 }}>{part.id}</div>
-                <div style={styles.row}>
-                  {(['X', 'Y', 'Z'] as const).map((axis, j) => (
-                    <React.Fragment key={axis}>
-                      <span style={{ color: '#666', fontSize: 10 }}>{axis}</span>
-                      <input
-                        type="number"
-                        style={styles.numInput}
-                        value={rot[j]}
-                        onChange={(e) => {
-                          const r: [number, number, number] = [...rot];
-                          r[j] = Number(e.target.value);
-                          updatePoseRotation(currentKf.poseName, part.id, r);
-                        }}
-                      />
-                    </React.Fragment>
-                  ))}
-                </div>
+                <Vec3Input
+                  value={rot}
+                  onChange={(v) => updatePoseRotation(currentKf.poseName, part.id, v)}
+                  step={1}
+                  min={-180}
+                  max={180}
+                />
               </div>
             );
           })}

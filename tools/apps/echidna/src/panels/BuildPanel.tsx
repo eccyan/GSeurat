@@ -1,4 +1,5 @@
 import React from 'react';
+import { NumberInput } from '@gseurat/ui-kit';
 import { useCharacterStore } from '../store/useCharacterStore.js';
 
 const styles: Record<string, React.CSSProperties> = {
@@ -94,6 +95,8 @@ function GridSettings() {
   const setShowGizmos = useCharacterStore((s) => s.setShowGizmos);
   const colorByPart = useCharacterStore((s) => s.colorByPart);
   const setColorByPart = useCharacterStore((s) => s.setColorByPart);
+  const xrayMode = useCharacterStore((s) => s.xrayMode);
+  const setXrayMode = useCharacterStore((s) => s.setXrayMode);
 
   return (
     <div style={styles.section}>
@@ -110,6 +113,27 @@ function GridSettings() {
         <input type="checkbox" checked={colorByPart} onChange={(e) => setColorByPart(e.target.checked)} />
         Color by Part
       </label>
+      <label style={{ ...styles.row, fontSize: 13, cursor: 'pointer' }}>
+        <input type="checkbox" checked={xrayMode} onChange={(e) => setXrayMode(e.target.checked)} />
+        X-Ray Mode (T)
+      </label>
+    </div>
+  );
+}
+
+function YLevelLock() {
+  const yLevelLock = useCharacterStore((s) => s.yLevelLock);
+  const setYLevelLock = useCharacterStore((s) => s.setYLevelLock);
+  return (
+    <div style={styles.section}>
+      <span style={styles.label}>Y-Level Lock</span>
+      <label style={{ ...styles.row, fontSize: 13, cursor: 'pointer' }}>
+        <input type="checkbox" checked={yLevelLock !== null} onChange={(e) => setYLevelLock(e.target.checked ? 0 : null)} />
+        Enable
+      </label>
+      {yLevelLock !== null && (
+        <NumberInput value={yLevelLock} onChange={setYLevelLock} min={0} step={1} label="Y" />
+      )}
     </div>
   );
 }
@@ -118,6 +142,7 @@ export function BuildPanel() {
   return (
     <div style={styles.container}>
       <YClipControl />
+      <YLevelLock />
       <MirrorControl />
       <GridSettings />
     </div>
