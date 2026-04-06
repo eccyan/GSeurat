@@ -514,7 +514,7 @@ void AppBase::load_gs_scene(const SceneData& scene_data, const GsSceneOptions& o
                 const auto& go = snapped_objects[i];
                 if (go.components.empty() || go.components.is_null()) continue;
                 auto entity = world_.create();
-                world_.add<ecs::Transform>(entity, {{world_positions[i].vec()}, {go.scale, go.scale}});
+                world_.add<ecs::Transform>(entity, {world_positions[i], {go.scale, go.scale}});
                 for (auto& [name, data] : go.components.items()) {
                     component_registry_.attach(world_, entity, name, data);
                 }
@@ -1010,7 +1010,7 @@ void AppBase::dispatch_command(const nlohmann::json& cmd, nlohmann::json& respon
                         const auto& go = scene_data.game_objects[i];
                         if (go.components.empty() || go.components.is_null()) continue;
                         auto entity = world_.create();
-                        world_.add<ecs::Transform>(entity, {{world_positions[i].vec()}, {go.scale, go.scale}});
+                        world_.add<ecs::Transform>(entity, {world_positions[i], {go.scale, go.scale}});
                         for (auto& [name, data] : go.components.items()) {
                             component_registry_.attach(world_, entity, name, data);
                         }
@@ -1111,7 +1111,7 @@ void AppBase::dispatch_command(const nlohmann::json& cmd, nlohmann::json& respon
         bool found = false;
         world_.view<ecs::Transform, PlayerController>().each(
             [&](ecs::Entity, ecs::Transform& t, PlayerController&) {
-                response["position"] = {t.position.x, t.position.y, t.position.z};
+                response["position"] = {t.position.x(), t.position.y(), t.position.z()};
                 found = true;
             });
         if (!found) {
@@ -1124,9 +1124,9 @@ void AppBase::dispatch_command(const nlohmann::json& cmd, nlohmann::json& respon
         world_.view<ProximityTrigger, ecs::Transform>().each(
             [&](ecs::Entity, ProximityTrigger& pt, ecs::Transform& t) {
                 nlohmann::json tj;
-                tj["x"] = t.position.x;
-                tj["y"] = t.position.y;
-                tj["z"] = t.position.z;
+                tj["x"] = t.position.x();
+                tj["y"] = t.position.y();
+                tj["z"] = t.position.z();
                 tj["radius"] = pt.radius;
                 tj["triggered"] = pt.triggered;
                 tj["one_shot"] = pt.one_shot;
