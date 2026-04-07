@@ -327,39 +327,24 @@ void IslandDemoState::update(AppBase& app, float dt) {
         anim_enabled_ = !anim_enabled_;
     }
 
-    // J → toggle PBD chain demo
+    // J → toggle PBD chain demo (CPU-side, rendered as dynamic Gaussians)
     if (app.input().was_key_pressed(GLFW_KEY_J)) {
         if (pbd_chain_active_) {
-            app.renderer().gs_renderer().clear_pbd();
             pbd_chain_active_ = false;
             std::fprintf(stderr, "[IslandDemo] PBD chain demo OFF\n");
         } else {
             glm::vec3 top = character_origin_ + glm::vec3(3.0f, 8.0f, 0.0f);
-            PbdPhysicsState states[3];
-            PbdElementParams params[3];
-
-            for (int i = 0; i < 3; ++i) {
+            for (int i = 0; i < kPbdNodeCount; ++i) {
                 glm::vec3 p = top - glm::vec3(0.0f, static_cast<float>(i) * 3.0f, 0.0f);
-                states[i].position = glm::vec4(p, i == 0 ? 0.0f : 1.0f);
-                states[i].prev_position = glm::vec4(p, 0.0f);
-                states[i].velocity = glm::vec4(0.0f);
-                states[i].params = glm::vec4(0.0f);
-
-                params[i].gravity = glm::vec4(0.0f, -9.8f, 0.0f, 0.98f);
-                params[i].wind = glm::vec4(0.0f);
-                params[i].dynamics = glm::vec4(0.0f, top.y - 10.0f, 0.3f, 0.0f);
+                pbd_nodes_[i].position = p;
+                pbd_nodes_[i].prev_position = p;
+                pbd_nodes_[i].velocity = glm::vec3(0.0f);
+                pbd_nodes_[i].inv_mass = (i == 0) ? 0.0f : 1.0f;
             }
-
-            PbdConstraint constraints[2];
-            constraints[0].indices = glm::uvec4(0, 1, 0, 0);
-            constraints[0].params = glm::vec4(3.0f, 0.8f, 0.0f, 0.0f);
-            constraints[1].indices = glm::uvec4(1, 2, 0, 0);
-            constraints[1].params = glm::vec4(3.0f, 0.8f, 0.0f, 0.0f);
-
-            app.renderer().gs_renderer().upload_pbd_elements(states, params, 3);
-            app.renderer().gs_renderer().upload_pbd_constraints(constraints, 2);
+            pbd_links_[0] = {0, 1, 3.0f, 0.8f};
+            pbd_links_[1] = {1, 2, 3.0f, 0.8f};
             pbd_chain_active_ = true;
-            std::fprintf(stderr, "[IslandDemo] PBD chain demo ON (3 elements, 2 constraints)\n");
+            std::fprintf(stderr, "[IslandDemo] PBD chain demo ON (CPU, 3 nodes, 2 links)\n");
         }
     }
 
