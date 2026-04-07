@@ -1,0 +1,331 @@
+{
+  "name": "knight",
+  "ply_file": "knight.ply",
+  "scale": 1,
+  "bones": [
+    {
+      "id": "torso",
+      "parent": null,
+      "joint": [
+        0,
+        -2.5,
+        16
+      ]
+    },
+    {
+      "id": "head",
+      "parent": "torso",
+      "joint": [
+        0,
+        3.5,
+        16
+      ]
+    },
+    {
+      "id": "left_arm",
+      "parent": "torso",
+      "joint": [
+        -4,
+        2.5,
+        16
+      ]
+    },
+    {
+      "id": "right_arm",
+      "parent": "torso",
+      "joint": [
+        4,
+        2.5,
+        16
+      ]
+    },
+    {
+      "id": "left_leg",
+      "parent": "torso",
+      "joint": [
+        -2,
+        -2.5,
+        16
+      ]
+    },
+    {
+      "id": "right_leg",
+      "parent": "torso",
+      "joint": [
+        2,
+        -2.5,
+        16
+      ]
+    }
+  ],
+  "poses": {
+    "rest": {},
+    "walk_left": {
+      "left_leg": [
+        30,
+        0,
+        0
+      ],
+      "right_leg": [
+        -30,
+        0,
+        0
+      ],
+      "left_arm": [
+        -20,
+        0,
+        0
+      ],
+      "right_arm": [
+        20,
+        0,
+        0
+      ]
+    },
+    "walk_right": {
+      "left_leg": [
+        -30,
+        0,
+        0
+      ],
+      "right_leg": [
+        30,
+        0,
+        0
+      ],
+      "left_arm": [
+        20,
+        0,
+        0
+      ],
+      "right_arm": [
+        -20,
+        0,
+        0
+      ]
+    },
+    "idle_down": {
+      "left_arm": [
+        0,
+        0,
+        -5
+      ],
+      "right_arm": [
+        0,
+        0,
+        5
+      ],
+      "head": [
+        5,
+        0,
+        0
+      ]
+    },
+    "idle_up": {
+      "left_arm": [
+        0,
+        0,
+        5
+      ],
+      "right_arm": [
+        0,
+        0,
+        -5
+      ],
+      "head": [
+        -5,
+        0,
+        0
+      ]
+    },
+    "attack_wind": {
+      "right_arm": [
+        -90,
+        0,
+        -20
+      ],
+      "left_arm": [
+        10,
+        0,
+        -10
+      ],
+      "torso": [
+        0,
+        -15,
+        0
+      ]
+    },
+    "attack_strike": {
+      "right_arm": [
+        60,
+        0,
+        10
+      ],
+      "left_arm": [
+        -10,
+        0,
+        10
+      ],
+      "torso": [
+        0,
+        20,
+        0
+      ],
+      "head": [
+        10,
+        10,
+        0
+      ]
+    },
+    "jump_up": {
+      "left_arm": [
+        -45,
+        0,
+        -30
+      ],
+      "right_arm": [
+        -45,
+        0,
+        30
+      ],
+      "left_leg": [
+        20,
+        0,
+        0
+      ],
+      "right_leg": [
+        20,
+        0,
+        0
+      ]
+    },
+    "jump_land": {
+      "left_leg": [
+        30,
+        0,
+        5
+      ],
+      "right_leg": [
+        30,
+        0,
+        -5
+      ],
+      "left_arm": [
+        10,
+        0,
+        -15
+      ],
+      "right_arm": [
+        10,
+        0,
+        15
+      ],
+      "torso": [
+        10,
+        0,
+        0
+      ]
+    }
+  },
+  "animations": {
+    "walk": {
+      "duration": 1,
+      "looping": true,
+      "keyframes": [
+        {
+          "time": 0,
+          "pose": "walk_left",
+          "easing": "ease-in-out"
+        },
+        {
+          "time": 0.3,
+          "pose": "rest",
+          "easing": "ease-in-out"
+        },
+        {
+          "time": 0.6,
+          "pose": "walk_right",
+          "easing": "ease-in-out"
+        },
+        {
+          "time": 0.9,
+          "pose": "rest",
+          "easing": "ease-in-out"
+        }
+      ]
+    },
+    "idle": {
+      "duration": 2,
+      "looping": true,
+      "keyframes": [
+        {
+          "time": 0,
+          "pose": "idle_down",
+          "easing": "ease-in-out"
+        },
+        {
+          "time": 1,
+          "pose": "idle_up",
+          "easing": "ease-in-out"
+        }
+      ]
+    },
+    "attack": {
+      "duration": 0.8,
+      "looping": false,
+      "keyframes": [
+        {
+          "time": 0,
+          "pose": "rest",
+          "easing": "ease-in-out"
+        },
+        {
+          "time": 0.2,
+          "pose": "attack_wind",
+          "easing": "linear"
+        },
+        {
+          "time": 0.35,
+          "pose": "attack_strike",
+          "easing": "bounce"
+        },
+        {
+          "time": 0.6,
+          "pose": "rest",
+          "easing": "ease-in-out"
+        }
+      ]
+    },
+    "jump": {
+      "duration": 1.2,
+      "looping": false,
+      "keyframes": [
+        {
+          "time": 0,
+          "pose": "rest",
+          "easing": "ease-in-out"
+        },
+        {
+          "time": 0.15,
+          "pose": "jump_land",
+          "easing": "ease-in-out"
+        },
+        {
+          "time": 0.4,
+          "pose": "jump_up",
+          "easing": "ease-in-out"
+        },
+        {
+          "time": 0.7,
+          "pose": "jump_land",
+          "easing": "elastic"
+        },
+        {
+          "time": 1,
+          "pose": "rest",
+          "easing": "ease-in-out"
+        }
+      ]
+    }
+  }
+}
