@@ -818,6 +818,14 @@ void StagingState::load_character(const std::string& manifest_path, AppBase& app
     std::fprintf(stderr, "[Staging] Loaded character '%s' (%zu bones, %zu clips)\n",
         data->name.c_str(), data->bones.size(), data->clips.size());
 
+    // Release old character data before replacing — macOS allocator crashes when
+    // freeing CharacterData vectors while VMA is active (same issue as on_exit).
+    anim_player_.reset();
+    if (character_data_) {
+        ShutdownAuditor::remove(character_data_.get());
+        (void)character_data_.release();  // leak old — macOS allocator workaround
+    }
+
     character_data_ = std::make_unique<CharacterData>(std::move(*data));
     ShutdownAuditor::record<CharacterData>(character_data_.get());
     anim_player_ = std::make_unique<BoneAnimationPlayer>(*character_data_);

@@ -118,7 +118,6 @@ function KeyframeEditor() {
   const updateAnimationDuration = useCharacterStore((s) => s.updateAnimationDuration);
   const updatePoseRotation = useCharacterStore((s) => s.updatePoseRotation);
   const updatePoseRootPosition = useCharacterStore((s) => s.updatePoseRootPosition);
-  const selectedPart = useCharacterStore((s) => s.selectedPart);
   const addPose = useCharacterStore((s) => s.addPose);
 
   const [newPoseName, setNewPoseName] = useState('');
@@ -127,8 +126,18 @@ function KeyframeEditor() {
   const clip = animations[selectedAnimation];
   if (!clip) return null;
 
-  // Find currently selected keyframe (closest to playback time)
-  const currentKf = clip.keyframes.find((kf) => Math.abs(kf.time - playbackTime) < 0.01);
+  // Find the active keyframe: the last keyframe at or before playback time,
+  // or exact match within tolerance. Falls back to the first keyframe.
+  const currentKf = (() => {
+    const exact = clip.keyframes.find((kf) => Math.abs(kf.time - playbackTime) < 0.01);
+    if (exact) return exact;
+    // Find last keyframe at or before current time
+    let best = clip.keyframes[0] ?? null;
+    for (const kf of clip.keyframes) {
+      if (kf.time <= playbackTime + 0.01) best = kf;
+    }
+    return best;
+  })();
   const currentPose = currentKf ? characterPoses[currentKf.poseName] : null;
 
   return (
@@ -226,35 +235,17 @@ function KeyframeEditor() {
         </div>
       ))}
 
-      {/* Root Position — only shown for first root bone */}
-      {currentPose && currentKf && (() => {
-        const firstRootPart = parts.find((p) => p.parent === null);
-        if (!firstRootPart || selectedPart !== firstRootPart.id) return null;
-        const rootPos: [number, number, number] = currentPose.rootPosition ?? [0, 0, 0];
-        return (
-          <div style={{ marginTop: 8 }}>
-            <div style={styles.label}>Root Position</div>
-            <div style={styles.row}>
-              {(['X', 'Y', 'Z'] as const).map((axis, i) => (
-                <React.Fragment key={axis}>
-                  <span style={{ color: '#666', fontSize: 10 }}>{axis}</span>
-                  <input
-                    type="number"
-                    style={styles.numInput}
-                    value={rootPos[i]}
-                    step={0.1}
-                    onChange={(e) => {
-                      const next: [number, number, number] = [...rootPos];
-                      next[i] = Number(e.target.value);
-                      updatePoseRootPosition(currentKf.poseName, next);
-                    }}
-                  />
-                </React.Fragment>
-              ))}
-            </div>
-          </div>
-        );
-      })()}
+      {/* Root Position — shown when current clip has rootMotion enabled */}
+      {currentPose && currentKf && clip?.rootMotion && (
+        <div style={{ marginTop: 8, borderTop: '1px solid #333', paddingTop: 8 }}>
+          <div style={styles.label}>Root Position</div>
+          <Vec3Input
+            value={currentPose.rootPosition ?? [0, 0, 0]}
+            onChange={(v) => updatePoseRootPosition(currentKf.poseName, v)}
+            step={0.1}
+          />
+        </div>
+      )}
 
       {/* Per-bone rotations for current keyframe */}
       {currentPose && currentKf && (
