@@ -10,12 +10,15 @@
 #include "gseurat/engine/ecs/types.hpp"
 
 #include <glm/glm.hpp>
+#include <array>
 #include <chrono>
 #include <memory>
 #include <optional>
 #include <string>
 
 namespace gseurat {
+
+class Renderer;
 
 class IslandDemoState : public GameState {
 public:
@@ -33,6 +36,8 @@ private:
     void update_effects(AppBase& app, float dt);
     void update_walk_animation(AppBase& app, float dt);
     void update_environment_animation(AppBase& app, float dt);
+    void step_pbd_chain(float dt);
+    void gather_pbd_chain(Renderer& renderer);
 
     // Scene
     std::string scene_path_ = "assets/scenes/seurat_island.json";
@@ -91,6 +96,26 @@ private:
     // Toggle flags (P = particles, N = animation, J = PBD chain)
     bool anim_enabled_ = true;
     bool pbd_chain_active_ = false;
+
+    // CPU-side PBD chain simulation (J key demo)
+    struct PbdNode {
+        glm::vec3 position{0.0f};
+        glm::vec3 prev_position{0.0f};
+        glm::vec3 velocity{0.0f};
+        float inv_mass = 0.0f;
+    };
+    struct PbdLink {
+        uint32_t a = 0, b = 0;
+        float rest_length = 3.0f;
+        float stiffness = 0.8f;
+    };
+    static constexpr int kPbdNodeCount = 3;
+    static constexpr int kPbdLinkCount = 2;
+    static constexpr int kPbdIterations = 4;
+    static constexpr float kPbdDamping = 0.98f;
+    static constexpr float kPbdGravity = -9.8f;
+    std::array<PbdNode, kPbdNodeCount> pbd_nodes_;
+    std::array<PbdLink, kPbdLinkCount> pbd_links_;
 
     // FPS tracking
     std::chrono::steady_clock::time_point fps_clock_{};
