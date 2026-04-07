@@ -422,6 +422,66 @@ except (TypeError, ValueError) as _e:
     check(False, f"json: output is JSON serializable (ERROR: {_e})")
 
 # ---------------------------------------------------------------------------
+# End-to-end tests
+# ---------------------------------------------------------------------------
+section("End-to-end: COLMAP fixture")
+
+_e2e_colmap_frames = load_trajectory(colmap_images)
+_e2e_colmap_smooth = smooth_trajectory(_e2e_colmap_frames, sigma=1.5)
+_e2e_colmap_rdp = rdp_simplify(_e2e_colmap_smooth, epsilon=0.5, rotation_weight=1.0, min_points=4)
+_e2e_colmap_zones = generate_camera_zones_json(_e2e_colmap_rdp, margin=0.5)
+
+check("camera_zones" in _e2e_colmap_zones, "e2e colmap: camera_zones present")
+check(len(_e2e_colmap_zones["camera_zones"]["volumes"]) >= 1, "e2e colmap: at least one volume")
+check(len(_e2e_colmap_zones["camera_zones"]["rails"]) >= 1, "e2e colmap: at least one rail")
+
+# Write to temp file and re-read
+with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as _tmp:
+    _tmp_path = _tmp.name
+    json.dump(_e2e_colmap_zones, _tmp, indent=2)
+
+try:
+    with open(_tmp_path) as _tf:
+        _reread = json.load(_tf)
+    check("camera_zones" in _reread, "e2e colmap: re-read JSON has camera_zones")
+    _rv = _reread["camera_zones"]["volumes"][0]
+    check("shape" in _rv, "e2e colmap: re-read volume has shape")
+    check("params" in _rv, "e2e colmap: re-read volume has params")
+    _rr = _reread["camera_zones"]["rails"][0]
+    check("control_points" in _rr, "e2e colmap: re-read rail has control_points")
+    check("target_points" in _rr, "e2e colmap: re-read rail has target_points")
+finally:
+    os.unlink(_tmp_path)
+
+section("End-to-end: Nerfstudio fixture")
+
+_e2e_ns_frames = load_trajectory(ns_transforms)
+_e2e_ns_smooth = smooth_trajectory(_e2e_ns_frames, sigma=1.5)
+_e2e_ns_rdp = rdp_simplify(_e2e_ns_smooth, epsilon=0.5, rotation_weight=1.0, min_points=4)
+_e2e_ns_zones = generate_camera_zones_json(_e2e_ns_rdp, margin=0.5,
+                                           camera_mode="rail_follow")
+
+check("camera_zones" in _e2e_ns_zones, "e2e nerfstudio: camera_zones present")
+_ns_dp = _e2e_ns_zones["camera_zones"]["default_params"]
+check(_ns_dp["mode"] == "rail_follow", "e2e nerfstudio: mode=rail_follow in default_params")
+
+# Write to temp file and re-read
+with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as _tmp2:
+    _tmp2_path = _tmp2.name
+    json.dump(_e2e_ns_zones, _tmp2, indent=2)
+
+try:
+    with open(_tmp2_path) as _tf2:
+        _reread2 = json.load(_tf2)
+    check("camera_zones" in _reread2, "e2e nerfstudio: re-read JSON has camera_zones")
+    _ns_vols = _reread2["camera_zones"]["volumes"]
+    _ns_rails = _reread2["camera_zones"]["rails"]
+    check(len(_ns_vols) >= 1, f"e2e nerfstudio: re-read has ≥1 volume (got {len(_ns_vols)})")
+    check(len(_ns_rails) >= 1, f"e2e nerfstudio: re-read has ≥1 rail (got {len(_ns_rails)})")
+finally:
+    os.unlink(_tmp2_path)
+
+# ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
 total = passed + failed
