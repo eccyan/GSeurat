@@ -264,6 +264,15 @@ export function App() {
       const store = useSceneStore.getState();
       const meta = e.metaKey || e.ctrlKey;
 
+      // Escape: exit possess/preview mode first
+      if (e.key === 'Escape') {
+        if (store.possessVolumeId) {
+          store.exitPossessMode();
+          e.preventDefault();
+          return;
+        }
+      }
+
       // Ctrl/Cmd+S: save project
       if (meta && e.key === 's') {
         e.preventDefault();
