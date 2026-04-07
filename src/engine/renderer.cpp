@@ -862,6 +862,13 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
             camera_dirty = true;
         }
 
+        // Dynamic Gaussians (particles, VFX, PBD) require the static sort buffers to be
+        // reinitialized each frame via update_static_gaussians. Without this, stale sort
+        // buffer state from the previous frame's radix scatter corrupts the merge output.
+        if (!gs_pending_dynamics_.empty() || !gs_particle_emitters_.empty() || !vfx_instances_.empty()) {
+            camera_dirty = true;
+        }
+
         if (camera_dirty && flags.gs_chunk_culling && !gs_skip_chunk_cull_ && !gs_chunk_grid_.empty()) {
             glm::mat4 gs_vp = gs_proj_ * gs_view_;
             auto visible = gs_chunk_grid_.visible_chunks(gs_vp);

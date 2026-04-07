@@ -72,7 +72,14 @@ void main() {
 
         inv_mass = state.position.w;
         pos = state.position.xyz;
-        prev_pos = state.prev_position.xyz;
+
+        // prev_position is repurposed for rotation output (read by preprocess shader).
+        // In constraint mode, the real previous position is backed up in params.xyz.
+        if (constraint_count > 0) {
+            prev_pos = state.params.xyz;
+        } else {
+            prev_pos = state.prev_position.xyz;
+        }
 
         // Wind-only mode: no constraints → skip physics, just compute rotation
         // (prev_position is reused as rotation output, so Verlet can't read it)
@@ -197,6 +204,13 @@ void main() {
                 }
             }
         }
+    }
+
+    // Backup actual prev_position into params.xyz before overwriting with rotation.
+    // This prevents the Verlet integrator from reading the quaternion as a position
+    // on the next frame, which would cause exponential velocity divergence.
+    if (constraint_count > 0) {
+        states[idx].params = vec4(states[idx].prev_position.xyz, states[idx].params.w);
     }
 
     // Write rotation into prev_position slot for preprocess compatibility
