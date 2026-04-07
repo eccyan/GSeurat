@@ -203,6 +203,95 @@ void test_aabb_off_center() {
     check(vec_approx(clamped, {3.0f, 0.0f, 0.0f}), "off-center: clamp origin to nearest face");
 }
 
+// ── resolve_zone_priority ─────────────────────────────────────────────────────
+
+void test_resolve_zone_priority() {
+    std::printf("resolve_zone_priority:\n");
+
+    // Helper: make a CameraVolume with given priority and cached_volume_size
+    auto make_vol = [](int priority, float vol_size) {
+        gseurat::CameraVolume v;
+        v.shape = gseurat::AABB{{0.0f, 0.0f, 0.0f}, {1.0f, 1.0f, 1.0f}};
+        v.params.priority = priority;
+        v.cached_volume_size = vol_size;
+        return v;
+    };
+
+    // Empty candidates → {-1, nullptr}
+    {
+        std::vector<std::pair<int, const gseurat::CameraVolume*>> candidates;
+        auto [id, ptr] = gseurat::resolve_zone_priority(candidates);
+        check(id == -1 && ptr == nullptr, "empty candidates returns {-1, nullptr}");
+    }
+
+    // Auto priority: all priority=0, smallest cached_volume_size wins
+    {
+        gseurat::CameraVolume large = make_vol(0, 100.0f);
+        gseurat::CameraVolume small = make_vol(0, 10.0f);
+        gseurat::CameraVolume medium = make_vol(0, 50.0f);
+        std::vector<std::pair<int, const gseurat::CameraVolume*>> candidates = {
+            {10, &large}, {20, &small}, {30, &medium}
+        };
+        auto [id, ptr] = gseurat::resolve_zone_priority(candidates);
+        check(id == 20 && ptr == &small, "auto: smallest volume_size wins (entity 20)");
+    }
+
+    // Manual overrides auto: priority=5 beats priority=0 regardless of size
+    {
+        gseurat::CameraVolume auto_small = make_vol(0, 1.0f);   // auto, tiny
+        gseurat::CameraVolume manual_large = make_vol(5, 999.0f); // manual, huge
+        std::vector<std::pair<int, const gseurat::CameraVolume*>> candidates = {
+            {1, &auto_small}, {2, &manual_large}
+        };
+        auto [id, ptr] = gseurat::resolve_zone_priority(candidates);
+        check(id == 2 && ptr == &manual_large, "manual priority=5 beats auto priority=0");
+    }
+
+    // Among manual: highest priority wins
+    {
+        gseurat::CameraVolume low = make_vol(1, 10.0f);
+        gseurat::CameraVolume high = make_vol(9, 10.0f);
+        gseurat::CameraVolume mid = make_vol(5, 10.0f);
+        std::vector<std::pair<int, const gseurat::CameraVolume*>> candidates = {
+            {10, &low}, {20, &high}, {30, &mid}
+        };
+        auto [id, ptr] = gseurat::resolve_zone_priority(candidates);
+        check(id == 20 && ptr == &high, "manual: highest priority wins (entity 20)");
+    }
+
+    // Tie-break: same priority and same size → lowest entity ID wins
+    {
+        gseurat::CameraVolume a = make_vol(0, 5.0f);
+        gseurat::CameraVolume b = make_vol(0, 5.0f);
+        std::vector<std::pair<int, const gseurat::CameraVolume*>> candidates = {
+            {42, &a}, {7, &b}
+        };
+        auto [id, ptr] = gseurat::resolve_zone_priority(candidates);
+        check(id == 7 && ptr == &b, "tie-break: lowest entity ID wins (entity 7 < 42)");
+    }
+
+    // Tie-break manual: same priority → lowest entity ID wins
+    {
+        gseurat::CameraVolume a = make_vol(3, 5.0f);
+        gseurat::CameraVolume b = make_vol(3, 5.0f);
+        std::vector<std::pair<int, const gseurat::CameraVolume*>> candidates = {
+            {100, &a}, {50, &b}
+        };
+        auto [id, ptr] = gseurat::resolve_zone_priority(candidates);
+        check(id == 50 && ptr == &b, "manual tie-break: lowest entity ID wins (entity 50 < 100)");
+    }
+
+    // Single candidate: always wins
+    {
+        gseurat::CameraVolume only = make_vol(0, 42.0f);
+        std::vector<std::pair<int, const gseurat::CameraVolume*>> candidates = {
+            {99, &only}
+        };
+        auto [id, ptr] = gseurat::resolve_zone_priority(candidates);
+        check(id == 99 && ptr == &only, "single candidate always wins");
+    }
+}
+
 int main() {
     std::printf("=== Camera Volume Geometry Tests ===\n\n");
 
@@ -214,6 +303,7 @@ int main() {
     test_variant_dispatch();
     test_struct_defaults();
     test_aabb_off_center();
+    test_resolve_zone_priority();
 
     std::printf("\n=== Results: %d passed, %d failed ===\n", passed, failed);
     return failed > 0 ? 1 : 0;

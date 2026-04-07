@@ -7,6 +7,8 @@
 
 #include <glm/glm.hpp>
 #include <variant>
+#include <vector>
+#include <utility>
 #include <cmath>
 #include <algorithm>
 
@@ -136,5 +138,51 @@ struct CameraTrigger {
     int to_zone_entity{-1};
     float blend_override{-1.0f};  // negative = use destination params
 };
+
+// ── Zone priority resolution ─────────────────────────────────────────────────
+
+/// Resolve which zone wins when the player is inside multiple volumes.
+///
+/// Rules:
+///   - Manual zones (priority > 0) always beat auto zones (priority == 0).
+///   - Among manual zones: highest priority wins; tie-break by lowest entity ID.
+///   - Among auto zones: smallest cached_volume_size wins; tie-break by lowest entity ID.
+///
+/// Returns {entity_id, volume_ptr}. Returns {-1, nullptr} if candidates is empty.
+inline std::pair<int, const CameraVolume*> resolve_zone_priority(
+    const std::vector<std::pair<int, const CameraVolume*>>& candidates)
+{
+    if (candidates.empty()) {
+        return {-1, nullptr};
+    }
+
+    // Partition into manual (priority > 0) and auto (priority == 0) groups.
+    const std::pair<int, const CameraVolume*>* best_manual = nullptr;
+    const std::pair<int, const CameraVolume*>* best_auto   = nullptr;
+
+    for (const auto& c : candidates) {
+        if (c.second->params.priority > 0) {
+            // Manual: prefer higher priority, tie-break lower entity ID.
+            if (!best_manual ||
+                c.second->params.priority > best_manual->second->params.priority ||
+                (c.second->params.priority == best_manual->second->params.priority &&
+                 c.first < best_manual->first)) {
+                best_manual = &c;
+            }
+        } else {
+            // Auto: prefer smaller cached_volume_size, tie-break lower entity ID.
+            if (!best_auto ||
+                c.second->cached_volume_size < best_auto->second->cached_volume_size ||
+                (c.second->cached_volume_size == best_auto->second->cached_volume_size &&
+                 c.first < best_auto->first)) {
+                best_auto = &c;
+            }
+        }
+    }
+
+    // Manual always beats auto.
+    const auto* winner = best_manual ? best_manual : best_auto;
+    return {winner->first, winner->second};
+}
 
 }  // namespace gseurat
