@@ -295,6 +295,153 @@ void test_transition() {
     check(approx(sys.current_state().fov, 90.0f, 1.0f), "transition: final fov near zone B's 90");
 }
 
+// ── Test 9: Smoothstep Transition — Position Interpolation ──────────────────
+
+void test_smoothstep_position_blend() {
+    std::printf("Smoothstep position blend:\n");
+
+    gseurat::CameraZoneSystem sys;
+    gseurat::CameraParams defaults;
+    defaults.mode  = gseurat::CameraMode::fixed_point;
+    defaults.fov   = 45.0f;
+
+    // vol_a: fixed camera at {-10, 10, 0}, fov=45
+    gseurat::CameraVolume vol_a;
+    vol_a.shape = gseurat::AABB{{-10.0f, 0.0f, 0.0f}, {5.0f, 5.0f, 5.0f}};
+    vol_a.params.mode           = gseurat::CameraMode::fixed_point;
+    vol_a.params.fov            = 45.0f;
+    vol_a.params.fixed_position = {-10.0f, 10.0f, 0.0f};
+    vol_a.params.blend_time     = 1.0f;
+    vol_a.params.priority       = 0;
+
+    // vol_b: fixed camera at {10, 20, 0}, fov=60
+    gseurat::CameraVolume vol_b;
+    vol_b.shape = gseurat::AABB{{10.0f, 0.0f, 0.0f}, {5.0f, 5.0f, 5.0f}};
+    vol_b.params.mode           = gseurat::CameraMode::fixed_point;
+    vol_b.params.fov            = 60.0f;
+    vol_b.params.fixed_position = {10.0f, 20.0f, 0.0f};
+    vol_b.params.blend_time     = 1.0f;
+    vol_b.params.priority       = 0;
+
+    std::vector<std::pair<int, gseurat::CameraVolume>> volumes = {
+        {0, vol_a}, {1, vol_b}
+    };
+
+    sys.load_from_data(volumes, {}, {}, defaults);
+
+    // Establish in zone A for 120 frames.
+    converge(sys, {-10.0f, 0.0f, 0.0f});
+    check(sys.active_zone_entity() == 0, "smoothstep pos: active_zone is 0 after convergence");
+    check(!sys.is_transitioning(), "smoothstep pos: not transitioning in zone A");
+
+    // Move player to zone B.
+    float dt = 1.0f / 60.0f;
+    gseurat::CameraZoneSystem::InputState no_input;
+    sys.update(dt, {10.0f, 0.0f, 0.0f}, {0, 0, 0}, no_input);
+
+    check(sys.active_zone_entity() == 1, "smoothstep pos: active_zone changed to 1");
+    check(sys.is_transitioning(), "smoothstep pos: transitioning = true after zone change");
+
+    // Run 30 frames (~0.5s into 1.0s blend).
+    for (int i = 0; i < 30; ++i) {
+        sys.update(dt, {10.0f, 0.0f, 0.0f}, {0, 0, 0}, no_input);
+    }
+
+    auto mid = sys.current_state();
+    // Position x should be between A (-10) and B (10) — mid-blend.
+    check(mid.position.x > -5.0f && mid.position.x < 15.0f,
+          "smoothstep pos: mid-blend position.x between A and B");
+
+    // Run 60 more frames to complete the blend (total >1s).
+    for (int i = 0; i < 60; ++i) {
+        sys.update(dt, {10.0f, 0.0f, 0.0f}, {0, 0, 0}, no_input);
+    }
+
+    check(!sys.is_transitioning(), "smoothstep pos: blend complete after full duration");
+}
+
+// ── Test 10: ConstraintClamp — Position Clamping ────────────────────────────
+
+void test_constraint_position_clamp() {
+    std::printf("ConstraintClamp position:\n");
+
+    gseurat::CameraZoneSystem sys;
+    gseurat::CameraParams defaults;
+    defaults.mode            = gseurat::CameraMode::free_look;
+    defaults.fov             = 45.0f;
+    // orbit_distance=20 exceeds the AABB half_extents of 10 in X and Z.
+    defaults.orbit_distance  = 20.0f;
+    defaults.allow_user_orbit = false;
+    defaults.pitch_min       = -60.0f;
+    defaults.pitch_max       = 60.0f;
+    defaults.blend_time      = 0.0f;  // instant
+
+    gseurat::CameraVolume vol;
+    vol.shape = gseurat::AABB{{0.0f, 5.0f, 0.0f}, {10.0f, 5.0f, 10.0f}};
+    vol.params = defaults;
+    vol.params.priority = 0;
+
+    std::vector<std::pair<int, gseurat::CameraVolume>> volumes = {{42, vol}};
+    sys.load_from_data(volumes, {}, {}, defaults);
+
+    converge(sys, {0.0f, 0.0f, 0.0f}, 240);
+
+    auto state = sys.current_state();
+    gseurat::AABB box{{0.0f, 5.0f, 0.0f}, {10.0f, 5.0f, 10.0f}};
+    check(contains(box, state.position),
+          "constraint clamp: camera position is inside AABB after convergence");
+}
+
+// ── Test 11: ConstraintClamp — Pitch Clamping ───────────────────────────────
+
+void test_constraint_pitch_clamp() {
+    std::printf("ConstraintClamp pitch:\n");
+
+    gseurat::CameraZoneSystem sys;
+    gseurat::CameraParams defaults;
+    defaults.mode            = gseurat::CameraMode::free_look;
+    defaults.fov             = 45.0f;
+    defaults.orbit_distance  = 10.0f;
+    defaults.allow_user_orbit = true;
+    defaults.pitch_min       = -20.0f;
+    defaults.pitch_max       =  20.0f;
+    defaults.blend_time      = 0.0f;
+
+    // Large sphere so position clamping doesn't interfere.
+    gseurat::CameraVolume vol;
+    vol.shape = gseurat::Sphere{{0.0f, 0.0f, 0.0f}, 100.0f};
+    vol.params = defaults;
+    vol.params.priority = 0;
+
+    std::vector<std::pair<int, gseurat::CameraVolume>> volumes = {{7, vol}};
+    sys.load_from_data(volumes, {}, {}, defaults);
+
+    // First converge to stabilise the spring.
+    converge(sys, {0.0f, 0.0f, 0.0f});
+
+    // Now pump extreme upward mouse input (mouse_dy > 0 increases elevation).
+    float dt = 1.0f / 60.0f;
+    for (int i = 0; i < 60; ++i) {
+        gseurat::CameraZoneSystem::InputState inp;
+        inp.mouse_dy = 100.0f;  // large upward push every frame
+        sys.update(dt, {0.0f, 0.0f, 0.0f}, {0, 0, 0}, inp);
+    }
+
+    auto state = sys.current_state();
+    // Derive pitch from camera position relative to target.
+    glm::vec3 dir = state.position - state.target;
+    float dist = std::sqrt(dir.x * dir.x + dir.y * dir.y + dir.z * dir.z);
+    float pitch_deg = 0.0f;
+    if (dist > 0.001f) {
+        pitch_deg = std::asin(std::fmax(-1.0f, std::fmin(1.0f, dir.y / dist)))
+                    * 180.0f / 3.14159265f;
+    }
+    check(pitch_deg <= 20.0f + 1.0f,
+          "constraint pitch: pitch does not exceed pitch_max=20 after extreme input");
+    check(pitch_deg >= -20.0f - 1.0f,
+          "constraint pitch: pitch does not go below pitch_min=-20 after extreme input");
+}
+
 // ── Main ────────────────────────────────────────────────────────────────────
 
 int main() {
@@ -308,6 +455,9 @@ int main() {
     test_rail_follow();
     test_side_scroll();
     test_transition();
+    test_smoothstep_position_blend();
+    test_constraint_position_clamp();
+    test_constraint_pitch_clamp();
 
     std::printf("\n=== Results: %d passed, %d failed ===\n", passed, failed);
     return failed > 0 ? 1 : 0;

@@ -142,9 +142,9 @@ CameraState CameraZoneSystem::evaluate_vcam(const CameraParams& params,
         }
 
         // Clamp elevation to configured pitch range (converted to radians).
-        float pitch_min_rad = params.pitch_min * 3.14159265f / 180.0f;
-        float pitch_max_rad = params.pitch_max * 3.14159265f / 180.0f;
-        orbit_elevation_ = std::clamp(orbit_elevation_, pitch_min_rad, pitch_max_rad);
+        float elev_min = glm::radians(params.pitch_min);
+        float elev_max = glm::radians(params.pitch_max);
+        orbit_elevation_ = glm::clamp(orbit_elevation_, elev_min, elev_max);
 
         // Spherical-to-cartesian for orbit offset.
         float cos_el = std::cos(orbit_elevation_);
@@ -250,12 +250,43 @@ CameraState CameraZoneSystem::blend_states(const CameraState& from,
     return result;
 }
 
-// ── Stage 4: Constraints (stub) ─────────────────────────────────────────────
+// ── Stage 4: Constraints ────────────────────────────────────────────────────
 
 CameraState CameraZoneSystem::clamp_state(const CameraState& state,
-                                           const CameraVolume& /*vol*/) {
-    // Stub: passthrough. Task 6 fills this in.
-    return state;
+                                           const CameraVolume& vol) {
+    CameraState result = state;
+
+    // Position clamping: push camera inside volume.
+    result.position = clamp_to(vol.shape, result.position);
+
+    // Pitch/Yaw clamping.
+    glm::vec3 dir = result.position - result.target;
+    float dist = glm::length(dir);
+    if (dist < 0.001f) return result;
+    dir /= dist;
+
+    float pitch = std::asin(glm::clamp(dir.y, -1.0f, 1.0f));
+    float yaw   = std::atan2(dir.x, dir.z);
+
+    float pitch_deg = glm::degrees(pitch);
+    float yaw_deg   = glm::degrees(yaw);
+
+    pitch_deg = glm::clamp(pitch_deg, vol.params.pitch_min, vol.params.pitch_max);
+
+    if (vol.params.yaw_min > -180.0f || vol.params.yaw_max < 180.0f) {
+        yaw_deg = glm::clamp(yaw_deg, vol.params.yaw_min, vol.params.yaw_max);
+    }
+
+    float p = glm::radians(pitch_deg);
+    float y = glm::radians(yaw_deg);
+    glm::vec3 new_dir(
+        std::cos(p) * std::sin(y),
+        std::sin(p),
+        std::cos(p) * std::cos(y)
+    );
+    result.position = result.target + new_dir * dist;
+
+    return result;
 }
 
 // ── update ──────────────────────────────────────────────────────────────────
