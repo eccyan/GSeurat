@@ -15,6 +15,8 @@ _script_dir = os.path.dirname(os.path.abspath(__file__))
 if _script_dir not in sys.path:
     sys.path.insert(0, _script_dir)
 
+import tempfile
+
 from camera_pipeline import (
     vec3_sub, vec3_add, vec3_scale, vec3_dot, vec3_norm,
     vec3_normalize, vec3_lerp, vec3_cross,
@@ -23,6 +25,7 @@ from camera_pipeline import (
     TrajectoryFrame, parse_colmap, parse_nerfstudio,
     detect_format, load_trajectory,
     smooth_trajectory, rdp_simplify,
+    generate_volume, generate_rail, generate_camera_zones_json,
 )
 
 # ---------------------------------------------------------------------------
@@ -325,6 +328,98 @@ check(len(_rot_simplified) >= 4,
 _trivial = rdp_simplify(_line_frames, epsilon=0.001, rotation_weight=0.0, min_points=4)
 check(len(_trivial) >= 4,
       f"RDP respects min_points=4 (got {len(_trivial)})")
+
+# ---------------------------------------------------------------------------
+# Volume generator tests
+# ---------------------------------------------------------------------------
+section("Volume generator")
+
+# 11 frames along X (0..10), Y=1, Z=2
+_vol_frames = [
+    TrajectoryFrame(position=[float(_i), 1.0, 2.0],
+                    quaternion=[1.0, 0.0, 0.0, 0.0],
+                    fov_degrees=50.0, index=_i)
+    for _i in range(11)
+]
+_vol = generate_volume(_vol_frames, margin=1.0, camera_mode="free_look")
+
+check("shape" in _vol, "volume: has 'shape' key")
+check("params" in _vol, "volume: has 'params' key")
+check(_vol["shape"]["type"] == "aabb", "volume: shape type is 'aabb'")
+
+_vc = _vol["shape"]["center"]
+check(approx_eq(_vc[0], 5.0, tol=0.01), f"volume: center.x ≈ 5.0 (got {_vc[0]:.3f})")
+check(approx_eq(_vc[1], 1.0, tol=0.01), f"volume: center.y ≈ 1.0 (got {_vc[1]:.3f})")
+check(approx_eq(_vc[2], 2.0, tol=0.01), f"volume: center.z ≈ 2.0 (got {_vc[2]:.3f})")
+
+_vh = _vol["shape"]["half_extents"]
+# X: range 0..10 → half=5.0 + margin=1.0 = 6.0
+check(approx_eq(_vh[0], 6.0, tol=0.01), f"volume: half_extents.x ≈ 6.0 (got {_vh[0]:.3f})")
+# Y: range 0 → half=0 + margin=1.0 = 1.0
+check(approx_eq(_vh[1], 1.0, tol=0.01), f"volume: half_extents.y ≈ 1.0 (got {_vh[1]:.3f})")
+# Z: range 0 → half=0 + margin=1.0 = 1.0
+check(approx_eq(_vh[2], 1.0, tol=0.01), f"volume: half_extents.z ≈ 1.0 (got {_vh[2]:.3f})")
+
+_vp = _vol["params"]
+check("pitch_min" in _vp, "volume: params has pitch_min")
+check("pitch_max" in _vp, "volume: params has pitch_max")
+check("mode" in _vp, "volume: params has mode")
+check(_vp["mode"] == "free_look", "volume: mode = free_look")
+
+# ---------------------------------------------------------------------------
+# Rail generator tests
+# ---------------------------------------------------------------------------
+section("Rail generator")
+
+_rail_input = [
+    TrajectoryFrame(position=[float(_i), 0.0, 0.0],
+                    quaternion=[1.0, 0.0, 0.0, 0.0],
+                    fov_degrees=50.0, index=_i)
+    for _i in range(8)
+]
+_rail = generate_rail(_rail_input, look_distance=5.0)
+
+check("control_points" in _rail, "rail: has 'control_points' key")
+check("target_points" in _rail, "rail: has 'target_points' key")
+check("id" in _rail, "rail: has 'id' key")
+check(len(_rail["control_points"]) == 8,
+      f"rail: control_points count matches input (got {len(_rail['control_points'])})")
+check(len(_rail["target_points"]) == len(_rail["control_points"]),
+      "rail: target_points same length as control_points")
+
+# ---------------------------------------------------------------------------
+# JSON output tests
+# ---------------------------------------------------------------------------
+section("JSON output")
+
+_json_frames = [
+    TrajectoryFrame(position=[float(_i), 0.0, float(_i) * 0.5],
+                    quaternion=[1.0, 0.0, 0.0, 0.0],
+                    fov_degrees=60.0, index=_i)
+    for _i in range(6)
+]
+_zones = generate_camera_zones_json(_json_frames, margin=1.0, camera_mode="orbit",
+                                    do_volume=True, do_rail=True, look_distance=3.0)
+
+check("camera_zones" in _zones, "json: top-level has 'camera_zones'")
+check("volumes" in _zones["camera_zones"], "json: camera_zones has 'volumes'")
+check("rails" in _zones["camera_zones"], "json: camera_zones has 'rails'")
+check("default_params" in _zones["camera_zones"], "json: camera_zones has 'default_params'")
+check(len(_zones["camera_zones"]["volumes"]) == 1, "json: one volume generated")
+check(len(_zones["camera_zones"]["rails"]) == 1, "json: one rail generated")
+
+# No-volume / no-rail flags
+_zones_norail = generate_camera_zones_json(_json_frames, do_volume=True, do_rail=False)
+check(len(_zones_norail["camera_zones"]["rails"]) == 0, "json: no-rail produces empty rails")
+_zones_novol = generate_camera_zones_json(_json_frames, do_volume=False, do_rail=True)
+check(len(_zones_novol["camera_zones"]["volumes"]) == 0, "json: no-volume produces empty volumes")
+
+# JSON serializable
+try:
+    _json_str = json.dumps(_zones)
+    check(True, "json: output is JSON serializable")
+except (TypeError, ValueError) as _e:
+    check(False, f"json: output is JSON serializable (ERROR: {_e})")
 
 # ---------------------------------------------------------------------------
 # Summary

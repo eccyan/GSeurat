@@ -618,20 +618,273 @@ def rdp_simplify(frames, epsilon=2.5, rotation_weight=2.0, min_points=4):
 
 
 # ---------------------------------------------------------------------------
+# 10. Volume generator
+# ---------------------------------------------------------------------------
+
+def _quat_to_pitch_yaw(q):
+    """Extract pitch and yaw (radians) from a quaternion.
+
+    Forward vector is -Z column of the rotation matrix.
+    pitch = asin(forward.y), yaw = atan2(forward.x, forward.z)
+    """
+    m = quat_to_matrix(q)
+    # Forward = -Z column = [-m[0][2], -m[1][2], -m[2][2]]
+    fx = -m[0][2]
+    fy = -m[1][2]
+    fz = -m[2][2]
+
+    pitch = math.asin(max(-1.0, min(1.0, fy)))
+    yaw = math.atan2(fx, fz)
+    return pitch, yaw
+
+
+def generate_volume(frames, margin=1.0, camera_mode="free_look"):
+    """Compute AABB camera volume from trajectory frames.
+
+    Args:
+        frames: List of TrajectoryFrame.
+        margin: Padding added to each side of the AABB.
+        camera_mode: Mode string embedded in params.
+
+    Returns:
+        Dict with id, shape (type/center/half_extents), and params.
+    """
+    if not frames:
+        return {}
+
+    xs = [f.position[0] for f in frames]
+    ys = [f.position[1] for f in frames]
+    zs = [f.position[2] for f in frames]
+
+    min_x, max_x = min(xs), max(xs)
+    min_y, max_y = min(ys), max(ys)
+    min_z, max_z = min(zs), max(zs)
+
+    center = [
+        (min_x + max_x) * 0.5,
+        (min_y + max_y) * 0.5,
+        (min_z + max_z) * 0.5,
+    ]
+    half_extents = [
+        (max_x - min_x) * 0.5 + margin,
+        (max_y - min_y) * 0.5 + margin,
+        (max_z - min_z) * 0.5 + margin,
+    ]
+
+    # Derive pitch/yaw limits from frame orientations
+    pitches = []
+    yaws = []
+    for f in frames:
+        p, y = _quat_to_pitch_yaw(f.quaternion)
+        pitches.append(p)
+        yaws.append(y)
+
+    pitch_min = math.degrees(min(pitches)) - 5.0
+    pitch_max = math.degrees(max(pitches)) + 5.0
+
+    yaw_min_raw = math.degrees(min(yaws))
+    yaw_max_raw = math.degrees(max(yaws))
+    yaw_range = yaw_max_raw - yaw_min_raw
+
+    unrestricted_yaw = yaw_range > 350.0
+
+    fov = frames[0].fov_degrees if frames else 50.0
+
+    params = {
+        "mode": camera_mode,
+        "fov": fov,
+        "pitch_min": pitch_min,
+        "pitch_max": pitch_max,
+    }
+    if unrestricted_yaw:
+        params["yaw_unrestricted"] = True
+    else:
+        params["yaw_min"] = yaw_min_raw - 10.0
+        params["yaw_max"] = yaw_max_raw + 10.0
+
+    return {
+        "id": str(uuid.uuid4()),
+        "shape": {
+            "type": "aabb",
+            "center": center,
+            "half_extents": half_extents,
+        },
+        "params": params,
+    }
+
+
+# ---------------------------------------------------------------------------
+# 11. Rail generator
+# ---------------------------------------------------------------------------
+
+def generate_rail(frames, look_distance=5.0):
+    """Generate a camera rail from trajectory frames.
+
+    Args:
+        frames: List of TrajectoryFrame.
+        look_distance: How far ahead of each control point the target sits.
+
+    Returns:
+        Dict with id, control_points, target_points.
+    """
+    control_points = []
+    target_points = []
+
+    for f in frames:
+        control_points.append(list(f.position))
+
+        # Forward vector = -Z column of rotation matrix
+        m = quat_to_matrix(f.quaternion)
+        forward = [-m[0][2], -m[1][2], -m[2][2]]
+        target = vec3_add(f.position, vec3_scale(forward, look_distance))
+        target_points.append(target)
+
+    return {
+        "id": str(uuid.uuid4()),
+        "control_points": control_points,
+        "target_points": target_points,
+    }
+
+
+# ---------------------------------------------------------------------------
+# 12. JSON output
+# ---------------------------------------------------------------------------
+
+def generate_camera_zones_json(frames, margin=1.0, camera_mode="free_look",
+                                do_volume=True, do_rail=True, look_distance=5.0):
+    """Build a camera_zones JSON block from trajectory frames.
+
+    Args:
+        frames: List of TrajectoryFrame.
+        margin: AABB margin for volumes.
+        camera_mode: Camera mode string.
+        do_volume: Include volumes block.
+        do_rail: Include rails block.
+        look_distance: Look-ahead distance for rail targets.
+
+    Returns:
+        Dict with "camera_zones" key containing default_params, volumes, rails.
+    """
+    fov = frames[0].fov_degrees if frames else 50.0
+
+    default_params = {
+        "mode": camera_mode,
+        "fov": fov,
+    }
+
+    volumes = []
+    if do_volume and frames:
+        vol = generate_volume(frames, margin=margin, camera_mode=camera_mode)
+        if vol:
+            volumes.append(vol)
+
+    rails = []
+    if do_rail and frames:
+        rail = generate_rail(frames, look_distance=look_distance)
+        if rail:
+            rails.append(rail)
+
+    return {
+        "camera_zones": {
+            "default_params": default_params,
+            "volumes": volumes,
+            "rails": rails,
+        }
+    }
+
+
+# ---------------------------------------------------------------------------
+# 13. CLI main()
+# ---------------------------------------------------------------------------
+
+def main():
+    """CLI entry point for the camera trajectory pipeline."""
+    parser = argparse.ArgumentParser(
+        description="Camera trajectory pipeline — smooth, simplify, and export zones.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    parser.add_argument("--input", "-i", required=True,
+                        help="Path to images.txt (COLMAP) or transforms.json (Nerfstudio).")
+    parser.add_argument("--output", "-o", default=None,
+                        help="Output JSON path. Defaults to <input>.camera_zones.json")
+    parser.add_argument("--smoothing-sigma", type=float, default=2.0,
+                        help="Gaussian smoothing sigma (0 = no smoothing).")
+    parser.add_argument("--strength", type=float, default=2.5,
+                        help="RDP epsilon threshold.")
+    parser.add_argument("--rotation-weight", type=float, default=2.0,
+                        help="RDP rotation weight (radians to meters scaling).")
+    parser.add_argument("--margin", type=float, default=1.0,
+                        help="AABB margin for volume generation.")
+    parser.add_argument("--fov", type=float, default=None,
+                        help="Override FOV (degrees). Uses parsed value by default.")
+    parser.add_argument("--look-distance", type=float, default=5.0,
+                        help="Rail look-ahead distance.")
+    parser.add_argument("--camera-mode", default="free_look",
+                        help="Camera mode string embedded in zone params.")
+    parser.add_argument("--no-rail", action="store_true",
+                        help="Skip rail generation.")
+    parser.add_argument("--no-volume", action="store_true",
+                        help="Skip volume generation.")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="Print stats and JSON to stdout; do not write file.")
+
+    args = parser.parse_args()
+
+    # Load
+    print(f"Loading: {args.input}", file=sys.stderr)
+    frames = load_trajectory(args.input)
+    print(f"  Loaded {len(frames)} frames", file=sys.stderr)
+
+    # Smooth
+    if args.smoothing_sigma > 0.0 and len(frames) > 1:
+        frames = smooth_trajectory(frames, sigma=args.smoothing_sigma)
+        print(f"  Smoothed with sigma={args.smoothing_sigma} → {len(frames)} frames",
+              file=sys.stderr)
+
+    # RDP simplify
+    before = len(frames)
+    frames = rdp_simplify(frames, epsilon=args.strength,
+                          rotation_weight=args.rotation_weight)
+    print(f"  RDP simplify: {before} → {len(frames)} frames "
+          f"(epsilon={args.strength}, rot_weight={args.rotation_weight})",
+          file=sys.stderr)
+
+    # Override FOV if requested
+    if args.fov is not None:
+        for f in frames:
+            f.fov_degrees = args.fov
+
+    # Generate zones JSON
+    result = generate_camera_zones_json(
+        frames,
+        margin=args.margin,
+        camera_mode=args.camera_mode,
+        do_volume=not args.no_volume,
+        do_rail=not args.no_rail,
+        look_distance=args.look_distance,
+    )
+
+    zones = result["camera_zones"]
+    print(f"  Generated {len(zones['volumes'])} volume(s), "
+          f"{len(zones['rails'])} rail(s)", file=sys.stderr)
+
+    json_str = json.dumps(result, indent=2)
+
+    if args.dry_run:
+        print(json_str)
+    else:
+        out_path = args.output
+        if out_path is None:
+            out_path = args.input + ".camera_zones.json"
+        with open(out_path, "w") as f:
+            f.write(json_str)
+            f.write("\n")
+        print(f"  Written to: {out_path}", file=sys.stderr)
+
+
+# ---------------------------------------------------------------------------
 # CLI entry point
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    import sys
-    if len(sys.argv) < 2:
-        print("Usage: camera_pipeline.py <images.txt|transforms.json>")
-        sys.exit(1)
-
-    path = sys.argv[1]
-    trajectory = load_trajectory(path)
-    print(f"Loaded {len(trajectory)} frames from {path}")
-    for f in trajectory[:3]:
-        print(f"  [{f.index}] pos={[f'{v:.3f}' for v in f.position]} "
-              f"fov={f.fov_degrees:.1f}°")
-    if len(trajectory) > 3:
-        print(f"  ...")
+    main()
