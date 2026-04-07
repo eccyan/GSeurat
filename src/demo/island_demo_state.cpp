@@ -246,6 +246,9 @@ void IslandDemoState::on_enter(AppBase& app) {
             }
             next_bone_index_ += static_cast<uint32_t>(knight_data_->bones.size());
 
+            ki.current_pos = ki.spawn_pos;
+            ki.walk_target = ki.spawn_pos;
+            ki.facing_angle = glm::pi<float>() * 0.5f;
             knight_info_ = ki;
             std::fprintf(stderr, "[IslandDemo] Knight spawned at (%.1f, %.1f, %.1f) bones=%u-%u +%u gs\n",
                          ki.spawn_pos.x, ki.spawn_pos.y, ki.spawn_pos.z,
@@ -1021,12 +1024,12 @@ void IslandDemoState::update_walk_animation(AppBase& app, float dt) {
             bones[npc.bone_index] = bone_tf;
         }
 
-        // Knight NPC bone transforms
+        // Knight NPC bone transforms + patrol movement
         if (knight_info_ && knight_anim_player_ && knight_data_) {
             auto& ki = *knight_info_;
             // Cycle through animations
             static const char* kKnightAnims[] = {"idle", "walk", "attack", "jump"};
-            static const float kKnightAnimDurations[] = {3.0f, 2.0f, 0.8f, 1.2f};
+            static const float kKnightAnimDurations[] = {3.0f, 3.0f, 0.8f, 1.2f};
             static constexpr int kKnightAnimCount = 4;
 
             ki.anim_cycle_timer += dt;
@@ -1035,7 +1038,48 @@ void IslandDemoState::update_walk_animation(AppBase& app, float dt) {
                 ki.anim_cycle_timer = 0.0f;
                 ki.current_anim = (ki.current_anim + 1) % kKnightAnimCount;
                 knight_anim_sm_->set_state(kKnightAnims[ki.current_anim]);
+
+                // Pick a new random walk target when entering walk state
+                if (ki.current_anim == 1) {  // walk
+                    float angle = static_cast<float>(std::rand() % 360) * glm::pi<float>() / 180.0f;
+                    float dist = kKnightPatrolRadius * 0.5f +
+                        static_cast<float>(std::rand() % 100) * 0.01f * kKnightPatrolRadius * 0.5f;
+                    ki.walk_target = ki.spawn_pos + glm::vec3(
+                        std::cos(angle) * dist, 0.0f, std::sin(angle) * dist);
+                }
             }
+
+            // Move toward walk target during walk animation
+            if (ki.current_anim == 1) {  // walk
+                glm::vec3 to_target = ki.walk_target - ki.current_pos;
+                to_target.y = 0.0f;
+                float dist = glm::length(to_target);
+                if (dist > 0.5f) {
+                    glm::vec3 dir = to_target / dist;
+                    ki.current_pos += dir * kKnightSpeed * dt;
+
+                    // Smooth facing toward movement direction
+                    float target_facing = std::atan2(dir.x, dir.z);
+                    float diff = target_facing - ki.facing_angle;
+                    while (diff > glm::pi<float>()) diff -= glm::two_pi<float>();
+                    while (diff < -glm::pi<float>()) diff += glm::two_pi<float>();
+                    ki.facing_angle += diff * std::min(1.0f, 8.0f * dt);
+                }
+
+                // Snap Y to terrain elevation
+                if (collision_grid_.width > 0 && !collision_grid_.elevation.empty()) {
+                    float lx = ki.current_pos.x - grid_origin_.x;
+                    float lz = ki.current_pos.z - grid_origin_.y;
+                    int gx = static_cast<int>(lx / collision_grid_.cell_size);
+                    int gz = static_cast<int>(lz / collision_grid_.cell_size);
+                    if (gx >= 0 && gx < static_cast<int>(collision_grid_.width) &&
+                        gz >= 0 && gz < static_cast<int>(collision_grid_.height)) {
+                        ki.current_pos.y = collision_grid_.get_elevation(
+                            static_cast<uint32_t>(gx), static_cast<uint32_t>(gz));
+                    }
+                }
+            }
+
             knight_anim_player_->update(dt);
 
             // Build knight bone transforms using same world↔model pattern
@@ -1049,11 +1093,9 @@ void IslandDemoState::update_walk_animation(AppBase& app, float dt) {
                 glm::scale(glm::mat4(1.0f), knight_inv_scale) *
                 glm::translate(glm::mat4(1.0f), -(ki.spawn_pos + knight_y_off));
 
-            // Knight faces a fixed direction (toward player spawn)
-            float knight_facing = glm::pi<float>() * 0.5f;  // face +X direction
-            glm::quat knight_rot = glm::angleAxis(knight_facing, glm::vec3(0, 1, 0));
+            glm::quat knight_rot = glm::angleAxis(ki.facing_angle, glm::vec3(0, 1, 0));
             glm::mat4 knight_to_world =
-                glm::translate(glm::mat4(1.0f), ki.spawn_pos + knight_y_off) *
+                glm::translate(glm::mat4(1.0f), ki.current_pos + knight_y_off) *
                 glm::mat4_cast(knight_rot) *
                 glm::scale(glm::mat4(1.0f), knight_scale) *
                 glm::rotate(glm::mat4(1.0f), glm::pi<float>(), {0, 1, 0});

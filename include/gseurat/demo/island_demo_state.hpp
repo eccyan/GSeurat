@@ -84,10 +84,15 @@ private:
     // Knight NPC
     struct KnightInfo {
         glm::vec3 spawn_pos{0.0f};
+        glm::vec3 current_pos{0.0f};
+        glm::vec3 walk_target{0.0f};
+        float facing_angle = 0.0f;
         uint32_t first_bone_index = 0;
         float anim_cycle_timer = 0.0f;
-        int current_anim = 0;  // index into knight animation cycle
+        int current_anim = 0;
     };
+    static constexpr float kKnightSpeed = 8.0f;
+    static constexpr float kKnightPatrolRadius = 12.0f;
     std::optional<KnightInfo> knight_info_;
     std::unique_ptr<gseurat::CharacterData> knight_data_;
     std::unique_ptr<gseurat::BoneAnimationPlayer> knight_anim_player_;
