@@ -105,21 +105,21 @@ struct CameraState {
     glm::vec3 position{0.0f};
     glm::vec3 target{0.0f, 0.0f, -1.0f};
     glm::vec3 up{0.0f, 1.0f, 0.0f};
-    float fov{60.0f};
+    float fov{45.0f};
 };
 
 struct CameraParams {
     CameraMode mode{CameraMode::free_look};
     int priority{0};
-    float blend_time{0.5f};
+    float blend_time{1.0f};
     bool allow_user_orbit{true};
-    float pitch_min{-89.0f};
-    float pitch_max{89.0f};
+    float pitch_min{-60.0f};
+    float pitch_max{10.0f};
     float yaw_min{-180.0f};
     float yaw_max{180.0f};
-    float fov{60.0f};
+    float fov{45.0f};
     float orbit_distance{10.0f};
-    glm::vec3 offset{0.0f};
+    glm::vec3 offset{0.0f, 5.0f, -10.0f};
     glm::vec3 fixed_position{0.0f};
     int rail_index{-1};
 };

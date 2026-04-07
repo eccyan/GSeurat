@@ -168,13 +168,13 @@ void test_struct_defaults() {
     std::printf("Struct defaults:\n");
 
     gseurat::CameraState state;
-    check(approx(state.fov, 60.0f), "CameraState default fov = 60");
+    check(approx(state.fov, 45.0f), "CameraState default fov = 45");
     check(vec_approx(state.up, {0.0f, 1.0f, 0.0f}), "CameraState default up = (0,1,0)");
 
     gseurat::CameraParams params;
     check(params.mode == gseurat::CameraMode::free_look, "CameraParams default mode = free_look");
     check(params.priority == 0, "CameraParams default priority = 0");
-    check(approx(params.blend_time, 0.5f), "CameraParams default blend_time = 0.5");
+    check(approx(params.blend_time, 1.0f), "CameraParams default blend_time = 1.0");
     check(params.allow_user_orbit, "CameraParams default allow_user_orbit = true");
     check(params.rail_index == -1, "CameraParams default rail_index = -1");
 
