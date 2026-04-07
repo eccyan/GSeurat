@@ -3,6 +3,7 @@
 #include "gseurat/character/bone_animation_player.hpp"
 #include "gseurat/character/bone_animation_state_machine.hpp"
 #include "gseurat/character/character_manifest.hpp"
+#include "gseurat/engine/camera_zone_system.hpp"
 #include "gseurat/engine/collision_gen.hpp"
 #include "gseurat/engine/game_state.hpp"
 #include "gseurat/engine/gaussian_cloud.hpp"
@@ -109,6 +110,9 @@ private:
     // Collision grid (loaded from scene JSON)
     CollisionGrid collision_grid_;
     glm::vec2 grid_origin_{0.0f};  // world XZ origin
+
+    // Camera zone system (data-driven camera volumes/triggers/rails)
+    std::unique_ptr<CameraZoneSystem> camera_zone_system_;
 
     // Orbit camera (third-person around player)
     float azimuth_ = 0.0f;

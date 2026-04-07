@@ -1,5 +1,7 @@
 #pragma once
 
+#include "gseurat/engine/camera_volume.hpp"
+#include "gseurat/engine/camera_zone_system.hpp"
 #include "gseurat/engine/collision_gen.hpp"
 #include "gseurat/engine/day_night_system.hpp"
 #include "gseurat/engine/dialog.hpp"
@@ -124,6 +126,14 @@ struct PortalData {
     Direction spawn_facing = Direction::Down;
 };
 
+struct CameraZonesData {
+    CameraParams default_params;
+    std::vector<std::pair<std::string, CameraVolume>> volumes;  // {id, volume}
+    std::vector<CameraTrigger> triggers;
+    std::vector<std::pair<std::string, CameraRail>> rails;      // {id, rail}
+    std::vector<std::pair<std::string, std::string>> trigger_zone_refs; // {from_id, to_id}
+};
+
 struct SceneData {
     // Gaussian splatting (optional — when present, tilemap is optional)
     std::optional<GaussianSplatData> gaussian_splat;
@@ -180,6 +190,9 @@ struct SceneData {
 
     // Navigation zone names (index 0 = "default", 1+ = named zones)
     std::vector<std::string> nav_zone_names;
+
+    // Camera zones (optional — volumes, triggers, rails for camera control)
+    std::optional<CameraZonesData> camera_zones;
 };
 
 class SceneLoader {
@@ -188,18 +201,18 @@ public:
     static SceneData from_json(const nlohmann::json& j);
     static nlohmann::json to_json(const SceneData& data);
 
-    // Public parse helpers (used by control server, VFX loader)
+    // Public parse helpers (used by control server, VFX loader, camera zones)
     static EmitterConfig parse_emitter(const nlohmann::json& j);
     static GsEmitterConfig parse_gs_emitter_config(const nlohmann::json& j);
     static GsAnimationData parse_gs_animation(const nlohmann::json& j);
     static GsAnimParams parse_gs_anim_params(const nlohmann::json& j);
+    static glm::vec2 parse_vec2(const nlohmann::json& j);
+    static glm::vec3 parse_vec3(const nlohmann::json& j);
+    static glm::vec4 parse_vec4(const nlohmann::json& j);
 
 private:
     static Direction parse_direction(const std::string& s);
     static ParticleTile parse_tile(const std::string& s);
-    static glm::vec2 parse_vec2(const nlohmann::json& j);
-    static glm::vec3 parse_vec3(const nlohmann::json& j);
-    static glm::vec4 parse_vec4(const nlohmann::json& j);
 
     static std::string direction_to_string(Direction d);
     static std::string tile_to_string(ParticleTile t);

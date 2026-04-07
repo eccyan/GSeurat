@@ -25,6 +25,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <string>
+#include <unordered_map>
 
 namespace {
 // Deterministic offset from index — no frame-to-frame jitter
@@ -123,6 +124,47 @@ void IslandDemoState::on_enter(AppBase& app) {
         ref.origin_x = grid_origin_.x;
         ref.origin_z = grid_origin_.y;
         app.world().add<CollisionGridRef>(grid_entity, ref);
+    }
+
+    // Initialize camera zone system if scene has camera_zones
+    if (scene_data.camera_zones) {
+        camera_zone_system_ = std::make_unique<CameraZoneSystem>();
+
+        auto& cz = *scene_data.camera_zones;
+
+        // Convert string-keyed volumes to entity-ID-keyed volumes
+        std::vector<std::pair<int, CameraVolume>> volumes;
+        std::unordered_map<std::string, int> zone_id_map;
+        int next_zone_id = 0;
+        for (auto& [id, vol] : cz.volumes) {
+            zone_id_map[id] = next_zone_id;
+            volumes.push_back({next_zone_id, vol});
+            next_zone_id++;
+        }
+
+        // Resolve trigger zone references
+        for (size_t i = 0; i < cz.triggers.size(); ++i) {
+            auto& [from_id, to_id] = cz.trigger_zone_refs[i];
+            if (!from_id.empty() && zone_id_map.count(from_id)) {
+                cz.triggers[i].from_zone_entity = zone_id_map[from_id];
+            }
+            if (zone_id_map.count(to_id)) {
+                cz.triggers[i].to_zone_entity = zone_id_map[to_id];
+            }
+        }
+
+        // Extract rails (drop string IDs)
+        std::vector<CameraRail> rails;
+        for (auto& [id, rail] : cz.rails) {
+            rails.push_back(rail);
+        }
+
+        size_t rail_count = rails.size();
+        camera_zone_system_->load_from_data(
+            std::move(volumes), cz.triggers, std::move(rails), cz.default_params);
+
+        std::fprintf(stderr, "[IslandDemo] Camera zone system loaded: %d volumes, %zu triggers, %zu rails\n",
+                     next_zone_id, cz.triggers.size(), rail_count);
     }
 
     // Determine player start position
@@ -371,6 +413,9 @@ void IslandDemoState::on_enter(AppBase& app) {
 
 void IslandDemoState::on_exit(AppBase& app) {
     ShutdownAuditor::report();
+
+    // Release camera zone system
+    camera_zone_system_.reset();
 
     // Release animation objects before state destruction
     knight_anim_sm_.reset();
@@ -633,6 +678,38 @@ void IslandDemoState::update_player(AppBase& app, float dt) {
 void IslandDemoState::update_camera(AppBase& app, float dt) {
     auto* transform = app.world().try_get<ecs::Transform>(player_entity_);
     if (!transform) return;
+
+    // Camera zone system path — data-driven camera volumes/triggers/rails
+    if (camera_zone_system_) {
+        CameraZoneSystem::InputState input{};
+        // Feed orbit mouse delta from the existing drag handler
+        auto& inp = app.input();
+        glm::vec2 mouse = inp.mouse_pos();
+        if (dragging_) {
+            input.mouse_dx = mouse.x - last_mouse_.x;
+            input.mouse_dy = mouse.y - last_mouse_.y;
+        }
+        input.scroll_delta = inp.scroll_y_delta();
+
+        glm::vec3 player_pos = transform->position.vec();
+        camera_zone_system_->update(dt, player_pos, player_velocity_, input);
+
+        auto state = camera_zone_system_->current_state();
+
+        // Guard against degenerate lookAt (position == target → NaN)
+        if (glm::length(state.position - state.target) < 0.001f) {
+            state.position = state.target + glm::vec3(0, 5, -10);
+        }
+
+        glm::mat4 view = glm::lookAt(state.position, state.target, state.up);
+        glm::mat4 proj = glm::perspective(
+            glm::radians(state.fov), 1280.0f / 720.0f, 0.1f, 1000.0f);
+        proj[1][1] *= -1.0f;  // Vulkan Y-flip
+        app.renderer().set_gs_camera(view, proj);
+        return;
+    }
+
+    // ── Orbit camera fallback (no camera zones) ──
 
     // Smooth target follow
     glm::vec3 desired_target = transform->position.vec() + glm::vec3(0, kCameraYOffset, 0);
