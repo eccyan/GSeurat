@@ -82,7 +82,17 @@ std::optional<CharacterData> load_character_manifest(const std::string& path) {
             pose.name = pose_name;
             pose.rotations.resize(bone_count, glm::vec3(0.0f));
 
+            if (jp.contains("root_position") && jp["root_position"].is_array()
+                && jp["root_position"].size() >= 3) {
+                pose.root_position = glm::vec3(
+                    jp["root_position"][0].get<float>(),
+                    jp["root_position"][1].get<float>(),
+                    jp["root_position"][2].get<float>()
+                ) * data.scale;
+            }
+
             for (auto& [bone_id, jr] : jp.items()) {
+                if (bone_id == "root_position") continue;  // handled above
                 int bi = data.find_bone(bone_id);
                 if (bi >= 0 && jr.is_array() && jr.size() >= 3) {
                     pose.rotations[bi] = glm::vec3(
@@ -117,6 +127,7 @@ std::optional<CharacterData> load_character_manifest(const std::string& path) {
             clip.name = clip_name;
             clip.duration = jc.value("duration", 1.0f);
             clip.looping = jc.value("looping", true);
+            clip.root_motion = jc.value("root_motion", false);
             clip.keyframes = std::move(keyframes);
             data.clips.push_back(std::move(clip));
         }

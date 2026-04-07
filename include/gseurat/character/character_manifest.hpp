@@ -15,6 +15,7 @@ struct BoneData {
 struct PoseData {
     std::string name;
     std::vector<glm::vec3> rotations;  // per-bone Euler degrees, indexed by bone index
+    glm::vec3 root_position{0.0f};     // root bone world-space offset
 };
 
 struct AnimKeyframe {
@@ -26,6 +27,7 @@ struct AnimationClip {
     std::string name;
     float duration = 1.0f;
     bool looping = true;
+    bool root_motion = false;  // opt-in: root bone delta drives actor world position
     std::vector<AnimKeyframe> keyframes;
 };
 
