@@ -15,6 +15,9 @@ import type {
   VfxInstanceData,
 } from '../store/types.js';
 import { panelStyles } from '../styles/panel.js';
+import { CameraVolumeEditor } from './CameraVolumeEditor.js';
+import { CameraTriggerEditor } from './CameraTriggerEditor.js';
+import { CameraRailEditor } from './CameraRailEditor.js';
 
 const styles = { ...panelStyles };
 
@@ -1491,6 +1494,9 @@ export function ScenePropertiesPanel() {
   const gsAnimations = useSceneStore((s) => s.gsAnimations);
   const vfxInstances = useSceneStore((s) => s.vfxInstances);
   const player = useSceneStore((s) => s.player);
+  const cameraVolumes = useSceneStore((s) => s.cameraVolumes);
+  const cameraTriggers = useSceneStore((s) => s.cameraTriggers);
+  const cameraRails = useSceneStore((s) => s.cameraRails);
 
   if (!selectedEntity) {
     return <div style={styles.empty}>Select an entity in the scene tree</div>;
@@ -1534,6 +1540,24 @@ export function ScenePropertiesPanel() {
 
   if (selectedEntity.type === 'player') {
     return <PlayerProperties player={player} />;
+  }
+
+  if (selectedEntity.type === 'camera_volume') {
+    const vol = cameraVolumes.find((v) => v.id === selectedEntity.id);
+    if (!vol) return <div style={styles.empty}>Camera volume not found</div>;
+    return <CameraVolumeEditor volume={vol} />;
+  }
+
+  if (selectedEntity.type === 'camera_trigger') {
+    const trig = cameraTriggers.find((t) => t.id === selectedEntity.id);
+    if (!trig) return <div style={styles.empty}>Camera trigger not found</div>;
+    return <CameraTriggerEditor trigger={trig} />;
+  }
+
+  if (selectedEntity.type === 'camera_rail') {
+    const rail = cameraRails.find((r) => r.id === selectedEntity.id);
+    if (!rail) return <div style={styles.empty}>Camera rail not found</div>;
+    return <CameraRailEditor rail={rail} />;
   }
 
   return <div style={styles.empty}>Unknown entity type</div>;
