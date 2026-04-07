@@ -1002,6 +1002,14 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
             }
         }
 
+        // Append pending dynamics from game states (e.g., PBD chain demo)
+        if (!gs_pending_dynamics_.empty()) {
+            gs_dynamic_buffer_.insert(gs_dynamic_buffer_.end(),
+                                      gs_pending_dynamics_.begin(),
+                                      gs_pending_dynamics_.end());
+            gs_pending_dynamics_.clear();
+        }
+
         // Upload dynamic Gaussians
         {
             auto count = static_cast<uint32_t>(gs_dynamic_buffer_.size());
@@ -1134,6 +1142,10 @@ void Renderer::add_gs_particle_emitter(const GsEmitterConfig& config) {
 
 void Renderer::clear_gs_particle_emitters() {
     gs_particle_emitters_.clear();
+}
+
+void Renderer::append_dynamic_gaussians(const Gaussian* data, uint32_t count) {
+    gs_pending_dynamics_.insert(gs_pending_dynamics_.end(), data, data + count);
 }
 
 void Renderer::add_gs_animation(const std::string& effect, const GsAnimRegion& region,
