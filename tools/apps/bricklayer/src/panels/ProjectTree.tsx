@@ -194,6 +194,7 @@ export function ProjectTree() {
   const removeCameraVolume = useSceneStore((st) => st.removeCameraVolume);
   const removeCameraTrigger = useSceneStore((st) => st.removeCameraTrigger);
   const removeCameraRail = useSceneStore((st) => st.removeCameraRail);
+  const importCameraZonesJson = useSceneStore((st) => st.importCameraZonesJson);
 
   const [sceneOpen, setSceneOpen] = useState(true);
   const [gameObjOpen, setGameObjOpen] = useState(true);
@@ -225,6 +226,29 @@ export function ProjectTree() {
   };
 
   const isActive = (node: NavigationNode) => nodesEqual(activeNode, node);
+
+  const handleImportTrajectory = async () => {
+    try {
+      const [fileHandle] = await (window as any).showOpenFilePicker({
+        types: [{ description: 'JSON files', accept: { 'application/json': ['.json'] } }],
+        multiple: false,
+      });
+      const file = await fileHandle.getFile();
+      const text = await file.text();
+      const data = JSON.parse(text) as Record<string, unknown>;
+      if (!data.camera_zones) {
+        alert('Invalid file: missing "camera_zones" key.');
+        return;
+      }
+      importCameraZonesJson(data);
+    } catch (err) {
+      // User cancelled the picker — ignore AbortError
+      if (err instanceof Error && err.name !== 'AbortError') {
+        console.error('Failed to import camera zones JSON:', err);
+        alert('Failed to import camera zones JSON. See console for details.');
+      }
+    }
+  };
 
   const addBtn = (onClick: (e: React.MouseEvent) => void) => (
     <button style={s.addBtn} onClick={(e) => { e.stopPropagation(); onClick(e); }}>+</button>
@@ -466,6 +490,7 @@ export function ProjectTree() {
             arrow={cameraOpen ? '\u25BE' : '\u25B8'}
             isActive={isActive({ kind: 'scene_category', category: 'camera_zones' as any })}
             onClick={() => { setCameraOpen(!cameraOpen); click({ kind: 'scene_category', category: 'camera_zones' as any }); }}
+            actions={<button style={s.addBtn} title="Import camera zones JSON" onClick={(e) => { e.stopPropagation(); handleImportTrajectory(); }}>↑</button>}
             isOpen={cameraOpen}
           >
             {/* Volumes */}

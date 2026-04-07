@@ -324,6 +324,7 @@ export interface SceneStoreState {
   updateRailControlPoint: (railId: string, index: number, point: [number, number, number]) => void;
   updateCameraDefaultParams: (patch: Partial<CameraZoneParams>) => void;
   setCameraShowDebugVolumes: (show: boolean) => void;
+  importCameraZonesJson: (data: Record<string, unknown>) => void;
   enterPossessMode: (volumeId: string) => void;
   exitPossessMode: () => void;
   updatePlayer: (patch: Partial<PlayerData>) => void;
@@ -893,6 +894,54 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
     cameraDefaultParams: { ...get().cameraDefaultParams, ...patch }, isDirty: true,
   }),
   setCameraShowDebugVolumes: (show) => set({ cameraShowDebugVolumes: show }),
+
+  importCameraZonesJson: (data) => {
+    const zones = data.camera_zones as Record<string, unknown> | undefined;
+    if (!zones) return;
+
+    const rawVolumes = (zones.volumes as Record<string, unknown>[] | undefined) ?? [];
+    const rawRails = (zones.rails as Record<string, unknown>[] | undefined) ?? [];
+    const rawTriggers = (zones.triggers as Record<string, unknown>[] | undefined) ?? [];
+
+    const newVolumes: CameraZoneVolume[] = rawVolumes.map((v) => ({
+      id: genId('camvol'),
+      name: (v.name as string | undefined) ?? 'Imported Volume',
+      shape: (v.shape as CameraZoneVolume['shape']) ?? { type: 'aabb', center: [0, 2, 0], half_extents: [5, 5, 5] },
+      params: { ...DEFAULT_CAMERA_ZONE_PARAMS, ...(v.params as Partial<CameraZoneParams> | undefined) },
+    }));
+
+    const newRails: CameraZoneRail[] = rawRails.map((r) => ({
+      id: genId('camrail'),
+      name: (r.name as string | undefined) ?? 'Imported Rail',
+      control_points: (r.control_points as [number, number, number][]) ?? [],
+      ...(r.target_points !== undefined ? { target_points: r.target_points as [number, number, number][] } : {}),
+    }));
+
+    const newTriggers: CameraZoneTrigger[] = rawTriggers.map((t) => ({
+      id: genId('camtrig'),
+      shape: (t.shape as CameraZoneTrigger['shape']) ?? { type: 'aabb', center: [0, 2, 0], half_extents: [1, 3, 3] },
+      to_zone: (t.to_zone as string) ?? '',
+      ...(t.from_zone !== undefined ? { from_zone: t.from_zone as string } : {}),
+      blend_override: (t.blend_override as number | undefined) ?? -1,
+    }));
+
+    const st = get();
+    const patch: Partial<SceneStoreState> = {
+      cameraVolumes: [...st.cameraVolumes, ...newVolumes],
+      cameraRails: [...st.cameraRails, ...newRails],
+      cameraTriggers: [...st.cameraTriggers, ...newTriggers],
+      isDirty: true,
+    };
+
+    if (zones.default_params) {
+      patch.cameraDefaultParams = {
+        ...st.cameraDefaultParams,
+        ...(zones.default_params as Partial<CameraZoneParams>),
+      };
+    }
+
+    set(patch);
+  },
 
   enterPossessMode: (volumeId) => {
     const s = get();
