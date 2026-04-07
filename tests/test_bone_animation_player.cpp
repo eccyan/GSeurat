@@ -106,6 +106,151 @@ int main() {
         printf("PASS: Test 6 - FK chain\n");
     }
 
+    // Test 7: Root motion delta extraction
+    {
+        // Create CharacterData with 1 root bone, 2 poses, looping walk clip with root_motion=true
+        CharacterData rm_data;
+        rm_data.name = "rm_test";
+        rm_data.bones.push_back(BoneData{"root", -1, glm::vec3(0.0f)});
+
+        // Pose 0: z=0, no rotation
+        PoseData p0;
+        p0.name = "start";
+        p0.rotations.push_back(glm::vec3(0.0f));
+        p0.root_position = glm::vec3(0.0f, 0.0f, 0.0f);
+        rm_data.poses.push_back(p0);
+
+        // Pose 1: z=2, 30deg Y rotation
+        PoseData p1;
+        p1.name = "mid";
+        p1.rotations.push_back(glm::vec3(0.0f, 30.0f, 0.0f));
+        p1.root_position = glm::vec3(0.0f, 0.0f, 2.0f);
+        rm_data.poses.push_back(p1);
+
+        AnimationClip clip;
+        clip.name = "walk";
+        clip.duration = 1.0f;
+        clip.looping = true;
+        clip.root_motion = true;
+        clip.keyframes.push_back(AnimKeyframe{0.0f, 0});
+        clip.keyframes.push_back(AnimKeyframe{0.5f, 1});
+        clip.keyframes.push_back(AnimKeyframe{1.0f, 0});
+        rm_data.clips.push_back(clip);
+
+        BoneAnimationPlayer player(rm_data);
+        player.play("walk");
+
+        // After play(), delta should be zero
+        assert(near(player.delta_position().x, 0.0f));
+        assert(near(player.delta_position().y, 0.0f));
+        assert(near(player.delta_position().z, 0.0f));
+
+        // Update 0.25s (halfway to mid pose) — should move ~1.0 in z
+        player.update(0.25f);
+        assert(near(player.delta_position().z, 1.0f, 0.01f) && "Delta z should be ~1.0 at t=0.25");
+
+        // Root bone transform should be identity (stripped)
+        assert(is_identity(player.bone_transforms()[0]) && "Root bone should be identity when strip_root");
+
+        // Update another 0.25s — should move another ~1.0 in z
+        player.update(0.25f);
+        assert(near(player.delta_position().z, 1.0f, 0.01f) && "Delta z should be ~1.0 at t=0.5");
+
+        // Delta rotation should be non-zero (we went from ~15deg to 30deg Y)
+        glm::quat dr = player.delta_rotation();
+        float angle = 2.0f * std::acos(std::min(std::fabs(dr.w), 1.0f));
+        assert(angle > 0.01f && "Delta rotation should have non-zero angle");
+
+        printf("PASS: Test 7 - Root motion delta extraction\n");
+    }
+
+    // Test 8: Root motion loop wraparound
+    {
+        CharacterData rm_data;
+        rm_data.name = "loop_test";
+        rm_data.bones.push_back(BoneData{"root", -1, glm::vec3(0.0f)});
+
+        // Pose 0: z=0
+        PoseData p0;
+        p0.name = "start";
+        p0.rotations.push_back(glm::vec3(0.0f));
+        p0.root_position = glm::vec3(0.0f, 0.0f, 0.0f);
+        rm_data.poses.push_back(p0);
+
+        // Pose 1: z=3
+        PoseData p1;
+        p1.name = "end";
+        p1.rotations.push_back(glm::vec3(0.0f));
+        p1.root_position = glm::vec3(0.0f, 0.0f, 3.0f);
+        rm_data.poses.push_back(p1);
+
+        AnimationClip clip;
+        clip.name = "walk";
+        clip.duration = 1.0f;
+        clip.looping = true;
+        clip.root_motion = true;
+        clip.keyframes.push_back(AnimKeyframe{0.0f, 0});
+        clip.keyframes.push_back(AnimKeyframe{1.0f, 1});
+        rm_data.clips.push_back(clip);
+
+        BoneAnimationPlayer player(rm_data);
+        player.play("walk");
+
+        // Update 0.8s — delta.z should be ~2.4 (0.8 * 3.0)
+        player.update(0.8f);
+        assert(near(player.delta_position().z, 2.4f, 0.05f) && "Delta z should be ~2.4 at t=0.8");
+
+        // Update 0.4s — wraps from 0.8 to 1.2 → 0.2 after loop
+        // Delta should be POSITIVE: (3.0 - 2.4) + (0.6 - 0.0) = 0.6 + 0.6 = 1.2
+        player.update(0.4f);
+        assert(player.delta_position().z > 0.0f && "Delta z must be POSITIVE after loop wrap");
+        assert(near(player.delta_position().z, 1.2f, 0.05f) && "Delta z should be ~1.2 after loop wrap");
+
+        printf("PASS: Test 8 - Root motion loop wraparound\n");
+    }
+
+    // Test 9: Reset root motion
+    {
+        CharacterData rm_data;
+        rm_data.name = "reset_test";
+        rm_data.bones.push_back(BoneData{"root", -1, glm::vec3(0.0f)});
+
+        PoseData p0;
+        p0.name = "start";
+        p0.rotations.push_back(glm::vec3(0.0f));
+        p0.root_position = glm::vec3(0.0f, 0.0f, 0.0f);
+        rm_data.poses.push_back(p0);
+
+        PoseData p1;
+        p1.name = "end";
+        p1.rotations.push_back(glm::vec3(0.0f));
+        p1.root_position = glm::vec3(0.0f, 0.0f, 3.0f);
+        rm_data.poses.push_back(p1);
+
+        AnimationClip clip;
+        clip.name = "walk";
+        clip.duration = 1.0f;
+        clip.looping = true;
+        clip.root_motion = true;
+        clip.keyframes.push_back(AnimKeyframe{0.0f, 0});
+        clip.keyframes.push_back(AnimKeyframe{1.0f, 1});
+        rm_data.clips.push_back(clip);
+
+        BoneAnimationPlayer player(rm_data);
+        player.play("walk");
+        player.update(0.5f);
+
+        // Delta should be non-zero
+        assert(!near(player.delta_position().z, 0.0f, 0.001f) && "Delta should be non-zero before reset");
+
+        // Reset
+        player.reset_root_motion();
+        assert(near(player.delta_position().z, 0.0f) && "Delta should be zero after reset");
+        assert(near(player.delta_position().x, 0.0f) && "Delta x should be zero after reset");
+
+        printf("PASS: Test 9 - Reset root motion\n");
+    }
+
     printf("All bone animation player tests passed.\n");
     return 0;
 }
