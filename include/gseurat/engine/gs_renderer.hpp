@@ -8,6 +8,7 @@
 #include <vk_mem_alloc.h>
 #include <vulkan/vulkan.h>
 #include <glm/glm.hpp>
+#include <glm/gtc/quaternion.hpp>
 #include <vector>
 
 namespace gseurat {
@@ -157,6 +158,9 @@ public:
     void upload_bone_transforms(const glm::mat4* transforms, uint32_t count);
     void clear_bone_transforms();
 
+    // Actor world rotation for root motion (Phase 2: applied to per-Gaussian covariance)
+    void set_actor_rotation(const glm::quat& q) { actor_rotation_ = q; static_dirty_ = true; }
+
     // PBD (Position Based Dynamics) solver
     void upload_pbd_elements(const PbdPhysicsState* states,
                              const PbdElementParams* params,
@@ -212,6 +216,7 @@ private:
     Buffer visible_count_ssbo_;      // Atomic counter: visible Gaussians after frustum cull
     Buffer bone_ssbo_;               // Bone transforms for character skinning
     uint32_t bone_count_ = 0;
+    glm::quat actor_rotation_{1.0f, 0.0f, 0.0f, 0.0f};  // Root motion world rotation
 
     // PBD solver resources
     Buffer pbd_state_ssbo_;

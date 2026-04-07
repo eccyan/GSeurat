@@ -36,8 +36,9 @@ layout(set = 0, binding = 2) uniform Uniforms {
     vec4 light_params;  // xyz = light_dir, w = intensity
     vec4 touch_point;   // xyz = world_pos, w = radius
     vec4 effect_params; // x = water_y, y = fire_y_min, z = fire_y_max, w = strength
-    vec4 effect_params2; // x = pulse_t, y = xray_depth, z = swirl_t, w = unused
+    vec4 effect_params2; // x = pulse_t, y = xray_depth, z = swirl_t, w = burn_t
     vec4 point_light_params; // x = count, yzw = unused
+    vec4 actor_rotation; // xyzw = quaternion for root motion (unused in render shader)
     vec4 pl_pos_rad[8];     // per-light: xy = world XZ, z = height (Y), w = radius
     vec4 pl_color[8];       // per-light: rgb = color, a = intensity
     vec4 pl_dir_cone[8];    // per-light: xyz = spot direction, w = cos(cone_half_angle); -1 = point

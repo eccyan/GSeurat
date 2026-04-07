@@ -898,6 +898,7 @@ void IslandDemoState::update_walk_animation(AppBase& app, float dt) {
         int total_bones = static_cast<int>(next_bone_index_);
         if (total_bones < bone_count + 1) total_bones = bone_count + 1;
         app.renderer().gs_renderer().upload_bone_transforms(bones, total_bones);
+        app.renderer().gs_renderer().set_actor_rotation(character_rotation_);
     } else {
         // Fallback: no animation data, just translate character to current position
         glm::vec3 root_offset = character_origin_ - character_spawn_pos_;
@@ -913,6 +914,7 @@ void IslandDemoState::update_walk_animation(AppBase& app, float dt) {
         bones[0] = terrain_bone;
         bones[1] = root_xform;
         app.renderer().gs_renderer().upload_bone_transforms(bones, 2);
+        app.renderer().gs_renderer().set_actor_rotation(character_rotation_);
     }
 }
 

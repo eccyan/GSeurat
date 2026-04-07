@@ -43,8 +43,9 @@ struct GsUniforms {
     glm::vec4 light_params;  // xyz = light_dir, w = intensity
     glm::vec4 touch_point;   // xyz = world_pos, w = radius
     glm::vec4 effect_params; // x = water_y, y = fire_y_min, z = fire_y_max, w = strength
-    glm::vec4 effect_params2; // x = pulse_t, y = xray_depth, z = swirl_t, w = unused
+    glm::vec4 effect_params2; // x = pulse_t, y = xray_depth, z = swirl_t, w = burn_t
     glm::vec4 point_light_params; // x = count, yzw = unused
+    glm::vec4 actor_rotation; // xyzw = quaternion for root motion world rotation
     glm::vec4 pl_pos_rad[kMaxGsPointLights];   // per-light: xy = world XZ, z = height (Y), w = radius
     glm::vec4 pl_color[kMaxGsPointLights];      // per-light: rgb = color, a = intensity
     glm::vec4 pl_dir_cone[kMaxGsPointLights];   // per-light: xyz = direction, w = cos(cone_half_angle)
@@ -1286,6 +1287,9 @@ void GsRenderer::render(VkCommandBuffer cmd, const glm::mat4& view, const glm::m
     uniforms.touch_point = glm::vec4(touch_point_, touch_radius_);
     uniforms.effect_params = glm::vec4(water_y_, fire_y_min_, fire_y_max_, effect_strength_);
     uniforms.effect_params2 = glm::vec4(pulse_t_, xray_depth_, swirl_t_, burn_t_);
+
+    uniforms.actor_rotation = glm::vec4(actor_rotation_.x, actor_rotation_.y,
+                                        actor_rotation_.z, actor_rotation_.w);
 
     // Point lights — flat arrays matching shader layout
     uniforms.point_light_params = glm::vec4(static_cast<float>(point_lights_.size()), 0, 0, 0);
