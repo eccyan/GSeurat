@@ -6,7 +6,7 @@ A Vulkan-based 3D Gaussian Splatting engine built with C++23. Named after **3DGS
 
 - **3D Gaussian Splatting** — GPU compute pipeline for rendering `.ply` point clouds with tile-based rasterization, dynamic point light support
 - **GPU PBD solver** — Position Based Dynamics compute shader with Verlet integration, iterative distance constraints, and ground collision. Dual-mode: wind-only (backward-compatible foliage sway) and full physics (dangling chains, pendulums)
-- **Voxel character pipeline** — MagicaVoxel import, rigid-body-part posing, GPU bone skinning in compute shader
+- **Voxel character pipeline** — MagicaVoxel import, rigid-body-part posing, GPU bone skinning in compute shader, root motion (animation-driven world movement)
 - **Sprite overlay** — Sprite-based entities over GS backgrounds with bloom, depth-of-field, and tone mapping
 - **Game Object System** — Unified entity model with component composition. Developers define C++ component structs + JSON schemas; level designers compose objects in Bricklayer
 - **Component Registry** — Type-erased component registration with JSON attach/serialize. SystemScheduler with read/write dependency declarations (parallel-ready)
@@ -197,7 +197,15 @@ Engine: PLY load → bone_index per Gaussian → preprocess shader → skeletal 
 - Bone 0 = identity (map Gaussians pass through untouched)
 - Rigid body part animation (action-figure style, no smooth skinning)
 
+**Root Motion:**
+- Animation-driven world-space movement — walk cycles, dodge rolls, and lunges move the actor
+- Per-pose `root_position` offset + per-clip `root_motion` opt-in flag in character manifests
+- `BoneAnimationPlayer` extracts per-frame position/rotation deltas with loop-aware math
+- Root bone transform stripped to identity before FK; game state accumulates deltas into a `character_rotation_` quaternion
+- Phase 2: preprocess shader rotates per-Gaussian covariance by actor rotation for correct visual orientation
+
 See [docs/pbd-solver.md](docs/pbd-solver.md) for full PBD architecture and API reference.
+See [docs/superpowers/specs/2026-04-07-root-motion-design.md](docs/superpowers/specs/2026-04-07-root-motion-design.md) for root motion system design.
 
 ### Scene Composition (Game Objects)
 
@@ -348,7 +356,7 @@ cd tools/apps/level-designer && pnpm dev
 
 ### C++ Engine Tests
 
-All 22 test suites are CMake targets, run via `ctest`:
+All 27 test suites are CMake targets, run via `ctest`:
 
 ```bash
 cmake --preset <platform>-debug
@@ -369,6 +377,22 @@ ctest --test-dir build/<platform>-debug --output-on-failure
 | `test_screenshot` | 5 | State machine, BGRA→RGBA swizzle |
 | `test_character_data` | 12 | Character animation JSON loading |
 | `test_pbd_solver` | 10 | PBD struct layouts (64/48/32 bytes), index segmentation, quaternion math, Verlet integration, distance constraint projection, wind sway |
+| `test_gs_point_lights` | 35 | Point, spot, area light evaluation, attenuation, cone falloff |
+| `test_gs_emission` | 8 | Emissive Gaussian packing, HDR value validation |
+| `test_gs_spline` | 9 | Catmull-Rom spline evaluation, arc-length parameterization |
+| `test_gs_particle` | 75 | GS particle emitter lifecycle, spawn regions, spline paths |
+| `test_gs_post_process` | 6 | Fog, tone mapping, bloom, DoF, chromatic aberration config |
+| `test_incremental_sync` | — | Bridge incremental scene sync protocol |
+| `test_vfx_scene_buffer` | 8 | VFX instance buffer layout, emitter/animation/light packing |
+| `test_vfx_lights_rotation` | 11 | VFX light rotation transforms, spot/area orientation |
+| `test_component_registry` | 11 | Type-erased component registration, JSON attach/serialize |
+| `test_system_scheduler` | 6 | System ordering, read/write dependency declarations |
+| `test_coordinate` | — | Typed coordinate system conversions (world/screen/grid) |
+| `test_island_systems` | 16 | Island demo game object systems integration |
+| `test_scene_loading` | — | Full scene JSON loading, game object instantiation |
+| `test_character_manifest` | 60 | Character manifest parsing, root motion fields, pose/clip validation |
+| `test_bone_animation_player` | 9 | Bone FK, delta extraction, loop wrap-around, root stripping |
+| `test_bone_animation_state_machine` | 5 | State transitions, animation blending, root motion reset |
 
 ### TypeScript Tool Tests
 
@@ -385,7 +409,7 @@ pnpm --filter @gseurat/tests test:echidna-ply-export
 
 GitHub Actions runs three parallel jobs on every push/PR to main:
 - **Build** — C++ engine on Linux, Windows, macOS
-- **Test (C++)** — 10 engine test suites via ctest (ubuntu)
+- **Test (C++)** — 27 engine test suites via ctest (ubuntu)
 - **Test (TypeScript)** — Tool tests via pnpm (ubuntu)
 
 See [tests/README.md](tests/README.md) for detailed build commands and test descriptions.
