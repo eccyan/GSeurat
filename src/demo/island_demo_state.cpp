@@ -24,6 +24,18 @@
 #include <cstdio>
 #include <string>
 
+namespace {
+// Deterministic offset from index — no frame-to-frame jitter
+glm::vec3 det_offset(uint32_t seed, float radius) {
+    auto h = [](uint32_t n) -> float {
+        n = (n << 13u) ^ n;
+        n = n * (n * n * 15731u + 789221u) + 1376312589u;
+        return static_cast<float>(n & 0x7fffffffu) / static_cast<float>(0x7fffffff) * 2.0f - 1.0f;
+    };
+    return glm::vec3(h(seed), h(seed * 7u + 3u), h(seed * 13u + 17u)) * radius;
+}
+}  // namespace
+
 namespace gseurat {
 
 // ── on_enter ──
@@ -327,39 +339,24 @@ void IslandDemoState::update(AppBase& app, float dt) {
         anim_enabled_ = !anim_enabled_;
     }
 
-    // J → toggle PBD chain demo
+    // J → toggle PBD chain demo (CPU-side, rendered as dynamic Gaussians)
     if (app.input().was_key_pressed(GLFW_KEY_J)) {
         if (pbd_chain_active_) {
-            app.renderer().gs_renderer().clear_pbd();
             pbd_chain_active_ = false;
             std::fprintf(stderr, "[IslandDemo] PBD chain demo OFF\n");
         } else {
             glm::vec3 top = character_origin_ + glm::vec3(3.0f, 8.0f, 0.0f);
-            PbdPhysicsState states[3];
-            PbdElementParams params[3];
-
-            for (int i = 0; i < 3; ++i) {
+            for (int i = 0; i < kPbdNodeCount; ++i) {
                 glm::vec3 p = top - glm::vec3(0.0f, static_cast<float>(i) * 3.0f, 0.0f);
-                states[i].position = glm::vec4(p, i == 0 ? 0.0f : 1.0f);
-                states[i].prev_position = glm::vec4(p, 0.0f);
-                states[i].velocity = glm::vec4(0.0f);
-                states[i].params = glm::vec4(0.0f);
-
-                params[i].gravity = glm::vec4(0.0f, -9.8f, 0.0f, 0.98f);
-                params[i].wind = glm::vec4(0.0f);
-                params[i].dynamics = glm::vec4(0.0f, top.y - 10.0f, 0.3f, 0.0f);
+                pbd_nodes_[i].position = p;
+                pbd_nodes_[i].prev_position = p;
+                pbd_nodes_[i].velocity = glm::vec3(0.0f);
+                pbd_nodes_[i].inv_mass = (i == 0) ? 0.0f : 1.0f;
             }
-
-            PbdConstraint constraints[2];
-            constraints[0].indices = glm::uvec4(0, 1, 0, 0);
-            constraints[0].params = glm::vec4(3.0f, 0.8f, 0.0f, 0.0f);
-            constraints[1].indices = glm::uvec4(1, 2, 0, 0);
-            constraints[1].params = glm::vec4(3.0f, 0.8f, 0.0f, 0.0f);
-
-            app.renderer().gs_renderer().upload_pbd_elements(states, params, 3);
-            app.renderer().gs_renderer().upload_pbd_constraints(constraints, 2);
+            pbd_links_[0] = {0, 1, 3.0f, 0.8f};
+            pbd_links_[1] = {1, 2, 3.0f, 0.8f};
             pbd_chain_active_ = true;
-            std::fprintf(stderr, "[IslandDemo] PBD chain demo ON (3 elements, 2 constraints)\n");
+            std::fprintf(stderr, "[IslandDemo] PBD chain demo ON (CPU, 3 nodes, 2 links)\n");
         }
     }
 
@@ -421,6 +418,12 @@ void IslandDemoState::update(AppBase& app, float dt) {
 
     // Walk animation always runs (handles character root transform + bone poses)
     update_walk_animation(app, dt);
+
+    // PBD chain physics step + visual gather
+    if (pbd_chain_active_) {
+        step_pbd_chain(dt);
+        gather_pbd_chain(app.renderer());
+    }
 
     // Set player position as LOD focus for foveated culling
     app.renderer().set_gs_lod_focus(character_origin_);
@@ -894,6 +897,142 @@ void IslandDemoState::update_environment_animation(AppBase& /*app*/, float dt) {
     // Time accumulation only — the actual terrain sway is applied via bone 0
     // in update_walk_animation, creating visible "movement of the dots" across
     // the entire Gaussian Splatting scene.
+}
+
+// ── CPU PBD simulation ──
+
+void IslandDemoState::step_pbd_chain(float dt) {
+    // Pin node 0 to follow the player
+    pbd_nodes_[0].position = character_origin_ + glm::vec3(3.0f, 8.0f, 0.0f);
+    pbd_nodes_[0].prev_position = pbd_nodes_[0].position;
+
+    float ground_y = character_origin_.y - 2.0f;
+
+    // Verlet integration for free nodes
+    for (int i = 0; i < kPbdNodeCount; ++i) {
+        if (pbd_nodes_[i].inv_mass <= 0.0f) continue;
+
+        glm::vec3 pos = pbd_nodes_[i].position;
+        glm::vec3 prev = pbd_nodes_[i].prev_position;
+        glm::vec3 vel = (pos - prev) * kPbdDamping;
+        glm::vec3 accel(0.0f, kPbdGravity, 0.0f);
+
+        pbd_nodes_[i].prev_position = pos;
+        pbd_nodes_[i].position = pos + vel + accel * dt * dt;
+
+        // Ground collision
+        if (pbd_nodes_[i].position.y < ground_y) {
+            pbd_nodes_[i].position.y = ground_y;
+            if (pbd_nodes_[i].prev_position.y > ground_y) {
+                pbd_nodes_[i].prev_position.y =
+                    ground_y + (pbd_nodes_[i].prev_position.y - ground_y) * 0.3f;
+            }
+        }
+    }
+
+    // Constraint projection
+    for (int iter = 0; iter < kPbdIterations; ++iter) {
+        for (int li = 0; li < kPbdLinkCount; ++li) {
+            const auto& link = pbd_links_[li];
+            auto& na = pbd_nodes_[link.a];
+            auto& nb = pbd_nodes_[link.b];
+
+            glm::vec3 delta = nb.position - na.position;
+            float dist = glm::length(delta);
+            if (dist < 1e-6f) continue;
+
+            float error = (dist - link.rest_length) / dist;
+            glm::vec3 correction = delta * error * link.stiffness / static_cast<float>(kPbdIterations);
+
+            float w_sum = na.inv_mass + nb.inv_mass;
+            if (w_sum < 1e-6f) continue;
+
+            if (na.inv_mass > 0.0f)
+                na.position += correction * (na.inv_mass / w_sum);
+            if (nb.inv_mass > 0.0f)
+                nb.position -= correction * (nb.inv_mass / w_sum);
+        }
+    }
+
+    // Update velocities
+    for (int i = 0; i < kPbdNodeCount; ++i) {
+        pbd_nodes_[i].velocity =
+            (pbd_nodes_[i].position - pbd_nodes_[i].prev_position) / std::max(dt, 1e-6f);
+    }
+}
+
+// ── PBD visual gather ──
+
+void IslandDemoState::gather_pbd_chain(Renderer& renderer) {
+    std::vector<Gaussian> buf;
+    buf.reserve(120);
+
+    uint32_t seed = 0;
+
+    // --- Orb nodes ---
+    for (int ni = 0; ni < kPbdNodeCount; ++ni) {
+        const auto& node = pbd_nodes_[ni];
+        float speed = glm::length(node.velocity);
+        glm::vec3 center = node.position;
+
+        // Core (5 Gaussians)
+        for (int i = 0; i < 5; ++i) {
+            Gaussian g{};
+            g.position = center + det_offset(seed++, 0.1f);
+            g.scale = glm::vec3(0.3f);
+            g.rotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
+            g.color = glm::vec3(1.0f, 0.85f, 0.3f);
+            g.opacity = 0.95f;
+            g.emission = 3.0f + speed * 0.3f;
+            buf.push_back(g);
+        }
+
+        // Mid layer (8 Gaussians)
+        for (int i = 0; i < 8; ++i) {
+            Gaussian g{};
+            g.position = center + det_offset(seed++, 0.3f);
+            g.scale = glm::vec3(0.5f);
+            g.rotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
+            g.color = glm::vec3(1.0f, 0.6f, 0.15f);
+            g.opacity = 0.7f;
+            g.emission = 1.0f;
+            buf.push_back(g);
+        }
+
+        // Halo (12 Gaussians)
+        for (int i = 0; i < 12; ++i) {
+            Gaussian g{};
+            g.position = center + det_offset(seed++, 0.6f);
+            g.scale = glm::vec3(0.9f);
+            g.rotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
+            g.color = glm::vec3(1.0f, 0.9f, 0.7f);
+            g.opacity = 0.25f;
+            g.emission = 0.3f;
+            buf.push_back(g);
+        }
+    }
+
+    // --- Rope segments ---
+    for (int li = 0; li < kPbdLinkCount; ++li) {
+        const auto& link = pbd_links_[li];
+        glm::vec3 pa = pbd_nodes_[link.a].position;
+        glm::vec3 pb = pbd_nodes_[link.b].position;
+
+        constexpr int kRopeCount = 15;
+        for (int i = 0; i < kRopeCount; ++i) {
+            float t = static_cast<float>(i + 1) / static_cast<float>(kRopeCount + 1);
+            Gaussian g{};
+            g.position = glm::mix(pa, pb, t);
+            g.scale = glm::vec3(0.15f);
+            g.rotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
+            g.color = glm::vec3(1.0f, 0.7f, 0.2f);
+            g.opacity = 0.6f * (1.0f - 2.0f * std::abs(t - 0.5f));
+            g.emission = 0.5f;
+            buf.push_back(g);
+        }
+    }
+
+    renderer.append_dynamic_gaussians(buf.data(), static_cast<uint32_t>(buf.size()));
 }
 
 // ── build_draw_lists (debug HUD) ──

@@ -97,6 +97,7 @@ public:
     void add_gs_particle_emitter(const GsEmitterConfig& config);
     void clear_gs_particle_emitters();
     std::vector<GaussianParticleEmitter>& gs_particle_emitters() { return gs_particle_emitters_; }
+    void append_dynamic_gaussians(const Gaussian* data, uint32_t count);
 
     // Gaussian animator (animate existing scene Gaussians)
     GaussianAnimator& gs_animator() { return gs_animator_; }
@@ -234,6 +235,7 @@ private:
     GsChunkGrid gs_chunk_grid_;
     std::vector<Gaussian> gs_static_buffer_;
     std::vector<Gaussian> gs_dynamic_buffer_;
+    std::vector<Gaussian> gs_pending_dynamics_;
     glm::mat4 gs_prev_view_{0.0f};  // for camera dirty detection
     bool gs_static_force_dirty_ = false;
     std::vector<GaussianParticleEmitter> gs_particle_emitters_;
