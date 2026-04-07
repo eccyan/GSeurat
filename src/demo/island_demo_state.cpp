@@ -159,11 +159,12 @@ void IslandDemoState::on_enter(AppBase& app) {
             rails.push_back(rail);
         }
 
+        size_t rail_count = rails.size();
         camera_zone_system_->load_from_data(
             std::move(volumes), cz.triggers, std::move(rails), cz.default_params);
 
         std::fprintf(stderr, "[IslandDemo] Camera zone system loaded: %d volumes, %zu triggers, %zu rails\n",
-                     next_zone_id, cz.triggers.size(), rails.size());
+                     next_zone_id, cz.triggers.size(), rail_count);
     }
 
     // Determine player start position
@@ -694,6 +695,12 @@ void IslandDemoState::update_camera(AppBase& app, float dt) {
         camera_zone_system_->update(dt, player_pos, player_velocity_, input);
 
         auto state = camera_zone_system_->current_state();
+
+        // Guard against degenerate lookAt (position == target → NaN)
+        if (glm::length(state.position - state.target) < 0.001f) {
+            state.position = state.target + glm::vec3(0, 5, -10);
+        }
+
         glm::mat4 view = glm::lookAt(state.position, state.target, state.up);
         glm::mat4 proj = glm::perspective(
             glm::radians(state.fov), 1280.0f / 720.0f, 0.1f, 1000.0f);
