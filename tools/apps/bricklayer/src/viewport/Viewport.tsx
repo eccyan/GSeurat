@@ -14,6 +14,9 @@ import { GsAnimationMarkers } from './GsAnimationMarkers.js';
 import { VfxInstanceMarkers } from './VfxInstanceMarkers.js';
 import { VfxRenderer } from './VfxRenderer.js';
 import { PlayerMarker } from './PlayerMarker.js';
+import { CameraZoneMarkers } from './CameraZoneMarkers.js';
+import { CameraRailMarkers } from './CameraRailMarkers.js';
+import { CameraFrustumGizmo } from './CameraFrustumGizmo.js';
 import { CollisionOverlay } from './CollisionOverlay.js';
 import { useSceneStore } from '../store/useSceneStore.js';
 
@@ -303,6 +306,9 @@ function SceneContent() {
       <VfxInstanceMarkers />
       <VfxRenderer />
       <PlayerMarker />
+      <CameraZoneMarkers />
+      <CameraRailMarkers />
+      <CameraFrustumGizmo />
       <CollisionOverlay />
       <TeleportPlane />
       <GrabPlane />
