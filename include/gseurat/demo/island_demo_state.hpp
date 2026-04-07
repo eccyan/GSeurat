@@ -51,6 +51,12 @@ private:
     float facing_angle_ = 0.0f;  // character facing direction (independent of camera)
     glm::quat character_rotation_{1.0f, 0.0f, 0.0f, 0.0f};
 
+    // Jump state (parabolic Y arc)
+    bool jumping_ = false;
+    float jump_time_ = 0.0f;
+    static constexpr float kJumpDuration = 0.8f;  // matches jump clip duration
+    static constexpr float kJumpHeight = 4.0f;    // peak height in world units
+
     // Character Gaussians (for walk animation bone transforms)
     bool character_spawned_ = false;
     uint32_t debug_frame_ = 0;
@@ -65,9 +71,32 @@ private:
         glm::vec3 spawn_pos{0.0f};
         uint32_t bone_index = 0;
         float squish_phase = 0.0f;  // per-slime animation phase offset
+        // Slime jump state
+        bool slime_jumping = false;
+        float slime_jump_time = 0.0f;
+        float slime_jump_cooldown = 0.0f;  // time until next possible jump
     };
     std::vector<NpcInfo> npc_infos_;
     uint32_t next_bone_index_ = 0;
+    static constexpr float kSlimeJumpDuration = 0.6f;
+    static constexpr float kSlimeJumpHeight = 2.5f;
+
+    // Knight NPC
+    struct KnightInfo {
+        glm::vec3 spawn_pos{0.0f};
+        glm::vec3 current_pos{0.0f};
+        glm::vec3 walk_target{0.0f};
+        float facing_angle = 0.0f;
+        uint32_t first_bone_index = 0;
+        float anim_cycle_timer = 0.0f;
+        int current_anim = 0;
+    };
+    static constexpr float kKnightSpeed = 8.0f;
+    static constexpr float kKnightPatrolRadius = 12.0f;
+    std::optional<KnightInfo> knight_info_;
+    std::unique_ptr<gseurat::CharacterData> knight_data_;
+    std::unique_ptr<gseurat::BoneAnimationPlayer> knight_anim_player_;
+    std::unique_ptr<gseurat::BoneAnimationStateMachine> knight_anim_sm_;
 
     // Data-driven bone animation
     std::unique_ptr<gseurat::CharacterData> character_data_;

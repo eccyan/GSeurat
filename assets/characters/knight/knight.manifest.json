@@ -140,7 +140,7 @@
     },
     "attack_wind": {
       "right_arm": [
-        -90,
+        -180,
         0,
         -20
       ],
@@ -153,6 +153,11 @@
         0,
         -15,
         0
+      ],
+      "root_position": [
+        0,
+        0,
+        -10
       ]
     },
     "attack_strike": {
@@ -174,6 +179,11 @@
       "head": [
         10,
         10,
+        0
+      ],
+      "root_position": [
+        0,
+        5,
         0
       ]
     },
@@ -294,7 +304,8 @@
           "pose": "rest",
           "easing": "ease-in-out"
         }
-      ]
+      ],
+      "root_motion": true
     },
     "jump": {
       "duration": 1.2,

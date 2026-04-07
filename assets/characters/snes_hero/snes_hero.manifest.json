@@ -139,6 +139,65 @@
         0,
         0
       ]
+    },
+    "jump_up": {
+      "left_arm": [
+        -30,
+        0,
+        -20
+      ],
+      "right_arm": [
+        -30,
+        0,
+        20
+      ],
+      "left_leg": [
+        15,
+        0,
+        0
+      ],
+      "right_leg": [
+        15,
+        0,
+        0
+      ],
+      "cape": [
+        -8,
+        0,
+        0
+      ]
+    },
+    "jump_land": {
+      "left_leg": [
+        20,
+        0,
+        3
+      ],
+      "right_leg": [
+        20,
+        0,
+        -3
+      ],
+      "left_arm": [
+        8,
+        0,
+        -10
+      ],
+      "right_arm": [
+        8,
+        0,
+        10
+      ],
+      "torso": [
+        8,
+        0,
+        0
+      ],
+      "cape": [
+        5,
+        0,
+        0
+      ]
     }
   },
   "animations": {
@@ -183,6 +242,32 @@
         {
           "time": 0.6,
           "pose": "walk_1"
+        }
+      ]
+    },
+    "jump": {
+      "duration": 0.8,
+      "looping": false,
+      "keyframes": [
+        {
+          "time": 0,
+          "pose": "rest"
+        },
+        {
+          "time": 0.1,
+          "pose": "jump_land"
+        },
+        {
+          "time": 0.3,
+          "pose": "jump_up"
+        },
+        {
+          "time": 0.55,
+          "pose": "jump_land"
+        },
+        {
+          "time": 0.8,
+          "pose": "rest"
         }
       ]
     }
