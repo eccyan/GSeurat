@@ -173,6 +173,7 @@ export interface CharacterStoreState {
   removePose: (name: string) => void;
   setSelectedPose: (name: string | null) => void;
   updatePoseRotation: (poseName: string, partId: string, rotation: [number, number, number]) => void;
+  updatePoseRootPosition: (poseName: string, position: [number, number, number]) => void;
   setPreviewPose: (on: boolean) => void;
   importVoxModels: (models: { name: string; voxels: Map<VoxelKey, Voxel> }[]) => void;
   importFromPly: (voxels: Map<VoxelKey, Voxel>, parts: BodyPart[], gridSize: number) => void;
@@ -187,6 +188,7 @@ export interface CharacterStoreState {
   updateKeyframeEasing: (animName: string, index: number, easing: import('./types.js').EasingType) => void;
   updateAnimationDuration: (animName: string, duration: number) => void;
   updateAnimationPlaybackMode: (animName: string, mode: import('./types.js').PlaybackMode) => void;
+  updateAnimationRootMotion: (animName: string, enabled: boolean) => void;
   autoCenterJoint: (partId: string) => void;
   setPlaybackTime: (time: number) => void;
   togglePlayback: () => void;
@@ -501,6 +503,15 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
     set({ characterPoses: poses });
   },
 
+  updatePoseRootPosition: (poseName, position) => {
+    const poses = { ...get().characterPoses };
+    const pose = poses[poseName];
+    if (pose) {
+      poses[poseName] = { ...pose, rootPosition: position };
+    }
+    set({ characterPoses: poses });
+  },
+
   setPreviewPose: (on) => set({ previewPose: on }),
 
   importVoxModels: (models) => {
@@ -630,6 +641,14 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
     const clip = anims[animName];
     if (!clip) return;
     anims[animName] = { ...clip, playbackMode: mode };
+    set({ animations: anims });
+  },
+
+  updateAnimationRootMotion: (animName, enabled) => {
+    const anims = { ...get().animations };
+    const clip = anims[animName];
+    if (!clip) return;
+    anims[animName] = { ...clip, rootMotion: enabled };
     set({ animations: anims });
   },
 
