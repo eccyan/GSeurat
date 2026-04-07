@@ -4,7 +4,7 @@ import { Html, TransformControls } from '@react-three/drei';
 import { useSceneStore } from '../store/useSceneStore.js';
 import type { CameraZoneVolume, CameraZoneTrigger, CameraShape } from '../store/types.js';
 
-function ShapeWireframe({ shape, color }: { shape: CameraShape; color: string }) {
+function ShapeWireframe({ shape, color, opacity = 1 }: { shape: CameraShape; color: string; opacity?: number }) {
   const edgesGeo = useMemo(() => {
     if (shape.type === 'aabb') {
       const [hx, hy, hz] = shape.half_extents ?? [2, 2, 2];
@@ -17,7 +17,7 @@ function ShapeWireframe({ shape, color }: { shape: CameraShape; color: string })
 
   return (
     <lineSegments geometry={edgesGeo}>
-      <lineBasicMaterial color={color} />
+      <lineBasicMaterial color={color} transparent opacity={opacity} />
     </lineSegments>
   );
 }
@@ -50,7 +50,8 @@ function VolumeMarker({ volume, isSelected, onSelect, onMove }: {
 }) {
   const groupRef = useRef<THREE.Group>(null);
   const { shape } = volume;
-  const edgeColor = isSelected ? '#00ffff' : '#00cccc80';
+  const edgeColor = isSelected ? '#00ffff' : '#00cccc';
+  const edgeOpacity = isSelected ? 1.0 : 0.5;
   const center = shape.center;
 
   const hitSize = useMemo(() => {
@@ -68,7 +69,7 @@ function VolumeMarker({ volume, isSelected, onSelect, onMove }: {
         <meshBasicMaterial visible={false} />
       </mesh>
       {/* Wireframe edges */}
-      <ShapeWireframe shape={shape} color={edgeColor} />
+      <ShapeWireframe shape={shape} color={edgeColor} opacity={edgeOpacity} />
       {/* Semi-transparent fill */}
       <ShapeFill shape={shape} />
       {/* Label when selected */}
@@ -111,7 +112,8 @@ function TriggerMarker({ trigger, isSelected, onSelect, onMove }: {
 }) {
   const groupRef = useRef<THREE.Group>(null);
   const { shape } = trigger;
-  const edgeColor = isSelected ? '#ff00ff' : '#cc00cc80';
+  const edgeColor = isSelected ? '#ff00ff' : '#cc00cc';
+  const edgeOpacity = isSelected ? 1.0 : 0.5;
   const center = shape.center;
 
   const hitSize = useMemo(() => {
@@ -139,7 +141,7 @@ function TriggerMarker({ trigger, isSelected, onSelect, onMove }: {
         <meshBasicMaterial visible={false} />
       </mesh>
       {/* Wireframe edges */}
-      <ShapeWireframe shape={shape} color={edgeColor} />
+      <ShapeWireframe shape={shape} color={edgeColor} opacity={edgeOpacity} />
       {/* Semi-transparent fill */}
       <mesh>
         {fillGeo}
