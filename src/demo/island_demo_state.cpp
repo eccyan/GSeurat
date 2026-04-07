@@ -24,6 +24,18 @@
 #include <cstdio>
 #include <string>
 
+namespace {
+// Deterministic offset from index — no frame-to-frame jitter
+glm::vec3 det_offset(uint32_t seed, float radius) {
+    auto h = [](uint32_t n) -> float {
+        n = (n << 13u) ^ n;
+        n = n * (n * n * 15731u + 789221u) + 1376312589u;
+        return static_cast<float>(n & 0x7fffffffu) / static_cast<float>(0x7fffffff) * 2.0f - 1.0f;
+    };
+    return glm::vec3(h(seed), h(seed * 7u + 3u), h(seed * 13u + 17u)) * radius;
+}
+}  // namespace
+
 namespace gseurat {
 
 // ── on_enter ──
@@ -410,6 +422,7 @@ void IslandDemoState::update(AppBase& app, float dt) {
     // PBD chain physics step + visual gather
     if (pbd_chain_active_) {
         step_pbd_chain(dt);
+        gather_pbd_chain(app.renderer());
     }
 
     // Set player position as LOD focus for foveated culling
@@ -946,6 +959,80 @@ void IslandDemoState::step_pbd_chain(float dt) {
         pbd_nodes_[i].velocity =
             (pbd_nodes_[i].position - pbd_nodes_[i].prev_position) / std::max(dt, 1e-6f);
     }
+}
+
+// ── PBD visual gather ──
+
+void IslandDemoState::gather_pbd_chain(Renderer& renderer) {
+    std::vector<Gaussian> buf;
+    buf.reserve(120);
+
+    uint32_t seed = 0;
+
+    // --- Orb nodes ---
+    for (int ni = 0; ni < kPbdNodeCount; ++ni) {
+        const auto& node = pbd_nodes_[ni];
+        float speed = glm::length(node.velocity);
+        glm::vec3 center = node.position;
+
+        // Core (5 Gaussians)
+        for (int i = 0; i < 5; ++i) {
+            Gaussian g{};
+            g.position = center + det_offset(seed++, 0.1f);
+            g.scale = glm::vec3(0.3f);
+            g.rotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
+            g.color = glm::vec3(1.0f, 0.85f, 0.3f);
+            g.opacity = 0.95f;
+            g.emission = 3.0f + speed * 0.3f;
+            buf.push_back(g);
+        }
+
+        // Mid layer (8 Gaussians)
+        for (int i = 0; i < 8; ++i) {
+            Gaussian g{};
+            g.position = center + det_offset(seed++, 0.3f);
+            g.scale = glm::vec3(0.5f);
+            g.rotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
+            g.color = glm::vec3(1.0f, 0.6f, 0.15f);
+            g.opacity = 0.7f;
+            g.emission = 1.0f;
+            buf.push_back(g);
+        }
+
+        // Halo (12 Gaussians)
+        for (int i = 0; i < 12; ++i) {
+            Gaussian g{};
+            g.position = center + det_offset(seed++, 0.6f);
+            g.scale = glm::vec3(0.9f);
+            g.rotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
+            g.color = glm::vec3(1.0f, 0.9f, 0.7f);
+            g.opacity = 0.25f;
+            g.emission = 0.3f;
+            buf.push_back(g);
+        }
+    }
+
+    // --- Rope segments ---
+    for (int li = 0; li < kPbdLinkCount; ++li) {
+        const auto& link = pbd_links_[li];
+        glm::vec3 pa = pbd_nodes_[link.a].position;
+        glm::vec3 pb = pbd_nodes_[link.b].position;
+
+        constexpr int kRopeCount = 15;
+        for (int i = 0; i < kRopeCount; ++i) {
+            float t = static_cast<float>(i + 1) / static_cast<float>(kRopeCount + 1);
+            Gaussian g{};
+            g.position = glm::mix(pa, pb, t);
+            g.scale = glm::vec3(0.15f);
+            g.rotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
+            g.color = glm::vec3(1.0f, 0.7f, 0.2f);
+            g.opacity = 0.6f * (1.0f - 2.0f * std::abs(t - 0.5f));
+            g.emission = 0.5f;
+            buf.push_back(g);
+        }
+    }
+
+    renderer.append_dynamic_gaussians(buf.data(), static_cast<uint32_t>(buf.size()));
 }
 
 // ── build_draw_lists (debug HUD) ──
