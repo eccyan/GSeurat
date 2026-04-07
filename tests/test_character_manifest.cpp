@@ -5,6 +5,7 @@
 #include <cassert>
 #include <cmath>
 #include <cstdio>
+#include <fstream>
 
 static bool near(float a, float b, float eps = 0.001f) {
     return std::fabs(a - b) < eps;
@@ -129,6 +130,66 @@ int main() {
         assert(data.find_clip("nonexistent") == -1);
 
         printf("PASS: Test 3 - find helpers\n");
+    }
+
+    // Test 4: root_position in poses and root_motion in clips
+    {
+        const char* json = R"({
+            "name": "test",
+            "ply_file": "test.ply",
+            "scale": 1.0,
+            "bones": [
+                {"id": "root", "parent": null, "joint": [0, 0, 0]}
+            ],
+            "poses": {
+                "start": {
+                    "root_position": [0, 0, 0],
+                    "root": [0, 0, 0]
+                },
+                "mid": {
+                    "root_position": [0, 0, 1.5],
+                    "root": [0, 15, 0]
+                }
+            },
+            "animations": {
+                "walk": {
+                    "duration": 0.6,
+                    "looping": true,
+                    "root_motion": true,
+                    "keyframes": [
+                        {"time": 0.0, "pose": "start"},
+                        {"time": 0.3, "pose": "mid"},
+                        {"time": 0.6, "pose": "start"}
+                    ]
+                }
+            }
+        })";
+
+        {
+            std::ofstream f("test_root_pos_manifest.json");
+            f << json;
+        }
+
+        auto result = gseurat::load_character_manifest("test_root_pos_manifest.json");
+        assert(result.has_value());
+        auto& data = *result;
+
+        int start_idx = data.find_pose("start");
+        int mid_idx = data.find_pose("mid");
+        assert(start_idx >= 0);
+        assert(mid_idx >= 0);
+        assert(glm::length(data.poses[start_idx].root_position) < 0.001f);
+        assert(std::abs(data.poses[mid_idx].root_position.z - 1.5f) < 0.001f);
+
+        int walk_idx = data.find_clip("walk");
+        assert(walk_idx >= 0);
+        assert(data.clips[walk_idx].root_motion == true);
+
+        gseurat::AnimationClip default_clip;
+        assert(default_clip.root_motion == false);
+
+        std::remove("test_root_pos_manifest.json");
+        printf("PASS: Test 4 - root_position and root_motion\n");
     }
 
     printf("All character manifest tests passed.\n");

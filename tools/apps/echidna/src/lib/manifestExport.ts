@@ -19,6 +19,7 @@ export interface ManifestKeyframe {
 export interface ManifestAnimationClip {
   duration: number;
   looping: boolean;
+  root_motion?: boolean;
   keyframes: ManifestKeyframe[];
 }
 
@@ -27,7 +28,7 @@ export interface CharacterManifest {
   ply_file: string;
   scale: number;
   bones: ManifestBone[];
-  poses: Record<string, Record<string, [number, number, number]>>;
+  poses: Record<string, Record<string, [number, number, number]> & { root_position?: [number, number, number] }>;
   animations: Record<string, ManifestAnimationClip>;
 }
 
@@ -47,14 +48,21 @@ export function buildManifest(
     joint: p.joint,
   }));
 
-  const manifestPoses: Record<string, Record<string, [number, number, number]>> = {};
+  const manifestPoses: Record<string, Record<string, [number, number, number]> & { root_position?: [number, number, number] }> = {};
   for (const [poseName, poseData] of Object.entries(poses)) {
-    manifestPoses[poseName] = { ...poseData.rotations };
+    const manifestPose: Record<string, [number, number, number]> & { root_position?: [number, number, number] } = { ...poseData.rotations };
+    if (
+      poseData.rootPosition &&
+      (poseData.rootPosition[0] !== 0 || poseData.rootPosition[1] !== 0 || poseData.rootPosition[2] !== 0)
+    ) {
+      manifestPose.root_position = poseData.rootPosition;
+    }
+    manifestPoses[poseName] = manifestPose;
   }
 
   const manifestAnimations: Record<string, ManifestAnimationClip> = {};
   for (const [animName, clip] of Object.entries(animations)) {
-    manifestAnimations[animName] = {
+    const manifestClip: ManifestAnimationClip = {
       duration: clip.duration,
       looping: clip.playbackMode !== 'once',
       keyframes: clip.keyframes.map((kf) => {
@@ -75,6 +83,10 @@ export function buildManifest(
         return manifestKf;
       }),
     };
+    if (clip.rootMotion) {
+      manifestClip.root_motion = true;
+    }
+    manifestAnimations[animName] = manifestClip;
   }
 
   return {

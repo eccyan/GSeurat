@@ -78,6 +78,12 @@
     "pose": {
       "type": "object",
       "description": "Per-bone Euler rotations in degrees [rx, ry, rz]. Bones not listed default to [0, 0, 0].",
+      "properties": {
+        "root_position": {
+          "$ref": "#/$defs/vec3",
+          "description": "Root bone world-space translation offset [x, y, z]. Defaults to [0, 0, 0]."
+        }
+      },
       "additionalProperties": {
         "$ref": "#/$defs/vec3"
       }
@@ -95,6 +101,11 @@
           "type": "boolean",
           "default": true,
           "description": "Whether the clip loops when playback reaches the end."
+        },
+        "root_motion": {
+          "type": "boolean",
+          "default": false,
+          "description": "When true, root bone delta drives actor world position."
         },
         "keyframes": {
           "type": "array",

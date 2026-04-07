@@ -75,6 +75,62 @@ int main() {
         printf("PASS: Test 4 - Unregistered state ignored\n");
     }
 
+    // Test 5: state transition resets root motion
+    {
+        CharacterData test_data;
+        test_data.name = "test";
+        test_data.scale = 1.0f;
+
+        BoneData root_bone;
+        root_bone.id = "root";
+        root_bone.parent_index = -1;
+        root_bone.joint = glm::vec3(0.0f);
+        test_data.bones.push_back(root_bone);
+
+        PoseData p0;
+        p0.name = "p0";
+        p0.rotations = {glm::vec3(0.0f)};
+        p0.root_position = glm::vec3(0.0f);
+        test_data.poses.push_back(p0);
+
+        PoseData p1;
+        p1.name = "p1";
+        p1.rotations = {glm::vec3(0.0f)};
+        p1.root_position = glm::vec3(0.0f, 0.0f, 3.0f);
+        test_data.poses.push_back(p1);
+
+        AnimationClip walk;
+        walk.name = "walk";
+        walk.duration = 1.0f;
+        walk.looping = true;
+        walk.root_motion = true;
+        walk.keyframes = {{0.0f, 0}, {1.0f, 1}};
+        test_data.clips.push_back(walk);
+
+        AnimationClip idle;
+        idle.name = "idle";
+        idle.duration = 1.0f;
+        idle.looping = true;
+        idle.root_motion = false;
+        idle.keyframes = {{0.0f, 0}};
+        test_data.clips.push_back(idle);
+
+        BoneAnimationPlayer player(test_data);
+        BoneAnimationStateMachine sm(player);
+        sm.add_state("walk", "walk");
+        sm.add_state("idle", "idle");
+
+        sm.set_state("walk");
+        player.update(0.5f);  // Accumulate some delta
+        assert(std::abs(player.delta_position().z - 1.5f) < 0.2f && "Should accumulate root motion delta");
+
+        // Transition to idle — delta should be zeroed
+        sm.set_state("idle");
+        assert(glm::length(player.delta_position()) < 0.001f && "Delta should be reset on state transition");
+
+        printf("PASS: Test 5 - state transition resets root motion\n");
+    }
+
     printf("All bone animation state machine tests passed.\n");
     return 0;
 }

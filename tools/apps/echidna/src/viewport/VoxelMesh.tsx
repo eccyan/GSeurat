@@ -164,8 +164,47 @@ function OnionGhost({ time, tint, opacity, surfaceEntries, characterParts, chara
   );
 }
 
+/** Interpolate root position from keyframes at a given time. */
+function interpolateRootPosition(
+  keyframes: AnimationKeyframe[],
+  poses: Record<string, PoseData>,
+  time: number,
+): THREE.Vector3 {
+  if (keyframes.length === 0) return new THREE.Vector3();
+
+  let prevKf = keyframes[0];
+  let nextKf = keyframes[keyframes.length - 1];
+
+  for (let i = 0; i < keyframes.length - 1; i++) {
+    if (time >= keyframes[i].time && time < keyframes[i + 1].time) {
+      prevKf = keyframes[i];
+      nextKf = keyframes[i + 1];
+      break;
+    }
+  }
+
+  const fromPose = poses[prevKf.poseName];
+  const toPose = poses[nextKf.poseName];
+  const fromPos = fromPose?.rootPosition ?? [0, 0, 0];
+  const toPos = toPose?.rootPosition ?? [0, 0, 0];
+
+  if (time <= prevKf.time) return new THREE.Vector3(fromPos[0], fromPos[1], fromPos[2]);
+  if (time >= nextKf.time) return new THREE.Vector3(toPos[0], toPos[1], toPos[2]);
+
+  const range = nextKf.time - prevKf.time;
+  const rawT = range > 0 ? (time - prevKf.time) / range : 0;
+  const easedT = applyEasing(prevKf.easing, rawT, prevKf.curve);
+
+  return new THREE.Vector3(
+    fromPos[0] + (toPos[0] - fromPos[0]) * easedT,
+    fromPos[1] + (toPos[1] - fromPos[1]) * easedT,
+    fromPos[2] + (toPos[2] - fromPos[2]) * easedT,
+  );
+}
+
 export function VoxelMesh() {
   const meshRef = useRef<THREE.InstancedMesh>(null!);
+  const groupRef = useRef<THREE.Group>(null!);
   const voxels = useCharacterStore((s) => s.voxels);
   const characterParts = useCharacterStore((s) => s.characterParts);
   const selectedPart = useCharacterStore((s) => s.selectedPart);
@@ -187,17 +226,49 @@ export function VoxelMesh() {
   // Box select state
   const [boxStart, setBoxStart] = useState<[number, number, number] | null>(null);
 
+  // Accumulated root motion state
+  const accRootPos = useRef(new THREE.Vector3());
+  const prevRootPos = useRef(new THREE.Vector3());
+  const rootMotionInitialized = useRef(false);
+
+  // Reset root motion accumulator (on animation change or playback stop)
+  const resetRootMotion = useCallback(() => {
+    accRootPos.current.set(0, 0, 0);
+    prevRootPos.current.set(0, 0, 0);
+    rootMotionInitialized.current = false;
+    if (groupRef.current) {
+      groupRef.current.position.set(0, 0, 0);
+    }
+  }, []);
+
+  // Reset when selected animation changes
+  useEffect(() => {
+    resetRootMotion();
+  }, [selectedAnimation, resetRootMotion]);
+
+  // Reset when playback stops
+  useEffect(() => {
+    if (!isPlaying) {
+      resetRootMotion();
+    }
+  }, [isPlaying, resetRootMotion]);
+
   // Animation playback via useFrame
   useFrame((_, delta) => {
     if (!isPlaying || !selectedAnimation) return;
     const clip = animations[selectedAnimation];
     if (!clip) return;
     const store = useCharacterStore.getState();
-    let newTime = store.playbackTime + delta * store.playbackSpeed;
+    const oldTime = store.playbackTime;
+    let newTime = oldTime + delta * store.playbackSpeed;
 
     const playbackMode = store.playbackMode;
+    let wrapped = false;
     if (playbackMode === 'loop') {
-      if (newTime > clip.duration) newTime = newTime % clip.duration;
+      if (newTime > clip.duration) {
+        newTime = newTime % clip.duration;
+        wrapped = true;
+      }
     } else if (playbackMode === 'ping-pong') {
       // Wrap within 2x duration, reverse direction in second half
       const period = clip.duration * 2;
@@ -211,6 +282,34 @@ export function VoxelMesh() {
       }
     }
     store.setPlaybackTime(newTime);
+
+    // Accumulated root motion
+    if (clip.rootMotion && clip.keyframes.length > 0 && groupRef.current) {
+      const poses = store.characterPoses;
+      const kfs = clip.keyframes;
+      const curPos = interpolateRootPosition(kfs, poses, newTime);
+
+      if (!rootMotionInitialized.current) {
+        // First frame: seed prevRootPos, no delta applied
+        prevRootPos.current.copy(curPos);
+        rootMotionInitialized.current = true;
+      } else {
+        if (wrapped) {
+          // Loop wrap: delta = (end_pos - prev) + (cur - start)
+          const endPos = interpolateRootPosition(kfs, poses, clip.duration);
+          const startPos = interpolateRootPosition(kfs, poses, 0);
+          const delta1 = endPos.clone().sub(prevRootPos.current);
+          const delta2 = curPos.clone().sub(startPos);
+          accRootPos.current.add(delta1).add(delta2);
+        } else {
+          const delta = curPos.clone().sub(prevRootPos.current);
+          accRootPos.current.add(delta);
+        }
+        prevRootPos.current.copy(curPos);
+      }
+
+      groupRef.current.position.copy(accRootPos.current);
+    }
   });
 
   // Compute interpolated pose during animation playback or scrubbing
@@ -528,7 +627,7 @@ export function VoxelMesh() {
   }, [selectedAnimation, animations, playbackTime, onionSkinning]);
 
   return (
-    <group>
+    <group ref={groupRef}>
       <instancedMesh
         key={count}
         ref={meshRef}

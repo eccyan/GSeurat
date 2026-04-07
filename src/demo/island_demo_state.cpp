@@ -18,6 +18,7 @@
 #include <GLFW/glfw3.h>
 
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/quaternion.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -511,6 +512,13 @@ void IslandDemoState::update_player(AppBase& app, float dt) {
         while (diff < -3.14159f) diff += 6.28318f;
         facing_angle_ += diff * std::min(1.0f, 10.0f * dt);
     }
+
+    // Sync rotation quaternion from input-driven facing angle
+    // (only when no root motion clip is active)
+    if (!anim_player_ || anim_player_->current_clip_index() < 0
+        || !character_data_->clips[anim_player_->current_clip_index()].root_motion) {
+        character_rotation_ = glm::angleAxis(facing_angle_, glm::vec3(0.0f, 1.0f, 0.0f));
+    }
 }
 
 // ── Camera follow ──
@@ -799,6 +807,24 @@ void IslandDemoState::update_walk_animation(AppBase& app, float dt) {
         anim_sm_->set_state(speed > 0.1f ? "walk" : "idle");
         anim_player_->update(dt);
 
+        // Root motion hybrid consumer
+        if (anim_player_->current_clip_index() >= 0) {
+            const auto& current_clip = character_data_->clips[anim_player_->current_clip_index()];
+            if (current_clip.root_motion) {
+                // Delta position rotated by current world orientation
+                glm::vec3 world_delta = character_rotation_ * anim_player_->delta_position();
+                character_origin_ += world_delta;
+
+                // Accumulate rotation delta
+                character_rotation_ = glm::normalize(
+                    character_rotation_ * anim_player_->delta_rotation());
+
+                // Sync facing_angle_ for systems that need a scalar angle
+                glm::vec3 forward = character_rotation_ * glm::vec3(0.0f, 0.0f, -1.0f);
+                facing_angle_ = std::atan2(forward.x, -forward.z);
+            }
+        }
+
         // Build world↔model coordinate conversion matrices.
         // During spawning, character Gaussians were placed at:
         //   world = spawn + Ry(pi) * model * S + (0, 2, 0)
@@ -818,10 +844,10 @@ void IslandDemoState::update_walk_animation(AppBase& app, float dt) {
             glm::translate(glm::mat4(1.0f), -(character_spawn_pos_ + y_off));
 
         // to_world: apply current transform (model pos → current world pos)
-        //   = T(origin + y_off) * Ry(facing) * S * Ry(pi)
+        //   = T(origin + y_off) * R(character_rotation_) * S * Ry(pi)
         glm::mat4 to_world =
             glm::translate(glm::mat4(1.0f), character_origin_ + y_off) *
-            glm::rotate(glm::mat4(1.0f), facing_angle_, {0, 1, 0}) *
+            glm::mat4_cast(character_rotation_) *
             glm::scale(glm::mat4(1.0f), scale_vec) *
             glm::rotate(glm::mat4(1.0f), glm::pi<float>(), {0, 1, 0});
 
@@ -879,7 +905,7 @@ void IslandDemoState::update_walk_animation(AppBase& app, float dt) {
         glm::vec3 spawn = character_spawn_pos_;
         glm::mat4 root_rotate =
             glm::translate(glm::mat4(1.0f), spawn) *
-            glm::rotate(glm::mat4(1.0f), facing_angle_, {0, 1, 0}) *
+            glm::mat4_cast(character_rotation_) *
             glm::translate(glm::mat4(1.0f), -spawn);
         glm::mat4 root_xform = root_translate * root_rotate;
 

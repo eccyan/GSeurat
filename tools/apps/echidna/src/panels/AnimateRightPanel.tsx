@@ -117,6 +117,8 @@ function KeyframeEditor() {
   const updateKeyframeEasing = useCharacterStore((s) => s.updateKeyframeEasing);
   const updateAnimationDuration = useCharacterStore((s) => s.updateAnimationDuration);
   const updatePoseRotation = useCharacterStore((s) => s.updatePoseRotation);
+  const updatePoseRootPosition = useCharacterStore((s) => s.updatePoseRootPosition);
+  const selectedPart = useCharacterStore((s) => s.selectedPart);
   const addPose = useCharacterStore((s) => s.addPose);
 
   const [newPoseName, setNewPoseName] = useState('');
@@ -223,6 +225,36 @@ function KeyframeEditor() {
           </button>
         </div>
       ))}
+
+      {/* Root Position — only shown for first root bone */}
+      {currentPose && currentKf && (() => {
+        const firstRootPart = parts.find((p) => p.parent === null);
+        if (!firstRootPart || selectedPart !== firstRootPart.id) return null;
+        const rootPos: [number, number, number] = currentPose.rootPosition ?? [0, 0, 0];
+        return (
+          <div style={{ marginTop: 8 }}>
+            <div style={styles.label}>Root Position</div>
+            <div style={styles.row}>
+              {(['X', 'Y', 'Z'] as const).map((axis, i) => (
+                <React.Fragment key={axis}>
+                  <span style={{ color: '#666', fontSize: 10 }}>{axis}</span>
+                  <input
+                    type="number"
+                    style={styles.numInput}
+                    value={rootPos[i]}
+                    step={0.1}
+                    onChange={(e) => {
+                      const next: [number, number, number] = [...rootPos];
+                      next[i] = Number(e.target.value);
+                      updatePoseRootPosition(currentKf.poseName, next);
+                    }}
+                  />
+                </React.Fragment>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Per-bone rotations for current keyframe */}
       {currentPose && currentKf && (

@@ -19,6 +19,8 @@ export interface BodyPart {
 export interface PoseData {
   /** Per-part euler rotations in degrees [rx, ry, rz] */
   rotations: Record<string, [number, number, number]>;
+  /** Root bone world-space translation offset [x, y, z] */
+  rootPosition?: [number, number, number];
 }
 
 export type ToolType =
@@ -51,6 +53,8 @@ export interface AnimationClip {
   keyframes: AnimationKeyframe[];
   duration: number;
   playbackMode: PlaybackMode;
+  /** When true, root bone delta drives actor world position */
+  rootMotion?: boolean;
 }
 
 // ── App mode ──

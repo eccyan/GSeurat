@@ -70,6 +70,7 @@ export function Timeline() {
   const setPlaybackSpeed = useCharacterStore((s) => s.setPlaybackSpeed);
   const setPlaybackMode = useCharacterStore((s) => s.setPlaybackMode);
   const setOnionSkinning = useCharacterStore((s) => s.setOnionSkinning);
+  const updateAnimationRootMotion = useCharacterStore((s) => s.updateAnimationRootMotion);
 
   const clip = selectedAnimation ? animations[selectedAnimation] : null;
   const duration = clip?.duration ?? 1;
@@ -180,6 +181,15 @@ export function Timeline() {
         >
           Onion
         </button>
+        {/* Root Motion toggle */}
+        <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#aaa', cursor: 'pointer' }}>
+          <input
+            type="checkbox"
+            checked={clip.rootMotion ?? false}
+            onChange={e => updateAnimationRootMotion(selectedAnimation, e.target.checked)}
+          />
+          Root Motion
+        </label>
       </div>
 
       <div

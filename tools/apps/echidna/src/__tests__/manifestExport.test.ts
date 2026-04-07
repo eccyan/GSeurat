@@ -208,3 +208,64 @@ describe('buildManifest', () => {
     expect(manifest.animations['pingpong_anim'].looping).toBe(true);
   });
 });
+
+describe('root motion export', () => {
+  it('exports root_position when pose has rootPosition', () => {
+    const poses: Record<string, PoseData> = {
+      walk_1: {
+        rotations: { torso: [0, 0, 0] },
+        rootPosition: [0, 0, 1.5],
+      },
+    };
+    const manifest = buildManifest('char', 'char.ply', 1.0, mockParts, poses, {});
+    expect(manifest.poses['walk_1']['root_position']).toEqual([0, 0, 1.5]);
+  });
+
+  it('omits root_position when rootPosition is undefined', () => {
+    const poses: Record<string, PoseData> = {
+      idle: {
+        rotations: { torso: [0, 0, 0] },
+      },
+    };
+    const manifest = buildManifest('char', 'char.ply', 1.0, mockParts, poses, {});
+    expect(manifest.poses['idle']).not.toHaveProperty('root_position');
+  });
+
+  it('omits root_position when all components are zero', () => {
+    const poses: Record<string, PoseData> = {
+      still: {
+        rotations: { torso: [0, 0, 0] },
+        rootPosition: [0, 0, 0],
+      },
+    };
+    const manifest = buildManifest('char', 'char.ply', 1.0, mockParts, poses, {});
+    expect(manifest.poses['still']).not.toHaveProperty('root_position');
+  });
+
+  it('exports root_motion flag when animation has rootMotion=true', () => {
+    const anims: Record<string, AnimationClip> = {
+      walk_cycle: {
+        name: 'walk_cycle',
+        duration: 1.0,
+        playbackMode: 'loop',
+        rootMotion: true,
+        keyframes: [{ time: 0, poseName: 'idle', easing: 'step' as const }],
+      },
+    };
+    const manifest = buildManifest('char', 'char.ply', 1.0, mockParts, mockPoses, anims);
+    expect(manifest.animations['walk_cycle'].root_motion).toBe(true);
+  });
+
+  it('omits root_motion flag when animation has rootMotion=false', () => {
+    const anims: Record<string, AnimationClip> = {
+      wave_anim: {
+        name: 'wave_anim',
+        duration: 1.0,
+        playbackMode: 'loop',
+        keyframes: [{ time: 0, poseName: 'idle', easing: 'step' as const }],
+      },
+    };
+    const manifest = buildManifest('char', 'char.ply', 1.0, mockParts, mockPoses, anims);
+    expect(manifest.animations['wave_anim']).not.toHaveProperty('root_motion');
+  });
+});
