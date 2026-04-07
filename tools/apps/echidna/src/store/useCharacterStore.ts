@@ -140,7 +140,7 @@ export interface CharacterStoreState {
 
   // Actions – tools
   setTool: (tool: ToolType) => void;
-  setActiveColor: (color: [number, number, number, number]) => void;
+  setActiveColor: (color: [number, number, number, number] | [number, number, number] | string) => void;
   setBrushSize: (size: number) => void;
 
   // Actions – view
@@ -372,7 +372,21 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
 
   // ── Tool actions ──
   setTool: (tool) => set({ activeTool: tool }),
-  setActiveColor: (color) => set({ activeColor: color }),
+  setActiveColor: (color) => {
+    if (typeof color === 'string') {
+      // Convert hex string like "#E8B89D" or "E8B89D" to [r, g, b, a]
+      const hex = color.replace(/^#/, '');
+      const r = parseInt(hex.substring(0, 2), 16) || 0;
+      const g = parseInt(hex.substring(2, 4), 16) || 0;
+      const b = parseInt(hex.substring(4, 6), 16) || 0;
+      const a = hex.length >= 8 ? (parseInt(hex.substring(6, 8), 16) || 255) : get().activeColor[3];
+      set({ activeColor: [r, g, b, a] });
+    } else if (Array.isArray(color) && color.length === 3) {
+      set({ activeColor: [color[0], color[1], color[2], get().activeColor[3]] });
+    } else if (Array.isArray(color) && color.length >= 4) {
+      set({ activeColor: [color[0], color[1], color[2], color[3]] });
+    }
+  },
   setBrushSize: (size) => set({ brushSize: Math.max(1, Math.min(8, size)) }),
 
   // ── View actions ──
