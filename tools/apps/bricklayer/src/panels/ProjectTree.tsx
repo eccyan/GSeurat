@@ -35,6 +35,10 @@ const icons: Record<string, string> = {
   vfx: '\u2605',         // ★
   backgrounds: '\u25A1', // □
   file: '\u25C7',        // ◇
+  camera: '\u25CE',      // ◎
+  volume: '\u25A2',      // ▢
+  trigger: '\u26A1',     // ⚡
+  rail: '\u21C4',        // ⇄
 };
 
 // ── Styles ──
@@ -181,6 +185,15 @@ export function ProjectTree() {
   const updateVfxInstance = useSceneStore((st) => st.updateVfxInstance);
   const removeVfxInstance = useSceneStore((st) => st.removeVfxInstance);
   const collisionGridData = useSceneStore((st) => st.collisionGridData);
+  const cameraVolumes = useSceneStore((st) => st.cameraVolumes);
+  const cameraTriggers = useSceneStore((st) => st.cameraTriggers);
+  const cameraRails = useSceneStore((st) => st.cameraRails);
+  const addCameraVolume = useSceneStore((st) => st.addCameraVolume);
+  const addCameraTrigger = useSceneStore((st) => st.addCameraTrigger);
+  const addCameraRail = useSceneStore((st) => st.addCameraRail);
+  const removeCameraVolume = useSceneStore((st) => st.removeCameraVolume);
+  const removeCameraTrigger = useSceneStore((st) => st.removeCameraTrigger);
+  const removeCameraRail = useSceneStore((st) => st.removeCameraRail);
 
   const [sceneOpen, setSceneOpen] = useState(true);
   const [gameObjOpen, setGameObjOpen] = useState(true);
@@ -189,6 +202,10 @@ export function ProjectTree() {
   const [emitterOpen, setEmitterOpen] = useState(true);
   const [animOpen, setAnimOpen] = useState(true);
   const [vfxOpen, setVfxOpen] = useState(true);
+  const [cameraOpen, setCameraOpen] = useState(false);
+  const [camVolOpen, setCamVolOpen] = useState(true);
+  const [camTrigOpen, setCamTrigOpen] = useState(true);
+  const [camRailOpen, setCamRailOpen] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   const click = (node: NavigationNode) => {
@@ -441,6 +458,78 @@ export function ProjectTree() {
                 </>}
               />
             ))}
+          </TreeNode>
+
+          {/* Camera Zones */}
+          <TreeNode
+            icon={icons.camera} label="Camera" count={cameraVolumes.length + cameraTriggers.length + cameraRails.length}
+            arrow={cameraOpen ? '\u25BE' : '\u25B8'}
+            isActive={isActive({ kind: 'scene_category', category: 'camera_zones' as any })}
+            onClick={() => { setCameraOpen(!cameraOpen); click({ kind: 'scene_category', category: 'camera_zones' as any }); }}
+            isOpen={cameraOpen}
+          >
+            {/* Volumes */}
+            <TreeNode
+              icon={icons.volume} label="Volumes" count={cameraVolumes.length}
+              arrow={camVolOpen ? '\u25BE' : '\u25B8'}
+              isActive={false}
+              onClick={() => setCamVolOpen(!camVolOpen)}
+              actions={addBtn(() => addCameraVolume(getCameraTarget().xyz))}
+              isOpen={camVolOpen}
+            >
+              {cameraVolumes.map((v) => (
+                <TreeNode
+                  key={v.id}
+                  icon={icons.volume}
+                  label={v.name || v.id.slice(0, 12)}
+                  isActive={isActive({ kind: 'scene_item', entityType: 'camera_volume', entityId: v.id })}
+                  onClick={() => click({ kind: 'scene_item', entityType: 'camera_volume', entityId: v.id })}
+                  actions={removeBtn(() => removeCameraVolume(v.id))}
+                />
+              ))}
+            </TreeNode>
+
+            {/* Triggers */}
+            <TreeNode
+              icon={icons.trigger} label="Triggers" count={cameraTriggers.length}
+              arrow={camTrigOpen ? '\u25BE' : '\u25B8'}
+              isActive={false}
+              onClick={() => setCamTrigOpen(!camTrigOpen)}
+              actions={addBtn(() => addCameraTrigger(getCameraTarget().xyz))}
+              isOpen={camTrigOpen}
+            >
+              {cameraTriggers.map((t) => (
+                <TreeNode
+                  key={t.id}
+                  icon={icons.trigger}
+                  label={`${t.from_zone ? t.from_zone : '*'} \u2192 ${t.to_zone}`}
+                  isActive={isActive({ kind: 'scene_item', entityType: 'camera_trigger', entityId: t.id })}
+                  onClick={() => click({ kind: 'scene_item', entityType: 'camera_trigger', entityId: t.id })}
+                  actions={removeBtn(() => removeCameraTrigger(t.id))}
+                />
+              ))}
+            </TreeNode>
+
+            {/* Rails */}
+            <TreeNode
+              icon={icons.rail} label="Rails" count={cameraRails.length}
+              arrow={camRailOpen ? '\u25BE' : '\u25B8'}
+              isActive={false}
+              onClick={() => setCamRailOpen(!camRailOpen)}
+              actions={addBtn(() => addCameraRail())}
+              isOpen={camRailOpen}
+            >
+              {cameraRails.map((r) => (
+                <TreeNode
+                  key={r.id}
+                  icon={icons.rail}
+                  label={r.name || r.id.slice(0, 12)}
+                  isActive={isActive({ kind: 'scene_item', entityType: 'camera_rail', entityId: r.id })}
+                  onClick={() => click({ kind: 'scene_item', entityType: 'camera_rail', entityId: r.id })}
+                  actions={removeBtn(() => removeCameraRail(r.id))}
+                />
+              ))}
+            </TreeNode>
           </TreeNode>
 
           {/* Player */}

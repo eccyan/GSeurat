@@ -14,6 +14,9 @@ import { GsAnimationMarkers } from './GsAnimationMarkers.js';
 import { VfxInstanceMarkers } from './VfxInstanceMarkers.js';
 import { VfxRenderer } from './VfxRenderer.js';
 import { PlayerMarker } from './PlayerMarker.js';
+import { CameraZoneMarkers } from './CameraZoneMarkers.js';
+import { CameraRailMarkers } from './CameraRailMarkers.js';
+import { CameraFrustumGizmo } from './CameraFrustumGizmo.js';
 import { CollisionOverlay } from './CollisionOverlay.js';
 import { useSceneStore } from '../store/useSceneStore.js';
 
@@ -268,7 +271,77 @@ function SceneContent() {
   const showGrid = useSceneStore((s) => s.showGrid);
   const grabMode = useSceneStore((s) => s.grabMode);
   const orbitLocked = useSceneStore((s) => s.orbitLocked);
+  const possessVolumeId = useSceneStore((s) => s.possessVolumeId);
+  const cameraVolumes = useSceneStore((s) => s.cameraVolumes);
+  const cameraRails = useSceneStore((s) => s.cameraRails);
   const controlsRef = useRef<OrbitControlsRef | null>(null);
+
+  // Compute possess mode camera constraints
+  const possessData = React.useMemo(() => {
+    if (!possessVolumeId) return null;
+    const volume = cameraVolumes.find((v) => v.id === possessVolumeId);
+    if (!volume) return null;
+
+    const { params, shape } = volume;
+    const center = shape.center;
+    const offset = params.offset ?? [0, 5, -10];
+    const orbitDist = params.orbit_distance ?? 10;
+
+    // Compute camera position based on mode (same logic as CameraFrustumGizmo)
+    let camPos: [number, number, number];
+    switch (params.mode) {
+      case 'fixed_point': {
+        if (params.fixed_position) {
+          camPos = [...params.fixed_position] as [number, number, number];
+        } else {
+          camPos = [center[0] + offset[0], center[1] + offset[1], center[2] + offset[2] + orbitDist];
+        }
+        break;
+      }
+      case 'rail_follow':
+      case 'cinematic_rail': {
+        if (params.rail_id) {
+          const rail = cameraRails.find((r) => r.id === params.rail_id);
+          if (rail && rail.control_points.length > 0) {
+            camPos = [...rail.control_points[0]] as [number, number, number];
+            break;
+          }
+        }
+        camPos = [center[0] + offset[0], center[1] + offset[1], center[2] + offset[2] + orbitDist];
+        break;
+      }
+      case 'side_scroll': {
+        camPos = [center[0] + offset[0], center[1] + offset[1], center[2] + offset[2]];
+        break;
+      }
+      default: {
+        // free_look: center + offset + orbit at orbit_distance
+        camPos = [center[0] + offset[0], center[1] + offset[1], center[2] + offset[2] + orbitDist];
+        break;
+      }
+    }
+
+    // Convert pitch/yaw limits from degrees to polar/azimuth angles for OrbitControls
+    // OrbitControls polar: 0 = top, π/2 = equator, π = bottom
+    // pitch in degrees: 0 = horizon, positive = up, negative = down
+    // polar = π/2 - pitch_in_radians
+    const pitchMinRad = (params.pitch_min ?? -60) * Math.PI / 180;
+    const pitchMaxRad = (params.pitch_max ?? 10) * Math.PI / 180;
+    const minPolar = Math.PI / 2 - pitchMaxRad;
+    const maxPolar = Math.PI / 2 - pitchMinRad;
+
+    const minAzimuth = (params.yaw_min ?? -180) * Math.PI / 180;
+    const maxAzimuth = (params.yaw_max ?? 180) * Math.PI / 180;
+
+    return {
+      target: center as [number, number, number],
+      camPos,
+      minPolar,
+      maxPolar,
+      minAzimuth,
+      maxAzimuth,
+    };
+  }, [possessVolumeId, cameraVolumes, cameraRails]);
 
   return (
     <>
@@ -303,29 +376,63 @@ function SceneContent() {
       <VfxInstanceMarkers />
       <VfxRenderer />
       <PlayerMarker />
+      <CameraZoneMarkers />
+      <CameraRailMarkers />
+      <CameraFrustumGizmo />
       <CollisionOverlay />
       <TeleportPlane />
       <GrabPlane />
 
-      <OrbitControls
-        ref={(r: OrbitControlsRef | null) => {
-          controlsRef.current = r;
-          orbitControlsRef = r;
-        }}
-        enabled={!grabMode && !orbitLocked}
-        target={[gridWidth / 2, 0, gridDepth / 2]}
-        makeDefault
-        screenSpacePanning
-        mouseButtons={{
-          LEFT: 0,
-          MIDDLE: 1,
-          RIGHT: 2,
-        }}
-        touches={{
-          ONE: 0,
-          TWO: 1,
-        }}
-      />
+      {possessData ? (
+        <>
+          <OrbitControls
+            ref={(r: OrbitControlsRef | null) => {
+              controlsRef.current = r;
+              orbitControlsRef = r;
+            }}
+            enabled={!grabMode}
+            target={possessData.target}
+            minPolarAngle={possessData.minPolar}
+            maxPolarAngle={possessData.maxPolar}
+            minAzimuthAngle={possessData.minAzimuth}
+            maxAzimuthAngle={possessData.maxAzimuth}
+            enableDamping
+            dampingFactor={0.1}
+            makeDefault
+            screenSpacePanning={false}
+            mouseButtons={{
+              LEFT: 0,
+              MIDDLE: 1,
+              RIGHT: 2,
+            }}
+            touches={{
+              ONE: 0,
+              TWO: 1,
+            }}
+          />
+          {/* Banner rendered outside Canvas in Viewport() wrapper */}
+        </>
+      ) : (
+        <OrbitControls
+          ref={(r: OrbitControlsRef | null) => {
+            controlsRef.current = r;
+            orbitControlsRef = r;
+          }}
+          enabled={!grabMode && !orbitLocked}
+          target={[gridWidth / 2, 0, gridDepth / 2]}
+          makeDefault
+          screenSpacePanning
+          mouseButtons={{
+            LEFT: 0,
+            MIDDLE: 1,
+            RIGHT: 2,
+          }}
+          touches={{
+            ONE: 0,
+            TWO: 1,
+          }}
+        />
+      )}
     </>
   );
 }
@@ -333,14 +440,27 @@ function SceneContent() {
 export function Viewport() {
   const gridWidth = useSceneStore((s) => s.gridWidth);
   const gridDepth = useSceneStore((s) => s.gridDepth);
+  const possessVolumeId = useSceneStore((s) => s.possessVolumeId);
 
   return (
-    <Canvas
-      camera={{ position: [gridWidth / 2, 30, gridDepth + 20], fov: 50 }}
-      style={{ background: '#16162a' }}
-      onContextMenu={(e) => e.preventDefault()}
-    >
-      <SceneContent />
-    </Canvas>
+    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+      <Canvas
+        camera={{ position: [gridWidth / 2, 30, gridDepth + 20], fov: 50 }}
+        style={{ background: '#16162a' }}
+        onContextMenu={(e) => e.preventDefault()}
+      >
+        <SceneContent />
+      </Canvas>
+      {possessVolumeId && (
+        <div style={{
+          position: 'absolute', top: 0, left: 0, right: 0,
+          background: 'rgba(0,0,0,0.75)', color: '#00ffff',
+          textAlign: 'center', padding: '8px 0', fontSize: '14px', fontWeight: 'bold',
+          letterSpacing: '1px', zIndex: 10, pointerEvents: 'none',
+        }}>
+          PREVIEW MODE — Press Escape to exit
+        </div>
+      )}
+    </div>
   );
 }

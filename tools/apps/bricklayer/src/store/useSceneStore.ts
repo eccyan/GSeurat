@@ -28,7 +28,12 @@ import type {
   AssetEntry,
   NavigationNode,
   ColorPalette,
+  CameraZoneVolume,
+  CameraZoneTrigger,
+  CameraZoneRail,
+  CameraZoneParams,
 } from './types.js';
+import { DEFAULT_CAMERA_ZONE_PARAMS } from './types.js';
 import { voxelKey, parseKey, floodFill3D, brushPositions } from '../lib/voxelUtils.js';
 import { extractColorsFromImage as extractColorsFromImageData } from '../lib/colorExtract.js';
 
@@ -234,6 +239,13 @@ export interface SceneStoreState {
   gaussianSplat: GaussianSplatConfig;
   collisionGridData: CollisionGridData | null;
   navZoneNames: string[];
+  cameraVolumes: CameraZoneVolume[];
+  cameraTriggers: CameraZoneTrigger[];
+  cameraRails: CameraZoneRail[];
+  cameraDefaultParams: Partial<CameraZoneParams>;
+  cameraShowDebugVolumes: boolean;
+  possessVolumeId: string | null;
+  savedEditorCamera: { position: [number,number,number]; target: [number,number,number] } | null;
 
   // Editor state
   mode: BricklayerMode;
@@ -298,6 +310,22 @@ export interface SceneStoreState {
   addVfxInstance: (data: VfxInstanceData) => void;
   updateVfxInstance: (id: string, patch: Partial<VfxInstanceData>) => void;
   removeVfxInstance: (id: string) => void;
+  addCameraVolume: (position?: [number, number, number]) => void;
+  updateCameraVolume: (id: string, patch: Partial<CameraZoneVolume>) => void;
+  removeCameraVolume: (id: string) => void;
+  addCameraTrigger: (position?: [number, number, number]) => void;
+  updateCameraTrigger: (id: string, patch: Partial<CameraZoneTrigger>) => void;
+  removeCameraTrigger: (id: string) => void;
+  addCameraRail: () => void;
+  updateCameraRail: (id: string, patch: Partial<CameraZoneRail>) => void;
+  removeCameraRail: (id: string) => void;
+  addRailControlPoint: (railId: string, point: [number, number, number]) => void;
+  removeRailControlPoint: (railId: string, index: number) => void;
+  updateRailControlPoint: (railId: string, index: number, point: [number, number, number]) => void;
+  updateCameraDefaultParams: (patch: Partial<CameraZoneParams>) => void;
+  setCameraShowDebugVolumes: (show: boolean) => void;
+  enterPossessMode: (volumeId: string) => void;
+  exitPossessMode: () => void;
   updatePlayer: (patch: Partial<PlayerData>) => void;
   addBackgroundLayer: () => void;
   updateBackgroundLayer: (id: string, patch: Partial<BackgroundLayer>) => void;
@@ -484,6 +512,13 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
   gaussianSplat: defaultGaussianSplat(),
   collisionGridData: null,
   navZoneNames: [],
+  cameraVolumes: [],
+  cameraTriggers: [],
+  cameraRails: [],
+  cameraDefaultParams: {},
+  cameraShowDebugVolumes: false,
+  possessVolumeId: null,
+  savedEditorCamera: null,
 
   mode: 'terrain',
   selectedEntity: null,
@@ -772,6 +807,105 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
   removeVfxInstance: (id) => set({
     vfxInstances: get().vfxInstances.filter((v) => v.id !== id), isDirty: true,
   }),
+
+  // ── Camera Zone actions ──
+  addCameraVolume: (pos?) => {
+    const volumes = get().cameraVolumes;
+    const volume: CameraZoneVolume = {
+      id: genId('camvol'),
+      name: `Volume ${volumes.length + 1}`,
+      shape: {
+        type: 'aabb',
+        center: pos ?? [0, 2, 0],
+        half_extents: [5, 5, 5],
+      },
+      params: { ...DEFAULT_CAMERA_ZONE_PARAMS },
+    };
+    set({ cameraVolumes: [...volumes, volume], isDirty: true });
+  },
+  updateCameraVolume: (id, patch) => set({
+    cameraVolumes: get().cameraVolumes.map((v) => (v.id === id ? { ...v, ...patch } : v)), isDirty: true,
+  }),
+  removeCameraVolume: (id) => set({
+    cameraVolumes: get().cameraVolumes.filter((v) => v.id !== id), isDirty: true,
+  }),
+
+  addCameraTrigger: (pos?) => {
+    const trigger: CameraZoneTrigger = {
+      id: genId('camtrig'),
+      shape: {
+        type: 'aabb',
+        center: pos ?? [0, 2, 0],
+        half_extents: [1, 3, 3],
+      },
+      to_zone: '',
+      blend_override: -1,
+    };
+    set({ cameraTriggers: [...get().cameraTriggers, trigger], isDirty: true });
+  },
+  updateCameraTrigger: (id, patch) => set({
+    cameraTriggers: get().cameraTriggers.map((t) => (t.id === id ? { ...t, ...patch } : t)), isDirty: true,
+  }),
+  removeCameraTrigger: (id) => set({
+    cameraTriggers: get().cameraTriggers.filter((t) => t.id !== id), isDirty: true,
+  }),
+
+  addCameraRail: () => {
+    const rails = get().cameraRails;
+    const rail: CameraZoneRail = {
+      id: genId('camrail'),
+      name: `Rail ${rails.length + 1}`,
+      control_points: [
+        [0, 5, -10],
+        [0, 5, 0],
+        [0, 5, 10],
+      ],
+    };
+    set({ cameraRails: [...rails, rail], isDirty: true });
+  },
+  updateCameraRail: (id, patch) => set({
+    cameraRails: get().cameraRails.map((r) => (r.id === id ? { ...r, ...patch } : r)), isDirty: true,
+  }),
+  removeCameraRail: (id) => set({
+    cameraRails: get().cameraRails.filter((r) => r.id !== id), isDirty: true,
+  }),
+  addRailControlPoint: (railId, point) => set({
+    cameraRails: get().cameraRails.map((r) =>
+      r.id === railId ? { ...r, control_points: [...r.control_points, point] } : r
+    ), isDirty: true,
+  }),
+  removeRailControlPoint: (railId, index) => set({
+    cameraRails: get().cameraRails.map((r) =>
+      r.id === railId
+        ? { ...r, control_points: r.control_points.filter((_, i) => i !== index) }
+        : r
+    ), isDirty: true,
+  }),
+  updateRailControlPoint: (railId, index, point) => set({
+    cameraRails: get().cameraRails.map((r) =>
+      r.id === railId
+        ? { ...r, control_points: r.control_points.map((p, i) => (i === index ? point : p)) }
+        : r
+    ), isDirty: true,
+  }),
+
+  updateCameraDefaultParams: (patch) => set({
+    cameraDefaultParams: { ...get().cameraDefaultParams, ...patch }, isDirty: true,
+  }),
+  setCameraShowDebugVolumes: (show) => set({ cameraShowDebugVolumes: show }),
+
+  enterPossessMode: (volumeId) => {
+    const s = get();
+    const camera = s.gaussianSplat.camera;
+    set({
+      possessVolumeId: volumeId,
+      savedEditorCamera: {
+        position: [...camera.position] as [number, number, number],
+        target: [...camera.target] as [number, number, number],
+      },
+    });
+  },
+  exitPossessMode: () => set({ possessVolumeId: null, savedEditorCamera: null }),
 
   updatePlayer: (patch) => set({ player: { ...get().player, ...patch }, isDirty: true }),
 
@@ -1165,6 +1299,11 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
         gsParticleEmitters: s.gsParticleEmitters,
         gsAnimations: s.gsAnimations,
         vfxInstances: s.vfxInstances.length > 0 ? s.vfxInstances : undefined,
+        cameraVolumes: s.cameraVolumes.length > 0 ? s.cameraVolumes : undefined,
+        cameraTriggers: s.cameraTriggers.length > 0 ? s.cameraTriggers : undefined,
+        cameraRails: s.cameraRails.length > 0 ? s.cameraRails : undefined,
+        cameraDefaultParams: Object.keys(s.cameraDefaultParams).length > 0 ? s.cameraDefaultParams : undefined,
+        cameraShowDebugVolumes: s.cameraShowDebugVolumes || undefined,
       },
     };
   },
@@ -1248,6 +1387,13 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
       gsParticleEmitters: data.scene.gsParticleEmitters ?? [],
       gsAnimations: data.scene.gsAnimations ?? [],
       vfxInstances: data.scene.vfxInstances ?? [],
+      cameraVolumes: data.scene.cameraVolumes ?? [],
+      cameraTriggers: data.scene.cameraTriggers ?? [],
+      cameraRails: data.scene.cameraRails ?? [],
+      cameraDefaultParams: data.scene.cameraDefaultParams ?? {},
+      cameraShowDebugVolumes: data.scene.cameraShowDebugVolumes ?? false,
+      possessVolumeId: null,
+      savedEditorCamera: null,
       player: data.scene.player,
       backgroundLayers: data.scene.backgroundLayers,
       torchEmitter: data.scene.torchEmitter,

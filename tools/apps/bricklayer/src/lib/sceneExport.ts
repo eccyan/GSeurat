@@ -242,5 +242,61 @@ export function exportSceneJson(state: SceneStoreState): object {
     scene.nav_zones = state.navZoneNames;
   }
 
+  // Camera zones
+  const { cameraVolumes, cameraTriggers, cameraRails, cameraDefaultParams, cameraShowDebugVolumes } = state;
+  if (cameraVolumes.length > 0 || cameraTriggers.length > 0 || cameraRails.length > 0) {
+    const cameraZones: Record<string, unknown> = {};
+
+    if (Object.keys(cameraDefaultParams).length > 0) {
+      cameraZones.default_params = cameraDefaultParams;
+    }
+    if (cameraShowDebugVolumes) {
+      cameraZones.show_debug_volumes = true;
+    }
+
+    if (cameraVolumes.length > 0) {
+      cameraZones.volumes = cameraVolumes.map((v) => {
+        const out: Record<string, unknown> = { id: v.id, shape: v.shape };
+        // Only export non-default params
+        const p = v.params;
+        const params: Record<string, unknown> = {};
+        if (p.mode !== 'free_look') params.mode = p.mode;
+        if (p.priority !== 0) params.priority = p.priority;
+        if (p.blend_time !== 1.0) params.blend_time = p.blend_time;
+        if (!p.allow_user_orbit) params.allow_user_orbit = false;
+        if (p.pitch_min !== -60) params.pitch_min = p.pitch_min;
+        if (p.pitch_max !== 10) params.pitch_max = p.pitch_max;
+        if (p.yaw_min !== -180) params.yaw_min = p.yaw_min;
+        if (p.yaw_max !== 180) params.yaw_max = p.yaw_max;
+        if (p.fov !== 45) params.fov = p.fov;
+        if (p.orbit_distance !== 10) params.orbit_distance = p.orbit_distance;
+        if (p.offset[0] !== 0 || p.offset[1] !== 5 || p.offset[2] !== -10) params.offset = p.offset;
+        if (p.fixed_position) params.fixed_position = p.fixed_position;
+        if (p.rail_id) params.rail_id = p.rail_id;
+        if (Object.keys(params).length > 0) out.params = params;
+        return out;
+      });
+    }
+
+    if (cameraTriggers.length > 0) {
+      cameraZones.triggers = cameraTriggers.map((t) => {
+        const out: Record<string, unknown> = { shape: t.shape, to_zone: t.to_zone };
+        if (t.from_zone) out.from_zone = t.from_zone;
+        if (t.blend_override >= 0) out.blend_override = t.blend_override;
+        return out;
+      });
+    }
+
+    if (cameraRails.length > 0) {
+      cameraZones.rails = cameraRails.map((r) => {
+        const out: Record<string, unknown> = { id: r.id, control_points: r.control_points };
+        if (r.target_points && r.target_points.length > 0) out.target_points = r.target_points;
+        return out;
+      });
+    }
+
+    scene.camera_zones = cameraZones;
+  }
+
   return scene;
 }
