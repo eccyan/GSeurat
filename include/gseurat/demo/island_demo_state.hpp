@@ -10,6 +10,7 @@
 #include "gseurat/engine/ecs/types.hpp"
 
 #include <glm/glm.hpp>
+#include <glm/gtc/quaternion.hpp>
 #include <array>
 #include <chrono>
 #include <memory>
@@ -48,6 +49,7 @@ private:
     float walk_anim_time_ = 0.0f;
     float env_anim_time_ = 0.0f;
     float facing_angle_ = 0.0f;  // character facing direction (independent of camera)
+    glm::quat character_rotation_{1.0f, 0.0f, 0.0f, 0.0f};
 
     // Character Gaussians (for walk animation bone transforms)
     bool character_spawned_ = false;
