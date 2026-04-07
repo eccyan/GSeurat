@@ -35,6 +35,10 @@ const icons: Record<string, string> = {
   vfx: '\u2605',         // ★
   backgrounds: '\u25A1', // □
   file: '\u25C7',        // ◇
+  camera: '\u25CE',      // ◎
+  volume: '\u25A2',      // ▢
+  trigger: '\u26A1',     // ⚡
+  rail: '\u21C4',        // ⇄
 };
 
 // ── Styles ──
@@ -458,7 +462,7 @@ export function ProjectTree() {
 
           {/* Camera Zones */}
           <TreeNode
-            icon="\u25A1" label="Camera" count={cameraVolumes.length + cameraTriggers.length + cameraRails.length}
+            icon={icons.camera} label="Camera" count={cameraVolumes.length + cameraTriggers.length + cameraRails.length}
             arrow={cameraOpen ? '\u25BE' : '\u25B8'}
             isActive={isActive({ kind: 'scene_category', category: 'camera_zones' as any })}
             onClick={() => { setCameraOpen(!cameraOpen); click({ kind: 'scene_category', category: 'camera_zones' as any }); }}
@@ -466,7 +470,7 @@ export function ProjectTree() {
           >
             {/* Volumes */}
             <TreeNode
-              icon="\u25A1" label="Volumes" count={cameraVolumes.length}
+              icon={icons.volume} label="Volumes" count={cameraVolumes.length}
               arrow={camVolOpen ? '\u25BE' : '\u25B8'}
               isActive={false}
               onClick={() => setCamVolOpen(!camVolOpen)}
@@ -476,7 +480,7 @@ export function ProjectTree() {
               {cameraVolumes.map((v) => (
                 <TreeNode
                   key={v.id}
-                  icon="\u25A1"
+                  icon={icons.volume}
                   label={v.name || v.id.slice(0, 12)}
                   isActive={isActive({ kind: 'scene_item', entityType: 'camera_volume', entityId: v.id })}
                   onClick={() => click({ kind: 'scene_item', entityType: 'camera_volume', entityId: v.id })}
@@ -487,7 +491,7 @@ export function ProjectTree() {
 
             {/* Triggers */}
             <TreeNode
-              icon="\u25B6" label="Triggers" count={cameraTriggers.length}
+              icon={icons.trigger} label="Triggers" count={cameraTriggers.length}
               arrow={camTrigOpen ? '\u25BE' : '\u25B8'}
               isActive={false}
               onClick={() => setCamTrigOpen(!camTrigOpen)}
@@ -497,7 +501,7 @@ export function ProjectTree() {
               {cameraTriggers.map((t) => (
                 <TreeNode
                   key={t.id}
-                  icon="\u25B6"
+                  icon={icons.trigger}
                   label={`${t.from_zone ? t.from_zone : '*'} \u2192 ${t.to_zone}`}
                   isActive={isActive({ kind: 'scene_item', entityType: 'camera_trigger', entityId: t.id })}
                   onClick={() => click({ kind: 'scene_item', entityType: 'camera_trigger', entityId: t.id })}
@@ -508,7 +512,7 @@ export function ProjectTree() {
 
             {/* Rails */}
             <TreeNode
-              icon="\u21C4" label="Rails" count={cameraRails.length}
+              icon={icons.rail} label="Rails" count={cameraRails.length}
               arrow={camRailOpen ? '\u25BE' : '\u25B8'}
               isActive={false}
               onClick={() => setCamRailOpen(!camRailOpen)}
@@ -518,7 +522,7 @@ export function ProjectTree() {
               {cameraRails.map((r) => (
                 <TreeNode
                   key={r.id}
-                  icon="\u21C4"
+                  icon={icons.rail}
                   label={r.name || r.id.slice(0, 12)}
                   isActive={isActive({ kind: 'scene_item', entityType: 'camera_rail', entityId: r.id })}
                   onClick={() => click({ kind: 'scene_item', entityType: 'camera_rail', entityId: r.id })}

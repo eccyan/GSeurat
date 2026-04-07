@@ -410,16 +410,7 @@ function SceneContent() {
               TWO: 1,
             }}
           />
-          <Html fullscreen style={{ pointerEvents: 'none' }}>
-            <div style={{
-              position: 'absolute', top: 0, left: 0, right: 0,
-              background: 'rgba(0,0,0,0.75)', color: '#00ffff',
-              textAlign: 'center', padding: '8px 0', fontSize: '14px', fontWeight: 'bold',
-              letterSpacing: '1px', zIndex: 1000,
-            }}>
-              PREVIEW MODE — Press Escape to exit
-            </div>
-          </Html>
+          {/* Banner rendered outside Canvas in Viewport() wrapper */}
         </>
       ) : (
         <OrbitControls
@@ -449,14 +440,27 @@ function SceneContent() {
 export function Viewport() {
   const gridWidth = useSceneStore((s) => s.gridWidth);
   const gridDepth = useSceneStore((s) => s.gridDepth);
+  const possessVolumeId = useSceneStore((s) => s.possessVolumeId);
 
   return (
-    <Canvas
-      camera={{ position: [gridWidth / 2, 30, gridDepth + 20], fov: 50 }}
-      style={{ background: '#16162a' }}
-      onContextMenu={(e) => e.preventDefault()}
-    >
-      <SceneContent />
-    </Canvas>
+    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+      <Canvas
+        camera={{ position: [gridWidth / 2, 30, gridDepth + 20], fov: 50 }}
+        style={{ background: '#16162a' }}
+        onContextMenu={(e) => e.preventDefault()}
+      >
+        <SceneContent />
+      </Canvas>
+      {possessVolumeId && (
+        <div style={{
+          position: 'absolute', top: 0, left: 0, right: 0,
+          background: 'rgba(0,0,0,0.75)', color: '#00ffff',
+          textAlign: 'center', padding: '8px 0', fontSize: '14px', fontWeight: 'bold',
+          letterSpacing: '1px', zIndex: 10, pointerEvents: 'none',
+        }}>
+          PREVIEW MODE — Press Escape to exit
+        </div>
+      )}
+    </div>
   );
 }
