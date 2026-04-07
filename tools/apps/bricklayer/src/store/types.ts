@@ -308,6 +308,67 @@ export interface VfxInstanceData {
 }
 
 
+// ── Camera Zone Types (Phase 2) ──
+
+export interface CameraShape {
+  type: 'aabb' | 'sphere';
+  center: [number, number, number];
+  half_extents?: [number, number, number];  // AABB only
+  radius?: number;                           // Sphere only
+}
+
+export interface CameraZoneParams {
+  mode: 'free_look' | 'rail_follow' | 'cinematic_rail' | 'fixed_point' | 'side_scroll';
+  priority: number;
+  blend_time: number;
+  allow_user_orbit: boolean;
+  pitch_min: number;
+  pitch_max: number;
+  yaw_min: number;
+  yaw_max: number;
+  fov: number;
+  orbit_distance: number;
+  offset: [number, number, number];
+  fixed_position?: [number, number, number];
+  rail_id?: string;
+}
+
+export const DEFAULT_CAMERA_ZONE_PARAMS: CameraZoneParams = {
+  mode: 'free_look',
+  priority: 0,
+  blend_time: 1.0,
+  allow_user_orbit: true,
+  pitch_min: -60,
+  pitch_max: 10,
+  yaw_min: -180,
+  yaw_max: 180,
+  fov: 45,
+  orbit_distance: 10,
+  offset: [0, 5, -10],
+};
+
+export interface CameraZoneVolume {
+  id: string;
+  name: string;
+  shape: CameraShape;
+  params: CameraZoneParams;
+}
+
+export interface CameraZoneTrigger {
+  id: string;
+  shape: CameraShape;
+  from_zone?: string;
+  to_zone: string;
+  blend_override: number;
+}
+
+export interface CameraZoneRail {
+  id: string;
+  name: string;
+  control_points: [number, number, number][];
+  target_points?: [number, number, number][];
+}
+
 export interface CollisionGridData {
   width: number;
   height: number;
@@ -399,5 +460,10 @@ export interface BricklayerFile {
     gsParticleEmitters?: GsParticleEmitterData[];
     gsAnimations?: GsAnimationGroupData[];
     vfxInstances?: VfxInstanceData[];
+    cameraVolumes?: CameraZoneVolume[];
+    cameraTriggers?: CameraZoneTrigger[];
+    cameraRails?: CameraZoneRail[];
+    cameraDefaultParams?: Partial<CameraZoneParams>;
+    cameraShowDebugVolumes?: boolean;
   };
 }
