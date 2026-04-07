@@ -281,6 +281,8 @@ Now, the scene loader checks `GameObjectData.pbd` directly. If present, the conf
 
 PBD elements use `bone_index` values 32-63 (see [Index Segmentation](#index-segmentation)). The GS animation system (`GsAnimator`) skips any Gaussian with `bone_index >= 32`, ensuring PBD-driven Gaussians are never double-transformed by both the animation and physics systems.
 
+**Root motion interaction:** The [root motion system](superpowers/specs/2026-04-07-root-motion-design.md) only affects bones 0-31 (bone skinning range). PBD indices 32-63 are entirely unaffected by root motion delta extraction or covariance rotation — the two systems operate on disjoint index ranges with no overlap.
+
 ### Bricklayer UI
 
 The Bricklayer map editor (port 5180) exposes PBD configuration in the game object inspector panel. When a game object has a PLY file, a **PBD Mode** dropdown appears with three options: *None*, *Wind Sway*, and *Physics*. Selecting a mode reveals the relevant parameter fields. Changes are saved into the `pbd` block of the scene JSON.

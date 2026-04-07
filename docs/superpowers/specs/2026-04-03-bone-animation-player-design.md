@@ -361,3 +361,7 @@ Key constraints enforced:
 - Echidna grid expansion (256x256x256)
 - Additional animation clips beyond idle/walk
 - Inverse kinematics
+
+## See Also
+
+- [Root Motion Design](2026-04-07-root-motion-design.md) — extends this animation system with animation-driven world-space movement (per-pose `root_position`, per-frame delta extraction, loop-aware math, Phase 2 covariance rotation)
