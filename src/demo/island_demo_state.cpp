@@ -407,6 +407,11 @@ void IslandDemoState::update(AppBase& app, float dt) {
     // Walk animation always runs (handles character root transform + bone poses)
     update_walk_animation(app, dt);
 
+    // PBD chain physics step + visual gather
+    if (pbd_chain_active_) {
+        step_pbd_chain(dt);
+    }
+
     // Set player position as LOD focus for foveated culling
     app.renderer().set_gs_lod_focus(character_origin_);
 
@@ -879,6 +884,68 @@ void IslandDemoState::update_environment_animation(AppBase& /*app*/, float dt) {
     // Time accumulation only — the actual terrain sway is applied via bone 0
     // in update_walk_animation, creating visible "movement of the dots" across
     // the entire Gaussian Splatting scene.
+}
+
+// ── CPU PBD simulation ──
+
+void IslandDemoState::step_pbd_chain(float dt) {
+    // Pin node 0 to follow the player
+    pbd_nodes_[0].position = character_origin_ + glm::vec3(3.0f, 8.0f, 0.0f);
+    pbd_nodes_[0].prev_position = pbd_nodes_[0].position;
+
+    float ground_y = character_origin_.y - 2.0f;
+
+    // Verlet integration for free nodes
+    for (int i = 0; i < kPbdNodeCount; ++i) {
+        if (pbd_nodes_[i].inv_mass <= 0.0f) continue;
+
+        glm::vec3 pos = pbd_nodes_[i].position;
+        glm::vec3 prev = pbd_nodes_[i].prev_position;
+        glm::vec3 vel = (pos - prev) * kPbdDamping;
+        glm::vec3 accel(0.0f, kPbdGravity, 0.0f);
+
+        pbd_nodes_[i].prev_position = pos;
+        pbd_nodes_[i].position = pos + vel + accel * dt * dt;
+
+        // Ground collision
+        if (pbd_nodes_[i].position.y < ground_y) {
+            pbd_nodes_[i].position.y = ground_y;
+            if (pbd_nodes_[i].prev_position.y > ground_y) {
+                pbd_nodes_[i].prev_position.y =
+                    ground_y + (pbd_nodes_[i].prev_position.y - ground_y) * 0.3f;
+            }
+        }
+    }
+
+    // Constraint projection
+    for (int iter = 0; iter < kPbdIterations; ++iter) {
+        for (int li = 0; li < kPbdLinkCount; ++li) {
+            const auto& link = pbd_links_[li];
+            auto& na = pbd_nodes_[link.a];
+            auto& nb = pbd_nodes_[link.b];
+
+            glm::vec3 delta = nb.position - na.position;
+            float dist = glm::length(delta);
+            if (dist < 1e-6f) continue;
+
+            float error = (dist - link.rest_length) / dist;
+            glm::vec3 correction = delta * error * link.stiffness / static_cast<float>(kPbdIterations);
+
+            float w_sum = na.inv_mass + nb.inv_mass;
+            if (w_sum < 1e-6f) continue;
+
+            if (na.inv_mass > 0.0f)
+                na.position += correction * (na.inv_mass / w_sum);
+            if (nb.inv_mass > 0.0f)
+                nb.position -= correction * (nb.inv_mass / w_sum);
+        }
+    }
+
+    // Update velocities
+    for (int i = 0; i < kPbdNodeCount; ++i) {
+        pbd_nodes_[i].velocity =
+            (pbd_nodes_[i].position - pbd_nodes_[i].prev_position) / std::max(dt, 1e-6f);
+    }
 }
 
 // ── build_draw_lists (debug HUD) ──
