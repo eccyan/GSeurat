@@ -72,7 +72,7 @@ void test_single_volume() {
     defaults.fixed_position = {0, 10, 0};
 
     gseurat::CameraVolume vol;
-    vol.shape = gseurat::AABB{{0, 0, 0}, {5, 5, 5}};
+    vol.shape = gseurat::CamAABB{{0, 0, 0}, {5, 5, 5}};
     vol.params.mode = gseurat::CameraMode::fixed_point;
     vol.params.fov = 90.0f;
     vol.params.fixed_position = {0, 20, 0};
@@ -104,14 +104,14 @@ void test_nested_volumes() {
     defaults.fixed_position = {0, 5, 0};
 
     gseurat::CameraVolume large_vol;
-    large_vol.shape = gseurat::AABB{{0, 0, 0}, {10, 10, 10}};
+    large_vol.shape = gseurat::CamAABB{{0, 0, 0}, {10, 10, 10}};
     large_vol.params.mode = gseurat::CameraMode::fixed_point;
     large_vol.params.fov = 60.0f;
     large_vol.params.fixed_position = {0, 10, 0};
     large_vol.params.priority = 0;
 
     gseurat::CameraVolume small_vol;
-    small_vol.shape = gseurat::AABB{{0, 0, 0}, {2, 2, 2}};
+    small_vol.shape = gseurat::CamAABB{{0, 0, 0}, {2, 2, 2}};
     small_vol.params.mode = gseurat::CameraMode::fixed_point;
     small_vol.params.fov = 120.0f;
     small_vol.params.fixed_position = {0, 30, 0};
@@ -245,7 +245,7 @@ void test_transition() {
 
     // Zone A at origin, Zone B at (20,0,0).
     gseurat::CameraVolume zone_a;
-    zone_a.shape = gseurat::AABB{{0, 0, 0}, {5, 5, 5}};
+    zone_a.shape = gseurat::CamAABB{{0, 0, 0}, {5, 5, 5}};
     zone_a.params.mode = gseurat::CameraMode::fixed_point;
     zone_a.params.fov = 45.0f;
     zone_a.params.fixed_position = {0, 10, 0};
@@ -253,7 +253,7 @@ void test_transition() {
     zone_a.params.priority = 0;
 
     gseurat::CameraVolume zone_b;
-    zone_b.shape = gseurat::AABB{{20, 0, 0}, {5, 5, 5}};
+    zone_b.shape = gseurat::CamAABB{{20, 0, 0}, {5, 5, 5}};
     zone_b.params.mode = gseurat::CameraMode::fixed_point;
     zone_b.params.fov = 90.0f;
     zone_b.params.fixed_position = {20, 20, 0};
@@ -311,7 +311,7 @@ void test_smoothstep_position_blend() {
 
     // vol_a: fixed camera at {-10, 10, 0}, fov=45
     gseurat::CameraVolume vol_a;
-    vol_a.shape = gseurat::AABB{{-10.0f, 0.0f, 0.0f}, {5.0f, 5.0f, 5.0f}};
+    vol_a.shape = gseurat::CamAABB{{-10.0f, 0.0f, 0.0f}, {5.0f, 5.0f, 5.0f}};
     vol_a.params.mode           = gseurat::CameraMode::fixed_point;
     vol_a.params.fov            = 45.0f;
     vol_a.params.fixed_position = {-10.0f, 10.0f, 0.0f};
@@ -320,7 +320,7 @@ void test_smoothstep_position_blend() {
 
     // vol_b: fixed camera at {10, 20, 0}, fov=60
     gseurat::CameraVolume vol_b;
-    vol_b.shape = gseurat::AABB{{10.0f, 0.0f, 0.0f}, {5.0f, 5.0f, 5.0f}};
+    vol_b.shape = gseurat::CamAABB{{10.0f, 0.0f, 0.0f}, {5.0f, 5.0f, 5.0f}};
     vol_b.params.mode           = gseurat::CameraMode::fixed_point;
     vol_b.params.fov            = 60.0f;
     vol_b.params.fixed_position = {10.0f, 20.0f, 0.0f};
@@ -381,7 +381,7 @@ void test_constraint_position_clamp() {
     defaults.blend_time      = 0.0f;  // instant
 
     gseurat::CameraVolume vol;
-    vol.shape = gseurat::AABB{{0.0f, 5.0f, 0.0f}, {10.0f, 5.0f, 10.0f}};
+    vol.shape = gseurat::CamAABB{{0.0f, 5.0f, 0.0f}, {10.0f, 5.0f, 10.0f}};
     vol.params = defaults;
     vol.params.priority = 0;
 
@@ -391,7 +391,7 @@ void test_constraint_position_clamp() {
     converge(sys, {0.0f, 0.0f, 0.0f}, 240);
 
     auto state = sys.current_state();
-    gseurat::AABB box{{0.0f, 5.0f, 0.0f}, {10.0f, 5.0f, 10.0f}};
+    gseurat::CamAABB box{{0.0f, 5.0f, 0.0f}, {10.0f, 5.0f, 10.0f}};
     check(contains(box, state.position),
           "constraint clamp: camera position is inside AABB after convergence");
 }
@@ -413,7 +413,7 @@ void test_constraint_pitch_clamp() {
 
     // Large sphere so position clamping doesn't interfere.
     gseurat::CameraVolume vol;
-    vol.shape = gseurat::Sphere{{0.0f, 0.0f, 0.0f}, 100.0f};
+    vol.shape = gseurat::CamSphere{{0.0f, 0.0f, 0.0f}, 100.0f};
     vol.params = defaults;
     vol.params.priority = 0;
 

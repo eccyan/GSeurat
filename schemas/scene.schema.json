@@ -87,6 +87,49 @@
       "items": { "type": "string" },
       "description": "Navigation zone names (index 0 = default)"
     },
+    "camera_zones": {
+      "type": "object",
+      "properties": {
+        "default_params": { "$ref": "#/definitions/camera_params" },
+        "volumes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "shape"],
+            "properties": {
+              "id": { "type": "string" },
+              "shape": { "$ref": "#/definitions/camera_shape" },
+              "params": { "$ref": "#/definitions/camera_params" }
+            }
+          }
+        },
+        "triggers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["shape", "to_zone"],
+            "properties": {
+              "shape": { "$ref": "#/definitions/camera_shape" },
+              "from_zone": { "type": "string" },
+              "to_zone": { "type": "string" },
+              "blend_override": { "type": "number", "default": -1 }
+            }
+          }
+        },
+        "rails": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "control_points"],
+            "properties": {
+              "id": { "type": "string" },
+              "control_points": { "type": "array", "items": { "$ref": "#/definitions/vec3" }, "minItems": 2 },
+              "target_points": { "type": "array", "items": { "$ref": "#/definitions/vec3" }, "minItems": 2 }
+            }
+          }
+        }
+      }
+    },
     "tilemap": { "type": "object" },
     "tile_animations": { "type": "array" }
   },
@@ -463,6 +506,34 @@
         "tint": { "$ref": "#/definitions/color4" },
         "wall": { "type": "boolean" },
         "wall_y_offset": { "type": "number" }
+      }
+    },
+    "camera_shape": {
+      "type": "object",
+      "required": ["type", "center"],
+      "properties": {
+        "type": { "type": "string", "enum": ["aabb", "sphere"] },
+        "center": { "$ref": "#/definitions/vec3" },
+        "half_extents": { "$ref": "#/definitions/vec3" },
+        "radius": { "type": "number", "minimum": 0 }
+      }
+    },
+    "camera_params": {
+      "type": "object",
+      "properties": {
+        "mode": { "type": "string", "enum": ["free_look", "rail_follow", "cinematic_rail", "fixed_point", "side_scroll"], "default": "free_look" },
+        "priority": { "type": "integer", "default": 0 },
+        "blend_time": { "type": "number", "default": 1.0 },
+        "allow_user_orbit": { "type": "boolean", "default": true },
+        "pitch_min": { "type": "number", "default": -60 },
+        "pitch_max": { "type": "number", "default": 10 },
+        "yaw_min": { "type": "number", "default": -180 },
+        "yaw_max": { "type": "number", "default": 180 },
+        "fov": { "type": "number", "default": 45 },
+        "orbit_distance": { "type": "number", "default": 10 },
+        "offset": { "$ref": "#/definitions/vec3" },
+        "fixed_position": { "$ref": "#/definitions/vec3" },
+        "rail_id": { "type": "string" }
       }
     },
     "emitter_config_2d": {

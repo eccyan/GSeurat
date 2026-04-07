@@ -2,7 +2,7 @@
 
 // camera_volume.hpp — Volume geometry for camera zone triggers.
 //
-// Provides AABB and Sphere shapes with contains/clamp/volume_size helpers,
+// Provides CamAABB and CamSphere shapes with contains/clamp/volume_size helpers,
 // plus CameraVolume and CameraTrigger aggregates used by the camera pipeline.
 
 #include <glm/glm.hpp>
@@ -16,55 +16,55 @@ namespace gseurat {
 
 // ── Axis-Aligned Bounding Box ────────────────────────────────────────────────
 
-struct AABB {
+struct CamAABB {
     glm::vec3 center{0.0f};
     glm::vec3 half_extents{1.0f};
 };
 
 // ── Sphere ───────────────────────────────────────────────────────────────────
 
-struct Sphere {
+struct CamSphere {
     glm::vec3 center{0.0f};
     float radius{1.0f};
 };
 
 // ── VolumeShape variant ──────────────────────────────────────────────────────
 
-using VolumeShape = std::variant<AABB, Sphere>;
+using VolumeShape = std::variant<CamAABB, CamSphere>;
 
-// ── Free functions — AABB ────────────────────────────────────────────────────
+// ── Free functions — CamAABB ────────────────────────────────────────────────────
 
-/// Returns true if point p is inside or on the boundary of the AABB.
-inline bool contains(const AABB& box, const glm::vec3& p) {
+/// Returns true if point p is inside or on the boundary of the CamAABB.
+inline bool contains(const CamAABB& box, const glm::vec3& p) {
     glm::vec3 d = glm::abs(p - box.center);
     return d.x <= box.half_extents.x &&
            d.y <= box.half_extents.y &&
            d.z <= box.half_extents.z;
 }
 
-/// Clamps p to the nearest point on or inside the AABB.
-inline glm::vec3 clamp_to(const AABB& box, const glm::vec3& p) {
+/// Clamps p to the nearest point on or inside the CamAABB.
+inline glm::vec3 clamp_to(const CamAABB& box, const glm::vec3& p) {
     glm::vec3 lo = box.center - box.half_extents;
     glm::vec3 hi = box.center + box.half_extents;
     return glm::clamp(p, lo, hi);
 }
 
-/// Volume measure for an AABB: product of half-extents (proportional to volume).
-inline float volume_size(const AABB& box) {
+/// Volume measure for a CamAABB: product of half-extents (proportional to volume).
+inline float volume_size(const CamAABB& box) {
     return box.half_extents.x * box.half_extents.y * box.half_extents.z;
 }
 
-// ── Free functions — Sphere ──────────────────────────────────────────────────
+// ── Free functions — CamSphere ──────────────────────────────────────────────────
 
 /// Returns true if point p is inside or on the boundary of the sphere.
-inline bool contains(const Sphere& sphere, const glm::vec3& p) {
+inline bool contains(const CamSphere& sphere, const glm::vec3& p) {
     glm::vec3 d = p - sphere.center;
     float dist2 = d.x * d.x + d.y * d.y + d.z * d.z;
     return dist2 <= sphere.radius * sphere.radius;
 }
 
 /// Clamps p to the nearest point on or inside the sphere.
-inline glm::vec3 clamp_to(const Sphere& sphere, const glm::vec3& p) {
+inline glm::vec3 clamp_to(const CamSphere& sphere, const glm::vec3& p) {
     glm::vec3 d = p - sphere.center;
     float dist2 = d.x * d.x + d.y * d.y + d.z * d.z;
     if (dist2 <= sphere.radius * sphere.radius) {
@@ -75,7 +75,7 @@ inline glm::vec3 clamp_to(const Sphere& sphere, const glm::vec3& p) {
 }
 
 /// Volume measure for a sphere: r³ (proportional to volume, omitting π*4/3 constant).
-inline float volume_size(const Sphere& sphere) {
+inline float volume_size(const CamSphere& sphere) {
     return sphere.radius * sphere.radius * sphere.radius;
 }
 

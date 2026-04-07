@@ -53,7 +53,7 @@ void CameraZoneSystem::load_from_data(
     }
 
     // World fallback: huge AABB, priority=-1, uses default params.
-    world_fallback_.shape = AABB{{0.0f, 0.0f, 0.0f}, {1e6f, 1e6f, 1e6f}};
+    world_fallback_.shape = CamAABB{{0.0f, 0.0f, 0.0f}, {1e6f, 1e6f, 1e6f}};
     world_fallback_.params = default_params_;
     world_fallback_.params.priority = -1;
     world_fallback_.cached_volume_size = volume_size(world_fallback_.shape);

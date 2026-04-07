@@ -32,7 +32,7 @@ static bool vec_approx(const glm::vec3& a, const glm::vec3& b, float eps = 0.001
 void test_aabb_contains() {
     std::printf("AABB contains:\n");
 
-    gseurat::AABB box{{0.0f, 0.0f, 0.0f}, {2.0f, 2.0f, 2.0f}};
+    gseurat::CamAABB box{{0.0f, 0.0f, 0.0f}, {2.0f, 2.0f, 2.0f}};
 
     check(gseurat::contains(box, {0.0f, 0.0f, 0.0f}), "center is inside");
     check(gseurat::contains(box, {2.0f, 2.0f, 2.0f}), "positive corner is inside (boundary)");
@@ -47,7 +47,7 @@ void test_aabb_contains() {
 void test_aabb_clamp() {
     std::printf("AABB clamp_to:\n");
 
-    gseurat::AABB box{{0.0f, 0.0f, 0.0f}, {1.0f, 1.0f, 1.0f}};
+    gseurat::CamAABB box{{0.0f, 0.0f, 0.0f}, {1.0f, 1.0f, 1.0f}};
 
     // Inside: unchanged
     glm::vec3 inside{0.5f, 0.5f, 0.5f};
@@ -75,7 +75,7 @@ void test_aabb_clamp() {
 void test_sphere_contains() {
     std::printf("Sphere contains:\n");
 
-    gseurat::Sphere sphere{{0.0f, 0.0f, 0.0f}, 3.0f};
+    gseurat::CamSphere sphere{{0.0f, 0.0f, 0.0f}, 3.0f};
 
     check(gseurat::contains(sphere, {0.0f, 0.0f, 0.0f}), "center is inside");
     check(gseurat::contains(sphere, {3.0f, 0.0f, 0.0f}), "boundary point is inside (radius)");
@@ -94,7 +94,7 @@ void test_sphere_contains() {
 void test_sphere_clamp() {
     std::printf("Sphere clamp_to:\n");
 
-    gseurat::Sphere sphere{{0.0f, 0.0f, 0.0f}, 5.0f};
+    gseurat::CamSphere sphere{{0.0f, 0.0f, 0.0f}, 5.0f};
 
     // Inside: unchanged
     glm::vec3 inside{1.0f, 2.0f, 0.0f};
@@ -121,17 +121,17 @@ void test_volume_size() {
     std::printf("volume_size:\n");
 
     // AABB: product of half_extents
-    gseurat::AABB box{{0.0f, 0.0f, 0.0f}, {2.0f, 3.0f, 4.0f}};
+    gseurat::CamAABB box{{0.0f, 0.0f, 0.0f}, {2.0f, 3.0f, 4.0f}};
     check(approx(gseurat::volume_size(box), 24.0f), "AABB volume_size = 2*3*4 = 24");
 
-    gseurat::AABB unit_box{{0.0f, 0.0f, 0.0f}, {1.0f, 1.0f, 1.0f}};
+    gseurat::CamAABB unit_box{{0.0f, 0.0f, 0.0f}, {1.0f, 1.0f, 1.0f}};
     check(approx(gseurat::volume_size(unit_box), 1.0f), "unit AABB volume_size = 1");
 
     // Sphere: r³
-    gseurat::Sphere sphere{{0.0f, 0.0f, 0.0f}, 3.0f};
+    gseurat::CamSphere sphere{{0.0f, 0.0f, 0.0f}, 3.0f};
     check(approx(gseurat::volume_size(sphere), 27.0f), "Sphere volume_size = 3^3 = 27");
 
-    gseurat::Sphere unit_sphere{{0.0f, 0.0f, 0.0f}, 1.0f};
+    gseurat::CamSphere unit_sphere{{0.0f, 0.0f, 0.0f}, 1.0f};
     check(approx(gseurat::volume_size(unit_sphere), 1.0f), "unit Sphere volume_size = 1");
 }
 
@@ -140,8 +140,8 @@ void test_volume_size() {
 void test_variant_dispatch() {
     std::printf("VolumeShape variant dispatch:\n");
 
-    gseurat::VolumeShape aabb_shape = gseurat::AABB{{0.0f, 0.0f, 0.0f}, {1.0f, 1.0f, 1.0f}};
-    gseurat::VolumeShape sphere_shape = gseurat::Sphere{{0.0f, 0.0f, 0.0f}, 2.0f};
+    gseurat::VolumeShape aabb_shape = gseurat::CamAABB{{0.0f, 0.0f, 0.0f}, {1.0f, 1.0f, 1.0f}};
+    gseurat::VolumeShape sphere_shape = gseurat::CamSphere{{0.0f, 0.0f, 0.0f}, 2.0f};
 
     // contains via variant
     check(gseurat::contains(aabb_shape, {0.5f, 0.0f, 0.0f}), "variant AABB contains inside");
@@ -191,7 +191,7 @@ void test_aabb_off_center() {
 
     // Box centered at (5, 0, 0) with half_extents (2, 2, 2)
     // Covers [3..7, -2..2, -2..2]
-    gseurat::AABB box{{5.0f, 0.0f, 0.0f}, {2.0f, 2.0f, 2.0f}};
+    gseurat::CamAABB box{{5.0f, 0.0f, 0.0f}, {2.0f, 2.0f, 2.0f}};
 
     check(gseurat::contains(box, {5.0f, 0.0f, 0.0f}), "off-center: center inside");
     check(gseurat::contains(box, {4.0f, 1.0f, 0.0f}), "off-center: nearby point inside");
@@ -211,7 +211,7 @@ void test_resolve_zone_priority() {
     // Helper: make a CameraVolume with given priority and cached_volume_size
     auto make_vol = [](int priority, float vol_size) {
         gseurat::CameraVolume v;
-        v.shape = gseurat::AABB{{0.0f, 0.0f, 0.0f}, {1.0f, 1.0f, 1.0f}};
+        v.shape = gseurat::CamAABB{{0.0f, 0.0f, 0.0f}, {1.0f, 1.0f, 1.0f}};
         v.params.priority = priority;
         v.cached_volume_size = vol_size;
         return v;

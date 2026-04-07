@@ -5,6 +5,123 @@
 
 namespace gseurat {
 
+namespace {
+
+CameraMode parse_camera_mode(const std::string& s) {
+    if (s == "rail_follow")    return CameraMode::rail_follow;
+    if (s == "cinematic_rail") return CameraMode::cinematic_rail;
+    if (s == "fixed_point")    return CameraMode::fixed_point;
+    if (s == "side_scroll")    return CameraMode::side_scroll;
+    return CameraMode::free_look;
+}
+
+CameraParams parse_camera_params(const nlohmann::json& j) {
+    CameraParams p;
+    if (j.contains("mode")) p.mode = parse_camera_mode(j["mode"].get<std::string>());
+    p.priority = j.value("priority", 0);
+    p.blend_time = j.value("blend_time", 1.0f);
+    p.allow_user_orbit = j.value("allow_user_orbit", true);
+    p.pitch_min = j.value("pitch_min", -60.0f);
+    p.pitch_max = j.value("pitch_max", 10.0f);
+    p.yaw_min = j.value("yaw_min", -180.0f);
+    p.yaw_max = j.value("yaw_max", 180.0f);
+    p.fov = j.value("fov", 45.0f);
+    p.orbit_distance = j.value("orbit_distance", 10.0f);
+    if (j.contains("offset")) p.offset = SceneLoader::parse_vec3(j["offset"]);
+    if (j.contains("fixed_position")) p.fixed_position = SceneLoader::parse_vec3(j["fixed_position"]);
+    // rail_id resolved later by caller
+    return p;
+}
+
+VolumeShape parse_camera_shape(const nlohmann::json& j) {
+    std::string type = j.value("type", "aabb");
+    glm::vec3 center{0.0f};
+    if (j.contains("center")) center = SceneLoader::parse_vec3(j["center"]);
+    if (type == "sphere") {
+        CamSphere s;
+        s.center = center;
+        s.radius = j.value("radius", 1.0f);
+        return s;
+    }
+    CamAABB box;
+    box.center = center;
+    if (j.contains("half_extents")) box.half_extents = SceneLoader::parse_vec3(j["half_extents"]);
+    return box;
+}
+
+CameraZonesData parse_camera_zones(const nlohmann::json& j) {
+    CameraZonesData data;
+
+    // Default params
+    if (j.contains("default_params")) {
+        data.default_params = parse_camera_params(j["default_params"]);
+    }
+
+    // Rails (parse before volumes so we can resolve rail_id → rail_index)
+    if (j.contains("rails")) {
+        for (const auto& r : j["rails"]) {
+            CameraRail rail;
+            if (r.contains("control_points")) {
+                for (const auto& pt : r["control_points"]) {
+                    rail.path.control_points.push_back(SceneLoader::parse_vec3(pt));
+                }
+            }
+            if (r.contains("target_points")) {
+                for (const auto& pt : r["target_points"]) {
+                    rail.target_path.control_points.push_back(SceneLoader::parse_vec3(pt));
+                }
+                rail.has_target_path = !rail.target_path.control_points.empty();
+            }
+            std::string id = r.value("id", "");
+            data.rails.emplace_back(id, std::move(rail));
+        }
+    }
+
+    // Helper to resolve rail_id string to index
+    auto resolve_rail = [&](const std::string& rail_id) -> int {
+        for (size_t i = 0; i < data.rails.size(); ++i) {
+            if (data.rails[i].first == rail_id) return static_cast<int>(i);
+        }
+        return -1;
+    };
+
+    // Volumes
+    if (j.contains("volumes")) {
+        for (const auto& v : j["volumes"]) {
+            CameraVolume vol;
+            vol.shape = parse_camera_shape(v["shape"]);
+            if (v.contains("params")) {
+                vol.params = parse_camera_params(v["params"]);
+                // Resolve rail_id
+                if (v["params"].contains("rail_id")) {
+                    vol.params.rail_index = resolve_rail(v["params"]["rail_id"].get<std::string>());
+                }
+            }
+            vol.cached_volume_size = volume_size(vol.shape);
+            std::string id = v.value("id", "");
+            data.volumes.emplace_back(id, std::move(vol));
+        }
+    }
+
+    // Triggers
+    if (j.contains("triggers")) {
+        for (const auto& t : j["triggers"]) {
+            CameraTrigger trigger;
+            trigger.shape = parse_camera_shape(t["shape"]);
+            trigger.blend_override = t.value("blend_override", -1.0f);
+            // Store zone refs as strings for later resolution by the caller
+            std::string from_id = t.value("from_zone", "");
+            std::string to_id = t.value("to_zone", "");
+            data.trigger_zone_refs.emplace_back(from_id, to_id);
+            data.triggers.push_back(std::move(trigger));
+        }
+    }
+
+    return data;
+}
+
+}  // anonymous namespace
+
 Direction SceneLoader::parse_direction(const std::string& s) {
     if (s == "up")    return Direction::Up;
     if (s == "down")  return Direction::Down;
@@ -456,6 +573,11 @@ SceneData SceneLoader::from_json(const nlohmann::json& j) {
                 data.day_night.keyframes.push_back(kf);
             }
         }
+    }
+
+    // Camera zones
+    if (j.contains("camera_zones")) {
+        data.camera_zones = parse_camera_zones(j["camera_zones"]);
     }
 
     // Minimap
