@@ -201,7 +201,7 @@ export function Timeline() {
         {/* Time axis marks */}
         <svg width="100%" height="100%" style={{ position: 'absolute', top: 0, left: 0 }}>
           {/* Axis line */}
-          <line x1="12" y1={TRACK_Y - 12} x2="calc(100% - 12)" y2={TRACK_Y - 12} stroke="#333" strokeWidth={1} />
+          <line x1="12" y1={TRACK_Y - 12} x2="99%" y2={TRACK_Y - 12} stroke="#333" strokeWidth={1} />
 
           {/* Keyframe dots */}
           {clip.keyframes.map((kf, i) => {
