@@ -1,0 +1,73 @@
+{
+  "version": 2,
+  "gaussian_splat": {
+    "ply_file": "assets/maps/test_terrain.ply",
+    "camera": { "position": [32, 30, 80], "target": [32, 0, 32], "fov": 45 },
+    "render_width": 320, "render_height": 240
+  },
+  "camera_zones": {
+    "default_params": {
+      "mode": "free_look",
+      "fov": 45,
+      "blend_time": 1.5,
+      "pitch_min": -45,
+      "pitch_max": 15,
+      "orbit_distance": 15
+    },
+    "volumes": [
+      {
+        "id": "open_field",
+        "shape": { "type": "aabb", "center": [32, 5, 32], "half_extents": [25, 15, 25] },
+        "params": {
+          "mode": "free_look",
+          "pitch_min": -60,
+          "pitch_max": 20,
+          "orbit_distance": 18,
+          "fov": 50
+        }
+      },
+      {
+        "id": "narrow_path",
+        "shape": { "type": "aabb", "center": [32, 3, 60], "half_extents": [3, 5, 8] },
+        "params": {
+          "mode": "rail_follow",
+          "rail_id": "path_cam",
+          "allow_user_orbit": false,
+          "fov": 55,
+          "blend_time": 2.0
+        }
+      },
+      {
+        "id": "lookout",
+        "shape": { "type": "sphere", "center": [32, 12, 32], "radius": 5 },
+        "params": {
+          "mode": "fixed_point",
+          "fixed_position": [32, 18, 25],
+          "fov": 65,
+          "priority": 10
+        }
+      }
+    ],
+    "triggers": [
+      {
+        "shape": { "type": "aabb", "center": [32, 3, 52], "half_extents": [3, 5, 1] },
+        "from_zone": "open_field",
+        "to_zone": "narrow_path",
+        "blend_override": 2.5
+      }
+    ],
+    "rails": [
+      {
+        "id": "path_cam",
+        "control_points": [[32, 6, 52], [32, 5, 56], [32, 5, 60], [32, 5, 64], [32, 6, 68]],
+        "target_points": [[32, 2, 52], [32, 2, 56], [32, 2, 60], [32, 2, 64], [32, 2, 68]]
+      }
+    ]
+  },
+  "ambient_color": [0.8, 0.85, 0.95, 1.0],
+  "game_objects": [],
+  "collision": {
+    "width": 64, "height": 64, "cell_size": 1.0,
+    "solid": [], "elevation": []
+  }
+}
