@@ -233,10 +233,13 @@ export function AnimateLeftPanel() {
                 }}
               >
                 <span
-                  style={{ color: '#ddd', cursor: 'pointer', flex: 1 }}
+                  style={{ color: '#ddd', cursor: 'pointer', flex: 1, display: 'flex', alignItems: 'center' }}
                   onClick={() => selectAnimation(name)}
                 >
                   {name}
+                  {animations[name].rootMotion && (
+                    <span style={{ fontSize: 9, color: '#f0a030', marginLeft: 4 }}>RM</span>
+                  )}
                 </span>
                 <button
                   style={styles.btnDanger}
