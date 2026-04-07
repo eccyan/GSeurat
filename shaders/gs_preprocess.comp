@@ -48,8 +48,9 @@ layout(set = 0, binding = 3) uniform Uniforms {
     vec4 light_params;  // xyz = light_dir, w = intensity
     vec4 touch_point;   // xyz = world_pos, w = radius
     vec4 effect_params; // x = water_y, y = fire_y_min, z = fire_y_max, w = strength
-    vec4 effect_params2; // x = pulse_t, y = xray_depth, z = swirl_t, w = unused
+    vec4 effect_params2; // x = pulse_t, y = xray_depth, z = swirl_t, w = burn_t
     vec4 point_light_params; // x = count (unused in preprocess)
+    vec4 actor_rotation; // xyzw = quaternion for root motion world rotation
     vec4 pl_pos_rad[8];
     vec4 pl_color[8];
     vec4 pl_dir_cone[8];  // spot direction + cone (unused in preprocess, must match layout)
@@ -168,6 +169,16 @@ void main() {
         mat3 bone_rot = mat3(bone_tf);
         vec4 bone_q = mat3_to_quat(bone_rot);
         rot_q = quat_mul(bone_q, rot_q);
+
+        // Phase 2: Apply actor world rotation to per-Gaussian covariance.
+        // The bone transform already includes the actor rotation for position,
+        // but individual Gaussian orientations need the rotation applied separately
+        // so covariance matrices physically rotate with the actor.
+        vec4 actor_q = actor_rotation;
+        if (abs(actor_q.w) < 0.999) {  // Skip if identity (w≈1, xyz≈0)
+            actor_q = normalize(actor_q);
+            rot_q = quat_mul(actor_q, rot_q);
+        }
     }
 
     float time = effect_flags.w;
