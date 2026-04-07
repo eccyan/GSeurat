@@ -5,6 +5,7 @@ Run with:
     python3 scripts/test_camera_pipeline.py
 """
 
+import json
 import math
 import os
 import sys
@@ -21,6 +22,7 @@ from camera_pipeline import (
     slerp, quat_to_matrix, matrix_to_quat,
     TrajectoryFrame, parse_colmap, parse_nerfstudio,
     detect_format, load_trajectory,
+    smooth_trajectory, rdp_simplify,
 )
 
 # ---------------------------------------------------------------------------
@@ -244,6 +246,85 @@ check(len(frames_auto_ns) == 10, "load_trajectory(nerfstudio) returns 10 frames"
 
 frames_auto_colmap = load_trajectory(colmap_images)
 check(len(frames_auto_colmap) == 10, "load_trajectory(colmap) returns 10 frames")
+
+# ---------------------------------------------------------------------------
+# Smoothing tests
+# ---------------------------------------------------------------------------
+section("Gaussian smoothing")
+
+# Build 50 frames with sine noise on Y
+_jittery_frames = []
+for _i in range(50):
+    _pos = [float(_i), math.sin(_i * 0.7) * 3.0, 0.0]  # noisy Y
+    _q = quat_normalize([1.0, 0.0, 0.0, 0.0])
+    _jittery_frames.append(TrajectoryFrame(position=_pos, quaternion=_q,
+                                           fov_degrees=50.0, index=_i))
+
+_smoothed = smooth_trajectory(_jittery_frames, sigma=2.0)
+
+check(len(_smoothed) == 50, f"smooth preserves frame count (got {len(_smoothed)})")
+
+# Smoothed Y deviation should be less than original
+_orig_y_dev = max(abs(f.position[1]) for f in _jittery_frames)
+_smooth_y_dev = max(abs(f.position[1]) for f in _smoothed)
+check(_smooth_y_dev < _orig_y_dev,
+      f"smoothed Y deviation ({_smooth_y_dev:.3f}) < original ({_orig_y_dev:.3f})")
+
+# All smoothed quaternions must be unit
+_smooth_qnorms = [math.sqrt(sum(c*c for c in f.quaternion)) for f in _smoothed]
+check(all(approx_eq(n, 1.0, tol=1e-4) for n in _smooth_qnorms),
+      "smooth: all output quaternions are unit")
+
+# Single-frame input
+_single = smooth_trajectory([_jittery_frames[0]], sigma=2.0)
+check(len(_single) == 1, "smooth: single frame → single frame out")
+
+# ---------------------------------------------------------------------------
+# RDP simplification tests
+# ---------------------------------------------------------------------------
+section("RDP simplification")
+
+# Straight line (20 points) → should simplify to ≤ 4 points
+_line_frames = [
+    TrajectoryFrame(position=[float(_i), 0.0, 0.0],
+                    quaternion=[1.0, 0.0, 0.0, 0.0],
+                    fov_degrees=50.0, index=_i)
+    for _i in range(20)
+]
+_line_simplified = rdp_simplify(_line_frames, epsilon=0.01, rotation_weight=2.0, min_points=2)
+check(len(_line_simplified) <= 4,
+      f"RDP straight line simplifies to ≤4 points (got {len(_line_simplified)})")
+
+# L-shaped path (10 along X then 10 along Z) → corner must be preserved
+_l_frames = []
+for _i in range(10):
+    _l_frames.append(TrajectoryFrame(position=[float(_i), 0.0, 0.0],
+                                     quaternion=[1.0, 0.0, 0.0, 0.0],
+                                     fov_degrees=50.0, index=_i))
+for _i in range(1, 11):
+    _l_frames.append(TrajectoryFrame(position=[9.0, 0.0, float(_i)],
+                                     quaternion=[1.0, 0.0, 0.0, 0.0],
+                                     fov_degrees=50.0, index=10 + _i))
+_l_simplified = rdp_simplify(_l_frames, epsilon=0.01, rotation_weight=2.0, min_points=2)
+check(len(_l_simplified) >= 3,
+      f"RDP L-shape keeps ≥3 points (corner preserved) (got {len(_l_simplified)})")
+
+# Rotating-in-place (20 frames, 0 → 180° yaw) → rotation weight should retain ≥4 points
+_rot_frames = []
+for _i in range(20):
+    _angle = math.pi * _i / 19.0  # 0..π yaw
+    _q = quat_normalize([math.cos(_angle / 2), 0.0, math.sin(_angle / 2), 0.0])
+    _rot_frames.append(TrajectoryFrame(position=[0.0, 0.0, 0.0],
+                                       quaternion=_q,
+                                       fov_degrees=50.0, index=_i))
+_rot_simplified = rdp_simplify(_rot_frames, epsilon=0.01, rotation_weight=2.0, min_points=4)
+check(len(_rot_simplified) >= 4,
+      f"RDP rotating-in-place retains ≥4 points (got {len(_rot_simplified)})")
+
+# min_points is respected even on trivial input
+_trivial = rdp_simplify(_line_frames, epsilon=0.001, rotation_weight=0.0, min_points=4)
+check(len(_trivial) >= 4,
+      f"RDP respects min_points=4 (got {len(_trivial)})")
 
 # ---------------------------------------------------------------------------
 # Summary

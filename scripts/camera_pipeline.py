@@ -10,6 +10,9 @@ No external dependencies — stdlib + math only.
 import math
 import json
 import os
+import sys
+import argparse
+import uuid
 from dataclasses import dataclass, field
 
 
@@ -432,6 +435,186 @@ def load_trajectory(path):
     if fmt == "colmap":
         return parse_colmap(path)
     raise ValueError(f"Cannot detect camera format for: {path}")
+
+
+# ---------------------------------------------------------------------------
+# 8. Gaussian smoothing
+# ---------------------------------------------------------------------------
+
+def _gaussian_kernel(sigma, radius=None):
+    """Build a normalized 1D Gaussian kernel."""
+    if radius is None:
+        radius = int(math.ceil(sigma * 3))
+    kernel = [math.exp(-0.5 * (i / sigma) ** 2) for i in range(-radius, radius + 1)]
+    total = sum(kernel)
+    return [k / total for k in kernel]
+
+
+def smooth_trajectory(frames, sigma=2.0):
+    """Apply Gaussian smoothing to positions and orientations.
+
+    Mirror-reflects at boundaries. Preserves frame count.
+
+    Args:
+        frames: List of TrajectoryFrame.
+        sigma: Gaussian sigma (in frame units).
+
+    Returns:
+        New list of TrajectoryFrame with smoothed positions and quaternions.
+    """
+    n = len(frames)
+    if n == 0:
+        return []
+    if n == 1:
+        return [TrajectoryFrame(
+            position=list(frames[0].position),
+            quaternion=list(frames[0].quaternion),
+            fov_degrees=frames[0].fov_degrees,
+            index=frames[0].index,
+        )]
+
+    kernel = _gaussian_kernel(sigma)
+    radius = len(kernel) // 2
+
+    def mirror_index(i, length):
+        """Mirror-reflect index i into [0, length)."""
+        if i < 0:
+            i = -i
+        if i >= length:
+            i = 2 * length - 2 - i
+        # Clamp for edge case (very small n)
+        return max(0, min(length - 1, i))
+
+    result = []
+    for fi in range(n):
+        # Weighted average position
+        pos = [0.0, 0.0, 0.0]
+        for ki, w in enumerate(kernel):
+            src_i = mirror_index(fi + ki - radius, n)
+            src_pos = frames[src_i].position
+            pos[0] += w * src_pos[0]
+            pos[1] += w * src_pos[1]
+            pos[2] += w * src_pos[2]
+
+        # Weighted average of quaternions (ensure hemisphere consistency)
+        # Use first frame in window as reference hemisphere
+        ref_q = None
+        qsum = [0.0, 0.0, 0.0, 0.0]
+        for ki, w in enumerate(kernel):
+            src_i = mirror_index(fi + ki - radius, n)
+            q = list(frames[src_i].quaternion)
+            if ref_q is None:
+                ref_q = q
+            # Ensure same hemisphere as reference
+            dot = sum(ref_q[c] * q[c] for c in range(4))
+            if dot < 0.0:
+                q = [-c for c in q]
+            qsum[0] += w * q[0]
+            qsum[1] += w * q[1]
+            qsum[2] += w * q[2]
+            qsum[3] += w * q[3]
+
+        q_smooth = quat_normalize(qsum)
+
+        result.append(TrajectoryFrame(
+            position=pos,
+            quaternion=q_smooth,
+            fov_degrees=frames[fi].fov_degrees,
+            index=frames[fi].index,
+        ))
+
+    return result
+
+
+# ---------------------------------------------------------------------------
+# 9. Rotation-aware RDP simplification
+# ---------------------------------------------------------------------------
+
+def _point_to_segment_param(p, a, b):
+    """Project point p onto segment ab, return t in [0, 1]."""
+    ab = vec3_sub(b, a)
+    ap = vec3_sub(p, a)
+    len_sq = vec3_dot(ab, ab)
+    if len_sq < 1e-12:
+        return 0.0
+    t = vec3_dot(ap, ab) / len_sq
+    return max(0.0, min(1.0, t))
+
+
+def _trajectory_distance(point, start, end, rotation_weight):
+    """Combined position + rotation deviation of point from segment start→end."""
+    t = _point_to_segment_param(point.position, start.position, end.position)
+    closest = vec3_lerp(start.position, end.position, t)
+    pos_dist = vec3_norm(vec3_sub(point.position, closest))
+    expected_q = slerp(start.quaternion, end.quaternion, t)
+    angle_dist = quat_angle(point.quaternion, expected_q)
+    return pos_dist + rotation_weight * angle_dist
+
+
+def _rdp_recursive(frames, epsilon, rotation_weight, start, end, result_indices):
+    """Standard RDP recursion using combined distance metric."""
+    if end - start <= 1:
+        return
+
+    max_dist = 0.0
+    max_idx = start + 1
+
+    for i in range(start + 1, end):
+        dist = _trajectory_distance(frames[i], frames[start], frames[end],
+                                    rotation_weight)
+        if dist > max_dist:
+            max_dist = dist
+            max_idx = i
+
+    if max_dist > epsilon:
+        result_indices.add(max_idx)
+        _rdp_recursive(frames, epsilon, rotation_weight, start, max_idx, result_indices)
+        _rdp_recursive(frames, epsilon, rotation_weight, max_idx, end, result_indices)
+
+
+def rdp_simplify(frames, epsilon=2.5, rotation_weight=2.0, min_points=4):
+    """Simplify trajectory using rotation-aware Ramer-Douglas-Peucker.
+
+    After RDP, pads to min_points by splitting the largest remaining gaps.
+
+    Args:
+        frames: List of TrajectoryFrame.
+        epsilon: Distance threshold for RDP.
+        rotation_weight: Weight applied to rotation deviation (radians → meters).
+        min_points: Minimum points to retain.
+
+    Returns:
+        Simplified list of TrajectoryFrame.
+    """
+    n = len(frames)
+    if n <= min_points:
+        return list(frames)
+
+    # Always keep first and last
+    result_indices = {0, n - 1}
+    _rdp_recursive(frames, epsilon, rotation_weight, 0, n - 1, result_indices)
+
+    # Pad to min_points by splitting largest gaps
+    while len(result_indices) < min_points:
+        sorted_idx = sorted(result_indices)
+        # Find gap with largest position span
+        best_gap_size = -1.0
+        best_mid = None
+        for i in range(len(sorted_idx) - 1):
+            a = sorted_idx[i]
+            b = sorted_idx[i + 1]
+            if b - a <= 1:
+                continue
+            mid = (a + b) // 2
+            gap_size = vec3_norm(vec3_sub(frames[b].position, frames[a].position))
+            if gap_size > best_gap_size:
+                best_gap_size = gap_size
+                best_mid = mid
+        if best_mid is None:
+            break
+        result_indices.add(best_mid)
+
+    return [frames[i] for i in sorted(result_indices)]
 
 
 # ---------------------------------------------------------------------------
