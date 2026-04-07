@@ -231,7 +231,7 @@ void IslandDemoState::on_enter(AppBase& app) {
             }
             ki.first_bone_index = next_bone_index_;
 
-            constexpr float kKnightScale = 0.35f;
+            constexpr float kKnightScale = 0.70f;
             const auto& knight_gs = knight_cloud.gaussians();
             for (const auto& g : knight_gs) {
                 Gaussian kg = g;
@@ -1039,7 +1039,7 @@ void IslandDemoState::update_walk_animation(AppBase& app, float dt) {
             knight_anim_player_->update(dt);
 
             // Build knight bone transforms using same world↔model pattern
-            constexpr float kKnightScale = 0.35f;
+            constexpr float kKnightScale = 0.70f;
             const glm::vec3 knight_y_off(0.0f, 2.0f, 0.0f);
             const glm::vec3 knight_scale(kKnightScale, kKnightScale * gs_scale_, kKnightScale);
             const glm::vec3 knight_inv_scale(1.0f / knight_scale.x, 1.0f / knight_scale.y, 1.0f / knight_scale.z);
