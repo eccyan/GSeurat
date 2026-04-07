@@ -193,6 +193,7 @@ void IslandDemoState::on_enter(AppBase& app) {
                 offset.y *= gs_scale;
                 cg.position = player_pos + offset + glm::vec3(0, 2.0f, 0);
                 cg.scale *= kCharScale;
+                cg.opacity = std::min(1.0f, cg.opacity * 1.3f);
                 merged.push_back(cg);
             }
         }
@@ -242,6 +243,7 @@ void IslandDemoState::on_enter(AppBase& app) {
                 kg.scale *= kKnightScale;
                 // Assign knight bones — map bone_index from PLY to our bone slot
                 kg.bone_index = next_bone_index_ + kg.bone_index;
+                kg.opacity = std::min(1.0f, kg.opacity * 1.3f);
                 merged.push_back(kg);
             }
             next_bone_index_ += static_cast<uint32_t>(knight_data_->bones.size());
@@ -286,6 +288,7 @@ void IslandDemoState::on_enter(AppBase& app) {
                         sg.position = t.position.vec() + rotated * kSlimeScale + glm::vec3(0, 0.5f, 0);
                         sg.scale *= kSlimeScale;
                         sg.bone_index = next_bone_index_;
+                        sg.opacity = std::min(1.0f, sg.opacity * 1.3f);
                         merged.push_back(sg);
                     }
 
