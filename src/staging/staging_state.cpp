@@ -1,5 +1,6 @@
 #include "gseurat/staging/staging_state.hpp"
 #include "gseurat/engine/app_base.hpp"
+#include "gseurat/engine/command_dispatcher.hpp"
 #include "gseurat/engine/gaussian_cloud.hpp"
 #include "gseurat/engine/post_process.hpp"
 #include "gseurat/engine/shutdown_auditor.hpp"
@@ -17,6 +18,17 @@
 #include <filesystem>
 
 namespace gseurat {
+
+static const char* camera_mode_name(CameraMode m) {
+    switch (m) {
+        case CameraMode::free_look:      return "free_look";
+        case CameraMode::rail_follow:    return "rail_follow";
+        case CameraMode::cinematic_rail: return "cinematic_rail";
+        case CameraMode::fixed_point:    return "fixed_point";
+        case CameraMode::side_scroll:    return "side_scroll";
+    }
+    return "unknown";
+}
 
 static constexpr float kOrbitSensitivity = 0.01f;
 static constexpr float kZoomSensitivity  = 3.0f;
@@ -59,6 +71,81 @@ void StagingState::on_enter(AppBase& app) {
         app.renderer().set_gs_camera(view, proj);
     }
     std::fprintf(stderr, "[Staging] Ready\n");
+
+    // ── Register camera review control-server commands ──
+    using json = nlohmann::json;
+
+    app.command_dispatcher().register_command("camera_review",
+        [this, &app](const json& cmd) -> CommandResult {
+            auto action = cmd.value("action", std::string{});
+
+            if (action == "on") {
+                if (!last_scene_data_ || !last_scene_data_->camera_zones) {
+                    return std::unexpected(std::string("no camera_zones in current scene"));
+                }
+                if (!camera_review_) {
+                    camera_review_ = std::make_unique<CameraReviewState>();
+                }
+                glm::vec3 start = app.renderer().has_gs_cloud()
+                    ? app.gs_terrain().cloud_center : glm::vec3(0.0f);
+                camera_review_->activate(*last_scene_data_, start);
+                return json{
+                    {"type", "ok"},
+                    {"zones", camera_review_->volume_count()},
+                    {"triggers", camera_review_->trigger_count()},
+                    {"rails", camera_review_->rail_count()}
+                };
+            }
+
+            if (action == "off") {
+                if (camera_review_) {
+                    camera_review_->deactivate();
+                }
+                camera_initialized_ = false;
+                return json{{"type", "ok"}};
+            }
+
+            if (action == "status") {
+                bool active = camera_review_ && camera_review_->is_active();
+                json resp = {{"type", "ok"}, {"active", active}};
+                if (active) {
+                    auto pos = camera_review_->player_position();
+                    resp["zone"] = camera_review_->active_zone_name();
+                    resp["mode"] = camera_mode_name(camera_review_->active_zone_mode());
+                    resp["player"] = {pos.x, pos.y, pos.z};
+                    resp["transitioning"] = camera_review_->is_transitioning();
+                }
+                return resp;
+            }
+
+            return std::unexpected(std::string("unknown action: ") + action);
+        });
+
+    app.command_dispatcher().register_command("camera_review_teleport",
+        [this](const json& cmd) -> CommandResult {
+            if (!camera_review_ || !camera_review_->is_active()) {
+                return std::unexpected(std::string("camera review not active"));
+            }
+            float x = cmd.value("x", 0.0f);
+            float z = cmd.value("z", 0.0f);
+            camera_review_->teleport(x, z);
+            auto pos = camera_review_->player_position();
+            return json{
+                {"type", "ok"},
+                {"player", {pos.x, pos.y, pos.z}}
+            };
+        });
+
+    app.command_dispatcher().register_command("camera_review_walk",
+        [this](const json& cmd) -> CommandResult {
+            if (!camera_review_ || !camera_review_->is_active()) {
+                return std::unexpected(std::string("camera review not active"));
+            }
+            auto direction = cmd.value("direction", std::string{"forward"});
+            float seconds = cmd.value("seconds", 1.0f);
+            camera_review_->inject_walk(direction, seconds);
+            return json{{"type", "ok"}};
+        });
 }
 
 void StagingState::on_exit(AppBase& app) {
