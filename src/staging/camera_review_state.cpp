@@ -6,6 +6,13 @@
 
 #include <cmath>
 
+// GLFW key constants (avoid pulling in glfw3.h).
+constexpr int kGlfwKeyW = 87;
+constexpr int kGlfwKeyA = 65;
+constexpr int kGlfwKeyS = 83;
+constexpr int kGlfwKeyD = 68;
+constexpr int kGlfwKeyLeftShift = 340;
+
 namespace gseurat {
 
 // ── Lifecycle ────────────────────────────────────────────────────────────────
@@ -79,9 +86,86 @@ void CameraReviewState::deactivate() {
 
 // ── Per-frame update ─────────────────────────────────────────────────────────
 
-void CameraReviewState::update(float /*dt*/, const InputManager& /*input*/,
-                               bool /*imgui_wants_mouse*/, bool /*imgui_wants_keyboard*/) {
-    // Stub — Task 2 will implement WASD movement and input handling.
+void CameraReviewState::update(float dt, const InputManager& input,
+                               bool imgui_wants_mouse, bool imgui_wants_keyboard) {
+    if (!active_) return;
+
+    // Save old position for velocity computation.
+    glm::vec3 old_pos = player_pos_;
+
+    // ── WASD movement ──────────────────────────────────────────────────────
+    if (!imgui_wants_keyboard) {
+        glm::vec3 dir{0.0f};
+
+        if (move_ref_ == MoveReference::world_axis) {
+            // World-axis: W=-Z, S=+Z, A=-X, D=+X
+            if (input.is_key_down(kGlfwKeyW)) dir.z -= 1.0f;
+            if (input.is_key_down(kGlfwKeyS)) dir.z += 1.0f;
+            if (input.is_key_down(kGlfwKeyA)) dir.x -= 1.0f;
+            if (input.is_key_down(kGlfwKeyD)) dir.x += 1.0f;
+        } else {
+            // Camera-facing: derive forward from camera target - position, projected to XZ.
+            CameraState cam = zone_system_.current_state();
+            glm::vec3 cam_fwd = cam.target - cam.position;
+            cam_fwd.y = 0.0f;
+            float len = std::sqrt(cam_fwd.x * cam_fwd.x + cam_fwd.z * cam_fwd.z);
+            if (len > 1e-6f) {
+                cam_fwd /= len;
+            } else {
+                cam_fwd = {0.0f, 0.0f, -1.0f};
+            }
+            glm::vec3 cam_right = {cam_fwd.z, 0.0f, -cam_fwd.x};  // cross(fwd, up) in XZ
+
+            if (input.is_key_down(kGlfwKeyW)) dir += cam_fwd;
+            if (input.is_key_down(kGlfwKeyS)) dir -= cam_fwd;
+            if (input.is_key_down(kGlfwKeyA)) dir -= cam_right;
+            if (input.is_key_down(kGlfwKeyD)) dir += cam_right;
+        }
+
+        // Normalize and apply speed.
+        float dir_len = std::sqrt(dir.x * dir.x + dir.y * dir.y + dir.z * dir.z);
+        if (dir_len > 1e-6f) {
+            dir /= dir_len;
+            float speed = player_speed_;
+            if (input.is_key_down(kGlfwKeyLeftShift)) speed *= 2.0f;
+            player_pos_ += dir * speed * dt;
+        }
+    }
+
+    // ── Injected walk ──────────────────────────────────────────────────────
+    if (injected_remaining_ > 0.0f) {
+        float step = std::min(injected_remaining_, dt);
+        player_pos_ += injected_dir_ * player_speed_ * step;
+        injected_remaining_ -= step;
+        if (injected_remaining_ <= 0.0f) {
+            injected_remaining_ = 0.0f;
+            injected_dir_ = glm::vec3{0.0f};
+        }
+    }
+
+    // ── Velocity ───────────────────────────────────────────────────────────
+    if (dt > 1e-6f) {
+        player_vel_ = (player_pos_ - old_pos) / dt;
+    }
+
+    // ── Camera input ───────────────────────────────────────────────────────
+    CameraZoneSystem::InputState cam_input;
+    if (!imgui_wants_mouse) {
+        // InputManager doesn't expose mouse_dx/dy directly; use 0 for now.
+        // Mouse delta would come from the app layer in production.
+        cam_input.scroll_delta = input.scroll_y_delta();
+    }
+
+    // ── Zone system update ─────────────────────────────────────────────────
+    zone_system_.update(dt, player_pos_, player_vel_, cam_input);
+
+    // ── Auto-switch MoveReference ──────────────────────────────────────────
+    CameraMode mode = active_zone_mode();
+    if (mode == CameraMode::free_look) {
+        move_ref_ = MoveReference::camera_facing;
+    } else {
+        move_ref_ = MoveReference::world_axis;
+    }
 }
 
 // ── Teleport / injected movement ─────────────────────────────────────────────
@@ -92,8 +176,37 @@ void CameraReviewState::teleport(float x, float z) {
     player_vel_ = glm::vec3{0.0f};
 }
 
-void CameraReviewState::inject_walk(const std::string& /*direction*/, float /*seconds*/) {
-    // Stub — Task 2 will implement.
+void CameraReviewState::inject_walk(const std::string& direction, float seconds) {
+    if (!active_) return;
+
+    glm::vec3 dir{0.0f};
+
+    if (move_ref_ == MoveReference::world_axis) {
+        if (direction == "forward")      dir = {0.0f, 0.0f, -1.0f};
+        else if (direction == "back")    dir = {0.0f, 0.0f,  1.0f};
+        else if (direction == "left")    dir = {-1.0f, 0.0f, 0.0f};
+        else if (direction == "right")   dir = { 1.0f, 0.0f, 0.0f};
+    } else {
+        // Camera-facing: derive from camera state.
+        CameraState cam = zone_system_.current_state();
+        glm::vec3 cam_fwd = cam.target - cam.position;
+        cam_fwd.y = 0.0f;
+        float len = std::sqrt(cam_fwd.x * cam_fwd.x + cam_fwd.z * cam_fwd.z);
+        if (len > 1e-6f) {
+            cam_fwd /= len;
+        } else {
+            cam_fwd = {0.0f, 0.0f, -1.0f};
+        }
+        glm::vec3 cam_right = {cam_fwd.z, 0.0f, -cam_fwd.x};
+
+        if (direction == "forward")      dir = cam_fwd;
+        else if (direction == "back")    dir = -cam_fwd;
+        else if (direction == "left")    dir = -cam_right;
+        else if (direction == "right")   dir = cam_right;
+    }
+
+    injected_dir_ = dir;
+    injected_remaining_ = seconds;
 }
 
 void CameraReviewState::reset_player() {

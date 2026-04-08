@@ -320,4 +320,6 @@ add_gseurat_test(test_camera_zone_system src/engine/camera_zone_system.cpp
                                           src/engine/gs_spline.cpp)
 add_gseurat_test(test_camera_review_state src/staging/camera_review_state.cpp
                                            src/engine/camera_zone_system.cpp
-                                           src/engine/gs_spline.cpp)
+                                           src/engine/gs_spline.cpp
+                                           src/engine/input_manager.cpp)
+target_link_libraries(test_camera_review_state PRIVATE glfw)
