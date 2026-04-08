@@ -785,7 +785,11 @@ void StagingState::draw_camera_panel(AppBase& app) {
                 camera_review_->reset_player();
             }
         } else {
-            bool can_start = last_scene_data_.has_value() && last_scene_data_->camera_zones.has_value();
+            bool can_start = false;
+            if (last_scene_data_.has_value() && last_scene_data_->camera_zones.has_value()) {
+                auto& cz = *last_scene_data_->camera_zones;
+                can_start = !cz.volumes.empty() || !cz.rails.empty() || !cz.triggers.empty();
+            }
             if (!can_start) {
                 ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.6f, 1.0f), "No camera zones in scene.");
             }

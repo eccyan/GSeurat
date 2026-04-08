@@ -21,8 +21,10 @@ namespace gseurat {
 // ── Lifecycle ────────────────────────────────────────────────────────────────
 
 bool CameraReviewState::activate(const SceneData& scene, glm::vec3 initial_pos) {
-    // Must have camera_zones with at least one volume.
-    if (!scene.camera_zones || scene.camera_zones->volumes.empty()) {
+    // Must have camera_zones with at least one volume or rail.
+    if (!scene.camera_zones) return false;
+    const auto& check = *scene.camera_zones;
+    if (check.volumes.empty() && check.rails.empty() && check.triggers.empty()) {
         return false;
     }
 
