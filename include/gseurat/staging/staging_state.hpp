@@ -1,6 +1,8 @@
 #pragma once
 
 #include "gseurat/engine/game_state.hpp"
+#include "gseurat/staging/camera_review_state.hpp"
+#include "gseurat/engine/scene_loader.hpp"
 #include "gseurat/character/character_manifest.hpp"
 #include "gseurat/character/bone_animation_player.hpp"
 
@@ -8,6 +10,7 @@
 #include <glm/mat4x4.hpp>
 #include <array>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -94,6 +97,7 @@ private:
     bool show_gizmo_emitters_ = true;
     bool show_gizmo_vfx_ = true;
     bool show_gizmo_game_objects_ = true;
+    bool show_gizmo_camera_zones_ = true;
 
     // Hide all UI (Tab key toggle)
     bool hide_ui_ = false;
@@ -108,6 +112,11 @@ private:
     bool anim_playing_ = false;
     float anim_speed_ = 1.0f;
     bool show_character_ = true;
+
+    // Camera Review Mode
+    std::unique_ptr<CameraReviewState> camera_review_;
+    std::optional<SceneData> last_scene_data_;
+    bool right_click_prev_ = false;
 };
 
 }  // namespace gseurat

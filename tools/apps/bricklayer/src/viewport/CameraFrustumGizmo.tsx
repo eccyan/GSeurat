@@ -84,12 +84,13 @@ function FrustumGizmo({ volume }: { volume: CameraZoneVolume }) {
     const origin = cameraOrigin;
     const forward = new THREE.Vector3(0, 0, -1); // camera looks -Z in local space
 
-    // 4 corner directions (camera local: X right, Y up, Z back)
+    // 4 corner positions in world space (origin + local offset)
+    const ox = origin.x, oy = origin.y, oz = origin.z;
     const corners: [number, number, number][] = [
-      [-halfW, halfH, -DISPLAY_DIST],
-      [halfW, halfH, -DISPLAY_DIST],
-      [halfW, -halfH, -DISPLAY_DIST],
-      [-halfW, -halfH, -DISPLAY_DIST],
+      [ox - halfW, oy + halfH, oz - DISPLAY_DIST],
+      [ox + halfW, oy + halfH, oz - DISPLAY_DIST],
+      [ox + halfW, oy - halfH, oz - DISPLAY_DIST],
+      [ox - halfW, oy - halfH, oz - DISPLAY_DIST],
     ];
 
     return { origin, corners, forward };

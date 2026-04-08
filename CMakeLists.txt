@@ -235,6 +235,7 @@ add_executable(gseurat_staging
     src/staging_main.cpp
     src/staging/staging_app.cpp
     src/staging/staging_state.cpp
+    src/staging/camera_review_state.cpp
 )
 target_link_libraries(gseurat_staging PRIVATE gseurat_core imgui_lib)
 add_dependencies(gseurat_staging shaders)
@@ -317,3 +318,8 @@ add_gseurat_test(test_coordinate      src/engine/coordinate.cpp)
 add_gseurat_test(test_camera_volume)
 add_gseurat_test(test_camera_zone_system src/engine/camera_zone_system.cpp
                                           src/engine/gs_spline.cpp)
+add_gseurat_test(test_camera_review_state src/staging/camera_review_state.cpp
+                                           src/engine/camera_zone_system.cpp
+                                           src/engine/gs_spline.cpp
+                                           src/engine/input_manager.cpp)
+target_link_libraries(test_camera_review_state PRIVATE glfw imgui_lib)
