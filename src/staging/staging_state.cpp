@@ -768,9 +768,12 @@ void StagingState::draw_camera_panel(AppBase& app) {
             }
             ImGui::Separator();
 
-            // Player position (read-only)
+            // Player position (draggable — teleports on edit)
             auto pos = camera_review_->player_position();
-            ImGui::Text("Player: %.1f, %.1f, %.1f", pos.x, pos.y, pos.z);
+            float pos3[3] = {pos.x, pos.y, pos.z};
+            if (ImGui::DragFloat3("Player##review", pos3, 1.0f)) {
+                camera_review_->teleport(pos3[0], pos3[2]);
+            }
 
             // Speed slider
             ImGui::DragFloat("Speed##review", &camera_review_->player_speed(), 1.0f, 5.0f, 200.0f);
