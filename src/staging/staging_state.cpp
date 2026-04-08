@@ -257,7 +257,10 @@ void StagingState::update(AppBase& app, float dt) {
         last_mouse_x_ = mx;
         last_mouse_y_ = my;
 
-        camera_review_->update(dt, app.input(), io.WantCaptureMouse, io.WantCaptureKeyboard,
+        // Only block WASD when user is actively typing in an ImGui text field,
+        // not just when a window has focus (WantCaptureKeyboard is too broad).
+        bool typing_in_widget = ImGui::IsAnyItemActive() && io.WantTextInput;
+        camera_review_->update(dt, app.input(), io.WantCaptureMouse, typing_in_widget,
                                mouse_dx, mouse_dy);
 
         // Build view/proj from CameraState
