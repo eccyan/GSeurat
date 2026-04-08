@@ -12,6 +12,9 @@ Usage:
   python scripts/game_director.py goto <x> <z>
   python scripts/game_director.py tour [output_dir]
   python scripts/game_director.py playtest [output_dir]
+  python scripts/game_director.py camera_review <on|off|status>
+  python scripts/game_director.py camera_review_teleport <x> <z>
+  python scripts/game_director.py camera_review_walk <direction> <seconds>
 """
 
 import json
@@ -152,6 +155,18 @@ def get_features() -> dict:
 
 def get_triggers() -> dict:
     return send_command({"cmd": "get_triggers"})
+
+
+def camera_review(action: str) -> dict:
+    return send_command({"cmd": "camera_review", "action": action})
+
+
+def camera_review_teleport(x: float, z: float) -> dict:
+    return send_command({"cmd": "camera_review_teleport", "x": x, "z": z})
+
+
+def camera_review_walk(direction: str, seconds: float) -> dict:
+    return send_command({"cmd": "camera_review_walk", "direction": direction, "seconds": seconds})
 
 
 def inject_key(key: int, down: bool = True) -> dict:
@@ -574,6 +589,48 @@ def main():
             time.sleep(0.1)
             state = get_player_state()
             print(f"Player: {state}")
+
+        elif cmd == "camera_review":
+            if len(sys.argv) < 3:
+                print("Usage: game_director.py camera_review <on|off|status>")
+                return
+            action = sys.argv[2]
+            result = camera_review(action)
+            if action == "on":
+                if result.get("type") == "ok":
+                    print(f"Camera review ON: {result.get('zones', 0)} zones, "
+                          f"{result.get('triggers', 0)} triggers, {result.get('rails', 0)} rails")
+                else:
+                    print(f"Error: {result.get('message', result)}")
+            elif action == "off":
+                print("Camera review OFF")
+            elif action == "status":
+                if result.get("active"):
+                    pos = result.get("player", [0, 0, 0])
+                    print(f"Review active — Zone: {result.get('zone')} ({result.get('mode')})")
+                    print(f"  Player: ({pos[0]:.1f}, {pos[1]:.1f}, {pos[2]:.1f})")
+                    print(f"  Transitioning: {result.get('transitioning', False)}")
+                else:
+                    print("Review not active")
+
+        elif cmd == "camera_review_teleport":
+            if len(sys.argv) < 4:
+                print("Usage: game_director.py camera_review_teleport <x> <z>")
+                return
+            x = float(sys.argv[2])
+            z = float(sys.argv[3])
+            result = camera_review_teleport(x, z)
+            print(f"Teleported to ({x:.1f}, {z:.1f}): {result.get('type')}")
+
+        elif cmd == "camera_review_walk":
+            if len(sys.argv) < 4:
+                print("Usage: game_director.py camera_review_walk <direction> <seconds>")
+                return
+            direction = sys.argv[2]
+            seconds = float(sys.argv[3])
+            result = camera_review_walk(direction, seconds)
+            print(f"Walking {direction} for {seconds:.1f}s: {result.get('type')}")
+            time.sleep(seconds + 0.5)
 
         elif cmd == "quit":
             result = send_command({"cmd": "quit"})
