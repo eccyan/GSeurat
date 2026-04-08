@@ -33,9 +33,17 @@ void StagingState::on_enter(AppBase& app) {
     std::sort(scene_files_.begin(), scene_files_.end());
     scenes_loaded_ = true;
 
+    // Create camera review state
+    camera_review_ = std::make_unique<CameraReviewState>();
+
     // Initialize scene (or start with empty viewport)
     if (!app.scene_objects().current_scene_path.empty()) {
         app.init_scene(app.scene_objects().current_scene_path);
+        try {
+            last_scene_data_ = SceneLoader::load(app.scene_objects().current_scene_path);
+        } catch (...) {
+            last_scene_data_.reset();
+        }
     } else {
         // Empty scene: init minimal GS renderer for VFX preview
         std::vector<Gaussian> dummy(1);
@@ -54,6 +62,12 @@ void StagingState::on_enter(AppBase& app) {
 }
 
 void StagingState::on_exit(AppBase& app) {
+    // Deactivate camera review mode
+    if (camera_review_ && camera_review_->is_active()) {
+        camera_review_->deactivate();
+    }
+    camera_review_.reset();
+
     // Release animation player first (holds reference to character data)
     anim_player_.reset();
 
@@ -77,6 +91,23 @@ void StagingState::update(AppBase& app, float dt) {
     if (current_path != last_scene_path_) {
         last_scene_path_ = current_path;
         camera_initialized_ = false;
+        // Cache scene data for review mode
+        if (!current_path.empty()) {
+            try {
+                last_scene_data_ = SceneLoader::load(current_path);
+            } catch (...) {
+                last_scene_data_.reset();
+            }
+        }
+        // Re-activate review if active
+        if (camera_review_ && camera_review_->is_active()) {
+            camera_review_->deactivate();
+            if (last_scene_data_ && last_scene_data_->camera_zones) {
+                glm::vec3 start = app.renderer().has_gs_cloud()
+                    ? app.gs_terrain().cloud_center : glm::vec3(0.0f);
+                camera_review_->activate(*last_scene_data_, start);
+            }
+        }
     }
 
     // Check for pending character load from bridge command
@@ -100,90 +131,154 @@ void StagingState::update(AppBase& app, float dt) {
     frame_times_[frame_time_idx_] = dt * 1000.0f;
     frame_time_idx_ = (frame_time_idx_ + 1) % frame_times_.size();
 
-    // Camera orbit — only when ImGui doesn't want the mouse
     auto& io = ImGui::GetIO();
-    if (!io.WantCaptureMouse) {
+
+    if (camera_review_ && camera_review_->is_active()) {
+        // ── Camera Review Mode ──
         auto* window = app.window();
         double mx, my;
         glfwGetCursorPos(window, &mx, &my);
+        float mouse_dx = static_cast<float>(mx - last_mouse_x_);
+        float mouse_dy = static_cast<float>(my - last_mouse_y_);
+        last_mouse_x_ = mx;
+        last_mouse_y_ = my;
 
-        if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS) {
-            if (!dragging_) {
-                dragging_ = true;
-                last_mouse_x_ = mx;
-                last_mouse_y_ = my;
-            }
-            double dx = mx - last_mouse_x_;
-            double dy = my - last_mouse_y_;
-            last_mouse_x_ = mx;
-            last_mouse_y_ = my;
+        camera_review_->update(dt, app.input(), io.WantCaptureMouse, io.WantCaptureKeyboard,
+                               mouse_dx, mouse_dy);
 
-            if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS) {
-                // Pan
-                float pan_scale = distance_ * kPanSensitivity * 0.01f;
-                float cos_az = std::cos(azimuth_);
-                float sin_az = std::sin(azimuth_);
-                target_.x -= static_cast<float>(dx) * pan_scale * cos_az;
-                target_.z -= static_cast<float>(dx) * pan_scale * sin_az;
-                target_.y += static_cast<float>(dy) * pan_scale;
-            } else {
-                // Orbit
-                azimuth_ -= static_cast<float>(dx) * kOrbitSensitivity;
-                elevation_ += static_cast<float>(dy) * kOrbitSensitivity;
-                elevation_ = std::clamp(elevation_, -1.5f, 1.5f);
-            }
-        } else {
-            dragging_ = false;
+        // Build view/proj from CameraState
+        if (app.renderer().has_gs_cloud()) {
+            auto cam = camera_review_->camera_state();
+            auto& gs_renderer = app.renderer().gs_renderer();
+            float aspect = static_cast<float>(gs_renderer.output_width()) /
+                           static_cast<float>(gs_renderer.output_height());
+            auto view = glm::lookAt(cam.position, cam.target, cam.up);
+            auto proj = glm::perspective(glm::radians(cam.fov), aspect, 0.1f, 1000.0f);
+            proj[1][1] *= -1.0f;  // Vulkan Y-flip
+            app.renderer().set_gs_camera(view, proj);
+
+            // Cache VP for gizmo projection (without Vulkan Y-flip)
+            auto proj_gizmo = glm::perspective(glm::radians(cam.fov), aspect, 0.1f, 1000.0f);
+            gs_vp_ = proj_gizmo * view;
         }
 
-        // Scroll zoom
-        float scroll = app.input().scroll_y_delta();
-        if (scroll != 0.0f) {
-            distance_ -= scroll * kZoomSensitivity;
-            distance_ = std::max(1.0f, distance_);
+        // R key → reset player
+        if (!io.WantCaptureKeyboard && app.input().was_key_pressed(GLFW_KEY_R)) {
+            camera_review_->reset_player();
         }
 
         // Toggle UI visibility (Tab)
-        if (app.input().was_key_pressed(GLFW_KEY_TAB)) {
+        if (!io.WantCaptureKeyboard && app.input().was_key_pressed(GLFW_KEY_TAB)) {
             hide_ui_ = !hide_ui_;
         }
 
-        // Reset camera
-        if (glfwGetKey(window, GLFW_KEY_R) == GLFW_PRESS && !io.WantCaptureKeyboard) {
-            azimuth_ = 0.0f;
-            elevation_ = 0.3f;
-            distance_ = 100.0f;
-            target_ = glm::vec3(0.0f);
-            camera_initialized_ = false;
+        // Right-click teleport via ground plane raycast
+        if (!io.WantCaptureMouse && glfwGetMouseButton(app.window(), GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS) {
+            double tmx, tmy;
+            glfwGetCursorPos(app.window(), &tmx, &tmy);
+            float ndc_x = (2.0f * static_cast<float>(tmx) / io.DisplaySize.x) - 1.0f;
+            float ndc_y = 1.0f - (2.0f * static_cast<float>(tmy) / io.DisplaySize.y);
+            glm::mat4 inv_vp = glm::inverse(gs_vp_);
+            glm::vec4 near_clip = inv_vp * glm::vec4(ndc_x, ndc_y, 0.0f, 1.0f);
+            glm::vec4 far_clip  = inv_vp * glm::vec4(ndc_x, ndc_y, 1.0f, 1.0f);
+            glm::vec3 near_pt = glm::vec3(near_clip) / near_clip.w;
+            glm::vec3 far_pt  = glm::vec3(far_clip)  / far_clip.w;
+            glm::vec3 dir = far_pt - near_pt;
+            float ground_y = camera_review_->player_position().y;
+            if (std::abs(dir.y) > 0.001f) {
+                float t = (ground_y - near_pt.y) / dir.y;
+                if (t > 0.0f) {
+                    glm::vec3 hit = near_pt + dir * t;
+                    camera_review_->teleport(hit.x, hit.z);
+                }
+            }
         }
-    }
+    } else {
+        // ── Orbit Camera (default) ──
+        // Camera orbit — only when ImGui doesn't want the mouse
+        if (!io.WantCaptureMouse) {
+            auto* window = app.window();
+            double mx, my;
+            glfwGetCursorPos(window, &mx, &my);
 
-    // Initialize camera from scene if not done
-    if (!camera_initialized_ && app.renderer().has_gs_cloud()) {
-        target_ = app.gs_terrain().cloud_center;
-        distance_ = std::max(app.gs_terrain().cloud_extent * 1.5f, 50.0f);
-        camera_initialized_ = true;
-    }
+            if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS) {
+                if (!dragging_) {
+                    dragging_ = true;
+                    last_mouse_x_ = mx;
+                    last_mouse_y_ = my;
+                }
+                double dx = mx - last_mouse_x_;
+                double dy = my - last_mouse_y_;
+                last_mouse_x_ = mx;
+                last_mouse_y_ = my;
 
-    // Apply camera
-    if (app.renderer().has_gs_cloud()) {
-        float cos_el = std::cos(elevation_);
-        glm::vec3 eye{
-            target_.x + distance_ * cos_el * std::sin(azimuth_),
-            target_.y + distance_ * std::sin(elevation_),
-            target_.z + distance_ * cos_el * std::cos(azimuth_)
-        };
-        auto& gs_renderer = app.renderer().gs_renderer();
-        float aspect = static_cast<float>(gs_renderer.output_width()) /
-                       static_cast<float>(gs_renderer.output_height());
-        auto view = glm::lookAt(eye, target_, glm::vec3(0, 1, 0));
-        auto proj = glm::perspective(glm::radians(45.0f), aspect, 0.1f, 1000.0f);
-        proj[1][1] *= -1.0f;  // Vulkan Y-flip
-        app.renderer().set_gs_camera(view, proj);
+                if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS) {
+                    // Pan
+                    float pan_scale = distance_ * kPanSensitivity * 0.01f;
+                    float cos_az = std::cos(azimuth_);
+                    float sin_az = std::sin(azimuth_);
+                    target_.x -= static_cast<float>(dx) * pan_scale * cos_az;
+                    target_.z -= static_cast<float>(dx) * pan_scale * sin_az;
+                    target_.y += static_cast<float>(dy) * pan_scale;
+                } else {
+                    // Orbit
+                    azimuth_ -= static_cast<float>(dx) * kOrbitSensitivity;
+                    elevation_ += static_cast<float>(dy) * kOrbitSensitivity;
+                    elevation_ = std::clamp(elevation_, -1.5f, 1.5f);
+                }
+            } else {
+                dragging_ = false;
+            }
 
-        // Cache VP for gizmo projection (without Vulkan Y-flip)
-        auto proj_gizmo = glm::perspective(glm::radians(45.0f), aspect, 0.1f, 1000.0f);
-        gs_vp_ = proj_gizmo * view;
+            // Scroll zoom
+            float scroll = app.input().scroll_y_delta();
+            if (scroll != 0.0f) {
+                distance_ -= scroll * kZoomSensitivity;
+                distance_ = std::max(1.0f, distance_);
+            }
+
+            // Toggle UI visibility (Tab)
+            if (app.input().was_key_pressed(GLFW_KEY_TAB)) {
+                hide_ui_ = !hide_ui_;
+            }
+
+            // Reset camera
+            if (glfwGetKey(window, GLFW_KEY_R) == GLFW_PRESS && !io.WantCaptureKeyboard) {
+                azimuth_ = 0.0f;
+                elevation_ = 0.3f;
+                distance_ = 100.0f;
+                target_ = glm::vec3(0.0f);
+                camera_initialized_ = false;
+            }
+        }
+
+        // Initialize camera from scene if not done
+        if (!camera_initialized_ && app.renderer().has_gs_cloud()) {
+            target_ = app.gs_terrain().cloud_center;
+            distance_ = std::max(app.gs_terrain().cloud_extent * 1.5f, 50.0f);
+            camera_initialized_ = true;
+        }
+
+        // Apply camera
+        if (app.renderer().has_gs_cloud()) {
+            float cos_el = std::cos(elevation_);
+            glm::vec3 eye{
+                target_.x + distance_ * cos_el * std::sin(azimuth_),
+                target_.y + distance_ * std::sin(elevation_),
+                target_.z + distance_ * cos_el * std::cos(azimuth_)
+            };
+            auto& gs_renderer = app.renderer().gs_renderer();
+            float aspect = static_cast<float>(gs_renderer.output_width()) /
+                           static_cast<float>(gs_renderer.output_height());
+            auto view = glm::lookAt(eye, target_, glm::vec3(0, 1, 0));
+            auto proj = glm::perspective(glm::radians(45.0f), aspect, 0.1f, 1000.0f);
+            proj[1][1] *= -1.0f;  // Vulkan Y-flip
+            app.renderer().set_gs_camera(view, proj);
+
+            // Cache VP for gizmo projection (without Vulkan Y-flip)
+            auto proj_gizmo = glm::perspective(glm::radians(45.0f), aspect, 0.1f, 1000.0f);
+            gs_vp_ = proj_gizmo * view;
+        }
     }
 
     // Update character animation and upload bone transforms
@@ -243,6 +338,7 @@ void StagingState::draw_imgui(AppBase& app) {
             ImGui::MenuItem("Gizmo: Emitters", nullptr, &show_gizmo_emitters_);
             ImGui::MenuItem("Gizmo: VFX", nullptr, &show_gizmo_vfx_);
             ImGui::MenuItem("Gizmo: Game Objects", nullptr, &show_gizmo_game_objects_);
+            ImGui::MenuItem("Gizmo: Camera Zones", nullptr, &show_gizmo_camera_zones_);
             ImGui::EndMenu();
         }
         ImGui::EndMainMenuBar();
@@ -274,11 +370,21 @@ void StagingState::draw_viewport_info(AppBase& app) {
     }
     ImGui::Text("Scene: %s", std::filesystem::path(app.scene_objects().current_scene_path).filename().string().c_str());
     ImGui::Separator();
-    ImGui::Text("Az: %.1f  El: %.1f  Dist: %.1f", azimuth_ * 57.2958f, elevation_ * 57.2958f, distance_);
-    ImGui::Text("Target: %.1f, %.1f, %.1f", target_.x, target_.y, target_.z);
-    ImGui::Separator();
-    ImGui::TextDisabled("Drag: Orbit  Shift+Drag: Pan  Scroll: Zoom");
-    ImGui::TextDisabled("R: Reset  Tab: Hide UI");
+    if (camera_review_ && camera_review_->is_active()) {
+        auto pos = camera_review_->player_position();
+        ImGui::Text("Player: %.1f, %.1f, %.1f", pos.x, pos.y, pos.z);
+        auto zone = camera_review_->active_zone_name();
+        ImGui::Text("Zone: %s", zone.c_str());
+        ImGui::Separator();
+        ImGui::TextDisabled("WASD: Move  Right-click: Teleport");
+        ImGui::TextDisabled("R: Reset  Tab: Hide UI");
+    } else {
+        ImGui::Text("Az: %.1f  El: %.1f  Dist: %.1f", azimuth_ * 57.2958f, elevation_ * 57.2958f, distance_);
+        ImGui::Text("Target: %.1f, %.1f, %.1f", target_.x, target_.y, target_.z);
+        ImGui::Separator();
+        ImGui::TextDisabled("Drag: Orbit  Shift+Drag: Pan  Scroll: Zoom");
+        ImGui::TextDisabled("R: Reset  Tab: Hide UI");
+    }
 
     ImGui::End();
 }
@@ -541,6 +647,67 @@ void StagingState::draw_camera_panel(AppBase& app) {
     }
     if (to_remove >= 0) {
         bookmarks_.erase(bookmarks_.begin() + to_remove);
+    }
+
+    // ── Camera Review ──
+    ImGui::Separator();
+    if (ImGui::CollapsingHeader("Camera Review")) {
+        if (camera_review_ && camera_review_->is_active()) {
+            if (ImGui::Button("Stop Review")) {
+                camera_review_->deactivate();
+            }
+            ImGui::Separator();
+
+            // Player position (read-only)
+            auto pos = camera_review_->player_position();
+            ImGui::Text("Player: %.1f, %.1f, %.1f", pos.x, pos.y, pos.z);
+
+            // Speed slider
+            ImGui::DragFloat("Speed##review", &camera_review_->player_speed(), 1.0f, 5.0f, 200.0f);
+
+            // Movement reference dropdown
+            static const char* move_ref_names[] = {"Camera Facing", "World Axis"};
+            int move_ref = static_cast<int>(camera_review_->move_reference());
+            if (ImGui::Combo("Movement##review", &move_ref, move_ref_names, 2)) {
+                camera_review_->set_move_reference(
+                    static_cast<CameraReviewState::MoveReference>(move_ref));
+            }
+
+            // Active zone info
+            auto zone_name = camera_review_->active_zone_name();
+            static const char* mode_names[] = {"free_look", "rail_follow", "cinematic_rail", "fixed_point", "side_scroll"};
+            int mode_idx = static_cast<int>(camera_review_->active_zone_mode());
+            if (mode_idx >= 0 && mode_idx < 5) {
+                ImGui::Text("Zone: %s (%s)", zone_name.c_str(), mode_names[mode_idx]);
+            } else {
+                ImGui::Text("Zone: %s", zone_name.c_str());
+            }
+
+            if (camera_review_->is_transitioning()) {
+                ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.2f, 1.0f), "Transitioning...");
+            }
+
+            if (ImGui::Button("Reset Player##review")) {
+                camera_review_->reset_player();
+            }
+        } else {
+            bool can_start = last_scene_data_.has_value() && last_scene_data_->camera_zones.has_value();
+            if (!can_start) {
+                ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.6f, 1.0f), "No camera zones in scene.");
+            }
+            if (!can_start) ImGui::BeginDisabled();
+            if (ImGui::Button("Start Review")) {
+                if (last_scene_data_ && last_scene_data_->camera_zones) {
+                    if (!camera_review_) {
+                        camera_review_ = std::make_unique<CameraReviewState>();
+                    }
+                    glm::vec3 start = app.renderer().has_gs_cloud()
+                        ? app.gs_terrain().cloud_center : glm::vec3(0.0f);
+                    camera_review_->activate(*last_scene_data_, start);
+                }
+            }
+            if (!can_start) ImGui::EndDisabled();
+        }
     }
 
     ImGui::End();
