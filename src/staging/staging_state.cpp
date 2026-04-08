@@ -183,17 +183,13 @@ void StagingState::on_exit(AppBase& app) {
 
 void StagingState::update(AppBase& app, float dt) {
     // Detect scene change from load_scene_json (socket command).
-    // load_scene_json always writes to /tmp/gseurat_live_scene.json, so the path
-    // may stay the same across reloads. Use cloud generation counter to detect
-    // same-path reloads (the GS renderer bumps generation on each init_gs call).
+    // Detect scene change. Since load_scene_json always writes to the same temp
+    // path, we only detect path changes here. The "Start Review" button and
+    // camera_review command re-read the file on demand for same-path reloads.
     const auto& current_path = app.scene_objects().current_scene_path;
-    uint32_t cloud_gen = app.renderer().has_gs_cloud()
-        ? app.renderer().gs_renderer().gaussian_count() : 0;
-    bool scene_changed = (current_path != last_scene_path_) ||
-                         (!current_path.empty() && cloud_gen != last_cloud_gen_);
+    bool scene_changed = (current_path != last_scene_path_);
     if (scene_changed) {
         last_scene_path_ = current_path;
-        last_cloud_gen_ = cloud_gen;
         camera_initialized_ = false;
         // Cache scene data for review mode
         if (!current_path.empty()) {

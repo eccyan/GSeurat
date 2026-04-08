@@ -102,9 +102,8 @@ private:
     // Hide all UI (Tab key toggle)
     bool hide_ui_ = false;
 
-    // Track scene path + cloud generation for detecting reloads (same path, new content)
+    // Track scene path for auto-recentering camera on load_scene_json
     std::string last_scene_path_;
-    uint32_t last_cloud_gen_ = 0;
 
     // Character animation (unique_ptr so we can leak on exit — macOS allocator workaround)
     std::unique_ptr<CharacterData> character_data_;
