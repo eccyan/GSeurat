@@ -35,6 +35,7 @@ public:
 
     // Teleport / injected movement
     void teleport(float x, float z);
+    void teleport(float x, float y, float z);
     void inject_walk(const std::string& direction, float seconds);
     void reset_player();
 

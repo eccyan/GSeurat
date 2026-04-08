@@ -12,6 +12,7 @@ export interface NumberInputProps {
 
 function formatValue(v: number): string {
   // Remove trailing zeros: "12.500" -> "12.5", "12.0" -> "12"
+  if (v === undefined || v === null || isNaN(v)) return '0';
   return parseFloat(v.toFixed(10)).toString();
 }
 

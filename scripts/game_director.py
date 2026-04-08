@@ -161,8 +161,11 @@ def camera_review(action: str) -> dict:
     return send_command({"cmd": "camera_review", "action": action})
 
 
-def camera_review_teleport(x: float, z: float) -> dict:
-    return send_command({"cmd": "camera_review_teleport", "x": x, "z": z})
+def camera_review_teleport(x: float, z: float, y: float = None) -> dict:
+    cmd = {"cmd": "camera_review_teleport", "x": x, "z": z}
+    if y is not None:
+        cmd["y"] = y
+    return send_command(cmd)
 
 
 def camera_review_walk(direction: str, seconds: float) -> dict:
@@ -615,11 +618,12 @@ def main():
 
         elif cmd == "camera_review_teleport":
             if len(sys.argv) < 4:
-                print("Usage: game_director.py camera_review_teleport <x> <z>")
+                print("Usage: game_director.py camera_review_teleport <x> <z> [y]")
                 return
             x = float(sys.argv[2])
             z = float(sys.argv[3])
-            result = camera_review_teleport(x, z)
+            y = float(sys.argv[4]) if len(sys.argv) > 4 else None
+            result = camera_review_teleport(x, z, y)
             print(f"Teleported to ({x:.1f}, {z:.1f}): {result.get('type')}")
 
         elif cmd == "camera_review_walk":
