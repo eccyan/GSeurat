@@ -245,8 +245,15 @@ void StagingState::update(AppBase& app, float dt) {
         auto* window = app.window();
         double mx, my;
         glfwGetCursorPos(window, &mx, &my);
-        float mouse_dx = static_cast<float>(mx - last_mouse_x_);
-        float mouse_dy = static_cast<float>(my - last_mouse_y_);
+
+        // Only pass mouse delta when left-dragging (like orbit camera)
+        float mouse_dx = 0.0f;
+        float mouse_dy = 0.0f;
+        if (!io.WantCaptureMouse &&
+            glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS) {
+            mouse_dx = static_cast<float>(mx - last_mouse_x_) * kOrbitSensitivity;
+            mouse_dy = static_cast<float>(my - last_mouse_y_) * kOrbitSensitivity;
+        }
         last_mouse_x_ = mx;
         last_mouse_y_ = my;
 
@@ -776,9 +783,13 @@ void StagingState::draw_camera_panel(AppBase& app) {
                 for (auto& [id, vol] : volumes) {
                     auto name_it = names.find(id);
                     std::string label = name_it != names.end() ? name_it->second : "volume";
+                    // Truncate long auto-generated IDs for display
+                    if (label.size() > 20) label = label.substr(0, 20) + "...";
                     ImGui::PushID(id);
                     if (ImGui::Button(label.c_str())) {
                         auto center = std::visit([](const auto& s) { return s.center; }, vol.shape);
+                        std::fprintf(stderr, "[CameraReview] Teleport to volume center: (%.1f, %.1f)\n",
+                                     center.x, center.z);
                         camera_review_->teleport(center.x, center.z);
                     }
                     ImGui::PopID();
