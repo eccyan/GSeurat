@@ -29,8 +29,9 @@ public:
     void deactivate();
     bool is_active() const { return active_; }
 
-    // Per-frame update
-    void update(float dt, const InputManager& input, bool imgui_wants_mouse, bool imgui_wants_keyboard);
+    // Per-frame update (mouse_dx/dy are raw cursor deltas from the app layer)
+    void update(float dt, const InputManager& input, bool imgui_wants_mouse, bool imgui_wants_keyboard,
+                float mouse_dx = 0.0f, float mouse_dy = 0.0f);
 
     // Teleport / injected movement
     void teleport(float x, float z);

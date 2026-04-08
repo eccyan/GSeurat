@@ -87,7 +87,8 @@ void CameraReviewState::deactivate() {
 // ── Per-frame update ─────────────────────────────────────────────────────────
 
 void CameraReviewState::update(float dt, const InputManager& input,
-                               bool imgui_wants_mouse, bool imgui_wants_keyboard) {
+                               bool imgui_wants_mouse, bool imgui_wants_keyboard,
+                               float mouse_dx_in, float mouse_dy_in) {
     if (!active_) return;
 
     // Save old position for velocity computation.
@@ -151,8 +152,8 @@ void CameraReviewState::update(float dt, const InputManager& input,
     // ── Camera input ───────────────────────────────────────────────────────
     CameraZoneSystem::InputState cam_input;
     if (!imgui_wants_mouse) {
-        // InputManager doesn't expose mouse_dx/dy directly; use 0 for now.
-        // Mouse delta would come from the app layer in production.
+        cam_input.mouse_dx = mouse_dx_in;
+        cam_input.mouse_dy = mouse_dy_in;
         cam_input.scroll_delta = input.scroll_y_delta();
     }
 
