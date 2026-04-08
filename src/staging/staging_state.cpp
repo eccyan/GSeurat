@@ -974,6 +974,11 @@ void StagingState::draw_gizmos(AppBase& app) {
             dl->AddText(ImVec2(sx + 6, sy - 10), col, label);
         }
     }
+
+    // ── Camera Zone gizmos ──
+    if (show_gizmo_camera_zones_ && camera_review_) {
+        camera_review_->draw_gizmos(vp, sw, sh, dl, project_wrapper, this);
+    }
 }
 
 void StagingState::load_character(const std::string& manifest_path, AppBase& app) {

@@ -4,6 +4,9 @@
 #include "gseurat/staging/camera_review_state.hpp"
 #include "gseurat/engine/input_manager.hpp"
 
+#include <imgui.h>
+
+#include <algorithm>
 #include <cmath>
 
 // GLFW key constants (avoid pulling in glfw3.h).
@@ -265,11 +268,214 @@ int CameraReviewState::rail_count() const {
 
 // ── Gizmo rendering ─────────────────────────────────────────────────────────
 
-void CameraReviewState::draw_gizmos(const glm::mat4& /*vp*/, float /*screen_w*/,
-                                    float /*screen_h*/, ImDrawList* /*draw_list*/,
-                                    bool (*/*proj_fn*/)(const glm::vec3&, const glm::mat4&, float, float, float&, float&, const void*),
-                                    const void* /*proj_self*/) const {
-    // Stub — Task 4 will implement gizmo rendering.
+void CameraReviewState::draw_gizmos(const glm::mat4& vp, float screen_w,
+                                    float screen_h, ImDrawList* dl,
+                                    bool (*proj_fn)(const glm::vec3&, const glm::mat4&, float, float, float&, float&, const void*),
+                                    const void* proj_self) const {
+    if (!active_) return;
+
+    int active_entity = zone_system_.active_zone_entity();
+
+    // ── Volume wireframes ────────────────────────────────────────────────────
+    for (const auto& [id, vol] : volumes_) {
+        bool is_active = (id == active_entity);
+        ImU32 col = is_active ? IM_COL32(0, 255, 255, 255)
+                              : IM_COL32(0, 204, 204, 180);
+        float thickness = is_active ? 2.0f : 1.0f;
+
+        std::visit([&](const auto& shape) {
+            using T = std::decay_t<decltype(shape)>;
+            if constexpr (std::is_same_v<T, CamAABB>) {
+                // Draw AABB wireframe: 8 corners, 12 edges.
+                const auto& c = shape.center;
+                const auto& h = shape.half_extents;
+                glm::vec3 corners[8] = {
+                    c + glm::vec3(-h.x, -h.y, -h.z),
+                    c + glm::vec3( h.x, -h.y, -h.z),
+                    c + glm::vec3( h.x,  h.y, -h.z),
+                    c + glm::vec3(-h.x,  h.y, -h.z),
+                    c + glm::vec3(-h.x, -h.y,  h.z),
+                    c + glm::vec3( h.x, -h.y,  h.z),
+                    c + glm::vec3( h.x,  h.y,  h.z),
+                    c + glm::vec3(-h.x,  h.y,  h.z),
+                };
+                ImVec2 pts[8];
+                bool vis[8];
+                for (int i = 0; i < 8; i++) {
+                    vis[i] = proj_fn(corners[i], vp, screen_w, screen_h,
+                                     pts[i].x, pts[i].y, proj_self);
+                }
+                constexpr int edges[12][2] = {
+                    {0,1},{1,2},{2,3},{3,0},
+                    {4,5},{5,6},{6,7},{7,4},
+                    {0,4},{1,5},{2,6},{3,7}
+                };
+                for (const auto& e : edges) {
+                    if (vis[e[0]] && vis[e[1]]) {
+                        dl->AddLine(pts[e[0]], pts[e[1]], col, thickness);
+                    }
+                }
+                // Label at top-center (average of top 4 corners).
+                glm::vec3 top_center = c + glm::vec3(0.0f, h.y, 0.0f);
+                float lx, ly;
+                if (proj_fn(top_center, vp, screen_w, screen_h, lx, ly, proj_self)) {
+                    auto name_it = zone_names_.find(id);
+                    if (name_it != zone_names_.end()) {
+                        dl->AddText(ImVec2(lx - 20, ly - 14), col,
+                                    name_it->second.c_str());
+                    }
+                }
+            } else if constexpr (std::is_same_v<T, CamSphere>) {
+                // Draw sphere: project center and edge point.
+                float cx, cy;
+                if (!proj_fn(shape.center, vp, screen_w, screen_h, cx, cy, proj_self))
+                    return;
+                glm::vec3 edge = shape.center + glm::vec3(shape.radius, 0.0f, 0.0f);
+                float ex, ey;
+                float sr = 15.0f;
+                if (proj_fn(edge, vp, screen_w, screen_h, ex, ey, proj_self)) {
+                    sr = std::abs(ex - cx);
+                    sr = std::clamp(sr, 3.0f, 300.0f);
+                }
+                dl->AddCircle(ImVec2(cx, cy), sr, col, 24, thickness);
+                // Label above circle.
+                auto name_it = zone_names_.find(id);
+                if (name_it != zone_names_.end()) {
+                    dl->AddText(ImVec2(cx - 20, cy - sr - 14), col,
+                                name_it->second.c_str());
+                }
+            }
+        }, vol.shape);
+    }
+
+    // ── Trigger wireframes ───────────────────────────────────────────────────
+    for (const auto& trigger : triggers_) {
+        bool inside = contains(trigger.shape, player_pos_);
+        ImU32 col = inside ? IM_COL32(255, 0, 255, 255)
+                           : IM_COL32(204, 0, 204, 180);
+        float thickness = 1.0f;
+
+        std::visit([&](const auto& shape) {
+            using T = std::decay_t<decltype(shape)>;
+            if constexpr (std::is_same_v<T, CamAABB>) {
+                const auto& c = shape.center;
+                const auto& h = shape.half_extents;
+                glm::vec3 corners[8] = {
+                    c + glm::vec3(-h.x, -h.y, -h.z),
+                    c + glm::vec3( h.x, -h.y, -h.z),
+                    c + glm::vec3( h.x,  h.y, -h.z),
+                    c + glm::vec3(-h.x,  h.y, -h.z),
+                    c + glm::vec3(-h.x, -h.y,  h.z),
+                    c + glm::vec3( h.x, -h.y,  h.z),
+                    c + glm::vec3( h.x,  h.y,  h.z),
+                    c + glm::vec3(-h.x,  h.y,  h.z),
+                };
+                ImVec2 pts[8];
+                bool vis[8];
+                for (int i = 0; i < 8; i++) {
+                    vis[i] = proj_fn(corners[i], vp, screen_w, screen_h,
+                                     pts[i].x, pts[i].y, proj_self);
+                }
+                constexpr int edges[12][2] = {
+                    {0,1},{1,2},{2,3},{3,0},
+                    {4,5},{5,6},{6,7},{7,4},
+                    {0,4},{1,5},{2,6},{3,7}
+                };
+                for (const auto& e : edges) {
+                    if (vis[e[0]] && vis[e[1]]) {
+                        dl->AddLine(pts[e[0]], pts[e[1]], col, thickness);
+                    }
+                }
+            } else if constexpr (std::is_same_v<T, CamSphere>) {
+                float cx, cy;
+                if (!proj_fn(shape.center, vp, screen_w, screen_h, cx, cy, proj_self))
+                    return;
+                glm::vec3 edge = shape.center + glm::vec3(shape.radius, 0.0f, 0.0f);
+                float ex, ey;
+                float sr = 15.0f;
+                if (proj_fn(edge, vp, screen_w, screen_h, ex, ey, proj_self)) {
+                    sr = std::abs(ex - cx);
+                    sr = std::clamp(sr, 3.0f, 300.0f);
+                }
+                dl->AddCircle(ImVec2(cx, cy), sr, col, 24, thickness);
+            }
+        }, trigger.shape);
+    }
+
+    // ── Rail splines ─────────────────────────────────────────────────────────
+    {
+        ImU32 rail_col = IM_COL32(204, 204, 0, 200);
+        for (const auto& rail : rails_) {
+            if (!rail.path.valid()) continue;
+
+            // Draw control points as filled circles.
+            for (size_t i = 0; i < rail.path.control_points.size(); i++) {
+                float px, py;
+                if (proj_fn(rail.path.control_points[i], vp, screen_w, screen_h,
+                            px, py, proj_self)) {
+                    dl->AddCircleFilled(ImVec2(px, py), 4.0f, rail_col);
+                }
+            }
+
+            // Sample spline at 10 segments per span.
+            int num_spans = static_cast<int>(rail.path.control_points.size()) - 1;
+            int total_segments = std::max(num_spans * 10, 10);
+            float prev_sx = 0, prev_sy = 0;
+            bool prev_vis = false;
+            for (int s = 0; s <= total_segments; s++) {
+                float t = static_cast<float>(s) / static_cast<float>(total_segments);
+                glm::vec3 pt = rail.path.evaluate(t);
+                float sx, sy;
+                bool vis = proj_fn(pt, vp, screen_w, screen_h, sx, sy, proj_self);
+                if (s > 0 && vis && prev_vis) {
+                    dl->AddLine(ImVec2(prev_sx, prev_sy), ImVec2(sx, sy),
+                                rail_col, 1.5f);
+                }
+                prev_sx = sx;
+                prev_sy = sy;
+                prev_vis = vis;
+            }
+        }
+    }
+
+    // ── Virtual player marker ────────────────────────────────────────────────
+    {
+        float px, py;
+        if (proj_fn(player_pos_, vp, screen_w, screen_h, px, py, proj_self)) {
+            ImU32 green = IM_COL32(0, 255, 0, 255);
+            dl->AddCircleFilled(ImVec2(px, py), 8.0f, green);
+
+            // Direction arrow: 3-unit line toward camera facing direction.
+            CameraState cam = zone_system_.current_state();
+            glm::vec3 fwd = cam.target - cam.position;
+            fwd.y = 0.0f;
+            float len = std::sqrt(fwd.x * fwd.x + fwd.z * fwd.z);
+            if (len > 1e-6f) {
+                fwd /= len;
+                glm::vec3 arrow_end = player_pos_ + fwd * 3.0f;
+                float ax, ay;
+                if (proj_fn(arrow_end, vp, screen_w, screen_h, ax, ay, proj_self)) {
+                    dl->AddLine(ImVec2(px, py), ImVec2(ax, ay), green, 2.0f);
+                    // Arrowhead.
+                    float dx = ax - px;
+                    float dy = ay - py;
+                    float al = std::sqrt(dx * dx + dy * dy);
+                    if (al > 1e-3f) {
+                        dx /= al; dy /= al;
+                        float hx = -dy, hy = dx;  // perpendicular
+                        float hs = 5.0f;
+                        dl->AddTriangleFilled(
+                            ImVec2(ax, ay),
+                            ImVec2(ax - dx * hs + hx * hs * 0.5f,
+                                   ay - dy * hs + hy * hs * 0.5f),
+                            ImVec2(ax - dx * hs - hx * hs * 0.5f,
+                                   ay - dy * hs - hy * hs * 0.5f),
+                            green);
+                    }
+                }
+            }
+        }
+    }
 }
 
 }  // namespace gseurat
