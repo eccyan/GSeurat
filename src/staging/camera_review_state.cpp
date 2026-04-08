@@ -4,7 +4,6 @@
 #include "gseurat/staging/camera_review_state.hpp"
 #include "gseurat/engine/input_manager.hpp"
 
-#include <algorithm>
 #include <cmath>
 
 namespace gseurat {
@@ -90,6 +89,7 @@ void CameraReviewState::update(float /*dt*/, const InputManager& /*input*/,
 void CameraReviewState::teleport(float x, float z) {
     player_pos_.x = x;
     player_pos_.z = z;
+    player_vel_ = glm::vec3{0.0f};
 }
 
 void CameraReviewState::inject_walk(const std::string& /*direction*/, float /*seconds*/) {
@@ -115,7 +115,7 @@ std::string CameraReviewState::active_zone_name() const {
     if (it != zone_names_.end()) {
         return it->second;
     }
-    return "(world)";
+    return "world_fallback";
 }
 
 CameraMode CameraReviewState::active_zone_mode() const {
