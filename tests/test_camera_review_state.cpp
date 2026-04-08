@@ -110,9 +110,10 @@ void test_deactivate() {
 
     state.deactivate();
     check(!state.is_active(), "inactive after deactivate");
-    check(state.volume_count() == 0, "volumes cleared");
-    check(state.trigger_count() == 0, "triggers cleared");
-    check(state.rail_count() == 0, "rails cleared");
+    // Volumes/triggers/rails are retained so gizmos can still render when inactive.
+    check(state.volume_count() == 1, "volumes retained after deactivate");
+    check(state.trigger_count() == 0, "triggers still zero");
+    check(state.rail_count() == 0, "rails still zero");
     check(approx(state.player_position().x, 0.0f), "player pos reset x");
     check(approx(state.player_position().z, 0.0f), "player pos reset z");
 }

@@ -149,6 +149,10 @@ void StagingState::on_enter(AppBase& app) {
 }
 
 void StagingState::on_exit(AppBase& app) {
+    // Note: camera review commands registered on app.command_dispatcher() in on_enter()
+    // are not unregistered here. This is safe because StagingState is the only state
+    // in the staging app and outlives the command dispatcher.
+
     // Deactivate camera review mode
     if (camera_review_ && camera_review_->is_active()) {
         camera_review_->deactivate();
@@ -259,8 +263,11 @@ void StagingState::update(AppBase& app, float dt) {
             hide_ui_ = !hide_ui_;
         }
 
-        // Right-click teleport via ground plane raycast
-        if (!io.WantCaptureMouse && glfwGetMouseButton(app.window(), GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS) {
+        // Right-click teleport via ground plane raycast (edge-triggered)
+        bool right_down = glfwGetMouseButton(app.window(), GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS;
+        bool right_pressed = right_down && !right_click_prev_;
+        right_click_prev_ = right_down;
+        if (!io.WantCaptureMouse && right_pressed) {
             double tmx, tmy;
             glfwGetCursorPos(app.window(), &tmx, &tmy);
             float ndc_x = (2.0f * static_cast<float>(tmx) / io.DisplaySize.x) - 1.0f;

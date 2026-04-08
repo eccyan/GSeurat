@@ -116,6 +116,7 @@ private:
     // Camera Review Mode
     std::unique_ptr<CameraReviewState> camera_review_;
     std::optional<SceneData> last_scene_data_;
+    bool right_click_prev_ = false;
 };
 
 }  // namespace gseurat

@@ -81,10 +81,8 @@ void CameraReviewState::deactivate() {
     player_vel_ = glm::vec3{0.0f};
     injected_dir_ = glm::vec3{0.0f};
     injected_remaining_ = 0.0f;
-    volumes_.clear();
-    triggers_.clear();
-    rails_.clear();
-    zone_names_.clear();
+    // Keep volumes_, triggers_, rails_, zone_names_ so gizmos can still
+    // render zone wireframes even when review mode is not active.
 }
 
 // ── Per-frame update ─────────────────────────────────────────────────────────
@@ -272,7 +270,7 @@ void CameraReviewState::draw_gizmos(const glm::mat4& vp, float screen_w,
                                     float screen_h, ImDrawList* dl,
                                     bool (*proj_fn)(const glm::vec3&, const glm::mat4&, float, float, float&, float&, const void*),
                                     const void* proj_self) const {
-    if (!active_) return;
+    if (volumes_.empty() && triggers_.empty() && rails_.empty()) return;
 
     int active_entity = zone_system_.active_zone_entity();
 
@@ -386,6 +384,16 @@ void CameraReviewState::draw_gizmos(const glm::mat4& vp, float screen_w,
                         dl->AddLine(pts[e[0]], pts[e[1]], col, thickness);
                     }
                 }
+                // Label at center
+                float lx, ly;
+                if (proj_fn(c, vp, screen_w, screen_h, lx, ly, proj_self)) {
+                    auto to_it = zone_names_.find(trigger.to_zone_entity);
+                    std::string label = "Trigger";
+                    if (to_it != zone_names_.end()) {
+                        label += " -> " + to_it->second;
+                    }
+                    dl->AddText(ImVec2(lx - 30, ly - 10), col, label.c_str());
+                }
             } else if constexpr (std::is_same_v<T, CamSphere>) {
                 float cx, cy;
                 if (!proj_fn(shape.center, vp, screen_w, screen_h, cx, cy, proj_self))
@@ -398,6 +406,13 @@ void CameraReviewState::draw_gizmos(const glm::mat4& vp, float screen_w,
                     sr = std::clamp(sr, 3.0f, 300.0f);
                 }
                 dl->AddCircle(ImVec2(cx, cy), sr, col, 24, thickness);
+                // Label above circle
+                auto to_it = zone_names_.find(trigger.to_zone_entity);
+                std::string label = "Trigger";
+                if (to_it != zone_names_.end()) {
+                    label += " -> " + to_it->second;
+                }
+                dl->AddText(ImVec2(cx - 30, cy - sr - 14), col, label.c_str());
             }
         }, trigger.shape);
     }
@@ -439,7 +454,7 @@ void CameraReviewState::draw_gizmos(const glm::mat4& vp, float screen_w,
     }
 
     // ── Virtual player marker ────────────────────────────────────────────────
-    {
+    if (active_) {
         float px, py;
         if (proj_fn(player_pos_, vp, screen_w, screen_h, px, py, proj_self)) {
             ImU32 green = IM_COL32(0, 255, 0, 255);
