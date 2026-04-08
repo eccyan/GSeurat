@@ -163,12 +163,16 @@ void CameraReviewState::update(float dt, const InputManager& input,
     // ── Zone system update ─────────────────────────────────────────────────
     zone_system_.update(dt, player_pos_, player_vel_, cam_input);
 
-    // ── Auto-switch MoveReference ──────────────────────────────────────────
-    CameraMode mode = active_zone_mode();
-    if (mode == CameraMode::free_look) {
-        move_ref_ = MoveReference::camera_facing;
-    } else {
-        move_ref_ = MoveReference::world_axis;
+    // ── Auto-switch MoveReference on zone change only ──────────────────────
+    int cur_zone = zone_system_.active_zone_entity();
+    if (cur_zone != last_zone_entity_) {
+        last_zone_entity_ = cur_zone;
+        CameraMode mode = active_zone_mode();
+        if (mode == CameraMode::free_look) {
+            move_ref_ = MoveReference::camera_facing;
+        } else {
+            move_ref_ = MoveReference::world_axis;
+        }
     }
 }
 

@@ -81,6 +81,7 @@ private:
     // State
     bool active_ = false;
     glm::vec3 initial_player_pos_{0.0f};
+    int last_zone_entity_ = -1;  // for auto-switch on zone change only
 
     // Zone metadata
     std::vector<std::pair<int, CameraVolume>> volumes_;
