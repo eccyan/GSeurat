@@ -768,23 +768,29 @@ void StagingState::draw_camera_panel(AppBase& app) {
             }
             ImGui::Separator();
 
-            // Player position (draggable — teleports on edit)
+            // Quick teleport: buttons for each volume
+            auto& volumes = camera_review_->volumes();
+            auto& names = camera_review_->zone_names();
+            if (!volumes.empty()) {
+                ImGui::Text("Go to Volume:");
+                for (auto& [id, vol] : volumes) {
+                    auto name_it = names.find(id);
+                    std::string label = name_it != names.end() ? name_it->second : "volume";
+                    ImGui::PushID(id);
+                    if (ImGui::Button(label.c_str())) {
+                        auto center = std::visit([](const auto& s) { return s.center; }, vol.shape);
+                        camera_review_->teleport(center.x, center.z);
+                    }
+                    ImGui::PopID();
+                    ImGui::SameLine();
+                }
+                ImGui::NewLine();
+                ImGui::Separator();
+            }
+
+            // Player position display + manual input
             auto pos = camera_review_->player_position();
-            float pos3[3] = {pos.x, pos.y, pos.z};
-            if (ImGui::DragFloat3("Player##review", pos3, 1.0f)) {
-                camera_review_->teleport(pos3[0], pos3[2]);
-            }
-
-            // Speed slider
-            ImGui::DragFloat("Speed##review", &camera_review_->player_speed(), 1.0f, 5.0f, 200.0f);
-
-            // Movement reference dropdown
-            static const char* move_ref_names[] = {"Camera Facing", "World Axis"};
-            int move_ref = static_cast<int>(camera_review_->move_reference());
-            if (ImGui::Combo("Movement##review", &move_ref, move_ref_names, 2)) {
-                camera_review_->set_move_reference(
-                    static_cast<CameraReviewState::MoveReference>(move_ref));
-            }
+            ImGui::Text("Player: (%.1f, %.1f, %.1f)", pos.x, pos.y, pos.z);
 
             // Active zone info
             auto zone_name = camera_review_->active_zone_name();
@@ -798,6 +804,19 @@ void StagingState::draw_camera_panel(AppBase& app) {
 
             if (camera_review_->is_transitioning()) {
                 ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.2f, 1.0f), "Transitioning...");
+            }
+
+            ImGui::Separator();
+
+            // Speed slider
+            ImGui::DragFloat("Speed##review", &camera_review_->player_speed(), 1.0f, 5.0f, 200.0f);
+
+            // Movement reference dropdown
+            static const char* move_ref_names[] = {"Camera Facing", "World Axis"};
+            int move_ref = static_cast<int>(camera_review_->move_reference());
+            if (ImGui::Combo("Movement##review", &move_ref, move_ref_names, 2)) {
+                camera_review_->set_move_reference(
+                    static_cast<CameraReviewState::MoveReference>(move_ref));
             }
 
             if (ImGui::Button("Reset Player##review")) {

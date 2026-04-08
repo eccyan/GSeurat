@@ -48,6 +48,8 @@ public:
     int volume_count() const;
     int trigger_count() const;
     int rail_count() const;
+    const std::vector<std::pair<int, CameraVolume>>& volumes() const { return volumes_; }
+    const std::unordered_map<int, std::string>& zone_names() const { return zone_names_; }
 
     // Movement reference
     MoveReference move_reference() const { return move_ref_; }
