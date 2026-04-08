@@ -80,6 +80,11 @@ void StagingState::on_enter(AppBase& app) {
             auto action = cmd.value("action", std::string{});
 
             if (action == "on") {
+                // Always re-read scene file to pick up latest camera_zones
+                auto path = app.scene_objects().current_scene_path;
+                if (!path.empty()) {
+                    try { last_scene_data_ = SceneLoader::load(path); } catch (...) {}
+                }
                 if (!last_scene_data_ || !last_scene_data_->camera_zones) {
                     return std::unexpected(std::string("no camera_zones in current scene"));
                 }
@@ -796,26 +801,24 @@ void StagingState::draw_camera_panel(AppBase& app) {
                 camera_review_->reset_player();
             }
         } else {
-            bool can_start = false;
-            if (last_scene_data_.has_value() && last_scene_data_->camera_zones.has_value()) {
-                auto& cz = *last_scene_data_->camera_zones;
-                can_start = !cz.volumes.empty() || !cz.rails.empty() || !cz.triggers.empty();
-            }
-            if (!can_start) {
-                ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.6f, 1.0f), "No camera zones in scene.");
-            }
-            if (!can_start) ImGui::BeginDisabled();
             if (ImGui::Button("Start Review")) {
+                // Re-read scene file to pick up latest camera_zones from Bricklayer
+                auto scene_path = app.scene_objects().current_scene_path;
+                if (!scene_path.empty()) {
+                    try { last_scene_data_ = SceneLoader::load(scene_path); } catch (...) {}
+                }
                 if (last_scene_data_ && last_scene_data_->camera_zones) {
-                    if (!camera_review_) {
-                        camera_review_ = std::make_unique<CameraReviewState>();
+                    auto& cz = *last_scene_data_->camera_zones;
+                    if (!cz.volumes.empty() || !cz.rails.empty() || !cz.triggers.empty()) {
+                        if (!camera_review_) {
+                            camera_review_ = std::make_unique<CameraReviewState>();
+                        }
+                        glm::vec3 start = app.renderer().has_gs_cloud()
+                            ? app.gs_terrain().cloud_center : glm::vec3(0.0f);
+                        camera_review_->activate(*last_scene_data_, start);
                     }
-                    glm::vec3 start = app.renderer().has_gs_cloud()
-                        ? app.gs_terrain().cloud_center : glm::vec3(0.0f);
-                    camera_review_->activate(*last_scene_data_, start);
                 }
             }
-            if (!can_start) ImGui::EndDisabled();
         }
     }
 
