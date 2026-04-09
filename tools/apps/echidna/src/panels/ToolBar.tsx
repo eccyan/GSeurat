@@ -1,5 +1,5 @@
 import React from 'react';
-import { NumberInput } from '@gseurat/ui-kit';
+import { NumberInput, useComponentRegistry } from '@gseurat/ui-kit';
 import { useCharacterStore } from '../store/useCharacterStore.js';
 import type { ToolType } from '../store/types.js';
 
@@ -105,6 +105,7 @@ const styles: Record<string, React.CSSProperties> = {
 };
 
 export function ToolBar() {
+  useComponentRegistry('ToolBar');
   const activeTool = useCharacterStore((s) => s.activeTool);
   const activeColor = useCharacterStore((s) => s.activeColor);
   const brushSize = useCharacterStore((s) => s.brushSize);

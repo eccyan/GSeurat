@@ -1,4 +1,5 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
+import { useComponentRegistry } from '@gseurat/ui-kit';
 import { useCharacterStore } from '../store/useCharacterStore.js';
 import { exportPly } from '../lib/plyExport.js';
 import { buildManifest } from '../lib/manifestExport.js';
@@ -187,6 +188,7 @@ function DropdownMenu({ label, items, open, onOpen, onClose }: DropdownMenuProps
 type ToastState = { message: string; type: 'success' | 'error' | 'loading' } | null;
 
 export function MenuBar() {
+  useComponentRegistry('MenuBar');
   const loadRef = useRef<HTMLInputElement>(null);
   const voxRef = useRef<HTMLInputElement>(null);
   const [openMenu, setOpenMenu] = useState<string | null>(null);

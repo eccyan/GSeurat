@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Vec3Input } from '@gseurat/ui-kit';
+import { Vec3Input, useComponentRegistry } from '@gseurat/ui-kit';
 import { useCharacterStore } from '../store/useCharacterStore.js';
 import type { EasingType } from '../store/types.js';
 
@@ -273,6 +273,7 @@ function KeyframeEditor() {
 }
 
 export function AnimateRightPanel() {
+  useComponentRegistry('AnimateRightPanel');
   return (
     <div style={styles.container}>
       <BoneProperties />

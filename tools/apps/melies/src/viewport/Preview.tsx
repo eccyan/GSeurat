@@ -1,4 +1,5 @@
 import React, { useRef, useMemo, useEffect, useState, useCallback } from 'react';
+import { useComponentRegistry } from '@gseurat/ui-kit';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls, Grid } from '@react-three/drei';
 import * as THREE from 'three';
@@ -322,6 +323,7 @@ function LayerGizmos({ showGizmos, onObjectPointsLoaded, objectGeoRefs }: {
 // ── Main Preview Component ──
 
 export function Preview({ scenePoints }: { scenePoints: PlyPoint[] }) {
+  useComponentRegistry('Preview');
   const preset = useVfxStore((s) => {
     const p = s.presets.find((p) => p.id === s.selectedPresetId);
     return p;

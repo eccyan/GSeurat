@@ -1,0 +1,8 @@
+{
+  "always": ["MenuBar", "VfxTree", "Preview", "Timeline", "RightPanel"],
+  "modes": {},
+  "conditional": {
+    "LayerProperties": "when selectedView is layer",
+    "PresetSettings": "when selectedView is preset-settings"
+  }
+}

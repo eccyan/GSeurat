@@ -3,7 +3,7 @@ import { useVfxStore } from '../store/useVfxStore.js';
 import type { VfxElement, ElementType, SplineConfig } from '../store/types.js';
 type VfxLayer = VfxElement;
 type LayerType = ElementType;
-import { NumberInput, Vec3Input, ColorPicker as UiColorPicker } from '@gseurat/ui-kit';
+import { NumberInput, Vec3Input, ColorPicker as UiColorPicker, useComponentRegistry } from '@gseurat/ui-kit';
 import { emitterPresets, defaultEmitterConfig } from '../data/emitterPresets.js';
 import type { EmitterConfig } from '../data/emitterPresets.js';
 import { T, inputStyle, selectStyle, sectionLabel, layerColor } from '../styles/theme.js';
@@ -599,6 +599,7 @@ function LightEditor({ layer, update }: {
 // ── Main LayerProperties component ──
 
 export function LayerProperties() {
+  useComponentRegistry('LayerProperties');
   const preset = useVfxStore((s) => s.presets.find((p) => p.id === s.selectedPresetId));
   const layer = useVfxStore((s) => {
     const p = s.presets.find((p) => p.id === s.selectedPresetId);

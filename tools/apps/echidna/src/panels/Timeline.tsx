@@ -1,4 +1,5 @@
 import React, { useRef, useCallback } from 'react';
+import { useComponentRegistry } from '@gseurat/ui-kit';
 import { useCharacterStore } from '../store/useCharacterStore.js';
 import type { PlaybackMode } from '../store/types.js';
 
@@ -56,6 +57,7 @@ const styles: Record<string, React.CSSProperties> = {
 };
 
 export function Timeline() {
+  useComponentRegistry('Timeline');
   const trackRef = useRef<HTMLDivElement>(null);
 
   const selectedAnimation = useCharacterStore((s) => s.selectedAnimation);

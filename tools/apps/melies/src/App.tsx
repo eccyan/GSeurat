@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
+import { useComponentRegistry } from '@gseurat/ui-kit';
 import { useVfxStore, playbackTimeRef } from './store/useVfxStore.js';
 import type { VfxPreset, VfxElement, ElementType } from './store/types.js';
 type VfxLayer = VfxElement;
@@ -18,6 +19,7 @@ import { T, inputStyle, selectStyle, layerColor } from './styles/theme.js';
 // ═══════════════════════════════════════════════════════════════
 
 function MenuBar({ onImportScene }: { onImportScene?: () => void }) {
+  useComponentRegistry('MenuBar');
   const addPreset = useVfxStore((s) => s.addPreset);
   const [fileOpen, setFileOpen] = useState(false);
   const [openMenu, setOpenMenu] = useState<string | null>(null);
@@ -306,6 +308,7 @@ const smBtnStyle: React.CSSProperties = {
 };
 
 function VfxTree() {
+  useComponentRegistry('VfxTree');
   const presets = useVfxStore((s) => s.presets);
   const selectedPresetId = useVfxStore((s) => s.selectedPresetId);
   const selectedLayerId = useVfxStore((s) => s.selectedLayerId);
@@ -502,6 +505,7 @@ function VfxTree() {
 // ═══════════════════════════════════════════════════════════════
 
 function Timeline() {
+  useComponentRegistry('Timeline');
   const preset = useVfxStore((s) => {
     const p = s.presets.find((p) => p.id === s.selectedPresetId);
     return p;
@@ -770,6 +774,7 @@ function Timeline() {
 // ═══════════════════════════════════════════════════════════════
 
 function RightPanel() {
+  useComponentRegistry('RightPanel');
   const selectedView = useVfxStore((s) => s.selectedView);
   if (selectedView === 'preset-settings') return <PresetSettings />;
   return <LayerProperties />;

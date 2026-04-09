@@ -1,8 +1,18 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { App } from './App.js';
+import { ErrorBoundary, componentRegistry } from '@gseurat/ui-kit';
 import { useCharacterStore } from './store/useCharacterStore.js';
 import type { EchidnaFile } from './store/types.js';
+import manifest from './expected-components.json';
+
+componentRegistry.setManifest(manifest);
+
+// Sync mode with registry when store changes
+useCharacterStore.subscribe((state) => {
+  componentRegistry.setMode(state.mode);
+});
+componentRegistry.setMode(useCharacterStore.getState().mode);
 
 // Pre-load character from URL param before React mounts
 const params = new URLSearchParams(window.location.search);
@@ -11,7 +21,9 @@ const loadFile = params.get('load');
 function mount() {
   ReactDOM.createRoot(document.getElementById('root')!).render(
     <React.StrictMode>
-      <App />
+      <ErrorBoundary>
+        <App />
+      </ErrorBoundary>
     </React.StrictMode>
   );
 }

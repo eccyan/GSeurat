@@ -1,5 +1,5 @@
 import React from 'react';
-import { NumberInput } from '@gseurat/ui-kit';
+import { NumberInput, useComponentRegistry } from '@gseurat/ui-kit';
 import { useCharacterStore } from '../store/useCharacterStore.js';
 
 const styles: Record<string, React.CSSProperties> = {
@@ -139,6 +139,7 @@ function YLevelLock() {
 }
 
 export function BuildPanel() {
+  useComponentRegistry('BuildPanel');
   return (
     <div style={styles.container}>
       <YClipControl />
