@@ -244,7 +244,6 @@ export interface SceneStoreState {
   cameraRails: CameraZoneRail[];
   cameraDefaultParams: Partial<CameraZoneParams>;
   cameraShowDebugVolumes: boolean;
-  possessVolumeId: string | null;
   savedEditorCamera: { position: [number,number,number]; target: [number,number,number] } | null;
 
   // Editor state
@@ -325,8 +324,6 @@ export interface SceneStoreState {
   updateCameraDefaultParams: (patch: Partial<CameraZoneParams>) => void;
   setCameraShowDebugVolumes: (show: boolean) => void;
   importCameraZonesJson: (data: Record<string, unknown>) => void;
-  enterPossessMode: (volumeId: string) => void;
-  exitPossessMode: () => void;
   updatePlayer: (patch: Partial<PlayerData>) => void;
   addBackgroundLayer: () => void;
   updateBackgroundLayer: (id: string, patch: Partial<BackgroundLayer>) => void;
@@ -518,7 +515,6 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
   cameraRails: [],
   cameraDefaultParams: {},
   cameraShowDebugVolumes: false,
-  possessVolumeId: null,
   savedEditorCamera: null,
 
   mode: 'terrain',
@@ -942,19 +938,6 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
 
     set(patch);
   },
-
-  enterPossessMode: (volumeId) => {
-    const s = get();
-    const camera = s.gaussianSplat.camera;
-    set({
-      possessVolumeId: volumeId,
-      savedEditorCamera: {
-        position: [...camera.position] as [number, number, number],
-        target: [...camera.target] as [number, number, number],
-      },
-    });
-  },
-  exitPossessMode: () => set({ possessVolumeId: null, savedEditorCamera: null }),
 
   updatePlayer: (patch) => set({ player: { ...get().player, ...patch }, isDirty: true }),
 
@@ -1441,7 +1424,6 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
       cameraRails: data.scene.cameraRails ?? [],
       cameraDefaultParams: data.scene.cameraDefaultParams ?? {},
       cameraShowDebugVolumes: data.scene.cameraShowDebugVolumes ?? false,
-      possessVolumeId: null,
       savedEditorCamera: null,
       player: data.scene.player,
       backgroundLayers: data.scene.backgroundLayers,
