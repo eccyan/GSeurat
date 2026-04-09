@@ -179,12 +179,20 @@ void CameraReviewState::update(float dt, const InputManager& input,
 // ── Teleport / injected movement ─────────────────────────────────────────────
 
 void CameraReviewState::teleport(float x, float z) {
+    // Preserve camera facing direction before moving the player.
+    CameraState cam = zone_system_.current_state();
+    zone_system_.set_orbit_from_camera(cam.position, cam.target);
+
     player_pos_.x = x;
     player_pos_.z = z;
     player_vel_ = glm::vec3{0.0f};
 }
 
 void CameraReviewState::teleport(float x, float y, float z) {
+    // Preserve camera facing direction before moving the player.
+    CameraState cam = zone_system_.current_state();
+    zone_system_.set_orbit_from_camera(cam.position, cam.target);
+
     player_pos_.x = x;
     player_pos_.y = y;
     player_pos_.z = z;
