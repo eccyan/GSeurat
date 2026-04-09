@@ -30,3 +30,4 @@ export type { TilePaletteProps, TileEntry } from "./TilePalette";
 export { ComponentRegistry, componentRegistry } from "./ComponentRegistry";
 export type { ComponentHealth, ComponentManifest, CapturedError } from "./ComponentRegistry";
 export { useComponentRegistry } from "./useComponentRegistry";
+export { ErrorBoundary } from "./ErrorBoundary";
