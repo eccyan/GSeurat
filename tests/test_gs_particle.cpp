@@ -281,7 +281,7 @@ int main() {
 
         auto fireflies = gs_resolve_preset("fireflies");
         assert(fireflies.has_value());
-        assert(fireflies->emission == 1.0f);
+        assert(fireflies->emission == 1.5f);
 
         auto steam = gs_resolve_preset("steam");
         assert(steam.has_value());
