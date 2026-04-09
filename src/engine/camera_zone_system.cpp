@@ -34,6 +34,22 @@ float CameraZoneSystem::nearest_t_on_spline(const SplinePath& path,
     return best_t;
 }
 
+// ── set_orbit_from_camera ────────────────────────────────────────────────────
+
+void CameraZoneSystem::set_orbit_from_camera(glm::vec3 cam_pos, glm::vec3 cam_target) {
+    // Inverse of the spherical-to-cartesian in evaluate_vcam (free_look):
+    //   x = dist * cos(el) * sin(az)
+    //   y = dist * sin(el)
+    //   z = dist * cos(el) * cos(az)
+    glm::vec3 offset = cam_pos - cam_target;
+    float dist = std::sqrt(offset.x * offset.x + offset.y * offset.y + offset.z * offset.z);
+    if (dist < 1e-6f) return;  // degenerate — keep current angles
+
+    glm::vec3 dir = offset / dist;
+    orbit_azimuth_ = std::atan2(dir.x, dir.z);
+    orbit_elevation_ = std::asin(std::clamp(dir.y, -1.0f, 1.0f));
+}
+
 // ── load_from_data ──────────────────────────────────────────────────────────
 
 void CameraZoneSystem::load_from_data(
