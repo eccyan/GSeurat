@@ -373,8 +373,8 @@ void test_constraint_position_clamp() {
     gseurat::CameraParams defaults;
     defaults.mode            = gseurat::CameraMode::free_look;
     defaults.fov             = 45.0f;
-    // orbit_distance=20 exceeds the AABB half_extents of 10 in X and Z.
-    defaults.orbit_distance  = 20.0f;
+    // orbit_distance=8 is inside the AABB half_extents of 10 in X and Z.
+    defaults.orbit_distance  = 8.0f;
     defaults.allow_user_orbit = false;
     defaults.pitch_min       = -60.0f;
     defaults.pitch_max       = 60.0f;
