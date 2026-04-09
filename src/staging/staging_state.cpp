@@ -368,6 +368,7 @@ void StagingState::update(AppBase& app, float dt) {
             auto view = glm::lookAt(cam.position, cam.target, cam.up);
             auto proj = glm::perspective(glm::radians(cam.fov), aspect, 0.1f, 1000.0f);
             proj[1][1] *= -1.0f;  // Vulkan Y-flip
+
             app.renderer().set_gs_camera(view, proj);
 
             // Cache VP for gizmo projection (without Vulkan Y-flip)
