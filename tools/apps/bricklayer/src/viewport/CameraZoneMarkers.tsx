@@ -61,47 +61,42 @@ function VolumeMarker({ volume, isSelected, onSelect, onMove }: {
     return shape.radius ?? 2;
   }, [shape]);
 
-  const markerGroup = (
-    <group ref={groupRef} position={[center[0], center[1], center[2]]}>
-      {/* Invisible hit mesh */}
-      <mesh onPointerDown={(e) => { e.stopPropagation(); onSelect(); }}>
-        <sphereGeometry args={[Math.max(hitSize, 1.5), 12, 12]} />
-        <meshBasicMaterial visible={false} />
-      </mesh>
-      {/* Wireframe edges */}
-      <ShapeWireframe shape={shape} color={edgeColor} opacity={edgeOpacity} />
-      {/* Semi-transparent fill */}
-      <ShapeFill shape={shape} />
-      {/* Label when selected */}
-      {isSelected && (
-        <Html position={[0, hitSize + 1.2, 0]} center>
-          <div style={{
-            background: 'rgba(0,0,0,0.7)', color: '#00ffff',
-            padding: '1px 5px', borderRadius: 3, fontSize: 10, whiteSpace: 'nowrap',
-          }}>
-            {volume.name}
-          </div>
-        </Html>
+  return (
+    <>
+      <group ref={groupRef} position={[center[0], center[1], center[2]]}>
+        {/* Invisible hit mesh */}
+        <mesh onPointerDown={(e) => { e.stopPropagation(); onSelect(); }}>
+          <sphereGeometry args={[Math.max(hitSize, 1.5), 12, 12]} />
+          <meshBasicMaterial visible={false} />
+        </mesh>
+        {/* Wireframe edges */}
+        <ShapeWireframe shape={shape} color={edgeColor} opacity={edgeOpacity} />
+        {/* Semi-transparent fill */}
+        <ShapeFill shape={shape} />
+        {/* Label when selected */}
+        {isSelected && (
+          <Html position={[0, hitSize + 1.2, 0]} center>
+            <div style={{
+              background: 'rgba(0,0,0,0.7)', color: '#00ffff',
+              padding: '1px 5px', borderRadius: 3, fontSize: 10, whiteSpace: 'nowrap',
+            }}>
+              {volume.name}
+            </div>
+          </Html>
+        )}
+      </group>
+      {isSelected && groupRef.current && (
+        <TransformControls
+          object={groupRef.current}
+          mode="translate"
+          onObjectChange={(e) => {
+            const pos = (e as { target?: { object?: THREE.Object3D } })?.target?.object?.position;
+            if (pos) onMove([pos.x, pos.y, pos.z]);
+          }}
+        />
       )}
-    </group>
+    </>
   );
-
-  if (isSelected && groupRef.current) {
-    return (
-      <TransformControls
-        object={groupRef.current}
-        mode="translate"
-        onObjectChange={(e) => {
-          const pos = (e as { target?: { object?: THREE.Object3D } })?.target?.object?.position;
-          if (pos) onMove([pos.x, pos.y, pos.z]);
-        }}
-      >
-        {markerGroup}
-      </TransformControls>
-    );
-  }
-
-  return markerGroup;
 }
 
 function TriggerMarker({ trigger, isSelected, onSelect, onMove }: {
@@ -133,50 +128,45 @@ function TriggerMarker({ trigger, isSelected, onSelect, onMove }: {
     }
   }, [shape]);
 
-  const markerGroup = (
-    <group ref={groupRef} position={[center[0], center[1], center[2]]}>
-      {/* Invisible hit mesh */}
-      <mesh onPointerDown={(e) => { e.stopPropagation(); onSelect(); }}>
-        <sphereGeometry args={[Math.max(hitSize, 1.5), 12, 12]} />
-        <meshBasicMaterial visible={false} />
-      </mesh>
-      {/* Wireframe edges */}
-      <ShapeWireframe shape={shape} color={edgeColor} opacity={edgeOpacity} />
-      {/* Semi-transparent fill */}
-      <mesh>
-        {fillGeo}
-        <meshBasicMaterial color="#ff00ff" opacity={0.08} transparent side={THREE.DoubleSide} />
-      </mesh>
-      {/* Label when selected */}
-      {isSelected && (
-        <Html position={[0, hitSize + 1.2, 0]} center>
-          <div style={{
-            background: 'rgba(0,0,0,0.7)', color: '#ff00ff',
-            padding: '1px 5px', borderRadius: 3, fontSize: 10, whiteSpace: 'nowrap',
-          }}>
-            Trigger → {trigger.to_zone}
-          </div>
-        </Html>
+  return (
+    <>
+      <group ref={groupRef} position={[center[0], center[1], center[2]]}>
+        {/* Invisible hit mesh */}
+        <mesh onPointerDown={(e) => { e.stopPropagation(); onSelect(); }}>
+          <sphereGeometry args={[Math.max(hitSize, 1.5), 12, 12]} />
+          <meshBasicMaterial visible={false} />
+        </mesh>
+        {/* Wireframe edges */}
+        <ShapeWireframe shape={shape} color={edgeColor} opacity={edgeOpacity} />
+        {/* Semi-transparent fill */}
+        <mesh>
+          {fillGeo}
+          <meshBasicMaterial color="#ff00ff" opacity={0.08} transparent side={THREE.DoubleSide} />
+        </mesh>
+        {/* Label when selected */}
+        {isSelected && (
+          <Html position={[0, hitSize + 1.2, 0]} center>
+            <div style={{
+              background: 'rgba(0,0,0,0.7)', color: '#ff00ff',
+              padding: '1px 5px', borderRadius: 3, fontSize: 10, whiteSpace: 'nowrap',
+            }}>
+              Trigger → {trigger.to_zone}
+            </div>
+          </Html>
+        )}
+      </group>
+      {isSelected && groupRef.current && (
+        <TransformControls
+          object={groupRef.current}
+          mode="translate"
+          onObjectChange={(e) => {
+            const pos = (e as { target?: { object?: THREE.Object3D } })?.target?.object?.position;
+            if (pos) onMove([pos.x, pos.y, pos.z]);
+          }}
+        />
       )}
-    </group>
+    </>
   );
-
-  if (isSelected && groupRef.current) {
-    return (
-      <TransformControls
-        object={groupRef.current}
-        mode="translate"
-        onObjectChange={(e) => {
-          const pos = (e as { target?: { object?: THREE.Object3D } })?.target?.object?.position;
-          if (pos) onMove([pos.x, pos.y, pos.z]);
-        }}
-      >
-        {markerGroup}
-      </TransformControls>
-    );
-  }
-
-  return markerGroup;
 }
 
 export function CameraZoneMarkers() {

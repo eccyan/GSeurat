@@ -1,6 +1,6 @@
 import React, { useMemo, useRef } from 'react';
 import * as THREE from 'three';
-import { Html, Line, TransformControls } from '@react-three/drei';
+import { Html, TransformControls } from '@react-three/drei';
 import { useSceneStore } from '../store/useSceneStore.js';
 import type { CameraZoneRail } from '../store/types.js';
 
@@ -14,91 +14,71 @@ function RailMarker({ rail, isSelected, selectedPointIndex, onSelect, onSelectPo
 }) {
   const pointRefs = useRef<(THREE.Mesh | null)[]>([]);
 
-  const curvePoints = useMemo(() => {
+  const curveLine = useMemo(() => {
     if (rail.control_points.length < 2) return null;
     const curve = new THREE.CatmullRomCurve3(
       rail.control_points.map((p) => new THREE.Vector3(p[0], p[1], p[2])),
       false,
       'catmullrom',
     );
-    return curve.getPoints(64).map((p) => [p.x, p.y, p.z] as [number, number, number]);
-  }, [rail.control_points]);
+    const geo = new THREE.BufferGeometry().setFromPoints(curve.getPoints(64));
+    const mat = new THREE.LineBasicMaterial({ color: isSelected ? '#ffff00' : '#cccc00', depthTest: false });
+    return new THREE.Line(geo, mat);
+  }, [rail.control_points, isSelected]);
 
-  const targetCurvePoints = useMemo(() => {
+  const targetCurveLine = useMemo(() => {
     if (!rail.target_points || rail.target_points.length < 2) return null;
     const curve = new THREE.CatmullRomCurve3(
       rail.target_points.map((p) => new THREE.Vector3(p[0], p[1], p[2])),
       false,
       'catmullrom',
     );
-    return curve.getPoints(64).map((p) => [p.x, p.y, p.z] as [number, number, number]);
+    const geo = new THREE.BufferGeometry().setFromPoints(curve.getPoints(64));
+    const mat = new THREE.LineDashedMaterial({ color: '#ff8800', dashSize: 1, gapSize: 0.5, depthTest: false });
+    const line = new THREE.Line(geo, mat);
+    line.computeLineDistances();
+    return line;
   }, [rail.target_points]);
-
-  const lineColor = isSelected ? '#ffff00' : '#cccc00';
-  const lineWidth = isSelected ? 3 : 1.5;
 
   return (
     <group>
       {/* Main rail spline */}
-      {curvePoints && (
-        <Line
-          points={curvePoints}
-          color={lineColor}
-          lineWidth={lineWidth}
-          opacity={isSelected ? 1.0 : 0.6}
-          transparent
-        />
-      )}
+      {curveLine && <primitive object={curveLine} />}
 
       {/* Target points spline (dashed orange) */}
-      {targetCurvePoints && (
-        <Line
-          points={targetCurvePoints}
-          color="#ff8800"
-          lineWidth={isSelected ? 2 : 1}
-          opacity={isSelected ? 0.8 : 0.4}
-          transparent
-          dashed
-          dashScale={2}
-        />
-      )}
+      {targetCurveLine && <primitive object={targetCurveLine} />}
 
       {/* Control point spheres */}
       {rail.control_points.map((pt, i) => {
         const isPointSelected = isSelected && selectedPointIndex === i;
-        const pointMesh = (
-          <mesh
-            key={i}
-            ref={(el) => { pointRefs.current[i] = el; }}
-            position={[pt[0], pt[1], pt[2]]}
-            onPointerDown={(e) => {
-              e.stopPropagation();
-              onSelect();
-              onSelectPoint(i);
-            }}
-          >
-            <sphereGeometry args={[isPointSelected ? 0.45 : 0.3, 12, 8]} />
-            <meshBasicMaterial
-              color={isPointSelected ? '#ffffff' : (isSelected ? '#ffff00' : '#cccc00')}
-            />
-          </mesh>
-        );
-
-        if (isPointSelected && pointRefs.current[i]) {
-          return (
-            <TransformControls
-              key={`tc-${i}`}
-              object={pointRefs.current[i]!}
-              mode="translate"
-              onObjectChange={(e) => {
-                const pos = (e as { target?: { object?: THREE.Object3D } })?.target?.object?.position;
-                if (pos) onMovePoint(i, [pos.x, pos.y, pos.z]);
+        return (
+          <React.Fragment key={i}>
+            <mesh
+              ref={(el) => { pointRefs.current[i] = el; }}
+              position={[pt[0], pt[1], pt[2]]}
+              onPointerDown={(e) => {
+                e.stopPropagation();
+                onSelect();
+                onSelectPoint(i);
               }}
-            />
-          );
-        }
-
-        return pointMesh;
+            >
+              <sphereGeometry args={[isPointSelected ? 0.45 : 0.3, 12, 8]} />
+              <meshBasicMaterial
+                color={isPointSelected ? '#ffffff' : (isSelected ? '#ffff00' : '#cccc00')}
+              />
+            </mesh>
+            {isPointSelected && pointRefs.current[i] && (
+              <TransformControls
+                object={pointRefs.current[i]!}
+                mode="translate"
+                onObjectChange={(e) => {
+                  const pos = (e as { target?: { object?: THREE.Object3D } })?.target?.object?.position;
+                  if (pos) onMovePoint(i, [pos.x, pos.y, pos.z]);
+                }}
+              />
+            )}
+          </React.Fragment>
+        );
       })}
 
       {/* Rail name label */}
