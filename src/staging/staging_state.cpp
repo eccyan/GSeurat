@@ -681,6 +681,11 @@ void StagingState::draw_gs_params(AppBase& app) {
         gs.set_toon_bands(toon);
     }
 
+    float pixel_intensity = gs.pixel_art_intensity();
+    if (ImGui::SliderFloat("Pixel Art", &pixel_intensity, 0.0f, 1.0f, "%.2f", ImGuiSliderFlags_NoInput)) {
+        gs.set_pixel_art_intensity(pixel_intensity);
+    }
+
     ImGui::Separator();
 
     int budget = static_cast<int>(app.renderer().gs_gaussian_budget());

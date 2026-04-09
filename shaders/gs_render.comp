@@ -129,6 +129,15 @@ void main() {
         if (power > 0.0) continue;  // shouldn't happen, but safety check
 
         float gaussian_alpha = exp(power);
+
+        // Pixel art mode: hard-threshold alpha to kill soft Gaussian tails
+        float pixel_art = point_light_params.y;  // 0.0 = off, 1.0 = full retro
+        if (pixel_art > 0.0) {
+            float smooth_a = gaussian_alpha * opacity;
+            float hard_a = step(0.3, smooth_a);
+            gaussian_alpha = mix(smooth_a, hard_a, pixel_art) / max(opacity, 1e-6);
+        }
+
         float alpha = min(0.99, opacity * gaussian_alpha);
 
         if (alpha < 1.0 / 255.0) continue;  // negligible contribution

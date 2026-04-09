@@ -1292,7 +1292,7 @@ void GsRenderer::render(VkCommandBuffer cmd, const glm::mat4& view, const glm::m
                                         actor_rotation_.z, actor_rotation_.w);
 
     // Point lights — flat arrays matching shader layout
-    uniforms.point_light_params = glm::vec4(static_cast<float>(point_lights_.size()), 0, 0, 0);
+    uniforms.point_light_params = glm::vec4(static_cast<float>(point_lights_.size()), pixel_art_intensity_, 0, 0);
     for (size_t i = 0; i < point_lights_.size() && i < kMaxGsPointLights; i++) {
         uniforms.pl_pos_rad[i] = point_lights_[i].position_and_radius;
         uniforms.pl_color[i] = point_lights_[i].color;

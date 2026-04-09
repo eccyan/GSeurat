@@ -114,6 +114,8 @@ public:
     void set_effect_time(float t) { time_ = t; }
     void set_toon_bands(int bands) { toon_bands_ = bands; }
     int toon_bands() const { return toon_bands_; }
+    void set_pixel_art_intensity(float v) { pixel_art_intensity_ = glm::clamp(v, 0.0f, 1.0f); }
+    float pixel_art_intensity() const { return pixel_art_intensity_; }
     void set_light_mode(int mode) { light_mode_ = mode; }
     int light_mode() const { return light_mode_; }
     void set_light_dir(const glm::vec3& d) { light_dir_ = d; }
@@ -339,6 +341,7 @@ private:
     // Visual effect state
     float time_ = 0.0f;
     int toon_bands_ = 0;          // 0 = off, 3/4/5 = band count
+    float pixel_art_intensity_ = 0.0f; // 0.0 = off, 1.0 = full retro pixel art
     int light_mode_ = 0;          // 0 = off, 1 = directional, 2 = point
     glm::vec3 light_dir_{0.5f, 1.0f, 0.7f};
     float light_intensity_ = 1.0f;
