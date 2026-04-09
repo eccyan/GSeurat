@@ -12,6 +12,7 @@ struct SceneObjectState {
     std::vector<GameObjectData> game_objects;
     std::vector<PortalData> portals;
     bool transitioning = false;
+    uint32_t scene_data_version = 0;  // incremented by update_scene_data
 };
 
 }  // namespace gseurat

@@ -377,6 +377,9 @@ void CommandDispatcher::register_default_commands() {
                 }
             }
 
+            // Notify staging_state that scene data has been updated
+            ctx_.scene_objects.scene_data_version++;
+
             return json{{"type", "ok"}};
         } catch (const std::exception& e) {
             std::fprintf(stderr, "[update_scene_data] ERROR: %s\n", e.what());

@@ -116,6 +116,7 @@ private:
     // Camera Review Mode
     std::unique_ptr<CameraReviewState> camera_review_;
     std::optional<SceneData> last_scene_data_;
+    uint32_t last_scene_data_version_ = 0;  // tracks update_scene_data changes
     bool right_click_prev_ = false;
 };
 

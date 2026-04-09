@@ -294,6 +294,25 @@ void StagingState::update(AppBase& app, float dt) {
         }
     }
 
+    // Detect incremental scene updates (update_scene_data from auto-sync).
+    // Reload camera zone data so gizmos stay in sync.
+    uint32_t cur_version = app.scene_objects().scene_data_version;
+    if (cur_version != last_scene_data_version_) {
+        last_scene_data_version_ = cur_version;
+        // Re-read the temp scene file written by update_scene_data
+        try {
+            last_scene_data_ = SceneLoader::load("/tmp/gseurat_live_scene.json");
+        } catch (...) {}
+        if (camera_review_ && last_scene_data_) {
+            camera_review_->load_zone_data(*last_scene_data_, app.gs_terrain().terrain_aabb);
+            // If review is active, reload zone system too
+            if (camera_review_->is_active()) {
+                auto pos = camera_review_->player_position();
+                camera_review_->activate(*last_scene_data_, pos, app.gs_terrain().terrain_aabb);
+            }
+        }
+    }
+
     // Check for pending character load from bridge command
     if (!app.pending_character_path.empty()) {
         load_character(app.pending_character_path, app);
