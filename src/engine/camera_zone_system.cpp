@@ -18,6 +18,40 @@ float CameraZoneSystem::nearest_t_on_spline(const SplinePath& path,
                                              glm::vec3 pos, int samples) const {
     if (!path.valid()) return 0.0f;
 
+    // If we have a previous t, do a local search first (±10% of spline).
+    // This prevents jumps across curve segments.
+    if (last_rail_t_ >= 0.0f) {
+        constexpr float kLocalRange = 0.10f;
+        float lo = std::max(0.0f, last_rail_t_ - kLocalRange);
+        float hi = std::min(1.0f, last_rail_t_ + kLocalRange);
+        int local_samples = 32;
+
+        float best_t = last_rail_t_;
+        float best_dist2 = 1e30f;
+        for (int i = 0; i <= local_samples; ++i) {
+            float t = lo + (hi - lo) * static_cast<float>(i) / static_cast<float>(local_samples);
+            glm::vec3 p = path.evaluate(t);
+            glm::vec3 d = p - pos;
+            float dist2 = d.x * d.x + d.y * d.y + d.z * d.z;
+            if (dist2 < best_dist2) {
+                best_dist2 = dist2;
+                best_t = t;
+            }
+        }
+
+        // Accept local result if reasonably close; otherwise fall through to global.
+        // Threshold: if local best is within 2x the spline step distance, use it.
+        float step_dist = 1.0f / static_cast<float>(samples);
+        glm::vec3 step_pt = path.evaluate(std::min(1.0f, last_rail_t_ + step_dist));
+        glm::vec3 step_d = step_pt - path.evaluate(last_rail_t_);
+        float step_len2 = step_d.x * step_d.x + step_d.y * step_d.y + step_d.z * step_d.z;
+        // Accept if within 20 units (generous threshold for teleport detection)
+        if (best_dist2 < 400.0f || best_dist2 < step_len2 * 100.0f) {
+            return best_t;
+        }
+    }
+
+    // Global search (first frame or after teleport).
     float best_t = 0.0f;
     float best_dist2 = 1e30f;
 
@@ -83,6 +117,7 @@ void CameraZoneSystem::load_from_data(
     transitioning_ = false;
     blend_elapsed_ = 0.0f;
     spring_initialized_ = false;
+    last_rail_t_ = -1.0f;
 }
 
 // ── Stage 1: Zone Resolution ────────────────────────────────────────────────
@@ -186,13 +221,15 @@ CameraState CameraZoneSystem::evaluate_vcam(const CameraParams& params,
         int ri = params.rail_index;
         if (ri >= 0 && ri < static_cast<int>(rails_.size()) && rails_[ri].path.valid()) {
             float t = nearest_t_on_spline(rails_[ri].path, player_pos);
+            last_rail_t_ = t;
             glm::vec3 rail_pos = rails_[ri].path.evaluate(t);
 
             spring_position_ = spring_damp(spring_position_, rail_pos, 0.15f, dt);
             state.position = spring_position_;
 
             if (rails_[ri].has_target_path && rails_[ri].target_path.valid()) {
-                state.target = rails_[ri].target_path.evaluate(t);
+                glm::vec3 raw_target = rails_[ri].target_path.evaluate(t);
+                state.target = spring_damp(spring_target_, raw_target, 0.15f, dt);
             } else {
                 state.target = spring_target_;
             }
