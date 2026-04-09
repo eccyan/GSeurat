@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useComponentRegistry } from '@gseurat/ui-kit';
 import { Vec3Input } from '../components/Vec3Input.js';
 import { useSceneStore } from '../store/useSceneStore.js';
 import type { CameraZoneRail } from '../store/types.js';
@@ -7,6 +8,7 @@ import { panelStyles } from '../styles/panel.js';
 const styles = { ...panelStyles };
 
 export function CameraRailEditor({ rail }: { rail: CameraZoneRail }) {
+  useComponentRegistry('CameraRailEditor');
   const updateCameraRail = useSceneStore((s) => s.updateCameraRail);
   const removeCameraRail = useSceneStore((s) => s.removeCameraRail);
   const addRailControlPoint = useSceneStore((s) => s.addRailControlPoint);

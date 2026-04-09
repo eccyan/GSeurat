@@ -1,4 +1,5 @@
 import React from 'react';
+import { useComponentRegistry } from '@gseurat/ui-kit';
 import { NumberInput } from '../components/NumberInput.js';
 import { Vec3Input } from '../components/Vec3Input.js';
 import { useSceneStore } from '../store/useSceneStore.js';
@@ -8,6 +9,7 @@ import { panelStyles } from '../styles/panel.js';
 const styles = { ...panelStyles };
 
 export function CameraTriggerEditor({ trigger }: { trigger: CameraZoneTrigger }) {
+  useComponentRegistry('CameraTriggerEditor');
   const updateCameraTrigger = useSceneStore((s) => s.updateCameraTrigger);
   const removeCameraTrigger = useSceneStore((s) => s.removeCameraTrigger);
   const cameraVolumes = useSceneStore((s) => s.cameraVolumes);

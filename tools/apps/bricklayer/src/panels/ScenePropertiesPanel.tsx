@@ -1,4 +1,5 @@
 import React from 'react';
+import { useComponentRegistry } from '@gseurat/ui-kit';
 import { NumberInput } from '../components/NumberInput.js';
 import { Vec3Input } from '../components/Vec3Input.js';
 import { useSceneStore } from '../store/useSceneStore.js';
@@ -1486,6 +1487,7 @@ function VfxInstanceProperties({ vfx }: { vfx: VfxInstanceData }) {
 }
 
 export function ScenePropertiesPanel() {
+  useComponentRegistry('ScenePropertiesPanel');
   const selectedEntity = useSceneStore((s) => s.selectedEntity);
   const gameObjects = useSceneStore((s) => s.gameObjects);
   const staticLights = useSceneStore((s) => s.staticLights);

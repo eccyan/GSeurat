@@ -1,4 +1,5 @@
 import React, { useRef, useState } from 'react';
+import { useComponentRegistry } from '@gseurat/ui-kit';
 import { NumberInput } from '../components/NumberInput.js';
 import { useSceneStore } from '../store/useSceneStore.js';
 import { estimateDepth } from '../lib/depthEstimate.js';
@@ -105,6 +106,7 @@ function downscaleImage(img: HTMLImageElement, maxWidth: number): ImageData {
 }
 
 export function ImportDialog({ onClose }: { onClose: () => void }) {
+  useComponentRegistry('ImportDialog');
   const fileRef = useRef<HTMLInputElement>(null);
   const [mode, setMode] = useState<ImportMode>('flat');
   const [maxHeight, setMaxHeight] = useState(16);

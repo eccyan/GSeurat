@@ -1,4 +1,5 @@
 import React from 'react';
+import { useComponentRegistry } from '@gseurat/ui-kit';
 import { NumberInput } from '../components/NumberInput.js';
 import { useSceneStore } from '../store/useSceneStore.js';
 import { GaussianTab } from './GaussianTab.js';
@@ -20,6 +21,7 @@ const styles: Record<string, React.CSSProperties> = {
 };
 
 export function SettingsRightPanel() {
+  useComponentRegistry('SettingsRightPanel');
   const category = useSceneStore((s) => s.selectedSettingsCategory);
 
   return (
