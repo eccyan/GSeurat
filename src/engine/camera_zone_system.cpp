@@ -18,20 +18,34 @@ float CameraZoneSystem::nearest_t_on_spline(const SplinePath& path,
                                              glm::vec3 pos, int samples) const {
     if (!path.valid()) return 0.0f;
 
-    float best_t = 0.0f;
-    float best_dist2 = 1e30f;
-
-    for (int i = 0; i <= samples; ++i) {
-        float t = static_cast<float>(i) / static_cast<float>(samples);
-        glm::vec3 p = path.evaluate(t);
-        glm::vec3 d = p - pos;
-        float dist2 = d.x * d.x + d.y * d.y + d.z * d.z;
-        if (dist2 < best_dist2) {
-            best_dist2 = dist2;
-            best_t = t;
+    auto search_range = [&](float lo, float hi, int n) {
+        float best_t = lo;
+        float best_dist2 = 1e30f;
+        for (int i = 0; i <= n; ++i) {
+            float t = lo + (hi - lo) * static_cast<float>(i) / static_cast<float>(n);
+            glm::vec3 p = path.evaluate(t);
+            glm::vec3 d = p - pos;
+            float dist2 = d.x * d.x + d.y * d.y + d.z * d.z;
+            if (dist2 < best_dist2) {
+                best_dist2 = dist2;
+                best_t = t;
+            }
         }
+        return std::pair{best_t, best_dist2};
+    };
+
+    // Local search near previous t for frame-to-frame continuity.
+    if (last_rail_t_ >= 0.0f) {
+        float lo = std::max(0.0f, last_rail_t_ - 0.10f);
+        float hi = std::min(1.0f, last_rail_t_ + 0.10f);
+        auto [local_t, local_d2] = search_range(lo, hi, 32);
+        // Accept if within reasonable distance (20 units).
+        if (local_d2 < 400.0f) return local_t;
     }
-    return best_t;
+
+    // Global search (first frame or after teleport).
+    auto [global_t, global_d2] = search_range(0.0f, 1.0f, samples);
+    return global_t;
 }
 
 // ── set_orbit_from_camera ────────────────────────────────────────────────────
@@ -83,6 +97,7 @@ void CameraZoneSystem::load_from_data(
     transitioning_ = false;
     blend_elapsed_ = 0.0f;
     spring_initialized_ = false;
+    last_rail_t_ = -1.0f;
 }
 
 // ── Stage 1: Zone Resolution ────────────────────────────────────────────────
@@ -186,16 +201,20 @@ CameraState CameraZoneSystem::evaluate_vcam(const CameraParams& params,
         int ri = params.rail_index;
         if (ri >= 0 && ri < static_cast<int>(rails_.size()) && rails_[ri].path.valid()) {
             float t = nearest_t_on_spline(rails_[ri].path, player_pos);
-            glm::vec3 rail_pos = rails_[ri].path.evaluate(t);
+            last_rail_t_ = t;
 
-            spring_position_ = spring_damp(spring_position_, rail_pos, 0.15f, dt);
-            state.position = spring_position_;
+            // Snap directly to rail — no spring on position.
+            state.position = rails_[ri].path.evaluate(t);
+            spring_position_ = state.position;  // keep spring in sync
 
             if (rails_[ri].has_target_path && rails_[ri].target_path.valid()) {
+                // Snap target directly — no spring (spring_target_ tracks player,
+                // which fights the target path and causes oscillation).
                 state.target = rails_[ri].target_path.evaluate(t);
             } else {
                 state.target = spring_target_;
             }
+
         } else {
             // Fallback: treat as free_look.
             state.position = spring_target_ + params.offset;

@@ -97,6 +97,7 @@ private:
     glm::vec3 spring_position_{0};
     glm::vec3 spring_target_{0};
     bool spring_initialized_ = false;
+    float last_rail_t_ = -1.0f;  // previous t on rail spline (-1 = uninitialized)
 
     // ── Stage 3 state ───────────────────────────────────────────────────────
     bool transitioning_ = false;
