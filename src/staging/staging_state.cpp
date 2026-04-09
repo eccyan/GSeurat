@@ -133,7 +133,12 @@ void StagingState::on_enter(AppBase& app) {
             }
             float x = cmd.value("x", 0.0f);
             float z = cmd.value("z", 0.0f);
-            camera_review_->teleport(x, z);
+            if (cmd.contains("y")) {
+                float y = cmd.value("y", 0.0f);
+                camera_review_->teleport(x, y, z);
+            } else {
+                camera_review_->teleport(x, z);
+            }
             auto pos = camera_review_->player_position();
             return json{
                 {"type", "ok"},
@@ -787,9 +792,9 @@ void StagingState::draw_camera_panel(AppBase& app) {
                     ImGui::PushID(id);
                     if (ImGui::Button(label.c_str())) {
                         auto center = std::visit([](const auto& s) { return s.center; }, vol.shape);
-                        std::fprintf(stderr, "[CameraReview] Teleport to volume center: (%.1f, %.1f)\n",
-                                     center.x, center.z);
-                        camera_review_->teleport(center.x, center.z);
+                        std::fprintf(stderr, "[CameraReview] Teleport to volume center: (%.1f, %.1f, %.1f)\n",
+                                     center.x, center.y, center.z);
+                        camera_review_->teleport(center.x, center.y, center.z);
                     }
                     ImGui::PopID();
                     ImGui::SameLine();

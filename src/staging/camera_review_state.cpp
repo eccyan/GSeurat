@@ -118,7 +118,7 @@ void CameraReviewState::update(float dt, const InputManager& input,
             } else {
                 cam_fwd = {0.0f, 0.0f, -1.0f};
             }
-            glm::vec3 cam_right = {cam_fwd.z, 0.0f, -cam_fwd.x};  // cross(fwd, up) in XZ
+            glm::vec3 cam_right = {-cam_fwd.z, 0.0f, cam_fwd.x};  // cross(fwd, up) in XZ
 
             if (input.is_key_down(kGlfwKeyW)) dir += cam_fwd;
             if (input.is_key_down(kGlfwKeyS)) dir -= cam_fwd;
@@ -184,6 +184,13 @@ void CameraReviewState::teleport(float x, float z) {
     player_vel_ = glm::vec3{0.0f};
 }
 
+void CameraReviewState::teleport(float x, float y, float z) {
+    player_pos_.x = x;
+    player_pos_.y = y;
+    player_pos_.z = z;
+    player_vel_ = glm::vec3{0.0f};
+}
+
 void CameraReviewState::inject_walk(const std::string& direction, float seconds) {
     if (!active_) return;
 
@@ -205,7 +212,7 @@ void CameraReviewState::inject_walk(const std::string& direction, float seconds)
         } else {
             cam_fwd = {0.0f, 0.0f, -1.0f};
         }
-        glm::vec3 cam_right = {cam_fwd.z, 0.0f, -cam_fwd.x};
+        glm::vec3 cam_right = {-cam_fwd.z, 0.0f, cam_fwd.x};
 
         if (direction == "forward")      dir = cam_fwd;
         else if (direction == "back")    dir = -cam_fwd;

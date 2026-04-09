@@ -366,6 +366,33 @@ void test_move_reference_auto_switch() {
           "rail_follow zone → world_axis");
 }
 
+// ── Test 12: teleport with Y coordinate ──────────────────────────────────────
+
+void test_teleport_with_y() {
+    std::printf("Teleport With Y:\n");
+    gseurat::CameraReviewState state;
+    gseurat::SceneData scene;
+
+    gseurat::CameraZonesData cz;
+    gseurat::CameraVolume vol;
+    vol.shape = gseurat::CamSphere{{10.0f, 12.0f, 10.0f}, 5.0f};
+    cz.volumes.push_back({"test", vol});
+    scene.camera_zones = cz;
+    state.activate(scene, {0, 0, 0});
+
+    // 2-arg teleport: Y stays at 0
+    state.teleport(10.0f, 10.0f);
+    check(approx(state.player_position().x, 10.0f), "2-arg teleport x");
+    check(approx(state.player_position().y, 0.0f), "2-arg teleport y stays 0");
+    check(approx(state.player_position().z, 10.0f), "2-arg teleport z");
+
+    // 3-arg teleport: Y is set
+    state.teleport(10.0f, 12.0f, 10.0f);
+    check(approx(state.player_position().x, 10.0f), "3-arg teleport x");
+    check(approx(state.player_position().y, 12.0f), "3-arg teleport y set to 12");
+    check(approx(state.player_position().z, 10.0f), "3-arg teleport z");
+}
+
 int main() {
     test_starts_inactive();
     test_activate_empty_zones();
@@ -378,6 +405,7 @@ int main() {
     test_zone_resolution_after_teleport();
     test_camera_state_valid();
     test_move_reference_auto_switch();
+    test_teleport_with_y();
 
     std::printf("\n%d passed, %d failed\n", passed, failed);
     return failed > 0 ? 1 : 0;

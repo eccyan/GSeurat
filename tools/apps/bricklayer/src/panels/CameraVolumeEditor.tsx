@@ -107,7 +107,7 @@ export function CameraVolumeEditor({ volume }: { volume: CameraZoneVolume }) {
       <div style={styles.section}>
         <span style={styles.label}>Priority</span>
         <NumberInput
-          value={volume.params.priority}
+          value={volume.params.priority ?? 0}
           step={1}
           onChange={(v) => updateParams({ priority: v })}
           style={styles.input}
@@ -117,7 +117,7 @@ export function CameraVolumeEditor({ volume }: { volume: CameraZoneVolume }) {
       <div style={styles.section}>
         <span style={styles.label}>Blend Time</span>
         <NumberInput
-          value={volume.params.blend_time}
+          value={volume.params.blend_time ?? 1.0}
           min={0}
           step={0.1}
           onChange={(v) => updateParams({ blend_time: v })}
@@ -141,14 +141,14 @@ export function CameraVolumeEditor({ volume }: { volume: CameraZoneVolume }) {
         <div style={styles.row}>
           <NumberInput
             label="Min"
-            value={volume.params.pitch_min}
+            value={volume.params.pitch_min ?? -60}
             step={1}
             onChange={(v) => updateParams({ pitch_min: v })}
             style={styles.input}
           />
           <NumberInput
             label="Max"
-            value={volume.params.pitch_max}
+            value={volume.params.pitch_max ?? 10}
             step={1}
             onChange={(v) => updateParams({ pitch_max: v })}
             style={styles.input}
@@ -161,14 +161,14 @@ export function CameraVolumeEditor({ volume }: { volume: CameraZoneVolume }) {
         <div style={styles.row}>
           <NumberInput
             label="Min"
-            value={volume.params.yaw_min}
+            value={volume.params.yaw_min ?? -180}
             step={1}
             onChange={(v) => updateParams({ yaw_min: v })}
             style={styles.input}
           />
           <NumberInput
             label="Max"
-            value={volume.params.yaw_max}
+            value={volume.params.yaw_max ?? 180}
             step={1}
             onChange={(v) => updateParams({ yaw_max: v })}
             style={styles.input}
@@ -179,7 +179,7 @@ export function CameraVolumeEditor({ volume }: { volume: CameraZoneVolume }) {
       <div style={styles.section}>
         <span style={styles.label}>FOV</span>
         <NumberInput
-          value={volume.params.fov}
+          value={volume.params.fov ?? 45}
           min={10}
           max={150}
           step={1}
@@ -192,7 +192,7 @@ export function CameraVolumeEditor({ volume }: { volume: CameraZoneVolume }) {
         <div style={styles.section}>
           <span style={styles.label}>Orbit Distance</span>
           <NumberInput
-            value={volume.params.orbit_distance}
+            value={volume.params.orbit_distance ?? 10}
             min={0.1}
             step={0.5}
             onChange={(v) => updateParams({ orbit_distance: v })}
@@ -205,7 +205,7 @@ export function CameraVolumeEditor({ volume }: { volume: CameraZoneVolume }) {
         <div style={styles.section}>
           <span style={styles.label}>Offset</span>
           <Vec3Input
-            value={volume.params.offset}
+            value={volume.params.offset ?? [0, 5, -10]}
             onChange={(v) => updateParams({ offset: v })}
           />
         </div>
