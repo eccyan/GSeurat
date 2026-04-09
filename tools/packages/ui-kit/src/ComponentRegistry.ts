@@ -32,8 +32,8 @@ export class ComponentRegistry {
     this._mounted.delete(name);
   }
 
-  reportError(component: string, message: string): void {
-    this._errors.push({ component, message, timestamp: Date.now() });
+  reportError(component: string, error: Error): void {
+    this._errors.push({ component, message: error.message, timestamp: Date.now() });
   }
 
   setManifest(manifest: ComponentManifest): void {

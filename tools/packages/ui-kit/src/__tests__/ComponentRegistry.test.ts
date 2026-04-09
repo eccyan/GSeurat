@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { ComponentRegistry, componentRegistry } from '../ComponentRegistry';
 
 describe('ComponentRegistry', () => {
@@ -113,7 +113,7 @@ describe('ComponentRegistry', () => {
 
   describe('reportError', () => {
     it('tracks errors via reportError', () => {
-      registry.reportError('Toolbar', 'Something went wrong');
+      registry.reportError('Toolbar', new Error('Something went wrong'));
       const health = registry.health();
       expect(health.errors).toHaveLength(1);
       expect(health.errors[0].component).toBe('Toolbar');
@@ -122,8 +122,8 @@ describe('ComponentRegistry', () => {
     });
 
     it('accumulates multiple errors', () => {
-      registry.reportError('Toolbar', 'Error 1');
-      registry.reportError('Sidebar', 'Error 2');
+      registry.reportError('Toolbar', new Error('Error 1'));
+      registry.reportError('Sidebar', new Error('Error 2'));
       const health = registry.health();
       expect(health.errors).toHaveLength(2);
     });
@@ -139,7 +139,7 @@ describe('ComponentRegistry', () => {
       registry.setMode('terrain');
       registry.mount('Toolbar');
       registry.mount('Sidebar');
-      registry.reportError('Toolbar', 'err');
+      registry.reportError('Toolbar', new Error('err'));
       registry.reset();
       const health = registry.health();
       expect(health.mounted).toEqual([]);
@@ -151,6 +151,8 @@ describe('ComponentRegistry', () => {
   });
 
   describe('singleton', () => {
+    afterEach(() => componentRegistry.reset());
+
     it('exports a singleton componentRegistry', () => {
       expect(componentRegistry).toBeInstanceOf(ComponentRegistry);
     });
