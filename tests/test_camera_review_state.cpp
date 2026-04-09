@@ -27,6 +27,11 @@ static bool approx(float a, float b, float eps = 0.01f) {
     return std::fabs(a - b) < eps;
 }
 
+// Zero AABB — test data is already in world space, no conversion needed.
+static gseurat::AABB zero_aabb() {
+    return gseurat::AABB{{0, 0, 0}, {0, 0, 0}};
+}
+
 // ── Test 1: Starts inactive ─────────────────────────────────────────────────
 
 void test_starts_inactive() {
@@ -46,13 +51,13 @@ void test_activate_empty_zones() {
     gseurat::SceneData scene;
 
     // No camera_zones at all.
-    bool ok = state.activate(scene, {0, 0, 0});
+    bool ok = state.activate(scene, {0, 0, 0}, zero_aabb());
     check(!ok, "activate returns false when camera_zones is nullopt");
     check(!state.is_active(), "state remains inactive");
 
     // camera_zones present but no volumes.
     scene.camera_zones = gseurat::CameraZonesData{};
-    ok = state.activate(scene, {0, 0, 0});
+    ok = state.activate(scene, {0, 0, 0}, zero_aabb());
     check(!ok, "activate returns false when camera_zones has no volumes");
     check(!state.is_active(), "state remains inactive with empty volumes");
 }
@@ -79,7 +84,7 @@ void test_activate_valid() {
     scene.camera_zones = cz;
 
     glm::vec3 start_pos{5.0f, 0.0f, 3.0f};
-    bool ok = state.activate(scene, start_pos);
+    bool ok = state.activate(scene, start_pos, zero_aabb());
     check(ok, "activate returns true with valid zones");
     check(state.is_active(), "state is now active");
     check(state.volume_count() == 1, "one volume loaded");
@@ -103,7 +108,7 @@ void test_deactivate() {
     cz.volumes.push_back({"zone_a", vol});
 
     scene.camera_zones = cz;
-    state.activate(scene, {10, 0, 20});
+    state.activate(scene, {10, 0, 20}, zero_aabb());
 
     check(state.is_active(), "active after activate");
     check(state.volume_count() == 1, "one volume before deactivate");
@@ -149,7 +154,7 @@ void test_multiple_zones() {
     cz.rails.push_back({"main_rail", rail});
 
     scene.camera_zones = cz;
-    state.activate(scene, {0, 0, 0});
+    state.activate(scene, {0, 0, 0}, zero_aabb());
 
     check(state.volume_count() == 2, "two volumes loaded");
     check(state.trigger_count() == 1, "one trigger loaded");
@@ -174,7 +179,7 @@ void test_reset_player() {
     cz.volumes.push_back({"zone_a", vol});
 
     scene.camera_zones = cz;
-    state.activate(scene, {5, 0, 7});
+    state.activate(scene, {5, 0, 7}, zero_aabb());
 
     // Teleport somewhere else.
     state.teleport(100, 200);
@@ -204,7 +209,7 @@ void test_inject_walk_moves_player() {
     cz.volumes.push_back({"zone_a", vol});
 
     scene.camera_zones = cz;
-    state.activate(scene, {0, 0, 0});
+    state.activate(scene, {0, 0, 0}, zero_aabb());
 
     // Set world_axis mode so forward = -Z.
     state.set_move_reference(gseurat::CameraReviewState::MoveReference::world_axis);
@@ -239,7 +244,7 @@ void test_reset_after_walk() {
     cz.volumes.push_back({"zone_a", vol});
 
     scene.camera_zones = cz;
-    state.activate(scene, {5, 0, 7});
+    state.activate(scene, {5, 0, 7}, zero_aabb());
 
     // Teleport away.
     state.teleport(100, 200);
@@ -276,7 +281,7 @@ void test_zone_resolution_after_teleport() {
     cz.volumes.push_back({"zone_b", vol_b});
 
     scene.camera_zones = cz;
-    state.activate(scene, {0, 0, 0});
+    state.activate(scene, {0, 0, 0}, zero_aabb());
 
     // Update once to resolve zone.
     gseurat::InputManager input;
@@ -306,7 +311,7 @@ void test_camera_state_valid() {
     cz.volumes.push_back({"zone_a", vol});
 
     scene.camera_zones = cz;
-    state.activate(scene, {5, 0, 3});
+    state.activate(scene, {5, 0, 3}, zero_aabb());
 
     gseurat::InputManager input;
     state.update(0.016f, input, false, false);
@@ -350,7 +355,7 @@ void test_move_reference_auto_switch() {
     cz.rails.push_back({"main_rail", rail});
 
     scene.camera_zones = cz;
-    state.activate(scene, {0, 0, 0});
+    state.activate(scene, {0, 0, 0}, zero_aabb());
 
     gseurat::InputManager input;
 
@@ -378,7 +383,7 @@ void test_teleport_with_y() {
     vol.shape = gseurat::CamSphere{{10.0f, 12.0f, 10.0f}, 5.0f};
     cz.volumes.push_back({"test", vol});
     scene.camera_zones = cz;
-    state.activate(scene, {0, 0, 0});
+    state.activate(scene, {0, 0, 0}, zero_aabb());
 
     // 2-arg teleport: Y stays at 0
     state.teleport(10.0f, 10.0f);
