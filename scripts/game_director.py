@@ -15,6 +15,10 @@ Usage:
   python scripts/game_director.py camera_review <on|off|status>
   python scripts/game_director.py camera_review_teleport <x> <z>
   python scripts/game_director.py camera_review_walk <direction> <seconds>
+  python scripts/game_director.py visual_state
+  python scripts/game_director.py snapshot save <name>
+  python scripts/game_director.py snapshot diff <name>
+  python scripts/game_director.py snapshot list
 """
 
 import json
@@ -170,6 +174,66 @@ def camera_review_teleport(x: float, z: float, y: float = None) -> dict:
 
 def camera_review_walk(direction: str, seconds: float) -> dict:
     return send_command({"cmd": "camera_review_walk", "direction": direction, "seconds": seconds})
+
+
+def get_visual_state() -> dict:
+    return send_command({"cmd": "visual_state"})
+
+
+def snapshot_save(name: str) -> str:
+    """Save current visual_state to /tmp/gseurat_snapshots/<name>.json."""
+    vs = get_visual_state()
+    snap_dir = "/tmp/gseurat_snapshots"
+    os.makedirs(snap_dir, exist_ok=True)
+    path = os.path.join(snap_dir, f"{name}.json")
+    with open(path, "w") as f:
+        json.dump(vs, f, indent=2)
+    return path
+
+
+def snapshot_diff(name: str) -> dict:
+    """Compare current visual_state against saved snapshot."""
+    snap_path = f"/tmp/gseurat_snapshots/{name}.json"
+    if not os.path.exists(snap_path):
+        return {"error": f"Snapshot '{name}' not found at {snap_path}"}
+    with open(snap_path) as f:
+        before = json.load(f)
+    after = get_visual_state()
+
+    def flatten(obj, prefix=""):
+        out = {}
+        if isinstance(obj, dict):
+            for k, v in obj.items():
+                out.update(flatten(v, f"{prefix}.{k}" if prefix else k))
+        elif isinstance(obj, list):
+            for i, v in enumerate(obj):
+                out.update(flatten(v, f"{prefix}[{i}]"))
+        else:
+            out[prefix] = obj
+        return out
+
+    flat_a = flatten(before)
+    flat_b = flatten(after)
+
+    changed, added, removed = {}, {}, {}
+    for k, v in flat_a.items():
+        if k not in flat_b:
+            removed[k] = {"was": v}
+        elif flat_b[k] != v:
+            changed[k] = {"was": v, "now": flat_b[k]}
+    for k, v in flat_b.items():
+        if k not in flat_a:
+            added[k] = {"now": v}
+
+    return {"changed": changed, "added": added, "removed": removed}
+
+
+def snapshot_list() -> list:
+    """List saved snapshot names."""
+    snap_dir = "/tmp/gseurat_snapshots"
+    if not os.path.isdir(snap_dir):
+        return []
+    return [f.replace(".json", "") for f in os.listdir(snap_dir) if f.endswith(".json")]
 
 
 def inject_key(key: int, down: bool = True) -> dict:
@@ -639,6 +703,69 @@ def main():
         elif cmd == "quit":
             result = send_command({"cmd": "quit"})
             print(f"Quit: {result.get('message', 'sent')}")
+
+        elif cmd == "visual_state":
+            vs = get_visual_state()
+            panels = vs.get("panels", [])
+            off_screen = [p for p in panels if p.get("visible") and not p.get("on_screen")]
+            print(f"Panels: {len(panels)} total, {len(off_screen)} off-screen")
+            for p in off_screen:
+                print(f"  WARNING: '{p['name']}' is visible but off-screen")
+            gizmos = vs.get("gizmos", {})
+            for name, g in gizmos.items():
+                status = "ON" if g.get("enabled") else "off"
+                print(f"  Gizmo {name}: [{status}] count={g.get('count', 0)}")
+            scene = vs.get("scene", {})
+            print(f"  Gaussians: {scene.get('gaussians_visible', 0)}/{scene.get('gaussians_total', 0)}")
+            print(f"  Game objects: {scene.get('game_objects_loaded', 0)}")
+            cr = vs.get("camera_review", {})
+            if cr.get("active"):
+                print(f"  Camera review: active, zone={cr.get('active_zone')}")
+
+        elif cmd == "snapshot":
+            if len(sys.argv) < 3:
+                print("Usage: game_director.py snapshot <save|diff|list> [name]")
+                return
+            sub = sys.argv[2]
+            if sub == "save":
+                if len(sys.argv) < 4:
+                    print("Usage: game_director.py snapshot save <name>")
+                    return
+                path = snapshot_save(sys.argv[3])
+                print(f"Snapshot saved: {path}")
+            elif sub == "diff":
+                if len(sys.argv) < 4:
+                    print("Usage: game_director.py snapshot diff <name>")
+                    return
+                diff = snapshot_diff(sys.argv[3])
+                if "error" in diff:
+                    print(f"Error: {diff['error']}")
+                else:
+                    changed = diff.get("changed", {})
+                    added = diff.get("added", {})
+                    removed = diff.get("removed", {})
+                    if not changed and not added and not removed:
+                        print("No differences")
+                    else:
+                        if changed:
+                            print("Changed:")
+                            for k, v in sorted(changed.items()):
+                                print(f"  {k}: {v['was']} -> {v['now']}")
+                        if added:
+                            print("Added:")
+                            for k, v in sorted(added.items()):
+                                print(f"  {k}: {v['now']}")
+                        if removed:
+                            print("Removed:")
+                            for k, v in sorted(removed.items()):
+                                print(f"  {k}: was {v['was']}")
+            elif sub == "list":
+                snaps = snapshot_list()
+                if snaps:
+                    for s in sorted(snaps):
+                        print(f"  {s}")
+                else:
+                    print("No snapshots saved")
 
         else:
             print(f"Unknown command: {cmd}")

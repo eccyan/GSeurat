@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useComponentRegistry } from '@gseurat/ui-kit';
 import { useSceneStore } from '../store/useSceneStore.js';
 import { exportPly } from '../lib/plyExport.js';
 import { exportSceneJson } from '../lib/sceneExport.js';
@@ -149,6 +150,7 @@ function DropdownMenu({
 }
 
 export function MenuBar({ onImport }: { onImport: () => void }) {
+  useComponentRegistry('MenuBar');
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const isDirty = useSceneStore((st) => st.isDirty);
   const projectName = useSceneStore((st) => st.projectName);

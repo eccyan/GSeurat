@@ -1,0 +1,13 @@
+{
+  "always": ["MenuBar", "CharacterViewport"],
+  "modes": {
+    "build": ["ToolBar", "BuildPanel"],
+    "animate": ["AnimateLeftPanel", "AnimateRightPanel", "Timeline"]
+  },
+  "conditional": {
+    "ExportDialog": "when export dialog is open",
+    "ImportDialog": "when import dialog is open",
+    "NewProjectDialog": "when new project dialog is open",
+    "ResizeGridDialog": "when resize grid dialog is open"
+  }
+}

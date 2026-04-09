@@ -1,4 +1,5 @@
 import React from 'react';
+import { useComponentRegistry } from '@gseurat/ui-kit';
 import { NumberInput } from '../components/NumberInput.js';
 import { useSceneStore } from '../store/useSceneStore.js';
 
@@ -14,6 +15,7 @@ const styles: Record<string, React.CSSProperties> = {
 };
 
 export function TerrainRightPanel() {
+  useComponentRegistry('TerrainRightPanel');
   const voxels = useSceneStore((s) => s.voxels);
   const gridWidth = useSceneStore((s) => s.gridWidth);
   const gridDepth = useSceneStore((s) => s.gridDepth);

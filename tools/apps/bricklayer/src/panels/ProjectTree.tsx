@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useComponentRegistry } from '@gseurat/ui-kit';
 import { useSceneStore } from '../store/useSceneStore.js';
 import { getOrbitControls } from '../viewport/Viewport.js';
 import type { NavigationNode, SettingsCategory } from '../store/types.js';
@@ -160,6 +161,7 @@ const settingsCategories: { id: SettingsCategory; label: string; icon: string }[
 // ── Main component ──
 
 export function ProjectTree() {
+  useComponentRegistry('ProjectTree');
   const projectName = useSceneStore((st) => st.projectName);
   const activeNode = useSceneStore((st) => st.activeNode);
   const setActiveNode = useSceneStore((st) => st.setActiveNode);

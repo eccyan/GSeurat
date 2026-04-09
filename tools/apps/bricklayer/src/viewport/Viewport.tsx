@@ -1,4 +1,5 @@
 import React, { useRef, useCallback, useEffect, useState } from 'react';
+import { useComponentRegistry } from '@gseurat/ui-kit';
 import { Canvas, useThree, ThreeEvent } from '@react-three/fiber';
 import { OrbitControls, Grid, Html } from '@react-three/drei';
 import * as THREE from 'three';
@@ -438,6 +439,7 @@ function SceneContent() {
 }
 
 export function Viewport() {
+  useComponentRegistry('Viewport');
   const gridWidth = useSceneStore((s) => s.gridWidth);
   const gridDepth = useSceneStore((s) => s.gridDepth);
   const possessVolumeId = useSceneStore((s) => s.possessVolumeId);

@@ -1,4 +1,5 @@
 import React from 'react';
+import { useComponentRegistry } from '@gseurat/ui-kit';
 import { NumberInput } from '../components/NumberInput.js';
 import { useSceneStore } from '../store/useSceneStore.js';
 import { extractColorsFromFile } from '../lib/colorExtract.js';
@@ -104,6 +105,7 @@ const styles: Record<string, React.CSSProperties> = {
 };
 
 export function TerrainLeftPanel() {
+  useComponentRegistry('TerrainLeftPanel');
   const activeTool = useSceneStore((s) => s.activeTool);
   const activeColor = useSceneStore((s) => s.activeColor);
   const brushSize = useSceneStore((s) => s.brushSize);

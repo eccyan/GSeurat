@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useComponentRegistry } from '@gseurat/ui-kit';
 import { useCharacterStore } from '../store/useCharacterStore.js';
 import type { BodyPart } from '../store/types.js';
 
@@ -130,6 +131,7 @@ function BoneTree({ parts, parentId, depth, selected, onSelect, onReparent, drop
 }
 
 export function AnimateLeftPanel() {
+  useComponentRegistry('AnimateLeftPanel');
   const parts = useCharacterStore((s) => s.characterParts);
   const selectedPart = useCharacterStore((s) => s.selectedPart);
   const setSelectedPart = useCharacterStore((s) => s.setSelectedPart);

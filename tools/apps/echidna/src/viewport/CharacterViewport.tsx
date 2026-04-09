@@ -1,4 +1,5 @@
 import React, { useRef, useEffect } from 'react';
+import { useComponentRegistry } from '@gseurat/ui-kit';
 import { Canvas, useThree } from '@react-three/fiber';
 import { OrbitControls, Grid } from '@react-three/drei';
 import * as THREE from 'three';
@@ -64,6 +65,7 @@ function CameraFitter() {
 }
 
 export function CharacterViewport() {
+  useComponentRegistry('CharacterViewport');
   const gridWidth = useCharacterStore((s) => s.gridWidth);
   const gridDepth = useCharacterStore((s) => s.gridDepth);
   const showGrid = useCharacterStore((s) => s.showGrid);

@@ -1,4 +1,5 @@
 import React from 'react';
+import { useComponentRegistry } from '@gseurat/ui-kit';
 import { NumberInput } from '../components/NumberInput.js';
 import { Vec3Input } from '../components/Vec3Input.js';
 import { useSceneStore } from '../store/useSceneStore.js';
@@ -8,6 +9,7 @@ import { panelStyles } from '../styles/panel.js';
 const styles = { ...panelStyles };
 
 export function CameraVolumeEditor({ volume }: { volume: CameraZoneVolume }) {
+  useComponentRegistry('CameraVolumeEditor');
   const updateCameraVolume = useSceneStore((s) => s.updateCameraVolume);
   const removeCameraVolume = useSceneStore((s) => s.removeCameraVolume);
   const cameraRails = useSceneStore((s) => s.cameraRails);

@@ -1,4 +1,5 @@
 #include "gseurat/staging/staging_state.hpp"
+#include "gseurat/staging/visual_state.hpp"
 #include "gseurat/engine/app_base.hpp"
 #include "gseurat/engine/command_dispatcher.hpp"
 #include "gseurat/engine/gaussian_cloud.hpp"
@@ -155,6 +156,73 @@ void StagingState::on_enter(AppBase& app) {
             float seconds = cmd.value("seconds", 1.0f);
             camera_review_->inject_walk(direction, seconds);
             return json{{"type", "ok"}};
+        });
+
+    app.command_dispatcher().register_command("visual_state",
+        [this, &app](const json& /*cmd*/) -> CommandResult {
+            VisualState vs;
+
+            // Display size from ImGui
+            auto& io = ImGui::GetIO();
+            float dw = io.DisplaySize.x;
+            float dh = io.DisplaySize.y;
+
+            // Panels — report visibility; geometry is 0 since imgui_internal.h
+            // is not included (FindWindowByName unavailable).
+            auto add_panel = [&](const char* name, bool visible) {
+                vs.panels.push_back({name, visible, 0, 0, 0, 0, dw, dh});
+            };
+            add_panel("Viewport Info", show_viewport_info_);
+            add_panel("Render Settings", show_render_settings_);
+            add_panel("GS Parameters", show_gs_params_);
+            add_panel("Feature Toggles", show_feature_toggles_);
+            add_panel("Lighting", show_lighting_);
+            add_panel("Camera", show_camera_);
+            add_panel("Performance", show_performance_);
+            add_panel("Character", show_character_);
+
+            // Gizmos
+            auto& sd = last_scene_data_;
+            vs.gizmos.push_back({"lights", show_gizmo_lights_,
+                sd ? static_cast<int>(sd->static_lights.size()) : 0});
+            vs.gizmos.push_back({"emitters", show_gizmo_emitters_,
+                sd ? static_cast<int>(sd->gs_particle_emitters.size()) : 0});
+            vs.gizmos.push_back({"vfx_instances", show_gizmo_vfx_,
+                sd ? static_cast<int>(sd->vfx_instances.size()) : 0});
+            vs.gizmos.push_back({"game_objects", show_gizmo_game_objects_,
+                sd ? static_cast<int>(sd->game_objects.size()) : 0});
+            vs.gizmos.push_back({"camera_zones", show_gizmo_camera_zones_,
+                sd && sd->camera_zones
+                    ? static_cast<int>(sd->camera_zones->volumes.size()) : 0});
+
+            // Scene
+            auto& gsr = app.renderer().gs_renderer();
+            vs.scene.gaussians_visible = static_cast<int>(gsr.visible_count());
+            vs.scene.gaussians_total = static_cast<int>(gsr.gaussian_count());
+            vs.scene.game_objects_loaded = sd
+                ? static_cast<int>(sd->game_objects.size()) : 0;
+            vs.scene.terrain_loaded = sd.has_value();
+            vs.scene.character_visible = (character_data_ != nullptr);
+
+            // Features — iterate FeatureFlags::entries() with member pointers
+            const auto& ff = app.feature_flags();
+            for (const auto& entry : FeatureFlags::entries()) {
+                vs.features[std::string(entry.name)] = ff.*entry.ptr;
+            }
+
+            // Camera review
+            if (camera_review_ && camera_review_->is_active()) {
+                vs.camera_review.active = true;
+                auto pos = camera_review_->player_position();
+                vs.camera_review.player_x = pos.x;
+                vs.camera_review.player_y = pos.y;
+                vs.camera_review.player_z = pos.z;
+                vs.camera_review.active_zone = camera_review_->active_zone_name();
+            }
+
+            auto result = vs.to_json();
+            result["type"] = "ok";
+            return result;
         });
 }
 
