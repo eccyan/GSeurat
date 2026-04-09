@@ -182,6 +182,7 @@ add_library(gseurat_core OBJECT
     src/character/character_manifest.cpp
     src/character/bone_animation_player.cpp
     src/character/bone_animation_state_machine.cpp
+    src/staging/visual_state.cpp
 )
 
 
@@ -323,3 +324,4 @@ add_gseurat_test(test_camera_review_state src/staging/camera_review_state.cpp
                                            src/engine/gs_spline.cpp
                                            src/engine/input_manager.cpp)
 target_link_libraries(test_camera_review_state PRIVATE glfw imgui_lib)
+add_gseurat_test(test_visual_state  src/staging/visual_state.cpp)
