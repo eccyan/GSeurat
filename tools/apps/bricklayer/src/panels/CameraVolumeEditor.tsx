@@ -13,9 +13,6 @@ export function CameraVolumeEditor({ volume }: { volume: CameraZoneVolume }) {
   const updateCameraVolume = useSceneStore((s) => s.updateCameraVolume);
   const removeCameraVolume = useSceneStore((s) => s.removeCameraVolume);
   const cameraRails = useSceneStore((s) => s.cameraRails);
-  const possessVolumeId = useSceneStore((s) => s.possessVolumeId);
-  const enterPossessMode = useSceneStore((s) => s.enterPossessMode);
-  const exitPossessMode = useSceneStore((s) => s.exitPossessMode);
 
   const update = (patch: Partial<CameraZoneVolume>) => updateCameraVolume(volume.id, patch);
   const updateParams = (patch: Partial<CameraZoneVolume['params']>) =>
@@ -239,22 +236,6 @@ export function CameraVolumeEditor({ volume }: { volume: CameraZoneVolume }) {
         </div>
       )}
 
-      <div style={{ marginTop: 12 }}>
-        <button
-          style={{
-            ...styles.btn,
-            width: '100%',
-            background: possessVolumeId === volume.id ? '#00cccc' : undefined,
-            color: possessVolumeId === volume.id ? '#000' : undefined,
-          }}
-          onClick={() => {
-            if (possessVolumeId === volume.id) exitPossessMode();
-            else enterPossessMode(volume.id);
-          }}
-        >
-          {possessVolumeId === volume.id ? '✖ Exit Preview' : '👁 Possess Camera'}
-        </button>
-      </div>
     </div>
   );
 }
