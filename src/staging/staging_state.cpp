@@ -57,6 +57,10 @@ void StagingState::on_enter(AppBase& app) {
         } catch (...) {
             last_scene_data_.reset();
         }
+        // Pre-load zone data for gizmo rendering in orbit mode
+        if (last_scene_data_) {
+            camera_review_->load_zone_data(*last_scene_data_, app.gs_terrain().terrain_aabb);
+        }
     } else {
         // Empty scene: init minimal GS renderer for VFX preview
         std::vector<Gaussian> dummy(1);
@@ -94,7 +98,7 @@ void StagingState::on_enter(AppBase& app) {
                 }
                 glm::vec3 start = app.renderer().has_gs_cloud()
                     ? app.gs_terrain().cloud_center : glm::vec3(0.0f);
-                camera_review_->activate(*last_scene_data_, start);
+                camera_review_->activate(*last_scene_data_, start, app.gs_terrain().terrain_aabb);
                 return json{
                     {"type", "ok"},
                     {"zones", camera_review_->volume_count()},
@@ -272,6 +276,10 @@ void StagingState::update(AppBase& app, float dt) {
                 last_scene_data_.reset();
             }
         }
+        // Load zone data for gizmo rendering (even when review is not active)
+        if (camera_review_ && last_scene_data_) {
+            camera_review_->load_zone_data(*last_scene_data_, app.gs_terrain().terrain_aabb);
+        }
         // Re-activate review if active
         if (camera_review_ && camera_review_->is_active()) {
             camera_review_->deactivate();
@@ -280,7 +288,7 @@ void StagingState::update(AppBase& app, float dt) {
                 if (!cz.volumes.empty() || !cz.rails.empty() || !cz.triggers.empty()) {
                     glm::vec3 start = app.renderer().has_gs_cloud()
                         ? app.gs_terrain().cloud_center : glm::vec3(0.0f);
-                    camera_review_->activate(*last_scene_data_, start);
+                    camera_review_->activate(*last_scene_data_, start, app.gs_terrain().terrain_aabb);
                 }
             }
         }
@@ -528,19 +536,35 @@ void StagingState::draw_imgui(AppBase& app) {
             ImGui::MenuItem("Gizmo: VFX", nullptr, &show_gizmo_vfx_);
             ImGui::MenuItem("Gizmo: Game Objects", nullptr, &show_gizmo_game_objects_);
             ImGui::MenuItem("Gizmo: Camera Zones", nullptr, &show_gizmo_camera_zones_);
+            ImGui::Separator();
+            if (ImGui::MenuItem("Deselect All")) {
+                show_viewport_info_ = false;
+                show_render_settings_ = false;
+                show_gs_params_ = false;
+                show_feature_toggles_ = false;
+                show_lighting_ = false;
+                show_camera_ = false;
+                show_performance_ = false;
+                show_character_ = false;
+                show_gizmo_lights_ = false;
+                show_gizmo_emitters_ = false;
+                show_gizmo_vfx_ = false;
+                show_gizmo_game_objects_ = false;
+                show_gizmo_camera_zones_ = false;
+            }
             ImGui::EndMenu();
         }
         ImGui::EndMainMenuBar();
     }
 
-    draw_viewport_info(app);
-    draw_render_settings(app);
-    draw_gs_params(app);
-    draw_feature_toggles(app);
-    draw_lighting(app);
-    draw_camera_panel(app);
-    draw_performance(app);
-    draw_character_panel(app);
+    if (show_viewport_info_) draw_viewport_info(app);
+    if (show_render_settings_) draw_render_settings(app);
+    if (show_gs_params_) draw_gs_params(app);
+    if (show_feature_toggles_) draw_feature_toggles(app);
+    if (show_lighting_) draw_lighting(app);
+    if (show_camera_) draw_camera_panel(app);
+    if (show_performance_) draw_performance(app);
+    if (show_character_) draw_character_panel(app);
     draw_gizmos(app);
 }
 
@@ -920,7 +944,7 @@ void StagingState::draw_camera_panel(AppBase& app) {
                         }
                         glm::vec3 start = app.renderer().has_gs_cloud()
                             ? app.gs_terrain().cloud_center : glm::vec3(0.0f);
-                        camera_review_->activate(*last_scene_data_, start);
+                        camera_review_->activate(*last_scene_data_, start, app.gs_terrain().terrain_aabb);
                     }
                 }
             }
@@ -1192,8 +1216,8 @@ void StagingState::draw_gizmos(AppBase& app) {
         }
     }
 
-    // ── Camera Zone gizmos ──
-    if (show_gizmo_camera_zones_ && camera_review_) {
+    // ── Camera Zone gizmos (visible in both orbit and review modes) ──
+    if (show_gizmo_camera_zones_ && camera_review_ && camera_review_->has_zone_data()) {
         camera_review_->draw_gizmos(vp, sw, sh, dl, project_wrapper, this);
     }
 }

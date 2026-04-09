@@ -20,17 +20,22 @@ namespace gseurat {
 
 // ── Lifecycle ────────────────────────────────────────────────────────────────
 
-bool CameraReviewState::activate(const SceneData& scene, glm::vec3 initial_pos) {
-    // Must have camera_zones with at least one volume or rail.
-    if (!scene.camera_zones) return false;
-    const auto& check = *scene.camera_zones;
-    if (check.volumes.empty() && check.rails.empty() && check.triggers.empty()) {
-        return false;
-    }
+// Convert a VolumeShape from Grid space to World space.
+static VolumeShape shape_to_world(const VolumeShape& shape, const AABB& aabb) {
+    return std::visit([&](const auto& s) -> VolumeShape {
+        using T = std::decay_t<decltype(s)>;
+        T out = s;
+        out.center = coord::to_world(coord::GridPos(s.center), aabb).vec();
+        return out;
+    }, shape);
+}
 
+void CameraReviewState::load_zone_data(const SceneData& scene, const AABB& terrain_aabb) {
+    if (!scene.camera_zones) return;
     const auto& cz = *scene.camera_zones;
+    if (cz.volumes.empty() && cz.rails.empty() && cz.triggers.empty()) return;
 
-    // Convert string-keyed volumes to int-keyed (sequential IDs starting at 0).
+    // Convert string-keyed volumes to int-keyed, converting Grid→World coords.
     volumes_.clear();
     zone_names_.clear();
     std::unordered_map<std::string, int> name_to_id;
@@ -38,13 +43,18 @@ bool CameraReviewState::activate(const SceneData& scene, glm::vec3 initial_pos) 
     int next_id = 0;
     for (const auto& [name, vol] : cz.volumes) {
         int id = next_id++;
-        volumes_.emplace_back(id, vol);
+        CameraVolume world_vol = vol;
+        world_vol.shape = shape_to_world(vol.shape, terrain_aabb);
+        volumes_.emplace_back(id, world_vol);
         zone_names_[id] = name;
         name_to_id[name] = id;
     }
 
-    // Resolve trigger zone references: map string IDs to int IDs.
+    // Resolve trigger zone references: map string IDs to int IDs, convert coords.
     triggers_ = cz.triggers;
+    for (auto& trigger : triggers_) {
+        trigger.shape = shape_to_world(trigger.shape, terrain_aabb);
+    }
     for (size_t i = 0; i < cz.trigger_zone_refs.size() && i < triggers_.size(); ++i) {
         const auto& [from_name, to_name] = cz.trigger_zone_refs[i];
         auto from_it = name_to_id.find(from_name);
@@ -57,13 +67,35 @@ bool CameraReviewState::activate(const SceneData& scene, glm::vec3 initial_pos) 
         }
     }
 
-    // Extract rails.
+    // Extract rails, converting control/target points Grid→World.
     rails_.clear();
     for (const auto& [name, rail] : cz.rails) {
-        rails_.push_back(rail);
+        CameraRail world_rail = rail;
+        for (auto& pt : world_rail.path.control_points) {
+            pt = coord::to_world(coord::GridPos(pt), terrain_aabb).vec();
+        }
+        if (world_rail.has_target_path) {
+            for (auto& pt : world_rail.target_path.control_points) {
+                pt = coord::to_world(coord::GridPos(pt), terrain_aabb).vec();
+            }
+        }
+        rails_.push_back(world_rail);
+    }
+}
+
+bool CameraReviewState::activate(const SceneData& scene, glm::vec3 initial_pos, const AABB& terrain_aabb) {
+    // Must have camera_zones with at least one volume or rail.
+    if (!scene.camera_zones) return false;
+    const auto& check = *scene.camera_zones;
+    if (check.volumes.empty() && check.rails.empty() && check.triggers.empty()) {
+        return false;
     }
 
+    // Load and convert zone data (Grid→World).
+    load_zone_data(scene, terrain_aabb);
+
     // Load into the zone system.
+    const auto& cz = *scene.camera_zones;
     zone_system_.load_from_data(volumes_, triggers_, rails_, cz.default_params);
 
     // Set player position and activate.

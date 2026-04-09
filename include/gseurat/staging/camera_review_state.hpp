@@ -25,9 +25,11 @@ public:
     enum class MoveReference : uint8_t { camera_facing, world_axis };
 
     // Lifecycle
-    bool activate(const SceneData& scene, glm::vec3 initial_pos);
+    bool activate(const SceneData& scene, glm::vec3 initial_pos, const AABB& terrain_aabb);
+    void load_zone_data(const SceneData& scene, const AABB& terrain_aabb);
     void deactivate();
     bool is_active() const { return active_; }
+    bool has_zone_data() const { return !volumes_.empty() || !rails_.empty() || !triggers_.empty(); }
 
     // Per-frame update (mouse_dx/dy are raw cursor deltas from the app layer)
     void update(float dt, const InputManager& input, bool imgui_wants_mouse, bool imgui_wants_keyboard,
