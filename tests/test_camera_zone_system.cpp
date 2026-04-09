@@ -446,6 +446,64 @@ void test_constraint_pitch_clamp() {
           "constraint pitch: pitch does not go below pitch_min=-20 after extreme input");
 }
 
+// ── Test 12: set_orbit_from_camera preserves facing direction ────────────
+
+void test_set_orbit_from_camera() {
+    std::printf("set_orbit_from_camera:\n");
+
+    gseurat::CameraZoneSystem sys;
+    gseurat::CameraParams defaults;
+    defaults.mode = gseurat::CameraMode::free_look;
+    defaults.fov = 45.0f;
+    defaults.orbit_distance = 10.0f;
+    defaults.allow_user_orbit = false;
+    defaults.pitch_min = -89.0f;
+    defaults.pitch_max = 89.0f;
+    defaults.blend_time = 0.0f;
+
+    // Large sphere so position clamping doesn't interfere.
+    gseurat::CameraVolume vol;
+    vol.shape = gseurat::CamSphere{{0.0f, 0.0f, 0.0f}, 200.0f};
+    vol.params = defaults;
+    vol.params.priority = 0;
+
+    std::vector<std::pair<int, gseurat::CameraVolume>> volumes = {{1, vol}};
+    sys.load_from_data(volumes, {}, {}, defaults);
+
+    // Converge at origin with default azimuth (0 = camera at +Z).
+    converge(sys, {0.0f, 0.0f, 0.0f}, 240);
+
+    auto before = sys.current_state();
+    // Default: camera at +Z relative to target.
+    check(before.position.z > before.target.z,
+          "set_orbit: default camera is at +Z of target");
+
+    // Simulate a camera that was facing from +X (camera at +X, looking at origin).
+    // This corresponds to azimuth = pi/2.
+    glm::vec3 fake_cam_pos = {10.0f, 3.0f, 0.0f};
+    glm::vec3 fake_cam_target = {0.0f, 0.0f, 0.0f};
+    sys.set_orbit_from_camera(fake_cam_pos, fake_cam_target);
+
+    // Run frames to let spring converge with new orbit angles.
+    converge(sys, {0.0f, 0.0f, 0.0f}, 240);
+
+    auto after = sys.current_state();
+    // Camera should now be at +X relative to target (not +Z).
+    check(std::fabs(after.position.x - after.target.x) > 3.0f,
+          "set_orbit: camera has significant X offset after set_orbit_from_camera");
+    check(std::fabs(after.position.z - after.target.z) < 3.0f,
+          "set_orbit: camera Z offset is small (no longer at +Z default)");
+
+    // Test with camera looking from -Z (azimuth = pi, camera at -Z).
+    glm::vec3 neg_z_cam = {0.0f, 2.0f, -10.0f};
+    sys.set_orbit_from_camera(neg_z_cam, fake_cam_target);
+    converge(sys, {0.0f, 0.0f, 0.0f}, 240);
+
+    auto after2 = sys.current_state();
+    check(after2.position.z < after2.target.z,
+          "set_orbit: camera at -Z after set from -Z direction");
+}
+
 // ── Main ────────────────────────────────────────────────────────────────────
 
 int main() {
@@ -462,6 +520,7 @@ int main() {
     test_smoothstep_position_blend();
     test_constraint_position_clamp();
     test_constraint_pitch_clamp();
+    test_set_orbit_from_camera();
 
     std::printf("\n=== Results: %d passed, %d failed ===\n", passed, failed);
     return failed > 0 ? 1 : 0;

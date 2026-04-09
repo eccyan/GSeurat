@@ -57,6 +57,10 @@ public:
     /// True while blending between two zones.
     bool is_transitioning() const { return transitioning_; }
 
+    /// Set orbit azimuth/elevation from an existing camera position+target.
+    /// Use before teleport to preserve the camera's current facing direction.
+    void set_orbit_from_camera(glm::vec3 cam_pos, glm::vec3 cam_target);
+
 private:
     // Stage 1: Zone resolution
     int resolve_zone(glm::vec3 player_pos);
