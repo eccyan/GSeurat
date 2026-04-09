@@ -2,8 +2,9 @@
 build/
 out/
 
-# Claude Code
-.claude/
+# Claude Code (except skills, which are versioned)
+.claude/*
+!.claude/skills/
 
 # IDE
 .vscode/
