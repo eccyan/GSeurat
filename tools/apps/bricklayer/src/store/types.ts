@@ -1,3 +1,5 @@
+import type { AssetRegistry } from '@gseurat/project-root';
+
 // ── Voxel ──
 
 export interface Voxel {
@@ -429,8 +431,11 @@ export interface Snapshot {
   collisionGridData: CollisionGridData | null;
 }
 
+export const BRICKLAYER_FILE_VERSION = 2 as const;
+
 export interface BricklayerFile {
-  version: number;
+  version: 2;
+  asset_registry: AssetRegistry;
   gridWidth: number;
   gridDepth: number;
   voxels: { x: number; y: number; z: number; r: number; g: number; b: number; a: number }[];

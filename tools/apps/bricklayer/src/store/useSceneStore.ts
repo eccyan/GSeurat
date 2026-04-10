@@ -1,4 +1,7 @@
 import { create } from 'zustand';
+import { migrateBricklayerFile } from '../lib/migrateBricklayerFile.js';
+import { createEmptyRegistry, type AssetRegistry } from '@gseurat/project-root';
+import { BRICKLAYER_FILE_VERSION } from './types.js';
 import type {
   Voxel,
   VoxelKey,
@@ -184,6 +187,7 @@ export interface SceneStoreState {
   terrains: TerrainEntry[];
   currentTerrainId: string;
   assets: AssetEntry[];
+  asset_registry: AssetRegistry;
   assetBlobs: Map<string, Blob>;
   activeNode: NavigationNode | null;
 
@@ -401,7 +405,7 @@ export interface SceneStoreState {
   newScene: (width: number, depth: number) => void;
   importImage: (imageData: ImageData, mode: 'flat' | 'luminance' | 'depth', maxHeight: number, depthMap?: Float32Array, budget?: number) => void;
   saveProject: () => BricklayerFile;
-  loadProject: (data: BricklayerFile) => void;
+  loadProject: (data: any) => void;
 }
 
 function mirrorPositions(
@@ -464,6 +468,7 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
   terrains: [],
   currentTerrainId: '',
   assets: [],
+  asset_registry: createEmptyRegistry(),
   assetBlobs: new Map(),
   activeNode: null,
   isDirty: false,
@@ -1303,7 +1308,8 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
       voxelArr.push({ x, y, z, r: vox.color[0], g: vox.color[1], b: vox.color[2], a: vox.color[3] });
     }
     return {
-      version: 1,
+      version: BRICKLAYER_FILE_VERSION,
+      asset_registry: s.asset_registry,
       gridWidth: s.gridWidth,
       gridDepth: s.gridDepth,
       voxels: voxelArr,
@@ -1340,7 +1346,8 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
     };
   },
 
-  loadProject: (data) => {
+  loadProject: (raw) => {
+    const data = migrateBricklayerFile(raw);
     const voxels = new Map<VoxelKey, Voxel>();
     for (const v of data.voxels) {
       voxels.set(voxelKey(v.x, v.y, v.z), { color: [v.r, v.g, v.b, v.a] });
@@ -1376,6 +1383,7 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
       activePaletteIndex: 0,
       terrains: data.terrains ?? [],
       assets: data.assets ?? [],
+      asset_registry: data.asset_registry,
       ambientColor: data.scene.ambientColor,
       godRaysIntensity: data.scene.godRaysIntensity ?? 0,
       staticLights: migratedLights,
