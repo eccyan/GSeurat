@@ -7,6 +7,11 @@ import { computeFingerprint, isStructuralChange, type SceneFingerprint } from '.
 import { hasFileSystemAccess, openProjectDirectory, saveProject as saveProjectDir, loadProject as loadProjectDir, saveProjectAsZip, loadProjectFromZip, importAssetToProject } from '../lib/projectIO.js';
 import { sendBridgeCommand, sendBridgeCommands } from '@gseurat/engine-client';
 import type { BricklayerFile } from '../store/types.js';
+import {
+  saveProjectRootHandle,
+  saveBridgePath,
+} from '@gseurat/project-root';
+import { connectBridgeToPath } from '../lib/bridgeConnection.js';
 
 const styles: Record<string, React.CSSProperties> = {
   bar: {
@@ -155,6 +160,7 @@ export function MenuBar({ onImport }: { onImport: () => void }) {
   const isDirty = useSceneStore((st) => st.isDirty);
   const projectName = useSceneStore((st) => st.projectName);
   const projectHandle = useSceneStore((st) => st.projectHandle);
+  const bridgeConnectedPath = useSceneStore((st) => st.bridgeConnectedPath);
 
   const closeMenu = useCallback(() => setOpenMenu(null), []);
   const toggleMenu = useCallback(
@@ -201,6 +207,11 @@ export function MenuBar({ onImport }: { onImport: () => void }) {
       useSceneStore.getState().newScene(128, 96);
       useSceneStore.getState().setProjectHandle(handle);
       useSceneStore.getState().setProjectName(handle.name);
+      // Persist the handle so future sessions can auto-restore via App.tsx
+      // bootstrap (Phase 0.1 #2). Failure here is non-fatal.
+      saveProjectRootHandle('bricklayer', handle).catch((e) => {
+        console.warn('[bricklayer] saveProjectRootHandle failed:', e);
+      });
       await saveProjectDir(handle);
     } else if (!hasFileSystemAccess()) {
       useSceneStore.getState().newScene(128, 96);
@@ -215,6 +226,9 @@ export function MenuBar({ onImport }: { onImport: () => void }) {
       if (handle) {
         useSceneStore.getState().setProjectHandle(handle);
         useSceneStore.getState().setProjectName(handle.name);
+        saveProjectRootHandle('bricklayer', handle).catch((e) => {
+          console.warn('[bricklayer] saveProjectRootHandle failed:', e);
+        });
         await loadProjectDir(handle);
       }
     } else {
@@ -258,6 +272,9 @@ export function MenuBar({ onImport }: { onImport: () => void }) {
         if (newHandle) {
           useSceneStore.getState().setProjectHandle(newHandle);
           useSceneStore.getState().setProjectName(newHandle.name);
+          saveProjectRootHandle('bricklayer', newHandle).catch((e) => {
+            console.warn('[bricklayer] saveProjectRootHandle failed:', e);
+          });
           await saveProjectDir(newHandle);
           useSceneStore.getState().markClean();
         }
@@ -314,28 +331,34 @@ export function MenuBar({ onImport }: { onImport: () => void }) {
   };
 
   const handleConnectBridgeToProject = async () => {
+    const currentHandle = useSceneStore.getState().projectHandle;
+    const currentBridgePath = useSceneStore.getState().bridgeConnectedPath;
+    const initial = currentBridgePath ?? '';
     const projectPath = window.prompt(
       'Project root absolute path on disk:\n\n' +
         'This tells the bridge (and engine) where your project lives so relative ' +
         'asset paths can be resolved. Example: /Users/you/MyGameProject',
-      '',
+      initial,
     );
     if (!projectPath) return;
-    try {
-      const res = await fetch('http://localhost:9101/api/project/root', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ path: projectPath }),
-      });
-      if (res.ok) {
-        const body = (await res.json()) as { activeProjectDir?: string };
-        console.info(`[bricklayer] Bridge connected to project root: ${body.activeProjectDir}`);
-      } else {
-        const body = (await res.json().catch(() => ({}))) as { error?: string };
-        console.error(`[bricklayer] Bridge rejected path: ${body.error ?? res.statusText}`);
+    const result = await connectBridgeToPath(projectPath);
+    if (result.ok) {
+      console.info(`[bricklayer] Bridge connected to project root: ${result.activeProjectDir}`);
+      useSceneStore.getState().setBridgeConnectedPath(result.activeProjectDir);
+      // Persist the {handleName, absolutePath} pair so future sessions can
+      // auto-apply it on bootstrap. Only persist when we actually have a
+      // FSAPI handle to key by — otherwise the auto-fill bootstrap has
+      // nothing to match against.
+      if (currentHandle) {
+        saveBridgePath('bricklayer', {
+          handleName: currentHandle.name,
+          absolutePath: result.activeProjectDir,
+        }).catch((e) => {
+          console.warn('[bricklayer] saveBridgePath failed:', e);
+        });
       }
-    } catch (e) {
-      console.error('[bricklayer] Failed to reach bridge:', e);
+    } else {
+      console.error(`[bricklayer] Bridge rejected path: ${result.error}`);
     }
   };
 
@@ -513,6 +536,24 @@ export function MenuBar({ onImport }: { onImport: () => void }) {
       <span style={styles.title}>
         Bricklayer{projectHandle ? ` \u2014 ${projectName}` : ''}
         {isDirty && <span style={{ color: '#fa0', marginLeft: 6 }}>{'\u25CF'}</span>}
+        <span
+          title={
+            bridgeConnectedPath
+              ? `Bridge connected to ${bridgeConnectedPath}`
+              : 'Bridge not connected — File → Connect Bridge to Project Root…'
+          }
+          style={{
+            marginLeft: 12,
+            padding: '2px 6px',
+            borderRadius: 3,
+            fontSize: 11,
+            color: bridgeConnectedPath ? '#7f7' : '#888',
+            background: bridgeConnectedPath ? '#1a3a1a' : '#2a2a2a',
+            border: `1px solid ${bridgeConnectedPath ? '#3a6a3a' : '#3a3a3a'}`,
+          }}
+        >
+          {bridgeConnectedPath ? 'Bridge \u25CF' : 'Bridge \u25CB'}
+        </span>
       </span>
     </div>
   );

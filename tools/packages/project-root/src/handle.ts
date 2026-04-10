@@ -1,6 +1,7 @@
 import { get, set, del } from 'idb-keyval';
 
 const KEY_PREFIX = 'gseurat:project-root-handle:';
+const BRIDGE_PATH_KEY_PREFIX = 'gseurat:bridge-project-path:';
 
 // FSAPI permission methods are not yet in the base TypeScript DOM lib.
 // Declare the minimal shape we use so ensureHandlePermission can be typed
@@ -83,4 +84,66 @@ export async function restoreProjectRoot(
   if (!handle) return null;
   const ok = await ensureHandlePermission(handle);
   return ok ? handle : null;
+}
+
+/**
+ * Persistent record of "the last absolute disk path the user typed when
+ * connecting the bridge for this project handle." The File System Access
+ * API hides the absolute path from JavaScript, so we cannot derive this — it
+ * has to be remembered between sessions.
+ *
+ * The pairing is keyed by `handleName` (the directory's basename) so a
+ * cached entry is only auto-applied when the user re-opens the *same*
+ * directory in a new session. Two unrelated projects that happen to share a
+ * basename will collide; we accept that risk for the convenience of skipping
+ * the manual prompt.
+ */
+export interface BridgePathRecord {
+  /** `FileSystemDirectoryHandle.name` at the time of persistence. */
+  handleName: string;
+  /** Absolute disk path the user typed in the Connect Bridge prompt. */
+  absolutePath: string;
+}
+
+/**
+ * Pure check used by the auto-fill bootstrap: returns the stored absolute
+ * path iff the cached record's handle name matches the currently restored
+ * handle name. Extracted so it can be unit-tested without IDB.
+ */
+export function matchBridgePath(
+  record: BridgePathRecord | null,
+  handleName: string,
+): string | null {
+  if (!record) return null;
+  if (record.handleName !== handleName) return null;
+  if (!record.absolutePath) return null;
+  return record.absolutePath;
+}
+
+/**
+ * Persist a `{handleName, absolutePath}` pair so future sessions can skip
+ * the manual Connect Bridge prompt for this project. `appId` scopes the
+ * record per editor.
+ */
+export async function saveBridgePath(
+  appId: string,
+  record: BridgePathRecord,
+): Promise<void> {
+  await set(BRIDGE_PATH_KEY_PREFIX + appId, record);
+}
+
+/**
+ * Load a previously stored bridge path record. Returns null if none is
+ * stored.
+ */
+export async function loadBridgePath(
+  appId: string,
+): Promise<BridgePathRecord | null> {
+  const record = await get<BridgePathRecord>(BRIDGE_PATH_KEY_PREFIX + appId);
+  return record ?? null;
+}
+
+/** Remove a stored bridge path record for this `appId`. */
+export async function clearBridgePath(appId: string): Promise<void> {
+  await del(BRIDGE_PATH_KEY_PREFIX + appId);
 }
