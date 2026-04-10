@@ -2,6 +2,14 @@ import { get, set, del } from 'idb-keyval';
 
 const KEY_PREFIX = 'gseurat:project-root-handle:';
 
+// FSAPI permission methods are not yet in the base TypeScript DOM lib.
+// Declare the minimal shape we use so ensureHandlePermission can be typed
+// without an inline cast.
+interface FSHandleWithPermission {
+  queryPermission(o: { mode: 'read' | 'readwrite' }): Promise<PermissionState>;
+  requestPermission(o: { mode: 'read' | 'readwrite' }): Promise<PermissionState>;
+}
+
 /**
  * This module is tested via editor integration (Tasks 13, 16, 21) rather
  * than unit tests — IDB and FSAPI's permission methods both require a
@@ -15,6 +23,9 @@ const KEY_PREFIX = 'gseurat:project-root-handle:';
  *
  * `appId` scopes the handle per editor so Echidna, Méliès, and Bricklayer can
  * each remember their own project root independently.
+ *
+ * Throws if IndexedDB is unavailable (private browsing, storage disabled) or
+ * the quota is exceeded. Callers should catch and surface a user-visible error.
  */
 export async function saveProjectRootHandle(
   appId: string,
@@ -44,28 +55,26 @@ export async function clearProjectRootHandle(appId: string): Promise<void> {
  * Query, then request if needed, read/write permission on a previously stored
  * directory handle. Returns true if permission is granted.
  *
- * The browser usually grants silently on the first call if the user previously
- * approved the directory, but will prompt if not. Callers should handle both
- * outcomes gracefully.
+ * If the user previously denied permission for this directory, most browsers
+ * will not prompt again and requestPermission() will return 'denied'
+ * immediately — this function returns false in that case rather than throwing.
+ * Callers should handle the false return by prompting the user to re-pick the
+ * directory via showDirectoryPicker().
  */
 export async function ensureHandlePermission(
   handle: FileSystemDirectoryHandle,
 ): Promise<boolean> {
   const opts = { mode: 'readwrite' as const };
-  // queryPermission / requestPermission are FSAPI extensions not yet in the
-  // base TypeScript DOM lib. Declare the shape locally.
-  const h = handle as unknown as {
-    queryPermission(o: { mode: 'readwrite' }): Promise<PermissionState>;
-    requestPermission(o: { mode: 'readwrite' }): Promise<PermissionState>;
-  };
+  const h = handle as unknown as FSHandleWithPermission;
   if ((await h.queryPermission(opts)) === 'granted') return true;
   return (await h.requestPermission(opts)) === 'granted';
 }
 
 /**
  * Convenience bootstrap used on editor startup. Loads the stored handle for
- * `appId`, requests permission, and returns the handle on success. Returns
- * null if there is no stored handle or permission was denied.
+ * `appId`, re-acquires read/write permission if needed, and returns the handle
+ * on success. Returns null if there is no stored handle or permission was
+ * denied.
  */
 export async function restoreProjectRoot(
   appId: string,
