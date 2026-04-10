@@ -1,13 +1,14 @@
-const TRAVERSAL_RE = /(^|\/)\.\.($|\/)/;
-
 function splitPath(p: string): string[] {
   if (!p || p.length === 0) {
     throw new Error('path is empty');
   }
-  if (TRAVERSAL_RE.test(p)) {
-    throw new Error(`path contains traversal: "${p}"`);
+  const parts = p.split('/').filter(s => s.length > 0);
+  for (const part of parts) {
+    if (part === '..' || part === '.') {
+      throw new Error(`path contains traversal: "${p}"`);
+    }
   }
-  return p.split('/').filter(s => s.length > 0);
+  return parts;
 }
 
 /**
@@ -36,7 +37,7 @@ export async function ensureSubdir(
 export async function writeFileAtPath(
   root: FileSystemDirectoryHandle,
   relativePath: string,
-  content: string | Uint8Array,
+  content: string | Uint8Array | Blob,
 ): Promise<void> {
   const parts = splitPath(relativePath);
   if (parts.length === 0) {
@@ -48,9 +49,8 @@ export async function writeFileAtPath(
     cur = await cur.getDirectoryHandle(part, { create: true });
   }
   const fileHandle = await cur.getFileHandle(filename, { create: true });
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const writable = await (fileHandle as any).createWritable();
-  await writable.write(content);
+  const writable = await fileHandle.createWritable();
+  await writable.write(content as FileSystemWriteChunkType);
   await writable.close();
 }
 
@@ -72,8 +72,7 @@ export async function readFileAtPath(
     cur = await cur.getDirectoryHandle(part, { create: false });
   }
   const fileHandle = await cur.getFileHandle(filename, { create: false });
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return await (fileHandle as any).getFile();
+  return await fileHandle.getFile();
 }
 
 /** Returns true if a file exists at `relativePath` under `root`. */
@@ -81,6 +80,8 @@ export async function fileExistsAtPath(
   root: FileSystemDirectoryHandle,
   relativePath: string,
 ): Promise<boolean> {
+  // Let traversal errors propagate rather than being swallowed.
+  splitPath(relativePath);
   try {
     await readFileAtPath(root, relativePath);
     return true;

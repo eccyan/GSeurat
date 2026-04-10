@@ -54,9 +54,10 @@ class MockDirHandle {
       name,
       async createWritable() {
         return {
-          async write(d: Uint8Array | string | ArrayBuffer) {
+          async write(d: Uint8Array | string | ArrayBuffer | Blob) {
             let bytes: Uint8Array;
             if (typeof d === 'string') bytes = new TextEncoder().encode(d);
+            else if (d instanceof Blob) bytes = new Uint8Array(await d.arrayBuffer());
             else if (d instanceof Uint8Array) bytes = d;
             else bytes = new Uint8Array(d);
             file.data = bytes;
@@ -107,6 +108,11 @@ describe('ensureSubdir', () => {
     const root = makeRoot();
     await expect(ensureSubdir(root as any, 'assets/../evil')).rejects.toThrow(/traversal/i);
   });
+
+  it('rejects single-dot segment', async () => {
+    const root = makeRoot();
+    await expect(ensureSubdir(root as any, 'assets/./foo')).rejects.toThrow(/traversal/i);
+  });
 });
 
 describe('writeFileAtPath / readFileAtPath', () => {
@@ -156,6 +162,25 @@ describe('writeFileAtPath / readFileAtPath', () => {
     const root = makeRoot();
     await expect(readFileAtPath(root as any, 'assets/../evil.txt')).rejects.toThrow(/traversal/i);
   });
+
+  it('rejects single-dot current-dir segment on write', async () => {
+    const root = makeRoot();
+    await expect(writeFileAtPath(root as any, 'assets/./foo.json', '{}')).rejects.toThrow(/traversal/i);
+  });
+
+  it('accepts Blob content', async () => {
+    const root = makeRoot();
+    const blob = new Blob(['hello from blob'], { type: 'text/plain' });
+    await writeFileAtPath(root as any, 'assets/scenes/blob.json', blob);
+    const read = await readFileAtPath(root as any, 'assets/scenes/blob.json');
+    expect(await read.text()).toBe('hello from blob');
+  });
+
+  it('normalizes trailing slash and double slashes', async () => {
+    const root = makeRoot();
+    await writeFileAtPath(root as any, 'assets//scenes/test.json', '1');
+    expect(await fileExistsAtPath(root as any, 'assets/scenes/test.json')).toBe(true);
+  });
 });
 
 describe('fileExistsAtPath', () => {
@@ -173,5 +198,10 @@ describe('fileExistsAtPath', () => {
   it('returns false for a missing intermediate directory', async () => {
     const root = makeRoot();
     expect(await fileExistsAtPath(root as any, 'assets/nonexistent/file.json')).toBe(false);
+  });
+
+  it('propagates traversal error instead of returning false', async () => {
+    const root = makeRoot();
+    await expect(fileExistsAtPath(root as any, 'assets/../evil.txt')).rejects.toThrow(/traversal/i);
   });
 });
