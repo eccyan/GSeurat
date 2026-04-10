@@ -161,18 +161,29 @@ Toggle in **View → Auto-Sync Staging**. Debounced 2s live sync — edits strea
 }
 ```
 
-### Project Layout
+### Project Layout (Phase 0.0)
+
+Méliès saves under the unified GSeurat project layout, sharing one project root with Echidna and Bricklayer:
 
 ```
 my_project/
-├── project.json
-├── effects/
-│   ├── preset_1.vfx.json
-│   └── preset_2.vfx.json
-└── scene/
-    ├── scene1.ply
-    └── scene2.ply
+├── tools_data/
+│   └── melies_projects/
+│       └── {slug}.json          # editor state (project.json equivalent)
+├── assets/
+│   ├── vfx/
+│   │   └── presets/
+│   │       ├── particle_burst.vfx.json   # engine-ready VFX presets
+│   │       └── explosion.vfx.json
+│   └── scenes/
+│       ├── scene1.ply           # PLY scenes (still under scene/ legacy dir)
+│       └── scene2.ply
+└── scene/                       # legacy PLY import location (unchanged)
 ```
+
+The `{slug}.json` filename is derived from the project name via `slugifyProjectName` (lowercase, whitespace → underscore, strip non-`[a-z0-9_-]`, fallback `'project'`).
+
+`loadProject` reads from `tools_data/melies_projects/{slug}.json` first and falls back to a legacy root-level `project.json` with a console warning if the new path doesn't exist.
 
 ## Keyboard Shortcuts
 

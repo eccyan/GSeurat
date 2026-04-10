@@ -197,6 +197,7 @@ Texture-based parallax backgrounds — texture, Z-depth, parallax factor, quad d
 - **Export Scene** — engine-format JSON
 - **Export PLY** — voxel terrain to PLY
 - **Open in Staging** — push current scene over the bridge
+- **Connect Bridge to Project Root…** — Phase 0.0: prompts for the project's absolute disk path and POSTs it to the bridge's `/api/project/root` endpoint, so the engine resolves relative asset paths under the same root the editors are saving to.
 
 ### Auto-Sync to Staging
 
@@ -204,12 +205,33 @@ Toggle in **View → Auto-Sync Staging**. Bricklayer fingerprints scene structur
 
 ## Project Format
 
-`BricklayerFile` JSON with versioning:
+`BricklayerFile` JSON v2 (Phase 0.0):
 
+- **`asset_registry`** — top-level field indexing characters / VFX / textures / audio / maps by stable IDs (`#walker` etc.). Synthesized from legacy v1 `assets[]` on first load.
 - Multi-terrain entries (voxel + collision per terrain)
-- Asset registry (PLY / texture / audio / VFX) with metadata
 - Unified scene data (objects, lights, portals, player, emitters, animations, VFX, cameras)
 - Component schemas for extensibility
+
+Asset references in entity fields use either the registry-ID form (`#walker`) or a project-relative path (`assets/characters/walker/walker.manifest.json`). Bare filenames and absolute paths are forbidden — `exportSceneJson` runs a `validateScenePaths` check and logs warnings for any violations during the migration window.
+
+### Project layout on disk (Phase 0.0)
+
+When saved to a directory, Bricklayer writes under the unified GSeurat project layout:
+
+```
+my_project/
+├── tools_data/
+│   └── bricklayer/
+│       └── scene.bricklayer       # editor state
+└── assets/
+    ├── scenes/{slug}.json         # engine-format scene JSON
+    ├── maps/{slug}.ply            # terrain Gaussian cloud
+    ├── vfx/presets/{name}.vfx.json  # VFX instance presets
+    ├── characters/{id}/...        # referenced via the asset_registry
+    └── textures/...
+```
+
+`loadProject` reads `tools_data/bricklayer/scene.bricklayer` first and falls back to a legacy root-level `scene.bricklayer` with a warning. The ZIP fallback paths (`saveProjectAsZip`/`loadProjectFromZip`) are unchanged.
 
 ## Integration
 

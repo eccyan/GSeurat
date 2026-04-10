@@ -133,11 +133,23 @@ When gizmos are enabled in Animate mode:
 
 ### File Menu
 
+**Unified project workspace** (Phase 0.0):
+
+- **Set Project Root…** — pick a project directory via the File System Access API. The handle is persisted via IndexedDB and re-acquired on next launch (you only pick once per project).
+- **Save to Project** — save the current `.echidna` file under `tools_data/echidna_saves/{id}.echidna` in the project root.
+- **Export Character to Project** — write the engine-ready PLY + manifest under `assets/characters/{id}/{id}.ply` and `assets/characters/{id}/{id}.manifest.json`. The engine resolves these paths via the bridge's project-root mechanism.
+
+**Legacy download/upload** (still available as a safety net):
+
 - **New Project** — preset sizes 32–256 or custom 8–1024
-- **Save** / **Save As…** — `.echidna` JSON v2 format
+- **Save** / **Save As…** — `.echidna` JSON v3 format (browser download)
 - **Load** — file picker
 - **Resize Grid** — expand or contract grid
 - **Import** — `.ply`, `.vox`, `.obj`
+
+### Persistent character `id`
+
+Each character has a stable `id` slug that's set on the **first save** and never changes thereafter. Renaming the character via the editor does not relocate files. The `id` is derived from `characterName` via `slugifyCharacterId` (lowercase, whitespace → underscore, strip non-`[a-z0-9_-]`, fallback `'character'`).
 
 ### Import Formats
 
@@ -192,6 +204,10 @@ All imports configure grid size (8–1024).
 - `bone_index` (optional uchar) — skinning index
 
 Surface voxels only — fully-interior voxels are culled.
+
+### Echidna save file (`.echidna`)
+
+JSON v3 with `id` (persistent slug), `characterName`, `gridWidth`/`gridDepth`, `voxels`, `parts`, `poses`, `animations`. Legacy v1/v2 files are auto-migrated on load via `migrateEchidnaFile`.
 
 ### Character Manifest (`.manifest.json`)
 
