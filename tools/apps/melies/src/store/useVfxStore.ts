@@ -54,6 +54,14 @@ export interface VfxStoreState {
   // Actions — project
   setProjectHandle: (handle: FileSystemDirectoryHandle | null) => void;
   setProjectName: (name: string) => void;
+  /**
+   * Returns the current project name, normalising empty/whitespace values
+   * to 'Untitled'. Callers should treat 'Untitled' as the default sentinel
+   * meaning "no real name yet" and prompt the user before saving so we don't
+   * silently overwrite tools_data/melies_projects/untitled.json.
+   * Mirrors Echidna's `ensureCharacterId` pattern.
+   */
+  ensureProjectName: () => string;
   saveProjectData: () => VfxProject;
   loadProjectData: (data: VfxProject) => void;
 
@@ -116,6 +124,12 @@ export const useVfxStore = create<VfxStoreState>((set, get) => ({
 
   setProjectHandle: (handle) => set({ projectHandle: handle }),
   setProjectName: (name) => set({ projectName: name }),
+  ensureProjectName: () => {
+    const current = get().projectName;
+    if (current && current.trim().length > 0) return current;
+    set({ projectName: 'Untitled' });
+    return 'Untitled';
+  },
 
   saveProjectData: () => ({
     version: VFX_PROJECT_VERSION,
