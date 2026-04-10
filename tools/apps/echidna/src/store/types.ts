@@ -72,7 +72,7 @@ export interface ClipboardEntry {
 
 // ── File format (v3) ──
 
-export const ECHIDNA_FILE_VERSION = 3;
+export const ECHIDNA_FILE_VERSION = 3 as const;
 
 export interface EchidnaFile {
   version: number;
@@ -126,7 +126,9 @@ export function migrateEchidnaFile(raw: any): EchidnaFile {
     voxels: Array.isArray(raw.voxels) ? raw.voxels : [],
     parts: Array.isArray(raw.parts) ? raw.parts : [],
     poses: raw.poses && typeof raw.poses === 'object' ? raw.poses : {},
-    animations: raw.animations,
+    animations: raw.animations && typeof raw.animations === 'object' && !Array.isArray(raw.animations)
+      ? raw.animations
+      : undefined,
   };
 }
 
