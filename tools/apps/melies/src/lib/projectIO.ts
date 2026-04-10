@@ -1,6 +1,7 @@
 import { useVfxStore } from '../store/useVfxStore.js';
 import { serializeVfx } from './vfxExport.js';
 import type { VfxProject } from '../store/types.js';
+import { VFX_PROJECT_VERSION } from '../store/types.js';
 
 /**
  * Check if the File System Access API is available.
@@ -142,12 +143,12 @@ export async function uploadProject(file: File): Promise<boolean> {
  */
 function migrateProject(data: Record<string, unknown>): VfxProject {
   const version = (data.version as number) ?? 1;
-  if (version >= 2) return data as unknown as VfxProject;
+  if (version >= 2) return { ...data, version: VFX_PROJECT_VERSION } as unknown as VfxProject;
 
-  // v1 → v2 migration
+  // v1 → v3 migration (layers → elements, drops phases)
   const presets = (data.presets as Record<string, unknown>[]) ?? [];
   return {
-    version: 2,
+    version: VFX_PROJECT_VERSION,
     presets: presets.map((p) => {
       const layers = (p.layers as Record<string, unknown>[]) ?? [];
       const { phases: _, ...rest } = p;
