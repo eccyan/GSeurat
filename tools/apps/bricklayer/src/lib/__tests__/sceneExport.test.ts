@@ -1,5 +1,10 @@
-import { describe, it, expect } from 'vitest';
-import { validateScenePaths, type ScenePathError } from '../sceneExport';
+import { describe, it, expect, vi } from 'vitest';
+import {
+  validateScenePaths,
+  assertScenePathsValid,
+  ScenePathValidationError,
+  type ScenePathError,
+} from '../sceneExport';
 import { createEmptyRegistry, registerCharacter } from '@gseurat/project-root';
 
 describe('validateScenePaths', () => {
@@ -104,5 +109,89 @@ describe('validateScenePaths', () => {
     } as any;
     const errs = validateScenePaths(scene, createEmptyRegistry());
     expect(errs.length).toBe(3);
+  });
+});
+
+describe('ScenePathValidationError', () => {
+  it('is an Error subclass carrying the errors array', () => {
+    const errs: ScenePathError[] = [
+      { field: 'game_objects[0].ply_file', value: 'foo.ply', message: 'bare filename' },
+    ];
+    const err = new ScenePathValidationError(errs);
+    expect(err).toBeInstanceOf(Error);
+    expect(err).toBeInstanceOf(ScenePathValidationError);
+    expect(err.name).toBe('ScenePathValidationError');
+    expect(err.errors).toEqual(errs);
+    expect(err.message).toMatch(/1 path issue/i);
+  });
+
+  it('pluralises the message for multiple errors', () => {
+    const err = new ScenePathValidationError([
+      { field: 'a', value: 'x', message: 'm' },
+      { field: 'b', value: 'y', message: 'n' },
+    ]);
+    expect(err.message).toMatch(/2 path issues/i);
+  });
+});
+
+describe('assertScenePathsValid', () => {
+  it('does nothing when the scene is clean (default mode)', () => {
+    const reg = createEmptyRegistry();
+    const scene = {
+      game_objects: [{ id: 'a', ply_file: 'assets/maps/town.ply' }],
+    };
+    expect(() => assertScenePathsValid(scene, reg)).not.toThrow();
+  });
+
+  it('does nothing when the scene is clean in strict mode', () => {
+    const reg = createEmptyRegistry();
+    const scene = {
+      game_objects: [{ id: 'a', ply_file: 'assets/maps/town.ply' }],
+    };
+    expect(() => assertScenePathsValid(scene, reg, { strict: true })).not.toThrow();
+  });
+
+  it('logs warnings (default mode) when paths are invalid and does NOT throw', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const reg = createEmptyRegistry();
+      const scene = { game_objects: [{ id: 'a', ply_file: 'walker.ply' }] };
+      expect(() => assertScenePathsValid(scene, reg)).not.toThrow();
+      expect(warnSpy).toHaveBeenCalled();
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
+  it('throws ScenePathValidationError in strict mode when paths are invalid', () => {
+    const reg = createEmptyRegistry();
+    const scene = {
+      game_objects: [
+        { id: 'a', ply_file: 'walker.ply' },
+        { id: 'b', ply_file: '/abs/foo.ply' },
+      ],
+    };
+    let thrown: unknown = null;
+    try {
+      assertScenePathsValid(scene, reg, { strict: true });
+    } catch (e) {
+      thrown = e;
+    }
+    expect(thrown).toBeInstanceOf(ScenePathValidationError);
+    expect((thrown as ScenePathValidationError).errors).toHaveLength(2);
+  });
+
+  it('does NOT log a warning in strict mode (the throw carries the errors)', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const reg = createEmptyRegistry();
+      const scene = { game_objects: [{ id: 'a', ply_file: 'walker.ply' }] };
+      expect(() =>
+        assertScenePathsValid(scene, reg, { strict: true }),
+      ).toThrow(ScenePathValidationError);
+      expect(warnSpy).not.toHaveBeenCalled();
+    } finally {
+      warnSpy.mockRestore();
+    }
   });
 });
