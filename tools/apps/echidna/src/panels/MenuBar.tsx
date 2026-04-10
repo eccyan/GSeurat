@@ -491,6 +491,35 @@ export function MenuBar() {
     }
   }, [showToast]);
 
+  const handleConnectBridgeToProject = useCallback(async () => {
+    const projectPath = window.prompt(
+      'Project root absolute path on disk:\n\n' +
+        'This tells the bridge (and engine) where your project lives so relative ' +
+        'asset paths can be resolved. Example: /Users/you/MyGameProject',
+      '',
+    );
+    if (!projectPath) return;
+    try {
+      const res = await fetch(`${BRIDGE_REST_URL}/api/project/root`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ path: projectPath }),
+      });
+      if (res.ok) {
+        const body = (await res.json()) as { activeProjectDir?: string };
+        console.info(`[echidna] Bridge connected to project root: ${body.activeProjectDir}`);
+        showToast(`Bridge → ${body.activeProjectDir}`, 'success');
+      } else {
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        console.error(`[echidna] Bridge rejected path: ${body.error ?? res.statusText}`);
+        showToast(`Bridge rejected: ${body.error ?? res.statusText}`, 'error', 5000);
+      }
+    } catch (e) {
+      console.error('[echidna] Failed to reach bridge:', e);
+      showToast('Failed to reach bridge', 'error');
+    }
+  }, [showToast]);
+
   const handlePickProjectRoot = useCallback(async () => {
     try {
       // @ts-expect-error - showDirectoryPicker is FSAPI extension not in lib.dom
@@ -635,6 +664,7 @@ export function MenuBar() {
     { label: 'Export PLY...', action: handleExportPly },
     { label: 'Export Manifest...', action: handleExportManifest },
     { separator: true as const },
+    { label: 'Connect Bridge to Project Root\u2026', action: handleConnectBridgeToProject },
     { label: 'Preview in Staging', action: handlePreviewInStaging },
   ];
 
