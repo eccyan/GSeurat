@@ -184,6 +184,13 @@ export interface SceneStoreState {
   // Project management
   projectName: string;
   projectHandle: FileSystemDirectoryHandle | null;
+  /**
+   * Absolute disk path the bridge has been told about (Phase 0.1 #2). Set
+   * via Connect Bridge to Project Root… or restored automatically on
+   * bootstrap from `loadBridgePath`. Null when no bridge connection has
+   * been established this session.
+   */
+  bridgeConnectedPath: string | null;
   terrains: TerrainEntry[];
   currentTerrainId: string;
   assets: AssetEntry[];
@@ -352,6 +359,7 @@ export interface SceneStoreState {
   // Actions – project
   setProjectName: (name: string) => void;
   setProjectHandle: (handle: FileSystemDirectoryHandle | null) => void;
+  setBridgeConnectedPath: (path: string | null) => void;
   addTerrain: (terrain: TerrainEntry) => void;
   removeTerrain: (id: string) => void;
   switchTerrain: (id: string) => void;
@@ -465,6 +473,7 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
 
   projectName: 'Untitled',
   projectHandle: null,
+  bridgeConnectedPath: null,
   terrains: [],
   currentTerrainId: '',
   assets: [],
@@ -1038,6 +1047,7 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
   // ── Project actions ──
   setProjectName: (name) => set({ projectName: name }),
   setProjectHandle: (handle) => set({ projectHandle: handle }),
+  setBridgeConnectedPath: (path) => set({ bridgeConnectedPath: path }),
   addTerrain: (terrain) => set({ terrains: [...get().terrains, terrain] }),
   removeTerrain: (id) => set({ terrains: get().terrains.filter((t) => t.id !== id) }),
   switchTerrain: (id) => set({ currentTerrainId: id }),

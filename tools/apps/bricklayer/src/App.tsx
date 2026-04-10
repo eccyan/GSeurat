@@ -4,6 +4,12 @@ import { MenuBar } from './panels/MenuBar.js';
 import { ImportDialog } from './panels/ImportDialog.js';
 import { ProjectTree } from './panels/ProjectTree.js';
 import { hasFileSystemAccess, saveProject as saveProjectDir, saveProjectAsZip } from './lib/projectIO.js';
+import {
+  restoreProjectRoot,
+  loadBridgePath,
+  matchBridgePath,
+} from '@gseurat/project-root';
+import { connectBridgeToPath } from './lib/bridgeConnection.js';
 import { TerrainLeftPanel } from './panels/TerrainLeftPanel.js';
 import { CollisionLeftPanel } from './panels/CollisionLeftPanel.js';
 import { TerrainRightPanel } from './panels/TerrainRightPanel.js';
@@ -254,6 +260,45 @@ export function App() {
 
   const handleRightDrag = useCallback((delta: number) => {
     setRightWidth((w) => Math.max(200, Math.min(600, w + delta)));
+  }, []);
+
+  // Bootstrap (Phase 0.1 #2): on first load, restore the previously-used
+  // FSAPI project handle from IDB and, if a cached bridge path is on file
+  // for that handle, automatically POST it so the engine can resolve
+  // relative asset paths without the user re-typing on every reload.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const handle = await restoreProjectRoot('bricklayer');
+        if (cancelled || !handle) return;
+        // Don't clobber a handle the user has already picked manually in
+        // the same session.
+        if (!useSceneStore.getState().projectHandle) {
+          useSceneStore.getState().setProjectHandle(handle);
+          useSceneStore.getState().setProjectName(handle.name);
+          console.info(`[bricklayer] Restored project root: ${handle.name}`);
+        }
+        // Auto-apply cached bridge path if it matches this handle.
+        const cached = await loadBridgePath('bricklayer');
+        if (cancelled) return;
+        const path = matchBridgePath(cached, handle.name);
+        if (!path) return;
+        const result = await connectBridgeToPath(path);
+        if (cancelled) return;
+        if (result.ok) {
+          useSceneStore.getState().setBridgeConnectedPath(result.activeProjectDir);
+          console.info(`[bricklayer] Bridge auto-connected: ${result.activeProjectDir}`);
+        } else {
+          console.warn(`[bricklayer] Bridge auto-connect failed: ${result.error}`);
+        }
+      } catch (e) {
+        console.warn('[bricklayer] Bootstrap failed:', e);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
