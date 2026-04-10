@@ -3,6 +3,13 @@ import { useSceneStore, BUILTIN_SCHEMAS } from '../store/useSceneStore.js';
 import { exportSceneJson } from './sceneExport.js';
 import { exportPly } from './plyExport.js';
 import type { BricklayerFile, ComponentSchema } from '../store/types.js';
+import {
+  PROJECT_LAYOUT,
+  toAssetPath,
+  ensureSubdir,
+  writeFileAtPath,
+  readFileAtPath,
+} from '@gseurat/project-root';
 
 /**
  * Check if the File System Access API is available.
@@ -24,65 +31,84 @@ export async function openProjectDirectory(): Promise<FileSystemDirectoryHandle 
   }
 }
 
+/* ----- path builders ----- */
+
+/**
+ * Slugify a name into a stable filename fragment.
+ * Same rules as echidna/melies — lowercase, trim, whitespace → underscore,
+ * strip [^a-z0-9_-], fallback if empty.
+ */
+function slugify(name: string, fallback = 'project'): string {
+  const cleaned = name.toLowerCase().trim().replace(/\s+/g, '_').replace(/[^a-z0-9_-]/g, '');
+  return cleaned.length > 0 ? cleaned : fallback;
+}
+
+/** Returns the project-relative path for the Bricklayer save file. */
+export function bricklayerSavePath(): string {
+  return `${PROJECT_LAYOUT.toolsData.bricklayer}/scene.bricklayer`;
+}
+
+/** Returns the project-relative path for the engine scene JSON. */
+export function engineScenePath(projectName: string): string {
+  return toAssetPath('scenes', `${slugify(projectName)}.json`);
+}
+
+/** Returns the project-relative path for the terrain PLY. */
+export function terrainPlyPath(projectName: string): string {
+  return toAssetPath('maps', `${slugify(projectName)}.ply`);
+}
+
+/** Returns the project-relative path for a VFX preset file. */
+export function vfxPresetPath(presetName: string): string {
+  return `${PROJECT_LAYOUT.assets.vfxPresets}/${slugify(presetName, 'preset')}.vfx.json`;
+}
+
 /**
  * Save the current project to the project directory.
+ *
+ * New structure (Phase 0):
+ * <project-root>/
+ * ├── tools_data/bricklayer/scene.bricklayer   # Bricklayer save file
+ * ├── assets/scenes/{slug}.json                # engine scene JSON
+ * ├── assets/maps/{slug}.ply                   # terrain PLY
+ * ├── assets/vfx/presets/{slug}.vfx.json       # VFX instance presets
+ * └── assets/**                                # imported asset blobs
  */
 export async function saveProject(handle: FileSystemDirectoryHandle): Promise<void> {
   const store = useSceneStore.getState();
+  const projectName = store.projectName || 'project';
+
+  // 1. Bricklayer save file under tools_data/bricklayer/
   const data = store.saveProject();
   const json = JSON.stringify(data, null, 2);
+  await ensureSubdir(handle, PROJECT_LAYOUT.toolsData.bricklayer);
+  await writeFileAtPath(handle, bricklayerSavePath(), json);
 
-  // Write bricklayer project file
-  const fileHandle = await handle.getFileHandle('scene.bricklayer', { create: true });
-  const writable = await fileHandle.createWritable();
-  await writable.write(json);
-  await writable.close();
-
-  // Write engine scene.json
+  // 2. Engine scene JSON under assets/scenes/
   const sceneJson = JSON.stringify(exportSceneJson(store), null, 2);
-  const sceneHandle = await handle.getFileHandle(`${store.projectName || 'scene'}.json`, { create: true });
-  const sw = await sceneHandle.createWritable();
-  await sw.write(sceneJson);
-  await sw.close();
+  await ensureSubdir(handle, PROJECT_LAYOUT.assets.scenes);
+  await writeFileAtPath(handle, engineScenePath(projectName), sceneJson);
 
-  // Write terrain PLY to assets/maps/
+  // 3. Terrain PLY under assets/maps/
   if (store.voxels.size > 0) {
-    const assetsDir = await handle.getDirectoryHandle('assets', { create: true });
-    const mapsDir = await assetsDir.getDirectoryHandle('maps', { create: true });
     const plyBlob = exportPly(store.voxels, store.gridWidth, store.gridDepth);
-    const plyHandle = await mapsDir.getFileHandle(`${store.projectName || 'map'}.ply`, { create: true });
-    const pw = await plyHandle.createWritable();
-    await pw.write(plyBlob);
-    await pw.close();
+    await ensureSubdir(handle, PROJECT_LAYOUT.assets.maps);
+    await writeFileAtPath(handle, terrainPlyPath(projectName), plyBlob);
   }
 
-  // Write asset blobs to assets/ directory
+  // 4. Asset blobs from assetBlobs Map (paths already under assets/)
   if (store.assetBlobs.size > 0) {
-    const assetsDir = await handle.getDirectoryHandle('assets', { create: true });
     for (const [path, blob] of store.assetBlobs) {
-      const name = path.startsWith('assets/') ? path.slice(7) : path;
-      // Create subdirectories if needed (e.g., "props/house.ply")
-      const parts = name.split('/');
-      let dir = assetsDir;
-      for (let i = 0; i < parts.length - 1; i++) {
-        dir = await dir.getDirectoryHandle(parts[i], { create: true });
-      }
-      const assetHandle = await dir.getFileHandle(parts[parts.length - 1], { create: true });
-      const w = await assetHandle.createWritable();
-      await w.write(blob);
-      await w.close();
+      // Only write paths that are under assets/ for safety
+      if (!path.startsWith('assets/')) continue;
+      await writeFileAtPath(handle, path, blob);
     }
   }
 
-  // Write VFX instance files to assets/vfx/ with edited names
+  // 5. VFX instance preset files under assets/vfx/presets/
   if (store.vfxInstances.length > 0) {
-    const assetsDir = await handle.getDirectoryHandle('assets', { create: true });
-    const vfxDir = await assetsDir.getDirectoryHandle('vfx', { create: true });
-    const updatedBlobs = new Map(store.assetBlobs);
+    await ensureSubdir(handle, PROJECT_LAYOUT.assets.vfxPresets);
     for (const inst of store.vfxInstances) {
-      // Use the Bricklayer-edited name for the filename
-      const fileName = `${inst.name.replace(/\s+/g, '_').toLowerCase()}.vfx.json`;
-      const newPath = `assets/vfx/${fileName}`;
       // Re-serialize the preset data (applies any name edits)
       const out: Record<string, unknown> = {
         name: inst.name,
@@ -91,14 +117,10 @@ export async function saveProject(handle: FileSystemDirectoryHandle): Promise<vo
       if (inst.vfx_preset.duration !== undefined) out.duration = inst.vfx_preset.duration;
       if (inst.vfx_preset.category) out.category = inst.vfx_preset.category;
       const vfxJson = JSON.stringify(out, null, 2);
-      const fh = await vfxDir.getFileHandle(fileName, { create: true });
-      const w = await fh.createWritable();
-      await w.write(vfxJson);
-      await w.close();
-      // Update vfx_file path if name changed
+      const newPath = vfxPresetPath(inst.name);
+      await writeFileAtPath(handle, newPath, vfxJson);
+      // Update vfx_file path if name/path changed
       if (inst.vfx_file !== newPath) {
-        // Remove old blob entry
-        updatedBlobs.delete(inst.vfx_file);
         store.updateVfxInstance(inst.id, { vfx_file: newPath });
       }
     }
@@ -107,12 +129,23 @@ export async function saveProject(handle: FileSystemDirectoryHandle): Promise<vo
 
 /**
  * Load a project from the project directory.
+ * Reads from tools_data/bricklayer/scene.bricklayer (new layout).
+ * Falls back to root-level scene.bricklayer for back-compat with old saves.
  */
 export async function loadProject(handle: FileSystemDirectoryHandle): Promise<boolean> {
   try {
-    const fileHandle = await handle.getFileHandle('scene.bricklayer');
-    const file = await fileHandle.getFile();
-    const text = await file.text();
+    let text: string;
+    try {
+      // New path: tools_data/bricklayer/scene.bricklayer
+      const blob = await readFileAtPath(handle, bricklayerSavePath());
+      text = await blob.text();
+    } catch {
+      // Legacy fallback: root-level scene.bricklayer
+      console.warn('[bricklayer] No scene.bricklayer at new path, falling back to legacy root');
+      const fh = await handle.getFileHandle('scene.bricklayer');
+      const legacy = await fh.getFile();
+      text = await legacy.text();
+    }
     const data = JSON.parse(text) as BricklayerFile;
     useSceneStore.getState().loadProject(data);
 
