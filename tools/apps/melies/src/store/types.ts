@@ -49,8 +49,10 @@ export interface PlyReference {
   path: string;
 }
 
+export const VFX_PROJECT_VERSION = 3 as const;
+
 export interface VfxProject {
-  version: 2;
+  version: 3;
   presets: VfxPreset[];
   scenes?: PlyReference[];
   activeSceneId?: string;

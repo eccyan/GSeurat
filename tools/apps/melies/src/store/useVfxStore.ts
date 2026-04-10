@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { VfxPreset, VfxElement, VfxProject, ElementType, PlyReference } from './types.js';
+import { VFX_PROJECT_VERSION } from './types.js';
 // Keep aliases for compatibility during migration
 type VfxLayer = VfxElement;
 type LayerType = ElementType;
@@ -117,7 +118,7 @@ export const useVfxStore = create<VfxStoreState>((set, get) => ({
   setProjectName: (name) => set({ projectName: name }),
 
   saveProjectData: () => ({
-    version: 2 as const,
+    version: VFX_PROJECT_VERSION,
     presets: get().presets,
     scenes: get().scenes.length > 0 ? get().scenes : undefined,
     activeSceneId: get().activeSceneId ?? undefined,

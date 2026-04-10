@@ -1,6 +1,13 @@
 import { useVfxStore } from '../store/useVfxStore.js';
 import { serializeVfx } from './vfxExport.js';
 import type { VfxProject } from '../store/types.js';
+import { VFX_PROJECT_VERSION } from '../store/types.js';
+import {
+  PROJECT_LAYOUT,
+  ensureSubdir,
+  writeFileAtPath,
+  readFileAtPath,
+} from '@gseurat/project-root';
 
 /**
  * Check if the File System Access API is available.
@@ -21,39 +28,58 @@ export async function openProjectDirectory(): Promise<FileSystemDirectoryHandle 
   }
 }
 
+/* ----- path builders ----- */
+
+/**
+ * Slugify a project or preset name into a stable filename fragment.
+ * Rules: lowercase, trim, whitespace→underscore, strip non-[a-z0-9_-], fallback 'project'.
+ */
+export function slugifyProjectName(name: string): string {
+  const cleaned = name
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, '_')
+    .replace(/[^a-z0-9_-]/g, '');
+  return cleaned.length > 0 ? cleaned : 'project';
+}
+
+export function meliesProjectPath(projectName: string): string {
+  return `${PROJECT_LAYOUT.toolsData.melies}/${slugifyProjectName(projectName)}.json`;
+}
+
+export function vfxPresetPath(presetName: string): string {
+  return `${PROJECT_LAYOUT.assets.vfxPresets}/${slugifyProjectName(presetName)}.vfx.json`;
+}
+
 /**
  * Save all presets to the project directory.
  *
- * Structure:
- * my_project/
- * ├── project.json          # Project manifest with all presets
- * ├── effects/
- * │   ├── preset_1.vfx.json # Individual VFX files
- * │   └── preset_2.vfx.json
- * └── scene/                # (for future PLY import)
+ * New structure (Phase 0):
+ * <project-root>/
+ * ├── tools_data/melies_projects/{slug}.json   # project state
+ * ├── assets/vfx/presets/{slug}.vfx.json       # per-preset VFX files
+ * └── scene/                                    # PLY imports (unchanged)
  */
 export async function saveProject(handle: FileSystemDirectoryHandle): Promise<void> {
   const store = useVfxStore.getState();
   const projectData = store.saveProjectData();
+  const projectName = store.projectName || 'project';
 
-  // Write project.json manifest
-  const manifestHandle = await handle.getFileHandle('project.json', { create: true });
-  const mw = await manifestHandle.createWritable();
-  await mw.write(JSON.stringify(projectData, null, 2));
-  await mw.close();
+  // 1. Project state under tools_data/melies_projects/
+  await ensureSubdir(handle, PROJECT_LAYOUT.toolsData.melies);
+  await writeFileAtPath(
+    handle,
+    meliesProjectPath(projectName),
+    JSON.stringify(projectData, null, 2),
+  );
 
-  // Write individual VFX files to effects/ directory
-  const effectsDir = await handle.getDirectoryHandle('effects', { create: true });
+  // 2. Each preset under assets/vfx/presets/
+  await ensureSubdir(handle, PROJECT_LAYOUT.assets.vfxPresets);
   for (const preset of store.presets) {
-    const fileName = `${preset.name.replace(/\s+/g, '_').toLowerCase()}.vfx.json`;
-    const vfxJson = serializeVfx(preset);
-    const fh = await effectsDir.getFileHandle(fileName, { create: true });
-    const w = await fh.createWritable();
-    await w.write(vfxJson);
-    await w.close();
+    await writeFileAtPath(handle, vfxPresetPath(preset.name), serializeVfx(preset));
   }
 
-  // Create scene/ directory
+  // 3. Keep the legacy scene/ dir for PLY imports (not migrated in this phase)
   await handle.getDirectoryHandle('scene', { create: true });
 }
 
@@ -89,14 +115,31 @@ export async function loadPlyFromProject(handle: FileSystemDirectoryHandle, rela
 
 /**
  * Load a project from a project directory.
+ * Reads from tools_data/melies_projects/{slug}.json (new layout).
+ * Falls back to root-level project.json for back-compat with old saves.
  */
-export async function loadProject(handle: FileSystemDirectoryHandle): Promise<boolean> {
+export async function loadProject(
+  handle: FileSystemDirectoryHandle,
+  projectName: string,
+): Promise<boolean> {
   try {
-    const fileHandle = await handle.getFileHandle('project.json');
-    const file = await fileHandle.getFile();
-    const text = await file.text();
+    let text: string;
+    try {
+      // New path
+      const blob = await readFileAtPath(handle, meliesProjectPath(projectName));
+      text = await (blob as Blob).text();
+    } catch {
+      // Legacy fallback: root-level project.json
+      console.warn('[melies] No project at new path, falling back to legacy project.json');
+      const fh = await handle.getFileHandle('project.json');
+      const legacy = await fh.getFile();
+      text = await legacy.text();
+    }
     const raw = JSON.parse(text);
-    const data = migrateProject(raw) as VfxProject;
+    const data = migrateVfxProject(raw);
+    if ((raw?.version ?? 0) < VFX_PROJECT_VERSION) {
+      console.warn(`[melies] Loaded legacy v${raw?.version} project; migrated to v${VFX_PROJECT_VERSION}`);
+    }
     useVfxStore.getState().loadProjectData(data);
     return true;
   } catch (err) {
@@ -128,7 +171,7 @@ export async function uploadProject(file: File): Promise<boolean> {
   try {
     const text = await file.text();
     const raw = JSON.parse(text);
-    const data = migrateProject(raw);
+    const data = migrateVfxProject(raw);
     useVfxStore.getState().loadProjectData(data);
     return true;
   } catch {
@@ -138,16 +181,17 @@ export async function uploadProject(file: File): Promise<boolean> {
 
 /**
  * Migrate project data from older versions.
- * v1 → v2: remove phases from presets, convert layer.phase to tags.
+ * v1 → v3: remove phases from presets, convert layer.phase to tags.
+ * v2+ → v3: coerce version number to current.
  */
-function migrateProject(data: Record<string, unknown>): VfxProject {
+export function migrateVfxProject(data: Record<string, unknown>): VfxProject {
   const version = (data.version as number) ?? 1;
-  if (version >= 2) return data as unknown as VfxProject;
+  if (version >= 2) return { ...data, version: VFX_PROJECT_VERSION } as unknown as VfxProject;
 
-  // v1 → v2 migration
+  // v1 → v3 migration (layers → elements, drops phases)
   const presets = (data.presets as Record<string, unknown>[]) ?? [];
   return {
-    version: 2,
+    version: VFX_PROJECT_VERSION,
     presets: presets.map((p) => {
       const layers = (p.layers as Record<string, unknown>[]) ?? [];
       const { phases: _, ...rest } = p;
@@ -163,3 +207,7 @@ function migrateProject(data: Record<string, unknown>): VfxProject {
     }),
   } as unknown as VfxProject;
 }
+
+// Legacy alias — kept so any internal callers (uploadProject) don't break.
+// Also exported so external consumers that imported migrateProject can still work.
+export const migrateProject = migrateVfxProject;

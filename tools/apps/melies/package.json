@@ -6,13 +6,15 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "vitest run"
   },
   "dependencies": {
     "@gseurat/engine-client": "workspace:*",
     "@gseurat/simulation-wasm": "workspace:*",
     "@gseurat/vfx-utils": "workspace:*",
     "@gseurat/test-harness": "workspace:*",
+    "@gseurat/project-root": "workspace:*",
     "@gseurat/ui-kit": "workspace:*",
     "@react-three/drei": "^9.117.0",
     "@react-three/fiber": "^8.17.0",
@@ -27,6 +29,7 @@
     "@types/three": "^0.170.0",
     "@vitejs/plugin-react": "^4.2.0",
     "typescript": "^5.4.0",
-    "vite": "^5.4.0"
+    "vite": "^5.4.0",
+    "vitest": "^4.0.18"
   }
 }
