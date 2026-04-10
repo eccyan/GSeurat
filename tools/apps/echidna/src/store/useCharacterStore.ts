@@ -749,11 +749,8 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
   },
 
   saveProject: () => {
+    const id = get().ensureCharacterId();
     const s = get();
-    const id = s.characterId || slugifyCharacterId(s.characterName);
-    if (!s.characterId) {
-      set({ characterId: id });
-    }
     const voxelArr: EchidnaFile['voxels'] = [];
     for (const [key, vox] of s.voxels) {
       const [x, y, z] = parseKey(key);
@@ -776,7 +773,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
     const data = migrateEchidnaFile(raw);
     const wasLegacy = (raw?.version ?? 0) < ECHIDNA_FILE_VERSION;
     if (wasLegacy) {
-      console.warn(`[echidna] Loaded legacy v${raw?.version} file; migrated to v${ECHIDNA_FILE_VERSION}`);
+      console.warn(`[echidna] Loaded legacy v${raw?.version} file "${data.characterName}" (id: ${data.id}); migrated to v${ECHIDNA_FILE_VERSION}`);
     }
     const voxels = new Map<VoxelKey, Voxel>();
     for (const v of data.voxels) {
