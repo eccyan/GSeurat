@@ -13,7 +13,7 @@ import type {
   ClipboardEntry,
   PlaybackMode,
 } from './types.js';
-import { slugifyCharacterId, ECHIDNA_FILE_VERSION } from './types.js';
+import { migrateEchidnaFile, slugifyCharacterId, ECHIDNA_FILE_VERSION } from './types.js';
 import { voxelKey, parseKey, floodFill3D, extrudeLayer } from '../lib/voxelUtils.js';
 
 function makeSnapshot(voxels: Map<VoxelKey, Voxel>, parts: BodyPart[]): Snapshot {
@@ -112,6 +112,8 @@ export interface CharacterStoreState {
   playbackSpeed: number;
 
   // File
+  characterId: string;
+  projectRootHandle: FileSystemDirectoryHandle | null;
   currentFilename: string | null;
 
   // Undo / redo
@@ -199,8 +201,10 @@ export interface CharacterStoreState {
   newCharacter: (gridSize?: number) => void;
   resizeGrid: (size: number) => void;
   saveProject: () => EchidnaFile;
-  loadProject: (data: EchidnaFile) => void;
+  loadProject: (raw: any) => void;
   setCurrentFilename: (name: string | null) => void;
+  setProjectRootHandle: (h: FileSystemDirectoryHandle | null) => void;
+  ensureCharacterId: () => string;
 
   // Actions – new tools and clipboard
   setXrayMode: (v: boolean) => void;
@@ -251,6 +255,8 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
   isPlaying: false,
   playbackSpeed: 1,
 
+  characterId: '',
+  projectRootHandle: null,
   currentFilename: null,
 
   undoStack: [],
@@ -688,10 +694,19 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
 
   // ── File actions ──
   setCurrentFilename: (name) => set({ currentFilename: name }),
+  setProjectRootHandle: (h) => set({ projectRootHandle: h }),
+  ensureCharacterId: () => {
+    const s = get();
+    if (s.characterId.length > 0) return s.characterId;
+    const id = slugifyCharacterId(s.characterName);
+    set({ characterId: id });
+    return id;
+  },
 
   newCharacter: (gridSize?: number) => {
     const size = gridSize ?? 32;
     set({
+      characterId: '',
       voxels: new Map(),
       gridWidth: size,
       gridDepth: size,
@@ -735,6 +750,10 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
 
   saveProject: () => {
     const s = get();
+    const id = s.characterId || slugifyCharacterId(s.characterName);
+    if (!s.characterId) {
+      set({ characterId: id });
+    }
     const voxelArr: EchidnaFile['voxels'] = [];
     for (const [key, vox] of s.voxels) {
       const [x, y, z] = parseKey(key);
@@ -742,7 +761,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
     }
     return {
       version: ECHIDNA_FILE_VERSION,
-      id: slugifyCharacterId(s.characterName),
+      id,
       characterName: s.characterName,
       gridWidth: s.gridWidth,
       gridDepth: s.gridDepth,
@@ -753,7 +772,12 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
     };
   },
 
-  loadProject: (data) => {
+  loadProject: (raw) => {
+    const data = migrateEchidnaFile(raw);
+    const wasLegacy = (raw?.version ?? 0) < ECHIDNA_FILE_VERSION;
+    if (wasLegacy) {
+      console.warn(`[echidna] Loaded legacy v${raw?.version} file; migrated to v${ECHIDNA_FILE_VERSION}`);
+    }
     const voxels = new Map<VoxelKey, Voxel>();
     for (const v of data.voxels) {
       voxels.set(voxelKey(v.x, v.y, v.z), { color: [v.r, v.g, v.b, v.a] });
@@ -778,6 +802,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
       }
     }
     set({
+      characterId: data.id,
       voxels,
       gridWidth: data.gridWidth,
       gridDepth: data.gridDepth,
