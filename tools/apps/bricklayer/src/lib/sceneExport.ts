@@ -7,6 +7,55 @@ export interface ScenePathError {
   message: string;
 }
 
+/**
+ * Thrown by `assertScenePathsValid` (and `exportSceneJson` in strict mode)
+ * when one or more scene asset paths fail validation. Carries the full
+ * error list so callers can render a structured failure dialog instead of
+ * just a string. Phase 0.1 #3.
+ */
+export class ScenePathValidationError extends Error {
+  readonly errors: ScenePathError[];
+  constructor(errors: ScenePathError[]) {
+    const noun = errors.length === 1 ? 'issue' : 'issues';
+    super(`Scene export has ${errors.length} path ${noun}`);
+    this.name = 'ScenePathValidationError';
+    this.errors = errors;
+  }
+}
+
+export interface AssertScenePathsOptions {
+  /**
+   * When true, throws `ScenePathValidationError` on any validation failure
+   * instead of logging warnings. Phase 0.1 #3 introduces this flag — it
+   * stays default-off during the migration window so legacy scenes can
+   * still load. Once all known scenes are clean, flip the call sites
+   * (Open in Staging / Auto-Sync) to `{ strict: true }`.
+   */
+  strict?: boolean;
+}
+
+/**
+ * Validate every asset path field in `scene` and either log warnings
+ * (default, lossy) or throw `ScenePathValidationError` (strict). The strict
+ * branch deliberately skips the warn so the thrown error is the single
+ * source of truth — callers shouldn't see both.
+ */
+export function assertScenePathsValid(
+  scene: unknown,
+  reg: AssetRegistry,
+  options: AssertScenePathsOptions = {},
+): void {
+  const errors = validateScenePaths(scene, reg);
+  if (errors.length === 0) return;
+  if (options.strict) {
+    throw new ScenePathValidationError(errors);
+  }
+  console.warn(`[bricklayer] Scene export has ${errors.length} path issue(s):`);
+  for (const e of errors) {
+    console.warn(`  ${e.field}: ${e.value} — ${e.message}`);
+  }
+}
+
 function validateRef(
   field: string,
   value: unknown,
@@ -94,7 +143,10 @@ export function validateScenePaths(scene: any, reg: AssetRegistry): ScenePathErr
   return errs;
 }
 
-export function exportSceneJson(state: SceneStoreState): object {
+export function exportSceneJson(
+  state: SceneStoreState,
+  options: AssertScenePathsOptions = {},
+): object {
   const scene: Record<string, unknown> = {
     version: 2,
     ambient_color: state.ambientColor,
@@ -392,14 +444,9 @@ export function exportSceneJson(state: SceneStoreState): object {
     scene.camera_zones = cameraZones;
   }
 
-  // Phase 0.0 migration window: validate but don't throw.
-  const pathErrors = validateScenePaths(scene, state.asset_registry);
-  if (pathErrors.length > 0) {
-    console.warn(`[bricklayer] Scene export has ${pathErrors.length} path issue(s):`);
-    for (const e of pathErrors) {
-      console.warn(`  ${e.field}: ${e.value} — ${e.message}`);
-    }
-  }
+  // Default mode (Phase 0.0 migration window): warn but don't throw.
+  // Pass `{ strict: true }` once all known scenes are clean — see Phase 0.1 #3.
+  assertScenePathsValid(scene, state.asset_registry, options);
 
   return scene;
 }
