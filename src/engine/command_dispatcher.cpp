@@ -7,6 +7,7 @@
 #include "gseurat/engine/gs_terrain_state.hpp"
 #include "gseurat/engine/gs_vfx.hpp"
 #include "gseurat/engine/input_manager.hpp"
+#include "gseurat/engine/project_root.hpp"
 #include "gseurat/engine/renderer.hpp"
 #include "gseurat/engine/scene.hpp"
 #include "gseurat/engine/scene_loader.hpp"
@@ -492,6 +493,13 @@ void CommandDispatcher::register_default_commands() {
         response["triggers"] = triggers;
         response["emitter_count"] = ctx_.renderer.gs_particle_emitters().size();
         return response;
+    });
+
+    register_command("set_project_root", [ok](const json& cmd) -> CommandResult {
+        std::string p = cmd.value("path", "");
+        set_project_root(p);
+        std::fprintf(stderr, "[control_server] set_project_root: %s\n", p.c_str());
+        return ok();
     });
 
     register_command("quit", [this](const json&) -> CommandResult {

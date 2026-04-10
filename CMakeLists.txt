@@ -281,32 +281,38 @@ add_gseurat_test(test_async_loader     src/engine/async_loader.cpp)
 add_gseurat_test(test_character_data   src/engine/character_data.cpp)
 add_gseurat_test(test_gaussian_cloud   src/engine/gaussian_cloud.cpp src/engine/collision_gen.cpp
                                        src/engine/scene_loader.cpp src/engine/tilemap.cpp
-                                       src/engine/gs_particle.cpp src/engine/gs_spline.cpp)
-add_gseurat_test(test_gs_chunk_grid    src/engine/gs_chunk_grid.cpp src/engine/gaussian_cloud.cpp)
+                                       src/engine/gs_particle.cpp src/engine/gs_spline.cpp
+                                       src/engine/project_root.cpp)
+add_gseurat_test(test_gs_chunk_grid    src/engine/gs_chunk_grid.cpp src/engine/gaussian_cloud.cpp
+                                       src/engine/project_root.cpp)
 add_gseurat_test(test_gs_chunk_streamer src/engine/gs_chunk_streamer.cpp src/engine/gaussian_cloud.cpp
-                                        src/engine/gs_chunk_grid.cpp src/engine/async_loader.cpp)
+                                        src/engine/gs_chunk_grid.cpp src/engine/async_loader.cpp
+                                        src/engine/project_root.cpp)
 add_gseurat_test(test_gs_parallax_camera src/engine/gs_parallax_camera.cpp)
 add_gseurat_test(test_screenshot       src/engine/screenshot.cpp)
 add_gseurat_test(test_staging_uploader src/engine/staging_uploader.cpp)
 add_gseurat_test(test_tilemap          src/engine/tilemap.cpp)
 add_gseurat_test(test_gs_point_lights)
-add_gseurat_test(test_gs_emission     src/engine/gaussian_cloud.cpp)
+add_gseurat_test(test_gs_emission     src/engine/gaussian_cloud.cpp
+                                       src/engine/project_root.cpp)
 add_gseurat_test(test_gs_particle    src/engine/gs_particle.cpp src/engine/gs_animator.cpp
                                       src/engine/gaussian_cloud.cpp src/engine/scene_loader.cpp
-                                      src/engine/gs_spline.cpp)
+                                      src/engine/gs_spline.cpp src/engine/project_root.cpp)
 add_gseurat_test(test_scene_loading  src/engine/scene_loader.cpp src/engine/tilemap.cpp
                                       src/engine/gs_particle.cpp src/engine/gs_animator.cpp
                                       src/engine/gaussian_cloud.cpp src/engine/gs_vfx.cpp
-                                      src/engine/gs_spline.cpp src/engine/coordinate.cpp)
+                                      src/engine/gs_spline.cpp src/engine/coordinate.cpp
+                                      src/engine/project_root.cpp)
 add_gseurat_test(test_incremental_sync src/engine/scene_loader.cpp src/engine/tilemap.cpp
                                         src/engine/gaussian_cloud.cpp src/engine/gs_particle.cpp
                                         src/engine/gs_animator.cpp src/engine/gs_spline.cpp
-                                        src/engine/coordinate.cpp)
-add_gseurat_test(test_vfx_scene_buffer src/engine/gaussian_cloud.cpp)
+                                        src/engine/coordinate.cpp src/engine/project_root.cpp)
+add_gseurat_test(test_vfx_scene_buffer src/engine/gaussian_cloud.cpp
+                                        src/engine/project_root.cpp)
 add_gseurat_test(test_vfx_lights_rotation src/engine/gs_vfx.cpp src/engine/gs_particle.cpp
                                            src/engine/gs_animator.cpp src/engine/gaussian_cloud.cpp
                                            src/engine/scene_loader.cpp src/engine/tilemap.cpp
-                                           src/engine/gs_spline.cpp)
+                                           src/engine/gs_spline.cpp src/engine/project_root.cpp)
 add_gseurat_test(test_gs_spline src/engine/gs_spline.cpp)
 add_gseurat_test(test_gs_post_process)
 add_gseurat_test(test_pbd_solver)
