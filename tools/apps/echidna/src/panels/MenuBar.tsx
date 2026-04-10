@@ -13,6 +13,16 @@ import { ResizeGridDialog } from './ResizeGridDialog.js';
 import { ExportDialog } from './ExportDialog.js';
 import { ImportDialog } from './ImportDialog.js';
 import type { ImportOptions } from './ImportDialog.js';
+import {
+  saveProjectRootHandle,
+  ensureHandlePermission,
+  restoreProjectRoot,
+} from '@gseurat/project-root';
+import {
+  saveEchidnaProject,
+  exportCharacterToProject,
+  echidnaSavePath,
+} from '../lib/projectFs.js';
 
 const BRIDGE_REST_URL = 'http://localhost:9101';
 
@@ -481,8 +491,137 @@ export function MenuBar() {
     }
   }, [showToast]);
 
+  const handlePickProjectRoot = useCallback(async () => {
+    try {
+      // @ts-expect-error - showDirectoryPicker is FSAPI extension not in lib.dom
+      const handle: FileSystemDirectoryHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
+      await saveProjectRootHandle('echidna', handle);
+      useCharacterStore.getState().setProjectRootHandle(handle);
+      showToast(`Project root set: ${handle.name}`, 'success');
+    } catch (e) {
+      // User canceled or denied permission
+      if ((e as Error).name !== 'AbortError') {
+        console.error('[echidna] Failed to set project root:', e);
+        showToast('Failed to set project root', 'error');
+      }
+    }
+  }, [showToast]);
+
+  const handleSaveToProject = useCallback(async () => {
+    const s = useCharacterStore.getState();
+    let handle = s.projectRootHandle;
+    if (!handle) {
+      try {
+        // @ts-expect-error - showDirectoryPicker is FSAPI extension
+        handle = await window.showDirectoryPicker({ mode: 'readwrite' }) as FileSystemDirectoryHandle;
+        await saveProjectRootHandle('echidna', handle);
+        s.setProjectRootHandle(handle);
+      } catch (e) {
+        if ((e as Error).name !== 'AbortError') {
+          console.error('[echidna] Cannot pick project root:', e);
+          showToast('Cannot pick project root', 'error');
+        }
+        return;
+      }
+    } else {
+      const ok = await ensureHandlePermission(handle);
+      if (!ok) {
+        showToast('Project root permission denied', 'error');
+        return;
+      }
+    }
+
+    const id = s.ensureCharacterId();
+    const file = s.saveProject();
+    try {
+      await saveEchidnaProject(handle, file);
+      showToast(`Saved to ${echidnaSavePath(id)}`, 'success');
+    } catch (e) {
+      console.error('[echidna] Save failed:', e);
+      showToast('Save to project failed', 'error');
+    }
+  }, [showToast]);
+
+  const handleExportCharacterToProject = useCallback(async () => {
+    const s = useCharacterStore.getState();
+    if (s.voxels.size === 0) {
+      showToast('No voxels to export', 'error');
+      return;
+    }
+
+    // Ensure project root handle is available
+    let handle = s.projectRootHandle;
+    if (!handle) {
+      handle = await restoreProjectRoot('echidna');
+      if (!handle) {
+        showToast('No project root set — use File → Set Project Root… first', 'error');
+        return;
+      }
+      s.setProjectRootHandle(handle);
+      // After restoring from IDB, we still need to verify/request permission.
+      const ok = await ensureHandlePermission(handle);
+      if (!ok) {
+        showToast('Project root permission denied', 'error');
+        return;
+      }
+    } else {
+      const ok = await ensureHandlePermission(handle);
+      if (!ok) {
+        showToast('Project root permission denied', 'error');
+        return;
+      }
+    }
+
+    const id = s.ensureCharacterId();
+
+    // Build PLY
+    const ply = exportPly(s.voxels, s.gridWidth, s.gridDepth, s.characterParts);
+
+    // Build manifest with bone joints centered to match PLY centering
+    // (same logic as pushToStaging — see lines ~436-447 above)
+    const halfW = s.gridWidth / 2;
+    let maxY = 0;
+    for (const [key] of s.voxels.entries()) {
+      const y = parseInt(key.split(',')[1], 10);
+      if (y > maxY) maxY = y;
+    }
+    const halfH = maxY / 2;
+    const centeredParts = s.characterParts.map((p) => ({
+      ...p,
+      joint: [p.joint[0] - halfW, p.joint[1] - halfH, p.joint[2]] as [number, number, number],
+    }));
+    const manifest = buildManifest(
+      id,
+      `${id}.ply`,
+      1.0,
+      centeredParts,
+      s.characterPoses,
+      s.animations,
+    );
+
+    showToast('Exporting character…', 'loading');
+
+    try {
+      const { plyPath, manifestPath } = await exportCharacterToProject(
+        handle,
+        id,
+        ply,
+        JSON.stringify(manifest, null, 2),
+      );
+      console.info(`[echidna] Exported ${plyPath} + ${manifestPath}`);
+      showToast(`Exported ${id} to project`, 'success');
+    } catch (e) {
+      console.error('[echidna] Export failed:', e);
+      showToast('Export to project failed', 'error');
+    }
+  }, [showToast]);
+
   const fileItems = [
     { label: 'New', shortcut: '\u2318N', action: handleNew },
+    { separator: true as const },
+    { label: 'Set Project Root\u2026', action: handlePickProjectRoot },
+    { label: 'Save to Project', action: handleSaveToProject },
+    { label: 'Export Character to Project', action: handleExportCharacterToProject },
     { separator: true as const },
     { label: 'Save', shortcut: '\u2318S', action: handleSave },
     { label: 'Save As...', shortcut: '\u21e7\u2318S', action: handleSaveAs },

@@ -8,6 +8,7 @@ import { AnimateRightPanel } from './panels/AnimateRightPanel.js';
 import { Timeline } from './panels/Timeline.js';
 import { useCharacterStore } from './store/useCharacterStore.js';
 import type { ToolType } from './store/types.js';
+import { restoreProjectRoot } from '@gseurat/project-root';
 
 const styles: Record<string, React.CSSProperties> = {
   root: {
@@ -107,6 +108,22 @@ export function App() {
   // Keep refs in sync for drag callbacks
   leftRef.current = leftWidth;
   rightRef.current = rightWidth;
+
+  // Bootstrap: restore project root handle from IDB on startup
+  useEffect(() => {
+    (async () => {
+      try {
+        const handle = await restoreProjectRoot('echidna');
+        if (handle && !useCharacterStore.getState().projectRootHandle) {
+          useCharacterStore.getState().setProjectRootHandle(handle);
+          console.info(`[echidna] Restored project root: ${handle.name}`);
+        }
+      } catch (e) {
+        // Silently ignore — user can pick the root again via File → Set Project Root…
+        console.info('[echidna] No project root to restore');
+      }
+    })();
+  }, []);
 
   const handleLeftDrag = useCallback((delta: number) => {
     setLeftWidth(Math.max(150, Math.min(400, leftRef.current + delta)));
