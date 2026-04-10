@@ -172,6 +172,33 @@ function MenuBar({ onImportScene }: { onImportScene?: () => void }) {
     setFileOpen(false);
   };
 
+  const handleConnectBridgeToProject = async () => {
+    const projectPath = window.prompt(
+      'Project root absolute path on disk:\n\n' +
+        'This tells the bridge (and engine) where your project lives so relative ' +
+        'asset paths can be resolved. Example: /Users/you/MyGameProject',
+      '',
+    );
+    if (!projectPath) return;
+    try {
+      const res = await fetch('http://localhost:9101/api/project/root', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ path: projectPath }),
+      });
+      if (res.ok) {
+        const body = (await res.json()) as { activeProjectDir?: string };
+        console.info(`[melies] Bridge connected to project root: ${body.activeProjectDir}`);
+      } else {
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        console.error(`[melies] Bridge rejected path: ${body.error ?? res.statusText}`);
+      }
+    } catch (e) {
+      console.error('[melies] Failed to reach bridge:', e);
+    }
+    setFileOpen(false);
+  };
+
   // ── Auto-sync to Staging (debounced) ──
   const stagingAutoSync = useVfxStore((s) => s.stagingAutoSync);
   const autoSyncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -247,6 +274,7 @@ function MenuBar({ onImportScene }: { onImportScene?: () => void }) {
               { label: 'Export .vfx.json', action: handleExportVfx },
               { label: 'Import Scene PLY...', action: () => { onImportScene?.(); setFileOpen(false); } },
               { label: 'Open in Staging', action: handleOpenInStaging },
+              { label: 'Connect Bridge to Project Root…', action: handleConnectBridgeToProject },
             ].map((item) => (
               <div key={item.label} onClick={item.action}
                 style={{ padding: '6px 16px', cursor: 'pointer', fontSize: 12, color: T.text }}
