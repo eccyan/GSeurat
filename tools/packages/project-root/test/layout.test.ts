@@ -38,4 +38,23 @@ describe('classifiers', () => {
     expect(isToolsDataPath('tools_data/echidna_saves/walker.echidna')).toBe(true);
     expect(isToolsDataPath('assets/scenes/town.json')).toBe(false);
   });
+
+  it('isAssetPath rejects path traversal segments', () => {
+    expect(isAssetPath('assets/../evil/foo')).toBe(false);
+    expect(isAssetPath('assets/foo/../../etc/passwd')).toBe(false);
+  });
+
+  it('isAssetPath accepts dots inside a path segment', () => {
+    expect(isAssetPath('assets/characters/walker..v2/walker.ply')).toBe(true);
+    expect(isAssetPath('assets/maps/region..north.json')).toBe(true);
+  });
+
+  it('isToolsDataPath rejects path traversal segments', () => {
+    expect(isToolsDataPath('tools_data/../evil')).toBe(false);
+    expect(isToolsDataPath('tools_data/foo/../../etc')).toBe(false);
+  });
+
+  it('isToolsDataPath accepts dots inside a path segment', () => {
+    expect(isToolsDataPath('tools_data/echidna_saves/walker..v2.echidna')).toBe(true);
+  });
 });

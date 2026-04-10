@@ -17,6 +17,9 @@ export const PROJECT_LAYOUT = {
   },
 } as const;
 
+// Note: 'components' is intentionally excluded. It holds editor schema JSON
+// (schemas/*.schema.json), not engine-facing runtime assets. Consumers that
+// need the components directory should use PROJECT_LAYOUT.assets.components directly.
 export const ASSET_KINDS = [
   'characters',
   'vfx',
@@ -29,9 +32,11 @@ export const ASSET_KINDS = [
 export type AssetKind = typeof ASSET_KINDS[number];
 
 export function isAssetPath(p: string): boolean {
-  return p.startsWith('assets/') && !p.includes('..');
+  const segments = p.split('/');
+  return segments[0] === 'assets' && !segments.includes('..');
 }
 
 export function isToolsDataPath(p: string): boolean {
-  return p.startsWith('tools_data/') && !p.includes('..');
+  const segments = p.split('/');
+  return segments[0] === 'tools_data' && !segments.includes('..');
 }
