@@ -29,6 +29,10 @@ describe('toAssetPath', () => {
   it('rejects traversal', () => {
     expect(() => toAssetPath('characters', '..', 'evil')).toThrow(/traversal/i);
   });
+
+  it('rejects zero parts', () => {
+    expect(() => toAssetPath('characters' as any)).toThrow(/at least one/i);
+  });
 });
 
 describe('parseAssetRef / isAssetRef', () => {
@@ -61,6 +65,18 @@ describe('parseAssetRef / isAssetRef', () => {
   it('rejects traversal', () => {
     expect(() => parseAssetRef('assets/../evil')).toThrow(/traversal/i);
     expect(() => parseAssetRef('assets/foo/../../etc/passwd')).toThrow(/traversal/i);
+  });
+
+  it('rejects single-dot segment', () => {
+    expect(() => parseAssetRef('assets/./characters/walker.ply')).toThrow(/traversal/i);
+  });
+
+  it('rejects "assets/" with no further segments', () => {
+    expect(() => parseAssetRef('assets/')).toThrow(/at least two segments/i);
+  });
+
+  it('rejects "assets/kind" without a name', () => {
+    expect(() => parseAssetRef('assets/characters')).toThrow(/at least two segments/i);
   });
 
   it('accepts dots inside a path segment', () => {

@@ -22,16 +22,20 @@ export function toAssetPath(kind: AssetKind, ...parts: string[]): string {
     if (PART_SEPARATOR_RE.test(p)) {
       throw new Error(`toAssetPath: part contains separator: "${p}"`);
     }
-    if (p === '..' || p === '.') {
+    if (isTraversalSegment(p)) {
       throw new Error(`toAssetPath: traversal segment not allowed: "${p}"`);
     }
   }
   return `assets/${kind}/${parts.join('/')}`;
 }
 
+function isTraversalSegment(segment: string): boolean {
+  return segment === '..' || segment === '.';
+}
+
 function hasTraversalSegment(s: string): boolean {
   const segments = s.split(/[/\\]/);
-  return segments.includes('..') || segments.includes('.');
+  return segments.some(isTraversalSegment);
 }
 
 function isAbsolute(s: string): boolean {
@@ -48,7 +52,7 @@ function isAbsolute(s: string): boolean {
  */
 export function parseAssetRef(s: string): AssetRef {
   if (typeof s !== 'string' || s.length === 0) {
-    throw new Error('parseAssetRef: empty');
+    throw new Error('parseAssetRef: expected "#id" or "assets/..." but got empty string');
   }
   if (s.startsWith('#')) {
     const id = s.slice(1);
@@ -68,6 +72,13 @@ export function parseAssetRef(s: string): AssetRef {
   }
   if (!s.startsWith('assets/')) {
     throw new Error(`parseAssetRef: bare filename not allowed: "${s}"`);
+  }
+  // assets/ must be followed by {kind}/{name} at minimum
+  const afterAssets = s.slice('assets/'.length);
+  if (afterAssets.length === 0 || !afterAssets.includes('/')) {
+    throw new Error(
+      `parseAssetRef: path must be "assets/{kind}/{name}" with at least two segments, got: "${s}"`
+    );
   }
   return { kind: 'path', path: s };
 }
@@ -91,6 +102,6 @@ export function validateAssetRef(s: string): string | null {
     parseAssetRef(s);
     return null;
   } catch (e) {
-    return (e as Error).message;
+    return e instanceof Error ? e.message : String(e);
   }
 }
