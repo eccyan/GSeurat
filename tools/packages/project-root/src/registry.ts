@@ -35,40 +35,70 @@ export function registerCharacter(
   reg: AssetRegistry,
   id: string,
   entry: { ply: string; manifest: string },
-): void {
-  reg.characters[id] = { id, ply: entry.ply, manifest: entry.manifest };
+): AssetRegistry {
+  return {
+    ...reg,
+    characters: {
+      ...reg.characters,
+      [id]: { id, ply: entry.ply, manifest: entry.manifest },
+    },
+  };
 }
 
 export function registerVfx(
   reg: AssetRegistry,
   id: string,
   entry: { file: string },
-): void {
-  reg.vfx[id] = { id, file: entry.file };
+): AssetRegistry {
+  return {
+    ...reg,
+    vfx: {
+      ...reg.vfx,
+      [id]: { id, file: entry.file },
+    },
+  };
 }
 
 export function registerTexture(
   reg: AssetRegistry,
   id: string,
   entry: { file: string },
-): void {
-  reg.textures[id] = { id, file: entry.file };
+): AssetRegistry {
+  return {
+    ...reg,
+    textures: {
+      ...reg.textures,
+      [id]: { id, file: entry.file },
+    },
+  };
 }
 
 export function registerAudio(
   reg: AssetRegistry,
   id: string,
   entry: { file: string },
-): void {
-  reg.audio[id] = { id, file: entry.file };
+): AssetRegistry {
+  return {
+    ...reg,
+    audio: {
+      ...reg.audio,
+      [id]: { id, file: entry.file },
+    },
+  };
 }
 
 export function registerMap(
   reg: AssetRegistry,
   id: string,
   entry: { file: string },
-): void {
-  reg.maps[id] = { id, file: entry.file };
+): AssetRegistry {
+  return {
+    ...reg,
+    maps: {
+      ...reg.maps,
+      [id]: { id, file: entry.file },
+    },
+  };
 }
 
 export type RefKind = 'character' | 'vfx' | 'texture' | 'audio' | 'map';
@@ -89,28 +119,32 @@ export function resolveRef(ref: string, kind: RefKind, reg: AssetRegistry): stri
   switch (kind) {
     case 'character': {
       const e = reg.characters[parsed.id];
-      if (!e) throw new Error(`resolveRef: unknown id "${parsed.id}" in characters`);
+      if (!e) throw new Error(`resolveRef: unknown id "${parsed.id}" in the character registry`);
       return e.manifest;
     }
     case 'vfx': {
       const e = reg.vfx[parsed.id];
-      if (!e) throw new Error(`resolveRef: unknown id "${parsed.id}" in vfx`);
+      if (!e) throw new Error(`resolveRef: unknown id "${parsed.id}" in the vfx registry`);
       return e.file;
     }
     case 'texture': {
       const e = reg.textures[parsed.id];
-      if (!e) throw new Error(`resolveRef: unknown id "${parsed.id}" in textures`);
+      if (!e) throw new Error(`resolveRef: unknown id "${parsed.id}" in the texture registry`);
       return e.file;
     }
     case 'audio': {
       const e = reg.audio[parsed.id];
-      if (!e) throw new Error(`resolveRef: unknown id "${parsed.id}" in audio`);
+      if (!e) throw new Error(`resolveRef: unknown id "${parsed.id}" in the audio registry`);
       return e.file;
     }
     case 'map': {
       const e = reg.maps[parsed.id];
-      if (!e) throw new Error(`resolveRef: unknown id "${parsed.id}" in maps`);
+      if (!e) throw new Error(`resolveRef: unknown id "${parsed.id}" in the map registry`);
       return e.file;
+    }
+    default: {
+      const _exhaustive: never = kind;
+      throw new Error(`resolveRef: unhandled kind: ${_exhaustive}`);
     }
   }
 }
