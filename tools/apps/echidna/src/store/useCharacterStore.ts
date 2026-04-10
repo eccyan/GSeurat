@@ -13,6 +13,7 @@ import type {
   ClipboardEntry,
   PlaybackMode,
 } from './types.js';
+import { slugifyCharacterId, ECHIDNA_FILE_VERSION } from './types.js';
 import { voxelKey, parseKey, floodFill3D, extrudeLayer } from '../lib/voxelUtils.js';
 
 function makeSnapshot(voxels: Map<VoxelKey, Voxel>, parts: BodyPart[]): Snapshot {
@@ -740,7 +741,8 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
       voxelArr.push({ x, y, z, r: vox.color[0], g: vox.color[1], b: vox.color[2], a: vox.color[3] });
     }
     return {
-      version: 2,
+      version: ECHIDNA_FILE_VERSION,
+      id: slugifyCharacterId(s.characterName),
       characterName: s.characterName,
       gridWidth: s.gridWidth,
       gridDepth: s.gridDepth,

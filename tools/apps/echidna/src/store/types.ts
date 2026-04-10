@@ -70,10 +70,13 @@ export interface ClipboardEntry {
   color: [number, number, number, number];
 }
 
-// ── File format (v2) ──
+// ── File format (v3) ──
+
+export const ECHIDNA_FILE_VERSION = 3;
 
 export interface EchidnaFile {
   version: number;
+  id: string;            // persistent slug, immutable after first save
   characterName: string;
   gridWidth: number;
   gridDepth: number;
@@ -81,6 +84,50 @@ export interface EchidnaFile {
   parts: BodyPart[];
   poses: Record<string, PoseData>;
   animations?: Record<string, AnimationClip>;
+}
+
+/**
+ * Slugify a character name into a stable ID usable as a directory name.
+ * Rules: lowercase, trim, collapse whitespace runs to single underscores,
+ * strip characters outside [a-z0-9_-], fall back to "character" if empty.
+ */
+export function slugifyCharacterId(name: string): string {
+  const cleaned = name
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, '_')
+    .replace(/[^a-z0-9_-]/g, '');
+  return cleaned.length > 0 ? cleaned : 'character';
+}
+
+/**
+ * Migrate a raw parsed JSON object to the current EchidnaFile shape.
+ * - Adds a persistent `id` (slugified from characterName) if missing.
+ * - Bumps version to ECHIDNA_FILE_VERSION.
+ * - Throws on non-object input.
+ *
+ * Does NOT attempt to validate voxel/part/pose structure — the store
+ * loader handles those. This migration is specifically about schema v2 → v3.
+ */
+export function migrateEchidnaFile(raw: any): EchidnaFile {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    throw new Error('migrateEchidnaFile: expected an object');
+  }
+  const id: string = typeof raw.id === 'string' && raw.id.length > 0
+    ? raw.id
+    : slugifyCharacterId(typeof raw.characterName === 'string' ? raw.characterName : '');
+
+  return {
+    version: ECHIDNA_FILE_VERSION,
+    id,
+    characterName: raw.characterName ?? '',
+    gridWidth: raw.gridWidth ?? 32,
+    gridDepth: raw.gridDepth ?? 32,
+    voxels: Array.isArray(raw.voxels) ? raw.voxels : [],
+    parts: Array.isArray(raw.parts) ? raw.parts : [],
+    poses: raw.poses && typeof raw.poses === 'object' ? raw.poses : {},
+    animations: raw.animations,
+  };
 }
 
 // ── Undo snapshot ──
