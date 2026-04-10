@@ -2,3 +2,4 @@
 export * from './layout';
 export * from './paths';
 export * from './registry';
+export * from './fs';
