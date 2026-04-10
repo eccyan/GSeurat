@@ -45,7 +45,8 @@ function MenuBar({ onImportScene }: { onImportScene?: () => void }) {
     if (hasFileSystemAccess()) {
       const handle = await openProjectDirectory();
       if (!handle) return;
-      const ok = await loadProject(handle);
+      const projectName = useVfxStore.getState().projectName || 'project';
+      const ok = await loadProject(handle, projectName);
       if (ok) {
         useVfxStore.getState().setProjectHandle(handle);
       }
@@ -839,7 +840,8 @@ export function App() {
           if (hasFileSystemAccess()) {
             const handle = await openProjectDirectory();
             if (!handle) return;
-            const ok = await loadProject(handle);
+            const projectName = useVfxStore.getState().projectName || 'project';
+            const ok = await loadProject(handle, projectName);
             if (ok) useVfxStore.getState().setProjectHandle(handle);
           }
         } else if (e.key === 'd') {

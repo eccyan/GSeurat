@@ -11,4 +11,9 @@ export default defineConfig({
   server: {
     port: 5181,
   },
-});
+  test: {
+    resolve: {
+      conditions: ['source'],
+    },
+  },
+} as any);
