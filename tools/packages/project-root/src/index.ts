@@ -1,2 +1,2 @@
-// Barrel — populated in Tasks 3–7
-export {};
+// Barrel — populated incrementally by Tasks 3–7.
+export * from './layout';
