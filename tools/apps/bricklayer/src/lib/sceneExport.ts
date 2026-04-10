@@ -1,4 +1,98 @@
 import type { SceneStoreState } from '../store/useSceneStore.js';
+import { parseAssetRef, resolveRef, type AssetRegistry, type RefKind } from '@gseurat/project-root';
+
+export interface ScenePathError {
+  field: string;
+  value: string;
+  message: string;
+}
+
+function validateRef(
+  field: string,
+  value: unknown,
+  kind: RefKind,
+  reg: AssetRegistry,
+  out: ScenePathError[],
+): void {
+  // Skip empty/missing fields — they're not errors at validation time.
+  if (typeof value !== 'string' || value.length === 0) return;
+
+  try {
+    parseAssetRef(value);
+  } catch (e) {
+    out.push({ field, value, message: (e as Error).message });
+    return;
+  }
+  // For #id refs, additionally verify the id resolves in the registry
+  if (value.startsWith('#')) {
+    try {
+      resolveRef(value, kind, reg);
+    } catch (e) {
+      out.push({ field, value, message: (e as Error).message });
+    }
+  }
+}
+
+/**
+ * Walk an exported engine scene JSON and validate every asset path field.
+ * Returns a list of errors (empty if all valid). Does NOT throw — callers
+ * decide how to handle violations.
+ *
+ * Validates:
+ * - game_objects[i].ply_file (map)
+ * - game_objects[i].components.CharacterModel.manifest (character)
+ * - vfx_instances[i].vfx_file (vfx)
+ * - gaussian_splat.ply_file (map)
+ * - gaussian_splat.background_image (texture)
+ * - background_layers[i].texture (texture)
+ */
+export function validateScenePaths(scene: any, reg: AssetRegistry): ScenePathError[] {
+  const errs: ScenePathError[] = [];
+
+  if (Array.isArray(scene?.game_objects)) {
+    for (let i = 0; i < scene.game_objects.length; i++) {
+      const go = scene.game_objects[i];
+      validateRef(`game_objects[${i}].ply_file`, go?.ply_file, 'map', reg, errs);
+      const cm = go?.components?.CharacterModel;
+      if (cm) {
+        validateRef(
+          `game_objects[${i}].components.CharacterModel.manifest`,
+          cm.manifest,
+          'character',
+          reg,
+          errs,
+        );
+      }
+    }
+  }
+
+  if (Array.isArray(scene?.vfx_instances)) {
+    for (let i = 0; i < scene.vfx_instances.length; i++) {
+      const v = scene.vfx_instances[i];
+      validateRef(`vfx_instances[${i}].vfx_file`, v?.vfx_file, 'vfx', reg, errs);
+    }
+  }
+
+  if (scene?.gaussian_splat) {
+    validateRef('gaussian_splat.ply_file', scene.gaussian_splat.ply_file, 'map', reg, errs);
+    validateRef(
+      'gaussian_splat.background_image',
+      scene.gaussian_splat.background_image,
+      'texture',
+      reg,
+      errs,
+    );
+  }
+
+  if (Array.isArray(scene?.background_layers)) {
+    for (let i = 0; i < scene.background_layers.length; i++) {
+      const b = scene.background_layers[i];
+      validateRef(`background_layers[${i}].texture`, b?.texture, 'texture', reg, errs);
+    }
+  }
+
+  return errs;
+}
 
 export function exportSceneJson(state: SceneStoreState): object {
   const scene: Record<string, unknown> = {
@@ -296,6 +390,15 @@ export function exportSceneJson(state: SceneStoreState): object {
     }
 
     scene.camera_zones = cameraZones;
+  }
+
+  // Phase 0.0 migration window: validate but don't throw.
+  const pathErrors = validateScenePaths(scene, state.asset_registry);
+  if (pathErrors.length > 0) {
+    console.warn(`[bricklayer] Scene export has ${pathErrors.length} path issue(s):`);
+    for (const e of pathErrors) {
+      console.warn(`  ${e.field}: ${e.value} — ${e.message}`);
+    }
   }
 
   return scene;
