@@ -14,6 +14,36 @@ import { LayerProperties } from './panels/LayerProperties.js';
 import { PresetSettings } from './panels/PresetSettings.js';
 import { T, inputStyle, selectStyle, layerColor } from './styles/theme.js';
 
+/**
+ * Save the current project, prompting the user for a real project name on
+ * the first save so we don't silently overwrite tools_data/melies_projects/
+ * untitled.json (Phase 0.1 #1). Returns true if a save was attempted, false
+ * if the user cancelled the prompt.
+ */
+async function saveProjectWithNamePrompt(): Promise<boolean> {
+  const store = useVfxStore.getState();
+  const currentName = store.ensureProjectName();
+  if (currentName === 'Untitled') {
+    const input = window.prompt('Project name:', '');
+    if (input == null) return false;
+    const trimmed = input.trim();
+    if (trimmed.length === 0) return false;
+    store.setProjectName(trimmed);
+  }
+  if (hasFileSystemAccess()) {
+    let handle = store.projectHandle;
+    if (!handle) {
+      handle = await openProjectDirectory();
+      if (!handle) return false;
+      store.setProjectHandle(handle);
+    }
+    await saveProject(handle);
+  } else {
+    downloadProject();
+  }
+  return true;
+}
+
 // ═══════════════════════════════════════════════════════════════
 // MenuBar
 // ═══════════════════════════════════════════════════════════════
@@ -26,18 +56,7 @@ function MenuBar({ onImportScene }: { onImportScene?: () => void }) {
   const ref = useRef<HTMLDivElement>(null);
 
   const handleSaveProject = async () => {
-    const store = useVfxStore.getState();
-    if (hasFileSystemAccess()) {
-      let handle = store.projectHandle;
-      if (!handle) {
-        handle = await openProjectDirectory();
-        if (!handle) return;
-        store.setProjectHandle(handle);
-      }
-      await saveProject(handle);
-    } else {
-      downloadProject();
-    }
+    await saveProjectWithNamePrompt();
     setFileOpen(false);
   };
 
@@ -823,18 +842,7 @@ export function App() {
       if (meta) {
         if (e.key === 's') {
           e.preventDefault();
-          const store = useVfxStore.getState();
-          if (hasFileSystemAccess()) {
-            let handle = store.projectHandle;
-            if (!handle) {
-              handle = await openProjectDirectory();
-              if (!handle) return;
-              store.setProjectHandle(handle);
-            }
-            await saveProject(handle);
-          } else {
-            downloadProject();
-          }
+          await saveProjectWithNamePrompt();
         } else if (e.key === 'o') {
           e.preventDefault();
           if (hasFileSystemAccess()) {
