@@ -59,6 +59,9 @@ importers:
       '@gseurat/engine-client':
         specifier: workspace:*
         version: link:../../packages/engine-client
+      '@gseurat/project-root':
+        specifier: workspace:*
+        version: link:../../packages/project-root
       '@gseurat/simulation-wasm':
         specifier: workspace:*
         version: link:../../packages/simulation-wasm

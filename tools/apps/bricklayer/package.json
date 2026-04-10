@@ -12,6 +12,7 @@
     "@gseurat/asset-types": "workspace:*",
     "@gseurat/engine-client": "workspace:*",
     "@gseurat/test-harness": "workspace:*",
+    "@gseurat/project-root": "workspace:*",
     "@gseurat/simulation-wasm": "workspace:*",
     "@gseurat/vfx-utils": "workspace:*",
     "@gseurat/ui-kit": "workspace:*",
