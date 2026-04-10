@@ -18,6 +18,7 @@
     "@react-three/drei": "^9.117.0",
     "@gseurat/engine-client": "workspace:*",
     "@gseurat/asset-types": "workspace:*",
+    "@gseurat/project-root": "workspace:*",
     "@gseurat/ui-kit": "workspace:*",
     "@gseurat/test-harness": "workspace:*"
   },
