@@ -1,5 +1,7 @@
 #include "gseurat/engine/gaussian_cloud.hpp"
 
+#include "gseurat/engine/project_root.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -55,9 +57,10 @@ float read_float(const char* data, const PlyProperty& prop) {
 }  // namespace
 
 GaussianCloud GaussianCloud::load_ply(const std::string& path) {
-    std::ifstream file(path, std::ios::binary);
+    auto resolved = resolve_asset_path(path);
+    std::ifstream file(resolved, std::ios::binary);
     if (!file.is_open()) {
-        throw std::runtime_error("Failed to open PLY file: " + path);
+        throw std::runtime_error("Failed to open PLY file: " + resolved.string());
     }
 
     // Parse header

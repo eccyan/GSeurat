@@ -313,6 +313,32 @@ export function MenuBar({ onImport }: { onImport: () => void }) {
     sendBridgeCommands(cmds);
   };
 
+  const handleConnectBridgeToProject = async () => {
+    const projectPath = window.prompt(
+      'Project root absolute path on disk:\n\n' +
+        'This tells the bridge (and engine) where your project lives so relative ' +
+        'asset paths can be resolved. Example: /Users/you/MyGameProject',
+      '',
+    );
+    if (!projectPath) return;
+    try {
+      const res = await fetch('http://localhost:9101/api/project/root', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ path: projectPath }),
+      });
+      if (res.ok) {
+        const body = (await res.json()) as { activeProjectDir?: string };
+        console.info(`[bricklayer] Bridge connected to project root: ${body.activeProjectDir}`);
+      } else {
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        console.error(`[bricklayer] Bridge rejected path: ${body.error ?? res.statusText}`);
+      }
+    } catch (e) {
+      console.error('[bricklayer] Failed to reach bridge:', e);
+    }
+  };
+
   // Auto-sync: debounced incremental update to Staging.
   // Tracks a "fingerprint" of structural properties (PLY, camera, objects, resolution).
   // Property-only changes (lights, emitters, animations, VFX) use the lightweight
@@ -414,6 +440,7 @@ export function MenuBar({ onImport }: { onImport: () => void }) {
     { label: 'Export Scene...', action: handleExportScene, separator: true },
     { label: 'Export PLY...', action: handleExportPly, separator: true },
     { label: 'Open in Staging', action: handleOpenInStaging },
+    { label: 'Connect Bridge to Project Root…', action: handleConnectBridgeToProject },
   ];
 
   const editItems: MenuItem[] = [

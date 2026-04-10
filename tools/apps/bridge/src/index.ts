@@ -11,7 +11,7 @@ import path from 'node:path';
 import os from 'node:os';
 import fs from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
-import express, { Request, Response } from 'express';
+import express, { type Express, Request, Response } from 'express';
 import { randomUUID } from 'node:crypto';
 
 import { UnixSocketClient } from './unix-client.js';
@@ -31,10 +31,7 @@ const HTTP_PORT = 9101;
 // Resolve the engine's assets directory relative to this file's location.
 // Project layout: tools/apps/bridge/src/index.ts -> root is 4 levels up.
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const ENGINE_DIR = path.resolve(__dirname, '../../../../');
-const SCENES_DIR = path.join(ENGINE_DIR, 'assets', 'scenes');
-const TEXTURES_DIR = path.join(ENGINE_DIR, 'assets', 'textures');
-const CHARACTERS_DIR = path.join(ENGINE_DIR, 'assets', 'characters');
+const ENGINE_DIR_FALLBACK = path.resolve(__dirname, '../../../../');
 
 // ---------------------------------------------------------------------------
 // Project context — mutable active project directory
@@ -42,10 +39,36 @@ const CHARACTERS_DIR = path.join(ENGINE_DIR, 'assets', 'characters');
 
 let activeProjectDir: string | null = null;
 
+function getScenesDir(): string {
+  return activeProjectDir
+    ? path.join(activeProjectDir, 'assets', 'scenes')
+    : path.join(ENGINE_DIR_FALLBACK, 'assets', 'scenes');
+}
+
+function getTexturesDir(): string {
+  return activeProjectDir
+    ? path.join(activeProjectDir, 'assets', 'textures')
+    : path.join(ENGINE_DIR_FALLBACK, 'assets', 'textures');
+}
+
 function getCharactersDir(): string {
   return activeProjectDir
-    ? path.join(activeProjectDir, 'characters')
-    : CHARACTERS_DIR;
+    ? path.join(activeProjectDir, 'assets', 'characters')
+    : path.join(ENGINE_DIR_FALLBACK, 'assets', 'characters');
+}
+
+// ---------------------------------------------------------------------------
+// Engine forwarding helper
+// ---------------------------------------------------------------------------
+
+/** Forward a fire-and-forget command to the engine. Never throws. */
+function forwardToEngine(payload: Record<string, unknown>): void {
+  try {
+    unixClient.send(JSON.stringify(payload));
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.warn(`[Bridge] forwardToEngine failed: ${message}`);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -209,7 +232,7 @@ unixClient.onError((err: Error) => {
 // REST API (file I/O for creative tools)
 // ---------------------------------------------------------------------------
 
-const app = express();
+const app: Express = express();
 
 // CORS — allow requests from any localhost dev server
 app.use((_req, res, next) => {
@@ -237,7 +260,7 @@ function safeResolve(base: string, name: string): string {
 // GET /api/files/scenes/:name — read a scene JSON file
 app.get('/api/files/scenes/:name', async (req: Request, res: Response) => {
   try {
-    const filePath = safeResolve(SCENES_DIR, `${req.params['name']}.json`);
+    const filePath = safeResolve(getScenesDir(), `${req.params['name']}.json`);
     const content = await fs.readFile(filePath, 'utf8');
     res.setHeader('Content-Type', 'application/json');
     res.send(content);
@@ -251,7 +274,7 @@ app.get('/api/files/scenes/:name', async (req: Request, res: Response) => {
 // POST /api/files/scenes/:name — write a scene JSON file
 app.post('/api/files/scenes/:name', async (req: Request, res: Response) => {
   try {
-    const filePath = safeResolve(SCENES_DIR, `${req.params['name']}.json`);
+    const filePath = safeResolve(getScenesDir(), `${req.params['name']}.json`);
     await fs.mkdir(path.dirname(filePath), { recursive: true });
     const body = typeof req.body === 'string' ? req.body : JSON.stringify(req.body, null, 2);
     await fs.writeFile(filePath, body, 'utf8');
@@ -267,7 +290,7 @@ app.post('/api/files/scenes/:name', async (req: Request, res: Response) => {
 // GET /api/files/textures/:name — read a texture file as binary
 app.get('/api/files/textures/:name', async (req: Request, res: Response) => {
   try {
-    const filePath = safeResolve(TEXTURES_DIR, req.params['name']);
+    const filePath = safeResolve(getTexturesDir(), req.params['name']);
     const data = await fs.readFile(filePath);
     // Detect content type from extension.
     const ext = path.extname(req.params['name']).toLowerCase();
@@ -286,7 +309,7 @@ app.get('/api/files/textures/:name', async (req: Request, res: Response) => {
 // POST /api/files/textures/:name — write a texture PNG (raw binary or base64)
 app.post('/api/files/textures/:name', async (req: Request, res: Response) => {
   try {
-    const filePath = safeResolve(TEXTURES_DIR, req.params['name']);
+    const filePath = safeResolve(getTexturesDir(), req.params['name']);
     await fs.mkdir(path.dirname(filePath), { recursive: true });
 
     let data: Buffer;
@@ -948,6 +971,34 @@ function resolveUserPath(p: string): string {
 // Project endpoints
 // ---------------------------------------------------------------------------
 
+// POST /api/project/root — set the active project root directory
+// All asset endpoints (/api/files/scenes/*, /api/files/textures/*, /api/characters/*)
+// will resolve under this root until changed or the bridge restarts.
+app.post('/api/project/root', async (req: Request, res: Response) => {
+  const { path: projectPath } = req.body as { path?: string };
+  if (typeof projectPath !== 'string' || projectPath.length === 0) {
+    res.status(400).json({ error: 'path required' });
+    return;
+  }
+  try {
+    const stat = await fs.stat(projectPath);
+    if (!stat.isDirectory()) {
+      res.status(400).json({ error: 'not a directory' });
+      return;
+    }
+  } catch {
+    res.status(400).json({ error: 'directory does not exist' });
+    return;
+  }
+  activeProjectDir = path.resolve(projectPath);
+
+  // Forward to engine over the Unix socket so the engine can resolve
+  // relative paths under this same root. Engine-side handler lands in Task 28.
+  forwardToEngine({ cmd: 'set_project_root', path: activeProjectDir });
+
+  res.status(200).json({ ok: true, activeProjectDir });
+});
+
 // POST /api/projects/create — create a new project directory
 app.post('/api/projects/create', async (req: Request, res: Response) => {
   try {
@@ -1163,7 +1214,44 @@ async function shutdown(signal: string): Promise<void> {
 process.on('SIGINT', () => void shutdown('SIGINT'));
 process.on('SIGTERM', () => void shutdown('SIGTERM'));
 
-main().catch((err) => {
-  console.error('[Bridge] Fatal error:', err);
-  process.exit(1);
-});
+if (process.env.NODE_ENV !== 'test') {
+  main().catch((err) => {
+    console.error('[Bridge] Fatal error:', err);
+    process.exit(1);
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Test helpers — only used by Vitest; not exported in production
+// ---------------------------------------------------------------------------
+
+import http from 'node:http';
+
+let testServer: http.Server | null = null;
+let testPort = 0;
+
+export async function startBridgeForTesting(opts: { port: number }): Promise<void> {
+  testServer = app.listen(opts.port);
+  await new Promise<void>(r => testServer!.once('listening', () => r()));
+  const addr = testServer!.address();
+  testPort = typeof addr === 'object' && addr ? addr.port : 0;
+}
+
+export function getTestPort(): number {
+  return testPort;
+}
+
+export async function stopBridgeForTesting(): Promise<void> {
+  if (testServer) {
+    await new Promise<void>(r => testServer!.close(() => r()));
+    testServer = null;
+    testPort = 0;
+  }
+  activeProjectDir = null;
+}
+
+export function getActiveProjectDir(): string | null {
+  return activeProjectDir;
+}
+
+export { app };

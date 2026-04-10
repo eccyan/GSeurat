@@ -1,5 +1,7 @@
 #include "gseurat/engine/scene_loader.hpp"
 
+#include "gseurat/engine/project_root.hpp"
+
 #include <fstream>
 #include <stdexcept>
 
@@ -174,9 +176,10 @@ EmitterConfig SceneLoader::parse_emitter(const nlohmann::json& j) {
 }
 
 SceneData SceneLoader::load(const std::string& path) {
-    std::ifstream file(path);
+    auto resolved = resolve_asset_path(path);
+    std::ifstream file(resolved);
     if (!file.is_open()) {
-        throw std::runtime_error("Failed to open scene file: " + path);
+        throw std::runtime_error("Failed to open scene file: " + resolved.string());
     }
     nlohmann::json j = nlohmann::json::parse(file);
     return from_json(j);
