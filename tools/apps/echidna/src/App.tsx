@@ -114,7 +114,7 @@ export function App() {
     (async () => {
       try {
         const handle = await restoreProjectRoot('echidna');
-        if (handle) {
+        if (handle && !useCharacterStore.getState().projectRootHandle) {
           useCharacterStore.getState().setProjectRootHandle(handle);
           console.info(`[echidna] Restored project root: ${handle.name}`);
         }

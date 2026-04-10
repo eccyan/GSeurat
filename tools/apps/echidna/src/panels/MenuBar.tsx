@@ -558,6 +558,12 @@ export function MenuBar() {
         return;
       }
       s.setProjectRootHandle(handle);
+      // After restoring from IDB, we still need to verify/request permission.
+      const ok = await ensureHandlePermission(handle);
+      if (!ok) {
+        showToast('Project root permission denied', 'error');
+        return;
+      }
     } else {
       const ok = await ensureHandlePermission(handle);
       if (!ok) {
