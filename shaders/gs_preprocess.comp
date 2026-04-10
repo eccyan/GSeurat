@@ -476,9 +476,13 @@ void main() {
     float half_w = float(params.x) * 0.5;
     float half_h = float(params.y) * 0.5;
 
-    float a = cov2d_full[0][0] * half_w * half_w + 0.3;
+    // Pixel art mode: covariance minimum bound ensures splats cover at least 1 pixel
+    float pixel_art = point_light_params.y;  // 0.0 = off, 1.0 = full retro
+    float cov_min_bound = pixel_art * 1.0;   // adds 1.0 to diagonal at full intensity
+
+    float a = cov2d_full[0][0] * half_w * half_w + 0.3 + cov_min_bound;
     float b = cov2d_full[0][1] * half_w * half_h;
-    float c = cov2d_full[1][1] * half_h * half_h + 0.3;
+    float c = cov2d_full[1][1] * half_h * half_h + 0.3 + cov_min_bound;
 
     // Compute inverse of 2D covariance for conic representation
     float det = a * c - b * b;
@@ -515,6 +519,16 @@ void main() {
         sort_entries[idx].key = 0xFFFF;
         sort_entries[idx].index = projected_offset + idx;
         return;
+    }
+
+    // Pixel art mode: snap screen coords to pixel grid + enforce minimum radius
+    if (pixel_art > 0.0) {
+        vec2 raw = vec2(screen_x, screen_y);
+        vec2 snapped = floor(raw) + 0.5;
+        vec2 final_pos = mix(raw, snapped, pixel_art);
+        screen_x = final_pos.x;
+        screen_y = final_pos.y;
+        radius_px = max(radius_px, mix(radius_px, 2.0, pixel_art));
     }
 
     // Write projected splat

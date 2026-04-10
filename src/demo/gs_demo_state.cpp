@@ -28,6 +28,7 @@ void GsDemoState::on_enter(AppBase& app) {
     app.gs_terrain().parallax_active = false;
     app.renderer().set_gs_skip_chunk_cull(false);
     app.renderer().gs_renderer().set_skip_sort(false);
+    app.renderer().gs_renderer().set_pixel_art_intensity(0.5f);
 
     // Sync local scale from scene-loaded value
     scale_multiplier_ = app.renderer().gs_renderer().scale_multiplier();
