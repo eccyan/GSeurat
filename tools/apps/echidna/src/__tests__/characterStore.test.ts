@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { useCharacterStore } from '../store/useCharacterStore';
 import { testing } from '@gseurat/project-root';
+import { CharacterListEntry } from '../store/types';
 
 describe('useCharacterStore — dirty tracking', () => {
   beforeEach(() => {
@@ -77,5 +78,28 @@ describe('useCharacterStore.listCharacters', () => {
     expect(known).toHaveLength(1);
     expect(known[0].id).toBe('walker');
     expect(known[0].name).toBe('Walker Bot');
+  });
+
+  it('preserves knownCharacters on transient failure', async () => {
+    const stale: CharacterListEntry[] = [
+      { id: 'old', name: 'Old Character', lastModified: 1000 },
+    ];
+    useCharacterStore.setState({
+      // Bogus handle that will make listEchidnaProjects throw when it tries
+      // to call getDirectoryHandle on it. The function catches NotFoundError
+      // and returns [], but any OTHER error propagates up and gets caught by
+      // the store action, which must then preserve the existing list.
+      projectRootHandle: {
+        async getDirectoryHandle() {
+          throw new Error('simulated transient failure');
+        },
+      } as unknown as FileSystemDirectoryHandle,
+      knownCharacters: stale,
+    });
+
+    await useCharacterStore.getState().listCharacters();
+
+    // The stale list should still be intact
+    expect(useCharacterStore.getState().knownCharacters).toEqual(stale);
   });
 });
