@@ -68,7 +68,10 @@ export class MockDirHandle {
         },
         close: async () => {},
       }),
-      getFile: async () => new Blob([file.data as Uint8Array<ArrayBuffer>]),
+      getFile: async () =>
+        new File([file.data as Uint8Array<ArrayBuffer>], name, {
+          lastModified: Date.now(),
+        }),
     };
   }
 

@@ -109,9 +109,25 @@ export async function listEchidnaProjects(
     throw e;
   }
 
+  /** Structural type for FSAPI directory entries (values() is not yet in lib.dom). */
+  type DirChild =
+    | { kind: 'directory'; name: string }
+    | {
+        kind: 'file';
+        name: string;
+        getFile(): Promise<File>;
+        createWritable(): Promise<{
+          write(d: Uint8Array | string | ArrayBuffer | Blob): Promise<void>;
+          close(): Promise<void>;
+        }>;
+      };
+
+  const iter = (savesDir as unknown as {
+    values(): AsyncIterable<DirChild>;
+  }).values();
+
   const entries: CharacterListEntry[] = [];
-  // @ts-expect-error — FSAPI values() is not yet in lib.dom
-  for await (const child of savesDir.values()) {
+  for await (const child of iter) {
     if (child.kind !== 'file') continue;
     if (!child.name.endsWith('.echidna')) continue;
     try {
@@ -122,7 +138,7 @@ export async function listEchidnaProjects(
       entries.push({
         id: migrated.id,
         name: migrated.characterName,
-        lastModified: (file as unknown as File).lastModified ?? 0,
+        lastModified: file.lastModified ?? 0,
       });
     } catch (err) {
       console.warn(`[echidna] Skipped unreadable character file: ${child.name}`, err);

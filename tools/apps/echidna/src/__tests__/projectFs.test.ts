@@ -80,6 +80,24 @@ describe('listEchidnaProjects', () => {
     expect(entries).toEqual([]);
   });
 
+  it('skips subdirectories in tools_data/echidna_saves', async () => {
+    const root = testing.makeRoot();
+    const toolsData = await root.getDirectoryHandle('tools_data', { create: true });
+    const saves = await toolsData.getDirectoryHandle('echidna_saves', { create: true });
+
+    // Add a .echidna file
+    const fh = await saves.getFileHandle('walker.echidna', { create: true });
+    const w = await fh.createWritable();
+    await w.write(JSON.stringify({ version: 3, id: 'walker', characterName: 'Walker', voxels: [], parts: [], poses: {} }));
+    await w.close();
+
+    // Add a sibling subdirectory (e.g., a backup folder)
+    await saves.getDirectoryHandle('backup', { create: true });
+
+    const entries = await listEchidnaProjects(root as any);
+    expect(entries.map((e) => e.id)).toEqual(['walker']);
+  });
+
   it('skips unreadable files gracefully', async () => {
     const root = testing.makeRoot();
     const toolsData = await root.getDirectoryHandle('tools_data', { create: true });
