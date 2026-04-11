@@ -528,3 +528,71 @@ describe('useCharacterStore.requestOpenCharacter', () => {
     expect(useCharacterStore.getState().dirty).toBe(true);  // still dirty — no-op means no clean
   });
 });
+
+describe('useCharacterStore.deleteCharacter', () => {
+  it('removes the row from knownCharacters', async () => {
+    const root = testing.makeRoot();
+    const td = await root.getDirectoryHandle('tools_data', { create: true });
+    const saves = await td.getDirectoryHandle('echidna_saves', { create: true });
+    const fh = await saves.getFileHandle('walker.echidna', { create: true });
+    const w = await fh.createWritable();
+    await w.write(JSON.stringify({ version: 3, id: 'walker', characterName: 'Walker', voxels: [], parts: [], poses: {} }));
+    await w.close();
+
+    useCharacterStore.setState({
+      projectRootHandle: root as unknown as FileSystemDirectoryHandle,
+      knownCharacters: [
+        { id: 'walker', name: 'Walker', lastModified: 0 },
+        { id: 'archer', name: 'Archer', lastModified: 0 },
+      ],
+      // character is not walker, so deleting walker should not null it
+      character: {
+        id: 'archer',
+        characterName: 'Archer',
+        gridWidth: 32, gridDepth: 32,
+        voxels: new Map(),
+        characterParts: [], characterPoses: {}, animations: {},
+        currentFilename: null,
+      },
+    });
+
+    await useCharacterStore.getState().deleteCharacter('walker');
+
+    expect(useCharacterStore.getState().knownCharacters.map((c) => c.id)).toEqual(['archer']);
+    // Non-current character deletion should not touch state.character
+    expect(useCharacterStore.getState().character?.id).toBe('archer');
+  });
+
+  it('clears state.character to null when deleting the current character', async () => {
+    const root = testing.makeRoot();
+    const td = await root.getDirectoryHandle('tools_data', { create: true });
+    const saves = await td.getDirectoryHandle('echidna_saves', { create: true });
+    const fh = await saves.getFileHandle('walker.echidna', { create: true });
+    const w = await fh.createWritable();
+    await w.write(JSON.stringify({ version: 3, id: 'walker', characterName: 'Walker', voxels: [], parts: [], poses: {} }));
+    await w.close();
+
+    useCharacterStore.setState({
+      projectRootHandle: root as unknown as FileSystemDirectoryHandle,
+      character: {
+        id: 'walker',
+        characterName: 'Walker',
+        gridWidth: 32, gridDepth: 32,
+        voxels: new Map(),
+        characterParts: [], characterPoses: {}, animations: {},
+        currentFilename: null,
+      },
+      knownCharacters: [{ id: 'walker', name: 'Walker', lastModified: 0 }],
+      dirty: true,
+      undoStack: [{} as any],
+    });
+
+    await useCharacterStore.getState().deleteCharacter('walker');
+
+    const s = useCharacterStore.getState();
+    expect(s.character).toBeNull();
+    expect(s.dirty).toBe(false);
+    expect(s.knownCharacters).toEqual([]);
+    expect(s.undoStack).toEqual([]);
+  });
+});

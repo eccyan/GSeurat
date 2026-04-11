@@ -17,7 +17,7 @@ import type {
 } from './types.js';
 import { migrateEchidnaFile, slugifyCharacterId, ECHIDNA_FILE_VERSION } from './types.js';
 import { voxelKey, parseKey, floodFill3D, extrudeLayer } from '../lib/voxelUtils.js';
-import { listEchidnaProjects, loadEchidnaProject, saveEchidnaProject, exportCharacterToProject } from '../lib/projectFs.js';
+import { listEchidnaProjects, loadEchidnaProject, saveEchidnaProject, exportCharacterToProject, deleteEchidnaProject } from '../lib/projectFs.js';
 import { exportPly } from '../lib/plyExport.js';
 import { buildManifest } from '../lib/manifestExport.js';
 
@@ -244,6 +244,7 @@ export interface CharacterStoreState {
   listCharacters: () => Promise<void>;
   openCharacter: (id: string) => Promise<void>;
   requestOpenCharacter: (id: string, confirm: ConfirmSwitch) => Promise<void>;
+  deleteCharacter: (id: string) => Promise<void>;
 
   // Actions – new tools and clipboard
   setXrayMode: (v: boolean) => void;
@@ -942,6 +943,32 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
       // 'discard' falls through to openCharacter (losing the dirty work)
     }
     await get().openCharacter(id);
+  },
+
+  deleteCharacter: async (id: string) => {
+    const s = get();
+    const handle = s.projectRootHandle;
+    if (!handle) return;
+    try {
+      await deleteEchidnaProject(handle, id);
+    } catch (e) {
+      console.error(`[echidna] deleteCharacter failed for ${id}:`, e);
+      return;
+    }
+    set((state) => ({
+      knownCharacters: state.knownCharacters.filter((c) => c.id !== id),
+      ...(state.character?.id === id
+        ? {
+            character: null,
+            dirty: false,
+            undoStack: [],
+            redoStack: [],
+            boxSelection: null,
+            lassoSelection: null,
+            clipboard: null,
+          }
+        : {}),
+    }));
   },
 
   save: async () => {
