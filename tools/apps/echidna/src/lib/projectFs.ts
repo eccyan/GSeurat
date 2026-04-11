@@ -149,3 +149,26 @@ export async function listEchidnaProjects(
   entries.sort((a, b) => b.lastModified - a.lastModified);
   return entries;
 }
+
+/**
+ * Delete the .echidna source file for a character. The exported files in
+ * assets/characters/{id}/ are deliberately NOT touched — users can remove
+ * them manually, and Phase 0.2.1+ may add a "Clean orphan exports" action.
+ *
+ * Throws NotFoundError if the source file is missing.
+ */
+export async function deleteEchidnaProject(
+  handle: FileSystemDirectoryHandle,
+  id: string,
+): Promise<void> {
+  const parts = PROJECT_LAYOUT.toolsData.echidnaSaves.split('/');
+  let dir: FileSystemDirectoryHandle = handle;
+  for (const part of parts) {
+    dir = await dir.getDirectoryHandle(part);
+  }
+  // removeEntry is not yet in lib.dom; use a narrowed structural cast
+  // (same pattern as listEchidnaProjects uses for values())
+  await (dir as FileSystemDirectoryHandle & {
+    removeEntry(name: string, opts?: { recursive?: boolean }): Promise<void>;
+  }).removeEntry(`${id}.echidna`);
+}

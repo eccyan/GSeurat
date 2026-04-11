@@ -4,7 +4,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { testing } from '@gseurat/project-root';
-import { listEchidnaProjects } from '../lib/projectFs';
+import { listEchidnaProjects, deleteEchidnaProject } from '../lib/projectFs';
 import {
   echidnaSavePath,
   characterPlyPath,
@@ -116,5 +116,39 @@ describe('listEchidnaProjects', () => {
     const entries = await listEchidnaProjects(root as any);
     // The bad file is skipped; good is still listed
     expect(entries.map((e) => e.id)).toEqual(['good']);
+  });
+});
+
+describe('deleteEchidnaProject', () => {
+  it('removes the .echidna source and leaves assets/characters/{id}/* alone', async () => {
+    const root = testing.makeRoot();
+
+    // Seed: .echidna source + exported engine files
+    const td = await root.getDirectoryHandle('tools_data', { create: true });
+    const saves = await td.getDirectoryHandle('echidna_saves', { create: true });
+    const src = await saves.getFileHandle('walker.echidna', { create: true });
+    const w = await src.createWritable();
+    await w.write('{}');
+    await w.close();
+
+    const assets = await root.getDirectoryHandle('assets', { create: true });
+    const chars = await assets.getDirectoryHandle('characters', { create: true });
+    const walker = await chars.getDirectoryHandle('walker', { create: true });
+    const ply = await walker.getFileHandle('walker.ply', { create: true });
+    const wPly = await ply.createWritable();
+    await wPly.write('fake ply bytes');
+    await wPly.close();
+
+    await deleteEchidnaProject(root as any, 'walker');
+
+    // Source file is gone
+    await expect(saves.getFileHandle('walker.echidna')).rejects.toThrow(/NotFoundError/);
+    // Engine files are STILL THERE
+    await walker.getFileHandle('walker.ply'); // does not throw
+  });
+
+  it('throws NotFoundError when the source file does not exist', async () => {
+    const root = testing.makeRoot();
+    await expect(deleteEchidnaProject(root as any, 'ghost')).rejects.toThrow(/NotFoundError/);
   });
 });
