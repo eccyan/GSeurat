@@ -918,6 +918,9 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
 
   requestOpenCharacter: async (id, confirm) => {
     const s = get();
+    // Clicking the already-current row is a no-op.
+    if (s.character?.id === id) return;
+
     const currentHasWork = s.dirty || s.undoStack.length > 0;
     if (currentHasWork && s.character) {
       const target = s.knownCharacters.find((c) => c.id === id);

@@ -368,6 +368,19 @@ describe('useCharacterStore.requestOpenCharacter', () => {
     await w.close();
     useCharacterStore.setState({
       projectRootHandle: root as unknown as FileSystemDirectoryHandle,
+      // Use 'walker' as the "currently loaded" character so that tests which
+      // open 'archer' are not caught by the re-entry guard (walker ≠ archer).
+      character: {
+        id: 'walker',
+        characterName: 'Walker',
+        gridWidth: 32,
+        gridDepth: 32,
+        voxels: new Map(),
+        characterParts: [],
+        characterPoses: {},
+        animations: {},
+        currentFilename: null,
+      },
       dirty: false,
       undoStack: [],
       knownCharacters: [
@@ -412,5 +425,106 @@ describe('useCharacterStore.requestOpenCharacter', () => {
     const initialCharId = useCharacterStore.getState().character?.id;
     await useCharacterStore.getState().requestOpenCharacter('archer', async () => 'cancel');
     expect(useCharacterStore.getState().character?.id).toBe(initialCharId);
+  });
+
+  it('save decision: saves successfully and then switches', async () => {
+    // Seed current character as dirty
+    useCharacterStore.setState({
+      dirty: true,
+      character: {
+        id: 'walker',
+        characterName: 'Walker',
+        gridWidth: 32,
+        gridDepth: 32,
+        voxels: new Map([['0,0,0', { color: [255, 0, 0, 255] }]]),
+        characterParts: [],
+        characterPoses: {},
+        animations: {},
+        currentFilename: null,
+      },
+    });
+
+    let confirmInfo: any = null;
+    await useCharacterStore.getState().requestOpenCharacter('archer', async (info) => {
+      confirmInfo = info;
+      return 'save';
+    });
+
+    // Confirm callback was invoked with the right info shape
+    expect(confirmInfo).toBeTruthy();
+    expect(confirmInfo.currentName).toBe('Walker');
+    expect(confirmInfo.targetName).toBe('Archer');
+    expect(typeof confirmInfo.undoDepth).toBe('number');
+
+    // After save + switch: character is archer, dirty is false
+    const s = useCharacterStore.getState();
+    expect(s.character?.id).toBe('archer');
+    expect(s.dirty).toBe(false);
+  });
+
+  it('save decision: aborts switch when save fails', async () => {
+    useCharacterStore.setState({
+      dirty: true,
+      character: {
+        id: 'walker',
+        characterName: 'Walker',
+        gridWidth: 32,
+        gridDepth: 32,
+        voxels: new Map(),
+        characterParts: [],
+        characterPoses: {},
+        animations: {},
+        currentFilename: null,
+      },
+    });
+
+    // Force save() to fail partial-fail style by mocking exportCharacterToProject
+    const projectFs = await import('../lib/projectFs');
+    const spy = vi.spyOn(projectFs, 'exportCharacterToProject').mockRejectedValueOnce(
+      new Error('simulated engine write failure')
+    );
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    try {
+      await useCharacterStore.getState().requestOpenCharacter('archer', async () => 'save');
+    } finally {
+      spy.mockRestore();
+      errSpy.mockRestore();
+    }
+
+    // After failed save: dirty still true, character is STILL walker (switch aborted)
+    const s = useCharacterStore.getState();
+    expect(s.character?.id).toBe('walker');
+    expect(s.dirty).toBe(true);
+  });
+
+  it('is a no-op when id equals currently-loaded character', async () => {
+    // Seed current character
+    useCharacterStore.setState({
+      dirty: true,  // even when dirty
+      character: {
+        id: 'walker',
+        characterName: 'Walker',
+        gridWidth: 32,
+        gridDepth: 32,
+        voxels: new Map(),
+        characterParts: [],
+        characterPoses: {},
+        animations: {},
+        currentFilename: null,
+      },
+      undoStack: [{} as any],
+    });
+
+    let confirmCalled = false;
+    await useCharacterStore.getState().requestOpenCharacter('walker', async () => {
+      confirmCalled = true;
+      return 'discard';
+    });
+
+    // No confirm, no switch, no state change
+    expect(confirmCalled).toBe(false);
+    expect(useCharacterStore.getState().character?.id).toBe('walker');
+    expect(useCharacterStore.getState().dirty).toBe(true);  // still dirty — no-op means no clean
   });
 });
