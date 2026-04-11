@@ -328,6 +328,10 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
   },
 
   // ── Voxel actions (with mirror support) ──
+  /**
+   * Raw voxel setter by pre-computed key. Used by programmatic/test code;
+   * bypasses mirror axis and activeColor. Prefer placeVoxel for tool-driven input.
+   */
   addVoxel: (key, voxel) => {
     const s = get();
     if (!s.character) return;
@@ -816,7 +820,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
     if (!char) return 'character';
     if (char.id.length > 0) return char.id;
     const id = slugifyCharacterId(char.characterName);
-    set({ character: { ...char, id } });
+    set({ character: { ...char, id }, dirty: true });
     return id;
   },
 
