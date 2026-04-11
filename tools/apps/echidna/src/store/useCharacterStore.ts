@@ -17,7 +17,7 @@ import type {
 } from './types.js';
 import { migrateEchidnaFile, slugifyCharacterId, ECHIDNA_FILE_VERSION } from './types.js';
 import { voxelKey, parseKey, floodFill3D, extrudeLayer } from '../lib/voxelUtils.js';
-import { listEchidnaProjects, loadEchidnaProject, saveEchidnaProject, exportCharacterToProject, deleteEchidnaProject } from '../lib/projectFs.js';
+import { listEchidnaProjects, loadEchidnaProject, saveEchidnaProject, exportCharacterToProject, deleteEchidnaProject, renameEchidnaProject, duplicateEchidnaProject } from '../lib/projectFs.js';
 import { exportPly } from '../lib/plyExport.js';
 import { buildManifest } from '../lib/manifestExport.js';
 
@@ -245,6 +245,8 @@ export interface CharacterStoreState {
   openCharacter: (id: string) => Promise<void>;
   requestOpenCharacter: (id: string, confirm: ConfirmSwitch) => Promise<void>;
   deleteCharacter: (id: string) => Promise<void>;
+  renameCharacter: (id: string, newName: string) => Promise<void>;
+  duplicateCharacter: (sourceId: string, newName: string) => Promise<void>;
 
   // Actions – new tools and clipboard
   setXrayMode: (v: boolean) => void;
@@ -969,6 +971,63 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
           }
         : {}),
     }));
+  },
+
+  renameCharacter: async (id, newName) => {
+    const s = get();
+    const handle = s.projectRootHandle;
+    if (!handle) return;
+
+    if (s.character?.id === id) {
+      // Current character — mutate in-memory, mark dirty, defer disk write to next Save
+      set((state) => ({
+        character: state.character ? { ...state.character, characterName: newName } : null,
+        knownCharacters: state.knownCharacters.map((c) =>
+          c.id === id ? { ...c, name: newName } : c,
+        ),
+        dirty: true,
+      }));
+    } else {
+      // Non-current character — persist directly
+      try {
+        await renameEchidnaProject(handle, id, newName);
+        set((state) => ({
+          knownCharacters: state.knownCharacters.map((c) =>
+            c.id === id ? { ...c, name: newName } : c,
+          ),
+        }));
+      } catch (e) {
+        console.error(`[echidna] renameCharacter failed for ${id}:`, e);
+      }
+    }
+  },
+
+  duplicateCharacter: async (sourceId, newName) => {
+    const s = get();
+    const handle = s.projectRootHandle;
+    if (!handle) return;
+
+    // Mint a non-colliding id
+    const baseId = slugifyCharacterId(newName);
+    const existingIds = new Set(s.knownCharacters.map((c) => c.id));
+    let newId = baseId;
+    let counter = 2;
+    while (existingIds.has(newId)) {
+      newId = `${baseId}_${counter}`;
+      counter += 1;
+    }
+
+    try {
+      await duplicateEchidnaProject(handle, sourceId, newId, newName);
+      set((state) => ({
+        knownCharacters: [
+          ...state.knownCharacters,
+          { id: newId, name: newName, lastModified: Date.now() },
+        ],
+      }));
+    } catch (e) {
+      console.error(`[echidna] duplicateCharacter failed:`, e);
+    }
   },
 
   save: async () => {

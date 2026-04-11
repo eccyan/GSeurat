@@ -529,6 +529,63 @@ describe('useCharacterStore.requestOpenCharacter', () => {
   });
 });
 
+describe('useCharacterStore.renameCharacter', () => {
+  it('renames the current character in-memory and marks dirty', async () => {
+    useCharacterStore.setState({
+      projectRootHandle: testing.makeRoot() as unknown as FileSystemDirectoryHandle,
+      character: {
+        id: 'walker', characterName: 'Walker Bot',
+        gridWidth: 32, gridDepth: 32, voxels: new Map(),
+        characterParts: [], characterPoses: {}, animations: {},
+        currentFilename: null,
+      },
+      knownCharacters: [{ id: 'walker', name: 'Walker Bot', lastModified: 0 }],
+      dirty: false,
+    });
+
+    await useCharacterStore.getState().renameCharacter('walker', 'Walker v2');
+
+    const s = useCharacterStore.getState();
+    expect(s.character?.characterName).toBe('Walker v2');
+    expect(s.knownCharacters[0].name).toBe('Walker v2');
+    expect(s.dirty).toBe(true);
+  });
+
+  it('renames a non-current character on disk without touching state.character', async () => {
+    const root = testing.makeRoot();
+    const td = await root.getDirectoryHandle('tools_data', { create: true });
+    const saves = await td.getDirectoryHandle('echidna_saves', { create: true });
+    const fh = await saves.getFileHandle('archer.echidna', { create: true });
+    const w = await fh.createWritable();
+    await w.write(JSON.stringify({
+      version: 3, id: 'archer', characterName: 'Archer', voxels: [], parts: [], poses: {},
+    }));
+    await w.close();
+
+    useCharacterStore.setState({
+      projectRootHandle: root as unknown as FileSystemDirectoryHandle,
+      character: {
+        id: 'walker', characterName: 'Walker Bot',
+        gridWidth: 32, gridDepth: 32, voxels: new Map(),
+        characterParts: [], characterPoses: {}, animations: {},
+        currentFilename: null,
+      },
+      knownCharacters: [
+        { id: 'walker', name: 'Walker Bot', lastModified: 0 },
+        { id: 'archer', name: 'Archer', lastModified: 0 },
+      ],
+      dirty: false,
+    });
+
+    await useCharacterStore.getState().renameCharacter('archer', 'Ace Archer');
+
+    const s = useCharacterStore.getState();
+    expect(s.character?.characterName).toBe('Walker Bot');        // unchanged
+    expect(s.knownCharacters.find((c) => c.id === 'archer')?.name).toBe('Ace Archer');
+    expect(s.dirty).toBe(false);                                    // still clean
+  });
+});
+
 describe('useCharacterStore.deleteCharacter', () => {
   it('removes the row from knownCharacters', async () => {
     const root = testing.makeRoot();

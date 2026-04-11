@@ -151,6 +151,59 @@ export async function listEchidnaProjects(
 }
 
 /**
+ * Rename a character's display name (only). The file on disk keeps its
+ * filename/id — see Phase 0.2 spec Decision #8 for why. Fails with
+ * NotFoundError if the source file doesn't exist.
+ */
+export async function renameEchidnaProject(
+  handle: FileSystemDirectoryHandle,
+  id: string,
+  newCharacterName: string,
+): Promise<void> {
+  const parts = PROJECT_LAYOUT.toolsData.echidnaSaves.split('/');
+  let dir: FileSystemDirectoryHandle = handle;
+  for (const part of parts) {
+    dir = await dir.getDirectoryHandle(part);
+  }
+  const fh = await dir.getFileHandle(`${id}.echidna`);
+  const file = await fh.getFile();
+  const raw = JSON.parse(await file.text());
+  raw.characterName = newCharacterName;
+  const w = await fh.createWritable();
+  await w.write(JSON.stringify(raw, null, 2));
+  await w.close();
+}
+
+/**
+ * Read a source .echidna, change its id + characterName, and write it as
+ * a new file. Does NOT build engine files — the user hits ⌘S later for
+ * that. Does NOT check for collision — the caller (duplicateCharacter
+ * store action) is responsible for minting a non-colliding newId.
+ */
+export async function duplicateEchidnaProject(
+  handle: FileSystemDirectoryHandle,
+  sourceId: string,
+  newId: string,
+  newCharacterName: string,
+): Promise<void> {
+  const parts = PROJECT_LAYOUT.toolsData.echidnaSaves.split('/');
+  let dir: FileSystemDirectoryHandle = handle;
+  for (const part of parts) {
+    dir = await dir.getDirectoryHandle(part);
+  }
+  const sourceFh = await dir.getFileHandle(`${sourceId}.echidna`);
+  const sourceFile = await sourceFh.getFile();
+  const raw = JSON.parse(await sourceFile.text());
+  raw.id = newId;
+  raw.characterName = newCharacterName;
+
+  const newFh = await dir.getFileHandle(`${newId}.echidna`, { create: true });
+  const w = await newFh.createWritable();
+  await w.write(JSON.stringify(raw, null, 2));
+  await w.close();
+}
+
+/**
  * Delete the .echidna source file for a character. The exported files in
  * assets/characters/{id}/ are deliberately NOT touched — users can remove
  * them manually, and Phase 0.2.1+ may add a "Clean orphan exports" action.

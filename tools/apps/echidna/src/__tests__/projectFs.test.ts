@@ -4,7 +4,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { testing } from '@gseurat/project-root';
-import { listEchidnaProjects, deleteEchidnaProject } from '../lib/projectFs';
+import { listEchidnaProjects, deleteEchidnaProject, renameEchidnaProject, duplicateEchidnaProject } from '../lib/projectFs';
 import {
   echidnaSavePath,
   characterPlyPath,
@@ -150,5 +150,56 @@ describe('deleteEchidnaProject', () => {
   it('throws NotFoundError when the source file does not exist', async () => {
     const root = testing.makeRoot();
     await expect(deleteEchidnaProject(root as any, 'ghost')).rejects.toThrow(/NotFoundError/);
+  });
+});
+
+describe('renameEchidnaProject', () => {
+  it('updates characterName in the file without changing the filename', async () => {
+    const root = testing.makeRoot();
+    const td = await root.getDirectoryHandle('tools_data', { create: true });
+    const saves = await td.getDirectoryHandle('echidna_saves', { create: true });
+    const fh = await saves.getFileHandle('walker.echidna', { create: true });
+    const w = await fh.createWritable();
+    await w.write(JSON.stringify({
+      version: 3, id: 'walker', characterName: 'Walker Bot',
+      voxels: [], parts: [], poses: {},
+    }));
+    await w.close();
+
+    await renameEchidnaProject(root as any, 'walker', 'Walker v2');
+
+    const re = await saves.getFileHandle('walker.echidna');   // same filename
+    const reFile = await re.getFile();
+    const parsed = JSON.parse(await reFile.text());
+    expect(parsed.id).toBe('walker');                          // same id
+    expect(parsed.characterName).toBe('Walker v2');            // new display name
+  });
+});
+
+describe('duplicateEchidnaProject', () => {
+  it('creates a new file with updated id and characterName', async () => {
+    const root = testing.makeRoot();
+    const td = await root.getDirectoryHandle('tools_data', { create: true });
+    const saves = await td.getDirectoryHandle('echidna_saves', { create: true });
+    const fh = await saves.getFileHandle('walker.echidna', { create: true });
+    const w = await fh.createWritable();
+    await w.write(JSON.stringify({
+      version: 3, id: 'walker', characterName: 'Walker Bot',
+      voxels: [{ key: '0,0,0', color: [255, 0, 0, 255] }],
+      parts: [], poses: {},
+    }));
+    await w.close();
+
+    await duplicateEchidnaProject(root as any, 'walker', 'walker_2', 'Copy of Walker Bot');
+
+    const newFh = await saves.getFileHandle('walker_2.echidna');
+    const newFile = await newFh.getFile();
+    const parsed = JSON.parse(await newFile.text());
+    expect(parsed.id).toBe('walker_2');
+    expect(parsed.characterName).toBe('Copy of Walker Bot');
+    expect(parsed.voxels).toHaveLength(1);                 // content preserved
+
+    // Original still exists
+    await saves.getFileHandle('walker.echidna');
   });
 });
