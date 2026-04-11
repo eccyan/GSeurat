@@ -653,3 +653,53 @@ describe('useCharacterStore.deleteCharacter', () => {
     expect(s.undoStack).toEqual([]);
   });
 });
+
+describe('useCharacterStore.duplicateCharacter', () => {
+  it('appends a numeric suffix when newId collides', async () => {
+    const root = testing.makeRoot();
+    const td = await root.getDirectoryHandle('tools_data', { create: true });
+    const saves = await td.getDirectoryHandle('echidna_saves', { create: true });
+    for (const [name, id] of [
+      ['walker.echidna', 'walker'],
+      ['walker_2.echidna', 'walker_2'],
+    ] as const) {
+      const fh = await saves.getFileHandle(name, { create: true });
+      const w = await fh.createWritable();
+      await w.write(JSON.stringify({ version: 3, id, characterName: id, voxels: [], parts: [], poses: {} }));
+      await w.close();
+    }
+
+    useCharacterStore.setState({
+      projectRootHandle: root as unknown as FileSystemDirectoryHandle,
+      knownCharacters: [
+        { id: 'walker', name: 'Walker', lastModified: 0 },
+        { id: 'walker_2', name: 'Walker', lastModified: 0 },
+      ],
+    });
+
+    await useCharacterStore.getState().duplicateCharacter('walker', 'Walker');
+    // Expected: new id is walker_3 (since walker and walker_2 already exist)
+
+    const known = useCharacterStore.getState().knownCharacters;
+    expect(known.map((c) => c.id).sort()).toEqual(['walker', 'walker_2', 'walker_3']);
+  });
+
+  it('does not auto-open the duplicate', async () => {
+    const root = testing.makeRoot();
+    const td = await root.getDirectoryHandle('tools_data', { create: true });
+    const saves = await td.getDirectoryHandle('echidna_saves', { create: true });
+    const fh = await saves.getFileHandle('walker.echidna', { create: true });
+    const w = await fh.createWritable();
+    await w.write(JSON.stringify({ version: 3, id: 'walker', characterName: 'Walker', voxels: [], parts: [], poses: {} }));
+    await w.close();
+
+    useCharacterStore.setState({
+      projectRootHandle: root as unknown as FileSystemDirectoryHandle,
+      character: null,
+      knownCharacters: [{ id: 'walker', name: 'Walker', lastModified: 0 }],
+    });
+
+    await useCharacterStore.getState().duplicateCharacter('walker', 'Archer');
+    expect(useCharacterStore.getState().character).toBeNull();  // still null
+  });
+});
