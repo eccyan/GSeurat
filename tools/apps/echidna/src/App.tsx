@@ -6,9 +6,10 @@ import { BuildPanel } from './panels/BuildPanel.js';
 import { AnimateLeftPanel } from './panels/AnimateLeftPanel.js';
 import { AnimateRightPanel } from './panels/AnimateRightPanel.js';
 import { Timeline } from './panels/Timeline.js';
+import { EmptyProjectState } from './panels/EmptyProjectState.js';
 import { useCharacterStore } from './store/useCharacterStore.js';
 import type { ToolType } from './store/types.js';
-import { restoreProjectRoot } from '@gseurat/project-root';
+import { restoreProjectRoot, saveProjectRootHandle } from '@gseurat/project-root';
 
 const styles: Record<string, React.CSSProperties> = {
   root: {
@@ -98,6 +99,18 @@ function ResizeHandle({ onDrag }: { onDrag: (deltaX: number) => void }) {
   );
 }
 
+function NoCharacterSelected() {
+  return (
+    <div style={{
+      width: '100%', height: '100%',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      background: '#16162a', color: '#888', fontSize: 14,
+    }}>
+      Select a character from the panel or create a new one.
+    </div>
+  );
+}
+
 export function App() {
   const mode = useCharacterStore((s) => s.mode);
   const [leftWidth, setLeftWidth] = useState(220);
@@ -108,6 +121,24 @@ export function App() {
   // Keep refs in sync for drag callbacks
   leftRef.current = leftWidth;
   rightRef.current = rightWidth;
+
+  const projectRootHandle = useCharacterStore((s) => s.projectRootHandle);
+  const character = useCharacterStore((s) => s.character);
+
+  const handleOpenProjectRoot = useCallback(async () => {
+    try {
+      // @ts-expect-error - showDirectoryPicker is FSAPI extension not in lib.dom
+      const handle: FileSystemDirectoryHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
+      await saveProjectRootHandle('echidna', handle);
+      useCharacterStore.getState().setProjectRootHandle(handle);
+      await useCharacterStore.getState().listCharacters();
+    } catch (e) {
+      // User canceled or denied permission — silently ignore AbortError
+      if ((e as Error).name !== 'AbortError') {
+        console.error('[echidna] Failed to set project root:', e);
+      }
+    }
+  }, []);
 
   // Bootstrap: restore project root handle from IDB on startup
   useEffect(() => {
@@ -123,6 +154,18 @@ export function App() {
         console.info('[echidna] No project root to restore');
       }
     })();
+  }, []);
+
+  useEffect(() => {
+    if (!import.meta.env.PROD) return; // don't trigger on HMR reloads in dev
+
+    const handler = (e: BeforeUnloadEvent) => {
+      if (useCharacterStore.getState().dirty) {
+        e.preventDefault();
+      }
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
   }, []);
 
   const handleLeftDrag = useCallback((delta: number) => {
@@ -250,8 +293,14 @@ export function App() {
 
         {/* Center panel */}
         <div style={{ flex: 1, position: 'relative' as const, overflow: 'hidden' }}>
-          <CharacterViewport />
-          {mode === 'animate' && (
+          {projectRootHandle === null ? (
+            <EmptyProjectState onOpenProjectRoot={handleOpenProjectRoot} />
+          ) : character === null ? (
+            <NoCharacterSelected />
+          ) : (
+            <CharacterViewport />
+          )}
+          {character !== null && mode === 'animate' && (
             <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 10 }}>
               <Timeline />
             </div>

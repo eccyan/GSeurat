@@ -263,7 +263,7 @@ export interface CharacterStoreState {
 }
 
 export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
-  character: DEFAULT_CHARACTER,
+  character: null,
 
   projectRootHandle: null,
   knownCharacters: [],
@@ -651,9 +651,12 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
 
   importVoxModels: (models) => {
     const s = get();
-    if (!s.character) return;
-    const voxels = new Map(s.character.voxels);
-    const parts: BodyPart[] = [...s.character.characterParts];
+    // When character is null, fall back to DEFAULT_CHARACTER as the base.
+    // Importing creates a new in-memory character implicitly — the user hits
+    // ⌘S to save it to the project. This matches pre-Phase-0.2 behavior (I1).
+    const base = s.character ?? DEFAULT_CHARACTER;
+    const voxels = new Map(base.voxels);
+    const parts: BodyPart[] = [...base.characterParts];
 
     for (const model of models) {
       const keys: VoxelKey[] = [];
@@ -670,11 +673,14 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
       });
     }
 
-    set({ character: { ...s.character, voxels, characterParts: parts }, dirty: true });
+    set({ character: { ...base, voxels, characterParts: parts }, dirty: true });
   },
 
   importFromPly: (voxels, parts, gridSize) => {
     const s = get();
+    // When character is null, fall back to DEFAULT_CHARACTER as the base.
+    // Importing creates a new in-memory character implicitly — the user hits
+    // ⌘S to save it to the project. This matches pre-Phase-0.2 behavior (I1).
     set({
       character: {
         ...(s.character ?? DEFAULT_CHARACTER),
@@ -698,6 +704,9 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
 
   importFromObj: (voxels, parts, gridSize) => {
     const s = get();
+    // When character is null, fall back to DEFAULT_CHARACTER as the base.
+    // Importing creates a new in-memory character implicitly — the user hits
+    // ⌘S to save it to the project. This matches pre-Phase-0.2 behavior (I1).
     set({
       character: {
         ...(s.character ?? DEFAULT_CHARACTER),
@@ -1166,6 +1175,9 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
   saveProject: () => {
     const id = get().ensureCharacterId();
     const s = get();
+    if (!s.character) {
+      console.warn('[echidna] saveProject called with null character — returning DEFAULT_CHARACTER shape; callers should check s.character first');
+    }
     const char = s.character ?? DEFAULT_CHARACTER;
     const voxelArr: EchidnaFile['voxels'] = [];
     for (const [key, vox] of char.voxels) {

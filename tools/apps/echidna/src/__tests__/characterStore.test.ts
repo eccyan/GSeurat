@@ -5,6 +5,20 @@ import { CharacterListEntry } from '../store/types';
 
 describe('useCharacterStore — dirty tracking', () => {
   beforeEach(() => {
+    // Ensure a non-null character is present so mutating actions don't early-return
+    useCharacterStore.setState({
+      character: {
+        id: '',
+        characterName: 'Untitled',
+        gridWidth: 32,
+        gridDepth: 32,
+        voxels: new Map(),
+        characterParts: [],
+        characterPoses: {},
+        animations: {},
+        currentFilename: null,
+      },
+    });
     useCharacterStore.getState().markClean();
   });
 
