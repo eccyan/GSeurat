@@ -95,6 +95,13 @@ const DEFAULT_CHARACTER: Character = {
   currentFilename: null,
 };
 
+export type SwitchDecision = 'save' | 'discard' | 'cancel';
+export type ConfirmSwitch = (info: {
+  currentName: string;
+  targetName: string;
+  undoDepth: number;
+}) => Promise<SwitchDecision>;
+
 export interface CharacterStoreState {
   // Per-character slice (currently non-null — Task 19 will make it nullable)
   character: Character | null;
@@ -236,6 +243,7 @@ export interface CharacterStoreState {
   save: () => Promise<void>;
   listCharacters: () => Promise<void>;
   openCharacter: (id: string) => Promise<void>;
+  requestOpenCharacter: (id: string, confirm: ConfirmSwitch) => Promise<void>;
 
   // Actions – new tools and clipboard
   setXrayMode: (v: boolean) => void;
@@ -906,6 +914,31 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
       }
       console.error(`[echidna] openCharacter failed for ${id}:`, e);
     }
+  },
+
+  requestOpenCharacter: async (id, confirm) => {
+    const s = get();
+    const currentHasWork = s.dirty || s.undoStack.length > 0;
+    if (currentHasWork && s.character) {
+      const target = s.knownCharacters.find((c) => c.id === id);
+      const decision = await confirm({
+        currentName: s.character.characterName,
+        targetName: target?.name ?? id,
+        undoDepth: s.undoStack.length,
+      });
+      if (decision === 'cancel') return;
+      if (decision === 'save') {
+        await s.save();
+        // If save() failed, dirty will still be true — abort the switch to
+        // prevent loss of unsaved work on the subsequent openCharacter call.
+        if (get().dirty) {
+          console.error('[echidna] requestOpenCharacter: save() failed, aborting switch');
+          return;
+        }
+      }
+      // 'discard' falls through to openCharacter (losing the dirty work)
+    }
+    await get().openCharacter(id);
   },
 
   save: async () => {

@@ -348,3 +348,69 @@ describe('useCharacterStore.save', () => {
     warnSpy.mockRestore();
   });
 });
+
+describe('useCharacterStore.requestOpenCharacter', () => {
+  beforeEach(async () => {
+    // Seed a project root with one target character
+    const root = testing.makeRoot();
+    const toolsData = await root.getDirectoryHandle('tools_data', { create: true });
+    const saves = await toolsData.getDirectoryHandle('echidna_saves', { create: true });
+    const fh = await saves.getFileHandle('archer.echidna', { create: true });
+    const w = await fh.createWritable();
+    await w.write(JSON.stringify({
+      version: 3,
+      id: 'archer',
+      characterName: 'Archer',
+      voxels: [],
+      parts: [],
+      poses: {},
+    }));
+    await w.close();
+    useCharacterStore.setState({
+      projectRootHandle: root as unknown as FileSystemDirectoryHandle,
+      dirty: false,
+      undoStack: [],
+      knownCharacters: [
+        { id: 'archer', name: 'Archer', lastModified: 0 },
+      ],
+    });
+  });
+
+  it('opens directly when dirty is false AND undoStack is empty', async () => {
+    let confirmCalled = false;
+    await useCharacterStore.getState().requestOpenCharacter('archer', async () => {
+      confirmCalled = true;
+      return 'discard';
+    });
+    expect(confirmCalled).toBe(false);
+    expect(useCharacterStore.getState().character?.id).toBe('archer');
+  });
+
+  it('invokes the confirm callback when dirty is true', async () => {
+    useCharacterStore.setState({ dirty: true });
+    let confirmCalled = false;
+    await useCharacterStore.getState().requestOpenCharacter('archer', async () => {
+      confirmCalled = true;
+      return 'discard';
+    });
+    expect(confirmCalled).toBe(true);
+    expect(useCharacterStore.getState().character?.id).toBe('archer');
+  });
+
+  it('invokes the confirm callback when undoStack has entries', async () => {
+    useCharacterStore.setState({ undoStack: [{} as any] });
+    let confirmCalled = false;
+    await useCharacterStore.getState().requestOpenCharacter('archer', async () => {
+      confirmCalled = true;
+      return 'discard';
+    });
+    expect(confirmCalled).toBe(true);
+  });
+
+  it('does NOT switch when user cancels', async () => {
+    useCharacterStore.setState({ dirty: true });
+    const initialCharId = useCharacterStore.getState().character?.id;
+    await useCharacterStore.getState().requestOpenCharacter('archer', async () => 'cancel');
+    expect(useCharacterStore.getState().character?.id).toBe(initialCharId);
+  });
+});
