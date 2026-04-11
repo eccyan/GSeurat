@@ -15,14 +15,7 @@ import { ImportDialog } from './ImportDialog.js';
 import type { ImportOptions } from './ImportDialog.js';
 import {
   saveProjectRootHandle,
-  ensureHandlePermission,
-  restoreProjectRoot,
 } from '@gseurat/project-root';
-import {
-  saveEchidnaProject,
-  exportCharacterToProject,
-  echidnaSavePath,
-} from '../lib/projectFs.js';
 
 const BRIDGE_REST_URL = 'http://localhost:9101';
 
@@ -285,6 +278,18 @@ function DropdownMenu({ label, items, open, onOpen, onClose }: DropdownMenuProps
 
 type ToastState = { message: string; type: 'success' | 'error' | 'loading' } | null;
 
+function EchidnaTitle() {
+  const character = useCharacterStore((s) => s.character);
+  const dirty = useCharacterStore((s) => s.dirty);
+  const name = character?.characterName ?? '';
+  return (
+    <span style={styles.title}>
+      Echidna{name ? ` — ${name}` : ''}
+      {dirty && <span style={{ color: '#fa0', marginLeft: 6 }}>{'\u25CF'}</span>}
+    </span>
+  );
+}
+
 export function MenuBar() {
   useComponentRegistry('MenuBar');
   const loadRef = useRef<HTMLInputElement>(null);
@@ -303,8 +308,6 @@ export function MenuBar() {
   const showGizmos = useCharacterStore((s) => s.showGizmos);
   const voxels = useCharacterStore((s) => s.character?.voxels ?? new Map());
   const characterParts = useCharacterStore((s) => s.character?.characterParts ?? []);
-  const characterName = useCharacterStore((s) => s.character?.characterName ?? 'Untitled');
-
   const showToast = useCallback((message: string, type: 'success' | 'error' | 'loading', duration = 3000) => {
     if (toastTimer.current) clearTimeout(toastTimer.current);
     setToast({ message, type });
@@ -361,22 +364,13 @@ export function MenuBar() {
   }, [autoSync, voxels, characterParts, pushToStaging]);
 
   const handleNew = useCallback(() => {
-    setShowNewDialog(true);
-  }, []);
-
-  const handleSave = useCallback(() => {
     const store = useCharacterStore.getState();
-    const data = store.saveProject();
-    const json = JSON.stringify(data, null, 2);
-    const currentFilename = store.character?.currentFilename ?? null;
-    if (currentFilename) {
-      download(new Blob([json], { type: 'application/json' }), currentFilename);
-    } else {
-      const name = data.characterName.replace(/\s+/g, '_').toLowerCase() || 'character';
-      const filename = `${name}.echidna`;
-      download(new Blob([json], { type: 'application/json' }), filename);
-      store.setCurrentFilename(filename);
+    if (store.dirty || store.undoStack.length > 0) {
+      if (!confirm('Create new character? Unsaved changes will be lost.')) {
+        return;
+      }
     }
+    setShowNewDialog(true);
   }, []);
 
   const handleSaveAs = useCallback(() => {
@@ -447,29 +441,6 @@ export function MenuBar() {
     }
 
     setShowImportDialog(false);
-  }, []);
-
-  const handleExportCharacter = useCallback(() => {
-    const s = useCharacterStore.getState();
-    const char = s.character;
-    if (!char) return;
-    const name = char.characterName.replace(/\s+/g, '_').toLowerCase() || 'character';
-
-    // Download PLY
-    const plyBlob = exportPly(char.voxels, char.gridWidth, char.gridDepth, char.characterParts);
-    download(plyBlob, `${name}.ply`);
-
-    // Download manifest JSON
-    const manifest = buildManifest(
-      name,
-      `${name}.ply`,
-      1.0,
-      char.characterParts,
-      char.characterPoses,
-      char.animations,
-    );
-    const manifestBlob = new Blob([JSON.stringify(manifest, null, 2)], { type: 'application/json' });
-    download(manifestBlob, `${name}.manifest.json`);
   }, []);
 
   const handleExportPly = useCallback(() => {
@@ -633,136 +604,35 @@ export function MenuBar() {
     }
   }, [showToast]);
 
-  const handleSaveToProject = useCallback(async () => {
-    const s = useCharacterStore.getState();
-    let handle = s.projectRootHandle;
-    if (!handle) {
-      try {
-        // @ts-expect-error - showDirectoryPicker is FSAPI extension
-        handle = await window.showDirectoryPicker({ mode: 'readwrite' }) as FileSystemDirectoryHandle;
-        await saveProjectRootHandle('echidna', handle);
-        s.setProjectRootHandle(handle);
-      } catch (e) {
-        if ((e as Error).name !== 'AbortError') {
-          console.error('[echidna] Cannot pick project root:', e);
-          showToast('Cannot pick project root', 'error');
-        }
-        return;
-      }
-    } else {
-      const ok = await ensureHandlePermission(handle);
-      if (!ok) {
-        showToast('Project root permission denied', 'error');
-        return;
-      }
-    }
-
-    const id = s.ensureCharacterId();
-    const file = s.saveProject();
-    try {
-      await saveEchidnaProject(handle, file);
-      showToast(`Saved to ${echidnaSavePath(id)}`, 'success');
-    } catch (e) {
-      console.error('[echidna] Save failed:', e);
-      showToast('Save to project failed', 'error');
-    }
-  }, [showToast]);
-
-  const handleExportCharacterToProject = useCallback(async () => {
-    const s = useCharacterStore.getState();
-    const char = s.character;
-    if (!char || char.voxels.size === 0) {
-      showToast('No voxels to export', 'error');
-      return;
-    }
-
-    // Ensure project root handle is available
-    let handle = s.projectRootHandle;
-    if (!handle) {
-      handle = await restoreProjectRoot('echidna');
-      if (!handle) {
-        showToast('No project root set — use File → Set Project Root… first', 'error');
-        return;
-      }
-      s.setProjectRootHandle(handle);
-      // After restoring from IDB, we still need to verify/request permission.
-      const ok = await ensureHandlePermission(handle);
-      if (!ok) {
-        showToast('Project root permission denied', 'error');
-        return;
-      }
-    } else {
-      const ok = await ensureHandlePermission(handle);
-      if (!ok) {
-        showToast('Project root permission denied', 'error');
-        return;
-      }
-    }
-
-    const id = s.ensureCharacterId();
-
-    // Build PLY
-    const ply = exportPly(char.voxels, char.gridWidth, char.gridDepth, char.characterParts);
-
-    // Build manifest with bone joints centered to match PLY centering
-    // (same logic as pushToStaging — see lines ~436-447 above)
-    const halfW = char.gridWidth / 2;
-    let maxY = 0;
-    for (const [key] of char.voxels.entries()) {
-      const y = parseInt(key.split(',')[1], 10);
-      if (y > maxY) maxY = y;
-    }
-    const halfH = maxY / 2;
-    const centeredParts = char.characterParts.map((p) => ({
-      ...p,
-      joint: [p.joint[0] - halfW, p.joint[1] - halfH, p.joint[2]] as [number, number, number],
-    }));
-    const manifest = buildManifest(
-      id,
-      `${id}.ply`,
-      1.0,
-      centeredParts,
-      char.characterPoses,
-      char.animations,
-    );
-
-    showToast('Exporting character…', 'loading');
-
-    try {
-      const { plyPath, manifestPath } = await exportCharacterToProject(
-        handle,
-        id,
-        ply,
-        JSON.stringify(manifest, null, 2),
-      );
-      console.info(`[echidna] Exported ${plyPath} + ${manifestPath}`);
-      showToast(`Exported ${id} to project`, 'success');
-    } catch (e) {
-      console.error('[echidna] Export failed:', e);
-      showToast('Export to project failed', 'error');
-    }
-  }, [showToast]);
-
-  const fileItems = [
-    { label: 'New', shortcut: '\u2318N', action: handleNew },
+  const fileItems: DropdownMenuItem[] = [
+    { label: 'New Character', shortcut: '\u2318N', action: handleNew },
+    { label: 'Save', shortcut: '\u2318S', action: () => void useCharacterStore.getState().save() },
     { separator: true as const },
-    { label: 'Set Project Root\u2026', action: handlePickProjectRoot },
-    { label: 'Save to Project', action: handleSaveToProject },
-    { label: 'Export Character to Project', action: handleExportCharacterToProject },
+    {
+      label: 'Project',
+      children: [
+        { label: 'Open Project Root\u2026', action: handlePickProjectRoot },
+        { label: 'Connect Bridge to Project Root\u2026', action: handleConnectBridgeToProject },
+      ],
+    },
     { separator: true as const },
-    { label: 'Save', shortcut: '\u2318S', action: handleSave },
-    { label: 'Save As...', shortcut: '\u21e7\u2318S', action: handleSaveAs },
-    { label: 'Load...', shortcut: '\u2318O', action: handleLoad },
+    {
+      label: 'Import',
+      children: [
+        { label: 'Import (PLY/VOX/OBJ)\u2026', action: () => setShowImportDialog(true) },
+        { label: 'Import .vox\u2026', action: handleImportVox },
+        { label: 'Load .echidna\u2026', action: handleLoad },
+      ],
+    },
+    {
+      label: 'Export',
+      children: [
+        { label: 'Save As .echidna\u2026', action: handleSaveAs },
+        { label: 'Export PLY\u2026', action: handleExportPly },
+        { label: 'Export Manifest\u2026', action: handleExportManifest },
+      ],
+    },
     { separator: true as const },
-    { label: 'Import (PLY/VOX/OBJ)...', action: () => setShowImportDialog(true) },
-    { label: 'Import .vox...', action: handleImportVox },
-    { separator: true as const },
-    { label: 'Export Character...', action: handleExportCharacter },
-    { label: 'Export...', action: () => setShowExportDialog(true) },
-    { label: 'Export PLY...', action: handleExportPly },
-    { label: 'Export Manifest...', action: handleExportManifest },
-    { separator: true as const },
-    { label: 'Connect Bridge to Project Root\u2026', action: handleConnectBridgeToProject },
     { label: 'Preview in Staging', action: handlePreviewInStaging },
   ];
 
@@ -779,9 +649,6 @@ export function MenuBar() {
     { separator: true as const },
     { label: `${autoSync ? '\u2713 ' : '  '}Auto-Sync Staging`, action: () => setAutoSync((v) => !v) },
   ];
-
-  // Suppress unused variable warning — characterName used for re-render when name changes for auto-sync
-  void characterName;
 
   return (
     <div style={styles.bar}>
@@ -809,7 +676,7 @@ export function MenuBar() {
 
       <div style={styles.spacer} />
 
-      <span style={styles.title}>Echidna</span>
+      <EchidnaTitle />
 
       <input ref={loadRef} type="file" accept=".echidna,.json" style={{ display: 'none' }} onChange={handleLoadChange} />
       <input ref={voxRef} type="file" accept=".vox" style={{ display: 'none' }} onChange={handleVoxChange} />
