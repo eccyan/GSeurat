@@ -17,7 +17,7 @@ import type {
 } from './types.js';
 import { migrateEchidnaFile, slugifyCharacterId, ECHIDNA_FILE_VERSION } from './types.js';
 import { voxelKey, parseKey, floodFill3D, extrudeLayer } from '../lib/voxelUtils.js';
-import { listEchidnaProjects } from '../lib/projectFs.js';
+import { listEchidnaProjects, loadEchidnaProject } from '../lib/projectFs.js';
 
 function makeSnapshot(voxels: Map<VoxelKey, Voxel>, parts: BodyPart[]): Snapshot {
   return {
@@ -68,6 +68,17 @@ function generatePartColors(parts: BodyPart[]): Record<string, [number, number, 
     ];
   }
   return colors;
+}
+
+/** Convert the flat voxel-DTO array stored in .echidna files to the in-memory Map. */
+function voxelArrayToMap(
+  arr: { x: number; y: number; z: number; r: number; g: number; b: number; a: number }[],
+): Map<VoxelKey, Voxel> {
+  const map = new Map<VoxelKey, Voxel>();
+  for (const v of arr) {
+    map.set(voxelKey(v.x, v.y, v.z), { color: [v.r, v.g, v.b, v.a] });
+  }
+  return map;
 }
 
 const DEFAULT_CHARACTER: Character = {
@@ -220,6 +231,7 @@ export interface CharacterStoreState {
   setProjectRootHandle: (h: FileSystemDirectoryHandle | null) => void;
   ensureCharacterId: () => string;
   listCharacters: () => Promise<void>;
+  openCharacter: (id: string) => Promise<void>;
 
   // Actions – new tools and clipboard
   setXrayMode: (v: boolean) => void;
@@ -827,6 +839,69 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
       // Do not clobber existing list on transient failure
     }
   },
+  openCharacter: async (id) => {
+    const handle = get().projectRootHandle;
+    if (!handle) {
+      console.warn('[echidna] openCharacter called with no projectRootHandle');
+      return;
+    }
+    try {
+      const data = await loadEchidnaProject(handle, id);
+      // Migrate parts: add name field if missing (same as loadProject)
+      const parts = data.parts.map((p) => ({
+        ...p,
+        name: (p as any).name ?? p.id,
+      }));
+      // Migrate animations: add easing + playbackMode defaults (same as loadProject)
+      const animations: Record<string, AnimationClip> = {};
+      if (data.animations) {
+        for (const [key, clip] of Object.entries(data.animations)) {
+          animations[key] = {
+            ...clip,
+            playbackMode: (clip as any).playbackMode ?? 'loop',
+            keyframes: clip.keyframes.map((kf) => ({
+              ...kf,
+              easing: (kf as any).easing ?? 'step',
+            })),
+          };
+        }
+      }
+      const char: Character = {
+        id: data.id,
+        characterName: data.characterName,
+        gridWidth: data.gridWidth,
+        gridDepth: data.gridDepth,
+        voxels: voxelArrayToMap(data.voxels),
+        characterParts: parts,
+        characterPoses: data.poses,
+        animations,
+        currentFilename: null,
+      };
+      set({
+        character: char,
+        dirty: false,
+        undoStack: [],
+        redoStack: [],
+        boxSelection: null,
+        lassoSelection: null,
+        clipboard: null,
+        selectedPart: null,
+        selectedPose: null,
+        selectedAnimation: null,
+        previewPose: false,
+        playbackTime: 0,
+        isPlaying: false,
+      });
+    } catch (e) {
+      if ((e as Error).name === 'NotFoundError') {
+        console.warn(`[echidna] openCharacter: file missing for ${id}, refreshing list`);
+        await get().listCharacters();
+        return;
+      }
+      console.error(`[echidna] openCharacter failed for ${id}:`, e);
+    }
+  },
+
   ensureCharacterId: () => {
     const s = get();
     const char = s.character;
@@ -916,10 +991,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
     if (wasLegacy) {
       console.warn(`[echidna] Loaded legacy v${raw?.version} file "${data.characterName}" (id: ${data.id}); migrated to v${ECHIDNA_FILE_VERSION}`);
     }
-    const voxels = new Map<VoxelKey, Voxel>();
-    for (const v of data.voxels) {
-      voxels.set(voxelKey(v.x, v.y, v.z), { color: [v.r, v.g, v.b, v.a] });
-    }
+    const voxels = voxelArrayToMap(data.voxels);
     // Migrate v1 parts: add name field if missing
     const parts = data.parts.map((p) => ({
       ...p,

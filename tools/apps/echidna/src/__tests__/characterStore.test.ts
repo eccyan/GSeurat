@@ -103,3 +103,66 @@ describe('useCharacterStore.listCharacters', () => {
     expect(useCharacterStore.getState().knownCharacters).toEqual(stale);
   });
 });
+
+describe('useCharacterStore.openCharacter', () => {
+  it('preserves global slice when switching characters', async () => {
+    const root = testing.makeRoot();
+    const toolsData = await root.getDirectoryHandle('tools_data', { create: true });
+    const saves = await toolsData.getDirectoryHandle('echidna_saves', { create: true });
+    const fh = await saves.getFileHandle('archer.echidna', { create: true });
+    const w = await fh.createWritable();
+    await w.write(JSON.stringify({
+      version: 3,
+      id: 'archer',
+      characterName: 'Archer',
+      gridWidth: 24,
+      gridDepth: 24,
+      voxels: [],
+      parts: [],
+      poses: {},
+    }));
+    await w.close();
+
+    useCharacterStore.setState({
+      projectRootHandle: root as unknown as FileSystemDirectoryHandle,
+      mode: 'animate',
+      xrayMode: true,
+    });
+
+    await useCharacterStore.getState().openCharacter('archer');
+
+    const s = useCharacterStore.getState();
+    expect(s.character?.id).toBe('archer');
+    expect(s.character?.characterName).toBe('Archer');
+    expect(s.mode).toBe('animate');         // global preserved
+    expect(s.xrayMode).toBe(true);           // global preserved
+  });
+
+  it('clears dirty flag, undo/redo stacks, and selection state', async () => {
+    const root = testing.makeRoot();
+    const toolsData = await root.getDirectoryHandle('tools_data', { create: true });
+    const saves = await toolsData.getDirectoryHandle('echidna_saves', { create: true });
+    const fh = await saves.getFileHandle('mage.echidna', { create: true });
+    const w = await fh.createWritable();
+    await w.write(JSON.stringify({
+      version: 3, id: 'mage', characterName: 'Mage', voxels: [], parts: [], poses: {},
+    }));
+    await w.close();
+
+    useCharacterStore.setState({
+      projectRootHandle: root as unknown as FileSystemDirectoryHandle,
+      dirty: true,
+      undoStack: [{} as any, {} as any],
+      redoStack: [{} as any],
+      boxSelection: ['0,0,0', '1,1,1'] as any,
+    });
+
+    await useCharacterStore.getState().openCharacter('mage');
+
+    const s = useCharacterStore.getState();
+    expect(s.dirty).toBe(false);
+    expect(s.undoStack).toEqual([]);
+    expect(s.redoStack).toEqual([]);
+    expect(s.boxSelection).toBeNull();
+  });
+});
