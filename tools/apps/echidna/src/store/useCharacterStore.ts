@@ -17,6 +17,7 @@ import type {
 } from './types.js';
 import { migrateEchidnaFile, slugifyCharacterId, ECHIDNA_FILE_VERSION } from './types.js';
 import { voxelKey, parseKey, floodFill3D, extrudeLayer } from '../lib/voxelUtils.js';
+import { listEchidnaProjects } from '../lib/projectFs.js';
 
 function makeSnapshot(voxels: Map<VoxelKey, Voxel>, parts: BodyPart[]): Snapshot {
   return {
@@ -218,6 +219,7 @@ export interface CharacterStoreState {
   setCurrentFilename: (name: string | null) => void;
   setProjectRootHandle: (h: FileSystemDirectoryHandle | null) => void;
   ensureCharacterId: () => string;
+  listCharacters: () => Promise<void>;
 
   // Actions – new tools and clipboard
   setXrayMode: (v: boolean) => void;
@@ -814,6 +816,17 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
     set({ character: { ...s.character, currentFilename: name }, dirty: true });
   },
   setProjectRootHandle: (h) => set({ projectRootHandle: h }),
+  listCharacters: async () => {
+    const handle = get().projectRootHandle;
+    if (!handle) return;
+    try {
+      const entries = await listEchidnaProjects(handle);
+      set({ knownCharacters: entries });
+    } catch (e) {
+      console.error('[echidna] listCharacters failed:', e);
+      // Do not clobber existing list on transient failure
+    }
+  },
   ensureCharacterId: () => {
     const s = get();
     const char = s.character;
