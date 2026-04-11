@@ -72,6 +72,15 @@ export class MockDirHandle {
       },
     };
   }
+
+  async removeEntry(name: string, _opts?: { recursive?: boolean }): Promise<void> {
+    if (!this.node.entries.has(name)) {
+      const e: any = new Error(`NotFoundError: ${name}`);
+      e.name = 'NotFoundError';
+      throw e;
+    }
+    this.node.entries.delete(name);
+  }
 }
 
 export function makeRoot(): MockDirHandle {
