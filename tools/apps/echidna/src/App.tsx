@@ -7,6 +7,8 @@ import { AnimateLeftPanel } from './panels/AnimateLeftPanel.js';
 import { AnimateRightPanel } from './panels/AnimateRightPanel.js';
 import { Timeline } from './panels/Timeline.js';
 import { EmptyProjectState } from './panels/EmptyProjectState.js';
+import { CharactersPanel } from './panels/CharactersPanel.js';
+import { NewProjectDialog } from './panels/NewProjectDialog.js';
 import { useCharacterStore } from './store/useCharacterStore.js';
 import type { ToolType } from './store/types.js';
 import { restoreProjectRoot, saveProjectRootHandle } from '@gseurat/project-root';
@@ -122,8 +124,18 @@ export function App() {
   leftRef.current = leftWidth;
   rightRef.current = rightWidth;
 
+  const [showNewDialog, setShowNewDialog] = useState(false);
+
   const projectRootHandle = useCharacterStore((s) => s.projectRootHandle);
   const character = useCharacterStore((s) => s.character);
+
+  const handleNewCharacter = useCallback(() => {
+    const store = useCharacterStore.getState();
+    if (store.dirty || store.undoStack.length > 0) {
+      if (!confirm('Create new character? Unsaved changes will be lost.')) return;
+    }
+    setShowNewDialog(true);
+  }, []);
 
   const handleOpenProjectRoot = useCallback(async () => {
     try {
@@ -286,8 +298,11 @@ export function App() {
       <div style={styles.body}>
         {/* Left panel */}
         <div style={{ width: leftWidth, flexShrink: 0, display: 'flex', flexDirection: 'column' as const, overflow: 'hidden', background: '#1e1e3a', borderRight: '1px solid #333' }}>
+          <CharactersPanel onNewCharacter={handleNewCharacter} />
           <ModeTabs />
-          {mode === 'build' ? <ToolBar /> : <AnimateLeftPanel />}
+          <div style={{ flex: 1, overflow: 'auto' }}>
+            {mode === 'build' ? <ToolBar /> : <AnimateLeftPanel />}
+          </div>
         </div>
         <ResizeHandle onDrag={handleLeftDrag} />
 
@@ -313,6 +328,7 @@ export function App() {
           {mode === 'build' ? <BuildPanel /> : <AnimateRightPanel />}
         </div>
       </div>
+      {showNewDialog && <NewProjectDialog onClose={() => setShowNewDialog(false)} />}
     </div>
   );
 }
