@@ -139,8 +139,13 @@ export interface CharacterStoreState {
   // Actions – mode
   setMode: (mode: AppMode) => void;
 
+  // Actions – dirty tracking
+  markDirty: () => void;
+  markClean: () => void;
+
   // Actions – voxels
   pushUndo: () => void;
+  addVoxel: (key: VoxelKey, voxel: Voxel) => void;
   placeVoxel: (x: number, y: number, z: number) => void;
   placeVoxels: (positions: [number, number, number][]) => void;
   batchPlaceVoxels: (voxels: Array<{ x: number; y: number; z: number; color?: [number, number, number, number] }>) => void;
@@ -271,6 +276,10 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
   playbackMode: 'loop',
   onionSkinning: false,
 
+  // ── Dirty tracking ──
+  markDirty: () => set({ dirty: true }),
+  markClean: () => set({ dirty: false }),
+
   // ── Mode ──
   setMode: (mode) => set({ mode }),
 
@@ -319,6 +328,18 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
   },
 
   // ── Voxel actions (with mirror support) ──
+  addVoxel: (key, voxel) => {
+    const s = get();
+    if (!s.character) return;
+    set({
+      character: {
+        ...s.character,
+        voxels: new Map(s.character.voxels).set(key, voxel),
+      },
+      dirty: true,
+    });
+  },
+
   placeVoxel: (x, y, z) => {
     const s = get();
     if (!s.character) return;
@@ -326,7 +347,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
     next.set(voxelKey(x, y, z), { color: [...s.activeColor] });
     const m = mirrorPos(x, y, z, s.mirrorAxis, s.character.gridWidth);
     if (m) next.set(voxelKey(m[0], m[1], m[2]), { color: [...s.activeColor] });
-    set({ character: { ...s.character, voxels: next } });
+    set({ character: { ...s.character, voxels: next }, dirty: true });
   },
 
   placeVoxels: (positions) => {
@@ -338,7 +359,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
       const m = mirrorPos(x, y, z, s.mirrorAxis, s.character.gridWidth);
       if (m) next.set(voxelKey(m[0], m[1], m[2]), { color: [...s.activeColor] });
     }
-    set({ character: { ...s.character, voxels: next } });
+    set({ character: { ...s.character, voxels: next }, dirty: true });
   },
 
   /** Batch-place voxels in a single state update. Programmatic API — does not apply mirror axis. */
@@ -350,7 +371,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
       const key = voxelKey(x, y, z);
       newVoxels.set(key, { color: color ? [...color] : [...s.activeColor] });
     }
-    set({ character: { ...s.character, voxels: newVoxels } });
+    set({ character: { ...s.character, voxels: newVoxels }, dirty: true });
   },
 
   paintVoxel: (x, y, z) => {
@@ -365,7 +386,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
       const mk = voxelKey(m[0], m[1], m[2]);
       if (next.has(mk)) next.set(mk, { color: [...s.activeColor] });
     }
-    set({ character: { ...s.character, voxels: next } });
+    set({ character: { ...s.character, voxels: next }, dirty: true });
   },
 
   eraseVoxel: (x, y, z) => {
@@ -377,7 +398,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
     next.delete(key);
     const m = mirrorPos(x, y, z, s.mirrorAxis, s.character.gridWidth);
     if (m) next.delete(voxelKey(m[0], m[1], m[2]));
-    set({ character: { ...s.character, voxels: next } });
+    set({ character: { ...s.character, voxels: next }, dirty: true });
   },
 
   eraseVoxels: (positions) => {
@@ -389,7 +410,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
       const m = mirrorPos(x, y, z, s.mirrorAxis, s.character.gridWidth);
       if (m) next.delete(voxelKey(m[0], m[1], m[2]));
     }
-    set({ character: { ...s.character, voxels: next } });
+    set({ character: { ...s.character, voxels: next }, dirty: true });
   },
 
   eyedrop: (x, y, z) => {
@@ -440,7 +461,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
   setCharacterName: (name) => {
     const s = get();
     if (!s.character) return;
-    set({ character: { ...s.character, characterName: name } });
+    set({ character: { ...s.character, characterName: name }, dirty: true });
   },
 
   addPart: (name) => {
@@ -460,6 +481,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
       character: { ...s.character, characterParts: newParts },
       selectedPart: name,
       partColors: s.colorByPart ? generatePartColors(newParts) : s.partColors,
+      dirty: true,
     });
   },
 
@@ -478,6 +500,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
       character: { ...s.character, characterParts: updated, characterPoses: poses },
       selectedPart: s.selectedPart === id ? null : s.selectedPart,
       partColors: s.colorByPart ? generatePartColors(updated) : s.partColors,
+      dirty: true,
     });
   },
 
@@ -491,6 +514,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
           p.id === id ? { ...p, joint } : p,
         ),
       },
+      dirty: true,
     });
   },
 
@@ -504,6 +528,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
           p.id === id ? { ...p, parent: parentId } : p,
         ),
       },
+      dirty: true,
     });
   },
 
@@ -537,6 +562,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
           return filtered.length !== p.voxelKeys.length ? { ...p, voxelKeys: filtered } : p;
         }),
       },
+      dirty: true,
     });
   },
 
@@ -549,7 +575,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
     if (!poses[name]) {
       poses[name] = { rotations: {} };
     }
-    set({ character: { ...s.character, characterPoses: poses }, selectedPose: name });
+    set({ character: { ...s.character, characterPoses: poses }, selectedPose: name, dirty: true });
   },
 
   removePose: (name) => {
@@ -560,6 +586,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
     set({
       character: { ...s.character, characterPoses: poses },
       selectedPose: s.selectedPose === name ? null : s.selectedPose,
+      dirty: true,
     });
   },
 
@@ -571,7 +598,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
     const poses = { ...s.character.characterPoses };
     const pose = poses[poseName] ?? { rotations: {} };
     poses[poseName] = { rotations: { ...pose.rotations, [partId]: rotation } };
-    set({ character: { ...s.character, characterPoses: poses } });
+    set({ character: { ...s.character, characterPoses: poses }, dirty: true });
   },
 
   updatePoseRootPosition: (poseName, position) => {
@@ -582,7 +609,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
     if (pose) {
       poses[poseName] = { ...pose, rootPosition: position };
     }
-    set({ character: { ...s.character, characterPoses: poses } });
+    set({ character: { ...s.character, characterPoses: poses }, dirty: true });
   },
 
   setPreviewPose: (on) => set({ previewPose: on }),
@@ -608,7 +635,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
       });
     }
 
-    set({ character: { ...s.character, voxels, characterParts: parts } });
+    set({ character: { ...s.character, voxels, characterParts: parts }, dirty: true });
   },
 
   importFromPly: (voxels, parts, gridSize) => {
@@ -630,6 +657,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
       redoStack: [],
       boxSelection: null,
       lassoSelection: null,
+      dirty: true,
     });
   },
 
@@ -652,6 +680,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
       redoStack: [],
       boxSelection: null,
       lassoSelection: null,
+      dirty: true,
     });
   },
 
@@ -663,7 +692,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
     if (!anims[name]) {
       anims[name] = { name, keyframes: [], duration: 1, playbackMode: 'loop' };
     }
-    set({ character: { ...s.character, animations: anims }, selectedAnimation: name });
+    set({ character: { ...s.character, animations: anims }, selectedAnimation: name, dirty: true });
   },
 
   removeAnimation: (name) => {
@@ -674,6 +703,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
     set({
       character: { ...s.character, animations: anims },
       selectedAnimation: s.selectedAnimation === name ? null : s.selectedAnimation,
+      dirty: true,
     });
   },
 
@@ -697,7 +727,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
     const kf = { ...keyframe, easing: keyframe.easing ?? ('step' as const) };
     const keyframes = [...clip.keyframes, kf].sort((a, b) => a.time - b.time);
     anims[animName] = { ...clip, keyframes };
-    set({ character: { ...s.character, animations: anims } });
+    set({ character: { ...s.character, animations: anims }, dirty: true });
   },
 
   removeKeyframe: (animName, index) => {
@@ -708,7 +738,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
     if (!clip) return;
     const keyframes = clip.keyframes.filter((_, i) => i !== index);
     anims[animName] = { ...clip, keyframes };
-    set({ character: { ...s.character, animations: anims } });
+    set({ character: { ...s.character, animations: anims }, dirty: true });
   },
 
   updateKeyframeEasing: (animName, index, easing) => {
@@ -719,7 +749,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
     if (!clip) return;
     const keyframes = clip.keyframes.map((kf, i) => i === index ? { ...kf, easing } : kf);
     anims[animName] = { ...clip, keyframes };
-    set({ character: { ...s.character, animations: anims } });
+    set({ character: { ...s.character, animations: anims }, dirty: true });
   },
 
   updateAnimationDuration: (animName, duration) => {
@@ -729,7 +759,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
     const clip = anims[animName];
     if (!clip) return;
     anims[animName] = { ...clip, duration };
-    set({ character: { ...s.character, animations: anims } });
+    set({ character: { ...s.character, animations: anims }, dirty: true });
   },
 
   updateAnimationPlaybackMode: (animName, mode) => {
@@ -739,7 +769,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
     const clip = anims[animName];
     if (!clip) return;
     anims[animName] = { ...clip, playbackMode: mode };
-    set({ character: { ...s.character, animations: anims } });
+    set({ character: { ...s.character, animations: anims }, dirty: true });
   },
 
   updateAnimationRootMotion: (animName, enabled) => {
@@ -749,7 +779,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
     const clip = anims[animName];
     if (!clip) return;
     anims[animName] = { ...clip, rootMotion: enabled };
-    set({ character: { ...s.character, animations: anims } });
+    set({ character: { ...s.character, animations: anims }, dirty: true });
   },
 
   autoCenterJoint: (partId) => {
@@ -766,7 +796,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
     const n = part.voxelKeys.length;
     const joint: [number, number, number] = [Math.round(jx / n), Math.round(jy / n), Math.round(jz / n)];
     const parts = characterParts.map((p) => p.id === partId ? { ...p, joint } : p);
-    set({ character: { ...s.character, characterParts: parts } });
+    set({ character: { ...s.character, characterParts: parts }, dirty: true });
   },
 
   setPlaybackTime: (time) => set({ playbackTime: time }),
@@ -777,7 +807,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
   setCurrentFilename: (name) => {
     const s = get();
     if (!s.character) return;
-    set({ character: { ...s.character, currentFilename: name } });
+    set({ character: { ...s.character, currentFilename: name }, dirty: true });
   },
   setProjectRootHandle: (h) => set({ projectRootHandle: h }),
   ensureCharacterId: () => {
@@ -815,6 +845,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
       boxSelection: null,
       colorByPart: false,
       partColors: {},
+      dirty: false,
     });
   },
 
@@ -837,7 +868,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
         return x >= 0 && x < size && z >= 0 && z < size;
       }),
     }));
-    set({ character: { ...s.character, voxels: next, gridWidth: size, gridDepth: size, characterParts: nextParts } });
+    set({ character: { ...s.character, voxels: next, gridWidth: size, gridDepth: size, characterParts: nextParts }, dirty: true });
   },
 
   saveProject: () => {
@@ -912,6 +943,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
       playbackTime: 0,
       isPlaying: false,
       boxSelection: null,
+      dirty: false,
     });
   },
 
@@ -935,7 +967,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
         if (next.has(mk)) next.set(mk, { color: [...s.activeColor] });
       }
     }
-    set({ character: { ...s.character, voxels: next } });
+    set({ character: { ...s.character, voxels: next }, dirty: true });
   },
 
   extrudeSelection: (dy) => {
@@ -952,7 +984,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
       const m = mirrorPos(x, y, z, s.mirrorAxis, gridWidth);
       if (m) next.set(voxelKey(m[0], m[1], m[2]), { color });
     }
-    set({ character: { ...s.character, voxels: next } });
+    set({ character: { ...s.character, voxels: next }, dirty: true });
   },
 
   copySelection: () => {
@@ -991,7 +1023,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
       const m = mirrorPos(x, y, z, s.mirrorAxis, s.character.gridWidth);
       if (m) next.set(voxelKey(m[0], m[1], m[2]), { color: [...color] });
     }
-    set({ character: { ...s.character, voxels: next } });
+    set({ character: { ...s.character, voxels: next }, dirty: true });
   },
 
   deleteSelection: () => {
@@ -1006,7 +1038,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
       const m = mirrorPos(x, y, z, s.mirrorAxis, s.character.gridWidth);
       if (m) next.delete(voxelKey(m[0], m[1], m[2]));
     }
-    set({ character: { ...s.character, voxels: next }, boxSelection: null, lassoSelection: null });
+    set({ character: { ...s.character, voxels: next }, boxSelection: null, lassoSelection: null, dirty: true });
   },
 
   recolorSelection: () => {
@@ -1025,7 +1057,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
         if (next.has(mk)) next.set(mk, { color: [...s.activeColor] });
       }
     }
-    set({ character: { ...s.character, voxels: next } });
+    set({ character: { ...s.character, voxels: next }, dirty: true });
   },
 
   setLassoSelection: (keys) => set({ lassoSelection: keys }),
@@ -1033,6 +1065,6 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
   setOnionSkinning: (v) => set({ onionSkinning: v }),
 }));
 
-if (import.meta.env.DEV) {
+if (import.meta.env.DEV && typeof window !== 'undefined') {
   (window as any).__debugStore = useCharacterStore;
 }
