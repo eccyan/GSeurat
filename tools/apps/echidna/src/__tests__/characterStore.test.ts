@@ -191,3 +191,56 @@ describe('useCharacterStore.openCharacter', () => {
     expect(s.character).toEqual(existingChar);
   });
 });
+
+describe('useCharacterStore.save', () => {
+  it('is a no-op when character is null', async () => {
+    useCharacterStore.setState({
+      projectRootHandle: testing.makeRoot() as unknown as FileSystemDirectoryHandle,
+      character: null,
+    });
+    // Should not throw
+    await useCharacterStore.getState().save();
+    expect(useCharacterStore.getState().dirty).toBe(false);
+  });
+
+  it('writes the .echidna source + engine files and clears dirty', async () => {
+    const root = testing.makeRoot();
+    useCharacterStore.setState({
+      projectRootHandle: root as unknown as FileSystemDirectoryHandle,
+      character: {
+        id: 'walker',
+        characterName: 'Walker Bot',
+        gridWidth: 32,
+        gridDepth: 32,
+        voxels: new Map([['0,0,0', { color: [255, 0, 0, 255] }]]),
+        characterParts: [],
+        characterPoses: {},
+        animations: {},
+        currentFilename: null,
+      },
+      dirty: true,
+    });
+
+    await useCharacterStore.getState().save();
+
+    // Dirty should clear
+    expect(useCharacterStore.getState().dirty).toBe(false);
+
+    // The .echidna source file should exist at tools_data/echidna_saves/walker.echidna
+    const td = await root.getDirectoryHandle('tools_data');
+    const sv = await td.getDirectoryHandle('echidna_saves');
+    const fh = await sv.getFileHandle('walker.echidna');
+    const file = await fh.getFile();
+    const text = await file.text();
+    const parsed = JSON.parse(text);
+    expect(parsed.id).toBe('walker');
+    expect(parsed.characterName).toBe('Walker Bot');
+
+    // The engine-ready files should exist at assets/characters/walker/*
+    const assets = await root.getDirectoryHandle('assets');
+    const chars = await assets.getDirectoryHandle('characters');
+    const walkerDir = await chars.getDirectoryHandle('walker');
+    await walkerDir.getFileHandle('walker.ply');           // throws if missing
+    await walkerDir.getFileHandle('walker.manifest.json'); // throws if missing
+  });
+});

@@ -17,7 +17,9 @@ import type {
 } from './types.js';
 import { migrateEchidnaFile, slugifyCharacterId, ECHIDNA_FILE_VERSION } from './types.js';
 import { voxelKey, parseKey, floodFill3D, extrudeLayer } from '../lib/voxelUtils.js';
-import { listEchidnaProjects, loadEchidnaProject } from '../lib/projectFs.js';
+import { listEchidnaProjects, loadEchidnaProject, saveEchidnaProject, exportCharacterToProject } from '../lib/projectFs.js';
+import { exportPly } from '../lib/plyExport.js';
+import { buildManifest } from '../lib/manifestExport.js';
 
 function makeSnapshot(voxels: Map<VoxelKey, Voxel>, parts: BodyPart[]): Snapshot {
   return {
@@ -230,6 +232,8 @@ export interface CharacterStoreState {
   setCurrentFilename: (name: string | null) => void;
   setProjectRootHandle: (h: FileSystemDirectoryHandle | null) => void;
   ensureCharacterId: () => string;
+  _saving: boolean;              // race guard — internal, not subscribed by consumers
+  save: () => Promise<void>;
   listCharacters: () => Promise<void>;
   openCharacter: (id: string) => Promise<void>;
 
@@ -289,6 +293,8 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
   lassoSelection: null,
   playbackMode: 'loop',
   onionSkinning: false,
+
+  _saving: false,
 
   // ── Dirty tracking ──
   markDirty: () => set({ dirty: true }),
@@ -899,6 +905,65 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
         return;
       }
       console.error(`[echidna] openCharacter failed for ${id}:`, e);
+    }
+  },
+
+  save: async () => {
+    // Race guard: prevent concurrent saves from the same user. If a save is
+    // already in flight, the second call returns immediately. This matters
+    // because the switch-during-save race (user hits ⌘S then clicks another
+    // character row) could otherwise double-trigger the write pipeline.
+    if (get()._saving) return;
+    set({ _saving: true });
+    try {
+      const s = get();
+      const handle = s.projectRootHandle;
+      if (!handle) {
+        console.warn('[echidna] save called with no projectRootHandle');
+        return;
+      }
+      if (!s.character) return;
+
+      const id = s.ensureCharacterId();
+
+      // 1. Write the .echidna source via Phase 0.0 helper
+      const file = s.saveProject();   // returns EchidnaFile DTO, does NOT write to disk
+      try {
+        await saveEchidnaProject(handle, file);
+      } catch (e) {
+        console.error('[echidna] save: .echidna write failed:', e);
+        return;
+      }
+
+      // 2. Build PLY + manifest and write engine-ready files
+      try {
+        const ply = exportPly(
+          s.character.voxels,
+          s.character.gridWidth,
+          s.character.gridDepth,
+          s.character.characterParts,
+        );
+        const manifest = buildManifest(
+          id,
+          `${id}.ply`,
+          1.0,
+          s.character.characterParts,
+          s.character.characterPoses,
+          s.character.animations,
+        );
+        await exportCharacterToProject(handle, id, ply, JSON.stringify(manifest, null, 2));
+      } catch (e) {
+        console.error('[echidna] save: partial write — engine files may be stale:', e);
+        // .echidna is on disk so dirty COULD clear, but partial-fail means
+        // the user should retry. Leave dirty true so the next ⌘S rebuilds.
+        return;
+      }
+
+      set({ dirty: false });
+      // Refresh the list so the row's mtime updates
+      await get().listCharacters();
+    } finally {
+      set({ _saving: false });
     }
   },
 
