@@ -5,7 +5,7 @@ import {
   writeFileAtPath,
   readFileAtPath,
 } from '@gseurat/project-root';
-import { migrateEchidnaFile, type EchidnaFile } from '../store/types';
+import { migrateEchidnaFile, type EchidnaFile, type CharacterListEntry } from '../store/types';
 
 /* ----- path builders ----- */
 
@@ -82,4 +82,54 @@ export async function exportCharacterToProject(
   await writeFileAtPath(root, manifestPath, manifestJson);
 
   return { plyPath, manifestPath };
+}
+
+/**
+ * Enumerate all .echidna files in tools_data/echidna_saves/ and return
+ * their metadata for the CharactersPanel list. Skips malformed files with
+ * a console.warn rather than throwing — one bad file must not prevent the
+ * panel from rendering the rest.
+ *
+ * Returns [] when the directory doesn't exist yet.
+ */
+export async function listEchidnaProjects(
+  handle: FileSystemDirectoryHandle,
+): Promise<CharacterListEntry[]> {
+  let savesDir: FileSystemDirectoryHandle;
+  try {
+    // tools_data/echidna_saves/
+    const parts = PROJECT_LAYOUT.toolsData.echidnaSaves.split('/');
+    let dir: FileSystemDirectoryHandle = handle;
+    for (const part of parts) {
+      dir = await dir.getDirectoryHandle(part);
+    }
+    savesDir = dir;
+  } catch (e) {
+    if ((e as Error).name === 'NotFoundError') return [];
+    throw e;
+  }
+
+  const entries: CharacterListEntry[] = [];
+  // @ts-expect-error — FSAPI values() is not yet in lib.dom
+  for await (const child of savesDir.values()) {
+    if (child.kind !== 'file') continue;
+    if (!child.name.endsWith('.echidna')) continue;
+    try {
+      const file = await child.getFile();
+      const text = await file.text();
+      const raw = JSON.parse(text);
+      const migrated = migrateEchidnaFile(raw);
+      entries.push({
+        id: migrated.id,
+        name: migrated.characterName,
+        lastModified: (file as unknown as File).lastModified ?? 0,
+      });
+    } catch (err) {
+      console.warn(`[echidna] Skipped unreadable character file: ${child.name}`, err);
+    }
+  }
+
+  // Sort by lastModified desc (most recent first)
+  entries.sort((a, b) => b.lastModified - a.lastModified);
+  return entries;
 }
