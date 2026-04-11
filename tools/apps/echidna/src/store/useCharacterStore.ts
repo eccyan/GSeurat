@@ -1008,11 +1008,20 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
     if (!handle) return;
 
     // Mint a non-colliding id
+    const MAX_DUPLICATE_SUFFIX = 1000;
     const baseId = slugifyCharacterId(newName);
+    if (baseId.length === 0) {
+      console.error(`[echidna] duplicateCharacter: slugifyCharacterId returned empty for "${newName}"`);
+      return;
+    }
     const existingIds = new Set(s.knownCharacters.map((c) => c.id));
     let newId = baseId;
     let counter = 2;
     while (existingIds.has(newId)) {
+      if (counter > MAX_DUPLICATE_SUFFIX) {
+        console.error(`[echidna] duplicateCharacter: > ${MAX_DUPLICATE_SUFFIX} collisions for base id "${baseId}"`);
+        return;
+      }
       newId = `${baseId}_${counter}`;
       counter += 1;
     }

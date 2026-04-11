@@ -7,6 +7,24 @@ import {
 } from '@gseurat/project-root';
 import { migrateEchidnaFile, type EchidnaFile, type CharacterListEntry } from '../store/types';
 
+/* ----- private helpers ----- */
+
+/**
+ * Navigate from the project root to the echidna saves directory.
+ * Private helper — not exported — used by all the .echidna FS helpers.
+ */
+async function getEchidnaSavesDir(
+  handle: FileSystemDirectoryHandle,
+  opts: { create?: boolean } = {},
+): Promise<FileSystemDirectoryHandle> {
+  const parts = PROJECT_LAYOUT.toolsData.echidnaSaves.split('/');
+  let dir = handle;
+  for (const part of parts) {
+    dir = await dir.getDirectoryHandle(part, opts);
+  }
+  return dir;
+}
+
 /* ----- path builders ----- */
 
 /**
@@ -97,13 +115,7 @@ export async function listEchidnaProjects(
 ): Promise<CharacterListEntry[]> {
   let savesDir: FileSystemDirectoryHandle;
   try {
-    // tools_data/echidna_saves/
-    const parts = PROJECT_LAYOUT.toolsData.echidnaSaves.split('/');
-    let dir: FileSystemDirectoryHandle = handle;
-    for (const part of parts) {
-      dir = await dir.getDirectoryHandle(part);
-    }
-    savesDir = dir;
+    savesDir = await getEchidnaSavesDir(handle);
   } catch (e) {
     if ((e as Error).name === 'NotFoundError') return [];
     throw e;
@@ -160,11 +172,7 @@ export async function renameEchidnaProject(
   id: string,
   newCharacterName: string,
 ): Promise<void> {
-  const parts = PROJECT_LAYOUT.toolsData.echidnaSaves.split('/');
-  let dir: FileSystemDirectoryHandle = handle;
-  for (const part of parts) {
-    dir = await dir.getDirectoryHandle(part);
-  }
+  const dir = await getEchidnaSavesDir(handle);
   const fh = await dir.getFileHandle(`${id}.echidna`);
   const file = await fh.getFile();
   const raw = JSON.parse(await file.text());
@@ -186,11 +194,7 @@ export async function duplicateEchidnaProject(
   newId: string,
   newCharacterName: string,
 ): Promise<void> {
-  const parts = PROJECT_LAYOUT.toolsData.echidnaSaves.split('/');
-  let dir: FileSystemDirectoryHandle = handle;
-  for (const part of parts) {
-    dir = await dir.getDirectoryHandle(part);
-  }
+  const dir = await getEchidnaSavesDir(handle);
   const sourceFh = await dir.getFileHandle(`${sourceId}.echidna`);
   const sourceFile = await sourceFh.getFile();
   const raw = JSON.parse(await sourceFile.text());
@@ -214,11 +218,7 @@ export async function deleteEchidnaProject(
   handle: FileSystemDirectoryHandle,
   id: string,
 ): Promise<void> {
-  const parts = PROJECT_LAYOUT.toolsData.echidnaSaves.split('/');
-  let dir: FileSystemDirectoryHandle = handle;
-  for (const part of parts) {
-    dir = await dir.getDirectoryHandle(part);
-  }
+  const dir = await getEchidnaSavesDir(handle);
   // removeEntry is not yet in lib.dom; use a narrowed structural cast
   // (same pattern as listEchidnaProjects uses for values())
   await (dir as FileSystemDirectoryHandle & {
