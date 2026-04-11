@@ -127,17 +127,102 @@ function download(blob: Blob, name: string) {
   URL.revokeObjectURL(url);
 }
 
+interface DropdownMenuItemLeaf {
+  label: string;
+  shortcut?: string;
+  action: () => void;
+  separator?: false;
+  children?: undefined;
+}
+
+interface DropdownMenuItemSubmenu {
+  label: string;
+  shortcut?: undefined;
+  action?: undefined;
+  separator?: false;
+  children: DropdownMenuItem[];
+}
+
+interface DropdownMenuItemSeparator {
+  separator: true;
+}
+
+export type DropdownMenuItem =
+  | DropdownMenuItemLeaf
+  | DropdownMenuItemSubmenu
+  | DropdownMenuItemSeparator;
+
 interface DropdownMenuProps {
   label: string;
-  items: Array<{
-    label: string;
-    shortcut?: string;
-    action: () => void;
-    separator?: false;
-  } | { separator: true }>;
+  items: DropdownMenuItem[];
   open: boolean;
   onOpen: () => void;
   onClose: () => void;
+}
+
+function SubmenuItem({
+  item,
+  onClose,
+}: {
+  item: DropdownMenuItemSubmenu;
+  onClose: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [hovered, setHovered] = useState<number | null>(null);
+  return (
+    <div
+      style={{ position: 'relative' }}
+      onMouseEnter={() => setOpen(true)}
+      onMouseLeave={() => setOpen(false)}
+    >
+      <button
+        style={{
+          ...styles.dropdownItem,
+          justifyContent: 'space-between',
+          background: open ? styles.dropdownItemHover.background : undefined,
+        }}
+      >
+        <span>{item.label}</span>
+        <span style={{ marginLeft: 12, color: '#888' }}>&#9658;</span>
+      </button>
+      {open && (
+        <div
+          style={{
+            ...styles.dropdown,
+            position: 'absolute',
+            top: 0,
+            left: '100%',
+            marginLeft: 0,
+          }}
+        >
+          {item.children.map((child, i) => {
+            if ('separator' in child && child.separator) {
+              return <div key={i} style={styles.separator} />;
+            }
+            if ('children' in child && child.children) {
+              return <SubmenuItem key={i} item={child as DropdownMenuItemSubmenu} onClose={onClose} />;
+            }
+            const it = child as DropdownMenuItemLeaf;
+            return (
+              <button
+                key={i}
+                style={{
+                  ...styles.dropdownItem,
+                  ...(hovered === i ? styles.dropdownItemHover : {}),
+                }}
+                onMouseEnter={() => setHovered(i)}
+                onMouseLeave={() => setHovered(null)}
+                onClick={() => { it.action(); onClose(); }}
+              >
+                <span>{it.label}</span>
+                {it.shortcut && <span style={styles.shortcut}>{it.shortcut}</span>}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function DropdownMenu({ label, items, open, onOpen, onClose }: DropdownMenuProps) {
@@ -172,7 +257,10 @@ function DropdownMenu({ label, items, open, onOpen, onClose }: DropdownMenuProps
             if ('separator' in item && item.separator) {
               return <div key={i} style={styles.separator} />;
             }
-            const it = item as { label: string; shortcut?: string; action: () => void };
+            if ('children' in item && item.children) {
+              return <SubmenuItem key={i} item={item as DropdownMenuItemSubmenu} onClose={onClose} />;
+            }
+            const it = item as DropdownMenuItemLeaf;
             return (
               <button
                 key={i}
