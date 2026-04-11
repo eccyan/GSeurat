@@ -67,4 +67,25 @@ describe('MockDirHandle async iteration', () => {
     }
     expect(names).toEqual([]);
   });
+
+  it('values() yields file handles with working getFile()', async () => {
+    const root = makeRoot();
+    const fh = await root.getFileHandle('walker.echidna', { create: true });
+    const w = await fh.createWritable();
+    await w.write('hello walker');
+    await w.close();
+
+    // Iterate via values() and find the file handle
+    let found: { kind: 'file'; name: string; getFile(): Promise<Blob> } | null = null;
+    for await (const handle of root.values()) {
+      if (handle.kind === 'file') {
+        found = handle;
+        break;
+      }
+    }
+    expect(found).not.toBeNull();
+    const file = await found!.getFile();
+    const text = await file.text();
+    expect(text).toBe('hello walker');
+  });
 });

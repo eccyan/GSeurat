@@ -50,26 +50,25 @@ export class MockDirHandle {
       e.name = 'TypeMismatchError';
       throw e;
     }
-    const file = n;
+    return this.makeFileHandle(name, n);
+  }
+
+  private makeFileHandle(name: string, file: Extract<Node, { kind: 'file' }>) {
     return {
       kind: 'file' as const,
       name,
-      async createWritable() {
-        return {
-          async write(d: Uint8Array | string | ArrayBuffer | Blob) {
-            let bytes: Uint8Array;
-            if (typeof d === 'string') bytes = new TextEncoder().encode(d);
-            else if (d instanceof Blob) bytes = new Uint8Array(await d.arrayBuffer());
-            else if (d instanceof Uint8Array) bytes = d;
-            else bytes = new Uint8Array(d);
-            file.data = bytes;
-          },
-          async close() {},
-        };
-      },
-      async getFile() {
-        return new Blob([file.data as Uint8Array<ArrayBuffer>]);
-      },
+      createWritable: async () => ({
+        write: async (d: Uint8Array | string | ArrayBuffer | Blob) => {
+          let bytes: Uint8Array;
+          if (typeof d === 'string') bytes = new TextEncoder().encode(d);
+          else if (d instanceof Blob) bytes = new Uint8Array(await d.arrayBuffer());
+          else if (d instanceof Uint8Array) bytes = d;
+          else bytes = new Uint8Array(d);
+          file.data = bytes;
+        },
+        close: async () => {},
+      }),
+      getFile: async () => new Blob([file.data as Uint8Array<ArrayBuffer>]),
     };
   }
 
@@ -82,41 +81,12 @@ export class MockDirHandle {
     this.node.entries.delete(name);
   }
 
-  async *values(): AsyncGenerator<MockDirHandle | {
-    kind: 'file';
-    name: string;
-    getFile(): Promise<Blob>;
-    createWritable(): Promise<{
-      write(d: Uint8Array | string | ArrayBuffer | Blob): Promise<void>;
-      close(): Promise<void>;
-    }>;
-  }> {
+  async *values(): AsyncGenerator<MockDirHandle | ReturnType<MockDirHandle['makeFileHandle']>> {
     for (const [name, child] of this.node.entries) {
       if (child.kind === 'dir') {
         yield new MockDirHandle(child, name);
       } else {
-        // Yield a file-shaped handle with the same contract as getFileHandle
-        const file = child;
-        yield {
-          kind: 'file' as const,
-          name,
-          async createWritable() {
-            return {
-              async write(d: Uint8Array | string | ArrayBuffer | Blob) {
-                let bytes: Uint8Array;
-                if (typeof d === 'string') bytes = new TextEncoder().encode(d);
-                else if (d instanceof Blob) bytes = new Uint8Array(await d.arrayBuffer());
-                else if (d instanceof Uint8Array) bytes = d;
-                else bytes = new Uint8Array(d);
-                file.data = bytes;
-              },
-              async close() {},
-            };
-          },
-          async getFile() {
-            return new Blob([file.data as Uint8Array<ArrayBuffer>]);
-          },
-        };
+        yield this.makeFileHandle(name, child);
       }
     }
   }
