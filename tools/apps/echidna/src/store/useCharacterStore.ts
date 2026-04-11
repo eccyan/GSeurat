@@ -916,15 +916,19 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
     if (get()._saving) return;
     set({ _saving: true });
     try {
-      const s = get();
-      const handle = s.projectRootHandle;
+      const handleCheck = get();
+      const handle = handleCheck.projectRootHandle;
       if (!handle) {
         console.warn('[echidna] save called with no projectRootHandle');
         return;
       }
-      if (!s.character) return;
+      if (!handleCheck.character) return;
 
-      const id = s.ensureCharacterId();
+      // ensureCharacterId may replace state.character (via set()), so recapture
+      // get() after it runs so downstream reads use a fresh snapshot.
+      const id = get().ensureCharacterId();
+      const s = get();
+      if (!s.character) return; // guard: ensureCharacterId should never null character, but be safe
 
       // 1. Write the .echidna source via Phase 0.0 helper
       const file = s.saveProject();   // returns EchidnaFile DTO, does NOT write to disk

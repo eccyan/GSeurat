@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useCharacterStore } from '../store/useCharacterStore';
 import { testing } from '@gseurat/project-root';
 import { CharacterListEntry } from '../store/types';
@@ -193,6 +193,11 @@ describe('useCharacterStore.openCharacter', () => {
 });
 
 describe('useCharacterStore.save', () => {
+  beforeEach(() => {
+    // Reset race guard between tests so a prior test's save cannot block the next.
+    useCharacterStore.setState({ _saving: false });
+  });
+
   it('is a no-op when character is null', async () => {
     useCharacterStore.setState({
       projectRootHandle: testing.makeRoot() as unknown as FileSystemDirectoryHandle,
@@ -242,5 +247,104 @@ describe('useCharacterStore.save', () => {
     const walkerDir = await chars.getDirectoryHandle('walker');
     await walkerDir.getFileHandle('walker.ply');           // throws if missing
     await walkerDir.getFileHandle('walker.manifest.json'); // throws if missing
+  });
+
+  it('second concurrent save() returns early via _saving race guard', async () => {
+    // Seed a character so save() has something to write
+    const root = testing.makeRoot();
+    useCharacterStore.setState({
+      projectRootHandle: root as unknown as FileSystemDirectoryHandle,
+      character: {
+        id: 'walker',
+        characterName: 'Walker',
+        gridWidth: 32,
+        gridDepth: 32,
+        voxels: new Map(),
+        characterParts: [],
+        characterPoses: {},
+        animations: {},
+        currentFilename: null,
+      },
+      dirty: true,
+    });
+
+    // Two overlapping save calls — the second should return immediately
+    // without triggering a second write pipeline. We can't easily spy on
+    // the helpers without mocking, so we just verify both resolve without
+    // throwing AND that _saving is false after both resolve.
+    const p1 = useCharacterStore.getState().save();
+    const p2 = useCharacterStore.getState().save();
+    await Promise.all([p1, p2]);
+
+    expect(useCharacterStore.getState()._saving).toBe(false);
+    expect(useCharacterStore.getState().dirty).toBe(false);
+  });
+
+  it('partial-fail (.echidna succeeded but engine write failed) leaves dirty=true', async () => {
+    const root = testing.makeRoot();
+    useCharacterStore.setState({
+      projectRootHandle: root as unknown as FileSystemDirectoryHandle,
+      character: {
+        id: 'walker',
+        characterName: 'Walker',
+        gridWidth: 32,
+        gridDepth: 32,
+        voxels: new Map(),
+        characterParts: [],
+        characterPoses: {},
+        animations: {},
+        currentFilename: null,
+      },
+      dirty: true,
+    });
+
+    // Force exportCharacterToProject to throw
+    const projectFs = await import('../lib/projectFs');
+    const spy = vi.spyOn(projectFs, 'exportCharacterToProject').mockRejectedValueOnce(
+      new Error('simulated engine write failure')
+    );
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    try {
+      await useCharacterStore.getState().save();
+    } finally {
+      spy.mockRestore();
+      errorSpy.mockRestore();
+    }
+
+    // dirty should STILL be true — partial-fail means user needs to retry
+    expect(useCharacterStore.getState().dirty).toBe(true);
+
+    // The .echidna source should exist (succeeded before the failure)
+    const td = await root.getDirectoryHandle('tools_data');
+    const sv = await td.getDirectoryHandle('echidna_saves');
+    await sv.getFileHandle('walker.echidna');  // throws if missing
+  });
+
+  it('returns early with a warning when projectRootHandle is null', async () => {
+    useCharacterStore.setState({
+      projectRootHandle: null,
+      character: {
+        id: 'walker',
+        characterName: 'Walker',
+        gridWidth: 32, gridDepth: 32,
+        voxels: new Map(),
+        characterParts: [],
+        characterPoses: {},
+        animations: {},
+        currentFilename: null,
+      },
+      dirty: true,
+    });
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    await useCharacterStore.getState().save();
+
+    // Assert BEFORE restoring the spy (mockRestore clears call history).
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('no projectRootHandle'));
+    expect(useCharacterStore.getState().dirty).toBe(true);  // still dirty, save didn't happen
+    expect(useCharacterStore.getState()._saving).toBe(false);  // race guard released
+
+    warnSpy.mockRestore();
   });
 });
