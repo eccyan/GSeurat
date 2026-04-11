@@ -594,6 +594,7 @@ export function MenuBar() {
       const handle: FileSystemDirectoryHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
       await saveProjectRootHandle('echidna', handle);
       useCharacterStore.getState().setProjectRootHandle(handle);
+      await useCharacterStore.getState().listCharacters();
       showToast(`Project root set: ${handle.name}`, 'success');
     } catch (e) {
       // User canceled or denied permission

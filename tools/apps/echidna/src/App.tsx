@@ -154,18 +154,22 @@ export function App() {
 
   // Bootstrap: restore project root handle from IDB on startup
   useEffect(() => {
+    let cancelled = false;
     (async () => {
       try {
         const handle = await restoreProjectRoot('echidna');
+        if (cancelled) return;
         if (handle && !useCharacterStore.getState().projectRootHandle) {
           useCharacterStore.getState().setProjectRootHandle(handle);
           console.info(`[echidna] Restored project root: ${handle.name}`);
+          await useCharacterStore.getState().listCharacters();
         }
       } catch (e) {
-        // Silently ignore — user can pick the root again via File → Set Project Root…
+        // Silently ignore — user can pick the root again via File → Open Project Root…
         console.info('[echidna] No project root to restore');
       }
     })();
+    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
