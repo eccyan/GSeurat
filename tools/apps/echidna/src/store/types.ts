@@ -138,3 +138,29 @@ export interface Snapshot {
   voxels: [VoxelKey, Voxel][];
   parts: BodyPart[];
 }
+
+// ── Per-character slice ──
+
+/**
+ * Per-character slice of EchidnaStoreState. Nullable — null when no character
+ * is loaded (empty project, or just after Delete). Swapped atomically on
+ * openCharacter() and newCharacter(). Every mutating action that writes to
+ * this slice must also call markDirty().
+ */
+export interface Character {
+  id: string;                                        // slug, stable for the character's lifetime
+  characterName: string;                             // display name
+  gridWidth: number;
+  gridDepth: number;
+  voxels: Map<VoxelKey, Voxel>;
+  characterParts: BodyPart[];
+  characterPoses: Record<string, PoseData>;
+  animations: Record<string, AnimationClip>;
+  currentFilename: string | null;                    // legacy .echidna download target
+}
+
+export interface CharacterListEntry {
+  id: string;
+  name: string;
+  lastModified: number;
+}

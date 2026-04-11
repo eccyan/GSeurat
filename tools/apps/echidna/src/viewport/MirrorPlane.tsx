@@ -3,8 +3,8 @@ import { useCharacterStore } from '../store/useCharacterStore.js';
 
 export function MirrorPlane() {
   const mirrorAxis = useCharacterStore((s) => s.mirrorAxis);
-  const gridWidth = useCharacterStore((s) => s.gridWidth);
-  const gridDepth = useCharacterStore((s) => s.gridDepth);
+  const gridWidth = useCharacterStore((s) => s.character?.gridWidth ?? 32);
+  const gridDepth = useCharacterStore((s) => s.character?.gridDepth ?? 32);
 
   if (!mirrorAxis) return null;
 

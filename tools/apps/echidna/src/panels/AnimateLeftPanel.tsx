@@ -132,7 +132,7 @@ function BoneTree({ parts, parentId, depth, selected, onSelect, onReparent, drop
 
 export function AnimateLeftPanel() {
   useComponentRegistry('AnimateLeftPanel');
-  const parts = useCharacterStore((s) => s.characterParts);
+  const parts = useCharacterStore((s) => s.character?.characterParts ?? []);
   const selectedPart = useCharacterStore((s) => s.selectedPart);
   const setSelectedPart = useCharacterStore((s) => s.setSelectedPart);
   const addPart = useCharacterStore((s) => s.addPart);
@@ -145,7 +145,7 @@ export function AnimateLeftPanel() {
     setPartParent(childId, newParentId);
   };
 
-  const animations = useCharacterStore((s) => s.animations);
+  const animations = useCharacterStore((s) => s.character?.animations ?? {});
   const selectedAnimation = useCharacterStore((s) => s.selectedAnimation);
   const selectAnimation = useCharacterStore((s) => s.selectAnimation);
   const addAnimation = useCharacterStore((s) => s.addAnimation);

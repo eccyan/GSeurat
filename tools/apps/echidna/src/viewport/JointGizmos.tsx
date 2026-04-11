@@ -155,13 +155,13 @@ function DraggableJoint({ part, isSelected, jointPos, parentPos, onSelect }: {
 }
 
 export function JointGizmos() {
-  const characterParts = useCharacterStore((s) => s.characterParts);
+  const characterParts = useCharacterStore((s) => s.character?.characterParts ?? []);
   const selectedPart = useCharacterStore((s) => s.selectedPart);
   const showGizmos = useCharacterStore((s) => s.showGizmos);
   const setSelectedPart = useCharacterStore((s) => s.setSelectedPart);
   const previewPose = useCharacterStore((s) => s.previewPose);
   const selectedPose = useCharacterStore((s) => s.selectedPose);
-  const characterPoses = useCharacterStore((s) => s.characterPoses);
+  const characterPoses = useCharacterStore((s) => s.character?.characterPoses ?? {});
 
   const posedJoints = useMemo(() => {
     if (!previewPose || !selectedPose) return null;

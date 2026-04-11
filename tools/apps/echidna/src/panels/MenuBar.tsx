@@ -213,9 +213,9 @@ export function MenuBar() {
 
   const showGrid = useCharacterStore((s) => s.showGrid);
   const showGizmos = useCharacterStore((s) => s.showGizmos);
-  const voxels = useCharacterStore((s) => s.voxels);
-  const characterParts = useCharacterStore((s) => s.characterParts);
-  const characterName = useCharacterStore((s) => s.characterName);
+  const voxels = useCharacterStore((s) => s.character?.voxels ?? new Map());
+  const characterParts = useCharacterStore((s) => s.character?.characterParts ?? []);
+  const characterName = useCharacterStore((s) => s.character?.characterName ?? 'Untitled');
 
   const showToast = useCallback((message: string, type: 'success' | 'error' | 'loading', duration = 3000) => {
     if (toastTimer.current) clearTimeout(toastTimer.current);
@@ -227,18 +227,19 @@ export function MenuBar() {
 
   const pushToStaging = useCallback(async () => {
     const s = useCharacterStore.getState();
-    if (s.voxels.size === 0) return;
+    const char = s.character;
+    if (!char || char.voxels.size === 0) return;
 
     try {
-      const charId = s.characterName.replace(/\s+/g, '_').toLowerCase() || 'character';
-      const plyBlob = exportPly(s.voxels, s.gridWidth, s.gridDepth, s.characterParts);
+      const charId = char.characterName.replace(/\s+/g, '_').toLowerCase() || 'character';
+      const plyBlob = exportPly(char.voxels, char.gridWidth, char.gridDepth, char.characterParts);
       const manifest = buildManifest(
         charId,
         `${charId}.ply`,
         1.0,
-        s.characterParts,
-        s.characterPoses,
-        s.animations,
+        char.characterParts,
+        char.characterPoses,
+        char.animations,
       );
 
       await fetch(
@@ -279,8 +280,9 @@ export function MenuBar() {
     const store = useCharacterStore.getState();
     const data = store.saveProject();
     const json = JSON.stringify(data, null, 2);
-    if (store.currentFilename) {
-      download(new Blob([json], { type: 'application/json' }), store.currentFilename);
+    const currentFilename = store.character?.currentFilename ?? null;
+    if (currentFilename) {
+      download(new Blob([json], { type: 'application/json' }), currentFilename);
     } else {
       const name = data.characterName.replace(/\s+/g, '_').toLowerCase() || 'character';
       const filename = `${name}.echidna`;
@@ -361,10 +363,12 @@ export function MenuBar() {
 
   const handleExportCharacter = useCallback(() => {
     const s = useCharacterStore.getState();
-    const name = s.characterName.replace(/\s+/g, '_').toLowerCase() || 'character';
+    const char = s.character;
+    if (!char) return;
+    const name = char.characterName.replace(/\s+/g, '_').toLowerCase() || 'character';
 
     // Download PLY
-    const plyBlob = exportPly(s.voxels, s.gridWidth, s.gridDepth, s.characterParts);
+    const plyBlob = exportPly(char.voxels, char.gridWidth, char.gridDepth, char.characterParts);
     download(plyBlob, `${name}.ply`);
 
     // Download manifest JSON
@@ -372,9 +376,9 @@ export function MenuBar() {
       name,
       `${name}.ply`,
       1.0,
-      s.characterParts,
-      s.characterPoses,
-      s.animations,
+      char.characterParts,
+      char.characterPoses,
+      char.animations,
     );
     const manifestBlob = new Blob([JSON.stringify(manifest, null, 2)], { type: 'application/json' });
     download(manifestBlob, `${name}.manifest.json`);
@@ -382,21 +386,25 @@ export function MenuBar() {
 
   const handleExportPly = useCallback(() => {
     const s = useCharacterStore.getState();
-    const blob = exportPly(s.voxels, s.gridWidth, s.gridDepth, s.characterParts);
-    const name = s.characterName.replace(/\s+/g, '_').toLowerCase() || 'character';
+    const char = s.character;
+    if (!char) return;
+    const blob = exportPly(char.voxels, char.gridWidth, char.gridDepth, char.characterParts);
+    const name = char.characterName.replace(/\s+/g, '_').toLowerCase() || 'character';
     download(blob, `${name}.ply`);
   }, []);
 
   const handleExportManifest = useCallback(() => {
     const s = useCharacterStore.getState();
-    const name = s.characterName.replace(/\s+/g, '_').toLowerCase() || 'character';
+    const char = s.character;
+    if (!char) return;
+    const name = char.characterName.replace(/\s+/g, '_').toLowerCase() || 'character';
     const manifest = buildManifest(
       name,
       `${name}.ply`,
       1.0,
-      s.characterParts,
-      s.characterPoses,
-      s.animations,
+      char.characterParts,
+      char.characterPoses,
+      char.animations,
     );
     const blob = new Blob([JSON.stringify(manifest, null, 2)], { type: 'application/json' });
     download(blob, `${name}.manifest.json`);
@@ -404,7 +412,8 @@ export function MenuBar() {
 
   const handlePreviewInStaging = useCallback(async () => {
     const s = useCharacterStore.getState();
-    if (s.voxels.size === 0) {
+    const char = s.character;
+    if (!char || char.voxels.size === 0) {
       showToast('No voxels to preview', 'error');
       return;
     }
@@ -412,8 +421,8 @@ export function MenuBar() {
     showToast('Sending to Staging...', 'loading');
 
     try {
-      const charId = s.characterName.replace(/\s+/g, '_').toLowerCase() || 'character';
-      const plyBlob = exportPly(s.voxels, s.gridWidth, s.gridDepth, s.characterParts);
+      const charId = char.characterName.replace(/\s+/g, '_').toLowerCase() || 'character';
+      const plyBlob = exportPly(char.voxels, char.gridWidth, char.gridDepth, char.characterParts);
 
       // Upload PLY binary to bridge REST API
       const plyRes = await fetch(
@@ -444,20 +453,20 @@ export function MenuBar() {
 
       // Upload manifest JSON for animation playback
       // Joint positions must be centered to match PLY export centering
-      const halfW = s.gridWidth / 2;
+      const halfW = char.gridWidth / 2;
       let maxY = 0;
-      for (const [key] of s.voxels.entries()) {
+      for (const [key] of char.voxels.entries()) {
         const y = parseInt(key.split(',')[1], 10);
         if (y > maxY) maxY = y;
       }
       const halfH = maxY / 2;
-      const centeredParts = s.characterParts.map((p) => ({
+      const centeredParts = char.characterParts.map((p) => ({
         ...p,
         joint: [p.joint[0] - halfW, p.joint[1] - halfH, p.joint[2]] as [number, number, number],
       }));
       const manifest = buildManifest(
         charId, charId + '.ply', 1.0,
-        centeredParts, s.characterPoses, s.animations,
+        centeredParts, char.characterPoses, char.animations,
       );
       const manifestJson = JSON.stringify(manifest, null, 2);
       const manifestRes = await fetch(
@@ -573,7 +582,8 @@ export function MenuBar() {
 
   const handleExportCharacterToProject = useCallback(async () => {
     const s = useCharacterStore.getState();
-    if (s.voxels.size === 0) {
+    const char = s.character;
+    if (!char || char.voxels.size === 0) {
       showToast('No voxels to export', 'error');
       return;
     }
@@ -604,18 +614,18 @@ export function MenuBar() {
     const id = s.ensureCharacterId();
 
     // Build PLY
-    const ply = exportPly(s.voxels, s.gridWidth, s.gridDepth, s.characterParts);
+    const ply = exportPly(char.voxels, char.gridWidth, char.gridDepth, char.characterParts);
 
     // Build manifest with bone joints centered to match PLY centering
     // (same logic as pushToStaging — see lines ~436-447 above)
-    const halfW = s.gridWidth / 2;
+    const halfW = char.gridWidth / 2;
     let maxY = 0;
-    for (const [key] of s.voxels.entries()) {
+    for (const [key] of char.voxels.entries()) {
       const y = parseInt(key.split(',')[1], 10);
       if (y > maxY) maxY = y;
     }
     const halfH = maxY / 2;
-    const centeredParts = s.characterParts.map((p) => ({
+    const centeredParts = char.characterParts.map((p) => ({
       ...p,
       joint: [p.joint[0] - halfW, p.joint[1] - halfH, p.joint[2]] as [number, number, number],
     }));
@@ -624,8 +634,8 @@ export function MenuBar() {
       `${id}.ply`,
       1.0,
       centeredParts,
-      s.characterPoses,
-      s.animations,
+      char.characterPoses,
+      char.animations,
     );
 
     showToast('Exporting character…', 'loading');

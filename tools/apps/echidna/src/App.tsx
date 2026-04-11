@@ -154,13 +154,13 @@ export function App() {
         // Trigger save via store
         const data = store.saveProject();
         const json = JSON.stringify(data, null, 2);
-        const name = store.currentFilename ?? `${data.characterName.replace(/\s+/g, '_').toLowerCase() || 'character'}.echidna`;
+        const name = store.character?.currentFilename ?? `${data.characterName.replace(/\s+/g, '_').toLowerCase() || 'character'}.echidna`;
         const blob = new Blob([json], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url; a.download = name; a.click();
         URL.revokeObjectURL(url);
-        if (!store.currentFilename) store.setCurrentFilename(name);
+        if (!store.character?.currentFilename) store.setCurrentFilename(name);
         return;
       }
       if (meta && e.key === 'o') {

@@ -205,19 +205,19 @@ function interpolateRootPosition(
 export function VoxelMesh() {
   const meshRef = useRef<THREE.InstancedMesh>(null!);
   const groupRef = useRef<THREE.Group>(null!);
-  const voxels = useCharacterStore((s) => s.voxels);
-  const characterParts = useCharacterStore((s) => s.characterParts);
+  const voxels = useCharacterStore((s) => s.character?.voxels ?? new Map());
+  const characterParts = useCharacterStore((s) => s.character?.characterParts ?? []);
   const selectedPart = useCharacterStore((s) => s.selectedPart);
   const previewPose = useCharacterStore((s) => s.previewPose);
   const selectedPose = useCharacterStore((s) => s.selectedPose);
-  const characterPoses = useCharacterStore((s) => s.characterPoses);
+  const characterPoses = useCharacterStore((s) => s.character?.characterPoses ?? {});
   const yClip = useCharacterStore((s) => s.yClip);
   const colorByPart = useCharacterStore((s) => s.colorByPart);
   const partColors = useCharacterStore((s) => s.partColors);
   const boxSelection = useCharacterStore((s) => s.boxSelection);
   const isPlaying = useCharacterStore((s) => s.isPlaying);
   const selectedAnimation = useCharacterStore((s) => s.selectedAnimation);
-  const animations = useCharacterStore((s) => s.animations);
+  const animations = useCharacterStore((s) => s.character?.animations ?? {});
   const playbackTime = useCharacterStore((s) => s.playbackTime);
   const mode = useCharacterStore((s) => s.mode);
   const xrayMode = useCharacterStore((s) => s.xrayMode);
@@ -285,7 +285,7 @@ export function VoxelMesh() {
 
     // Accumulated root motion
     if (clip.rootMotion && clip.keyframes.length > 0 && groupRef.current) {
-      const poses = store.characterPoses;
+      const poses = store.character?.characterPoses ?? {};
       const kfs = clip.keyframes;
       const curPos = interpolateRootPosition(kfs, poses, newTime);
 
@@ -514,7 +514,7 @@ export function VoxelMesh() {
       store.pushUndo();
       const positions = brushPositions(x, y, z, store.brushSize);
       const keys = positions
-        .filter(([px, py, pz]) => store.voxels.has(voxelKey(px, py, pz)))
+        .filter(([px, py, pz]) => store.character?.voxels.has(voxelKey(px, py, pz)))
         .map(([px, py, pz]) => voxelKey(px, py, pz));
       store.assignVoxelsToPart(keys, partId);
       return;
@@ -564,7 +564,7 @@ export function VoxelMesh() {
         store.pushUndo();
         const positions = brushPositions(x, y, z, store.brushSize);
         const keys = positions
-          .filter(([px, py, pz]) => store.voxels.has(voxelKey(px, py, pz)))
+          .filter(([px, py, pz]) => store.character?.voxels.has(voxelKey(px, py, pz)))
           .map(([px, py, pz]) => voxelKey(px, py, pz));
         store.assignVoxelsToPart(keys, partId);
         break;
@@ -597,7 +597,7 @@ export function VoxelMesh() {
           const minY = Math.min(sy, y), maxY = Math.max(sy, y);
           const minZ = Math.min(sz, z), maxZ = Math.max(sz, z);
           const selected: VoxelKey[] = [];
-          for (const [vk] of store.voxels) {
+          for (const [vk] of store.character?.voxels ?? []) {
             const [vx, vy, vz] = parseKey(vk);
             if (vx >= minX && vx <= maxX && vy >= minY && vy <= maxY && vz >= minZ && vz <= maxZ) {
               selected.push(vk);

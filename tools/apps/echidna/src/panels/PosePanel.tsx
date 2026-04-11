@@ -30,8 +30,8 @@ const styles: Record<string, React.CSSProperties> = {
 };
 
 export function PosePanel() {
-  const parts = useCharacterStore((s) => s.characterParts);
-  const poses = useCharacterStore((s) => s.characterPoses);
+  const parts = useCharacterStore((s) => s.character?.characterParts ?? []);
+  const poses = useCharacterStore((s) => s.character?.characterPoses ?? {});
   const selectedPose = useCharacterStore((s) => s.selectedPose);
   const setSelectedPose = useCharacterStore((s) => s.setSelectedPose);
   const addPose = useCharacterStore((s) => s.addPose);

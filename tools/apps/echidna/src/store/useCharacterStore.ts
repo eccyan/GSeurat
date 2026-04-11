@@ -12,6 +12,8 @@ import type {
   AnimationKeyframe,
   ClipboardEntry,
   PlaybackMode,
+  Character,
+  CharacterListEntry,
 } from './types.js';
 import { migrateEchidnaFile, slugifyCharacterId, ECHIDNA_FILE_VERSION } from './types.js';
 import { voxelKey, parseKey, floodFill3D, extrudeLayer } from '../lib/voxelUtils.js';
@@ -67,24 +69,36 @@ function generatePartColors(parts: BodyPart[]): Record<string, [number, number, 
   return colors;
 }
 
+const DEFAULT_CHARACTER: Character = {
+  id: '',
+  characterName: 'Untitled',
+  gridWidth: 32,
+  gridDepth: 32,
+  voxels: new Map(),
+  characterParts: [],
+  characterPoses: {},
+  animations: {},
+  currentFilename: null,
+};
+
 export interface CharacterStoreState {
+  // Per-character slice (currently non-null — Task 19 will make it nullable)
+  character: Character | null;
+
+  // Global project state
+  projectRootHandle: FileSystemDirectoryHandle | null;
+  knownCharacters: CharacterListEntry[];
+  dirty: boolean;
+
   // App mode
   mode: AppMode;
-
-  // Voxels
-  voxels: Map<VoxelKey, Voxel>;
-  gridWidth: number;
-  gridDepth: number;
 
   // Tools
   activeTool: ToolType;
   activeColor: [number, number, number, number];
   brushSize: number;
 
-  // Character
-  characterName: string;
-  characterParts: BodyPart[];
-  characterPoses: Record<string, PoseData>;
+  // Selection (per-character UI state, but stays global for Phase 0.2)
   selectedPart: string | null;
   selectedPose: string | null;
   previewPose: boolean;
@@ -104,17 +118,11 @@ export interface CharacterStoreState {
   // Box selection
   boxSelection: VoxelKey[] | null;
 
-  // Animation
-  animations: Record<string, AnimationClip>;
+  // Animation playback (global UI state)
   selectedAnimation: string | null;
   playbackTime: number;
   isPlaying: boolean;
   playbackSpeed: number;
-
-  // File
-  characterId: string;
-  projectRootHandle: FileSystemDirectoryHandle | null;
-  currentFilename: string | null;
 
   // Undo / redo
   undoStack: Snapshot[];
@@ -221,19 +229,18 @@ export interface CharacterStoreState {
 }
 
 export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
-  mode: 'build',
+  character: DEFAULT_CHARACTER,
 
-  voxels: new Map(),
-  gridWidth: 32,
-  gridDepth: 32,
+  projectRootHandle: null,
+  knownCharacters: [],
+  dirty: false,
+
+  mode: 'build',
 
   activeTool: 'place',
   activeColor: [180, 130, 90, 255],
   brushSize: 1,
 
-  characterName: 'Untitled',
-  characterParts: [],
-  characterPoses: {},
   selectedPart: null,
   selectedPose: null,
   previewPose: false,
@@ -249,15 +256,10 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
 
   boxSelection: null,
 
-  animations: {},
   selectedAnimation: null,
   playbackTime: 0,
   isPlaying: false,
   playbackSpeed: 1,
-
-  characterId: '',
-  projectRootHandle: null,
-  currentFilename: null,
 
   undoStack: [],
   redoStack: [],
@@ -274,108 +276,126 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
 
   // ── Undo ──
   pushUndo: () => {
-    const { voxels, characterParts, undoStack } = get();
-    const snap = makeSnapshot(voxels, characterParts);
-    set({ undoStack: [...undoStack.slice(-49), snap], redoStack: [] });
+    const s = get();
+    if (!s.character) return;
+    const snap = makeSnapshot(s.character.voxels, s.character.characterParts);
+    set({ undoStack: [...s.undoStack.slice(-49), snap], redoStack: [] });
   },
 
   undo: () => {
-    const { undoStack, voxels, characterParts } = get();
-    if (undoStack.length === 0) return;
-    const current = makeSnapshot(voxels, characterParts);
-    const prev = undoStack[undoStack.length - 1];
+    const s = get();
+    if (!s.character) return;
+    if (s.undoStack.length === 0) return;
+    const current = makeSnapshot(s.character.voxels, s.character.characterParts);
+    const prev = s.undoStack[s.undoStack.length - 1];
     const restored = restoreSnapshot(prev);
     set({
-      ...restored,
-      undoStack: undoStack.slice(0, -1),
+      character: {
+        ...s.character,
+        voxels: restored.voxels,
+        characterParts: restored.characterParts,
+      },
+      undoStack: s.undoStack.slice(0, -1),
       redoStack: [...get().redoStack, current],
     });
   },
 
   redo: () => {
-    const { redoStack, voxels, characterParts } = get();
-    if (redoStack.length === 0) return;
-    const current = makeSnapshot(voxels, characterParts);
-    const next = redoStack[redoStack.length - 1];
+    const s = get();
+    if (!s.character) return;
+    if (s.redoStack.length === 0) return;
+    const current = makeSnapshot(s.character.voxels, s.character.characterParts);
+    const next = s.redoStack[s.redoStack.length - 1];
     const restored = restoreSnapshot(next);
     set({
-      ...restored,
-      redoStack: redoStack.slice(0, -1),
+      character: {
+        ...s.character,
+        voxels: restored.voxels,
+        characterParts: restored.characterParts,
+      },
+      redoStack: s.redoStack.slice(0, -1),
       undoStack: [...get().undoStack, current],
     });
   },
 
   // ── Voxel actions (with mirror support) ──
   placeVoxel: (x, y, z) => {
-    const { voxels, activeColor, mirrorAxis, gridWidth } = get();
-    const next = new Map(voxels);
-    next.set(voxelKey(x, y, z), { color: [...activeColor] });
-    const m = mirrorPos(x, y, z, mirrorAxis, gridWidth);
-    if (m) next.set(voxelKey(m[0], m[1], m[2]), { color: [...activeColor] });
-    set({ voxels: next });
+    const s = get();
+    if (!s.character) return;
+    const next = new Map(s.character.voxels);
+    next.set(voxelKey(x, y, z), { color: [...s.activeColor] });
+    const m = mirrorPos(x, y, z, s.mirrorAxis, s.character.gridWidth);
+    if (m) next.set(voxelKey(m[0], m[1], m[2]), { color: [...s.activeColor] });
+    set({ character: { ...s.character, voxels: next } });
   },
 
   placeVoxels: (positions) => {
-    const { voxels, activeColor, mirrorAxis, gridWidth } = get();
-    const next = new Map(voxels);
+    const s = get();
+    if (!s.character) return;
+    const next = new Map(s.character.voxels);
     for (const [x, y, z] of positions) {
-      next.set(voxelKey(x, y, z), { color: [...activeColor] });
-      const m = mirrorPos(x, y, z, mirrorAxis, gridWidth);
-      if (m) next.set(voxelKey(m[0], m[1], m[2]), { color: [...activeColor] });
+      next.set(voxelKey(x, y, z), { color: [...s.activeColor] });
+      const m = mirrorPos(x, y, z, s.mirrorAxis, s.character.gridWidth);
+      if (m) next.set(voxelKey(m[0], m[1], m[2]), { color: [...s.activeColor] });
     }
-    set({ voxels: next });
+    set({ character: { ...s.character, voxels: next } });
   },
 
   /** Batch-place voxels in a single state update. Programmatic API — does not apply mirror axis. */
   batchPlaceVoxels: (batch) => {
-    const { voxels, activeColor } = get();
-    const newVoxels = new Map(voxels);
+    const s = get();
+    if (!s.character) return;
+    const newVoxels = new Map(s.character.voxels);
     for (const { x, y, z, color } of batch) {
       const key = voxelKey(x, y, z);
-      newVoxels.set(key, { color: color ? [...color] : [...activeColor] });
+      newVoxels.set(key, { color: color ? [...color] : [...s.activeColor] });
     }
-    set({ voxels: newVoxels });
+    set({ character: { ...s.character, voxels: newVoxels } });
   },
 
   paintVoxel: (x, y, z) => {
-    const { voxels, activeColor, mirrorAxis, gridWidth } = get();
+    const s = get();
+    if (!s.character) return;
     const key = voxelKey(x, y, z);
-    if (!voxels.has(key)) return;
-    const next = new Map(voxels);
-    next.set(key, { color: [...activeColor] });
-    const m = mirrorPos(x, y, z, mirrorAxis, gridWidth);
+    if (!s.character.voxels.has(key)) return;
+    const next = new Map(s.character.voxels);
+    next.set(key, { color: [...s.activeColor] });
+    const m = mirrorPos(x, y, z, s.mirrorAxis, s.character.gridWidth);
     if (m) {
       const mk = voxelKey(m[0], m[1], m[2]);
-      if (next.has(mk)) next.set(mk, { color: [...activeColor] });
+      if (next.has(mk)) next.set(mk, { color: [...s.activeColor] });
     }
-    set({ voxels: next });
+    set({ character: { ...s.character, voxels: next } });
   },
 
   eraseVoxel: (x, y, z) => {
-    const { voxels, mirrorAxis, gridWidth } = get();
+    const s = get();
+    if (!s.character) return;
     const key = voxelKey(x, y, z);
-    if (!voxels.has(key)) return;
-    const next = new Map(voxels);
+    if (!s.character.voxels.has(key)) return;
+    const next = new Map(s.character.voxels);
     next.delete(key);
-    const m = mirrorPos(x, y, z, mirrorAxis, gridWidth);
+    const m = mirrorPos(x, y, z, s.mirrorAxis, s.character.gridWidth);
     if (m) next.delete(voxelKey(m[0], m[1], m[2]));
-    set({ voxels: next });
+    set({ character: { ...s.character, voxels: next } });
   },
 
   eraseVoxels: (positions) => {
-    const { voxels, mirrorAxis, gridWidth } = get();
-    const next = new Map(voxels);
+    const s = get();
+    if (!s.character) return;
+    const next = new Map(s.character.voxels);
     for (const [x, y, z] of positions) {
       next.delete(voxelKey(x, y, z));
-      const m = mirrorPos(x, y, z, mirrorAxis, gridWidth);
+      const m = mirrorPos(x, y, z, s.mirrorAxis, s.character.gridWidth);
       if (m) next.delete(voxelKey(m[0], m[1], m[2]));
     }
-    set({ voxels: next });
+    set({ character: { ...s.character, voxels: next } });
   },
 
   eyedrop: (x, y, z) => {
-    const { voxels } = get();
-    const v = voxels.get(voxelKey(x, y, z));
+    const s = get();
+    if (!s.character) return;
+    const v = s.character.voxels.get(voxelKey(x, y, z));
     if (v) set({ activeColor: [...v.color] });
   },
 
@@ -408,7 +428,8 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
 
   // ── Part color coding ──
   setColorByPart: (v) => {
-    const colors = v ? generatePartColors(get().characterParts) : {};
+    const parts = get().character?.characterParts ?? [];
+    const colors = v ? generatePartColors(parts) : {};
     set({ colorByPart: v, partColors: colors });
   },
 
@@ -416,61 +437,81 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
   setBoxSelection: (keys) => set({ boxSelection: keys }),
 
   // ── Character actions ──
-  setCharacterName: (name) => set({ characterName: name }),
+  setCharacterName: (name) => {
+    const s = get();
+    if (!s.character) return;
+    set({ character: { ...s.character, characterName: name } });
+  },
 
   addPart: (name) => {
-    const parts = get().characterParts;
+    const s = get();
+    if (!s.character) return;
+    const parts = s.character.characterParts;
     if (parts.some((p) => p.id === name)) return;
     const part: BodyPart = {
       id: name,
       name: name,
-      parent: get().selectedPart ?? (parts.length > 0 ? parts[0].id : null),
+      parent: s.selectedPart ?? (parts.length > 0 ? parts[0].id : null),
       joint: [0, 0, 0],
       voxelKeys: [],
     };
     const newParts = [...parts, part];
     set({
-      characterParts: newParts,
+      character: { ...s.character, characterParts: newParts },
       selectedPart: name,
-      partColors: get().colorByPart ? generatePartColors(newParts) : get().partColors,
+      partColors: s.colorByPart ? generatePartColors(newParts) : s.partColors,
     });
   },
 
   removePart: (id) => {
-    const parts = get().characterParts.filter((p) => p.id !== id);
+    const s = get();
+    if (!s.character) return;
+    const parts = s.character.characterParts.filter((p) => p.id !== id);
     const updated = parts.map((p) => (p.parent === id ? { ...p, parent: null } : p));
-    const poses = { ...get().characterPoses };
+    const poses = { ...s.character.characterPoses };
     for (const name of Object.keys(poses)) {
       const rotations = { ...poses[name].rotations };
       delete rotations[id];
       poses[name] = { rotations };
     }
     set({
-      characterParts: updated,
-      characterPoses: poses,
-      selectedPart: get().selectedPart === id ? null : get().selectedPart,
-      partColors: get().colorByPart ? generatePartColors(updated) : get().partColors,
+      character: { ...s.character, characterParts: updated, characterPoses: poses },
+      selectedPart: s.selectedPart === id ? null : s.selectedPart,
+      partColors: s.colorByPart ? generatePartColors(updated) : s.partColors,
     });
   },
 
   updatePartJoint: (id, joint) => {
+    const s = get();
+    if (!s.character) return;
     set({
-      characterParts: get().characterParts.map((p) =>
-        p.id === id ? { ...p, joint } : p,
-      ),
+      character: {
+        ...s.character,
+        characterParts: s.character.characterParts.map((p) =>
+          p.id === id ? { ...p, joint } : p,
+        ),
+      },
     });
   },
 
   setPartParent: (id, parentId) => {
+    const s = get();
+    if (!s.character) return;
     set({
-      characterParts: get().characterParts.map((p) =>
-        p.id === id ? { ...p, parent: parentId } : p,
-      ),
+      character: {
+        ...s.character,
+        characterParts: s.character.characterParts.map((p) =>
+          p.id === id ? { ...p, parent: parentId } : p,
+        ),
+      },
     });
   },
 
   assignVoxelsToPart: (keys, partId) => {
-    const { mirrorAxis, gridWidth, voxels: voxelMap } = get();
+    const s = get();
+    if (!s.character) return;
+    const { mirrorAxis } = s;
+    const { voxels: voxelMap, gridWidth, characterParts } = s.character;
     const allKeys = [...keys];
     if (mirrorAxis) {
       for (const k of keys) {
@@ -484,60 +525,73 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
     }
     const keySet = new Set(allKeys);
     set({
-      characterParts: get().characterParts.map((p) => {
-        if (p.id === partId) {
-          const existing = new Set(p.voxelKeys);
-          const merged = [...p.voxelKeys, ...allKeys.filter((k) => !existing.has(k))];
-          return { ...p, voxelKeys: merged };
-        }
-        const filtered = p.voxelKeys.filter((k) => !keySet.has(k));
-        return filtered.length !== p.voxelKeys.length ? { ...p, voxelKeys: filtered } : p;
-      }),
+      character: {
+        ...s.character,
+        characterParts: characterParts.map((p) => {
+          if (p.id === partId) {
+            const existing = new Set(p.voxelKeys);
+            const merged = [...p.voxelKeys, ...allKeys.filter((k) => !existing.has(k))];
+            return { ...p, voxelKeys: merged };
+          }
+          const filtered = p.voxelKeys.filter((k) => !keySet.has(k));
+          return filtered.length !== p.voxelKeys.length ? { ...p, voxelKeys: filtered } : p;
+        }),
+      },
     });
   },
 
   setSelectedPart: (id) => set({ selectedPart: id }),
 
   addPose: (name) => {
-    const poses = { ...get().characterPoses };
+    const s = get();
+    if (!s.character) return;
+    const poses = { ...s.character.characterPoses };
     if (!poses[name]) {
       poses[name] = { rotations: {} };
     }
-    set({ characterPoses: poses, selectedPose: name });
+    set({ character: { ...s.character, characterPoses: poses }, selectedPose: name });
   },
 
   removePose: (name) => {
-    const poses = { ...get().characterPoses };
+    const s = get();
+    if (!s.character) return;
+    const poses = { ...s.character.characterPoses };
     delete poses[name];
     set({
-      characterPoses: poses,
-      selectedPose: get().selectedPose === name ? null : get().selectedPose,
+      character: { ...s.character, characterPoses: poses },
+      selectedPose: s.selectedPose === name ? null : s.selectedPose,
     });
   },
 
   setSelectedPose: (name) => set({ selectedPose: name }),
 
   updatePoseRotation: (poseName, partId, rotation) => {
-    const poses = { ...get().characterPoses };
+    const s = get();
+    if (!s.character) return;
+    const poses = { ...s.character.characterPoses };
     const pose = poses[poseName] ?? { rotations: {} };
     poses[poseName] = { rotations: { ...pose.rotations, [partId]: rotation } };
-    set({ characterPoses: poses });
+    set({ character: { ...s.character, characterPoses: poses } });
   },
 
   updatePoseRootPosition: (poseName, position) => {
-    const poses = { ...get().characterPoses };
+    const s = get();
+    if (!s.character) return;
+    const poses = { ...s.character.characterPoses };
     const pose = poses[poseName];
     if (pose) {
       poses[poseName] = { ...pose, rootPosition: position };
     }
-    set({ characterPoses: poses });
+    set({ character: { ...s.character, characterPoses: poses } });
   },
 
   setPreviewPose: (on) => set({ previewPose: on }),
 
   importVoxModels: (models) => {
-    const voxels = new Map(get().voxels);
-    const parts: BodyPart[] = [...get().characterParts];
+    const s = get();
+    if (!s.character) return;
+    const voxels = new Map(s.character.voxels);
+    const parts: BodyPart[] = [...s.character.characterParts];
 
     for (const model of models) {
       const keys: VoxelKey[] = [];
@@ -554,17 +608,21 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
       });
     }
 
-    set({ voxels, characterParts: parts });
+    set({ character: { ...s.character, voxels, characterParts: parts } });
   },
 
   importFromPly: (voxels, parts, gridSize) => {
+    const s = get();
     set({
-      voxels,
-      characterParts: parts,
-      gridWidth: gridSize,
-      gridDepth: gridSize,
-      characterPoses: {},
-      animations: {},
+      character: {
+        ...(s.character ?? DEFAULT_CHARACTER),
+        voxels,
+        characterParts: parts,
+        gridWidth: gridSize,
+        gridDepth: gridSize,
+        characterPoses: {},
+        animations: {},
+      },
       selectedPart: null,
       selectedPose: null,
       selectedAnimation: null,
@@ -576,13 +634,17 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
   },
 
   importFromObj: (voxels, parts, gridSize) => {
+    const s = get();
     set({
-      voxels,
-      characterParts: parts,
-      gridWidth: gridSize,
-      gridDepth: gridSize,
-      characterPoses: {},
-      animations: {},
+      character: {
+        ...(s.character ?? DEFAULT_CHARACTER),
+        voxels,
+        characterParts: parts,
+        gridWidth: gridSize,
+        gridDepth: gridSize,
+        characterPoses: {},
+        animations: {},
+      },
       selectedPart: null,
       selectedPose: null,
       selectedAnimation: null,
@@ -595,24 +657,29 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
 
   // ── Animation actions ──
   addAnimation: (name) => {
-    const anims = { ...get().animations };
+    const s = get();
+    if (!s.character) return;
+    const anims = { ...s.character.animations };
     if (!anims[name]) {
       anims[name] = { name, keyframes: [], duration: 1, playbackMode: 'loop' };
     }
-    set({ animations: anims, selectedAnimation: name });
+    set({ character: { ...s.character, animations: anims }, selectedAnimation: name });
   },
 
   removeAnimation: (name) => {
-    const anims = { ...get().animations };
+    const s = get();
+    if (!s.character) return;
+    const anims = { ...s.character.animations };
     delete anims[name];
     set({
-      animations: anims,
-      selectedAnimation: get().selectedAnimation === name ? null : get().selectedAnimation,
+      character: { ...s.character, animations: anims },
+      selectedAnimation: s.selectedAnimation === name ? null : s.selectedAnimation,
     });
   },
 
   selectAnimation: (name) => {
-    const clip = name ? get().animations[name] : null;
+    const s = get();
+    const clip = name ? (s.character?.animations[name] ?? null) : null;
     set({
       selectedAnimation: name,
       playbackTime: 0,
@@ -622,59 +689,73 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
   },
 
   addKeyframe: (animName, keyframe) => {
-    const anims = { ...get().animations };
+    const s = get();
+    if (!s.character) return;
+    const anims = { ...s.character.animations };
     const clip = anims[animName];
     if (!clip) return;
     const kf = { ...keyframe, easing: keyframe.easing ?? ('step' as const) };
     const keyframes = [...clip.keyframes, kf].sort((a, b) => a.time - b.time);
     anims[animName] = { ...clip, keyframes };
-    set({ animations: anims });
+    set({ character: { ...s.character, animations: anims } });
   },
 
   removeKeyframe: (animName, index) => {
-    const anims = { ...get().animations };
+    const s = get();
+    if (!s.character) return;
+    const anims = { ...s.character.animations };
     const clip = anims[animName];
     if (!clip) return;
     const keyframes = clip.keyframes.filter((_, i) => i !== index);
     anims[animName] = { ...clip, keyframes };
-    set({ animations: anims });
+    set({ character: { ...s.character, animations: anims } });
   },
 
   updateKeyframeEasing: (animName, index, easing) => {
-    const anims = { ...get().animations };
+    const s = get();
+    if (!s.character) return;
+    const anims = { ...s.character.animations };
     const clip = anims[animName];
     if (!clip) return;
     const keyframes = clip.keyframes.map((kf, i) => i === index ? { ...kf, easing } : kf);
     anims[animName] = { ...clip, keyframes };
-    set({ animations: anims });
+    set({ character: { ...s.character, animations: anims } });
   },
 
   updateAnimationDuration: (animName, duration) => {
-    const anims = { ...get().animations };
+    const s = get();
+    if (!s.character) return;
+    const anims = { ...s.character.animations };
     const clip = anims[animName];
     if (!clip) return;
     anims[animName] = { ...clip, duration };
-    set({ animations: anims });
+    set({ character: { ...s.character, animations: anims } });
   },
 
   updateAnimationPlaybackMode: (animName, mode) => {
-    const anims = { ...get().animations };
+    const s = get();
+    if (!s.character) return;
+    const anims = { ...s.character.animations };
     const clip = anims[animName];
     if (!clip) return;
     anims[animName] = { ...clip, playbackMode: mode };
-    set({ animations: anims });
+    set({ character: { ...s.character, animations: anims } });
   },
 
   updateAnimationRootMotion: (animName, enabled) => {
-    const anims = { ...get().animations };
+    const s = get();
+    if (!s.character) return;
+    const anims = { ...s.character.animations };
     const clip = anims[animName];
     if (!clip) return;
     anims[animName] = { ...clip, rootMotion: enabled };
-    set({ animations: anims });
+    set({ character: { ...s.character, animations: anims } });
   },
 
   autoCenterJoint: (partId) => {
-    const { characterParts, voxels } = get();
+    const s = get();
+    if (!s.character) return;
+    const { characterParts, voxels } = s.character;
     const part = characterParts.find((p) => p.id === partId);
     if (!part || part.voxelKeys.length === 0) return;
     let jx = 0, jy = 0, jz = 0;
@@ -685,7 +766,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
     const n = part.voxelKeys.length;
     const joint: [number, number, number] = [Math.round(jx / n), Math.round(jy / n), Math.round(jz / n)];
     const parts = characterParts.map((p) => p.id === partId ? { ...p, joint } : p);
-    set({ characterParts: parts });
+    set({ character: { ...s.character, characterParts: parts } });
   },
 
   setPlaybackTime: (time) => set({ playbackTime: time }),
@@ -693,27 +774,36 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
   setPlaybackSpeed: (speed) => set({ playbackSpeed: speed }),
 
   // ── File actions ──
-  setCurrentFilename: (name) => set({ currentFilename: name }),
+  setCurrentFilename: (name) => {
+    const s = get();
+    if (!s.character) return;
+    set({ character: { ...s.character, currentFilename: name } });
+  },
   setProjectRootHandle: (h) => set({ projectRootHandle: h }),
   ensureCharacterId: () => {
     const s = get();
-    if (s.characterId.length > 0) return s.characterId;
-    const id = slugifyCharacterId(s.characterName);
-    set({ characterId: id });
+    const char = s.character;
+    if (!char) return 'character';
+    if (char.id.length > 0) return char.id;
+    const id = slugifyCharacterId(char.characterName);
+    set({ character: { ...char, id } });
     return id;
   },
 
   newCharacter: (gridSize?: number) => {
     const size = gridSize ?? 32;
     set({
-      characterId: '',
-      voxels: new Map(),
-      gridWidth: size,
-      gridDepth: size,
-      characterName: 'Untitled',
-      characterParts: [],
-      characterPoses: {},
-      animations: {},
+      character: {
+        id: '',
+        voxels: new Map(),
+        gridWidth: size,
+        gridDepth: size,
+        characterName: 'Untitled',
+        characterParts: [],
+        characterPoses: {},
+        animations: {},
+        currentFilename: null,
+      },
       selectedPart: null,
       selectedPose: null,
       selectedAnimation: null,
@@ -729,7 +819,9 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
   },
 
   resizeGrid: (size: number) => {
-    const { voxels, characterParts, gridWidth } = get();
+    const s = get();
+    if (!s.character) return;
+    const { voxels, characterParts, gridWidth } = s.character;
     if (size === gridWidth) return;
     const next = new Map<VoxelKey, Voxel>();
     for (const [key, vox] of voxels) {
@@ -745,27 +837,28 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
         return x >= 0 && x < size && z >= 0 && z < size;
       }),
     }));
-    set({ voxels: next, gridWidth: size, gridDepth: size, characterParts: nextParts });
+    set({ character: { ...s.character, voxels: next, gridWidth: size, gridDepth: size, characterParts: nextParts } });
   },
 
   saveProject: () => {
     const id = get().ensureCharacterId();
     const s = get();
+    const char = s.character ?? DEFAULT_CHARACTER;
     const voxelArr: EchidnaFile['voxels'] = [];
-    for (const [key, vox] of s.voxels) {
+    for (const [key, vox] of char.voxels) {
       const [x, y, z] = parseKey(key);
       voxelArr.push({ x, y, z, r: vox.color[0], g: vox.color[1], b: vox.color[2], a: vox.color[3] });
     }
     return {
       version: ECHIDNA_FILE_VERSION,
       id,
-      characterName: s.characterName,
-      gridWidth: s.gridWidth,
-      gridDepth: s.gridDepth,
+      characterName: char.characterName,
+      gridWidth: char.gridWidth,
+      gridDepth: char.gridDepth,
       voxels: voxelArr,
-      parts: s.characterParts,
-      poses: s.characterPoses,
-      animations: Object.keys(s.animations).length > 0 ? s.animations : undefined,
+      parts: char.characterParts,
+      poses: char.characterPoses,
+      animations: Object.keys(char.animations).length > 0 ? char.animations : undefined,
     };
   },
 
@@ -799,14 +892,17 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
       }
     }
     set({
-      characterId: data.id,
-      voxels,
-      gridWidth: data.gridWidth,
-      gridDepth: data.gridDepth,
-      characterName: data.characterName,
-      characterParts: parts,
-      characterPoses: data.poses,
-      animations,
+      character: {
+        id: data.id,
+        voxels,
+        gridWidth: data.gridWidth,
+        gridDepth: data.gridDepth,
+        characterName: data.characterName,
+        characterParts: parts,
+        characterPoses: data.poses,
+        animations,
+        currentFilename: get().character?.currentFilename ?? null,
+      },
       selectedPart: null,
       selectedPose: null,
       selectedAnimation: null,
@@ -824,40 +920,46 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
   setYLevelLock: (y) => set({ yLevelLock: y }),
 
   fillVoxels: (startKey) => {
-    const { voxels, activeColor, mirrorAxis, gridWidth } = get();
+    const s = get();
+    if (!s.character) return;
+    const { voxels, gridWidth } = s.character;
     const keys = floodFill3D(voxels, startKey);
     if (keys.length === 0) return;
     const next = new Map(voxels);
     for (const key of keys) {
-      next.set(key, { color: [...activeColor] });
+      next.set(key, { color: [...s.activeColor] });
       const [x, y, z] = parseKey(key);
-      const m = mirrorPos(x, y, z, mirrorAxis, gridWidth);
+      const m = mirrorPos(x, y, z, s.mirrorAxis, gridWidth);
       if (m) {
         const mk = voxelKey(m[0], m[1], m[2]);
-        if (next.has(mk)) next.set(mk, { color: [...activeColor] });
+        if (next.has(mk)) next.set(mk, { color: [...s.activeColor] });
       }
     }
-    set({ voxels: next });
+    set({ character: { ...s.character, voxels: next } });
   },
 
   extrudeSelection: (dy) => {
-    const { voxels, boxSelection, lassoSelection, mirrorAxis, gridWidth } = get();
-    const sel = boxSelection ?? lassoSelection;
+    const s = get();
+    if (!s.character) return;
+    const { voxels, gridWidth } = s.character;
+    const sel = s.boxSelection ?? s.lassoSelection;
     if (!sel || sel.length === 0) return;
     const results = extrudeLayer(voxels, sel, dy);
     if (results.length === 0) return;
     const next = new Map(voxels);
     for (const { x, y, z, color } of results) {
       next.set(voxelKey(x, y, z), { color });
-      const m = mirrorPos(x, y, z, mirrorAxis, gridWidth);
+      const m = mirrorPos(x, y, z, s.mirrorAxis, gridWidth);
       if (m) next.set(voxelKey(m[0], m[1], m[2]), { color });
     }
-    set({ voxels: next });
+    set({ character: { ...s.character, voxels: next } });
   },
 
   copySelection: () => {
-    const { voxels, boxSelection, lassoSelection } = get();
-    const sel = boxSelection ?? lassoSelection;
+    const s = get();
+    if (!s.character) return;
+    const { voxels } = s.character;
+    const sel = s.boxSelection ?? s.lassoSelection;
     if (!sel || sel.length === 0) return;
     let cx = 0, cy = 0, cz = 0;
     for (const key of sel) {
@@ -878,48 +980,52 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
   },
 
   pasteClipboard: (cx, cy, cz) => {
-    const { clipboard, voxels, mirrorAxis, gridWidth } = get();
+    const s = get();
+    if (!s.character) return;
+    const { clipboard } = s;
     if (!clipboard || clipboard.length === 0) return;
-    const next = new Map(voxels);
+    const next = new Map(s.character.voxels);
     for (const { dx, dy, dz, color } of clipboard) {
       const x = cx + dx, y = cy + dy, z = cz + dz;
       next.set(voxelKey(x, y, z), { color: [...color] });
-      const m = mirrorPos(x, y, z, mirrorAxis, gridWidth);
+      const m = mirrorPos(x, y, z, s.mirrorAxis, s.character.gridWidth);
       if (m) next.set(voxelKey(m[0], m[1], m[2]), { color: [...color] });
     }
-    set({ voxels: next });
+    set({ character: { ...s.character, voxels: next } });
   },
 
   deleteSelection: () => {
-    const { voxels, boxSelection, lassoSelection, mirrorAxis, gridWidth } = get();
-    const sel = boxSelection ?? lassoSelection;
+    const s = get();
+    if (!s.character) return;
+    const sel = s.boxSelection ?? s.lassoSelection;
     if (!sel || sel.length === 0) return;
-    const next = new Map(voxels);
+    const next = new Map(s.character.voxels);
     for (const key of sel) {
       next.delete(key);
       const [x, y, z] = parseKey(key);
-      const m = mirrorPos(x, y, z, mirrorAxis, gridWidth);
+      const m = mirrorPos(x, y, z, s.mirrorAxis, s.character.gridWidth);
       if (m) next.delete(voxelKey(m[0], m[1], m[2]));
     }
-    set({ voxels: next, boxSelection: null, lassoSelection: null });
+    set({ character: { ...s.character, voxels: next }, boxSelection: null, lassoSelection: null });
   },
 
   recolorSelection: () => {
-    const { voxels, boxSelection, lassoSelection, activeColor, mirrorAxis, gridWidth } = get();
-    const sel = boxSelection ?? lassoSelection;
+    const s = get();
+    if (!s.character) return;
+    const sel = s.boxSelection ?? s.lassoSelection;
     if (!sel || sel.length === 0) return;
-    const next = new Map(voxels);
+    const next = new Map(s.character.voxels);
     for (const key of sel) {
       if (!next.has(key)) continue;
-      next.set(key, { color: [...activeColor] });
+      next.set(key, { color: [...s.activeColor] });
       const [x, y, z] = parseKey(key);
-      const m = mirrorPos(x, y, z, mirrorAxis, gridWidth);
+      const m = mirrorPos(x, y, z, s.mirrorAxis, s.character.gridWidth);
       if (m) {
         const mk = voxelKey(m[0], m[1], m[2]);
-        if (next.has(mk)) next.set(mk, { color: [...activeColor] });
+        if (next.has(mk)) next.set(mk, { color: [...s.activeColor] });
       }
     }
-    set({ voxels: next });
+    set({ character: { ...s.character, voxels: next } });
   },
 
   setLassoSelection: (keys) => set({ lassoSelection: keys }),
