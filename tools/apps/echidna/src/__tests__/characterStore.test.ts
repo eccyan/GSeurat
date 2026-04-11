@@ -165,4 +165,29 @@ describe('useCharacterStore.openCharacter', () => {
     expect(s.redoStack).toEqual([]);
     expect(s.boxSelection).toBeNull();
   });
+
+  it('refreshes knownCharacters and leaves state.character unchanged when file is missing', async () => {
+    // Seed an empty project root — no .echidna files at all
+    const root = testing.makeRoot();
+    await root.getDirectoryHandle('tools_data', { create: true });
+    // Not creating echidna_saves — opening any id will hit NotFoundError
+
+    // Seed a stale known-characters list with a phantom entry, plus a
+    // distinct existing character so we can detect unwanted reset.
+    const existingChar = useCharacterStore.getState().character;
+    useCharacterStore.setState({
+      projectRootHandle: root as unknown as FileSystemDirectoryHandle,
+      knownCharacters: [
+        { id: 'ghost', name: 'Ghost', lastModified: 0 },
+      ],
+    });
+
+    await useCharacterStore.getState().openCharacter('ghost');
+
+    const s = useCharacterStore.getState();
+    // knownCharacters has been refreshed — the ghost entry dropped
+    expect(s.knownCharacters).toEqual([]);
+    // state.character is unchanged (still whatever it was before the call)
+    expect(s.character).toEqual(existingChar);
+  });
 });
