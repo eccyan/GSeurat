@@ -933,7 +933,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
     // Clicking the already-current row is a no-op.
     if (s.character?.id === id) return;
 
-    const currentHasWork = s.dirty || s.undoStack.length > 0;
+    const currentHasWork = s.dirty || s.undoStack.length > 0 || s.redoStack.length > 0;
     if (currentHasWork && s.character) {
       const target = s.knownCharacters.find((c) => c.id === id);
       const decision = await confirm({
@@ -997,14 +997,10 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
         dirty: true,
       }));
     } else {
-      // Non-current character — persist directly
+      // Non-current character — persist directly and refresh list
       try {
         await renameEchidnaProject(handle, id, newName);
-        set((state) => ({
-          knownCharacters: state.knownCharacters.map((c) =>
-            c.id === id ? { ...c, name: newName } : c,
-          ),
-        }));
+        await get().listCharacters();
       } catch (e) {
         console.error(`[echidna] renameCharacter failed for ${id}:`, e);
       }
@@ -1037,12 +1033,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
 
     try {
       await duplicateEchidnaProject(handle, sourceId, newId, newName);
-      set((state) => ({
-        knownCharacters: [
-          ...state.knownCharacters,
-          { id: newId, name: newName, lastModified: Date.now() },
-        ],
-      }));
+      await get().listCharacters();
     } catch (e) {
       console.error(`[echidna] duplicateCharacter failed:`, e);
     }

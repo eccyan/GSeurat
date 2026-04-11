@@ -125,6 +125,8 @@ export function CharactersPanel({ onNewCharacter }: Props) {
   const knownCharacters = useCharacterStore((s) => s.knownCharacters);
   const currentId = useCharacterStore((s) => s.character?.id ?? null);
   const dirty = useCharacterStore((s) => s.dirty);
+  const currentCharacterName = useCharacterStore((s) => s.character?.characterName ?? '');
+  const undoDepth = useCharacterStore((s) => s.undoStack.length);
   const requestOpenCharacter = useCharacterStore((s) => s.requestOpenCharacter);
   const renameCharacter = useCharacterStore((s) => s.renameCharacter);
   const duplicateCharacter = useCharacterStore((s) => s.duplicateCharacter);
@@ -270,9 +272,9 @@ export function CharactersPanel({ onNewCharacter }: Props) {
       {/* Dialogs */}
       {activeDialog?.kind === 'switch' && (
         <SwitchCharacterDialog
-          currentName={useCharacterStore.getState().character?.characterName ?? ''}
+          currentName={currentCharacterName}
           targetName={knownCharacters.find((c) => c.id === activeDialog.targetId)?.name ?? ''}
-          undoDepth={useCharacterStore.getState().undoStack.length}
+          undoDepth={undoDepth}
           onDecide={handleSwitchDecision}
         />
       )}
