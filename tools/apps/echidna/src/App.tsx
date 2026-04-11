@@ -206,16 +206,7 @@ export function App() {
       }
       if (meta && e.key === 's' && !e.shiftKey) {
         e.preventDefault();
-        // Trigger save via store
-        const data = store.saveProject();
-        const json = JSON.stringify(data, null, 2);
-        const name = store.character?.currentFilename ?? `${data.characterName.replace(/\s+/g, '_').toLowerCase() || 'character'}.echidna`;
-        const blob = new Blob([json], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url; a.download = name; a.click();
-        URL.revokeObjectURL(url);
-        if (!store.character?.currentFilename) store.setCurrentFilename(name);
+        void store.save();
         return;
       }
       if (meta && e.key === 'o') {
