@@ -18,6 +18,9 @@ public:
     VkPhysicalDevice physical_device() const { return physical_device_; }
     VkQueue graphics_queue() const { return graphics_queue_; }
     uint32_t graphics_queue_family() const { return graphics_queue_family_; }
+    VkQueue transfer_queue() const { return transfer_queue_; }
+    uint32_t transfer_queue_family() const { return transfer_queue_family_; }
+    bool has_dedicated_transfer() const { return has_dedicated_transfer_; }
     VkSurfaceKHR surface() const { return surface_; }
     VmaAllocator allocator() const { return allocator_; }
 
@@ -39,6 +42,9 @@ private:
     VkDevice device_ = VK_NULL_HANDLE;
     VkQueue graphics_queue_ = VK_NULL_HANDLE;
     uint32_t graphics_queue_family_ = 0;
+    VkQueue transfer_queue_{VK_NULL_HANDLE};
+    uint32_t transfer_queue_family_{0};
+    bool has_dedicated_transfer_{false};
     VmaAllocator allocator_ = VK_NULL_HANDLE;
 };
 
