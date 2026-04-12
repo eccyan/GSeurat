@@ -211,3 +211,31 @@ export function migrateVfxProject(data: Record<string, unknown>): VfxProject {
 // Legacy alias — kept so any internal callers (uploadProject) don't break.
 // Also exported so external consumers that imported migrateProject can still work.
 export const migrateProject = migrateVfxProject;
+
+/**
+ * List all .ply filenames in assets/objects/.
+ * Returns an array of filenames (e.g., ['crystal.ply', 'barrel.ply']).
+ * Returns [] if the directory doesn't exist.
+ */
+export async function listObjectPlys(
+  handle: FileSystemDirectoryHandle,
+): Promise<string[]> {
+  let dir: FileSystemDirectoryHandle;
+  try {
+    const assets = await handle.getDirectoryHandle('assets');
+    dir = await assets.getDirectoryHandle('objects');
+  } catch (e) {
+    if ((e as Error).name === 'NotFoundError') return [];
+    throw e;
+  }
+
+  type DirChild = { kind: string; name: string };
+  const iter = (dir as unknown as { values(): AsyncIterable<DirChild> }).values();
+  const names: string[] = [];
+  for await (const child of iter) {
+    if (child.kind === 'file' && child.name.endsWith('.ply')) {
+      names.push(child.name);
+    }
+  }
+  return names;
+}
