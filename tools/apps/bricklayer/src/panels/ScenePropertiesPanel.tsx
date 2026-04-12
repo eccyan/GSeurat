@@ -681,28 +681,17 @@ function PortalProperties({ portal }: { portal: PortalData }) {
           onChange={(e) => {
             const val = e.target.value;
             if (val) {
-              update(portal.id, { target_instance_id: val, target_scene: '' });
+              update(portal.id, { target_instance_id: val });
             } else {
               update(portal.id, { target_instance_id: undefined });
             }
           }}
         >
-          <option value="">None (use Target Scene)</option>
+          <option value="">None</option>
           {instances.map((inst) => (
             <option key={inst.id} value={inst.id}>{inst.display_name}</option>
           ))}
         </select>
-      </div>
-
-      <div style={styles.section}>
-        <span style={styles.label}>Target Scene</span>
-        <input
-          type="text"
-          value={portal.target_scene}
-          onChange={(e) => update(portal.id, { target_scene: e.target.value })}
-          style={styles.input}
-          placeholder="scene name"
-        />
       </div>
 
       <div style={styles.section}>

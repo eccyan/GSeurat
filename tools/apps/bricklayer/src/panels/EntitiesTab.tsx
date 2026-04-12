@@ -58,16 +58,6 @@ function PortalEditor({ portal }: { portal: PortalData }) {
           style={{ ...styles.input, maxWidth: 60 }}
         />
       </div>
-      <div style={styles.row}>
-        <span style={{ fontSize: 12, minWidth: 40 }}>Target</span>
-        <input
-          type="text"
-          value={portal.target_scene}
-          onChange={(e) => updatePortal(portal.id, { target_scene: e.target.value })}
-          style={styles.input}
-          placeholder="scene name"
-        />
-      </div>
       <Vec3Input
         value={portal.spawn_position}
         onChange={(v) => updatePortal(portal.id, { spawn_position: v })}
