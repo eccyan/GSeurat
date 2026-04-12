@@ -98,6 +98,7 @@ private:
     bool show_gizmo_vfx_ = true;
     bool show_gizmo_game_objects_ = true;
     bool show_gizmo_camera_zones_ = true;
+    bool show_gizmo_portals_ = true;
 
     // Hide all UI (Tab key toggle)
     bool hide_ui_ = false;

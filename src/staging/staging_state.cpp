@@ -198,6 +198,8 @@ void StagingState::on_enter(AppBase& app) {
             vs.gizmos.push_back({"camera_zones", show_gizmo_camera_zones_,
                 sd && sd->camera_zones
                     ? static_cast<int>(sd->camera_zones->volumes.size()) : 0});
+            vs.gizmos.push_back({"portals", show_gizmo_portals_,
+                sd ? static_cast<int>(sd->portals.size()) : 0});
 
             // Scene
             auto& gsr = app.renderer().gs_renderer();
@@ -556,6 +558,7 @@ void StagingState::draw_imgui(AppBase& app) {
             ImGui::MenuItem("Gizmo: VFX", nullptr, &show_gizmo_vfx_);
             ImGui::MenuItem("Gizmo: Game Objects", nullptr, &show_gizmo_game_objects_);
             ImGui::MenuItem("Gizmo: Camera Zones", nullptr, &show_gizmo_camera_zones_);
+            ImGui::MenuItem("Gizmo: Portals", nullptr, &show_gizmo_portals_);
             ImGui::Separator();
             if (ImGui::MenuItem("Deselect All")) {
                 show_viewport_info_ = false;
@@ -571,6 +574,7 @@ void StagingState::draw_imgui(AppBase& app) {
                 show_gizmo_vfx_ = false;
                 show_gizmo_game_objects_ = false;
                 show_gizmo_camera_zones_ = false;
+                show_gizmo_portals_ = false;
             }
             ImGui::EndMenu();
         }
@@ -1238,6 +1242,36 @@ void StagingState::draw_gizmos(AppBase& app) {
             char label[64];
             std::snprintf(label, sizeof(label), "%s", go.name.c_str());
             dl->AddText(ImVec2(sx + 6, sy - 10), col, label);
+        }
+    }
+
+    // ── Portal gizmos ──
+    if (show_gizmo_portals_) {
+        ImU32 portal_col = IM_COL32(0, 220, 220, 200);  // cyan
+        const auto& portals = app.scene_objects().portals;
+        for (size_t i = 0; i < portals.size(); i++) {
+            const auto& p = portals[i];
+            glm::vec3 pos(p.position.x(), p.position.y(), p.position.z());
+            float sx, sy;
+            if (!project_to_screen(pos, vp, sw, sh, sx, sy)) continue;
+
+            if (p.region_shape == "sphere") {
+                draw_sphere_gizmo(dl, pos, p.region_radius,
+                                  vp, sw, sh, portal_col, project_wrapper, this);
+            } else {
+                draw_box_gizmo(dl, pos, p.region_half_extents,
+                               vp, sw, sh, portal_col, project_wrapper, this);
+            }
+
+            // Diamond marker at center
+            float d = 5.0f;
+            dl->AddQuadFilled(
+                ImVec2(sx, sy - d), ImVec2(sx + d, sy),
+                ImVec2(sx, sy + d), ImVec2(sx - d, sy), portal_col);
+
+            char label[64];
+            std::snprintf(label, sizeof(label), "Portal%zu", i);
+            dl->AddText(ImVec2(sx + 8, sy - 10), portal_col, label);
         }
     }
 
