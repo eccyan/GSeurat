@@ -24,7 +24,7 @@ const styles: Record<string, React.CSSProperties> = {
 function YClipControl() {
   const yClip = useCharacterStore((s) => s.yClip);
   const setYClip = useCharacterStore((s) => s.setYClip);
-  const voxels = useCharacterStore((s) => s.voxels);
+  const voxels = useCharacterStore((s) => s.character?.voxels ?? new Map());
 
   let maxY = 0;
   for (const [key] of voxels) {

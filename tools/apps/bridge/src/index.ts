@@ -991,6 +991,7 @@ app.post('/api/project/root', async (req: Request, res: Response) => {
     return;
   }
   activeProjectDir = path.resolve(projectPath);
+  console.log(`[Bridge] Project root set: ${activeProjectDir}`);
 
   // Forward to engine over the Unix socket so the engine can resolve
   // relative paths under this same root. Engine-side handler lands in Task 28.

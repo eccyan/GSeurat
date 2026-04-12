@@ -6,9 +6,12 @@ import { BuildPanel } from './panels/BuildPanel.js';
 import { AnimateLeftPanel } from './panels/AnimateLeftPanel.js';
 import { AnimateRightPanel } from './panels/AnimateRightPanel.js';
 import { Timeline } from './panels/Timeline.js';
+import { EmptyProjectState } from './panels/EmptyProjectState.js';
+import { CharactersPanel } from './panels/CharactersPanel.js';
+import { NewProjectDialog } from './panels/NewProjectDialog.js';
 import { useCharacterStore } from './store/useCharacterStore.js';
 import type { ToolType } from './store/types.js';
-import { restoreProjectRoot } from '@gseurat/project-root';
+import { restoreProjectRoot, saveProjectRootHandle } from '@gseurat/project-root';
 
 const styles: Record<string, React.CSSProperties> = {
   root: {
@@ -98,6 +101,18 @@ function ResizeHandle({ onDrag }: { onDrag: (deltaX: number) => void }) {
   );
 }
 
+function NoCharacterSelected() {
+  return (
+    <div style={{
+      width: '100%', height: '100%',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      background: '#16162a', color: '#888', fontSize: 14,
+    }}>
+      Select a character from the panel or create a new one.
+    </div>
+  );
+}
+
 export function App() {
   const mode = useCharacterStore((s) => s.mode);
   const [leftWidth, setLeftWidth] = useState(220);
@@ -109,20 +124,64 @@ export function App() {
   leftRef.current = leftWidth;
   rightRef.current = rightWidth;
 
+  const [showNewDialog, setShowNewDialog] = useState(false);
+
+  const projectRootHandle = useCharacterStore((s) => s.projectRootHandle);
+  const character = useCharacterStore((s) => s.character);
+
+  const handleNewCharacter = useCallback(() => {
+    const store = useCharacterStore.getState();
+    if (store.dirty || store.undoStack.length > 0) {
+      if (!confirm('Create new character? Unsaved changes will be lost.')) return;
+    }
+    setShowNewDialog(true);
+  }, []);
+
+  const handleOpenProjectRoot = useCallback(async () => {
+    try {
+      // @ts-expect-error - showDirectoryPicker is FSAPI extension not in lib.dom
+      const handle: FileSystemDirectoryHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
+      await saveProjectRootHandle('echidna', handle);
+      useCharacterStore.getState().setProjectRootHandle(handle);
+      await useCharacterStore.getState().listCharacters();
+    } catch (e) {
+      // User canceled or denied permission — silently ignore AbortError
+      if ((e as Error).name !== 'AbortError') {
+        console.error('[echidna] Failed to set project root:', e);
+      }
+    }
+  }, []);
+
   // Bootstrap: restore project root handle from IDB on startup
   useEffect(() => {
+    let cancelled = false;
     (async () => {
       try {
         const handle = await restoreProjectRoot('echidna');
+        if (cancelled) return;
         if (handle && !useCharacterStore.getState().projectRootHandle) {
           useCharacterStore.getState().setProjectRootHandle(handle);
           console.info(`[echidna] Restored project root: ${handle.name}`);
+          await useCharacterStore.getState().listCharacters();
         }
       } catch (e) {
-        // Silently ignore — user can pick the root again via File → Set Project Root…
+        // Silently ignore — user can pick the root again via File → Open Project Root…
         console.info('[echidna] No project root to restore');
       }
     })();
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    if (!import.meta.env.PROD) return; // don't trigger on HMR reloads in dev
+
+    const handler = (e: BeforeUnloadEvent) => {
+      if (useCharacterStore.getState().dirty) {
+        e.preventDefault();
+      }
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
   }, []);
 
   const handleLeftDrag = useCallback((delta: number) => {
@@ -151,16 +210,7 @@ export function App() {
       }
       if (meta && e.key === 's' && !e.shiftKey) {
         e.preventDefault();
-        // Trigger save via store
-        const data = store.saveProject();
-        const json = JSON.stringify(data, null, 2);
-        const name = store.currentFilename ?? `${data.characterName.replace(/\s+/g, '_').toLowerCase() || 'character'}.echidna`;
-        const blob = new Blob([json], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url; a.download = name; a.click();
-        URL.revokeObjectURL(url);
-        if (!store.currentFilename) store.setCurrentFilename(name);
+        void store.save();
         return;
       }
       if (meta && e.key === 'o') {
@@ -243,15 +293,24 @@ export function App() {
       <div style={styles.body}>
         {/* Left panel */}
         <div style={{ width: leftWidth, flexShrink: 0, display: 'flex', flexDirection: 'column' as const, overflow: 'hidden', background: '#1e1e3a', borderRight: '1px solid #333' }}>
+          <CharactersPanel onNewCharacter={handleNewCharacter} />
           <ModeTabs />
-          {mode === 'build' ? <ToolBar /> : <AnimateLeftPanel />}
+          <div style={{ flex: 1, overflow: 'auto' }}>
+            {mode === 'build' ? <ToolBar /> : <AnimateLeftPanel />}
+          </div>
         </div>
         <ResizeHandle onDrag={handleLeftDrag} />
 
         {/* Center panel */}
         <div style={{ flex: 1, position: 'relative' as const, overflow: 'hidden' }}>
-          <CharacterViewport />
-          {mode === 'animate' && (
+          {projectRootHandle === null ? (
+            <EmptyProjectState onOpenProjectRoot={handleOpenProjectRoot} />
+          ) : character === null ? (
+            <NoCharacterSelected />
+          ) : (
+            <CharacterViewport />
+          )}
+          {character !== null && mode === 'animate' && (
             <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 10 }}>
               <Timeline />
             </div>
@@ -264,6 +323,7 @@ export function App() {
           {mode === 'build' ? <BuildPanel /> : <AnimateRightPanel />}
         </div>
       </div>
+      {showNewDialog && <NewProjectDialog onClose={() => setShowNewDialog(false)} />}
     </div>
   );
 }

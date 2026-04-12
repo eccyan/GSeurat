@@ -7,7 +7,7 @@ import { parseVox } from '../lib/voxImport.js';
 import { parsePlyToVoxels } from '../lib/plyImport.js';
 import { parseObjToVoxels } from '../lib/objImport.js';
 import { sendBridgeCommand } from '@gseurat/engine-client';
-import type { EchidnaFile } from '../store/types.js';
+import type { EchidnaFile, Character } from '../store/types.js';
 import { NewProjectDialog } from './NewProjectDialog.js';
 import { ResizeGridDialog } from './ResizeGridDialog.js';
 import { ExportDialog } from './ExportDialog.js';
@@ -15,14 +15,7 @@ import { ImportDialog } from './ImportDialog.js';
 import type { ImportOptions } from './ImportDialog.js';
 import {
   saveProjectRootHandle,
-  ensureHandlePermission,
-  restoreProjectRoot,
 } from '@gseurat/project-root';
-import {
-  saveEchidnaProject,
-  exportCharacterToProject,
-  echidnaSavePath,
-} from '../lib/projectFs.js';
 
 const BRIDGE_REST_URL = 'http://localhost:9101';
 
@@ -127,17 +120,102 @@ function download(blob: Blob, name: string) {
   URL.revokeObjectURL(url);
 }
 
+interface DropdownMenuItemLeaf {
+  label: string;
+  shortcut?: string;
+  action: () => void;
+  separator?: false;
+  children?: undefined;
+}
+
+interface DropdownMenuItemSubmenu {
+  label: string;
+  shortcut?: undefined;
+  action?: undefined;
+  separator?: false;
+  children: DropdownMenuItem[];
+}
+
+interface DropdownMenuItemSeparator {
+  separator: true;
+}
+
+export type DropdownMenuItem =
+  | DropdownMenuItemLeaf
+  | DropdownMenuItemSubmenu
+  | DropdownMenuItemSeparator;
+
 interface DropdownMenuProps {
   label: string;
-  items: Array<{
-    label: string;
-    shortcut?: string;
-    action: () => void;
-    separator?: false;
-  } | { separator: true }>;
+  items: DropdownMenuItem[];
   open: boolean;
   onOpen: () => void;
   onClose: () => void;
+}
+
+function SubmenuItem({
+  item,
+  onClose,
+}: {
+  item: DropdownMenuItemSubmenu;
+  onClose: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [hovered, setHovered] = useState<number | null>(null);
+  return (
+    <div
+      style={{ position: 'relative' }}
+      onMouseEnter={() => setOpen(true)}
+      onMouseLeave={() => setOpen(false)}
+    >
+      <button
+        style={{
+          ...styles.dropdownItem,
+          justifyContent: 'space-between',
+          background: open ? styles.dropdownItemHover.background : 'transparent',
+        }}
+      >
+        <span>{item.label}</span>
+        <span style={{ marginLeft: 12, color: '#888' }}>&#9658;</span>
+      </button>
+      {open && (
+        <div
+          style={{
+            ...styles.dropdown,
+            position: 'absolute',
+            top: 0,
+            left: '100%',
+            marginLeft: 0,
+          }}
+        >
+          {item.children.map((child, i) => {
+            if ('separator' in child && child.separator) {
+              return <div key={i} style={styles.separator} />;
+            }
+            if ('children' in child && child.children) {
+              return <SubmenuItem key={i} item={child as DropdownMenuItemSubmenu} onClose={onClose} />;
+            }
+            const it = child as DropdownMenuItemLeaf;
+            return (
+              <button
+                key={i}
+                style={{
+                  ...styles.dropdownItem,
+                  ...(hovered === i ? styles.dropdownItemHover : {}),
+                }}
+                onMouseEnter={() => setHovered(i)}
+                onMouseLeave={() => setHovered(null)}
+                onClick={() => { it.action(); onClose(); }}
+              >
+                <span>{it.label}</span>
+                {it.shortcut && <span style={styles.shortcut}>{it.shortcut}</span>}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function DropdownMenu({ label, items, open, onOpen, onClose }: DropdownMenuProps) {
@@ -172,7 +250,10 @@ function DropdownMenu({ label, items, open, onOpen, onClose }: DropdownMenuProps
             if ('separator' in item && item.separator) {
               return <div key={i} style={styles.separator} />;
             }
-            const it = item as { label: string; shortcut?: string; action: () => void };
+            if ('children' in item && item.children) {
+              return <SubmenuItem key={i} item={item as DropdownMenuItemSubmenu} onClose={onClose} />;
+            }
+            const it = item as DropdownMenuItemLeaf;
             return (
               <button
                 key={i}
@@ -197,6 +278,18 @@ function DropdownMenu({ label, items, open, onOpen, onClose }: DropdownMenuProps
 
 type ToastState = { message: string; type: 'success' | 'error' | 'loading' } | null;
 
+function EchidnaTitle() {
+  const character = useCharacterStore((s) => s.character);
+  const dirty = useCharacterStore((s) => s.dirty);
+  const name = character?.characterName ?? '';
+  return (
+    <span style={styles.title}>
+      Echidna{name ? ` — ${name}` : ''}
+      {dirty && <span style={{ color: '#fa0', marginLeft: 6 }}>{'\u25CF'}</span>}
+    </span>
+  );
+}
+
 export function MenuBar() {
   useComponentRegistry('MenuBar');
   const loadRef = useRef<HTMLInputElement>(null);
@@ -213,10 +306,8 @@ export function MenuBar() {
 
   const showGrid = useCharacterStore((s) => s.showGrid);
   const showGizmos = useCharacterStore((s) => s.showGizmos);
-  const voxels = useCharacterStore((s) => s.voxels);
-  const characterParts = useCharacterStore((s) => s.characterParts);
-  const characterName = useCharacterStore((s) => s.characterName);
-
+  const voxels = useCharacterStore((s) => s.character?.voxels ?? new Map());
+  const characterParts = useCharacterStore((s) => s.character?.characterParts ?? []);
   const showToast = useCallback((message: string, type: 'success' | 'error' | 'loading', duration = 3000) => {
     if (toastTimer.current) clearTimeout(toastTimer.current);
     setToast({ message, type });
@@ -225,39 +316,96 @@ export function MenuBar() {
     toastTimer.current = setTimeout(() => setToast(null), timeout);
   }, []);
 
-  const pushToStaging = useCallback(async () => {
-    const s = useCharacterStore.getState();
-    if (s.voxels.size === 0) return;
+  // Shared Staging push logic. Uploads PLY + manifest via REST, sends
+  // load_scene_json + load_character via WebSocket. Throws on failure.
+  // Callers are responsible for toast/error-UI presentation.
+  const syncCharacterToStaging = useCallback(async (char: Character) => {
+    const charId = char.id;
+    if (!charId) throw new Error('character has no id — call ensureCharacterId() first');
 
-    try {
-      const charId = s.characterName.replace(/\s+/g, '_').toLowerCase() || 'character';
-      const plyBlob = exportPly(s.voxels, s.gridWidth, s.gridDepth, s.characterParts);
-      const manifest = buildManifest(
-        charId,
-        `${charId}.ply`,
-        1.0,
-        s.characterParts,
-        s.characterPoses,
-        s.animations,
-      );
+    const plyBlob = exportPly(char.voxels, char.gridWidth, char.gridDepth, char.characterParts);
 
-      await fetch(
-        `${BRIDGE_REST_URL}/api/characters/${encodeURIComponent(charId)}/file/${encodeURIComponent(charId + '.ply')}`,
-        { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: plyBlob },
-      );
+    // Upload PLY
+    const plyRes = await fetch(
+      `${BRIDGE_REST_URL}/api/characters/${encodeURIComponent(charId)}/file/${encodeURIComponent(charId + '.ply')}`,
+      { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: plyBlob },
+    );
+    if (!plyRes.ok) {
+      const err = await plyRes.json().catch(() => ({ error: plyRes.statusText }));
+      throw new Error((err as { error?: string }).error || 'Failed to upload PLY');
+    }
+    const { path: plyPath } = await plyRes.json() as { path: string };
 
-      await fetch(
-        `${BRIDGE_REST_URL}/api/characters/${encodeURIComponent(charId)}/manifest`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(manifest),
-        },
-      );
-    } catch {
-      // Silently fail — bridge may not be running
+    // Build manifest with centered joints (matches PLY export centering)
+    const halfW = char.gridWidth / 2;
+    let maxY = 0;
+    for (const [key] of char.voxels.entries()) {
+      const y = parseInt(key.split(',')[1], 10);
+      if (y > maxY) maxY = y;
+    }
+    const halfH = maxY / 2;
+    const centeredParts = char.characterParts.map((p) => ({
+      ...p,
+      joint: [p.joint[0] - halfW, p.joint[1] - halfH, p.joint[2]] as [number, number, number],
+    }));
+    const manifest = buildManifest(
+      charId, `${charId}.ply`, 1.0,
+      centeredParts, char.characterPoses, char.animations,
+    );
+    const manifestJson = JSON.stringify(manifest, null, 2);
+
+    // Upload manifest
+    const manifestRes = await fetch(
+      `${BRIDGE_REST_URL}/api/characters/${encodeURIComponent(charId)}/file/${encodeURIComponent(charId + '.manifest.json')}`,
+      { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: manifestJson },
+    );
+    let manifestPath = '';
+    if (manifestRes.ok) {
+      const res = await manifestRes.json() as { path: string };
+      manifestPath = res.path;
+    }
+
+    // Build scene JSON
+    const scene = {
+      version: 2,
+      gaussian_splat: {
+        ply_file: plyPath,
+        camera: { position: [0, 5, 20], target: [0, 0, 0], fov: 45 },
+        render_width: 320,
+        render_height: 240,
+      },
+      game_objects: [],
+    };
+
+    // Send load_scene_json (with 5s timeout)
+    await Promise.race([
+      sendBridgeCommand({ cmd: 'load_scene_json', json: JSON.stringify(scene) }),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Staging not responding (timed out after 5s)')), 5000)),
+    ]);
+
+    // Send load_character for animation playback (non-critical)
+    if (manifestPath) {
+      await Promise.race([
+        sendBridgeCommand({ cmd: 'load_character', path: manifestPath }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('load_character timed out')), 5000)),
+      ]).catch(() => { /* non-critical — animation won't be available */ });
     }
   }, []);
+
+  const pushToStaging = useCallback(async () => {
+    // Ensure stable id before using char.id as a filesystem path (Bug 1 fix)
+    useCharacterStore.getState().ensureCharacterId();
+    const s = useCharacterStore.getState();
+    const char = s.character;
+    if (!char || char.voxels.size === 0) return;
+
+    try {
+      await syncCharacterToStaging(char);
+    } catch (err) {
+      // Auto-sync is silent — don't toast, just log
+      console.warn('[echidna] auto-sync push to Staging failed:', err);
+    }
+  }, [syncCharacterToStaging]);
 
   // Auto-sync: debounced push to staging when voxels or parts change
   useEffect(() => {
@@ -272,21 +420,13 @@ export function MenuBar() {
   }, [autoSync, voxels, characterParts, pushToStaging]);
 
   const handleNew = useCallback(() => {
-    setShowNewDialog(true);
-  }, []);
-
-  const handleSave = useCallback(() => {
     const store = useCharacterStore.getState();
-    const data = store.saveProject();
-    const json = JSON.stringify(data, null, 2);
-    if (store.currentFilename) {
-      download(new Blob([json], { type: 'application/json' }), store.currentFilename);
-    } else {
-      const name = data.characterName.replace(/\s+/g, '_').toLowerCase() || 'character';
-      const filename = `${name}.echidna`;
-      download(new Blob([json], { type: 'application/json' }), filename);
-      store.setCurrentFilename(filename);
+    if (store.dirty || store.undoStack.length > 0) {
+      if (!confirm('Create new character? Unsaved changes will be lost.')) {
+        return;
+      }
     }
+    setShowNewDialog(true);
   }, []);
 
   const handleSaveAs = useCallback(() => {
@@ -359,137 +499,51 @@ export function MenuBar() {
     setShowImportDialog(false);
   }, []);
 
-  const handleExportCharacter = useCallback(() => {
-    const s = useCharacterStore.getState();
-    const name = s.characterName.replace(/\s+/g, '_').toLowerCase() || 'character';
-
-    // Download PLY
-    const plyBlob = exportPly(s.voxels, s.gridWidth, s.gridDepth, s.characterParts);
-    download(plyBlob, `${name}.ply`);
-
-    // Download manifest JSON
-    const manifest = buildManifest(
-      name,
-      `${name}.ply`,
-      1.0,
-      s.characterParts,
-      s.characterPoses,
-      s.animations,
-    );
-    const manifestBlob = new Blob([JSON.stringify(manifest, null, 2)], { type: 'application/json' });
-    download(manifestBlob, `${name}.manifest.json`);
-  }, []);
-
   const handleExportPly = useCallback(() => {
     const s = useCharacterStore.getState();
-    const blob = exportPly(s.voxels, s.gridWidth, s.gridDepth, s.characterParts);
-    const name = s.characterName.replace(/\s+/g, '_').toLowerCase() || 'character';
+    const char = s.character;
+    if (!char) return;
+    const blob = exportPly(char.voxels, char.gridWidth, char.gridDepth, char.characterParts);
+    const name = char.characterName.replace(/\s+/g, '_').toLowerCase() || 'character';
     download(blob, `${name}.ply`);
   }, []);
 
   const handleExportManifest = useCallback(() => {
     const s = useCharacterStore.getState();
-    const name = s.characterName.replace(/\s+/g, '_').toLowerCase() || 'character';
+    const char = s.character;
+    if (!char) return;
+    const name = char.characterName.replace(/\s+/g, '_').toLowerCase() || 'character';
     const manifest = buildManifest(
       name,
       `${name}.ply`,
       1.0,
-      s.characterParts,
-      s.characterPoses,
-      s.animations,
+      char.characterParts,
+      char.characterPoses,
+      char.animations,
     );
     const blob = new Blob([JSON.stringify(manifest, null, 2)], { type: 'application/json' });
     download(blob, `${name}.manifest.json`);
   }, []);
 
   const handlePreviewInStaging = useCallback(async () => {
+    // Ensure stable id before using char.id as a filesystem path (Bug 1 fix)
+    useCharacterStore.getState().ensureCharacterId();
     const s = useCharacterStore.getState();
-    if (s.voxels.size === 0) {
+    const char = s.character;
+    if (!char || char.voxels.size === 0) {
       showToast('No voxels to preview', 'error');
       return;
     }
 
     showToast('Sending to Staging...', 'loading');
-
     try {
-      const charId = s.characterName.replace(/\s+/g, '_').toLowerCase() || 'character';
-      const plyBlob = exportPly(s.voxels, s.gridWidth, s.gridDepth, s.characterParts);
-
-      // Upload PLY binary to bridge REST API
-      const plyRes = await fetch(
-        `${BRIDGE_REST_URL}/api/characters/${encodeURIComponent(charId)}/file/${encodeURIComponent(charId + '.ply')}`,
-        { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: plyBlob },
-      );
-      if (!plyRes.ok) {
-        const err = await plyRes.json().catch(() => ({ error: plyRes.statusText }));
-        throw new Error(err.error || 'Failed to upload PLY');
-      }
-      const { path: plyPath } = await plyRes.json() as { path: string };
-
-      // Build a minimal scene JSON that shows the character as a game object
-      const scene = {
-        version: 2,
-        gaussian_splat: {
-          ply_file: plyPath,
-          camera: {
-            position: [0, 5, 20],
-            target: [0, 0, 0],
-            fov: 45,
-          },
-          render_width: 320,
-          render_height: 240,
-        },
-        game_objects: [],
-      };
-
-      // Upload manifest JSON for animation playback
-      // Joint positions must be centered to match PLY export centering
-      const halfW = s.gridWidth / 2;
-      let maxY = 0;
-      for (const [key] of s.voxels.entries()) {
-        const y = parseInt(key.split(',')[1], 10);
-        if (y > maxY) maxY = y;
-      }
-      const halfH = maxY / 2;
-      const centeredParts = s.characterParts.map((p) => ({
-        ...p,
-        joint: [p.joint[0] - halfW, p.joint[1] - halfH, p.joint[2]] as [number, number, number],
-      }));
-      const manifest = buildManifest(
-        charId, charId + '.ply', 1.0,
-        centeredParts, s.characterPoses, s.animations,
-      );
-      const manifestJson = JSON.stringify(manifest, null, 2);
-      const manifestRes = await fetch(
-        `${BRIDGE_REST_URL}/api/characters/${encodeURIComponent(charId)}/file/${encodeURIComponent(charId + '.manifest.json')}`,
-        { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: manifestJson },
-      );
-      let manifestPath = '';
-      if (manifestRes.ok) {
-        const res = await manifestRes.json() as { path: string };
-        manifestPath = res.path;
-      }
-
-      // Send load_scene_json to Staging via bridge WebSocket (with 5s timeout)
-      await Promise.race([
-        sendBridgeCommand({ cmd: 'load_scene_json', json: JSON.stringify(scene) }),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Staging not responding (timed out after 5s)')), 5000)),
-      ]);
-
-      // Send load_character to enable animation playback in Staging
-      if (manifestPath) {
-        await Promise.race([
-          sendBridgeCommand({ cmd: 'load_character', path: manifestPath }),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('load_character timed out')), 5000)),
-        ]).catch(() => { /* non-critical — animation just won't be available */ });
-      }
-
+      await syncCharacterToStaging(char);
       showToast('Character sent to Staging', 'success');
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       showToast(`Preview failed: ${msg}`, 'error', 5000);
     }
-  }, [showToast]);
+  }, [showToast, syncCharacterToStaging]);
 
   const handleConnectBridgeToProject = useCallback(async () => {
     const projectPath = window.prompt(
@@ -526,6 +580,7 @@ export function MenuBar() {
       const handle: FileSystemDirectoryHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
       await saveProjectRootHandle('echidna', handle);
       useCharacterStore.getState().setProjectRootHandle(handle);
+      await useCharacterStore.getState().listCharacters();
       showToast(`Project root set: ${handle.name}`, 'success');
     } catch (e) {
       // User canceled or denied permission
@@ -536,135 +591,35 @@ export function MenuBar() {
     }
   }, [showToast]);
 
-  const handleSaveToProject = useCallback(async () => {
-    const s = useCharacterStore.getState();
-    let handle = s.projectRootHandle;
-    if (!handle) {
-      try {
-        // @ts-expect-error - showDirectoryPicker is FSAPI extension
-        handle = await window.showDirectoryPicker({ mode: 'readwrite' }) as FileSystemDirectoryHandle;
-        await saveProjectRootHandle('echidna', handle);
-        s.setProjectRootHandle(handle);
-      } catch (e) {
-        if ((e as Error).name !== 'AbortError') {
-          console.error('[echidna] Cannot pick project root:', e);
-          showToast('Cannot pick project root', 'error');
-        }
-        return;
-      }
-    } else {
-      const ok = await ensureHandlePermission(handle);
-      if (!ok) {
-        showToast('Project root permission denied', 'error');
-        return;
-      }
-    }
-
-    const id = s.ensureCharacterId();
-    const file = s.saveProject();
-    try {
-      await saveEchidnaProject(handle, file);
-      showToast(`Saved to ${echidnaSavePath(id)}`, 'success');
-    } catch (e) {
-      console.error('[echidna] Save failed:', e);
-      showToast('Save to project failed', 'error');
-    }
-  }, [showToast]);
-
-  const handleExportCharacterToProject = useCallback(async () => {
-    const s = useCharacterStore.getState();
-    if (s.voxels.size === 0) {
-      showToast('No voxels to export', 'error');
-      return;
-    }
-
-    // Ensure project root handle is available
-    let handle = s.projectRootHandle;
-    if (!handle) {
-      handle = await restoreProjectRoot('echidna');
-      if (!handle) {
-        showToast('No project root set — use File → Set Project Root… first', 'error');
-        return;
-      }
-      s.setProjectRootHandle(handle);
-      // After restoring from IDB, we still need to verify/request permission.
-      const ok = await ensureHandlePermission(handle);
-      if (!ok) {
-        showToast('Project root permission denied', 'error');
-        return;
-      }
-    } else {
-      const ok = await ensureHandlePermission(handle);
-      if (!ok) {
-        showToast('Project root permission denied', 'error');
-        return;
-      }
-    }
-
-    const id = s.ensureCharacterId();
-
-    // Build PLY
-    const ply = exportPly(s.voxels, s.gridWidth, s.gridDepth, s.characterParts);
-
-    // Build manifest with bone joints centered to match PLY centering
-    // (same logic as pushToStaging — see lines ~436-447 above)
-    const halfW = s.gridWidth / 2;
-    let maxY = 0;
-    for (const [key] of s.voxels.entries()) {
-      const y = parseInt(key.split(',')[1], 10);
-      if (y > maxY) maxY = y;
-    }
-    const halfH = maxY / 2;
-    const centeredParts = s.characterParts.map((p) => ({
-      ...p,
-      joint: [p.joint[0] - halfW, p.joint[1] - halfH, p.joint[2]] as [number, number, number],
-    }));
-    const manifest = buildManifest(
-      id,
-      `${id}.ply`,
-      1.0,
-      centeredParts,
-      s.characterPoses,
-      s.animations,
-    );
-
-    showToast('Exporting character…', 'loading');
-
-    try {
-      const { plyPath, manifestPath } = await exportCharacterToProject(
-        handle,
-        id,
-        ply,
-        JSON.stringify(manifest, null, 2),
-      );
-      console.info(`[echidna] Exported ${plyPath} + ${manifestPath}`);
-      showToast(`Exported ${id} to project`, 'success');
-    } catch (e) {
-      console.error('[echidna] Export failed:', e);
-      showToast('Export to project failed', 'error');
-    }
-  }, [showToast]);
-
-  const fileItems = [
-    { label: 'New', shortcut: '\u2318N', action: handleNew },
+  const fileItems: DropdownMenuItem[] = [
+    { label: 'New Character', shortcut: '\u2318N', action: handleNew },
+    { label: 'Save', shortcut: '\u2318S', action: () => void useCharacterStore.getState().save() },
     { separator: true as const },
-    { label: 'Set Project Root\u2026', action: handlePickProjectRoot },
-    { label: 'Save to Project', action: handleSaveToProject },
-    { label: 'Export Character to Project', action: handleExportCharacterToProject },
+    {
+      label: 'Project',
+      children: [
+        { label: 'Open Project Root\u2026', action: handlePickProjectRoot },
+        { label: 'Connect Bridge to Project Root\u2026', action: handleConnectBridgeToProject },
+      ],
+    },
     { separator: true as const },
-    { label: 'Save', shortcut: '\u2318S', action: handleSave },
-    { label: 'Save As...', shortcut: '\u21e7\u2318S', action: handleSaveAs },
-    { label: 'Load...', shortcut: '\u2318O', action: handleLoad },
+    {
+      label: 'Import',
+      children: [
+        { label: 'Import (PLY/VOX/OBJ)\u2026', action: () => setShowImportDialog(true) },
+        { label: 'Import .vox\u2026', action: handleImportVox },
+        { label: 'Load .echidna\u2026', action: handleLoad },
+      ],
+    },
+    {
+      label: 'Export',
+      children: [
+        { label: 'Save As .echidna\u2026', action: handleSaveAs },
+        { label: 'Export PLY\u2026', action: handleExportPly },
+        { label: 'Export Manifest\u2026', action: handleExportManifest },
+      ],
+    },
     { separator: true as const },
-    { label: 'Import (PLY/VOX/OBJ)...', action: () => setShowImportDialog(true) },
-    { label: 'Import .vox...', action: handleImportVox },
-    { separator: true as const },
-    { label: 'Export Character...', action: handleExportCharacter },
-    { label: 'Export...', action: () => setShowExportDialog(true) },
-    { label: 'Export PLY...', action: handleExportPly },
-    { label: 'Export Manifest...', action: handleExportManifest },
-    { separator: true as const },
-    { label: 'Connect Bridge to Project Root\u2026', action: handleConnectBridgeToProject },
     { label: 'Preview in Staging', action: handlePreviewInStaging },
   ];
 
@@ -681,9 +636,6 @@ export function MenuBar() {
     { separator: true as const },
     { label: `${autoSync ? '\u2713 ' : '  '}Auto-Sync Staging`, action: () => setAutoSync((v) => !v) },
   ];
-
-  // Suppress unused variable warning — characterName used for re-render when name changes for auto-sync
-  void characterName;
 
   return (
     <div style={styles.bar}>
@@ -711,7 +663,7 @@ export function MenuBar() {
 
       <div style={styles.spacer} />
 
-      <span style={styles.title}>Echidna</span>
+      <EchidnaTitle />
 
       <input ref={loadRef} type="file" accept=".echidna,.json" style={{ display: 'none' }} onChange={handleLoadChange} />
       <input ref={voxRef} type="file" accept=".vox" style={{ display: 'none' }} onChange={handleVoxChange} />

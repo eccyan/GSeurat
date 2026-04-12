@@ -1,0 +1,314 @@
+// tools/apps/echidna/src/panels/CharactersPanel.tsx
+import React, { useState, useCallback, useRef } from 'react';
+import { useCharacterStore, type SwitchDecision } from '../store/useCharacterStore.js';
+import { SwitchCharacterDialog } from './SwitchCharacterDialog.js';
+import { RenameCharacterDialog } from './RenameCharacterDialog.js';
+import { DuplicateCharacterDialog } from './DuplicateCharacterDialog.js';
+import { DeleteCharacterDialog } from './DeleteCharacterDialog.js';
+
+const COLLAPSE_KEY = 'echidna:characters-panel-collapsed';
+
+const styles: Record<string, React.CSSProperties> = {
+  root: {
+    display: 'flex',
+    flexDirection: 'column',
+    borderBottom: '1px solid #333',
+    background: '#181830',
+    flexShrink: 0,
+  },
+  header: {
+    display: 'flex',
+    alignItems: 'center',
+    padding: '6px 10px',
+    fontSize: 11,
+    fontWeight: 600,
+    color: '#888',
+    textTransform: 'uppercase',
+    cursor: 'pointer',
+    userSelect: 'none',
+  },
+  headerLabel: { flex: 1 },
+  collapseBtn: {
+    padding: '0 6px',
+    background: 'transparent',
+    border: 'none',
+    color: '#888',
+    cursor: 'pointer',
+    fontSize: 12,
+  },
+  list: {
+    maxHeight: 200,
+    overflowY: 'auto',
+    padding: '2px 0',
+  },
+  row: {
+    display: 'flex',
+    alignItems: 'center',
+    padding: '5px 12px',
+    fontSize: 12,
+    color: '#ccc',
+    cursor: 'pointer',
+  },
+  rowCurrent: {
+    background: '#2a2a4a',
+    color: '#fff',
+  },
+  dot: { marginRight: 8, fontSize: 10 },
+  dotCurrent: { color: '#7f7' },
+  dotOther: { color: '#444' },
+  name: { flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  dirtyMarker: { color: '#fa0', marginLeft: 6 },
+  menuBtn: {
+    padding: '0 6px',
+    background: 'transparent',
+    border: 'none',
+    color: '#888',
+    cursor: 'pointer',
+    fontSize: 14,
+  },
+  footer: {
+    padding: '6px 12px',
+    borderTop: '1px solid #333',
+  },
+  newBtn: {
+    width: '100%',
+    padding: '6px',
+    background: 'transparent',
+    border: '1px dashed #444',
+    borderRadius: 4,
+    color: '#7a9',
+    fontSize: 12,
+    cursor: 'pointer',
+  },
+  empty: {
+    padding: '12px 16px',
+    fontSize: 11,
+    color: '#666',
+    fontStyle: 'italic',
+  },
+  contextMenu: {
+    position: 'fixed',
+    background: '#1e1e3a',
+    border: '1px solid #444',
+    borderRadius: 4,
+    padding: '4px 0',
+    minWidth: 160,
+    zIndex: 500,
+    boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+  },
+  contextItem: {
+    display: 'block',
+    width: '100%',
+    padding: '6px 14px',
+    background: 'transparent',
+    border: 'none',
+    color: '#ccc',
+    fontSize: 12,
+    textAlign: 'left',
+    cursor: 'pointer',
+  },
+};
+
+type ContextMenuState = { x: number; y: number; id: string; name: string } | null;
+type ActiveDialog =
+  | { kind: 'switch'; targetId: string }
+  | { kind: 'rename'; id: string; name: string }
+  | { kind: 'duplicate'; id: string; name: string }
+  | { kind: 'delete'; id: string; name: string }
+  | null;
+
+interface Props {
+  onNewCharacter: () => void;
+}
+
+export function CharactersPanel({ onNewCharacter }: Props) {
+  const knownCharacters = useCharacterStore((s) => s.knownCharacters);
+  const currentId = useCharacterStore((s) => s.character?.id ?? null);
+  const dirty = useCharacterStore((s) => s.dirty);
+  const currentCharacterName = useCharacterStore((s) => s.character?.characterName ?? '');
+  const undoDepth = useCharacterStore((s) => s.undoStack.length);
+  const requestOpenCharacter = useCharacterStore((s) => s.requestOpenCharacter);
+  const renameCharacter = useCharacterStore((s) => s.renameCharacter);
+  const duplicateCharacter = useCharacterStore((s) => s.duplicateCharacter);
+  const deleteCharacter = useCharacterStore((s) => s.deleteCharacter);
+
+  const [collapsed, setCollapsed] = useState(() =>
+    localStorage.getItem(COLLAPSE_KEY) === '1',
+  );
+  const [contextMenu, setContextMenu] = useState<ContextMenuState>(null);
+  const [activeDialog, setActiveDialog] = useState<ActiveDialog>(null);
+
+  // Ref-based resolver for the switch-dialog promise — survives re-renders
+  // without being stashed on the function itself.
+  const pendingResolverRef = useRef<((d: SwitchDecision) => void) | null>(null);
+
+  const toggleCollapsed = useCallback(() => {
+    setCollapsed((prev) => {
+      const next = !prev;
+      localStorage.setItem(COLLAPSE_KEY, next ? '1' : '0');
+      return next;
+    });
+  }, []);
+
+  const handleRowClick = (id: string) => {
+    if (id === currentId) return;
+    void requestOpenCharacter(id, () =>
+      new Promise<SwitchDecision>((resolve) => {
+        pendingResolverRef.current = resolve;
+        setActiveDialog({ kind: 'switch', targetId: id });
+      }),
+    );
+  };
+
+  const handleSwitchDecision = (decision: SwitchDecision) => {
+    pendingResolverRef.current?.(decision);
+    pendingResolverRef.current = null;
+    setActiveDialog(null);
+  };
+
+  const handleContextMenu = (e: React.MouseEvent, id: string, name: string) => {
+    e.preventDefault();
+    setContextMenu({ x: e.clientX, y: e.clientY, id, name });
+  };
+
+  const closeContextMenu = () => setContextMenu(null);
+
+  return (
+    <div style={styles.root}>
+      <div style={styles.header} onClick={toggleCollapsed}>
+        <span style={styles.headerLabel}>Characters</span>
+        <button style={styles.collapseBtn}>{collapsed ? '+' : '−'}</button>
+      </div>
+      {!collapsed && (
+        <>
+          {knownCharacters.length === 0 ? (
+            <div style={styles.empty}>No characters yet.</div>
+          ) : (
+            <div style={styles.list}>
+              {knownCharacters.map((c) => {
+                const isCurrent = c.id === currentId;
+                return (
+                  <div
+                    key={c.id}
+                    style={{
+                      ...styles.row,
+                      ...(isCurrent ? styles.rowCurrent : {}),
+                    }}
+                    onClick={() => handleRowClick(c.id)}
+                    onContextMenu={(e) => handleContextMenu(e, c.id, c.name)}
+                  >
+                    <span style={{ ...styles.dot, ...(isCurrent ? styles.dotCurrent : styles.dotOther) }}>
+                      {isCurrent ? '●' : '○'}
+                    </span>
+                    <span style={styles.name}>{c.name}</span>
+                    {isCurrent && dirty && <span style={styles.dirtyMarker}>●</span>}
+                    <button
+                      style={styles.menuBtn}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleContextMenu(e, c.id, c.name);
+                      }}
+                    >
+                      ⋯
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          <div style={styles.footer}>
+            <button style={styles.newBtn} onClick={onNewCharacter}>
+              + New Character
+            </button>
+          </div>
+        </>
+      )}
+
+      {/* Context menu */}
+      {contextMenu && (
+        <>
+          <div
+            style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 499 }}
+            onClick={closeContextMenu}
+          />
+          <div
+            style={{
+              ...styles.contextMenu,
+              left: contextMenu.x,
+              top: contextMenu.y,
+            }}
+          >
+            <button
+              style={styles.contextItem}
+              onClick={() => {
+                setActiveDialog({ kind: 'rename', id: contextMenu.id, name: contextMenu.name });
+                closeContextMenu();
+              }}
+            >
+              Rename…
+            </button>
+            <button
+              style={styles.contextItem}
+              onClick={() => {
+                setActiveDialog({ kind: 'duplicate', id: contextMenu.id, name: contextMenu.name });
+                closeContextMenu();
+              }}
+            >
+              Duplicate…
+            </button>
+            <button
+              style={styles.contextItem}
+              onClick={() => {
+                setActiveDialog({ kind: 'delete', id: contextMenu.id, name: contextMenu.name });
+                closeContextMenu();
+              }}
+            >
+              Delete…
+            </button>
+          </div>
+        </>
+      )}
+
+      {/* Dialogs */}
+      {activeDialog?.kind === 'switch' && (
+        <SwitchCharacterDialog
+          currentName={currentCharacterName}
+          targetName={knownCharacters.find((c) => c.id === activeDialog.targetId)?.name ?? ''}
+          undoDepth={undoDepth}
+          onDecide={handleSwitchDecision}
+        />
+      )}
+      {activeDialog?.kind === 'rename' && (
+        <RenameCharacterDialog
+          currentName={activeDialog.name}
+          onSubmit={(newName) => {
+            void renameCharacter(activeDialog.id, newName);
+            setActiveDialog(null);
+          }}
+          onCancel={() => setActiveDialog(null)}
+        />
+      )}
+      {activeDialog?.kind === 'duplicate' && (
+        <DuplicateCharacterDialog
+          sourceName={activeDialog.name}
+          onSubmit={(newName) => {
+            void duplicateCharacter(activeDialog.id, newName);
+            setActiveDialog(null);
+          }}
+          onCancel={() => setActiveDialog(null)}
+        />
+      )}
+      {activeDialog?.kind === 'delete' && (
+        <DeleteCharacterDialog
+          characterName={activeDialog.name}
+          characterId={activeDialog.id}
+          onConfirm={() => {
+            void deleteCharacter(activeDialog.id);
+            setActiveDialog(null);
+          }}
+          onCancel={() => setActiveDialog(null)}
+        />
+      )}
+    </div>
+  );
+}

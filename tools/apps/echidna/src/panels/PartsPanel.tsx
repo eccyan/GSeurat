@@ -69,9 +69,9 @@ function PartTree({ parts, parentId, depth, selected, onSelect }: {
 }
 
 export function PartsPanel() {
-  const characterName = useCharacterStore((s) => s.characterName);
+  const characterName = useCharacterStore((s) => s.character?.characterName ?? 'Untitled');
   const setCharacterName = useCharacterStore((s) => s.setCharacterName);
-  const parts = useCharacterStore((s) => s.characterParts);
+  const parts = useCharacterStore((s) => s.character?.characterParts ?? []);
   const selectedPart = useCharacterStore((s) => s.selectedPart);
   const setSelectedPart = useCharacterStore((s) => s.setSelectedPart);
   const addPart = useCharacterStore((s) => s.addPart);
