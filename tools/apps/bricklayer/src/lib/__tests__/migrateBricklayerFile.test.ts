@@ -79,6 +79,7 @@ describe('migrateBricklayerFile', () => {
         textures: {},
         audio: {},
         maps: {},
+        objects: {},
       },
       gridWidth: 32,
       gridDepth: 32,

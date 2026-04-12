@@ -18,6 +18,7 @@ export interface AssetRegistry {
   textures:   Record<string, FileEntry>;
   audio:      Record<string, FileEntry>;
   maps:       Record<string, FileEntry>;
+  objects:    Record<string, FileEntry>;
 }
 
 export function createEmptyRegistry(): AssetRegistry {
@@ -28,6 +29,7 @@ export function createEmptyRegistry(): AssetRegistry {
     textures: {},
     audio: {},
     maps: {},
+    objects: {},
   };
 }
 
@@ -101,7 +103,13 @@ export function registerMap(
   };
 }
 
-export type RefKind = 'character' | 'vfx' | 'texture' | 'audio' | 'map';
+export function registerObject(
+  reg: AssetRegistry, id: string, entry: { file: string },
+): AssetRegistry {
+  return { ...reg, objects: { ...reg.objects, [id]: { id, file: entry.file } } };
+}
+
+export type RefKind = 'character' | 'vfx' | 'texture' | 'audio' | 'map' | 'object';
 
 /**
  * Resolve an asset ref to its canonical project-relative file path.
@@ -140,6 +148,11 @@ export function resolveRef(ref: string, kind: RefKind, reg: AssetRegistry): stri
     case 'map': {
       const e = reg.maps[parsed.id];
       if (!e) throw new Error(`resolveRef: unknown id "${parsed.id}" in the map registry`);
+      return e.file;
+    }
+    case 'object': {
+      const e = reg.objects[parsed.id];
+      if (!e) throw new Error(`resolveRef: unknown id "${parsed.id}" in the object registry`);
       return e.file;
     }
     default: {
