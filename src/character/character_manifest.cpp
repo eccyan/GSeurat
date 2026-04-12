@@ -1,6 +1,8 @@
 #include "gseurat/character/character_manifest.hpp"
 
+#include <cstdio>
 #include <fstream>
+#include <memory>
 #include <nlohmann/json.hpp>
 
 namespace gseurat {
@@ -33,27 +35,37 @@ std::optional<CharacterData> load_character_manifest(const std::string& path) {
     nlohmann::json root;
     try {
         root = nlohmann::json::parse(file);
+    } catch (const std::exception& e) {
+        std::fprintf(stderr, "[CharacterManifest] JSON parse error in '%s': %s\n",
+                     path.c_str(), e.what());
+        return std::nullopt;
     } catch (...) {
+        std::fprintf(stderr, "[CharacterManifest] Unknown parse error in '%s'\n",
+                     path.c_str());
         return std::nullopt;
     }
+    // Close file immediately — no longer needed after parsing.
+    file.close();
 
-    CharacterData data;
-    data.name = root.value("name", "");
-    data.ply_file = root.value("ply_file", "");
-    data.scale = root.value("scale", 1.0f);
+    auto data = std::make_unique<CharacterData>();
+    data->name = root.value("name", std::string{});
+    data->ply_file = root.value("ply_file", std::string{});
+    data->scale = root.value("scale", 1.0f);
 
     // --- Bones ---
-    if (root.contains("bones")) {
-        for (auto& jb : root["bones"]) {
+    if (root.contains("bones") && root["bones"].is_array()) {
+        const auto& bones_json = root["bones"];
+        data->bones.reserve(bones_json.size());
+        for (const auto& jb : bones_json) {
             BoneData bone;
-            bone.id = jb.value("id", "");
+            bone.id = jb.value("id", std::string{});
 
             // Resolve parent string to index (-1 for null/root)
             bone.parent_index = -1;
             if (jb.contains("parent") && !jb["parent"].is_null()) {
-                const auto parent_id = jb["parent"].get<std::string>();
-                for (int i = 0; i < static_cast<int>(data.bones.size()); ++i) {
-                    if (data.bones[i].id == parent_id) {
+                std::string parent_id = jb["parent"].get<std::string>();
+                for (int i = 0; i < static_cast<int>(data->bones.size()); ++i) {
+                    if (data->bones[i].id == parent_id) {
                         bone.parent_index = i;
                         break;
                     }
@@ -66,18 +78,20 @@ std::optional<CharacterData> load_character_manifest(const std::string& path) {
                     jb["joint"][0].get<float>(),
                     jb["joint"][1].get<float>(),
                     jb["joint"][2].get<float>()
-                ) * data.scale;
+                ) * data->scale;
             }
 
-            data.bones.push_back(std::move(bone));
+            data->bones.push_back(std::move(bone));
         }
     }
 
-    const int bone_count = static_cast<int>(data.bones.size());
+    const int bone_count = static_cast<int>(data->bones.size());
 
     // --- Poses ---
     if (root.contains("poses") && root["poses"].is_object()) {
-        for (auto& [pose_name, jp] : root["poses"].items()) {
+        const auto& poses_json = root["poses"];
+        data->poses.reserve(poses_json.size());
+        for (const auto& [pose_name, jp] : poses_json.items()) {
             PoseData pose;
             pose.name = pose_name;
             pose.rotations.resize(bone_count, glm::vec3(0.0f));
@@ -88,13 +102,13 @@ std::optional<CharacterData> load_character_manifest(const std::string& path) {
                     jp["root_position"][0].get<float>(),
                     jp["root_position"][1].get<float>(),
                     jp["root_position"][2].get<float>()
-                ) * data.scale;
+                ) * data->scale;
             }
 
-            for (auto& [bone_id, jr] : jp.items()) {
+            for (const auto& [bone_id, jr] : jp.items()) {
                 if (bone_id == "root_position") continue;  // handled above
-                int bi = data.find_bone(bone_id);
-                if (bi >= 0 && jr.is_array() && jr.size() >= 3) {
+                int bi = data->find_bone(bone_id);
+                if (bi >= 0 && bi < bone_count && jr.is_array() && jr.size() >= 3) {
                     pose.rotations[bi] = glm::vec3(
                         jr[0].get<float>(),
                         jr[1].get<float>(),
@@ -103,22 +117,24 @@ std::optional<CharacterData> load_character_manifest(const std::string& path) {
                 }
             }
 
-            data.poses.push_back(std::move(pose));
+            data->poses.push_back(std::move(pose));
         }
     }
 
     // --- Animations ---
     if (root.contains("animations") && root["animations"].is_object()) {
-        for (auto& [clip_name, jc] : root["animations"].items()) {
+        const auto& anims_json = root["animations"];
+        data->clips.reserve(anims_json.size());
+        for (const auto& [clip_name, jc] : anims_json.items()) {
             // Build keyframes first as a standalone vector
             std::vector<AnimKeyframe> keyframes;
             if (jc.contains("keyframes") && jc["keyframes"].is_array()) {
                 keyframes.reserve(jc["keyframes"].size());
-                for (auto& jk : jc["keyframes"]) {
+                for (const auto& jk : jc["keyframes"]) {
                     AnimKeyframe kf{};
                     kf.time = jk.value("time", 0.0f);
-                    const auto pose_name = jk.value("pose", "");
-                    kf.pose_index = data.find_pose(pose_name);
+                    std::string kf_pose_name = jk.value("pose", std::string{});
+                    kf.pose_index = data->find_pose(kf_pose_name);
                     keyframes.push_back(kf);
                 }
             }
@@ -129,11 +145,11 @@ std::optional<CharacterData> load_character_manifest(const std::string& path) {
             clip.looping = jc.value("looping", true);
             clip.root_motion = jc.value("root_motion", false);
             clip.keyframes = std::move(keyframes);
-            data.clips.push_back(std::move(clip));
+            data->clips.push_back(std::move(clip));
         }
     }
 
-    return data;
+    return std::move(*data);
 }
 
 }  // namespace gseurat
