@@ -8,6 +8,12 @@ import { DeleteCharacterDialog } from './DeleteCharacterDialog.js';
 
 const COLLAPSE_KEY = 'echidna:characters-panel-collapsed';
 
+const KIND_BADGE: Record<string, { label: string; bg: string; color: string }> = {
+  character: { label: 'CHR', bg: '#1a3a2a', color: '#6c8' },
+  map:       { label: 'MAP', bg: '#1a2a3a', color: '#68c' },
+  object:    { label: 'OBJ', bg: '#3a2a1a', color: '#c86' },
+};
+
 const styles: Record<string, React.CSSProperties> = {
   root: {
     display: 'flex',
@@ -86,6 +92,28 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#666',
     fontStyle: 'italic',
   },
+  filterRow: {
+    display: 'flex',
+    padding: '4px 10px',
+    borderBottom: '1px solid #2a2a3a',
+  },
+  filterSelect: {
+    flex: 1,
+    background: '#2a2a4a',
+    color: '#aaa',
+    border: '1px solid #444',
+    borderRadius: 3,
+    padding: '2px 6px',
+    fontSize: 10,
+  },
+  kindBadge: {
+    fontSize: 9,
+    fontWeight: 700,
+    padding: '1px 4px',
+    borderRadius: 2,
+    marginRight: 6,
+    letterSpacing: 0.5,
+  },
   contextMenu: {
     position: 'fixed',
     background: '#1e1e3a',
@@ -135,6 +163,7 @@ export function AssetsPanel({ onNewAsset }: Props) {
   const [collapsed, setCollapsed] = useState(() =>
     localStorage.getItem(COLLAPSE_KEY) === '1',
   );
+  const [kindFilter, setKindFilter] = useState<string>('all');
   const [contextMenu, setContextMenu] = useState<ContextMenuState>(null);
   const [activeDialog, setActiveDialog] = useState<ActiveDialog>(null);
 
@@ -173,19 +202,31 @@ export function AssetsPanel({ onNewAsset }: Props) {
 
   const closeContextMenu = () => setContextMenu(null);
 
+  const filteredAssets = kindFilter === 'all'
+    ? knownAssets
+    : knownAssets.filter((c) => c.kind === kindFilter);
+
   return (
     <div style={styles.root}>
       <div style={styles.header} onClick={toggleCollapsed}>
-        <span style={styles.headerLabel}>Characters</span>
+        <span style={styles.headerLabel}>Assets</span>
         <button style={styles.collapseBtn}>{collapsed ? '+' : '−'}</button>
       </div>
       {!collapsed && (
         <>
-          {knownAssets.length === 0 ? (
-            <div style={styles.empty}>No characters yet.</div>
+          <div style={styles.filterRow}>
+            <select style={styles.filterSelect} value={kindFilter} onChange={(e) => setKindFilter(e.target.value)}>
+              <option value="all">All</option>
+              <option value="character">Characters</option>
+              <option value="map">Maps</option>
+              <option value="object">Objects</option>
+            </select>
+          </div>
+          {filteredAssets.length === 0 ? (
+            <div style={styles.empty}>No assets yet.</div>
           ) : (
             <div style={styles.list}>
-              {knownAssets.map((c) => {
+              {filteredAssets.map((c) => {
                 const isCurrent = c.id === currentId;
                 return (
                   <div
@@ -199,6 +240,13 @@ export function AssetsPanel({ onNewAsset }: Props) {
                   >
                     <span style={{ ...styles.dot, ...(isCurrent ? styles.dotCurrent : styles.dotOther) }}>
                       {isCurrent ? '●' : '○'}
+                    </span>
+                    <span style={{
+                      ...styles.kindBadge,
+                      background: KIND_BADGE[c.kind]?.bg ?? '#333',
+                      color: KIND_BADGE[c.kind]?.color ?? '#888',
+                    }}>
+                      {KIND_BADGE[c.kind]?.label ?? c.kind.toUpperCase().slice(0, 3)}
                     </span>
                     <span style={styles.name}>{c.name}</span>
                     {isCurrent && dirty && <span style={styles.dirtyMarker}>●</span>}
@@ -218,7 +266,7 @@ export function AssetsPanel({ onNewAsset }: Props) {
           )}
           <div style={styles.footer}>
             <button style={styles.newBtn} onClick={onNewAsset}>
-              + New Character
+              + New Asset
             </button>
           </div>
         </>
