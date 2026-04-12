@@ -1094,9 +1094,17 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
         return;
       }
 
-      set({ dirty: false });
-      // Refresh the list so the row's mtime updates
-      await get().listCharacters();
+      set((state) => ({
+        dirty: false,
+        // Update the saved character's mtime in-place rather than calling
+        // listCharacters() which would re-read disk and wipe optimistic
+        // entries for characters that haven't been saved yet. The full
+        // listCharacters() refresh happens on project-root restore and
+        // after rename/duplicate/delete — save() just needs the mtime.
+        knownCharacters: state.knownCharacters.map((c) =>
+          c.id === id ? { ...c, lastModified: Date.now() } : c,
+        ),
+      }));
     } finally {
       set({ _saving: false });
     }
