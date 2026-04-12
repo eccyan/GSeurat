@@ -124,7 +124,6 @@ add_subdirectory(shaders)
 
 add_library(gseurat_core OBJECT
     src/engine/app_base.cpp
-    src/engine/gs_scene_loader.cpp
     src/engine/command_dispatcher.cpp
     src/engine/vk_context.cpp
     src/engine/swapchain.cpp
@@ -200,6 +199,14 @@ target_include_directories(gseurat_core PUBLIC
 target_compile_definitions(gseurat_core PUBLIC
     GLM_FORCE_DEPTH_ZERO_TO_ONE
 )
+
+# MSVC: enable C++ exceptions and standard-conforming preprocessor
+if(MSVC)
+    target_compile_options(gseurat_core PUBLIC /EHsc /permissive-)
+    # Disable iterator debugging — avoids proxy corruption crashes from
+    # memcpy-based ECS or other raw memory operations on containers.
+    target_compile_definitions(gseurat_core PUBLIC _ITERATOR_DEBUG_LEVEL=0)
+endif()
 
 target_link_libraries(gseurat_core
     PUBLIC
