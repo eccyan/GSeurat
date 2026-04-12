@@ -33,19 +33,22 @@ void main() {
     uint width = uint(dimensions.y);
     uint height = uint(dimensions.z);
 
-    if (pixel.x >= width || pixel.y >= height) return;
+    bool valid_pixel = (pixel.x < width && pixel.y < height);
 
-    // Load raw HDR color and depth
-    vec4 raw = imageLoad(input_image, ivec2(pixel));
-    float depth = imageLoad(depth_image, ivec2(pixel)).r;
+    // Load raw HDR color and depth (only for valid pixels)
+    vec4 raw = valid_pixel ? imageLoad(input_image, ivec2(pixel)) : vec4(0.0);
+    float depth = valid_pixel ? imageLoad(depth_image, ivec2(pixel)).r : 0.0;
     float alpha = raw.a;
 
     // ── 0. Hybrid background (ground plane + sky gradient) ──
     bool bg_enabled = sky_enable.w > 0.5;
-    if (alpha < 0.001 && !bg_enabled) {
+    if (valid_pixel && alpha < 0.001 && !bg_enabled) {
         // No background configured — pass through transparent
         imageStore(output_image, ivec2(pixel), raw);
-        return;
+        // Still must participate in barrier below, so don't return.
+        // Mark as handled by zeroing alpha so later effects are skipped.
+        raw = vec4(0.0);
+        alpha = 0.0;
     }
 
     vec3 color = raw.rgb;
@@ -53,7 +56,7 @@ void main() {
     // Store into shared memory for tile-based effects
     tile_color[local_id.y][local_id.x] = vec4(color, alpha);
     tile_depth_s[local_id.y][local_id.x] = depth;
-    barrier();
+    barrier();  // ALL invocations in workgroup must reach this
 
     // Unpack parameters
     float fog_density       = fog_params.x;
@@ -235,5 +238,7 @@ void main() {
         alpha = 1.0;  // output is fully opaque
     }
 
-    imageStore(output_image, ivec2(pixel), vec4(color, alpha));
+    if (valid_pixel) {
+        imageStore(output_image, ivec2(pixel), vec4(color, alpha));
+    }
 }
