@@ -7,7 +7,7 @@ import { parseVox } from '../lib/voxImport.js';
 import { parsePlyToVoxels } from '../lib/plyImport.js';
 import { parseObjToVoxels } from '../lib/objImport.js';
 import { sendBridgeCommand } from '@gseurat/engine-client';
-import type { EchidnaFile } from '../store/types.js';
+import type { EchidnaFile, Character } from '../store/types.js';
 import { NewProjectDialog } from './NewProjectDialog.js';
 import { ResizeGridDialog } from './ResizeGridDialog.js';
 import { ExportDialog } from './ExportDialog.js';
@@ -316,40 +316,96 @@ export function MenuBar() {
     toastTimer.current = setTimeout(() => setToast(null), timeout);
   }, []);
 
+  // Shared Staging push logic. Uploads PLY + manifest via REST, sends
+  // load_scene_json + load_character via WebSocket. Throws on failure.
+  // Callers are responsible for toast/error-UI presentation.
+  const syncCharacterToStaging = useCallback(async (char: Character) => {
+    const charId = char.id;
+    if (!charId) throw new Error('character has no id — call ensureCharacterId() first');
+
+    const plyBlob = exportPly(char.voxels, char.gridWidth, char.gridDepth, char.characterParts);
+
+    // Upload PLY
+    const plyRes = await fetch(
+      `${BRIDGE_REST_URL}/api/characters/${encodeURIComponent(charId)}/file/${encodeURIComponent(charId + '.ply')}`,
+      { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: plyBlob },
+    );
+    if (!plyRes.ok) {
+      const err = await plyRes.json().catch(() => ({ error: plyRes.statusText }));
+      throw new Error((err as { error?: string }).error || 'Failed to upload PLY');
+    }
+    const { path: plyPath } = await plyRes.json() as { path: string };
+
+    // Build manifest with centered joints (matches PLY export centering)
+    const halfW = char.gridWidth / 2;
+    let maxY = 0;
+    for (const [key] of char.voxels.entries()) {
+      const y = parseInt(key.split(',')[1], 10);
+      if (y > maxY) maxY = y;
+    }
+    const halfH = maxY / 2;
+    const centeredParts = char.characterParts.map((p) => ({
+      ...p,
+      joint: [p.joint[0] - halfW, p.joint[1] - halfH, p.joint[2]] as [number, number, number],
+    }));
+    const manifest = buildManifest(
+      charId, `${charId}.ply`, 1.0,
+      centeredParts, char.characterPoses, char.animations,
+    );
+    const manifestJson = JSON.stringify(manifest, null, 2);
+
+    // Upload manifest
+    const manifestRes = await fetch(
+      `${BRIDGE_REST_URL}/api/characters/${encodeURIComponent(charId)}/file/${encodeURIComponent(charId + '.manifest.json')}`,
+      { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: manifestJson },
+    );
+    let manifestPath = '';
+    if (manifestRes.ok) {
+      const res = await manifestRes.json() as { path: string };
+      manifestPath = res.path;
+    }
+
+    // Build scene JSON
+    const scene = {
+      version: 2,
+      gaussian_splat: {
+        ply_file: plyPath,
+        camera: { position: [0, 5, 20], target: [0, 0, 0], fov: 45 },
+        render_width: 320,
+        render_height: 240,
+      },
+      game_objects: [],
+    };
+
+    // Send load_scene_json (with 5s timeout)
+    await Promise.race([
+      sendBridgeCommand({ cmd: 'load_scene_json', json: JSON.stringify(scene) }),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Staging not responding (timed out after 5s)')), 5000)),
+    ]);
+
+    // Send load_character for animation playback (non-critical)
+    if (manifestPath) {
+      await Promise.race([
+        sendBridgeCommand({ cmd: 'load_character', path: manifestPath }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('load_character timed out')), 5000)),
+      ]).catch(() => { /* non-critical — animation won't be available */ });
+    }
+  }, []);
+
   const pushToStaging = useCallback(async () => {
+    // Ensure stable id before using char.id as a filesystem path (Bug 1 fix)
+    useCharacterStore.getState().ensureCharacterId();
     const s = useCharacterStore.getState();
     const char = s.character;
     if (!char || char.voxels.size === 0) return;
 
     try {
-      const charId = char.characterName.replace(/\s+/g, '_').toLowerCase() || 'character';
-      const plyBlob = exportPly(char.voxels, char.gridWidth, char.gridDepth, char.characterParts);
-      const manifest = buildManifest(
-        charId,
-        `${charId}.ply`,
-        1.0,
-        char.characterParts,
-        char.characterPoses,
-        char.animations,
-      );
-
-      await fetch(
-        `${BRIDGE_REST_URL}/api/characters/${encodeURIComponent(charId)}/file/${encodeURIComponent(charId + '.ply')}`,
-        { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: plyBlob },
-      );
-
-      await fetch(
-        `${BRIDGE_REST_URL}/api/characters/${encodeURIComponent(charId)}/manifest`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(manifest),
-        },
-      );
-    } catch {
-      // Silently fail — bridge may not be running
+      await syncCharacterToStaging(char);
+    } catch (err) {
+      // Auto-sync is silent — don't toast, just log
+      console.warn('[echidna] auto-sync push to Staging failed:', err);
     }
-  }, []);
+  }, [syncCharacterToStaging]);
 
   // Auto-sync: debounced push to staging when voxels or parts change
   useEffect(() => {
@@ -470,6 +526,8 @@ export function MenuBar() {
   }, []);
 
   const handlePreviewInStaging = useCallback(async () => {
+    // Ensure stable id before using char.id as a filesystem path (Bug 1 fix)
+    useCharacterStore.getState().ensureCharacterId();
     const s = useCharacterStore.getState();
     const char = s.character;
     if (!char || char.voxels.size === 0) {
@@ -478,86 +536,14 @@ export function MenuBar() {
     }
 
     showToast('Sending to Staging...', 'loading');
-
     try {
-      const charId = char.characterName.replace(/\s+/g, '_').toLowerCase() || 'character';
-      const plyBlob = exportPly(char.voxels, char.gridWidth, char.gridDepth, char.characterParts);
-
-      // Upload PLY binary to bridge REST API
-      const plyRes = await fetch(
-        `${BRIDGE_REST_URL}/api/characters/${encodeURIComponent(charId)}/file/${encodeURIComponent(charId + '.ply')}`,
-        { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: plyBlob },
-      );
-      if (!plyRes.ok) {
-        const err = await plyRes.json().catch(() => ({ error: plyRes.statusText }));
-        throw new Error(err.error || 'Failed to upload PLY');
-      }
-      const { path: plyPath } = await plyRes.json() as { path: string };
-
-      // Build a minimal scene JSON that shows the character as a game object
-      const scene = {
-        version: 2,
-        gaussian_splat: {
-          ply_file: plyPath,
-          camera: {
-            position: [0, 5, 20],
-            target: [0, 0, 0],
-            fov: 45,
-          },
-          render_width: 320,
-          render_height: 240,
-        },
-        game_objects: [],
-      };
-
-      // Upload manifest JSON for animation playback
-      // Joint positions must be centered to match PLY export centering
-      const halfW = char.gridWidth / 2;
-      let maxY = 0;
-      for (const [key] of char.voxels.entries()) {
-        const y = parseInt(key.split(',')[1], 10);
-        if (y > maxY) maxY = y;
-      }
-      const halfH = maxY / 2;
-      const centeredParts = char.characterParts.map((p) => ({
-        ...p,
-        joint: [p.joint[0] - halfW, p.joint[1] - halfH, p.joint[2]] as [number, number, number],
-      }));
-      const manifest = buildManifest(
-        charId, charId + '.ply', 1.0,
-        centeredParts, char.characterPoses, char.animations,
-      );
-      const manifestJson = JSON.stringify(manifest, null, 2);
-      const manifestRes = await fetch(
-        `${BRIDGE_REST_URL}/api/characters/${encodeURIComponent(charId)}/file/${encodeURIComponent(charId + '.manifest.json')}`,
-        { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: manifestJson },
-      );
-      let manifestPath = '';
-      if (manifestRes.ok) {
-        const res = await manifestRes.json() as { path: string };
-        manifestPath = res.path;
-      }
-
-      // Send load_scene_json to Staging via bridge WebSocket (with 5s timeout)
-      await Promise.race([
-        sendBridgeCommand({ cmd: 'load_scene_json', json: JSON.stringify(scene) }),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Staging not responding (timed out after 5s)')), 5000)),
-      ]);
-
-      // Send load_character to enable animation playback in Staging
-      if (manifestPath) {
-        await Promise.race([
-          sendBridgeCommand({ cmd: 'load_character', path: manifestPath }),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('load_character timed out')), 5000)),
-        ]).catch(() => { /* non-critical — animation just won't be available */ });
-      }
-
+      await syncCharacterToStaging(char);
       showToast('Character sent to Staging', 'success');
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       showToast(`Preview failed: ${msg}`, 'error', 5000);
     }
-  }, [showToast]);
+  }, [showToast, syncCharacterToStaging]);
 
   const handleConnectBridgeToProject = useCallback(async () => {
     const projectPath = window.prompt(
