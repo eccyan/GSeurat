@@ -150,7 +150,7 @@ export async function exportObjectToProject(
 
 /**
  * Enumerate all .echidna files in tools_data/echidna_saves/ and return
- * their metadata for the CharactersPanel list. Skips malformed files with
+ * their metadata for the AssetsPanel list. Skips malformed files with
  * a console.warn rather than throwing — one bad file must not prevent the
  * panel from rendering the rest.
  *

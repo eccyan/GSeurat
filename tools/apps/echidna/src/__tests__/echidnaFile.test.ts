@@ -13,10 +13,10 @@ describe('slugifyAssetId', () => {
   it('preserves hyphens and underscores', () => {
     expect(slugifyAssetId('cool-guy_v2')).toBe('cool-guy_v2');
   });
-  it('falls back to "character" when empty or all stripped', () => {
-    expect(slugifyAssetId('')).toBe('character');
-    expect(slugifyAssetId('   ')).toBe('character');
-    expect(slugifyAssetId('###')).toBe('character');
+  it('falls back to "asset" when empty or all stripped', () => {
+    expect(slugifyAssetId('')).toBe('asset');
+    expect(slugifyAssetId('   ')).toBe('asset');
+    expect(slugifyAssetId('###')).toBe('asset');
   });
 });
 
@@ -53,10 +53,10 @@ describe('migrateEchidnaFile', () => {
     expect(migrated.characterName).toBe('Walker Bot');
   });
 
-  it('migrates even when characterName is missing, falling back to "character"', () => {
+  it('migrates even when characterName is missing, falling back to "asset"', () => {
     const old = { version: 2, gridWidth: 32, gridDepth: 32, voxels: [], parts: [], poses: {} };
     const migrated = migrateEchidnaFile(old);
-    expect(migrated.id).toBe('character');
+    expect(migrated.id).toBe('asset');
   });
 
   it('preserves animations field when present', () => {

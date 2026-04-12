@@ -103,7 +103,7 @@ export function slugifyAssetId(name: string): string {
     .trim()
     .replace(/\s+/g, '_')
     .replace(/[^a-z0-9_-]/g, '');
-  return cleaned.length > 0 ? cleaned : 'character';
+  return cleaned.length > 0 ? cleaned : 'asset';
 }
 
 
@@ -161,7 +161,7 @@ export interface Snapshot {
 /**
  * Per-asset slice of EchidnaStoreState. Nullable — null when no asset
  * is loaded (empty project, or just after Delete). Swapped atomically on
- * openCharacter() and newCharacter(). Every mutating action that writes to
+ * openAsset() and newAsset(). Every mutating action that writes to
  * this slice must also call markDirty().
  */
 export interface Asset {

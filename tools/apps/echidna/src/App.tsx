@@ -293,7 +293,7 @@ export function App() {
       <div style={styles.body}>
         {/* Left panel */}
         <div style={{ width: leftWidth, flexShrink: 0, display: 'flex', flexDirection: 'column' as const, overflow: 'hidden', background: '#1e1e3a', borderRight: '1px solid #333' }}>
-          <AssetsPanel onNewCharacter={handleNewAsset} />
+          <AssetsPanel onNewAsset={handleNewAsset} />
           <ModeTabs />
           <div style={{ flex: 1, overflow: 'auto' }}>
             {mode === 'build' ? <ToolBar /> : <AnimateLeftPanel />}

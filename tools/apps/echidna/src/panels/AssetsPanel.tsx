@@ -118,10 +118,10 @@ type ActiveDialog =
   | null;
 
 interface Props {
-  onNewCharacter: () => void;
+  onNewAsset: () => void;
 }
 
-export function AssetsPanel({ onNewCharacter }: Props) {
+export function AssetsPanel({ onNewAsset }: Props) {
   const knownAssets = useCharacterStore((s) => s.knownAssets);
   const currentId = useCharacterStore((s) => s.asset?.id ?? null);
   const dirty = useCharacterStore((s) => s.dirty);
@@ -217,7 +217,7 @@ export function AssetsPanel({ onNewCharacter }: Props) {
             </div>
           )}
           <div style={styles.footer}>
-            <button style={styles.newBtn} onClick={onNewCharacter}>
+            <button style={styles.newBtn} onClick={onNewAsset}>
               + New Character
             </button>
           </div>

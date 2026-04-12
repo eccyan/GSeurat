@@ -864,14 +864,14 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
       const entries = await listEchidnaProjects(handle);
       set({ knownAssets: entries });
     } catch (e) {
-      console.error('[echidna] listCharacters failed:', e);
+      console.error('[echidna] listAssets failed:', e);
       // Do not clobber existing list on transient failure
     }
   },
   openAsset: async (id) => {
     const handle = get().projectRootHandle;
     if (!handle) {
-      console.warn('[echidna] openCharacter called with no projectRootHandle');
+      console.warn('[echidna] openAsset called with no projectRootHandle');
       return;
     }
     try {
@@ -925,11 +925,11 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
       });
     } catch (e) {
       if ((e as Error).name === 'NotFoundError') {
-        console.warn(`[echidna] openCharacter: file missing for ${id}, refreshing list`);
+        console.warn(`[echidna] openAsset: file missing for ${id}, refreshing list`);
         await get().listAssets();
         return;
       }
-      console.error(`[echidna] openCharacter failed for ${id}:`, e);
+      console.error(`[echidna] openAsset failed for ${id}:`, e);
     }
   },
 
@@ -950,11 +950,11 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
       if (decision === 'save') {
         const ok = await s.save();
         if (!ok) {
-          console.error('[echidna] requestOpenCharacter: save() failed, aborting switch');
+          console.error('[echidna] requestOpenAsset: save() failed, aborting switch');
           return;
         }
       }
-      // 'discard' falls through to openCharacter (losing the dirty work)
+      // 'discard' falls through to openAsset (losing the dirty work)
     }
     await get().openAsset(id);
   },
@@ -966,7 +966,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
     try {
       await deleteEchidnaProject(handle, id);
     } catch (e) {
-      console.error(`[echidna] deleteCharacter failed for ${id}:`, e);
+      console.error(`[echidna] deleteAsset failed for ${id}:`, e);
       return;
     }
     set((state) => ({
@@ -994,7 +994,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
     try {
       await renameEchidnaProject(handle, id, newName);
     } catch (e) {
-      console.error(`[echidna] renameCharacter failed for ${id}:`, e);
+      console.error(`[echidna] renameAsset failed for ${id}:`, e);
       return;
     }
 
@@ -1021,7 +1021,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
     const MAX_DUPLICATE_SUFFIX = 1000;
     const baseId = slugifyAssetId(newName);
     if (baseId.length === 0) {
-      console.error(`[echidna] duplicateCharacter: slugifyAssetId returned empty for "${newName}"`);
+      console.error(`[echidna] duplicateAsset: slugifyAssetId returned empty for "${newName}"`);
       return;
     }
     const existingIds = new Set(s.knownAssets.map((c) => c.id));
@@ -1029,7 +1029,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
     let counter = 2;
     while (existingIds.has(newId)) {
       if (counter > MAX_DUPLICATE_SUFFIX) {
-        console.error(`[echidna] duplicateCharacter: > ${MAX_DUPLICATE_SUFFIX} collisions for base id "${baseId}"`);
+        console.error(`[echidna] duplicateAsset: > ${MAX_DUPLICATE_SUFFIX} collisions for base id "${baseId}"`);
         return;
       }
       newId = `${baseId}_${counter}`;
@@ -1040,7 +1040,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
       await duplicateEchidnaProject(handle, sourceId, newId, newName);
       await get().listAssets();
     } catch (e) {
-      console.error(`[echidna] duplicateCharacter failed:`, e);
+      console.error(`[echidna] duplicateAsset failed:`, e);
     }
   },
 
@@ -1119,10 +1119,10 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
 
       set((state) => ({
         dirty: false,
-        // Update the saved character's mtime in-place rather than calling
-        // listCharacters() which would re-read disk and wipe optimistic
-        // entries for characters that haven't been saved yet. The full
-        // listCharacters() refresh happens on project-root restore and
+        // Update the saved asset's mtime in-place rather than calling
+        // listAssets() which would re-read disk and wipe optimistic
+        // entries for assets that haven't been saved yet. The full
+        // listAssets() refresh happens on project-root restore and
         // after rename/duplicate/delete — save() just needs the mtime.
         knownAssets: state.knownAssets.map((c) =>
           c.id === id ? { ...c, lastModified: Date.now() } : c,
@@ -1152,7 +1152,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
     // Mint a non-colliding id from the provided name. Without this,
     // creating two new characters in a row would give them both the same id
     // and the second save would silently overwrite the first. Matches the
-    // collision-suffix pattern used by duplicateCharacter.
+    // collision-suffix pattern used by duplicateAsset.
     const MAX_NEW_SUFFIX = 1000;
     const baseId = slugifyAssetId(charName);
     const existingIds = new Set(s.knownAssets.map((c) => c.id));
@@ -1160,7 +1160,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
     let counter = 2;
     while (existingIds.has(newId)) {
       if (counter > MAX_NEW_SUFFIX) {
-        console.error(`[echidna] newCharacter: > ${MAX_NEW_SUFFIX} collisions for base id "${baseId}"`);
+        console.error(`[echidna] newAsset: > ${MAX_NEW_SUFFIX} collisions for base id "${baseId}"`);
         return;
       }
       newId = `${baseId}_${counter}`;
