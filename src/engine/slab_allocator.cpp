@@ -1,4 +1,5 @@
 #include "gseurat/engine/slab_allocator.hpp"
+#include <string>
 
 namespace gseurat {
 
