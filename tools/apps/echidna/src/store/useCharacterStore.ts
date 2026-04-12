@@ -985,23 +985,25 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
     const handle = s.projectRootHandle;
     if (!handle) return;
 
+    // Always persist to disk — no asymmetry between current and non-current
+    try {
+      await renameEchidnaProject(handle, id, newName);
+    } catch (e) {
+      console.error(`[echidna] renameCharacter failed for ${id}:`, e);
+      return;
+    }
+
     if (s.character?.id === id) {
-      // Current character — mutate in-memory, mark dirty, defer disk write to next Save
+      // Current character — also update in-memory state
       set((state) => ({
         character: state.character ? { ...state.character, characterName: newName } : null,
         knownCharacters: state.knownCharacters.map((c) =>
           c.id === id ? { ...c, name: newName } : c,
         ),
-        dirty: true,
       }));
     } else {
-      // Non-current character — persist directly and refresh list
-      try {
-        await renameEchidnaProject(handle, id, newName);
-        await get().listCharacters();
-      } catch (e) {
-        console.error(`[echidna] renameCharacter failed for ${id}:`, e);
-      }
+      // Non-current — refresh list from disk
+      await get().listCharacters();
     }
   },
 
