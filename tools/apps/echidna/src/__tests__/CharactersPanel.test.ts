@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { useCharacterStore } from '../store/useCharacterStore';
 import { testing } from '@gseurat/project-root';
-import type { CharacterListEntry } from '../store/types';
+
 
 /**
  * CharactersPanel data contract tests.
