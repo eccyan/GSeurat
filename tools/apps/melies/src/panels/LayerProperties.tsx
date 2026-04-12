@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useVfxStore } from '../store/useVfxStore.js';
 import type { VfxElement, ElementType, SplineConfig } from '../store/types.js';
 type VfxLayer = VfxElement;
@@ -596,6 +596,47 @@ function LightEditor({ layer, update }: {
   );
 }
 
+// ── Object PLY picker ──
+
+function ObjectPlyPicker({ value, onChange }: { value: string; onChange: (path: string) => void }) {
+  const [options, setOptions] = useState<string[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const handle = useVfxStore.getState().projectHandle;
+    if (!handle) return;
+    setLoading(true);
+    import('../lib/projectIO.js').then(({ listObjectPlys }) =>
+      listObjectPlys(handle).then((names) => {
+        setOptions(names);
+        setLoading(false);
+      }),
+    ).catch(() => setLoading(false));
+  }, []);
+
+  const selectedFile = value.includes('/') ? value.split('/').pop() ?? '' : value;
+
+  return (
+    <div style={{ display: 'flex', gap: 4 }}>
+      <select
+        style={{ ...inputStyle, flex: 1, opacity: value ? 1 : 0.5 }}
+        value={selectedFile}
+        onChange={(e) => {
+          const file = e.target.value;
+          onChange(file ? `assets/objects/${file}` : '');
+        }}
+      >
+        <option value="">
+          {loading ? 'Loading…' : 'None'}
+        </option>
+        {options.map((name) => (
+          <option key={name} value={name}>{name.replace(/\.ply$/i, '')}</option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
 // ── Main LayerProperties component ──
 
 export function LayerProperties() {
@@ -707,34 +748,10 @@ export function LayerProperties() {
           <SectionHeader>Object Config</SectionHeader>
           <div>
             <label style={sectionLabel}>PLY File</label>
-            <div style={{ display: 'flex', gap: 4 }}>
-              <input type="text" value={layer.ply_file ?? ''} readOnly
-                style={{ ...inputStyle, flex: 1, opacity: layer.ply_file ? 1 : 0.5 }}
-                placeholder="No file selected" />
-              <button onClick={() => {
-                const input = document.createElement('input');
-                input.type = 'file';
-                input.accept = '.ply';
-                input.onchange = async () => {
-                  const file = input.files?.[0];
-                  if (!file) return;
-                  const store = useVfxStore.getState();
-                  if (store.projectHandle) {
-                    // Copy PLY into project directory
-                    const { copyPlyToProject } = await import('../lib/projectIO.js');
-                    const path = await copyPlyToProject(store.projectHandle, file);
-                    update({ ply_file: path });
-                  } else {
-                    // No project directory — just use filename
-                    update({ ply_file: file.name });
-                  }
-                };
-                input.click();
-              }} style={{
-                padding: '4px 8px', background: T.surface, border: `1px solid ${T.border}`,
-                borderRadius: 4, color: T.accent, cursor: 'pointer', fontSize: 11, whiteSpace: 'nowrap',
-              }}>Import</button>
-            </div>
+            <ObjectPlyPicker
+              value={layer.ply_file ?? ''}
+              onChange={(path) => update({ ply_file: path || undefined })}
+            />
           </div>
           <div>
             <label style={sectionLabel}>Scale</label>
