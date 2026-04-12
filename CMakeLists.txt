@@ -141,6 +141,7 @@ add_library(gseurat_core OBJECT
     src/engine/input_manager.cpp
     src/engine/scene.cpp
     src/engine/tilemap.cpp
+    src/engine/transfer_queue.cpp
     src/engine/pathfinder.cpp
     src/engine/parallax_layer.cpp
     src/engine/animation.cpp
