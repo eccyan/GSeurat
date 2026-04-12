@@ -46,17 +46,12 @@ function PortalEditor({ portal }: { portal: PortalData }) {
         />
       </div>
       <div style={styles.row}>
-        <span style={{ fontSize: 12, minWidth: 40 }}>Size</span>
-        <NumberInput
-          value={portal.size[0]}
-          onChange={(v) => updatePortal(portal.id, { size: [v, portal.size[1]] })}
-          style={{ ...styles.input, maxWidth: 60 }}
-        />
-        <NumberInput
-          value={portal.size[1]}
-          onChange={(v) => updatePortal(portal.id, { size: [portal.size[0], v] })}
-          style={{ ...styles.input, maxWidth: 60 }}
-        />
+        <span style={{ fontSize: 12, minWidth: 40 }}>Region</span>
+        <span style={{ fontSize: 11, color: '#aaa' }}>
+          {portal.region_shape === 'sphere'
+            ? `sphere r=${portal.region_radius}`
+            : `box ${portal.region_half_extents.join('x')}`}
+        </span>
       </div>
       <Vec3Input
         value={portal.spawn_position}
