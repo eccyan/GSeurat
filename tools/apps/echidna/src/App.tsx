@@ -108,7 +108,7 @@ function NoCharacterSelected() {
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       background: '#16162a', color: '#888', fontSize: 14,
     }}>
-      Select a character from the panel or create a new one.
+      Select an asset from the panel or create a new one.
     </div>
   );
 }
@@ -128,6 +128,7 @@ export function App() {
 
   const projectRootHandle = useCharacterStore((s) => s.projectRootHandle);
   const asset = useCharacterStore((s) => s.asset);
+  const assetKind = useCharacterStore((s) => s.asset?.kind ?? null);
 
   const handleNewAsset = useCallback(() => {
     const store = useCharacterStore.getState();
@@ -294,9 +295,9 @@ export function App() {
         {/* Left panel */}
         <div style={{ width: leftWidth, flexShrink: 0, display: 'flex', flexDirection: 'column' as const, overflow: 'hidden', background: '#1e1e3a', borderRight: '1px solid #333' }}>
           <AssetsPanel onNewAsset={handleNewAsset} />
-          <ModeTabs />
+          <ModeTabs showAnimate={assetKind === 'character'} />
           <div style={{ flex: 1, overflow: 'auto' }}>
-            {mode === 'build' ? <ToolBar /> : <AnimateLeftPanel />}
+            {mode === 'build' || assetKind !== 'character' ? <ToolBar /> : <AnimateLeftPanel />}
           </div>
         </div>
         <ResizeHandle onDrag={handleLeftDrag} />
@@ -310,7 +311,7 @@ export function App() {
           ) : (
             <CharacterViewport />
           )}
-          {asset !== null && mode === 'animate' && (
+          {asset !== null && mode === 'animate' && assetKind === 'character' && (
             <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 10 }}>
               <Timeline />
             </div>
@@ -320,7 +321,7 @@ export function App() {
 
         {/* Right panel */}
         <div style={{ ...styles.inspector, width: rightWidth }}>
-          {mode === 'build' ? <BuildPanel /> : <AnimateRightPanel />}
+          {mode === 'build' || assetKind !== 'character' ? <BuildPanel /> : <AnimateRightPanel />}
         </div>
       </div>
       {showNewDialog && <NewProjectDialog onClose={() => setShowNewDialog(false)} />}
@@ -356,9 +357,17 @@ const modeTabStyles: Record<string, React.CSSProperties> = {
   },
 };
 
-function ModeTabs() {
+function ModeTabs({ showAnimate }: { showAnimate: boolean }) {
   const mode = useCharacterStore((s) => s.mode);
   const setMode = useCharacterStore((s) => s.setMode);
+
+  if (!showAnimate) {
+    return (
+      <div style={modeTabStyles.container}>
+        <div style={{ ...modeTabStyles.tab, ...modeTabStyles.tabActive }}>BUILD</div>
+      </div>
+    );
+  }
 
   return (
     <div style={modeTabStyles.container}>

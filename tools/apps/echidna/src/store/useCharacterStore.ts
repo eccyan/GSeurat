@@ -922,6 +922,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
         previewPose: false,
         playbackTime: 0,
         isPlaying: false,
+        ...(char.kind !== 'character' ? { mode: 'build' as const } : {}),
       });
     } catch (e) {
       if ((e as Error).name === 'NotFoundError') {
