@@ -77,8 +77,15 @@ export interface PortalData {
   position: [number, number, number];
   size: [number, number];
   target_scene: string;
+  target_instance_id?: string;
   spawn_position: [number, number, number];
   spawn_facing: string;
+}
+
+export interface InstanceData {
+  id: string;
+  display_name: string;
+  scene_file: string;
 }
 
 export interface EmitterConfig {
@@ -470,5 +477,6 @@ export interface BricklayerFile {
     cameraRails?: CameraZoneRail[];
     cameraDefaultParams?: Partial<CameraZoneParams>;
     cameraShowDebugVolumes?: boolean;
+    instances?: InstanceData[];
   };
 }

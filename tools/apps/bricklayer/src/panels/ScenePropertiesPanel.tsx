@@ -6,6 +6,7 @@ import { useSceneStore } from '../store/useSceneStore.js';
 import type {
   StaticLight,
   PortalData,
+  InstanceData,
   PlayerData,
   GameObjectData,
   PbdConfig,
@@ -637,6 +638,7 @@ function LightProperties({ light }: { light: StaticLight }) {
 function PortalProperties({ portal }: { portal: PortalData }) {
   const update = useSceneStore((s) => s.updatePortal);
   const remove = useSceneStore((s) => s.removePortal);
+  const instances = useSceneStore((s) => s.instances);
 
   return (
     <div>
@@ -672,6 +674,27 @@ function PortalProperties({ portal }: { portal: PortalData }) {
       </div>
 
       <div style={styles.section}>
+        <span style={styles.label}>Target Instance</span>
+        <select
+          style={styles.select}
+          value={portal.target_instance_id ?? ''}
+          onChange={(e) => {
+            const val = e.target.value;
+            if (val) {
+              update(portal.id, { target_instance_id: val, target_scene: '' });
+            } else {
+              update(portal.id, { target_instance_id: undefined });
+            }
+          }}
+        >
+          <option value="">None (use Target Scene)</option>
+          {instances.map((inst) => (
+            <option key={inst.id} value={inst.id}>{inst.display_name}</option>
+          ))}
+        </select>
+      </div>
+
+      <div style={styles.section}>
         <span style={styles.label}>Target Scene</span>
         <input
           type="text"
@@ -699,6 +722,42 @@ function PortalProperties({ portal }: { portal: PortalData }) {
         >
           {facings.map((f) => <option key={f} value={f}>{f}</option>)}
         </select>
+      </div>
+    </div>
+  );
+}
+
+function InstanceProperties({ instance }: { instance: InstanceData }) {
+  const update = useSceneStore((s) => s.updateInstance);
+  const remove = useSceneStore((s) => s.removeInstance);
+
+  return (
+    <div>
+      <div style={{ ...styles.row, marginBottom: 12 }}>
+        <span style={{ ...styles.label, flex: 1 }}>Instance</span>
+        <button style={styles.btnDanger} onClick={() => remove(instance.id)}>Remove</button>
+      </div>
+
+      <div style={styles.section}>
+        <span style={styles.label}>Display Name</span>
+        <input
+          type="text"
+          value={instance.display_name}
+          onChange={(e) => update(instance.id, { display_name: e.target.value })}
+          style={styles.input}
+          placeholder="Instance name"
+        />
+      </div>
+
+      <div style={styles.section}>
+        <span style={styles.label}>Scene File</span>
+        <input
+          type="text"
+          value={instance.scene_file}
+          onChange={(e) => update(instance.id, { scene_file: e.target.value })}
+          style={styles.input}
+          placeholder="relative/path/to/scene.json"
+        />
       </div>
     </div>
   );
@@ -1496,6 +1555,7 @@ export function ScenePropertiesPanel() {
   const gsAnimations = useSceneStore((s) => s.gsAnimations);
   const vfxInstances = useSceneStore((s) => s.vfxInstances);
   const player = useSceneStore((s) => s.player);
+  const instances = useSceneStore((s) => s.instances);
   const cameraVolumes = useSceneStore((s) => s.cameraVolumes);
   const cameraTriggers = useSceneStore((s) => s.cameraTriggers);
   const cameraRails = useSceneStore((s) => s.cameraRails);
@@ -1520,6 +1580,12 @@ export function ScenePropertiesPanel() {
     const portal = portals.find((p) => p.id === selectedEntity.id);
     if (!portal) return <div style={styles.empty}>Portal not found</div>;
     return <PortalProperties portal={portal} />;
+  }
+
+  if (selectedEntity.type === 'instance') {
+    const instance = instances.find((i) => i.id === selectedEntity.id);
+    if (!instance) return <div style={styles.empty}>Instance not found</div>;
+    return <InstanceProperties instance={instance} />;
   }
 
   if (selectedEntity.type === 'gs_emitter') {
