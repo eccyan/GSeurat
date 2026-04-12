@@ -64,8 +64,8 @@ function CameraFitter() {
   return null;
 }
 
-export function CharacterViewport() {
-  useComponentRegistry('CharacterViewport');
+export function AssetViewport() {
+  useComponentRegistry('AssetViewport');
   const gridWidth = useCharacterStore((s) => s.asset?.gridWidth ?? 32);
   const gridDepth = useCharacterStore((s) => s.asset?.gridDepth ?? 32);
   const showGrid = useCharacterStore((s) => s.showGrid);

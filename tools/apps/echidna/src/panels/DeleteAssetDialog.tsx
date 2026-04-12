@@ -1,9 +1,9 @@
-// tools/apps/echidna/src/panels/DeleteCharacterDialog.tsx
+// tools/apps/echidna/src/panels/DeleteAssetDialog.tsx
 import React from 'react';
 
 interface Props {
-  characterName: string;
-  characterId: string;
+  assetName: string;
+  assetId: string;
   onConfirm: () => void;
   onCancel: () => void;
 }
@@ -25,15 +25,15 @@ const styles: Record<string, React.CSSProperties> = {
   buttonNeutral: { background: '#2a2a4a', color: '#ccc' },
 };
 
-export function DeleteCharacterDialog({ characterName, characterId, onConfirm, onCancel }: Props) {
+export function DeleteAssetDialog({ assetName, assetId, onConfirm, onCancel }: Props) {
   return (
     <div style={styles.overlay} onClick={onCancel}>
       <div style={styles.dialog} onClick={(e) => e.stopPropagation()}>
-        <div style={styles.title}>Delete character</div>
+        <div style={styles.title}>Delete asset</div>
         <div style={styles.body}>
-          Delete <strong>{characterName}</strong>? The <code>.echidna</code> source file will be permanently removed from <code>tools_data/echidna_saves/</code>.
+          Delete <strong>{assetName}</strong>? The <code>.echidna</code> source file will be permanently removed from <code>tools_data/echidna_saves/</code>.
           <div style={styles.warn}>
-            ⚠ Exported files in <code>assets/characters/{characterId}/</code> will NOT be removed. Delete them manually if desired.
+            ⚠ Exported files in <code>assets/characters/{assetId}/</code> will NOT be removed. Delete them manually if desired.
           </div>
           <div style={{ marginTop: 12 }}>This cannot be undone.</div>
         </div>
