@@ -232,7 +232,7 @@ export interface CharacterStoreState {
   setPlaybackSpeed: (speed: number) => void;
 
   // Actions – file
-  newCharacter: (gridSize?: number) => void;
+  newCharacter: (gridSize?: number, name?: string) => void;
   resizeGrid: (size: number) => void;
   saveProject: () => EchidnaFile;
   loadProject: (raw: any) => void;
@@ -240,7 +240,7 @@ export interface CharacterStoreState {
   setProjectRootHandle: (h: FileSystemDirectoryHandle | null) => void;
   ensureCharacterId: () => string;
   _saving: boolean;              // race guard — internal, not subscribed by consumers
-  save: () => Promise<void>;
+  save: () => Promise<boolean>;
   listCharacters: () => Promise<void>;
   openCharacter: (id: string) => Promise<void>;
   requestOpenCharacter: (id: string, confirm: ConfirmSwitch) => Promise<void>;
@@ -943,10 +943,8 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
       });
       if (decision === 'cancel') return;
       if (decision === 'save') {
-        await s.save();
-        // If save() failed, dirty will still be true — abort the switch to
-        // prevent loss of unsaved work on the subsequent openCharacter call.
-        if (get().dirty) {
+        const ok = await s.save();
+        if (!ok) {
           console.error('[echidna] requestOpenCharacter: save() failed, aborting switch');
           return;
         }
@@ -987,23 +985,25 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
     const handle = s.projectRootHandle;
     if (!handle) return;
 
+    // Always persist to disk — no asymmetry between current and non-current
+    try {
+      await renameEchidnaProject(handle, id, newName);
+    } catch (e) {
+      console.error(`[echidna] renameCharacter failed for ${id}:`, e);
+      return;
+    }
+
     if (s.character?.id === id) {
-      // Current character — mutate in-memory, mark dirty, defer disk write to next Save
+      // Current character — also update in-memory state
       set((state) => ({
         character: state.character ? { ...state.character, characterName: newName } : null,
         knownCharacters: state.knownCharacters.map((c) =>
           c.id === id ? { ...c, name: newName } : c,
         ),
-        dirty: true,
       }));
     } else {
-      // Non-current character — persist directly and refresh list
-      try {
-        await renameEchidnaProject(handle, id, newName);
-        await get().listCharacters();
-      } catch (e) {
-        console.error(`[echidna] renameCharacter failed for ${id}:`, e);
-      }
+      // Non-current — refresh list from disk
+      await get().listCharacters();
     }
   },
 
@@ -1044,22 +1044,22 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
     // already in flight, the second call returns immediately. This matters
     // because the switch-during-save race (user hits ⌘S then clicks another
     // character row) could otherwise double-trigger the write pipeline.
-    if (get()._saving) return;
+    if (get()._saving) return false;
     set({ _saving: true });
     try {
       const handleCheck = get();
       const handle = handleCheck.projectRootHandle;
       if (!handle) {
         console.warn('[echidna] save called with no projectRootHandle');
-        return;
+        return false;
       }
-      if (!handleCheck.character) return;
+      if (!handleCheck.character) return false;
 
       // ensureCharacterId may replace state.character (via set()), so recapture
       // get() after it runs so downstream reads use a fresh snapshot.
       const id = get().ensureCharacterId();
       const s = get();
-      if (!s.character) return; // guard: ensureCharacterId should never null character, but be safe
+      if (!s.character) return false; // guard: ensureCharacterId should never null character, but be safe
 
       // 1. Write the .echidna source via Phase 0.0 helper
       const file = s.saveProject();   // returns EchidnaFile DTO, does NOT write to disk
@@ -1067,7 +1067,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
         await saveEchidnaProject(handle, file);
       } catch (e) {
         console.error('[echidna] save: .echidna write failed:', e);
-        return;
+        return false;
       }
 
       // 2. Build PLY + manifest and write engine-ready files
@@ -1091,7 +1091,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
         console.error('[echidna] save: partial write — engine files may be stale:', e);
         // .echidna is on disk so dirty COULD clear, but partial-fail means
         // the user should retry. Leave dirty true so the next ⌘S rebuilds.
-        return;
+        return false;
       }
 
       set((state) => ({
@@ -1105,6 +1105,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
           c.id === id ? { ...c, lastModified: Date.now() } : c,
         ),
       }));
+      return true;
     } finally {
       set({ _saving: false });
     }
@@ -1120,16 +1121,17 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
     return id;
   },
 
-  newCharacter: (gridSize?: number) => {
+  newCharacter: (gridSize?: number, name?: string) => {
     const size = gridSize ?? 32;
     const s = get();
+    const charName = (name && name.trim().length > 0) ? name.trim() : 'Untitled';
 
-    // Mint a non-colliding id from the default 'Untitled' name. Without this,
-    // creating two new characters in a row would give them both id 'untitled'
+    // Mint a non-colliding id from the provided name. Without this,
+    // creating two new characters in a row would give them both the same id
     // and the second save would silently overwrite the first. Matches the
     // collision-suffix pattern used by duplicateCharacter.
     const MAX_NEW_SUFFIX = 1000;
-    const baseId = slugifyCharacterId('Untitled');
+    const baseId = slugifyCharacterId(charName);
     const existingIds = new Set(s.knownCharacters.map((c) => c.id));
     let newId = baseId;
     let counter = 2;
@@ -1148,7 +1150,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
         voxels: new Map(),
         gridWidth: size,
         gridDepth: size,
-        characterName: 'Untitled',
+        characterName: charName,
         characterParts: [],
         characterPoses: {},
         animations: {},
@@ -1159,7 +1161,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
       // listCharacters() which re-reads from disk and reconciles the entry.
       knownCharacters: [
         ...s.knownCharacters,
-        { id: newId, name: 'Untitled', lastModified: Date.now() },
+        { id: newId, name: charName, lastModified: Date.now() },
       ],
       selectedPart: null,
       selectedPose: null,
@@ -1206,9 +1208,9 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
     const id = get().ensureCharacterId();
     const s = get();
     if (!s.character) {
-      console.warn('[echidna] saveProject called with null character — returning DEFAULT_CHARACTER shape; callers should check s.character first');
+      throw new Error('[echidna] saveProject called with null character');
     }
-    const char = s.character ?? DEFAULT_CHARACTER;
+    const char = s.character;
     const voxelArr: EchidnaFile['voxels'] = [];
     for (const [key, vox] of char.voxels) {
       const [x, y, z] = parseKey(key);

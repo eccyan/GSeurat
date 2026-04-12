@@ -545,8 +545,19 @@ describe('useCharacterStore.requestOpenCharacter', () => {
 
 describe('useCharacterStore.renameCharacter', () => {
   it('renames the current character in-memory and marks dirty', async () => {
+    const root = testing.makeRoot();
+    const td = await root.getDirectoryHandle('tools_data', { create: true });
+    const saves = await td.getDirectoryHandle('echidna_saves', { create: true });
+    const fh = await saves.getFileHandle('walker.echidna', { create: true });
+    const w = await fh.createWritable();
+    await w.write(JSON.stringify({
+      version: 3, id: 'walker', characterName: 'Walker Bot',
+      voxels: [], parts: [], poses: {},
+    }));
+    await w.close();
+
     useCharacterStore.setState({
-      projectRootHandle: testing.makeRoot() as unknown as FileSystemDirectoryHandle,
+      projectRootHandle: root as unknown as FileSystemDirectoryHandle,
       character: {
         id: 'walker', characterName: 'Walker Bot',
         gridWidth: 32, gridDepth: 32, voxels: new Map(),
@@ -562,7 +573,45 @@ describe('useCharacterStore.renameCharacter', () => {
     const s = useCharacterStore.getState();
     expect(s.character?.characterName).toBe('Walker v2');
     expect(s.knownCharacters[0].name).toBe('Walker v2');
-    expect(s.dirty).toBe(true);
+    expect(s.dirty).toBe(false);
+  });
+
+  it('writes the new name to disk even for the current character', async () => {
+    const root = testing.makeRoot();
+    const td = await root.getDirectoryHandle('tools_data', { create: true });
+    const saves = await td.getDirectoryHandle('echidna_saves', { create: true });
+    const fh = await saves.getFileHandle('walker.echidna', { create: true });
+    const w = await fh.createWritable();
+    await w.write(JSON.stringify({
+      version: 3, id: 'walker', characterName: 'Walker Bot',
+      voxels: [], parts: [], poses: {},
+    }));
+    await w.close();
+
+    useCharacterStore.setState({
+      projectRootHandle: root as unknown as FileSystemDirectoryHandle,
+      character: {
+        id: 'walker', characterName: 'Walker Bot',
+        gridWidth: 32, gridDepth: 32, voxels: new Map(),
+        characterParts: [], characterPoses: {}, animations: {},
+        currentFilename: null,
+      },
+      knownCharacters: [{ id: 'walker', name: 'Walker Bot', lastModified: 0 }],
+      dirty: false,
+    });
+
+    await useCharacterStore.getState().renameCharacter('walker', 'Walker v2');
+
+    // In-memory state updated
+    const s = useCharacterStore.getState();
+    expect(s.character?.characterName).toBe('Walker v2');
+    expect(s.knownCharacters[0].name).toBe('Walker v2');
+
+    // Disk file also updated
+    const fh2 = await saves.getFileHandle('walker.echidna');
+    const file2 = await fh2.getFile();
+    const parsed = JSON.parse(await file2.text());
+    expect(parsed.characterName).toBe('Walker v2');
   });
 
   it('renames a non-current character on disk without touching state.character', async () => {
@@ -715,5 +764,131 @@ describe('useCharacterStore.duplicateCharacter', () => {
 
     await useCharacterStore.getState().duplicateCharacter('walker', 'Archer');
     expect(useCharacterStore.getState().character).toBeNull();  // still null
+  });
+});
+
+describe('useCharacterStore.newCharacter — name parameter', () => {
+  beforeEach(() => {
+    useCharacterStore.setState({ knownCharacters: [], character: null, dirty: false });
+  });
+
+  it('uses the provided name and derives id from it', () => {
+    useCharacterStore.getState().newCharacter(32, 'Knight');
+    const s = useCharacterStore.getState();
+    expect(s.character?.characterName).toBe('Knight');
+    expect(s.character?.id).toBe('knight');
+  });
+
+  it('falls back to Untitled when name is undefined', () => {
+    useCharacterStore.getState().newCharacter(32);
+    const s = useCharacterStore.getState();
+    expect(s.character?.characterName).toBe('Untitled');
+    expect(s.character?.id).toBe('untitled');
+  });
+
+  it('falls back to Untitled when name is empty string', () => {
+    useCharacterStore.getState().newCharacter(32, '');
+    const s = useCharacterStore.getState();
+    expect(s.character?.characterName).toBe('Untitled');
+  });
+
+  it('deduplicates id when name collides with existing character', () => {
+    useCharacterStore.setState({
+      knownCharacters: [{ id: 'knight', name: 'Knight', lastModified: 0 }],
+      character: null,
+      dirty: false,
+    });
+    useCharacterStore.getState().newCharacter(32, 'Knight');
+    const s = useCharacterStore.getState();
+    expect(s.character?.id).toBe('knight_2');
+  });
+});
+
+describe('useCharacterStore.saveProject — null guard', () => {
+  it('throws when character is null', () => {
+    useCharacterStore.setState({ character: null });
+    expect(() => useCharacterStore.getState().saveProject()).toThrow(
+      '[echidna] saveProject called with null character',
+    );
+  });
+});
+
+describe('useCharacterStore.save — return value', () => {
+  beforeEach(() => {
+    useCharacterStore.setState({ _saving: false });
+  });
+
+  it('returns true on successful save', async () => {
+    const root = testing.makeRoot();
+    useCharacterStore.setState({
+      projectRootHandle: root as unknown as FileSystemDirectoryHandle,
+      character: {
+        id: 'walker', characterName: 'Walker',
+        gridWidth: 32, gridDepth: 32, voxels: new Map(),
+        characterParts: [], characterPoses: {}, animations: {},
+        currentFilename: null,
+      },
+      dirty: true,
+    });
+    const result = await useCharacterStore.getState().save();
+    expect(result).toBe(true);
+  });
+
+  it('returns false when projectRootHandle is null', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    useCharacterStore.setState({
+      projectRootHandle: null,
+      character: {
+        id: 'walker', characterName: 'Walker',
+        gridWidth: 32, gridDepth: 32, voxels: new Map(),
+        characterParts: [], characterPoses: {}, animations: {},
+        currentFilename: null,
+      },
+      dirty: true,
+    });
+    const result = await useCharacterStore.getState().save();
+    expect(result).toBe(false);
+    warnSpy.mockRestore();
+  });
+
+  it('returns false when character is null', async () => {
+    useCharacterStore.setState({
+      projectRootHandle: testing.makeRoot() as unknown as FileSystemDirectoryHandle,
+      character: null,
+    });
+    const result = await useCharacterStore.getState().save();
+    expect(result).toBe(false);
+  });
+
+  it('returns false when race guard blocks', async () => {
+    useCharacterStore.setState({ _saving: true });
+    const result = await useCharacterStore.getState().save();
+    expect(result).toBe(false);
+  });
+
+  it('returns false on partial failure', async () => {
+    const root = testing.makeRoot();
+    useCharacterStore.setState({
+      projectRootHandle: root as unknown as FileSystemDirectoryHandle,
+      character: {
+        id: 'walker', characterName: 'Walker',
+        gridWidth: 32, gridDepth: 32, voxels: new Map(),
+        characterParts: [], characterPoses: {}, animations: {},
+        currentFilename: null,
+      },
+      dirty: true,
+    });
+    const projectFs = await import('../lib/projectFs');
+    const spy = vi.spyOn(projectFs, 'exportCharacterToProject').mockRejectedValueOnce(
+      new Error('simulated engine write failure'),
+    );
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const result = await useCharacterStore.getState().save();
+      expect(result).toBe(false);
+    } finally {
+      spy.mockRestore();
+      errSpy.mockRestore();
+    }
   });
 });

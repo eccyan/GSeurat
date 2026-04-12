@@ -45,6 +45,7 @@ const styles: Record<string, React.CSSProperties> = {
 };
 
 export function NewProjectDialog({ onClose }: { onClose: () => void }) {
+  const [charName, setCharName] = useState('');
   const [sizeOption, setSizeOption] = useState<string>('64');
   const [customSize, setCustomSize] = useState<number>(64);
 
@@ -54,14 +55,27 @@ export function NewProjectDialog({ onClose }: { onClose: () => void }) {
     : Number(sizeOption);
 
   const handleCreate = () => {
-    useCharacterStore.getState().newCharacter(resolvedSize);
+    useCharacterStore.getState().newCharacter(resolvedSize, charName);
     onClose();
   };
 
   return (
     <div style={styles.overlay} onClick={onClose}>
       <div style={styles.dialog} onClick={(e) => e.stopPropagation()}>
-        <div style={styles.title}>New Project</div>
+        <div style={styles.title}>New Character</div>
+
+        <div style={styles.section}>
+          <span style={styles.label}>Character Name</span>
+          <input
+            type="text"
+            style={styles.input}
+            placeholder="Untitled"
+            autoFocus
+            value={charName}
+            onChange={(e) => setCharName(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') handleCreate(); }}
+          />
+        </div>
 
         <div style={styles.section}>
           <span style={styles.label}>Grid Size</span>
