@@ -170,6 +170,9 @@ export function ProjectTree() {
   const removeGameObject = useSceneStore((st) => st.removeGameObject);
   const staticLights = useSceneStore((st) => st.staticLights);
   const portals = useSceneStore((st) => st.portals);
+  const instances = useSceneStore((st) => st.instances);
+  const addInstance = useSceneStore((st) => st.addInstance);
+  const removeInstance = useSceneStore((st) => st.removeInstance);
   const addLight = useSceneStore((st) => st.addLight);
   const addPortal = useSceneStore((st) => st.addPortal);
   const gsParticleEmitters = useSceneStore((st) => st.gsParticleEmitters);
@@ -202,6 +205,7 @@ export function ProjectTree() {
   const [gameObjOpen, setGameObjOpen] = useState(true);
   const [lightOpen, setLightOpen] = useState(true);
   const [portalOpen, setPortalOpen] = useState(true);
+  const [instanceOpen, setInstanceOpen] = useState(true);
   const [emitterOpen, setEmitterOpen] = useState(true);
   const [animOpen, setAnimOpen] = useState(true);
   const [vfxOpen, setVfxOpen] = useState(true);
@@ -349,6 +353,27 @@ export function ProjectTree() {
                 isActive={isActive({ kind: 'scene_item', entityType: 'portal', entityId: p.id })}
                 onClick={() => click({ kind: 'scene_item', entityType: 'portal', entityId: p.id })}
                 actions={removeBtn(() => removePortal(p.id))}
+              />
+            ))}
+          </TreeNode>
+
+          {/* Instances (Room references) */}
+          <TreeNode
+            icon="⬚" label="Instances" count={instances.length}
+            arrow={instanceOpen ? '\u25BE' : '\u25B8'}
+            isActive={isActive({ kind: 'scene_category', category: 'instances' as any })}
+            onClick={() => { setInstanceOpen(!instanceOpen); click({ kind: 'scene_category', category: 'instances' as any }); }}
+            actions={addBtn(() => addInstance())}
+            isOpen={instanceOpen}
+          >
+            {instances.map((inst) => (
+              <TreeNode
+                key={inst.id}
+                icon="⬚"
+                label={inst.display_name || '(unnamed)'}
+                isActive={isActive({ kind: 'scene_item', entityType: 'instance', entityId: inst.id })}
+                onClick={() => click({ kind: 'scene_item', entityType: 'instance', entityId: inst.id })}
+                actions={removeBtn(() => removeInstance(inst.id))}
               />
             ))}
           </TreeNode>
