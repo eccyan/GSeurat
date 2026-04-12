@@ -238,6 +238,54 @@ describe('useCharacterStore.openAsset', () => {
     // state.character is unchanged (still whatever it was before the call)
     expect(s.asset).toEqual(existingChar);
   });
+
+  it('resets mode to build when opening a non-character asset', async () => {
+    const root = testing.makeRoot();
+    const toolsData = await root.getDirectoryHandle('tools_data', { create: true });
+    const saves = await toolsData.getDirectoryHandle('echidna_saves', { create: true });
+    const fh = await saves.getFileHandle('town.echidna', { create: true });
+    const w = await fh.createWritable();
+    await w.write(JSON.stringify({
+      version: 4, id: 'town', kind: 'map', characterName: 'Town',
+      gridWidth: 64, gridDepth: 64, voxels: [], parts: [], poses: {}, tags: [],
+    }));
+    await w.close();
+
+    useCharacterStore.setState({
+      projectRootHandle: root as unknown as FileSystemDirectoryHandle,
+      mode: 'animate',
+    });
+
+    await useCharacterStore.getState().openAsset('town');
+
+    const s = useCharacterStore.getState();
+    expect(s.asset?.kind).toBe('map');
+    expect(s.mode).toBe('build');
+  });
+
+  it('preserves mode when opening a character asset', async () => {
+    const root = testing.makeRoot();
+    const toolsData = await root.getDirectoryHandle('tools_data', { create: true });
+    const saves = await toolsData.getDirectoryHandle('echidna_saves', { create: true });
+    const fh = await saves.getFileHandle('archer.echidna', { create: true });
+    const w = await fh.createWritable();
+    await w.write(JSON.stringify({
+      version: 4, id: 'archer', kind: 'character', characterName: 'Archer',
+      gridWidth: 32, gridDepth: 32, voxels: [], parts: [], poses: {}, tags: [],
+    }));
+    await w.close();
+
+    useCharacterStore.setState({
+      projectRootHandle: root as unknown as FileSystemDirectoryHandle,
+      mode: 'animate',
+    });
+
+    await useCharacterStore.getState().openAsset('archer');
+
+    const s = useCharacterStore.getState();
+    expect(s.asset?.kind).toBe('character');
+    expect(s.mode).toBe('animate');
+  });
 });
 
 describe('useCharacterStore.save', () => {
