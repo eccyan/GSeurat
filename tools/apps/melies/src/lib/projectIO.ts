@@ -130,10 +130,19 @@ export async function loadProject(
       text = await (blob as Blob).text();
     } catch {
       // Legacy fallback: root-level project.json
-      console.warn('[melies] No project at new path, falling back to legacy project.json');
-      const fh = await handle.getFileHandle('project.json');
-      const legacy = await fh.getFile();
-      text = await legacy.text();
+      try {
+        console.info('[melies] No project at new path, trying legacy project.json');
+        const fh = await handle.getFileHandle('project.json');
+        const legacy = await fh.getFile();
+        text = await legacy.text();
+      } catch (e2) {
+        // Neither path exists — first time opening this directory in Méliès
+        if ((e2 as Error).name === 'NotFoundError') {
+          console.info('[melies] No existing project found — starting fresh');
+          return false;
+        }
+        throw e2;
+      }
     }
     const raw = JSON.parse(text);
     const data = migrateVfxProject(raw);
