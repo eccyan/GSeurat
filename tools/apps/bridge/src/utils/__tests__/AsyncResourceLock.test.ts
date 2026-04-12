@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { AsyncResourceLock } from '../AsyncResourceLock';
+import { AsyncResourceLock } from '../AsyncResourceLock.js';
 
 describe('AsyncResourceLock', () => {
   it('executes a single task and returns its result', async () => {

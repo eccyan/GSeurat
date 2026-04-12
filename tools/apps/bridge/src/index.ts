@@ -19,6 +19,9 @@ import { WSServer } from './ws-server.js';
 import { RequestTracker } from './request-tracker.js';
 import { exportPlyFromProject } from './ply-export.js';
 import type { EchidnaProject } from './ply-export.js';
+import { AsyncResourceLock } from './utils/AsyncResourceLock.js';
+
+const resourceLock = new AsyncResourceLock();
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -275,9 +278,11 @@ app.get('/api/files/scenes/:name', async (req: Request, res: Response) => {
 app.post('/api/files/scenes/:name', async (req: Request, res: Response) => {
   try {
     const filePath = safeResolve(getScenesDir(), `${req.params['name']}.json`);
-    await fs.mkdir(path.dirname(filePath), { recursive: true });
-    const body = typeof req.body === 'string' ? req.body : JSON.stringify(req.body, null, 2);
-    await fs.writeFile(filePath, body, 'utf8');
+    await resourceLock.acquire(filePath, async () => {
+      await fs.mkdir(path.dirname(filePath), { recursive: true });
+      const body = typeof req.body === 'string' ? req.body : JSON.stringify(req.body, null, 2);
+      await fs.writeFile(filePath, body, 'utf8');
+    });
     console.log(`[REST] Scene written: ${filePath}`);
     res.json({ ok: true, path: filePath });
   } catch (err) {
@@ -327,7 +332,9 @@ app.post('/api/files/textures/:name', async (req: Request, res: Response) => {
       data = Buffer.concat(chunks);
     }
 
-    await fs.writeFile(filePath, data);
+    await resourceLock.acquire(filePath, async () => {
+      await fs.writeFile(filePath, data);
+    });
     console.log(`[REST] Texture written: ${filePath} (${data.length} bytes)`);
     res.json({ ok: true, path: filePath, bytes: data.length });
   } catch (err) {
@@ -380,10 +387,12 @@ app.get('/api/characters/:id', async (req: Request, res: Response) => {
 app.post('/api/characters/:id', async (req: Request, res: Response) => {
   try {
     const charDir = safeResolve(getCharactersDir(), req.params['id']!);
-    await fs.mkdir(charDir, { recursive: true });
     const filePath = path.join(charDir, 'manifest.json');
-    const body = typeof req.body === 'string' ? req.body : JSON.stringify(req.body, null, 2);
-    await fs.writeFile(filePath, body, 'utf8');
+    await resourceLock.acquire(filePath, async () => {
+      await fs.mkdir(charDir, { recursive: true });
+      const body = typeof req.body === 'string' ? req.body : JSON.stringify(req.body, null, 2);
+      await fs.writeFile(filePath, body, 'utf8');
+    });
     console.log(`[REST] Character manifest written: ${filePath}`);
     res.json({ ok: true, path: filePath });
   } catch (err) {
@@ -402,30 +411,39 @@ app.post('/api/characters/:id/rename', async (req: Request, res: Response) => {
       res.status(400).json({ error: 'newId must be lowercase alphanumeric with underscores' });
       return;
     }
-    const charsDir = getCharactersDir();
-    const oldDir = safeResolve(charsDir, oldId);
-    const newDir = safeResolve(charsDir, newId);
 
-    // Check old exists
-    try { await fs.access(oldDir); } catch {
-      res.status(404).json({ error: `Character "${oldId}" not found` });
+    const result = await resourceLock.acquire(`character_manifest_${oldId}`, async () => {
+      const charsDir = getCharactersDir();
+      const oldDir = safeResolve(charsDir, oldId);
+      const newDir = safeResolve(charsDir, newId);
+
+      // Check old exists
+      try { await fs.access(oldDir); } catch {
+        return { error: `Character "${oldId}" not found`, status: 404 as number };
+      }
+      // Check new doesn't exist
+      try { await fs.access(newDir); return { error: `Character "${newId}" already exists`, status: 409 as number }; } catch { /* good */ }
+
+      // Rename directory
+      await fs.rename(oldDir, newDir);
+
+      // Update character_id in manifest
+      const manifestPath = path.join(newDir, 'manifest.json');
+      try {
+        const raw = await fs.readFile(manifestPath, 'utf8');
+        const manifest = JSON.parse(raw);
+        manifest.character_id = newId;
+        if (manifest.display_name === oldId) manifest.display_name = newId;
+        await fs.writeFile(manifestPath, JSON.stringify(manifest, null, 2), 'utf8');
+      } catch { /* manifest update optional */ }
+
+      return { ok: true };
+    });
+
+    if ('error' in result) {
+      res.status(result.status as number).json({ error: result.error });
       return;
     }
-    // Check new doesn't exist
-    try { await fs.access(newDir); res.status(409).json({ error: `Character "${newId}" already exists` }); return; } catch { /* good */ }
-
-    // Rename directory
-    await fs.rename(oldDir, newDir);
-
-    // Update character_id in manifest
-    const manifestPath = path.join(newDir, 'manifest.json');
-    try {
-      const raw = await fs.readFile(manifestPath, 'utf8');
-      const manifest = JSON.parse(raw);
-      manifest.character_id = newId;
-      if (manifest.display_name === oldId) manifest.display_name = newId;
-      await fs.writeFile(manifestPath, JSON.stringify(manifest, null, 2), 'utf8');
-    } catch { /* manifest update optional */ }
 
     console.log(`[REST] Character renamed: ${oldId} → ${newId}`);
     res.json({ ok: true, oldId, newId });
@@ -470,7 +488,9 @@ async function saveConceptImageHandler(req: Request, res: Response) {
     const filePath = path.join(charDir, filename);
     const data = await readBinaryBody(req);
 
-    await fs.writeFile(filePath, data);
+    await resourceLock.acquire(filePath, async () => {
+      await fs.writeFile(filePath, data);
+    });
     console.log(`[REST] Concept image${view ? ` (${view})` : ''} written: ${filePath} (${data.length} bytes)`);
     res.json({ ok: true, path: filePath, bytes: data.length });
   } catch (err) {
@@ -534,7 +554,9 @@ async function saveChibiImageHandler(req: Request, res: Response) {
     const filePath = path.join(charDir, filename);
     const data = await readBinaryBody(req);
 
-    await fs.writeFile(filePath, data);
+    await resourceLock.acquire(filePath, async () => {
+      await fs.writeFile(filePath, data);
+    });
     console.log(`[REST] Chibi image${view ? ` (${view})` : ''} written: ${filePath} (${data.length} bytes)`);
     res.json({ ok: true, path: filePath, bytes: data.length });
   } catch (err) {
@@ -598,7 +620,9 @@ app.post('/api/characters/:id/pixel-image', async (req: Request, res: Response) 
       data = Buffer.concat(chunks);
     }
 
-    await fs.writeFile(filePath, data);
+    await resourceLock.acquire(filePath, async () => {
+      await fs.writeFile(filePath, data);
+    });
     console.log(`[REST] Pixel image written: ${filePath} (${data.length} bytes)`);
     res.json({ ok: true, path: filePath, bytes: data.length });
   } catch (err) {
@@ -643,7 +667,9 @@ app.post('/api/characters/:id/file/:filename', async (req: Request, res: Respons
     await fs.mkdir(charDir, { recursive: true });
     const filePath = path.join(charDir, filename);
     const data = await readBinaryBody(req);
-    await fs.writeFile(filePath, data);
+    await resourceLock.acquire(filePath, async () => {
+      await fs.writeFile(filePath, data);
+    });
     console.log(`[REST] Character file written: ${filePath} (${data.length} bytes)`);
     res.json({ ok: true, path: filePath, bytes: data.length });
   } catch (err) {
@@ -678,10 +704,11 @@ app.get('/api/characters/:id/file/:filename', async (req: Request, res: Response
 // POST /api/characters/:id/frames/:anim/:frame/image — save a frame PNG
 app.post('/api/characters/:id/frames/:anim/:frame/image', async (req: Request, res: Response) => {
   try {
-    const charDir = safeResolve(getCharactersDir(), req.params['id']!);
-    const animDir = path.join(charDir, req.params['anim']!);
-    await fs.mkdir(animDir, { recursive: true });
-    const filename = `${req.params['anim']}_${req.params['frame']}.png`;
+    const id = req.params['id']!;
+    const charDir = safeResolve(getCharactersDir(), id);
+    const animName = req.params['anim']!;
+    const animDir = path.join(charDir, animName);
+    const filename = `${animName}_${req.params['frame']}.png`;
     const filePath = path.join(animDir, filename);
 
     let data: Buffer;
@@ -696,25 +723,28 @@ app.post('/api/characters/:id/frames/:anim/:frame/image', async (req: Request, r
       data = Buffer.concat(chunks);
     }
 
-    await fs.writeFile(filePath, data);
-    console.log(`[REST] Frame image written: ${filePath} (${data.length} bytes)`);
+    await resourceLock.acquire(`character_manifest_${id}`, async () => {
+      await fs.mkdir(animDir, { recursive: true });
+      await fs.writeFile(filePath, data);
+      console.log(`[REST] Frame image written: ${filePath} (${data.length} bytes)`);
 
-    // Also update the manifest frame entry with the file path
-    const manifestPath = path.join(charDir, 'manifest.json');
-    try {
-      const raw = await fs.readFile(manifestPath, 'utf8');
-      const manifest = JSON.parse(raw);
-      const anim = manifest.animations?.find((a: { name: string }) => a.name === req.params['anim']);
-      const frameIdx = parseInt(req.params['frame']!, 10);
-      const frame = anim?.frames?.find((f: { index: number }) => f.index === frameIdx);
-      if (frame) {
-        frame.file = `${req.params['anim']}/${filename}`;
-        if (frame.status === 'pending') frame.status = 'generated';
-        await fs.writeFile(manifestPath, JSON.stringify(manifest, null, 2), 'utf8');
-      }
-    } catch { /* manifest update optional */ }
+      // Also update the manifest frame entry with the file path
+      const manifestPath = path.join(charDir, 'manifest.json');
+      try {
+        const raw = await fs.readFile(manifestPath, 'utf8');
+        const manifest = JSON.parse(raw);
+        const anim = manifest.animations?.find((a: { name: string }) => a.name === animName);
+        const frameIdx = parseInt(req.params['frame']!, 10);
+        const frame = anim?.frames?.find((f: { index: number }) => f.index === frameIdx);
+        if (frame) {
+          frame.file = `${animName}/${filename}`;
+          if (frame.status === 'pending') frame.status = 'generated';
+          await fs.writeFile(manifestPath, JSON.stringify(manifest, null, 2), 'utf8');
+        }
+      } catch { /* manifest update optional */ }
+    });
 
-    res.json({ ok: true, path: filePath, bytes: data.length, file: `${req.params['anim']}/${filename}` });
+    res.json({ ok: true, path: filePath, bytes: data.length, file: `${animName}/${filename}` });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     const statusCode = message.includes('Path traversal') ? 400 : 500;
@@ -777,7 +807,8 @@ app.get('/api/characters/:id/frames/:anim/:frame/pass/:pass', async (req: Reques
 // POST /api/characters/:id/frames/:anim/:frame/pass/:pass — save an intermediate pass image
 app.post('/api/characters/:id/frames/:anim/:frame/pass/:pass', async (req: Request, res: Response) => {
   try {
-    const charDir = safeResolve(getCharactersDir(), req.params['id']!);
+    const id = req.params['id']!;
+    const charDir = safeResolve(getCharactersDir(), id);
     const pass = req.params['pass']!;
     if (!VALID_PASSES.includes(pass)) {
       res.status(400).json({ error: `Invalid pass: ${pass}` });
@@ -785,28 +816,31 @@ app.post('/api/characters/:id/frames/:anim/:frame/pass/:pass', async (req: Reque
     }
     const animName = req.params['anim']!;
     const animDir = path.join(charDir, animName);
-    await fs.mkdir(animDir, { recursive: true });
     const frameIdx = req.params['frame']!;
     const filename = `${animName}_${frameIdx}_${pass}.png`;
     const filePath = path.join(animDir, filename);
 
     const data = await readBinaryBody(req);
-    await fs.writeFile(filePath, data);
-    console.log(`[REST] Pass image written: ${filePath} (${data.length} bytes)`);
 
-    // Update pipeline_stage in manifest
-    const manifestPath = path.join(charDir, 'manifest.json');
-    try {
-      const raw = await fs.readFile(manifestPath, 'utf8');
-      const manifest = JSON.parse(raw);
-      const anim = manifest.animations?.find((a: { name: string }) => a.name === animName);
-      const fi = parseInt(frameIdx, 10);
-      const frame = anim?.frames?.find((f: { index: number }) => f.index === fi);
-      if (frame) {
-        frame.pipeline_stage = pass;
-        await fs.writeFile(manifestPath, JSON.stringify(manifest, null, 2), 'utf8');
-      }
-    } catch { /* manifest update optional */ }
+    await resourceLock.acquire(`character_manifest_${id}`, async () => {
+      await fs.mkdir(animDir, { recursive: true });
+      await fs.writeFile(filePath, data);
+      console.log(`[REST] Pass image written: ${filePath} (${data.length} bytes)`);
+
+      // Update pipeline_stage in manifest
+      const manifestPath = path.join(charDir, 'manifest.json');
+      try {
+        const raw = await fs.readFile(manifestPath, 'utf8');
+        const manifest = JSON.parse(raw);
+        const anim = manifest.animations?.find((a: { name: string }) => a.name === animName);
+        const fi = parseInt(frameIdx, 10);
+        const frame = anim?.frames?.find((f: { index: number }) => f.index === fi);
+        if (frame) {
+          frame.pipeline_stage = pass;
+          await fs.writeFile(manifestPath, JSON.stringify(manifest, null, 2), 'utf8');
+        }
+      } catch { /* manifest update optional */ }
+    });
 
     res.json({ ok: true, path: filePath, bytes: data.length });
   } catch (err) {
@@ -829,7 +863,9 @@ app.delete('/api/characters/:id/frames/:anim/:frame/pass/:pass', async (req: Req
     const frameIdx = req.params['frame']!;
     const filename = `${animName}_${frameIdx}_${pass}.png`;
     const filePath = path.join(charDir, animName, filename);
-    await fs.unlink(filePath);
+    await resourceLock.acquire(filePath, async () => {
+      await fs.unlink(filePath);
+    });
     console.log(`[REST] Pass image deleted: ${filePath}`);
     res.json({ ok: true });
   } catch (err) {
@@ -866,36 +902,46 @@ app.get('/api/characters/:id/frames/:anim/:frame', async (req: Request, res: Res
 // POST /api/characters/:id/frames/:anim/:frame — update a frame's status
 app.post('/api/characters/:id/frames/:anim/:frame', async (req: Request, res: Response) => {
   try {
-    const charDir = safeResolve(getCharactersDir(), req.params['id']!);
-    const filePath = path.join(charDir, 'manifest.json');
-    const content = await fs.readFile(filePath, 'utf8');
-    const manifest = JSON.parse(content);
-    const anim = manifest.animations?.find((a: { name: string }) => a.name === req.params['anim']);
-    if (!anim) {
-      res.status(404).json({ error: `Animation "${req.params['anim']}" not found` });
-      return;
-    }
+    const id = req.params['id']!;
+    const charDir = safeResolve(getCharactersDir(), id);
+    const animName = req.params['anim']!;
     const frameIdx = parseInt(req.params['frame']!, 10);
-    const frame = anim.frames?.find((f: { index: number }) => f.index === frameIdx);
-    if (!frame) {
-      res.status(404).json({ error: `Frame ${frameIdx} not found` });
+
+    const result = await resourceLock.acquire(`character_manifest_${id}`, async () => {
+      const filePath = path.join(charDir, 'manifest.json');
+      const content = await fs.readFile(filePath, 'utf8');
+      const manifest = JSON.parse(content);
+      const anim = manifest.animations?.find((a: { name: string }) => a.name === animName);
+      if (!anim) {
+        return { error: `Animation "${animName}" not found`, status: 404 as number };
+      }
+      const frame = anim.frames?.find((f: { index: number }) => f.index === frameIdx);
+      if (!frame) {
+        return { error: `Frame ${frameIdx} not found`, status: 404 as number };
+      }
+
+      // Update frame fields from request body
+      if (req.body.status) frame.status = req.body.status;
+      if (req.body.source) frame.source = req.body.source;
+      if (req.body.file) frame.file = req.body.file;
+      if (req.body.generation) frame.generation = req.body.generation;
+      if (req.body.review) frame.review = req.body.review;
+      if (req.body.notes !== undefined) {
+        if (!frame.review) frame.review = { reviewer: 'human', notes: '' };
+        frame.review.notes = req.body.notes;
+      }
+
+      await fs.writeFile(filePath, JSON.stringify(manifest, null, 2), 'utf8');
+      console.log(`[REST] Frame updated: ${id}/${animName}[${frameIdx}]`);
+      return { ok: true, frame };
+    });
+
+    if ('error' in result) {
+      res.status(result.status as number).json({ error: result.error });
       return;
     }
 
-    // Update frame fields from request body
-    if (req.body.status) frame.status = req.body.status;
-    if (req.body.source) frame.source = req.body.source;
-    if (req.body.file) frame.file = req.body.file;
-    if (req.body.generation) frame.generation = req.body.generation;
-    if (req.body.review) frame.review = req.body.review;
-    if (req.body.notes !== undefined) {
-      if (!frame.review) frame.review = { reviewer: 'human', notes: '' };
-      frame.review.notes = req.body.notes;
-    }
-
-    await fs.writeFile(filePath, JSON.stringify(manifest, null, 2), 'utf8');
-    console.log(`[REST] Frame updated: ${req.params['id']}/${req.params['anim']}[${frameIdx}]`);
-    res.json({ ok: true, frame });
+    res.json({ ok: true, frame: result.frame });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     const statusCode = message.includes('Path traversal') ? 400 : 500;
@@ -939,8 +985,10 @@ app.post('/api/characters/:name/export-ply', async (req: Request, res: Response)
     if (outputPath) {
       // Write to the specified filesystem path
       const resolved = resolveUserPath(outputPath);
-      await fs.mkdir(path.dirname(resolved), { recursive: true });
-      await fs.writeFile(resolved, plyBuffer);
+      await resourceLock.acquire(resolved, async () => {
+        await fs.mkdir(path.dirname(resolved), { recursive: true });
+        await fs.writeFile(resolved, plyBuffer);
+      });
       console.log(`[REST] PLY exported: ${resolved} (${plyBuffer.length} bytes)`);
       res.json({ success: true, path: resolved, size: plyBuffer.length });
     } else {
@@ -1009,21 +1057,25 @@ app.post('/api/projects/create', async (req: Request, res: Response) => {
       return;
     }
     const projectDir = resolveUserPath(dirPath);
-    const charsDir = path.join(projectDir, 'characters');
-    await fs.mkdir(charsDir, { recursive: true });
 
-    const project = {
-      version: 1,
-      name,
-      created_at: new Date().toISOString(),
-      modified_at: new Date().toISOString(),
-      characters: [] as string[],
-      ai_config: null,
-      export_presets: {
-        default: { format: 'spritesheet', include_characters: [], output_dir: 'export' },
-      },
-    };
-    await fs.writeFile(path.join(projectDir, 'project.json'), JSON.stringify(project, null, 2), 'utf8');
+    const project = await resourceLock.acquire(projectDir, async () => {
+      const charsDir = path.join(projectDir, 'characters');
+      await fs.mkdir(charsDir, { recursive: true });
+
+      const proj = {
+        version: 1,
+        name,
+        created_at: new Date().toISOString(),
+        modified_at: new Date().toISOString(),
+        characters: [] as string[],
+        ai_config: null,
+        export_presets: {
+          default: { format: 'spritesheet', include_characters: [], output_dir: 'export' },
+        },
+      };
+      await fs.writeFile(path.join(projectDir, 'project.json'), JSON.stringify(proj, null, 2), 'utf8');
+      return proj;
+    });
 
     activeProjectDir = projectDir;
     console.log(`[Bridge] Project created: ${projectDir}`);
@@ -1088,7 +1140,9 @@ app.post('/api/projects/save', async (req: Request, res: Response) => {
     }
     project.modified_at = new Date().toISOString();
     const projectFile = path.join(activeProjectDir, 'project.json');
-    await fs.writeFile(projectFile, JSON.stringify(project, null, 2), 'utf8');
+    await resourceLock.acquire(projectFile, async () => {
+      await fs.writeFile(projectFile, JSON.stringify(project, null, 2), 'utf8');
+    });
     console.log(`[Bridge] Project saved: ${projectFile}`);
     res.json({ ok: true });
   } catch (err) {
