@@ -45,8 +45,11 @@ namespace gseurat {
 
 void IslandDemoState::on_enter(AppBase& app) {
     if (scene_path_.empty()) scene_path_ = "assets/scenes/seurat_island.json";
+    std::fprintf(stderr, "[IslandDemo] INIT: start (scene=%s)\n", scene_path_.c_str());
     app.feature_flags() = FeatureFlags::gs_viewer();
+    std::fprintf(stderr, "[IslandDemo] INIT: calling init_scene...\n");
     app.init_scene(scene_path_);
+    std::fprintf(stderr, "[IslandDemo] INIT: init_scene done\n");
 
     // Disable app-level parallax — we manage our own camera
     app.gs_terrain().parallax_active = false;
@@ -84,7 +87,9 @@ void IslandDemoState::on_enter(AppBase& app) {
     app.renderer().gs_renderer().set_skip_sort(false);
 
     // Load collision grid from scene data
+    std::fprintf(stderr, "[IslandDemo] INIT: loading scene data...\n");
     auto scene_data = SceneLoader::load(scene_path_);
+    std::fprintf(stderr, "[IslandDemo] INIT: scene data loaded\n");
     if (scene_data.collision) {
         collision_grid_ = *scene_data.collision;
         // Grid origin is (0,0) — scene coordinates match grid coordinates
@@ -197,9 +202,12 @@ void IslandDemoState::on_enter(AppBase& app) {
     std::fprintf(stderr, "[IslandDemo] scene_lights_ captured: %zu lights\n", scene_lights_.size());
 
     // Load character manifest (heap-allocated via unique_ptr)
+    std::fprintf(stderr, "[IslandDemo] INIT: loading character manifest...\n");
     {
         auto loaded = gseurat::load_character_manifest(
             "assets/characters/snes_hero/snes_hero.manifest.json");
+        std::fprintf(stderr, "[IslandDemo] INIT: load_character_manifest returned (has_value=%d)\n",
+                     loaded.has_value() ? 1 : 0);
         if (loaded) {
             character_data_ = std::make_unique<gseurat::CharacterData>(std::move(*loaded));
             ShutdownAuditor::record<gseurat::CharacterData>(character_data_.get());
@@ -209,8 +217,10 @@ void IslandDemoState::on_enter(AppBase& app) {
             std::fprintf(stderr, "[IslandDemo] WARNING: Failed to load character manifest!\n");
         }
     }
+    std::fprintf(stderr, "[IslandDemo] INIT: character manifest done\n");
 
     // Spawn player character (procedural humanoid)
+    std::fprintf(stderr, "[IslandDemo] INIT: has_gs_cloud=%d\n", app.renderer().has_gs_cloud() ? 1 : 0);
     if (app.renderer().has_gs_cloud()) {
         const auto& all = app.renderer().gs_chunk_grid().all_gaussians();
         map_gaussians_.assign(all.begin(), all.end());
@@ -220,10 +230,12 @@ void IslandDemoState::on_enter(AppBase& app) {
 
         // Load mesh-converted character model
         // kCharScale defined as static constexpr on the class
+        std::fprintf(stderr, "[IslandDemo] INIT: loading hero PLY...\n");
         const float gs_scale = scene_data.gaussian_splat
             ? scene_data.gaussian_splat->scale_multiplier : 1.0f;
         gs_scale_ = gs_scale;
         auto char_cloud = GaussianCloud::load_ply("assets/characters/snes_hero/snes_hero.ply");
+        std::fprintf(stderr, "[IslandDemo] INIT: hero PLY loaded (%u gs)\n", char_cloud.count());
         if (!char_cloud.empty()) {
             // Scale, rotate 180° (face away from camera), and position at spawn
             const auto& char_gs = char_cloud.gaussians();
@@ -241,9 +253,12 @@ void IslandDemoState::on_enter(AppBase& app) {
         }
 
         // Load knight character manifest and PLY
+        std::fprintf(stderr, "[IslandDemo] INIT: loading knight manifest...\n");
         {
             auto knight_loaded = gseurat::load_character_manifest(
                 "assets/characters/knight/knight.manifest.json");
+            std::fprintf(stderr, "[IslandDemo] INIT: knight manifest loaded (has_value=%d)\n",
+                         knight_loaded.has_value() ? 1 : 0);
             if (knight_loaded) {
                 knight_data_ = std::make_unique<gseurat::CharacterData>(std::move(*knight_loaded));
                 std::fprintf(stderr, "[IslandDemo] Knight manifest loaded: %zu bones, %zu clips\n",
@@ -346,18 +361,22 @@ void IslandDemoState::on_enter(AppBase& app) {
         }
 
         uint32_t char_count = static_cast<uint32_t>(merged.size()) - map_count;
+        std::fprintf(stderr, "[IslandDemo] INIT: creating cloud from %zu merged gaussians...\n", merged.size());
         auto cloud = GaussianCloud::from_gaussians(std::move(merged));
 
         uint32_t gs_w = app.renderer().gs_renderer().output_width();
         uint32_t gs_h = app.renderer().gs_renderer().output_height();
         if (gs_w == 0) { gs_w = 320; gs_h = 240; }
+        std::fprintf(stderr, "[IslandDemo] INIT: calling init_gs (%ux%u)...\n", gs_w, gs_h);
         app.renderer().init_gs(cloud, gs_w, gs_h);
+        std::fprintf(stderr, "[IslandDemo] INIT: init_gs done\n");
 
         character_spawn_pos_ = player_pos;
         character_origin_ = player_pos;
         character_spawned_ = true;
 
         // Initialize data-driven bone animation
+        std::fprintf(stderr, "[IslandDemo] INIT: creating anim players...\n");
         if (character_data_) {
             anim_player_ = std::make_unique<gseurat::BoneAnimationPlayer>(*character_data_);
             anim_sm_ = std::make_unique<gseurat::BoneAnimationStateMachine>(*anim_player_);
