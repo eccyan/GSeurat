@@ -1114,9 +1114,29 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
 
   newCharacter: (gridSize?: number) => {
     const size = gridSize ?? 32;
+    const s = get();
+
+    // Mint a non-colliding id from the default 'Untitled' name. Without this,
+    // creating two new characters in a row would give them both id 'untitled'
+    // and the second save would silently overwrite the first. Matches the
+    // collision-suffix pattern used by duplicateCharacter.
+    const MAX_NEW_SUFFIX = 1000;
+    const baseId = slugifyCharacterId('Untitled');
+    const existingIds = new Set(s.knownCharacters.map((c) => c.id));
+    let newId = baseId;
+    let counter = 2;
+    while (existingIds.has(newId)) {
+      if (counter > MAX_NEW_SUFFIX) {
+        console.error(`[echidna] newCharacter: > ${MAX_NEW_SUFFIX} collisions for base id "${baseId}"`);
+        return;
+      }
+      newId = `${baseId}_${counter}`;
+      counter += 1;
+    }
+
     set({
       character: {
-        id: '',
+        id: newId,
         voxels: new Map(),
         gridWidth: size,
         gridDepth: size,
@@ -1126,6 +1146,13 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
         animations: {},
         currentFilename: null,
       },
+      // Optimistic panel entry: add to knownCharacters immediately so the new
+      // character is visible before first save. Phase 0.2 save() later calls
+      // listCharacters() which re-reads from disk and reconciles the entry.
+      knownCharacters: [
+        ...s.knownCharacters,
+        { id: newId, name: 'Untitled', lastModified: Date.now() },
+      ],
       selectedPart: null,
       selectedPose: null,
       selectedAnimation: null,
@@ -1137,7 +1164,11 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
       boxSelection: null,
       colorByPart: false,
       partColors: {},
-      dirty: false,
+      // A freshly-created character has unsaved state (the creation itself).
+      // Setting dirty=true ensures requestOpenCharacter's switch guard protects
+      // the new character from silent loss if the user clicks away before
+      // editing or saving.
+      dirty: true,
     });
   },
 
