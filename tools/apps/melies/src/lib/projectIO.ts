@@ -114,9 +114,38 @@ export async function loadPlyFromProject(handle: FileSystemDirectoryHandle, rela
 }
 
 /**
+ * Scan tools_data/melies_projects/ for the first .json file and return its
+ * project name (filename without extension). Returns null if the directory
+ * doesn't exist or contains no .json files.
+ */
+async function findFirstMeliesProject(
+  handle: FileSystemDirectoryHandle,
+): Promise<string | null> {
+  try {
+    const parts = PROJECT_LAYOUT.toolsData.melies.split('/');
+    let dir: FileSystemDirectoryHandle = handle;
+    for (const part of parts) {
+      dir = await dir.getDirectoryHandle(part);
+    }
+    type DirChild = { kind: string; name: string };
+    const iter = (dir as unknown as { values(): AsyncIterable<DirChild> }).values();
+    for await (const child of iter) {
+      if (child.kind === 'file' && child.name.endsWith('.json')) {
+        return child.name.replace(/\.json$/, '');
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Load a project from a project directory.
- * Reads from tools_data/melies_projects/{slug}.json (new layout).
- * Falls back to root-level project.json for back-compat with old saves.
+ * 1. Try tools_data/melies_projects/{projectName}.json
+ * 2. If not found, scan tools_data/melies_projects/ for any .json file
+ * 3. Fall back to root-level project.json for back-compat with old saves
+ * 4. If nothing found, return false (first time opening)
  */
 export async function loadProject(
   handle: FileSystemDirectoryHandle,
@@ -124,16 +153,34 @@ export async function loadProject(
 ): Promise<boolean> {
   try {
     let text: string;
+    let loadedName = projectName;
     try {
-      // New path
+      // Try the named project first
       const blob = await readFileAtPath(handle, meliesProjectPath(projectName));
       text = await (blob as Blob).text();
     } catch {
-      // Legacy fallback: root-level project.json
-      console.warn('[melies] No project at new path, falling back to legacy project.json');
-      const fh = await handle.getFileHandle('project.json');
-      const legacy = await fh.getFile();
-      text = await legacy.text();
+      // Named project not found — scan for any project in the directory
+      const found = await findFirstMeliesProject(handle);
+      if (found) {
+        console.info(`[melies] Project "${projectName}" not found, loading "${found}" instead`);
+        const blob = await readFileAtPath(handle, meliesProjectPath(found));
+        text = await (blob as Blob).text();
+        loadedName = found;
+      } else {
+        // No projects in melies_projects/ — try legacy project.json
+        try {
+          console.info('[melies] No projects in melies_projects/, trying legacy project.json');
+          const fh = await handle.getFileHandle('project.json');
+          const legacy = await fh.getFile();
+          text = await legacy.text();
+        } catch (e2) {
+          if ((e2 as Error).name === 'NotFoundError') {
+            console.info('[melies] No existing project found — starting fresh');
+            return false;
+          }
+          throw e2;
+        }
+      }
     }
     const raw = JSON.parse(text);
     const data = migrateVfxProject(raw);
@@ -141,6 +188,10 @@ export async function loadProject(
       console.warn(`[melies] Loaded legacy v${raw?.version} project; migrated to v${VFX_PROJECT_VERSION}`);
     }
     useVfxStore.getState().loadProjectData(data);
+    // Update projectName to match what was actually loaded
+    if (loadedName !== projectName) {
+      useVfxStore.getState().setProjectName(loadedName);
+    }
     return true;
   } catch (err) {
     console.error('Failed to load VFX project:', err);
@@ -211,3 +262,31 @@ export function migrateVfxProject(data: Record<string, unknown>): VfxProject {
 // Legacy alias — kept so any internal callers (uploadProject) don't break.
 // Also exported so external consumers that imported migrateProject can still work.
 export const migrateProject = migrateVfxProject;
+
+/**
+ * List all .ply filenames in assets/objects/.
+ * Returns an array of filenames (e.g., ['crystal.ply', 'barrel.ply']).
+ * Returns [] if the directory doesn't exist.
+ */
+export async function listObjectPlys(
+  handle: FileSystemDirectoryHandle,
+): Promise<string[]> {
+  let dir: FileSystemDirectoryHandle;
+  try {
+    const assets = await handle.getDirectoryHandle('assets');
+    dir = await assets.getDirectoryHandle('objects');
+  } catch (e) {
+    if ((e as Error).name === 'NotFoundError') return [];
+    throw e;
+  }
+
+  type DirChild = { kind: string; name: string };
+  const iter = (dir as unknown as { values(): AsyncIterable<DirChild> }).values();
+  const names: string[] = [];
+  for await (const child of iter) {
+    if (child.kind === 'file' && child.name.endsWith('.ply')) {
+      names.push(child.name);
+    }
+  }
+  return names;
+}

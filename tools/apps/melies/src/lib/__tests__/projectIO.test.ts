@@ -4,8 +4,10 @@ import {
   meliesProjectPath,
   vfxPresetPath,
   migrateVfxProject,
+  listObjectPlys,
 } from '../projectIO';
 import { VFX_PROJECT_VERSION } from '../../store/types';
+import { testing } from '@gseurat/project-root';
 
 describe('slugifyProjectName', () => {
   it('lowercases and replaces whitespace with underscores', () => {
@@ -71,5 +73,34 @@ describe('migrateVfxProject', () => {
     // spreads remaining layer properties, does not rename layers→elements)
     const p = migrated.presets[0] as any;
     expect(Array.isArray(p.layers ?? p.elements)).toBe(true);
+  });
+});
+
+describe('listObjectPlys', () => {
+  it('returns .ply filenames from assets/objects/', async () => {
+    const root = testing.makeRoot();
+    const assets = await root.getDirectoryHandle('assets', { create: true });
+    const objects = await assets.getDirectoryHandle('objects', { create: true });
+    const fh1 = await objects.getFileHandle('crystal.ply', { create: true });
+    const w1 = await fh1.createWritable();
+    await w1.write(new Uint8Array([1]));
+    await w1.close();
+    const fh2 = await objects.getFileHandle('barrel.ply', { create: true });
+    const w2 = await fh2.createWritable();
+    await w2.write(new Uint8Array([2]));
+    await w2.close();
+    const fh3 = await objects.getFileHandle('readme.txt', { create: true });
+    const w3 = await fh3.createWritable();
+    await w3.write('ignore');
+    await w3.close();
+
+    const result = await listObjectPlys(root as unknown as FileSystemDirectoryHandle);
+    expect(result.sort()).toEqual(['barrel.ply', 'crystal.ply']);
+  });
+
+  it('returns empty array when assets/objects/ does not exist', async () => {
+    const root = testing.makeRoot();
+    const result = await listObjectPlys(root as unknown as FileSystemDirectoryHandle);
+    expect(result).toEqual([]);
   });
 });
