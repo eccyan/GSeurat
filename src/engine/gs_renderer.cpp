@@ -766,6 +766,111 @@ void GsRenderer::unload_cloud(uint32_t chunk_id) {
     static_dirty_ = true;
 }
 
+void GsRenderer::create_transfer_queue(VkQueue transfer_q, uint32_t transfer_family,
+                                        bool dedicated, VkQueue graphics_q) {
+    if (!streaming_initialized_) return;
+    const uint64_t staging_size = streaming_config_.slab_bytes() * 2;  // double-buffered
+    transfer_queue_ = std::make_unique<TransferQueue>(
+        device_, allocator_,
+        transfer_q, transfer_family,
+        dedicated, staging_size,
+        streaming_config_.transfer_budget_mb_per_frame,
+        static_gaussian_ssbo_.buffer());
+}
+
+void GsRenderer::load_cloud_async(const std::string& ply_path) {
+    if (!streaming_initialized_ || !transfer_queue_) {
+        // Fall back to synchronous load
+        GaussianCloud cloud;
+        cloud.load_ply(ply_path);
+        load_cloud(cloud);
+        return;
+    }
+
+    pending_loads_++;
+
+    load_threads_.emplace_back([this, ply_path]() {
+        GaussianCloud cloud;
+        cloud.load_ply(ply_path);
+
+        const uint32_t splat_count = cloud.count();
+        const uint32_t sps = streaming_config_.slab_size_splats;
+        const uint32_t slabs_needed = (splat_count + sps - 1) / sps;
+
+        auto handle = slab_allocator_->checkout(slabs_needed);
+
+        const auto& gaussians = cloud.gaussians();
+        auto* staging = static_cast<uint8_t*>(transfer_queue_->staging_mapped());
+        const uint64_t slab_bytes = static_cast<uint64_t>(sps) * sizeof(GpuGaussian);
+
+        for (uint32_t s = 0; s < slabs_needed; ++s) {
+            const uint32_t physical_slab = handle.slab_indices[s];
+            const uint32_t src_start = s * sps;
+            const uint32_t src_end = std::min(src_start + sps, splat_count);
+            const uint32_t count = src_end - src_start;
+
+            // Write into staging buffer (ring: alternate halves)
+            const uint64_t staging_offset = (s % 2) * slab_bytes;
+            auto* dst = reinterpret_cast<GpuGaussian*>(staging + staging_offset);
+            for (uint32_t i = 0; i < count; ++i) {
+                const auto& g = gaussians[src_start + i];
+                float bone_as_float;
+                uint32_t bone_idx = g.bone_index;
+                std::memcpy(&bone_as_float, &bone_idx, sizeof(float));
+                dst[i].pos_opacity = glm::vec4(g.position, g.opacity);
+                dst[i].scale_pad = glm::vec4(g.scale, bone_as_float);
+                dst[i].rot = glm::vec4(g.rotation.x, g.rotation.y, g.rotation.z, g.rotation.w);
+                dst[i].color_pad = glm::vec4(g.color, g.emission);
+            }
+
+            const uint64_t dest_offset = static_cast<uint64_t>(physical_slab) * sps * sizeof(GpuGaussian);
+            const uint64_t copy_size = static_cast<uint64_t>(count) * sizeof(GpuGaussian);
+            transfer_queue_->enqueue(staging_offset, dest_offset, copy_size);
+        }
+
+        // Completion callback — runs on main thread via poll_completions
+        transfer_queue_->enqueue_completion(
+            [this, handle = std::move(handle), splat_count, slabs_needed, sps]() mutable {
+                uint32_t page_table_offset = 0;
+                for (const auto& chunk : active_chunks_) {
+                    page_table_offset += static_cast<uint32_t>(chunk.handle.slab_indices.size());
+                }
+
+                auto* pt = static_cast<uint32_t*>(page_table_ssbo_.mapped());
+                for (uint32_t i = 0; i < slabs_needed; ++i) {
+                    pt[page_table_offset + i] = handle.slab_indices[i];
+                }
+
+                // Update chunk table
+                auto* ct = static_cast<uint8_t*>(chunk_table_ssbo_.mapped());
+                uint32_t chunk_idx = static_cast<uint32_t>(active_chunks_.size());
+                uint32_t last_slab_splats = splat_count - (slabs_needed - 1) * sps;
+                uint32_t entry[4] = {page_table_offset, slabs_needed, last_slab_splats, splat_count};
+                std::memcpy(ct + chunk_idx * 16, entry, 16);
+
+                ChunkState cs;
+                cs.status = ChunkState::Status::ACTIVE;
+                cs.handle = std::move(handle);
+                cs.page_table_offset = page_table_offset;
+                cs.splat_count = splat_count;
+                active_chunks_.push_back(std::move(cs));
+
+                static_count_ = 0;
+                for (const auto& c : active_chunks_) static_count_ += c.splat_count;
+                total_active_splats_ = static_count_;
+                gaussian_count_ = static_count_;
+                static_dirty_ = true;
+
+                pending_loads_--;
+                std::printf("[gs_renderer] Async load complete: %u splats\n", splat_count);
+            });
+    });
+}
+
+void GsRenderer::poll_transfers(VkCommandBuffer frame_cmd) {
+    if (transfer_queue_) transfer_queue_->poll_completions(frame_cmd);
+}
+
 void GsRenderer::load_cloud_legacy(const GaussianCloud& cloud) {
     if (cloud.empty()) return;
 
@@ -1935,6 +2040,16 @@ void GsRenderer::set_point_lights(const std::vector<PointLight>& lights) {
 
 void GsRenderer::shutdown(VmaAllocator allocator) {
     if (!initialized_) return;
+
+    // Join background load threads before destroying resources
+    for (auto& t : load_threads_) {
+        if (t.joinable()) t.join();
+    }
+    load_threads_.clear();
+    if (transfer_queue_) {
+        transfer_queue_->shutdown();
+        transfer_queue_.reset();
+    }
 
     // Streaming resources
     page_table_ssbo_.destroy(allocator);

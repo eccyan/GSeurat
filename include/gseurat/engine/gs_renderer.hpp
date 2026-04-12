@@ -5,13 +5,16 @@
 #include "gseurat/engine/pbd_types.hpp"
 #include "gseurat/engine/slab_allocator.hpp"
 #include "gseurat/engine/streaming_config.hpp"
+#include "gseurat/engine/transfer_queue.hpp"
 #include "gseurat/engine/types.hpp"
 
 #include <vk_mem_alloc.h>
 #include <vulkan/vulkan.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
+#include <atomic>
 #include <memory>
+#include <thread>
 #include <vector>
 
 namespace gseurat {
@@ -69,6 +72,10 @@ public:
     void load_cloud(const GaussianCloud& cloud);
     void init_streaming(const StreamingConfig& config);
     void unload_cloud(uint32_t chunk_id);
+    void load_cloud_async(const std::string& ply_path);
+    void poll_transfers(VkCommandBuffer frame_cmd);
+    void create_transfer_queue(VkQueue transfer_q, uint32_t transfer_family,
+                               bool dedicated, VkQueue graphics_q);
     void update_active_gaussians(const Gaussian* data, uint32_t count);
     void update_gaussian_data(const Gaussian* data, uint32_t count);
 
@@ -272,6 +279,11 @@ private:
     std::vector<ChunkState> active_chunks_;
     uint32_t total_active_splats_{0};
     bool streaming_initialized_{false};
+
+    // Async transfer + background loading
+    std::unique_ptr<TransferQueue> transfer_queue_;
+    std::vector<std::thread> load_threads_;
+    std::atomic<uint32_t> pending_loads_{0};
 
     uint32_t gaussian_count_ = 0;
     uint32_t max_gaussian_count_ = 0;
