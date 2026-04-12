@@ -91,12 +91,13 @@ function MenuBar({ onImportScene }: { onImportScene?: () => void }) {
       if (!file) return;
       try {
         const preset = parseVfx(await file.text());
-        const store = useVfxStore.getState();
-        store.addPreset(preset.name);
-        const added = store.presets[store.presets.length - 1];
+        useVfxStore.getState().addPreset(preset.name);
+        // Re-read state after addPreset — the old snapshot is stale
+        const freshState = useVfxStore.getState();
+        const added = freshState.presets[freshState.presets.length - 1];
         if (added) {
           useVfxStore.setState({
-            presets: store.presets.map((p) => p.id === added.id ? { ...preset, id: added.id } : p),
+            presets: freshState.presets.map((p) => p.id === added.id ? { ...preset, id: added.id } : p),
           });
         }
       } catch (e) {
