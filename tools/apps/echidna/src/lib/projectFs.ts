@@ -51,6 +51,22 @@ export function characterManifestPath(id: string): string {
   return toAssetPath('characters', id, `${id}.manifest.json`);
 }
 
+/**
+ * Returns the project-relative path for a map PLY file.
+ * Example: `mapPlyPath('town')` → `'assets/maps/town.ply'`.
+ */
+export function mapPlyPath(id: string): string {
+  return toAssetPath('maps', `${id}.ply`);
+}
+
+/**
+ * Returns the project-relative path for an object PLY file.
+ * Example: `objectPlyPath('crystal')` → `'assets/objects/crystal.ply'`.
+ */
+export function objectPlyPath(id: string): string {
+  return toAssetPath('objects', `${id}.ply`);
+}
+
 /* ----- save / load / export ----- */
 
 /**
@@ -100,6 +116,36 @@ export async function exportCharacterToProject(
   await writeFileAtPath(root, manifestPath, manifestJson);
 
   return { plyPath, manifestPath };
+}
+
+/**
+ * Export a map PLY to `assets/maps/{id}.ply`.
+ * Creates the maps subdirectory if needed. Returns the written path.
+ */
+export async function exportMapToProject(
+  root: FileSystemDirectoryHandle,
+  id: string,
+  ply: Blob | Uint8Array,
+): Promise<{ plyPath: string }> {
+  await ensureSubdir(root, PROJECT_LAYOUT.assets.maps);
+  const plyPath = mapPlyPath(id);
+  await writeFileAtPath(root, plyPath, ply);
+  return { plyPath };
+}
+
+/**
+ * Export an object PLY to `assets/objects/{id}.ply`.
+ * Creates the objects subdirectory if needed. Returns the written path.
+ */
+export async function exportObjectToProject(
+  root: FileSystemDirectoryHandle,
+  id: string,
+  ply: Blob | Uint8Array,
+): Promise<{ plyPath: string }> {
+  await ensureSubdir(root, PROJECT_LAYOUT.assets.objects);
+  const plyPath = objectPlyPath(id);
+  await writeFileAtPath(root, plyPath, ply);
+  return { plyPath };
 }
 
 /**
