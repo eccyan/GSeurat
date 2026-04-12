@@ -1,7 +1,14 @@
 import React, { useState } from 'react';
 import { useCharacterStore } from '../store/useCharacterStore.js';
+import type { EchidnaAssetKind } from '../store/types.js';
 
 const PRESET_SIZES = [32, 64, 128, 256];
+
+const KIND_LABELS: Record<EchidnaAssetKind, string> = {
+  character: 'Character',
+  map: 'Map',
+  object: 'Object',
+};
 
 const styles: Record<string, React.CSSProperties> = {
   overlay: {
@@ -45,6 +52,7 @@ const styles: Record<string, React.CSSProperties> = {
 };
 
 export function NewProjectDialog({ onClose }: { onClose: () => void }) {
+  const [kind, setKind] = useState<EchidnaAssetKind>('character');
   const [charName, setCharName] = useState('');
   const [sizeOption, setSizeOption] = useState<string>('64');
   const [customSize, setCustomSize] = useState<number>(64);
@@ -55,17 +63,30 @@ export function NewProjectDialog({ onClose }: { onClose: () => void }) {
     : Number(sizeOption);
 
   const handleCreate = () => {
-    useCharacterStore.getState().newAsset('character', resolvedSize, charName);
+    useCharacterStore.getState().newAsset(kind, resolvedSize, charName);
     onClose();
   };
 
   return (
     <div style={styles.overlay} onClick={onClose}>
       <div style={styles.dialog} onClick={(e) => e.stopPropagation()}>
-        <div style={styles.title}>New Character</div>
+        <div style={styles.title}>New {KIND_LABELS[kind]}</div>
 
         <div style={styles.section}>
-          <span style={styles.label}>Character Name</span>
+          <span style={styles.label}>Kind</span>
+          <select
+            style={styles.select}
+            value={kind}
+            onChange={(e) => setKind(e.target.value as EchidnaAssetKind)}
+          >
+            <option value="character">Character</option>
+            <option value="map">Map</option>
+            <option value="object">Object</option>
+          </select>
+        </div>
+
+        <div style={styles.section}>
+          <span style={styles.label}>{KIND_LABELS[kind]} Name</span>
           <input
             type="text"
             style={styles.input}
