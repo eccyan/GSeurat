@@ -1207,9 +1207,9 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
     const id = get().ensureCharacterId();
     const s = get();
     if (!s.character) {
-      console.warn('[echidna] saveProject called with null character — returning DEFAULT_CHARACTER shape; callers should check s.character first');
+      throw new Error('[echidna] saveProject called with null character');
     }
-    const char = s.character ?? DEFAULT_CHARACTER;
+    const char = s.character;
     const voxelArr: EchidnaFile['voxels'] = [];
     for (const [key, vox] of char.voxels) {
       const [x, y, z] = parseKey(key);

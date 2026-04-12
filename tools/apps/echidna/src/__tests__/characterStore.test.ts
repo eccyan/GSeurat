@@ -754,3 +754,12 @@ describe('useCharacterStore.newCharacter — name parameter', () => {
     expect(s.character?.id).toBe('knight_2');
   });
 });
+
+describe('useCharacterStore.saveProject — null guard', () => {
+  it('throws when character is null', () => {
+    useCharacterStore.setState({ character: null });
+    expect(() => useCharacterStore.getState().saveProject()).toThrow(
+      '[echidna] saveProject called with null character',
+    );
+  });
+});
