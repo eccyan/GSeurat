@@ -78,11 +78,26 @@ layout(set = 0, binding = 6) readonly buffer PbdBuffer {
     PbdState pbd_states[];
 };
 
+layout(set = 0, binding = 8) readonly buffer PageTableBuffer {
+    uint page_table[];
+};
+
 layout(push_constant) uniform PushConstants {
     uint projected_offset;  // 0 for static, max_static_count for dynamic
     uint gaussian_count;    // number of Gaussians in this layer
     uint counts_index;      // 0 for static, 1 for dynamic
 };
+
+layout(constant_id = 0) const uint SPLATS_PER_SLAB = 100000;
+layout(constant_id = 1) const uint USE_PAGE_TABLE = 0;
+
+uint resolve_physical_index(uint logical_idx) {
+    if (USE_PAGE_TABLE == 0u) return logical_idx;
+    uint slab_logical = logical_idx / SPLATS_PER_SLAB;
+    uint offset_in_slab = logical_idx % SPLATS_PER_SLAB;
+    uint physical_slab = page_table[slab_logical];
+    return physical_slab * SPLATS_PER_SLAB + offset_in_slab;
+}
 
 // Simple hash for per-Gaussian variation
 float hash_uint(uint n) {
@@ -139,7 +154,8 @@ void main() {
     uint idx = gl_GlobalInvocationID.x;
     if (idx >= gaussian_count) return;
 
-    GpuGaussian g = gaussians[idx];
+    uint physical_idx = resolve_physical_index(idx);
+    GpuGaussian g = gaussians[physical_idx];
     vec3 pos = g.pos_opacity.xyz;
     float opacity = g.pos_opacity.w;
     vec3 col = g.color_pad.rgb;
