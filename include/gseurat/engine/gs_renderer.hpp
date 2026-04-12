@@ -3,12 +3,15 @@
 #include "gseurat/engine/buffer.hpp"
 #include "gseurat/engine/gaussian_cloud.hpp"
 #include "gseurat/engine/pbd_types.hpp"
+#include "gseurat/engine/slab_allocator.hpp"
+#include "gseurat/engine/streaming_config.hpp"
 #include "gseurat/engine/types.hpp"
 
 #include <vk_mem_alloc.h>
 #include <vulkan/vulkan.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
+#include <memory>
 #include <vector>
 
 namespace gseurat {
@@ -64,6 +67,8 @@ class GsRenderer {
 public:
     void init(VkDevice device, VmaAllocator allocator, VkDescriptorPool pool);
     void load_cloud(const GaussianCloud& cloud);
+    void init_streaming(const StreamingConfig& config);
+    void unload_cloud(uint32_t chunk_id);
     void update_active_gaussians(const Gaussian* data, uint32_t count);
     void update_gaussian_data(const Gaussian* data, uint32_t count);
 
@@ -186,6 +191,7 @@ private:
     void dispatch_radix_sort(VkCommandBuffer cmd, uint32_t sort_size, uint32_t num_workgroups,
         VkDescriptorSet hist_a, VkDescriptorSet hist_b, VkDescriptorSet scan,
         VkDescriptorSet scatter_ab, VkDescriptorSet scatter_ba);
+    void load_cloud_legacy(const GaussianCloud& cloud);
 
     VkDevice device_ = VK_NULL_HANDLE;
     VmaAllocator allocator_ = VK_NULL_HANDLE;
@@ -249,6 +255,23 @@ private:
     uint32_t static_sort_workgroups_ = 0;
     uint32_t dynamic_sort_workgroups_ = 0;
     bool static_dirty_ = true;
+
+    // --- Streaming architecture (Phase 2) ---
+    StreamingConfig streaming_config_;
+    std::unique_ptr<SlabAllocator> slab_allocator_;
+    Buffer page_table_ssbo_;
+    Buffer chunk_table_ssbo_;
+
+    struct ChunkState {
+        enum class Status { LOADING, ACTIVE, UNLOADING };
+        Status status;
+        SlabAllocator::SlabHandle handle;
+        uint32_t page_table_offset;
+        uint32_t splat_count;
+    };
+    std::vector<ChunkState> active_chunks_;
+    uint32_t total_active_splats_{0};
+    bool streaming_initialized_{false};
 
     uint32_t gaussian_count_ = 0;
     uint32_t max_gaussian_count_ = 0;
