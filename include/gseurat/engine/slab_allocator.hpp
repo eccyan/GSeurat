@@ -27,6 +27,7 @@ private:
     uint32_t splats_per_slab_;
     uint32_t next_chunk_id_{0};
     std::vector<uint32_t> free_list_;
+    std::vector<bool> in_use_;
 };
 
 }  // namespace gseurat
