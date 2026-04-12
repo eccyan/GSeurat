@@ -172,7 +172,7 @@ function SubmenuItem({
         style={{
           ...styles.dropdownItem,
           justifyContent: 'space-between',
-          background: open ? styles.dropdownItemHover.background : undefined,
+          background: open ? styles.dropdownItemHover.background : 'transparent',
         }}
       >
         <span>{item.label}</span>
