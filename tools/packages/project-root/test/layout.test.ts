@@ -25,6 +25,14 @@ describe('PROJECT_LAYOUT', () => {
     expect(ASSET_KINDS).toContain('vfx');
     expect(ASSET_KINDS).toContain('maps');
   });
+
+  it('ASSET_KINDS includes objects', () => {
+    expect(ASSET_KINDS).toContain('objects');
+  });
+
+  it('PROJECT_LAYOUT.assets.objects is assets/objects', () => {
+    expect(PROJECT_LAYOUT.assets.objects).toBe('assets/objects');
+  });
 });
 
 describe('classifiers', () => {
