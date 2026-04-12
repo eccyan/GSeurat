@@ -5,7 +5,7 @@ import {
   writeFileAtPath,
   readFileAtPath,
 } from '@gseurat/project-root';
-import { migrateEchidnaFile, type EchidnaFile, type CharacterListEntry } from '../store/types';
+import { migrateEchidnaFile, type EchidnaFile, type AssetListEntry } from '../store/types';
 
 /* ----- private helpers ----- */
 
@@ -158,7 +158,7 @@ export async function exportObjectToProject(
  */
 export async function listEchidnaProjects(
   handle: FileSystemDirectoryHandle,
-): Promise<CharacterListEntry[]> {
+): Promise<AssetListEntry[]> {
   let savesDir: FileSystemDirectoryHandle;
   try {
     savesDir = await getEchidnaSavesDir(handle);
@@ -184,7 +184,7 @@ export async function listEchidnaProjects(
     values(): AsyncIterable<DirChild>;
   }).values();
 
-  const entries: CharacterListEntry[] = [];
+  const entries: AssetListEntry[] = [];
   for await (const child of iter) {
     if (child.kind !== 'file') continue;
     if (!child.name.endsWith('.echidna')) continue;

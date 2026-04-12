@@ -7,7 +7,7 @@ import { parseVox } from '../lib/voxImport.js';
 import { parsePlyToVoxels } from '../lib/plyImport.js';
 import { parseObjToVoxels } from '../lib/objImport.js';
 import { sendBridgeCommand } from '@gseurat/engine-client';
-import type { EchidnaFile, Character } from '../store/types.js';
+import type { EchidnaFile, Asset } from '../store/types.js';
 import { NewProjectDialog } from './NewProjectDialog.js';
 import { ResizeGridDialog } from './ResizeGridDialog.js';
 import { ExportDialog } from './ExportDialog.js';
@@ -279,7 +279,7 @@ function DropdownMenu({ label, items, open, onOpen, onClose }: DropdownMenuProps
 type ToastState = { message: string; type: 'success' | 'error' | 'loading' } | null;
 
 function EchidnaTitle() {
-  const character = useCharacterStore((s) => s.character);
+  const character = useCharacterStore((s) => s.asset);
   const dirty = useCharacterStore((s) => s.dirty);
   const name = character?.characterName ?? '';
   return (
@@ -306,8 +306,8 @@ export function MenuBar() {
 
   const showGrid = useCharacterStore((s) => s.showGrid);
   const showGizmos = useCharacterStore((s) => s.showGizmos);
-  const voxels = useCharacterStore((s) => s.character?.voxels ?? new Map());
-  const characterParts = useCharacterStore((s) => s.character?.characterParts ?? []);
+  const voxels = useCharacterStore((s) => s.asset?.voxels ?? new Map());
+  const characterParts = useCharacterStore((s) => s.asset?.characterParts ?? []);
   const showToast = useCallback((message: string, type: 'success' | 'error' | 'loading', duration = 3000) => {
     if (toastTimer.current) clearTimeout(toastTimer.current);
     setToast({ message, type });
@@ -319,9 +319,9 @@ export function MenuBar() {
   // Shared Staging push logic. Uploads PLY + manifest via REST, sends
   // load_scene_json + load_character via WebSocket. Throws on failure.
   // Callers are responsible for toast/error-UI presentation.
-  const syncCharacterToStaging = useCallback(async (char: Character) => {
+  const syncCharacterToStaging = useCallback(async (char: Asset) => {
     const charId = char.id;
-    if (!charId) throw new Error('character has no id — call ensureCharacterId() first');
+    if (!charId) throw new Error('character has no id — call ensureAssetId() first');
 
     const plyBlob = exportPly(char.voxels, char.gridWidth, char.gridDepth, char.characterParts);
 
@@ -394,9 +394,9 @@ export function MenuBar() {
 
   const pushToStaging = useCallback(async () => {
     // Ensure stable id before using char.id as a filesystem path (Bug 1 fix)
-    useCharacterStore.getState().ensureCharacterId();
+    useCharacterStore.getState().ensureAssetId();
     const s = useCharacterStore.getState();
-    const char = s.character;
+    const char = s.asset;
     if (!char || char.voxels.size === 0) return;
 
     try {
@@ -501,7 +501,7 @@ export function MenuBar() {
 
   const handleExportPly = useCallback(() => {
     const s = useCharacterStore.getState();
-    const char = s.character;
+    const char = s.asset;
     if (!char) return;
     const blob = exportPly(char.voxels, char.gridWidth, char.gridDepth, char.characterParts);
     const name = char.characterName.replace(/\s+/g, '_').toLowerCase() || 'character';
@@ -510,7 +510,7 @@ export function MenuBar() {
 
   const handleExportManifest = useCallback(() => {
     const s = useCharacterStore.getState();
-    const char = s.character;
+    const char = s.asset;
     if (!char) return;
     const name = char.characterName.replace(/\s+/g, '_').toLowerCase() || 'character';
     const manifest = buildManifest(
@@ -527,9 +527,9 @@ export function MenuBar() {
 
   const handlePreviewInStaging = useCallback(async () => {
     // Ensure stable id before using char.id as a filesystem path (Bug 1 fix)
-    useCharacterStore.getState().ensureCharacterId();
+    useCharacterStore.getState().ensureAssetId();
     const s = useCharacterStore.getState();
-    const char = s.character;
+    const char = s.asset;
     if (!char || char.voxels.size === 0) {
       showToast('No voxels to preview', 'error');
       return;
@@ -580,7 +580,7 @@ export function MenuBar() {
       const handle: FileSystemDirectoryHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
       await saveProjectRootHandle('echidna', handle);
       useCharacterStore.getState().setProjectRootHandle(handle);
-      await useCharacterStore.getState().listCharacters();
+      await useCharacterStore.getState().listAssets();
       showToast(`Project root set: ${handle.name}`, 'success');
     } catch (e) {
       // User canceled or denied permission

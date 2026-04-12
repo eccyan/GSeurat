@@ -7,7 +7,7 @@ import { AnimateLeftPanel } from './panels/AnimateLeftPanel.js';
 import { AnimateRightPanel } from './panels/AnimateRightPanel.js';
 import { Timeline } from './panels/Timeline.js';
 import { EmptyProjectState } from './panels/EmptyProjectState.js';
-import { CharactersPanel } from './panels/CharactersPanel.js';
+import { AssetsPanel } from './panels/AssetsPanel.js';
 import { NewProjectDialog } from './panels/NewProjectDialog.js';
 import { useCharacterStore } from './store/useCharacterStore.js';
 import type { ToolType } from './store/types.js';
@@ -127,9 +127,9 @@ export function App() {
   const [showNewDialog, setShowNewDialog] = useState(false);
 
   const projectRootHandle = useCharacterStore((s) => s.projectRootHandle);
-  const character = useCharacterStore((s) => s.character);
+  const asset = useCharacterStore((s) => s.asset);
 
-  const handleNewCharacter = useCallback(() => {
+  const handleNewAsset = useCallback(() => {
     const store = useCharacterStore.getState();
     if (store.dirty || store.undoStack.length > 0) {
       if (!confirm('Create new character? Unsaved changes will be lost.')) return;
@@ -143,7 +143,7 @@ export function App() {
       const handle: FileSystemDirectoryHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
       await saveProjectRootHandle('echidna', handle);
       useCharacterStore.getState().setProjectRootHandle(handle);
-      await useCharacterStore.getState().listCharacters();
+      await useCharacterStore.getState().listAssets();
     } catch (e) {
       // User canceled or denied permission — silently ignore AbortError
       if ((e as Error).name !== 'AbortError') {
@@ -162,7 +162,7 @@ export function App() {
         if (handle && !useCharacterStore.getState().projectRootHandle) {
           useCharacterStore.getState().setProjectRootHandle(handle);
           console.info(`[echidna] Restored project root: ${handle.name}`);
-          await useCharacterStore.getState().listCharacters();
+          await useCharacterStore.getState().listAssets();
         }
       } catch (e) {
         // Silently ignore — user can pick the root again via File → Open Project Root…
@@ -204,7 +204,7 @@ export function App() {
       if (meta && e.key === 'n' && !e.shiftKey) {
         e.preventDefault();
         if (confirm('Create new character? Unsaved changes will be lost.')) {
-          store.newCharacter();
+          store.newAsset('character');
         }
         return;
       }
@@ -293,7 +293,7 @@ export function App() {
       <div style={styles.body}>
         {/* Left panel */}
         <div style={{ width: leftWidth, flexShrink: 0, display: 'flex', flexDirection: 'column' as const, overflow: 'hidden', background: '#1e1e3a', borderRight: '1px solid #333' }}>
-          <CharactersPanel onNewCharacter={handleNewCharacter} />
+          <AssetsPanel onNewCharacter={handleNewAsset} />
           <ModeTabs />
           <div style={{ flex: 1, overflow: 'auto' }}>
             {mode === 'build' ? <ToolBar /> : <AnimateLeftPanel />}
@@ -305,12 +305,12 @@ export function App() {
         <div style={{ flex: 1, position: 'relative' as const, overflow: 'hidden' }}>
           {projectRootHandle === null ? (
             <EmptyProjectState onOpenProjectRoot={handleOpenProjectRoot} />
-          ) : character === null ? (
+          ) : asset === null ? (
             <NoCharacterSelected />
           ) : (
             <CharacterViewport />
           )}
-          {character !== null && mode === 'animate' && (
+          {asset !== null && mode === 'animate' && (
             <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 10 }}>
               <Timeline />
             </div>

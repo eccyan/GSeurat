@@ -59,8 +59,8 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
   const [includeBoneIndex, setIncludeBoneIndex] = useState(true);
   const [density, setDensity] = useState(1);
 
-  const characterName = useCharacterStore((s) => s.character?.characterName ?? 'Untitled');
-  const voxels = useCharacterStore((s) => s.character?.voxels ?? new Map());
+  const characterName = useCharacterStore((s) => s.asset?.characterName ?? 'Untitled');
+  const voxels = useCharacterStore((s) => s.asset?.voxels ?? new Map());
   const voxelCount = voxels.size;
   const estimatedGaussians = voxelCount * density * density * density;
   const baseName = characterName.replace(/\s+/g, '_').toLowerCase() || 'character';
@@ -68,7 +68,7 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
 
   const handleExport = () => {
     const s = useCharacterStore.getState();
-    const char = s.character;
+    const char = s.asset;
     const parts = includeBoneIndex ? char?.characterParts : undefined;
     const blob = exportPly(char?.voxels ?? new Map(), char?.gridWidth ?? 32, char?.gridDepth ?? 32, parts, density);
     download(blob, filename);

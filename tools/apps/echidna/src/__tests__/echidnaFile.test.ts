@@ -1,22 +1,22 @@
 import { describe, it, expect } from 'vitest';
-import { migrateEchidnaFile, slugifyCharacterId, ECHIDNA_FILE_VERSION, type EchidnaFile } from '../store/types.js';
+import { migrateEchidnaFile, slugifyAssetId, ECHIDNA_FILE_VERSION, type EchidnaFile } from '../store/types.js';
 
-describe('slugifyCharacterId', () => {
+describe('slugifyAssetId', () => {
   it('lowercases and replaces whitespace with underscores', () => {
-    expect(slugifyCharacterId('Walker Bot')).toBe('walker_bot');
-    expect(slugifyCharacterId('  Hello   World  ')).toBe('hello_world');
+    expect(slugifyAssetId('Walker Bot')).toBe('walker_bot');
+    expect(slugifyAssetId('  Hello   World  ')).toBe('hello_world');
   });
   it('strips characters outside [a-z0-9_-]', () => {
-    expect(slugifyCharacterId('Cat/Dog#1')).toBe('catdog1');
-    expect(slugifyCharacterId('  Déjà Vu  ')).toBe('dj_vu');  // strips accented + ends up no-underscore run
+    expect(slugifyAssetId('Cat/Dog#1')).toBe('catdog1');
+    expect(slugifyAssetId('  Déjà Vu  ')).toBe('dj_vu');  // strips accented + ends up no-underscore run
   });
   it('preserves hyphens and underscores', () => {
-    expect(slugifyCharacterId('cool-guy_v2')).toBe('cool-guy_v2');
+    expect(slugifyAssetId('cool-guy_v2')).toBe('cool-guy_v2');
   });
   it('falls back to "character" when empty or all stripped', () => {
-    expect(slugifyCharacterId('')).toBe('character');
-    expect(slugifyCharacterId('   ')).toBe('character');
-    expect(slugifyCharacterId('###')).toBe('character');
+    expect(slugifyAssetId('')).toBe('character');
+    expect(slugifyAssetId('   ')).toBe('character');
+    expect(slugifyAssetId('###')).toBe('character');
   });
 });
 

@@ -55,7 +55,7 @@ export function NewProjectDialog({ onClose }: { onClose: () => void }) {
     : Number(sizeOption);
 
   const handleCreate = () => {
-    useCharacterStore.getState().newCharacter(resolvedSize, charName);
+    useCharacterStore.getState().newAsset('character', resolvedSize, charName);
     onClose();
   };
 

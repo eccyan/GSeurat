@@ -44,7 +44,7 @@ const styles: Record<string, React.CSSProperties> = {
 };
 
 function BoneProperties() {
-  const parts = useCharacterStore((s) => s.character?.characterParts ?? []);
+  const parts = useCharacterStore((s) => s.asset?.characterParts ?? []);
   const selectedPart = useCharacterStore((s) => s.selectedPart);
   const updatePartJoint = useCharacterStore((s) => s.updatePartJoint);
   const autoCenterJoint = useCharacterStore((s) => s.autoCenterJoint);
@@ -107,11 +107,11 @@ function BoneProperties() {
 }
 
 function KeyframeEditor() {
-  const parts = useCharacterStore((s) => s.character?.characterParts ?? []);
+  const parts = useCharacterStore((s) => s.asset?.characterParts ?? []);
   const selectedAnimation = useCharacterStore((s) => s.selectedAnimation);
-  const animations = useCharacterStore((s) => s.character?.animations ?? {});
+  const animations = useCharacterStore((s) => s.asset?.animations ?? {});
   const playbackTime = useCharacterStore((s) => s.playbackTime);
-  const characterPoses = useCharacterStore((s) => s.character?.characterPoses ?? {});
+  const characterPoses = useCharacterStore((s) => s.asset?.characterPoses ?? {});
   const addKeyframe = useCharacterStore((s) => s.addKeyframe);
   const removeKeyframe = useCharacterStore((s) => s.removeKeyframe);
   const updateKeyframeEasing = useCharacterStore((s) => s.updateKeyframeEasing);

@@ -106,8 +106,7 @@ export function slugifyAssetId(name: string): string {
   return cleaned.length > 0 ? cleaned : 'character';
 }
 
-/** @deprecated Use slugifyAssetId */
-export const slugifyCharacterId = slugifyAssetId;
+
 
 /**
  * Migrate a raw parsed JSON object to the current EchidnaFile shape.
@@ -179,9 +178,6 @@ export interface Asset {
   currentFilename: string | null;                    // legacy .echidna download target
 }
 
-/** @deprecated Use Asset */
-export type Character = Asset;
-
 export interface AssetListEntry {
   id: string;
   kind: EchidnaAssetKind;
@@ -189,5 +185,3 @@ export interface AssetListEntry {
   lastModified: number;
 }
 
-/** @deprecated Use AssetListEntry */
-export type CharacterListEntry = AssetListEntry;
