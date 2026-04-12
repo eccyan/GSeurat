@@ -149,6 +149,7 @@ export async function listEchidnaProjects(
       const migrated = migrateEchidnaFile(raw);
       entries.push({
         id: migrated.id,
+        kind: migrated.kind,
         name: migrated.characterName,
         lastModified: file.lastModified ?? 0,
       });

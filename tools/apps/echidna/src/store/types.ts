@@ -61,6 +61,10 @@ export interface AnimationClip {
 
 export type AppMode = 'build' | 'animate';
 
+// ── Asset kind ──
+
+export type EchidnaAssetKind = 'character' | 'map' | 'object';
+
 // ── Clipboard ──
 
 export interface ClipboardEntry {
@@ -70,13 +74,14 @@ export interface ClipboardEntry {
   color: [number, number, number, number];
 }
 
-// ── File format (v3) ──
+// ── File format (v4) ──
 
-export const ECHIDNA_FILE_VERSION = 3 as const;
+export const ECHIDNA_FILE_VERSION = 4 as const;
 
 export interface EchidnaFile {
   version: number;
   id: string;            // persistent slug, immutable after first save
+  kind: EchidnaAssetKind;
   characterName: string;
   gridWidth: number;
   gridDepth: number;
@@ -84,14 +89,15 @@ export interface EchidnaFile {
   parts: BodyPart[];
   poses: Record<string, PoseData>;
   animations?: Record<string, AnimationClip>;
+  tags: string[];
 }
 
 /**
- * Slugify a character name into a stable ID usable as a directory name.
+ * Slugify an asset name into a stable ID usable as a directory name.
  * Rules: lowercase, trim, collapse whitespace runs to single underscores,
  * strip characters outside [a-z0-9_-], fall back to "character" if empty.
  */
-export function slugifyCharacterId(name: string): string {
+export function slugifyAssetId(name: string): string {
   const cleaned = name
     .toLowerCase()
     .trim()
@@ -100,14 +106,19 @@ export function slugifyCharacterId(name: string): string {
   return cleaned.length > 0 ? cleaned : 'character';
 }
 
+/** @deprecated Use slugifyAssetId */
+export const slugifyCharacterId = slugifyAssetId;
+
 /**
  * Migrate a raw parsed JSON object to the current EchidnaFile shape.
  * - Adds a persistent `id` (slugified from characterName) if missing.
  * - Bumps version to ECHIDNA_FILE_VERSION.
+ * - Defaults `kind` to 'character' for legacy v3 files.
+ * - Defaults `tags` to [] if missing.
  * - Throws on non-object input.
  *
  * Does NOT attempt to validate voxel/part/pose structure — the store
- * loader handles those. This migration is specifically about schema v2 → v3.
+ * loader handles those. This migration covers schema v2 → v3 → v4.
  */
 export function migrateEchidnaFile(raw: any): EchidnaFile {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
@@ -115,11 +126,17 @@ export function migrateEchidnaFile(raw: any): EchidnaFile {
   }
   const id: string = typeof raw.id === 'string' && raw.id.length > 0
     ? raw.id
-    : slugifyCharacterId(typeof raw.characterName === 'string' ? raw.characterName : '');
+    : slugifyAssetId(typeof raw.characterName === 'string' ? raw.characterName : '');
+
+  const kind: EchidnaAssetKind =
+    raw.kind === 'character' || raw.kind === 'map' || raw.kind === 'object'
+      ? raw.kind
+      : 'character';
 
   return {
     version: ECHIDNA_FILE_VERSION,
     id,
+    kind,
     characterName: raw.characterName ?? '',
     gridWidth: raw.gridWidth ?? 32,
     gridDepth: raw.gridDepth ?? 32,
@@ -129,6 +146,7 @@ export function migrateEchidnaFile(raw: any): EchidnaFile {
     animations: raw.animations && typeof raw.animations === 'object' && !Array.isArray(raw.animations)
       ? raw.animations
       : undefined,
+    tags: Array.isArray(raw.tags) ? raw.tags : [],
   };
 }
 
@@ -139,16 +157,17 @@ export interface Snapshot {
   parts: BodyPart[];
 }
 
-// ── Per-character slice ──
+// ── Per-asset slice ──
 
 /**
- * Per-character slice of EchidnaStoreState. Nullable — null when no character
+ * Per-asset slice of EchidnaStoreState. Nullable — null when no asset
  * is loaded (empty project, or just after Delete). Swapped atomically on
  * openCharacter() and newCharacter(). Every mutating action that writes to
  * this slice must also call markDirty().
  */
-export interface Character {
-  id: string;                                        // slug, stable for the character's lifetime
+export interface Asset {
+  id: string;                                        // slug, stable for the asset's lifetime
+  kind: EchidnaAssetKind;
   characterName: string;                             // display name
   gridWidth: number;
   gridDepth: number;
@@ -156,11 +175,19 @@ export interface Character {
   characterParts: BodyPart[];
   characterPoses: Record<string, PoseData>;
   animations: Record<string, AnimationClip>;
+  tags: string[];
   currentFilename: string | null;                    // legacy .echidna download target
 }
 
-export interface CharacterListEntry {
+/** @deprecated Use Asset */
+export type Character = Asset;
+
+export interface AssetListEntry {
   id: string;
+  kind: EchidnaAssetKind;
   name: string;
   lastModified: number;
 }
+
+/** @deprecated Use AssetListEntry */
+export type CharacterListEntry = AssetListEntry;

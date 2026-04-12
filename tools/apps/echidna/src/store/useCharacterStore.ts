@@ -85,6 +85,7 @@ function voxelArrayToMap(
 
 const DEFAULT_CHARACTER: Character = {
   id: '',
+  kind: 'character',
   characterName: 'Untitled',
   gridWidth: 32,
   gridDepth: 32,
@@ -92,6 +93,7 @@ const DEFAULT_CHARACTER: Character = {
   characterParts: [],
   characterPoses: {},
   animations: {},
+  tags: [],
   currentFilename: null,
 };
 
@@ -894,6 +896,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
       }
       const char: Character = {
         id: data.id,
+        kind: data.kind ?? 'character',
         characterName: data.characterName,
         gridWidth: data.gridWidth,
         gridDepth: data.gridDepth,
@@ -901,6 +904,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
         characterParts: parts,
         characterPoses: data.poses,
         animations,
+        tags: data.tags ?? [],
         currentFilename: null,
       };
       set({
@@ -1147,6 +1151,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
     set({
       character: {
         id: newId,
+        kind: 'character',
         voxels: new Map(),
         gridWidth: size,
         gridDepth: size,
@@ -1154,6 +1159,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
         characterParts: [],
         characterPoses: {},
         animations: {},
+        tags: [],
         currentFilename: null,
       },
       // Optimistic panel entry: add to knownCharacters immediately so the new
@@ -1161,7 +1167,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
       // listCharacters() which re-reads from disk and reconciles the entry.
       knownCharacters: [
         ...s.knownCharacters,
-        { id: newId, name: charName, lastModified: Date.now() },
+        { id: newId, kind: 'character', name: charName, lastModified: Date.now() },
       ],
       selectedPart: null,
       selectedPose: null,
@@ -1219,6 +1225,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
     return {
       version: ECHIDNA_FILE_VERSION,
       id,
+      kind: char.kind ?? 'character',
       characterName: char.characterName,
       gridWidth: char.gridWidth,
       gridDepth: char.gridDepth,
@@ -1226,6 +1233,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
       parts: char.characterParts,
       poses: char.characterPoses,
       animations: Object.keys(char.animations).length > 0 ? char.animations : undefined,
+      tags: char.tags ?? [],
     };
   },
 
@@ -1258,6 +1266,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
     set({
       character: {
         id: data.id,
+        kind: data.kind ?? 'character',
         voxels,
         gridWidth: data.gridWidth,
         gridDepth: data.gridDepth,
@@ -1265,6 +1274,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
         characterParts: parts,
         characterPoses: data.poses,
         animations,
+        tags: data.tags ?? [],
         currentFilename: get().character?.currentFilename ?? null,
       },
       selectedPart: null,

@@ -33,7 +33,7 @@ describe('migrateEchidnaFile', () => {
     };
     const migrated = migrateEchidnaFile(old);
     expect(migrated.version).toBe(ECHIDNA_FILE_VERSION);
-    expect(migrated.version).toBe(3);
+    expect(migrated.version).toBe(4);
     expect(migrated.id).toBe('walker_bot');
   });
 

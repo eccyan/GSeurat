@@ -1,7 +1,39 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useCharacterStore } from '../store/useCharacterStore';
 import { testing } from '@gseurat/project-root';
-import { CharacterListEntry } from '../store/types';
+import { CharacterListEntry, migrateEchidnaFile, ECHIDNA_FILE_VERSION } from '../store/types';
+
+describe('migrateEchidnaFile v3 → v4', () => {
+  it('defaults kind to character for legacy v3 files', () => {
+    const raw = {
+      version: 3, id: 'walker', characterName: 'Walker',
+      gridWidth: 32, gridDepth: 32, voxels: [], parts: [], poses: {},
+    };
+    const result = migrateEchidnaFile(raw);
+    expect(result.version).toBe(4);
+    expect(result.kind).toBe('character');
+  });
+
+  it('preserves kind when already present', () => {
+    const raw = {
+      version: 4, id: 'crystal', kind: 'object', characterName: 'Crystal',
+      gridWidth: 16, gridDepth: 16, voxels: [], parts: [], poses: {}, tags: ['prop'],
+    };
+    const result = migrateEchidnaFile(raw);
+    expect(result.kind).toBe('object');
+    expect(result.tags).toEqual(['prop']);
+  });
+
+  it('defaults tags to empty array', () => {
+    const raw = { version: 3, id: 'test', characterName: 'Test', voxels: [], parts: [], poses: {} };
+    const result = migrateEchidnaFile(raw);
+    expect(result.tags).toEqual([]);
+  });
+
+  it('ECHIDNA_FILE_VERSION is 4', () => {
+    expect(ECHIDNA_FILE_VERSION).toBe(4);
+  });
+});
 
 describe('useCharacterStore — dirty tracking', () => {
   beforeEach(() => {
@@ -9,6 +41,7 @@ describe('useCharacterStore — dirty tracking', () => {
     useCharacterStore.setState({
       character: {
         id: '',
+        kind: 'character' as const,
         characterName: 'Untitled',
         gridWidth: 32,
         gridDepth: 32,
@@ -16,6 +49,7 @@ describe('useCharacterStore — dirty tracking', () => {
         characterParts: [],
         characterPoses: {},
         animations: {},
+        tags: [],
         currentFilename: null,
       },
     });
@@ -96,7 +130,7 @@ describe('useCharacterStore.listCharacters', () => {
 
   it('preserves knownCharacters on transient failure', async () => {
     const stale: CharacterListEntry[] = [
-      { id: 'old', name: 'Old Character', lastModified: 1000 },
+      { id: 'old', kind: 'character', name: 'Old Character', lastModified: 1000 },
     ];
     useCharacterStore.setState({
       // Bogus handle that will make listEchidnaProjects throw when it tries
@@ -192,7 +226,7 @@ describe('useCharacterStore.openCharacter', () => {
     useCharacterStore.setState({
       projectRootHandle: root as unknown as FileSystemDirectoryHandle,
       knownCharacters: [
-        { id: 'ghost', name: 'Ghost', lastModified: 0 },
+        { id: 'ghost', kind: 'character', name: 'Ghost', lastModified: 0 },
       ],
     });
 
@@ -228,6 +262,7 @@ describe('useCharacterStore.save', () => {
       projectRootHandle: root as unknown as FileSystemDirectoryHandle,
       character: {
         id: 'walker',
+        kind: 'character' as const,
         characterName: 'Walker Bot',
         gridWidth: 32,
         gridDepth: 32,
@@ -235,6 +270,7 @@ describe('useCharacterStore.save', () => {
         characterParts: [],
         characterPoses: {},
         animations: {},
+        tags: [],
         currentFilename: null,
       },
       dirty: true,
@@ -270,6 +306,7 @@ describe('useCharacterStore.save', () => {
       projectRootHandle: root as unknown as FileSystemDirectoryHandle,
       character: {
         id: 'walker',
+        kind: 'character' as const,
         characterName: 'Walker',
         gridWidth: 32,
         gridDepth: 32,
@@ -277,6 +314,7 @@ describe('useCharacterStore.save', () => {
         characterParts: [],
         characterPoses: {},
         animations: {},
+        tags: [],
         currentFilename: null,
       },
       dirty: true,
@@ -300,6 +338,7 @@ describe('useCharacterStore.save', () => {
       projectRootHandle: root as unknown as FileSystemDirectoryHandle,
       character: {
         id: 'walker',
+        kind: 'character' as const,
         characterName: 'Walker',
         gridWidth: 32,
         gridDepth: 32,
@@ -307,6 +346,7 @@ describe('useCharacterStore.save', () => {
         characterParts: [],
         characterPoses: {},
         animations: {},
+        tags: [],
         currentFilename: null,
       },
       dirty: true,
@@ -340,12 +380,14 @@ describe('useCharacterStore.save', () => {
       projectRootHandle: null,
       character: {
         id: 'walker',
+        kind: 'character' as const,
         characterName: 'Walker',
         gridWidth: 32, gridDepth: 32,
         voxels: new Map(),
         characterParts: [],
         characterPoses: {},
         animations: {},
+        tags: [],
         currentFilename: null,
       },
       dirty: true,
@@ -386,6 +428,7 @@ describe('useCharacterStore.requestOpenCharacter', () => {
       // open 'archer' are not caught by the re-entry guard (walker ≠ archer).
       character: {
         id: 'walker',
+        kind: 'character' as const,
         characterName: 'Walker',
         gridWidth: 32,
         gridDepth: 32,
@@ -393,12 +436,13 @@ describe('useCharacterStore.requestOpenCharacter', () => {
         characterParts: [],
         characterPoses: {},
         animations: {},
+        tags: [],
         currentFilename: null,
       },
       dirty: false,
       undoStack: [],
       knownCharacters: [
-        { id: 'archer', name: 'Archer', lastModified: 0 },
+        { id: 'archer', kind: 'character', name: 'Archer', lastModified: 0 },
       ],
     });
   });
@@ -447,6 +491,7 @@ describe('useCharacterStore.requestOpenCharacter', () => {
       dirty: true,
       character: {
         id: 'walker',
+        kind: 'character' as const,
         characterName: 'Walker',
         gridWidth: 32,
         gridDepth: 32,
@@ -454,6 +499,7 @@ describe('useCharacterStore.requestOpenCharacter', () => {
         characterParts: [],
         characterPoses: {},
         animations: {},
+        tags: [],
         currentFilename: null,
       },
     });
@@ -481,6 +527,7 @@ describe('useCharacterStore.requestOpenCharacter', () => {
       dirty: true,
       character: {
         id: 'walker',
+        kind: 'character' as const,
         characterName: 'Walker',
         gridWidth: 32,
         gridDepth: 32,
@@ -488,6 +535,7 @@ describe('useCharacterStore.requestOpenCharacter', () => {
         characterParts: [],
         characterPoses: {},
         animations: {},
+        tags: [],
         currentFilename: null,
       },
     });
@@ -518,6 +566,7 @@ describe('useCharacterStore.requestOpenCharacter', () => {
       dirty: true,  // even when dirty
       character: {
         id: 'walker',
+        kind: 'character' as const,
         characterName: 'Walker',
         gridWidth: 32,
         gridDepth: 32,
@@ -525,6 +574,7 @@ describe('useCharacterStore.requestOpenCharacter', () => {
         characterParts: [],
         characterPoses: {},
         animations: {},
+        tags: [],
         currentFilename: null,
       },
       undoStack: [{} as any],
@@ -560,11 +610,13 @@ describe('useCharacterStore.renameCharacter', () => {
       projectRootHandle: root as unknown as FileSystemDirectoryHandle,
       character: {
         id: 'walker', characterName: 'Walker Bot',
+        kind: 'character' as const,
         gridWidth: 32, gridDepth: 32, voxels: new Map(),
         characterParts: [], characterPoses: {}, animations: {},
+        tags: [],
         currentFilename: null,
       },
-      knownCharacters: [{ id: 'walker', name: 'Walker Bot', lastModified: 0 }],
+      knownCharacters: [{ id: 'walker', kind: 'character', name: 'Walker Bot', lastModified: 0 }],
       dirty: false,
     });
 
@@ -592,11 +644,13 @@ describe('useCharacterStore.renameCharacter', () => {
       projectRootHandle: root as unknown as FileSystemDirectoryHandle,
       character: {
         id: 'walker', characterName: 'Walker Bot',
+        kind: 'character' as const,
         gridWidth: 32, gridDepth: 32, voxels: new Map(),
         characterParts: [], characterPoses: {}, animations: {},
+        tags: [],
         currentFilename: null,
       },
-      knownCharacters: [{ id: 'walker', name: 'Walker Bot', lastModified: 0 }],
+      knownCharacters: [{ id: 'walker', kind: 'character', name: 'Walker Bot', lastModified: 0 }],
       dirty: false,
     });
 
@@ -629,13 +683,15 @@ describe('useCharacterStore.renameCharacter', () => {
       projectRootHandle: root as unknown as FileSystemDirectoryHandle,
       character: {
         id: 'walker', characterName: 'Walker Bot',
+        kind: 'character' as const,
         gridWidth: 32, gridDepth: 32, voxels: new Map(),
         characterParts: [], characterPoses: {}, animations: {},
+        tags: [],
         currentFilename: null,
       },
       knownCharacters: [
-        { id: 'walker', name: 'Walker Bot', lastModified: 0 },
-        { id: 'archer', name: 'Archer', lastModified: 0 },
+        { id: 'walker', kind: 'character', name: 'Walker Bot', lastModified: 0 },
+        { id: 'archer', kind: 'character', name: 'Archer', lastModified: 0 },
       ],
       dirty: false,
     });
@@ -662,16 +718,18 @@ describe('useCharacterStore.deleteCharacter', () => {
     useCharacterStore.setState({
       projectRootHandle: root as unknown as FileSystemDirectoryHandle,
       knownCharacters: [
-        { id: 'walker', name: 'Walker', lastModified: 0 },
-        { id: 'archer', name: 'Archer', lastModified: 0 },
+        { id: 'walker', kind: 'character', name: 'Walker', lastModified: 0 },
+        { id: 'archer', kind: 'character', name: 'Archer', lastModified: 0 },
       ],
       // character is not walker, so deleting walker should not null it
       character: {
         id: 'archer',
+        kind: 'character' as const,
         characterName: 'Archer',
         gridWidth: 32, gridDepth: 32,
         voxels: new Map(),
         characterParts: [], characterPoses: {}, animations: {},
+        tags: [],
         currentFilename: null,
       },
     });
@@ -696,13 +754,15 @@ describe('useCharacterStore.deleteCharacter', () => {
       projectRootHandle: root as unknown as FileSystemDirectoryHandle,
       character: {
         id: 'walker',
+        kind: 'character' as const,
         characterName: 'Walker',
         gridWidth: 32, gridDepth: 32,
         voxels: new Map(),
         characterParts: [], characterPoses: {}, animations: {},
+        tags: [],
         currentFilename: null,
       },
-      knownCharacters: [{ id: 'walker', name: 'Walker', lastModified: 0 }],
+      knownCharacters: [{ id: 'walker', kind: 'character', name: 'Walker', lastModified: 0 }],
       dirty: true,
       undoStack: [{} as any],
     });
@@ -735,8 +795,8 @@ describe('useCharacterStore.duplicateCharacter', () => {
     useCharacterStore.setState({
       projectRootHandle: root as unknown as FileSystemDirectoryHandle,
       knownCharacters: [
-        { id: 'walker', name: 'Walker', lastModified: 0 },
-        { id: 'walker_2', name: 'Walker', lastModified: 0 },
+        { id: 'walker', kind: 'character', name: 'Walker', lastModified: 0 },
+        { id: 'walker_2', kind: 'character', name: 'Walker', lastModified: 0 },
       ],
     });
 
@@ -759,7 +819,7 @@ describe('useCharacterStore.duplicateCharacter', () => {
     useCharacterStore.setState({
       projectRootHandle: root as unknown as FileSystemDirectoryHandle,
       character: null,
-      knownCharacters: [{ id: 'walker', name: 'Walker', lastModified: 0 }],
+      knownCharacters: [{ id: 'walker', kind: 'character', name: 'Walker', lastModified: 0 }],
     });
 
     await useCharacterStore.getState().duplicateCharacter('walker', 'Archer');
@@ -794,7 +854,7 @@ describe('useCharacterStore.newCharacter — name parameter', () => {
 
   it('deduplicates id when name collides with existing character', () => {
     useCharacterStore.setState({
-      knownCharacters: [{ id: 'knight', name: 'Knight', lastModified: 0 }],
+      knownCharacters: [{ id: 'knight', kind: 'character', name: 'Knight', lastModified: 0 }],
       character: null,
       dirty: false,
     });
@@ -824,8 +884,10 @@ describe('useCharacterStore.save — return value', () => {
       projectRootHandle: root as unknown as FileSystemDirectoryHandle,
       character: {
         id: 'walker', characterName: 'Walker',
+        kind: 'character' as const,
         gridWidth: 32, gridDepth: 32, voxels: new Map(),
         characterParts: [], characterPoses: {}, animations: {},
+        tags: [],
         currentFilename: null,
       },
       dirty: true,
@@ -840,8 +902,10 @@ describe('useCharacterStore.save — return value', () => {
       projectRootHandle: null,
       character: {
         id: 'walker', characterName: 'Walker',
+        kind: 'character' as const,
         gridWidth: 32, gridDepth: 32, voxels: new Map(),
         characterParts: [], characterPoses: {}, animations: {},
+        tags: [],
         currentFilename: null,
       },
       dirty: true,
@@ -872,8 +936,10 @@ describe('useCharacterStore.save — return value', () => {
       projectRootHandle: root as unknown as FileSystemDirectoryHandle,
       character: {
         id: 'walker', characterName: 'Walker',
+        kind: 'character' as const,
         gridWidth: 32, gridDepth: 32, voxels: new Map(),
         characterParts: [], characterPoses: {}, animations: {},
+        tags: [],
         currentFilename: null,
       },
       dirty: true,
