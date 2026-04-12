@@ -763,3 +763,83 @@ describe('useCharacterStore.saveProject — null guard', () => {
     );
   });
 });
+
+describe('useCharacterStore.save — return value', () => {
+  beforeEach(() => {
+    useCharacterStore.setState({ _saving: false });
+  });
+
+  it('returns true on successful save', async () => {
+    const root = testing.makeRoot();
+    useCharacterStore.setState({
+      projectRootHandle: root as unknown as FileSystemDirectoryHandle,
+      character: {
+        id: 'walker', characterName: 'Walker',
+        gridWidth: 32, gridDepth: 32, voxels: new Map(),
+        characterParts: [], characterPoses: {}, animations: {},
+        currentFilename: null,
+      },
+      dirty: true,
+    });
+    const result = await useCharacterStore.getState().save();
+    expect(result).toBe(true);
+  });
+
+  it('returns false when projectRootHandle is null', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    useCharacterStore.setState({
+      projectRootHandle: null,
+      character: {
+        id: 'walker', characterName: 'Walker',
+        gridWidth: 32, gridDepth: 32, voxels: new Map(),
+        characterParts: [], characterPoses: {}, animations: {},
+        currentFilename: null,
+      },
+      dirty: true,
+    });
+    const result = await useCharacterStore.getState().save();
+    expect(result).toBe(false);
+    warnSpy.mockRestore();
+  });
+
+  it('returns false when character is null', async () => {
+    useCharacterStore.setState({
+      projectRootHandle: testing.makeRoot() as unknown as FileSystemDirectoryHandle,
+      character: null,
+    });
+    const result = await useCharacterStore.getState().save();
+    expect(result).toBe(false);
+  });
+
+  it('returns false when race guard blocks', async () => {
+    useCharacterStore.setState({ _saving: true });
+    const result = await useCharacterStore.getState().save();
+    expect(result).toBe(false);
+  });
+
+  it('returns false on partial failure', async () => {
+    const root = testing.makeRoot();
+    useCharacterStore.setState({
+      projectRootHandle: root as unknown as FileSystemDirectoryHandle,
+      character: {
+        id: 'walker', characterName: 'Walker',
+        gridWidth: 32, gridDepth: 32, voxels: new Map(),
+        characterParts: [], characterPoses: {}, animations: {},
+        currentFilename: null,
+      },
+      dirty: true,
+    });
+    const projectFs = await import('../lib/projectFs');
+    const spy = vi.spyOn(projectFs, 'exportCharacterToProject').mockRejectedValueOnce(
+      new Error('simulated engine write failure'),
+    );
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const result = await useCharacterStore.getState().save();
+      expect(result).toBe(false);
+    } finally {
+      spy.mockRestore();
+      errSpy.mockRestore();
+    }
+  });
+});

@@ -240,7 +240,7 @@ export interface CharacterStoreState {
   setProjectRootHandle: (h: FileSystemDirectoryHandle | null) => void;
   ensureCharacterId: () => string;
   _saving: boolean;              // race guard — internal, not subscribed by consumers
-  save: () => Promise<void>;
+  save: () => Promise<boolean>;
   listCharacters: () => Promise<void>;
   openCharacter: (id: string) => Promise<void>;
   requestOpenCharacter: (id: string, confirm: ConfirmSwitch) => Promise<void>;
@@ -943,10 +943,8 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
       });
       if (decision === 'cancel') return;
       if (decision === 'save') {
-        await s.save();
-        // If save() failed, dirty will still be true — abort the switch to
-        // prevent loss of unsaved work on the subsequent openCharacter call.
-        if (get().dirty) {
+        const ok = await s.save();
+        if (!ok) {
           console.error('[echidna] requestOpenCharacter: save() failed, aborting switch');
           return;
         }
@@ -1044,22 +1042,22 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
     // already in flight, the second call returns immediately. This matters
     // because the switch-during-save race (user hits ⌘S then clicks another
     // character row) could otherwise double-trigger the write pipeline.
-    if (get()._saving) return;
+    if (get()._saving) return false;
     set({ _saving: true });
     try {
       const handleCheck = get();
       const handle = handleCheck.projectRootHandle;
       if (!handle) {
         console.warn('[echidna] save called with no projectRootHandle');
-        return;
+        return false;
       }
-      if (!handleCheck.character) return;
+      if (!handleCheck.character) return false;
 
       // ensureCharacterId may replace state.character (via set()), so recapture
       // get() after it runs so downstream reads use a fresh snapshot.
       const id = get().ensureCharacterId();
       const s = get();
-      if (!s.character) return; // guard: ensureCharacterId should never null character, but be safe
+      if (!s.character) return false; // guard: ensureCharacterId should never null character, but be safe
 
       // 1. Write the .echidna source via Phase 0.0 helper
       const file = s.saveProject();   // returns EchidnaFile DTO, does NOT write to disk
@@ -1067,7 +1065,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
         await saveEchidnaProject(handle, file);
       } catch (e) {
         console.error('[echidna] save: .echidna write failed:', e);
-        return;
+        return false;
       }
 
       // 2. Build PLY + manifest and write engine-ready files
@@ -1091,7 +1089,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
         console.error('[echidna] save: partial write — engine files may be stale:', e);
         // .echidna is on disk so dirty COULD clear, but partial-fail means
         // the user should retry. Leave dirty true so the next ⌘S rebuilds.
-        return;
+        return false;
       }
 
       set((state) => ({
@@ -1105,6 +1103,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
           c.id === id ? { ...c, lastModified: Date.now() } : c,
         ),
       }));
+      return true;
     } finally {
       set({ _saving: false });
     }
