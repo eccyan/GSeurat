@@ -717,3 +717,40 @@ describe('useCharacterStore.duplicateCharacter', () => {
     expect(useCharacterStore.getState().character).toBeNull();  // still null
   });
 });
+
+describe('useCharacterStore.newCharacter — name parameter', () => {
+  beforeEach(() => {
+    useCharacterStore.setState({ knownCharacters: [], character: null, dirty: false });
+  });
+
+  it('uses the provided name and derives id from it', () => {
+    useCharacterStore.getState().newCharacter(32, 'Knight');
+    const s = useCharacterStore.getState();
+    expect(s.character?.characterName).toBe('Knight');
+    expect(s.character?.id).toBe('knight');
+  });
+
+  it('falls back to Untitled when name is undefined', () => {
+    useCharacterStore.getState().newCharacter(32);
+    const s = useCharacterStore.getState();
+    expect(s.character?.characterName).toBe('Untitled');
+    expect(s.character?.id).toBe('untitled');
+  });
+
+  it('falls back to Untitled when name is empty string', () => {
+    useCharacterStore.getState().newCharacter(32, '');
+    const s = useCharacterStore.getState();
+    expect(s.character?.characterName).toBe('Untitled');
+  });
+
+  it('deduplicates id when name collides with existing character', () => {
+    useCharacterStore.setState({
+      knownCharacters: [{ id: 'knight', name: 'Knight', lastModified: 0 }],
+      character: null,
+      dirty: false,
+    });
+    useCharacterStore.getState().newCharacter(32, 'Knight');
+    const s = useCharacterStore.getState();
+    expect(s.character?.id).toBe('knight_2');
+  });
+});

@@ -232,7 +232,7 @@ export interface CharacterStoreState {
   setPlaybackSpeed: (speed: number) => void;
 
   // Actions – file
-  newCharacter: (gridSize?: number) => void;
+  newCharacter: (gridSize?: number, name?: string) => void;
   resizeGrid: (size: number) => void;
   saveProject: () => EchidnaFile;
   loadProject: (raw: any) => void;
@@ -1120,16 +1120,17 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
     return id;
   },
 
-  newCharacter: (gridSize?: number) => {
+  newCharacter: (gridSize?: number, name?: string) => {
     const size = gridSize ?? 32;
     const s = get();
+    const charName = (name && name.trim().length > 0) ? name.trim() : 'Untitled';
 
-    // Mint a non-colliding id from the default 'Untitled' name. Without this,
-    // creating two new characters in a row would give them both id 'untitled'
+    // Mint a non-colliding id from the provided name. Without this,
+    // creating two new characters in a row would give them both the same id
     // and the second save would silently overwrite the first. Matches the
     // collision-suffix pattern used by duplicateCharacter.
     const MAX_NEW_SUFFIX = 1000;
-    const baseId = slugifyCharacterId('Untitled');
+    const baseId = slugifyCharacterId(charName);
     const existingIds = new Set(s.knownCharacters.map((c) => c.id));
     let newId = baseId;
     let counter = 2;
@@ -1148,7 +1149,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
         voxels: new Map(),
         gridWidth: size,
         gridDepth: size,
-        characterName: 'Untitled',
+        characterName: charName,
         characterParts: [],
         characterPoses: {},
         animations: {},
@@ -1159,7 +1160,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
       // listCharacters() which re-reads from disk and reconciles the entry.
       knownCharacters: [
         ...s.knownCharacters,
-        { id: newId, name: 'Untitled', lastModified: Date.now() },
+        { id: newId, name: charName, lastModified: Date.now() },
       ],
       selectedPart: null,
       selectedPose: null,
