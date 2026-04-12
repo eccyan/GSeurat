@@ -203,6 +203,11 @@ target_compile_definitions(gseurat_core PUBLIC
 # MSVC: enable C++ exceptions and standard-conforming preprocessor
 if(MSVC)
     target_compile_options(gseurat_core PUBLIC /EHsc /permissive-)
+    # Address Sanitizer for diagnosing memory corruption
+    if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+        add_compile_options(/fsanitize=address)
+        add_link_options(/INCREMENTAL:NO)
+    endif()
 endif()
 
 target_link_libraries(gseurat_core
