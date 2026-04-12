@@ -51,15 +51,55 @@ Install the [Vulkan SDK](https://vulkan.lunarg.com/sdk/home).
 
 ## Building
 
+### Linux & macOS
+
 ```bash
 # Configure
-cmake --preset <platform>-debug    # linux-debug, macos-debug, windows-debug
-cmake --preset <platform>-release  # linux-release, macos-release, windows-release
+cmake --preset <platform>-debug    # linux-debug, macos-debug
+cmake --preset <platform>-release  # linux-release, macos-release
 
 # Build
 cmake --build --preset <platform>-debug
 cmake --build --preset <platform>-release
 ```
+
+### Windows
+
+**Prerequisites:**
+- Visual Studio 2022 Community or equivalent (C++ workload)
+- CMake 3.25+ (installed or in PATH)
+- Ninja (installed or available)
+- Vulkan SDK 1.4+ (install from [vulkan.lunarg.com](https://vulkan.lunarg.com/sdk/home))
+
+**Build Steps:**
+
+Open the **x64 Native Tools Command Prompt for VS 2022** (search in Windows Start Menu):
+
+```cmd
+# Navigate to project
+cd C:\path\to\GSeurat
+
+# Configure (generates build\windows-debug or build\windows-release)
+cmake --preset windows-debug -DCMAKE_GENERATOR_PLATFORM= -DCMAKE_C_COMPILER=cl.exe -DCMAKE_CXX_COMPILER=cl.exe
+
+# Build
+cmake --build --preset windows-debug --target gseurat_demo
+
+# Run
+build\windows-debug\gseurat_demo.exe
+```
+
+**Notes:**
+- The `-DCMAKE_GENERATOR_PLATFORM=` flag ensures x64 architecture (required for Vulkan SDK on Windows)
+- Use `windows-release` preset for optimized builds
+- Shader files are automatically compiled and deployed to the source `shaders/` directory during build
+- First build may take 2-3 minutes; subsequent builds are faster
+
+**Troubleshooting:**
+- If you see "The program can't start because vk*.dll is missing", ensure Vulkan SDK is installed and its `bin/` is in PATH
+- If CMake fails to find tools, run vcvars explicitly: `"C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat"`
+
+---
 
 One demo executable is produced:
 
