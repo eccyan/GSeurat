@@ -2,7 +2,7 @@ import React from 'react';
 import { NumberInput } from '../components/NumberInput.js';
 import { Vec3Input } from '../components/Vec3Input.js';
 import { useSceneStore } from '../store/useSceneStore.js';
-import type { PortalData } from '../store/types.js';
+import type { PortalData, InstanceData } from '../store/types.js';
 import { panelStyles } from '../styles/panel.js';
 
 const styles = { ...panelStyles };
@@ -58,20 +58,25 @@ function PortalEditor({ portal }: { portal: PortalData }) {
           style={{ ...styles.input, maxWidth: 60 }}
         />
       </div>
-      <div style={styles.row}>
-        <span style={{ fontSize: 12, minWidth: 40 }}>Target</span>
-        <input
-          type="text"
-          value={portal.target_scene}
-          onChange={(e) => updatePortal(portal.id, { target_scene: e.target.value })}
-          style={styles.input}
-          placeholder="scene name"
-        />
-      </div>
       <Vec3Input
         value={portal.spawn_position}
         onChange={(v) => updatePortal(portal.id, { spawn_position: v })}
       />
+    </div>
+  );
+}
+
+function InstanceItem({ inst }: { inst: InstanceData }) {
+  const selectedEntity = useSceneStore((s) => s.selectedEntity);
+  const setSelectedEntity = useSceneStore((s) => s.setSelectedEntity);
+  const isSelected = selectedEntity?.type === 'instance' && selectedEntity.id === inst.id;
+
+  return (
+    <div
+      style={{ ...styles.item, ...(isSelected ? styles.itemSelected : {}) }}
+      onClick={() => setSelectedEntity({ type: 'instance', id: inst.id })}
+    >
+      <span style={{ fontSize: 13 }}>{inst.display_name || '(unnamed)'}</span>
     </div>
   );
 }
@@ -81,6 +86,8 @@ export function EntitiesTab() {
   const updatePlayer = useSceneStore((s) => s.updatePlayer);
   const portals = useSceneStore((s) => s.portals);
   const addPortal = useSceneStore((s) => s.addPortal);
+  const instances = useSceneStore((s) => s.instances);
+  const addInstance = useSceneStore((s) => s.addInstance);
 
   return (
     <div>
@@ -117,6 +124,14 @@ export function EntitiesTab() {
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {portals.map((p) => <PortalEditor key={p.id} portal={p} />)}
+      </div>
+
+      <div style={{ ...styles.row, marginBottom: 8, marginTop: 16 }}>
+        <span style={{ ...styles.label, flex: 1 }}>Instances ({instances.length})</span>
+        <button style={styles.btn} onClick={() => addInstance()}>+ Add</button>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {instances.map((inst) => <InstanceItem key={inst.id} inst={inst} />)}
       </div>
     </div>
   );

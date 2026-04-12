@@ -228,10 +228,11 @@ void GsRenderer::create_descriptor_resources() {
             {4, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
             {5, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
             {6, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},  // PBD
+            {8, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},  // Page table
         };
         VkDescriptorSetLayoutCreateInfo ci{};
         ci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-        ci.bindingCount = 7;
+        ci.bindingCount = 8;
         ci.pBindings = bindings;
         vkCreateDescriptorSetLayout(device_, &ci, nullptr, &preprocess_layout_);
     }
@@ -480,7 +481,398 @@ void GsRenderer::create_compute_pipelines() {
                     radix_scatter_pipeline_layout_, radix_scatter_pipeline_);
 }
 
+void GsRenderer::init_streaming(const StreamingConfig& config) {
+    streaming_config_ = config;
+    slab_allocator_ = std::make_unique<SlabAllocator>(config.total_slabs(), config.slab_size_splats);
+
+    // Wait for GPU before destroying existing buffers
+    if (initialized_) {
+        vkDeviceWaitIdle(device_);
+    }
+
+    sort_done_once_ = false;
+    static_dirty_ = true;
+
+    // Pre-allocate ALL buffers to full budget size
+    max_static_count_ = config.gpu_budget_splats;
+    max_dynamic_count_ = kDynamicHeadroom;
+    static_count_ = 0;
+    dynamic_count_ = 0;
+    gaussian_count_ = 0;
+    max_gaussian_count_ = max_static_count_ + max_dynamic_count_;
+
+    // Compute sort params
+    auto compute_sort_params = [](uint32_t max_count, uint32_t& sort_size, uint32_t& num_wg) {
+        sort_size = ((max_count + 1023) / 1024) * 1024;
+        if (sort_size < max_count) sort_size = max_count;
+        num_wg = sort_size / 1024;
+        if (num_wg == 0) num_wg = 1;
+        sort_size = num_wg * 1024;
+    };
+
+    compute_sort_params(max_static_count_, static_sort_size_, static_sort_workgroups_);
+    compute_sort_params(max_dynamic_count_, dynamic_sort_size_, dynamic_sort_workgroups_);
+    sort_size_ = static_sort_size_;
+    num_sort_workgroups_ = static_sort_workgroups_;
+
+    // Buffer sizes
+    VkDeviceSize static_gauss_size = static_cast<VkDeviceSize>(max_static_count_) * sizeof(GpuGaussian);
+    VkDeviceSize dynamic_gauss_size = static_cast<VkDeviceSize>(max_dynamic_count_) * sizeof(GpuGaussian);
+    VkDeviceSize projected_buf_size = static_cast<VkDeviceSize>(max_static_count_ + max_dynamic_count_) * sizeof(ProjectedSplat);
+    VkDeviceSize static_sort_buf_size = static_cast<VkDeviceSize>(static_sort_size_) * sizeof(SortEntry);
+    VkDeviceSize dynamic_sort_buf_size = static_cast<VkDeviceSize>(dynamic_sort_size_) * sizeof(SortEntry);
+    VkDeviceSize merged_sort_buf_size = static_cast<VkDeviceSize>(max_static_count_ + max_dynamic_count_) * sizeof(SortEntry);
+    VkDeviceSize static_hist_size = static_cast<VkDeviceSize>(256) * static_sort_workgroups_ * sizeof(uint32_t);
+    VkDeviceSize dynamic_hist_size = static_cast<VkDeviceSize>(256) * dynamic_sort_workgroups_ * sizeof(uint32_t);
+
+    // Destroy ALL old buffers (legacy + split)
+    gaussian_ssbo_.destroy(allocator_);
+    projected_ssbo_.destroy(allocator_);
+    sort_keys_ssbo_.destroy(allocator_);
+    sort_b_ssbo_.destroy(allocator_);
+    histogram_ssbo_.destroy(allocator_);
+    uniform_buffer_.destroy(allocator_);
+    visible_count_ssbo_.destroy(allocator_);
+    bone_ssbo_.destroy(allocator_);
+    pbd_state_ssbo_.destroy(allocator_);
+    pbd_params_ssbo_.destroy(allocator_);
+    pbd_constraint_ssbo_.destroy(allocator_);
+    pbd_uniform_buffer_.destroy(allocator_);
+    static_gaussian_ssbo_.destroy(allocator_);
+    dynamic_gaussian_ssbo_.destroy(allocator_);
+    static_sort_a_.destroy(allocator_);
+    static_sort_b_.destroy(allocator_);
+    dynamic_sort_a_.destroy(allocator_);
+    dynamic_sort_b_.destroy(allocator_);
+    static_histogram_ssbo_.destroy(allocator_);
+    dynamic_histogram_ssbo_.destroy(allocator_);
+    merged_sort_ssbo_.destroy(allocator_);
+    counts_ssbo_.destroy(allocator_);
+    page_table_ssbo_.destroy(allocator_);
+    chunk_table_ssbo_.destroy(allocator_);
+    pp_ubo_buffer_.destroy(allocator_);
+
+    // Create split buffers at full budget size
+    static_gaussian_ssbo_ = Buffer::create_storage(allocator_, static_gauss_size);
+    dynamic_gaussian_ssbo_ = Buffer::create_storage(allocator_, dynamic_gauss_size);
+    projected_ssbo_ = Buffer::create_storage(allocator_, projected_buf_size);
+    static_sort_a_ = Buffer::create_storage(allocator_, static_sort_buf_size);
+    static_sort_b_ = Buffer::create_storage(allocator_, static_sort_buf_size);
+    dynamic_sort_a_ = Buffer::create_storage(allocator_, dynamic_sort_buf_size);
+    dynamic_sort_b_ = Buffer::create_storage(allocator_, dynamic_sort_buf_size);
+    static_histogram_ssbo_ = Buffer::create_storage(allocator_, static_hist_size);
+    dynamic_histogram_ssbo_ = Buffer::create_storage(allocator_, dynamic_hist_size);
+    merged_sort_ssbo_ = Buffer::create_storage(allocator_, merged_sort_buf_size);
+    counts_ssbo_ = Buffer::create_storage_readback(allocator_, 3 * sizeof(uint32_t));
+    uniform_buffer_ = Buffer::create_uniform(allocator_, sizeof(GsUniforms));
+    visible_count_ssbo_ = Buffer::create_storage_readback(allocator_, sizeof(uint32_t));
+
+    // Legacy buffers (same sizes as static counterparts for backward compat)
+    gaussian_ssbo_ = Buffer::create_storage(allocator_,
+        static_cast<VkDeviceSize>(max_gaussian_count_) * sizeof(GpuGaussian));
+    sort_keys_ssbo_ = Buffer::create_storage(allocator_, static_sort_buf_size);
+    sort_b_ssbo_ = Buffer::create_storage(allocator_, static_sort_buf_size);
+    histogram_ssbo_ = Buffer::create_storage(allocator_, static_hist_size);
+
+    // Bone transform SSBO
+    bone_ssbo_ = Buffer::create_storage(allocator_, kMaxBones * sizeof(glm::mat4));
+    bone_count_ = 0;
+    {
+        auto* bones = static_cast<glm::mat4*>(bone_ssbo_.mapped());
+        for (uint32_t i = 0; i < kMaxBones; ++i) bones[i] = glm::mat4(1.0f);
+    }
+
+    // PBD buffers
+    pbd_state_ssbo_ = Buffer::create_storage(allocator_,
+        kMaxPbdElements * sizeof(PbdPhysicsState));
+    pbd_params_ssbo_ = Buffer::create_storage(allocator_,
+        kMaxPbdElements * sizeof(PbdElementParams));
+    pbd_constraint_ssbo_ = Buffer::create_storage(allocator_,
+        kMaxPbdConstraints * sizeof(PbdConstraint));
+    pbd_count_ = 0;
+    pbd_constraint_count_ = 0;
+    {
+        auto* states = static_cast<PbdPhysicsState*>(pbd_state_ssbo_.mapped());
+        for (uint32_t i = 0; i < kMaxPbdElements; ++i) {
+            states[i].position = glm::vec4(0.0f, 0.0f, 0.0f, 0.0f);
+            states[i].prev_position = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+            states[i].velocity = glm::vec4(0.0f);
+            states[i].params = glm::vec4(0.0f);
+        }
+        std::memset(pbd_params_ssbo_.mapped(), 0,
+                    kMaxPbdElements * sizeof(PbdElementParams));
+        std::memset(pbd_constraint_ssbo_.mapped(), 0,
+                    kMaxPbdConstraints * sizeof(PbdConstraint));
+    }
+    pbd_uniform_buffer_ = Buffer::create_uniform(allocator_, 32);
+    pp_ubo_buffer_ = Buffer::create_uniform(allocator_, sizeof(GsPostProcessUbo));
+
+    // Page table: one uint32 per slab, initialized to 0xFFFFFFFF (invalid)
+    page_table_ssbo_ = Buffer::create_storage(allocator_,
+        static_cast<VkDeviceSize>(config.total_slabs()) * sizeof(uint32_t));
+    std::memset(page_table_ssbo_.mapped(), 0xFF,
+                config.total_slabs() * sizeof(uint32_t));
+
+    // Chunk table: 256 entries x 16 bytes each, zeroed
+    chunk_table_ssbo_ = Buffer::create_storage(allocator_, 256 * 16);
+    std::memset(chunk_table_ssbo_.mapped(), 0, 256 * 16);
+
+    // Zero the counts buffer
+    {
+        auto* counts = static_cast<uint32_t*>(counts_ssbo_.mapped());
+        counts[0] = 0;
+        counts[1] = 0;
+        counts[2] = 0;
+    }
+
+    active_chunks_.clear();
+    total_active_splats_ = 0;
+    streaming_initialized_ = true;
+    initialized_ = true;
+
+    update_descriptors();
+
+    std::fprintf(stderr, "GS: Streaming initialized — budget=%u splats, %u slabs of %u\n",
+                 config.gpu_budget_splats, config.total_slabs(), config.slab_size_splats);
+}
+
 void GsRenderer::load_cloud(const GaussianCloud& cloud) {
+    if (!streaming_initialized_) {
+        load_cloud_legacy(cloud);
+        return;
+    }
+
+    if (cloud.empty()) return;
+
+    // Wait for GPU before writing to buffers
+    if (initialized_) {
+        vkDeviceWaitIdle(device_);
+    }
+
+    sort_done_once_ = false;
+    static_dirty_ = true;
+
+    uint32_t sps = streaming_config_.slab_size_splats;
+    uint32_t slabs_needed = (cloud.count() + sps - 1) / sps;
+    auto handle = slab_allocator_->checkout(slabs_needed);
+
+    // Calculate page table offset from existing chunks
+    uint32_t page_table_offset = 0;
+    for (const auto& chunk : active_chunks_) {
+        page_table_offset += static_cast<uint32_t>(chunk.handle.slab_indices.size());
+    }
+
+    // Write page table entries
+    auto* pt = static_cast<uint32_t*>(page_table_ssbo_.mapped());
+    for (uint32_t i = 0; i < slabs_needed; ++i) {
+        pt[page_table_offset + i] = handle.slab_indices[i];
+    }
+
+    // Write Gaussian data into physical slab locations
+    {
+        auto* gpu = static_cast<GpuGaussian*>(static_gaussian_ssbo_.mapped());
+        for (uint32_t slab_idx = 0; slab_idx < slabs_needed; ++slab_idx) {
+            uint32_t phys_slab = handle.slab_indices[slab_idx];
+            uint32_t base_src = slab_idx * sps;
+            uint32_t base_dst = phys_slab * sps;
+            uint32_t count_in_slab = std::min(sps, cloud.count() - base_src);
+
+            std::vector<GpuGaussian> staging(count_in_slab);
+            for (uint32_t i = 0; i < count_in_slab; ++i) {
+                const auto& g = cloud.gaussians()[base_src + i];
+                float bone_as_float;
+                uint32_t bone_idx = g.bone_index;
+                std::memcpy(&bone_as_float, &bone_idx, sizeof(float));
+                staging[i].pos_opacity = glm::vec4(g.position, g.opacity);
+                staging[i].scale_pad = glm::vec4(g.scale, bone_as_float);
+                staging[i].rot = glm::vec4(g.rotation.x, g.rotation.y, g.rotation.z, g.rotation.w);
+                staging[i].color_pad = glm::vec4(g.color, g.emission);
+            }
+            std::memcpy(gpu + base_dst, staging.data(), count_in_slab * sizeof(GpuGaussian));
+        }
+    }
+
+    // Write chunk table entry
+    {
+        auto* ct = static_cast<uint8_t*>(chunk_table_ssbo_.mapped());
+        uint32_t chunk_idx = static_cast<uint32_t>(active_chunks_.size());
+        uint32_t last_slab_splats = cloud.count() - (slabs_needed - 1) * sps;
+        uint32_t entry[4] = {page_table_offset, slabs_needed, last_slab_splats, cloud.count()};
+        std::memcpy(ct + chunk_idx * 16, entry, 16);
+    }
+
+    // Record chunk state
+    ChunkState cs;
+    cs.status = ChunkState::Status::ACTIVE;
+    cs.handle = std::move(handle);
+    cs.page_table_offset = page_table_offset;
+    cs.splat_count = cloud.count();
+    active_chunks_.push_back(std::move(cs));
+
+    // Recalculate total static count
+    static_count_ = 0;
+    for (const auto& chunk : active_chunks_) {
+        static_count_ += chunk.splat_count;
+    }
+    total_active_splats_ = static_count_;
+    gaussian_count_ = static_count_;
+
+    // Initialize sort buffers with sentinel keys
+    auto init_sort_buf = [](Buffer& buf, uint32_t sort_size, uint32_t valid_count) {
+        std::vector<SortEntry> staging(sort_size);
+        for (uint32_t i = 0; i < sort_size; ++i) {
+            staging[i].key = 0xFFFFFFFF;
+            staging[i].index = i < valid_count ? i : 0;
+        }
+        std::memcpy(buf.mapped(), staging.data(), sort_size * sizeof(SortEntry));
+    };
+    init_sort_buf(static_sort_a_, static_sort_size_, static_count_);
+    init_sort_buf(static_sort_b_, static_sort_size_, static_count_);
+
+    static_dirty_ = true;
+
+    std::fprintf(stderr, "GS: Loaded chunk %u — %u splats in %u slabs (total active: %u)\n",
+                 active_chunks_.back().handle.chunk_id, cloud.count(), slabs_needed, static_count_);
+}
+
+void GsRenderer::unload_cloud(uint32_t chunk_id) {
+    if (!streaming_initialized_) return;
+    auto it = std::find_if(active_chunks_.begin(), active_chunks_.end(),
+        [chunk_id](const ChunkState& c) { return c.handle.chunk_id == chunk_id; });
+    if (it == active_chunks_.end()) return;
+
+    // Invalidate page table entries
+    auto* pt = static_cast<uint32_t*>(page_table_ssbo_.mapped());
+    for (uint32_t i = 0; i < it->handle.slab_indices.size(); ++i) {
+        pt[it->page_table_offset + i] = 0xFFFFFFFF;
+    }
+    slab_allocator_->release(it->handle);
+    active_chunks_.erase(it);
+
+    // Rebuild chunk table and recalculate counts
+    auto* ct = static_cast<uint8_t*>(chunk_table_ssbo_.mapped());
+    uint32_t sps = streaming_config_.slab_size_splats;
+    static_count_ = 0;
+    for (size_t i = 0; i < active_chunks_.size(); ++i) {
+        auto& c = active_chunks_[i];
+        uint32_t nslabs = static_cast<uint32_t>(c.handle.slab_indices.size());
+        uint32_t last_slab_splats = c.splat_count - (nslabs - 1) * sps;
+        uint32_t entry[4] = {c.page_table_offset, nslabs, last_slab_splats, c.splat_count};
+        std::memcpy(ct + i * 16, entry, 16);
+        static_count_ += c.splat_count;
+    }
+    std::memset(ct + active_chunks_.size() * 16, 0, (256 - active_chunks_.size()) * 16);
+    total_active_splats_ = static_count_;
+    gaussian_count_ = static_count_;
+    static_dirty_ = true;
+}
+
+void GsRenderer::create_transfer_queue(VkQueue transfer_q, uint32_t transfer_family,
+                                        bool dedicated, VkQueue graphics_q) {
+    if (!streaming_initialized_) return;
+    const uint64_t staging_size = streaming_config_.slab_bytes() * 2;  // double-buffered
+    transfer_queue_ = std::make_unique<TransferQueue>(
+        device_, allocator_,
+        transfer_q, transfer_family,
+        dedicated, staging_size,
+        streaming_config_.transfer_budget_mb_per_frame,
+        static_gaussian_ssbo_.buffer());
+}
+
+void GsRenderer::load_cloud_async(const std::string& ply_path) {
+    if (!streaming_initialized_ || !transfer_queue_) {
+        // Fall back to synchronous load
+        GaussianCloud cloud;
+        cloud.load_ply(ply_path);
+        load_cloud(cloud);
+        return;
+    }
+
+    pending_loads_++;
+
+    load_threads_.emplace_back([this, ply_path]() {
+        GaussianCloud cloud;
+        cloud.load_ply(ply_path);
+
+        const uint32_t splat_count = cloud.count();
+        const uint32_t sps = streaming_config_.slab_size_splats;
+        const uint32_t slabs_needed = (splat_count + sps - 1) / sps;
+
+        auto handle = slab_allocator_->checkout(slabs_needed);
+
+        const auto& gaussians = cloud.gaussians();
+        auto* staging = static_cast<uint8_t*>(transfer_queue_->staging_mapped());
+        const uint64_t slab_bytes = static_cast<uint64_t>(sps) * sizeof(GpuGaussian);
+
+        for (uint32_t s = 0; s < slabs_needed; ++s) {
+            const uint32_t physical_slab = handle.slab_indices[s];
+            const uint32_t src_start = s * sps;
+            const uint32_t src_end = std::min(src_start + sps, splat_count);
+            const uint32_t count = src_end - src_start;
+
+            // Write into staging buffer (ring: alternate halves)
+            const uint64_t staging_offset = (s % 2) * slab_bytes;
+            auto* dst = reinterpret_cast<GpuGaussian*>(staging + staging_offset);
+            for (uint32_t i = 0; i < count; ++i) {
+                const auto& g = gaussians[src_start + i];
+                float bone_as_float;
+                uint32_t bone_idx = g.bone_index;
+                std::memcpy(&bone_as_float, &bone_idx, sizeof(float));
+                dst[i].pos_opacity = glm::vec4(g.position, g.opacity);
+                dst[i].scale_pad = glm::vec4(g.scale, bone_as_float);
+                dst[i].rot = glm::vec4(g.rotation.x, g.rotation.y, g.rotation.z, g.rotation.w);
+                dst[i].color_pad = glm::vec4(g.color, g.emission);
+            }
+
+            const uint64_t dest_offset = static_cast<uint64_t>(physical_slab) * sps * sizeof(GpuGaussian);
+            const uint64_t copy_size = static_cast<uint64_t>(count) * sizeof(GpuGaussian);
+            transfer_queue_->enqueue(staging_offset, dest_offset, copy_size);
+        }
+
+        // Completion callback — runs on main thread via poll_completions
+        transfer_queue_->enqueue_completion(
+            [this, handle = std::move(handle), splat_count, slabs_needed, sps]() mutable {
+                uint32_t page_table_offset = 0;
+                for (const auto& chunk : active_chunks_) {
+                    page_table_offset += static_cast<uint32_t>(chunk.handle.slab_indices.size());
+                }
+
+                auto* pt = static_cast<uint32_t*>(page_table_ssbo_.mapped());
+                for (uint32_t i = 0; i < slabs_needed; ++i) {
+                    pt[page_table_offset + i] = handle.slab_indices[i];
+                }
+
+                // Update chunk table
+                auto* ct = static_cast<uint8_t*>(chunk_table_ssbo_.mapped());
+                uint32_t chunk_idx = static_cast<uint32_t>(active_chunks_.size());
+                uint32_t last_slab_splats = splat_count - (slabs_needed - 1) * sps;
+                uint32_t entry[4] = {page_table_offset, slabs_needed, last_slab_splats, splat_count};
+                std::memcpy(ct + chunk_idx * 16, entry, 16);
+
+                ChunkState cs;
+                cs.status = ChunkState::Status::ACTIVE;
+                cs.handle = std::move(handle);
+                cs.page_table_offset = page_table_offset;
+                cs.splat_count = splat_count;
+                active_chunks_.push_back(std::move(cs));
+
+                static_count_ = 0;
+                for (const auto& c : active_chunks_) static_count_ += c.splat_count;
+                total_active_splats_ = static_count_;
+                gaussian_count_ = static_count_;
+                static_dirty_ = true;
+
+                pending_loads_--;
+                std::printf("[gs_renderer] Async load complete: %u splats\n", splat_count);
+            });
+    });
+}
+
+void GsRenderer::poll_transfers(VkCommandBuffer frame_cmd) {
+    if (transfer_queue_) transfer_queue_->poll_completions(frame_cmd);
+}
+
+void GsRenderer::load_cloud_legacy(const GaussianCloud& cloud) {
     if (cloud.empty()) return;
 
     // Wait for GPU before destroying existing buffers
@@ -652,6 +1044,14 @@ void GsRenderer::load_cloud(const GaussianCloud& cloud) {
         counts[0] = 0;
         counts[1] = 0;
         counts[2] = 0;
+    }
+
+    // Allocate a dummy page table buffer for binding 8 (legacy path, USE_PAGE_TABLE=0)
+    page_table_ssbo_.destroy(allocator_);
+    page_table_ssbo_ = Buffer::create_storage(allocator_, sizeof(uint32_t));
+    {
+        auto* pt = static_cast<uint32_t*>(page_table_ssbo_.mapped());
+        pt[0] = 0xFFFFFFFF;
     }
 
     update_descriptors();
@@ -864,7 +1264,7 @@ void GsRenderer::clear_bone_transforms() {
 }
 
 void GsRenderer::update_descriptors() {
-    // Preprocess set: gaussians(0), projected(1), sort_keys_A(2), uniforms(3), visible_count(4), bones(5), pbd(6)
+    // Preprocess set: gaussians(0), projected(1), sort_keys_A(2), uniforms(3), visible_count(4), bones(5), pbd(6), page_table(8)
     {
         VkDescriptorBufferInfo gaussian_info{gaussian_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo projected_info{projected_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
@@ -873,6 +1273,7 @@ void GsRenderer::update_descriptors() {
         VkDescriptorBufferInfo visible_count_info{visible_count_ssbo_.buffer(), 0, sizeof(uint32_t)};
         VkDescriptorBufferInfo bone_info{bone_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo pbd_info{pbd_state_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo page_table_info{page_table_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
 
         VkWriteDescriptorSet writes[] = {
             {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, preprocess_set_, 0, 0, 1,
@@ -889,8 +1290,10 @@ void GsRenderer::update_descriptors() {
              VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &bone_info, nullptr},
             {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, preprocess_set_, 6, 0, 1,
              VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &pbd_info, nullptr},
+            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, preprocess_set_, 8, 0, 1,
+             VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &page_table_info, nullptr},
         };
-        vkUpdateDescriptorSets(device_, 7, writes, 0, nullptr);
+        vkUpdateDescriptorSets(device_, 8, writes, 0, nullptr);
     }
 
     // Legacy sort set
@@ -1024,7 +1427,7 @@ void GsRenderer::update_descriptors() {
     // Only write these if the split buffers have been allocated
     if (!static_gaussian_ssbo_.buffer() || !counts_ssbo_.buffer()) return;
 
-    // Static preprocess set: static_gaussian(0), projected(1), static_sort_a(2), uniforms(3), counts[0](4), bones(5), pbd(6)
+    // Static preprocess set: static_gaussian(0), projected(1), static_sort_a(2), uniforms(3), counts[0](4), bones(5), pbd(6), page_table(8)
     {
         VkDescriptorBufferInfo gaussian_info{static_gaussian_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo projected_info{projected_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
@@ -1033,6 +1436,7 @@ void GsRenderer::update_descriptors() {
         VkDescriptorBufferInfo counts_info{counts_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo bone_info{bone_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo pbd_info{pbd_state_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo page_table_info{page_table_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
 
         VkWriteDescriptorSet writes[] = {
             {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, static_preprocess_set_, 0, 0, 1,
@@ -1049,11 +1453,13 @@ void GsRenderer::update_descriptors() {
              VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &bone_info, nullptr},
             {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, static_preprocess_set_, 6, 0, 1,
              VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &pbd_info, nullptr},
+            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, static_preprocess_set_, 8, 0, 1,
+             VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &page_table_info, nullptr},
         };
-        vkUpdateDescriptorSets(device_, 7, writes, 0, nullptr);
+        vkUpdateDescriptorSets(device_, 8, writes, 0, nullptr);
     }
 
-    // Dynamic preprocess set: dynamic_gaussian(0), projected(1), dynamic_sort_a(2), uniforms(3), counts[1](4), bones(5), pbd(6)
+    // Dynamic preprocess set: dynamic_gaussian(0), projected(1), dynamic_sort_a(2), uniforms(3), counts[1](4), bones(5), pbd(6), page_table(8)
     {
         VkDescriptorBufferInfo gaussian_info{dynamic_gaussian_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo projected_info{projected_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
@@ -1062,6 +1468,7 @@ void GsRenderer::update_descriptors() {
         VkDescriptorBufferInfo counts_info{counts_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo bone_info{bone_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo pbd_info{pbd_state_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo page_table_info{page_table_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
 
         VkWriteDescriptorSet writes[] = {
             {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, dynamic_preprocess_set_, 0, 0, 1,
@@ -1078,8 +1485,10 @@ void GsRenderer::update_descriptors() {
              VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &bone_info, nullptr},
             {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, dynamic_preprocess_set_, 6, 0, 1,
              VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &pbd_info, nullptr},
+            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, dynamic_preprocess_set_, 8, 0, 1,
+             VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &page_table_info, nullptr},
         };
-        vkUpdateDescriptorSets(device_, 7, writes, 0, nullptr);
+        vkUpdateDescriptorSets(device_, 8, writes, 0, nullptr);
     }
 
     // PBD solver descriptor set: pbd_states(0), pbd_params(1), pbd_constraints(2), pbd_uniforms(3)
@@ -1649,6 +2058,23 @@ void GsRenderer::set_point_lights(const std::vector<PointLight>& lights) {
 
 void GsRenderer::shutdown(VmaAllocator allocator) {
     if (!initialized_) return;
+
+    // Join background load threads before destroying resources
+    for (auto& t : load_threads_) {
+        if (t.joinable()) t.join();
+    }
+    load_threads_.clear();
+    if (transfer_queue_) {
+        transfer_queue_->shutdown();
+        transfer_queue_.reset();
+    }
+
+    // Streaming resources
+    page_table_ssbo_.destroy(allocator);
+    chunk_table_ssbo_.destroy(allocator);
+    slab_allocator_.reset();
+    active_chunks_.clear();
+    streaming_initialized_ = false;
 
     // Legacy buffers
     gaussian_ssbo_.destroy(allocator);

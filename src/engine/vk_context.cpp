@@ -1,6 +1,7 @@
 #define VMA_IMPLEMENTATION
 #include "gseurat/engine/vk_context.hpp"
 
+#include <cstdio>
 #include <cstring>
 #include <iostream>
 #include <stdexcept>
@@ -189,12 +190,43 @@ void VkContext::pick_physical_device() {
 void VkContext::create_logical_device() {
     graphics_queue_family_ = static_cast<uint32_t>(find_queue_family());
 
+    // Look for dedicated transfer queue (TRANSFER but NOT GRAPHICS)
+    int32_t transfer_family = -1;
+    uint32_t family_count = 0;
+    vkGetPhysicalDeviceQueueFamilyProperties(physical_device_, &family_count, nullptr);
+    std::vector<VkQueueFamilyProperties> families(family_count);
+    vkGetPhysicalDeviceQueueFamilyProperties(physical_device_, &family_count, families.data());
+    for (uint32_t i = 0; i < families.size(); ++i) {
+        if ((families[i].queueFlags & VK_QUEUE_TRANSFER_BIT) &&
+            !(families[i].queueFlags & VK_QUEUE_GRAPHICS_BIT)) {
+            transfer_family = static_cast<int32_t>(i);
+            break;
+        }
+    }
+
+    std::vector<VkDeviceQueueCreateInfo> queue_infos;
     float priority = 1.0f;
-    VkDeviceQueueCreateInfo queue_info{};
-    queue_info.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-    queue_info.queueFamilyIndex = graphics_queue_family_;
-    queue_info.queueCount = 1;
-    queue_info.pQueuePriorities = &priority;
+
+    VkDeviceQueueCreateInfo gfx_info{};
+    gfx_info.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+    gfx_info.queueFamilyIndex = graphics_queue_family_;
+    gfx_info.queueCount = 1;
+    gfx_info.pQueuePriorities = &priority;
+    queue_infos.push_back(gfx_info);
+
+    if (transfer_family >= 0 && static_cast<uint32_t>(transfer_family) != graphics_queue_family_) {
+        VkDeviceQueueCreateInfo xfer_info{};
+        xfer_info.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+        xfer_info.queueFamilyIndex = static_cast<uint32_t>(transfer_family);
+        xfer_info.queueCount = 1;
+        xfer_info.pQueuePriorities = &priority;
+        queue_infos.push_back(xfer_info);
+        transfer_queue_family_ = static_cast<uint32_t>(transfer_family);
+        has_dedicated_transfer_ = true;
+    } else {
+        transfer_queue_family_ = graphics_queue_family_;
+        has_dedicated_transfer_ = false;
+    }
 
     VkPhysicalDeviceFeatures features{};
 
@@ -202,8 +234,8 @@ void VkContext::create_logical_device() {
 
     VkDeviceCreateInfo create_info{};
     create_info.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-    create_info.queueCreateInfoCount = 1;
-    create_info.pQueueCreateInfos = &queue_info;
+    create_info.queueCreateInfoCount = static_cast<uint32_t>(queue_infos.size());
+    create_info.pQueueCreateInfos = queue_infos.data();
     create_info.pEnabledFeatures = &features;
     create_info.enabledExtensionCount = static_cast<uint32_t>(extensions.size());
     create_info.ppEnabledExtensionNames = extensions.data();
@@ -213,6 +245,14 @@ void VkContext::create_logical_device() {
     }
 
     vkGetDeviceQueue(device_, graphics_queue_family_, 0, &graphics_queue_);
+
+    if (has_dedicated_transfer_) {
+        vkGetDeviceQueue(device_, transfer_queue_family_, 0, &transfer_queue_);
+        std::printf("[vk_context] Dedicated transfer queue: family %u\n", transfer_queue_family_);
+    } else {
+        transfer_queue_ = graphics_queue_;
+        std::printf("[vk_context] No dedicated transfer queue; using graphics queue fallback\n");
+    }
 }
 
 void VkContext::create_allocator() {

@@ -141,6 +141,7 @@ add_library(gseurat_core OBJECT
     src/engine/input_manager.cpp
     src/engine/scene.cpp
     src/engine/tilemap.cpp
+    src/engine/transfer_queue.cpp
     src/engine/pathfinder.cpp
     src/engine/parallax_layer.cpp
     src/engine/animation.cpp
@@ -167,6 +168,7 @@ add_library(gseurat_core OBJECT
     src/engine/gs_scene_loader.cpp
     src/engine/collision_gen.cpp
     src/engine/save_system.cpp
+    src/engine/slab_allocator.cpp
     src/engine/async_loader.cpp
     src/engine/staging_uploader.cpp
     src/engine/gs_chunk_streamer.cpp
@@ -345,3 +347,4 @@ add_gseurat_test(test_camera_review_state src/staging/camera_review_state.cpp
 target_link_libraries(test_camera_review_state PRIVATE glfw imgui_lib)
 add_gseurat_test(test_visual_state  src/staging/visual_state.cpp)
 add_gseurat_test(test_project_root  src/engine/project_root.cpp)
+add_gseurat_test(test_slab_allocator src/engine/slab_allocator.cpp)
