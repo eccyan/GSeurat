@@ -49,8 +49,8 @@ const styles: Record<string, React.CSSProperties> = {
 };
 
 export function ResizeGridDialog({ onClose }: { onClose: () => void }) {
-  const currentSize = useCharacterStore((s) => s.character?.gridWidth ?? 32);
-  const voxels = useCharacterStore((s) => s.character?.voxels ?? new Map());
+  const currentSize = useCharacterStore((s) => s.asset?.gridWidth ?? 32);
+  const voxels = useCharacterStore((s) => s.asset?.voxels ?? new Map());
 
   const initialPreset = PRESETS.includes(currentSize) ? String(currentSize) : 'custom';
   const [preset, setPreset] = useState<string>(initialPreset);

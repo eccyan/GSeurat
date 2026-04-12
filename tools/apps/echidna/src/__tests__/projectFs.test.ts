@@ -9,6 +9,8 @@ import {
   echidnaSavePath,
   characterPlyPath,
   characterManifestPath,
+  exportMapToProject,
+  exportObjectToProject,
 } from '../lib/projectFs';
 
 describe('Echidna project path helpers', () => {
@@ -173,6 +175,38 @@ describe('renameEchidnaProject', () => {
     const parsed = JSON.parse(await reFile.text());
     expect(parsed.id).toBe('walker');                          // same id
     expect(parsed.characterName).toBe('Walker v2');            // new display name
+  });
+});
+
+describe('exportMapToProject', () => {
+  it('writes PLY to assets/maps/{id}.ply', async () => {
+    const root = testing.makeRoot();
+    const ply = new Uint8Array([1, 2, 3]);
+    const result = await exportMapToProject(root as unknown as FileSystemDirectoryHandle, 'town', ply);
+    expect(result.plyPath).toBe('assets/maps/town.ply');
+
+    const assets = await root.getDirectoryHandle('assets');
+    const maps = await assets.getDirectoryHandle('maps');
+    const fh = await maps.getFileHandle('town.ply');
+    const file = await fh.getFile();
+    const buf = new Uint8Array(await file.arrayBuffer());
+    expect(buf).toEqual(ply);
+  });
+});
+
+describe('exportObjectToProject', () => {
+  it('writes PLY to assets/objects/{id}.ply', async () => {
+    const root = testing.makeRoot();
+    const ply = new Uint8Array([4, 5, 6]);
+    const result = await exportObjectToProject(root as unknown as FileSystemDirectoryHandle, 'crystal', ply);
+    expect(result.plyPath).toBe('assets/objects/crystal.ply');
+
+    const assets = await root.getDirectoryHandle('assets');
+    const objects = await assets.getDirectoryHandle('objects');
+    const fh = await objects.getFileHandle('crystal.ply');
+    const file = await fh.getFile();
+    const buf = new Uint8Array(await file.arrayBuffer());
+    expect(buf).toEqual(ply);
   });
 });
 

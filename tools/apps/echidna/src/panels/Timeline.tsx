@@ -61,7 +61,7 @@ export function Timeline() {
   const trackRef = useRef<HTMLDivElement>(null);
 
   const selectedAnimation = useCharacterStore((s) => s.selectedAnimation);
-  const animations = useCharacterStore((s) => s.character?.animations ?? {});
+  const animations = useCharacterStore((s) => s.asset?.animations ?? {});
   const playbackTime = useCharacterStore((s) => s.playbackTime);
   const isPlaying = useCharacterStore((s) => s.isPlaying);
   const playbackSpeed = useCharacterStore((s) => s.playbackSpeed);

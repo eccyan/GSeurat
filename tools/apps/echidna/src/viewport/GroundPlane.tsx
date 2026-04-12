@@ -4,8 +4,8 @@ import { useCharacterStore } from '../store/useCharacterStore.js';
 import { brushPositions } from '../lib/voxelUtils.js';
 
 export function GroundPlane() {
-  const gridWidth = useCharacterStore((s) => s.character?.gridWidth ?? 32);
-  const gridDepth = useCharacterStore((s) => s.character?.gridDepth ?? 32);
+  const gridWidth = useCharacterStore((s) => s.asset?.gridWidth ?? 32);
+  const gridDepth = useCharacterStore((s) => s.asset?.gridDepth ?? 32);
 
   const handleClick = useCallback((e: ThreeEvent<MouseEvent>) => {
     e.stopPropagation();
@@ -17,7 +17,7 @@ export function GroundPlane() {
     const y = 0;
     const z = Math.round(point.z);
 
-    if (x < 0 || x >= (store.character?.gridWidth ?? 32) || z < 0 || z >= (store.character?.gridDepth ?? 32)) return;
+    if (x < 0 || x >= (store.asset?.gridWidth ?? 32) || z < 0 || z >= (store.asset?.gridDepth ?? 32)) return;
 
     store.pushUndo();
     if (store.brushSize > 1) {

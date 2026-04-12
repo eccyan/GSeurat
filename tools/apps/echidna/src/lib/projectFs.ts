@@ -5,7 +5,7 @@ import {
   writeFileAtPath,
   readFileAtPath,
 } from '@gseurat/project-root';
-import { migrateEchidnaFile, type EchidnaFile, type CharacterListEntry } from '../store/types';
+import { migrateEchidnaFile, type EchidnaFile, type AssetListEntry } from '../store/types';
 
 /* ----- private helpers ----- */
 
@@ -49,6 +49,22 @@ export function characterPlyPath(id: string): string {
  */
 export function characterManifestPath(id: string): string {
   return toAssetPath('characters', id, `${id}.manifest.json`);
+}
+
+/**
+ * Returns the project-relative path for a map PLY file.
+ * Example: `mapPlyPath('town')` → `'assets/maps/town.ply'`.
+ */
+export function mapPlyPath(id: string): string {
+  return toAssetPath('maps', `${id}.ply`);
+}
+
+/**
+ * Returns the project-relative path for an object PLY file.
+ * Example: `objectPlyPath('crystal')` → `'assets/objects/crystal.ply'`.
+ */
+export function objectPlyPath(id: string): string {
+  return toAssetPath('objects', `${id}.ply`);
 }
 
 /* ----- save / load / export ----- */
@@ -103,8 +119,38 @@ export async function exportCharacterToProject(
 }
 
 /**
+ * Export a map PLY to `assets/maps/{id}.ply`.
+ * Creates the maps subdirectory if needed. Returns the written path.
+ */
+export async function exportMapToProject(
+  root: FileSystemDirectoryHandle,
+  id: string,
+  ply: Blob | Uint8Array,
+): Promise<{ plyPath: string }> {
+  await ensureSubdir(root, PROJECT_LAYOUT.assets.maps);
+  const plyPath = mapPlyPath(id);
+  await writeFileAtPath(root, plyPath, ply);
+  return { plyPath };
+}
+
+/**
+ * Export an object PLY to `assets/objects/{id}.ply`.
+ * Creates the objects subdirectory if needed. Returns the written path.
+ */
+export async function exportObjectToProject(
+  root: FileSystemDirectoryHandle,
+  id: string,
+  ply: Blob | Uint8Array,
+): Promise<{ plyPath: string }> {
+  await ensureSubdir(root, PROJECT_LAYOUT.assets.objects);
+  const plyPath = objectPlyPath(id);
+  await writeFileAtPath(root, plyPath, ply);
+  return { plyPath };
+}
+
+/**
  * Enumerate all .echidna files in tools_data/echidna_saves/ and return
- * their metadata for the CharactersPanel list. Skips malformed files with
+ * their metadata for the AssetsPanel list. Skips malformed files with
  * a console.warn rather than throwing — one bad file must not prevent the
  * panel from rendering the rest.
  *
@@ -112,7 +158,7 @@ export async function exportCharacterToProject(
  */
 export async function listEchidnaProjects(
   handle: FileSystemDirectoryHandle,
-): Promise<CharacterListEntry[]> {
+): Promise<AssetListEntry[]> {
   let savesDir: FileSystemDirectoryHandle;
   try {
     savesDir = await getEchidnaSavesDir(handle);
@@ -138,7 +184,7 @@ export async function listEchidnaProjects(
     values(): AsyncIterable<DirChild>;
   }).values();
 
-  const entries: CharacterListEntry[] = [];
+  const entries: AssetListEntry[] = [];
   for await (const child of iter) {
     if (child.kind !== 'file') continue;
     if (!child.name.endsWith('.echidna')) continue;
@@ -149,6 +195,7 @@ export async function listEchidnaProjects(
       const migrated = migrateEchidnaFile(raw);
       entries.push({
         id: migrated.id,
+        kind: migrated.kind,
         name: migrated.characterName,
         lastModified: file.lastModified ?? 0,
       });

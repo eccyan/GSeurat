@@ -12,12 +12,13 @@ import type {
   AnimationKeyframe,
   ClipboardEntry,
   PlaybackMode,
-  Character,
-  CharacterListEntry,
+  Asset,
+  AssetListEntry,
+  EchidnaAssetKind,
 } from './types.js';
-import { migrateEchidnaFile, slugifyCharacterId, ECHIDNA_FILE_VERSION } from './types.js';
+import { migrateEchidnaFile, slugifyAssetId, ECHIDNA_FILE_VERSION } from './types.js';
 import { voxelKey, parseKey, floodFill3D, extrudeLayer } from '../lib/voxelUtils.js';
-import { listEchidnaProjects, loadEchidnaProject, saveEchidnaProject, exportCharacterToProject, deleteEchidnaProject, renameEchidnaProject, duplicateEchidnaProject } from '../lib/projectFs.js';
+import { listEchidnaProjects, loadEchidnaProject, saveEchidnaProject, exportCharacterToProject, exportMapToProject, exportObjectToProject, deleteEchidnaProject, renameEchidnaProject, duplicateEchidnaProject } from '../lib/projectFs.js';
 import { exportPly } from '../lib/plyExport.js';
 import { buildManifest } from '../lib/manifestExport.js';
 
@@ -83,8 +84,9 @@ function voxelArrayToMap(
   return map;
 }
 
-const DEFAULT_CHARACTER: Character = {
+const DEFAULT_ASSET: Asset = {
   id: '',
+  kind: 'character',
   characterName: 'Untitled',
   gridWidth: 32,
   gridDepth: 32,
@@ -92,6 +94,7 @@ const DEFAULT_CHARACTER: Character = {
   characterParts: [],
   characterPoses: {},
   animations: {},
+  tags: [],
   currentFilename: null,
 };
 
@@ -103,12 +106,12 @@ export type ConfirmSwitch = (info: {
 }) => Promise<SwitchDecision>;
 
 export interface CharacterStoreState {
-  // Per-character slice (currently non-null — Task 19 will make it nullable)
-  character: Character | null;
+  // Per-asset slice (nullable — null when no asset is loaded)
+  asset: Asset | null;
 
   // Global project state
   projectRootHandle: FileSystemDirectoryHandle | null;
-  knownCharacters: CharacterListEntry[];
+  knownAssets: AssetListEntry[];
   dirty: boolean;
 
   // App mode
@@ -232,21 +235,21 @@ export interface CharacterStoreState {
   setPlaybackSpeed: (speed: number) => void;
 
   // Actions – file
-  newCharacter: (gridSize?: number, name?: string) => void;
+  newAsset: (kind: EchidnaAssetKind, gridSize?: number, name?: string) => void;
   resizeGrid: (size: number) => void;
   saveProject: () => EchidnaFile;
   loadProject: (raw: any) => void;
   setCurrentFilename: (name: string | null) => void;
   setProjectRootHandle: (h: FileSystemDirectoryHandle | null) => void;
-  ensureCharacterId: () => string;
+  ensureAssetId: () => string;
   _saving: boolean;              // race guard — internal, not subscribed by consumers
   save: () => Promise<boolean>;
-  listCharacters: () => Promise<void>;
-  openCharacter: (id: string) => Promise<void>;
-  requestOpenCharacter: (id: string, confirm: ConfirmSwitch) => Promise<void>;
-  deleteCharacter: (id: string) => Promise<void>;
-  renameCharacter: (id: string, newName: string) => Promise<void>;
-  duplicateCharacter: (sourceId: string, newName: string) => Promise<void>;
+  listAssets: () => Promise<void>;
+  openAsset: (id: string) => Promise<void>;
+  requestOpenAsset: (id: string, confirm: ConfirmSwitch) => Promise<void>;
+  deleteAsset: (id: string) => Promise<void>;
+  renameAsset: (id: string, newName: string) => Promise<void>;
+  duplicateAsset: (sourceId: string, newName: string) => Promise<void>;
 
   // Actions – new tools and clipboard
   setXrayMode: (v: boolean) => void;
@@ -263,10 +266,10 @@ export interface CharacterStoreState {
 }
 
 export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
-  character: null,
+  asset: null,
 
   projectRootHandle: null,
-  knownCharacters: [],
+  knownAssets: [],
   dirty: false,
 
   mode: 'build',
@@ -317,21 +320,21 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
   // ── Undo ──
   pushUndo: () => {
     const s = get();
-    if (!s.character) return;
-    const snap = makeSnapshot(s.character.voxels, s.character.characterParts);
+    if (!s.asset) return;
+    const snap = makeSnapshot(s.asset.voxels, s.asset.characterParts);
     set({ undoStack: [...s.undoStack.slice(-49), snap], redoStack: [] });
   },
 
   undo: () => {
     const s = get();
-    if (!s.character) return;
+    if (!s.asset) return;
     if (s.undoStack.length === 0) return;
-    const current = makeSnapshot(s.character.voxels, s.character.characterParts);
+    const current = makeSnapshot(s.asset.voxels, s.asset.characterParts);
     const prev = s.undoStack[s.undoStack.length - 1];
     const restored = restoreSnapshot(prev);
     set({
-      character: {
-        ...s.character,
+      asset: {
+        ...s.asset,
         voxels: restored.voxels,
         characterParts: restored.characterParts,
       },
@@ -342,14 +345,14 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
 
   redo: () => {
     const s = get();
-    if (!s.character) return;
+    if (!s.asset) return;
     if (s.redoStack.length === 0) return;
-    const current = makeSnapshot(s.character.voxels, s.character.characterParts);
+    const current = makeSnapshot(s.asset.voxels, s.asset.characterParts);
     const next = s.redoStack[s.redoStack.length - 1];
     const restored = restoreSnapshot(next);
     set({
-      character: {
-        ...s.character,
+      asset: {
+        ...s.asset,
         voxels: restored.voxels,
         characterParts: restored.characterParts,
       },
@@ -365,11 +368,11 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
    */
   addVoxel: (key, voxel) => {
     const s = get();
-    if (!s.character) return;
+    if (!s.asset) return;
     set({
-      character: {
-        ...s.character,
-        voxels: new Map(s.character.voxels).set(key, voxel),
+      asset: {
+        ...s.asset,
+        voxels: new Map(s.asset.voxels).set(key, voxel),
       },
       dirty: true,
     });
@@ -377,81 +380,81 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
 
   placeVoxel: (x, y, z) => {
     const s = get();
-    if (!s.character) return;
-    const next = new Map(s.character.voxels);
+    if (!s.asset) return;
+    const next = new Map(s.asset.voxels);
     next.set(voxelKey(x, y, z), { color: [...s.activeColor] });
-    const m = mirrorPos(x, y, z, s.mirrorAxis, s.character.gridWidth);
+    const m = mirrorPos(x, y, z, s.mirrorAxis, s.asset.gridWidth);
     if (m) next.set(voxelKey(m[0], m[1], m[2]), { color: [...s.activeColor] });
-    set({ character: { ...s.character, voxels: next }, dirty: true });
+    set({ asset: { ...s.asset, voxels: next }, dirty: true });
   },
 
   placeVoxels: (positions) => {
     const s = get();
-    if (!s.character) return;
-    const next = new Map(s.character.voxels);
+    if (!s.asset) return;
+    const next = new Map(s.asset.voxels);
     for (const [x, y, z] of positions) {
       next.set(voxelKey(x, y, z), { color: [...s.activeColor] });
-      const m = mirrorPos(x, y, z, s.mirrorAxis, s.character.gridWidth);
+      const m = mirrorPos(x, y, z, s.mirrorAxis, s.asset.gridWidth);
       if (m) next.set(voxelKey(m[0], m[1], m[2]), { color: [...s.activeColor] });
     }
-    set({ character: { ...s.character, voxels: next }, dirty: true });
+    set({ asset: { ...s.asset, voxels: next }, dirty: true });
   },
 
   /** Batch-place voxels in a single state update. Programmatic API — does not apply mirror axis. */
   batchPlaceVoxels: (batch) => {
     const s = get();
-    if (!s.character) return;
-    const newVoxels = new Map(s.character.voxels);
+    if (!s.asset) return;
+    const newVoxels = new Map(s.asset.voxels);
     for (const { x, y, z, color } of batch) {
       const key = voxelKey(x, y, z);
       newVoxels.set(key, { color: color ? [...color] : [...s.activeColor] });
     }
-    set({ character: { ...s.character, voxels: newVoxels }, dirty: true });
+    set({ asset: { ...s.asset, voxels: newVoxels }, dirty: true });
   },
 
   paintVoxel: (x, y, z) => {
     const s = get();
-    if (!s.character) return;
+    if (!s.asset) return;
     const key = voxelKey(x, y, z);
-    if (!s.character.voxels.has(key)) return;
-    const next = new Map(s.character.voxels);
+    if (!s.asset.voxels.has(key)) return;
+    const next = new Map(s.asset.voxels);
     next.set(key, { color: [...s.activeColor] });
-    const m = mirrorPos(x, y, z, s.mirrorAxis, s.character.gridWidth);
+    const m = mirrorPos(x, y, z, s.mirrorAxis, s.asset.gridWidth);
     if (m) {
       const mk = voxelKey(m[0], m[1], m[2]);
       if (next.has(mk)) next.set(mk, { color: [...s.activeColor] });
     }
-    set({ character: { ...s.character, voxels: next }, dirty: true });
+    set({ asset: { ...s.asset, voxels: next }, dirty: true });
   },
 
   eraseVoxel: (x, y, z) => {
     const s = get();
-    if (!s.character) return;
+    if (!s.asset) return;
     const key = voxelKey(x, y, z);
-    if (!s.character.voxels.has(key)) return;
-    const next = new Map(s.character.voxels);
+    if (!s.asset.voxels.has(key)) return;
+    const next = new Map(s.asset.voxels);
     next.delete(key);
-    const m = mirrorPos(x, y, z, s.mirrorAxis, s.character.gridWidth);
+    const m = mirrorPos(x, y, z, s.mirrorAxis, s.asset.gridWidth);
     if (m) next.delete(voxelKey(m[0], m[1], m[2]));
-    set({ character: { ...s.character, voxels: next }, dirty: true });
+    set({ asset: { ...s.asset, voxels: next }, dirty: true });
   },
 
   eraseVoxels: (positions) => {
     const s = get();
-    if (!s.character) return;
-    const next = new Map(s.character.voxels);
+    if (!s.asset) return;
+    const next = new Map(s.asset.voxels);
     for (const [x, y, z] of positions) {
       next.delete(voxelKey(x, y, z));
-      const m = mirrorPos(x, y, z, s.mirrorAxis, s.character.gridWidth);
+      const m = mirrorPos(x, y, z, s.mirrorAxis, s.asset.gridWidth);
       if (m) next.delete(voxelKey(m[0], m[1], m[2]));
     }
-    set({ character: { ...s.character, voxels: next }, dirty: true });
+    set({ asset: { ...s.asset, voxels: next }, dirty: true });
   },
 
   eyedrop: (x, y, z) => {
     const s = get();
-    if (!s.character) return;
-    const v = s.character.voxels.get(voxelKey(x, y, z));
+    if (!s.asset) return;
+    const v = s.asset.voxels.get(voxelKey(x, y, z));
     if (v) set({ activeColor: [...v.color] });
   },
 
@@ -484,7 +487,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
 
   // ── Part color coding ──
   setColorByPart: (v) => {
-    const parts = get().character?.characterParts ?? [];
+    const parts = get().asset?.characterParts ?? [];
     const colors = v ? generatePartColors(parts) : {};
     set({ colorByPart: v, partColors: colors });
   },
@@ -495,14 +498,14 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
   // ── Character actions ──
   setCharacterName: (name) => {
     const s = get();
-    if (!s.character) return;
-    set({ character: { ...s.character, characterName: name }, dirty: true });
+    if (!s.asset) return;
+    set({ asset: { ...s.asset, characterName: name }, dirty: true });
   },
 
   addPart: (name) => {
     const s = get();
-    if (!s.character) return;
-    const parts = s.character.characterParts;
+    if (!s.asset) return;
+    const parts = s.asset.characterParts;
     if (parts.some((p) => p.id === name)) return;
     const part: BodyPart = {
       id: name,
@@ -513,7 +516,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
     };
     const newParts = [...parts, part];
     set({
-      character: { ...s.character, characterParts: newParts },
+      asset: { ...s.asset, characterParts: newParts },
       selectedPart: name,
       partColors: s.colorByPart ? generatePartColors(newParts) : s.partColors,
       dirty: true,
@@ -522,17 +525,17 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
 
   removePart: (id) => {
     const s = get();
-    if (!s.character) return;
-    const parts = s.character.characterParts.filter((p) => p.id !== id);
+    if (!s.asset) return;
+    const parts = s.asset.characterParts.filter((p) => p.id !== id);
     const updated = parts.map((p) => (p.parent === id ? { ...p, parent: null } : p));
-    const poses = { ...s.character.characterPoses };
+    const poses = { ...s.asset.characterPoses };
     for (const name of Object.keys(poses)) {
       const rotations = { ...poses[name].rotations };
       delete rotations[id];
       poses[name] = { rotations };
     }
     set({
-      character: { ...s.character, characterParts: updated, characterPoses: poses },
+      asset: { ...s.asset, characterParts: updated, characterPoses: poses },
       selectedPart: s.selectedPart === id ? null : s.selectedPart,
       partColors: s.colorByPart ? generatePartColors(updated) : s.partColors,
       dirty: true,
@@ -541,11 +544,11 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
 
   updatePartJoint: (id, joint) => {
     const s = get();
-    if (!s.character) return;
+    if (!s.asset) return;
     set({
-      character: {
-        ...s.character,
-        characterParts: s.character.characterParts.map((p) =>
+      asset: {
+        ...s.asset,
+        characterParts: s.asset.characterParts.map((p) =>
           p.id === id ? { ...p, joint } : p,
         ),
       },
@@ -555,11 +558,11 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
 
   setPartParent: (id, parentId) => {
     const s = get();
-    if (!s.character) return;
+    if (!s.asset) return;
     set({
-      character: {
-        ...s.character,
-        characterParts: s.character.characterParts.map((p) =>
+      asset: {
+        ...s.asset,
+        characterParts: s.asset.characterParts.map((p) =>
           p.id === id ? { ...p, parent: parentId } : p,
         ),
       },
@@ -569,9 +572,9 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
 
   assignVoxelsToPart: (keys, partId) => {
     const s = get();
-    if (!s.character) return;
+    if (!s.asset) return;
     const { mirrorAxis } = s;
-    const { voxels: voxelMap, gridWidth, characterParts } = s.character;
+    const { voxels: voxelMap, gridWidth, characterParts } = s.asset;
     const allKeys = [...keys];
     if (mirrorAxis) {
       for (const k of keys) {
@@ -585,8 +588,8 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
     }
     const keySet = new Set(allKeys);
     set({
-      character: {
-        ...s.character,
+      asset: {
+        ...s.asset,
         characterParts: characterParts.map((p) => {
           if (p.id === partId) {
             const existing = new Set(p.voxelKeys);
@@ -605,21 +608,21 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
 
   addPose: (name) => {
     const s = get();
-    if (!s.character) return;
-    const poses = { ...s.character.characterPoses };
+    if (!s.asset) return;
+    const poses = { ...s.asset.characterPoses };
     if (!poses[name]) {
       poses[name] = { rotations: {} };
     }
-    set({ character: { ...s.character, characterPoses: poses }, selectedPose: name, dirty: true });
+    set({ asset: { ...s.asset, characterPoses: poses }, selectedPose: name, dirty: true });
   },
 
   removePose: (name) => {
     const s = get();
-    if (!s.character) return;
-    const poses = { ...s.character.characterPoses };
+    if (!s.asset) return;
+    const poses = { ...s.asset.characterPoses };
     delete poses[name];
     set({
-      character: { ...s.character, characterPoses: poses },
+      asset: { ...s.asset, characterPoses: poses },
       selectedPose: s.selectedPose === name ? null : s.selectedPose,
       dirty: true,
     });
@@ -629,32 +632,32 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
 
   updatePoseRotation: (poseName, partId, rotation) => {
     const s = get();
-    if (!s.character) return;
-    const poses = { ...s.character.characterPoses };
+    if (!s.asset) return;
+    const poses = { ...s.asset.characterPoses };
     const pose = poses[poseName] ?? { rotations: {} };
     poses[poseName] = { rotations: { ...pose.rotations, [partId]: rotation } };
-    set({ character: { ...s.character, characterPoses: poses }, dirty: true });
+    set({ asset: { ...s.asset, characterPoses: poses }, dirty: true });
   },
 
   updatePoseRootPosition: (poseName, position) => {
     const s = get();
-    if (!s.character) return;
-    const poses = { ...s.character.characterPoses };
+    if (!s.asset) return;
+    const poses = { ...s.asset.characterPoses };
     const pose = poses[poseName];
     if (pose) {
       poses[poseName] = { ...pose, rootPosition: position };
     }
-    set({ character: { ...s.character, characterPoses: poses }, dirty: true });
+    set({ asset: { ...s.asset, characterPoses: poses }, dirty: true });
   },
 
   setPreviewPose: (on) => set({ previewPose: on }),
 
   importVoxModels: (models) => {
     const s = get();
-    // When character is null, fall back to DEFAULT_CHARACTER as the base.
+    // When character is null, fall back to DEFAULT_ASSET as the base.
     // Importing creates a new in-memory character implicitly — the user hits
     // ⌘S to save it to the project. This matches pre-Phase-0.2 behavior (I1).
-    const base = s.character ?? DEFAULT_CHARACTER;
+    const base = s.asset ?? DEFAULT_ASSET;
     const voxels = new Map(base.voxels);
     const parts: BodyPart[] = [...base.characterParts];
 
@@ -673,17 +676,17 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
       });
     }
 
-    set({ character: { ...base, voxels, characterParts: parts }, dirty: true });
+    set({ asset: { ...base, voxels, characterParts: parts }, dirty: true });
   },
 
   importFromPly: (voxels, parts, gridSize) => {
     const s = get();
-    // When character is null, fall back to DEFAULT_CHARACTER as the base.
+    // When character is null, fall back to DEFAULT_ASSET as the base.
     // Importing creates a new in-memory character implicitly — the user hits
     // ⌘S to save it to the project. This matches pre-Phase-0.2 behavior (I1).
     set({
-      character: {
-        ...(s.character ?? DEFAULT_CHARACTER),
+      asset: {
+        ...(s.asset ?? DEFAULT_ASSET),
         voxels,
         characterParts: parts,
         gridWidth: gridSize,
@@ -704,12 +707,12 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
 
   importFromObj: (voxels, parts, gridSize) => {
     const s = get();
-    // When character is null, fall back to DEFAULT_CHARACTER as the base.
+    // When character is null, fall back to DEFAULT_ASSET as the base.
     // Importing creates a new in-memory character implicitly — the user hits
     // ⌘S to save it to the project. This matches pre-Phase-0.2 behavior (I1).
     set({
-      character: {
-        ...(s.character ?? DEFAULT_CHARACTER),
+      asset: {
+        ...(s.asset ?? DEFAULT_ASSET),
         voxels,
         characterParts: parts,
         gridWidth: gridSize,
@@ -731,21 +734,21 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
   // ── Animation actions ──
   addAnimation: (name) => {
     const s = get();
-    if (!s.character) return;
-    const anims = { ...s.character.animations };
+    if (!s.asset) return;
+    const anims = { ...s.asset.animations };
     if (!anims[name]) {
       anims[name] = { name, keyframes: [], duration: 1, playbackMode: 'loop' };
     }
-    set({ character: { ...s.character, animations: anims }, selectedAnimation: name, dirty: true });
+    set({ asset: { ...s.asset, animations: anims }, selectedAnimation: name, dirty: true });
   },
 
   removeAnimation: (name) => {
     const s = get();
-    if (!s.character) return;
-    const anims = { ...s.character.animations };
+    if (!s.asset) return;
+    const anims = { ...s.asset.animations };
     delete anims[name];
     set({
-      character: { ...s.character, animations: anims },
+      asset: { ...s.asset, animations: anims },
       selectedAnimation: s.selectedAnimation === name ? null : s.selectedAnimation,
       dirty: true,
     });
@@ -753,7 +756,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
 
   selectAnimation: (name) => {
     const s = get();
-    const clip = name ? (s.character?.animations[name] ?? null) : null;
+    const clip = name ? (s.asset?.animations[name] ?? null) : null;
     set({
       selectedAnimation: name,
       playbackTime: 0,
@@ -764,72 +767,72 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
 
   addKeyframe: (animName, keyframe) => {
     const s = get();
-    if (!s.character) return;
-    const anims = { ...s.character.animations };
+    if (!s.asset) return;
+    const anims = { ...s.asset.animations };
     const clip = anims[animName];
     if (!clip) return;
     const kf = { ...keyframe, easing: keyframe.easing ?? ('step' as const) };
     const keyframes = [...clip.keyframes, kf].sort((a, b) => a.time - b.time);
     anims[animName] = { ...clip, keyframes };
-    set({ character: { ...s.character, animations: anims }, dirty: true });
+    set({ asset: { ...s.asset, animations: anims }, dirty: true });
   },
 
   removeKeyframe: (animName, index) => {
     const s = get();
-    if (!s.character) return;
-    const anims = { ...s.character.animations };
+    if (!s.asset) return;
+    const anims = { ...s.asset.animations };
     const clip = anims[animName];
     if (!clip) return;
     const keyframes = clip.keyframes.filter((_, i) => i !== index);
     anims[animName] = { ...clip, keyframes };
-    set({ character: { ...s.character, animations: anims }, dirty: true });
+    set({ asset: { ...s.asset, animations: anims }, dirty: true });
   },
 
   updateKeyframeEasing: (animName, index, easing) => {
     const s = get();
-    if (!s.character) return;
-    const anims = { ...s.character.animations };
+    if (!s.asset) return;
+    const anims = { ...s.asset.animations };
     const clip = anims[animName];
     if (!clip) return;
     const keyframes = clip.keyframes.map((kf, i) => i === index ? { ...kf, easing } : kf);
     anims[animName] = { ...clip, keyframes };
-    set({ character: { ...s.character, animations: anims }, dirty: true });
+    set({ asset: { ...s.asset, animations: anims }, dirty: true });
   },
 
   updateAnimationDuration: (animName, duration) => {
     const s = get();
-    if (!s.character) return;
-    const anims = { ...s.character.animations };
+    if (!s.asset) return;
+    const anims = { ...s.asset.animations };
     const clip = anims[animName];
     if (!clip) return;
     anims[animName] = { ...clip, duration };
-    set({ character: { ...s.character, animations: anims }, dirty: true });
+    set({ asset: { ...s.asset, animations: anims }, dirty: true });
   },
 
   updateAnimationPlaybackMode: (animName, mode) => {
     const s = get();
-    if (!s.character) return;
-    const anims = { ...s.character.animations };
+    if (!s.asset) return;
+    const anims = { ...s.asset.animations };
     const clip = anims[animName];
     if (!clip) return;
     anims[animName] = { ...clip, playbackMode: mode };
-    set({ character: { ...s.character, animations: anims }, dirty: true });
+    set({ asset: { ...s.asset, animations: anims }, dirty: true });
   },
 
   updateAnimationRootMotion: (animName, enabled) => {
     const s = get();
-    if (!s.character) return;
-    const anims = { ...s.character.animations };
+    if (!s.asset) return;
+    const anims = { ...s.asset.animations };
     const clip = anims[animName];
     if (!clip) return;
     anims[animName] = { ...clip, rootMotion: enabled };
-    set({ character: { ...s.character, animations: anims }, dirty: true });
+    set({ asset: { ...s.asset, animations: anims }, dirty: true });
   },
 
   autoCenterJoint: (partId) => {
     const s = get();
-    if (!s.character) return;
-    const { characterParts, voxels } = s.character;
+    if (!s.asset) return;
+    const { characterParts, voxels } = s.asset;
     const part = characterParts.find((p) => p.id === partId);
     if (!part || part.voxelKeys.length === 0) return;
     let jx = 0, jy = 0, jz = 0;
@@ -840,7 +843,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
     const n = part.voxelKeys.length;
     const joint: [number, number, number] = [Math.round(jx / n), Math.round(jy / n), Math.round(jz / n)];
     const parts = characterParts.map((p) => p.id === partId ? { ...p, joint } : p);
-    set({ character: { ...s.character, characterParts: parts }, dirty: true });
+    set({ asset: { ...s.asset, characterParts: parts }, dirty: true });
   },
 
   setPlaybackTime: (time) => set({ playbackTime: time }),
@@ -850,25 +853,25 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
   // ── File actions ──
   setCurrentFilename: (name) => {
     const s = get();
-    if (!s.character) return;
-    set({ character: { ...s.character, currentFilename: name }, dirty: true });
+    if (!s.asset) return;
+    set({ asset: { ...s.asset, currentFilename: name }, dirty: true });
   },
   setProjectRootHandle: (h) => set({ projectRootHandle: h }),
-  listCharacters: async () => {
+  listAssets: async () => {
     const handle = get().projectRootHandle;
     if (!handle) return;
     try {
       const entries = await listEchidnaProjects(handle);
-      set({ knownCharacters: entries });
+      set({ knownAssets: entries });
     } catch (e) {
-      console.error('[echidna] listCharacters failed:', e);
+      console.error('[echidna] listAssets failed:', e);
       // Do not clobber existing list on transient failure
     }
   },
-  openCharacter: async (id) => {
+  openAsset: async (id) => {
     const handle = get().projectRootHandle;
     if (!handle) {
-      console.warn('[echidna] openCharacter called with no projectRootHandle');
+      console.warn('[echidna] openAsset called with no projectRootHandle');
       return;
     }
     try {
@@ -892,8 +895,9 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
           };
         }
       }
-      const char: Character = {
+      const char: Asset = {
         id: data.id,
+        kind: data.kind ?? 'character',
         characterName: data.characterName,
         gridWidth: data.gridWidth,
         gridDepth: data.gridDepth,
@@ -901,10 +905,11 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
         characterParts: parts,
         characterPoses: data.poses,
         animations,
+        tags: data.tags ?? [],
         currentFilename: null,
       };
       set({
-        character: char,
+        asset: char,
         dirty: false,
         undoStack: [],
         redoStack: [],
@@ -920,24 +925,24 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
       });
     } catch (e) {
       if ((e as Error).name === 'NotFoundError') {
-        console.warn(`[echidna] openCharacter: file missing for ${id}, refreshing list`);
-        await get().listCharacters();
+        console.warn(`[echidna] openAsset: file missing for ${id}, refreshing list`);
+        await get().listAssets();
         return;
       }
-      console.error(`[echidna] openCharacter failed for ${id}:`, e);
+      console.error(`[echidna] openAsset failed for ${id}:`, e);
     }
   },
 
-  requestOpenCharacter: async (id, confirm) => {
+  requestOpenAsset: async (id, confirm) => {
     const s = get();
     // Clicking the already-current row is a no-op.
-    if (s.character?.id === id) return;
+    if (s.asset?.id === id) return;
 
     const currentHasWork = s.dirty || s.undoStack.length > 0 || s.redoStack.length > 0;
-    if (currentHasWork && s.character) {
-      const target = s.knownCharacters.find((c) => c.id === id);
+    if (currentHasWork && s.asset) {
+      const target = s.knownAssets.find((c) => c.id === id);
       const decision = await confirm({
-        currentName: s.character.characterName,
+        currentName: s.asset.characterName,
         targetName: target?.name ?? id,
         undoDepth: s.undoStack.length,
       });
@@ -945,30 +950,30 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
       if (decision === 'save') {
         const ok = await s.save();
         if (!ok) {
-          console.error('[echidna] requestOpenCharacter: save() failed, aborting switch');
+          console.error('[echidna] requestOpenAsset: save() failed, aborting switch');
           return;
         }
       }
-      // 'discard' falls through to openCharacter (losing the dirty work)
+      // 'discard' falls through to openAsset (losing the dirty work)
     }
-    await get().openCharacter(id);
+    await get().openAsset(id);
   },
 
-  deleteCharacter: async (id: string) => {
+  deleteAsset: async (id: string) => {
     const s = get();
     const handle = s.projectRootHandle;
     if (!handle) return;
     try {
       await deleteEchidnaProject(handle, id);
     } catch (e) {
-      console.error(`[echidna] deleteCharacter failed for ${id}:`, e);
+      console.error(`[echidna] deleteAsset failed for ${id}:`, e);
       return;
     }
     set((state) => ({
-      knownCharacters: state.knownCharacters.filter((c) => c.id !== id),
-      ...(state.character?.id === id
+      knownAssets: state.knownAssets.filter((c) => c.id !== id),
+      ...(state.asset?.id === id
         ? {
-            character: null,
+            asset: null,
             dirty: false,
             undoStack: [],
             redoStack: [],
@@ -980,7 +985,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
     }));
   },
 
-  renameCharacter: async (id, newName) => {
+  renameAsset: async (id, newName) => {
     const s = get();
     const handle = s.projectRootHandle;
     if (!handle) return;
@@ -989,42 +994,42 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
     try {
       await renameEchidnaProject(handle, id, newName);
     } catch (e) {
-      console.error(`[echidna] renameCharacter failed for ${id}:`, e);
+      console.error(`[echidna] renameAsset failed for ${id}:`, e);
       return;
     }
 
-    if (s.character?.id === id) {
+    if (s.asset?.id === id) {
       // Current character — also update in-memory state
       set((state) => ({
-        character: state.character ? { ...state.character, characterName: newName } : null,
-        knownCharacters: state.knownCharacters.map((c) =>
+        asset: state.asset ? { ...state.asset, characterName: newName } : null,
+        knownAssets: state.knownAssets.map((c) =>
           c.id === id ? { ...c, name: newName } : c,
         ),
       }));
     } else {
       // Non-current — refresh list from disk
-      await get().listCharacters();
+      await get().listAssets();
     }
   },
 
-  duplicateCharacter: async (sourceId, newName) => {
+  duplicateAsset: async (sourceId, newName) => {
     const s = get();
     const handle = s.projectRootHandle;
     if (!handle) return;
 
     // Mint a non-colliding id
     const MAX_DUPLICATE_SUFFIX = 1000;
-    const baseId = slugifyCharacterId(newName);
+    const baseId = slugifyAssetId(newName);
     if (baseId.length === 0) {
-      console.error(`[echidna] duplicateCharacter: slugifyCharacterId returned empty for "${newName}"`);
+      console.error(`[echidna] duplicateAsset: slugifyAssetId returned empty for "${newName}"`);
       return;
     }
-    const existingIds = new Set(s.knownCharacters.map((c) => c.id));
+    const existingIds = new Set(s.knownAssets.map((c) => c.id));
     let newId = baseId;
     let counter = 2;
     while (existingIds.has(newId)) {
       if (counter > MAX_DUPLICATE_SUFFIX) {
-        console.error(`[echidna] duplicateCharacter: > ${MAX_DUPLICATE_SUFFIX} collisions for base id "${baseId}"`);
+        console.error(`[echidna] duplicateAsset: > ${MAX_DUPLICATE_SUFFIX} collisions for base id "${baseId}"`);
         return;
       }
       newId = `${baseId}_${counter}`;
@@ -1033,9 +1038,9 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
 
     try {
       await duplicateEchidnaProject(handle, sourceId, newId, newName);
-      await get().listCharacters();
+      await get().listAssets();
     } catch (e) {
-      console.error(`[echidna] duplicateCharacter failed:`, e);
+      console.error(`[echidna] duplicateAsset failed:`, e);
     }
   },
 
@@ -1053,13 +1058,13 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
         console.warn('[echidna] save called with no projectRootHandle');
         return false;
       }
-      if (!handleCheck.character) return false;
+      if (!handleCheck.asset) return false;
 
-      // ensureCharacterId may replace state.character (via set()), so recapture
+      // ensureCharacterId may replace state.asset (via set()), so recapture
       // get() after it runs so downstream reads use a fresh snapshot.
-      const id = get().ensureCharacterId();
+      const id = get().ensureAssetId();
       const s = get();
-      if (!s.character) return false; // guard: ensureCharacterId should never null character, but be safe
+      if (!s.asset) return false; // guard: ensureCharacterId should never null character, but be safe
 
       // 1. Write the .echidna source via Phase 0.0 helper
       const file = s.saveProject();   // returns EchidnaFile DTO, does NOT write to disk
@@ -1070,23 +1075,41 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
         return false;
       }
 
-      // 2. Build PLY + manifest and write engine-ready files
+      // 2. Build PLY + manifest and write engine-ready files (kind-branched)
       try {
-        const ply = exportPly(
-          s.character.voxels,
-          s.character.gridWidth,
-          s.character.gridDepth,
-          s.character.characterParts,
-        );
-        const manifest = buildManifest(
-          id,
-          `${id}.ply`,
-          1.0,
-          s.character.characterParts,
-          s.character.characterPoses,
-          s.character.animations,
-        );
-        await exportCharacterToProject(handle, id, ply, JSON.stringify(manifest, null, 2));
+        if (s.asset.kind === 'character') {
+          const ply = exportPly(
+            s.asset.voxels,
+            s.asset.gridWidth,
+            s.asset.gridDepth,
+            s.asset.characterParts,
+          );
+          const manifest = buildManifest(
+            id,
+            `${id}.ply`,
+            1.0,
+            s.asset.characterParts,
+            s.asset.characterPoses,
+            s.asset.animations,
+          );
+          await exportCharacterToProject(handle, id, ply, JSON.stringify(manifest, null, 2));
+        } else if (s.asset.kind === 'map') {
+          const ply = exportPly(
+            s.asset.voxels,
+            s.asset.gridWidth,
+            s.asset.gridDepth,
+            s.asset.characterParts,
+          );
+          await exportMapToProject(handle, id, ply);
+        } else if (s.asset.kind === 'object') {
+          const ply = exportPly(
+            s.asset.voxels,
+            s.asset.gridWidth,
+            s.asset.gridDepth,
+            s.asset.characterParts,
+          );
+          await exportObjectToProject(handle, id, ply);
+        }
       } catch (e) {
         console.error('[echidna] save: partial write — engine files may be stale:', e);
         // .echidna is on disk so dirty COULD clear, but partial-fail means
@@ -1096,12 +1119,12 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
 
       set((state) => ({
         dirty: false,
-        // Update the saved character's mtime in-place rather than calling
-        // listCharacters() which would re-read disk and wipe optimistic
-        // entries for characters that haven't been saved yet. The full
-        // listCharacters() refresh happens on project-root restore and
+        // Update the saved asset's mtime in-place rather than calling
+        // listAssets() which would re-read disk and wipe optimistic
+        // entries for assets that haven't been saved yet. The full
+        // listAssets() refresh happens on project-root restore and
         // after rename/duplicate/delete — save() just needs the mtime.
-        knownCharacters: state.knownCharacters.map((c) =>
+        knownAssets: state.knownAssets.map((c) =>
           c.id === id ? { ...c, lastModified: Date.now() } : c,
         ),
       }));
@@ -1111,17 +1134,17 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
     }
   },
 
-  ensureCharacterId: () => {
+  ensureAssetId: () => {
     const s = get();
-    const char = s.character;
-    if (!char) return 'character';
+    const char = s.asset;
+    if (!char) return 'asset';
     if (char.id.length > 0) return char.id;
-    const id = slugifyCharacterId(char.characterName);
-    set({ character: { ...char, id }, dirty: true });
+    const id = slugifyAssetId(char.characterName);
+    set({ asset: { ...char, id }, dirty: true });
     return id;
   },
 
-  newCharacter: (gridSize?: number, name?: string) => {
+  newAsset: (kind: EchidnaAssetKind, gridSize?: number, name?: string) => {
     const size = gridSize ?? 32;
     const s = get();
     const charName = (name && name.trim().length > 0) ? name.trim() : 'Untitled';
@@ -1129,15 +1152,15 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
     // Mint a non-colliding id from the provided name. Without this,
     // creating two new characters in a row would give them both the same id
     // and the second save would silently overwrite the first. Matches the
-    // collision-suffix pattern used by duplicateCharacter.
+    // collision-suffix pattern used by duplicateAsset.
     const MAX_NEW_SUFFIX = 1000;
-    const baseId = slugifyCharacterId(charName);
-    const existingIds = new Set(s.knownCharacters.map((c) => c.id));
+    const baseId = slugifyAssetId(charName);
+    const existingIds = new Set(s.knownAssets.map((c) => c.id));
     let newId = baseId;
     let counter = 2;
     while (existingIds.has(newId)) {
       if (counter > MAX_NEW_SUFFIX) {
-        console.error(`[echidna] newCharacter: > ${MAX_NEW_SUFFIX} collisions for base id "${baseId}"`);
+        console.error(`[echidna] newAsset: > ${MAX_NEW_SUFFIX} collisions for base id "${baseId}"`);
         return;
       }
       newId = `${baseId}_${counter}`;
@@ -1145,8 +1168,9 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
     }
 
     set({
-      character: {
+      asset: {
         id: newId,
+        kind,
         voxels: new Map(),
         gridWidth: size,
         gridDepth: size,
@@ -1154,14 +1178,15 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
         characterParts: [],
         characterPoses: {},
         animations: {},
+        tags: [],
         currentFilename: null,
       },
-      // Optimistic panel entry: add to knownCharacters immediately so the new
-      // character is visible before first save. Phase 0.2 save() later calls
-      // listCharacters() which re-reads from disk and reconciles the entry.
-      knownCharacters: [
-        ...s.knownCharacters,
-        { id: newId, name: charName, lastModified: Date.now() },
+      // Optimistic panel entry: add to knownAssets immediately so the new
+      // asset is visible before first save. Phase 0.2 save() later calls
+      // listAssets() which re-reads from disk and reconciles the entry.
+      knownAssets: [
+        ...s.knownAssets,
+        { id: newId, kind, name: charName, lastModified: Date.now() },
       ],
       selectedPart: null,
       selectedPose: null,
@@ -1174,9 +1199,9 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
       boxSelection: null,
       colorByPart: false,
       partColors: {},
-      // A freshly-created character has unsaved state (the creation itself).
-      // Setting dirty=true ensures requestOpenCharacter's switch guard protects
-      // the new character from silent loss if the user clicks away before
+      // A freshly-created asset has unsaved state (the creation itself).
+      // Setting dirty=true ensures requestOpenAsset's switch guard protects
+      // the new asset from silent loss if the user clicks away before
       // editing or saving.
       dirty: true,
     });
@@ -1184,8 +1209,8 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
 
   resizeGrid: (size: number) => {
     const s = get();
-    if (!s.character) return;
-    const { voxels, characterParts, gridWidth } = s.character;
+    if (!s.asset) return;
+    const { voxels, characterParts, gridWidth } = s.asset;
     if (size === gridWidth) return;
     const next = new Map<VoxelKey, Voxel>();
     for (const [key, vox] of voxels) {
@@ -1201,16 +1226,16 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
         return x >= 0 && x < size && z >= 0 && z < size;
       }),
     }));
-    set({ character: { ...s.character, voxels: next, gridWidth: size, gridDepth: size, characterParts: nextParts }, dirty: true });
+    set({ asset: { ...s.asset, voxels: next, gridWidth: size, gridDepth: size, characterParts: nextParts }, dirty: true });
   },
 
   saveProject: () => {
-    const id = get().ensureCharacterId();
+    const id = get().ensureAssetId();
     const s = get();
-    if (!s.character) {
+    if (!s.asset) {
       throw new Error('[echidna] saveProject called with null character');
     }
-    const char = s.character;
+    const char = s.asset;
     const voxelArr: EchidnaFile['voxels'] = [];
     for (const [key, vox] of char.voxels) {
       const [x, y, z] = parseKey(key);
@@ -1219,6 +1244,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
     return {
       version: ECHIDNA_FILE_VERSION,
       id,
+      kind: char.kind ?? 'character',
       characterName: char.characterName,
       gridWidth: char.gridWidth,
       gridDepth: char.gridDepth,
@@ -1226,6 +1252,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
       parts: char.characterParts,
       poses: char.characterPoses,
       animations: Object.keys(char.animations).length > 0 ? char.animations : undefined,
+      tags: char.tags ?? [],
     };
   },
 
@@ -1256,8 +1283,9 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
       }
     }
     set({
-      character: {
+      asset: {
         id: data.id,
+        kind: data.kind ?? 'character',
         voxels,
         gridWidth: data.gridWidth,
         gridDepth: data.gridDepth,
@@ -1265,7 +1293,8 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
         characterParts: parts,
         characterPoses: data.poses,
         animations,
-        currentFilename: get().character?.currentFilename ?? null,
+        tags: data.tags ?? [],
+        currentFilename: get().asset?.currentFilename ?? null,
       },
       selectedPart: null,
       selectedPose: null,
@@ -1286,8 +1315,8 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
 
   fillVoxels: (startKey) => {
     const s = get();
-    if (!s.character) return;
-    const { voxels, gridWidth } = s.character;
+    if (!s.asset) return;
+    const { voxels, gridWidth } = s.asset;
     const keys = floodFill3D(voxels, startKey);
     if (keys.length === 0) return;
     const next = new Map(voxels);
@@ -1300,13 +1329,13 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
         if (next.has(mk)) next.set(mk, { color: [...s.activeColor] });
       }
     }
-    set({ character: { ...s.character, voxels: next }, dirty: true });
+    set({ asset: { ...s.asset, voxels: next }, dirty: true });
   },
 
   extrudeSelection: (dy) => {
     const s = get();
-    if (!s.character) return;
-    const { voxels, gridWidth } = s.character;
+    if (!s.asset) return;
+    const { voxels, gridWidth } = s.asset;
     const sel = s.boxSelection ?? s.lassoSelection;
     if (!sel || sel.length === 0) return;
     const results = extrudeLayer(voxels, sel, dy);
@@ -1317,13 +1346,13 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
       const m = mirrorPos(x, y, z, s.mirrorAxis, gridWidth);
       if (m) next.set(voxelKey(m[0], m[1], m[2]), { color });
     }
-    set({ character: { ...s.character, voxels: next }, dirty: true });
+    set({ asset: { ...s.asset, voxels: next }, dirty: true });
   },
 
   copySelection: () => {
     const s = get();
-    if (!s.character) return;
-    const { voxels } = s.character;
+    if (!s.asset) return;
+    const { voxels } = s.asset;
     const sel = s.boxSelection ?? s.lassoSelection;
     if (!sel || sel.length === 0) return;
     let cx = 0, cy = 0, cz = 0;
@@ -1346,51 +1375,51 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
 
   pasteClipboard: (cx, cy, cz) => {
     const s = get();
-    if (!s.character) return;
+    if (!s.asset) return;
     const { clipboard } = s;
     if (!clipboard || clipboard.length === 0) return;
-    const next = new Map(s.character.voxels);
+    const next = new Map(s.asset.voxels);
     for (const { dx, dy, dz, color } of clipboard) {
       const x = cx + dx, y = cy + dy, z = cz + dz;
       next.set(voxelKey(x, y, z), { color: [...color] });
-      const m = mirrorPos(x, y, z, s.mirrorAxis, s.character.gridWidth);
+      const m = mirrorPos(x, y, z, s.mirrorAxis, s.asset.gridWidth);
       if (m) next.set(voxelKey(m[0], m[1], m[2]), { color: [...color] });
     }
-    set({ character: { ...s.character, voxels: next }, dirty: true });
+    set({ asset: { ...s.asset, voxels: next }, dirty: true });
   },
 
   deleteSelection: () => {
     const s = get();
-    if (!s.character) return;
+    if (!s.asset) return;
     const sel = s.boxSelection ?? s.lassoSelection;
     if (!sel || sel.length === 0) return;
-    const next = new Map(s.character.voxels);
+    const next = new Map(s.asset.voxels);
     for (const key of sel) {
       next.delete(key);
       const [x, y, z] = parseKey(key);
-      const m = mirrorPos(x, y, z, s.mirrorAxis, s.character.gridWidth);
+      const m = mirrorPos(x, y, z, s.mirrorAxis, s.asset.gridWidth);
       if (m) next.delete(voxelKey(m[0], m[1], m[2]));
     }
-    set({ character: { ...s.character, voxels: next }, boxSelection: null, lassoSelection: null, dirty: true });
+    set({ asset: { ...s.asset, voxels: next }, boxSelection: null, lassoSelection: null, dirty: true });
   },
 
   recolorSelection: () => {
     const s = get();
-    if (!s.character) return;
+    if (!s.asset) return;
     const sel = s.boxSelection ?? s.lassoSelection;
     if (!sel || sel.length === 0) return;
-    const next = new Map(s.character.voxels);
+    const next = new Map(s.asset.voxels);
     for (const key of sel) {
       if (!next.has(key)) continue;
       next.set(key, { color: [...s.activeColor] });
       const [x, y, z] = parseKey(key);
-      const m = mirrorPos(x, y, z, s.mirrorAxis, s.character.gridWidth);
+      const m = mirrorPos(x, y, z, s.mirrorAxis, s.asset.gridWidth);
       if (m) {
         const mk = voxelKey(m[0], m[1], m[2]);
         if (next.has(mk)) next.set(mk, { color: [...s.activeColor] });
       }
     }
-    set({ character: { ...s.character, voxels: next }, dirty: true });
+    set({ asset: { ...s.asset, voxels: next }, dirty: true });
   },
 
   setLassoSelection: (keys) => set({ lassoSelection: keys }),

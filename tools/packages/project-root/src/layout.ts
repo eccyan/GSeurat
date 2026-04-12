@@ -8,6 +8,7 @@ export const PROJECT_LAYOUT = {
     textures:   'assets/textures',
     audio:      'assets/audio',
     components: 'assets/components',
+    objects:    'assets/objects',
   },
   toolsData: {
     bricklayer:   'tools_data/bricklayer',
@@ -27,6 +28,7 @@ export const ASSET_KINDS = [
   'maps',
   'textures',
   'audio',
+  'objects',
 ] as const;
 
 export type AssetKind = typeof ASSET_KINDS[number];

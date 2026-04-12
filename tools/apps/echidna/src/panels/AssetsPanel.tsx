@@ -1,4 +1,4 @@
-// tools/apps/echidna/src/panels/CharactersPanel.tsx
+// tools/apps/echidna/src/panels/AssetsPanel.tsx
 import React, { useState, useCallback, useRef } from 'react';
 import { useCharacterStore, type SwitchDecision } from '../store/useCharacterStore.js';
 import { SwitchCharacterDialog } from './SwitchCharacterDialog.js';
@@ -118,19 +118,19 @@ type ActiveDialog =
   | null;
 
 interface Props {
-  onNewCharacter: () => void;
+  onNewAsset: () => void;
 }
 
-export function CharactersPanel({ onNewCharacter }: Props) {
-  const knownCharacters = useCharacterStore((s) => s.knownCharacters);
-  const currentId = useCharacterStore((s) => s.character?.id ?? null);
+export function AssetsPanel({ onNewAsset }: Props) {
+  const knownAssets = useCharacterStore((s) => s.knownAssets);
+  const currentId = useCharacterStore((s) => s.asset?.id ?? null);
   const dirty = useCharacterStore((s) => s.dirty);
-  const currentCharacterName = useCharacterStore((s) => s.character?.characterName ?? '');
+  const currentAssetName = useCharacterStore((s) => s.asset?.characterName ?? '');
   const undoDepth = useCharacterStore((s) => s.undoStack.length);
-  const requestOpenCharacter = useCharacterStore((s) => s.requestOpenCharacter);
-  const renameCharacter = useCharacterStore((s) => s.renameCharacter);
-  const duplicateCharacter = useCharacterStore((s) => s.duplicateCharacter);
-  const deleteCharacter = useCharacterStore((s) => s.deleteCharacter);
+  const requestOpenAsset = useCharacterStore((s) => s.requestOpenAsset);
+  const renameAsset = useCharacterStore((s) => s.renameAsset);
+  const duplicateAsset = useCharacterStore((s) => s.duplicateAsset);
+  const deleteAsset = useCharacterStore((s) => s.deleteAsset);
 
   const [collapsed, setCollapsed] = useState(() =>
     localStorage.getItem(COLLAPSE_KEY) === '1',
@@ -152,7 +152,7 @@ export function CharactersPanel({ onNewCharacter }: Props) {
 
   const handleRowClick = (id: string) => {
     if (id === currentId) return;
-    void requestOpenCharacter(id, () =>
+    void requestOpenAsset(id, () =>
       new Promise<SwitchDecision>((resolve) => {
         pendingResolverRef.current = resolve;
         setActiveDialog({ kind: 'switch', targetId: id });
@@ -181,11 +181,11 @@ export function CharactersPanel({ onNewCharacter }: Props) {
       </div>
       {!collapsed && (
         <>
-          {knownCharacters.length === 0 ? (
+          {knownAssets.length === 0 ? (
             <div style={styles.empty}>No characters yet.</div>
           ) : (
             <div style={styles.list}>
-              {knownCharacters.map((c) => {
+              {knownAssets.map((c) => {
                 const isCurrent = c.id === currentId;
                 return (
                   <div
@@ -217,7 +217,7 @@ export function CharactersPanel({ onNewCharacter }: Props) {
             </div>
           )}
           <div style={styles.footer}>
-            <button style={styles.newBtn} onClick={onNewCharacter}>
+            <button style={styles.newBtn} onClick={onNewAsset}>
               + New Character
             </button>
           </div>
@@ -272,8 +272,8 @@ export function CharactersPanel({ onNewCharacter }: Props) {
       {/* Dialogs */}
       {activeDialog?.kind === 'switch' && (
         <SwitchCharacterDialog
-          currentName={currentCharacterName}
-          targetName={knownCharacters.find((c) => c.id === activeDialog.targetId)?.name ?? ''}
+          currentName={currentAssetName}
+          targetName={knownAssets.find((c) => c.id === activeDialog.targetId)?.name ?? ''}
           undoDepth={undoDepth}
           onDecide={handleSwitchDecision}
         />
@@ -282,7 +282,7 @@ export function CharactersPanel({ onNewCharacter }: Props) {
         <RenameCharacterDialog
           currentName={activeDialog.name}
           onSubmit={(newName) => {
-            void renameCharacter(activeDialog.id, newName);
+            void renameAsset(activeDialog.id, newName);
             setActiveDialog(null);
           }}
           onCancel={() => setActiveDialog(null)}
@@ -292,7 +292,7 @@ export function CharactersPanel({ onNewCharacter }: Props) {
         <DuplicateCharacterDialog
           sourceName={activeDialog.name}
           onSubmit={(newName) => {
-            void duplicateCharacter(activeDialog.id, newName);
+            void duplicateAsset(activeDialog.id, newName);
             setActiveDialog(null);
           }}
           onCancel={() => setActiveDialog(null)}
@@ -303,7 +303,7 @@ export function CharactersPanel({ onNewCharacter }: Props) {
           characterName={activeDialog.name}
           characterId={activeDialog.id}
           onConfirm={() => {
-            void deleteCharacter(activeDialog.id);
+            void deleteAsset(activeDialog.id);
             setActiveDialog(null);
           }}
           onCancel={() => setActiveDialog(null)}

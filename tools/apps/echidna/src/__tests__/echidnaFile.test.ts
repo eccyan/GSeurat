@@ -1,22 +1,22 @@
 import { describe, it, expect } from 'vitest';
-import { migrateEchidnaFile, slugifyCharacterId, ECHIDNA_FILE_VERSION, type EchidnaFile } from '../store/types.js';
+import { migrateEchidnaFile, slugifyAssetId, ECHIDNA_FILE_VERSION, type EchidnaFile } from '../store/types.js';
 
-describe('slugifyCharacterId', () => {
+describe('slugifyAssetId', () => {
   it('lowercases and replaces whitespace with underscores', () => {
-    expect(slugifyCharacterId('Walker Bot')).toBe('walker_bot');
-    expect(slugifyCharacterId('  Hello   World  ')).toBe('hello_world');
+    expect(slugifyAssetId('Walker Bot')).toBe('walker_bot');
+    expect(slugifyAssetId('  Hello   World  ')).toBe('hello_world');
   });
   it('strips characters outside [a-z0-9_-]', () => {
-    expect(slugifyCharacterId('Cat/Dog#1')).toBe('catdog1');
-    expect(slugifyCharacterId('  Déjà Vu  ')).toBe('dj_vu');  // strips accented + ends up no-underscore run
+    expect(slugifyAssetId('Cat/Dog#1')).toBe('catdog1');
+    expect(slugifyAssetId('  Déjà Vu  ')).toBe('dj_vu');  // strips accented + ends up no-underscore run
   });
   it('preserves hyphens and underscores', () => {
-    expect(slugifyCharacterId('cool-guy_v2')).toBe('cool-guy_v2');
+    expect(slugifyAssetId('cool-guy_v2')).toBe('cool-guy_v2');
   });
-  it('falls back to "character" when empty or all stripped', () => {
-    expect(slugifyCharacterId('')).toBe('character');
-    expect(slugifyCharacterId('   ')).toBe('character');
-    expect(slugifyCharacterId('###')).toBe('character');
+  it('falls back to "asset" when empty or all stripped', () => {
+    expect(slugifyAssetId('')).toBe('asset');
+    expect(slugifyAssetId('   ')).toBe('asset');
+    expect(slugifyAssetId('###')).toBe('asset');
   });
 });
 
@@ -33,7 +33,7 @@ describe('migrateEchidnaFile', () => {
     };
     const migrated = migrateEchidnaFile(old);
     expect(migrated.version).toBe(ECHIDNA_FILE_VERSION);
-    expect(migrated.version).toBe(3);
+    expect(migrated.version).toBe(4);
     expect(migrated.id).toBe('walker_bot');
   });
 
@@ -53,10 +53,10 @@ describe('migrateEchidnaFile', () => {
     expect(migrated.characterName).toBe('Walker Bot');
   });
 
-  it('migrates even when characterName is missing, falling back to "character"', () => {
+  it('migrates even when characterName is missing, falling back to "asset"', () => {
     const old = { version: 2, gridWidth: 32, gridDepth: 32, voxels: [], parts: [], poses: {} };
     const migrated = migrateEchidnaFile(old);
-    expect(migrated.id).toBe('character');
+    expect(migrated.id).toBe('asset');
   });
 
   it('preserves animations field when present', () => {

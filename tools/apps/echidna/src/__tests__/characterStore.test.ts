@@ -1,14 +1,47 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useCharacterStore } from '../store/useCharacterStore';
 import { testing } from '@gseurat/project-root';
-import { CharacterListEntry } from '../store/types';
+import { AssetListEntry, migrateEchidnaFile, ECHIDNA_FILE_VERSION } from '../store/types';
+
+describe('migrateEchidnaFile v3 → v4', () => {
+  it('defaults kind to character for legacy v3 files', () => {
+    const raw = {
+      version: 3, id: 'walker', characterName: 'Walker',
+      gridWidth: 32, gridDepth: 32, voxels: [], parts: [], poses: {},
+    };
+    const result = migrateEchidnaFile(raw);
+    expect(result.version).toBe(4);
+    expect(result.kind).toBe('character');
+  });
+
+  it('preserves kind when already present', () => {
+    const raw = {
+      version: 4, id: 'crystal', kind: 'object', characterName: 'Crystal',
+      gridWidth: 16, gridDepth: 16, voxels: [], parts: [], poses: {}, tags: ['prop'],
+    };
+    const result = migrateEchidnaFile(raw);
+    expect(result.kind).toBe('object');
+    expect(result.tags).toEqual(['prop']);
+  });
+
+  it('defaults tags to empty array', () => {
+    const raw = { version: 3, id: 'test', characterName: 'Test', voxels: [], parts: [], poses: {} };
+    const result = migrateEchidnaFile(raw);
+    expect(result.tags).toEqual([]);
+  });
+
+  it('ECHIDNA_FILE_VERSION is 4', () => {
+    expect(ECHIDNA_FILE_VERSION).toBe(4);
+  });
+});
 
 describe('useCharacterStore — dirty tracking', () => {
   beforeEach(() => {
     // Ensure a non-null character is present so mutating actions don't early-return
     useCharacterStore.setState({
-      character: {
+      asset: {
         id: '',
+        kind: 'character' as const,
         characterName: 'Untitled',
         gridWidth: 32,
         gridDepth: 32,
@@ -16,6 +49,7 @@ describe('useCharacterStore — dirty tracking', () => {
         characterParts: [],
         characterPoses: {},
         animations: {},
+        tags: [],
         currentFilename: null,
       },
     });
@@ -48,25 +82,25 @@ describe('useCharacterStore — dirty tracking', () => {
   });
 
   it('addVoxel on null character is a no-op and does NOT dirty the state', () => {
-    useCharacterStore.setState({ character: null });
+    useCharacterStore.setState({ asset: null });
     useCharacterStore.getState().markClean();
     useCharacterStore.getState().addVoxel('0,0,0', { color: [255, 0, 0, 255] });
-    expect(useCharacterStore.getState().character).toBeNull();
+    expect(useCharacterStore.getState().asset).toBeNull();
     expect(useCharacterStore.getState().dirty).toBe(false);
   });
 });
 
-describe('useCharacterStore.listCharacters', () => {
+describe('useCharacterStore.listAssets', () => {
   it('is a no-op when projectRootHandle is null', async () => {
     useCharacterStore.setState({
       projectRootHandle: null,
-      knownCharacters: [],
+      knownAssets: [],
     });
-    await useCharacterStore.getState().listCharacters();
-    expect(useCharacterStore.getState().knownCharacters).toEqual([]);
+    await useCharacterStore.getState().listAssets();
+    expect(useCharacterStore.getState().knownAssets).toEqual([]);
   });
 
-  it('populates knownCharacters from the project root', async () => {
+  it('populates knownAssets from the project root', async () => {
     const root = testing.makeRoot();
     const toolsData = await root.getDirectoryHandle('tools_data', { create: true });
     const saves = await toolsData.getDirectoryHandle('echidna_saves', { create: true });
@@ -84,19 +118,19 @@ describe('useCharacterStore.listCharacters', () => {
 
     useCharacterStore.setState({
       projectRootHandle: root as unknown as FileSystemDirectoryHandle,
-      knownCharacters: [],
+      knownAssets: [],
     });
 
-    await useCharacterStore.getState().listCharacters();
-    const known = useCharacterStore.getState().knownCharacters;
+    await useCharacterStore.getState().listAssets();
+    const known = useCharacterStore.getState().knownAssets;
     expect(known).toHaveLength(1);
     expect(known[0].id).toBe('walker');
     expect(known[0].name).toBe('Walker Bot');
   });
 
-  it('preserves knownCharacters on transient failure', async () => {
-    const stale: CharacterListEntry[] = [
-      { id: 'old', name: 'Old Character', lastModified: 1000 },
+  it('preserves knownAssets on transient failure', async () => {
+    const stale: AssetListEntry[] = [
+      { id: 'old', kind: 'character', name: 'Old Character', lastModified: 1000 },
     ];
     useCharacterStore.setState({
       // Bogus handle that will make listEchidnaProjects throw when it tries
@@ -108,17 +142,17 @@ describe('useCharacterStore.listCharacters', () => {
           throw new Error('simulated transient failure');
         },
       } as unknown as FileSystemDirectoryHandle,
-      knownCharacters: stale,
+      knownAssets: stale,
     });
 
-    await useCharacterStore.getState().listCharacters();
+    await useCharacterStore.getState().listAssets();
 
     // The stale list should still be intact
-    expect(useCharacterStore.getState().knownCharacters).toEqual(stale);
+    expect(useCharacterStore.getState().knownAssets).toEqual(stale);
   });
 });
 
-describe('useCharacterStore.openCharacter', () => {
+describe('useCharacterStore.openAsset', () => {
   it('preserves global slice when switching characters', async () => {
     const root = testing.makeRoot();
     const toolsData = await root.getDirectoryHandle('tools_data', { create: true });
@@ -143,11 +177,11 @@ describe('useCharacterStore.openCharacter', () => {
       xrayMode: true,
     });
 
-    await useCharacterStore.getState().openCharacter('archer');
+    await useCharacterStore.getState().openAsset('archer');
 
     const s = useCharacterStore.getState();
-    expect(s.character?.id).toBe('archer');
-    expect(s.character?.characterName).toBe('Archer');
+    expect(s.asset?.id).toBe('archer');
+    expect(s.asset?.characterName).toBe('Archer');
     expect(s.mode).toBe('animate');         // global preserved
     expect(s.xrayMode).toBe(true);           // global preserved
   });
@@ -171,7 +205,7 @@ describe('useCharacterStore.openCharacter', () => {
       boxSelection: ['0,0,0', '1,1,1'] as any,
     });
 
-    await useCharacterStore.getState().openCharacter('mage');
+    await useCharacterStore.getState().openAsset('mage');
 
     const s = useCharacterStore.getState();
     expect(s.dirty).toBe(false);
@@ -180,7 +214,7 @@ describe('useCharacterStore.openCharacter', () => {
     expect(s.boxSelection).toBeNull();
   });
 
-  it('refreshes knownCharacters and leaves state.character unchanged when file is missing', async () => {
+  it('refreshes knownAssets and leaves state.character unchanged when file is missing', async () => {
     // Seed an empty project root — no .echidna files at all
     const root = testing.makeRoot();
     await root.getDirectoryHandle('tools_data', { create: true });
@@ -188,21 +222,21 @@ describe('useCharacterStore.openCharacter', () => {
 
     // Seed a stale known-characters list with a phantom entry, plus a
     // distinct existing character so we can detect unwanted reset.
-    const existingChar = useCharacterStore.getState().character;
+    const existingChar = useCharacterStore.getState().asset;
     useCharacterStore.setState({
       projectRootHandle: root as unknown as FileSystemDirectoryHandle,
-      knownCharacters: [
-        { id: 'ghost', name: 'Ghost', lastModified: 0 },
+      knownAssets: [
+        { id: 'ghost', kind: 'character', name: 'Ghost', lastModified: 0 },
       ],
     });
 
-    await useCharacterStore.getState().openCharacter('ghost');
+    await useCharacterStore.getState().openAsset('ghost');
 
     const s = useCharacterStore.getState();
-    // knownCharacters has been refreshed — the ghost entry dropped
-    expect(s.knownCharacters).toEqual([]);
+    // knownAssets has been refreshed — the ghost entry dropped
+    expect(s.knownAssets).toEqual([]);
     // state.character is unchanged (still whatever it was before the call)
-    expect(s.character).toEqual(existingChar);
+    expect(s.asset).toEqual(existingChar);
   });
 });
 
@@ -215,7 +249,7 @@ describe('useCharacterStore.save', () => {
   it('is a no-op when character is null', async () => {
     useCharacterStore.setState({
       projectRootHandle: testing.makeRoot() as unknown as FileSystemDirectoryHandle,
-      character: null,
+      asset: null,
     });
     // Should not throw
     await useCharacterStore.getState().save();
@@ -226,8 +260,9 @@ describe('useCharacterStore.save', () => {
     const root = testing.makeRoot();
     useCharacterStore.setState({
       projectRootHandle: root as unknown as FileSystemDirectoryHandle,
-      character: {
+      asset: {
         id: 'walker',
+        kind: 'character' as const,
         characterName: 'Walker Bot',
         gridWidth: 32,
         gridDepth: 32,
@@ -235,6 +270,7 @@ describe('useCharacterStore.save', () => {
         characterParts: [],
         characterPoses: {},
         animations: {},
+        tags: [],
         currentFilename: null,
       },
       dirty: true,
@@ -268,8 +304,9 @@ describe('useCharacterStore.save', () => {
     const root = testing.makeRoot();
     useCharacterStore.setState({
       projectRootHandle: root as unknown as FileSystemDirectoryHandle,
-      character: {
+      asset: {
         id: 'walker',
+        kind: 'character' as const,
         characterName: 'Walker',
         gridWidth: 32,
         gridDepth: 32,
@@ -277,6 +314,7 @@ describe('useCharacterStore.save', () => {
         characterParts: [],
         characterPoses: {},
         animations: {},
+        tags: [],
         currentFilename: null,
       },
       dirty: true,
@@ -298,8 +336,9 @@ describe('useCharacterStore.save', () => {
     const root = testing.makeRoot();
     useCharacterStore.setState({
       projectRootHandle: root as unknown as FileSystemDirectoryHandle,
-      character: {
+      asset: {
         id: 'walker',
+        kind: 'character' as const,
         characterName: 'Walker',
         gridWidth: 32,
         gridDepth: 32,
@@ -307,6 +346,7 @@ describe('useCharacterStore.save', () => {
         characterParts: [],
         characterPoses: {},
         animations: {},
+        tags: [],
         currentFilename: null,
       },
       dirty: true,
@@ -338,14 +378,16 @@ describe('useCharacterStore.save', () => {
   it('returns early with a warning when projectRootHandle is null', async () => {
     useCharacterStore.setState({
       projectRootHandle: null,
-      character: {
+      asset: {
         id: 'walker',
+        kind: 'character' as const,
         characterName: 'Walker',
         gridWidth: 32, gridDepth: 32,
         voxels: new Map(),
         characterParts: [],
         characterPoses: {},
         animations: {},
+        tags: [],
         currentFilename: null,
       },
       dirty: true,
@@ -363,7 +405,7 @@ describe('useCharacterStore.save', () => {
   });
 });
 
-describe('useCharacterStore.requestOpenCharacter', () => {
+describe('useCharacterStore.requestOpenAsset', () => {
   beforeEach(async () => {
     // Seed a project root with one target character
     const root = testing.makeRoot();
@@ -384,8 +426,9 @@ describe('useCharacterStore.requestOpenCharacter', () => {
       projectRootHandle: root as unknown as FileSystemDirectoryHandle,
       // Use 'walker' as the "currently loaded" character so that tests which
       // open 'archer' are not caught by the re-entry guard (walker ≠ archer).
-      character: {
+      asset: {
         id: 'walker',
+        kind: 'character' as const,
         characterName: 'Walker',
         gridWidth: 32,
         gridDepth: 32,
@@ -393,41 +436,42 @@ describe('useCharacterStore.requestOpenCharacter', () => {
         characterParts: [],
         characterPoses: {},
         animations: {},
+        tags: [],
         currentFilename: null,
       },
       dirty: false,
       undoStack: [],
-      knownCharacters: [
-        { id: 'archer', name: 'Archer', lastModified: 0 },
+      knownAssets: [
+        { id: 'archer', kind: 'character', name: 'Archer', lastModified: 0 },
       ],
     });
   });
 
   it('opens directly when dirty is false AND undoStack is empty', async () => {
     let confirmCalled = false;
-    await useCharacterStore.getState().requestOpenCharacter('archer', async () => {
+    await useCharacterStore.getState().requestOpenAsset('archer', async () => {
       confirmCalled = true;
       return 'discard';
     });
     expect(confirmCalled).toBe(false);
-    expect(useCharacterStore.getState().character?.id).toBe('archer');
+    expect(useCharacterStore.getState().asset?.id).toBe('archer');
   });
 
   it('invokes the confirm callback when dirty is true', async () => {
     useCharacterStore.setState({ dirty: true });
     let confirmCalled = false;
-    await useCharacterStore.getState().requestOpenCharacter('archer', async () => {
+    await useCharacterStore.getState().requestOpenAsset('archer', async () => {
       confirmCalled = true;
       return 'discard';
     });
     expect(confirmCalled).toBe(true);
-    expect(useCharacterStore.getState().character?.id).toBe('archer');
+    expect(useCharacterStore.getState().asset?.id).toBe('archer');
   });
 
   it('invokes the confirm callback when undoStack has entries', async () => {
     useCharacterStore.setState({ undoStack: [{} as any] });
     let confirmCalled = false;
-    await useCharacterStore.getState().requestOpenCharacter('archer', async () => {
+    await useCharacterStore.getState().requestOpenAsset('archer', async () => {
       confirmCalled = true;
       return 'discard';
     });
@@ -436,17 +480,18 @@ describe('useCharacterStore.requestOpenCharacter', () => {
 
   it('does NOT switch when user cancels', async () => {
     useCharacterStore.setState({ dirty: true });
-    const initialCharId = useCharacterStore.getState().character?.id;
-    await useCharacterStore.getState().requestOpenCharacter('archer', async () => 'cancel');
-    expect(useCharacterStore.getState().character?.id).toBe(initialCharId);
+    const initialCharId = useCharacterStore.getState().asset?.id;
+    await useCharacterStore.getState().requestOpenAsset('archer', async () => 'cancel');
+    expect(useCharacterStore.getState().asset?.id).toBe(initialCharId);
   });
 
   it('save decision: saves successfully and then switches', async () => {
     // Seed current character as dirty
     useCharacterStore.setState({
       dirty: true,
-      character: {
+      asset: {
         id: 'walker',
+        kind: 'character' as const,
         characterName: 'Walker',
         gridWidth: 32,
         gridDepth: 32,
@@ -454,12 +499,13 @@ describe('useCharacterStore.requestOpenCharacter', () => {
         characterParts: [],
         characterPoses: {},
         animations: {},
+        tags: [],
         currentFilename: null,
       },
     });
 
     let confirmInfo: any = null;
-    await useCharacterStore.getState().requestOpenCharacter('archer', async (info) => {
+    await useCharacterStore.getState().requestOpenAsset('archer', async (info) => {
       confirmInfo = info;
       return 'save';
     });
@@ -472,15 +518,16 @@ describe('useCharacterStore.requestOpenCharacter', () => {
 
     // After save + switch: character is archer, dirty is false
     const s = useCharacterStore.getState();
-    expect(s.character?.id).toBe('archer');
+    expect(s.asset?.id).toBe('archer');
     expect(s.dirty).toBe(false);
   });
 
   it('save decision: aborts switch when save fails', async () => {
     useCharacterStore.setState({
       dirty: true,
-      character: {
+      asset: {
         id: 'walker',
+        kind: 'character' as const,
         characterName: 'Walker',
         gridWidth: 32,
         gridDepth: 32,
@@ -488,6 +535,7 @@ describe('useCharacterStore.requestOpenCharacter', () => {
         characterParts: [],
         characterPoses: {},
         animations: {},
+        tags: [],
         currentFilename: null,
       },
     });
@@ -500,7 +548,7 @@ describe('useCharacterStore.requestOpenCharacter', () => {
     const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
     try {
-      await useCharacterStore.getState().requestOpenCharacter('archer', async () => 'save');
+      await useCharacterStore.getState().requestOpenAsset('archer', async () => 'save');
     } finally {
       spy.mockRestore();
       errSpy.mockRestore();
@@ -508,7 +556,7 @@ describe('useCharacterStore.requestOpenCharacter', () => {
 
     // After failed save: dirty still true, character is STILL walker (switch aborted)
     const s = useCharacterStore.getState();
-    expect(s.character?.id).toBe('walker');
+    expect(s.asset?.id).toBe('walker');
     expect(s.dirty).toBe(true);
   });
 
@@ -516,8 +564,9 @@ describe('useCharacterStore.requestOpenCharacter', () => {
     // Seed current character
     useCharacterStore.setState({
       dirty: true,  // even when dirty
-      character: {
+      asset: {
         id: 'walker',
+        kind: 'character' as const,
         characterName: 'Walker',
         gridWidth: 32,
         gridDepth: 32,
@@ -525,25 +574,26 @@ describe('useCharacterStore.requestOpenCharacter', () => {
         characterParts: [],
         characterPoses: {},
         animations: {},
+        tags: [],
         currentFilename: null,
       },
       undoStack: [{} as any],
     });
 
     let confirmCalled = false;
-    await useCharacterStore.getState().requestOpenCharacter('walker', async () => {
+    await useCharacterStore.getState().requestOpenAsset('walker', async () => {
       confirmCalled = true;
       return 'discard';
     });
 
     // No confirm, no switch, no state change
     expect(confirmCalled).toBe(false);
-    expect(useCharacterStore.getState().character?.id).toBe('walker');
+    expect(useCharacterStore.getState().asset?.id).toBe('walker');
     expect(useCharacterStore.getState().dirty).toBe(true);  // still dirty — no-op means no clean
   });
 });
 
-describe('useCharacterStore.renameCharacter', () => {
+describe('useCharacterStore.renameAsset', () => {
   it('renames the current character in-memory and marks dirty', async () => {
     const root = testing.makeRoot();
     const td = await root.getDirectoryHandle('tools_data', { create: true });
@@ -558,21 +608,23 @@ describe('useCharacterStore.renameCharacter', () => {
 
     useCharacterStore.setState({
       projectRootHandle: root as unknown as FileSystemDirectoryHandle,
-      character: {
+      asset: {
         id: 'walker', characterName: 'Walker Bot',
+        kind: 'character' as const,
         gridWidth: 32, gridDepth: 32, voxels: new Map(),
         characterParts: [], characterPoses: {}, animations: {},
+        tags: [],
         currentFilename: null,
       },
-      knownCharacters: [{ id: 'walker', name: 'Walker Bot', lastModified: 0 }],
+      knownAssets: [{ id: 'walker', kind: 'character', name: 'Walker Bot', lastModified: 0 }],
       dirty: false,
     });
 
-    await useCharacterStore.getState().renameCharacter('walker', 'Walker v2');
+    await useCharacterStore.getState().renameAsset('walker', 'Walker v2');
 
     const s = useCharacterStore.getState();
-    expect(s.character?.characterName).toBe('Walker v2');
-    expect(s.knownCharacters[0].name).toBe('Walker v2');
+    expect(s.asset?.characterName).toBe('Walker v2');
+    expect(s.knownAssets[0].name).toBe('Walker v2');
     expect(s.dirty).toBe(false);
   });
 
@@ -590,22 +642,24 @@ describe('useCharacterStore.renameCharacter', () => {
 
     useCharacterStore.setState({
       projectRootHandle: root as unknown as FileSystemDirectoryHandle,
-      character: {
+      asset: {
         id: 'walker', characterName: 'Walker Bot',
+        kind: 'character' as const,
         gridWidth: 32, gridDepth: 32, voxels: new Map(),
         characterParts: [], characterPoses: {}, animations: {},
+        tags: [],
         currentFilename: null,
       },
-      knownCharacters: [{ id: 'walker', name: 'Walker Bot', lastModified: 0 }],
+      knownAssets: [{ id: 'walker', kind: 'character', name: 'Walker Bot', lastModified: 0 }],
       dirty: false,
     });
 
-    await useCharacterStore.getState().renameCharacter('walker', 'Walker v2');
+    await useCharacterStore.getState().renameAsset('walker', 'Walker v2');
 
     // In-memory state updated
     const s = useCharacterStore.getState();
-    expect(s.character?.characterName).toBe('Walker v2');
-    expect(s.knownCharacters[0].name).toBe('Walker v2');
+    expect(s.asset?.characterName).toBe('Walker v2');
+    expect(s.knownAssets[0].name).toBe('Walker v2');
 
     // Disk file also updated
     const fh2 = await saves.getFileHandle('walker.echidna');
@@ -627,30 +681,32 @@ describe('useCharacterStore.renameCharacter', () => {
 
     useCharacterStore.setState({
       projectRootHandle: root as unknown as FileSystemDirectoryHandle,
-      character: {
+      asset: {
         id: 'walker', characterName: 'Walker Bot',
+        kind: 'character' as const,
         gridWidth: 32, gridDepth: 32, voxels: new Map(),
         characterParts: [], characterPoses: {}, animations: {},
+        tags: [],
         currentFilename: null,
       },
-      knownCharacters: [
-        { id: 'walker', name: 'Walker Bot', lastModified: 0 },
-        { id: 'archer', name: 'Archer', lastModified: 0 },
+      knownAssets: [
+        { id: 'walker', kind: 'character', name: 'Walker Bot', lastModified: 0 },
+        { id: 'archer', kind: 'character', name: 'Archer', lastModified: 0 },
       ],
       dirty: false,
     });
 
-    await useCharacterStore.getState().renameCharacter('archer', 'Ace Archer');
+    await useCharacterStore.getState().renameAsset('archer', 'Ace Archer');
 
     const s = useCharacterStore.getState();
-    expect(s.character?.characterName).toBe('Walker Bot');        // unchanged
-    expect(s.knownCharacters.find((c) => c.id === 'archer')?.name).toBe('Ace Archer');
+    expect(s.asset?.characterName).toBe('Walker Bot');        // unchanged
+    expect(s.knownAssets.find((c) => c.id === 'archer')?.name).toBe('Ace Archer');
     expect(s.dirty).toBe(false);                                    // still clean
   });
 });
 
-describe('useCharacterStore.deleteCharacter', () => {
-  it('removes the row from knownCharacters', async () => {
+describe('useCharacterStore.deleteAsset', () => {
+  it('removes the row from knownAssets', async () => {
     const root = testing.makeRoot();
     const td = await root.getDirectoryHandle('tools_data', { create: true });
     const saves = await td.getDirectoryHandle('echidna_saves', { create: true });
@@ -661,26 +717,28 @@ describe('useCharacterStore.deleteCharacter', () => {
 
     useCharacterStore.setState({
       projectRootHandle: root as unknown as FileSystemDirectoryHandle,
-      knownCharacters: [
-        { id: 'walker', name: 'Walker', lastModified: 0 },
-        { id: 'archer', name: 'Archer', lastModified: 0 },
+      knownAssets: [
+        { id: 'walker', kind: 'character', name: 'Walker', lastModified: 0 },
+        { id: 'archer', kind: 'character', name: 'Archer', lastModified: 0 },
       ],
       // character is not walker, so deleting walker should not null it
-      character: {
+      asset: {
         id: 'archer',
+        kind: 'character' as const,
         characterName: 'Archer',
         gridWidth: 32, gridDepth: 32,
         voxels: new Map(),
         characterParts: [], characterPoses: {}, animations: {},
+        tags: [],
         currentFilename: null,
       },
     });
 
-    await useCharacterStore.getState().deleteCharacter('walker');
+    await useCharacterStore.getState().deleteAsset('walker');
 
-    expect(useCharacterStore.getState().knownCharacters.map((c) => c.id)).toEqual(['archer']);
+    expect(useCharacterStore.getState().knownAssets.map((c) => c.id)).toEqual(['archer']);
     // Non-current character deletion should not touch state.character
-    expect(useCharacterStore.getState().character?.id).toBe('archer');
+    expect(useCharacterStore.getState().asset?.id).toBe('archer');
   });
 
   it('clears state.character to null when deleting the current character', async () => {
@@ -694,30 +752,32 @@ describe('useCharacterStore.deleteCharacter', () => {
 
     useCharacterStore.setState({
       projectRootHandle: root as unknown as FileSystemDirectoryHandle,
-      character: {
+      asset: {
         id: 'walker',
+        kind: 'character' as const,
         characterName: 'Walker',
         gridWidth: 32, gridDepth: 32,
         voxels: new Map(),
         characterParts: [], characterPoses: {}, animations: {},
+        tags: [],
         currentFilename: null,
       },
-      knownCharacters: [{ id: 'walker', name: 'Walker', lastModified: 0 }],
+      knownAssets: [{ id: 'walker', kind: 'character', name: 'Walker', lastModified: 0 }],
       dirty: true,
       undoStack: [{} as any],
     });
 
-    await useCharacterStore.getState().deleteCharacter('walker');
+    await useCharacterStore.getState().deleteAsset('walker');
 
     const s = useCharacterStore.getState();
-    expect(s.character).toBeNull();
+    expect(s.asset).toBeNull();
     expect(s.dirty).toBe(false);
-    expect(s.knownCharacters).toEqual([]);
+    expect(s.knownAssets).toEqual([]);
     expect(s.undoStack).toEqual([]);
   });
 });
 
-describe('useCharacterStore.duplicateCharacter', () => {
+describe('useCharacterStore.duplicateAsset', () => {
   it('appends a numeric suffix when newId collides', async () => {
     const root = testing.makeRoot();
     const td = await root.getDirectoryHandle('tools_data', { create: true });
@@ -734,16 +794,16 @@ describe('useCharacterStore.duplicateCharacter', () => {
 
     useCharacterStore.setState({
       projectRootHandle: root as unknown as FileSystemDirectoryHandle,
-      knownCharacters: [
-        { id: 'walker', name: 'Walker', lastModified: 0 },
-        { id: 'walker_2', name: 'Walker', lastModified: 0 },
+      knownAssets: [
+        { id: 'walker', kind: 'character', name: 'Walker', lastModified: 0 },
+        { id: 'walker_2', kind: 'character', name: 'Walker', lastModified: 0 },
       ],
     });
 
-    await useCharacterStore.getState().duplicateCharacter('walker', 'Walker');
+    await useCharacterStore.getState().duplicateAsset('walker', 'Walker');
     // Expected: new id is walker_3 (since walker and walker_2 already exist)
 
-    const known = useCharacterStore.getState().knownCharacters;
+    const known = useCharacterStore.getState().knownAssets;
     expect(known.map((c) => c.id).sort()).toEqual(['walker', 'walker_2', 'walker_3']);
   });
 
@@ -758,55 +818,55 @@ describe('useCharacterStore.duplicateCharacter', () => {
 
     useCharacterStore.setState({
       projectRootHandle: root as unknown as FileSystemDirectoryHandle,
-      character: null,
-      knownCharacters: [{ id: 'walker', name: 'Walker', lastModified: 0 }],
+      asset: null,
+      knownAssets: [{ id: 'walker', kind: 'character', name: 'Walker', lastModified: 0 }],
     });
 
-    await useCharacterStore.getState().duplicateCharacter('walker', 'Archer');
-    expect(useCharacterStore.getState().character).toBeNull();  // still null
+    await useCharacterStore.getState().duplicateAsset('walker', 'Archer');
+    expect(useCharacterStore.getState().asset).toBeNull();  // still null
   });
 });
 
-describe('useCharacterStore.newCharacter — name parameter', () => {
+describe('useCharacterStore.newAsset — name parameter', () => {
   beforeEach(() => {
-    useCharacterStore.setState({ knownCharacters: [], character: null, dirty: false });
+    useCharacterStore.setState({ knownAssets: [], asset: null, dirty: false });
   });
 
   it('uses the provided name and derives id from it', () => {
-    useCharacterStore.getState().newCharacter(32, 'Knight');
+    useCharacterStore.getState().newAsset('character',32, 'Knight');
     const s = useCharacterStore.getState();
-    expect(s.character?.characterName).toBe('Knight');
-    expect(s.character?.id).toBe('knight');
+    expect(s.asset?.characterName).toBe('Knight');
+    expect(s.asset?.id).toBe('knight');
   });
 
   it('falls back to Untitled when name is undefined', () => {
-    useCharacterStore.getState().newCharacter(32);
+    useCharacterStore.getState().newAsset('character',32);
     const s = useCharacterStore.getState();
-    expect(s.character?.characterName).toBe('Untitled');
-    expect(s.character?.id).toBe('untitled');
+    expect(s.asset?.characterName).toBe('Untitled');
+    expect(s.asset?.id).toBe('untitled');
   });
 
   it('falls back to Untitled when name is empty string', () => {
-    useCharacterStore.getState().newCharacter(32, '');
+    useCharacterStore.getState().newAsset('character',32, '');
     const s = useCharacterStore.getState();
-    expect(s.character?.characterName).toBe('Untitled');
+    expect(s.asset?.characterName).toBe('Untitled');
   });
 
   it('deduplicates id when name collides with existing character', () => {
     useCharacterStore.setState({
-      knownCharacters: [{ id: 'knight', name: 'Knight', lastModified: 0 }],
-      character: null,
+      knownAssets: [{ id: 'knight', kind: 'character', name: 'Knight', lastModified: 0 }],
+      asset: null,
       dirty: false,
     });
-    useCharacterStore.getState().newCharacter(32, 'Knight');
+    useCharacterStore.getState().newAsset('character',32, 'Knight');
     const s = useCharacterStore.getState();
-    expect(s.character?.id).toBe('knight_2');
+    expect(s.asset?.id).toBe('knight_2');
   });
 });
 
 describe('useCharacterStore.saveProject — null guard', () => {
   it('throws when character is null', () => {
-    useCharacterStore.setState({ character: null });
+    useCharacterStore.setState({ asset: null });
     expect(() => useCharacterStore.getState().saveProject()).toThrow(
       '[echidna] saveProject called with null character',
     );
@@ -822,10 +882,12 @@ describe('useCharacterStore.save — return value', () => {
     const root = testing.makeRoot();
     useCharacterStore.setState({
       projectRootHandle: root as unknown as FileSystemDirectoryHandle,
-      character: {
+      asset: {
         id: 'walker', characterName: 'Walker',
+        kind: 'character' as const,
         gridWidth: 32, gridDepth: 32, voxels: new Map(),
         characterParts: [], characterPoses: {}, animations: {},
+        tags: [],
         currentFilename: null,
       },
       dirty: true,
@@ -838,10 +900,12 @@ describe('useCharacterStore.save — return value', () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     useCharacterStore.setState({
       projectRootHandle: null,
-      character: {
+      asset: {
         id: 'walker', characterName: 'Walker',
+        kind: 'character' as const,
         gridWidth: 32, gridDepth: 32, voxels: new Map(),
         characterParts: [], characterPoses: {}, animations: {},
+        tags: [],
         currentFilename: null,
       },
       dirty: true,
@@ -854,7 +918,7 @@ describe('useCharacterStore.save — return value', () => {
   it('returns false when character is null', async () => {
     useCharacterStore.setState({
       projectRootHandle: testing.makeRoot() as unknown as FileSystemDirectoryHandle,
-      character: null,
+      asset: null,
     });
     const result = await useCharacterStore.getState().save();
     expect(result).toBe(false);
@@ -870,10 +934,12 @@ describe('useCharacterStore.save — return value', () => {
     const root = testing.makeRoot();
     useCharacterStore.setState({
       projectRootHandle: root as unknown as FileSystemDirectoryHandle,
-      character: {
+      asset: {
         id: 'walker', characterName: 'Walker',
+        kind: 'character' as const,
         gridWidth: 32, gridDepth: 32, voxels: new Map(),
         characterParts: [], characterPoses: {}, animations: {},
+        tags: [],
         currentFilename: null,
       },
       dirty: true,
@@ -890,5 +956,77 @@ describe('useCharacterStore.save — return value', () => {
       spy.mockRestore();
       errSpy.mockRestore();
     }
+  });
+});
+
+describe('useCharacterStore.newAsset — kind parameter', () => {
+  beforeEach(() => {
+    useCharacterStore.setState({ knownAssets: [], asset: null, dirty: false });
+  });
+
+  it('creates a map asset with no parts or poses', () => {
+    useCharacterStore.getState().newAsset('map', 64, 'Town');
+    const s = useCharacterStore.getState();
+    expect(s.asset?.kind).toBe('map');
+    expect(s.asset?.id).toBe('town');
+    expect(s.asset?.characterParts).toEqual([]);
+    expect(s.knownAssets[0].kind).toBe('map');
+  });
+
+  it('creates an object asset', () => {
+    useCharacterStore.getState().newAsset('object', 16, 'Crystal');
+    const s = useCharacterStore.getState();
+    expect(s.asset?.kind).toBe('object');
+    expect(s.asset?.id).toBe('crystal');
+    expect(s.knownAssets[0].kind).toBe('object');
+  });
+});
+
+describe('useCharacterStore.save — map kind', () => {
+  beforeEach(() => { useCharacterStore.setState({ _saving: false }); });
+
+  it('writes PLY to assets/maps/ without manifest', async () => {
+    const root = testing.makeRoot();
+    useCharacterStore.setState({
+      projectRootHandle: root as unknown as FileSystemDirectoryHandle,
+      asset: {
+        id: 'town', kind: 'map', characterName: 'Town',
+        gridWidth: 32, gridDepth: 32,
+        voxels: new Map([['0,0,0', { color: [100, 150, 100, 255] }]]),
+        characterParts: [], characterPoses: {}, animations: {},
+        tags: [], currentFilename: null,
+      },
+      dirty: true,
+    });
+    const ok = await useCharacterStore.getState().save();
+    expect(ok).toBe(true);
+    expect(useCharacterStore.getState().dirty).toBe(false);
+    const assets = await root.getDirectoryHandle('assets');
+    const maps = await assets.getDirectoryHandle('maps');
+    await maps.getFileHandle('town.ply');
+  });
+});
+
+describe('useCharacterStore.save — object kind', () => {
+  beforeEach(() => { useCharacterStore.setState({ _saving: false }); });
+
+  it('writes PLY to assets/objects/ without manifest', async () => {
+    const root = testing.makeRoot();
+    useCharacterStore.setState({
+      projectRootHandle: root as unknown as FileSystemDirectoryHandle,
+      asset: {
+        id: 'crystal', kind: 'object', characterName: 'Crystal',
+        gridWidth: 16, gridDepth: 16,
+        voxels: new Map([['0,0,0', { color: [200, 200, 255, 255] }]]),
+        characterParts: [], characterPoses: {}, animations: {},
+        tags: ['prop'], currentFilename: null,
+      },
+      dirty: true,
+    });
+    const ok = await useCharacterStore.getState().save();
+    expect(ok).toBe(true);
+    const assets = await root.getDirectoryHandle('assets');
+    const objects = await assets.getDirectoryHandle('objects');
+    await objects.getFileHandle('crystal.ply');
   });
 });

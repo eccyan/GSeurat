@@ -6,6 +6,7 @@ import {
   registerTexture,
   registerAudio,
   registerMap,
+  registerObject,
   resolveRef,
   type AssetRegistry,
 } from '../src/registry';
@@ -33,6 +34,17 @@ describe('AssetRegistry', () => {
       manifest: 'assets/characters/walker/walker.manifest.json',
     });
     expect(r0.characters.walker).toBeUndefined();  // original unchanged
+  });
+
+  it('starts empty with objects field', () => {
+    const r = createEmptyRegistry();
+    expect(Object.keys(r.objects)).toEqual([]);
+  });
+
+  it('registers an object', () => {
+    let r = createEmptyRegistry();
+    r = registerObject(r, 'crystal', { file: 'assets/objects/crystal.ply' });
+    expect(r.objects.crystal).toEqual({ id: 'crystal', file: 'assets/objects/crystal.ply' });
   });
 
   it('registers vfx, textures, audio, and maps', () => {
@@ -135,6 +147,17 @@ describe('resolveRef', () => {
   it('throws on unknown id (vfx)', () => {
     const r = createEmptyRegistry();
     expect(() => resolveRef('#missing', 'vfx', r)).toThrow(/unknown id.*vfx.*registry/i);
+  });
+
+  it('returns object path by id', () => {
+    const r0 = createEmptyRegistry();
+    const r = registerObject(r0, 'crystal', { file: 'assets/objects/crystal.ply' });
+    expect(resolveRef('#crystal', 'object', r)).toBe('assets/objects/crystal.ply');
+  });
+
+  it('throws on unknown object id', () => {
+    const r = createEmptyRegistry();
+    expect(() => resolveRef('#missing', 'object', r)).toThrow(/unknown id.*object.*registry/i);
   });
 
   it('rejects bare filenames (delegates to parseAssetRef)', () => {

@@ -24,7 +24,7 @@ function InitialInvalidator() {
 
 /** Auto-fits the camera to the voxel bounding box when the voxel count changes significantly. */
 function CameraFitter() {
-  const voxels = useCharacterStore((s) => s.character?.voxels ?? new Map());
+  const voxels = useCharacterStore((s) => s.asset?.voxels ?? new Map());
   const { camera, controls } = useThree();
   const prevCount = useRef(0);
 
@@ -66,8 +66,8 @@ function CameraFitter() {
 
 export function CharacterViewport() {
   useComponentRegistry('CharacterViewport');
-  const gridWidth = useCharacterStore((s) => s.character?.gridWidth ?? 32);
-  const gridDepth = useCharacterStore((s) => s.character?.gridDepth ?? 32);
+  const gridWidth = useCharacterStore((s) => s.asset?.gridWidth ?? 32);
+  const gridDepth = useCharacterStore((s) => s.asset?.gridDepth ?? 32);
   const showGrid = useCharacterStore((s) => s.showGrid);
 
   return (
