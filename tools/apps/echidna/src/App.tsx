@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { CharacterViewport } from './viewport/CharacterViewport.js';
+import { AssetViewport } from './viewport/AssetViewport.js';
 import { MenuBar } from './panels/MenuBar.js';
 import { ToolBar } from './panels/ToolBar.js';
 import { BuildPanel } from './panels/BuildPanel.js';
@@ -285,7 +285,7 @@ export function App() {
     return () => window.removeEventListener('keydown', handler);
   }, []);
 
-  // URL param loading and postMessage API are handled inside CharacterViewport's
+  // URL param loading and postMessage API are handled inside AssetViewport's
   // ExternalLoadBridge component (within R3F Canvas) to ensure proper re-rendering.
 
   return (
@@ -309,7 +309,7 @@ export function App() {
           ) : asset === null ? (
             <NoCharacterSelected />
           ) : (
-            <CharacterViewport />
+            <AssetViewport />
           )}
           {asset !== null && mode === 'animate' && assetKind === 'character' && (
             <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 10 }}>

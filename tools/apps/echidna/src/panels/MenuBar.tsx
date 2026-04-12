@@ -319,7 +319,7 @@ export function MenuBar() {
   // Shared Staging push logic. Uploads PLY + manifest via REST, sends
   // load_scene_json + load_character via WebSocket. Throws on failure.
   // Callers are responsible for toast/error-UI presentation.
-  const syncCharacterToStaging = useCallback(async (char: Asset) => {
+  const syncAssetToStaging = useCallback(async (char: Asset) => {
     const charId = char.id;
     if (!charId) throw new Error('character has no id — call ensureAssetId() first');
 
@@ -400,12 +400,12 @@ export function MenuBar() {
     if (!char || char.voxels.size === 0) return;
 
     try {
-      await syncCharacterToStaging(char);
+      await syncAssetToStaging(char);
     } catch (err) {
       // Auto-sync is silent — don't toast, just log
       console.warn('[echidna] auto-sync push to Staging failed:', err);
     }
-  }, [syncCharacterToStaging]);
+  }, [syncAssetToStaging]);
 
   // Auto-sync: debounced push to staging when voxels or parts change
   useEffect(() => {
@@ -537,13 +537,13 @@ export function MenuBar() {
 
     showToast('Sending to Staging...', 'loading');
     try {
-      await syncCharacterToStaging(char);
+      await syncAssetToStaging(char);
       showToast('Character sent to Staging', 'success');
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       showToast(`Preview failed: ${msg}`, 'error', 5000);
     }
-  }, [showToast, syncCharacterToStaging]);
+  }, [showToast, syncAssetToStaging]);
 
   const handleConnectBridgeToProject = useCallback(async () => {
     const projectPath = window.prompt(

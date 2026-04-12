@@ -1,8 +1,8 @@
-// tools/apps/echidna/src/panels/DuplicateCharacterDialog.tsx
+// tools/apps/echidna/src/panels/RenameAssetDialog.tsx
 import React, { useState, useRef, useEffect } from 'react';
 
 interface Props {
-  sourceName: string;
+  currentName: string;
   onSubmit: (newName: string) => void;
   onCancel: () => void;
 }
@@ -16,33 +16,49 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex', alignItems: 'center', justifyContent: 'center',
     zIndex: 1000,
   },
-  dialog: { background: '#1e1e3a', border: '1px solid #444', borderRadius: 6, padding: 24, width: 420 },
+  dialog: {
+    background: '#1e1e3a', border: '1px solid #444', borderRadius: 6,
+    padding: 24, width: 420,
+  },
   title: { fontSize: 15, color: '#ddd', marginBottom: 12 },
   input: {
-    width: '100%', padding: '8px 10px', fontSize: 13,
-    background: '#16162a', border: '1px solid #444', borderRadius: 4,
-    color: '#ddd', marginBottom: 16,
+    width: '100%',
+    padding: '8px 10px',
+    fontSize: 13,
+    background: '#16162a',
+    border: '1px solid #444',
+    borderRadius: 4,
+    color: '#ddd',
+    marginBottom: 16,
   },
   buttons: { display: 'flex', gap: 8, justifyContent: 'flex-end' },
-  button: { padding: '8px 16px', fontSize: 13, border: '1px solid #444', borderRadius: 4, cursor: 'pointer' },
+  button: {
+    padding: '8px 16px', fontSize: 13,
+    border: '1px solid #444', borderRadius: 4, cursor: 'pointer',
+  },
   buttonPrimary: { background: '#3a6a8a', color: '#fff', borderColor: '#4a7a9a' },
   buttonNeutral: { background: '#2a2a4a', color: '#ccc' },
   buttonDisabled: { opacity: 0.4, cursor: 'not-allowed' },
 };
 
-export function DuplicateCharacterDialog({ sourceName, onSubmit, onCancel }: Props) {
-  const [value, setValue] = useState(`Copy of ${sourceName}`);
+export function RenameAssetDialog({ currentName, onSubmit, onCancel }: Props) {
+  const [value, setValue] = useState(currentName);
   const inputRef = useRef<HTMLInputElement>(null);
-  useEffect(() => { inputRef.current?.focus(); inputRef.current?.select(); }, []);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+    inputRef.current?.select();
+  }, []);
 
   const trimmed = value.trim();
   const valid = trimmed.length > 0 && trimmed.length <= 64 && NAME_RE.test(trimmed);
+
   const submit = () => { if (valid) onSubmit(trimmed); };
 
   return (
     <div style={styles.overlay} onClick={onCancel}>
       <div style={styles.dialog} onClick={(e) => e.stopPropagation()}>
-        <div style={styles.title}>Duplicate "{sourceName}"</div>
+        <div style={styles.title}>Rename asset</div>
         <input
           ref={inputRef}
           style={styles.input}
@@ -55,7 +71,9 @@ export function DuplicateCharacterDialog({ sourceName, onSubmit, onCancel }: Pro
           maxLength={64}
         />
         <div style={styles.buttons}>
-          <button style={{ ...styles.button, ...styles.buttonNeutral }} onClick={onCancel}>Cancel</button>
+          <button style={{ ...styles.button, ...styles.buttonNeutral }} onClick={onCancel}>
+            Cancel
+          </button>
           <button
             style={{
               ...styles.button,
@@ -65,7 +83,7 @@ export function DuplicateCharacterDialog({ sourceName, onSubmit, onCancel }: Pro
             disabled={!valid}
             onClick={submit}
           >
-            Duplicate
+            Rename
           </button>
         </div>
       </div>

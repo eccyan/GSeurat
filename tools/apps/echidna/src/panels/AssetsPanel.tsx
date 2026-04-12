@@ -1,10 +1,10 @@
 // tools/apps/echidna/src/panels/AssetsPanel.tsx
 import React, { useState, useCallback, useRef } from 'react';
 import { useCharacterStore, type SwitchDecision } from '../store/useCharacterStore.js';
-import { SwitchCharacterDialog } from './SwitchCharacterDialog.js';
-import { RenameCharacterDialog } from './RenameCharacterDialog.js';
-import { DuplicateCharacterDialog } from './DuplicateCharacterDialog.js';
-import { DeleteCharacterDialog } from './DeleteCharacterDialog.js';
+import { SwitchAssetDialog } from './SwitchAssetDialog.js';
+import { RenameAssetDialog } from './RenameAssetDialog.js';
+import { DuplicateAssetDialog } from './DuplicateAssetDialog.js';
+import { DeleteAssetDialog } from './DeleteAssetDialog.js';
 
 const COLLAPSE_KEY = 'echidna:characters-panel-collapsed';
 
@@ -319,7 +319,7 @@ export function AssetsPanel({ onNewAsset }: Props) {
 
       {/* Dialogs */}
       {activeDialog?.kind === 'switch' && (
-        <SwitchCharacterDialog
+        <SwitchAssetDialog
           currentName={currentAssetName}
           targetName={knownAssets.find((c) => c.id === activeDialog.targetId)?.name ?? ''}
           undoDepth={undoDepth}
@@ -327,7 +327,7 @@ export function AssetsPanel({ onNewAsset }: Props) {
         />
       )}
       {activeDialog?.kind === 'rename' && (
-        <RenameCharacterDialog
+        <RenameAssetDialog
           currentName={activeDialog.name}
           onSubmit={(newName) => {
             void renameAsset(activeDialog.id, newName);
@@ -337,7 +337,7 @@ export function AssetsPanel({ onNewAsset }: Props) {
         />
       )}
       {activeDialog?.kind === 'duplicate' && (
-        <DuplicateCharacterDialog
+        <DuplicateAssetDialog
           sourceName={activeDialog.name}
           onSubmit={(newName) => {
             void duplicateAsset(activeDialog.id, newName);
@@ -347,9 +347,9 @@ export function AssetsPanel({ onNewAsset }: Props) {
         />
       )}
       {activeDialog?.kind === 'delete' && (
-        <DeleteCharacterDialog
-          characterName={activeDialog.name}
-          characterId={activeDialog.id}
+        <DeleteAssetDialog
+          assetName={activeDialog.name}
+          assetId={activeDialog.id}
           onConfirm={() => {
             void deleteAsset(activeDialog.id);
             setActiveDialog(null);

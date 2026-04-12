@@ -1,4 +1,4 @@
-// tools/apps/echidna/src/panels/SwitchCharacterDialog.tsx
+// tools/apps/echidna/src/panels/SwitchAssetDialog.tsx
 import React from 'react';
 import type { SwitchDecision } from '../store/useCharacterStore.js';
 
@@ -42,7 +42,7 @@ const styles: Record<string, React.CSSProperties> = {
   buttonNeutral: { background: '#2a2a4a', color: '#ccc' },
 };
 
-export function SwitchCharacterDialog({ currentName, targetName, undoDepth, onDecide }: Props) {
+export function SwitchAssetDialog({ currentName, targetName, undoDepth, onDecide }: Props) {
   return (
     <div style={styles.overlay} onClick={() => onDecide('cancel')}>
       <div style={styles.dialog} onClick={(e) => e.stopPropagation()}>
