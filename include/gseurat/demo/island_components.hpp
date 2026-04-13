@@ -108,4 +108,9 @@ struct NpcWalker {
     bool paused = true;
 };
 
+/// Marker component for bone-animated entities (actual state in BoneAnimationRegistry).
+struct BoneAnimatedTag {
+    uint32_t registry_id = 0;  // key into BoneAnimationRegistry
+};
+
 }  // namespace gseurat

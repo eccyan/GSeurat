@@ -340,6 +340,17 @@ void AppBase::init_game_object_system() {
                     {"speed", c.speed},
                     {"pause_duration", c.pause_duration}};
         });
+
+    component_registry_.register_component<BoneAnimatedTag>("BoneAnimated",
+        [](const nlohmann::json& j) -> BoneAnimatedTag {
+            BoneAnimatedTag c;
+            // registry_id is assigned by scene loader, not from JSON
+            (void)j;
+            return c;
+        },
+        [](const BoneAnimatedTag& c) -> nlohmann::json {
+            return {{"registry_id", c.registry_id}};
+        });
 }
 
 // ── Command context builder ──
