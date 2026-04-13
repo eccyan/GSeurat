@@ -273,6 +273,9 @@ add_custom_target(sync_assets ALL
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         ${CMAKE_CURRENT_BINARY_DIR}/shaders
         ${PROJECT_SOURCE_DIR}/shaders
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${PROJECT_SOURCE_DIR}/world.json
+        ${CMAKE_CURRENT_BINARY_DIR}/world.json
     COMMENT "Syncing assets and shaders to build directory"
     DEPENDS shaders
 )
