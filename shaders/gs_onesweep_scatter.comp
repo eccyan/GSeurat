@@ -1,0 +1,156 @@
+#version 450
+
+// Onesweep dispatch 2: read lookback results + stable scatter.
+//
+// Runs AFTER gs_onesweep_histogram.comp (dispatch boundary = implicit global barrier).
+// All inclusive prefixes are already published in the status buffer — no spinning needed.
+//
+// For each digit D:
+//   global_total[D]  = inclusive prefix of last workgroup (max_wg - 1) for digit D
+//   global_prefix[D] = exclusive prefix sum of global_total[0..D-1]
+//                     = where digit D's section starts in the output
+//   wg_aggregate[D]  = inclusive prefix of (wg_id - 1) for digit D  [0 for wg_id==0]
+//                     = count of digit D in all prior workgroups
+//
+//   scatter_base[D] = global_prefix[D] + wg_aggregate[D]
+//   dest = scatter_base[digit] + intra_rank
+layout(local_size_x = 256) in;
+
+struct TileSortEntry {
+    uint key_hi;
+    uint key_lo;
+    uint index;
+    uint _pad;
+};
+
+layout(set = 0, binding = 0) readonly buffer InputBuffer {
+    TileSortEntry in_entries[];
+};
+
+layout(set = 0, binding = 1) writeonly buffer OutputBuffer {
+    TileSortEntry out_entries[];
+};
+
+// Status buffer from dispatch 1 (read-only here — all values have INCLUSIVE_FLAG)
+layout(set = 0, binding = 2, std430) readonly buffer StatusBuffer {
+    uint status[];
+};
+
+layout(set = 0, binding = 3) readonly buffer IndirectArgs {
+    uint sort_dispatch_x;
+    uint sort_dispatch_y;
+    uint sort_dispatch_z;
+    uint ranges_dispatch_x;
+    uint ranges_dispatch_y;
+    uint ranges_dispatch_z;
+    uint entry_count;
+    uint histogram_count;
+};
+
+layout(push_constant) uniform PushConstants {
+    uint pass;
+};
+
+const uint ENTRIES_PER_WG = 2048u;
+const uint ENTRIES_PER_THREAD = 8u;
+const uint VALUE_MASK = 0x3FFFFFFFu;
+
+shared uint s_scatter_base[256];  // 1KB — per-digit scatter base for this workgroup
+shared uint s_digits[256];       // 1KB — batch digit scratch for stable rank
+shared uint s_digit_count[256];  // 1KB — batch count per digit
+
+void main() {
+    uint lid = gl_LocalInvocationID.x;
+    uint wg_id = gl_WorkGroupID.x;
+    uint wg_offset = wg_id * ENTRIES_PER_WG;
+    uint total = entry_count;
+    uint max_wg = sort_dispatch_x;
+
+    uint pass_base = pass * 256u * max_wg;
+
+    // ========================================
+    // Step 1: Compute global exclusive prefix
+    // ========================================
+    // Read global total for digit `lid` = inclusive prefix of last workgroup
+    uint global_total = status[pass_base + lid * max_wg + (max_wg - 1u)] & VALUE_MASK;
+
+    // Parallel exclusive prefix sum using shared memory (Blelloch-style)
+    // For 256 elements with 256 threads, a simple sequential scan by thread 0 is fast enough.
+    s_scatter_base[lid] = global_total;
+    barrier();
+
+    if (lid == 0u) {
+        uint running = 0u;
+        for (uint d = 0u; d < 256u; d++) {
+            uint count = s_scatter_base[d];
+            s_scatter_base[d] = running;
+            running += count;
+        }
+    }
+    barrier();
+
+    // s_scatter_base[D] now holds the global exclusive prefix for digit D
+
+    // ========================================
+    // Step 2: Add per-workgroup aggregate
+    // ========================================
+    // wg_aggregate[D] = inclusive[wg_id - 1] for digit D (0 for wg_id == 0)
+    uint wg_aggregate = 0u;
+    if (wg_id > 0u) {
+        wg_aggregate = status[pass_base + lid * max_wg + (wg_id - 1u)] & VALUE_MASK;
+    }
+    s_scatter_base[lid] += wg_aggregate;
+    barrier();
+
+    // ========================================
+    // Step 3: Stable scatter (batch of 256)
+    // ========================================
+    for (uint batch = 0u; batch < ENTRIES_PER_THREAD; batch++) {
+        uint local_idx = batch * 256u + lid;
+        uint global_idx = wg_offset + local_idx;
+        bool valid = (global_idx < total);
+
+        // Load entry and extract digit
+        uint my_key_lo = 0xFFFFFFFFu;
+        uint my_key_hi = 0u;
+        uint my_index = 0u;
+        uint digit = 0xFFu;
+        if (valid) {
+            TileSortEntry e = in_entries[global_idx];
+            my_key_hi = e.key_hi;
+            my_key_lo = e.key_lo;
+            my_index = e.index;
+            digit = (my_key_lo >> (pass * 8u)) & 0xFFu;
+        }
+        s_digits[lid] = digit;
+
+        // Clear digit counts
+        s_digit_count[lid] = 0u;
+        barrier();
+
+        // Compute stable rank: count threads j < lid with same digit
+        if (valid) {
+            uint rank = 0u;
+            for (uint j = 0u; j < lid; j++) {
+                if (s_digits[j] == digit) {
+                    rank++;
+                }
+            }
+
+            uint dst = s_scatter_base[digit] + rank;
+            out_entries[dst].key_hi = my_key_hi;
+            out_entries[dst].key_lo = my_key_lo;
+            out_entries[dst].index = my_index;
+            out_entries[dst]._pad = 0u;
+        }
+
+        // Advance scatter base for next batch
+        if (valid) {
+            atomicAdd(s_digit_count[digit], 1u);
+        }
+        barrier();
+
+        s_scatter_base[lid] += s_digit_count[lid];
+        barrier();
+    }
+}
