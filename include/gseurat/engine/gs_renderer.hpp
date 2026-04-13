@@ -425,7 +425,7 @@ private:
     VkDescriptorSet onesweep_scatter_set_ba_ = VK_NULL_HANDLE;  // read B → write A
 
     Buffer onesweep_status_;    // per-digit lookback status buffer (coherent)
-    bool use_onesweep_ = false;  // disabled for A/B benchmark
+    bool use_onesweep_ = true;  // 2-dispatch Onesweep enabled
     uint32_t onesweep_max_wg_ = 0;
 
     // Tile sort buffers
