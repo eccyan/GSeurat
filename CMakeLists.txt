@@ -346,7 +346,10 @@ add_gseurat_test(test_gs_post_process)
 add_gseurat_test(test_pbd_solver)
 add_gseurat_test(test_component_registry src/engine/component_registry.cpp)
 add_gseurat_test(test_system_scheduler  src/engine/system_scheduler.cpp)
-add_gseurat_test(test_island_systems    src/demo/island_systems.cpp)
+add_gseurat_test(test_island_systems    src/demo/island_systems.cpp
+    src/character/character_manifest.cpp
+    src/character/bone_animation_player.cpp
+    src/character/bone_animation_state_machine.cpp)
 add_gseurat_test(test_character_manifest src/character/character_manifest.cpp)
 add_gseurat_test(test_bone_animation_player src/character/character_manifest.cpp src/character/bone_animation_player.cpp)
 add_gseurat_test(test_bone_animation_state_machine src/character/character_manifest.cpp src/character/bone_animation_player.cpp src/character/bone_animation_state_machine.cpp)
