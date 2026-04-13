@@ -9,10 +9,9 @@ void proximity_trigger_system(ecs::World& world, float dt);
 void linked_trigger_system(ecs::World& world, float dt);
 void emissive_toggle_system(ecs::World& world, float dt);
 void npc_walker_system(ecs::World& world, float dt);
-void bone_animation_system(ecs::World& world, float dt);
 
+// NPC walker needs registry access for clip/facing updates
 class BoneAnimationRegistry;
-void set_bone_animation_registry(BoneAnimationRegistry* reg);
-BoneAnimationRegistry* get_bone_animation_registry();
+void set_npc_bone_registry(BoneAnimationRegistry* reg);
 
 }  // namespace gseurat

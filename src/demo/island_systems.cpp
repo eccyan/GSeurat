@@ -1,7 +1,6 @@
 #include "gseurat/demo/island_systems.hpp"
 #include "gseurat/demo/island_components.hpp"
 #include "gseurat/engine/bone_animation_registry.hpp"
-#include "gseurat/character/character_manifest.hpp"
 #include "gseurat/engine/ecs/default_components.hpp"
 #include <cmath>
 #include <cstdio>
@@ -10,58 +9,11 @@
 namespace gseurat {
 
 namespace {
-BoneAnimationRegistry* g_bone_anim_registry = nullptr;
+BoneAnimationRegistry* g_npc_bone_registry = nullptr;
 }  // namespace
 
-void set_bone_animation_registry(BoneAnimationRegistry* reg) {
-    g_bone_anim_registry = reg;
-}
-
-BoneAnimationRegistry* get_bone_animation_registry() {
-    return g_bone_anim_registry;
-}
-
-void bone_animation_system(ecs::World& world, float dt) {
-    if (!g_bone_anim_registry) return;
-
-    world.view<BoneAnimatedTag, ecs::Transform>().each(
-        [&](ecs::Entity entity, BoneAnimatedTag& tag, ecs::Transform& t) {
-            auto* entry = g_bone_anim_registry->get(tag.registry_id);
-            if (!entry) return;
-
-            // Lazy initialization
-            if (!entry->initialized) {
-                auto manifest = load_character_manifest(entry->manifest_path);
-                if (!manifest) return;
-                entry->character_data = std::make_unique<CharacterData>(std::move(*manifest));
-                entry->anim_player = std::make_unique<BoneAnimationPlayer>(*entry->character_data);
-                entry->anim_sm = std::make_unique<BoneAnimationStateMachine>(*entry->anim_player);
-
-                // Register clips as states
-                for (const auto& clip : entry->character_data->clips) {
-                    entry->anim_sm->add_state(clip.name, clip.name);
-                }
-                entry->anim_sm->set_state(entry->default_clip);
-
-                entry->spawn_pos = t.position.vec();
-                entry->current_pos = t.position.vec();
-                entry->initialized = true;
-                std::fprintf(stderr, "[BoneAnimSystem] Initialized '%s': %u bones, clip='%s'\n",
-                             entry->manifest_path.c_str(), entry->bone_count, entry->default_clip.c_str());
-            }
-
-            // Update position from Transform (NpcWalker moves this)
-            entry->current_pos = t.position.vec();
-
-            // Check for clip change from behavior systems
-            if (!entry->requested_clip.empty() &&
-                entry->requested_clip != entry->anim_sm->current_state()) {
-                entry->anim_sm->set_state(entry->requested_clip);
-            }
-
-            // Advance animation
-            entry->anim_player->update(dt);
-        });
+void set_npc_bone_registry(BoneAnimationRegistry* reg) {
+    g_npc_bone_registry = reg;
 }
 
 void proximity_trigger_system(ecs::World& world, float dt) {
@@ -193,8 +145,8 @@ void npc_walker_system(ecs::World& world, float dt) {
                     npc.target_z = npc.home_z + std::sin(angle) * dist;
                 }
                 // Set animation clip based on movement state (paused branch)
-                if (g_bone_anim_registry) {
-                    auto* ba_entry = g_bone_anim_registry->get_by_entity(entity);
+                if (g_npc_bone_registry) {
+                    auto* ba_entry = g_npc_bone_registry->get_by_entity(entity);
                     if (ba_entry) {
                         ba_entry->requested_clip = "idle";
                     }
@@ -236,8 +188,8 @@ void npc_walker_system(ecs::World& world, float dt) {
             }
 
             // Set animation clip based on movement state
-            if (g_bone_anim_registry) {
-                auto* ba_entry = g_bone_anim_registry->get_by_entity(entity);
+            if (g_npc_bone_registry) {
+                auto* ba_entry = g_npc_bone_registry->get_by_entity(entity);
                 if (ba_entry) {
                     ba_entry->requested_clip = npc.paused ? "idle" : "walk";
                     // Update facing angle from movement direction

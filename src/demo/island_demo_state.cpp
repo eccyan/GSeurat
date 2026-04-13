@@ -256,8 +256,7 @@ void IslandDemoState::on_enter(AppBase& app) {
     app.system_scheduler().add_system({"linked_trigger", linked_trigger_system, {}, {}});
     app.system_scheduler().add_system({"emissive_toggle", emissive_toggle_system, {}, {}});
     app.system_scheduler().add_system({"npc_walker", npc_walker_system, {}, {}});
-    app.system_scheduler().add_system({"bone_animation", bone_animation_system, {}, {}});
-    set_bone_animation_registry(&bone_anim_registry_);
+    set_npc_bone_registry(&bone_anim_registry_);
 
     // Capture base scene lights (before dynamic emissive lights are added)
     // Note: GS renderer gets lights during record_gs_prepass, not at init.
@@ -525,7 +524,7 @@ void IslandDemoState::on_exit(AppBase& app) {
 
     // Release animation objects before state destruction
     bone_anim_registry_.clear();
-    set_bone_animation_registry(nullptr);
+    set_npc_bone_registry(nullptr);
     anim_sm_.reset();
     anim_player_.reset();
 

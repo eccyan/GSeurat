@@ -1,6 +1,7 @@
 #pragma once
 #include <cstdint>
 #include "gseurat/engine/collision_gen.hpp"
+#include "gseurat/engine/bone_animated_component.hpp"
 
 namespace gseurat {
 
@@ -106,11 +107,6 @@ struct NpcWalker {
     float pause_timer = 0.0f;
     bool initialized = false;
     bool paused = true;
-};
-
-/// Marker component for bone-animated entities (actual state in BoneAnimationRegistry).
-struct BoneAnimatedTag {
-    uint32_t registry_id = 0;  // key into BoneAnimationRegistry
 };
 
 }  // namespace gseurat
