@@ -40,7 +40,7 @@ foreach(SHADER_SRC ${SHADER_SOURCES})
     set(SHADER_OUT ${SHADER_OUTPUT_DIR}/${SHADER_NAME}.spv)
     add_custom_command(
         OUTPUT ${SHADER_OUT}
-        COMMAND ${GLSLC} ${SHADER_SRC} -o ${SHADER_OUT}
+        COMMAND ${GLSLC} --target-env=vulkan1.1 ${SHADER_SRC} -o ${SHADER_OUT}
         DEPENDS ${SHADER_SRC}
         COMMENT "Compiling shader ${SHADER_NAME}"
     )

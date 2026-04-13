@@ -35,6 +35,8 @@ inline constexpr uint32_t kMaxGsPointLights = 8;
 struct GsUniforms {
     glm::mat4 view;
     glm::mat4 proj;
+    glm::mat4 inv_view;      // precomputed inverse(view) — avoids per-pixel inverse() in shader
+    glm::mat4 inv_proj;      // precomputed inverse(proj)
     glm::uvec4 params;       // x = width, y = height, z = gaussian_count, w = sort_size
     glm::vec4 shadow_box;    // x = margin, y = cone_cos, z = num_sort_passes, w = scale_multiplier
     glm::vec4 cone_dir;      // xyz = cone direction, w = unused
@@ -71,7 +73,8 @@ void insert_compute_barrier(VkCommandBuffer cmd) {
 
 }  // namespace
 
-void GsRenderer::init(VkDevice device, VmaAllocator allocator, VkDescriptorPool pool) {
+void GsRenderer::init(VkDevice device, VkPhysicalDevice physical_device,
+                      VmaAllocator allocator, VkDescriptorPool pool) {
     device_ = device;
     allocator_ = allocator;
     pool_ = pool;
@@ -79,6 +82,22 @@ void GsRenderer::init(VkDevice device, VmaAllocator allocator, VkDescriptorPool 
     create_output_image(320, 240);
     create_descriptor_resources();
     create_compute_pipelines();
+
+    // Create timestamp query pool for GPU profiling (2 queries: before/after rasterize)
+    {
+        VkQueryPoolCreateInfo qp_info{};
+        qp_info.sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO;
+        qp_info.queryType = VK_QUERY_TYPE_TIMESTAMP;
+        qp_info.queryCount = 2;
+        vkCreateQueryPool(device_, &qp_info, nullptr, &timestamp_pool_);
+
+        VkPhysicalDeviceProperties props;
+        vkGetPhysicalDeviceProperties(physical_device, &props);
+        timestamp_period_ns_ = props.limits.timestampPeriod;
+        std::printf("[gs_renderer] Timestamp period: %.2f ns (query pool created)\n",
+                    timestamp_period_ns_);
+    }
+
     initialized_ = true;
 }
 
@@ -1682,6 +1701,8 @@ void GsRenderer::render(VkCommandBuffer cmd, const glm::mat4& view, const glm::m
     GsUniforms uniforms{};
     uniforms.view = view;
     uniforms.proj = proj;
+    uniforms.inv_view = glm::inverse(view);
+    uniforms.inv_proj = glm::inverse(proj);
     uniforms.params = glm::uvec4(width, height, gaussian_count_, sort_size_);
     uniforms.shadow_box = glm::vec4(shadow_box_margin_, shadow_box_cone_cos_,
                                      static_cast<float>(num_sort_passes_), scale_multiplier_);
@@ -1710,6 +1731,32 @@ void GsRenderer::render(VkCommandBuffer cmd, const glm::mat4& view, const glm::m
     }
 
     std::memcpy(uniform_buffer_.mapped(), &uniforms, sizeof(uniforms));
+
+    // Read back GPU timestamps from previous frame's rasterize pass
+    if (timestamp_pool_ && timestamp_frame_ > 0) {
+        uint64_t timestamps[2]{};
+        VkResult ts_result = vkGetQueryPoolResults(
+            device_, timestamp_pool_, 0, 2,
+            sizeof(timestamps), timestamps, sizeof(uint64_t),
+            VK_QUERY_RESULT_64_BIT);
+        if (ts_result == VK_SUCCESS) {
+            float ms = static_cast<float>(timestamps[1] - timestamps[0])
+                       * timestamp_period_ns_ / 1e6f;
+            rasterize_ms_accum_ += ms;
+            if (timestamp_frame_ % kTimestampAvgFrames == 0) {
+                float avg = rasterize_ms_accum_ / static_cast<float>(kTimestampAvgFrames);
+                std::printf("[gs_renderer] Rasterize pass: %.3f ms (avg %u frames)\n",
+                            avg, kTimestampAvgFrames);
+                rasterize_ms_accum_ = 0.0f;
+            }
+        }
+    }
+    ++timestamp_frame_;
+
+    // Reset timestamp queries for this frame
+    if (timestamp_pool_) {
+        vkCmdResetQueryPool(cmd, timestamp_pool_, 0, 2);
+    }
 
     // In skip-sort mode, skip GS compute but still run post-process
     // (parameters like fade_amount change continuously).
@@ -1870,7 +1917,16 @@ void GsRenderer::render(VkCommandBuffer cmd, const glm::mat4& view, const glm::m
                                         render_pipeline_layout_, 0, 1, &render_set_, 0, nullptr);
                 uint32_t tiles_x = (width + 15) / 16;
                 uint32_t tiles_y = (height + 15) / 16;
+
+                if (timestamp_pool_) {
+                    vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                                       timestamp_pool_, 0);
+                }
                 vkCmdDispatch(cmd, tiles_x, tiles_y, 1);
+                if (timestamp_pool_) {
+                    vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                                       timestamp_pool_, 1);
+                }
             }
         } else {
             // Legacy single-buffer path (backward compat)
@@ -1910,7 +1966,16 @@ void GsRenderer::render(VkCommandBuffer cmd, const glm::mat4& view, const glm::m
                                     render_pipeline_layout_, 0, 1, &render_set_, 0, nullptr);
             uint32_t tiles_x = (width + 15) / 16;
             uint32_t tiles_y = (height + 15) / 16;
+
+            if (timestamp_pool_) {
+                vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                                   timestamp_pool_, 0);
+            }
             vkCmdDispatch(cmd, tiles_x, tiles_y, 1);
+            if (timestamp_pool_) {
+                vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                                   timestamp_pool_, 1);
+            }
         }
 
         sort_done_once_ = true;
@@ -2153,6 +2218,7 @@ void GsRenderer::shutdown(VmaAllocator allocator) {
     destroy_set_layout(radix_scan_layout_);
     destroy_set_layout(radix_scatter_layout_);
 
+    if (timestamp_pool_) { vkDestroyQueryPool(device_, timestamp_pool_, nullptr); timestamp_pool_ = VK_NULL_HANDLE; }
     if (gs_pool_) vkDestroyDescriptorPool(device_, gs_pool_, nullptr);
 
     initialized_ = false;

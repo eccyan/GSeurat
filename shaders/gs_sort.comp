@@ -15,7 +15,9 @@ layout(set = 0, binding = 0) buffer SortBuffer {
 layout(set = 0, binding = 1) uniform Uniforms {
     mat4 view;
     mat4 proj;
-    uvec4 params;  // w = sort_size
+    mat4 inv_view;  // must match layout (unused in sort)
+    mat4 inv_proj;  // must match layout (unused in sort)
+    uvec4 params;   // w = sort_size
 };
 
 layout(push_constant) uniform PushConstants {
