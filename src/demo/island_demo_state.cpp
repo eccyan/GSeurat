@@ -664,14 +664,48 @@ void IslandDemoState::update(AppBase& app, float dt) {
                     }
 
                     // Teleport player to spawn position
-                    character_origin_ = portal.spawn_position;
+                    glm::vec3 spawn = portal.spawn_position;
+                    character_origin_ = spawn;
+                    character_spawn_pos_ = spawn;
                     auto* transform = app.world().try_get<ecs::Transform>(player_entity_);
                     if (transform) {
-                        transform->position = coord::WorldPos(portal.spawn_position);
+                        transform->position = coord::WorldPos(spawn);
+                    }
+
+                    // Re-merge player character into the new map's Gaussians
+                    if (app.renderer().has_gs_cloud()) {
+                        const auto& new_map = app.renderer().gs_chunk_grid().all_gaussians();
+                        map_gaussians_.assign(new_map.begin(), new_map.end());
+                        std::vector<Gaussian> merged = map_gaussians_;
+
+                        auto char_cloud = GaussianCloud::load_ply(
+                            "assets/characters/snes_hero/snes_hero.ply");
+                        if (!char_cloud.empty()) {
+                            const auto& char_gs = char_cloud.gaussians();
+                            for (const auto& g : char_gs) {
+                                Gaussian cg = g;
+                                glm::vec3 rotated(-cg.position.x, cg.position.y, -cg.position.z);
+                                glm::vec3 offset = rotated * kCharScale;
+                                offset.y *= gs_scale_;
+                                cg.position = spawn + offset + glm::vec3(0, 2.0f, 0);
+                                cg.scale *= kCharScale;
+                                cg.opacity = std::min(1.0f, cg.opacity * 1.3f);
+                                merged.push_back(cg);
+                            }
+                            std::fprintf(stderr, "[IslandDemo] Character re-merged: %u map + %u char Gaussians\n",
+                                static_cast<uint32_t>(map_gaussians_.size()),
+                                static_cast<uint32_t>(char_gs.size()));
+                        }
+
+                        auto cloud = GaussianCloud::from_gaussians(std::move(merged));
+                        uint32_t gs_w = app.renderer().gs_renderer().output_width();
+                        uint32_t gs_h = app.renderer().gs_renderer().output_height();
+                        if (gs_w == 0) { gs_w = 320; gs_h = 240; }
+                        app.renderer().init_gs(cloud, gs_w, gs_h);
                     }
 
                     std::fprintf(stderr, "[IslandDemo] Spawned at (%.1f, %.1f, %.1f)\n",
-                        portal.spawn_position.x, portal.spawn_position.y, portal.spawn_position.z);
+                        spawn.x, spawn.y, spawn.z);
                     break;
                 }
             }
