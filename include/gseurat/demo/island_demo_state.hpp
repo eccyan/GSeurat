@@ -10,6 +10,7 @@
 #include "gseurat/engine/types.hpp"
 #include "gseurat/engine/world_streamer.hpp"
 #include "gseurat/engine/ecs/types.hpp"
+#include "gseurat/demo/bone_animation_registry.hpp"
 
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
@@ -122,6 +123,9 @@ private:
 
     // World streaming
     std::unique_ptr<WorldStreamer> world_streamer_;
+
+    // Bone animation registry (data-driven NPC animation)
+    BoneAnimationRegistry bone_anim_registry_;
 
     // Orbit camera (third-person around player)
     float azimuth_ = 0.0f;
