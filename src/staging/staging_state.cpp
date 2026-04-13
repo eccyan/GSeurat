@@ -79,6 +79,16 @@ void StagingState::on_enter(AppBase& app) {
     }
     std::fprintf(stderr, "[Staging] Ready\n");
 
+    // Register staging-specific panels
+    app.dev_overlay().register_panel("Scene", [this](AppBase& a) { draw_scene_panel(a); });
+    app.dev_overlay().register_panel("Character", [this](AppBase& a) { draw_character_panel(a); });
+    app.dev_overlay().register_panel("Camera", [this](AppBase& a) { draw_camera_panel(a); });
+
+    // Auto-show dev overlay in staging
+    if (!app.dev_overlay().visible()) {
+        app.dev_overlay().toggle();
+    }
+
     // ── Register camera review control-server commands ──
     using json = nlohmann::json;
 
@@ -173,34 +183,34 @@ void StagingState::on_enter(AppBase& app) {
             float dw = io.DisplaySize.x;
             float dh = io.DisplaySize.y;
 
-            // Panels — report visibility; geometry is 0 since imgui_internal.h
-            // is not included (FindWindowByName unavailable).
+            // Panels — DevOverlay manages visibility now; report overlay state
+            bool overlay_vis = app.dev_overlay().visible();
             auto add_panel = [&](const char* name, bool visible) {
                 vs.panels.push_back({name, visible, 0, 0, 0, 0, dw, dh});
             };
-            add_panel("Viewport Info", show_viewport_info_);
-            add_panel("Render Settings", show_render_settings_);
-            add_panel("GS Parameters", show_gs_params_);
-            add_panel("Feature Toggles", show_feature_toggles_);
-            add_panel("Lighting", show_lighting_);
-            add_panel("Camera", show_camera_);
-            add_panel("Performance", show_performance_);
+            add_panel("Viewport Info", overlay_vis);
+            add_panel("Render Settings", overlay_vis);
+            add_panel("GS Parameters", overlay_vis);
+            add_panel("Feature Toggles", overlay_vis);
+            add_panel("Lighting", overlay_vis);
+            add_panel("Camera", overlay_vis);
+            add_panel("Performance", overlay_vis);
             add_panel("Character", show_character_);
 
-            // Gizmos
+            // Gizmos — always visible (managed by static bools in draw_gizmos)
             auto& sd = last_scene_data_;
-            vs.gizmos.push_back({"lights", show_gizmo_lights_,
+            vs.gizmos.push_back({"lights", true,
                 sd ? static_cast<int>(sd->static_lights.size()) : 0});
-            vs.gizmos.push_back({"emitters", show_gizmo_emitters_,
+            vs.gizmos.push_back({"emitters", true,
                 sd ? static_cast<int>(sd->gs_particle_emitters.size()) : 0});
-            vs.gizmos.push_back({"vfx_instances", show_gizmo_vfx_,
+            vs.gizmos.push_back({"vfx_instances", true,
                 sd ? static_cast<int>(sd->vfx_instances.size()) : 0});
-            vs.gizmos.push_back({"game_objects", show_gizmo_game_objects_,
+            vs.gizmos.push_back({"game_objects", true,
                 sd ? static_cast<int>(sd->game_objects.size()) : 0});
-            vs.gizmos.push_back({"camera_zones", show_gizmo_camera_zones_,
+            vs.gizmos.push_back({"camera_zones", true,
                 sd && sd->camera_zones
                     ? static_cast<int>(sd->camera_zones->volumes.size()) : 0});
-            vs.gizmos.push_back({"portals", show_gizmo_portals_,
+            vs.gizmos.push_back({"portals", true,
                 sd ? static_cast<int>(sd->portals.size()) : 0});
 
             // Scene
@@ -327,7 +337,8 @@ void StagingState::update(AppBase& app, float dt) {
     anim_time_ += dt;
     app.renderer().gs_renderer().set_effect_time(anim_time_);
 
-    auto& io = ImGui::GetIO();
+    bool wants_mouse = app.dev_overlay().wants_mouse();
+    bool wants_keyboard = app.dev_overlay().wants_keyboard();
 
     if (camera_review_ && camera_review_->is_active()) {
         // ── Camera Review Mode ──
@@ -338,7 +349,7 @@ void StagingState::update(AppBase& app, float dt) {
         // Only pass mouse delta when left-dragging (like orbit camera)
         float mouse_dx = 0.0f;
         float mouse_dy = 0.0f;
-        if (!io.WantCaptureMouse &&
+        if (!wants_mouse &&
             glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS) {
             mouse_dx = static_cast<float>(mx - last_mouse_x_) * kOrbitSensitivity;
             mouse_dy = static_cast<float>(my - last_mouse_y_) * kOrbitSensitivity;
@@ -348,8 +359,9 @@ void StagingState::update(AppBase& app, float dt) {
 
         // Only block WASD when user is actively typing in an ImGui text field,
         // not just when a window has focus (WantCaptureKeyboard is too broad).
+        auto& io = ImGui::GetIO();
         bool typing_in_widget = ImGui::IsAnyItemActive() && io.WantTextInput;
-        camera_review_->update(dt, app.input(), io.WantCaptureMouse, typing_in_widget,
+        camera_review_->update(dt, app.input(), wants_mouse, typing_in_widget,
                                mouse_dx, mouse_dy);
 
         // Build view/proj from CameraState
@@ -370,24 +382,20 @@ void StagingState::update(AppBase& app, float dt) {
         }
 
         // R key → reset player
-        if (!io.WantCaptureKeyboard && app.input().was_key_pressed(GLFW_KEY_R)) {
+        if (!wants_keyboard && app.input().was_key_pressed(GLFW_KEY_R)) {
             camera_review_->reset_player();
-        }
-
-        // Toggle UI visibility (Tab)
-        if (!io.WantCaptureKeyboard && app.input().was_key_pressed(GLFW_KEY_TAB)) {
-            hide_ui_ = !hide_ui_;
         }
 
         // Right-click teleport via ground plane raycast (edge-triggered)
         bool right_down = glfwGetMouseButton(app.window(), GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS;
         bool right_pressed = right_down && !right_click_prev_;
         right_click_prev_ = right_down;
-        if (!io.WantCaptureMouse && right_pressed) {
+        if (!wants_mouse && right_pressed) {
+            auto& io2 = ImGui::GetIO();
             double tmx, tmy;
             glfwGetCursorPos(app.window(), &tmx, &tmy);
-            float ndc_x = (2.0f * static_cast<float>(tmx) / io.DisplaySize.x) - 1.0f;
-            float ndc_y = 1.0f - (2.0f * static_cast<float>(tmy) / io.DisplaySize.y);
+            float ndc_x = (2.0f * static_cast<float>(tmx) / io2.DisplaySize.x) - 1.0f;
+            float ndc_y = 1.0f - (2.0f * static_cast<float>(tmy) / io2.DisplaySize.y);
             glm::mat4 inv_vp = glm::inverse(gs_vp_);
             glm::vec4 near_clip = inv_vp * glm::vec4(ndc_x, ndc_y, 0.0f, 1.0f);
             glm::vec4 far_clip  = inv_vp * glm::vec4(ndc_x, ndc_y, 1.0f, 1.0f);
@@ -406,7 +414,7 @@ void StagingState::update(AppBase& app, float dt) {
     } else {
         // ── Orbit Camera (default) ──
         // Camera orbit — only when ImGui doesn't want the mouse
-        if (!io.WantCaptureMouse) {
+        if (!wants_mouse) {
             auto* window = app.window();
             double mx, my;
             glfwGetCursorPos(window, &mx, &my);
@@ -447,13 +455,8 @@ void StagingState::update(AppBase& app, float dt) {
                 distance_ = std::max(1.0f, distance_);
             }
 
-            // Toggle UI visibility (Tab)
-            if (app.input().was_key_pressed(GLFW_KEY_TAB)) {
-                hide_ui_ = !hide_ui_;
-            }
-
             // Reset camera
-            if (glfwGetKey(window, GLFW_KEY_R) == GLFW_PRESS && !io.WantCaptureKeyboard) {
+            if (glfwGetKey(window, GLFW_KEY_R) == GLFW_PRESS && !wants_keyboard) {
                 azimuth_ = 0.0f;
                 elevation_ = 0.3f;
                 distance_ = 100.0f;
@@ -562,10 +565,8 @@ void StagingState::update(AppBase& app, float dt) {
         }
     }
 
-    // Draw ImGui (hidden with Tab)
-    if (!hide_ui_) {
-        draw_imgui(app);
-    }
+    // Draw gizmos (always, DevOverlay handles panel visibility)
+    draw_gizmos(app);
 
     // Update screen effects
     app.screen_effects().update(dt);
@@ -575,314 +576,31 @@ void StagingState::build_draw_lists(AppBase& /*app*/) {
     // No sprite draw lists — ImGui handles everything
 }
 
-// ── ImGui Panels ──
+// ── Staging-specific panels ──
 
-void StagingState::draw_imgui(AppBase& app) {
-    // Main menu bar
-    if (ImGui::BeginMainMenuBar()) {
-        if (ImGui::BeginMenu("Scene")) {
-            if (ImGui::MenuItem("Reload")) {
-                app.clear_scene();
-                app.init_scene(app.scene_objects().current_scene_path);
-                camera_initialized_ = false;
-            }
-            ImGui::Separator();
-            for (const auto& path : scene_files_) {
-                auto name = std::filesystem::path(path).filename().string();
-                if (ImGui::MenuItem(name.c_str())) {
-                    app.clear_scene();
-                    app.init_scene(path);
-                    camera_initialized_ = false;
-                }
-            }
-            ImGui::EndMenu();
-        }
-        if (ImGui::BeginMenu("View")) {
-            ImGui::MenuItem("Viewport Info", nullptr, &show_viewport_info_);
-            ImGui::MenuItem("Render Settings", nullptr, &show_render_settings_);
-            ImGui::MenuItem("GS Parameters", nullptr, &show_gs_params_);
-            ImGui::MenuItem("Feature Toggles", nullptr, &show_feature_toggles_);
-            ImGui::MenuItem("Lighting", nullptr, &show_lighting_);
-            ImGui::MenuItem("Camera", nullptr, &show_camera_);
-            ImGui::MenuItem("Performance", nullptr, &show_performance_);
-            ImGui::MenuItem("Character", nullptr, &show_character_);
-            ImGui::Separator();
-            ImGui::MenuItem("Gizmo: Lights", nullptr, &show_gizmo_lights_);
-            ImGui::MenuItem("Gizmo: Emitters", nullptr, &show_gizmo_emitters_);
-            ImGui::MenuItem("Gizmo: VFX", nullptr, &show_gizmo_vfx_);
-            ImGui::MenuItem("Gizmo: Game Objects", nullptr, &show_gizmo_game_objects_);
-            ImGui::MenuItem("Gizmo: Camera Zones", nullptr, &show_gizmo_camera_zones_);
-            ImGui::MenuItem("Gizmo: Portals", nullptr, &show_gizmo_portals_);
-            ImGui::MenuItem("Gizmo: World", nullptr, &show_gizmo_world_);
-            ImGui::Separator();
-            if (ImGui::MenuItem("Deselect All")) {
-                show_viewport_info_ = false;
-                show_render_settings_ = false;
-                show_gs_params_ = false;
-                show_feature_toggles_ = false;
-                show_lighting_ = false;
-                show_camera_ = false;
-                show_performance_ = false;
-                show_character_ = false;
-                show_gizmo_lights_ = false;
-                show_gizmo_emitters_ = false;
-                show_gizmo_vfx_ = false;
-                show_gizmo_game_objects_ = false;
-                show_gizmo_camera_zones_ = false;
-                show_gizmo_portals_ = false;
-                show_gizmo_world_ = false;
-            }
-            ImGui::EndMenu();
-        }
-        ImGui::EndMainMenuBar();
-    }
-
-    if (show_viewport_info_) draw_viewport_info(app);
-    if (show_render_settings_) draw_render_settings(app);
-    if (show_gs_params_) draw_gs_params(app);
-    if (show_feature_toggles_) draw_feature_toggles(app);
-    if (show_lighting_) draw_lighting(app);
-    if (show_camera_) draw_camera_panel(app);
-    if (show_performance_) draw_performance(app);
-    if (show_character_) draw_character_panel(app);
-    draw_gizmos(app);
-}
-
-void StagingState::draw_viewport_info(AppBase& app) {
+void StagingState::draw_scene_panel(AppBase& app) {
     ImGui::SetNextWindowPos(ImVec2(10, 30), ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize(ImVec2(250, 120), ImGuiCond_FirstUseEver);
-    if (!ImGui::Begin("Viewport Info", nullptr, ImGuiWindowFlags_NoCollapse)) {
+    ImGui::SetNextWindowSize(ImVec2(250, 150), ImGuiCond_FirstUseEver);
+    if (!ImGui::Begin("Scene")) {
         ImGui::End();
         return;
     }
-
-    ImGui::Text("FPS: %.1f", app.debug_metrics().fps);
-    if (app.renderer().has_gs_cloud()) {
-        auto& gs = app.renderer().gs_renderer();
-        ImGui::Text("Gaussians: %u / %u", gs.visible_count(), gs.gaussian_count());
+    ImGui::Text("Scene: %s",
+        std::filesystem::path(app.scene_objects().current_scene_path).filename().string().c_str());
+    if (ImGui::Button("Reload")) {
+        app.clear_scene();
+        app.init_scene(app.scene_objects().current_scene_path);
+        camera_initialized_ = false;
     }
-    ImGui::Text("Scene: %s", std::filesystem::path(app.scene_objects().current_scene_path).filename().string().c_str());
     ImGui::Separator();
-    if (camera_review_ && camera_review_->is_active()) {
-        auto pos = camera_review_->player_position();
-        ImGui::Text("Player: %.1f, %.1f, %.1f", pos.x, pos.y, pos.z);
-        auto zone = camera_review_->active_zone_name();
-        ImGui::Text("Zone: %s", zone.c_str());
-        ImGui::Separator();
-        ImGui::TextDisabled("WASD: Move  Right-click: Teleport");
-        ImGui::TextDisabled("R: Reset  Tab: Hide UI");
-    } else {
-        ImGui::Text("Az: %.1f  El: %.1f  Dist: %.1f", azimuth_ * 57.2958f, elevation_ * 57.2958f, distance_);
-        ImGui::Text("Target: %.1f, %.1f, %.1f", target_.x, target_.y, target_.z);
-        ImGui::Separator();
-        ImGui::TextDisabled("Drag: Orbit  Shift+Drag: Pan  Scroll: Zoom");
-        ImGui::TextDisabled("R: Reset  Tab: Hide UI");
-    }
-
-    ImGui::End();
-}
-
-void StagingState::draw_render_settings(AppBase& app) {
-    ImGui::SetNextWindowPos(ImVec2(1020, 30), ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize(ImVec2(250, 400), ImGuiCond_FirstUseEver);
-    if (!ImGui::Begin("Render Settings")) {
-        ImGui::End();
-        return;
-    }
-
-    auto& pp = app.renderer().post_process_params();
-
-    if (ImGui::CollapsingHeader("Bloom", ImGuiTreeNodeFlags_DefaultOpen)) {
-        ImGui::SliderFloat("Threshold##bloom", &pp.bloom_threshold, 0.0f, 5.0f, "%.3f", ImGuiSliderFlags_NoInput);
-        ImGui::SliderFloat("Soft Knee##bloom", &pp.bloom_soft_knee, 0.0f, 1.0f, "%.3f", ImGuiSliderFlags_NoInput);
-        ImGui::SliderFloat("Intensity##bloom", &pp.bloom_intensity, 0.0f, 2.0f, "%.3f", ImGuiSliderFlags_NoInput);
-    }
-    if (ImGui::CollapsingHeader("Exposure")) {
-        ImGui::SliderFloat("Exposure##pp", &pp.exposure, 0.1f, 5.0f, "%.3f", ImGuiSliderFlags_NoInput);
-    }
-    if (ImGui::CollapsingHeader("Depth of Field")) {
-        ImGui::SliderFloat("Focus Distance##dof", &pp.dof_focus_distance, 0.1f, 200.0f, "%.3f", ImGuiSliderFlags_NoInput);
-        ImGui::SliderFloat("Focus Range##dof", &pp.dof_focus_range, 0.1f, 50.0f, "%.3f", ImGuiSliderFlags_NoInput);
-        ImGui::SliderFloat("Max Blur##dof", &pp.dof_max_blur, 0.0f, 2.0f, "%.3f", ImGuiSliderFlags_NoInput);
-    }
-    if (ImGui::CollapsingHeader("Vignette")) {
-        ImGui::SliderFloat("Radius##vig", &pp.vignette_radius, 0.0f, 1.5f, "%.3f", ImGuiSliderFlags_NoInput);
-        ImGui::SliderFloat("Softness##vig", &pp.vignette_softness, 0.0f, 1.0f, "%.3f", ImGuiSliderFlags_NoInput);
-    }
-    if (ImGui::CollapsingHeader("God Rays")) {
-        float gr = app.renderer().god_rays_intensity();
-        if (ImGui::SliderFloat("Intensity##godrays", &gr, 0.0f, 3.0f, "%.3f", ImGuiSliderFlags_NoInput)) {
-            app.renderer().set_god_rays_intensity(gr);
+    for (const auto& path : scene_files_) {
+        auto name = std::filesystem::path(path).filename().string();
+        if (ImGui::MenuItem(name.c_str())) {
+            app.clear_scene();
+            app.init_scene(path);
+            camera_initialized_ = false;
         }
     }
-
-    ImGui::End();
-}
-
-void StagingState::draw_gs_params(AppBase& app) {
-    if (!app.renderer().has_gs_cloud()) return;
-
-    ImGui::SetNextWindowPos(ImVec2(1020, 440), ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize(ImVec2(250, 250), ImGuiCond_FirstUseEver);
-    if (!ImGui::Begin("GS Parameters")) {
-        ImGui::End();
-        return;
-    }
-
-    auto& gs = app.renderer().gs_renderer();
-
-    float scale = gs.scale_multiplier();
-    if (ImGui::SliderFloat("Scale", &scale, 0.1f, 10.0f, "%.3f", ImGuiSliderFlags_NoInput)) {
-        gs.set_scale_multiplier(scale);
-    }
-
-    int toon = gs.toon_bands();
-    if (ImGui::SliderInt("Toon Bands", &toon, 0, 5, "%d", ImGuiSliderFlags_NoInput)) {
-        gs.set_toon_bands(toon);
-    }
-
-    float pixel_intensity = gs.pixel_art_intensity();
-    if (ImGui::SliderFloat("Pixel Art", &pixel_intensity, 0.0f, 1.0f, "%.2f", ImGuiSliderFlags_NoInput)) {
-        gs.set_pixel_art_intensity(pixel_intensity);
-    }
-
-    ImGui::Separator();
-
-    int budget = static_cast<int>(app.renderer().gs_gaussian_budget());
-    if (ImGui::SliderInt("LOD Budget", &budget, 0, 500000, "%d", ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_NoInput)) {
-        app.renderer().set_gs_gaussian_budget(static_cast<uint32_t>(budget));
-    }
-    ImGui::SameLine();
-    ImGui::TextDisabled("(0 = unlimited)");
-
-    if (budget > 0 && app.renderer().has_gs_cloud()) {
-        ImGui::Text("Active: %u / %u", gs.gaussian_count(), gs.max_gaussian_count());
-    }
-
-    ImGui::End();
-}
-
-void StagingState::draw_feature_toggles(AppBase& app) {
-    ImGui::SetNextWindowPos(ImVec2(10, 400), ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize(ImVec2(250, 350), ImGuiCond_FirstUseEver);
-    if (!ImGui::Begin("Feature Toggles")) {
-        ImGui::End();
-        return;
-    }
-
-    auto& f = app.feature_flags();
-
-    if (ImGui::CollapsingHeader("Post-Process", ImGuiTreeNodeFlags_DefaultOpen)) {
-        ImGui::Checkbox("Bloom", &f.bloom);
-        ImGui::Checkbox("Depth of Field", &f.depth_of_field);
-        ImGui::Checkbox("Vignette", &f.vignette);
-        ImGui::Checkbox("Tone Mapping", &f.tone_mapping);
-        ImGui::Checkbox("Screen Effects", &f.screen_effects);
-    }
-    if (ImGui::CollapsingHeader("GS Pipeline")) {
-        ImGui::Checkbox("GS Rendering", &f.gs_rendering);
-        ImGui::Checkbox("Chunk Culling", &f.gs_chunk_culling);
-        ImGui::Checkbox("LOD", &f.gs_lod);
-        ImGui::Checkbox("Adaptive Budget", &f.gs_adaptive_budget);
-    }
-    if (ImGui::CollapsingHeader("Scene")) {
-        ImGui::Checkbox("Particles", &f.particles);
-        ImGui::Checkbox("Animation", &f.animation);
-    }
-
-    ImGui::End();
-}
-
-void StagingState::draw_lighting(AppBase& app) {
-    if (!app.renderer().has_gs_cloud()) return;
-
-    ImGui::SetNextWindowPos(ImVec2(270, 30), ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize(ImVec2(300, 400), ImGuiCond_FirstUseEver);
-    if (!ImGui::Begin("Lighting")) {
-        ImGui::End();
-        return;
-    }
-
-    auto& gs = app.renderer().gs_renderer();
-
-    // Light mode
-    int light_mode = gs.light_mode();
-    const char* light_modes[] = {"Off", "Directional", "Point Lights"};
-    if (ImGui::Combo("Light Mode", &light_mode, light_modes, 3)) {
-        gs.set_light_mode(light_mode);
-    }
-
-    float intensity = gs.light_intensity();
-    if (ImGui::SliderFloat("Global Intensity", &intensity, 0.0f, 5.0f, "%.3f", ImGuiSliderFlags_NoInput)) {
-        gs.set_light_intensity(intensity);
-    }
-
-    ImGui::Separator();
-
-    // Ambient
-    auto ambient = app.scene().ambient_color();
-    float amb[4] = {ambient.r, ambient.g, ambient.b, ambient.a};
-    if (ImGui::ColorEdit4("Ambient", amb)) {
-        app.scene().set_ambient_color({amb[0], amb[1], amb[2], amb[3]});
-    }
-
-    ImGui::Separator();
-
-    // Point lights list
-    auto lights = gs.point_lights();  // copy for editing
-    bool lights_changed = false;
-    ImGui::Text("Point Lights: %zu / 8", lights.size());
-
-    for (size_t i = 0; i < lights.size(); i++) {
-        ImGui::PushID(static_cast<int>(i));
-        if (ImGui::CollapsingHeader(("Light " + std::to_string(i)).c_str())) {
-            float pos[3] = {lights[i].position_and_radius.x,
-                            lights[i].position_and_radius.y,
-                            lights[i].position_and_radius.z};
-            if (ImGui::DragFloat3("Position", pos, 0.5f)) {
-                lights[i].position_and_radius.x = pos[0];
-                lights[i].position_and_radius.y = pos[1];
-                lights[i].position_and_radius.z = pos[2];
-                lights_changed = true;
-            }
-            if (ImGui::DragFloat("Radius", &lights[i].position_and_radius.w, 0.5f, 0.1f, 500.0f)) {
-                lights_changed = true;
-            }
-            float col[3] = {lights[i].color.r, lights[i].color.g, lights[i].color.b};
-            if (ImGui::ColorEdit3("Color", col)) {
-                lights[i].color.r = col[0];
-                lights[i].color.g = col[1];
-                lights[i].color.b = col[2];
-                lights_changed = true;
-            }
-            if (ImGui::DragFloat("Intensity##light", &lights[i].color.a, 0.1f, 0.0f, 20.0f)) {
-                lights_changed = true;
-            }
-            if (ImGui::Button("Remove")) {
-                lights.erase(lights.begin() + static_cast<ptrdiff_t>(i));
-                lights_changed = true;
-                ImGui::PopID();
-                break;
-            }
-        }
-        ImGui::PopID();
-    }
-
-    if (lights.size() < 8 && ImGui::Button("+ Add Light")) {
-        PointLight new_light;
-        new_light.position_and_radius = glm::vec4(0.0f, 0.0f, 0.0f, 50.0f);
-        new_light.color = glm::vec4(1.0f, 1.0f, 1.0f, 5.0f);
-        lights.push_back(new_light);
-        lights_changed = true;
-        if (light_mode == 0) {
-            gs.set_light_mode(2);
-        }
-    }
-
-    if (lights_changed) {
-        gs.set_point_lights(lights);
-    }
-
     ImGui::End();
 }
 
@@ -1039,30 +757,64 @@ void StagingState::draw_camera_panel(AppBase& app) {
     ImGui::End();
 }
 
-void StagingState::draw_performance(AppBase& app) {
-    ImGui::SetNextWindowPos(ImVec2(10, 160), ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize(ImVec2(250, 200), ImGuiCond_FirstUseEver);
-    if (!ImGui::Begin("Performance")) {
+void StagingState::draw_character_panel(AppBase& app) {
+    ImGui::SetNextWindowPos(ImVec2(10, 500), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(ImVec2(280, 200), ImGuiCond_FirstUseEver);
+    if (!ImGui::Begin("Character Animation", &show_character_)) {
         ImGui::End();
         return;
     }
 
-    float fps_val = app.debug_metrics().fps;
-    ImGui::Text("FPS: %.1f (%.2f ms)", fps_val, fps_val > 0.0f ? 1000.0f / fps_val : 0.0f);
-
-    // Reorder ring buffer for ImGui::PlotLines
-    const auto& dm = app.debug_metrics();
-    float ordered[300];
-    for (int i = 0; i < 300; i++) {
-        ordered[i] = dm.frame_times[(dm.frame_time_idx + i) % 300];
+    if (!character_data_) {
+        ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.6f, 1.0f), "No character loaded.");
+        ImGui::TextWrapped("Use 'Preview in Staging' from Echidna, or send load_character command.");
+        ImGui::End();
+        return;
     }
-    ImGui::PlotLines("Frame Time", ordered, 300, 0, nullptr, 0.0f, 50.0f, ImVec2(0, 80));
 
-    if (app.renderer().has_gs_cloud()) {
-        auto& gs = app.renderer().gs_renderer();
-        ImGui::Text("Gaussian Count: %u", gs.gaussian_count());
-        ImGui::Text("Visible: %u", gs.visible_count());
-        ImGui::Text("Max Capacity: %u", gs.max_gaussian_count());
+    ImGui::Text("Character: %s", character_data_->name.c_str());
+    ImGui::Text("Bones: %zu", character_data_->bones.size());
+    ImGui::Separator();
+
+    // Animation clip selection
+    if (!character_data_->clips.empty()) {
+        ImGui::Text("Animation Clips:");
+        for (int i = 0; i < static_cast<int>(character_data_->clips.size()); i++) {
+            const auto& clip = character_data_->clips[i];
+            bool is_selected = (i == selected_clip_);
+            if (ImGui::Selectable(clip.name.c_str(), is_selected)) {
+                selected_clip_ = i;
+                anim_player_->play(clip.name);
+                anim_playing_ = true;
+            }
+        }
+
+        ImGui::Separator();
+
+        // Playback controls
+        if (ImGui::Button(anim_playing_ ? "Pause" : "Play")) {
+            anim_playing_ = !anim_playing_;
+            if (anim_playing_ && anim_player_ && !anim_player_->is_playing()) {
+                if (selected_clip_ >= 0 && selected_clip_ < static_cast<int>(character_data_->clips.size())) {
+                    anim_player_->play(character_data_->clips[selected_clip_].name);
+                }
+            }
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Stop")) {
+            anim_playing_ = false;
+            app.renderer().gs_renderer().clear_bone_transforms();
+        }
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(80);
+        ImGui::SliderFloat("Speed", &anim_speed_, 0.25f, 2.0f, "%.2fx");
+
+        // Show current clip info
+        if (anim_player_ && anim_player_->is_playing()) {
+            ImGui::Text("Playing: %s", anim_player_->current_clip().c_str());
+        }
+    } else {
+        ImGui::TextColored(ImVec4(0.8f, 0.6f, 0.3f, 1.0f), "No animation clips defined.");
     }
 
     ImGui::End();
@@ -1149,6 +901,14 @@ static void draw_region_gizmo(ImDrawList* dl, const GsAnimRegion& region,
 void StagingState::draw_gizmos(AppBase& app) {
     if (!app.renderer().has_gs_cloud()) return;
 
+    static bool show_lights = true;
+    static bool show_emitters = true;
+    static bool show_vfx = true;
+    static bool show_game_objects = true;
+    static bool show_camera_zones = true;
+    static bool show_portals = true;
+    static bool show_world = true;
+
     const glm::mat4& vp = gs_vp_;  // computed once in update()
     auto& gs = app.renderer().gs_renderer();
 
@@ -1159,7 +919,7 @@ void StagingState::draw_gizmos(AppBase& app) {
     ImDrawList* dl = ImGui::GetForegroundDrawList();
 
     // ── Light gizmos ──
-    if (show_gizmo_lights_) {
+    if (show_lights) {
         const auto& lights = gs.point_lights();
         for (size_t i = 0; i < lights.size(); i++) {
             glm::vec3 pos(lights[i].position_and_radius.x,
@@ -1182,7 +942,7 @@ void StagingState::draw_gizmos(AppBase& app) {
     }
 
     // ── Standalone emitter gizmos (with spawn region) ──
-    if (show_gizmo_emitters_) {
+    if (show_emitters) {
         ImU32 emitter_col = IM_COL32(236, 72, 153, 200);  // pink
         auto& emitters = app.renderer().gs_particle_emitters();
         for (size_t i = 0; i < emitters.size(); i++) {
@@ -1202,7 +962,7 @@ void StagingState::draw_gizmos(AppBase& app) {
     }
 
     // ── Scene animation gizmos (region wireframes) ──
-    if (show_gizmo_vfx_) {
+    if (show_vfx) {
         ImU32 anim_col = IM_COL32(6, 182, 212, 180);  // cyan
         const auto& anims = app.renderer().gs_scene_animations();
         for (size_t i = 0; i < anims.size(); i++) {
@@ -1219,7 +979,7 @@ void StagingState::draw_gizmos(AppBase& app) {
     }
 
     // ── VFX instance gizmos (with element details) ──
-    if (show_gizmo_vfx_) {
+    if (show_vfx) {
         const auto& vfx = app.renderer().vfx_instances();
         for (size_t i = 0; i < vfx.size(); i++) {
             auto inst_pos = vfx[i].position();
@@ -1275,7 +1035,7 @@ void StagingState::draw_gizmos(AppBase& app) {
     }
 
     // ── Game Object gizmos ──
-    if (show_gizmo_game_objects_) {
+    if (show_game_objects) {
         ImU32 go_col = IM_COL32(68, 136, 255, 200);       // blue
         ImU32 go_col_static = IM_COL32(136, 136, 136, 150); // gray for no-component
         const auto& game_objects = app.scene_objects().game_objects;
@@ -1304,7 +1064,7 @@ void StagingState::draw_gizmos(AppBase& app) {
     }
 
     // ── Portal gizmos ──
-    if (show_gizmo_portals_) {
+    if (show_portals) {
         ImU32 portal_col = IM_COL32(0, 220, 220, 200);  // cyan
         const auto& portals = app.scene_objects().portals;
         auto terrain_aabb = app.gs_terrain().terrain_aabb;
@@ -1336,12 +1096,12 @@ void StagingState::draw_gizmos(AppBase& app) {
     }
 
     // ── Camera Zone gizmos (visible in both orbit and review modes) ──
-    if (show_gizmo_camera_zones_ && camera_review_ && camera_review_->has_zone_data()) {
+    if (show_camera_zones && camera_review_ && camera_review_->has_zone_data()) {
         camera_review_->draw_gizmos(vp, sw, sh, dl, project_wrapper, this);
     }
 
     // ── World manifest gizmos ──
-    if (show_gizmo_world_ && app.scene_objects().world_manifest.has_value()) {
+    if (show_world && app.scene_objects().world_manifest.has_value()) {
         const auto& wm = *app.scene_objects().world_manifest;
 
         // Chunk wireframes (green)
@@ -1425,71 +1185,6 @@ void StagingState::load_character(const std::string& manifest_path, AppBase& app
 
     // Clear bone transforms (identity) until animation starts
     app.renderer().gs_renderer().clear_bone_transforms();
-}
-
-void StagingState::draw_character_panel(AppBase& app) {
-    if (!show_character_) return;
-
-    ImGui::SetNextWindowPos(ImVec2(10, 500), ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize(ImVec2(280, 200), ImGuiCond_FirstUseEver);
-    if (!ImGui::Begin("Character Animation", &show_character_)) {
-        ImGui::End();
-        return;
-    }
-
-    if (!character_data_) {
-        ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.6f, 1.0f), "No character loaded.");
-        ImGui::TextWrapped("Use 'Preview in Staging' from Echidna, or send load_character command.");
-        ImGui::End();
-        return;
-    }
-
-    ImGui::Text("Character: %s", character_data_->name.c_str());
-    ImGui::Text("Bones: %zu", character_data_->bones.size());
-    ImGui::Separator();
-
-    // Animation clip selection
-    if (!character_data_->clips.empty()) {
-        ImGui::Text("Animation Clips:");
-        for (int i = 0; i < static_cast<int>(character_data_->clips.size()); i++) {
-            const auto& clip = character_data_->clips[i];
-            bool is_selected = (i == selected_clip_);
-            if (ImGui::Selectable(clip.name.c_str(), is_selected)) {
-                selected_clip_ = i;
-                anim_player_->play(clip.name);
-                anim_playing_ = true;
-            }
-        }
-
-        ImGui::Separator();
-
-        // Playback controls
-        if (ImGui::Button(anim_playing_ ? "Pause" : "Play")) {
-            anim_playing_ = !anim_playing_;
-            if (anim_playing_ && anim_player_ && !anim_player_->is_playing()) {
-                if (selected_clip_ >= 0 && selected_clip_ < static_cast<int>(character_data_->clips.size())) {
-                    anim_player_->play(character_data_->clips[selected_clip_].name);
-                }
-            }
-        }
-        ImGui::SameLine();
-        if (ImGui::Button("Stop")) {
-            anim_playing_ = false;
-            app.renderer().gs_renderer().clear_bone_transforms();
-        }
-        ImGui::SameLine();
-        ImGui::SetNextItemWidth(80);
-        ImGui::SliderFloat("Speed", &anim_speed_, 0.25f, 2.0f, "%.2fx");
-
-        // Show current clip info
-        if (anim_player_ && anim_player_->is_playing()) {
-            ImGui::Text("Playing: %s", anim_player_->current_clip().c_str());
-        }
-    } else {
-        ImGui::TextColored(ImVec4(0.8f, 0.6f, 0.3f, 1.0f), "No animation clips defined.");
-    }
-
-    ImGui::End();
 }
 
 }  // namespace gseurat
