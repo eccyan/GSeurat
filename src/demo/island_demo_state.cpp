@@ -663,6 +663,18 @@ void IslandDemoState::update(AppBase& app, float dt) {
                         }
                     }
 
+                    // Reset camera zone system — island zones are invalid in instances
+                    // (falls back to orbit camera which follows the player anywhere)
+                    camera_zone_system_.reset();
+
+                    // Reset camera target to avoid stale smoothing from old scene
+                    camera_target_ = portal.spawn_position + glm::vec3(0, kCameraYOffset, 0);
+
+                    // Adjust orbit camera for indoor/outdoor scale
+                    // Ceiling at Y=6, so camera must be below: target_y(2.5) + dist*sin(elev) < 6
+                    distance_ = 8.0f;
+                    elevation_ = 0.4f;   // ~23 deg → cam_y ≈ 2.5 + 8*sin(0.4) ≈ 5.6 (below ceiling)
+
                     // Teleport player to spawn position
                     glm::vec3 spawn = portal.spawn_position;
                     character_origin_ = spawn;
