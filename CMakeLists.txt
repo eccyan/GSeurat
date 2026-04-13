@@ -188,6 +188,8 @@ add_library(gseurat_core OBJECT
     src/engine/world_manifest.cpp
     src/engine/world_streamer.cpp
     src/engine/bone_animation_system.cpp
+    src/engine/debug_draw.cpp
+    src/engine/trigger_systems.cpp
 )
 
 
@@ -247,7 +249,6 @@ add_executable(gseurat_demo
     src/demo/demo_app.cpp
     src/demo/gs_demo_state.cpp
     src/demo/island_demo_state.cpp
-    src/demo/island_systems.cpp
 )
 target_compile_definitions(gseurat_demo PRIVATE VG_BUILD_PROFILE=1)
 target_link_libraries(gseurat_demo PRIVATE gseurat_core)
@@ -347,7 +348,7 @@ add_gseurat_test(test_gs_post_process)
 add_gseurat_test(test_pbd_solver)
 add_gseurat_test(test_component_registry src/engine/component_registry.cpp)
 add_gseurat_test(test_system_scheduler  src/engine/system_scheduler.cpp)
-add_gseurat_test(test_island_systems    src/demo/island_systems.cpp
+add_gseurat_test(test_island_systems    src/engine/trigger_systems.cpp
     src/character/character_manifest.cpp
     src/character/bone_animation_player.cpp
     src/character/bone_animation_state_machine.cpp)

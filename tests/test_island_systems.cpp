@@ -1,5 +1,5 @@
-#include "gseurat/demo/island_systems.hpp"
-#include "gseurat/demo/island_components.hpp"
+#include "gseurat/engine/trigger_systems.hpp"
+#include "gseurat/engine/trigger_components.hpp"
 #include "gseurat/engine/coordinate.hpp"
 #include "gseurat/engine/ecs/default_components.hpp"
 #include "gseurat/engine/ecs/world.hpp"
@@ -15,7 +15,7 @@ int main() {
     {
         ecs::World world;
         auto player = world.create();
-        world.add<PlayerController>(player, {});
+        world.add<PlayerTag>(player);
         world.add<ecs::Transform>(player, {coord::WorldPos(5.0f, 0.0f, 5.0f), {1.0f, 1.0f}});
 
         auto trigger = world.create();
@@ -31,7 +31,7 @@ int main() {
     {
         ecs::World world;
         auto player = world.create();
-        world.add<PlayerController>(player, {});
+        world.add<PlayerTag>(player);
         world.add<ecs::Transform>(player, {coord::WorldPos(0.0f, 0.0f, 0.0f), {1.0f, 1.0f}});
 
         auto trigger = world.create();
@@ -47,7 +47,7 @@ int main() {
     {
         ecs::World world;
         auto player = world.create();
-        world.add<PlayerController>(player, {});
+        world.add<PlayerTag>(player);
         world.add<ecs::Transform>(player, {coord::WorldPos(5.0f, 0.0f, 5.0f), {1.0f, 1.0f}});
 
         auto trigger = world.create();
@@ -84,7 +84,7 @@ int main() {
     {
         ecs::World world;
         auto player = world.create();
-        world.add<PlayerController>(player, {});
+        world.add<PlayerTag>(player);
         world.add<ecs::Transform>(player, {coord::WorldPos(0.0f, 0.0f, 0.0f), {1.0f, 1.0f}});
 
         auto crystal = world.create();
@@ -102,7 +102,7 @@ int main() {
     {
         ecs::World world;
         auto player = world.create();
-        world.add<PlayerController>(player, {});
+        world.add<PlayerTag>(player);
         world.add<ecs::Transform>(player, {coord::WorldPos(0.0f, 0.0f, 0.0f), {1.0f, 1.0f}});
 
         auto crystal = world.create();
@@ -188,6 +188,6 @@ int main() {
         std::printf("PASS: linked trigger fires only once\n");
     }
 
-    std::printf("\nAll island system tests passed.\n");
+    std::printf("\nAll trigger system tests passed.\n");
     return 0;
 }

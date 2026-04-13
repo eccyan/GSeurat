@@ -1,43 +1,29 @@
-#include "gseurat/demo/island_systems.hpp"
-#include "gseurat/demo/island_components.hpp"
+#include "gseurat/engine/trigger_systems.hpp"
+#include "gseurat/engine/trigger_components.hpp"
 #include "gseurat/engine/bone_animation_registry.hpp"
 #include "gseurat/engine/ecs/default_components.hpp"
+
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
 
 namespace gseurat {
 
-namespace {
-BoneAnimationRegistry* g_npc_bone_registry = nullptr;
-}  // namespace
-
-void set_npc_bone_registry(BoneAnimationRegistry* reg) {
-    g_npc_bone_registry = reg;
-}
-
 void proximity_trigger_system(ecs::World& world, float dt) {
     (void)dt;
     glm::vec3 player_pos{0.0f};
     bool found = false;
-    world.view<PlayerController, ecs::Transform>().each(
-        [&](ecs::Entity, PlayerController&, ecs::Transform& t) {
+    world.view<PlayerTag, ecs::Transform>().each(
+        [&](ecs::Entity, PlayerTag&, ecs::Transform& t) {
             player_pos = t.position.vec();
             found = true;
         });
-    if (!found) {
-        std::fprintf(stderr, "[ProximityTrigger] No PlayerController entity found!\n");
-        return;
-    }
+    if (!found) return;
 
-    int trigger_count = 0;
-    int triggered_count = 0;
     world.view<ProximityTrigger, ecs::Transform>().each(
         [&](ecs::Entity, ProximityTrigger& pt, ecs::Transform& t) {
-            trigger_count++;
             if (pt.one_shot && pt.was_triggered) {
                 pt.triggered = true;
-                triggered_count++;
                 return;
             }
             float dx = t.position.x() - player_pos.x;
@@ -46,26 +32,13 @@ void proximity_trigger_system(ecs::World& world, float dt) {
             bool was = pt.triggered;
             pt.triggered = dist < pt.radius;
             if (pt.triggered && !was) {
-                std::fprintf(stderr, "[ProximityTrigger] ENTER at (%.1f, %.1f, %.1f) dist=%.1f radius=%.1f\n",
-                    t.position.x(), t.position.y(), t.position.z(), dist, pt.radius);
+                std::fprintf(stderr, "[ProximityTrigger] ENTER at (%.1f, %.1f, %.1f) dist=%.1f\n",
+                    t.position.x(), t.position.y(), t.position.z(), dist);
             }
-            if (!pt.triggered && was) {
-                std::fprintf(stderr, "[ProximityTrigger] EXIT at (%.1f, %.1f, %.1f)\n",
-                    t.position.x(), t.position.y(), t.position.z());
-            }
-            if (pt.triggered) triggered_count++;
             if (pt.triggered && pt.one_shot) {
                 pt.was_triggered = true;
             }
         });
-
-    // Log once at startup to verify system is running
-    static bool logged_once = false;
-    if (!logged_once) {
-        std::fprintf(stderr, "[ProximityTrigger] System running: %d triggers, player at (%.1f, %.1f, %.1f)\n",
-            trigger_count, player_pos.x, player_pos.y, player_pos.z);
-        logged_once = true;
-    }
 }
 
 void linked_trigger_system(ecs::World& world, float dt) {
@@ -74,14 +47,12 @@ void linked_trigger_system(ecs::World& world, float dt) {
         [&](ecs::Entity, LinkedTrigger& lt, ProximityTrigger& pt) {
             if (!pt.triggered || lt.fired) return;
             lt.fired = true;
-            // Find target entity and set its triggered state
             ecs::Entity target{lt.target_entity};
             auto* target_pt = world.try_get<ProximityTrigger>(target);
             if (target_pt) {
                 target_pt->triggered = true;
                 target_pt->was_triggered = true;
             }
-            // Also trigger EmissiveToggle directly if target has one
             auto* target_et = world.try_get<EmissiveToggle>(target);
             if (target_et) {
                 target_et->current_emission = target_et->emission;
@@ -90,30 +61,14 @@ void linked_trigger_system(ecs::World& world, float dt) {
 }
 
 void emissive_toggle_system(ecs::World& world, float dt) {
-    int count = 0;
     world.view<EmissiveToggle, ProximityTrigger>().each(
         [&](ecs::Entity, EmissiveToggle& et, ProximityTrigger& pt) {
-            count++;
             float target = pt.triggered ? et.emission : 0.0f;
-            float prev = et.current_emission;
             et.current_emission += (target - et.current_emission) * std::min(1.0f, dt * 3.0f);
-            if (prev < 0.1f && et.current_emission >= 0.1f) {
-                std::fprintf(stderr, "[EmissiveToggle] Glow ON (emission=%.2f, color=%.1f,%.1f,%.1f)\n",
-                    et.current_emission, et.color_r, et.color_g, et.color_b);
-            }
-            if (prev >= 0.1f && et.current_emission < 0.1f) {
-                std::fprintf(stderr, "[EmissiveToggle] Glow OFF\n");
-            }
         });
-    static bool logged_once = false;
-    if (!logged_once) {
-        std::fprintf(stderr, "[EmissiveToggle] System running: %d entities with EmissiveToggle+ProximityTrigger\n", count);
-        logged_once = true;
-    }
 }
 
-void npc_walker_system(ecs::World& world, float dt) {
-    // Get collision grid reference (singleton entity)
+void npc_walker_system(ecs::World& world, float dt, BoneAnimationRegistry& registry) {
     const CollisionGrid* grid = nullptr;
     float grid_ox = 0.0f, grid_oz = 0.0f;
     world.view<CollisionGridRef>().each(
@@ -144,12 +99,9 @@ void npc_walker_system(ecs::World& world, float dt) {
                     npc.target_x = npc.home_x + std::cos(angle) * dist;
                     npc.target_z = npc.home_z + std::sin(angle) * dist;
                 }
-                // Set animation clip based on movement state (paused branch)
-                if (g_npc_bone_registry) {
-                    auto* ba_entry = g_npc_bone_registry->get_by_entity(entity);
-                    if (ba_entry) {
-                        ba_entry->requested_clip = "idle";
-                    }
+                auto* ba_entry = registry.get_by_entity(entity);
+                if (ba_entry) {
+                    ba_entry->requested_clip = "idle";
                 }
                 return;
             }
@@ -187,18 +139,14 @@ void npc_walker_system(ecs::World& world, float dt) {
                 }
             }
 
-            // Set animation clip based on movement state
-            if (g_npc_bone_registry) {
-                auto* ba_entry = g_npc_bone_registry->get_by_entity(entity);
-                if (ba_entry) {
-                    ba_entry->requested_clip = npc.paused ? "idle" : "walk";
-                    // Update facing angle from movement direction
-                    if (!npc.paused) {
-                        float ddx = npc.target_x - t.position.x();
-                        float ddz = npc.target_z - t.position.z();
-                        if (ddx * ddx + ddz * ddz > 0.01f) {
-                            ba_entry->facing_angle = std::atan2(ddx, ddz);
-                        }
+            auto* ba_entry = registry.get_by_entity(entity);
+            if (ba_entry) {
+                ba_entry->requested_clip = npc.paused ? "idle" : "walk";
+                if (!npc.paused) {
+                    float ddx = npc.target_x - t.position.x();
+                    float ddz = npc.target_z - t.position.z();
+                    if (ddx * ddx + ddz * ddz > 0.01f) {
+                        ba_entry->facing_angle = std::atan2(ddx, ddz);
                     }
                 }
             }

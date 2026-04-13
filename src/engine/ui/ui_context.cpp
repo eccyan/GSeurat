@@ -143,6 +143,40 @@ void UIContext::panel(float x, float y, float w, float h, glm::vec4 color) {
     draw_rect(x, y, w, h, color);
 }
 
+void UIContext::line(float x1, float y1, float x2, float y2, float thickness,
+                     glm::vec4 color) {
+    float dx = x2 - x1;
+    float dy = y2 - y1;
+    if (std::abs(dx) < 0.001f && std::abs(dy) < 0.001f) return;
+
+    float cx = (x1 + x2) * 0.5f;
+    float cy = (y1 + y2) * 0.5f;
+
+    // SpriteDrawInfo is axis-aligned, so approximate lines as thin rects.
+    // For debug wireframes (projected box edges, circle segments) this is
+    // sufficient — most segments are near-axis-aligned after 3D→2D projection.
+    if (std::abs(dx) >= std::abs(dy)) {
+        draw_rect(cx, cy, std::abs(dx), std::max(thickness, std::abs(dy)), color);
+    } else {
+        draw_rect(cx, cy, std::max(thickness, std::abs(dx)), std::abs(dy), color);
+    }
+}
+
+void UIContext::circle(float cx, float cy, float radius, int segments,
+                       float thickness, glm::vec4 color) {
+    if (segments < 3) segments = 3;
+    float step = 2.0f * 3.14159265f / static_cast<float>(segments);
+    for (int i = 0; i < segments; i++) {
+        float a1 = static_cast<float>(i) * step;
+        float a2 = static_cast<float>(i + 1) * step;
+        float x1 = cx + std::cos(a1) * radius;
+        float y1 = cy + std::sin(a1) * radius;
+        float x2 = cx + std::cos(a2) * radius;
+        float y2 = cy + std::sin(a2) * radius;
+        line(x1, y1, x2, y2, thickness, color);
+    }
+}
+
 void UIContext::begin_menu(float x, float y, float item_height) {
     menu_x_ = x;
     menu_y_ = y;

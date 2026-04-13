@@ -9,7 +9,6 @@
 
 #include <glm/vec3.hpp>
 #include <glm/mat4x4.hpp>
-#include <array>
 #include <memory>
 #include <optional>
 #include <string>
@@ -64,12 +63,6 @@ private:
     // Animation time (drives PBD wind sway)
     float anim_time_ = 0.0f;
 
-    // Performance tracking
-    float fps_ = 0.0f;
-    float fps_timer_ = 0.0f;
-    uint32_t frame_count_ = 0;
-    std::array<float, 300> frame_times_{};
-    int frame_time_idx_ = 0;
 
     // Mouse interaction
     bool dragging_ = false;
