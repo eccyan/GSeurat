@@ -62,6 +62,9 @@ void AppBase::main_loop() {
     // Start control server for bridge integration
     control_server_.start();
 
+    // Initialize developer overlay (ImGui — no-op when GSEURAT_DEV_MODE is off)
+    dev_overlay_.init(window_, renderer_);
+
     while (!glfwWindowShouldClose(window_)) {
         glfwPollEvents();
 
@@ -86,6 +89,12 @@ void AppBase::main_loop() {
 
         debug_metrics_.update(dt);
 
+        // F1 → toggle developer overlay
+        if (input_.was_key_pressed(GLFW_KEY_F1)) {
+            dev_overlay_.toggle();
+        }
+        dev_overlay_.begin_frame();
+
         state_stack_.update(*this, dt);
         upload_bone_transforms();
         gameplay_.play_time += dt;
@@ -108,6 +117,12 @@ void AppBase::main_loop() {
 
         // Let states build their draw lists
         state_stack_.build_draw_lists(*this);
+
+        // Developer overlay (after states have drawn their content)
+        if (dev_overlay_.visible()) {
+            dev_overlay_.draw(*this);
+        }
+        dev_overlay_.end_frame();
 
         // Always render
         std::vector<SpriteDrawInfo> particle_sprites;
@@ -143,6 +158,7 @@ void AppBase::main_loop() {
 }
 
 void AppBase::cleanup() {
+    dev_overlay_.shutdown(renderer_);
     while (!state_stack_.empty()) {
         state_stack_.pop(*this);
     }

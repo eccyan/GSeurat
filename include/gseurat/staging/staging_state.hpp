@@ -40,15 +40,8 @@ public:
                            float& out_x, float& out_y) const;
 
 private:
-    void draw_imgui(AppBase& app);
-    void draw_viewport_info(AppBase& app);
-    void draw_render_settings(AppBase& app);
-    void draw_gs_params(AppBase& app);
-    void draw_feature_toggles(AppBase& app);
-    void draw_lighting(AppBase& app);
     void draw_camera_panel(AppBase& app);
     void draw_scene_panel(AppBase& app);
-    void draw_performance(AppBase& app);
     void draw_gizmos(AppBase& app);
     void draw_character_panel(AppBase& app);
 
@@ -76,27 +69,6 @@ private:
 
     // Camera bookmarks
     std::vector<CameraBookmark> bookmarks_;
-
-    // Panel visibility
-    bool show_viewport_info_ = true;
-    bool show_render_settings_ = true;
-    bool show_gs_params_ = true;
-    bool show_feature_toggles_ = true;
-    bool show_lighting_ = true;
-    bool show_camera_ = true;
-    bool show_performance_ = true;
-
-    // Gizmo visibility
-    bool show_gizmo_lights_ = true;
-    bool show_gizmo_emitters_ = true;
-    bool show_gizmo_vfx_ = true;
-    bool show_gizmo_game_objects_ = true;
-    bool show_gizmo_camera_zones_ = true;
-    bool show_gizmo_portals_ = true;
-    bool show_gizmo_world_ = true;
-
-    // Hide all UI (Tab key toggle)
-    bool hide_ui_ = false;
 
     // Track scene path for auto-recentering camera on load_scene_json
     std::string last_scene_path_;

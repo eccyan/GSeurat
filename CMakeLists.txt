@@ -242,6 +242,19 @@ if(APPLE)
     )
 endif()
 
+# --- Developer overlay (ImGui) -----------------------------------------------
+
+option(GSEURAT_DEV_MODE "Enable ImGui developer overlay" ON)
+
+if(GSEURAT_DEV_MODE)
+    target_link_libraries(gseurat_core PUBLIC imgui_lib)
+    target_compile_definitions(gseurat_core PUBLIC GSEURAT_DEV_MODE)
+    target_sources(gseurat_core PRIVATE
+        src/engine/dev_overlay.cpp
+        src/engine/dev_panels.cpp
+    )
+endif()
+
 # --- Demo executable --------------------------------------------------------
 
 add_executable(gseurat_demo
@@ -262,7 +275,7 @@ add_executable(gseurat_staging
     src/staging/staging_state.cpp
     src/staging/camera_review_state.cpp
 )
-target_link_libraries(gseurat_staging PRIVATE gseurat_core imgui_lib)
+target_link_libraries(gseurat_staging PRIVATE gseurat_core)
 add_dependencies(gseurat_staging shaders)
 
 

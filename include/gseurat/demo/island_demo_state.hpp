@@ -98,10 +98,9 @@ private:
     enum class HudMode { kOff, kCompact, kFull };
     HudMode hud_mode_ = HudMode::kOff;
 
-    // Toggle flags (P = particles, N = animation, J = PBD chain, G = gizmos)
+    // Toggle flags (P = particles, N = animation, J = PBD chain)
     bool anim_enabled_ = true;
     bool pbd_chain_active_ = false;
-    bool show_gizmos_ = false;
 
     // Cached VP matrix for gizmo projection (without Vulkan Y-flip)
     glm::mat4 gizmo_vp_{1.0f};
