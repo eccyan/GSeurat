@@ -186,6 +186,7 @@ add_library(gseurat_core OBJECT
     src/staging/visual_state.cpp
     src/engine/project_root.cpp
     src/engine/world_manifest.cpp
+    src/engine/world_streamer.cpp
 )
 
 
@@ -363,3 +364,4 @@ add_gseurat_test(test_visual_state  src/staging/visual_state.cpp)
 add_gseurat_test(test_project_root  src/engine/project_root.cpp)
 add_gseurat_test(test_slab_allocator src/engine/slab_allocator.cpp)
 add_gseurat_test(test_world_manifest src/engine/world_manifest.cpp)
+add_gseurat_test(test_world_streamer src/engine/world_streamer.cpp src/engine/world_manifest.cpp)
