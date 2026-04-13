@@ -5986,6 +5986,87 @@
           "speed": 1.0
         }
       }
+    },
+    {
+      "id": "dungeon_slime_1",
+      "name": "Dungeon Slime",
+      "position": [
+        25.0,
+        0.0,
+        9.0
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": 0.5,
+      "ply_file": "assets/characters/slime/slime.ply",
+      "components": {
+        "BoneAnimated": {
+          "manifest": "assets/characters/slime/slime.manifest.json",
+          "default_clip": "idle"
+        },
+        "NpcWalker": {
+          "patrol_radius": 6.0,
+          "speed": 4.0,
+          "pause_duration": 1.2
+        }
+      }
+    },
+    {
+      "id": "dungeon_slime_2",
+      "name": "Dungeon Slime",
+      "position": [
+        25.0,
+        0.0,
+        29.0
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": 0.6,
+      "ply_file": "assets/characters/slime/slime.ply",
+      "components": {
+        "BoneAnimated": {
+          "manifest": "assets/characters/slime/slime.manifest.json",
+          "default_clip": "idle"
+        },
+        "NpcWalker": {
+          "patrol_radius": 5.0,
+          "speed": 3.0,
+          "pause_duration": 1.5
+        }
+      }
+    },
+    {
+      "id": "dungeon_slime_3",
+      "name": "Dungeon Slime",
+      "position": [
+        7.0,
+        0.0,
+        29.0
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": 0.4,
+      "ply_file": "assets/characters/slime/slime.ply",
+      "components": {
+        "BoneAnimated": {
+          "manifest": "assets/characters/slime/slime.manifest.json",
+          "default_clip": "idle"
+        },
+        "NpcWalker": {
+          "patrol_radius": 4.0,
+          "speed": 5.0,
+          "pause_duration": 0.8
+        }
+      }
     }
   ],
   "particle_emitters": [
