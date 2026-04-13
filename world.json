@@ -8,24 +8,12 @@
       "scene_file": "assets/scenes/seurat_island.json"
     },
     {
-      "grid": [1, 0, 0],
-      "ply_file": "assets/maps/test_terrain.ply",
-      "scene_file": "assets/scenes/test_scene.json"
-    },
-    {
       "grid": [0, 0, -1],
       "ply_file": "assets/maps/northern_forest.ply",
       "scene_file": "assets/scenes/northern_forest.json"
     }
   ],
   "streaming_volumes": [
-    {
-      "id": "sv_island_edge",
-      "shape": "box",
-      "position": [180.0, 32.0, 96.0],
-      "half_extents": [24.0, 32.0, 96.0],
-      "preload_target_ids": ["1,0,0"]
-    },
     {
       "id": "sv_dungeon_approach",
       "shape": "sphere",
