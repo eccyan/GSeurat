@@ -2076,6 +2076,15 @@ void GsRenderer::dispatch_tile_sort(VkCommandBuffer cmd) {
     uint32_t tiles_x = (width + 15) / 16;
     uint32_t tiles_y = (height + 15) / 16;
 
+    // DEBUG: log tile_sort_count from previous frame (every 60th frame)
+    static uint32_t dbg_frame = 0;
+    if (tile_sort_count_ssbo_.mapped() && (dbg_frame++ % 60 == 0)) {
+        uint32_t prev_count = 0;
+        std::memcpy(&prev_count, tile_sort_count_ssbo_.mapped(), sizeof(uint32_t));
+        std::printf("[tile_sort] frame=%u count=%u capacity=%u\n",
+                    dbg_frame, prev_count, tile_sort_capacity_);
+    }
+
     // Clear tile sort counter to 0 and fill tile_sort_a with sentinels (0xFFFFFFFF).
     // Sentinels are essential: the sort processes max_workgroups*1024 entries, but only
     // tile_sort_count are real. Without sentinels, garbage data gets sorted alongside
