@@ -1,4 +1,5 @@
 #include "gseurat/engine/gs_scene_loader.hpp"
+#include "gseurat/character/character_manifest.hpp"
 #include "gseurat/engine/scene_load_context.hpp"
 #include "gseurat/engine/gs_terrain_state.hpp"
 #include "gseurat/engine/scene_object_state.hpp"
@@ -93,6 +94,46 @@ void GsSceneLoader::load(SceneLoadContext& ctx, const SceneData& scene_data,
             world_positions.push_back(coord::to_world(go.position, ctx.terrain.terrain_aabb));
         }
 
+        // Pre-scan: allocate bone slots for BoneAnimated game objects
+        ctx.terrain.bone_allocations.clear();
+        ctx.terrain.bone_slot_counter = 8;  // reserve 0-7 for player
+        for (size_t i = 0; i < snapped_objects.size(); ++i) {
+            const auto& go = snapped_objects[i];
+            if (go.components.is_null() || !go.components.contains("BoneAnimated")) continue;
+            const auto& ba_json = go.components["BoneAnimated"];
+            std::string manifest_path = ba_json.value("manifest", std::string{});
+            if (manifest_path.empty()) continue;
+
+            auto manifest = load_character_manifest(manifest_path);
+            if (!manifest) {
+                std::fprintf(stderr, "[GS] BoneAnimated: failed to load manifest '%s'\n",
+                             manifest_path.c_str());
+                continue;
+            }
+            uint32_t bone_count = static_cast<uint32_t>(manifest->bones.size());
+            if (ctx.terrain.bone_slot_counter + bone_count > 32) {
+                std::fprintf(stderr, "[GS] BoneAnimated: bone budget exceeded for '%s' (need %u, have %u)\n",
+                             go.id.c_str(), bone_count, 32 - ctx.terrain.bone_slot_counter);
+                continue;
+            }
+
+            GsTerrainState::BoneAllocation alloc;
+            alloc.manifest_path = manifest_path;
+            alloc.default_clip = ba_json.value("default_clip", std::string{"idle"});
+            alloc.first_bone_index = ctx.terrain.bone_slot_counter;
+            alloc.bone_count = bone_count;
+            alloc.char_scale = go.scale;
+            alloc.gs_scale_multiplier = gs_scale_multiplier;
+            alloc.world_pos = world_positions[i].vec();
+            alloc.game_object_index = i;
+            ctx.terrain.bone_allocations.push_back(alloc);
+            ctx.terrain.bone_slot_counter += bone_count;
+
+            std::fprintf(stderr, "[GS] BoneAnimated '%s': bones %u-%u (count=%u)\n",
+                         go.id.c_str(), alloc.first_bone_index,
+                         alloc.first_bone_index + bone_count - 1, bone_count);
+        }
+
         // Merge all game objects with PLY visuals into the GS cloud
         ctx.terrain.pbd_anchors.clear();
         ctx.terrain.pbd_configs.clear();
@@ -138,6 +179,17 @@ void GsSceneLoader::load(SceneLoadContext& ctx, const SceneData& scene_data,
                         }
                         float sway_threshold = local_min_y + (local_max_y - local_min_y) * sway_threshold_frac;
 
+                        // Check if this game object has bone animation
+                        uint32_t ba_first_bone = 0;
+                        bool has_bone_anim = false;
+                        for (const auto& alloc : ctx.terrain.bone_allocations) {
+                            if (alloc.game_object_index == i) {
+                                ba_first_bone = alloc.first_bone_index;
+                                has_bone_anim = true;
+                                break;
+                            }
+                        }
+
                         auto placed_gs = placed_cloud.gaussians();
                         uint32_t tagged_count = 0;
                         for (auto& g : placed_gs) {
@@ -149,6 +201,9 @@ void GsSceneLoader::load(SceneLoadContext& ctx, const SceneData& scene_data,
                             if (pbd_idx > 0 && local_y > sway_threshold) {
                                 g.bone_index = pbd_idx;
                                 tagged_count++;
+                            }
+                            if (has_bone_anim) {
+                                g.bone_index = ba_first_bone + g.bone_index;
                             }
                         }
                         if (pbd_idx > 0) {
