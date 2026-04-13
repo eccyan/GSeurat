@@ -36,6 +36,7 @@ private:
     void update_environment_animation(AppBase& app, float dt);
     void step_pbd_chain(float dt);
     void gather_pbd_chain(Renderer& renderer);
+    void draw_gizmos(AppBase& app);
 
     // Scene
     std::string scene_path_ = "assets/scenes/seurat_island.json";
@@ -97,9 +98,13 @@ private:
     enum class HudMode { kOff, kCompact, kFull };
     HudMode hud_mode_ = HudMode::kOff;
 
-    // Toggle flags (P = particles, N = animation, J = PBD chain)
+    // Toggle flags (P = particles, N = animation, J = PBD chain, G = gizmos)
     bool anim_enabled_ = true;
     bool pbd_chain_active_ = false;
+    bool show_gizmos_ = false;
+
+    // Cached VP matrix for gizmo projection (without Vulkan Y-flip)
+    glm::mat4 gizmo_vp_{1.0f};
 
     // CPU-side PBD chain simulation (J key demo)
     struct PbdNode {
