@@ -48,6 +48,10 @@
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug"
       },
+      "environment": {
+        "VSLANG": "1033",
+        "DOTNET_CLI_UI_LANGUAGE": "en-US"
+      },
       "condition": {
         "type": "equals",
         "lhs": "${hostSystemName}",
@@ -60,6 +64,10 @@
       "displayName": "Windows Release",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release"
+      },
+      "environment": {
+        "VSLANG": "1033",
+        "DOTNET_CLI_UI_LANGUAGE": "en-US"
       },
       "condition": {
         "type": "equals",

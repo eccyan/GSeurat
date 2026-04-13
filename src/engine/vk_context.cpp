@@ -188,6 +188,20 @@ void VkContext::pick_physical_device() {
 }
 
 void VkContext::create_logical_device() {
+    // Log subgroup properties for diagnostics (subgroup vote used in gs_render.comp)
+    {
+        VkPhysicalDeviceSubgroupProperties subgroup_props{};
+        subgroup_props.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_PROPERTIES;
+        VkPhysicalDeviceProperties2 props2{};
+        props2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
+        props2.pNext = &subgroup_props;
+        vkGetPhysicalDeviceProperties2(physical_device_, &props2);
+        std::printf("[vk_context] Subgroup size: %u, supported stages: 0x%x, supported ops: 0x%x\n",
+                    subgroup_props.subgroupSize,
+                    subgroup_props.supportedStages,
+                    subgroup_props.supportedOperations);
+    }
+
     graphics_queue_family_ = static_cast<uint32_t>(find_queue_family());
 
     // Look for dedicated transfer queue (TRANSFER but NOT GRAPHICS)

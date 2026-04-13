@@ -40,6 +40,8 @@ layout(set = 0, binding = 2) buffer SortBuffer {
 layout(set = 0, binding = 3) uniform Uniforms {
     mat4 view;
     mat4 proj;
+    mat4 inv_view;      // precomputed inverse(view) — unused in preprocess, must match layout
+    mat4 inv_proj;      // precomputed inverse(proj) — unused in preprocess, must match layout
     uvec4 params;       // x = width, y = height, z = gaussian_count, w = sort_size
     vec4 shadow_box;    // x = margin, y = cone_cos, z = num_sort_passes, w = scale_multiplier
     vec4 cone_dir;      // xyz = cone direction, w = unused

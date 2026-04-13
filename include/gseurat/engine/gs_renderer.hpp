@@ -69,7 +69,7 @@ struct GsPreprocessPush {
 
 class GsRenderer {
 public:
-    void init(VkDevice device, VmaAllocator allocator, VkDescriptorPool pool);
+    void init(VkDevice device, VkPhysicalDevice physical_device, VmaAllocator allocator, VkDescriptorPool pool);
     void load_cloud(const GaussianCloud& cloud);
     void init_streaming(const StreamingConfig& config);
     void unload_cloud(uint32_t chunk_id);
@@ -369,6 +369,14 @@ private:
 
     // World manifest (Phase 3 streaming)
     WorldManifest world_manifest_;
+
+    // GPU timestamp profiling for rasterize pass
+    VkQueryPool timestamp_pool_ = VK_NULL_HANDLE;
+    float timestamp_period_ns_ = 0.0f;   // nanoseconds per tick
+    uint32_t timestamp_frame_ = 0;
+    float rasterize_ms_accum_ = 0.0f;
+    bool timestamps_written_ = false;     // true after first rasterize dispatch writes timestamps
+    static constexpr uint32_t kTimestampAvgFrames = 60;
 
     // Shadow box parameters
     bool skip_sort_ = false;
