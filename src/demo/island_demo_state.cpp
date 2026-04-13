@@ -326,6 +326,9 @@ void IslandDemoState::on_enter(AppBase& app) {
                 cg.position = player_pos + offset + glm::vec3(0, 2.0f, 0);
                 cg.scale *= kCharScale;
                 cg.opacity = std::min(1.0f, cg.opacity * 1.3f);
+                // Offset bone_index by +1 — shader skips bone_index=0 (terrain),
+                // and update_walk_animation writes character bones at [i + 1]
+                cg.bone_index = cg.bone_index + 1;
                 merged.push_back(cg);
             }
         }
@@ -738,6 +741,7 @@ void IslandDemoState::update(AppBase& app, float dt) {
                                 cg.position = spawn + offset + glm::vec3(0, 2.0f, 0);
                                 cg.scale *= kCharScale;
                                 cg.opacity = std::min(1.0f, cg.opacity * 1.3f);
+                                cg.bone_index = cg.bone_index + 1;
                                 merged.push_back(cg);
                             }
                         }
