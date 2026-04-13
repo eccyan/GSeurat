@@ -719,6 +719,36 @@ void IslandDemoState::update(AppBase& app, float dt) {
                             std::fprintf(stderr, "[IslandDemo] Collision grid updated: %ux%u\n",
                                 collision_grid_.width, collision_grid_.height);
                         }
+
+                        // When returning to overworld, re-open north bridge + reload forest grid
+                        if (portal.target_instance_id == "overworld") {
+                            int bridge_cleared = 0;
+                            for (float wx = 182.0f; wx <= 202.0f; wx += collision_grid_.cell_size * 0.5f) {
+                                for (float wz = 0.0f; wz <= 50.0f; wz += collision_grid_.cell_size * 0.5f) {
+                                    int bgx = static_cast<int>(wx / collision_grid_.cell_size);
+                                    int bgz = static_cast<int>(wz / collision_grid_.cell_size);
+                                    if (bgx >= 0 && bgx < static_cast<int>(collision_grid_.width) &&
+                                        bgz >= 0 && bgz < static_cast<int>(collision_grid_.height)) {
+                                        size_t idx = bgz * collision_grid_.width + bgx;
+                                        if (collision_grid_.solid[idx]) {
+                                            collision_grid_.solid[idx] = false;
+                                            if (!collision_grid_.elevation.empty())
+                                                collision_grid_.elevation[idx] = 0.5f;
+                                            bridge_cleared++;
+                                        }
+                                    }
+                                }
+                            }
+
+                            auto forest_scene = SceneLoader::load("assets/scenes/northern_forest.json");
+                            if (forest_scene.collision) {
+                                forest_collision_grid_ = *forest_scene.collision;
+                                forest_grid_origin_ = {0.0f, -192.0f};
+                                forest_grid_loaded_ = true;
+                            }
+                            std::fprintf(stderr, "[IslandDemo] Overworld restored: bridge=%d cells, forest grid=%s\n",
+                                bridge_cleared, forest_grid_loaded_ ? "OK" : "MISSING");
+                        }
                     }
 
                     // Reset camera zone system — island zones are invalid in instances
@@ -742,11 +772,31 @@ void IslandDemoState::update(AppBase& app, float dt) {
                         transform->position = coord::WorldPos(spawn);
                     }
 
-                    // Re-merge player character into the new map's Gaussians
+                    // Re-merge world chunks + player character into the new scene
                     if (app.renderer().has_gs_cloud()) {
                         const auto& new_map = app.renderer().gs_chunk_grid().all_gaussians();
                         map_gaussians_.assign(new_map.begin(), new_map.end());
                         std::vector<Gaussian> merged = map_gaussians_;
+
+                        // When returning to overworld, re-merge all world chunks
+                        bool is_overworld = (portal.target_instance_id == "overworld");
+                        if (is_overworld && world_streamer_) {
+                            for (const auto& chunk : world_streamer_->manifest().chunks) {
+                                if (chunk.grid == glm::ivec3(0, 0, 0)) continue;
+                                if (chunk.ply_file.empty()) continue;
+                                auto resolved = resolve_asset_path(chunk.ply_file);
+                                auto extra = GaussianCloud::load_ply(resolved.string());
+                                if (!extra.empty()) {
+                                    const auto& gs = extra.gaussians();
+                                    merged.insert(merged.end(), gs.begin(), gs.end());
+                                    std::fprintf(stderr, "[IslandDemo] Re-merged chunk [%d,%d,%d]: +%u Gaussians\n",
+                                        chunk.grid.x, chunk.grid.y, chunk.grid.z, extra.count());
+                                }
+                            }
+                            // Restore overworld camera settings
+                            distance_ = 20.0f;
+                            elevation_ = 0.6f;
+                        }
 
                         auto char_cloud = GaussianCloud::load_ply(
                             "assets/characters/snes_hero/snes_hero.ply");
@@ -762,10 +812,9 @@ void IslandDemoState::update(AppBase& app, float dt) {
                                 cg.opacity = std::min(1.0f, cg.opacity * 1.3f);
                                 merged.push_back(cg);
                             }
-                            std::fprintf(stderr, "[IslandDemo] Character re-merged: %u map + %u char Gaussians\n",
-                                static_cast<uint32_t>(map_gaussians_.size()),
-                                static_cast<uint32_t>(char_gs.size()));
                         }
+                        std::fprintf(stderr, "[IslandDemo] Portal re-merge: %u total Gaussians\n",
+                            static_cast<uint32_t>(merged.size()));
 
                         auto cloud = GaussianCloud::from_gaussians(std::move(merged));
                         uint32_t gs_w = app.renderer().gs_renderer().output_width();
