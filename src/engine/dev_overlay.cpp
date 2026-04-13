@@ -153,9 +153,13 @@ void DevOverlay::draw_menu_bar() {
             ImGui::Separator();
             if (ImGui::MenuItem("Show All")) {
                 for (auto& p : panels_) p.visible = true;
+                show_gizmo_lights = show_gizmo_emitters = show_gizmo_vfx = true;
+                show_gizmo_game_objects = show_gizmo_triggers = true;
             }
             if (ImGui::MenuItem("Hide All")) {
                 for (auto& p : panels_) p.visible = false;
+                show_gizmo_lights = show_gizmo_emitters = show_gizmo_vfx = false;
+                show_gizmo_game_objects = show_gizmo_triggers = false;
             }
             ImGui::EndMenu();
         }
