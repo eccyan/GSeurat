@@ -73986,16 +73986,16 @@
       "id": "forest_guardian",
       "name": "Forest Guardian",
       "position": [
-        192.0,
+        134.0,
         0.0,
-        -80.0
+        167.0
       ],
       "rotation": [
         0,
         0,
         0
       ],
-      "scale": 0.5,
+      "scale": 1.0,
       "ply_file": "assets/characters/warm_robot/warm_robot.ply",
       "components": {
         "BoneAnimated": {
@@ -74013,9 +74013,9 @@
       "id": "forest_patrol_knight",
       "name": "Forest Knight",
       "position": [
-        192.0,
+        130.0,
         0.0,
-        -40.0
+        155.0
       ],
       "rotation": [
         0,
