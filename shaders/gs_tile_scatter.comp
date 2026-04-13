@@ -1,11 +1,17 @@
 #version 450
 
-// Scatter tile sort entries from input to output buffer using scanned histogram.
+// STABLE scatter for tile sort entries using shared-memory prefix count.
 // Each workgroup processes 1024 entries (256 threads × 4 elements).
 //
-// Key difference from gs_radix_scatter.comp:
-// - Entry is TileSortEntry (16 bytes) with two key fields (key_hi, key_lo)
-// - Passes 0-3 extract digit from key_lo, passes 4-7 from key_hi
+// Stability is critical for 3DGS: entries with the same radix digit must
+// preserve their input order so that depth-sorted Gaussians within each
+// tile remain front-to-back after the tile_id sort passes.
+//
+// Algorithm per batch of 256 entries:
+// 1. Each thread extracts its digit
+// 2. For each digit bin (0-255), use subgroup ballot to count how many
+//    threads with lower IDs have the same digit → stable rank
+// 3. dest = global_bin_offset + rank
 layout(local_size_x = 256) in;
 
 struct TileSortEntry {
@@ -27,33 +33,78 @@ layout(set = 0, binding = 2) readonly buffer HistogramBuffer {
     uint histograms[];
 };
 
+layout(set = 0, binding = 3) readonly buffer IndirectArgs {
+    uint indirect_args[];
+};
+
 layout(push_constant) uniform PushConstants {
-    uint num_elements;
     uint digit_shift;
     uint use_hi;       // 0 = key_lo, 1 = key_hi
 };
 
-shared uint local_offsets[256];
+// Global bin offsets from scanned histogram (per workgroup)
+shared uint bin_offsets[256];
+
+// Per-batch: each thread's digit and entry
+shared uint s_digits[256];
+shared uint s_rank[256];
+shared uint s_digit_count[256];
 
 void main() {
     uint lid = gl_LocalInvocationID.x;
     uint wg = gl_WorkGroupID.x;
     uint num_wg = gl_NumWorkGroups.x;
+    uint num_elements = indirect_args[6];
 
     // Load this workgroup's scatter offsets from scanned histogram
-    local_offsets[lid] = histograms[lid * num_wg + wg];
+    bin_offsets[lid] = histograms[lid * num_wg + wg];
     barrier();
 
-    // Scatter entries to output at computed positions
-    uint base = wg * 1024 + lid;
+    uint base = wg * 1024;
+
     for (uint t = 0; t < 4; t++) {
-        uint idx = base + t * 256;
-        if (idx < num_elements) {
-            TileSortEntry e = in_entries[idx];
+        uint idx = base + t * 256 + lid;
+        bool valid = (idx < num_elements);
+
+        // Step 1: Extract digit
+        uint digit = 0xFFu;  // invalid entries get max digit (sentinels)
+        TileSortEntry e;
+        if (valid) {
+            e = in_entries[idx];
             uint word = (use_hi != 0) ? e.key_hi : e.key_lo;
-            uint digit = (word >> digit_shift) & 0xFFu;
-            uint dest = atomicAdd(local_offsets[digit], 1u);
-            out_entries[dest] = e;
+            digit = (word >> digit_shift) & 0xFFu;
         }
+        s_digits[lid] = digit;
+
+        // Clear digit counts
+        s_digit_count[lid] = 0;
+        barrier();
+
+        // Step 2: Compute stable rank using sequential scan in shared memory.
+        // Thread lid counts how many threads j < lid have s_digits[j] == digit.
+        // With 256 threads this is 256 reads from shared memory — fast on modern GPUs.
+        uint rank = 0;
+        if (valid) {
+            for (uint j = 0; j < lid; j++) {
+                if (s_digits[j] == digit) {
+                    rank++;
+                }
+            }
+        }
+        barrier();
+
+        // Step 3: Scatter with stable ordering
+        if (valid) {
+            out_entries[bin_offsets[digit] + rank] = e;
+        }
+
+        // Step 4: Count entries per digit in this batch, advance bin offsets
+        if (valid) {
+            atomicAdd(s_digit_count[digit], 1u);
+        }
+        barrier();
+
+        bin_offsets[lid] += s_digit_count[lid];
+        barrier();
     }
 }

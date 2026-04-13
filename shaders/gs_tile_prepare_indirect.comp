@@ -1,0 +1,49 @@
+#version 450
+
+// Prepares indirect dispatch arguments from tile_sort_count.
+// Runs as a single thread — reads the atomic counter and writes
+// dispatch args for the radix sort and tile range detection passes.
+layout(local_size_x = 1) in;
+
+layout(set = 0, binding = 0) readonly buffer TileSortCount {
+    uint tile_sort_count;
+};
+
+// Indirect dispatch args: {x, y, z} for vkCmdDispatchIndirect
+// [0-2]: sort dispatch (workgroups of 1024)
+// [3-5]: ranges dispatch (workgroups of 256)
+// [6]:   clamped element count for sort push constants
+// [7]:   histogram_count (256 * sort_workgroups)
+layout(set = 0, binding = 1) writeonly buffer IndirectArgs {
+    uint args[];
+};
+
+layout(push_constant) uniform PushConstants {
+    uint max_entries;  // tile sort buffer capacity (clamp)
+};
+
+void main() {
+    uint count = min(tile_sort_count, max_entries);
+
+    // Sort: 1024 elements per workgroup
+    uint sort_wg = (count + 1023u) / 1024u;
+    if (sort_wg == 0) sort_wg = 1;  // need at least 1 for scan to work
+    args[0] = sort_wg;
+    args[1] = 1;
+    args[2] = 1;
+
+    // Ranges: 256 elements per workgroup
+    uint ranges_wg = (count + 255u) / 256u;
+    if (ranges_wg == 0) ranges_wg = 1;
+    args[3] = ranges_wg;
+    args[4] = 1;
+    args[5] = 1;
+
+    // Clamped count for sort push constants (read by CPU-recorded push constants)
+    // Actually, sort shaders read this from push constants which are CPU-side.
+    // We store the count here so the sort shaders can use it via a uniform.
+    args[6] = count;
+
+    // Histogram count for scan shader
+    args[7] = 256 * sort_wg;
+}
