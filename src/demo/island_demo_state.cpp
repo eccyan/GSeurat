@@ -19,6 +19,9 @@
 #include "gseurat/engine/bone_animation_registry.hpp"
 #include "gseurat/engine/bone_animation_system.hpp"
 #include "gseurat/engine/debug_draw.hpp"
+#ifdef GSEURAT_DEV_MODE
+#include <imgui.h>
+#endif
 #include "gseurat/engine/bone_animated_component.hpp"
 
 #define GLFW_INCLUDE_VULKAN
@@ -1825,88 +1828,113 @@ void IslandDemoState::build_draw_lists(AppBase& app) {
     ui.label(std::to_string(triggered_count) + "/" + std::to_string(total_triggers), vx, y, s, trig_col);
 }
 
-// ── Debug gizmos (G key toggle) ──
+// ── Debug gizmos (ImGui foreground draw list, same style as Staging) ──
+
+#ifdef GSEURAT_DEV_MODE
+namespace {
+void imgui_sphere(ImDrawList* dl, const glm::vec3& center, float radius,
+                   const glm::mat4& vp, float sw, float sh, ImU32 col) {
+    float cx, cy;
+    if (!gseurat::project_to_screen(center, vp, sw, sh, cx, cy)) return;
+    glm::vec3 edge = center + glm::vec3(radius, 0.0f, 0.0f);
+    float ex, ey, sr = 15.0f;
+    if (gseurat::project_to_screen(edge, vp, sw, sh, ex, ey))
+        sr = std::clamp(std::abs(ex - cx), 3.0f, 300.0f);
+    dl->AddCircle(ImVec2(cx, cy), sr, col, 24, 1.5f);
+}
+void imgui_box(ImDrawList* dl, const glm::vec3& center, const glm::vec3& half,
+                const glm::mat4& vp, float sw, float sh, ImU32 col) {
+    glm::vec3 c[8]={
+        center+glm::vec3(-half.x,-half.y,-half.z),center+glm::vec3(half.x,-half.y,-half.z),
+        center+glm::vec3(half.x,half.y,-half.z),  center+glm::vec3(-half.x,half.y,-half.z),
+        center+glm::vec3(-half.x,-half.y,half.z), center+glm::vec3(half.x,-half.y,half.z),
+        center+glm::vec3(half.x,half.y,half.z),   center+glm::vec3(-half.x,half.y,half.z),
+    };
+    ImVec2 p[8]; bool v[8];
+    for(int i=0;i<8;i++) v[i]=gseurat::project_to_screen(c[i],vp,sw,sh,p[i].x,p[i].y);
+    constexpr int e[12][2]={{0,1},{1,2},{2,3},{3,0},{4,5},{5,6},{6,7},{7,4},{0,4},{1,5},{2,6},{3,7}};
+    for(auto& ed:e) if(v[ed[0]]&&v[ed[1]]) dl->AddLine(p[ed[0]],p[ed[1]],col,1.0f);
+}
+void imgui_region(ImDrawList* dl, const gseurat::GsAnimRegion& r, const glm::vec3& off,
+                   const glm::mat4& vp, float sw, float sh, ImU32 col) {
+    glm::vec3 center = r.center + off;
+    if (r.shape == gseurat::GsAnimRegion::Shape::Box)
+        imgui_box(dl, center, r.half_extents, vp, sw, sh, col);
+    else
+        imgui_sphere(dl, center, r.radius, vp, sw, sh, col);
+}
+}  // anonymous namespace
+#endif
 
 void IslandDemoState::draw_gizmos(AppBase& app) {
+#ifdef GSEURAT_DEV_MODE
     if (!app.dev_overlay().visible() || !app.renderer().has_gs_cloud()) return;
 
-    auto& ui = app.ui_ctx();
-    constexpr float sw = 1280.0f;
-    constexpr float sh = 720.0f;
-
-    // UIContext line adapter for engine debug_draw functions
-    // Note: UIContext uses Y-up, but project_to_screen returns Y-down screen coords.
-    // Convert Y: ui_y = sh - screen_y
-    DrawLineFn draw_line = [&](float x1, float y1, float x2, float y2,
-                                float thickness, glm::vec4 color) {
-        ui.line(x1, sh - y1, x2, sh - y2, thickness, color);
-    };
-
+    const glm::mat4& vp = gizmo_vp_;
     auto& gs = app.renderer().gs_renderer();
     auto& ov = app.dev_overlay();
+    auto& io = ImGui::GetIO();
+    float sw = io.DisplaySize.x, sh = io.DisplaySize.y;
+    ImDrawList* dl = ImGui::GetForegroundDrawList();
 
-    // ── Light gizmos (yellow circles at light positions) ──
+    // ── Light gizmos ──
     if (ov.show_gizmo_lights) {
-        glm::vec4 col{1.0f, 0.9f, 0.3f, 0.8f};
         const auto& lights = gs.point_lights();
         for (size_t i = 0; i < lights.size(); i++) {
             glm::vec3 pos(lights[i].position_and_radius.x,
                           lights[i].position_and_radius.z,
                           lights[i].position_and_radius.y);
-            draw_sphere_gizmo(pos, lights[i].position_and_radius.w,
-                              gizmo_vp_, sw, sh, col, draw_line);
-            // Label
             float sx, sy;
-            if (project_to_screen(pos, gizmo_vp_, sw, sh, sx, sy)) {
-                char label[16];
-                std::snprintf(label, sizeof(label), "L%zu", i);
-                ui.label(label, sx + 6.0f, sh - sy + 8.0f, 0.3f, col);
-            }
+            if (!project_to_screen(pos, vp, sw, sh, sx, sy)) continue;
+            ImU32 col = ImGui::ColorConvertFloat4ToU32(
+                ImVec4(lights[i].color.r, lights[i].color.g, lights[i].color.b, 0.8f));
+            imgui_sphere(dl, pos, lights[i].position_and_radius.w, vp, sw, sh, col);
+            dl->AddCircleFilled(ImVec2(sx, sy), 4.0f, col);
+            char label[32]; std::snprintf(label, sizeof(label), "L%zu", i);
+            dl->AddText(ImVec2(sx + 6, sy - 12), col, label);
         }
     }
 
-    // ── Emitter gizmos (pink circles at emitter positions + spawn regions) ──
+    // ── Emitter gizmos ──
     if (ov.show_gizmo_emitters) {
-        glm::vec4 col{0.93f, 0.28f, 0.60f, 0.8f};  // pink
+        ImU32 col = IM_COL32(236, 72, 153, 200);
         auto& emitters = app.renderer().gs_particle_emitters();
         for (size_t i = 0; i < emitters.size(); i++) {
             auto& cfg = emitters[i].config();
-            draw_region_gizmo(cfg.spawn_region, cfg.position,
-                              gizmo_vp_, sw, sh, col, draw_line);
             float sx, sy;
-            if (project_to_screen(cfg.position, gizmo_vp_, sw, sh, sx, sy)) {
-                char label[16];
-                std::snprintf(label, sizeof(label), "E%zu", i);
-                ui.label(label, sx + 6.0f, sh - sy + 8.0f, 0.3f, col);
-            }
+            if (!project_to_screen(cfg.position, vp, sw, sh, sx, sy)) continue;
+            dl->AddCircleFilled(ImVec2(sx, sy), 5.0f, col);
+            imgui_region(dl, cfg.spawn_region, cfg.position, vp, sw, sh, col);
+            char label[32]; std::snprintf(label, sizeof(label), "E%zu", i);
+            dl->AddText(ImVec2(sx + 8, sy - 10), col, label);
         }
     }
 
-    // ── Animation region gizmos (cyan wireframes) ──
+    // ── Animation region gizmos ──
     if (ov.show_gizmo_vfx) {
-        glm::vec4 col{0.0f, 0.72f, 0.83f, 0.7f};  // cyan
+        ImU32 col = IM_COL32(6, 182, 212, 180);
         const auto& anims = app.renderer().gs_scene_animations();
         for (size_t i = 0; i < anims.size(); i++) {
-            draw_region_gizmo(anims[i].region, glm::vec3(0.0f),
-                              gizmo_vp_, sw, sh, col, draw_line);
             float sx, sy;
-            if (project_to_screen(anims[i].region.center, gizmo_vp_, sw, sh, sx, sy)) {
-                ui.label("Anim", sx + 6.0f, sh - sy + 8.0f, 0.3f, col);
-            }
+            if (!project_to_screen(anims[i].region.center, vp, sw, sh, sx, sy)) continue;
+            imgui_region(dl, anims[i].region, glm::vec3(0.0f), vp, sw, sh, col);
+            dl->AddCircleFilled(ImVec2(sx, sy), 3.0f, col);
+            char label[64]; std::snprintf(label, sizeof(label), "Anim:%s", anims[i].effect.c_str());
+            dl->AddText(ImVec2(sx + 6, sy - 10), col, label);
         }
     }
 
-    // ── Proximity trigger gizmos (green/red circles) ──
+    // ── Proximity trigger gizmos ──
     if (ov.show_gizmo_triggers) {
         app.world().view<ProximityTrigger, ecs::Transform>().each(
             [&](ecs::Entity, ProximityTrigger& pt, ecs::Transform& t) {
-                glm::vec4 col = pt.triggered
-                    ? glm::vec4{0.2f, 1.0f, 0.3f, 0.6f}   // green when active
-                    : glm::vec4{0.5f, 0.5f, 0.5f, 0.4f};   // dim when idle
-                draw_sphere_gizmo(t.position.vec(), pt.radius,
-                                  gizmo_vp_, sw, sh, col, draw_line);
+                ImU32 col = pt.triggered ? IM_COL32(51,255,76,153) : IM_COL32(128,128,128,100);
+                imgui_sphere(dl, t.position.vec(), pt.radius, vp, sw, sh, col);
             });
     }
+#else
+    (void)app;
+#endif
 }
 
 }  // namespace gseurat
