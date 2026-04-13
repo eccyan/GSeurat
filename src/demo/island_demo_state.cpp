@@ -1836,7 +1836,7 @@ void IslandDemoState::build_draw_lists(AppBase& app) {
 // ── Debug gizmos (G key toggle) ──
 
 void IslandDemoState::draw_gizmos(AppBase& app) {
-    if (!show_gizmos_ || !app.renderer().has_gs_cloud()) return;
+    if ((!show_gizmos_ && !app.dev_overlay().visible()) || !app.renderer().has_gs_cloud()) return;
 
     auto& ui = app.ui_ctx();
     constexpr float sw = 1280.0f;
