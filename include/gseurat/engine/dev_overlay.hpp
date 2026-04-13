@@ -43,6 +43,9 @@ public:
     bool show_gizmo_vfx = true;
     bool show_gizmo_game_objects = true;
     bool show_gizmo_triggers = true;
+    bool show_gizmo_camera_zones = true;
+    bool show_gizmo_portals = true;
+    bool show_gizmo_world = true;
 
 private:
     struct PanelEntry {

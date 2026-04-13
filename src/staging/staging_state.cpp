@@ -915,13 +915,7 @@ static void draw_region_gizmo(ImDrawList* dl, const GsAnimRegion& region,
 void StagingState::draw_gizmos(AppBase& app) {
     if (!app.renderer().has_gs_cloud()) return;
 
-    static bool show_lights = true;
-    static bool show_emitters = true;
-    static bool show_vfx = true;
-    static bool show_game_objects = true;
-    static bool show_camera_zones = true;
-    static bool show_portals = true;
-    static bool show_world = true;
+    auto& ov = app.dev_overlay();
 
     const glm::mat4& vp = gs_vp_;  // computed once in update()
     auto& gs = app.renderer().gs_renderer();
@@ -933,7 +927,7 @@ void StagingState::draw_gizmos(AppBase& app) {
     ImDrawList* dl = ImGui::GetForegroundDrawList();
 
     // ── Light gizmos ──
-    if (show_lights) {
+    if (ov.show_gizmo_lights) {
         const auto& lights = gs.point_lights();
         for (size_t i = 0; i < lights.size(); i++) {
             glm::vec3 pos(lights[i].position_and_radius.x,
@@ -956,7 +950,7 @@ void StagingState::draw_gizmos(AppBase& app) {
     }
 
     // ── Standalone emitter gizmos (with spawn region) ──
-    if (show_emitters) {
+    if (ov.show_gizmo_emitters) {
         ImU32 emitter_col = IM_COL32(236, 72, 153, 200);  // pink
         auto& emitters = app.renderer().gs_particle_emitters();
         for (size_t i = 0; i < emitters.size(); i++) {
@@ -976,7 +970,7 @@ void StagingState::draw_gizmos(AppBase& app) {
     }
 
     // ── Scene animation gizmos (region wireframes) ──
-    if (show_vfx) {
+    if (ov.show_gizmo_vfx) {
         ImU32 anim_col = IM_COL32(6, 182, 212, 180);  // cyan
         const auto& anims = app.renderer().gs_scene_animations();
         for (size_t i = 0; i < anims.size(); i++) {
@@ -993,7 +987,7 @@ void StagingState::draw_gizmos(AppBase& app) {
     }
 
     // ── VFX instance gizmos (with element details) ──
-    if (show_vfx) {
+    if (ov.show_gizmo_vfx) {
         const auto& vfx = app.renderer().vfx_instances();
         for (size_t i = 0; i < vfx.size(); i++) {
             auto inst_pos = vfx[i].position();
@@ -1049,7 +1043,7 @@ void StagingState::draw_gizmos(AppBase& app) {
     }
 
     // ── Game Object gizmos ──
-    if (show_game_objects) {
+    if (ov.show_gizmo_game_objects) {
         ImU32 go_col = IM_COL32(68, 136, 255, 200);       // blue
         ImU32 go_col_static = IM_COL32(136, 136, 136, 150); // gray for no-component
         const auto& game_objects = app.scene_objects().game_objects;
@@ -1078,7 +1072,7 @@ void StagingState::draw_gizmos(AppBase& app) {
     }
 
     // ── Portal gizmos ──
-    if (show_portals) {
+    if (ov.show_gizmo_portals) {
         ImU32 portal_col = IM_COL32(0, 220, 220, 200);  // cyan
         const auto& portals = app.scene_objects().portals;
         auto terrain_aabb = app.gs_terrain().terrain_aabb;
@@ -1110,12 +1104,12 @@ void StagingState::draw_gizmos(AppBase& app) {
     }
 
     // ── Camera Zone gizmos (visible in both orbit and review modes) ──
-    if (show_camera_zones && camera_review_ && camera_review_->has_zone_data()) {
+    if (ov.show_gizmo_camera_zones && camera_review_ && camera_review_->has_zone_data()) {
         camera_review_->draw_gizmos(vp, sw, sh, dl, project_wrapper, this);
     }
 
     // ── World manifest gizmos ──
-    if (show_world && app.scene_objects().world_manifest.has_value()) {
+    if (ov.show_gizmo_world && app.scene_objects().world_manifest.has_value()) {
         const auto& wm = *app.scene_objects().world_manifest;
 
         // Chunk wireframes (green)
