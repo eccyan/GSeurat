@@ -645,9 +645,23 @@ void IslandDemoState::update(AppBase& app, float dt) {
                     std::fprintf(stderr, "[IslandDemo] Portal entered: %s -> loading '%s'\n",
                         portal_id.c_str(), instance_scene.c_str());
 
+                    // Wait for GPU to finish before destroying resources
+                    vkDeviceWaitIdle(app.renderer().context().device());
+
                     // Transition: clear current scene and load instance
                     app.clear_scene();
                     app.init_scene(instance_scene);
+
+                    // Reload collision grid from the new scene
+                    {
+                        auto new_scene = SceneLoader::load(instance_scene);
+                        if (new_scene.collision) {
+                            collision_grid_ = *new_scene.collision;
+                            grid_origin_ = {0.0f, 0.0f};
+                            std::fprintf(stderr, "[IslandDemo] Collision grid updated: %ux%u\n",
+                                collision_grid_.width, collision_grid_.height);
+                        }
+                    }
 
                     // Teleport player to spawn position
                     character_origin_ = portal.spawn_position;

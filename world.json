@@ -29,7 +29,7 @@
     {
       "id": "sv_dungeon_approach",
       "shape": "sphere",
-      "position": [192.0, 3.0, 172.0],
+      "position": [203.0, 3.0, 175.0],
       "radius": 20.0,
       "preload_target_ids": ["dungeon_01"]
     },
@@ -44,7 +44,7 @@
   "portals": [
     {
       "id": "portal_dungeon",
-      "position": [192.0, 3.0, 169.0],
+      "position": [203.0, 3.0, 175.0],
       "region_shape": "sphere",
       "region_radius": 3.0,
       "target_instance_id": "dungeon_01",
@@ -57,7 +57,7 @@
       "region_shape": "sphere",
       "region_radius": 3.0,
       "target_instance_id": "overworld",
-      "spawn_position": [192.0, 3.0, 175.0],
+      "spawn_position": [192.0, 3.0, 197.0],
       "spawn_facing": "up"
     }
   ],
