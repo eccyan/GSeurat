@@ -1,6 +1,6 @@
 #include "gseurat/demo/island_systems.hpp"
 #include "gseurat/demo/island_components.hpp"
-#include "gseurat/demo/bone_animation_registry.hpp"
+#include "gseurat/engine/bone_animation_registry.hpp"
 #include "gseurat/character/character_manifest.hpp"
 #include "gseurat/engine/ecs/default_components.hpp"
 #include <cmath>

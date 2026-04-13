@@ -10,7 +10,7 @@
 #include "gseurat/engine/types.hpp"
 #include "gseurat/engine/world_streamer.hpp"
 #include "gseurat/engine/ecs/types.hpp"
-#include "gseurat/demo/bone_animation_registry.hpp"
+#include "gseurat/engine/bone_animation_registry.hpp"
 
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
