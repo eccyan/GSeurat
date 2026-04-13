@@ -168,7 +168,7 @@ export interface PlayerData {
   character_id: string;
 }
 
-export type BricklayerMode = 'terrain' | 'scene' | 'settings';
+export type BricklayerMode = 'terrain' | 'scene' | 'settings' | 'world';
 
 export type ToolType =
   | 'place'
