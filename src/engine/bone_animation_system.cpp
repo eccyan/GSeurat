@@ -100,6 +100,12 @@ void populate_bone_animation_registry(
 
     registry.clear();
 
+    // Reset all entity tags so re-population works (registry.clear() doesn't touch ECS)
+    world.view<BoneAnimatedTag>().each(
+        [&](ecs::Entity, BoneAnimatedTag& tag) {
+            tag.registry_id = 0;
+        });
+
     for (const auto& alloc : terrain.bone_allocations) {
         world.view<BoneAnimatedTag, ecs::Transform>().each(
             [&](ecs::Entity entity, BoneAnimatedTag& tag, ecs::Transform& t) {
