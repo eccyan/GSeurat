@@ -13,7 +13,7 @@
 #include "gseurat/engine/scene_loader.hpp"
 #include "gseurat/engine/scene_object_state.hpp"
 #include "gseurat/engine/world_manifest.hpp"
-#include "gseurat/demo/island_components.hpp"
+#include "gseurat/engine/trigger_components.hpp"
 
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
@@ -469,8 +469,8 @@ void CommandDispatcher::register_default_commands() {
         json response;
         response["type"] = "player_state";
         bool found = false;
-        ctx_.world.view<ecs::Transform, PlayerController>().each(
-            [&](ecs::Entity, ecs::Transform& t, PlayerController&) {
+        ctx_.world.view<ecs::Transform, PlayerTag>().each(
+            [&](ecs::Entity, ecs::Transform& t, PlayerTag&) {
                 response["position"] = {t.position.x(), t.position.y(), t.position.z()};
                 found = true;
             });

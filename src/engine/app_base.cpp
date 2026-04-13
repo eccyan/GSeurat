@@ -3,7 +3,6 @@
 #include "gseurat/engine/scene_load_context.hpp"
 #include "gseurat/engine/trigger_components.hpp"
 #include "gseurat/engine/trigger_systems.hpp"
-#include "gseurat/demo/island_components.hpp"
 #include "gseurat/engine/bone_animated_component.hpp"
 #include "gseurat/engine/bone_animation_system.hpp"
 #include "gseurat/engine/gs_renderer.hpp"
@@ -208,17 +207,6 @@ void AppBase::init_game_object_system() {
             return {{"direction", dir}};
         });
 
-    component_registry_.register_component<PlayerController>("PlayerController",
-        [](const nlohmann::json& j) -> PlayerController {
-            PlayerController c;
-            if (j.contains("speed")) c.speed = j["speed"].get<float>();
-            if (j.contains("acceleration")) c.acceleration = j["acceleration"].get<float>();
-            return c;
-        },
-        [](const PlayerController& c) -> nlohmann::json {
-            return {{"speed", c.speed}, {"acceleration", c.acceleration}};
-        });
-
     component_registry_.register_component<ProximityTrigger>("ProximityTrigger",
         [](const nlohmann::json& j) -> ProximityTrigger {
             ProximityTrigger c;
@@ -275,27 +263,6 @@ void AppBase::init_game_object_system() {
             };
         });
 
-    component_registry_.register_component<BurstEffect>("BurstEffect",
-        [](const nlohmann::json& j) -> BurstEffect {
-            BurstEffect c;
-            if (j.contains("emitter_index")) c.emitter_index = j["emitter_index"].get<uint32_t>();
-            return c;
-        },
-        [](const BurstEffect& c) -> nlohmann::json {
-            return {{"emitter_index", c.emitter_index}};
-        });
-
-    component_registry_.register_component<ScatterEffect>("ScatterEffect",
-        [](const nlohmann::json& j) -> ScatterEffect {
-            ScatterEffect c;
-            if (j.contains("radius")) c.radius = j["radius"].get<float>();
-            if (j.contains("lifetime")) c.lifetime = j["lifetime"].get<float>();
-            return c;
-        },
-        [](const ScatterEffect& c) -> nlohmann::json {
-            return {{"radius", c.radius}, {"lifetime", c.lifetime}};
-        });
-
     component_registry_.register_component<LinkedTrigger>("LinkedTrigger",
         [](const nlohmann::json& j) -> LinkedTrigger {
             LinkedTrigger c;
@@ -304,54 +271,6 @@ void AppBase::init_game_object_system() {
         },
         [](const LinkedTrigger& c) -> nlohmann::json {
             return {{"target_entity", c.target_entity}};
-        });
-
-    component_registry_.register_component<AnimationTrigger>("AnimationTrigger",
-        [](const nlohmann::json& j) -> AnimationTrigger {
-            AnimationTrigger c;
-            if (j.contains("effect_name")) {
-                auto name = j["effect_name"].get<std::string>();
-                std::strncpy(c.effect_name, name.c_str(), sizeof(c.effect_name) - 1);
-                c.effect_name[sizeof(c.effect_name) - 1] = '\0';
-            }
-            if (j.contains("anim_radius")) c.anim_radius = j["anim_radius"].get<float>();
-            if (j.contains("lifetime")) c.lifetime = j["lifetime"].get<float>();
-            if (j.contains("loop")) c.loop = j["loop"].get<bool>();
-            return c;
-        },
-        [](const AnimationTrigger& c) -> nlohmann::json {
-            return {{"effect_name", std::string(c.effect_name)},
-                    {"anim_radius", c.anim_radius},
-                    {"lifetime", c.lifetime},
-                    {"loop", c.loop}};
-        });
-
-    component_registry_.register_component<DiscoveryZone>("DiscoveryZone",
-        [](const nlohmann::json& j) -> DiscoveryZone {
-            DiscoveryZone c;
-            if (j.contains("color_r")) c.color_r = j["color_r"].get<float>();
-            if (j.contains("color_g")) c.color_g = j["color_g"].get<float>();
-            if (j.contains("color_b")) c.color_b = j["color_b"].get<float>();
-            if (j.contains("burst_height")) c.burst_height = j["burst_height"].get<float>();
-            return c;
-        },
-        [](const DiscoveryZone& c) -> nlohmann::json {
-            return {{"color_r", c.color_r}, {"color_g", c.color_g},
-                    {"color_b", c.color_b}, {"burst_height", c.burst_height}};
-        });
-
-    component_registry_.register_component<VfxTrigger>("VfxTrigger",
-        [](const nlohmann::json& j) -> VfxTrigger {
-            VfxTrigger c;
-            if (j.contains("vfx_path")) {
-                auto path = j["vfx_path"].get<std::string>();
-                std::strncpy(c.vfx_path, path.c_str(), sizeof(c.vfx_path) - 1);
-                c.vfx_path[sizeof(c.vfx_path) - 1] = '\0';
-            }
-            return c;
-        },
-        [](const VfxTrigger& c) -> nlohmann::json {
-            return {{"vfx_path", std::string(c.vfx_path)}};
         });
 
     component_registry_.register_component<NpcWalker>("NpcWalker",
