@@ -2,13 +2,15 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Replace the 8-pass radix sort (38 barriers) with a 4-pass Onesweep radix sort (10 barriers) for tile binning, restoring 60 FPS on Apple Silicon TBDR GPUs.
+**Goal:** Replace the 8-pass radix sort (38 barriers) with an Onesweep radix sort for tile binning, reducing barrier count and sort time.
 
-**Architecture:** New `gs_onesweep.comp` shader performs fused histogram + decoupled-lookback prefix sum + scatter in a single dispatch per pass. `TileSortEntry` shrinks from 16 to 8 bytes with a packed 32-bit key (`tile_id[31:16] | depth_q[15:0]`). Near/far extracted from projection matrix on CPU, passed via UBO. Old sort kept behind `use_onesweep_` toggle for A/B comparison.
+**Status:** COMPLETE (2026-04-14). Shipped as 2-dispatch Onesweep (PRs #241, #247, #248).
+
+**Final Architecture:** Two shaders (`gs_onesweep_histogram.comp` + `gs_onesweep_scatter.comp`) perform decoupled-lookback histogram + stable scatter in 2 dispatches per pass. The fused single-dispatch approach was abandoned due to AMD TDR deadlock (spin-wait global barrier) and missing cross-digit prefix issue. TileSortEntry remains 16 bytes for compatibility. Old 4-pass sort available via `use_onesweep_ = false` toggle.
+
+**Results:** 5x sort speedup on AMD RX 6600M (4.9 ms → 0.9 ms). Total barriers: ~14 (down from ~38 original, ~21 with 4-pass). See `docs/performance/2026-04-14-onesweep-tile-sort-benchmark.md` for full benchmark.
 
 **Tech Stack:** C++23, Vulkan 1.1, GLSL 450, glslc (`--target-env=vulkan1.1`)
-
-**Worktree:** `/Users/eccyan/dev/GSeurat-onesweep` (branch `perf/onesweep-tile-sort`)
 
 ---
 

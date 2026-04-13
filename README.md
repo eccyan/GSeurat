@@ -228,12 +228,34 @@ Compute passes before the main render pass:
 
 0. **PBD Solver** (optional) — GPU-driven Position Based Dynamics physics solver: Verlet integration, distance constraint projection, ground collision. Writes position + rotation deltas
 1. **Preprocess** — project 3D Gaussians to 2D, frustum cull, compute 2D covariance (reads PBD + bone transforms)
-2. **Bitonic Sort** — depth-sort projected splats front-to-back
-3. **Tile Rasterizer** — 16x16 tile-based splatting into a 320x240 HDR storage image
+2. **Tile Binning** — assign projected Gaussians to overlapping 16x16 tiles with sort keys
+3. **Tile Sort** — Onesweep radix sort (decoupled lookback) or fallback 4-pass radix sort
+4. **Tile Rasterizer** — per-tile front-to-back alpha blending into HDR storage image
 
 Output is sampled with nearest-neighbor filtering for stylized upscale.
 
+**Tile Sort — Onesweep Radix Sort:**
+
+The tile sort uses a 2-dispatch Onesweep algorithm with decoupled lookback for cross-workgroup prefix sums. Each 8-bit radix pass is split into two dispatches:
+
+1. `gs_onesweep_histogram.comp` — builds per-workgroup histogram, then uses decoupled lookback (spin-read with `LOCAL`/`INCLUSIVE` flags) to compute per-digit inclusive prefix across all workgroups. Results are published to a coherent status buffer.
+2. `gs_onesweep_scatter.comp` — reads the status buffer (no spinning required — dispatch boundary guarantees all writes are visible), derives global exclusive prefix and per-workgroup aggregates, then performs a stable scatter with intra-workgroup ranking.
+
+4 passes (32-bit key, 8 bits per pass) = 8 sort dispatches + ~9 barriers. A fallback 4-pass radix sort (histogram + scan + scatter = 12 dispatches, ~16 barriers) is available via `use_onesweep_` toggle.
+
+**Benchmark (AMD RX 6600M, release, 2.4M splat overworld, 524K tile entries):**
+
+| | Old 4-pass Sort | 2-dispatch Onesweep | Speedup |
+|---|---|---|---|
+| Sort (close-up) | 5.1 ms | 1.0 ms | **5x** |
+| Sort (medium) | 4.7 ms | 0.9 ms | **5x** |
+| Sort (far) | 4.9 ms | 0.4 ms | **11x** |
+| Total pipeline (close-up) | 10.7 ms | 6.2 ms | **1.7x** |
+
+The old sort takes ~4.9 ms constant regardless of visible Gaussians (fixed workgroup count over the full buffer). Onesweep scales with actual entry count via indirect dispatch.
+
 **Performance optimizations:**
+- **Onesweep tile sort** — 5x faster tile sort via decoupled lookback, scales with visible count
 - Render early termination on first culled Gaussian (sorted order)
 - Visible count via atomic counter (preprocess SSBO)
 - Spatial chunk grid (`GsChunkGrid`) with frustum culling
@@ -241,6 +263,7 @@ Output is sampled with nearest-neighbor filtering for stylized upscale.
 - CPU-side LOD decimation with adaptive budget (converge-and-lock targeting 30 FPS)
 - Hybrid re-render: full compute every Nth frame, cached blit with 2D offset between
 - Async chunk streaming (`GsChunkStreamer`) for open-world scale maps
+- **GPU timestamp profiling** — sort and rasterize times reported separately every 60 frames
 
 **GS Demo controls:**
 
@@ -452,7 +475,7 @@ cd tools/apps/level-designer && pnpm dev
 
 ### C++ Engine Tests
 
-All 27 test suites are CMake targets, run via `ctest`:
+All 37 test suites are CMake targets, run via `ctest`:
 
 ```bash
 cmake --preset <platform>-debug
@@ -489,6 +512,8 @@ ctest --test-dir build/<platform>-debug --output-on-failure
 | `test_character_manifest` | 60 | Character manifest parsing, root motion fields, pose/clip validation |
 | `test_bone_animation_player` | 9 | Bone FK, delta extraction, loop wrap-around, root stripping |
 | `test_bone_animation_state_machine` | 5 | State transitions, animation blending, root motion reset |
+| `test_tile_sort_key` | — | Tile sort key packing, depth quantization, radix digit extraction |
+| `test_onesweep_logic` | — | Onesweep histogram, decoupled lookback, scatter correctness, UBO layout audit |
 | `test_world_manifest` | 10 | World JSON parsing, chunk AABB derivation, round-trip, point-in-volume (box/sphere), path traversal rejection |
 | `test_world_streamer` | 10 | Chunk state lifecycle (load/active/unload), hysteresis, volume preload, portal detection (box/sphere) |
 
@@ -507,7 +532,7 @@ pnpm --filter @gseurat/tests test:echidna-ply-export
 
 GitHub Actions runs three parallel jobs on every push/PR to main:
 - **Build** — C++ engine on Linux, Windows, macOS
-- **Test (C++)** — 27 engine test suites via ctest (ubuntu)
+- **Test (C++)** — 37 engine test suites via ctest (ubuntu)
 - **Test (TypeScript)** — Tool tests via pnpm (ubuntu)
 
 See [tests/README.md](tests/README.md) for detailed build commands and test descriptions.
