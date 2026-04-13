@@ -1732,17 +1732,20 @@ void GsRenderer::render(VkCommandBuffer cmd, const glm::mat4& view, const glm::m
 
     std::memcpy(uniform_buffer_.mapped(), &uniforms, sizeof(uniforms));
 
-    // Read back GPU timestamps from previous frame's rasterize pass
-    if (timestamp_pool_ && timestamp_frame_ > 0) {
+    // Read back GPU timestamps from previous frame's rasterize pass.
+    // timestamps_written_ ensures we only read after at least one dispatch
+    // has written both timestamp queries (avoids reading uninitialized queries).
+    if (timestamp_pool_ && timestamps_written_) {
         uint64_t timestamps[2]{};
         VkResult ts_result = vkGetQueryPoolResults(
             device_, timestamp_pool_, 0, 2,
             sizeof(timestamps), timestamps, sizeof(uint64_t),
-            VK_QUERY_RESULT_64_BIT);
-        if (ts_result == VK_SUCCESS) {
+            VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT);
+        if (ts_result == VK_SUCCESS && timestamps[1] > timestamps[0]) {
             float ms = static_cast<float>(timestamps[1] - timestamps[0])
                        * timestamp_period_ns_ / 1e6f;
             rasterize_ms_accum_ += ms;
+            ++timestamp_frame_;
             if (timestamp_frame_ % kTimestampAvgFrames == 0) {
                 float avg = rasterize_ms_accum_ / static_cast<float>(kTimestampAvgFrames);
                 std::printf("[gs_renderer] Rasterize pass: %.3f ms (avg %u frames)\n",
@@ -1751,7 +1754,6 @@ void GsRenderer::render(VkCommandBuffer cmd, const glm::mat4& view, const glm::m
             }
         }
     }
-    ++timestamp_frame_;
 
     // Reset timestamp queries for this frame
     if (timestamp_pool_) {
@@ -1926,6 +1928,7 @@ void GsRenderer::render(VkCommandBuffer cmd, const glm::mat4& view, const glm::m
                 if (timestamp_pool_) {
                     vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                                        timestamp_pool_, 1);
+                    timestamps_written_ = true;
                 }
             }
         } else {
@@ -1975,6 +1978,7 @@ void GsRenderer::render(VkCommandBuffer cmd, const glm::mat4& view, const glm::m
             if (timestamp_pool_) {
                 vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                                    timestamp_pool_, 1);
+                timestamps_written_ = true;
             }
         }
 
