@@ -1265,7 +1265,7 @@ void GsRenderer::load_cloud_legacy(const GaussianCloud& cloud) {
     // ── Tile binning buffers (same logic as init_streaming) ──
     {
         uint32_t visible_upper = static_sort_size_ + dynamic_sort_size_;
-        tile_sort_capacity_ = std::min(visible_upper * 4, 1u << 18);  // cap at 256K
+        tile_sort_capacity_ = std::min(visible_upper * 4, 1u << 19);  // cap at 512K (8MB per buffer)
         tile_sort_size_ = ((tile_sort_capacity_ + 1023) / 1024) * 1024;
         tile_sort_workgroups_ = tile_sort_size_ / 1024;
         if (tile_sort_workgroups_ == 0) tile_sort_workgroups_ = 1;
