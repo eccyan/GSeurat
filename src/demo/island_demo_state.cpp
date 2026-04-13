@@ -630,8 +630,8 @@ void IslandDemoState::update(AppBase& app, float dt) {
     // Player movement
     update_player(app, dt);
 
-    // Run ECS systems (proximity triggers, linked triggers, emissive toggle)
-    app.system_scheduler().run_all(app.world(), dt);
+    // Run ECS systems (proximity triggers, linked triggers, emissive toggle, NPC walker, bone animation)
+    app.update_game(dt);
 
     // Effect systems (EmitterToggle, LightToggle)
     update_effects(app, dt);
