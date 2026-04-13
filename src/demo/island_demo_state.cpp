@@ -568,11 +568,6 @@ void IslandDemoState::update(AppBase& app, float dt) {
             anim_enabled_ = !anim_enabled_;
         }
 
-        // G → toggle debug gizmos (lights, emitters, triggers)
-        if (app.input().was_key_pressed(GLFW_KEY_G)) {
-            show_gizmos_ = !show_gizmos_;
-            std::fprintf(stderr, "[IslandDemo] Debug gizmos %s\n", show_gizmos_ ? "ON" : "OFF");
-        }
 
         // J → toggle PBD chain demo (CPU-side, rendered as dynamic Gaussians)
         if (app.input().was_key_pressed(GLFW_KEY_J)) {
@@ -1828,15 +1823,12 @@ void IslandDemoState::build_draw_lists(AppBase& app) {
     glm::vec4 trig_col = triggered_count > 0 ? green : dim;
     ui.label("Triggers", lx, y, s, dim);
     ui.label(std::to_string(triggered_count) + "/" + std::to_string(total_triggers), vx, y, s, trig_col);
-    y -= line;
-    ui.label("Gizmos [G]", lx, y, s, dim);
-    ui.label(show_gizmos_ ? "ON" : "OFF", vx, y, s, show_gizmos_ ? green : red);
 }
 
 // ── Debug gizmos (G key toggle) ──
 
 void IslandDemoState::draw_gizmos(AppBase& app) {
-    if ((!show_gizmos_ && !app.dev_overlay().visible()) || !app.renderer().has_gs_cloud()) return;
+    if (!app.dev_overlay().visible() || !app.renderer().has_gs_cloud()) return;
 
     auto& ui = app.ui_ctx();
     constexpr float sw = 1280.0f;
