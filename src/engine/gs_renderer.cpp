@@ -1262,6 +1262,42 @@ void GsRenderer::load_cloud_legacy(const GaussianCloud& cloud) {
         pt[0] = 0xFFFFFFFF;
     }
 
+    // ── Tile binning buffers (same logic as init_streaming) ──
+    {
+        uint32_t visible_upper = static_sort_size_ + dynamic_sort_size_;
+        tile_sort_capacity_ = std::min(visible_upper * 4, 1u << 18);  // cap at 256K
+        tile_sort_size_ = ((tile_sort_capacity_ + 1023) / 1024) * 1024;
+        tile_sort_workgroups_ = tile_sort_size_ / 1024;
+        if (tile_sort_workgroups_ == 0) tile_sort_workgroups_ = 1;
+        tile_sort_size_ = tile_sort_workgroups_ * 1024;
+
+        VkDeviceSize entry_buf_size = static_cast<VkDeviceSize>(tile_sort_size_) * 16;
+        VkDeviceSize hist_buf_size = static_cast<VkDeviceSize>(256) * tile_sort_workgroups_ * sizeof(uint32_t);
+        uint32_t tiles_x = (output_width_ + 15) / 16;
+        uint32_t tiles_y = (output_height_ + 15) / 16;
+        VkDeviceSize ranges_buf_size = static_cast<VkDeviceSize>(tiles_x * tiles_y) * 2 * sizeof(uint32_t);
+
+        tile_sort_a_.destroy(allocator_);
+        tile_sort_b_.destroy(allocator_);
+        tile_sort_count_ssbo_.destroy(allocator_);
+        tile_histogram_ssbo_.destroy(allocator_);
+        tile_ranges_ssbo_.destroy(allocator_);
+        tile_indirect_args_.destroy(allocator_);
+
+        tile_sort_a_ = Buffer::create_storage(allocator_, entry_buf_size);
+        tile_sort_b_ = Buffer::create_storage(allocator_, entry_buf_size);
+        tile_sort_count_ssbo_ = Buffer::create_storage_readback(allocator_, sizeof(uint32_t));
+        tile_histogram_ssbo_ = Buffer::create_storage(allocator_, hist_buf_size);
+        tile_ranges_ssbo_ = Buffer::create_storage(allocator_, ranges_buf_size);
+        tile_indirect_args_ = Buffer::create_storage(allocator_, 8 * sizeof(uint32_t));
+        std::memset(tile_indirect_args_.mapped(), 0, 8 * sizeof(uint32_t));
+
+        std::fprintf(stderr, "GS: Tile sort — capacity=%u entries (%u workgroups), "
+                     "tiles=%ux%u, buf=%.1f MB\n",
+                     tile_sort_size_, tile_sort_workgroups_, tiles_x, tiles_y,
+                     static_cast<float>(entry_buf_size * 2) / (1024.0f * 1024.0f));
+    }
+
     update_descriptors();
 }
 
