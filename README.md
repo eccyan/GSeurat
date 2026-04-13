@@ -11,7 +11,7 @@ A Vulkan-based 3D Gaussian Splatting engine built with C++23. Named after **3DGS
 - **Game Object System** — Unified entity model with component composition. Developers define C++ component structs + JSON schemas; level designers compose objects in Bricklayer
 - **Component Registry** — Type-erased component registration with JSON attach/serialize. SystemScheduler with read/write dependency declarations (parallel-ready)
 - **Entity Component System** — Header-only ECS with archetype storage, typed views, and system functions
-- **Async asset streaming** — Background thread loading with budget-limited GPU uploads for open-world support
+- **Async asset streaming** — Slab allocator + GPU page table, async transfer queue, `world.json` spatial partitioning with fixed uniform chunk grid, StreamingVolumes for preload hints, GPU frustum culling
 - **GS Particle system** — WASM-compiled C++ simulation for preview in web tools, spline path support (emitter path + particle path modes)
 - **Audio** — 4-layer music + spatial SFX via miniaudio
 - **Day/night cycle** — Ambient color interpolation with weather system
@@ -180,6 +180,39 @@ poll_transfers()                Stage to ring buffer
 
 All disk I/O and CPU parsing runs on worker threads. All Vulkan API calls and page table updates stay on the main thread. Configuration via `engine_config.json`.
 
+**Tier 3 — World Manifest (`world.json`):**
+Spatial partitioning for vast open-world maps. A `world.json` file at the project root defines a fixed uniform grid of chunks, each referencing a PLY file and optional per-chunk scene JSON. The engine derives AABBs from grid position (`aabb_min = grid * cell_size`) for O(1) camera-to-chunk lookups via integer division.
+
+```json
+{
+  "version": 1,
+  "grid_cell_size": [64.0, 32.0, 64.0],
+  "chunks": [
+    { "grid": [0, 0, 0], "ply_file": "assets/maps/chunk_0_0_0.ply",
+      "scene_file": "assets/scenes/chunk_0_0_0.json" }
+  ],
+  "streaming_volumes": [
+    { "id": "sv_1", "shape": "box", "position": [96, 0, 48],
+      "half_extents": [8, 8, 8], "preload_target_ids": ["dungeon_01"] }
+  ],
+  "portals": [
+    { "id": "portal_dungeon", "position": [100, 0, 50],
+      "region_shape": "sphere", "region_radius": 2.0,
+      "target_instance_id": "dungeon_01" }
+  ]
+}
+```
+
+**Chunks vs Instances:** Chunks are spatial PLY tiles in a global coordinate system — loaded/unloaded by camera distance, rendered simultaneously. Instances (Phase 2) are isolated rooms in their own local coordinate system — entered via Portals. StreamingVolumes are trigger zones that hint the async transfer queue to preload targets before the player reaches them.
+
+| Component | Description |
+|---|---|
+| `WorldManifest` | C++ parser/serializer for `world.json` with path traversal validation |
+| `StreamingVolume` | Box/sphere trigger with `contains()` test for preload hints |
+
+**GPU Frustum Culling:**
+The preprocess shader includes a clip-space `frustum_visible()` test with 10% padding for splat radius bleed. Culled splats receive sort key `0xFFFF` (visible capped at `0xFFFE`), sinking to the end of the radix sort. This reduces sort workload by 50-75% when the camera faces one direction in a multi-chunk world.
+
 ### 3D Gaussian Splatting
 
 ```
@@ -199,6 +232,7 @@ Output is sampled with nearest-neighbor filtering for stylized upscale.
 - Render early termination on first culled Gaussian (sorted order)
 - Visible count via atomic counter (preprocess SSBO)
 - Spatial chunk grid (`GsChunkGrid`) with frustum culling
+- Clip-space `frustum_visible()` pre-pass — culled splats get `0xFFFF` sort key, reducing radix sort by 50-75%
 - CPU-side LOD decimation with adaptive budget (converge-and-lock targeting 30 FPS)
 - Hybrid re-render: full compute every Nth frame, cached blit with 2D offset between
 - Async chunk streaming (`GsChunkStreamer`) for open-world scale maps
@@ -389,7 +423,7 @@ Engine (Vulkan) ←→ Unix Socket ←→ Bridge Proxy (ws://localhost:9100) ←
 | Tool | Port | Description |
 |------|------|-------------|
 | **Bridge Proxy** | 9100/9101 | Node.js relay between Unix socket and WebSocket clients |
-| **Bricklayer** | 5180 | 3DGS map editor: voxel terrain, Game Objects with component composition, PBD physics, emitters, animations, VFX, lights, portals with region triggers (box/sphere), instances (named scene references) |
+| **Bricklayer** | 5180 | 3DGS map editor: voxel terrain, Game Objects with component composition, PBD physics, emitters, animations, VFX, lights, portals, instances, WORLD mode (chunk grid with wireframe proxies, StreamingVolumes, global portals) |
 | **Méliès** | 5181 | VFX editor: particle emitters, GS animations, spline paths, object layers, light layers |
 | **Echidna** | 5179 | Voxel character editor: .vox import, body parts, bone posing, PLY export |
 | **Staging** | C++ app | ImGui rendering review: live scene preview, gizmos for lights/emitters/VFX/game objects, bridge auto-sync |
@@ -450,6 +484,7 @@ ctest --test-dir build/<platform>-debug --output-on-failure
 | `test_character_manifest` | 60 | Character manifest parsing, root motion fields, pose/clip validation |
 | `test_bone_animation_player` | 9 | Bone FK, delta extraction, loop wrap-around, root stripping |
 | `test_bone_animation_state_machine` | 5 | State transitions, animation blending, root motion reset |
+| `test_world_manifest` | 10 | World JSON parsing, chunk AABB derivation, round-trip, point-in-volume (box/sphere), path traversal rejection |
 
 ### TypeScript Tool Tests
 
