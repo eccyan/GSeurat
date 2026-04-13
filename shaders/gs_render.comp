@@ -166,11 +166,9 @@ void main() {
         }
         alpha_accum += weight;
 
-        // Early termination when pixel is saturated
-        if (alpha_accum > 0.999) break;
-
-        // Subgroup-wide early-out: if all threads in the subgroup are saturated,
-        // skip remaining Gaussians (saves ~10-30% on dense scenes)
+        // Subgroup-wide early-out: if ALL threads in the subgroup are saturated,
+        // skip remaining Gaussians. Individual thread breaks would cause UB
+        // (some threads exit before subgroupAll), so we only use the collective check.
         if (subgroupAll(alpha_accum > 0.999)) break;
     }
 

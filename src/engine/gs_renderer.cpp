@@ -1733,14 +1733,13 @@ void GsRenderer::render(VkCommandBuffer cmd, const glm::mat4& view, const glm::m
     std::memcpy(uniform_buffer_.mapped(), &uniforms, sizeof(uniforms));
 
     // Read back GPU timestamps from previous frame's rasterize pass.
-    // timestamps_written_ ensures we only read after at least one dispatch
-    // has written both timestamp queries (avoids reading uninitialized queries).
+    // Non-blocking: if results aren't ready yet, skip this frame's sample.
     if (timestamp_pool_ && timestamps_written_) {
         uint64_t timestamps[2]{};
         VkResult ts_result = vkGetQueryPoolResults(
             device_, timestamp_pool_, 0, 2,
             sizeof(timestamps), timestamps, sizeof(uint64_t),
-            VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT);
+            VK_QUERY_RESULT_64_BIT);  // no WAIT_BIT — never block on GPU
         if (ts_result == VK_SUCCESS && timestamps[1] > timestamps[0]) {
             float ms = static_cast<float>(timestamps[1] - timestamps[0])
                        * timestamp_period_ns_ / 1e6f;
@@ -1753,11 +1752,13 @@ void GsRenderer::render(VkCommandBuffer cmd, const glm::mat4& view, const glm::m
                 rasterize_ms_accum_ = 0.0f;
             }
         }
+        // VK_NOT_READY means GPU hasn't finished yet — just skip this sample
     }
 
     // Reset timestamp queries for this frame
     if (timestamp_pool_) {
         vkCmdResetQueryPool(cmd, timestamp_pool_, 0, 2);
+        timestamps_written_ = false;  // reset each frame — set again after dispatch
     }
 
     // In skip-sort mode, skip GS compute but still run post-process
