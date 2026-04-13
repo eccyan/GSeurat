@@ -2390,6 +2390,15 @@ void GsRenderer::render(VkCommandBuffer cmd, const glm::mat4& view, const glm::m
 
         // Use split pipeline if split buffers are allocated, otherwise legacy path
         bool use_split = static_gaussian_ssbo_.buffer() && counts_ssbo_.buffer();
+        {
+            static bool logged_path = false;
+            if (!logged_path) {
+                std::printf("[gs_renderer] render path: use_split=%d static_buf=%p counts_buf=%p\n",
+                            use_split ? 1 : 0,
+                            static_gaussian_ssbo_.buffer(), counts_ssbo_.buffer());
+                logged_path = true;
+            }
+        }
 
         if (use_split) {
             // Reset counts that will be written this frame
