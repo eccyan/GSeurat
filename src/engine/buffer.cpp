@@ -107,6 +107,27 @@ Buffer Buffer::create_storage(VmaAllocator allocator, VkDeviceSize size) {
     return buf;
 }
 
+Buffer Buffer::create_storage_gpu_only(VmaAllocator allocator, VkDeviceSize size) {
+    VkBufferCreateInfo buf_info{};
+    buf_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    buf_info.size = size;
+    buf_info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    buf_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+    VmaAllocationCreateInfo alloc_info{};
+    alloc_info.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
+    alloc_info.flags = 0;  // no host access — GPU private memory
+
+    Buffer buf;
+    VmaAllocationInfo info;
+    if (vmaCreateBuffer(allocator, &buf_info, &alloc_info, &buf.buffer_, &buf.allocation_,
+                        &info) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to create GPU-only storage buffer");
+    }
+    buf.mapped_ = nullptr;  // not mappable
+    return buf;
+}
+
 Buffer Buffer::create_storage_readback(VmaAllocator allocator, VkDeviceSize size) {
     VkBufferCreateInfo buf_info{};
     buf_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;

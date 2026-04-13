@@ -84,12 +84,12 @@ void GsRenderer::init(VkDevice device, VkPhysicalDevice physical_device,
     // Create initial tile buffers (zeroed) for valid descriptor bindings.
     // init_streaming() will recreate them at proper size when a scene loads.
     {
-        static constexpr uint32_t kMaxTiles = 40 * 30;  // supports up to 640×480
-        tile_ranges_ssbo_ = Buffer::create_storage(allocator_,
+        static constexpr uint32_t kMaxTiles = 256 * 144;  // supports up to 4096×2304
+        tile_ranges_ssbo_ = Buffer::create_storage_gpu_only(allocator_,
             static_cast<VkDeviceSize>(kMaxTiles) * 2 * sizeof(uint32_t));
-        std::memset(tile_ranges_ssbo_.mapped(), 0, kMaxTiles * 2 * sizeof(uint32_t));
+        // GPU-only: zeroed by vkCmdFillBuffer at dispatch time
         // Tiny dummy tile sort buffer (16 bytes) — just for descriptor binding validity
-        tile_sort_a_ = Buffer::create_storage(allocator_, 16);
+        tile_sort_a_ = Buffer::create_storage_gpu_only(allocator_, 16);
         tile_sort_count_ssbo_ = Buffer::create_storage_readback(allocator_, sizeof(uint32_t));
         std::memset(tile_sort_count_ssbo_.mapped(), 0, sizeof(uint32_t));
         tile_indirect_args_ = Buffer::create_storage(allocator_, 8 * sizeof(uint32_t));
@@ -791,7 +791,7 @@ void GsRenderer::init_streaming(const StreamingConfig& config) {
         VkDeviceSize hist_buf_size = static_cast<VkDeviceSize>(256) * tile_sort_workgroups_ * sizeof(uint32_t);
         // Allocate tile_ranges for max possible resolution (output_width_ may not
         // reflect final size at allocation time). Generous upper bound.
-        static constexpr uint32_t kMaxTiles = 40 * 30;  // supports up to 640×480
+        static constexpr uint32_t kMaxTiles = 256 * 144;  // supports up to 4096×2304
         VkDeviceSize ranges_buf_size = static_cast<VkDeviceSize>(kMaxTiles) * 2 * sizeof(uint32_t);
 
         tile_sort_a_.destroy(allocator_);
@@ -801,11 +801,11 @@ void GsRenderer::init_streaming(const StreamingConfig& config) {
         tile_ranges_ssbo_.destroy(allocator_);
         tile_indirect_args_.destroy(allocator_);
 
-        tile_sort_a_ = Buffer::create_storage(allocator_, entry_buf_size);
-        tile_sort_b_ = Buffer::create_storage(allocator_, entry_buf_size);
+        tile_sort_a_ = Buffer::create_storage_gpu_only(allocator_, entry_buf_size);
+        tile_sort_b_ = Buffer::create_storage_gpu_only(allocator_, entry_buf_size);
         tile_sort_count_ssbo_ = Buffer::create_storage_readback(allocator_, sizeof(uint32_t));
-        tile_histogram_ssbo_ = Buffer::create_storage(allocator_, hist_buf_size);
-        tile_ranges_ssbo_ = Buffer::create_storage(allocator_, ranges_buf_size);
+        tile_histogram_ssbo_ = Buffer::create_storage_gpu_only(allocator_, hist_buf_size);
+        tile_ranges_ssbo_ = Buffer::create_storage_gpu_only(allocator_, ranges_buf_size);
         tile_indirect_args_ = Buffer::create_storage(allocator_, 8 * sizeof(uint32_t));
 
         std::fprintf(stderr, "GS: Tile sort -- capacity=%u entries (%u workgroups), "
@@ -1275,7 +1275,7 @@ void GsRenderer::load_cloud_legacy(const GaussianCloud& cloud) {
         VkDeviceSize hist_buf_size = static_cast<VkDeviceSize>(256) * tile_sort_workgroups_ * sizeof(uint32_t);
         // Allocate tile_ranges for max possible resolution (output_width_ may not
         // reflect final size at allocation time). Generous upper bound.
-        static constexpr uint32_t kMaxTiles = 40 * 30;  // supports up to 640×480
+        static constexpr uint32_t kMaxTiles = 256 * 144;  // supports up to 4096×2304
         VkDeviceSize ranges_buf_size = static_cast<VkDeviceSize>(kMaxTiles) * 2 * sizeof(uint32_t);
 
         tile_sort_a_.destroy(allocator_);
@@ -1285,11 +1285,11 @@ void GsRenderer::load_cloud_legacy(const GaussianCloud& cloud) {
         tile_ranges_ssbo_.destroy(allocator_);
         tile_indirect_args_.destroy(allocator_);
 
-        tile_sort_a_ = Buffer::create_storage(allocator_, entry_buf_size);
-        tile_sort_b_ = Buffer::create_storage(allocator_, entry_buf_size);
+        tile_sort_a_ = Buffer::create_storage_gpu_only(allocator_, entry_buf_size);
+        tile_sort_b_ = Buffer::create_storage_gpu_only(allocator_, entry_buf_size);
         tile_sort_count_ssbo_ = Buffer::create_storage_readback(allocator_, sizeof(uint32_t));
-        tile_histogram_ssbo_ = Buffer::create_storage(allocator_, hist_buf_size);
-        tile_ranges_ssbo_ = Buffer::create_storage(allocator_, ranges_buf_size);
+        tile_histogram_ssbo_ = Buffer::create_storage_gpu_only(allocator_, hist_buf_size);
+        tile_ranges_ssbo_ = Buffer::create_storage_gpu_only(allocator_, ranges_buf_size);
         tile_indirect_args_ = Buffer::create_storage(allocator_, 8 * sizeof(uint32_t));
         std::memset(tile_indirect_args_.mapped(), 0, 8 * sizeof(uint32_t));
 
