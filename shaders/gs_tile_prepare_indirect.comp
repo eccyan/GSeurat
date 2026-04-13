@@ -25,8 +25,8 @@ layout(push_constant) uniform PushConstants {
 void main() {
     uint count = min(tile_sort_count, max_entries);
 
-    // Sort: 1024 elements per workgroup
-    uint sort_wg = (count + 1023u) / 1024u;
+    // Sort: 2048 elements per workgroup (Onesweep processes 2048 keys/wg)
+    uint sort_wg = (count + 2047u) / 2048u;
     if (sort_wg == 0) sort_wg = 1;  // need at least 1 for scan to work
     args[0] = sort_wg;
     args[1] = 1;

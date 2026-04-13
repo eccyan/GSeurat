@@ -2216,66 +2216,97 @@ void GsRenderer::dispatch_tile_sort(VkCommandBuffer cmd) {
             0, 1, &barrier, 0, nullptr, 0, nullptr);
     }
 
-    // === Tile radix sort (8 passes, indirect dispatch) ===
-    // Pre-compute fixed histogram_count for scan (uses capacity-based upper bound).
-    // Histogram buffer must be cleared before each pass so the scan reads zeros
-    // for workgroups that weren't dispatched (indirect count < max_workgroups).
-    uint32_t max_workgroups = (tile_sort_capacity_ + 1023) / 1024;
-    if (max_workgroups == 0) max_workgroups = 1;
-    uint32_t histogram_count = 256 * max_workgroups;
-    VkDeviceSize hist_clear_size = static_cast<VkDeviceSize>(histogram_count) * sizeof(uint32_t);
-
-    for (uint32_t pass = 0; pass < kTileSortPasses; ++pass) {
-        uint32_t digit_shift = (pass % 4) * 8;
-        uint32_t use_hi = (pass < 4) ? 0 : 1;
-        bool read_from_a = (pass % 2 == 0);
-        uint32_t push_data[2] = {digit_shift, use_hi};
-
-        // Clear histogram buffer to 0 (ensures unused workgroup slots are zero for scan)
-        vkCmdFillBuffer(cmd, tile_histogram_ssbo_.buffer(), 0, hist_clear_size, 0);
+    if (use_onesweep_ && onesweep_status_.buffer()) {
+        // === Onesweep: clear status buffer ===
+        VkDeviceSize status_size = 4ull * 256ull * onesweep_max_wg_ * sizeof(uint32_t);
+        vkCmdFillBuffer(cmd, onesweep_status_.buffer(), 0, status_size, 0);
         {
-            VkMemoryBarrier hb{};
-            hb.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
-            hb.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-            hb.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+            VkMemoryBarrier sb{};
+            sb.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+            sb.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+            sb.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
             vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
-                VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &hb, 0, nullptr, 0, nullptr);
+                VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &sb, 0, nullptr, 0, nullptr);
         }
 
-        // Histogram — fixed workgroup count (must match scan stride).
-        // Extra workgroups produce zeros since shaders check num_elements from indirect_args[6].
-        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, tile_histogram_pipeline_);
-        auto hist_set = read_from_a ? tile_histogram_set_a_ : tile_histogram_set_b_;
-        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
-                                tile_histogram_pipeline_layout_, 0, 1, &hist_set, 0, nullptr);
-        vkCmdPushConstants(cmd, tile_histogram_pipeline_layout_, VK_SHADER_STAGE_COMPUTE_BIT,
-                           0, 8, push_data);
-        vkCmdDispatch(cmd, max_workgroups, 1, 1);
+        // === Onesweep: 4 radix passes ===
+        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, onesweep_pipeline_);
+        for (uint32_t pass = 0; pass < 4; pass++) {
+            uint32_t push_data[2] = {pass, onesweep_max_wg_};
+            bool read_from_a = (pass % 2 == 0);
+            VkDescriptorSet set = read_from_a ? onesweep_set_ab_ : onesweep_set_ba_;
 
-        insert_compute_barrier(cmd);
+            vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
+                                    onesweep_pipeline_layout_, 0, 1, &set, 0, nullptr);
+            vkCmdPushConstants(cmd, onesweep_pipeline_layout_, VK_SHADER_STAGE_COMPUTE_BIT,
+                               0, 8, push_data);
+            vkCmdDispatchIndirect(cmd, tile_indirect_args_.buffer(), 0);
 
-        // Prefix scan — uses fixed upper bound for histogram_count
-        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, radix_scan_pipeline_);
-        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
-                                radix_scan_pipeline_layout_, 0, 1, &tile_scan_set_, 0, nullptr);
-        vkCmdPushConstants(cmd, radix_scan_pipeline_layout_, VK_SHADER_STAGE_COMPUTE_BIT,
-                           0, 4, &histogram_count);
-        vkCmdDispatch(cmd, 1, 1, 1);
+            insert_compute_barrier(cmd);
+        }
+        // After 4 passes (even count), sorted result is in tile_sort_a_
+    } else {
+        // === Old 8-pass radix sort (fallback) ===
+        // Pre-compute fixed histogram_count for scan (uses capacity-based upper bound).
+        // Histogram buffer must be cleared before each pass so the scan reads zeros
+        // for workgroups that weren't dispatched (indirect count < max_workgroups).
+        uint32_t max_workgroups = (tile_sort_capacity_ + 1023) / 1024;
+        if (max_workgroups == 0) max_workgroups = 1;
+        uint32_t histogram_count = 256 * max_workgroups;
+        VkDeviceSize hist_clear_size = static_cast<VkDeviceSize>(histogram_count) * sizeof(uint32_t);
 
-        insert_compute_barrier(cmd);
+        for (uint32_t pass = 0; pass < kTileSortPasses; ++pass) {
+            uint32_t digit_shift = (pass % 4) * 8;
+            uint32_t use_hi = (pass < 4) ? 0 : 1;
+            bool read_from_a = (pass % 2 == 0);
+            uint32_t push_data[2] = {digit_shift, use_hi};
 
-        // Scatter — fixed workgroup count (must match histogram stride for scan consistency)
-        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, tile_scatter_pipeline_);
-        auto scatter_set = read_from_a ? tile_scatter_set_ab_ : tile_scatter_set_ba_;
-        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
-                                tile_scatter_pipeline_layout_, 0, 1, &scatter_set, 0, nullptr);
-        vkCmdPushConstants(cmd, tile_scatter_pipeline_layout_, VK_SHADER_STAGE_COMPUTE_BIT,
-                           0, 8, push_data);
-        vkCmdDispatch(cmd, max_workgroups, 1, 1);
+            // Clear histogram buffer to 0 (ensures unused workgroup slots are zero for scan)
+            vkCmdFillBuffer(cmd, tile_histogram_ssbo_.buffer(), 0, hist_clear_size, 0);
+            {
+                VkMemoryBarrier hb{};
+                hb.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+                hb.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+                hb.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+                vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                    VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &hb, 0, nullptr, 0, nullptr);
+            }
 
-        insert_compute_barrier(cmd);
+            // Histogram — fixed workgroup count (must match scan stride).
+            // Extra workgroups produce zeros since shaders check num_elements from indirect_args[6].
+            vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, tile_histogram_pipeline_);
+            auto hist_set = read_from_a ? tile_histogram_set_a_ : tile_histogram_set_b_;
+            vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
+                                    tile_histogram_pipeline_layout_, 0, 1, &hist_set, 0, nullptr);
+            vkCmdPushConstants(cmd, tile_histogram_pipeline_layout_, VK_SHADER_STAGE_COMPUTE_BIT,
+                               0, 8, push_data);
+            vkCmdDispatch(cmd, max_workgroups, 1, 1);
+
+            insert_compute_barrier(cmd);
+
+            // Prefix scan — uses fixed upper bound for histogram_count
+            vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, radix_scan_pipeline_);
+            vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
+                                    radix_scan_pipeline_layout_, 0, 1, &tile_scan_set_, 0, nullptr);
+            vkCmdPushConstants(cmd, radix_scan_pipeline_layout_, VK_SHADER_STAGE_COMPUTE_BIT,
+                               0, 4, &histogram_count);
+            vkCmdDispatch(cmd, 1, 1, 1);
+
+            insert_compute_barrier(cmd);
+
+            // Scatter — fixed workgroup count (must match histogram stride for scan consistency)
+            vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, tile_scatter_pipeline_);
+            auto scatter_set = read_from_a ? tile_scatter_set_ab_ : tile_scatter_set_ba_;
+            vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
+                                    tile_scatter_pipeline_layout_, 0, 1, &scatter_set, 0, nullptr);
+            vkCmdPushConstants(cmd, tile_scatter_pipeline_layout_, VK_SHADER_STAGE_COMPUTE_BIT,
+                               0, 8, push_data);
+            vkCmdDispatch(cmd, max_workgroups, 1, 1);
+
+            insert_compute_barrier(cmd);
+        }
+        // After 8 passes (even count), sorted result is in tile_sort_a_
     }
-    // After 8 passes (even count), sorted result is in tile_sort_a_
 
     // === Tile range detection ===
     {
