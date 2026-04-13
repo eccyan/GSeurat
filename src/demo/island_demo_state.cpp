@@ -330,111 +330,6 @@ void IslandDemoState::on_enter(AppBase& app) {
             }
         }
 
-        // Load knight character manifest and PLY
-        {
-            auto knight_loaded = gseurat::load_character_manifest(
-                "assets/characters/knight/knight.manifest.json");
-            if (knight_loaded) {
-                knight_data_ = std::make_unique<gseurat::CharacterData>(std::move(*knight_loaded));
-                std::fprintf(stderr, "[IslandDemo] Knight manifest loaded: %zu bones, %zu clips\n",
-                             knight_data_->bones.size(), knight_data_->clips.size());
-            }
-        }
-
-        auto knight_cloud = GaussianCloud::load_ply("assets/characters/knight/knight.ply");
-        if (!knight_cloud.empty() && knight_data_) {
-            int player_bone_count = character_data_
-                ? static_cast<int>(character_data_->bones.size()) : 1;
-            next_bone_index_ = static_cast<uint32_t>(player_bone_count + 1);
-
-            KnightInfo ki;
-            // Spawn knight near the house
-            ki.spawn_pos = player_pos + glm::vec3(15.0f, 0.0f, -10.0f);
-            // Snap to elevation
-            if (collision_grid_.width > 0 && !collision_grid_.elevation.empty()) {
-                float lx = ki.spawn_pos.x - grid_origin_.x;
-                float lz = ki.spawn_pos.z - grid_origin_.y;
-                int gx = static_cast<int>(lx / collision_grid_.cell_size);
-                int gz = static_cast<int>(lz / collision_grid_.cell_size);
-                if (gx >= 0 && gx < static_cast<int>(collision_grid_.width) &&
-                    gz >= 0 && gz < static_cast<int>(collision_grid_.height)) {
-                    ki.spawn_pos.y = collision_grid_.get_elevation(
-                        static_cast<uint32_t>(gx), static_cast<uint32_t>(gz));
-                }
-            }
-            ki.first_bone_index = next_bone_index_;
-
-            constexpr float kKnightScale = 0.45f;
-            const auto& knight_gs = knight_cloud.gaussians();
-            for (const auto& g : knight_gs) {
-                Gaussian kg = g;
-                glm::vec3 rotated(-kg.position.x, kg.position.y, -kg.position.z);
-                glm::vec3 offset = rotated * kKnightScale;
-                offset.y *= gs_scale;
-                kg.position = ki.spawn_pos + offset + glm::vec3(0, 2.0f, 0);
-                kg.scale *= kKnightScale;
-                // Assign knight bones — map bone_index from PLY to our bone slot
-                kg.bone_index = next_bone_index_ + kg.bone_index;
-                kg.opacity = std::min(1.0f, kg.opacity * 1.3f);
-                merged.push_back(kg);
-            }
-            next_bone_index_ += static_cast<uint32_t>(knight_data_->bones.size());
-
-            ki.current_pos = ki.spawn_pos;
-            ki.walk_target = ki.spawn_pos;
-            ki.facing_angle = glm::pi<float>() * 0.5f;
-            knight_info_ = ki;
-            std::fprintf(stderr, "[IslandDemo] Knight spawned at (%.1f, %.1f, %.1f) bones=%u-%u +%u gs\n",
-                         ki.spawn_pos.x, ki.spawn_pos.y, ki.spawn_pos.z,
-                         ki.first_bone_index, next_bone_index_ - 1,
-                         static_cast<uint32_t>(knight_gs.size()));
-        }
-
-        // Load NPC slime Gaussians with unique bone indices
-        auto slime_cloud = GaussianCloud::load_ply("assets/characters/slime/slime.ply");
-        std::fprintf(stderr, "[IslandDemo] Slime PLY: %u Gaussians\n",
-                     slime_cloud.count());
-        if (!slime_cloud.empty()) {
-            // next_bone_index_ already set by knight loading above;
-            // if no knight, initialize it now
-            if (!knight_info_) {
-                int player_bone_count = character_data_
-                    ? static_cast<int>(character_data_->bones.size()) : 1;
-                next_bone_index_ = static_cast<uint32_t>(player_bone_count + 1);
-            }
-
-            app.world().view<NpcWalker, ecs::Transform>().each(
-                [&](ecs::Entity entity, NpcWalker&, ecs::Transform& t) {
-                    if (next_bone_index_ >= 31) return;
-
-                    NpcInfo info;
-                    info.entity = entity;
-                    info.spawn_pos = t.position.vec();
-                    info.bone_index = next_bone_index_;
-
-                    constexpr float kSlimeScale = 0.5f;
-                    const auto& slime_gs = slime_cloud.gaussians();
-                    for (const auto& g : slime_gs) {
-                        Gaussian sg = g;
-                        glm::vec3 rotated(-sg.position.x, sg.position.y, -sg.position.z);
-                        sg.position = t.position.vec() + rotated * kSlimeScale + glm::vec3(0, 0.5f, 0);
-                        sg.scale *= kSlimeScale;
-                        sg.bone_index = next_bone_index_;
-                        sg.opacity = std::min(1.0f, sg.opacity * 1.3f);
-                        merged.push_back(sg);
-                    }
-
-                    // Random phase offset so slimes don't bounce in sync
-                    info.squish_phase = static_cast<float>(npc_infos_.size()) * 1.7f;
-                    npc_infos_.push_back(info);
-                    std::fprintf(stderr, "[IslandDemo] NPC bone=%u at (%.1f, %.1f, %.1f) +%u gs\n",
-                                 next_bone_index_,
-                                 t.position.x(), t.position.y(), t.position.z(),
-                                 static_cast<uint32_t>(slime_gs.size()));
-                    next_bone_index_++;
-                });
-        }
-
         uint32_t char_count = static_cast<uint32_t>(merged.size()) - map_count;
         auto cloud = GaussianCloud::from_gaussians(std::move(merged));
 
@@ -479,17 +374,6 @@ void IslandDemoState::on_enter(AppBase& app) {
             anim_sm_->set_state("idle");
         }
 
-        // Initialize knight animation
-        if (knight_data_ && knight_info_) {
-            knight_anim_player_ = std::make_unique<gseurat::BoneAnimationPlayer>(*knight_data_);
-            knight_anim_sm_ = std::make_unique<gseurat::BoneAnimationStateMachine>(*knight_anim_player_);
-            knight_anim_sm_->add_state("idle", "idle");
-            knight_anim_sm_->add_state("walk", "walk");
-            knight_anim_sm_->add_state("attack", "attack");
-            knight_anim_sm_->add_state("jump", "jump");
-            knight_anim_sm_->set_state("idle");
-        }
-
         (void)char_count;
     }
 
@@ -530,8 +414,8 @@ void IslandDemoState::on_exit(AppBase& app) {
     camera_zone_system_.reset();
 
     // Release animation objects before state destruction
-    knight_anim_sm_.reset();
-    knight_anim_player_.reset();
+    bone_anim_registry_.clear();
+    set_bone_animation_registry(nullptr);
     anim_sm_.reset();
     anim_player_.reset();
 
@@ -539,9 +423,6 @@ void IslandDemoState::on_exit(AppBase& app) {
     // macOS allocator hangs when freeing CharacterData with populated vectors
     // during Vulkan/VMA teardown (ASan clean — not heap corruption).
     // Intentionally leak on exit: process teardown reclaims the memory anyway.
-    if (knight_data_) {
-        (void)knight_data_.release();
-    }
     if (character_data_) {
         ShutdownAuditor::remove(character_data_.get());
         (void)character_data_.release();  // leak — delete hangs on macOS
@@ -734,8 +615,6 @@ void IslandDemoState::update(AppBase& app, float dt) {
                     // Clear ECS world first — old game object entities must not persist
                     app.world().clear();
                     player_entity_ = ecs::kNullEntity;
-                    npc_infos_.clear();
-                    knight_info_.reset();
 
                     app.clear_scene();
                     app.init_scene(instance_scene);
@@ -830,83 +709,6 @@ void IslandDemoState::update(AppBase& app, float dt) {
                             distance_ = 20.0f;
                             elevation_ = 0.6f;
 
-                            // Re-spawn knight NPC Gaussians
-                            if (knight_data_) {
-                                auto knight_cloud = GaussianCloud::load_ply("assets/characters/knight/knight.ply");
-                                if (!knight_cloud.empty()) {
-                                    int player_bone_count = character_data_
-                                        ? static_cast<int>(character_data_->bones.size()) : 1;
-                                    next_bone_index_ = static_cast<uint32_t>(player_bone_count + 1);
-
-                                    KnightInfo ki;
-                                    ki.spawn_pos = spawn + glm::vec3(15.0f, 0.0f, -10.0f);
-                                    if (collision_grid_.width > 0 && !collision_grid_.elevation.empty()) {
-                                        float lx = ki.spawn_pos.x - grid_origin_.x;
-                                        float lz = ki.spawn_pos.z - grid_origin_.y;
-                                        int gx = static_cast<int>(lx / collision_grid_.cell_size);
-                                        int gz = static_cast<int>(lz / collision_grid_.cell_size);
-                                        if (gx >= 0 && gx < static_cast<int>(collision_grid_.width) &&
-                                            gz >= 0 && gz < static_cast<int>(collision_grid_.height)) {
-                                            ki.spawn_pos.y = collision_grid_.get_elevation(
-                                                static_cast<uint32_t>(gx), static_cast<uint32_t>(gz));
-                                        }
-                                    }
-                                    ki.first_bone_index = next_bone_index_;
-                                    constexpr float kKnightScale = 0.45f;
-                                    for (const auto& g : knight_cloud.gaussians()) {
-                                        Gaussian kg = g;
-                                        glm::vec3 rotated(-kg.position.x, kg.position.y, -kg.position.z);
-                                        glm::vec3 offset = rotated * kKnightScale;
-                                        offset.y *= gs_scale_;
-                                        kg.position = ki.spawn_pos + offset + glm::vec3(0, 2.0f, 0);
-                                        kg.scale *= kKnightScale;
-                                        kg.bone_index = next_bone_index_ + kg.bone_index;
-                                        kg.opacity = std::min(1.0f, kg.opacity * 1.3f);
-                                        merged.push_back(kg);
-                                    }
-                                    next_bone_index_ += static_cast<uint32_t>(knight_data_->bones.size());
-                                    ki.current_pos = ki.spawn_pos;
-                                    ki.walk_target = ki.spawn_pos;
-                                    ki.facing_angle = glm::pi<float>() * 0.5f;
-                                    knight_info_ = ki;
-                                    std::fprintf(stderr, "[IslandDemo] Re-spawned knight at (%.1f, %.1f, %.1f)\n",
-                                        ki.spawn_pos.x, ki.spawn_pos.y, ki.spawn_pos.z);
-                                }
-                            }
-
-                            // Re-spawn slime NPCs
-                            auto slime_cloud = GaussianCloud::load_ply("assets/characters/slime/slime.ply");
-                            if (!slime_cloud.empty()) {
-                                if (!knight_info_) {
-                                    int player_bone_count = character_data_
-                                        ? static_cast<int>(character_data_->bones.size()) : 1;
-                                    next_bone_index_ = static_cast<uint32_t>(player_bone_count + 1);
-                                }
-                                npc_infos_.clear();
-                                app.world().view<NpcWalker, ecs::Transform>().each(
-                                    [&](ecs::Entity entity, NpcWalker&, ecs::Transform& t) {
-                                        if (next_bone_index_ >= 31) return;
-                                        NpcInfo info;
-                                        info.entity = entity;
-                                        info.spawn_pos = t.position.vec();
-                                        info.bone_index = next_bone_index_;
-                                        constexpr float kSlimeScale = 0.5f;
-                                        for (const auto& g : slime_cloud.gaussians()) {
-                                            Gaussian sg = g;
-                                            glm::vec3 rotated(-sg.position.x, sg.position.y, -sg.position.z);
-                                            sg.position = t.position.vec() + rotated * kSlimeScale + glm::vec3(0, 0.5f, 0);
-                                            sg.scale *= kSlimeScale;
-                                            sg.bone_index = next_bone_index_;
-                                            sg.opacity = std::min(1.0f, sg.opacity * 1.3f);
-                                            merged.push_back(sg);
-                                        }
-                                        info.squish_phase = static_cast<float>(npc_infos_.size()) * 1.7f;
-                                        npc_infos_.push_back(info);
-                                        std::fprintf(stderr, "[IslandDemo] Re-spawned NPC bone=%u at (%.1f, %.1f, %.1f)\n",
-                                            next_bone_index_, t.position.x(), t.position.y(), t.position.z());
-                                        next_bone_index_++;
-                                    });
-                            }
                         }
 
                         auto char_cloud = GaussianCloud::load_ply(
@@ -932,6 +734,28 @@ void IslandDemoState::update(AppBase& app, float dt) {
                         uint32_t gs_h = app.renderer().gs_renderer().output_height();
                         if (gs_w == 0) { gs_w = 320; gs_h = 240; }
                         app.renderer().init_gs(cloud, gs_w, gs_h);
+                    }
+
+                    // Repopulate bone animation registry for the new scene
+                    bone_anim_registry_.clear();
+                    for (const auto& alloc : app.gs_terrain().bone_allocations) {
+                        app.world().view<BoneAnimatedTag, ecs::Transform>().each(
+                            [&](ecs::Entity entity, BoneAnimatedTag& tag, ecs::Transform& t) {
+                                if (tag.registry_id != 0) return;
+                                glm::vec3 diff = t.position.vec() - alloc.world_pos;
+                                if (glm::length(diff) < 1.0f) {
+                                    BoneAnimationEntry entry;
+                                    entry.manifest_path = alloc.manifest_path;
+                                    entry.default_clip = alloc.default_clip;
+                                    entry.first_bone_index = alloc.first_bone_index;
+                                    entry.bone_count = alloc.bone_count;
+                                    entry.char_scale = alloc.char_scale;
+                                    entry.gs_scale_multiplier = alloc.gs_scale_multiplier;
+                                    entry.spawn_pos = alloc.world_pos;
+                                    entry.current_pos = alloc.world_pos;
+                                    tag.registry_id = bone_anim_registry_.add(entity, std::move(entry));
+                                }
+                            });
                     }
 
                     std::fprintf(stderr, "[IslandDemo] Spawned at (%.1f, %.1f, %.1f)\n",
@@ -1466,153 +1290,8 @@ void IslandDemoState::update_walk_animation(AppBase& app, float dt) {
             }
         }
 
-        // NPC bone transforms — translate + squish + random jump
-        for (auto& npc : npc_infos_) {
-            if (npc.bone_index >= 32) continue;
-            auto* npc_t = app.world().try_get<ecs::Transform>(npc.entity);
-            if (!npc_t) continue;
-            glm::vec3 npc_offset = npc_t->position.vec() - npc.spawn_pos;
-
-            // Random jump trigger
-            if (!npc.slime_jumping) {
-                npc.slime_jump_cooldown -= dt;
-                if (npc.slime_jump_cooldown <= 0.0f) {
-                    npc.slime_jumping = true;
-                    npc.slime_jump_time = 0.0f;
-                    // Random cooldown 2-6 seconds
-                    npc.slime_jump_cooldown = 2.0f +
-                        static_cast<float>(std::rand() % 40) * 0.1f;
-                }
-            }
-
-            // Slime squish: periodic bounce (flatten Y, expand XZ)
-            float t = env_anim_time_ + npc.squish_phase;
-            float bounce_cycle = std::fmod(t * 0.8f, 1.0f);
-            float squish = 0.0f;
-            if (bounce_cycle < 0.15f) {
-                float p = bounce_cycle / 0.15f;
-                squish = p * p;
-            } else if (bounce_cycle < 0.35f) {
-                float p = (bounce_cycle - 0.15f) / 0.2f;
-                squish = 1.0f - p * p;
-            }
-            float scale_y = 1.0f - squish * 0.35f;
-            float scale_xz = 1.0f + squish * 0.2f;
-
-            // Jump Y-arc
-            float jump_y = 0.0f;
-            if (npc.slime_jumping) {
-                npc.slime_jump_time += dt;
-                if (npc.slime_jump_time >= kSlimeJumpDuration) {
-                    npc.slime_jumping = false;
-                    npc.slime_jump_time = 0.0f;
-                } else {
-                    float jt = npc.slime_jump_time / kSlimeJumpDuration;
-                    jump_y = 4.0f * kSlimeJumpHeight * jt * (1.0f - jt);
-                    // Extra squish at launch and landing
-                    if (jt < 0.15f || jt > 0.85f) {
-                        squish = std::max(squish, 0.8f);
-                        scale_y = 1.0f - squish * 0.35f;
-                        scale_xz = 1.0f + squish * 0.2f;
-                    }
-                }
-            }
-
-            glm::mat4 bone_tf = glm::translate(glm::mat4(1.0f),
-                npc_offset + glm::vec3(0.0f, jump_y, 0.0f));
-            bone_tf = bone_tf * glm::translate(glm::mat4(1.0f), npc.spawn_pos);
-            bone_tf = bone_tf * glm::scale(glm::mat4(1.0f),
-                                            glm::vec3(scale_xz, scale_y, scale_xz));
-            bone_tf = bone_tf * glm::translate(glm::mat4(1.0f), -npc.spawn_pos);
-            bones[npc.bone_index] = bone_tf;
-        }
-
-        // Knight NPC bone transforms + patrol movement
-        if (knight_info_ && knight_anim_player_ && knight_data_) {
-            auto& ki = *knight_info_;
-            // Cycle through animations
-            static const char* kKnightAnims[] = {"idle", "walk", "attack", "jump"};
-            static const float kKnightAnimDurations[] = {3.0f, 3.0f, 0.8f, 1.2f};
-            static constexpr int kKnightAnimCount = 4;
-
-            ki.anim_cycle_timer += dt;
-            float cur_dur = kKnightAnimDurations[ki.current_anim];
-            if (ki.anim_cycle_timer >= cur_dur) {
-                ki.anim_cycle_timer = 0.0f;
-                ki.current_anim = (ki.current_anim + 1) % kKnightAnimCount;
-                knight_anim_sm_->set_state(kKnightAnims[ki.current_anim]);
-
-                // Pick a new random walk target when entering walk state
-                if (ki.current_anim == 1) {  // walk
-                    float angle = static_cast<float>(std::rand() % 360) * glm::pi<float>() / 180.0f;
-                    float dist = kKnightPatrolRadius * 0.5f +
-                        static_cast<float>(std::rand() % 100) * 0.01f * kKnightPatrolRadius * 0.5f;
-                    ki.walk_target = ki.spawn_pos + glm::vec3(
-                        std::cos(angle) * dist, 0.0f, std::sin(angle) * dist);
-                }
-            }
-
-            // Move toward walk target during walk animation
-            if (ki.current_anim == 1) {  // walk
-                glm::vec3 to_target = ki.walk_target - ki.current_pos;
-                to_target.y = 0.0f;
-                float dist = glm::length(to_target);
-                if (dist > 0.5f) {
-                    glm::vec3 dir = to_target / dist;
-                    ki.current_pos += dir * kKnightSpeed * dt;
-
-                    // Smooth facing toward movement direction
-                    float target_facing = std::atan2(dir.x, dir.z);
-                    float diff = target_facing - ki.facing_angle;
-                    while (diff > glm::pi<float>()) diff -= glm::two_pi<float>();
-                    while (diff < -glm::pi<float>()) diff += glm::two_pi<float>();
-                    ki.facing_angle += diff * std::min(1.0f, 8.0f * dt);
-                }
-
-                // Snap Y to terrain elevation
-                if (collision_grid_.width > 0 && !collision_grid_.elevation.empty()) {
-                    float lx = ki.current_pos.x - grid_origin_.x;
-                    float lz = ki.current_pos.z - grid_origin_.y;
-                    int gx = static_cast<int>(lx / collision_grid_.cell_size);
-                    int gz = static_cast<int>(lz / collision_grid_.cell_size);
-                    if (gx >= 0 && gx < static_cast<int>(collision_grid_.width) &&
-                        gz >= 0 && gz < static_cast<int>(collision_grid_.height)) {
-                        ki.current_pos.y = collision_grid_.get_elevation(
-                            static_cast<uint32_t>(gx), static_cast<uint32_t>(gz));
-                    }
-                }
-            }
-
-            knight_anim_player_->update(dt);
-
-            // Build knight bone transforms using same world↔model pattern
-            constexpr float kKnightScale = 0.45f;
-            const glm::vec3 knight_y_off(0.0f, 2.0f, 0.0f);
-            const glm::vec3 knight_scale(kKnightScale, kKnightScale * gs_scale_, kKnightScale);
-            const glm::vec3 knight_inv_scale(1.0f / knight_scale.x, 1.0f / knight_scale.y, 1.0f / knight_scale.z);
-
-            glm::mat4 knight_from_world =
-                glm::rotate(glm::mat4(1.0f), -glm::pi<float>(), {0, 1, 0}) *
-                glm::scale(glm::mat4(1.0f), knight_inv_scale) *
-                glm::translate(glm::mat4(1.0f), -(ki.spawn_pos + knight_y_off));
-
-            glm::quat knight_rot = glm::angleAxis(ki.facing_angle, glm::vec3(0, 1, 0));
-            glm::mat4 knight_to_world =
-                glm::translate(glm::mat4(1.0f), ki.current_pos + knight_y_off) *
-                glm::mat4_cast(knight_rot) *
-                glm::scale(glm::mat4(1.0f), knight_scale) *
-                glm::rotate(glm::mat4(1.0f), glm::pi<float>(), {0, 1, 0});
-
-            const auto& knight_bones = knight_anim_player_->bone_transforms();
-            int knight_bone_count = static_cast<int>(knight_data_->bones.size());
-            for (int i = 0; i < knight_bone_count && (ki.first_bone_index + i) < 32; ++i) {
-                bones[ki.first_bone_index + i] = knight_to_world * knight_bones[i] * knight_from_world;
-            }
-        }
-
-        int total_bones = static_cast<int>(next_bone_index_);
-        if (total_bones < bone_count + 1) total_bones = bone_count + 1;
-        // Update total bone count to include registry NPCs
+        // Total bones: player bones + registry NPCs
+        int total_bones = bone_count + 1;
         if (app.gs_terrain().bone_slot_counter > static_cast<uint32_t>(total_bones)) {
             total_bones = static_cast<int>(app.gs_terrain().bone_slot_counter);
         }
