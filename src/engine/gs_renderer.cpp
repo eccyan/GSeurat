@@ -2069,7 +2069,15 @@ void GsRenderer::dispatch_radix_sort(
 }
 
 void GsRenderer::dispatch_tile_sort(VkCommandBuffer cmd) {
-    if (!tile_sort_a_.buffer() || tile_sort_capacity_ == 0) return;
+    if (!tile_sort_a_.buffer() || tile_sort_capacity_ == 0) {
+        static bool logged_skip = false;
+        if (!logged_skip) {
+            std::printf("[tile_sort] SKIP: buffer=%p capacity=%u\n",
+                        tile_sort_a_.buffer(), tile_sort_capacity_);
+            logged_skip = true;
+        }
+        return;
+    }
 
     uint32_t width = output_width_;
     uint32_t height = output_height_;
