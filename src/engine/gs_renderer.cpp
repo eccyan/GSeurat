@@ -811,7 +811,7 @@ void GsRenderer::init_streaming(const StreamingConfig& config) {
         if (tile_sort_workgroups_ == 0) tile_sort_workgroups_ = 1;
         tile_sort_size_ = tile_sort_workgroups_ * 1024;
 
-        VkDeviceSize entry_buf_size = static_cast<VkDeviceSize>(tile_sort_size_) * 8;  // 8 bytes/entry
+        VkDeviceSize entry_buf_size = static_cast<VkDeviceSize>(tile_sort_size_) * 16;  // 16 bytes/entry
         VkDeviceSize hist_buf_size = static_cast<VkDeviceSize>(256) * tile_sort_workgroups_ * sizeof(uint32_t);
         // Allocate tile_ranges for max possible resolution (output_width_ may not
         // reflect final size at allocation time). Generous upper bound.
@@ -1302,7 +1302,7 @@ void GsRenderer::load_cloud_legacy(const GaussianCloud& cloud) {
         if (tile_sort_workgroups_ == 0) tile_sort_workgroups_ = 1;
         tile_sort_size_ = tile_sort_workgroups_ * 1024;
 
-        VkDeviceSize entry_buf_size = static_cast<VkDeviceSize>(tile_sort_size_) * 8;  // 8 bytes/entry
+        VkDeviceSize entry_buf_size = static_cast<VkDeviceSize>(tile_sort_size_) * 16;  // 16 bytes/entry
         VkDeviceSize hist_buf_size = static_cast<VkDeviceSize>(256) * tile_sort_workgroups_ * sizeof(uint32_t);
         // Allocate tile_ranges for max possible resolution (output_width_ may not
         // reflect final size at allocation time). Generous upper bound.
@@ -2167,7 +2167,7 @@ void GsRenderer::dispatch_tile_sort(VkCommandBuffer cmd) {
     // at [0, tile_sort_count). At 256K cap this is only 4MB — well within TDR budget.
     vkCmdFillBuffer(cmd, tile_sort_count_ssbo_.buffer(), 0, sizeof(uint32_t), 0);
     vkCmdFillBuffer(cmd, tile_sort_a_.buffer(), 0,
-                    static_cast<VkDeviceSize>(tile_sort_size_) * 8, 0xFFFFFFFF);
+                    static_cast<VkDeviceSize>(tile_sort_size_) * 16, 0xFFFFFFFF);
 
     {
         VkMemoryBarrier fill_barrier{};
@@ -2652,6 +2652,7 @@ void GsRenderer::render(VkCommandBuffer cmd, const glm::mat4& view, const glm::m
 
         // Barrier: tile rasterize → post-process (output+depth readable)
         insert_compute_barrier(cmd);
+
     }
 
     // Pass 4: Post-process (always runs — params like fade_amount change every frame)

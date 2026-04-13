@@ -5,10 +5,12 @@
 // Uses coherent buffer + memoryBarrierBuffer() for Apple Silicon TBDR compatibility.
 layout(local_size_x = 256) in;
 
-// 8-byte tile sort entry
+// 16-byte tile sort entry (matches old radix sort format)
 struct TileSortEntry {
-    uint key;
+    uint key_hi;
+    uint key_lo;
     uint index;
+    uint _pad;
 };
 
 layout(set = 0, binding = 0) readonly buffer InputBuffer {
@@ -73,7 +75,7 @@ void main() {
         uint k = 0xFFFFFFFFu;  // sentinel default
         uint v = 0u;
         if (idx < total) {
-            k = in_entries[idx].key;
+            k = in_entries[idx].key_lo;
             v = in_entries[idx].index;
         }
         s_keys[t * 256u + lid] = k;
@@ -158,8 +160,10 @@ void main() {
             }
 
             uint dst = s_prefix[digit] + rank;
-            out_entries[dst].key = my_key;
+            out_entries[dst].key_hi = 0u;
+            out_entries[dst].key_lo = my_key;
             out_entries[dst].index = my_index;
+            out_entries[dst]._pad = 0u;
         }
 
         // Advance prefix for next batch

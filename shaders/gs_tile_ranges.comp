@@ -3,8 +3,10 @@
 layout(local_size_x = 256) in;
 
 struct TileSortEntry {
-    uint key;
+    uint key_hi;
+    uint key_lo;
     uint index;
+    uint _pad;
 };
 
 layout(set = 0, binding = 0) readonly buffer SortedEntries {
@@ -29,11 +31,11 @@ void main() {
     uint clamped_count = min(tile_count, max_entries);
     if (i >= clamped_count) return;
 
-    uint tile_id = entries[i].key >> 16u;
+    uint tile_id = entries[i].key_lo >> 16u;
 
     if (tile_id >= num_tiles) return;
 
-    bool is_first = (i == 0) || ((entries[i - 1].key >> 16u) != tile_id);
+    bool is_first = (i == 0) || ((entries[i - 1].key_lo >> 16u) != tile_id);
     if (is_first) {
         ranges[tile_id * 2u] = i;
     }

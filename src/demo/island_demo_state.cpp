@@ -54,6 +54,7 @@ namespace gseurat {
 void IslandDemoState::on_enter(AppBase& app) {
     if (scene_path_.empty()) scene_path_ = "assets/scenes/seurat_island.json";
     app.feature_flags() = FeatureFlags::gs_viewer();
+    app.feature_flags().apply_platform_defaults(app.renderer().context().is_apple_gpu());
     app.init_scene(scene_path_);
 
     // Disable app-level parallax — we manage our own camera
