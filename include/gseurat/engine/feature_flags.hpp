@@ -59,6 +59,7 @@ struct FeatureFlags {
     bool gs_lod = true;             // Distance-based LOD budget decimation
     bool gs_adaptive_budget = true; // Auto-tuning LOD budget to target FPS
     bool gs_parallax = true;        // Shadow-box parallax camera
+    bool gs_tile_binning = true;    // Per-tile Gaussian binning (disable on Apple TBDR)
 
     struct Entry {
         std::string_view name;
@@ -75,11 +76,11 @@ struct FeatureFlags {
             false, false, false, false, false,                       // Effects 9-13
             false, false, false, false,                              // Gameplay (4)
             false, false,                                            // Audio (2)
-            true, true, true, true, false
+            true, true, true, true, false, true   // GS (6): rendering, chunk_cull, lod, budget, parallax=off, tile_binning
         };
     }
 
-    static constexpr std::array<Entry, 32> entries() {
+    static constexpr std::array<Entry, 33> entries() {
         return {{
             {"Parallax BG",    "24",  "RENDERING", &FeatureFlags::parallax_backgrounds},
             {"Point Lights",   "11",  "RENDERING", &FeatureFlags::point_lights},
@@ -113,6 +114,7 @@ struct FeatureFlags {
             {"GS LOD",         "GS10","3DGS",      &FeatureFlags::gs_lod},
             {"GS Budget",      "GS10","3DGS",      &FeatureFlags::gs_adaptive_budget},
             {"GS Parallax",    "GS9", "3DGS",     &FeatureFlags::gs_parallax},
+            {"GS Tile Bin",    "GS9", "3DGS",     &FeatureFlags::gs_tile_binning},
         }};
     }
 };

@@ -44,10 +44,10 @@ int main() {
         std::printf("PASS: gs_viewer() profile\n");
     }
 
-    // 3. Entry count == 32
+    // 3. Entry count == 33
     {
-        assert(FeatureFlags::entries().size() == 32);
-        std::printf("PASS: entry count == 32\n");
+        assert(FeatureFlags::entries().size() == 33);
+        std::printf("PASS: entry count == 33\n");
     }
 
     // 4. Pointer-to-member round-trip
@@ -62,14 +62,14 @@ int main() {
         std::printf("PASS: pointer-to-member round-trip\n");
     }
 
-    // 5. Exactly 5 entries with category "3DGS"
+    // 5. Exactly 6 entries with category "3DGS"
     {
         int gs_count = 0;
         for (const auto& e : FeatureFlags::entries()) {
             if (e.category == "3DGS") gs_count++;
         }
-        assert(gs_count == 5);
-        std::printf("PASS: GS category entries == 5\n");
+        assert(gs_count == 6);
+        std::printf("PASS: GS category entries == 6\n");
     }
 
     // 6. Individual flag toggle — set one GS flag false, others unaffected
@@ -81,10 +81,35 @@ int main() {
         assert(flags.gs_lod == true);
         assert(flags.gs_adaptive_budget == true);
         assert(flags.gs_parallax == true);
+        assert(flags.gs_tile_binning == true);
         // Non-GS flags still true
         assert(flags.bloom == true);
         assert(flags.music == true);
         std::printf("PASS: individual flag toggle\n");
+    }
+
+    // 9. gs_tile_binning: default true, gs_viewer() also true
+    {
+        FeatureFlags f{};
+        assert(f.gs_tile_binning == true);
+
+        auto gv = FeatureFlags::gs_viewer();
+        assert(gv.gs_tile_binning == true);
+        std::printf("PASS: gs_tile_binning default and gs_viewer()\n");
+    }
+
+    // 10. GS Tile Bin entry exists in entries() table with correct fields
+    {
+        bool found = false;
+        for (auto& e : FeatureFlags::entries()) {
+            if (e.name == "GS Tile Bin") {
+                found = true;
+                assert(e.category == "3DGS");
+                break;
+            }
+        }
+        assert(found);
+        std::printf("PASS: GS Tile Bin entry found in entries()\n");
     }
 
     // 7. New tilemap flags default true
