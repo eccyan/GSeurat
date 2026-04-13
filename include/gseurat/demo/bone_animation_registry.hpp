@@ -52,6 +52,12 @@ public:
     }
 
     void clear() {
+        // Leak CharacterData — its destructor crashes on macOS (known allocator issue)
+        for (auto& [id, entry] : entries_) {
+            (void)entry.character_data.release();
+            (void)entry.anim_player.release();
+            (void)entry.anim_sm.release();
+        }
         entries_.clear();
         entity_to_id_.clear();
         next_id_ = 1;
