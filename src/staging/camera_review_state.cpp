@@ -4,8 +4,6 @@
 #include "gseurat/staging/camera_review_state.hpp"
 #include "gseurat/engine/input_manager.hpp"
 
-#include <imgui.h>
-
 #include <algorithm>
 #include <cmath>
 
@@ -317,6 +315,13 @@ int CameraReviewState::rail_count() const {
     return static_cast<int>(rails_.size());
 }
 
+}  // namespace gseurat (temporarily close for imgui include)
+
+#ifdef GSEURAT_DEV_MODE
+#include <imgui.h>
+
+namespace gseurat {
+
 // ── Gizmo rendering ─────────────────────────────────────────────────────────
 
 void CameraReviewState::draw_gizmos(const glm::mat4& vp, float screen_w,
@@ -547,3 +552,5 @@ void CameraReviewState::draw_gizmos(const glm::mat4& vp, float screen_w,
 }
 
 }  // namespace gseurat
+
+#endif  // GSEURAT_DEV_MODE

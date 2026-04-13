@@ -58,10 +58,12 @@ public:
     MoveReference move_reference() const { return move_ref_; }
     void set_move_reference(MoveReference ref) { move_ref_ = ref; }
 
+#ifdef GSEURAT_DEV_MODE
     // Gizmo rendering
     void draw_gizmos(const glm::mat4& vp, float screen_w, float screen_h, ImDrawList* draw_list,
                      bool (*proj_fn)(const glm::vec3&, const glm::mat4&, float, float, float&, float&, const void*),
                      const void* proj_self) const;
+#endif
 
     // Speed (public for ImGui slider)
     float& player_speed() { return player_speed_; }

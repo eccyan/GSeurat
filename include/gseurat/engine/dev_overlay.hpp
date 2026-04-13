@@ -58,8 +58,6 @@ private:
 
 #else  // !GSEURAT_DEV_MODE — no-op stubs
 
-using PanelDrawFn = int;  // placeholder type, never used
-
 class DevOverlay {
 public:
     void init(GLFWwindow*, Renderer&) {}
@@ -71,7 +69,8 @@ public:
     bool wants_mouse() const { return false; }
     bool wants_keyboard() const { return false; }
     void draw(AppBase&) {}
-    void register_panel(const std::string&, PanelDrawFn, bool = true) {}
+    template<typename F>
+    void register_panel(const std::string&, F&&, bool = true) {}
 };
 
 #endif

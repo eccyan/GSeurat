@@ -8,7 +8,9 @@
 #include "gseurat/engine/world_manifest.hpp"
 #include "gseurat/engine/project_root.hpp"
 
+#ifdef GSEURAT_DEV_MODE
 #include <imgui.h>
+#endif
 
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
@@ -178,10 +180,15 @@ void StagingState::on_enter(AppBase& app) {
         [this, &app](const json& /*cmd*/) -> CommandResult {
             VisualState vs;
 
-            // Display size from ImGui
+            // Display size
+#ifdef GSEURAT_DEV_MODE
             auto& io = ImGui::GetIO();
             float dw = io.DisplaySize.x;
             float dh = io.DisplaySize.y;
+#else
+            float dw = 1280.0f;
+            float dh = 720.0f;
+#endif
 
             // Panels — DevOverlay manages visibility now; report overlay state
             bool overlay_vis = app.dev_overlay().visible();
@@ -357,10 +364,12 @@ void StagingState::update(AppBase& app, float dt) {
         last_mouse_x_ = mx;
         last_mouse_y_ = my;
 
-        // Only block WASD when user is actively typing in an ImGui text field,
-        // not just when a window has focus (WantCaptureKeyboard is too broad).
-        auto& io = ImGui::GetIO();
-        bool typing_in_widget = ImGui::IsAnyItemActive() && io.WantTextInput;
+        // Only block WASD when user is actively typing in an ImGui text field
+#ifdef GSEURAT_DEV_MODE
+        bool typing_in_widget = ImGui::IsAnyItemActive() && ImGui::GetIO().WantTextInput;
+#else
+        bool typing_in_widget = false;
+#endif
         camera_review_->update(dt, app.input(), wants_mouse, typing_in_widget,
                                mouse_dx, mouse_dy);
 
@@ -391,11 +400,12 @@ void StagingState::update(AppBase& app, float dt) {
         bool right_pressed = right_down && !right_click_prev_;
         right_click_prev_ = right_down;
         if (!wants_mouse && right_pressed) {
-            auto& io2 = ImGui::GetIO();
             double tmx, tmy;
             glfwGetCursorPos(app.window(), &tmx, &tmy);
-            float ndc_x = (2.0f * static_cast<float>(tmx) / io2.DisplaySize.x) - 1.0f;
-            float ndc_y = 1.0f - (2.0f * static_cast<float>(tmy) / io2.DisplaySize.y);
+            int win_w, win_h;
+            glfwGetWindowSize(app.window(), &win_w, &win_h);
+            float ndc_x = (2.0f * static_cast<float>(tmx) / static_cast<float>(win_w)) - 1.0f;
+            float ndc_y = 1.0f - (2.0f * static_cast<float>(tmy) / static_cast<float>(win_h));
             glm::mat4 inv_vp = glm::inverse(gs_vp_);
             glm::vec4 near_clip = inv_vp * glm::vec4(ndc_x, ndc_y, 0.0f, 1.0f);
             glm::vec4 far_clip  = inv_vp * glm::vec4(ndc_x, ndc_y, 1.0f, 1.0f);
@@ -565,8 +575,10 @@ void StagingState::update(AppBase& app, float dt) {
         }
     }
 
+#ifdef GSEURAT_DEV_MODE
     // Draw gizmos (always, DevOverlay handles panel visibility)
     draw_gizmos(app);
+#endif
 
     // Update screen effects
     app.screen_effects().update(dt);
@@ -575,6 +587,8 @@ void StagingState::update(AppBase& app, float dt) {
 void StagingState::build_draw_lists(AppBase& /*app*/) {
     // No sprite draw lists — ImGui handles everything
 }
+
+#ifdef GSEURAT_DEV_MODE
 
 // ── Staging-specific panels ──
 
@@ -1151,6 +1165,8 @@ void StagingState::draw_gizmos(AppBase& app) {
         }
     }
 }
+
+#endif  // GSEURAT_DEV_MODE
 
 void StagingState::load_character(const std::string& manifest_path, AppBase& app) {
     auto data = load_character_manifest(manifest_path);
