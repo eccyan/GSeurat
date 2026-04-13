@@ -49,6 +49,27 @@
 
 namespace gseurat {
 
+struct DebugMetrics {
+    float fps = 0.0f;
+    float frame_times[300]{};
+    int frame_time_idx = 0;
+    int frame_count = 0;
+    float timer = 0.0f;
+    static constexpr float kUpdateInterval = 0.5f;
+
+    void update(float dt) {
+        frame_count++;
+        timer += dt;
+        if (timer >= kUpdateInterval) {
+            fps = static_cast<float>(frame_count) / timer;
+            frame_count = 0;
+            timer = 0.0f;
+        }
+        frame_times[frame_time_idx] = dt * 1000.0f;
+        frame_time_idx = (frame_time_idx + 1) % 300;
+    }
+};
+
 class AppBase {
 public:
     virtual ~AppBase() = default;
@@ -124,6 +145,10 @@ public:
     // Day/night system accessor
     DayNightSystem& day_night_system() { return day_night_system_; }
 
+    // Debug metrics accessor
+    DebugMetrics& debug_metrics() { return debug_metrics_; }
+    const DebugMetrics& debug_metrics() const { return debug_metrics_; }
+
     // Screen effects accessor
     ScreenEffects& screen_effects() { return screen_effects_; }
 
@@ -191,6 +216,9 @@ protected:
 
     // Screen effects
     ScreenEffects screen_effects_;
+
+    // Debug metrics
+    DebugMetrics debug_metrics_;
 
     // Minimap
     Minimap minimap_;

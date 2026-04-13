@@ -327,17 +327,6 @@ void StagingState::update(AppBase& app, float dt) {
     anim_time_ += dt;
     app.renderer().gs_renderer().set_effect_time(anim_time_);
 
-    // FPS tracking
-    frame_count_++;
-    fps_timer_ += dt;
-    if (fps_timer_ >= 0.5f) {
-        fps_ = static_cast<float>(frame_count_) / fps_timer_;
-        frame_count_ = 0;
-        fps_timer_ = 0.0f;
-    }
-    frame_times_[frame_time_idx_] = dt * 1000.0f;
-    frame_time_idx_ = (frame_time_idx_ + 1) % frame_times_.size();
-
     auto& io = ImGui::GetIO();
 
     if (camera_review_ && camera_review_->is_active()) {
@@ -667,7 +656,7 @@ void StagingState::draw_viewport_info(AppBase& app) {
         return;
     }
 
-    ImGui::Text("FPS: %.1f", fps_);
+    ImGui::Text("FPS: %.1f", app.debug_metrics().fps);
     if (app.renderer().has_gs_cloud()) {
         auto& gs = app.renderer().gs_renderer();
         ImGui::Text("Gaussians: %u / %u", gs.visible_count(), gs.gaussian_count());
@@ -1058,12 +1047,14 @@ void StagingState::draw_performance(AppBase& app) {
         return;
     }
 
-    ImGui::Text("FPS: %.1f (%.2f ms)", fps_, fps_ > 0.0f ? 1000.0f / fps_ : 0.0f);
+    float fps_val = app.debug_metrics().fps;
+    ImGui::Text("FPS: %.1f (%.2f ms)", fps_val, fps_val > 0.0f ? 1000.0f / fps_val : 0.0f);
 
     // Reorder ring buffer for ImGui::PlotLines
+    const auto& dm = app.debug_metrics();
     float ordered[300];
     for (int i = 0; i < 300; i++) {
-        ordered[i] = frame_times_[(frame_time_idx_ + i) % 300];
+        ordered[i] = dm.frame_times[(dm.frame_time_idx + i) % 300];
     }
     ImGui::PlotLines("Frame Time", ordered, 300, 0, nullptr, 0.0f, 50.0f, ImVec2(0, 80));
 

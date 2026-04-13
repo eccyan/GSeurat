@@ -11,7 +11,6 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
 #include <array>
-#include <chrono>
 #include <memory>
 #include <string>
 
@@ -122,10 +121,6 @@ private:
     std::array<PbdNode, kPbdNodeCount> pbd_nodes_;
     std::array<PbdLink, kPbdLinkCount> pbd_links_;
 
-    // FPS tracking
-    std::chrono::steady_clock::time_point fps_clock_{};
-    int fps_frame_count_ = 0;
-    float fps_ = 0.0f;
 
     // Hybrid re-render
     uint32_t gs_frame_counter_ = 0;

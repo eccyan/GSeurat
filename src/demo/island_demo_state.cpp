@@ -589,18 +589,6 @@ void IslandDemoState::update(AppBase& app, float dt) {
         if (pe) pe->requested_clip = "jump";
     }
 
-    // FPS counter
-    {
-        auto now = std::chrono::steady_clock::now();
-        if (fps_frame_count_ == 0) fps_clock_ = now;
-        fps_frame_count_++;
-        float elapsed = std::chrono::duration<float>(now - fps_clock_).count();
-        if (elapsed >= 0.5f) {
-            fps_ = static_cast<float>(fps_frame_count_) / elapsed;
-            fps_frame_count_ = 0;
-            fps_clock_ = now;
-        }
-    }
 
     // Handle mouse input for camera orbit
     {
@@ -1669,7 +1657,8 @@ void IslandDemoState::build_draw_lists(AppBase& app) {
     glm::vec4 dim{0.6f, 0.6f, 0.6f, 1.0f};
     glm::vec4 green{0.2f, 1.0f, 0.3f, 1.0f};
     glm::vec4 red{1.0f, 0.3f, 0.2f, 1.0f};
-    glm::vec4 fps_color = fps_ >= 30.0f ? green : red;
+    float fps_val = app.debug_metrics().fps;
+    glm::vec4 fps_color = fps_val >= 30.0f ? green : red;
 
     // Shared data
     auto& gs = app.renderer().gs_renderer();
@@ -1710,7 +1699,7 @@ void IslandDemoState::build_draw_lists(AppBase& app) {
         float y = bar_y - bar_h * 0.5f - 2.0f;  // vertically center text in bar
         constexpr float s = 0.38f;
 
-        ui.label(f1(fps_) + " FPS", x, y, s, fps_color);
+        ui.label(f1(fps_val) + " FPS", x, y, s, fps_color);
         x += 75.0f;
 
         ui.label("GS:" + std::to_string(gs_visible) + "/" + std::to_string(gs_total), x, y, s, white);
@@ -1762,7 +1751,7 @@ void IslandDemoState::build_draw_lists(AppBase& app) {
 
     // Title + FPS
     ui.label("ISLAND DEMO", lx, y, 0.45f, cyan);
-    ui.label(f1(fps_) + " FPS", panel_x + panel_w - 65.0f, y, s, fps_color);
+    ui.label(f1(fps_val) + " FPS", panel_x + panel_w - 65.0f, y, s, fps_color);
     y -= line + section_gap;
 
     // ── Camera ──

@@ -82,6 +82,8 @@ void AppBase::main_loop() {
 
         if (dt > 0.1f) dt = 0.1f;
 
+        debug_metrics_.update(dt);
+
         state_stack_.update(*this, dt);
         gameplay_.play_time += dt;
         tick_++;
