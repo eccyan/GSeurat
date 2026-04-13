@@ -192,6 +192,9 @@ public:
     void set_tile_binning(bool enabled) { tile_binning_enabled_ = enabled; }
     bool tile_binning() const { return tile_binning_enabled_; }
 
+    void set_use_onesweep(bool v) { use_onesweep_ = v; }
+    bool use_onesweep() const { return use_onesweep_; }
+
     // World manifest (Phase 3 streaming)
     void load_world(const WorldManifest& manifest);
     const WorldManifest& world_manifest() const { return world_manifest_; }
@@ -407,6 +410,16 @@ private:
     VkDescriptorSet tile_scatter_set_ab_ = VK_NULL_HANDLE;
     VkDescriptorSet tile_scatter_set_ba_ = VK_NULL_HANDLE;
     VkDescriptorSet tile_scan_set_ = VK_NULL_HANDLE;
+
+    // Onesweep sort (Phase 2 TBDR optimization)
+    VkDescriptorSetLayout onesweep_layout_ = VK_NULL_HANDLE;
+    VkPipelineLayout onesweep_pipeline_layout_ = VK_NULL_HANDLE;
+    VkPipeline onesweep_pipeline_ = VK_NULL_HANDLE;
+    VkDescriptorSet onesweep_set_ab_ = VK_NULL_HANDLE;  // read A → write B
+    VkDescriptorSet onesweep_set_ba_ = VK_NULL_HANDLE;  // read B → write A
+    Buffer onesweep_status_;    // per-digit lookback status buffer
+    bool use_onesweep_ = true;  // A/B toggle (true = onesweep, false = old 8-pass)
+    uint32_t onesweep_max_wg_ = 0;
 
     // Tile sort buffers
     Buffer tile_sort_a_;              // TileSortEntry ping buffer (16 bytes/entry)
