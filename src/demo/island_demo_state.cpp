@@ -629,8 +629,23 @@ void IslandDemoState::update(AppBase& app, float dt) {
                                 collision_grid_.width, collision_grid_.height);
                         }
 
-                        // When returning to overworld, re-open north bridge + reload forest grid
+                        // When returning to overworld, restore collision patches
                         if (portal.target_instance_id == "overworld") {
+                            // Re-mark house collision (fresh grid from scene doesn't have it)
+                            float house_x = 192.0f, house_z = 175.0f;
+                            float house_hw = 8.0f, house_hd = 7.0f;
+                            for (float wx = house_x - house_hw; wx <= house_x + house_hw; wx += collision_grid_.cell_size * 0.5f) {
+                                for (float wz = house_z - house_hd; wz <= house_z + house_hd; wz += collision_grid_.cell_size * 0.5f) {
+                                    int gx = static_cast<int>(wx / collision_grid_.cell_size);
+                                    int gz = static_cast<int>(wz / collision_grid_.cell_size);
+                                    if (gx >= 0 && gx < static_cast<int>(collision_grid_.width) &&
+                                        gz >= 0 && gz < static_cast<int>(collision_grid_.height)) {
+                                        collision_grid_.solid[gz * collision_grid_.width + gx] = true;
+                                    }
+                                }
+                            }
+
+                            // Re-open north bridge
                             int bridge_cleared = 0;
                             for (float wx = 182.0f; wx <= 202.0f; wx += collision_grid_.cell_size * 0.5f) {
                                 for (float wz = 0.0f; wz <= 50.0f; wz += collision_grid_.cell_size * 0.5f) {
