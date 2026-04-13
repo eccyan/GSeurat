@@ -75,9 +75,7 @@ void StagingApp::main_loop() {
         });
 
     // Start control server for bridge integration
-#ifndef _WIN32
     control_server_.start();
-#endif
 
     while (!glfwWindowShouldClose(window_)) {
         glfwPollEvents();
@@ -155,9 +153,7 @@ void StagingApp::cleanup() {
     while (!state_stack_.empty()) {
         state_stack_.pop(*this);
     }
-#ifndef _WIN32
     control_server_.stop();
-#endif
     async_loader_.shutdown();
     staging_uploader_.shutdown();
     audio_.shutdown();
