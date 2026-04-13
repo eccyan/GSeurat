@@ -37,6 +37,13 @@ public:
 
     void register_panel(const std::string& name, PanelDrawFn fn, bool visible = true);
 
+    // Gizmo visibility (read by app gizmo rendering code)
+    bool show_gizmo_lights = true;
+    bool show_gizmo_emitters = true;
+    bool show_gizmo_vfx = true;
+    bool show_gizmo_game_objects = true;
+    bool show_gizmo_triggers = true;
+
 private:
     struct PanelEntry {
         std::string name;

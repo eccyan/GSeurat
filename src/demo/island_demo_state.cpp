@@ -1851,9 +1851,10 @@ void IslandDemoState::draw_gizmos(AppBase& app) {
     };
 
     auto& gs = app.renderer().gs_renderer();
+    auto& ov = app.dev_overlay();
 
     // ── Light gizmos (yellow circles at light positions) ──
-    {
+    if (ov.show_gizmo_lights) {
         glm::vec4 col{1.0f, 0.9f, 0.3f, 0.8f};
         const auto& lights = gs.point_lights();
         for (size_t i = 0; i < lights.size(); i++) {
@@ -1873,7 +1874,7 @@ void IslandDemoState::draw_gizmos(AppBase& app) {
     }
 
     // ── Emitter gizmos (pink circles at emitter positions + spawn regions) ──
-    {
+    if (ov.show_gizmo_emitters) {
         glm::vec4 col{0.93f, 0.28f, 0.60f, 0.8f};  // pink
         auto& emitters = app.renderer().gs_particle_emitters();
         for (size_t i = 0; i < emitters.size(); i++) {
@@ -1890,7 +1891,7 @@ void IslandDemoState::draw_gizmos(AppBase& app) {
     }
 
     // ── Animation region gizmos (cyan wireframes) ──
-    {
+    if (ov.show_gizmo_vfx) {
         glm::vec4 col{0.0f, 0.72f, 0.83f, 0.7f};  // cyan
         const auto& anims = app.renderer().gs_scene_animations();
         for (size_t i = 0; i < anims.size(); i++) {
@@ -1904,7 +1905,7 @@ void IslandDemoState::draw_gizmos(AppBase& app) {
     }
 
     // ── Proximity trigger gizmos (green/red circles) ──
-    {
+    if (ov.show_gizmo_triggers) {
         app.world().view<ProximityTrigger, ecs::Transform>().each(
             [&](ecs::Entity, ProximityTrigger& pt, ecs::Transform& t) {
                 glm::vec4 col = pt.triggered

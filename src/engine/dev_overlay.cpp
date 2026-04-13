@@ -145,6 +145,12 @@ void DevOverlay::draw_menu_bar() {
                 ImGui::MenuItem(panel.name.c_str(), nullptr, &panel.visible);
             }
             ImGui::Separator();
+            ImGui::MenuItem("Gizmo: Lights", nullptr, &show_gizmo_lights);
+            ImGui::MenuItem("Gizmo: Emitters", nullptr, &show_gizmo_emitters);
+            ImGui::MenuItem("Gizmo: VFX", nullptr, &show_gizmo_vfx);
+            ImGui::MenuItem("Gizmo: Game Objects", nullptr, &show_gizmo_game_objects);
+            ImGui::MenuItem("Gizmo: Triggers", nullptr, &show_gizmo_triggers);
+            ImGui::Separator();
             if (ImGui::MenuItem("Show All")) {
                 for (auto& p : panels_) p.visible = true;
             }
