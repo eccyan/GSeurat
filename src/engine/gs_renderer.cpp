@@ -285,7 +285,7 @@ void GsRenderer::create_descriptor_resources() {
         vkCreateDescriptorSetLayout(device_, &ci, nullptr, &sort_layout_);
     }
 
-    // Render layout: { projected, sort_keys, uniforms, output_image, visible_count, depth_image, tile_ranges, tile_entries }
+    // Render layout: { projected, sort_keys, uniforms, output_image, visible_count, depth_image }
     {
         VkDescriptorSetLayoutBinding bindings[] = {
             {0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
@@ -294,12 +294,10 @@ void GsRenderer::create_descriptor_resources() {
             {3, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
             {4, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
             {5, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},  // depth
-            {6, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},  // tile_ranges
-            {7, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},  // tile_entries
         };
         VkDescriptorSetLayoutCreateInfo ci{};
         ci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-        ci.bindingCount = 8;
+        ci.bindingCount = 6;
         ci.pBindings = bindings;
         vkCreateDescriptorSetLayout(device_, &ci, nullptr, &render_layout_);
     }
@@ -1716,7 +1714,7 @@ void GsRenderer::update_descriptors() {
         vkUpdateDescriptorSets(device_, 4, writes, 0, nullptr);
     }
 
-    // Render set (updated to use merged_sort and counts + tile binning buffers)
+    // Render set (uses merged_sort and counts)
     {
         VkDescriptorBufferInfo projected_info{projected_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo merged_info{merged_sort_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
@@ -1724,8 +1722,6 @@ void GsRenderer::update_descriptors() {
         VkDescriptorImageInfo image_info{VK_NULL_HANDLE, output_view_, VK_IMAGE_LAYOUT_GENERAL};
         VkDescriptorBufferInfo counts_info{counts_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
         VkDescriptorImageInfo depth_img_info{VK_NULL_HANDLE, depth_view_, VK_IMAGE_LAYOUT_GENERAL};
-        VkDescriptorBufferInfo tile_ranges_info{tile_ranges_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
-        VkDescriptorBufferInfo tile_entries_info{tile_sort_a_.buffer(), 0, VK_WHOLE_SIZE};
 
         VkWriteDescriptorSet writes[] = {
             {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, render_set_, 0, 0, 1,
@@ -1740,12 +1736,8 @@ void GsRenderer::update_descriptors() {
              VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &counts_info, nullptr},
             {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, render_set_, 5, 0, 1,
              VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, &depth_img_info, nullptr, nullptr},
-            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, render_set_, 6, 0, 1,
-             VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &tile_ranges_info, nullptr},
-            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, render_set_, 7, 0, 1,
-             VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &tile_entries_info, nullptr},
         };
-        vkUpdateDescriptorSets(device_, 8, writes, 0, nullptr);
+        vkUpdateDescriptorSets(device_, 6, writes, 0, nullptr);
     }
 
     // ── Tile binning descriptor sets ──
