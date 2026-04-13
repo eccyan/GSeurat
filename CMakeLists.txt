@@ -306,6 +306,7 @@ function(add_gseurat_test NAME)
 endfunction()
 
 add_gseurat_test(test_feature_flags)
+add_gseurat_test(test_tile_sort_key)
 add_gseurat_test(test_async_loader     src/engine/async_loader.cpp)
 add_gseurat_test(test_character_data   src/engine/character_data.cpp)
 add_gseurat_test(test_gaussian_cloud   src/engine/gaussian_cloud.cpp src/engine/collision_gen.cpp
