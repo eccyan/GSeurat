@@ -4,9 +4,7 @@
 #include "gseurat/engine/audio_system.hpp"
 #include "gseurat/engine/component_registry.hpp"
 #include "gseurat/engine/system_scheduler.hpp"
-#ifndef _WIN32
 #include "gseurat/engine/control_server.hpp"
-#endif
 #include "gseurat/engine/collision_gen.hpp"
 #include "gseurat/engine/command_context.hpp"
 #include "gseurat/engine/command_dispatcher.hpp"
@@ -206,10 +204,8 @@ protected:
     CommandDispatcher command_dispatcher_{build_command_context()};
     void poll_control_server();
 
-    // Control server (bridge integration)
-#ifndef _WIN32
+    // Control server (bridge integration — Unix socket or Windows Named Pipe)
     ControlServer control_server_;
-#endif
 
     // Step mode / control
     bool step_mode_ = false;

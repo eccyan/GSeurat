@@ -56,9 +56,7 @@ void AppBase::main_loop() {
         });
 
     // Start control server for bridge integration
-#ifndef _WIN32
     control_server_.start();
-#endif
 
     while (!glfwWindowShouldClose(window_)) {
         glfwPollEvents();
@@ -141,9 +139,7 @@ void AppBase::cleanup() {
     while (!state_stack_.empty()) {
         state_stack_.pop(*this);
     }
-#ifndef _WIN32
     control_server_.stop();
-#endif
     async_loader_.shutdown();
     staging_uploader_.shutdown();
     audio_.shutdown();
@@ -379,7 +375,6 @@ void AppBase::load_gs_scene(const SceneData& scene_data, const GsSceneOptions& o
 // ── Control Server ──
 
 void AppBase::poll_control_server() {
-#ifndef _WIN32
     auto commands = control_server_.poll();
     for (auto& cmd : commands) {
         nlohmann::json response;
@@ -392,7 +387,6 @@ void AppBase::poll_control_server() {
             control_server_.send(response);
         }
     }
-#endif
 }
 
 }  // namespace gseurat

@@ -188,7 +188,9 @@ add_library(gseurat_core OBJECT
 )
 
 
-if(NOT WIN32)
+if(WIN32)
+    target_sources(gseurat_core PRIVATE src/engine/control_server_win32.cpp)
+else()
     target_sources(gseurat_core PRIVATE src/engine/control_server.cpp)
 endif()
 
@@ -208,6 +210,14 @@ if(MSVC)
     # Disable iterator debugging — avoids proxy corruption crashes from
     # memcpy-based ECS or other raw memory operations on containers.
     target_compile_definitions(gseurat_core PUBLIC _ITERATOR_DEBUG_LEVEL=0)
+
+    # Release optimizations: whole-program optimization + link-time code generation
+    target_compile_options(gseurat_core PUBLIC
+        $<$<CONFIG:Release>:/GL /fp:fast>
+    )
+    target_link_options(gseurat_core PUBLIC
+        $<$<CONFIG:Release>:/LTCG>
+    )
 endif()
 
 target_link_libraries(gseurat_core

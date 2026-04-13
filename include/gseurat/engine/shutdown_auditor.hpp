@@ -7,7 +7,13 @@
 #include <unordered_map>
 #include <vector>
 
-#ifndef _WIN32
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <windows.h>
+#include <dbghelp.h>
+#pragma comment(lib, "dbghelp.lib")
+#else
 #include <cxxabi.h>
 #include <execinfo.h>
 #endif
@@ -91,18 +97,37 @@ private:
 
     static std::vector<void*> capture_backtrace() {
         std::vector<void*> frames(16);
-#ifndef _WIN32
+#ifdef _WIN32
+        USHORT n = CaptureStackBackTrace(0, static_cast<DWORD>(frames.size()),
+                                         frames.data(), nullptr);
+        frames.resize(n);
+#else
         int n = ::backtrace(frames.data(), static_cast<int>(frames.size()));
         frames.resize(static_cast<size_t>(n));
-#else
-        frames.clear();
 #endif
         return frames;
     }
 
     static void print_backtrace(const std::vector<void*>& frames) {
-#ifndef _WIN32
         if (frames.empty()) return;
+#ifdef _WIN32
+        HANDLE process = GetCurrentProcess();
+        SymInitialize(process, nullptr, TRUE);
+        alignas(SYMBOL_INFO) char buf[sizeof(SYMBOL_INFO) + 256];
+        auto* sym = reinterpret_cast<SYMBOL_INFO*>(buf);
+        sym->SizeOfStruct = sizeof(SYMBOL_INFO);
+        sym->MaxNameLen = 255;
+        // Skip first 3 frames (capture_backtrace, record, caller's caller)
+        for (size_t i = 3; i < frames.size(); ++i) {
+            DWORD64 addr = reinterpret_cast<DWORD64>(frames[i]);
+            if (SymFromAddr(process, addr, nullptr, sym)) {
+                std::fprintf(stderr, "    %s + 0x%llx\n", sym->Name,
+                             static_cast<unsigned long long>(addr - sym->Address));
+            } else {
+                std::fprintf(stderr, "    0x%llx\n", static_cast<unsigned long long>(addr));
+            }
+        }
+#else
         char** syms = ::backtrace_symbols(frames.data(), static_cast<int>(frames.size()));
         if (!syms) return;
         // Skip first 3 frames (capture_backtrace, record, caller's caller)
@@ -110,13 +135,18 @@ private:
             std::fprintf(stderr, "    %s\n", syms[i]);
         }
         ::free(syms);
-#else
-        (void)frames;
 #endif
     }
 
     static std::string demangle(const char* mangled) {
-#ifndef _WIN32
+#ifdef _WIN32
+        // MSVC typeid().name() already produces readable names (e.g. "class gseurat::Foo").
+        // Strip the leading "class " or "struct " prefix for brevity.
+        std::string name(mangled);
+        if (name.substr(0, 6) == "class ") return name.substr(6);
+        if (name.substr(0, 7) == "struct ") return name.substr(7);
+        return name;
+#else
         int status = 0;
         char* demangled = abi::__cxa_demangle(mangled, nullptr, nullptr, &status);
         if (status == 0 && demangled) {
@@ -124,8 +154,8 @@ private:
             ::free(demangled);
             return result;
         }
-#endif
         return mangled;
+#endif
     }
 };
 
