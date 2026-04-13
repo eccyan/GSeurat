@@ -16,6 +16,7 @@
 #include "gseurat/engine/gs_animator.hpp"
 #include "gseurat/engine/gs_vfx.hpp"
 #include "gseurat/engine/pbd_types.hpp"
+#include "gseurat/engine/bone_animation_system.hpp"
 
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
@@ -256,7 +257,7 @@ void IslandDemoState::on_enter(AppBase& app) {
     app.system_scheduler().add_system({"linked_trigger", linked_trigger_system, {}, {}});
     app.system_scheduler().add_system({"emissive_toggle", emissive_toggle_system, {}, {}});
     app.system_scheduler().add_system({"npc_walker", npc_walker_system, {}, {}});
-    set_npc_bone_registry(&bone_anim_registry_);
+    set_npc_bone_registry(&app.bone_animation_registry());
 
     // Capture base scene lights (before dynamic emissive lights are added)
     // Note: GS renderer gets lights during record_gs_prepass, not at init.
@@ -451,27 +452,8 @@ void IslandDemoState::on_enter(AppBase& app) {
         character_origin_ = player_pos;
         character_spawned_ = true;
 
-        // Populate bone animation registry from scene loader allocations
-        bone_anim_registry_.clear();
-        for (const auto& alloc : app.gs_terrain().bone_allocations) {
-            app.world().view<BoneAnimatedTag, ecs::Transform>().each(
-                [&](ecs::Entity entity, BoneAnimatedTag& tag, ecs::Transform& t) {
-                    if (tag.registry_id != 0) return;  // already assigned
-                    glm::vec3 diff = t.position.vec() - alloc.world_pos;
-                    if (glm::length(diff) < 1.0f) {
-                        BoneAnimationEntry entry;
-                        entry.manifest_path = alloc.manifest_path;
-                        entry.default_clip = alloc.default_clip;
-                        entry.first_bone_index = alloc.first_bone_index;
-                        entry.bone_count = alloc.bone_count;
-                        entry.char_scale = alloc.char_scale;
-                        entry.gs_scale_multiplier = alloc.gs_scale_multiplier;
-                        entry.spawn_pos = alloc.world_pos;
-                        entry.current_pos = alloc.world_pos;
-                        tag.registry_id = bone_anim_registry_.add(entity, std::move(entry));
-                    }
-                });
-        }
+        // Re-populate registry with all bone allocations (main scene + chunks)
+        populate_bone_animation_registry(app.bone_animation_registry(), app.world(), app.gs_terrain());
 
         // Initialize data-driven bone animation
         if (character_data_) {
@@ -523,7 +505,6 @@ void IslandDemoState::on_exit(AppBase& app) {
     camera_zone_system_.reset();
 
     // Release animation objects before state destruction
-    bone_anim_registry_.clear();
     set_npc_bone_registry(nullptr);
     anim_sm_.reset();
     anim_player_.reset();
@@ -942,27 +923,8 @@ void IslandDemoState::update(AppBase& app, float dt) {
                         app.renderer().init_gs(cloud, gs_w, gs_h);
                     }
 
-                    // Repopulate bone animation registry for the new scene
-                    bone_anim_registry_.clear();
-                    for (const auto& alloc : app.gs_terrain().bone_allocations) {
-                        app.world().view<BoneAnimatedTag, ecs::Transform>().each(
-                            [&](ecs::Entity entity, BoneAnimatedTag& tag, ecs::Transform& t) {
-                                if (tag.registry_id != 0) return;
-                                glm::vec3 diff = t.position.vec() - alloc.world_pos;
-                                if (glm::length(diff) < 1.0f) {
-                                    BoneAnimationEntry entry;
-                                    entry.manifest_path = alloc.manifest_path;
-                                    entry.default_clip = alloc.default_clip;
-                                    entry.first_bone_index = alloc.first_bone_index;
-                                    entry.bone_count = alloc.bone_count;
-                                    entry.char_scale = alloc.char_scale;
-                                    entry.gs_scale_multiplier = alloc.gs_scale_multiplier;
-                                    entry.spawn_pos = alloc.world_pos;
-                                    entry.current_pos = alloc.world_pos;
-                                    tag.registry_id = bone_anim_registry_.add(entity, std::move(entry));
-                                }
-                            });
-                    }
+                    // Re-populate bone animation registry for the new scene
+                    populate_bone_animation_registry(app.bone_animation_registry(), app.world(), app.gs_terrain());
 
                     std::fprintf(stderr, "[IslandDemo] Spawned at (%.1f, %.1f, %.1f)\n",
                         spawn.x, spawn.y, spawn.z);
@@ -1469,35 +1431,15 @@ void IslandDemoState::update_walk_animation(AppBase& app, float dt) {
             bones[i + 1] = to_world * anim_bones[i] * from_world;
         }
 
-        // Gather bone transforms from BoneAnimationRegistry (data-driven NPCs)
-        for (const auto& [id, entry] : bone_anim_registry_.entries()) {
-            if (!entry.initialized || !entry.anim_player) continue;
-
-            const float scale_val = entry.char_scale;
-            const glm::vec3 y_off(0.0f, 2.0f, 0.0f);
-            const glm::vec3 char_scale(scale_val, scale_val * entry.gs_scale_multiplier, scale_val);
-            const glm::vec3 inv_scale(1.0f / char_scale.x, 1.0f / char_scale.y, 1.0f / char_scale.z);
-
-            glm::mat4 from_world_npc =
-                glm::rotate(glm::mat4(1.0f), -glm::pi<float>(), {0, 1, 0}) *
-                glm::scale(glm::mat4(1.0f), inv_scale) *
-                glm::translate(glm::mat4(1.0f), -(entry.spawn_pos + y_off));
-
-            glm::quat rot = glm::angleAxis(entry.facing_angle, glm::vec3(0, 1, 0));
-            glm::mat4 to_world_npc =
-                glm::translate(glm::mat4(1.0f), entry.current_pos + y_off) *
-                glm::mat4_cast(rot) *
-                glm::scale(glm::mat4(1.0f), char_scale) *
-                glm::rotate(glm::mat4(1.0f), glm::pi<float>(), {0, 1, 0});
-
-            const auto& npc_bones = entry.anim_player->bone_transforms();
-            for (uint32_t i = 0; i < entry.bone_count && (entry.first_bone_index + i) < 32; ++i) {
-                bones[entry.first_bone_index + i] = to_world_npc * npc_bones[i] * from_world_npc;
-            }
-        }
+        // Gather NPC bone transforms from engine-level registry
+        uint32_t npc_highest = gather_bone_animation_transforms(
+            app.bone_animation_registry(), bones, 32);
 
         // Total bones: player bones + registry NPCs
         int total_bones = bone_count + 1;
+        if (npc_highest > static_cast<uint32_t>(total_bones)) {
+            total_bones = static_cast<int>(npc_highest);
+        }
         if (app.gs_terrain().bone_slot_counter > static_cast<uint32_t>(total_bones)) {
             total_bones = static_cast<int>(app.gs_terrain().bone_slot_counter);
         }
