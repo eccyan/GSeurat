@@ -89,7 +89,6 @@ void main() {
 
     uint width = params.x;
     uint height = params.y;
-    uint count = static_count + dynamic_count;  // compute directly, bypass merge shader's thread 0 write
 
     bool valid_pixel = (pixel.x < width && pixel.y < height);
 
@@ -97,6 +96,8 @@ void main() {
 
     // X-Ray depth threshold
     float xray_depth = effect_params2.y;
+
+    uint count = static_count + dynamic_count;
 
     // Accumulate color front-to-back
     vec3 color = vec3(0.0);        // non-emissive color (receives lighting)
@@ -111,7 +112,7 @@ void main() {
         uint idx = merged_entries[s].index;
 
         // Culled Gaussians (key == 0xFFFF) are sorted to the end — stop immediately
-        if (merged_entries[s].key == 0xFFFF) break;
+        if (merged_entries[s].key == 0xFFFFu) break;
 
         ProjectedSplat splat = projected[idx];
 

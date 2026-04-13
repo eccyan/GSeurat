@@ -203,6 +203,7 @@ private:
     void dispatch_radix_sort(VkCommandBuffer cmd, uint32_t sort_size, uint32_t num_workgroups,
         VkDescriptorSet hist_a, VkDescriptorSet hist_b, VkDescriptorSet scan,
         VkDescriptorSet scatter_ab, VkDescriptorSet scatter_ba);
+    void dispatch_tile_sort(VkCommandBuffer cmd);
     void load_cloud_legacy(const GaussianCloud& cloud);
 
     VkDevice device_ = VK_NULL_HANDLE;
@@ -364,6 +365,44 @@ private:
     VkPipelineLayout sort_pipeline_layout_ = VK_NULL_HANDLE;
     VkPipeline sort_pipeline_ = VK_NULL_HANDLE;
     VkDescriptorSet sort_set_ = VK_NULL_HANDLE;
+
+    // ── Tile binning pipeline (Phase 1) ──
+    VkDescriptorSetLayout tile_bin_layout_ = VK_NULL_HANDLE;
+    VkPipelineLayout tile_bin_pipeline_layout_ = VK_NULL_HANDLE;
+    VkPipeline tile_bin_pipeline_ = VK_NULL_HANDLE;
+    VkDescriptorSet tile_bin_set_ = VK_NULL_HANDLE;
+
+    // Tile radix sort pipelines (16-byte entries, 8-pass for 64-bit key)
+    // Reuses existing radix_scan layout/pipeline (entry-independent)
+    VkPipelineLayout tile_histogram_pipeline_layout_ = VK_NULL_HANDLE;
+    VkPipeline tile_histogram_pipeline_ = VK_NULL_HANDLE;
+    VkPipelineLayout tile_scatter_pipeline_layout_ = VK_NULL_HANDLE;
+    VkPipeline tile_scatter_pipeline_ = VK_NULL_HANDLE;
+
+    // Tile range detection pipeline
+    VkDescriptorSetLayout tile_ranges_layout_ = VK_NULL_HANDLE;
+    VkPipelineLayout tile_ranges_pipeline_layout_ = VK_NULL_HANDLE;
+    VkPipeline tile_ranges_pipeline_ = VK_NULL_HANDLE;
+    VkDescriptorSet tile_ranges_set_ = VK_NULL_HANDLE;
+
+    // Tile sort descriptor sets (ping-pong for radix)
+    VkDescriptorSet tile_histogram_set_a_ = VK_NULL_HANDLE;
+    VkDescriptorSet tile_histogram_set_b_ = VK_NULL_HANDLE;
+    VkDescriptorSet tile_scatter_set_ab_ = VK_NULL_HANDLE;
+    VkDescriptorSet tile_scatter_set_ba_ = VK_NULL_HANDLE;
+    VkDescriptorSet tile_scan_set_ = VK_NULL_HANDLE;
+
+    // Tile sort buffers
+    Buffer tile_sort_a_;              // TileSortEntry ping buffer (16 bytes/entry)
+    Buffer tile_sort_b_;              // TileSortEntry pong buffer
+    Buffer tile_sort_count_ssbo_;     // atomic counter (single uint32)
+    Buffer tile_histogram_ssbo_;      // 256 * tile_sort_workgroups * sizeof(uint32)
+    Buffer tile_ranges_ssbo_;         // per-tile {start, count} (prepared for Phase 3)
+
+    uint32_t tile_sort_capacity_ = 0;    // max entries in tile sort buffers
+    uint32_t tile_sort_size_ = 0;        // workgroup-aligned count for radix sort
+    uint32_t tile_sort_workgroups_ = 0;
+    static constexpr uint32_t kTileSortPasses = 8;  // 4 for key_lo + 4 for key_hi
 
     bool initialized_ = false;
 

@@ -29,6 +29,10 @@ set(SHADER_SOURCES
     ${SHADER_SOURCE_DIR}/gs_radix_scan.comp
     ${SHADER_SOURCE_DIR}/gs_radix_scatter.comp
     ${SHADER_SOURCE_DIR}/gs_merge.comp
+    ${SHADER_SOURCE_DIR}/gs_tile_bin.comp
+    ${SHADER_SOURCE_DIR}/gs_tile_histogram.comp
+    ${SHADER_SOURCE_DIR}/gs_tile_scatter.comp
+    ${SHADER_SOURCE_DIR}/gs_tile_ranges.comp
     ${SHADER_SOURCE_DIR}/gs_post_process.comp
     ${SHADER_SOURCE_DIR}/pbd_solver.comp
 )
