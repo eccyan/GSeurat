@@ -52,6 +52,7 @@ struct GsUniforms {
     glm::vec4 pl_color[kMaxGsPointLights];      // per-light: rgb = color, a = intensity
     glm::vec4 pl_dir_cone[kMaxGsPointLights];   // per-light: xyz = direction, w = cos(cone_half_angle)
     glm::vec4 pl_area[kMaxGsPointLights];       // per-light: xy = area size (0=point), zw = normal XZ
+    glm::vec4 tile_sort_params;  // x = near_z, y = far_z, z = tiles_x, w = tiles_y
 };
 
 // Sort key: depth packed with index
@@ -2262,6 +2263,14 @@ void GsRenderer::render(VkCommandBuffer cmd, const glm::mat4& view, const glm::m
         uniforms.pl_dir_cone[i] = point_lights_[i].direction_and_cone;
         uniforms.pl_area[i] = point_lights_[i].area_params;
     }
+
+    // Extract near/far from Vulkan [0,1] perspective projection
+    float near_z = proj[3][2] / proj[2][2];
+    float far_z  = proj[3][2] / (proj[2][2] + 1.0f);
+    uint32_t tiles_x = (width + 15) / 16;
+    uint32_t tiles_y = (height + 15) / 16;
+    uniforms.tile_sort_params = glm::vec4(near_z, far_z,
+        static_cast<float>(tiles_x), static_cast<float>(tiles_y));
 
     std::memcpy(uniform_buffer_.mapped(), &uniforms, sizeof(uniforms));
 

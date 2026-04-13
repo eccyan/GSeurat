@@ -49,6 +49,7 @@ layout(set = 0, binding = 2) uniform Uniforms {
     vec4 pl_color[8];       // per-light: rgb = color, a = intensity
     vec4 pl_dir_cone[8];    // per-light: xyz = spot direction, w = cos(cone_half_angle); -1 = point
     vec4 pl_area[8];        // per-light: xy = area size (0=point), zw = normal XZ
+    vec4 tile_sort_params;  // x = near_z, y = far_z, z = tiles_x, w = tiles_y
 };
 
 layout(set = 0, binding = 3, rgba16f) uniform writeonly image2D output_image;
