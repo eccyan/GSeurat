@@ -52,6 +52,7 @@ struct GsUniforms {
     glm::vec4 pl_color[kMaxGsPointLights];      // per-light: rgb = color, a = intensity
     glm::vec4 pl_dir_cone[kMaxGsPointLights];   // per-light: xyz = direction, w = cos(cone_half_angle)
     glm::vec4 pl_area[kMaxGsPointLights];       // per-light: xy = area size (0=point), zw = normal XZ
+    glm::vec4 tile_sort_params;  // x = near_z, y = far_z, z = tiles_x, w = tiles_y
 };
 
 // Sort key: depth packed with index
@@ -88,11 +89,11 @@ void GsRenderer::init(VkDevice device, VkPhysicalDevice physical_device,
         tile_ranges_ssbo_ = Buffer::create_storage_gpu_only(allocator_,
             static_cast<VkDeviceSize>(kMaxTiles) * 2 * sizeof(uint32_t));
         // GPU-only: zeroed by vkCmdFillBuffer at dispatch time
-        // Tiny dummy tile sort buffer (16 bytes) — just for descriptor binding validity
-        tile_sort_a_ = Buffer::create_storage_gpu_only(allocator_, 16);
+        // Tiny dummy tile sort buffer (8 bytes) — just for descriptor binding validity
+        tile_sort_a_ = Buffer::create_storage_gpu_only(allocator_, 8);
         tile_sort_count_ssbo_ = Buffer::create_storage_readback(allocator_, sizeof(uint32_t));
         std::memset(tile_sort_count_ssbo_.mapped(), 0, sizeof(uint32_t));
-        tile_indirect_args_ = Buffer::create_storage(allocator_, 8 * sizeof(uint32_t));
+        tile_indirect_args_ = Buffer::create_storage_indirect(allocator_, 8 * sizeof(uint32_t));
         std::memset(tile_indirect_args_.mapped(), 0, 8 * sizeof(uint32_t));
     }
 
@@ -371,7 +372,7 @@ void GsRenderer::create_descriptor_resources() {
         vkCreateDescriptorSetLayout(device_, &ci, nullptr, &merge_layout_);
     }
 
-    // Tile binning layout: { projected(0), merged_sort(1), counts(2), tile_entries(3), tile_count(4) }
+    // Tile binning layout: { projected(0), merged_sort(1), counts(2), tile_entries(3), tile_count(4), uniforms(5) }
     {
         VkDescriptorSetLayoutBinding bindings[] = {
             {0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
@@ -379,10 +380,11 @@ void GsRenderer::create_descriptor_resources() {
             {2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
             {3, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
             {4, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
+            {5, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
         };
         VkDescriptorSetLayoutCreateInfo ci{};
         ci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-        ci.bindingCount = 5;
+        ci.bindingCount = 6;
         ci.pBindings = bindings;
         vkCreateDescriptorSetLayout(device_, &ci, nullptr, &tile_bin_layout_);
     }
@@ -414,6 +416,21 @@ void GsRenderer::create_descriptor_resources() {
         ci.bindingCount = 4;
         ci.pBindings = bindings;
         vkCreateDescriptorSetLayout(device_, &ci, nullptr, &tile_scatter_layout_);
+    }
+
+    // Onesweep layout: { input(0), output(1), status(2), indirect_args(3) }
+    {
+        VkDescriptorSetLayoutBinding bindings[] = {
+            {0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
+            {1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
+            {2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
+            {3, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
+        };
+        VkDescriptorSetLayoutCreateInfo ci{};
+        ci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+        ci.bindingCount = 4;
+        ci.pBindings = bindings;
+        vkCreateDescriptorSetLayout(device_, &ci, nullptr, &onesweep_layout_);
     }
 
     // Tile indirect dispatch layout: { tile_sort_count(0), indirect_args(1) }
@@ -504,8 +521,9 @@ void GsRenderer::create_descriptor_resources() {
         tile_ranges_layout_,                               // tile range detection
         tile_indirect_layout_,                             // indirect dispatch prep
         tile_render_layout_,                               // tile render
+        onesweep_layout_, onesweep_layout_,                // onesweep A→B, B→A
     };
-    constexpr uint32_t kSetCount = 33;
+    constexpr uint32_t kSetCount = 35;
     VkDescriptorSet sets[kSetCount];
     VkDescriptorSetAllocateInfo alloc_info{};
     alloc_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
@@ -551,6 +569,8 @@ void GsRenderer::create_descriptor_resources() {
     tile_ranges_set_ = sets[30];
     tile_indirect_set_ = sets[31];
     tile_render_set_ = sets[32];
+    onesweep_set_ab_ = sets[33];
+    onesweep_set_ba_ = sets[34];
 }
 
 void GsRenderer::create_compute_pipelines() {
@@ -621,8 +641,8 @@ void GsRenderer::create_compute_pipelines() {
     create_pipeline("shaders/gs_radix_scatter.comp.spv", radix_scatter_layout_, 8,
                     radix_scatter_pipeline_layout_, radix_scatter_pipeline_);
 
-    // Tile binning pipeline (push: max_entries, tiles_x, tiles_y = 12 bytes)
-    create_pipeline("shaders/gs_tile_bin.comp.spv", tile_bin_layout_, 12,
+    // Tile binning pipeline (push: max_entries = 4 bytes; tiles_x/tiles_y now in UBO)
+    create_pipeline("shaders/gs_tile_bin.comp.spv", tile_bin_layout_, 4,
                     tile_bin_pipeline_layout_, tile_bin_pipeline_);
 
     // Tile sort pipelines (push: digit_shift, use_hi = 8 bytes — num_elements from indirect_args)
@@ -639,6 +659,10 @@ void GsRenderer::create_compute_pipelines() {
     // Indirect dispatch preparation (push: max_entries = 4 bytes)
     create_pipeline("shaders/gs_tile_prepare_indirect.comp.spv", tile_indirect_layout_, 4,
                     tile_indirect_pipeline_layout_, tile_indirect_pipeline_);
+
+    // Onesweep pipeline (push: pass + max_workgroups = 8 bytes)
+    create_pipeline("shaders/gs_onesweep.comp.spv", onesweep_layout_, 4,
+                    onesweep_pipeline_layout_, onesweep_pipeline_);
 
     // Tile render pipeline (separate from render — uses tile_entries + tile_ranges)
     create_pipeline("shaders/gs_tile_render.comp.spv", tile_render_layout_, 0,
@@ -806,13 +830,20 @@ void GsRenderer::init_streaming(const StreamingConfig& config) {
         tile_sort_count_ssbo_ = Buffer::create_storage_readback(allocator_, sizeof(uint32_t));
         tile_histogram_ssbo_ = Buffer::create_storage_gpu_only(allocator_, hist_buf_size);
         tile_ranges_ssbo_ = Buffer::create_storage_gpu_only(allocator_, ranges_buf_size);
-        tile_indirect_args_ = Buffer::create_storage(allocator_, 8 * sizeof(uint32_t));
+        tile_indirect_args_ = Buffer::create_storage_indirect(allocator_, 8 * sizeof(uint32_t));
 
         std::fprintf(stderr, "GS: Tile sort -- capacity=%u entries (%u workgroups), "
                      "output=%ux%u, buf=%.1f MB\n",
                      tile_sort_size_, tile_sort_workgroups_,
                      output_width_, output_height_,
                      static_cast<float>(entry_buf_size * 2) / (1024.0f * 1024.0f));
+
+        // Onesweep status buffer: 4 passes × 256 digits × max_workgroups
+        onesweep_status_.destroy(allocator_);
+        onesweep_max_wg_ = (tile_sort_capacity_ + 2047) / 2048;
+        if (onesweep_max_wg_ == 0) onesweep_max_wg_ = 1;
+        VkDeviceSize status_size = (4ull * 256ull * onesweep_max_wg_ + 513ull) * sizeof(uint32_t);
+        onesweep_status_ = Buffer::create_storage_gpu_only(allocator_, status_size);
     }
 
     // Page table: one uint32 per slab, initialized to 0xFFFFFFFF (invalid)
@@ -1271,7 +1302,7 @@ void GsRenderer::load_cloud_legacy(const GaussianCloud& cloud) {
         if (tile_sort_workgroups_ == 0) tile_sort_workgroups_ = 1;
         tile_sort_size_ = tile_sort_workgroups_ * 1024;
 
-        VkDeviceSize entry_buf_size = static_cast<VkDeviceSize>(tile_sort_size_) * 16;
+        VkDeviceSize entry_buf_size = static_cast<VkDeviceSize>(tile_sort_size_) * 16;  // 16 bytes/entry
         VkDeviceSize hist_buf_size = static_cast<VkDeviceSize>(256) * tile_sort_workgroups_ * sizeof(uint32_t);
         // Allocate tile_ranges for max possible resolution (output_width_ may not
         // reflect final size at allocation time). Generous upper bound.
@@ -1290,7 +1321,7 @@ void GsRenderer::load_cloud_legacy(const GaussianCloud& cloud) {
         tile_sort_count_ssbo_ = Buffer::create_storage_readback(allocator_, sizeof(uint32_t));
         tile_histogram_ssbo_ = Buffer::create_storage_gpu_only(allocator_, hist_buf_size);
         tile_ranges_ssbo_ = Buffer::create_storage_gpu_only(allocator_, ranges_buf_size);
-        tile_indirect_args_ = Buffer::create_storage(allocator_, 8 * sizeof(uint32_t));
+        tile_indirect_args_ = Buffer::create_storage_indirect(allocator_, 8 * sizeof(uint32_t));
         std::memset(tile_indirect_args_.mapped(), 0, 8 * sizeof(uint32_t));
 
         std::fprintf(stderr, "GS: Tile sort -- capacity=%u entries (%u workgroups), "
@@ -1298,6 +1329,13 @@ void GsRenderer::load_cloud_legacy(const GaussianCloud& cloud) {
                      tile_sort_size_, tile_sort_workgroups_,
                      output_width_, output_height_,
                      static_cast<float>(entry_buf_size * 2) / (1024.0f * 1024.0f));
+
+        // Onesweep status buffer: 4 passes × 256 digits × max_workgroups
+        onesweep_status_.destroy(allocator_);
+        onesweep_max_wg_ = (tile_sort_capacity_ + 2047) / 2048;
+        if (onesweep_max_wg_ == 0) onesweep_max_wg_ = 1;
+        VkDeviceSize status_size = (4ull * 256ull * onesweep_max_wg_ + 513ull) * sizeof(uint32_t);
+        onesweep_status_ = Buffer::create_storage_gpu_only(allocator_, status_size);
     }
 
     update_descriptors();
@@ -1862,6 +1900,7 @@ void GsRenderer::update_descriptors() {
             VkDescriptorBufferInfo counts_info{counts_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
             VkDescriptorBufferInfo tile_entries_info{tile_sort_a_.buffer(), 0, VK_WHOLE_SIZE};
             VkDescriptorBufferInfo tile_count_info{tile_sort_count_ssbo_.buffer(), 0, sizeof(uint32_t)};
+            VkDescriptorBufferInfo uniform_info{uniform_buffer_.buffer(), 0, sizeof(GsUniforms)};
 
             VkWriteDescriptorSet writes[] = {
                 {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, tile_bin_set_, 0, 0, 1,
@@ -1874,8 +1913,10 @@ void GsRenderer::update_descriptors() {
                  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &tile_entries_info, nullptr},
                 {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, tile_bin_set_, 4, 0, 1,
                  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &tile_count_info, nullptr},
+                {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, tile_bin_set_, 5, 0, 1,
+                 VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, nullptr, &uniform_info, nullptr},
             };
-            vkUpdateDescriptorSets(device_, 5, writes, 0, nullptr);
+            vkUpdateDescriptorSets(device_, 6, writes, 0, nullptr);
         }
 
         // Tile range detection set: sorted_entries(0), tile_ranges(1), tile_count(2)
@@ -1974,6 +2015,48 @@ void GsRenderer::update_descriptors() {
                  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &args_info, nullptr},
             };
             vkUpdateDescriptorSets(device_, 2, writes, 0, nullptr);
+        }
+
+        // Onesweep descriptor sets (ping-pong: A→B and B→A)
+        if (onesweep_status_.buffer()) {
+            // A→B: read from tile_sort_a_, write to tile_sort_b_
+            {
+                VkDescriptorBufferInfo in_info{tile_sort_a_.buffer(), 0, VK_WHOLE_SIZE};
+                VkDescriptorBufferInfo out_info{tile_sort_b_.buffer(), 0, VK_WHOLE_SIZE};
+                VkDescriptorBufferInfo status_info{onesweep_status_.buffer(), 0, VK_WHOLE_SIZE};
+                VkDescriptorBufferInfo args_info{tile_indirect_args_.buffer(), 0, VK_WHOLE_SIZE};
+
+                VkWriteDescriptorSet writes[] = {
+                    {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, onesweep_set_ab_, 0, 0, 1,
+                     VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &in_info, nullptr},
+                    {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, onesweep_set_ab_, 1, 0, 1,
+                     VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &out_info, nullptr},
+                    {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, onesweep_set_ab_, 2, 0, 1,
+                     VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &status_info, nullptr},
+                    {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, onesweep_set_ab_, 3, 0, 1,
+                     VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &args_info, nullptr},
+                };
+                vkUpdateDescriptorSets(device_, 4, writes, 0, nullptr);
+            }
+            // B→A: read from tile_sort_b_, write to tile_sort_a_
+            {
+                VkDescriptorBufferInfo in_info{tile_sort_b_.buffer(), 0, VK_WHOLE_SIZE};
+                VkDescriptorBufferInfo out_info{tile_sort_a_.buffer(), 0, VK_WHOLE_SIZE};
+                VkDescriptorBufferInfo status_info{onesweep_status_.buffer(), 0, VK_WHOLE_SIZE};
+                VkDescriptorBufferInfo args_info{tile_indirect_args_.buffer(), 0, VK_WHOLE_SIZE};
+
+                VkWriteDescriptorSet writes[] = {
+                    {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, onesweep_set_ba_, 0, 0, 1,
+                     VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &in_info, nullptr},
+                    {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, onesweep_set_ba_, 1, 0, 1,
+                     VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &out_info, nullptr},
+                    {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, onesweep_set_ba_, 2, 0, 1,
+                     VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &status_info, nullptr},
+                    {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, onesweep_set_ba_, 3, 0, 1,
+                     VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &args_info, nullptr},
+                };
+                vkUpdateDescriptorSets(device_, 4, writes, 0, nullptr);
+            }
         }
 
         // Tile render set: projected(0), tile_entries(1), uniforms(2), output_image(3), tile_ranges(4), depth_image(5)
@@ -2102,9 +2185,9 @@ void GsRenderer::dispatch_tile_sort(VkCommandBuffer cmd) {
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, tile_bin_pipeline_);
         vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
                                 tile_bin_pipeline_layout_, 0, 1, &tile_bin_set_, 0, nullptr);
-        uint32_t push_data[3] = {tile_sort_capacity_, tiles_x, tiles_y};
+        uint32_t push_data[1] = {tile_sort_capacity_};
         vkCmdPushConstants(cmd, tile_bin_pipeline_layout_, VK_SHADER_STAGE_COMPUTE_BIT,
-                           0, 12, push_data);
+                           0, 4, push_data);
         uint32_t visible_upper = static_sort_size_ + dynamic_sort_size_;
         vkCmdDispatch(cmd, (visible_upper + 255) / 256, 1, 1);
     }
@@ -2133,66 +2216,97 @@ void GsRenderer::dispatch_tile_sort(VkCommandBuffer cmd) {
             0, 1, &barrier, 0, nullptr, 0, nullptr);
     }
 
-    // === Tile radix sort (8 passes, indirect dispatch) ===
-    // Pre-compute fixed histogram_count for scan (uses capacity-based upper bound).
-    // Histogram buffer must be cleared before each pass so the scan reads zeros
-    // for workgroups that weren't dispatched (indirect count < max_workgroups).
-    uint32_t max_workgroups = (tile_sort_capacity_ + 1023) / 1024;
-    if (max_workgroups == 0) max_workgroups = 1;
-    uint32_t histogram_count = 256 * max_workgroups;
-    VkDeviceSize hist_clear_size = static_cast<VkDeviceSize>(histogram_count) * sizeof(uint32_t);
-
-    for (uint32_t pass = 0; pass < kTileSortPasses; ++pass) {
-        uint32_t digit_shift = (pass % 4) * 8;
-        uint32_t use_hi = (pass < 4) ? 0 : 1;
-        bool read_from_a = (pass % 2 == 0);
-        uint32_t push_data[2] = {digit_shift, use_hi};
-
-        // Clear histogram buffer to 0 (ensures unused workgroup slots are zero for scan)
-        vkCmdFillBuffer(cmd, tile_histogram_ssbo_.buffer(), 0, hist_clear_size, 0);
+    if (use_onesweep_ && onesweep_status_.buffer()) {
+        // === Onesweep: clear status buffer ===
+        VkDeviceSize status_size = (4ull * 256ull * onesweep_max_wg_ + 513ull) * sizeof(uint32_t);
+        vkCmdFillBuffer(cmd, onesweep_status_.buffer(), 0, status_size, 0);
         {
-            VkMemoryBarrier hb{};
-            hb.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
-            hb.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-            hb.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+            VkMemoryBarrier sb{};
+            sb.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+            sb.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+            sb.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
             vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
-                VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &hb, 0, nullptr, 0, nullptr);
+                VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &sb, 0, nullptr, 0, nullptr);
         }
 
-        // Histogram — fixed workgroup count (must match scan stride).
-        // Extra workgroups produce zeros since shaders check num_elements from indirect_args[6].
-        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, tile_histogram_pipeline_);
-        auto hist_set = read_from_a ? tile_histogram_set_a_ : tile_histogram_set_b_;
-        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
-                                tile_histogram_pipeline_layout_, 0, 1, &hist_set, 0, nullptr);
-        vkCmdPushConstants(cmd, tile_histogram_pipeline_layout_, VK_SHADER_STAGE_COMPUTE_BIT,
-                           0, 8, push_data);
-        vkCmdDispatch(cmd, max_workgroups, 1, 1);
+        // === Onesweep: 4 radix passes ===
+        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, onesweep_pipeline_);
+        for (uint32_t pass = 0; pass < 4; pass++) {
+            uint32_t push_data[1] = {pass};
+            bool read_from_a = (pass % 2 == 0);
+            VkDescriptorSet set = read_from_a ? onesweep_set_ab_ : onesweep_set_ba_;
 
-        insert_compute_barrier(cmd);
+            vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
+                                    onesweep_pipeline_layout_, 0, 1, &set, 0, nullptr);
+            vkCmdPushConstants(cmd, onesweep_pipeline_layout_, VK_SHADER_STAGE_COMPUTE_BIT,
+                               0, 4, push_data);
+            vkCmdDispatchIndirect(cmd, tile_indirect_args_.buffer(), 0);
 
-        // Prefix scan — uses fixed upper bound for histogram_count
-        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, radix_scan_pipeline_);
-        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
-                                radix_scan_pipeline_layout_, 0, 1, &tile_scan_set_, 0, nullptr);
-        vkCmdPushConstants(cmd, radix_scan_pipeline_layout_, VK_SHADER_STAGE_COMPUTE_BIT,
-                           0, 4, &histogram_count);
-        vkCmdDispatch(cmd, 1, 1, 1);
+            insert_compute_barrier(cmd);
+        }
+        // After 4 passes (even count), sorted result is in tile_sort_a_
+    } else {
+        // === Old 8-pass radix sort (fallback) ===
+        // Pre-compute fixed histogram_count for scan (uses capacity-based upper bound).
+        // Histogram buffer must be cleared before each pass so the scan reads zeros
+        // for workgroups that weren't dispatched (indirect count < max_workgroups).
+        uint32_t max_workgroups = (tile_sort_capacity_ + 1023) / 1024;
+        if (max_workgroups == 0) max_workgroups = 1;
+        uint32_t histogram_count = 256 * max_workgroups;
+        VkDeviceSize hist_clear_size = static_cast<VkDeviceSize>(histogram_count) * sizeof(uint32_t);
 
-        insert_compute_barrier(cmd);
+        for (uint32_t pass = 0; pass < kTileSortPasses; ++pass) {
+            uint32_t digit_shift = (pass % 4) * 8;
+            uint32_t use_hi = (pass < 4) ? 0 : 1;
+            bool read_from_a = (pass % 2 == 0);
+            uint32_t push_data[2] = {digit_shift, use_hi};
 
-        // Scatter — fixed workgroup count (must match histogram stride for scan consistency)
-        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, tile_scatter_pipeline_);
-        auto scatter_set = read_from_a ? tile_scatter_set_ab_ : tile_scatter_set_ba_;
-        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
-                                tile_scatter_pipeline_layout_, 0, 1, &scatter_set, 0, nullptr);
-        vkCmdPushConstants(cmd, tile_scatter_pipeline_layout_, VK_SHADER_STAGE_COMPUTE_BIT,
-                           0, 8, push_data);
-        vkCmdDispatch(cmd, max_workgroups, 1, 1);
+            // Clear histogram buffer to 0 (ensures unused workgroup slots are zero for scan)
+            vkCmdFillBuffer(cmd, tile_histogram_ssbo_.buffer(), 0, hist_clear_size, 0);
+            {
+                VkMemoryBarrier hb{};
+                hb.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+                hb.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+                hb.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+                vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                    VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &hb, 0, nullptr, 0, nullptr);
+            }
 
-        insert_compute_barrier(cmd);
+            // Histogram — fixed workgroup count (must match scan stride).
+            // Extra workgroups produce zeros since shaders check num_elements from indirect_args[6].
+            vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, tile_histogram_pipeline_);
+            auto hist_set = read_from_a ? tile_histogram_set_a_ : tile_histogram_set_b_;
+            vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
+                                    tile_histogram_pipeline_layout_, 0, 1, &hist_set, 0, nullptr);
+            vkCmdPushConstants(cmd, tile_histogram_pipeline_layout_, VK_SHADER_STAGE_COMPUTE_BIT,
+                               0, 8, push_data);
+            vkCmdDispatch(cmd, max_workgroups, 1, 1);
+
+            insert_compute_barrier(cmd);
+
+            // Prefix scan — uses fixed upper bound for histogram_count
+            vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, radix_scan_pipeline_);
+            vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
+                                    radix_scan_pipeline_layout_, 0, 1, &tile_scan_set_, 0, nullptr);
+            vkCmdPushConstants(cmd, radix_scan_pipeline_layout_, VK_SHADER_STAGE_COMPUTE_BIT,
+                               0, 4, &histogram_count);
+            vkCmdDispatch(cmd, 1, 1, 1);
+
+            insert_compute_barrier(cmd);
+
+            // Scatter — fixed workgroup count (must match histogram stride for scan consistency)
+            vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, tile_scatter_pipeline_);
+            auto scatter_set = read_from_a ? tile_scatter_set_ab_ : tile_scatter_set_ba_;
+            vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
+                                    tile_scatter_pipeline_layout_, 0, 1, &scatter_set, 0, nullptr);
+            vkCmdPushConstants(cmd, tile_scatter_pipeline_layout_, VK_SHADER_STAGE_COMPUTE_BIT,
+                               0, 8, push_data);
+            vkCmdDispatch(cmd, max_workgroups, 1, 1);
+
+            insert_compute_barrier(cmd);
+        }
+        // After 8 passes (even count), sorted result is in tile_sort_a_
     }
-    // After 8 passes (even count), sorted result is in tile_sort_a_
 
     // === Tile range detection ===
     {
@@ -2262,6 +2376,14 @@ void GsRenderer::render(VkCommandBuffer cmd, const glm::mat4& view, const glm::m
         uniforms.pl_dir_cone[i] = point_lights_[i].direction_and_cone;
         uniforms.pl_area[i] = point_lights_[i].area_params;
     }
+
+    // Extract near/far from Vulkan [0,1] perspective projection
+    float near_z = proj[3][2] / proj[2][2];
+    float far_z  = proj[3][2] / (proj[2][2] + 1.0f);
+    uint32_t tiles_x = (width + 15) / 16;
+    uint32_t tiles_y = (height + 15) / 16;
+    uniforms.tile_sort_params = glm::vec4(near_z, far_z,
+        static_cast<float>(tiles_x), static_cast<float>(tiles_y));
 
     std::memcpy(uniform_buffer_.mapped(), &uniforms, sizeof(uniforms));
 
@@ -2530,6 +2652,7 @@ void GsRenderer::render(VkCommandBuffer cmd, const glm::mat4& view, const glm::m
 
         // Barrier: tile rasterize → post-process (output+depth readable)
         insert_compute_barrier(cmd);
+
     }
 
     // Pass 4: Post-process (always runs — params like fade_amount change every frame)
@@ -2729,6 +2852,7 @@ void GsRenderer::shutdown(VmaAllocator allocator) {
     tile_histogram_ssbo_.destroy(allocator);
     tile_ranges_ssbo_.destroy(allocator);
     tile_indirect_args_.destroy(allocator);
+    onesweep_status_.destroy(allocator);
 
     pp_ubo_buffer_.destroy(allocator);
 
@@ -2759,6 +2883,7 @@ void GsRenderer::shutdown(VmaAllocator allocator) {
     destroy_pipeline(tile_ranges_pipeline_);
     destroy_pipeline(tile_indirect_pipeline_);
     destroy_pipeline(tile_render_pipeline_);
+    destroy_pipeline(onesweep_pipeline_);
 
     destroy_layout(preprocess_pipeline_layout_);
     destroy_layout(sort_pipeline_layout_);
@@ -2775,6 +2900,7 @@ void GsRenderer::shutdown(VmaAllocator allocator) {
     destroy_layout(tile_ranges_pipeline_layout_);
     destroy_layout(tile_indirect_pipeline_layout_);
     destroy_layout(tile_render_pipeline_layout_);
+    destroy_layout(onesweep_pipeline_layout_);
 
     destroy_set_layout(preprocess_layout_);
     destroy_set_layout(sort_layout_);
@@ -2791,6 +2917,7 @@ void GsRenderer::shutdown(VmaAllocator allocator) {
     destroy_set_layout(tile_scatter_layout_);
     destroy_set_layout(tile_indirect_layout_);
     destroy_set_layout(tile_render_layout_);
+    destroy_set_layout(onesweep_layout_);
 
     if (timestamp_pool_) { vkDestroyQueryPool(device_, timestamp_pool_, nullptr); timestamp_pool_ = VK_NULL_HANDLE; }
     if (gs_pool_) vkDestroyDescriptorPool(device_, gs_pool_, nullptr);

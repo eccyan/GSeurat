@@ -15,9 +15,24 @@ layout(set = 0, binding = 0) buffer SortBuffer {
 layout(set = 0, binding = 1) uniform Uniforms {
     mat4 view;
     mat4 proj;
-    mat4 inv_view;  // must match layout (unused in sort)
-    mat4 inv_proj;  // must match layout (unused in sort)
-    uvec4 params;   // w = sort_size
+    mat4 inv_view;
+    mat4 inv_proj;
+    uvec4 params;       // w = sort_size
+    vec4 shadow_box;
+    vec4 cone_dir;
+    vec4 cam_pos;
+    vec4 effect_flags;
+    vec4 light_params;
+    vec4 touch_point;
+    vec4 effect_params;
+    vec4 effect_params2;
+    vec4 point_light_params;
+    vec4 actor_rotation;
+    vec4 pl_pos_rad[8];
+    vec4 pl_color[8];
+    vec4 pl_dir_cone[8];
+    vec4 pl_area[8];
+    vec4 tile_sort_params;
 };
 
 layout(push_constant) uniform PushConstants {

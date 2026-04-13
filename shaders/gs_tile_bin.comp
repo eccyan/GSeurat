@@ -1,8 +1,5 @@
 #version 450
 
-// Tile binning pass: duplicates each visible Gaussian into per-tile sort entries.
-// Each thread processes one visible Gaussian from the merged sort array,
-// computes its tile overlap, and writes one TileSortEntry per overlapping tile.
 layout(local_size_x = 256) in;
 
 struct ProjectedSplat {
@@ -13,11 +10,10 @@ struct ProjectedSplat {
     vec4 color;
 };
 
-// 16 bytes, uvec4-aligned for std430 (no implicit padding)
 struct TileSortEntry {
-    uint key_hi;   // tile_id (tile_y * tiles_x + tile_x)
-    uint key_lo;   // floatBitsToUint(depth) — positive floats sort correctly as uints
-    uint index;    // index into projected[] buffer
+    uint key_hi;
+    uint key_lo;
+    uint index;
     uint _pad;
 };
 
@@ -48,10 +44,31 @@ layout(set = 0, binding = 4) buffer TileSortCountBuffer {
     uint tile_sort_count;
 };
 
+layout(set = 0, binding = 5) uniform Uniforms {
+    mat4 view;
+    mat4 proj;
+    mat4 inv_view;
+    mat4 inv_proj;
+    uvec4 params;
+    vec4 shadow_box;
+    vec4 cone_dir;
+    vec4 cam_pos;
+    vec4 effect_flags;
+    vec4 light_params;
+    vec4 touch_point;
+    vec4 effect_params;
+    vec4 effect_params2;
+    vec4 point_light_params;
+    vec4 actor_rotation;
+    vec4 pl_pos_rad[8];
+    vec4 pl_color[8];
+    vec4 pl_dir_cone[8];
+    vec4 pl_area[8];
+    vec4 tile_sort_params;
+};
+
 layout(push_constant) uniform PushConstants {
-    uint max_entries;   // capacity of tile_entries[] buffer
-    uint tiles_x;       // number of tiles horizontally
-    uint tiles_y;       // number of tiles vertically
+    uint max_entries;
 };
 
 void main() {
@@ -60,33 +77,38 @@ void main() {
     if (gid >= visible) return;
 
     SortEntry entry = merged_entries[gid];
-    if (entry.key == 0xFFFFu) return;  // culled sentinel — skip
+    if (entry.key == 0xFFFFu) return;
 
     uint idx = entry.index;
     ProjectedSplat splat = projected[idx];
 
-    if (splat.radius <= 0.0) return;  // frustum-culled or degenerate
+    if (splat.radius <= 0.0) return;
 
-    // Compute tile AABB from screen-space bounding circle
     vec2 c = splat.center;
     float r = splat.radius;
+    uint tiles_x = uint(tile_sort_params.z);
+    uint tiles_y = uint(tile_sort_params.w);
 
     int tx_min = max(0, int(floor((c.x - r) / 16.0)));
     int tx_max = min(int(tiles_x) - 1, int(floor((c.x + r) / 16.0)));
     int ty_min = max(0, int(floor((c.y - r) / 16.0)));
     int ty_max = min(int(tiles_y) - 1, int(floor((c.y + r) / 16.0)));
 
-    uint depth_bits = floatBitsToUint(splat.depth);
+    float near_z = tile_sort_params.x;
+    float far_z  = tile_sort_params.y;
+    float t = clamp((splat.depth - near_z) / (far_z - near_z), 0.0, 1.0);
+    uint depth_q = min(uint(t * 65535.0), 0xFFFEu);
 
     for (int ty = ty_min; ty <= ty_max; ty++) {
         for (int tx = tx_min; tx <= tx_max; tx++) {
             uint tile_id = uint(ty) * tiles_x + uint(tx);
+            uint sort_key = (tile_id << 16u) | depth_q;
             uint offset = atomicAdd(tile_sort_count, 1);
             if (offset < max_entries) {
-                tile_entries[offset].key_hi = tile_id;
-                tile_entries[offset].key_lo = depth_bits;
+                tile_entries[offset].key_hi = 0u;
+                tile_entries[offset].key_lo = sort_key;
                 tile_entries[offset].index = idx;
-                tile_entries[offset]._pad = 0;
+                tile_entries[offset]._pad = 0u;
             }
         }
     }

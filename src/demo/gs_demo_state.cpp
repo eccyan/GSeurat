@@ -22,6 +22,7 @@ namespace gseurat {
 
 void GsDemoState::on_enter(AppBase& app) {
     app.feature_flags() = FeatureFlags::gs_viewer();
+    app.feature_flags().apply_platform_defaults(app.renderer().context().is_apple_gpu());
     app.init_scene(app.scene_objects().current_scene_path);
 
     // Disable app-level parallax — demo manages its own camera

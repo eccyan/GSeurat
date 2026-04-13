@@ -35,6 +35,7 @@ set(SHADER_SOURCES
     ${SHADER_SOURCE_DIR}/gs_tile_ranges.comp
     ${SHADER_SOURCE_DIR}/gs_tile_render.comp
     ${SHADER_SOURCE_DIR}/gs_tile_prepare_indirect.comp
+    ${SHADER_SOURCE_DIR}/gs_onesweep.comp
     ${SHADER_SOURCE_DIR}/gs_post_process.comp
     ${SHADER_SOURCE_DIR}/pbd_solver.comp
 )
