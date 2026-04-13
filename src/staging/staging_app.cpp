@@ -54,6 +54,7 @@ void StagingApp::init_game_content() {
     feature_flags_.particles = true;
     feature_flags_.animation = true;
     feature_flags_.fog = true;
+    feature_flags_.apply_platform_defaults(renderer_.context().is_apple_gpu());
 
     init_imgui();
 }

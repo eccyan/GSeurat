@@ -80,6 +80,13 @@ struct FeatureFlags {
         };
     }
 
+    // Apply platform-specific defaults (call once after GPU detection)
+    void apply_platform_defaults(bool apple_gpu) {
+        if (apple_gpu) {
+            gs_tile_binning = false;  // TBDR barrier overhead ~25x slower
+        }
+    }
+
     static constexpr std::array<Entry, 33> entries() {
         return {{
             {"Parallax BG",    "24",  "RENDERING", &FeatureFlags::parallax_backgrounds},

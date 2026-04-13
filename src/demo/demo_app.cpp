@@ -66,6 +66,7 @@ void DemoApp::init_game_content() {
     text_renderer_.init(font_atlas_);
 
     renderer_.init(window_, resources_);
+    feature_flags_.apply_platform_defaults(renderer_.context().is_apple_gpu());
     renderer_.init_font(font_atlas_, resources_);
     renderer_.init_particles(resources_);
     renderer_.init_shadows(resources_);
