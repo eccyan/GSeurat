@@ -1,0 +1,107 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GSeurat World Manifest",
+  "description": "Spatial partitioning manifest for open-world streaming",
+  "type": "object",
+  "required": ["version", "grid_cell_size", "chunks"],
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "grid_cell_size": {
+      "type": "array",
+      "items": { "type": "number", "exclusiveMinimum": 0 },
+      "minItems": 3,
+      "maxItems": 3,
+      "description": "Cell dimensions [x, y, z] in world units"
+    },
+    "chunks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["grid", "ply_file"],
+        "properties": {
+          "grid": {
+            "type": "array",
+            "items": { "type": "integer" },
+            "minItems": 3,
+            "maxItems": 3,
+            "description": "Grid indices [x, y, z]"
+          },
+          "ply_file": {
+            "type": "string",
+            "description": "Asset-relative path to PLY file"
+          },
+          "scene_file": {
+            "type": "string",
+            "description": "Asset-relative path to per-chunk scene JSON"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "streaming_volumes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "shape", "position", "preload_target_ids"],
+        "properties": {
+          "id": { "type": "string" },
+          "shape": { "enum": ["box", "sphere"] },
+          "position": {
+            "type": "array",
+            "items": { "type": "number" },
+            "minItems": 3,
+            "maxItems": 3
+          },
+          "half_extents": {
+            "type": "array",
+            "items": { "type": "number" },
+            "minItems": 3,
+            "maxItems": 3
+          },
+          "radius": { "type": "number" },
+          "preload_target_ids": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "portals": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "position", "region_shape", "target_instance_id"],
+        "properties": {
+          "id": { "type": "string" },
+          "position": {
+            "type": "array",
+            "items": { "type": "number" },
+            "minItems": 3,
+            "maxItems": 3
+          },
+          "region_shape": { "enum": ["box", "sphere"] },
+          "region_radius": { "type": "number" },
+          "region_half_extents": {
+            "type": "array",
+            "items": { "type": "number" },
+            "minItems": 3,
+            "maxItems": 3
+          },
+          "target_instance_id": { "type": "string" },
+          "spawn_position": {
+            "type": "array",
+            "items": { "type": "number" },
+            "minItems": 3,
+            "maxItems": 3
+          },
+          "spawn_facing": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

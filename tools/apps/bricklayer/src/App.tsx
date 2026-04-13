@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Canvas } from '@react-three/fiber';
 import { Viewport, getOrbitControls } from './viewport/Viewport.js';
 import { MenuBar } from './panels/MenuBar.js';
 import { ImportDialog } from './panels/ImportDialog.js';
@@ -15,6 +16,10 @@ import { CollisionLeftPanel } from './panels/CollisionLeftPanel.js';
 import { TerrainRightPanel } from './panels/TerrainRightPanel.js';
 import { ScenePropertiesPanel } from './panels/ScenePropertiesPanel.js';
 import { SettingsRightPanel } from './panels/SettingsRightPanel.js';
+import { WorldTree } from './panels/WorldTree.js';
+import { WorldPropertiesPanel } from './panels/WorldPropertiesPanel.js';
+import { WorldViewport } from './viewport/WorldViewport.js';
+import { ChunkWireframes } from './viewport/ChunkWireframes.js';
 import { useSceneStore } from './store/useSceneStore.js';
 import type { ToolType } from './store/types.js';
 
@@ -498,42 +503,89 @@ export function App() {
     };
   }, []);
 
+  const setMode = useSceneStore((s) => s.setMode);
+
   // Determine which contextual panel to show in left below ProjectTree
   const isCollisionMode = activeNode?.kind === 'collision';
   const showTerrainTools = !isCollisionMode && (mode === 'terrain' || (activeNode?.kind === 'terrain'));
   const showCollisionTools = isCollisionMode;
+  const isWorldMode = mode === 'world';
+
   // Determine right panel content
   const rightContent = (() => {
+    if (isWorldMode) return <WorldPropertiesPanel />;
     if (activeNode?.kind === 'settings_category' || mode === 'settings') return <SettingsRightPanel />;
     if (activeNode?.kind === 'scene_item' || activeNode?.kind === 'player' || (mode === 'scene')) return <ScenePropertiesPanel />;
     if (activeNode?.kind === 'collision') return <TerrainRightPanel />;
     return <TerrainRightPanel />;
   })();
 
+  const modeTabs: { key: string; label: string }[] = [
+    { key: 'world', label: 'WORLD' },
+    { key: 'terrain', label: 'TERRAIN' },
+    { key: 'scene', label: 'SCENE' },
+    { key: 'settings', label: 'SETTINGS' },
+  ];
+
   return (
     <div style={styles.root}>
       <MenuBar onImport={() => setShowImport(true)} />
+      {/* Mode tab bar */}
+      <div style={modeTabsStyles.bar}>
+        {modeTabs.map((tab) => (
+          <button
+            key={tab.key}
+            style={{
+              ...modeTabsStyles.tab,
+              ...(mode === tab.key ? modeTabsStyles.tabActive : {}),
+            }}
+            onClick={() => setMode(tab.key as import('./store/types.js').BricklayerMode)}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
       <div style={styles.body}>
         {/* Left panel */}
         <div style={{ ...styles.leftPanel, width: leftWidth }}>
-          {/* Project tree at top */}
-          <div style={styles.leftTop}>
-            <ProjectTree />
-          </div>
-          {/* Contextual tools below */}
-          <div style={styles.leftContent}>
-            {showTerrainTools && <TerrainLeftPanel />}
-            {showCollisionTools && <CollisionLeftPanel />}
-          </div>
+          {isWorldMode ? (
+            <div style={{ ...styles.leftContent, padding: 8 }}>
+              <WorldTree />
+            </div>
+          ) : (
+            <>
+              {/* Project tree at top */}
+              <div style={styles.leftTop}>
+                <ProjectTree />
+              </div>
+              {/* Contextual tools below */}
+              <div style={styles.leftContent}>
+                {showTerrainTools && <TerrainLeftPanel />}
+                {showCollisionTools && <CollisionLeftPanel />}
+              </div>
+            </>
+          )}
         </div>
 
         <ResizeHandle side="left" onDrag={handleLeftDrag} />
 
         {/* Center viewport */}
         <div style={styles.viewport}>
-          <Viewport />
-          <GrabOverlay />
-          <OrbitLockIndicator />
+          {isWorldMode ? (
+            <Canvas
+              camera={{ position: [128, 80, 128], fov: 50 }}
+              style={{ background: '#16162a', width: '100%', height: '100%' }}
+              onContextMenu={(e) => e.preventDefault()}
+            >
+              <WorldViewport />
+            </Canvas>
+          ) : (
+            <>
+              <Viewport />
+              <GrabOverlay />
+              <OrbitLockIndicator />
+            </>
+          )}
         </div>
 
         <ResizeHandle side="right" onDrag={handleRightDrag} />

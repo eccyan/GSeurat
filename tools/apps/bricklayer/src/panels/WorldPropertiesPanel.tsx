@@ -1,0 +1,316 @@
+import React from 'react';
+import { useComponentRegistry } from '@gseurat/ui-kit';
+import { chunkGridKey } from '@gseurat/project-root';
+import { NumberInput } from '../components/NumberInput.js';
+import { Vec3Input } from '../components/Vec3Input.js';
+import { useWorldStore } from '../store/useWorldStore.js';
+import { useSceneStore } from '../store/useSceneStore.js';
+import { panelStyles } from '../styles/panel.js';
+
+const styles = { ...panelStyles };
+
+const sectionStyle: React.CSSProperties = {
+  marginBottom: 16,
+};
+
+const labelStyle: React.CSSProperties = {
+  fontSize: 11,
+  color: '#aaa',
+  marginBottom: 3,
+  display: 'block',
+};
+
+const rowStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 6,
+  marginBottom: 8,
+};
+
+const fullInputStyle: React.CSSProperties = {
+  ...styles.input,
+  flex: 1,
+};
+
+const enterBtnStyle: React.CSSProperties = {
+  background: '#334',
+  border: '1px solid #555',
+  color: '#ccf',
+  borderRadius: 4,
+  padding: '4px 10px',
+  cursor: 'pointer',
+  fontSize: 11,
+  width: '100%',
+  marginTop: 4,
+};
+
+// ── Section header ──
+
+function SectionHeader({ label }: { label: string }) {
+  return (
+    <div style={{
+      fontSize: 11,
+      fontWeight: 700,
+      letterSpacing: 0.5,
+      color: '#88aacc',
+      textTransform: 'uppercase',
+      borderBottom: '1px solid #333',
+      paddingBottom: 4,
+      marginBottom: 8,
+    }}>
+      {label}
+    </div>
+  );
+}
+
+// ── World Settings ──
+
+function WorldSettingsEditor() {
+  const gridCellSize = useWorldStore((s) => s.manifest.grid_cell_size);
+  const setGridCellSize = useWorldStore((s) => s.setGridCellSize);
+
+  return (
+    <div style={sectionStyle}>
+      <SectionHeader label="World Settings" />
+      <label style={labelStyle}>Grid Cell Size</label>
+      <Vec3Input
+        value={gridCellSize}
+        onChange={(v) => setGridCellSize(v as [number, number, number])}
+        step={1}
+        min={1}
+      />
+    </div>
+  );
+}
+
+// ── Chunk Editor ──
+
+function ChunkEditor({ gridKey }: { gridKey: string }) {
+  const chunk = useWorldStore((s) => s.manifest.chunks.find((c) => chunkGridKey(c.grid) === gridKey));
+  const updateChunk = useWorldStore((s) => s.updateChunk);
+  const enterChunk = useWorldStore((s) => s.enterChunk);
+
+  if (!chunk) return null;
+
+  return (
+    <div style={sectionStyle}>
+      <SectionHeader label="Chunk" />
+
+      <label style={labelStyle}>Grid Position</label>
+      <div style={{ ...rowStyle, color: '#888', fontSize: 12, marginBottom: 8 }}>
+        [{chunk.grid[0]}, {chunk.grid[1]}, {chunk.grid[2]}]
+      </div>
+
+      <label style={labelStyle}>PLY File</label>
+      <div style={rowStyle}>
+        <input
+          type="text"
+          value={chunk.ply_file}
+          placeholder="path/to/chunk.ply"
+          onChange={(e) => updateChunk(gridKey, { ply_file: e.target.value })}
+          style={fullInputStyle}
+        />
+      </div>
+
+      <label style={labelStyle}>Scene File</label>
+      <div style={rowStyle}>
+        <input
+          type="text"
+          value={chunk.scene_file ?? ''}
+          placeholder="path/to/scene.json"
+          onChange={(e) => updateChunk(gridKey, { scene_file: e.target.value || undefined })}
+          style={fullInputStyle}
+        />
+      </div>
+
+      <button
+        style={enterBtnStyle}
+        onClick={() => {
+          enterChunk(chunk.grid);
+          useSceneStore.getState().setMode('scene');
+        }}
+      >
+        Enter Chunk
+      </button>
+    </div>
+  );
+}
+
+// ── Streaming Volume Editor ──
+
+function StreamingVolumeEditor({ id }: { id: string }) {
+  const sv = useWorldStore((s) => s.manifest.streaming_volumes.find((v) => v.id === id));
+  const updateStreamingVolume = useWorldStore((s) => s.updateStreamingVolume);
+
+  if (!sv) return null;
+
+  const halfExtents: [number, number, number] = sv.half_extents ?? [8, 8, 8];
+  const radius = sv.radius ?? 8;
+
+  return (
+    <div style={sectionStyle}>
+      <SectionHeader label="Streaming Volume" />
+
+      <label style={labelStyle}>ID</label>
+      <div style={{ ...rowStyle, color: '#888', fontSize: 12, marginBottom: 8 }}>{sv.id}</div>
+
+      <label style={labelStyle}>Shape</label>
+      <div style={rowStyle}>
+        <select
+          value={sv.shape}
+          onChange={(e) => updateStreamingVolume(id, { shape: e.target.value as 'box' | 'sphere' })}
+          style={{ ...styles.input, flex: 1 }}
+        >
+          <option value="box">Box</option>
+          <option value="sphere">Sphere</option>
+        </select>
+      </div>
+
+      <label style={labelStyle}>Position</label>
+      <Vec3Input
+        value={sv.position}
+        onChange={(v) => updateStreamingVolume(id, { position: v as [number, number, number] })}
+        step={0.5}
+      />
+
+      {sv.shape === 'box' ? (
+        <>
+          <label style={labelStyle}>Half Extents</label>
+          <Vec3Input
+            value={halfExtents}
+            onChange={(v) => updateStreamingVolume(id, { half_extents: v as [number, number, number] })}
+            step={0.5}
+            min={0.1}
+          />
+        </>
+      ) : (
+        <>
+          <label style={labelStyle}>Radius</label>
+          <div style={rowStyle}>
+            <NumberInput
+              value={radius}
+              min={0.1}
+              step={0.5}
+              onChange={(v) => updateStreamingVolume(id, { radius: v })}
+              style={{ ...styles.input, flex: 1 }}
+            />
+          </div>
+        </>
+      )}
+
+      <label style={labelStyle}>Preload Target IDs (comma-separated)</label>
+      <div style={rowStyle}>
+        <input
+          type="text"
+          value={sv.preload_target_ids.join(', ')}
+          placeholder="chunk_key_1, chunk_key_2"
+          onChange={(e) => {
+            const ids = e.target.value.split(',').map((s) => s.trim()).filter(Boolean);
+            updateStreamingVolume(id, { preload_target_ids: ids });
+          }}
+          style={fullInputStyle}
+        />
+      </div>
+    </div>
+  );
+}
+
+// ── Portal Editor ──
+
+function PortalEditor({ id }: { id: string }) {
+  const portal = useWorldStore((s) => s.manifest.portals.find((p) => p.id === id));
+  const updatePortal = useWorldStore((s) => s.updatePortal);
+
+  if (!portal) return null;
+
+  const halfExtents: [number, number, number] = portal.region_half_extents ?? [2, 2, 2];
+  const radius = portal.region_radius ?? 2;
+
+  return (
+    <div style={sectionStyle}>
+      <SectionHeader label="Global Portal" />
+
+      <label style={labelStyle}>ID</label>
+      <div style={{ ...rowStyle, color: '#888', fontSize: 12, marginBottom: 8 }}>{portal.id}</div>
+
+      <label style={labelStyle}>Position</label>
+      <Vec3Input
+        value={portal.position}
+        onChange={(v) => updatePortal(id, { position: v as [number, number, number] })}
+        step={0.5}
+      />
+
+      <label style={labelStyle}>Region Shape</label>
+      <div style={rowStyle}>
+        <select
+          value={portal.region_shape}
+          onChange={(e) => updatePortal(id, { region_shape: e.target.value as 'box' | 'sphere' })}
+          style={{ ...styles.input, flex: 1 }}
+        >
+          <option value="sphere">Sphere</option>
+          <option value="box">Box</option>
+        </select>
+      </div>
+
+      {portal.region_shape === 'sphere' ? (
+        <>
+          <label style={labelStyle}>Region Radius</label>
+          <div style={rowStyle}>
+            <NumberInput
+              value={radius}
+              min={0.1}
+              step={0.1}
+              onChange={(v) => updatePortal(id, { region_radius: v })}
+              style={{ ...styles.input, flex: 1 }}
+            />
+          </div>
+        </>
+      ) : (
+        <>
+          <label style={labelStyle}>Region Half Extents</label>
+          <Vec3Input
+            value={halfExtents}
+            onChange={(v) => updatePortal(id, { region_half_extents: v as [number, number, number] })}
+            step={0.1}
+            min={0.1}
+          />
+        </>
+      )}
+
+      <label style={labelStyle}>Target Instance ID</label>
+      <div style={rowStyle}>
+        <input
+          type="text"
+          value={portal.target_instance_id}
+          placeholder="instance_id"
+          onChange={(e) => updatePortal(id, { target_instance_id: e.target.value })}
+          style={fullInputStyle}
+        />
+      </div>
+    </div>
+  );
+}
+
+// ── WorldPropertiesPanel ──
+
+export function WorldPropertiesPanel() {
+  useComponentRegistry('WorldPropertiesPanel');
+
+  const selectedEntity = useWorldStore((s) => s.selectedEntity);
+
+  return (
+    <div style={{ color: '#ccc', fontSize: 12 }}>
+      <WorldSettingsEditor />
+
+      {selectedEntity?.type === 'chunk' && (
+        <ChunkEditor gridKey={selectedEntity.id} />
+      )}
+      {selectedEntity?.type === 'streaming_volume' && (
+        <StreamingVolumeEditor id={selectedEntity.id} />
+      )}
+      {selectedEntity?.type === 'world_portal' && (
+        <PortalEditor id={selectedEntity.id} />
+      )}
+    </div>
+  );
+}

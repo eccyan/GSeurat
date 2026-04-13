@@ -5,6 +5,7 @@
 #include "gseurat/engine/gaussian_cloud.hpp"
 #include "gseurat/engine/post_process.hpp"
 #include "gseurat/engine/shutdown_auditor.hpp"
+#include "gseurat/engine/world_manifest.hpp"
 
 #include <imgui.h>
 
@@ -508,6 +509,48 @@ void StagingState::update(AppBase& app, float dt) {
             static_cast<uint32_t>(character_data_->bones.size()));
     }
 
+    // ── Task 9: StreamingVolume per-frame evaluation ──
+    if (app.scene_objects().world_manifest.has_value()) {
+        const auto& wm = *app.scene_objects().world_manifest;
+
+        // Derive camera position from current mode
+        glm::vec3 cam_pos;
+        if (camera_review_ && camera_review_->is_active()) {
+            cam_pos = camera_review_->player_position();
+        } else {
+            float cos_el = std::cos(elevation_);
+            cam_pos = glm::vec3{
+                target_.x + distance_ * cos_el * std::sin(azimuth_),
+                target_.y + distance_ * std::sin(elevation_),
+                target_.z + distance_ * cos_el * std::cos(azimuth_)
+            };
+        }
+
+        // Distance-based chunk streaming evaluation
+        float load_radius = glm::length(wm.grid_cell_size) * 2.0f;
+        for (size_t i = 0; i < wm.chunks.size(); i++) {
+            auto [aabb_min, aabb_max] = wm.chunk_aabb(i);
+            glm::vec3 center = (aabb_min + aabb_max) * 0.5f;
+            float dist = glm::distance(cam_pos, center);
+
+            if (dist < load_radius && !wm.chunks[i].ply_file.empty()) {
+                // TODO: integrate with load_cloud_async when chunk tracking is ready
+                // (Phase 2's gs_renderer.load_cloud_async(wm.chunks[i].ply_file))
+            }
+        }
+
+        // StreamingVolume hint-based preloading evaluation
+        for (const auto& sv : wm.streaming_volumes) {
+            if (sv.contains(cam_pos)) {
+                // Camera is inside this streaming volume — preload targets
+                for (const auto& target_id : sv.preload_target_ids) {
+                    (void)target_id;
+                    // TODO: resolve target_id to chunk ply_file and call load_cloud_async
+                }
+            }
+        }
+    }
+
     // Draw ImGui (hidden with Tab)
     if (!hide_ui_) {
         draw_imgui(app);
@@ -559,6 +602,7 @@ void StagingState::draw_imgui(AppBase& app) {
             ImGui::MenuItem("Gizmo: Game Objects", nullptr, &show_gizmo_game_objects_);
             ImGui::MenuItem("Gizmo: Camera Zones", nullptr, &show_gizmo_camera_zones_);
             ImGui::MenuItem("Gizmo: Portals", nullptr, &show_gizmo_portals_);
+            ImGui::MenuItem("Gizmo: World", nullptr, &show_gizmo_world_);
             ImGui::Separator();
             if (ImGui::MenuItem("Deselect All")) {
                 show_viewport_info_ = false;
@@ -575,6 +619,7 @@ void StagingState::draw_imgui(AppBase& app) {
                 show_gizmo_game_objects_ = false;
                 show_gizmo_camera_zones_ = false;
                 show_gizmo_portals_ = false;
+                show_gizmo_world_ = false;
             }
             ImGui::EndMenu();
         }
@@ -1280,6 +1325,57 @@ void StagingState::draw_gizmos(AppBase& app) {
     // ── Camera Zone gizmos (visible in both orbit and review modes) ──
     if (show_gizmo_camera_zones_ && camera_review_ && camera_review_->has_zone_data()) {
         camera_review_->draw_gizmos(vp, sw, sh, dl, project_wrapper, this);
+    }
+
+    // ── World manifest gizmos ──
+    if (show_gizmo_world_ && app.scene_objects().world_manifest.has_value()) {
+        const auto& wm = *app.scene_objects().world_manifest;
+
+        // Chunk wireframes (green)
+        ImU32 chunk_col = IM_COL32(68, 204, 68, 180);
+        for (size_t i = 0; i < wm.chunks.size(); i++) {
+            auto [aabb_min, aabb_max] = wm.chunk_aabb(i);
+            glm::vec3 center = (aabb_min + aabb_max) * 0.5f;
+            glm::vec3 half   = (aabb_max - aabb_min) * 0.5f;
+            float sx, sy;
+            if (!project_to_screen(center, vp, sw, sh, sx, sy)) continue;
+            draw_box_gizmo(dl, center, half, vp, sw, sh, chunk_col, project_wrapper, this);
+            char label[32];
+            std::snprintf(label, sizeof(label), "C%zu", i);
+            dl->AddText(ImVec2(sx + 4, sy - 10), chunk_col, label);
+        }
+
+        // Streaming volume wireframes (orange)
+        ImU32 sv_col = IM_COL32(204, 136, 0, 180);
+        for (const auto& sv : wm.streaming_volumes) {
+            float sx, sy;
+            if (!project_to_screen(sv.position, vp, sw, sh, sx, sy)) continue;
+            if (sv.shape == "box") {
+                draw_box_gizmo(dl, sv.position, sv.half_extents, vp, sw, sh, sv_col, project_wrapper, this);
+            } else {
+                draw_sphere_gizmo(dl, sv.position, sv.radius, vp, sw, sh, sv_col, project_wrapper, this);
+            }
+            dl->AddCircleFilled(ImVec2(sx, sy), 3.0f, sv_col);
+            dl->AddText(ImVec2(sx + 6, sy - 8), sv_col, sv.id.c_str());
+        }
+
+        // Global portal wireframes (cyan)
+        // NOTE: wp.position is already in global world coords — do NOT apply coord::to_world()
+        ImU32 wp_col = IM_COL32(0, 204, 204, 180);
+        for (const auto& wp : wm.portals) {
+            float sx, sy;
+            if (!project_to_screen(wp.position, vp, sw, sh, sx, sy)) continue;
+            if (wp.region_shape == "box") {
+                draw_box_gizmo(dl, wp.position, wp.region_half_extents, vp, sw, sh, wp_col, project_wrapper, this);
+            } else {
+                draw_sphere_gizmo(dl, wp.position, wp.region_radius, vp, sw, sh, wp_col, project_wrapper, this);
+            }
+            float d = 5.0f;
+            dl->AddQuadFilled(
+                ImVec2(sx, sy - d), ImVec2(sx + d, sy),
+                ImVec2(sx, sy + d), ImVec2(sx - d, sy), wp_col);
+            dl->AddText(ImVec2(sx + 8, sy - 10), wp_col, wp.id.c_str());
+        }
     }
 }
 

@@ -168,7 +168,7 @@ export interface PlayerData {
   character_id: string;
 }
 
-export type BricklayerMode = 'terrain' | 'scene' | 'settings';
+export type BricklayerMode = 'terrain' | 'scene' | 'settings' | 'world';
 
 export type ToolType =
   | 'place'
@@ -425,7 +425,10 @@ export type NavigationNode =
   | { kind: 'scene_item'; entityType: string; entityId: string }
   | { kind: 'player' }
   | { kind: 'settings' }
-  | { kind: 'settings_category'; category: SettingsCategory };
+  | { kind: 'settings_category'; category: SettingsCategory }
+  | { kind: 'world' }
+  | { kind: 'world_category'; category: 'chunks' | 'streaming_volumes' | 'portals' }
+  | { kind: 'world_item'; entityType: 'chunk' | 'streaming_volume' | 'world_portal'; entityId: string };
 
 // ── Color palettes ──
 

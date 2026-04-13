@@ -19,6 +19,7 @@ import { CameraZoneMarkers } from './CameraZoneMarkers.js';
 import { CameraRailMarkers } from './CameraRailMarkers.js';
 import { CameraFrustumGizmo } from './CameraFrustumGizmo.js';
 import { CollisionOverlay } from './CollisionOverlay.js';
+import { ChunkWireframes } from './ChunkWireframes.js';
 import { useSceneStore } from '../store/useSceneStore.js';
 
 // Module-level ref so App.tsx can access the orbit controls for F/Home keys
@@ -311,6 +312,7 @@ function SceneContent() {
       <CameraRailMarkers />
       <CameraFrustumGizmo />
       <CollisionOverlay />
+      <ChunkWireframes />
       <TeleportPlane />
       <GrabPlane />
 

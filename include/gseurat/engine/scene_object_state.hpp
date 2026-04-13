@@ -1,7 +1,9 @@
 #pragma once
 
 #include "gseurat/engine/scene_loader.hpp"
+#include "gseurat/engine/world_manifest.hpp"
 
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -13,6 +15,7 @@ struct SceneObjectState {
     std::vector<PortalData> portals;
     bool transitioning = false;
     uint32_t scene_data_version = 0;  // incremented by update_scene_data
+    std::optional<WorldManifest> world_manifest;
 };
 
 }  // namespace gseurat

@@ -4,4 +4,5 @@ export * from './paths';
 export * from './registry';
 export * from './fs';
 export * from './handle';
+export * from './world';
 export * as testing from './testing';

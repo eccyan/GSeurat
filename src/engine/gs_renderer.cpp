@@ -2056,6 +2056,13 @@ void GsRenderer::set_point_lights(const std::vector<PointLight>& lights) {
                                                     static_cast<size_t>(kMaxGsPointLights)));
 }
 
+void GsRenderer::load_world(const WorldManifest& manifest) {
+    world_manifest_ = manifest;
+    std::fprintf(stderr, "[GsRenderer] World loaded: %zu chunks, cell_size=(%.0f,%.0f,%.0f)\n",
+        manifest.chunks.size(),
+        manifest.grid_cell_size.x, manifest.grid_cell_size.y, manifest.grid_cell_size.z);
+}
+
 void GsRenderer::shutdown(VmaAllocator allocator) {
     if (!initialized_) return;
 

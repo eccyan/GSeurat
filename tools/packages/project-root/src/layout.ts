@@ -1,4 +1,5 @@
 export const PROJECT_LAYOUT = {
+  world: 'world.json',
   assets: {
     characters: 'assets/characters',
     vfx:        'assets/vfx',
