@@ -349,7 +349,7 @@ export function ProjectTree() {
               <TreeNode
                 key={p.id}
                 icon={icons.portals}
-                label={p.target_scene || `Portal ${i + 1}`}
+                label={p.target_instance_id || `Portal ${i + 1}`}
                 isActive={isActive({ kind: 'scene_item', entityType: 'portal', entityId: p.id })}
                 onClick={() => click({ kind: 'scene_item', entityType: 'portal', entityId: p.id })}
                 actions={removeBtn(() => removePortal(p.id))}

@@ -75,8 +75,9 @@ export interface GameObjectData {
 export interface PortalData {
   id: string;
   position: [number, number, number];
-  size: [number, number];
-  target_scene: string;
+  region_shape: 'box' | 'sphere';
+  region_radius: number;
+  region_half_extents: [number, number, number];
   target_instance_id?: string;
   spawn_position: [number, number, number];
   spawn_facing: string;

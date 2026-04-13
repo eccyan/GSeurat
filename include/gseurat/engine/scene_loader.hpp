@@ -120,8 +120,11 @@ struct GsAnimationData {
 
 struct PortalData {
     coord::GridPos position;
-    glm::vec2 size{1.0f};
+    std::string region_shape{"box"};  // "box" or "sphere"
+    float region_radius{2.0f};
+    glm::vec3 region_half_extents{1.0f, 1.0f, 1.0f};
     std::string target_scene;
+    std::string target_instance_id;
     coord::GridPos spawn_position;
     Direction spawn_facing = Direction::Down;
 };

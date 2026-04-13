@@ -656,22 +656,35 @@ function PortalProperties({ portal }: { portal: PortalData }) {
       </div>
 
       <div style={styles.section}>
-        <span style={styles.label}>Size</span>
-        <div style={styles.row}>
+        <span style={styles.label}>Region Shape</span>
+        <select
+          style={styles.select}
+          value={portal.region_shape}
+          onChange={(e) => update(portal.id, { region_shape: e.target.value as 'box' | 'sphere' })}
+        >
+          <option value="box">Box</option>
+          <option value="sphere">Sphere</option>
+        </select>
+      </div>
+
+      {portal.region_shape === 'sphere' ? (
+        <div style={styles.section}>
+          <span style={styles.label}>Radius</span>
           <NumberInput
-            label="W"
-            value={portal.size[0]}
-            onChange={(v) => update(portal.id, { size: [v, portal.size[1]] })}
-            style={styles.input}
-          />
-          <NumberInput
-            label="H"
-            value={portal.size[1]}
-            onChange={(v) => update(portal.id, { size: [portal.size[0], v] })}
+            value={portal.region_radius}
+            onChange={(v) => update(portal.id, { region_radius: v })}
             style={styles.input}
           />
         </div>
-      </div>
+      ) : (
+        <div style={styles.section}>
+          <span style={styles.label}>Half Extents</span>
+          <Vec3Input
+            value={portal.region_half_extents}
+            onChange={(v) => update(portal.id, { region_half_extents: v })}
+          />
+        </div>
+      )}
 
       <div style={styles.section}>
         <span style={styles.label}>Target Instance</span>

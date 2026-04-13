@@ -483,11 +483,20 @@ SceneData SceneLoader::from_json(const nlohmann::json& j) {
         for (const auto& portal_j : j["portals"]) {
             PortalData portal;
             portal.position = coord::GridPos(parse_vec3(portal_j["position"]));
-            if (portal_j.contains("size")) portal.size = parse_vec2(portal_j["size"]);
-            portal.target_scene = portal_j["target_scene"].get<std::string>();
+            if (portal_j.contains("region_shape")) portal.region_shape = portal_j["region_shape"].get<std::string>();
+            if (portal_j.contains("region_radius")) portal.region_radius = portal_j["region_radius"].get<float>();
+            if (portal_j.contains("region_half_extents")) portal.region_half_extents = parse_vec3(portal_j["region_half_extents"]);
+            if (portal_j.contains("target_scene")) portal.target_scene = portal_j["target_scene"].get<std::string>();
+            if (portal_j.contains("target_instance_id")) portal.target_instance_id = portal_j["target_instance_id"].get<std::string>();
             portal.spawn_position = coord::GridPos(parse_vec3(portal_j["spawn_position"]));
             if (portal_j.contains("spawn_facing"))
                 portal.spawn_facing = parse_direction(portal_j["spawn_facing"]);
+            // Back-compat: convert legacy size to region_half_extents
+            if (portal_j.contains("size") && !portal_j.contains("region_shape")) {
+                auto s = parse_vec2(portal_j["size"]);
+                portal.region_half_extents = glm::vec3(s.x * 0.5f, 1.0f, s.y * 0.5f);
+                portal.region_shape = "box";
+            }
             data.portals.push_back(std::move(portal));
         }
     }
@@ -1185,8 +1194,11 @@ nlohmann::json SceneLoader::to_json(const SceneData& data) {
         for (const auto& portal : data.portals) {
             portals.push_back({
                 {"position", vec3_json(portal.position.vec())},
-                {"size", vec2_json(portal.size)},
+                {"region_shape", portal.region_shape},
+                {"region_radius", portal.region_radius},
+                {"region_half_extents", vec3_json(portal.region_half_extents)},
                 {"target_scene", portal.target_scene},
+                {"target_instance_id", portal.target_instance_id},
                 {"spawn_position", vec3_json(portal.spawn_position.vec())},
                 {"spawn_facing", direction_to_string(portal.spawn_facing)}
             });

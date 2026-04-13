@@ -736,8 +736,9 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
     const portal: PortalData = {
       id: genId('portal'),
       position: pos ?? [0, 0, 0],
-      size: [2, 2],
-      target_scene: '',
+      region_shape: 'box',
+      region_radius: 2,
+      region_half_extents: [1, 1, 1],
       spawn_position: [0, 0, 0],
       spawn_facing: 'down',
     };
@@ -1400,12 +1401,24 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
       const { height: _, ...rest } = raw;
       return rest as StaticLight;
     });
-    const migratedPortals: PortalData[] = data.scene.portals.map((p) => {
+    const migratedPortals: PortalData[] = data.scene.portals.map((p: any) => {
       const pos = p.position as unknown as number[];
-      if (pos.length === 2) {
-        return { ...p, position: [pos[0], 0, pos[1]] as [number, number, number] };
+      const migrated = pos.length === 2
+        ? { ...p, position: [pos[0], 0, pos[1]] as [number, number, number] }
+        : { ...p };
+      // Back-compat: convert legacy size to region fields
+      if (migrated.size && !migrated.region_shape) {
+        migrated.region_shape = 'box' as const;
+        migrated.region_radius = 2;
+        migrated.region_half_extents = [migrated.size[0] * 0.5, 1, migrated.size[1] * 0.5] as [number, number, number];
+        delete migrated.size;
+        delete migrated.target_scene;
       }
-      return p;
+      // Ensure new fields have defaults
+      if (!migrated.region_shape) migrated.region_shape = 'box';
+      if (migrated.region_radius == null) migrated.region_radius = 2;
+      if (!migrated.region_half_extents) migrated.region_half_extents = [1, 1, 1];
+      return migrated as PortalData;
     });
     set({
       voxels,
