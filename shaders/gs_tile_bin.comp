@@ -1,0 +1,93 @@
+#version 450
+
+// Tile binning pass: duplicates each visible Gaussian into per-tile sort entries.
+// Each thread processes one visible Gaussian from the merged sort array,
+// computes its tile overlap, and writes one TileSortEntry per overlapping tile.
+layout(local_size_x = 256) in;
+
+struct ProjectedSplat {
+    vec2 center;
+    float depth;
+    float radius;
+    vec4 conic_opacity;
+    vec4 color;
+};
+
+// 16 bytes, uvec4-aligned for std430 (no implicit padding)
+struct TileSortEntry {
+    uint key_hi;   // tile_id (tile_y * tiles_x + tile_x)
+    uint key_lo;   // floatBitsToUint(depth) — positive floats sort correctly as uints
+    uint index;    // index into projected[] buffer
+    uint _pad;
+};
+
+struct SortEntry {
+    uint key;
+    uint index;
+};
+
+layout(set = 0, binding = 0) readonly buffer ProjectedBuffer {
+    ProjectedSplat projected[];
+};
+
+layout(set = 0, binding = 1) readonly buffer MergedSortBuffer {
+    SortEntry merged_entries[];
+};
+
+layout(set = 0, binding = 2) readonly buffer CountsBuffer {
+    uint static_count;
+    uint dynamic_count;
+    uint merged_visible_count;
+};
+
+layout(set = 0, binding = 3) writeonly buffer TileSortBuffer {
+    TileSortEntry tile_entries[];
+};
+
+layout(set = 0, binding = 4) buffer TileSortCountBuffer {
+    uint tile_sort_count;
+};
+
+layout(push_constant) uniform PushConstants {
+    uint max_entries;   // capacity of tile_entries[] buffer
+    uint tiles_x;       // number of tiles horizontally
+    uint tiles_y;       // number of tiles vertically
+};
+
+void main() {
+    uint gid = gl_GlobalInvocationID.x;
+    uint visible = static_count + dynamic_count;
+    if (gid >= visible) return;
+
+    SortEntry entry = merged_entries[gid];
+    if (entry.key == 0xFFFFu) return;  // culled sentinel — skip
+
+    uint idx = entry.index;
+    ProjectedSplat splat = projected[idx];
+
+    if (splat.radius <= 0.0) return;  // frustum-culled or degenerate
+
+    // Compute tile AABB from screen-space bounding circle
+    vec2 c = splat.center;
+    float r = splat.radius;
+
+    int tx_min = max(0, int(floor((c.x - r) / 16.0)));
+    int tx_max = min(int(tiles_x) - 1, int(floor((c.x + r) / 16.0)));
+    int ty_min = max(0, int(floor((c.y - r) / 16.0)));
+    int ty_max = min(int(tiles_y) - 1, int(floor((c.y + r) / 16.0)));
+
+    uint depth_bits = floatBitsToUint(splat.depth);
+
+    for (int ty = ty_min; ty <= ty_max; ty++) {
+        for (int tx = tx_min; tx <= tx_max; tx++) {
+            uint tile_id = uint(ty) * tiles_x + uint(tx);
+            uint offset = atomicAdd(tile_sort_count, 1);
+            if (offset < max_entries) {
+                tile_entries[offset].key_hi = tile_id;
+                tile_entries[offset].key_lo = depth_bits;
+                tile_entries[offset].index = idx;
+                tile_entries[offset]._pad = 0;
+            }
+        }
+    }
+}

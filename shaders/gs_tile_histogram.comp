@@ -1,0 +1,58 @@
+#version 450
+
+// Per-workgroup histogram of 8-bit digit values for tile sort entries (16 bytes).
+// Each workgroup processes 1024 entries (256 threads × 4 elements).
+// Output: column-major histogram[bin * num_workgroups + workgroup_id].
+//
+// Key difference from gs_radix_histogram.comp:
+// - Entry is TileSortEntry (16 bytes) with two key fields (key_hi, key_lo)
+// - Passes 0-3 extract digit from key_lo, passes 4-7 from key_hi
+layout(local_size_x = 256) in;
+
+struct TileSortEntry {
+    uint key_hi;
+    uint key_lo;
+    uint index;
+    uint _pad;
+};
+
+layout(set = 0, binding = 0) readonly buffer InputBuffer {
+    TileSortEntry entries[];
+};
+
+layout(set = 0, binding = 1) writeonly buffer HistogramBuffer {
+    uint histograms[];
+};
+
+layout(push_constant) uniform PushConstants {
+    uint num_elements;
+    uint digit_shift;  // 0, 8, 16, 24 (applied to the selected key word)
+    uint use_hi;       // 0 = key_lo (passes 0-3), 1 = key_hi (passes 4-7)
+};
+
+shared uint local_histogram[256];
+
+void main() {
+    uint lid = gl_LocalInvocationID.x;
+    uint wg = gl_WorkGroupID.x;
+    uint num_wg = gl_NumWorkGroups.x;
+
+    // Clear shared histogram
+    local_histogram[lid] = 0;
+    barrier();
+
+    // Each thread processes 4 entries
+    uint base = wg * 1024 + lid;
+    for (uint t = 0; t < 4; t++) {
+        uint idx = base + t * 256;
+        if (idx < num_elements) {
+            uint word = (use_hi != 0) ? entries[idx].key_hi : entries[idx].key_lo;
+            uint digit = (word >> digit_shift) & 0xFFu;
+            atomicAdd(local_histogram[digit], 1u);
+        }
+    }
+    barrier();
+
+    // Write per-workgroup histogram to global buffer (column-major)
+    histograms[lid * num_wg + wg] = local_histogram[lid];
+}
