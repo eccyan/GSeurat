@@ -18,6 +18,7 @@
 #include "gseurat/engine/pbd_types.hpp"
 #include "gseurat/engine/bone_animation_registry.hpp"
 #include "gseurat/engine/bone_animation_system.hpp"
+#include "gseurat/engine/debug_draw.hpp"
 #include "gseurat/engine/bone_animated_component.hpp"
 
 #define GLFW_INCLUDE_VULKAN
@@ -562,6 +563,12 @@ void IslandDemoState::update(AppBase& app, float dt) {
     // N → toggle terrain sway + walk animation
     if (app.input().was_key_pressed(GLFW_KEY_N)) {
         anim_enabled_ = !anim_enabled_;
+    }
+
+    // G → toggle debug gizmos (lights, emitters, triggers)
+    if (app.input().was_key_pressed(GLFW_KEY_G)) {
+        show_gizmos_ = !show_gizmos_;
+        std::fprintf(stderr, "[IslandDemo] Debug gizmos %s\n", show_gizmos_ ? "ON" : "OFF");
     }
 
     // J → toggle PBD chain demo (CPU-side, rendered as dynamic Gaussians)
@@ -1132,6 +1139,7 @@ void IslandDemoState::update_camera(AppBase& app, float dt) {
         glm::mat4 view = glm::lookAt(state.position, state.target, state.up);
         glm::mat4 proj = glm::perspective(
             glm::radians(state.fov), 1280.0f / 720.0f, 0.1f, 1000.0f);
+        gizmo_vp_ = proj * view;  // cache before Y-flip
         proj[1][1] *= -1.0f;  // Vulkan Y-flip
         app.renderer().set_gs_camera(view, proj);
         return;
@@ -1182,6 +1190,7 @@ void IslandDemoState::update_camera(AppBase& app, float dt) {
         1280.0f / 720.0f,
         0.1f, 1000.0f
     );
+    gizmo_vp_ = proj * view;  // cache before Y-flip
     // Vulkan Y-flip
     proj[1][1] *= -1.0f;
 
@@ -1596,6 +1605,9 @@ void IslandDemoState::gather_pbd_chain(Renderer& renderer) {
 // ── build_draw_lists (debug HUD) ──
 
 void IslandDemoState::build_draw_lists(AppBase& app) {
+    // Gizmos render independently of HUD mode
+    draw_gizmos(app);
+
     if (hud_mode_ == HudMode::kOff) return;
 
     auto& ui = app.ui_ctx();
@@ -1811,6 +1823,92 @@ void IslandDemoState::build_draw_lists(AppBase& app) {
     glm::vec4 trig_col = triggered_count > 0 ? green : dim;
     ui.label("Triggers", lx, y, s, dim);
     ui.label(std::to_string(triggered_count) + "/" + std::to_string(total_triggers), vx, y, s, trig_col);
+    y -= line;
+    ui.label("Gizmos [G]", lx, y, s, dim);
+    ui.label(show_gizmos_ ? "ON" : "OFF", vx, y, s, show_gizmos_ ? green : red);
+}
+
+// ── Debug gizmos (G key toggle) ──
+
+void IslandDemoState::draw_gizmos(AppBase& app) {
+    if (!show_gizmos_ || !app.renderer().has_gs_cloud()) return;
+
+    auto& ui = app.ui_ctx();
+    constexpr float sw = 1280.0f;
+    constexpr float sh = 720.0f;
+
+    // UIContext line adapter for engine debug_draw functions
+    // Note: UIContext uses Y-up, but project_to_screen returns Y-down screen coords.
+    // Convert Y: ui_y = sh - screen_y
+    DrawLineFn draw_line = [&](float x1, float y1, float x2, float y2,
+                                float thickness, glm::vec4 color) {
+        ui.line(x1, sh - y1, x2, sh - y2, thickness, color);
+    };
+
+    auto& gs = app.renderer().gs_renderer();
+
+    // ── Light gizmos (yellow circles at light positions) ──
+    {
+        glm::vec4 col{1.0f, 0.9f, 0.3f, 0.8f};
+        const auto& lights = gs.point_lights();
+        for (size_t i = 0; i < lights.size(); i++) {
+            glm::vec3 pos(lights[i].position_and_radius.x,
+                          lights[i].position_and_radius.z,
+                          lights[i].position_and_radius.y);
+            draw_sphere_gizmo(pos, lights[i].position_and_radius.w,
+                              gizmo_vp_, sw, sh, col, draw_line);
+            // Label
+            float sx, sy;
+            if (project_to_screen(pos, gizmo_vp_, sw, sh, sx, sy)) {
+                char label[16];
+                std::snprintf(label, sizeof(label), "L%zu", i);
+                ui.label(label, sx + 6.0f, sh - sy + 8.0f, 0.3f, col);
+            }
+        }
+    }
+
+    // ── Emitter gizmos (pink circles at emitter positions + spawn regions) ──
+    {
+        glm::vec4 col{0.93f, 0.28f, 0.60f, 0.8f};  // pink
+        auto& emitters = app.renderer().gs_particle_emitters();
+        for (size_t i = 0; i < emitters.size(); i++) {
+            auto& cfg = emitters[i].config();
+            draw_region_gizmo(cfg.spawn_region, cfg.position,
+                              gizmo_vp_, sw, sh, col, draw_line);
+            float sx, sy;
+            if (project_to_screen(cfg.position, gizmo_vp_, sw, sh, sx, sy)) {
+                char label[16];
+                std::snprintf(label, sizeof(label), "E%zu", i);
+                ui.label(label, sx + 6.0f, sh - sy + 8.0f, 0.3f, col);
+            }
+        }
+    }
+
+    // ── Animation region gizmos (cyan wireframes) ──
+    {
+        glm::vec4 col{0.0f, 0.72f, 0.83f, 0.7f};  // cyan
+        const auto& anims = app.renderer().gs_scene_animations();
+        for (size_t i = 0; i < anims.size(); i++) {
+            draw_region_gizmo(anims[i].region, glm::vec3(0.0f),
+                              gizmo_vp_, sw, sh, col, draw_line);
+            float sx, sy;
+            if (project_to_screen(anims[i].region.center, gizmo_vp_, sw, sh, sx, sy)) {
+                ui.label("Anim", sx + 6.0f, sh - sy + 8.0f, 0.3f, col);
+            }
+        }
+    }
+
+    // ── Proximity trigger gizmos (green/red circles) ──
+    {
+        app.world().view<ProximityTrigger, ecs::Transform>().each(
+            [&](ecs::Entity, ProximityTrigger& pt, ecs::Transform& t) {
+                glm::vec4 col = pt.triggered
+                    ? glm::vec4{0.2f, 1.0f, 0.3f, 0.6f}   // green when active
+                    : glm::vec4{0.5f, 0.5f, 0.5f, 0.4f};   // dim when idle
+                draw_sphere_gizmo(t.position.vec(), pt.radius,
+                                  gizmo_vp_, sw, sh, col, draw_line);
+            });
+    }
 }
 
 }  // namespace gseurat
