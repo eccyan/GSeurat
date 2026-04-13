@@ -172,7 +172,7 @@ void npc_walker_system(ecs::World& world, float dt) {
         });
 
     world.view<NpcWalker, ecs::Transform>().each(
-        [&](ecs::Entity, NpcWalker& npc, ecs::Transform& t) {
+        [&](ecs::Entity entity, NpcWalker& npc, ecs::Transform& t) {
             if (!npc.initialized) {
                 npc.initialized = true;
                 npc.home_x = t.position.x();
@@ -191,6 +191,13 @@ void npc_walker_system(ecs::World& world, float dt) {
                     float dist = static_cast<float>(std::rand()) / RAND_MAX * npc.patrol_radius;
                     npc.target_x = npc.home_x + std::cos(angle) * dist;
                     npc.target_z = npc.home_z + std::sin(angle) * dist;
+                }
+                // Set animation clip based on movement state (paused branch)
+                if (g_bone_anim_registry) {
+                    auto* ba_entry = g_bone_anim_registry->get_by_entity(entity);
+                    if (ba_entry) {
+                        ba_entry->requested_clip = "idle";
+                    }
                 }
                 return;
             }
@@ -225,6 +232,22 @@ void npc_walker_system(ecs::World& world, float dt) {
                     }
                     t.position.vec().y = grid->get_elevation(
                         static_cast<uint32_t>(gx), static_cast<uint32_t>(gz));
+                }
+            }
+
+            // Set animation clip based on movement state
+            if (g_bone_anim_registry) {
+                auto* ba_entry = g_bone_anim_registry->get_by_entity(entity);
+                if (ba_entry) {
+                    ba_entry->requested_clip = npc.paused ? "idle" : "walk";
+                    // Update facing angle from movement direction
+                    if (!npc.paused) {
+                        float ddx = npc.target_x - t.position.x();
+                        float ddz = npc.target_z - t.position.z();
+                        if (ddx * ddx + ddz * ddz > 0.01f) {
+                            ba_entry->facing_angle = std::atan2(ddx, ddz);
+                        }
+                    }
                 }
             }
         });
