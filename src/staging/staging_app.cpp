@@ -33,7 +33,7 @@ void StagingApp::run() {
     init_game_object_system();
     init_game_content();
     scene_objects_.current_scene_path = scene_path_;
-    set_start_state(std::make_unique<StagingState>());
+    state_stack_.push(std::make_unique<StagingState>(), *this);
     main_loop();
     cleanup();
 }
