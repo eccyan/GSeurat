@@ -112,6 +112,11 @@ private:
     CollisionGrid collision_grid_;
     glm::vec2 grid_origin_{0.0f};  // world XZ origin
 
+    // Northern Forest collision grid (separate zone, Z < 10)
+    CollisionGrid forest_collision_grid_;
+    glm::vec2 forest_grid_origin_{0.0f};
+    bool forest_grid_loaded_ = false;
+
     // Camera zone system (data-driven camera volumes/triggers/rails)
     std::unique_ptr<CameraZoneSystem> camera_zone_system_;
 

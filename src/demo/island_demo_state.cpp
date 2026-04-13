@@ -104,9 +104,14 @@ void IslandDemoState::on_enter(AppBase& app) {
             world_streamer_ = std::make_unique<WorldStreamer>();
             world_streamer_->init(manifest);
 
-            // The initial scene chunk [0,0,0] is already loaded by init_scene above.
-            // Simulate its load completion so the streamer won't re-request it.
-            world_streamer_->on_chunk_loaded("0,0,0", 0);
+            // Mark ALL chunks as loaded — we merge them in on_enter below.
+            // This prevents load_cloud_async from replacing the merged cloud.
+            for (const auto& chunk : manifest.chunks) {
+                std::string key = std::to_string(chunk.grid.x) + "," +
+                                  std::to_string(chunk.grid.y) + "," +
+                                  std::to_string(chunk.grid.z);
+                world_streamer_->on_chunk_loaded(key, 0);
+            }
 
             std::fprintf(stderr, "[IslandDemo] WorldStreamer initialized: load_radius=%.0f unload_radius=%.0f\n",
                 world_streamer_->load_radius(), world_streamer_->unload_radius());
@@ -144,6 +149,40 @@ void IslandDemoState::on_enter(AppBase& app) {
         int gz_max = static_cast<int>((house_z + house_hd) / collision_grid_.cell_size);
         std::fprintf(stderr, "[IslandDemo] House collision: grid[%d-%d, %d-%d] (%d cells marked)\n",
                      gx_min, gx_max, gz_min, gz_max, marked);
+
+        // Open a walkable land bridge at the northern shore → Northern Forest
+        // Clear solid cells in a path from Z=0 to Z=50, centered at X=192, width ~20
+        int bridge_cleared = 0;
+        for (float wx = 182.0f; wx <= 202.0f; wx += collision_grid_.cell_size * 0.5f) {
+            for (float wz = 0.0f; wz <= 50.0f; wz += collision_grid_.cell_size * 0.5f) {
+                int bgx = static_cast<int>(wx / collision_grid_.cell_size);
+                int bgz = static_cast<int>(wz / collision_grid_.cell_size);
+                if (bgx >= 0 && bgx < static_cast<int>(collision_grid_.width) &&
+                    bgz >= 0 && bgz < static_cast<int>(collision_grid_.height)) {
+                    size_t idx = bgz * collision_grid_.width + bgx;
+                    if (collision_grid_.solid[idx]) {
+                        collision_grid_.solid[idx] = false;
+                        if (!collision_grid_.elevation.empty()) {
+                            collision_grid_.elevation[idx] = 0.5f;  // slight elevation above water
+                        }
+                        bridge_cleared++;
+                    }
+                }
+            }
+        }
+        std::fprintf(stderr, "[IslandDemo] North bridge: %d cells cleared (X=182-202, Z=0-50)\n",
+                     bridge_cleared);
+
+        // Load forest collision grid for seamless north transition
+        auto forest_scene = SceneLoader::load("assets/scenes/northern_forest.json");
+        if (forest_scene.collision) {
+            forest_collision_grid_ = *forest_scene.collision;
+            // Forest grid covers Z: -192 to 0 (COLLISION_Z_MIN=-192, 192 cells × 1.0)
+            forest_grid_origin_ = {0.0f, -192.0f};
+            forest_grid_loaded_ = true;
+            std::fprintf(stderr, "[IslandDemo] Forest collision loaded: %ux%u (origin Z=%.0f)\n",
+                forest_collision_grid_.width, forest_collision_grid_.height, forest_grid_origin_.y);
+        }
     }
 
     // Create collision grid reference entity for NPC system
@@ -246,6 +285,25 @@ void IslandDemoState::on_enter(AppBase& app) {
         map_gaussians_.assign(all.begin(), all.end());
 
         std::vector<Gaussian> merged = map_gaussians_;
+
+        // Merge additional world chunks (northern forest) into the cloud
+        // Since load_radius(558) covers all chunks, merge them at startup
+        // to avoid load_cloud_async replacing the entire cloud
+        if (world_streamer_) {
+            for (const auto& chunk : world_streamer_->manifest().chunks) {
+                if (chunk.grid == glm::ivec3(0, 0, 0)) continue;  // already loaded
+                if (chunk.ply_file.empty()) continue;
+                auto resolved = resolve_asset_path(chunk.ply_file);
+                auto extra = GaussianCloud::load_ply(resolved.string());
+                if (!extra.empty()) {
+                    const auto& gs = extra.gaussians();
+                    merged.insert(merged.end(), gs.begin(), gs.end());
+                    std::fprintf(stderr, "[IslandDemo] Merged chunk [%d,%d,%d]: +%u Gaussians\n",
+                        chunk.grid.x, chunk.grid.y, chunk.grid.z, extra.count());
+                }
+            }
+        }
+
         uint32_t map_count = static_cast<uint32_t>(merged.size());
 
         // Load mesh-converted character model
@@ -645,19 +703,128 @@ void IslandDemoState::update(AppBase& app, float dt) {
                     std::fprintf(stderr, "[IslandDemo] Portal entered: %s -> loading '%s'\n",
                         portal_id.c_str(), instance_scene.c_str());
 
+                    // Wait for GPU to finish before destroying resources
+                    vkDeviceWaitIdle(app.renderer().context().device());
+
                     // Transition: clear current scene and load instance
                     app.clear_scene();
                     app.init_scene(instance_scene);
 
+                    // Reload collision grid from the new scene
+                    {
+                        auto new_scene = SceneLoader::load(instance_scene);
+                        if (new_scene.collision) {
+                            collision_grid_ = *new_scene.collision;
+                            grid_origin_ = {0.0f, 0.0f};
+                            std::fprintf(stderr, "[IslandDemo] Collision grid updated: %ux%u\n",
+                                collision_grid_.width, collision_grid_.height);
+                        }
+
+                        // When returning to overworld, re-open north bridge + reload forest grid
+                        if (portal.target_instance_id == "overworld") {
+                            int bridge_cleared = 0;
+                            for (float wx = 182.0f; wx <= 202.0f; wx += collision_grid_.cell_size * 0.5f) {
+                                for (float wz = 0.0f; wz <= 50.0f; wz += collision_grid_.cell_size * 0.5f) {
+                                    int bgx = static_cast<int>(wx / collision_grid_.cell_size);
+                                    int bgz = static_cast<int>(wz / collision_grid_.cell_size);
+                                    if (bgx >= 0 && bgx < static_cast<int>(collision_grid_.width) &&
+                                        bgz >= 0 && bgz < static_cast<int>(collision_grid_.height)) {
+                                        size_t idx = bgz * collision_grid_.width + bgx;
+                                        if (collision_grid_.solid[idx]) {
+                                            collision_grid_.solid[idx] = false;
+                                            if (!collision_grid_.elevation.empty())
+                                                collision_grid_.elevation[idx] = 0.5f;
+                                            bridge_cleared++;
+                                        }
+                                    }
+                                }
+                            }
+
+                            auto forest_scene = SceneLoader::load("assets/scenes/northern_forest.json");
+                            if (forest_scene.collision) {
+                                forest_collision_grid_ = *forest_scene.collision;
+                                forest_grid_origin_ = {0.0f, -192.0f};
+                                forest_grid_loaded_ = true;
+                            }
+                            std::fprintf(stderr, "[IslandDemo] Overworld restored: bridge=%d cells, forest grid=%s\n",
+                                bridge_cleared, forest_grid_loaded_ ? "OK" : "MISSING");
+                        }
+                    }
+
+                    // Reset camera zone system — island zones are invalid in instances
+                    // (falls back to orbit camera which follows the player anywhere)
+                    camera_zone_system_.reset();
+
+                    // Reset camera target to avoid stale smoothing from old scene
+                    camera_target_ = portal.spawn_position + glm::vec3(0, kCameraYOffset, 0);
+
+                    // Adjust orbit camera for indoor/outdoor scale
+                    // Ceiling at Y=6, so camera must be below: target_y(2.5) + dist*sin(elev) < 6
+                    distance_ = 8.0f;
+                    elevation_ = 0.4f;   // ~23 deg → cam_y ≈ 2.5 + 8*sin(0.4) ≈ 5.6 (below ceiling)
+
                     // Teleport player to spawn position
-                    character_origin_ = portal.spawn_position;
+                    glm::vec3 spawn = portal.spawn_position;
+                    character_origin_ = spawn;
+                    character_spawn_pos_ = spawn;
                     auto* transform = app.world().try_get<ecs::Transform>(player_entity_);
                     if (transform) {
-                        transform->position = coord::WorldPos(portal.spawn_position);
+                        transform->position = coord::WorldPos(spawn);
+                    }
+
+                    // Re-merge world chunks + player character into the new scene
+                    if (app.renderer().has_gs_cloud()) {
+                        const auto& new_map = app.renderer().gs_chunk_grid().all_gaussians();
+                        map_gaussians_.assign(new_map.begin(), new_map.end());
+                        std::vector<Gaussian> merged = map_gaussians_;
+
+                        // When returning to overworld, re-merge all world chunks
+                        bool is_overworld = (portal.target_instance_id == "overworld");
+                        if (is_overworld && world_streamer_) {
+                            for (const auto& chunk : world_streamer_->manifest().chunks) {
+                                if (chunk.grid == glm::ivec3(0, 0, 0)) continue;
+                                if (chunk.ply_file.empty()) continue;
+                                auto resolved = resolve_asset_path(chunk.ply_file);
+                                auto extra = GaussianCloud::load_ply(resolved.string());
+                                if (!extra.empty()) {
+                                    const auto& gs = extra.gaussians();
+                                    merged.insert(merged.end(), gs.begin(), gs.end());
+                                    std::fprintf(stderr, "[IslandDemo] Re-merged chunk [%d,%d,%d]: +%u Gaussians\n",
+                                        chunk.grid.x, chunk.grid.y, chunk.grid.z, extra.count());
+                                }
+                            }
+                            // Restore overworld camera settings
+                            distance_ = 20.0f;
+                            elevation_ = 0.6f;
+                        }
+
+                        auto char_cloud = GaussianCloud::load_ply(
+                            "assets/characters/snes_hero/snes_hero.ply");
+                        if (!char_cloud.empty()) {
+                            const auto& char_gs = char_cloud.gaussians();
+                            for (const auto& g : char_gs) {
+                                Gaussian cg = g;
+                                glm::vec3 rotated(-cg.position.x, cg.position.y, -cg.position.z);
+                                glm::vec3 offset = rotated * kCharScale;
+                                offset.y *= gs_scale_;
+                                cg.position = spawn + offset + glm::vec3(0, 2.0f, 0);
+                                cg.scale *= kCharScale;
+                                cg.opacity = std::min(1.0f, cg.opacity * 1.3f);
+                                merged.push_back(cg);
+                            }
+                        }
+                        std::fprintf(stderr, "[IslandDemo] Portal re-merge: %u total Gaussians\n",
+                            static_cast<uint32_t>(merged.size()));
+
+                        auto cloud = GaussianCloud::from_gaussians(std::move(merged));
+                        uint32_t gs_w = app.renderer().gs_renderer().output_width();
+                        uint32_t gs_h = app.renderer().gs_renderer().output_height();
+                        if (gs_w == 0) { gs_w = 320; gs_h = 240; }
+                        app.renderer().init_gs(cloud, gs_w, gs_h);
                     }
 
                     std::fprintf(stderr, "[IslandDemo] Spawned at (%.1f, %.1f, %.1f)\n",
-                        portal.spawn_position.x, portal.spawn_position.y, portal.spawn_position.z);
+                        spawn.x, spawn.y, spawn.z);
                     break;
                 }
             }
@@ -714,17 +881,25 @@ void IslandDemoState::update_player(AppBase& app, float dt) {
     transform->position.vec() += player_velocity_ * dt;
 
     // Snap Y to collision grid elevation if available
-    if (collision_grid_.width > 0 && collision_grid_.height > 0) {
-        float local_x = transform->position.x() - grid_origin_.x;
-        float local_z = transform->position.z() - grid_origin_.y;
-        int gx = static_cast<int>(local_x / collision_grid_.cell_size);
-        int gz = static_cast<int>(local_z / collision_grid_.cell_size);
+    // Select which collision grid to use based on player Z position
+    CollisionGrid* active_grid = &collision_grid_;
+    glm::vec2 active_origin = grid_origin_;
+    if (forest_grid_loaded_ && transform->position.z() < 10.0f) {
+        active_grid = &forest_collision_grid_;
+        active_origin = forest_grid_origin_;
+    }
 
-        if (gx >= 0 && gx < static_cast<int>(collision_grid_.width) &&
-            gz >= 0 && gz < static_cast<int>(collision_grid_.height)) {
+    if (active_grid->width > 0 && active_grid->height > 0) {
+        float local_x = transform->position.x() - active_origin.x;
+        float local_z = transform->position.z() - active_origin.y;
+        int gx = static_cast<int>(local_x / active_grid->cell_size);
+        int gz = static_cast<int>(local_z / active_grid->cell_size);
+
+        if (gx >= 0 && gx < static_cast<int>(active_grid->width) &&
+            gz >= 0 && gz < static_cast<int>(active_grid->height)) {
             // Check solid — if solid, undo movement
-            bool solid = collision_grid_.is_solid(static_cast<uint32_t>(gx),
-                                                   static_cast<uint32_t>(gz));
+            bool solid = active_grid->is_solid(static_cast<uint32_t>(gx),
+                                                static_cast<uint32_t>(gz));
             debug_frame_++;
             if (solid) {
                 if (debug_frame_ % 60 == 0) {
@@ -734,9 +909,9 @@ void IslandDemoState::update_player(AppBase& app, float dt) {
                 transform->position.vec() -= player_velocity_ * dt;
             } else {
                 // Snap to elevation
-                float elev = collision_grid_.get_elevation(
+                float elev = active_grid->get_elevation(
                     static_cast<uint32_t>(gx), static_cast<uint32_t>(gz));
-                if (!collision_grid_.elevation.empty()) {
+                if (!active_grid->elevation.empty()) {
                     transform->position.vec().y = elev;
                 }
             }
