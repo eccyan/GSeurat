@@ -418,7 +418,7 @@ private:
     VkDescriptorSet onesweep_set_ab_ = VK_NULL_HANDLE;  // read A → write B
     VkDescriptorSet onesweep_set_ba_ = VK_NULL_HANDLE;  // read B → write A
     Buffer onesweep_status_;    // per-digit lookback status buffer
-    bool use_onesweep_ = true;  // A/B toggle (true = onesweep, false = old 8-pass)
+    bool use_onesweep_ = false;  // A/B toggle (true = onesweep, false = old 8-pass)
     uint32_t onesweep_max_wg_ = 0;
 
     // Tile sort buffers
