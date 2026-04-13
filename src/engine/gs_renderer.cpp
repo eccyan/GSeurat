@@ -842,7 +842,7 @@ void GsRenderer::init_streaming(const StreamingConfig& config) {
         onesweep_status_.destroy(allocator_);
         onesweep_max_wg_ = (tile_sort_capacity_ + 2047) / 2048;
         if (onesweep_max_wg_ == 0) onesweep_max_wg_ = 1;
-        VkDeviceSize status_size = 4ull * 256ull * onesweep_max_wg_ * sizeof(uint32_t);
+        VkDeviceSize status_size = (4ull * 256ull * onesweep_max_wg_ + 513ull) * sizeof(uint32_t);
         onesweep_status_ = Buffer::create_storage_gpu_only(allocator_, status_size);
     }
 
@@ -1334,7 +1334,7 @@ void GsRenderer::load_cloud_legacy(const GaussianCloud& cloud) {
         onesweep_status_.destroy(allocator_);
         onesweep_max_wg_ = (tile_sort_capacity_ + 2047) / 2048;
         if (onesweep_max_wg_ == 0) onesweep_max_wg_ = 1;
-        VkDeviceSize status_size = 4ull * 256ull * onesweep_max_wg_ * sizeof(uint32_t);
+        VkDeviceSize status_size = (4ull * 256ull * onesweep_max_wg_ + 513ull) * sizeof(uint32_t);
         onesweep_status_ = Buffer::create_storage_gpu_only(allocator_, status_size);
     }
 
@@ -2218,7 +2218,7 @@ void GsRenderer::dispatch_tile_sort(VkCommandBuffer cmd) {
 
     if (use_onesweep_ && onesweep_status_.buffer()) {
         // === Onesweep: clear status buffer ===
-        VkDeviceSize status_size = 4ull * 256ull * onesweep_max_wg_ * sizeof(uint32_t);
+        VkDeviceSize status_size = (4ull * 256ull * onesweep_max_wg_ + 513ull) * sizeof(uint32_t);
         vkCmdFillBuffer(cmd, onesweep_status_.buffer(), 0, status_size, 0);
         {
             VkMemoryBarrier sb{};

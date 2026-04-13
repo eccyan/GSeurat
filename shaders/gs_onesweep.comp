@@ -2,7 +2,10 @@
 
 // Onesweep radix sort: fused histogram + decoupled-lookback prefix sum + stable scatter.
 // One dispatch per 8-bit radix pass (4 passes for 32-bit key).
-// Uses coherent buffer + memoryBarrierBuffer() for Apple Silicon TBDR compatibility.
+//
+// The lookback gives per-digit aggregate (count of digit D in prior workgroups).
+// A global barrier + atomic histogram computes the cross-digit prefix (where each
+// digit's section starts in the output). Combined: correct global scatter position.
 layout(local_size_x = 256) in;
 
 // 16-byte tile sort entry (matches old radix sort format)
@@ -21,8 +24,11 @@ layout(set = 0, binding = 1) writeonly buffer OutputBuffer {
     TileSortEntry out_entries[];
 };
 
-// Per-digit lookback status: status[pass * 256 * max_workgroups + digit * max_workgroups + wg_id]
-// Encoding: bits [31:30] = state (00=NOT_READY, 01=LOCAL, 11=INCLUSIVE), bits [29:0] = sum
+// Layout:
+//   [0, 4*256*max_wg): per-digit lookback status
+//   [4*256*max_wg, 4*256*max_wg+256): global histogram (per-digit totals)
+//   [4*256*max_wg+256]: done_count (blocks finished)
+//   [4*256*max_wg+257, +513): global exclusive prefix
 layout(set = 0, binding = 2, std430) coherent buffer StatusBuffer {
     uint status[];
 };
@@ -35,7 +41,7 @@ layout(set = 0, binding = 3) readonly buffer IndirectArgs {
     uint ranges_dispatch_y; // [4]
     uint ranges_dispatch_z; // [5]
     uint entry_count;       // [6]: clamped tile_sort_count
-    uint histogram_count;   // [7]: 256 * sort_workgroups (unused by onesweep)
+    uint histogram_count;   // [7]: unused by onesweep
 };
 
 layout(push_constant) uniform PushConstants {
@@ -46,7 +52,7 @@ layout(push_constant) uniform PushConstants {
 shared uint s_local_histogram[256];  // 1KB  — per-digit count for this workgroup
 shared uint s_keys[2048];           // 8KB  — loaded sort keys
 shared uint s_indices[2048];        // 8KB  — loaded indices
-shared uint s_prefix[256];          // 1KB  — exclusive prefix of local histogram
+shared uint s_prefix[256];          // 1KB  — global exclusive prefix for scatter
 shared uint s_digits[256];          // 1KB  — batch digit scratch for stable rank
 
 const uint ENTRIES_PER_WG = 2048u;
@@ -61,7 +67,12 @@ void main() {
     uint wg_id = gl_WorkGroupID.x;
     uint wg_offset = wg_id * ENTRIES_PER_WG;
     uint total = entry_count;
-    uint max_workgroups = sort_dispatch_x;  // actual dispatched workgroup count
+    uint max_workgroups = sort_dispatch_x;
+
+    // Offsets into status buffer for global histogram/prefix
+    uint global_hist_base = 4u * 256u * max_workgroups;
+    uint done_count_idx = global_hist_base + 256u;
+    uint global_prefix_base = global_hist_base + 257u;
 
     // ========================================
     // Phase 1: Load entries & build histogram
@@ -69,10 +80,9 @@ void main() {
     s_local_histogram[lid] = 0u;
     barrier();
 
-    // Load 8 entries per thread into shared memory
     for (uint t = 0u; t < ENTRIES_PER_THREAD; t++) {
         uint idx = wg_offset + t * 256u + lid;
-        uint k = 0xFFFFFFFFu;  // sentinel default
+        uint k = 0xFFFFFFFFu;
         uint v = 0u;
         if (idx < total) {
             k = in_entries[idx].key_lo;
@@ -81,7 +91,6 @@ void main() {
         s_keys[t * 256u + lid] = k;
         s_indices[t * 256u + lid] = v;
 
-        // Extract digit and count
         uint digit = (k >> (pass * 8u)) & 0xFFu;
         if (idx < total) {
             atomicAdd(s_local_histogram[digit], 1u);
@@ -90,65 +99,92 @@ void main() {
     barrier();
 
     // ========================================
-    // Phase 2: Decoupled lookback prefix sum
+    // Phase 2: Decoupled lookback (per-digit)
     // ========================================
-    // Each thread handles one digit bin (tid 0..255)
     uint my_local_count = s_local_histogram[lid];
 
-    // Publish LOCAL status — our partial count for this digit
+    // Publish LOCAL status
     uint status_base = pass * 256u * max_workgroups + lid * max_workgroups;
     atomicExchange(status[status_base + wg_id], LOCAL_FLAG | my_local_count);
     memoryBarrierBuffer();
 
-    // Lookback: accumulate prefix from predecessor workgroups
-    uint aggregate = 0u;
+    // Lookback: count of digit `lid` in prior workgroups
+    uint digit_aggregate = 0u;
     if (wg_id > 0u) {
         int pred = int(wg_id) - 1;
         while (pred >= 0) {
             uint val;
-            // Spin-read with memory barrier for Apple Silicon weak ordering
             uint spin_count = 0u;
             do {
                 memoryBarrierBuffer();
                 val = atomicOr(status[status_base + uint(pred)], 0u);
                 spin_count++;
-                // Safety: if stuck for 1M iterations, break (should never happen)
                 if (spin_count > 1000000u) break;
             } while ((val >> 30u) == 0u);
 
             uint state = val >> 30u;
             uint sum = val & VALUE_MASK;
-            aggregate += sum;
+            digit_aggregate += sum;
 
-            if (state == 3u) break;  // INCLUSIVE — includes all prior workgroups
+            if (state == 3u) break;
             pred--;
         }
     }
 
     // Publish INCLUSIVE status
-    uint inclusive = aggregate + my_local_count;
+    uint inclusive = digit_aggregate + my_local_count;
     atomicExchange(status[status_base + wg_id], INCLUSIVE_FLAG | inclusive);
     memoryBarrierBuffer();
 
-    // Exclusive prefix for this digit in this workgroup:
-    // s_prefix[d] = (inter-workgroup aggregate for digit d) + (intra-workgroup exclusive prefix for digit d)
-    // The aggregate gives "how many entries of digit d exist in ALL prior workgroups".
-    // The intra-workgroup exclusive prefix gives "how many entries of digits 0..d-1 exist in THIS workgroup".
-    // Together, they give the correct global starting position for digit d's entries in this workgroup.
-    s_prefix[lid] = aggregate;
-    barrier();
+    // ========================================
+    // Phase 2.5: Global histogram + prefix
+    // ========================================
+    // Each workgroup atomically adds its local histogram to the global histogram.
+    // The last workgroup to finish computes the exclusive prefix sum.
+    atomicAdd(status[global_hist_base + lid], my_local_count);
+    memoryBarrierBuffer();
 
-    // Compute intra-workgroup exclusive prefix sum of local histogram (thread 0 serial scan)
+    // Signal this workgroup is done
+    uint old_done;
     if (lid == 0u) {
+        old_done = atomicAdd(status[done_count_idx], 1u);
+    }
+    // Broadcast done status to all threads in workgroup
+    barrier();
+    // Thread 0 checks if this was the last workgroup
+    if (lid == 0u && old_done == max_workgroups - 1u) {
+        // Last workgroup: compute exclusive prefix sum of global histogram
         uint running = 0u;
         for (uint d = 0u; d < 256u; d++) {
-            uint count = s_local_histogram[d];
-            s_local_histogram[d] = running;
+            uint count = status[global_hist_base + d];
+            status[global_prefix_base + d] = running;
             running += count;
+        }
+        // Signal prefix is ready (use done_count as flag: set to max_workgroups + 1)
+        memoryBarrierBuffer();
+        atomicExchange(status[done_count_idx], max_workgroups + 1u);
+    }
+    memoryBarrierBuffer();
+
+    // All workgroups spin until global prefix is ready
+    if (lid == 0u) {
+        uint spin = 0u;
+        while (true) {
+            memoryBarrierBuffer();
+            uint val = atomicOr(status[done_count_idx], 0u);
+            if (val > max_workgroups) break;
+            spin++;
+            if (spin > 10000000u) break;
         }
     }
     barrier();
-    s_prefix[lid] += s_local_histogram[lid];
+
+    // Read global exclusive prefix for each digit
+    uint global_digit_prefix = status[global_prefix_base + lid];
+
+    // Final scatter prefix: global_prefix[D] + digit_aggregate[D]
+    // = (total count of digits 0..D-1 across ALL workgroups) + (count of digit D in prior workgroups)
+    s_prefix[lid] = global_digit_prefix + digit_aggregate;
     barrier();
 
     // ========================================
@@ -161,15 +197,12 @@ void main() {
         uint my_index = s_indices[local_idx];
         uint digit = (my_key >> (pass * 8u)) & 0xFFu;
 
-        // Store digit for stable rank computation
         s_digits[lid] = digit;
         barrier();
 
         if (global_idx < total) {
-            // Stable rank: count threads before me in this batch with same digit
             uint rank = 0u;
             for (uint j = 0u; j < lid; j++) {
-                // Only count entries that are valid (within total)
                 uint j_global = wg_offset + batch * 256u + j;
                 if (j_global < total && s_digits[j] == digit) {
                     rank++;
@@ -185,8 +218,6 @@ void main() {
 
         // Advance prefix for next batch
         barrier();
-
-        // Count entries per digit in this batch (reuse s_local_histogram as scratch)
         s_local_histogram[lid] = 0u;
         barrier();
         if (global_idx < total) {
