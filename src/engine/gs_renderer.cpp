@@ -93,7 +93,7 @@ void GsRenderer::init(VkDevice device, VkPhysicalDevice physical_device,
         tile_sort_a_ = Buffer::create_storage_gpu_only(allocator_, 8);
         tile_sort_count_ssbo_ = Buffer::create_storage_readback(allocator_, sizeof(uint32_t));
         std::memset(tile_sort_count_ssbo_.mapped(), 0, sizeof(uint32_t));
-        tile_indirect_args_ = Buffer::create_storage(allocator_, 8 * sizeof(uint32_t));
+        tile_indirect_args_ = Buffer::create_storage_indirect(allocator_, 8 * sizeof(uint32_t));
         std::memset(tile_indirect_args_.mapped(), 0, 8 * sizeof(uint32_t));
     }
 
@@ -830,7 +830,7 @@ void GsRenderer::init_streaming(const StreamingConfig& config) {
         tile_sort_count_ssbo_ = Buffer::create_storage_readback(allocator_, sizeof(uint32_t));
         tile_histogram_ssbo_ = Buffer::create_storage_gpu_only(allocator_, hist_buf_size);
         tile_ranges_ssbo_ = Buffer::create_storage_gpu_only(allocator_, ranges_buf_size);
-        tile_indirect_args_ = Buffer::create_storage(allocator_, 8 * sizeof(uint32_t));
+        tile_indirect_args_ = Buffer::create_storage_indirect(allocator_, 8 * sizeof(uint32_t));
 
         std::fprintf(stderr, "GS: Tile sort -- capacity=%u entries (%u workgroups), "
                      "output=%ux%u, buf=%.1f MB\n",
@@ -1321,7 +1321,7 @@ void GsRenderer::load_cloud_legacy(const GaussianCloud& cloud) {
         tile_sort_count_ssbo_ = Buffer::create_storage_readback(allocator_, sizeof(uint32_t));
         tile_histogram_ssbo_ = Buffer::create_storage_gpu_only(allocator_, hist_buf_size);
         tile_ranges_ssbo_ = Buffer::create_storage_gpu_only(allocator_, ranges_buf_size);
-        tile_indirect_args_ = Buffer::create_storage(allocator_, 8 * sizeof(uint32_t));
+        tile_indirect_args_ = Buffer::create_storage_indirect(allocator_, 8 * sizeof(uint32_t));
         std::memset(tile_indirect_args_.mapped(), 0, 8 * sizeof(uint32_t));
 
         std::fprintf(stderr, "GS: Tile sort -- capacity=%u entries (%u workgroups), "

@@ -37,6 +37,7 @@ public:
     static Buffer create_index(VmaAllocator allocator, VkDeviceSize size);
     static Buffer create_uniform(VmaAllocator allocator, VkDeviceSize size);
     static Buffer create_storage(VmaAllocator allocator, VkDeviceSize size);
+    static Buffer create_storage_indirect(VmaAllocator allocator, VkDeviceSize size);
     static Buffer create_storage_gpu_only(VmaAllocator allocator, VkDeviceSize size);
     static Buffer create_storage_readback(VmaAllocator allocator, VkDeviceSize size);
     static Buffer create_staging(VmaAllocator allocator, VkDeviceSize size);
