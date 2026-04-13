@@ -9,6 +9,9 @@
 #include "gseurat/demo/island_components.hpp"
 #include "gseurat/demo/island_systems.hpp"
 #include "gseurat/engine/scene_loader.hpp"
+#include "gseurat/engine/world_manifest.hpp"
+#include "gseurat/engine/project_root.hpp"
+#include <nlohmann/json.hpp>
 #include "gseurat/engine/gs_particle.hpp"
 #include "gseurat/engine/gs_animator.hpp"
 #include "gseurat/engine/gs_vfx.hpp"
@@ -24,6 +27,8 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <filesystem>
+#include <fstream>
 #include <string>
 #include <unordered_map>
 
@@ -82,6 +87,20 @@ void IslandDemoState::on_enter(AppBase& app) {
     pp.ca_intensity = 0.15f;       // subtle chromatic aberration at edges
     app.renderer().set_gs_skip_chunk_cull(false);
     app.renderer().gs_renderer().set_skip_sort(false);
+
+    // Load world manifest if world.json exists at project root
+    {
+        auto world_path = resolve_asset_path("world.json");
+        if (std::filesystem::exists(world_path)) {
+            std::ifstream wf(world_path);
+            auto wj = nlohmann::json::parse(wf);
+            auto manifest = WorldManifest::from_json(wj);
+            app.renderer().gs_renderer().load_world(manifest);
+            app.scene_objects().world_manifest = manifest;
+            std::fprintf(stderr, "[IslandDemo] Loaded world.json: %zu chunks, %zu streaming volumes, %zu portals\n",
+                manifest.chunks.size(), manifest.streaming_volumes.size(), manifest.portals.size());
+        }
+    }
 
     // Load collision grid from scene data
     auto scene_data = SceneLoader::load(scene_path_);

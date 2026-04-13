@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "grid_cell_size": [192.0, 64.0, 192.0],
+  "chunks": [
+    {
+      "grid": [0, 0, 0],
+      "ply_file": "assets/maps/seurat_island.ply",
+      "scene_file": "assets/scenes/seurat_island.json"
+    },
+    {
+      "grid": [1, 0, 0],
+      "ply_file": "assets/maps/test_terrain.ply",
+      "scene_file": "assets/scenes/test_scene.json"
+    }
+  ],
+  "streaming_volumes": [
+    {
+      "id": "sv_island_edge",
+      "shape": "box",
+      "position": [180.0, 32.0, 96.0],
+      "half_extents": [24.0, 32.0, 96.0],
+      "preload_target_ids": ["1,0,0"]
+    },
+    {
+      "id": "sv_dungeon_approach",
+      "shape": "sphere",
+      "position": [50.0, 20.0, 50.0],
+      "radius": 30.0,
+      "preload_target_ids": ["dungeon_01"]
+    }
+  ],
+  "portals": [
+    {
+      "id": "portal_dungeon",
+      "position": [40.0, 15.0, 40.0],
+      "region_shape": "sphere",
+      "region_radius": 3.0,
+      "target_instance_id": "dungeon_01",
+      "spawn_position": [5.0, 0.0, 5.0],
+      "spawn_facing": "down"
+    }
+  ]
+}
