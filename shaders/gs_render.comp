@@ -116,14 +116,12 @@ void main() {
     float xray_depth = effect_params2.y;
 
     // Per-tile range from tile binning (Phase 3+4)
-    uint flat_tile_id = tile_xy.y * tiles_x + tile_xy.x;
-    uint tile_start = tile_ranges[flat_tile_id * 2u];
-    uint tile_count = tile_ranges[flat_tile_id * 2u + 1u];
-
-    // Fallback: if tile binning isn't active (count=0 for all tiles),
-    // use the old merged entries path (iterates all visible Gaussians)
-    bool use_tile_binning = (tile_count > 0);
-    uint loop_count = use_tile_binning ? tile_count : (static_count + dynamic_count);
+    // TODO: Enable tile-binned rasterizer once correctness is validated on AMD.
+    // For now, always use merged entries fallback so tile sort can run in parallel
+    // for profiling without affecting the rendering path.
+    bool use_tile_binning = false;
+    uint tile_start = 0;
+    uint loop_count = static_count + dynamic_count;
 
     // Accumulate color front-to-back
     vec3 color = vec3(0.0);        // non-emissive color (receives lighting)

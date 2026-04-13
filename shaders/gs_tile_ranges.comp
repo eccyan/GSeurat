@@ -29,12 +29,15 @@ layout(set = 0, binding = 2) readonly buffer TileSortCount {
 };
 
 layout(push_constant) uniform PushConstants {
-    uint num_tiles;  // tiles_x * tiles_y
+    uint num_tiles;      // tiles_x * tiles_y
+    uint max_entries;    // tile sort buffer capacity (clamp tile_count)
 };
 
 void main() {
     uint i = gl_GlobalInvocationID.x;
-    if (i >= tile_count) return;
+    // Clamp to buffer capacity — atomicAdd in binning can overshoot
+    uint clamped_count = min(tile_count, max_entries);
+    if (i >= clamped_count) return;
 
     uint tile_id = entries[i].key_hi;
 

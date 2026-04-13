@@ -571,8 +571,8 @@ void GsRenderer::create_compute_pipelines() {
                     tile_scatter_pipeline_layout_, tile_scatter_pipeline_);
     // Tile scan reuses existing radix_scan pipeline (entry-independent)
 
-    // Tile range detection pipeline (push: num_tiles = 4 bytes)
-    create_pipeline("shaders/gs_tile_ranges.comp.spv", tile_ranges_layout_, 4,
+    // Tile range detection pipeline (push: num_tiles + max_entries = 8 bytes)
+    create_pipeline("shaders/gs_tile_ranges.comp.spv", tile_ranges_layout_, 8,
                     tile_ranges_pipeline_layout_, tile_ranges_pipeline_);
 }
 
@@ -2017,11 +2017,12 @@ void GsRenderer::dispatch_tile_sort(VkCommandBuffer cmd) {
     // Dispatch tile range detection
     {
         uint32_t num_tiles = tiles_x * tiles_y;
+        uint32_t push_data[2] = {num_tiles, tile_sort_capacity_};
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, tile_ranges_pipeline_);
         vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
                                 tile_ranges_pipeline_layout_, 0, 1, &tile_ranges_set_, 0, nullptr);
         vkCmdPushConstants(cmd, tile_ranges_pipeline_layout_, VK_SHADER_STAGE_COMPUTE_BIT,
-                           0, 4, &num_tiles);
+                           0, 8, push_data);
         // Dispatch enough threads for all tile sort entries
         vkCmdDispatch(cmd, (tile_sort_size_ + 255) / 256, 1, 1);
     }
@@ -2251,12 +2252,11 @@ void GsRenderer::render(VkCommandBuffer cmd, const glm::mat4& view, const glm::m
 
             insert_compute_barrier(cmd);
 
-            // === Phase 3.5: Tile binning + tile sort (prepares per-tile sorted arrays) ===
-            // Runs after merge so merged_entries[] has all visible Gaussian indices.
-            // Result in tile_sort_a_: entries sorted by (tile_id, depth).
-            // Phase 3+4 (tile range detection + per-tile rasterize) will use these
-            // in a future PR. For now, the rasterizer still uses the merged depth order.
-            dispatch_tile_sort(cmd);
+            // === Phase 3.5: Tile binning + tile sort ===
+            // TODO: Enable once validated on AMD Windows. The 8-pass radix sort on
+            // 1M entries + 16MB buffer fill adds ~20ms/frame which combined with
+            // the rasterize pass can trigger TDR on AMD RDNA2 drivers.
+            // dispatch_tile_sort(cmd);
 
             // === Phase 4: Tile-based rasterization ===
             {
