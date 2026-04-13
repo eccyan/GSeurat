@@ -130,8 +130,25 @@ void main() {
     atomicExchange(status[status_base + wg_id], INCLUSIVE_FLAG | inclusive);
     memoryBarrierBuffer();
 
-    // Exclusive prefix for this digit in this workgroup
+    // Exclusive prefix for this digit in this workgroup:
+    // s_prefix[d] = (inter-workgroup aggregate for digit d) + (intra-workgroup exclusive prefix for digit d)
+    // The aggregate gives "how many entries of digit d exist in ALL prior workgroups".
+    // The intra-workgroup exclusive prefix gives "how many entries of digits 0..d-1 exist in THIS workgroup".
+    // Together, they give the correct global starting position for digit d's entries in this workgroup.
     s_prefix[lid] = aggregate;
+    barrier();
+
+    // Compute intra-workgroup exclusive prefix sum of local histogram (thread 0 serial scan)
+    if (lid == 0u) {
+        uint running = 0u;
+        for (uint d = 0u; d < 256u; d++) {
+            uint count = s_local_histogram[d];
+            s_local_histogram[d] = running;
+            running += count;
+        }
+    }
+    barrier();
+    s_prefix[lid] += s_local_histogram[lid];
     barrier();
 
     // ========================================
