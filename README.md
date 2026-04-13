@@ -154,23 +154,31 @@ Header-only (`include/gseurat/engine/ecs/`): archetype-based storage with typed 
 
 ### Async Asset Streaming
 
-Background asset loading for open-world support:
+Two-tier streaming architecture for open-world support:
+
+**Tier 1 — Slab Allocator + GPU Page Table:**
+All GPU memory for Gaussians is allocated once at startup as a configurable budget (default 10M splats / 640 MB). Fixed-size slabs (100K splats each) are managed by a free-list allocator with non-contiguous allocation — zero external fragmentation by construction. A GPU-side page table SSBO maps logical splat indices to physical slab offsets; the preprocess shader resolves indices via `resolve_physical_index()`.
+
+**Tier 2 — Transfer Queue:**
+Dedicated Vulkan transfer queue (falls back to time-sliced graphics queue on MoltenVK). Background threads parse PLY files and stage data to a double-buffered ring buffer. `VkFence`-based polling drives completion on the main thread — the graphics queue never stalls.
 
 ```
 Main Thread                     Worker Thread (std::thread)
 ─────────────                   ────────────────────────────
-submit request ──► request_queue_ ──► disk I/O + CPU parsing
-poll_results() ◄── completed_    ◄── push result
-flush() ──► GPU upload (budget-limited, 4MB/frame)
+load_cloud_async() ──────────►  Parse PLY → GpuGaussian
+poll_transfers()                Stage to ring buffer
+  vkGetFenceStatus ◄── fence ── vkCmdCopyBuffer to slab
+  page table update             enqueue completion marker
+  chunk appears next frame
 ```
 
 | Component | Description |
 |---|---|
-| `AsyncLoader` | Thread-safe work queue with single worker thread |
-| `StagingUploader` | Double-buffered, budget-limited per-frame GPU texture uploads |
-| `GsChunkStreamer` | Distance-based GS chunk streaming with hysteresis and memory budget |
+| `SlabAllocator` | Non-contiguous slab checkout/release with double-free protection |
+| `TransferQueue` | Dedicated/fallback transfer paths with staging ring buffer |
+| `GsChunkStreamer` | Distance-based chunk streaming with hysteresis and memory budget |
 
-All disk I/O and CPU parsing runs on the worker thread. All Vulkan API calls stay on the main thread.
+All disk I/O and CPU parsing runs on worker threads. All Vulkan API calls and page table updates stay on the main thread. Configuration via `engine_config.json`.
 
 ### 3D Gaussian Splatting
 
@@ -298,6 +306,15 @@ Auto-generated from Gaussian data via `generate_collision_from_gaussians()`, or 
         "Patrol": { "speed": 2.0, "waypoints": [[20, 0, 25], [30, 0, 25]] }
       }}
   ],
+  "portals": [
+    { "position": [10, 0, 5], "region_shape": "box", "region_radius": 2,
+      "region_half_extents": [1, 2, 1], "target_instance_id": "tavern",
+      "spawn_position": [5, 0, 5], "spawn_facing": "down" }
+  ],
+  "instances": [
+    { "id": "tavern", "display_name": "Tavern Interior",
+      "scene_file": "assets/scenes/tavern.scene.json" }
+  ],
   "collision": {
     "width": 64, "height": 64, "cell_size": 1.0,
     "solid": ["..."], "elevation": ["..."], "nav_zone": ["..."]
@@ -372,7 +389,7 @@ Engine (Vulkan) ←→ Unix Socket ←→ Bridge Proxy (ws://localhost:9100) ←
 | Tool | Port | Description |
 |------|------|-------------|
 | **Bridge Proxy** | 9100/9101 | Node.js relay between Unix socket and WebSocket clients |
-| **Bricklayer** | 5180 | 3DGS map editor: voxel terrain, Game Objects with component composition, PBD physics configuration, emitters, animations, VFX, lights |
+| **Bricklayer** | 5180 | 3DGS map editor: voxel terrain, Game Objects with component composition, PBD physics, emitters, animations, VFX, lights, portals with region triggers (box/sphere), instances (named scene references) |
 | **Méliès** | 5181 | VFX editor: particle emitters, GS animations, spline paths, object layers, light layers |
 | **Echidna** | 5179 | Voxel character editor: .vox import, body parts, bone posing, PLY export |
 | **Staging** | C++ app | ImGui rendering review: live scene preview, gizmos for lights/emitters/VFX/game objects, bridge auto-sync |
