@@ -418,7 +418,21 @@ void GsRenderer::create_descriptor_resources() {
         vkCreateDescriptorSetLayout(device_, &ci, nullptr, &tile_scatter_layout_);
     }
 
-    // Onesweep layout: { input(0), output(1), status(2), indirect_args(3) }
+    // Onesweep histogram layout: { input(0), status(1), indirect_args(2) }
+    {
+        VkDescriptorSetLayoutBinding bindings[] = {
+            {0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
+            {1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
+            {2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
+        };
+        VkDescriptorSetLayoutCreateInfo ci{};
+        ci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+        ci.bindingCount = 3;
+        ci.pBindings = bindings;
+        vkCreateDescriptorSetLayout(device_, &ci, nullptr, &onesweep_hist_layout_);
+    }
+
+    // Onesweep scatter layout: { input(0), output(1), status(2), indirect_args(3) }
     {
         VkDescriptorSetLayoutBinding bindings[] = {
             {0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
@@ -430,7 +444,7 @@ void GsRenderer::create_descriptor_resources() {
         ci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
         ci.bindingCount = 4;
         ci.pBindings = bindings;
-        vkCreateDescriptorSetLayout(device_, &ci, nullptr, &onesweep_layout_);
+        vkCreateDescriptorSetLayout(device_, &ci, nullptr, &onesweep_scatter_layout_);
     }
 
     // Tile indirect dispatch layout: { tile_sort_count(0), indirect_args(1) }
@@ -521,9 +535,10 @@ void GsRenderer::create_descriptor_resources() {
         tile_ranges_layout_,                               // tile range detection
         tile_indirect_layout_,                             // indirect dispatch prep
         tile_render_layout_,                               // tile render
-        onesweep_layout_, onesweep_layout_,                // onesweep A→B, B→A
+        onesweep_hist_layout_, onesweep_hist_layout_,        // onesweep histogram A, B
+        onesweep_scatter_layout_, onesweep_scatter_layout_,  // onesweep scatter A→B, B→A
     };
-    constexpr uint32_t kSetCount = 35;
+    constexpr uint32_t kSetCount = 37;
     VkDescriptorSet sets[kSetCount];
     VkDescriptorSetAllocateInfo alloc_info{};
     alloc_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
@@ -569,8 +584,10 @@ void GsRenderer::create_descriptor_resources() {
     tile_ranges_set_ = sets[30];
     tile_indirect_set_ = sets[31];
     tile_render_set_ = sets[32];
-    onesweep_set_ab_ = sets[33];
-    onesweep_set_ba_ = sets[34];
+    onesweep_hist_set_a_ = sets[33];
+    onesweep_hist_set_b_ = sets[34];
+    onesweep_scatter_set_ab_ = sets[35];
+    onesweep_scatter_set_ba_ = sets[36];
 }
 
 void GsRenderer::create_compute_pipelines() {
@@ -660,9 +677,13 @@ void GsRenderer::create_compute_pipelines() {
     create_pipeline("shaders/gs_tile_prepare_indirect.comp.spv", tile_indirect_layout_, 4,
                     tile_indirect_pipeline_layout_, tile_indirect_pipeline_);
 
-    // Onesweep pipeline (push: pass + max_workgroups = 8 bytes)
-    create_pipeline("shaders/gs_onesweep.comp.spv", onesweep_layout_, 4,
-                    onesweep_pipeline_layout_, onesweep_pipeline_);
+    // Onesweep histogram pipeline (push: pass = 4 bytes)
+    create_pipeline("shaders/gs_onesweep_histogram.comp.spv", onesweep_hist_layout_, 4,
+                    onesweep_hist_pipeline_layout_, onesweep_hist_pipeline_);
+
+    // Onesweep scatter pipeline (push: pass = 4 bytes)
+    create_pipeline("shaders/gs_onesweep_scatter.comp.spv", onesweep_scatter_layout_, 4,
+                    onesweep_scatter_pipeline_layout_, onesweep_scatter_pipeline_);
 
     // Tile render pipeline (separate from render — uses tile_entries + tile_ranges)
     create_pipeline("shaders/gs_tile_render.comp.spv", tile_render_layout_, 0,
@@ -842,7 +863,7 @@ void GsRenderer::init_streaming(const StreamingConfig& config) {
         onesweep_status_.destroy(allocator_);
         onesweep_max_wg_ = (tile_sort_capacity_ + 2047) / 2048;
         if (onesweep_max_wg_ == 0) onesweep_max_wg_ = 1;
-        VkDeviceSize status_size = (4ull * 256ull * onesweep_max_wg_ + 513ull) * sizeof(uint32_t);
+        VkDeviceSize status_size = 4ull * 256ull * onesweep_max_wg_ * sizeof(uint32_t);
         onesweep_status_ = Buffer::create_storage_gpu_only(allocator_, status_size);
     }
 
@@ -1334,7 +1355,7 @@ void GsRenderer::load_cloud_legacy(const GaussianCloud& cloud) {
         onesweep_status_.destroy(allocator_);
         onesweep_max_wg_ = (tile_sort_capacity_ + 2047) / 2048;
         if (onesweep_max_wg_ == 0) onesweep_max_wg_ = 1;
-        VkDeviceSize status_size = (4ull * 256ull * onesweep_max_wg_ + 513ull) * sizeof(uint32_t);
+        VkDeviceSize status_size = 4ull * 256ull * onesweep_max_wg_ * sizeof(uint32_t);
         onesweep_status_ = Buffer::create_storage_gpu_only(allocator_, status_size);
     }
 
@@ -2017,42 +2038,67 @@ void GsRenderer::update_descriptors() {
             vkUpdateDescriptorSets(device_, 2, writes, 0, nullptr);
         }
 
-        // Onesweep descriptor sets (ping-pong: A→B and B→A)
+        // Onesweep histogram descriptor sets (read-only input + status + args)
         if (onesweep_status_.buffer()) {
-            // A→B: read from tile_sort_a_, write to tile_sort_b_
+            {
+                VkDescriptorBufferInfo in_info{tile_sort_a_.buffer(), 0, VK_WHOLE_SIZE};
+                VkDescriptorBufferInfo status_info{onesweep_status_.buffer(), 0, VK_WHOLE_SIZE};
+                VkDescriptorBufferInfo args_info{tile_indirect_args_.buffer(), 0, VK_WHOLE_SIZE};
+                VkWriteDescriptorSet writes[] = {
+                    {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, onesweep_hist_set_a_, 0, 0, 1,
+                     VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &in_info, nullptr},
+                    {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, onesweep_hist_set_a_, 1, 0, 1,
+                     VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &status_info, nullptr},
+                    {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, onesweep_hist_set_a_, 2, 0, 1,
+                     VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &args_info, nullptr},
+                };
+                vkUpdateDescriptorSets(device_, 3, writes, 0, nullptr);
+            }
+            {
+                VkDescriptorBufferInfo in_info{tile_sort_b_.buffer(), 0, VK_WHOLE_SIZE};
+                VkDescriptorBufferInfo status_info{onesweep_status_.buffer(), 0, VK_WHOLE_SIZE};
+                VkDescriptorBufferInfo args_info{tile_indirect_args_.buffer(), 0, VK_WHOLE_SIZE};
+                VkWriteDescriptorSet writes[] = {
+                    {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, onesweep_hist_set_b_, 0, 0, 1,
+                     VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &in_info, nullptr},
+                    {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, onesweep_hist_set_b_, 1, 0, 1,
+                     VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &status_info, nullptr},
+                    {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, onesweep_hist_set_b_, 2, 0, 1,
+                     VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &args_info, nullptr},
+                };
+                vkUpdateDescriptorSets(device_, 3, writes, 0, nullptr);
+            }
+            // Onesweep scatter descriptor sets (input + output + status + args)
             {
                 VkDescriptorBufferInfo in_info{tile_sort_a_.buffer(), 0, VK_WHOLE_SIZE};
                 VkDescriptorBufferInfo out_info{tile_sort_b_.buffer(), 0, VK_WHOLE_SIZE};
                 VkDescriptorBufferInfo status_info{onesweep_status_.buffer(), 0, VK_WHOLE_SIZE};
                 VkDescriptorBufferInfo args_info{tile_indirect_args_.buffer(), 0, VK_WHOLE_SIZE};
-
                 VkWriteDescriptorSet writes[] = {
-                    {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, onesweep_set_ab_, 0, 0, 1,
+                    {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, onesweep_scatter_set_ab_, 0, 0, 1,
                      VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &in_info, nullptr},
-                    {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, onesweep_set_ab_, 1, 0, 1,
+                    {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, onesweep_scatter_set_ab_, 1, 0, 1,
                      VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &out_info, nullptr},
-                    {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, onesweep_set_ab_, 2, 0, 1,
+                    {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, onesweep_scatter_set_ab_, 2, 0, 1,
                      VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &status_info, nullptr},
-                    {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, onesweep_set_ab_, 3, 0, 1,
+                    {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, onesweep_scatter_set_ab_, 3, 0, 1,
                      VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &args_info, nullptr},
                 };
                 vkUpdateDescriptorSets(device_, 4, writes, 0, nullptr);
             }
-            // B→A: read from tile_sort_b_, write to tile_sort_a_
             {
                 VkDescriptorBufferInfo in_info{tile_sort_b_.buffer(), 0, VK_WHOLE_SIZE};
                 VkDescriptorBufferInfo out_info{tile_sort_a_.buffer(), 0, VK_WHOLE_SIZE};
                 VkDescriptorBufferInfo status_info{onesweep_status_.buffer(), 0, VK_WHOLE_SIZE};
                 VkDescriptorBufferInfo args_info{tile_indirect_args_.buffer(), 0, VK_WHOLE_SIZE};
-
                 VkWriteDescriptorSet writes[] = {
-                    {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, onesweep_set_ba_, 0, 0, 1,
+                    {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, onesweep_scatter_set_ba_, 0, 0, 1,
                      VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &in_info, nullptr},
-                    {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, onesweep_set_ba_, 1, 0, 1,
+                    {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, onesweep_scatter_set_ba_, 1, 0, 1,
                      VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &out_info, nullptr},
-                    {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, onesweep_set_ba_, 2, 0, 1,
+                    {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, onesweep_scatter_set_ba_, 2, 0, 1,
                      VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &status_info, nullptr},
-                    {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, onesweep_set_ba_, 3, 0, 1,
+                    {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, onesweep_scatter_set_ba_, 3, 0, 1,
                      VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &args_info, nullptr},
                 };
                 vkUpdateDescriptorSets(device_, 4, writes, 0, nullptr);
@@ -2217,8 +2263,8 @@ void GsRenderer::dispatch_tile_sort(VkCommandBuffer cmd) {
     }
 
     if (use_onesweep_ && onesweep_status_.buffer()) {
-        // === Onesweep: clear status buffer ===
-        VkDeviceSize status_size = (4ull * 256ull * onesweep_max_wg_ + 513ull) * sizeof(uint32_t);
+        // === Onesweep 2-dispatch: clear status buffer once ===
+        VkDeviceSize status_size = 4ull * 256ull * onesweep_max_wg_ * sizeof(uint32_t);
         vkCmdFillBuffer(cmd, onesweep_status_.buffer(), 0, status_size, 0);
         {
             VkMemoryBarrier sb{};
@@ -2229,18 +2275,34 @@ void GsRenderer::dispatch_tile_sort(VkCommandBuffer cmd) {
                 VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &sb, 0, nullptr, 0, nullptr);
         }
 
-        // === Onesweep: 4 radix passes ===
-        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, onesweep_pipeline_);
-        for (uint32_t pass = 0; pass < 4; pass++) {
+        // === Onesweep: 4 radix passes × 2 dispatches each ===
+        for (uint32_t pass = 0; pass < kTileSortPasses; pass++) {
             uint32_t push_data[1] = {pass};
             bool read_from_a = (pass % 2 == 0);
-            VkDescriptorSet set = read_from_a ? onesweep_set_ab_ : onesweep_set_ba_;
 
-            vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
-                                    onesweep_pipeline_layout_, 0, 1, &set, 0, nullptr);
-            vkCmdPushConstants(cmd, onesweep_pipeline_layout_, VK_SHADER_STAGE_COMPUTE_BIT,
-                               0, 4, push_data);
-            vkCmdDispatchIndirect(cmd, tile_indirect_args_.buffer(), 0);
+            // Dispatch 1: histogram + decoupled lookback
+            {
+                VkDescriptorSet hist_set = read_from_a ? onesweep_hist_set_a_ : onesweep_hist_set_b_;
+                vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, onesweep_hist_pipeline_);
+                vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
+                                        onesweep_hist_pipeline_layout_, 0, 1, &hist_set, 0, nullptr);
+                vkCmdPushConstants(cmd, onesweep_hist_pipeline_layout_, VK_SHADER_STAGE_COMPUTE_BIT,
+                                   0, 4, push_data);
+                vkCmdDispatchIndirect(cmd, tile_indirect_args_.buffer(), 0);
+            }
+
+            insert_compute_barrier(cmd);
+
+            // Dispatch 2: read status buffer, compute prefix, scatter
+            {
+                VkDescriptorSet scatter_set = read_from_a ? onesweep_scatter_set_ab_ : onesweep_scatter_set_ba_;
+                vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, onesweep_scatter_pipeline_);
+                vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
+                                        onesweep_scatter_pipeline_layout_, 0, 1, &scatter_set, 0, nullptr);
+                vkCmdPushConstants(cmd, onesweep_scatter_pipeline_layout_, VK_SHADER_STAGE_COMPUTE_BIT,
+                                   0, 4, push_data);
+                vkCmdDispatchIndirect(cmd, tile_indirect_args_.buffer(), 0);
+            }
 
             insert_compute_barrier(cmd);
         }
@@ -2883,7 +2945,8 @@ void GsRenderer::shutdown(VmaAllocator allocator) {
     destroy_pipeline(tile_ranges_pipeline_);
     destroy_pipeline(tile_indirect_pipeline_);
     destroy_pipeline(tile_render_pipeline_);
-    destroy_pipeline(onesweep_pipeline_);
+    destroy_pipeline(onesweep_hist_pipeline_);
+    destroy_pipeline(onesweep_scatter_pipeline_);
 
     destroy_layout(preprocess_pipeline_layout_);
     destroy_layout(sort_pipeline_layout_);
@@ -2900,7 +2963,8 @@ void GsRenderer::shutdown(VmaAllocator allocator) {
     destroy_layout(tile_ranges_pipeline_layout_);
     destroy_layout(tile_indirect_pipeline_layout_);
     destroy_layout(tile_render_pipeline_layout_);
-    destroy_layout(onesweep_pipeline_layout_);
+    destroy_layout(onesweep_hist_pipeline_layout_);
+    destroy_layout(onesweep_scatter_pipeline_layout_);
 
     destroy_set_layout(preprocess_layout_);
     destroy_set_layout(sort_layout_);
@@ -2917,7 +2981,8 @@ void GsRenderer::shutdown(VmaAllocator allocator) {
     destroy_set_layout(tile_scatter_layout_);
     destroy_set_layout(tile_indirect_layout_);
     destroy_set_layout(tile_render_layout_);
-    destroy_set_layout(onesweep_layout_);
+    destroy_set_layout(onesweep_hist_layout_);
+    destroy_set_layout(onesweep_scatter_layout_);
 
     if (timestamp_pool_) { vkDestroyQueryPool(device_, timestamp_pool_, nullptr); timestamp_pool_ = VK_NULL_HANDLE; }
     if (gs_pool_) vkDestroyDescriptorPool(device_, gs_pool_, nullptr);

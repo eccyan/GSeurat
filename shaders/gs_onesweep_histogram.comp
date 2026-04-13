@@ -1,0 +1,121 @@
+#version 450
+
+// Onesweep dispatch 1: histogram + decoupled lookback.
+//
+// Each workgroup loads ENTRIES_PER_WG entries, builds a 256-bin local histogram
+// for the current 8-bit radix digit, then uses decoupled lookback to compute
+// the per-digit inclusive prefix across all workgroups.
+//
+// The inclusive prefix for workgroup W, digit D = total count of digit D in
+// workgroups [0..W]. Dispatch 2 (scatter) reads these to derive scatter offsets.
+//
+// Status buffer layout (per pass region, offset = pass * 256 * max_wg):
+//   status[digit * max_wg + wg_id] = flag | value
+//   Flags: NOT_READY=0, LOCAL=1<<30, INCLUSIVE=3<<30
+layout(local_size_x = 256) in;
+
+struct TileSortEntry {
+    uint key_hi;
+    uint key_lo;
+    uint index;
+    uint _pad;
+};
+
+layout(set = 0, binding = 0) readonly buffer InputBuffer {
+    TileSortEntry in_entries[];
+};
+
+// Status buffer: per-digit lookback status (coherent for cross-workgroup visibility)
+// Layout: [pass * 256 * max_wg + digit * max_wg + wg_id]
+layout(set = 0, binding = 1, std430) coherent buffer StatusBuffer {
+    uint status[];
+};
+
+layout(set = 0, binding = 2) readonly buffer IndirectArgs {
+    uint sort_dispatch_x;   // [0]: sort workgroups
+    uint sort_dispatch_y;   // [1]: 1
+    uint sort_dispatch_z;   // [2]: 1
+    uint ranges_dispatch_x; // [3]: ranges workgroups
+    uint ranges_dispatch_y; // [4]
+    uint ranges_dispatch_z; // [5]
+    uint entry_count;       // [6]: clamped tile_sort_count
+    uint histogram_count;   // [7]: unused by onesweep
+};
+
+layout(push_constant) uniform PushConstants {
+    uint pass;  // 0..3 (which 8-bit digit to sort on)
+};
+
+shared uint s_local_histogram[256];  // 1KB — per-digit count for this workgroup
+
+const uint ENTRIES_PER_WG = 2048u;
+const uint ENTRIES_PER_THREAD = 8u;
+const uint NOT_READY     = 0u;
+const uint LOCAL_FLAG     = 1u << 30u;
+const uint INCLUSIVE_FLAG = 3u << 30u;
+const uint VALUE_MASK     = 0x3FFFFFFFu;
+
+void main() {
+    uint lid = gl_LocalInvocationID.x;
+    uint wg_id = gl_WorkGroupID.x;
+    uint wg_offset = wg_id * ENTRIES_PER_WG;
+    uint total = entry_count;
+    uint max_workgroups = sort_dispatch_x;
+
+    // Per-pass region in status buffer
+    uint pass_base = pass * 256u * max_workgroups;
+
+    // ========================================
+    // Phase 1: Load entries & build histogram
+    // ========================================
+    s_local_histogram[lid] = 0u;
+    barrier();
+
+    for (uint t = 0u; t < ENTRIES_PER_THREAD; t++) {
+        uint idx = wg_offset + t * 256u + lid;
+        if (idx < total) {
+            uint k = in_entries[idx].key_lo;
+            uint digit = (k >> (pass * 8u)) & 0xFFu;
+            atomicAdd(s_local_histogram[digit], 1u);
+        }
+    }
+    barrier();
+
+    // ========================================
+    // Phase 2: Decoupled lookback (per-digit)
+    // ========================================
+    uint my_local_count = s_local_histogram[lid];
+
+    // Publish LOCAL status: "workgroup wg_id has local_count for digit lid"
+    uint status_idx = pass_base + lid * max_workgroups + wg_id;
+    atomicExchange(status[status_idx], LOCAL_FLAG | my_local_count);
+    memoryBarrierBuffer();
+
+    // Lookback: sum digit `lid` counts from all prior workgroups
+    uint digit_aggregate = 0u;
+    if (wg_id > 0u) {
+        int pred = int(wg_id) - 1;
+        while (pred >= 0) {
+            uint val;
+            uint spin_count = 0u;
+            do {
+                memoryBarrierBuffer();
+                val = atomicOr(status[pass_base + lid * max_workgroups + uint(pred)], 0u);
+                spin_count++;
+                if (spin_count > 1000000u) break;  // safety timeout
+            } while ((val >> 30u) == 0u);
+
+            uint state = val >> 30u;
+            uint sum = val & VALUE_MASK;
+            digit_aggregate += sum;
+
+            if (state == 3u) break;  // INCLUSIVE — includes all predecessors
+            pred--;
+        }
+    }
+
+    // Publish INCLUSIVE status: total of digit `lid` in workgroups [0..wg_id]
+    uint inclusive = digit_aggregate + my_local_count;
+    atomicExchange(status[status_idx], INCLUSIVE_FLAG | inclusive);
+    memoryBarrierBuffer();
+}

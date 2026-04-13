@@ -411,14 +411,21 @@ private:
     VkDescriptorSet tile_scatter_set_ba_ = VK_NULL_HANDLE;
     VkDescriptorSet tile_scan_set_ = VK_NULL_HANDLE;
 
-    // Onesweep sort (Phase 2 TBDR optimization)
-    VkDescriptorSetLayout onesweep_layout_ = VK_NULL_HANDLE;
-    VkPipelineLayout onesweep_pipeline_layout_ = VK_NULL_HANDLE;
-    VkPipeline onesweep_pipeline_ = VK_NULL_HANDLE;
-    VkDescriptorSet onesweep_set_ab_ = VK_NULL_HANDLE;  // read A → write B
-    VkDescriptorSet onesweep_set_ba_ = VK_NULL_HANDLE;  // read B → write A
-    Buffer onesweep_status_;    // per-digit lookback status buffer
-    bool use_onesweep_ = false;  // A/B toggle — disabled until 2-dispatch Onesweep is implemented
+    // Onesweep 2-dispatch sort (histogram+lookback → scatter)
+    VkDescriptorSetLayout onesweep_hist_layout_ = VK_NULL_HANDLE;
+    VkPipelineLayout onesweep_hist_pipeline_layout_ = VK_NULL_HANDLE;
+    VkPipeline onesweep_hist_pipeline_ = VK_NULL_HANDLE;
+    VkDescriptorSet onesweep_hist_set_a_ = VK_NULL_HANDLE;  // read from A
+    VkDescriptorSet onesweep_hist_set_b_ = VK_NULL_HANDLE;  // read from B
+
+    VkDescriptorSetLayout onesweep_scatter_layout_ = VK_NULL_HANDLE;
+    VkPipelineLayout onesweep_scatter_pipeline_layout_ = VK_NULL_HANDLE;
+    VkPipeline onesweep_scatter_pipeline_ = VK_NULL_HANDLE;
+    VkDescriptorSet onesweep_scatter_set_ab_ = VK_NULL_HANDLE;  // read A → write B
+    VkDescriptorSet onesweep_scatter_set_ba_ = VK_NULL_HANDLE;  // read B → write A
+
+    Buffer onesweep_status_;    // per-digit lookback status buffer (coherent)
+    bool use_onesweep_ = true;  // 2-dispatch Onesweep enabled
     uint32_t onesweep_max_wg_ = 0;
 
     // Tile sort buffers
