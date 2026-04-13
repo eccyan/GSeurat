@@ -2280,8 +2280,13 @@ void GsRenderer::render(VkCommandBuffer cmd, const glm::mat4& view, const glm::m
             ++timestamp_frame_;
             if (timestamp_frame_ % kTimestampAvgFrames == 0) {
                 float avg = rasterize_ms_accum_ / static_cast<float>(kTimestampAvgFrames);
-                std::printf("[gs_renderer] Rasterize pass: %.3f ms (avg %u frames)\n",
-                            avg, kTimestampAvgFrames);
+                // Also read back tile_sort_count for diagnostics
+                uint32_t tile_count_readback = 0;
+                if (tile_sort_count_ssbo_.mapped()) {
+                    std::memcpy(&tile_count_readback, tile_sort_count_ssbo_.mapped(), sizeof(uint32_t));
+                }
+                std::printf("[gs_renderer] Rasterize pass: %.3f ms (avg %u frames), tile_entries=%u/%u\n",
+                            avg, kTimestampAvgFrames, tile_count_readback, tile_sort_capacity_);
                 rasterize_ms_accum_ = 0.0f;
             }
         }
