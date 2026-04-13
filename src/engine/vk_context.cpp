@@ -185,6 +185,17 @@ void VkContext::pick_physical_device() {
     } else {
         throw std::runtime_error("No suitable GPU found");
     }
+
+    // Detect Apple GPU (MoltenVK on Apple Silicon)
+    {
+        VkPhysicalDeviceProperties props;
+        vkGetPhysicalDeviceProperties(physical_device_, &props);
+        // Apple vendor ID = 0x106B
+        is_apple_gpu_ = (props.vendorID == 0x106B);
+        std::printf("[vk_context] GPU: %s (vendor 0x%04X)%s\n",
+                    props.deviceName, props.vendorID,
+                    is_apple_gpu_ ? " [Apple — tile binning disabled by default]" : "");
+    }
 }
 
 void VkContext::create_logical_device() {

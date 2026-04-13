@@ -189,6 +189,9 @@ public:
     void set_post_process_params(const GsPostProcessParams& p) { gs_pp_params_ = p; }
     const GsPostProcessParams& post_process_params() const { return gs_pp_params_; }
 
+    void set_tile_binning(bool enabled) { tile_binning_enabled_ = enabled; }
+    bool tile_binning() const { return tile_binning_enabled_; }
+
     // World manifest (Phase 3 streaming)
     void load_world(const WorldManifest& manifest);
     const WorldManifest& world_manifest() const { return world_manifest_; }
@@ -417,6 +420,7 @@ private:
     uint32_t tile_sort_size_ = 0;        // workgroup-aligned count for radix sort
     uint32_t tile_sort_workgroups_ = 0;
     static constexpr uint32_t kTileSortPasses = 8;  // 4 for key_lo + 4 for key_hi
+    bool tile_binning_enabled_ = true;
 
     bool initialized_ = false;
 

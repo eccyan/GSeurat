@@ -21,6 +21,7 @@ public:
     VkQueue transfer_queue() const { return transfer_queue_; }
     uint32_t transfer_queue_family() const { return transfer_queue_family_; }
     bool has_dedicated_transfer() const { return has_dedicated_transfer_; }
+    bool is_apple_gpu() const { return is_apple_gpu_; }
     VkSurfaceKHR surface() const { return surface_; }
     VmaAllocator allocator() const { return allocator_; }
 
@@ -45,6 +46,7 @@ private:
     VkQueue transfer_queue_{VK_NULL_HANDLE};
     uint32_t transfer_queue_family_{0};
     bool has_dedicated_transfer_{false};
+    bool is_apple_gpu_{false};
     VmaAllocator allocator_ = VK_NULL_HANDLE;
 };
 

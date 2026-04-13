@@ -62,6 +62,7 @@ void CommandDispatcher::register_default_commands() {
         add("gs_lod", f.gs_lod, "LOD");
         add("gs_adaptive_budget", f.gs_adaptive_budget, "Adaptive Budget");
         add("gs_parallax", f.gs_parallax, "Parallax");
+        add("gs_tile_binning", f.gs_tile_binning, "Tile Binning");
         add("bloom", f.bloom, "Bloom");
         add("depth_of_field", f.depth_of_field, "Depth of Field");
         add("vignette", f.vignette, "Vignette");
@@ -85,6 +86,7 @@ void CommandDispatcher::register_default_commands() {
         else if (name == "gs_lod") f.gs_lod = enabled;
         else if (name == "gs_adaptive_budget") f.gs_adaptive_budget = enabled;
         else if (name == "gs_parallax") f.gs_parallax = enabled;
+        else if (name == "gs_tile_binning") f.gs_tile_binning = enabled;
         else if (name == "bloom") f.bloom = enabled;
         else if (name == "depth_of_field") f.depth_of_field = enabled;
         else if (name == "vignette") f.vignette = enabled;

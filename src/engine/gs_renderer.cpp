@@ -2069,7 +2069,7 @@ void GsRenderer::dispatch_radix_sort(
 }
 
 void GsRenderer::dispatch_tile_sort(VkCommandBuffer cmd) {
-    if (!tile_sort_a_.buffer() || tile_sort_capacity_ == 0) return;
+    if (!tile_binning_enabled_ || !tile_sort_a_.buffer() || tile_sort_capacity_ == 0) return;
 
     uint32_t width = output_width_;
     uint32_t height = output_height_;
@@ -2451,7 +2451,7 @@ void GsRenderer::render(VkCommandBuffer cmd, const glm::mat4& view, const glm::m
 
             // === Phase 4: Tile-based rasterization ===
             {
-                bool use_tile = (tile_sort_a_.buffer() && tile_sort_capacity_ > 0);
+                bool use_tile = (tile_binning_enabled_ && tile_sort_a_.buffer() && tile_sort_capacity_ > 0);
                 if (use_tile) {
                     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, tile_render_pipeline_);
                     vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
