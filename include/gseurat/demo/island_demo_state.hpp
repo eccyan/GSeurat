@@ -1,8 +1,5 @@
 #pragma once
 
-#include "gseurat/character/bone_animation_player.hpp"
-#include "gseurat/character/bone_animation_state_machine.hpp"
-#include "gseurat/character/character_manifest.hpp"
 #include "gseurat/engine/camera_zone_system.hpp"
 #include "gseurat/engine/collision_gen.hpp"
 #include "gseurat/engine/game_state.hpp"
@@ -66,10 +63,8 @@ private:
     float gs_scale_ = 1.0f;               // scene scale_multiplier (for bone coord conversion)
     std::vector<Gaussian> map_gaussians_;  // original map data before character merge
 
-    // Data-driven bone animation
-    std::unique_ptr<gseurat::CharacterData> character_data_;
-    std::unique_ptr<gseurat::BoneAnimationPlayer> anim_player_;
-    std::unique_ptr<gseurat::BoneAnimationStateMachine> anim_sm_;
+    // Player animation (managed via BoneAnimationRegistry)
+    uint32_t player_registry_id_ = 0;
 
     // Base scene lights (saved at init, used as base for dynamic emissive lights)
     std::vector<PointLight> scene_lights_;

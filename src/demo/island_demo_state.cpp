@@ -17,6 +17,8 @@
 #include "gseurat/engine/gs_vfx.hpp"
 #include "gseurat/engine/pbd_types.hpp"
 #include "gseurat/engine/bone_animation_system.hpp"
+#include "gseurat/engine/bone_animation_registry.hpp"
+#include "gseurat/engine/bone_animated_component.hpp"
 
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
@@ -267,15 +269,15 @@ void IslandDemoState::on_enter(AppBase& app) {
     scene_lights_ = {};
     std::fprintf(stderr, "[IslandDemo] scene_lights_ captured: %zu lights\n", scene_lights_.size());
 
-    // Load character manifest (heap-allocated via unique_ptr)
+    // Load character manifest into local variable (ownership moves to registry entry)
+    std::unique_ptr<gseurat::CharacterData> player_char_data;
     {
         auto loaded = gseurat::load_character_manifest(
             "assets/characters/snes_hero/snes_hero.manifest.json");
         if (loaded) {
-            character_data_ = std::make_unique<gseurat::CharacterData>(std::move(*loaded));
-            ShutdownAuditor::record<gseurat::CharacterData>(character_data_.get());
+            player_char_data = std::make_unique<gseurat::CharacterData>(std::move(*loaded));
             std::fprintf(stderr, "[IslandDemo] Character manifest loaded: %zu bones, %zu clips\n",
-                         character_data_->bones.size(), character_data_->clips.size());
+                         player_char_data->bones.size(), player_char_data->clips.size());
         } else {
             std::fprintf(stderr, "[IslandDemo] WARNING: Failed to load character manifest!\n");
         }
@@ -455,14 +457,31 @@ void IslandDemoState::on_enter(AppBase& app) {
         // Re-populate registry with all bone allocations (main scene + chunks)
         populate_bone_animation_registry(app.bone_animation_registry(), app.world(), app.gs_terrain());
 
-        // Initialize data-driven bone animation
-        if (character_data_) {
-            anim_player_ = std::make_unique<gseurat::BoneAnimationPlayer>(*character_data_);
-            anim_sm_ = std::make_unique<gseurat::BoneAnimationStateMachine>(*anim_player_);
-            anim_sm_->add_state("idle", "idle");
-            anim_sm_->add_state("walk", "walk");
-            anim_sm_->add_state("jump", "jump");
-            anim_sm_->set_state("idle");
+        // Register player in BoneAnimationRegistry
+        if (player_char_data) {
+            gseurat::BoneAnimationEntry player_entry;
+            player_entry.manifest_path = "assets/characters/snes_hero/snes_hero.manifest.json";
+            player_entry.default_clip = "idle";
+            player_entry.first_bone_index = 1;
+            player_entry.bone_count = static_cast<uint32_t>(player_char_data->bones.size());
+            player_entry.char_scale = kCharScale;
+            player_entry.gs_scale_multiplier = gs_scale_;
+            player_entry.spawn_pos = player_pos;
+            player_entry.current_pos = player_pos;
+            player_entry.character_data = std::move(player_char_data);
+            player_entry.anim_player = std::make_unique<gseurat::BoneAnimationPlayer>(
+                *player_entry.character_data);
+            player_entry.anim_sm = std::make_unique<gseurat::BoneAnimationStateMachine>(
+                *player_entry.anim_player);
+            for (const auto& clip : player_entry.character_data->clips) {
+                player_entry.anim_sm->add_state(clip.name, clip.name);
+            }
+            player_entry.anim_sm->set_state("idle");
+            player_entry.initialized = true;
+            player_registry_id_ = app.bone_animation_registry().add(
+                player_entity_, std::move(player_entry));
+            app.world().add<gseurat::BoneAnimatedTag>(player_entity_,
+                {player_registry_id_});
         }
 
         (void)char_count;
@@ -504,20 +523,9 @@ void IslandDemoState::on_exit(AppBase& app) {
     // Release camera zone system
     camera_zone_system_.reset();
 
-    // Release animation objects before state destruction
+    // Release animation registry references
     set_npc_bone_registry(nullptr);
-    anim_sm_.reset();
-    anim_player_.reset();
-
-    // Attempt guarded free of CharacterData.
-    // macOS allocator hangs when freeing CharacterData with populated vectors
-    // during Vulkan/VMA teardown (ASan clean — not heap corruption).
-    // Intentionally leak on exit: process teardown reclaims the memory anyway.
-    if (character_data_) {
-        ShutdownAuditor::remove(character_data_.get());
-        (void)character_data_.release();  // leak — delete hangs on macOS
-        std::fprintf(stderr, "[IslandDemo] CharacterData leaked (macOS allocator hang workaround)\n");
-    }
+    player_registry_id_ = 0;
 
     if (character_spawned_) {
         app.renderer().gs_renderer().clear_bone_transforms();
@@ -577,7 +585,8 @@ void IslandDemoState::update(AppBase& app, float dt) {
     if (app.input().was_key_pressed(GLFW_KEY_SPACE) && !jumping_) {
         jumping_ = true;
         jump_time_ = 0.0f;
-        if (anim_sm_) anim_sm_->set_state("jump");
+        auto* pe = app.bone_animation_registry().get(player_registry_id_);
+        if (pe) pe->requested_clip = "jump";
     }
 
     // FPS counter
@@ -926,6 +935,38 @@ void IslandDemoState::update(AppBase& app, float dt) {
                     // Re-populate bone animation registry for the new scene
                     populate_bone_animation_registry(app.bone_animation_registry(), app.world(), app.gs_terrain());
 
+                    // Re-register player in BoneAnimationRegistry
+                    {
+                        auto loaded = gseurat::load_character_manifest(
+                            "assets/characters/snes_hero/snes_hero.manifest.json");
+                        if (loaded) {
+                            auto pcd = std::make_unique<gseurat::CharacterData>(std::move(*loaded));
+                            gseurat::BoneAnimationEntry player_entry;
+                            player_entry.manifest_path = "assets/characters/snes_hero/snes_hero.manifest.json";
+                            player_entry.default_clip = "idle";
+                            player_entry.first_bone_index = 1;
+                            player_entry.bone_count = static_cast<uint32_t>(pcd->bones.size());
+                            player_entry.char_scale = kCharScale;
+                            player_entry.gs_scale_multiplier = gs_scale_;
+                            player_entry.spawn_pos = spawn;
+                            player_entry.current_pos = spawn;
+                            player_entry.character_data = std::move(pcd);
+                            player_entry.anim_player = std::make_unique<gseurat::BoneAnimationPlayer>(
+                                *player_entry.character_data);
+                            player_entry.anim_sm = std::make_unique<gseurat::BoneAnimationStateMachine>(
+                                *player_entry.anim_player);
+                            for (const auto& clip : player_entry.character_data->clips) {
+                                player_entry.anim_sm->add_state(clip.name, clip.name);
+                            }
+                            player_entry.anim_sm->set_state("idle");
+                            player_entry.initialized = true;
+                            player_registry_id_ = app.bone_animation_registry().add(
+                                player_entity_, std::move(player_entry));
+                            app.world().add<gseurat::BoneAnimatedTag>(player_entity_,
+                                {player_registry_id_});
+                        }
+                    }
+
                     std::fprintf(stderr, "[IslandDemo] Spawned at (%.1f, %.1f, %.1f)\n",
                         spawn.x, spawn.y, spawn.z);
                     break;
@@ -1032,7 +1073,8 @@ void IslandDemoState::update_player(AppBase& app, float dt) {
             jump_time_ = 0.0f;
             // Return to idle or walk based on movement
             float spd = glm::length(glm::vec2(player_velocity_.x, player_velocity_.z));
-            if (anim_sm_) anim_sm_->set_state(spd > 0.1f ? "walk" : "idle");
+            auto* pe = app.bone_animation_registry().get(player_registry_id_);
+            if (pe) pe->requested_clip = spd > 0.1f ? "walk" : "idle";
         } else {
             float t = jump_time_ / kJumpDuration;
             float jump_y = 4.0f * kJumpHeight * t * (1.0f - t);
@@ -1055,8 +1097,14 @@ void IslandDemoState::update_player(AppBase& app, float dt) {
 
     // Sync rotation quaternion from input-driven facing angle
     // (only when no root motion clip is active)
-    if (!anim_player_ || anim_player_->current_clip_index() < 0
-        || !character_data_->clips[anim_player_->current_clip_index()].root_motion) {
+    auto* player_entry = app.bone_animation_registry().get(player_registry_id_);
+    bool has_root_motion = false;
+    if (player_entry && player_entry->anim_player &&
+        player_entry->anim_player->current_clip_index() >= 0) {
+        has_root_motion = player_entry->character_data->clips[
+            player_entry->anim_player->current_clip_index()].root_motion;
+    }
+    if (!has_root_motion) {
         character_rotation_ = glm::angleAxis(facing_angle_, glm::vec3(0.0f, 1.0f, 0.0f));
     }
 }
@@ -1374,72 +1422,61 @@ void IslandDemoState::update_walk_animation(AppBase& app, float dt) {
     glm::mat4 terrain_bone = glm::translate(glm::mat4(1.0f),
         glm::vec3(terrain_sway_x, terrain_sway_y, 0.0f));
 
-    if (anim_player_ && anim_sm_) {
-        float speed = glm::length(glm::vec2(player_velocity_.x, player_velocity_.z));
-        anim_sm_->set_state(speed > 0.1f ? "walk" : "idle");
-        anim_player_->update(dt);
+    auto* pe = app.bone_animation_registry().get(player_registry_id_);
+    if (pe && pe->anim_player) {
+        // Set requested clip based on movement speed (if not jumping)
+        if (!jumping_) {
+            float speed = glm::length(glm::vec2(player_velocity_.x, player_velocity_.z));
+            pe->requested_clip = speed > 0.1f ? "walk" : "idle";
+        }
+
+        // Update entry position and facing (bone_animation_system already set
+        // current_pos from Transform; override with character_origin_ which
+        // includes root motion adjustments but NOT jump Y — that goes in y_offset)
+        // character_origin_ may have jump Y added in update_player; strip it here.
+        glm::vec3 ground_pos = character_origin_;
+        float jump_y_offset = 0.0f;
+        if (jumping_) {
+            float t = jump_time_ / kJumpDuration;
+            jump_y_offset = 4.0f * kJumpHeight * t * (1.0f - t);
+            ground_pos.y -= jump_y_offset;
+        }
+        pe->current_pos = ground_pos;
+        pe->facing_angle = facing_angle_;
+        pe->y_offset = jump_y_offset;
 
         // Root motion hybrid consumer
-        if (anim_player_->current_clip_index() >= 0) {
-            const auto& current_clip = character_data_->clips[anim_player_->current_clip_index()];
+        // (anim_player->update(dt) was already called by bone_animation_system)
+        if (pe->anim_player->current_clip_index() >= 0) {
+            const auto& current_clip = pe->character_data->clips[
+                pe->anim_player->current_clip_index()];
             if (current_clip.root_motion) {
                 // Delta position rotated by current world orientation
-                glm::vec3 world_delta = character_rotation_ * anim_player_->delta_position();
+                glm::vec3 world_delta = character_rotation_ * pe->anim_player->delta_position();
                 character_origin_ += world_delta;
 
                 // Accumulate rotation delta
                 character_rotation_ = glm::normalize(
-                    character_rotation_ * anim_player_->delta_rotation());
+                    character_rotation_ * pe->anim_player->delta_rotation());
 
                 // Sync facing_angle_ for systems that need a scalar angle
                 glm::vec3 forward = character_rotation_ * glm::vec3(0.0f, 0.0f, -1.0f);
                 facing_angle_ = std::atan2(forward.x, -forward.z);
+
+                // Update entry with root motion results
+                pe->current_pos = character_origin_;
+                pe->facing_angle = facing_angle_;
             }
         }
 
-        // Build world↔model coordinate conversion matrices.
-        // During spawning, character Gaussians were placed at:
-        //   world = spawn + Ry(pi) * model * S + (0, 2, 0)
-        // where S = diag(kCharScale, kCharScale * gs_scale, kCharScale).
-        // (Y scale is applied in two steps in the spawn loop: uniform * gs_scale.)
-        // The animation FK chain computes pivot rotations in model space,
-        // so we must convert: world → model → animate → world.
-        const glm::vec3 y_off(0.0f, 2.0f, 0.0f);
-        const glm::vec3 scale_vec(kCharScale, kCharScale * gs_scale_, kCharScale);
-        const glm::vec3 inv_scale(1.0f / scale_vec.x, 1.0f / scale_vec.y, 1.0f / scale_vec.z);
-
-        // from_world: undo spawn transform (world pos → model pos)
-        //   = Ry(-pi) * S^-1 * T(-(spawn + y_off))
-        glm::mat4 from_world =
-            glm::rotate(glm::mat4(1.0f), -glm::pi<float>(), {0, 1, 0}) *
-            glm::scale(glm::mat4(1.0f), inv_scale) *
-            glm::translate(glm::mat4(1.0f), -(character_spawn_pos_ + y_off));
-
-        // to_world: apply current transform (model pos → current world pos)
-        //   = T(origin + y_off) * R(character_rotation_) * S * Ry(pi)
-        glm::mat4 to_world =
-            glm::translate(glm::mat4(1.0f), character_origin_ + y_off) *
-            glm::mat4_cast(character_rotation_) *
-            glm::scale(glm::mat4(1.0f), scale_vec) *
-            glm::rotate(glm::mat4(1.0f), glm::pi<float>(), {0, 1, 0});
-
+        // gather_bone_animation_transforms now handles BOTH player (bones 1-7)
+        // and NPC (bones 8+) transforms via the registry
         glm::mat4 bones[32];
         bones[0] = terrain_bone;
-        const auto& anim_bones = anim_player_->bone_transforms();
-        int bone_count = static_cast<int>(character_data_->bones.size());
-        for (int i = 0; i < bone_count && i < 31; ++i) {
-            bones[i + 1] = to_world * anim_bones[i] * from_world;
-        }
-
-        // Gather NPC bone transforms from engine-level registry
-        uint32_t npc_highest = gather_bone_animation_transforms(
+        uint32_t highest = gather_bone_animation_transforms(
             app.bone_animation_registry(), bones, 32);
 
-        // Total bones: player bones + registry NPCs
-        int total_bones = bone_count + 1;
-        if (npc_highest > static_cast<uint32_t>(total_bones)) {
-            total_bones = static_cast<int>(npc_highest);
-        }
+        int total_bones = static_cast<int>(highest);
         if (app.gs_terrain().bone_slot_counter > static_cast<uint32_t>(total_bones)) {
             total_bones = static_cast<int>(app.gs_terrain().bone_slot_counter);
         }
