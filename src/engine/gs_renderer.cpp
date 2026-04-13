@@ -111,8 +111,8 @@ void GsRenderer::init(VkDevice device, VkPhysicalDevice physical_device,
         VkPhysicalDeviceProperties props;
         vkGetPhysicalDeviceProperties(physical_device, &props);
         timestamp_period_ns_ = props.limits.timestampPeriod;
-        std::printf("[gs_renderer] Timestamp period: %.2f ns (query pool created)\n",
-                    timestamp_period_ns_);
+        std::fprintf(stderr, "[gs_renderer] Timestamp period: %.2f ns (query pool created)\n",
+                     timestamp_period_ns_);
     }
 
     initialized_ = true;
@@ -2464,8 +2464,8 @@ void GsRenderer::render(VkCommandBuffer cmd, const glm::mat4& view, const glm::m
             ++timestamp_frame_;
             if (timestamp_frame_ % kTimestampAvgFrames == 0) {
                 float avg = rasterize_ms_accum_ / static_cast<float>(kTimestampAvgFrames);
-                std::printf("[gs_renderer] Rasterize pass: %.3f ms (avg %u frames)\n",
-                            avg, kTimestampAvgFrames);
+                std::fprintf(stderr, "[gs_renderer] Rasterize pass: %.3f ms (avg %u frames)\n",
+                             avg, kTimestampAvgFrames);
                 rasterize_ms_accum_ = 0.0f;
             }
         }
