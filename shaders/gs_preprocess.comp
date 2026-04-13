@@ -150,6 +150,19 @@ mat3 quat_to_mat(vec4 q) {
     );
 }
 
+/** Clip-space frustum test with padding for splat radius bleed.
+ *  Returns true if the splat center is potentially visible. */
+bool frustum_visible(vec4 clip) {
+    float pad = abs(clip.w) * 1.1;  // 10% padding for Gaussian extent
+    return clip.w > 0.0             // not behind camera
+        && clip.z >= -pad           // near plane
+        && clip.z <=  pad           // far plane
+        && clip.x >= -pad           // left
+        && clip.x <=  pad           // right
+        && clip.y >= -pad           // bottom
+        && clip.y <=  pad;          // top
+}
+
 void main() {
     uint idx = gl_GlobalInvocationID.x;
     if (idx >= gaussian_count) return;
@@ -384,38 +397,20 @@ void main() {
     // Transform to view space
     vec4 view_pos = view * vec4(pos, 1.0);
 
-    // Frustum cull: discard if behind near plane or too close to camera
-    // (near Gaussians expand to fill screen, causing blurry foreground artifacts)
-    if (view_pos.z > -6.0) {
-        sort_entries[idx].key = 0xFFFF;
-        sort_entries[idx].index = projected_offset + idx;
-        return;
-    }
-
     // Project to clip space
     vec4 clip_pos = proj * view_pos;
-    if (clip_pos.w <= 0.0) {
+
+    // Unified frustum cull: clip-space test with 10% padding for splat extent
+    if (!frustum_visible(clip_pos)) {
         sort_entries[idx].key = 0xFFFF;
         sort_entries[idx].index = projected_offset + idx;
         return;
     }
 
-    // NDC: Vulkan NDC is [-1,1] X, [-1,1] Y (with Y-flip already in proj), [0,1] Z
+    // NDC for screen-space coordinates (needed for rasterization, not culling)
     vec3 ndc = clip_pos.xyz / clip_pos.w;
-
-    // Screen space: map NDC to pixel coordinates
-    // With Vulkan Y-flip in projection, ndc.y is already correct orientation
     float screen_x = (ndc.x * 0.5 + 0.5) * float(params.x);
     float screen_y = (ndc.y * 0.5 + 0.5) * float(params.y);
-
-    // Frustum cull: discard if outside screen (margin from shadow_box.x, default 128)
-    float margin = shadow_box.x;
-    if (screen_x < -margin || screen_x > float(params.x) + margin ||
-        screen_y < -margin || screen_y > float(params.y) + margin) {
-        sort_entries[idx].key = 0xFFFF;
-        sort_entries[idx].index = projected_offset + idx;
-        return;
-    }
 
     // Viewing cone backface cull (shadow box mode): cull Gaussians outside viewing cone
     if (shadow_box.y > 0.0) {
