@@ -249,6 +249,10 @@ option(GSEURAT_DEV_MODE "Enable ImGui developer overlay" ON)
 if(GSEURAT_DEV_MODE)
     target_link_libraries(gseurat_core PUBLIC imgui_lib)
     target_compile_definitions(gseurat_core PUBLIC GSEURAT_DEV_MODE)
+    target_sources(gseurat_core PRIVATE
+        src/engine/dev_overlay.cpp
+        src/engine/dev_panels.cpp
+    )
 endif()
 
 # --- Demo executable --------------------------------------------------------
