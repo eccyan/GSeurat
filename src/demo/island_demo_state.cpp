@@ -549,61 +549,63 @@ void IslandDemoState::update(AppBase& app, float dt) {
         return;
     }
 
-    // Tab → cycle HUD mode: OFF → COMPACT → FULL → OFF
-    if (app.input().was_key_pressed(GLFW_KEY_TAB)) {
-        hud_mode_ = static_cast<HudMode>(
-            (static_cast<int>(hud_mode_) + 1) % 3);
-    }
-
-    // P → toggle particles/emitters
-    if (app.input().was_key_pressed(GLFW_KEY_P)) {
-        auto& f = app.feature_flags();
-        f.particles = !f.particles;
-    }
-
-    // N → toggle terrain sway + walk animation
-    if (app.input().was_key_pressed(GLFW_KEY_N)) {
-        anim_enabled_ = !anim_enabled_;
-    }
-
-    // G → toggle debug gizmos (lights, emitters, triggers)
-    if (app.input().was_key_pressed(GLFW_KEY_G)) {
-        show_gizmos_ = !show_gizmos_;
-        std::fprintf(stderr, "[IslandDemo] Debug gizmos %s\n", show_gizmos_ ? "ON" : "OFF");
-    }
-
-    // J → toggle PBD chain demo (CPU-side, rendered as dynamic Gaussians)
-    if (app.input().was_key_pressed(GLFW_KEY_J)) {
-        if (pbd_chain_active_) {
-            pbd_chain_active_ = false;
-            std::fprintf(stderr, "[IslandDemo] PBD chain demo OFF\n");
-        } else {
-            glm::vec3 top = character_origin_ + glm::vec3(3.0f, 8.0f, 0.0f);
-            for (int i = 0; i < kPbdNodeCount; ++i) {
-                glm::vec3 p = top - glm::vec3(0.0f, static_cast<float>(i) * 3.0f, 0.0f);
-                pbd_nodes_[i].position = p;
-                pbd_nodes_[i].prev_position = p;
-                pbd_nodes_[i].velocity = glm::vec3(0.0f);
-                pbd_nodes_[i].inv_mass = (i == 0) ? 0.0f : 1.0f;
-            }
-            pbd_links_[0] = {0, 1, 3.0f, 0.8f};
-            pbd_links_[1] = {1, 2, 3.0f, 0.8f};
-            pbd_chain_active_ = true;
-            std::fprintf(stderr, "[IslandDemo] PBD chain demo ON (CPU, 3 nodes, 2 links)\n");
+    // Skip keyboard shortcuts when dev overlay has focus
+    if (!app.dev_overlay().wants_keyboard()) {
+        // Tab → cycle HUD mode: OFF → COMPACT → FULL → OFF
+        if (app.input().was_key_pressed(GLFW_KEY_TAB)) {
+            hud_mode_ = static_cast<HudMode>(
+                (static_cast<int>(hud_mode_) + 1) % 3);
         }
-    }
 
-    // Space → jump (if not already jumping)
-    if (app.input().was_key_pressed(GLFW_KEY_SPACE) && !jumping_) {
-        jumping_ = true;
-        jump_time_ = 0.0f;
-        auto* pe = app.bone_animation_registry().get(player_registry_id_);
-        if (pe) pe->requested_clip = "jump";
-    }
+        // P → toggle particles/emitters
+        if (app.input().was_key_pressed(GLFW_KEY_P)) {
+            auto& f = app.feature_flags();
+            f.particles = !f.particles;
+        }
 
+        // N → toggle terrain sway + walk animation
+        if (app.input().was_key_pressed(GLFW_KEY_N)) {
+            anim_enabled_ = !anim_enabled_;
+        }
 
-    // Handle mouse input for camera orbit
-    {
+        // G → toggle debug gizmos (lights, emitters, triggers)
+        if (app.input().was_key_pressed(GLFW_KEY_G)) {
+            show_gizmos_ = !show_gizmos_;
+            std::fprintf(stderr, "[IslandDemo] Debug gizmos %s\n", show_gizmos_ ? "ON" : "OFF");
+        }
+
+        // J → toggle PBD chain demo (CPU-side, rendered as dynamic Gaussians)
+        if (app.input().was_key_pressed(GLFW_KEY_J)) {
+            if (pbd_chain_active_) {
+                pbd_chain_active_ = false;
+                std::fprintf(stderr, "[IslandDemo] PBD chain demo OFF\n");
+            } else {
+                glm::vec3 top = character_origin_ + glm::vec3(3.0f, 8.0f, 0.0f);
+                for (int i = 0; i < kPbdNodeCount; ++i) {
+                    glm::vec3 p = top - glm::vec3(0.0f, static_cast<float>(i) * 3.0f, 0.0f);
+                    pbd_nodes_[i].position = p;
+                    pbd_nodes_[i].prev_position = p;
+                    pbd_nodes_[i].velocity = glm::vec3(0.0f);
+                    pbd_nodes_[i].inv_mass = (i == 0) ? 0.0f : 1.0f;
+                }
+                pbd_links_[0] = {0, 1, 3.0f, 0.8f};
+                pbd_links_[1] = {1, 2, 3.0f, 0.8f};
+                pbd_chain_active_ = true;
+                std::fprintf(stderr, "[IslandDemo] PBD chain demo ON (CPU, 3 nodes, 2 links)\n");
+            }
+        }
+
+        // Space → jump (if not already jumping)
+        if (app.input().was_key_pressed(GLFW_KEY_SPACE) && !jumping_) {
+            jumping_ = true;
+            jump_time_ = 0.0f;
+            auto* pe = app.bone_animation_registry().get(player_registry_id_);
+            if (pe) pe->requested_clip = "jump";
+        }
+    }  // end keyboard gating
+
+    // Handle mouse input for camera orbit (skip when dev overlay has mouse focus)
+    if (!app.dev_overlay().wants_mouse()) {
         auto& input = app.input();
         glm::vec2 mouse = input.mouse_pos();
         if (input.is_mouse_down(0)) {
@@ -628,8 +630,10 @@ void IslandDemoState::update(AppBase& app, float dt) {
         }
     }
 
-    // Player movement
-    update_player(app, dt);
+    // Player movement (skip when dev overlay has keyboard focus)
+    if (!app.dev_overlay().wants_keyboard()) {
+        update_player(app, dt);
+    }
 
     // Run ECS systems (proximity triggers, linked triggers, emissive toggle, NPC walker, bone animation)
     app.update_game(dt);
