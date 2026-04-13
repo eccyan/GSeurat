@@ -1249,9 +1249,11 @@ void StagingState::draw_gizmos(AppBase& app) {
     if (show_gizmo_portals_) {
         ImU32 portal_col = IM_COL32(0, 220, 220, 200);  // cyan
         const auto& portals = app.scene_objects().portals;
+        auto terrain_aabb = app.gs_terrain().terrain_aabb;
         for (size_t i = 0; i < portals.size(); i++) {
             const auto& p = portals[i];
-            glm::vec3 pos(p.position.x(), p.position.y(), p.position.z());
+            auto world_pos = coord::to_world(p.position, terrain_aabb);
+            glm::vec3 pos = world_pos.vec();
             float sx, sy;
             if (!project_to_screen(pos, vp, sw, sh, sx, sy)) continue;
 
