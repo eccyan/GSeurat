@@ -75,8 +75,10 @@ uint32_t gather_bone_animation_transforms(
             glm::translate(glm::mat4(1.0f), -(entry.spawn_pos + y_off));
 
         glm::quat rot = glm::angleAxis(entry.facing_angle, glm::vec3(0, 1, 0));
+        glm::vec3 effective_pos = entry.current_pos;
+        effective_pos.y += entry.y_offset;
         glm::mat4 to_world =
-            glm::translate(glm::mat4(1.0f), entry.current_pos + y_off) *
+            glm::translate(glm::mat4(1.0f), effective_pos + y_off) *
             glm::mat4_cast(rot) *
             glm::scale(glm::mat4(1.0f), char_scale) *
             glm::rotate(glm::mat4(1.0f), glm::pi<float>(), {0, 1, 0});

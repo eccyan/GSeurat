@@ -23,6 +23,7 @@ struct BoneAnimationEntry {
     glm::vec3 spawn_pos{0.0f};       // initial world position (for bone transform anchoring)
     glm::vec3 current_pos{0.0f};     // updated by walker system
     float facing_angle = 0.0f;       // updated by walker system
+    float y_offset = 0.0f;            // additive visual Y offset (jump arc, bounce)
 
     // Lazy-initialized
     std::unique_ptr<CharacterData> character_data;
