@@ -24,20 +24,27 @@
     {
       "id": "sv_dungeon_approach",
       "shape": "sphere",
-      "position": [50.0, 20.0, 50.0],
-      "radius": 30.0,
+      "position": [135.0, 3.0, 215.0],
+      "radius": 25.0,
       "preload_target_ids": ["dungeon_01"]
     }
   ],
   "portals": [
     {
       "id": "portal_dungeon",
-      "position": [40.0, 15.0, 40.0],
+      "position": [135.0, 3.0, 210.0],
       "region_shape": "sphere",
-      "region_radius": 3.0,
+      "region_radius": 4.0,
       "target_instance_id": "dungeon_01",
       "spawn_position": [5.0, 0.0, 5.0],
       "spawn_facing": "down"
+    }
+  ],
+  "instances": [
+    {
+      "id": "dungeon_01",
+      "display_name": "Underground Dungeon",
+      "scene_file": "assets/scenes/test_scene.json"
     }
   ]
 }

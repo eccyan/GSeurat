@@ -3,6 +3,7 @@
 #include "gseurat/engine/game_state.hpp"
 #include "gseurat/staging/camera_review_state.hpp"
 #include "gseurat/engine/scene_loader.hpp"
+#include "gseurat/engine/world_streamer.hpp"
 #include "gseurat/character/character_manifest.hpp"
 #include "gseurat/character/bone_animation_player.hpp"
 
@@ -120,6 +121,9 @@ private:
     std::optional<SceneData> last_scene_data_;
     uint32_t last_scene_data_version_ = 0;  // tracks update_scene_data changes
     bool right_click_prev_ = false;
+
+    // World streaming
+    std::unique_ptr<WorldStreamer> world_streamer_;
 };
 
 }  // namespace gseurat
