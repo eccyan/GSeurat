@@ -188,6 +188,7 @@ add_library(gseurat_core OBJECT
     src/engine/world_manifest.cpp
     src/engine/world_streamer.cpp
     src/engine/bone_animation_system.cpp
+    src/engine/debug_draw.cpp
 )
 
 
