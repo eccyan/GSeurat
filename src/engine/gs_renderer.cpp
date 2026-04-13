@@ -105,7 +105,7 @@ void GsRenderer::init(VkDevice device, VkPhysicalDevice physical_device,
         VkQueryPoolCreateInfo qp_info{};
         qp_info.sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO;
         qp_info.queryType = VK_QUERY_TYPE_TIMESTAMP;
-        qp_info.queryCount = 2;
+        qp_info.queryCount = 4;  // sort_begin, sort_end, raster_begin, raster_end
         vkCreateQueryPool(device_, &qp_info, nullptr, &timestamp_pool_);
 
         VkPhysicalDeviceProperties props;
@@ -2449,33 +2449,38 @@ void GsRenderer::render(VkCommandBuffer cmd, const glm::mat4& view, const glm::m
 
     std::memcpy(uniform_buffer_.mapped(), &uniforms, sizeof(uniforms));
 
-    // Read back GPU timestamps from previous frame's rasterize pass.
+    // Read back GPU timestamps from previous frame (sort + rasterize).
     // Non-blocking: if results aren't ready yet, skip this frame's sample.
     if (timestamp_pool_ && timestamps_written_) {
-        uint64_t timestamps[2]{};
+        uint64_t timestamps[4]{};  // sort_begin, sort_end, raster_begin, raster_end
         VkResult ts_result = vkGetQueryPoolResults(
-            device_, timestamp_pool_, 0, 2,
+            device_, timestamp_pool_, 0, 4,
             sizeof(timestamps), timestamps, sizeof(uint64_t),
             VK_QUERY_RESULT_64_BIT);  // no WAIT_BIT — never block on GPU
-        if (ts_result == VK_SUCCESS && timestamps[1] > timestamps[0]) {
-            float ms = static_cast<float>(timestamps[1] - timestamps[0])
-                       * timestamp_period_ns_ / 1e6f;
-            rasterize_ms_accum_ += ms;
+        if (ts_result == VK_SUCCESS && timestamps[3] > timestamps[2]
+            && timestamps[1] > timestamps[0]) {
+            float sort_ms = static_cast<float>(timestamps[1] - timestamps[0])
+                            * timestamp_period_ns_ / 1e6f;
+            float raster_ms = static_cast<float>(timestamps[3] - timestamps[2])
+                              * timestamp_period_ns_ / 1e6f;
+            sort_ms_accum_ += sort_ms;
+            rasterize_ms_accum_ += raster_ms;
             ++timestamp_frame_;
             if (timestamp_frame_ % kTimestampAvgFrames == 0) {
-                float avg = rasterize_ms_accum_ / static_cast<float>(kTimestampAvgFrames);
-                std::fprintf(stderr, "[gs_renderer] Rasterize pass: %.3f ms (avg %u frames)\n",
-                             avg, kTimestampAvgFrames);
+                float sort_avg = sort_ms_accum_ / static_cast<float>(kTimestampAvgFrames);
+                float raster_avg = rasterize_ms_accum_ / static_cast<float>(kTimestampAvgFrames);
+                std::fprintf(stderr, "[gs_renderer] Sort: %.3f ms  Rasterize: %.3f ms  Total: %.3f ms (avg %u frames)\n",
+                             sort_avg, raster_avg, sort_avg + raster_avg, kTimestampAvgFrames);
+                sort_ms_accum_ = 0.0f;
                 rasterize_ms_accum_ = 0.0f;
             }
         }
-        // VK_NOT_READY means GPU hasn't finished yet — just skip this sample
     }
 
     // Reset timestamp queries for this frame
     if (timestamp_pool_) {
-        vkCmdResetQueryPool(cmd, timestamp_pool_, 0, 2);
-        timestamps_written_ = false;  // reset each frame — set again after dispatch
+        vkCmdResetQueryPool(cmd, timestamp_pool_, 0, 4);
+        timestamps_written_ = false;
     }
 
     // In skip-sort mode, skip GS compute but still run post-process
@@ -2631,7 +2636,15 @@ void GsRenderer::render(VkCommandBuffer cmd, const glm::mat4& view, const glm::m
             insert_compute_barrier(cmd);
 
             // === Phase 3.5: Tile binning + tile sort ===
+            if (timestamp_pool_) {
+                vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                                   timestamp_pool_, 0);  // sort_begin
+            }
             dispatch_tile_sort(cmd);
+            if (timestamp_pool_) {
+                vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                                   timestamp_pool_, 1);  // sort_end
+            }
 
             // === Phase 4: Tile-based rasterization ===
             {
@@ -2650,12 +2663,12 @@ void GsRenderer::render(VkCommandBuffer cmd, const glm::mat4& view, const glm::m
 
                 if (timestamp_pool_) {
                     vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                                       timestamp_pool_, 0);
+                                       timestamp_pool_, 2);  // raster_begin
                 }
                 vkCmdDispatch(cmd, tiles_x, tiles_y, 1);
                 if (timestamp_pool_) {
                     vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                                       timestamp_pool_, 1);
+                                       timestamp_pool_, 3);  // raster_end
                     timestamps_written_ = true;
                 }
             }

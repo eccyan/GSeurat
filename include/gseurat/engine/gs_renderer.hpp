@@ -447,12 +447,13 @@ private:
     // World manifest (Phase 3 streaming)
     WorldManifest world_manifest_;
 
-    // GPU timestamp profiling for rasterize pass
+    // GPU timestamp profiling: queries 0-3 = sort_begin, sort_end, raster_begin, raster_end
     VkQueryPool timestamp_pool_ = VK_NULL_HANDLE;
     float timestamp_period_ns_ = 0.0f;   // nanoseconds per tick
     uint32_t timestamp_frame_ = 0;
+    float sort_ms_accum_ = 0.0f;
     float rasterize_ms_accum_ = 0.0f;
-    bool timestamps_written_ = false;     // true after first rasterize dispatch writes timestamps
+    bool timestamps_written_ = false;     // true after rasterize dispatch writes timestamps
     static constexpr uint32_t kTimestampAvgFrames = 60;
 
     // Shadow box parameters
