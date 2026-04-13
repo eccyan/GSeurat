@@ -38,7 +38,6 @@ layout(set = 0, binding = 3) readonly buffer IndirectArgs {
 
 layout(push_constant) uniform PushConstants {
     uint pass;            // 0..3 (which 8-bit digit to sort on)
-    uint max_workgroups;  // total workgroups dispatched
 };
 
 // Shared memory: ~19KB total (under 32KB Apple Silicon limit)
@@ -60,6 +59,7 @@ void main() {
     uint wg_id = gl_WorkGroupID.x;
     uint wg_offset = wg_id * ENTRIES_PER_WG;
     uint total = entry_count;
+    uint max_workgroups = sort_dispatch_x;  // actual dispatched workgroup count
 
     // ========================================
     // Phase 1: Load entries & build histogram

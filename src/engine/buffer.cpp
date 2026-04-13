@@ -89,7 +89,7 @@ Buffer Buffer::create_storage(VmaAllocator allocator, VkDeviceSize size) {
     VkBufferCreateInfo buf_info{};
     buf_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     buf_info.size = size;
-    buf_info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+    buf_info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
     buf_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
     VmaAllocationCreateInfo alloc_info{};

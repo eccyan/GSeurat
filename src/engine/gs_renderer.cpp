@@ -661,7 +661,7 @@ void GsRenderer::create_compute_pipelines() {
                     tile_indirect_pipeline_layout_, tile_indirect_pipeline_);
 
     // Onesweep pipeline (push: pass + max_workgroups = 8 bytes)
-    create_pipeline("shaders/gs_onesweep.comp.spv", onesweep_layout_, 8,
+    create_pipeline("shaders/gs_onesweep.comp.spv", onesweep_layout_, 4,
                     onesweep_pipeline_layout_, onesweep_pipeline_);
 
     // Tile render pipeline (separate from render — uses tile_entries + tile_ranges)
@@ -2232,14 +2232,14 @@ void GsRenderer::dispatch_tile_sort(VkCommandBuffer cmd) {
         // === Onesweep: 4 radix passes ===
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, onesweep_pipeline_);
         for (uint32_t pass = 0; pass < 4; pass++) {
-            uint32_t push_data[2] = {pass, onesweep_max_wg_};
+            uint32_t push_data[1] = {pass};
             bool read_from_a = (pass % 2 == 0);
             VkDescriptorSet set = read_from_a ? onesweep_set_ab_ : onesweep_set_ba_;
 
             vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
                                     onesweep_pipeline_layout_, 0, 1, &set, 0, nullptr);
             vkCmdPushConstants(cmd, onesweep_pipeline_layout_, VK_SHADER_STAGE_COMPUTE_BIT,
-                               0, 8, push_data);
+                               0, 4, push_data);
             vkCmdDispatchIndirect(cmd, tile_indirect_args_.buffer(), 0);
 
             insert_compute_barrier(cmd);
