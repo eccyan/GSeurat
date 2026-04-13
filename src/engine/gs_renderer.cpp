@@ -2449,7 +2449,7 @@ void GsRenderer::render(VkCommandBuffer cmd, const glm::mat4& view, const glm::m
 
             // === Phase 4: Tile-based rasterization ===
             {
-                bool use_tile = (tile_sort_a_.buffer() && tile_sort_capacity_ > 0);
+                bool use_tile = false;  // DEBUG: force original pipeline to confirm it works
                 if (use_tile) {
                     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, tile_render_pipeline_);
                     vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
