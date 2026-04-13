@@ -1,5 +1,4 @@
 #include "gseurat/engine/gs_scene_loader.hpp"
-#include "gseurat/character/character_manifest.hpp"
 #include "gseurat/engine/scene_load_context.hpp"
 #include "gseurat/engine/gs_terrain_state.hpp"
 #include "gseurat/engine/scene_object_state.hpp"
@@ -20,6 +19,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <fstream>
 
 namespace gseurat {
 
@@ -104,13 +104,24 @@ void GsSceneLoader::load(SceneLoadContext& ctx, const SceneData& scene_data,
             std::string manifest_path = ba_json.value("manifest", std::string{});
             if (manifest_path.empty()) continue;
 
-            auto manifest = load_character_manifest(manifest_path);
-            if (!manifest) {
-                std::fprintf(stderr, "[GS] BoneAnimated: failed to load manifest '%s'\n",
-                             manifest_path.c_str());
-                continue;
+            // Parse manifest JSON directly to get bone count
+            // (avoid constructing CharacterData — its destructor crashes on macOS)
+            uint32_t bone_count = 0;
+            {
+                std::ifstream mf(manifest_path);
+                if (!mf.is_open()) {
+                    std::fprintf(stderr, "[GS] BoneAnimated: failed to open manifest '%s'\n",
+                                 manifest_path.c_str());
+                    continue;
+                }
+                auto mj = nlohmann::json::parse(mf, nullptr, false);
+                if (mj.is_discarded() || !mj.contains("bones") || !mj["bones"].is_array()) {
+                    std::fprintf(stderr, "[GS] BoneAnimated: invalid manifest '%s'\n",
+                                 manifest_path.c_str());
+                    continue;
+                }
+                bone_count = static_cast<uint32_t>(mj["bones"].size());
             }
-            uint32_t bone_count = static_cast<uint32_t>(manifest->bones.size());
             if (ctx.terrain.bone_slot_counter + bone_count > 32) {
                 std::fprintf(stderr, "[GS] BoneAnimated: bone budget exceeded for '%s' (need %u, have %u)\n",
                              go.id.c_str(), bone_count, 32 - ctx.terrain.bone_slot_counter);
