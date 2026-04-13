@@ -10,13 +10,13 @@
 #include "gseurat/engine/types.hpp"
 #include "gseurat/engine/world_streamer.hpp"
 #include "gseurat/engine/ecs/types.hpp"
+#include "gseurat/demo/bone_animation_registry.hpp"
 
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
 #include <array>
 #include <chrono>
 #include <memory>
-#include <optional>
 #include <string>
 
 namespace gseurat {
@@ -67,39 +67,6 @@ private:
     float gs_scale_ = 1.0f;               // scene scale_multiplier (for bone coord conversion)
     std::vector<Gaussian> map_gaussians_;  // original map data before character merge
 
-    // NPC tracking (for bone animation)
-    struct NpcInfo {
-        ecs::Entity entity = ecs::kNullEntity;
-        glm::vec3 spawn_pos{0.0f};
-        uint32_t bone_index = 0;
-        float squish_phase = 0.0f;  // per-slime animation phase offset
-        // Slime jump state
-        bool slime_jumping = false;
-        float slime_jump_time = 0.0f;
-        float slime_jump_cooldown = 0.0f;  // time until next possible jump
-    };
-    std::vector<NpcInfo> npc_infos_;
-    uint32_t next_bone_index_ = 0;
-    static constexpr float kSlimeJumpDuration = 0.6f;
-    static constexpr float kSlimeJumpHeight = 2.5f;
-
-    // Knight NPC
-    struct KnightInfo {
-        glm::vec3 spawn_pos{0.0f};
-        glm::vec3 current_pos{0.0f};
-        glm::vec3 walk_target{0.0f};
-        float facing_angle = 0.0f;
-        uint32_t first_bone_index = 0;
-        float anim_cycle_timer = 0.0f;
-        int current_anim = 0;
-    };
-    static constexpr float kKnightSpeed = 8.0f;
-    static constexpr float kKnightPatrolRadius = 12.0f;
-    std::optional<KnightInfo> knight_info_;
-    std::unique_ptr<gseurat::CharacterData> knight_data_;
-    std::unique_ptr<gseurat::BoneAnimationPlayer> knight_anim_player_;
-    std::unique_ptr<gseurat::BoneAnimationStateMachine> knight_anim_sm_;
-
     // Data-driven bone animation
     std::unique_ptr<gseurat::CharacterData> character_data_;
     std::unique_ptr<gseurat::BoneAnimationPlayer> anim_player_;
@@ -122,6 +89,9 @@ private:
 
     // World streaming
     std::unique_ptr<WorldStreamer> world_streamer_;
+
+    // Bone animation registry (data-driven NPC animation)
+    BoneAnimationRegistry bone_anim_registry_;
 
     // Orbit camera (third-person around player)
     float azimuth_ = 0.0f;

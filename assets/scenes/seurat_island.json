@@ -75260,6 +75260,25 @@
       }
     },
     {
+      "id": "knight_01",
+      "name": "Knight",
+      "position": [202.0, 0.0, 187.0],
+      "rotation": [0, 0, 0],
+      "scale": 0.45,
+      "ply_file": "assets/characters/knight/knight.ply",
+      "components": {
+        "BoneAnimated": {
+          "manifest": "assets/characters/knight/knight.manifest.json",
+          "default_clip": "idle"
+        },
+        "NpcWalker": {
+          "patrol_radius": 12.0,
+          "speed": 8.0,
+          "pause_duration": 1.5
+        }
+      }
+    },
+    {
       "id": "slime_npc_1",
       "name": "Slime (patrol)",
       "position": [
@@ -75273,7 +75292,12 @@
         0
       ],
       "scale": 0.5,
+      "ply_file": "assets/characters/slime/slime.ply",
       "components": {
+        "BoneAnimated": {
+          "manifest": "assets/characters/slime/slime.manifest.json",
+          "default_clip": "idle"
+        },
         "NpcWalker": {
           "patrol_radius": 20.0,
           "speed": 8.0,
@@ -75304,7 +75328,12 @@
         0
       ],
       "scale": 0.5,
+      "ply_file": "assets/characters/slime/slime.ply",
       "components": {
+        "BoneAnimated": {
+          "manifest": "assets/characters/slime/slime.manifest.json",
+          "default_clip": "idle"
+        },
         "NpcWalker": {
           "patrol_radius": 16.0,
           "speed": 10.0,
@@ -75335,7 +75364,12 @@
         0
       ],
       "scale": 0.5,
+      "ply_file": "assets/characters/slime/slime.ply",
       "components": {
+        "BoneAnimated": {
+          "manifest": "assets/characters/slime/slime.manifest.json",
+          "default_clip": "idle"
+        },
         "NpcWalker": {
           "patrol_radius": 25.0,
           "speed": 12.0,
