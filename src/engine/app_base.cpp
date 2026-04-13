@@ -6,6 +6,7 @@
 #include "gseurat/demo/island_components.hpp"
 #include "gseurat/engine/bone_animated_component.hpp"
 #include "gseurat/engine/bone_animation_system.hpp"
+#include "gseurat/engine/gs_renderer.hpp"
 
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
@@ -160,7 +161,25 @@ void AppBase::init_scene(const std::string& /*scene_path*/) {}
 void AppBase::clear_scene() {
     bone_anim_registry_.clear();
 }
-void AppBase::update_game(float dt) { system_scheduler_.run_all(world_, dt); }
+void AppBase::update_game(float dt) {
+    system_scheduler_.run_all(world_, dt);
+
+    // Bone animation orchestration: gather transforms and upload to GPU
+    if (!bone_anim_registry_.entries().empty()) {
+        glm::mat4 bones[32];
+        bones[0] = glm::mat4(1.0f);  // identity — hook can override
+
+        if (bone_pre_upload_hook_) {
+            bone_pre_upload_hook_(bones, 32);
+        }
+
+        uint32_t highest = gather_bone_animation_transforms(
+            bone_anim_registry_, bones, 32);
+        uint32_t total = std::max(highest, gs_terrain_.bone_slot_counter);
+        renderer_.gs_renderer().upload_bone_transforms(
+            bones, static_cast<int>(total));
+    }
+}
 void AppBase::update_audio(float /*dt*/) {}
 SaveData AppBase::build_save_data() const { return {}; }
 void AppBase::apply_save_data(const SaveData& /*data*/) {}

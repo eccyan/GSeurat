@@ -149,6 +149,11 @@ public:
     DebugMetrics& debug_metrics() { return debug_metrics_; }
     const DebugMetrics& debug_metrics() const { return debug_metrics_; }
 
+    // Bone pre-upload hook (e.g., terrain sway on bone 0)
+    void set_bone_pre_upload_hook(std::function<void(glm::mat4*, uint32_t)> hook) {
+        bone_pre_upload_hook_ = std::move(hook);
+    }
+
     // Screen effects accessor
     ScreenEffects& screen_effects() { return screen_effects_; }
 
@@ -219,6 +224,9 @@ protected:
 
     // Debug metrics
     DebugMetrics debug_metrics_;
+
+    // Bone pre-upload hook
+    std::function<void(glm::mat4*, uint32_t)> bone_pre_upload_hook_;
 
     // Minimap
     Minimap minimap_;

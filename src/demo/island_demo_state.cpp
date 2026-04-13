@@ -16,8 +16,8 @@
 #include "gseurat/engine/gs_animator.hpp"
 #include "gseurat/engine/gs_vfx.hpp"
 #include "gseurat/engine/pbd_types.hpp"
-#include "gseurat/engine/bone_animation_system.hpp"
 #include "gseurat/engine/bone_animation_registry.hpp"
+#include "gseurat/engine/bone_animation_system.hpp"
 #include "gseurat/engine/bone_animated_component.hpp"
 
 #define GLFW_INCLUDE_VULKAN
@@ -478,6 +478,14 @@ void IslandDemoState::on_enter(AppBase& app) {
                 player_entity_, std::move(player_entry));
             app.world().add<gseurat::BoneAnimatedTag>(player_entity_,
                 {player_registry_id_});
+
+            // Set bone 0 override for terrain sway
+            app.set_bone_pre_upload_hook([this](glm::mat4* bones, uint32_t) {
+                float sway_y = std::sin(env_anim_time_ * 1.0f) * 0.05f;
+                float sway_x = std::sin(env_anim_time_ * 0.6f) * 0.02f;
+                bones[0] = glm::translate(glm::mat4(1.0f),
+                    glm::vec3(sway_x, sway_y, 0.0f));
+            });
         }
 
         (void)char_count;
@@ -520,6 +528,7 @@ void IslandDemoState::on_exit(AppBase& app) {
     camera_zone_system_.reset();
 
     // Release animation registry references
+    app.set_bone_pre_upload_hook(nullptr);
     player_registry_id_ = 0;
 
     if (character_spawned_) {
@@ -1398,90 +1407,45 @@ void IslandDemoState::update_effects(AppBase& app, float dt) {
 void IslandDemoState::update_walk_animation(AppBase& app, float dt) {
     if (!character_spawned_) return;
 
-    // Terrain sway (bone 0 — map Gaussians)
-    env_anim_time_ += dt;
-    float terrain_sway_y = std::sin(env_anim_time_ * 1.0f) * 0.05f;
-    float terrain_sway_x = std::sin(env_anim_time_ * 0.6f) * 0.02f;
-    glm::mat4 terrain_bone = glm::translate(glm::mat4(1.0f),
-        glm::vec3(terrain_sway_x, terrain_sway_y, 0.0f));
-
     auto* pe = app.bone_animation_registry().get(player_registry_id_);
-    if (pe && pe->anim_player) {
-        // Set requested clip based on movement speed (if not jumping)
-        if (!jumping_) {
-            float speed = glm::length(glm::vec2(player_velocity_.x, player_velocity_.z));
-            pe->requested_clip = speed > 0.1f ? "walk" : "idle";
-        }
+    if (!pe || !pe->anim_player) return;
 
-        // Update entry position and facing (bone_animation_system already set
-        // current_pos from Transform; override with character_origin_ which
-        // includes root motion adjustments but NOT jump Y — that goes in y_offset)
-        // character_origin_ may have jump Y added in update_player; strip it here.
-        glm::vec3 ground_pos = character_origin_;
-        float jump_y_offset = 0.0f;
-        if (jumping_) {
-            float t = jump_time_ / kJumpDuration;
-            jump_y_offset = 4.0f * kJumpHeight * t * (1.0f - t);
-            ground_pos.y -= jump_y_offset;
-        }
-        pe->current_pos = ground_pos;
-        pe->facing_angle = facing_angle_;
-        pe->y_offset = jump_y_offset;
-
-        // Root motion hybrid consumer
-        // (anim_player->update(dt) was already called by bone_animation_system)
-        if (pe->anim_player->current_clip_index() >= 0) {
-            const auto& current_clip = pe->character_data->clips[
-                pe->anim_player->current_clip_index()];
-            if (current_clip.root_motion) {
-                // Delta position rotated by current world orientation
-                glm::vec3 world_delta = character_rotation_ * pe->anim_player->delta_position();
-                character_origin_ += world_delta;
-
-                // Accumulate rotation delta
-                character_rotation_ = glm::normalize(
-                    character_rotation_ * pe->anim_player->delta_rotation());
-
-                // Sync facing_angle_ for systems that need a scalar angle
-                glm::vec3 forward = character_rotation_ * glm::vec3(0.0f, 0.0f, -1.0f);
-                facing_angle_ = std::atan2(forward.x, -forward.z);
-
-                // Update entry with root motion results
-                pe->current_pos = character_origin_;
-                pe->facing_angle = facing_angle_;
-            }
-        }
-
-        // gather_bone_animation_transforms now handles BOTH player (bones 1-7)
-        // and NPC (bones 8+) transforms via the registry
-        glm::mat4 bones[32];
-        bones[0] = terrain_bone;
-        uint32_t highest = gather_bone_animation_transforms(
-            app.bone_animation_registry(), bones, 32);
-
-        int total_bones = static_cast<int>(highest);
-        if (app.gs_terrain().bone_slot_counter > static_cast<uint32_t>(total_bones)) {
-            total_bones = static_cast<int>(app.gs_terrain().bone_slot_counter);
-        }
-        app.renderer().gs_renderer().upload_bone_transforms(bones, total_bones);
-        app.renderer().gs_renderer().set_actor_rotation(character_rotation_);
-    } else {
-        // Fallback: no animation data, just translate character to current position
-        glm::vec3 root_offset = character_origin_ - character_spawn_pos_;
-        glm::mat4 root_translate = glm::translate(glm::mat4(1.0f), root_offset);
-        glm::vec3 spawn = character_spawn_pos_;
-        glm::mat4 root_rotate =
-            glm::translate(glm::mat4(1.0f), spawn) *
-            glm::mat4_cast(character_rotation_) *
-            glm::translate(glm::mat4(1.0f), -spawn);
-        glm::mat4 root_xform = root_translate * root_rotate;
-
-        glm::mat4 bones[2];
-        bones[0] = terrain_bone;
-        bones[1] = root_xform;
-        app.renderer().gs_renderer().upload_bone_transforms(bones, 2);
-        app.renderer().gs_renderer().set_actor_rotation(character_rotation_);
+    // Set requested clip based on movement speed (if not jumping)
+    if (!jumping_) {
+        float speed = glm::length(glm::vec2(player_velocity_.x, player_velocity_.z));
+        pe->requested_clip = speed > 0.1f ? "walk" : "idle";
     }
+
+    // Update entry position and facing
+    glm::vec3 ground_pos = character_origin_;
+    float jump_y_offset = 0.0f;
+    if (jumping_) {
+        float t = jump_time_ / kJumpDuration;
+        jump_y_offset = 4.0f * kJumpHeight * t * (1.0f - t);
+        ground_pos.y -= jump_y_offset;
+    }
+    pe->current_pos = ground_pos;
+    pe->facing_angle = facing_angle_;
+    pe->y_offset = jump_y_offset;
+
+    // Root motion consumer
+    if (pe->anim_player->current_clip_index() >= 0) {
+        const auto& current_clip = pe->character_data->clips[
+            pe->anim_player->current_clip_index()];
+        if (current_clip.root_motion) {
+            glm::vec3 world_delta = character_rotation_ * pe->anim_player->delta_position();
+            character_origin_ += world_delta;
+            character_rotation_ = glm::normalize(
+                character_rotation_ * pe->anim_player->delta_rotation());
+            glm::vec3 forward = character_rotation_ * glm::vec3(0.0f, 0.0f, -1.0f);
+            facing_angle_ = std::atan2(forward.x, -forward.z);
+            pe->current_pos = character_origin_;
+            pe->facing_angle = facing_angle_;
+        }
+    }
+
+    // Actor rotation (for GS preprocess shader)
+    app.renderer().gs_renderer().set_actor_rotation(character_rotation_);
 }
 
 // ── Environment animation (terrain sway) ──
