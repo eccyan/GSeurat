@@ -99,6 +99,22 @@ void IslandDemoState::on_enter(AppBase& app) {
             app.scene_objects().world_manifest = manifest;
             std::fprintf(stderr, "[IslandDemo] Loaded world.json: %zu chunks, %zu streaming volumes, %zu portals\n",
                 manifest.chunks.size(), manifest.streaming_volumes.size(), manifest.portals.size());
+
+            // Initialize WorldStreamer
+            world_streamer_ = std::make_unique<WorldStreamer>();
+            world_streamer_->init(manifest);
+
+            // Mark ALL chunks as loaded — we merge them in on_enter below.
+            // This prevents load_cloud_async from replacing the merged cloud.
+            for (const auto& chunk : manifest.chunks) {
+                std::string key = std::to_string(chunk.grid.x) + "," +
+                                  std::to_string(chunk.grid.y) + "," +
+                                  std::to_string(chunk.grid.z);
+                world_streamer_->on_chunk_loaded(key, 0);
+            }
+
+            std::fprintf(stderr, "[IslandDemo] WorldStreamer initialized: load_radius=%.0f unload_radius=%.0f\n",
+                world_streamer_->load_radius(), world_streamer_->unload_radius());
         }
     }
 
@@ -133,6 +149,40 @@ void IslandDemoState::on_enter(AppBase& app) {
         int gz_max = static_cast<int>((house_z + house_hd) / collision_grid_.cell_size);
         std::fprintf(stderr, "[IslandDemo] House collision: grid[%d-%d, %d-%d] (%d cells marked)\n",
                      gx_min, gx_max, gz_min, gz_max, marked);
+
+        // Open a walkable land bridge at the northern shore → Northern Forest
+        // Clear solid cells in a path from Z=0 to Z=50, centered at X=192, width ~20
+        int bridge_cleared = 0;
+        for (float wx = 182.0f; wx <= 202.0f; wx += collision_grid_.cell_size * 0.5f) {
+            for (float wz = 0.0f; wz <= 50.0f; wz += collision_grid_.cell_size * 0.5f) {
+                int bgx = static_cast<int>(wx / collision_grid_.cell_size);
+                int bgz = static_cast<int>(wz / collision_grid_.cell_size);
+                if (bgx >= 0 && bgx < static_cast<int>(collision_grid_.width) &&
+                    bgz >= 0 && bgz < static_cast<int>(collision_grid_.height)) {
+                    size_t idx = bgz * collision_grid_.width + bgx;
+                    if (collision_grid_.solid[idx]) {
+                        collision_grid_.solid[idx] = false;
+                        if (!collision_grid_.elevation.empty()) {
+                            collision_grid_.elevation[idx] = 0.5f;  // slight elevation above water
+                        }
+                        bridge_cleared++;
+                    }
+                }
+            }
+        }
+        std::fprintf(stderr, "[IslandDemo] North bridge: %d cells cleared (X=182-202, Z=0-50)\n",
+                     bridge_cleared);
+
+        // Load forest collision grid for seamless north transition
+        auto forest_scene = SceneLoader::load("assets/scenes/northern_forest.json");
+        if (forest_scene.collision) {
+            forest_collision_grid_ = *forest_scene.collision;
+            // Forest grid covers Z: -192 to 0 (COLLISION_Z_MIN=-192, 192 cells × 1.0)
+            forest_grid_origin_ = {0.0f, -192.0f};
+            forest_grid_loaded_ = true;
+            std::fprintf(stderr, "[IslandDemo] Forest collision loaded: %ux%u (origin Z=%.0f)\n",
+                forest_collision_grid_.width, forest_collision_grid_.height, forest_grid_origin_.y);
+        }
     }
 
     // Create collision grid reference entity for NPC system
@@ -235,6 +285,25 @@ void IslandDemoState::on_enter(AppBase& app) {
         map_gaussians_.assign(all.begin(), all.end());
 
         std::vector<Gaussian> merged = map_gaussians_;
+
+        // Merge additional world chunks (northern forest) into the cloud
+        // Since load_radius(558) covers all chunks, merge them at startup
+        // to avoid load_cloud_async replacing the entire cloud
+        if (world_streamer_) {
+            for (const auto& chunk : world_streamer_->manifest().chunks) {
+                if (chunk.grid == glm::ivec3(0, 0, 0)) continue;  // already loaded
+                if (chunk.ply_file.empty()) continue;
+                auto resolved = resolve_asset_path(chunk.ply_file);
+                auto extra = GaussianCloud::load_ply(resolved.string());
+                if (!extra.empty()) {
+                    const auto& gs = extra.gaussians();
+                    merged.insert(merged.end(), gs.begin(), gs.end());
+                    std::fprintf(stderr, "[IslandDemo] Merged chunk [%d,%d,%d]: +%u Gaussians\n",
+                        chunk.grid.x, chunk.grid.y, chunk.grid.z, extra.count());
+                }
+            }
+        }
+
         uint32_t map_count = static_cast<uint32_t>(merged.size());
 
         // Load mesh-converted character model
@@ -586,6 +655,282 @@ void IslandDemoState::update(AppBase& app, float dt) {
 
     // Camera follow
     update_camera(app, dt);
+
+    // World streaming evaluation
+    if (world_streamer_) {
+        auto events = world_streamer_->update(character_origin_);
+
+        // Process pending loads
+        for (const auto& grid_key : world_streamer_->pending_loads()) {
+            for (const auto& chunk : world_streamer_->manifest().chunks) {
+                std::string key = std::to_string(chunk.grid.x) + "," +
+                                  std::to_string(chunk.grid.y) + "," +
+                                  std::to_string(chunk.grid.z);
+                if (key == grid_key && !chunk.ply_file.empty()) {
+                    auto resolved = resolve_asset_path(chunk.ply_file);
+                    std::fprintf(stderr, "[IslandDemo] Chunk [%s] Loading: %s\n",
+                        grid_key.c_str(), chunk.ply_file.c_str());
+                    app.renderer().gs_renderer().load_cloud_async(resolved.string());
+                    break;
+                }
+            }
+        }
+
+        // Process pending unloads
+        for (const auto& grid_key : world_streamer_->pending_unloads()) {
+            std::fprintf(stderr, "[IslandDemo] Chunk [%s] Unloaded\n", grid_key.c_str());
+        }
+
+        // Portal transition — actually load the instance scene
+        if (!world_streamer_->entered_portal_id().empty()) {
+            const auto& portal_id = world_streamer_->entered_portal_id();
+            for (const auto& portal : world_streamer_->manifest().portals) {
+                if (portal.id == portal_id) {
+                    // Find the instance scene file
+                    std::string instance_scene;
+                    for (const auto& inst : world_streamer_->manifest().instances) {
+                        if (inst.id == portal.target_instance_id) {
+                            instance_scene = inst.scene_file;
+                            break;
+                        }
+                    }
+                    if (instance_scene.empty()) {
+                        std::fprintf(stderr, "[IslandDemo] Portal '%s' -> instance '%s' not found in manifest\n",
+                            portal_id.c_str(), portal.target_instance_id.c_str());
+                        break;
+                    }
+
+                    std::fprintf(stderr, "[IslandDemo] Portal entered: %s -> loading '%s'\n",
+                        portal_id.c_str(), instance_scene.c_str());
+
+                    // Wait for GPU to finish before destroying resources
+                    vkDeviceWaitIdle(app.renderer().context().device());
+
+                    // Transition: clear current scene and load instance
+                    // Clear ECS world first — old game object entities must not persist
+                    app.world().clear();
+                    player_entity_ = ecs::kNullEntity;
+                    npc_infos_.clear();
+                    knight_info_.reset();
+
+                    app.clear_scene();
+                    app.init_scene(instance_scene);
+
+                    // Reload collision grid from the new scene
+                    {
+                        auto new_scene = SceneLoader::load(instance_scene);
+                        if (new_scene.collision) {
+                            collision_grid_ = *new_scene.collision;
+                            grid_origin_ = {0.0f, 0.0f};
+                            std::fprintf(stderr, "[IslandDemo] Collision grid updated: %ux%u\n",
+                                collision_grid_.width, collision_grid_.height);
+                        }
+
+                        // When returning to overworld, re-open north bridge + reload forest grid
+                        if (portal.target_instance_id == "overworld") {
+                            int bridge_cleared = 0;
+                            for (float wx = 182.0f; wx <= 202.0f; wx += collision_grid_.cell_size * 0.5f) {
+                                for (float wz = 0.0f; wz <= 50.0f; wz += collision_grid_.cell_size * 0.5f) {
+                                    int bgx = static_cast<int>(wx / collision_grid_.cell_size);
+                                    int bgz = static_cast<int>(wz / collision_grid_.cell_size);
+                                    if (bgx >= 0 && bgx < static_cast<int>(collision_grid_.width) &&
+                                        bgz >= 0 && bgz < static_cast<int>(collision_grid_.height)) {
+                                        size_t idx = bgz * collision_grid_.width + bgx;
+                                        if (collision_grid_.solid[idx]) {
+                                            collision_grid_.solid[idx] = false;
+                                            if (!collision_grid_.elevation.empty())
+                                                collision_grid_.elevation[idx] = 0.5f;
+                                            bridge_cleared++;
+                                        }
+                                    }
+                                }
+                            }
+
+                            auto forest_scene = SceneLoader::load("assets/scenes/northern_forest.json");
+                            if (forest_scene.collision) {
+                                forest_collision_grid_ = *forest_scene.collision;
+                                forest_grid_origin_ = {0.0f, -192.0f};
+                                forest_grid_loaded_ = true;
+                            }
+                            std::fprintf(stderr, "[IslandDemo] Overworld restored: bridge=%d cells, forest grid=%s\n",
+                                bridge_cleared, forest_grid_loaded_ ? "OK" : "MISSING");
+                        }
+                    }
+
+                    // Reset camera zone system — island zones are invalid in instances
+                    // (falls back to orbit camera which follows the player anywhere)
+                    camera_zone_system_.reset();
+
+                    // Reset camera target to avoid stale smoothing from old scene
+                    camera_target_ = portal.spawn_position + glm::vec3(0, kCameraYOffset, 0);
+
+                    // Adjust orbit camera for indoor/outdoor scale
+                    // Ceiling at Y=6, so camera must be below: target_y(2.5) + dist*sin(elev) < 6
+                    distance_ = 8.0f;
+                    elevation_ = 0.4f;   // ~23 deg → cam_y ≈ 2.5 + 8*sin(0.4) ≈ 5.6 (below ceiling)
+
+                    // Teleport player to spawn position
+                    glm::vec3 spawn = portal.spawn_position;
+                    character_origin_ = spawn;
+                    character_spawn_pos_ = spawn;
+
+                    // Re-create player entity (old one was destroyed by world.clear())
+                    player_entity_ = app.world().create();
+                    app.world().add<ecs::Transform>(player_entity_,
+                        {coord::WorldPos(spawn), {1.0f, 1.0f}});
+                    app.world().add<PlayerController>(player_entity_,
+                        {kPlayerSpeed, kPlayerAccel});
+
+                    // Re-merge world chunks + player character into the new scene
+                    if (app.renderer().has_gs_cloud()) {
+                        const auto& new_map = app.renderer().gs_chunk_grid().all_gaussians();
+                        map_gaussians_.assign(new_map.begin(), new_map.end());
+                        std::vector<Gaussian> merged = map_gaussians_;
+
+                        // When returning to overworld, re-merge all world chunks
+                        bool is_overworld = (portal.target_instance_id == "overworld");
+                        if (is_overworld && world_streamer_) {
+                            for (const auto& chunk : world_streamer_->manifest().chunks) {
+                                if (chunk.grid == glm::ivec3(0, 0, 0)) continue;
+                                if (chunk.ply_file.empty()) continue;
+                                auto resolved = resolve_asset_path(chunk.ply_file);
+                                auto extra = GaussianCloud::load_ply(resolved.string());
+                                if (!extra.empty()) {
+                                    const auto& gs = extra.gaussians();
+                                    merged.insert(merged.end(), gs.begin(), gs.end());
+                                    std::fprintf(stderr, "[IslandDemo] Re-merged chunk [%d,%d,%d]: +%u Gaussians\n",
+                                        chunk.grid.x, chunk.grid.y, chunk.grid.z, extra.count());
+                                }
+                            }
+                            // Restore overworld camera settings
+                            distance_ = 20.0f;
+                            elevation_ = 0.6f;
+
+                            // Re-spawn knight NPC Gaussians
+                            if (knight_data_) {
+                                auto knight_cloud = GaussianCloud::load_ply("assets/characters/knight/knight.ply");
+                                if (!knight_cloud.empty()) {
+                                    int player_bone_count = character_data_
+                                        ? static_cast<int>(character_data_->bones.size()) : 1;
+                                    next_bone_index_ = static_cast<uint32_t>(player_bone_count + 1);
+
+                                    KnightInfo ki;
+                                    ki.spawn_pos = spawn + glm::vec3(15.0f, 0.0f, -10.0f);
+                                    if (collision_grid_.width > 0 && !collision_grid_.elevation.empty()) {
+                                        float lx = ki.spawn_pos.x - grid_origin_.x;
+                                        float lz = ki.spawn_pos.z - grid_origin_.y;
+                                        int gx = static_cast<int>(lx / collision_grid_.cell_size);
+                                        int gz = static_cast<int>(lz / collision_grid_.cell_size);
+                                        if (gx >= 0 && gx < static_cast<int>(collision_grid_.width) &&
+                                            gz >= 0 && gz < static_cast<int>(collision_grid_.height)) {
+                                            ki.spawn_pos.y = collision_grid_.get_elevation(
+                                                static_cast<uint32_t>(gx), static_cast<uint32_t>(gz));
+                                        }
+                                    }
+                                    ki.first_bone_index = next_bone_index_;
+                                    constexpr float kKnightScale = 0.45f;
+                                    for (const auto& g : knight_cloud.gaussians()) {
+                                        Gaussian kg = g;
+                                        glm::vec3 rotated(-kg.position.x, kg.position.y, -kg.position.z);
+                                        glm::vec3 offset = rotated * kKnightScale;
+                                        offset.y *= gs_scale_;
+                                        kg.position = ki.spawn_pos + offset + glm::vec3(0, 2.0f, 0);
+                                        kg.scale *= kKnightScale;
+                                        kg.bone_index = next_bone_index_ + kg.bone_index;
+                                        kg.opacity = std::min(1.0f, kg.opacity * 1.3f);
+                                        merged.push_back(kg);
+                                    }
+                                    next_bone_index_ += static_cast<uint32_t>(knight_data_->bones.size());
+                                    ki.current_pos = ki.spawn_pos;
+                                    ki.walk_target = ki.spawn_pos;
+                                    ki.facing_angle = glm::pi<float>() * 0.5f;
+                                    knight_info_ = ki;
+                                    std::fprintf(stderr, "[IslandDemo] Re-spawned knight at (%.1f, %.1f, %.1f)\n",
+                                        ki.spawn_pos.x, ki.spawn_pos.y, ki.spawn_pos.z);
+                                }
+                            }
+
+                            // Re-spawn slime NPCs
+                            auto slime_cloud = GaussianCloud::load_ply("assets/characters/slime/slime.ply");
+                            if (!slime_cloud.empty()) {
+                                if (!knight_info_) {
+                                    int player_bone_count = character_data_
+                                        ? static_cast<int>(character_data_->bones.size()) : 1;
+                                    next_bone_index_ = static_cast<uint32_t>(player_bone_count + 1);
+                                }
+                                npc_infos_.clear();
+                                app.world().view<NpcWalker, ecs::Transform>().each(
+                                    [&](ecs::Entity entity, NpcWalker&, ecs::Transform& t) {
+                                        if (next_bone_index_ >= 31) return;
+                                        NpcInfo info;
+                                        info.entity = entity;
+                                        info.spawn_pos = t.position.vec();
+                                        info.bone_index = next_bone_index_;
+                                        constexpr float kSlimeScale = 0.5f;
+                                        for (const auto& g : slime_cloud.gaussians()) {
+                                            Gaussian sg = g;
+                                            glm::vec3 rotated(-sg.position.x, sg.position.y, -sg.position.z);
+                                            sg.position = t.position.vec() + rotated * kSlimeScale + glm::vec3(0, 0.5f, 0);
+                                            sg.scale *= kSlimeScale;
+                                            sg.bone_index = next_bone_index_;
+                                            sg.opacity = std::min(1.0f, sg.opacity * 1.3f);
+                                            merged.push_back(sg);
+                                        }
+                                        info.squish_phase = static_cast<float>(npc_infos_.size()) * 1.7f;
+                                        npc_infos_.push_back(info);
+                                        std::fprintf(stderr, "[IslandDemo] Re-spawned NPC bone=%u at (%.1f, %.1f, %.1f)\n",
+                                            next_bone_index_, t.position.x(), t.position.y(), t.position.z());
+                                        next_bone_index_++;
+                                    });
+                            }
+                        }
+
+                        auto char_cloud = GaussianCloud::load_ply(
+                            "assets/characters/snes_hero/snes_hero.ply");
+                        if (!char_cloud.empty()) {
+                            const auto& char_gs = char_cloud.gaussians();
+                            for (const auto& g : char_gs) {
+                                Gaussian cg = g;
+                                glm::vec3 rotated(-cg.position.x, cg.position.y, -cg.position.z);
+                                glm::vec3 offset = rotated * kCharScale;
+                                offset.y *= gs_scale_;
+                                cg.position = spawn + offset + glm::vec3(0, 2.0f, 0);
+                                cg.scale *= kCharScale;
+                                cg.opacity = std::min(1.0f, cg.opacity * 1.3f);
+                                merged.push_back(cg);
+                            }
+                        }
+                        std::fprintf(stderr, "[IslandDemo] Portal re-merge: %u total Gaussians\n",
+                            static_cast<uint32_t>(merged.size()));
+
+                        auto cloud = GaussianCloud::from_gaussians(std::move(merged));
+                        uint32_t gs_w = app.renderer().gs_renderer().output_width();
+                        uint32_t gs_h = app.renderer().gs_renderer().output_height();
+                        if (gs_w == 0) { gs_w = 320; gs_h = 240; }
+                        app.renderer().init_gs(cloud, gs_w, gs_h);
+                    }
+
+                    std::fprintf(stderr, "[IslandDemo] Spawned at (%.1f, %.1f, %.1f)\n",
+                        spawn.x, spawn.y, spawn.z);
+                    break;
+                }
+            }
+        }
+
+        // Log streaming volume events
+        for (const auto& ev : events) {
+            switch (ev.type) {
+                case WorldStreamer::StreamEvent::VOLUME_ENTERED:
+                    std::fprintf(stderr, "[IslandDemo] StreamingVolume entered: %s\n", ev.id.c_str());
+                    break;
+                case WorldStreamer::StreamEvent::VOLUME_EXITED:
+                    std::fprintf(stderr, "[IslandDemo] StreamingVolume exited: %s\n", ev.id.c_str());
+                    break;
+                default:
+                    break;
+            }
+        }
+    }
 }
 
 // ── Player movement ──
@@ -623,17 +968,25 @@ void IslandDemoState::update_player(AppBase& app, float dt) {
     transform->position.vec() += player_velocity_ * dt;
 
     // Snap Y to collision grid elevation if available
-    if (collision_grid_.width > 0 && collision_grid_.height > 0) {
-        float local_x = transform->position.x() - grid_origin_.x;
-        float local_z = transform->position.z() - grid_origin_.y;
-        int gx = static_cast<int>(local_x / collision_grid_.cell_size);
-        int gz = static_cast<int>(local_z / collision_grid_.cell_size);
+    // Select which collision grid to use based on player Z position
+    CollisionGrid* active_grid = &collision_grid_;
+    glm::vec2 active_origin = grid_origin_;
+    if (forest_grid_loaded_ && transform->position.z() < 10.0f) {
+        active_grid = &forest_collision_grid_;
+        active_origin = forest_grid_origin_;
+    }
 
-        if (gx >= 0 && gx < static_cast<int>(collision_grid_.width) &&
-            gz >= 0 && gz < static_cast<int>(collision_grid_.height)) {
+    if (active_grid->width > 0 && active_grid->height > 0) {
+        float local_x = transform->position.x() - active_origin.x;
+        float local_z = transform->position.z() - active_origin.y;
+        int gx = static_cast<int>(local_x / active_grid->cell_size);
+        int gz = static_cast<int>(local_z / active_grid->cell_size);
+
+        if (gx >= 0 && gx < static_cast<int>(active_grid->width) &&
+            gz >= 0 && gz < static_cast<int>(active_grid->height)) {
             // Check solid — if solid, undo movement
-            bool solid = collision_grid_.is_solid(static_cast<uint32_t>(gx),
-                                                   static_cast<uint32_t>(gz));
+            bool solid = active_grid->is_solid(static_cast<uint32_t>(gx),
+                                                static_cast<uint32_t>(gz));
             debug_frame_++;
             if (solid) {
                 if (debug_frame_ % 60 == 0) {
@@ -643,9 +996,9 @@ void IslandDemoState::update_player(AppBase& app, float dt) {
                 transform->position.vec() -= player_velocity_ * dt;
             } else {
                 // Snap to elevation
-                float elev = collision_grid_.get_elevation(
+                float elev = active_grid->get_elevation(
                     static_cast<uint32_t>(gx), static_cast<uint32_t>(gz));
-                if (!collision_grid_.elevation.empty()) {
+                if (!active_grid->elevation.empty()) {
                     transform->position.vec().y = elev;
                 }
             }

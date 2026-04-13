@@ -92,6 +92,19 @@ WorldManifest WorldManifest::from_json(const nlohmann::json& j) {
         }
     }
 
+    if (j.contains("instances")) {
+        for (const auto& ij : j["instances"]) {
+            WorldInstance inst;
+            inst.id = ij.at("id").get<std::string>();
+            inst.display_name = ij.value("display_name", std::string{});
+            inst.scene_file = ij.at("scene_file").get<std::string>();
+            if (inst.scene_file.find("..") != std::string::npos) {
+                throw std::runtime_error("path traversal rejected in instance scene_file: " + inst.scene_file);
+            }
+            m.instances.push_back(std::move(inst));
+        }
+    }
+
     return m;
 }
 
@@ -133,6 +146,17 @@ nlohmann::json WorldManifest::to_json(const WorldManifest& m) {
         if (p.spawn_position != glm::vec3(0.0f)) pj["spawn_position"] = vec3_to_json(p.spawn_position);
         if (!p.spawn_facing.empty()) pj["spawn_facing"] = p.spawn_facing;
         j["portals"].push_back(std::move(pj));
+    }
+
+    if (!m.instances.empty()) {
+        j["instances"] = nlohmann::json::array();
+        for (const auto& inst : m.instances) {
+            nlohmann::json ij;
+            ij["id"] = inst.id;
+            if (!inst.display_name.empty()) ij["display_name"] = inst.display_name;
+            ij["scene_file"] = inst.scene_file;
+            j["instances"].push_back(std::move(ij));
+        }
     }
 
     return j;

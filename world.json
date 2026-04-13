@@ -8,36 +8,57 @@
       "scene_file": "assets/scenes/seurat_island.json"
     },
     {
-      "grid": [1, 0, 0],
-      "ply_file": "assets/maps/test_terrain.ply",
-      "scene_file": "assets/scenes/test_scene.json"
+      "grid": [0, 0, -1],
+      "ply_file": "assets/maps/northern_forest.ply",
+      "scene_file": "assets/scenes/northern_forest.json"
     }
   ],
   "streaming_volumes": [
     {
-      "id": "sv_island_edge",
-      "shape": "box",
-      "position": [180.0, 32.0, 96.0],
-      "half_extents": [24.0, 32.0, 96.0],
-      "preload_target_ids": ["1,0,0"]
-    },
-    {
       "id": "sv_dungeon_approach",
       "shape": "sphere",
-      "position": [50.0, 20.0, 50.0],
-      "radius": 30.0,
+      "position": [203.0, 3.0, 175.0],
+      "radius": 20.0,
       "preload_target_ids": ["dungeon_01"]
+    },
+    {
+      "id": "sv_forest_approach",
+      "shape": "box",
+      "position": [192.0, 10.0, 40.0],
+      "half_extents": [60.0, 20.0, 30.0],
+      "preload_target_ids": ["0,0,-1"]
     }
   ],
   "portals": [
     {
       "id": "portal_dungeon",
-      "position": [40.0, 15.0, 40.0],
+      "position": [203.0, 3.0, 175.0],
       "region_shape": "sphere",
       "region_radius": 3.0,
       "target_instance_id": "dungeon_01",
       "spawn_position": [5.0, 0.0, 5.0],
       "spawn_facing": "down"
+    },
+    {
+      "id": "portal_dungeon_exit",
+      "position": [45.0, 0.0, 42.0],
+      "region_shape": "sphere",
+      "region_radius": 3.0,
+      "target_instance_id": "overworld",
+      "spawn_position": [192.0, 3.0, 197.0],
+      "spawn_facing": "up"
+    }
+  ],
+  "instances": [
+    {
+      "id": "dungeon_01",
+      "display_name": "Underground Dungeon",
+      "scene_file": "assets/scenes/dungeon.json"
+    },
+    {
+      "id": "overworld",
+      "display_name": "Seurat Island",
+      "scene_file": "assets/scenes/seurat_island.json"
     }
   ]
 }

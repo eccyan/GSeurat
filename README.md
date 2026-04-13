@@ -208,7 +208,12 @@ Spatial partitioning for vast open-world maps. A `world.json` file at the projec
 | Component | Description |
 |---|---|
 | `WorldManifest` | C++ parser/serializer for `world.json` with path traversal validation |
+| `WorldStreamer` | Distance-based chunk load/unload with hysteresis, volume evaluation, portal detection |
 | `StreamingVolume` | Box/sphere trigger with `contains()` test for preload hints |
+| `WorldInstance` | Named scene reference — maps instance IDs to scene files for portal targets |
+
+**Runtime Streaming (`WorldStreamer`):**
+The `WorldStreamer` class drives per-frame streaming decisions. Each frame it evaluates camera distance to chunk AABBs (load if within `load_radius`, unload if beyond `unload_radius = 1.5× load_radius` for hysteresis), tests `StreamingVolume::contains()` for preload hints, and detects portal entry (one-shot, fires once per enter). The demo loads `world.json` at startup and runs the streamer in its game loop — chunks auto-stream, volumes trigger preloads, and portals execute full scene transitions (`clear_scene()` → `init_scene()` → player teleport).
 
 **GPU Frustum Culling:**
 The preprocess shader includes a clip-space `frustum_visible()` test with 10% padding for splat radius bleed. Culled splats receive sort key `0xFFFF` (visible capped at `0xFFFE`), sinking to the end of the radix sort. This reduces sort workload by 50-75% when the camera faces one direction in a multi-chunk world.
@@ -485,6 +490,7 @@ ctest --test-dir build/<platform>-debug --output-on-failure
 | `test_bone_animation_player` | 9 | Bone FK, delta extraction, loop wrap-around, root stripping |
 | `test_bone_animation_state_machine` | 5 | State transitions, animation blending, root motion reset |
 | `test_world_manifest` | 10 | World JSON parsing, chunk AABB derivation, round-trip, point-in-volume (box/sphere), path traversal rejection |
+| `test_world_streamer` | 10 | Chunk state lifecycle (load/active/unload), hysteresis, volume preload, portal detection (box/sphere) |
 
 ### TypeScript Tool Tests
 
