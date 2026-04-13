@@ -780,7 +780,7 @@ void GsRenderer::init_streaming(const StreamingConfig& config) {
     // Capacity: visible Gaussians × avg tile overlap. Cap at 1M entries (16MB per buffer).
     {
         uint32_t visible_upper = static_sort_size_ + dynamic_sort_size_;
-        tile_sort_capacity_ = std::min(visible_upper * 4, 1u << 18);  // cap at 256K (4MB per buffer)
+        tile_sort_capacity_ = std::min(visible_upper * 4, 1u << 19);  // cap at 512K (8MB per buffer)
         // Align to 1024 (workgroup size for radix sort)
         tile_sort_size_ = ((tile_sort_capacity_ + 1023) / 1024) * 1024;
         tile_sort_workgroups_ = tile_sort_size_ / 1024;
