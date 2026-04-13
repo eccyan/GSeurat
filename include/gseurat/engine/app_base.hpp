@@ -23,6 +23,7 @@
 #include "gseurat/engine/game_state.hpp"
 #include "gseurat/engine/gameplay_state.hpp"
 #include "gseurat/engine/gs_terrain_state.hpp"
+#include "gseurat/engine/bone_animation_registry.hpp"
 #include "gseurat/engine/input_manager.hpp"
 #include "gseurat/engine/locale_manager.hpp"
 #include "gseurat/engine/minimap.hpp"
@@ -81,6 +82,8 @@ public:
     const SceneObjectState& scene_objects() const { return scene_objects_; }
     DrawLists& draw_lists() { return draw_lists_; }
     const DrawLists& draw_lists() const { return draw_lists_; }
+    BoneAnimationRegistry& bone_animation_registry() { return bone_anim_registry_; }
+    [[nodiscard]] const BoneAnimationRegistry& bone_animation_registry() const { return bone_anim_registry_; }
     GameplayState& gameplay() { return gameplay_; }
     const GameplayState& gameplay() const { return gameplay_; }
 
@@ -173,6 +176,7 @@ protected:
 
     // State objects (replacing scattered members)
     GsTerrainState gs_terrain_;
+    BoneAnimationRegistry bone_anim_registry_;
     SceneObjectState scene_objects_;
     DrawLists draw_lists_;
     GameplayState gameplay_;

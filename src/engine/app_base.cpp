@@ -2,6 +2,8 @@
 #include "gseurat/engine/gs_scene_loader.hpp"
 #include "gseurat/engine/scene_load_context.hpp"
 #include "gseurat/demo/island_components.hpp"
+#include "gseurat/engine/bone_animated_component.hpp"
+#include "gseurat/engine/bone_animation_system.hpp"
 
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
@@ -151,7 +153,9 @@ void AppBase::cleanup() {
 
 // Virtual no-op stubs
 void AppBase::init_scene(const std::string& /*scene_path*/) {}
-void AppBase::clear_scene() {}
+void AppBase::clear_scene() {
+    bone_anim_registry_.clear();
+}
 void AppBase::update_game(float dt) { system_scheduler_.run_all(world_, dt); }
 void AppBase::update_audio(float /*dt*/) {}
 SaveData AppBase::build_save_data() const { return {}; }
@@ -351,6 +355,12 @@ void AppBase::init_game_object_system() {
         [](const BoneAnimatedTag& c) -> nlohmann::json {
             return {{"registry_id", c.registry_id}};
         });
+
+    // Register engine-level bone animation system
+    system_scheduler_.add_system({"bone_animation",
+        [this](ecs::World& w, float dt) {
+            bone_animation_system(w, dt, bone_anim_registry_);
+        }, {}, {}});
 }
 
 // ── Command context builder ──
@@ -381,6 +391,9 @@ void AppBase::load_gs_scene(const SceneData& scene_data, const GsSceneOptions& o
     };
     GsSceneLoader loader;
     loader.load(ctx, scene_data, opts);
+
+    // Populate bone animation registry from allocations created by the scene loader
+    populate_bone_animation_registry(bone_anim_registry_, world_, gs_terrain_);
 }
 
 // ── Control Server ──
