@@ -12,6 +12,7 @@
 #include "gseurat/engine/scene.hpp"
 #include "gseurat/engine/scene_loader.hpp"
 #include "gseurat/engine/scene_object_state.hpp"
+#include "gseurat/engine/world_manifest.hpp"
 #include "gseurat/demo/island_components.hpp"
 
 #define GLFW_INCLUDE_VULKAN
@@ -501,6 +502,26 @@ void CommandDispatcher::register_default_commands() {
         set_project_root(p);
         std::fprintf(stderr, "[control_server] set_project_root: %s\n", p.c_str());
         return ok();
+    });
+
+    register_command("load_world_json", [this](const json& cmd) -> CommandResult {
+        auto json_str = cmd.value("json", std::string{});
+        if (json_str.empty()) {
+            return std::unexpected(std::string("missing 'json' field"));
+        }
+
+        try {
+            auto j = nlohmann::json::parse(json_str);
+            auto manifest = WorldManifest::from_json(j);
+
+            ctx_.renderer.gs_renderer().load_world(manifest);
+            ctx_.scene_objects.world_manifest = manifest;
+
+            return json{{"type", "ok"}, {"chunks", manifest.chunks.size()}};
+        } catch (const std::exception& e) {
+            std::fprintf(stderr, "[load_world_json] ERROR: %s\n", e.what());
+            return std::unexpected(std::string("Failed to parse world manifest: ") + e.what());
+        }
     });
 
     register_command("quit", [this](const json&) -> CommandResult {

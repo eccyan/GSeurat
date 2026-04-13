@@ -7,6 +7,7 @@
 #include "gseurat/engine/streaming_config.hpp"
 #include "gseurat/engine/transfer_queue.hpp"
 #include "gseurat/engine/types.hpp"
+#include "gseurat/engine/world_manifest.hpp"
 
 #include <vk_mem_alloc.h>
 #include <vulkan/vulkan.h>
@@ -188,6 +189,10 @@ public:
     void set_post_process_params(const GsPostProcessParams& p) { gs_pp_params_ = p; }
     const GsPostProcessParams& post_process_params() const { return gs_pp_params_; }
 
+    // World manifest (Phase 3 streaming)
+    void load_world(const WorldManifest& manifest);
+    const WorldManifest& world_manifest() const { return world_manifest_; }
+
     void shutdown(VmaAllocator allocator);
 
 private:
@@ -361,6 +366,9 @@ private:
     VkDescriptorSet sort_set_ = VK_NULL_HANDLE;
 
     bool initialized_ = false;
+
+    // World manifest (Phase 3 streaming)
+    WorldManifest world_manifest_;
 
     // Shadow box parameters
     bool skip_sort_ = false;
