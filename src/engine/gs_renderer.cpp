@@ -2072,8 +2072,8 @@ void GsRenderer::dispatch_tile_sort(VkCommandBuffer cmd) {
     if (!tile_sort_a_.buffer() || tile_sort_capacity_ == 0) {
         static bool logged_skip = false;
         if (!logged_skip) {
-            std::printf("[tile_sort] SKIP: buffer=%p capacity=%u\n",
-                        tile_sort_a_.buffer(), tile_sort_capacity_);
+            std::fprintf(stderr, "[tile_sort] SKIP: buffer=%p capacity=%u\n",
+                        static_cast<void*>(tile_sort_a_.buffer()), tile_sort_capacity_);
             logged_skip = true;
         }
         return;
@@ -2089,7 +2089,7 @@ void GsRenderer::dispatch_tile_sort(VkCommandBuffer cmd) {
     if (tile_sort_count_ssbo_.mapped() && (dbg_frame++ % 60 == 0)) {
         uint32_t prev_count = 0;
         std::memcpy(&prev_count, tile_sort_count_ssbo_.mapped(), sizeof(uint32_t));
-        std::printf("[tile_sort] frame=%u count=%u capacity=%u\n",
+        std::fprintf(stderr, "[tile_sort] frame=%u count=%u capacity=%u\n",
                     dbg_frame, prev_count, tile_sort_capacity_);
     }
 
@@ -2393,9 +2393,9 @@ void GsRenderer::render(VkCommandBuffer cmd, const glm::mat4& view, const glm::m
         {
             static bool logged_path = false;
             if (!logged_path) {
-                std::printf("[gs_renderer] render path: use_split=%d static_buf=%p counts_buf=%p\n",
+                std::fprintf(stderr, "[gs_renderer] render path: use_split=%d static_buf=%p counts_buf=%p\n",
                             use_split ? 1 : 0,
-                            static_gaussian_ssbo_.buffer(), counts_ssbo_.buffer());
+                            static_cast<void*>(static_gaussian_ssbo_.buffer()), static_cast<void*>(counts_ssbo_.buffer()));
                 logged_path = true;
             }
         }
