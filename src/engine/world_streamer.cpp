@@ -94,7 +94,7 @@ std::vector<WorldStreamer::StreamEvent> WorldStreamer::update(const glm::vec3& c
         }
     }
 
-    // Portal detection
+    // Portal detection (one-shot: only fires on enter, not every frame)
     for (const auto& portal : manifest_.portals) {
         bool inside = false;
         if (portal.region_shape == "box") {
@@ -103,15 +103,17 @@ std::vector<WorldStreamer::StreamEvent> WorldStreamer::update(const glm::vec3& c
                       d.y <= portal.region_half_extents.y &&
                       d.z <= portal.region_half_extents.z);
         } else {
-            // Default: sphere
             float dist = glm::length(camera_pos - portal.position);
             inside = dist <= portal.region_radius;
         }
 
-        if (inside) {
+        bool was_inside = active_portals_.count(portal.id) > 0;
+        if (inside && !was_inside) {
+            active_portals_.insert(portal.id);
             entered_portal_id_ = portal.id;
             events.push_back({StreamEvent::Type::PORTAL_ENTERED, portal.id});
-            break;  // Only report one portal per frame
+        } else if (!inside && was_inside) {
+            active_portals_.erase(portal.id);
         }
     }
 

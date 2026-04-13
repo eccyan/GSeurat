@@ -62,6 +62,7 @@ private:
     WorldManifest manifest_;
     std::unordered_map<std::string, ChunkInfo> chunks_;  // grid_key -> info
     std::unordered_set<std::string> active_volumes_;     // currently-inside volume IDs
+    std::unordered_set<std::string> active_portals_;     // currently-inside portal IDs
     float load_radius_{0.0f};    // auto-set from manifest grid_cell_size
     float unload_radius_{0.0f};  // load_radius * 1.5 (hysteresis)
 
