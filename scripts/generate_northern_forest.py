@@ -24,7 +24,7 @@ from ply_utils import write_ply
 FOREST_X_MIN = 60.0
 FOREST_X_MAX = 330.0
 FOREST_Z_MIN = -170.0
-FOREST_Z_MAX = 50.0
+FOREST_Z_MAX = 60.0  # extend south to overlap with island's north shore
 HEIGHT_SCALE = 4.0
 STEP = 0.8
 
@@ -60,12 +60,12 @@ def forest_height(x, z):
     h += 0.8 * math.sin(x * 0.08 + z * 0.06)
     h += 0.4 * math.sin(x * 0.15 - z * 0.12)
 
-    # Southern edge (connecting to island): ramp down toward Z=50 to match island elevation
-    if z > 20:
-        t = (z - 20.0) / 30.0  # 0 at Z=20, 1 at Z=50
+    # Southern edge (connecting to island): ramp down toward Z=60 to match island elevation
+    if z > 10:
+        t = (z - 10.0) / 50.0  # 0 at Z=10, 1 at Z=60
         t = min(1.0, t)
-        # Blend toward island's north shore height (~0.5-1.0)
-        island_h = 0.8
+        # Blend toward island's north shore height (~0.5)
+        island_h = 0.5
         h = h * (1.0 - t) + island_h * t
 
     # Northern edge: ramp down to sea level
