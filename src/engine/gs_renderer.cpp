@@ -2074,8 +2074,15 @@ void GsRenderer::dispatch_tile_sort(VkCommandBuffer cmd) {
     uint32_t tiles_x = (width + 15) / 16;
     uint32_t tiles_y = (height + 15) / 16;
 
-    // Clear tile sort counter to 0
+    // Clear tile sort counter to 0 and fill tile_sort_a with sentinels (0xFFFFFFFF).
+    // Sentinels are essential: the sort processes max_workgroups*1024 entries, but only
+    // tile_sort_count are real. Without sentinels, garbage data gets sorted alongside
+    // real entries, scattering them to unpredictable positions. With sentinels (key_hi=
+    // key_lo=0xFFFFFFFF), unused entries sort to the END, keeping real entries contiguous
+    // at [0, tile_sort_count). At 256K cap this is only 4MB — well within TDR budget.
     vkCmdFillBuffer(cmd, tile_sort_count_ssbo_.buffer(), 0, sizeof(uint32_t), 0);
+    vkCmdFillBuffer(cmd, tile_sort_a_.buffer(), 0,
+                    static_cast<VkDeviceSize>(tile_sort_size_) * 16, 0xFFFFFFFF);
 
     {
         VkMemoryBarrier fill_barrier{};

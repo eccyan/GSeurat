@@ -100,9 +100,7 @@ void main() {
     // X-Ray depth threshold
     float xray_depth = effect_params2.y;
 
-    // DEBUG: bypass tile_ranges entirely. Iterate ALL tile entries and
-    // rely on the bounding box check to filter per-pixel. This tests whether
-    // the tile entries themselves are correct (independent of sort/ranges).
+    // Per-tile range from tile binning
     uint flat_tile_id = tile_id.y * tiles_x + tile_id.x;
     uint tile_start = tile_ranges[flat_tile_id * 2u];
     uint tile_count = tile_ranges[flat_tile_id * 2u + 1u];
@@ -120,9 +118,6 @@ void main() {
         TileSortEntry entry = tile_entries[tile_start + s];
         if (entry.key_hi == 0xFFFFFFFFu) break;  // sentinel
         uint idx = entry.index;
-        // Skip Gaussians that don't actually overlap this pixel's tile
-        // (safety check — should already be filtered by tile binning)
-        if (entry.key_hi != flat_tile_id) continue;
 
         ProjectedSplat splat = projected[idx];
 
