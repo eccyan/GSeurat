@@ -1,7 +1,9 @@
 #pragma once
-#include <cstdint>
-#include "gseurat/engine/collision_gen.hpp"
+
+#include "gseurat/engine/trigger_components.hpp"
 #include "gseurat/engine/bone_animated_component.hpp"
+
+#include <cstdint>
 
 namespace gseurat {
 
@@ -10,37 +12,6 @@ struct PlayerController {
     float acceleration = 10.0f;
     float velocity_x = 0.0f;
     float velocity_z = 0.0f;
-};
-
-struct ProximityTrigger {
-    float radius = 5.0f;
-    bool one_shot = false;
-    bool triggered = false;
-    bool was_triggered = false;
-};
-
-struct EmitterToggle {
-    uint32_t emitter_index = 0;
-    bool active = false;
-};
-
-struct LightToggle {
-    float color_r = 1.0f;
-    float color_g = 1.0f;
-    float color_b = 1.0f;
-    float radius = 10.0f;
-    float intensity = 1.0f;
-    bool active = false;
-};
-
-struct EmissiveToggle {
-    float emission = 2.0f;
-    float color_r = 1.0f;
-    float color_g = 1.0f;
-    float color_b = 1.0f;
-    float effect_radius = 3.0f;
-    float current_emission = 0.0f;
-    bool applied = false;  // one-shot: add point light once triggered
 };
 
 struct BurstEffect {
@@ -54,30 +25,21 @@ struct ScatterEffect {
     bool fired = false;
 };
 
-struct LinkedTrigger {
-    uint32_t target_entity = 0;
+// Triggers a GS animation effect on nearby Gaussians when player approaches.
+struct AnimationTrigger {
+    char effect_name[16] = "pulse";
+    float anim_radius = 5.0f;
+    float lifetime = 3.0f;
+    bool loop = false;
     bool fired = false;
 };
 
-// Triggers a GS animation effect on nearby Gaussians when player approaches.
-// effect_name: "float", "orbit", "dissolve", "pulse", "vortex", "wave", "scatter"
-struct AnimationTrigger {
-    // Which effect to apply (matches GsAnimEffect names)
-    // Stored as char array for trivially-copyable ECS requirement
-    char effect_name[16] = "pulse";
-    float anim_radius = 5.0f;   // radius of affected Gaussian region
-    float lifetime = 3.0f;      // animation duration
-    bool loop = false;           // restart when done
-    bool fired = false;          // runtime state
-};
-
 // Hidden discovery zone — rewards exploration with a celebration burst.
-// Places a multi-color fireworks particle effect + bright point light.
 struct DiscoveryZone {
     float color_r = 1.0f;
     float color_g = 0.8f;
     float color_b = 0.2f;
-    float burst_height = 8.0f;  // how high particles shoot
+    float burst_height = 8.0f;
     bool discovered = false;
 };
 
@@ -85,28 +47,6 @@ struct DiscoveryZone {
 struct VfxTrigger {
     char vfx_path[64] = "";
     bool fired = false;
-};
-
-// Singleton: stores collision grid pointer for NPC systems.
-struct CollisionGridRef {
-    const CollisionGrid* grid = nullptr;
-    float origin_x = 0.0f;
-    float origin_z = 0.0f;
-};
-
-// Patrolling NPC — wanders randomly within patrol_radius of home position.
-struct NpcWalker {
-    float patrol_radius = 8.0f;
-    float speed = 5.0f;
-    float pause_duration = 2.0f;
-    // Runtime state (set on first update):
-    float home_x = 0.0f;
-    float home_z = 0.0f;
-    float target_x = 0.0f;
-    float target_z = 0.0f;
-    float pause_timer = 0.0f;
-    bool initialized = false;
-    bool paused = true;
 };
 
 }  // namespace gseurat
