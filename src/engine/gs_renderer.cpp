@@ -2150,14 +2150,15 @@ void GsRenderer::dispatch_tile_sort(VkCommandBuffer cmd) {
                 VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &hb, 0, nullptr, 0, nullptr);
         }
 
-        // Histogram (indirect dispatch from args[0..2])
+        // Histogram — fixed workgroup count (must match scan stride).
+        // Extra workgroups produce zeros since shaders check num_elements from indirect_args[6].
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, tile_histogram_pipeline_);
         auto hist_set = read_from_a ? tile_histogram_set_a_ : tile_histogram_set_b_;
         vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
                                 tile_histogram_pipeline_layout_, 0, 1, &hist_set, 0, nullptr);
         vkCmdPushConstants(cmd, tile_histogram_pipeline_layout_, VK_SHADER_STAGE_COMPUTE_BIT,
                            0, 8, push_data);
-        vkCmdDispatchIndirect(cmd, tile_indirect_args_.buffer(), 0);
+        vkCmdDispatch(cmd, max_workgroups, 1, 1);
 
         insert_compute_barrier(cmd);
 
@@ -2171,14 +2172,14 @@ void GsRenderer::dispatch_tile_sort(VkCommandBuffer cmd) {
 
         insert_compute_barrier(cmd);
 
-        // Scatter (indirect dispatch from args[0..2])
+        // Scatter — fixed workgroup count (must match histogram stride for scan consistency)
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, tile_scatter_pipeline_);
         auto scatter_set = read_from_a ? tile_scatter_set_ab_ : tile_scatter_set_ba_;
         vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
                                 tile_scatter_pipeline_layout_, 0, 1, &scatter_set, 0, nullptr);
         vkCmdPushConstants(cmd, tile_scatter_pipeline_layout_, VK_SHADER_STAGE_COMPUTE_BIT,
                            0, 8, push_data);
-        vkCmdDispatchIndirect(cmd, tile_indirect_args_.buffer(), 0);
+        vkCmdDispatch(cmd, max_workgroups, 1, 1);
 
         insert_compute_barrier(cmd);
     }
