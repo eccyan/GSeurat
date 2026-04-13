@@ -7,7 +7,7 @@
 #include "gseurat/engine/gaussian_cloud.hpp"
 #include "gseurat/engine/gs_chunk_grid.hpp"
 #include "gseurat/demo/island_components.hpp"
-#include "gseurat/demo/island_systems.hpp"
+#include "gseurat/engine/trigger_components.hpp"
 #include "gseurat/engine/scene_loader.hpp"
 #include "gseurat/engine/world_manifest.hpp"
 #include "gseurat/engine/project_root.hpp"
@@ -254,12 +254,8 @@ void IslandDemoState::on_enter(AppBase& app) {
     app.world().add<ecs::Transform>(player_entity_, {coord::WorldPos(player_pos), {1.0f, 1.0f}});
     app.world().add<PlayerController>(player_entity_, {kPlayerSpeed, kPlayerAccel});
 
-    // Register island systems in scheduler
-    app.system_scheduler().add_system({"proximity_trigger", proximity_trigger_system, {}, {}});
-    app.system_scheduler().add_system({"linked_trigger", linked_trigger_system, {}, {}});
-    app.system_scheduler().add_system({"emissive_toggle", emissive_toggle_system, {}, {}});
-    app.system_scheduler().add_system({"npc_walker", npc_walker_system, {}, {}});
-    set_npc_bone_registry(&app.bone_animation_registry());
+    // Mark player for engine proximity trigger system
+    app.world().add<PlayerTag>(player_entity_);
 
     // Capture base scene lights (before dynamic emissive lights are added)
     // Note: GS renderer gets lights during record_gs_prepass, not at init.
@@ -524,7 +520,6 @@ void IslandDemoState::on_exit(AppBase& app) {
     camera_zone_system_.reset();
 
     // Release animation registry references
-    set_npc_bone_registry(nullptr);
     player_registry_id_ = 0;
 
     if (character_spawned_) {

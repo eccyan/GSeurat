@@ -1,6 +1,8 @@
 #include "gseurat/engine/app_base.hpp"
 #include "gseurat/engine/gs_scene_loader.hpp"
 #include "gseurat/engine/scene_load_context.hpp"
+#include "gseurat/engine/trigger_components.hpp"
+#include "gseurat/engine/trigger_systems.hpp"
 #include "gseurat/demo/island_components.hpp"
 #include "gseurat/engine/bone_animated_component.hpp"
 #include "gseurat/engine/bone_animation_system.hpp"
@@ -358,10 +360,34 @@ void AppBase::init_game_object_system() {
             return {{"registry_id", c.registry_id}};
         });
 
-    // Register engine-level bone animation system
+    component_registry_.register_component<PlayerTag>("PlayerTag",
+        [](const nlohmann::json&) -> PlayerTag { return {}; },
+        [](const PlayerTag&) -> nlohmann::json { return {}; });
+
+    // Register engine-level systems
     system_scheduler_.add_system({"bone_animation",
         [this](ecs::World& w, float dt) {
             bone_animation_system(w, dt, bone_anim_registry_);
+        }, {}, {}});
+
+    system_scheduler_.add_system({"proximity_trigger",
+        [](ecs::World& w, float dt) {
+            proximity_trigger_system(w, dt);
+        }, {}, {}});
+
+    system_scheduler_.add_system({"linked_trigger",
+        [](ecs::World& w, float dt) {
+            linked_trigger_system(w, dt);
+        }, {}, {}});
+
+    system_scheduler_.add_system({"emissive_toggle",
+        [](ecs::World& w, float dt) {
+            emissive_toggle_system(w, dt);
+        }, {}, {}});
+
+    system_scheduler_.add_system({"npc_walker",
+        [this](ecs::World& w, float dt) {
+            npc_walker_system(w, dt, bone_anim_registry_);
         }, {}, {}});
 }
 
