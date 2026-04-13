@@ -99,6 +99,17 @@ void IslandDemoState::on_enter(AppBase& app) {
             app.scene_objects().world_manifest = manifest;
             std::fprintf(stderr, "[IslandDemo] Loaded world.json: %zu chunks, %zu streaming volumes, %zu portals\n",
                 manifest.chunks.size(), manifest.streaming_volumes.size(), manifest.portals.size());
+
+            // Initialize WorldStreamer
+            world_streamer_ = std::make_unique<WorldStreamer>();
+            world_streamer_->init(manifest);
+
+            // The initial scene chunk [0,0,0] is already loaded by init_scene above.
+            // Simulate its load completion so the streamer won't re-request it.
+            world_streamer_->on_chunk_loaded("0,0,0", 0);
+
+            std::fprintf(stderr, "[IslandDemo] WorldStreamer initialized: load_radius=%.0f unload_radius=%.0f\n",
+                world_streamer_->load_radius(), world_streamer_->unload_radius());
         }
     }
 
@@ -586,6 +597,62 @@ void IslandDemoState::update(AppBase& app, float dt) {
 
     // Camera follow
     update_camera(app, dt);
+
+    // World streaming evaluation
+    if (world_streamer_) {
+        auto events = world_streamer_->update(character_origin_);
+
+        // Process pending loads
+        for (const auto& grid_key : world_streamer_->pending_loads()) {
+            for (const auto& chunk : world_streamer_->manifest().chunks) {
+                std::string key = std::to_string(chunk.grid.x) + "," +
+                                  std::to_string(chunk.grid.y) + "," +
+                                  std::to_string(chunk.grid.z);
+                if (key == grid_key && !chunk.ply_file.empty()) {
+                    auto resolved = resolve_asset_path(chunk.ply_file);
+                    std::fprintf(stderr, "[IslandDemo] Chunk [%s] Loading: %s\n",
+                        grid_key.c_str(), chunk.ply_file.c_str());
+                    app.renderer().gs_renderer().load_cloud_async(resolved.string());
+                    break;
+                }
+            }
+        }
+
+        // Process pending unloads
+        for (const auto& grid_key : world_streamer_->pending_unloads()) {
+            std::fprintf(stderr, "[IslandDemo] Chunk [%s] Unloaded\n", grid_key.c_str());
+        }
+
+        // Portal transition events
+        if (!world_streamer_->entered_portal_id().empty()) {
+            const auto& portal_id = world_streamer_->entered_portal_id();
+            for (const auto& portal : world_streamer_->manifest().portals) {
+                if (portal.id == portal_id) {
+                    std::fprintf(stderr, "[IslandDemo] Portal entered: %s -> instance '%s'\n",
+                        portal_id.c_str(), portal.target_instance_id.c_str());
+                    std::fprintf(stderr, "[IslandDemo] Spawn at (%.1f, %.1f, %.1f) facing %s\n",
+                        portal.spawn_position.x, portal.spawn_position.y, portal.spawn_position.z,
+                        portal.spawn_facing.c_str());
+                    // TODO: Full scene transition would call app.clear_scene() + app.init_scene()
+                    break;
+                }
+            }
+        }
+
+        // Log streaming volume events
+        for (const auto& ev : events) {
+            switch (ev.type) {
+                case WorldStreamer::StreamEvent::VOLUME_ENTERED:
+                    std::fprintf(stderr, "[IslandDemo] StreamingVolume entered: %s\n", ev.id.c_str());
+                    break;
+                case WorldStreamer::StreamEvent::VOLUME_EXITED:
+                    std::fprintf(stderr, "[IslandDemo] StreamingVolume exited: %s\n", ev.id.c_str());
+                    break;
+                default:
+                    break;
+            }
+        }
+    }
 }
 
 // ── Player movement ──

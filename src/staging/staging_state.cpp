@@ -6,6 +6,7 @@
 #include "gseurat/engine/post_process.hpp"
 #include "gseurat/engine/shutdown_auditor.hpp"
 #include "gseurat/engine/world_manifest.hpp"
+#include "gseurat/engine/project_root.hpp"
 
 #include <imgui.h>
 
@@ -509,10 +510,15 @@ void StagingState::update(AppBase& app, float dt) {
             static_cast<uint32_t>(character_data_->bones.size()));
     }
 
-    // ── Task 9: StreamingVolume per-frame evaluation ──
-    if (app.scene_objects().world_manifest.has_value()) {
-        const auto& wm = *app.scene_objects().world_manifest;
+    // ── World streaming evaluation ──
+    if (app.scene_objects().world_manifest.has_value() && !world_streamer_) {
+        world_streamer_ = std::make_unique<WorldStreamer>();
+        world_streamer_->init(*app.scene_objects().world_manifest);
+        std::fprintf(stderr, "[Staging] WorldStreamer initialized: load_radius=%.0f unload_radius=%.0f\n",
+            world_streamer_->load_radius(), world_streamer_->unload_radius());
+    }
 
+    if (world_streamer_) {
         // Derive camera position from current mode
         glm::vec3 cam_pos;
         if (camera_review_ && camera_review_->is_active()) {
@@ -526,27 +532,43 @@ void StagingState::update(AppBase& app, float dt) {
             };
         }
 
-        // Distance-based chunk streaming evaluation
-        float load_radius = glm::length(wm.grid_cell_size) * 2.0f;
-        for (size_t i = 0; i < wm.chunks.size(); i++) {
-            auto [aabb_min, aabb_max] = wm.chunk_aabb(i);
-            glm::vec3 center = (aabb_min + aabb_max) * 0.5f;
-            float dist = glm::distance(cam_pos, center);
+        auto events = world_streamer_->update(cam_pos);
 
-            if (dist < load_radius && !wm.chunks[i].ply_file.empty()) {
-                // TODO: integrate with load_cloud_async when chunk tracking is ready
-                // (Phase 2's gs_renderer.load_cloud_async(wm.chunks[i].ply_file))
+        // Process pending loads
+        for (const auto& grid_key : world_streamer_->pending_loads()) {
+            for (const auto& chunk : world_streamer_->manifest().chunks) {
+                std::string key = std::to_string(chunk.grid.x) + "," +
+                                  std::to_string(chunk.grid.y) + "," +
+                                  std::to_string(chunk.grid.z);
+                if (key == grid_key && !chunk.ply_file.empty()) {
+                    auto resolved = resolve_asset_path(chunk.ply_file);
+                    std::fprintf(stderr, "[Staging] Chunk [%s] Loading: %s\n",
+                        grid_key.c_str(), chunk.ply_file.c_str());
+                    app.renderer().gs_renderer().load_cloud_async(resolved.string());
+                    break;
+                }
             }
         }
 
-        // StreamingVolume hint-based preloading evaluation
-        for (const auto& sv : wm.streaming_volumes) {
-            if (sv.contains(cam_pos)) {
-                // Camera is inside this streaming volume — preload targets
-                for (const auto& target_id : sv.preload_target_ids) {
-                    (void)target_id;
-                    // TODO: resolve target_id to chunk ply_file and call load_cloud_async
-                }
+        // Process pending unloads
+        for (const auto& grid_key : world_streamer_->pending_unloads()) {
+            std::fprintf(stderr, "[Staging] Chunk [%s] Unloaded\n", grid_key.c_str());
+        }
+
+        // Log streaming events
+        for (const auto& ev : events) {
+            switch (ev.type) {
+                case WorldStreamer::StreamEvent::PORTAL_ENTERED:
+                    std::fprintf(stderr, "[Staging] Portal entered: %s\n", ev.id.c_str());
+                    break;
+                case WorldStreamer::StreamEvent::VOLUME_ENTERED:
+                    std::fprintf(stderr, "[Staging] StreamingVolume entered: %s\n", ev.id.c_str());
+                    break;
+                case WorldStreamer::StreamEvent::VOLUME_EXITED:
+                    std::fprintf(stderr, "[Staging] StreamingVolume exited: %s\n", ev.id.c_str());
+                    break;
+                default:
+                    break;
             }
         }
     }

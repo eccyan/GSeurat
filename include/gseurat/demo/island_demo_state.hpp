@@ -8,6 +8,7 @@
 #include "gseurat/engine/game_state.hpp"
 #include "gseurat/engine/gaussian_cloud.hpp"
 #include "gseurat/engine/types.hpp"
+#include "gseurat/engine/world_streamer.hpp"
 #include "gseurat/engine/ecs/types.hpp"
 
 #include <glm/glm.hpp>
@@ -113,6 +114,9 @@ private:
 
     // Camera zone system (data-driven camera volumes/triggers/rails)
     std::unique_ptr<CameraZoneSystem> camera_zone_system_;
+
+    // World streaming
+    std::unique_ptr<WorldStreamer> world_streamer_;
 
     // Orbit camera (third-person around player)
     float azimuth_ = 0.0f;
