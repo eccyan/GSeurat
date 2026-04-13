@@ -3,9 +3,7 @@
 // Scatter tile sort entries from input to output buffer using scanned histogram.
 // Each workgroup processes 1024 entries (256 threads × 4 elements).
 //
-// Key difference from gs_radix_scatter.comp:
-// - Entry is TileSortEntry (16 bytes) with two key fields (key_hi, key_lo)
-// - Passes 0-3 extract digit from key_lo, passes 4-7 from key_hi
+// num_elements is read from indirect_args[6] (GPU-side) instead of push constants.
 layout(local_size_x = 256) in;
 
 struct TileSortEntry {
@@ -27,8 +25,11 @@ layout(set = 0, binding = 2) readonly buffer HistogramBuffer {
     uint histograms[];
 };
 
+layout(set = 0, binding = 3) readonly buffer IndirectArgs {
+    uint indirect_args[];
+};
+
 layout(push_constant) uniform PushConstants {
-    uint num_elements;
     uint digit_shift;
     uint use_hi;       // 0 = key_lo, 1 = key_hi
 };
@@ -39,6 +40,7 @@ void main() {
     uint lid = gl_LocalInvocationID.x;
     uint wg = gl_WorkGroupID.x;
     uint num_wg = gl_NumWorkGroups.x;
+    uint num_elements = indirect_args[6];
 
     // Load this workgroup's scatter offsets from scanned histogram
     local_offsets[lid] = histograms[lid * num_wg + wg];

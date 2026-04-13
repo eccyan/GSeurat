@@ -373,17 +373,30 @@ private:
     VkDescriptorSet tile_bin_set_ = VK_NULL_HANDLE;
 
     // Tile radix sort pipelines (16-byte entries, 8-pass for 64-bit key)
-    // Reuses existing radix_scan layout/pipeline (entry-independent)
+    VkDescriptorSetLayout tile_sort_layout_ = VK_NULL_HANDLE;  // {entries, histogram, indirect_args}
+    VkDescriptorSetLayout tile_scatter_layout_ = VK_NULL_HANDLE;  // {src, dst, histogram, indirect_args}
     VkPipelineLayout tile_histogram_pipeline_layout_ = VK_NULL_HANDLE;
     VkPipeline tile_histogram_pipeline_ = VK_NULL_HANDLE;
     VkPipelineLayout tile_scatter_pipeline_layout_ = VK_NULL_HANDLE;
     VkPipeline tile_scatter_pipeline_ = VK_NULL_HANDLE;
+
+    // Indirect dispatch preparation
+    VkDescriptorSetLayout tile_indirect_layout_ = VK_NULL_HANDLE;
+    VkPipelineLayout tile_indirect_pipeline_layout_ = VK_NULL_HANDLE;
+    VkPipeline tile_indirect_pipeline_ = VK_NULL_HANDLE;
+    VkDescriptorSet tile_indirect_set_ = VK_NULL_HANDLE;
 
     // Tile range detection pipeline
     VkDescriptorSetLayout tile_ranges_layout_ = VK_NULL_HANDLE;
     VkPipelineLayout tile_ranges_pipeline_layout_ = VK_NULL_HANDLE;
     VkPipeline tile_ranges_pipeline_ = VK_NULL_HANDLE;
     VkDescriptorSet tile_ranges_set_ = VK_NULL_HANDLE;
+
+    // Tile render pipeline (separate from render_pipeline_ — 8 bindings)
+    VkDescriptorSetLayout tile_render_layout_ = VK_NULL_HANDLE;
+    VkPipelineLayout tile_render_pipeline_layout_ = VK_NULL_HANDLE;
+    VkPipeline tile_render_pipeline_ = VK_NULL_HANDLE;
+    VkDescriptorSet tile_render_set_ = VK_NULL_HANDLE;
 
     // Tile sort descriptor sets (ping-pong for radix)
     VkDescriptorSet tile_histogram_set_a_ = VK_NULL_HANDLE;
@@ -397,7 +410,8 @@ private:
     Buffer tile_sort_b_;              // TileSortEntry pong buffer
     Buffer tile_sort_count_ssbo_;     // atomic counter (single uint32)
     Buffer tile_histogram_ssbo_;      // 256 * tile_sort_workgroups * sizeof(uint32)
-    Buffer tile_ranges_ssbo_;         // per-tile {start, count} (prepared for Phase 3)
+    Buffer tile_ranges_ssbo_;         // per-tile {start, count}
+    Buffer tile_indirect_args_;       // indirect dispatch args (8 × uint32)
 
     uint32_t tile_sort_capacity_ = 0;    // max entries in tile sort buffers
     uint32_t tile_sort_size_ = 0;        // workgroup-aligned count for radix sort

@@ -1,0 +1,377 @@
+#version 450
+#extension GL_KHR_shader_subgroup_vote : enable
+
+// Tile-binned Gaussian splatting rasterizer
+// Each tile only iterates Gaussians that overlap it (via tile_ranges/tile_entries).
+// One workgroup per 16×16 tile
+layout(local_size_x = 16, local_size_y = 16) in;
+
+struct ProjectedSplat {
+    vec2 center;
+    float depth;
+    float radius;
+    vec4 conic_opacity;  // (conic_a, conic_b, conic_c, opacity)
+    vec4 color;          // (r, g, b, a)
+};
+
+struct TileSortEntry {
+    uint key_hi;   // tile_id
+    uint key_lo;   // depth
+    uint index;    // index into projected[]
+    uint _pad;
+};
+
+layout(set = 0, binding = 0) readonly buffer ProjectedBuffer {
+    ProjectedSplat projected[];
+};
+
+layout(set = 0, binding = 1) readonly buffer TileSortBuffer {
+    TileSortEntry tile_entries[];
+};
+
+layout(set = 0, binding = 2) uniform Uniforms {
+    mat4 view;
+    mat4 proj;
+    mat4 inv_view;      // precomputed inverse(view)
+    mat4 inv_proj;      // precomputed inverse(proj)
+    uvec4 params;       // x = width, y = height, z = gaussian_count, w = sort_size
+    vec4 shadow_box;    // x = margin, y = cone_cos, z = num_sort_passes, w = unused
+    vec4 cone_dir;      // xyz = cone direction, w = unused
+    vec4 cam_pos;       // xyz = camera position, w = unused
+    vec4 effect_flags;  // x = toon_bands, y = light_mode, z = touch_timer (0=off), w = time
+    vec4 light_params;  // xyz = light_dir, w = intensity
+    vec4 touch_point;   // xyz = world_pos, w = radius
+    vec4 effect_params; // x = water_y, y = fire_y_min, z = fire_y_max, w = strength
+    vec4 effect_params2; // x = pulse_t, y = xray_depth, z = swirl_t, w = burn_t
+    vec4 point_light_params; // x = count, yzw = unused
+    vec4 actor_rotation; // xyzw = quaternion for root motion (unused in render shader)
+    vec4 pl_pos_rad[8];     // per-light: xy = world XZ, z = height (Y), w = radius
+    vec4 pl_color[8];       // per-light: rgb = color, a = intensity
+    vec4 pl_dir_cone[8];    // per-light: xyz = spot direction, w = cos(cone_half_angle); -1 = point
+    vec4 pl_area[8];        // per-light: xy = area size (0=point), zw = normal XZ
+};
+
+layout(set = 0, binding = 3, rgba16f) uniform writeonly image2D output_image;
+
+// Flat uint array: tile_ranges[tile_id * 2] = start, tile_ranges[tile_id * 2 + 1] = count
+layout(set = 0, binding = 4) readonly buffer TileRangesBuffer {
+    uint tile_ranges[];
+};
+
+layout(set = 0, binding = 5, r16f) uniform writeonly image2D depth_image;
+
+// Shared tile depth for edge detection and pseudo-normal lighting
+shared float tile_depth[16][16];
+
+// Screen-space contact shadow ray-march within tile bounds.
+// Returns shadow factor: 0.0 = fully shadowed, 1.0 = fully lit.
+float tile_contact_shadow(uvec2 local_id, float surface_depth, vec2 light_screen_dir) {
+    const int STEPS = 4;
+    // Depth threshold scales with distance to avoid noise at far range
+    float threshold = max(0.5, surface_depth * 0.02);
+    float shadow = 1.0;
+    for (int s = 1; s <= STEPS; s++) {
+        ivec2 sp = ivec2(local_id) + ivec2(round(light_screen_dir * float(s)));
+        if (sp.x < 0 || sp.x > 15 || sp.y < 0 || sp.y > 15) break;
+        float sd = tile_depth[sp.y][sp.x];
+        if (sd <= 0.0) continue;  // no geometry at sample
+        // If sampled geometry is closer than current surface, it occludes
+        if (surface_depth - sd > threshold) {
+            float step_fade = 1.0 - float(s) / float(STEPS + 1);
+            shadow = min(shadow, 1.0 - step_fade * 0.5);
+        }
+    }
+    return shadow;
+}
+
+void main() {
+    uvec2 tile_id = gl_WorkGroupID.xy;
+    uvec2 local_id = gl_LocalInvocationID.xy;
+    uvec2 pixel = tile_id * 16 + local_id;
+
+    uint width = params.x;
+    uint height = params.y;
+    uint tiles_x = (width + 15u) / 16u;
+
+    bool valid_pixel = (pixel.x < width && pixel.y < height);
+
+    vec2 pix_center = vec2(pixel) + 0.5;
+
+    // X-Ray depth threshold
+    float xray_depth = effect_params2.y;
+
+    // Per-tile range from tile binning
+    uint flat_tile_id = tile_id.y * tiles_x + tile_id.x;
+    uint tile_start = tile_ranges[flat_tile_id * 2u];
+    uint tile_count = tile_ranges[flat_tile_id * 2u + 1u];
+
+    // Accumulate color front-to-back
+    vec3 color = vec3(0.0);        // non-emissive color (receives lighting)
+    vec3 emission = vec3(0.0);     // emissive glow (self-lit, bypasses lighting)
+    float emission_alpha = 0.0;    // tracks how much of the pixel is emissive
+    float alpha_accum = 0.0;
+    float first_hit_depth = 0.0;
+    bool has_first_hit = false;
+
+    // Iterate through Gaussians assigned to this tile (sorted by depth within tile)
+    for (uint s = 0; s < (valid_pixel ? tile_count : 0u); ++s) {
+        TileSortEntry entry = tile_entries[tile_start + s];
+        if (entry.key_hi == 0xFFFFFFFFu) break;  // sentinel
+        uint idx = entry.index;
+
+        ProjectedSplat splat = projected[idx];
+
+        // X-Ray: skip front Gaussians by depth threshold
+        if (xray_depth > 0.0 && splat.depth < xray_depth) continue;
+
+        // Quick bounding box check
+        vec2 d = pix_center - splat.center;
+        if (abs(d.x) > splat.radius || abs(d.y) > splat.radius) continue;
+
+        // Evaluate Gaussian: exp(-0.5 * (d^T * conic * d))
+        float conic_a = splat.conic_opacity.x;
+        float conic_b = splat.conic_opacity.y;
+        float conic_c = splat.conic_opacity.z;
+        float opacity = splat.conic_opacity.w;
+
+        float power = -0.5 * (conic_a * d.x * d.x + 2.0 * conic_b * d.x * d.y + conic_c * d.y * d.y);
+        if (power > 0.0) continue;  // shouldn't happen, but safety check
+
+        float gaussian_alpha = exp(power);
+
+        // Pixel art mode: hard-threshold alpha to kill soft Gaussian tails
+        float pixel_art = point_light_params.y;  // 0.0 = off, 1.0 = full retro
+        if (pixel_art > 0.0) {
+            float smooth_a = gaussian_alpha * opacity;
+            float hard_a = step(0.3, smooth_a);
+            gaussian_alpha = mix(smooth_a, hard_a, pixel_art) / max(opacity, 1e-6);
+        }
+
+        float alpha = min(0.99, opacity * gaussian_alpha);
+
+        if (alpha < 1.0 / 255.0) continue;  // negligible contribution
+
+        // Track first hit depth for edge detection / lighting
+        if (!has_first_hit) {
+            first_hit_depth = splat.depth;
+            has_first_hit = true;
+        }
+
+        // Front-to-back compositing
+        float weight = alpha * (1.0 - alpha_accum);
+        float em = splat.color.a;  // emission intensity from preprocess
+
+        if (em > 0.0) {
+            // Emissive/self-lit Gaussian: base color at full brightness + emission bonus
+            // Bypasses scene lighting entirely (particles, glowing materials)
+            emission += weight * splat.color.rgb * (1.0 + em);
+            emission_alpha += weight;
+        } else {
+            // Non-emissive: normal color (will receive scene lighting)
+            color += weight * splat.color.rgb;
+        }
+        alpha_accum += weight;
+
+        // Subgroup-wide early-out: if ALL threads in the subgroup are saturated,
+        // skip remaining Gaussians. Individual thread breaks would cause UB
+        // (some threads exit before subgroupAll), so we only use the collective check.
+        if (subgroupAll(alpha_accum > 0.999)) break;
+    }
+
+    // Store depth in shared memory for tile-based effects
+    tile_depth[local_id.y][local_id.x] = (valid_pixel && has_first_hit) ? first_hit_depth : 0.0;
+    barrier();  // ALL invocations in workgroup must reach this
+
+    // Apply post-processing effects if any are active
+    float toon_bands = effect_flags.x;
+    float light_mode = effect_flags.y;
+
+    float non_emissive_alpha = alpha_accum - emission_alpha;
+    if (valid_pixel && non_emissive_alpha > 0.001 && (light_mode > 0.5 || toon_bands > 0.5)) {
+        // Un-premultiply non-emissive color only for lighting
+        vec3 base_color = color / max(non_emissive_alpha, 0.001);
+
+        // --- Pseudo-normal from depth gradient (for lighting) ---
+        if (light_mode > 0.5) {
+            float depth_c = tile_depth[local_id.y][local_id.x];
+
+            // Sample neighbor depths (clamped to tile edges)
+            float depth_l = (local_id.x > 0u)  ? tile_depth[local_id.y][local_id.x - 1u] : depth_c;
+            float depth_r = (local_id.x < 15u) ? tile_depth[local_id.y][local_id.x + 1u] : depth_c;
+            float depth_u = (local_id.y > 0u)  ? tile_depth[local_id.y - 1u][local_id.x] : depth_c;
+            float depth_d = (local_id.y < 15u) ? tile_depth[local_id.y + 1u][local_id.x] : depth_c;
+
+            float dz_dx = (depth_r - depth_l) * 0.5;
+            float dz_dy = (depth_d - depth_u) * 0.5;
+
+            vec3 normal = normalize(vec3(-dz_dx, -dz_dy, 1.0));
+
+            if (light_mode < 1.5) {
+                // Mode 1: Directional light
+                float NdotL = max(dot(normal, light_params.xyz), 0.0);
+                float ambient = 0.3;
+                float intensity = light_params.w;
+                base_color *= ambient + (1.0 - ambient) * NdotL * intensity;
+            } else {
+                // Mode 2: World-space point lights
+                // Reconstruct world position from pixel + view-space Z depth
+                vec2 ndc = (vec2(pixel) + 0.5) / vec2(float(width), float(height)) * 2.0 - 1.0;
+                // No manual Y-flip: proj already has Vulkan Y-flip baked in,
+                // so inv_proj correctly maps pixel NDC → view space.
+                vec4 clip_pos = inv_proj * vec4(ndc, 0.5, 1.0);
+                vec3 view_dir = normalize(clip_pos.xyz / clip_pos.w);
+                // Scale ray so its Z component matches the view-space depth
+                // (first_hit_depth = -view_z, view_dir.z < 0)
+                float t = first_hit_depth / max(-view_dir.z, 0.001);
+                vec3 world_pos = (inv_view * vec4(view_dir * t, 1.0)).xyz;
+
+                vec3 total_light = vec3(0.3);  // ambient base
+
+                int pl_count = int(point_light_params.x);
+                for (int li = 0; li < pl_count && li < 8; li++) {
+                    vec3 light_pos = vec3(pl_pos_rad[li].x,   // world X
+                                          pl_pos_rad[li].z,   // height → Y
+                                          pl_pos_rad[li].y);  // world Z
+                    float light_radius = pl_pos_rad[li].w;
+                    vec3 light_col = pl_color[li].rgb;
+                    float light_intensity = pl_color[li].a;
+
+                    // Area light: find closest point on rectangle to surface
+                    float area_w = pl_area[li].x;
+                    float area_h = pl_area[li].y;
+                    vec3 effective_light_pos = light_pos;
+
+                    if (area_w > 0.001 && area_h > 0.001) {
+                        // Area light normal in world: (normal_xz.x, 0, normal_xz.y)
+                        // Default: facing down (-Y) for horizontal panels
+                        vec2 nxz = pl_area[li].zw;
+                        vec3 area_normal = length(nxz) > 0.001
+                            ? normalize(vec3(nxz.x, 0.0, nxz.y))
+                            : vec3(0.0, -1.0, 0.0);
+                        // Tangent/bitangent: perpendicular to normal
+                        vec3 up = abs(area_normal.y) > 0.99
+                            ? vec3(1.0, 0.0, 0.0)
+                            : vec3(0.0, 1.0, 0.0);
+                        vec3 tangent = normalize(cross(up, area_normal));
+                        vec3 bitangent = cross(area_normal, tangent);
+
+                        // Project surface point onto area plane
+                        vec3 diff = world_pos - light_pos;
+                        float proj_t = dot(diff, tangent);
+                        float proj_b = dot(diff, bitangent);
+                        // Clamp to rectangle extents
+                        proj_t = clamp(proj_t, -area_w * 0.5, area_w * 0.5);
+                        proj_b = clamp(proj_b, -area_h * 0.5, area_h * 0.5);
+                        effective_light_pos = light_pos + tangent * proj_t + bitangent * proj_b;
+                    }
+
+                    vec3 to_light = effective_light_pos - world_pos;
+                    float dist = length(to_light);
+                    vec3 light_dir = to_light / max(dist, 0.001);
+
+                    // Smooth radial falloff
+                    float atten = max(0.0, 1.0 - dist / light_radius);
+                    atten *= atten;  // quadratic
+
+                    // Spot cone attenuation (cone_cos == -1 means point light, skip)
+                    vec3 spot_dir = pl_dir_cone[li].xyz;
+                    float cone_cos = pl_dir_cone[li].w;
+                    if (cone_cos > -0.99) {
+                        float cos_angle = dot(normalize(-to_light), spot_dir);
+                        float outer = cone_cos;
+                        float inner = min(outer + 0.1, 1.0);
+                        float spot_atten = clamp((cos_angle - outer) / max(inner - outer, 0.001), 0.0, 1.0);
+                        atten *= spot_atten;
+                    }
+
+                    // Half-Lambert wrap lighting: pseudo-normals from depth gradients
+                    // mostly point toward the camera, so pure NdotL would be ~0 for
+                    // lights at similar depth. Wrap to [0,1] for soft omnidirectional tint.
+                    float NdotL = dot(normal, light_dir) * 0.5 + 0.5;
+
+                    // Screen-space contact shadow
+                    vec4 lc = proj * view * vec4(effective_light_pos, 1.0);
+                    float shadow = 1.0;
+                    if (lc.w > 0.0) {
+                        vec2 ls = (lc.xy / lc.w * 0.5 + 0.5) * vec2(float(width), float(height));
+                        vec2 ss_dir = ls - vec2(pixel);
+                        float ss_len = length(ss_dir);
+                        if (ss_len > 0.5) {
+                            shadow = tile_contact_shadow(local_id, depth_c, ss_dir / ss_len);
+                        }
+                    }
+
+                    total_light += light_col * light_intensity * atten * NdotL * shadow;
+                }
+
+                base_color *= total_light;
+            }
+        }
+
+        // --- Toon / cel shading ---
+        if (toon_bands > 0.5) {
+            float bands = toon_bands;
+
+            // Quantize luminance, preserve hue — avoids harsh per-channel banding
+            float lum = dot(base_color, vec3(0.299, 0.587, 0.114));
+            float quant_lum = floor(lum * bands + 0.5) / bands;
+            float scale_factor = (lum > 0.001) ? min(quant_lum / lum, 1.5) : 1.0;
+            // Blend 60% quantized, 40% original for softer look
+            base_color = mix(base_color, base_color * scale_factor, 0.6);
+
+            // Edge detection from depth discontinuity (silhouette outlines only)
+            float depth_c = tile_depth[local_id.y][local_id.x];
+            if (depth_c > 0.0) {
+                // 25% relative threshold — only major silhouette edges
+                float threshold = depth_c * 0.25;
+                int edge_count = 0;
+
+                // Count how many neighbors have a big depth jump (require 2+ for robustness)
+                if (local_id.x > 0u) {
+                    float nd = tile_depth[local_id.y][local_id.x - 1u];
+                    if (nd > 0.0 && abs(nd - depth_c) > threshold) edge_count++;
+                }
+                if (local_id.x < 15u) {
+                    float nd = tile_depth[local_id.y][local_id.x + 1u];
+                    if (nd > 0.0 && abs(nd - depth_c) > threshold) edge_count++;
+                }
+                if (local_id.y > 0u) {
+                    float nd = tile_depth[local_id.y - 1u][local_id.x];
+                    if (nd > 0.0 && abs(nd - depth_c) > threshold) edge_count++;
+                }
+                if (local_id.y < 15u) {
+                    float nd = tile_depth[local_id.y + 1u][local_id.x];
+                    if (nd > 0.0 && abs(nd - depth_c) > threshold) edge_count++;
+                }
+
+                if (edge_count >= 2) {
+                    base_color *= 0.2;  // dark outlines at silhouette edges
+                }
+            }
+        }
+
+        // Re-premultiply (non-emissive portion only)
+        color = base_color * non_emissive_alpha;
+    }
+
+    // --- X-Ray color treatment ---
+    if (valid_pixel && xray_depth > 0.0 && alpha_accum > 0.001) {
+        vec3 base = color / max(alpha_accum, 0.001);
+        float lum = dot(base, vec3(0.299, 0.587, 0.114));
+        // Blue-green medical-scan tint
+        vec3 xray_color = vec3(lum * 0.3, lum * 0.8, lum * 1.0);
+        // Edge glow: thin regions (low alpha) glow brighter
+        float edge_glow = 1.0 + max(0.0, 1.0 - alpha_accum * 2.0) * 0.5;
+        xray_color *= edge_glow;
+        color = xray_color * alpha_accum;
+    }
+
+    // Add emission to color (HDR values > 1.0 trigger bloom automatically)
+    color += emission;
+
+    // Write output (premultiplied alpha) + depth for post-processing
+    if (valid_pixel) {
+        imageStore(output_image, ivec2(pixel), vec4(color, alpha_accum));
+        imageStore(depth_image, ivec2(pixel), vec4(first_hit_depth, 0.0, 0.0, 0.0));
+    }
+}
