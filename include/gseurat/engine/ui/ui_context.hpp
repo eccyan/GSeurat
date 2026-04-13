@@ -46,6 +46,10 @@ public:
                 float text_scale = 0.6f);
     void panel(float x, float y, float w, float h,
                glm::vec4 color = {0.05f, 0.05f, 0.12f, 0.88f});
+    void line(float x1, float y1, float x2, float y2, float thickness,
+              glm::vec4 color = {1.0f, 1.0f, 1.0f, 1.0f});
+    void circle(float cx, float cy, float radius, int segments,
+                float thickness, glm::vec4 color = {1.0f, 1.0f, 1.0f, 1.0f});
 
     // Layout helpers for vertical menus
     void begin_menu(float x, float y, float item_height = 50.0f);
