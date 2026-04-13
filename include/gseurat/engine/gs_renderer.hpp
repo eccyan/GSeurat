@@ -418,7 +418,7 @@ private:
     VkDescriptorSet onesweep_set_ab_ = VK_NULL_HANDLE;  // read A → write B
     VkDescriptorSet onesweep_set_ba_ = VK_NULL_HANDLE;  // read B → write A
     Buffer onesweep_status_;    // per-digit lookback status buffer
-    bool use_onesweep_ = true;  // A/B toggle (true = onesweep, false = old 8-pass)
+    bool use_onesweep_ = false;  // A/B toggle — disabled until 2-dispatch Onesweep is implemented
     uint32_t onesweep_max_wg_ = 0;
 
     // Tile sort buffers
@@ -432,7 +432,7 @@ private:
     uint32_t tile_sort_capacity_ = 0;    // max entries in tile sort buffers
     uint32_t tile_sort_size_ = 0;        // workgroup-aligned count for radix sort
     uint32_t tile_sort_workgroups_ = 0;
-    static constexpr uint32_t kTileSortPasses = 8;  // 4 for key_lo + 4 for key_hi
+    static constexpr uint32_t kTileSortPasses = 4;  // 4 for key_lo only (key_hi is always 0)
     bool tile_binning_enabled_ = true;
 
     bool initialized_ = false;
