@@ -2125,11 +2125,30 @@ void GsRenderer::dispatch_tile_sort(VkCommandBuffer cmd) {
     }
 
     // === Tile radix sort (8 passes, indirect dispatch) ===
+    // Pre-compute fixed histogram_count for scan (uses capacity-based upper bound).
+    // Histogram buffer must be cleared before each pass so the scan reads zeros
+    // for workgroups that weren't dispatched (indirect count < max_workgroups).
+    uint32_t max_workgroups = (tile_sort_capacity_ + 1023) / 1024;
+    if (max_workgroups == 0) max_workgroups = 1;
+    uint32_t histogram_count = 256 * max_workgroups;
+    VkDeviceSize hist_clear_size = static_cast<VkDeviceSize>(histogram_count) * sizeof(uint32_t);
+
     for (uint32_t pass = 0; pass < kTileSortPasses; ++pass) {
         uint32_t digit_shift = (pass % 4) * 8;
         uint32_t use_hi = (pass < 4) ? 0 : 1;
         bool read_from_a = (pass % 2 == 0);
         uint32_t push_data[2] = {digit_shift, use_hi};
+
+        // Clear histogram buffer to 0 (ensures unused workgroup slots are zero for scan)
+        vkCmdFillBuffer(cmd, tile_histogram_ssbo_.buffer(), 0, hist_clear_size, 0);
+        {
+            VkMemoryBarrier hb{};
+            hb.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+            hb.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+            hb.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+            vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &hb, 0, nullptr, 0, nullptr);
+        }
 
         // Histogram (indirect dispatch from args[0..2])
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, tile_histogram_pipeline_);
@@ -2142,11 +2161,7 @@ void GsRenderer::dispatch_tile_sort(VkCommandBuffer cmd) {
 
         insert_compute_barrier(cmd);
 
-        // Prefix scan — uses fixed upper bound for histogram_count since actual
-        // num_workgroups is GPU-side. Extra zeros from unfilled histogram are harmless.
-        uint32_t max_workgroups = (tile_sort_capacity_ + 1023) / 1024;
-        if (max_workgroups == 0) max_workgroups = 1;
-        uint32_t histogram_count = 256 * max_workgroups;
+        // Prefix scan — uses fixed upper bound for histogram_count
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, radix_scan_pipeline_);
         vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
                                 radix_scan_pipeline_layout_, 0, 1, &tile_scan_set_, 0, nullptr);
