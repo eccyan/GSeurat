@@ -84,12 +84,10 @@ void GsRenderer::init(VkDevice device, VkPhysicalDevice physical_device,
     // Create initial tile buffers (zeroed) for valid descriptor bindings.
     // init_streaming() will recreate them at proper size when a scene loads.
     {
-        uint32_t tiles_x = (output_width_ + 15) / 16;
-        uint32_t tiles_y = (output_height_ + 15) / 16;
-        uint32_t num_tiles = tiles_x * tiles_y;
+        static constexpr uint32_t kMaxTiles = 40 * 30;  // supports up to 640×480
         tile_ranges_ssbo_ = Buffer::create_storage(allocator_,
-            static_cast<VkDeviceSize>(num_tiles) * 2 * sizeof(uint32_t));
-        std::memset(tile_ranges_ssbo_.mapped(), 0, num_tiles * 2 * sizeof(uint32_t));
+            static_cast<VkDeviceSize>(kMaxTiles) * 2 * sizeof(uint32_t));
+        std::memset(tile_ranges_ssbo_.mapped(), 0, kMaxTiles * 2 * sizeof(uint32_t));
         // Tiny dummy tile sort buffer (16 bytes) — just for descriptor binding validity
         tile_sort_a_ = Buffer::create_storage(allocator_, 16);
         tile_sort_count_ssbo_ = Buffer::create_storage_readback(allocator_, sizeof(uint32_t));
@@ -791,9 +789,10 @@ void GsRenderer::init_streaming(const StreamingConfig& config) {
 
         VkDeviceSize entry_buf_size = static_cast<VkDeviceSize>(tile_sort_size_) * 16;  // 16 bytes/entry
         VkDeviceSize hist_buf_size = static_cast<VkDeviceSize>(256) * tile_sort_workgroups_ * sizeof(uint32_t);
-        uint32_t tiles_x = (output_width_ + 15) / 16;
-        uint32_t tiles_y = (output_height_ + 15) / 16;
-        VkDeviceSize ranges_buf_size = static_cast<VkDeviceSize>(tiles_x * tiles_y) * 2 * sizeof(uint32_t);
+        // Allocate tile_ranges for max possible resolution (output_width_ may not
+        // reflect final size at allocation time). Generous upper bound.
+        static constexpr uint32_t kMaxTiles = 40 * 30;  // supports up to 640×480
+        VkDeviceSize ranges_buf_size = static_cast<VkDeviceSize>(kMaxTiles) * 2 * sizeof(uint32_t);
 
         tile_sort_a_.destroy(allocator_);
         tile_sort_b_.destroy(allocator_);
@@ -809,9 +808,10 @@ void GsRenderer::init_streaming(const StreamingConfig& config) {
         tile_ranges_ssbo_ = Buffer::create_storage(allocator_, ranges_buf_size);
         tile_indirect_args_ = Buffer::create_storage(allocator_, 8 * sizeof(uint32_t));
 
-        std::fprintf(stderr, "GS: Tile sort — capacity=%u entries (%u workgroups), "
-                     "tiles=%ux%u, buf=%.1f MB\n",
-                     tile_sort_size_, tile_sort_workgroups_, tiles_x, tiles_y,
+        std::fprintf(stderr, "GS: Tile sort -- capacity=%u entries (%u workgroups), "
+                     "output=%ux%u, buf=%.1f MB\n",
+                     tile_sort_size_, tile_sort_workgroups_,
+                     output_width_, output_height_,
                      static_cast<float>(entry_buf_size * 2) / (1024.0f * 1024.0f));
     }
 
@@ -1273,9 +1273,10 @@ void GsRenderer::load_cloud_legacy(const GaussianCloud& cloud) {
 
         VkDeviceSize entry_buf_size = static_cast<VkDeviceSize>(tile_sort_size_) * 16;
         VkDeviceSize hist_buf_size = static_cast<VkDeviceSize>(256) * tile_sort_workgroups_ * sizeof(uint32_t);
-        uint32_t tiles_x = (output_width_ + 15) / 16;
-        uint32_t tiles_y = (output_height_ + 15) / 16;
-        VkDeviceSize ranges_buf_size = static_cast<VkDeviceSize>(tiles_x * tiles_y) * 2 * sizeof(uint32_t);
+        // Allocate tile_ranges for max possible resolution (output_width_ may not
+        // reflect final size at allocation time). Generous upper bound.
+        static constexpr uint32_t kMaxTiles = 40 * 30;  // supports up to 640×480
+        VkDeviceSize ranges_buf_size = static_cast<VkDeviceSize>(kMaxTiles) * 2 * sizeof(uint32_t);
 
         tile_sort_a_.destroy(allocator_);
         tile_sort_b_.destroy(allocator_);
@@ -1292,9 +1293,10 @@ void GsRenderer::load_cloud_legacy(const GaussianCloud& cloud) {
         tile_indirect_args_ = Buffer::create_storage(allocator_, 8 * sizeof(uint32_t));
         std::memset(tile_indirect_args_.mapped(), 0, 8 * sizeof(uint32_t));
 
-        std::fprintf(stderr, "GS: Tile sort — capacity=%u entries (%u workgroups), "
-                     "tiles=%ux%u, buf=%.1f MB\n",
-                     tile_sort_size_, tile_sort_workgroups_, tiles_x, tiles_y,
+        std::fprintf(stderr, "GS: Tile sort -- capacity=%u entries (%u workgroups), "
+                     "output=%ux%u, buf=%.1f MB\n",
+                     tile_sort_size_, tile_sort_workgroups_,
+                     output_width_, output_height_,
                      static_cast<float>(entry_buf_size * 2) / (1024.0f * 1024.0f));
     }
 
@@ -2449,7 +2451,7 @@ void GsRenderer::render(VkCommandBuffer cmd, const glm::mat4& view, const glm::m
 
             // === Phase 4: Tile-based rasterization ===
             {
-                bool use_tile = false;  // DEBUG: force original pipeline to confirm it works
+                bool use_tile = (tile_sort_a_.buffer() && tile_sort_capacity_ > 0);
                 if (use_tile) {
                     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, tile_render_pipeline_);
                     vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
