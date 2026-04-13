@@ -379,6 +379,12 @@ private:
     VkPipelineLayout tile_scatter_pipeline_layout_ = VK_NULL_HANDLE;
     VkPipeline tile_scatter_pipeline_ = VK_NULL_HANDLE;
 
+    // Tile range detection pipeline
+    VkDescriptorSetLayout tile_ranges_layout_ = VK_NULL_HANDLE;
+    VkPipelineLayout tile_ranges_pipeline_layout_ = VK_NULL_HANDLE;
+    VkPipeline tile_ranges_pipeline_ = VK_NULL_HANDLE;
+    VkDescriptorSet tile_ranges_set_ = VK_NULL_HANDLE;
+
     // Tile sort descriptor sets (ping-pong for radix)
     VkDescriptorSet tile_histogram_set_a_ = VK_NULL_HANDLE;
     VkDescriptorSet tile_histogram_set_b_ = VK_NULL_HANDLE;

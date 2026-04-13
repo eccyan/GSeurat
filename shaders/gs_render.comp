@@ -58,6 +58,23 @@ layout(set = 0, binding = 4) readonly buffer CountsBuffer {
 
 layout(set = 0, binding = 5, r16f) uniform writeonly image2D depth_image;
 
+// Tile binning buffers (Phase 3+4)
+// tile_ranges: flat uint array, [tile_id * 2] = start, [tile_id * 2 + 1] = count
+layout(set = 0, binding = 6) readonly buffer TileRangesBuffer {
+    uint tile_ranges[];
+};
+
+struct TileSortEntry {
+    uint key_hi;   // tile_id
+    uint key_lo;   // depth
+    uint index;    // index into projected[]
+    uint _pad;
+};
+
+layout(set = 0, binding = 7) readonly buffer TileSortBuffer {
+    TileSortEntry tile_entries[];
+};
+
 // Shared tile depth for edge detection and pseudo-normal lighting
 shared float tile_depth[16][16];
 
@@ -83,13 +100,13 @@ float tile_contact_shadow(uvec2 local_id, float surface_depth, vec2 light_screen
 }
 
 void main() {
-    uvec2 tile_id = gl_WorkGroupID.xy;
+    uvec2 tile_xy = gl_WorkGroupID.xy;
     uvec2 local_id = gl_LocalInvocationID.xy;
-    uvec2 pixel = tile_id * 16 + local_id;
+    uvec2 pixel = tile_xy * 16 + local_id;
 
     uint width = params.x;
     uint height = params.y;
-    uint count = static_count + dynamic_count;  // compute directly, bypass merge shader's thread 0 write
+    uint tiles_x = (width + 15u) / 16u;
 
     bool valid_pixel = (pixel.x < width && pixel.y < height);
 
@@ -97,6 +114,16 @@ void main() {
 
     // X-Ray depth threshold
     float xray_depth = effect_params2.y;
+
+    // Per-tile range from tile binning (Phase 3+4)
+    uint flat_tile_id = tile_xy.y * tiles_x + tile_xy.x;
+    uint tile_start = tile_ranges[flat_tile_id * 2u];
+    uint tile_count = tile_ranges[flat_tile_id * 2u + 1u];
+
+    // Fallback: if tile binning isn't active (count=0 for all tiles),
+    // use the old merged entries path (iterates all visible Gaussians)
+    bool use_tile_binning = (tile_count > 0);
+    uint loop_count = use_tile_binning ? tile_count : (static_count + dynamic_count);
 
     // Accumulate color front-to-back
     vec3 color = vec3(0.0);        // non-emissive color (receives lighting)
@@ -106,12 +133,17 @@ void main() {
     float first_hit_depth = 0.0;
     bool has_first_hit = false;
 
-    // Iterate through sorted Gaussians (only for valid pixels)
-    for (uint s = 0; s < (valid_pixel ? count : 0u); ++s) {
-        uint idx = merged_entries[s].index;
-
-        // Culled Gaussians (key == 0xFFFF) are sorted to the end — stop immediately
-        if (merged_entries[s].key == 0xFFFF) break;
+    // Iterate through Gaussians assigned to this tile (or all, for fallback)
+    for (uint s = 0; s < (valid_pixel ? loop_count : 0u); ++s) {
+        uint idx;
+        if (use_tile_binning) {
+            TileSortEntry entry = tile_entries[tile_start + s];
+            if (entry.key_hi == 0xFFFFFFFFu) break;  // sentinel
+            idx = entry.index;
+        } else {
+            if (merged_entries[s].key == 0xFFFFu) break;  // culled sentinel
+            idx = merged_entries[s].index;
+        }
 
         ProjectedSplat splat = projected[idx];
 

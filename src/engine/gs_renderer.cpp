@@ -80,6 +80,22 @@ void GsRenderer::init(VkDevice device, VkPhysicalDevice physical_device,
     pool_ = pool;
 
     create_output_image(320, 240);
+
+    // Create initial tile buffers (zeroed) for valid descriptor bindings.
+    // init_streaming() will recreate them at proper size when a scene loads.
+    {
+        uint32_t tiles_x = (output_width_ + 15) / 16;
+        uint32_t tiles_y = (output_height_ + 15) / 16;
+        uint32_t num_tiles = tiles_x * tiles_y;
+        tile_ranges_ssbo_ = Buffer::create_storage(allocator_,
+            static_cast<VkDeviceSize>(num_tiles) * 2 * sizeof(uint32_t));
+        std::memset(tile_ranges_ssbo_.mapped(), 0, num_tiles * 2 * sizeof(uint32_t));
+        // Tiny dummy tile sort buffer (16 bytes) — just for descriptor binding validity
+        tile_sort_a_ = Buffer::create_storage(allocator_, 16);
+        tile_sort_count_ssbo_ = Buffer::create_storage_readback(allocator_, sizeof(uint32_t));
+        std::memset(tile_sort_count_ssbo_.mapped(), 0, sizeof(uint32_t));
+    }
+
     create_descriptor_resources();
     create_compute_pipelines();
 
@@ -269,7 +285,7 @@ void GsRenderer::create_descriptor_resources() {
         vkCreateDescriptorSetLayout(device_, &ci, nullptr, &sort_layout_);
     }
 
-    // Render layout: { projected, sort_keys, uniforms, output_image, visible_count, depth_image }
+    // Render layout: { projected, sort_keys, uniforms, output_image, visible_count, depth_image, tile_ranges, tile_entries }
     {
         VkDescriptorSetLayoutBinding bindings[] = {
             {0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
@@ -278,10 +294,12 @@ void GsRenderer::create_descriptor_resources() {
             {3, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
             {4, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
             {5, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},  // depth
+            {6, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},  // tile_ranges
+            {7, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},  // tile_entries
         };
         VkDescriptorSetLayoutCreateInfo ci{};
         ci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-        ci.bindingCount = 6;
+        ci.bindingCount = 8;
         ci.pBindings = bindings;
         vkCreateDescriptorSetLayout(device_, &ci, nullptr, &render_layout_);
     }
@@ -371,6 +389,20 @@ void GsRenderer::create_descriptor_resources() {
         vkCreateDescriptorSetLayout(device_, &ci, nullptr, &tile_bin_layout_);
     }
 
+    // Tile range detection layout: { sorted_entries(0), tile_ranges(1), tile_count(2) }
+    {
+        VkDescriptorSetLayoutBinding bindings[] = {
+            {0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
+            {1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
+            {2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
+        };
+        VkDescriptorSetLayoutCreateInfo ci{};
+        ci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+        ci.bindingCount = 3;
+        ci.pBindings = bindings;
+        vkCreateDescriptorSetLayout(device_, &ci, nullptr, &tile_ranges_layout_);
+    }
+
     // PBD solver layout: { pbd_states (rw), pbd_params (ro), pbd_constraints (ro), pbd_uniforms }
     {
         VkDescriptorSetLayoutBinding bindings[] = {
@@ -412,8 +444,9 @@ void GsRenderer::create_descriptor_resources() {
         radix_histogram_layout_, radix_histogram_layout_,  // tile hist A/B (same layout as depth sort)
         radix_scan_layout_,                                // tile scan
         radix_scatter_layout_, radix_scatter_layout_,      // tile scatter AB/BA
+        tile_ranges_layout_,                               // tile range detection
     };
-    constexpr uint32_t kSetCount = 30;
+    constexpr uint32_t kSetCount = 31;
     VkDescriptorSet sets[kSetCount];
     VkDescriptorSetAllocateInfo alloc_info{};
     alloc_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
@@ -456,6 +489,7 @@ void GsRenderer::create_descriptor_resources() {
     tile_scan_set_ = sets[27];
     tile_scatter_set_ab_ = sets[28];
     tile_scatter_set_ba_ = sets[29];
+    tile_ranges_set_ = sets[30];
 }
 
 void GsRenderer::create_compute_pipelines() {
@@ -536,6 +570,10 @@ void GsRenderer::create_compute_pipelines() {
     create_pipeline("shaders/gs_tile_scatter.comp.spv", radix_scatter_layout_, 12,
                     tile_scatter_pipeline_layout_, tile_scatter_pipeline_);
     // Tile scan reuses existing radix_scan pipeline (entry-independent)
+
+    // Tile range detection pipeline (push: num_tiles = 4 bytes)
+    create_pipeline("shaders/gs_tile_ranges.comp.spv", tile_ranges_layout_, 4,
+                    tile_ranges_pipeline_layout_, tile_ranges_pipeline_);
 }
 
 void GsRenderer::init_streaming(const StreamingConfig& config) {
@@ -1678,7 +1716,7 @@ void GsRenderer::update_descriptors() {
         vkUpdateDescriptorSets(device_, 4, writes, 0, nullptr);
     }
 
-    // Render set (updated to use merged_sort and counts instead of legacy sort_keys)
+    // Render set (updated to use merged_sort and counts + tile binning buffers)
     {
         VkDescriptorBufferInfo projected_info{projected_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo merged_info{merged_sort_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
@@ -1686,6 +1724,8 @@ void GsRenderer::update_descriptors() {
         VkDescriptorImageInfo image_info{VK_NULL_HANDLE, output_view_, VK_IMAGE_LAYOUT_GENERAL};
         VkDescriptorBufferInfo counts_info{counts_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
         VkDescriptorImageInfo depth_img_info{VK_NULL_HANDLE, depth_view_, VK_IMAGE_LAYOUT_GENERAL};
+        VkDescriptorBufferInfo tile_ranges_info{tile_ranges_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo tile_entries_info{tile_sort_a_.buffer(), 0, VK_WHOLE_SIZE};
 
         VkWriteDescriptorSet writes[] = {
             {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, render_set_, 0, 0, 1,
@@ -1700,8 +1740,12 @@ void GsRenderer::update_descriptors() {
              VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &counts_info, nullptr},
             {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, render_set_, 5, 0, 1,
              VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, &depth_img_info, nullptr, nullptr},
+            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, render_set_, 6, 0, 1,
+             VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &tile_ranges_info, nullptr},
+            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, render_set_, 7, 0, 1,
+             VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &tile_entries_info, nullptr},
         };
-        vkUpdateDescriptorSets(device_, 6, writes, 0, nullptr);
+        vkUpdateDescriptorSets(device_, 8, writes, 0, nullptr);
     }
 
     // ── Tile binning descriptor sets ──
@@ -1727,6 +1771,23 @@ void GsRenderer::update_descriptors() {
                  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &tile_count_info, nullptr},
             };
             vkUpdateDescriptorSets(device_, 5, writes, 0, nullptr);
+        }
+
+        // Tile range detection set: sorted_entries(0), tile_ranges(1), tile_count(2)
+        {
+            VkDescriptorBufferInfo sorted_info{tile_sort_a_.buffer(), 0, VK_WHOLE_SIZE};
+            VkDescriptorBufferInfo ranges_info{tile_ranges_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
+            VkDescriptorBufferInfo count_info{tile_sort_count_ssbo_.buffer(), 0, sizeof(uint32_t)};
+
+            VkWriteDescriptorSet writes[] = {
+                {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, tile_ranges_set_, 0, 0, 1,
+                 VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &sorted_info, nullptr},
+                {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, tile_ranges_set_, 1, 0, 1,
+                 VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &ranges_info, nullptr},
+                {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, tile_ranges_set_, 2, 0, 1,
+                 VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &count_info, nullptr},
+            };
+            vkUpdateDescriptorSets(device_, 3, writes, 0, nullptr);
         }
 
         // Tile histogram sets: entries_A/B(0) → histogram(1)
@@ -1934,6 +1995,38 @@ void GsRenderer::dispatch_tile_sort(VkCommandBuffer cmd) {
         insert_compute_barrier(cmd);
     }
     // After 8 passes (even count), sorted result is in tile_sort_a_
+
+    // === Tile range detection ===
+    // Clear tile_ranges to 0 (start=0, count=0 for all tiles).
+    // The shader uses boundary detection (not atomicMin) for start,
+    // and atomicAdd for count starting from 0.
+    {
+        uint32_t num_tiles = tiles_x * tiles_y;
+        vkCmdFillBuffer(cmd, tile_ranges_ssbo_.buffer(), 0,
+                        static_cast<VkDeviceSize>(num_tiles) * 2 * sizeof(uint32_t), 0);
+
+        VkMemoryBarrier fill_barrier{};
+        fill_barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+        fill_barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        fill_barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+            0, 1, &fill_barrier, 0, nullptr, 0, nullptr);
+    }
+
+    // Dispatch tile range detection
+    {
+        uint32_t num_tiles = tiles_x * tiles_y;
+        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, tile_ranges_pipeline_);
+        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
+                                tile_ranges_pipeline_layout_, 0, 1, &tile_ranges_set_, 0, nullptr);
+        vkCmdPushConstants(cmd, tile_ranges_pipeline_layout_, VK_SHADER_STAGE_COMPUTE_BIT,
+                           0, 4, &num_tiles);
+        // Dispatch enough threads for all tile sort entries
+        vkCmdDispatch(cmd, (tile_sort_size_ + 255) / 256, 1, 1);
+    }
+
+    insert_compute_barrier(cmd);
 }
 
 void GsRenderer::render(VkCommandBuffer cmd, const glm::mat4& view, const glm::mat4& proj) {
@@ -2464,6 +2557,7 @@ void GsRenderer::shutdown(VmaAllocator allocator) {
     destroy_pipeline(tile_bin_pipeline_);
     destroy_pipeline(tile_histogram_pipeline_);
     destroy_pipeline(tile_scatter_pipeline_);
+    destroy_pipeline(tile_ranges_pipeline_);
 
     destroy_layout(preprocess_pipeline_layout_);
     destroy_layout(sort_pipeline_layout_);
@@ -2477,6 +2571,7 @@ void GsRenderer::shutdown(VmaAllocator allocator) {
     destroy_layout(tile_bin_pipeline_layout_);
     destroy_layout(tile_histogram_pipeline_layout_);
     destroy_layout(tile_scatter_pipeline_layout_);
+    destroy_layout(tile_ranges_pipeline_layout_);
 
     destroy_set_layout(preprocess_layout_);
     destroy_set_layout(sort_layout_);
@@ -2488,6 +2583,7 @@ void GsRenderer::shutdown(VmaAllocator allocator) {
     destroy_set_layout(radix_scan_layout_);
     destroy_set_layout(radix_scatter_layout_);
     destroy_set_layout(tile_bin_layout_);
+    destroy_set_layout(tile_ranges_layout_);
 
     if (timestamp_pool_) { vkDestroyQueryPool(device_, timestamp_pool_, nullptr); timestamp_pool_ = VK_NULL_HANDLE; }
     if (gs_pool_) vkDestroyDescriptorPool(device_, gs_pool_, nullptr);
