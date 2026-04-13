@@ -39,5 +39,12 @@
       "spawn_position": [5.0, 0.0, 5.0],
       "spawn_facing": "down"
     }
+  ],
+  "instances": [
+    {
+      "id": "dungeon_01",
+      "display_name": "Underground Dungeon",
+      "scene_file": "assets/scenes/test_scene.json"
+    }
   ]
 }

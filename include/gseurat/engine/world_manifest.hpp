@@ -36,12 +36,19 @@ struct WorldPortal {
     std::string spawn_facing;
 };
 
+struct WorldInstance {
+    std::string id;
+    std::string display_name;
+    std::string scene_file;
+};
+
 struct WorldManifest {
     int version{1};
     glm::vec3 grid_cell_size{64.0f, 32.0f, 64.0f};
     std::vector<WorldChunk> chunks;
     std::vector<StreamingVolume> streaming_volumes;
     std::vector<WorldPortal> portals;
+    std::vector<WorldInstance> instances;
 
     std::pair<glm::vec3, glm::vec3> chunk_aabb(size_t index) const;
 

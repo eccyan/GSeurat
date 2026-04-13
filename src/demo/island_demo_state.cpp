@@ -623,17 +623,41 @@ void IslandDemoState::update(AppBase& app, float dt) {
             std::fprintf(stderr, "[IslandDemo] Chunk [%s] Unloaded\n", grid_key.c_str());
         }
 
-        // Portal transition events
+        // Portal transition — actually load the instance scene
         if (!world_streamer_->entered_portal_id().empty()) {
             const auto& portal_id = world_streamer_->entered_portal_id();
             for (const auto& portal : world_streamer_->manifest().portals) {
                 if (portal.id == portal_id) {
-                    std::fprintf(stderr, "[IslandDemo] Portal entered: %s -> instance '%s'\n",
-                        portal_id.c_str(), portal.target_instance_id.c_str());
-                    std::fprintf(stderr, "[IslandDemo] Spawn at (%.1f, %.1f, %.1f) facing %s\n",
-                        portal.spawn_position.x, portal.spawn_position.y, portal.spawn_position.z,
-                        portal.spawn_facing.c_str());
-                    // TODO: Full scene transition would call app.clear_scene() + app.init_scene()
+                    // Find the instance scene file
+                    std::string instance_scene;
+                    for (const auto& inst : world_streamer_->manifest().instances) {
+                        if (inst.id == portal.target_instance_id) {
+                            instance_scene = inst.scene_file;
+                            break;
+                        }
+                    }
+                    if (instance_scene.empty()) {
+                        std::fprintf(stderr, "[IslandDemo] Portal '%s' -> instance '%s' not found in manifest\n",
+                            portal_id.c_str(), portal.target_instance_id.c_str());
+                        break;
+                    }
+
+                    std::fprintf(stderr, "[IslandDemo] Portal entered: %s -> loading '%s'\n",
+                        portal_id.c_str(), instance_scene.c_str());
+
+                    // Transition: clear current scene and load instance
+                    app.clear_scene();
+                    app.init_scene(instance_scene);
+
+                    // Teleport player to spawn position
+                    character_origin_ = portal.spawn_position;
+                    auto* transform = app.world().try_get<ecs::Transform>(player_entity_);
+                    if (transform) {
+                        transform->position = coord::WorldPos(portal.spawn_position);
+                    }
+
+                    std::fprintf(stderr, "[IslandDemo] Spawned at (%.1f, %.1f, %.1f)\n",
+                        portal.spawn_position.x, portal.spawn_position.y, portal.spawn_position.z);
                     break;
                 }
             }
