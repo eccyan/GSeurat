@@ -1,25 +1,16 @@
 #version 450
 
-// Tile range detection: scans sorted tile_sort_entries and records
-// per-tile {start, count}.
-//
-// Pre-condition: tile_ranges cleared to 0 (all counts = 0).
-// Each thread processes one entry. Boundary detection writes start;
-// every valid entry atomicAdds count.
 layout(local_size_x = 256) in;
 
 struct TileSortEntry {
-    uint key_hi;   // tile_id
-    uint key_lo;   // depth
+    uint key;
     uint index;
-    uint _pad;
 };
 
 layout(set = 0, binding = 0) readonly buffer SortedEntries {
     TileSortEntry entries[];
 };
 
-// Flat uint array: ranges[tile_id * 2] = start, ranges[tile_id * 2 + 1] = count
 layout(set = 0, binding = 1) buffer TileRanges {
     uint ranges[];
 };
@@ -29,29 +20,23 @@ layout(set = 0, binding = 2) readonly buffer TileSortCount {
 };
 
 layout(push_constant) uniform PushConstants {
-    uint num_tiles;      // tiles_x * tiles_y
-    uint max_entries;    // tile sort buffer capacity (clamp tile_count)
+    uint num_tiles;
+    uint max_entries;
 };
 
 void main() {
     uint i = gl_GlobalInvocationID.x;
-    // Clamp to buffer capacity — atomicAdd in binning can overshoot
     uint clamped_count = min(tile_count, max_entries);
     if (i >= clamped_count) return;
 
-    uint tile_id = entries[i].key_hi;
+    uint tile_id = entries[i].key >> 16u;
 
-    // Skip sentinel entries (key_hi = 0xFFFFFFFF from buffer fill)
     if (tile_id >= num_tiles) return;
 
-    // Boundary detection: if this is the first entry for this tile, record start.
-    // The sorted order guarantees that all entries for the same tile are contiguous,
-    // so the first thread with a new tile_id writes the start index.
-    bool is_first = (i == 0) || (entries[i - 1].key_hi != tile_id);
+    bool is_first = (i == 0) || ((entries[i - 1].key >> 16u) != tile_id);
     if (is_first) {
         ranges[tile_id * 2u] = i;
     }
 
-    // Count: every entry increments its tile's count
     atomicAdd(ranges[tile_id * 2u + 1u], 1u);
 }
