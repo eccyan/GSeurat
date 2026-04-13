@@ -73981,6 +73981,60 @@
           "effect_radius": 6.0
         }
       }
+    },
+    {
+      "id": "forest_guardian",
+      "name": "Forest Guardian",
+      "position": [
+        134.0,
+        0.0,
+        167.0
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": 1.0,
+      "ply_file": "assets/characters/warm_robot/warm_robot.ply",
+      "components": {
+        "BoneAnimated": {
+          "manifest": "assets/characters/warm_robot/warm_robot.manifest.json",
+          "default_clip": "idle"
+        },
+        "NpcWalker": {
+          "patrol_radius": 15.0,
+          "speed": 6.0,
+          "pause_duration": 2.0
+        }
+      }
+    },
+    {
+      "id": "forest_patrol_knight",
+      "name": "Forest Knight",
+      "position": [
+        130.0,
+        0.0,
+        155.0
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": 0.45,
+      "ply_file": "assets/characters/knight/knight.ply",
+      "components": {
+        "BoneAnimated": {
+          "manifest": "assets/characters/knight/knight.manifest.json",
+          "default_clip": "idle"
+        },
+        "NpcWalker": {
+          "patrol_radius": 10.0,
+          "speed": 7.0,
+          "pause_duration": 1.0
+        }
+      }
     }
   ],
   "particle_emitters": [
