@@ -4,6 +4,7 @@ import { chunkGridKey } from '@gseurat/project-root';
 import { NumberInput } from '../components/NumberInput.js';
 import { Vec3Input } from '../components/Vec3Input.js';
 import { useWorldStore } from '../store/useWorldStore.js';
+import { useSceneStore } from '../store/useSceneStore.js';
 import { panelStyles } from '../styles/panel.js';
 
 const styles = { ...panelStyles };
@@ -124,7 +125,10 @@ function ChunkEditor({ gridKey }: { gridKey: string }) {
 
       <button
         style={enterBtnStyle}
-        onClick={() => enterChunk(chunk.grid)}
+        onClick={() => {
+          enterChunk(chunk.grid);
+          useSceneStore.getState().setMode('scene');
+        }}
       >
         Enter Chunk
       </button>

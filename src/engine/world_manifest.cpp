@@ -50,8 +50,14 @@ WorldManifest WorldManifest::from_json(const nlohmann::json& j) {
         WorldChunk c;
         c.grid = parse_ivec3(cj.at("grid"));
         c.ply_file = cj.at("ply_file").get<std::string>();
+        if (c.ply_file.find("..") != std::string::npos) {
+            throw std::runtime_error("path traversal rejected in ply_file: " + c.ply_file);
+        }
         if (cj.contains("scene_file")) {
             c.scene_file = cj["scene_file"].get<std::string>();
+            if (c.scene_file.find("..") != std::string::npos) {
+                throw std::runtime_error("path traversal rejected in scene_file: " + c.scene_file);
+            }
         }
         m.chunks.push_back(std::move(c));
     }

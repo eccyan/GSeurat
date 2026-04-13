@@ -263,6 +263,40 @@ int main() {
         ++passed;
     }
 
-    std::printf("\n%d/8 tests passed\n", passed);
-    return (passed == 8) ? 0 : 1;
+    // 9. Path traversal in ply_file is rejected
+    {
+        auto j = nlohmann::json::parse(R"({
+            "version": 1,
+            "grid_cell_size": [64.0, 32.0, 64.0],
+            "chunks": [{"grid": [0,0,0], "ply_file": "../../etc/passwd"}],
+            "streaming_volumes": [],
+            "portals": []
+        })");
+        bool threw = false;
+        try { WorldManifest::from_json(j); } catch (...) { threw = true; }
+        assert(threw && "path traversal in ply_file should throw");
+
+        std::printf("PASS: path traversal in ply_file rejected\n");
+        ++passed;
+    }
+
+    // 10. Path traversal in scene_file is rejected
+    {
+        auto j = nlohmann::json::parse(R"({
+            "version": 1,
+            "grid_cell_size": [64.0, 32.0, 64.0],
+            "chunks": [{"grid": [0,0,0], "ply_file": "chunks/c0.ply", "scene_file": "../../etc/shadow"}],
+            "streaming_volumes": [],
+            "portals": []
+        })");
+        bool threw = false;
+        try { WorldManifest::from_json(j); } catch (...) { threw = true; }
+        assert(threw && "path traversal in scene_file should throw");
+
+        std::printf("PASS: path traversal in scene_file rejected\n");
+        ++passed;
+    }
+
+    std::printf("\n%d/10 tests passed\n", passed);
+    return (passed == 10) ? 0 : 1;
 }

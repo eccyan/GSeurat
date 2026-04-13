@@ -10,7 +10,7 @@
     },
     "grid_cell_size": {
       "type": "array",
-      "items": { "type": "number" },
+      "items": { "type": "number", "exclusiveMinimum": 0 },
       "minItems": 3,
       "maxItems": 3,
       "description": "Cell dimensions [x, y, z] in world units"

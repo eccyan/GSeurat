@@ -554,7 +554,7 @@ void main() {
     // Write sort entry — quantize depth to 16-bit key for 2-pass radix sort
     // Camera range [0.1, 1000] → ~0.015 unit resolution, sufficient for 320×240 pixel art
     float depth_norm = clamp(splat.depth / 1000.0, 0.0, 1.0);
-    sort_entries[idx].key = uint(depth_norm * 65535.0);
+    sort_entries[idx].key = min(uint(depth_norm * 65535.0), 0xFFFEu);
     sort_entries[idx].index = projected_offset + idx;
 
     // Count visible (non-culled) Gaussians
