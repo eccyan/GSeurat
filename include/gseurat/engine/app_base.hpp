@@ -119,6 +119,7 @@ public:
     // Shared GS scene loading: PLY + placed objects + lights + emitters + animations + VFX
     void load_gs_scene(const SceneData& scene_data, const GsSceneOptions& opts = {});
     virtual void update_game(float dt);
+    void upload_bone_transforms();
     virtual void update_audio(float dt);
 
     // Audio state
