@@ -2069,29 +2069,12 @@ void GsRenderer::dispatch_radix_sort(
 }
 
 void GsRenderer::dispatch_tile_sort(VkCommandBuffer cmd) {
-    if (!tile_sort_a_.buffer() || tile_sort_capacity_ == 0) {
-        static bool logged_skip = false;
-        if (!logged_skip) {
-            std::fprintf(stderr, "[tile_sort] SKIP: buffer=%p capacity=%u\n",
-                        static_cast<void*>(tile_sort_a_.buffer()), tile_sort_capacity_);
-            logged_skip = true;
-        }
-        return;
-    }
+    if (!tile_sort_a_.buffer() || tile_sort_capacity_ == 0) return;
 
     uint32_t width = output_width_;
     uint32_t height = output_height_;
     uint32_t tiles_x = (width + 15) / 16;
     uint32_t tiles_y = (height + 15) / 16;
-
-    // DEBUG: log tile_sort_count from previous frame (every 60th frame)
-    static uint32_t dbg_frame = 0;
-    if (tile_sort_count_ssbo_.mapped() && (dbg_frame++ % 60 == 0)) {
-        uint32_t prev_count = 0;
-        std::memcpy(&prev_count, tile_sort_count_ssbo_.mapped(), sizeof(uint32_t));
-        std::fprintf(stderr, "[tile_sort] frame=%u count=%u capacity=%u\n",
-                    dbg_frame, prev_count, tile_sort_capacity_);
-    }
 
     // Clear tile sort counter to 0 and fill tile_sort_a with sentinels (0xFFFFFFFF).
     // Sentinels are essential: the sort processes max_workgroups*1024 entries, but only
@@ -2297,13 +2280,8 @@ void GsRenderer::render(VkCommandBuffer cmd, const glm::mat4& view, const glm::m
             ++timestamp_frame_;
             if (timestamp_frame_ % kTimestampAvgFrames == 0) {
                 float avg = rasterize_ms_accum_ / static_cast<float>(kTimestampAvgFrames);
-                // Also read back tile_sort_count for diagnostics
-                uint32_t tile_count_readback = 0;
-                if (tile_sort_count_ssbo_.mapped()) {
-                    std::memcpy(&tile_count_readback, tile_sort_count_ssbo_.mapped(), sizeof(uint32_t));
-                }
-                std::printf("[gs_renderer] Rasterize pass: %.3f ms (avg %u frames), tile_entries=%u/%u\n",
-                            avg, kTimestampAvgFrames, tile_count_readback, tile_sort_capacity_);
+                std::printf("[gs_renderer] Rasterize pass: %.3f ms (avg %u frames)\n",
+                            avg, kTimestampAvgFrames);
                 rasterize_ms_accum_ = 0.0f;
             }
         }
@@ -2390,15 +2368,6 @@ void GsRenderer::render(VkCommandBuffer cmd, const glm::mat4& view, const glm::m
 
         // Use split pipeline if split buffers are allocated, otherwise legacy path
         bool use_split = static_gaussian_ssbo_.buffer() && counts_ssbo_.buffer();
-        {
-            static bool logged_path = false;
-            if (!logged_path) {
-                std::fprintf(stderr, "[gs_renderer] render path: use_split=%d static_buf=%p counts_buf=%p\n",
-                            use_split ? 1 : 0,
-                            static_cast<void*>(static_gaussian_ssbo_.buffer()), static_cast<void*>(counts_ssbo_.buffer()));
-                logged_path = true;
-            }
-        }
 
         if (use_split) {
             // Reset counts that will be written this frame
