@@ -94,6 +94,7 @@ void IslandDemoState::on_enter(AppBase& app) {
     pp.vignette_softness = 0.4f;   // soft falloff
     pp.ca_intensity = 0.15f;       // subtle chromatic aberration at edges
     app.renderer().set_gs_skip_chunk_cull(false);
+    app.renderer().set_gs_max_render_distance(200.0f);  // cull distant chunks to preserve nearby quality
     app.renderer().gs_renderer().set_skip_sort(false);
 
     // Load world manifest if world.json exists at project root

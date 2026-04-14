@@ -18,7 +18,9 @@ struct GsChunk {
 class GsChunkGrid {
 public:
     void build(const GaussianCloud& cloud, float chunk_size = 32.0f);
-    std::vector<uint32_t> visible_chunks(const glm::mat4& view_proj) const;
+    std::vector<uint32_t> visible_chunks(const glm::mat4& view_proj,
+                                        const glm::vec3& camera_pos,
+                                        float max_distance = 0.0f) const;
     uint32_t gather(const std::vector<uint32_t>& chunk_indices,
                     std::vector<Gaussian>& out) const;
     uint32_t gather_lod(const std::vector<uint32_t>& chunk_indices,
