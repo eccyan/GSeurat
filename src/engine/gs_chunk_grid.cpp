@@ -198,7 +198,9 @@ uint32_t GsChunkGrid::gather_lod(const std::vector<uint32_t>& chunk_indices,
                                   const glm::vec3& camera_pos,
                                   uint32_t budget,
                                   std::vector<Gaussian>& out,
-                                  const glm::vec3* focus_pos) const {
+                                  const glm::vec3* focus_pos,
+                                  uint32_t preserve_bone_first,
+                                  uint32_t preserve_bone_count) const {
     if (chunk_indices.empty()) {
         out.clear();
         return 0;
@@ -295,19 +297,23 @@ uint32_t GsChunkGrid::gather_lod(const std::vector<uint32_t>& chunk_indices,
 
     out.resize(offset);
 
-    // Re-inject bone-animated Gaussians from culled chunks.
-    // Character Gaussians (bone_index > 0) are embedded in the static PLY
+    // Re-inject player character Gaussians from culled chunks.
+    // The player's bone-animated Gaussians are embedded in the static PLY
     // and must always be present for skeletal animation to work.
-    std::vector<bool> chunk_included(chunks_.size(), false);
-    for (const auto& lod : lods) {
-        chunk_included[lod.idx] = true;
-    }
-    for (uint32_t ci = 0; ci < chunks_.size(); ++ci) {
-        if (chunk_included[ci]) continue;  // already gathered
-        const auto& chunk = chunks_[ci];
-        for (uint32_t i = chunk.start_index; i < chunk.start_index + chunk.count; ++i) {
-            if (sorted_gaussians_[i].bone_index > 0) {
-                out.push_back(sorted_gaussians_[i]);
+    if (preserve_bone_count > 0) {
+        uint32_t bone_last = preserve_bone_first + preserve_bone_count;
+        std::vector<bool> chunk_included(chunks_.size(), false);
+        for (const auto& lod : lods) {
+            chunk_included[lod.idx] = true;
+        }
+        for (uint32_t ci = 0; ci < chunks_.size(); ++ci) {
+            if (chunk_included[ci]) continue;  // already gathered
+            const auto& chunk = chunks_[ci];
+            for (uint32_t i = chunk.start_index; i < chunk.start_index + chunk.count; ++i) {
+                uint32_t bi = sorted_gaussians_[i].bone_index;
+                if (bi >= preserve_bone_first && bi < bone_last) {
+                    out.push_back(sorted_gaussians_[i]);
+                }
             }
         }
     }

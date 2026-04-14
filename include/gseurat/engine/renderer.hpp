@@ -67,6 +67,9 @@ public:
     uint32_t gs_gaussian_budget() const { return gs_gaussian_budget_; }
     void set_gs_max_render_distance(float d) { gs_max_render_distance_ = d; }
     float gs_max_render_distance() const { return gs_max_render_distance_; }
+    void set_gs_preserve_bone_range(uint32_t first, uint32_t count) {
+        gs_preserve_bone_first_ = first; gs_preserve_bone_count_ = count;
+    }
     void set_gs_lod_focus(const glm::vec3& pos) { gs_lod_focus_pos_ = pos; gs_has_lod_focus_ = true; }
     void clear_gs_lod_focus() { gs_has_lod_focus_ = false; }
 
@@ -248,6 +251,8 @@ private:
     bool gs_skip_chunk_cull_ = false;
     uint32_t gs_gaussian_budget_ = 0;  // 0 = unlimited (no LOD decimation)
     float gs_max_render_distance_ = 0.0f;  // 0 = unlimited (no distance culling)
+    uint32_t gs_preserve_bone_first_ = 0;
+    uint32_t gs_preserve_bone_count_ = 0;
     uint32_t gs_total_gaussian_count_ = 0;  // total Gaussians in loaded cloud
     bool gs_adaptive_budget_ = false;
     bool gs_budget_locked_ = false;

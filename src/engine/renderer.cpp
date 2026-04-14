@@ -888,7 +888,8 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
                 glm::vec3 cam_pos = glm::vec3(glm::inverse(gs_view_)[3]);
                 const glm::vec3* focus = gs_has_lod_focus_ ? &gs_lod_focus_pos_ : nullptr;
                 gs_chunk_grid_.gather_lod(visible, cam_pos, gs_gaussian_budget_,
-                                          gs_static_buffer_, focus);
+                                          gs_static_buffer_, focus,
+                                          gs_preserve_bone_first_, gs_preserve_bone_count_);
             } else {
                 gs_chunk_grid_.gather(visible, gs_static_buffer_);
             }
@@ -973,10 +974,20 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
         // --- Dynamic path: every frame ---
         gs_dynamic_buffer_.clear();
 
+        // Distance culling for dynamic effects (emitters, VFX)
+        glm::vec3 cull_origin = glm::vec3(glm::inverse(gs_view_)[3]);
+        float cull_dist_sq = gs_max_render_distance_ > 0.0f
+            ? gs_max_render_distance_ * gs_max_render_distance_ : 0.0f;
+
         // Update and gather Gaussian particles from emitters
         if (flags.particles) {
             for (auto& emitter : gs_particle_emitters_) {
                 emitter.update(dt);
+                // Skip gathering from emitters beyond max render distance
+                if (cull_dist_sq > 0.0f) {
+                    glm::vec3 d = emitter.position() - cull_origin;
+                    if (glm::dot(d, d) > cull_dist_sq) continue;
+                }
                 emitter.gather(gs_dynamic_buffer_);
             }
             // Remove dead emitters
@@ -989,6 +1000,11 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
         // Update VFX instances (timeline + emitters append particles to dynamic buffer)
         if (flags.particles || flags.animation) {
             for (auto& inst : vfx_instances_) {
+                // Skip distant VFX instances
+                if (cull_dist_sq > 0.0f) {
+                    glm::vec3 d = inst.position() - cull_origin;
+                    if (glm::dot(d, d) > cull_dist_sq) continue;
+                }
                 inst.update(dt, gs_dynamic_buffer_, gs_animator_);
             }
             std::erase_if(vfx_instances_,

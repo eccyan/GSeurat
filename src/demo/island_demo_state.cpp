@@ -465,7 +465,8 @@ void IslandDemoState::on_enter(AppBase& app) {
             player_entry.manifest_path = "assets/characters/snes_hero/snes_hero.manifest.json";
             player_entry.default_clip = "idle";
             player_entry.first_bone_index = 1;
-            player_entry.bone_count = static_cast<uint32_t>(player_char_data->bones.size());
+            uint32_t player_bone_count = static_cast<uint32_t>(player_char_data->bones.size());
+            player_entry.bone_count = player_bone_count;
             player_entry.char_scale = kCharScale;
             player_entry.gs_scale_multiplier = gs_scale_;
             player_entry.spawn_pos = player_pos;
@@ -484,6 +485,9 @@ void IslandDemoState::on_enter(AppBase& app) {
                 player_entity_, std::move(player_entry));
             app.world().add<gseurat::BoneAnimatedTag>(player_entity_,
                 {player_registry_id_});
+
+            // Tell renderer to preserve player character Gaussians during distance culling
+            app.renderer().set_gs_preserve_bone_range(1, player_bone_count);
 
             // Set bone 0 override for terrain sway
             app.set_bone_pre_upload_hook([this](glm::mat4* bones, uint32_t) {

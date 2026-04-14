@@ -70,6 +70,7 @@ public:
     void clear();
 
     uint32_t alive_count() const;
+    glm::vec3 position() const { return base_position_; }
 
 private:
     float random_float(float min_val, float max_val);
