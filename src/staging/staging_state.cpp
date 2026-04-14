@@ -7,6 +7,8 @@
 #include "gseurat/engine/shutdown_auditor.hpp"
 #include "gseurat/engine/world_manifest.hpp"
 #include "gseurat/engine/project_root.hpp"
+#include "gseurat/engine/coordinate.hpp"
+#include "gseurat/engine/collision_gen.hpp"
 
 #ifdef GSEURAT_DEV_MODE
 #include <imgui.h>
@@ -1106,6 +1108,63 @@ void StagingState::draw_gizmos(AppBase& app) {
     // ── Camera Zone gizmos (visible in both orbit and review modes) ──
     if (ov.show_gizmo_camera_zones && camera_review_ && camera_review_->has_zone_data()) {
         camera_review_->draw_gizmos(vp, sw, sh, dl, project_wrapper, this);
+    }
+
+    // ── Collision grid overlay ──
+    if (ov.show_gizmo_collision && last_scene_data_ && last_scene_data_->collision.has_value()) {
+        const auto& grid = *last_scene_data_->collision;
+        auto terrain_aabb = app.gs_terrain().terrain_aabb;
+
+        ImU32 solid_col    = IM_COL32(204, 0, 0, 77);    // red, alpha ~0.3
+        ImU32 walkable_col = IM_COL32(0, 204, 0, 38);    // green, alpha ~0.15
+        ImU32 grid_line_col = IM_COL32(255, 255, 255, 51); // white, alpha ~0.2
+
+        for (uint32_t gz = 0; gz < grid.height; gz++) {
+            for (uint32_t gx = 0; gx < grid.width; gx++) {
+                // Four corners of the cell in world space
+                auto p00 = coord::to_world(
+                    coord::CellPos(static_cast<float>(gx), 0.0f, static_cast<float>(gz)),
+                    grid, terrain_aabb);
+                auto p10 = coord::to_world(
+                    coord::CellPos(static_cast<float>(gx + 1), 0.0f, static_cast<float>(gz)),
+                    grid, terrain_aabb);
+                auto p01 = coord::to_world(
+                    coord::CellPos(static_cast<float>(gx), 0.0f, static_cast<float>(gz + 1)),
+                    grid, terrain_aabb);
+                auto p11 = coord::to_world(
+                    coord::CellPos(static_cast<float>(gx + 1), 0.0f, static_cast<float>(gz + 1)),
+                    grid, terrain_aabb);
+
+                // Project all 4 corners to screen
+                float sx00, sy00, sx10, sy10, sx01, sy01, sx11, sy11;
+                bool v00 = project_to_screen(p00.vec(), vp, sw, sh, sx00, sy00);
+                bool v10 = project_to_screen(p10.vec(), vp, sw, sh, sx10, sy10);
+                bool v01 = project_to_screen(p01.vec(), vp, sw, sh, sx01, sy01);
+                bool v11 = project_to_screen(p11.vec(), vp, sw, sh, sx11, sy11);
+
+                // Skip if all 4 corners are behind camera
+                if (!v00 && !v10 && !v01 && !v11) continue;
+
+                // Skip if all 4 corners are off-screen (simple AABB check)
+                float min_x = std::min({sx00, sx10, sx01, sx11});
+                float max_x = std::max({sx00, sx10, sx01, sx11});
+                float min_y = std::min({sy00, sy10, sy01, sy11});
+                float max_y = std::max({sy00, sy10, sy01, sy11});
+                if (max_x < 0 || min_x > sw || max_y < 0 || min_y > sh) continue;
+
+                bool is_solid = grid.is_solid(gx, gz);
+                ImU32 fill = is_solid ? solid_col : walkable_col;
+
+                // Filled quad
+                dl->AddQuadFilled(
+                    ImVec2(sx00, sy00), ImVec2(sx10, sy10),
+                    ImVec2(sx11, sy11), ImVec2(sx01, sy01), fill);
+
+                // Grid lines (only draw right and bottom edges to avoid double-drawing)
+                dl->AddLine(ImVec2(sx10, sy10), ImVec2(sx11, sy11), grid_line_col, 1.0f);
+                dl->AddLine(ImVec2(sx01, sy01), ImVec2(sx11, sy11), grid_line_col, 1.0f);
+            }
+        }
     }
 
     // ── World manifest gizmos ──
