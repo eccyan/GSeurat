@@ -105,7 +105,7 @@ void GsRenderer::init(VkDevice device, VkPhysicalDevice physical_device,
         VkQueryPoolCreateInfo qp_info{};
         qp_info.sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO;
         qp_info.queryType = VK_QUERY_TYPE_TIMESTAMP;
-        qp_info.queryCount = 4;  // sort_begin, sort_end, raster_begin, raster_end
+        qp_info.queryCount = 6;  // depth_sort_begin/end, tile_sort_begin/end, raster_begin/end
         vkCreateQueryPool(device_, &qp_info, nullptr, &timestamp_pool_);
 
         VkPhysicalDeviceProperties props;
@@ -303,45 +303,6 @@ void GsRenderer::create_descriptor_resources() {
         vkCreateDescriptorSetLayout(device_, &ci, nullptr, &render_layout_);
     }
 
-    // Radix histogram layout: { input_entries, histogram }
-    {
-        VkDescriptorSetLayoutBinding bindings[] = {
-            {0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
-            {1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
-        };
-        VkDescriptorSetLayoutCreateInfo ci{};
-        ci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-        ci.bindingCount = 2;
-        ci.pBindings = bindings;
-        vkCreateDescriptorSetLayout(device_, &ci, nullptr, &radix_histogram_layout_);
-    }
-
-    // Radix scan layout: { histogram }
-    {
-        VkDescriptorSetLayoutBinding bindings[] = {
-            {0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
-        };
-        VkDescriptorSetLayoutCreateInfo ci{};
-        ci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-        ci.bindingCount = 1;
-        ci.pBindings = bindings;
-        vkCreateDescriptorSetLayout(device_, &ci, nullptr, &radix_scan_layout_);
-    }
-
-    // Radix scatter layout: { input, output, histogram }
-    {
-        VkDescriptorSetLayoutBinding bindings[] = {
-            {0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
-            {1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
-            {2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
-        };
-        VkDescriptorSetLayoutCreateInfo ci{};
-        ci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-        ci.bindingCount = 3;
-        ci.pBindings = bindings;
-        vkCreateDescriptorSetLayout(device_, &ci, nullptr, &radix_scatter_layout_);
-    }
-
     // Post-process layout: { input_image(readonly), depth_image(readonly), output_image(writeonly), ubo }
     {
         VkDescriptorSetLayoutBinding bindings[] = {
@@ -482,31 +443,28 @@ void GsRenderer::create_descriptor_resources() {
     vkResetDescriptorPool(device_, gs_pool_, 0);
 
     VkDescriptorSetLayout layouts[] = {
-        preprocess_layout_, sort_layout_, render_layout_,
-        radix_histogram_layout_, radix_histogram_layout_,  // A and B (legacy)
-        radix_scan_layout_,
-        radix_scatter_layout_, radix_scatter_layout_,      // AB and BA (legacy)
-        post_process_layout_,
-        // Static/dynamic split sets
-        preprocess_layout_, preprocess_layout_,            // static + dynamic preprocess
-        radix_histogram_layout_, radix_histogram_layout_,  // static hist A/B
-        radix_scan_layout_,                                // static scan
-        radix_scatter_layout_, radix_scatter_layout_,      // static scatter AB/BA
-        radix_histogram_layout_, radix_histogram_layout_,  // dynamic hist A/B
-        radix_scan_layout_,                                // dynamic scan
-        radix_scatter_layout_, radix_scatter_layout_,      // dynamic scatter AB/BA
-        merge_layout_,                                     // merge
-        render_layout_,                                    // new render with merged sort
-        pbd_layout_,                                       // PBD solver
-        // Tile binning sets (onesweep only — old radix sort removed)
-        tile_bin_layout_,                                  // tile bin
-        tile_ranges_layout_,                               // tile range detection
-        tile_indirect_layout_,                             // indirect dispatch prep
-        tile_render_layout_,                               // tile render
-        onesweep_hist_layout_, onesweep_hist_layout_,        // onesweep histogram A, B
-        onesweep_scatter_layout_, onesweep_scatter_layout_,  // onesweep scatter A→B, B→A
+        preprocess_layout_, sort_layout_, render_layout_,   // 0-2: legacy
+        post_process_layout_,                               // 3: post-process
+        preprocess_layout_, preprocess_layout_,             // 4-5: static + dynamic preprocess
+        merge_layout_,                                      // 6: merge
+        render_layout_,                                     // 7: merged render
+        pbd_layout_,                                        // 8: PBD solver
+        // Tile binning sets
+        tile_bin_layout_,                                   // 9: tile bin
+        tile_ranges_layout_,                                // 10: tile range detection
+        tile_indirect_layout_,                              // 11: indirect dispatch prep
+        tile_render_layout_,                                // 12: tile render
+        onesweep_hist_layout_, onesweep_hist_layout_,       // 13-14: tile onesweep histogram A, B
+        onesweep_scatter_layout_, onesweep_scatter_layout_, // 15-16: tile onesweep scatter A→B, B→A
+        // Depth sort Onesweep sets (reusing onesweep layouts)
+        onesweep_hist_layout_, onesweep_hist_layout_,       // 17-18: legacy depth hist A, B
+        onesweep_scatter_layout_, onesweep_scatter_layout_, // 19-20: legacy depth scatter AB, BA
+        onesweep_hist_layout_, onesweep_hist_layout_,       // 21-22: static depth hist A, B
+        onesweep_scatter_layout_, onesweep_scatter_layout_, // 23-24: static depth scatter AB, BA
+        onesweep_hist_layout_, onesweep_hist_layout_,       // 25-26: dynamic depth hist A, B
+        onesweep_scatter_layout_, onesweep_scatter_layout_, // 27-28: dynamic depth scatter AB, BA
     };
-    constexpr uint32_t kSetCount = 32;
+    constexpr uint32_t kSetCount = 29;
     VkDescriptorSet sets[kSetCount];
     VkDescriptorSetAllocateInfo alloc_info{};
     alloc_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
@@ -515,42 +473,41 @@ void GsRenderer::create_descriptor_resources() {
     alloc_info.pSetLayouts = layouts;
     vkAllocateDescriptorSets(device_, &alloc_info, sets);
 
-    // Legacy sets (indices 0-8)
+    // Legacy sets
     preprocess_set_ = sets[0];
     sort_set_ = sets[1];
     render_set_ = sets[2];
-    radix_histogram_set_a_ = sets[3];
-    radix_histogram_set_b_ = sets[4];
-    radix_scan_set_ = sets[5];
-    radix_scatter_set_ab_ = sets[6];
-    radix_scatter_set_ba_ = sets[7];
-    post_process_set_ = sets[8];
-
-    // Static/dynamic split sets (indices 9+)
-    static_preprocess_set_ = sets[9];
-    dynamic_preprocess_set_ = sets[10];
-    static_histogram_set_a_ = sets[11];
-    static_histogram_set_b_ = sets[12];
-    static_scan_set_ = sets[13];
-    static_scatter_set_ab_ = sets[14];
-    static_scatter_set_ba_ = sets[15];
-    dynamic_histogram_set_a_ = sets[16];
-    dynamic_histogram_set_b_ = sets[17];
-    dynamic_scan_set_ = sets[18];
-    dynamic_scatter_set_ab_ = sets[19];
-    dynamic_scatter_set_ba_ = sets[20];
-    merge_set_ = sets[21];
-    // sets[22] is the merged render set (render_layout_)
-    pbd_set_ = sets[23];
-    // Tile binning sets (indices 24+)
-    tile_bin_set_ = sets[24];
-    tile_ranges_set_ = sets[25];
-    tile_indirect_set_ = sets[26];
-    tile_render_set_ = sets[27];
-    onesweep_hist_set_a_ = sets[28];
-    onesweep_hist_set_b_ = sets[29];
-    onesweep_scatter_set_ab_ = sets[30];
-    onesweep_scatter_set_ba_ = sets[31];
+    post_process_set_ = sets[3];
+    // Static/dynamic preprocess
+    static_preprocess_set_ = sets[4];
+    dynamic_preprocess_set_ = sets[5];
+    merge_set_ = sets[6];
+    // sets[7] is the merged render set (render_layout_)
+    pbd_set_ = sets[8];
+    // Tile binning
+    tile_bin_set_ = sets[9];
+    tile_ranges_set_ = sets[10];
+    tile_indirect_set_ = sets[11];
+    tile_render_set_ = sets[12];
+    onesweep_hist_set_a_ = sets[13];
+    onesweep_hist_set_b_ = sets[14];
+    onesweep_scatter_set_ab_ = sets[15];
+    onesweep_scatter_set_ba_ = sets[16];
+    // Depth sort Onesweep (legacy)
+    depth_hist_set_a_ = sets[17];
+    depth_hist_set_b_ = sets[18];
+    depth_scatter_set_ab_ = sets[19];
+    depth_scatter_set_ba_ = sets[20];
+    // Depth sort Onesweep (static)
+    static_depth_hist_set_a_ = sets[21];
+    static_depth_hist_set_b_ = sets[22];
+    static_depth_scatter_set_ab_ = sets[23];
+    static_depth_scatter_set_ba_ = sets[24];
+    // Depth sort Onesweep (dynamic)
+    dynamic_depth_hist_set_a_ = sets[25];
+    dynamic_depth_hist_set_b_ = sets[26];
+    dynamic_depth_scatter_set_ab_ = sets[27];
+    dynamic_depth_scatter_set_ba_ = sets[28];
 }
 
 void GsRenderer::create_compute_pipelines() {
@@ -613,14 +570,6 @@ void GsRenderer::create_compute_pipelines() {
     create_pipeline("shaders/gs_merge.comp.spv", merge_layout_, 0,
                     merge_pipeline_layout_, merge_pipeline_);
 
-    // Radix sort pipelines
-    create_pipeline("shaders/gs_radix_histogram.comp.spv", radix_histogram_layout_, 8,
-                    radix_histogram_pipeline_layout_, radix_histogram_pipeline_);
-    create_pipeline("shaders/gs_radix_scan.comp.spv", radix_scan_layout_, 4,
-                    radix_scan_pipeline_layout_, radix_scan_pipeline_);
-    create_pipeline("shaders/gs_radix_scatter.comp.spv", radix_scatter_layout_, 8,
-                    radix_scatter_pipeline_layout_, radix_scatter_pipeline_);
-
     // Tile binning pipeline (push: max_entries = 4 bytes; tiles_x/tiles_y now in UBO)
     create_pipeline("shaders/gs_tile_bin.comp.spv", tile_bin_layout_, 4,
                     tile_bin_pipeline_layout_, tile_bin_pipeline_);
@@ -666,13 +615,13 @@ void GsRenderer::init_streaming(const StreamingConfig& config) {
     gaussian_count_ = 0;
     max_gaussian_count_ = max_static_count_ + max_dynamic_count_;
 
-    // Compute sort params
+    // Compute sort params (aligned to Onesweep ENTRIES_PER_WG = 2048)
     auto compute_sort_params = [](uint32_t max_count, uint32_t& sort_size, uint32_t& num_wg) {
-        sort_size = ((max_count + 1023) / 1024) * 1024;
+        sort_size = ((max_count + 2047) / 2048) * 2048;
         if (sort_size < max_count) sort_size = max_count;
-        num_wg = sort_size / 1024;
+        num_wg = sort_size / 2048;
         if (num_wg == 0) num_wg = 1;
-        sort_size = num_wg * 1024;
+        sort_size = num_wg * 2048;
     };
 
     compute_sort_params(max_static_count_, static_sort_size_, static_sort_workgroups_);
@@ -687,15 +636,12 @@ void GsRenderer::init_streaming(const StreamingConfig& config) {
     VkDeviceSize static_sort_buf_size = static_cast<VkDeviceSize>(static_sort_size_) * sizeof(SortEntry);
     VkDeviceSize dynamic_sort_buf_size = static_cast<VkDeviceSize>(dynamic_sort_size_) * sizeof(SortEntry);
     VkDeviceSize merged_sort_buf_size = static_cast<VkDeviceSize>(max_static_count_ + max_dynamic_count_) * sizeof(SortEntry);
-    VkDeviceSize static_hist_size = static_cast<VkDeviceSize>(256) * static_sort_workgroups_ * sizeof(uint32_t);
-    VkDeviceSize dynamic_hist_size = static_cast<VkDeviceSize>(256) * dynamic_sort_workgroups_ * sizeof(uint32_t);
 
     // Destroy ALL old buffers (legacy + split)
     gaussian_ssbo_.destroy(allocator_);
     projected_ssbo_.destroy(allocator_);
     sort_keys_ssbo_.destroy(allocator_);
     sort_b_ssbo_.destroy(allocator_);
-    histogram_ssbo_.destroy(allocator_);
     uniform_buffer_.destroy(allocator_);
     visible_count_ssbo_.destroy(allocator_);
     bone_ssbo_.destroy(allocator_);
@@ -709,8 +655,6 @@ void GsRenderer::init_streaming(const StreamingConfig& config) {
     static_sort_b_.destroy(allocator_);
     dynamic_sort_a_.destroy(allocator_);
     dynamic_sort_b_.destroy(allocator_);
-    static_histogram_ssbo_.destroy(allocator_);
-    dynamic_histogram_ssbo_.destroy(allocator_);
     merged_sort_ssbo_.destroy(allocator_);
     counts_ssbo_.destroy(allocator_);
     page_table_ssbo_.destroy(allocator_);
@@ -720,6 +664,10 @@ void GsRenderer::init_streaming(const StreamingConfig& config) {
     tile_sort_count_ssbo_.destroy(allocator_);
     tile_ranges_ssbo_.destroy(allocator_);
     pp_ubo_buffer_.destroy(allocator_);
+    depth_onesweep_status_.destroy(allocator_);
+    depth_sort_params_.destroy(allocator_);
+    static_depth_params_.destroy(allocator_);
+    dynamic_depth_params_.destroy(allocator_);
 
     // Create split buffers at full budget size
     static_gaussian_ssbo_ = Buffer::create_storage(allocator_, static_gauss_size);
@@ -729,8 +677,6 @@ void GsRenderer::init_streaming(const StreamingConfig& config) {
     static_sort_b_ = Buffer::create_storage(allocator_, static_sort_buf_size);
     dynamic_sort_a_ = Buffer::create_storage(allocator_, dynamic_sort_buf_size);
     dynamic_sort_b_ = Buffer::create_storage(allocator_, dynamic_sort_buf_size);
-    static_histogram_ssbo_ = Buffer::create_storage(allocator_, static_hist_size);
-    dynamic_histogram_ssbo_ = Buffer::create_storage(allocator_, dynamic_hist_size);
     merged_sort_ssbo_ = Buffer::create_storage(allocator_, merged_sort_buf_size);
     counts_ssbo_ = Buffer::create_storage_readback(allocator_, 3 * sizeof(uint32_t));
     uniform_buffer_ = Buffer::create_uniform(allocator_, sizeof(GsUniforms));
@@ -741,7 +687,6 @@ void GsRenderer::init_streaming(const StreamingConfig& config) {
         static_cast<VkDeviceSize>(max_gaussian_count_) * sizeof(GpuGaussian));
     sort_keys_ssbo_ = Buffer::create_storage(allocator_, static_sort_buf_size);
     sort_b_ssbo_ = Buffer::create_storage(allocator_, static_sort_buf_size);
-    histogram_ssbo_ = Buffer::create_storage(allocator_, static_hist_size);
 
     // Bone transform SSBO
     bone_ssbo_ = Buffer::create_storage(allocator_, kMaxBones * sizeof(glm::mat4));
@@ -817,6 +762,31 @@ void GsRenderer::init_streaming(const StreamingConfig& config) {
         if (onesweep_max_wg_ == 0) onesweep_max_wg_ = 1;
         VkDeviceSize status_size = 4ull * 256ull * onesweep_max_wg_ * sizeof(uint32_t);
         onesweep_status_ = Buffer::create_storage_gpu_only(allocator_, status_size);
+    }
+
+    // ── Depth sort Onesweep buffers ──
+    {
+        // Status buffer: num_sort_passes × 256 digits × max_wg (shared across static/dynamic/legacy)
+        depth_onesweep_max_wg_ = std::max({static_sort_workgroups_, dynamic_sort_workgroups_, num_sort_workgroups_});
+        VkDeviceSize depth_status_size = static_cast<VkDeviceSize>(num_sort_passes_) * 256ull
+                                         * depth_onesweep_max_wg_ * sizeof(uint32_t);
+        depth_onesweep_status_ = Buffer::create_storage_gpu_only(allocator_, depth_status_size);
+
+        // Params buffers (IndirectArgs layout: {wg_x, 1, 1, 0, 0, 0, entry_count, 0})
+        auto fill_sort_params = [&](Buffer& buf, uint32_t wg_count, uint32_t entry_count) {
+            buf = Buffer::create_storage(allocator_, 8 * sizeof(uint32_t));
+            auto* p = static_cast<uint32_t*>(buf.mapped());
+            p[0] = wg_count; p[1] = 1; p[2] = 1;
+            p[3] = 0; p[4] = 0; p[5] = 0;
+            p[6] = entry_count; p[7] = 0;
+        };
+        fill_sort_params(static_depth_params_, static_sort_workgroups_, static_sort_size_);
+        fill_sort_params(dynamic_depth_params_, dynamic_sort_workgroups_, dynamic_sort_size_);
+        fill_sort_params(depth_sort_params_, num_sort_workgroups_, sort_size_);
+
+        std::fprintf(stderr, "GS: Depth sort Onesweep -- static=%u wg, dynamic=%u wg, status=%.1f KB\n",
+                     static_sort_workgroups_, dynamic_sort_workgroups_,
+                     static_cast<float>(depth_status_size) / 1024.0f);
     }
 
     // Page table: one uint32 per slab, initialized to 0xFFFFFFFF (invalid)
@@ -1105,13 +1075,13 @@ void GsRenderer::load_cloud_legacy(const GaussianCloud& cloud) {
     gaussian_count_ = static_count_;
     max_gaussian_count_ = max_static_count_ + max_dynamic_count_;
 
-    // Helper: compute sort size (round up to next multiple of 1024)
+    // Helper: compute sort size (aligned to Onesweep ENTRIES_PER_WG = 2048)
     auto compute_sort_params = [](uint32_t max_count, uint32_t& sort_size, uint32_t& num_wg) {
-        sort_size = ((max_count + 1023) / 1024) * 1024;
+        sort_size = ((max_count + 2047) / 2048) * 2048;
         if (sort_size < max_count) sort_size = max_count;
-        num_wg = sort_size / 1024;
+        num_wg = sort_size / 2048;
         if (num_wg == 0) num_wg = 1;
-        sort_size = num_wg * 1024;
+        sort_size = num_wg * 2048;
     };
 
     compute_sort_params(max_static_count_, static_sort_size_, static_sort_workgroups_);
@@ -1128,15 +1098,12 @@ void GsRenderer::load_cloud_legacy(const GaussianCloud& cloud) {
     VkDeviceSize static_sort_buf_size = static_cast<VkDeviceSize>(static_sort_size_) * sizeof(SortEntry);
     VkDeviceSize dynamic_sort_buf_size = static_cast<VkDeviceSize>(dynamic_sort_size_) * sizeof(SortEntry);
     VkDeviceSize merged_sort_buf_size = static_cast<VkDeviceSize>(max_static_count_ + max_dynamic_count_) * sizeof(SortEntry);
-    VkDeviceSize static_hist_size = static_cast<VkDeviceSize>(256) * static_sort_workgroups_ * sizeof(uint32_t);
-    VkDeviceSize dynamic_hist_size = static_cast<VkDeviceSize>(256) * dynamic_sort_workgroups_ * sizeof(uint32_t);
 
     // Destroy ALL old buffers (legacy + split)
     gaussian_ssbo_.destroy(allocator_);
     projected_ssbo_.destroy(allocator_);
     sort_keys_ssbo_.destroy(allocator_);
     sort_b_ssbo_.destroy(allocator_);
-    histogram_ssbo_.destroy(allocator_);
     uniform_buffer_.destroy(allocator_);
     visible_count_ssbo_.destroy(allocator_);
     bone_ssbo_.destroy(allocator_);
@@ -1150,8 +1117,6 @@ void GsRenderer::load_cloud_legacy(const GaussianCloud& cloud) {
     static_sort_b_.destroy(allocator_);
     dynamic_sort_a_.destroy(allocator_);
     dynamic_sort_b_.destroy(allocator_);
-    static_histogram_ssbo_.destroy(allocator_);
-    dynamic_histogram_ssbo_.destroy(allocator_);
     merged_sort_ssbo_.destroy(allocator_);
     counts_ssbo_.destroy(allocator_);
 
@@ -1163,21 +1128,16 @@ void GsRenderer::load_cloud_legacy(const GaussianCloud& cloud) {
     static_sort_b_ = Buffer::create_storage(allocator_, static_sort_buf_size);
     dynamic_sort_a_ = Buffer::create_storage(allocator_, dynamic_sort_buf_size);
     dynamic_sort_b_ = Buffer::create_storage(allocator_, dynamic_sort_buf_size);
-    static_histogram_ssbo_ = Buffer::create_storage(allocator_, static_hist_size);
-    dynamic_histogram_ssbo_ = Buffer::create_storage(allocator_, dynamic_hist_size);
     merged_sort_ssbo_ = Buffer::create_storage(allocator_, merged_sort_buf_size);
     counts_ssbo_ = Buffer::create_storage_readback(allocator_, 3 * sizeof(uint32_t));  // {static_visible, dynamic_visible, merged_visible}
     uniform_buffer_ = Buffer::create_uniform(allocator_, sizeof(GsUniforms));
     visible_count_ssbo_ = Buffer::create_storage_readback(allocator_, sizeof(uint32_t));
 
     // Legacy gaussian_ssbo_ aliases static for backward compat
-    // (update_active_gaussians / update_gaussian_data write to gaussian_ssbo_)
-    // We create a separate legacy buffer that's just max_gaussian_count_ in size
     gaussian_ssbo_ = Buffer::create_storage(allocator_,
         static_cast<VkDeviceSize>(max_gaussian_count_) * sizeof(GpuGaussian));
     sort_keys_ssbo_ = Buffer::create_storage(allocator_, static_sort_buf_size);
     sort_b_ssbo_ = Buffer::create_storage(allocator_, static_sort_buf_size);
-    histogram_ssbo_ = Buffer::create_storage(allocator_, static_hist_size);
 
     // Bone transform SSBO (always allocated, zeroed if unused)
     bone_ssbo_ = Buffer::create_storage(allocator_, kMaxBones * sizeof(glm::mat4));
@@ -1308,6 +1268,30 @@ void GsRenderer::load_cloud_legacy(const GaussianCloud& cloud) {
         onesweep_status_ = Buffer::create_storage_gpu_only(allocator_, status_size);
     }
 
+    // ── Depth sort Onesweep buffers ──
+    {
+        depth_onesweep_status_.destroy(allocator_);
+        depth_sort_params_.destroy(allocator_);
+        static_depth_params_.destroy(allocator_);
+        dynamic_depth_params_.destroy(allocator_);
+
+        depth_onesweep_max_wg_ = std::max({static_sort_workgroups_, dynamic_sort_workgroups_, num_sort_workgroups_});
+        VkDeviceSize depth_status_size = static_cast<VkDeviceSize>(num_sort_passes_) * 256ull
+                                         * depth_onesweep_max_wg_ * sizeof(uint32_t);
+        depth_onesweep_status_ = Buffer::create_storage_gpu_only(allocator_, depth_status_size);
+
+        auto fill_sort_params = [&](Buffer& buf, uint32_t wg_count, uint32_t entry_count) {
+            buf = Buffer::create_storage(allocator_, 8 * sizeof(uint32_t));
+            auto* p = static_cast<uint32_t*>(buf.mapped());
+            p[0] = wg_count; p[1] = 1; p[2] = 1;
+            p[3] = 0; p[4] = 0; p[5] = 0;
+            p[6] = entry_count; p[7] = 0;
+        };
+        fill_sort_params(static_depth_params_, static_sort_workgroups_, static_sort_size_);
+        fill_sort_params(dynamic_depth_params_, dynamic_sort_workgroups_, dynamic_sort_size_);
+        fill_sort_params(depth_sort_params_, num_sort_workgroups_, sort_size_);
+    }
+
     update_descriptors();
 }
 
@@ -1397,23 +1381,21 @@ void GsRenderer::ensure_capacity(uint32_t needed_total) {
 
     max_gaussian_count_ = new_max;
 
-    // Recalculate sort sizes
-    sort_size_ = ((max_gaussian_count_ + 1023) / 1024) * 1024;
+    // Recalculate sort sizes (aligned to Onesweep ENTRIES_PER_WG = 2048)
+    sort_size_ = ((max_gaussian_count_ + 2047) / 2048) * 2048;
     if (sort_size_ < max_gaussian_count_) sort_size_ = max_gaussian_count_;
-    num_sort_workgroups_ = sort_size_ / 1024;
+    num_sort_workgroups_ = sort_size_ / 2048;
     if (num_sort_workgroups_ == 0) num_sort_workgroups_ = 1;
-    sort_size_ = num_sort_workgroups_ * 1024;
+    sort_size_ = num_sort_workgroups_ * 2048;
 
     VkDeviceSize gaussian_buf_size = static_cast<VkDeviceSize>(max_gaussian_count_) * sizeof(GpuGaussian);
     VkDeviceSize projected_buf_size = static_cast<VkDeviceSize>(max_gaussian_count_) * sizeof(ProjectedSplat);
     VkDeviceSize sort_buf_size = static_cast<VkDeviceSize>(sort_size_) * sizeof(SortEntry);
-    VkDeviceSize histogram_buf_size = static_cast<VkDeviceSize>(256) * num_sort_workgroups_ * sizeof(uint32_t);
 
     // Reallocate legacy GPU buffers
     gaussian_ssbo_.destroy(allocator_);
     sort_keys_ssbo_.destroy(allocator_);
     sort_b_ssbo_.destroy(allocator_);
-    histogram_ssbo_.destroy(allocator_);
     // Only reallocate projected if split buffers aren't managing it
     if (!static_gaussian_ssbo_.buffer()) {
         projected_ssbo_.destroy(allocator_);
@@ -1423,7 +1405,24 @@ void GsRenderer::ensure_capacity(uint32_t needed_total) {
     gaussian_ssbo_ = Buffer::create_storage(allocator_, gaussian_buf_size);
     sort_keys_ssbo_ = Buffer::create_storage(allocator_, sort_buf_size);
     sort_b_ssbo_ = Buffer::create_storage(allocator_, sort_buf_size);
-    histogram_ssbo_ = Buffer::create_storage(allocator_, histogram_buf_size);
+
+    // Update depth sort params buffer
+    depth_sort_params_.destroy(allocator_);
+    depth_sort_params_ = Buffer::create_storage(allocator_, 8 * sizeof(uint32_t));
+    {
+        auto* p = static_cast<uint32_t*>(depth_sort_params_.mapped());
+        p[0] = num_sort_workgroups_; p[1] = 1; p[2] = 1;
+        p[3] = 0; p[4] = 0; p[5] = 0;
+        p[6] = sort_size_; p[7] = 0;
+    }
+    // Resize depth status buffer if needed
+    if (num_sort_workgroups_ > depth_onesweep_max_wg_) {
+        depth_onesweep_max_wg_ = num_sort_workgroups_;
+        depth_onesweep_status_.destroy(allocator_);
+        VkDeviceSize depth_status_size = static_cast<VkDeviceSize>(num_sort_passes_) * 256ull
+                                         * depth_onesweep_max_wg_ * sizeof(uint32_t);
+        depth_onesweep_status_ = Buffer::create_storage_gpu_only(allocator_, depth_status_size);
+    }
 
     // Reinitialize sort buffers
     auto init_sort_buf = [&](Buffer& buf) {
@@ -1609,72 +1608,73 @@ void GsRenderer::update_descriptors() {
         vkUpdateDescriptorSets(device_, 4, writes, 0, nullptr);
     }
 
-    // Radix histogram set A: reads sort_keys_ssbo_ (A), writes histogram
-    {
-        VkDescriptorBufferInfo input_info{sort_keys_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
-        VkDescriptorBufferInfo hist_info{histogram_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
-        VkWriteDescriptorSet writes[] = {
-            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, radix_histogram_set_a_, 0, 0, 1,
-             VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &input_info, nullptr},
-            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, radix_histogram_set_a_, 1, 0, 1,
-             VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &hist_info, nullptr},
+    // Depth Onesweep descriptor sets (legacy path) — same layout as tile Onesweep
+    if (depth_onesweep_status_.buffer() && depth_sort_params_.buffer()) {
+        auto write_depth_onesweep_sets = [&](
+            VkDescriptorSet hist_a, VkDescriptorSet hist_b,
+            VkDescriptorSet scatter_ab, VkDescriptorSet scatter_ba,
+            VkBuffer sort_a, VkBuffer sort_b,
+            VkBuffer status_buf, VkBuffer params_buf) {
+            // Histogram A: input(0), status(1), params(2)
+            {
+                VkDescriptorBufferInfo in_info{sort_a, 0, VK_WHOLE_SIZE};
+                VkDescriptorBufferInfo st_info{status_buf, 0, VK_WHOLE_SIZE};
+                VkDescriptorBufferInfo pm_info{params_buf, 0, VK_WHOLE_SIZE};
+                VkWriteDescriptorSet writes[] = {
+                    {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, hist_a, 0, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &in_info, nullptr},
+                    {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, hist_a, 1, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &st_info, nullptr},
+                    {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, hist_a, 2, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &pm_info, nullptr},
+                };
+                vkUpdateDescriptorSets(device_, 3, writes, 0, nullptr);
+            }
+            // Histogram B
+            {
+                VkDescriptorBufferInfo in_info{sort_b, 0, VK_WHOLE_SIZE};
+                VkDescriptorBufferInfo st_info{status_buf, 0, VK_WHOLE_SIZE};
+                VkDescriptorBufferInfo pm_info{params_buf, 0, VK_WHOLE_SIZE};
+                VkWriteDescriptorSet writes[] = {
+                    {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, hist_b, 0, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &in_info, nullptr},
+                    {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, hist_b, 1, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &st_info, nullptr},
+                    {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, hist_b, 2, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &pm_info, nullptr},
+                };
+                vkUpdateDescriptorSets(device_, 3, writes, 0, nullptr);
+            }
+            // Scatter A→B: input(0), output(1), status(2), params(3)
+            {
+                VkDescriptorBufferInfo in_info{sort_a, 0, VK_WHOLE_SIZE};
+                VkDescriptorBufferInfo out_info{sort_b, 0, VK_WHOLE_SIZE};
+                VkDescriptorBufferInfo st_info{status_buf, 0, VK_WHOLE_SIZE};
+                VkDescriptorBufferInfo pm_info{params_buf, 0, VK_WHOLE_SIZE};
+                VkWriteDescriptorSet writes[] = {
+                    {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, scatter_ab, 0, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &in_info, nullptr},
+                    {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, scatter_ab, 1, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &out_info, nullptr},
+                    {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, scatter_ab, 2, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &st_info, nullptr},
+                    {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, scatter_ab, 3, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &pm_info, nullptr},
+                };
+                vkUpdateDescriptorSets(device_, 4, writes, 0, nullptr);
+            }
+            // Scatter B→A
+            {
+                VkDescriptorBufferInfo in_info{sort_b, 0, VK_WHOLE_SIZE};
+                VkDescriptorBufferInfo out_info{sort_a, 0, VK_WHOLE_SIZE};
+                VkDescriptorBufferInfo st_info{status_buf, 0, VK_WHOLE_SIZE};
+                VkDescriptorBufferInfo pm_info{params_buf, 0, VK_WHOLE_SIZE};
+                VkWriteDescriptorSet writes[] = {
+                    {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, scatter_ba, 0, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &in_info, nullptr},
+                    {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, scatter_ba, 1, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &out_info, nullptr},
+                    {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, scatter_ba, 2, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &st_info, nullptr},
+                    {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, scatter_ba, 3, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &pm_info, nullptr},
+                };
+                vkUpdateDescriptorSets(device_, 4, writes, 0, nullptr);
+            }
         };
-        vkUpdateDescriptorSets(device_, 2, writes, 0, nullptr);
-    }
 
-    // Radix histogram set B: reads sort_b_ssbo_ (B), writes histogram
-    {
-        VkDescriptorBufferInfo input_info{sort_b_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
-        VkDescriptorBufferInfo hist_info{histogram_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
-        VkWriteDescriptorSet writes[] = {
-            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, radix_histogram_set_b_, 0, 0, 1,
-             VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &input_info, nullptr},
-            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, radix_histogram_set_b_, 1, 0, 1,
-             VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &hist_info, nullptr},
-        };
-        vkUpdateDescriptorSets(device_, 2, writes, 0, nullptr);
-    }
-
-    // Radix scan set: histogram (read/write)
-    {
-        VkDescriptorBufferInfo hist_info{histogram_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
-        VkWriteDescriptorSet writes[] = {
-            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, radix_scan_set_, 0, 0, 1,
-             VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &hist_info, nullptr},
-        };
-        vkUpdateDescriptorSets(device_, 1, writes, 0, nullptr);
-    }
-
-    // Radix scatter AB: reads A, writes B, reads histogram
-    {
-        VkDescriptorBufferInfo in_info{sort_keys_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
-        VkDescriptorBufferInfo out_info{sort_b_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
-        VkDescriptorBufferInfo hist_info{histogram_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
-        VkWriteDescriptorSet writes[] = {
-            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, radix_scatter_set_ab_, 0, 0, 1,
-             VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &in_info, nullptr},
-            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, radix_scatter_set_ab_, 1, 0, 1,
-             VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &out_info, nullptr},
-            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, radix_scatter_set_ab_, 2, 0, 1,
-             VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &hist_info, nullptr},
-        };
-        vkUpdateDescriptorSets(device_, 3, writes, 0, nullptr);
-    }
-
-    // Radix scatter BA: reads B, writes A, reads histogram
-    {
-        VkDescriptorBufferInfo in_info{sort_b_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
-        VkDescriptorBufferInfo out_info{sort_keys_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
-        VkDescriptorBufferInfo hist_info{histogram_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
-        VkWriteDescriptorSet writes[] = {
-            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, radix_scatter_set_ba_, 0, 0, 1,
-             VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &in_info, nullptr},
-            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, radix_scatter_set_ba_, 1, 0, 1,
-             VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &out_info, nullptr},
-            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, radix_scatter_set_ba_, 2, 0, 1,
-             VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &hist_info, nullptr},
-        };
-        vkUpdateDescriptorSets(device_, 3, writes, 0, nullptr);
+        // Legacy depth sort sets
+        write_depth_onesweep_sets(
+            depth_hist_set_a_, depth_hist_set_b_,
+            depth_scatter_set_ab_, depth_scatter_set_ba_,
+            sort_keys_ssbo_.buffer(), sort_b_ssbo_.buffer(),
+            depth_onesweep_status_.buffer(), depth_sort_params_.buffer());
     }
 
     // --- Static/dynamic split descriptor sets ---
@@ -1764,56 +1764,60 @@ void GsRenderer::update_descriptors() {
         vkUpdateDescriptorSets(device_, 4, writes, 0, nullptr);
     }
 
-    // Helper to write radix histogram/scan/scatter sets
-    auto write_hist_set = [&](VkDescriptorSet set, VkBuffer input_buf, VkBuffer hist_buf) {
-        VkDescriptorBufferInfo in_info{input_buf, 0, VK_WHOLE_SIZE};
-        VkDescriptorBufferInfo hist_info{hist_buf, 0, VK_WHOLE_SIZE};
-        VkWriteDescriptorSet writes[] = {
-            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, set, 0, 0, 1,
-             VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &in_info, nullptr},
-            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, set, 1, 0, 1,
-             VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &hist_info, nullptr},
+    // Static/dynamic depth Onesweep descriptor sets (reuse lambda from above if available)
+    if (depth_onesweep_status_.buffer() && static_depth_params_.buffer()) {
+        auto write_depth_onesweep_sets = [&](
+            VkDescriptorSet hist_a, VkDescriptorSet hist_b,
+            VkDescriptorSet scatter_ab, VkDescriptorSet scatter_ba,
+            VkBuffer sort_a, VkBuffer sort_b,
+            VkBuffer status_buf, VkBuffer params_buf) {
+            VkDescriptorBufferInfo st_info{status_buf, 0, VK_WHOLE_SIZE};
+            VkDescriptorBufferInfo pm_info{params_buf, 0, VK_WHOLE_SIZE};
+            // Histogram A
+            { VkDescriptorBufferInfo in_info{sort_a, 0, VK_WHOLE_SIZE};
+              VkWriteDescriptorSet w[] = {
+                  {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, hist_a, 0, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &in_info, nullptr},
+                  {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, hist_a, 1, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &st_info, nullptr},
+                  {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, hist_a, 2, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &pm_info, nullptr},
+              }; vkUpdateDescriptorSets(device_, 3, w, 0, nullptr); }
+            // Histogram B
+            { VkDescriptorBufferInfo in_info{sort_b, 0, VK_WHOLE_SIZE};
+              VkWriteDescriptorSet w[] = {
+                  {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, hist_b, 0, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &in_info, nullptr},
+                  {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, hist_b, 1, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &st_info, nullptr},
+                  {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, hist_b, 2, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &pm_info, nullptr},
+              }; vkUpdateDescriptorSets(device_, 3, w, 0, nullptr); }
+            // Scatter A→B
+            { VkDescriptorBufferInfo in_info{sort_a, 0, VK_WHOLE_SIZE}; VkDescriptorBufferInfo out_info{sort_b, 0, VK_WHOLE_SIZE};
+              VkWriteDescriptorSet w[] = {
+                  {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, scatter_ab, 0, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &in_info, nullptr},
+                  {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, scatter_ab, 1, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &out_info, nullptr},
+                  {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, scatter_ab, 2, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &st_info, nullptr},
+                  {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, scatter_ab, 3, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &pm_info, nullptr},
+              }; vkUpdateDescriptorSets(device_, 4, w, 0, nullptr); }
+            // Scatter B→A
+            { VkDescriptorBufferInfo in_info{sort_b, 0, VK_WHOLE_SIZE}; VkDescriptorBufferInfo out_info{sort_a, 0, VK_WHOLE_SIZE};
+              VkWriteDescriptorSet w[] = {
+                  {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, scatter_ba, 0, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &in_info, nullptr},
+                  {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, scatter_ba, 1, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &out_info, nullptr},
+                  {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, scatter_ba, 2, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &st_info, nullptr},
+                  {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, scatter_ba, 3, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &pm_info, nullptr},
+              }; vkUpdateDescriptorSets(device_, 4, w, 0, nullptr); }
         };
-        vkUpdateDescriptorSets(device_, 2, writes, 0, nullptr);
-    };
 
-    auto write_scan_set = [&](VkDescriptorSet set, VkBuffer hist_buf) {
-        VkDescriptorBufferInfo hist_info{hist_buf, 0, VK_WHOLE_SIZE};
-        VkWriteDescriptorSet writes[] = {
-            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, set, 0, 0, 1,
-             VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &hist_info, nullptr},
-        };
-        vkUpdateDescriptorSets(device_, 1, writes, 0, nullptr);
-    };
-
-    auto write_scatter_set = [&](VkDescriptorSet set, VkBuffer in_buf, VkBuffer out_buf, VkBuffer hist_buf) {
-        VkDescriptorBufferInfo in_info{in_buf, 0, VK_WHOLE_SIZE};
-        VkDescriptorBufferInfo out_info{out_buf, 0, VK_WHOLE_SIZE};
-        VkDescriptorBufferInfo hist_info{hist_buf, 0, VK_WHOLE_SIZE};
-        VkWriteDescriptorSet writes[] = {
-            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, set, 0, 0, 1,
-             VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &in_info, nullptr},
-            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, set, 1, 0, 1,
-             VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &out_info, nullptr},
-            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, set, 2, 0, 1,
-             VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &hist_info, nullptr},
-        };
-        vkUpdateDescriptorSets(device_, 3, writes, 0, nullptr);
-    };
-
-    // Static radix sets
-    write_hist_set(static_histogram_set_a_, static_sort_a_.buffer(), static_histogram_ssbo_.buffer());
-    write_hist_set(static_histogram_set_b_, static_sort_b_.buffer(), static_histogram_ssbo_.buffer());
-    write_scan_set(static_scan_set_, static_histogram_ssbo_.buffer());
-    write_scatter_set(static_scatter_set_ab_, static_sort_a_.buffer(), static_sort_b_.buffer(), static_histogram_ssbo_.buffer());
-    write_scatter_set(static_scatter_set_ba_, static_sort_b_.buffer(), static_sort_a_.buffer(), static_histogram_ssbo_.buffer());
-
-    // Dynamic radix sets
-    write_hist_set(dynamic_histogram_set_a_, dynamic_sort_a_.buffer(), dynamic_histogram_ssbo_.buffer());
-    write_hist_set(dynamic_histogram_set_b_, dynamic_sort_b_.buffer(), dynamic_histogram_ssbo_.buffer());
-    write_scan_set(dynamic_scan_set_, dynamic_histogram_ssbo_.buffer());
-    write_scatter_set(dynamic_scatter_set_ab_, dynamic_sort_a_.buffer(), dynamic_sort_b_.buffer(), dynamic_histogram_ssbo_.buffer());
-    write_scatter_set(dynamic_scatter_set_ba_, dynamic_sort_b_.buffer(), dynamic_sort_a_.buffer(), dynamic_histogram_ssbo_.buffer());
+        // Static depth sort
+        write_depth_onesweep_sets(
+            static_depth_hist_set_a_, static_depth_hist_set_b_,
+            static_depth_scatter_set_ab_, static_depth_scatter_set_ba_,
+            static_sort_a_.buffer(), static_sort_b_.buffer(),
+            depth_onesweep_status_.buffer(), static_depth_params_.buffer());
+        // Dynamic depth sort
+        write_depth_onesweep_sets(
+            dynamic_depth_hist_set_a_, dynamic_depth_hist_set_b_,
+            dynamic_depth_scatter_set_ab_, dynamic_depth_scatter_set_ba_,
+            dynamic_sort_a_.buffer(), dynamic_sort_b_.buffer(),
+            depth_onesweep_status_.buffer(), dynamic_depth_params_.buffer());
+    }
 
     // Merge set: static_sort_a(0), dynamic_sort_a(1), merged_sort(2), counts(3)
     {
@@ -2032,50 +2036,56 @@ void GsRenderer::resize_output(uint32_t width, uint32_t height) {
     }
 }
 
-void GsRenderer::dispatch_radix_sort(
+void GsRenderer::dispatch_depth_onesweep(
     VkCommandBuffer cmd, uint32_t sort_size, uint32_t num_workgroups,
     VkDescriptorSet hist_a, VkDescriptorSet hist_b,
-    VkDescriptorSet scan,
     VkDescriptorSet scatter_ab, VkDescriptorSet scatter_ba)
 {
-    uint32_t histogram_count = 256 * num_workgroups;
-    for (uint32_t digit = 0; digit < num_sort_passes_; ++digit) {
-        uint32_t digit_shift = digit * 8;
-        bool read_from_a = (digit % 2 == 0);
-        uint32_t push_data[2] = {sort_size, digit_shift};
+    // Clear shared status buffer before sort
+    VkDeviceSize status_clear_size = static_cast<VkDeviceSize>(num_sort_passes_) * 256ull
+                                     * depth_onesweep_max_wg_ * sizeof(uint32_t);
+    vkCmdFillBuffer(cmd, depth_onesweep_status_.buffer(), 0, status_clear_size, 0);
+    {
+        VkMemoryBarrier sb{};
+        sb.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+        sb.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        sb.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &sb, 0, nullptr, 0, nullptr);
+    }
 
-        // Histogram
-        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, radix_histogram_pipeline_);
-        auto hist_set = read_from_a ? hist_a : hist_b;
-        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
-                                radix_histogram_pipeline_layout_, 0, 1, &hist_set, 0, nullptr);
-        vkCmdPushConstants(cmd, radix_histogram_pipeline_layout_, VK_SHADER_STAGE_COMPUTE_BIT,
-                           0, 8, push_data);
-        vkCmdDispatch(cmd, num_workgroups, 1, 1);
+    // 2-dispatch Onesweep: num_sort_passes_ passes × 2 dispatches each
+    for (uint32_t pass = 0; pass < num_sort_passes_; pass++) {
+        uint32_t push_data[1] = {pass};
+        bool read_from_a = (pass % 2 == 0);
+
+        // Dispatch 1: histogram + decoupled lookback
+        {
+            VkDescriptorSet hist_set = read_from_a ? hist_a : hist_b;
+            vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, onesweep_hist_pipeline_);
+            vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
+                                    onesweep_hist_pipeline_layout_, 0, 1, &hist_set, 0, nullptr);
+            vkCmdPushConstants(cmd, onesweep_hist_pipeline_layout_, VK_SHADER_STAGE_COMPUTE_BIT,
+                               0, 4, push_data);
+            vkCmdDispatch(cmd, num_workgroups, 1, 1);
+        }
 
         insert_compute_barrier(cmd);
 
-        // Prefix scan (single workgroup)
-        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, radix_scan_pipeline_);
-        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
-                                radix_scan_pipeline_layout_, 0, 1, &scan, 0, nullptr);
-        vkCmdPushConstants(cmd, radix_scan_pipeline_layout_, VK_SHADER_STAGE_COMPUTE_BIT,
-                           0, 4, &histogram_count);
-        vkCmdDispatch(cmd, 1, 1, 1);
-
-        insert_compute_barrier(cmd);
-
-        // Scatter
-        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, radix_scatter_pipeline_);
-        auto scatter_set = read_from_a ? scatter_ab : scatter_ba;
-        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
-                                radix_scatter_pipeline_layout_, 0, 1, &scatter_set, 0, nullptr);
-        vkCmdPushConstants(cmd, radix_scatter_pipeline_layout_, VK_SHADER_STAGE_COMPUTE_BIT,
-                           0, 8, push_data);
-        vkCmdDispatch(cmd, num_workgroups, 1, 1);
+        // Dispatch 2: read status buffer, compute prefix, scatter
+        {
+            VkDescriptorSet scatter_set = read_from_a ? scatter_ab : scatter_ba;
+            vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, onesweep_scatter_pipeline_);
+            vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
+                                    onesweep_scatter_pipeline_layout_, 0, 1, &scatter_set, 0, nullptr);
+            vkCmdPushConstants(cmd, onesweep_scatter_pipeline_layout_, VK_SHADER_STAGE_COMPUTE_BIT,
+                               0, 4, push_data);
+            vkCmdDispatch(cmd, num_workgroups, 1, 1);
+        }
 
         insert_compute_barrier(cmd);
     }
+    // After even number of passes, sorted result is in buffer A
 }
 
 void GsRenderer::dispatch_tile_sort(VkCommandBuffer cmd) {
@@ -2269,29 +2279,30 @@ void GsRenderer::render(VkCommandBuffer cmd, const glm::mat4& view, const glm::m
 
     std::memcpy(uniform_buffer_.mapped(), &uniforms, sizeof(uniforms));
 
-    // Read back GPU timestamps from previous frame (sort + rasterize).
+    // Read back GPU timestamps from previous frame (depth sort + tile sort + rasterize).
     // Non-blocking: if results aren't ready yet, skip this frame's sample.
     if (timestamp_pool_ && timestamps_written_) {
-        uint64_t timestamps[4]{};  // sort_begin, sort_end, raster_begin, raster_end
+        uint64_t ts[6]{};  // depth_sort_begin/end, tile_sort_begin/end, raster_begin/end
         VkResult ts_result = vkGetQueryPoolResults(
-            device_, timestamp_pool_, 0, 4,
-            sizeof(timestamps), timestamps, sizeof(uint64_t),
+            device_, timestamp_pool_, 0, 6,
+            sizeof(ts), ts, sizeof(uint64_t),
             VK_QUERY_RESULT_64_BIT);  // no WAIT_BIT — never block on GPU
-        if (ts_result == VK_SUCCESS && timestamps[3] > timestamps[2]
-            && timestamps[1] > timestamps[0]) {
-            float sort_ms = static_cast<float>(timestamps[1] - timestamps[0])
-                            * timestamp_period_ns_ / 1e6f;
-            float raster_ms = static_cast<float>(timestamps[3] - timestamps[2])
-                              * timestamp_period_ns_ / 1e6f;
-            sort_ms_accum_ += sort_ms;
+        if (ts_result == VK_SUCCESS && ts[5] > ts[4] && ts[3] > ts[2] && ts[1] > ts[0]) {
+            float depth_ms = static_cast<float>(ts[1] - ts[0]) * timestamp_period_ns_ / 1e6f;
+            float tile_ms  = static_cast<float>(ts[3] - ts[2]) * timestamp_period_ns_ / 1e6f;
+            float raster_ms = static_cast<float>(ts[5] - ts[4]) * timestamp_period_ns_ / 1e6f;
+            depth_sort_ms_accum_ += depth_ms;
+            tile_sort_ms_accum_ += tile_ms;
             rasterize_ms_accum_ += raster_ms;
             ++timestamp_frame_;
             if (timestamp_frame_ % kTimestampAvgFrames == 0) {
-                float sort_avg = sort_ms_accum_ / static_cast<float>(kTimestampAvgFrames);
-                float raster_avg = rasterize_ms_accum_ / static_cast<float>(kTimestampAvgFrames);
-                std::fprintf(stderr, "[gs_renderer] Sort: %.3f ms  Rasterize: %.3f ms  Total: %.3f ms (avg %u frames)\n",
-                             sort_avg, raster_avg, sort_avg + raster_avg, kTimestampAvgFrames);
-                sort_ms_accum_ = 0.0f;
+                float d_avg = depth_sort_ms_accum_ / static_cast<float>(kTimestampAvgFrames);
+                float t_avg = tile_sort_ms_accum_ / static_cast<float>(kTimestampAvgFrames);
+                float r_avg = rasterize_ms_accum_ / static_cast<float>(kTimestampAvgFrames);
+                std::fprintf(stderr, "[gs_renderer] DepthSort: %.3f ms  TileSort: %.3f ms  Rasterize: %.3f ms  Total: %.3f ms (avg %u frames)\n",
+                             d_avg, t_avg, r_avg, d_avg + t_avg + r_avg, kTimestampAvgFrames);
+                depth_sort_ms_accum_ = 0.0f;
+                tile_sort_ms_accum_ = 0.0f;
                 rasterize_ms_accum_ = 0.0f;
             }
         }
@@ -2299,7 +2310,7 @@ void GsRenderer::render(VkCommandBuffer cmd, const glm::mat4& view, const glm::m
 
     // Reset timestamp queries for this frame
     if (timestamp_pool_) {
-        vkCmdResetQueryPool(cmd, timestamp_pool_, 0, 4);
+        vkCmdResetQueryPool(cmd, timestamp_pool_, 0, 6);
         timestamps_written_ = false;
     }
 
@@ -2400,6 +2411,12 @@ void GsRenderer::render(VkCommandBuffer cmd, const glm::mat4& view, const glm::m
                     0, 1, &fill_barrier, 0, nullptr, 0, nullptr);
             }
 
+            // === Depth sort timestamp: begin ===
+            if (timestamp_pool_) {
+                vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                                   timestamp_pool_, 0);  // depth_sort_begin
+            }
+
             // === Phase 1: Dynamic preprocess + sort (every frame, if dynamic_count_ > 0) ===
             if (dynamic_count_ > 0) {
                 vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, preprocess_pipeline_);
@@ -2412,11 +2429,10 @@ void GsRenderer::render(VkCommandBuffer cmd, const glm::mat4& view, const glm::m
 
                 insert_compute_barrier(cmd);
 
-                // Sort dynamic
-                dispatch_radix_sort(cmd, dynamic_sort_size_, dynamic_sort_workgroups_,
-                    dynamic_histogram_set_a_, dynamic_histogram_set_b_,
-                    dynamic_scan_set_,
-                    dynamic_scatter_set_ab_, dynamic_scatter_set_ba_);
+                // Sort dynamic (Onesweep)
+                dispatch_depth_onesweep(cmd, dynamic_sort_size_, dynamic_sort_workgroups_,
+                    dynamic_depth_hist_set_a_, dynamic_depth_hist_set_b_,
+                    dynamic_depth_scatter_set_ab_, dynamic_depth_scatter_set_ba_);
             }
 
             // === Phase 2: Static preprocess + sort (only when static_dirty_) ===
@@ -2431,11 +2447,10 @@ void GsRenderer::render(VkCommandBuffer cmd, const glm::mat4& view, const glm::m
 
                 insert_compute_barrier(cmd);
 
-                // Sort static
-                dispatch_radix_sort(cmd, static_sort_size_, static_sort_workgroups_,
-                    static_histogram_set_a_, static_histogram_set_b_,
-                    static_scan_set_,
-                    static_scatter_set_ab_, static_scatter_set_ba_);
+                // Sort static (Onesweep)
+                dispatch_depth_onesweep(cmd, static_sort_size_, static_sort_workgroups_,
+                    static_depth_hist_set_a_, static_depth_hist_set_b_,
+                    static_depth_scatter_set_ab_, static_depth_scatter_set_ba_);
 
                 static_dirty_ = false;
             }
@@ -2455,15 +2470,21 @@ void GsRenderer::render(VkCommandBuffer cmd, const glm::mat4& view, const glm::m
 
             insert_compute_barrier(cmd);
 
+            // === Depth sort timestamp: end ===
+            if (timestamp_pool_) {
+                vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                                   timestamp_pool_, 1);  // depth_sort_end
+            }
+
             // === Phase 3.5: Tile binning + tile sort ===
             if (timestamp_pool_) {
                 vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                                   timestamp_pool_, 0);  // sort_begin
+                                   timestamp_pool_, 2);  // tile_sort_begin
             }
             dispatch_tile_sort(cmd);
             if (timestamp_pool_) {
                 vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                                   timestamp_pool_, 1);  // sort_end
+                                   timestamp_pool_, 3);  // tile_sort_end
             }
 
             // === Phase 4: Tile-based rasterization ===
@@ -2483,12 +2504,12 @@ void GsRenderer::render(VkCommandBuffer cmd, const glm::mat4& view, const glm::m
 
                 if (timestamp_pool_) {
                     vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                                       timestamp_pool_, 2);  // raster_begin
+                                       timestamp_pool_, 4);  // raster_begin
                 }
                 vkCmdDispatch(cmd, tiles_x, tiles_y, 1);
                 if (timestamp_pool_) {
                     vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                                       timestamp_pool_, 3);  // raster_end
+                                       timestamp_pool_, 5);  // raster_end
                     timestamps_written_ = true;
                 }
             }
@@ -2507,6 +2528,12 @@ void GsRenderer::render(VkCommandBuffer cmd, const glm::mat4& view, const glm::m
                     0, 1, &fill_barrier, 0, nullptr, 0, nullptr);
             }
 
+            // Depth sort timestamp: begin
+            if (timestamp_pool_) {
+                vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                                   timestamp_pool_, 0);  // depth_sort_begin
+            }
+
             // Preprocess
             vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, preprocess_pipeline_);
             vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
@@ -2518,11 +2545,21 @@ void GsRenderer::render(VkCommandBuffer cmd, const glm::mat4& view, const glm::m
 
             insert_compute_barrier(cmd);
 
-            // Radix sort (legacy path)
-            dispatch_radix_sort(cmd, sort_size_, num_sort_workgroups_,
-                radix_histogram_set_a_, radix_histogram_set_b_,
-                radix_scan_set_,
-                radix_scatter_set_ab_, radix_scatter_set_ba_);
+            // Depth sort (legacy path, Onesweep)
+            dispatch_depth_onesweep(cmd, sort_size_, num_sort_workgroups_,
+                depth_hist_set_a_, depth_hist_set_b_,
+                depth_scatter_set_ab_, depth_scatter_set_ba_);
+
+            // Depth sort timestamp: end (also serves as tile_sort_begin/end = same point)
+            if (timestamp_pool_) {
+                vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                                   timestamp_pool_, 1);  // depth_sort_end
+                // No tile sort in legacy path — write same timestamp for tile begin/end
+                vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                                   timestamp_pool_, 2);  // tile_sort_begin
+                vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                                   timestamp_pool_, 3);  // tile_sort_end
+            }
 
             // Tile-based rasterization
             vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, render_pipeline_);
@@ -2533,12 +2570,12 @@ void GsRenderer::render(VkCommandBuffer cmd, const glm::mat4& view, const glm::m
 
             if (timestamp_pool_) {
                 vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                                   timestamp_pool_, 0);
+                                   timestamp_pool_, 4);  // raster_begin
             }
             vkCmdDispatch(cmd, tiles_x, tiles_y, 1);
             if (timestamp_pool_) {
                 vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                                   timestamp_pool_, 1);
+                                   timestamp_pool_, 5);  // raster_end
                 timestamps_written_ = true;
             }
         }
@@ -2719,7 +2756,6 @@ void GsRenderer::shutdown(VmaAllocator allocator) {
     projected_ssbo_.destroy(allocator);
     sort_keys_ssbo_.destroy(allocator);
     sort_b_ssbo_.destroy(allocator);
-    histogram_ssbo_.destroy(allocator);
     uniform_buffer_.destroy(allocator);
     visible_count_ssbo_.destroy(allocator);
     bone_ssbo_.destroy(allocator);
@@ -2735,8 +2771,6 @@ void GsRenderer::shutdown(VmaAllocator allocator) {
     static_sort_b_.destroy(allocator);
     dynamic_sort_a_.destroy(allocator);
     dynamic_sort_b_.destroy(allocator);
-    static_histogram_ssbo_.destroy(allocator);
-    dynamic_histogram_ssbo_.destroy(allocator);
     merged_sort_ssbo_.destroy(allocator);
     counts_ssbo_.destroy(allocator);
 
@@ -2747,6 +2781,12 @@ void GsRenderer::shutdown(VmaAllocator allocator) {
     tile_ranges_ssbo_.destroy(allocator);
     tile_indirect_args_.destroy(allocator);
     onesweep_status_.destroy(allocator);
+
+    // Depth sort Onesweep buffers
+    depth_onesweep_status_.destroy(allocator);
+    depth_sort_params_.destroy(allocator);
+    static_depth_params_.destroy(allocator);
+    dynamic_depth_params_.destroy(allocator);
 
     pp_ubo_buffer_.destroy(allocator);
 
@@ -2768,9 +2808,6 @@ void GsRenderer::shutdown(VmaAllocator allocator) {
     destroy_pipeline(post_process_pipeline_);
     destroy_pipeline(merge_pipeline_);
     destroy_pipeline(pbd_pipeline_);
-    destroy_pipeline(radix_histogram_pipeline_);
-    destroy_pipeline(radix_scan_pipeline_);
-    destroy_pipeline(radix_scatter_pipeline_);
     destroy_pipeline(tile_bin_pipeline_);
     destroy_pipeline(tile_ranges_pipeline_);
     destroy_pipeline(tile_indirect_pipeline_);
@@ -2784,9 +2821,6 @@ void GsRenderer::shutdown(VmaAllocator allocator) {
     destroy_layout(post_process_pipeline_layout_);
     destroy_layout(merge_pipeline_layout_);
     destroy_layout(pbd_pipeline_layout_);
-    destroy_layout(radix_histogram_pipeline_layout_);
-    destroy_layout(radix_scan_pipeline_layout_);
-    destroy_layout(radix_scatter_pipeline_layout_);
     destroy_layout(tile_bin_pipeline_layout_);
     destroy_layout(tile_ranges_pipeline_layout_);
     destroy_layout(tile_indirect_pipeline_layout_);
@@ -2800,9 +2834,6 @@ void GsRenderer::shutdown(VmaAllocator allocator) {
     destroy_set_layout(post_process_layout_);
     destroy_set_layout(merge_layout_);
     destroy_set_layout(pbd_layout_);
-    destroy_set_layout(radix_histogram_layout_);
-    destroy_set_layout(radix_scan_layout_);
-    destroy_set_layout(radix_scatter_layout_);
     destroy_set_layout(tile_bin_layout_);
     destroy_set_layout(tile_ranges_layout_);
     destroy_set_layout(tile_indirect_layout_);
