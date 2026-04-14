@@ -385,3 +385,34 @@ add_gseurat_test(test_project_root  src/engine/project_root.cpp)
 add_gseurat_test(test_slab_allocator src/engine/slab_allocator.cpp)
 add_gseurat_test(test_world_manifest src/engine/world_manifest.cpp)
 add_gseurat_test(test_world_streamer src/engine/world_streamer.cpp src/engine/world_manifest.cpp)
+
+# --- GPU Tests (require actual GPU, link engine sources directly) ----------
+
+function(add_gseurat_gpu_test NAME)
+    add_executable(${NAME}
+        tests/${NAME}.cpp
+        tests/gpu_test_context.cpp
+        tests/onesweep_test_runner.cpp
+        src/engine/vk_context.cpp
+        src/engine/buffer.cpp
+        src/engine/pipeline.cpp
+        ${ARGN}
+    )
+    target_include_directories(${NAME} PRIVATE
+        ${PROJECT_SOURCE_DIR}/include
+        ${PROJECT_SOURCE_DIR}/tests
+    )
+    target_compile_definitions(${NAME} PRIVATE GLM_FORCE_DEPTH_ZERO_TO_ONE)
+    target_link_libraries(${NAME} PRIVATE
+        Vulkan::Vulkan
+        glm::glm
+        GPUOpen::VulkanMemoryAllocator
+        glfw
+    )
+    add_dependencies(${NAME} shaders)
+    add_test(NAME ${NAME} COMMAND ${NAME}
+             WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
+    set_tests_properties(${NAME} PROPERTIES LABELS "gpu")
+endfunction()
+
+add_gseurat_gpu_test(test_onesweep_gpu)
