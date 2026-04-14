@@ -20,6 +20,11 @@ out/
 .DS_Store
 Thumbs.db
 
+# Runtime / generated
+imgui.ini
+perf.log
+__pycache__/
+
 # Compiled objects
 *.o
 *.obj
