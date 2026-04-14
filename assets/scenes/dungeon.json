@@ -17,7 +17,7 @@
     },
     "render_width": 1280,
     "render_height": 720,
-    "scale_multiplier": 1.0,
+    "scale_multiplier": 1.5,
     "ground_color": [
       0.1,
       0.08,

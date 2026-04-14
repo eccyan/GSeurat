@@ -789,9 +789,9 @@ void IslandDemoState::update(AppBase& app, float dt) {
                     camera_target_ = portal.spawn_position + glm::vec3(0, kCameraYOffset, 0);
 
                     // Adjust orbit camera for indoor/outdoor scale
-                    // Ceiling at Y=6, so camera must be below: target_y(2.5) + dist*sin(elev) < 6
-                    distance_ = 8.0f;
-                    elevation_ = 0.4f;   // ~23 deg → cam_y ≈ 2.5 + 8*sin(0.4) ≈ 5.6 (below ceiling)
+                    // Ceiling at Y=9 (scaled 1.5x), camera must be below: target_y(2.5) + dist*sin(elev) < 9
+                    distance_ = 10.0f;
+                    elevation_ = 0.4f;   // ~23 deg → cam_y ≈ 2.5 + 10*sin(0.4) ≈ 6.4 (below ceiling)
 
                     // Teleport player to spawn position
                     glm::vec3 spawn = portal.spawn_position;
