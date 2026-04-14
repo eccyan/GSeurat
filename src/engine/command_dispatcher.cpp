@@ -63,7 +63,6 @@ void CommandDispatcher::register_default_commands() {
         add("gs_adaptive_budget", f.gs_adaptive_budget, "Adaptive Budget");
         add("gs_parallax", f.gs_parallax, "Parallax");
         add("gs_tile_binning", f.gs_tile_binning, "Tile Binning");
-        add("gs_onesweep", ctx_.renderer.gs_renderer().use_onesweep(), "Onesweep Sort");
         add("bloom", f.bloom, "Bloom");
         add("depth_of_field", f.depth_of_field, "Depth of Field");
         add("vignette", f.vignette, "Vignette");
@@ -88,7 +87,6 @@ void CommandDispatcher::register_default_commands() {
         else if (name == "gs_adaptive_budget") f.gs_adaptive_budget = enabled;
         else if (name == "gs_parallax") f.gs_parallax = enabled;
         else if (name == "gs_tile_binning") f.gs_tile_binning = enabled;
-        else if (name == "gs_onesweep") ctx_.renderer.gs_renderer().set_use_onesweep(enabled);
         else if (name == "bloom") f.bloom = enabled;
         else if (name == "depth_of_field") f.depth_of_field = enabled;
         else if (name == "vignette") f.vignette = enabled;

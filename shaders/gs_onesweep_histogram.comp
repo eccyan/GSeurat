@@ -15,10 +15,8 @@
 layout(local_size_x = 256) in;
 
 struct TileSortEntry {
-    uint key_hi;
-    uint key_lo;
+    uint key;
     uint index;
-    uint _pad;
 };
 
 layout(set = 0, binding = 0) readonly buffer InputBuffer {
@@ -74,7 +72,7 @@ void main() {
     for (uint t = 0u; t < ENTRIES_PER_THREAD; t++) {
         uint idx = wg_offset + t * 256u + lid;
         if (idx < total) {
-            uint k = in_entries[idx].key_lo;
+            uint k = in_entries[idx].key;
             uint digit = (k >> (pass * 8u)) & 0xFFu;
             atomicAdd(s_local_histogram[digit], 1u);
         }

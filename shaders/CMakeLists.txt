@@ -30,8 +30,6 @@ set(SHADER_SOURCES
     ${SHADER_SOURCE_DIR}/gs_radix_scatter.comp
     ${SHADER_SOURCE_DIR}/gs_merge.comp
     ${SHADER_SOURCE_DIR}/gs_tile_bin.comp
-    ${SHADER_SOURCE_DIR}/gs_tile_histogram.comp
-    ${SHADER_SOURCE_DIR}/gs_tile_scatter.comp
     ${SHADER_SOURCE_DIR}/gs_tile_ranges.comp
     ${SHADER_SOURCE_DIR}/gs_tile_render.comp
     ${SHADER_SOURCE_DIR}/gs_tile_prepare_indirect.comp
