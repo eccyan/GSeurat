@@ -204,8 +204,8 @@ private:
     void create_compute_pipelines();
     void create_descriptor_resources();
     void update_descriptors();
-    void dispatch_radix_sort(VkCommandBuffer cmd, uint32_t sort_size, uint32_t num_workgroups,
-        VkDescriptorSet hist_a, VkDescriptorSet hist_b, VkDescriptorSet scan,
+    void dispatch_depth_onesweep(VkCommandBuffer cmd, uint32_t sort_size, uint32_t num_workgroups,
+        VkDescriptorSet hist_a, VkDescriptorSet hist_b,
         VkDescriptorSet scatter_ab, VkDescriptorSet scatter_ba);
     void dispatch_tile_sort(VkCommandBuffer cmd);
     void load_cloud_legacy(const GaussianCloud& cloud);
@@ -236,7 +236,7 @@ private:
     Buffer projected_ssbo_;          // Projected 2D splats
     Buffer sort_keys_ssbo_;          // Sort buffer A (ping-pong)
     Buffer sort_b_ssbo_;             // Sort buffer B (ping-pong)
-    Buffer histogram_ssbo_;          // Radix sort histogram (256 bins × num_workgroups)
+
     Buffer uniform_buffer_;          // Camera + resolution
     Buffer visible_count_ssbo_;      // Atomic counter: visible Gaussians after frustum cull
     Buffer bone_ssbo_;               // Bone transforms for character skinning
@@ -258,8 +258,6 @@ private:
     Buffer static_sort_b_;
     Buffer dynamic_sort_a_;
     Buffer dynamic_sort_b_;
-    Buffer static_histogram_ssbo_;
-    Buffer dynamic_histogram_ssbo_;
     Buffer merged_sort_ssbo_;
     Buffer counts_ssbo_;  // {static_visible, dynamic_visible, merged_visible}
 
@@ -305,17 +303,8 @@ private:
     VkDescriptorPool gs_pool_ = VK_NULL_HANDLE;
     VkDescriptorSetLayout preprocess_layout_ = VK_NULL_HANDLE;
     VkDescriptorSetLayout render_layout_ = VK_NULL_HANDLE;
-    VkDescriptorSetLayout radix_histogram_layout_ = VK_NULL_HANDLE;
-    VkDescriptorSetLayout radix_scan_layout_ = VK_NULL_HANDLE;
-    VkDescriptorSetLayout radix_scatter_layout_ = VK_NULL_HANDLE;
-
     VkDescriptorSet preprocess_set_ = VK_NULL_HANDLE;
     VkDescriptorSet render_set_ = VK_NULL_HANDLE;
-    VkDescriptorSet radix_histogram_set_a_ = VK_NULL_HANDLE;  // reads sort A
-    VkDescriptorSet radix_histogram_set_b_ = VK_NULL_HANDLE;  // reads sort B
-    VkDescriptorSet radix_scan_set_ = VK_NULL_HANDLE;
-    VkDescriptorSet radix_scatter_set_ab_ = VK_NULL_HANDLE;   // A → B
-    VkDescriptorSet radix_scatter_set_ba_ = VK_NULL_HANDLE;   // B → A
 
     // Merge pipeline
     VkDescriptorSetLayout merge_layout_ = VK_NULL_HANDLE;
@@ -323,32 +312,16 @@ private:
     VkPipeline merge_pipeline_ = VK_NULL_HANDLE;
     VkDescriptorSet merge_set_ = VK_NULL_HANDLE;
 
-    // Static/dynamic preprocess and sort descriptor sets
+    // Static/dynamic preprocess descriptor sets
     VkDescriptorSet static_preprocess_set_ = VK_NULL_HANDLE;
     VkDescriptorSet dynamic_preprocess_set_ = VK_NULL_HANDLE;
-    VkDescriptorSet static_histogram_set_a_ = VK_NULL_HANDLE;
-    VkDescriptorSet static_histogram_set_b_ = VK_NULL_HANDLE;
-    VkDescriptorSet static_scatter_set_ab_ = VK_NULL_HANDLE;
-    VkDescriptorSet static_scatter_set_ba_ = VK_NULL_HANDLE;
-    VkDescriptorSet static_scan_set_ = VK_NULL_HANDLE;
-    VkDescriptorSet dynamic_histogram_set_a_ = VK_NULL_HANDLE;
-    VkDescriptorSet dynamic_histogram_set_b_ = VK_NULL_HANDLE;
-    VkDescriptorSet dynamic_scatter_set_ab_ = VK_NULL_HANDLE;
-    VkDescriptorSet dynamic_scatter_set_ba_ = VK_NULL_HANDLE;
-    VkDescriptorSet dynamic_scan_set_ = VK_NULL_HANDLE;
 
     // Compute pipelines
     VkPipelineLayout preprocess_pipeline_layout_ = VK_NULL_HANDLE;
     VkPipelineLayout render_pipeline_layout_ = VK_NULL_HANDLE;
-    VkPipelineLayout radix_histogram_pipeline_layout_ = VK_NULL_HANDLE;
-    VkPipelineLayout radix_scan_pipeline_layout_ = VK_NULL_HANDLE;
-    VkPipelineLayout radix_scatter_pipeline_layout_ = VK_NULL_HANDLE;
 
     VkPipeline preprocess_pipeline_ = VK_NULL_HANDLE;
     VkPipeline render_pipeline_ = VK_NULL_HANDLE;
-    VkPipeline radix_histogram_pipeline_ = VK_NULL_HANDLE;
-    VkPipeline radix_scan_pipeline_ = VK_NULL_HANDLE;
-    VkPipeline radix_scatter_pipeline_ = VK_NULL_HANDLE;
 
     // PBD solver pipeline
     VkDescriptorSetLayout pbd_layout_ = VK_NULL_HANDLE;
@@ -407,8 +380,33 @@ private:
     VkDescriptorSet onesweep_scatter_set_ab_ = VK_NULL_HANDLE;  // read A → write B
     VkDescriptorSet onesweep_scatter_set_ba_ = VK_NULL_HANDLE;  // read B → write A
 
-    Buffer onesweep_status_;    // per-digit lookback status buffer (coherent)
+    Buffer onesweep_status_;    // per-digit lookback status buffer (tile sort, coherent)
     uint32_t onesweep_max_wg_ = 0;
+
+    // Depth sort Onesweep (reuses same shaders as tile sort)
+    Buffer depth_onesweep_status_;       // per-digit lookback status (depth sort, coherent)
+    Buffer depth_sort_params_;           // IndirectArgs-layout buffer for legacy depth sort
+    Buffer static_depth_params_;         // IndirectArgs-layout buffer for static depth sort
+    Buffer dynamic_depth_params_;        // IndirectArgs-layout buffer for dynamic depth sort
+    uint32_t depth_onesweep_max_wg_ = 0;
+
+    // Depth sort Onesweep descriptor sets (legacy path)
+    VkDescriptorSet depth_hist_set_a_ = VK_NULL_HANDLE;
+    VkDescriptorSet depth_hist_set_b_ = VK_NULL_HANDLE;
+    VkDescriptorSet depth_scatter_set_ab_ = VK_NULL_HANDLE;
+    VkDescriptorSet depth_scatter_set_ba_ = VK_NULL_HANDLE;
+
+    // Depth sort Onesweep descriptor sets (static path)
+    VkDescriptorSet static_depth_hist_set_a_ = VK_NULL_HANDLE;
+    VkDescriptorSet static_depth_hist_set_b_ = VK_NULL_HANDLE;
+    VkDescriptorSet static_depth_scatter_set_ab_ = VK_NULL_HANDLE;
+    VkDescriptorSet static_depth_scatter_set_ba_ = VK_NULL_HANDLE;
+
+    // Depth sort Onesweep descriptor sets (dynamic path)
+    VkDescriptorSet dynamic_depth_hist_set_a_ = VK_NULL_HANDLE;
+    VkDescriptorSet dynamic_depth_hist_set_b_ = VK_NULL_HANDLE;
+    VkDescriptorSet dynamic_depth_scatter_set_ab_ = VK_NULL_HANDLE;
+    VkDescriptorSet dynamic_depth_scatter_set_ba_ = VK_NULL_HANDLE;
 
     // Tile sort buffers
     Buffer tile_sort_a_;              // TileSortEntry ping buffer (8 bytes/entry)
@@ -428,11 +426,15 @@ private:
     // World manifest (Phase 3 streaming)
     WorldManifest world_manifest_;
 
-    // GPU timestamp profiling: queries 0-3 = sort_begin, sort_end, raster_begin, raster_end
+    // GPU timestamp profiling: 6 queries
+    //   0: depth_sort_begin, 1: depth_sort_end
+    //   2: tile_sort_begin,  3: tile_sort_end
+    //   4: raster_begin,     5: raster_end
     VkQueryPool timestamp_pool_ = VK_NULL_HANDLE;
     float timestamp_period_ns_ = 0.0f;   // nanoseconds per tick
     uint32_t timestamp_frame_ = 0;
-    float sort_ms_accum_ = 0.0f;
+    float depth_sort_ms_accum_ = 0.0f;
+    float tile_sort_ms_accum_ = 0.0f;
     float rasterize_ms_accum_ = 0.0f;
     bool timestamps_written_ = false;     // true after rasterize dispatch writes timestamps
     static constexpr uint32_t kTimestampAvgFrames = 60;
