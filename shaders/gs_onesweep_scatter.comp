@@ -17,10 +17,8 @@
 layout(local_size_x = 256) in;
 
 struct TileSortEntry {
-    uint key_hi;
-    uint key_lo;
+    uint key;
     uint index;
-    uint _pad;
 };
 
 layout(set = 0, binding = 0) readonly buffer InputBuffer {
@@ -111,16 +109,14 @@ void main() {
         bool valid = (global_idx < total);
 
         // Load entry and extract digit
-        uint my_key_lo = 0xFFFFFFFFu;
-        uint my_key_hi = 0u;
+        uint my_key = 0xFFFFFFFFu;
         uint my_index = 0u;
         uint digit = 0xFFu;
         if (valid) {
             TileSortEntry e = in_entries[global_idx];
-            my_key_hi = e.key_hi;
-            my_key_lo = e.key_lo;
+            my_key = e.key;
             my_index = e.index;
-            digit = (my_key_lo >> (pass * 8u)) & 0xFFu;
+            digit = (my_key >> (pass * 8u)) & 0xFFu;
         }
         s_digits[lid] = digit;
 
@@ -138,10 +134,8 @@ void main() {
             }
 
             uint dst = s_scatter_base[digit] + rank;
-            out_entries[dst].key_hi = my_key_hi;
-            out_entries[dst].key_lo = my_key_lo;
+            out_entries[dst].key = my_key;
             out_entries[dst].index = my_index;
-            out_entries[dst]._pad = 0u;
         }
 
         // Advance scatter base for next batch

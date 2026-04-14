@@ -11,10 +11,8 @@ struct ProjectedSplat {
 };
 
 struct TileSortEntry {
-    uint key_hi;
-    uint key_lo;
+    uint key;    // [31:16] = tile_id, [15:0] = depth_q
     uint index;
-    uint _pad;
 };
 
 struct SortEntry {
@@ -105,10 +103,8 @@ void main() {
             uint sort_key = (tile_id << 16u) | depth_q;
             uint offset = atomicAdd(tile_sort_count, 1);
             if (offset < max_entries) {
-                tile_entries[offset].key_hi = 0u;
-                tile_entries[offset].key_lo = sort_key;
+                tile_entries[offset].key = sort_key;
                 tile_entries[offset].index = idx;
-                tile_entries[offset]._pad = 0u;
             }
         }
     }

@@ -15,10 +15,8 @@ struct ProjectedSplat {
 };
 
 struct TileSortEntry {
-    uint key_hi;
-    uint key_lo;    // [31:16] = tile_id, [15:0] = depth_q
+    uint key;       // [31:16] = tile_id, [15:0] = depth_q
     uint index;     // index into projected[]
-    uint _pad;
 };
 
 layout(set = 0, binding = 0) readonly buffer ProjectedBuffer {
@@ -117,7 +115,7 @@ void main() {
     // Iterate through Gaussians assigned to this tile (sorted by depth within tile)
     for (uint s = 0; s < (valid_pixel ? tile_count : 0u); ++s) {
         TileSortEntry entry = tile_entries[tile_start + s];
-        if (entry.key_lo == 0xFFFFFFFFu) break;  // sentinel
+        if (entry.key == 0xFFFFFFFFu) break;  // sentinel
         uint idx = entry.index;
 
         ProjectedSplat splat = projected[idx];
