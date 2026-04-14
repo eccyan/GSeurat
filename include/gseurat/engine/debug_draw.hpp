@@ -5,7 +5,13 @@
 #include <glm/glm.hpp>
 #include <functional>
 
+#ifdef GSEURAT_DEV_MODE
+struct ImDrawList;
+#endif
+
 namespace gseurat {
+
+struct CollisionGrid;
 
 using DrawLineFn = std::function<void(float x1, float y1, float x2, float y2,
                                        float thickness, glm::vec4 color)>;
@@ -30,5 +36,15 @@ void draw_box_gizmo(const glm::vec3& center, const glm::vec3& half_extents,
 void draw_region_gizmo(const GsAnimRegion& region, const glm::vec3& offset,
                          const glm::mat4& vp, float sw, float sh,
                          glm::vec4 color, const DrawLineFn& draw_line);
+
+#ifdef GSEURAT_DEV_MODE
+// Draw a collision grid overlay on the ImGui foreground draw list.
+// grid_origin is the world XZ origin of the grid (grid cell 0,0).
+void draw_collision_grid_overlay(ImDrawList* dl,
+                                  const CollisionGrid& grid,
+                                  glm::vec2 grid_origin,
+                                  const glm::mat4& vp,
+                                  float screen_w, float screen_h);
+#endif
 
 }  // namespace gseurat

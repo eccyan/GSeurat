@@ -86,3 +86,60 @@ void draw_region_gizmo(const GsAnimRegion& region, const glm::vec3& offset,
 }
 
 }  // namespace gseurat
+
+#ifdef GSEURAT_DEV_MODE
+#include "gseurat/engine/collision_gen.hpp"
+#include <imgui.h>
+
+namespace gseurat {
+
+void draw_collision_grid_overlay(ImDrawList* dl,
+                                  const CollisionGrid& grid,
+                                  glm::vec2 grid_origin,
+                                  const glm::mat4& vp,
+                                  float sw, float sh) {
+    ImU32 solid_col    = IM_COL32(204, 0, 0, 77);    // red, alpha ~0.3
+    ImU32 walkable_col = IM_COL32(0, 204, 0, 38);    // green, alpha ~0.15
+    ImU32 grid_line_col = IM_COL32(255, 255, 255, 51); // white, alpha ~0.2
+
+    for (uint32_t gz = 0; gz < grid.height; gz++) {
+        for (uint32_t gx = 0; gx < grid.width; gx++) {
+            float wx0 = grid_origin.x + gx * grid.cell_size;
+            float wx1 = grid_origin.x + (gx + 1) * grid.cell_size;
+            float wz0 = grid_origin.y + gz * grid.cell_size;
+            float wz1 = grid_origin.y + (gz + 1) * grid.cell_size;
+            float wy = grid.get_elevation(gx, gz);
+
+            glm::vec3 p00(wx0, wy, wz0);
+            glm::vec3 p10(wx1, wy, wz0);
+            glm::vec3 p01(wx0, wy, wz1);
+            glm::vec3 p11(wx1, wy, wz1);
+
+            float sx00, sy00, sx10, sy10, sx01, sy01, sx11, sy11;
+            bool v00 = project_to_screen(p00, vp, sw, sh, sx00, sy00);
+            bool v10 = project_to_screen(p10, vp, sw, sh, sx10, sy10);
+            bool v01 = project_to_screen(p01, vp, sw, sh, sx01, sy01);
+            bool v11 = project_to_screen(p11, vp, sw, sh, sx11, sy11);
+
+            if (!v00 && !v10 && !v01 && !v11) continue;
+
+            float min_x = std::min({sx00, sx10, sx01, sx11});
+            float max_x = std::max({sx00, sx10, sx01, sx11});
+            float min_y = std::min({sy00, sy10, sy01, sy11});
+            float max_y = std::max({sy00, sy10, sy01, sy11});
+            if (max_x < 0 || min_x > sw || max_y < 0 || min_y > sh) continue;
+
+            ImU32 fill = grid.is_solid(gx, gz) ? solid_col : walkable_col;
+
+            dl->AddQuadFilled(
+                ImVec2(sx00, sy00), ImVec2(sx10, sy10),
+                ImVec2(sx11, sy11), ImVec2(sx01, sy01), fill);
+
+            dl->AddLine(ImVec2(sx10, sy10), ImVec2(sx11, sy11), grid_line_col, 1.0f);
+            dl->AddLine(ImVec2(sx01, sy01), ImVec2(sx11, sy11), grid_line_col, 1.0f);
+        }
+    }
+}
+
+}  // namespace gseurat
+#endif
