@@ -294,7 +294,25 @@ uint32_t GsChunkGrid::gather_lod(const std::vector<uint32_t>& chunk_indices,
     }
 
     out.resize(offset);
-    return offset;
+
+    // Re-inject bone-animated Gaussians from culled chunks.
+    // Character Gaussians (bone_index > 0) are embedded in the static PLY
+    // and must always be present for skeletal animation to work.
+    std::vector<bool> chunk_included(chunks_.size(), false);
+    for (const auto& lod : lods) {
+        chunk_included[lod.idx] = true;
+    }
+    for (uint32_t ci = 0; ci < chunks_.size(); ++ci) {
+        if (chunk_included[ci]) continue;  // already gathered
+        const auto& chunk = chunks_[ci];
+        for (uint32_t i = chunk.start_index; i < chunk.start_index + chunk.count; ++i) {
+            if (sorted_gaussians_[i].bone_index > 0) {
+                out.push_back(sorted_gaussians_[i]);
+            }
+        }
+    }
+
+    return static_cast<uint32_t>(out.size());
 }
 
 }  // namespace gseurat
