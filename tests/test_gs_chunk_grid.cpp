@@ -85,7 +85,7 @@ int main() {
             glm::vec3(50.0f, 0.0f, 0.0f),
             glm::vec3(0.0f, 1.0f, 0.0f));
         glm::mat4 proj = glm::perspective(glm::radians(90.0f), 1.0f, 0.1f, 500.0f);
-        auto visible = grid.visible_chunks(proj * view);
+        auto visible = grid.visible_chunks(proj * view, glm::vec3(50.0f, 0.0f, 200.0f));
         assert(visible.size() >= 2);
         std::printf("PASS: multi-chunk\n");
     }
@@ -109,7 +109,7 @@ int main() {
             glm::vec3(0.0f, 1.0f, 0.0f));
         glm::mat4 proj = glm::perspective(glm::radians(60.0f), 1.0f, 0.1f, 500.0f);
         auto vp = proj * view;
-        auto visible = grid.visible_chunks(vp);
+        auto visible = grid.visible_chunks(vp, glm::vec3(32.0f, 32.0f, 100.0f));
         assert(!visible.empty());
         std::printf("PASS: visible_chunks returns results\n");
     }
@@ -133,8 +133,9 @@ int main() {
         glm::mat4 proj = glm::perspective(glm::radians(30.0f), 1.0f, 0.1f, 200.0f);
         auto vp = proj * view;
 
-        auto all = grid.visible_chunks(wide_vp(glm::vec3(500.0f, 0.0f, 0.0f)));
-        auto culled = grid.visible_chunks(vp);
+        auto all = grid.visible_chunks(wide_vp(glm::vec3(500.0f, 0.0f, 0.0f)),
+                                        glm::vec3(500.0f, 0.0f, 500.0f));
+        auto culled = grid.visible_chunks(vp, glm::vec3(0.0f, 0.0f, 50.0f));
         assert(culled.size() < all.size());
         std::printf("PASS: frustum culling\n");
     }
@@ -149,7 +150,8 @@ int main() {
         GsChunkGrid grid;
         grid.build(cloud, 32.0f);
 
-        auto visible = grid.visible_chunks(wide_vp(glm::vec3(50.0f, 0.0f, 0.0f)));
+        auto visible = grid.visible_chunks(wide_vp(glm::vec3(50.0f, 0.0f, 0.0f)),
+                                           glm::vec3(50.0f, 0.0f, 500.0f));
         std::vector<Gaussian> out;
         uint32_t count = grid.gather(visible, out);
         assert(count == static_cast<uint32_t>(out.size()));
@@ -169,7 +171,8 @@ int main() {
         GsChunkGrid grid;
         grid.build(cloud, 16.0f);
 
-        auto visible = grid.visible_chunks(wide_vp(glm::vec3(25.0f, 10.0f, 0.0f)));
+        auto visible = grid.visible_chunks(wide_vp(glm::vec3(25.0f, 10.0f, 0.0f)),
+                                           glm::vec3(25.0f, 10.0f, 500.0f));
         std::vector<Gaussian> out;
         glm::vec3 cam_pos(25.0f, 10.0f, 50.0f);
         uint32_t count = grid.gather_lod(visible, cam_pos, 200, out);
@@ -189,7 +192,8 @@ int main() {
         GsChunkGrid grid;
         grid.build(cloud, 32.0f);
 
-        auto visible = grid.visible_chunks(wide_vp(glm::vec3(50.0f, 0.0f, 0.0f)));
+        auto visible = grid.visible_chunks(wide_vp(glm::vec3(50.0f, 0.0f, 0.0f)),
+                                           glm::vec3(50.0f, 0.0f, 500.0f));
         std::vector<Gaussian> out;
         glm::vec3 cam_pos(50.0f, 0.0f, 50.0f);  // far enough for LOD
         grid.gather_lod(visible, cam_pos, 20, out);

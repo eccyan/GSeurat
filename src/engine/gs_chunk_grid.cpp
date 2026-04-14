@@ -141,17 +141,28 @@ static bool aabb_in_frustum(const AABB& aabb, const std::array<glm::vec4, 6>& pl
     return true;
 }
 
-std::vector<uint32_t> GsChunkGrid::visible_chunks(const glm::mat4& view_proj) const {
+std::vector<uint32_t> GsChunkGrid::visible_chunks(const glm::mat4& view_proj,
+                                                   const glm::vec3& camera_pos,
+                                                   float max_distance) const {
     auto planes = extract_frustum_planes(view_proj);
 
     // Safety margin: account for scale compensation (up to kMaxScaleComp = 2.0x)
     // expanding Gaussians beyond their original chunk bounds.
     float margin = chunk_size_ * 2.0f;
 
+    float max_dist_sq = (max_distance > 0.0f) ? max_distance * max_distance : 0.0f;
+
     std::vector<uint32_t> result;
     result.reserve(chunks_.size());
 
     for (uint32_t i = 0; i < chunks_.size(); ++i) {
+        // Distance cull: skip chunks beyond max render distance
+        if (max_dist_sq > 0.0f) {
+            glm::vec3 center = chunks_[i].bounds.center();
+            float dist_sq = glm::dot(center - camera_pos, center - camera_pos);
+            if (dist_sq > max_dist_sq) continue;
+        }
+
         if (aabb_in_frustum(chunks_[i].bounds, planes, margin)) {
             result.push_back(i);
         }
@@ -196,7 +207,7 @@ uint32_t GsChunkGrid::gather_lod(const std::vector<uint32_t>& chunk_indices,
     // Distance thresholds based on chunk size
     float near_dist = 2.0f * chunk_size_;
     float far_dist = 8.0f * chunk_size_;
-    float min_ratio = 0.1f;  // 10% kept at far distance
+    float cull_dist = 12.0f * chunk_size_;  // beyond this, keep_count drops to 0
 
     // Player-centric LOD: use player position for distance if provided,
     // camera position otherwise.
@@ -209,7 +220,8 @@ uint32_t GsChunkGrid::gather_lod(const std::vector<uint32_t>& chunk_indices,
         float ratio;
         uint32_t keep_count;
     };
-    std::vector<ChunkLod> lods(chunk_indices.size());
+    std::vector<ChunkLod> lods;
+    lods.reserve(chunk_indices.size());
 
     uint32_t total_wanted = 0;
     for (size_t i = 0; i < chunk_indices.size(); ++i) {
@@ -220,15 +232,21 @@ uint32_t GsChunkGrid::gather_lod(const std::vector<uint32_t>& chunk_indices,
         float ratio;
         if (dist <= near_dist) {
             ratio = 1.0f;
+        } else if (dist >= cull_dist) {
+            ratio = 0.0f;  // fully culled beyond cull distance
         } else if (dist >= far_dist) {
-            ratio = min_ratio;
+            // Linear fade from 0.1 to 0.0 between far_dist and cull_dist
+            float t = (dist - far_dist) / (cull_dist - far_dist);
+            ratio = 0.1f * (1.0f - t);
         } else {
             float t = (dist - near_dist) / (far_dist - near_dist);
-            ratio = 1.0f - t * (1.0f - min_ratio);
+            ratio = 1.0f - t * 0.9f;  // 1.0 → 0.1
         }
 
+        if (ratio <= 0.0f) continue;  // skip fully culled chunks
+
         uint32_t keep = std::max(1u, static_cast<uint32_t>(chunk.count * ratio));
-        lods[i] = {chunk_indices[i], dist, ratio, keep};
+        lods.push_back({chunk_indices[i], dist, ratio, keep});
         total_wanted += keep;
     }
 

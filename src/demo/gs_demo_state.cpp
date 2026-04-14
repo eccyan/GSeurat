@@ -779,7 +779,8 @@ void GsDemoState::enter_streaming_mode(AppBase& app) {
     auto all_visible = grid.visible_chunks(
         glm::perspective(glm::radians(179.0f), 1.0f, 0.1f, 100000.0f) *
         glm::lookAt(grid.cloud_bounds().center() + glm::vec3(0, 0, 10000),
-                    grid.cloud_bounds().center(), glm::vec3(0, 1, 0)));
+                    grid.cloud_bounds().center(), glm::vec3(0, 1, 0)),
+        grid.cloud_bounds().center());
 
     // Build manifest by gathering each chunk individually
     ChunkManifest manifest;
