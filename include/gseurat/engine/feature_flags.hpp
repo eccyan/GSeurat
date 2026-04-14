@@ -82,9 +82,9 @@ struct FeatureFlags {
 
     // Apply platform-specific defaults (call once after GPU detection)
     void apply_platform_defaults(bool apple_gpu) {
-        if (apple_gpu) {
-            gs_tile_binning = false;  // TBDR barrier overhead ~25x slower
-        }
+        // Tile binning now viable on Apple Silicon with 2-dispatch Onesweep
+        // (reduced from ~38 barriers to ~14). Benchmark: 32.5ms → 3.6ms on M5.
+        (void)apple_gpu;
     }
 
     static constexpr std::array<Entry, 33> entries() {
