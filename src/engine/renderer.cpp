@@ -873,7 +873,9 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
         if (camera_dirty && flags.gs_chunk_culling && !gs_skip_chunk_cull_ && !gs_chunk_grid_.empty()) {
             glm::mat4 gs_vp = gs_proj_ * gs_view_;
             glm::vec3 cam_pos = glm::vec3(glm::inverse(gs_view_)[3]);
-            auto visible = gs_chunk_grid_.visible_chunks(gs_vp, cam_pos, gs_max_render_distance_);
+            // Use camera position for distance culling (camera sees ahead of player)
+            glm::vec3 dist_origin = cam_pos;
+            auto visible = gs_chunk_grid_.visible_chunks(gs_vp, dist_origin, gs_max_render_distance_);
 
             if ((visible != gs_prev_visible_ || budget_changed) && gs_budget_locked_) {
                 gs_budget_locked_ = false;

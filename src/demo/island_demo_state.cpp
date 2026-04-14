@@ -94,8 +94,7 @@ void IslandDemoState::on_enter(AppBase& app) {
     pp.vignette_softness = 0.4f;   // soft falloff
     pp.ca_intensity = 0.15f;       // subtle chromatic aberration at edges
     app.renderer().set_gs_skip_chunk_cull(false);
-    // max_render_distance left at 0 (unlimited) — world streaming handles
-    // unloading distant scenes; chunk-level culling is too granular here.
+    app.renderer().set_gs_max_render_distance(150.0f);  // cull distant chunks (uses player pos, not camera)
     app.renderer().gs_renderer().set_skip_sort(false);
 
     // Load world manifest if world.json exists at project root

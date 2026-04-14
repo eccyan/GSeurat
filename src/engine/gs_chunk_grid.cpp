@@ -22,11 +22,11 @@ void GsChunkGrid::build(const GaussianCloud& cloud, float chunk_size) {
 
     grid_min_ = bounds.min;
 
-    // Compute grid dimensions on XY plane (map face)
+    // Compute grid dimensions on XZ plane (ground plane, Y is up)
     float range_x = bounds.max.x - bounds.min.x;
-    float range_y = bounds.max.y - bounds.min.y;
+    float range_z = bounds.max.z - bounds.min.z;
     grid_cols_ = std::max(1, static_cast<int32_t>(std::ceil(range_x / chunk_size)));
-    grid_rows_ = std::max(1, static_cast<int32_t>(std::ceil(range_y / chunk_size)));
+    grid_rows_ = std::max(1, static_cast<int32_t>(std::ceil(range_z / chunk_size)));
 
     int32_t total_cells = grid_cols_ * grid_rows_;
 
@@ -38,9 +38,9 @@ void GsChunkGrid::build(const GaussianCloud& cloud, float chunk_size) {
         const auto& pos = gaussians[i].position;
         int32_t gx = std::clamp(static_cast<int32_t>((pos.x - grid_min_.x) / chunk_size),
                                 0, grid_cols_ - 1);
-        int32_t gy = std::clamp(static_cast<int32_t>((pos.y - grid_min_.y) / chunk_size),
+        int32_t gz = std::clamp(static_cast<int32_t>((pos.z - grid_min_.z) / chunk_size),
                                 0, grid_rows_ - 1);
-        int32_t cell = gy * grid_cols_ + gx;
+        int32_t cell = gz * grid_cols_ + gx;
         assignments[i] = cell;
         counts[cell]++;
     }
@@ -66,13 +66,13 @@ void GsChunkGrid::build(const GaussianCloud& cloud, float chunk_size) {
         if (counts[c] == 0) continue;
 
         int32_t gx = c % grid_cols_;
-        int32_t gy = c / grid_cols_;
+        int32_t gz = c / grid_cols_;
 
         GsChunk chunk{};
         chunk.start_index = offsets[c];
         chunk.count = counts[c];
         chunk.grid_x = gx;
-        chunk.grid_z = gy;  // grid_z stores the Y-axis row index
+        chunk.grid_z = gz;
 
         // Compute tight AABB from actual Gaussians
         for (uint32_t i = chunk.start_index; i < chunk.start_index + chunk.count; ++i) {
