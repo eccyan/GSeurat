@@ -7,6 +7,9 @@
 #include "gseurat/engine/shutdown_auditor.hpp"
 #include "gseurat/engine/world_manifest.hpp"
 #include "gseurat/engine/project_root.hpp"
+#include "gseurat/engine/coordinate.hpp"
+#include "gseurat/engine/collision_gen.hpp"
+#include "gseurat/engine/debug_draw.hpp"
 
 #ifdef GSEURAT_DEV_MODE
 #include <imgui.h>
@@ -1106,6 +1109,13 @@ void StagingState::draw_gizmos(AppBase& app) {
     // ── Camera Zone gizmos (visible in both orbit and review modes) ──
     if (ov.show_gizmo_camera_zones && camera_review_ && camera_review_->has_zone_data()) {
         camera_review_->draw_gizmos(vp, sw, sh, dl, project_wrapper, this);
+    }
+
+    // ── Collision grid overlay ──
+    if (ov.show_gizmo_collision && last_scene_data_ && last_scene_data_->collision.has_value()) {
+        auto terrain_aabb = app.gs_terrain().terrain_aabb;
+        glm::vec2 origin(terrain_aabb.min.x, terrain_aabb.min.z);
+        draw_collision_grid_overlay(dl, *last_scene_data_->collision, origin, vp, sw, sh);
     }
 
     // ── World manifest gizmos ──

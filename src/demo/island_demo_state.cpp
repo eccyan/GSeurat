@@ -1933,6 +1933,11 @@ void IslandDemoState::draw_gizmos(AppBase& app) {
                 imgui_sphere(dl, t.position.vec(), pt.radius, vp, sw, sh, col);
             });
     }
+
+    // ── Collision grid overlay ──
+    if (ov.show_gizmo_collision && collision_grid_.width > 0) {
+        draw_collision_grid_overlay(dl, collision_grid_, grid_origin_, vp, sw, sh);
+    }
 #else
     (void)app;
 #endif
