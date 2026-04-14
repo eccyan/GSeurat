@@ -274,6 +274,9 @@ if(APPLE)
     )
 endif()
 
+# Namespaced alias for parent projects: target_link_libraries(app PRIVATE GSeurat::Engine)
+add_library(GSeurat::Engine ALIAS gseurat_core)
+
 # --- Developer overlay (ImGui) -----------------------------------------------
 
 option(GSEURAT_DEV_MODE "Enable ImGui developer overlay" ON)
