@@ -194,7 +194,7 @@ void VkContext::pick_physical_device() {
         is_apple_gpu_ = (props.vendorID == 0x106B);
         std::printf("[vk_context] GPU: %s (vendor 0x%04X)%s\n",
                     props.deviceName, props.vendorID,
-                    is_apple_gpu_ ? " [Apple — tile binning disabled by default]" : "");
+                    is_apple_gpu_ ? " [Apple — TBDR]" : "");
     }
 }
 

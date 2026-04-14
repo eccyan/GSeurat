@@ -82,8 +82,7 @@ struct FeatureFlags {
 
     // Apply platform-specific defaults (call once after GPU detection)
     void apply_platform_defaults(bool apple_gpu) {
-        // Tile binning now viable on Apple Silicon with 2-dispatch Onesweep
-        // (reduced from ~38 barriers to ~14). Benchmark: 32.5ms → 3.6ms on M5.
+        // Tile binning viable on all platforms with 2-dispatch Onesweep
         (void)apple_gpu;
     }
 

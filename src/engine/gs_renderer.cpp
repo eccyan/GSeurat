@@ -725,12 +725,12 @@ void GsRenderer::init_streaming(const StreamingConfig& config) {
     // Capacity: visible Gaussians × avg tile overlap. Cap at 1M entries (16MB per buffer).
     {
         uint32_t visible_upper = static_sort_size_ + dynamic_sort_size_;
-        tile_sort_capacity_ = std::min(visible_upper * 4, 1u << 19);  // cap at 512K (8MB per buffer)
+        tile_sort_capacity_ = std::min(visible_upper * 4, 1u << 21);  // cap at 2M (16MB per buffer)
         // Align to 1024 (workgroup size for radix sort)
-        tile_sort_size_ = ((tile_sort_capacity_ + 1023) / 1024) * 1024;
-        tile_sort_workgroups_ = tile_sort_size_ / 1024;
+        tile_sort_size_ = ((tile_sort_capacity_ + 2047) / 2048) * 2048;
+        tile_sort_workgroups_ = tile_sort_size_ / 2048;
         if (tile_sort_workgroups_ == 0) tile_sort_workgroups_ = 1;
-        tile_sort_size_ = tile_sort_workgroups_ * 1024;
+        tile_sort_size_ = tile_sort_workgroups_ * 2048;
 
         VkDeviceSize entry_buf_size = static_cast<VkDeviceSize>(tile_sort_size_) * 8;  // 8 bytes/entry
         // Allocate tile_ranges for max possible resolution (output_width_ may not
@@ -1229,11 +1229,11 @@ void GsRenderer::load_cloud_legacy(const GaussianCloud& cloud) {
     // ── Tile binning buffers (same logic as init_streaming) ──
     {
         uint32_t visible_upper = static_sort_size_ + dynamic_sort_size_;
-        tile_sort_capacity_ = std::min(visible_upper * 4, 1u << 19);  // cap at 512K (8MB per buffer)
-        tile_sort_size_ = ((tile_sort_capacity_ + 1023) / 1024) * 1024;
-        tile_sort_workgroups_ = tile_sort_size_ / 1024;
+        tile_sort_capacity_ = std::min(visible_upper * 4, 1u << 21);  // cap at 2M (16MB per buffer)
+        tile_sort_size_ = ((tile_sort_capacity_ + 2047) / 2048) * 2048;
+        tile_sort_workgroups_ = tile_sort_size_ / 2048;
         if (tile_sort_workgroups_ == 0) tile_sort_workgroups_ = 1;
-        tile_sort_size_ = tile_sort_workgroups_ * 1024;
+        tile_sort_size_ = tile_sort_workgroups_ * 2048;
 
         VkDeviceSize entry_buf_size = static_cast<VkDeviceSize>(tile_sort_size_) * 8;  // 8 bytes/entry
         // Allocate tile_ranges for max possible resolution (output_width_ may not
@@ -2099,9 +2099,9 @@ void GsRenderer::dispatch_tile_sort(VkCommandBuffer cmd) {
     // Clear tile sort counter to 0 and fill tile_sort_a with sentinels (0xFFFFFFFF).
     // Sentinels are essential: the sort processes max_workgroups*1024 entries, but only
     // tile_sort_count are real. Without sentinels, garbage data gets sorted alongside
-    // real entries, scattering them to unpredictable positions. With sentinels (key_hi=
-    // key_lo=0xFFFFFFFF), unused entries sort to the END, keeping real entries contiguous
-    // at [0, tile_sort_count). At 256K cap this is only 4MB — well within TDR budget.
+    // real entries, scattering them to unpredictable positions. With sentinels (key=
+    // 0xFFFFFFFF), unused entries sort to the END, keeping real entries contiguous
+    // at [0, tile_sort_count).
     vkCmdFillBuffer(cmd, tile_sort_count_ssbo_.buffer(), 0, sizeof(uint32_t), 0);
     vkCmdFillBuffer(cmd, tile_sort_a_.buffer(), 0,
                     static_cast<VkDeviceSize>(tile_sort_size_) * 8, 0xFFFFFFFF);
