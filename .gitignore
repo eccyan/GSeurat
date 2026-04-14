@@ -43,7 +43,7 @@ compile_commands.json
 tools/ComfyUI/
 
 # Large source model files (blend, fbx, dae, textures)
-assets/test_models/uploads_files_*/
+examples/island_demo/assets/test_models/uploads_files_*/
 
 # WASM build artifacts
 tools/packages/simulation-wasm/dist/simulation.mjs

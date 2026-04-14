@@ -1,0 +1,96 @@
+<h2>Camera State Blending Strategy</h2>
+<p class="subtitle">When transitioning between camera zones (e.g., free-look → rail), how should the system interpolate?</p>
+
+<div class="section">
+  <h3>The Problem</h3>
+  <div style="padding:16px; background:#1a1a2e; border-radius:8px; font-family:monospace; font-size:13px;">
+    <pre style="margin:0; color:#aaa;">
+  Volume A (Free Look)              Volume B (Rail Follow)
+  ┌─────────────────┐    trigger    ┌─────────────────┐
+  │                  │      │       │                  │
+  │  cam @ (10,5,20) │──────┼──────→│  rail @ (30,8,15)│
+  │  fov: 45°        │      │       │  fov: 60°        │
+  │  pitch: -15°     │              │  pitch: -25°     │
+  └─────────────────┘               └─────────────────┘
+
+  Without blending: SNAP! Instant jump — nauseating
+  With blending:    Smooth 1-2s interpolation of all parameters
+    </pre>
+  </div>
+</div>
+
+<div class="options">
+  <div class="option" data-choice="lerp" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Simple Lerp (Linear Interpolation)</h3>
+      <p>Linearly blend all camera parameters over <code>blend_time</code> seconds.</p>
+      <div style="margin-top:12px; padding:16px; background:#1a1a2e; border-radius:8px; font-family:monospace; font-size:13px;">
+        <pre style="margin:0; color:#aaa;">
+t = elapsed / blend_time          // 0.0 → 1.0
+pos = mix(old_pos, new_pos, t)
+rot = slerp(old_rot, new_rot, t)
+fov = mix(old_fov, new_fov, t)
+
+  old ●━━━━━━━━━━━━━━━● new
+      constant speed
+        </pre>
+      </div>
+      <p style="color:#888; margin-top:8px;">Simple, predictable. Can feel mechanical/robotic on longer blends.</p>
+    </div>
+  </div>
+
+  <div class="option" data-choice="ease" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Eased Blend (smoothstep / ease-in-out)</h3>
+      <p>Apply an easing curve to the blend factor. Starts slow, accelerates, then decelerates.</p>
+      <div style="margin-top:12px; padding:16px; background:#1a1a2e; border-radius:8px; font-family:monospace; font-size:13px;">
+        <pre style="margin:0; color:#aaa;">
+t = elapsed / blend_time
+t = smoothstep(t)                 // 3t² - 2t³
+pos = mix(old_pos, new_pos, t)
+rot = slerp(old_rot, new_rot, t)
+
+  old ●╌╌╌━━━━━━━━╌╌╌● new
+      slow  fast  slow
+        </pre>
+      </div>
+      <p style="color:#888; margin-top:8px;">Feels natural. Standard in AAA camera systems. Negligible extra cost (one multiply).</p>
+    </div>
+  </div>
+
+  <div class="option" data-choice="spring" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Spring Damper (Critically Damped)</h3>
+      <p>Physics-based spring that naturally settles. No fixed blend time — converges asymptotically. Handles interruptions gracefully (re-targeting mid-blend).</p>
+      <div style="margin-top:12px; padding:16px; background:#1a1a2e; border-radius:8px; font-family:monospace; font-size:13px;">
+        <pre style="margin:0; color:#aaa;">
+// Critically damped spring (no oscillation)
+omega = 2.0 / half_life
+exp_term = exp(-omega * dt)
+pos += (target - pos) * (1 - exp_term)
+
+  old ●━━━━━╌╌╌╌╌╌╌╌╌╌ new
+      fast     asymptotic approach
+
+  Interrupted mid-blend? Just change target:
+  old ●━━━╲
+           ╲━━━━╌╌╌╌╌ new_target
+        </pre>
+      </div>
+      <p style="color:#888; margin-top:8px;">Most robust for gameplay (handles rapid zone changes). Slightly harder to tune. No "done" signal — needs threshold.</p>
+    </div>
+  </div>
+</div>
+
+<div style="margin-top:24px; padding:16px; background:#1a1a2e; border-radius:8px;">
+  <h3 style="margin-top:0;">Recommendation: B + C Combined</h3>
+  <p style="color:#aaa;">Use <strong>eased blend (B)</strong> as the default for designed transitions (volume enter, explicit triggers) where blend_time is authored. Use <strong>spring damper (C)</strong> for the "follow" component — the per-frame smoothing of the camera tracking its target position. This matches industry practice:</p>
+  <ul style="color:#aaa;">
+    <li><strong>Zone transition:</strong> smoothstep blend over authored blend_time (predictable, art-directed)</li>
+    <li><strong>Within a zone:</strong> spring damper for target tracking (responsive, handles interrupts)</li>
+  </ul>
+  <p style="color:#aaa; margin-bottom:0;">The spring damper already exists in your codebase — <code>Camera::smooth_follow()</code> uses exponential smoothing, which is mathematically equivalent to a critically damped spring with <code>half_life = ln(2) / smoothing_factor</code>.</p>
+</div>
