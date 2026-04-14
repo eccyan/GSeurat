@@ -11,6 +11,7 @@ namespace gseurat {
 class VkContext {
 public:
     void init(GLFWwindow* window);
+    void init_headless();
     void shutdown();
 
     VkInstance instance() const { return instance_; }
@@ -36,6 +37,10 @@ private:
     int32_t find_queue_family() const;
     std::vector<const char*> get_required_device_extensions() const;
 
+    void create_instance_headless();
+    void pick_physical_device_headless();
+    void create_logical_device_headless();
+
     VkInstance instance_ = VK_NULL_HANDLE;
     VkDebugUtilsMessengerEXT debug_messenger_ = VK_NULL_HANDLE;
     VkSurfaceKHR surface_ = VK_NULL_HANDLE;
@@ -47,6 +52,7 @@ private:
     uint32_t transfer_queue_family_{0};
     bool has_dedicated_transfer_{false};
     bool is_apple_gpu_{false};
+    bool headless_{false};
     VmaAllocator allocator_ = VK_NULL_HANDLE;
 };
 

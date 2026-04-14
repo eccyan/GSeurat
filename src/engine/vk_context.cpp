@@ -28,6 +28,15 @@ void VkContext::init(GLFWwindow* window) {
     create_allocator();
 }
 
+void VkContext::init_headless() {
+    headless_ = true;
+    create_instance_headless();
+    setup_debug_messenger();
+    pick_physical_device_headless();
+    create_logical_device_headless();
+    create_allocator();
+}
+
 void VkContext::shutdown() {
 #ifndef NDEBUG
     VmaTotalStatistics stats{};
@@ -40,7 +49,9 @@ void VkContext::shutdown() {
 #endif
     vmaDestroyAllocator(allocator_);
     vkDestroyDevice(device_, nullptr);
-    vkDestroySurfaceKHR(instance_, surface_, nullptr);
+    if (!headless_) {
+        vkDestroySurfaceKHR(instance_, surface_, nullptr);
+    }
 
 #ifndef NDEBUG
     auto func = reinterpret_cast<PFN_vkDestroyDebugUtilsMessengerEXT>(
@@ -289,6 +300,208 @@ void VkContext::create_allocator() {
 
     if (vmaCreateAllocator(&info, &allocator_) != VK_SUCCESS) {
         throw std::runtime_error("Failed to create VMA allocator");
+    }
+}
+
+void VkContext::create_instance_headless() {
+    VkApplicationInfo app_info{};
+    app_info.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
+    app_info.pApplicationName = "GSeurat";
+    app_info.applicationVersion = VK_MAKE_VERSION(0, 1, 0);
+    app_info.pEngineName = "GSeurat";
+    app_info.engineVersion = VK_MAKE_VERSION(1, 0, 0);
+    app_info.apiVersion = VK_API_VERSION_1_3;
+
+    std::vector<const char*> extensions;
+    extensions.push_back(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
+
+#ifndef NDEBUG
+    extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+#endif
+
+    VkInstanceCreateInfo create_info{};
+    create_info.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
+    create_info.pApplicationInfo = &app_info;
+    create_info.enabledExtensionCount = static_cast<uint32_t>(extensions.size());
+    create_info.ppEnabledExtensionNames = extensions.data();
+    create_info.flags |= VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
+
+#ifndef NDEBUG
+    const char* validation_layer = "VK_LAYER_KHRONOS_validation";
+    create_info.enabledLayerCount = 1;
+    create_info.ppEnabledLayerNames = &validation_layer;
+#else
+    create_info.enabledLayerCount = 0;
+#endif
+
+    if (vkCreateInstance(&create_info, nullptr, &instance_) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to create Vulkan instance (headless)");
+    }
+}
+
+void VkContext::pick_physical_device_headless() {
+    uint32_t count = 0;
+    vkEnumeratePhysicalDevices(instance_, &count, nullptr);
+    if (count == 0) {
+        throw std::runtime_error("No Vulkan-capable GPU found");
+    }
+
+    std::vector<VkPhysicalDevice> devices(count);
+    vkEnumeratePhysicalDevices(instance_, &count, devices.data());
+
+    VkPhysicalDevice fallback = VK_NULL_HANDLE;
+
+    for (auto dev : devices) {
+        // Check for a queue family with compute + transfer (no present required)
+        uint32_t family_count = 0;
+        vkGetPhysicalDeviceQueueFamilyProperties(dev, &family_count, nullptr);
+        std::vector<VkQueueFamilyProperties> families(family_count);
+        vkGetPhysicalDeviceQueueFamilyProperties(dev, &family_count, families.data());
+
+        bool has_compute_transfer = false;
+        for (const auto& fam : families) {
+            if ((fam.queueFlags & VK_QUEUE_COMPUTE_BIT) &&
+                (fam.queueFlags & VK_QUEUE_TRANSFER_BIT)) {
+                has_compute_transfer = true;
+                break;
+            }
+        }
+        if (!has_compute_transfer) continue;
+
+        VkPhysicalDeviceProperties props;
+        vkGetPhysicalDeviceProperties(dev, &props);
+
+        if (props.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) {
+            physical_device_ = dev;
+            // Still detect Apple GPU and log
+            is_apple_gpu_ = (props.vendorID == 0x106B);
+            std::printf("[vk_context] GPU: %s (vendor 0x%04X)%s\n",
+                        props.deviceName, props.vendorID,
+                        is_apple_gpu_ ? " [Apple — TBDR]" : "");
+            return;
+        }
+        if (fallback == VK_NULL_HANDLE) {
+            fallback = dev;
+        }
+    }
+
+    if (fallback != VK_NULL_HANDLE) {
+        physical_device_ = fallback;
+    } else {
+        throw std::runtime_error("No suitable GPU found for headless compute");
+    }
+
+    VkPhysicalDeviceProperties props;
+    vkGetPhysicalDeviceProperties(physical_device_, &props);
+    is_apple_gpu_ = (props.vendorID == 0x106B);
+    std::printf("[vk_context] GPU: %s (vendor 0x%04X)%s\n",
+                props.deviceName, props.vendorID,
+                is_apple_gpu_ ? " [Apple — TBDR]" : "");
+}
+
+void VkContext::create_logical_device_headless() {
+    // Log subgroup properties
+    {
+        VkPhysicalDeviceSubgroupProperties subgroup_props{};
+        subgroup_props.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_PROPERTIES;
+        VkPhysicalDeviceProperties2 props2{};
+        props2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
+        props2.pNext = &subgroup_props;
+        vkGetPhysicalDeviceProperties2(physical_device_, &props2);
+        std::printf("[vk_context] Subgroup size: %u, supported stages: 0x%x, supported ops: 0x%x\n",
+                    subgroup_props.subgroupSize,
+                    subgroup_props.supportedStages,
+                    subgroup_props.supportedOperations);
+    }
+
+    // Find compute+transfer queue family (no present support required)
+    uint32_t family_count = 0;
+    vkGetPhysicalDeviceQueueFamilyProperties(physical_device_, &family_count, nullptr);
+    std::vector<VkQueueFamilyProperties> families(family_count);
+    vkGetPhysicalDeviceQueueFamilyProperties(physical_device_, &family_count, families.data());
+
+    int32_t compute_family = -1;
+    for (uint32_t i = 0; i < family_count; ++i) {
+        if ((families[i].queueFlags & VK_QUEUE_COMPUTE_BIT) &&
+            (families[i].queueFlags & VK_QUEUE_TRANSFER_BIT)) {
+            compute_family = static_cast<int32_t>(i);
+            break;
+        }
+    }
+    if (compute_family < 0) {
+        throw std::runtime_error("No compute+transfer queue family found");
+    }
+    graphics_queue_family_ = static_cast<uint32_t>(compute_family);
+
+    // Look for dedicated transfer queue (TRANSFER but NOT GRAPHICS)
+    int32_t transfer_family = -1;
+    for (uint32_t i = 0; i < family_count; ++i) {
+        if ((families[i].queueFlags & VK_QUEUE_TRANSFER_BIT) &&
+            !(families[i].queueFlags & VK_QUEUE_GRAPHICS_BIT)) {
+            transfer_family = static_cast<int32_t>(i);
+            break;
+        }
+    }
+
+    std::vector<VkDeviceQueueCreateInfo> queue_infos;
+    float priority = 1.0f;
+
+    VkDeviceQueueCreateInfo compute_info{};
+    compute_info.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+    compute_info.queueFamilyIndex = graphics_queue_family_;
+    compute_info.queueCount = 1;
+    compute_info.pQueuePriorities = &priority;
+    queue_infos.push_back(compute_info);
+
+    if (transfer_family >= 0 && static_cast<uint32_t>(transfer_family) != graphics_queue_family_) {
+        VkDeviceQueueCreateInfo xfer_info{};
+        xfer_info.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+        xfer_info.queueFamilyIndex = static_cast<uint32_t>(transfer_family);
+        xfer_info.queueCount = 1;
+        xfer_info.pQueuePriorities = &priority;
+        queue_infos.push_back(xfer_info);
+        transfer_queue_family_ = static_cast<uint32_t>(transfer_family);
+        has_dedicated_transfer_ = true;
+    } else {
+        transfer_queue_family_ = graphics_queue_family_;
+        has_dedicated_transfer_ = false;
+    }
+
+    VkPhysicalDeviceFeatures features{};
+
+    // Headless device extensions: only portability_subset if available (no swapchain)
+    std::vector<const char*> extensions;
+    uint32_t ext_count = 0;
+    vkEnumerateDeviceExtensionProperties(physical_device_, nullptr, &ext_count, nullptr);
+    std::vector<VkExtensionProperties> available(ext_count);
+    vkEnumerateDeviceExtensionProperties(physical_device_, nullptr, &ext_count, available.data());
+    for (const auto& ext : available) {
+        if (std::strcmp(ext.extensionName, "VK_KHR_portability_subset") == 0) {
+            extensions.push_back("VK_KHR_portability_subset");
+            break;
+        }
+    }
+
+    VkDeviceCreateInfo create_info{};
+    create_info.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+    create_info.queueCreateInfoCount = static_cast<uint32_t>(queue_infos.size());
+    create_info.pQueueCreateInfos = queue_infos.data();
+    create_info.pEnabledFeatures = &features;
+    create_info.enabledExtensionCount = static_cast<uint32_t>(extensions.size());
+    create_info.ppEnabledExtensionNames = extensions.data();
+
+    if (vkCreateDevice(physical_device_, &create_info, nullptr, &device_) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to create logical device (headless)");
+    }
+
+    vkGetDeviceQueue(device_, graphics_queue_family_, 0, &graphics_queue_);
+
+    if (has_dedicated_transfer_) {
+        vkGetDeviceQueue(device_, transfer_queue_family_, 0, &transfer_queue_);
+        std::printf("[vk_context] Dedicated transfer queue: family %u\n", transfer_queue_family_);
+    } else {
+        transfer_queue_ = graphics_queue_;
+        std::printf("[vk_context] No dedicated transfer queue; using compute queue fallback\n");
     }
 }
 
