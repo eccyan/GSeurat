@@ -18,6 +18,7 @@ endif()
 option(GSEURAT_BUILD_EXAMPLES "Build demo and staging executables" ${GSEURAT_IS_TOP_LEVEL})
 option(GSEURAT_BUILD_TESTS    "Build unit and GPU tests"           ${GSEURAT_IS_TOP_LEVEL})
 option(GSEURAT_BUILD_TOOLS    "Include tooling support"            ${GSEURAT_IS_TOP_LEVEL})
+option(GSEURAT_SHARED_LIBS    "Build GSeurat core as a shared library" OFF)
 
 # Game-specific assets live under examples/island_demo/.
 # When building standalone, sync_assets copies them into the build directory
@@ -138,9 +139,15 @@ endif()
 
 add_subdirectory(shaders)
 
-# --- Core OBJECT library (shared by main + demo) ---------------------------
+# --- Core engine library -----------------------------------------------------
 
-add_library(gseurat_core OBJECT
+if(GSEURAT_SHARED_LIBS)
+    set(_gseurat_lib_type SHARED)
+else()
+    set(_gseurat_lib_type STATIC)
+endif()
+
+add_library(gseurat_core ${_gseurat_lib_type}
     src/engine/app_base.cpp
     src/engine/command_dispatcher.cpp
     src/engine/vk_context.cpp
@@ -218,14 +225,21 @@ else()
 endif()
 
 target_include_directories(gseurat_core PUBLIC
-    ${PROJECT_SOURCE_DIR}/include
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include>
     ${stb_SOURCE_DIR}
     ${miniaudio_SOURCE_DIR}
 )
 
+target_compile_features(gseurat_core PUBLIC cxx_std_23)
+
 target_compile_definitions(gseurat_core PUBLIC
     GLM_FORCE_DEPTH_ZERO_TO_ONE
 )
+
+if(GSEURAT_SHARED_LIBS)
+    target_compile_definitions(gseurat_core PUBLIC GSEURAT_ENGINE_BUILD_SHARED)
+endif()
 
 # MSVC: enable C++ exceptions and standard-conforming preprocessor
 if(MSVC)
