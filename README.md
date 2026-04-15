@@ -1,6 +1,8 @@
 # GSeurat
 
-A Vulkan-based 3D Gaussian Splatting engine built with C++23. Named after **3DGS + [Georges Seurat](https://en.wikipedia.org/wiki/Georges_Seurat)**, the pointillist painter — because Gaussian splats are the modern equivalent of painted dots.
+A high-performance C++23 / Vulkan engine utilizing **3D Gaussian Splatting**, optimized for a pixel-art aesthetic. Named after **3DGS + [Georges Seurat](https://en.wikipedia.org/wiki/Georges_Seurat)**, the pointillist painter — because Gaussian splats are the modern equivalent of painted dots.
+
+GSeurat is designed to be embedded in external game projects as a **Git submodule**, while remaining fully buildable as a standalone project with demonstration apps and creative tooling.
 
 ## Features
 
@@ -17,100 +19,171 @@ A Vulkan-based 3D Gaussian Splatting engine built with C++23. Named after **3DGS
 - **Day/night cycle** — Ambient color interpolation with weather system
 - **Save system** — JSON-based save/load with game flags
 - **AI debugging** — Unix socket control server for deterministic step-mode testing
-- **Creative tooling** — Web-based editors: Bricklayer (map/scene), Méliès (VFX), Echidna (characters), plus legacy tile-based tools
+- **Creative tooling** — Web-based editors: Bricklayer (map/scene), Melies (VFX), Echidna (characters), plus legacy tile-based tools
 
-## Prerequisites
+## Project Structure
+
+```
+GSeurat/
+├── include/gseurat/           # Public C++ headers
+│   ├── engine/                #   Core engine (renderer, GS, Vulkan, ECS, streaming)
+│   ├── character/             #   Bone animation, character manifests
+│   ├── demo/                  #   Demo application headers
+│   └── staging/               #   Staging review tool headers
+├── src/
+│   ├── engine/                # Core engine implementation (game-agnostic)
+│   ├── character/             # Character animation system
+│   ├── demo/                  # Island demo application
+│   └── staging/               # ImGui-based staging review tool
+├── shaders/                   # GLSL compute/vertex/fragment shaders (core engine)
+├── schemas/                   # JSON schemas (scene, world, components)
+├── examples/
+│   └── island_demo/           # Demonstration project
+│       ├── assets/            #   Game assets (maps, props, scenes, audio, VFX)
+│       └── world.json         #   World manifest (chunks, portals, streaming volumes)
+├── tests/                     # C++ unit and GPU tests
+├── scripts/                   # Python utilities (Game Director, asset generation)
+├── tools/                     # TypeScript/React monorepo (pnpm)
+│   ├── apps/                  #   Web apps (Bricklayer, Echidna, Melies, Bridge)
+│   └── packages/              #   Shared packages (engine-client, asset-types, ui-kit)
+├── docs/                      # Design specs, plans, performance reports
+├── CMakeLists.txt             # Build configuration
+├── CMakePresets.json           # Build presets (macos/linux/windows, debug/release)
+└── CLAUDE.md                  # AI assistant instructions
+```
+
+**Key directories:**
+- **`src/engine/`** — Pure engine core. Game-agnostic; no hardcoded asset paths or game-specific logic.
+- **`examples/island_demo/`** — Self-contained demo with all game-specific assets and `world.json`. Not included when GSeurat is used as a submodule.
+- **`tools/`** — Web-based creative tooling connected to the engine via a WebSocket bridge proxy.
+
+## Usage: As a Subrepository
+
+GSeurat is designed to be embedded in external game projects via `add_subdirectory()`. When included this way, it automatically:
+- Builds as a **static library** (`STATIC`) to avoid DLL boundary and memory-heap issues across platforms
+- **Skips** building demo apps, staging tools, and tests to speed up compilation
+- Exposes the `GSeurat::Engine` namespaced target for linking
+
+### Quick Start
+
+Add GSeurat as a Git submodule:
+
+```bash
+git submodule add https://github.com/eccyan/GSeurat.git engine/GSeurat
+git submodule update --init --recursive
+```
+
+In your project's `CMakeLists.txt`:
+
+```cmake
+cmake_minimum_required(VERSION 3.25)
+project(MyGame LANGUAGES C CXX)
+
+# Add GSeurat engine
+add_subdirectory(engine/GSeurat)
+
+# Link your game against the engine
+add_executable(MyGame src/main.cpp)
+target_link_libraries(MyGame PRIVATE GSeurat::Engine)
+```
+
+That's it. GSeurat transitively provides Vulkan, GLM, GLFW, VMA, nlohmann/json, miniaudio, and C++23 standard compliance.
+
+### Asset Path Resolution
+
+The engine uses relative paths (`"assets/..."`) resolved against the working directory. Your game project is responsible for providing assets at those paths. Use `gseurat::set_project_root()` to set a base path for asset resolution:
+
+```cpp
+#include "gseurat/engine/project_root.hpp"
+
+int main() {
+    gseurat::set_project_root("/path/to/my/game");
+    // Engine will resolve "assets/maps/level1.ply"
+    // as "/path/to/my/game/assets/maps/level1.ply"
+}
+```
+
+## Usage: Standalone Development
+
+For developing the engine itself or running the demo/staging apps, build from the repository root.
+
+### Prerequisites
 
 - CMake 3.25+
 - Ninja
 - Vulkan SDK 1.3+
 - A Vulkan-capable GPU and driver
 
-### macOS
-
+**macOS:**
 ```bash
 brew install vulkan-headers vulkan-loader molten-vk
 ```
 
-Or install the [Vulkan SDK](https://vulkan.lunarg.com/sdk/home).
-
-### Linux
-
+**Linux (Ubuntu/Debian):**
 ```bash
-# Ubuntu/Debian
 sudo apt install vulkan-tools libvulkan-dev vulkan-validationlayers-dev spirv-tools glslc
+```
 
-# Fedora
+**Linux (Fedora):**
+```bash
 sudo dnf install vulkan-headers vulkan-loader-devel vulkan-tools \
     vulkan-validation-layers-devel mesa-vulkan-drivers glslc
 ```
 
-### Windows
+**Windows:**
+Install the [Vulkan SDK](https://vulkan.lunarg.com/sdk/home) and Visual Studio 2022 (C++ workload).
 
-Install the [Vulkan SDK](https://vulkan.lunarg.com/sdk/home).
-
-## Building
-
-### Linux & macOS
+### Building
 
 ```bash
 # Configure
-cmake --preset <platform>-debug    # linux-debug, macos-debug
-cmake --preset <platform>-release  # linux-release, macos-release
+cmake --preset <platform>-debug    # linux-debug, macos-debug, windows-debug
+cmake --preset <platform>-release  # linux-release, macos-release, windows-release
 
 # Build
 cmake --build --preset <platform>-debug
 cmake --build --preset <platform>-release
 ```
 
-### Windows
-
-**Prerequisites:**
-- Visual Studio 2022 Community or equivalent (C++ workload)
-- CMake 3.25+ (installed or in PATH)
-- Ninja (installed or available)
-- Vulkan SDK 1.4+ (install from [vulkan.lunarg.com](https://vulkan.lunarg.com/sdk/home))
-
-**Build Steps:**
-
-Open the **x64 Native Tools Command Prompt for VS 2022** (search in Windows Start Menu):
+**Windows** — open the x64 Native Tools Command Prompt for VS 2022:
 
 ```cmd
-# Navigate to project
-cd C:\path\to\GSeurat
-
-# Configure (generates build\windows-debug or build\windows-release)
 cmake --preset windows-debug -DCMAKE_GENERATOR_PLATFORM= -DCMAKE_C_COMPILER=cl.exe -DCMAKE_CXX_COMPILER=cl.exe
-
-# Build
 cmake --build --preset windows-debug --target gseurat_demo
-
-# Run
 build\windows-debug\gseurat_demo.exe
 ```
 
-**Notes:**
-- The `-DCMAKE_GENERATOR_PLATFORM=` flag ensures x64 architecture (required for Vulkan SDK on Windows)
-- Use `windows-release` preset for optimized builds
-- Shader files are automatically compiled and deployed to the source `shaders/` directory during build
-- First build may take 2-3 minutes; subsequent builds are faster
+### CMake Options
 
-**Troubleshooting:**
-- If you see "The program can't start because vk*.dll is missing", ensure Vulkan SDK is installed and its `bin/` is in PATH
-- If CMake fails to find tools, run vcvars explicitly: `"C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat"`
+| Option | Default (standalone) | Default (subdirectory) | Description |
+|--------|---------------------|----------------------|-------------|
+| `GSEURAT_BUILD_EXAMPLES` | `ON` | `OFF` | Build demo and staging executables |
+| `GSEURAT_BUILD_TESTS` | `ON` | `OFF` | Build unit and GPU test suites |
+| `GSEURAT_BUILD_TOOLS` | `ON` | `OFF` | Include tooling support |
+| `GSEURAT_SHARED_LIBS` | `OFF` | `OFF` | Build as shared library instead of static |
+| `GSEURAT_DEV_MODE` | `ON` | `ON` | Enable ImGui developer overlay |
 
----
+Override any option at configure time:
 
-One demo executable is produced:
+```bash
+cmake --preset macos-release -DGSEURAT_BUILD_TESTS=OFF -DGSEURAT_SHARED_LIBS=ON
+```
+
+### Running the Demo
+
+One demo executable and one staging tool are produced:
 
 | Executable | Description |
 |---|---|
-| `gseurat_demo` | GS viewer with visual effects, scene layers, and chunk streaming |
-
-The default scene includes procedural terrain with placed objects, collision grid, nav zones, and elevation. Load custom scenes with `--scene`:
+| `gseurat_demo` | Island demo with visual effects, scene layers, and chunk streaming |
+| `gseurat_staging` | ImGui-based rendering review with live scene preview and gizmos |
 
 ```bash
-./build/macos-release/gseurat_demo --scene assets/scenes/my_scene.json
+# Run with default island scene
+./build/macos-release/gseurat_demo
+
+# Run with a custom scene
+./build/macos-release/gseurat_demo --scene examples/island_demo/assets/scenes/my_scene.json
 ```
 
 ## Architecture
@@ -118,110 +191,15 @@ The default scene includes procedural terrain with placed objects, collision gri
 ### Renderer Flow
 
 ```
-Offscreen HDR (RGBA16F) → Bloom → DoF → Composite (tone mapping + vignette)
+Offscreen HDR (RGBA16F) -> Bloom -> DoF -> Composite (tone mapping + vignette)
 ```
 
-Draw order: GS compute → GS blit → backgrounds → tilemap → reflections → shadows → outlines → entities → particles → overlay. UI is rendered in the composite pass (unprocessed).
-
-### Game Object System
-
-Everything in the scene is a **Game Object** — a unified entity with position, rotation, scale, optional PLY visual, and zero or more **components** from a schema catalog.
-
-- **Component schemas** (`assets/components/*.schema.json`) define data shapes — Bricklayer auto-generates property editors from them
-- **ComponentRegistry** maps string names to type-erased ECS attach/serialize operations
-- **SystemScheduler** runs C++ systems each frame with declared read/write dependencies (serial for now, parallel-ready API)
-- **Scene JSON** uses `game_objects[]` array with a `components` map per object
-
-```json
-{
-  "game_objects": [
-    {
-      "id": "chest_01", "name": "Treasure Chest",
-      "position": [10, 0, 5], "rotation": [0, 90, 0], "scale": 1.0,
-      "ply_file": "assets/models/chest.ply",
-      "components": {
-        "Health": { "max_hp": 50 },
-        "Interactable": { "prompt": "Open", "radius": 2.0 }
-      }
-    }
-  ]
-}
-```
-
-### ECS
-
-Header-only (`include/gseurat/engine/ecs/`): archetype-based storage with typed views. Note: archetype storage uses `memcpy` — components must be trivially copyable.
-
-### Async Asset Streaming
-
-Two-tier streaming architecture for open-world support:
-
-**Tier 1 — Slab Allocator + GPU Page Table:**
-All GPU memory for Gaussians is allocated once at startup as a configurable budget (default 10M splats / 640 MB). Fixed-size slabs (100K splats each) are managed by a free-list allocator with non-contiguous allocation — zero external fragmentation by construction. A GPU-side page table SSBO maps logical splat indices to physical slab offsets; the preprocess shader resolves indices via `resolve_physical_index()`.
-
-**Tier 2 — Transfer Queue:**
-Dedicated Vulkan transfer queue (falls back to time-sliced graphics queue on MoltenVK). Background threads parse PLY files and stage data to a double-buffered ring buffer. `VkFence`-based polling drives completion on the main thread — the graphics queue never stalls.
-
-```
-Main Thread                     Worker Thread (std::thread)
-─────────────                   ────────────────────────────
-load_cloud_async() ──────────►  Parse PLY → GpuGaussian
-poll_transfers()                Stage to ring buffer
-  vkGetFenceStatus ◄── fence ── vkCmdCopyBuffer to slab
-  page table update             enqueue completion marker
-  chunk appears next frame
-```
-
-| Component | Description |
-|---|---|
-| `SlabAllocator` | Non-contiguous slab checkout/release with double-free protection |
-| `TransferQueue` | Dedicated/fallback transfer paths with staging ring buffer |
-| `GsChunkStreamer` | Distance-based chunk streaming with hysteresis and memory budget |
-
-All disk I/O and CPU parsing runs on worker threads. All Vulkan API calls and page table updates stay on the main thread. Configuration via `engine_config.json`.
-
-**Tier 3 — World Manifest (`world.json`):**
-Spatial partitioning for vast open-world maps. A `world.json` file at the project root defines a fixed uniform grid of chunks, each referencing a PLY file and optional per-chunk scene JSON. The engine derives AABBs from grid position (`aabb_min = grid * cell_size`) for O(1) camera-to-chunk lookups via integer division.
-
-```json
-{
-  "version": 1,
-  "grid_cell_size": [64.0, 32.0, 64.0],
-  "chunks": [
-    { "grid": [0, 0, 0], "ply_file": "assets/maps/chunk_0_0_0.ply",
-      "scene_file": "assets/scenes/chunk_0_0_0.json" }
-  ],
-  "streaming_volumes": [
-    { "id": "sv_1", "shape": "box", "position": [96, 0, 48],
-      "half_extents": [8, 8, 8], "preload_target_ids": ["dungeon_01"] }
-  ],
-  "portals": [
-    { "id": "portal_dungeon", "position": [100, 0, 50],
-      "region_shape": "sphere", "region_radius": 2.0,
-      "target_instance_id": "dungeon_01" }
-  ]
-}
-```
-
-**Chunks vs Instances:** Chunks are spatial PLY tiles in a global coordinate system — loaded/unloaded by camera distance, rendered simultaneously. Instances (Phase 2) are isolated rooms in their own local coordinate system — entered via Portals. StreamingVolumes are trigger zones that hint the async transfer queue to preload targets before the player reaches them.
-
-| Component | Description |
-|---|---|
-| `WorldManifest` | C++ parser/serializer for `world.json` with path traversal validation |
-| `WorldStreamer` | Distance-based chunk load/unload with hysteresis, volume evaluation, portal detection |
-| `StreamingVolume` | Box/sphere trigger with `contains()` test for preload hints |
-| `WorldInstance` | Named scene reference — maps instance IDs to scene files for portal targets |
-
-**Runtime Streaming (`WorldStreamer`):**
-The `WorldStreamer` class drives per-frame streaming decisions. Each frame it evaluates camera distance to chunk AABBs (load if within `load_radius`, unload if beyond `unload_radius = 1.5× load_radius` for hysteresis), tests `StreamingVolume::contains()` for preload hints, and detects portal entry (one-shot, fires once per enter). The demo loads `world.json` at startup and runs the streamer in its game loop — chunks auto-stream, volumes trigger preloads, and portals execute full scene transitions (`clear_scene()` → `init_scene()` → player teleport).
-
-**GPU Frustum Culling:**
-The preprocess shader includes a clip-space `frustum_visible()` test with 10% padding for splat radius bleed. Culled splats receive sort key `0xFFFF` (visible capped at `0xFFFE`), sinking to the end of the radix sort. This reduces sort workload by 50-75% when the camera faces one direction in a multi-chunk world.
+Draw order: GS compute -> GS blit -> backgrounds -> tilemap -> reflections -> shadows -> outlines -> entities -> particles -> overlay. UI is rendered in the composite pass (unprocessed).
 
 ### 3D Gaussian Splatting
 
 ```
-PLY file → GaussianCloud → GsRenderer (compute) → Storage Image → Fullscreen Blit
+PLY file -> GaussianCloud -> GsRenderer (compute) -> Storage Image -> Fullscreen Blit
 ```
 
 Compute passes before the main render pass:
@@ -252,8 +230,6 @@ The tile sort uses a 2-dispatch Onesweep algorithm with decoupled lookback for c
 | Sort (far) | 4.9 ms | 0.4 ms | **11x** |
 | Total pipeline (close-up) | 10.7 ms | 6.2 ms | **1.7x** |
 
-The old sort takes ~4.9 ms constant regardless of visible Gaussians (fixed workgroup count over the full buffer). Onesweep scales with actual entry count via indirect dispatch.
-
 **Performance optimizations:**
 - **Onesweep tile sort** — 5x faster tile sort via decoupled lookback, scales with visible count
 - Render early termination on first culled Gaussian (sorted order)
@@ -265,29 +241,70 @@ The old sort takes ~4.9 ms constant regardless of visible Gaussians (fixed workg
 - Async chunk streaming (`GsChunkStreamer`) for open-world scale maps
 - **GPU timestamp profiling** — sort and rasterize times reported separately every 60 frames
 
-**GS Demo controls:**
+### Game Object System
 
-| Key | Action |
+Everything in the scene is a **Game Object** — a unified entity with position, rotation, scale, optional PLY visual, and zero or more **components** from a schema catalog.
+
+- **Component schemas** (`examples/island_demo/assets/components/*.schema.json`) define data shapes — Bricklayer auto-generates property editors from them
+- **ComponentRegistry** maps string names to type-erased ECS attach/serialize operations
+- **SystemScheduler** runs C++ systems each frame with declared read/write dependencies (serial for now, parallel-ready API)
+- **Scene JSON** uses `game_objects[]` array with a `components` map per object
+
+```json
+{
+  "game_objects": [
+    {
+      "id": "chest_01", "name": "Treasure Chest",
+      "position": [10, 0, 5], "rotation": [0, 90, 0], "scale": 1.0,
+      "ply_file": "assets/models/chest.ply",
+      "components": {
+        "Health": { "max_hp": 50 },
+        "Interactable": { "prompt": "Open", "radius": 2.0 }
+      }
+    }
+  ]
+}
+```
+
+### Async Asset Streaming
+
+Two-tier streaming architecture for open-world support:
+
+**Tier 1 — Slab Allocator + GPU Page Table:**
+All GPU memory for Gaussians is allocated once at startup as a configurable budget (default 10M splats / 640 MB). Fixed-size slabs (100K splats each) are managed by a free-list allocator with non-contiguous allocation — zero external fragmentation by construction. A GPU-side page table SSBO maps logical splat indices to physical slab offsets; the preprocess shader resolves indices via `resolve_physical_index()`.
+
+**Tier 2 — Transfer Queue:**
+Dedicated Vulkan transfer queue (falls back to time-sliced graphics queue on MoltenVK). Background threads parse PLY files and stage data to a double-buffered ring buffer. `VkFence`-based polling drives completion on the main thread — the graphics queue never stalls.
+
+```
+Main Thread                     Worker Thread (std::thread)
+-----------------               ----------------------------
+load_cloud_async() ---------->  Parse PLY -> GpuGaussian
+poll_transfers()                Stage to ring buffer
+  vkGetFenceStatus <-- fence -- vkCmdCopyBuffer to slab
+  page table update             enqueue completion marker
+  chunk appears next frame
+```
+
+| Component | Description |
 |---|---|
-| Mouse drag | Orbit camera |
-| Scroll | Zoom |
-| WASD | Pan |
-| M | Toggle streaming mode |
-| P | Toggle shadow box (parallax) mode |
-| T/L/F/G/X | Toon / Light / Fire / Water / Touch |
-| E/V/H/Y/C/B | Explode / Voxel / Pulse / X-Ray / Swirl / Burn |
-| J | Toggle chain demo (3 PBD elements, 2 distance constraints) |
-| K | Toggle character demo (procedural walking humanoid) |
-| N | Toggle scene layers (auto-generate heightmap, nav, light probes) |
+| `SlabAllocator` | Non-contiguous slab checkout/release with double-free protection |
+| `TransferQueue` | Dedicated/fallback transfer paths with staging ring buffer |
+| `GsChunkStreamer` | Distance-based chunk streaming with hysteresis and memory budget |
+
+**Tier 3 — World Manifest (`world.json`):**
+Spatial partitioning for vast open-world maps. A `world.json` file defines a fixed uniform grid of chunks, each referencing a PLY file and optional per-chunk scene JSON. The engine derives AABBs from grid position for O(1) camera-to-chunk lookups.
+
+**Chunks vs Instances:** Chunks are spatial PLY tiles in a global coordinate system — loaded/unloaded by camera distance, rendered simultaneously. Instances are isolated rooms in their own local coordinate system — entered via Portals. StreamingVolumes are trigger zones that hint the async transfer queue to preload targets before the player reaches them.
 
 ### Voxel Character Pipeline
 
 Characters are authored as voxel body parts, exported as Gaussians with per-splat bone indices, and animated via GPU bone transforms.
 
 ```
-MagicaVoxel (.vox) → Echidna (edit parts/joints/poses) → PLY + manifest JSON
-                                                                 ↓
-Engine: PLY load → bone_index per Gaussian → preprocess shader → skeletal skinning
+MagicaVoxel (.vox) -> Echidna (edit parts/joints/poses) -> PLY + manifest JSON
+                                                                 |
+Engine: PLY load -> bone_index per Gaussian -> preprocess shader -> skeletal skinning
 ```
 
 **Authoring** (Echidna — port 5179):
@@ -300,98 +317,19 @@ Engine: PLY load → bone_index per Gaussian → preprocess shader → skeletal 
 **Runtime** (Engine):
 - `bone_index` packed into `GpuGaussian.scale_pad.w` (no SSBO size change)
 - Index segmentation: 0 = no transform, 1-31 = bone skinning (binding 5), 32-63 = PBD dynamics (binding 6)
-- Bone transform SSBO at binding 5 (max 32 bones)
-- PBD state SSBO at binding 6 (max 64 elements) — position anchors + rotation quaternions
-- PBD API: `upload_pbd_elements()`, `upload_pbd_constraints()`, `clear_pbd()` on `GsRenderer`
 - Preprocess shader applies `mat4` per bone or PBD quaternion rotation per element
-- Bone 0 = identity (map Gaussians pass through untouched)
 - Rigid body part animation (action-figure style, no smooth skinning)
 
 **Root Motion:**
 - Animation-driven world-space movement — walk cycles, dodge rolls, and lunges move the actor
 - Per-pose `root_position` offset + per-clip `root_motion` opt-in flag in character manifests
 - `BoneAnimationPlayer` extracts per-frame position/rotation deltas with loop-aware math
-- Root bone transform stripped to identity before FK; game state accumulates deltas into a `character_rotation_` quaternion
-- Phase 2: preprocess shader rotates per-Gaussian covariance by actor rotation for correct visual orientation
-
-See [docs/pbd-solver.md](docs/pbd-solver.md) for full PBD architecture and API reference.
-See [docs/superpowers/specs/2026-04-07-root-motion-design.md](docs/superpowers/specs/2026-04-07-root-motion-design.md) for root motion system design.
-
-### Scene Composition (Game Objects)
-
-Scenes are composed from separate PLY files — terrain, props, and characters authored independently:
-
-```
-Bricklayer (terrain.ply) + Echidna (character.ply) + props (tree.ply, rock.ply)
-                          ↓
-                   scene.json (game_objects references)
-                          ↓
-              Engine: merge PLY visuals into cloud, create ECS entities for objects with components
-```
-
-- **Game Objects with PLY**: merged into the terrain cloud at load time for rendering
-- **Game Objects with components**: also become ECS entities with attached component data
-- **Game Objects without PLY or components**: logical-only entities (triggers, zones)
-
-### Scene Layers
-
-The `CollisionGrid` provides gameplay metadata overlaid on the GS terrain:
-
-| Layer | Type | Purpose |
-|-------|------|---------|
-| `solid` | bool[] | Walkable/blocked per cell |
-| `elevation` | float[] | Ground height (Y) per cell — for entity placement |
-| `nav_zone` | uint8[] | Named regions (town, forest, etc.) for AI behavior |
-| `light_probe` | vec3[] | Ambient color sampled from Gaussians — for entity lighting |
-
-Auto-generated from Gaussian data via `generate_collision_from_gaussians()`, or painted manually in Bricklayer.
-
-### Scene Format
-
-```json
-{
-  "gaussian_splat": {
-    "ply_file": "assets/maps/terrain.ply",
-    "camera": { "position": [32, 30, 80], "target": [32, 0, 32], "fov": 45 },
-    "render_width": 320, "render_height": 240
-  },
-  "game_objects": [
-    { "id": "tree", "name": "Oak Tree", "ply_file": "assets/props/tree.ply",
-      "position": [15, 0, 20], "rotation": [0, 0, 0], "scale": 1.0,
-      "pbd": { "mode": "wind_sway", "wind_strength": 0.06 } },
-    { "id": "house", "name": "House", "ply_file": "assets/props/house.ply",
-      "position": [32, 0, 32], "rotation": [0, 0, 0], "scale": 1.0, "components": {} },
-    { "id": "guard", "name": "Town Guard",
-      "position": [20, 0, 25], "rotation": [0, 0, 0], "scale": 1.0,
-      "components": {
-        "Facing": { "direction": "left" },
-        "Patrol": { "speed": 2.0, "waypoints": [[20, 0, 25], [30, 0, 25]] }
-      }}
-  ],
-  "portals": [
-    { "position": [10, 0, 5], "region_shape": "box", "region_radius": 2,
-      "region_half_extents": [1, 2, 1], "target_instance_id": "tavern",
-      "spawn_position": [5, 0, 5], "spawn_facing": "down" }
-  ],
-  "instances": [
-    { "id": "tavern", "display_name": "Tavern Interior",
-      "scene_file": "assets/scenes/tavern.scene.json" }
-  ],
-  "collision": {
-    "width": 64, "height": 64, "cell_size": 1.0,
-    "solid": ["..."], "elevation": ["..."], "nav_zone": ["..."]
-  },
-  "nav_zone_names": ["default", "town", "forest"],
-  "ambient_color": [0.8, 0.85, 0.95, 1.0]
-}
-```
 
 ## AI Debugging via Control Server
 
-The engine exposes a Unix domain socket at `/tmp/gseurat.sock` for external control. AI agents can send commands, step deterministically, and capture screenshots.
+The engine exposes a Unix domain socket at `/tmp/gseurat.sock` (Named Pipes on Windows) for external control. AI agents can send commands, step deterministically, and capture screenshots.
 
 ```bash
-# Connect and control
 python3 -c "
 import socket, json
 s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -445,20 +383,16 @@ s.close()
 The `tools/` directory contains web-based creative tools connected to the engine via a WebSocket bridge proxy.
 
 ```
-Engine (Vulkan) ←→ Unix Socket ←→ Bridge Proxy (ws://localhost:9100) ←→ Web Tools
+Engine (Vulkan) <-> Unix Socket <-> Bridge Proxy (ws://localhost:9100) <-> Web Tools
 ```
 
 | Tool | Port | Description |
 |------|------|-------------|
 | **Bridge Proxy** | 9100/9101 | Node.js relay between Unix socket and WebSocket clients |
-| **Bricklayer** | 5180 | 3DGS map editor: voxel terrain, Game Objects with component composition, PBD physics, emitters, animations, VFX, lights, portals, instances, WORLD mode (chunk grid with wireframe proxies, StreamingVolumes, global portals) |
-| **Méliès** | 5181 | VFX editor: particle emitters, GS animations, spline paths, object layers, light layers |
+| **Bricklayer** | 5180 | 3DGS map editor: voxel terrain, Game Objects with component composition, PBD physics, emitters, animations, VFX, lights, portals, instances, WORLD mode |
+| **Melies** | 5181 | VFX editor: particle emitters, GS animations, spline paths, object layers, light layers |
 | **Echidna** | 5179 | Voxel character editor: .vox import, body parts, bone posing, PLY export |
-| **Staging** | C++ app | ImGui rendering review: live scene preview, gizmos for lights/emitters/VFX/game objects, bridge auto-sync |
-| Level Designer | 5173 | Tile painting, NPC/light/portal placement (legacy tile-based) |
-| Particle Designer | 5176 | Visual EmitterConfig editor with live engine preview |
-| Audio Composer | 5177 | 4-layer interactive music editor with MusicGen AI |
-| SFX Designer | 5178 | Waveform editor, procedural synthesis, AI SFX generation |
+| **Staging** | C++ app | ImGui rendering review: live scene preview, gizmos, bridge auto-sync |
 
 ```bash
 # Prerequisites: Node.js 18+, pnpm
@@ -468,54 +402,20 @@ cd tools && pnpm install
 cd tools/apps/bridge && pnpm build && pnpm start
 
 # Start a tool
-cd tools/apps/level-designer && pnpm dev
+cd tools/apps/bricklayer && pnpm dev
 ```
 
 ## Testing
 
 ### C++ Engine Tests
 
-All 37 test suites are CMake targets, run via `ctest`:
+All test suites are CMake targets, run via `ctest`:
 
 ```bash
 cmake --preset <platform>-debug
 cmake --build --preset <platform>-debug
 ctest --test-dir build/<platform>-debug --output-on-failure
 ```
-
-| Test Suite | Tests | What it covers |
-|---|---|---|
-| `test_async_loader` | 10 | Queue semantics, ordering, cancel, shutdown, reuse |
-| `test_staging_uploader` | 6 | Budget enforcement, double-buffer, callbacks |
-| `test_gs_chunk_streamer` | 7 | Manifest parsing, state transitions, hysteresis, memory budget |
-| `test_gs_chunk_grid` | 9 | Spatial partitioning, frustum culling, LOD decimation |
-| `test_feature_flags` | 8 | Flag defaults, GS viewer profile, categories |
-| `test_tilemap` | 12 | Tile animation, collision resolution, draw info generation |
-| `test_gaussian_cloud` | 9 | PLY loading, scene format parsing, collision generation |
-| `test_gs_parallax_camera` | 6 | Camera configuration, Y-flip, smoothing convergence |
-| `test_screenshot` | 5 | State machine, BGRA→RGBA swizzle |
-| `test_character_data` | 12 | Character animation JSON loading |
-| `test_pbd_solver` | 10 | PBD struct layouts (64/48/32 bytes), index segmentation, quaternion math, Verlet integration, distance constraint projection, wind sway |
-| `test_gs_point_lights` | 35 | Point, spot, area light evaluation, attenuation, cone falloff |
-| `test_gs_emission` | 8 | Emissive Gaussian packing, HDR value validation |
-| `test_gs_spline` | 9 | Catmull-Rom spline evaluation, arc-length parameterization |
-| `test_gs_particle` | 75 | GS particle emitter lifecycle, spawn regions, spline paths |
-| `test_gs_post_process` | 6 | Fog, tone mapping, bloom, DoF, chromatic aberration config |
-| `test_incremental_sync` | — | Bridge incremental scene sync protocol |
-| `test_vfx_scene_buffer` | 8 | VFX instance buffer layout, emitter/animation/light packing |
-| `test_vfx_lights_rotation` | 11 | VFX light rotation transforms, spot/area orientation |
-| `test_component_registry` | 11 | Type-erased component registration, JSON attach/serialize |
-| `test_system_scheduler` | 6 | System ordering, read/write dependency declarations |
-| `test_coordinate` | — | Typed coordinate system conversions (world/screen/grid) |
-| `test_island_systems` | 16 | Island demo game object systems integration |
-| `test_scene_loading` | — | Full scene JSON loading, game object instantiation |
-| `test_character_manifest` | 60 | Character manifest parsing, root motion fields, pose/clip validation |
-| `test_bone_animation_player` | 9 | Bone FK, delta extraction, loop wrap-around, root stripping |
-| `test_bone_animation_state_machine` | 5 | State transitions, animation blending, root motion reset |
-| `test_tile_sort_key` | — | Tile sort key packing, depth quantization, radix digit extraction |
-| `test_onesweep_logic` | — | Onesweep histogram, decoupled lookback, scatter correctness, UBO layout audit |
-| `test_world_manifest` | 10 | World JSON parsing, chunk AABB derivation, round-trip, point-in-volume (box/sphere), path traversal rejection |
-| `test_world_streamer` | 10 | Chunk state lifecycle (load/active/unload), hysteresis, volume preload, portal detection (box/sphere) |
 
 ### TypeScript Tool Tests
 
@@ -524,67 +424,27 @@ cd tools && pnpm install
 pnpm --filter @gseurat/tests test:echidna-ply-export
 ```
 
-| Test Suite | Assertions | What it covers |
-|---|---|---|
-| `echidna-ply-export` | 37 | PLY export with bone_index, SH color encoding, opacity, surface culling |
-
 ### CI
 
 GitHub Actions runs three parallel jobs on every push/PR to main:
 - **Build** — C++ engine on Linux, Windows, macOS
-- **Test (C++)** — 37 engine test suites via ctest (ubuntu)
+- **Test (C++)** — Engine test suites via ctest (ubuntu)
 - **Test (TypeScript)** — Tool tests via pnpm (ubuntu)
 
-See [tests/README.md](tests/README.md) for detailed build commands and test descriptions.
+## GS Demo Controls
 
-## Project Structure
-
-```
-src/
-  engine/         Engine core (renderer, ECS, audio, particles, streaming, etc.)
-  demo/           Demo application (GS viewer)
-include/
-  gseurat/
-    engine/       Engine headers
-    demo/         Demo app headers
-shaders/          GLSL shaders (compiled to SPIR-V at build time)
-assets/
-  maps/           Terrain PLY files
-  props/          Prop PLY files (tree, rock, house)
-  scenes/         Scene JSON files
-tests/            C++ integration tests (assert-based)
-scripts/          Python utilities for test data generation
-tools/            Web-based creative tooling ecosystem (TypeScript/React)
-  packages/       Shared libraries (engine-client, asset-types, ai-providers, ui-kit)
-  apps/           Tool applications (bridge, level-designer, echidna, bricklayer, etc.)
-docs/             Performance reports and tool documentation
-.devcontainer/    Container development environment
-```
-
-### Test Data Generation
-
-Python scripts for generating procedural PLY test assets (no external dependencies):
-
-```bash
-# Generate terrain (rolling hills, 64x64 grid)
-python3 scripts/generate_test_terrain.py --output assets/maps/test_terrain.ply
-
-# Generate props (tree, rock, house)
-python3 scripts/generate_test_props.py --output-dir assets/props
-
-# Generate complete scene (terrain + placed objects + collision grid + nav zones)
-python3 scripts/generate_test_scene.py \
-  --terrain assets/maps/test_terrain.ply \
-  --props-dir assets/props \
-  --output assets/scenes/gs_layers_demo.json
-
-# The default gs_demo.json uses the generated test scene.
-# Regenerate it after modifying scripts:
-cp assets/scenes/gs_layers_demo.json assets/scenes/gs_demo.json
-
-# Run with a custom scene:
-./build/macos-release/gseurat_demo --scene path/to/scene.json
-```
+| Key | Action |
+|---|---|
+| Mouse drag | Orbit camera |
+| Scroll | Zoom |
+| WASD | Pan |
+| M | Toggle streaming mode |
+| P | Toggle shadow box (parallax) mode |
+| T/L/F/G/X | Toon / Light / Fire / Water / Touch |
+| E/V/H/Y/C/B | Explode / Voxel / Pulse / X-Ray / Swirl / Burn |
+| J | Toggle chain demo (PBD) |
+| K | Toggle character demo |
+| N | Toggle scene layers |
 
 ## Dev Container (Podman + krunkit)
 

@@ -1,0 +1,113 @@
+<h2>Phase 1 Architecture Overview</h2>
+<p class="subtitle">Full system diagram — data flow from scene JSON through runtime to GPU</p>
+
+<div style="padding:20px; background:#0d0d1a; border-radius:12px; overflow-x:auto;">
+  <pre style="margin:0; color:#ccc; font-size:13px; line-height:1.6;">
+<span style="color:#666;">┌─────────────────────────────────────────────────────────────────────────────┐</span>
+<span style="color:#666;">│</span>  <span style="color:#88aaff; font-weight:bold;">Scene JSON (camera_zones block)</span>                                           <span style="color:#666;">│</span>
+<span style="color:#666;">│</span>                                                                             <span style="color:#666;">│</span>
+<span style="color:#666;">│</span>  <span style="color:#888;">"camera_zones": {</span>                                                        <span style="color:#666;">│</span>
+<span style="color:#666;">│</span>  <span style="color:#888;">  "volumes": [ { shape, params, mode, rails... } ],</span>                      <span style="color:#666;">│</span>
+<span style="color:#666;">│</span>  <span style="color:#888;">  "triggers": [ { shape, from_zone, to_zone, blend_override... } ],</span>      <span style="color:#666;">│</span>
+<span style="color:#666;">│</span>  <span style="color:#888;">  "rails": [ { id, control_points[] } ],</span>                                 <span style="color:#666;">│</span>
+<span style="color:#666;">│</span>  <span style="color:#888;">  "default_params": { ... }</span>                                              <span style="color:#666;">│</span>
+<span style="color:#666;">│</span>  <span style="color:#888;">}</span>                                                                        <span style="color:#666;">│</span>
+<span style="color:#666;">└────────────────────────────────┬────────────────────────────────────────────┘</span>
+                                 │ <span style="color:#555;">load_scene()</span>
+                                 ▼
+<span style="color:#666;">┌─────────────────────────────────────────────────────────────────────────────┐</span>
+<span style="color:#666;">│</span>  <span style="color:#ffaa55; font-weight:bold;">CameraZoneSystem</span> <span style="color:#888;">(new ECS system, runs in SystemScheduler)</span>               <span style="color:#666;">│</span>
+<span style="color:#666;">│</span>                                                                             <span style="color:#666;">│</span>
+<span style="color:#666;">│</span>  <span style="color:#aaa;">Reads: PlayerPosition, CameraVolume[], CameraTrigger[], CameraRail[]</span>     <span style="color:#666;">│</span>
+<span style="color:#666;">│</span>  <span style="color:#aaa;">Writes: ActiveCameraState</span>                                                <span style="color:#666;">│</span>
+<span style="color:#666;">│</span>                                                                             <span style="color:#666;">│</span>
+<span style="color:#666;">│</span>  <span style="color:#666;">┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐</span>  <span style="color:#666;">│</span>
+<span style="color:#666;">│</span>  <span style="color:#666;">│</span> <span style="color:#88cc88;">ZoneResolver</span> <span style="color:#666;">│→│</span> <span style="color:#cc88cc;">VCamEvaluator</span><span style="color:#666;">│→│</span> <span style="color:#cccc88;">CameraBlender</span><span style="color:#666;">│→│</span> <span style="color:#88cccc;">ConstraintClamp</span><span style="color:#666;">│</span> <span style="color:#666;">│</span>
+<span style="color:#666;">│</span>  <span style="color:#666;">│</span><span style="color:#888;"> containment  </span><span style="color:#666;">│ │</span><span style="color:#888;"> mode→state   </span><span style="color:#666;">│ │</span><span style="color:#888;"> smoothstep   </span><span style="color:#666;">│ │</span><span style="color:#888;"> volume clamp  </span><span style="color:#666;">│</span> <span style="color:#666;">│</span>
+<span style="color:#666;">│</span>  <span style="color:#666;">│</span><span style="color:#888;"> + triggers   </span><span style="color:#666;">│ │</span><span style="color:#888;"> per active   </span><span style="color:#666;">│ │</span><span style="color:#888;"> between VCams</span><span style="color:#666;">│ │</span><span style="color:#888;"> + pitch/yaw   </span><span style="color:#666;">│</span> <span style="color:#666;">│</span>
+<span style="color:#666;">│</span>  <span style="color:#666;">│</span><span style="color:#888;"> + priority   </span><span style="color:#666;">│ │</span><span style="color:#888;"> zone         </span><span style="color:#666;">│ │</span><span style="color:#888;">              </span><span style="color:#666;">│ │</span><span style="color:#888;"> limits        </span><span style="color:#666;">│</span> <span style="color:#666;">│</span>
+<span style="color:#666;">│</span>  <span style="color:#666;">└──────────────┘  └──────────────┘  └──────────────┘  └──────────────┘</span>  <span style="color:#666;">│</span>
+<span style="color:#666;">└────────────────────────────────┬────────────────────────────────────────────┘</span>
+                                 │ <span style="color:#555;">ActiveCameraState { pos, target, fov, up }</span>
+                                 ▼
+<span style="color:#666;">┌─────────────────────────────────────────────────────────────────────────────┐</span>
+<span style="color:#666;">│</span>  <span style="color:#ff8888; font-weight:bold;">Renderer Integration</span> <span style="color:#888;">(existing code, minimal changes)</span>                     <span style="color:#666;">│</span>
+<span style="color:#666;">│</span>                                                                             <span style="color:#666;">│</span>
+<span style="color:#666;">│</span>  <span style="color:#aaa;">view = lookAt(state.pos, state.target, state.up)</span>                         <span style="color:#666;">│</span>
+<span style="color:#666;">│</span>  <span style="color:#aaa;">proj = perspective(state.fov, aspect, near, far)</span>                         <span style="color:#666;">│</span>
+<span style="color:#666;">│</span>  <span style="color:#aaa;">renderer.set_gs_camera(view, proj)  // existing API, unchanged</span>            <span style="color:#666;">│</span>
+<span style="color:#666;">└─────────────────────────────────────────────────────────────────────────────┘</span>
+  </pre>
+</div>
+
+<div style="margin-top:24px;">
+  <h3>Four Pipeline Stages</h3>
+  <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+    <div style="padding:16px; background:#0d1a0d; border:1px solid #2a4a2a; border-radius:8px;">
+      <h4 style="color:#88cc88; margin-top:0;">1. ZoneResolver</h4>
+      <p style="color:#aaa; font-size:14px; margin-bottom:0;">Test player position against all volumes (AABB/Sphere contains). Check explicit triggers for enter/exit events. Resolve priority (smallest volume or manual). Output: which zone(s) are active, any pending transition.</p>
+    </div>
+    <div style="padding:16px; background:#1a0d1a; border:1px solid #4a2a4a; border-radius:8px;">
+      <h4 style="color:#cc88cc; margin-top:0;">2. VCamEvaluator</h4>
+      <p style="color:#aaa; font-size:14px; margin-bottom:0;">For each active zone, compute the ideal camera state based on its mode: orbit (spherical coords), rail (spline evaluate), fixed point, side-scroll, or cinematic. Apply spring damper for target tracking. Output: one CameraState per active zone.</p>
+    </div>
+    <div style="padding:16px; background:#1a1a0d; border:1px solid #4a4a2a; border-radius:8px;">
+      <h4 style="color:#cccc88; margin-top:0;">3. CameraBlender</h4>
+      <p style="color:#aaa; font-size:14px; margin-bottom:0;">If transitioning between zones, smoothstep-blend between VCam outputs over blend_time. Position: lerp. Rotation: slerp. FoV: lerp. If not transitioning, pass through the single active VCam state. Output: one blended CameraState.</p>
+    </div>
+    <div style="padding:16px; background:#0d1a1a; border:1px solid #2a4a4a; border-radius:8px;">
+      <h4 style="color:#88cccc; margin-top:0;">4. ConstraintClamp</h4>
+      <p style="color:#aaa; font-size:14px; margin-bottom:0;">Final safety pass. Clamp position inside active volume boundaries. Clamp pitch/yaw to authored limits. This is the "hard wall" — even if blending overshoots, the camera never escapes the valid region. Output: final CameraState → view/proj matrices.</p>
+    </div>
+  </div>
+</div>
+
+<div style="margin-top:24px; padding:16px; background:#1a1a2e; border-radius:8px;">
+  <h3 style="margin-top:0;">Key Data Types</h3>
+  <pre style="margin:0; color:#aaa; font-size:13px; line-height:1.5;">
+<span style="color:#88aaff;">// Output of the entire pipeline — what the renderer consumes</span>
+struct CameraState {
+    glm::vec3 position;
+    glm::vec3 target;
+    glm::vec3 up = {0, 1, 0};
+    float fov = 45.0f;
+};
+
+<span style="color:#88aaff;">// Per-zone camera behavior configuration</span>
+struct CameraParams {
+    CameraMode mode;         <span style="color:#666;">// free_look | rail_follow | cinematic_rail | fixed_point | side_scroll</span>
+    int priority = 0;        <span style="color:#666;">// 0 = auto (smallest volume wins), >0 = manual</span>
+    float blend_time = 1.0f; <span style="color:#666;">// seconds for smoothstep transition into this zone</span>
+    bool free_look = true;   <span style="color:#666;">// player can orbit camera</span>
+    float pitch_min = -60.f; <span style="color:#666;">// degrees</span>
+    float pitch_max = 10.f;
+    float yaw_min = -180.f;
+    float yaw_max = 180.f;
+    float fov = 45.0f;
+    std::string rail_id;     <span style="color:#666;">// references a CameraRail by id (for rail modes)</span>
+    glm::vec3 fixed_position;<span style="color:#666;">// for fixed_point mode</span>
+    glm::vec3 offset = {0, 5, -10}; <span style="color:#666;">// camera offset from player (free_look/side_scroll)</span>
+};
+
+<span style="color:#88aaff;">// Volume entity (ECS component, trivially copyable)</span>
+struct CameraVolume {
+    VolumeShape shape;       <span style="color:#666;">// std::variant&lt;AABB, Sphere&gt;</span>
+    CameraParams params;
+};
+
+<span style="color:#88aaff;">// Explicit trigger (ECS component)</span>
+struct CameraTrigger {
+    VolumeShape shape;       <span style="color:#666;">// thin AABB or sphere at doorways</span>
+    std::string from_zone;   <span style="color:#666;">// optional: only fire from this direction</span>
+    std::string to_zone;     <span style="color:#666;">// target zone to activate</span>
+    float blend_override = -1; <span style="color:#666;">// -1 = use target zone's blend_time</span>
+};
+
+<span style="color:#88aaff;">// Spline rail (shared data, not per-entity)</span>
+struct CameraRail {
+    std::string id;
+    SplinePath path;         <span style="color:#666;">// existing Catmull-Rom (gs_spline.hpp)</span>
+    SplinePath target_path;  <span style="color:#666;">// optional: where camera looks along the rail</span>
+};
+  </pre>
+</div>

@@ -1,0 +1,83 @@
+<h2>Camera Trigger Geometry</h2>
+<p class="subtitle">How should the system detect when to transition between camera zones? Triggers fire when the <strong>player character</strong> (not the camera) crosses them.</p>
+
+<div class="options">
+  <div class="option" data-choice="volume-overlap" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Volume Overlap (Implicit Triggers)</h3>
+      <p>No separate trigger objects. Camera volumes overlap at boundaries. When the player enters a new volume, the system transitions to its rules. Priority resolves conflicts (smallest volume wins, or explicit priority field).</p>
+      <div style="margin-top:12px; padding:16px; background:#1a1a2e; border-radius:8px; font-family:monospace; font-size:13px;">
+        <pre style="margin:0; color:#aaa;">
+  +----------+----------+
+  | Volume A |          |
+  |          | overlap  |  Volume B
+  |   cam ---+--> cam   |
+  |          |          |
+  +----------+----------+
+
+  Player in A only  → A rules
+  Player in A ∩ B   → highest priority wins
+  Player in B only  → B rules
+        </pre>
+      </div>
+      <div class="pros-cons" style="margin-top:12px;">
+        <div class="pros"><h4>Pros</h4><ul><li>Simpler data model (no extra entities)</li><li>Volumes ARE the triggers</li><li>Easy to reason about spatially</li></ul></div>
+        <div class="cons"><h4>Cons</h4><ul><li>Overlapping volumes can get confusing</li><li>Less control over exact transition point</li><li>Priority system needed for conflicts</li></ul></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="explicit-triggers" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Explicit Trigger Volumes (Separate Entities)</h3>
+      <p>Thin volumes (or planes) placed at doorways/transitions. Each trigger references a "from" and "to" camera zone. Fires on player enter. Directional triggers possible.</p>
+      <div style="margin-top:12px; padding:16px; background:#1a1a2e; border-radius:8px; font-family:monospace; font-size:13px;">
+        <pre style="margin:0; color:#aaa;">
+  +----------+ | +----------+
+  | Volume A | T | Volume B |
+  |          | r |          |
+  |   cam ------> cam      |
+  |          | g |          |
+  +----------+ | +----------+
+               ^
+          thin trigger volume
+          (links A → B)
+        </pre>
+      </div>
+      <div class="pros-cons" style="margin-top:12px;">
+        <div class="pros"><h4>Pros</h4><ul><li>Precise control over transition point</li><li>Directional (A→B vs B→A can differ)</li><li>Clean separation: volumes define rules, triggers define transitions</li></ul></div>
+        <div class="cons"><h4>Cons</h4><ul><li>More entities to place in editor</li><li>Possible to create orphaned triggers</li><li>More complex data model</li></ul></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="hybrid" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Hybrid (Recommended)</h3>
+      <p>Volumes auto-trigger on player enter (like A), BUT explicit triggers can override behavior at specific boundaries. Best of both: simple cases stay simple, complex transitions get precision.</p>
+      <div style="margin-top:12px; padding:16px; background:#1a1a2e; border-radius:8px; font-family:monospace; font-size:13px;">
+        <pre style="margin:0; color:#aaa;">
+  +----------+   +----------+
+  | Volume A |   | Volume B |   Implicit: enter B → B rules
+  |          |   |          |
+  +----------+   +----------+
+
+  +----------+ | +----------+
+  | Volume C | T | Volume D |   Explicit: trigger overrides
+  |          | r |          |   blend time, can be directional
+  +----------+ | +----------+
+
+  Default: volume enter/exit = trigger
+  Override: place explicit trigger for special behavior
+        </pre>
+      </div>
+      <div class="pros-cons" style="margin-top:12px;">
+        <div class="pros"><h4>Pros</h4><ul><li>Simple cases need zero trigger placement</li><li>Complex cases get explicit control</li><li>Matches RE/FF camera system patterns</li><li>Explicit triggers are optional — progressive complexity</li></ul></div>
+        <div class="cons"><h4>Cons</h4><ul><li>Two code paths (implicit + explicit)</li><li>Slightly more complex state machine</li></ul></div>
+      </div>
+    </div>
+  </div>
+</div>

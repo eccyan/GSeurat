@@ -1,0 +1,85 @@
+<h2>Boundary Volume Types</h2>
+<p class="subtitle">Which shapes should camera volumes support? These define the 3D regions where camera rules apply.</p>
+
+<div class="options" data-multiselect>
+  <div class="option" data-choice="aabb" onclick="toggleSelect(this)">
+    <div class="letter">1</div>
+    <div class="content">
+      <h3>Axis-Aligned Box (AABB)</h3>
+      <p>Simple box defined by min/max corners. Fast intersection test (6 comparisons). Cannot rotate — always aligned to world axes. Good for rectangular rooms and corridors.</p>
+      <div style="margin-top:12px; padding:16px; background:#1a1a2e; border-radius:8px; font-family:monospace; font-size:13px; color:#8888cc;">
+        <pre style="margin:0; color:#aaa;">
+   +--------+      center: [32, 5, 20]
+   |        |      half_extents: [10, 5, 8]
+   |   cam  |
+   |    .   |      Contains test:
+   |        |      abs(p - center) &lt;= half_extents
+   +--------+      (per-axis, 6 comparisons)
+        </pre>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="obb" onclick="toggleSelect(this)">
+    <div class="letter">2</div>
+    <div class="content">
+      <h3>Oriented Box (OBB)</h3>
+      <p>Box with arbitrary rotation. Slightly more expensive intersection (transform point to local space first). Fits angled corridors and tilted buildings.</p>
+      <div style="margin-top:12px; padding:16px; background:#1a1a2e; border-radius:8px; font-family:monospace; font-size:13px; color:#8888cc;">
+        <pre style="margin:0; color:#aaa;">
+      /------/|     center: [32, 5, 20]
+     / cam  / |     half_extents: [10, 5, 8]
+    /   .  /  |     rotation: [0, 45, 0]
+   +------+   |
+   |      |  /     Contains test:
+   |      | /      p' = inverse(rot) * (p - center)
+   +------+/       abs(p') &lt;= half_extents
+        </pre>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="sphere" onclick="toggleSelect(this)">
+    <div class="letter">3</div>
+    <div class="content">
+      <h3>Sphere</h3>
+      <p>Defined by center + radius. Cheapest test (single distance check). Natural for open areas, arenas, plazas.</p>
+      <div style="margin-top:12px; padding:16px; background:#1a1a2e; border-radius:8px; font-family:monospace; font-size:13px; color:#8888cc;">
+        <pre style="margin:0; color:#aaa;">
+      ___
+    /     \        center: [32, 5, 20]
+   |  cam  |       radius: 15.0
+   |   .   |
+    \_____/        Contains test:
+                   length(p - center) &lt;= radius
+                   (1 sqrt or compare squared)
+        </pre>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="cylinder" onclick="toggleSelect(this)">
+    <div class="letter">4</div>
+    <div class="content">
+      <h3>Cylinder</h3>
+      <p>Vertical cylinder: center + radius + height. Good for towers, wells, vertical spaces. XZ circle test + Y range check.</p>
+      <div style="margin-top:12px; padding:16px; background:#1a1a2e; border-radius:8px; font-family:monospace; font-size:13px; color:#8888cc;">
+        <pre style="margin:0; color:#aaa;">
+     ___
+    / . \  cam     center: [32, 0, 20]
+   |     |         radius: 10.0
+   |     |         height: 12.0
+   |     |
+    \___/          Contains test:
+                   length(p.xz - c.xz) &lt;= r
+                   AND p.y in [c.y, c.y+h]
+        </pre>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div style="margin-top:24px; padding:16px; background:#1a1a2e; border-radius:8px;">
+  <h3 style="margin-top:0;">Recommendation</h3>
+  <p style="color:#aaa; margin-bottom:0;">Start with <strong>AABB + Sphere</strong> (covers 90% of use cases with minimal code). OBB and Cylinder can be added later since the volume interface is polymorphic — same <code>contains()</code> / <code>clamp()</code> API regardless of shape. Click all that you want in Phase 1.</p>
+</div>

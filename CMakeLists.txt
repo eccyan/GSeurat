@@ -6,6 +6,25 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+# --- Submodule support -------------------------------------------------------
+# Detect whether GSeurat is the top-level project or included as a subdirectory.
+
+if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+    set(GSEURAT_IS_TOP_LEVEL ON)
+else()
+    set(GSEURAT_IS_TOP_LEVEL OFF)
+endif()
+
+option(GSEURAT_BUILD_EXAMPLES "Build demo and staging executables" ${GSEURAT_IS_TOP_LEVEL})
+option(GSEURAT_BUILD_TESTS    "Build unit and GPU tests"           ${GSEURAT_IS_TOP_LEVEL})
+option(GSEURAT_BUILD_TOOLS    "Include tooling support"            ${GSEURAT_IS_TOP_LEVEL})
+option(GSEURAT_SHARED_LIBS    "Build GSeurat core as a shared library" OFF)
+
+# Game-specific assets live under examples/island_demo/.
+# When building standalone, sync_assets copies them into the build directory
+# so runtime paths ("assets/...", "world.json") resolve unchanged.
+set(GSEURAT_EXAMPLE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/examples/island_demo")
+
 # --- Dependencies -----------------------------------------------------------
 
 find_package(Vulkan REQUIRED)
@@ -89,7 +108,7 @@ target_link_libraries(imgui_lib PUBLIC Vulkan::Vulkan glfw)
 
 # --- Download font if not present -------------------------------------------
 
-set(FONT_DIR "${PROJECT_SOURCE_DIR}/assets/fonts")
+set(FONT_DIR "${GSEURAT_EXAMPLE_DIR}/assets/fonts")
 set(FONT_FILE "${FONT_DIR}/NotoSans-Regular.ttf")
 if(NOT EXISTS "${FONT_FILE}")
     file(MAKE_DIRECTORY "${FONT_DIR}")
@@ -120,9 +139,15 @@ endif()
 
 add_subdirectory(shaders)
 
-# --- Core OBJECT library (shared by main + demo) ---------------------------
+# --- Core engine library -----------------------------------------------------
 
-add_library(gseurat_core OBJECT
+if(GSEURAT_SHARED_LIBS)
+    set(_gseurat_lib_type SHARED)
+else()
+    set(_gseurat_lib_type STATIC)
+endif()
+
+add_library(gseurat_core ${_gseurat_lib_type}
     src/engine/app_base.cpp
     src/engine/command_dispatcher.cpp
     src/engine/vk_context.cpp
@@ -200,14 +225,21 @@ else()
 endif()
 
 target_include_directories(gseurat_core PUBLIC
-    ${PROJECT_SOURCE_DIR}/include
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include>
     ${stb_SOURCE_DIR}
     ${miniaudio_SOURCE_DIR}
 )
 
+target_compile_features(gseurat_core PUBLIC cxx_std_23)
+
 target_compile_definitions(gseurat_core PUBLIC
     GLM_FORCE_DEPTH_ZERO_TO_ONE
 )
+
+if(GSEURAT_SHARED_LIBS)
+    target_compile_definitions(gseurat_core PUBLIC GSEURAT_ENGINE_BUILD_SHARED)
+endif()
 
 # MSVC: enable C++ exceptions and standard-conforming preprocessor
 if(MSVC)
@@ -242,6 +274,9 @@ if(APPLE)
     )
 endif()
 
+# Namespaced alias for parent projects: target_link_libraries(app PRIVATE GSeurat::Engine)
+add_library(GSeurat::Engine ALIAS gseurat_core)
+
 # --- Developer overlay (ImGui) -----------------------------------------------
 
 option(GSEURAT_DEV_MODE "Enable ImGui developer overlay" ON)
@@ -255,7 +290,9 @@ if(GSEURAT_DEV_MODE)
     )
 endif()
 
-# --- Demo executable --------------------------------------------------------
+# --- Examples (demo + staging) ----------------------------------------------
+
+if(GSEURAT_BUILD_EXAMPLES)
 
 add_executable(gseurat_demo
     src/demo_main.cpp
@@ -267,8 +304,6 @@ target_compile_definitions(gseurat_demo PRIVATE VG_BUILD_PROFILE=1)
 target_link_libraries(gseurat_demo PRIVATE gseurat_core)
 add_dependencies(gseurat_demo shaders)
 
-# --- Staging executable (ImGui-based rendering review tool) -----------------
-
 add_executable(gseurat_staging
     src/staging_main.cpp
     src/staging/staging_app.cpp
@@ -278,25 +313,26 @@ add_executable(gseurat_staging
 target_link_libraries(gseurat_staging PRIVATE gseurat_core)
 add_dependencies(gseurat_staging shaders)
 
-
-# --- Copy assets to build directory -----------------------------------------
-# Always-run target so asset changes are synced even without relinking.
-
+# Copy example assets to build directory so runtime paths resolve unchanged.
 add_custom_target(sync_assets ALL
     COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${PROJECT_SOURCE_DIR}/assets
+        ${GSEURAT_EXAMPLE_DIR}/assets
         ${CMAKE_CURRENT_BINARY_DIR}/assets
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         ${CMAKE_CURRENT_BINARY_DIR}/shaders
         ${PROJECT_SOURCE_DIR}/shaders
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${PROJECT_SOURCE_DIR}/world.json
+        ${GSEURAT_EXAMPLE_DIR}/world.json
         ${CMAKE_CURRENT_BINARY_DIR}/world.json
     COMMENT "Syncing assets and shaders to build directory"
     DEPENDS shaders
 )
 
+endif() # GSEURAT_BUILD_EXAMPLES
+
 # --- Tests ------------------------------------------------------------------
+
+if(GSEURAT_BUILD_TESTS)
 
 enable_testing()
 
@@ -316,7 +352,7 @@ function(add_gseurat_test NAME)
         nlohmann_json::nlohmann_json
     )
     add_test(NAME ${NAME} COMMAND ${NAME}
-             WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
+             WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
 endfunction()
 
 add_gseurat_test(test_feature_flags)
@@ -411,8 +447,10 @@ function(add_gseurat_gpu_test NAME)
     )
     add_dependencies(${NAME} shaders)
     add_test(NAME ${NAME} COMMAND ${NAME}
-             WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
+             WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
     set_tests_properties(${NAME} PROPERTIES LABELS "gpu")
 endfunction()
 
 add_gseurat_gpu_test(test_onesweep_gpu)
+
+endif() # GSEURAT_BUILD_TESTS

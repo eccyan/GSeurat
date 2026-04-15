@@ -1,0 +1,2 @@
+{"type":"server-started","port":57612,"host":"127.0.0.1","url_host":"localhost","url":"http://localhost:57612","screen_dir":"/Users/eccyan/dev/GSeurat/.superpowers/brainstorm/49383-1775473251/content","state_dir":"/Users/eccyan/dev/GSeurat/.superpowers/brainstorm/49383-1775473251/state"}
+{"type":"server-stopped","reason":"idle timeout"}
