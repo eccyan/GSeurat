@@ -427,8 +427,9 @@ void CommandDispatcher::register_default_commands() {
         json response;
         response["type"] = "scenes";
         response["files"] = json::array();
-        if (std::filesystem::exists("assets/scenes")) {
-            for (const auto& entry : std::filesystem::directory_iterator("assets/scenes")) {
+        auto scenes_dir = resolve_asset_path("assets/scenes");
+        if (std::filesystem::exists(scenes_dir)) {
+            for (const auto& entry : std::filesystem::directory_iterator(scenes_dir)) {
                 if (entry.path().extension() == ".json") {
                     response["files"].push_back(entry.path().string());
                 }

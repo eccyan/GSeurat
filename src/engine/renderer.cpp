@@ -25,7 +25,12 @@ static GsAnimEffect parse_effect_name(const std::string& name) {
     return GsAnimEffect::Detach;
 }
 
-void Renderer::init(GLFWwindow* window, ResourceManager& resources) {
+void Renderer::init(GLFWwindow* window, ResourceManager& resources,
+                    const std::string& sprite_texture,
+                    const std::string& tileset_texture,
+                    const std::string& flat_normal_texture,
+                    const std::string& tileset_normal_texture,
+                    const std::string& entity_normal_texture) {
     context_.init(window);
     swapchain_.init(context_, kWindowWidth, kWindowHeight);
     render_pass_mgr_.init(context_.device(), context_.allocator(), swapchain_);
@@ -42,15 +47,15 @@ void Renderer::init(GLFWwindow* window, ResourceManager& resources) {
     resources.init(context_.device(), context_.allocator(), command_pool_.pool(),
                    context_.graphics_queue());
 
-    test_texture_ = resources.load_texture("assets/textures/player_sheet.png");
-    tileset_texture_ = resources.load_texture("assets/textures/tileset.png");
+    test_texture_ = resources.load_texture(sprite_texture);
+    tileset_texture_ = resources.load_texture(tileset_texture);
 
     // Load normal map textures (UNORM format — linear data, not sRGB)
-    flat_normal_texture_ = resources.load_texture("assets/textures/flat_normal.png",
+    flat_normal_texture_ = resources.load_texture(flat_normal_texture,
         VK_FILTER_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, VK_FORMAT_R8G8B8A8_UNORM);
-    tileset_normal_texture_ = resources.load_texture("assets/textures/tileset_normal.png",
+    tileset_normal_texture_ = resources.load_texture(tileset_normal_texture,
         VK_FILTER_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, VK_FORMAT_R8G8B8A8_UNORM);
-    entity_normal_texture_ = resources.load_texture("assets/textures/player_normal.png",
+    entity_normal_texture_ = resources.load_texture(entity_normal_texture,
         VK_FILTER_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, VK_FORMAT_R8G8B8A8_UNORM);
 
     std::array<VkBuffer, kMaxFramesInFlight> ubo_buffers;
@@ -137,8 +142,9 @@ void Renderer::init_font(const FontAtlas& atlas, ResourceManager& resources) {
     font_initialized_ = true;
 }
 
-void Renderer::init_particles(ResourceManager& resources) {
-    particle_texture_ = resources.load_texture("assets/textures/particle_atlas.png");
+void Renderer::init_particles(ResourceManager& resources,
+                              const std::string& particle_texture) {
+    particle_texture_ = resources.load_texture(particle_texture);
 
     std::array<VkBuffer, kMaxFramesInFlight> ubo_buffers;
     for (uint32_t i = 0; i < kMaxFramesInFlight; i++) {
@@ -150,8 +156,9 @@ void Renderer::init_particles(ResourceManager& resources) {
         flat_normal_texture_->image_view(), flat_normal_texture_->sampler());
 }
 
-void Renderer::init_shadows(ResourceManager& resources) {
-    shadow_texture_ = resources.load_texture("assets/textures/shadow_blob.png");
+void Renderer::init_shadows(ResourceManager& resources,
+                            const std::string& shadow_texture) {
+    shadow_texture_ = resources.load_texture(shadow_texture);
 
     std::array<VkBuffer, kMaxFramesInFlight> ubo_buffers;
     for (uint32_t i = 0; i < kMaxFramesInFlight; i++) {

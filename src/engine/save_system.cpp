@@ -105,7 +105,7 @@ SaveData SaveSystem::from_json(const nlohmann::json& j) {
     }
 
     data.play_time = j.value("play_time", 0.0f);
-    data.scene_path = j.value("scene_path", std::string("assets/scenes/test_scene.json"));
+    data.scene_path = j.value("scene_path", std::string(""));
     data.time_of_day = j.value("time_of_day", 0.35f);
 
     return data;

@@ -1,5 +1,6 @@
 #include <gseurat/engine/gs_vfx.hpp>
 #include <gseurat/engine/gaussian_cloud.hpp>
+#include <gseurat/engine/project_root.hpp>
 #include <nlohmann/json.hpp>
 #include <fstream>
 #include <iostream>
@@ -148,7 +149,7 @@ void VfxInstance::init(const VfxPreset& preset, const glm::vec3& position, bool 
             std::string ply_path = el.ply_file;
             if (!std::filesystem::exists(ply_path)) {
                 auto filename = std::filesystem::path(el.ply_file).filename().string();
-                ply_path = "assets/vfx/" + filename;
+                ply_path = resolve_asset_path("assets/vfx/" + filename).string();
             }
             if (std::filesystem::exists(ply_path)) {
                 auto cloud = GaussianCloud::load_ply(ply_path);
