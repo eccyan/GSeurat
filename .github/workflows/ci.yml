@@ -85,7 +85,7 @@ jobs:
         run: cmake --build --preset linux-release
 
       - name: Test
-        run: ctest --test-dir build/linux-release --output-on-failure
+        run: ctest --test-dir build/linux-release --output-on-failure --label-exclude gpu
 
   test-tools:
     runs-on: ubuntu-24.04
