@@ -215,7 +215,7 @@ export function ImportDialog({ onClose }: { onClose: () => void }) {
         )}
 
         <div style={styles.row}>
-          <span style={styles.label}>Max Width</span>
+          <span style={styles.label}>Max Grid</span>
           <input
             type="range"
             min={32}
@@ -234,7 +234,7 @@ export function ImportDialog({ onClose }: { onClose: () => void }) {
 
         {showHeightSlider && (
           <div style={styles.row}>
-            <span style={styles.label}>Max Height</span>
+            <span style={styles.label}>Max Z</span>
             <input
               type="range"
               min={1}
