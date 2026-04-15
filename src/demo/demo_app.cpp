@@ -3,6 +3,7 @@
 #include "gseurat/demo/island_demo_state.hpp"
 #include "gseurat/demo/island_components.hpp"
 #include "gseurat/engine/gaussian_cloud.hpp"
+#include "gseurat/engine/project_root.hpp"
 #include <nlohmann/json.hpp>
 #include "gseurat/engine/gs_parallax_camera.hpp"
 #include "gseurat/engine/scene_loader.hpp"
@@ -40,7 +41,7 @@ void DemoApp::run() {
     init_game_content();
 
     if (viewer_mode_) {
-        std::string path = scene_path_explicit_ ? scene_path_ : "assets/scenes/gs_demo.json";
+        std::string path = scene_path_explicit_ ? scene_path_ : resolve_asset_path("assets/scenes/gs_demo.json").string();
         scene_objects_.current_scene_path = path;
         state_stack_.push(std::make_unique<GsDemoState>(), *this);
     } else {
@@ -64,7 +65,7 @@ void DemoApp::init_game_content() {
     // Font atlas with ASCII only (no locale needed for GS demo)
     std::vector<uint32_t> codepoints;
     for (uint32_t cp = 32; cp <= 126; cp++) codepoints.push_back(cp);
-    font_atlas_.init("assets/fonts/NotoSans-Regular.ttf", 32.0f, codepoints);
+    font_atlas_.init(resolve_asset_path("assets/fonts/NotoSans-Regular.ttf").string(), 32.0f, codepoints);
     text_renderer_.init(font_atlas_);
 
     renderer_.init(window_, resources_);
@@ -74,7 +75,7 @@ void DemoApp::init_game_content() {
     renderer_.init_shadows(resources_);
 
     ui_ctx_.init(font_atlas_, text_renderer_);
-    audio_.init("assets");
+    audio_.init(resolve_asset_path("assets").string());
 
     // Register demo-specific components (engine registers generic ones)
     component_registry_.register_component<PlayerController>("PlayerController",
@@ -252,8 +253,9 @@ void DemoApp::generate_particle_atlas() {
         }
     }
 
-    std::filesystem::create_directories("assets/textures");
-    stbi_write_png("assets/textures/particle_atlas.png", kWidth, kHeight, kChannels,
+    auto tex_dir = resolve_asset_path("assets/textures");
+    std::filesystem::create_directories(tex_dir);
+    stbi_write_png((tex_dir / "particle_atlas.png").string().c_str(), kWidth, kHeight, kChannels,
                    pixels.data(), kWidth * kChannels);
 }
 
@@ -282,15 +284,17 @@ void DemoApp::generate_shadow_texture() {
         }
     }
 
-    std::filesystem::create_directories("assets/textures");
-    stbi_write_png("assets/textures/shadow_blob.png", kSize, kSize, kChannels,
+    auto tex_dir = resolve_asset_path("assets/textures");
+    std::filesystem::create_directories(tex_dir);
+    stbi_write_png((tex_dir / "shadow_blob.png").string().c_str(), kSize, kSize, kChannels,
                    pixels.data(), kSize * kChannels);
 }
 
 void DemoApp::generate_flat_normal_texture() {
-    std::filesystem::create_directories("assets/textures");
+    auto tex_dir = resolve_asset_path("assets/textures");
+    std::filesystem::create_directories(tex_dir);
     uint8_t pixels[4] = {128, 128, 255, 255};
-    stbi_write_png("assets/textures/flat_normal.png", 1, 1, 4, pixels, 4);
+    stbi_write_png((tex_dir / "flat_normal.png").string().c_str(), 1, 1, 4, pixels, 4);
 }
 
 }  // namespace gseurat

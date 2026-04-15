@@ -56,7 +56,7 @@ namespace gseurat {
 // ── on_enter ──
 
 void IslandDemoState::on_enter(AppBase& app) {
-    if (scene_path_.empty()) scene_path_ = "assets/scenes/seurat_island.json";
+    if (scene_path_.empty()) scene_path_ = resolve_asset_path("assets/scenes/seurat_island.json").string();
     app.feature_flags() = FeatureFlags::gs_viewer();
     app.feature_flags().apply_platform_defaults(app.renderer().context().is_apple_gpu());
     app.init_scene(scene_path_);

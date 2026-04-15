@@ -45,7 +45,7 @@ static constexpr float kPanSensitivity   = 0.05f;
 void StagingState::on_enter(AppBase& app) {
     // Load scene files list
     scene_files_.clear();
-    for (const auto& entry : std::filesystem::directory_iterator("assets/scenes")) {
+    for (const auto& entry : std::filesystem::directory_iterator(resolve_asset_path("assets/scenes"))) {
         if (entry.path().extension() == ".json") {
             scene_files_.push_back(entry.path().string());
         }

@@ -2,6 +2,7 @@
 #include "gseurat/staging/staging_state.hpp"
 #include "gseurat/engine/gaussian_cloud.hpp"
 #include "gseurat/engine/gs_parallax_camera.hpp"
+#include "gseurat/engine/project_root.hpp"
 #include "gseurat/engine/scene_loader.hpp"
 #include "gseurat/engine/gs_vfx.hpp"
 
@@ -44,7 +45,7 @@ void StagingApp::init_game_content() {
     // Font atlas (ASCII only)
     std::vector<uint32_t> codepoints;
     for (uint32_t cp = 32; cp <= 126; cp++) codepoints.push_back(cp);
-    font_atlas_.init("assets/fonts/NotoSans-Regular.ttf", 32.0f, codepoints);
+    font_atlas_.init(resolve_asset_path("assets/fonts/NotoSans-Regular.ttf").string(), 32.0f, codepoints);
     text_renderer_.init(font_atlas_);
 
     renderer_.init(window_, resources_);
