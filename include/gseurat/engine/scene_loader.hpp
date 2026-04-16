@@ -85,8 +85,9 @@ struct GsParallaxConfig {
     float parallax_strength = 1.0f;    // mapping multiplier (0 = disabled)
 };
 
+/// Engine parses but does NOT load pair_ply; game-side SceneManager owns that policy.
 struct GsMorphPairData {
-    std::string pair_ply;            // asset path, validated like ply_file
+    std::string pair_ply;            // asset path, project-relative ("assets/...")
     float duration = 1.5f;
     float default_blend = 0.0f;
     std::string easing = "linear";   // "linear" | "ease_in_out"
