@@ -96,6 +96,7 @@ const DEFAULT_ASSET: Asset = {
   animations: {},
   tags: [],
   currentFilename: null,
+  colorPalettes: [],
 };
 
 export type SwitchDecision = 'save' | 'discard' | 'cancel';
@@ -963,6 +964,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
         animations,
         tags: data.tags ?? [],
         currentFilename: null,
+        colorPalettes: [],
       };
       set({
         asset: char,
@@ -1237,6 +1239,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
         animations: {},
         tags: [],
         currentFilename: null,
+        colorPalettes: [],
       },
       // Optimistic panel entry: add to knownAssets immediately so the new
       // asset is visible before first save. Phase 0.2 save() later calls
@@ -1352,6 +1355,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
         animations,
         tags: data.tags ?? [],
         currentFilename: get().asset?.currentFilename ?? null,
+        colorPalettes: [],
       },
       selectedPart: null,
       selectedPose: null,

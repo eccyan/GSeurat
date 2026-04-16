@@ -119,4 +119,22 @@ describe('migrateEchidnaFile', () => {
     const migrated = migrateEchidnaFile(file);
     expect(migrated.color_palettes).toEqual([{ name: 'Custom', colors: [[10, 20, 30, 255]] }]);
   });
+
+  it('seeds default when color_palettes is an empty array', () => {
+    const file = {
+      version: 5,
+      id: 'walker',
+      characterName: 'Walker',
+      gridWidth: 32,
+      gridDepth: 32,
+      voxels: [],
+      parts: [],
+      poses: {},
+      color_palettes: [],
+    };
+    const migrated = migrateEchidnaFile(file);
+    expect(migrated.color_palettes).toBeDefined();
+    expect(migrated.color_palettes!.length).toBe(1);
+    expect(migrated.color_palettes![0].colors.length).toBe(256);
+  });
 });

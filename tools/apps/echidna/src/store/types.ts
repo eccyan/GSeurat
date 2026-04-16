@@ -166,7 +166,7 @@ export function slugifyAssetId(name: string): string {
  * - Throws on non-object input.
  *
  * Does NOT attempt to validate voxel/part/pose structure — the store
- * loader handles those. This migration covers schema v2 → v3 → v4.
+ * loader handles those. This migration covers schema v2 → v3 → v4 → v5.
  */
 export function migrateEchidnaFile(raw: any): EchidnaFile {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {

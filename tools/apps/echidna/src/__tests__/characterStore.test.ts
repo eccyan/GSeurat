@@ -51,6 +51,7 @@ describe('useCharacterStore — dirty tracking', () => {
         animations: {},
         tags: [],
         currentFilename: null,
+        colorPalettes: [],
       },
     });
     useCharacterStore.getState().markClean();
@@ -320,6 +321,7 @@ describe('useCharacterStore.save', () => {
         animations: {},
         tags: [],
         currentFilename: null,
+        colorPalettes: [],
       },
       dirty: true,
     });
@@ -364,6 +366,7 @@ describe('useCharacterStore.save', () => {
         animations: {},
         tags: [],
         currentFilename: null,
+        colorPalettes: [],
       },
       dirty: true,
     });
@@ -396,6 +399,7 @@ describe('useCharacterStore.save', () => {
         animations: {},
         tags: [],
         currentFilename: null,
+        colorPalettes: [],
       },
       dirty: true,
     });
@@ -437,6 +441,7 @@ describe('useCharacterStore.save', () => {
         animations: {},
         tags: [],
         currentFilename: null,
+        colorPalettes: [],
       },
       dirty: true,
     });
@@ -486,6 +491,7 @@ describe('useCharacterStore.requestOpenAsset', () => {
         animations: {},
         tags: [],
         currentFilename: null,
+        colorPalettes: [],
       },
       dirty: false,
       undoStack: [],
@@ -549,6 +555,7 @@ describe('useCharacterStore.requestOpenAsset', () => {
         animations: {},
         tags: [],
         currentFilename: null,
+        colorPalettes: [],
       },
     });
 
@@ -585,6 +592,7 @@ describe('useCharacterStore.requestOpenAsset', () => {
         animations: {},
         tags: [],
         currentFilename: null,
+        colorPalettes: [],
       },
     });
 
@@ -624,6 +632,7 @@ describe('useCharacterStore.requestOpenAsset', () => {
         animations: {},
         tags: [],
         currentFilename: null,
+        colorPalettes: [],
       },
       undoStack: [{} as any],
     });
@@ -663,6 +672,7 @@ describe('useCharacterStore.renameAsset', () => {
         characterParts: [], characterPoses: {}, animations: {},
         tags: [],
         currentFilename: null,
+        colorPalettes: [],
       },
       knownAssets: [{ id: 'walker', kind: 'character', name: 'Walker Bot', lastModified: 0 }],
       dirty: false,
@@ -697,6 +707,7 @@ describe('useCharacterStore.renameAsset', () => {
         characterParts: [], characterPoses: {}, animations: {},
         tags: [],
         currentFilename: null,
+        colorPalettes: [],
       },
       knownAssets: [{ id: 'walker', kind: 'character', name: 'Walker Bot', lastModified: 0 }],
       dirty: false,
@@ -736,6 +747,7 @@ describe('useCharacterStore.renameAsset', () => {
         characterParts: [], characterPoses: {}, animations: {},
         tags: [],
         currentFilename: null,
+        colorPalettes: [],
       },
       knownAssets: [
         { id: 'walker', kind: 'character', name: 'Walker Bot', lastModified: 0 },
@@ -779,6 +791,7 @@ describe('useCharacterStore.deleteAsset', () => {
         characterParts: [], characterPoses: {}, animations: {},
         tags: [],
         currentFilename: null,
+        colorPalettes: [],
       },
     });
 
@@ -809,6 +822,7 @@ describe('useCharacterStore.deleteAsset', () => {
         characterParts: [], characterPoses: {}, animations: {},
         tags: [],
         currentFilename: null,
+        colorPalettes: [],
       },
       knownAssets: [{ id: 'walker', kind: 'character', name: 'Walker', lastModified: 0 }],
       dirty: true,
@@ -937,6 +951,7 @@ describe('useCharacterStore.save — return value', () => {
         characterParts: [], characterPoses: {}, animations: {},
         tags: [],
         currentFilename: null,
+        colorPalettes: [],
       },
       dirty: true,
     });
@@ -955,6 +970,7 @@ describe('useCharacterStore.save — return value', () => {
         characterParts: [], characterPoses: {}, animations: {},
         tags: [],
         currentFilename: null,
+        colorPalettes: [],
       },
       dirty: true,
     });
@@ -989,6 +1005,7 @@ describe('useCharacterStore.save — return value', () => {
         characterParts: [], characterPoses: {}, animations: {},
         tags: [],
         currentFilename: null,
+        colorPalettes: [],
       },
       dirty: true,
     });
@@ -1043,6 +1060,7 @@ describe('useCharacterStore.save — map kind', () => {
         voxels: new Map([['0,0,0', { color: [100, 150, 100, 255] }]]),
         characterParts: [], characterPoses: {}, animations: {},
         tags: [], currentFilename: null,
+        colorPalettes: [],
       },
       dirty: true,
     });
@@ -1068,6 +1086,7 @@ describe('useCharacterStore.save — object kind', () => {
         voxels: new Map([['0,0,0', { color: [200, 200, 255, 255] }]]),
         characterParts: [], characterPoses: {}, animations: {},
         tags: ['prop'], currentFilename: null,
+        colorPalettes: [],
       },
       dirty: true,
     });
