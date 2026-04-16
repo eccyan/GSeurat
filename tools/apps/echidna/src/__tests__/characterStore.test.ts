@@ -3,14 +3,14 @@ import { useCharacterStore } from '../store/useCharacterStore';
 import { testing } from '@gseurat/project-root';
 import { AssetListEntry, migrateEchidnaFile, ECHIDNA_FILE_VERSION } from '../store/types';
 
-describe('migrateEchidnaFile v3 → v4', () => {
+describe('migrateEchidnaFile v3 → v5', () => {
   it('defaults kind to character for legacy v3 files', () => {
     const raw = {
       version: 3, id: 'walker', characterName: 'Walker',
       gridWidth: 32, gridDepth: 32, voxels: [], parts: [], poses: {},
     };
     const result = migrateEchidnaFile(raw);
-    expect(result.version).toBe(4);
+    expect(result.version).toBe(5);
     expect(result.kind).toBe('character');
   });
 
@@ -30,8 +30,8 @@ describe('migrateEchidnaFile v3 → v4', () => {
     expect(result.tags).toEqual([]);
   });
 
-  it('ECHIDNA_FILE_VERSION is 4', () => {
-    expect(ECHIDNA_FILE_VERSION).toBe(4);
+  it('ECHIDNA_FILE_VERSION is 5', () => {
+    expect(ECHIDNA_FILE_VERSION).toBe(5);
   });
 });
 
@@ -51,6 +51,7 @@ describe('useCharacterStore — dirty tracking', () => {
         animations: {},
         tags: [],
         currentFilename: null,
+        colorPalettes: [],
       },
     });
     useCharacterStore.getState().markClean();
@@ -320,6 +321,7 @@ describe('useCharacterStore.save', () => {
         animations: {},
         tags: [],
         currentFilename: null,
+        colorPalettes: [],
       },
       dirty: true,
     });
@@ -364,6 +366,7 @@ describe('useCharacterStore.save', () => {
         animations: {},
         tags: [],
         currentFilename: null,
+        colorPalettes: [],
       },
       dirty: true,
     });
@@ -396,6 +399,7 @@ describe('useCharacterStore.save', () => {
         animations: {},
         tags: [],
         currentFilename: null,
+        colorPalettes: [],
       },
       dirty: true,
     });
@@ -437,6 +441,7 @@ describe('useCharacterStore.save', () => {
         animations: {},
         tags: [],
         currentFilename: null,
+        colorPalettes: [],
       },
       dirty: true,
     });
@@ -486,6 +491,7 @@ describe('useCharacterStore.requestOpenAsset', () => {
         animations: {},
         tags: [],
         currentFilename: null,
+        colorPalettes: [],
       },
       dirty: false,
       undoStack: [],
@@ -549,6 +555,7 @@ describe('useCharacterStore.requestOpenAsset', () => {
         animations: {},
         tags: [],
         currentFilename: null,
+        colorPalettes: [],
       },
     });
 
@@ -585,6 +592,7 @@ describe('useCharacterStore.requestOpenAsset', () => {
         animations: {},
         tags: [],
         currentFilename: null,
+        colorPalettes: [],
       },
     });
 
@@ -624,6 +632,7 @@ describe('useCharacterStore.requestOpenAsset', () => {
         animations: {},
         tags: [],
         currentFilename: null,
+        colorPalettes: [],
       },
       undoStack: [{} as any],
     });
@@ -663,6 +672,7 @@ describe('useCharacterStore.renameAsset', () => {
         characterParts: [], characterPoses: {}, animations: {},
         tags: [],
         currentFilename: null,
+        colorPalettes: [],
       },
       knownAssets: [{ id: 'walker', kind: 'character', name: 'Walker Bot', lastModified: 0 }],
       dirty: false,
@@ -697,6 +707,7 @@ describe('useCharacterStore.renameAsset', () => {
         characterParts: [], characterPoses: {}, animations: {},
         tags: [],
         currentFilename: null,
+        colorPalettes: [],
       },
       knownAssets: [{ id: 'walker', kind: 'character', name: 'Walker Bot', lastModified: 0 }],
       dirty: false,
@@ -736,6 +747,7 @@ describe('useCharacterStore.renameAsset', () => {
         characterParts: [], characterPoses: {}, animations: {},
         tags: [],
         currentFilename: null,
+        colorPalettes: [],
       },
       knownAssets: [
         { id: 'walker', kind: 'character', name: 'Walker Bot', lastModified: 0 },
@@ -779,6 +791,7 @@ describe('useCharacterStore.deleteAsset', () => {
         characterParts: [], characterPoses: {}, animations: {},
         tags: [],
         currentFilename: null,
+        colorPalettes: [],
       },
     });
 
@@ -809,6 +822,7 @@ describe('useCharacterStore.deleteAsset', () => {
         characterParts: [], characterPoses: {}, animations: {},
         tags: [],
         currentFilename: null,
+        colorPalettes: [],
       },
       knownAssets: [{ id: 'walker', kind: 'character', name: 'Walker', lastModified: 0 }],
       dirty: true,
@@ -937,6 +951,7 @@ describe('useCharacterStore.save — return value', () => {
         characterParts: [], characterPoses: {}, animations: {},
         tags: [],
         currentFilename: null,
+        colorPalettes: [],
       },
       dirty: true,
     });
@@ -955,6 +970,7 @@ describe('useCharacterStore.save — return value', () => {
         characterParts: [], characterPoses: {}, animations: {},
         tags: [],
         currentFilename: null,
+        colorPalettes: [],
       },
       dirty: true,
     });
@@ -989,6 +1005,7 @@ describe('useCharacterStore.save — return value', () => {
         characterParts: [], characterPoses: {}, animations: {},
         tags: [],
         currentFilename: null,
+        colorPalettes: [],
       },
       dirty: true,
     });
@@ -1043,6 +1060,7 @@ describe('useCharacterStore.save — map kind', () => {
         voxels: new Map([['0,0,0', { color: [100, 150, 100, 255] }]]),
         characterParts: [], characterPoses: {}, animations: {},
         tags: [], currentFilename: null,
+        colorPalettes: [],
       },
       dirty: true,
     });
@@ -1068,6 +1086,7 @@ describe('useCharacterStore.save — object kind', () => {
         voxels: new Map([['0,0,0', { color: [200, 200, 255, 255] }]]),
         characterParts: [], characterPoses: {}, animations: {},
         tags: ['prop'], currentFilename: null,
+        colorPalettes: [],
       },
       dirty: true,
     });
@@ -1076,5 +1095,98 @@ describe('useCharacterStore.save — object kind', () => {
     const assets = await root.getDirectoryHandle('assets');
     const objects = await assets.getDirectoryHandle('objects');
     await objects.getFileHandle('crystal.ply');
+  });
+});
+
+describe('color palettes', () => {
+  beforeEach(() => {
+    useCharacterStore.setState({
+      asset: null,
+      knownAssets: [],
+      activePaletteIndex: 0,
+    });
+  });
+
+  it('newAsset seeds asset.colorPalettes with a 256-slot default palette', () => {
+    useCharacterStore.getState().newAsset('character', 32, 'Test Bot');
+    const asset = useCharacterStore.getState().asset!;
+    expect(asset.colorPalettes.length).toBe(1);
+    expect(asset.colorPalettes[0].colors.length).toBe(256);
+  });
+
+  it('addPalette appends an empty 256-slot palette and activates it', () => {
+    const store = useCharacterStore.getState();
+    store.newAsset('character', 32, 'Test');
+    store.addPalette('MyPalette');
+    const s = useCharacterStore.getState();
+    expect(s.asset!.colorPalettes.length).toBe(2);
+    expect(s.asset!.colorPalettes[1].name).toBe('MyPalette');
+    expect(s.asset!.colorPalettes[1].colors.length).toBe(256);
+    expect(s.asset!.colorPalettes[1].colors[0]).toEqual([0, 0, 0, 0]); // empty slot
+    expect(s.activePaletteIndex).toBe(1);
+  });
+
+  it('addColorToPalette fills the first empty slot', () => {
+    const store = useCharacterStore.getState();
+    store.newAsset('character', 32, 'Test');
+    store.addPalette('MyPalette');
+    store.addColorToPalette(1, [200, 100, 50, 255]);
+    const s = useCharacterStore.getState();
+    expect(s.asset!.colorPalettes[1].colors[0]).toEqual([200, 100, 50, 255]);
+  });
+
+  it('removePalette drops by index and adjusts activePaletteIndex', () => {
+    const store = useCharacterStore.getState();
+    store.newAsset('character', 32, 'Test');
+    store.addPalette('A');
+    store.addPalette('B');
+    expect(useCharacterStore.getState().asset!.colorPalettes.length).toBe(3);
+    store.removePalette(0);
+    const s = useCharacterStore.getState();
+    expect(s.asset!.colorPalettes.length).toBe(2);
+    expect(s.asset!.colorPalettes.map((p) => p.name)).toEqual(['A', 'B']);
+  });
+
+  it('removePalette never leaves zero palettes', () => {
+    const store = useCharacterStore.getState();
+    store.newAsset('character', 32, 'Test');
+    // Asset already has 1 (default). Try to remove it.
+    store.removePalette(0);
+    const s = useCharacterStore.getState();
+    expect(s.asset!.colorPalettes.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('saveProject / loadProject round-trips color_palettes', () => {
+    const store = useCharacterStore.getState();
+    store.newAsset('character', 32, 'Test');
+    store.addPalette('Custom');
+    store.addColorToPalette(1, [11, 22, 33, 255]);
+    const file = store.saveProject();
+    expect(file.color_palettes).toBeDefined();
+    expect(file.color_palettes!.length).toBe(2);           // default + custom
+    expect(file.color_palettes![1].name).toBe('Custom');
+    expect(file.color_palettes![1].colors[0]).toEqual([11, 22, 33, 255]);
+
+    // Clear and reload
+    useCharacterStore.setState({ asset: null });
+    store.loadProject(file);
+    const reloaded = useCharacterStore.getState().asset!;
+    expect(reloaded.colorPalettes.length).toBe(2);
+    expect(reloaded.colorPalettes[1].colors[0]).toEqual([11, 22, 33, 255]);
+  });
+
+  it('loadProject resets activePaletteIndex to 0', () => {
+    const store = useCharacterStore.getState();
+    store.newAsset('character', 32, 'Before');
+    store.addPalette('Custom');
+    expect(useCharacterStore.getState().activePaletteIndex).toBe(1);
+
+    // Simulate loading a different asset: build a raw v4 file with color_palettes
+    // set, then feed it through loadProject — this mirrors what openAsset does
+    // via migrateEchidnaFile + state reset.
+    const file = store.saveProject();
+    useCharacterStore.setState({ activePaletteIndex: 3 });
+    store.loadProject(file);
+    expect(useCharacterStore.getState().activePaletteIndex).toBe(0);
   });
 });

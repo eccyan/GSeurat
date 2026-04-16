@@ -23,6 +23,7 @@ const makeAsset = (id: string, name: string) => ({
   animations: {},
   tags: [],
   currentFilename: null,
+  colorPalettes: [],
 });
 
 describe('AssetsPanel data contract', () => {

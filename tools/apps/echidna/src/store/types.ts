@@ -58,6 +58,54 @@ export interface AnimationClip {
   rootMotion?: boolean;
 }
 
+// ── Color palettes ──
+
+export interface ColorPalette {
+  name: string;
+  colors: [number, number, number, number][];
+}
+
+/**
+ * Generate the default 256-slot palette: 16 grayscale + 12 hues × 4 sats × 5 lights.
+ * Matches Bricklayer's `generateDefaultPalette` shape so imports between apps feel consistent.
+ */
+export function generateDefaultPalette(): ColorPalette {
+  const colors: [number, number, number, number][] = [];
+  // 16 grayscale: black to white
+  for (let i = 0; i < 16; i++) {
+    const v = Math.round((i / 15) * 255);
+    colors.push([v, v, v, 255]);
+  }
+  // 240 chromatic: 12 hues × 4 saturations × 5 lightness levels
+  const hues = [0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330];
+  const sats = [0.3, 0.5, 0.75, 1.0];
+  const lights = [0.2, 0.35, 0.5, 0.65, 0.8];
+  for (const sat of sats) {
+    for (const light of lights) {
+      for (const hue of hues) {
+        const [r, g, b] = hslToRgb(hue, sat, light);
+        colors.push([r, g, b, 255]);
+      }
+    }
+  }
+  return { name: 'Default (256)', colors };
+}
+
+function hslToRgb(h: number, s: number, l: number): [number, number, number] {
+  const c = (1 - Math.abs(2 * l - 1)) * s;
+  const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+  const m = l - c / 2;
+  let r = 0, g = 0, b = 0;
+  if (h < 60) { r = c; g = x; }
+  else if (h < 120) { r = x; g = c; }
+  else if (h < 180) { g = c; b = x; }
+  else if (h < 240) { g = x; b = c; }
+  else if (h < 300) { r = x; b = c; }
+  else { r = c; b = x; }
+  return [Math.round((r + m) * 255), Math.round((g + m) * 255), Math.round((b + m) * 255)];
+}
+
+
 // ── App mode ──
 
 export type AppMode = 'build' | 'animate';
@@ -75,9 +123,9 @@ export interface ClipboardEntry {
   color: [number, number, number, number];
 }
 
-// ── File format (v4) ──
+// ── File format (v5) ──
 
-export const ECHIDNA_FILE_VERSION = 4 as const;
+export const ECHIDNA_FILE_VERSION = 5 as const;
 
 export interface EchidnaFile {
   version: number;
@@ -91,6 +139,7 @@ export interface EchidnaFile {
   poses: Record<string, PoseData>;
   animations?: Record<string, AnimationClip>;
   tags: string[];
+  color_palettes?: ColorPalette[];
 }
 
 /**
@@ -118,7 +167,7 @@ export function slugifyAssetId(name: string): string {
  * - Throws on non-object input.
  *
  * Does NOT attempt to validate voxel/part/pose structure — the store
- * loader handles those. This migration covers schema v2 → v3 → v4.
+ * loader handles those. This migration covers schema v2 → v3 → v4 → v5.
  */
 export function migrateEchidnaFile(raw: any): EchidnaFile {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
@@ -147,6 +196,9 @@ export function migrateEchidnaFile(raw: any): EchidnaFile {
       ? raw.animations
       : undefined,
     tags: Array.isArray(raw.tags) ? raw.tags : [],
+    color_palettes: Array.isArray(raw.color_palettes) && raw.color_palettes.length > 0
+      ? raw.color_palettes
+      : [generateDefaultPalette()],
   };
 }
 
@@ -176,6 +228,7 @@ export interface Asset {
   characterPoses: Record<string, PoseData>;
   animations: Record<string, AnimationClip>;
   tags: string[];
+  colorPalettes: ColorPalette[];
   currentFilename: string | null;                    // legacy .echidna download target
 }
 

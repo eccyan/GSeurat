@@ -1,6 +1,9 @@
 import React from 'react';
-import { NumberInput, useComponentRegistry } from '@gseurat/ui-kit';
+import { useComponentRegistry } from '@gseurat/ui-kit';
 import { useCharacterStore } from '../store/useCharacterStore.js';
+import { YClipControl } from './controls/YClipControl.js';
+import { YLevelLock } from './controls/YLevelLock.js';
+import { DisplaySettings } from './controls/DisplaySettings.js';
 
 const styles: Record<string, React.CSSProperties> = {
   container: {
@@ -20,48 +23,6 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 4, color: '#ddd', fontSize: 13,
   },
 };
-
-function YClipControl() {
-  const yClip = useCharacterStore((s) => s.yClip);
-  const setYClip = useCharacterStore((s) => s.setYClip);
-  const voxels = useCharacterStore((s) => s.asset?.voxels ?? new Map());
-
-  let maxY = 0;
-  for (const [key] of voxels) {
-    const parts = key.split(',');
-    const y = Number(parts[1]);
-    if (y > maxY) maxY = y;
-  }
-
-  const enabled = yClip !== null;
-
-  return (
-    <div style={styles.section}>
-      <span style={styles.label}>Y-Clip</span>
-      <label style={{ ...styles.row, fontSize: 13, cursor: 'pointer' }}>
-        <input
-          type="checkbox"
-          checked={enabled}
-          onChange={(e) => setYClip(e.target.checked ? Math.floor(maxY / 2) : null)}
-        />
-        Enable
-      </label>
-      {enabled && (
-        <div style={styles.row}>
-          <input
-            type="range"
-            min={0}
-            max={maxY}
-            value={yClip}
-            onChange={(e) => setYClip(Number(e.target.value))}
-            style={{ flex: 1 }}
-          />
-          <span style={{ fontSize: 13, color: '#ddd', minWidth: 24 }}>Y:{yClip}</span>
-        </div>
-      )}
-    </div>
-  );
-}
 
 function MirrorControl() {
   const mirrorAxis = useCharacterStore((s) => s.mirrorAxis);
@@ -88,56 +49,6 @@ function MirrorControl() {
   );
 }
 
-function GridSettings() {
-  const showGrid = useCharacterStore((s) => s.showGrid);
-  const showGizmos = useCharacterStore((s) => s.showGizmos);
-  const setShowGrid = useCharacterStore((s) => s.setShowGrid);
-  const setShowGizmos = useCharacterStore((s) => s.setShowGizmos);
-  const colorByPart = useCharacterStore((s) => s.colorByPart);
-  const setColorByPart = useCharacterStore((s) => s.setColorByPart);
-  const xrayMode = useCharacterStore((s) => s.xrayMode);
-  const setXrayMode = useCharacterStore((s) => s.setXrayMode);
-
-  return (
-    <div style={styles.section}>
-      <span style={styles.label}>Display</span>
-      <label style={{ ...styles.row, fontSize: 13, cursor: 'pointer' }}>
-        <input type="checkbox" checked={showGrid} onChange={(e) => setShowGrid(e.target.checked)} />
-        Grid
-      </label>
-      <label style={{ ...styles.row, fontSize: 13, cursor: 'pointer' }}>
-        <input type="checkbox" checked={showGizmos} onChange={(e) => setShowGizmos(e.target.checked)} />
-        Gizmos
-      </label>
-      <label style={{ ...styles.row, fontSize: 13, cursor: 'pointer' }}>
-        <input type="checkbox" checked={colorByPart} onChange={(e) => setColorByPart(e.target.checked)} />
-        Color by Part
-      </label>
-      <label style={{ ...styles.row, fontSize: 13, cursor: 'pointer' }}>
-        <input type="checkbox" checked={xrayMode} onChange={(e) => setXrayMode(e.target.checked)} />
-        X-Ray Mode (T)
-      </label>
-    </div>
-  );
-}
-
-function YLevelLock() {
-  const yLevelLock = useCharacterStore((s) => s.yLevelLock);
-  const setYLevelLock = useCharacterStore((s) => s.setYLevelLock);
-  return (
-    <div style={styles.section}>
-      <span style={styles.label}>Y-Level Lock</span>
-      <label style={{ ...styles.row, fontSize: 13, cursor: 'pointer' }}>
-        <input type="checkbox" checked={yLevelLock !== null} onChange={(e) => setYLevelLock(e.target.checked ? 0 : null)} />
-        Enable
-      </label>
-      {yLevelLock !== null && (
-        <NumberInput value={yLevelLock} onChange={setYLevelLock} min={0} step={1} label="Y" />
-      )}
-    </div>
-  );
-}
-
 export function BuildPanel() {
   useComponentRegistry('BuildPanel');
   return (
@@ -145,7 +56,7 @@ export function BuildPanel() {
       <YClipControl />
       <YLevelLock />
       <MirrorControl />
-      <GridSettings />
+      <DisplaySettings />
     </div>
   );
 }

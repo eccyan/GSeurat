@@ -23,6 +23,7 @@ function makeAsset(): Asset {
     animations: {},
     tags: [],
     currentFilename: null,
+    colorPalettes: [],
   };
 }
 

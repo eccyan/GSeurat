@@ -15,8 +15,9 @@ import type {
   Asset,
   AssetListEntry,
   EchidnaAssetKind,
+  ColorPalette,
 } from './types.js';
-import { migrateEchidnaFile, slugifyAssetId, ECHIDNA_FILE_VERSION } from './types.js';
+import { migrateEchidnaFile, slugifyAssetId, ECHIDNA_FILE_VERSION, generateDefaultPalette } from './types.js';
 import { voxelKey, parseKey, floodFill3D, extrudeLayer } from '../lib/voxelUtils.js';
 import { listEchidnaProjects, loadEchidnaProject, saveEchidnaProject, exportCharacterToProject, exportMapToProject, exportObjectToProject, deleteEchidnaProject, renameEchidnaProject, duplicateEchidnaProject } from '../lib/projectFs.js';
 import { exportPly } from '../lib/plyExport.js';
@@ -96,6 +97,7 @@ const DEFAULT_ASSET: Asset = {
   animations: {},
   tags: [],
   currentFilename: null,
+  colorPalettes: [generateDefaultPalette()],
 };
 
 export type SwitchDecision = 'save' | 'discard' | 'cancel';
@@ -121,6 +123,9 @@ export interface CharacterStoreState {
   activeTool: ToolType;
   activeColor: [number, number, number, number];
   brushSize: number;
+
+  // Palette
+  activePaletteIndex: number;
 
   // Selection (per-character UI state, but stays global for Phase 0.2)
   selectedPart: string | null;
@@ -182,6 +187,13 @@ export interface CharacterStoreState {
   setTool: (tool: ToolType) => void;
   setActiveColor: (color: [number, number, number, number] | [number, number, number] | string) => void;
   setBrushSize: (size: number) => void;
+
+  // Actions – palettes
+  addPalette: (name: string) => void;
+  removePalette: (index: number) => void;
+  setActivePalette: (index: number) => void;
+  addColorToPalette: (paletteIndex: number, color: [number, number, number, number]) => void;
+  addPaletteFromFile: (file: File) => Promise<void>;
 
   // Actions – view
   setShowGrid: (v: boolean) => void;
@@ -279,6 +291,8 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
   activeTool: 'place',
   activeColor: [180, 130, 90, 255],
   brushSize: 1,
+
+  activePaletteIndex: 0,
 
   selectedPart: null,
   selectedPose: null,
@@ -963,6 +977,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
         animations,
         tags: data.tags ?? [],
         currentFilename: null,
+        colorPalettes: data.color_palettes ?? [generateDefaultPalette()],
       };
       set({
         asset: char,
@@ -978,6 +993,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
         previewPose: false,
         playbackTime: 0,
         isPlaying: false,
+        activePaletteIndex: 0,
         ...(char.kind !== 'character' ? { mode: 'build' as const } : {}),
       });
     } catch (e) {
@@ -1237,6 +1253,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
         animations: {},
         tags: [],
         currentFilename: null,
+        colorPalettes: [generateDefaultPalette()],
       },
       // Optimistic panel entry: add to knownAssets immediately so the new
       // asset is visible before first save. Phase 0.2 save() later calls
@@ -1256,6 +1273,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
       boxSelection: null,
       colorByPart: false,
       partColors: {},
+      activePaletteIndex: 0,
       // A freshly-created asset has unsaved state (the creation itself).
       // Setting dirty=true ensures requestOpenAsset's switch guard protects
       // the new asset from silent loss if the user clicks away before
@@ -1310,6 +1328,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
       poses: char.characterPoses,
       animations: Object.keys(char.animations).length > 0 ? char.animations : undefined,
       tags: char.tags ?? [],
+      color_palettes: char.colorPalettes,
     };
   },
 
@@ -1352,6 +1371,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
         animations,
         tags: data.tags ?? [],
         currentFilename: get().asset?.currentFilename ?? null,
+        colorPalettes: data.color_palettes ?? [generateDefaultPalette()],
       },
       selectedPart: null,
       selectedPose: null,
@@ -1362,6 +1382,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
       playbackTime: 0,
       isPlaying: false,
       boxSelection: null,
+      activePaletteIndex: 0,
       dirty: false,
     });
   },
@@ -1482,6 +1503,77 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
   setLassoSelection: (keys) => set({ lassoSelection: keys }),
   setPlaybackMode: (mode) => set({ playbackMode: mode }),
   setOnionSkinning: (v) => set({ onionSkinning: v }),
+
+  // ── Palette actions ──
+  /**
+   * Palette actions (addPalette, removePalette, addColorToPalette,
+   * addPaletteFromFile) intentionally do NOT call pushUndo. Palette edits
+   * are a separate concern from voxel-edit history — users don't expect
+   * "undo" to revert the palette they just created. setActivePalette is
+   * purely UI state and skips the dirty flag entirely.
+   */
+  addPalette: (name) => {
+    const s = get();
+    if (!s.asset) return;
+    const emptyColors: [number, number, number, number][] = Array.from({ length: 256 }, () => [0, 0, 0, 0]);
+    const palettes = [...s.asset.colorPalettes, { name, colors: emptyColors }];
+    set({
+      asset: { ...s.asset, colorPalettes: palettes },
+      activePaletteIndex: palettes.length - 1,
+      dirty: true,
+    });
+  },
+
+  removePalette: (index) => {
+    const s = get();
+    if (!s.asset) return;
+    let palettes = s.asset.colorPalettes.filter((_, i) => i !== index);
+    // Always keep at least one palette so the Build UI never has nothing to draw.
+    if (palettes.length === 0) palettes = [generateDefaultPalette()];
+    set({
+      asset: { ...s.asset, colorPalettes: palettes },
+      activePaletteIndex: Math.min(s.activePaletteIndex, palettes.length - 1),
+      dirty: true,
+    });
+  },
+
+  setActivePalette: (index) => set({ activePaletteIndex: index }),
+
+  addColorToPalette: (paletteIndex, color) => {
+    const s = get();
+    if (!s.asset) return;
+    const palettes = [...s.asset.colorPalettes];
+    if (!palettes[paletteIndex]) return;
+    const colors = [...palettes[paletteIndex].colors];
+    const emptyIdx = colors.findIndex((c) => c[3] === 0);
+    if (emptyIdx >= 0) {
+      colors[emptyIdx] = color;
+    } else if (colors.length < 256) {
+      colors.push(color);
+    } else {
+      return; // palette full, no-op
+    }
+    palettes[paletteIndex] = { ...palettes[paletteIndex], colors };
+    set({ asset: { ...s.asset, colorPalettes: palettes }, dirty: true });
+  },
+
+  addPaletteFromFile: async (file) => {
+    const targetId = get().asset?.id;
+    if (!targetId) return;
+    const { extractColorsFromFile } = await import('../lib/colorExtract.js');
+    const extracted = await extractColorsFromFile(file, 256);
+    const colors: [number, number, number, number][] = [...extracted];
+    while (colors.length < 256) colors.push([0, 0, 0, 0]);
+    const s = get();
+    // Bail if the user switched assets while extraction was in flight.
+    if (!s.asset || s.asset.id !== targetId) return;
+    const palettes = [...s.asset.colorPalettes, { name: file.name, colors }];
+    set({
+      asset: { ...s.asset, colorPalettes: palettes },
+      activePaletteIndex: palettes.length - 1,
+      dirty: true,
+    });
+  },
 }));
 
 if (import.meta.env.DEV && typeof window !== 'undefined') {
