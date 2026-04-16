@@ -2609,6 +2609,10 @@ void GsRenderer::render(VkCommandBuffer cmd, const glm::mat4& view, const glm::m
                                        gs_pp_params_.horizon_y);
         pp_ubo.sky_enable = glm::vec4(gs_pp_params_.sky_color,
                                        gs_pp_params_.background_enabled ? 1.0f : 0.0f);
+        pp_ubo.overlay = glm::vec4(gs_pp_params_.overlay_r,
+                                    gs_pp_params_.overlay_g,
+                                    gs_pp_params_.overlay_b,
+                                    gs_pp_params_.overlay_alpha);
         std::memcpy(pp_ubo_buffer_.mapped(), &pp_ubo, sizeof(pp_ubo));
 
         // Transition processed image to GENERAL for compute write

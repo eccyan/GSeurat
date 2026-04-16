@@ -47,9 +47,16 @@ struct GsPostProcessParams {
     glm::vec3 sky_color{0.0f};     // RGB sky color (0 = disabled)
     float horizon_y = 0.5f;        // Normalized screen Y of horizon (0=top, 1=bottom)
     bool background_enabled = false;
+
+    // Scene-transition overlay (final mix() applied at end of compositing).
+    // overlay_alpha == 0 produces a shader no-op.
+    float overlay_r = 1.0f;
+    float overlay_g = 1.0f;
+    float overlay_b = 1.0f;
+    float overlay_alpha = 0.0f;
 };
 
-// GPU UBO layout for gs_post_process.comp (std140, 7 × vec4 = 112 bytes)
+// GPU UBO layout for gs_post_process.comp (std140, 8 × vec4 = 128 bytes)
 struct GsPostProcessUbo {
     glm::vec4 fog_params;         // density, r, g, b
     glm::vec4 exposure_vignette;  // exposure, radius, softness, bloom_intensity
@@ -58,6 +65,7 @@ struct GsPostProcessUbo {
     glm::vec4 dimensions;         // dof_max_blur, width, height, far_plane
     glm::vec4 ground_sky;         // ground_r, ground_g, ground_b, horizon_y
     glm::vec4 sky_enable;         // sky_r, sky_g, sky_b, enable (> 0.5 = on)
+    glm::vec4 overlay;            // r, g, b, alpha (scene transition overlay)
 };
 
 // Push constants for preprocess shader (static/dynamic offset)
