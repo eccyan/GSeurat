@@ -9,6 +9,7 @@
     "ImportDialog": "when import dialog is open",
     "ImageImportDialog": "when image import dialog is open",
     "NewProjectDialog": "when new project dialog is open",
-    "ResizeGridDialog": "when resize grid dialog is open"
+    "ResizeGridDialog": "when resize grid dialog is open",
+    "LassoOverlay": "when lasso tool is active"
   }
 }
