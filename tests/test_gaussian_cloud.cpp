@@ -585,6 +585,28 @@ int main() {
         printf("PASS: Test 17 - GSVX file size / count mismatch throws\n");
     }
 
+    // ====== Test 18: GSVX file size matches header count ======
+    {
+        const std::string gsvx_path = tmp_dir + "/test_size_check.gsvx";
+        std::vector<GpuGaussian> data(7);
+        for (uint32_t i = 0; i < 7; ++i) {
+            data[i].pos_opacity = glm::vec4(float(i), 0.0f, 0.0f, 1.0f);
+            data[i].scale_pad = glm::vec4(0.01f, 0.01f, 0.01f, 0.0f);
+            data[i].rot = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+            data[i].color_pad = glm::vec4(1.0f, 1.0f, 1.0f, 0.0f);
+        }
+        write_test_gsvx(gsvx_path, data);
+
+        auto file_size = fs::file_size(gsvx_path);
+        assert(file_size == 32 + 7 * 64 && "GSVX file size = header + count * 64");
+
+        auto payload = GaussianCloud::load_gsvx(gsvx_path);
+        assert(payload.count == 7 && "Should load 7 Gaussians");
+        assert(approx(payload.gpu_gaussians[3].pos_opacity.x, 3.0f) && "Gaussian 3 pos.x=3");
+
+        printf("PASS: Test 18 - GSVX file size matches header count\n");
+    }
+
     // Cleanup temp files
     fs::remove_all(tmp_dir);
 
