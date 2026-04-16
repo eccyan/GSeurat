@@ -215,6 +215,8 @@ add_library(gseurat_core ${_gseurat_lib_type}
     src/engine/bone_animation_system.cpp
     src/engine/debug_draw.cpp
     src/engine/trigger_systems.cpp
+    src/engine/systems/transition_system.cpp
+    src/engine/systems/portal_trigger_handler.cpp
 )
 
 

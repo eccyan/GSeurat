@@ -6,6 +6,12 @@
 #include "gseurat/engine/bone_animated_component.hpp"
 #include "gseurat/engine/bone_animation_system.hpp"
 #include "gseurat/engine/gs_renderer.hpp"
+#include "gseurat/engine/coordinate.hpp"
+#include "gseurat/engine/ecs/default_components.hpp"
+#include "gseurat/engine/ecs/components/portal_target.hpp"
+#include "gseurat/engine/ecs/components/scene_transition.hpp"
+#include "gseurat/engine/ecs/components/screen_fade.hpp"
+#include "gseurat/engine/systems/portal_trigger_handler.hpp"
 
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
@@ -151,6 +157,24 @@ void AppBase::main_loop() {
             renderer_.set_flash_color(0.0f, 0.0f, 0.0f);
         }
 
+        // Push ScreenFade (if any) to the overlay slot. At most one entity
+        // exists per the concurrency invariant in portal_trigger_handler.
+        {
+            auto& pp = renderer_.post_process_params();
+            // Default: no overlay
+            pp.overlay_r = 1.0f;
+            pp.overlay_g = 1.0f;
+            pp.overlay_b = 1.0f;
+            pp.overlay_alpha = 0.0f;
+            world_.view<ScreenFade>().each(
+                [&](ecs::Entity, ScreenFade& fade) {
+                    pp.overlay_r = fade.color.r;
+                    pp.overlay_g = fade.color.g;
+                    pp.overlay_b = fade.color.b;
+                    pp.overlay_alpha = fade.alpha;
+                });
+        }
+
         renderer_.draw_scene(scene_, draw_lists_.entity, draw_lists_.outline, draw_lists_.reflection,
                              draw_lists_.shadow, particle_sprites, draw_lists_.overlay, ui_batches,
                              feature_flags_);
@@ -174,6 +198,13 @@ void AppBase::cleanup() {
 
 // Virtual no-op stubs
 void AppBase::init_scene(const std::string& /*scene_path*/) {}
+
+void AppBase::set_player_position(const glm::vec3& pos) {
+    world_.view<PlayerTag, ecs::Transform>().each(
+        [&](ecs::Entity, PlayerTag&, ecs::Transform& t) {
+            t.position = coord::WorldPos(pos);
+        });
+}
 void AppBase::clear_scene() {
     bone_anim_registry_.clear();
 }
@@ -289,6 +320,24 @@ void AppBase::init_game_object_system() {
             return {{"target_entity", c.target_entity}};
         });
 
+    component_registry_.register_component<PortalTarget>("PortalTarget",
+        [](const nlohmann::json& j) -> PortalTarget {
+            PortalTarget c;
+            if (j.contains("target_scene")) c.target_scene = j["target_scene"].get<std::string>();
+            if (j.contains("target_position")) c.target_position = SceneLoader::parse_vec3(j["target_position"]);
+            if (j.contains("fade_color")) c.fade_color = SceneLoader::parse_vec3(j["fade_color"]);
+            if (j.contains("fade_duration")) c.fade_duration = j["fade_duration"].get<float>();
+            return c;
+        },
+        [](const PortalTarget& c) -> nlohmann::json {
+            return {
+                {"target_scene", c.target_scene},
+                {"target_position", {c.target_position.x, c.target_position.y, c.target_position.z}},
+                {"fade_color", {c.fade_color.x, c.fade_color.y, c.fade_color.z}},
+                {"fade_duration", c.fade_duration}
+            };
+        });
+
     component_registry_.register_component<NpcWalker>("NpcWalker",
         [](const nlohmann::json& j) -> NpcWalker {
             NpcWalker c;
@@ -343,6 +392,14 @@ void AppBase::init_game_object_system() {
         [this](ecs::World& w, float dt) {
             npc_walker_system(w, dt, bone_anim_registry_);
         }, {}, {}});
+
+    system_scheduler_.add_system({"portal_trigger_handler",
+        [](ecs::World& w, float) { portal_trigger_handler(w); },
+        /* reads */ {}, /* writes */ {}});
+
+    system_scheduler_.add_system({"transition_system",
+        [this](ecs::World& w, float dt) { transition_system(w, *this, dt); },
+        /* reads */ {}, /* writes */ {}});
 }
 
 // ── Command context builder ──

@@ -38,6 +38,7 @@
 #include "gseurat/engine/staging_uploader.hpp"
 #include "gseurat/engine/scene.hpp"
 #include "gseurat/engine/screen_effects.hpp"
+#include "gseurat/engine/systems/transition_system.hpp"
 #include "gseurat/engine/weather_system.hpp"
 #include "gseurat/engine/text_renderer.hpp"
 #include "gseurat/engine/types.hpp"
@@ -71,7 +72,7 @@ struct DebugMetrics {
     }
 };
 
-class AppBase {
+class AppBase : public ITransitionHost {
 public:
     virtual ~AppBase() = default;
 
@@ -114,7 +115,8 @@ public:
     virtual void apply_save_data(const SaveData& data);
 
     // Public methods used by states (virtual — game overrides)
-    virtual void init_scene(const std::string& scene_path);
+    void init_scene(const std::string& scene_path) override;
+    void set_player_position(const glm::vec3& pos) override;
     virtual void clear_scene();
 
     // Shared GS scene loading: PLY + placed objects + lights + emitters + animations + VFX
