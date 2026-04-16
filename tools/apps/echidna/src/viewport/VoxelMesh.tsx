@@ -215,6 +215,7 @@ export function VoxelMesh() {
   const colorByPart = useCharacterStore((s) => s.colorByPart);
   const partColors = useCharacterStore((s) => s.partColors);
   const boxSelection = useCharacterStore((s) => s.boxSelection);
+  const lassoSelection = useCharacterStore((s) => s.lassoSelection);
   const isPlaying = useCharacterStore((s) => s.isPlaying);
   const selectedAnimation = useCharacterStore((s) => s.selectedAnimation);
   const animations = useCharacterStore((s) => s.asset?.animations ?? {});
@@ -395,6 +396,11 @@ export function VoxelMesh() {
     return boxSelection ? new Set(boxSelection) : null;
   }, [boxSelection]);
 
+  const lassoSelectionSet = useMemo(() => {
+    if (!lassoSelection) return null;
+    return new Set(lassoSelection);
+  }, [lassoSelection]);
+
   // FK transforms: animation pose takes priority over preview pose
   const fkTransforms = useMemo(() => {
     if (animationPose) {
@@ -458,8 +464,8 @@ export function VoxelMesh() {
         }
       }
 
-      // Box selection highlight (green tint)
-      if (boxSelectionSet?.has(key)) {
+      // Box/lasso selection highlight (green tint)
+      if (boxSelectionSet?.has(key) || lassoSelectionSet?.has(key)) {
         g = Math.min(1, g + 0.2);
       }
 
@@ -469,7 +475,7 @@ export function VoxelMesh() {
     }
 
     return { matrices: mat, colors: col };
-  }, [surfaceEntries, count, characterParts, selectedPart, selectedKeys, otherPartKeys, fkTransforms, voxelToPartId, colorByPart, partColors, boxSelectionSet]);
+  }, [surfaceEntries, count, characterParts, selectedPart, selectedKeys, otherPartKeys, fkTransforms, voxelToPartId, colorByPart, partColors, boxSelectionSet, lassoSelectionSet]);
 
   useEffect(() => {
     const mesh = meshRef.current;
