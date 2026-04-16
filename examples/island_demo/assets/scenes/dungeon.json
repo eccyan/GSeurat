@@ -5122,7 +5122,8 @@
           "target_scene": "assets/scenes/seurat_island.json",
           "target_position": [192, 3, 197],
           "transition_color": [1, 1, 1],
-          "transition_duration": 0.5
+          "transition_duration": 0.5,
+          "effect_type": 2
         }
       }
     },
