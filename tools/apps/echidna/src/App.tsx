@@ -50,6 +50,7 @@ const styles: Record<string, React.CSSProperties> = {
 };
 
 const buildToolKeys: Record<string, ToolType> = {
+  q: 'orbit',
   v: 'place',
   b: 'paint',
   e: 'erase',
@@ -61,8 +62,10 @@ const buildToolKeys: Record<string, ToolType> = {
 };
 
 const animateToolKeys: Record<string, ToolType> = {
+  q: 'orbit',
   a: 'assign_part',
   s: 'box_select',
+  l: 'lasso_select',
 };
 
 const RESIZE_HANDLE_STYLE: React.CSSProperties = {

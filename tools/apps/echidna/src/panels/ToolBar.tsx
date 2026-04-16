@@ -4,6 +4,7 @@ import { useCharacterStore } from '../store/useCharacterStore.js';
 import type { ToolType } from '../store/types.js';
 
 const tools: { id: ToolType; label: string; key: string }[] = [
+  { id: 'orbit', label: 'Orbit', key: 'Q' },
   { id: 'place', label: 'Place', key: 'V' },
   { id: 'paint', label: 'Paint', key: 'B' },
   { id: 'erase', label: 'Erase', key: 'E' },
