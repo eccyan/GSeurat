@@ -70,6 +70,57 @@ export const BUILTIN_SCHEMAS: ComponentSchema[] = [
       { name: 'character_id', type: 'string', default: '' },
       { name: 'manifest', type: 'string', default: '' },
     ]},
+  // ── Engine-registered components (mirror of examples/island_demo/assets/components/*.schema.json) ──
+  { name: 'ProximityTrigger', description: 'Triggers when a player enters proximity radius', category: 'Gameplay',
+    fields: [
+      { name: 'radius', type: 'float', default: 5, min: 0.1 },
+      { name: 'one_shot', type: 'bool', default: false },
+    ]},
+  { name: 'PortalTarget', description: 'Pair with ProximityTrigger on a Game Object to make it a scene portal.', category: 'Gameplay',
+    fields: [
+      { name: 'target_scene', type: 'string', default: '' },
+      { name: 'target_position', type: 'vec3', default: [0, 0, 0] },
+      { name: 'fade_color', type: 'vec3', default: [1, 1, 1] },
+      { name: 'fade_duration', type: 'float', default: 0.5, min: 0 },
+    ]},
+  { name: 'LinkedTrigger', description: 'Links this entity to another entity as a trigger target', category: 'Gameplay',
+    fields: [
+      { name: 'target_entity', type: 'int', default: 0 },
+    ]},
+  { name: 'LightToggle', description: 'Toggles a dynamic light on or off with configurable color and radius', category: 'Effects',
+    fields: [
+      { name: 'color_r', type: 'float', default: 1, min: 0, max: 1 },
+      { name: 'color_g', type: 'float', default: 1, min: 0, max: 1 },
+      { name: 'color_b', type: 'float', default: 1, min: 0, max: 1 },
+      { name: 'radius', type: 'float', default: 10, min: 0 },
+      { name: 'intensity', type: 'float', default: 1, min: 0 },
+    ]},
+  { name: 'EmitterToggle', description: 'Toggles a particle emitter on or off', category: 'Effects',
+    fields: [
+      { name: 'emitter_index', type: 'int', default: 0, min: 0 },
+    ]},
+  { name: 'EmissiveToggle', description: 'Toggles emissive glow on Gaussian splat objects', category: 'Effects',
+    fields: [
+      { name: 'emission', type: 'float', default: 2, min: 0 },
+      { name: 'color_r', type: 'float', default: 1, min: 0, max: 1 },
+      { name: 'color_g', type: 'float', default: 1, min: 0, max: 1 },
+      { name: 'color_b', type: 'float', default: 1, min: 0, max: 1 },
+      { name: 'effect_radius', type: 'float', default: 3, min: 0 },
+    ]},
+  { name: 'BurstEffect', description: 'Fires a one-shot burst from a particle emitter', category: 'Effects',
+    fields: [
+      { name: 'emitter_index', type: 'int', default: 0, min: 0 },
+    ]},
+  { name: 'ScatterEffect', description: 'Scatters particles in a radius for a limited lifetime', category: 'Effects',
+    fields: [
+      { name: 'radius', type: 'float', default: 2, min: 0 },
+      { name: 'lifetime', type: 'float', default: 2, min: 0 },
+    ]},
+  { name: 'PlayerController', description: 'Player movement controller with speed and acceleration', category: 'Player',
+    fields: [
+      { name: 'speed', type: 'float', default: 10, min: 0 },
+      { name: 'acceleration', type: 'float', default: 10, min: 0 },
+    ]},
 ];
 
 function defaultEmitter(): EmitterConfig {
