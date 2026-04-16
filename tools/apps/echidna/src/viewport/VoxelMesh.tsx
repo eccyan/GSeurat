@@ -521,6 +521,7 @@ export function VoxelMesh() {
     }
 
     switch (store.activeTool) {
+      case 'orbit': { return; }
       case 'place': {
         if (!normal) return;
         const nx = x + Math.round(normal.x);
