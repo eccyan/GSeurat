@@ -80,8 +80,9 @@ export const BUILTIN_SCHEMAS: ComponentSchema[] = [
     fields: [
       { name: 'target_scene', type: 'string', default: '' },
       { name: 'target_position', type: 'vec3', default: [0, 0, 0] },
-      { name: 'fade_color', type: 'vec3', default: [1, 1, 1] },
-      { name: 'fade_duration', type: 'float', default: 0.5, min: 0 },
+      { name: 'transition_color', type: 'vec3', default: [1, 1, 1] },
+      { name: 'transition_duration', type: 'float', default: 0.5, min: 0 },
+      { name: 'effect_type', type: 'int', default: 0, min: 0 },
     ]},
   { name: 'LinkedTrigger', description: 'Links this entity to another entity as a trigger target', category: 'Gameplay',
     fields: [
@@ -123,8 +124,9 @@ export const BUILTIN_SCHEMAS: ComponentSchema[] = [
     ]},
   { name: 'ScreenFade', description: 'Full-screen color overlay (color + alpha 0..1) consumed by the post-process composite. Generic — used for portal transitions, damage flashes, ambient tints, cutscene fades, etc.', category: 'Effects',
     fields: [
-      { name: 'color', type: 'vec3', default: [1, 1, 1] },
+      { name: 'transition_color', type: 'vec3', default: [1, 1, 1] },
       { name: 'alpha', type: 'float', default: 0, min: 0, max: 1 },
+      { name: 'effect_type', type: 'int', default: 0, min: 0 },
     ]},
 ];
 

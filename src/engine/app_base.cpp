@@ -166,12 +166,14 @@ void AppBase::main_loop() {
             pp.overlay_g = 1.0f;
             pp.overlay_b = 1.0f;
             pp.overlay_alpha = 0.0f;
+            pp.overlay_effect_type = 0;
             world_.view<ScreenFade>().each(
                 [&](ecs::Entity, ScreenFade& fade) {
-                    pp.overlay_r = fade.color.r;
-                    pp.overlay_g = fade.color.g;
-                    pp.overlay_b = fade.color.b;
+                    pp.overlay_r = fade.transition_color.r;
+                    pp.overlay_g = fade.transition_color.g;
+                    pp.overlay_b = fade.transition_color.b;
                     pp.overlay_alpha = fade.alpha;
+                    pp.overlay_effect_type = static_cast<uint32_t>(fade.effect_type);
                 });
         }
 
@@ -332,16 +334,18 @@ void AppBase::init_game_object_system() {
             PortalTarget c;
             if (j.contains("target_scene")) c.target_scene = j["target_scene"].get<std::string>();
             if (j.contains("target_position")) c.target_position = SceneLoader::parse_vec3(j["target_position"]);
-            if (j.contains("fade_color")) c.fade_color = SceneLoader::parse_vec3(j["fade_color"]);
-            if (j.contains("fade_duration")) c.fade_duration = j["fade_duration"].get<float>();
+            if (j.contains("transition_color")) c.transition_color = SceneLoader::parse_vec3(j["transition_color"]);
+            if (j.contains("transition_duration")) c.transition_duration = j["transition_duration"].get<float>();
+            if (j.contains("effect_type")) c.effect_type = j["effect_type"].get<int>();
             return c;
         },
         [](const PortalTarget& c) -> nlohmann::json {
             return {
                 {"target_scene", c.target_scene},
                 {"target_position", {c.target_position.x, c.target_position.y, c.target_position.z}},
-                {"fade_color", {c.fade_color.x, c.fade_color.y, c.fade_color.z}},
-                {"fade_duration", c.fade_duration}
+                {"transition_color", {c.transition_color.x, c.transition_color.y, c.transition_color.z}},
+                {"transition_duration", c.transition_duration},
+                {"effect_type", c.effect_type}
             };
         });
 
@@ -350,14 +354,16 @@ void AppBase::init_game_object_system() {
     component_registry_.register_component<ScreenFade>("ScreenFade",
         [](const nlohmann::json& j) -> ScreenFade {
             ScreenFade c;
-            if (j.contains("color")) c.color = SceneLoader::parse_vec3(j["color"]);
+            if (j.contains("transition_color")) c.transition_color = SceneLoader::parse_vec3(j["transition_color"]);
             if (j.contains("alpha")) c.alpha = j["alpha"].get<float>();
+            if (j.contains("effect_type")) c.effect_type = j["effect_type"].get<int>();
             return c;
         },
         [](const ScreenFade& c) -> nlohmann::json {
             return {
-                {"color", {c.color.x, c.color.y, c.color.z}},
-                {"alpha", c.alpha}
+                {"transition_color", {c.transition_color.x, c.transition_color.y, c.transition_color.z}},
+                {"alpha", c.alpha},
+                {"effect_type", c.effect_type}
             };
         });
 

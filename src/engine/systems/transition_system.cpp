@@ -11,8 +11,8 @@ namespace gseurat {
 
 void transition_system(ecs::World& world, ITransitionHost& host, float dt) {
     auto progress = [](const SceneTransition& st) -> float {
-        if (st.fade_duration <= 0.0f) return 1.0f;
-        return std::clamp(st.timer / st.fade_duration, 0.0f, 1.0f);
+        if (st.transition_duration <= 0.0f) return 1.0f;
+        return std::clamp(st.timer / st.transition_duration, 0.0f, 1.0f);
     };
 
     // Collected during iteration, processed AFTER view.each returns.
@@ -31,14 +31,14 @@ void transition_system(ecs::World& world, ITransitionHost& host, float dt) {
             st.timer += dt;
 
             switch (st.current_state) {
-                case SceneTransition::State::FadeOut: {
+                case SceneTransition::State::SceneOut: {
                     const float t = progress(st);
                     fade.alpha = t;
                     if (t >= 1.0f) {
                         st.current_state = SceneTransition::State::Loading;
                         st.timer = 0.0f;
                         fade.alpha = 1.0f;
-                        std::fprintf(stderr, "[SceneTransition] FadeOut -> Loading (target='%s')\n",
+                        std::fprintf(stderr, "[SceneTransition] SceneOut -> Loading (target='%s')\n",
                                      st.target_scene.c_str());
                     }
                     break;
@@ -50,19 +50,19 @@ void transition_system(ecs::World& world, ITransitionHost& host, float dt) {
                         to_dispatch.push_back({st.target_scene, st.target_position});
                         st.load_dispatched = true;
                     } else {
-                        st.current_state = SceneTransition::State::FadeIn;
+                        st.current_state = SceneTransition::State::SceneIn;
                         st.timer = 0.0f;
                     }
                     break;
                 }
 
-                case SceneTransition::State::FadeIn: {
+                case SceneTransition::State::SceneIn: {
                     const float t = progress(st);
                     fade.alpha = 1.0f - t;
                     if (t >= 1.0f) {
                         fade.alpha = 0.0f;
                         to_destroy.push_back(e);
-                        std::fprintf(stderr, "[SceneTransition] FadeIn complete -> destroying entity\n");
+                        std::fprintf(stderr, "[SceneTransition] SceneIn complete -> destroying entity\n");
                     }
                     break;
                 }

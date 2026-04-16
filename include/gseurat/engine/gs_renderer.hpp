@@ -14,6 +14,7 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
 #include <atomic>
+#include <cstdint>
 #include <memory>
 #include <thread>
 #include <vector>
@@ -54,9 +55,10 @@ struct GsPostProcessParams {
     float overlay_g = 1.0f;
     float overlay_b = 1.0f;
     float overlay_alpha = 0.0f;
+    uint32_t overlay_effect_type = 0;  // 0 = solid fade, 1 = left-to-right wipe
 };
 
-// GPU UBO layout for gs_post_process.comp (std140, 8 × vec4 = 128 bytes)
+// GPU UBO layout for gs_post_process.comp (std140, 8 × vec4 + 16 = 144 bytes)
 struct GsPostProcessUbo {
     glm::vec4 fog_params;         // density, r, g, b
     glm::vec4 exposure_vignette;  // exposure, radius, softness, bloom_intensity
@@ -66,6 +68,10 @@ struct GsPostProcessUbo {
     glm::vec4 ground_sky;         // ground_r, ground_g, ground_b, horizon_y
     glm::vec4 sky_enable;         // sky_r, sky_g, sky_b, enable (> 0.5 = on)
     glm::vec4 overlay;            // r, g, b, alpha (scene transition overlay)
+    uint32_t  overlay_effect_type; // 0 = solid fade, 1 = left-to-right wipe
+    uint32_t  _pad0;
+    uint32_t  _pad1;
+    uint32_t  _pad2;
 };
 
 // Push constants for preprocess shader (static/dynamic offset)

@@ -32,20 +32,21 @@ void portal_trigger_handler(ecs::World& world) {
     auto e = world.create();
 
     SceneTransition st;
-    st.current_state   = SceneTransition::State::FadeOut;
-    st.timer           = 0.0f;
-    st.fade_duration   = to_spawn->fade_duration;
-    st.target_scene    = to_spawn->target_scene;
-    st.target_position = to_spawn->target_position;
-    st.load_dispatched = false;
+    st.current_state       = SceneTransition::State::SceneOut;
+    st.timer               = 0.0f;
+    st.transition_duration = to_spawn->transition_duration;
+    st.target_scene        = to_spawn->target_scene;
+    st.target_position     = to_spawn->target_position;
+    st.load_dispatched     = false;
     world.add<SceneTransition>(e, st);
 
     ScreenFade fade;
-    fade.color = to_spawn->fade_color;
-    fade.alpha = 0.0f;
+    fade.transition_color = to_spawn->transition_color;
+    fade.alpha            = 0.0f;
+    fade.effect_type      = to_spawn->effect_type;
     world.add<ScreenFade>(e, fade);
 
-    // Mark the source portal as consumed so it doesn't re-fire after FadeIn completes
+    // Mark the source portal as consumed so it doesn't re-fire after SceneIn completes
     // (defensive: even if init_scene retains the portal entity, this prevents a re-spawn).
     if (auto* trig = world.try_get<ProximityTrigger>(consumed_portal_entity)) {
         trig->triggered = false;
@@ -54,10 +55,11 @@ void portal_trigger_handler(ecs::World& world) {
 
     std::fprintf(stderr,
         "[SceneTransition] spawned: target='%s' position=(%.1f, %.1f, %.1f) "
-        "fade_duration=%.2fs\n",
+        "transition_duration=%.2fs effect_type=%d\n",
         to_spawn->target_scene.c_str(),
         to_spawn->target_position.x, to_spawn->target_position.y, to_spawn->target_position.z,
-        to_spawn->fade_duration);
+        to_spawn->transition_duration,
+        to_spawn->effect_type);
 }
 
 }  // namespace gseurat

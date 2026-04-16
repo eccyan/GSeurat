@@ -8,11 +8,11 @@
 namespace gseurat {
 
 struct SceneTransition {
-    enum class State : uint8_t { FadeOut, Loading, FadeIn };
+    enum class State : uint8_t { SceneOut, Loading, SceneIn };
 
-    State       current_state   = State::FadeOut;
-    float       timer           = 0.0f;
-    float       fade_duration   = 0.5f;
+    State       current_state       = State::SceneOut;
+    float       timer               = 0.0f;
+    float       transition_duration = 0.5f;
     std::string target_scene;
     glm::vec3   target_position{0.0f};
     bool        load_dispatched = false;

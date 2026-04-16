@@ -2613,6 +2613,8 @@ void GsRenderer::render(VkCommandBuffer cmd, const glm::mat4& view, const glm::m
                                     gs_pp_params_.overlay_g,
                                     gs_pp_params_.overlay_b,
                                     gs_pp_params_.overlay_alpha);
+        pp_ubo.overlay_effect_type = gs_pp_params_.overlay_effect_type;
+        pp_ubo._pad0 = pp_ubo._pad1 = pp_ubo._pad2 = 0;
         std::memcpy(pp_ubo_buffer_.mapped(), &pp_ubo, sizeof(pp_ubo));
 
         // Transition processed image to GENERAL for compute write

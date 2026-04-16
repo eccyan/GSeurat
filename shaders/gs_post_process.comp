@@ -21,6 +21,7 @@ layout(set = 0, binding = 3) uniform PostProcessUBO {
     vec4 ground_sky;         // ground_r, ground_g, ground_b, horizon_y
     vec4 sky_enable;         // sky_r, sky_g, sky_b, enable (> 0.5 = on)
     vec4 overlay;            // r, g, b, alpha (scene transition overlay)
+    uint overlay_effect_type; // 0 = solid fade, 1 = left-to-right wipe
 };
 
 // Shared memory for tile-based effects (DoF blur, bloom)
@@ -242,7 +243,17 @@ void main() {
     // ── Final: scene-transition overlay (after all other effects) ──
     // Also bump alpha so the overlay is visible over transparent regions
     // (sky/background pixels when bg_enabled is false).
-    color = mix(color, overlay.rgb, overlay.a);
+    // normalized screen coordinates (0.0 to 1.0)
+    vec2 uv = vec2(gl_GlobalInvocationID.xy) / vec2(dimensions.y, dimensions.z);
+
+    if (overlay_effect_type == 0u) {
+        // 0: Standard Solid Fade
+        color = mix(color, overlay.rgb, overlay.a);
+    } else if (overlay_effect_type == 1u) {
+        // 1: Left-to-Right Wipe — when overlay.a goes 0→1, wipe progresses left to right.
+        float wipe = step(uv.x, overlay.a);
+        color = mix(color, overlay.rgb, wipe);
+    }
     alpha = max(alpha, overlay.a);
 
     if (valid_pixel) {
