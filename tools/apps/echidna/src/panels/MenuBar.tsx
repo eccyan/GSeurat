@@ -13,6 +13,7 @@ import { ResizeGridDialog } from './ResizeGridDialog.js';
 import { ExportDialog } from './ExportDialog.js';
 import { ImportDialog } from './ImportDialog.js';
 import type { ImportOptions } from './ImportDialog.js';
+import { ImageImportDialog } from './ImageImportDialog.js';
 import {
   saveProjectRootHandle,
 } from '@gseurat/project-root';
@@ -300,6 +301,7 @@ export function MenuBar() {
   const [showResizeDialog, setShowResizeDialog] = useState(false);
   const [showExportDialog, setShowExportDialog] = useState(false);
   const [showImportDialog, setShowImportDialog] = useState(false);
+  const [showImageImportDialog, setShowImageImportDialog] = useState(false);
   const [autoSync, setAutoSync] = useState(false);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const autoSyncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -608,6 +610,7 @@ export function MenuBar() {
       children: [
         { label: 'Import (PLY/VOX/OBJ)\u2026', action: () => setShowImportDialog(true) },
         { label: 'Import .vox\u2026', action: handleImportVox },
+        { label: 'Import Image (Depth AI)\u2026', action: () => setShowImageImportDialog(true) },
         { label: 'Load .echidna\u2026', action: handleLoad },
       ],
     },
@@ -687,6 +690,9 @@ export function MenuBar() {
           onImport={handleImport}
           onCancel={() => setShowImportDialog(false)}
         />
+      )}
+      {showImageImportDialog && (
+        <ImageImportDialog onClose={() => setShowImageImportDialog(false)} />
       )}
     </div>
   );
