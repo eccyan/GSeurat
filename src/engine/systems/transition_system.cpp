@@ -70,14 +70,13 @@ void transition_system(ecs::World& world, ITransitionHost& host, float dt) {
         });
 
     // Safe now — view iteration is complete.
-    // Note: host.clear_scene() will destroy the transient SceneTransition+ScreenFade
-    // entity (along with everything else). That's expected — the transition is now
-    // "consumed". The next frame, the per-frame ScreenFade reset in AppBase will
-    // see no entity and the overlay returns to alpha=0 automatically.
+    // Note: host.transition_scene() will destroy the transient SceneTransition+
+    // ScreenFade entity (along with everything else). That's expected — the
+    // transition is now "consumed". The next frame, the per-frame ScreenFade
+    // reset in AppBase will see no entity and the overlay returns to alpha=0
+    // automatically.
     for (const auto& d : to_dispatch) {
-        host.clear_scene();
-        host.init_scene(d.scene);
-        host.set_player_position(d.position);
+        host.transition_scene(d.scene, d.position);
     }
 
     for (auto e : to_destroy) world.destroy(e);

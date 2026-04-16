@@ -28,6 +28,15 @@ public:
     void update(AppBase& app, float dt) override;
     void build_draw_lists(AppBase& app) override;
 
+    /// Perform the demo-specific scene-transition recovery work for a portal.
+    /// Invoked by DemoApp::transition_scene via the portal_handler callback.
+    /// Includes: vkDeviceWaitIdle, world clear, scene load, collision-grid restore,
+    /// world-chunk re-merge (overworld only), camera reset, player re-creation,
+    /// character re-merge, bone-animation re-registration.
+    void perform_portal_transition(AppBase& app,
+                                   const std::string& target_scene,
+                                   const glm::vec3& target_position);
+
 private:
     void update_player(AppBase& app, float dt);
     void update_camera(AppBase& app, float dt);

@@ -199,15 +199,21 @@ void AppBase::cleanup() {
 // Virtual no-op stubs
 void AppBase::init_scene(const std::string& /*scene_path*/) {}
 
-void AppBase::set_player_position(const glm::vec3& pos) {
-    world_.view<PlayerTag, ecs::Transform>().each(
-        [&](ecs::Entity, PlayerTag&, ecs::Transform& t) {
-            t.position = coord::WorldPos(pos);
-        });
-}
 void AppBase::clear_scene() {
     world_.clear();
     bone_anim_registry_.clear();
+}
+
+// ITransitionHost default: clear, load, then move PlayerTag (if any) into place.
+// Game apps that need additional scene-recovery work should override this.
+void AppBase::transition_scene(const std::string& target_scene,
+                               const glm::vec3& target_position) {
+    clear_scene();
+    init_scene(target_scene);
+    world_.view<PlayerTag, ecs::Transform>().each(
+        [&](ecs::Entity, PlayerTag&, ecs::Transform& t) {
+            t.position = coord::WorldPos(target_position);
+        });
 }
 void AppBase::update_game(float dt) { system_scheduler_.run_all(world_, dt); }
 

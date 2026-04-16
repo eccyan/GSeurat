@@ -166,7 +166,20 @@ void DemoApp::init_scene(const std::string& scene_path) {
 }
 
 void DemoApp::clear_scene() {
-    // GS demo has no ECS entities to clear
+    // Forward to AppBase to clear the ECS world + bone registry.
+    // DemoApp itself has no additional global state to drop.
+    AppBase::clear_scene();
+}
+
+void DemoApp::transition_scene(const std::string& target_scene,
+                                const glm::vec3& target_position) {
+    if (portal_handler_) {
+        // Active GameState (IslandDemoState) owns the recovery work.
+        portal_handler_(target_scene, target_position);
+        return;
+    }
+    // No state-specific handler — generic transition.
+    AppBase::transition_scene(target_scene, target_position);
 }
 
 void DemoApp::generate_particle_atlas() {

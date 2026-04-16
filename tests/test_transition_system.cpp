@@ -20,12 +20,14 @@
 using namespace gseurat;
 
 struct FakeHost : ITransitionHost {
-    int clear_scene_calls = 0;
-    std::vector<std::string> init_scene_calls;
-    std::vector<glm::vec3>   set_player_position_calls;
-    void clear_scene() override { clear_scene_calls++; }
-    void init_scene(const std::string& p) override { init_scene_calls.push_back(p); }
-    void set_player_position(const glm::vec3& p) override { set_player_position_calls.push_back(p); }
+    struct Call {
+        std::string scene;
+        glm::vec3   position;
+    };
+    std::vector<Call> transition_calls;
+    void transition_scene(const std::string& s, const glm::vec3& p) override {
+        transition_calls.push_back({s, p});
+    }
 };
 
 static bool approx(float a, float b, float eps = 0.001f) {
@@ -99,12 +101,10 @@ int main() {
         transition_system(w, host, 0.5f);
         transition_system(w, host, 0.016f);
 
-        assert(host.init_scene_calls.size() == 1);
-        assert(host.init_scene_calls[0] == "target.json");
-        assert(host.set_player_position_calls.size() == 1);
-        assert(approx(host.set_player_position_calls[0].x, 7.0f));
-        assert(approx(host.set_player_position_calls[0].z, 3.0f));
-        assert(host.clear_scene_calls == 1 && "clear_scene also called exactly once");
+        assert(host.transition_calls.size() == 1);
+        assert(host.transition_calls[0].scene == "target.json");
+        assert(approx(host.transition_calls[0].position.x, 7.0f));
+        assert(approx(host.transition_calls[0].position.z, 3.0f));
         printf("PASS: Test 3 - Loading first tick calls host exactly once\n");
     }
 
@@ -118,7 +118,7 @@ int main() {
         transition_system(w, host, 0.016f);
         transition_system(w, host, 0.016f);
 
-        assert(host.init_scene_calls.size() == 1 && "host should NOT be re-called");
+        assert(host.transition_calls.size() == 1 && "host should NOT be re-called");
         w.view<SceneTransition>().each([&](ecs::Entity, SceneTransition& st) {
             assert(st.current_state == SceneTransition::State::FadeIn);
             assert(approx(st.timer, 0.0f));
@@ -254,8 +254,8 @@ int main() {
         transition_system(w, host, 0.016f);
         transition_system(w, host, 0.2f);
 
-        assert(host.init_scene_calls.size() == 1);
-        assert(host.init_scene_calls[0] == "final.json");
+        assert(host.transition_calls.size() == 1);
+        assert(host.transition_calls[0].scene == "final.json");
         assert(w.view<SceneTransition>().count() == 0);
         printf("PASS: Test 10 - End-to-end full cycle\n");
     }
@@ -303,23 +303,22 @@ int main() {
         printf("PASS: Test 12 - handler consumes source portal trigger\n");
     }
 
-    // ====== Test 13: Loading state calls clear_scene exactly once, before init_scene ======
+    // ====== Test 13: transition_scene called exactly once with correct args ======
     {
         ecs::World w;
         FakeHost host;
-        spawn_direct(w, "next.json", {0, 0, 0}, 0.5f);
+        spawn_direct(w, "next.json", glm::vec3(11.0f, 0.0f, 22.0f), 0.5f);
 
         transition_system(w, host, 0.5f);     // FadeOut → Loading
         transition_system(w, host, 0.016f);   // Loading first tick: dispatch
         transition_system(w, host, 0.016f);   // Loading second tick: → FadeIn
         transition_system(w, host, 0.5f);     // FadeIn complete → destroy
 
-        assert(host.clear_scene_calls == 1 && "clear_scene called exactly once");
-        assert(host.init_scene_calls.size() == 1 && "init_scene called exactly once");
-        // Order check: clear_scene_calls is incremented synchronously inside the
-        // first Loading tick, just before init_scene_calls.push_back. Since both
-        // happen inside the same lambda, sequence is guaranteed by code order.
-        printf("PASS: Test 13 - clear_scene called exactly once before init_scene\n");
+        assert(host.transition_calls.size() == 1 && "transition_scene called exactly once");
+        assert(host.transition_calls[0].scene == "next.json");
+        assert(approx(host.transition_calls[0].position.x, 11.0f));
+        assert(approx(host.transition_calls[0].position.z, 22.0f));
+        printf("PASS: Test 13 - transition_scene called exactly once with correct args\n");
     }
 
     printf("\nAll scene transition tests passed!\n");
