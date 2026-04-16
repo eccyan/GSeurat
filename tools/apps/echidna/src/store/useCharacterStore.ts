@@ -218,6 +218,7 @@ export interface CharacterStoreState {
   importVoxModels: (models: { name: string; voxels: Map<VoxelKey, Voxel> }[]) => void;
   importFromPly: (voxels: Map<VoxelKey, Voxel>, parts: BodyPart[], gridSize: number) => void;
   importFromObj: (voxels: Map<VoxelKey, Voxel>, parts: BodyPart[], gridSize: number) => void;
+  importFromImage: (voxels: Map<VoxelKey, Voxel>, parts: BodyPart[], gridWidth: number, gridDepth: number) => void;
 
   // Actions – animation
   addAnimation: (name: string) => void;
@@ -717,6 +718,30 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
         characterParts: parts,
         gridWidth: gridSize,
         gridDepth: gridSize,
+        characterPoses: {},
+        animations: {},
+      },
+      selectedPart: null,
+      selectedPose: null,
+      selectedAnimation: null,
+      undoStack: [],
+      redoStack: [],
+      boxSelection: null,
+      lassoSelection: null,
+      dirty: true,
+    });
+  },
+
+  importFromImage: (voxels, parts, gridWidth, gridDepth) => {
+    const s = get();
+    set({
+      asset: {
+        ...(s.asset ?? DEFAULT_ASSET),
+        kind: 'map',
+        voxels,
+        characterParts: parts,
+        gridWidth,
+        gridDepth,
         characterPoses: {},
         animations: {},
       },
