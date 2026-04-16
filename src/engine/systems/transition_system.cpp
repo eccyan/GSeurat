@@ -10,11 +10,20 @@ namespace gseurat {
 
 void transition_system(ecs::World& world, ITransitionHost& host, float dt) {
     auto progress = [](const SceneTransition& st) -> float {
-        if (st.fade_duration <= 0.0f) return 1.0f;  // instant fade, never NaN
+        if (st.fade_duration <= 0.0f) return 1.0f;
         return std::clamp(st.timer / st.fade_duration, 0.0f, 1.0f);
     };
 
-    std::vector<ecs::Entity> to_destroy;
+    // Collected during iteration, processed AFTER view.each returns.
+    // Necessary because host.clear_scene() destroys ECS entities and
+    // invalidates the view's archetype pointers — anything done from
+    // inside view.each that touches the world is undefined behavior.
+    struct PendingDispatch {
+        std::string scene;
+        glm::vec3   position;
+    };
+    std::vector<PendingDispatch> to_dispatch;
+    std::vector<ecs::Entity>     to_destroy;
 
     world.view<SceneTransition, ScreenFade>().each(
         [&](ecs::Entity e, SceneTransition& st, ScreenFade& fade) {
@@ -34,12 +43,8 @@ void transition_system(ecs::World& world, ITransitionHost& host, float dt) {
 
                 case SceneTransition::State::Loading: {
                     if (!st.load_dispatched) {
-                        // Clear old scene first — destination scene's init_scene
-                        // will create new ECS entities that must not collide with
-                        // the source scene's leftover state (player, triggers, etc.).
-                        host.clear_scene();
-                        host.init_scene(st.target_scene);
-                        host.set_player_position(st.target_position);
+                        // Queue dispatch; actual host calls happen below.
+                        to_dispatch.push_back({st.target_scene, st.target_position});
                         st.load_dispatched = true;
                     } else {
                         st.current_state = SceneTransition::State::FadeIn;
@@ -59,6 +64,17 @@ void transition_system(ecs::World& world, ITransitionHost& host, float dt) {
                 }
             }
         });
+
+    // Safe now — view iteration is complete.
+    // Note: host.clear_scene() will destroy the transient SceneTransition+ScreenFade
+    // entity (along with everything else). That's expected — the transition is now
+    // "consumed". The next frame, the per-frame ScreenFade reset in AppBase will
+    // see no entity and the overlay returns to alpha=0 automatically.
+    for (const auto& d : to_dispatch) {
+        host.clear_scene();
+        host.init_scene(d.scene);
+        host.set_player_position(d.position);
+    }
 
     for (auto e : to_destroy) world.destroy(e);
 }

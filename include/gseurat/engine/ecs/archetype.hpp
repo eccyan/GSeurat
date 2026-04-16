@@ -8,6 +8,7 @@
 #include <cstddef>
 #include <cstring>
 #include <functional>
+#include <new>
 #include <unordered_map>
 #include <vector>
 
@@ -20,6 +21,7 @@ struct ComponentColumn {
     size_t element_size = 0;
     std::function<void(void*)> destructor;
     std::function<void(void* dst, void* src)> move_fn;
+    std::function<void(void* dst)> default_ctor;  // placement-new T() into dst, for non-POD types
 
     void* at(size_t index) {
         return data.data() + index * element_size;
@@ -30,7 +32,14 @@ struct ComponentColumn {
     }
 
     void push_default() {
-        data.resize(data.size() + element_size, std::byte{0});
+        size_t old_size = data.size();
+        data.resize(old_size + element_size);
+        if (default_ctor) {
+            default_ctor(data.data() + old_size);
+        } else {
+            // Trivial types: zero-fill is fine
+            std::memset(data.data() + old_size, 0, element_size);
+        }
     }
 
     void push_from(const void* src) {
@@ -95,6 +104,9 @@ public:
         col.move_fn = [](void* dst, void* src) {
             *static_cast<T*>(dst) = std::move(*static_cast<T*>(src));
         };
+        col.default_ctor = [](void* dst) {
+            new (dst) T();
+        };
         columns[cid] = std::move(col);
     }
 
@@ -104,6 +116,7 @@ public:
         col.element_size = src_col.element_size;
         col.destructor = src_col.destructor;
         col.move_fn = src_col.move_fn;
+        col.default_ctor = src_col.default_ctor;
         columns[cid] = std::move(col);
     }
 

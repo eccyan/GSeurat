@@ -73815,14 +73815,14 @@
       "id": "test_portal_dungeon",
       "name": "Test Portal -> Dungeon",
       "position": [
-        190,
+        230,
         1.9663,
         197
       ],
       "scale": 1.0,
       "components": {
         "ProximityTrigger": {
-          "radius": 2.5,
+          "radius": 4.0,
           "one_shot": true
         },
         "PortalTarget": {
