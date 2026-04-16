@@ -70,7 +70,6 @@ void StagingApp::init_scene(const std::string& scene_path) {
     scene_objects_.current_scene_path = scene_path;
     auto scene_data = SceneLoader::load(scene_path);
     scene_objects_.game_objects = scene_data.game_objects;
-    scene_objects_.portals = scene_data.portals;
     load_gs_scene(scene_data);
     std::fprintf(stderr, "[Staging] Loaded scene: %s\n", scene_path.c_str());
 }

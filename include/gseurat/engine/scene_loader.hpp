@@ -118,17 +118,6 @@ struct GsAnimationData {
     std::optional<GsAnimReformConfig> reform;  // auto-reform after effect finishes
 };
 
-struct PortalData {
-    coord::GridPos position;
-    std::string region_shape{"box"};  // "box" or "sphere"
-    float region_radius{2.0f};
-    glm::vec3 region_half_extents{1.0f, 1.0f, 1.0f};
-    std::string target_scene;
-    std::string target_instance_id;
-    coord::GridPos spawn_position;
-    Direction spawn_facing = Direction::Down;
-};
-
 struct CameraZonesData {
     CameraParams default_params;
     std::vector<std::pair<std::string, CameraVolume>> volumes;  // {id, volume}
@@ -154,9 +143,6 @@ struct SceneData {
     glm::vec4 player_tint{1.0f};
     Direction player_facing = Direction::Down;
     std::string player_character_id;  // empty = use hardcoded anim setup
-
-    // Portals
-    std::vector<PortalData> portals;
 
     // Game objects (unified: replaces legacy npcs[] and objects[])
     std::vector<GameObjectData> game_objects;
