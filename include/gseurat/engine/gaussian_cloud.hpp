@@ -44,7 +44,7 @@ struct alignas(16) GpuGaussian {
 static_assert(sizeof(GpuGaussian) == 64, "GpuGaussian must be 64 bytes for GPU std430");
 static_assert(alignof(GpuGaussian) == 16, "GpuGaussian must be 16-byte aligned");
 
-/// GSVX binary file header (32 bytes).
+/// GSVX binary file header (32 bytes, little-endian).
 struct GsvxHeader {
     char     magic[4];     // "GSVX"
     uint32_t version;      // Format version (currently 1)
