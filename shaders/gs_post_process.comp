@@ -253,6 +253,21 @@ void main() {
         // 1: Left-to-Right Wipe — when overlay.a goes 0→1, wipe progresses left to right.
         float wipe = step(uv.x, overlay.a);
         color = mix(color, overlay.rgb, wipe);
+    } else if (overlay_effect_type == 2u) {
+        // 2: Iris Wipe (Circular). Aspect-corrected so the iris stays circular.
+        // When overlay.a is 0 the iris radius covers the screen corners (fully open);
+        // when overlay.a is 1 the radius is 0 (fully closed by overlay color).
+        float aspect = dimensions.y / dimensions.z;
+        vec2 center_uv = uv * 2.0 - 1.0;
+        center_uv.x *= aspect;
+
+        float dist = length(center_uv);
+        float max_radius = length(vec2(aspect, 1.0));
+        float current_radius = mix(max_radius, 0.0, overlay.a);
+
+        // Hard pixelated edge — pixels outside the iris show overlay color.
+        float iris = step(current_radius, dist);
+        color = mix(color, overlay.rgb, iris);
     }
     alpha = max(alpha, overlay.a);
 

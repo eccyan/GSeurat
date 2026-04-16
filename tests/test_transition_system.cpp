@@ -361,6 +361,29 @@ int main() {
         printf("PASS: Test 14 - effect_type propagates through portal handler\n");
     }
 
+    // ====== Test 15: effect_type = 2 (iris wipe) propagates ======
+    {
+        ecs::World w;
+
+        auto portal = w.create();
+        ProximityTrigger pt;
+        pt.triggered = true;
+        w.add<ProximityTrigger>(portal, pt);
+
+        PortalTarget pta;
+        pta.target_scene = "iris_scene.json";
+        pta.effect_type = 2;  // Iris Wipe
+        w.add<PortalTarget>(portal, pta);
+
+        portal_trigger_handler(w);
+
+        assert(w.view<ScreenFade>().count() == 1);
+        w.view<ScreenFade>().each([&](ecs::Entity, ScreenFade& f) {
+            assert(f.effect_type == 2 && "effect_type=2 should propagate from PortalTarget to ScreenFade");
+        });
+        printf("PASS: Test 15 - effect_type=2 (iris wipe) propagates through portal handler\n");
+    }
+
     printf("\nAll scene transition tests passed!\n");
     return 0;
 }
