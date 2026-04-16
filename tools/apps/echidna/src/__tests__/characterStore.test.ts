@@ -1159,17 +1159,20 @@ describe('color palettes', () => {
   it('saveProject / loadProject round-trips color_palettes', () => {
     const store = useCharacterStore.getState();
     store.newAsset('character', 32, 'Test');
-    store.addColorToPalette(0, [11, 22, 33, 255]);
+    store.addPalette('Custom');
+    store.addColorToPalette(1, [11, 22, 33, 255]);
     const file = store.saveProject();
     expect(file.color_palettes).toBeDefined();
-    expect(file.color_palettes!.length).toBe(1);
-    expect(file.color_palettes![0].colors[16]).toEqual([11, 22, 33, 255]); // first empty slot after 16 grayscale
+    expect(file.color_palettes!.length).toBe(2);           // default + custom
+    expect(file.color_palettes![1].name).toBe('Custom');
+    expect(file.color_palettes![1].colors[0]).toEqual([11, 22, 33, 255]);
 
     // Clear and reload
     useCharacterStore.setState({ asset: null });
     store.loadProject(file);
     const reloaded = useCharacterStore.getState().asset!;
-    expect(reloaded.colorPalettes[0].colors[16]).toEqual([11, 22, 33, 255]);
+    expect(reloaded.colorPalettes.length).toBe(2);
+    expect(reloaded.colorPalettes[1].colors[0]).toEqual([11, 22, 33, 255]);
   });
 
   it('openAsset resets activePaletteIndex to 0', () => {
