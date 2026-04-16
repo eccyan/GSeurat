@@ -75,7 +75,7 @@ Runtime state machine owner. Not registered in `ComponentRegistry` (never author
 
 ```cpp
 // include/gseurat/engine/ecs/components/scene_transition.hpp
-namespace gseurat::ecs {
+namespace gseurat {
 
 struct SceneTransition {
     enum class State : uint8_t { FadeOut, Loading, FadeIn };
@@ -88,7 +88,7 @@ struct SceneTransition {
     bool        load_dispatched = false;     // guards exactly-once init_scene call
 };
 
-}  // namespace gseurat::ecs
+}  // namespace gseurat
 ```
 
 ### `ScreenFade`
@@ -97,14 +97,14 @@ Runtime overlay state. Not registered (never authored, never serialized — savi
 
 ```cpp
 // include/gseurat/engine/ecs/components/screen_fade.hpp
-namespace gseurat::ecs {
+namespace gseurat {
 
 struct ScreenFade {
     glm::vec3 color{1.0f};  // default white
     float     alpha{0.0f};  // 0 = transparent, 1 = fully covering
 };
 
-}  // namespace gseurat::ecs
+}  // namespace gseurat
 ```
 
 ### `PortalTarget`
@@ -113,7 +113,7 @@ Level-designer-authored in Bricklayer. Registered in `ComponentRegistry`.
 
 ```cpp
 // include/gseurat/engine/ecs/components/portal_target.hpp
-namespace gseurat::ecs {
+namespace gseurat {
 
 struct PortalTarget {
     std::string target_scene;
@@ -122,7 +122,7 @@ struct PortalTarget {
     float       fade_duration{0.5f};
 };
 
-}  // namespace gseurat::ecs
+}  // namespace gseurat
 ```
 
 ### Schemas
@@ -150,16 +150,16 @@ struct PortalTarget {
 In `AppBase::init()`, alongside existing component registrations:
 
 ```cpp
-component_registry_.register_component<ecs::PortalTarget>("PortalTarget",
+component_registry_.register_component<PortalTarget>("PortalTarget",
     [](const json& j) {
-        ecs::PortalTarget c;
+        PortalTarget c;
         if (j.contains("target_scene"))    c.target_scene    = j["target_scene"].get<std::string>();
         if (j.contains("target_position")) c.target_position = parse_vec3(j["target_position"]);
         if (j.contains("fade_color"))      c.fade_color      = parse_vec3(j["fade_color"]);
         if (j.contains("fade_duration"))   c.fade_duration   = j["fade_duration"].get<float>();
         return c;
     },
-    [](const ecs::PortalTarget& c) -> json {
+    [](const PortalTarget& c) -> json {
         return {
             {"target_scene", c.target_scene},
             {"target_position", {c.target_position.x, c.target_position.y, c.target_position.z}},
@@ -180,6 +180,10 @@ namespace gseurat {
 /// Abstract host for the transition system. AppBase implements this;
 /// tests provide a fake to avoid Vulkan dependencies.
 struct ITransitionHost {
+    /// Clear all scene state (ECS world, bone registry, etc.) before loading
+    /// a new scene. Called by transition_system on FadeOut→Loading,
+    /// immediately before init_scene().
+    virtual void clear_scene() = 0;
     virtual void init_scene(const std::string& path) = 0;
     virtual void set_player_position(const glm::vec3& pos) = 0;
     virtual ~ITransitionHost() = default;
@@ -200,38 +204,41 @@ void transition_system(ecs::World& world, ITransitionHost& host, float dt);
 void transition_system(ecs::World& world, ITransitionHost& host, float dt) {
     std::vector<ecs::Entity> to_destroy;
 
-    world.view<ecs::SceneTransition, ecs::ScreenFade>().each(
-        [&](ecs::Entity e, ecs::SceneTransition& st, ecs::ScreenFade& fade) {
+    world.view<SceneTransition, ScreenFade>().each(
+        [&](ecs::Entity e, SceneTransition& st, ScreenFade& fade) {
             st.timer += dt;
 
             switch (st.current_state) {
-                case ecs::SceneTransition::State::FadeOut: {
+                case SceneTransition::State::FadeOut: {
                     const float t = std::clamp(st.timer / st.fade_duration, 0.0f, 1.0f);
                     fade.alpha = t;
                     if (t >= 1.0f) {
-                        st.current_state = ecs::SceneTransition::State::Loading;
+                        st.current_state = SceneTransition::State::Loading;
                         st.timer = 0.0f;
                         fade.alpha = 1.0f;
                     }
                     break;
                 }
 
-                case ecs::SceneTransition::State::Loading: {
+                case SceneTransition::State::Loading: {
                     if (!st.load_dispatched) {
                         // First Loading tick: swap synchronously under fully-opaque overlay.
+                        // Clear first so destination scene's entities don't pile on top of
+                        // the source scene's (especially the PlayerTag entity).
+                        host.clear_scene();
                         host.init_scene(st.target_scene);
                         host.set_player_position(st.target_position);
                         st.load_dispatched = true;
                         // Stay in Loading one more tick so renderer presents the new scene
                         // at least once before FadeIn starts.
                     } else {
-                        st.current_state = ecs::SceneTransition::State::FadeIn;
+                        st.current_state = SceneTransition::State::FadeIn;
                         st.timer = 0.0f;
                     }
                     break;
                 }
 
-                case ecs::SceneTransition::State::FadeIn: {
+                case SceneTransition::State::FadeIn: {
                     const float t = std::clamp(st.timer / st.fade_duration, 0.0f, 1.0f);
                     fade.alpha = 1.0f - t;
                     if (t >= 1.0f) {
@@ -253,6 +260,9 @@ void transition_system(ecs::World& world, ITransitionHost& host, float dt) {
 - **Deferred destroy** collects entity IDs and destroys after `view.each()` returns to avoid iterator invalidation.
 - **Linear interpolation** for alpha (no easing). Easing can be added later by replacing `t` with `ease(t)`.
 - **`ITransitionHost`** isolates the system from `AppBase` for testability — `AppBase` inherits this interface.
+- **`fade_duration <= 0` guard.** A `progress()` helper short-circuits to `1.0f` when `fade_duration` is non-positive, preventing NaN propagation from `timer / 0` through `std::clamp`. Effectively makes a zero-duration portal an instant cut. Covered by Test 11.
+- **Source-portal trigger consume.** After spawning the transient entity, `portal_trigger_handler` resets the source `ProximityTrigger` (`triggered = false; was_triggered = true`). Combined with `host.clear_scene()` removing the portal entity entirely on the Loading tick, this is belt-and-suspenders: even if a host's `clear_scene` somehow doesn't drop the portal, the trigger won't re-fire because the transient `ScreenFade` blocks the handler's concurrency invariant during the transition, and the consumed flag prevents re-fire after FadeIn destroys the transient. Covered by Test 12.
+- **`host.clear_scene()` called before `host.init_scene()`** in the Loading dispatch. Without it, the destination scene's entities pile on top of the source's — including a duplicated `PlayerTag` that breaks `proximity_trigger_system`. Covered by Test 13.
 
 ## Portal Trigger Hookup
 
@@ -277,13 +287,13 @@ void portal_trigger_handler(ecs::World& world);
 void portal_trigger_handler(ecs::World& world) {
     // Concurrency invariant: skip if a transition is already running.
     bool transition_in_flight = false;
-    world.view<ecs::ScreenFade>().each(
-        [&](ecs::Entity, ecs::ScreenFade&) { transition_in_flight = true; });
+    world.view<ScreenFade>().each(
+        [&](ecs::Entity, ScreenFade&) { transition_in_flight = true; });
     if (transition_in_flight) return;
 
-    std::optional<ecs::PortalTarget> to_spawn;
-    world.view<ecs::ProximityTrigger, ecs::PortalTarget>().each(
-        [&](ecs::Entity, ecs::ProximityTrigger& trig, ecs::PortalTarget& portal) {
+    std::optional<PortalTarget> to_spawn;
+    world.view<ProximityTrigger, PortalTarget>().each(
+        [&](ecs::Entity, ProximityTrigger& trig, PortalTarget& portal) {
             if (to_spawn.has_value()) return;
             if (!trig.triggered) return;
             if (portal.target_scene.empty()) return;   // misconfigured, silently skip
@@ -293,15 +303,15 @@ void portal_trigger_handler(ecs::World& world) {
     if (!to_spawn.has_value()) return;
 
     auto e = world.create();
-    world.add<ecs::SceneTransition>(e, ecs::SceneTransition{
-        .current_state   = ecs::SceneTransition::State::FadeOut,
+    world.add<SceneTransition>(e, SceneTransition{
+        .current_state   = SceneTransition::State::FadeOut,
         .timer           = 0.0f,
         .fade_duration   = to_spawn->fade_duration,
         .target_scene    = to_spawn->target_scene,
         .target_position = to_spawn->target_position,
         .load_dispatched = false,
     });
-    world.add<ecs::ScreenFade>(e, ecs::ScreenFade{
+    world.add<ScreenFade>(e, ScreenFade{
         .color = to_spawn->fade_color,
         .alpha = 0.0f,
     });
@@ -386,8 +396,8 @@ pp.fade_amount = /* existing */;
 // ... other existing fields ...
 
 // Consume ScreenFade if one exists. The concurrency invariant guarantees at most one.
-world_.view<ecs::ScreenFade>().each(
-    [&](ecs::Entity, ecs::ScreenFade& fade) {
+world_.view<ScreenFade>().each(
+    [&](ecs::Entity, ScreenFade& fade) {
         pp.overlay_color = fade.color;
         pp.overlay_alpha = fade.alpha;
     });

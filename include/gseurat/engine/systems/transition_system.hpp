@@ -19,8 +19,9 @@ struct ITransitionHost {
     virtual ~ITransitionHost() = default;
 };
 
-/// Advances any SceneTransition entities in the world by dt.
-/// On FadeOut->Loading, invokes host.init_scene() then host.set_player_position().
+/// Advances any entities with both SceneTransition and ScreenFade by dt.
+/// On the first Loading tick (right after FadeOut completes), invokes
+/// host.clear_scene(), then host.init_scene(), then host.set_player_position().
 /// Destroys the transient entity when FadeIn completes.
 void transition_system(ecs::World& world, ITransitionHost& host, float dt);
 
