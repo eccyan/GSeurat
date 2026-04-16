@@ -72,17 +72,6 @@ export interface GameObjectData {
   pbd?: PbdConfig;
 }
 
-export interface PortalData {
-  id: string;
-  position: [number, number, number];
-  region_shape: 'box' | 'sphere';
-  region_radius: number;
-  region_half_extents: [number, number, number];
-  target_instance_id?: string;
-  spawn_position: [number, number, number];
-  spawn_facing: string;
-}
-
 export interface InstanceData {
   id: string;
   display_name: string;
@@ -421,14 +410,14 @@ export type NavigationNode =
   | { kind: 'terrain'; terrainId: string }
   | { kind: 'collision'; terrainId: string }
   | { kind: 'scene' }
-  | { kind: 'scene_category'; category: 'objects' | 'lights' | 'npcs' | 'portals' }
+  | { kind: 'scene_category'; category: 'objects' | 'lights' | 'npcs' }
   | { kind: 'scene_item'; entityType: string; entityId: string }
   | { kind: 'player' }
   | { kind: 'settings' }
   | { kind: 'settings_category'; category: SettingsCategory }
   | { kind: 'world' }
-  | { kind: 'world_category'; category: 'chunks' | 'streaming_volumes' | 'portals' }
-  | { kind: 'world_item'; entityType: 'chunk' | 'streaming_volume' | 'world_portal'; entityId: string };
+  | { kind: 'world_category'; category: 'chunks' | 'streaming_volumes' }
+  | { kind: 'world_item'; entityType: 'chunk' | 'streaming_volume'; entityId: string };
 
 // ── Color palettes ──
 
@@ -463,7 +452,6 @@ export interface BricklayerFile {
     gameObjects?: GameObjectData[];
     npcs?: unknown[];         // legacy migration support
     placedObjects?: unknown[]; // legacy migration support
-    portals: PortalData[];
     player: PlayerData;
     backgroundLayers: BackgroundLayer[];
     torchEmitter: EmitterConfig;

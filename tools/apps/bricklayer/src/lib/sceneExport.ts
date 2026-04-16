@@ -209,18 +209,6 @@ export function exportSceneJson(
     });
   }
 
-  if (state.portals.length > 0) {
-    scene.portals = state.portals.map((p) => ({
-      position: p.position,
-      region_shape: p.region_shape,
-      region_radius: p.region_radius,
-      region_half_extents: p.region_half_extents,
-      ...(p.target_instance_id ? { target_instance_id: p.target_instance_id } : {}),
-      spawn_position: p.spawn_position,
-      spawn_facing: p.spawn_facing,
-    }));
-  }
-
   if (state.instances.length > 0) {
     scene.instances = state.instances.map((i) => ({
       id: i.id,

@@ -9,7 +9,7 @@
 
 // ── Types (inlined to avoid React/Three.js imports) ──
 
-type EntityType = 'object' | 'light' | 'npc' | 'portal' | 'player';
+type EntityType = 'object' | 'light' | 'npc' | 'player';
 
 interface SelectedEntity {
   type: EntityType;
@@ -32,11 +32,6 @@ interface NpcData {
   position: [number, number, number];
 }
 
-interface PortalData {
-  id: string;
-  position: [number, number]; // [x, z]
-}
-
 interface PlayerData {
   position: [number, number, number];
 }
@@ -53,7 +48,6 @@ interface GrabState {
   placedObjects: PlacedObject[];
   staticLights: StaticLight[];
   npcs: NpcData[];
-  portals: PortalData[];
   player: PlayerData;
   orbitLocked: boolean;
 }
@@ -73,9 +67,6 @@ function createInitialState(): GrabState {
     ],
     npcs: [
       { id: 'npc1', position: [50, 2, 60] },
-    ],
-    portals: [
-      { id: 'portal1', position: [70, 80] },
     ],
     player: { position: [0, 1, 0] },
     orbitLocked: false,
@@ -103,9 +94,6 @@ function enterGrab(state: GrabState): GrabState | null {
   } else if (sel.type === 'npc') {
     const npc = state.npcs.find((n) => n.id === sel.id);
     if (npc) pos = [...npc.position];
-  } else if (sel.type === 'portal') {
-    const portal = state.portals.find((p) => p.id === sel.id);
-    if (portal) pos = [portal.position[0], 0, portal.position[1]];
   } else if (sel.type === 'player') {
     pos = [...state.player.position];
   }
@@ -140,14 +128,6 @@ function updateGrabbedEntity(state: GrabState, x: number, y: number, z: number):
       ...state,
       npcs: state.npcs.map((n) =>
         n.id === sel.id ? { ...n, position: [x, y, z] as [number, number, number] } : n,
-      ),
-    };
-  }
-  if (sel.type === 'portal') {
-    return {
-      ...state,
-      portals: state.portals.map((p) =>
-        p.id === sel.id ? { ...p, position: [x, z] as [number, number] } : p,
       ),
     };
   }
@@ -200,9 +180,6 @@ function grabMoveY(state: GrabState, deltaPixels: number): GrabState {
   } else if (sel.type === 'npc') {
     const npc = state.npcs.find((n) => n.id === sel.id);
     if (npc) { cx = npc.position[0]; cz = npc.position[2]; }
-  } else if (sel.type === 'portal') {
-    const portal = state.portals.find((p) => p.id === sel.id);
-    if (portal) { cx = portal.position[0]; cz = portal.position[1]; }
   } else if (sel.type === 'player') {
     cx = state.player.position[0]; cz = state.player.position[2];
   }
@@ -549,18 +526,6 @@ console.log('\n--- 5. Different entity types ---\n');
     { type: 'confirm' },
   ]);
   assertPos(state.npcs[0].position, [10, 2, 20], 'NPC moved, Y preserved');
-}
-
-{
-  console.log('Test 5.6: Grab portal (Y always 0)');
-  const state = applyEvents(createInitialState(), [
-    { type: 'select', entity: { type: 'portal', id: 'portal1' } },
-    { type: 'press_g' },
-    { type: 'move_xz', x: 5, z: 10 },
-    { type: 'confirm' },
-  ]);
-  assert(state.portals[0].position[0] === 5, `portal X (got ${state.portals[0].position[0]})`);
-  assert(state.portals[0].position[1] === 10, `portal Z (got ${state.portals[0].position[1]})`);
 }
 
 {

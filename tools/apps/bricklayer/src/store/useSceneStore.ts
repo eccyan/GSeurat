@@ -6,7 +6,6 @@ import type {
   Voxel,
   VoxelKey,
   StaticLight,
-  PortalData,
   InstanceData,
   GameObjectData,
   ComponentSchema,
@@ -236,7 +235,6 @@ export interface SceneStoreState {
   staticLights: StaticLight[];
   gameObjects: GameObjectData[];
   componentSchemas: ComponentSchema[];
-  portals: PortalData[];
   instances: InstanceData[];
   gsParticleEmitters: GsParticleEmitterData[];
   gsAnimations: GsAnimationGroupData[];
@@ -309,9 +307,6 @@ export interface SceneStoreState {
   updateGameObject: (id: string, patch: Partial<GameObjectData>) => void;
   removeGameObject: (id: string) => void;
   loadComponentSchemas: (schemas: ComponentSchema[]) => void;
-  addPortal: (position?: [number, number, number]) => void;
-  updatePortal: (id: string, patch: Partial<PortalData>) => void;
-  removePortal: (id: string) => void;
   addInstance: () => void;
   updateInstance: (id: string, patch: Partial<InstanceData>) => void;
   removeInstance: (id: string) => void;
@@ -514,7 +509,6 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
   staticLights: [],
   gameObjects: [] as GameObjectData[],
   componentSchemas: [] as ComponentSchema[],
-  portals: [],
   instances: [],
   gsParticleEmitters: [],
   gsAnimations: [],
@@ -731,25 +725,6 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
     isDirty: true,
   }),
   loadComponentSchemas: (schemas) => set({ componentSchemas: schemas }),
-
-  addPortal: (pos?) => {
-    const portal: PortalData = {
-      id: genId('portal'),
-      position: pos ?? [0, 0, 0],
-      region_shape: 'box',
-      region_radius: 2,
-      region_half_extents: [1, 1, 1],
-      spawn_position: [0, 0, 0],
-      spawn_facing: 'down',
-    };
-    set({ portals: [...get().portals, portal], isDirty: true });
-  },
-  updatePortal: (id, patch) => set({
-    portals: get().portals.map((p) => (p.id === id ? { ...p, ...patch } : p)), isDirty: true,
-  }),
-  removePortal: (id) => set({
-    portals: get().portals.filter((p) => p.id !== id), isDirty: true,
-  }),
 
   addInstance: () => {
     const inst: InstanceData = {
@@ -1248,7 +1223,6 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
     staticLights: [],
     gameObjects: [],
     componentSchemas: BUILTIN_SCHEMAS,
-    portals: [],
     gsParticleEmitters: [],
     vfxInstances: [],
     player: defaultPlayer(),
@@ -1358,7 +1332,6 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
         godRaysIntensity: s.godRaysIntensity,
         staticLights: s.staticLights,
         gameObjects: s.gameObjects.length > 0 ? s.gameObjects : undefined,
-        portals: s.portals,
         instances: s.instances.length > 0 ? s.instances : undefined,
         player: s.player,
         backgroundLayers: s.backgroundLayers,
@@ -1400,25 +1373,6 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
       // Already vec3 — strip height if present
       const { height: _, ...rest } = raw;
       return rest as StaticLight;
-    });
-    const migratedPortals: PortalData[] = data.scene.portals.map((p: any) => {
-      const pos = p.position as unknown as number[];
-      const migrated = pos.length === 2
-        ? { ...p, position: [pos[0], 0, pos[1]] as [number, number, number] }
-        : { ...p };
-      // Back-compat: convert legacy size to region fields
-      if (migrated.size && !migrated.region_shape) {
-        migrated.region_shape = 'box' as const;
-        migrated.region_radius = 2;
-        migrated.region_half_extents = [migrated.size[0] * 0.5, 1, migrated.size[1] * 0.5] as [number, number, number];
-        delete migrated.size;
-        delete migrated.target_scene;
-      }
-      // Ensure new fields have defaults
-      if (!migrated.region_shape) migrated.region_shape = 'box';
-      if (migrated.region_radius == null) migrated.region_radius = 2;
-      if (!migrated.region_half_extents) migrated.region_half_extents = [1, 1, 1];
-      return migrated as PortalData;
     });
     set({
       voxels,
@@ -1470,7 +1424,6 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
         }
         return gameObjects;
       })(),
-      portals: migratedPortals,
       instances: data.scene.instances ?? [],
       gsParticleEmitters: data.scene.gsParticleEmitters ?? [],
       gsAnimations: data.scene.gsAnimations ?? [],

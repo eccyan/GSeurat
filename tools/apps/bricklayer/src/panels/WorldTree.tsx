@@ -83,8 +83,6 @@ export function WorldTree() {
   const removeChunk = useWorldStore((s) => s.removeChunk);
   const addStreamingVolume = useWorldStore((s) => s.addStreamingVolume);
   const removeStreamingVolume = useWorldStore((s) => s.removeStreamingVolume);
-  const addPortal = useWorldStore((s) => s.addPortal);
-  const removePortal = useWorldStore((s) => s.removePortal);
 
   const handleAddChunk = () => {
     // Find next available slot iterating x then z at y=0
@@ -175,42 +173,6 @@ export function WorldTree() {
         })}
         {manifest.streaming_volumes.length === 0 && (
           <div style={{ color: '#555', padding: '4px 8px', fontSize: 11 }}>No streaming volumes</div>
-        )}
-      </div>
-
-      {/* Global Portals */}
-      <div style={styles.section}>
-        <div style={styles.sectionHeader}>
-          <span style={styles.sectionTitle}>
-            <span>◎</span>
-            <span>Global Portals</span>
-          </span>
-          <button style={styles.addBtn} onClick={addPortal} title="Add portal">+</button>
-        </div>
-        {manifest.portals.map((portal) => {
-          const isSelected = selectedEntity?.type === 'world_portal' && selectedEntity.id === portal.id;
-          return (
-            <div
-              key={portal.id}
-              style={{
-                ...styles.item,
-                ...(isSelected ? styles.itemSelected : styles.itemDefault),
-              }}
-              onClick={() => setSelectedEntity({ type: 'world_portal', id: portal.id })}
-            >
-              <span style={styles.itemLabel}>{portal.id}</span>
-              <button
-                style={styles.removeBtn}
-                onClick={(e) => { e.stopPropagation(); removePortal(portal.id); }}
-                title="Remove portal"
-              >
-                ×
-              </button>
-            </div>
-          );
-        })}
-        {manifest.portals.length === 0 && (
-          <div style={{ color: '#555', padding: '4px 8px', fontSize: 11 }}>No global portals</div>
         )}
       </div>
     </div>

@@ -24,7 +24,6 @@ const icons: Record<string, string> = {
   objects: '\u25A3',     // ▣
   lights: '\u2600',      // ☀
   npcs: '\u263A',        // ☺
-  portals: '\u29C9',     // ⧉
   emitters: '\u2728',     // ✨
   animations: '\u21BB',   // ↻
   player: '\u2666',      // ♦
@@ -146,6 +145,9 @@ function nodesEqual(a: NavigationNode | null, b: NavigationNode): boolean {
     case 'player': return b.kind === 'player';
     case 'settings': return b.kind === 'settings';
     case 'settings_category': return b.kind === 'settings_category' && a.category === b.category;
+    case 'world': return b.kind === 'world';
+    case 'world_category': return b.kind === 'world_category' && a.category === b.category;
+    case 'world_item': return b.kind === 'world_item' && a.entityType === b.entityType && a.entityId === b.entityId;
   }
 }
 
@@ -169,15 +171,12 @@ export function ProjectTree() {
   const addGameObject = useSceneStore((st) => st.addGameObject);
   const removeGameObject = useSceneStore((st) => st.removeGameObject);
   const staticLights = useSceneStore((st) => st.staticLights);
-  const portals = useSceneStore((st) => st.portals);
   const instances = useSceneStore((st) => st.instances);
   const addInstance = useSceneStore((st) => st.addInstance);
   const removeInstance = useSceneStore((st) => st.removeInstance);
   const addLight = useSceneStore((st) => st.addLight);
-  const addPortal = useSceneStore((st) => st.addPortal);
   const gsParticleEmitters = useSceneStore((st) => st.gsParticleEmitters);
   const removeLight = useSceneStore((st) => st.removeLight);
-  const removePortal = useSceneStore((st) => st.removePortal);
   const gsAnimations = useSceneStore((st) => st.gsAnimations);
   const addGsEmitter = useSceneStore((st) => st.addGsEmitter);
   const updateGsEmitter = useSceneStore((st) => st.updateGsEmitter);
@@ -204,7 +203,6 @@ export function ProjectTree() {
   const [sceneOpen, setSceneOpen] = useState(true);
   const [gameObjOpen, setGameObjOpen] = useState(true);
   const [lightOpen, setLightOpen] = useState(true);
-  const [portalOpen, setPortalOpen] = useState(true);
   const [instanceOpen, setInstanceOpen] = useState(true);
   const [emitterOpen, setEmitterOpen] = useState(true);
   const [animOpen, setAnimOpen] = useState(true);
@@ -332,27 +330,6 @@ export function ProjectTree() {
                 isActive={isActive({ kind: 'scene_item', entityType: 'light', entityId: l.id })}
                 onClick={() => click({ kind: 'scene_item', entityType: 'light', entityId: l.id })}
                 actions={removeBtn(() => removeLight(l.id))}
-              />
-            ))}
-          </TreeNode>
-
-          {/* Portals */}
-          <TreeNode
-            icon={icons.portals} label="Portals" count={portals.length}
-            arrow={portalOpen ? '\u25BE' : '\u25B8'}
-            isActive={isActive({ kind: 'scene_category', category: 'portals' })}
-            onClick={() => { setPortalOpen(!portalOpen); click({ kind: 'scene_category', category: 'portals' }); }}
-            actions={addBtn(() => addPortal(getCameraTarget().xyz))}
-            isOpen={portalOpen}
-          >
-            {portals.map((p, i) => (
-              <TreeNode
-                key={p.id}
-                icon={icons.portals}
-                label={p.target_instance_id || `Portal ${i + 1}`}
-                isActive={isActive({ kind: 'scene_item', entityType: 'portal', entityId: p.id })}
-                onClick={() => click({ kind: 'scene_item', entityType: 'portal', entityId: p.id })}
-                actions={removeBtn(() => removePortal(p.id))}
               />
             ))}
           </TreeNode>

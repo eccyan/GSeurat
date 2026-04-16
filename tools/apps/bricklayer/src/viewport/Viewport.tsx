@@ -8,7 +8,6 @@ import { GroundPlane } from './GroundPlane.js';
 import { GhostVoxel } from './GhostVoxel.js';
 import { LightGizmos } from './LightGizmos.js';
 import { GameObjectMarkers } from './GameObjectMarkers.js';
-import { PortalMarkers } from './PortalMarkers.js';
 import { GsEmitterMarkers } from './GsEmitterMarkers.js';
 import { GsEmitterParticles } from './GsEmitterParticles.js';
 import { GsAnimationMarkers } from './GsAnimationMarkers.js';
@@ -105,7 +104,6 @@ function getGrabbedEntityY(): number {
     const vfx = store.vfxInstances.find((v) => v.id === sel.id);
     return vfx?.position[1] ?? 0;
   }
-  // portal: always Y=0
   return 0;
 }
 
@@ -121,8 +119,6 @@ function updateGrabbedEntity(x: number, y: number, z: number) {
     store.updateGameObject(sel.id, { position: [x, y, z] });
   } else if (sel.type === 'light') {
     store.updateLight(sel.id, { position: [x, y, z] });
-  } else if (sel.type === 'portal') {
-    store.updatePortal(sel.id, { position: [x, y, z] });
   } else if (sel.type === 'gs_emitter') {
     store.updateGsEmitter(sel.id, { position: [x, y, z] });
   } else if (sel.type === 'gs_animation') {
@@ -301,7 +297,6 @@ function SceneContent() {
       <GhostVoxel />
       <LightGizmos />
       <GameObjectMarkers />
-      <PortalMarkers />
       <GsEmitterMarkers />
       <GsEmitterParticles />
       <GsAnimationMarkers />
