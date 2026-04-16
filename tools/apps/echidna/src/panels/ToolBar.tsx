@@ -20,14 +20,10 @@ const utilTools: { id: ToolType; label: string; key: string; icon: string }[] = 
 
 const styles: Record<string, React.CSSProperties> = {
   container: {
-    width: 180,
-    background: '#1e1e3a',
-    borderRight: '1px solid #333',
     padding: 12,
     display: 'flex',
     flexDirection: 'column',
     gap: 12,
-    overflowY: 'auto',
   },
   section: { display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 4 },
   label: { fontSize: 11, color: '#888', textTransform: 'uppercase' as const, letterSpacing: 1, marginBottom: 2 },
