@@ -54,9 +54,18 @@ struct GsvxHeader {
 };
 static_assert(sizeof(GsvxHeader) == 32, "GsvxHeader must be 32 bytes");
 
+/// Pre-baked GPU-ready Gaussian data loaded from a .gsvx file.
+struct GsvxPayload {
+    std::vector<GpuGaussian> gpu_gaussians;
+    AABB bounds;
+    uint32_t count = 0;
+};
+
 class GaussianCloud {
 public:
     static GaussianCloud load_ply(const std::string& path);
+    /// Load a pre-baked .gsvx binary file (zero-copy GPU format).
+    static GsvxPayload load_gsvx(const std::string& path);
     static GaussianCloud from_gaussians(std::vector<Gaussian> gaussians);
 
     // Write Gaussians to a binary little-endian PLY file.
