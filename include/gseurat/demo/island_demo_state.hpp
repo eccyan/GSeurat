@@ -28,6 +28,20 @@ public:
     void update(AppBase& app, float dt) override;
     void build_draw_lists(AppBase& app) override;
 
+    /// Perform the demo-specific scene-transition recovery work for a portal.
+    /// Invoked by DemoApp::transition_scene via the portal_handler callback.
+    /// Includes: vkDeviceWaitIdle, world clear, scene load, collision-grid restore,
+    /// world-chunk re-merge (overworld only), camera reset, player re-creation,
+    /// character re-merge, bone-animation re-registration, portal entity re-spawn.
+    void perform_portal_transition(AppBase& app,
+                                   const std::string& target_scene,
+                                   const glm::vec3& target_position);
+
+    /// Spawn ECS Game Object entities for every portal in the world.json manifest.
+    /// Called from on_enter (initial) and from perform_portal_transition (after
+    /// world.clear() wipes the previous portal entities).
+    void spawn_world_portal_entities(AppBase& app);
+
 private:
     void update_player(AppBase& app, float dt);
     void update_camera(AppBase& app, float dt);

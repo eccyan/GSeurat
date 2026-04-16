@@ -3,7 +3,7 @@
 // Validates:
 // 1. GsPostProcessParams default values match PostProcessParams
 // 2. Parameter forwarding round-trip
-// 3. GsPostProcessUbo packing matches std140 layout (7 × vec4 = 112 bytes)
+// 3. GsPostProcessUbo packing matches std140 layout (8 × vec4 = 128 bytes)
 // 4. Feature flag interaction (disabled effects → zero values)
 //
 // Run: ctest -R test_gs_post_process
@@ -143,8 +143,8 @@ static void test_parameter_forwarding() {
 static void test_ubo_packing() {
     std::printf("=== UBO packing (std140 layout) ===\n");
 
-    // UBO must be exactly 7 × vec4 = 112 bytes
-    check(sizeof(gseurat::GsPostProcessUbo) == 112, "UBO size is 112 bytes");
+    // UBO must be exactly 8 × vec4 = 128 bytes (adds overlay vec4 for scene transitions)
+    check(sizeof(gseurat::GsPostProcessUbo) == 128, "UBO size is 128 bytes");
 
     // Verify field offsets match std140 vec4 alignment
     check(offsetof(gseurat::GsPostProcessUbo, fog_params) == 0, "fog_params at offset 0");
@@ -228,9 +228,9 @@ static void test_dof_max_blur_default() {
 static void test_background_ubo_packing() {
     std::printf("\n== test_background_ubo_packing ==\n");
 
-    // UBO should be 7 × vec4 = 112 bytes (was 5 × vec4 = 80)
-    check(sizeof(gseurat::GsPostProcessUbo) == 112,
-          "GsPostProcessUbo is 112 bytes (7 x vec4)");
+    // UBO should be 8 × vec4 = 128 bytes (adds overlay vec4 for scene transitions)
+    check(sizeof(gseurat::GsPostProcessUbo) == 128,
+          "GsPostProcessUbo is 128 bytes (8 x vec4)");
 
     // Check that background fields pack correctly
     gseurat::GsPostProcessUbo ubo{};

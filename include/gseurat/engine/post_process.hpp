@@ -34,6 +34,12 @@ struct PostProcessParams {
     float flash_r = 0.0f;
     float flash_g = 0.0f;
     float flash_b = 0.0f;
+    // Scene-transition overlay (forwarded to GsPostProcessParams).
+    // overlay_alpha == 0 produces a no-op in the GS composite shader.
+    float overlay_r = 1.0f;
+    float overlay_g = 1.0f;
+    float overlay_b = 1.0f;
+    float overlay_alpha = 0.0f;
 };
 
 class PostProcessPipeline {

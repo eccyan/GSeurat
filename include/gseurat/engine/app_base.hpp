@@ -38,6 +38,7 @@
 #include "gseurat/engine/staging_uploader.hpp"
 #include "gseurat/engine/scene.hpp"
 #include "gseurat/engine/screen_effects.hpp"
+#include "gseurat/engine/systems/transition_system.hpp"
 #include "gseurat/engine/weather_system.hpp"
 #include "gseurat/engine/text_renderer.hpp"
 #include "gseurat/engine/types.hpp"
@@ -71,7 +72,7 @@ struct DebugMetrics {
     }
 };
 
-class AppBase {
+class AppBase : public ITransitionHost {
 public:
     virtual ~AppBase() = default;
 
@@ -113,9 +114,17 @@ public:
     virtual SaveData build_save_data() const;
     virtual void apply_save_data(const SaveData& data);
 
-    // Public methods used by states (virtual — game overrides)
+    // Public methods used by states (virtual — game overrides).
+    // init_scene/clear_scene are NOT part of ITransitionHost — they're generic
+    // scene-management hooks called by both initial loads AND state.
     virtual void init_scene(const std::string& scene_path);
     virtual void clear_scene();
+
+    // ITransitionHost: invoked atomically by transition_system on scene transitions.
+    // Default impl does clear + init_scene + move PlayerTag entity. Game apps may
+    // override to inject app-specific scene-recovery work.
+    void transition_scene(const std::string& target_scene,
+                          const glm::vec3& target_position) override;
 
     // Shared GS scene loading: PLY + placed objects + lights + emitters + animations + VFX
     void load_gs_scene(const SceneData& scene_data, const GsSceneOptions& opts = {});

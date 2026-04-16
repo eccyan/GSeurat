@@ -1,0 +1,10 @@
+{
+  "name": "ScreenFade",
+  "description": "Runtime-only full-screen overlay (color + alpha) consumed by post-process. Not authored in Bricklayer.",
+  "category": "Runtime",
+  "runtime_only": true,
+  "fields": [
+    { "name": "color", "type": "vec3",  "default": [1, 1, 1] },
+    { "name": "alpha", "type": "float", "default": 0, "min": 0, "max": 1 }
+  ]
+}

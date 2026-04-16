@@ -338,6 +338,11 @@ void Renderer::draw_scene(Scene& scene,
             gs_pp.ca_intensity = 0.0f;
             gs_pp.flash_r = gs_pp.flash_g = gs_pp.flash_b = 0.0f;
         }
+        // Scene-transition overlay (forwarded from PostProcessParams)
+        gs_pp.overlay_r = pp_params_.overlay_r;
+        gs_pp.overlay_g = pp_params_.overlay_g;
+        gs_pp.overlay_b = pp_params_.overlay_b;
+        gs_pp.overlay_alpha = pp_params_.overlay_alpha;
         // Hybrid background colors
         gs_pp.ground_color = gs_bg_ground_color_;
         gs_pp.sky_color = gs_bg_sky_color_;

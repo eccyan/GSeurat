@@ -20,6 +20,7 @@ layout(set = 0, binding = 3) uniform PostProcessUBO {
     vec4 dimensions;         // dof_max_blur, width, height, far_plane
     vec4 ground_sky;         // ground_r, ground_g, ground_b, horizon_y
     vec4 sky_enable;         // sky_r, sky_g, sky_b, enable (> 0.5 = on)
+    vec4 overlay;            // r, g, b, alpha (scene transition overlay)
 };
 
 // Shared memory for tile-based effects (DoF blur, bloom)
@@ -237,6 +238,12 @@ void main() {
         color = color + bg * (1.0 - alpha);
         alpha = 1.0;  // output is fully opaque
     }
+
+    // ── Final: scene-transition overlay (after all other effects) ──
+    // Also bump alpha so the overlay is visible over transparent regions
+    // (sky/background pixels when bg_enabled is false).
+    color = mix(color, overlay.rgb, overlay.a);
+    alpha = max(alpha, overlay.a);
 
     if (valid_pixel) {
         imageStore(output_image, ivec2(pixel), vec4(color, alpha));
