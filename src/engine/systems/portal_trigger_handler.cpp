@@ -16,12 +16,14 @@ void portal_trigger_handler(ecs::World& world) {
     if (transition_in_flight) return;
 
     std::optional<PortalTarget> to_spawn;
+    ecs::Entity consumed_portal_entity{};
     world.view<ProximityTrigger, PortalTarget>().each(
-        [&](ecs::Entity, ProximityTrigger& trig, PortalTarget& portal) {
+        [&](ecs::Entity e, ProximityTrigger& trig, PortalTarget& portal) {
             if (to_spawn.has_value()) return;
             if (!trig.triggered) return;
             if (portal.target_scene.empty()) return;
             to_spawn = portal;
+            consumed_portal_entity = e;
         });
 
     if (!to_spawn.has_value()) return;
@@ -41,6 +43,13 @@ void portal_trigger_handler(ecs::World& world) {
     fade.color = to_spawn->fade_color;
     fade.alpha = 0.0f;
     world.add<ScreenFade>(e, fade);
+
+    // Mark the source portal as consumed so it doesn't re-fire after FadeIn completes
+    // (defensive: even if init_scene retains the portal entity, this prevents a re-spawn).
+    if (auto* trig = world.try_get<ProximityTrigger>(consumed_portal_entity)) {
+        trig->triggered = false;
+        trig->was_triggered = true;
+    }
 }
 
 }  // namespace gseurat

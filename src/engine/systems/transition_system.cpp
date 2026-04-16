@@ -9,6 +9,11 @@
 namespace gseurat {
 
 void transition_system(ecs::World& world, ITransitionHost& host, float dt) {
+    auto progress = [](const SceneTransition& st) -> float {
+        if (st.fade_duration <= 0.0f) return 1.0f;  // instant fade, never NaN
+        return std::clamp(st.timer / st.fade_duration, 0.0f, 1.0f);
+    };
+
     std::vector<ecs::Entity> to_destroy;
 
     world.view<SceneTransition, ScreenFade>().each(
@@ -17,7 +22,7 @@ void transition_system(ecs::World& world, ITransitionHost& host, float dt) {
 
             switch (st.current_state) {
                 case SceneTransition::State::FadeOut: {
-                    const float t = std::clamp(st.timer / st.fade_duration, 0.0f, 1.0f);
+                    const float t = progress(st);
                     fade.alpha = t;
                     if (t >= 1.0f) {
                         st.current_state = SceneTransition::State::Loading;
@@ -40,7 +45,7 @@ void transition_system(ecs::World& world, ITransitionHost& host, float dt) {
                 }
 
                 case SceneTransition::State::FadeIn: {
-                    const float t = std::clamp(st.timer / st.fade_duration, 0.0f, 1.0f);
+                    const float t = progress(st);
                     fade.alpha = 1.0f - t;
                     if (t >= 1.0f) {
                         fade.alpha = 0.0f;

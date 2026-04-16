@@ -257,6 +257,49 @@ int main() {
         printf("PASS: Test 10 - End-to-end full cycle\n");
     }
 
+    // ====== Test 11: fade_duration=0 produces no NaN, instant fade ======
+    {
+        ecs::World w;
+        FakeHost host;
+        spawn_direct(w, "instant.json", {0, 0, 0}, 0.0f);  // zero fade duration
+
+        // First tick: should immediately advance FadeOut to Loading at alpha=1
+        transition_system(w, host, 0.016f);
+        bool checked = false;
+        w.view<SceneTransition, ScreenFade>().each(
+            [&](ecs::Entity, SceneTransition& st, ScreenFade& f) {
+                assert(!std::isnan(f.alpha) && "alpha must not be NaN with fade_duration=0");
+                assert(approx(f.alpha, 1.0f) && "instant FadeOut pins alpha at 1");
+                assert(st.current_state == SceneTransition::State::Loading);
+                checked = true;
+            });
+        assert(checked);
+        printf("PASS: Test 11 - fade_duration=0 produces no NaN\n");
+    }
+
+    // ====== Test 12: handler consumes the source portal trigger to prevent re-fire ======
+    {
+        ecs::World w;
+        auto portal = w.create();
+        ProximityTrigger pt;
+        pt.triggered = true;
+        pt.one_shot = false;  // explicitly NOT one-shot — would re-fire without the consume
+        w.add<ProximityTrigger>(portal, pt);
+
+        PortalTarget pta;
+        pta.target_scene = "next.json";
+        w.add<PortalTarget>(portal, pta);
+
+        portal_trigger_handler(w);
+
+        // Verify trigger was consumed
+        auto* trig = w.try_get<ProximityTrigger>(portal);
+        assert(trig != nullptr);
+        assert(trig->triggered == false && "handler should reset triggered");
+        assert(trig->was_triggered == true && "handler should latch was_triggered");
+        printf("PASS: Test 12 - handler consumes source portal trigger\n");
+    }
+
     printf("\nAll scene transition tests passed!\n");
     return 0;
 }
