@@ -7,6 +7,7 @@
   "conditional": {
     "ExportDialog": "when export dialog is open",
     "ImportDialog": "when import dialog is open",
+    "ImageImportDialog": "when image import dialog is open",
     "NewProjectDialog": "when new project dialog is open",
     "ResizeGridDialog": "when resize grid dialog is open"
   }
