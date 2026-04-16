@@ -37,11 +37,6 @@ public:
                                    const std::string& target_scene,
                                    const glm::vec3& target_position);
 
-    /// Spawn ECS Game Object entities for every portal in the world.json manifest.
-    /// Called from on_enter (initial) and from perform_portal_transition (after
-    /// world.clear() wipes the previous portal entities).
-    void spawn_world_portal_entities(AppBase& app);
-
 private:
     void update_player(AppBase& app, float dt);
     void update_camera(AppBase& app, float dt);

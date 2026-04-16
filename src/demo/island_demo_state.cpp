@@ -108,8 +108,8 @@ void IslandDemoState::on_enter(AppBase& app) {
             auto manifest = WorldManifest::from_json(wj);
             app.renderer().gs_renderer().load_world(manifest);
             app.scene_objects().world_manifest = manifest;
-            std::fprintf(stderr, "[IslandDemo] Loaded world.json: %zu chunks, %zu streaming volumes, %zu portals\n",
-                manifest.chunks.size(), manifest.streaming_volumes.size(), manifest.portals.size());
+            std::fprintf(stderr, "[IslandDemo] Loaded world.json: %zu chunks, %zu streaming volumes\n",
+                manifest.chunks.size(), manifest.streaming_volumes.size());
 
             // Initialize WorldStreamer
             world_streamer_ = std::make_unique<WorldStreamer>();
@@ -126,10 +126,6 @@ void IslandDemoState::on_enter(AppBase& app) {
 
             std::fprintf(stderr, "[IslandDemo] WorldStreamer initialized: load_radius=%.0f unload_radius=%.0f\n",
                 world_streamer_->load_radius(), world_streamer_->unload_radius());
-
-            // Spawn ECS portal entities for the initial scene.
-            // (perform_portal_transition will re-spawn them after future scene swaps.)
-            spawn_world_portal_entities(app);
         }
 
         // Wire the portal handler so the new transition_system can call back into
@@ -1983,51 +1979,8 @@ void IslandDemoState::perform_portal_transition(AppBase& app,
         }
     }
 
-    // Re-spawn ECS portal entities. The world.clear() above wiped the previous
-    // ones, so the destination scene would have NO exit portals without this.
-    // World.json portals are global to the manifest — both the dungeon's exit
-    // (at world coords 45,0,42) and the overworld's entry (at 203,3,175) get
-    // re-created. Spatial separation ensures only the geographically-relevant
-    // one fires for the player's current position.
-    spawn_world_portal_entities(app);
-
     std::fprintf(stderr, "[IslandDemo] Spawned at (%.1f, %.1f, %.1f)\n",
         spawn.x, spawn.y, spawn.z);
-}
-
-void IslandDemoState::spawn_world_portal_entities(AppBase& app) {
-    if (!world_streamer_) return;
-    for (const auto& portal : world_streamer_->manifest().portals) {
-        std::string target_scene;
-        for (const auto& inst : world_streamer_->manifest().instances) {
-            if (inst.id == portal.target_instance_id) {
-                target_scene = inst.scene_file;
-                break;
-            }
-        }
-        if (target_scene.empty()) {
-            std::fprintf(stderr, "[IslandDemo] Portal '%s' has no resolvable target instance '%s' — skipped\n",
-                portal.id.c_str(), portal.target_instance_id.c_str());
-            continue;
-        }
-        auto e = app.world().create();
-        app.world().add<ecs::Transform>(e,
-            {coord::WorldPos(portal.position), {1.0f, 1.0f}});
-        ProximityTrigger trig;
-        trig.radius = portal.region_radius;
-        trig.one_shot = true;
-        app.world().add<ProximityTrigger>(e, trig);
-        PortalTarget pt;
-        pt.target_scene = target_scene;
-        pt.target_position = portal.spawn_position;
-        pt.fade_color = glm::vec3(1.0f);
-        pt.fade_duration = 0.5f;
-        app.world().add<PortalTarget>(e, pt);
-        std::fprintf(stderr, "[IslandDemo] Portal '%s' -> '%s' as ECS entity at (%.1f,%.1f,%.1f) r=%.1f\n",
-            portal.id.c_str(), target_scene.c_str(),
-            portal.position.x, portal.position.y, portal.position.z,
-            portal.region_radius);
-    }
 }
 
 }  // namespace gseurat
