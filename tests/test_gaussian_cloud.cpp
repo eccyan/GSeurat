@@ -513,6 +513,78 @@ int main() {
         printf("PASS: Test 14 - GSVX missing file throws\n");
     }
 
+    // ====== Test 15: GSVX file smaller than header throws ======
+    {
+        const std::string short_path = tmp_dir + "/test_too_short.gsvx";
+        {
+            std::ofstream out(short_path, std::ios::binary);
+            const char garbage[10] = {'G', 'S', 'V', 'X', 1, 0, 0, 0, 0, 0};
+            out.write(garbage, sizeof(garbage));
+        }
+
+        bool threw = false;
+        try {
+            GaussianCloud::load_gsvx(short_path);
+        } catch (const std::runtime_error&) {
+            threw = true;
+        }
+        assert(threw && "Should throw for GSVX file smaller than header");
+        printf("PASS: Test 15 - GSVX file smaller than header throws\n");
+    }
+
+    // ====== Test 16: GSVX non-zero flags throws ======
+    {
+        const std::string bad_path = tmp_dir + "/test_bad_flags.gsvx";
+        {
+            std::ofstream out(bad_path, std::ios::binary);
+            GsvxHeader header{};
+            std::memcpy(header.magic, "GSVX", 4);
+            header.version = 1;
+            header.count = 0;
+            header.flags = 0xDEADBEEF;  // Reserved field must be zero
+            out.write(reinterpret_cast<const char*>(&header), sizeof(header));
+        }
+
+        bool threw = false;
+        try {
+            GaussianCloud::load_gsvx(bad_path);
+        } catch (const std::runtime_error& e) {
+            threw = true;
+            assert(std::string(e.what()).find("flags") != std::string::npos &&
+                   "Error should mention flags");
+        }
+        assert(threw && "Should throw for non-zero GSVX flags");
+        printf("PASS: Test 16 - GSVX non-zero flags throws\n");
+    }
+
+    // ====== Test 17: GSVX file size / count mismatch throws ======
+    {
+        // Header claims count=10 but we write no payload → file_size=32, expected=32+10*64=672
+        const std::string mismatch_path = tmp_dir + "/test_size_mismatch.gsvx";
+        {
+            std::ofstream out(mismatch_path, std::ios::binary);
+            GsvxHeader header{};
+            std::memcpy(header.magic, "GSVX", 4);
+            header.version = 1;
+            header.count = 10;
+            header.flags = 0;
+            out.write(reinterpret_cast<const char*>(&header), sizeof(header));
+        }
+
+        bool threw = false;
+        try {
+            GaussianCloud::load_gsvx(mismatch_path);
+        } catch (const std::runtime_error& e) {
+            threw = true;
+            const std::string msg = e.what();
+            assert((msg.find("size") != std::string::npos ||
+                    msg.find("count") != std::string::npos) &&
+                   "Error should mention size or count mismatch");
+        }
+        assert(threw && "Should throw for GSVX file size / count mismatch");
+        printf("PASS: Test 17 - GSVX file size / count mismatch throws\n");
+    }
+
     // Cleanup temp files
     fs::remove_all(tmp_dir);
 
