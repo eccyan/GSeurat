@@ -2,6 +2,9 @@ import React, { useState } from 'react';
 import { Vec3Input, useComponentRegistry } from '@gseurat/ui-kit';
 import { useCharacterStore } from '../store/useCharacterStore.js';
 import type { EasingType } from '../store/types.js';
+import { YClipControl } from './controls/YClipControl.js';
+import { YLevelLock } from './controls/YLevelLock.js';
+import { DisplaySettings } from './controls/DisplaySettings.js';
 
 const easingOptions: { value: EasingType; label: string }[] = [
   { value: 'linear', label: 'Linear' },
@@ -276,6 +279,9 @@ export function AnimateRightPanel() {
   useComponentRegistry('AnimateRightPanel');
   return (
     <div style={styles.container}>
+      <YClipControl />
+      <YLevelLock />
+      <DisplaySettings />
       <BoneProperties />
       <KeyframeEditor />
     </div>
