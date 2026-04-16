@@ -3,6 +3,7 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -32,9 +33,39 @@ struct AABB {
     glm::vec3 extent() const { return max - min; }
 };
 
+/// GPU-side Gaussian struct (matches gs_preprocess.comp GpuGaussian).
+/// 4 × vec4 = 64 bytes, std430-compatible.
+struct alignas(16) GpuGaussian {
+    glm::vec4 pos_opacity;  // xyz = position, w = opacity
+    glm::vec4 scale_pad;    // xyz = scale, w = float_bits(bone_index)
+    glm::vec4 rot;          // xyzw = quaternion (x, y, z, w)
+    glm::vec4 color_pad;    // rgb = color, w = emission
+};
+static_assert(sizeof(GpuGaussian) == 64, "GpuGaussian must be 64 bytes for GPU std430");
+static_assert(alignof(GpuGaussian) == 16, "GpuGaussian must be 16-byte aligned");
+
+/// GSVX binary file header (32 bytes, little-endian).
+struct GsvxHeader {
+    char     magic[4];     // "GSVX"
+    uint32_t version;      // Format version (currently 1)
+    uint32_t count;        // Number of Gaussians in payload
+    uint32_t flags;        // Reserved (must be 0)
+    uint8_t  reserved[16]; // Padding to 32 bytes
+};
+static_assert(sizeof(GsvxHeader) == 32, "GsvxHeader must be 32 bytes");
+
+/// Pre-baked GPU-ready Gaussian data loaded from a .gsvx file.
+struct GsvxPayload {
+    std::vector<GpuGaussian> gpu_gaussians;
+    AABB bounds;
+    uint32_t count = 0;
+};
+
 class GaussianCloud {
 public:
     static GaussianCloud load_ply(const std::string& path);
+    /// Load a pre-baked .gsvx binary file (zero-copy GPU format).
+    static GsvxPayload load_gsvx(const std::string& path);
     static GaussianCloud from_gaussians(std::vector<Gaussian> gaussians);
 
     // Write Gaussians to a binary little-endian PLY file.

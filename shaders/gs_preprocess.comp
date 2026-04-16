@@ -5,7 +5,7 @@ layout(local_size_x = 256) in;
 // Input Gaussian data
 struct GpuGaussian {
     vec4 pos_opacity;    // xyz = position, w = opacity
-    vec4 scale_pad;      // xyz = scale, w = unused
+    vec4 scale_pad;      // xyz = scale, w = floatBitsToUint(bone_index)
     vec4 rot;            // xyzw = quaternion (x,y,z,w)
     vec4 color_pad;      // rgb = color, w = emission intensity
 };

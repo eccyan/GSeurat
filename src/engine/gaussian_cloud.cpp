@@ -345,4 +345,77 @@ void GaussianCloud::write_ply(const std::string& path,
     }
 }
 
+GsvxPayload GaussianCloud::load_gsvx(const std::string& path) {
+    auto resolved = resolve_asset_path(path);
+    std::ifstream file(resolved, std::ios::binary);
+    if (!file.is_open()) {
+        throw std::runtime_error("Failed to open GSVX file: " + resolved.string());
+    }
+
+    // Validate file size up front — cheap sanity check, prevents oversize allocation DoS
+    file.seekg(0, std::ios::end);
+    const auto file_size = file.tellg();
+    file.seekg(0, std::ios::beg);
+    if (file_size < static_cast<std::streamoff>(sizeof(GsvxHeader))) {
+        throw std::runtime_error("GSVX file smaller than header: " + resolved.string());
+    }
+
+    // Read and validate header
+    GsvxHeader header{};
+    file.read(reinterpret_cast<char*>(&header), sizeof(GsvxHeader));
+    if (!file) {
+        throw std::runtime_error("Failed to read GSVX header: " + resolved.string());
+    }
+
+    if (std::memcmp(header.magic, "GSVX", 4) != 0) {
+        throw std::runtime_error("Invalid GSVX magic number: " + resolved.string());
+    }
+    if (header.version != 1) {
+        throw std::runtime_error("Unsupported GSVX version " +
+                                 std::to_string(header.version) + ": " + resolved.string());
+    }
+    if (header.flags != 0) {
+        throw std::runtime_error("GSVX reserved flags must be 0, got " +
+                                 std::to_string(header.flags) + ": " + resolved.string());
+    }
+
+    // Reject files whose advertised count doesn't match on-disk size.
+    // This also caps malicious headers claiming billions of gaussians before resize().
+    const auto expected_size = static_cast<std::streamoff>(sizeof(GsvxHeader)) +
+                                static_cast<std::streamoff>(header.count) *
+                                static_cast<std::streamoff>(sizeof(GpuGaussian));
+    if (file_size != expected_size) {
+        throw std::runtime_error("GSVX file size " + std::to_string(file_size) +
+                                 " does not match header count " +
+                                 std::to_string(header.count) + " (expected " +
+                                 std::to_string(expected_size) + " bytes): " +
+                                 resolved.string());
+    }
+
+    GsvxPayload payload;
+    payload.count = header.count;
+
+    if (payload.count == 0) {
+        return payload;
+    }
+
+    // Bulk-read payload directly into vector (zero per-element parsing)
+    payload.gpu_gaussians.resize(payload.count);
+    const auto payload_bytes = static_cast<std::streamsize>(
+        static_cast<size_t>(payload.count) * sizeof(GpuGaussian));
+    file.read(reinterpret_cast<char*>(payload.gpu_gaussians.data()), payload_bytes);
+    if (!file) {
+        throw std::runtime_error("Failed to read GSVX payload (" +
+                                 std::to_string(payload.count) + " gaussians): " +
+                                 resolved.string());
+    }
+
+    // Compute AABB from pre-baked positions (trivial scan, no math)
+    for (const auto& g : payload.gpu_gaussians) {
+        payload.bounds.expand(glm::vec3(g.pos_opacity));
+    }
+
+    return payload;
+}
+
 }  // namespace gseurat
