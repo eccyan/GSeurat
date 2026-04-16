@@ -151,7 +151,6 @@ void DevOverlay::draw_menu_bar() {
             ImGui::MenuItem("Gizmo: Game Objects", nullptr, &show_gizmo_game_objects);
             ImGui::MenuItem("Gizmo: Triggers", nullptr, &show_gizmo_triggers);
             ImGui::MenuItem("Gizmo: Camera Zones", nullptr, &show_gizmo_camera_zones);
-            ImGui::MenuItem("Gizmo: Portals", nullptr, &show_gizmo_portals);
             ImGui::MenuItem("Gizmo: World", nullptr, &show_gizmo_world);
             ImGui::MenuItem("Gizmo: Collision", nullptr, &show_gizmo_collision);
             ImGui::Separator();
@@ -159,13 +158,13 @@ void DevOverlay::draw_menu_bar() {
                 for (auto& p : panels_) p.visible = true;
                 show_gizmo_lights = show_gizmo_emitters = show_gizmo_vfx = true;
                 show_gizmo_game_objects = show_gizmo_triggers = true;
-                show_gizmo_camera_zones = show_gizmo_portals = show_gizmo_world = show_gizmo_collision = true;
+                show_gizmo_camera_zones = show_gizmo_world = show_gizmo_collision = true;
             }
             if (ImGui::MenuItem("Hide All")) {
                 for (auto& p : panels_) p.visible = false;
                 show_gizmo_lights = show_gizmo_emitters = show_gizmo_vfx = false;
                 show_gizmo_game_objects = show_gizmo_triggers = false;
-                show_gizmo_camera_zones = show_gizmo_portals = show_gizmo_world = show_gizmo_collision = false;
+                show_gizmo_camera_zones = show_gizmo_world = show_gizmo_collision = false;
             }
             ImGui::EndMenu();
         }
