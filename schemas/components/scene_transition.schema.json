@@ -1,0 +1,11 @@
+{
+  "name": "SceneTransition",
+  "description": "Runtime-only state machine for scene transitions. Not authored in Bricklayer — attached at runtime by portal_trigger_handler. Listed here as reference only.",
+  "category": "Runtime",
+  "runtime_only": true,
+  "fields": [
+    { "name": "fade_duration",   "type": "float",  "default": 0.5, "min": 0 },
+    { "name": "target_scene",    "type": "string", "default": "" },
+    { "name": "target_position", "type": "vec3",   "default": [0, 0, 0] }
+  ]
+}
