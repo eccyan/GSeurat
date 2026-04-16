@@ -131,6 +131,8 @@ export interface DayNightData {
   }[];
 }
 
+export type MorphEasing = 'linear' | 'ease_in_out';
+
 export interface GaussianSplatConfig {
   camera: {
     position: [number, number, number];
@@ -148,6 +150,13 @@ export interface GaussianSplatConfig {
     distance_range: number;
     parallax_strength: number;
   };
+  // Morph Pair (optional) — empty `morphPairPly` means no pair is set and the
+  // exporter skips the `morph` block entirely. Fields exist on the config so
+  // the Zustand `setGaussianSplat` partial-update pattern continues to apply.
+  morphPairPly: string;
+  morphDuration: number;
+  morphDefaultBlend: number;
+  morphEasing: MorphEasing;
 }
 
 export interface PlayerData {

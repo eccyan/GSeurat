@@ -190,6 +190,10 @@ function defaultGaussianSplat(): GaussianSplatConfig {
       distance_range: 2,
       parallax_strength: 1,
     },
+    morphPairPly: '',
+    morphDuration: 1.5,
+    morphDefaultBlend: 0.0,
+    morphEasing: 'linear',
   };
 }
 
@@ -1500,7 +1504,9 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
       npcAuraEmitter: data.scene.npcAuraEmitter,
       weather: data.scene.weather,
       dayNight: data.scene.dayNight,
-      gaussianSplat: data.scene.gaussianSplat,
+      // Merge with defaults so older v2 files (saved before the Morph Pair
+      // fields were added) still produce a fully-populated config.
+      gaussianSplat: { ...defaultGaussianSplat(), ...data.scene.gaussianSplat },
       undoStack: [],
       redoStack: [],
     });

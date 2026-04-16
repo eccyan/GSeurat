@@ -284,15 +284,30 @@ export function exportSceneJson(
     fov: cam.fov,
   } : cam;
 
-  scene.gaussian_splat = {
+  const gs = state.gaussianSplat;
+  const gaussianSplatOut: Record<string, unknown> = {
     ply_file: terrainPly,
     camera: autoCamera,
-    render_width: state.gaussianSplat.render_width,
-    render_height: state.gaussianSplat.render_height,
-    scale_multiplier: state.gaussianSplat.scale_multiplier,
-    background_image: state.gaussianSplat.background_image,
-    parallax: state.gaussianSplat.parallax,
+    render_width: gs.render_width,
+    render_height: gs.render_height,
+    scale_multiplier: gs.scale_multiplier,
+    background_image: gs.background_image,
+    parallax: gs.parallax,
   };
+
+  // Morph pair (optional) — emitted only when pair_ply is set.
+  // Engine parses this block but does NOT load the pair PLY; the game's
+  // SceneManager consumes it. See docs/superpowers/specs/2026-04-17-sprint1-walking-skeleton-design.md §A.2.
+  if (gs.morphPairPly && gs.morphPairPly.trim().length > 0) {
+    gaussianSplatOut.morph = {
+      pair_ply: gs.morphPairPly.trim(),
+      duration: gs.morphDuration ?? 1.5,
+      default_blend: gs.morphDefaultBlend ?? 0.0,
+      easing: gs.morphEasing ?? 'linear',
+    };
+  }
+
+  scene.gaussian_splat = gaussianSplatOut;
 
   const activeEmitters = state.gsParticleEmitters.filter((e) => !e.muted);
   if (activeEmitters.length > 0) {
