@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { useCharacterStore } from '../../store/useCharacterStore.js';
 
 const styles: Record<string, React.CSSProperties> = {
@@ -12,12 +12,15 @@ export function YClipControl() {
   const setYClip = useCharacterStore((s) => s.setYClip);
   const voxels = useCharacterStore((s) => s.asset?.voxels ?? new Map());
 
-  let maxY = 0;
-  for (const [key] of voxels) {
-    const parts = key.split(',');
-    const y = Number(parts[1]);
-    if (y > maxY) maxY = y;
-  }
+  const maxY = useMemo(() => {
+    let max = 0;
+    for (const [key] of voxels) {
+      const parts = key.split(',');
+      const y = Number(parts[1]);
+      if (y > max) max = y;
+    }
+    return max;
+  }, [voxels]);
 
   const enabled = yClip !== null;
 

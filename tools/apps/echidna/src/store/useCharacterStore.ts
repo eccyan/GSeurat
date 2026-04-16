@@ -1505,6 +1505,13 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
   setOnionSkinning: (v) => set({ onionSkinning: v }),
 
   // ── Palette actions ──
+  /**
+   * Palette actions (addPalette, removePalette, addColorToPalette,
+   * addPaletteFromFile) intentionally do NOT call pushUndo. Palette edits
+   * are a separate concern from voxel-edit history — users don't expect
+   * "undo" to revert the palette they just created. setActivePalette is
+   * purely UI state and skips the dirty flag entirely.
+   */
   addPalette: (name) => {
     const s = get();
     if (!s.asset) return;

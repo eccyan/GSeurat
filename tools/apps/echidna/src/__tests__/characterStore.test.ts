@@ -1175,10 +1175,18 @@ describe('color palettes', () => {
     expect(reloaded.colorPalettes[1].colors[0]).toEqual([11, 22, 33, 255]);
   });
 
-  it('openAsset resets activePaletteIndex to 0', () => {
+  it('loadProject resets activePaletteIndex to 0', () => {
+    const store = useCharacterStore.getState();
+    store.newAsset('character', 32, 'Before');
+    store.addPalette('Custom');
+    expect(useCharacterStore.getState().activePaletteIndex).toBe(1);
+
+    // Simulate loading a different asset: build a raw v4 file with color_palettes
+    // set, then feed it through loadProject — this mirrors what openAsset does
+    // via migrateEchidnaFile + state reset.
+    const file = store.saveProject();
     useCharacterStore.setState({ activePaletteIndex: 3 });
-    // Simulate state reset that openAsset performs.
-    useCharacterStore.setState({ activePaletteIndex: 0 });
+    store.loadProject(file);
     expect(useCharacterStore.getState().activePaletteIndex).toBe(0);
   });
 });
