@@ -3,6 +3,7 @@
 #include <vk_mem_alloc.h>
 #include <vulkan/vulkan.h>
 
+#include <cstdint>
 #include <vector>
 
 #include "gseurat/engine/types.hpp"
@@ -40,6 +41,7 @@ struct PostProcessParams {
     float overlay_g = 1.0f;
     float overlay_b = 1.0f;
     float overlay_alpha = 0.0f;
+    uint32_t overlay_effect_type = 0;
 };
 
 class PostProcessPipeline {

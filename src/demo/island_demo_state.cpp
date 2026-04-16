@@ -1701,7 +1701,7 @@ void IslandDemoState::draw_gizmos(AppBase& app) {
 
 // Demo-specific scene-transition recovery work. Invoked atomically from
 // DemoApp::transition_scene (which is itself called by transition_system on
-// the FadeOut→Loading boundary, under a fully-opaque overlay).
+// the SceneOut→Loading boundary, under a fully-opaque overlay).
 //
 // Equivalent to the inline block previously at island_demo_state.cpp:695-982,
 // driven by WorldStreamer::entered_portal_id(). The new ECS scene-transition

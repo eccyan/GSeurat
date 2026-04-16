@@ -38,23 +38,23 @@ static bool approx(float a, float b, float eps = 0.001f) {
 static ecs::Entity spawn_direct(ecs::World& w, const std::string& scene, glm::vec3 pos, float dur) {
     auto e = w.create();
     SceneTransition st;
-    st.current_state   = SceneTransition::State::FadeOut;
-    st.timer           = 0.0f;
-    st.fade_duration   = dur;
-    st.target_scene    = scene;
-    st.target_position = pos;
-    st.load_dispatched = false;
+    st.current_state       = SceneTransition::State::SceneOut;
+    st.timer               = 0.0f;
+    st.transition_duration = dur;
+    st.target_scene        = scene;
+    st.target_position     = pos;
+    st.load_dispatched     = false;
     w.add<SceneTransition>(e, st);
 
     ScreenFade fade;
-    fade.color = glm::vec3(1.0f);
-    fade.alpha = 0.0f;
+    fade.transition_color = glm::vec3(1.0f);
+    fade.alpha            = 0.0f;
     w.add<ScreenFade>(e, fade);
     return e;
 }
 
 int main() {
-    // ====== Test 1: FadeOut ramp ======
+    // ====== Test 1: SceneOut ramp ======
     {
         ecs::World w;
         FakeHost host;
@@ -63,7 +63,7 @@ int main() {
         transition_system(w, host, 0.25f);
         bool checked = false;
         w.view<ScreenFade>().each([&](ecs::Entity, ScreenFade& f) {
-            assert(approx(f.alpha, 0.25f) && "alpha should be 0.25 after 0.25s of 1.0s fade");
+            assert(approx(f.alpha, 0.25f) && "alpha should be 0.25 after 0.25s of 1.0s transition");
             checked = true;
         });
         assert(checked);
@@ -72,10 +72,10 @@ int main() {
         w.view<ScreenFade>().each([&](ecs::Entity, ScreenFade& f) {
             assert(approx(f.alpha, 0.75f) && "alpha should be 0.75 after 0.75s");
         });
-        printf("PASS: Test 1 - FadeOut ramp\n");
+        printf("PASS: Test 1 - SceneOut ramp\n");
     }
 
-    // ====== Test 2: FadeOut → Loading at alpha=1 ======
+    // ====== Test 2: SceneOut → Loading at alpha=1 ======
     {
         ecs::World w;
         FakeHost host;
@@ -89,7 +89,7 @@ int main() {
                 assert(approx(st.timer, 0.0f) && "timer resets on state change");
                 assert(approx(f.alpha, 1.0f) && "alpha pinned at 1.0");
             });
-        printf("PASS: Test 2 - FadeOut completion transitions to Loading\n");
+        printf("PASS: Test 2 - SceneOut completion transitions to Loading\n");
     }
 
     // ====== Test 3: Loading first tick calls host exactly once ======
@@ -108,7 +108,7 @@ int main() {
         printf("PASS: Test 3 - Loading first tick calls host exactly once\n");
     }
 
-    // ====== Test 4: Loading second tick → FadeIn, no re-call ======
+    // ====== Test 4: Loading second tick → SceneIn, no re-call ======
     {
         ecs::World w;
         FakeHost host;
@@ -120,13 +120,13 @@ int main() {
 
         assert(host.transition_calls.size() == 1 && "host should NOT be re-called");
         w.view<SceneTransition>().each([&](ecs::Entity, SceneTransition& st) {
-            assert(st.current_state == SceneTransition::State::FadeIn);
+            assert(st.current_state == SceneTransition::State::SceneIn);
             assert(approx(st.timer, 0.0f));
         });
-        printf("PASS: Test 4 - Loading one-frame settle advances to FadeIn\n");
+        printf("PASS: Test 4 - Loading one-frame settle advances to SceneIn\n");
     }
 
-    // ====== Test 5: FadeIn ramp ======
+    // ====== Test 5: SceneIn ramp ======
     {
         ecs::World w;
         FakeHost host;
@@ -140,10 +140,10 @@ int main() {
         w.view<ScreenFade>().each([&](ecs::Entity, ScreenFade& f) {
             assert(approx(f.alpha, 0.75f));
         });
-        printf("PASS: Test 5 - FadeIn ramp\n");
+        printf("PASS: Test 5 - SceneIn ramp\n");
     }
 
-    // ====== Test 6: FadeIn completion destroys entity ======
+    // ====== Test 6: SceneIn completion destroys entity ======
     {
         ecs::World w;
         FakeHost host;
@@ -156,7 +156,7 @@ int main() {
 
         assert(w.view<SceneTransition>().count() == 0);
         assert(w.view<ScreenFade>().count() == 0);
-        printf("PASS: Test 6 - FadeIn completion destroys entity\n");
+        printf("PASS: Test 6 - SceneIn completion destroys entity\n");
     }
 
     // ====== Test 7: Portal handler spawns transient entity ======
@@ -171,8 +171,8 @@ int main() {
         PortalTarget pta;
         pta.target_scene = "dungeon.json";
         pta.target_position = glm::vec3(5, 0, 3);
-        pta.fade_color = glm::vec3(0.2f, 0.2f, 0.2f);
-        pta.fade_duration = 0.3f;
+        pta.transition_color = glm::vec3(0.2f, 0.2f, 0.2f);
+        pta.transition_duration = 0.3f;
         w.add<PortalTarget>(portal, pta);
 
         portal_trigger_handler(w);
@@ -184,8 +184,8 @@ int main() {
             [&](ecs::Entity, SceneTransition& st, ScreenFade& f) {
                 assert(st.target_scene == "dungeon.json");
                 assert(approx(st.target_position.x, 5.0f));
-                assert(approx(st.fade_duration, 0.3f));
-                assert(approx(f.color.r, 0.2f));
+                assert(approx(st.transition_duration, 0.3f));
+                assert(approx(f.transition_color.r, 0.2f));
                 assert(approx(f.alpha, 0.0f));
             });
         printf("PASS: Test 7 - Portal handler spawns transient entity\n");
@@ -243,7 +243,7 @@ int main() {
         PortalTarget pta;
         pta.target_scene = "final.json";
         pta.target_position = glm::vec3(1, 2, 3);
-        pta.fade_duration = 0.2f;
+        pta.transition_duration = 0.2f;
         w.add<PortalTarget>(portal, pta);
 
         portal_trigger_handler(w);
@@ -260,24 +260,24 @@ int main() {
         printf("PASS: Test 10 - End-to-end full cycle\n");
     }
 
-    // ====== Test 11: fade_duration=0 produces no NaN, instant fade ======
+    // ====== Test 11: transition_duration=0 produces no NaN, instant transition ======
     {
         ecs::World w;
         FakeHost host;
-        spawn_direct(w, "instant.json", {0, 0, 0}, 0.0f);  // zero fade duration
+        spawn_direct(w, "instant.json", {0, 0, 0}, 0.0f);  // zero transition duration
 
-        // First tick: should immediately advance FadeOut to Loading at alpha=1
+        // First tick: should immediately advance SceneOut to Loading at alpha=1
         transition_system(w, host, 0.016f);
         bool checked = false;
         w.view<SceneTransition, ScreenFade>().each(
             [&](ecs::Entity, SceneTransition& st, ScreenFade& f) {
-                assert(!std::isnan(f.alpha) && "alpha must not be NaN with fade_duration=0");
-                assert(approx(f.alpha, 1.0f) && "instant FadeOut pins alpha at 1");
+                assert(!std::isnan(f.alpha) && "alpha must not be NaN with transition_duration=0");
+                assert(approx(f.alpha, 1.0f) && "instant SceneOut pins alpha at 1");
                 assert(st.current_state == SceneTransition::State::Loading);
                 checked = true;
             });
         assert(checked);
-        printf("PASS: Test 11 - fade_duration=0 produces no NaN\n");
+        printf("PASS: Test 11 - transition_duration=0 produces no NaN\n");
     }
 
     // ====== Test 12: handler consumes the source portal trigger to prevent re-fire ======
@@ -309,16 +309,79 @@ int main() {
         FakeHost host;
         spawn_direct(w, "next.json", glm::vec3(11.0f, 0.0f, 22.0f), 0.5f);
 
-        transition_system(w, host, 0.5f);     // FadeOut → Loading
+        transition_system(w, host, 0.5f);     // SceneOut → Loading
         transition_system(w, host, 0.016f);   // Loading first tick: dispatch
-        transition_system(w, host, 0.016f);   // Loading second tick: → FadeIn
-        transition_system(w, host, 0.5f);     // FadeIn complete → destroy
+        transition_system(w, host, 0.016f);   // Loading second tick: → SceneIn
+        transition_system(w, host, 0.5f);     // SceneIn complete → destroy
 
         assert(host.transition_calls.size() == 1 && "transition_scene called exactly once");
         assert(host.transition_calls[0].scene == "next.json");
         assert(approx(host.transition_calls[0].position.x, 11.0f));
         assert(approx(host.transition_calls[0].position.z, 22.0f));
         printf("PASS: Test 13 - transition_scene called exactly once with correct args\n");
+    }
+
+    // ====== Test 14: effect_type propagates through portal handler ======
+    {
+        ecs::World w;
+        FakeHost host;
+
+        auto portal = w.create();
+        ProximityTrigger pt;
+        pt.triggered = true;
+        w.add<ProximityTrigger>(portal, pt);
+
+        PortalTarget pta;
+        pta.target_scene = "wipe_scene.json";
+        pta.target_position = glm::vec3(0, 0, 0);
+        pta.transition_duration = 0.5f;
+        pta.transition_color = glm::vec3(1.0f);
+        pta.effect_type = 1;  // Left-to-Right Wipe
+        w.add<PortalTarget>(portal, pta);
+
+        portal_trigger_handler(w);
+
+        // Spawned ScreenFade should carry the effect_type forward.
+        assert(w.view<ScreenFade>().count() == 1);
+        w.view<ScreenFade>().each([&](ecs::Entity, ScreenFade& f) {
+            assert(f.effect_type == 1 && "effect_type should propagate from PortalTarget to ScreenFade");
+        });
+
+        // And SceneTransition state machine still runs correctly.
+        transition_system(w, host, 0.5f);  // SceneOut → Loading
+        w.view<SceneTransition>().each([&](ecs::Entity, SceneTransition& st) {
+            assert(st.current_state == SceneTransition::State::Loading);
+        });
+        transition_system(w, host, 0.016f);  // dispatch
+        transition_system(w, host, 0.016f);  // → SceneIn
+        w.view<SceneTransition>().each([&](ecs::Entity, SceneTransition& st) {
+            assert(st.current_state == SceneTransition::State::SceneIn);
+        });
+        assert(host.transition_calls.size() == 1);
+        printf("PASS: Test 14 - effect_type propagates through portal handler\n");
+    }
+
+    // ====== Test 15: effect_type = 2 (iris wipe) propagates ======
+    {
+        ecs::World w;
+
+        auto portal = w.create();
+        ProximityTrigger pt;
+        pt.triggered = true;
+        w.add<ProximityTrigger>(portal, pt);
+
+        PortalTarget pta;
+        pta.target_scene = "iris_scene.json";
+        pta.effect_type = 2;  // Iris Wipe
+        w.add<PortalTarget>(portal, pta);
+
+        portal_trigger_handler(w);
+
+        assert(w.view<ScreenFade>().count() == 1);
+        w.view<ScreenFade>().each([&](ecs::Entity, ScreenFade& f) {
+            assert(f.effect_type == 2 && "effect_type=2 should propagate from PortalTarget to ScreenFade");
+        });
+        printf("PASS: Test 15 - effect_type=2 (iris wipe) propagates through portal handler\n");
     }
 
     printf("\nAll scene transition tests passed!\n");

@@ -12,7 +12,7 @@ namespace gseurat {
 /// tests provide a fake to avoid Vulkan dependencies.
 ///
 /// `transition_scene` is invoked atomically from `transition_system` on the
-/// FadeOut→Loading boundary, under a fully-opaque overlay. Implementations
+/// SceneOut→Loading boundary, under a fully-opaque overlay. Implementations
 /// are responsible for:
 ///   - clearing all current scene state (ECS world, bone registry, GPU resources)
 ///   - loading the new scene
@@ -29,9 +29,9 @@ struct ITransitionHost {
 };
 
 /// Advances any entities with both SceneTransition and ScreenFade by dt.
-/// On the first Loading tick (right after FadeOut completes), invokes
+/// On the first Loading tick (right after SceneOut completes), invokes
 /// host.transition_scene(target_scene, target_position).
-/// Destroys the transient entity when FadeIn completes.
+/// Destroys the transient entity when SceneIn completes.
 void transition_system(ecs::World& world, ITransitionHost& host, float dt);
 
 }  // namespace gseurat

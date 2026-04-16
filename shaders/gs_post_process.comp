@@ -21,6 +21,7 @@ layout(set = 0, binding = 3) uniform PostProcessUBO {
     vec4 ground_sky;         // ground_r, ground_g, ground_b, horizon_y
     vec4 sky_enable;         // sky_r, sky_g, sky_b, enable (> 0.5 = on)
     vec4 overlay;            // r, g, b, alpha (scene transition overlay)
+    uint overlay_effect_type; // 0 = solid fade, 1 = left-to-right wipe
 };
 
 // Shared memory for tile-based effects (DoF blur, bloom)
@@ -242,7 +243,32 @@ void main() {
     // ── Final: scene-transition overlay (after all other effects) ──
     // Also bump alpha so the overlay is visible over transparent regions
     // (sky/background pixels when bg_enabled is false).
-    color = mix(color, overlay.rgb, overlay.a);
+    // normalized screen coordinates (0.0 to 1.0)
+    vec2 uv = vec2(gl_GlobalInvocationID.xy) / vec2(dimensions.y, dimensions.z);
+
+    if (overlay_effect_type == 0u) {
+        // 0: Standard Solid Fade
+        color = mix(color, overlay.rgb, overlay.a);
+    } else if (overlay_effect_type == 1u) {
+        // 1: Left-to-Right Wipe — when overlay.a goes 0→1, wipe progresses left to right.
+        float wipe = step(uv.x, overlay.a);
+        color = mix(color, overlay.rgb, wipe);
+    } else if (overlay_effect_type == 2u) {
+        // 2: Iris Wipe (Circular). Aspect-corrected so the iris stays circular.
+        // When overlay.a is 0 the iris radius covers the screen corners (fully open);
+        // when overlay.a is 1 the radius is 0 (fully closed by overlay color).
+        float aspect = dimensions.y / dimensions.z;
+        vec2 center_uv = uv * 2.0 - 1.0;
+        center_uv.x *= aspect;
+
+        float dist = length(center_uv);
+        float max_radius = length(vec2(aspect, 1.0));
+        float current_radius = mix(max_radius, 0.0, overlay.a);
+
+        // Hard pixelated edge — pixels outside the iris show overlay color.
+        float iris = step(current_radius, dist);
+        color = mix(color, overlay.rgb, iris);
+    }
     alpha = max(alpha, overlay.a);
 
     if (valid_pixel) {

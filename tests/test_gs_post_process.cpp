@@ -3,7 +3,7 @@
 // Validates:
 // 1. GsPostProcessParams default values match PostProcessParams
 // 2. Parameter forwarding round-trip
-// 3. GsPostProcessUbo packing matches std140 layout (8 × vec4 = 128 bytes)
+// 3. GsPostProcessUbo packing matches std140 layout (8 × vec4 + 16 = 144 bytes)
 // 4. Feature flag interaction (disabled effects → zero values)
 //
 // Run: ctest -R test_gs_post_process
@@ -143,8 +143,8 @@ static void test_parameter_forwarding() {
 static void test_ubo_packing() {
     std::printf("=== UBO packing (std140 layout) ===\n");
 
-    // UBO must be exactly 8 × vec4 = 128 bytes (adds overlay vec4 for scene transitions)
-    check(sizeof(gseurat::GsPostProcessUbo) == 128, "UBO size is 128 bytes");
+    // UBO must be exactly 8 × vec4 + 16 = 144 bytes (adds overlay_effect_type uint + padding)
+    check(sizeof(gseurat::GsPostProcessUbo) == 144, "UBO size is 144 bytes");
 
     // Verify field offsets match std140 vec4 alignment
     check(offsetof(gseurat::GsPostProcessUbo, fog_params) == 0, "fog_params at offset 0");
@@ -152,6 +152,8 @@ static void test_ubo_packing() {
     check(offsetof(gseurat::GsPostProcessUbo, bloom_fade) == 32, "bloom_fade at offset 32");
     check(offsetof(gseurat::GsPostProcessUbo, effects) == 48, "effects at offset 48");
     check(offsetof(gseurat::GsPostProcessUbo, dimensions) == 64, "dimensions at offset 64");
+    check(offsetof(gseurat::GsPostProcessUbo, overlay_effect_type) == 128,
+          "overlay_effect_type at offset 128");
 
     // Verify packing maps fields correctly
     gseurat::GsPostProcessParams p{};
@@ -228,9 +230,9 @@ static void test_dof_max_blur_default() {
 static void test_background_ubo_packing() {
     std::printf("\n== test_background_ubo_packing ==\n");
 
-    // UBO should be 8 × vec4 = 128 bytes (adds overlay vec4 for scene transitions)
-    check(sizeof(gseurat::GsPostProcessUbo) == 128,
-          "GsPostProcessUbo is 128 bytes (8 x vec4)");
+    // UBO should be 144 bytes (8 x vec4 + overlay_effect_type uint + 12 bytes padding)
+    check(sizeof(gseurat::GsPostProcessUbo) == 144,
+          "GsPostProcessUbo is 144 bytes");
 
     // Check that background fields pack correctly
     gseurat::GsPostProcessUbo ubo{};

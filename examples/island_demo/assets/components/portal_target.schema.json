@@ -1,11 +1,12 @@
 {
   "name": "PortalTarget",
-  "description": "Pair with ProximityTrigger on a Game Object to make it a scene portal.",
+  "description": "Pair with ProximityTrigger on a Game Object to make it a scene portal. effect_type selects the visual: 0 = solid color fade, 1 = left-to-right wipe, 2 = iris wipe (circular).",
   "category": "Gameplay",
   "fields": [
-    { "name": "target_scene",    "type": "string", "default": "" },
-    { "name": "target_position", "type": "vec3",   "default": [0, 0, 0] },
-    { "name": "fade_color",      "type": "vec3",   "default": [1, 1, 1] },
-    { "name": "fade_duration",   "type": "float",  "default": 0.5, "min": 0 }
+    { "name": "target_scene",        "type": "string", "default": "" },
+    { "name": "target_position",     "type": "vec3",   "default": [0, 0, 0] },
+    { "name": "transition_color",    "type": "vec3",   "default": [1, 1, 1] },
+    { "name": "transition_duration", "type": "float",  "default": 0.5, "min": 0 },
+    { "name": "effect_type",         "type": "int",    "default": 0, "min": 0, "max": 2 }
   ]
 }
