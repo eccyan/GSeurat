@@ -4,6 +4,7 @@ import { MenuBar } from './panels/MenuBar.js';
 import { ToolBar } from './panels/ToolBar.js';
 import { BuildPanel } from './panels/BuildPanel.js';
 import { AnimateLeftPanel } from './panels/AnimateLeftPanel.js';
+import { AnimateToolBar } from './panels/AnimateToolBar.js';
 import { AnimateRightPanel } from './panels/AnimateRightPanel.js';
 import { Timeline } from './panels/Timeline.js';
 import { EmptyProjectState } from './panels/EmptyProjectState.js';
@@ -50,6 +51,7 @@ const styles: Record<string, React.CSSProperties> = {
 };
 
 const buildToolKeys: Record<string, ToolType> = {
+  q: 'orbit',
   v: 'place',
   b: 'paint',
   e: 'erase',
@@ -61,8 +63,10 @@ const buildToolKeys: Record<string, ToolType> = {
 };
 
 const animateToolKeys: Record<string, ToolType> = {
+  q: 'orbit',
   a: 'assign_part',
   s: 'box_select',
+  l: 'lasso_select',
 };
 
 const RESIZE_HANDLE_STYLE: React.CSSProperties = {
@@ -297,7 +301,14 @@ export function App() {
           <AssetsPanel onNewAsset={handleNewAsset} />
           <ModeTabs showAnimate={assetKind === 'character'} />
           <div style={{ flex: 1, overflow: 'auto' }}>
-            {mode === 'build' || assetKind !== 'character' ? <ToolBar /> : <AnimateLeftPanel />}
+            {mode === 'build' || assetKind !== 'character' ? (
+              <ToolBar />
+            ) : (
+              <>
+                <AnimateToolBar />
+                <AnimateLeftPanel />
+              </>
+            )}
           </div>
         </div>
         <ResizeHandle onDrag={handleLeftDrag} />

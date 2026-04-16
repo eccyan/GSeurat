@@ -2,7 +2,7 @@
   "always": ["MenuBar", "AssetViewport"],
   "modes": {
     "build": ["ToolBar", "BuildPanel"],
-    "animate": ["AnimateLeftPanel", "AnimateRightPanel", "Timeline"]
+    "animate": ["AnimateToolBar", "AnimateLeftPanel", "AnimateRightPanel", "Timeline"]
   },
   "conditional": {
     "ExportDialog": "when export dialog is open",

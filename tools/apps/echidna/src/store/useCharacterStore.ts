@@ -316,7 +316,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
   markClean: () => set({ dirty: false }),
 
   // ── Mode ──
-  setMode: (mode) => set({ mode }),
+  setMode: (mode) => set({ mode, activeTool: 'orbit' }),
 
   // ── Undo ──
   pushUndo: () => {
