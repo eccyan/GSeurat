@@ -5,6 +5,7 @@
 #include "gseurat/engine/ecs/components/screen_fade.hpp"
 #include "gseurat/engine/trigger_components.hpp"
 
+#include <cstdio>
 #include <optional>
 
 namespace gseurat {
@@ -50,6 +51,13 @@ void portal_trigger_handler(ecs::World& world) {
         trig->triggered = false;
         trig->was_triggered = true;
     }
+
+    std::fprintf(stderr,
+        "[SceneTransition] spawned: target='%s' position=(%.1f, %.1f, %.1f) "
+        "fade_duration=%.2fs\n",
+        to_spawn->target_scene.c_str(),
+        to_spawn->target_position.x, to_spawn->target_position.y, to_spawn->target_position.z,
+        to_spawn->fade_duration);
 }
 
 }  // namespace gseurat

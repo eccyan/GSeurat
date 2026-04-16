@@ -73813,11 +73813,11 @@
   "game_objects": [
     {
       "id": "test_portal_dungeon",
-      "name": "Test Portal -> Dungeon",
+      "name": "Test Portal -> Dungeon (SceneTransition test)",
       "position": [
-        230,
+        187,
         1.9663,
-        197
+        220
       ],
       "scale": 1.0,
       "components": {

@@ -4,6 +4,7 @@
 #include "gseurat/engine/ecs/components/screen_fade.hpp"
 
 #include <algorithm>
+#include <cstdio>
 #include <vector>
 
 namespace gseurat {
@@ -37,6 +38,8 @@ void transition_system(ecs::World& world, ITransitionHost& host, float dt) {
                         st.current_state = SceneTransition::State::Loading;
                         st.timer = 0.0f;
                         fade.alpha = 1.0f;
+                        std::fprintf(stderr, "[SceneTransition] FadeOut -> Loading (target='%s')\n",
+                                     st.target_scene.c_str());
                     }
                     break;
                 }
@@ -59,6 +62,7 @@ void transition_system(ecs::World& world, ITransitionHost& host, float dt) {
                     if (t >= 1.0f) {
                         fade.alpha = 0.0f;
                         to_destroy.push_back(e);
+                        std::fprintf(stderr, "[SceneTransition] FadeIn complete -> destroying entity\n");
                     }
                     break;
                 }
