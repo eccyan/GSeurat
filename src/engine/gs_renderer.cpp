@@ -10,13 +10,7 @@ namespace gseurat {
 
 namespace {
 
-// GPU-side Gaussian struct (matches gs_preprocess.comp input)
-struct GpuGaussian {
-    glm::vec4 pos_opacity;    // xyz = position, w = opacity
-    glm::vec4 scale_pad;      // xyz = scale, w = unused
-    glm::vec4 rot;            // xyzw = quaternion
-    glm::vec4 color_pad;      // rgb = color, w = emission intensity
-};  // 64 bytes, aligned
+// GpuGaussian is defined in gaussian_cloud.hpp (shared with GSVX loader).
 
 // Projected 2D splat (output of preprocess, input to render)
 struct ProjectedSplat {
