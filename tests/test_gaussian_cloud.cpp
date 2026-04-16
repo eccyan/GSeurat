@@ -170,6 +170,27 @@ static void write_test_scene_json(const std::string& path) {
 })";
 }
 
+// Helper: write a .gsvx file with known GpuGaussian data
+static void write_test_gsvx(const std::string& path,
+                             const std::vector<gseurat::GpuGaussian>& gaussians) {
+    std::ofstream out(path, std::ios::binary);
+
+    // Header
+    gseurat::GsvxHeader header{};
+    std::memcpy(header.magic, "GSVX", 4);
+    header.version = 1;
+    header.count = static_cast<uint32_t>(gaussians.size());
+    header.flags = 0;
+    std::memset(header.reserved, 0, sizeof(header.reserved));
+    out.write(reinterpret_cast<const char*>(&header), sizeof(header));
+
+    // Payload
+    if (!gaussians.empty()) {
+        out.write(reinterpret_cast<const char*>(gaussians.data()),
+                  static_cast<std::streamsize>(gaussians.size() * sizeof(gseurat::GpuGaussian)));
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Float comparison helper
 // ---------------------------------------------------------------------------
@@ -375,6 +396,121 @@ int main() {
         assert(!scene.gaussian_splat.has_value() && "Plain scene has no gaussian_splat");
         assert(!scene.collision.has_value() && "Plain scene has no collision grid");
         printf("PASS: Test 9 - Plain scene without GS (backwards compat)\n");
+    }
+
+    // ====== Test 10: GSVX load matches PLY→GpuGaussian conversion ======
+    {
+        const std::string ply_path = tmp_dir + "/test_standard.ply";
+        write_test_ply(ply_path, 5);
+        auto cloud = GaussianCloud::load_ply(ply_path);
+
+        std::vector<GpuGaussian> expected(cloud.count());
+        for (uint32_t i = 0; i < cloud.count(); ++i) {
+            const auto& g = cloud.gaussians()[i];
+            float bone_as_float;
+            uint32_t bone_idx = g.bone_index;
+            std::memcpy(&bone_as_float, &bone_idx, sizeof(float));
+            expected[i].pos_opacity = glm::vec4(g.position, g.opacity);
+            expected[i].scale_pad = glm::vec4(g.scale, bone_as_float);
+            expected[i].rot = glm::vec4(g.rotation.x, g.rotation.y, g.rotation.z, g.rotation.w);
+            expected[i].color_pad = glm::vec4(g.color, g.emission);
+        }
+
+        const std::string gsvx_path = tmp_dir + "/test_roundtrip.gsvx";
+        write_test_gsvx(gsvx_path, expected);
+
+        auto payload = GaussianCloud::load_gsvx(gsvx_path);
+        assert(payload.count == 5 && "GSVX should load 5 Gaussians");
+
+        for (uint32_t i = 0; i < payload.count; ++i) {
+            const auto& got = payload.gpu_gaussians[i];
+            const auto& exp = expected[i];
+            assert(approx(got.pos_opacity.x, exp.pos_opacity.x) && "pos_opacity.x mismatch");
+            assert(approx(got.pos_opacity.y, exp.pos_opacity.y) && "pos_opacity.y mismatch");
+            assert(approx(got.pos_opacity.z, exp.pos_opacity.z) && "pos_opacity.z mismatch");
+            assert(approx(got.pos_opacity.w, exp.pos_opacity.w) && "pos_opacity.w mismatch");
+            assert(approx(got.scale_pad.x, exp.scale_pad.x) && "scale_pad.x mismatch");
+            assert(approx(got.rot.x, exp.rot.x) && "rot.x mismatch");
+            assert(approx(got.rot.w, exp.rot.w) && "rot.w mismatch");
+            assert(approx(got.color_pad.x, exp.color_pad.x) && "color_pad.x mismatch");
+            assert(approx(got.color_pad.w, exp.color_pad.w) && "color_pad.w (emission) mismatch");
+        }
+
+        assert(approx(payload.bounds.min.x, 0.0f) && "GSVX AABB min.x");
+        assert(approx(payload.bounds.max.x, 4.0f) && "GSVX AABB max.x");
+
+        printf("PASS: Test 10 - GSVX round-trip matches PLY→GpuGaussian\n");
+    }
+
+    // ====== Test 11: GSVX bad magic number throws ======
+    {
+        const std::string bad_path = tmp_dir + "/test_bad_magic.gsvx";
+        {
+            std::ofstream out(bad_path, std::ios::binary);
+            GsvxHeader header{};
+            std::memcpy(header.magic, "NOPE", 4);
+            header.version = 1;
+            header.count = 0;
+            out.write(reinterpret_cast<const char*>(&header), sizeof(header));
+        }
+
+        bool threw = false;
+        try {
+            GaussianCloud::load_gsvx(bad_path);
+        } catch (const std::runtime_error& e) {
+            threw = true;
+            assert(std::string(e.what()).find("magic") != std::string::npos &&
+                   "Error should mention magic");
+        }
+        assert(threw && "Should throw for bad GSVX magic");
+        printf("PASS: Test 11 - GSVX bad magic number throws\n");
+    }
+
+    // ====== Test 12: GSVX unsupported version throws ======
+    {
+        const std::string bad_path = tmp_dir + "/test_bad_version.gsvx";
+        {
+            std::ofstream out(bad_path, std::ios::binary);
+            GsvxHeader header{};
+            std::memcpy(header.magic, "GSVX", 4);
+            header.version = 99;
+            header.count = 0;
+            out.write(reinterpret_cast<const char*>(&header), sizeof(header));
+        }
+
+        bool threw = false;
+        try {
+            GaussianCloud::load_gsvx(bad_path);
+        } catch (const std::runtime_error& e) {
+            threw = true;
+            assert(std::string(e.what()).find("version") != std::string::npos &&
+                   "Error should mention version");
+        }
+        assert(threw && "Should throw for bad GSVX version");
+        printf("PASS: Test 12 - GSVX unsupported version throws\n");
+    }
+
+    // ====== Test 13: GSVX empty file (0 Gaussians) ======
+    {
+        const std::string empty_path = tmp_dir + "/test_empty.gsvx";
+        write_test_gsvx(empty_path, {});
+
+        auto payload = GaussianCloud::load_gsvx(empty_path);
+        assert(payload.count == 0 && "Empty GSVX should have 0 Gaussians");
+        assert(payload.gpu_gaussians.empty() && "Empty GSVX should have empty vector");
+        printf("PASS: Test 13 - GSVX empty file (0 Gaussians)\n");
+    }
+
+    // ====== Test 14: GSVX missing file throws ======
+    {
+        bool threw = false;
+        try {
+            GaussianCloud::load_gsvx(tmp_dir + "/nonexistent.gsvx");
+        } catch (const std::runtime_error&) {
+            threw = true;
+        }
+        assert(threw && "Should throw for missing GSVX file");
+        printf("PASS: Test 14 - GSVX missing file throws\n");
     }
 
     // Cleanup temp files
