@@ -206,6 +206,7 @@ void AppBase::set_player_position(const glm::vec3& pos) {
         });
 }
 void AppBase::clear_scene() {
+    world_.clear();
     bone_anim_registry_.clear();
 }
 void AppBase::update_game(float dt) { system_scheduler_.run_all(world_, dt); }

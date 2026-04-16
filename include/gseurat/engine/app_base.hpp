@@ -117,7 +117,7 @@ public:
     // Public methods used by states (virtual — game overrides)
     void init_scene(const std::string& scene_path) override;
     void set_player_position(const glm::vec3& pos) override;
-    virtual void clear_scene();
+    void clear_scene() override;
 
     // Shared GS scene loading: PLY + placed objects + lights + emitters + animations + VFX
     void load_gs_scene(const SceneData& scene_data, const GsSceneOptions& opts = {});

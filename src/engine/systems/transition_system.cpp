@@ -34,6 +34,10 @@ void transition_system(ecs::World& world, ITransitionHost& host, float dt) {
 
                 case SceneTransition::State::Loading: {
                     if (!st.load_dispatched) {
+                        // Clear old scene first — destination scene's init_scene
+                        // will create new ECS entities that must not collide with
+                        // the source scene's leftover state (player, triggers, etc.).
+                        host.clear_scene();
                         host.init_scene(st.target_scene);
                         host.set_player_position(st.target_position);
                         st.load_dispatched = true;

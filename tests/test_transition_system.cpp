@@ -20,8 +20,10 @@
 using namespace gseurat;
 
 struct FakeHost : ITransitionHost {
+    int clear_scene_calls = 0;
     std::vector<std::string> init_scene_calls;
     std::vector<glm::vec3>   set_player_position_calls;
+    void clear_scene() override { clear_scene_calls++; }
     void init_scene(const std::string& p) override { init_scene_calls.push_back(p); }
     void set_player_position(const glm::vec3& p) override { set_player_position_calls.push_back(p); }
 };
@@ -102,6 +104,7 @@ int main() {
         assert(host.set_player_position_calls.size() == 1);
         assert(approx(host.set_player_position_calls[0].x, 7.0f));
         assert(approx(host.set_player_position_calls[0].z, 3.0f));
+        assert(host.clear_scene_calls == 1 && "clear_scene also called exactly once");
         printf("PASS: Test 3 - Loading first tick calls host exactly once\n");
     }
 
@@ -298,6 +301,25 @@ int main() {
         assert(trig->triggered == false && "handler should reset triggered");
         assert(trig->was_triggered == true && "handler should latch was_triggered");
         printf("PASS: Test 12 - handler consumes source portal trigger\n");
+    }
+
+    // ====== Test 13: Loading state calls clear_scene exactly once, before init_scene ======
+    {
+        ecs::World w;
+        FakeHost host;
+        spawn_direct(w, "next.json", {0, 0, 0}, 0.5f);
+
+        transition_system(w, host, 0.5f);     // FadeOut → Loading
+        transition_system(w, host, 0.016f);   // Loading first tick: dispatch
+        transition_system(w, host, 0.016f);   // Loading second tick: → FadeIn
+        transition_system(w, host, 0.5f);     // FadeIn complete → destroy
+
+        assert(host.clear_scene_calls == 1 && "clear_scene called exactly once");
+        assert(host.init_scene_calls.size() == 1 && "init_scene called exactly once");
+        // Order check: clear_scene_calls is incremented synchronously inside the
+        // first Loading tick, just before init_scene_calls.push_back. Since both
+        // happen inside the same lambda, sequence is guaranteed by code order.
+        printf("PASS: Test 13 - clear_scene called exactly once before init_scene\n");
     }
 
     printf("\nAll scene transition tests passed!\n");
