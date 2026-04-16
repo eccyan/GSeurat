@@ -1551,12 +1551,15 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
   },
 
   addPaletteFromFile: async (file) => {
+    const targetId = get().asset?.id;
+    if (!targetId) return;
     const { extractColorsFromFile } = await import('../lib/colorExtract.js');
     const extracted = await extractColorsFromFile(file, 256);
     const colors: [number, number, number, number][] = [...extracted];
     while (colors.length < 256) colors.push([0, 0, 0, 0]);
     const s = get();
-    if (!s.asset) return;
+    // Bail if the user switched assets while extraction was in flight.
+    if (!s.asset || s.asset.id !== targetId) return;
     const palettes = [...s.asset.colorPalettes, { name: file.name, colors }];
     set({
       asset: { ...s.asset, colorPalettes: palettes },
