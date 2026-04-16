@@ -30,9 +30,6 @@ protected:
                           const glm::vec3& target_position) override;
 
 private:
-    static void generate_particle_atlas();
-    static void generate_shadow_texture();
-    static void generate_flat_normal_texture();
     std::string scene_path_;
     bool scene_path_explicit_ = false;
     bool viewer_mode_ = false;
