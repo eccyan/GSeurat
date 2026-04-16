@@ -18,6 +18,11 @@ from pathlib import Path
 
 import numpy as np
 
+# GSVX payload is little-endian float32 (matches x86/ARM native order).
+# Explicitly assert to fail loudly on any hypothetical big-endian host.
+if sys.byteorder != "little":
+    sys.exit("Error: GSVX cooker requires a little-endian host.")
+
 try:
     from plyfile import PlyData
 except ImportError:
@@ -101,11 +106,13 @@ def ply_to_gsvx(ply_path: Path) -> bytes:
     rz = _resolve(vertex, "rot_3", "rotation_3")
     if rw is not None and rx is not None and ry is not None and rz is not None:
         length = np.sqrt(rw * rw + rx * rx + ry * ry + rz * rz)
-        length = np.where(length > 0, length, 1.0)
-        rw = (rw / length).astype(np.float32)
-        rx = (rx / length).astype(np.float32)
-        ry = (ry / length).astype(np.float32)
-        rz = (rz / length).astype(np.float32)
+        zero_mask = length <= 0
+        # Avoid division-by-zero; mask-fill below restores identity
+        safe_length = np.where(zero_mask, 1.0, length)
+        rw = np.where(zero_mask, 1.0, rw / safe_length).astype(np.float32)
+        rx = np.where(zero_mask, 0.0, rx / safe_length).astype(np.float32)
+        ry = np.where(zero_mask, 0.0, ry / safe_length).astype(np.float32)
+        rz = np.where(zero_mask, 0.0, rz / safe_length).astype(np.float32)
     else:
         rx = np.zeros(count, dtype=np.float32)
         ry = np.zeros(count, dtype=np.float32)
@@ -115,9 +122,9 @@ def ply_to_gsvx(ply_path: Path) -> bytes:
     # --- Color ---
     has_sh = "f_dc_0" in vertex.dtype.names
     if has_sh:
-        cr = _resolve(vertex, "f_dc_0")
-        cg = _resolve(vertex, "f_dc_1")
-        cb = _resolve(vertex, "f_dc_2")
+        cr = _require(vertex, "f_dc_0", "f_dc_0")
+        cg = _require(vertex, "f_dc_1", "f_dc_1")
+        cb = _require(vertex, "f_dc_2", "f_dc_2")
         cr = np.clip(SH_C0 * cr + 0.5, 0.0, 1.0).astype(np.float32)
         cg = np.clip(SH_C0 * cg + 0.5, 0.0, 1.0).astype(np.float32)
         cb = np.clip(SH_C0 * cb + 0.5, 0.0, 1.0).astype(np.float32)
@@ -130,9 +137,9 @@ def ply_to_gsvx(ply_path: Path) -> bytes:
                 cr = cr / 255.0
                 cg = cg / 255.0
                 cb = cb / 255.0
-            cr = cr.astype(np.float32)
-            cg = cg.astype(np.float32)
-            cb = cb.astype(np.float32)
+            cr = np.clip(cr, 0.0, 1.0).astype(np.float32)
+            cg = np.clip(cg, 0.0, 1.0).astype(np.float32)
+            cb = np.clip(cb, 0.0, 1.0).astype(np.float32)
         else:
             cr = cg = cb = np.ones(count, dtype=np.float32)
 
