@@ -1,5 +1,6 @@
 #include "gseurat/engine/renderer.hpp"
 #include "gseurat/engine/pipeline.hpp"
+#include "gseurat/engine/procedural_textures.hpp"
 #include "gseurat/engine/resource_manager.hpp"
 
 #include <algorithm>
@@ -28,7 +29,6 @@ static GsAnimEffect parse_effect_name(const std::string& name) {
 void Renderer::init(GLFWwindow* window, ResourceManager& resources,
                     const std::string& sprite_texture,
                     const std::string& tileset_texture,
-                    const std::string& flat_normal_texture,
                     const std::string& tileset_normal_texture,
                     const std::string& entity_normal_texture) {
     context_.init(window);
@@ -50,9 +50,15 @@ void Renderer::init(GLFWwindow* window, ResourceManager& resources,
     test_texture_ = resources.load_texture(sprite_texture);
     tileset_texture_ = resources.load_texture(tileset_texture);
 
-    // Load normal map textures (UNORM format — linear data, not sRGB)
-    flat_normal_texture_ = resources.load_texture(flat_normal_texture,
-        VK_FILTER_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, VK_FORMAT_R8G8B8A8_UNORM);
+    // Load normal map textures (UNORM format — linear data, not sRGB).
+    // The fallback flat normal is generated procedurally — it's a 1x1 pixel
+    // with no artistic content, so there's no reason to ship it as a file.
+    {
+        auto data = procedural_textures::flat_normal();
+        flat_normal_texture_ = resources.load_texture_from_memory(
+            "engine/flat_normal", data.pixels.data(), data.width, data.height,
+            VK_FILTER_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, VK_FORMAT_R8G8B8A8_UNORM);
+    }
     tileset_normal_texture_ = resources.load_texture(tileset_normal_texture,
         VK_FILTER_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, VK_FORMAT_R8G8B8A8_UNORM);
     entity_normal_texture_ = resources.load_texture(entity_normal_texture,
@@ -142,9 +148,10 @@ void Renderer::init_font(const FontAtlas& atlas, ResourceManager& resources) {
     font_initialized_ = true;
 }
 
-void Renderer::init_particles(ResourceManager& resources,
-                              const std::string& particle_texture) {
-    particle_texture_ = resources.load_texture(particle_texture);
+void Renderer::init_particles(ResourceManager& resources) {
+    auto data = procedural_textures::particle_atlas();
+    particle_texture_ = resources.load_texture_from_memory(
+        "engine/particle_atlas", data.pixels.data(), data.width, data.height);
 
     std::array<VkBuffer, kMaxFramesInFlight> ubo_buffers;
     for (uint32_t i = 0; i < kMaxFramesInFlight; i++) {
@@ -156,9 +163,10 @@ void Renderer::init_particles(ResourceManager& resources,
         flat_normal_texture_->image_view(), flat_normal_texture_->sampler());
 }
 
-void Renderer::init_shadows(ResourceManager& resources,
-                            const std::string& shadow_texture) {
-    shadow_texture_ = resources.load_texture(shadow_texture);
+void Renderer::init_shadows(ResourceManager& resources) {
+    auto data = procedural_textures::shadow_blob();
+    shadow_texture_ = resources.load_texture_from_memory(
+        "engine/shadow_blob", data.pixels.data(), data.width, data.height);
 
     std::array<VkBuffer, kMaxFramesInFlight> ubo_buffers;
     for (uint32_t i = 0; i < kMaxFramesInFlight; i++) {

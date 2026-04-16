@@ -159,6 +159,7 @@ add_library(gseurat_core ${_gseurat_lib_type}
     src/engine/buffer.cpp
     src/engine/texture.cpp
     src/engine/descriptor.cpp
+    src/engine/procedural_textures.cpp
     src/engine/renderer.cpp
     src/engine/screenshot.cpp
     src/engine/camera.cpp

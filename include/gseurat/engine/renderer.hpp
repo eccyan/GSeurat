@@ -41,15 +41,12 @@ public:
     void init(GLFWwindow* window, ResourceManager& resources,
               const std::string& sprite_texture = "assets/textures/player_sheet.png",
               const std::string& tileset_texture = "assets/textures/tileset.png",
-              const std::string& flat_normal_texture = "assets/textures/flat_normal.png",
               const std::string& tileset_normal_texture = "assets/textures/tileset_normal.png",
               const std::string& entity_normal_texture = "assets/textures/player_normal.png");
     void init_font(const FontAtlas& atlas, ResourceManager& resources);
-    void init_particles(ResourceManager& resources,
-                        const std::string& particle_texture = "assets/textures/particle_atlas.png");
+    void init_particles(ResourceManager& resources);
     void init_backgrounds(const std::vector<ResourceHandle<Texture>>& bg_textures);
-    void init_shadows(ResourceManager& resources,
-                      const std::string& shadow_texture = "assets/textures/shadow_blob.png");
+    void init_shadows(ResourceManager& resources);
     void draw_frame();
     void init_gs(const GaussianCloud& cloud, uint32_t width = 320, uint32_t height = 240);
     void set_gs_background(const ResourceHandle<Texture>& texture);
