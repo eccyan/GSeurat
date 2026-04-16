@@ -24,6 +24,7 @@ export interface PoseData {
 }
 
 export type ToolType =
+  | 'orbit'
   | 'place'
   | 'paint'
   | 'erase'
