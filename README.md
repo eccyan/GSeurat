@@ -13,6 +13,7 @@ GSeurat is designed to be embedded in external game projects as a **Git submodul
 - **Game Object System** — Unified entity model with component composition. Developers define C++ component structs + JSON schemas; level designers compose objects in Bricklayer
 - **Component Registry** — Type-erased component registration with JSON attach/serialize. SystemScheduler with read/write dependency declarations (parallel-ready)
 - **Entity Component System** — Header-only ECS with archetype storage, typed views, and system functions
+- **[Scene transitions](docs/scene-transitions.md)** — Transient-entity state machine (`SceneOut → Loading → SceneIn`) fully decoupled from presentation. Portals are authored in Bricklayer via `ProximityTrigger + PortalTarget`; the post-process shader supports solid fade, left-to-right wipe, and iris wipe effects
 - **Async asset streaming** — Slab allocator + GPU page table, async transfer queue, `world.json` spatial partitioning with fixed uniform chunk grid, StreamingVolumes for preload hints, GPU frustum culling
 - **GS Particle system** — WASM-compiled C++ simulation for preview in web tools, spline path support (emitter path + particle path modes)
 - **Audio** — 4-layer music + spatial SFX via miniaudio
@@ -265,6 +266,14 @@ Everything in the scene is a **Game Object** — a unified entity with position,
   ]
 }
 ```
+
+### Scene Transitions
+
+Portals and cross-scene transitions are driven by a **transient-entity state machine** on the existing ECS. When a `ProximityTrigger + PortalTarget` pair fires, `portal_trigger_handler` spawns an entity with `SceneTransition + ScreenFade` components. `transition_system` advances `SceneOut → Loading → SceneIn`, issues a single atomic `host.transition_scene()` call under a fully-opaque overlay, and destroys the entity on completion.
+
+Visuals are decoupled from the state machine — the post-process compute shader branches on `effect_type` to select between solid fade, left-to-right wipe, and iris wipe (aspect-corrected circle). Adding a new effect is a single-file shader change plus a schema bump.
+
+See [docs/scene-transitions.md](docs/scene-transitions.md) for the full architecture, components, effects reference, authoring workflow, and extension guide.
 
 ### Async Asset Streaming
 
