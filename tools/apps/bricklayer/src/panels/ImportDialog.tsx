@@ -2,7 +2,7 @@ import React, { useRef, useState } from 'react';
 import { useComponentRegistry } from '@gseurat/ui-kit';
 import { NumberInput } from '../components/NumberInput.js';
 import { useSceneStore } from '../store/useSceneStore.js';
-import { estimateDepth } from '../lib/depthEstimate.js';
+import { estimateDepth } from '@gseurat/ai-providers';
 
 const styles: Record<string, React.CSSProperties> = {
   overlay: {

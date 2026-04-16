@@ -6,3 +6,4 @@ export * from "./audiocraft.js";
 export * from "./stable-audio.js";
 export * from "./replicate.js";
 export * from "./registry.js";
+export { estimateDepth } from "./depthEstimate.js";

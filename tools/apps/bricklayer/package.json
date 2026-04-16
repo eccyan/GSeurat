@@ -17,7 +17,7 @@
     "@gseurat/simulation-wasm": "workspace:*",
     "@gseurat/vfx-utils": "workspace:*",
     "@gseurat/ui-kit": "workspace:*",
-    "@huggingface/transformers": "^3.4.0",
+    "@gseurat/ai-providers": "workspace:*",
     "@react-three/drei": "^9.117.0",
     "@react-three/fiber": "^8.17.0",
     "jszip": "^3.10.1",

@@ -20,6 +20,7 @@
     "@gseurat/asset-types": "workspace:*",
     "@gseurat/project-root": "workspace:*",
     "@gseurat/ui-kit": "workspace:*",
+    "@gseurat/ai-providers": "workspace:*",
     "@gseurat/test-harness": "workspace:*"
   },
   "devDependencies": {
