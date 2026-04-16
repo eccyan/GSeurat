@@ -73812,6 +73812,28 @@
   },
   "game_objects": [
     {
+      "id": "test_portal_dungeon",
+      "name": "Test Portal -> Dungeon",
+      "position": [
+        190,
+        1.9663,
+        197
+      ],
+      "scale": 1.0,
+      "components": {
+        "ProximityTrigger": {
+          "radius": 2.5,
+          "one_shot": true
+        },
+        "PortalTarget": {
+          "target_scene": "assets/scenes/dungeon.json",
+          "target_position": [5, 0, 5],
+          "fade_color": [1.0, 1.0, 1.0],
+          "fade_duration": 0.5
+        }
+      }
+    },
+    {
       "id": "tree_1",
       "name": "Tree",
       "ply_file": "assets/props/island_tree_1.ply",
