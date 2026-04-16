@@ -208,6 +208,7 @@ export interface CharacterStoreState {
   updatePartJoint: (id: string, joint: [number, number, number]) => void;
   setPartParent: (id: string, parentId: string | null) => void;
   assignVoxelsToPart: (keys: VoxelKey[], partId: string) => void;
+  unassignVoxelsFromPart: (keys: VoxelKey[], partId: string) => void;
   setSelectedPart: (id: string | null) => void;
   addPose: (name: string) => void;
   removePose: (name: string) => void;
@@ -597,6 +598,36 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
             const merged = [...p.voxelKeys, ...allKeys.filter((k) => !existing.has(k))];
             return { ...p, voxelKeys: merged };
           }
+          const filtered = p.voxelKeys.filter((k) => !keySet.has(k));
+          return filtered.length !== p.voxelKeys.length ? { ...p, voxelKeys: filtered } : p;
+        }),
+      },
+      dirty: true,
+    });
+  },
+
+  unassignVoxelsFromPart: (keys, partId) => {
+    const s = get();
+    if (!s.asset) return;
+    const { mirrorAxis } = s;
+    const { voxels: voxelMap, gridWidth, characterParts } = s.asset;
+    const allKeys = [...keys];
+    if (mirrorAxis) {
+      for (const k of keys) {
+        const [x, y, z] = parseKey(k);
+        const m = mirrorPos(x, y, z, mirrorAxis, gridWidth);
+        if (m) {
+          const mk = voxelKey(m[0], m[1], m[2]);
+          if (voxelMap.has(mk) && !allKeys.includes(mk)) allKeys.push(mk);
+        }
+      }
+    }
+    const keySet = new Set(allKeys);
+    set({
+      asset: {
+        ...s.asset,
+        characterParts: characterParts.map((p) => {
+          if (p.id !== partId) return p;
           const filtered = p.voxelKeys.filter((k) => !keySet.has(k));
           return filtered.length !== p.voxelKeys.length ? { ...p, voxelKeys: filtered } : p;
         }),
