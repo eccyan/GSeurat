@@ -1779,6 +1779,12 @@ void IslandDemoState::perform_portal_transition(AppBase& app,
         {coord::WorldPos(spawn), {1.0f, 1.0f}});
     app.world().add<PlayerController>(player_entity_,
         {kPlayerSpeed, kPlayerAccel});
+    // PlayerTag is required by proximity_trigger_system — without it, ALL
+    // ECS proximity triggers (portals, lights, emitters) silently no-op
+    // because the system early-returns when it can't find the player.
+    // (Latent bug in the original inline portal code, exposed by the new
+    // ECS-based portal triggers.)
+    app.world().add<PlayerTag>(player_entity_);
 
     // Re-merge world chunks + player character into the new scene
     if (app.renderer().has_gs_cloud()) {
