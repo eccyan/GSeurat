@@ -121,6 +121,11 @@ export const BUILTIN_SCHEMAS: ComponentSchema[] = [
       { name: 'speed', type: 'float', default: 10, min: 0 },
       { name: 'acceleration', type: 'float', default: 10, min: 0 },
     ]},
+  { name: 'ScreenFade', description: 'Full-screen color overlay (color + alpha 0..1) consumed by the post-process composite. Generic — used for portal transitions, damage flashes, ambient tints, cutscene fades, etc.', category: 'Effects',
+    fields: [
+      { name: 'color', type: 'vec3', default: [1, 1, 1] },
+      { name: 'alpha', type: 'float', default: 0, min: 0, max: 1 },
+    ]},
 ];
 
 function defaultEmitter(): EmitterConfig {

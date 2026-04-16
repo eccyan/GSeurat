@@ -345,6 +345,22 @@ void AppBase::init_game_object_system() {
             };
         });
 
+    // ScreenFade is generic — designers can author it for ambient tints, damage flashes,
+    // cutscene fades, etc. (Portal transitions also use it via portal_trigger_handler.)
+    component_registry_.register_component<ScreenFade>("ScreenFade",
+        [](const nlohmann::json& j) -> ScreenFade {
+            ScreenFade c;
+            if (j.contains("color")) c.color = SceneLoader::parse_vec3(j["color"]);
+            if (j.contains("alpha")) c.alpha = j["alpha"].get<float>();
+            return c;
+        },
+        [](const ScreenFade& c) -> nlohmann::json {
+            return {
+                {"color", {c.color.x, c.color.y, c.color.z}},
+                {"alpha", c.alpha}
+            };
+        });
+
     component_registry_.register_component<NpcWalker>("NpcWalker",
         [](const nlohmann::json& j) -> NpcWalker {
             NpcWalker c;
