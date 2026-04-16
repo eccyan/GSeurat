@@ -66,8 +66,10 @@ export interface ColorPalette {
 }
 
 /**
- * Generate the default 256-slot palette: 16 grayscale + 12 hues × 4 sats × 5 lights.
- * Matches Bricklayer's `generateDefaultPalette` shape so imports between apps feel consistent.
+ * Generate the default 256-slot palette: 16 grayscale entries followed by
+ * 240 empty (transparent) slots available for the user to fill.
+ * The empty slots use alpha=0 as the sentinel so addColorToPalette can detect
+ * and fill them via findIndex(c => c[3] === 0).
  */
 export function generateDefaultPalette(): ColorPalette {
   const colors: [number, number, number, number][] = [];
@@ -76,34 +78,13 @@ export function generateDefaultPalette(): ColorPalette {
     const v = Math.round((i / 15) * 255);
     colors.push([v, v, v, 255]);
   }
-  // 240 chromatic: 12 hues × 4 saturations × 5 lightness levels
-  const hues = [0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330];
-  const sats = [0.3, 0.5, 0.75, 1.0];
-  const lights = [0.2, 0.35, 0.5, 0.65, 0.8];
-  for (const sat of sats) {
-    for (const light of lights) {
-      for (const hue of hues) {
-        const [r, g, b] = hslToRgb(hue, sat, light);
-        colors.push([r, g, b, 255]);
-      }
-    }
+  // 240 empty slots (available for user colors)
+  for (let i = 0; i < 240; i++) {
+    colors.push([0, 0, 0, 0]);
   }
   return { name: 'Default (256)', colors };
 }
 
-function hslToRgb(h: number, s: number, l: number): [number, number, number] {
-  const c = (1 - Math.abs(2 * l - 1)) * s;
-  const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
-  const m = l - c / 2;
-  let r = 0, g = 0, b = 0;
-  if (h < 60) { r = c; g = x; }
-  else if (h < 120) { r = x; g = c; }
-  else if (h < 180) { g = c; b = x; }
-  else if (h < 240) { g = x; b = c; }
-  else if (h < 300) { r = x; b = c; }
-  else { r = c; b = x; }
-  return [Math.round((r + m) * 255), Math.round((g + m) * 255), Math.round((b + m) * 255)];
-}
 
 // ── App mode ──
 
