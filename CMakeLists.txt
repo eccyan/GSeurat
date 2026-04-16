@@ -364,6 +364,8 @@ add_gseurat_test(test_gaussian_cloud   src/engine/gaussian_cloud.cpp src/engine/
                                        src/engine/scene_loader.cpp src/engine/tilemap.cpp
                                        src/engine/gs_particle.cpp src/engine/gs_spline.cpp
                                        src/engine/project_root.cpp)
+add_gseurat_test(test_transition_system  src/engine/systems/transition_system.cpp
+                                          src/engine/systems/portal_trigger_handler.cpp)
 add_gseurat_test(test_gs_chunk_grid    src/engine/gs_chunk_grid.cpp src/engine/gaussian_cloud.cpp
                                        src/engine/project_root.cpp)
 add_gseurat_test(test_gs_chunk_streamer src/engine/gs_chunk_streamer.cpp src/engine/gaussian_cloud.cpp
