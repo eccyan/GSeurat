@@ -73823,7 +73823,7 @@
           "target_position": [5, 0, 5],
           "transition_color": [1, 1, 1],
           "transition_duration": 0.5,
-          "effect_type": 1
+          "effect_type": 2
         }
       }
     },
