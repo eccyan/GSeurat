@@ -1659,9 +1659,38 @@ void IslandDemoState::draw_gizmos(AppBase& app) {
     // ── Proximity trigger gizmos ──
     if (ov.show_gizmo_triggers) {
         app.world().view<ProximityTrigger, ecs::Transform>().each(
-            [&](ecs::Entity, ProximityTrigger& pt, ecs::Transform& t) {
-                ImU32 col = pt.triggered ? IM_COL32(51,255,76,153) : IM_COL32(128,128,128,100);
+            [&](ecs::Entity e, ProximityTrigger& pt, ecs::Transform& t) {
+                // Highlight portal triggers — orange wireframe + target-scene label.
+                auto* portal = app.world().try_get<PortalTarget>(e);
+                ImU32 col;
+                if (portal) {
+                    col = pt.triggered ? IM_COL32(255,200,80,220)   // bright orange when firing
+                                       : IM_COL32(255,140,0,180);   // orange otherwise
+                } else {
+                    col = pt.triggered ? IM_COL32(51,255,76,153)
+                                       : IM_COL32(128,128,128,100);
+                }
                 imgui_sphere(dl, t.position.vec(), pt.radius, vp, sw, sh, col);
+
+                // Project center to screen and label portals so you can find them
+                if (portal) {
+                    glm::vec4 clip = vp * glm::vec4(t.position.vec(), 1.0f);
+                    if (clip.w > 0.0f) {
+                        glm::vec3 ndc = glm::vec3(clip) / clip.w;
+                        float sx = (ndc.x * 0.5f + 0.5f) * sw;
+                        float sy = (1.0f - (ndc.y * 0.5f + 0.5f)) * sh;
+                        char buf[256];
+                        std::snprintf(buf, sizeof(buf), "PORTAL -> %s\nspawn (%.0f,%.0f,%.0f)  r=%.1f",
+                            portal->target_scene.c_str(),
+                            portal->target_position.x,
+                            portal->target_position.y,
+                            portal->target_position.z,
+                            pt.radius);
+                        // shadow + text for legibility
+                        dl->AddText(ImVec2(sx + 7, sy + 1), IM_COL32(0,0,0,200), buf);
+                        dl->AddText(ImVec2(sx + 6, sy + 0), IM_COL32(255,200,80,255), buf);
+                    }
+                }
             });
     }
 
