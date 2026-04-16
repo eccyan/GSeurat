@@ -1,5 +1,6 @@
 #include "gseurat/engine/world_manifest.hpp"
 
+#include <cstdio>
 #include <glm/glm.hpp>
 #include <nlohmann/json.hpp>
 #include <string>
@@ -78,31 +79,13 @@ WorldManifest WorldManifest::from_json(const nlohmann::json& j) {
     }
 
     if (j.contains("portals")) {
-        for (const auto& pj : j["portals"]) {
-            WorldPortal p;
-            p.id = pj.at("id").get<std::string>();
-            p.position = parse_vec3(pj.at("position"));
-            p.region_shape = pj.value("region_shape", std::string{"sphere"});
-            if (pj.contains("region_radius")) p.region_radius = pj["region_radius"].get<float>();
-            if (pj.contains("region_half_extents")) p.region_half_extents = parse_vec3(pj["region_half_extents"]);
-            p.target_instance_id = pj.at("target_instance_id").get<std::string>();
-            if (pj.contains("spawn_position")) p.spawn_position = parse_vec3(pj["spawn_position"]);
-            p.spawn_facing = pj.value("spawn_facing", std::string{});
-            m.portals.push_back(std::move(p));
-        }
+        std::fprintf(stderr,
+            "[world.json] WARNING: 'portals' field is deprecated and ignored. "
+            "Author portals as Game Objects with ProximityTrigger + PortalTarget components in scene.json.\n");
     }
-
     if (j.contains("instances")) {
-        for (const auto& ij : j["instances"]) {
-            WorldInstance inst;
-            inst.id = ij.at("id").get<std::string>();
-            inst.display_name = ij.value("display_name", std::string{});
-            inst.scene_file = ij.at("scene_file").get<std::string>();
-            if (inst.scene_file.find("..") != std::string::npos) {
-                throw std::runtime_error("path traversal rejected in instance scene_file: " + inst.scene_file);
-            }
-            m.instances.push_back(std::move(inst));
-        }
+        std::fprintf(stderr,
+            "[world.json] WARNING: 'instances' field is deprecated and ignored.\n");
     }
 
     return m;
@@ -132,31 +115,6 @@ nlohmann::json WorldManifest::to_json(const WorldManifest& m) {
         if (v.shape == "sphere") vj["radius"] = v.radius;
         vj["preload_target_ids"] = v.preload_target_ids;
         j["streaming_volumes"].push_back(std::move(vj));
-    }
-
-    j["portals"] = nlohmann::json::array();
-    for (const auto& p : m.portals) {
-        nlohmann::json pj;
-        pj["id"] = p.id;
-        pj["position"] = vec3_to_json(p.position);
-        pj["region_shape"] = p.region_shape;
-        if (p.region_shape == "sphere") pj["region_radius"] = p.region_radius;
-        if (p.region_shape == "box") pj["region_half_extents"] = vec3_to_json(p.region_half_extents);
-        pj["target_instance_id"] = p.target_instance_id;
-        if (p.spawn_position != glm::vec3(0.0f)) pj["spawn_position"] = vec3_to_json(p.spawn_position);
-        if (!p.spawn_facing.empty()) pj["spawn_facing"] = p.spawn_facing;
-        j["portals"].push_back(std::move(pj));
-    }
-
-    if (!m.instances.empty()) {
-        j["instances"] = nlohmann::json::array();
-        for (const auto& inst : m.instances) {
-            nlohmann::json ij;
-            ij["id"] = inst.id;
-            if (!inst.display_name.empty()) ij["display_name"] = inst.display_name;
-            ij["scene_file"] = inst.scene_file;
-            j["instances"].push_back(std::move(ij));
-        }
     }
 
     return j;

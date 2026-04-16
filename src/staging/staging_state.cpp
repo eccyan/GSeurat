@@ -220,8 +220,6 @@ void StagingState::on_enter(AppBase& app) {
             vs.gizmos.push_back({"camera_zones", true,
                 sd && sd->camera_zones
                     ? static_cast<int>(sd->camera_zones->volumes.size()) : 0});
-            vs.gizmos.push_back({"portals", true,
-                sd ? static_cast<int>(sd->portals.size()) : 0});
 
             // Scene
             auto& gsr = app.renderer().gs_renderer();
@@ -563,9 +561,6 @@ void StagingState::update(AppBase& app, float dt) {
         // Log streaming events
         for (const auto& ev : events) {
             switch (ev.type) {
-                case WorldStreamer::StreamEvent::PORTAL_ENTERED:
-                    std::fprintf(stderr, "[Staging] Portal entered: %s\n", ev.id.c_str());
-                    break;
                 case WorldStreamer::StreamEvent::VOLUME_ENTERED:
                     std::fprintf(stderr, "[Staging] StreamingVolume entered: %s\n", ev.id.c_str());
                     break;
@@ -1074,38 +1069,6 @@ void StagingState::draw_gizmos(AppBase& app) {
         }
     }
 
-    // ── Portal gizmos ──
-    if (ov.show_gizmo_portals) {
-        ImU32 portal_col = IM_COL32(0, 220, 220, 200);  // cyan
-        const auto& portals = app.scene_objects().portals;
-        auto terrain_aabb = app.gs_terrain().terrain_aabb;
-        for (size_t i = 0; i < portals.size(); i++) {
-            const auto& p = portals[i];
-            auto world_pos = coord::to_world(p.position, terrain_aabb);
-            glm::vec3 pos = world_pos.vec();
-            float sx, sy;
-            if (!project_to_screen(pos, vp, sw, sh, sx, sy)) continue;
-
-            if (p.region_shape == "sphere") {
-                draw_sphere_gizmo(dl, pos, p.region_radius,
-                                  vp, sw, sh, portal_col, project_wrapper, this);
-            } else {
-                draw_box_gizmo(dl, pos, p.region_half_extents,
-                               vp, sw, sh, portal_col, project_wrapper, this);
-            }
-
-            // Diamond marker at center
-            float d = 5.0f;
-            dl->AddQuadFilled(
-                ImVec2(sx, sy - d), ImVec2(sx + d, sy),
-                ImVec2(sx, sy + d), ImVec2(sx - d, sy), portal_col);
-
-            char label[64];
-            std::snprintf(label, sizeof(label), "Portal%zu", i);
-            dl->AddText(ImVec2(sx + 8, sy - 10), portal_col, label);
-        }
-    }
-
     // ── Camera Zone gizmos (visible in both orbit and review modes) ──
     if (ov.show_gizmo_camera_zones && camera_review_ && camera_review_->has_zone_data()) {
         camera_review_->draw_gizmos(vp, sw, sh, dl, project_wrapper, this);
@@ -1148,24 +1111,6 @@ void StagingState::draw_gizmos(AppBase& app) {
             }
             dl->AddCircleFilled(ImVec2(sx, sy), 3.0f, sv_col);
             dl->AddText(ImVec2(sx + 6, sy - 8), sv_col, sv.id.c_str());
-        }
-
-        // Global portal wireframes (cyan)
-        // NOTE: wp.position is already in global world coords — do NOT apply coord::to_world()
-        ImU32 wp_col = IM_COL32(0, 204, 204, 180);
-        for (const auto& wp : wm.portals) {
-            float sx, sy;
-            if (!project_to_screen(wp.position, vp, sw, sh, sx, sy)) continue;
-            if (wp.region_shape == "box") {
-                draw_box_gizmo(dl, wp.position, wp.region_half_extents, vp, sw, sh, wp_col, project_wrapper, this);
-            } else {
-                draw_sphere_gizmo(dl, wp.position, wp.region_radius, vp, sw, sh, wp_col, project_wrapper, this);
-            }
-            float d = 5.0f;
-            dl->AddQuadFilled(
-                ImVec2(sx, sy - d), ImVec2(sx + d, sy),
-                ImVec2(sx, sy + d), ImVec2(sx - d, sy), wp_col);
-            dl->AddText(ImVec2(sx + 8, sy - 10), wp_col, wp.id.c_str());
         }
     }
 }

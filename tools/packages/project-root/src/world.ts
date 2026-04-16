@@ -15,23 +15,11 @@ export interface StreamingVolumeData {
   preload_target_ids: string[];
 }
 
-export interface WorldPortalData {
-  id: string;
-  position: [number, number, number];
-  region_shape: 'box' | 'sphere';
-  region_radius?: number;
-  region_half_extents?: [number, number, number];
-  target_instance_id: string;
-  spawn_position?: [number, number, number];
-  spawn_facing?: string;
-}
-
 export interface WorldManifest {
   version: 1;
   grid_cell_size: [number, number, number];
   chunks: WorldChunk[];
   streaming_volumes: StreamingVolumeData[];
-  portals: WorldPortalData[];
 }
 
 export function chunkAabbMin(
@@ -64,6 +52,5 @@ export function createEmptyManifest(): WorldManifest {
     grid_cell_size: [64, 32, 64],
     chunks: [],
     streaming_volumes: [],
-    portals: [],
   };
 }

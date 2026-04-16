@@ -362,9 +362,8 @@ void CommandDispatcher::register_default_commands() {
                 ctx_.renderer.add_vfx_instance(std::move(inst));
             }
 
-            // Update stored game object and portal data for gizmo rendering
+            // Update stored game object data for gizmo rendering
             ctx_.scene_objects.game_objects = scene_data.game_objects;
-            ctx_.scene_objects.portals = scene_data.portals;
 
             std::vector<coord::WorldPos> world_positions;
             world_positions.reserve(scene_data.game_objects.size());

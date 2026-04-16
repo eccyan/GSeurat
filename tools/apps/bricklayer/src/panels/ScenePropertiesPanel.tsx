@@ -5,7 +5,6 @@ import { Vec3Input } from '../components/Vec3Input.js';
 import { useSceneStore } from '../store/useSceneStore.js';
 import type {
   StaticLight,
-  PortalData,
   InstanceData,
   PlayerData,
   GameObjectData,
@@ -631,100 +630,6 @@ function LightProperties({ light }: { light: StaticLight }) {
           </div>
         </>
       )}
-    </div>
-  );
-}
-
-function PortalProperties({ portal }: { portal: PortalData }) {
-  const update = useSceneStore((s) => s.updatePortal);
-  const remove = useSceneStore((s) => s.removePortal);
-  const instances = useSceneStore((s) => s.instances);
-
-  return (
-    <div>
-      <div style={{ ...styles.row, marginBottom: 12 }}>
-        <span style={{ ...styles.label, flex: 1 }}>Portal</span>
-        <button style={styles.btnDanger} onClick={() => remove(portal.id)}>Remove</button>
-      </div>
-
-      <div style={styles.section}>
-        <span style={styles.label}>Position</span>
-        <Vec3Input
-          value={portal.position}
-          onChange={(v) => update(portal.id, { position: v })}
-        />
-      </div>
-
-      <div style={styles.section}>
-        <span style={styles.label}>Region Shape</span>
-        <select
-          style={styles.select}
-          value={portal.region_shape}
-          onChange={(e) => update(portal.id, { region_shape: e.target.value as 'box' | 'sphere' })}
-        >
-          <option value="box">Box</option>
-          <option value="sphere">Sphere</option>
-        </select>
-      </div>
-
-      {portal.region_shape === 'sphere' ? (
-        <div style={styles.section}>
-          <span style={styles.label}>Radius</span>
-          <NumberInput
-            value={portal.region_radius}
-            onChange={(v) => update(portal.id, { region_radius: v })}
-            style={styles.input}
-          />
-        </div>
-      ) : (
-        <div style={styles.section}>
-          <span style={styles.label}>Half Extents</span>
-          <Vec3Input
-            value={portal.region_half_extents}
-            onChange={(v) => update(portal.id, { region_half_extents: v })}
-          />
-        </div>
-      )}
-
-      <div style={styles.section}>
-        <span style={styles.label}>Target Instance</span>
-        <select
-          style={styles.select}
-          value={portal.target_instance_id ?? ''}
-          onChange={(e) => {
-            const val = e.target.value;
-            if (val) {
-              update(portal.id, { target_instance_id: val });
-            } else {
-              update(portal.id, { target_instance_id: undefined });
-            }
-          }}
-        >
-          <option value="">None</option>
-          {instances.map((inst) => (
-            <option key={inst.id} value={inst.id}>{inst.display_name}</option>
-          ))}
-        </select>
-      </div>
-
-      <div style={styles.section}>
-        <span style={styles.label}>Spawn Position</span>
-        <Vec3Input
-          value={portal.spawn_position}
-          onChange={(v) => update(portal.id, { spawn_position: v })}
-        />
-      </div>
-
-      <div style={styles.section}>
-        <span style={styles.label}>Spawn Facing</span>
-        <select
-          style={styles.select}
-          value={portal.spawn_facing}
-          onChange={(e) => update(portal.id, { spawn_facing: e.target.value })}
-        >
-          {facings.map((f) => <option key={f} value={f}>{f}</option>)}
-        </select>
-      </div>
     </div>
   );
 }
@@ -1552,7 +1457,6 @@ export function ScenePropertiesPanel() {
   const selectedEntity = useSceneStore((s) => s.selectedEntity);
   const gameObjects = useSceneStore((s) => s.gameObjects);
   const staticLights = useSceneStore((s) => s.staticLights);
-  const portals = useSceneStore((s) => s.portals);
   const gsParticleEmitters = useSceneStore((s) => s.gsParticleEmitters);
   const gsAnimations = useSceneStore((s) => s.gsAnimations);
   const vfxInstances = useSceneStore((s) => s.vfxInstances);
@@ -1576,12 +1480,6 @@ export function ScenePropertiesPanel() {
     const light = staticLights.find((l) => l.id === selectedEntity.id);
     if (!light) return <div style={styles.empty}>Light not found</div>;
     return <LightProperties light={light} />;
-  }
-
-  if (selectedEntity.type === 'portal') {
-    const portal = portals.find((p) => p.id === selectedEntity.id);
-    if (!portal) return <div style={styles.empty}>Portal not found</div>;
-    return <PortalProperties portal={portal} />;
   }
 
   if (selectedEntity.type === 'instance') {

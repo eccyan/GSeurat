@@ -228,84 +228,8 @@ int main() {
         std::printf("PASS: StreamingVolume triggers preload\n");
     }
 
-    // 8. Portal detection (box region)
-    {
-        WorldManifest manifest;
-        manifest.grid_cell_size = glm::vec3(64.0f, 32.0f, 64.0f);
-        {
-            WorldChunk c; c.grid = glm::ivec3(0,0,0); c.ply_file = "a.ply";
-            manifest.chunks.push_back(c);
-        }
-
-        WorldPortal portal;
-        portal.id = "portal_box_1";
-        portal.position = glm::vec3(100.0f, 0.0f, 100.0f);
-        portal.region_shape = "box";
-        portal.region_half_extents = glm::vec3(5.0f, 5.0f, 5.0f);
-        portal.target_instance_id = "island_2";
-        manifest.portals.push_back(portal);
-
-        WorldStreamer streamer;
-        streamer.init(manifest);
-
-        // Camera inside portal box
-        glm::vec3 cam(102.0f, 1.0f, 99.0f);
-        auto events = streamer.update(cam);
-
-        bool found_portal = false;
-        for (const auto& e : events) {
-            if (e.type == WorldStreamer::StreamEvent::Type::PORTAL_ENTERED && e.id == "portal_box_1") {
-                found_portal = true;
-            }
-        }
-        assert(found_portal);
-        assert(streamer.entered_portal_id() == "portal_box_1");
-        std::printf("PASS: Portal detection (box region)\n");
-    }
-
-    // 9. Portal sphere region
-    {
-        WorldManifest manifest;
-        manifest.grid_cell_size = glm::vec3(64.0f, 32.0f, 64.0f);
-        {
-            WorldChunk c; c.grid = glm::ivec3(0,0,0); c.ply_file = "a.ply";
-            manifest.chunks.push_back(c);
-        }
-
-        WorldPortal portal;
-        portal.id = "portal_sphere_1";
-        portal.position = glm::vec3(200.0f, 0.0f, 200.0f);
-        portal.region_shape = "sphere";
-        portal.region_radius = 3.0f;
-        portal.target_instance_id = "island_3";
-        manifest.portals.push_back(portal);
-
-        WorldStreamer streamer;
-        streamer.init(manifest);
-
-        // Camera outside sphere (distance > 3)
-        glm::vec3 cam_out(200.0f, 0.0f, 210.0f);
-        auto ev_out = streamer.update(cam_out);
-        bool found_out = false;
-        for (const auto& e : ev_out) {
-            if (e.type == WorldStreamer::StreamEvent::Type::PORTAL_ENTERED) found_out = true;
-        }
-        assert(!found_out);
-        assert(streamer.entered_portal_id().empty());
-
-        // Camera inside sphere (distance <= 3)
-        glm::vec3 cam_in(200.0f, 0.0f, 202.0f);
-        auto ev_in = streamer.update(cam_in);
-        bool found_in = false;
-        for (const auto& e : ev_in) {
-            if (e.type == WorldStreamer::StreamEvent::Type::PORTAL_ENTERED && e.id == "portal_sphere_1") {
-                found_in = true;
-            }
-        }
-        assert(found_in);
-        assert(streamer.entered_portal_id() == "portal_sphere_1");
-        std::printf("PASS: Portal sphere region\n");
-    }
+    // (Portal detection tests removed: WorldStreamer no longer detects portals.
+    // Portals are ECS Game Objects with ProximityTrigger + PortalTarget components.)
 
     // 10. Volume exit event
     {

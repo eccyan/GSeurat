@@ -80,15 +80,6 @@ export interface LightJSON {
   height?: number;
 }
 
-// Scene transition portal — matches PortalData struct in scene_loader.hpp
-export interface PortalJSON {
-  position: Vec2;
-  size?: Vec2;
-  target_scene: string;
-  spawn_position: Vec3;
-  spawn_facing?: DirectionString;
-}
-
 // Particle emitter configuration — matches EmitterConfig struct in particle.hpp
 export interface EmitterConfigJSON {
   spawn_rate?: number;
@@ -181,7 +172,6 @@ export interface SceneJSON {
   player?: PlayerJSON;
   npcs?: NpcJSON[];
   background_layers?: BackgroundLayerJSON[];
-  portals?: PortalJSON[];
   weather?: WeatherJSON;
   day_night?: DayNightJSON;
   minimap?: MinimapJSON;

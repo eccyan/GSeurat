@@ -73812,6 +73812,21 @@
   },
   "game_objects": [
     {
+      "id": "portal_dungeon",
+      "name": "Portal to Dungeon",
+      "position": [203, 3, 175],
+      "scale": 1.0,
+      "components": {
+        "ProximityTrigger": { "radius": 5.0, "one_shot": true },
+        "PortalTarget": {
+          "target_scene": "assets/scenes/dungeon.json",
+          "target_position": [5, 0, 5],
+          "fade_color": [1, 1, 1],
+          "fade_duration": 0.5
+        }
+      }
+    },
+    {
       "id": "tree_1",
       "name": "Tree",
       "ply_file": "assets/props/island_tree_1.ply",

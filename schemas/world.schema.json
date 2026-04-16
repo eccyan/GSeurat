@@ -68,39 +68,6 @@
         },
         "additionalProperties": false
       }
-    },
-    "portals": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "required": ["id", "position", "region_shape", "target_instance_id"],
-        "properties": {
-          "id": { "type": "string" },
-          "position": {
-            "type": "array",
-            "items": { "type": "number" },
-            "minItems": 3,
-            "maxItems": 3
-          },
-          "region_shape": { "enum": ["box", "sphere"] },
-          "region_radius": { "type": "number" },
-          "region_half_extents": {
-            "type": "array",
-            "items": { "type": "number" },
-            "minItems": 3,
-            "maxItems": 3
-          },
-          "target_instance_id": { "type": "string" },
-          "spawn_position": {
-            "type": "array",
-            "items": { "type": "number" },
-            "minItems": 3,
-            "maxItems": 3
-          },
-          "spawn_facing": { "type": "string" }
-        },
-        "additionalProperties": false
-      }
     }
   },
   "additionalProperties": false

@@ -1,65 +1,12 @@
 import React from 'react';
-import { NumberInput } from '../components/NumberInput.js';
 import { Vec3Input } from '../components/Vec3Input.js';
 import { useSceneStore } from '../store/useSceneStore.js';
-import type { PortalData, InstanceData } from '../store/types.js';
+import type { InstanceData } from '../store/types.js';
 import { panelStyles } from '../styles/panel.js';
 
 const styles = { ...panelStyles };
 
 const facings = ['up', 'down', 'left', 'right'];
-
-function PortalEditor({ portal }: { portal: PortalData }) {
-  const updatePortal = useSceneStore((s) => s.updatePortal);
-  const removePortal = useSceneStore((s) => s.removePortal);
-  const selectedEntity = useSceneStore((s) => s.selectedEntity);
-  const setSelectedEntity = useSceneStore((s) => s.setSelectedEntity);
-  const isSelected = selectedEntity?.type === 'portal' && selectedEntity.id === portal.id;
-
-  return (
-    <div
-      style={{ ...styles.item, ...(isSelected ? styles.itemSelected : {}) }}
-      onClick={() => setSelectedEntity({ type: 'portal', id: portal.id })}
-    >
-      <div style={styles.row}>
-        <span style={{ fontSize: 13, flex: 1 }}>Portal</span>
-        <button style={styles.btnDanger} onClick={(e) => { e.stopPropagation(); removePortal(portal.id); }}>
-          Remove
-        </button>
-      </div>
-      <div style={styles.row}>
-        <span style={{ fontSize: 12, minWidth: 40 }}>Pos</span>
-        <NumberInput
-          value={portal.position[0]}
-          onChange={(v) => updatePortal(portal.id, { position: [v, portal.position[1], portal.position[2]] })}
-          style={{ ...styles.input, maxWidth: 60 }}
-        />
-        <NumberInput
-          value={portal.position[1]}
-          onChange={(v) => updatePortal(portal.id, { position: [portal.position[0], v, portal.position[2]] })}
-          style={{ ...styles.input, maxWidth: 60 }}
-        />
-        <NumberInput
-          value={portal.position[2]}
-          onChange={(v) => updatePortal(portal.id, { position: [portal.position[0], portal.position[1], v] })}
-          style={{ ...styles.input, maxWidth: 60 }}
-        />
-      </div>
-      <div style={styles.row}>
-        <span style={{ fontSize: 12, minWidth: 40 }}>Region</span>
-        <span style={{ fontSize: 11, color: '#aaa' }}>
-          {portal.region_shape === 'sphere'
-            ? `sphere r=${portal.region_radius}`
-            : `box ${portal.region_half_extents.join('x')}`}
-        </span>
-      </div>
-      <Vec3Input
-        value={portal.spawn_position}
-        onChange={(v) => updatePortal(portal.id, { spawn_position: v })}
-      />
-    </div>
-  );
-}
 
 function InstanceItem({ inst }: { inst: InstanceData }) {
   const selectedEntity = useSceneStore((s) => s.selectedEntity);
@@ -79,8 +26,6 @@ function InstanceItem({ inst }: { inst: InstanceData }) {
 export function EntitiesTab() {
   const player = useSceneStore((s) => s.player);
   const updatePlayer = useSceneStore((s) => s.updatePlayer);
-  const portals = useSceneStore((s) => s.portals);
-  const addPortal = useSceneStore((s) => s.addPortal);
   const instances = useSceneStore((s) => s.instances);
   const addInstance = useSceneStore((s) => s.addInstance);
 
@@ -111,14 +56,6 @@ export function EntitiesTab() {
             style={styles.input}
           />
         </div>
-      </div>
-
-      <div style={{ ...styles.row, marginBottom: 8 }}>
-        <span style={{ ...styles.label, flex: 1 }}>Portals ({portals.length})</span>
-        <button style={styles.btn} onClick={() => addPortal()}>+ Add</button>
-      </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {portals.map((p) => <PortalEditor key={p.id} portal={p} />)}
       </div>
 
       <div style={{ ...styles.row, marginBottom: 8, marginTop: 16 }}>

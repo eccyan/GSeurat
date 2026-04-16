@@ -46,7 +46,6 @@ int main() {
         assert(m.chunks[0].ply_file == "chunks/c0.ply");
         assert(m.chunks[0].scene_file.empty());
         assert(m.streaming_volumes.empty());
-        assert(m.portals.empty());
 
         std::printf("PASS: parse minimal manifest\n");
         ++passed;
@@ -123,39 +122,22 @@ int main() {
         ++passed;
     }
 
-    // 4. Parse global portals
+    // 4. Deprecated 'portals' field is silently dropped (warns to stderr)
     {
         json j = {
             {"version", 1},
             {"grid_cell_size", {64.0f, 32.0f, 64.0f}},
             {"chunks", json::array()},
-            {"portals", json::array({
-                {
-                    {"id", "portal_dungeon"},
-                    {"position", {100.0f, 0.0f, 200.0f}},
-                    {"region_shape", "sphere"},
-                    {"region_radius", 3.0f},
-                    {"target_instance_id", "dungeon_01"},
-                    {"spawn_position", {5.0f, 0.0f, 5.0f}},
-                    {"spawn_facing", "south"}
-                }
-            })}
+            {"portals", json::array({{{"id", "legacy"}, {"position", {0.0f, 0.0f, 0.0f}}, {"target_instance_id", "x"}}})},
+            {"instances", json::array({{{"id", "x"}, {"scene_file", "y.json"}}})}
         };
 
+        // Should not throw; just emits deprecation warnings.
         auto m = WorldManifest::from_json(j);
+        assert(m.chunks.empty());
+        assert(m.streaming_volumes.empty());
 
-        assert(m.portals.size() == 1);
-        const auto& p = m.portals[0];
-        assert(p.id == "portal_dungeon");
-        assert(approx(p.position.x, 100.0f));
-        assert(approx(p.position.z, 200.0f));
-        assert(p.region_shape == "sphere");
-        assert(approx(p.region_radius, 3.0f));
-        assert(p.target_instance_id == "dungeon_01");
-        assert(approx(p.spawn_position.x, 5.0f));
-        assert(p.spawn_facing == "south");
-
-        std::printf("PASS: parse global portals\n");
+        std::printf("PASS: deprecated portals/instances dropped with warning\n");
         ++passed;
     }
 
@@ -199,17 +181,6 @@ int main() {
                     {"half_extents", {4.0f, 4.0f, 4.0f}},
                     {"preload_target_ids", {"t1"}}
                 }
-            })},
-            {"portals", json::array({
-                {
-                    {"id", "p1"},
-                    {"position", {10.0f, 0.0f, 10.0f}},
-                    {"region_shape", "sphere"},
-                    {"region_radius", 2.0f},
-                    {"target_instance_id", "inst_a"},
-                    {"spawn_position", {1.0f, 0.0f, 1.0f}},
-                    {"spawn_facing", "north"}
-                }
             })}
         };
 
@@ -225,9 +196,6 @@ int main() {
         assert(m2.chunks[1].scene_file.empty());
         assert(m2.streaming_volumes.size() == 1);
         assert(m2.streaming_volumes[0].id == "sv1");
-        assert(m2.portals.size() == 1);
-        assert(m2.portals[0].id == "p1");
-        assert(m2.portals[0].spawn_facing == "north");
 
         std::printf("PASS: to_json round-trip\n");
         ++passed;
@@ -269,8 +237,7 @@ int main() {
             "version": 1,
             "grid_cell_size": [64.0, 32.0, 64.0],
             "chunks": [{"grid": [0,0,0], "ply_file": "../../etc/passwd"}],
-            "streaming_volumes": [],
-            "portals": []
+            "streaming_volumes": []
         })");
         bool threw = false;
         try { WorldManifest::from_json(j); } catch (...) { threw = true; }
@@ -286,8 +253,7 @@ int main() {
             "version": 1,
             "grid_cell_size": [64.0, 32.0, 64.0],
             "chunks": [{"grid": [0,0,0], "ply_file": "chunks/c0.ply", "scene_file": "../../etc/shadow"}],
-            "streaming_volumes": [],
-            "portals": []
+            "streaming_volumes": []
         })");
         bool threw = false;
         try { WorldManifest::from_json(j); } catch (...) { threw = true; }

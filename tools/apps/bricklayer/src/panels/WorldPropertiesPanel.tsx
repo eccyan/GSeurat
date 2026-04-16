@@ -215,82 +215,6 @@ function StreamingVolumeEditor({ id }: { id: string }) {
   );
 }
 
-// ── Portal Editor ──
-
-function PortalEditor({ id }: { id: string }) {
-  const portal = useWorldStore((s) => s.manifest.portals.find((p) => p.id === id));
-  const updatePortal = useWorldStore((s) => s.updatePortal);
-
-  if (!portal) return null;
-
-  const halfExtents: [number, number, number] = portal.region_half_extents ?? [2, 2, 2];
-  const radius = portal.region_radius ?? 2;
-
-  return (
-    <div style={sectionStyle}>
-      <SectionHeader label="Global Portal" />
-
-      <label style={labelStyle}>ID</label>
-      <div style={{ ...rowStyle, color: '#888', fontSize: 12, marginBottom: 8 }}>{portal.id}</div>
-
-      <label style={labelStyle}>Position</label>
-      <Vec3Input
-        value={portal.position}
-        onChange={(v) => updatePortal(id, { position: v as [number, number, number] })}
-        step={0.5}
-      />
-
-      <label style={labelStyle}>Region Shape</label>
-      <div style={rowStyle}>
-        <select
-          value={portal.region_shape}
-          onChange={(e) => updatePortal(id, { region_shape: e.target.value as 'box' | 'sphere' })}
-          style={{ ...styles.input, flex: 1 }}
-        >
-          <option value="sphere">Sphere</option>
-          <option value="box">Box</option>
-        </select>
-      </div>
-
-      {portal.region_shape === 'sphere' ? (
-        <>
-          <label style={labelStyle}>Region Radius</label>
-          <div style={rowStyle}>
-            <NumberInput
-              value={radius}
-              min={0.1}
-              step={0.1}
-              onChange={(v) => updatePortal(id, { region_radius: v })}
-              style={{ ...styles.input, flex: 1 }}
-            />
-          </div>
-        </>
-      ) : (
-        <>
-          <label style={labelStyle}>Region Half Extents</label>
-          <Vec3Input
-            value={halfExtents}
-            onChange={(v) => updatePortal(id, { region_half_extents: v as [number, number, number] })}
-            step={0.1}
-            min={0.1}
-          />
-        </>
-      )}
-
-      <label style={labelStyle}>Target Instance ID</label>
-      <div style={rowStyle}>
-        <input
-          type="text"
-          value={portal.target_instance_id}
-          placeholder="instance_id"
-          onChange={(e) => updatePortal(id, { target_instance_id: e.target.value })}
-          style={fullInputStyle}
-        />
-      </div>
-    </div>
-  );
-}
-
 // ── WorldPropertiesPanel ──
 
 export function WorldPropertiesPanel() {
@@ -307,9 +231,6 @@ export function WorldPropertiesPanel() {
       )}
       {selectedEntity?.type === 'streaming_volume' && (
         <StreamingVolumeEditor id={selectedEntity.id} />
-      )}
-      {selectedEntity?.type === 'world_portal' && (
-        <PortalEditor id={selectedEntity.id} />
       )}
     </div>
   );

@@ -25,10 +25,9 @@ public:
 
     struct StreamEvent {
         enum Type { CHUNK_LOAD_START, CHUNK_ACTIVE, CHUNK_UNLOADED,
-                    VOLUME_ENTERED, VOLUME_EXITED,
-                    PORTAL_ENTERED };
+                    VOLUME_ENTERED, VOLUME_EXITED };
         Type type;
-        std::string id;  // grid key, volume id, or portal id
+        std::string id;  // grid key, or volume id
     };
 
     void init(const WorldManifest& manifest);
@@ -55,20 +54,15 @@ public:
     const std::vector<std::string>& pending_loads() const { return pending_loads_; }
     const std::vector<std::string>& pending_unloads() const { return pending_unloads_; }
 
-    // Query: which portal was entered this frame? Empty string if none.
-    const std::string& entered_portal_id() const { return entered_portal_id_; }
-
 private:
     WorldManifest manifest_;
     std::unordered_map<std::string, ChunkInfo> chunks_;  // grid_key -> info
     std::unordered_set<std::string> active_volumes_;     // currently-inside volume IDs
-    std::unordered_set<std::string> active_portals_;     // currently-inside portal IDs
     float load_radius_{0.0f};    // auto-set from manifest grid_cell_size
     float unload_radius_{0.0f};  // load_radius * 1.5 (hysteresis)
 
     std::vector<std::string> pending_loads_;    // filled each frame
     std::vector<std::string> pending_unloads_;  // filled each frame
-    std::string entered_portal_id_;             // filled each frame
 
     static std::string make_grid_key(const glm::ivec3& grid);
 };

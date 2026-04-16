@@ -3,12 +3,11 @@ import type {
   WorldManifest,
   WorldChunk,
   StreamingVolumeData,
-  WorldPortalData,
 } from '@gseurat/project-root';
 import { createEmptyManifest, chunkGridKey } from '@gseurat/project-root';
 
 interface WorldSelection {
-  type: 'chunk' | 'streaming_volume' | 'world_portal';
+  type: 'chunk' | 'streaming_volume';
   id: string;
 }
 
@@ -29,10 +28,6 @@ interface WorldStoreState {
   updateStreamingVolume: (id: string, patch: Partial<StreamingVolumeData>) => void;
   removeStreamingVolume: (id: string) => void;
 
-  addPortal: () => void;
-  updatePortal: (id: string, patch: Partial<WorldPortalData>) => void;
-  removePortal: (id: string) => void;
-
   setSelectedEntity: (sel: WorldSelection | null) => void;
 
   enterChunk: (grid: [number, number, number]) => void;
@@ -44,7 +39,6 @@ interface WorldStoreState {
 }
 
 let nextSvId = 1;
-let nextPortalId = 1;
 
 export const useWorldStore = create<WorldStoreState>((set, get) => ({
   manifest: createEmptyManifest(),
@@ -139,48 +133,6 @@ export const useWorldStore = create<WorldStoreState>((set, get) => ({
       dirty: true,
     })),
 
-  addPortal: () =>
-    set((s) => {
-      const id = `portal_${nextPortalId++}`;
-      const portal: WorldPortalData = {
-        id,
-        position: [0, 0, 0],
-        region_shape: 'sphere',
-        region_radius: 2.0,
-        target_instance_id: '',
-      };
-      return {
-        manifest: {
-          ...s.manifest,
-          portals: [...s.manifest.portals, portal],
-        },
-        selectedEntity: { type: 'world_portal', id },
-        dirty: true,
-      };
-    }),
-
-  updatePortal: (id, patch) =>
-    set((s) => ({
-      manifest: {
-        ...s.manifest,
-        portals: s.manifest.portals.map((p) => (p.id === id ? { ...p, ...patch } : p)),
-      },
-      dirty: true,
-    })),
-
-  removePortal: (id) =>
-    set((s) => ({
-      manifest: {
-        ...s.manifest,
-        portals: s.manifest.portals.filter((p) => p.id !== id),
-      },
-      selectedEntity:
-        s.selectedEntity?.type === 'world_portal' && s.selectedEntity.id === id
-          ? null
-          : s.selectedEntity,
-      dirty: true,
-    })),
-
   setSelectedEntity: (sel) => set({ selectedEntity: sel }),
 
   enterChunk: (grid) => set({ editingChunkGrid: grid }),
@@ -191,12 +143,7 @@ export const useWorldStore = create<WorldStoreState>((set, get) => ({
       const n = parseInt(v.id.replace(/\D/g, ''), 10);
       return isNaN(n) ? max : Math.max(max, n);
     }, 0);
-    const maxP = data.portals.reduce((max, p) => {
-      const n = parseInt(p.id.replace(/\D/g, ''), 10);
-      return isNaN(n) ? max : Math.max(max, n);
-    }, 0);
     nextSvId = maxSv + 1;
-    nextPortalId = maxP + 1;
     set({ manifest: data, loaded: true, dirty: false, selectedEntity: null, editingChunkGrid: null });
   },
 
@@ -204,7 +151,6 @@ export const useWorldStore = create<WorldStoreState>((set, get) => ({
 
   newWorld: () => {
     nextSvId = 1;
-    nextPortalId = 1;
     set({
       manifest: createEmptyManifest(),
       loaded: true,

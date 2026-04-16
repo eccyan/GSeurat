@@ -5112,6 +5112,21 @@
   },
   "game_objects": [
     {
+      "id": "portal_dungeon_exit",
+      "name": "Portal Back to Overworld",
+      "position": [45, 0, 42],
+      "scale": 1.0,
+      "components": {
+        "ProximityTrigger": { "radius": 5.0, "one_shot": true },
+        "PortalTarget": {
+          "target_scene": "assets/scenes/seurat_island.json",
+          "target_position": [192, 3, 197],
+          "fade_color": [1, 1, 1],
+          "fade_duration": 0.5
+        }
+      }
+    },
+    {
       "id": "dungeon_torch_1",
       "name": "Dungeon Torch",
       "position": [

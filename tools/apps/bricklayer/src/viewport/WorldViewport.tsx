@@ -164,32 +164,6 @@ function WorldSceneContent() {
         );
       })}
 
-      {/* Global Portals */}
-      {manifest.portals.map((portal) => {
-        const isSelected = selectedEntity?.type === 'world_portal' && selectedEntity.id === portal.id;
-        const color = isSelected ? '#88ffff' : '#00cccc';
-        if (portal.region_shape === 'sphere') {
-          return (
-            <VolumeSphere
-              key={portal.id}
-              position={portal.position}
-              radius={portal.region_radius ?? 2}
-              color={color}
-              onClick={() => setSelectedEntity({ type: 'world_portal', id: portal.id })}
-            />
-          );
-        }
-        return (
-          <VolumeBox
-            key={portal.id}
-            position={portal.position}
-            halfExtents={portal.region_half_extents ?? [2, 2, 2]}
-            color={color}
-            onClick={() => setSelectedEntity({ type: 'world_portal', id: portal.id })}
-          />
-        );
-      })}
-
       <OrbitControls
         target={[0, 0, 0]}
         makeDefault
