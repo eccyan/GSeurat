@@ -8,6 +8,7 @@ import { GroundPlane } from './GroundPlane.js';
 import { GhostVoxel } from './GhostVoxel.js';
 import { JointGizmos } from './JointGizmos.js';
 import { MirrorPlane } from './MirrorPlane.js';
+import { LassoOverlay } from './LassoOverlay.js';
 import { useCharacterStore } from '../store/useCharacterStore.js';
 import { parseKey } from '../lib/voxelUtils.js';
 
@@ -19,6 +20,15 @@ function InitialInvalidator() {
     // Dispatch resize to ensure the first frame renders immediately.
     requestAnimationFrame(() => window.dispatchEvent(new Event('resize')));
   }, []);
+  return null;
+}
+
+/** Exposes the R3F camera to a ref so overlay components can use it. */
+function CameraExposer({ cameraRef }: { cameraRef: React.MutableRefObject<THREE.Camera | null> }) {
+  const { camera } = useThree();
+  useEffect(() => {
+    cameraRef.current = camera;
+  }, [camera, cameraRef]);
   return null;
 }
 
@@ -69,55 +79,65 @@ export function AssetViewport() {
   const gridWidth = useCharacterStore((s) => s.asset?.gridWidth ?? 32);
   const gridDepth = useCharacterStore((s) => s.asset?.gridDepth ?? 32);
   const showGrid = useCharacterStore((s) => s.showGrid);
+  const activeTool = useCharacterStore((s) => s.activeTool);
+  const cameraRef = useRef<THREE.Camera | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const lassoActive = activeTool === 'lasso_select';
 
   return (
-    <Canvas
-      frameloop="always"
-      camera={{ position: [gridWidth / 2, 20, gridDepth + 15], fov: 50 }}
-      style={{ background: '#16162a' }}
-      onContextMenu={(e) => e.preventDefault()}
-    >
-      <ambientLight intensity={0.6} />
-      <directionalLight position={[20, 40, 30]} intensity={0.8} />
-      <directionalLight position={[-10, 20, -20]} intensity={0.3} />
+    <div ref={containerRef} style={{ position: 'relative', width: '100%', height: '100%' }}>
+      <Canvas
+        frameloop="always"
+        camera={{ position: [gridWidth / 2, 20, gridDepth + 15], fov: 50 }}
+        style={{ background: '#16162a' }}
+        onContextMenu={(e) => e.preventDefault()}
+      >
+        <ambientLight intensity={0.6} />
+        <directionalLight position={[20, 40, 30]} intensity={0.8} />
+        <directionalLight position={[-10, 20, -20]} intensity={0.3} />
 
-      {showGrid && (
-        <Grid
-          args={[gridWidth, gridDepth]}
-          position={[gridWidth / 2 - 0.5, -0.5, gridDepth / 2 - 0.5]}
-          cellSize={1}
-          cellThickness={0.5}
-          cellColor="#334"
-          sectionSize={8}
-          sectionThickness={1}
-          sectionColor="#446"
-          fadeDistance={200}
-          infiniteGrid={false}
+        {showGrid && (
+          <Grid
+            args={[gridWidth, gridDepth]}
+            position={[gridWidth / 2 - 0.5, -0.5, gridDepth / 2 - 0.5]}
+            cellSize={1}
+            cellThickness={0.5}
+            cellColor="#334"
+            sectionSize={8}
+            sectionThickness={1}
+            sectionColor="#446"
+            fadeDistance={200}
+            infiniteGrid={false}
+          />
+        )}
+
+        <VoxelMesh />
+        <GroundPlane />
+        <GhostVoxel />
+        <JointGizmos />
+        <MirrorPlane />
+        <CameraFitter />
+        <InitialInvalidator />
+        <CameraExposer cameraRef={cameraRef} />
+
+        <OrbitControls
+          enabled={!lassoActive}
+          target={[gridWidth / 2, 0, gridDepth / 2]}
+          makeDefault
+          screenSpacePanning
+          mouseButtons={{
+            LEFT: 0,
+            MIDDLE: 1,
+            RIGHT: 2,
+          }}
+          touches={{
+            ONE: 0,
+            TWO: 1,
+          }}
         />
-      )}
-
-      <VoxelMesh />
-      <GroundPlane />
-      <GhostVoxel />
-      <JointGizmos />
-      <MirrorPlane />
-      <CameraFitter />
-      <InitialInvalidator />
-
-      <OrbitControls
-        target={[gridWidth / 2, 0, gridDepth / 2]}
-        makeDefault
-        screenSpacePanning
-        mouseButtons={{
-          LEFT: 0,
-          MIDDLE: 1,
-          RIGHT: 2,
-        }}
-        touches={{
-          ONE: 0,
-          TWO: 1,
-        }}
-      />
-    </Canvas>
+      </Canvas>
+      <LassoOverlay cameraRef={cameraRef} containerRef={containerRef} />
+    </div>
   );
 }
