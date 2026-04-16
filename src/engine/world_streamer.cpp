@@ -18,7 +18,6 @@ void WorldStreamer::init(const WorldManifest& manifest) {
     active_volumes_.clear();
     pending_loads_.clear();
     pending_unloads_.clear();
-    entered_portal_id_.clear();
 
     // Populate chunk map — all start UNLOADED
     for (const auto& chunk : manifest_.chunks) {
@@ -39,7 +38,6 @@ void WorldStreamer::init(const WorldManifest& manifest) {
 std::vector<WorldStreamer::StreamEvent> WorldStreamer::update(const glm::vec3& camera_pos) {
     pending_loads_.clear();
     pending_unloads_.clear();
-    entered_portal_id_.clear();
 
     std::vector<StreamEvent> events;
 
@@ -91,29 +89,6 @@ std::vector<WorldStreamer::StreamEvent> WorldStreamer::update(const glm::vec3& c
         } else if (!inside && was_inside) {
             active_volumes_.erase(vol.id);
             events.push_back({StreamEvent::Type::VOLUME_EXITED, vol.id});
-        }
-    }
-
-    // Portal detection (one-shot: only fires on enter, not every frame)
-    for (const auto& portal : manifest_.portals) {
-        bool inside = false;
-        if (portal.region_shape == "box") {
-            glm::vec3 d = glm::abs(camera_pos - portal.position);
-            inside = (d.x <= portal.region_half_extents.x &&
-                      d.y <= portal.region_half_extents.y &&
-                      d.z <= portal.region_half_extents.z);
-        } else {
-            float dist = glm::length(camera_pos - portal.position);
-            inside = dist <= portal.region_radius;
-        }
-
-        bool was_inside = active_portals_.count(portal.id) > 0;
-        if (inside && !was_inside) {
-            active_portals_.insert(portal.id);
-            entered_portal_id_ = portal.id;
-            events.push_back({StreamEvent::Type::PORTAL_ENTERED, portal.id});
-        } else if (!inside && was_inside) {
-            active_portals_.erase(portal.id);
         }
     }
 
