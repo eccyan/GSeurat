@@ -151,6 +151,9 @@ importers:
 
   apps/echidna:
     dependencies:
+      '@gseurat/ai-providers':
+        specifier: workspace:*
+        version: link:../../packages/ai-providers
       '@gseurat/asset-types':
         specifier: workspace:*
         version: link:../../packages/asset-types
