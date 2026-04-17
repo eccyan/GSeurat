@@ -1,7 +1,7 @@
 #pragma once
 
 #include "gseurat/engine/async_loader.hpp"
-#include "gseurat/engine/audio_system.hpp"
+#include "gseurat/engine/audio/audio_engine.hpp"
 #include "gseurat/engine/component_registry.hpp"
 #include "gseurat/engine/system_scheduler.hpp"
 #include "gseurat/engine/control_server.hpp"
@@ -47,6 +47,7 @@
 #include <chrono>
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <vector>
 
 namespace gseurat {
@@ -84,7 +85,7 @@ public:
     ResourceManager& resources() { return resources_; }
     Scene& scene() { return scene_; }
     ecs::World& world() { return world_; }
-    AudioSystem& audio() { return audio_; }
+    audio::AudioEngine* audio() { return audio_engine_.get(); }
     SaveSystem& save_system() { return save_system_; }
     ParticleSystem& particles() { return particles_; }
     LocaleManager& locale() { return locale_; }
@@ -131,10 +132,6 @@ public:
     virtual void update_game(float dt);
     void upload_bone_transforms();
     virtual void update_audio(float dt);
-
-    // Audio state
-    float& footstep_timer() { return footstep_timer_; }
-    bool& was_moving() { return was_moving_; }
 
     // Step mode
     bool step_mode() const { return step_mode_; }
@@ -249,10 +246,8 @@ protected:
     // Minimap
     Minimap minimap_;
 
-    // Audio
-    AudioSystem audio_;
-    float footstep_timer_ = 0.0f;
-    bool was_moving_ = false;
+    // Audio engine (interactive music — constructed in init_game_content)
+    std::unique_ptr<audio::AudioEngine> audio_engine_;
 
     // Save system
     SaveSystem save_system_;

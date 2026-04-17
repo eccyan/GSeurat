@@ -539,6 +539,20 @@ void IslandDemoState::on_enter(AppBase& app) {
     // Initialize camera centered on player (use header defaults for elevation/distance)
     camera_target_ = player_pos + glm::vec3(0, kCameraYOffset, 0);
 
+    // Load and play the field theme music via the new AudioEngine.
+    // Phase 1: programmatic playback on startup. AudioZone spatial triggering
+    // will be wired once the ECS integration is fully tested.
+    if (auto* ae = app.audio()) {
+        auto r = ae->load_track_group("assets/audio/field_theme.music.json");
+        if (r) {
+            ae->play_group(r.value());
+            std::fprintf(stderr, "[IslandDemo] Field theme loaded and playing (group %u)\n", r.value());
+        } else {
+            std::fprintf(stderr, "[IslandDemo] WARNING: Failed to load field_theme.music.json (error %u)\n",
+                         static_cast<uint32_t>(r.error()));
+        }
+    }
+
     // Scene loaded — ready for play
 }
 

@@ -1,0 +1,16 @@
+{
+  "version": 2,
+  "sample_rate": 48000,
+  "track_groups": [
+    {
+      "id": 1,
+      "name": "sine_loop",
+      "loop_start": 0,
+      "loop_end": 24000,
+      "markers": [ { "frame": 12000, "name": "midpoint" } ],
+      "stems": [
+        { "source": "../../tests/test_data/audio/sine_loop.wav", "initial_volume": 1.0 }
+      ]
+    }
+  ]
+}

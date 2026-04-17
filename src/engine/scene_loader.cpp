@@ -588,6 +588,13 @@ SceneData SceneLoader::from_json(const nlohmann::json& j) {
         data.camera_zones = parse_camera_zones(j["camera_zones"]);
     }
 
+    // Audio preload track groups
+    if (j.contains("audio") && j["audio"].contains("preload_track_groups")) {
+        for (const auto& s : j["audio"]["preload_track_groups"]) {
+            data.audio_preload_track_groups.push_back(s.get<std::string>());
+        }
+    }
+
     // Minimap
     if (j.contains("minimap")) {
         const auto& m = j["minimap"];
@@ -1247,6 +1254,13 @@ nlohmann::json SceneLoader::to_json(const SceneData& data) {
             dn["keyframes"] = kfs;
         }
         j["day_night"] = dn;
+    }
+
+    // Audio preload track groups
+    if (!data.audio_preload_track_groups.empty()) {
+        nlohmann::json audio;
+        audio["preload_track_groups"] = data.audio_preload_track_groups;
+        j["audio"] = audio;
     }
 
     // Minimap

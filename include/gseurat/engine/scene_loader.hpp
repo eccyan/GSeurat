@@ -191,6 +191,9 @@ struct SceneData {
 
     // Camera zones (optional — volumes, triggers, rails for camera control)
     std::optional<CameraZonesData> camera_zones;
+
+    // Audio preload hints (track group names to preload on scene load)
+    std::vector<std::string> audio_preload_track_groups;
 };
 
 class SceneLoader {

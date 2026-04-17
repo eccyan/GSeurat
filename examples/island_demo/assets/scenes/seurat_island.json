@@ -75438,5 +75438,10 @@
       ],
       "spawn_rate": 0
     }
-  ]
+  ],
+  "audio": {
+    "preload_track_groups": [
+      "assets/audio/field_theme.music.json"
+    ]
+  }
 }

@@ -89,7 +89,10 @@ const modeTabsStyles: Record<string, React.CSSProperties> = {
   tab: {
     flex: 1,
     padding: '8px 4px',
-    border: 'none',
+    borderTop: 'none',
+    borderLeft: 'none',
+    borderRight: 'none',
+    borderBottom: '2px solid transparent',
     background: 'transparent',
     color: '#888',
     cursor: 'pointer',

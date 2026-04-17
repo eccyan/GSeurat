@@ -316,6 +316,17 @@ export interface VfxInstanceData {
 }
 
 
+// ── Audio Zone Types ──
+
+export interface AudioZoneData {
+  id: string;
+  name: string;
+  bounds: { type: 'aabb'; min: [number, number, number]; max: [number, number, number] };
+  track_group_name?: string;
+  on_enter: { action: string; xfade_ms: number; align_to_next_marker: boolean };
+  on_exit: { action: string; fade_ms: number };
+}
+
 // ── Camera Zone Types (Phase 2) ──
 
 export interface CameraShape {
@@ -479,5 +490,6 @@ export interface BricklayerFile {
     cameraDefaultParams?: Partial<CameraZoneParams>;
     cameraShowDebugVolumes?: boolean;
     instances?: InstanceData[];
+    audioZones?: AudioZoneData[];
   };
 }

@@ -27,6 +27,16 @@ void AppBase::set_start_state(std::unique_ptr<GameState> state) {
 void AppBase::run() {
     command_dispatcher_.register_default_commands();
     init_game_object_system();
+
+    // Construct the interactive music audio engine (realtime output via miniaudio).
+    // Music loading is wired via AudioZone scene data in Milestone 5.
+    auto engine_r = audio::AudioEngine::create(
+        {.sample_rate = 44100, .buffer_frames = 1024, .max_active_groups = 8},
+        audio::AudioEngine::Mode::Realtime);
+    if (engine_r) {
+        audio_engine_ = std::move(engine_r.value());
+    }
+
     init_game_content();
 
     if (custom_start_state_) {
@@ -191,7 +201,7 @@ void AppBase::cleanup() {
     control_server_.stop();
     async_loader_.shutdown();
     staging_uploader_.shutdown();
-    audio_.shutdown();
+    audio_engine_.reset();
     resources_.shutdown();
     renderer_.shutdown();
     glfwDestroyWindow(window_);
