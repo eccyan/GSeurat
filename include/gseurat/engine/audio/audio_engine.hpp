@@ -34,6 +34,7 @@ public:
         uint32_t max_active_groups      = 8;
         uint32_t command_queue_capacity = 256;
         uint32_t rtpc_count             = 64;
+        uint32_t max_oneshot_voices     = 32;
     };
     enum class Mode { Realtime, Offline };
 

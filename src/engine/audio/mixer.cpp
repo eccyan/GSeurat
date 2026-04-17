@@ -3,15 +3,19 @@
 #include <algorithm>
 #include <cassert>
 #include <cstring>
+#include <glm/glm.hpp>
 
 namespace gseurat::audio {
 
 Mixer::Mixer(uint32_t sample_rate, uint32_t channels,
-             uint32_t buffer_frames, uint32_t max_active_groups)
+             uint32_t buffer_frames, uint32_t max_active_groups,
+             uint32_t max_oneshot_voices)
     : sample_rate_(sample_rate), channels_(channels),
       buffer_frames_(buffer_frames),
       max_active_groups_(std::min(max_active_groups, kMaxActiveGroupsHardCap)),
+      max_oneshot_voices_(max_oneshot_voices),
       active_groups_(max_active_groups_),
+      oneshot_voices_(max_oneshot_voices_),
       group_volume_scratch_(buffer_frames_),
       read_scratch_(static_cast<size_t>(buffer_frames_) * channels_) {
     registry_.reserve(64);
@@ -271,5 +275,14 @@ void Mixer::register_track_group(uint32_t id, TrackGroupMetadata&& meta,
     registry_.push_back({std::move(meta), std::move(stems)});
     (void)id;
 }
+
+OneshotVoice* Mixer::acquire_voice() noexcept {
+    for (auto& v : oneshot_voices_) {
+        if (!v.source) return &v;
+    }
+    return nullptr;
+}
+
+void Mixer::render_voice(OneshotVoice&, std::span<float>, uint32_t, glm::vec3) noexcept {}
 
 }  // namespace gseurat::audio

@@ -15,7 +15,7 @@ class AudioEngineImpl final : public AudioEngine {
 public:
     AudioEngineImpl(Config cfg, Mode mode)
         : cfg_(cfg), mode_(mode), channels_(2),
-          mixer_(cfg.sample_rate, channels_, cfg.buffer_frames, cfg.max_active_groups) {
+          mixer_(cfg.sample_rate, channels_, cfg.buffer_frames, cfg.max_active_groups, cfg.max_oneshot_voices) {
         if (mode_ == Mode::Realtime) {
             device_ = make_miniaudio_device();
             device_->start(cfg_.sample_rate, channels_, cfg_.buffer_frames,
