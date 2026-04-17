@@ -35,10 +35,21 @@ void Mixer::render(std::span<float> out, uint32_t frames_this_block) noexcept {
     for (uint32_t bi = 0; bi < nb; ++bi) {
         const auto& b = rtpc_bindings_[bi];
         const float rv = rtpc_bus_.values[b.rtpc_id].load(std::memory_order_relaxed);
-        // Map [0,1] → [min_out, max_out]
-        const float out_val = b.min_out + (b.max_out - b.min_out) * std::clamp(rv, 0.0f, 1.0f);
-        if (auto* g = find_active_slot(b.group_id); g && b.stem_index < g->stem_count) {
-            g->stems[b.stem_index].volume.set_target(out_val, 32);  // 32-frame smooth
+        const float mapped = b.min_out + (b.max_out - b.min_out) * std::clamp(rv, 0.0f, 1.0f);
+
+        auto* g = find_active_slot(b.group_id);
+        if (!g || b.stem_index >= g->stem_count) continue;
+
+        switch (b.target) {
+        case RtpcBinding::Target::StemVolume:
+            g->stems[b.stem_index].volume.set_target(mapped, 32);
+            break;
+        case RtpcBinding::Target::EffectParam:
+            if (b.effect_index < g->stems[b.stem_index].effect_count) {
+                auto* fx = g->stems[b.stem_index].effect_chain[b.effect_index];
+                if (fx) fx->set_parameter(b.parameter_id, mapped);
+            }
+            break;
         }
     }
 
@@ -113,6 +124,15 @@ void Mixer::apply_command(const AudioCommand& cmd) noexcept {
             slot->stems[i].volume.force(meta.stems[i].initial_volume);
         }
         slot->group_volume.force(1.0f);
+
+        // Wire effects from registry
+        for (const auto& se : entry->stem_effects) {
+            if (se.stem_index < slot->stem_count &&
+                slot->stems[se.stem_index].effect_count < kMaxEffectsPerStem) {
+                auto& stem = slot->stems[se.stem_index];
+                stem.effect_chain[stem.effect_count++] = se.effect.get();
+            }
+        }
 
         // Copy marker pointers
         if (!meta.markers.empty()) {
@@ -280,6 +300,12 @@ void Mixer::mix_chunk(TrackGroupState& g, std::span<float> out,
                                   static_cast<size_t>(chunk_frames) * src_ch);
         stem.source->read_frames(g.play_cursor, chunk_frames, scratch);
 
+        // Apply effect chain (in-place on scratch buffer)
+        for (uint8_t ei = 0; ei < stem.effect_count; ++ei) {
+            if (stem.effect_chain[ei])
+                stem.effect_chain[ei]->process(scratch, src_ch);
+        }
+
         for (uint32_t f = 0; f < chunk_frames; ++f) {
             const float gain = stem.volume.tick() * group_volume_scratch_[f];
             if (src_ch == 1) {
@@ -329,8 +355,18 @@ void Mixer::maybe_trigger_pending_transition(TrackGroupState& g) noexcept {
 
 void Mixer::register_track_group(uint32_t id, TrackGroupMetadata&& meta,
                                   std::vector<std::unique_ptr<IAudioSource>>&& stems) {
-    registry_.push_back({std::move(meta), std::move(stems)});
+    registry_.push_back({std::move(meta), std::move(stems), {}});
     (void)id;
+}
+
+void Mixer::add_stem_effect(uint32_t group_id, uint32_t stem_index,
+                             std::unique_ptr<IDSPEffect> effect) {
+    for (auto& entry : registry_) {
+        if (entry.metadata.id != group_id) continue;
+        if (stem_index >= entry.metadata.stems.size()) return;
+        entry.stem_effects.push_back({stem_index, std::move(effect)});
+        return;
+    }
 }
 
 OneshotVoice* Mixer::acquire_voice() noexcept {

@@ -1,5 +1,6 @@
 #pragma once
 #include "gseurat/engine/audio/audio_source.hpp"
+#include "gseurat/engine/audio/dsp_effect.hpp"
 #include "gseurat/engine/audio/track_group.hpp"
 
 #include <cstdint>
@@ -65,6 +66,21 @@ public:
                                       float max_distance, float volume = 1.0f) = 0;
     virtual void stop_all_sfx() = 0;
     virtual void set_listener_position(float x, float y, float z) = 0;
+
+    // DSP effects (game thread, before play_group)
+    virtual void add_stem_effect(uint32_t group_id, uint32_t stem_index,
+                                  std::unique_ptr<IDSPEffect> effect) = 0;
+    virtual void bind_effect_param_to_rtpc(
+        uint32_t group_id, uint32_t stem_index,
+        uint32_t effect_index, uint32_t parameter_id,
+        uint32_t rtpc_id, float min_out, float max_out) = 0;
+
+    // Factory for built-in effects
+    static std::unique_ptr<IDSPEffect> create_svf(
+        float sample_rate,
+        uint8_t type = 0,  // 0=LPF, 1=HPF, 2=BPF
+        float cutoff_hz = 20000.0f,
+        float resonance = 0.707f);
 
     virtual void render_offline(std::span<float> interleaved_out, uint64_t num_frames) = 0;
 
