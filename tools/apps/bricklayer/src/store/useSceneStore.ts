@@ -35,6 +35,7 @@ import type {
   CameraZoneTrigger,
   CameraZoneRail,
   CameraZoneParams,
+  AudioZoneData,
 } from './types.js';
 import { DEFAULT_CAMERA_ZONE_PARAMS } from './types.js';
 import { voxelKey, parseKey, floodFill3D, brushPositions } from '../lib/voxelUtils.js';
@@ -314,6 +315,7 @@ export interface SceneStoreState {
   cameraDefaultParams: Partial<CameraZoneParams>;
   cameraShowDebugVolumes: boolean;
   savedEditorCamera: { position: [number,number,number]; target: [number,number,number] } | null;
+  audioZones: AudioZoneData[];
 
   // Editor state
   mode: BricklayerMode;
@@ -378,6 +380,9 @@ export interface SceneStoreState {
   addVfxInstance: (data: VfxInstanceData) => void;
   updateVfxInstance: (id: string, patch: Partial<VfxInstanceData>) => void;
   removeVfxInstance: (id: string) => void;
+  addAudioZone: () => void;
+  updateAudioZone: (id: string, patch: Partial<AudioZoneData>) => void;
+  removeAudioZone: (id: string) => void;
   addCameraVolume: (position?: [number, number, number]) => void;
   updateCameraVolume: (id: string, patch: Partial<CameraZoneVolume>) => void;
   removeCameraVolume: (id: string) => void;
@@ -588,6 +593,7 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
   cameraDefaultParams: {},
   cameraShowDebugVolumes: false,
   savedEditorCamera: null,
+  audioZones: [] as AudioZoneData[],
 
   mode: 'terrain',
   selectedEntity: null,
@@ -874,6 +880,26 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
   }),
   removeVfxInstance: (id) => set({
     vfxInstances: get().vfxInstances.filter((v) => v.id !== id), isDirty: true,
+  }),
+
+  // ── Audio Zone actions ──
+  addAudioZone: () => {
+    const zones = get().audioZones;
+    const zone: AudioZoneData = {
+      id: genId('audiozone'),
+      name: `Audio Zone ${zones.length + 1}`,
+      bounds: { type: 'aabb', min: [-5, 0, -5], max: [5, 5, 5] },
+      track_group_name: '',
+      on_enter: { action: 'play', xfade_ms: 1000, align_to_next_marker: true },
+      on_exit: { action: 'stop', fade_ms: 500 },
+    };
+    set({ audioZones: [...zones, zone], isDirty: true });
+  },
+  updateAudioZone: (id, patch) => set({
+    audioZones: get().audioZones.map((z) => (z.id === id ? { ...z, ...patch } : z)), isDirty: true,
+  }),
+  removeAudioZone: (id) => set({
+    audioZones: get().audioZones.filter((z) => z.id !== id), isDirty: true,
   }),
 
   // ── Camera Zone actions ──
@@ -1408,6 +1434,7 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
         cameraRails: s.cameraRails.length > 0 ? s.cameraRails : undefined,
         cameraDefaultParams: Object.keys(s.cameraDefaultParams).length > 0 ? s.cameraDefaultParams : undefined,
         cameraShowDebugVolumes: s.cameraShowDebugVolumes || undefined,
+        audioZones: s.audioZones.length > 0 ? s.audioZones : undefined,
       },
     };
   },
@@ -1491,6 +1518,7 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
       cameraRails: data.scene.cameraRails ?? [],
       cameraDefaultParams: data.scene.cameraDefaultParams ?? {},
       cameraShowDebugVolumes: data.scene.cameraShowDebugVolumes ?? false,
+      audioZones: data.scene.audioZones ?? [],
       savedEditorCamera: null,
       player: data.scene.player,
       backgroundLayers: data.scene.backgroundLayers,
