@@ -135,6 +135,18 @@ private:
     std::array<PbdLink, kPbdLinkCount> pbd_links_;
 
 
+    // SFX IDs
+    uint32_t sfx_footstep_     = 0;
+    uint32_t sfx_dialog_open_  = 0;
+    uint32_t sfx_dialog_close_ = 0;
+    uint32_t sfx_dialog_blip_  = 0;
+    uint32_t sfx_torch_        = 0;
+    bool     sfx_loaded_       = false;
+
+    // Footstep timer
+    float footstep_timer_ = 0.0f;
+    static constexpr float kFootstepInterval = 0.35f;
+
     // Hybrid re-render
     uint32_t gs_frame_counter_ = 0;
     uint32_t gs_render_interval_ = 1;  // render every frame (no cached blit = no flickering/ghosts)

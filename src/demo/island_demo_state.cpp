@@ -553,6 +553,34 @@ void IslandDemoState::on_enter(AppBase& app) {
         }
     }
 
+    // Load SFX
+    if (auto* ae = app.audio()) {
+        auto load = [&](const char* path) -> uint32_t {
+            auto r = ae->load_sfx(path);
+            if (!r) {
+                std::fprintf(stderr, "[IslandDemo] WARNING: Failed to load SFX %s\n", path);
+                return 0;
+            }
+            return r.value();
+        };
+        sfx_footstep_     = load("assets/audio/footstep.wav");
+        sfx_dialog_open_  = load("assets/audio/dialog_open.wav");
+        sfx_dialog_close_ = load("assets/audio/dialog_close.wav");
+        sfx_dialog_blip_  = load("assets/audio/dialog_blip.wav");
+        sfx_torch_        = load("assets/audio/torch_crackle.wav");
+        sfx_loaded_ = true;
+
+        // Set up looping spatial torch crackles from scene data
+        for (const auto& pos : scene_data.torch_audio_positions) {
+            ae->play_looping_spatial(sfx_torch_, pos.x, pos.y, pos.z, 15.0f, 0.6f);
+        }
+        std::fprintf(stderr, "[IslandDemo] SFX loaded, %zu torch crackles placed\n",
+                     scene_data.torch_audio_positions.size());
+
+        // Note: dialog SFX (dialog_open, dialog_close, dialog_blip) are loaded and ready.
+        // They will be triggered when the dialog system is wired up.
+    }
+
     // Scene loaded — ready for play
 }
 
@@ -661,6 +689,25 @@ void IslandDemoState::update(AppBase& app, float dt) {
     // Player movement (skip when dev overlay has keyboard focus)
     if (!app.dev_overlay().wants_keyboard()) {
         update_player(app, dt);
+    }
+
+    // Audio: update listener position + footstep SFX
+    if (auto* ae = app.audio()) {
+        ae->set_listener_position(character_origin_.x, character_origin_.y, character_origin_.z);
+    }
+    if (sfx_loaded_) {
+        const bool moving = glm::length(glm::vec2(player_velocity_.x, player_velocity_.z)) > 1.0f;
+        if (moving && !jumping_) {
+            footstep_timer_ -= dt;
+            if (footstep_timer_ <= 0.0f) {
+                if (auto* ae = app.audio()) {
+                    ae->play_oneshot(sfx_footstep_, 0.5f);
+                }
+                footstep_timer_ = kFootstepInterval;
+            }
+        } else {
+            footstep_timer_ = 0.0f;
+        }
     }
 
     // Run ECS systems (proximity triggers, linked triggers, emissive toggle, NPC walker, bone animation)
