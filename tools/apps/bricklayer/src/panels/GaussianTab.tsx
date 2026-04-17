@@ -1,7 +1,12 @@
 import React, { useState } from 'react';
 import { NumberInput } from '../components/NumberInput.js';
 import { useSceneStore } from '../store/useSceneStore.js';
+import type { MorphEasing } from '../store/types.js';
 import { panelStyles } from '../styles/panel.js';
+
+/// Adding a new easing: extend MorphEasing in store/types.ts, then add an
+/// option here. The type coupling keeps the two in lockstep.
+const MORPH_EASINGS: readonly MorphEasing[] = ['linear', 'ease_in_out'];
 
 const styles: Record<string, React.CSSProperties> = { ...panelStyles, info: { fontSize: 11, color: '#aaa' } };
 
@@ -196,12 +201,13 @@ export function GaussianTab() {
           <select
             value={gs.morphEasing}
             onChange={(e) =>
-              setGs({ morphEasing: e.target.value as 'linear' | 'ease_in_out' })
+              setGs({ morphEasing: e.target.value as MorphEasing })
             }
             style={styles.select}
           >
-            <option value="linear">linear</option>
-            <option value="ease_in_out">ease_in_out</option>
+            {MORPH_EASINGS.map((e) => (
+              <option key={e} value={e}>{e}</option>
+            ))}
           </select>
         </div>
       </div>

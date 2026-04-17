@@ -2,9 +2,11 @@ import { describe, it, expect, vi } from 'vitest';
 import {
   validateScenePaths,
   assertScenePathsValid,
+  exportSceneJson,
   ScenePathValidationError,
   type ScenePathError,
 } from '../sceneExport';
+import { useSceneStore } from '../../store/useSceneStore';
 import { createEmptyRegistry, registerCharacter } from '@gseurat/project-root';
 
 describe('validateScenePaths', () => {
@@ -131,6 +133,90 @@ describe('ScenePathValidationError', () => {
       { field: 'b', value: 'y', message: 'n' },
     ]);
     expect(err.message).toMatch(/2 path issues/i);
+  });
+});
+
+describe('exportSceneJson — gaussian_splat.morph', () => {
+  // Reset the store to its defaults before each test so state from a prior test
+  // cannot leak.
+  function resetStore() {
+    const s = useSceneStore.getState();
+    useSceneStore.setState({
+      gaussianSplat: {
+        ...s.gaussianSplat,
+        morphPairPly: '',
+        morphDuration: 1.5,
+        morphDefaultBlend: 0.0,
+        morphEasing: 'linear',
+      },
+    });
+  }
+
+  it('omits the morph key when pair_ply is empty (zero-regression invariant)', () => {
+    resetStore();
+    const scene = exportSceneJson(useSceneStore.getState()) as {
+      gaussian_splat: Record<string, unknown>;
+    };
+    expect(scene.gaussian_splat).toBeDefined();
+    expect('morph' in scene.gaussian_splat).toBe(false);
+  });
+
+  it('omits the morph key when pair_ply is whitespace-only', () => {
+    resetStore();
+    useSceneStore.setState({
+      gaussianSplat: {
+        ...useSceneStore.getState().gaussianSplat,
+        morphPairPly: '   \t  ',
+      },
+    });
+    const scene = exportSceneJson(useSceneStore.getState()) as {
+      gaussian_splat: Record<string, unknown>;
+    };
+    expect('morph' in scene.gaussian_splat).toBe(false);
+  });
+
+  it('emits morph with snake_case keys when pair_ply is set', () => {
+    resetStore();
+    useSceneStore.setState({
+      gaussianSplat: {
+        ...useSceneStore.getState().gaussianSplat,
+        morphPairPly: 'assets/maps/library_past.ply',
+        morphDuration: 2.25,
+        morphDefaultBlend: 0.3,
+        morphEasing: 'ease_in_out',
+      },
+    });
+    const scene = exportSceneJson(useSceneStore.getState()) as {
+      gaussian_splat: { morph?: Record<string, unknown> };
+    };
+    expect(scene.gaussian_splat.morph).toBeDefined();
+    const morph = scene.gaussian_splat.morph!;
+
+    // Exact key set — C++ parser rejects extras silently, but we also reject
+    // missing fields here to lock the contract.
+    expect(Object.keys(morph).sort()).toEqual(
+      ['default_blend', 'duration', 'easing', 'pair_ply'],
+    );
+    expect(morph.pair_ply).toBe('assets/maps/library_past.ply');
+    expect(morph.duration).toBe(2.25);
+    expect(morph.default_blend).toBe(0.3);
+    expect(morph.easing).toBe('ease_in_out');
+  });
+
+  it('trims leading/trailing whitespace on pair_ply', () => {
+    resetStore();
+    useSceneStore.setState({
+      gaussianSplat: {
+        ...useSceneStore.getState().gaussianSplat,
+        morphPairPly: '  assets/maps/library_past.ply  ',
+      },
+    });
+    const scene = exportSceneJson(useSceneStore.getState()) as {
+      gaussian_splat: { morph?: { pair_ply: string } };
+    };
+    expect(scene.gaussian_splat.morph?.pair_ply).toBe(
+      'assets/maps/library_past.ply',
+    );
   });
 });
 

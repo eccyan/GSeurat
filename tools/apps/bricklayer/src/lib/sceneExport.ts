@@ -295,15 +295,16 @@ export function exportSceneJson(
     parallax: gs.parallax,
   };
 
-  // Morph pair (optional) — emitted only when pair_ply is set.
-  // Engine parses this block but does NOT load the pair PLY; the game's
-  // SceneManager consumes it. See docs/superpowers/specs/2026-04-17-sprint1-walking-skeleton-design.md §A.2.
-  if (gs.morphPairPly && gs.morphPairPly.trim().length > 0) {
+  // Morph pair (optional) — emitted only when pair_ply is set (after trim).
+  // Contract: snake_case keys `pair_ply`, `duration`, `default_blend`, `easing`
+  // consumed by GSeurat's SceneLoader into GsMorphPairData. Engine parses but
+  // does NOT load the pair PLY — the game's SceneManager owns that policy.
+  if (gs.morphPairPly.trim().length > 0) {
     gaussianSplatOut.morph = {
       pair_ply: gs.morphPairPly.trim(),
-      duration: gs.morphDuration ?? 1.5,
-      default_blend: gs.morphDefaultBlend ?? 0.0,
-      easing: gs.morphEasing ?? 'linear',
+      duration: gs.morphDuration,
+      default_blend: gs.morphDefaultBlend,
+      easing: gs.morphEasing,
     };
   }
 
