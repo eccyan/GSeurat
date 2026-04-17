@@ -57,6 +57,18 @@ public:
             mixer_.rtpc_bus().values[rtpc_id].store(value, std::memory_order_relaxed);
     }
 
+    void bind_stem_volume_to_rtpc(uint32_t gid, uint32_t si,
+                                   uint32_t rtpc_id, float min_out, float max_out) override {
+        RtpcBinding b;
+        b.group_id = gid;
+        b.stem_index = si;
+        b.rtpc_id = rtpc_id;
+        b.min_out = min_out;
+        b.max_out = max_out;
+        b.active = true;
+        mixer_.add_rtpc_binding(b);
+    }
+
     void render_offline(std::span<float> out, uint64_t num_frames) override {
         assert(mode_ == Mode::Offline);
         uint64_t done = 0;

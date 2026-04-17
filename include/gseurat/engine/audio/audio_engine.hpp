@@ -52,6 +52,9 @@ public:
     virtual void set_group_volume  (uint32_t group_id, float target, float fade_ms) = 0;
     virtual void request_transition(uint32_t from_id, uint32_t to_id, float xfade_ms) = 0;
     virtual void set_rtpc          (uint32_t rtpc_id, float value) = 0;
+    virtual void bind_stem_volume_to_rtpc(
+        uint32_t group_id, uint32_t stem_index,
+        uint32_t rtpc_id, float min_out, float max_out) = 0;
     virtual void render_offline(std::span<float> interleaved_out, uint64_t num_frames) = 0;
 
     virtual uint64_t current_frame()              const noexcept = 0;

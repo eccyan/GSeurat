@@ -25,6 +25,18 @@ void Mixer::render(std::span<float> out, uint32_t frames_this_block) noexcept {
         apply_command(cmd);
     }
 
+    // Apply RTPC bindings
+    const uint32_t nb = rtpc_binding_count_.load(std::memory_order_acquire);
+    for (uint32_t bi = 0; bi < nb; ++bi) {
+        const auto& b = rtpc_bindings_[bi];
+        const float rv = rtpc_bus_.values[b.rtpc_id].load(std::memory_order_relaxed);
+        // Map [0,1] → [min_out, max_out]
+        const float out_val = b.min_out + (b.max_out - b.min_out) * std::clamp(rv, 0.0f, 1.0f);
+        if (auto* g = find_active_slot(b.group_id); g && b.stem_index < g->stem_count) {
+            g->stems[b.stem_index].volume.set_target(out_val, 32);  // 32-frame smooth
+        }
+    }
+
     for (auto& g : active_groups_) {
         if (g.status == TrackGroupState::Status::Idle) continue;
         render_group(g, out, frames_this_block);

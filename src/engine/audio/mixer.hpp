@@ -29,6 +29,15 @@ struct RtpcBus {
     std::array<std::atomic<float>, kMaxRtpc> values{};
 };
 
+struct RtpcBinding {
+    uint32_t group_id = 0;
+    uint32_t stem_index = 0;
+    uint32_t rtpc_id = 0;
+    float    min_out = 0.0f;
+    float    max_out = 1.0f;
+    bool     active = false;
+};
+
 struct TrackGroupRegistryEntry {
     TrackGroupMetadata                          metadata;
     std::vector<std::unique_ptr<IAudioSource>>  owned_stems;
@@ -51,6 +60,13 @@ public:
     void register_track_group(uint32_t id, TrackGroupMetadata&& meta,
                               std::vector<std::unique_ptr<IAudioSource>>&& stems);
 
+    void add_rtpc_binding(const RtpcBinding& b) {
+        const uint32_t n = rtpc_binding_count_.load(std::memory_order_relaxed);
+        if (n >= kMaxRtpcBindings) return;
+        rtpc_bindings_[n] = b;
+        rtpc_binding_count_.store(n + 1, std::memory_order_release);
+    }
+
 private:
     void apply_command(const AudioCommand& cmd) noexcept;
     void render_group(TrackGroupState& g, std::span<float> out,
@@ -70,6 +86,10 @@ private:
     SpscRingBuffer<AudioCommand, kCommandQueueCapacity> commands_;
     RtpcBus                                             rtpc_bus_;
     EngineTelemetry                                     telemetry_;
+
+    static constexpr uint32_t kMaxRtpcBindings = 32;
+    std::array<RtpcBinding, kMaxRtpcBindings> rtpc_bindings_{};
+    std::atomic<uint32_t> rtpc_binding_count_{0};
 
     std::vector<TrackGroupRegistryEntry> registry_;
     std::vector<TrackGroupState>  active_groups_;
