@@ -176,6 +176,7 @@ add_library(gseurat_core ${_gseurat_lib_type}
     src/engine/particle.cpp
     src/engine/audio_system.cpp
     # src/engine/audio/ — interactive music engine sources added in Milestones 1-4
+    src/engine/audio/memory_audio_source.cpp
     src/engine/font_atlas.cpp
     src/engine/text_renderer.cpp
     src/engine/locale_manager.cpp
@@ -429,6 +430,9 @@ add_gseurat_test(test_world_manifest src/engine/world_manifest.cpp)
 add_gseurat_test(test_world_streamer src/engine/world_streamer.cpp src/engine/world_manifest.cpp)
 add_gseurat_test(test_audio_command_queue)
 add_gseurat_test(test_audio_slew_limiter)
+add_gseurat_test(test_audio_memory_source
+    src/engine/audio/memory_audio_source.cpp
+    tests/test_miniaudio_impl.cpp)
 
 # --- GPU Tests (require actual GPU, link engine sources directly) ----------
 
