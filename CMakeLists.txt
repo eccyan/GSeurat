@@ -435,6 +435,11 @@ add_gseurat_test(test_audio_slew_limiter)
 add_gseurat_test(test_audio_memory_source
     src/engine/audio/memory_audio_source.cpp
     tests/test_miniaudio_impl.cpp)
+add_gseurat_test(test_audio_mixer_basic
+    src/engine/audio/audio_engine.cpp
+    src/engine/audio/memory_audio_source.cpp
+    src/engine/audio/mixer.cpp
+    tests/test_miniaudio_impl.cpp)
 
 # --- GPU Tests (require actual GPU, link engine sources directly) ----------
 
