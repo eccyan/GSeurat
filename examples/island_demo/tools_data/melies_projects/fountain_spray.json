@@ -2,13 +2,13 @@
   "version": 3,
   "presets": [
     {
-      "id": "vfx_import_1776468476048_9",
+      "id": "vfx_fountain_spray",
       "name": "fountain_spray",
       "duration": 4,
       "category": "environment",
       "elements": [
         {
-          "id": "el_import_1776468476048_7",
+          "id": "el_fountain_spray_0",
           "name": "water_arc",
           "type": "emitter",
           "position": [
@@ -21,7 +21,7 @@
           "loop": true
         },
         {
-          "id": "el_import_1776468476048_8",
+          "id": "el_fountain_spray_1",
           "name": "mist_light",
           "type": "light",
           "position": [

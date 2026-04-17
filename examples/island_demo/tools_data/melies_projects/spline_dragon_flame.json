@@ -2,13 +2,13 @@
   "version": 3,
   "presets": [
     {
-      "id": "vfx_import_1776468476048_12",
+      "id": "vfx_spline_dragon_flame",
       "name": "spline_dragon_flame",
       "duration": 3,
       "category": "combat",
       "elements": [
         {
-          "id": "el_import_1776468476048_10",
+          "id": "el_spline_dragon_flame_0",
           "name": "Flame Stream",
           "type": "emitter",
           "position": [
@@ -80,7 +80,7 @@
           }
         },
         {
-          "id": "el_import_1776468476048_11",
+          "id": "el_spline_dragon_flame_1",
           "name": "Flame Light",
           "type": "light",
           "position": [

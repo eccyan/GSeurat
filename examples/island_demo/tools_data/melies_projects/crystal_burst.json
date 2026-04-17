@@ -2,13 +2,13 @@
   "version": 3,
   "presets": [
     {
-      "id": "vfx_import_1776468476048_6",
+      "id": "vfx_crystal_burst",
       "name": "crystal_burst",
       "duration": 6,
       "category": "environment",
       "elements": [
         {
-          "id": "el_import_1776468476048_3",
+          "id": "el_crystal_burst_0",
           "name": "sparkle_emitter",
           "type": "emitter",
           "position": [
@@ -21,7 +21,7 @@
           "loop": true
         },
         {
-          "id": "el_import_1776468476048_4",
+          "id": "el_crystal_burst_1",
           "name": "pulse_anim",
           "type": "animation",
           "position": [
@@ -38,7 +38,7 @@
           }
         },
         {
-          "id": "el_import_1776468476048_5",
+          "id": "el_crystal_burst_2",
           "name": "glow_light",
           "type": "light",
           "position": [

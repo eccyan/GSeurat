@@ -2,12 +2,12 @@
   "version": 3,
   "presets": [
     {
-      "id": "vfx_import_1776468476049_24",
+      "id": "vfx_vfx1",
       "name": "vfx1",
       "duration": 30,
       "elements": [
         {
-          "id": "el_import_1776468476049_22",
+          "id": "el_vfx1_0",
           "name": "Emitter 1",
           "type": "emitter",
           "position": [
@@ -113,7 +113,7 @@
           }
         },
         {
-          "id": "el_import_1776468476049_23",
+          "id": "el_vfx1_1",
           "name": "Sway",
           "type": "animation",
           "position": [

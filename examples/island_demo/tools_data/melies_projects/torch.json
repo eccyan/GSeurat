@@ -2,12 +2,12 @@
   "version": 3,
   "presets": [
     {
-      "id": "vfx_import_1776468476049_21",
+      "id": "vfx_torch",
       "name": "torch",
       "duration": 3,
       "elements": [
         {
-          "id": "el_import_1776468476049_15",
+          "id": "el_torch_0",
           "name": "Object",
           "type": "object",
           "position": [
@@ -20,7 +20,7 @@
           "scale": 10
         },
         {
-          "id": "el_import_1776468476049_16",
+          "id": "el_torch_1",
           "name": "wave",
           "type": "animation",
           "position": [
@@ -60,7 +60,7 @@
           }
         },
         {
-          "id": "el_import_1776468476049_17",
+          "id": "el_torch_2",
           "name": "Emitter",
           "type": "emitter",
           "position": [
@@ -131,7 +131,7 @@
           }
         },
         {
-          "id": "el_import_1776468476049_18",
+          "id": "el_torch_3",
           "name": "float",
           "type": "animation",
           "position": [
@@ -172,7 +172,7 @@
           }
         },
         {
-          "id": "el_import_1776468476049_19",
+          "id": "el_torch_4",
           "name": "reform",
           "type": "animation",
           "position": [
@@ -212,7 +212,7 @@
           }
         },
         {
-          "id": "el_import_1776468476049_20",
+          "id": "el_torch_5",
           "name": "Flame Light",
           "type": "light",
           "position": [

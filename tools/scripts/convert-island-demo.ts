@@ -305,6 +305,12 @@ function runMeliesPhase(): void {
       const jsonString = fs.readFileSync(filePath, 'utf-8');
       const preset = parseVfx(jsonString);
 
+      // Stabilise IDs so the output is deterministic (parseVfx uses Date.now())
+      preset.id = `vfx_${slug}`;
+      preset.elements.forEach((el, i) => {
+        el.id = `el_${slug}_${i}`;
+      });
+
       const project: VfxProject = {
         version: VFX_PROJECT_VERSION,
         presets: [preset],

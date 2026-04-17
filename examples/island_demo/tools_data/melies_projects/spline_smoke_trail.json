@@ -2,13 +2,13 @@
   "version": 3,
   "presets": [
     {
-      "id": "vfx_import_1776468476049_14",
+      "id": "vfx_spline_smoke_trail",
       "name": "spline_smoke_trail",
       "duration": 5,
       "category": "environmental",
       "elements": [
         {
-          "id": "el_import_1776468476049_13",
+          "id": "el_spline_smoke_trail_0",
           "name": "Smoke Trail",
           "type": "emitter",
           "position": [

@@ -2,13 +2,13 @@
   "version": 3,
   "presets": [
     {
-      "id": "vfx_import_1776468476048_2",
+      "id": "vfx_chimney_smoke",
       "name": "chimney_smoke",
       "duration": 8,
       "category": "environment",
       "elements": [
         {
-          "id": "el_import_1776468476048_1",
+          "id": "el_chimney_smoke_0",
           "name": "smoke_plume",
           "type": "emitter",
           "position": [
