@@ -4,13 +4,29 @@
 #include "metadata_loader.hpp"
 #include "state_variable_filter.hpp"
 #include "gseurat/engine/audio/memory_audio_source.hpp"
+#include "gseurat/engine/audio/mmap_audio_source.hpp"
 
 #include <cassert>
 #include <cmath>
+#include <fstream>
 
 namespace gseurat::audio {
 
 namespace {
+
+static std::expected<std::unique_ptr<IAudioSource>, LoadError>
+load_audio_source(std::string_view path, uint32_t sample_rate) {
+    std::ifstream f(std::string(path), std::ios::binary);
+    if (!f) return std::unexpected(LoadError::FileNotFound);
+    char magic[4]{};
+    f.read(magic, 4);
+    f.close();
+
+    if (magic[0] == 'G' && magic[1] == 'S' && magic[2] == 'A' && magic[3] == 'U') {
+        return MmapAudioSource::from_gsaudio_file(path, sample_rate);
+    }
+    return MemoryAudioSource::from_wav_file(path, sample_rate);
+}
 
 class AudioEngineImpl final : public AudioEngine {
 public:
@@ -45,7 +61,7 @@ public:
             std::vector<std::unique_ptr<IAudioSource>> stems;
             stems.reserve(tg.stems.size());
             for (const auto& s : tg.stems) {
-                auto src_r = MemoryAudioSource::from_wav_file(s.source_path, cfg.sample_rate);
+                auto src_r = load_audio_source(s.source_path, cfg.sample_rate);
                 if (!src_r) return std::unexpected(LoadTrackGroupError::StemLoadFailed);
                 stems.push_back(std::move(src_r.value()));
             }
@@ -106,7 +122,7 @@ public:
     }
 
     std::expected<uint32_t, SfxLoadError> load_sfx(std::string_view wav_path) override {
-        auto src = MemoryAudioSource::from_wav_file(wav_path, cfg_.sample_rate);
+        auto src = load_audio_source(wav_path, cfg_.sample_rate);
         if (!src) return std::unexpected(SfxLoadError::DecodeFailed);
         const uint32_t id = static_cast<uint32_t>(sfx_registry_.size());
         sfx_registry_.push_back(std::move(src.value()));

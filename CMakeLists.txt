@@ -447,10 +447,12 @@ add_gseurat_test(test_audio_mmap_source
 set(AUDIO_ENGINE_TEST_SOURCES
     src/engine/audio/audio_engine.cpp
     src/engine/audio/memory_audio_source.cpp
+    src/engine/audio/mmap_audio_source.cpp
     src/engine/audio/mixer.cpp
     src/engine/audio/metadata_loader.cpp
     src/engine/audio/backend/miniaudio_device.cpp
-    src/engine/audio/state_variable_filter.cpp)
+    src/engine/audio/state_variable_filter.cpp
+    src/engine/platform/memory_mapped_file.cpp)
 add_gseurat_test(test_audio_mixer_basic        ${AUDIO_ENGINE_TEST_SOURCES})
 target_include_directories(test_audio_mixer_basic PRIVATE ${PROJECT_SOURCE_DIR}/src/engine/audio)
 add_gseurat_test(test_audio_mixer_loop         ${AUDIO_ENGINE_TEST_SOURCES})
