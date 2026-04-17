@@ -31,7 +31,7 @@ void AppBase::run() {
     // Construct the interactive music audio engine (realtime output via miniaudio).
     // Music loading is wired via AudioZone scene data in Milestone 5.
     auto engine_r = audio::AudioEngine::create(
-        {.sample_rate = 48000, .buffer_frames = 1024, .max_active_groups = 8},
+        {.sample_rate = 44100, .buffer_frames = 1024, .max_active_groups = 8},
         audio::AudioEngine::Mode::Realtime);
     if (engine_r) {
         audio_engine_ = std::move(engine_r.value());
