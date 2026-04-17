@@ -322,6 +322,410 @@ function runMeliesPhase(): void {
   console.log(`\nPhase 2 complete: ${converted} VFX presets converted`);
 }
 
+// ── Phase 3: Bricklayer scene conversion ─────────────────────────────────────
+
+const BRICKLAYER_OUT = path.join(TOOLS_DATA, 'bricklayer');
+
+interface EmitterParams {
+  spawn_rate: number;
+  particle_lifetime_min: number;
+  particle_lifetime_max: number;
+  velocity_min: [number, number];
+  velocity_max: [number, number];
+  acceleration: [number, number];
+  size_min: number;
+  size_max: number;
+  size_end_scale: number;
+  color_start: [number, number, number, number];
+  color_end: [number, number, number, number];
+  tile: string;
+  z: number;
+  spawn_offset_min: [number, number];
+  spawn_offset_max: [number, number];
+}
+
+function defaultEmitter(): EmitterParams {
+  return {
+    spawn_rate: 10, particle_lifetime_min: 0.5, particle_lifetime_max: 1.5,
+    velocity_min: [-0.5, -0.5], velocity_max: [0.5, 0.5], acceleration: [0, 0],
+    size_min: 1, size_max: 2, size_end_scale: 0.5,
+    color_start: [1, 1, 1, 1], color_end: [1, 1, 1, 0],
+    tile: '', z: 0, spawn_offset_min: [0, 0], spawn_offset_max: [0, 0],
+  };
+}
+
+function buildAssetRegistry(): Record<string, Record<string, unknown>> {
+  const registry: Record<string, Record<string, unknown>> = {
+    characters: {}, vfx: {}, textures: {}, audio: {}, maps: {}, objects: {},
+  };
+
+  // Characters: dirs with .ply files
+  const charsDir = path.join(ASSETS, 'characters');
+  if (fs.existsSync(charsDir)) {
+    for (const name of fs.readdirSync(charsDir)) {
+      const dir = path.join(charsDir, name);
+      if (!fs.statSync(dir).isDirectory()) continue;
+      const plyFile = fs.readdirSync(dir).find((f) => f.endsWith('.ply'));
+      if (!plyFile) continue;
+      const manifestFile = fs.readdirSync(dir).find((f) => f.endsWith('.manifest.json'));
+      registry.characters[name] = {
+        id: name, ply: `assets/characters/${name}/${plyFile}`,
+        ...(manifestFile ? { manifest: `assets/characters/${name}/${manifestFile}` } : {}),
+      };
+    }
+  }
+
+  // VFX: each .vfx.json
+  const vfxDir = path.join(ASSETS, 'vfx');
+  if (fs.existsSync(vfxDir)) {
+    for (const file of fs.readdirSync(vfxDir)) {
+      if (!file.endsWith('.vfx.json')) continue;
+      const id = file.replace('.vfx.json', '');
+      registry.vfx[id] = { id, file: `assets/vfx/${file}` };
+    }
+  }
+
+  // Textures: each .png/.jpg
+  const texDir = path.join(ASSETS, 'textures');
+  if (fs.existsSync(texDir)) {
+    for (const file of fs.readdirSync(texDir)) {
+      if (!file.endsWith('.png') && !file.endsWith('.jpg')) continue;
+      const id = file.replace(/\.(png|jpg)$/, '');
+      registry.textures[id] = { id, file: `assets/textures/${file}` };
+    }
+  }
+
+  // Audio: each .music.json
+  const audioDir = path.join(ASSETS, 'audio');
+  if (fs.existsSync(audioDir)) {
+    for (const file of fs.readdirSync(audioDir)) {
+      if (!file.endsWith('.music.json')) continue;
+      const id = file.replace('.music.json', '');
+      registry.audio[id] = { id, file: `assets/audio/${file}` };
+    }
+  }
+
+  // Maps: each .ply in maps/
+  const mapsDir = path.join(ASSETS, 'maps');
+  if (fs.existsSync(mapsDir)) {
+    for (const file of fs.readdirSync(mapsDir)) {
+      if (!file.endsWith('.ply')) continue;
+      const id = file.replace('.ply', '');
+      registry.maps[id] = { id, file: `assets/maps/${file}` };
+    }
+  }
+
+  // Objects: each .ply in props/
+  const propsDir = path.join(ASSETS, 'props');
+  if (fs.existsSync(propsDir)) {
+    for (const file of fs.readdirSync(propsDir)) {
+      if (!file.endsWith('.ply')) continue;
+      const id = file.replace('.ply', '');
+      registry.objects[id] = { id, file: `assets/props/${file}` };
+    }
+  }
+
+  return registry;
+}
+
+function runBricklayerPhase(): void {
+  console.log('\n=== Phase 3: Bricklayer Scene Conversion ===\n');
+
+  fs.mkdirSync(BRICKLAYER_OUT, { recursive: true });
+
+  // Read engine scene
+  const scenePath = path.join(ASSETS, 'scenes', 'seurat_island.json');
+  if (!fs.existsSync(scenePath)) {
+    console.log('  ERROR: seurat_island.json not found — skipping');
+    return;
+  }
+  const scene = JSON.parse(fs.readFileSync(scenePath, 'utf-8'));
+
+  // ── Map engine fields to Bricklayer format ─────────────────────────────
+
+  const ambientColor = scene.ambient_color ?? [0.12, 0.12, 0.18, 1.0];
+
+  // Lights
+  const staticLights = (scene.lights ?? []).map((l: Record<string, unknown>, i: number) => ({
+    id: `light_${i}`,
+    type: (l as { radius?: number }).radius && (l as { radius?: number }).radius! > 300 ? 'point' : 'spot',
+    position: l.position,
+    color: l.color,
+    radius: l.radius,
+    intensity: l.intensity,
+  }));
+
+  // Game objects (direct passthrough with defaults)
+  const gameObjects = (scene.game_objects ?? []).map((go: Record<string, unknown>) => ({
+    id: go.id ?? 'unnamed',
+    name: go.name ?? go.id ?? 'unnamed',
+    position: go.position ?? [0, 0, 0],
+    rotation: go.rotation ?? [0, 0, 0],
+    scale: go.scale ?? 1.0,
+    ply_file: go.ply_file ?? null,
+    components: go.components ?? {},
+    pbd: go.pbd ?? null,
+  }));
+
+  // Collision -> collisionGridData
+  const collisionGridData = scene.collision ? {
+    width: scene.collision.width,
+    height: scene.collision.height,
+    cell_size: scene.collision.cell_size,
+    solid: scene.collision.solid,
+    elevation: scene.collision.elevation,
+    nav_zone: scene.collision.nav_zone ?? [],
+  } : undefined;
+
+  // Particle emitters -> gsParticleEmitters
+  const gsParticleEmitters = (scene.particle_emitters ?? []).map(
+    (pe: Record<string, unknown>, i: number) => ({
+      id: `emitter_${i}`,
+      muted: (pe.spawn_rate as number | undefined) === 0,
+      preset: pe.preset,
+      position: pe.position,
+      spawn_rate: pe.spawn_rate ?? undefined,
+      emitter: defaultEmitter(),
+    }),
+  );
+
+  // Player
+  const player = {
+    position: scene.player?.position ?? [187.0, 1.9663, 197.0],
+    facing: scene.player?.facing ?? 'down',
+    tint: [1, 1, 1, 1],
+    character_id: 'protagonist',
+  };
+
+  // Gaussian splat (drop ground_color/sky_color, add defaults)
+  const gs = scene.gaussian_splat ?? {};
+  const gaussianSplat = {
+    ply_file: gs.ply_file,
+    camera: gs.camera,
+    render_width: gs.render_width,
+    render_height: gs.render_height,
+    scale_multiplier: gs.scale_multiplier,
+    parallax: 1.0,
+    morph_targets: [],
+  };
+
+  // ── Asset registry ─────────────────────────────────────────────────────
+
+  const asset_registry = {
+    version: 1,
+    ...buildAssetRegistry(),
+  };
+
+  // ── Showcase features ──────────────────────────────────────────────────
+
+  // Weather (light rain)
+  const weather = {
+    enabled: true, type: 'rain',
+    emitter: {
+      ...defaultEmitter(),
+      spawn_rate: 40, particle_lifetime_min: 0.8, particle_lifetime_max: 1.2,
+      velocity_min: [-0.2, -8] as [number, number],
+      velocity_max: [0.2, -6] as [number, number],
+      size_min: 0.5, size_max: 1,
+      color_start: [0.7, 0.75, 0.85, 0.4] as [number, number, number, number],
+      color_end: [0.7, 0.75, 0.85, 0] as [number, number, number, number],
+    },
+    ambient_override: [0.2, 0.22, 0.3, 1],
+    fog_density: 0.02,
+    fog_color: [0.5, 0.55, 0.6],
+    transition_speed: 0.5,
+  };
+
+  // Day/Night cycle
+  const dayNight = {
+    enabled: true, cycle_speed: 0.5, initial_time: 0.3,
+    keyframes: [
+      { time: 0, ambient: [0.04, 0.04, 0.12, 1], torch_intensity: 1.0 },
+      { time: 0.2, ambient: [0.6, 0.45, 0.35, 1], torch_intensity: 0.3 },
+      { time: 0.35, ambient: [0.85, 0.8, 0.7, 1], torch_intensity: 0 },
+      { time: 0.5, ambient: [1, 0.98, 0.92, 1], torch_intensity: 0 },
+      { time: 0.7, ambient: [0.75, 0.5, 0.35, 1], torch_intensity: 0.2 },
+      { time: 0.85, ambient: [0.3, 0.2, 0.25, 1], torch_intensity: 0.8 },
+    ],
+  };
+
+  // Background layers
+  const backgroundLayers = [
+    { texture: 'assets/textures/bg_sky.png', z: -100, parallax: 0.02 },
+    { texture: 'assets/textures/bg_mountains.png', z: -80, parallax: 0.05 },
+    { texture: 'assets/textures/bg_trees.png', z: -60, parallax: 0.1 },
+  ];
+
+  // VFX instances
+  const torchAudioPositions: [number, number, number][] = scene.torch_audio_positions ?? [];
+
+  // Load VFX presets from files
+  function loadVfxPreset(vfxFile: string): unknown {
+    const fullPath = path.join(ROOT, vfxFile);
+    if (fs.existsSync(fullPath)) {
+      return JSON.parse(fs.readFileSync(fullPath, 'utf-8'));
+    }
+    return null;
+  }
+
+  const vfxInstances: Record<string, unknown>[] = [];
+
+  // Torch VFX at torch_audio_positions (4 instances)
+  torchAudioPositions.forEach((pos, i) => {
+    vfxInstances.push({
+      id: `torch_vfx_${i}`, muted: false, name: `Torch ${i + 1}`,
+      vfx_file: 'assets/vfx/torch.vfx.json',
+      vfx_preset: loadVfxPreset('assets/vfx/torch.vfx.json'),
+      position: pos, rotation_y: 0, radius: 5,
+      trigger: 'auto', loop: true,
+    });
+  });
+
+  // Fountain spray
+  vfxInstances.push({
+    id: 'fountain_spray', muted: false, name: 'Fountain Spray',
+    vfx_file: 'assets/vfx/fountain_spray.vfx.json',
+    vfx_preset: loadVfxPreset('assets/vfx/fountain_spray.vfx.json'),
+    position: [178, 3.2, 185], rotation_y: 0, radius: 8,
+    trigger: 'auto', loop: true,
+  });
+
+  // Crystal burst
+  vfxInstances.push({
+    id: 'crystal_burst', muted: false, name: 'Crystal Burst',
+    vfx_file: 'assets/vfx/crystal_burst.vfx.json',
+    vfx_preset: loadVfxPreset('assets/vfx/crystal_burst.vfx.json'),
+    position: [195, 2.0418, 120], rotation_y: 0, radius: 6,
+    trigger: 'auto', loop: true,
+  });
+
+  // Chimney smoke
+  vfxInstances.push({
+    id: 'chimney_smoke', muted: false, name: 'Chimney Smoke',
+    vfx_file: 'assets/vfx/chimney_smoke.vfx.json',
+    vfx_preset: loadVfxPreset('assets/vfx/chimney_smoke.vfx.json'),
+    position: [192, 4.5658, 175], rotation_y: 0, radius: 4,
+    trigger: 'auto', loop: true,
+  });
+
+  // Camera volumes
+  const cameraVolumes = [
+    {
+      id: 'cam_fountain_plaza', name: 'Fountain Plaza',
+      bounds: { type: 'aabb', center: [178, 5, 185], half_extents: [20, 10, 20] },
+      fov: 40,
+    },
+    {
+      id: 'cam_dungeon_entrance', name: 'Dungeon Entrance',
+      bounds: { type: 'sphere', center: [203, 5, 175], radius: 15 },
+      fov: 35,
+    },
+    {
+      id: 'cam_forest_edge', name: 'Forest Edge',
+      bounds: { type: 'aabb', center: [140, 5, 200], half_extents: [30, 10, 30] },
+      fov: 50,
+    },
+  ];
+
+  // Audio zones
+  const audioZones = [
+    {
+      id: 'audio_field_music', name: 'Field Music Zone',
+      bounds: { type: 'aabb', min: [100, -10, 80], max: [280, 50, 280] },
+      track_group_name: 'field_theme',
+      on_enter: { action: 'play', xfade_ms: 2000, align_to_next_marker: false },
+      on_exit: { action: 'stop', fade_ms: 3000 },
+    },
+  ];
+
+  // Emitter configs
+  const torchEmitter: EmitterParams = {
+    ...defaultEmitter(),
+    spawn_rate: 25, particle_lifetime_min: 0.3, particle_lifetime_max: 0.8,
+    velocity_min: [-0.3, 1.0], velocity_max: [0.3, 3.0], acceleration: [0, 0.5],
+    size_min: 1.5, size_max: 3.0, size_end_scale: 0.2,
+    color_start: [1.0, 0.6, 0.1, 0.9], color_end: [0.8, 0.2, 0.0, 0.0],
+  };
+
+  const footstepEmitter: EmitterParams = {
+    ...defaultEmitter(),
+    spawn_rate: 5, particle_lifetime_min: 0.2, particle_lifetime_max: 0.5,
+    velocity_min: [-0.5, 0.2], velocity_max: [0.5, 0.8], acceleration: [0, -1.0],
+    size_min: 0.5, size_max: 1.0, size_end_scale: 1.5,
+    color_start: [0.6, 0.5, 0.35, 0.6], color_end: [0.6, 0.5, 0.35, 0.0],
+  };
+
+  const npcAuraEmitter: EmitterParams = {
+    ...defaultEmitter(),
+    spawn_rate: 8, particle_lifetime_min: 1.0, particle_lifetime_max: 2.5,
+    velocity_min: [-0.2, 0.1], velocity_max: [0.2, 0.4], acceleration: [0, 0],
+    size_min: 2.0, size_max: 4.0, size_end_scale: 0.8,
+    color_start: [0.3, 0.5, 1.0, 0.5], color_end: [0.3, 0.5, 1.0, 0.0],
+  };
+
+  // Torch positions (3D -> 2D: [x,y,z] -> [x,z])
+  const torchPositions = torchAudioPositions.map((p) => [p[0], p[2]]);
+
+  // ── Build BricklayerFile v2 ────────────────────────────────────────────
+
+  const bricklayerFile = {
+    version: 2,
+    asset_registry,
+    gridWidth: 128,
+    gridDepth: 96,
+    voxels: [],
+    collision: [],
+    collisionGridData,
+    nav_zone_names: [],
+    color_palettes: [],
+    scene: {
+      ambientColor,
+      godRaysIntensity: 0.0,
+      staticLights,
+      gameObjects,
+      player,
+      backgroundLayers,
+      torchEmitter,
+      torchPositions,
+      footstepEmitter,
+      npcAuraEmitter,
+      weather,
+      dayNight,
+      gaussianSplat,
+      gsParticleEmitters,
+      gsAnimations: [],
+      vfxInstances,
+      cameraVolumes,
+      cameraTriggers: [],
+      cameraRails: [],
+      cameraDefaultParams: { fov: 45, follow_speed: 5.0, look_ahead: 2.0 },
+      cameraShowDebugVolumes: false,
+      audioZones,
+    },
+  };
+
+  const outPath = path.join(BRICKLAYER_OUT, 'scene.bricklayer');
+  fs.writeFileSync(outPath, JSON.stringify(bricklayerFile, null, 2));
+
+  // ── Summary ────────────────────────────────────────────────────────────
+
+  const s = bricklayerFile.scene;
+  console.log(`  Output: ${path.relative(ROOT, outPath)}`);
+  console.log(`  gameObjects: ${s.gameObjects.length}`);
+  console.log(`  staticLights: ${s.staticLights.length}`);
+  console.log(`  gsParticleEmitters: ${s.gsParticleEmitters.length}`);
+  console.log(`  vfxInstances: ${s.vfxInstances.length}`);
+  console.log(`  cameraVolumes: ${s.cameraVolumes.length}`);
+  console.log(`  audioZones: ${s.audioZones.length}`);
+  console.log(`  backgroundLayers: ${s.backgroundLayers.length}`);
+  console.log(`  weather.enabled: ${s.weather.enabled}`);
+  console.log(`  dayNight.enabled: ${s.dayNight.enabled}`);
+  console.log(`  asset_registry: chars=${Object.keys(bricklayerFile.asset_registry.characters).length}, vfx=${Object.keys(bricklayerFile.asset_registry.vfx).length}, tex=${Object.keys(bricklayerFile.asset_registry.textures).length}, audio=${Object.keys(bricklayerFile.asset_registry.audio).length}, maps=${Object.keys(bricklayerFile.asset_registry.maps).length}, objects=${Object.keys(bricklayerFile.asset_registry.objects).length}`);
+  console.log(`  collisionGridData: ${collisionGridData ? 'yes' : 'no'} (${collisionGridData?.width}x${collisionGridData?.height}, cell_size=${collisionGridData?.cell_size})`);
+
+  console.log('\nPhase 3 complete.');
+}
+
 // ── Main ───────────────────────────────────────────────────────────────────────
 
 function main(): void {
@@ -331,9 +735,7 @@ function main(): void {
 
   runEchidnaPhase();
   runMeliesPhase();
-
-  // Future phases will be appended here:
-  // runBricklayerPhase();
+  runBricklayerPhase();
 
   console.log('\nAll phases complete.');
 }
