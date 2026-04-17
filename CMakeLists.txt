@@ -436,6 +436,8 @@ add_gseurat_test(test_slab_allocator src/engine/slab_allocator.cpp)
 add_gseurat_test(test_world_manifest src/engine/world_manifest.cpp)
 add_gseurat_test(test_world_streamer src/engine/world_streamer.cpp src/engine/world_manifest.cpp)
 add_gseurat_test(test_audio_command_queue)
+add_gseurat_test(test_audio_ring_buffer)
+target_include_directories(test_audio_ring_buffer PRIVATE ${PROJECT_SOURCE_DIR}/src/engine/audio)
 add_gseurat_test(test_audio_slew_limiter)
 add_gseurat_test(test_audio_memory_source
     src/engine/audio/memory_audio_source.cpp)
