@@ -9,10 +9,10 @@
       "loop_end": 352800,
       "markers": [],
       "stems": [
-        { "source": "assets/audio/field_theme/bass_drone.wav",    "initial_volume": 0.8 },
-        { "source": "assets/audio/field_theme/harmony_pad.wav",   "initial_volume": 0.5 },
-        { "source": "assets/audio/field_theme/melody.wav",        "initial_volume": 0.0 },
-        { "source": "assets/audio/field_theme/percussion.wav",    "initial_volume": 0.0 }
+        { "source": "assets/audio/field_theme/bass_drone.gsaudio",    "initial_volume": 0.8 },
+        { "source": "assets/audio/field_theme/harmony_pad.gsaudio",   "initial_volume": 0.5 },
+        { "source": "assets/audio/field_theme/melody.gsaudio",        "initial_volume": 0.0 },
+        { "source": "assets/audio/field_theme/percussion.gsaudio",    "initial_volume": 0.0 }
       ]
     }
   ]
