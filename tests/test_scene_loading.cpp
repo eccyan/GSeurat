@@ -113,6 +113,69 @@ static void test_background_colors() {
           "default sky_color is black (disabled)");
 }
 
+static void test_gaussian_splat_morph_roundtrip() {
+    std::printf("\n== test_gaussian_splat_morph_roundtrip ==\n");
+
+    nlohmann::json j = {
+        {"version", 2},
+        {"gaussian_splat", {
+            {"ply_file", "assets/maps/library_present.ply"},
+            {"camera", {
+                {"position", {0.0, 5.0, 10.0}},
+                {"target",   {0.0, 0.0, 0.0}},
+                {"fov", 45.0}
+            }},
+            {"render_width",  1280},
+            {"render_height", 720},
+            {"morph", {
+                {"pair_ply",      "assets/maps/library_past.ply"},
+                {"duration",      1.5},
+                {"default_blend", 0.0},
+                {"easing",        "linear"}
+            }}
+        }}
+    };
+
+    auto data = gseurat::SceneLoader::from_json(j);
+    check(data.gaussian_splat.has_value(), "gaussian_splat present");
+    check(data.gaussian_splat->morph.has_value(), "morph present");
+    check(data.gaussian_splat->morph->pair_ply == "assets/maps/library_past.ply",
+          "morph.pair_ply parsed");
+    check(approx(data.gaussian_splat->morph->duration, 1.5f),
+          "morph.duration parsed");
+    check(approx(data.gaussian_splat->morph->default_blend, 0.0f),
+          "morph.default_blend parsed");
+    check(data.gaussian_splat->morph->easing == "linear",
+          "morph.easing parsed");
+
+    auto round = gseurat::SceneLoader::to_json(data);
+    check(round["gaussian_splat"].contains("morph"), "morph serialized");
+    check(round["gaussian_splat"]["morph"]["pair_ply"] ==
+              "assets/maps/library_past.ply",
+          "morph.pair_ply round-trip");
+
+    // Absence case: scenes without morph must not emit the key.
+    nlohmann::json j_no_morph = {
+        {"version", 2},
+        {"gaussian_splat", {
+            {"ply_file", "assets/maps/some.ply"},
+            {"camera", {
+                {"position", {0.0, 0.0, 0.0}},
+                {"target",   {0.0, 0.0, 0.0}},
+                {"fov", 45.0}
+            }},
+            {"render_width", 320},
+            {"render_height", 240}
+        }}
+    };
+    auto d2 = gseurat::SceneLoader::from_json(j_no_morph);
+    check(d2.gaussian_splat.has_value(), "gaussian_splat present (no morph)");
+    check(!d2.gaussian_splat->morph.has_value(), "morph absent when omitted");
+    auto r2 = gseurat::SceneLoader::to_json(d2);
+    check(!r2["gaussian_splat"].contains("morph"),
+          "morph absent in to_json when unset");
+}
+
 int main() {
     std::printf("\n=== Scene Loading Tests ===\n\n");
 
@@ -551,6 +614,8 @@ int main() {
         glm::vec3 terrain_center = (terrain_aabb.min + terrain_aabb.max) * 0.5f;
         check(world_pos.x() < terrain_center.x, "game object LEFT of terrain center");
     }
+
+    test_gaussian_splat_morph_roundtrip();
 
     // ── Summary ──
     std::printf("\n========================================\n");

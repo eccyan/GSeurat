@@ -85,6 +85,14 @@ struct GsParallaxConfig {
     float parallax_strength = 1.0f;    // mapping multiplier (0 = disabled)
 };
 
+/// Engine parses but does NOT load pair_ply; game-side SceneManager owns that policy.
+struct GsMorphPairData {
+    std::string pair_ply;            // asset path, project-relative ("assets/...")
+    float duration = 1.5f;
+    float default_blend = 0.0f;
+    std::string easing = "linear";   // "linear" | "ease_in_out"
+};
+
 struct GaussianSplatData {
     std::string ply_file;
     glm::vec3 camera_position{0.0f, 5.0f, 10.0f};
@@ -97,6 +105,7 @@ struct GaussianSplatData {
     std::string background_image;  // Optional background behind GS (sky, mountains, etc.)
     glm::vec3 ground_color{0.0f};  // Hybrid BG: solid ground beneath Gaussians (0 = disabled)
     glm::vec3 sky_color{0.0f};     // Hybrid BG: sky gradient above horizon (0 = disabled)
+    std::optional<GsMorphPairData> morph;
 };
 
 

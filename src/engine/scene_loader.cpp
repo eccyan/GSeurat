@@ -223,6 +223,25 @@ SceneData SceneLoader::from_json(const nlohmann::json& j) {
             pcfg.parallax_strength = px.value("parallax_strength", 1.0f);
             gsd.parallax = pcfg;
         }
+        // Optional morph pair — engine parses but does not load pair_ply.
+        if (gs.contains("morph") && gs["morph"].is_object()) {
+            const auto& m = gs["morph"];
+            GsMorphPairData morph;
+            morph.pair_ply      = m.value("pair_ply",      std::string{});
+            morph.duration      = m.value("duration",      1.5f);
+            morph.default_blend = m.value("default_blend", 0.0f);
+            morph.easing        = m.value("easing",        std::string{"linear"});
+
+            // Unknown easing → fall back to linear with a warning.
+            if (morph.easing != "linear" && morph.easing != "ease_in_out") {
+                std::fprintf(stderr,
+                    "[SceneLoader] Warning: unknown morph.easing '%s', "
+                    "falling back to 'linear'\n", morph.easing.c_str());
+                morph.easing = "linear";
+            }
+
+            gsd.morph = std::move(morph);
+        }
         data.gaussian_splat = std::move(gsd);
     }
 
@@ -959,6 +978,15 @@ nlohmann::json SceneLoader::to_json(const SceneData& data) {
                 {"distance_range", px.distance_range},
                 {"parallax_strength", px.parallax_strength}
             };
+        }
+        if (gs.morph) {
+            const auto& morph = *gs.morph;
+            nlohmann::json m;
+            m["pair_ply"]      = morph.pair_ply;
+            m["duration"]      = morph.duration;
+            m["default_blend"] = morph.default_blend;
+            m["easing"]        = morph.easing;
+            gs_j["morph"] = m;
         }
         j["gaussian_splat"] = gs_j;
     }

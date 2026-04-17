@@ -1,7 +1,12 @@
 import React, { useState } from 'react';
 import { NumberInput } from '../components/NumberInput.js';
 import { useSceneStore } from '../store/useSceneStore.js';
+import type { MorphEasing } from '../store/types.js';
 import { panelStyles } from '../styles/panel.js';
+
+/// Adding a new easing: extend MorphEasing in store/types.ts, then add an
+/// option here. The type coupling keeps the two in lockstep.
+const MORPH_EASINGS: readonly MorphEasing[] = ['linear', 'ease_in_out'];
 
 const styles: Record<string, React.CSSProperties> = { ...panelStyles, info: { fontSize: 11, color: '#aaa' } };
 
@@ -150,6 +155,60 @@ export function GaussianTab() {
             onChange={(v) => setGs({ parallax: { ...gs.parallax, parallax_strength: v } })}
             style={styles.input}
           />
+        </div>
+      </div>
+
+      {/* ── Morph Pair (optional) ── */}
+      <div style={styles.section}>
+        <span style={styles.label}>Morph Pair (optional)</span>
+        <span style={styles.info}>
+          Second PLY blended with the active cloud at runtime by the
+          game&apos;s SceneManager. Engine parses but does not load the pair PLY.
+        </span>
+        <div style={styles.row}>
+          <span style={{ fontSize: 12, minWidth: 80 }}>Pair PLY</span>
+          <input
+            type="text"
+            value={gs.morphPairPly}
+            placeholder="assets/maps/library_past.ply"
+            onChange={(e) => setGs({ morphPairPly: e.target.value })}
+            style={styles.input}
+          />
+        </div>
+        <div style={styles.row}>
+          <span style={{ fontSize: 12, minWidth: 80 }}>Duration (s)</span>
+          <NumberInput
+            value={gs.morphDuration}
+            onChange={(v) => setGs({ morphDuration: v })}
+            min={0.01}
+            step={0.05}
+            style={styles.input}
+          />
+        </div>
+        <div style={styles.row}>
+          <span style={{ fontSize: 12, minWidth: 80 }}>Default blend</span>
+          <NumberInput
+            value={gs.morphDefaultBlend}
+            onChange={(v) => setGs({ morphDefaultBlend: v })}
+            min={0}
+            max={1}
+            step={0.05}
+            style={styles.input}
+          />
+        </div>
+        <div style={styles.row}>
+          <span style={{ fontSize: 12, minWidth: 80 }}>Easing</span>
+          <select
+            value={gs.morphEasing}
+            onChange={(e) =>
+              setGs({ morphEasing: e.target.value as MorphEasing })
+            }
+            style={styles.select}
+          >
+            {MORPH_EASINGS.map((e) => (
+              <option key={e} value={e}>{e}</option>
+            ))}
+          </select>
         </div>
       </div>
 

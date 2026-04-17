@@ -284,15 +284,31 @@ export function exportSceneJson(
     fov: cam.fov,
   } : cam;
 
-  scene.gaussian_splat = {
+  const gs = state.gaussianSplat;
+  const gaussianSplatOut: Record<string, unknown> = {
     ply_file: terrainPly,
     camera: autoCamera,
-    render_width: state.gaussianSplat.render_width,
-    render_height: state.gaussianSplat.render_height,
-    scale_multiplier: state.gaussianSplat.scale_multiplier,
-    background_image: state.gaussianSplat.background_image,
-    parallax: state.gaussianSplat.parallax,
+    render_width: gs.render_width,
+    render_height: gs.render_height,
+    scale_multiplier: gs.scale_multiplier,
+    background_image: gs.background_image,
+    parallax: gs.parallax,
   };
+
+  // Morph pair (optional) — emitted only when pair_ply is set (after trim).
+  // Contract: snake_case keys `pair_ply`, `duration`, `default_blend`, `easing`
+  // consumed by GSeurat's SceneLoader into GsMorphPairData. Engine parses but
+  // does NOT load the pair PLY — the game's SceneManager owns that policy.
+  if (gs.morphPairPly.trim().length > 0) {
+    gaussianSplatOut.morph = {
+      pair_ply: gs.morphPairPly.trim(),
+      duration: gs.morphDuration,
+      default_blend: gs.morphDefaultBlend,
+      easing: gs.morphEasing,
+    };
+  }
+
+  scene.gaussian_splat = gaussianSplatOut;
 
   const activeEmitters = state.gsParticleEmitters.filter((e) => !e.muted);
   if (activeEmitters.length > 0) {
