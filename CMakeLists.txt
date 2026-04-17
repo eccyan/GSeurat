@@ -180,6 +180,7 @@ add_library(gseurat_core ${_gseurat_lib_type}
     src/engine/audio/mixer.cpp
     src/engine/audio/metadata_loader.cpp
     src/engine/audio/backend/miniaudio_device.cpp
+    src/engine/audio/state_variable_filter.cpp
     src/engine/font_atlas.cpp
     src/engine/text_renderer.cpp
     src/engine/locale_manager.cpp
@@ -442,7 +443,8 @@ set(AUDIO_ENGINE_TEST_SOURCES
     src/engine/audio/memory_audio_source.cpp
     src/engine/audio/mixer.cpp
     src/engine/audio/metadata_loader.cpp
-    src/engine/audio/backend/miniaudio_device.cpp)
+    src/engine/audio/backend/miniaudio_device.cpp
+    src/engine/audio/state_variable_filter.cpp)
 add_gseurat_test(test_audio_mixer_basic        ${AUDIO_ENGINE_TEST_SOURCES})
 target_include_directories(test_audio_mixer_basic PRIVATE ${PROJECT_SOURCE_DIR}/src/engine/audio)
 add_gseurat_test(test_audio_mixer_loop         ${AUDIO_ENGINE_TEST_SOURCES})
@@ -468,6 +470,12 @@ add_gseurat_test(test_audio_zone_system
     ${AUDIO_ENGINE_TEST_SOURCES}
     src/engine/systems/audio_zone_system.cpp)
 target_include_directories(test_audio_zone_system PRIVATE ${PROJECT_SOURCE_DIR}/src/engine/systems)
+add_gseurat_test(test_audio_svf
+    src/engine/audio/state_variable_filter.cpp)
+target_include_directories(test_audio_svf PRIVATE ${PROJECT_SOURCE_DIR}/src/engine/audio)
+add_gseurat_test(test_audio_effect_chain
+    ${AUDIO_ENGINE_TEST_SOURCES})
+target_include_directories(test_audio_effect_chain PRIVATE ${PROJECT_SOURCE_DIR}/src/engine/audio)
 
 # --- GPU Tests (require actual GPU, link engine sources directly) ----------
 

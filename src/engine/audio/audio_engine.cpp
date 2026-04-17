@@ -2,6 +2,7 @@
 #include "backend/miniaudio_device.hpp"
 #include "mixer.hpp"
 #include "metadata_loader.hpp"
+#include "state_variable_filter.hpp"
 #include "gseurat/engine/audio/memory_audio_source.hpp"
 
 #include <cassert>
@@ -101,7 +102,6 @@ public:
         b.rtpc_id = rtpc_id;
         b.min_out = min_out;
         b.max_out = max_out;
-        b.active = true;
         mixer_.add_rtpc_binding(b);
     }
 
@@ -139,6 +139,26 @@ public:
         c.type = AudioCommand::Type::StopAllSfx;
         if (!mixer_.command_queue().try_push(c))
             mixer_.telemetry().dropped_commands.fetch_add(1, std::memory_order_relaxed);
+    }
+
+    void add_stem_effect(uint32_t group_id, uint32_t stem_index,
+                          std::unique_ptr<IDSPEffect> effect) override {
+        mixer_.add_stem_effect(group_id, stem_index, std::move(effect));
+    }
+
+    void bind_effect_param_to_rtpc(uint32_t group_id, uint32_t stem_index,
+                                    uint32_t effect_index, uint32_t parameter_id,
+                                    uint32_t rtpc_id, float min_out, float max_out) override {
+        RtpcBinding b;
+        b.target = RtpcBinding::Target::EffectParam;
+        b.group_id = group_id;
+        b.stem_index = stem_index;
+        b.rtpc_id = rtpc_id;
+        b.min_out = min_out;
+        b.max_out = max_out;
+        b.effect_index = effect_index;
+        b.parameter_id = parameter_id;
+        mixer_.add_rtpc_binding(b);
     }
 
     void set_listener_position(float x, float y, float z) override {
@@ -206,5 +226,12 @@ AudioEngine::create(Config cfg, Mode mode) {
 }
 
 AudioEngine::~AudioEngine() = default;
+
+std::unique_ptr<IDSPEffect> AudioEngine::create_svf(
+    float sample_rate, uint8_t type, float cutoff_hz, float resonance) {
+    return std::make_unique<StateVariableFilter>(
+        sample_rate, static_cast<StateVariableFilter::Type>(type),
+        cutoff_hz, resonance);
+}
 
 }  // namespace gseurat::audio
