@@ -1,0 +1,163 @@
+{
+  "version": 3,
+  "presets": [
+    {
+      "id": "vfx_import_1776468476049_24",
+      "name": "vfx1",
+      "duration": 30,
+      "elements": [
+        {
+          "id": "el_import_1776468476049_22",
+          "name": "Emitter 1",
+          "type": "emitter",
+          "position": [
+            0,
+            0,
+            64
+          ],
+          "duration": 30,
+          "loop": true,
+          "emitter": {
+            "spawn_rate": 3,
+            "lifetime_min": 10,
+            "lifetime_max": 30,
+            "velocity_min": [
+              -4.5,
+              -1,
+              -0.5
+            ],
+            "velocity_max": [
+              4,
+              -8,
+              4
+            ],
+            "acceleration": [
+              0,
+              -2,
+              0
+            ],
+            "color_start": [
+              0.4,
+              0.6,
+              0.15
+            ],
+            "color_end": [
+              0.5,
+              0.35,
+              0.1
+            ],
+            "scale_min": [
+              0.1,
+              0.1,
+              0.1
+            ],
+            "scale_max": [
+              1,
+              1,
+              1
+            ],
+            "scale_end_factor": 0.1,
+            "opacity_start": 0.9,
+            "opacity_end": 0.2,
+            "emission": 0.4,
+            "burst_duration": 0,
+            "spawn_offset_min": [
+              -64,
+              128,
+              -64
+            ],
+            "spawn_offset_max": [
+              64,
+              128,
+              -64
+            ],
+            "preset": "leaves",
+            "region": {
+              "shape": "sphere",
+              "half_extents": [
+                128,
+                128,
+                128
+              ],
+              "center": [
+                0,
+                0,
+                0
+              ],
+              "radius": 128
+            }
+          },
+          "animation": {
+            "effect": "float",
+            "params": {
+              "rotations": 0,
+              "rotations_easing": "linear",
+              "expansion": 1,
+              "expansion_easing": "linear",
+              "height_rise": 0,
+              "height_easing": "linear",
+              "opacity_end": 1,
+              "opacity_easing": "in_bounce",
+              "scale_end": 1,
+              "scale_easing": "in_cubic",
+              "velocity": 0,
+              "gravity": [
+                0,
+                0,
+                0
+              ],
+              "noise": 0,
+              "wave_speed": 0,
+              "pulse_frequency": 1
+            }
+          }
+        },
+        {
+          "id": "el_import_1776468476049_23",
+          "name": "Sway",
+          "type": "animation",
+          "position": [
+            0,
+            64,
+            96
+          ],
+          "duration": 30,
+          "loop": true,
+          "animation": {
+            "effect": "pulse",
+            "params": {
+              "rotations": 1,
+              "rotations_easing": "linear",
+              "expansion": 1,
+              "expansion_easing": "linear",
+              "height_rise": 0,
+              "height_easing": "linear",
+              "opacity_end": 0,
+              "opacity_easing": "in_bounce",
+              "scale_end": 0,
+              "scale_easing": "in_bounce",
+              "velocity": 1,
+              "gravity": [
+                0,
+                -9.8,
+                0
+              ],
+              "noise": 1,
+              "wave_speed": 10,
+              "pulse_frequency": 8
+            }
+          },
+          "region": {
+            "shape": "box",
+            "radius": 64,
+            "half_extents": [
+              140,
+              16,
+              64
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

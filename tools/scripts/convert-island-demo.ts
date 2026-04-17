@@ -2,7 +2,7 @@
  * convert-island-demo.ts — Batch-convert island demo assets into tool formats.
  *
  * Phase 1: Echidna PLY → .echidna project files
- * (Phase 2: Melies VFX — added later)
+ * Phase 2: Melies VFX → .json project files
  * (Phase 3: Bricklayer scene — added later)
  *
  * Usage:
@@ -17,6 +17,9 @@ import { parsePlyToVoxels } from '../apps/echidna/src/lib/plyImport.js';
 import { ECHIDNA_FILE_VERSION, slugifyAssetId } from '../apps/echidna/src/store/types.js';
 import type { EchidnaFile, BodyPart, PoseData, AnimationClip, EasingType, PlaybackMode } from '../apps/echidna/src/store/types.js';
 import { parseKey } from '../apps/echidna/src/lib/voxelUtils.js';
+import { parseVfx } from '../apps/melies/src/lib/vfxImport.js';
+import { VFX_PROJECT_VERSION } from '../apps/melies/src/store/types.js';
+import type { VfxProject } from '../apps/melies/src/store/types.js';
 
 // ── Paths ──────────────────────────────────────────────────────────────────────
 
@@ -25,6 +28,7 @@ const ROOT = path.resolve(__dirname, '../../examples/island_demo');
 const ASSETS = path.join(ROOT, 'assets');
 const TOOLS_DATA = path.join(ROOT, 'tools_data');
 const ECHIDNA_OUT = path.join(TOOLS_DATA, 'echidna_saves');
+const MELIES_OUT = path.join(TOOLS_DATA, 'melies_projects');
 
 // ── Manifest types ─────────────────────────────────────────────────────────────
 
@@ -276,6 +280,48 @@ function runEchidnaPhase(): void {
   console.log(`\nPhase 1 complete: ${converted} converted, ${skipped} skipped`);
 }
 
+// ── Phase 2: Melies VFX conversion ────────────────────────────────────────────
+
+function runMeliesPhase(): void {
+  console.log('\n=== Phase 2: Melies VFX Conversion ===\n');
+
+  fs.mkdirSync(MELIES_OUT, { recursive: true });
+
+  const vfxDir = path.join(ASSETS, 'vfx');
+  if (!fs.existsSync(vfxDir)) {
+    console.log('  No vfx/ directory found — skipping');
+    return;
+  }
+
+  let converted = 0;
+
+  for (const file of fs.readdirSync(vfxDir)) {
+    if (!file.endsWith('.vfx.json')) continue;
+
+    const filePath = path.join(vfxDir, file);
+    const slug = file.replace('.vfx.json', '');
+
+    try {
+      const jsonString = fs.readFileSync(filePath, 'utf-8');
+      const preset = parseVfx(jsonString);
+
+      const project: VfxProject = {
+        version: VFX_PROJECT_VERSION,
+        presets: [preset],
+      };
+
+      const outPath = path.join(MELIES_OUT, `${slug}.json`);
+      fs.writeFileSync(outPath, JSON.stringify(project, null, 2));
+      console.log(`  ${file} -> ${path.relative(ROOT, outPath)} (${preset.elements.length} elements)`);
+      converted++;
+    } catch (err) {
+      console.log(`  ERROR ${file} — ${err instanceof Error ? err.message : err}`);
+    }
+  }
+
+  console.log(`\nPhase 2 complete: ${converted} VFX presets converted`);
+}
+
 // ── Main ───────────────────────────────────────────────────────────────────────
 
 function main(): void {
@@ -284,9 +330,9 @@ function main(): void {
   console.log(`  Output: ${TOOLS_DATA}`);
 
   runEchidnaPhase();
+  runMeliesPhase();
 
   // Future phases will be appended here:
-  // runMeliesPhase();
   // runBricklayerPhase();
 
   console.log('\nAll phases complete.');

@@ -1,0 +1,39 @@
+{
+  "version": 3,
+  "presets": [
+    {
+      "id": "vfx_import_1776468476048_9",
+      "name": "fountain_spray",
+      "duration": 4,
+      "category": "environment",
+      "elements": [
+        {
+          "id": "el_import_1776468476048_7",
+          "name": "water_arc",
+          "type": "emitter",
+          "position": [
+            0,
+            4,
+            0
+          ],
+          "start": 0,
+          "duration": 4,
+          "loop": true
+        },
+        {
+          "id": "el_import_1776468476048_8",
+          "name": "mist_light",
+          "type": "light",
+          "position": [
+            0,
+            3,
+            0
+          ],
+          "start": 0,
+          "duration": 4,
+          "loop": true
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,56 @@
+{
+  "version": 3,
+  "presets": [
+    {
+      "id": "vfx_import_1776468476048_6",
+      "name": "crystal_burst",
+      "duration": 6,
+      "category": "environment",
+      "elements": [
+        {
+          "id": "el_import_1776468476048_3",
+          "name": "sparkle_emitter",
+          "type": "emitter",
+          "position": [
+            0,
+            2,
+            0
+          ],
+          "start": 0,
+          "duration": 6,
+          "loop": true
+        },
+        {
+          "id": "el_import_1776468476048_4",
+          "name": "pulse_anim",
+          "type": "animation",
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "start": 0,
+          "duration": 4,
+          "loop": true,
+          "region": {
+            "shape": "sphere",
+            "radius": 6
+          }
+        },
+        {
+          "id": "el_import_1776468476048_5",
+          "name": "glow_light",
+          "type": "light",
+          "position": [
+            0,
+            3,
+            0
+          ],
+          "start": 0,
+          "duration": 6,
+          "loop": true
+        }
+      ]
+    }
+  ]
+}
