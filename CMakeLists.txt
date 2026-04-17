@@ -223,6 +223,7 @@ add_library(gseurat_core ${_gseurat_lib_type}
     src/engine/trigger_systems.cpp
     src/engine/systems/transition_system.cpp
     src/engine/systems/portal_trigger_handler.cpp
+    src/engine/systems/audio_zone_system.cpp
 )
 
 
@@ -459,6 +460,10 @@ add_gseurat_test(test_audio_metadata_loader
 target_include_directories(test_audio_metadata_loader PRIVATE ${PROJECT_SOURCE_DIR}/src/engine/audio)
 add_gseurat_test(test_audio_engine_load        ${AUDIO_ENGINE_TEST_SOURCES})
 target_include_directories(test_audio_engine_load PRIVATE ${PROJECT_SOURCE_DIR}/src/engine/audio)
+add_gseurat_test(test_audio_zone_system
+    ${AUDIO_ENGINE_TEST_SOURCES}
+    src/engine/systems/audio_zone_system.cpp)
+target_include_directories(test_audio_zone_system PRIVATE ${PROJECT_SOURCE_DIR}/src/engine/systems)
 
 # --- GPU Tests (require actual GPU, link engine sources directly) ----------
 
