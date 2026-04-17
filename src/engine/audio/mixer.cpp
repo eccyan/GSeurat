@@ -166,9 +166,32 @@ void Mixer::apply_command(const AudioCommand& cmd) noexcept {
         if (next_generation_ > 0xFFFF) next_generation_ = 1;
         break;
     }
-    case AudioCommand::Type::PlayLoopingSpatial:
-    case AudioCommand::Type::StopAllSfx:
-        break;  // Task 3.1
+    case AudioCommand::Type::PlayLoopingSpatial: {
+        if (!sfx_registry_) return;
+        const uint32_t sfx_id = cmd.stem_index;
+        if (sfx_id >= sfx_registry_->size()) return;
+        auto* v = acquire_voice();
+        if (!v) {
+            telemetry_.dropped_commands.fetch_add(1, std::memory_order_relaxed);
+            return;
+        }
+        v->source       = (*sfx_registry_)[sfx_id].get();
+        v->play_cursor  = 0;
+        v->volume       = cmd.value;
+        v->looping      = true;
+        v->spatial      = true;
+        v->pos_x        = cmd.pos[0];
+        v->pos_y        = cmd.pos[1];
+        v->pos_z        = cmd.pos[2];
+        v->max_distance = cmd.max_distance;
+        v->generation   = next_generation_++;
+        if (next_generation_ > 0xFFFF) next_generation_ = 1;
+        break;
+    }
+    case AudioCommand::Type::StopAllSfx: {
+        for (auto& v : oneshot_voices_) v.source = nullptr;
+        break;
+    }
     }
 }
 

@@ -122,8 +122,24 @@ public:
             mixer_.telemetry().dropped_commands.fetch_add(1, std::memory_order_relaxed);
     }
 
-    void play_looping_spatial(uint32_t, float, float, float, float, float) override {}
-    void stop_all_sfx() override {}
+    void play_looping_spatial(uint32_t sfx_id, float px, float py, float pz,
+                               float max_dist, float volume) override {
+        AudioCommand c{};
+        c.type = AudioCommand::Type::PlayLoopingSpatial;
+        c.stem_index = sfx_id;
+        c.value = volume;
+        c.pos[0] = px; c.pos[1] = py; c.pos[2] = pz;
+        c.max_distance = max_dist;
+        if (!mixer_.command_queue().try_push(c))
+            mixer_.telemetry().dropped_commands.fetch_add(1, std::memory_order_relaxed);
+    }
+
+    void stop_all_sfx() override {
+        AudioCommand c{};
+        c.type = AudioCommand::Type::StopAllSfx;
+        if (!mixer_.command_queue().try_push(c))
+            mixer_.telemetry().dropped_commands.fetch_add(1, std::memory_order_relaxed);
+    }
 
     void set_listener_position(float x, float y, float z) override {
         mixer_.listener_state().x.store(x, std::memory_order_relaxed);
