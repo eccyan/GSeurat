@@ -16,7 +16,7 @@ GSeurat is designed to be embedded in external game projects as a **Git submodul
 - **[Scene transitions](docs/scene-transitions.md)** — Transient-entity state machine (`SceneOut → Loading → SceneIn`) fully decoupled from presentation. Portals are authored in Bricklayer via `ProximityTrigger + PortalTarget`; the post-process shader supports solid fade, left-to-right wipe, and iris wipe effects
 - **Async asset streaming** — Slab allocator + GPU page table, async transfer queue, `world.json` spatial partitioning with fixed uniform chunk grid, StreamingVolumes for preload hints, GPU frustum culling
 - **GS Particle system** — WASM-compiled C++ simulation for preview in web tools, spline path support (emitter path + particle path modes)
-- **Audio** — 4-layer music + spatial SFX via miniaudio
+- **[Audio engine](docs/audio-engine.md)** — Lock-free interactive music with stem-based vertical remixing, sample-accurate looping, marker-aligned crossfade transitions, RTPC parameter binding, per-stem DSP effect chain (SVF LPF/HPF/BPF), oneshot SFX with spatial distance attenuation, `.gsaudio` mmap asset format with Python cooker
 - **Day/night cycle** — Ambient color interpolation with weather system
 - **Save system** — JSON-based save/load with game flags
 - **AI debugging** — Unix socket control server for deterministic step-mode testing
@@ -28,11 +28,14 @@ GSeurat is designed to be embedded in external game projects as a **Git submodul
 GSeurat/
 ├── include/gseurat/           # Public C++ headers
 │   ├── engine/                #   Core engine (renderer, GS, Vulkan, ECS, streaming)
+│   │   └── audio/             #   Audio engine (AudioEngine, IAudioSource, DSP effects)
+│   ├── platform/              #   Platform abstractions (MemoryMappedFile)
 │   ├── character/             #   Bone animation, character manifests
 │   ├── demo/                  #   Demo application headers
 │   └── staging/               #   Staging review tool headers
 ├── src/
 │   ├── engine/                # Core engine implementation (game-agnostic)
+│   │   └── audio/             #   Audio engine (mixer, sources, metadata, DSP, backend)
 │   ├── character/             # Character animation system
 │   ├── demo/                  # Island demo application
 │   └── staging/               # ImGui-based staging review tool
@@ -305,6 +308,28 @@ poll_transfers()                Stage to ring buffer
 Spatial partitioning for vast open-world maps. A `world.json` file defines a fixed uniform grid of chunks, each referencing a PLY file and optional per-chunk scene JSON. The engine derives AABBs from grid position for O(1) camera-to-chunk lookups.
 
 **Chunks vs Instances:** Chunks are spatial PLY tiles in a global coordinate system — loaded/unloaded by camera distance, rendered simultaneously. Instances are isolated rooms in their own local coordinate system — entered via Portals. StreamingVolumes are trigger zones that hint the async transfer queue to preload targets before the player reaches them.
+
+### Audio Engine
+
+Lock-free interactive music engine with per-stem DSP effects and spatial SFX. See [docs/audio-engine.md](docs/audio-engine.md) for the full reference.
+
+```
+Game Thread                    Audio Thread (miniaudio callback)
+──────────────                 ────────────────────────────────
+play_group(id)  ──SPSC queue──>  Mixer::render()
+set_rtpc(id,v)  ──atomic bus──>    ├─ drain commands
+set_listener()  ──atomic xyz──>    ├─ apply RTPC bindings
+                                   ├─ render TrackGroups (loop/xfade/marker)
+                                   │    └─ mix_chunk: source → effects → gain → sum
+                                   └─ render OneshotVoices (spatial attenuation)
+```
+
+**Key components:**
+- **TrackGroups** — multi-stem music with sample-accurate looping, marker-aligned transitions, and crossfading
+- **RTPC** — game variables mapped to stem volume or DSP effect parameters via atomic bus
+- **StateVariableFilter** — TPT/Zavalishin SVF (LPF/HPF/BPF) with block-rate coefficient update
+- **OneshotVoice pool** — fire-and-forget SFX with auto-free, spatial distance attenuation for looping ambient sounds
+- **`.gsaudio` format** — pre-baked float32 PCM with 32-byte header, loaded via cross-platform mmap
 
 ### Voxel Character Pipeline
 
