@@ -545,6 +545,15 @@ void IslandDemoState::on_enter(AppBase& app) {
     if (auto* ae = app.audio()) {
         auto r = ae->load_track_group("assets/audio/field_theme.music.json");
         if (r) {
+            // Add LPF to each music stem for dungeon muffling (must be before play_group)
+            for (uint32_t si = 0; si < 4; ++si) {
+                ae->add_stem_effect(r.value(), si,
+                    audio::AudioEngine::create_svf(44100, 0, 20000.0f, 0.707f));
+                ae->bind_effect_param_to_rtpc(r.value(), si, 0,
+                    0,  // kParamCutoff
+                    kRtpcMusicFilter, 800.0f, 20000.0f);
+            }
+            ae->set_rtpc(kRtpcMusicFilter, 1.0f);  // start fully open
             ae->play_group(r.value());
             std::fprintf(stderr, "[IslandDemo] Field theme loaded and playing (group %u)\n", r.value());
         } else {
@@ -1773,6 +1782,12 @@ void IslandDemoState::perform_portal_transition(AppBase& app,
                                                 const glm::vec3& target_position) {
     std::fprintf(stderr, "[IslandDemo] perform_portal_transition -> '%s' at (%.1f,%.1f,%.1f)\n",
         target_scene.c_str(), target_position.x, target_position.y, target_position.z);
+
+    // Muffle/restore music based on destination
+    if (auto* ae = app.audio()) {
+        const bool entering_dungeon = target_scene.find("dungeon") != std::string::npos;
+        ae->set_rtpc(kRtpcMusicFilter, entering_dungeon ? 0.0f : 1.0f);
+    }
 
     // Wait for GPU to finish before destroying resources
     vkDeviceWaitIdle(app.renderer().context().device());
