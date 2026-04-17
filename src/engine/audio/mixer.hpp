@@ -1,6 +1,7 @@
 #pragma once
 #include "gseurat/engine/audio/command_queue.hpp"
 #include "gseurat/engine/audio/audio_source.hpp"
+#include "gseurat/engine/audio/dsp_effect.hpp"
 #include "gseurat/engine/audio/track_group.hpp"
 #include "audio_command.hpp"
 #include "track_group_state.hpp"
@@ -32,17 +33,26 @@ struct RtpcBus {
 };
 
 struct RtpcBinding {
-    uint32_t group_id = 0;
-    uint32_t stem_index = 0;
-    uint32_t rtpc_id = 0;
-    float    min_out = 0.0f;
-    float    max_out = 1.0f;
-    bool     active = false;
+    enum class Target : uint8_t { StemVolume, EffectParam };
+    Target   target         = Target::StemVolume;
+    uint32_t group_id       = 0;
+    uint32_t stem_index     = 0;
+    uint32_t rtpc_id        = 0;
+    float    min_out        = 0.0f;
+    float    max_out        = 1.0f;
+    uint32_t effect_index   = 0;    // EffectParam only
+    uint32_t parameter_id   = 0;    // EffectParam only
+};
+
+struct StemEffectEntry {
+    uint32_t                     stem_index;
+    std::unique_ptr<IDSPEffect>  effect;
 };
 
 struct TrackGroupRegistryEntry {
     TrackGroupMetadata                          metadata;
     std::vector<std::unique_ptr<IAudioSource>>  owned_stems;
+    std::vector<StemEffectEntry>                 stem_effects;
 };
 
 class Mixer {
@@ -62,6 +72,9 @@ public:
 
     void register_track_group(uint32_t id, TrackGroupMetadata&& meta,
                               std::vector<std::unique_ptr<IAudioSource>>&& stems);
+
+    void add_stem_effect(uint32_t group_id, uint32_t stem_index,
+                         std::unique_ptr<IDSPEffect> effect);
 
     void set_sfx_registry(const std::vector<std::unique_ptr<IAudioSource>>* reg) { sfx_registry_ = reg; }
     ListenerState& listener_state() noexcept { return listener_; }
