@@ -56,7 +56,8 @@ float read_float(const char* data, const PlyProperty& prop) {
 
 }  // namespace
 
-GaussianCloud GaussianCloud::load_ply(const std::string& path) {
+GaussianCloud GaussianCloud::load_ply(const std::string& path,
+                                      CoordinateSystem coords) {
     auto resolved = resolve_asset_path(path);
     std::ifstream file(resolved, std::ios::binary);
     if (!file.is_open()) {
@@ -189,6 +190,10 @@ GaussianCloud GaussianCloud::load_ply(const std::string& path) {
         g.position.y = read_float(row, *py);
         g.position.z = read_float(row, *pz);
 
+        if (coords == CoordinateSystem::kVulkanYDown) {
+            g.position.y = -g.position.y;
+        }
+
         // Scale: stored as log(scale) in standard 3DGS → apply exp()
         if (sx && sy && sz) {
             g.scale.x = std::exp(read_float(row, *sx));
@@ -208,6 +213,12 @@ GaussianCloud GaussianCloud::load_ply(const std::string& path) {
             ));
         } else {
             g.rotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
+        }
+
+        // Y-flip: mirror the rotation around the XZ plane by negating qx and qz
+        if (coords == CoordinateSystem::kVulkanYDown) {
+            g.rotation.x = -g.rotation.x;
+            g.rotation.z = -g.rotation.z;
         }
 
         // Color
@@ -271,7 +282,8 @@ GaussianCloud GaussianCloud::from_gaussians(std::vector<Gaussian> gaussians) {
 }
 
 void GaussianCloud::write_ply(const std::string& path,
-                              const std::vector<Gaussian>& gaussians) {
+                              const std::vector<Gaussian>& gaussians,
+                              CoordinateSystem coords) {
     std::ofstream file(path, std::ios::binary);
     if (!file.is_open()) {
         throw std::runtime_error("Failed to open PLY file for writing: " + path);
@@ -304,8 +316,10 @@ void GaussianCloud::write_ply(const std::string& path,
     constexpr float kSH_C0 = 0.28209479177387814f;
 
     for (const auto& g : gaussians) {
-        // Position (stored directly)
-        float x = g.position.x, y = g.position.y, z = g.position.z;
+        // Position (negate Y when writing for Y-down consumers)
+        float x = g.position.x;
+        float y = (coords == CoordinateSystem::kVulkanYDown) ? -g.position.y : g.position.y;
+        float z = g.position.z;
         file.write(reinterpret_cast<const char*>(&x), 4);
         file.write(reinterpret_cast<const char*>(&y), 4);
         file.write(reinterpret_cast<const char*>(&z), 4);
@@ -319,8 +333,11 @@ void GaussianCloud::write_ply(const std::string& path,
         file.write(reinterpret_cast<const char*>(&s2), 4);
 
         // Rotation quaternion (stored directly, w first)
-        float rw = g.rotation.w, rx = g.rotation.x;
-        float ry = g.rotation.y, rz = g.rotation.z;
+        // Mirror around XZ plane for Y-down: negate qx and qz
+        float rw = g.rotation.w;
+        float rx = (coords == CoordinateSystem::kVulkanYDown) ? -g.rotation.x : g.rotation.x;
+        float ry = g.rotation.y;
+        float rz = (coords == CoordinateSystem::kVulkanYDown) ? -g.rotation.z : g.rotation.z;
         file.write(reinterpret_cast<const char*>(&rw), 4);
         file.write(reinterpret_cast<const char*>(&rx), 4);
         file.write(reinterpret_cast<const char*>(&ry), 4);

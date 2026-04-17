@@ -607,6 +607,94 @@ int main() {
         printf("PASS: Test 18 - GSVX file size matches header count\n");
     }
 
+    // ====== Test 19: load_ply with kVulkanYDown flips Y position and rotation ======
+    {
+        const std::string ply_path = tmp_dir + "/test_standard.ply";
+        write_test_ply(ply_path, 10);
+
+        auto cloud_yup = GaussianCloud::load_ply(ply_path);
+        auto cloud_ydn = GaussianCloud::load_ply(ply_path, CoordinateSystem::kVulkanYDown);
+
+        assert(cloud_ydn.count() == 10 && "Y-down should load same count");
+
+        // Position Y should be negated
+        const auto& g5_up = cloud_yup.gaussians()[5];
+        const auto& g5_dn = cloud_ydn.gaussians()[5];
+        assert(approx(g5_dn.position.x, g5_up.position.x) && "X unchanged");
+        assert(approx(g5_dn.position.y, -g5_up.position.y) && "Y negated");
+        assert(approx(g5_dn.position.z, g5_up.position.z) && "Z unchanged");
+
+        // Rotation: qx and qz should be negated (mirror around XZ plane)
+        // For identity quaternion (w=1, x=0, y=0, z=0), negating 0 is still 0
+        // so verify the sign flip with a non-trivial quaternion via write_ply round-trip
+        assert(approx(g5_dn.rotation.w, g5_up.rotation.w) && "rot.w unchanged");
+
+        printf("PASS: Test 19 - load_ply with kVulkanYDown flips Y\n");
+    }
+
+    // ====== Test 20: write_ply + load_ply round-trip with kVulkanYDown ======
+    {
+        // Create a cloud with known non-trivial values
+        std::vector<Gaussian> src(1);
+        src[0].position = glm::vec3(1.0f, 2.0f, 3.0f);
+        src[0].scale = glm::vec3(0.5f, 0.5f, 0.5f);
+        src[0].rotation = glm::normalize(glm::quat(0.7f, 0.3f, 0.5f, 0.1f));
+        src[0].color = glm::vec3(0.8f, 0.2f, 0.4f);
+        src[0].opacity = 0.9f;
+        src[0].importance = 0.45f;
+        src[0].bone_index = 0;
+        src[0].emission = 0.0f;
+
+        // Write with Y-down, then read back with default (Y-up) — Y should be negated
+        const std::string ply_path = tmp_dir + "/test_ydown_roundtrip.ply";
+        GaussianCloud::write_ply(ply_path, src, CoordinateSystem::kVulkanYDown);
+        auto cloud = GaussianCloud::load_ply(ply_path);  // default Y-up load
+
+        const auto& g = cloud.gaussians()[0];
+        assert(approx(g.position.x, 1.0f) && "Written X unchanged");
+        assert(approx(g.position.y, -2.0f) && "Written Y negated by kVulkanYDown");
+        assert(approx(g.position.z, 3.0f) && "Written Z unchanged");
+
+        // Rotation: qx and qz negated during write
+        assert(approx(g.rotation.x, -src[0].rotation.x, 0.02f) && "Written rot.x negated");
+        assert(approx(g.rotation.y, src[0].rotation.y, 0.02f) && "Written rot.y unchanged");
+        assert(approx(g.rotation.z, -src[0].rotation.z, 0.02f) && "Written rot.z negated");
+        assert(approx(g.rotation.w, src[0].rotation.w, 0.02f) && "Written rot.w unchanged");
+
+        printf("PASS: Test 20 - write_ply + load_ply round-trip with kVulkanYDown\n");
+    }
+
+    // ====== Test 21: kVulkanYDown write then kVulkanYDown load recovers original ======
+    {
+        std::vector<Gaussian> src(1);
+        src[0].position = glm::vec3(5.0f, -3.0f, 7.0f);
+        src[0].scale = glm::vec3(0.1f, 0.2f, 0.3f);
+        src[0].rotation = glm::normalize(glm::quat(0.5f, 0.5f, 0.5f, 0.5f));
+        src[0].color = glm::vec3(1.0f, 0.0f, 0.5f);
+        src[0].opacity = 0.95f;
+        src[0].importance = 0.285f;
+        src[0].bone_index = 0;
+        src[0].emission = 0.0f;
+
+        const std::string ply_path = tmp_dir + "/test_ydown_identity.ply";
+        GaussianCloud::write_ply(ply_path, src, CoordinateSystem::kVulkanYDown);
+        auto cloud = GaussianCloud::load_ply(ply_path, CoordinateSystem::kVulkanYDown);
+
+        const auto& g = cloud.gaussians()[0];
+        // Double-negation should recover original position
+        assert(approx(g.position.x, 5.0f) && "Round-trip X preserved");
+        assert(approx(g.position.y, -3.0f) && "Round-trip Y preserved");
+        assert(approx(g.position.z, 7.0f) && "Round-trip Z preserved");
+
+        // Double-negation of qx, qz should recover original rotation
+        assert(approx(g.rotation.x, src[0].rotation.x, 0.02f) && "Round-trip rot.x preserved");
+        assert(approx(g.rotation.y, src[0].rotation.y, 0.02f) && "Round-trip rot.y preserved");
+        assert(approx(g.rotation.z, src[0].rotation.z, 0.02f) && "Round-trip rot.z preserved");
+        assert(approx(g.rotation.w, src[0].rotation.w, 0.02f) && "Round-trip rot.w preserved");
+
+        printf("PASS: Test 21 - kVulkanYDown write+load recovers original\n");
+    }
+
     // Cleanup temp files
     fs::remove_all(tmp_dir);
 

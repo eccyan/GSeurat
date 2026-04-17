@@ -9,6 +9,21 @@
 
 namespace gseurat {
 
+/// Coordinate system convention for PLY import/export.
+///
+/// GSeurat internally uses a **right-handed, Y-up** coordinate system and
+/// applies a Vulkan Y-flip in the projection matrix (`proj[1][1] *= -1`).
+///
+/// When loading PLY files into an engine that does NOT apply this projection
+/// flip (e.g. OpenGL-style renderers, or Vulkan renderers that handle Y
+/// differently), pass CoordinateSystem::kVulkanYDown to negate the Y axis
+/// on load so that the geometry appears right-side-up.
+enum class CoordinateSystem {
+    kYUp,         ///< Default. Y points up (matches GSeurat's internal convention).
+    kVulkanYDown, ///< Negate Y on load/write for consumers that expect Y-down NDC
+                  ///< without a projection-matrix flip.
+};
+
 struct Gaussian {
     glm::vec3 position;   // 12 bytes
     glm::vec3 scale;      // 12 bytes
@@ -63,14 +78,16 @@ struct GsvxPayload {
 
 class GaussianCloud {
 public:
-    static GaussianCloud load_ply(const std::string& path);
+    static GaussianCloud load_ply(const std::string& path,
+                                   CoordinateSystem coords = CoordinateSystem::kYUp);
     /// Load a pre-baked .gsvx binary file (zero-copy GPU format).
     static GsvxPayload load_gsvx(const std::string& path);
     static GaussianCloud from_gaussians(std::vector<Gaussian> gaussians);
 
     // Write Gaussians to a binary little-endian PLY file.
     // Data is stored in the same format load_ply() expects (log-scale, logit-opacity, SH DC color).
-    static void write_ply(const std::string& path, const std::vector<Gaussian>& gaussians);
+    static void write_ply(const std::string& path, const std::vector<Gaussian>& gaussians,
+                          CoordinateSystem coords = CoordinateSystem::kYUp);
 
     const std::vector<Gaussian>& gaussians() const { return gaussians_; }
     const AABB& bounds() const { return bounds_; }
