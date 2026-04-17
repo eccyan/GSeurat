@@ -1,5 +1,7 @@
 #include "gseurat/engine/audio/audio_engine.hpp"
 #include "mixer.hpp"
+#include "metadata_loader.hpp"
+#include "gseurat/engine/audio/memory_audio_source.hpp"
 
 #include <cassert>
 #include <cmath>
@@ -15,8 +17,27 @@ public:
           mixer_(cfg.sample_rate, channels_, cfg.buffer_frames, cfg.max_active_groups) {}
 
     std::expected<uint32_t, LoadTrackGroupError>
-    load_track_group(std::string_view) override {
-        return std::unexpected(LoadTrackGroupError::ParseFailed);
+    load_track_group(std::string_view config_path) override {
+        auto cfg_r = load_music_config(config_path);
+        if (!cfg_r) return std::unexpected(LoadTrackGroupError::ParseFailed);
+        auto& cfg = cfg_r.value();
+        if (cfg.sample_rate != cfg_.sample_rate) {
+            return std::unexpected(LoadTrackGroupError::SampleRateMismatch);
+        }
+        uint32_t first_id = 0;
+        for (auto& tg : cfg.track_groups) {
+            std::vector<std::unique_ptr<IAudioSource>> stems;
+            stems.reserve(tg.stems.size());
+            for (const auto& s : tg.stems) {
+                auto src_r = MemoryAudioSource::from_wav_file(s.source_path, cfg.sample_rate);
+                if (!src_r) return std::unexpected(LoadTrackGroupError::StemLoadFailed);
+                stems.push_back(std::move(src_r.value()));
+            }
+            const uint32_t id = tg.id;
+            if (first_id == 0) first_id = id;
+            mixer_.register_track_group(id, std::move(tg), std::move(stems));
+        }
+        return first_id;
     }
 
     void play_group(uint32_t gid) override {
