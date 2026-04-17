@@ -179,6 +179,7 @@ add_library(gseurat_core ${_gseurat_lib_type}
     src/engine/audio/memory_audio_source.cpp
     src/engine/audio/audio_engine.cpp
     src/engine/audio/mixer.cpp
+    src/engine/audio/metadata_loader.cpp
     src/engine/font_atlas.cpp
     src/engine/text_renderer.cpp
     src/engine/locale_manager.cpp
@@ -464,6 +465,16 @@ add_gseurat_test(test_audio_mixer_rtpc
     src/engine/audio/memory_audio_source.cpp
     src/engine/audio/mixer.cpp
     tests/test_miniaudio_impl.cpp)
+add_gseurat_test(test_audio_metadata_loader
+    src/engine/audio/metadata_loader.cpp)
+target_include_directories(test_audio_metadata_loader PRIVATE ${PROJECT_SOURCE_DIR}/src/engine/audio)
+add_gseurat_test(test_audio_engine_load
+    src/engine/audio/audio_engine.cpp
+    src/engine/audio/memory_audio_source.cpp
+    src/engine/audio/mixer.cpp
+    src/engine/audio/metadata_loader.cpp
+    tests/test_miniaudio_impl.cpp)
+target_include_directories(test_audio_engine_load PRIVATE ${PROJECT_SOURCE_DIR}/src/engine/audio)
 
 # --- GPU Tests (require actual GPU, link engine sources directly) ----------
 
