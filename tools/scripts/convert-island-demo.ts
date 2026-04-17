@@ -454,11 +454,13 @@ function runBricklayerPhase(): void {
   // Lights
   const staticLights = (scene.lights ?? []).map((l: Record<string, unknown>, i: number) => ({
     id: `light_${i}`,
-    type: (l as { radius?: number }).radius && (l as { radius?: number }).radius! > 300 ? 'point' : 'spot',
+    type: (l as { direction?: unknown }).direction ? 'spot' : 'point',
     position: l.position,
     color: l.color,
     radius: l.radius,
     intensity: l.intensity,
+    ...((l as { direction?: unknown }).direction ? { direction: (l as { direction: unknown }).direction } : {}),
+    ...((l as { cone_angle?: unknown }).cone_angle != null ? { cone_angle: (l as { cone_angle: unknown }).cone_angle } : {}),
   }));
 
   // Game objects (direct passthrough with defaults)
@@ -490,8 +492,25 @@ function runBricklayerPhase(): void {
       muted: (pe.spawn_rate as number | undefined) === 0,
       preset: pe.preset,
       position: pe.position,
-      spawn_rate: pe.spawn_rate ?? undefined,
-      emitter: defaultEmitter(),
+      spawn_rate: (pe.spawn_rate as number | undefined) ?? 20,
+      lifetime_min: 0.5,
+      lifetime_max: 2.0,
+      velocity_min: [-0.5, 1.0, -0.5],
+      velocity_max: [0.5, 3.0, 0.5],
+      acceleration: [0, 0.3, 0],
+      color_start: [1.0, 0.8, 0.3, 1.0],
+      color_end: [0.3, 0.3, 0.3, 0.0],
+      scale_min: [0.3, 0.3, 0.3],
+      scale_max: [0.8, 0.8, 0.8],
+      scale_end_factor: 2,
+      opacity_start: 0.5,
+      opacity_end: 0,
+      emission: 0,
+      spawn_region: {
+        shape: 'box',
+        center: [0, 0, 0],
+        half_extents: [0.5, 0.5, 0.5],
+      },
     }),
   );
 
@@ -504,15 +523,24 @@ function runBricklayerPhase(): void {
   };
 
   // Gaussian splat (drop ground_color/sky_color, add defaults)
-  const gs = scene.gaussian_splat ?? {};
+  const engine = scene;
   const gaussianSplat = {
-    ply_file: gs.ply_file,
-    camera: gs.camera,
-    render_width: gs.render_width,
-    render_height: gs.render_height,
-    scale_multiplier: gs.scale_multiplier,
-    parallax: 1.0,
-    morph_targets: [],
+    camera: engine.gaussian_splat.camera,
+    render_width: engine.gaussian_splat.render_width,
+    render_height: engine.gaussian_splat.render_height,
+    scale_multiplier: engine.gaussian_splat.scale_multiplier,
+    background_image: '',
+    parallax: {
+      azimuth_range: 15,
+      elevation_min: -5,
+      elevation_max: 5,
+      distance_range: 2,
+      parallax_strength: 1,
+    },
+    morphPairPly: '',
+    morphDuration: 1.5,
+    morphDefaultBlend: 0.0,
+    morphEasing: 'linear',
   };
 
   // ── Asset registry ─────────────────────────────────────────────────────
@@ -557,9 +585,45 @@ function runBricklayerPhase(): void {
 
   // Background layers
   const backgroundLayers = [
-    { texture: 'assets/textures/bg_sky.png', z: -100, parallax: 0.02 },
-    { texture: 'assets/textures/bg_mountains.png', z: -80, parallax: 0.05 },
-    { texture: 'assets/textures/bg_trees.png', z: -60, parallax: 0.1 },
+    {
+      id: 'bg_sky',
+      texture: 'assets/textures/bg_sky.png',
+      z: -100,
+      parallax_factor: 0.02,
+      quad_width: 800,
+      quad_height: 400,
+      uv_repeat_x: 1,
+      uv_repeat_y: 1,
+      tint: [1, 1, 1, 1],
+      wall: false,
+      wall_y_offset: 0,
+    },
+    {
+      id: 'bg_mountains',
+      texture: 'assets/textures/bg_mountains.png',
+      z: -80,
+      parallax_factor: 0.05,
+      quad_width: 600,
+      quad_height: 300,
+      uv_repeat_x: 1,
+      uv_repeat_y: 1,
+      tint: [0.9, 0.9, 1.0, 0.8],
+      wall: false,
+      wall_y_offset: 0,
+    },
+    {
+      id: 'bg_trees',
+      texture: 'assets/textures/bg_trees.png',
+      z: -60,
+      parallax_factor: 0.1,
+      quad_width: 500,
+      quad_height: 250,
+      uv_repeat_x: 2,
+      uv_repeat_y: 1,
+      tint: [0.8, 0.85, 0.75, 0.9],
+      wall: false,
+      wall_y_offset: 0,
+    },
   ];
 
   // VFX instances
@@ -617,19 +681,70 @@ function runBricklayerPhase(): void {
   // Camera volumes
   const cameraVolumes = [
     {
-      id: 'cam_fountain_plaza', name: 'Fountain Plaza',
-      bounds: { type: 'aabb', center: [178, 5, 185], half_extents: [20, 10, 20] },
-      fov: 40,
+      id: 'cam_fountain_area',
+      name: 'Fountain Plaza',
+      shape: {
+        type: 'aabb',
+        center: [178, 5, 185],
+        half_extents: [20, 10, 20],
+      },
+      params: {
+        mode: 'free_look',
+        priority: 1,
+        blend_time: 1.5,
+        allow_user_orbit: true,
+        pitch_min: -45,
+        pitch_max: 5,
+        yaw_min: -180,
+        yaw_max: 180,
+        fov: 40,
+        orbit_distance: 12,
+        offset: [0, 6, -12],
+      },
     },
     {
-      id: 'cam_dungeon_entrance', name: 'Dungeon Entrance',
-      bounds: { type: 'sphere', center: [203, 5, 175], radius: 15 },
-      fov: 35,
+      id: 'cam_dungeon_entrance',
+      name: 'Dungeon Entrance',
+      shape: {
+        type: 'sphere',
+        center: [203, 5, 175],
+        radius: 15,
+      },
+      params: {
+        mode: 'free_look',
+        priority: 2,
+        blend_time: 1.5,
+        allow_user_orbit: true,
+        pitch_min: -45,
+        pitch_max: 5,
+        yaw_min: -180,
+        yaw_max: 180,
+        fov: 35,
+        orbit_distance: 8,
+        offset: [0, 4, -8],
+      },
     },
     {
-      id: 'cam_forest_edge', name: 'Forest Edge',
-      bounds: { type: 'aabb', center: [140, 5, 200], half_extents: [30, 10, 30] },
-      fov: 50,
+      id: 'cam_forest_edge',
+      name: 'Forest Edge',
+      shape: {
+        type: 'aabb',
+        center: [140, 5, 200],
+        half_extents: [30, 10, 30],
+      },
+      params: {
+        mode: 'free_look',
+        priority: 0,
+        blend_time: 1.5,
+        allow_user_orbit: true,
+        pitch_min: -45,
+        pitch_max: 5,
+        yaw_min: -180,
+        yaw_max: 180,
+        fov: 50,
+        orbit_distance: 15,
+        offset: [0, 8, -15],
+      },
     },
   ];
 
@@ -704,7 +819,19 @@ function runBricklayerPhase(): void {
       cameraVolumes,
       cameraTriggers: [],
       cameraRails: [],
-      cameraDefaultParams: { fov: 45, follow_speed: 5.0, look_ahead: 2.0 },
+      cameraDefaultParams: {
+        mode: 'free_look',
+        priority: 0,
+        blend_time: 1.0,
+        allow_user_orbit: true,
+        pitch_min: -60,
+        pitch_max: 10,
+        yaw_min: -180,
+        yaw_max: 180,
+        fov: 45,
+        orbit_distance: 10,
+        offset: [0, 5, -10],
+      },
       cameraShowDebugVolumes: false,
       audioZones,
     },
