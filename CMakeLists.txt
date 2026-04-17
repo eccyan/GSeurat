@@ -176,11 +176,13 @@ add_library(gseurat_core ${_gseurat_lib_type}
     src/engine/particle.cpp
     # src/engine/audio/ — interactive music engine
     src/engine/audio/memory_audio_source.cpp
+    src/engine/audio/mmap_audio_source.cpp
     src/engine/audio/audio_engine.cpp
     src/engine/audio/mixer.cpp
     src/engine/audio/metadata_loader.cpp
     src/engine/audio/backend/miniaudio_device.cpp
     src/engine/audio/state_variable_filter.cpp
+    src/engine/platform/memory_mapped_file.cpp
     src/engine/font_atlas.cpp
     src/engine/text_renderer.cpp
     src/engine/locale_manager.cpp
@@ -437,14 +439,20 @@ add_gseurat_test(test_audio_command_queue)
 add_gseurat_test(test_audio_slew_limiter)
 add_gseurat_test(test_audio_memory_source
     src/engine/audio/memory_audio_source.cpp)
+add_gseurat_test(test_audio_mmap_source
+    src/engine/audio/mmap_audio_source.cpp
+    src/engine/audio/memory_audio_source.cpp
+    src/engine/platform/memory_mapped_file.cpp)
 # Common audio engine sources for standalone tests
 set(AUDIO_ENGINE_TEST_SOURCES
     src/engine/audio/audio_engine.cpp
     src/engine/audio/memory_audio_source.cpp
+    src/engine/audio/mmap_audio_source.cpp
     src/engine/audio/mixer.cpp
     src/engine/audio/metadata_loader.cpp
     src/engine/audio/backend/miniaudio_device.cpp
-    src/engine/audio/state_variable_filter.cpp)
+    src/engine/audio/state_variable_filter.cpp
+    src/engine/platform/memory_mapped_file.cpp)
 add_gseurat_test(test_audio_mixer_basic        ${AUDIO_ENGINE_TEST_SOURCES})
 target_include_directories(test_audio_mixer_basic PRIVATE ${PROJECT_SOURCE_DIR}/src/engine/audio)
 add_gseurat_test(test_audio_mixer_loop         ${AUDIO_ENGINE_TEST_SOURCES})
@@ -473,6 +481,8 @@ target_include_directories(test_audio_zone_system PRIVATE ${PROJECT_SOURCE_DIR}/
 add_gseurat_test(test_audio_svf
     src/engine/audio/state_variable_filter.cpp)
 target_include_directories(test_audio_svf PRIVATE ${PROJECT_SOURCE_DIR}/src/engine/audio)
+add_gseurat_test(test_memory_mapped_file
+    src/engine/platform/memory_mapped_file.cpp)
 add_gseurat_test(test_audio_effect_chain
     ${AUDIO_ENGINE_TEST_SOURCES})
 target_include_directories(test_audio_effect_chain PRIVATE ${PROJECT_SOURCE_DIR}/src/engine/audio)
