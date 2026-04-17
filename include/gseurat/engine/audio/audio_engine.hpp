@@ -17,6 +17,8 @@ enum class InitError : uint32_t {
     OutOfMemory,
 };
 
+enum class SfxLoadError : uint32_t { FileNotFound, DecodeFailed, SampleRateMismatch };
+
 enum class LoadTrackGroupError : uint32_t {
     FileNotFound,
     ParseFailed,
@@ -34,6 +36,7 @@ public:
         uint32_t max_active_groups      = 8;
         uint32_t command_queue_capacity = 256;
         uint32_t rtpc_count             = 64;
+        uint32_t max_oneshot_voices     = 32;
     };
     enum class Mode { Realtime, Offline };
 
@@ -55,6 +58,14 @@ public:
     virtual void bind_stem_volume_to_rtpc(
         uint32_t group_id, uint32_t stem_index,
         uint32_t rtpc_id, float min_out, float max_out) = 0;
+    // SFX
+    virtual std::expected<uint32_t, SfxLoadError> load_sfx(std::string_view wav_path) = 0;
+    virtual void play_oneshot(uint32_t sfx_id, float volume = 1.0f) = 0;
+    virtual void play_looping_spatial(uint32_t sfx_id, float pos_x, float pos_y, float pos_z,
+                                      float max_distance, float volume = 1.0f) = 0;
+    virtual void stop_all_sfx() = 0;
+    virtual void set_listener_position(float x, float y, float z) = 0;
+
     virtual void render_offline(std::span<float> interleaved_out, uint64_t num_frames) = 0;
 
     virtual uint64_t current_frame()              const noexcept = 0;

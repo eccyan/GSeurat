@@ -4,6 +4,7 @@
 #include "gseurat/engine/audio/track_group.hpp"
 #include "audio_command.hpp"
 #include "track_group_state.hpp"
+#include "oneshot_voice.hpp"
 
 #include <array>
 #include <atomic>
@@ -11,6 +12,7 @@
 #include <memory>
 #include <span>
 #include <vector>
+#include <glm/glm.hpp>
 
 namespace gseurat::audio {
 
@@ -46,7 +48,8 @@ struct TrackGroupRegistryEntry {
 class Mixer {
 public:
     Mixer(uint32_t sample_rate, uint32_t channels,
-          uint32_t buffer_frames, uint32_t max_active_groups);
+          uint32_t buffer_frames, uint32_t max_active_groups,
+          uint32_t max_oneshot_voices);
     ~Mixer() = default;
     Mixer(const Mixer&) = delete;
     Mixer& operator=(const Mixer&) = delete;
@@ -59,6 +62,9 @@ public:
 
     void register_track_group(uint32_t id, TrackGroupMetadata&& meta,
                               std::vector<std::unique_ptr<IAudioSource>>&& stems);
+
+    void set_sfx_registry(const std::vector<std::unique_ptr<IAudioSource>>* reg) { sfx_registry_ = reg; }
+    ListenerState& listener_state() noexcept { return listener_; }
 
     void add_rtpc_binding(const RtpcBinding& b) {
         const uint32_t n = rtpc_binding_count_.load(std::memory_order_relaxed);
@@ -75,6 +81,10 @@ private:
                    uint32_t out_offset, uint32_t chunk_frames) noexcept;
     void maybe_trigger_pending_transition(TrackGroupState& g) noexcept;
 
+    void render_voice(OneshotVoice& v, std::span<float> out,
+                      uint32_t frames, glm::vec3 listener) noexcept;
+    OneshotVoice* acquire_voice() noexcept;
+
     TrackGroupState* find_active_slot(uint32_t group_id) noexcept;
     TrackGroupState* acquire_slot(uint32_t group_id) noexcept;
 
@@ -82,6 +92,7 @@ private:
     uint32_t channels_;
     uint32_t buffer_frames_;
     uint32_t max_active_groups_;
+    uint32_t max_oneshot_voices_;
 
     SpscRingBuffer<AudioCommand, kCommandQueueCapacity> commands_;
     RtpcBus                                             rtpc_bus_;
@@ -93,6 +104,10 @@ private:
 
     std::vector<TrackGroupRegistryEntry> registry_;
     std::vector<TrackGroupState>  active_groups_;
+    std::vector<OneshotVoice>     oneshot_voices_;
+    ListenerState                 listener_;
+    const std::vector<std::unique_ptr<IAudioSource>>* sfx_registry_ = nullptr;
+    uint32_t                      next_generation_ = 1;
     std::vector<float>            group_volume_scratch_;
     std::vector<float>            read_scratch_;
 };
