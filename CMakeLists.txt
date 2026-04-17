@@ -440,6 +440,11 @@ add_gseurat_test(test_audio_mixer_basic
     src/engine/audio/memory_audio_source.cpp
     src/engine/audio/mixer.cpp
     tests/test_miniaudio_impl.cpp)
+add_gseurat_test(test_audio_mixer_loop
+    src/engine/audio/audio_engine.cpp
+    src/engine/audio/memory_audio_source.cpp
+    src/engine/audio/mixer.cpp
+    tests/test_miniaudio_impl.cpp)
 
 # --- GPU Tests (require actual GPU, link engine sources directly) ----------
 
