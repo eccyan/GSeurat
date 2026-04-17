@@ -177,6 +177,8 @@ add_library(gseurat_core ${_gseurat_lib_type}
     src/engine/audio_system.cpp
     # src/engine/audio/ — interactive music engine sources added in Milestones 1-4
     src/engine/audio/memory_audio_source.cpp
+    src/engine/audio/audio_engine.cpp
+    src/engine/audio/mixer.cpp
     src/engine/font_atlas.cpp
     src/engine/text_renderer.cpp
     src/engine/locale_manager.cpp
