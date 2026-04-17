@@ -70,7 +70,8 @@ void DemoApp::init_game_content() {
     renderer_.init_shadows(resources_);
 
     ui_ctx_.init(font_atlas_, text_renderer_);
-    audio_.init(resolve_asset_path("assets").string());
+    // Audio engine is constructed in app_base.
+    // Music loading will be wired via AudioZone scene data in Milestone 5.
 
     // Register demo-specific components (engine registers generic ones)
     component_registry_.register_component<PlayerController>("PlayerController",

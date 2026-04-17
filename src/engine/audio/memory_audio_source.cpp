@@ -1,5 +1,6 @@
 #include "gseurat/engine/audio/memory_audio_source.hpp"
 
+#define MINIAUDIO_IMPLEMENTATION
 #include <miniaudio.h>
 
 #include <algorithm>

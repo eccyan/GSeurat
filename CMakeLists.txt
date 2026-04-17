@@ -174,12 +174,12 @@ add_library(gseurat_core ${_gseurat_lib_type}
     src/engine/character_data.cpp
     src/engine/animation_state_machine.cpp
     src/engine/particle.cpp
-    src/engine/audio_system.cpp
-    # src/engine/audio/ — interactive music engine sources added in Milestones 1-4
+    # src/engine/audio/ — interactive music engine
     src/engine/audio/memory_audio_source.cpp
     src/engine/audio/audio_engine.cpp
     src/engine/audio/mixer.cpp
     src/engine/audio/metadata_loader.cpp
+    src/engine/audio/backend/miniaudio_device.cpp
     src/engine/font_atlas.cpp
     src/engine/text_renderer.cpp
     src/engine/locale_manager.cpp
@@ -434,46 +434,30 @@ add_gseurat_test(test_world_streamer src/engine/world_streamer.cpp src/engine/wo
 add_gseurat_test(test_audio_command_queue)
 add_gseurat_test(test_audio_slew_limiter)
 add_gseurat_test(test_audio_memory_source
-    src/engine/audio/memory_audio_source.cpp
-    tests/test_miniaudio_impl.cpp)
-add_gseurat_test(test_audio_mixer_basic
-    src/engine/audio/audio_engine.cpp
-    src/engine/audio/memory_audio_source.cpp
-    src/engine/audio/mixer.cpp
-    tests/test_miniaudio_impl.cpp)
-add_gseurat_test(test_audio_mixer_loop
-    src/engine/audio/audio_engine.cpp
-    src/engine/audio/memory_audio_source.cpp
-    src/engine/audio/mixer.cpp
-    tests/test_miniaudio_impl.cpp)
-add_gseurat_test(test_audio_mixer_crossfade
-    src/engine/audio/audio_engine.cpp
-    src/engine/audio/memory_audio_source.cpp
-    src/engine/audio/mixer.cpp
-    tests/test_miniaudio_impl.cpp)
-add_gseurat_test(test_audio_mixer_marker_xfade
-    src/engine/audio/audio_engine.cpp
-    src/engine/audio/memory_audio_source.cpp
-    src/engine/audio/mixer.cpp
-    tests/test_miniaudio_impl.cpp)
-add_gseurat_test(test_audio_engine_queue_overflow
-    src/engine/audio/audio_engine.cpp
-    src/engine/audio/mixer.cpp
-    tests/test_miniaudio_impl.cpp)
-add_gseurat_test(test_audio_mixer_rtpc
-    src/engine/audio/audio_engine.cpp
-    src/engine/audio/memory_audio_source.cpp
-    src/engine/audio/mixer.cpp
-    tests/test_miniaudio_impl.cpp)
-add_gseurat_test(test_audio_metadata_loader
-    src/engine/audio/metadata_loader.cpp)
-target_include_directories(test_audio_metadata_loader PRIVATE ${PROJECT_SOURCE_DIR}/src/engine/audio)
-add_gseurat_test(test_audio_engine_load
+    src/engine/audio/memory_audio_source.cpp)
+# Common audio engine sources for standalone tests
+set(AUDIO_ENGINE_TEST_SOURCES
     src/engine/audio/audio_engine.cpp
     src/engine/audio/memory_audio_source.cpp
     src/engine/audio/mixer.cpp
     src/engine/audio/metadata_loader.cpp
-    tests/test_miniaudio_impl.cpp)
+    src/engine/audio/backend/miniaudio_device.cpp)
+add_gseurat_test(test_audio_mixer_basic        ${AUDIO_ENGINE_TEST_SOURCES})
+target_include_directories(test_audio_mixer_basic PRIVATE ${PROJECT_SOURCE_DIR}/src/engine/audio)
+add_gseurat_test(test_audio_mixer_loop         ${AUDIO_ENGINE_TEST_SOURCES})
+target_include_directories(test_audio_mixer_loop PRIVATE ${PROJECT_SOURCE_DIR}/src/engine/audio)
+add_gseurat_test(test_audio_mixer_crossfade    ${AUDIO_ENGINE_TEST_SOURCES})
+target_include_directories(test_audio_mixer_crossfade PRIVATE ${PROJECT_SOURCE_DIR}/src/engine/audio)
+add_gseurat_test(test_audio_mixer_marker_xfade ${AUDIO_ENGINE_TEST_SOURCES})
+target_include_directories(test_audio_mixer_marker_xfade PRIVATE ${PROJECT_SOURCE_DIR}/src/engine/audio)
+add_gseurat_test(test_audio_engine_queue_overflow ${AUDIO_ENGINE_TEST_SOURCES})
+target_include_directories(test_audio_engine_queue_overflow PRIVATE ${PROJECT_SOURCE_DIR}/src/engine/audio)
+add_gseurat_test(test_audio_mixer_rtpc         ${AUDIO_ENGINE_TEST_SOURCES})
+target_include_directories(test_audio_mixer_rtpc PRIVATE ${PROJECT_SOURCE_DIR}/src/engine/audio)
+add_gseurat_test(test_audio_metadata_loader
+    src/engine/audio/metadata_loader.cpp)
+target_include_directories(test_audio_metadata_loader PRIVATE ${PROJECT_SOURCE_DIR}/src/engine/audio)
+add_gseurat_test(test_audio_engine_load        ${AUDIO_ENGINE_TEST_SOURCES})
 target_include_directories(test_audio_engine_load PRIVATE ${PROJECT_SOURCE_DIR}/src/engine/audio)
 
 # --- GPU Tests (require actual GPU, link engine sources directly) ----------

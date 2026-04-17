@@ -1,4 +1,5 @@
 #include "gseurat/engine/audio/audio_engine.hpp"
+#include "backend/miniaudio_device.hpp"
 #include "mixer.hpp"
 #include "metadata_loader.hpp"
 #include "gseurat/engine/audio/memory_audio_source.hpp"
@@ -14,7 +15,20 @@ class AudioEngineImpl final : public AudioEngine {
 public:
     AudioEngineImpl(Config cfg, Mode mode)
         : cfg_(cfg), mode_(mode), channels_(2),
-          mixer_(cfg.sample_rate, channels_, cfg.buffer_frames, cfg.max_active_groups) {}
+          mixer_(cfg.sample_rate, channels_, cfg.buffer_frames, cfg.max_active_groups) {
+        if (mode_ == Mode::Realtime) {
+            device_ = make_miniaudio_device();
+            device_->start(cfg_.sample_rate, channels_, cfg_.buffer_frames,
+                [this](float* out, uint32_t frames) {
+                    std::span<float> buf{out, static_cast<size_t>(frames) * channels_};
+                    mixer_.render(buf, frames);
+                });
+        }
+    }
+
+    ~AudioEngineImpl() override {
+        if (device_) device_->stop();
+    }
 
     std::expected<uint32_t, LoadTrackGroupError>
     load_track_group(std::string_view config_path) override {
@@ -133,6 +147,7 @@ private:
     Mode     mode_;
     uint32_t channels_;
     Mixer    mixer_;
+    std::unique_ptr<IAudioDevice> device_;
 };
 
 }  // namespace
