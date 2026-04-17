@@ -1,4 +1,5 @@
 #include "gseurat/demo/demo_app.hpp"
+#include "gseurat/engine/audio/audio_engine.hpp"
 #include "gseurat/demo/gs_demo_state.hpp"
 #include "gseurat/demo/island_demo_state.hpp"
 #include "gseurat/demo/island_components.hpp"
@@ -38,6 +39,16 @@ void DemoApp::parse_args(int argc, char* argv[]) {
 void DemoApp::run() {
     command_dispatcher_.register_default_commands();
     init_game_object_system();
+
+    // Construct the interactive music audio engine (realtime output via miniaudio).
+    auto engine_r = audio::AudioEngine::create(
+        {.sample_rate = 44100, .buffer_frames = 1024, .max_active_groups = 8,
+         .max_oneshot_voices = 32},
+        audio::AudioEngine::Mode::Realtime);
+    if (engine_r) {
+        audio_engine_ = std::move(engine_r.value());
+    }
+
     init_game_content();
 
     if (viewer_mode_) {
