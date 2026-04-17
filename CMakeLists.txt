@@ -427,6 +427,8 @@ add_gseurat_test(test_project_root  src/engine/project_root.cpp)
 add_gseurat_test(test_slab_allocator src/engine/slab_allocator.cpp)
 add_gseurat_test(test_world_manifest src/engine/world_manifest.cpp)
 add_gseurat_test(test_world_streamer src/engine/world_streamer.cpp src/engine/world_manifest.cpp)
+add_gseurat_test(test_audio_command_queue)
+add_gseurat_test(test_audio_slew_limiter)
 
 # --- GPU Tests (require actual GPU, link engine sources directly) ----------
 
