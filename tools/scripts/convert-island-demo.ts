@@ -60,23 +60,16 @@ interface Manifest {
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
-function readPlyBuffer(filePath: string): ArrayBuffer | null {
+function readPlyFile(filePath: string): { buffer: ArrayBuffer; hasBones: boolean } | null {
   const buf = fs.readFileSync(filePath);
-  // Validate PLY header
   const header = buf.subarray(0, 3).toString('ascii');
-  if (header !== 'ply') {
-    return null;
-  }
-  return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
-}
-
-/** Check if a PLY file has bone_index in its header. */
-function plyHasBones(filePath: string): boolean {
-  const buf = fs.readFileSync(filePath);
+  if (header !== 'ply') return null;
   const headerEnd = buf.indexOf('end_header\n');
-  if (headerEnd === -1) return false;
-  const headerText = buf.subarray(0, headerEnd).toString('ascii');
-  return headerText.includes('bone_index');
+  const headerText = headerEnd !== -1 ? buf.subarray(0, headerEnd).toString('ascii') : '';
+  return {
+    buffer: buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength),
+    hasBones: headerText.includes('bone_index'),
+  };
 }
 
 /** Convert manifest poses to EchidnaFile PoseData format. */
@@ -147,72 +140,78 @@ function runEchidnaPhase(): void {
       }
 
       const plyPath = path.join(charDir, plyFile);
-      const arrayBuffer = readPlyBuffer(plyPath);
-      if (!arrayBuffer) {
-        console.log(`  SKIP ${charName}/${plyFile} — invalid PLY header`);
-        skipped++;
-        continue;
-      }
 
-      console.log(`  Converting character: ${charName}/${plyFile}`);
+      try {
+        const plyData = readPlyFile(plyPath);
+        if (!plyData) {
+          console.log(`  SKIP ${charName}/${plyFile} — invalid PLY header`);
+          skipped++;
+          continue;
+        }
 
-      const result = parsePlyToVoxels(arrayBuffer);
+        console.log(`  Converting character: ${charName}/${plyFile}`);
 
-      // Convert voxels Map to array format
-      const voxelArray = Array.from(result.voxels.entries()).map(([key, voxel]) => {
-        const [x, y, z] = parseKey(key);
-        return { x, y, z, r: voxel.color[0], g: voxel.color[1], b: voxel.color[2], a: voxel.color[3] };
-      });
+        const result = parsePlyToVoxels(plyData.buffer);
 
-      // Look for companion manifest
-      const manifestPath = path.join(charDir, `${charName}.manifest.json`);
-      let manifest: Manifest | null = null;
-      if (fs.existsSync(manifestPath)) {
-        manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
-      }
-
-      // Enrich parts with manifest bone data
-      let parts = result.parts;
-      if (manifest?.bones) {
-        parts = parts.map((part, i) => {
-          const bone = manifest!.bones![i];
-          if (bone) {
-            return {
-              ...part,
-              id: bone.id,
-              name: bone.id,
-              parent: bone.parent,
-              joint: bone.joint,
-            };
-          }
-          return part;
+        // Convert voxels Map to array format
+        const voxelArray = Array.from(result.voxels.entries()).map(([key, voxel]) => {
+          const [x, y, z] = parseKey(key);
+          return { x, y, z, r: voxel.color[0], g: voxel.color[1], b: voxel.color[2], a: voxel.color[3] };
         });
+
+        // Look for companion manifest
+        const manifestPath = path.join(charDir, `${charName}.manifest.json`);
+        let manifest: Manifest | null = null;
+        if (fs.existsSync(manifestPath)) {
+          manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
+        }
+
+        // Enrich parts with manifest bone data
+        let parts = result.parts;
+        if (manifest?.bones) {
+          parts = parts.map((part, i) => {
+            const bone = manifest!.bones![i];
+            if (bone) {
+              return {
+                ...part,
+                id: bone.id,
+                name: bone.id,
+                parent: bone.parent,
+                joint: bone.joint,
+              };
+            }
+            return part;
+          });
+        }
+
+        // Convert poses and animations from manifest
+        const poses = manifest?.poses ? convertPoses(manifest.poses) : {};
+        const animations = manifest?.animations ? convertAnimations(manifest.animations) : {};
+
+        const id = slugifyAssetId(charName);
+        const echidnaFile: EchidnaFile = {
+          version: ECHIDNA_FILE_VERSION,
+          id,
+          kind: 'character',
+          characterName: charName,
+          gridWidth: result.gridSize,
+          gridDepth: result.gridSize,
+          voxels: voxelArray,
+          parts,
+          poses,
+          animations,
+          tags: [],
+          color_palettes: [],
+        };
+
+        const outPath = path.join(ECHIDNA_OUT, `${id}.echidna`);
+        fs.writeFileSync(outPath, JSON.stringify(echidnaFile, null, 2));
+        console.log(`    -> ${path.relative(ROOT, outPath)} (${voxelArray.length} voxels, ${parts.length} parts)`);
+        converted++;
+      } catch (err) {
+        console.log(`  ERROR ${charName}/${plyFile} — ${err instanceof Error ? err.message : err}`);
+        skipped++;
       }
-
-      // Convert poses and animations from manifest
-      const poses = manifest?.poses ? convertPoses(manifest.poses) : {};
-      const animations = manifest?.animations ? convertAnimations(manifest.animations) : {};
-
-      const id = slugifyAssetId(charName);
-      const echidnaFile: EchidnaFile = {
-        version: ECHIDNA_FILE_VERSION,
-        id,
-        kind: 'character',
-        characterName: charName,
-        gridWidth: result.gridSize,
-        gridDepth: result.gridSize,
-        voxels: voxelArray,
-        parts,
-        poses,
-        animations,
-        tags: [],
-        color_palettes: [],
-      };
-
-      const outPath = path.join(ECHIDNA_OUT, `${id}.echidna`);
-      fs.writeFileSync(outPath, JSON.stringify(echidnaFile, null, 2));
-      console.log(`    -> ${path.relative(ROOT, outPath)} (${voxelArray.length} voxels, ${parts.length} parts)`);
-      converted++;
     }
   }
 
@@ -224,48 +223,53 @@ function runEchidnaPhase(): void {
       if (!file.endsWith('.ply')) continue;
 
       const plyPath = path.join(propsDir, file);
-      const arrayBuffer = readPlyBuffer(plyPath);
-      if (!arrayBuffer) {
-        console.log(`  SKIP props/${file} — invalid PLY header`);
+
+      try {
+        const plyData = readPlyFile(plyPath);
+        if (!plyData) {
+          console.log(`  SKIP props/${file} — invalid PLY header`);
+          skipped++;
+          continue;
+        }
+
+        console.log(`  Converting prop: ${file}`);
+
+        const result = parsePlyToVoxels(plyData.buffer);
+
+        const voxelArray = Array.from(result.voxels.entries()).map(([key, voxel]) => {
+          const [x, y, z] = parseKey(key);
+          return { x, y, z, r: voxel.color[0], g: voxel.color[1], b: voxel.color[2], a: voxel.color[3] };
+        });
+
+        // Determine kind: if PLY has bone_index, treat as character
+        const kind = plyData.hasBones ? 'character' as const : 'object' as const;
+
+        const baseName = file.replace('.ply', '');
+        const id = slugifyAssetId(baseName);
+
+        const echidnaFile: EchidnaFile = {
+          version: ECHIDNA_FILE_VERSION,
+          id,
+          kind,
+          characterName: baseName,
+          gridWidth: result.gridSize,
+          gridDepth: result.gridSize,
+          voxels: voxelArray,
+          parts: result.parts,
+          poses: {},
+          animations: {},
+          tags: [],
+          color_palettes: [],
+        };
+
+        const outPath = path.join(ECHIDNA_OUT, `${id}.echidna`);
+        fs.writeFileSync(outPath, JSON.stringify(echidnaFile, null, 2));
+        console.log(`    -> ${path.relative(ROOT, outPath)} (${voxelArray.length} voxels, kind=${kind})`);
+        converted++;
+      } catch (err) {
+        console.log(`  ERROR props/${file} — ${err instanceof Error ? err.message : err}`);
         skipped++;
-        continue;
       }
-
-      console.log(`  Converting prop: ${file}`);
-
-      const result = parsePlyToVoxels(arrayBuffer);
-
-      const voxelArray = Array.from(result.voxels.entries()).map(([key, voxel]) => {
-        const [x, y, z] = parseKey(key);
-        return { x, y, z, r: voxel.color[0], g: voxel.color[1], b: voxel.color[2], a: voxel.color[3] };
-      });
-
-      // Determine kind: if PLY has bone_index, treat as character
-      const hasBones = plyHasBones(plyPath);
-      const kind = hasBones ? 'character' as const : 'object' as const;
-
-      const baseName = file.replace('.ply', '');
-      const id = slugifyAssetId(baseName);
-
-      const echidnaFile: EchidnaFile = {
-        version: ECHIDNA_FILE_VERSION,
-        id,
-        kind,
-        characterName: baseName,
-        gridWidth: result.gridSize,
-        gridDepth: result.gridSize,
-        voxels: voxelArray,
-        parts: result.parts,
-        poses: {},
-        animations: {},
-        tags: [],
-        color_palettes: [],
-      };
-
-      const outPath = path.join(ECHIDNA_OUT, `${id}.echidna`);
-      fs.writeFileSync(outPath, JSON.stringify(echidnaFile, null, 2));
-      console.log(`    -> ${path.relative(ROOT, outPath)} (${voxelArray.length} voxels, kind=${kind})`);
-      converted++;
     }
   }
 
