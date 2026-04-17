@@ -129,6 +129,15 @@ export const BUILTIN_SCHEMAS: ComponentSchema[] = [
       { name: 'alpha', type: 'float', default: 0, min: 0, max: 1 },
       { name: 'effect_type', type: 'int', default: 0, min: 0, max: 2 },
     ]},
+  { name: 'AudioZone', description: 'Spatial trigger that plays/transitions interactive music when the player enters or exits', category: 'Audio',
+    fields: [
+      { name: 'track_group_name', type: 'string', default: '' },
+      { name: 'on_enter_action', type: 'string', default: 'play' },
+      { name: 'enter_xfade_ms', type: 'float', default: 1000, min: 0, max: 5000 },
+      { name: 'align_to_next_marker', type: 'bool', default: true },
+      { name: 'on_exit_action', type: 'string', default: 'stop' },
+      { name: 'exit_fade_ms', type: 'float', default: 500, min: 0, max: 5000 },
+    ]},
 ];
 
 function defaultEmitter(): EmitterConfig {
