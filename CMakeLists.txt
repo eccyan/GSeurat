@@ -181,6 +181,7 @@ add_library(gseurat_core ${_gseurat_lib_type}
     src/engine/audio/metadata_loader.cpp
     src/engine/audio/backend/miniaudio_device.cpp
     src/engine/audio/state_variable_filter.cpp
+    src/engine/platform/memory_mapped_file.cpp
     src/engine/font_atlas.cpp
     src/engine/text_renderer.cpp
     src/engine/locale_manager.cpp
@@ -473,6 +474,8 @@ target_include_directories(test_audio_zone_system PRIVATE ${PROJECT_SOURCE_DIR}/
 add_gseurat_test(test_audio_svf
     src/engine/audio/state_variable_filter.cpp)
 target_include_directories(test_audio_svf PRIVATE ${PROJECT_SOURCE_DIR}/src/engine/audio)
+add_gseurat_test(test_memory_mapped_file
+    src/engine/platform/memory_mapped_file.cpp)
 add_gseurat_test(test_audio_effect_chain
     ${AUDIO_ENGINE_TEST_SOURCES})
 target_include_directories(test_audio_effect_chain PRIVATE ${PROJECT_SOURCE_DIR}/src/engine/audio)
