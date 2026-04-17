@@ -111,10 +111,22 @@ void Mixer::apply_command(const AudioCommand& cmd) noexcept {
         if (slot) slot->group_volume.set_target(cmd.value, cmd.frame_count);
         break;
     }
-    case AudioCommand::Type::RequestTransition:
-        // Stub — Task 3.6 fills this in.
+    case AudioCommand::Type::RequestTransition: {
+        auto* g = find_active_slot(cmd.group_id);
+        if (!g) return;
+        g->status = TrackGroupState::Status::AwaitingTransition;
+        g->pending_transition_target = cmd.secondary_group_id;
+        g->pending_transition_xfade_frames = cmd.frame_count;
         break;
     }
+    }
+}
+
+// Helper: find next marker strictly after cursor
+static const Marker* next_marker(const Marker* begin, const Marker* end, uint64_t cursor) noexcept {
+    const Marker* m = begin;
+    while (m < end && m->frame <= cursor) ++m;
+    return (m < end) ? m : nullptr;
 }
 
 void Mixer::render_group(TrackGroupState& g, std::span<float> out,
@@ -131,8 +143,16 @@ void Mixer::render_group(TrackGroupState& g, std::span<float> out,
             ? (g.loop_end - g.play_cursor)
             : (source_len - g.play_cursor);
 
+        uint64_t frames_until_marker = UINT64_MAX;
+        if (g.status == TrackGroupState::Status::AwaitingTransition) {
+            if (const Marker* m = next_marker(g.markers_begin, g.markers_end, g.play_cursor)) {
+                frames_until_marker = m->frame - g.play_cursor;
+            }
+        }
+
+        const uint64_t until_split = std::min(frames_until_boundary, frames_until_marker);
         const uint32_t chunk = static_cast<uint32_t>(
-            std::min<uint64_t>(frames_remaining, frames_until_boundary));
+            std::min<uint64_t>(frames_remaining, until_split));
         if (chunk == 0) {
             g.status = TrackGroupState::Status::Idle;
             return;
@@ -143,6 +163,15 @@ void Mixer::render_group(TrackGroupState& g, std::span<float> out,
         out_offset       += chunk;
         frames_remaining -= chunk;
         g.play_cursor    += chunk;
+
+        // Check if we hit a marker (before checking loop wrap)
+        if (g.status == TrackGroupState::Status::AwaitingTransition
+            && frames_until_marker != UINT64_MAX
+            && chunk == static_cast<uint32_t>(frames_until_marker)) {
+            maybe_trigger_pending_transition(g);
+            // After triggering, g is now CrossfadingOut. The new target group
+            // will be rendered on the NEXT call to render() (next block).
+        }
 
         if (g.loop_end > 0 && g.play_cursor == g.loop_end) {
             g.play_cursor = g.loop_start;
@@ -193,8 +222,37 @@ void Mixer::mix_chunk(TrackGroupState& g, std::span<float> out,
     }
 }
 
-// Stub — Task 3.6 fills this in.
-void Mixer::maybe_trigger_pending_transition(TrackGroupState&) noexcept {}
+void Mixer::maybe_trigger_pending_transition(TrackGroupState& g) noexcept {
+    if (g.status != TrackGroupState::Status::AwaitingTransition) return;
+
+    const uint64_t xfade = g.pending_transition_xfade_frames;
+    g.status = TrackGroupState::Status::CrossfadingOut;
+    g.group_volume.set_target(0.0f, xfade);
+
+    const uint32_t target_id = g.pending_transition_target;
+    const TrackGroupRegistryEntry* entry = nullptr;
+    for (const auto& e : registry_) if (e.metadata.id == target_id) { entry = &e; break; }
+    if (!entry) return;
+
+    TrackGroupState* t = find_active_slot(target_id);
+    if (!t) t = acquire_slot(target_id);
+    if (!t) return;
+
+    t->status       = TrackGroupState::Status::Playing;
+    t->play_cursor  = 0;
+    t->loop_start   = entry->metadata.loop_start;
+    t->loop_end     = entry->metadata.loop_end;
+    t->stem_count   = static_cast<uint8_t>(
+        std::min<size_t>(entry->metadata.stems.size(), kMaxStemsPerGroup));
+    t->markers_begin = entry->metadata.markers.data();
+    t->markers_end   = entry->metadata.markers.data() + entry->metadata.markers.size();
+    t->group_volume.force(0.0f);
+    t->group_volume.set_target(1.0f, xfade);
+    for (uint8_t i = 0; i < t->stem_count; ++i) {
+        t->stems[i].source = entry->owned_stems[i].get();
+        t->stems[i].volume.force(entry->metadata.stems[i].initial_volume);
+    }
+}
 
 void Mixer::register_track_group(uint32_t id, TrackGroupMetadata&& meta,
                                   std::vector<std::unique_ptr<IAudioSource>>&& stems) {

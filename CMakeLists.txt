@@ -450,6 +450,11 @@ add_gseurat_test(test_audio_mixer_crossfade
     src/engine/audio/memory_audio_source.cpp
     src/engine/audio/mixer.cpp
     tests/test_miniaudio_impl.cpp)
+add_gseurat_test(test_audio_mixer_marker_xfade
+    src/engine/audio/audio_engine.cpp
+    src/engine/audio/memory_audio_source.cpp
+    src/engine/audio/mixer.cpp
+    tests/test_miniaudio_impl.cpp)
 add_gseurat_test(test_audio_engine_queue_overflow
     src/engine/audio/audio_engine.cpp
     src/engine/audio/mixer.cpp
