@@ -4,6 +4,7 @@
 #include <cassert>
 #include <cstring>
 #include <glm/glm.hpp>
+#include <glm/geometric.hpp>
 
 namespace gseurat::audio {
 
@@ -44,6 +45,18 @@ void Mixer::render(std::span<float> out, uint32_t frames_this_block) noexcept {
     for (auto& g : active_groups_) {
         if (g.status == TrackGroupState::Status::Idle) continue;
         render_group(g, out, frames_this_block);
+    }
+
+    // Snapshot listener position
+    const glm::vec3 listener{
+        listener_.x.load(std::memory_order_relaxed),
+        listener_.y.load(std::memory_order_relaxed),
+        listener_.z.load(std::memory_order_relaxed)};
+
+    // Render oneshot voices
+    for (auto& v : oneshot_voices_) {
+        if (!v.source) continue;
+        render_voice(v, out, frames_this_block, listener);
     }
 
     telemetry_.current_frame.fetch_add(frames_this_block, std::memory_order_relaxed);
@@ -135,6 +148,27 @@ void Mixer::apply_command(const AudioCommand& cmd) noexcept {
         g->pending_transition_xfade_frames = cmd.frame_count;
         break;
     }
+    case AudioCommand::Type::PlayOneshot: {
+        if (!sfx_registry_) return;
+        const uint32_t sfx_id = cmd.stem_index;
+        if (sfx_id >= sfx_registry_->size()) return;
+        auto* v = acquire_voice();
+        if (!v) {
+            telemetry_.dropped_commands.fetch_add(1, std::memory_order_relaxed);
+            return;
+        }
+        v->source       = (*sfx_registry_)[sfx_id].get();
+        v->play_cursor  = 0;
+        v->volume       = cmd.value;
+        v->looping      = false;
+        v->spatial      = false;
+        v->generation   = next_generation_++;
+        if (next_generation_ > 0xFFFF) next_generation_ = 1;
+        break;
+    }
+    case AudioCommand::Type::PlayLoopingSpatial:
+    case AudioCommand::Type::StopAllSfx:
+        break;  // Task 3.1
     }
 }
 
@@ -283,6 +317,60 @@ OneshotVoice* Mixer::acquire_voice() noexcept {
     return nullptr;
 }
 
-void Mixer::render_voice(OneshotVoice&, std::span<float>, uint32_t, glm::vec3) noexcept {}
+void Mixer::render_voice(OneshotVoice& v, std::span<float> out,
+                          uint32_t frames, glm::vec3 listener) noexcept {
+    const uint64_t source_len = v.source->total_frames();
+    uint32_t to_render = frames;
+
+    if (!v.looping && v.play_cursor + to_render > source_len) {
+        to_render = static_cast<uint32_t>(source_len - v.play_cursor);
+    }
+    if (to_render == 0) {
+        v.source = nullptr;  // auto-free
+        return;
+    }
+
+    // Distance attenuation (spatial only, once per block)
+    float spatial_gain = 1.0f;
+    if (v.spatial) {
+        const glm::vec3 pos{v.pos_x, v.pos_y, v.pos_z};
+        const float dist = glm::length(listener - pos);
+        spatial_gain = 1.0f - std::clamp(dist / v.max_distance, 0.0f, 1.0f);
+        if (spatial_gain <= 0.0f) {
+            v.play_cursor += to_render;
+            if (v.looping && v.play_cursor >= source_len) v.play_cursor = 0;
+            return;
+        }
+    }
+
+    const float gain = v.volume * spatial_gain;
+    const uint32_t src_ch = v.source->format().channels;
+    const uint32_t out_ch = channels_;
+
+    // Read into scratch and mix
+    std::span<float> scratch(read_scratch_.data(),
+                              static_cast<size_t>(to_render) * src_ch);
+    v.source->read_frames(v.play_cursor, to_render, scratch);
+
+    for (uint32_t f = 0; f < to_render; ++f) {
+        if (src_ch == 1) {
+            const float s = scratch[f] * gain;
+            out[f * out_ch + 0] += s;
+            out[f * out_ch + 1] += s;
+        } else {
+            out[f * out_ch + 0] += scratch[f * 2 + 0] * gain;
+            out[f * out_ch + 1] += scratch[f * 2 + 1] * gain;
+        }
+    }
+
+    v.play_cursor += to_render;
+
+    if (v.looping && v.play_cursor >= source_len) {
+        v.play_cursor = 0;
+    }
+    if (!v.looping && v.play_cursor >= source_len) {
+        v.source = nullptr;
+    }
+}
 
 }  // namespace gseurat::audio

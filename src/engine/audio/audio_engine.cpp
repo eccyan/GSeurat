@@ -16,6 +16,7 @@ public:
     AudioEngineImpl(Config cfg, Mode mode)
         : cfg_(cfg), mode_(mode), channels_(2),
           mixer_(cfg.sample_rate, channels_, cfg.buffer_frames, cfg.max_active_groups, cfg.max_oneshot_voices) {
+        mixer_.set_sfx_registry(&sfx_registry_);
         if (mode_ == Mode::Realtime) {
             device_ = make_miniaudio_device();
             device_->start(cfg_.sample_rate, channels_, cfg_.buffer_frames,
@@ -104,6 +105,32 @@ public:
         mixer_.add_rtpc_binding(b);
     }
 
+    std::expected<uint32_t, SfxLoadError> load_sfx(std::string_view wav_path) override {
+        auto src = MemoryAudioSource::from_wav_file(wav_path, cfg_.sample_rate);
+        if (!src) return std::unexpected(SfxLoadError::DecodeFailed);
+        const uint32_t id = static_cast<uint32_t>(sfx_registry_.size());
+        sfx_registry_.push_back(std::move(src.value()));
+        return id;
+    }
+
+    void play_oneshot(uint32_t sfx_id, float volume) override {
+        AudioCommand c{};
+        c.type = AudioCommand::Type::PlayOneshot;
+        c.stem_index = sfx_id;
+        c.value = volume;
+        if (!mixer_.command_queue().try_push(c))
+            mixer_.telemetry().dropped_commands.fetch_add(1, std::memory_order_relaxed);
+    }
+
+    void play_looping_spatial(uint32_t, float, float, float, float, float) override {}
+    void stop_all_sfx() override {}
+
+    void set_listener_position(float x, float y, float z) override {
+        mixer_.listener_state().x.store(x, std::memory_order_relaxed);
+        mixer_.listener_state().y.store(y, std::memory_order_relaxed);
+        mixer_.listener_state().z.store(z, std::memory_order_relaxed);
+    }
+
     void render_offline(std::span<float> out, uint64_t num_frames) override {
         assert(mode_ == Mode::Offline);
         uint64_t done = 0;
@@ -146,6 +173,7 @@ private:
     Config   cfg_;
     Mode     mode_;
     uint32_t channels_;
+    std::vector<std::unique_ptr<IAudioSource>> sfx_registry_;
     Mixer    mixer_;
     std::unique_ptr<IAudioDevice> device_;
 };

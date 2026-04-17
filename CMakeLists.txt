@@ -460,6 +460,8 @@ add_gseurat_test(test_audio_metadata_loader
 target_include_directories(test_audio_metadata_loader PRIVATE ${PROJECT_SOURCE_DIR}/src/engine/audio)
 add_gseurat_test(test_audio_engine_load        ${AUDIO_ENGINE_TEST_SOURCES})
 target_include_directories(test_audio_engine_load PRIVATE ${PROJECT_SOURCE_DIR}/src/engine/audio)
+add_gseurat_test(test_audio_oneshot         ${AUDIO_ENGINE_TEST_SOURCES})
+target_include_directories(test_audio_oneshot PRIVATE ${PROJECT_SOURCE_DIR}/src/engine/audio)
 add_gseurat_test(test_audio_zone_system
     ${AUDIO_ENGINE_TEST_SOURCES}
     src/engine/systems/audio_zone_system.cpp)
