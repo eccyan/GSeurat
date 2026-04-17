@@ -130,6 +130,15 @@
         }
       }
     },
+    "audio": {
+      "type": "object",
+      "properties": {
+        "preload_track_groups": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
     "tilemap": { "type": "object" },
     "tile_animations": { "type": "array" }
   },
