@@ -75439,6 +75439,12 @@
       "spawn_rate": 0
     }
   ],
+  "torch_audio_positions": [
+    [195.0, 4.4784, 181.0],
+    [185.0, 3.5245, 173.0],
+    [201.0, 3.0323, 191.0],
+    [211.0, 3.2403, 185.0]
+  ],
   "audio": {
     "preload_track_groups": [
       "assets/audio/field_theme.music.json"
