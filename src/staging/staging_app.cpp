@@ -1,5 +1,6 @@
 #include "gseurat/staging/staging_app.hpp"
 #include "gseurat/staging/staging_state.hpp"
+#include "gseurat/engine/audio/audio_engine.hpp"
 #include "gseurat/engine/gaussian_cloud.hpp"
 #include "gseurat/engine/gs_parallax_camera.hpp"
 #include "gseurat/engine/project_root.hpp"
@@ -32,6 +33,17 @@ void StagingApp::parse_args(int argc, char* argv[]) {
 void StagingApp::run() {
     command_dispatcher_.register_default_commands();
     init_game_object_system();
+
+    // Create audio engine so Weaver's "Open in Staging" can play music.
+    auto engine_r = audio::AudioEngine::create(
+        {.sample_rate = 44100, .buffer_frames = 1024, .max_active_groups = 8,
+         .max_oneshot_voices = 32},
+        audio::AudioEngine::Mode::Realtime);
+    if (engine_r) {
+        audio_engine_ = std::move(engine_r.value());
+        std::fprintf(stderr, "[Staging] Audio engine initialized\n");
+    }
+
     init_game_content();
     scene_objects_.current_scene_path = scene_path_;
     state_stack_.push(std::make_unique<StagingState>(), *this);
