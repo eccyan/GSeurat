@@ -17,6 +17,7 @@ export function useAudioPlayer() {
 
   const isPlaying = useWeaverStore((s) => s.isPlaying);
   const stems = useWeaverStore((s) => s.stems);
+  const loopEnabled = useWeaverStore((s) => s.loopEnabled);
 
   useEffect(() => {
     if (isPlaying) {
@@ -26,6 +27,24 @@ export function useAudioPlayer() {
     }
     return () => stopPlayback();
   }, [isPlaying]);
+
+  // Update source.loop live when loopEnabled changes during playback
+  useEffect(() => {
+    const sources = sourcesRef.current;
+    if (sources.length === 0) return;
+    const state = useWeaverStore.getState();
+    const sampleRate = state.sampleRate;
+    const loopStart = state.loopStart;
+    const loopEnd = state.loopEnd;
+    const shouldLoop = loopEnabled && loopEnd > loopStart;
+    for (const source of sources) {
+      source.loop = shouldLoop;
+      if (shouldLoop) {
+        source.loopStart = framesToSeconds(loopStart, sampleRate);
+        source.loopEnd = framesToSeconds(loopEnd, sampleRate);
+      }
+    }
+  }, [loopEnabled]);
 
   useEffect(() => {
     const gains = gainsRef.current;
@@ -102,14 +121,17 @@ export function useAudioPlayer() {
       const elapsed = ctx.currentTime - startTimeRef.current;
       let frame = startFrameRef.current + Math.round(elapsed * sampleRate);
 
+      // Read current loop state (may have changed since playback started)
+      const currentLoopEnabled = s.loopEnabled;
+
       // Wrap within loop region if looping
-      if (loopEnabled && loopEnd > loopStart && frame >= loopEnd) {
+      if (currentLoopEnabled && loopEnd > loopStart && frame >= loopEnd) {
         const loopLen = loopEnd - loopStart;
         frame = loopStart + ((frame - loopStart) % loopLen);
       }
 
       // Stop at end when not looping
-      if (!loopEnabled || loopEnd <= loopStart) {
+      if (!currentLoopEnabled || loopEnd <= loopStart) {
         const maxLen = s.maxFrames();
         if (frame >= maxLen) {
           s.setIsPlaying(false);

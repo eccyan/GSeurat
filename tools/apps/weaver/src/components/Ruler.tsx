@@ -135,7 +135,10 @@ export function Ruler() {
         let ne = ve + shift;
         if (ns < 0) { ne -= ns; ns = 0; }
         if (mf > 0 && ne > mf) { ns -= ne - mf; ne = mf; }
-        store.setView(Math.round(Math.max(0, ns)), Math.round(ne));
+        const rnds = Math.round(Math.max(0, ns));
+        const rnde = Math.round(ne);
+        if (rnds === Math.round(vs) && rnde === Math.round(ve)) return; // At boundary
+        store.setView(rnds, rnde);
       }
     };
 
