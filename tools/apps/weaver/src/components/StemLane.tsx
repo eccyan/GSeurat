@@ -19,6 +19,8 @@ export function StemLane({ index }: StemLaneProps) {
   const playheadFrame = useWeaverStore((s) => s.playheadFrame);
   const setStemVolume = useWeaverStore((s) => s.setStemVolume);
   const removeStem = useWeaverStore((s) => s.removeStem);
+  const toggleMute = useWeaverStore((s) => s.toggleMute);
+  const toggleSolo = useWeaverStore((s) => s.toggleSolo);
   const loopEnabled = useWeaverStore((s) => s.loopEnabled);
 
   useEffect(() => {
@@ -135,6 +137,30 @@ export function StemLane({ index }: StemLaneProps) {
             style={{ width: 60 }}
           />
           <span style={{ fontSize: 10, color: '#888' }}>{Math.round(stem.initialVolume * 100)}%</span>
+        </div>
+        <div style={{ display: 'flex', gap: 2, marginTop: 2 }}>
+          <button
+            onClick={() => toggleMute(index)}
+            style={{
+              padding: '0 4px', fontSize: 9, minWidth: 20,
+              background: stem.muted ? '#ff4444' : '#333',
+              color: stem.muted ? '#fff' : '#888',
+              border: '1px solid #555', borderRadius: 2, cursor: 'pointer',
+            }}
+          >
+            M
+          </button>
+          <button
+            onClick={() => toggleSolo(index)}
+            style={{
+              padding: '0 4px', fontSize: 9, minWidth: 20,
+              background: stem.soloed ? '#ffaa00' : '#333',
+              color: stem.soloed ? '#000' : '#888',
+              border: '1px solid #555', borderRadius: 2, cursor: 'pointer',
+            }}
+          >
+            S
+          </button>
         </div>
         <button
           onClick={() => removeStem(index)}

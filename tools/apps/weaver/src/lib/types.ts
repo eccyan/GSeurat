@@ -4,6 +4,8 @@ export interface StemState {
   initialVolume: number;
   audioBuffer: AudioBuffer | null;
   waveformPeaks: Float32Array | null;
+  muted: boolean;
+  soloed: boolean;
 }
 
 export interface MarkerState {

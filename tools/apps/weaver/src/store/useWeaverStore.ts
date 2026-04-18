@@ -17,6 +17,8 @@ interface WeaverStore {
   addStem: (file: File) => Promise<void>;
   removeStem: (index: number) => void;
   setStemVolume: (index: number, volume: number) => void;
+  toggleMute: (index: number) => void;
+  toggleSolo: (index: number) => void;
 
   loopStart: number;
   loopEnd: number;
@@ -71,6 +73,8 @@ export const useWeaverStore = create<WeaverStore>((set, get) => ({
       initialVolume: 1.0,
       audioBuffer,
       waveformPeaks,
+      muted: false,
+      soloed: false,
     };
     set((s) => {
       const stems = [...s.stems, stem];
@@ -81,6 +85,10 @@ export const useWeaverStore = create<WeaverStore>((set, get) => ({
   removeStem: (index) => set((s) => ({ stems: s.stems.filter((_, i) => i !== index) })),
   setStemVolume: (index, volume) =>
     set((s) => ({ stems: s.stems.map((st, i) => i === index ? { ...st, initialVolume: volume } : st) })),
+  toggleMute: (index) =>
+    set((s) => ({ stems: s.stems.map((st, i) => i === index ? { ...st, muted: !st.muted } : st) })),
+  toggleSolo: (index) =>
+    set((s) => ({ stems: s.stems.map((st, i) => i === index ? { ...st, soloed: !st.soloed } : st) })),
 
   loopStart: 0,
   loopEnd: 0,

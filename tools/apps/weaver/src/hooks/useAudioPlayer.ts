@@ -16,6 +16,7 @@ export function useAudioPlayer() {
   const startFrameRef = useRef<number>(0);
 
   const isPlaying = useWeaverStore((s) => s.isPlaying);
+  const stems = useWeaverStore((s) => s.stems);
 
   useEffect(() => {
     if (isPlaying) {
@@ -25,6 +26,22 @@ export function useAudioPlayer() {
     }
     return () => stopPlayback();
   }, [isPlaying]);
+
+  useEffect(() => {
+    const gains = gainsRef.current;
+    if (gains.length === 0) return;
+    const anySoloed = stems.some(s => s.soloed);
+    let gi = 0;
+    for (const stem of stems) {
+      if (!stem.audioBuffer) continue;
+      if (gi >= gains.length) break;
+      let vol = stem.initialVolume;
+      if (stem.muted) vol = 0;
+      if (anySoloed && !stem.soloed) vol = 0;
+      gains[gi].gain.value = vol;
+      gi++;
+    }
+  }, [stems]);
 
   function startPlayback() {
     const state = useWeaverStore.getState();
@@ -46,6 +63,8 @@ export function useAudioPlayer() {
 
     const offsetSec = framesToSeconds(playheadFrame, sampleRate);
 
+    const anySoloed = stems.some(s => s.soloed);
+
     for (const stem of stems) {
       if (!stem.audioBuffer) continue;
 
@@ -53,7 +72,10 @@ export function useAudioPlayer() {
       source.buffer = stem.audioBuffer;
 
       const gain = ctx.createGain();
-      gain.gain.value = stem.initialVolume;
+      let effectiveVol = stem.initialVolume;
+      if (stem.muted) effectiveVol = 0;
+      if (anySoloed && !stem.soloed) effectiveVol = 0;
+      gain.gain.value = effectiveVol;
       source.connect(gain).connect(ctx.destination);
 
       if (loopEnabled && loopEnd > loopStart) {
