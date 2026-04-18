@@ -1,6 +1,6 @@
 import React from 'react';
 import { useComponentRegistry } from '@gseurat/ui-kit';
-import { chunkGridKey } from '@gseurat/project-root';
+import { chunkGridKey, ensureSubdir, writeFileAtPath } from '@gseurat/project-root';
 import { NumberInput } from '../components/NumberInput.js';
 import { Vec3Input } from '../components/Vec3Input.js';
 import { useWorldStore } from '../store/useWorldStore.js';
@@ -168,16 +168,33 @@ function ChunkEditor({ gridKey }: { gridKey: string }) {
         onClick={async () => {
           const handle = useSceneStore.getState().projectHandle;
           if (!handle) { alert('Open a project directory first'); return; }
-          if (!chunk.scene_file) { alert('No scene file specified'); return; }
-          const confirmed = window.confirm(
-            `Import "${chunk.scene_file}" into Bricklayer?\n\nThis will overwrite any current scene data for this chunk.`
-          );
-          if (!confirmed) return;
-          const ok = await importEngineScene(handle, chunk.scene_file);
-          if (ok) {
-            const worldStore = useWorldStore.getState();
-            worldStore.setEditingContext({ type: 'chunk', gridKey, sceneFile: chunk.scene_file });
-            enterChunk(chunk.grid);
+          try {
+            const [fileHandle] = await (window as any).showOpenFilePicker({
+              types: [{ description: 'Scene JSON', accept: { 'application/json': ['.json'] } }],
+              multiple: false,
+            });
+            const file = await fileHandle.getFile();
+            const confirmed = window.confirm(
+              `Import "${file.name}" into this chunk?\n\nThis will overwrite any current scene data.`
+            );
+            if (!confirmed) return;
+            // Write the picked file into the project so importEngineScene can read it
+            const sceneFile = chunk.scene_file || `assets/scenes/${file.name}`;
+            await ensureSubdir(handle, 'assets/scenes');
+            await writeFileAtPath(handle, sceneFile, await file.text());
+            // Update chunk scene_file if it was empty
+            if (!chunk.scene_file) updateChunk(gridKey, { scene_file: sceneFile });
+            const ok = await importEngineScene(handle, sceneFile);
+            if (ok) {
+              const worldStore = useWorldStore.getState();
+              worldStore.setEditingContext({ type: 'chunk', gridKey, sceneFile });
+              enterChunk(chunk.grid);
+            }
+          } catch (err) {
+            if (err instanceof Error && err.name !== 'AbortError') {
+              console.error('Import failed:', err);
+              alert(`Import failed: ${err.message}`);
+            }
           }
         }}
       >
@@ -328,14 +345,29 @@ function InstanceEditor({ id }: { id: string }) {
         onClick={async () => {
           const handle = useSceneStore.getState().projectHandle;
           if (!handle) { alert('Open a project directory first'); return; }
-          if (!inst.scene_file) { alert('No scene file specified'); return; }
-          const confirmed = window.confirm(
-            `Import "${inst.scene_file}" into Bricklayer?\n\nThis will overwrite any current scene data for this instance.`
-          );
-          if (!confirmed) return;
-          const ok = await importEngineScene(handle, inst.scene_file);
-          if (ok) {
-            useWorldStore.getState().setEditingContext({ type: 'instance', id, sceneFile: inst.scene_file });
+          try {
+            const [fileHandle] = await (window as any).showOpenFilePicker({
+              types: [{ description: 'Scene JSON', accept: { 'application/json': ['.json'] } }],
+              multiple: false,
+            });
+            const file = await fileHandle.getFile();
+            const confirmed = window.confirm(
+              `Import "${file.name}" into this instance?\n\nThis will overwrite any current scene data.`
+            );
+            if (!confirmed) return;
+            const sceneFile = inst.scene_file || `assets/scenes/${file.name}`;
+            await ensureSubdir(handle, 'assets/scenes');
+            await writeFileAtPath(handle, sceneFile, await file.text());
+            if (!inst.scene_file) updateInstance(id, { scene_file: sceneFile });
+            const ok = await importEngineScene(handle, sceneFile);
+            if (ok) {
+              useWorldStore.getState().setEditingContext({ type: 'instance', id, sceneFile });
+            }
+          } catch (err) {
+            if (err instanceof Error && err.name !== 'AbortError') {
+              console.error('Import failed:', err);
+              alert(`Import failed: ${err.message}`);
+            }
           }
         }}
       >
