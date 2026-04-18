@@ -456,9 +456,12 @@ CommandContext AppBase::build_command_context() {
         .window = window_,
         .reload_music = [this](const std::string& path) {
             if (audio_engine_) {
+                // Stop any currently playing groups before reload
                 auto r = audio_engine_->load_track_group(path);
                 if (r) {
-                    std::fprintf(stderr, "[audio] Reloaded music config: %s (first group id=%u)\n", path.c_str(), r.value());
+                    const uint32_t first_id = r.value();
+                    std::fprintf(stderr, "[audio] Reloaded music config: %s (first group id=%u) — playing\n", path.c_str(), first_id);
+                    audio_engine_->play_group(first_id);
                 } else {
                     std::fprintf(stderr, "[audio] Failed to reload music config: %s\n", path.c_str());
                 }
