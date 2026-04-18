@@ -11,7 +11,200 @@ import {
   ensureSubdir,
   writeFileAtPath,
   readFileAtPath,
+  chunkAabbMin,
+  chunkGridKey,
 } from '@gseurat/project-root';
+
+type Vec3 = [number, number, number];
+
+/** Subtract offset from a vec3 position */
+function subtractOffset(pos: Vec3, offset: Vec3): Vec3 {
+  return [pos[0] - offset[0], pos[1] - offset[1], pos[2] - offset[2]];
+}
+
+/** Add offset to a vec3 position */
+function addOffset(pos: Vec3, offset: Vec3): Vec3 {
+  return [pos[0] + offset[0], pos[1] + offset[1], pos[2] + offset[2]];
+}
+
+/**
+ * Get the current chunk editing offset. Returns [0,0,0] for instances or no context.
+ */
+function getChunkOffset(): Vec3 {
+  const worldStore = useWorldStore.getState();
+  const ctx = worldStore.editingContext;
+  if (ctx?.type !== 'chunk') return [0, 0, 0];
+
+  const manifest = worldStore.manifest;
+  const chunk = manifest.chunks.find((c) => chunkGridKey(c.grid) === ctx.gridKey);
+  if (!chunk) return [0, 0, 0];
+
+  return chunkAabbMin(chunk.grid, manifest.grid_cell_size);
+}
+
+/**
+ * Transform all scene positions from global to local coordinates.
+ * Called after loading a chunk's scene.
+ */
+function globalToLocal(): void {
+  const offset = getChunkOffset();
+  if (offset[0] === 0 && offset[1] === 0 && offset[2] === 0) return;
+
+  const store = useSceneStore.getState();
+
+  // Transform game objects
+  for (const go of store.gameObjects) {
+    store.updateGameObject(go.id, { position: subtractOffset(go.position, offset) });
+  }
+
+  // Transform lights
+  for (const l of store.staticLights) {
+    store.updateLight(l.id, { position: subtractOffset(l.position, offset) });
+  }
+
+  // Transform particle emitters
+  for (const e of store.gsParticleEmitters) {
+    store.updateGsEmitter(e.id, { position: subtractOffset(e.position, offset) });
+  }
+
+  // Transform GS animations
+  for (const a of store.gsAnimations) {
+    store.updateGsAnimation(a.id, { center: subtractOffset(a.center, offset) });
+  }
+
+  // Transform VFX instances
+  for (const v of store.vfxInstances) {
+    store.updateVfxInstance(v.id, { position: subtractOffset(v.position, offset) });
+  }
+
+  // Transform player
+  store.updatePlayer({ position: subtractOffset(store.player.position, offset) });
+
+  // Transform camera volumes
+  for (const cv of store.cameraVolumes) {
+    store.updateCameraVolume(cv.id, {
+      shape: { ...cv.shape, center: subtractOffset(cv.shape.center, offset) },
+    });
+  }
+
+  // Transform camera triggers
+  for (const ct of store.cameraTriggers) {
+    store.updateCameraTrigger(ct.id, {
+      shape: { ...ct.shape, center: subtractOffset(ct.shape.center, offset) },
+    });
+  }
+
+  // Transform camera rails
+  for (const cr of store.cameraRails) {
+    store.updateCameraRail(cr.id, {
+      control_points: cr.control_points.map((p) => subtractOffset(p, offset)),
+      ...(cr.target_points
+        ? { target_points: cr.target_points.map((p) => subtractOffset(p, offset)) }
+        : {}),
+    });
+  }
+
+  // Transform audio zones
+  for (const az of store.audioZones) {
+    store.updateAudioZone(az.id, {
+      bounds: {
+        ...az.bounds,
+        min: subtractOffset(az.bounds.min, offset),
+        max: subtractOffset(az.bounds.max, offset),
+      },
+    });
+  }
+
+  // Mark clean since these transforms aren't user edits
+  store.markClean();
+}
+
+/**
+ * Transform all scene positions from local back to global coordinates.
+ * Called before saving a chunk's scene. Returns a BricklayerFile with global coords.
+ */
+function localToGlobalSaveData(): BricklayerFile {
+  const offset = getChunkOffset();
+  const data = useSceneStore.getState().saveProject();
+
+  if (offset[0] === 0 && offset[1] === 0 && offset[2] === 0) return data;
+
+  // Transform positions in the serialized data
+  if (data.scene.gameObjects) {
+    data.scene.gameObjects = data.scene.gameObjects.map((go) => ({
+      ...go,
+      position: addOffset(go.position as Vec3, offset),
+    }));
+  }
+
+  data.scene.staticLights = data.scene.staticLights.map((l) => ({
+    ...l,
+    position: addOffset(l.position as Vec3, offset),
+  }));
+
+  if (data.scene.gsParticleEmitters) {
+    data.scene.gsParticleEmitters = data.scene.gsParticleEmitters.map((e) => ({
+      ...e,
+      position: addOffset(e.position as Vec3, offset),
+    }));
+  }
+
+  if (data.scene.gsAnimations) {
+    data.scene.gsAnimations = data.scene.gsAnimations.map((a) => ({
+      ...a,
+      center: addOffset(a.center as Vec3, offset),
+    }));
+  }
+
+  if (data.scene.vfxInstances) {
+    data.scene.vfxInstances = data.scene.vfxInstances.map((v) => ({
+      ...v,
+      position: addOffset(v.position as Vec3, offset),
+    }));
+  }
+
+  data.scene.player = {
+    ...data.scene.player,
+    position: addOffset(data.scene.player.position as Vec3, offset),
+  };
+
+  if (data.scene.cameraVolumes) {
+    data.scene.cameraVolumes = data.scene.cameraVolumes.map((cv) => ({
+      ...cv,
+      shape: { ...cv.shape, center: addOffset(cv.shape.center as Vec3, offset) },
+    }));
+  }
+
+  if (data.scene.cameraTriggers) {
+    data.scene.cameraTriggers = data.scene.cameraTriggers.map((ct) => ({
+      ...ct,
+      shape: { ...ct.shape, center: addOffset(ct.shape.center as Vec3, offset) },
+    }));
+  }
+
+  if (data.scene.cameraRails) {
+    data.scene.cameraRails = data.scene.cameraRails.map((cr) => ({
+      ...cr,
+      control_points: cr.control_points.map((p: Vec3) => addOffset(p, offset)),
+      ...(cr.target_points
+        ? { target_points: cr.target_points.map((p: Vec3) => addOffset(p, offset)) }
+        : {}),
+    }));
+  }
+
+  if (data.scene.audioZones) {
+    data.scene.audioZones = data.scene.audioZones.map((az) => ({
+      ...az,
+      bounds: {
+        ...az.bounds,
+        min: addOffset(az.bounds.min as Vec3, offset),
+        max: addOffset(az.bounds.max as Vec3, offset),
+      },
+    }));
+  }
+
+  return data;
+}
 
 /**
  * Check if the File System Access API is available.
@@ -87,7 +280,8 @@ export async function saveProject(handle: FileSystemDirectoryHandle): Promise<vo
   const projectName = store.projectName || 'project';
 
   // 1. Bricklayer save file under tools_data/bricklayer/
-  const data = store.saveProject();
+  // Use localToGlobalSaveData() to convert local coords back to global for chunks
+  const data = localToGlobalSaveData();
   const json = JSON.stringify(data, null, 2);
   await ensureSubdir(handle, PROJECT_LAYOUT.toolsData.bricklayer);
   await writeFileAtPath(handle, bricklayerSavePath(), json);
@@ -260,6 +454,7 @@ export async function switchScene(
     const text = await blob.text();
     const data = JSON.parse(text) as BricklayerFile;
     sceneStore.loadProject(data);
+    globalToLocal();
     console.info(`[bricklayer] Switched to scene: ${bricklayerPath}`);
     return true;
   } catch {
@@ -288,6 +483,7 @@ export async function switchScene(
         gaussianSplat: { camera: { position: [0, 10, 20], target: [0, 0, 0], fov: 45 }, render_width: 1920, render_height: 1080, scale_multiplier: 1, background_image: '', parallax: { azimuth_range: 30, elevation_min: -10, elevation_max: 20, distance_range: 5, parallax_strength: 1 }, morphPairPly: '', morphDuration: 2, morphDefaultBlend: 0, morphEasing: 'linear' },
       },
     });
+    globalToLocal();
     return true;
   }
 }
@@ -435,6 +631,7 @@ export async function importEngineScene(
     };
 
     useSceneStore.getState().loadProject(bricklayerFile);
+    globalToLocal();
     console.info(`[bricklayer] Imported engine scene: ${sceneFile}`);
     return true;
   } catch (err) {
