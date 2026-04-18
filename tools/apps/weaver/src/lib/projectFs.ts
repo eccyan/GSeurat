@@ -61,6 +61,18 @@ export async function loadWeaverProject(
 }
 
 /**
+ * Copy a stem audio file into the project directory at the given path.
+ */
+export async function saveStemFile(
+  root: FileSystemDirectoryHandle,
+  relativePath: string,
+  file: File,
+): Promise<void> {
+  const blob = new Blob([await file.arrayBuffer()], { type: file.type });
+  await writeFileAtPath(root, relativePath, blob);
+}
+
+/**
  * Load and decode a stem audio file relative to the project root.
  */
 export async function loadStemAudio(

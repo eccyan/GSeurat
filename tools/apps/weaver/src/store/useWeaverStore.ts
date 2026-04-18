@@ -10,6 +10,7 @@ import {
   loadWeaverProject,
   listWeaverProjects,
   loadStemAudio,
+  saveStemFile,
 } from '../lib/projectFs.js';
 
 let sharedCtx: AudioContext | null = null;
@@ -297,9 +298,20 @@ export const useWeaverStore = create<WeaverStore>((set, get) => ({
     const ctx = getAudioContext();
     const { audioBuffer, waveformPeaks } = await decodeStemFile(file, ctx);
     const s = get();
+    const sourcePath = `assets/audio/${s.activeGroupId ?? s.projectName}/${file.name}`;
+
+    // Copy audio file into project directory so it persists across sessions
+    if (s.projectRootHandle) {
+      try {
+        await saveStemFile(s.projectRootHandle, sourcePath, file);
+      } catch (e) {
+        console.warn(`[weaver] Failed to copy stem to project: ${sourcePath}`, e);
+      }
+    }
+
     const stem: StemState = {
       fileName: file.name,
-      sourcePath: `assets/audio/${s.activeGroupId ?? s.projectName}/${file.name}`,
+      sourcePath,
       initialVolume: 1.0,
       audioBuffer,
       waveformPeaks,
