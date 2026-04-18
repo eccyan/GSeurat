@@ -13,7 +13,18 @@
       "scene_file": "assets/scenes/northern_forest.json"
     }
   ],
-  "instances": [],
+  "instances": [
+    {
+      "id": "dungeon_01",
+      "display_name": "Dungeon Interior",
+      "scene_file": "assets/scenes/dungeon.json"
+    },
+    {
+      "id": "tavern_01",
+      "display_name": "Tavern Interior",
+      "scene_file": "assets/scenes/tavern.json"
+    }
+  ],
   "streaming_volumes": [
     {
       "id": "sv_dungeon_approach",
@@ -30,5 +41,24 @@
       "preload_target_ids": ["0,0,-1"]
     }
   ],
-  "portals": []
+  "portals": [
+    {
+      "id": "portal_dungeon_entrance",
+      "display_name": "Dungeon Entrance",
+      "position": [203.0, 1.5, 175.0],
+      "half_extents": [1.5, 2.5, 1.0],
+      "source_chunk": "0,0,0",
+      "target_instance": "dungeon_01",
+      "target_spawn": [5.0, 0.0, 5.0]
+    },
+    {
+      "id": "portal_tavern_door",
+      "display_name": "Tavern Door",
+      "position": [170.0, 2.0, 190.0],
+      "half_extents": [1.0, 2.0, 0.5],
+      "source_chunk": "0,0,0",
+      "target_instance": "tavern_01",
+      "target_spawn": [0.0, 0.0, 0.0]
+    }
+  ]
 }
