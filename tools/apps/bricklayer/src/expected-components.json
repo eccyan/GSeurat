@@ -9,7 +9,6 @@
     "CameraVolumeEditor": "when a camera volume is selected",
     "CameraRailEditor": "when a camera rail is selected",
     "CameraTriggerEditor": "when a camera trigger is selected",
-    "ImportDialog": "when import dialog is open",
     "AudioZonePanel": "when an audio zone is selected"
   }
 }

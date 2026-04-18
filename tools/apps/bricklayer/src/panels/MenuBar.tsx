@@ -457,21 +457,12 @@ export function MenuBar() {
     { label: 'Connect Bridge to Project Root…', action: handleConnectBridgeToProject },
   ];
 
-  const editItems: MenuItem[] = [];
-
   const viewItems: MenuItem[] = [
     {
       label: `${useSceneStore.getState().showGrid ? '\u2713 ' : ''}Grid`,
       action: () => {
         const s = useSceneStore.getState();
         s.setShowGrid(!s.showGrid);
-      },
-    },
-    {
-      label: `${useSceneStore.getState().showCollision ? '\u2713 ' : ''}Collision`,
-      action: () => {
-        const s = useSceneStore.getState();
-        s.setShowCollision(!s.showCollision);
       },
     },
     {
@@ -497,13 +488,6 @@ export function MenuBar() {
         items={fileItems}
         isOpen={openMenu === 'file'}
         onToggle={() => toggleMenu('file')}
-        onClose={closeMenu}
-      />
-      <DropdownMenu
-        label="Edit"
-        items={editItems}
-        isOpen={openMenu === 'edit'}
-        onToggle={() => toggleMenu('edit')}
         onClose={closeMenu}
       />
       <DropdownMenu
