@@ -140,22 +140,6 @@ export function validateScenePaths(scene: any, reg: AssetRegistry): ScenePathErr
     }
   }
 
-  if (Array.isArray(scene?.instances)) {
-    for (let i = 0; i < scene.instances.length; i++) {
-      const inst = scene.instances[i];
-      const path = inst?.scene_file;
-      if (typeof path === 'string' && path.length > 0) {
-        if (path.startsWith('/') || path.startsWith('\\') || /^[A-Za-z]:/.test(path)) {
-          errs.push({
-            field: `instances[${i}].scene_file`,
-            value: path,
-            message: 'Absolute path not allowed — use relative path from project root',
-          });
-        }
-      }
-    }
-  }
-
   return errs;
 }
 
@@ -207,14 +191,6 @@ export function exportSceneJson(
       out.components = go.components;
       return out;
     });
-  }
-
-  if (state.instances.length > 0) {
-    scene.instances = state.instances.map((i) => ({
-      id: i.id,
-      display_name: i.display_name,
-      scene_file: i.scene_file,
-    }));
   }
 
   const playerObj: Record<string, unknown> = {

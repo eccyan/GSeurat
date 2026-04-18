@@ -6,7 +6,6 @@ import { AudioZonePanel } from '../components/AudioZonePanel.js';
 import { useSceneStore } from '../store/useSceneStore.js';
 import type {
   StaticLight,
-  InstanceData,
   PlayerData,
   GameObjectData,
   PbdConfig,
@@ -632,42 +631,6 @@ function LightProperties({ light }: { light: StaticLight }) {
           </div>
         </>
       )}
-    </div>
-  );
-}
-
-function InstanceProperties({ instance }: { instance: InstanceData }) {
-  const update = useSceneStore((s) => s.updateInstance);
-  const remove = useSceneStore((s) => s.removeInstance);
-
-  return (
-    <div>
-      <div style={{ ...styles.row, marginBottom: 12 }}>
-        <span style={{ ...styles.label, flex: 1 }}>Instance</span>
-        <button style={styles.btnDanger} onClick={() => remove(instance.id)}>Remove</button>
-      </div>
-
-      <div style={styles.section}>
-        <span style={styles.label}>Display Name</span>
-        <input
-          type="text"
-          value={instance.display_name}
-          onChange={(e) => update(instance.id, { display_name: e.target.value })}
-          style={styles.input}
-          placeholder="Instance name"
-        />
-      </div>
-
-      <div style={styles.section}>
-        <span style={styles.label}>Scene File</span>
-        <input
-          type="text"
-          value={instance.scene_file}
-          onChange={(e) => update(instance.id, { scene_file: e.target.value })}
-          style={styles.input}
-          placeholder="relative/path/to/scene.json"
-        />
-      </div>
     </div>
   );
 }
@@ -1495,7 +1458,6 @@ export function ScenePropertiesPanel() {
   const gsAnimations = useSceneStore((s) => s.gsAnimations);
   const vfxInstances = useSceneStore((s) => s.vfxInstances);
   const player = useSceneStore((s) => s.player);
-  const instances = useSceneStore((s) => s.instances);
   const cameraVolumes = useSceneStore((s) => s.cameraVolumes);
   const cameraTriggers = useSceneStore((s) => s.cameraTriggers);
   const cameraRails = useSceneStore((s) => s.cameraRails);
@@ -1515,12 +1477,6 @@ export function ScenePropertiesPanel() {
     const light = staticLights.find((l) => l.id === selectedEntity.id);
     if (!light) return <div style={styles.empty}>Light not found</div>;
     return <LightProperties light={light} />;
-  }
-
-  if (selectedEntity.type === 'instance') {
-    const instance = instances.find((i) => i.id === selectedEntity.id);
-    if (!instance) return <div style={styles.empty}>Instance not found</div>;
-    return <InstanceProperties instance={instance} />;
   }
 
   if (selectedEntity.type === 'gs_emitter') {
