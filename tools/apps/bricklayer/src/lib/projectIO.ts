@@ -466,6 +466,16 @@ export async function switchScene(
   const sceneName = sceneFile.split('/').pop()?.replace('.json', '') ?? 'scene';
   const bricklayerPath = `${PROJECT_LAYOUT.toolsData.bricklayer}/${sceneName}.bricklayer`;
 
+  // Try to extract terrain PLY path from the engine scene JSON
+  try {
+    const engineBlob = await readFileAtPath(handle, sceneFile);
+    const engineText = await engineBlob.text();
+    const engineData = JSON.parse(engineText);
+    if (engineData.gaussian_splat?.ply_file) {
+      sceneStore.setTerrainPlyFile(engineData.gaussian_splat.ply_file);
+    }
+  } catch { /* engine scene may not exist yet */ }
+
   try {
     // Try loading .bricklayer file first
     const blob = await readFileAtPath(handle, bricklayerPath);
@@ -647,6 +657,10 @@ export async function importEngineScene(
     };
 
     useSceneStore.getState().loadProject(bricklayerFile);
+    // Set terrain PLY path from engine scene's gaussian_splat.ply_file
+    if (engine.gaussian_splat?.ply_file) {
+      useSceneStore.getState().setTerrainPlyFile(engine.gaussian_splat.ply_file);
+    }
     globalToLocal();
     centerCameraOnScene();
     console.info(`[bricklayer] Imported engine scene: ${sceneFile}`);
