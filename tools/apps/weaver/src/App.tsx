@@ -1,15 +1,18 @@
 import React from 'react';
 import './App.css';
+import { Toolbar } from './components/Toolbar.js';
+import { TimelinePanel } from './components/TimelinePanel.js';
+import { Sidebar } from './components/Sidebar.js';
+import { useAudioPlayer } from './hooks/useAudioPlayer.js';
 
 export function App() {
+  useAudioPlayer();
   return (
     <div className="weaver">
-      <header className="weaver-toolbar">
-        <span className="weaver-title">Weaver</span>
-      </header>
+      <Toolbar />
       <main className="weaver-body">
-        <div className="weaver-timeline">Timeline (coming soon)</div>
-        <div className="weaver-sidebar">Sidebar (coming soon)</div>
+        <TimelinePanel />
+        <Sidebar />
       </main>
     </div>
   );
