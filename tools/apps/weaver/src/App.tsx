@@ -57,16 +57,38 @@ export function App() {
     })();
   }, [projectRootHandle]);
 
-  // Cmd+S keyboard shortcut
+  // Keyboard shortcuts
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      // Don't intercept when typing in an input
+      const tag = (e.target as HTMLElement).tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+
       if ((e.metaKey || e.ctrlKey) && e.key === 's') {
         e.preventDefault();
         useWeaverStore.getState().saveProject();
+      } else if (e.key === ' ') {
+        e.preventDefault();
+        const s = useWeaverStore.getState();
+        s.setIsPlaying(!s.isPlaying);
+      } else if (e.key === 'Home') {
+        e.preventDefault();
+        useWeaverStore.getState().setPlayheadFrame(0);
       }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
+  }, []);
+
+  // Warn on tab close with unsaved changes
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      if (useWeaverStore.getState().dirty) {
+        e.preventDefault();
+      }
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
   }, []);
 
   const handleOpenProjectRoot = useCallback(async () => {

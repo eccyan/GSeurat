@@ -4,6 +4,7 @@ import { frameToPixel } from '../lib/frameUtils.js';
 
 const LABEL_WIDTH = 120;
 const LANE_HEIGHT = 80;
+const STEM_COLORS = ['#4488ff', '#44cc66', '#ff8844', '#cc44ff', '#44cccc', '#ff4488', '#88cc44', '#ff44cc'];
 
 interface StemLaneProps {
   index: number;
@@ -66,7 +67,7 @@ export function StemLane({ index }: StemLaneProps) {
       const totalFrames = stem.audioBuffer?.length ?? 0;
       const midY = h / 2;
       ctx.beginPath();
-      ctx.strokeStyle = '#4488ff';
+      ctx.strokeStyle = STEM_COLORS[index % STEM_COLORS.length];
       ctx.lineWidth = 1;
 
       for (let px = 0; px < waveWidth; px++) {

@@ -367,7 +367,7 @@ export const useWeaverStore = create<WeaverStore>((set, get) => ({
   setLoopStart: (frame) => set({ loopStart: Math.max(0, frame), dirty: true }),
   setLoopEnd: (frame) => set({ loopEnd: Math.max(0, frame), dirty: true }),
   setLoopEnabled: (enabled) => set({ loopEnabled: enabled, dirty: true }),
-  setBpm: (bpm) => set({ bpm, dirty: true }),
+  setBpm: (bpm) => set({ bpm: Math.max(1, Math.min(999, bpm || 120)), dirty: true }),
   setGroupName: (name) => {
     const s = get();
     if (s.activeGroupId) s.renameGroup(s.activeGroupId, name);
