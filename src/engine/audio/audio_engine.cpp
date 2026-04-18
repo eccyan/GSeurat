@@ -1,4 +1,5 @@
 #include "gseurat/engine/audio/audio_engine.hpp"
+#include "gseurat/engine/project_root.hpp"
 #include "backend/miniaudio_device.hpp"
 #include "mixer.hpp"
 #include "metadata_loader.hpp"
@@ -71,9 +72,14 @@ public:
             std::vector<std::unique_ptr<IAudioSource>> stems;
             stems.reserve(tg.stems.size());
             for (const auto& s : tg.stems) {
-                auto src_r = load_audio_source(s.source_path, cfg.sample_rate,
+                // Resolve relative stem paths using project root
+                auto stem_path = resolve_asset_path(s.source_path).string();
+                auto src_r = load_audio_source(stem_path, cfg.sample_rate,
                                                 &stream_manager_, tg.loop_start, tg.loop_end);
-                if (!src_r) return std::unexpected(LoadTrackGroupError::StemLoadFailed);
+                if (!src_r) {
+                    std::fprintf(stderr, "[audio] Failed to load stem: %s\n", stem_path.c_str());
+                    return std::unexpected(LoadTrackGroupError::StemLoadFailed);
+                }
                 stems.push_back(std::move(src_r.value()));
             }
             const uint32_t id = tg.id;
