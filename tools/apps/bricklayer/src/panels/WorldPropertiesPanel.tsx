@@ -6,6 +6,7 @@ import { Vec3Input } from '../components/Vec3Input.js';
 import { useWorldStore } from '../store/useWorldStore.js';
 import { useSceneStore } from '../store/useSceneStore.js';
 import { panelStyles } from '../styles/panel.js';
+import { switchScene } from '../lib/projectIO.js';
 
 const styles = { ...panelStyles };
 
@@ -125,9 +126,23 @@ function ChunkEditor({ gridKey }: { gridKey: string }) {
 
       <button
         style={enterBtnStyle}
-        onClick={() => {
-          enterChunk(chunk.grid);
-          useSceneStore.getState().setMode('scene');
+        onClick={async () => {
+          const handle = useSceneStore.getState().projectHandle;
+          if (!handle) {
+            alert('Open a project directory first');
+            return;
+          }
+          if (!chunk.scene_file) {
+            alert('No scene file specified for this chunk');
+            return;
+          }
+          const ok = await switchScene(handle, chunk.scene_file);
+          if (ok) {
+            const worldStore = useWorldStore.getState();
+            worldStore.setEditingContext({ type: 'chunk', gridKey, sceneFile: chunk.scene_file });
+            enterChunk(chunk.grid);
+            useSceneStore.getState().setMode('scene');
+          }
         }}
       >
         Enter Chunk
@@ -251,6 +266,28 @@ function InstanceEditor({ id }: { id: string }) {
           style={fullInputStyle}
         />
       </div>
+
+      <button
+        style={enterBtnStyle}
+        onClick={async () => {
+          const handle = useSceneStore.getState().projectHandle;
+          if (!handle) {
+            alert('Open a project directory first');
+            return;
+          }
+          if (!inst.scene_file) {
+            alert('No scene file specified for this instance');
+            return;
+          }
+          const ok = await switchScene(handle, inst.scene_file);
+          if (ok) {
+            useWorldStore.getState().setEditingContext({ type: 'instance', id, sceneFile: inst.scene_file });
+            useSceneStore.getState().setMode('scene');
+          }
+        }}
+      >
+        Enter Instance
+      </button>
     </div>
   );
 }

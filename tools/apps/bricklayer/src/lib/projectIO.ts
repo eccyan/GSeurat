@@ -201,6 +201,79 @@ export async function loadProject(handle: FileSystemDirectoryHandle): Promise<bo
 }
 
 /**
+ * Switch to editing a different scene within the project.
+ * Reads the .bricklayer file associated with the given scene_file path.
+ * Falls back to loading the engine scene JSON directly if no .bricklayer exists.
+ *
+ * @param handle - The project directory handle
+ * @param sceneFile - Path like "assets/scenes/seurat_island.json"
+ * @returns true if scene was loaded successfully
+ */
+export async function switchScene(
+  handle: FileSystemDirectoryHandle,
+  sceneFile: string,
+): Promise<boolean> {
+  if (!sceneFile) {
+    console.warn('[bricklayer] No scene_file specified for context switch');
+    return false;
+  }
+
+  // Check for unsaved changes and prompt
+  const sceneStore = useSceneStore.getState();
+  if (sceneStore.isDirty) {
+    const save = window.confirm(
+      'You have unsaved changes. Save before switching scenes?'
+    );
+    if (save) {
+      await saveProject(handle);
+      sceneStore.markClean();
+    }
+  }
+
+  // Derive the .bricklayer path from the scene file path
+  // e.g., "assets/scenes/seurat_island.json" → "tools_data/bricklayer/seurat_island.bricklayer"
+  const sceneName = sceneFile.split('/').pop()?.replace('.json', '') ?? 'scene';
+  const bricklayerPath = `${PROJECT_LAYOUT.toolsData.bricklayer}/${sceneName}.bricklayer`;
+
+  try {
+    // Try loading .bricklayer file first
+    const blob = await readFileAtPath(handle, bricklayerPath);
+    const text = await blob.text();
+    const data = JSON.parse(text) as BricklayerFile;
+    sceneStore.loadProject(data);
+    console.info(`[bricklayer] Switched to scene: ${bricklayerPath}`);
+    return true;
+  } catch {
+    // No .bricklayer file — try loading engine scene JSON as read-only reference
+    console.warn(`[bricklayer] No .bricklayer at ${bricklayerPath}, loading empty scene for: ${sceneFile}`);
+    // Load a minimal empty scene so the user can start editing
+    sceneStore.loadProject({
+      version: 2,
+      asset_registry: { version: 1, characters: {}, vfx: {}, textures: {}, audio: {}, maps: {}, objects: {} },
+      gridWidth: 64,
+      gridDepth: 64,
+      voxels: [],
+      collision: [],
+      scene: {
+        ambientColor: [0.3, 0.3, 0.4, 1],
+        staticLights: [],
+        gameObjects: [],
+        player: { position: [32, 0, 32], tint: [1, 1, 1, 1], facing: 'down', character_id: '' },
+        backgroundLayers: [],
+        torchEmitter: { spawn_rate: 0, particle_lifetime_min: 0, particle_lifetime_max: 0, velocity_min: [0, 0], velocity_max: [0, 0], acceleration: [0, 0], size_min: 0, size_max: 0, size_end_scale: 0, color_start: [0, 0, 0, 0], color_end: [0, 0, 0, 0], tile: '', z: 0, spawn_offset_min: [0, 0], spawn_offset_max: [0, 0] },
+        torchPositions: [],
+        footstepEmitter: { spawn_rate: 0, particle_lifetime_min: 0, particle_lifetime_max: 0, velocity_min: [0, 0], velocity_max: [0, 0], acceleration: [0, 0], size_min: 0, size_max: 0, size_end_scale: 0, color_start: [0, 0, 0, 0], color_end: [0, 0, 0, 0], tile: '', z: 0, spawn_offset_min: [0, 0], spawn_offset_max: [0, 0] },
+        npcAuraEmitter: { spawn_rate: 0, particle_lifetime_min: 0, particle_lifetime_max: 0, velocity_min: [0, 0], velocity_max: [0, 0], acceleration: [0, 0], size_min: 0, size_max: 0, size_end_scale: 0, color_start: [0, 0, 0, 0], color_end: [0, 0, 0, 0], tile: '', z: 0, spawn_offset_min: [0, 0], spawn_offset_max: [0, 0] },
+        weather: { enabled: false, type: 'rain', emitter: { spawn_rate: 0, particle_lifetime_min: 0, particle_lifetime_max: 0, velocity_min: [0, 0], velocity_max: [0, 0], acceleration: [0, 0], size_min: 0, size_max: 0, size_end_scale: 0, color_start: [0, 0, 0, 0], color_end: [0, 0, 0, 0], tile: '', z: 0, spawn_offset_min: [0, 0], spawn_offset_max: [0, 0] }, ambient_override: [0, 0, 0, 0], fog_density: 0, fog_color: [0, 0, 0], transition_speed: 0 },
+        dayNight: { enabled: false, cycle_speed: 1, initial_time: 0, keyframes: [] },
+        gaussianSplat: { camera: { position: [0, 10, 20], target: [0, 0, 0], fov: 45 }, render_width: 1920, render_height: 1080, scale_multiplier: 1, background_image: '', parallax: { azimuth_range: 30, elevation_min: -10, elevation_max: 20, distance_range: 5, parallax_strength: 1 }, morphPairPly: '', morphDuration: 2, morphDefaultBlend: 0, morphEasing: 'linear' },
+      },
+    });
+    return true;
+  }
+}
+
+/**
  * Import an asset file into the project directory.
  */
 export async function importAssetToProject(

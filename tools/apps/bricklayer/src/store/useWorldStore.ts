@@ -19,7 +19,9 @@ interface WorldStoreState {
   dirty: boolean;
   selectedEntity: WorldSelection | null;
   editingChunkGrid: [number, number, number] | null;
+  editingContext: { type: 'chunk'; gridKey: string; sceneFile: string } | { type: 'instance'; id: string; sceneFile: string } | null;
 
+  setEditingContext: (ctx: WorldStoreState['editingContext']) => void;
   setGridCellSize: (size: [number, number, number]) => void;
 
   addChunk: (grid: [number, number, number]) => void;
@@ -58,7 +60,9 @@ export const useWorldStore = create<WorldStoreState>((set, get) => ({
   dirty: false,
   selectedEntity: null,
   editingChunkGrid: null,
+  editingContext: null,
 
+  setEditingContext: (ctx) => set({ editingContext: ctx }),
   setGridCellSize: (size) =>
     set((s) => ({
       manifest: { ...s.manifest, grid_cell_size: size },
@@ -260,7 +264,7 @@ export const useWorldStore = create<WorldStoreState>((set, get) => ({
     }, 0);
     nextPortalId = maxPortal + 1;
 
-    set({ manifest: safeData, loaded: true, dirty: false, selectedEntity: null, editingChunkGrid: null });
+    set({ manifest: safeData, loaded: true, dirty: false, selectedEntity: null, editingChunkGrid: null, editingContext: null });
   },
 
   saveManifest: () => get().manifest,
@@ -275,6 +279,7 @@ export const useWorldStore = create<WorldStoreState>((set, get) => ({
       dirty: false,
       selectedEntity: null,
       editingChunkGrid: null,
+      editingContext: null,
     });
   },
 }));
