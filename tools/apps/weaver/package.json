@@ -1,5 +1,5 @@
 {
-  "name": "@gseurat/audio-composer",
+  "name": "@gseurat/weaver",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -11,12 +11,7 @@
   "dependencies": {
     "react": "^18.3.0",
     "react-dom": "^18.3.0",
-    "zustand": "^4.5.0",
-    "@gseurat/engine-client": "workspace:*",
-    "@gseurat/asset-types": "workspace:*",
-    "@gseurat/ai-providers": "workspace:*",
-    "@gseurat/ui-kit": "workspace:*",
-    "@gseurat/test-harness": "workspace:*"
+    "zustand": "^4.5.0"
   },
   "devDependencies": {
     "@types/react": "^18.3.0",
