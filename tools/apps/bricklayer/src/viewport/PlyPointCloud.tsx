@@ -6,50 +6,70 @@ import { readFileAtPath } from '@gseurat/project-root';
  * Parse a binary PLY file into position + color arrays.
  * Supports GSeurat format (f_dc_0/1/2 SH DC) and standard RGB.
  */
+const PROP_SIZES: Record<string, number> = {
+  float: 4, double: 8,
+  int: 4, uint: 4,
+  short: 2, ushort: 2,
+  char: 1, uchar: 1,
+};
+
+interface PlyProp { name: string; type: string; offset: number }
+
 function parsePlyBuffer(buffer: ArrayBuffer): { positions: Float32Array; colors: Float32Array } | null {
   const headerText = new TextDecoder().decode(new Uint8Array(buffer, 0, Math.min(4096, buffer.byteLength)));
   const headerLines = headerText.split('\n');
   let vertexCount = 0;
-  const propNames: string[] = [];
+  const props: PlyProp[] = [];
   let dataStart = 0;
+  let byteOffset = 0;
 
   for (const line of headerLines) {
     dataStart += line.length + 1;
     if (line.startsWith('element vertex')) vertexCount = parseInt(line.split(' ')[2]);
-    if (line.startsWith('property float')) propNames.push(line.split(' ')[2]);
+    if (line.startsWith('property ')) {
+      const parts = line.trim().split(/\s+/);
+      const type = parts[1];
+      const name = parts[2];
+      const size = PROP_SIZES[type] ?? 4;
+      props.push({ name, type, offset: byteOffset });
+      byteOffset += size;
+    }
     if (line.trim() === 'end_header') break;
   }
 
-  if (vertexCount === 0 || propNames.length === 0) return null;
+  if (vertexCount === 0 || props.length === 0) return null;
 
-  const stride = propNames.length * 4;
+  const stride = byteOffset;
   const dataView = new DataView(buffer, dataStart);
   const positions = new Float32Array(vertexCount * 3);
   const colors = new Float32Array(vertexCount * 4);
 
-  const xIdx = propNames.indexOf('x');
-  const yIdx = propNames.indexOf('y');
-  const zIdx = propNames.indexOf('z');
-  const dcR = propNames.indexOf('f_dc_0');
-  const dcG = propNames.indexOf('f_dc_1');
-  const dcB = propNames.indexOf('f_dc_2');
-  const rIdx = propNames.indexOf('red');
-  const gIdx = propNames.indexOf('green');
-  const bIdx = propNames.indexOf('blue');
+  const find = (name: string) => props.find((p) => p.name === name);
+  const xProp = find('x'), yProp = find('y'), zProp = find('z');
+  const dcR = find('f_dc_0'), dcG = find('f_dc_1'), dcB = find('f_dc_2');
+  const rProp = find('red'), gProp = find('green'), bProp = find('blue');
+
+  if (!xProp || !yProp || !zProp) return null;
 
   for (let i = 0; i < vertexCount; i++) {
     const off = i * stride;
-    positions[i * 3] = dataView.getFloat32(off + xIdx * 4, true);
-    positions[i * 3 + 1] = dataView.getFloat32(off + yIdx * 4, true);
-    positions[i * 3 + 2] = dataView.getFloat32(off + zIdx * 4, true);
-    if (dcR >= 0) {
-      colors[i * 4] = 0.5 + 0.2820948 * dataView.getFloat32(off + dcR * 4, true);
-      colors[i * 4 + 1] = 0.5 + 0.2820948 * dataView.getFloat32(off + dcG * 4, true);
-      colors[i * 4 + 2] = 0.5 + 0.2820948 * dataView.getFloat32(off + dcB * 4, true);
-    } else if (rIdx >= 0) {
-      colors[i * 4] = dataView.getUint8(off + rIdx) / 255;
-      colors[i * 4 + 1] = dataView.getUint8(off + gIdx) / 255;
-      colors[i * 4 + 2] = dataView.getUint8(off + bIdx) / 255;
+    positions[i * 3] = dataView.getFloat32(off + xProp.offset, true);
+    positions[i * 3 + 1] = dataView.getFloat32(off + yProp.offset, true);
+    positions[i * 3 + 2] = dataView.getFloat32(off + zProp.offset, true);
+    if (dcR && dcG && dcB) {
+      colors[i * 4] = 0.5 + 0.2820948 * dataView.getFloat32(off + dcR.offset, true);
+      colors[i * 4 + 1] = 0.5 + 0.2820948 * dataView.getFloat32(off + dcG.offset, true);
+      colors[i * 4 + 2] = 0.5 + 0.2820948 * dataView.getFloat32(off + dcB.offset, true);
+    } else if (rProp && gProp && bProp) {
+      if (rProp.type === 'uchar') {
+        colors[i * 4] = dataView.getUint8(off + rProp.offset) / 255;
+        colors[i * 4 + 1] = dataView.getUint8(off + gProp.offset) / 255;
+        colors[i * 4 + 2] = dataView.getUint8(off + bProp.offset) / 255;
+      } else {
+        colors[i * 4] = dataView.getFloat32(off + rProp.offset, true);
+        colors[i * 4 + 1] = dataView.getFloat32(off + gProp.offset, true);
+        colors[i * 4 + 2] = dataView.getFloat32(off + bProp.offset, true);
+      }
     } else {
       colors[i * 4] = 0.7;
       colors[i * 4 + 1] = 0.7;

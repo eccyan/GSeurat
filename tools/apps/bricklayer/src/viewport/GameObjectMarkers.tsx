@@ -82,9 +82,9 @@ export function GameObjectMarkers() {
 
   return (
     <group>
-      {gameObjects.map((obj) => (
+      {gameObjects.map((obj, idx) => (
         <Marker
-          key={obj.id}
+          key={`${obj.id}_${idx}`}
           id={obj.id}
           name={obj.name}
           position={obj.position}
