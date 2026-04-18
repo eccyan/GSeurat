@@ -123,7 +123,7 @@ export const useWeaverStore = create<WeaverStore>((set, get) => ({
     try {
       await saveWeaverProject(state.projectRootHandle!, project);
       set({ dirty: false });
-      console.info(`[weaver] Project saved: ${project.name} (${project.groups.length} groups)`);
+      console.info(`[weaver] Saved to: tools_data/weaver/${project.name}.weaver (${project.groups.length} groups)`);
     } catch (e) {
       console.error('[weaver] Failed to save project:', e);
     }
@@ -137,9 +137,10 @@ export const useWeaverStore = create<WeaverStore>((set, get) => ({
     }
     console.info(`[weaver] Loading project: ${name}`);
     const project = await loadWeaverProject(s.projectRootHandle, name);
-    console.info(`[weaver] Loaded: ${project.name}, ${project.groups.length} groups`);
+    console.info(`[weaver] Loaded: ${name}, ${project.groups.length} groups`);
+    // Use the filename as projectName (it's the key for save/load)
     set({
-      projectName: project.name,
+      projectName: name,
       sampleRate: project.sample_rate,
       groups: project.groups,
       activeGroupId: null,
