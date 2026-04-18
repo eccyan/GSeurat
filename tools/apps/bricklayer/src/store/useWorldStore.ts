@@ -235,25 +235,32 @@ export const useWorldStore = create<WorldStoreState>((set, get) => ({
   exitChunk: () => set({ editingChunkGrid: null }),
 
   loadManifest: (data) => {
-    const maxSv = data.streaming_volumes.reduce((max: number, v: StreamingVolumeData) => {
+    // Back-compat: older world.json files may lack instances/portals arrays
+    const safeData: WorldManifest = {
+      ...data,
+      instances: data.instances ?? [],
+      portals: data.portals ?? [],
+    };
+
+    const maxSv = safeData.streaming_volumes.reduce((max: number, v: StreamingVolumeData) => {
       const n = parseInt(v.id.replace(/\D/g, ''), 10);
       return isNaN(n) ? max : Math.max(max, n);
     }, 0);
     nextSvId = maxSv + 1;
 
-    const maxInst = data.instances.reduce((max: number, i: WorldInstance) => {
+    const maxInst = safeData.instances.reduce((max: number, i: WorldInstance) => {
       const n = parseInt(i.id.replace(/\D/g, ''), 10);
       return isNaN(n) ? max : Math.max(max, n);
     }, 0);
     nextInstId = maxInst + 1;
 
-    const maxPortal = data.portals.reduce((max: number, p: WorldPortal) => {
+    const maxPortal = safeData.portals.reduce((max: number, p: WorldPortal) => {
       const n = parseInt(p.id.replace(/\D/g, ''), 10);
       return isNaN(n) ? max : Math.max(max, n);
     }, 0);
     nextPortalId = maxPortal + 1;
 
-    set({ manifest: data, loaded: true, dirty: false, selectedEntity: null, editingChunkGrid: null });
+    set({ manifest: safeData, loaded: true, dirty: false, selectedEntity: null, editingChunkGrid: null });
   },
 
   saveManifest: () => get().manifest,
