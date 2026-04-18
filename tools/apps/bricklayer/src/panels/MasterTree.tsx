@@ -478,7 +478,7 @@ function SceneChildren({
             arrow={cameraOpen ? '\u25BE' : '\u25B8'}
             isActive={isActive({ kind: 'scene_category', category: 'camera_zones' as any })}
             onClick={() => { setCameraOpen(!cameraOpen); click({ kind: 'scene_category', category: 'camera_zones' as any }); }}
-            actions={<button style={s.addBtn} title="Import camera zones JSON" onClick={(e) => { e.stopPropagation(); handleImportTrajectory(); }}>\u2191</button>}
+            actions={<button style={s.addBtn} title="Import camera zones JSON" onClick={(e) => { e.stopPropagation(); handleImportTrajectory(); }}>{'\u2191'}</button>}
             isOpen={cameraOpen}
           >
             {/* Volumes */}
