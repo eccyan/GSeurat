@@ -69,9 +69,9 @@ export function App() {
 
   const handleOpenProjectRoot = useCallback(async () => {
     try {
-      // @ts-expect-error showDirectoryPicker is FSAPI extension
       const handle: FileSystemDirectoryHandle =
-        await window.showDirectoryPicker({ mode: 'readwrite' });
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        await (window as any).showDirectoryPicker({ mode: 'readwrite' });
       await saveProjectRootHandle('weaver', handle);
       setProjectRootHandle(handle);
     } catch (e) {
