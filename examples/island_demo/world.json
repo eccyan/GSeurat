@@ -13,6 +13,7 @@
       "scene_file": "assets/scenes/northern_forest.json"
     }
   ],
+  "instances": [],
   "streaming_volumes": [
     {
       "id": "sv_dungeon_approach",
@@ -28,5 +29,6 @@
       "half_extents": [60.0, 20.0, 30.0],
       "preload_target_ids": ["0,0,-1"]
     }
-  ]
+  ],
+  "portals": []
 }
