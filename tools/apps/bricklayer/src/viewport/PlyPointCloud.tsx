@@ -127,9 +127,19 @@ export function PlyPointCloud({
 }) {
   const [geometry, setGeometry] = useState<THREE.BufferGeometry | null>(null);
 
+  // Dispose old geometry when path changes or component unmounts
   useEffect(() => {
-    if (!plyPath || !projectHandle || !visible) return;
+    return () => {
+      setGeometry((prev) => { prev?.dispose(); return null; });
+    };
+  }, [plyPath]);
 
+  useEffect(() => {
+    if (!plyPath || !projectHandle || !visible) {
+      return;
+    }
+
+    console.info(`[PlyPointCloud] Loading: ${plyPath}`);
     let cancelled = false;
     (async () => {
       try {
@@ -139,14 +149,30 @@ export function PlyPointCloud({
         if (cancelled) return;
 
         const parsed = parsePlyBuffer(buffer);
-        if (!parsed || cancelled) return;
+        if (!parsed) {
+          console.warn(`[PlyPointCloud] Failed to parse: ${plyPath}`);
+          return;
+        }
+        if (cancelled) return;
+
+        // Validate no NaN in positions
+        let hasNaN = false;
+        for (let i = 0; i < Math.min(30, parsed.positions.length); i++) {
+          if (isNaN(parsed.positions[i])) { hasNaN = true; break; }
+        }
+        if (hasNaN) {
+          console.error(`[PlyPointCloud] NaN detected in positions for: ${plyPath}`);
+          return;
+        }
 
         const geo = new THREE.BufferGeometry();
         geo.setAttribute('position', new THREE.BufferAttribute(parsed.positions, 3));
         geo.setAttribute('color', new THREE.BufferAttribute(parsed.colors, 4));
+        geo.computeBoundingSphere();
+        console.info(`[PlyPointCloud] Loaded ${parsed.positions.length / 3} vertices from: ${plyPath}`);
         setGeometry(geo);
-      } catch {
-        // PLY file not found — silently ignore
+      } catch (err) {
+        console.warn(`[PlyPointCloud] File not found or unreadable: ${plyPath}`, err);
       }
     })();
 

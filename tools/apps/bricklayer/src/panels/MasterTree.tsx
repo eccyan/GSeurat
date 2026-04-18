@@ -611,7 +611,9 @@ export function MasterTree() {
     }
     // Set terrain PLY from chunk manifest
     const chunk = manifest.chunks.find((c) => chunkGridKey(c.grid) === gridKey);
-    useSceneStore.getState().setTerrainPlyFile(chunk?.ply_file ?? '');
+    const plyFile = chunk?.ply_file ?? '';
+    console.info(`[MasterTree] Chunk ${gridKey} terrain PLY: ${plyFile || '(none)'}`);
+    useSceneStore.getState().setTerrainPlyFile(plyFile);
     useWorldStore.getState().setEditingContext({ type: 'chunk', gridKey, sceneFile });
   };
 
@@ -627,7 +629,9 @@ export function MasterTree() {
     }
     // Set terrain PLY from instance manifest
     const inst = manifest.instances.find((i) => i.id === id);
-    useSceneStore.getState().setTerrainPlyFile(inst?.ply_file ?? '');
+    const plyFile = inst?.ply_file ?? '';
+    console.info(`[MasterTree] Instance ${id} terrain PLY: ${plyFile || '(none)'}`);
+    useSceneStore.getState().setTerrainPlyFile(plyFile);
     useWorldStore.getState().setEditingContext({ type: 'instance', id, sceneFile });
   };
 
