@@ -3,11 +3,13 @@ import type {
   WorldManifest,
   WorldChunk,
   StreamingVolumeData,
+  WorldInstance,
+  WorldPortal,
 } from '@gseurat/project-root';
 import { createEmptyManifest, chunkGridKey } from '@gseurat/project-root';
 
 interface WorldSelection {
-  type: 'chunk' | 'streaming_volume';
+  type: 'chunk' | 'streaming_volume' | 'instance' | 'portal';
   id: string;
 }
 
@@ -28,6 +30,14 @@ interface WorldStoreState {
   updateStreamingVolume: (id: string, patch: Partial<StreamingVolumeData>) => void;
   removeStreamingVolume: (id: string) => void;
 
+  addInstance: (displayName: string, sceneFile: string) => void;
+  updateInstance: (id: string, patch: Partial<WorldInstance>) => void;
+  removeInstance: (id: string) => void;
+
+  addPortal: () => void;
+  updatePortal: (id: string, patch: Partial<WorldPortal>) => void;
+  removePortal: (id: string) => void;
+
   setSelectedEntity: (sel: WorldSelection | null) => void;
 
   enterChunk: (grid: [number, number, number]) => void;
@@ -39,6 +49,8 @@ interface WorldStoreState {
 }
 
 let nextSvId = 1;
+let nextInstId = 1;
+let nextPortalId = 1;
 
 export const useWorldStore = create<WorldStoreState>((set, get) => ({
   manifest: createEmptyManifest(),
@@ -133,6 +145,90 @@ export const useWorldStore = create<WorldStoreState>((set, get) => ({
       dirty: true,
     })),
 
+  addInstance: (displayName, sceneFile) =>
+    set((s) => {
+      const id = `inst_${nextInstId++}`;
+      const inst: WorldInstance = { id, display_name: displayName, scene_file: sceneFile };
+      return {
+        manifest: {
+          ...s.manifest,
+          instances: [...s.manifest.instances, inst],
+        },
+        selectedEntity: { type: 'instance', id },
+        dirty: true,
+      };
+    }),
+
+  updateInstance: (id, patch) =>
+    set((s) => ({
+      manifest: {
+        ...s.manifest,
+        instances: s.manifest.instances.map((i) =>
+          i.id === id ? { ...i, ...patch } : i,
+        ),
+      },
+      dirty: true,
+    })),
+
+  removeInstance: (id) =>
+    set((s) => ({
+      manifest: {
+        ...s.manifest,
+        instances: s.manifest.instances.filter((i) => i.id !== id),
+      },
+      selectedEntity:
+        s.selectedEntity?.type === 'instance' && s.selectedEntity.id === id
+          ? null
+          : s.selectedEntity,
+      dirty: true,
+    })),
+
+  addPortal: () =>
+    set((s) => {
+      const id = `portal_${nextPortalId++}`;
+      const portal: WorldPortal = {
+        id,
+        display_name: 'New Portal',
+        position: [0, 0, 0],
+        half_extents: [1, 2, 0.5],
+        source_chunk: '0,0,0',
+        target_instance: '',
+        target_spawn: [0, 0, 0],
+      };
+      return {
+        manifest: {
+          ...s.manifest,
+          portals: [...s.manifest.portals, portal],
+        },
+        selectedEntity: { type: 'portal', id },
+        dirty: true,
+      };
+    }),
+
+  updatePortal: (id, patch) =>
+    set((s) => ({
+      manifest: {
+        ...s.manifest,
+        portals: s.manifest.portals.map((p) =>
+          p.id === id ? { ...p, ...patch } : p,
+        ),
+      },
+      dirty: true,
+    })),
+
+  removePortal: (id) =>
+    set((s) => ({
+      manifest: {
+        ...s.manifest,
+        portals: s.manifest.portals.filter((p) => p.id !== id),
+      },
+      selectedEntity:
+        s.selectedEntity?.type === 'portal' && s.selectedEntity.id === id
+          ? null
+          : s.selectedEntity,
+      dirty: true,
+    })),
+
   setSelectedEntity: (sel) => set({ selectedEntity: sel }),
 
   enterChunk: (grid) => set({ editingChunkGrid: grid }),
@@ -144,6 +240,19 @@ export const useWorldStore = create<WorldStoreState>((set, get) => ({
       return isNaN(n) ? max : Math.max(max, n);
     }, 0);
     nextSvId = maxSv + 1;
+
+    const maxInst = data.instances.reduce((max: number, i: WorldInstance) => {
+      const n = parseInt(i.id.replace(/\D/g, ''), 10);
+      return isNaN(n) ? max : Math.max(max, n);
+    }, 0);
+    nextInstId = maxInst + 1;
+
+    const maxPortal = data.portals.reduce((max: number, p: WorldPortal) => {
+      const n = parseInt(p.id.replace(/\D/g, ''), 10);
+      return isNaN(n) ? max : Math.max(max, n);
+    }, 0);
+    nextPortalId = maxPortal + 1;
+
     set({ manifest: data, loaded: true, dirty: false, selectedEntity: null, editingChunkGrid: null });
   },
 
@@ -151,6 +260,8 @@ export const useWorldStore = create<WorldStoreState>((set, get) => ({
 
   newWorld: () => {
     nextSvId = 1;
+    nextInstId = 1;
+    nextPortalId = 1;
     set({
       manifest: createEmptyManifest(),
       loaded: true,
