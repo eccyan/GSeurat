@@ -226,7 +226,8 @@ export function WorldTree() {
       <div style={styles.section}>
         <div style={styles.sectionHeader}>
           <span style={styles.sectionTitle}>
-            <span>Portal</span>
+            <span>⟐</span>
+            <span>Portals</span>
           </span>
           <button style={styles.addBtn} onClick={addPortal} title="Add portal">+</button>
         </div>

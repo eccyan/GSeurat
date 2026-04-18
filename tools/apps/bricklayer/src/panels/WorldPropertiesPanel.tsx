@@ -1,7 +1,6 @@
 import React from 'react';
 import { useComponentRegistry } from '@gseurat/ui-kit';
 import { chunkGridKey } from '@gseurat/project-root';
-import type { WorldInstance, WorldPortal } from '@gseurat/project-root';
 import { NumberInput } from '../components/NumberInput.js';
 import { Vec3Input } from '../components/Vec3Input.js';
 import { useWorldStore } from '../store/useWorldStore.js';
@@ -306,6 +305,7 @@ function PortalEditor({ id }: { id: string }) {
           onChange={(e) => updatePortal(id, { source_chunk: e.target.value })}
           style={{ ...styles.input, flex: 1 }}
         >
+          <option value="">-- Select chunk --</option>
           {chunks.map((c) => {
             const key = chunkGridKey(c.grid);
             return <option key={key} value={key}>[{c.grid[0]}, {c.grid[1]}, {c.grid[2]}]</option>;
