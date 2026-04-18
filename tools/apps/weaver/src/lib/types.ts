@@ -1,3 +1,4 @@
+// Runtime types (used by active group — contain AudioBuffer)
 export interface StemState {
   fileName: string;
   sourcePath: string;
@@ -13,18 +14,9 @@ export interface MarkerState {
   name: string;
 }
 
-export interface MusicConfigV2 {
-  version: 2;
-  sample_rate: number;
-  track_groups: TrackGroupConfig[];
-}
-
-export interface TrackGroupConfig {
-  id: number;
-  name: string;
-  loop_start: number;
-  loop_end: number;
-  bpm?: number;
-  markers: { frame: number; name: string }[];
-  stems: { source: string; initial_volume: number }[];
-}
+// Re-export project types
+export type {
+  WeaverProjectFile,
+  WeaverGroupConfig,
+  WeaverStemConfig,
+} from './projectTypes.js';
