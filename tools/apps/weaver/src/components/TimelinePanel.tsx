@@ -8,6 +8,7 @@ const LABEL_WIDTH = 120;
 
 export function TimelinePanel() {
   const timelineRef = useRef<HTMLDivElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
   const stems = useWeaverStore((s) => s.stems);
   const addStem = useWeaverStore((s) => s.addStem);
 
@@ -77,16 +78,32 @@ export function TimelinePanel() {
         {stems.map((_, i) => (
           <StemLane key={i} index={i} />
         ))}
+        <input
+          ref={fileRef}
+          type="file"
+          accept=".wav,.ogg,.mp3,.flac"
+          multiple
+          style={{ display: 'none' }}
+          onChange={async (e) => {
+            const files = e.target.files;
+            if (!files) return;
+            for (const file of Array.from(files)) {
+              await addStem(file);
+            }
+            e.target.value = '';
+          }}
+        />
         <div
           onDragOver={handleDragOver}
           onDrop={handleDrop}
+          onClick={() => fileRef.current?.click()}
           style={{
             minHeight: 60, display: 'flex', alignItems: 'center', justifyContent: 'center',
             border: '2px dashed #333', borderRadius: 6, margin: 8,
-            color: '#555', fontSize: 12, userSelect: 'none',
+            color: '#5588cc', fontSize: 12, userSelect: 'none', cursor: 'pointer',
           }}
         >
-          Drop .wav / .ogg files here
+          Drop .wav / .ogg files here or click to browse
         </div>
       </div>
     </div>
