@@ -47,6 +47,12 @@ function slugify(name: string, fallback = 'project'): string {
 
 /** Returns the project-relative path for the Bricklayer save file. */
 export function bricklayerSavePath(): string {
+  // If editing a specific chunk/instance, save to its named file
+  const ctx = useWorldStore.getState().editingContext;
+  if (ctx) {
+    const sceneName = ctx.sceneFile.split('/').pop()?.replace('.json', '') ?? 'scene';
+    return `${PROJECT_LAYOUT.toolsData.bricklayer}/${sceneName}.bricklayer`;
+  }
   return `${PROJECT_LAYOUT.toolsData.bricklayer}/scene.bricklayer`;
 }
 
@@ -251,12 +257,12 @@ export async function switchScene(
     console.info(`[bricklayer] Switched to scene: ${bricklayerPath}`);
     return true;
   } catch {
-    // No .bricklayer file — try loading engine scene JSON as read-only reference
-    console.warn(`[bricklayer] No .bricklayer at ${bricklayerPath}, loading empty scene for: ${sceneFile}`);
-    // Load a minimal empty scene so the user can start editing
+    // No .bricklayer file — create a new empty scene for editing
+    console.warn(`[bricklayer] No .bricklayer at ${bricklayerPath}, creating empty scene for: ${sceneFile}`);
+    const worldReg = useWorldStore.getState().manifest.asset_registry;
     sceneStore.loadProject({
       version: 2,
-      asset_registry: { version: 1, characters: {}, vfx: {}, textures: {}, audio: {}, maps: {}, objects: {} },
+      asset_registry: worldReg ?? { version: 1, characters: {}, vfx: {}, textures: {}, audio: {}, maps: {}, objects: {} },
       gridWidth: 64,
       gridDepth: 64,
       voxels: [],
