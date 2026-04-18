@@ -24,6 +24,7 @@ export function Ruler() {
   const bpm = useWeaverStore((s) => s.bpm);
   const sampleRate = useWeaverStore((s) => s.sampleRate);
   const maxFrames = useWeaverStore((s) => s.maxFrames);
+  const loopEnabled = useWeaverStore((s) => s.loopEnabled);
 
   const getWaveWidth = useCallback(() => {
     if (!rulerRef.current) return 600;
@@ -206,7 +207,7 @@ export function Ruler() {
         <div style={{
           position: 'absolute', left: loopStartPx, top: 0,
           width: loopEndPx - loopStartPx, height: '100%',
-          background: 'rgba(68, 204, 102, 0.15)', pointerEvents: 'none',
+          background: loopEnabled ? 'rgba(68, 204, 102, 0.15)' : 'rgba(68, 204, 102, 0.05)', pointerEvents: 'none',
         }} />
       )}
 
@@ -219,7 +220,7 @@ export function Ruler() {
           width: 0, height: 0, cursor: 'ew-resize',
           borderLeft: `${HANDLE_SIZE / 2}px solid transparent`,
           borderRight: `${HANDLE_SIZE / 2}px solid transparent`,
-          borderTop: `${HANDLE_SIZE}px solid #44cc66`,
+          borderTop: `${HANDLE_SIZE}px solid ${loopEnabled ? '#44cc66' : '#44cc6644'}`,
         }}
       />
 
@@ -232,7 +233,7 @@ export function Ruler() {
           width: 0, height: 0, cursor: 'ew-resize',
           borderLeft: `${HANDLE_SIZE / 2}px solid transparent`,
           borderRight: `${HANDLE_SIZE / 2}px solid transparent`,
-          borderTop: `${HANDLE_SIZE}px solid #ff6644`,
+          borderTop: `${HANDLE_SIZE}px solid ${loopEnabled ? '#ff6644' : '#ff664444'}`,
         }}
       />
 

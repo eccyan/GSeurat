@@ -19,6 +19,7 @@ export function StemLane({ index }: StemLaneProps) {
   const playheadFrame = useWeaverStore((s) => s.playheadFrame);
   const setStemVolume = useWeaverStore((s) => s.setStemVolume);
   const removeStem = useWeaverStore((s) => s.removeStem);
+  const loopEnabled = useWeaverStore((s) => s.loopEnabled);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -50,7 +51,7 @@ export function StemLane({ index }: StemLaneProps) {
     if (loopEnd > loopStart) {
       const lsX = LABEL_WIDTH + frameToPixel(loopStart, viewStart, viewEnd, waveWidth);
       const leX = LABEL_WIDTH + frameToPixel(loopEnd, viewStart, viewEnd, waveWidth);
-      ctx.fillStyle = 'rgba(68, 204, 102, 0.1)';
+      ctx.fillStyle = loopEnabled ? 'rgba(68, 204, 102, 0.1)' : 'rgba(68, 204, 102, 0.03)';
       ctx.fillRect(
         Math.max(LABEL_WIDTH, lsX), 0,
         Math.min(w, leX) - Math.max(LABEL_WIDTH, lsX), h,
@@ -102,7 +103,7 @@ export function StemLane({ index }: StemLaneProps) {
     ctx.moveTo(0, h - 0.5);
     ctx.lineTo(w, h - 0.5);
     ctx.stroke();
-  }, [stem, viewStart, viewEnd, loopStart, loopEnd, playheadFrame]);
+  }, [stem, viewStart, viewEnd, loopStart, loopEnd, loopEnabled, playheadFrame]);
 
   if (!stem) return null;
 

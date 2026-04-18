@@ -10,6 +10,8 @@ export function Toolbar() {
   const zoomToFit = useWeaverStore((s) => s.zoomToFit);
   const getExportData = useWeaverStore((s) => s.getExportData);
   const groupName = useWeaverStore((s) => s.groupName);
+  const loopEnabled = useWeaverStore((s) => s.loopEnabled);
+  const setLoopEnabled = useWeaverStore((s) => s.setLoopEnabled);
 
   const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -39,6 +41,12 @@ export function Toolbar() {
       <button onClick={() => fileRef.current?.click()}>Import Stems</button>
       <button onClick={() => setIsPlaying(!isPlaying)}>
         {isPlaying ? 'Stop' : 'Play'}
+      </button>
+      <button
+        onClick={() => setLoopEnabled(!loopEnabled)}
+        style={{ opacity: loopEnabled ? 1 : 0.5 }}
+      >
+        {loopEnabled ? 'Loop ON' : 'Loop OFF'}
       </button>
       <button onClick={zoomToFit}>Zoom to Fit</button>
       <button onClick={handleExport}>Export v2 JSON</button>

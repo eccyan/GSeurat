@@ -22,6 +22,8 @@ interface WeaverStore {
   loopEnd: number;
   setLoopStart: (frame: number) => void;
   setLoopEnd: (frame: number) => void;
+  loopEnabled: boolean;
+  setLoopEnabled: (enabled: boolean) => void;
 
   markers: MarkerState[];
   addMarker: (frame: number, name?: string) => void;
@@ -84,6 +86,8 @@ export const useWeaverStore = create<WeaverStore>((set, get) => ({
   loopEnd: 0,
   setLoopStart: (frame) => set({ loopStart: Math.max(0, frame) }),
   setLoopEnd: (frame) => set({ loopEnd: Math.max(0, frame) }),
+  loopEnabled: true,
+  setLoopEnabled: (enabled) => set({ loopEnabled: enabled }),
 
   markers: [],
   addMarker: (frame, name) =>

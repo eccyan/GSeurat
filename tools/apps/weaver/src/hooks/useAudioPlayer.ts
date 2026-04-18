@@ -35,6 +35,7 @@ export function useAudioPlayer() {
     const sampleRate = state.sampleRate;
     const loopStart = state.loopStart;
     const loopEnd = state.loopEnd;
+    const loopEnabled = state.loopEnabled;
     const playheadFrame = state.playheadFrame;
 
     // Clean up any prior sources
@@ -55,7 +56,7 @@ export function useAudioPlayer() {
       gain.gain.value = stem.initialVolume;
       source.connect(gain).connect(ctx.destination);
 
-      if (loopEnd > loopStart) {
+      if (loopEnabled && loopEnd > loopStart) {
         source.loop = true;
         source.loopStart = framesToSeconds(loopStart, sampleRate);
         source.loopEnd = framesToSeconds(loopEnd, sampleRate);
@@ -80,9 +81,19 @@ export function useAudioPlayer() {
       let frame = startFrameRef.current + Math.round(elapsed * sampleRate);
 
       // Wrap within loop region if looping
-      if (loopEnd > loopStart && frame >= loopEnd) {
+      if (loopEnabled && loopEnd > loopStart && frame >= loopEnd) {
         const loopLen = loopEnd - loopStart;
         frame = loopStart + ((frame - loopStart) % loopLen);
+      }
+
+      // Stop at end when not looping
+      if (!loopEnabled || loopEnd <= loopStart) {
+        const maxLen = s.maxFrames();
+        if (frame >= maxLen) {
+          s.setIsPlaying(false);
+          s.setPlayheadFrame(maxLen);
+          return;
+        }
       }
 
       s.setPlayheadFrame(frame);
