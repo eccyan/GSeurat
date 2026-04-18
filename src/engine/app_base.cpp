@@ -454,6 +454,16 @@ CommandContext AppBase::build_command_context() {
         .input = input_,
         .feature_flags = feature_flags_,
         .window = window_,
+        .reload_music = [this](const std::string& path) {
+            if (audio_engine_) {
+                auto r = audio_engine_->load_track_group(path);
+                if (r) {
+                    std::fprintf(stderr, "[audio] Reloaded music config: %s (first group id=%u)\n", path.c_str(), r.value());
+                } else {
+                    std::fprintf(stderr, "[audio] Failed to reload music config: %s\n", path.c_str());
+                }
+            }
+        },
         .init_scene = [this](const std::string& path) { init_scene(path); },
         .clear_scene = [this]() { clear_scene(); },
         .load_character = [this](const std::string& path) { pending_character_path = path; },

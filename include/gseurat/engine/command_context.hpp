@@ -15,7 +15,6 @@ namespace ecs { class World; }
 class ComponentRegistry;
 class InputManager;
 struct FeatureFlags;
-
 struct CommandContext {
     const GsTerrainState& terrain;
     SceneObjectState& scene_objects;
@@ -26,6 +25,8 @@ struct CommandContext {
     InputManager& input;
     FeatureFlags& feature_flags;
     GLFWwindow*& window;
+
+    std::function<void(const std::string&)> reload_music;  // optional: reload music_config.json
 
     std::function<void(const std::string&)> init_scene;
     std::function<void()> clear_scene;

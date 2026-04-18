@@ -131,22 +131,23 @@ export function MenuBar() {
     const flushed = useWeaverStore.getState();
     const config = exportMultiGroupConfig(flushed.sampleRate, flushed.groups);
     const json = JSON.stringify(config, null, 2);
+    const assetPath = `assets/audio/${flushed.projectName}.music.json`;
 
     // Write music_config.json to project root via FSAPI
     if (flushed.projectRootHandle) {
       try {
-        const path = `assets/audio/${flushed.projectName}.music.json`;
-        await writeFileAtPath(flushed.projectRootHandle, path, json);
-        console.info(`[weaver] Exported to project: ${path}`);
+        await writeFileAtPath(flushed.projectRootHandle, assetPath, json);
+        console.info(`[weaver] Exported to project: ${assetPath}`);
       } catch (e) {
         console.warn('[weaver] Failed to write to project root:', e);
       }
     }
 
-    // Also push to staging via bridge WebSocket
+    // Push to staging: write file then reload music config
     try {
-      await sendBridgeCommand({ cmd: 'write_temp_file', path: `${flushed.projectName}.music.json`, content: json });
-      console.info('[weaver] Pushed music config to staging via bridge');
+      await sendBridgeCommand({ cmd: 'write_temp_file', path: assetPath, content: json });
+      await sendBridgeCommand({ cmd: 'reload_music_config', path: assetPath });
+      console.info('[weaver] Pushed music config to staging and triggered reload');
     } catch (e) {
       console.warn('[weaver] Bridge not available:', e);
     }
