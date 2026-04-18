@@ -89,7 +89,7 @@ const pointCloudMaterial = new THREE.ShaderMaterial({
     void main() {
       vColor = vec4(color.rgb, uOpacity);
       vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-      gl_PointSize = max(1.5, uPointSize * (20.0 / -mvPosition.z));
+      gl_PointSize = max(2.0, uPointSize * (30.0 / -mvPosition.z));
       gl_Position = projectionMatrix * mvPosition;
     }
   `,
