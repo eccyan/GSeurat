@@ -10,6 +10,7 @@
     "test": "vitest"
   },
   "dependencies": {
+    "@gseurat/engine-client": "workspace:*",
     "@gseurat/project-root": "workspace:*",
     "react": "^18.3.0",
     "react-dom": "^18.3.0",

@@ -526,6 +526,18 @@ void CommandDispatcher::register_default_commands() {
         }
     });
 
+    register_command("reload_music_config", [this](const json& cmd) -> CommandResult {
+        if (!ctx_.reload_music) {
+            return std::unexpected(std::string("Audio engine not available"));
+        }
+        const std::string path = cmd.value("path", "");
+        if (path.empty()) {
+            return std::unexpected(std::string("Missing 'path' parameter"));
+        }
+        ctx_.reload_music(path);
+        return json{{"type", "ok"}, {"message", "Music config reloaded: " + path}};
+    });
+
     register_command("quit", [this](const json&) -> CommandResult {
         glfwSetWindowShouldClose(ctx_.window, GLFW_TRUE);
         return json{{"type", "ok"}, {"message", "Shutting down"}};

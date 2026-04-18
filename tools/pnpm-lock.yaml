@@ -359,6 +359,9 @@ importers:
 
   apps/weaver:
     dependencies:
+      '@gseurat/engine-client':
+        specifier: workspace:*
+        version: link:../../packages/engine-client
       '@gseurat/project-root':
         specifier: workspace:*
         version: link:../../packages/project-root

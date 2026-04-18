@@ -336,6 +336,30 @@ schemas/
   music_config.schema.json  — JSON schema for music_config.json
 ```
 
+## Weaver (Authoring Tool)
+
+Weaver is a web-based visual editor for composing `music_config.json` v2 files. It replaces the legacy Audio Composer.
+
+- **Project-based workflow** — `.weaver` project files separate editor state from runtime `music_config.json`
+- **Multi-track management** — multiple TrackGroups per project, one loaded in memory at a time
+- **Visual timeline** — canvas waveforms, draggable loop handles, markers, per-stem mute/solo
+- **Staging integration** — "Open in Staging" pushes music to the running engine via bridge
+
+See [Weaver documentation](docs/weaver.md) for details.
+
+```bash
+cd tools && pnpm --filter weaver dev  # http://localhost:5182
+```
+
+## Bridge Commands (audio)
+
+| Command | Parameters | Description |
+|---------|-----------|-------------|
+| `reload_music_config` | `path` (relative) | Load a music_config.json and play the first group |
+| `set_feature` | `name: "music"`, `enabled` | Toggle music playback on/off |
+
+The `reload_music_config` command resolves stem paths via `resolve_asset_path()` (requires `set_project_root` to be called first).
+
 ## Design Specs
 
 - [Phase 1: Interactive Music](docs/superpowers/specs/2026-04-17-audio-engine-interactive-music-design.md)
@@ -343,3 +367,5 @@ schemas/
 - [Phase 2: DSP Effects](docs/superpowers/specs/2026-04-17-audio-phase2-dsp-effects-design.md)
 - [Phase 3: Mmap Asset Pipeline](docs/superpowers/specs/2026-04-17-audio-phase3-mmap-design.md)
 - [Phase 4: Ogg Vorbis Streaming](docs/superpowers/specs/2026-04-18-audio-phase4-streaming-design.md)
+- [Phase 5: Weaver](docs/superpowers/specs/2026-04-18-audio-phase5-weaver-design.md)
+- [Phase 6: Multi-Track Management](docs/superpowers/specs/2026-04-18-audio-phase6-multitrack-design.md)

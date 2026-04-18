@@ -1,4 +1,5 @@
 #include "gseurat/engine/app_base.hpp"
+#include "gseurat/engine/project_root.hpp"
 #include "gseurat/engine/gs_scene_loader.hpp"
 #include "gseurat/engine/scene_load_context.hpp"
 #include "gseurat/engine/trigger_components.hpp"
@@ -454,6 +455,21 @@ CommandContext AppBase::build_command_context() {
         .input = input_,
         .feature_flags = feature_flags_,
         .window = window_,
+        .reload_music = [this](const std::string& path) {
+            if (audio_engine_) {
+                // Resolve path relative to project root (not cwd)
+                auto resolved = resolve_asset_path(path).string();
+                std::fprintf(stderr, "[audio] Loading music config: %s\n", resolved.c_str());
+                auto r = audio_engine_->load_track_group(resolved);
+                if (r) {
+                    const uint32_t first_id = r.value();
+                    std::fprintf(stderr, "[audio] Reloaded music config (first group id=%u) — playing\n", first_id);
+                    audio_engine_->play_group(first_id);
+                } else {
+                    std::fprintf(stderr, "[audio] Failed to reload music config: %s\n", resolved.c_str());
+                }
+            }
+        },
         .init_scene = [this](const std::string& path) { init_scene(path); },
         .clear_scene = [this]() { clear_scene(); },
         .load_character = [this](const std::string& path) { pending_character_path = path; },
