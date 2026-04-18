@@ -276,6 +276,9 @@ export interface SceneStoreState {
   showGrid: boolean;
   showCollision: boolean;
   showGizmos: boolean;
+  showTerrainPly: boolean;
+  showObjectPly: boolean;
+  terrainPlyFile: string;
   stagingAutoSync: boolean;
   selectedSettingsCategory: SettingsCategory;
 
@@ -353,6 +356,9 @@ export interface SceneStoreState {
   setShowGrid: (v: boolean) => void;
   setShowCollision: (v: boolean) => void;
   setShowGizmos: (v: boolean) => void;
+  setShowTerrainPly: (v: boolean) => void;
+  setShowObjectPly: (v: boolean) => void;
+  setTerrainPlyFile: (v: string) => void;
   setStagingAutoSync: (v: boolean) => void;
   setSavedEditorCamera: (v: { position: [number,number,number]; target: [number,number,number] } | null) => void;
   setSelectedSettingsCategory: (cat: SettingsCategory) => void;
@@ -414,6 +420,9 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
   showGrid: true,
   showCollision: false,
   showGizmos: true,
+  showTerrainPly: false,
+  showObjectPly: true,
+  terrainPlyFile: '',
   stagingAutoSync: false,
   selectedSettingsCategory: 'gs_camera',
 
@@ -750,6 +759,9 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
   setShowGrid: (v) => set({ showGrid: v }),
   setShowCollision: (v) => set({ showCollision: v }),
   setShowGizmos: (v) => set({ showGizmos: v }),
+  setShowTerrainPly: (v) => set({ showTerrainPly: v }),
+  setShowObjectPly: (v) => set({ showObjectPly: v }),
+  setTerrainPlyFile: (v) => set({ terrainPlyFile: v }),
   setStagingAutoSync: (v) => set({ stagingAutoSync: v }),
   setSavedEditorCamera: (v) => set({ savedEditorCamera: v }),
   setSelectedSettingsCategory: (cat) => set({ selectedSettingsCategory: cat }),

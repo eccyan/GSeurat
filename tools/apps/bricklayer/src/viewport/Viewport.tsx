@@ -16,6 +16,7 @@ import { CameraZoneMarkers } from './CameraZoneMarkers.js';
 import { CameraRailMarkers } from './CameraRailMarkers.js';
 import { CameraFrustumGizmo } from './CameraFrustumGizmo.js';
 import { ChunkWireframes } from './ChunkWireframes.js';
+import { TerrainPlyReference } from './TerrainPlyReference.js';
 import { useSceneStore } from '../store/useSceneStore.js';
 
 // Module-level ref so App.tsx can access the orbit controls for F/Home keys
@@ -303,6 +304,7 @@ function SceneContent() {
       )}
 
       <GroundPlane />
+      <TerrainPlyReference />
       <LightGizmos />
       <GameObjectMarkers />
       <GsEmitterMarkers />

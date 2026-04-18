@@ -473,6 +473,20 @@ export function MenuBar() {
       },
     },
     {
+      label: `${useSceneStore.getState().showTerrainPly ? '\u2713 ' : ''}Terrain PLY`,
+      action: () => {
+        const s = useSceneStore.getState();
+        s.setShowTerrainPly(!s.showTerrainPly);
+      },
+    },
+    {
+      label: `${useSceneStore.getState().showObjectPly ? '\u2713 ' : ''}Object PLY`,
+      action: () => {
+        const s = useSceneStore.getState();
+        s.setShowObjectPly(!s.showObjectPly);
+      },
+    },
+    {
       label: `${useSceneStore.getState().stagingAutoSync ? '\u2713 ' : ''}Auto-Sync Staging`,
       action: () => {
         const s = useSceneStore.getState();

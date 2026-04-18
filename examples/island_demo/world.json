@@ -296,7 +296,8 @@
     {
       "id": "dungeon_01",
       "display_name": "Dungeon Interior",
-      "scene_file": "assets/scenes/dungeon.json"
+      "scene_file": "assets/scenes/dungeon.json",
+      "ply_file": "assets/maps/dungeon.ply"
     },
     {
       "id": "tavern_01",

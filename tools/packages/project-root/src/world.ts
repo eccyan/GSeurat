@@ -22,6 +22,7 @@ export interface WorldInstance {
   id: string;
   display_name: string;
   scene_file: string;
+  ply_file?: string;
 }
 
 export interface WorldPortal {
