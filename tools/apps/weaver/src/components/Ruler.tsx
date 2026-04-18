@@ -5,6 +5,7 @@ import { frameToPixel, pixelToFrame, frameToBarBeat } from '../lib/frameUtils.js
 const LABEL_WIDTH = 120;
 const RULER_HEIGHT = 32;
 const HANDLE_SIZE = 10;
+const MIN_LOOP_FRAMES = 4410; // Must match useAudioPlayer
 
 export function Ruler() {
   const rulerRef = useRef<HTMLDivElement>(null);
@@ -126,6 +127,7 @@ export function Ruler() {
   const loopStartPx = LABEL_WIDTH + frameToPixel(loopStart, viewStart, viewEnd, waveWidth);
   const loopEndPx = LABEL_WIDTH + frameToPixel(loopEnd, viewStart, viewEnd, waveWidth);
   const playheadPx = LABEL_WIDTH + frameToPixel(playheadFrame, viewStart, viewEnd, waveWidth);
+  const loopTooSmall = loopEnd > loopStart && (loopEnd - loopStart) < MIN_LOOP_FRAMES;
 
   return (
     <div
@@ -164,12 +166,15 @@ export function Ruler() {
         </div>
       ))}
 
-      {/* Loop region highlight */}
+      {/* Loop region highlight — red when too small to loop */}
       {loopEnd > loopStart && (
         <div style={{
           position: 'absolute', left: loopStartPx, top: 0,
           width: loopEndPx - loopStartPx, height: '100%',
-          background: loopEnabled ? 'rgba(68, 204, 102, 0.15)' : 'rgba(68, 204, 102, 0.05)', pointerEvents: 'none',
+          background: loopTooSmall
+            ? 'rgba(255, 68, 68, 0.2)'
+            : loopEnabled ? 'rgba(68, 204, 102, 0.15)' : 'rgba(68, 204, 102, 0.05)',
+          pointerEvents: 'none',
         }} />
       )}
 

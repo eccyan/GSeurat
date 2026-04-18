@@ -19,6 +19,33 @@ function getAudioContext(): AudioContext {
   return sharedCtx;
 }
 
+// ── Undo/Redo snapshot (lightweight — no AudioBuffers) ──
+
+interface UndoSnapshot {
+  stems: { sourcePath: string; initialVolume: number; muted: boolean; soloed: boolean }[];
+  bpm: number;
+  loopStart: number;
+  loopEnd: number;
+  loopEnabled: boolean;
+  markers: MarkerState[];
+}
+
+const MAX_UNDO = 50;
+
+function captureSnapshot(s: Pick<WeaverStore, 'stems' | 'bpm' | 'loopStart' | 'loopEnd' | 'loopEnabled' | 'markers'>): UndoSnapshot {
+  return {
+    stems: s.stems.map((st) => ({
+      sourcePath: st.sourcePath, initialVolume: st.initialVolume,
+      muted: st.muted, soloed: st.soloed,
+    })),
+    bpm: s.bpm,
+    loopStart: s.loopStart,
+    loopEnd: s.loopEnd,
+    loopEnabled: s.loopEnabled,
+    markers: s.markers.map((m) => ({ ...m })),
+  };
+}
+
 interface WeaverStore {
   // === Project-level ===
   projectName: string;
@@ -68,6 +95,15 @@ interface WeaverStore {
   moveMarker: (index: number, frame: number) => void;
   setIsPlaying: (playing: boolean) => void;
   setPlayheadFrame: (frame: number) => void;
+
+  // Undo/Redo
+  undoStack: UndoSnapshot[];
+  redoStack: UndoSnapshot[];
+  pushUndo: () => void;
+  undo: () => void;
+  redo: () => void;
+  canUndo: () => boolean;
+  canRedo: () => boolean;
 
   viewStartFrame: number;
   viewEndFrame: number;
@@ -296,6 +332,8 @@ export const useWeaverStore = create<WeaverStore>((set, get) => ({
       playheadFrame: 0,
       viewStartFrame: 0,
       viewEndFrame: maxLen > 0 ? maxLen : 44100,
+      undoStack: [],
+      redoStack: [],
     });
   },
 
@@ -309,6 +347,7 @@ export const useWeaverStore = create<WeaverStore>((set, get) => ({
   playheadFrame: 0,
 
   addStem: async (file: File) => {
+    get().pushUndo();
     const ctx = getAudioContext();
     const { audioBuffer, waveformPeaks } = await decodeStemFile(file, ctx);
     const s = get();
@@ -343,8 +382,10 @@ export const useWeaverStore = create<WeaverStore>((set, get) => ({
     });
   },
 
-  removeStem: (index) =>
-    set((s) => ({ stems: s.stems.filter((_, i) => i !== index), dirty: true })),
+  removeStem: (index) => {
+    get().pushUndo();
+    set((s) => ({ stems: s.stems.filter((_, i) => i !== index), dirty: true }));
+  },
 
   setStemVolume: (index, volume) =>
     set((s) => ({
@@ -352,47 +393,130 @@ export const useWeaverStore = create<WeaverStore>((set, get) => ({
       dirty: true,
     })),
 
-  toggleMute: (index) =>
+  toggleMute: (index) => {
+    get().pushUndo();
     set((s) => ({
       stems: s.stems.map((st, i) => i === index ? { ...st, muted: !st.muted } : st),
       dirty: true,
-    })),
+    }));
+  },
 
-  toggleSolo: (index) =>
+  toggleSolo: (index) => {
+    get().pushUndo();
     set((s) => ({
       stems: s.stems.map((st, i) => i === index ? { ...st, soloed: !st.soloed } : st),
       dirty: true,
-    })),
+    }));
+  },
 
-  setLoopStart: (frame) => set({ loopStart: Math.max(0, frame), dirty: true }),
-  setLoopEnd: (frame) => set({ loopEnd: Math.max(0, frame), dirty: true }),
+  setLoopStart: (frame) => { get().pushUndo(); set({ loopStart: Math.max(0, frame), dirty: true }); },
+  setLoopEnd: (frame) => { get().pushUndo(); set({ loopEnd: Math.max(0, frame), dirty: true }); },
   setLoopEnabled: (enabled) => set({ loopEnabled: enabled, dirty: true }),
-  setBpm: (bpm) => set({ bpm, dirty: true }),
+  setBpm: (bpm) => { get().pushUndo(); set({ bpm: Math.max(1, Math.min(999, bpm || 120)), dirty: true }); },
   setGroupName: (name) => {
     const s = get();
     if (s.activeGroupId) s.renameGroup(s.activeGroupId, name);
   },
 
-  addMarker: (frame, name) =>
+  addMarker: (frame, name) => {
+    get().pushUndo();
     set((s) => ({
       markers: [...s.markers, { frame, name: name ?? `Marker ${s.markers.length + 1}` }],
       dirty: true,
-    })),
-  removeMarker: (index) =>
-    set((s) => ({ markers: s.markers.filter((_, i) => i !== index), dirty: true })),
+    }));
+  },
+  removeMarker: (index) => {
+    get().pushUndo();
+    set((s) => ({ markers: s.markers.filter((_, i) => i !== index), dirty: true }));
+  },
   updateMarker: (index, patch) =>
     set((s) => ({
       markers: s.markers.map((m, i) => i === index ? { ...m, ...patch } : m),
       dirty: true,
     })),
-  moveMarker: (index, frame) =>
+  moveMarker: (index, frame) => {
+    get().pushUndo();
     set((s) => ({
       markers: s.markers.map((m, i) => i === index ? { ...m, frame } : m),
       dirty: true,
-    })),
+    }));
+  },
 
   setIsPlaying: (playing) => set({ isPlaying: playing }),
   setPlayheadFrame: (frame) => set({ playheadFrame: frame }),
+
+  // Undo/Redo
+  undoStack: [],
+  redoStack: [],
+  pushUndo: () => {
+    const s = get();
+    const snapshot = captureSnapshot(s);
+    set((prev) => ({
+      undoStack: [...prev.undoStack.slice(-(MAX_UNDO - 1)), snapshot],
+      redoStack: [],
+    }));
+  },
+  undo: () => {
+    const s = get();
+    if (s.undoStack.length === 0) return;
+    const current = captureSnapshot(s);
+    const prev = s.undoStack[s.undoStack.length - 1];
+    // Restore stems: match by sourcePath to preserve AudioBuffers
+    const restoredStems = prev.stems.map((ps) => {
+      const existing = s.stems.find((st) => st.sourcePath === ps.sourcePath);
+      return {
+        fileName: existing?.fileName ?? ps.sourcePath.split('/').pop() ?? '',
+        sourcePath: ps.sourcePath,
+        initialVolume: ps.initialVolume,
+        audioBuffer: existing?.audioBuffer ?? null,
+        waveformPeaks: existing?.waveformPeaks ?? null,
+        muted: ps.muted,
+        soloed: ps.soloed,
+      };
+    });
+    set({
+      undoStack: s.undoStack.slice(0, -1),
+      redoStack: [...s.redoStack, current],
+      stems: restoredStems,
+      bpm: prev.bpm,
+      loopStart: prev.loopStart,
+      loopEnd: prev.loopEnd,
+      loopEnabled: prev.loopEnabled,
+      markers: prev.markers.map((m) => ({ ...m })),
+      dirty: true,
+    });
+  },
+  redo: () => {
+    const s = get();
+    if (s.redoStack.length === 0) return;
+    const current = captureSnapshot(s);
+    const next = s.redoStack[s.redoStack.length - 1];
+    const restoredStems = next.stems.map((ns) => {
+      const existing = s.stems.find((st) => st.sourcePath === ns.sourcePath);
+      return {
+        fileName: existing?.fileName ?? ns.sourcePath.split('/').pop() ?? '',
+        sourcePath: ns.sourcePath,
+        initialVolume: ns.initialVolume,
+        audioBuffer: existing?.audioBuffer ?? null,
+        waveformPeaks: existing?.waveformPeaks ?? null,
+        muted: ns.muted,
+        soloed: ns.soloed,
+      };
+    });
+    set({
+      redoStack: s.redoStack.slice(0, -1),
+      undoStack: [...s.undoStack, current],
+      stems: restoredStems,
+      bpm: next.bpm,
+      loopStart: next.loopStart,
+      loopEnd: next.loopEnd,
+      loopEnabled: next.loopEnabled,
+      markers: next.markers.map((m) => ({ ...m })),
+      dirty: true,
+    });
+  },
+  canUndo: () => get().undoStack.length > 0,
+  canRedo: () => get().redoStack.length > 0,
 
   viewStartFrame: 0,
   viewEndFrame: 0,
