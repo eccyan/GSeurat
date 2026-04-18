@@ -287,6 +287,157 @@ export async function switchScene(
 }
 
 /**
+ * Import an engine scene JSON file and convert it to BricklayerFile format.
+ * This reads a file like "assets/scenes/northern_forest.json" (snake_case engine format)
+ * and converts it to BricklayerFile (camelCase) for editing in Bricklayer.
+ *
+ * @param handle - The project directory handle
+ * @param sceneFile - Path like "assets/scenes/northern_forest.json"
+ * @returns true if import succeeded
+ */
+export async function importEngineScene(
+  handle: FileSystemDirectoryHandle,
+  sceneFile: string,
+): Promise<boolean> {
+  if (!sceneFile) return false;
+
+  try {
+    const blob = await readFileAtPath(handle, sceneFile);
+    const text = await blob.text();
+    const engine = JSON.parse(text);
+
+    const worldReg = useWorldStore.getState().manifest.asset_registry;
+
+    // Default emitter config (empty)
+    const emptyEmitter = {
+      spawn_rate: 0, particle_lifetime_min: 0, particle_lifetime_max: 0,
+      velocity_min: [0, 0] as [number, number], velocity_max: [0, 0] as [number, number],
+      acceleration: [0, 0] as [number, number],
+      size_min: 0, size_max: 0, size_end_scale: 0,
+      color_start: [0, 0, 0, 0] as [number, number, number, number],
+      color_end: [0, 0, 0, 0] as [number, number, number, number],
+      tile: '', z: 0,
+      spawn_offset_min: [0, 0] as [number, number], spawn_offset_max: [0, 0] as [number, number],
+    };
+
+    // Convert lights: engine lights have no id, add one
+    const staticLights = (engine.lights ?? []).map((l: any, i: number) => ({
+      id: l.id ?? `light_${i}`,
+      position: l.position ?? [0, 0, 0],
+      radius: l.radius ?? 10,
+      color: l.color ?? [1, 1, 1],
+      intensity: l.intensity ?? 1,
+      ...(l.direction ? { direction: l.direction } : {}),
+      ...(l.cone_angle ? { cone_angle: l.cone_angle } : {}),
+    }));
+
+    // Convert game objects: engine format is very similar
+    const gameObjects = (engine.game_objects ?? []).map((go: any) => ({
+      id: go.id ?? `go_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      name: go.name ?? go.id ?? 'Object',
+      position: go.position ?? [0, 0, 0],
+      rotation: go.rotation ?? [0, 0, 0],
+      scale: go.scale ?? 1,
+      ply_file: go.ply_file ?? '',
+      components: go.components ?? {},
+      ...(go.pbd ? { pbd: go.pbd } : {}),
+    }));
+
+    // Convert particle emitters: engine has minimal format, expand to full GsParticleEmitterData
+    const gsParticleEmitters = (engine.particle_emitters ?? []).map((pe: any, i: number) => ({
+      id: pe.id ?? `emitter_${i}`,
+      muted: false,
+      preset: pe.preset ?? '',
+      position: pe.position ?? [0, 0, 0],
+      spawn_rate: pe.spawn_rate ?? 10,
+      lifetime_min: pe.lifetime_min ?? 1,
+      lifetime_max: pe.lifetime_max ?? 2,
+      velocity_min: pe.velocity_min ?? [0, 0.5, 0],
+      velocity_max: pe.velocity_max ?? [0, 1, 0],
+      acceleration: pe.acceleration ?? [0, 0, 0],
+      color_start: pe.color_start ?? [1, 1, 1],
+      color_end: pe.color_end ?? [1, 1, 1],
+      scale_min: pe.scale_min ?? [0.1, 0.1, 0.1],
+      scale_max: pe.scale_max ?? [0.2, 0.2, 0.2],
+      scale_end_factor: pe.scale_end_factor ?? 0,
+      opacity_start: pe.opacity_start ?? 1,
+      opacity_end: pe.opacity_end ?? 0,
+      emission: pe.emission ?? 0,
+      spawn_region: pe.spawn_region ?? { shape: 'sphere', radius: 0.5 },
+      burst_duration: pe.burst_duration ?? 0,
+    }));
+
+    // Convert gaussian splat config
+    const gsConfig = engine.gaussian_splat ?? {};
+    const gaussianSplat = {
+      camera: gsConfig.camera ?? { position: [0, 10, 20], target: [0, 0, 0], fov: 45 },
+      render_width: gsConfig.render_width ?? 1920,
+      render_height: gsConfig.render_height ?? 1080,
+      scale_multiplier: gsConfig.scale_multiplier ?? 1,
+      background_image: gsConfig.background_image ?? '',
+      parallax: gsConfig.parallax ?? {
+        azimuth_range: 30, elevation_min: -10, elevation_max: 20,
+        distance_range: 5, parallax_strength: 1,
+      },
+      morphPairPly: '', morphDuration: 2, morphDefaultBlend: 0, morphEasing: 'linear' as const,
+    };
+
+    // Convert collision
+    const collisionGridData = engine.collision ? {
+      width: engine.collision.width,
+      height: engine.collision.height,
+      cell_size: engine.collision.cell_size,
+      solid: engine.collision.solid ?? [],
+      elevation: engine.collision.elevation ?? [],
+      nav_zone: engine.collision.nav_zone ?? [],
+    } : undefined;
+
+    // Build BricklayerFile
+    const bricklayerFile: BricklayerFile = {
+      version: 2,
+      asset_registry: worldReg ?? { version: 1, characters: {}, vfx: {}, textures: {}, audio: {}, maps: {}, objects: {} },
+      gridWidth: engine.collision?.width ?? 64,
+      gridDepth: engine.collision?.height ?? 64,
+      voxels: [],
+      collision: [],
+      ...(collisionGridData ? { collisionGridData } : {}),
+      scene: {
+        ambientColor: engine.ambient_color ?? [0.3, 0.3, 0.4, 1],
+        staticLights,
+        gameObjects,
+        player: {
+          position: engine.player?.position ?? [32, 0, 32],
+          tint: engine.player?.tint ?? [1, 1, 1, 1],
+          facing: engine.player?.facing ?? 'down',
+          character_id: engine.player?.character_id ?? '',
+        },
+        backgroundLayers: [],
+        torchEmitter: emptyEmitter,
+        torchPositions: engine.torch_audio_positions ?? [],
+        footstepEmitter: emptyEmitter,
+        npcAuraEmitter: emptyEmitter,
+        weather: {
+          enabled: false, type: 'rain', emitter: emptyEmitter,
+          ambient_override: [0, 0, 0, 0], fog_density: 0, fog_color: [0, 0, 0], transition_speed: 0,
+        },
+        dayNight: { enabled: false, cycle_speed: 1, initial_time: 0, keyframes: [] },
+        gaussianSplat,
+        gsParticleEmitters: gsParticleEmitters.length > 0 ? gsParticleEmitters : undefined,
+        vfxInstances: engine.vfx_instances ?? undefined,
+        audioZones: engine.audio_zones ?? undefined,
+      },
+    };
+
+    useSceneStore.getState().loadProject(bricklayerFile);
+    console.info(`[bricklayer] Imported engine scene: ${sceneFile}`);
+    return true;
+  } catch (err) {
+    console.error(`[bricklayer] Failed to import engine scene ${sceneFile}:`, err);
+    return false;
+  }
+}
+
+/**
  * Import an asset file into the project directory.
  */
 export async function importAssetToProject(

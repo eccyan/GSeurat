@@ -6,7 +6,7 @@ import { Vec3Input } from '../components/Vec3Input.js';
 import { useWorldStore } from '../store/useWorldStore.js';
 import { useSceneStore } from '../store/useSceneStore.js';
 import { panelStyles } from '../styles/panel.js';
-import { switchScene } from '../lib/projectIO.js';
+import { switchScene, importEngineScene } from '../lib/projectIO.js';
 
 const styles = { ...panelStyles };
 
@@ -163,6 +163,26 @@ function ChunkEditor({ gridKey }: { gridKey: string }) {
       >
         Enter Chunk
       </button>
+      <button
+        style={{ ...enterBtnStyle, marginTop: 8, background: '#2a3a2a', borderColor: '#4a6a4a' }}
+        onClick={async () => {
+          const handle = useSceneStore.getState().projectHandle;
+          if (!handle) { alert('Open a project directory first'); return; }
+          if (!chunk.scene_file) { alert('No scene file specified'); return; }
+          const confirmed = window.confirm(
+            `Import "${chunk.scene_file}" into Bricklayer?\n\nThis will overwrite any current scene data for this chunk.`
+          );
+          if (!confirmed) return;
+          const ok = await importEngineScene(handle, chunk.scene_file);
+          if (ok) {
+            const worldStore = useWorldStore.getState();
+            worldStore.setEditingContext({ type: 'chunk', gridKey, sceneFile: chunk.scene_file });
+            enterChunk(chunk.grid);
+          }
+        }}
+      >
+        Import Scene JSON
+      </button>
     </div>
   );
 }
@@ -302,6 +322,24 @@ function InstanceEditor({ id }: { id: string }) {
         }}
       >
         Enter Instance
+      </button>
+      <button
+        style={{ ...enterBtnStyle, marginTop: 8, background: '#2a3a2a', borderColor: '#4a6a4a' }}
+        onClick={async () => {
+          const handle = useSceneStore.getState().projectHandle;
+          if (!handle) { alert('Open a project directory first'); return; }
+          if (!inst.scene_file) { alert('No scene file specified'); return; }
+          const confirmed = window.confirm(
+            `Import "${inst.scene_file}" into Bricklayer?\n\nThis will overwrite any current scene data for this instance.`
+          );
+          if (!confirmed) return;
+          const ok = await importEngineScene(handle, inst.scene_file);
+          if (ok) {
+            useWorldStore.getState().setEditingContext({ type: 'instance', id, sceneFile: inst.scene_file });
+          }
+        }}
+      >
+        Import Scene JSON
       </button>
     </div>
   );
