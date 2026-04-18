@@ -73814,14 +73814,29 @@
     {
       "id": "portal_dungeon",
       "name": "Portal to Dungeon",
-      "position": [203, 3, 175],
+      "position": [
+        203,
+        3,
+        175
+      ],
       "scale": 1.0,
       "components": {
-        "ProximityTrigger": { "radius": 5.0, "one_shot": true },
+        "ProximityTrigger": {
+          "radius": 5.0,
+          "one_shot": true
+        },
         "PortalTarget": {
           "target_scene": "assets/scenes/dungeon.json",
-          "target_position": [5, 0, 5],
-          "transition_color": [1, 1, 1],
+          "target_position": [
+            5,
+            0,
+            5
+          ],
+          "transition_color": [
+            1,
+            1,
+            1
+          ],
           "transition_duration": 0.5,
           "effect_type": 2
         }
@@ -74788,130 +74803,6 @@
       }
     },
     {
-      "id": "crystal_1",
-      "name": "Crystal",
-      "position": [
-        155.0,
-        3.3481,
-        145.0
-      ],
-      "rotation": [
-        0,
-        0,
-        0
-      ],
-      "scale": 1.0,
-      "components": {
-        "ProximityTrigger": {
-          "radius": 14
-        },
-        "AnimationTrigger": {
-          "effect_name": "orbit",
-          "anim_radius": 6.0,
-          "lifetime": 4.0,
-          "loop": true
-        }
-      }
-    },
-    {
-      "id": "crystal_2",
-      "name": "Crystal",
-      "position": [
-        225.0,
-        3.6947,
-        195.0
-      ],
-      "rotation": [
-        0,
-        0,
-        0
-      ],
-      "scale": 1.0,
-      "components": {
-        "ProximityTrigger": {
-          "radius": 14
-        },
-        "AnimationTrigger": {
-          "effect_name": "wave",
-          "anim_radius": 8.0,
-          "lifetime": 3.0,
-          "loop": true
-        }
-      }
-    },
-    {
-      "id": "crystal_3",
-      "name": "Crystal",
-      "position": [
-        175.0,
-        3.0535,
-        235.0
-      ],
-      "rotation": [
-        0,
-        0,
-        0
-      ],
-      "scale": 1.0,
-      "components": {
-        "ProximityTrigger": {
-          "radius": 14
-        },
-        "AnimationTrigger": {
-          "effect_name": "float",
-          "anim_radius": 5.0,
-          "lifetime": 5.0,
-          "loop": true
-        }
-      }
-    },
-    {
-      "id": "fountain",
-      "name": "Fountain",
-      "position": [
-        178.0,
-        3.2,
-        185.0
-      ],
-      "rotation": [
-        0,
-        0,
-        0
-      ],
-      "scale": 0.65,
-      "components": {
-        "ProximityTrigger": {
-          "radius": 10
-        },
-        "VfxTrigger": {
-          "vfx_path": "assets/vfx/fountain_spray.vfx.json"
-        }
-      }
-    },
-    {
-      "id": "crystal_4",
-      "name": "Crystal",
-      "position": [
-        195.0,
-        2.0418,
-        120.0
-      ],
-      "rotation": [
-        0,
-        0,
-        0
-      ],
-      "scale": 1.0,
-      "components": {
-        "ProximityTrigger": {
-          "radius": 14
-        },
-        "VfxTrigger": {
-          "vfx_path": "assets/vfx/crystal_burst.vfx.json"
-        }
-      }
-    },
-    {
       "id": "anim_trigger_1",
       "name": "Animation (pulse)",
       "position": [
@@ -75016,33 +74907,6 @@
       }
     },
     {
-      "id": "treasure_chest",
-      "name": "Treasure Chest",
-      "position": [
-        235.0,
-        4.0,
-        145.0
-      ],
-      "rotation": [
-        0,
-        0,
-        0
-      ],
-      "scale": 0.8,
-      "components": {
-        "ProximityTrigger": {
-          "radius": 8,
-          "one_shot": true
-        },
-        "AnimationTrigger": {
-          "effect_name": "scatter",
-          "anim_radius": 4.0,
-          "lifetime": 2.0,
-          "loop": false
-        }
-      }
-    },
-    {
       "id": "mushroom_glow",
       "name": "Glowing Mushrooms",
       "position": [
@@ -75065,114 +74929,6 @@
           "anim_radius": 5.0,
           "lifetime": 3.0,
           "loop": true
-        }
-      }
-    },
-    {
-      "id": "lantern_1",
-      "name": "Path Lantern",
-      "position": [
-        186.0,
-        3.5,
-        192.0
-      ],
-      "rotation": [
-        0,
-        0,
-        0
-      ],
-      "scale": 0.45,
-      "components": {
-        "ProximityTrigger": {
-          "radius": 10
-        },
-        "LightToggle": {
-          "color_r": 1.0,
-          "color_g": 0.85,
-          "color_b": 0.5,
-          "radius": 15.0,
-          "intensity": 1.2
-        }
-      }
-    },
-    {
-      "id": "lantern_2",
-      "name": "Path Lantern",
-      "position": [
-        189.0,
-        3.8,
-        186.0
-      ],
-      "rotation": [
-        0,
-        0,
-        0
-      ],
-      "scale": 0.45,
-      "components": {
-        "ProximityTrigger": {
-          "radius": 10
-        },
-        "LightToggle": {
-          "color_r": 1.0,
-          "color_g": 0.85,
-          "color_b": 0.5,
-          "radius": 15.0,
-          "intensity": 1.2
-        }
-      }
-    },
-    {
-      "id": "lantern_3",
-      "name": "Path Lantern",
-      "position": [
-        191.0,
-        4.0,
-        180.0
-      ],
-      "rotation": [
-        0,
-        0,
-        0
-      ],
-      "scale": 0.45,
-      "components": {
-        "ProximityTrigger": {
-          "radius": 10
-        },
-        "LightToggle": {
-          "color_r": 1.0,
-          "color_g": 0.85,
-          "color_b": 0.5,
-          "radius": 15.0,
-          "intensity": 1.2
-        }
-      }
-    },
-    {
-      "id": "lantern_4",
-      "name": "Path Lantern",
-      "position": [
-        175.0,
-        3.0,
-        195.0
-      ],
-      "rotation": [
-        0,
-        0,
-        0
-      ],
-      "scale": 0.45,
-      "components": {
-        "ProximityTrigger": {
-          "radius": 10
-        },
-        "LightToggle": {
-          "color_r": 1.0,
-          "color_g": 0.85,
-          "color_b": 0.5,
-          "radius": 15.0,
-          "intensity": 1.2
         }
       }
     },
@@ -75278,8 +75034,16 @@
     {
       "id": "knight_01",
       "name": "Knight",
-      "position": [202.0, 0.0, 187.0],
-      "rotation": [0, 0, 0],
+      "position": [
+        202.0,
+        0.0,
+        187.0
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
       "scale": 0.45,
       "ply_file": "assets/characters/knight/knight.ply",
       "components": {
@@ -75440,10 +75204,26 @@
     }
   ],
   "torch_audio_positions": [
-    [195.0, 4.4784, 181.0],
-    [185.0, 3.5245, 173.0],
-    [201.0, 3.0323, 191.0],
-    [211.0, 3.2403, 185.0]
+    [
+      195.0,
+      4.4784,
+      181.0
+    ],
+    [
+      185.0,
+      3.5245,
+      173.0
+    ],
+    [
+      201.0,
+      3.0323,
+      191.0
+    ],
+    [
+      211.0,
+      3.2403,
+      185.0
+    ]
   ],
   "audio": {
     "preload_track_groups": [
