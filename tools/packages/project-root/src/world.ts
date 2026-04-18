@@ -38,6 +38,7 @@ export interface WorldManifest {
   version: 1;
   grid_cell_size: [number, number, number];
   asset_registry: AssetRegistry;
+  start_instance?: string;  // instance ID to load on game start (for instance-only games with no chunks)
   chunks: WorldChunk[];
   instances: WorldInstance[];
   streaming_volumes: StreamingVolumeData[];

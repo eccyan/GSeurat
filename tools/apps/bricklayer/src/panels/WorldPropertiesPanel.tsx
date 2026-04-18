@@ -69,6 +69,9 @@ function SectionHeader({ label }: { label: string }) {
 function WorldSettingsEditor() {
   const gridCellSize = useWorldStore((s) => s.manifest.grid_cell_size);
   const setGridCellSize = useWorldStore((s) => s.setGridCellSize);
+  const startInstance = useWorldStore((s) => s.manifest.start_instance);
+  const instances = useWorldStore((s) => s.manifest.instances);
+  const updateManifest = useWorldStore((s) => s.updateStartInstance);
 
   return (
     <div style={sectionStyle}>
@@ -80,6 +83,20 @@ function WorldSettingsEditor() {
         step={1}
         min={1}
       />
+
+      <label style={labelStyle}>Start Instance</label>
+      <div style={rowStyle}>
+        <select
+          value={startInstance ?? ''}
+          onChange={(e) => updateManifest(e.target.value || undefined)}
+          style={{ ...styles.input, flex: 1 }}
+        >
+          <option value="">-- None (use chunk grid) --</option>
+          {instances.map((inst) => (
+            <option key={inst.id} value={inst.id}>{inst.display_name || inst.id}</option>
+          ))}
+        </select>
+      </div>
     </div>
   );
 }

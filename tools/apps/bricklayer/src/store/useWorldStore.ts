@@ -25,6 +25,7 @@ interface WorldStoreState {
   setAssetRegistry: (reg: AssetRegistry) => void;
   setEditingContext: (ctx: WorldStoreState['editingContext']) => void;
   setGridCellSize: (size: [number, number, number]) => void;
+  updateStartInstance: (id: string | undefined) => void;
 
   addChunk: (grid: [number, number, number]) => void;
   updateChunk: (gridKey: string, patch: Partial<WorldChunk>) => void;
@@ -71,6 +72,11 @@ export const useWorldStore = create<WorldStoreState>((set, get) => ({
     })),
 
   setEditingContext: (ctx) => set({ editingContext: ctx }),
+  updateStartInstance: (id) =>
+    set((s) => ({
+      manifest: { ...s.manifest, start_instance: id },
+      dirty: true,
+    })),
   setGridCellSize: (size) =>
     set((s) => ({
       manifest: { ...s.manifest, grid_cell_size: size },

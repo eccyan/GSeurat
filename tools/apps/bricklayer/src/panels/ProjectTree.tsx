@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { useComponentRegistry } from '@gseurat/ui-kit';
 import { useSceneStore } from '../store/useSceneStore.js';
+import { useWorldStore } from '../store/useWorldStore.js';
+import { chunkGridKey } from '@gseurat/project-root';
 import { getOrbitControls } from '../viewport/Viewport.js';
 import type { NavigationNode, SettingsCategory } from '../store/types.js';
 
@@ -208,6 +210,8 @@ export function ProjectTree() {
   const [camTrigOpen, setCamTrigOpen] = useState(true);
   const [camRailOpen, setCamRailOpen] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const editingContext = useWorldStore((st) => st.editingContext);
+  const worldManifest = useWorldStore((st) => st.manifest);
 
   const click = (node: NavigationNode) => {
     setActiveNode(node);
@@ -259,6 +263,33 @@ export function ProjectTree() {
   return (
     <div style={s.tree}>
       <div style={s.heading}>{projectName}</div>
+      {editingContext && (
+        <div style={{
+          fontSize: 10,
+          color: '#88aaff',
+          padding: '2px 4px 6px',
+          borderBottom: '1px solid #333',
+          marginBottom: 4,
+        }}>
+          {editingContext.type === 'chunk' ? (
+            <>
+              <span style={{ color: '#666' }}>Chunk </span>
+              {(() => {
+                const chunk = worldManifest.chunks.find((c) => chunkGridKey(c.grid) === editingContext.gridKey);
+                return chunk ? `[${chunk.grid[0]}, ${chunk.grid[1]}, ${chunk.grid[2]}]` : editingContext.gridKey;
+              })()}
+            </>
+          ) : (
+            <>
+              <span style={{ color: '#666' }}>Instance </span>
+              {(() => {
+                const inst = worldManifest.instances.find((i) => i.id === editingContext.id);
+                return inst?.display_name || editingContext.id;
+              })()}
+            </>
+          )}
+        </div>
+      )}
 
       {/* Terrain */}
       <TreeNode
