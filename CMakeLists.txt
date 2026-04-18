@@ -458,7 +458,8 @@ set(AUDIO_ENGINE_TEST_SOURCES
     src/engine/audio/state_variable_filter.cpp
     src/engine/audio/streaming_audio_source.cpp
     src/engine/audio/audio_stream_manager.cpp
-    src/engine/platform/memory_mapped_file.cpp)
+    src/engine/platform/memory_mapped_file.cpp
+    src/engine/project_root.cpp)
 add_gseurat_test(test_audio_streaming      ${AUDIO_ENGINE_TEST_SOURCES})
 target_include_directories(test_audio_streaming PRIVATE ${PROJECT_SOURCE_DIR}/src/engine/audio)
 add_gseurat_test(test_audio_mixer_basic        ${AUDIO_ENGINE_TEST_SOURCES})
