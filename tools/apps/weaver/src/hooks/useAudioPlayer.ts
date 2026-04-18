@@ -32,7 +32,14 @@ export function useAudioPlayer() {
   useEffect(() => {
     const sources = sourcesRef.current;
     if (sources.length === 0) return;
+
+    // Resync time references to current playhead so frame calculation
+    // doesn't jump when switching between looped/linear tracking
+    const ctx = getAudioContext();
     const state = useWeaverStore.getState();
+    startTimeRef.current = ctx.currentTime;
+    startFrameRef.current = state.playheadFrame;
+
     const sampleRate = state.sampleRate;
     const loopStart = state.loopStart;
     const loopEnd = state.loopEnd;

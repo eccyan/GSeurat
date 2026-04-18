@@ -110,6 +110,7 @@ export function Ruler() {
 
     const handleWheel = (e: WheelEvent) => {
       e.preventDefault();
+      e.stopPropagation();
       const store = useWeaverStore.getState();
       const vs = store.viewStartFrame;
       const ve = store.viewEndFrame;
