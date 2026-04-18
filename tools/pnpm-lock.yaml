@@ -359,6 +359,9 @@ importers:
 
   apps/weaver:
     dependencies:
+      '@gseurat/project-root':
+        specifier: workspace:*
+        version: link:../../packages/project-root
       react:
         specifier: ^18.3.0
         version: 18.3.1
