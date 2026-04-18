@@ -125,6 +125,13 @@ export function useAudioPlayer() {
 
     sourcesRef.current = sources;
     gainsRef.current = gains;
+
+    // Don't start animation if no sources were created
+    if (sources.length === 0) {
+      useWeaverStore.getState().setIsPlaying(false);
+      return;
+    }
+
     startTimeRef.current = ctx.currentTime;
     startFrameRef.current = playheadFrame;
 

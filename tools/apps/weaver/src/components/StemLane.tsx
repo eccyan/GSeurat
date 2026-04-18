@@ -164,7 +164,9 @@ export function StemLane({ index }: StemLaneProps) {
           </button>
         </div>
         <button
-          onClick={() => removeStem(index)}
+          onClick={() => {
+            if (confirm(`Remove ${stem.fileName}?`)) removeStem(index);
+          }}
           style={{ position: 'absolute', top: 2, right: 2, padding: '0 4px', fontSize: 10 }}
         >
           ✕

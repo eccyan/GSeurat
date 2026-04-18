@@ -71,6 +71,10 @@ export function MenuBar() {
     const state = useWeaverStore.getState();
     state.flushActiveGroup();
     const flushed = useWeaverStore.getState();
+    if (flushed.groups.length === 0) {
+      alert('No track groups to export. Add at least one group first.');
+      return;
+    }
     const config = exportMultiGroupConfig(flushed.sampleRate, flushed.groups);
     downloadJson(config, `${flushed.projectName}.music.json`);
   };
@@ -222,7 +226,7 @@ export function MenuBar() {
           )}
         </div>
 
-        {/* Edit menu - placeholder for future */}
+        {/* Edit menu */}
         <div style={{ position: 'relative' }}>
           <button
             style={openMenu === 'edit' ? menuBtnActiveStyle : menuBtnStyle}
@@ -233,11 +237,19 @@ export function MenuBar() {
           </button>
           {openMenu === 'edit' && (
             <div style={dropdownStyle}>
-              <button style={{ ...itemStyle, color: '#666' }} disabled>
-                Undo (coming soon)
+              <button
+                style={{ ...itemStyle, opacity: useWeaverStore.getState().canUndo() ? 1 : 0.4 }}
+                disabled={!useWeaverStore.getState().canUndo()}
+                onClick={() => { close(); useWeaverStore.getState().undo(); }}
+              >
+                Undo <span style={{ float: 'right', color: '#888' }}>{'\u2318'}Z</span>
               </button>
-              <button style={{ ...itemStyle, color: '#666' }} disabled>
-                Redo (coming soon)
+              <button
+                style={{ ...itemStyle, opacity: useWeaverStore.getState().canRedo() ? 1 : 0.4 }}
+                disabled={!useWeaverStore.getState().canRedo()}
+                onClick={() => { close(); useWeaverStore.getState().redo(); }}
+              >
+                Redo <span style={{ float: 'right', color: '#888' }}>{'\u2318\u21E7'}Z</span>
               </button>
             </div>
           )}

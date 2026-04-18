@@ -67,6 +67,12 @@ export function App() {
       if ((e.metaKey || e.ctrlKey) && e.key === 's') {
         e.preventDefault();
         useWeaverStore.getState().saveProject();
+      } else if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'z') {
+        e.preventDefault();
+        useWeaverStore.getState().redo();
+      } else if ((e.metaKey || e.ctrlKey) && e.key === 'z') {
+        e.preventDefault();
+        useWeaverStore.getState().undo();
       } else if (e.key === ' ') {
         e.preventDefault();
         const s = useWeaverStore.getState();
