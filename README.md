@@ -16,7 +16,7 @@ GSeurat is designed to be embedded in external game projects as a **Git submodul
 - **[Scene transitions](docs/scene-transitions.md)** — Transient-entity state machine (`SceneOut → Loading → SceneIn`) fully decoupled from presentation. Portals are authored in Bricklayer via `ProximityTrigger + PortalTarget`; the post-process shader supports solid fade, left-to-right wipe, and iris wipe effects
 - **Async asset streaming** — Slab allocator + GPU page table, async transfer queue, `world.json` spatial partitioning with fixed uniform chunk grid, StreamingVolumes for preload hints, GPU frustum culling
 - **GS Particle system** — WASM-compiled C++ simulation for preview in web tools, spline path support (emitter path + particle path modes)
-- **[Audio engine](docs/audio-engine.md)** — Lock-free interactive music with stem-based vertical remixing, sample-accurate looping, marker-aligned crossfade transitions, RTPC parameter binding, per-stem DSP effect chain (SVF LPF/HPF/BPF), oneshot SFX with spatial distance attenuation, `.gsaudio` mmap asset format with Python cooker
+- **[Audio engine](docs/audio-engine.md)** — Lock-free interactive music with stem-based vertical remixing, sample-accurate looping, marker-aligned crossfade transitions, RTPC parameter binding, per-stem DSP effect chain (SVF LPF/HPF/BPF), oneshot SFX with spatial distance attenuation, Ogg Vorbis streaming via background decode thread, `.gsaudio` mmap format, format auto-detection (WAV/GSAU/OggS)
 - **Day/night cycle** — Ambient color interpolation with weather system
 - **Save system** — JSON-based save/load with game flags
 - **AI debugging** — Unix socket control server for deterministic step-mode testing
@@ -314,14 +314,14 @@ Spatial partitioning for vast open-world maps. A `world.json` file defines a fix
 Lock-free interactive music engine with per-stem DSP effects and spatial SFX. See [docs/audio-engine.md](docs/audio-engine.md) for the full reference.
 
 ```
-Game Thread                    Audio Thread (miniaudio callback)
-──────────────                 ────────────────────────────────
-play_group(id)  ──SPSC queue──>  Mixer::render()
-set_rtpc(id,v)  ──atomic bus──>    ├─ drain commands
-set_listener()  ──atomic xyz──>    ├─ apply RTPC bindings
-                                   ├─ render TrackGroups (loop/xfade/marker)
-                                   │    └─ mix_chunk: source → effects → gain → sum
-                                   └─ render OneshotVoices (spatial attenuation)
+Game Thread                    Audio Thread              Decode Thread
+──────────────                 ──────────────────────     ─────────────────
+play_group(id)  ──SPSC queue──>  Mixer::render()          AudioStreamManager
+set_rtpc(id,v)  ──atomic bus──>    ├─ drain commands         └─ refill ring
+set_listener()  ──atomic xyz──>    ├─ apply RTPC bindings       buffers from
+                                   ├─ render TrackGroups        Ogg decoder
+                                   │    └─ source → fx → sum
+                                   └─ render OneshotVoices
 ```
 
 **Key components:**
@@ -329,7 +329,8 @@ set_listener()  ──atomic xyz──>    ├─ apply RTPC bindings
 - **RTPC** — game variables mapped to stem volume or DSP effect parameters via atomic bus
 - **StateVariableFilter** — TPT/Zavalishin SVF (LPF/HPF/BPF) with block-rate coefficient update
 - **OneshotVoice pool** — fire-and-forget SFX with auto-free, spatial distance attenuation for looping ambient sounds
-- **`.gsaudio` format** — pre-baked float32 PCM with 32-byte header, loaded via cross-platform mmap
+- **Ogg Vorbis streaming** — background decode thread with lock-free ring buffer, seamless looping, hard seek support
+- **Format auto-detection** — WAV (`RIFF`), `.gsaudio` (`GSAU`), Ogg Vorbis (`OggS`) — transparent to the mixer
 
 ### Voxel Character Pipeline
 

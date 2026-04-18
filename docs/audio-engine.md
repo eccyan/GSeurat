@@ -5,16 +5,18 @@ GSeurat's audio engine is a lock-free, sample-accurate, stem-based interactive m
 ## Architecture
 
 ```
-Game Thread                         Audio Thread
-─────────────                       ──────────────────────────────────
-AudioEngine API                     Mixer::render() (per-block callback)
-  play_group(id)   ──SPSC queue──>    drain commands (bounded, <=32/block)
-  set_stem_volume() ─────────────>    apply RTPC bindings
-  request_transition() ──────────>    render TrackGroups
-  play_oneshot()   ──────────────>      └─ per-stem: source → effects → gain → sum
-  set_rtpc(id,v)   ──atomic bus──>    render OneshotVoices
-  set_listener()   ──atomic xyz──>      └─ spatial attenuation + mono→stereo
-                                      advance master clock + publish telemetry
+Game Thread                         Audio Thread              Decode Thread
+──────────────                      ────────────────────────   ──────────────────
+AudioEngine API                     Mixer::render()            AudioStreamManager
+  play_group(id)   ──SPSC queue──>    drain commands             worker_loop():
+  set_stem_volume() ─────────────>    apply RTPC bindings          poll sources
+  request_transition() ──────────>    render TrackGroups            refill ring
+  play_oneshot()   ──────────────>      └─ source → fx → gain      buffers via
+  set_rtpc(id,v)   ──atomic bus──>    render OneshotVoices         ma_decoder
+  set_listener()   ──atomic xyz──>      └─ spatial atten.
+                                      advance master clock    StreamingAudioSource
+                                                               ↕ AudioRingBuffer
+                                    read_frames() ◄────────── (lock-free)
 ```
 
 ### Threading rules
@@ -24,7 +26,9 @@ AudioEngine API                     Mixer::render() (per-block callback)
 | Audio thread never allocates | `IAudioSource::read_frames` contract; mixer uses fixed-size arrays |
 | Audio thread never blocks | No mutex, no file I/O, no logging; `try_pop` is wait-free |
 | Audio thread never throws | All methods `noexcept` |
+| Decode thread does I/O | Ogg decode + disk reads are fine on the background thread |
 | Game→audio communication | SPSC ring buffer (commands) + atomic bus (RTPC, listener) |
+| Decode→audio communication | Lock-free `AudioRingBuffer` (monotonic cursors) |
 | Audio→game introspection | Atomic master clock, dropped-command counter, active-group bitmap |
 
 ## Interactive Music (TrackGroups)
@@ -164,11 +168,21 @@ Coefficients are recomputed once per audio block (~21ms at 1024 frames / 48kHz).
 
 ## Asset Formats
 
+Three formats are supported, auto-detected via magic bytes in the first 4 bytes of the file:
+
+| Format | Magic | Loading | Memory | Best for |
+|---|---|---|---|---|
+| WAV | `RIFF` | Full decode at load (miniaudio) | Full file in RAM | Quick iteration, small SFX |
+| `.gsaudio` | `GSAU` | Memory-mapped (zero decode) | Mapped pages | Large uncompressed stems |
+| Ogg Vorbis | `OggS` | Background streaming decode | ~352 KB ring buffer | Long music, disk savings |
+
+All three can coexist freely — just change the file extension in `music_config.json`.
+
 ### WAV (legacy, still supported)
 
 Standard PCM WAV files decoded at load time by miniaudio into float32 arrays. Fully in-memory. Supported via format auto-detection (RIFF magic).
 
-### `.gsaudio` (recommended)
+### `.gsaudio` (fast loading)
 
 Pre-baked binary format with raw float32 PCM. Loaded via memory-mapped file — zero decode overhead.
 
@@ -196,7 +210,39 @@ python3 tools/scripts/wav_to_gsaudio.py input.wav -o output.gsaudio
 python3 tools/scripts/wav_to_gsaudio.py assets/audio/*.wav --output-dir assets/audio/
 ```
 
-Format auto-detection reads the first 4 bytes: `GSAU` magic → mmap path, `RIFF` magic → WAV decode. Both formats can coexist freely.
+Format auto-detection reads the first 4 bytes: `GSAU` magic → mmap path, `RIFF` magic → WAV decode.
+
+### Ogg Vorbis (streaming, smallest on disk)
+
+Compressed audio streamed from disk in real-time. A background decode thread (`AudioStreamManager`) incrementally decodes Ogg Vorbis into a lock-free ring buffer; the audio thread reads from the ring buffer via `read_frames` — transparent to the mixer.
+
+**Conversion:**
+
+```bash
+# Using oggenc (brew install vorbis-tools)
+oggenc input.wav -o output.ogg -q 6
+```
+
+**Disk savings:**
+
+| Format | 8s stereo stem | 4 stems |
+|---|---|---|
+| WAV / `.gsaudio` | 2.8 MB | 11.2 MB |
+| Ogg Vorbis | ~35-70 KB | ~140-280 KB |
+
+**Streaming architecture:**
+
+```
+AudioStreamManager (decode thread)
+  └─ polls active StreamingAudioSources
+     └─ ma_decoder_read_pcm_frames → AudioRingBuffer
+                                         ↓ (lock-free)
+                                    Audio thread reads via read_frames()
+```
+
+- **Seamless looping** — decode thread seeks decoder to `loop_start` when reaching `loop_end`; the 1-second ring buffer absorbs the ~1ms seek latency
+- **Hard seek support** — if `start_frame` doesn't match the expected cursor, the ring buffer is flushed, silence is emitted for one block (~21ms), and the decode thread seeks asynchronously
+- **Safe removal** — per-source `refilling_` atomic flag with bounded spin-wait prevents use-after-free during source destruction
 
 ## Scene Integration
 
@@ -269,13 +315,16 @@ include/gseurat/platform/
   memory_mapped_file.hpp    — cross-platform RAII mmap
 
 src/engine/audio/
-  audio_engine.cpp          — facade + format auto-detection
+  audio_engine.cpp          — facade + format auto-detection (WAV/GSAU/OggS)
   mixer.{hpp,cpp}           — audio-thread mixer (TrackGroups + voices)
-  command_queue.hpp         — SPSC lock-free ring buffer
+  command_queue.hpp         — SPSC lock-free ring buffer (commands)
+  audio_ring_buffer.hpp     — lock-free PCM ring buffer (streaming)
   slew_limiter.hpp          — per-frame linear ramp
   state_variable_filter.{hpp,cpp} — TPT SVF (LPF/HPF/BPF)
-  memory_audio_source.cpp   — WAV decode via miniaudio
-  mmap_audio_source.cpp     — .gsaudio mmap loader
+  memory_audio_source.cpp   — WAV decode via miniaudio (in-memory)
+  mmap_audio_source.cpp     — .gsaudio mmap loader (zero-decode)
+  streaming_audio_source.{hpp,cpp} — Ogg Vorbis streaming via ring buffer
+  audio_stream_manager.{hpp,cpp}   — background decode thread
   metadata_loader.{hpp,cpp} — music_config.json parser
   backend/
     miniaudio_device.{hpp,cpp} — realtime device callback
@@ -293,3 +342,4 @@ schemas/
 - [Phase 1.5: SFX Oneshot](docs/superpowers/specs/2026-04-17-audio-sfx-oneshot-design.md)
 - [Phase 2: DSP Effects](docs/superpowers/specs/2026-04-17-audio-phase2-dsp-effects-design.md)
 - [Phase 3: Mmap Asset Pipeline](docs/superpowers/specs/2026-04-17-audio-phase3-mmap-design.md)
+- [Phase 4: Ogg Vorbis Streaming](docs/superpowers/specs/2026-04-18-audio-phase4-streaming-design.md)
