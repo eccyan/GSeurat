@@ -48,6 +48,7 @@ interface WorldStoreState {
   enterChunk: (grid: [number, number, number]) => void;
   exitChunk: () => void;
 
+  markClean: () => void;
   loadManifest: (data: WorldManifest) => void;
   saveManifest: () => WorldManifest;
   newWorld: () => void;
@@ -281,6 +282,8 @@ export const useWorldStore = create<WorldStoreState>((set, get) => ({
 
     set({ manifest: safeData, loaded: true, dirty: false, selectedEntity: null, editingChunkGrid: null, editingContext: null });
   },
+
+  markClean: () => set({ dirty: false }),
 
   saveManifest: () => get().manifest,
 

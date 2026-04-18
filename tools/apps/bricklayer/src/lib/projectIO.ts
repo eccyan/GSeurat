@@ -93,9 +93,13 @@ export async function saveProject(handle: FileSystemDirectoryHandle): Promise<vo
   await writeFileAtPath(handle, bricklayerSavePath(), json);
 
   // 2. Engine scene JSON under assets/scenes/
+  // When editing a specific chunk/instance, write to its scene_file path;
+  // otherwise fall back to project-name-based path.
+  const ctx = useWorldStore.getState().editingContext;
+  const sceneOutputPath = ctx?.sceneFile ?? engineScenePath(projectName);
   const sceneJson = JSON.stringify(exportSceneJson(store), null, 2);
   await ensureSubdir(handle, PROJECT_LAYOUT.assets.scenes);
-  await writeFileAtPath(handle, engineScenePath(projectName), sceneJson);
+  await writeFileAtPath(handle, sceneOutputPath, sceneJson);
 
   // 3. Terrain PLY under assets/maps/
   if (store.voxels.size > 0) {
@@ -120,6 +124,8 @@ export async function saveProject(handle: FileSystemDirectoryHandle): Promise<vo
   if (worldStore.loaded) {
     const worldJson = JSON.stringify(worldStore.saveManifest(), null, 2);
     await writeFileAtPath(handle, 'world.json', worldJson);
+    // Clear world store dirty flag after successful write
+    worldStore.markClean();
   }
 
   // 6. VFX instance preset files under assets/vfx/presets/
