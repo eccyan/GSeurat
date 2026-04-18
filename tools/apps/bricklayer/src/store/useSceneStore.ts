@@ -6,7 +6,6 @@ import type {
   Voxel,
   VoxelKey,
   StaticLight,
-  InstanceData,
   GameObjectData,
   ComponentSchema,
   GsParticleEmitterData,
@@ -307,7 +306,6 @@ export interface SceneStoreState {
   staticLights: StaticLight[];
   gameObjects: GameObjectData[];
   componentSchemas: ComponentSchema[];
-  instances: InstanceData[];
   gsParticleEmitters: GsParticleEmitterData[];
   gsAnimations: GsAnimationGroupData[];
   vfxInstances: VfxInstanceData[];
@@ -380,9 +378,6 @@ export interface SceneStoreState {
   updateGameObject: (id: string, patch: Partial<GameObjectData>) => void;
   removeGameObject: (id: string) => void;
   loadComponentSchemas: (schemas: ComponentSchema[]) => void;
-  addInstance: () => void;
-  updateInstance: (id: string, patch: Partial<InstanceData>) => void;
-  removeInstance: (id: string) => void;
   storeAssetBlob: (path: string, blob: Blob) => void;
   addGsEmitter: (position?: [number, number, number]) => void;
   updateGsEmitter: (id: string, patch: Partial<GsParticleEmitterData>) => void;
@@ -585,7 +580,6 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
   staticLights: [],
   gameObjects: [] as GameObjectData[],
   componentSchemas: [] as ComponentSchema[],
-  instances: [],
   gsParticleEmitters: [],
   gsAnimations: [],
   vfxInstances: [] as VfxInstanceData[],
@@ -802,23 +796,6 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
     isDirty: true,
   }),
   loadComponentSchemas: (schemas) => set({ componentSchemas: schemas }),
-
-  addInstance: () => {
-    const inst: InstanceData = {
-      id: genId('instance'),
-      display_name: 'New Instance',
-      scene_file: '',
-    };
-    set({ instances: [...get().instances, inst], isDirty: true });
-  },
-  updateInstance: (id, patch) => set({
-    instances: get().instances.map((i) => (i.id === id ? { ...i, ...patch } : i)),
-    isDirty: true,
-  }),
-  removeInstance: (id) => set({
-    instances: get().instances.filter((i) => i.id !== id),
-    isDirty: true,
-  }),
 
   storeAssetBlob: (path, blob) => {
     const blobs = new Map(get().assetBlobs);
@@ -1429,7 +1406,6 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
         godRaysIntensity: s.godRaysIntensity,
         staticLights: s.staticLights,
         gameObjects: s.gameObjects.length > 0 ? s.gameObjects : undefined,
-        instances: s.instances.length > 0 ? s.instances : undefined,
         player: s.player,
         backgroundLayers: s.backgroundLayers,
         torchEmitter: s.torchEmitter,
@@ -1522,7 +1498,6 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
         }
         return gameObjects;
       })(),
-      instances: data.scene.instances ?? [],
       gsParticleEmitters: data.scene.gsParticleEmitters ?? [],
       gsAnimations: data.scene.gsAnimations ?? [],
       vfxInstances: data.scene.vfxInstances ?? [],
