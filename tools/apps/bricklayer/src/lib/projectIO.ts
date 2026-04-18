@@ -120,6 +120,37 @@ function globalToLocal(): void {
 }
 
 /**
+ * Center the viewport camera on the scene content after loading.
+ * Computes centroid of all game objects (or player if no objects).
+ * Stores the target in the scene store so the Viewport can apply it on mount.
+ */
+function centerCameraOnScene(): void {
+  const store = useSceneStore.getState();
+  const positions: Vec3[] = [];
+
+  for (const go of store.gameObjects) positions.push(go.position);
+  for (const l of store.staticLights) positions.push(l.position);
+  for (const e of store.gsParticleEmitters) positions.push(e.position);
+
+  if (positions.length === 0) {
+    positions.push(store.player.position);
+  }
+
+  if (positions.length === 0) return;
+
+  // Compute centroid
+  const cx = positions.reduce((s, p) => s + p[0], 0) / positions.length;
+  const cy = positions.reduce((s, p) => s + p[1], 0) / positions.length;
+  const cz = positions.reduce((s, p) => s + p[2], 0) / positions.length;
+
+  // Store the desired camera position so the viewport can apply it
+  store.setSavedEditorCamera({
+    position: [cx, cy + 30, cz + 40],
+    target: [cx, cy, cz],
+  });
+}
+
+/**
  * Transform all scene positions from local back to global coordinates.
  * Called before saving a chunk's scene. Returns a BricklayerFile with global coords.
  */
@@ -455,6 +486,7 @@ export async function switchScene(
     const data = JSON.parse(text) as BricklayerFile;
     sceneStore.loadProject(data);
     globalToLocal();
+    centerCameraOnScene();
     console.info(`[bricklayer] Switched to scene: ${bricklayerPath}`);
     return true;
   } catch {
@@ -484,6 +516,7 @@ export async function switchScene(
       },
     });
     globalToLocal();
+    centerCameraOnScene();
     return true;
   }
 }
@@ -632,6 +665,7 @@ export async function importEngineScene(
 
     useSceneStore.getState().loadProject(bricklayerFile);
     globalToLocal();
+    centerCameraOnScene();
     console.info(`[bricklayer] Imported engine scene: ${sceneFile}`);
     return true;
   } catch (err) {

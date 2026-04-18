@@ -469,6 +469,7 @@ export interface SceneStoreState {
   setShowGizmos: (v: boolean) => void;
   setXrayMode: (v: boolean) => void;
   setStagingAutoSync: (v: boolean) => void;
+  setSavedEditorCamera: (v: { position: [number,number,number]; target: [number,number,number] } | null) => void;
   setCollisionLayer: (layer: CollisionLayer) => void;
   setCollisionHeight: (h: number) => void;
   setActiveNavZone: (zone: number) => void;
@@ -1278,6 +1279,7 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
   setShowCollision: (v) => set({ showCollision: v }),
   setShowGizmos: (v) => set({ showGizmos: v }),
   setStagingAutoSync: (v) => set({ stagingAutoSync: v }),
+  setSavedEditorCamera: (v) => set({ savedEditorCamera: v }),
   setXrayMode: (v) => set({ xrayMode: v }),
   setCollisionLayer: (layer) => set({ collisionLayer: layer }),
   setCollisionHeight: (h) => set({ collisionHeight: h }),
