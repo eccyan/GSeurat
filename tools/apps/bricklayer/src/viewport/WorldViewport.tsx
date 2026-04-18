@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import * as THREE from 'three';
 import { useComponentRegistry } from '@gseurat/ui-kit';
 import { OrbitControls } from '@react-three/drei';
-import { chunkAabbMin, chunkGridKey } from '@gseurat/project-root';
+import { chunkAabbMin, chunkGridKey, type WorldChunk, type StreamingVolumeData } from '@gseurat/project-root';
 import { useWorldStore } from '../store/useWorldStore.js';
 
 // ── ChunkBox ──
@@ -122,7 +122,7 @@ function WorldSceneContent() {
       />
 
       {/* Chunks */}
-      {manifest.chunks.map((chunk) => {
+      {manifest.chunks.map((chunk: WorldChunk) => {
         const key = chunkGridKey(chunk.grid);
         const min = chunkAabbMin(chunk.grid, cellSize);
         const isSelected = selectedEntity?.type === 'chunk' && selectedEntity.id === key;
@@ -139,7 +139,7 @@ function WorldSceneContent() {
       })}
 
       {/* Streaming Volumes */}
-      {manifest.streaming_volumes.map((sv) => {
+      {manifest.streaming_volumes.map((sv: StreamingVolumeData) => {
         const isSelected = selectedEntity?.type === 'streaming_volume' && selectedEntity.id === sv.id;
         const color = isSelected ? '#ffaa00' : '#ff8800';
         if (sv.shape === 'sphere') {

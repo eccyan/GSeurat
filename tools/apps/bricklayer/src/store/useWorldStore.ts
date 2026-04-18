@@ -113,7 +113,7 @@ export const useWorldStore = create<WorldStoreState>((set, get) => ({
     set((s) => ({
       manifest: {
         ...s.manifest,
-        streaming_volumes: s.manifest.streaming_volumes.map((v) =>
+        streaming_volumes: s.manifest.streaming_volumes.map((v: StreamingVolumeData) =>
           v.id === id ? { ...v, ...patch } : v,
         ),
       },
@@ -124,7 +124,7 @@ export const useWorldStore = create<WorldStoreState>((set, get) => ({
     set((s) => ({
       manifest: {
         ...s.manifest,
-        streaming_volumes: s.manifest.streaming_volumes.filter((v) => v.id !== id),
+        streaming_volumes: s.manifest.streaming_volumes.filter((v: StreamingVolumeData) => v.id !== id),
       },
       selectedEntity:
         s.selectedEntity?.type === 'streaming_volume' && s.selectedEntity.id === id
@@ -139,7 +139,7 @@ export const useWorldStore = create<WorldStoreState>((set, get) => ({
   exitChunk: () => set({ editingChunkGrid: null }),
 
   loadManifest: (data) => {
-    const maxSv = data.streaming_volumes.reduce((max, v) => {
+    const maxSv = data.streaming_volumes.reduce((max: number, v: StreamingVolumeData) => {
       const n = parseInt(v.id.replace(/\D/g, ''), 10);
       return isNaN(n) ? max : Math.max(max, n);
     }, 0);

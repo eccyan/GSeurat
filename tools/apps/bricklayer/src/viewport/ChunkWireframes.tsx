@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import * as THREE from 'three';
-import { chunkAabbMin, chunkGridKey } from '@gseurat/project-root';
+import { chunkAabbMin, chunkGridKey, type WorldChunk } from '@gseurat/project-root';
 import { useWorldStore } from '../store/useWorldStore.js';
 
 // ── ChunkWireframes ──
@@ -43,8 +43,8 @@ export function ChunkWireframes() {
   return (
     <group>
       {manifest.chunks
-        .filter((chunk) => chunkGridKey(chunk.grid) !== editingKey)
-        .map((chunk) => {
+        .filter((chunk: WorldChunk) => chunkGridKey(chunk.grid) !== editingKey)
+        .map((chunk: WorldChunk) => {
           const key = chunkGridKey(chunk.grid);
           const min = chunkAabbMin(chunk.grid, cellSize);
           return (

@@ -136,7 +136,7 @@ export function ImportDialog({ onClose }: { onClose: () => void }) {
         setStatus('Loading depth model...');
 
         try {
-          const { depthMap } = await estimateDepth(imageData, (p) => {
+          const { depthMap } = await estimateDepth(imageData, (p: number) => {
             setProgress(p);
             if (p < 100) {
               setStatus(`Downloading model... ${Math.round(p)}%`);
