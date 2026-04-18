@@ -1,18 +1,20 @@
 import React, { useRef } from 'react';
 import { useWeaverStore } from '../store/useWeaverStore.js';
-import { downloadJson } from '../lib/exportConfig.js';
+import { exportMultiGroupConfig, downloadJson } from '../lib/exportConfig.js';
 
 export function Toolbar() {
   const fileRef = useRef<HTMLInputElement>(null);
   const addStem = useWeaverStore((s) => s.addStem);
   const isPlaying = useWeaverStore((s) => s.isPlaying);
   const setIsPlaying = useWeaverStore((s) => s.setIsPlaying);
+  const setPlayheadFrame = useWeaverStore((s) => s.setPlayheadFrame);
   const zoomToFit = useWeaverStore((s) => s.zoomToFit);
-  const getExportData = useWeaverStore((s) => s.getExportData);
-  const groupName = useWeaverStore((s) => s.groupName);
   const loopEnabled = useWeaverStore((s) => s.loopEnabled);
   const setLoopEnabled = useWeaverStore((s) => s.setLoopEnabled);
-  const setPlayheadFrame = useWeaverStore((s) => s.setPlayheadFrame);
+  const saveProject = useWeaverStore((s) => s.saveProject);
+  const projectName = useWeaverStore((s) => s.projectName);
+  const activeGroupId = useWeaverStore((s) => s.activeGroupId);
+  const dirty = useWeaverStore((s) => s.dirty);
 
   const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -35,13 +37,29 @@ export function Toolbar() {
   };
 
   const handleExport = () => {
-    const data = getExportData();
-    downloadJson(data, `${groupName}_music.json`);
+    const state = useWeaverStore.getState();
+    state.flushActiveGroup();
+    const flushed = useWeaverStore.getState();
+    const config = exportMultiGroupConfig(flushed.sampleRate, flushed.groups);
+    downloadJson(config, `${flushed.projectName}.music.json`);
+  };
+
+  const handleSave = async () => {
+    await saveProject();
   };
 
   return (
     <header className="weaver-toolbar">
-      <span className="weaver-title">Weaver</span>
+      <span className="weaver-title">
+        Weaver{' '}
+        <span style={{ fontWeight: 400, fontSize: 11, color: '#888' }}>
+          {projectName}
+          {dirty ? ' *' : ''}
+        </span>
+      </span>
+      <button onClick={handleSave} title="Cmd+S">
+        Save
+      </button>
       <input
         ref={fileRef}
         type="file"
@@ -50,8 +68,14 @@ export function Toolbar() {
         style={{ display: 'none' }}
         onChange={handleImport}
       />
-      <button onClick={() => fileRef.current?.click()}>Import Stems</button>
-      <button onClick={handleRewind}>⏮ Rewind</button>
+      <button
+        onClick={() => fileRef.current?.click()}
+        disabled={!activeGroupId}
+        style={{ opacity: activeGroupId ? 1 : 0.4 }}
+      >
+        Import Stems
+      </button>
+      <button onClick={handleRewind}>{'\u23EE'} Rewind</button>
       <button onClick={() => setIsPlaying(!isPlaying)}>
         {isPlaying ? 'Stop' : 'Play'}
       </button>
