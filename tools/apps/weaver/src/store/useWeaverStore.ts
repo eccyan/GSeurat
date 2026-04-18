@@ -108,7 +108,10 @@ export const useWeaverStore = create<WeaverStore>((set, get) => ({
 
   saveProject: async () => {
     const s = get();
-    if (!s.projectRootHandle) return;
+    if (!s.projectRootHandle) {
+      console.warn('[weaver] Cannot save: no project root handle');
+      return;
+    }
     s.flushActiveGroup();
     const state = get();
     const project: WeaverProjectFile = {
@@ -117,14 +120,24 @@ export const useWeaverStore = create<WeaverStore>((set, get) => ({
       sample_rate: state.sampleRate,
       groups: state.groups,
     };
-    await saveWeaverProject(state.projectRootHandle!, project);
-    set({ dirty: false });
+    try {
+      await saveWeaverProject(state.projectRootHandle!, project);
+      set({ dirty: false });
+      console.info(`[weaver] Project saved: ${project.name} (${project.groups.length} groups)`);
+    } catch (e) {
+      console.error('[weaver] Failed to save project:', e);
+    }
   },
 
   loadProject: async (name) => {
     const s = get();
-    if (!s.projectRootHandle) return;
+    if (!s.projectRootHandle) {
+      console.warn('[weaver] Cannot load: no project root handle');
+      return;
+    }
+    console.info(`[weaver] Loading project: ${name}`);
     const project = await loadWeaverProject(s.projectRootHandle, name);
+    console.info(`[weaver] Loaded: ${project.name}, ${project.groups.length} groups`);
     set({
       projectName: project.name,
       sampleRate: project.sample_rate,
