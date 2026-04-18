@@ -13,7 +13,7 @@ export function GroundPlane() {
     e.stopPropagation();
     const store = useSceneStore.getState();
     // Only handle clicks in terrain mode
-    if (store.mode !== 'terrain' || store.activeNode?.kind === 'collision') return;
+    if (store.activeNode?.kind !== 'terrain') return;
     if (store.activeTool !== 'place') return;
 
     const point = e.point;

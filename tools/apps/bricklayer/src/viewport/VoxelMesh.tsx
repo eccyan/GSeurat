@@ -124,7 +124,7 @@ export function VoxelMesh() {
     }
 
     // Only process brush tools in terrain mode (not collision or scene)
-    if (store.mode !== 'terrain' || store.activeNode?.kind === 'collision') return;
+    if (store.activeNode?.kind !== 'terrain') return;
 
     switch (store.activeTool) {
       case 'place': {

@@ -160,8 +160,6 @@ export interface PlayerData {
   character_id: string;
 }
 
-export type BricklayerMode = 'world' | 'scene';
-
 export type ToolType =
   | 'place'
   | 'paint'

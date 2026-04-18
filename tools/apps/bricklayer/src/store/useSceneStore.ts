@@ -19,7 +19,6 @@ import type {
   PlayerData,
   ToolType,
   InspectorTab,
-  BricklayerMode,
   CollisionLayer,
   SettingsCategory,
   SelectedEntity,
@@ -329,7 +328,6 @@ export interface SceneStoreState {
   audioZones: AudioZoneData[];
 
   // Editor state
-  mode: BricklayerMode;
   selectedEntity: SelectedEntity | null;
   selectedVoxel: { x: number; y: number; z: number; color: [number, number, number, number] } | null;
   inspectorTab: InspectorTab;
@@ -463,7 +461,6 @@ export interface SceneStoreState {
   extractColorsFromImage: (imageData: ImageData, maxColors: number) => void;
 
   // Actions – editor
-  setMode: (mode: BricklayerMode) => void;
   setSelectedEntity: (e: SelectedEntity | null) => void;
   setSelectedVoxel: (v: { x: number; y: number; z: number; color: [number, number, number, number] } | null) => void;
   setInspectorTab: (tab: InspectorTab) => void;
@@ -603,7 +600,6 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
   savedEditorCamera: null,
   audioZones: [] as AudioZoneData[],
 
-  mode: 'scene',
   selectedEntity: null,
   selectedVoxel: null,
   inspectorTab: 'scene',
@@ -1275,7 +1271,6 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
   },
 
   // ── Editor actions ──
-  setMode: (mode) => set({ mode }),
   setSelectedEntity: (e) => set({ selectedEntity: e }),
   setSelectedVoxel: (v) => set({ selectedVoxel: v }),
   setInspectorTab: (tab) => set({ inspectorTab: tab }),

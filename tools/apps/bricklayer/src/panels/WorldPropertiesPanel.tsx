@@ -158,7 +158,6 @@ function ChunkEditor({ gridKey }: { gridKey: string }) {
             const worldStore = useWorldStore.getState();
             worldStore.setEditingContext({ type: 'chunk', gridKey, sceneFile: chunk.scene_file });
             enterChunk(chunk.grid);
-            useSceneStore.getState().setMode('scene');
           }
         }}
       >
@@ -299,7 +298,6 @@ function InstanceEditor({ id }: { id: string }) {
           const ok = await switchScene(handle, inst.scene_file);
           if (ok) {
             useWorldStore.getState().setEditingContext({ type: 'instance', id, sceneFile: inst.scene_file });
-            useSceneStore.getState().setMode('scene');
           }
         }}
       >
