@@ -5,6 +5,8 @@
 #include "state_variable_filter.hpp"
 #include "gseurat/engine/audio/memory_audio_source.hpp"
 #include "gseurat/engine/audio/mmap_audio_source.hpp"
+#include "streaming_audio_source.hpp"
+#include "audio_stream_manager.hpp"
 
 #include <cassert>
 #include <cmath>
@@ -15,7 +17,9 @@ namespace gseurat::audio {
 namespace {
 
 static std::expected<std::unique_ptr<IAudioSource>, LoadError>
-load_audio_source(std::string_view path, uint32_t sample_rate) {
+load_audio_source(std::string_view path, uint32_t sample_rate,
+                   AudioStreamManager* stream_mgr = nullptr,
+                   uint64_t loop_start = 0, uint64_t loop_end = 0) {
     std::ifstream f(std::string(path), std::ios::binary);
     if (!f) return std::unexpected(LoadError::FileNotFound);
     char magic[4]{};
@@ -24,6 +28,12 @@ load_audio_source(std::string_view path, uint32_t sample_rate) {
 
     if (magic[0] == 'G' && magic[1] == 'S' && magic[2] == 'A' && magic[3] == 'U') {
         return MmapAudioSource::from_gsaudio_file(path, sample_rate);
+    }
+    if (magic[0] == 'O' && magic[1] == 'g' && magic[2] == 'g' && magic[3] == 'S') {
+        if (stream_mgr) {
+            return StreamingAudioSource::create(path, sample_rate,
+                                                 loop_start, loop_end, stream_mgr);
+        }
     }
     return MemoryAudioSource::from_wav_file(path, sample_rate);
 }
@@ -61,7 +71,8 @@ public:
             std::vector<std::unique_ptr<IAudioSource>> stems;
             stems.reserve(tg.stems.size());
             for (const auto& s : tg.stems) {
-                auto src_r = load_audio_source(s.source_path, cfg.sample_rate);
+                auto src_r = load_audio_source(s.source_path, cfg.sample_rate,
+                                                &stream_manager_, tg.loop_start, tg.loop_end);
                 if (!src_r) return std::unexpected(LoadTrackGroupError::StemLoadFailed);
                 stems.push_back(std::move(src_r.value()));
             }
@@ -226,6 +237,7 @@ private:
     Mode     mode_;
     uint32_t channels_;
     std::vector<std::unique_ptr<IAudioSource>> sfx_registry_;
+    AudioStreamManager stream_manager_;
     Mixer    mixer_;
     std::unique_ptr<IAudioDevice> device_;
 };

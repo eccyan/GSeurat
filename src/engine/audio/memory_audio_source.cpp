@@ -1,7 +1,23 @@
 #include "gseurat/engine/audio/memory_audio_source.hpp"
 
+// Enable Ogg Vorbis decoding in miniaudio via stb_vorbis.
+// stb_vorbis header must be included before MINIAUDIO_IMPLEMENTATION.
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wunused-function"
+#endif
+#define STB_VORBIS_HEADER_ONLY
+#include "stb_vorbis.c"
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#endif
+
 #define MINIAUDIO_IMPLEMENTATION
 #include <miniaudio.h>
+
+// stb_vorbis implementation (after miniaudio implementation).
+#undef STB_VORBIS_HEADER_ONLY
+#include "stb_vorbis.c"
 
 #include <algorithm>
 #include <cstring>

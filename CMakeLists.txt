@@ -182,6 +182,8 @@ add_library(gseurat_core ${_gseurat_lib_type}
     src/engine/audio/metadata_loader.cpp
     src/engine/audio/backend/miniaudio_device.cpp
     src/engine/audio/state_variable_filter.cpp
+    src/engine/audio/streaming_audio_source.cpp
+    src/engine/audio/audio_stream_manager.cpp
     src/engine/platform/memory_mapped_file.cpp
     src/engine/font_atlas.cpp
     src/engine/text_renderer.cpp
@@ -436,6 +438,8 @@ add_gseurat_test(test_slab_allocator src/engine/slab_allocator.cpp)
 add_gseurat_test(test_world_manifest src/engine/world_manifest.cpp)
 add_gseurat_test(test_world_streamer src/engine/world_streamer.cpp src/engine/world_manifest.cpp)
 add_gseurat_test(test_audio_command_queue)
+add_gseurat_test(test_audio_ring_buffer)
+target_include_directories(test_audio_ring_buffer PRIVATE ${PROJECT_SOURCE_DIR}/src/engine/audio)
 add_gseurat_test(test_audio_slew_limiter)
 add_gseurat_test(test_audio_memory_source
     src/engine/audio/memory_audio_source.cpp)
@@ -452,7 +456,11 @@ set(AUDIO_ENGINE_TEST_SOURCES
     src/engine/audio/metadata_loader.cpp
     src/engine/audio/backend/miniaudio_device.cpp
     src/engine/audio/state_variable_filter.cpp
+    src/engine/audio/streaming_audio_source.cpp
+    src/engine/audio/audio_stream_manager.cpp
     src/engine/platform/memory_mapped_file.cpp)
+add_gseurat_test(test_audio_streaming      ${AUDIO_ENGINE_TEST_SOURCES})
+target_include_directories(test_audio_streaming PRIVATE ${PROJECT_SOURCE_DIR}/src/engine/audio)
 add_gseurat_test(test_audio_mixer_basic        ${AUDIO_ENGINE_TEST_SOURCES})
 target_include_directories(test_audio_mixer_basic PRIVATE ${PROJECT_SOURCE_DIR}/src/engine/audio)
 add_gseurat_test(test_audio_mixer_loop         ${AUDIO_ENGINE_TEST_SOURCES})
