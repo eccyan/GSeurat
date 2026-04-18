@@ -109,6 +109,8 @@ export function MenuBar() {
     zoomToFit();
   };
 
+  const [bridgePath, setBridgePath] = useState<string | null>(null);
+
   const handleConnectBridge = async () => {
     close();
     const absolutePath = prompt(
@@ -117,6 +119,7 @@ export function MenuBar() {
     if (!absolutePath?.trim()) return;
     const result = await connectBridgeToPath(absolutePath.trim());
     if (result.ok) {
+      setBridgePath(absolutePath.trim());
       console.info(`[weaver] Bridge connected: ${result.activeProjectDir}`);
     } else {
       console.error(`[weaver] Bridge connection failed: ${result.error}`);
@@ -143,9 +146,11 @@ export function MenuBar() {
       }
     }
 
-    // Push to staging: write file then reload music config
+    // Push to staging: set project root then reload music config
     try {
-      await sendBridgeCommand({ cmd: 'write_temp_file', path: assetPath, content: json });
+      if (bridgePath) {
+        await sendBridgeCommand({ cmd: 'set_project_root', path: bridgePath });
+      }
       await sendBridgeCommand({ cmd: 'reload_music_config', path: assetPath });
       console.info('[weaver] Pushed music config to staging and triggered reload');
     } catch (e) {
