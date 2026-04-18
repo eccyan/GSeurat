@@ -383,9 +383,10 @@ export function App() {
         }
       }
 
-      // G key: grab in scene mode, fill in terrain mode
+      // G key: grab when a scene entity is selected, fill when terrain is active
       if (e.key.toLowerCase() === 'g' && !meta) {
-        if (store.mode === 'scene' && store.selectedEntity) {
+        const isTerrainActive = store.activeNode?.kind === 'terrain';
+        if (!isTerrainActive && store.selectedEntity) {
           e.preventDefault();
           // Start grab mode
           const sel = store.selectedEntity;
@@ -415,8 +416,9 @@ export function App() {
           }
           return;
         }
-        // Fall through to tool shortcut for terrain mode
-        store.setTool('fill');
+        if (isTerrainActive) {
+          store.setTool('fill');
+        }
         return;
       }
 
@@ -463,8 +465,8 @@ export function App() {
         return;
       }
 
-      // Shift: lock orbit in terrain mode for drawing
-      if (e.key === 'Shift' && (store.mode === 'terrain' || store.activeNode?.kind === 'collision')) {
+      // Shift: lock orbit when terrain or collision node is active for drawing
+      if (e.key === 'Shift' && (store.activeNode?.kind === 'terrain' || store.activeNode?.kind === 'collision')) {
         store.setOrbitLocked(true);
         return;
       }
@@ -503,24 +505,21 @@ export function App() {
 
   // Determine which contextual panel to show in left below ProjectTree
   const isCollisionMode = activeNode?.kind === 'collision';
-  const showTerrainTools = !isCollisionMode && (mode === 'terrain' || (activeNode?.kind === 'terrain'));
+  const showTerrainTools = !isCollisionMode && (activeNode?.kind === 'terrain');
   const showCollisionTools = isCollisionMode;
   const isWorldMode = mode === 'world';
 
   // Determine right panel content
   const rightContent = (() => {
     if (isWorldMode) return <WorldPropertiesPanel />;
-    if (activeNode?.kind === 'settings_category' || mode === 'settings') return <SettingsRightPanel />;
-    if (activeNode?.kind === 'scene_item' || activeNode?.kind === 'player' || (mode === 'scene')) return <ScenePropertiesPanel />;
-    if (activeNode?.kind === 'collision') return <TerrainRightPanel />;
-    return <TerrainRightPanel />;
+    if (activeNode?.kind === 'settings_category') return <SettingsRightPanel />;
+    if (activeNode?.kind === 'collision' || activeNode?.kind === 'terrain') return <TerrainRightPanel />;
+    return <ScenePropertiesPanel />;
   })();
 
   const modeTabs: { key: string; label: string }[] = [
     { key: 'world', label: 'WORLD' },
-    { key: 'terrain', label: 'TERRAIN' },
     { key: 'scene', label: 'SCENE' },
-    { key: 'settings', label: 'SETTINGS' },
   ];
 
   return (

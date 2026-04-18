@@ -212,16 +212,14 @@ export function ProjectTree() {
   const click = (node: NavigationNode) => {
     setActiveNode(node);
     const store = useSceneStore.getState();
-    if (node.kind === 'terrain' || node.kind === 'collision') {
-      store.setMode('terrain');
-      if (node.kind === 'collision') store.setShowCollision(true);
-    } else if (node.kind === 'scene' || node.kind === 'scene_category' || node.kind === 'scene_item' || node.kind === 'player') {
-      store.setMode('scene');
-      if (node.kind === 'scene_item') store.setSelectedEntity({ type: node.entityType, id: node.entityId });
-      else if (node.kind === 'player') store.setSelectedEntity({ type: 'player', id: 'player' });
-    } else if (node.kind === 'settings' || node.kind === 'settings_category') {
-      store.setMode('settings');
-      if (node.kind === 'settings_category') store.setSelectedSettingsCategory(node.category);
+    if (node.kind === 'collision') {
+      store.setShowCollision(true);
+    } else if (node.kind === 'scene_item') {
+      store.setSelectedEntity({ type: node.entityType, id: node.entityId });
+    } else if (node.kind === 'player') {
+      store.setSelectedEntity({ type: 'player', id: 'player' });
+    } else if (node.kind === 'settings_category') {
+      store.setSelectedSettingsCategory(node.category);
     }
   };
 

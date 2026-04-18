@@ -602,7 +602,7 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
   savedEditorCamera: null,
   audioZones: [] as AudioZoneData[],
 
-  mode: 'terrain',
+  mode: 'scene',
   selectedEntity: null,
   selectedVoxel: null,
   inspectorTab: 'scene',
