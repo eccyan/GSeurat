@@ -15,6 +15,7 @@ export const PROJECT_LAYOUT = {
     bricklayer:   'tools_data/bricklayer',
     melies:       'tools_data/melies_projects',
     echidnaSaves: 'tools_data/echidna_saves',
+    weaver:       'tools_data/weaver',
     cache:        'tools_data/cache',
   },
 } as const;
