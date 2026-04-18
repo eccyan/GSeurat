@@ -103,49 +103,7 @@ export function Ruler() {
     [startDrag, pxToFrame, moveMarker],
   );
 
-  // Zoom (Ctrl/Cmd+scroll) and pan (plain scroll)
-  useEffect(() => {
-    const el = rulerRef.current;
-    if (!el) return;
-
-    const handleWheel = (e: WheelEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-      const store = useWeaverStore.getState();
-      const vs = store.viewStartFrame;
-      const ve = store.viewEndFrame;
-      const ww = el.getBoundingClientRect().width - LABEL_WIDTH;
-      const cursorPx = e.clientX - el.getBoundingClientRect().left - LABEL_WIDTH;
-      const mf = store.maxFrames();
-
-      if (e.ctrlKey || e.metaKey) {
-        // Zoom around cursor
-        const cursorFrame = pixelToFrame(cursorPx, vs, ve, ww);
-        const range = ve - vs;
-        const factor = e.deltaY > 0 ? 1.15 : 1 / 1.15;
-        const newRange = Math.max(100, Math.min(mf > 0 ? mf : range, range * factor));
-        if (Math.round(newRange) === Math.round(range)) return;
-        const ratio = cursorPx / ww;
-        const newStart = Math.max(0, cursorFrame - newRange * ratio);
-        store.setView(Math.round(newStart), Math.round(newStart + newRange));
-      } else {
-        // Horizontal pan
-        const range = ve - vs;
-        const shift = (e.deltaX || e.deltaY) * (range / ww) * 0.5;
-        let ns = vs + shift;
-        let ne = ve + shift;
-        if (ns < 0) { ne -= ns; ns = 0; }
-        if (mf > 0 && ne > mf) { ns -= ne - mf; ne = mf; }
-        const rnds = Math.round(Math.max(0, ns));
-        const rnde = Math.round(ne);
-        if (rnds === Math.round(vs) && rnde === Math.round(ve)) return; // At boundary
-        store.setView(rnds, rnde);
-      }
-    };
-
-    el.addEventListener('wheel', handleWheel, { passive: false });
-    return () => el.removeEventListener('wheel', handleWheel);
-  }, []);
+  // Note: Zoom/pan wheel handling is in TimelinePanel (covers ruler + stem lanes)
 
   // Compute beat ticks
   const waveWidth = getWaveWidth();
