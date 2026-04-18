@@ -8,6 +8,14 @@ function getAudioContext(): AudioContext {
   return sharedCtx;
 }
 
+// Minimum loop region: 100ms worth of frames. Shorter regions produce
+// audible clicks/beeps from Web Audio rapid looping.
+const MIN_LOOP_FRAMES = 4410;
+
+function hasValidLoopRegion(loopStart: number, loopEnd: number): boolean {
+  return loopEnd - loopStart >= MIN_LOOP_FRAMES;
+}
+
 export function useAudioPlayer() {
   const sourcesRef = useRef<AudioBufferSourceNode[]>([]);
   const gainsRef = useRef<GainNode[]>([]);
@@ -43,7 +51,7 @@ export function useAudioPlayer() {
     const sampleRate = state.sampleRate;
     const loopStart = state.loopStart;
     const loopEnd = state.loopEnd;
-    const shouldLoop = loopEnabled && loopEnd > loopStart;
+    const shouldLoop = loopEnabled && hasValidLoopRegion(loopStart, loopEnd);
     for (const source of sources) {
       source.loop = shouldLoop;
       if (shouldLoop) {
@@ -104,7 +112,7 @@ export function useAudioPlayer() {
       gain.gain.value = effectiveVol;
       source.connect(gain).connect(ctx.destination);
 
-      if (loopEnabled && loopEnd > loopStart) {
+      if (loopEnabled && hasValidLoopRegion(loopStart, loopEnd)) {
         source.loop = true;
         source.loopStart = framesToSeconds(loopStart, sampleRate);
         source.loopEnd = framesToSeconds(loopEnd, sampleRate);
@@ -132,13 +140,14 @@ export function useAudioPlayer() {
       const currentLoopEnabled = s.loopEnabled;
 
       // Wrap within loop region if looping
-      if (currentLoopEnabled && loopEnd > loopStart && frame >= loopEnd) {
+      const validLoop = hasValidLoopRegion(loopStart, loopEnd);
+      if (currentLoopEnabled && validLoop && frame >= loopEnd) {
         const loopLen = loopEnd - loopStart;
         frame = loopStart + ((frame - loopStart) % loopLen);
       }
 
       // Stop at end when not looping
-      if (!currentLoopEnabled || loopEnd <= loopStart) {
+      if (!currentLoopEnabled || !validLoop) {
         const maxLen = s.maxFrames();
         if (frame >= maxLen) {
           s.setIsPlaying(false);
