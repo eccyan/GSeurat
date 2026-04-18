@@ -114,13 +114,15 @@ export function Ruler() {
       const ve = store.viewEndFrame;
       const ww = el.getBoundingClientRect().width - LABEL_WIDTH;
       const cursorPx = e.clientX - el.getBoundingClientRect().left - LABEL_WIDTH;
+      const mf = store.maxFrames();
 
       if (e.ctrlKey || e.metaKey) {
         // Zoom around cursor
         const cursorFrame = pixelToFrame(cursorPx, vs, ve, ww);
         const range = ve - vs;
         const factor = e.deltaY > 0 ? 1.15 : 1 / 1.15;
-        const newRange = Math.max(100, range * factor);
+        const newRange = Math.max(100, Math.min(mf > 0 ? mf : range, range * factor));
+        if (Math.round(newRange) === Math.round(range)) return;
         const ratio = cursorPx / ww;
         const newStart = Math.max(0, cursorFrame - newRange * ratio);
         store.setView(Math.round(newStart), Math.round(newStart + newRange));
@@ -128,7 +130,6 @@ export function Ruler() {
         // Horizontal pan
         const range = ve - vs;
         const shift = (e.deltaX || e.deltaY) * (range / ww) * 0.5;
-        const mf = store.maxFrames();
         let ns = vs + shift;
         let ne = ve + shift;
         if (ns < 0) { ne -= ns; ns = 0; }
