@@ -25,7 +25,6 @@ export function SceneTab() {
   const setGodRaysIntensity = useSceneStore((s) => s.setGodRaysIntensity);
   const gridWidth = useSceneStore((s) => s.gridWidth);
   const gridDepth = useSceneStore((s) => s.gridDepth);
-  const voxels = useSceneStore((s) => s.voxels);
   const dayNight = useSceneStore((s) => s.dayNight);
   const setDayNight = useSceneStore((s) => s.setDayNight);
   const collisionGridData = useSceneStore((s) => s.collisionGridData);
@@ -35,7 +34,7 @@ export function SceneTab() {
       <div style={styles.section}>
         <span style={styles.label}>Scene Info</span>
         <div style={{ fontSize: 12, color: '#aaa' }}>
-          Grid: {gridWidth} x {gridDepth} | Voxels: {voxels.size}
+          Grid: {gridWidth} x {gridDepth}
         </div>
       </div>
 
@@ -118,7 +117,7 @@ export function SceneTab() {
         <span style={{ fontSize: 12, color: '#aaa' }}>
           {collisionGridData
             ? `${collisionGridData.width}x${collisionGridData.height} grid (${collisionGridData.solid.filter(Boolean).length} solid)`
-            : 'No grid — init in GS tab'}
+            : 'No collision grid loaded'}
         </span>
       </div>
     </div>
