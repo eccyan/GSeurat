@@ -101,7 +101,7 @@ describe('migrateBricklayerFile', () => {
     expect(() => migrateBricklayerFile(42)).toThrow();
   });
 
-  it('preserves voxels, collision, and scene through migration', () => {
+  it('preserves grid dimensions and scene through migration', () => {
     const v1 = {
       version: 1,
       gridWidth: 16, gridDepth: 24,
@@ -112,8 +112,6 @@ describe('migrateBricklayerFile', () => {
     const v2 = migrateBricklayerFile(v1);
     expect(v2.gridWidth).toBe(16);
     expect(v2.gridDepth).toBe(24);
-    expect(v2.voxels).toHaveLength(1);
-    expect(v2.collision).toEqual(['some-string']);
     expect(v2.scene).toEqual({ ambientColor: [0.5, 0.5, 0.5, 1.0] });
   });
 });

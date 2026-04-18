@@ -1,7 +1,6 @@
 {
   "always": ["MenuBar", "Viewport", "MasterTree"],
   "modes": {
-    "terrain": ["TerrainLeftPanel", "TerrainRightPanel"],
     "scene": ["ScenePropertiesPanel"],
     "settings": ["SettingsRightPanel"],
     "world": ["WorldPropertiesPanel", "WorldViewport"]

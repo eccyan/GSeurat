@@ -1,13 +1,5 @@
 import type { AssetRegistry } from '@gseurat/project-root';
 
-// ── Voxel ──
-
-export interface Voxel {
-  color: [number, number, number, number];
-}
-
-export type VoxelKey = `${number},${number},${number}`;
-
 // ── Scene elements (mirrors engine SceneData) ──
 
 export interface StaticLight {
@@ -160,15 +152,6 @@ export interface PlayerData {
   character_id: string;
 }
 
-export type ToolType =
-  | 'place'
-  | 'paint'
-  | 'erase'
-  | 'fill'
-  | 'extrude'
-  | 'eyedropper'
-  | 'select';
-
 export type InspectorTab =
   | 'scene'
   | 'lights'
@@ -178,10 +161,7 @@ export type InspectorTab =
   | 'objects'
   | 'backgrounds'
   | 'gaussian'
-  | 'gs_emitters'
-  | 'nav_zone';
-
-export type CollisionLayer = 'solid' | 'elevation' | 'nav_zone';
+  | 'gs_emitters';
 
 export type SettingsCategory =
   | 'gs_camera'
@@ -396,13 +376,6 @@ export interface SelectedEntity {
 
 // ── Project management ──
 
-export interface ProjectManifest {
-  version: number;
-  name: string;
-  terrains: TerrainEntry[];
-  assets: AssetEntry[];
-}
-
 export interface TerrainEntry {
   id: string;
   name: string;
@@ -419,8 +392,6 @@ export interface AssetEntry {
 // ── Navigation tree ──
 
 export type NavigationNode =
-  | { kind: 'terrain'; terrainId: string }
-  | { kind: 'collision'; terrainId: string }
   | { kind: 'scene' }
   | { kind: 'scene_category'; category: 'objects' | 'lights' | 'npcs' }
   | { kind: 'scene_item'; entityType: string; entityId: string }
@@ -431,18 +402,6 @@ export type NavigationNode =
   | { kind: 'world_category'; category: 'chunks' | 'streaming_volumes' | 'instances' | 'portals' }
   | { kind: 'world_item'; entityType: 'chunk' | 'streaming_volume' | 'instance' | 'portal'; entityId: string };
 
-// ── Color palettes ──
-
-export interface ColorPalette {
-  name: string;
-  colors: [number, number, number, number][];
-}
-
-export interface Snapshot {
-  voxels: [VoxelKey, Voxel][];
-  collisionGridData: CollisionGridData | null;
-}
-
 export const BRICKLAYER_FILE_VERSION = 2 as const;
 
 export interface BricklayerFile {
@@ -450,11 +409,8 @@ export interface BricklayerFile {
   asset_registry: AssetRegistry;
   gridWidth: number;
   gridDepth: number;
-  voxels: { x: number; y: number; z: number; r: number; g: number; b: number; a: number }[];
-  collision: string[];  // legacy format
   collisionGridData?: CollisionGridData;
   nav_zone_names?: string[];
-  color_palettes?: ColorPalette[];
   terrains?: TerrainEntry[];
   assets?: AssetEntry[];
   scene: {

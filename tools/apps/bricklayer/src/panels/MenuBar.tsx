@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useComponentRegistry } from '@gseurat/ui-kit';
 import { useSceneStore } from '../store/useSceneStore.js';
-import { exportPly } from '../lib/plyExport.js';
 import { exportSceneJson } from '../lib/sceneExport.js';
 import { computeFingerprint, isStructuralChange, type SceneFingerprint } from '../lib/sceneFingerprint.js';
 import { hasFileSystemAccess, openProjectDirectory, saveProject as saveProjectDir, loadProject as loadProjectDir, saveProjectAsZip, loadProjectFromZip, importAssetToProject } from '../lib/projectIO.js';
@@ -154,7 +153,7 @@ function DropdownMenu({
   );
 }
 
-export function MenuBar({ onImport }: { onImport: () => void }) {
+export function MenuBar() {
   useComponentRegistry('MenuBar');
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const isDirty = useSceneStore((st) => st.isDirty);
@@ -287,12 +286,6 @@ export function MenuBar({ onImport }: { onImport: () => void }) {
     } catch (err) {
       alert(`Save failed: ${err instanceof Error ? err.message : String(err)}`);
     }
-  };
-
-  const handleExportPly = () => {
-    const s = useSceneStore.getState();
-    const blob = exportPly(s.voxels, s.gridWidth, s.gridDepth);
-    download(blob, `${s.projectName || 'map'}.ply`);
   };
 
   const handleExportScene = () => {
@@ -459,17 +452,12 @@ export function MenuBar({ onImport }: { onImport: () => void }) {
     { label: 'Open Project...', action: handleOpen },
     { label: 'Save Project', action: handleSave },
     { label: 'Import Asset...', action: handleImportAsset, separator: true },
-    { label: 'Import Image...', action: onImport },
     { label: 'Export Scene...', action: handleExportScene, separator: true },
-    { label: 'Export PLY...', action: handleExportPly, separator: true },
     { label: 'Open in Staging', action: handleOpenInStaging },
     { label: 'Connect Bridge to Project Root…', action: handleConnectBridgeToProject },
   ];
 
-  const editItems: MenuItem[] = [
-    { label: 'Undo', action: () => useSceneStore.getState().undo() },
-    { label: 'Redo', action: () => useSceneStore.getState().redo() },
-  ];
+  const editItems: MenuItem[] = [];
 
   const viewItems: MenuItem[] = [
     {
@@ -492,14 +480,6 @@ export function MenuBar({ onImport }: { onImport: () => void }) {
         const s = useSceneStore.getState();
         s.setShowGizmos(!s.showGizmos);
       },
-    },
-    {
-      label: `${useSceneStore.getState().xrayMode ? '\u2713 ' : ''}X-Ray (T)`,
-      action: () => {
-        const s = useSceneStore.getState();
-        s.setXrayMode(!s.xrayMode);
-      },
-      separator: true,
     },
     {
       label: `${useSceneStore.getState().stagingAutoSync ? '\u2713 ' : ''}Auto-Sync Staging`,

@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Canvas } from '@react-three/fiber';
 import { Viewport, getOrbitControls } from './viewport/Viewport.js';
 import { MenuBar } from './panels/MenuBar.js';
-import { ImportDialog } from './panels/ImportDialog.js';
 import { MasterTree } from './panels/MasterTree.js';
 import { hasFileSystemAccess, saveProject as saveProjectDir, saveProjectAsZip } from './lib/projectIO.js';
 import {
@@ -11,16 +10,12 @@ import {
   matchBridgePath,
 } from '@gseurat/project-root';
 import { connectBridgeToPath } from './lib/bridgeConnection.js';
-import { TerrainLeftPanel } from './panels/TerrainLeftPanel.js';
-import { CollisionLeftPanel } from './panels/CollisionLeftPanel.js';
-import { TerrainRightPanel } from './panels/TerrainRightPanel.js';
 import { ScenePropertiesPanel } from './panels/ScenePropertiesPanel.js';
 import { SettingsRightPanel } from './panels/SettingsRightPanel.js';
 import { WorldPropertiesPanel } from './panels/WorldPropertiesPanel.js';
 import { WorldViewport } from './viewport/WorldViewport.js';
 import { useSceneStore } from './store/useSceneStore.js';
 import { useWorldStore } from './store/useWorldStore.js';
-import type { ToolType } from './store/types.js';
 
 // ── ResizeHandle ──
 
@@ -76,18 +71,6 @@ function ResizeHandle({
     />
   );
 }
-
-// ── Keyboard shortcuts ──
-
-const toolKeys: Record<string, ToolType> = {
-  v: 'place',
-  b: 'paint',
-  e: 'erase',
-  // G is now grab in scene mode, fill in terrain mode
-  x: 'extrude',
-  i: 'eyedropper',
-  s: 'select',
-};
 
 // ── GrabOverlay ──
 
@@ -224,7 +207,6 @@ const styles: Record<string, React.CSSProperties> = {
 // ── App ──
 
 export function App() {
-  const [showImport, setShowImport] = useState(false);
   const [leftWidth, setLeftWidth] = useState(240);
   const [rightWidth, setRightWidth] = useState(320);
 
@@ -312,17 +294,6 @@ export function App() {
         return;
       }
 
-      if (meta && e.key === 'z' && !e.shiftKey) {
-        e.preventDefault();
-        store.undo();
-        return;
-      }
-      if (meta && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) {
-        e.preventDefault();
-        store.redo();
-        return;
-      }
-
       // Escape: cancel grab mode
       if (e.key === 'Escape' && store.grabMode) {
         // Restore original position
@@ -352,61 +323,35 @@ export function App() {
         }
       }
 
-      // G key: grab when a scene entity is selected, fill when terrain is active
-      if (e.key.toLowerCase() === 'g' && !meta) {
-        const isTerrainActive = store.activeNode?.kind === 'terrain';
-        if (!isTerrainActive && store.selectedEntity) {
-          e.preventDefault();
-          // Start grab mode
-          const sel = store.selectedEntity;
-          let pos: [number, number, number] | null = null;
-          if (sel.type === 'game_object') {
-            const obj = store.gameObjects.find((o) => o.id === sel.id);
-            if (obj) pos = [...obj.position];
-          } else if (sel.type === 'light') {
-            const light = store.staticLights.find((l) => l.id === sel.id);
-            if (light) pos = [...light.position];
-          } else if (sel.type === 'gs_emitter') {
-            const em = store.gsParticleEmitters.find((e) => e.id === sel.id);
-            if (em) pos = [...em.position];
-          } else if (sel.type === 'gs_animation') {
-            const anim = store.gsAnimations.find((a) => a.id === sel.id);
-            if (anim) pos = [...anim.center];
-          } else if (sel.type === 'vfx_instance') {
-            const vfx = store.vfxInstances.find((v) => v.id === sel.id);
-            if (vfx) pos = [...vfx.position];
-          } else if (sel.type === 'player') {
-            pos = [...store.player.position];
-          }
-          if (pos) {
-            store.setGrabOriginalPosition(pos);
-            store.setGrabAxisLock('free');
-            store.setGrabMode(true);
-          }
-          return;
+      // G key: grab when a scene entity is selected
+      if (e.key.toLowerCase() === 'g' && !meta && store.selectedEntity) {
+        e.preventDefault();
+        const sel = store.selectedEntity;
+        let pos: [number, number, number] | null = null;
+        if (sel.type === 'game_object') {
+          const obj = store.gameObjects.find((o) => o.id === sel.id);
+          if (obj) pos = [...obj.position];
+        } else if (sel.type === 'light') {
+          const light = store.staticLights.find((l) => l.id === sel.id);
+          if (light) pos = [...light.position];
+        } else if (sel.type === 'gs_emitter') {
+          const em = store.gsParticleEmitters.find((e) => e.id === sel.id);
+          if (em) pos = [...em.position];
+        } else if (sel.type === 'gs_animation') {
+          const anim = store.gsAnimations.find((a) => a.id === sel.id);
+          if (anim) pos = [...anim.center];
+        } else if (sel.type === 'vfx_instance') {
+          const vfx = store.vfxInstances.find((v) => v.id === sel.id);
+          if (vfx) pos = [...vfx.position];
+        } else if (sel.type === 'player') {
+          pos = [...store.player.position];
         }
-        if (isTerrainActive) {
-          store.setTool('fill');
+        if (pos) {
+          store.setGrabOriginalPosition(pos);
+          store.setGrabAxisLock('free');
+          store.setGrabMode(true);
         }
         return;
-      }
-
-      const tool = toolKeys[e.key.toLowerCase()];
-      if (tool && !store.grabMode) {
-        store.setTool(tool);
-        return;
-      }
-
-      // T key: toggle X-ray mode (voxels transparent + click-through)
-      if (e.key.toLowerCase() === 't' && !meta) {
-        store.setXrayMode(!store.xrayMode);
-        return;
-      }
-
-      if (e.key === '[') {
-        store.setBrushSize(store.brushSize - 1);
-      } else if (e.key === ']') {
-        store.setBrushSize(store.brushSize + 1);
       }
 
       // F key: frame selected entity
@@ -434,12 +379,6 @@ export function App() {
         return;
       }
 
-      // Shift: lock orbit when terrain or collision node is active for drawing
-      if (e.key === 'Shift' && (store.activeNode?.kind === 'terrain' || store.activeNode?.kind === 'collision')) {
-        store.setOrbitLocked(true);
-        return;
-      }
-
       // H key: reset camera to home (default view)
       if (e.key.toLowerCase() === 'h' && !meta) {
         const controls = getOrbitControls();
@@ -456,17 +395,9 @@ export function App() {
       }
     };
 
-    const handleKeyUp = (e: KeyboardEvent) => {
-      if (e.key === 'Shift') {
-        useSceneStore.getState().setOrbitLocked(false);
-      }
-    };
-
     window.addEventListener('keydown', handler);
-    window.addEventListener('keyup', handleKeyUp);
     return () => {
       window.removeEventListener('keydown', handler);
-      window.removeEventListener('keyup', handleKeyUp);
     };
   }, []);
 
@@ -480,7 +411,6 @@ export function App() {
     // When editing a chunk/instance, show scene-appropriate panels
     if (editingContext) {
       if (activeNode?.kind === 'settings_category') return <SettingsRightPanel />;
-      if (activeNode?.kind === 'collision' || activeNode?.kind === 'terrain') return <TerrainRightPanel />;
       return <ScenePropertiesPanel />;
     }
     // World view (no editing context)
@@ -489,24 +419,13 @@ export function App() {
 
   return (
     <div style={styles.root}>
-      <MenuBar onImport={() => setShowImport(true)} />
+      <MenuBar />
       <div style={styles.body}>
         {/* Left panel */}
         <div style={{ ...styles.leftPanel, width: leftWidth }}>
           <div style={{ overflowY: 'auto', padding: 8, flex: 1 }}>
             <MasterTree />
           </div>
-          {/* Contextual tools below tree */}
-          {editingContext && (activeNode?.kind === 'terrain') && (
-            <div style={{ overflowY: 'auto', padding: 12, borderTop: '1px solid #333', maxHeight: '40%' }}>
-              <TerrainLeftPanel />
-            </div>
-          )}
-          {editingContext && (activeNode?.kind === 'collision') && (
-            <div style={{ overflowY: 'auto', padding: 12, borderTop: '1px solid #333', maxHeight: '40%' }}>
-              <CollisionLeftPanel />
-            </div>
-          )}
         </div>
 
         <ResizeHandle side="left" onDrag={handleLeftDrag} />
@@ -539,7 +458,6 @@ export function App() {
           </div>
         </div>
       </div>
-      {showImport && <ImportDialog onClose={() => setShowImport(false)} />}
     </div>
   );
 }

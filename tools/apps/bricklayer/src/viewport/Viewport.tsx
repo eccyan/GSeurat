@@ -3,9 +3,7 @@ import { useComponentRegistry } from '@gseurat/ui-kit';
 import { Canvas, useThree, ThreeEvent } from '@react-three/fiber';
 import { OrbitControls, Grid, Html } from '@react-three/drei';
 import * as THREE from 'three';
-import { VoxelMesh } from './VoxelMesh.js';
 import { GroundPlane } from './GroundPlane.js';
-import { GhostVoxel } from './GhostVoxel.js';
 import { LightGizmos } from './LightGizmos.js';
 import { GameObjectMarkers } from './GameObjectMarkers.js';
 import { GsEmitterMarkers } from './GsEmitterMarkers.js';
@@ -17,7 +15,6 @@ import { PlayerMarker } from './PlayerMarker.js';
 import { CameraZoneMarkers } from './CameraZoneMarkers.js';
 import { CameraRailMarkers } from './CameraRailMarkers.js';
 import { CameraFrustumGizmo } from './CameraFrustumGizmo.js';
-import { CollisionOverlay } from './CollisionOverlay.js';
 import { ChunkWireframes } from './ChunkWireframes.js';
 import { useSceneStore } from '../store/useSceneStore.js';
 
@@ -305,9 +302,7 @@ function SceneContent() {
         />
       )}
 
-      <VoxelMesh />
       <GroundPlane />
-      <GhostVoxel />
       <LightGizmos />
       <GameObjectMarkers />
       <GsEmitterMarkers />
@@ -319,7 +314,6 @@ function SceneContent() {
       <CameraZoneMarkers />
       <CameraRailMarkers />
       <CameraFrustumGizmo />
-      <CollisionOverlay />
       <ChunkWireframes />
       <TeleportPlane />
       <GrabPlane />

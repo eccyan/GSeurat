@@ -139,8 +139,6 @@ function nodesEqual(a: NavigationNode | null, b: NavigationNode): boolean {
   if (!a) return false;
   if (a.kind !== b.kind) return false;
   switch (a.kind) {
-    case 'terrain': return b.kind === 'terrain' && a.terrainId === b.terrainId;
-    case 'collision': return b.kind === 'collision' && a.terrainId === b.terrainId;
     case 'scene': return b.kind === 'scene';
     case 'scene_category': return b.kind === 'scene_category' && a.category === b.category;
     case 'scene_item': return b.kind === 'scene_item' && a.entityType === b.entityType && a.entityId === b.entityId;
@@ -187,7 +185,7 @@ export function ProjectTree() {
   const addVfxInstance = useSceneStore((st) => st.addVfxInstance);
   const updateVfxInstance = useSceneStore((st) => st.updateVfxInstance);
   const removeVfxInstance = useSceneStore((st) => st.removeVfxInstance);
-  const collisionGridData = useSceneStore((st) => st.collisionGridData);
+
   const cameraVolumes = useSceneStore((st) => st.cameraVolumes);
   const cameraTriggers = useSceneStore((st) => st.cameraTriggers);
   const cameraRails = useSceneStore((st) => st.cameraRails);
@@ -216,9 +214,7 @@ export function ProjectTree() {
   const click = (node: NavigationNode) => {
     setActiveNode(node);
     const store = useSceneStore.getState();
-    if (node.kind === 'collision') {
-      store.setShowCollision(true);
-    } else if (node.kind === 'scene_item') {
+    if (node.kind === 'scene_item') {
       store.setSelectedEntity({ type: node.entityType, id: node.entityId });
     } else if (node.kind === 'player') {
       store.setSelectedEntity({ type: 'player', id: 'player' });
@@ -291,25 +287,8 @@ export function ProjectTree() {
         </div>
       )}
 
-      {/* Terrain */}
-      <TreeNode
-        icon={icons.terrain} label="Terrain"
-        isActive={isActive({ kind: 'terrain', terrainId: 'main' })}
-        onClick={() => click({ kind: 'terrain', terrainId: 'main' })}
-      />
-
-      {/* Collision (child of terrain) */}
-      <div style={s.indent}>
-        <TreeNode
-          icon={icons.collision}
-          label={collisionGridData ? 'Collision' : 'Collision (none)'}
-          isActive={isActive({ kind: 'collision', terrainId: 'main' })}
-          onClick={() => click({ kind: 'collision', terrainId: 'main' })}
-        />
-      </div>
-
       {/* Scene */}
-      <div style={{ marginTop: 6 }}>
+      <div>
         <TreeNode
           icon={icons.scene} label="Scene"
           arrow={sceneOpen ? '\u25BE' : '\u25B8'}

@@ -2,7 +2,6 @@ import JSZip from 'jszip';
 import { useSceneStore, BUILTIN_SCHEMAS } from '../store/useSceneStore.js';
 import { useWorldStore } from '../store/useWorldStore.js';
 import { exportSceneJson } from './sceneExport.js';
-import { exportPly } from './plyExport.js';
 import type { BricklayerFile, ComponentSchema } from '../store/types.js';
 import type { WorldManifest } from '@gseurat/project-root';
 import {
@@ -285,11 +284,6 @@ export function engineScenePath(projectName: string): string {
   return toAssetPath('scenes', `${slugify(projectName)}.json`);
 }
 
-/** Returns the project-relative path for the terrain PLY. */
-export function terrainPlyPath(projectName: string): string {
-  return toAssetPath('maps', `${slugify(projectName)}.ply`);
-}
-
 /** Returns the project-relative path for a VFX preset file. */
 export function vfxPresetPath(presetName: string): string {
   return `${PROJECT_LAYOUT.assets.vfxPresets}/${slugify(presetName, 'preset')}.vfx.json`;
@@ -326,14 +320,7 @@ export async function saveProject(handle: FileSystemDirectoryHandle): Promise<vo
   await ensureSubdir(handle, PROJECT_LAYOUT.assets.scenes);
   await writeFileAtPath(handle, sceneOutputPath, sceneJson);
 
-  // 3. Terrain PLY under assets/maps/
-  if (store.voxels.size > 0) {
-    const plyBlob = exportPly(store.voxels, store.gridWidth, store.gridDepth);
-    await ensureSubdir(handle, PROJECT_LAYOUT.assets.maps);
-    await writeFileAtPath(handle, terrainPlyPath(projectName), plyBlob);
-  }
-
-  // 4. Asset blobs from assetBlobs Map (paths already under assets/)
+  // 3. Asset blobs from assetBlobs Map (paths already under assets/)
   if (store.assetBlobs.size > 0) {
     for (const [path, blob] of store.assetBlobs) {
       // Only write paths that are under assets/ for safety
@@ -498,8 +485,6 @@ export async function switchScene(
       asset_registry: worldReg ?? { version: 1, characters: {}, vfx: {}, textures: {}, audio: {}, maps: {}, objects: {} },
       gridWidth: 64,
       gridDepth: 64,
-      voxels: [],
-      collision: [],
       scene: {
         ambientColor: [0.3, 0.3, 0.4, 1],
         staticLights: [],
@@ -633,8 +618,6 @@ export async function importEngineScene(
       asset_registry: worldReg ?? { version: 1, characters: {}, vfx: {}, textures: {}, audio: {}, maps: {}, objects: {} },
       gridWidth: engine.collision?.width ?? 64,
       gridDepth: engine.collision?.height ?? 64,
-      voxels: [],
-      collision: [],
       ...(collisionGridData ? { collisionGridData } : {}),
       scene: {
         ambientColor: engine.ambient_color ?? [0.3, 0.3, 0.4, 1],
@@ -712,12 +695,6 @@ export async function saveProjectAsZip(): Promise<Blob> {
   // Include the engine scene export
   const scene = exportSceneJson(store);
   zip.file(`${store.projectName || 'scene'}.json`, JSON.stringify(scene, null, 2));
-
-  // Include terrain PLY
-  if (store.voxels.size > 0) {
-    const plyBlob = exportPly(store.voxels, store.gridWidth, store.gridDepth);
-    zip.file(`assets/maps/${store.projectName || 'map'}.ply`, plyBlob);
-  }
 
   // Include all asset blobs (PLY files, textures, etc.)
   const assetsFolder = zip.folder('assets');
