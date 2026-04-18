@@ -6,7 +6,6 @@ import type {
   Voxel,
   VoxelKey,
   StaticLight,
-  InstanceData,
   GameObjectData,
   ComponentSchema,
   GsParticleEmitterData,
@@ -20,7 +19,6 @@ import type {
   PlayerData,
   ToolType,
   InspectorTab,
-  BricklayerMode,
   CollisionLayer,
   SettingsCategory,
   SelectedEntity,
@@ -307,7 +305,6 @@ export interface SceneStoreState {
   staticLights: StaticLight[];
   gameObjects: GameObjectData[];
   componentSchemas: ComponentSchema[];
-  instances: InstanceData[];
   gsParticleEmitters: GsParticleEmitterData[];
   gsAnimations: GsAnimationGroupData[];
   vfxInstances: VfxInstanceData[];
@@ -331,7 +328,6 @@ export interface SceneStoreState {
   audioZones: AudioZoneData[];
 
   // Editor state
-  mode: BricklayerMode;
   selectedEntity: SelectedEntity | null;
   selectedVoxel: { x: number; y: number; z: number; color: [number, number, number, number] } | null;
   inspectorTab: InspectorTab;
@@ -380,9 +376,6 @@ export interface SceneStoreState {
   updateGameObject: (id: string, patch: Partial<GameObjectData>) => void;
   removeGameObject: (id: string) => void;
   loadComponentSchemas: (schemas: ComponentSchema[]) => void;
-  addInstance: () => void;
-  updateInstance: (id: string, patch: Partial<InstanceData>) => void;
-  removeInstance: (id: string) => void;
   storeAssetBlob: (path: string, blob: Blob) => void;
   addGsEmitter: (position?: [number, number, number]) => void;
   updateGsEmitter: (id: string, patch: Partial<GsParticleEmitterData>) => void;
@@ -441,6 +434,7 @@ export interface SceneStoreState {
   switchTerrain: (id: string) => void;
   addAsset: (asset: AssetEntry) => void;
   removeAsset: (id: string) => void;
+  setAssetRegistry: (reg: AssetRegistry) => void;
   setActiveNode: (node: NavigationNode | null) => void;
   markDirty: () => void;
   markClean: () => void;
@@ -467,7 +461,6 @@ export interface SceneStoreState {
   extractColorsFromImage: (imageData: ImageData, maxColors: number) => void;
 
   // Actions – editor
-  setMode: (mode: BricklayerMode) => void;
   setSelectedEntity: (e: SelectedEntity | null) => void;
   setSelectedVoxel: (v: { x: number; y: number; z: number; color: [number, number, number, number] } | null) => void;
   setInspectorTab: (tab: InspectorTab) => void;
@@ -476,6 +469,7 @@ export interface SceneStoreState {
   setShowGizmos: (v: boolean) => void;
   setXrayMode: (v: boolean) => void;
   setStagingAutoSync: (v: boolean) => void;
+  setSavedEditorCamera: (v: { position: [number,number,number]; target: [number,number,number] } | null) => void;
   setCollisionLayer: (layer: CollisionLayer) => void;
   setCollisionHeight: (h: number) => void;
   setActiveNavZone: (zone: number) => void;
@@ -585,7 +579,6 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
   staticLights: [],
   gameObjects: [] as GameObjectData[],
   componentSchemas: [] as ComponentSchema[],
-  instances: [],
   gsParticleEmitters: [],
   gsAnimations: [],
   vfxInstances: [] as VfxInstanceData[],
@@ -608,7 +601,6 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
   savedEditorCamera: null,
   audioZones: [] as AudioZoneData[],
 
-  mode: 'terrain',
   selectedEntity: null,
   selectedVoxel: null,
   inspectorTab: 'scene',
@@ -802,23 +794,6 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
     isDirty: true,
   }),
   loadComponentSchemas: (schemas) => set({ componentSchemas: schemas }),
-
-  addInstance: () => {
-    const inst: InstanceData = {
-      id: genId('instance'),
-      display_name: 'New Instance',
-      scene_file: '',
-    };
-    set({ instances: [...get().instances, inst], isDirty: true });
-  },
-  updateInstance: (id, patch) => set({
-    instances: get().instances.map((i) => (i.id === id ? { ...i, ...patch } : i)),
-    isDirty: true,
-  }),
-  removeInstance: (id) => set({
-    instances: get().instances.filter((i) => i.id !== id),
-    isDirty: true,
-  }),
 
   storeAssetBlob: (path, blob) => {
     const blobs = new Map(get().assetBlobs);
@@ -1149,6 +1124,7 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
   switchTerrain: (id) => set({ currentTerrainId: id }),
   addAsset: (asset) => set({ assets: [...get().assets, asset] }),
   removeAsset: (id) => set({ assets: get().assets.filter((a) => a.id !== id) }),
+  setAssetRegistry: (reg) => set({ asset_registry: reg }),
   setActiveNode: (node) => set({ activeNode: node }),
   markDirty: () => set({ isDirty: true }),
   markClean: () => set({ isDirty: false, lastSavedAt: Date.now() }),
@@ -1296,7 +1272,6 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
   },
 
   // ── Editor actions ──
-  setMode: (mode) => set({ mode }),
   setSelectedEntity: (e) => set({ selectedEntity: e }),
   setSelectedVoxel: (v) => set({ selectedVoxel: v }),
   setInspectorTab: (tab) => set({ inspectorTab: tab }),
@@ -1304,6 +1279,7 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
   setShowCollision: (v) => set({ showCollision: v }),
   setShowGizmos: (v) => set({ showGizmos: v }),
   setStagingAutoSync: (v) => set({ stagingAutoSync: v }),
+  setSavedEditorCamera: (v) => set({ savedEditorCamera: v }),
   setXrayMode: (v) => set({ xrayMode: v }),
   setCollisionLayer: (layer) => set({ collisionLayer: layer }),
   setCollisionHeight: (h) => set({ collisionHeight: h }),
@@ -1429,7 +1405,6 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
         godRaysIntensity: s.godRaysIntensity,
         staticLights: s.staticLights,
         gameObjects: s.gameObjects.length > 0 ? s.gameObjects : undefined,
-        instances: s.instances.length > 0 ? s.instances : undefined,
         player: s.player,
         backgroundLayers: s.backgroundLayers,
         torchEmitter: s.torchEmitter,
@@ -1522,7 +1497,6 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
         }
         return gameObjects;
       })(),
-      instances: data.scene.instances ?? [],
       gsParticleEmitters: data.scene.gsParticleEmitters ?? [],
       gsAnimations: data.scene.gsAnimations ?? [],
       vfxInstances: data.scene.vfxInstances ?? [],

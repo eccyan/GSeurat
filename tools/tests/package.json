@@ -30,11 +30,13 @@
     "test:melies": "node --import tsx/esm --conditions source src/melies.test.ts",
     "test:simulation-wasm": "node --import tsx/esm --conditions source src/simulation-wasm.test.ts",
     "test:bricklayer-incremental-sync": "node --import tsx/esm --conditions source src/bricklayer-incremental-sync.test.ts",
-    "test:bridge-persistent": "node --import tsx/esm --conditions source src/bridge-persistent.test.ts"
+    "test:bridge-persistent": "node --import tsx/esm --conditions source src/bridge-persistent.test.ts",
+    "test:world-schema": "node --import tsx/esm --conditions source src/bricklayer-world-schema.test.ts"
   },
   "dependencies": {
     "@gseurat/test-harness": "workspace:*",
     "@gseurat/asset-types": "workspace:*",
+    "@gseurat/project-root": "workspace:*",
     "puppeteer-core": "^24.0.0",
     "tsx": "^4.7.0",
     "ws": "^8.16.0"

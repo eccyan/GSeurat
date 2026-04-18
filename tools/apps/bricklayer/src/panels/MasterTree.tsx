@@ -3,6 +3,7 @@ import { useComponentRegistry } from '@gseurat/ui-kit';
 import { useSceneStore } from '../store/useSceneStore.js';
 import { useWorldStore } from '../store/useWorldStore.js';
 import { chunkGridKey } from '@gseurat/project-root';
+import { switchScene } from '../lib/projectIO.js';
 import { getOrbitControls } from '../viewport/Viewport.js';
 import type { NavigationNode, SettingsCategory } from '../store/types.js';
 
@@ -20,6 +21,7 @@ function getCameraTarget(): { xz: [number, number]; xyz: [number, number, number
 // ── Icons ──
 
 const icons: Record<string, string> = {
+  world: '\u25C8',       // ◈
   terrain: '\u25A6',     // ▦
   collision: '\u25A9',   // ▩
   scene: '\u25C9',       // ◉
@@ -41,6 +43,10 @@ const icons: Record<string, string> = {
   volume: '\u25A2',      // ▢
   trigger: '\u26A1',     // ⚡
   rail: '\u21C4',        // ⇄
+  chunk: '\u25A6',       // ▦
+  instance: '\u2B1A',    // ⬚
+  streaming: '\u25C8',   // ◈
+  portal: '\u27D0',      // ⟐
 };
 
 // ── Styles ──
@@ -52,6 +58,25 @@ const s = {
     letterSpacing: 1.5, padding: '6px 8px 4px', fontWeight: 600 as const,
   },
   section: { marginBottom: 2 },
+  sectionHeader: {
+    display: 'flex' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'space-between' as const,
+    padding: '4px 6px',
+    background: '#222',
+    borderRadius: 3,
+    marginBottom: 4,
+    marginTop: 8,
+    fontSize: 11,
+    fontWeight: 700 as const,
+    letterSpacing: 0.5,
+    color: '#aaa',
+  },
+  sectionTitle: {
+    display: 'flex' as const,
+    alignItems: 'center' as const,
+    gap: 6,
+  },
   indent: {
     marginLeft: 10,
     paddingLeft: 8,
@@ -89,6 +114,7 @@ const s = {
     padding: '0 2px', border: 'none', background: 'transparent',
     color: '#666', cursor: 'pointer', fontSize: 8, fontWeight: 700, lineHeight: '1', flexShrink: 0,
   } as React.CSSProperties,
+  emptyHint: { color: '#555', padding: '4px 8px', fontSize: 11 },
 };
 
 // ── TreeNode sub-component ──
@@ -162,24 +188,28 @@ const settingsCategories: { id: SettingsCategory; label: string; icon: string }[
   { id: 'backgrounds', label: 'Backgrounds', icon: icons.backgrounds },
 ];
 
-// ── Main component ──
+// ── Scene children (shared by chunks and instances) ──
 
-export function ProjectTree() {
-  useComponentRegistry('ProjectTree');
-  const projectName = useSceneStore((st) => st.projectName);
-  const activeNode = useSceneStore((st) => st.activeNode);
-  const setActiveNode = useSceneStore((st) => st.setActiveNode);
+function SceneChildren({
+  activeNode,
+  click,
+  isActive,
+}: {
+  activeNode: NavigationNode | null;
+  click: (node: NavigationNode) => void;
+  isActive: (node: NavigationNode) => boolean;
+}) {
   const gameObjects = useSceneStore((st) => st.gameObjects);
   const addGameObject = useSceneStore((st) => st.addGameObject);
   const removeGameObject = useSceneStore((st) => st.removeGameObject);
   const staticLights = useSceneStore((st) => st.staticLights);
   const addLight = useSceneStore((st) => st.addLight);
-  const gsParticleEmitters = useSceneStore((st) => st.gsParticleEmitters);
   const removeLight = useSceneStore((st) => st.removeLight);
-  const gsAnimations = useSceneStore((st) => st.gsAnimations);
+  const gsParticleEmitters = useSceneStore((st) => st.gsParticleEmitters);
   const addGsEmitter = useSceneStore((st) => st.addGsEmitter);
   const updateGsEmitter = useSceneStore((st) => st.updateGsEmitter);
   const removeGsEmitter = useSceneStore((st) => st.removeGsEmitter);
+  const gsAnimations = useSceneStore((st) => st.gsAnimations);
   const addGsAnimation = useSceneStore((st) => st.addGsAnimation);
   const updateGsAnimation = useSceneStore((st) => st.updateGsAnimation);
   const removeGsAnimation = useSceneStore((st) => st.removeGsAnimation);
@@ -210,24 +240,14 @@ export function ProjectTree() {
   const [camTrigOpen, setCamTrigOpen] = useState(true);
   const [camRailOpen, setCamRailOpen] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const editingContext = useWorldStore((st) => st.editingContext);
-  const worldManifest = useWorldStore((st) => st.manifest);
 
-  const click = (node: NavigationNode) => {
-    setActiveNode(node);
-    const store = useSceneStore.getState();
-    if (node.kind === 'collision') {
-      store.setShowCollision(true);
-    } else if (node.kind === 'scene_item') {
-      store.setSelectedEntity({ type: node.entityType, id: node.entityId });
-    } else if (node.kind === 'player') {
-      store.setSelectedEntity({ type: 'player', id: 'player' });
-    } else if (node.kind === 'settings_category') {
-      store.setSelectedSettingsCategory(node.category);
-    }
-  };
+  const addBtn = (onClick: (e: React.MouseEvent) => void) => (
+    <button style={s.addBtn} onClick={(e) => { e.stopPropagation(); onClick(e); }}>+</button>
+  );
 
-  const isActive = (node: NavigationNode) => nodesEqual(activeNode, node);
+  const removeBtn = (onClick: () => void) => (
+    <button style={s.removeBtn} onClick={(e) => { e.stopPropagation(); onClick(); }}>&times;</button>
+  );
 
   const handleImportTrajectory = async () => {
     try {
@@ -244,7 +264,6 @@ export function ProjectTree() {
       }
       importCameraZonesJson(data);
     } catch (err) {
-      // User cancelled the picker — ignore AbortError
       if (err instanceof Error && err.name !== 'AbortError') {
         console.error('Failed to import camera zones JSON:', err);
         alert('Failed to import camera zones JSON. See console for details.');
@@ -252,45 +271,8 @@ export function ProjectTree() {
     }
   };
 
-  const addBtn = (onClick: (e: React.MouseEvent) => void) => (
-    <button style={s.addBtn} onClick={(e) => { e.stopPropagation(); onClick(e); }}>+</button>
-  );
-
-  const removeBtn = (onClick: () => void) => (
-    <button style={s.removeBtn} onClick={(e) => { e.stopPropagation(); onClick(); }}>&times;</button>
-  );
-
   return (
-    <div style={s.tree}>
-      <div style={s.heading}>{projectName}</div>
-      {editingContext && (
-        <div style={{
-          fontSize: 10,
-          color: '#88aaff',
-          padding: '2px 4px 6px',
-          borderBottom: '1px solid #333',
-          marginBottom: 4,
-        }}>
-          {editingContext.type === 'chunk' ? (
-            <>
-              <span style={{ color: '#666' }}>Chunk </span>
-              {(() => {
-                const chunk = worldManifest.chunks.find((c) => chunkGridKey(c.grid) === editingContext.gridKey);
-                return chunk ? `[${chunk.grid[0]}, ${chunk.grid[1]}, ${chunk.grid[2]}]` : editingContext.gridKey;
-              })()}
-            </>
-          ) : (
-            <>
-              <span style={{ color: '#666' }}>Instance </span>
-              {(() => {
-                const inst = worldManifest.instances.find((i) => i.id === editingContext.id);
-                return inst?.display_name || editingContext.id;
-              })()}
-            </>
-          )}
-        </div>
-      )}
-
+    <>
       {/* Terrain */}
       <TreeNode
         icon={icons.terrain} label="Terrain"
@@ -430,7 +412,6 @@ export function ProjectTree() {
                   try {
                     const text = reader.result as string;
                     const data = JSON.parse(text);
-                    // Parse v2 elements or v1 layers
                     const rawElements = data.elements ?? data.layers ?? [];
                     const preset = {
                       name: data.name ?? 'Unnamed VFX',
@@ -451,7 +432,6 @@ export function ProjectTree() {
                         light: el.light,
                       })),
                     };
-                    // vfx_file is derived from name on save — no original path needed
                     const safeName = preset.name.replace(/\s+/g, '_').toLowerCase();
                     const target = getCameraTarget();
                     addVfxInstance({
@@ -498,7 +478,7 @@ export function ProjectTree() {
             arrow={cameraOpen ? '\u25BE' : '\u25B8'}
             isActive={isActive({ kind: 'scene_category', category: 'camera_zones' as any })}
             onClick={() => { setCameraOpen(!cameraOpen); click({ kind: 'scene_category', category: 'camera_zones' as any }); }}
-            actions={<button style={s.addBtn} title="Import camera zones JSON" onClick={(e) => { e.stopPropagation(); handleImportTrajectory(); }}>↑</button>}
+            actions={<button style={s.addBtn} title="Import camera zones JSON" onClick={(e) => { e.stopPropagation(); handleImportTrajectory(); }}>{'\u2191'}</button>}
             isOpen={cameraOpen}
           >
             {/* Volumes */}
@@ -594,6 +574,258 @@ export function ProjectTree() {
           ))}
         </TreeNode>
       </div>
+    </>
+  );
+}
+
+// ── Main component ──
+
+export function MasterTree() {
+  useComponentRegistry('MasterTree');
+
+  const projectName = useSceneStore((st) => st.projectName);
+  const activeNode = useSceneStore((st) => st.activeNode);
+  const setActiveNode = useSceneStore((st) => st.setActiveNode);
+
+  const manifest = useWorldStore((st) => st.manifest);
+  const worldSelectedEntity = useWorldStore((st) => st.selectedEntity);
+  const setWorldSelectedEntity = useWorldStore((st) => st.setSelectedEntity);
+  const setEditingContext = useWorldStore((st) => st.setEditingContext);
+  const editingContext = useWorldStore((st) => st.editingContext);
+  const addChunk = useWorldStore((st) => st.addChunk);
+  const removeChunk = useWorldStore((st) => st.removeChunk);
+  const addStreamingVolume = useWorldStore((st) => st.addStreamingVolume);
+  const removeStreamingVolume = useWorldStore((st) => st.removeStreamingVolume);
+  const addInstance = useWorldStore((st) => st.addInstance);
+  const removeInstance = useWorldStore((st) => st.removeInstance);
+  const addPortal = useWorldStore((st) => st.addPortal);
+  const removePortal = useWorldStore((st) => st.removePortal);
+
+  const click = (node: NavigationNode) => {
+    setActiveNode(node);
+    const store = useSceneStore.getState();
+    if (node.kind === 'collision') {
+      store.setShowCollision(true);
+    } else if (node.kind === 'scene_item') {
+      store.setSelectedEntity({ type: node.entityType, id: node.entityId });
+    } else if (node.kind === 'player') {
+      store.setSelectedEntity({ type: 'player', id: 'player' });
+    } else if (node.kind === 'settings_category') {
+      store.setSelectedSettingsCategory(node.category);
+    }
+  };
+
+  const isActive = (node: NavigationNode) => nodesEqual(activeNode, node);
+
+  // ── Chunk/Instance expand/collapse handlers ──
+
+  const handleExpandChunk = async (gridKey: string, sceneFile: string) => {
+    const ctx = useWorldStore.getState().editingContext;
+    // Already expanded -- collapse
+    if (ctx?.type === 'chunk' && ctx.gridKey === gridKey) {
+      useWorldStore.getState().setEditingContext(null);
+      return;
+    }
+    // Switch to this chunk's scene
+    const handle = useSceneStore.getState().projectHandle;
+    if (handle && sceneFile) {
+      await switchScene(handle, sceneFile);
+    }
+    useWorldStore.getState().setEditingContext({ type: 'chunk', gridKey, sceneFile });
+  };
+
+  const handleExpandInstance = async (id: string, sceneFile: string) => {
+    const ctx = useWorldStore.getState().editingContext;
+    if (ctx?.type === 'instance' && ctx.id === id) {
+      useWorldStore.getState().setEditingContext(null);
+      return;
+    }
+    const handle = useSceneStore.getState().projectHandle;
+    if (handle && sceneFile) {
+      await switchScene(handle, sceneFile);
+    }
+    useWorldStore.getState().setEditingContext({ type: 'instance', id, sceneFile });
+  };
+
+  const handleAddChunk = () => {
+    const usedKeys = new Set(manifest.chunks.map((c) => chunkGridKey(c.grid)));
+    let grid: [number, number, number] = [0, 0, 0];
+    outer: for (let z = 0; z < 64; z++) {
+      for (let x = 0; x < 64; x++) {
+        const key = chunkGridKey([x, 0, z]);
+        if (!usedKeys.has(key)) {
+          grid = [x, 0, z];
+          break outer;
+        }
+      }
+    }
+    addChunk(grid);
+    setWorldSelectedEntity({ type: 'chunk', id: chunkGridKey(grid) });
+  };
+
+  const isChunkExpanded = (gridKey: string) =>
+    editingContext?.type === 'chunk' && editingContext.gridKey === gridKey;
+
+  const isInstanceExpanded = (id: string) =>
+    editingContext?.type === 'instance' && editingContext.id === id;
+
+  return (
+    <div style={s.tree}>
+      <div style={s.heading}>{projectName} / WORLD</div>
+
+      {/* ── Chunks ── */}
+      <div style={s.sectionHeader}>
+        <span style={s.sectionTitle}>
+          <span>{icons.chunk}</span>
+          <span>Chunks</span>
+        </span>
+        <button style={s.addBtn} onClick={handleAddChunk} title="Add chunk">+</button>
+      </div>
+      {manifest.chunks.map((chunk) => {
+        const key = chunkGridKey(chunk.grid);
+        const expanded = isChunkExpanded(key);
+        const isWorldSel = worldSelectedEntity?.type === 'chunk' && worldSelectedEntity.id === key;
+        const chunkLabel = chunk.scene_file
+          ? `[${chunk.grid[0]}, ${chunk.grid[1]}, ${chunk.grid[2]}] ${chunk.scene_file.replace(/^assets\/scenes\//, '').replace(/\.json$/, '')}`
+          : `[${chunk.grid[0]}, ${chunk.grid[1]}, ${chunk.grid[2]}]`;
+        return (
+          <div key={key}>
+            <TreeNode
+              icon={icons.chunk}
+              label={chunkLabel}
+              arrow={expanded ? '\u25BE' : '\u25B8'}
+              isActive={isWorldSel}
+              onClick={() => {
+                setWorldSelectedEntity({ type: 'chunk', id: key });
+                handleExpandChunk(key, chunk.scene_file ?? '');
+              }}
+              actions={
+                <button
+                  style={s.removeBtn}
+                  onClick={(e) => { e.stopPropagation(); removeChunk(key); }}
+                  title="Remove chunk"
+                >&times;</button>
+              }
+              isOpen={expanded}
+            >
+              <SceneChildren activeNode={activeNode} click={click} isActive={isActive} />
+            </TreeNode>
+          </div>
+        );
+      })}
+      {manifest.chunks.length === 0 && (
+        <div style={s.emptyHint}>No chunks</div>
+      )}
+
+      {/* ── Instances ── */}
+      <div style={s.sectionHeader}>
+        <span style={s.sectionTitle}>
+          <span>{icons.instance}</span>
+          <span>Instances</span>
+        </span>
+        <button
+          style={s.addBtn}
+          onClick={() => addInstance('New Instance', '')}
+          title="Add instance"
+        >+</button>
+      </div>
+      {manifest.instances.map((inst) => {
+        const expanded = isInstanceExpanded(inst.id);
+        const isWorldSel = worldSelectedEntity?.type === 'instance' && worldSelectedEntity.id === inst.id;
+        return (
+          <div key={inst.id}>
+            <TreeNode
+              icon={icons.instance}
+              label={inst.display_name || inst.id}
+              arrow={expanded ? '\u25BE' : '\u25B8'}
+              isActive={isWorldSel}
+              onClick={() => {
+                setWorldSelectedEntity({ type: 'instance', id: inst.id });
+                handleExpandInstance(inst.id, inst.scene_file);
+              }}
+              actions={
+                <button
+                  style={s.removeBtn}
+                  onClick={(e) => { e.stopPropagation(); removeInstance(inst.id); }}
+                  title="Remove instance"
+                >&times;</button>
+              }
+              isOpen={expanded}
+            >
+              <SceneChildren activeNode={activeNode} click={click} isActive={isActive} />
+            </TreeNode>
+          </div>
+        );
+      })}
+      {manifest.instances.length === 0 && (
+        <div style={s.emptyHint}>No instances</div>
+      )}
+
+      {/* ── Streaming Volumes ── */}
+      <div style={s.sectionHeader}>
+        <span style={s.sectionTitle}>
+          <span>{icons.streaming}</span>
+          <span>Streaming Volumes</span>
+        </span>
+        <button style={s.addBtn} onClick={addStreamingVolume} title="Add streaming volume">+</button>
+      </div>
+      {manifest.streaming_volumes.map((sv) => {
+        const isWorldSel = worldSelectedEntity?.type === 'streaming_volume' && worldSelectedEntity.id === sv.id;
+        return (
+          <div
+            key={sv.id}
+            style={{
+              ...s.node,
+              ...(isWorldSel ? s.nodeActive : {}),
+            }}
+            onClick={() => { setEditingContext(null); setWorldSelectedEntity({ type: 'streaming_volume', id: sv.id }); }}
+          >
+            <span style={s.icon}>{icons.streaming}</span>
+            <span style={s.label}>{sv.id}</span>
+            <button
+              style={s.removeBtn}
+              onClick={(e) => { e.stopPropagation(); removeStreamingVolume(sv.id); }}
+              title="Remove streaming volume"
+            >&times;</button>
+          </div>
+        );
+      })}
+      {manifest.streaming_volumes.length === 0 && (
+        <div style={s.emptyHint}>No streaming volumes</div>
+      )}
+
+      {/* ── Portals ── */}
+      <div style={s.sectionHeader}>
+        <span style={s.sectionTitle}>
+          <span>{icons.portal}</span>
+          <span>Portals</span>
+        </span>
+        <button style={s.addBtn} onClick={addPortal} title="Add portal">+</button>
+      </div>
+      {manifest.portals.map((portal) => {
+        const isWorldSel = worldSelectedEntity?.type === 'portal' && worldSelectedEntity.id === portal.id;
+        return (
+          <div
+            key={portal.id}
+            style={{
+              ...s.node,
+              ...(isWorldSel ? s.nodeActive : {}),
+            }}
+            onClick={() => { setEditingContext(null); setWorldSelectedEntity({ type: 'portal', id: portal.id }); }}
+          >
+            <span style={s.icon}>{icons.portal}</span>
+            <span style={s.label}>{portal.display_name || portal.id}</span>
+            <button
+              style={s.removeBtn}
+              onClick={(e) => { e.stopPropagation(); removePortal(portal.id); }}
+              title="Remove portal"
+            >&times;</button>
+          </div>
+        );
+      })}
+      {manifest.portals.length === 0 && (
+        <div style={s.emptyHint}>No portals</div>
+      )}
     </div>
   );
 }

@@ -83,6 +83,10 @@ export function WorldTree() {
   const removeChunk = useWorldStore((s) => s.removeChunk);
   const addStreamingVolume = useWorldStore((s) => s.addStreamingVolume);
   const removeStreamingVolume = useWorldStore((s) => s.removeStreamingVolume);
+  const addInstance = useWorldStore((s) => s.addInstance);
+  const removeInstance = useWorldStore((s) => s.removeInstance);
+  const addPortal = useWorldStore((s) => s.addPortal);
+  const removePortal = useWorldStore((s) => s.removePortal);
 
   const handleAddChunk = () => {
     // Find next available slot iterating x then z at y=0
@@ -173,6 +177,86 @@ export function WorldTree() {
         })}
         {manifest.streaming_volumes.length === 0 && (
           <div style={{ color: '#555', padding: '4px 8px', fontSize: 11 }}>No streaming volumes</div>
+        )}
+      </div>
+
+      {/* Instances */}
+      <div style={styles.section}>
+        <div style={styles.sectionHeader}>
+          <span style={styles.sectionTitle}>
+            <span>⬚</span>
+            <span>Instances</span>
+          </span>
+          <button
+            style={styles.addBtn}
+            onClick={() => addInstance('New Instance', '')}
+            title="Add instance"
+          >+</button>
+        </div>
+        {manifest.instances.map((inst) => {
+          const isSelected = selectedEntity?.type === 'instance' && selectedEntity.id === inst.id;
+          return (
+            <div
+              key={inst.id}
+              style={{
+                ...styles.item,
+                ...(isSelected ? styles.itemSelected : styles.itemDefault),
+              }}
+              onClick={() => setSelectedEntity({ type: 'instance', id: inst.id })}
+            >
+              <span style={styles.itemLabel}>
+                {inst.display_name || inst.id}
+              </span>
+              <button
+                style={styles.removeBtn}
+                onClick={(e) => { e.stopPropagation(); removeInstance(inst.id); }}
+                title="Remove instance"
+              >
+                ×
+              </button>
+            </div>
+          );
+        })}
+        {manifest.instances.length === 0 && (
+          <div style={{ color: '#555', padding: '4px 8px', fontSize: 11 }}>No instances</div>
+        )}
+      </div>
+
+      {/* Portals */}
+      <div style={styles.section}>
+        <div style={styles.sectionHeader}>
+          <span style={styles.sectionTitle}>
+            <span>⟐</span>
+            <span>Portals</span>
+          </span>
+          <button style={styles.addBtn} onClick={addPortal} title="Add portal">+</button>
+        </div>
+        {manifest.portals.map((portal) => {
+          const isSelected = selectedEntity?.type === 'portal' && selectedEntity.id === portal.id;
+          return (
+            <div
+              key={portal.id}
+              style={{
+                ...styles.item,
+                ...(isSelected ? styles.itemSelected : styles.itemDefault),
+              }}
+              onClick={() => setSelectedEntity({ type: 'portal', id: portal.id })}
+            >
+              <span style={styles.itemLabel}>
+                {portal.display_name || portal.id}
+              </span>
+              <button
+                style={styles.removeBtn}
+                onClick={(e) => { e.stopPropagation(); removePortal(portal.id); }}
+                title="Remove portal"
+              >
+                ×
+              </button>
+            </div>
+          );
+        })}
+        {manifest.portals.length === 0 && (
+          <div style={{ color: '#555', padding: '4px 8px', fontSize: 11 }}>No portals</div>
         )}
       </div>
     </div>

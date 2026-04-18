@@ -11,7 +11,231 @@ import {
   ensureSubdir,
   writeFileAtPath,
   readFileAtPath,
+  chunkAabbMin,
+  chunkGridKey,
 } from '@gseurat/project-root';
+
+type Vec3 = [number, number, number];
+
+/** Subtract offset from a vec3 position */
+function subtractOffset(pos: Vec3, offset: Vec3): Vec3 {
+  return [pos[0] - offset[0], pos[1] - offset[1], pos[2] - offset[2]];
+}
+
+/** Add offset to a vec3 position */
+function addOffset(pos: Vec3, offset: Vec3): Vec3 {
+  return [pos[0] + offset[0], pos[1] + offset[1], pos[2] + offset[2]];
+}
+
+/**
+ * Get the current chunk editing offset. Returns [0,0,0] for instances or no context.
+ */
+function getChunkOffset(): Vec3 {
+  const worldStore = useWorldStore.getState();
+  const ctx = worldStore.editingContext;
+  if (ctx?.type !== 'chunk') return [0, 0, 0];
+
+  const manifest = worldStore.manifest;
+  const chunk = manifest.chunks.find((c) => chunkGridKey(c.grid) === ctx.gridKey);
+  if (!chunk) return [0, 0, 0];
+
+  return chunkAabbMin(chunk.grid, manifest.grid_cell_size);
+}
+
+/**
+ * Transform all scene positions from global to local coordinates.
+ * Called after loading a chunk's scene.
+ */
+function globalToLocal(): void {
+  const offset = getChunkOffset();
+  if (offset[0] === 0 && offset[1] === 0 && offset[2] === 0) return;
+
+  const store = useSceneStore.getState();
+
+  // Transform game objects
+  for (const go of store.gameObjects) {
+    store.updateGameObject(go.id, { position: subtractOffset(go.position, offset) });
+  }
+
+  // Transform lights
+  for (const l of store.staticLights) {
+    store.updateLight(l.id, { position: subtractOffset(l.position, offset) });
+  }
+
+  // Transform particle emitters
+  for (const e of store.gsParticleEmitters) {
+    store.updateGsEmitter(e.id, { position: subtractOffset(e.position, offset) });
+  }
+
+  // Transform GS animations
+  for (const a of store.gsAnimations) {
+    store.updateGsAnimation(a.id, { center: subtractOffset(a.center, offset) });
+  }
+
+  // Transform VFX instances
+  for (const v of store.vfxInstances) {
+    store.updateVfxInstance(v.id, { position: subtractOffset(v.position, offset) });
+  }
+
+  // Transform player
+  store.updatePlayer({ position: subtractOffset(store.player.position, offset) });
+
+  // Transform camera volumes
+  for (const cv of store.cameraVolumes) {
+    store.updateCameraVolume(cv.id, {
+      shape: { ...cv.shape, center: subtractOffset(cv.shape.center, offset) },
+    });
+  }
+
+  // Transform camera triggers
+  for (const ct of store.cameraTriggers) {
+    store.updateCameraTrigger(ct.id, {
+      shape: { ...ct.shape, center: subtractOffset(ct.shape.center, offset) },
+    });
+  }
+
+  // Transform camera rails
+  for (const cr of store.cameraRails) {
+    store.updateCameraRail(cr.id, {
+      control_points: cr.control_points.map((p) => subtractOffset(p, offset)),
+      ...(cr.target_points
+        ? { target_points: cr.target_points.map((p) => subtractOffset(p, offset)) }
+        : {}),
+    });
+  }
+
+  // Transform audio zones
+  for (const az of store.audioZones) {
+    store.updateAudioZone(az.id, {
+      bounds: {
+        ...az.bounds,
+        min: subtractOffset(az.bounds.min, offset),
+        max: subtractOffset(az.bounds.max, offset),
+      },
+    });
+  }
+
+  // Mark clean since these transforms aren't user edits
+  store.markClean();
+}
+
+/**
+ * Center the viewport camera on the scene content after loading.
+ * Computes centroid of all game objects (or player if no objects).
+ * Stores the target in the scene store so the Viewport can apply it on mount.
+ */
+function centerCameraOnScene(): void {
+  const store = useSceneStore.getState();
+  const positions: Vec3[] = [];
+
+  for (const go of store.gameObjects) positions.push(go.position);
+  for (const l of store.staticLights) positions.push(l.position);
+  for (const e of store.gsParticleEmitters) positions.push(e.position);
+
+  if (positions.length === 0) {
+    positions.push(store.player.position);
+  }
+
+  if (positions.length === 0) return;
+
+  // Compute centroid
+  const cx = positions.reduce((s, p) => s + p[0], 0) / positions.length;
+  const cy = positions.reduce((s, p) => s + p[1], 0) / positions.length;
+  const cz = positions.reduce((s, p) => s + p[2], 0) / positions.length;
+
+  // Store the desired camera position so the viewport can apply it
+  store.setSavedEditorCamera({
+    position: [cx, cy + 30, cz + 40],
+    target: [cx, cy, cz],
+  });
+}
+
+/**
+ * Transform all scene positions from local back to global coordinates.
+ * Called before saving a chunk's scene. Returns a BricklayerFile with global coords.
+ */
+function localToGlobalSaveData(): BricklayerFile {
+  const offset = getChunkOffset();
+  const data = useSceneStore.getState().saveProject();
+
+  if (offset[0] === 0 && offset[1] === 0 && offset[2] === 0) return data;
+
+  // Transform positions in the serialized data
+  if (data.scene.gameObjects) {
+    data.scene.gameObjects = data.scene.gameObjects.map((go) => ({
+      ...go,
+      position: addOffset(go.position as Vec3, offset),
+    }));
+  }
+
+  data.scene.staticLights = data.scene.staticLights.map((l) => ({
+    ...l,
+    position: addOffset(l.position as Vec3, offset),
+  }));
+
+  if (data.scene.gsParticleEmitters) {
+    data.scene.gsParticleEmitters = data.scene.gsParticleEmitters.map((e) => ({
+      ...e,
+      position: addOffset(e.position as Vec3, offset),
+    }));
+  }
+
+  if (data.scene.gsAnimations) {
+    data.scene.gsAnimations = data.scene.gsAnimations.map((a) => ({
+      ...a,
+      center: addOffset(a.center as Vec3, offset),
+    }));
+  }
+
+  if (data.scene.vfxInstances) {
+    data.scene.vfxInstances = data.scene.vfxInstances.map((v) => ({
+      ...v,
+      position: addOffset(v.position as Vec3, offset),
+    }));
+  }
+
+  data.scene.player = {
+    ...data.scene.player,
+    position: addOffset(data.scene.player.position as Vec3, offset),
+  };
+
+  if (data.scene.cameraVolumes) {
+    data.scene.cameraVolumes = data.scene.cameraVolumes.map((cv) => ({
+      ...cv,
+      shape: { ...cv.shape, center: addOffset(cv.shape.center as Vec3, offset) },
+    }));
+  }
+
+  if (data.scene.cameraTriggers) {
+    data.scene.cameraTriggers = data.scene.cameraTriggers.map((ct) => ({
+      ...ct,
+      shape: { ...ct.shape, center: addOffset(ct.shape.center as Vec3, offset) },
+    }));
+  }
+
+  if (data.scene.cameraRails) {
+    data.scene.cameraRails = data.scene.cameraRails.map((cr) => ({
+      ...cr,
+      control_points: cr.control_points.map((p: Vec3) => addOffset(p, offset)),
+      ...(cr.target_points
+        ? { target_points: cr.target_points.map((p: Vec3) => addOffset(p, offset)) }
+        : {}),
+    }));
+  }
+
+  if (data.scene.audioZones) {
+    data.scene.audioZones = data.scene.audioZones.map((az) => ({
+      ...az,
+      bounds: {
+        ...az.bounds,
+        min: addOffset(az.bounds.min as Vec3, offset),
+        max: addOffset(az.bounds.max as Vec3, offset),
+      },
+    }));
+  }
+
+  return data;
+}
 
 /**
  * Check if the File System Access API is available.
@@ -47,6 +271,12 @@ function slugify(name: string, fallback = 'project'): string {
 
 /** Returns the project-relative path for the Bricklayer save file. */
 export function bricklayerSavePath(): string {
+  // If editing a specific chunk/instance, save to its named file
+  const ctx = useWorldStore.getState().editingContext;
+  if (ctx) {
+    const sceneName = ctx.sceneFile.split('/').pop()?.replace('.json', '') ?? 'scene';
+    return `${PROJECT_LAYOUT.toolsData.bricklayer}/${sceneName}.bricklayer`;
+  }
   return `${PROJECT_LAYOUT.toolsData.bricklayer}/scene.bricklayer`;
 }
 
@@ -81,15 +311,20 @@ export async function saveProject(handle: FileSystemDirectoryHandle): Promise<vo
   const projectName = store.projectName || 'project';
 
   // 1. Bricklayer save file under tools_data/bricklayer/
-  const data = store.saveProject();
+  // Use localToGlobalSaveData() to convert local coords back to global for chunks
+  const data = localToGlobalSaveData();
   const json = JSON.stringify(data, null, 2);
   await ensureSubdir(handle, PROJECT_LAYOUT.toolsData.bricklayer);
   await writeFileAtPath(handle, bricklayerSavePath(), json);
 
   // 2. Engine scene JSON under assets/scenes/
+  // When editing a specific chunk/instance, write to its scene_file path;
+  // otherwise fall back to project-name-based path.
+  const ctx = useWorldStore.getState().editingContext;
+  const sceneOutputPath = ctx?.sceneFile ?? engineScenePath(projectName);
   const sceneJson = JSON.stringify(exportSceneJson(store), null, 2);
   await ensureSubdir(handle, PROJECT_LAYOUT.assets.scenes);
-  await writeFileAtPath(handle, engineScenePath(projectName), sceneJson);
+  await writeFileAtPath(handle, sceneOutputPath, sceneJson);
 
   // 3. Terrain PLY under assets/maps/
   if (store.voxels.size > 0) {
@@ -109,9 +344,13 @@ export async function saveProject(handle: FileSystemDirectoryHandle): Promise<vo
 
   // 5. World manifest (world.json)
   const worldStore = useWorldStore.getState();
-  if (worldStore.loaded && worldStore.manifest.chunks.length > 0) {
+  // Sync asset_registry from scene store to world manifest before saving
+  worldStore.setAssetRegistry(store.asset_registry);
+  if (worldStore.loaded) {
     const worldJson = JSON.stringify(worldStore.saveManifest(), null, 2);
     await writeFileAtPath(handle, 'world.json', worldJson);
+    // Clear world store dirty flag after successful write
+    worldStore.markClean();
   }
 
   // 6. VFX instance preset files under assets/vfx/presets/
@@ -189,6 +428,11 @@ export async function loadProject(handle: FileSystemDirectoryHandle): Promise<bo
       const worldText = await blob.text();
       const worldData = JSON.parse(worldText) as WorldManifest;
       useWorldStore.getState().loadManifest(worldData);
+      // Sync asset_registry from world manifest back to scene store if present
+      const loadedWorld = useWorldStore.getState();
+      if (loadedWorld.loaded && loadedWorld.manifest.asset_registry) {
+        useSceneStore.getState().setAssetRegistry(loadedWorld.manifest.asset_registry);
+      }
     } catch {
       // No world.json — start with empty world (default)
     }
@@ -196,6 +440,236 @@ export async function loadProject(handle: FileSystemDirectoryHandle): Promise<bo
     return true;
   } catch (err) {
     console.error('Failed to load project:', err);
+    return false;
+  }
+}
+
+/**
+ * Switch to editing a different scene within the project.
+ * Reads the .bricklayer file associated with the given scene_file path.
+ * Falls back to loading the engine scene JSON directly if no .bricklayer exists.
+ *
+ * @param handle - The project directory handle
+ * @param sceneFile - Path like "assets/scenes/seurat_island.json"
+ * @returns true if scene was loaded successfully
+ */
+export async function switchScene(
+  handle: FileSystemDirectoryHandle,
+  sceneFile: string,
+): Promise<boolean> {
+  if (!sceneFile) {
+    console.warn('[bricklayer] No scene_file specified for context switch');
+    return false;
+  }
+
+  // Check for unsaved changes and prompt
+  const sceneStore = useSceneStore.getState();
+  if (sceneStore.isDirty) {
+    const save = window.confirm(
+      'You have unsaved changes. Save before switching scenes?'
+    );
+    if (save) {
+      await saveProject(handle);
+      sceneStore.markClean();
+    }
+  }
+
+  // Derive the .bricklayer path from the scene file path
+  // e.g., "assets/scenes/seurat_island.json" → "tools_data/bricklayer/seurat_island.bricklayer"
+  const sceneName = sceneFile.split('/').pop()?.replace('.json', '') ?? 'scene';
+  const bricklayerPath = `${PROJECT_LAYOUT.toolsData.bricklayer}/${sceneName}.bricklayer`;
+
+  try {
+    // Try loading .bricklayer file first
+    const blob = await readFileAtPath(handle, bricklayerPath);
+    const text = await blob.text();
+    const data = JSON.parse(text) as BricklayerFile;
+    sceneStore.loadProject(data);
+    globalToLocal();
+    centerCameraOnScene();
+    console.info(`[bricklayer] Switched to scene: ${bricklayerPath}`);
+    return true;
+  } catch {
+    // No .bricklayer file — create a new empty scene for editing
+    console.warn(`[bricklayer] No .bricklayer at ${bricklayerPath}, creating empty scene for: ${sceneFile}`);
+    const worldReg = useWorldStore.getState().manifest.asset_registry;
+    sceneStore.loadProject({
+      version: 2,
+      asset_registry: worldReg ?? { version: 1, characters: {}, vfx: {}, textures: {}, audio: {}, maps: {}, objects: {} },
+      gridWidth: 64,
+      gridDepth: 64,
+      voxels: [],
+      collision: [],
+      scene: {
+        ambientColor: [0.3, 0.3, 0.4, 1],
+        staticLights: [],
+        gameObjects: [],
+        player: { position: [32, 0, 32], tint: [1, 1, 1, 1], facing: 'down', character_id: '' },
+        backgroundLayers: [],
+        torchEmitter: { spawn_rate: 0, particle_lifetime_min: 0, particle_lifetime_max: 0, velocity_min: [0, 0], velocity_max: [0, 0], acceleration: [0, 0], size_min: 0, size_max: 0, size_end_scale: 0, color_start: [0, 0, 0, 0], color_end: [0, 0, 0, 0], tile: '', z: 0, spawn_offset_min: [0, 0], spawn_offset_max: [0, 0] },
+        torchPositions: [],
+        footstepEmitter: { spawn_rate: 0, particle_lifetime_min: 0, particle_lifetime_max: 0, velocity_min: [0, 0], velocity_max: [0, 0], acceleration: [0, 0], size_min: 0, size_max: 0, size_end_scale: 0, color_start: [0, 0, 0, 0], color_end: [0, 0, 0, 0], tile: '', z: 0, spawn_offset_min: [0, 0], spawn_offset_max: [0, 0] },
+        npcAuraEmitter: { spawn_rate: 0, particle_lifetime_min: 0, particle_lifetime_max: 0, velocity_min: [0, 0], velocity_max: [0, 0], acceleration: [0, 0], size_min: 0, size_max: 0, size_end_scale: 0, color_start: [0, 0, 0, 0], color_end: [0, 0, 0, 0], tile: '', z: 0, spawn_offset_min: [0, 0], spawn_offset_max: [0, 0] },
+        weather: { enabled: false, type: 'rain', emitter: { spawn_rate: 0, particle_lifetime_min: 0, particle_lifetime_max: 0, velocity_min: [0, 0], velocity_max: [0, 0], acceleration: [0, 0], size_min: 0, size_max: 0, size_end_scale: 0, color_start: [0, 0, 0, 0], color_end: [0, 0, 0, 0], tile: '', z: 0, spawn_offset_min: [0, 0], spawn_offset_max: [0, 0] }, ambient_override: [0, 0, 0, 0], fog_density: 0, fog_color: [0, 0, 0], transition_speed: 0 },
+        dayNight: { enabled: false, cycle_speed: 1, initial_time: 0, keyframes: [] },
+        gaussianSplat: { camera: { position: [0, 10, 20], target: [0, 0, 0], fov: 45 }, render_width: 1920, render_height: 1080, scale_multiplier: 1, background_image: '', parallax: { azimuth_range: 30, elevation_min: -10, elevation_max: 20, distance_range: 5, parallax_strength: 1 }, morphPairPly: '', morphDuration: 2, morphDefaultBlend: 0, morphEasing: 'linear' },
+      },
+    });
+    globalToLocal();
+    centerCameraOnScene();
+    return true;
+  }
+}
+
+/**
+ * Import an engine scene JSON file and convert it to BricklayerFile format.
+ * This reads a file like "assets/scenes/northern_forest.json" (snake_case engine format)
+ * and converts it to BricklayerFile (camelCase) for editing in Bricklayer.
+ *
+ * @param handle - The project directory handle
+ * @param sceneFile - Path like "assets/scenes/northern_forest.json"
+ * @returns true if import succeeded
+ */
+export async function importEngineScene(
+  handle: FileSystemDirectoryHandle,
+  sceneFile: string,
+): Promise<boolean> {
+  if (!sceneFile) return false;
+
+  try {
+    const blob = await readFileAtPath(handle, sceneFile);
+    const text = await blob.text();
+    const engine = JSON.parse(text);
+
+    const worldReg = useWorldStore.getState().manifest.asset_registry;
+
+    // Default emitter config (empty)
+    const emptyEmitter = {
+      spawn_rate: 0, particle_lifetime_min: 0, particle_lifetime_max: 0,
+      velocity_min: [0, 0] as [number, number], velocity_max: [0, 0] as [number, number],
+      acceleration: [0, 0] as [number, number],
+      size_min: 0, size_max: 0, size_end_scale: 0,
+      color_start: [0, 0, 0, 0] as [number, number, number, number],
+      color_end: [0, 0, 0, 0] as [number, number, number, number],
+      tile: '', z: 0,
+      spawn_offset_min: [0, 0] as [number, number], spawn_offset_max: [0, 0] as [number, number],
+    };
+
+    // Convert lights: engine lights have no id, add one
+    const staticLights = (engine.lights ?? []).map((l: any, i: number) => ({
+      id: l.id ?? `light_${i}`,
+      position: l.position ?? [0, 0, 0],
+      radius: l.radius ?? 10,
+      color: l.color ?? [1, 1, 1],
+      intensity: l.intensity ?? 1,
+      ...(l.direction ? { direction: l.direction } : {}),
+      ...(l.cone_angle ? { cone_angle: l.cone_angle } : {}),
+    }));
+
+    // Convert game objects: engine format is very similar
+    const gameObjects = (engine.game_objects ?? []).map((go: any) => ({
+      id: go.id ?? `go_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      name: go.name ?? go.id ?? 'Object',
+      position: go.position ?? [0, 0, 0],
+      rotation: go.rotation ?? [0, 0, 0],
+      scale: go.scale ?? 1,
+      ply_file: go.ply_file ?? '',
+      components: go.components ?? {},
+      ...(go.pbd ? { pbd: go.pbd } : {}),
+    }));
+
+    // Convert particle emitters: engine has minimal format, expand to full GsParticleEmitterData
+    const gsParticleEmitters = (engine.particle_emitters ?? []).map((pe: any, i: number) => ({
+      id: pe.id ?? `emitter_${i}`,
+      muted: false,
+      preset: pe.preset ?? '',
+      position: pe.position ?? [0, 0, 0],
+      spawn_rate: pe.spawn_rate ?? 10,
+      lifetime_min: pe.lifetime_min ?? 1,
+      lifetime_max: pe.lifetime_max ?? 2,
+      velocity_min: pe.velocity_min ?? [0, 0.5, 0],
+      velocity_max: pe.velocity_max ?? [0, 1, 0],
+      acceleration: pe.acceleration ?? [0, 0, 0],
+      color_start: pe.color_start ?? [1, 1, 1],
+      color_end: pe.color_end ?? [1, 1, 1],
+      scale_min: pe.scale_min ?? [0.1, 0.1, 0.1],
+      scale_max: pe.scale_max ?? [0.2, 0.2, 0.2],
+      scale_end_factor: pe.scale_end_factor ?? 0,
+      opacity_start: pe.opacity_start ?? 1,
+      opacity_end: pe.opacity_end ?? 0,
+      emission: pe.emission ?? 0,
+      spawn_region: pe.spawn_region ?? { shape: 'sphere', radius: 0.5 },
+      burst_duration: pe.burst_duration ?? 0,
+    }));
+
+    // Convert gaussian splat config
+    const gsConfig = engine.gaussian_splat ?? {};
+    const gaussianSplat = {
+      camera: gsConfig.camera ?? { position: [0, 10, 20], target: [0, 0, 0], fov: 45 },
+      render_width: gsConfig.render_width ?? 1920,
+      render_height: gsConfig.render_height ?? 1080,
+      scale_multiplier: gsConfig.scale_multiplier ?? 1,
+      background_image: gsConfig.background_image ?? '',
+      parallax: gsConfig.parallax ?? {
+        azimuth_range: 30, elevation_min: -10, elevation_max: 20,
+        distance_range: 5, parallax_strength: 1,
+      },
+      morphPairPly: '', morphDuration: 2, morphDefaultBlend: 0, morphEasing: 'linear' as const,
+    };
+
+    // Convert collision
+    const collisionGridData = engine.collision ? {
+      width: engine.collision.width,
+      height: engine.collision.height,
+      cell_size: engine.collision.cell_size,
+      solid: engine.collision.solid ?? [],
+      elevation: engine.collision.elevation ?? [],
+      nav_zone: engine.collision.nav_zone ?? [],
+    } : undefined;
+
+    // Build BricklayerFile
+    const bricklayerFile: BricklayerFile = {
+      version: 2,
+      asset_registry: worldReg ?? { version: 1, characters: {}, vfx: {}, textures: {}, audio: {}, maps: {}, objects: {} },
+      gridWidth: engine.collision?.width ?? 64,
+      gridDepth: engine.collision?.height ?? 64,
+      voxels: [],
+      collision: [],
+      ...(collisionGridData ? { collisionGridData } : {}),
+      scene: {
+        ambientColor: engine.ambient_color ?? [0.3, 0.3, 0.4, 1],
+        staticLights,
+        gameObjects,
+        player: {
+          position: engine.player?.position ?? [32, 0, 32],
+          tint: engine.player?.tint ?? [1, 1, 1, 1],
+          facing: engine.player?.facing ?? 'down',
+          character_id: engine.player?.character_id ?? '',
+        },
+        backgroundLayers: [],
+        torchEmitter: emptyEmitter,
+        torchPositions: engine.torch_audio_positions ?? [],
+        footstepEmitter: emptyEmitter,
+        npcAuraEmitter: emptyEmitter,
+        weather: {
+          enabled: false, type: 'rain', emitter: emptyEmitter,
+          ambient_override: [0, 0, 0, 0], fog_density: 0, fog_color: [0, 0, 0], transition_speed: 0,
+        },
+        dayNight: { enabled: false, cycle_speed: 1, initial_time: 0, keyframes: [] },
+        gaussianSplat,
+        gsParticleEmitters: gsParticleEmitters.length > 0 ? gsParticleEmitters : undefined,
+        vfxInstances: engine.vfx_instances ?? undefined,
+        audioZones: engine.audio_zones ?? undefined,
+      },
+    };
+
+    useSceneStore.getState().loadProject(bricklayerFile);
+    globalToLocal();
+    centerCameraOnScene();
+    console.info(`[bricklayer] Imported engine scene: ${sceneFile}`);
+    return true;
+  } catch (err) {
+    console.error(`[bricklayer] Failed to import engine scene ${sceneFile}:`, err);
     return false;
   }
 }

@@ -3,7 +3,7 @@ import { Canvas } from '@react-three/fiber';
 import { Viewport, getOrbitControls } from './viewport/Viewport.js';
 import { MenuBar } from './panels/MenuBar.js';
 import { ImportDialog } from './panels/ImportDialog.js';
-import { ProjectTree } from './panels/ProjectTree.js';
+import { MasterTree } from './panels/MasterTree.js';
 import { hasFileSystemAccess, saveProject as saveProjectDir, saveProjectAsZip } from './lib/projectIO.js';
 import {
   restoreProjectRoot,
@@ -16,11 +16,10 @@ import { CollisionLeftPanel } from './panels/CollisionLeftPanel.js';
 import { TerrainRightPanel } from './panels/TerrainRightPanel.js';
 import { ScenePropertiesPanel } from './panels/ScenePropertiesPanel.js';
 import { SettingsRightPanel } from './panels/SettingsRightPanel.js';
-import { WorldTree } from './panels/WorldTree.js';
 import { WorldPropertiesPanel } from './panels/WorldPropertiesPanel.js';
 import { WorldViewport } from './viewport/WorldViewport.js';
-import { ChunkWireframes } from './viewport/ChunkWireframes.js';
 import { useSceneStore } from './store/useSceneStore.js';
+import { useWorldStore } from './store/useWorldStore.js';
 import type { ToolType } from './store/types.js';
 
 // ── ResizeHandle ──
@@ -77,36 +76,6 @@ function ResizeHandle({
     />
   );
 }
-
-// ── Mode tabs ──
-
-const modeTabsStyles: Record<string, React.CSSProperties> = {
-  bar: {
-    display: 'flex',
-    borderBottom: '1px solid #333',
-    flexShrink: 0,
-  },
-  tab: {
-    flex: 1,
-    padding: '8px 4px',
-    borderTop: 'none',
-    borderLeft: 'none',
-    borderRight: 'none',
-    borderBottom: '2px solid transparent',
-    background: 'transparent',
-    color: '#888',
-    cursor: 'pointer',
-    fontSize: 11,
-    fontWeight: 600,
-    textAlign: 'center',
-    letterSpacing: 1,
-  },
-  tabActive: {
-    color: '#fff',
-    borderBottom: '2px solid #77f',
-    background: '#2a2a4a',
-  },
-};
 
 // ── Keyboard shortcuts ──
 
@@ -259,8 +228,8 @@ export function App() {
   const [leftWidth, setLeftWidth] = useState(240);
   const [rightWidth, setRightWidth] = useState(320);
 
-  const mode = useSceneStore((s) => s.mode);
   const activeNode = useSceneStore((s) => s.activeNode);
+  const editingContext = useWorldStore((s) => s.editingContext);
 
   const handleLeftDrag = useCallback((delta: number) => {
     setLeftWidth((w) => Math.max(160, Math.min(500, w + delta)));
@@ -383,9 +352,10 @@ export function App() {
         }
       }
 
-      // G key: grab in scene mode, fill in terrain mode
+      // G key: grab when a scene entity is selected, fill when terrain is active
       if (e.key.toLowerCase() === 'g' && !meta) {
-        if (store.mode === 'scene' && store.selectedEntity) {
+        const isTerrainActive = store.activeNode?.kind === 'terrain';
+        if (!isTerrainActive && store.selectedEntity) {
           e.preventDefault();
           // Start grab mode
           const sel = store.selectedEntity;
@@ -415,8 +385,9 @@ export function App() {
           }
           return;
         }
-        // Fall through to tool shortcut for terrain mode
-        store.setTool('fill');
+        if (isTerrainActive) {
+          store.setTool('fill');
+        }
         return;
       }
 
@@ -439,7 +410,7 @@ export function App() {
       }
 
       // F key: frame selected entity
-      if (e.key.toLowerCase() === 'f' && !meta && store.mode === 'scene' && store.selectedEntity) {
+      if (e.key.toLowerCase() === 'f' && !meta && store.selectedEntity) {
         const controls = getOrbitControls();
         if (!controls) return;
 
@@ -463,8 +434,8 @@ export function App() {
         return;
       }
 
-      // Shift: lock orbit in terrain mode for drawing
-      if (e.key === 'Shift' && (store.mode === 'terrain' || store.activeNode?.kind === 'collision')) {
+      // Shift: lock orbit when terrain or collision node is active for drawing
+      if (e.key === 'Shift' && (store.activeNode?.kind === 'terrain' || store.activeNode?.kind === 'collision')) {
         store.setOrbitLocked(true);
         return;
       }
@@ -499,67 +470,42 @@ export function App() {
     };
   }, []);
 
-  const setMode = useSceneStore((s) => s.setMode);
-
-  // Determine which contextual panel to show in left below ProjectTree
-  const isCollisionMode = activeNode?.kind === 'collision';
-  const showTerrainTools = !isCollisionMode && (mode === 'terrain' || (activeNode?.kind === 'terrain'));
-  const showCollisionTools = isCollisionMode;
-  const isWorldMode = mode === 'world';
-
   // Determine right panel content
   const rightContent = (() => {
-    if (isWorldMode) return <WorldPropertiesPanel />;
-    if (activeNode?.kind === 'settings_category' || mode === 'settings') return <SettingsRightPanel />;
-    if (activeNode?.kind === 'scene_item' || activeNode?.kind === 'player' || (mode === 'scene')) return <ScenePropertiesPanel />;
-    if (activeNode?.kind === 'collision') return <TerrainRightPanel />;
-    return <TerrainRightPanel />;
+    const worldSel = useWorldStore.getState().selectedEntity;
+    // World-level entities (streaming volume, portal) always show world properties
+    if (worldSel && (worldSel.type === 'streaming_volume' || worldSel.type === 'portal')) {
+      return <WorldPropertiesPanel />;
+    }
+    // When editing a chunk/instance, show scene-appropriate panels
+    if (editingContext) {
+      if (activeNode?.kind === 'settings_category') return <SettingsRightPanel />;
+      if (activeNode?.kind === 'collision' || activeNode?.kind === 'terrain') return <TerrainRightPanel />;
+      return <ScenePropertiesPanel />;
+    }
+    // World view (no editing context)
+    return <WorldPropertiesPanel />;
   })();
-
-  const modeTabs: { key: string; label: string }[] = [
-    { key: 'world', label: 'WORLD' },
-    { key: 'terrain', label: 'TERRAIN' },
-    { key: 'scene', label: 'SCENE' },
-    { key: 'settings', label: 'SETTINGS' },
-  ];
 
   return (
     <div style={styles.root}>
       <MenuBar onImport={() => setShowImport(true)} />
-      {/* Mode tab bar */}
-      <div style={modeTabsStyles.bar}>
-        {modeTabs.map((tab) => (
-          <button
-            key={tab.key}
-            style={{
-              ...modeTabsStyles.tab,
-              ...(mode === tab.key ? modeTabsStyles.tabActive : {}),
-            }}
-            onClick={() => setMode(tab.key as import('./store/types.js').BricklayerMode)}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
       <div style={styles.body}>
         {/* Left panel */}
         <div style={{ ...styles.leftPanel, width: leftWidth }}>
-          {isWorldMode ? (
-            <div style={{ ...styles.leftContent, padding: 8 }}>
-              <WorldTree />
+          <div style={{ overflowY: 'auto', padding: 8, flex: 1 }}>
+            <MasterTree />
+          </div>
+          {/* Contextual tools below tree */}
+          {editingContext && (activeNode?.kind === 'terrain') && (
+            <div style={{ overflowY: 'auto', padding: 12, borderTop: '1px solid #333', maxHeight: '40%' }}>
+              <TerrainLeftPanel />
             </div>
-          ) : (
-            <>
-              {/* Project tree at top */}
-              <div style={styles.leftTop}>
-                <ProjectTree />
-              </div>
-              {/* Contextual tools below */}
-              <div style={styles.leftContent}>
-                {showTerrainTools && <TerrainLeftPanel />}
-                {showCollisionTools && <CollisionLeftPanel />}
-              </div>
-            </>
+          )}
+          {editingContext && (activeNode?.kind === 'collision') && (
+            <div style={{ overflowY: 'auto', padding: 12, borderTop: '1px solid #333', maxHeight: '40%' }}>
+              <CollisionLeftPanel />
+            </div>
           )}
         </div>
 
@@ -567,7 +513,13 @@ export function App() {
 
         {/* Center viewport */}
         <div style={styles.viewport}>
-          {isWorldMode ? (
+          {editingContext ? (
+            <>
+              <Viewport />
+              <GrabOverlay />
+              <OrbitLockIndicator />
+            </>
+          ) : (
             <Canvas
               camera={{ position: [128, 80, 128], fov: 50 }}
               style={{ background: '#16162a', width: '100%', height: '100%' }}
@@ -575,12 +527,6 @@ export function App() {
             >
               <WorldViewport />
             </Canvas>
-          ) : (
-            <>
-              <Viewport />
-              <GrabOverlay />
-              <OrbitLockIndicator />
-            </>
           )}
         </div>
 

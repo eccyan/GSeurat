@@ -12,12 +12,6 @@ if (import.meta.env.DEV) {
 
 componentRegistry.setManifest(manifest);
 
-// Sync mode with registry when store changes
-useSceneStore.subscribe((state) => {
-  componentRegistry.setMode(state.mode);
-});
-componentRegistry.setMode(useSceneStore.getState().mode);
-
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <ErrorBoundary>

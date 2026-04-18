@@ -72,12 +72,6 @@ export interface GameObjectData {
   pbd?: PbdConfig;
 }
 
-export interface InstanceData {
-  id: string;
-  display_name: string;
-  scene_file: string;
-}
-
 export interface EmitterConfig {
   spawn_rate: number;
   particle_lifetime_min: number;
@@ -165,8 +159,6 @@ export interface PlayerData {
   facing: string;
   character_id: string;
 }
-
-export type BricklayerMode = 'terrain' | 'scene' | 'settings' | 'world';
 
 export type ToolType =
   | 'place'
@@ -436,8 +428,8 @@ export type NavigationNode =
   | { kind: 'settings' }
   | { kind: 'settings_category'; category: SettingsCategory }
   | { kind: 'world' }
-  | { kind: 'world_category'; category: 'chunks' | 'streaming_volumes' }
-  | { kind: 'world_item'; entityType: 'chunk' | 'streaming_volume'; entityId: string };
+  | { kind: 'world_category'; category: 'chunks' | 'streaming_volumes' | 'instances' | 'portals' }
+  | { kind: 'world_item'; entityType: 'chunk' | 'streaming_volume' | 'instance' | 'portal'; entityId: string };
 
 // ── Color palettes ──
 
@@ -489,7 +481,6 @@ export interface BricklayerFile {
     cameraRails?: CameraZoneRail[];
     cameraDefaultParams?: Partial<CameraZoneParams>;
     cameraShowDebugVolumes?: boolean;
-    instances?: InstanceData[];
     audioZones?: AudioZoneData[];
   };
 }

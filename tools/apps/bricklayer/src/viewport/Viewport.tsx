@@ -269,7 +269,20 @@ function SceneContent() {
   const showGrid = useSceneStore((s) => s.showGrid);
   const grabMode = useSceneStore((s) => s.grabMode);
   const orbitLocked = useSceneStore((s) => s.orbitLocked);
+  const savedEditorCamera = useSceneStore((s) => s.savedEditorCamera);
   const controlsRef = useRef<OrbitControlsRef | null>(null);
+  const { camera } = useThree();
+
+  // Apply saved camera position when it changes (e.g., after scene switch)
+  useEffect(() => {
+    if (!savedEditorCamera || !controlsRef.current) return;
+    const { position, target } = savedEditorCamera;
+    camera.position.set(position[0], position[1], position[2]);
+    controlsRef.current.target.set(target[0], target[1], target[2]);
+    controlsRef.current.update();
+    // Clear after applying so it doesn't re-trigger
+    useSceneStore.getState().setSavedEditorCamera(null);
+  }, [savedEditorCamera, camera]);
 
   return (
     <>

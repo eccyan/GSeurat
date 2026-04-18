@@ -1,17 +1,16 @@
 {
-  "always": ["MenuBar", "Viewport"],
+  "always": ["MenuBar", "Viewport", "MasterTree"],
   "modes": {
     "terrain": ["TerrainLeftPanel", "TerrainRightPanel"],
-    "scene": ["ProjectTree", "ScenePropertiesPanel"],
+    "scene": ["ScenePropertiesPanel"],
     "settings": ["SettingsRightPanel"],
-    "world": ["WorldTree", "WorldPropertiesPanel", "WorldViewport"]
+    "world": ["WorldPropertiesPanel", "WorldViewport"]
   },
   "conditional": {
     "CameraVolumeEditor": "when a camera volume is selected",
     "CameraRailEditor": "when a camera rail is selected",
     "CameraTriggerEditor": "when a camera trigger is selected",
     "ImportDialog": "when import dialog is open",
-    "ChunkWireframes": "in scene mode when editingChunkGrid is set",
     "AudioZonePanel": "when an audio zone is selected"
   }
 }
