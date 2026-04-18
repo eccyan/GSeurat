@@ -590,6 +590,7 @@ export function MasterTree() {
   const manifest = useWorldStore((st) => st.manifest);
   const worldSelectedEntity = useWorldStore((st) => st.selectedEntity);
   const setWorldSelectedEntity = useWorldStore((st) => st.setSelectedEntity);
+  const setEditingContext = useWorldStore((st) => st.setEditingContext);
   const editingContext = useWorldStore((st) => st.editingContext);
   const addChunk = useWorldStore((st) => st.addChunk);
   const removeChunk = useWorldStore((st) => st.removeChunk);
@@ -777,7 +778,7 @@ export function MasterTree() {
               ...s.node,
               ...(isWorldSel ? s.nodeActive : {}),
             }}
-            onClick={() => setWorldSelectedEntity({ type: 'streaming_volume', id: sv.id })}
+            onClick={() => { setEditingContext(null); setWorldSelectedEntity({ type: 'streaming_volume', id: sv.id }); }}
           >
             <span style={s.icon}>{icons.streaming}</span>
             <span style={s.label}>{sv.id}</span>
@@ -810,7 +811,7 @@ export function MasterTree() {
               ...s.node,
               ...(isWorldSel ? s.nodeActive : {}),
             }}
-            onClick={() => setWorldSelectedEntity({ type: 'portal', id: portal.id })}
+            onClick={() => { setEditingContext(null); setWorldSelectedEntity({ type: 'portal', id: portal.id }); }}
           >
             <span style={s.icon}>{icons.portal}</span>
             <span style={s.label}>{portal.display_name || portal.id}</span>
