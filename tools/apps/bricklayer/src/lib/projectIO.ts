@@ -1,8 +1,10 @@
 import JSZip from 'jszip';
 import { useSceneStore, BUILTIN_SCHEMAS } from '../store/useSceneStore.js';
+import { useWorldStore } from '../store/useWorldStore.js';
 import { exportSceneJson } from './sceneExport.js';
 import { exportPly } from './plyExport.js';
 import type { BricklayerFile, ComponentSchema } from '../store/types.js';
+import type { WorldManifest } from '@gseurat/project-root';
 import {
   PROJECT_LAYOUT,
   toAssetPath,
@@ -105,7 +107,14 @@ export async function saveProject(handle: FileSystemDirectoryHandle): Promise<vo
     }
   }
 
-  // 5. VFX instance preset files under assets/vfx/presets/
+  // 5. World manifest (world.json)
+  const worldStore = useWorldStore.getState();
+  if (worldStore.loaded && worldStore.manifest.chunks.length > 0) {
+    const worldJson = JSON.stringify(worldStore.saveManifest(), null, 2);
+    await writeFileAtPath(handle, 'world.json', worldJson);
+  }
+
+  // 6. VFX instance preset files under assets/vfx/presets/
   if (store.vfxInstances.length > 0) {
     await ensureSubdir(handle, PROJECT_LAYOUT.assets.vfxPresets);
     for (const inst of store.vfxInstances) {
@@ -172,6 +181,16 @@ export async function loadProject(handle: FileSystemDirectoryHandle): Promise<bo
       }
     } catch {
       useSceneStore.getState().loadComponentSchemas(BUILTIN_SCHEMAS);
+    }
+
+    // Load world manifest (world.json) if present
+    try {
+      const blob = await readFileAtPath(handle, 'world.json');
+      const worldText = await blob.text();
+      const worldData = JSON.parse(worldText) as WorldManifest;
+      useWorldStore.getState().loadManifest(worldData);
+    } catch {
+      // No world.json — start with empty world (default)
     }
 
     return true;
