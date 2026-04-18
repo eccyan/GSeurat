@@ -12,6 +12,7 @@ export function Toolbar() {
   const groupName = useWeaverStore((s) => s.groupName);
   const loopEnabled = useWeaverStore((s) => s.loopEnabled);
   const setLoopEnabled = useWeaverStore((s) => s.setLoopEnabled);
+  const setPlayheadFrame = useWeaverStore((s) => s.setPlayheadFrame);
 
   const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -20,6 +21,17 @@ export function Toolbar() {
       await addStem(file);
     }
     e.target.value = '';
+  };
+
+  const handleRewind = () => {
+    const state = useWeaverStore.getState();
+    if (state.isPlaying) {
+      setIsPlaying(false);
+      setPlayheadFrame(0);
+      queueMicrotask(() => setIsPlaying(true));
+    } else {
+      setPlayheadFrame(0);
+    }
   };
 
   const handleExport = () => {
@@ -39,6 +51,7 @@ export function Toolbar() {
         onChange={handleImport}
       />
       <button onClick={() => fileRef.current?.click()}>Import Stems</button>
+      <button onClick={handleRewind}>⏮ Rewind</button>
       <button onClick={() => setIsPlaying(!isPlaying)}>
         {isPlaying ? 'Stop' : 'Play'}
       </button>
