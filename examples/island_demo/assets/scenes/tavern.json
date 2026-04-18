@@ -1,0 +1,39 @@
+{
+  "version": 2,
+  "gaussian_splat": {
+    "ply_file": "",
+    "camera": {
+      "position": [
+        10,
+        8,
+        15
+      ],
+      "target": [
+        5,
+        0,
+        5
+      ],
+      "fov": 45
+    },
+    "render_width": 1280,
+    "render_height": 720,
+    "scale_multiplier": 1.0,
+    "ground_color": [
+      0.25,
+      0.18,
+      0.12
+    ],
+    "sky_color": [
+      0.1,
+      0.08,
+      0.06
+    ]
+  },
+  "collision_grid": {
+    "cell_size": 1.0,
+    "width": 20,
+    "depth": 20,
+    "data": []
+  },
+  "game_objects": []
+}

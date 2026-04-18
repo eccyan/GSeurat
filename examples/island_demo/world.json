@@ -18,19 +18,6 @@
         "ply": "assets/characters/slime/slime.ply",
         "manifest": "assets/characters/slime/slime.manifest.json"
       },
-      "snes_hero": {
-        "id": "snes_hero",
-        "ply": "assets/characters/snes_hero/snes_hero.ply",
-        "manifest": "assets/characters/snes_hero/snes_hero.manifest.json"
-      },
-      "test": {
-        "id": "test",
-        "ply": "assets/characters/test/test.ply"
-      },
-      "untitled": {
-        "id": "untitled",
-        "ply": "assets/characters/untitled/untitled.ply"
-      },
       "warm_robot": {
         "id": "warm_robot",
         "ply": "assets/characters/warm_robot/warm_robot.ply",
@@ -112,14 +99,6 @@
         "id": "dungeon",
         "file": "assets/maps/dungeon.ply"
       },
-      "emissive_test": {
-        "id": "emissive_test",
-        "file": "assets/maps/emissive_test.ply"
-      },
-      "map": {
-        "id": "map",
-        "file": "assets/maps/map.ply"
-      },
       "northern_forest": {
         "id": "northern_forest",
         "file": "assets/maps/northern_forest.ply"
@@ -127,21 +106,9 @@
       "seurat_island": {
         "id": "seurat_island",
         "file": "assets/maps/seurat_island.ply"
-      },
-      "test_bricklayer": {
-        "id": "test_bricklayer",
-        "file": "assets/maps/test_bricklayer.ply"
-      },
-      "test_terrain": {
-        "id": "test_terrain",
-        "file": "assets/maps/test_terrain.ply"
       }
     },
     "objects": {
-      "boy_character": {
-        "id": "boy_character",
-        "file": "assets/props/boy_character.ply"
-      },
       "glow_mushrooms": {
         "id": "glow_mushrooms",
         "file": "assets/props/glow_mushrooms.ply"
@@ -165,18 +132,6 @@
       "island_house": {
         "id": "island_house",
         "file": "assets/props/island_house.ply"
-      },
-      "island_house1": {
-        "id": "island_house1",
-        "file": "assets/props/island_house1.ply"
-      },
-      "island_rock1": {
-        "id": "island_rock1",
-        "file": "assets/props/island_rock1.ply"
-      },
-      "island_rock2": {
-        "id": "island_rock2",
-        "file": "assets/props/island_rock2.ply"
       },
       "island_rock_1": {
         "id": "island_rock_1",
@@ -249,10 +204,6 @@
       "island_tree_9": {
         "id": "island_tree_9",
         "file": "assets/props/island_tree_9.ply"
-      },
-      "island_tree_mesh": {
-        "id": "island_tree_mesh",
-        "file": "assets/props/island_tree_mesh.ply"
       },
       "lantern_post": {
         "id": "lantern_post",
@@ -334,6 +285,19 @@
       ],
       "preload_target_ids": [
         "0,0,-1"
+      ]
+    },
+    {
+      "id": "sv_tavern_approach",
+      "shape": "sphere",
+      "position": [
+        170,
+        2,
+        190
+      ],
+      "radius": 20,
+      "preload_target_ids": [
+        "tavern_01"
       ]
     }
   ],

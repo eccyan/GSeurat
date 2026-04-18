@@ -73877,6 +73877,7 @@
     {
       "id": "forest_mushroom_1",
       "name": "Glowing Mushroom",
+      "ply_file": "assets/props/glow_mushrooms.ply",
       "position": [
         175,
         0.8476,
@@ -73904,6 +73905,7 @@
     {
       "id": "forest_mushroom_2",
       "name": "Glowing Mushroom",
+      "ply_file": "assets/props/glow_mushrooms.ply",
       "position": [
         210,
         0.6498,
@@ -73931,6 +73933,7 @@
     {
       "id": "forest_mushroom_3",
       "name": "Glowing Mushroom",
+      "ply_file": "assets/props/glow_mushrooms.ply",
       "position": [
         150,
         1.5084,
@@ -73958,6 +73961,7 @@
     {
       "id": "forest_mushroom_4",
       "name": "Glowing Mushroom",
+      "ply_file": "assets/props/glow_mushrooms.ply",
       "position": [
         230,
         1.7037,
