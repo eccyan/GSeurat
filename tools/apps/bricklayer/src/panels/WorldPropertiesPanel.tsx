@@ -320,6 +320,17 @@ function InstanceEditor({ id }: { id: string }) {
         />
       </div>
 
+      <label style={labelStyle}>PLY File</label>
+      <div style={rowStyle}>
+        <input
+          type="text"
+          value={inst.ply_file ?? ''}
+          placeholder="assets/maps/room.ply"
+          onChange={(e) => updateInstance(id, { ply_file: e.target.value })}
+          style={fullInputStyle}
+        />
+      </div>
+
       <button
         style={enterBtnStyle}
         onClick={async () => {
