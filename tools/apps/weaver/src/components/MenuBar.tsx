@@ -1,6 +1,33 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useWeaverStore } from '../store/useWeaverStore.js';
 import { exportMultiGroupConfig, downloadJson } from '../lib/exportConfig.js';
+import { writeFileAtPath } from '@gseurat/project-root';
+import { sendBridgeCommand } from '@gseurat/engine-client';
+
+const BRIDGE_REST_URL = 'http://localhost:9101';
+
+type ConnectBridgeResult =
+  | { ok: true; activeProjectDir: string }
+  | { ok: false; error: string };
+
+async function connectBridgeToPath(absolutePath: string): Promise<ConnectBridgeResult> {
+  if (!absolutePath) return { ok: false, error: 'absolutePath is empty' };
+  try {
+    const res = await fetch(`${BRIDGE_REST_URL}/api/project/root`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ path: absolutePath }),
+    });
+    if (res.ok) {
+      const body = (await res.json()) as { activeProjectDir?: string };
+      return { ok: true, activeProjectDir: body.activeProjectDir ?? absolutePath };
+    }
+    const body = (await res.json().catch(() => ({}))) as { error?: string };
+    return { ok: false, error: body.error ?? res.statusText };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+}
 
 type MenuId = 'file' | 'edit' | 'view' | null;
 
@@ -82,6 +109,49 @@ export function MenuBar() {
     zoomToFit();
   };
 
+  const handleConnectBridge = async () => {
+    close();
+    const absolutePath = prompt(
+      'Enter absolute path to your project root:\n(e.g., /Users/you/MyGame)',
+    );
+    if (!absolutePath?.trim()) return;
+    const result = await connectBridgeToPath(absolutePath.trim());
+    if (result.ok) {
+      console.info(`[weaver] Bridge connected: ${result.activeProjectDir}`);
+    } else {
+      console.error(`[weaver] Bridge connection failed: ${result.error}`);
+      alert(`Bridge connection failed: ${result.error}`);
+    }
+  };
+
+  const handleOpenInStaging = async () => {
+    close();
+    const state = useWeaverStore.getState();
+    state.flushActiveGroup();
+    const flushed = useWeaverStore.getState();
+    const config = exportMultiGroupConfig(flushed.sampleRate, flushed.groups);
+    const json = JSON.stringify(config, null, 2);
+
+    // Write music_config.json to project root via FSAPI
+    if (flushed.projectRootHandle) {
+      try {
+        const path = `assets/audio/${flushed.projectName}.music.json`;
+        await writeFileAtPath(flushed.projectRootHandle, path, json);
+        console.info(`[weaver] Exported to project: ${path}`);
+      } catch (e) {
+        console.warn('[weaver] Failed to write to project root:', e);
+      }
+    }
+
+    // Also push to staging via bridge WebSocket
+    try {
+      await sendBridgeCommand({ cmd: 'write_temp_file', path: `${flushed.projectName}.music.json`, content: json });
+      console.info('[weaver] Pushed music config to staging via bridge');
+    } catch (e) {
+      console.warn('[weaver] Bridge not available:', e);
+    }
+  };
+
   const menuBtnStyle: React.CSSProperties = {
     background: 'transparent', border: 'none', color: '#ccc',
     padding: '4px 10px', cursor: 'pointer', fontSize: 12, borderRadius: 3,
@@ -132,8 +202,15 @@ export function MenuBar() {
                 Export v2 JSON...
               </button>
               <div style={separatorStyle} />
+              <button style={itemStyle} onClick={handleOpenInStaging}>
+                Open in Staging
+              </button>
+              <div style={separatorStyle} />
               <button style={itemStyle} onClick={handleOpenProjectRoot}>
                 Open Project Root...
+              </button>
+              <button style={itemStyle} onClick={handleConnectBridge}>
+                Connect Bridge to Project Root...
               </button>
             </div>
           )}
