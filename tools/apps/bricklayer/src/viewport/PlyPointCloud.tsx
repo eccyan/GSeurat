@@ -183,6 +183,9 @@ export function PlyPointCloud({
     const mat = pointCloudMaterial.clone();
     mat.uniforms.uPointSize = { value: pointSize };
     mat.uniforms.uOpacity = { value: opacity };
+    const isOpaque = opacity >= 1.0;
+    mat.transparent = !isOpaque;
+    mat.depthWrite = isOpaque;
     return mat;
   }, [pointSize, opacity]);
 

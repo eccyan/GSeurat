@@ -16,15 +16,26 @@
 - Keep wireframe cube as fallback when no PLY or toggle off
 
 ### TerrainPlyReference.tsx (new)
-- Path derived from `projectName`: `assets/maps/<slug>.ply`
-- Renders at world origin
+- Path from `terrainPlyFile` store value, sourced from `world.json` chunk/instance `ply_file`
+- Renders at world origin in PLY capture space (no coordinate transform)
+- Opaque with depth write enabled
 - Controlled by `showTerrainPly` toggle
 
 ## Store Changes (useSceneStore)
 - `showTerrainPly: boolean` (default `false`)
 - `showObjectPly: boolean` (default `true`)
-- `setShowTerrainPly`, `setShowObjectPly` setters
+- `terrainPlyFile: string` (set from world manifest when switching scenes)
+- `setShowTerrainPly`, `setShowObjectPly`, `setTerrainPlyFile` setters
+
+## Schema Changes (project-root)
+- `WorldInstance` gains optional `ply_file?: string`
+- `WorldChunk` already has `ply_file: string`
+- Terrain PLY path is owned by `world.json`, not derived from project name
 
 ## UI Changes
 - View menu: "Terrain PLY" and "Object PLY" toggles
+- Instance editor: "PLY File" text field in WorldPropertiesPanel
 - Viewport.tsx: add `<TerrainPlyReference />`
+
+## Coordinate Spaces
+PLY files are in capture space (from Echidna/3DGS training), game objects are in engine world space. These are independent coordinate systems — the PLY renders at its native coordinates as a visual reference.

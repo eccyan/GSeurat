@@ -15,7 +15,7 @@ export function TerrainPlyReference() {
       projectHandle={projectHandle}
       visible={visible}
       pointSize={2.5}
-      opacity={0.7}
+      opacity={1.0}
     />
   );
 }
