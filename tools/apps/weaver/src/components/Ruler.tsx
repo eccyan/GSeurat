@@ -24,6 +24,7 @@ export function Ruler() {
   const bpm = useWeaverStore((s) => s.bpm);
   const sampleRate = useWeaverStore((s) => s.sampleRate);
   const maxFrames = useWeaverStore((s) => s.maxFrames);
+  const loopEnabled = useWeaverStore((s) => s.loopEnabled);
 
   const getWaveWidth = useCallback(() => {
     if (!rulerRef.current) return 600;
@@ -102,44 +103,7 @@ export function Ruler() {
     [startDrag, pxToFrame, moveMarker],
   );
 
-  // Zoom (Ctrl/Cmd+scroll) and pan (plain scroll)
-  useEffect(() => {
-    const el = rulerRef.current;
-    if (!el) return;
-
-    const handleWheel = (e: WheelEvent) => {
-      e.preventDefault();
-      const store = useWeaverStore.getState();
-      const vs = store.viewStartFrame;
-      const ve = store.viewEndFrame;
-      const ww = el.getBoundingClientRect().width - LABEL_WIDTH;
-      const cursorPx = e.clientX - el.getBoundingClientRect().left - LABEL_WIDTH;
-
-      if (e.ctrlKey || e.metaKey) {
-        // Zoom around cursor
-        const cursorFrame = pixelToFrame(cursorPx, vs, ve, ww);
-        const range = ve - vs;
-        const factor = e.deltaY > 0 ? 1.15 : 1 / 1.15;
-        const newRange = Math.max(100, range * factor);
-        const ratio = cursorPx / ww;
-        const newStart = Math.max(0, cursorFrame - newRange * ratio);
-        store.setView(Math.round(newStart), Math.round(newStart + newRange));
-      } else {
-        // Horizontal pan
-        const range = ve - vs;
-        const shift = (e.deltaX || e.deltaY) * (range / ww) * 0.5;
-        const mf = store.maxFrames();
-        let ns = vs + shift;
-        let ne = ve + shift;
-        if (ns < 0) { ne -= ns; ns = 0; }
-        if (mf > 0 && ne > mf) { ns -= ne - mf; ne = mf; }
-        store.setView(Math.round(Math.max(0, ns)), Math.round(ne));
-      }
-    };
-
-    el.addEventListener('wheel', handleWheel, { passive: false });
-    return () => el.removeEventListener('wheel', handleWheel);
-  }, []);
+  // Note: Zoom/pan wheel handling is in TimelinePanel (covers ruler + stem lanes)
 
   // Compute beat ticks
   const waveWidth = getWaveWidth();
@@ -205,7 +169,7 @@ export function Ruler() {
         <div style={{
           position: 'absolute', left: loopStartPx, top: 0,
           width: loopEndPx - loopStartPx, height: '100%',
-          background: 'rgba(68, 204, 102, 0.15)', pointerEvents: 'none',
+          background: loopEnabled ? 'rgba(68, 204, 102, 0.15)' : 'rgba(68, 204, 102, 0.05)', pointerEvents: 'none',
         }} />
       )}
 
@@ -218,7 +182,7 @@ export function Ruler() {
           width: 0, height: 0, cursor: 'ew-resize',
           borderLeft: `${HANDLE_SIZE / 2}px solid transparent`,
           borderRight: `${HANDLE_SIZE / 2}px solid transparent`,
-          borderTop: `${HANDLE_SIZE}px solid #44cc66`,
+          borderTop: `${HANDLE_SIZE}px solid ${loopEnabled ? '#44cc66' : '#44cc6644'}`,
         }}
       />
 
@@ -231,7 +195,7 @@ export function Ruler() {
           width: 0, height: 0, cursor: 'ew-resize',
           borderLeft: `${HANDLE_SIZE / 2}px solid transparent`,
           borderRight: `${HANDLE_SIZE / 2}px solid transparent`,
-          borderTop: `${HANDLE_SIZE}px solid #ff6644`,
+          borderTop: `${HANDLE_SIZE}px solid ${loopEnabled ? '#ff6644' : '#ff664444'}`,
         }}
       />
 

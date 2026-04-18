@@ -8,6 +8,14 @@ function getAudioContext(): AudioContext {
   return sharedCtx;
 }
 
+// Minimum loop region: 100ms worth of frames. Shorter regions produce
+// audible clicks/beeps from Web Audio rapid looping.
+const MIN_LOOP_FRAMES = 4410;
+
+function hasValidLoopRegion(loopStart: number, loopEnd: number): boolean {
+  return loopEnd - loopStart >= MIN_LOOP_FRAMES;
+}
+
 export function useAudioPlayer() {
   const sourcesRef = useRef<AudioBufferSourceNode[]>([]);
   const gainsRef = useRef<GainNode[]>([]);
@@ -16,6 +24,8 @@ export function useAudioPlayer() {
   const startFrameRef = useRef<number>(0);
 
   const isPlaying = useWeaverStore((s) => s.isPlaying);
+  const stems = useWeaverStore((s) => s.stems);
+  const loopEnabled = useWeaverStore((s) => s.loopEnabled);
 
   useEffect(() => {
     if (isPlaying) {
@@ -26,6 +36,47 @@ export function useAudioPlayer() {
     return () => stopPlayback();
   }, [isPlaying]);
 
+  // Update source.loop live when loopEnabled changes during playback
+  useEffect(() => {
+    const sources = sourcesRef.current;
+    if (sources.length === 0) return;
+
+    // Resync time references to current playhead so frame calculation
+    // doesn't jump when switching between looped/linear tracking
+    const ctx = getAudioContext();
+    const state = useWeaverStore.getState();
+    startTimeRef.current = ctx.currentTime;
+    startFrameRef.current = state.playheadFrame;
+
+    const sampleRate = state.sampleRate;
+    const loopStart = state.loopStart;
+    const loopEnd = state.loopEnd;
+    const shouldLoop = loopEnabled && hasValidLoopRegion(loopStart, loopEnd);
+    for (const source of sources) {
+      source.loop = shouldLoop;
+      if (shouldLoop) {
+        source.loopStart = framesToSeconds(loopStart, sampleRate);
+        source.loopEnd = framesToSeconds(loopEnd, sampleRate);
+      }
+    }
+  }, [loopEnabled]);
+
+  useEffect(() => {
+    const gains = gainsRef.current;
+    if (gains.length === 0) return;
+    const anySoloed = stems.some(s => s.soloed);
+    let gi = 0;
+    for (const stem of stems) {
+      if (!stem.audioBuffer) continue;
+      if (gi >= gains.length) break;
+      let vol = stem.initialVolume;
+      if (stem.muted) vol = 0;
+      if (anySoloed && !stem.soloed) vol = 0;
+      gains[gi].gain.value = vol;
+      gi++;
+    }
+  }, [stems]);
+
   function startPlayback() {
     const state = useWeaverStore.getState();
     const ctx = getAudioContext();
@@ -35,6 +86,7 @@ export function useAudioPlayer() {
     const sampleRate = state.sampleRate;
     const loopStart = state.loopStart;
     const loopEnd = state.loopEnd;
+    const loopEnabled = state.loopEnabled;
     const playheadFrame = state.playheadFrame;
 
     // Clean up any prior sources
@@ -45,6 +97,8 @@ export function useAudioPlayer() {
 
     const offsetSec = framesToSeconds(playheadFrame, sampleRate);
 
+    const anySoloed = stems.some(s => s.soloed);
+
     for (const stem of stems) {
       if (!stem.audioBuffer) continue;
 
@@ -52,10 +106,13 @@ export function useAudioPlayer() {
       source.buffer = stem.audioBuffer;
 
       const gain = ctx.createGain();
-      gain.gain.value = stem.initialVolume;
+      let effectiveVol = stem.initialVolume;
+      if (stem.muted) effectiveVol = 0;
+      if (anySoloed && !stem.soloed) effectiveVol = 0;
+      gain.gain.value = effectiveVol;
       source.connect(gain).connect(ctx.destination);
 
-      if (loopEnd > loopStart) {
+      if (loopEnabled && hasValidLoopRegion(loopStart, loopEnd)) {
         source.loop = true;
         source.loopStart = framesToSeconds(loopStart, sampleRate);
         source.loopEnd = framesToSeconds(loopEnd, sampleRate);
@@ -79,10 +136,24 @@ export function useAudioPlayer() {
       const elapsed = ctx.currentTime - startTimeRef.current;
       let frame = startFrameRef.current + Math.round(elapsed * sampleRate);
 
+      // Read current loop state (may have changed since playback started)
+      const currentLoopEnabled = s.loopEnabled;
+
       // Wrap within loop region if looping
-      if (loopEnd > loopStart && frame >= loopEnd) {
+      const validLoop = hasValidLoopRegion(loopStart, loopEnd);
+      if (currentLoopEnabled && validLoop && frame >= loopEnd) {
         const loopLen = loopEnd - loopStart;
         frame = loopStart + ((frame - loopStart) % loopLen);
+      }
+
+      // Stop at end when not looping
+      if (!currentLoopEnabled || !validLoop) {
+        const maxLen = s.maxFrames();
+        if (frame >= maxLen) {
+          s.setIsPlaying(false);
+          s.setPlayheadFrame(maxLen);
+          return;
+        }
       }
 
       s.setPlayheadFrame(frame);

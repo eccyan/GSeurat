@@ -1,58 +1,64 @@
 import React from 'react';
 import { useWeaverStore } from '../store/useWeaverStore.js';
 
+export function Sidebar() {
+  return (
+    <aside className="weaver-sidebar">
+      <GroupMetadata />
+      <MarkerList />
+    </aside>
+  );
+}
+
 function GroupMetadata() {
-  const groupName = useWeaverStore((s) => s.groupName);
-  const groupId = useWeaverStore((s) => s.groupId);
+  const activeGroupId = useWeaverStore((s) => s.activeGroupId);
+  const groups = useWeaverStore((s) => s.groups);
   const bpm = useWeaverStore((s) => s.bpm);
   const sampleRate = useWeaverStore((s) => s.sampleRate);
-  const setGroupName = useWeaverStore((s) => s.setGroupName);
-  const setGroupId = useWeaverStore((s) => s.setGroupId);
   const setBpm = useWeaverStore((s) => s.setBpm);
-  const setSampleRate = useWeaverStore((s) => s.setSampleRate);
+  const setGroupName = useWeaverStore((s) => s.setGroupName);
+
+  const activeGroup = groups.find((g) => g.id === activeGroupId);
+  if (!activeGroup) {
+    return (
+      <div style={{ fontSize: 11, color: '#666', padding: '8px 0' }}>
+        Select or create a track group to edit.
+      </div>
+    );
+  }
 
   return (
-    <section style={{ marginBottom: 16 }}>
-      <h3 style={{ fontSize: 12, margin: '0 0 8px', color: '#77aaff' }}>Group Metadata</h3>
-      <label style={labelStyle}>
-        Name
+    <div style={{ marginBottom: 16 }}>
+      <div style={{ fontSize: 12, fontWeight: 700, color: '#77aaff', marginBottom: 6 }}>
+        Group Metadata
+      </div>
+      <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, fontSize: 11 }}>
+        <span style={{ width: 80 }}>Name</span>
         <input
           type="text"
-          value={groupName}
+          value={activeGroup.name}
           onChange={(e) => setGroupName(e.target.value)}
-          style={inputStyle}
+          style={{ flex: 1, padding: '2px 6px', background: '#111', color: '#eee', border: '1px solid #555', borderRadius: 3, fontSize: 11 }}
         />
       </label>
-      <label style={labelStyle}>
-        ID
-        <input
-          type="number"
-          value={groupId}
-          onChange={(e) => setGroupId(Number(e.target.value))}
-          style={inputStyle}
-        />
+      <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, fontSize: 11 }}>
+        <span style={{ width: 80 }}>ID</span>
+        <span style={{ color: '#888' }}>{activeGroup.id}</span>
       </label>
-      <label style={labelStyle}>
-        BPM
+      <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, fontSize: 11 }}>
+        <span style={{ width: 80 }}>BPM</span>
         <input
           type="number"
           value={bpm}
-          min={1}
-          max={999}
           onChange={(e) => setBpm(Number(e.target.value))}
-          style={inputStyle}
+          style={{ width: 60, padding: '2px 6px', background: '#111', color: '#eee', border: '1px solid #555', borderRadius: 3, fontSize: 11 }}
         />
       </label>
-      <label style={labelStyle}>
-        Sample Rate
-        <input
-          type="number"
-          value={sampleRate}
-          onChange={(e) => setSampleRate(Number(e.target.value))}
-          style={inputStyle}
-        />
+      <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11 }}>
+        <span style={{ width: 80 }}>Sample Rate</span>
+        <span style={{ color: '#888' }}>{sampleRate}</span>
       </label>
-    </section>
+    </div>
   );
 }
 
@@ -61,70 +67,52 @@ function MarkerList() {
   const removeMarker = useWeaverStore((s) => s.removeMarker);
   const updateMarker = useWeaverStore((s) => s.updateMarker);
   const setPlayheadFrame = useWeaverStore((s) => s.setPlayheadFrame);
+  const activeGroupId = useWeaverStore((s) => s.activeGroupId);
+
+  if (!activeGroupId) return null;
 
   const sorted = [...markers]
-    .map((m, i) => ({ ...m, originalIndex: i }))
+    .map((m, i) => ({ ...m, origIdx: i }))
     .sort((a, b) => a.frame - b.frame);
 
   return (
-    <section>
-      <h3 style={{ fontSize: 12, margin: '0 0 8px', color: '#77aaff' }}>
+    <div>
+      <div style={{ fontSize: 12, fontWeight: 700, color: '#77aaff', marginBottom: 6 }}>
         Markers ({markers.length})
-      </h3>
+      </div>
       {sorted.length === 0 && (
-        <div style={{ fontSize: 11, color: '#888' }}>Shift+click ruler to add markers</div>
+        <div style={{ fontSize: 11, color: '#666' }}>
+          Shift+click ruler to add markers
+        </div>
       )}
       {sorted.map((m) => (
         <div
-          key={m.originalIndex}
+          key={m.origIdx}
+          onClick={() => setPlayheadFrame(m.frame)}
           style={{
-            display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4,
-            padding: '2px 4px', borderRadius: 3, background: '#1a1a2e',
+            display: 'flex', alignItems: 'center', gap: 4,
+            padding: '2px 0', cursor: 'pointer', fontSize: 11,
           }}
         >
-          <span
-            style={{ cursor: 'pointer', color: '#ffaa00', fontSize: 12 }}
-            title="Jump to marker"
-            onClick={() => setPlayheadFrame(m.frame)}
-          >
-            &#9670;
-          </span>
+          <span style={{ color: '#ffaa00', width: 60 }}>{m.frame}</span>
           <input
             type="text"
             value={m.name}
-            onChange={(e) => updateMarker(m.originalIndex, { name: e.target.value })}
-            style={{ ...inputStyle, flex: 1, marginBottom: 0 }}
+            onClick={(e) => e.stopPropagation()}
+            onChange={(e) => updateMarker(m.origIdx, { name: e.target.value })}
+            style={{
+              flex: 1, padding: '1px 4px', background: '#111', color: '#eee',
+              border: '1px solid #444', borderRadius: 2, fontSize: 11,
+            }}
           />
-          <span style={{ fontSize: 10, color: '#888', minWidth: 50 }}>
-            f{m.frame}
-          </span>
           <button
-            onClick={() => removeMarker(m.originalIndex)}
-            style={{ padding: '1px 6px', fontSize: 10 }}
+            onClick={(e) => { e.stopPropagation(); removeMarker(m.origIdx); }}
+            style={{ padding: '0 4px', fontSize: 10 }}
           >
             ✕
           </button>
         </div>
       ))}
-    </section>
-  );
-}
-
-const labelStyle: React.CSSProperties = {
-  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-  fontSize: 12, marginBottom: 6,
-};
-
-const inputStyle: React.CSSProperties = {
-  background: '#1a1a2e', border: '1px solid #555', color: '#e0e0e0',
-  padding: '2px 6px', fontSize: 12, width: 120, borderRadius: 3,
-};
-
-export function Sidebar() {
-  return (
-    <div className="weaver-sidebar">
-      <GroupMetadata />
-      <MarkerList />
     </div>
   );
 }

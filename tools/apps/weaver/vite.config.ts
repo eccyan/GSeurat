@@ -6,4 +6,9 @@ export default defineConfig({
   envDir: '../../',
   resolve: { conditions: ['source'] },
   server: { port: 5182 },
-});
+  test: {
+    resolve: {
+      conditions: ['source'],
+    },
+  },
+} as any);
