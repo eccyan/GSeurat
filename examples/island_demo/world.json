@@ -1,14 +1,293 @@
 {
   "version": 1,
-  "grid_cell_size": [192.0, 64.0, 192.0],
+  "grid_cell_size": [
+    192,
+    64,
+    192
+  ],
+  "asset_registry": {
+    "version": 1,
+    "characters": {
+      "knight": {
+        "id": "knight",
+        "ply": "assets/characters/knight/knight.ply",
+        "manifest": "assets/characters/knight/knight.manifest.json"
+      },
+      "slime": {
+        "id": "slime",
+        "ply": "assets/characters/slime/slime.ply",
+        "manifest": "assets/characters/slime/slime.manifest.json"
+      },
+      "snes_hero": {
+        "id": "snes_hero",
+        "ply": "assets/characters/snes_hero/snes_hero.ply",
+        "manifest": "assets/characters/snes_hero/snes_hero.manifest.json"
+      },
+      "test": {
+        "id": "test",
+        "ply": "assets/characters/test/test.ply"
+      },
+      "untitled": {
+        "id": "untitled",
+        "ply": "assets/characters/untitled/untitled.ply"
+      },
+      "warm_robot": {
+        "id": "warm_robot",
+        "ply": "assets/characters/warm_robot/warm_robot.ply",
+        "manifest": "assets/characters/warm_robot/warm_robot.manifest.json"
+      }
+    },
+    "vfx": {
+      "chimney_smoke": {
+        "id": "chimney_smoke",
+        "file": "assets/vfx/chimney_smoke.vfx.json"
+      },
+      "crystal_burst": {
+        "id": "crystal_burst",
+        "file": "assets/vfx/crystal_burst.vfx.json"
+      },
+      "fountain_spray": {
+        "id": "fountain_spray",
+        "file": "assets/vfx/fountain_spray.vfx.json"
+      },
+      "spline_dragon_flame": {
+        "id": "spline_dragon_flame",
+        "file": "assets/vfx/spline_dragon_flame.vfx.json"
+      },
+      "spline_smoke_trail": {
+        "id": "spline_smoke_trail",
+        "file": "assets/vfx/spline_smoke_trail.vfx.json"
+      },
+      "torch": {
+        "id": "torch",
+        "file": "assets/vfx/torch.vfx.json"
+      },
+      "vfx1": {
+        "id": "vfx1",
+        "file": "assets/vfx/vfx1.vfx.json"
+      }
+    },
+    "textures": {
+      "bg_mountains": {
+        "id": "bg_mountains",
+        "file": "assets/textures/bg_mountains.png"
+      },
+      "bg_sky": {
+        "id": "bg_sky",
+        "file": "assets/textures/bg_sky.png"
+      },
+      "bg_trees": {
+        "id": "bg_trees",
+        "file": "assets/textures/bg_trees.png"
+      },
+      "player_normal": {
+        "id": "player_normal",
+        "file": "assets/textures/player_normal.png"
+      },
+      "player_sheet": {
+        "id": "player_sheet",
+        "file": "assets/textures/player_sheet.png"
+      },
+      "test_sprite": {
+        "id": "test_sprite",
+        "file": "assets/textures/test_sprite.png"
+      },
+      "tileset": {
+        "id": "tileset",
+        "file": "assets/textures/tileset.png"
+      },
+      "tileset_normal": {
+        "id": "tileset_normal",
+        "file": "assets/textures/tileset_normal.png"
+      }
+    },
+    "audio": {
+      "field_theme": {
+        "id": "field_theme",
+        "file": "assets/audio/field_theme.music.json"
+      }
+    },
+    "maps": {
+      "dungeon": {
+        "id": "dungeon",
+        "file": "assets/maps/dungeon.ply"
+      },
+      "emissive_test": {
+        "id": "emissive_test",
+        "file": "assets/maps/emissive_test.ply"
+      },
+      "map": {
+        "id": "map",
+        "file": "assets/maps/map.ply"
+      },
+      "northern_forest": {
+        "id": "northern_forest",
+        "file": "assets/maps/northern_forest.ply"
+      },
+      "seurat_island": {
+        "id": "seurat_island",
+        "file": "assets/maps/seurat_island.ply"
+      },
+      "test_bricklayer": {
+        "id": "test_bricklayer",
+        "file": "assets/maps/test_bricklayer.ply"
+      },
+      "test_terrain": {
+        "id": "test_terrain",
+        "file": "assets/maps/test_terrain.ply"
+      }
+    },
+    "objects": {
+      "boy_character": {
+        "id": "boy_character",
+        "file": "assets/props/boy_character.ply"
+      },
+      "glow_mushrooms": {
+        "id": "glow_mushrooms",
+        "file": "assets/props/glow_mushrooms.ply"
+      },
+      "house": {
+        "id": "house",
+        "file": "assets/props/house.ply"
+      },
+      "island_crystal1": {
+        "id": "island_crystal1",
+        "file": "assets/props/island_crystal1.ply"
+      },
+      "island_flower1": {
+        "id": "island_flower1",
+        "file": "assets/props/island_flower1.ply"
+      },
+      "island_fountain": {
+        "id": "island_fountain",
+        "file": "assets/props/island_fountain.ply"
+      },
+      "island_house": {
+        "id": "island_house",
+        "file": "assets/props/island_house.ply"
+      },
+      "island_house1": {
+        "id": "island_house1",
+        "file": "assets/props/island_house1.ply"
+      },
+      "island_rock1": {
+        "id": "island_rock1",
+        "file": "assets/props/island_rock1.ply"
+      },
+      "island_rock2": {
+        "id": "island_rock2",
+        "file": "assets/props/island_rock2.ply"
+      },
+      "island_rock_1": {
+        "id": "island_rock_1",
+        "file": "assets/props/island_rock_1.ply"
+      },
+      "island_rock_2": {
+        "id": "island_rock_2",
+        "file": "assets/props/island_rock_2.ply"
+      },
+      "island_rock_3": {
+        "id": "island_rock_3",
+        "file": "assets/props/island_rock_3.ply"
+      },
+      "island_rock_4": {
+        "id": "island_rock_4",
+        "file": "assets/props/island_rock_4.ply"
+      },
+      "island_rock_5": {
+        "id": "island_rock_5",
+        "file": "assets/props/island_rock_5.ply"
+      },
+      "island_rock_6": {
+        "id": "island_rock_6",
+        "file": "assets/props/island_rock_6.ply"
+      },
+      "island_tree_1": {
+        "id": "island_tree_1",
+        "file": "assets/props/island_tree_1.ply"
+      },
+      "island_tree_10": {
+        "id": "island_tree_10",
+        "file": "assets/props/island_tree_10.ply"
+      },
+      "island_tree_11": {
+        "id": "island_tree_11",
+        "file": "assets/props/island_tree_11.ply"
+      },
+      "island_tree_12": {
+        "id": "island_tree_12",
+        "file": "assets/props/island_tree_12.ply"
+      },
+      "island_tree_2": {
+        "id": "island_tree_2",
+        "file": "assets/props/island_tree_2.ply"
+      },
+      "island_tree_3": {
+        "id": "island_tree_3",
+        "file": "assets/props/island_tree_3.ply"
+      },
+      "island_tree_4": {
+        "id": "island_tree_4",
+        "file": "assets/props/island_tree_4.ply"
+      },
+      "island_tree_5": {
+        "id": "island_tree_5",
+        "file": "assets/props/island_tree_5.ply"
+      },
+      "island_tree_6": {
+        "id": "island_tree_6",
+        "file": "assets/props/island_tree_6.ply"
+      },
+      "island_tree_7": {
+        "id": "island_tree_7",
+        "file": "assets/props/island_tree_7.ply"
+      },
+      "island_tree_8": {
+        "id": "island_tree_8",
+        "file": "assets/props/island_tree_8.ply"
+      },
+      "island_tree_9": {
+        "id": "island_tree_9",
+        "file": "assets/props/island_tree_9.ply"
+      },
+      "island_tree_mesh": {
+        "id": "island_tree_mesh",
+        "file": "assets/props/island_tree_mesh.ply"
+      },
+      "lantern_post": {
+        "id": "lantern_post",
+        "file": "assets/props/lantern_post.ply"
+      },
+      "rock": {
+        "id": "rock",
+        "file": "assets/props/rock.ply"
+      },
+      "treasure_chest": {
+        "id": "treasure_chest",
+        "file": "assets/props/treasure_chest.ply"
+      },
+      "tree": {
+        "id": "tree",
+        "file": "assets/props/tree.ply"
+      }
+    }
+  },
   "chunks": [
     {
-      "grid": [0, 0, 0],
+      "grid": [
+        0,
+        0,
+        0
+      ],
       "ply_file": "assets/maps/seurat_island.ply",
       "scene_file": "assets/scenes/seurat_island.json"
     },
     {
-      "grid": [0, 0, -1],
+      "grid": [
+        0,
+        0,
+        -1
+      ],
       "ply_file": "assets/maps/northern_forest.ply",
       "scene_file": "assets/scenes/northern_forest.json"
     }
@@ -29,36 +308,76 @@
     {
       "id": "sv_dungeon_approach",
       "shape": "sphere",
-      "position": [203.0, 3.0, 175.0],
-      "radius": 20.0,
-      "preload_target_ids": ["dungeon_01"]
+      "position": [
+        203,
+        3,
+        175
+      ],
+      "radius": 20,
+      "preload_target_ids": [
+        "dungeon_01"
+      ]
     },
     {
       "id": "sv_forest_approach",
       "shape": "box",
-      "position": [192.0, 10.0, 40.0],
-      "half_extents": [60.0, 20.0, 30.0],
-      "preload_target_ids": ["0,0,-1"]
+      "position": [
+        192,
+        10,
+        40
+      ],
+      "half_extents": [
+        60,
+        20,
+        30
+      ],
+      "preload_target_ids": [
+        "0,0,-1"
+      ]
     }
   ],
   "portals": [
     {
       "id": "portal_dungeon_entrance",
       "display_name": "Dungeon Entrance",
-      "position": [203.0, 1.5, 175.0],
-      "half_extents": [1.5, 2.5, 1.0],
+      "position": [
+        203,
+        1.5,
+        175
+      ],
+      "half_extents": [
+        1.5,
+        2.5,
+        1
+      ],
       "source_chunk": "0,0,0",
       "target_instance": "dungeon_01",
-      "target_spawn": [5.0, 0.0, 5.0]
+      "target_spawn": [
+        5,
+        0,
+        5
+      ]
     },
     {
       "id": "portal_tavern_door",
       "display_name": "Tavern Door",
-      "position": [170.0, 2.0, 190.0],
-      "half_extents": [1.0, 2.0, 0.5],
+      "position": [
+        170,
+        2,
+        190
+      ],
+      "half_extents": [
+        1,
+        2,
+        0.5
+      ],
       "source_chunk": "0,0,0",
       "target_instance": "tavern_01",
-      "target_spawn": [0.0, 0.0, 0.0]
+      "target_spawn": [
+        0,
+        0,
+        0
+      ]
     }
   ]
 }

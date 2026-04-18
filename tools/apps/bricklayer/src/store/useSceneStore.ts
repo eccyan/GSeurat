@@ -436,6 +436,7 @@ export interface SceneStoreState {
   switchTerrain: (id: string) => void;
   addAsset: (asset: AssetEntry) => void;
   removeAsset: (id: string) => void;
+  setAssetRegistry: (reg: AssetRegistry) => void;
   setActiveNode: (node: NavigationNode | null) => void;
   markDirty: () => void;
   markClean: () => void;
@@ -1126,6 +1127,7 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
   switchTerrain: (id) => set({ currentTerrainId: id }),
   addAsset: (asset) => set({ assets: [...get().assets, asset] }),
   removeAsset: (id) => set({ assets: get().assets.filter((a) => a.id !== id) }),
+  setAssetRegistry: (reg) => set({ asset_registry: reg }),
   setActiveNode: (node) => set({ activeNode: node }),
   markDirty: () => set({ isDirty: true }),
   markClean: () => set({ isDirty: false, lastSavedAt: Date.now() }),

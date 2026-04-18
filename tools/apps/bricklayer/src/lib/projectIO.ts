@@ -109,7 +109,9 @@ export async function saveProject(handle: FileSystemDirectoryHandle): Promise<vo
 
   // 5. World manifest (world.json)
   const worldStore = useWorldStore.getState();
-  if (worldStore.loaded && worldStore.manifest.chunks.length > 0) {
+  // Sync asset_registry from scene store to world manifest before saving
+  worldStore.setAssetRegistry(store.asset_registry);
+  if (worldStore.loaded) {
     const worldJson = JSON.stringify(worldStore.saveManifest(), null, 2);
     await writeFileAtPath(handle, 'world.json', worldJson);
   }
@@ -189,6 +191,11 @@ export async function loadProject(handle: FileSystemDirectoryHandle): Promise<bo
       const worldText = await blob.text();
       const worldData = JSON.parse(worldText) as WorldManifest;
       useWorldStore.getState().loadManifest(worldData);
+      // Sync asset_registry from world manifest back to scene store if present
+      const loadedWorld = useWorldStore.getState();
+      if (loadedWorld.loaded && loadedWorld.manifest.asset_registry) {
+        useSceneStore.getState().setAssetRegistry(loadedWorld.manifest.asset_registry);
+      }
     } catch {
       // No world.json — start with empty world (default)
     }

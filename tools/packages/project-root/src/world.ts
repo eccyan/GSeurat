@@ -1,5 +1,8 @@
 // tools/packages/project-root/src/world.ts
 
+import type { AssetRegistry } from './registry';
+import { createEmptyRegistry } from './registry';
+
 export interface WorldChunk {
   grid: [number, number, number];
   ply_file: string;
@@ -34,6 +37,7 @@ export interface WorldPortal {
 export interface WorldManifest {
   version: 1;
   grid_cell_size: [number, number, number];
+  asset_registry: AssetRegistry;
   chunks: WorldChunk[];
   instances: WorldInstance[];
   streaming_volumes: StreamingVolumeData[];
@@ -68,6 +72,7 @@ export function createEmptyManifest(): WorldManifest {
   return {
     version: 1,
     grid_cell_size: [64, 32, 64],
+    asset_registry: createEmptyRegistry(),
     chunks: [],
     instances: [],
     streaming_volumes: [],

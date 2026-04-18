@@ -5,8 +5,9 @@ import type {
   StreamingVolumeData,
   WorldInstance,
   WorldPortal,
+  AssetRegistry,
 } from '@gseurat/project-root';
-import { createEmptyManifest, chunkGridKey } from '@gseurat/project-root';
+import { createEmptyManifest, createEmptyRegistry, chunkGridKey } from '@gseurat/project-root';
 
 interface WorldSelection {
   type: 'chunk' | 'streaming_volume' | 'instance' | 'portal';
@@ -21,6 +22,7 @@ interface WorldStoreState {
   editingChunkGrid: [number, number, number] | null;
   editingContext: { type: 'chunk'; gridKey: string; sceneFile: string } | { type: 'instance'; id: string; sceneFile: string } | null;
 
+  setAssetRegistry: (reg: AssetRegistry) => void;
   setEditingContext: (ctx: WorldStoreState['editingContext']) => void;
   setGridCellSize: (size: [number, number, number]) => void;
 
@@ -61,6 +63,12 @@ export const useWorldStore = create<WorldStoreState>((set, get) => ({
   selectedEntity: null,
   editingChunkGrid: null,
   editingContext: null,
+
+  setAssetRegistry: (reg) =>
+    set((s) => ({
+      manifest: { ...s.manifest, asset_registry: reg },
+      dirty: true,
+    })),
 
   setEditingContext: (ctx) => set({ editingContext: ctx }),
   setGridCellSize: (size) =>
@@ -239,9 +247,10 @@ export const useWorldStore = create<WorldStoreState>((set, get) => ({
   exitChunk: () => set({ editingChunkGrid: null }),
 
   loadManifest: (data) => {
-    // Back-compat: older world.json files may lack instances/portals arrays
+    // Back-compat: older world.json files may lack asset_registry/instances/portals
     const safeData: WorldManifest = {
       ...data,
+      asset_registry: data.asset_registry ?? createEmptyRegistry(),
       instances: data.instances ?? [],
       portals: data.portals ?? [],
     };
