@@ -335,6 +335,19 @@
       "preload_target_ids": [
         "0,0,-1"
       ]
+    },
+    {
+      "id": "sv_tavern_approach",
+      "shape": "sphere",
+      "position": [
+        170,
+        2,
+        190
+      ],
+      "radius": 20,
+      "preload_target_ids": [
+        "tavern_01"
+      ]
     }
   ],
   "portals": [
