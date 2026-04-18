@@ -505,6 +505,9 @@ importers:
       '@gseurat/asset-types':
         specifier: workspace:*
         version: link:../packages/asset-types
+      '@gseurat/project-root':
+        specifier: workspace:*
+        version: link:../packages/project-root
       '@gseurat/test-harness':
         specifier: workspace:*
         version: link:../packages/test-harness
