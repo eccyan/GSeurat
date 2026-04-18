@@ -5,7 +5,9 @@ import {
   restoreProjectRoot,
 } from '@gseurat/project-root';
 import { useWeaverStore } from './store/useWeaverStore.js';
-import { Toolbar } from './components/Toolbar.js';
+import { MenuBar } from './components/MenuBar.js';
+import { TransportBar } from './components/TransportBar.js';
+import { GroupPanel } from './components/GroupPanel.js';
 import { TimelinePanel } from './components/TimelinePanel.js';
 import { Sidebar } from './components/Sidebar.js';
 import { EmptyProjectState } from './components/EmptyProjectState.js';
@@ -150,8 +152,10 @@ export function App() {
 
   return (
     <div className="weaver">
-      <Toolbar />
+      <MenuBar />
+      <TransportBar />
       <main className="weaver-body">
+        <GroupPanel />
         <TimelinePanel />
         <Sidebar />
       </main>

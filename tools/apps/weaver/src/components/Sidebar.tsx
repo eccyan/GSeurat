@@ -1,11 +1,9 @@
 import React from 'react';
 import { useWeaverStore } from '../store/useWeaverStore.js';
-import { GroupSelector } from './GroupSelector.js';
 
 export function Sidebar() {
   return (
     <aside className="weaver-sidebar">
-      <GroupSelector />
       <GroupMetadata />
       <MarkerList />
     </aside>
