@@ -8,6 +8,7 @@
 
 #ifdef GSEURAT_DEV_MODE
 #include <imgui.h>
+#include <imgui_internal.h>
 #endif
 
 #include <string>

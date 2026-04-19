@@ -20,6 +20,7 @@
 #include <GLFW/glfw3.h>
 
 #include <chrono>
+#include <cstdio>
 #include <optional>
 
 namespace gseurat {
@@ -137,7 +138,7 @@ void AppBase::main_loop() {
         // F12 → debug dump to console
         if (input_.was_key_pressed(GLFW_KEY_F12)) {
             auto dump = debug_dump_registry_.collect_all("staging");
-            spdlog::info("[DebugDump] {}", dump.dump(2));
+            std::fprintf(stderr, "[DebugDump] %s\n", dump.dump(2).c_str());
         }
         dev_overlay_.begin_frame();
 
