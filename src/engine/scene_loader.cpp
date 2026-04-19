@@ -547,6 +547,12 @@ SceneData SceneLoader::from_json(const nlohmann::json& j) {
             inst.radius = vi.value("radius", 5.0f);
             inst.trigger = vi.value("trigger", "auto");
             inst.loop = vi.value("loop", true);
+            if (vi.contains("spline_points")) {
+                for (const auto& pt : vi["spline_points"]) {
+                    inst.spline_points.emplace_back(
+                        pt[0].get<float>(), pt[1].get<float>(), pt[2].get<float>());
+                }
+            }
             data.vfx_instances.push_back(std::move(inst));
         }
     }

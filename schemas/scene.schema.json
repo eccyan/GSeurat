@@ -173,6 +173,16 @@
         "rotation_y": {
           "type": "number",
           "description": "Y-axis rotation in degrees (turntable orientation)"
+        },
+        "spline_points": {
+          "type": "array",
+          "description": "Per-instance spline control points (instance-relative). Overrides preset spline.",
+          "items": {
+            "type": "array",
+            "items": { "type": "number" },
+            "minItems": 3,
+            "maxItems": 3
+          }
         }
       },
       "additionalProperties": false

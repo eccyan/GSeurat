@@ -439,7 +439,7 @@ function SceneChildren({
               <TreeNode
                 key={v.id}
                 icon={icons.vfx}
-                label={v.name}
+                label={v.name || v.vfx_file?.replace(/^.*\//, '').replace(/\.vfx\.json$/, '') || v.id}
                 isActive={isActive({ kind: 'scene_item', entityType: 'vfx_instance', entityId: v.id })}
                 onClick={() => click({ kind: 'scene_item', entityType: 'vfx_instance', entityId: v.id })}
                 dimmed={v.muted}

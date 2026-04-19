@@ -170,6 +170,7 @@ struct SceneData {
         float radius = 5.0f;
         std::string trigger = "auto";
         bool loop = true;
+        std::vector<glm::vec3> spline_points;  // per-instance override (empty = use preset)
     };
     std::vector<VfxInstanceRef> vfx_instances;
 

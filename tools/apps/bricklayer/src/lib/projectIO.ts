@@ -641,7 +641,10 @@ export async function importEngineScene(
         dayNight: { enabled: false, cycle_speed: 1, initial_time: 0, keyframes: [] },
         gaussianSplat,
         gsParticleEmitters: gsParticleEmitters.length > 0 ? gsParticleEmitters : undefined,
-        vfxInstances: engine.vfx_instances ?? undefined,
+        vfxInstances: engine.vfx_instances?.map((v: any) => ({
+          ...v,
+          splinePoints: v.spline_points ?? undefined,
+        })) ?? undefined,
         audioZones: engine.audio_zones ?? undefined,
       },
     };
