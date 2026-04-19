@@ -500,6 +500,48 @@ void CommandDispatcher::register_default_commands() {
         return response;
     });
 
+    register_command("get_game_objects", [this](const json&) -> CommandResult {
+        json response;
+        response["type"] = "game_objects";
+
+        // Scene-level game object data (only objects with components)
+        auto objects = json::array();
+        for (const auto& go : ctx_.scene_objects.game_objects) {
+            if (go.components.empty() || go.components.is_null()) continue;
+            json obj;
+            obj["id"] = go.id;
+            obj["name"] = go.name;
+            obj["position"] = {
+                go.position.x(), go.position.y(), go.position.z()
+            };
+            json comp_names = json::array();
+            for (auto& [name, _] : go.components.items()) {
+                comp_names.push_back(name);
+            }
+            obj["components"] = comp_names;
+            objects.push_back(obj);
+        }
+        response["scene_objects"] = objects;
+
+        // Live NPC positions from ECS
+        auto npcs = json::array();
+        ctx_.world.view<NpcWalker, ecs::Transform>().each(
+            [&](ecs::Entity e, NpcWalker& npc, ecs::Transform& t) {
+                npcs.push_back({
+                    {"entity", e.id},
+                    {"position", {t.position.x(), t.position.y(), t.position.z()}},
+                    {"home", {npc.home_x, npc.home_z}},
+                    {"target", {npc.target_x, npc.target_z}},
+                    {"patrol_radius", npc.patrol_radius},
+                    {"speed", npc.speed},
+                    {"paused", npc.paused},
+                });
+            });
+        response["live_npcs"] = npcs;
+
+        return response;
+    });
+
     register_command("set_project_root", [ok](const json& cmd) -> CommandResult {
         std::string p = cmd.value("path", "");
         set_project_root(p);
