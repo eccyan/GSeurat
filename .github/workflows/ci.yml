@@ -87,6 +87,21 @@ jobs:
       - name: Test
         run: ctest --test-dir build/linux-release --output-on-failure --label-exclude gpu
 
+  validate-data:
+    runs-on: ubuntu-24.04
+    name: Validate (Demo Data)
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Validate bricklayer sync
+        run: python3 scripts/validate_bricklayer_sync.py
+
   test-tools:
     runs-on: ubuntu-24.04
     name: Test (TypeScript)
