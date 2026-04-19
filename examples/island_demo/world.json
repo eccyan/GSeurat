@@ -100,6 +100,14 @@
       "field_theme": {
         "id": "field_theme",
         "file": "assets/audio/field_theme.music.json"
+      },
+      "forest_night": {
+        "id": "forest_night",
+        "file": "assets/audio/forest_night.music.json"
+      },
+      "dungeon_depths": {
+        "id": "dungeon_depths",
+        "file": "assets/audio/dungeon_depths.music.json"
       }
     },
     "maps": {

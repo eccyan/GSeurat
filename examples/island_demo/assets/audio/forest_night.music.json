@@ -1,0 +1,28 @@
+{
+  "version": 2,
+  "sample_rate": 44100,
+  "track_groups": [
+    {
+      "id": 2,
+      "name": "forest_night",
+      "bpm": 80,
+      "loop_start": 0,
+      "loop_end": 352800,
+      "markers": [],
+      "stems": [
+        {
+          "source": "assets/audio/forest/piano_melody.wav",
+          "initial_volume": 0.7
+        },
+        {
+          "source": "assets/audio/forest/birdsong.wav",
+          "initial_volume": 0.5
+        },
+        {
+          "source": "assets/audio/forest/atmosphere.wav",
+          "initial_volume": 0.8
+        }
+      ]
+    }
+  ]
+}

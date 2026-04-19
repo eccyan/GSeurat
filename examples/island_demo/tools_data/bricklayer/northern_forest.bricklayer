@@ -1070,7 +1070,26 @@
         5,
         -10
       ]
-    }
+    },
+    "audioZones": [
+      {
+        "id": "forest_music_zone",
+        "shape": "aabb",
+        "center": [
+          192,
+          0,
+          -260
+        ],
+        "half_extents": [
+          100,
+          50,
+          130
+        ],
+        "music_config": "assets/audio/forest_night.music.json",
+        "crossfade_ms": 3000,
+        "ambient_volume": 0.8
+      }
+    ]
   },
   "collisionGridData": {
     "width": 192,

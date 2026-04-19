@@ -1,0 +1,28 @@
+{
+  "version": 2,
+  "sample_rate": 44100,
+  "track_groups": [
+    {
+      "id": 3,
+      "name": "dungeon_depths",
+      "bpm": 90,
+      "loop_start": 0,
+      "loop_end": 352800,
+      "markers": [],
+      "stems": [
+        {
+          "source": "assets/audio/dungeon/percussion.wav",
+          "initial_volume": 0.6
+        },
+        {
+          "source": "assets/audio/dungeon/double_bass.wav",
+          "initial_volume": 0.8
+        },
+        {
+          "source": "assets/audio/dungeon/eerie_strings.wav",
+          "initial_volume": 0.5
+        }
+      ]
+    }
+  ]
+}

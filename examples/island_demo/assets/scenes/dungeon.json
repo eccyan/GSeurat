@@ -6832,5 +6832,24 @@
         "blend_override": 1.0
       }
     ]
-  }
+  },
+  "audio_zones": [
+    {
+      "id": "dungeon_music_zone",
+      "shape": "aabb",
+      "center": [
+        25,
+        3,
+        25
+      ],
+      "half_extents": [
+        30,
+        10,
+        30
+      ],
+      "music_config": "assets/audio/dungeon_depths.music.json",
+      "crossfade_ms": 2000,
+      "ambient_volume": 0.9
+    }
+  ]
 }
