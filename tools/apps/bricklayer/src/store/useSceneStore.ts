@@ -242,6 +242,9 @@ export interface SceneStoreState {
   // Orbit lock
   orbitLocked: boolean;
 
+  // Spline editing
+  editingSpline: string | null;
+
   // Scene elements
   ambientColor: [number, number, number, number];
   godRaysIntensity: number;
@@ -349,6 +352,7 @@ export interface SceneStoreState {
   setGrabOriginalPosition: (pos: [number, number, number] | null) => void;
   setGrabAxisLock: (axis: 'free' | 'x' | 'y' | 'z') => void;
   setOrbitLocked: (v: boolean) => void;
+  setEditingSpline: (id: string | null) => void;
 
   // Actions – editor
   setSelectedEntity: (e: SelectedEntity | null) => void;
@@ -387,6 +391,7 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
   grabOriginalPosition: null,
   grabAxisLock: 'free' as const,
   orbitLocked: false,
+  editingSpline: null,
 
   ambientColor: [0.25, 0.28, 0.45, 1],
   godRaysIntensity: 0,
@@ -752,6 +757,13 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
   setGrabOriginalPosition: (pos) => set({ grabOriginalPosition: pos }),
   setGrabAxisLock: (axis) => set({ grabAxisLock: axis }),
   setOrbitLocked: (v) => set({ orbitLocked: v }),
+  setEditingSpline: (id) => {
+    if (id) {
+      set({ editingSpline: id, orbitLocked: true });
+    } else {
+      set({ editingSpline: null, orbitLocked: false });
+    }
+  },
 
   // ── Editor actions ──
   setSelectedEntity: (e) => set({ selectedEntity: e }),
