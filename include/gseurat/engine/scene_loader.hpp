@@ -195,6 +195,17 @@ struct SceneData {
 
     // Audio preload hints (track group names to preload on scene load)
     std::vector<std::string> audio_preload_track_groups;
+
+    // Audio zones (spatial music/ambient triggers)
+    struct AudioZoneRef {
+        std::string id;
+        glm::vec3 center{0.0f};
+        glm::vec3 half_extents{0.0f};
+        std::string music_config;   // path to .music.json
+        float crossfade_ms = 2000.0f;
+        float ambient_volume = 1.0f;
+    };
+    std::vector<AudioZoneRef> audio_zones;
 };
 
 class SceneLoader {

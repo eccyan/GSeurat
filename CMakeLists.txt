@@ -316,7 +316,7 @@ add_executable(gseurat_demo
 )
 target_compile_definitions(gseurat_demo PRIVATE VG_BUILD_PROFILE=1)
 target_link_libraries(gseurat_demo PRIVATE gseurat_core)
-add_dependencies(gseurat_demo shaders)
+add_dependencies(gseurat_demo shaders sync_assets)
 
 add_executable(gseurat_staging
     src/staging_main.cpp
@@ -325,7 +325,7 @@ add_executable(gseurat_staging
     src/staging/camera_review_state.cpp
 )
 target_link_libraries(gseurat_staging PRIVATE gseurat_core)
-add_dependencies(gseurat_staging shaders)
+add_dependencies(gseurat_staging shaders sync_assets)
 
 # Copy example assets to build directory so runtime paths resolve unchanged.
 add_custom_target(sync_assets ALL

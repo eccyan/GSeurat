@@ -10,7 +10,7 @@
 
 namespace gseurat {
 
-void portal_trigger_handler(ecs::World& world) {
+void portal_trigger_handler(ecs::World& world, bool interact_pressed) {
     bool transition_in_flight = false;
     world.view<ScreenFade>().each(
         [&](ecs::Entity, ScreenFade&) { transition_in_flight = true; });
@@ -23,6 +23,7 @@ void portal_trigger_handler(ecs::World& world) {
             if (to_spawn.has_value()) return;
             if (!trig.triggered) return;
             if (portal.target_scene.empty()) return;
+            if (portal.require_interact && !interact_pressed) return;
             to_spawn = portal;
             consumed_portal_entity = e;
         });

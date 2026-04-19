@@ -1078,12 +1078,12 @@
         "center": [
           192,
           0,
-          -260
+          -96
         ],
         "half_extents": [
-          100,
+          120,
           50,
-          130
+          96
         ],
         "music_config": "assets/audio/forest_night.music.json",
         "crossfade_ms": 3000,

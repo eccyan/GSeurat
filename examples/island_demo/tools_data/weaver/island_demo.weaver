@@ -8,7 +8,7 @@
       "name": "Field",
       "bpm": 130,
       "loop_start": 0,
-      "loop_end": 0,
+      "loop_end": 388057,
       "loop_enabled": true,
       "markers": [],
       "stems": [
@@ -20,19 +20,19 @@
         },
         {
           "source": "assets/audio/field/music_harmony.wav",
-          "initial_volume": 0.58,
+          "initial_volume": 0.84,
           "muted": false,
           "soloed": false
         },
         {
           "source": "assets/audio/field/music_melody.wav",
-          "initial_volume": 1,
+          "initial_volume": 0.64,
           "muted": false,
           "soloed": false
         },
         {
           "source": "assets/audio/field/music_percussion.wav",
-          "initial_volume": 1,
+          "initial_volume": 0.46,
           "muted": false,
           "soloed": false
         }

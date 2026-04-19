@@ -166,6 +166,19 @@ private:
 
     // RTPC index for dungeon music muffling (LPF cutoff)
     static constexpr uint32_t kRtpcMusicFilter = 10;
+
+    // Audio zone crossfade state
+    struct AudioZoneState {
+        glm::vec3 bounds_min{0};
+        glm::vec3 bounds_max{0};
+        uint32_t  group_id = 0;
+        float     crossfade_ms = 2000.0f;
+        float     ambient_volume = 1.0f;
+        bool      player_inside = false;
+    };
+    std::vector<AudioZoneState> audio_zones_;
+    uint32_t active_music_group_ = 0;   // currently playing music group
+    uint32_t island_music_group_ = 0;   // field_theme group ID (default)
 };
 
 }  // namespace gseurat

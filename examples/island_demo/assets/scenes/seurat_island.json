@@ -73840,7 +73840,8 @@
             1
           ],
           "transition_duration": 0.5,
-          "effect_type": 2
+          "effect_type": 2,
+          "require_interact": true
         }
       }
     },
@@ -75410,8 +75411,8 @@
       "mode": "orbit",
       "blend_time": 1.5,
       "allow_user_orbit": true,
-      "pitch_min": -60,
-      "pitch_max": 10,
+      "pitch_min": 15,
+      "pitch_max": 55,
       "yaw_min": -180,
       "yaw_max": 180,
       "fov": 45,
@@ -75447,8 +75448,8 @@
             6,
             -12
           ],
-          "pitch_min": -45,
-          "pitch_max": 5,
+          "pitch_min": 20,
+          "pitch_max": 50,
           "fov": 42
         }
       },
@@ -75472,8 +75473,8 @@
             12,
             -20
           ],
-          "pitch_min": -70,
-          "pitch_max": -10,
+          "pitch_min": 20,
+          "pitch_max": 60,
           "fov": 50
         }
       },
@@ -75525,8 +75526,8 @@
             -8
           ],
           "fov": 40,
-          "pitch_min": -30,
-          "pitch_max": 0
+          "pitch_min": 15,
+          "pitch_max": 45
         }
       }
     ],
@@ -75569,27 +75570,27 @@
         "control_points": [
           [
             150,
-            8,
+            18,
             100
           ],
           [
             170,
-            6,
+            16,
             140
           ],
           [
             185,
-            5,
+            15,
             175
           ],
           [
             195,
-            4,
+            14,
             190
           ],
           [
             210,
-            5,
+            15,
             180
           ]
         ]

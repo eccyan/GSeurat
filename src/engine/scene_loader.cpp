@@ -31,6 +31,7 @@ CameraParams parse_camera_params(const nlohmann::json& j) {
     p.orbit_distance = j.value("orbit_distance", 10.0f);
     if (j.contains("offset")) p.offset = SceneLoader::parse_vec3(j["offset"]);
     if (j.contains("fixed_position")) p.fixed_position = SceneLoader::parse_vec3(j["fixed_position"]);
+    p.min_ground_clearance = j.value("min_ground_clearance", 3.0f);
     // rail_id resolved later by caller
     return p;
 }
@@ -598,6 +599,20 @@ SceneData SceneLoader::from_json(const nlohmann::json& j) {
     if (j.contains("audio") && j["audio"].contains("preload_track_groups")) {
         for (const auto& s : j["audio"]["preload_track_groups"]) {
             data.audio_preload_track_groups.push_back(s.get<std::string>());
+        }
+    }
+
+    // Audio zones (spatial music triggers)
+    if (j.contains("audio_zones")) {
+        for (const auto& az : j["audio_zones"]) {
+            SceneData::AudioZoneRef ref;
+            ref.id = az.value("id", "");
+            if (az.contains("center")) ref.center = parse_vec3(az["center"]);
+            if (az.contains("half_extents")) ref.half_extents = parse_vec3(az["half_extents"]);
+            ref.music_config = az.value("music_config", "");
+            ref.crossfade_ms = az.value("crossfade_ms", 2000.0f);
+            ref.ambient_volume = az.value("ambient_volume", 1.0f);
+            data.audio_zones.push_back(std::move(ref));
         }
     }
 
