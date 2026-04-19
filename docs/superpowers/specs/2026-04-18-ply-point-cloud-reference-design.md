@@ -1,6 +1,7 @@
 # PLY Point Cloud Reference Layers
 
 **Date:** 2026-04-18
+**Status:** Implemented — PRs #284, #285 merged 2026-04-18
 **Goal:** Display PLY files as read-only point cloud references in the Bricklayer viewport, for both game objects and terrain.
 
 ## Components

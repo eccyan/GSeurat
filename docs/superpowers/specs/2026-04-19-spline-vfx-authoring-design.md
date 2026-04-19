@@ -1,7 +1,8 @@
 # Spline VFX Authoring in Bricklayer
 
 **Date:** 2026-04-19
-**Issue:** #312
+**Issue:** #312 (closed)
+**Status:** Implemented — PR #329 merged 2026-04-19
 **Goal:** Let level designers draw spline paths for VFX instances directly in the Bricklayer viewport, using per-instance control point overrides.
 
 ## Design Decisions
