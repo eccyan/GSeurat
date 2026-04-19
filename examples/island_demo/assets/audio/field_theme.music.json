@@ -6,7 +6,7 @@
       "id": 1,
       "name": "field_theme",
       "loop_start": 0,
-      "loop_end": 352800,
+      "loop_end": 705608,
       "markers": [],
       "stems": [
         { "source": "assets/audio/field_theme/bass_drone.ogg",    "initial_volume": 0.8 },
