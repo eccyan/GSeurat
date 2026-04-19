@@ -1,4 +1,4 @@
-import React, { useRef, useCallback, useEffect } from 'react';
+import React, { useRef, useCallback, useEffect, useMemo } from 'react';
 import { useWeaverStore } from '../store/useWeaverStore.js';
 import { frameToPixel, pixelToFrame, frameToBarBeat } from '../lib/frameUtils.js';
 
@@ -106,23 +106,26 @@ export function Ruler() {
 
   // Note: Zoom/pan wheel handling is in TimelinePanel (covers ruler + stem lanes)
 
-  // Compute beat ticks
+  // Compute beat ticks (memoized for pan/zoom performance)
   const waveWidth = getWaveWidth();
-  const beatsPerSecond = bpm / 60;
-  const framesPerBeat = sampleRate / beatsPerSecond;
-  const ticks: { px: number; label: string; major: boolean }[] = [];
-  if (viewEnd > viewStart && framesPerBeat > 0) {
-    const firstBeat = Math.floor(viewStart / framesPerBeat);
-    const lastBeat = Math.ceil(viewEnd / framesPerBeat);
-    for (let b = firstBeat; b <= lastBeat; b++) {
-      const frame = b * framesPerBeat;
-      const px = LABEL_WIDTH + frameToPixel(frame, viewStart, viewEnd, waveWidth);
-      if (px < LABEL_WIDTH || px > LABEL_WIDTH + waveWidth) continue;
-      const { bar, beat } = frameToBarBeat(frame, sampleRate, bpm);
-      const major = beat === 1;
-      ticks.push({ px, label: major ? `${bar}` : '', major });
+  const ticks = useMemo(() => {
+    const beatsPerSecond = bpm / 60;
+    const framesPerBeat = sampleRate / beatsPerSecond;
+    const result: { px: number; label: string; major: boolean }[] = [];
+    if (viewEnd > viewStart && framesPerBeat > 0) {
+      const firstBeat = Math.floor(viewStart / framesPerBeat);
+      const lastBeat = Math.ceil(viewEnd / framesPerBeat);
+      for (let b = firstBeat; b <= lastBeat; b++) {
+        const frame = b * framesPerBeat;
+        const px = LABEL_WIDTH + frameToPixel(frame, viewStart, viewEnd, waveWidth);
+        if (px < LABEL_WIDTH || px > LABEL_WIDTH + waveWidth) continue;
+        const { bar, beat } = frameToBarBeat(frame, sampleRate, bpm);
+        const major = beat === 1;
+        result.push({ px, label: major ? `${bar}` : '', major });
+      }
     }
-  }
+    return result;
+  }, [viewStart, viewEnd, bpm, sampleRate, waveWidth]);
 
   const loopStartPx = LABEL_WIDTH + frameToPixel(loopStart, viewStart, viewEnd, waveWidth);
   const loopEndPx = LABEL_WIDTH + frameToPixel(loopEnd, viewStart, viewEnd, waveWidth);

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useWeaverStore } from '../store/useWeaverStore.js';
 
 export function GroupSelector() {
@@ -14,6 +14,16 @@ export function GroupSelector() {
   const [pendingSwitchId, setPendingSwitchId] = useState<string | null>(null);
   const [showNewInput, setShowNewInput] = useState(false);
   const [newName, setNewName] = useState('');
+
+  // ESC key to dismiss dirty dialog
+  useEffect(() => {
+    if (!pendingSwitchId) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setPendingSwitchId(null);
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [pendingSwitchId]);
 
   const handleSwitchRequest = (id: string) => {
     if (id === activeGroupId) return;
@@ -132,6 +142,9 @@ export function GroupSelector() {
 
       {pendingSwitchId && (
         <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Unsaved changes"
           style={{
             position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
             display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
