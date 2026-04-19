@@ -411,6 +411,15 @@ void GsSceneLoader::load(SceneLoadContext& ctx, const SceneData& scene_data,
             if (vi.trigger != "auto") continue;
             auto preset = load_vfx_preset(vi.vfx_file);
             if (preset.elements.empty()) continue;
+            // Override preset spline control points with per-instance points
+            if (!vi.spline_points.empty()) {
+                for (auto& el : preset.elements) {
+                    if (el.emitter_config.spline &&
+                        el.emitter_config.spline->mode != SplineMode::None) {
+                        el.emitter_config.spline->path.control_points = vi.spline_points;
+                    }
+                }
+            }
             VfxInstance inst;
             auto world_pos = coord::to_world(vi.position, ctx.terrain.terrain_aabb);
             inst.init(preset, world_pos.vec(), vi.loop, vi.rotation_y);
