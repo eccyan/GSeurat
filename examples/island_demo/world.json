@@ -22,6 +22,14 @@
         "id": "warm_robot",
         "ply": "assets/characters/warm_robot/warm_robot.ply",
         "manifest": "assets/characters/warm_robot/warm_robot.manifest.json"
+      },
+      "deer": {
+        "id": "deer",
+        "ply": "assets/characters/deer/deer.ply"
+      },
+      "wolf": {
+        "id": "wolf",
+        "ply": "assets/characters/wolf/wolf.ply"
       }
     },
     "vfx": {
@@ -220,6 +228,10 @@
       "tree": {
         "id": "tree",
         "file": "assets/props/tree.ply"
+      },
+      "firefly": {
+        "id": "firefly",
+        "file": "assets/props/firefly.ply"
       }
     }
   },
@@ -249,11 +261,6 @@
       "display_name": "Dungeon Interior",
       "scene_file": "assets/scenes/dungeon.json",
       "ply_file": "assets/maps/dungeon.ply"
-    },
-    {
-      "id": "tavern_01",
-      "display_name": "Tavern Interior",
-      "scene_file": "assets/scenes/tavern.json"
     }
   ],
   "streaming_volumes": [
@@ -321,27 +328,6 @@
         5,
         0,
         5
-      ]
-    },
-    {
-      "id": "portal_tavern_door",
-      "display_name": "Tavern Door",
-      "position": [
-        170,
-        2,
-        190
-      ],
-      "half_extents": [
-        1,
-        2,
-        0.5
-      ],
-      "source_chunk": "0,0,0",
-      "target_instance": "tavern_01",
-      "target_spawn": [
-        0,
-        0,
-        0
       ]
     }
   ]

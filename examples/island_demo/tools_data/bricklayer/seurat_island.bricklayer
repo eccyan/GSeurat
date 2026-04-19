@@ -75098,7 +75098,7 @@
           0
         ],
         "scale": 1,
-        "ply_file": null,
+        "ply_file": "assets/props/island_crystal1.ply",
         "components": {
           "ProximityTrigger": {
             "radius": 14
@@ -75126,7 +75126,7 @@
           0
         ],
         "scale": 1,
-        "ply_file": null,
+        "ply_file": "assets/props/island_crystal1.ply",
         "components": {
           "ProximityTrigger": {
             "radius": 14
@@ -75154,7 +75154,7 @@
           0
         ],
         "scale": 1,
-        "ply_file": null,
+        "ply_file": "assets/props/island_crystal1.ply",
         "components": {
           "ProximityTrigger": {
             "radius": 14
@@ -75182,7 +75182,7 @@
           0
         ],
         "scale": 0.65,
-        "ply_file": null,
+        "ply_file": "assets/props/island_fountain.ply",
         "components": {
           "ProximityTrigger": {
             "radius": 10
@@ -75207,7 +75207,7 @@
           0
         ],
         "scale": 1,
-        "ply_file": null,
+        "ply_file": "assets/props/island_crystal1.ply",
         "components": {
           "ProximityTrigger": {
             "radius": 14
@@ -75344,7 +75344,7 @@
           0
         ],
         "scale": 0.8,
-        "ply_file": null,
+        "ply_file": "assets/props/treasure_chest.ply",
         "components": {
           "ProximityTrigger": {
             "radius": 8,
@@ -75401,7 +75401,7 @@
           0
         ],
         "scale": 0.45,
-        "ply_file": null,
+        "ply_file": "assets/props/lantern_post.ply",
         "components": {
           "ProximityTrigger": {
             "radius": 10
@@ -75430,7 +75430,7 @@
           0
         ],
         "scale": 0.45,
-        "ply_file": null,
+        "ply_file": "assets/props/lantern_post.ply",
         "components": {
           "ProximityTrigger": {
             "radius": 10
@@ -75459,7 +75459,7 @@
           0
         ],
         "scale": 0.45,
-        "ply_file": null,
+        "ply_file": "assets/props/lantern_post.ply",
         "components": {
           "ProximityTrigger": {
             "radius": 10
@@ -75488,7 +75488,7 @@
           0
         ],
         "scale": 0.45,
-        "ply_file": null,
+        "ply_file": "assets/props/lantern_post.ply",
         "components": {
           "ProximityTrigger": {
             "radius": 10
@@ -76392,239 +76392,17 @@
     "gsAnimations": [],
     "vfxInstances": [
       {
-        "id": "torch_vfx_0",
-        "muted": false,
-        "name": "Torch 1",
+        "id": "vfx_0",
+        "name": "torch",
         "vfx_file": "assets/vfx/torch.vfx.json",
         "vfx_preset": {
           "name": "torch",
-          "elements": [
-            {
-              "name": "Object",
-              "type": "object",
-              "position": [
-                -13.5,
-                0,
-                -10
-              ],
-              "duration": 0,
-              "ply_file": "scene/torch.ply",
-              "scale": 10
-            },
-            {
-              "name": "wave",
-              "type": "animation",
-              "position": [
-                3.7,
-                12.5,
-                -0.6
-              ],
-              "duration": 3,
-              "loop": true,
-              "animation": {
-                "effect": "wave",
-                "params": {
-                  "rotations": 1,
-                  "rotations_easing": "linear",
-                  "expansion": 1,
-                  "expansion_easing": "linear",
-                  "height_rise": 0,
-                  "height_easing": "linear",
-                  "opacity_end": 0.2,
-                  "opacity_easing": "linear",
-                  "scale_end": 0.5,
-                  "scale_easing": "linear",
-                  "velocity": 1,
-                  "gravity": [
-                    0,
-                    -9.8,
-                    0
-                  ],
-                  "noise": 0.2,
-                  "wave_speed": 5,
-                  "pulse_frequency": 10
-                }
-              },
-              "region": {
-                "shape": "sphere",
-                "radius": 1.2
-              }
-            },
-            {
-              "name": "Emitter",
-              "type": "emitter",
-              "position": [
-                3,
-                15,
-                -0.5
-              ],
-              "duration": 3,
-              "loop": true,
-              "emitter": {
-                "spawn_rate": 30,
-                "lifetime_min": 2,
-                "lifetime_max": 4,
-                "velocity_min": [
-                  -0.5,
-                  1,
-                  -0.5
-                ],
-                "velocity_max": [
-                  0.5,
-                  3,
-                  0.5
-                ],
-                "acceleration": [
-                  0,
-                  0.3,
-                  0
-                ],
-                "color_start": [
-                  0.4,
-                  0.4,
-                  0.42
-                ],
-                "color_end": [
-                  0.1450980392156863,
-                  0.1450980392156863,
-                  0.15294117647058825
-                ],
-                "scale_min": [
-                  0.3,
-                  0.3,
-                  0.3
-                ],
-                "scale_max": [
-                  0.8,
-                  0.8,
-                  0.8
-                ],
-                "scale_end_factor": 2,
-                "opacity_start": 0.3,
-                "opacity_end": 0,
-                "emission": 0,
-                "burst_duration": 0,
-                "region": {
-                  "shape": "box",
-                  "center": [
-                    0,
-                    0.25,
-                    0
-                  ],
-                  "half_extents": [
-                    1,
-                    0.25,
-                    1
-                  ]
-                },
-                "preset": "smoke"
-              }
-            },
-            {
-              "name": "float",
-              "type": "animation",
-              "position": [
-                4.7,
-                13,
-                -0.6
-              ],
-              "duration": 2,
-              "loop": true,
-              "animation": {
-                "effect": "float",
-                "reform_enabled": false,
-                "params": {
-                  "rotations": 1,
-                  "rotations_easing": "linear",
-                  "expansion": 1,
-                  "expansion_easing": "linear",
-                  "height_rise": 0,
-                  "height_easing": "linear",
-                  "opacity_end": 0.2,
-                  "opacity_easing": "in_out_elastic",
-                  "scale_end": 1,
-                  "scale_easing": "in_out_bounce",
-                  "velocity": 0.2,
-                  "gravity": [
-                    0,
-                    -9.8,
-                    0
-                  ],
-                  "noise": 0.5,
-                  "wave_speed": 5,
-                  "pulse_frequency": 10
-                }
-              },
-              "region": {
-                "shape": "sphere",
-                "radius": 2
-              }
-            },
-            {
-              "name": "reform",
-              "type": "animation",
-              "position": [
-                4.7,
-                13,
-                -0.6
-              ],
-              "start": 2,
-              "duration": 1,
-              "animation": {
-                "effect": "reform",
-                "params": {
-                  "rotations": 1,
-                  "rotations_easing": "linear",
-                  "expansion": 1,
-                  "expansion_easing": "linear",
-                  "height_rise": 0,
-                  "height_easing": "linear",
-                  "opacity_end": 0.2,
-                  "opacity_easing": "linear",
-                  "scale_end": 0.5,
-                  "scale_easing": "linear",
-                  "velocity": 0.1,
-                  "gravity": [
-                    0,
-                    -9.8,
-                    0
-                  ],
-                  "noise": 1,
-                  "wave_speed": 5,
-                  "pulse_frequency": 10
-                }
-              },
-              "region": {
-                "shape": "sphere",
-                "radius": 1
-              }
-            },
-            {
-              "name": "Flame Light",
-              "type": "light",
-              "position": [
-                3,
-                14,
-                -0.5
-              ],
-              "loop": true,
-              "light": {
-                "color": [
-                  1,
-                  0.7,
-                  0.3
-                ],
-                "intensity": 8,
-                "radius": 15
-              }
-            }
-          ],
-          "duration": 3
+          "elements": []
         },
         "position": [
-          195,
+          195.0,
           4.4784,
-          181
+          181.0
         ],
         "rotation_y": 0,
         "radius": 5,
@@ -76632,239 +76410,17 @@
         "loop": true
       },
       {
-        "id": "torch_vfx_1",
-        "muted": false,
-        "name": "Torch 2",
+        "id": "vfx_1",
+        "name": "torch",
         "vfx_file": "assets/vfx/torch.vfx.json",
         "vfx_preset": {
           "name": "torch",
-          "elements": [
-            {
-              "name": "Object",
-              "type": "object",
-              "position": [
-                -13.5,
-                0,
-                -10
-              ],
-              "duration": 0,
-              "ply_file": "scene/torch.ply",
-              "scale": 10
-            },
-            {
-              "name": "wave",
-              "type": "animation",
-              "position": [
-                3.7,
-                12.5,
-                -0.6
-              ],
-              "duration": 3,
-              "loop": true,
-              "animation": {
-                "effect": "wave",
-                "params": {
-                  "rotations": 1,
-                  "rotations_easing": "linear",
-                  "expansion": 1,
-                  "expansion_easing": "linear",
-                  "height_rise": 0,
-                  "height_easing": "linear",
-                  "opacity_end": 0.2,
-                  "opacity_easing": "linear",
-                  "scale_end": 0.5,
-                  "scale_easing": "linear",
-                  "velocity": 1,
-                  "gravity": [
-                    0,
-                    -9.8,
-                    0
-                  ],
-                  "noise": 0.2,
-                  "wave_speed": 5,
-                  "pulse_frequency": 10
-                }
-              },
-              "region": {
-                "shape": "sphere",
-                "radius": 1.2
-              }
-            },
-            {
-              "name": "Emitter",
-              "type": "emitter",
-              "position": [
-                3,
-                15,
-                -0.5
-              ],
-              "duration": 3,
-              "loop": true,
-              "emitter": {
-                "spawn_rate": 30,
-                "lifetime_min": 2,
-                "lifetime_max": 4,
-                "velocity_min": [
-                  -0.5,
-                  1,
-                  -0.5
-                ],
-                "velocity_max": [
-                  0.5,
-                  3,
-                  0.5
-                ],
-                "acceleration": [
-                  0,
-                  0.3,
-                  0
-                ],
-                "color_start": [
-                  0.4,
-                  0.4,
-                  0.42
-                ],
-                "color_end": [
-                  0.1450980392156863,
-                  0.1450980392156863,
-                  0.15294117647058825
-                ],
-                "scale_min": [
-                  0.3,
-                  0.3,
-                  0.3
-                ],
-                "scale_max": [
-                  0.8,
-                  0.8,
-                  0.8
-                ],
-                "scale_end_factor": 2,
-                "opacity_start": 0.3,
-                "opacity_end": 0,
-                "emission": 0,
-                "burst_duration": 0,
-                "region": {
-                  "shape": "box",
-                  "center": [
-                    0,
-                    0.25,
-                    0
-                  ],
-                  "half_extents": [
-                    1,
-                    0.25,
-                    1
-                  ]
-                },
-                "preset": "smoke"
-              }
-            },
-            {
-              "name": "float",
-              "type": "animation",
-              "position": [
-                4.7,
-                13,
-                -0.6
-              ],
-              "duration": 2,
-              "loop": true,
-              "animation": {
-                "effect": "float",
-                "reform_enabled": false,
-                "params": {
-                  "rotations": 1,
-                  "rotations_easing": "linear",
-                  "expansion": 1,
-                  "expansion_easing": "linear",
-                  "height_rise": 0,
-                  "height_easing": "linear",
-                  "opacity_end": 0.2,
-                  "opacity_easing": "in_out_elastic",
-                  "scale_end": 1,
-                  "scale_easing": "in_out_bounce",
-                  "velocity": 0.2,
-                  "gravity": [
-                    0,
-                    -9.8,
-                    0
-                  ],
-                  "noise": 0.5,
-                  "wave_speed": 5,
-                  "pulse_frequency": 10
-                }
-              },
-              "region": {
-                "shape": "sphere",
-                "radius": 2
-              }
-            },
-            {
-              "name": "reform",
-              "type": "animation",
-              "position": [
-                4.7,
-                13,
-                -0.6
-              ],
-              "start": 2,
-              "duration": 1,
-              "animation": {
-                "effect": "reform",
-                "params": {
-                  "rotations": 1,
-                  "rotations_easing": "linear",
-                  "expansion": 1,
-                  "expansion_easing": "linear",
-                  "height_rise": 0,
-                  "height_easing": "linear",
-                  "opacity_end": 0.2,
-                  "opacity_easing": "linear",
-                  "scale_end": 0.5,
-                  "scale_easing": "linear",
-                  "velocity": 0.1,
-                  "gravity": [
-                    0,
-                    -9.8,
-                    0
-                  ],
-                  "noise": 1,
-                  "wave_speed": 5,
-                  "pulse_frequency": 10
-                }
-              },
-              "region": {
-                "shape": "sphere",
-                "radius": 1
-              }
-            },
-            {
-              "name": "Flame Light",
-              "type": "light",
-              "position": [
-                3,
-                14,
-                -0.5
-              ],
-              "loop": true,
-              "light": {
-                "color": [
-                  1,
-                  0.7,
-                  0.3
-                ],
-                "intensity": 8,
-                "radius": 15
-              }
-            }
-          ],
-          "duration": 3
+          "elements": []
         },
         "position": [
-          185,
+          185.0,
           3.5245,
-          173
+          173.0
         ],
         "rotation_y": 0,
         "radius": 5,
@@ -76872,239 +76428,17 @@
         "loop": true
       },
       {
-        "id": "torch_vfx_2",
-        "muted": false,
-        "name": "Torch 3",
+        "id": "vfx_2",
+        "name": "torch",
         "vfx_file": "assets/vfx/torch.vfx.json",
         "vfx_preset": {
           "name": "torch",
-          "elements": [
-            {
-              "name": "Object",
-              "type": "object",
-              "position": [
-                -13.5,
-                0,
-                -10
-              ],
-              "duration": 0,
-              "ply_file": "scene/torch.ply",
-              "scale": 10
-            },
-            {
-              "name": "wave",
-              "type": "animation",
-              "position": [
-                3.7,
-                12.5,
-                -0.6
-              ],
-              "duration": 3,
-              "loop": true,
-              "animation": {
-                "effect": "wave",
-                "params": {
-                  "rotations": 1,
-                  "rotations_easing": "linear",
-                  "expansion": 1,
-                  "expansion_easing": "linear",
-                  "height_rise": 0,
-                  "height_easing": "linear",
-                  "opacity_end": 0.2,
-                  "opacity_easing": "linear",
-                  "scale_end": 0.5,
-                  "scale_easing": "linear",
-                  "velocity": 1,
-                  "gravity": [
-                    0,
-                    -9.8,
-                    0
-                  ],
-                  "noise": 0.2,
-                  "wave_speed": 5,
-                  "pulse_frequency": 10
-                }
-              },
-              "region": {
-                "shape": "sphere",
-                "radius": 1.2
-              }
-            },
-            {
-              "name": "Emitter",
-              "type": "emitter",
-              "position": [
-                3,
-                15,
-                -0.5
-              ],
-              "duration": 3,
-              "loop": true,
-              "emitter": {
-                "spawn_rate": 30,
-                "lifetime_min": 2,
-                "lifetime_max": 4,
-                "velocity_min": [
-                  -0.5,
-                  1,
-                  -0.5
-                ],
-                "velocity_max": [
-                  0.5,
-                  3,
-                  0.5
-                ],
-                "acceleration": [
-                  0,
-                  0.3,
-                  0
-                ],
-                "color_start": [
-                  0.4,
-                  0.4,
-                  0.42
-                ],
-                "color_end": [
-                  0.1450980392156863,
-                  0.1450980392156863,
-                  0.15294117647058825
-                ],
-                "scale_min": [
-                  0.3,
-                  0.3,
-                  0.3
-                ],
-                "scale_max": [
-                  0.8,
-                  0.8,
-                  0.8
-                ],
-                "scale_end_factor": 2,
-                "opacity_start": 0.3,
-                "opacity_end": 0,
-                "emission": 0,
-                "burst_duration": 0,
-                "region": {
-                  "shape": "box",
-                  "center": [
-                    0,
-                    0.25,
-                    0
-                  ],
-                  "half_extents": [
-                    1,
-                    0.25,
-                    1
-                  ]
-                },
-                "preset": "smoke"
-              }
-            },
-            {
-              "name": "float",
-              "type": "animation",
-              "position": [
-                4.7,
-                13,
-                -0.6
-              ],
-              "duration": 2,
-              "loop": true,
-              "animation": {
-                "effect": "float",
-                "reform_enabled": false,
-                "params": {
-                  "rotations": 1,
-                  "rotations_easing": "linear",
-                  "expansion": 1,
-                  "expansion_easing": "linear",
-                  "height_rise": 0,
-                  "height_easing": "linear",
-                  "opacity_end": 0.2,
-                  "opacity_easing": "in_out_elastic",
-                  "scale_end": 1,
-                  "scale_easing": "in_out_bounce",
-                  "velocity": 0.2,
-                  "gravity": [
-                    0,
-                    -9.8,
-                    0
-                  ],
-                  "noise": 0.5,
-                  "wave_speed": 5,
-                  "pulse_frequency": 10
-                }
-              },
-              "region": {
-                "shape": "sphere",
-                "radius": 2
-              }
-            },
-            {
-              "name": "reform",
-              "type": "animation",
-              "position": [
-                4.7,
-                13,
-                -0.6
-              ],
-              "start": 2,
-              "duration": 1,
-              "animation": {
-                "effect": "reform",
-                "params": {
-                  "rotations": 1,
-                  "rotations_easing": "linear",
-                  "expansion": 1,
-                  "expansion_easing": "linear",
-                  "height_rise": 0,
-                  "height_easing": "linear",
-                  "opacity_end": 0.2,
-                  "opacity_easing": "linear",
-                  "scale_end": 0.5,
-                  "scale_easing": "linear",
-                  "velocity": 0.1,
-                  "gravity": [
-                    0,
-                    -9.8,
-                    0
-                  ],
-                  "noise": 1,
-                  "wave_speed": 5,
-                  "pulse_frequency": 10
-                }
-              },
-              "region": {
-                "shape": "sphere",
-                "radius": 1
-              }
-            },
-            {
-              "name": "Flame Light",
-              "type": "light",
-              "position": [
-                3,
-                14,
-                -0.5
-              ],
-              "loop": true,
-              "light": {
-                "color": [
-                  1,
-                  0.7,
-                  0.3
-                ],
-                "intensity": 8,
-                "radius": 15
-              }
-            }
-          ],
-          "duration": 3
+          "elements": []
         },
         "position": [
-          201,
+          201.0,
           3.0323,
-          191
+          191.0
         ],
         "rotation_y": 0,
         "radius": 5,
@@ -77112,239 +76446,17 @@
         "loop": true
       },
       {
-        "id": "torch_vfx_3",
-        "muted": false,
-        "name": "Torch 4",
+        "id": "vfx_3",
+        "name": "torch",
         "vfx_file": "assets/vfx/torch.vfx.json",
         "vfx_preset": {
           "name": "torch",
-          "elements": [
-            {
-              "name": "Object",
-              "type": "object",
-              "position": [
-                -13.5,
-                0,
-                -10
-              ],
-              "duration": 0,
-              "ply_file": "scene/torch.ply",
-              "scale": 10
-            },
-            {
-              "name": "wave",
-              "type": "animation",
-              "position": [
-                3.7,
-                12.5,
-                -0.6
-              ],
-              "duration": 3,
-              "loop": true,
-              "animation": {
-                "effect": "wave",
-                "params": {
-                  "rotations": 1,
-                  "rotations_easing": "linear",
-                  "expansion": 1,
-                  "expansion_easing": "linear",
-                  "height_rise": 0,
-                  "height_easing": "linear",
-                  "opacity_end": 0.2,
-                  "opacity_easing": "linear",
-                  "scale_end": 0.5,
-                  "scale_easing": "linear",
-                  "velocity": 1,
-                  "gravity": [
-                    0,
-                    -9.8,
-                    0
-                  ],
-                  "noise": 0.2,
-                  "wave_speed": 5,
-                  "pulse_frequency": 10
-                }
-              },
-              "region": {
-                "shape": "sphere",
-                "radius": 1.2
-              }
-            },
-            {
-              "name": "Emitter",
-              "type": "emitter",
-              "position": [
-                3,
-                15,
-                -0.5
-              ],
-              "duration": 3,
-              "loop": true,
-              "emitter": {
-                "spawn_rate": 30,
-                "lifetime_min": 2,
-                "lifetime_max": 4,
-                "velocity_min": [
-                  -0.5,
-                  1,
-                  -0.5
-                ],
-                "velocity_max": [
-                  0.5,
-                  3,
-                  0.5
-                ],
-                "acceleration": [
-                  0,
-                  0.3,
-                  0
-                ],
-                "color_start": [
-                  0.4,
-                  0.4,
-                  0.42
-                ],
-                "color_end": [
-                  0.1450980392156863,
-                  0.1450980392156863,
-                  0.15294117647058825
-                ],
-                "scale_min": [
-                  0.3,
-                  0.3,
-                  0.3
-                ],
-                "scale_max": [
-                  0.8,
-                  0.8,
-                  0.8
-                ],
-                "scale_end_factor": 2,
-                "opacity_start": 0.3,
-                "opacity_end": 0,
-                "emission": 0,
-                "burst_duration": 0,
-                "region": {
-                  "shape": "box",
-                  "center": [
-                    0,
-                    0.25,
-                    0
-                  ],
-                  "half_extents": [
-                    1,
-                    0.25,
-                    1
-                  ]
-                },
-                "preset": "smoke"
-              }
-            },
-            {
-              "name": "float",
-              "type": "animation",
-              "position": [
-                4.7,
-                13,
-                -0.6
-              ],
-              "duration": 2,
-              "loop": true,
-              "animation": {
-                "effect": "float",
-                "reform_enabled": false,
-                "params": {
-                  "rotations": 1,
-                  "rotations_easing": "linear",
-                  "expansion": 1,
-                  "expansion_easing": "linear",
-                  "height_rise": 0,
-                  "height_easing": "linear",
-                  "opacity_end": 0.2,
-                  "opacity_easing": "in_out_elastic",
-                  "scale_end": 1,
-                  "scale_easing": "in_out_bounce",
-                  "velocity": 0.2,
-                  "gravity": [
-                    0,
-                    -9.8,
-                    0
-                  ],
-                  "noise": 0.5,
-                  "wave_speed": 5,
-                  "pulse_frequency": 10
-                }
-              },
-              "region": {
-                "shape": "sphere",
-                "radius": 2
-              }
-            },
-            {
-              "name": "reform",
-              "type": "animation",
-              "position": [
-                4.7,
-                13,
-                -0.6
-              ],
-              "start": 2,
-              "duration": 1,
-              "animation": {
-                "effect": "reform",
-                "params": {
-                  "rotations": 1,
-                  "rotations_easing": "linear",
-                  "expansion": 1,
-                  "expansion_easing": "linear",
-                  "height_rise": 0,
-                  "height_easing": "linear",
-                  "opacity_end": 0.2,
-                  "opacity_easing": "linear",
-                  "scale_end": 0.5,
-                  "scale_easing": "linear",
-                  "velocity": 0.1,
-                  "gravity": [
-                    0,
-                    -9.8,
-                    0
-                  ],
-                  "noise": 1,
-                  "wave_speed": 5,
-                  "pulse_frequency": 10
-                }
-              },
-              "region": {
-                "shape": "sphere",
-                "radius": 1
-              }
-            },
-            {
-              "name": "Flame Light",
-              "type": "light",
-              "position": [
-                3,
-                14,
-                -0.5
-              ],
-              "loop": true,
-              "light": {
-                "color": [
-                  1,
-                  0.7,
-                  0.3
-                ],
-                "intensity": 8,
-                "radius": 15
-              }
-            }
-          ],
-          "duration": 3
+          "elements": []
         },
         "position": [
-          211,
+          211.0,
           3.2403,
-          185
+          185.0
         ],
         "rotation_y": 0,
         "radius": 5,
@@ -77352,120 +76464,12 @@
         "loop": true
       },
       {
-        "id": "fountain_spray",
-        "muted": false,
-        "name": "Fountain Spray",
+        "id": "vfx_4",
+        "name": "fountain_spray",
         "vfx_file": "assets/vfx/fountain_spray.vfx.json",
         "vfx_preset": {
           "name": "fountain_spray",
-          "duration": 4,
-          "category": "environment",
-          "elements": [
-            {
-              "name": "water_arc",
-              "type": "emitter",
-              "position": [
-                0,
-                4,
-                0
-              ],
-              "start": 0,
-              "duration": 4,
-              "loop": true,
-              "spawn_rate": 40,
-              "lifetime_min": 1,
-              "lifetime_max": 2,
-              "velocity_min": [
-                -0.5,
-                0,
-                -0.5
-              ],
-              "velocity_max": [
-                0.5,
-                1,
-                0.5
-              ],
-              "acceleration": [
-                0,
-                -6,
-                0
-              ],
-              "color_start": [
-                0.4,
-                0.7,
-                1
-              ],
-              "color_end": [
-                0.2,
-                0.5,
-                0.9
-              ],
-              "scale_min": [
-                0.2,
-                0.2,
-                0.2
-              ],
-              "scale_max": [
-                0.4,
-                0.4,
-                0.4
-              ],
-              "opacity_start": 0.8,
-              "opacity_end": 0,
-              "emission": 2,
-              "spline": {
-                "mode": "particle_path",
-                "control_points": [
-                  [
-                    0,
-                    0,
-                    0
-                  ],
-                  [
-                    1,
-                    4,
-                    0
-                  ],
-                  [
-                    0,
-                    6,
-                    1
-                  ],
-                  [
-                    -1,
-                    4,
-                    0
-                  ],
-                  [
-                    0,
-                    0,
-                    0
-                  ]
-                ],
-                "path_spread": 0.5,
-                "align_to_tangent": false
-              }
-            },
-            {
-              "name": "mist_light",
-              "type": "light",
-              "position": [
-                0,
-                3,
-                0
-              ],
-              "start": 0,
-              "duration": 4,
-              "loop": true,
-              "color": [
-                0.3,
-                0.6,
-                1
-              ],
-              "intensity": 1.5,
-              "radius": 12
-            }
-          ]
+          "elements": []
         },
         "position": [
           178,
@@ -77473,225 +76477,7 @@
           185
         ],
         "rotation_y": 0,
-        "radius": 8,
-        "trigger": "auto",
-        "loop": true
-      },
-      {
-        "id": "crystal_burst",
-        "muted": false,
-        "name": "Crystal Burst",
-        "vfx_file": "assets/vfx/crystal_burst.vfx.json",
-        "vfx_preset": {
-          "name": "crystal_burst",
-          "duration": 6,
-          "category": "environment",
-          "elements": [
-            {
-              "name": "sparkle_emitter",
-              "type": "emitter",
-              "position": [
-                0,
-                2,
-                0
-              ],
-              "start": 0,
-              "duration": 6,
-              "loop": true,
-              "spawn_rate": 30,
-              "lifetime_min": 1.5,
-              "lifetime_max": 3,
-              "velocity_min": [
-                -2,
-                3,
-                -2
-              ],
-              "velocity_max": [
-                2,
-                8,
-                2
-              ],
-              "acceleration": [
-                0,
-                1,
-                0
-              ],
-              "color_start": [
-                0.2,
-                0.8,
-                1
-              ],
-              "color_end": [
-                0.1,
-                0.3,
-                0.8
-              ],
-              "scale_min": [
-                0.3,
-                0.3,
-                0.3
-              ],
-              "scale_max": [
-                0.6,
-                0.6,
-                0.6
-              ],
-              "opacity_start": 0.9,
-              "opacity_end": 0,
-              "emission": 5
-            },
-            {
-              "name": "pulse_anim",
-              "type": "animation",
-              "position": [
-                0,
-                0,
-                0
-              ],
-              "start": 0,
-              "duration": 4,
-              "loop": true,
-              "effect": "pulse",
-              "region": {
-                "shape": "sphere",
-                "radius": 6
-              }
-            },
-            {
-              "name": "glow_light",
-              "type": "light",
-              "position": [
-                0,
-                3,
-                0
-              ],
-              "start": 0,
-              "duration": 6,
-              "loop": true,
-              "color": [
-                0.2,
-                0.8,
-                1
-              ],
-              "intensity": 3,
-              "radius": 20
-            }
-          ]
-        },
-        "position": [
-          195,
-          2.0418,
-          120
-        ],
-        "rotation_y": 0,
-        "radius": 6,
-        "trigger": "auto",
-        "loop": true
-      },
-      {
-        "id": "chimney_smoke",
-        "muted": false,
-        "name": "Chimney Smoke",
-        "vfx_file": "assets/vfx/chimney_smoke.vfx.json",
-        "vfx_preset": {
-          "name": "chimney_smoke",
-          "duration": 8,
-          "category": "environment",
-          "elements": [
-            {
-              "name": "smoke_plume",
-              "type": "emitter",
-              "position": [
-                5,
-                19,
-                4
-              ],
-              "start": 0,
-              "duration": 8,
-              "loop": true,
-              "spawn_rate": 8,
-              "lifetime_min": 3,
-              "lifetime_max": 6,
-              "velocity_min": [
-                -0.3,
-                1.5,
-                -0.3
-              ],
-              "velocity_max": [
-                0.3,
-                3,
-                0.3
-              ],
-              "acceleration": [
-                0.2,
-                0.5,
-                0
-              ],
-              "color_start": [
-                0.6,
-                0.6,
-                0.6
-              ],
-              "color_end": [
-                0.4,
-                0.4,
-                0.45
-              ],
-              "scale_min": [
-                0.3,
-                0.3,
-                0.3
-              ],
-              "scale_max": [
-                0.6,
-                0.6,
-                0.6
-              ],
-              "opacity_start": 0.5,
-              "opacity_end": 0,
-              "emission": 0,
-              "spline": {
-                "mode": "particle_path",
-                "control_points": [
-                  [
-                    0,
-                    0,
-                    0
-                  ],
-                  [
-                    0.5,
-                    3,
-                    0
-                  ],
-                  [
-                    1.5,
-                    6,
-                    0.5
-                  ],
-                  [
-                    3,
-                    8,
-                    1
-                  ],
-                  [
-                    5,
-                    9,
-                    2
-                  ]
-                ],
-                "path_spread": 0.8,
-                "align_to_tangent": false
-              }
-            }
-          ]
-        },
-        "position": [
-          192,
-          4.5658,
-          175
-        ],
-        "rotation_y": 0,
-        "radius": 4,
+        "radius": 5,
         "trigger": "auto",
         "loop": true
       }
