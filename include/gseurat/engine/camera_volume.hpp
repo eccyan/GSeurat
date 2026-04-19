@@ -125,6 +125,7 @@ struct CameraParams {
     glm::vec3 fixed_position{0.0f};
     int rail_index{-1};
     float min_ground_clearance{10.0f};  // Minimum Y above player (terrain) for rail cameras
+    float target_y_offset{2.5f};       // Y offset above player for camera look-at target
 };
 
 struct CameraVolume {

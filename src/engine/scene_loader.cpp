@@ -31,7 +31,8 @@ CameraParams parse_camera_params(const nlohmann::json& j) {
     p.orbit_distance = j.value("orbit_distance", 10.0f);
     if (j.contains("offset")) p.offset = SceneLoader::parse_vec3(j["offset"]);
     if (j.contains("fixed_position")) p.fixed_position = SceneLoader::parse_vec3(j["fixed_position"]);
-    p.min_ground_clearance = j.value("min_ground_clearance", 3.0f);
+    p.min_ground_clearance = j.value("min_ground_clearance", 10.0f);
+    p.target_y_offset = j.value("target_y_offset", 2.5f);
     // rail_id resolved later by caller
     return p;
 }
