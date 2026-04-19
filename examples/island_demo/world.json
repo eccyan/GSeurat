@@ -121,10 +121,6 @@
         "id": "glow_mushrooms",
         "file": "assets/props/glow_mushrooms.ply"
       },
-      "house": {
-        "id": "house",
-        "file": "assets/props/house.ply"
-      },
       "island_crystal1": {
         "id": "island_crystal1",
         "file": "assets/props/island_crystal1.ply"
@@ -217,17 +213,9 @@
         "id": "lantern_post",
         "file": "assets/props/lantern_post.ply"
       },
-      "rock": {
-        "id": "rock",
-        "file": "assets/props/rock.ply"
-      },
       "treasure_chest": {
         "id": "treasure_chest",
         "file": "assets/props/treasure_chest.ply"
-      },
-      "tree": {
-        "id": "tree",
-        "file": "assets/props/tree.ply"
       },
       "firefly": {
         "id": "firefly",
@@ -292,19 +280,6 @@
       ],
       "preload_target_ids": [
         "0,0,-1"
-      ]
-    },
-    {
-      "id": "sv_tavern_approach",
-      "shape": "sphere",
-      "position": [
-        170,
-        2,
-        190
-      ],
-      "radius": 20,
-      "preload_target_ids": [
-        "tavern_01"
       ]
     }
   ],
