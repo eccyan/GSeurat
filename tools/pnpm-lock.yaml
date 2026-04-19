@@ -432,6 +432,12 @@ importers:
         specifier: ^5.4.0
         version: 5.9.3
 
+  packages/debug-dump:
+    devDependencies:
+      typescript:
+        specifier: ^5.4.0
+        version: 5.9.3
+
   packages/engine-client:
     devDependencies:
       typescript:
