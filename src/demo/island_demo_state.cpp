@@ -176,10 +176,10 @@ void IslandDemoState::on_enter(AppBase& app) {
                      gx_min, gx_max, gz_min, gz_max, marked);
 
         // Open a walkable land bridge at the northern shore → Northern Forest
-        // Clear solid cells in a path from Z=0 to Z=50, centered at X=192, width ~20
+        // Clear solid cells in a path from Z=0 to Z=60, centered at X=192, width ~40
         int bridge_cleared = 0;
-        for (float wx = 182.0f; wx <= 202.0f; wx += collision_grid_.cell_size * 0.5f) {
-            for (float wz = 0.0f; wz <= 50.0f; wz += collision_grid_.cell_size * 0.5f) {
+        for (float wx = 172.0f; wx <= 212.0f; wx += collision_grid_.cell_size * 0.5f) {
+            for (float wz = 0.0f; wz <= 60.0f; wz += collision_grid_.cell_size * 0.5f) {
                 int bgx = static_cast<int>(wx / collision_grid_.cell_size);
                 int bgz = static_cast<int>(wz / collision_grid_.cell_size);
                 if (bgx >= 0 && bgx < static_cast<int>(collision_grid_.width) &&
@@ -207,6 +207,28 @@ void IslandDemoState::on_enter(AppBase& app) {
             forest_grid_loaded_ = true;
             std::fprintf(stderr, "[IslandDemo] Forest collision loaded: %ux%u (origin Z=%.0f)\n",
                 forest_collision_grid_.width, forest_collision_grid_.height, forest_grid_origin_.y);
+
+            // Clear forest-side entrance cells matching the bridge (Z=-20 to 0, same X range)
+            int forest_bridge = 0;
+            for (float wx = 172.0f; wx <= 212.0f; wx += forest_collision_grid_.cell_size * 0.5f) {
+                for (float wz = -20.0f; wz <= 0.0f; wz += forest_collision_grid_.cell_size * 0.5f) {
+                    float lx = wx - forest_grid_origin_.x;
+                    float lz = wz - forest_grid_origin_.y;
+                    int fgx = static_cast<int>(lx / forest_collision_grid_.cell_size);
+                    int fgz = static_cast<int>(lz / forest_collision_grid_.cell_size);
+                    if (fgx >= 0 && fgx < static_cast<int>(forest_collision_grid_.width) &&
+                        fgz >= 0 && fgz < static_cast<int>(forest_collision_grid_.height)) {
+                        size_t idx = fgz * forest_collision_grid_.width + fgx;
+                        if (forest_collision_grid_.solid[idx]) {
+                            forest_collision_grid_.solid[idx] = false;
+                            if (!forest_collision_grid_.elevation.empty())
+                                forest_collision_grid_.elevation[idx] = 0.5f;
+                            forest_bridge++;
+                        }
+                    }
+                }
+            }
+            std::fprintf(stderr, "[IslandDemo] Forest entrance: %d cells cleared\n", forest_bridge);
         }
 
         // Collect audio zones from loaded scenes for later setup
@@ -1893,8 +1915,8 @@ void IslandDemoState::perform_portal_transition(AppBase& app,
 
             // Re-open north bridge
             int bridge_cleared = 0;
-            for (float wx = 182.0f; wx <= 202.0f; wx += collision_grid_.cell_size * 0.5f) {
-                for (float wz = 0.0f; wz <= 50.0f; wz += collision_grid_.cell_size * 0.5f) {
+            for (float wx = 172.0f; wx <= 212.0f; wx += collision_grid_.cell_size * 0.5f) {
+                for (float wz = 0.0f; wz <= 60.0f; wz += collision_grid_.cell_size * 0.5f) {
                     int bgx = static_cast<int>(wx / collision_grid_.cell_size);
                     int bgz = static_cast<int>(wz / collision_grid_.cell_size);
                     if (bgx >= 0 && bgx < static_cast<int>(collision_grid_.width) &&
