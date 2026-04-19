@@ -259,7 +259,7 @@ function MenuBar({ onImportScene }: { onImportScene?: () => void }) {
   }, [fileOpen]);
 
   return (
-    <div style={{
+    <div data-panel-id="menu-bar" style={{
       height: 32, background: T.panel, borderBottom: `1px solid ${T.border}`,
       display: 'flex', alignItems: 'center', padding: '0 8px', gap: 16,
       fontSize: 12, color: T.textDim, userSelect: 'none',
@@ -396,7 +396,7 @@ function VfxTree() {
   };
 
   return (
-    <div style={{
+    <div data-panel-id="left-panel" style={{
       width: 200, background: T.panel, borderRight: `1px solid ${T.border}`,
       display: 'flex', flexDirection: 'column', overflow: 'hidden',
     }}>
@@ -831,8 +831,11 @@ function Timeline() {
 function RightPanel() {
   useComponentRegistry('RightPanel');
   const selectedView = useVfxStore((s) => s.selectedView);
-  if (selectedView === 'preset-settings') return <PresetSettings />;
-  return <LayerProperties />;
+  return (
+    <div data-panel-id="right-panel">
+      {selectedView === 'preset-settings' ? <PresetSettings /> : <LayerProperties />}
+    </div>
+  );
 }
 
 export function App() {

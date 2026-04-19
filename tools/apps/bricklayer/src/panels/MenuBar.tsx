@@ -496,7 +496,7 @@ export function MenuBar() {
   ];
 
   return (
-    <div style={styles.bar}>
+    <div data-panel-id="menu-bar" style={styles.bar}>
       <DropdownMenu
         label="File"
         items={fileItems}

@@ -658,7 +658,7 @@ export function MasterTree() {
     editingContext?.type === 'instance' && editingContext.id === id;
 
   return (
-    <div style={s.tree}>
+    <div data-panel-id="master-tree" style={s.tree}>
       <div style={s.heading}>{projectName} / WORLD</div>
 
       {/* ── Chunks ── */}
