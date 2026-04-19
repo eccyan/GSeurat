@@ -74545,5 +74545,124 @@
       3.6009
     ],
     "nav_zone": []
+  },
+  "camera_zones": {
+    "default_params": {
+      "mode": "orbit",
+      "blend_time": 2.0,
+      "allow_user_orbit": true,
+      "pitch_min": -50,
+      "pitch_max": 5,
+      "fov": 42,
+      "orbit_distance": 18,
+      "offset": [
+        0,
+        5,
+        -10
+      ]
+    },
+    "volumes": [
+      {
+        "id": "forest_entrance",
+        "shape": {
+          "type": "aabb",
+          "center": [
+            192,
+            5,
+            -192
+          ],
+          "half_extents": [
+            30,
+            20,
+            20
+          ]
+        },
+        "params": {
+          "mode": "orbit",
+          "priority": 1,
+          "orbit_distance": 20,
+          "offset": [
+            0,
+            6,
+            -12
+          ],
+          "fov": 45
+        }
+      },
+      {
+        "id": "mushroom_grove",
+        "shape": {
+          "type": "aabb",
+          "center": [
+            190,
+            3,
+            -290
+          ],
+          "half_extents": [
+            50,
+            20,
+            40
+          ]
+        },
+        "params": {
+          "mode": "orbit",
+          "priority": 2,
+          "orbit_distance": 14,
+          "offset": [
+            0,
+            3,
+            -8
+          ],
+          "pitch_min": -35,
+          "pitch_max": 0,
+          "fov": 38
+        }
+      },
+      {
+        "id": "deep_forest",
+        "shape": {
+          "type": "sphere",
+          "center": [
+            180,
+            3,
+            -322
+          ],
+          "radius": 25
+        },
+        "params": {
+          "mode": "orbit",
+          "priority": 2,
+          "orbit_distance": 12,
+          "offset": [
+            0,
+            3,
+            -7
+          ],
+          "pitch_min": -30,
+          "pitch_max": -5,
+          "fov": 36
+        }
+      }
+    ],
+    "triggers": [
+      {
+        "shape": {
+          "type": "aabb",
+          "center": [
+            192,
+            5,
+            -250
+          ],
+          "half_extents": [
+            40,
+            20,
+            5
+          ]
+        },
+        "from_zone": "forest_entrance",
+        "to_zone": "mushroom_grove",
+        "blend_override": 2.5
+      }
+    ]
   }
 }
