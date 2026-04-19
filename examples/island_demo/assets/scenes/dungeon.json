@@ -5057,7 +5057,8 @@
         0.2
       ],
       "radius": 20,
-      "intensity": 2.0
+      "intensity": 2.0,
+      "id": "torch_room_1"
     },
     {
       "position": [
@@ -5071,7 +5072,8 @@
         0.2
       ],
       "radius": 25,
-      "intensity": 2.0
+      "intensity": 2.0,
+      "id": "torch_room_2"
     },
     {
       "position": [
@@ -5085,7 +5087,8 @@
         0.15
       ],
       "radius": 25,
-      "intensity": 2.0
+      "intensity": 2.0,
+      "id": "treasure_room"
     },
     {
       "position": [
@@ -5099,7 +5102,38 @@
         1.0
       ],
       "radius": 25,
-      "intensity": 2.5
+      "intensity": 2.5,
+      "id": "exit_glow"
+    },
+    {
+      "id": "corridor_north",
+      "position": [
+        15,
+        4,
+        3
+      ],
+      "color": [
+        1.0,
+        0.5,
+        0.15
+      ],
+      "intensity": 0.4,
+      "radius": 15
+    },
+    {
+      "id": "corridor_south",
+      "position": [
+        7,
+        4,
+        29
+      ],
+      "color": [
+        1.0,
+        0.5,
+        0.15
+      ],
+      "intensity": 0.4,
+      "radius": 15
     }
   ],
   "player": {
@@ -5114,14 +5148,29 @@
     {
       "id": "portal_dungeon_exit",
       "name": "Portal Back to Overworld",
-      "position": [45, 0, 42],
+      "position": [
+        45,
+        0,
+        42
+      ],
       "scale": 1.0,
       "components": {
-        "ProximityTrigger": { "radius": 5.0, "one_shot": true },
+        "ProximityTrigger": {
+          "radius": 5.0,
+          "one_shot": true
+        },
         "PortalTarget": {
           "target_scene": "assets/scenes/seurat_island.json",
-          "target_position": [192, 3, 197],
-          "transition_color": [1, 1, 1],
+          "target_position": [
+            192,
+            3,
+            197
+          ],
+          "transition_color": [
+            1,
+            1,
+            1
+          ],
           "transition_duration": 0.5,
           "effect_type": 2
         }
@@ -6296,6 +6345,284 @@
         34
       ],
       "spawn_rate": 0
+    }
+  ],
+  "vfx_instances": [
+    {
+      "vfx_file": "assets/vfx/torch.vfx.json",
+      "position": [
+        3,
+        3.5,
+        3
+      ],
+      "rotation_y": 0,
+      "radius": 3,
+      "trigger": "auto",
+      "loop": true
+    },
+    {
+      "vfx_file": "assets/vfx/torch.vfx.json",
+      "position": [
+        11,
+        3.5,
+        3
+      ],
+      "rotation_y": 0,
+      "radius": 3,
+      "trigger": "auto",
+      "loop": true
+    },
+    {
+      "vfx_file": "assets/vfx/torch.vfx.json",
+      "position": [
+        3,
+        3.5,
+        11
+      ],
+      "rotation_y": 0,
+      "radius": 3,
+      "trigger": "auto",
+      "loop": true
+    },
+    {
+      "vfx_file": "assets/vfx/torch.vfx.json",
+      "position": [
+        11,
+        3.5,
+        11
+      ],
+      "rotation_y": 0,
+      "radius": 3,
+      "trigger": "auto",
+      "loop": true
+    },
+    {
+      "vfx_file": "assets/vfx/torch.vfx.json",
+      "position": [
+        19,
+        3.5,
+        3
+      ],
+      "rotation_y": 0,
+      "radius": 3,
+      "trigger": "auto",
+      "loop": true
+    },
+    {
+      "vfx_file": "assets/vfx/torch.vfx.json",
+      "position": [
+        31,
+        3.5,
+        3
+      ],
+      "rotation_y": 0,
+      "radius": 3,
+      "trigger": "auto",
+      "loop": true
+    },
+    {
+      "vfx_file": "assets/vfx/torch.vfx.json",
+      "position": [
+        19,
+        3.5,
+        15
+      ],
+      "rotation_y": 0,
+      "radius": 3,
+      "trigger": "auto",
+      "loop": true
+    },
+    {
+      "vfx_file": "assets/vfx/torch.vfx.json",
+      "position": [
+        31,
+        3.5,
+        15
+      ],
+      "rotation_y": 0,
+      "radius": 3,
+      "trigger": "auto",
+      "loop": true
+    },
+    {
+      "vfx_file": "assets/vfx/torch.vfx.json",
+      "position": [
+        25,
+        3.5,
+        9
+      ],
+      "rotation_y": 0,
+      "radius": 3,
+      "trigger": "auto",
+      "loop": true
+    },
+    {
+      "vfx_file": "assets/vfx/torch.vfx.json",
+      "position": [
+        15,
+        3.5,
+        7
+      ],
+      "rotation_y": 0,
+      "radius": 3,
+      "trigger": "auto",
+      "loop": true
+    },
+    {
+      "vfx_file": "assets/vfx/torch.vfx.json",
+      "position": [
+        34,
+        3.5,
+        7
+      ],
+      "rotation_y": 0,
+      "radius": 3,
+      "trigger": "auto",
+      "loop": true
+    },
+    {
+      "vfx_file": "assets/vfx/torch.vfx.json",
+      "position": [
+        19,
+        3.5,
+        23
+      ],
+      "rotation_y": 0,
+      "radius": 3,
+      "trigger": "auto",
+      "loop": true
+    },
+    {
+      "vfx_file": "assets/vfx/torch.vfx.json",
+      "position": [
+        31,
+        3.5,
+        23
+      ],
+      "rotation_y": 0,
+      "radius": 3,
+      "trigger": "auto",
+      "loop": true
+    },
+    {
+      "vfx_file": "assets/vfx/torch.vfx.json",
+      "position": [
+        19,
+        3.5,
+        35
+      ],
+      "rotation_y": 0,
+      "radius": 3,
+      "trigger": "auto",
+      "loop": true
+    },
+    {
+      "vfx_file": "assets/vfx/torch.vfx.json",
+      "position": [
+        31,
+        3.5,
+        35
+      ],
+      "rotation_y": 0,
+      "radius": 3,
+      "trigger": "auto",
+      "loop": true
+    },
+    {
+      "vfx_file": "assets/vfx/torch.vfx.json",
+      "position": [
+        37,
+        3.5,
+        29
+      ],
+      "rotation_y": 0,
+      "radius": 3,
+      "trigger": "auto",
+      "loop": true
+    },
+    {
+      "vfx_file": "assets/vfx/torch.vfx.json",
+      "position": [
+        47,
+        3.5,
+        29
+      ],
+      "rotation_y": 0,
+      "radius": 3,
+      "trigger": "auto",
+      "loop": true
+    },
+    {
+      "vfx_file": "assets/vfx/torch.vfx.json",
+      "position": [
+        37,
+        3.5,
+        47
+      ],
+      "rotation_y": 0,
+      "radius": 3,
+      "trigger": "auto",
+      "loop": true
+    },
+    {
+      "vfx_file": "assets/vfx/torch.vfx.json",
+      "position": [
+        47,
+        3.5,
+        47
+      ],
+      "rotation_y": 0,
+      "radius": 3,
+      "trigger": "auto",
+      "loop": true
+    },
+    {
+      "vfx_file": "assets/vfx/torch.vfx.json",
+      "position": [
+        3,
+        3.5,
+        23
+      ],
+      "rotation_y": 0,
+      "radius": 3,
+      "trigger": "auto",
+      "loop": true
+    },
+    {
+      "vfx_file": "assets/vfx/torch.vfx.json",
+      "position": [
+        11,
+        3.5,
+        23
+      ],
+      "rotation_y": 0,
+      "radius": 3,
+      "trigger": "auto",
+      "loop": true
+    },
+    {
+      "vfx_file": "assets/vfx/torch.vfx.json",
+      "position": [
+        3,
+        3.5,
+        35
+      ],
+      "rotation_y": 0,
+      "radius": 3,
+      "trigger": "auto",
+      "loop": true
+    },
+    {
+      "vfx_file": "assets/vfx/torch.vfx.json",
+      "position": [
+        11,
+        3.5,
+        35
+      ],
+      "rotation_y": 0,
+      "radius": 3,
+      "trigger": "auto",
+      "loop": true
     }
   ]
 }

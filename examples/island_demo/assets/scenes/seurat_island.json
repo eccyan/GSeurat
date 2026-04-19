@@ -73785,7 +73785,8 @@
         0.7
       ],
       "radius": 500,
-      "intensity": 2.0
+      "intensity": 2.0,
+      "id": "sun_1"
     },
     {
       "position": [
@@ -73799,7 +73800,8 @@
         0.4
       ],
       "radius": 400,
-      "intensity": 0.8
+      "intensity": 0.8,
+      "id": "fill_1"
     }
   ],
   "player": {
@@ -75289,6 +75291,54 @@
       "rotation_y": 0,
       "radius": 5,
       "trigger": "auto",
+      "loop": true
+    },
+    {
+      "vfx_file": "assets/vfx/crystal_burst.vfx.json",
+      "position": [
+        155,
+        3.3481,
+        145
+      ],
+      "rotation_y": 0,
+      "radius": 3,
+      "trigger": "proximity",
+      "loop": true
+    },
+    {
+      "vfx_file": "assets/vfx/crystal_burst.vfx.json",
+      "position": [
+        225,
+        3.6947,
+        195
+      ],
+      "rotation_y": 0,
+      "radius": 3,
+      "trigger": "proximity",
+      "loop": true
+    },
+    {
+      "vfx_file": "assets/vfx/crystal_burst.vfx.json",
+      "position": [
+        175,
+        3.0535,
+        235
+      ],
+      "rotation_y": 0,
+      "radius": 3,
+      "trigger": "proximity",
+      "loop": true
+    },
+    {
+      "vfx_file": "assets/vfx/crystal_burst.vfx.json",
+      "position": [
+        195,
+        2.0418,
+        120
+      ],
+      "rotation_y": 0,
+      "radius": 3,
+      "trigger": "proximity",
       "loop": true
     }
   ]
