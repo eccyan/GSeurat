@@ -1448,7 +1448,7 @@ function VfxInstanceProperties({ vfx }: { vfx: VfxInstanceData }) {
         </div>
       </div>
 
-      {(vfx.vfx_preset?.elements ?? []).some((el: any) => el.emitter?.spline?.mode && el.emitter.spline.mode !== 'none') && (
+      {((vfx.splinePoints && vfx.splinePoints.length > 0) || (vfx.vfx_preset?.elements ?? []).some((el: any) => el.emitter?.spline?.mode && el.emitter.spline.mode !== 'none')) && (
         <div style={styles.section}>
           <span style={styles.label}>Spline Path</span>
           <div style={{ display: 'flex', gap: 4, marginTop: 4, flexWrap: 'wrap', alignItems: 'center' }}>

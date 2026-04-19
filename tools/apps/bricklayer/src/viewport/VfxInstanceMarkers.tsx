@@ -164,6 +164,10 @@ function VfxMarker({ instance, isSelected, onSelect }: {
       {isSelected && (instance.vfx_preset?.elements ?? []).map((el, i) => (
         <ElementGizmo key={`${instance.id}_el_${i}`} element={el} instanceSplinePoints={instance.splinePoints} />
       ))}
+      {/* Fallback: show spline from splinePoints when preset isn't loaded */}
+      {isSelected && !(instance.vfx_preset?.elements?.length) && instance.splinePoints && instance.splinePoints.length >= 2 && (
+        <EmitterSplineGizmo points={instance.splinePoints} mode="emitter_path" />
+      )}
     </group>
   );
 }
