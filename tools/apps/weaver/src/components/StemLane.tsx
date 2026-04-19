@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import { useWeaverStore } from '../store/useWeaverStore.js';
 import { frameToPixel } from '../lib/frameUtils.js';
 
@@ -8,6 +8,57 @@ const STEM_COLORS = ['#4488ff', '#44cc66', '#ff8844', '#cc44ff', '#44cccc', '#ff
 
 interface StemLaneProps {
   index: number;
+}
+
+function VolumeControl({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  const [editing, setEditing] = useState(false);
+  const [editText, setEditText] = useState('');
+
+  const commit = () => {
+    const n = parseInt(editText, 10);
+    if (!isNaN(n)) onChange(Math.max(0, Math.min(100, n)) / 100);
+    setEditing(false);
+  };
+
+  if (editing) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 4 }}>
+        <input
+          type="number"
+          min={0}
+          max={100}
+          value={editText}
+          onChange={(e) => setEditText(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') setEditing(false); }}
+          onBlur={commit}
+          autoFocus
+          style={{ width: 40, fontSize: 10, padding: '1px 3px', background: '#111', color: '#eee', border: '1px solid #555', borderRadius: 2 }}
+        />
+        <span style={{ fontSize: 10, color: '#888' }}>%</span>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 4 }}>
+      <input
+        type="range"
+        min={0}
+        max={1}
+        step={0.01}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        style={{ width: 60 }}
+      />
+      <span
+        onClick={() => { setEditText(String(Math.round(value * 100))); setEditing(true); }}
+        style={{ fontSize: 10, color: '#888', cursor: 'pointer', userSelect: 'none' }}
+        title="Click to type exact value"
+      >
+        {Math.round(value * 100)}%
+      </span>
+    </div>
+  );
 }
 
 export function StemLane({ index }: StemLaneProps) {
@@ -23,6 +74,7 @@ export function StemLane({ index }: StemLaneProps) {
   const toggleMute = useWeaverStore((s) => s.toggleMute);
   const toggleSolo = useWeaverStore((s) => s.toggleSolo);
   const loopEnabled = useWeaverStore((s) => s.loopEnabled);
+  const anySoloed = useWeaverStore((s) => s.stems.some((st) => st.soloed));
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -63,12 +115,14 @@ export function StemLane({ index }: StemLaneProps) {
       );
     }
 
-    // Draw waveform
+    // Draw waveform (dimmed when muted or silenced by solo)
+    const isSilenced = stem.muted || (anySoloed && !stem.soloed);
     const peaks = stem.waveformPeaks;
     if (peaks && peaks.length > 0) {
       const totalFrames = stem.audioBuffer?.length ?? 0;
       const midY = h / 2;
       ctx.beginPath();
+      ctx.globalAlpha = isSilenced ? 0.25 : 1.0;
       ctx.strokeStyle = STEM_COLORS[index % STEM_COLORS.length];
       ctx.lineWidth = 1;
 
@@ -88,6 +142,7 @@ export function StemLane({ index }: StemLaneProps) {
         ctx.lineTo(x, midY + amp);
       }
       ctx.stroke();
+      ctx.globalAlpha = 1.0;
     }
 
     // Playhead line
@@ -108,7 +163,7 @@ export function StemLane({ index }: StemLaneProps) {
     ctx.moveTo(0, h - 0.5);
     ctx.lineTo(w, h - 0.5);
     ctx.stroke();
-  }, [stem, viewStart, viewEnd, loopStart, loopEnd, loopEnabled, playheadFrame]);
+  }, [stem, viewStart, viewEnd, loopStart, loopEnd, loopEnabled, playheadFrame, anySoloed]);
 
   if (!stem) return null;
 
@@ -129,18 +184,7 @@ export function StemLane({ index }: StemLaneProps) {
         <div style={{ fontSize: 11, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
           {stem.fileName}
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 4 }}>
-          <input
-            type="range"
-            min={0}
-            max={1}
-            step={0.01}
-            value={stem.initialVolume}
-            onChange={(e) => setStemVolume(index, Number(e.target.value))}
-            style={{ width: 60 }}
-          />
-          <span style={{ fontSize: 10, color: '#888' }}>{Math.round(stem.initialVolume * 100)}%</span>
-        </div>
+        <VolumeControl value={stem.initialVolume} onChange={(v) => setStemVolume(index, v)} />
         <div style={{ display: 'flex', gap: 2, marginTop: 2 }}>
           <button
             onClick={() => toggleMute(index)}

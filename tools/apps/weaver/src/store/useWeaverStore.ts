@@ -81,6 +81,7 @@ interface WeaverStore {
   toggleSolo: (index: number) => void;
   setLoopStart: (frame: number) => void;
   setLoopEnd: (frame: number) => void;
+  resetLoop: () => void;
   setLoopEnabled: (enabled: boolean) => void;
   setBpm: (bpm: number) => void;
   setGroupName: (name: string) => void;
@@ -389,23 +390,20 @@ export const useWeaverStore = create<WeaverStore>((set, get) => ({
     })),
 
   toggleMute: (index) => {
-    get().pushUndo();
     set((s) => ({
       stems: s.stems.map((st, i) => i === index ? { ...st, muted: !st.muted } : st),
-      dirty: true,
     }));
   },
 
   toggleSolo: (index) => {
-    get().pushUndo();
     set((s) => ({
       stems: s.stems.map((st, i) => i === index ? { ...st, soloed: !st.soloed } : st),
-      dirty: true,
     }));
   },
 
   setLoopStart: (frame) => { get().pushUndo(); set({ loopStart: Math.max(0, frame), dirty: true }); },
   setLoopEnd: (frame) => { get().pushUndo(); set({ loopEnd: Math.max(0, frame), dirty: true }); },
+  resetLoop: () => { get().pushUndo(); set({ loopStart: 0, loopEnd: 0, dirty: true }); },
   setLoopEnabled: (enabled) => set({ loopEnabled: enabled, dirty: true }),
   setBpm: (bpm) => { get().pushUndo(); set({ bpm: Math.max(1, Math.min(999, bpm || 120)), dirty: true }); },
   setGroupName: (name) => {
