@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@gseurat/asset-types": "workspace:*",
+    "@gseurat/debug-dump": "workspace:*",
     "@gseurat/engine-client": "workspace:*",
     "@gseurat/test-harness": "workspace:*",
     "@gseurat/project-root": "workspace:*",

@@ -4,6 +4,11 @@ import {
   saveProjectRootHandle,
   restoreProjectRoot,
 } from '@gseurat/project-root';
+import {
+  DebugDumpRegistry,
+  installDebugDumpGlobal,
+  installDebugDumpKeyboard,
+} from '@gseurat/debug-dump';
 import { useWeaverStore } from './store/useWeaverStore.js';
 import { MenuBar } from './components/MenuBar.js';
 import { TransportBar } from './components/TransportBar.js';
@@ -12,9 +17,21 @@ import { TimelinePanel } from './components/TimelinePanel.js';
 import { Sidebar } from './components/Sidebar.js';
 import { EmptyProjectState } from './components/EmptyProjectState.js';
 import { useAudioPlayer } from './hooks/useAudioPlayer.js';
+import { WeaverEarsDumper } from './lib/debugDumper.js';
 
 export function App() {
   useAudioPlayer();
+
+  // Debug dump: register ears dumper + install triggers (Ctrl+Shift+D / console)
+  useEffect(() => {
+    const registry = DebugDumpRegistry.getInstance();
+    registry.setSource('weaver');
+    const dumper = new WeaverEarsDumper();
+    registry.register(dumper);
+    installDebugDumpGlobal();
+    installDebugDumpKeyboard();
+    return () => { registry.unregister(dumper); };
+  }, []);
 
   const projectRootHandle = useWeaverStore((s) => s.projectRootHandle);
   const setProjectRootHandle = useWeaverStore((s) => s.setProjectRootHandle);

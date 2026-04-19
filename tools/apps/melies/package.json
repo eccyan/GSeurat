@@ -10,6 +10,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@gseurat/debug-dump": "workspace:*",
     "@gseurat/engine-client": "workspace:*",
     "@gseurat/simulation-wasm": "workspace:*",
     "@gseurat/vfx-utils": "workspace:*",
