@@ -93,15 +93,16 @@ void AppBase::main_loop() {
     std::optional<AudioEngineDumper> audio_dumper;
     if (audio_engine_) {
         audio_dumper.emplace([this]() -> AudioEngineDumper::Snapshot {
-            // Minimal snapshot — actual Mixer internals will be exposed
-            // once the friend accessor API is added in a future phase.
+            // Read what we can from the public AudioEngine API.
+            // Full Mixer state (stems, voices, groups) requires a friend
+            // accessor that will be added in a future phase.
             return AudioEngineDumper::Snapshot{
                 .master_volume      = 1.0f,
                 .sample_rate        = 44100,
                 .max_polyphony      = 64,
                 .active_voice_count = 0,
                 .active_group_count = 0,
-                .dropped_commands   = 0,
+                .dropped_commands   = audio_engine_->dropped_command_count(),
             };
         });
         debug_dump_registry_.register_module(&*audio_dumper);
