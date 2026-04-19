@@ -900,7 +900,11 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
       })(),
       gsParticleEmitters: data.scene.gsParticleEmitters ?? [],
       gsAnimations: data.scene.gsAnimations ?? [],
-      vfxInstances: data.scene.vfxInstances ?? [],
+      vfxInstances: (data.scene.vfxInstances ?? []).map((v: any, i: number) => ({
+        ...v,
+        id: v.id || `vfx_${i}_${Date.now().toString(36)}`,
+        name: v.name || v.vfx_file?.replace(/^.*\//, '').replace(/\.vfx\.json$/, '') || `VFX ${i}`,
+      })),
       cameraVolumes: data.scene.cameraVolumes ?? [],
       cameraTriggers: data.scene.cameraTriggers ?? [],
       cameraRails: data.scene.cameraRails ?? [],
