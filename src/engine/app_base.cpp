@@ -379,6 +379,7 @@ void AppBase::init_game_object_system() {
             if (j.contains("transition_color")) c.transition_color = SceneLoader::parse_vec3(j["transition_color"]);
             if (j.contains("transition_duration")) c.transition_duration = j["transition_duration"].get<float>();
             if (j.contains("effect_type")) c.effect_type = j["effect_type"].get<int>();
+            if (j.contains("require_interact")) c.require_interact = j["require_interact"].get<bool>();
             return c;
         },
         [](const PortalTarget& c) -> nlohmann::json {
@@ -387,7 +388,8 @@ void AppBase::init_game_object_system() {
                 {"target_position", {c.target_position.x, c.target_position.y, c.target_position.z}},
                 {"transition_color", {c.transition_color.x, c.transition_color.y, c.transition_color.z}},
                 {"transition_duration", c.transition_duration},
-                {"effect_type", c.effect_type}
+                {"effect_type", c.effect_type},
+                {"require_interact", c.require_interact}
             };
         });
 
@@ -465,7 +467,9 @@ void AppBase::init_game_object_system() {
         }, {}, {}});
 
     system_scheduler_.add_system({"portal_trigger_handler",
-        [](ecs::World& w, float) { portal_trigger_handler(w); },
+        [this](ecs::World& w, float) {
+            portal_trigger_handler(w, input_.was_key_pressed(GLFW_KEY_E));
+        },
         /* reads */ {}, /* writes */ {}});
 
     system_scheduler_.add_system({"transition_system",

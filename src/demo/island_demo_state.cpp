@@ -63,6 +63,9 @@ void IslandDemoState::on_enter(AppBase& app) {
     app.feature_flags().apply_platform_defaults(app.renderer().context().is_apple_gpu());
     app.init_scene(scene_path_);
 
+    // Collect audio zones from all scenes (populated below during scene loading)
+    std::vector<SceneData::AudioZoneRef> scene_audio_zones;
+
     // Disable app-level parallax — we manage our own camera
     app.gs_terrain().parallax_active = false;
 
@@ -76,6 +79,8 @@ void IslandDemoState::on_enter(AppBase& app) {
     app.feature_flags().point_lights = true;
     app.feature_flags().gs_lod = true;
     app.feature_flags().animation = true;  // GS animation effects (orbit, wave, etc.)
+    app.feature_flags().music = true;
+    app.feature_flags().sfx = true;
 
     // Enable GS lighting: directional sun + point lights for interactive effects
     app.renderer().gs_renderer().set_light_mode(2);  // point light mode (includes directional)
@@ -202,6 +207,16 @@ void IslandDemoState::on_enter(AppBase& app) {
             forest_grid_loaded_ = true;
             std::fprintf(stderr, "[IslandDemo] Forest collision loaded: %ux%u (origin Z=%.0f)\n",
                 forest_collision_grid_.width, forest_collision_grid_.height, forest_grid_origin_.y);
+        }
+
+        // Collect audio zones from loaded scenes for later setup
+        for (const auto& az : forest_scene.audio_zones) {
+            scene_audio_zones.push_back(az);
+        }
+
+        auto dungeon_scene = SceneLoader::load("assets/scenes/dungeon.json");
+        for (const auto& az : dungeon_scene.audio_zones) {
+            scene_audio_zones.push_back(az);
         }
     }
 
@@ -555,10 +570,32 @@ void IslandDemoState::on_enter(AppBase& app) {
             }
             ae->set_rtpc(kRtpcMusicFilter, 1.0f);  // start fully open
             ae->play_group(r.value());
+            island_music_group_ = r.value();
+            active_music_group_ = r.value();
             std::fprintf(stderr, "[IslandDemo] Field theme loaded and playing (group %u)\n", r.value());
         } else {
             std::fprintf(stderr, "[IslandDemo] WARNING: Failed to load field_theme.music.json (error %u)\n",
                          static_cast<uint32_t>(r.error()));
+        }
+
+        // Load audio zones from other scenes and build crossfade state
+        for (const auto& az : scene_audio_zones) {
+            if (az.music_config.empty()) continue;
+            auto gr = ae->load_track_group(az.music_config);
+            if (!gr) {
+                std::fprintf(stderr, "[IslandDemo] WARNING: Failed to load audio zone music '%s'\n",
+                             az.music_config.c_str());
+                continue;
+            }
+            AudioZoneState zs;
+            zs.bounds_min = az.center - az.half_extents;
+            zs.bounds_max = az.center + az.half_extents;
+            zs.group_id = gr.value();
+            zs.crossfade_ms = az.crossfade_ms;
+            zs.ambient_volume = az.ambient_volume;
+            audio_zones_.push_back(zs);
+            std::fprintf(stderr, "[IslandDemo] Audio zone '%s' loaded (group %u, xfade %.0fms)\n",
+                         az.id.c_str(), gr.value(), az.crossfade_ms);
         }
     }
 
@@ -700,9 +737,34 @@ void IslandDemoState::update(AppBase& app, float dt) {
         update_player(app, dt);
     }
 
-    // Audio: update listener position + footstep SFX
+    // Audio: update listener position + footstep SFX + audio zone crossfade
     if (auto* ae = app.audio()) {
         ae->set_listener_position(character_origin_.x, character_origin_.y, character_origin_.z);
+
+        // Audio zone crossfade: check if player entered/exited any zone
+        if (app.feature_flags().music) {
+            uint32_t desired_group = island_music_group_;  // default to island music
+            float xfade_ms = 2000.0f;
+
+            for (auto& z : audio_zones_) {
+                const bool inside = character_origin_.x >= z.bounds_min.x
+                                 && character_origin_.x <= z.bounds_max.x
+                                 && character_origin_.z >= z.bounds_min.z
+                                 && character_origin_.z <= z.bounds_max.z;
+                if (inside) {
+                    desired_group = z.group_id;
+                    xfade_ms = z.crossfade_ms;
+                }
+                z.player_inside = inside;
+            }
+
+            if (desired_group != active_music_group_ && desired_group != 0 && active_music_group_ != 0) {
+                ae->request_transition(active_music_group_, desired_group, xfade_ms);
+                std::fprintf(stderr, "[IslandDemo] Music crossfade: group %u -> %u (%.0fms)\n",
+                             active_music_group_, desired_group, xfade_ms);
+                active_music_group_ = desired_group;
+            }
+        }
     }
     if (sfx_loaded_) {
         const bool moving = glm::length(glm::vec2(player_velocity_.x, player_velocity_.z)) > 1.0f;

@@ -205,6 +205,14 @@ CameraState CameraZoneSystem::evaluate_vcam(const CameraParams& params,
 
             // Snap directly to rail — no spring on position.
             state.position = rails_[ri].path.evaluate(t);
+
+            // Enforce minimum height above player (terrain) to prevent camera
+            // sinking into the ground when rail Y is lower than terrain.
+            float min_y = player_pos.y + params.min_ground_clearance;
+            if (state.position.y < min_y) {
+                state.position.y = min_y;
+            }
+
             spring_position_ = state.position;  // keep spring in sync
 
             if (rails_[ri].has_target_path && rails_[ri].target_path.valid()) {
