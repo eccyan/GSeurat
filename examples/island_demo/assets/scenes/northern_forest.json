@@ -40,8 +40,8 @@
     {
       "position": [
         175,
-        1.8476,
-        -262
+        1.2892,
+        -55
       ],
       "radius": 8,
       "color": [
@@ -54,9 +54,9 @@
     },
     {
       "position": [
-        210,
-        1.6498,
-        -287
+        200,
+        2.9122,
+        -130
       ],
       "radius": 8,
       "color": [
@@ -69,9 +69,9 @@
     },
     {
       "position": [
-        150,
-        2.5084,
-        -322
+        145,
+        1.6091,
+        -110
       ],
       "radius": 8,
       "color": [
@@ -85,8 +85,8 @@
     {
       "position": [
         230,
-        2.7037,
-        -312
+        2.4193,
+        -80
       ],
       "radius": 8,
       "color": [
@@ -133,9 +133,9 @@
       "id": "forest_deer_1",
       "name": "Deer",
       "position": [
-        195,
-        0.6498,
-        -287
+        180,
+        1.9543,
+        -100
       ],
       "rotation": [
         0,
@@ -155,9 +155,9 @@
       "id": "forest_deer_2",
       "name": "Deer",
       "position": [
-        208,
-        0.8479,
-        -297
+        220,
+        0.7985,
+        -120
       ],
       "rotation": [
         0,
@@ -177,9 +177,9 @@
       "id": "forest_wolf",
       "name": "Wolf",
       "position": [
-        180,
-        1.6938,
-        -322
+        150,
+        1.5266,
+        -130
       ],
       "rotation": [
         0,
@@ -200,8 +200,8 @@
       "name": "Glowing Mushroom",
       "position": [
         175,
-        0.8476,
-        -262
+        1.2892,
+        -55
       ],
       "rotation": [
         0,
@@ -227,9 +227,9 @@
       "id": "forest_mushroom_2",
       "name": "Glowing Mushroom",
       "position": [
-        210,
-        0.6498,
-        -287
+        200,
+        2.9122,
+        -130
       ],
       "rotation": [
         0,
@@ -255,9 +255,9 @@
       "id": "forest_mushroom_3",
       "name": "Glowing Mushroom",
       "position": [
-        150,
-        1.5084,
-        -322
+        145,
+        1.6091,
+        -110
       ],
       "rotation": [
         0,
@@ -284,8 +284,8 @@
       "name": "Glowing Mushroom",
       "position": [
         230,
-        1.7037,
-        -312
+        2.4193,
+        -80
       ],
       "rotation": [
         0,
@@ -366,8 +366,8 @@
       "name": "Firefly 1",
       "position": [
         185,
-        2.0,
-        -270
+        1.4939,
+        -50
       ],
       "rotation": [
         0,
@@ -389,8 +389,8 @@
       "name": "Firefly 2",
       "position": [
         195,
-        1.5,
-        -290
+        0.7926,
+        -110
       ],
       "rotation": [
         0,
@@ -411,9 +411,9 @@
       "id": "firefly_3",
       "name": "Firefly 3",
       "position": [
-        170,
-        2.5,
-        -305
+        165,
+        2.0177,
+        -115
       ],
       "rotation": [
         0,
@@ -434,9 +434,9 @@
       "id": "firefly_4",
       "name": "Firefly 4",
       "position": [
-        215,
-        1.8,
-        -280
+        220,
+        0.8529,
+        -110
       ],
       "rotation": [
         0,
@@ -458,8 +458,8 @@
       "name": "Firefly 5",
       "position": [
         200,
-        2.2,
-        -315
+        3.1784,
+        -140
       ],
       "rotation": [
         0,
@@ -647,9 +647,9 @@
   "particle_emitters": [
     {
       "position": [
-        200,
-        0.7425,
-        -292
+        195,
+        1.5045,
+        -50
       ],
       "spawn_rate": 10,
       "lifetime_min": 1,
@@ -701,9 +701,9 @@
     },
     {
       "position": [
-        190,
-        0.363,
-        -277
+        180,
+        1.6178,
+        -95
       ],
       "spawn_rate": 10,
       "lifetime_min": 1,
@@ -755,9 +755,9 @@
     },
     {
       "position": [
-        210,
-        1.0237,
-        -302
+        205,
+        1.8544,
+        -120
       ],
       "spawn_rate": 10,
       "lifetime_min": 1,
@@ -74566,14 +74566,14 @@
         "shape": {
           "type": "aabb",
           "center": [
-            192,
+            180,
             5,
-            -192
+            -30
           ],
           "half_extents": [
             30,
             20,
-            20
+            30
           ]
         },
         "params": {
@@ -74595,7 +74595,7 @@
           "center": [
             190,
             3,
-            -290
+            -100
           ],
           "half_extents": [
             50,
@@ -74624,9 +74624,9 @@
           "center": [
             180,
             3,
-            -322
+            -140
           ],
-          "radius": 25
+          "radius": 30
         },
         "params": {
           "mode": "orbit",
@@ -74650,7 +74650,7 @@
           "center": [
             192,
             5,
-            -250
+            -160
           ],
           "half_extents": [
             40,
