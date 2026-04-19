@@ -75340,6 +75340,69 @@
       "radius": 3,
       "trigger": "proximity",
       "loop": true
+    },
+    {
+      "vfx_file": "assets/vfx/spline_dragon_flame.vfx.json",
+      "position": [
+        230,
+        4,
+        145
+      ],
+      "spline_points": [
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          10,
+          5,
+          15
+        ],
+        [
+          20,
+          10,
+          10
+        ],
+        [
+          30,
+          5,
+          25
+        ]
+      ],
+      "rotation_y": 0,
+      "radius": 10,
+      "trigger": "auto",
+      "loop": true
+    },
+    {
+      "vfx_file": "assets/vfx/spline_smoke_trail.vfx.json",
+      "position": [
+        192,
+        6,
+        175
+      ],
+      "spline_points": [
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          3,
+          1
+        ],
+        [
+          1,
+          8,
+          0
+        ]
+      ],
+      "rotation_y": 0,
+      "radius": 8,
+      "trigger": "auto",
+      "loop": true
     }
   ],
   "camera_zones": {
