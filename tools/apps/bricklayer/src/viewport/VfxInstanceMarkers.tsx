@@ -161,7 +161,7 @@ function VfxMarker({ instance, isSelected, onSelect }: {
         </Html>
       )}
       {/* Element gizmos (shown when selected) */}
-      {isSelected && (instance.vfx_preset.elements ?? []).map((el, i) => (
+      {isSelected && (instance.vfx_preset?.elements ?? []).map((el, i) => (
         <ElementGizmo key={`${instance.id}_el_${i}`} element={el} instanceSplinePoints={instance.splinePoints} />
       ))}
     </group>

@@ -282,8 +282,8 @@ function ObjectLayerRenderer({ layer, instancePos }: {
 // ── Per-instance renderer ──
 
 function InstanceRenderer({ instance, wasm }: { instance: VfxInstanceData; wasm: any }) {
-  const emitterLayers = (instance.vfx_preset.elements ?? []).filter((l) => l.type === 'emitter');
-  const objectLayers = (instance.vfx_preset.elements ?? []).filter((l) => l.type === 'object');
+  const emitterLayers = (instance.vfx_preset?.elements ?? []).filter((l) => l.type === 'emitter');
+  const objectLayers = (instance.vfx_preset?.elements ?? []).filter((l) => l.type === 'object');
   const rotY = ((instance.rotation_y ?? 0) * Math.PI) / 180;
 
   return (

@@ -1444,7 +1444,7 @@ function VfxInstanceProperties({ vfx }: { vfx: VfxInstanceData }) {
       <div style={styles.section}>
         <span style={styles.label}>Preset</span>
         <div style={{ fontSize: 10, color: '#888', marginTop: 2 }}>
-          {vfx.vfx_preset.name} ({(vfx.vfx_preset.elements ?? []).length} elements{vfx.vfx_preset.duration ? `, ${vfx.vfx_preset.duration}s` : ''})
+          {vfx.vfx_preset?.name ?? '(not loaded)'} ({(vfx.vfx_preset?.elements ?? []).length} elements{vfx.vfx_preset?.duration ? `, ${vfx.vfx_preset.duration}s` : ''})
         </div>
       </div>
 
