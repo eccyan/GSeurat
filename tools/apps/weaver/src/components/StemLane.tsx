@@ -33,11 +33,13 @@ export function StemLane({ index }: StemLaneProps) {
     const rect = parent.getBoundingClientRect();
     const w = Math.floor(rect.width);
     const h = LANE_HEIGHT;
-    canvas.width = w;
-    canvas.height = h;
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = w * dpr;
+    canvas.height = h * dpr;
 
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
     const waveWidth = w - LABEL_WIDTH;
     ctx.clearRect(0, 0, w, h);

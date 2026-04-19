@@ -1,12 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useWeaverStore } from '../store/useWeaverStore.js';
 import { framesToSeconds } from '../lib/frameUtils.js';
-
-let sharedCtx: AudioContext | null = null;
-function getAudioContext(): AudioContext {
-  if (!sharedCtx) sharedCtx = new AudioContext();
-  return sharedCtx;
-}
+import { getAudioContext } from '../lib/audioContext.js';
 
 // Minimum loop region: 100ms worth of frames. Shorter regions produce
 // audible clicks/beeps from Web Audio rapid looping.

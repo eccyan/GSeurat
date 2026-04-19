@@ -12,12 +12,7 @@ import {
   loadStemAudio,
   saveStemFile,
 } from '../lib/projectFs.js';
-
-let sharedCtx: AudioContext | null = null;
-function getAudioContext(): AudioContext {
-  if (!sharedCtx) sharedCtx = new AudioContext();
-  return sharedCtx;
-}
+import { getAudioContext } from '../lib/audioContext.js';
 
 // ── Undo/Redo snapshot (lightweight — no AudioBuffers) ──
 
