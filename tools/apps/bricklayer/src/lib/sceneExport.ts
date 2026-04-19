@@ -374,6 +374,9 @@ export function exportSceneJson(
       if (v.radius !== 5) out.radius = v.radius;
       if (v.trigger !== 'auto') out.trigger = v.trigger;
       if (!v.loop) out.loop = false;
+      if (v.splinePoints && v.splinePoints.length > 0) {
+        out.spline_points = v.splinePoints;
+      }
       return out;
     });
   }
