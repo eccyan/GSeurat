@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import { useWeaverStore } from '../store/useWeaverStore.js';
 import { pixelToFrame } from '../lib/frameUtils.js';
 import { Ruler } from './Ruler.js';
@@ -11,6 +11,8 @@ export function TimelinePanel() {
   const fileRef = useRef<HTMLInputElement>(null);
   const stems = useWeaverStore((s) => s.stems);
   const addStem = useWeaverStore((s) => s.addStem);
+  const moveStem = useWeaverStore((s) => s.moveStem);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
 
   // Zoom (Ctrl/Cmd+scroll) and pan (plain scroll) — covers ruler + stem lanes
   useEffect(() => {
@@ -76,7 +78,23 @@ export function TimelinePanel() {
       <Ruler />
       <div style={{ flex: 1, overflowY: 'auto' }}>
         {stems.map((_, i) => (
-          <StemLane key={i} index={i} />
+          <div
+            key={i}
+            draggable
+            onDragStart={(e) => { e.dataTransfer.setData('text/plain', String(i)); e.dataTransfer.effectAllowed = 'move'; }}
+            onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; setDragOverIndex(i); }}
+            onDragLeave={() => setDragOverIndex(null)}
+            onDrop={(e) => {
+              e.preventDefault();
+              const from = parseInt(e.dataTransfer.getData('text/plain'), 10);
+              if (!isNaN(from) && from !== i) moveStem(from, i);
+              setDragOverIndex(null);
+            }}
+            onDragEnd={() => setDragOverIndex(null)}
+            style={{ borderTop: dragOverIndex === i ? '2px solid #77aaff' : '2px solid transparent' }}
+          >
+            <StemLane key={i} index={i} />
+          </div>
         ))}
         <input
           ref={fileRef}

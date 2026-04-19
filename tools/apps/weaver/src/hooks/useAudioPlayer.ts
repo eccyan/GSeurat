@@ -14,6 +14,7 @@ function hasValidLoopRegion(loopStart: number, loopEnd: number): boolean {
 export function useAudioPlayer() {
   const sourcesRef = useRef<AudioBufferSourceNode[]>([]);
   const gainsRef = useRef<GainNode[]>([]);
+  const masterGainRef = useRef<GainNode | null>(null);
   const rafRef = useRef<number>(0);
   const startTimeRef = useRef<number>(0);
   const startFrameRef = useRef<number>(0);
@@ -21,6 +22,7 @@ export function useAudioPlayer() {
   const isPlaying = useWeaverStore((s) => s.isPlaying);
   const stems = useWeaverStore((s) => s.stems);
   const loopEnabled = useWeaverStore((s) => s.loopEnabled);
+  const masterVolume = useWeaverStore((s) => s.masterVolume);
 
   useEffect(() => {
     if (isPlaying) {
@@ -56,6 +58,13 @@ export function useAudioPlayer() {
     }
   }, [loopEnabled]);
 
+  // Update master volume live
+  useEffect(() => {
+    if (masterGainRef.current) {
+      masterGainRef.current.gain.value = masterVolume;
+    }
+  }, [masterVolume]);
+
   useEffect(() => {
     const gains = gainsRef.current;
     if (gains.length === 0) return;
@@ -90,6 +99,12 @@ export function useAudioPlayer() {
     const sources: AudioBufferSourceNode[] = [];
     const gains: GainNode[] = [];
 
+    // Master gain node — all stems route through this
+    const masterGain = ctx.createGain();
+    masterGain.gain.value = state.masterVolume ?? 1.0;
+    masterGain.connect(ctx.destination);
+    masterGainRef.current = masterGain;
+
     const offsetSec = framesToSeconds(playheadFrame, sampleRate);
 
     const anySoloed = stems.some(s => s.soloed);
@@ -105,7 +120,7 @@ export function useAudioPlayer() {
       if (stem.muted) effectiveVol = 0;
       if (anySoloed && !stem.soloed) effectiveVol = 0;
       gain.gain.value = effectiveVol;
-      source.connect(gain).connect(ctx.destination);
+      source.connect(gain).connect(masterGain);
 
       if (loopEnabled && hasValidLoopRegion(loopStart, loopEnd)) {
         source.loop = true;
@@ -171,6 +186,10 @@ export function useAudioPlayer() {
     }
     sourcesRef.current = [];
     gainsRef.current = [];
+    if (masterGainRef.current) {
+      masterGainRef.current.disconnect();
+      masterGainRef.current = null;
+    }
   }
 
   function stopPlayback() {

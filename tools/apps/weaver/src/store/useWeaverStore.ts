@@ -74,8 +74,12 @@ interface WeaverStore {
   isPlaying: boolean;
   playheadFrame: number;
 
+  masterVolume: number;
+  setMasterVolume: (volume: number) => void;
+
   addStem: (file: File) => Promise<void>;
   removeStem: (index: number) => void;
+  moveStem: (fromIndex: number, toIndex: number) => void;
   setStemVolume: (index: number, volume: number) => void;
   toggleMute: (index: number) => void;
   toggleSolo: (index: number) => void;
@@ -333,6 +337,9 @@ export const useWeaverStore = create<WeaverStore>((set, get) => ({
     });
   },
 
+  masterVolume: 1.0,
+  setMasterVolume: (volume) => set({ masterVolume: Math.max(0, Math.min(1, volume)) }),
+
   stems: [],
   bpm: 120,
   loopStart: 0,
@@ -381,6 +388,16 @@ export const useWeaverStore = create<WeaverStore>((set, get) => ({
   removeStem: (index) => {
     get().pushUndo();
     set((s) => ({ stems: s.stems.filter((_, i) => i !== index), dirty: true }));
+  },
+
+  moveStem: (fromIndex, toIndex) => {
+    get().pushUndo();
+    set((s) => {
+      const stems = [...s.stems];
+      const [moved] = stems.splice(fromIndex, 1);
+      stems.splice(toIndex, 0, moved);
+      return { stems, dirty: true };
+    });
   },
 
   setStemVolume: (index, volume) =>
