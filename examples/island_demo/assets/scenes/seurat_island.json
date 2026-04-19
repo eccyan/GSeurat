@@ -75233,7 +75233,11 @@
   "vfx_instances": [
     {
       "vfx_file": "assets/vfx/torch.vfx.json",
-      "position": [195.0, 4.4784, 181.0],
+      "position": [
+        195.0,
+        4.4784,
+        181.0
+      ],
       "rotation_y": 0,
       "radius": 5,
       "trigger": "auto",
@@ -75241,7 +75245,11 @@
     },
     {
       "vfx_file": "assets/vfx/torch.vfx.json",
-      "position": [185.0, 3.5245, 173.0],
+      "position": [
+        185.0,
+        3.5245,
+        173.0
+      ],
       "rotation_y": 0,
       "radius": 5,
       "trigger": "auto",
@@ -75249,7 +75257,11 @@
     },
     {
       "vfx_file": "assets/vfx/torch.vfx.json",
-      "position": [201.0, 3.0323, 191.0],
+      "position": [
+        201.0,
+        3.0323,
+        191.0
+      ],
       "rotation_y": 0,
       "radius": 5,
       "trigger": "auto",
@@ -75257,7 +75269,11 @@
     },
     {
       "vfx_file": "assets/vfx/torch.vfx.json",
-      "position": [211.0, 3.2403, 185.0],
+      "position": [
+        211.0,
+        3.2403,
+        185.0
+      ],
       "rotation_y": 0,
       "radius": 5,
       "trigger": "auto",
@@ -75265,7 +75281,11 @@
     },
     {
       "vfx_file": "assets/vfx/fountain_spray.vfx.json",
-      "position": [178, 3.2, 185],
+      "position": [
+        178,
+        3.2,
+        185
+      ],
       "rotation_y": 0,
       "radius": 5,
       "trigger": "auto",
