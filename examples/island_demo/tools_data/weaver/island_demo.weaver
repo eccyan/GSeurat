@@ -1,0 +1,77 @@
+{
+  "version": 1,
+  "name": "island_demo",
+  "sample_rate": 44100,
+  "groups": [
+    {
+      "id": "field",
+      "name": "Field",
+      "bpm": 130,
+      "loop_start": 0,
+      "loop_end": 0,
+      "loop_enabled": true,
+      "markers": [],
+      "stems": [
+        {
+          "source": "assets/audio/field/music_bass.wav",
+          "initial_volume": 1,
+          "muted": false,
+          "soloed": false
+        },
+        {
+          "source": "assets/audio/field/music_harmony.wav",
+          "initial_volume": 0.58,
+          "muted": false,
+          "soloed": false
+        },
+        {
+          "source": "assets/audio/field/music_melody.wav",
+          "initial_volume": 1,
+          "muted": false,
+          "soloed": false
+        },
+        {
+          "source": "assets/audio/field/music_percussion.wav",
+          "initial_volume": 1,
+          "muted": false,
+          "soloed": false
+        }
+      ]
+    },
+    {
+      "id": "battle",
+      "name": "Battle",
+      "bpm": 140,
+      "loop_start": 0,
+      "loop_end": 0,
+      "loop_enabled": true,
+      "markers": [],
+      "stems": [
+        {
+          "source": "assets/audio/battle/bass_pad.wav",
+          "initial_volume": 1,
+          "muted": false,
+          "soloed": false
+        },
+        {
+          "source": "assets/audio/battle/melody_arp.wav",
+          "initial_volume": 1,
+          "muted": false,
+          "soloed": false
+        },
+        {
+          "source": "assets/audio/battle/chord_pad.wav",
+          "initial_volume": 1,
+          "muted": false,
+          "soloed": false
+        },
+        {
+          "source": "assets/audio/battle/hihat_rhythm.wav",
+          "initial_volume": 1,
+          "muted": false,
+          "soloed": false
+        }
+      ]
+    }
+  ]
+}

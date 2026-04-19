@@ -1,0 +1,32 @@
+{
+  "version": 2,
+  "sample_rate": 44100,
+  "track_groups": [
+    {
+      "id": 1,
+      "name": "Field",
+      "bpm": 120,
+      "loop_start": 0,
+      "loop_end": 1,
+      "markers": [],
+      "stems": [
+        {
+          "source": "assets/audio/field/music_bass.wav",
+          "initial_volume": 1
+        },
+        {
+          "source": "assets/audio/field/music_harmony.wav",
+          "initial_volume": 1
+        },
+        {
+          "source": "assets/audio/field/music_melody.wav",
+          "initial_volume": 1
+        },
+        {
+          "source": "assets/audio/field/music_percussion.wav",
+          "initial_volume": 1
+        }
+      ]
+    }
+  ]
+}

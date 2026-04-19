@@ -1,0 +1,111 @@
+{
+  "name": "Fountain Spray",
+  "elements": [
+    {
+      "name": "water_arc",
+      "type": "emitter",
+      "position": [
+        0,
+        4,
+        0
+      ],
+      "start": 0,
+      "duration": 4,
+      "loop": true,
+      "spawn_rate": 40,
+      "lifetime_min": 1,
+      "lifetime_max": 2,
+      "velocity_min": [
+        -0.5,
+        0,
+        -0.5
+      ],
+      "velocity_max": [
+        0.5,
+        1,
+        0.5
+      ],
+      "acceleration": [
+        0,
+        -6,
+        0
+      ],
+      "color_start": [
+        0.4,
+        0.7,
+        1
+      ],
+      "color_end": [
+        0.2,
+        0.5,
+        0.9
+      ],
+      "scale_min": [
+        0.2,
+        0.2,
+        0.2
+      ],
+      "scale_max": [
+        0.4,
+        0.4,
+        0.4
+      ],
+      "opacity_start": 0.8,
+      "opacity_end": 0,
+      "emission": 2,
+      "spline": {
+        "mode": "particle_path",
+        "control_points": [
+          [
+            0,
+            0,
+            0
+          ],
+          [
+            1,
+            4,
+            0
+          ],
+          [
+            0,
+            6,
+            1
+          ],
+          [
+            -1,
+            4,
+            0
+          ],
+          [
+            0,
+            0,
+            0
+          ]
+        ],
+        "path_spread": 0.5,
+        "align_to_tangent": false
+      }
+    },
+    {
+      "name": "mist_light",
+      "type": "light",
+      "position": [
+        0,
+        3,
+        0
+      ],
+      "start": 0,
+      "duration": 4,
+      "loop": true,
+      "color": [
+        0.3,
+        0.6,
+        1
+      ],
+      "intensity": 1.5,
+      "radius": 12
+    }
+  ],
+  "duration": 4,
+  "category": "environment"
+}
