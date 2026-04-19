@@ -99,7 +99,7 @@ export function SplineEditor() {
   const handleGroundPointerUp = useCallback(() => {
     if (dragIndexRef.current !== null) {
       wasDraggingRef.current = true;
-      console.debug('[SplineEditor] pointerUp: drag ended, suppressing next click');
+      console.info('[SplineEditor] pointerUp: drag ended, suppressing next click');
     }
     dragIndexRef.current = null;
   }, []);
@@ -110,7 +110,7 @@ export function SplineEditor() {
       // Suppress click that follows a drag release
       if (wasDraggingRef.current) {
         wasDraggingRef.current = false;
-        console.debug('[SplineEditor] click suppressed (was dragging)');
+        console.info('[SplineEditor] click suppressed (was dragging)');
         return;
       }
       if (dragIndexRef.current !== null) return;
@@ -124,7 +124,7 @@ export function SplineEditor() {
       const rz = snap(hit.z - instancePos[2]);
 
       const newPoints = [...(instance.splinePoints ?? []), [rx, ry, rz] as [number, number, number]];
-      console.debug(`[SplineEditor] click: add point [${rx}, ${ry}, ${rz}] (total: ${newPoints.length})`);
+      console.info(`[SplineEditor] click: add point [${rx}, ${ry}, ${rz}] (total: ${newPoints.length})`);
       updateVfxInstance(editingSpline, { splinePoints: newPoints });
     },
     [editingSpline, instance, instancePos, raycastGroundPlane, updateVfxInstance],
@@ -135,7 +135,7 @@ export function SplineEditor() {
     (index: number) => (e: ThreeEvent<PointerEvent>) => {
       e.stopPropagation();
       dragIndexRef.current = index;
-      console.debug(`[SplineEditor] pointerDown: start drag point ${index}`);
+      console.info(`[SplineEditor] pointerDown: start drag point ${index}`);
     },
     [],
   );
@@ -145,7 +145,7 @@ export function SplineEditor() {
       e.stopPropagation();
       if (!editingSpline || !instance) return;
       const newPoints = (instance.splinePoints ?? []).filter((_, i) => i !== index);
-      console.debug(`[SplineEditor] contextMenu: remove point ${index} (total: ${newPoints.length})`);
+      console.info(`[SplineEditor] contextMenu: remove point ${index} (total: ${newPoints.length})`);
       updateVfxInstance(editingSpline, { splinePoints: newPoints });
     },
     [editingSpline, instance, updateVfxInstance],
