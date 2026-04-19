@@ -80,8 +80,6 @@ export function TimelinePanel() {
         {stems.map((_, i) => (
           <div
             key={i}
-            draggable
-            onDragStart={(e) => { e.dataTransfer.setData('text/plain', String(i)); e.dataTransfer.effectAllowed = 'move'; }}
             onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; setDragOverIndex(i); }}
             onDragLeave={() => setDragOverIndex(null)}
             onDrop={(e) => {
@@ -93,7 +91,10 @@ export function TimelinePanel() {
             onDragEnd={() => setDragOverIndex(null)}
             style={{ borderTop: dragOverIndex === i ? '2px solid #77aaff' : '2px solid transparent' }}
           >
-            <StemLane key={i} index={i} />
+            <StemLane
+              index={i}
+              onDragHandleStart={(e) => { e.dataTransfer.setData('text/plain', String(i)); e.dataTransfer.effectAllowed = 'move'; }}
+            />
           </div>
         ))}
         <input
