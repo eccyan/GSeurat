@@ -39,9 +39,9 @@
     },
     {
       "position": [
-        175,
-        1.2892,
-        -55
+        95.0,
+        3.2038,
+        95.0
       ],
       "radius": 8,
       "color": [
@@ -54,9 +54,9 @@
     },
     {
       "position": [
-        200,
+        140.0,
         2.9122,
-        -130
+        40.0
       ],
       "radius": 8,
       "color": [
@@ -69,9 +69,9 @@
     },
     {
       "position": [
-        145,
-        1.6091,
-        -110
+        90.0,
+        3.2597,
+        85.0
       ],
       "radius": 8,
       "color": [
@@ -84,9 +84,9 @@
     },
     {
       "position": [
-        230,
-        2.4193,
-        -80
+        175.0,
+        3.0626,
+        90.0
       ],
       "radius": 8,
       "color": [
@@ -133,9 +133,9 @@
       "id": "forest_deer_1",
       "name": "Deer",
       "position": [
-        180,
-        1.9543,
-        -100
+        95.0,
+        3.288,
+        90.0
       ],
       "rotation": [
         0,
@@ -155,9 +155,9 @@
       "id": "forest_deer_2",
       "name": "Deer",
       "position": [
-        220,
-        0.7985,
-        -120
+        175.0,
+        3.086,
+        85.0
       ],
       "rotation": [
         0,
@@ -177,9 +177,9 @@
       "id": "forest_wolf",
       "name": "Wolf",
       "position": [
-        150,
-        1.5266,
-        -130
+        90.0,
+        3.0489,
+        80.0
       ],
       "rotation": [
         0,
@@ -199,9 +199,9 @@
       "id": "forest_mushroom_1",
       "name": "Glowing Mushroom",
       "position": [
-        175,
-        1.2892,
-        -55
+        95.0,
+        3.2038,
+        95.0
       ],
       "rotation": [
         0,
@@ -227,9 +227,9 @@
       "id": "forest_mushroom_2",
       "name": "Glowing Mushroom",
       "position": [
-        200,
+        140.0,
         2.9122,
-        -130
+        40.0
       ],
       "rotation": [
         0,
@@ -255,9 +255,9 @@
       "id": "forest_mushroom_3",
       "name": "Glowing Mushroom",
       "position": [
-        145,
-        1.6091,
-        -110
+        90.0,
+        3.2597,
+        85.0
       ],
       "rotation": [
         0,
@@ -283,9 +283,9 @@
       "id": "forest_mushroom_4",
       "name": "Glowing Mushroom",
       "position": [
-        230,
-        2.4193,
-        -80
+        175.0,
+        3.0626,
+        90.0
       ],
       "rotation": [
         0,
@@ -311,9 +311,9 @@
       "id": "forest_guardian",
       "name": "Forest Guardian",
       "position": [
-        134,
-        0,
-        -25
+        135.0,
+        3.1672,
+        35.0
       ],
       "rotation": [
         0,
@@ -338,9 +338,9 @@
       "id": "forest_patrol_knight",
       "name": "Forest Knight",
       "position": [
-        130,
-        0,
-        -37
+        140.0,
+        3.1784,
+        30.0
       ],
       "rotation": [
         0,
@@ -365,9 +365,9 @@
       "id": "firefly_1",
       "name": "Firefly 1",
       "position": [
-        185,
+        125.0,
         1.4939,
-        -50
+        120.0
       ],
       "rotation": [
         0,
@@ -388,9 +388,9 @@
       "id": "firefly_2",
       "name": "Firefly 2",
       "position": [
-        195,
-        0.7926,
-        -110
+        130.0,
+        3.0533,
+        30.0
       ],
       "rotation": [
         0,
@@ -411,9 +411,9 @@
       "id": "firefly_3",
       "name": "Firefly 3",
       "position": [
-        165,
-        2.0177,
-        -115
+        95.0,
+        3.1611,
+        85.0
       ],
       "rotation": [
         0,
@@ -434,9 +434,9 @@
       "id": "firefly_4",
       "name": "Firefly 4",
       "position": [
-        220,
-        0.8529,
-        -110
+        160.0,
+        2.945,
+        120.0
       ],
       "rotation": [
         0,
@@ -457,9 +457,9 @@
       "id": "firefly_5",
       "name": "Firefly 5",
       "position": [
-        200,
-        3.1784,
-        -140
+        135.0,
+        3.2659,
+        30.0
       ],
       "rotation": [
         0,
@@ -647,9 +647,9 @@
   "particle_emitters": [
     {
       "position": [
-        195,
-        1.5045,
-        -50
+        135.0,
+        2.9539,
+        120.0
       ],
       "spawn_rate": 10,
       "lifetime_min": 1,
@@ -701,9 +701,9 @@
     },
     {
       "position": [
-        180,
-        1.6178,
-        -95
+        120.0,
+        3.0533,
+        75.0
       ],
       "spawn_rate": 10,
       "lifetime_min": 1,
@@ -755,9 +755,9 @@
     },
     {
       "position": [
-        205,
-        1.8544,
-        -120
+        145.0,
+        2.945,
+        50.0
       ],
       "spawn_rate": 10,
       "lifetime_min": 1,

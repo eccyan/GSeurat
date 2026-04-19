@@ -100,18 +100,22 @@ class GameConnection:
             self.sock.close()
             self.sock = None
 
-    def send(self, cmd: dict) -> dict:
+    def send(self, cmd: dict, timeout: float = None) -> dict:
         """Send a command and wait for response (JSON line)."""
         if not self.sock:
             self.connect()
+        if timeout:
+            self.sock.settimeout(timeout)
         payload = json.dumps(cmd) + "\n"
         self.sock.sendall(payload.encode("utf-8"))
         data = b""
         while b"\n" not in data:
-            chunk = self.sock.recv(4096)
+            chunk = self.sock.recv(65536)
             if not chunk:
                 raise ConnectionError("Server closed connection")
             data += chunk
+        if timeout:
+            self.sock.settimeout(10)
         return json.loads(data.decode("utf-8").strip())
 
     def __enter__(self):
@@ -159,6 +163,10 @@ def get_features() -> dict:
 
 def get_triggers() -> dict:
     return send_command({"cmd": "get_triggers"})
+
+
+def get_game_objects() -> dict:
+    return send_command({"cmd": "get_game_objects"})
 
 
 def camera_review(action: str) -> dict:
@@ -606,6 +614,31 @@ def main():
                 state = "ACTIVE" if t["triggered"] else "idle"
                 print(f"  [{state:>6}] ({t['x']:.0f}, {t['y']:.1f}, {t['z']:.0f}) "
                       f"r={t['radius']:.0f}")
+
+        elif cmd == "game_objects":
+            data = get_game_objects()
+            scene_objs = data.get("scene_objects", [])
+            live_npcs = data.get("live_npcs", [])
+            print(f"Scene objects: {len(scene_objs)}, Live NPCs: {len(live_npcs)}")
+            print()
+            if scene_objs:
+                print("Scene objects (from JSON):")
+                for obj in scene_objs:
+                    pos = obj.get("scene_position", [0, 0, 0])
+                    comps = obj.get("components", [])
+                    comp_str = ", ".join(comps) if comps else "none"
+                    print(f"  {obj['id']:25s} ({pos[0]:7.1f}, {pos[1]:5.1f}, {pos[2]:7.1f}) "
+                          f"[{comp_str}]")
+            if live_npcs:
+                print()
+                print("Live NPCs (ECS runtime):")
+                for npc in live_npcs:
+                    pos = npc.get("position", [0, 0, 0])
+                    home = npc.get("home", [0, 0])
+                    state = "paused" if npc.get("paused") else "walking"
+                    print(f"  entity={npc['entity']:3d}  pos=({pos[0]:7.1f}, {pos[1]:5.1f}, {pos[2]:7.1f}) "
+                          f"home=({home[0]:7.1f}, {home[1]:7.1f}) "
+                          f"r={npc['patrol_radius']:.0f} [{state}]")
 
         elif cmd == "walk":
             if len(sys.argv) < 3:
