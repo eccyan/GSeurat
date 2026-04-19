@@ -1860,7 +1860,248 @@
         "trigger": "auto",
         "loop": true
       }
-    ]
+    ],
+    "cameraVolumes": [
+      {
+        "id": "entry_room",
+        "name": "entry_room",
+        "shape": {
+          "type": "aabb",
+          "center": [
+            7,
+            3,
+            7
+          ],
+          "half_extents": [
+            7,
+            5,
+            7
+          ]
+        },
+        "params": {
+          "mode": "orbit",
+          "priority": 1,
+          "blend_time": 1.0,
+          "allow_user_orbit": true,
+          "pitch_min": -70,
+          "pitch_max": -20,
+          "yaw_min": -180,
+          "yaw_max": 180,
+          "fov": 38,
+          "orbit_distance": 10,
+          "offset": [
+            0,
+            7,
+            -4
+          ]
+        }
+      },
+      {
+        "id": "main_hall",
+        "name": "main_hall",
+        "shape": {
+          "type": "aabb",
+          "center": [
+            25,
+            3,
+            9
+          ],
+          "half_extents": [
+            8,
+            5,
+            9
+          ]
+        },
+        "params": {
+          "mode": "orbit",
+          "priority": 1,
+          "blend_time": 1.0,
+          "allow_user_orbit": true,
+          "pitch_min": -70,
+          "pitch_max": -20,
+          "yaw_min": -180,
+          "yaw_max": 180,
+          "fov": 42,
+          "orbit_distance": 14,
+          "offset": [
+            0,
+            9,
+            -6
+          ]
+        }
+      },
+      {
+        "id": "treasure_room",
+        "name": "treasure_room",
+        "shape": {
+          "type": "aabb",
+          "center": [
+            25,
+            3,
+            29
+          ],
+          "half_extents": [
+            8,
+            5,
+            7
+          ]
+        },
+        "params": {
+          "mode": "orbit",
+          "priority": 2,
+          "blend_time": 1.0,
+          "allow_user_orbit": true,
+          "pitch_min": -60,
+          "pitch_max": -15,
+          "yaw_min": -180,
+          "yaw_max": 180,
+          "fov": 36,
+          "orbit_distance": 11,
+          "offset": [
+            0,
+            6,
+            -4
+          ]
+        }
+      },
+      {
+        "id": "boss_area",
+        "name": "boss_area",
+        "shape": {
+          "type": "aabb",
+          "center": [
+            42,
+            4,
+            38
+          ],
+          "half_extents": [
+            8,
+            6,
+            10
+          ]
+        },
+        "params": {
+          "mode": "orbit",
+          "priority": 3,
+          "blend_time": 1.0,
+          "allow_user_orbit": true,
+          "pitch_min": -65,
+          "pitch_max": -10,
+          "yaw_min": -180,
+          "yaw_max": 180,
+          "fov": 44,
+          "orbit_distance": 16,
+          "offset": [
+            0,
+            10,
+            -7
+          ]
+        }
+      },
+      {
+        "id": "exit_area",
+        "name": "exit_area",
+        "shape": {
+          "type": "sphere",
+          "center": [
+            45,
+            2,
+            42
+          ],
+          "radius": 6
+        },
+        "params": {
+          "mode": "orbit",
+          "priority": 4,
+          "blend_time": 1.0,
+          "allow_user_orbit": true,
+          "pitch_min": -70,
+          "pitch_max": -20,
+          "yaw_min": -180,
+          "yaw_max": 180,
+          "fov": 35,
+          "orbit_distance": 8,
+          "offset": [
+            0,
+            4,
+            -3
+          ]
+        }
+      }
+    ],
+    "cameraTriggers": [
+      {
+        "id": "trigger_0",
+        "shape": {
+          "type": "aabb",
+          "center": [
+            15,
+            3,
+            7
+          ],
+          "half_extents": [
+            2,
+            5,
+            7
+          ]
+        },
+        "from_zone": "entry_room",
+        "to_zone": "main_hall",
+        "blend_override": 0.8
+      },
+      {
+        "id": "trigger_1",
+        "shape": {
+          "type": "aabb",
+          "center": [
+            25,
+            3,
+            19
+          ],
+          "half_extents": [
+            8,
+            5,
+            2
+          ]
+        },
+        "from_zone": "main_hall",
+        "to_zone": "treasure_room",
+        "blend_override": 0.8
+      },
+      {
+        "id": "trigger_2",
+        "shape": {
+          "type": "aabb",
+          "center": [
+            35,
+            3,
+            29
+          ],
+          "half_extents": [
+            2,
+            5,
+            5
+          ]
+        },
+        "from_zone": "",
+        "to_zone": "boss_area",
+        "blend_override": 1.0
+      }
+    ],
+    "cameraDefaultParams": {
+      "mode": "orbit",
+      "blend_time": 1.0,
+      "allow_user_orbit": true,
+      "pitch_min": -70,
+      "pitch_max": -20,
+      "fov": 40,
+      "orbit_distance": 12,
+      "offset": [
+        0,
+        8,
+        -5
+      ]
+    }
   },
   "collisionGridData": {
     "width": 50,

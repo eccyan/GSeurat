@@ -2002,7 +2002,223 @@
         "trigger": "proximity",
         "loop": true
       }
-    ]
+    ],
+    "cameraVolumes": [
+      {
+        "id": "town_center",
+        "name": "town_center",
+        "shape": {
+          "type": "aabb",
+          "center": [
+            192,
+            5,
+            185
+          ],
+          "half_extents": [
+            25,
+            20,
+            25
+          ]
+        },
+        "params": {
+          "mode": "orbit",
+          "priority": 1,
+          "blend_time": 1.5,
+          "allow_user_orbit": true,
+          "pitch_min": -45,
+          "pitch_max": 5,
+          "yaw_min": -180,
+          "yaw_max": 180,
+          "fov": 42,
+          "orbit_distance": 20,
+          "offset": [
+            0,
+            6,
+            -12
+          ]
+        }
+      },
+      {
+        "id": "cliff_overlook",
+        "name": "cliff_overlook",
+        "shape": {
+          "type": "sphere",
+          "center": [
+            235,
+            6,
+            145
+          ],
+          "radius": 20
+        },
+        "params": {
+          "mode": "orbit",
+          "priority": 2,
+          "blend_time": 1.5,
+          "allow_user_orbit": true,
+          "pitch_min": -70,
+          "pitch_max": -10,
+          "yaw_min": -180,
+          "yaw_max": 180,
+          "fov": 50,
+          "orbit_distance": 30,
+          "offset": [
+            0,
+            12,
+            -20
+          ]
+        }
+      },
+      {
+        "id": "forest_edge",
+        "name": "forest_edge",
+        "shape": {
+          "type": "aabb",
+          "center": [
+            160,
+            5,
+            100
+          ],
+          "half_extents": [
+            40,
+            20,
+            30
+          ]
+        },
+        "params": {
+          "mode": "orbit",
+          "priority": 1,
+          "blend_time": 1.5,
+          "allow_user_orbit": true,
+          "pitch_min": -60,
+          "pitch_max": 10,
+          "yaw_min": -180,
+          "yaw_max": 180,
+          "fov": 48,
+          "orbit_distance": 22,
+          "offset": [
+            0,
+            7,
+            -14
+          ]
+        }
+      },
+      {
+        "id": "dungeon_approach",
+        "name": "dungeon_approach",
+        "shape": {
+          "type": "sphere",
+          "center": [
+            203,
+            3,
+            175
+          ],
+          "radius": 12
+        },
+        "params": {
+          "mode": "orbit",
+          "priority": 3,
+          "blend_time": 1.5,
+          "allow_user_orbit": true,
+          "pitch_min": -30,
+          "pitch_max": 0,
+          "yaw_min": -180,
+          "yaw_max": 180,
+          "fov": 40,
+          "orbit_distance": 15,
+          "offset": [
+            0,
+            5,
+            -8
+          ]
+        }
+      }
+    ],
+    "cameraTriggers": [
+      {
+        "id": "trigger_0",
+        "shape": {
+          "type": "aabb",
+          "center": [
+            192,
+            5,
+            155
+          ],
+          "half_extents": [
+            50,
+            20,
+            5
+          ]
+        },
+        "from_zone": "forest_edge",
+        "to_zone": "town_center",
+        "blend_override": 2.0
+      },
+      {
+        "id": "trigger_1",
+        "shape": {
+          "type": "sphere",
+          "center": [
+            203,
+            3,
+            180
+          ],
+          "radius": 5
+        },
+        "from_zone": "",
+        "to_zone": "dungeon_approach",
+        "blend_override": 1.0
+      }
+    ],
+    "cameraRails": [
+      {
+        "id": "main_path_rail",
+        "name": "main_path_rail",
+        "control_points": [
+          [
+            150,
+            8,
+            100
+          ],
+          [
+            170,
+            6,
+            140
+          ],
+          [
+            185,
+            5,
+            175
+          ],
+          [
+            195,
+            4,
+            190
+          ],
+          [
+            210,
+            5,
+            180
+          ]
+        ],
+        "target_points": []
+      }
+    ],
+    "cameraDefaultParams": {
+      "mode": "orbit",
+      "blend_time": 1.5,
+      "allow_user_orbit": true,
+      "pitch_min": -60,
+      "pitch_max": 10,
+      "yaw_min": -180,
+      "yaw_max": 180,
+      "fov": 45,
+      "orbit_distance": 25,
+      "offset": [
+        0,
+        8,
+        -15
+      ]
+    }
   },
   "collisionGridData": {
     "width": 192,
