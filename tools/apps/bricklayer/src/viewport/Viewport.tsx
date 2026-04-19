@@ -17,6 +17,7 @@ import { CameraRailMarkers } from './CameraRailMarkers.js';
 import { CameraFrustumGizmo } from './CameraFrustumGizmo.js';
 import { ChunkWireframes } from './ChunkWireframes.js';
 import { TerrainPlyReference } from './TerrainPlyReference.js';
+import { SplineEditor } from './SplineEditor.js';
 import { useSceneStore } from '../store/useSceneStore.js';
 
 // Module-level ref so App.tsx can access the orbit controls for F/Home keys
@@ -319,6 +320,7 @@ function SceneContent() {
       <ChunkWireframes />
       <TeleportPlane />
       <GrabPlane />
+      <SplineEditor />
 
       <OrbitControls
         ref={(r: OrbitControlsRef | null) => {
