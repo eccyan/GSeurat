@@ -8,6 +8,7 @@
 #include "gseurat/engine/collision_gen.hpp"
 #include "gseurat/engine/command_context.hpp"
 #include "gseurat/engine/command_dispatcher.hpp"
+#include "gseurat/engine/debug_dump.hpp"
 #include "gseurat/engine/dev_overlay.hpp"
 #include "gseurat/engine/coordinate.hpp"
 #include "gseurat/engine/gaussian_cloud.hpp"
@@ -161,6 +162,10 @@ public:
     DevOverlay& dev_overlay() { return dev_overlay_; }
     const DevOverlay& dev_overlay() const { return dev_overlay_; }
 
+    // Debug dump registry accessor
+    DebugDumpRegistry& debug_dump_registry() { return debug_dump_registry_; }
+    const DebugDumpRegistry& debug_dump_registry() const { return debug_dump_registry_; }
+
     // Bone pre-upload hook (e.g., terrain sway on bone 0)
     void set_bone_pre_upload_hook(std::function<void(glm::mat4*, uint32_t)> hook) {
         bone_pre_upload_hook_ = std::move(hook);
@@ -242,6 +247,9 @@ protected:
 
     // Developer overlay
     DevOverlay dev_overlay_;
+
+    // Debug dump registry (on-demand self-reporting)
+    DebugDumpRegistry debug_dump_registry_;
 
     // Minimap
     Minimap minimap_;

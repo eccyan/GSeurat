@@ -1,5 +1,6 @@
 #include "gseurat/engine/command_dispatcher.hpp"
 #include "gseurat/engine/component_registry.hpp"
+#include "gseurat/engine/debug_dump.hpp"
 #include "gseurat/engine/coordinate.hpp"
 #include "gseurat/engine/ecs/default_components.hpp"
 #include "gseurat/engine/ecs/ecs.hpp"
@@ -536,6 +537,20 @@ void CommandDispatcher::register_default_commands() {
         }
         ctx_.reload_music(path);
         return json{{"type", "ok"}, {"message", "Music config reloaded: " + path}};
+    });
+
+    // ── On-demand self-reporting debug dump ──
+    register_command("debug_dump", [this](const json& cmd) -> CommandResult {
+        const std::string source = cmd.value("source", "staging");
+        const std::string domain = cmd.value("domain", "");
+
+        if (domain == "eyes") {
+            return ctx_.debug_dump_registry.collect_domain(DebugDomain::Eyes);
+        }
+        if (domain == "ears") {
+            return ctx_.debug_dump_registry.collect_domain(DebugDomain::Ears);
+        }
+        return ctx_.debug_dump_registry.collect_all(source);
     });
 
     register_command("quit", [this](const json&) -> CommandResult {

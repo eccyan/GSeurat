@@ -455,6 +455,7 @@ CommandContext AppBase::build_command_context() {
         .input = input_,
         .feature_flags = feature_flags_,
         .window = window_,
+        .debug_dump_registry = debug_dump_registry_,
         .reload_music = [this](const std::string& path) {
             if (audio_engine_) {
                 // Resolve path relative to project root (not cwd)

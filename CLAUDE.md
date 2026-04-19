@@ -33,6 +33,26 @@ After creating or modifying any UI component, verify ALL of the following before
 1. Data created in Bricklayer reaches Staging via "Open in Staging"
 2. Run relevant role scenario: `python3 scripts/scenario_runner.py --role level-designer`
 
+## Debug Dump System (Self-Reporting)
+
+When debugging UI layout or audio issues, use the on-demand self-reporting debug dump:
+
+### Triggering
+- **C++ Engine:** Send `{"command": "debug_dump"}` via bridge, or use F12 key
+- **TS Tools:** Press `Ctrl+Shift+D` or run `await window.__DEBUG_DUMP__()` in DevTools console
+- **Domain filter:** `{"command": "debug_dump", "domain": "eyes"}` or `"ears"`
+
+### Integrating New Modules
+Any new UI panel or audio module should implement the debug dump interface:
+- **C++:** Satisfy `DebugDumpable` concept (`debug_dump.hpp`), register with `app.debug_dump_registry().register_module(&dumper)`
+- **TS:** Implement `IDebugDumpable` from `@gseurat/debug-dump`, register with `DebugDumpRegistry.getInstance().register(dumper)`
+
+### Reading Dumps
+- Check `warnings` arrays first — `"clipped_by_parent"`, `"off_screen_negative"`, `"zero_size"` indicate layout bugs
+- Compare `local_bounds` vs `global_bounds` to diagnose parent offset issues
+- Audio: check `active_voice_count`, `dropped_commands`, and `status` fields
+- `adsr: null` is expected until SPC700 envelope generator is implemented
+
 ## Subrepository Architecture Rules
 
 GSeurat is a generic engine designed to be used as a Git submodule. Follow these rules:
