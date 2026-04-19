@@ -62,6 +62,7 @@ sleep 5
 | `player` | Get player position | `(x, y, z)` world coords |
 | `perf` | Get Gaussian counts | `visible/total (max)` |
 | `triggers` | Get trigger states | Active/idle triggers + emitter count |
+| `game_objects` | List game objects + NPCs | Scene objects, live NPC positions, patrol state |
 | `screenshot <path>` | Capture frame to PNG | Read with `Read` tool to analyze |
 | `walk <dir> <secs>` | Move player | `forward`, `back`, `left`, `right` |
 | `goto <x> <z>` | Navigate to position | Also accepts POI names: `goto torch_1` |
