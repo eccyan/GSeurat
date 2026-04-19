@@ -18,6 +18,8 @@ export function TransportBar() {
   const sampleRate = useWeaverStore((s) => s.sampleRate);
   const maxFrames = useWeaverStore((s) => s.maxFrames);
   const bpm = useWeaverStore((s) => s.bpm);
+  const masterVolume = useWeaverStore((s) => s.masterVolume);
+  const setMasterVolume = useWeaverStore((s) => s.setMasterVolume);
 
   const currentSec = framesToSeconds(playheadFrame, sampleRate);
   const totalSec = framesToSeconds(maxFrames(), sampleRate);
@@ -77,6 +79,22 @@ export function TransportBar() {
         <div style={{ fontSize: 11, color: '#666' }}>
           Frame {playheadFrame}
         </div>
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginLeft: 'auto' }}>
+        <span style={{ fontSize: 10, color: '#888' }}>Master</span>
+        <input
+          type="range"
+          min={0}
+          max={1}
+          step={0.01}
+          value={masterVolume}
+          onChange={(e) => setMasterVolume(Number(e.target.value))}
+          style={{ width: 80 }}
+        />
+        <span style={{ fontSize: 10, color: '#888', minWidth: 30 }}>
+          {Math.round(masterVolume * 100)}%
+        </span>
       </div>
     </div>
   );
