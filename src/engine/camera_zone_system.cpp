@@ -152,13 +152,15 @@ CameraState CameraZoneSystem::evaluate_vcam(const CameraParams& params,
                                              glm::vec3 player_vel,
                                              const InputState& input,
                                              float dt) {
-    // Spring-damp the target toward the player.
+    // Spring-damp the target toward the player, offset upward so the camera
+    // orbits around chest/head height rather than the feet (prevents terrain clipping).
+    glm::vec3 look_target = player_pos + glm::vec3(0.0f, params.target_y_offset, 0.0f);
     if (!spring_initialized_) {
-        spring_position_ = player_pos + params.offset;
-        spring_target_ = player_pos;
+        spring_position_ = look_target + params.offset;
+        spring_target_ = look_target;
         spring_initialized_ = true;
     }
-    spring_target_ = spring_damp(spring_target_, player_pos, 0.15f, dt);
+    spring_target_ = spring_damp(spring_target_, look_target, 0.15f, dt);
 
     CameraState state;
     state.fov = params.fov;
