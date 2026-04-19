@@ -9,7 +9,13 @@ import {
   loadBridgePath,
   matchBridgePath,
 } from '@gseurat/project-root';
+import {
+  DebugDumpRegistry,
+  installDebugDumpGlobal,
+  installDebugDumpKeyboard,
+} from '@gseurat/debug-dump';
 import { connectBridgeToPath } from './lib/bridgeConnection.js';
+import { BricklayerEyesDumper } from './lib/debugDumper.js';
 import { ScenePropertiesPanel } from './panels/ScenePropertiesPanel.js';
 import { SettingsRightPanel } from './panels/SettingsRightPanel.js';
 import { WorldPropertiesPanel } from './panels/WorldPropertiesPanel.js';
@@ -221,6 +227,17 @@ export function App() {
     setRightWidth((w) => Math.max(200, Math.min(600, w + delta)));
   }, []);
 
+  // Debug dump: register eyes dumper + install triggers (Ctrl+Shift+D / console)
+  useEffect(() => {
+    const registry = DebugDumpRegistry.getInstance();
+    registry.setSource('bricklayer');
+    const dumper = new BricklayerEyesDumper();
+    registry.register(dumper);
+    installDebugDumpGlobal();
+    installDebugDumpKeyboard();
+    return () => { registry.unregister(dumper); };
+  }, []);
+
   // Bootstrap (Phase 0.1 #2): on first load, restore the previously-used
   // FSAPI project handle from IDB and, if a cached bridge path is on file
   // for that handle, automatically POST it so the engine can resolve
@@ -422,7 +439,7 @@ export function App() {
       <MenuBar />
       <div style={styles.body}>
         {/* Left panel */}
-        <div style={{ ...styles.leftPanel, width: leftWidth }}>
+        <div data-panel-id="left-panel" style={{ ...styles.leftPanel, width: leftWidth }}>
           <div style={{ overflowY: 'auto', padding: 8, flex: 1 }}>
             <MasterTree />
           </div>
@@ -431,7 +448,7 @@ export function App() {
         <ResizeHandle side="left" onDrag={handleLeftDrag} />
 
         {/* Center viewport */}
-        <div style={styles.viewport}>
+        <div data-panel-id="viewport" style={styles.viewport}>
           {editingContext ? (
             <>
               <Viewport />
@@ -452,7 +469,7 @@ export function App() {
         <ResizeHandle side="right" onDrag={handleRightDrag} />
 
         {/* Right panel */}
-        <div style={{ ...styles.rightPanel, width: rightWidth }}>
+        <div data-panel-id="right-panel" style={{ ...styles.rightPanel, width: rightWidth }}>
           <div style={styles.rightContent}>
             {rightContent}
           </div>

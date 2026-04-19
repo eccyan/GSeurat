@@ -1,5 +1,11 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { useComponentRegistry } from '@gseurat/ui-kit';
+import {
+  DebugDumpRegistry,
+  installDebugDumpGlobal,
+  installDebugDumpKeyboard,
+} from '@gseurat/debug-dump';
+import { MeliesEyesDumper } from './lib/debugDumper.js';
 import { useVfxStore, playbackTimeRef } from './store/useVfxStore.js';
 import type { VfxPreset, VfxElement, ElementType } from './store/types.js';
 type VfxLayer = VfxElement;
@@ -833,6 +839,17 @@ export function App() {
   const scenePoints = useVfxStore((s) => s.scenePoints);
   const storeSetScenePoints = useVfxStore((s) => s.setScenePoints);
 
+  // Debug dump: register eyes dumper + install triggers (Ctrl+Shift+D / console)
+  useEffect(() => {
+    const registry = DebugDumpRegistry.getInstance();
+    registry.setSource('melies');
+    const dumper = new MeliesEyesDumper();
+    registry.register(dumper);
+    installDebugDumpGlobal();
+    installDebugDumpKeyboard();
+    return () => { registry.unregister(dumper); };
+  }, []);
+
   const handleImportScene = useCallback(() => {
     const input = document.createElement('input');
     input.type = 'file';
@@ -966,7 +983,7 @@ export function App() {
       <MenuBar onImportScene={handleImportScene} />
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
         <VfxTree />
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+        <div data-panel-id="viewport" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
           <Preview scenePoints={scenePoints} />
           <Timeline />
         </div>

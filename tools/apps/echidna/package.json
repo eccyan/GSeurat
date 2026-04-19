@@ -16,6 +16,7 @@
     "three": "^0.170.0",
     "@react-three/fiber": "^8.17.0",
     "@react-three/drei": "^9.117.0",
+    "@gseurat/debug-dump": "workspace:*",
     "@gseurat/engine-client": "workspace:*",
     "@gseurat/asset-types": "workspace:*",
     "@gseurat/project-root": "workspace:*",

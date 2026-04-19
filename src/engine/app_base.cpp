@@ -1,4 +1,6 @@
 #include "gseurat/engine/app_base.hpp"
+#include "gseurat/engine/debug_dump_eyes.hpp"
+#include "gseurat/engine/debug_dump_ears.hpp"
 #include "gseurat/engine/project_root.hpp"
 #include "gseurat/engine/gs_scene_loader.hpp"
 #include "gseurat/engine/scene_load_context.hpp"
@@ -18,6 +20,7 @@
 #include <GLFW/glfw3.h>
 
 #include <chrono>
+#include <optional>
 
 namespace gseurat {
 
@@ -82,6 +85,27 @@ void AppBase::main_loop() {
     // Initialize developer overlay (ImGui — no-op when GSEURAT_DEV_MODE is off)
     dev_overlay_.init(window_, renderer_);
 
+    // Register debug dump modules (zero cost until explicitly triggered)
+    DevOverlayDumper overlay_dumper{dev_overlay_};
+    debug_dump_registry_.register_module(&overlay_dumper);
+
+    std::optional<AudioEngineDumper> audio_dumper;
+    if (audio_engine_) {
+        audio_dumper.emplace([this]() -> AudioEngineDumper::Snapshot {
+            // Minimal snapshot — actual Mixer internals will be exposed
+            // once the friend accessor API is added in a future phase.
+            return AudioEngineDumper::Snapshot{
+                .master_volume      = 1.0f,
+                .sample_rate        = 44100,
+                .max_polyphony      = 64,
+                .active_voice_count = 0,
+                .active_group_count = 0,
+                .dropped_commands   = 0,
+            };
+        });
+        debug_dump_registry_.register_module(&*audio_dumper);
+    }
+
     while (!glfwWindowShouldClose(window_)) {
         glfwPollEvents();
 
@@ -109,6 +133,11 @@ void AppBase::main_loop() {
         // F1 → toggle developer overlay
         if (input_.was_key_pressed(GLFW_KEY_F1)) {
             dev_overlay_.toggle();
+        }
+        // F12 → debug dump to console
+        if (input_.was_key_pressed(GLFW_KEY_F12)) {
+            auto dump = debug_dump_registry_.collect_all("staging");
+            spdlog::info("[DebugDump] {}", dump.dump(2));
         }
         dev_overlay_.begin_frame();
 

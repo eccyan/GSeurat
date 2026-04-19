@@ -13,6 +13,12 @@ import { NewProjectDialog } from './panels/NewProjectDialog.js';
 import { useCharacterStore } from './store/useCharacterStore.js';
 import type { ToolType } from './store/types.js';
 import { restoreProjectRoot, saveProjectRootHandle } from '@gseurat/project-root';
+import {
+  DebugDumpRegistry,
+  installDebugDumpGlobal,
+  installDebugDumpKeyboard,
+} from '@gseurat/debug-dump';
+import { EchidnaEyesDumper } from './lib/debugDumper.js';
 
 const styles: Record<string, React.CSSProperties> = {
   root: {
@@ -157,6 +163,17 @@ export function App() {
     }
   }, []);
 
+  // Debug dump: register eyes dumper + install triggers (Ctrl+Shift+D / console)
+  useEffect(() => {
+    const registry = DebugDumpRegistry.getInstance();
+    registry.setSource('echidna');
+    const dumper = new EchidnaEyesDumper();
+    registry.register(dumper);
+    installDebugDumpGlobal();
+    installDebugDumpKeyboard();
+    return () => { registry.unregister(dumper); };
+  }, []);
+
   // Bootstrap: restore project root handle from IDB on startup
   useEffect(() => {
     let cancelled = false;
@@ -297,7 +314,7 @@ export function App() {
       <MenuBar />
       <div style={styles.body}>
         {/* Left panel */}
-        <div style={{ width: leftWidth, flexShrink: 0, display: 'flex', flexDirection: 'column' as const, overflow: 'hidden', background: '#1e1e3a', borderRight: '1px solid #333' }}>
+        <div data-panel-id="left-panel" style={{ width: leftWidth, flexShrink: 0, display: 'flex', flexDirection: 'column' as const, overflow: 'hidden', background: '#1e1e3a', borderRight: '1px solid #333' }}>
           <AssetsPanel onNewAsset={handleNewAsset} />
           <ModeTabs showAnimate={assetKind === 'character'} />
           <div style={{ flex: 1, overflow: 'auto' }}>
@@ -314,7 +331,7 @@ export function App() {
         <ResizeHandle onDrag={handleLeftDrag} />
 
         {/* Center panel */}
-        <div style={{ flex: 1, position: 'relative' as const, overflow: 'hidden' }}>
+        <div data-panel-id="viewport" style={{ flex: 1, position: 'relative' as const, overflow: 'hidden' }}>
           {projectRootHandle === null ? (
             <EmptyProjectState onOpenProjectRoot={handleOpenProjectRoot} />
           ) : asset === null ? (
@@ -331,7 +348,7 @@ export function App() {
         <ResizeHandle onDrag={handleRightDrag} />
 
         {/* Right panel */}
-        <div style={{ ...styles.inspector, width: rightWidth }}>
+        <div data-panel-id="right-panel" style={{ ...styles.inspector, width: rightWidth }}>
           {mode === 'build' || assetKind !== 'character' ? <BuildPanel /> : <AnimateRightPanel />}
         </div>
       </div>
