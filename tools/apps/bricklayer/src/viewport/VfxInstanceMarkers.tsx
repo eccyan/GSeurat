@@ -32,7 +32,7 @@ function EmitterSplineGizmo({ points, mode }: {
   );
 }
 
-function ElementGizmo({ element }: { element: VfxElementData }) {
+function ElementGizmo({ element, instanceSplinePoints }: { element: VfxElementData; instanceSplinePoints?: [number, number, number][] }) {
   const pos = element.position ?? [0, 0, 0];
   const color = ELEMENT_COLORS[element.type] ?? '#888';
 
@@ -65,9 +65,16 @@ function ElementGizmo({ element }: { element: VfxElementData }) {
                 <meshBasicMaterial color={color} transparent opacity={0.15} />
               </mesh>
             )}
-            {spline?.control_points && spline.control_points.length >= 2 && (
-              <EmitterSplineGizmo points={spline.control_points} mode={spline.mode ?? 'emitter_path'} />
-            )}
+            {(() => {
+              const overridePoints = instanceSplinePoints;
+              if (overridePoints && overridePoints.length >= 2) {
+                return <EmitterSplineGizmo points={overridePoints} mode={spline?.mode ?? 'emitter_path'} />;
+              }
+              if (spline?.control_points && spline.control_points.length >= 2) {
+                return <EmitterSplineGizmo points={spline.control_points} mode={spline.mode ?? 'emitter_path'} />;
+              }
+              return null;
+            })()}
           </>
         );
       })()}
@@ -155,7 +162,7 @@ function VfxMarker({ instance, isSelected, onSelect }: {
       )}
       {/* Element gizmos (shown when selected) */}
       {isSelected && (instance.vfx_preset.elements ?? []).map((el, i) => (
-        <ElementGizmo key={`${instance.id}_el_${i}`} element={el} />
+        <ElementGizmo key={`${instance.id}_el_${i}`} element={el} instanceSplinePoints={instance.splinePoints} />
       ))}
     </group>
   );
