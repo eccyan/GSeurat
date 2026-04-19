@@ -77,9 +77,11 @@ export function App() {
   // Keyboard shortcuts
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      // Don't intercept when typing in an input
+      // Don't intercept when typing in an input — but allow modifier shortcuts
       const tag = (e.target as HTMLElement).tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+      if (tag === 'INPUT' || tag === 'TEXTAREA') {
+        if (!((e.metaKey || e.ctrlKey) && (e.key === 's' || e.key === 'z'))) return;
+      }
 
       if ((e.metaKey || e.ctrlKey) && e.key === 's') {
         e.preventDefault();

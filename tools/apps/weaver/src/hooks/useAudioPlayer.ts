@@ -72,10 +72,10 @@ export function useAudioPlayer() {
     }
   }, [stems]);
 
-  function startPlayback() {
+  async function startPlayback() {
     const state = useWeaverStore.getState();
     const ctx = getAudioContext();
-    if (ctx.state === 'suspended') ctx.resume();
+    if (ctx.state === 'suspended') await ctx.resume();
 
     const stems = state.stems;
     const sampleRate = state.sampleRate;

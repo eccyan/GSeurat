@@ -11,9 +11,13 @@ export function GroupSelector() {
   const dirty = useWeaverStore((s) => s.dirty);
   const saveProject = useWeaverStore((s) => s.saveProject);
 
+  const renameGroup = useWeaverStore((s) => s.renameGroup);
+
   const [pendingSwitchId, setPendingSwitchId] = useState<string | null>(null);
   const [showNewInput, setShowNewInput] = useState(false);
   const [newName, setNewName] = useState('');
+  const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState('');
 
   // ESC key to dismiss dirty dialog
   useEffect(() => {
@@ -78,6 +82,7 @@ export function GroupSelector() {
           <div
             key={g.id}
             onClick={() => handleSwitchRequest(g.id)}
+            onDoubleClick={() => { setEditingGroupId(g.id); setEditingName(g.name); }}
             style={{
               padding: '4px 8px',
               cursor: 'pointer',
@@ -92,9 +97,28 @@ export function GroupSelector() {
             <span style={{ color: g.id === activeGroupId ? '#4488ff' : '#666' }}>
               {g.id === activeGroupId ? '\u25CF' : '\u25CB'}
             </span>
-            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {g.name}
-            </span>
+            {editingGroupId === g.id ? (
+              <input
+                type="text"
+                value={editingName}
+                onChange={(e) => setEditingName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') { renameGroup(g.id, editingName); setEditingGroupId(null); }
+                  if (e.key === 'Escape') setEditingGroupId(null);
+                }}
+                onBlur={() => { renameGroup(g.id, editingName); setEditingGroupId(null); }}
+                onClick={(e) => e.stopPropagation()}
+                autoFocus
+                style={{
+                  flex: 1, padding: '1px 4px', fontSize: 11,
+                  background: '#111', color: '#eee', border: '1px solid #555', borderRadius: 2,
+                }}
+              />
+            ) : (
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {g.name}
+              </span>
+            )}
           </div>
         ))}
       </div>

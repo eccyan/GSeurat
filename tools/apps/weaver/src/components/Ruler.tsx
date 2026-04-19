@@ -17,6 +17,7 @@ export function Ruler() {
   const loopEnd = useWeaverStore((s) => s.loopEnd);
   const setLoopStart = useWeaverStore((s) => s.setLoopStart);
   const setLoopEnd = useWeaverStore((s) => s.setLoopEnd);
+  const resetLoop = useWeaverStore((s) => s.resetLoop);
   const markers = useWeaverStore((s) => s.markers);
   const addMarker = useWeaverStore((s) => s.addMarker);
   const moveMarker = useWeaverStore((s) => s.moveMarker);
@@ -169,16 +170,20 @@ export function Ruler() {
         </div>
       ))}
 
-      {/* Loop region highlight — red when too small to loop */}
+      {/* Loop region highlight — red when too small, double-click to reset */}
       {loopEnd > loopStart && (
-        <div style={{
-          position: 'absolute', left: loopStartPx, top: 0,
-          width: loopEndPx - loopStartPx, height: '100%',
-          background: loopTooSmall
-            ? 'rgba(255, 68, 68, 0.2)'
-            : loopEnabled ? 'rgba(68, 204, 102, 0.15)' : 'rgba(68, 204, 102, 0.05)',
-          pointerEvents: 'none',
-        }} />
+        <div
+          onDoubleClick={(e) => { e.stopPropagation(); resetLoop(); }}
+          title="Double-click to reset loop region"
+          style={{
+            position: 'absolute', left: loopStartPx, top: 0,
+            width: loopEndPx - loopStartPx, height: '100%',
+            background: loopTooSmall
+              ? 'rgba(255, 68, 68, 0.2)'
+              : loopEnabled ? 'rgba(68, 204, 102, 0.15)' : 'rgba(68, 204, 102, 0.05)',
+            pointerEvents: 'auto', cursor: 'pointer',
+          }}
+        />
       )}
 
       {/* Loop start handle (green triangle) */}
