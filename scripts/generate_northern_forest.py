@@ -85,17 +85,36 @@ def forest_height(x, z):
     return max(0.0, h)
 
 
+def is_approach_path(x, z):
+    """Connecting path from island bridge (X≈180, Z=0) to forest path (X≈162, Z=-70)."""
+    if z < -70.0 or z > 0.0:
+        return False
+    # Linear interpolation: X=180 at Z=0, X=162 at Z=-70
+    t = -z / 70.0  # 0 at Z=0, 1 at Z=-70
+    path_x = 180.0 + (162.0 - 180.0) * t  # 180 → 162
+    return abs(x - path_x) < 5.0  # 10-unit wide path
+
+
 def is_on_path(x, z):
     """Winding path through the forest."""
     # Main path: sinusoidal from south to north
     path_x = 192.0 + 30.0 * math.sin(z * 0.02)
-    return abs(x - path_x) < 3.0
+    return abs(x - path_x) < 3.0 or is_approach_path(x, z)
+
+
+def is_bridge(x, z):
+    """Bridge crossing where the main path meets the stream."""
+    # Wide bridge from the path (X≈162) to the natural approach from island (X≈180)
+    bridge_center = 172.0  # midpoint between path (162) and island bridge (182)
+    return abs(x - bridge_center) < 15.0  # 30-unit wide bridge (X=157-187)
 
 
 def is_stream(x, z):
     """A small stream running east-west through the forest."""
     stream_z = -80.0 + 8.0 * math.sin(x * 0.03)
-    return abs(z - stream_z) < 2.5
+    if abs(z - stream_z) < 2.5:
+        return not is_bridge(x, z)  # Bridge makes stream walkable
+    return False
 
 
 def is_clearing(x, z):
@@ -386,7 +405,11 @@ def generate_collision_grid():
             y = forest_height(wx, wz)
             elevation.append(round(y, 4))
             # Solid if no terrain, in stream, or tree trunk locations
+            # But approach path and bridge override low terrain
             is_solid = y < 0.3 or is_stream(wx, wz)
+            if is_solid and (is_approach_path(wx, wz) or is_bridge(wx, wz)):
+                is_solid = False
+                elevation[-1] = max(elevation[-1], 0.5)  # ensure walkable height
             solid.append(is_solid)
 
     return {
