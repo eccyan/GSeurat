@@ -8,6 +8,7 @@ const STEM_COLORS = ['#4488ff', '#44cc66', '#ff8844', '#cc44ff', '#44cccc', '#ff
 
 interface StemLaneProps {
   index: number;
+  onDragHandleStart?: (e: React.DragEvent) => void;
 }
 
 function VolumeControl({ value, onChange }: { value: number; onChange: (v: number) => void }) {
@@ -61,7 +62,7 @@ function VolumeControl({ value, onChange }: { value: number; onChange: (v: numbe
   );
 }
 
-export function StemLane({ index }: StemLaneProps) {
+export function StemLane({ index, onDragHandleStart }: StemLaneProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const stem = useWeaverStore((s) => s.stems[index]);
   const viewStart = useWeaverStore((s) => s.viewStartFrame);
@@ -181,8 +182,18 @@ export function StemLane({ index }: StemLaneProps) {
           padding: '4px 8px', zIndex: 1, pointerEvents: 'auto',
         }}
       >
-        <div style={{ fontSize: 11, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-          {stem.fileName}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <span
+            draggable
+            onDragStart={onDragHandleStart}
+            style={{ cursor: 'grab', color: '#555', fontSize: 10, userSelect: 'none', flexShrink: 0 }}
+            title="Drag to reorder"
+          >
+            ⠿
+          </span>
+          <span style={{ fontSize: 11, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {stem.fileName}
+          </span>
         </div>
         <VolumeControl value={stem.initialVolume} onChange={(v) => setStemVolume(index, v)} />
         <div style={{ display: 'flex', gap: 2, marginTop: 2 }}>
