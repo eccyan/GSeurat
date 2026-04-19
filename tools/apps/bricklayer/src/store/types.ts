@@ -285,6 +285,7 @@ export interface VfxInstanceData {
   radius: number;
   trigger: 'auto' | 'event';
   loop: boolean;
+  splinePoints?: [number, number, number][];  // per-instance spline override (instance-relative)
 }
 
 
