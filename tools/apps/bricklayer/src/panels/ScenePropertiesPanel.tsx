@@ -6,7 +6,6 @@ import { AudioZonePanel } from '../components/AudioZonePanel.js';
 import { useSceneStore } from '../store/useSceneStore.js';
 import type {
   StaticLight,
-  PlayerData,
   GameObjectData,
   PbdConfig,
   ComponentSchema,
@@ -36,8 +35,6 @@ const defaultPbdConfig: PbdConfig = {
   pinned: false,
   constraints: [],
 };
-
-const facings = ['up', 'down', 'left', 'right'];
 
 // ── Per-entity property editors ──
 
@@ -635,107 +632,6 @@ function LightProperties({ light }: { light: StaticLight }) {
   );
 }
 
-function PlayerProperties({ player }: { player: PlayerData }) {
-  const update = useSceneStore((s) => s.updatePlayer);
-
-  return (
-    <div>
-      <div style={{ marginBottom: 12 }}>
-        <span style={styles.label}>Player Spawn</span>
-      </div>
-
-      <div style={styles.section}>
-        <span style={styles.label}>Position</span>
-        <Vec3Input value={player.position} onChange={(v) => update({ position: v })} />
-      </div>
-
-      <div style={styles.section}>
-        <span style={styles.label}>Facing</span>
-        <select
-          style={styles.select}
-          value={player.facing}
-          onChange={(e) => update({ facing: e.target.value })}
-        >
-          {facings.map((f) => <option key={f} value={f}>{f}</option>)}
-        </select>
-      </div>
-
-      <div style={styles.section}>
-        <span style={styles.label}>Character ID</span>
-        <input
-          type="text"
-          value={player.character_id}
-          onChange={(e) => update({ character_id: e.target.value })}
-          style={styles.input}
-        />
-      </div>
-
-      <div style={styles.section}>
-        <span style={styles.label}>Tint</span>
-        <input
-          type="color"
-          value={'#' + player.tint.slice(0, 3).map((c) => Math.round(c * 255).toString(16).padStart(2, '0')).join('')}
-          onChange={(e) => {
-            const hex = e.target.value;
-            update({
-              tint: [
-                parseInt(hex.slice(1, 3), 16) / 255,
-                parseInt(hex.slice(3, 5), 16) / 255,
-                parseInt(hex.slice(5, 7), 16) / 255,
-                player.tint[3],
-              ],
-            });
-          }}
-          style={{ width: 40, height: 24, border: 'none', cursor: 'pointer' }}
-        />
-      </div>
-
-      <div style={{ marginTop: 16, marginBottom: 12 }}>
-        <span style={styles.label}>Controller</span>
-      </div>
-
-      <div style={styles.section}>
-        <span style={styles.label}>Speed</span>
-        <NumberInput
-          step={1}
-          value={player.speed}
-          onChange={(v) => update({ speed: v })}
-          style={{ ...styles.input, maxWidth: 80 }}
-        />
-      </div>
-
-      <div style={styles.section}>
-        <span style={styles.label}>Acceleration</span>
-        <NumberInput
-          step={1}
-          value={player.acceleration}
-          onChange={(v) => update({ acceleration: v })}
-          style={{ ...styles.input, maxWidth: 80 }}
-        />
-      </div>
-
-      <div style={styles.section}>
-        <span style={styles.label}>Jump Height</span>
-        <NumberInput
-          step={0.5}
-          value={player.jump_height}
-          onChange={(v) => update({ jump_height: v })}
-          style={{ ...styles.input, maxWidth: 80 }}
-        />
-      </div>
-
-      <div style={styles.section}>
-        <span style={styles.label}>Jump Duration</span>
-        <NumberInput
-          step={0.1}
-          value={player.jump_duration}
-          onChange={(v) => update({ jump_duration: v })}
-          style={{ ...styles.input, maxWidth: 80 }}
-        />
-      </div>
-    </div>
-  );
-}
 
 const GS_PRESETS: Record<string, Partial<GsParticleEmitterData>> = {
   dust_puff: {
@@ -1563,7 +1459,6 @@ export function ScenePropertiesPanel() {
   const gsParticleEmitters = useSceneStore((s) => s.gsParticleEmitters);
   const gsAnimations = useSceneStore((s) => s.gsAnimations);
   const vfxInstances = useSceneStore((s) => s.vfxInstances);
-  const player = useSceneStore((s) => s.player);
   const cameraVolumes = useSceneStore((s) => s.cameraVolumes);
   const cameraTriggers = useSceneStore((s) => s.cameraTriggers);
   const cameraRails = useSceneStore((s) => s.cameraRails);
@@ -1601,10 +1496,6 @@ export function ScenePropertiesPanel() {
     const vfx = vfxInstances.find((v) => v.id === selectedEntity.id);
     if (!vfx) return <div style={styles.empty}>VFX instance not found</div>;
     return <VfxInstanceProperties vfx={vfx} />;
-  }
-
-  if (selectedEntity.type === 'player') {
-    return <PlayerProperties player={player} />;
   }
 
   if (selectedEntity.type === 'camera_volume') {

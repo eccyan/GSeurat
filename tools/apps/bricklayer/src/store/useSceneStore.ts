@@ -202,10 +202,6 @@ function defaultPlayer(): PlayerData {
     tint: [1, 1, 1, 1],
     facing: 'down',
     character_id: '',
-    speed: 20,
-    acceleration: 20,
-    jump_height: 4,
-    jump_duration: 0.8,
   };
 }
 
