@@ -251,7 +251,7 @@ export function exportSceneJson(
 
   // Auto-compute camera to look at scene center if using default target
   const cam = state.gaussianSplat.camera;
-  const isDefaultCamera = cam.target[0] === 0 && cam.target[1] === 0 && cam.target[2] === 0;
+  const isDefaultCamera = !cam?.target || (cam.target[0] === 0 && cam.target[1] === 0 && cam.target[2] === 0);
   const centerX = state.gridWidth / 2;
   const centerZ = state.gridDepth / 2;
   const autoCamera = isDefaultCamera ? {
@@ -351,7 +351,7 @@ export function exportSceneJson(
       if (p.scale_end !== 0) params.scale_end = p.scale_end;
       if (p.scale_easing !== 'linear') params.scale_easing = p.scale_easing;
       if (p.velocity !== 1) params.velocity = p.velocity;
-      if (p.gravity[0] !== 0 || p.gravity[1] !== -9.8 || p.gravity[2] !== 0) params.gravity = p.gravity;
+      if (p.gravity && (p.gravity[0] !== 0 || p.gravity[1] !== -9.8 || p.gravity[2] !== 0)) params.gravity = p.gravity;
       if (p.noise !== 1) params.noise = p.noise;
       if (p.wave_speed !== 5) params.wave_speed = p.wave_speed;
       if (p.pulse_frequency !== 4) params.pulse_frequency = p.pulse_frequency;
@@ -425,7 +425,7 @@ export function exportSceneJson(
         if (p.yaw_max !== 180) params.yaw_max = p.yaw_max;
         if (p.fov !== 45) params.fov = p.fov;
         if (p.orbit_distance !== 10) params.orbit_distance = p.orbit_distance;
-        if (p.offset[0] !== 0 || p.offset[1] !== 5 || p.offset[2] !== -10) params.offset = p.offset;
+        if (p.offset && (p.offset[0] !== 0 || p.offset[1] !== 5 || p.offset[2] !== -10)) params.offset = p.offset;
         if (p.fixed_position) params.fixed_position = p.fixed_position;
         if (p.rail_id) params.rail_id = p.rail_id;
         if (Object.keys(params).length > 0) out.params = params;
