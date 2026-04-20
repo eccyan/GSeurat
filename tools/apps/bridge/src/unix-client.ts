@@ -56,6 +56,13 @@ export class UnixSocketClient extends EventEmitter {
   }
 
   /**
+   * Register a handler for (re)connection events.
+   */
+  onConnect(handler: () => void): void {
+    this.on('connect', handler);
+  }
+
+  /**
    * Register a handler for connection-close events.
    */
   onClose(handler: CloseHandler): void {
@@ -105,6 +112,7 @@ export class UnixSocketClient extends EventEmitter {
     sock.once('connect', () => {
       connectSettled = true;
       console.log(`[UnixClient] Connected to ${this.socketPath}`);
+      this.emit('connect');
       onConnect?.();
     });
 

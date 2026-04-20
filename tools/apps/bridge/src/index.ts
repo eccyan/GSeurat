@@ -222,6 +222,16 @@ unixClient.onData((line: string) => {
   }
 });
 
+unixClient.onConnect(() => {
+  // Replay project root on (re)connect so the engine can resolve asset paths.
+  // This handles the case where the user sets project root before Staging starts.
+  if (activeProjectDir) {
+    console.log(`[Bridge] Replaying set_project_root: ${activeProjectDir}`);
+    forwardToEngine({ cmd: 'set_project_root', path: activeProjectDir });
+  }
+  wsServer.broadcast(JSON.stringify({ type: 'engine_connected' }));
+});
+
 unixClient.onClose(() => {
   // Notify all connected tool clients so they can show a reconnecting indicator.
   wsServer.broadcast(JSON.stringify({ type: 'engine_disconnected' }));
