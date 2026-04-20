@@ -152,6 +152,10 @@ struct SceneData {
     glm::vec4 player_tint{1.0f};
     Direction player_facing = Direction::Down;
     std::string player_character_id;  // empty = use hardcoded anim setup
+    float player_speed = 20.0f;
+    float player_acceleration = 20.0f;
+    float player_jump_height = 4.0f;
+    float player_jump_duration = 0.8f;
 
     // Game objects (unified: replaces legacy npcs[] and objects[])
     std::vector<GameObjectData> game_objects;

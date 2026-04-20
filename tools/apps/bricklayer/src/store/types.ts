@@ -150,6 +150,10 @@ export interface PlayerData {
   tint: [number, number, number, number];
   facing: string;
   character_id: string;
+  speed: number;
+  acceleration: number;
+  jump_height: number;
+  jump_duration: number;
 }
 
 export type InspectorTab =

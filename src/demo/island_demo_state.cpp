@@ -303,10 +303,16 @@ void IslandDemoState::on_enter(AppBase& app) {
     // Note: player_pos is in scene/terrain coordinates — no AABB offset needed.
     // The collision grid also uses scene coordinates.
 
+    // Initialize player controller from scene data
+    player_speed_ = scene_data.player_speed;
+    player_accel_ = scene_data.player_acceleration;
+    jump_height_ = scene_data.player_jump_height;
+    jump_duration_ = scene_data.player_jump_duration;
+
     // Create player entity
     player_entity_ = app.world().create();
     app.world().add<ecs::Transform>(player_entity_, {coord::WorldPos(player_pos), {1.0f, 1.0f}});
-    app.world().add<PlayerController>(player_entity_, {kPlayerSpeed, kPlayerAccel});
+    app.world().add<PlayerController>(player_entity_, {player_speed_, player_accel_});
 
     // Mark player for engine proximity trigger system
     app.world().add<PlayerTag>(player_entity_);
@@ -898,10 +904,10 @@ void IslandDemoState::update_player(AppBase& app, float dt) {
     }
 
     // Target velocity
-    glm::vec3 target_vel = desired_dir * kPlayerSpeed;
+    glm::vec3 target_vel = desired_dir * player_speed_;
 
     // Smooth acceleration (lerp toward target)
-    float blend = std::min(1.0f, kPlayerAccel * dt);
+    float blend = std::min(1.0f, player_accel_ * dt);
     player_velocity_.x += (target_vel.x - player_velocity_.x) * blend;
     player_velocity_.z += (target_vel.z - player_velocity_.z) * blend;
 
@@ -952,7 +958,7 @@ void IslandDemoState::update_player(AppBase& app, float dt) {
     // Jump Y arc (parabolic: h = 4*H*t*(1-t) where t in [0,1])
     if (jumping_) {
         jump_time_ += dt;
-        if (jump_time_ >= kJumpDuration) {
+        if (jump_time_ >= jump_duration_) {
             jumping_ = false;
             jump_time_ = 0.0f;
             // Return to idle or walk based on movement
@@ -960,8 +966,8 @@ void IslandDemoState::update_player(AppBase& app, float dt) {
             auto* pe = app.bone_animation_registry().get(player_registry_id_);
             if (pe) pe->requested_clip = spd > 0.1f ? "walk" : "idle";
         } else {
-            float t = jump_time_ / kJumpDuration;
-            float jump_y = 4.0f * kJumpHeight * t * (1.0f - t);
+            float t = jump_time_ / jump_duration_;
+            float jump_y = 4.0f * jump_height_ * t * (1.0f - t);
             character_origin_.y += jump_y;
         }
     }
@@ -1314,8 +1320,8 @@ void IslandDemoState::update_walk_animation(AppBase& app, float dt) {
     glm::vec3 ground_pos = character_origin_;
     float jump_y_offset = 0.0f;
     if (jumping_) {
-        float t = jump_time_ / kJumpDuration;
-        jump_y_offset = 4.0f * kJumpHeight * t * (1.0f - t);
+        float t = jump_time_ / jump_duration_;
+        jump_y_offset = 4.0f * jump_height_ * t * (1.0f - t);
         ground_pos.y -= jump_y_offset;
     }
     pe->current_pos = ground_pos;
@@ -1963,7 +1969,7 @@ void IslandDemoState::perform_portal_transition(AppBase& app,
     app.world().add<ecs::Transform>(player_entity_,
         {coord::WorldPos(spawn), {1.0f, 1.0f}});
     app.world().add<PlayerController>(player_entity_,
-        {kPlayerSpeed, kPlayerAccel});
+        {player_speed_, player_accel_});
     // PlayerTag is required by proximity_trigger_system — without it, ALL
     // ECS proximity triggers (portals, lights, emitters) silently no-op
     // because the system early-returns when it can't find the player.

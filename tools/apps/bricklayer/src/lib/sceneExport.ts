@@ -197,6 +197,10 @@ export function exportSceneJson(
     position: state.player.position,
     tint: state.player.tint,
     facing: state.player.facing,
+    speed: state.player.speed,
+    acceleration: state.player.acceleration,
+    jump_height: state.player.jump_height,
+    jump_duration: state.player.jump_duration,
   };
   if (state.player.character_id) {
     playerObj.character_id = state.player.character_id;

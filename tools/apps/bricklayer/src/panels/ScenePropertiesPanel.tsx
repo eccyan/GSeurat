@@ -689,6 +689,50 @@ function PlayerProperties({ player }: { player: PlayerData }) {
           style={{ width: 40, height: 24, border: 'none', cursor: 'pointer' }}
         />
       </div>
+
+      <div style={{ marginTop: 16, marginBottom: 12 }}>
+        <span style={styles.label}>Controller</span>
+      </div>
+
+      <div style={styles.section}>
+        <span style={styles.label}>Speed</span>
+        <NumberInput
+          step={1}
+          value={player.speed}
+          onChange={(v) => update({ speed: v })}
+          style={{ ...styles.input, maxWidth: 80 }}
+        />
+      </div>
+
+      <div style={styles.section}>
+        <span style={styles.label}>Acceleration</span>
+        <NumberInput
+          step={1}
+          value={player.acceleration}
+          onChange={(v) => update({ acceleration: v })}
+          style={{ ...styles.input, maxWidth: 80 }}
+        />
+      </div>
+
+      <div style={styles.section}>
+        <span style={styles.label}>Jump Height</span>
+        <NumberInput
+          step={0.5}
+          value={player.jump_height}
+          onChange={(v) => update({ jump_height: v })}
+          style={{ ...styles.input, maxWidth: 80 }}
+        />
+      </div>
+
+      <div style={styles.section}>
+        <span style={styles.label}>Jump Duration</span>
+        <NumberInput
+          step={0.1}
+          value={player.jump_duration}
+          onChange={(v) => update({ jump_duration: v })}
+          style={{ ...styles.input, maxWidth: 80 }}
+        />
+      </div>
     </div>
   );
 }
