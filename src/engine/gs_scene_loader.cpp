@@ -15,6 +15,7 @@
 #include "gseurat/engine/component_registry.hpp"
 #include "gseurat/engine/trigger_components.hpp"
 #include "gseurat/engine/ecs/components/player_controller.hpp"
+#include "gseurat/engine/project_root.hpp"
 
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
@@ -49,7 +50,7 @@ void GsSceneLoader::load(SceneLoadContext& ctx, const SceneData& scene_data,
     if (scene_data.gaussian_splat) {
         const auto& gs = *scene_data.gaussian_splat;
         try {
-            cloud = GaussianCloud::load_ply(gs.ply_file);
+            cloud = GaussianCloud::load_ply(resolve_asset_path(gs.ply_file).string());
             has_terrain = !cloud.empty();
         } catch (const std::runtime_error& e) {
             std::fprintf(stderr, "[GS] Warning: %s\n", e.what());
@@ -157,7 +158,7 @@ void GsSceneLoader::load(SceneLoadContext& ctx, const SceneData& scene_data,
                     const auto& go = snapped_objects[i];
                     if (go.ply_file.empty()) continue;
                     try {
-                        auto placed_cloud = GaussianCloud::load_ply(go.ply_file);
+                        auto placed_cloud = GaussianCloud::load_ply(resolve_asset_path(go.ply_file).string());
                         if (placed_cloud.empty()) continue;
                         // Compute local AABB
                         glm::vec3 local_min(1e9f);

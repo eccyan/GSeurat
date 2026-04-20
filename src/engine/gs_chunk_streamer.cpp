@@ -1,4 +1,5 @@
 #include "gseurat/engine/gs_chunk_streamer.hpp"
+#include "gseurat/engine/project_root.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -23,7 +24,7 @@ ChunkManifest ChunkManifest::from_json(const nlohmann::json& j) {
             StreamChunkMeta meta;
             meta.grid_x = cj.value("grid_x", 0);
             meta.grid_z = cj.value("grid_z", 0);
-            meta.ply_path = cj.value("ply_file", std::string{});
+            meta.ply_path = resolve_asset_path(cj.value("ply_file", std::string{})).string();
             meta.gaussian_count = cj.value("gaussian_count", 0u);
 
             if (cj.contains("bounds_min")) {
