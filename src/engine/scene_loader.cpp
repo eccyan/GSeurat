@@ -412,10 +412,6 @@ SceneData SceneLoader::from_json(const nlohmann::json& j) {
         if (p.contains("tint")) data.player_tint = parse_vec4(p["tint"]);
         if (p.contains("facing")) data.player_facing = parse_direction(p["facing"]);
         data.player_character_id = p.value("character_id", "");
-        data.player_speed = p.value("speed", 20.0f);
-        data.player_acceleration = p.value("acceleration", 20.0f);
-        data.player_jump_height = p.value("jump_height", 4.0f);
-        data.player_jump_duration = p.value("jump_duration", 0.8f);
     }
 
     // Game objects (new format)
@@ -1157,10 +1153,6 @@ nlohmann::json SceneLoader::to_json(const SceneData& data) {
         p["facing"] = direction_to_string(data.player_facing);
         if (!data.player_character_id.empty())
             p["character_id"] = data.player_character_id;
-        p["speed"] = data.player_speed;
-        p["acceleration"] = data.player_acceleration;
-        p["jump_height"] = data.player_jump_height;
-        p["jump_duration"] = data.player_jump_duration;
         j["player"] = p;
     }
 
