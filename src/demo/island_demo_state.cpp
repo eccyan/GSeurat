@@ -303,19 +303,21 @@ void IslandDemoState::on_enter(AppBase& app) {
     // Note: player_pos is in scene/terrain coordinates — no AABB offset needed.
     // The collision grid also uses scene coordinates.
 
-    // Initialize player controller from scene data
-    player_speed_ = scene_data.player_speed;
-    player_accel_ = scene_data.player_acceleration;
-    jump_height_ = scene_data.player_jump_height;
-    jump_duration_ = scene_data.player_jump_duration;
+    // Find the player entity created by scene loader (has PlayerController + PlayerTag)
+    player_entity_ = ecs::kNullEntity;
+    app.world().view<PlayerController, PlayerTag, ecs::Transform>().each(
+        [&](ecs::Entity e, PlayerController&, PlayerTag&, ecs::Transform&) {
+            player_entity_ = e;
+        });
 
-    // Create player entity
-    player_entity_ = app.world().create();
-    app.world().add<ecs::Transform>(player_entity_, {coord::WorldPos(player_pos), {1.0f, 1.0f}});
-    app.world().add<PlayerController>(player_entity_, {player_speed_, player_accel_});
-
-    // Mark player for engine proximity trigger system
-    app.world().add<PlayerTag>(player_entity_);
+    // Legacy fallback: if no game object has PlayerController, create player manually
+    if (!player_entity_.valid()) {
+        player_entity_ = app.world().create();
+        app.world().add<ecs::Transform>(player_entity_, {coord::WorldPos(player_pos), {1.0f, 1.0f}});
+        app.world().add<PlayerController>(player_entity_, {20.0f, 20.0f});
+        app.world().add<PlayerJump>(player_entity_);
+        app.world().add<PlayerTag>(player_entity_);
+    }
 
     // Capture base scene lights (before dynamic emissive lights are added)
     // Note: GS renderer gets lights during record_gs_prepass, not at init.
@@ -726,11 +728,14 @@ void IslandDemoState::update(AppBase& app, float dt) {
         }
 
         // Space → jump (if not already jumping)
-        if (app.input().was_key_pressed(GLFW_KEY_SPACE) && !jumping_) {
-            jumping_ = true;
-            jump_time_ = 0.0f;
-            auto* pe = app.bone_animation_registry().get(player_registry_id_);
-            if (pe) pe->requested_clip = "jump";
+        {
+            auto* pj = app.world().try_get<PlayerJump>(player_entity_);
+            if (pj && app.input().was_key_pressed(GLFW_KEY_SPACE) && !pj->active) {
+                pj->active = true;
+                pj->timer = 0.0f;
+                auto* pe = app.bone_animation_registry().get(player_registry_id_);
+                if (pe) pe->requested_clip = "jump";
+            }
         }
     }  // end keyboard gating
 
@@ -796,7 +801,8 @@ void IslandDemoState::update(AppBase& app, float dt) {
     }
     if (sfx_loaded_) {
         const bool moving = glm::length(glm::vec2(player_velocity_.x, player_velocity_.z)) > 1.0f;
-        if (moving && !jumping_) {
+        const auto* pj_sfx = app.world().try_get<PlayerJump>(player_entity_);
+        if (moving && !(pj_sfx && pj_sfx->active)) {
             footstep_timer_ -= dt;
             if (footstep_timer_ <= 0.0f) {
                 if (auto* ae = app.audio()) {
@@ -887,6 +893,11 @@ void IslandDemoState::update_player(AppBase& app, float dt) {
     auto* transform = app.world().try_get<ecs::Transform>(player_entity_);
     if (!transform) return;
 
+    auto* pc = app.world().try_get<PlayerController>(player_entity_);
+    if (!pc) return;
+    const float speed = pc->speed;
+    const float accel = pc->acceleration;
+
     // Compute desired movement direction relative to camera azimuth
     glm::vec3 forward(-std::sin(azimuth_), 0.0f, -std::cos(azimuth_));
     glm::vec3 right(std::cos(azimuth_), 0.0f, -std::sin(azimuth_));
@@ -904,10 +915,10 @@ void IslandDemoState::update_player(AppBase& app, float dt) {
     }
 
     // Target velocity
-    glm::vec3 target_vel = desired_dir * player_speed_;
+    glm::vec3 target_vel = desired_dir * speed;
 
     // Smooth acceleration (lerp toward target)
-    float blend = std::min(1.0f, player_accel_ * dt);
+    float blend = std::min(1.0f, accel * dt);
     player_velocity_.x += (target_vel.x - player_velocity_.x) * blend;
     player_velocity_.z += (target_vel.z - player_velocity_.z) * blend;
 
@@ -956,19 +967,22 @@ void IslandDemoState::update_player(AppBase& app, float dt) {
     character_origin_ = transform->position.vec();
 
     // Jump Y arc (parabolic: h = 4*H*t*(1-t) where t in [0,1])
-    if (jumping_) {
-        jump_time_ += dt;
-        if (jump_time_ >= jump_duration_) {
-            jumping_ = false;
-            jump_time_ = 0.0f;
-            // Return to idle or walk based on movement
-            float spd = glm::length(glm::vec2(player_velocity_.x, player_velocity_.z));
-            auto* pe = app.bone_animation_registry().get(player_registry_id_);
-            if (pe) pe->requested_clip = spd > 0.1f ? "walk" : "idle";
-        } else {
-            float t = jump_time_ / jump_duration_;
-            float jump_y = 4.0f * jump_height_ * t * (1.0f - t);
-            character_origin_.y += jump_y;
+    {
+        auto* pj = app.world().try_get<PlayerJump>(player_entity_);
+        if (pj && pj->active) {
+            pj->timer += dt;
+            if (pj->timer >= pj->duration) {
+                pj->active = false;
+                pj->timer = 0.0f;
+                // Return to idle or walk based on movement
+                float spd = glm::length(glm::vec2(player_velocity_.x, player_velocity_.z));
+                auto* pe = app.bone_animation_registry().get(player_registry_id_);
+                if (pe) pe->requested_clip = spd > 0.1f ? "walk" : "idle";
+            } else {
+                float t = pj->timer / pj->duration;
+                float jump_y = 4.0f * pj->height * t * (1.0f - t);
+                character_origin_.y += jump_y;
+            }
         }
     }
 
@@ -1311,18 +1325,24 @@ void IslandDemoState::update_walk_animation(AppBase& app, float dt) {
     if (!pe || !pe->anim_player) return;
 
     // Set requested clip based on movement speed (if not jumping)
-    if (!jumping_) {
-        float speed = glm::length(glm::vec2(player_velocity_.x, player_velocity_.z));
-        pe->requested_clip = speed > 0.1f ? "walk" : "idle";
+    {
+        auto* pj_wa = app.world().try_get<PlayerJump>(player_entity_);
+        if (!(pj_wa && pj_wa->active)) {
+            float spd = glm::length(glm::vec2(player_velocity_.x, player_velocity_.z));
+            pe->requested_clip = spd > 0.1f ? "walk" : "idle";
+        }
     }
 
     // Update entry position and facing
     glm::vec3 ground_pos = character_origin_;
     float jump_y_offset = 0.0f;
-    if (jumping_) {
-        float t = jump_time_ / jump_duration_;
-        jump_y_offset = 4.0f * jump_height_ * t * (1.0f - t);
-        ground_pos.y -= jump_y_offset;
+    {
+        auto* pj = app.world().try_get<PlayerJump>(player_entity_);
+        if (pj && pj->active) {
+            float t = pj->timer / pj->duration;
+            jump_y_offset = 4.0f * pj->height * t * (1.0f - t);
+            ground_pos.y -= jump_y_offset;
+        }
     }
     pe->current_pos = ground_pos;
     pe->facing_angle = facing_angle_;
@@ -1968,8 +1988,8 @@ void IslandDemoState::perform_portal_transition(AppBase& app,
     player_entity_ = app.world().create();
     app.world().add<ecs::Transform>(player_entity_,
         {coord::WorldPos(spawn), {1.0f, 1.0f}});
-    app.world().add<PlayerController>(player_entity_,
-        {player_speed_, player_accel_});
+    app.world().add<PlayerController>(player_entity_, {20.0f, 20.0f});
+    app.world().add<PlayerJump>(player_entity_);
     // PlayerTag is required by proximity_trigger_system — without it, ALL
     // ECS proximity triggers (portals, lights, emitters) silently no-op
     // because the system early-returns when it can't find the player.
