@@ -160,6 +160,39 @@ wsServer.onMessage((rawMsg: string, clientId: string) => {
   }
 
   // --- Default: forward to engine via Unix socket ---
+
+  // Resolve relative PLY paths in load_scene_json when project root is known
+  if (parsed['cmd'] === 'load_scene_json' && typeof parsed['json'] === 'string') {
+    if (!activeProjectDir) {
+      console.warn('[Bridge] WARNING: load_scene_json with no project root set — PLY paths may not resolve. Use File → "Connect Bridge to Project Root..." in Bricklayer.');
+    }
+  }
+  if (parsed['cmd'] === 'load_scene_json' && activeProjectDir && typeof parsed['json'] === 'string') {
+    try {
+      const sceneObj = JSON.parse(parsed['json'] as string);
+      const resolve = (p: string) => p && !p.startsWith('/') ? path.join(activeProjectDir!, p) : p;
+
+      // Terrain PLY
+      if (sceneObj.gaussian_splat?.ply_file) {
+        sceneObj.gaussian_splat.ply_file = resolve(sceneObj.gaussian_splat.ply_file);
+      }
+      // Morph pair PLY
+      if (sceneObj.gaussian_splat?.morph?.pair_ply) {
+        sceneObj.gaussian_splat.morph.pair_ply = resolve(sceneObj.gaussian_splat.morph.pair_ply);
+      }
+      // Game object PLYs
+      if (Array.isArray(sceneObj.game_objects)) {
+        for (const go of sceneObj.game_objects) {
+          if (go.ply_file) go.ply_file = resolve(go.ply_file);
+        }
+      }
+      parsed['json'] = JSON.stringify(sceneObj);
+      console.log(`[Bridge] Resolved PLY paths under ${activeProjectDir}`);
+    } catch (e) {
+      console.warn(`[Bridge] Failed to resolve PLY paths: ${e}`);
+    }
+  }
+
   const bridgeId = randomUUID();
   const origId = parsed['id'];
   parsed['_bridge_id'] = bridgeId;
