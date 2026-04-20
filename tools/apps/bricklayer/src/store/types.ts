@@ -120,6 +120,7 @@ export interface DayNightData {
 export type MorphEasing = 'linear' | 'ease_in_out';
 
 export interface GaussianSplatConfig {
+  ply_file: string;  // terrain PLY path (e.g. "assets/maps/plaza_present.ply")
   camera: {
     position: [number, number, number];
     target: [number, number, number];
