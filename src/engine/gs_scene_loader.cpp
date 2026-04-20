@@ -49,8 +49,12 @@ void GsSceneLoader::load(SceneLoadContext& ctx, const SceneData& scene_data,
     float gs_scale_multiplier = 1.0f;
     if (scene_data.gaussian_splat) {
         const auto& gs = *scene_data.gaussian_splat;
+        auto resolved_ply = resolve_asset_path(gs.ply_file).string();
+        std::fprintf(stderr, "[GS] Terrain PLY: '%s' -> '%s' (project_root='%s')\n",
+                     gs.ply_file.c_str(), resolved_ply.c_str(),
+                     get_project_root().c_str());
         try {
-            cloud = GaussianCloud::load_ply(resolve_asset_path(gs.ply_file).string());
+            cloud = GaussianCloud::load_ply(resolved_ply);
             has_terrain = !cloud.empty();
         } catch (const std::runtime_error& e) {
             std::fprintf(stderr, "[GS] Warning: %s\n", e.what());
@@ -157,8 +161,11 @@ void GsSceneLoader::load(SceneLoadContext& ctx, const SceneData& scene_data,
                 for (size_t i = 0; i < snapped_objects.size(); ++i) {
                     const auto& go = snapped_objects[i];
                     if (go.ply_file.empty()) continue;
+                    auto resolved_go_ply = resolve_asset_path(go.ply_file).string();
+                    std::fprintf(stderr, "[GS] Game object PLY '%s': '%s' -> '%s'\n",
+                                 go.id.c_str(), go.ply_file.c_str(), resolved_go_ply.c_str());
                     try {
-                        auto placed_cloud = GaussianCloud::load_ply(resolve_asset_path(go.ply_file).string());
+                        auto placed_cloud = GaussianCloud::load_ply(resolved_go_ply);
                         if (placed_cloud.empty()) continue;
                         // Compute local AABB
                         glm::vec3 local_min(1e9f);
