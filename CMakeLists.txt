@@ -434,6 +434,7 @@ add_gseurat_test(test_camera_review_state src/staging/camera_review_state.cpp
 target_link_libraries(test_camera_review_state PRIVATE glfw imgui_lib)
 add_gseurat_test(test_visual_state  src/staging/visual_state.cpp)
 add_gseurat_test(test_project_root  src/engine/project_root.cpp)
+add_gseurat_test(test_ply_path_resolution  src/engine/project_root.cpp src/engine/gaussian_cloud.cpp)
 add_gseurat_test(test_slab_allocator src/engine/slab_allocator.cpp)
 add_gseurat_test(test_world_manifest src/engine/world_manifest.cpp)
 add_gseurat_test(test_world_streamer src/engine/world_streamer.cpp src/engine/world_manifest.cpp)

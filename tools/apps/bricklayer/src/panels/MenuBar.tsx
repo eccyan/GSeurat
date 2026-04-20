@@ -314,16 +314,32 @@ export function MenuBar() {
 
   const handleOpenInStaging = () => {
     const s = useSceneStore.getState();
-    const scene = exportSceneJson(s);
-    const json = JSON.stringify(scene);
-    const cmds: Record<string, unknown>[] = [];
-    // Send project root before loading scene so PLY paths resolve correctly
+    const scene = exportSceneJson(s) as Record<string, unknown>;
     const bridgePath = s.bridgeConnectedPath;
+
+    // Resolve relative PLY paths to absolute using bridge project root
     if (bridgePath) {
-      cmds.push({ cmd: 'set_project_root', path: bridgePath });
+      const resolve = (p: string) =>
+        p && !p.startsWith('/') ? `${bridgePath}/${p}` : p;
+      const gs = scene.gaussian_splat as Record<string, unknown> | undefined;
+      if (gs?.ply_file) gs.ply_file = resolve(gs.ply_file as string);
+      if (gs?.morph) {
+        const m = gs.morph as Record<string, unknown>;
+        if (m.pair_ply) m.pair_ply = resolve(m.pair_ply as string);
+      }
+      const gos = scene.game_objects as Array<Record<string, unknown>> | undefined;
+      if (gos) {
+        for (const go of gos) {
+          if (go.ply_file) go.ply_file = resolve(go.ply_file as string);
+        }
+      }
     }
-    cmds.push(...pushVfxFiles(s));
-    cmds.push({ cmd: 'load_scene_json', json });
+
+    const json = JSON.stringify(scene);
+    const cmds: Record<string, unknown>[] = [
+      ...pushVfxFiles(s),
+      { cmd: 'load_scene_json', json },
+    ];
     sendBridgeCommands(cmds);
   };
 
@@ -377,19 +393,36 @@ export function MenuBar() {
       autoSyncTimer.current = setTimeout(() => {
         const s = useSceneStore.getState();
         const scene = exportSceneJson(s) as Record<string, unknown>;
+        const bridgePath = s.bridgeConnectedPath;
+
+        // Resolve relative PLY paths to absolute using bridge project root
+        if (bridgePath) {
+          const resolve = (p: string) =>
+            p && !p.startsWith('/') ? `${bridgePath}/${p}` : p;
+          const gs = scene.gaussian_splat as Record<string, unknown> | undefined;
+          if (gs?.ply_file) gs.ply_file = resolve(gs.ply_file as string);
+          if (gs?.morph) {
+            const m = gs.morph as Record<string, unknown>;
+            if (m.pair_ply) m.pair_ply = resolve(m.pair_ply as string);
+          }
+          const gos = scene.game_objects as Array<Record<string, unknown>> | undefined;
+          if (gos) {
+            for (const go of gos) {
+              if (go.ply_file) go.ply_file = resolve(go.ply_file as string);
+            }
+          }
+        }
+
         const json = JSON.stringify(scene);
         const fp = computeFingerprint(scene);
 
         const vfxCmds = pushVfxFiles(s);
-        const rootCmd = s.bridgeConnectedPath
-          ? [{ cmd: 'set_project_root', path: s.bridgeConnectedPath }]
-          : [];
         if (isStructuralChange(prevFingerprint.current, fp)) {
           // Structural change: full reload (re-uploads PLY)
-          sendBridgeCommands([...rootCmd, ...vfxCmds, { cmd: 'load_scene_json', json }]);
+          sendBridgeCommands([...vfxCmds, { cmd: 'load_scene_json', json }]);
         } else {
           // Property-only change: lightweight update (no PLY reload)
-          sendBridgeCommands([...rootCmd, ...vfxCmds, { cmd: 'update_scene_data', json }]);
+          sendBridgeCommands([...vfxCmds, { cmd: 'update_scene_data', json }]);
         }
         prevFingerprint.current = fp;
       }, 2000);  // 2s debounce
