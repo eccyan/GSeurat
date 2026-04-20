@@ -58,12 +58,6 @@ private:
     float facing_angle_ = 0.0f;  // character facing direction (independent of camera)
     glm::quat character_rotation_{1.0f, 0.0f, 0.0f, 0.0f};
 
-    // Jump state (parabolic Y arc)
-    bool jumping_ = false;
-    float jump_time_ = 0.0f;
-    float jump_duration_ = 0.8f;  // from scene data (player.jump_duration)
-    float jump_height_ = 4.0f;   // from scene data (player.jump_height)
-
     // Character Gaussians (for walk animation bone transforms)
     bool character_spawned_ = false;
     uint32_t debug_frame_ = 0;
@@ -158,8 +152,6 @@ private:
     static constexpr float kMaxDistance = 40.0f;
     static constexpr float kOrbitSensitivity = 0.005f;
     static constexpr float kZoomSensitivity = 2.0f;
-    float player_speed_ = 20.0f;   // from scene data (player.speed)
-    float player_accel_ = 20.0f;   // from scene data (player.acceleration)
     static constexpr float kCameraSmoothing = 8.0f;
     static constexpr float kCameraYOffset = 2.5f;  // above character head for TPS
     static constexpr float kCharScale = 0.45f;     // character model scale (shared with spawn + animation)

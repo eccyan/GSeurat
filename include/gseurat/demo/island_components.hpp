@@ -2,17 +2,12 @@
 
 #include "gseurat/engine/trigger_components.hpp"
 #include "gseurat/engine/bone_animated_component.hpp"
+#include "gseurat/engine/ecs/components/player_controller.hpp"
+#include "gseurat/engine/ecs/components/player_jump.hpp"
 
 #include <cstdint>
 
 namespace gseurat {
-
-struct PlayerController {
-    float speed = 10.0f;
-    float acceleration = 10.0f;
-    float velocity_x = 0.0f;
-    float velocity_z = 0.0f;
-};
 
 struct BurstEffect {
     uint32_t emitter_index = 0;

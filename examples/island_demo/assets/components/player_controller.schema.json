@@ -1,9 +1,9 @@
 {
   "name": "PlayerController",
-  "description": "Player movement controller with speed and acceleration",
+  "description": "Marks entity as player-controlled. Handles movement input.",
   "category": "Player",
   "fields": [
-    { "name": "speed", "type": "float", "default": 10, "min": 0 },
-    { "name": "acceleration", "type": "float", "default": 10, "min": 0 }
+    { "name": "speed", "type": "float", "default": 20, "min": 0, "step": 1 },
+    { "name": "acceleration", "type": "float", "default": 20, "min": 0, "step": 1 }
   ]
 }

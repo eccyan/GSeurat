@@ -13,6 +13,8 @@
 #include "gseurat/engine/ecs/ecs.hpp"
 #include "gseurat/engine/ecs/default_components.hpp"
 #include "gseurat/engine/component_registry.hpp"
+#include "gseurat/engine/trigger_components.hpp"
+#include "gseurat/engine/ecs/components/player_controller.hpp"
 
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
@@ -251,6 +253,14 @@ void GsSceneLoader::load(SceneLoadContext& ctx, const SceneData& scene_data,
                     ctx.components.attach(ctx.world, entity, name, data);
                 }
             }
+
+            // Auto-attach PlayerTag to entities with PlayerController
+            ctx.world.view<PlayerController, ecs::Transform>().each(
+                [&](ecs::Entity e, PlayerController&, ecs::Transform&) {
+                    if (!ctx.world.has<PlayerTag>(e)) {
+                        ctx.world.add<PlayerTag>(e);
+                    }
+                });
 
         // Init GS renderer if we have any Gaussians (terrain and/or game objects)
         if (!cloud.empty()) {

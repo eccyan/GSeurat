@@ -237,11 +237,7 @@
         "position": { "$ref": "#/definitions/vec3" },
         "tint": { "$ref": "#/definitions/color4" },
         "facing": { "$ref": "#/definitions/direction" },
-        "character_id": { "type": "string" },
-        "speed": { "type": "number", "description": "Movement speed (units/sec)" },
-        "acceleration": { "type": "number", "description": "Acceleration (units/sec²)" },
-        "jump_height": { "type": "number", "description": "Jump height (units)" },
-        "jump_duration": { "type": "number", "description": "Jump duration (seconds)" }
+        "character_id": { "type": "string" }
       },
       "additionalProperties": false
     },

@@ -84,18 +84,7 @@ void DemoApp::init_game_content() {
     // Audio engine is constructed in app_base.
     // Music is loaded and played in IslandDemoState::on_enter.
 
-    // Register demo-specific components (engine registers generic ones)
-    component_registry_.register_component<PlayerController>("PlayerController",
-        [](const nlohmann::json& j) -> PlayerController {
-            PlayerController c;
-            if (j.contains("speed")) c.speed = j["speed"].get<float>();
-            if (j.contains("acceleration")) c.acceleration = j["acceleration"].get<float>();
-            return c;
-        },
-        [](const PlayerController& c) -> nlohmann::json {
-            return {{"speed", c.speed}, {"acceleration", c.acceleration}};
-        });
-
+    // Register demo-specific components (engine registers generic ones, including PlayerController/PlayerJump)
     component_registry_.register_component<BurstEffect>("BurstEffect",
         [](const nlohmann::json& j) -> BurstEffect {
             BurstEffect c;
