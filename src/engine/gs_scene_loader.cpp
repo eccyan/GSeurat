@@ -395,7 +395,9 @@ void GsSceneLoader::load(SceneLoadContext& ctx, const SceneData& scene_data,
                     ctx.renderer.set_gs_skip_chunk_cull(false);
                     ctx.renderer.gs_renderer().clear_shadow_box_params();
                 }
-                std::fprintf(stderr, "[GS] Loaded %u Gaussians from %s\n", cloud.count(), gs.ply_file.c_str());
+                std::fprintf(stderr, "[GS] Loaded %u Gaussians (terrain: %s, game objects: %zu)\n",
+                             cloud.count(), has_terrain ? gs.ply_file.c_str() : "none",
+                             scene_data.game_objects.size());
             } else {
                 ctx.terrain.parallax_active = false;
                 ctx.renderer.set_gs_skip_chunk_cull(false);
