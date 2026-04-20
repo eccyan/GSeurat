@@ -384,6 +384,18 @@ export async function loadProject(handle: FileSystemDirectoryHandle): Promise<bo
     const data = JSON.parse(text) as BricklayerFile;
     useSceneStore.getState().loadProject(data);
 
+    // Backfill ply_file from engine scene JSON if missing (legacy .bricklayer files)
+    if (!useSceneStore.getState().gaussianSplat?.ply_file) {
+      const scenePath = engineScenePath(useSceneStore.getState().projectName);
+      try {
+        const engineBlob = await readFileAtPath(handle, scenePath);
+        const engineScene = JSON.parse(await engineBlob.text());
+        if (engineScene.gaussian_splat?.ply_file) {
+          useSceneStore.getState().setGaussianSplat({ ply_file: engineScene.gaussian_splat.ply_file });
+        }
+      } catch { /* engine scene not available */ }
+    }
+
     // Load component schemas from project
     try {
       const assetsDir = await handle.getDirectoryHandle('assets').catch(() => null);
@@ -472,6 +484,18 @@ export async function switchScene(
     const text = await blob.text();
     const data = JSON.parse(text) as BricklayerFile;
     sceneStore.loadProject(data);
+
+    // Backfill ply_file from engine scene JSON if missing (legacy .bricklayer files)
+    if (!sceneStore.gaussianSplat?.ply_file) {
+      try {
+        const engineBlob = await readFileAtPath(handle, sceneFile);
+        const engineScene = JSON.parse(await engineBlob.text());
+        if (engineScene.gaussian_splat?.ply_file) {
+          sceneStore.setGaussianSplat({ ply_file: engineScene.gaussian_splat.ply_file });
+        }
+      } catch { /* engine scene not available — fallback to project name */ }
+    }
+
     globalToLocal();
     centerCameraOnScene();
     console.info(`[bricklayer] Switched to scene: ${bricklayerPath}`);
