@@ -148,8 +148,9 @@ void test_fixed_point() {
 
     auto state = sys.current_state();
     check(vec_approx(state.position, {5, 15, -3}, 0.01f), "fixed_point: position = authored");
-    // Target should track player (spring-damped, converged).
-    check(vec_approx(state.target, player, 1.0f), "fixed_point: target tracks player");
+    // Target should track player (spring-damped, converged) with target_y_offset applied.
+    glm::vec3 expected_target = player + glm::vec3(0, defaults.target_y_offset, 0);
+    check(vec_approx(state.target, expected_target, 1.0f), "fixed_point: target tracks player");
 }
 
 // ── Test 5: free_look Orbit Distance ────────────────────────────────────────
@@ -196,6 +197,7 @@ void test_rail_follow() {
     defaults.offset = {0, 5, -10};
     defaults.pitch_min = -89.0f;
     defaults.pitch_max = 89.0f;
+    defaults.min_ground_clearance = 0.0f;  // disable ground clamp for pure rail test
 
     sys.load_from_data({}, {}, {rail}, defaults);
 
