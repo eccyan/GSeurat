@@ -316,10 +316,14 @@ export function MenuBar() {
     const s = useSceneStore.getState();
     const scene = exportSceneJson(s);
     const json = JSON.stringify(scene);
-    const cmds: Record<string, unknown>[] = [
-      ...pushVfxFiles(s),
-      { cmd: 'load_scene_json', json },
-    ];
+    const cmds: Record<string, unknown>[] = [];
+    // Send project root before loading scene so PLY paths resolve correctly
+    const bridgePath = s.bridgeConnectedPath;
+    if (bridgePath) {
+      cmds.push({ cmd: 'set_project_root', path: bridgePath });
+    }
+    cmds.push(...pushVfxFiles(s));
+    cmds.push({ cmd: 'load_scene_json', json });
     sendBridgeCommands(cmds);
   };
 
@@ -377,12 +381,15 @@ export function MenuBar() {
         const fp = computeFingerprint(scene);
 
         const vfxCmds = pushVfxFiles(s);
+        const rootCmd = s.bridgeConnectedPath
+          ? [{ cmd: 'set_project_root', path: s.bridgeConnectedPath }]
+          : [];
         if (isStructuralChange(prevFingerprint.current, fp)) {
           // Structural change: full reload (re-uploads PLY)
-          sendBridgeCommands([...vfxCmds, { cmd: 'load_scene_json', json }]);
+          sendBridgeCommands([...rootCmd, ...vfxCmds, { cmd: 'load_scene_json', json }]);
         } else {
           // Property-only change: lightweight update (no PLY reload)
-          sendBridgeCommands([...vfxCmds, { cmd: 'update_scene_data', json }]);
+          sendBridgeCommands([...rootCmd, ...vfxCmds, { cmd: 'update_scene_data', json }]);
         }
         prevFingerprint.current = fp;
       }, 2000);  // 2s debounce
