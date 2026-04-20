@@ -317,6 +317,10 @@ export function MenuBar() {
     const scene = exportSceneJson(s) as Record<string, unknown>;
     const bridgePath = s.bridgeConnectedPath;
 
+    if (!bridgePath) {
+      console.warn('[bricklayer] No bridge project root — PLY paths will be relative. Use File → "Connect Bridge to Project Root..." first.');
+    }
+
     // Resolve relative PLY paths to absolute using bridge project root
     if (bridgePath) {
       const resolve = (p: string) =>
@@ -372,6 +376,7 @@ export function MenuBar() {
       }
     } else {
       console.error(`[bricklayer] Bridge rejected path: ${result.error}`);
+      window.alert(`Bridge connection failed:\n\n${result.error}\n\nCheck the path exists and is an absolute directory path.`);
     }
   };
 
