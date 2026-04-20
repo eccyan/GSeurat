@@ -14,6 +14,8 @@
 #include "gseurat/engine/ecs/components/portal_target.hpp"
 #include "gseurat/engine/ecs/components/scene_transition.hpp"
 #include "gseurat/engine/ecs/components/screen_fade.hpp"
+#include "gseurat/engine/ecs/components/player_controller.hpp"
+#include "gseurat/engine/ecs/components/player_jump.hpp"
 #include "gseurat/engine/systems/portal_trigger_handler.hpp"
 
 #define GLFW_INCLUDE_VULKAN
@@ -439,6 +441,28 @@ void AppBase::init_game_object_system() {
     component_registry_.register_component<PlayerTag>("PlayerTag",
         [](const nlohmann::json&) -> PlayerTag { return {}; },
         [](const PlayerTag&) -> nlohmann::json { return {}; });
+
+    component_registry_.register_component<PlayerController>("PlayerController",
+        [](const nlohmann::json& j) -> PlayerController {
+            PlayerController c;
+            if (j.contains("speed")) c.speed = j["speed"].get<float>();
+            if (j.contains("acceleration")) c.acceleration = j["acceleration"].get<float>();
+            return c;
+        },
+        [](const PlayerController& c) -> nlohmann::json {
+            return {{"speed", c.speed}, {"acceleration", c.acceleration}};
+        });
+
+    component_registry_.register_component<PlayerJump>("PlayerJump",
+        [](const nlohmann::json& j) -> PlayerJump {
+            PlayerJump c;
+            if (j.contains("height")) c.height = j["height"].get<float>();
+            if (j.contains("duration")) c.duration = j["duration"].get<float>();
+            return c;
+        },
+        [](const PlayerJump& c) -> nlohmann::json {
+            return {{"height", c.height}, {"duration", c.duration}};
+        });
 
     // Register engine-level systems
     system_scheduler_.add_system({"bone_animation",
