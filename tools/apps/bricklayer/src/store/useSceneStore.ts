@@ -177,6 +177,7 @@ function defaultDayNight(): DayNightData {
 
 function defaultGaussianSplat(): GaussianSplatConfig {
   return {
+    ply_file: '',
     camera: { position: [0, 5, 10], target: [0, 0, 0], fov: 45 },
     render_width: 320,
     render_height: 240,

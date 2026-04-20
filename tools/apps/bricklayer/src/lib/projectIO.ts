@@ -497,7 +497,7 @@ export async function switchScene(
         npcAuraEmitter: { spawn_rate: 0, particle_lifetime_min: 0, particle_lifetime_max: 0, velocity_min: [0, 0], velocity_max: [0, 0], acceleration: [0, 0], size_min: 0, size_max: 0, size_end_scale: 0, color_start: [0, 0, 0, 0], color_end: [0, 0, 0, 0], tile: '', z: 0, spawn_offset_min: [0, 0], spawn_offset_max: [0, 0] },
         weather: { enabled: false, type: 'rain', emitter: { spawn_rate: 0, particle_lifetime_min: 0, particle_lifetime_max: 0, velocity_min: [0, 0], velocity_max: [0, 0], acceleration: [0, 0], size_min: 0, size_max: 0, size_end_scale: 0, color_start: [0, 0, 0, 0], color_end: [0, 0, 0, 0], tile: '', z: 0, spawn_offset_min: [0, 0], spawn_offset_max: [0, 0] }, ambient_override: [0, 0, 0, 0], fog_density: 0, fog_color: [0, 0, 0], transition_speed: 0 },
         dayNight: { enabled: false, cycle_speed: 1, initial_time: 0, keyframes: [] },
-        gaussianSplat: { camera: { position: [0, 10, 20], target: [0, 0, 0], fov: 45 }, render_width: 1920, render_height: 1080, scale_multiplier: 1, background_image: '', parallax: { azimuth_range: 30, elevation_min: -10, elevation_max: 20, distance_range: 5, parallax_strength: 1 }, morphPairPly: '', morphDuration: 2, morphDefaultBlend: 0, morphEasing: 'linear' },
+        gaussianSplat: { ply_file: '', camera: { position: [0, 10, 20], target: [0, 0, 0], fov: 45 }, render_width: 1920, render_height: 1080, scale_multiplier: 1, background_image: '', parallax: { azimuth_range: 30, elevation_min: -10, elevation_max: 20, distance_range: 5, parallax_strength: 1 }, morphPairPly: '', morphDuration: 2, morphDefaultBlend: 0, morphEasing: 'linear' },
       },
     });
     globalToLocal();
@@ -590,6 +590,7 @@ export async function importEngineScene(
     // Convert gaussian splat config
     const gsConfig = engine.gaussian_splat ?? {};
     const gaussianSplat = {
+      ply_file: gsConfig.ply_file ?? '',
       camera: gsConfig.camera ?? { position: [0, 10, 20], target: [0, 0, 0], fov: 45 },
       render_width: gsConfig.render_width ?? 1920,
       render_height: gsConfig.render_height ?? 1080,

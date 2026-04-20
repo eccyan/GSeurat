@@ -246,8 +246,8 @@ export function exportSceneJson(
     };
   }
 
-  // Terrain PLY path: assets/maps/<project_name>.ply
-  const terrainPly = `assets/maps/${state.projectName || 'map'}.ply`;
+  // Terrain PLY path: use stored path, fall back to project-name-derived path
+  const terrainPly = state.gaussianSplat.ply_file || `assets/maps/${state.projectName || 'map'}.ply`;
 
   // Auto-compute camera to look at scene center if using default target
   const cam = state.gaussianSplat.camera;
