@@ -134,10 +134,11 @@ export function PlyPointCloud({
   const onAabbRef = useRef(onAabb);
   onAabbRef.current = onAabb;
 
-  // Dispose old geometry when path changes or component unmounts
+  // Dispose old geometry and clear AABB when path changes or component unmounts
   useEffect(() => {
     return () => {
       setGeometry((prev) => { prev?.dispose(); return null; });
+      if (onAabbRef.current) onAabbRef.current(null);
     };
   }, [plyPath]);
 
@@ -185,10 +186,7 @@ export function PlyPointCloud({
       }
     })();
 
-    return () => {
-      cancelled = true;
-      if (onAabbRef.current) onAabbRef.current(null);
-    };
+    return () => { cancelled = true; };
   }, [plyPath, projectHandle, visible]);
 
   const material = useMemo(() => {
