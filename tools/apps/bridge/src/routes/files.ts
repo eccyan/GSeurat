@@ -2,6 +2,7 @@ import path from 'node:path';
 import fs from 'node:fs/promises';
 import { type Express, type Request, type Response } from 'express';
 import { type ProjectContext } from '../context.js';
+import { readBinaryBody } from '../helpers.js';
 
 // Utility: ensure a path stays within the allowed base directory.
 function safeResolve(base: string, name: string): string {
@@ -70,20 +71,7 @@ export function registerFileRoutes(app: Express, ctx: ProjectContext): void {
       const filePath = safeResolve(ctx.getTexturesDir(), req.params['name']);
       await fs.mkdir(path.dirname(filePath), { recursive: true });
 
-      let data: Buffer;
-      const contentType = req.headers['content-type'] ?? '';
-
-      if (contentType.includes('application/json') && req.body && typeof req.body['data'] === 'string') {
-        // Accept base64-encoded PNG supplied as JSON: { "data": "<base64>" }
-        data = Buffer.from(req.body['data'] as string, 'base64');
-      } else {
-        // Accept raw binary body (application/octet-stream or image/png).
-        const chunks: Buffer[] = [];
-        for await (const chunk of req) {
-          chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as string));
-        }
-        data = Buffer.concat(chunks);
-      }
+      const data = await readBinaryBody(req);
 
       await ctx.resourceLock.acquire(filePath, async () => {
         await fs.writeFile(filePath, data);
