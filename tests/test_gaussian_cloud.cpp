@@ -191,6 +191,32 @@ static void write_test_gsvx(const std::string& path,
     }
 }
 
+// Helper: write a v2 .gsvx file with baked AABB
+static void write_test_gsvx_v2(const std::string& path,
+                                const std::vector<gseurat::GpuGaussian>& gaussians,
+                                const gseurat::AABB& aabb) {
+    std::ofstream out(path, std::ios::binary);
+
+    gseurat::GsvxHeaderV2 header{};
+    std::memcpy(header.magic, "GSVX", 4);
+    header.version = 2;
+    header.count = static_cast<uint32_t>(gaussians.size());
+    header.flags = 0;
+    header.aabb_min[0] = aabb.min.x;
+    header.aabb_min[1] = aabb.min.y;
+    header.aabb_min[2] = aabb.min.z;
+    header.aabb_max[0] = aabb.max.x;
+    header.aabb_max[1] = aabb.max.y;
+    header.aabb_max[2] = aabb.max.z;
+    std::memset(header.reserved, 0, sizeof(header.reserved));
+    out.write(reinterpret_cast<const char*>(&header), sizeof(header));
+
+    if (!gaussians.empty()) {
+        out.write(reinterpret_cast<const char*>(gaussians.data()),
+                  static_cast<std::streamsize>(gaussians.size() * sizeof(gseurat::GpuGaussian)));
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Float comparison helper
 // ---------------------------------------------------------------------------
@@ -693,6 +719,77 @@ int main() {
         assert(approx(g.rotation.w, src[0].rotation.w, 0.02f) && "Round-trip rot.w preserved");
 
         printf("PASS: Test 21 - kVulkanYDown write+load recovers original\n");
+    }
+
+    // ====== Test 22: GSVX v2 round-trip with baked AABB ======
+    {
+        const std::string ply_path = tmp_dir + "/test_standard.ply";
+        write_test_ply(ply_path, 5);
+        auto cloud = GaussianCloud::load_ply(ply_path);
+
+        std::vector<GpuGaussian> data(cloud.count());
+        AABB expected_aabb;
+        for (uint32_t i = 0; i < cloud.count(); ++i) {
+            const auto& g = cloud.gaussians()[i];
+            float bone_as_float;
+            uint32_t bone_idx = g.bone_index;
+            std::memcpy(&bone_as_float, &bone_idx, sizeof(float));
+            data[i].pos_opacity = glm::vec4(g.position, g.opacity);
+            data[i].scale_pad = glm::vec4(g.scale, bone_as_float);
+            data[i].rot = glm::vec4(g.rotation.x, g.rotation.y, g.rotation.z, g.rotation.w);
+            data[i].color_pad = glm::vec4(g.color, g.emission);
+            expected_aabb.expand(g.position);
+        }
+
+        const std::string gsvx_path = tmp_dir + "/test_v2.gsvx";
+        write_test_gsvx_v2(gsvx_path, data, expected_aabb);
+
+        auto payload = GaussianCloud::load_gsvx(gsvx_path);
+        assert(payload.count == 5 && "v2 GSVX should load 5 Gaussians");
+        assert(approx(payload.bounds.min.x, expected_aabb.min.x) && "v2 AABB min.x from header");
+        assert(approx(payload.bounds.min.y, expected_aabb.min.y) && "v2 AABB min.y from header");
+        assert(approx(payload.bounds.min.z, expected_aabb.min.z) && "v2 AABB min.z from header");
+        assert(approx(payload.bounds.max.x, expected_aabb.max.x) && "v2 AABB max.x from header");
+        assert(approx(payload.bounds.max.y, expected_aabb.max.y) && "v2 AABB max.y from header");
+        assert(approx(payload.bounds.max.z, expected_aabb.max.z) && "v2 AABB max.z from header");
+
+        // Verify Gaussian data still matches
+        for (uint32_t i = 0; i < payload.count; ++i) {
+            assert(approx(payload.gpu_gaussians[i].pos_opacity.x, data[i].pos_opacity.x));
+            assert(approx(payload.gpu_gaussians[i].pos_opacity.w, data[i].pos_opacity.w));
+        }
+
+        printf("PASS: Test 22 - GSVX v2 round-trip with baked AABB\n");
+    }
+
+    // ====== Test 23: v1 GSVX still loads with v2-aware loader ======
+    {
+        const std::string ply_path = tmp_dir + "/test_standard.ply";
+        write_test_ply(ply_path, 5);
+        auto cloud = GaussianCloud::load_ply(ply_path);
+
+        std::vector<GpuGaussian> data(cloud.count());
+        for (uint32_t i = 0; i < cloud.count(); ++i) {
+            const auto& g = cloud.gaussians()[i];
+            float bone_as_float;
+            uint32_t bone_idx = g.bone_index;
+            std::memcpy(&bone_as_float, &bone_idx, sizeof(float));
+            data[i].pos_opacity = glm::vec4(g.position, g.opacity);
+            data[i].scale_pad = glm::vec4(g.scale, bone_as_float);
+            data[i].rot = glm::vec4(g.rotation.x, g.rotation.y, g.rotation.z, g.rotation.w);
+            data[i].color_pad = glm::vec4(g.color, g.emission);
+        }
+
+        const std::string gsvx_path = tmp_dir + "/test_v1_compat.gsvx";
+        write_test_gsvx(gsvx_path, data);  // v1 format
+
+        auto payload = GaussianCloud::load_gsvx(gsvx_path);
+        assert(payload.count == 5 && "v1 compat: should load 5 Gaussians");
+        // v1: AABB computed via position scan
+        assert(approx(payload.bounds.min.x, 0.0f) && "v1 compat: AABB min.x from scan");
+        assert(approx(payload.bounds.max.x, 4.0f) && "v1 compat: AABB max.x from scan");
+
+        printf("PASS: Test 23 - v1 GSVX loads with v2-aware loader\n");
     }
 
     // Cleanup temp files
