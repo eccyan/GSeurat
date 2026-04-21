@@ -15,6 +15,7 @@ namespace ecs { class World; }
 class ComponentRegistry;
 class InputManager;
 class DebugDumpRegistry;
+class ControlServer;
 struct FeatureFlags;
 struct CommandContext {
     const GsTerrainState& terrain;
@@ -34,6 +35,9 @@ struct CommandContext {
     std::function<void(const std::string&)> init_scene;
     std::function<void()> clear_scene;
     std::function<void(const std::string&)> load_character;  // optional: for staging animation preview
+
+    ControlServer* control_server = nullptr;
+    bool camera_sync_override = false;
 };
 
 }  // namespace gseurat

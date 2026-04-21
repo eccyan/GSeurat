@@ -1,5 +1,6 @@
 #include "gseurat/engine/command_dispatcher.hpp"
 #include "gseurat/engine/component_registry.hpp"
+#include "gseurat/engine/control_server.hpp"
 #include "gseurat/engine/debug_dump.hpp"
 #include "gseurat/engine/coordinate.hpp"
 #include "gseurat/engine/ecs/default_components.hpp"
@@ -606,6 +607,39 @@ void CommandDispatcher::register_default_commands() {
     register_command("quit", [this](const json&) -> CommandResult {
         glfwSetWindowShouldClose(ctx_.window, GLFW_TRUE);
         return json{{"type", "ok"}, {"message", "Shutting down"}};
+    });
+
+    register_command("sync_camera", [this](const json& cmd) -> CommandResult {
+        auto pos = cmd.value("position", std::vector<float>{0, 0, 0});
+        auto tgt = cmd.value("target", std::vector<float>{0, 0, 0});
+
+        if (pos.size() < 3 || tgt.size() < 3) {
+            return std::unexpected(std::string("sync_camera requires position and target arrays of length 3"));
+        }
+
+        auto& cam = ctx_.renderer.camera();
+        cam.set_position(glm::vec3(pos[0], pos[1], pos[2]));
+        cam.set_target(glm::vec3(tgt[0], tgt[1], tgt[2]));
+        ctx_.camera_sync_override = true;
+
+        return json{{"type", "ok"}};
+    });
+
+    register_command("subscribe", [this](const json& cmd) -> CommandResult {
+        if (!ctx_.control_server) {
+            return std::unexpected(std::string("control_server not available"));
+        }
+        auto events = cmd.value("events", std::vector<std::string>{});
+        ctx_.control_server->subscribe_events(events);
+        return json{{"type", "ok"}, {"subscribed", events}};
+    });
+
+    register_command("unsubscribe", [this](const json&) -> CommandResult {
+        if (!ctx_.control_server) {
+            return std::unexpected(std::string("control_server not available"));
+        }
+        ctx_.control_server->unsubscribe_all();
+        return json{{"type", "ok"}};
     });
 }
 
