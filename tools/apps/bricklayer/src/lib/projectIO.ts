@@ -500,9 +500,10 @@ export async function switchScene(
     centerCameraOnScene();
     console.info(`[bricklayer] Switched to scene: ${bricklayerPath}`);
     return true;
-  } catch {
-    // No .bricklayer file — create a new empty scene for editing
-    console.warn(`[bricklayer] No .bricklayer at ${bricklayerPath}, creating empty scene for: ${sceneFile}`);
+  } catch (err) {
+    // No .bricklayer file or parse error — create a new empty scene for editing
+    console.warn(`[bricklayer] Failed to load ${bricklayerPath}:`, err);
+    console.warn(`[bricklayer] Creating empty scene for: ${sceneFile}`);
     const worldReg = useWorldStore.getState().manifest.asset_registry;
     sceneStore.loadProject({
       version: 2,
