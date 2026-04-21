@@ -621,6 +621,7 @@ void CommandDispatcher::register_default_commands() {
         cam.set_position(glm::vec3(pos[0], pos[1], pos[2]));
         cam.set_target(glm::vec3(tgt[0], tgt[1], tgt[2]));
         ctx_.camera_sync_override = true;
+        ctx_.camera_sync_source = cmd.value("source", std::string("engine"));
 
         return json{{"type", "ok"}};
     });

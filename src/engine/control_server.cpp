@@ -192,13 +192,16 @@ void ControlServer::subscribe_events(const std::vector<std::string>& events) {
     for (const auto& e : events) {
         subscribed_events_.insert(e);
     }
+    has_subscriptions_ = true;
 }
 
 void ControlServer::unsubscribe_all() {
     subscribed_events_.clear();
+    has_subscriptions_ = false;
 }
 
 bool ControlServer::is_event_subscribed(const std::string& event) const {
+    if (!has_subscriptions_) return false;
     if (subscribed_events_.empty()) return true;
     return subscribed_events_.count(event) > 0;
 }
