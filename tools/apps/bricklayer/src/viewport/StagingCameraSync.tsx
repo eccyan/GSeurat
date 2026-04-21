@@ -25,28 +25,38 @@ export function StagingCameraSync() {
   useEffect(() => {
     if (!locked) return;
 
-    // Tell engine we want camera_sync events
-    sendBridgeCommand({ cmd: 'subscribe', events: ['camera_sync'] });
+    let off: (() => void) | null = null;
+    let cancelled = false;
 
-    const client = getBridgeClient();
-    if (!client) return;
+    // Await bridge connection before registering event handler.
+    // sendBridgeCommand triggers async connect; getBridgeClient() may
+    // return null if called immediately after.
+    const setup = async () => {
+      await sendBridgeCommand({ cmd: 'subscribe', events: ['camera_sync'] });
+      if (cancelled) return;
 
-    const off = client.on('camera_sync', (data: unknown) => {
-      const event = data as CameraSyncEvent;
-      if (event.source === 'bricklayer') return; // Echo suppression
+      const client = getBridgeClient();
+      if (!client) return;
 
-      const controls = getOrbitControls();
-      if (!controls) return;
+      off = client.on('camera_sync', (data: unknown) => {
+        const event = data as CameraSyncEvent;
+        if (event.source === 'bricklayer') return; // Echo suppression
 
-      isRemoteUpdateRef.current = true;
-      camera.position.set(event.position[0], event.position[1], event.position[2]);
-      controls.target.set(event.target[0], event.target[1], event.target[2]);
-      controls.update();
-      isRemoteUpdateRef.current = false;
-    });
+        const controls = getOrbitControls();
+        if (!controls) return;
+
+        isRemoteUpdateRef.current = true;
+        camera.position.set(event.position[0], event.position[1], event.position[2]);
+        controls.target.set(event.target[0], event.target[1], event.target[2]);
+        controls.update();
+        isRemoteUpdateRef.current = false;
+      });
+    };
+    setup();
 
     return () => {
-      off();
+      cancelled = true;
+      off?.();
       sendBridgeCommand({ cmd: 'unsubscribe' });
     };
   }, [locked, camera]);

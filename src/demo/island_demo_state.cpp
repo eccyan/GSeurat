@@ -1019,8 +1019,25 @@ void IslandDemoState::update_camera(AppBase& app, float dt) {
     auto* transform = app.world().try_get<ecs::Transform>(player_entity_);
     if (!transform) return;
 
+    // When sync_camera override is active, use the renderer's camera directly
+    // and skip both the zone system and the orbit fallback.
+    if (app.command_dispatcher().context().camera_sync_override) {
+        auto pos = app.renderer().camera().position();
+        auto tgt = app.renderer().camera().target();
+        if (glm::length(pos - tgt) < 0.001f) {
+            pos = tgt + glm::vec3(0, 5, -10);
+        }
+        glm::mat4 view = glm::lookAt(pos, tgt, glm::vec3(0, 1, 0));
+        glm::mat4 proj = glm::perspective(
+            glm::radians(45.0f), 1280.0f / 720.0f, 0.1f, 1000.0f);
+        gizmo_vp_ = proj * view;
+        proj[1][1] *= -1.0f;
+        app.renderer().set_gs_camera(view, proj);
+        return;
+    }
+
     // Camera zone system path — data-driven camera volumes/triggers/rails
-    if (camera_zone_system_ && !app.command_dispatcher().context().camera_sync_override) {
+    if (camera_zone_system_) {
         CameraZoneSystem::InputState input{};
         // Feed orbit mouse delta from the existing drag handler
         auto& inp = app.input();

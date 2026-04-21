@@ -371,14 +371,25 @@ void StagingState::update(AppBase& app, float dt) {
 #else
         bool typing_in_widget = false;
 #endif
-        camera_review_->set_camera_override(
-            app.command_dispatcher().context().camera_sync_override);
+        const bool sync_override = app.command_dispatcher().context().camera_sync_override;
+        camera_review_->set_camera_override(sync_override);
         camera_review_->update(dt, app.input(), wants_mouse, typing_in_widget,
                                mouse_dx, mouse_dy);
 
         // Build view/proj from CameraState
         if (app.renderer().has_gs_cloud()) {
-            auto cam = camera_review_->camera_state();
+            // When sync_camera override is active, use the renderer's camera
+            // directly (set by the sync_camera command) instead of
+            // camera_review_ state, which would overwrite the synced position.
+            CameraState cam;
+            if (sync_override) {
+                cam.position = app.renderer().camera().position();
+                cam.target = app.renderer().camera().target();
+                cam.up = glm::vec3(0, 1, 0);
+                cam.fov = 45.0f;
+            } else {
+                cam = camera_review_->camera_state();
+            }
             auto& gs_renderer = app.renderer().gs_renderer();
             float aspect = static_cast<float>(gs_renderer.output_width()) /
                            static_cast<float>(gs_renderer.output_height());
