@@ -18,6 +18,7 @@ import { CameraFrustumGizmo } from './CameraFrustumGizmo.js';
 import { ChunkWireframes } from './ChunkWireframes.js';
 import { TerrainPlyReference } from './TerrainPlyReference.js';
 import { SplineEditor } from './SplineEditor.js';
+import { StagingCameraSync } from './StagingCameraSync.js';
 import { useSceneStore } from '../store/useSceneStore.js';
 
 // Module-level ref so App.tsx can access the orbit controls for F/Home keys
@@ -322,6 +323,8 @@ function SceneContent() {
       <GrabPlane />
       <SplineEditor />
 
+      <StagingCameraSync />
+
       <OrbitControls
         ref={(r: OrbitControlsRef | null) => {
           controlsRef.current = r;
@@ -349,16 +352,39 @@ export function Viewport() {
   useComponentRegistry('Viewport');
   const gridWidth = useSceneStore((s) => s.gridWidth);
   const gridDepth = useSceneStore((s) => s.gridDepth);
+  const stagingCameraLock = useSceneStore((s) => s.stagingCameraLock);
+  const setStagingCameraLock = useSceneStore((s) => s.setStagingCameraLock);
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
       <Canvas
         camera={{ position: [gridWidth / 2, 30, gridDepth + 20], fov: 50 }}
-        style={{ background: '#16162a' }}
+        style={{
+          background: '#16162a',
+          border: stagingCameraLock ? '2px solid #f59e0b' : '2px solid transparent',
+        }}
         onContextMenu={(e) => e.preventDefault()}
       >
         <SceneContent />
       </Canvas>
+      <button
+        onClick={() => setStagingCameraLock(!stagingCameraLock)}
+        title={stagingCameraLock ? 'Unlock Staging camera' : 'Lock to Staging camera'}
+        style={{
+          position: 'absolute',
+          top: 8,
+          right: 8,
+          padding: '4px 8px',
+          fontSize: 12,
+          background: stagingCameraLock ? '#f59e0b' : '#374151',
+          color: stagingCameraLock ? '#000' : '#d1d5db',
+          border: 'none',
+          borderRadius: 4,
+          cursor: 'pointer',
+        }}
+      >
+        {stagingCameraLock ? 'Camera Locked' : 'Camera Lock'}
+      </button>
     </div>
   );
 }
