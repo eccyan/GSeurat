@@ -444,6 +444,19 @@ void StagingState::update(AppBase& app, float dt) {
         if (sync_override && app.renderer().has_gs_cloud()) {
             auto pos = app.renderer().camera().position();
             auto tgt = app.renderer().camera().target();
+
+            // Keep orbit state in sync so world streaming, gizmo
+            // projection, and other orbit-derived logic use the
+            // externally synced camera rather than stale values.
+            target_ = tgt;
+            glm::vec3 delta = pos - tgt;
+            distance_ = glm::length(delta);
+            if (distance_ > 0.001f) {
+                glm::vec3 dir = delta / distance_;
+                azimuth_ = std::atan2(dir.x, dir.z);
+                elevation_ = std::asin(std::clamp(dir.y / 1.0f, -1.0f, 1.0f));
+            }
+
             auto& gs_renderer = app.renderer().gs_renderer();
             float aspect = static_cast<float>(gs_renderer.output_width()) /
                            static_cast<float>(gs_renderer.output_height());

@@ -162,11 +162,13 @@ void AppBase::main_loop() {
                 {"position", {pos.x, pos.y, pos.z}},
                 {"target", {tgt.x, tgt.y, tgt.z}}
             });
+            // Clear source after broadcast so it isn't lost between
+            // throttled intervals when sync_camera arrives mid-cycle.
+            src.clear();
         }
 
         // Reset camera sync override at frame end
         command_dispatcher_.context().camera_sync_override = false;
-        command_dispatcher_.context().camera_sync_source.clear();
 
         upload_bone_transforms();
         gameplay_.play_time += dt;
