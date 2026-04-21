@@ -328,12 +328,20 @@ void GsSceneLoader::load(SceneLoadContext& ctx, const SceneData& scene_data,
                 ctx.renderer.set_gs_camera(gs_view, gs_proj);
             }
 
-            // Transform lights with AABB offset
+            // Transform lights Grid→World via coord::to_world()
             std::vector<PointLight> gs_lights;
             for (const auto& pl : scene_data.static_lights) {
                 PointLight t = pl;
-                t.position_and_radius.x += ctx.terrain.terrain_aabb.min.x;
-                t.position_and_radius.z += ctx.terrain.terrain_aabb.min.y;
+                // Internal layout after parse: {json_x, json_z, json_y, radius}
+                // Reconstruct original JSON [x, y, z] order for conversion:
+                glm::vec3 grid_pos(t.position_and_radius.x,   // json_x
+                                   t.position_and_radius.z,   // json_y (height)
+                                   t.position_and_radius.y);  // json_z
+                auto world = coord::to_world(coord::GridPos(grid_pos), ctx.terrain.terrain_aabb);
+                // Re-swizzle back to internal layout: {world_x, world_z, world_y, radius}
+                t.position_and_radius.x = world.vec().x;
+                t.position_and_radius.y = world.vec().z;  // internal slot 1 = world Z
+                t.position_and_radius.z = world.vec().y;  // internal slot 2 = world Y (height)
                 gs_lights.push_back(t);
             }
 
