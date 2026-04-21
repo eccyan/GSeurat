@@ -68,6 +68,20 @@ Images are mapped to the X,Y plane facing the camera:
 - **InstancedMesh**: All visible voxels rendered in a single draw call via
   Three.js `InstancedMesh` with pre-computed Float32Array buffers.
 
+## Camera Lock (Staging Sync)
+
+The **Camera Lock** button in the viewport toolbar enables bidirectional camera sync between Bricklayer and Staging. When active (indicated by an orange border):
+
+- **Bricklayer → Staging**: OrbitControls camera position and target are sent via the bridge at ~60 Hz using the `sync_camera` command
+- **Staging → Bricklayer**: The engine broadcasts `camera_sync` events at 30 Hz to subscribed clients; Bricklayer applies them to OrbitControls
+- **Echo suppression**: Each message carries a `source` field (`"bricklayer"` or `"staging"`). Messages from your own source are ignored to prevent feedback loops
+
+This allows orbiting the scene in either tool while the other follows in real time. The engine temporarily overrides CameraZoneSystem evaluation while external sync is active.
+
+**Requirements:** Both Bricklayer and Staging must be running, connected through the Bridge proxy.
+
+**Implementation:** `StagingCameraSync.tsx` — a pure side-effect React component mounted inside the R3F Canvas.
+
 ## Voxel Tools
 
 | Tool       | Key | Description |
@@ -169,7 +183,8 @@ tools/apps/bricklayer/
 │   │   ├── NpcMarkers.tsx          — NPC cylinders + waypoint lines
 │   │   ├── PortalMarkers.tsx       — Wireframe portal rectangles
 │   │   ├── PlayerMarker.tsx        — Player spawn indicator
-│   │   └── CollisionOverlay.tsx    — Red XZ collision cells
+│   │   ├── CollisionOverlay.tsx    — Red XZ collision cells
+│   │   └── StagingCameraSync.tsx  — Bidirectional camera sync with Staging
 │   ├── panels/
 │   │   ├── MenuBar.tsx             — File operations
 │   │   ├── ToolBar.tsx             — Voxel tools, color, brush, view toggles

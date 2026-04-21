@@ -6,7 +6,7 @@ GSeurat is designed to be embedded in external game projects as a **Git submodul
 
 ## Features
 
-- **3D Gaussian Splatting** — GPU compute pipeline for rendering `.ply` point clouds with tile-based rasterization, dynamic point light support
+- **3D Gaussian Splatting** — GPU compute pipeline for rendering `.ply` / `.gsvx` point clouds with tile-based rasterization, dynamic point light support
 - **GPU PBD solver** — Position Based Dynamics compute shader with Verlet integration, iterative distance constraints, and ground collision. Dual-mode: wind-only (backward-compatible foliage sway) and full physics (dangling chains, pendulums)
 - **Voxel character pipeline** — MagicaVoxel import, rigid-body-part posing, GPU bone skinning in compute shader, root motion (animation-driven world movement)
 - **Sprite overlay** — Sprite-based entities over GS backgrounds with bloom, depth-of-field, and tone mapping
@@ -20,6 +20,7 @@ GSeurat is designed to be embedded in external game projects as a **Git submodul
 - **Day/night cycle** — Ambient color interpolation with weather system
 - **Save system** — JSON-based save/load with game flags
 - **AI debugging** — Unix socket control server for deterministic step-mode testing
+- **Live camera sync** — Bidirectional camera sync between Bricklayer and Staging via WebSocket bridge with echo suppression
 - **Creative tooling** — Web-based editors: Bricklayer (map/scene), Melies (VFX), Echidna (characters), plus legacy tile-based tools
 
 ## Project Structure
@@ -216,6 +217,22 @@ Compute passes before the main render pass:
 
 Output is sampled with nearest-neighbor filtering for stylized upscale.
 
+**GSVX Binary Format:**
+
+`.gsvx` is GSeurat's native pre-baked binary format for Gaussian Splatting data. Unlike raw `.ply` files, GSVX stores GPU-ready `GpuGaussian` structs that can be uploaded directly to the GPU with zero parsing overhead.
+
+| Field | V1 (32 B) | V2 (64 B) |
+|-------|-----------|-----------|
+| Magic | `GSVX` | `GSVX` |
+| Version | 1 | 2 |
+| Count | Gaussian count | Gaussian count |
+| Flags | Reserved | Reserved |
+| AABB min/max | — (computed at load) | Baked float[3]+float[3] |
+| Reserved | — | 24 bytes padding |
+| Payload | `GpuGaussian[]` | `GpuGaussian[]` |
+
+V2 embeds the axis-aligned bounding box directly in the header, enabling zero-parse bounds retrieval for frustum culling and streaming decisions. The Python cooker (`scripts/ply_to_gseurat.py`) converts `.ply` files to GSVX v2. The engine loads both v1 and v2 transparently.
+
 **Tile Sort — Onesweep Radix Sort:**
 
 The tile sort uses a 2-dispatch Onesweep algorithm with decoupled lookback for cross-workgroup prefix sums. Each 8-bit radix pass is split into two dispatches:
@@ -410,6 +427,9 @@ s.close()
 | `set_emitter_config` / `add_emitter` / `remove_emitter` / `list_emitters` | emitter params | Manage particles |
 | `get_features` / `set_feature` | `name`, `enabled` | Toggle feature flags |
 | `set_camera` | `position`, `zoom` | Override camera |
+| `sync_camera` | `source`, `position`, `target` | Apply external camera and broadcast to subscribers |
+| `subscribe` | `events` | Subscribe to event types (e.g. `["camera_sync"]`) |
+| `unsubscribe` | — | Unsubscribe from all events |
 
 </details>
 
@@ -439,6 +459,15 @@ cd tools/apps/bridge && pnpm build && pnpm start
 # Start a tool
 cd tools/apps/bricklayer && pnpm dev
 ```
+
+### Live Camera Sync
+
+Bricklayer and Staging support bidirectional camera sync over the WebSocket bridge. When the **Camera Lock** toggle is active in Bricklayer:
+
+- Orbiting in Bricklayer sends camera position/target to Staging at 60 Hz
+- Camera movement in Staging broadcasts `camera_sync` events back to Bricklayer at 30 Hz
+- Echo suppression via `source` field prevents infinite feedback loops
+- The engine's `camera_sync_override` flag temporarily suppresses CameraZoneSystem evaluation during external sync
 
 ## Testing
 
