@@ -41,9 +41,14 @@ export async function connectBridgeToPath(
     const body = (await res.json().catch(() => ({}))) as { error?: string };
     return { ok: false, error: body.error ?? res.statusText };
   } catch (e) {
-    return {
-      ok: false,
-      error: e instanceof Error ? e.message : String(e),
-    };
+    const msg = e instanceof Error ? e.message : String(e);
+    // Network error (fetch failed) usually means the bridge server isn't running
+    if (msg === 'Failed to fetch' || msg.includes('ECONNREFUSED')) {
+      return {
+        ok: false,
+        error: `Bridge server is not running.\n\nStart it with:\n  cd tools && pnpm --filter bridge dev`,
+      };
+    }
+    return { ok: false, error: msg };
   }
 }
