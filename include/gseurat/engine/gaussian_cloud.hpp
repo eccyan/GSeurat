@@ -69,6 +69,19 @@ struct GsvxHeader {
 };
 static_assert(sizeof(GsvxHeader) == 32, "GsvxHeader must be 32 bytes");
 
+/// GSVX v2 binary file header (64 bytes, little-endian).
+/// Embeds pre-computed AABB for zero-parse bounds retrieval.
+struct GsvxHeaderV2 {
+    char     magic[4];     // "GSVX"
+    uint32_t version;      // 2
+    uint32_t count;        // Number of Gaussians in payload
+    uint32_t flags;        // Reserved (must be 0)
+    float    aabb_min[3];  // Bounding box minimum (x, y, z)
+    float    aabb_max[3];  // Bounding box maximum (x, y, z)
+    uint8_t  reserved[24]; // Zero-filled padding to 64 bytes
+};
+static_assert(sizeof(GsvxHeaderV2) == 64, "GsvxHeaderV2 must be 64 bytes");
+
 /// Pre-baked GPU-ready Gaussian data loaded from a .gsvx file.
 struct GsvxPayload {
     std::vector<GpuGaussian> gpu_gaussians;
