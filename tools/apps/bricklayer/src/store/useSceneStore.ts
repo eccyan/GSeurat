@@ -271,6 +271,7 @@ export interface SceneStoreState {
   cameraRails: CameraZoneRail[];
   cameraDefaultParams: Partial<CameraZoneParams>;
   cameraShowDebugVolumes: boolean;
+  stagingCameraLock: boolean;
   savedEditorCamera: { position: [number,number,number]; target: [number,number,number] } | null;
   audioZones: AudioZoneData[];
 
@@ -324,6 +325,7 @@ export interface SceneStoreState {
   updateRailControlPoint: (railId: string, index: number, point: [number, number, number]) => void;
   updateCameraDefaultParams: (patch: Partial<CameraZoneParams>) => void;
   setCameraShowDebugVolumes: (show: boolean) => void;
+  setStagingCameraLock: (v: boolean) => void;
   importCameraZonesJson: (data: Record<string, unknown>) => void;
   updatePlayer: (patch: Partial<PlayerData>) => void;
   addBackgroundLayer: () => void;
@@ -420,6 +422,7 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
   cameraRails: [],
   cameraDefaultParams: {},
   cameraShowDebugVolumes: false,
+  stagingCameraLock: false,
   savedEditorCamera: null,
   audioZones: [] as AudioZoneData[],
 
@@ -658,6 +661,7 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
     cameraDefaultParams: { ...get().cameraDefaultParams, ...patch }, isDirty: true,
   }),
   setCameraShowDebugVolumes: (show) => set({ cameraShowDebugVolumes: show }),
+  setStagingCameraLock: (v) => set({ stagingCameraLock: v }),
 
   importCameraZonesJson: (data) => {
     const zones = data.camera_zones as Record<string, unknown> | undefined;
