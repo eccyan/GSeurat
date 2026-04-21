@@ -825,6 +825,16 @@ void GsRenderer::load_cloud(const GaussianCloud& cloud) {
         vkDeviceWaitIdle(device_);
     }
 
+    // Release old scene data — return slabs to allocator, reset tracking state.
+    // Without this, loading a second scene appends to active_chunks_ and old
+    // Gaussian data persists in GPU buffers (visual corruption + VRAM leak).
+    for (auto& chunk : active_chunks_) {
+        slab_allocator_->release(chunk.handle);
+    }
+    active_chunks_.clear();
+    static_count_ = 0;
+    total_active_splats_ = 0;
+
     sort_done_once_ = false;
     static_dirty_ = true;
 
