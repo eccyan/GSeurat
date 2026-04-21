@@ -283,6 +283,7 @@ export interface SceneStoreState {
   showTerrainPly: boolean;
   showObjectPly: boolean;
   terrainPlyFile: string;
+  terrainAabb: { min: [number, number, number]; max: [number, number, number] } | null;
   stagingAutoSync: boolean;
   selectedSettingsCategory: SettingsCategory;
 
@@ -364,6 +365,7 @@ export interface SceneStoreState {
   setShowTerrainPly: (v: boolean) => void;
   setShowObjectPly: (v: boolean) => void;
   setTerrainPlyFile: (v: string) => void;
+  setTerrainAabb: (aabb: { min: [number, number, number]; max: [number, number, number] } | null) => void;
   setStagingAutoSync: (v: boolean) => void;
   setSavedEditorCamera: (v: { position: [number,number,number]; target: [number,number,number] } | null) => void;
   setSelectedSettingsCategory: (cat: SettingsCategory) => void;
@@ -429,6 +431,7 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
   showTerrainPly: false,
   showObjectPly: true,
   terrainPlyFile: '',
+  terrainAabb: null,
   stagingAutoSync: false,
   selectedSettingsCategory: 'gs_camera',
 
@@ -775,6 +778,7 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
   setShowTerrainPly: (v) => set({ showTerrainPly: v }),
   setShowObjectPly: (v) => set({ showObjectPly: v }),
   setTerrainPlyFile: (v) => set({ terrainPlyFile: v }),
+  setTerrainAabb: (aabb) => set({ terrainAabb: aabb }),
   setStagingAutoSync: (v) => set({ stagingAutoSync: v }),
   setSavedEditorCamera: (v) => set({ savedEditorCamera: v }),
   setSelectedSettingsCategory: (cat) => set({ selectedSettingsCategory: cat }),
