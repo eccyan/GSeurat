@@ -1,5 +1,6 @@
 import { useRef, useCallback } from 'react';
 import { useEditorStore } from '../store/useEditorStore.js';
+import { BRIDGE_WS_URL } from '@gseurat/engine-client';
 import type {
   SceneResponse,
   TilemapResponse,
@@ -52,7 +53,7 @@ export function useEngine() {
 
     try {
       const mod = await import('@gseurat/engine-client');
-      const client = new mod.EngineClient('ws://localhost:9100') as EngineClientLike;
+      const client = new mod.EngineClient(BRIDGE_WS_URL) as EngineClientLike;
       await client.connect();
       clientRef.current = client;
       setConnected(true);

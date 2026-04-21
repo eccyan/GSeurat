@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { BRIDGE_WS_URL } from '@gseurat/engine-client';
 
 // ---------------------------------------------------------------------------
 // EmitterConfig matches the engine's EmitterConfig (types.ts)
@@ -84,7 +85,7 @@ export const useParticleStore = create<ParticleStoreState>((set, get) => ({
   selectedEmitterId: 1,
   nextLocalId: 2,
   engineConnected: false,
-  engineUrl: 'ws://localhost:9100',
+  engineUrl: BRIDGE_WS_URL,
   autoSync: false,
 
   addEmitter: (name, config) => {

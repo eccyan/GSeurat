@@ -2,9 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useWeaverStore } from '../store/useWeaverStore.js';
 import { exportMultiGroupConfig, downloadJson } from '../lib/exportConfig.js';
 import { writeFileAtPath } from '@gseurat/project-root';
-import { sendBridgeCommand } from '@gseurat/engine-client';
-
-const BRIDGE_REST_URL = 'http://localhost:9101';
+import { sendBridgeCommand, BRIDGE_REST_URL } from '@gseurat/engine-client';
 
 type ConnectBridgeResult =
   | { ok: true; activeProjectDir: string }
