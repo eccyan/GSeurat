@@ -177,7 +177,26 @@ int main() {
         check(approx(back.z(), orig.z()), "round-trip Z preserved");
     }
 
-    // ── 10. Cell → World conversion ──
+    // ── 10. Light position ground-plane offset ──
+    std::printf("\n--- Light ground-plane offset ---\n\n");
+    {
+        gseurat::AABB terrain_aabb;
+        terrain_aabb.min = glm::vec3(-50.0f, -10.0f, -30.0f);
+        terrain_aabb.max = glm::vec3(50.0f, 10.0f, 30.0f);
+
+        // Light stored in swizzled format: {x, z, y_height, radius}
+        // Simulating JSON position [10, 5, 20] -> scene_loader stores as {10, 20, 5, radius}
+        // Grid position in original JSON order: x=10, y=5 (height), z=20
+        glm::vec3 grid_pos(10.0f, 5.0f, 20.0f);
+        auto world = gseurat::coord::to_world(gseurat::coord::GridPos(grid_pos), terrain_aabb);
+
+        // Expected: grid + aabb.min = (10-50, 5-10, 20-30) = (-40, -5, -10)
+        check(approx(world.x(), -40.0f), "light grid→world X: 10 + (-50) = -40");
+        check(approx(world.y(), -5.0f),  "light grid→world Y (height): 5 + (-10) = -5");
+        check(approx(world.z(), -10.0f), "light grid→world Z: 20 + (-30) = -10");
+    }
+
+    // ── 11. Cell → World conversion ──
     std::printf("\n--- Cell to World ---\n\n");
     {
         gseurat::CollisionGrid grid;
@@ -198,7 +217,7 @@ int main() {
         check(approx(world.z(), 20.0f),   "cell→world Z: 20*1 + 0");
     }
 
-    // ── 11. World → Cell conversion ──
+    // ── 12. World → Cell conversion ──
     std::printf("\n--- World to Cell ---\n\n");
     {
         gseurat::CollisionGrid grid;
@@ -217,7 +236,7 @@ int main() {
         check(approx(cell.z(), 5.0f), "world→cell gz: (-40-(-50))/2 = 5");
     }
 
-    // ── 12. Cell round-trip ──
+    // ── 13. Cell round-trip ──
     std::printf("\n--- Cell round-trip ---\n\n");
     {
         gseurat::CollisionGrid grid;
@@ -238,7 +257,7 @@ int main() {
         check(approx(back.z(), orig.z()), "cell round-trip gz preserved");
     }
 
-    // ── 13. Zero AABB (no terrain) ──
+    // ── 14. Zero AABB (no terrain) ──
     std::printf("\n--- Zero AABB ---\n\n");
     {
         gseurat::AABB aabb;

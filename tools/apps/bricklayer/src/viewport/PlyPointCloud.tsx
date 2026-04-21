@@ -1,6 +1,7 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { readFileAtPath } from '@gseurat/project-root';
+import { computeAabbFromPositions, type Aabb } from './plyAabb.js';
 
 /**
  * Parse a binary PLY file into position + color arrays.
@@ -115,6 +116,7 @@ export function PlyPointCloud({
   scale,
   pointSize = 1.0,
   opacity = 1.0,
+  onAabb,
 }: {
   plyPath: string;
   projectHandle: FileSystemDirectoryHandle | null;
@@ -124,13 +126,19 @@ export function PlyPointCloud({
   scale?: number;
   pointSize?: number;
   opacity?: number;
+  onAabb?: (aabb: Aabb | null) => void;
 }) {
   const [geometry, setGeometry] = useState<THREE.BufferGeometry | null>(null);
 
-  // Dispose old geometry when path changes or component unmounts
+  // Stable ref for onAabb to avoid re-fetching PLY when callback identity changes
+  const onAabbRef = useRef(onAabb);
+  onAabbRef.current = onAabb;
+
+  // Dispose old geometry and clear AABB when path changes or component unmounts
   useEffect(() => {
     return () => {
       setGeometry((prev) => { prev?.dispose(); return null; });
+      if (onAabbRef.current) onAabbRef.current(null);
     };
   }, [plyPath]);
 
@@ -169,6 +177,8 @@ export function PlyPointCloud({
         geo.setAttribute('position', new THREE.BufferAttribute(parsed.positions, 3));
         geo.setAttribute('color', new THREE.BufferAttribute(parsed.colors, 4));
         geo.computeBoundingSphere();
+        const aabb = computeAabbFromPositions(parsed.positions);
+        if (onAabbRef.current) onAabbRef.current(aabb);
         console.info(`[PlyPointCloud] Loaded ${parsed.positions.length / 3} vertices from: ${plyPath}`);
         setGeometry(geo);
       } catch (err) {

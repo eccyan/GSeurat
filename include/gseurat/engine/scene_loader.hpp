@@ -135,6 +135,11 @@ struct CameraZonesData {
     std::vector<std::pair<std::string, std::string>> trigger_zone_refs; // {from_id, to_id}
 };
 
+/// Scene data deserialized from a scene JSON file.
+///
+/// CONTRACT: All positions in SceneData are in Grid coordinate space (0-based,
+/// relative to terrain origin). Consumers must call coord::to_world() with the
+/// terrain AABB before using positions for rendering or physics.
 struct SceneData {
     // Gaussian splatting (optional — when present, tilemap is optional)
     std::optional<GaussianSplatData> gaussian_splat;

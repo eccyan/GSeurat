@@ -31,6 +31,9 @@ public:
     void register_default_commands();
     void dispatch(const nlohmann::json& cmd, nlohmann::json& response);
 
+    CommandContext& context() { return ctx_; }
+    const CommandContext& context() const { return ctx_; }
+
 private:
     CommandContext ctx_;
     std::unordered_map<std::string, CommandHandler> handlers_;

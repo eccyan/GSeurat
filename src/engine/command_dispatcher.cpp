@@ -1,5 +1,6 @@
 #include "gseurat/engine/command_dispatcher.hpp"
 #include "gseurat/engine/component_registry.hpp"
+#include "gseurat/engine/control_server.hpp"
 #include "gseurat/engine/debug_dump.hpp"
 #include "gseurat/engine/coordinate.hpp"
 #include "gseurat/engine/ecs/default_components.hpp"
@@ -311,12 +312,20 @@ void CommandDispatcher::register_default_commands() {
                 ctx_.scene.add_light(pl);
             }
 
-            // Transform lights with AABB offset and push to GS renderer
+            // Transform lights Grid→World via coord::to_world()
             std::vector<PointLight> gs_lights;
             for (const auto& pl : scene_data.static_lights) {
                 PointLight t = pl;
-                t.position_and_radius.x += aabb.min.x;
-                t.position_and_radius.z += aabb.min.y;
+                // Internal layout after parse: {json_x, json_z, json_y, radius}
+                // Reconstruct original JSON [x, y, z] order for conversion:
+                glm::vec3 grid_pos(t.position_and_radius.x,   // json_x
+                                   t.position_and_radius.z,   // json_y (height)
+                                   t.position_and_radius.y);  // json_z
+                auto world = coord::to_world(coord::GridPos(grid_pos), aabb);
+                // Re-swizzle back to internal layout: {world_x, world_z, world_y, radius}
+                t.position_and_radius.x = world.vec().x;
+                t.position_and_radius.y = world.vec().z;  // internal slot 1 = world Z
+                t.position_and_radius.z = world.vec().y;  // internal slot 2 = world Y (height)
                 gs_lights.push_back(t);
             }
             if (!gs_lights.empty()) {
@@ -598,6 +607,39 @@ void CommandDispatcher::register_default_commands() {
     register_command("quit", [this](const json&) -> CommandResult {
         glfwSetWindowShouldClose(ctx_.window, GLFW_TRUE);
         return json{{"type", "ok"}, {"message", "Shutting down"}};
+    });
+
+    register_command("sync_camera", [this](const json& cmd) -> CommandResult {
+        auto pos = cmd.value("position", std::vector<float>{0, 0, 0});
+        auto tgt = cmd.value("target", std::vector<float>{0, 0, 0});
+
+        if (pos.size() < 3 || tgt.size() < 3) {
+            return std::unexpected(std::string("sync_camera requires position and target arrays of length 3"));
+        }
+
+        auto& cam = ctx_.renderer.camera();
+        cam.set_position(glm::vec3(pos[0], pos[1], pos[2]));
+        cam.set_target(glm::vec3(tgt[0], tgt[1], tgt[2]));
+        ctx_.camera_sync_override = true;
+
+        return json{{"type", "ok"}};
+    });
+
+    register_command("subscribe", [this](const json& cmd) -> CommandResult {
+        if (!ctx_.control_server) {
+            return std::unexpected(std::string("control_server not available"));
+        }
+        auto events = cmd.value("events", std::vector<std::string>{});
+        ctx_.control_server->subscribe_events(events);
+        return json{{"type", "ok"}, {"subscribed", events}};
+    });
+
+    register_command("unsubscribe", [this](const json&) -> CommandResult {
+        if (!ctx_.control_server) {
+            return std::unexpected(std::string("control_server not available"));
+        }
+        ctx_.control_server->unsubscribe_all();
+        return json{{"type", "ok"}};
     });
 }
 
