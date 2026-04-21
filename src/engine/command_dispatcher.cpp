@@ -80,26 +80,34 @@ void CommandDispatcher::register_default_commands() {
     });
 
     register_command("set_feature", [this, ok](const json& cmd) -> CommandResult {
-        auto name = cmd.value("feature", "");
-        bool enabled = cmd.value("enabled", false);
+        const auto name = cmd.value("feature", "");
+        const bool enabled = cmd.value("enabled", false);
         auto& f = ctx_.feature_flags;
-        if (name == "gs_rendering") f.gs_rendering = enabled;
-        else if (name == "gs_chunk_culling") f.gs_chunk_culling = enabled;
-        else if (name == "gs_lod") f.gs_lod = enabled;
-        else if (name == "gs_adaptive_budget") f.gs_adaptive_budget = enabled;
-        else if (name == "gs_parallax") f.gs_parallax = enabled;
-        else if (name == "gs_tile_binning") f.gs_tile_binning = enabled;
-        else if (name == "bloom") f.bloom = enabled;
-        else if (name == "depth_of_field") f.depth_of_field = enabled;
-        else if (name == "vignette") f.vignette = enabled;
-        else if (name == "tone_mapping") f.tone_mapping = enabled;
-        else if (name == "fog") f.fog = enabled;
-        else if (name == "point_lights") f.point_lights = enabled;
-        else if (name == "particles") f.particles = enabled;
-        else if (name == "weather") f.weather = enabled;
-        else if (name == "screen_effects") f.screen_effects = enabled;
-        else if (name == "music") f.music = enabled;
-        else if (name == "sfx") f.sfx = enabled;
+
+        static const std::unordered_map<std::string, bool FeatureFlags::*> flag_map = {
+            {"gs_rendering",       &FeatureFlags::gs_rendering},
+            {"gs_chunk_culling",   &FeatureFlags::gs_chunk_culling},
+            {"gs_lod",             &FeatureFlags::gs_lod},
+            {"gs_adaptive_budget", &FeatureFlags::gs_adaptive_budget},
+            {"gs_parallax",        &FeatureFlags::gs_parallax},
+            {"gs_tile_binning",    &FeatureFlags::gs_tile_binning},
+            {"bloom",              &FeatureFlags::bloom},
+            {"depth_of_field",     &FeatureFlags::depth_of_field},
+            {"vignette",           &FeatureFlags::vignette},
+            {"tone_mapping",       &FeatureFlags::tone_mapping},
+            {"fog",                &FeatureFlags::fog},
+            {"point_lights",       &FeatureFlags::point_lights},
+            {"particles",          &FeatureFlags::particles},
+            {"weather",            &FeatureFlags::weather},
+            {"screen_effects",     &FeatureFlags::screen_effects},
+            {"music",              &FeatureFlags::music},
+            {"sfx",                &FeatureFlags::sfx},
+        };
+
+        auto it = flag_map.find(name);
+        if (it != flag_map.end()) {
+            f.*(it->second) = enabled;
+        }
         return ok();
     });
 
