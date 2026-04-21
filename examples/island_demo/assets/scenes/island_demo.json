@@ -1998,7 +1998,7 @@
     ]
   },
   "gaussian_splat": {
-    "ply_file": "assets/maps/island_demo.ply",
+    "ply_file": "assets/maps/seurat_island.ply",
     "camera": {
       "position": [
         192,

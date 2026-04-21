@@ -1581,7 +1581,8 @@
       "morphPairPly": "",
       "morphDuration": 2,
       "morphDefaultBlend": 0,
-      "morphEasing": "linear"
+      "morphEasing": "linear",
+      "ply_file": "assets/maps/dungeon.ply"
     },
     "vfxInstances": [
       {

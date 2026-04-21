@@ -13,23 +13,18 @@
         "ply": "assets/characters/slime/slime.ply",
         "manifest": "assets/characters/slime/slime.manifest.json"
       },
-      "snes_hero": {
-        "id": "snes_hero",
-        "ply": "assets/characters/snes_hero/snes_hero.ply",
-        "manifest": "assets/characters/snes_hero/snes_hero.manifest.json"
-      },
-      "test": {
-        "id": "test",
-        "ply": "assets/characters/test/test.ply"
-      },
-      "untitled": {
-        "id": "untitled",
-        "ply": "assets/characters/untitled/untitled.ply"
-      },
       "warm_robot": {
         "id": "warm_robot",
         "ply": "assets/characters/warm_robot/warm_robot.ply",
         "manifest": "assets/characters/warm_robot/warm_robot.manifest.json"
+      },
+      "deer": {
+        "id": "deer",
+        "ply": "assets/characters/deer/deer.ply"
+      },
+      "wolf": {
+        "id": "wolf",
+        "ply": "assets/characters/wolf/wolf.ply"
       }
     },
     "vfx": {
@@ -107,14 +102,6 @@
         "id": "dungeon",
         "file": "assets/maps/dungeon.ply"
       },
-      "emissive_test": {
-        "id": "emissive_test",
-        "file": "assets/maps/emissive_test.ply"
-      },
-      "map": {
-        "id": "map",
-        "file": "assets/maps/map.ply"
-      },
       "northern_forest": {
         "id": "northern_forest",
         "file": "assets/maps/northern_forest.ply"
@@ -122,28 +109,12 @@
       "seurat_island": {
         "id": "seurat_island",
         "file": "assets/maps/seurat_island.ply"
-      },
-      "test_bricklayer": {
-        "id": "test_bricklayer",
-        "file": "assets/maps/test_bricklayer.ply"
-      },
-      "test_terrain": {
-        "id": "test_terrain",
-        "file": "assets/maps/test_terrain.ply"
       }
     },
     "objects": {
-      "boy_character": {
-        "id": "boy_character",
-        "file": "assets/props/boy_character.ply"
-      },
       "glow_mushrooms": {
         "id": "glow_mushrooms",
         "file": "assets/props/glow_mushrooms.ply"
-      },
-      "house": {
-        "id": "house",
-        "file": "assets/props/house.ply"
       },
       "island_crystal1": {
         "id": "island_crystal1",
@@ -160,18 +131,6 @@
       "island_house": {
         "id": "island_house",
         "file": "assets/props/island_house.ply"
-      },
-      "island_house1": {
-        "id": "island_house1",
-        "file": "assets/props/island_house1.ply"
-      },
-      "island_rock1": {
-        "id": "island_rock1",
-        "file": "assets/props/island_rock1.ply"
-      },
-      "island_rock2": {
-        "id": "island_rock2",
-        "file": "assets/props/island_rock2.ply"
       },
       "island_rock_1": {
         "id": "island_rock_1",
@@ -245,32 +204,22 @@
         "id": "island_tree_9",
         "file": "assets/props/island_tree_9.ply"
       },
-      "island_tree_mesh": {
-        "id": "island_tree_mesh",
-        "file": "assets/props/island_tree_mesh.ply"
-      },
       "lantern_post": {
         "id": "lantern_post",
         "file": "assets/props/lantern_post.ply"
-      },
-      "rock": {
-        "id": "rock",
-        "file": "assets/props/rock.ply"
       },
       "treasure_chest": {
         "id": "treasure_chest",
         "file": "assets/props/treasure_chest.ply"
       },
-      "tree": {
-        "id": "tree",
-        "file": "assets/props/tree.ply"
+      "firefly": {
+        "id": "firefly",
+        "file": "assets/props/firefly.ply"
       }
     }
   },
   "gridWidth": 128,
   "gridDepth": 96,
-  "voxels": [],
-  "collision": [],
   "collisionGridData": {
     "width": 192,
     "height": 192,
@@ -74009,8 +73958,6 @@
     ],
     "nav_zone": []
   },
-  "nav_zone_names": [],
-  "color_palettes": [],
   "scene": {
     "ambientColor": [
       0.12,
@@ -76119,7 +76066,8 @@
       "morphPairPly": "",
       "morphDuration": 1.5,
       "morphDefaultBlend": 0,
-      "morphEasing": "linear"
+      "morphEasing": "linear",
+      "ply_file": "assets/maps/seurat_island.ply"
     },
     "gsParticleEmitters": [
       {
@@ -77798,8 +77746,6 @@
         }
       }
     ],
-    "cameraTriggers": [],
-    "cameraRails": [],
     "cameraDefaultParams": {
       "mode": "free_look",
       "priority": 0,
@@ -77817,7 +77763,6 @@
         -10
       ]
     },
-    "cameraShowDebugVolumes": false,
     "audioZones": [
       {
         "id": "audio_field_music",
