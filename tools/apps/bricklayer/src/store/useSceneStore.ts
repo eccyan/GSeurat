@@ -858,6 +858,7 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
       return rest as StaticLight;
     });
     set({
+      terrainAabb: null,  // Reset before new PLY loads to avoid stale offset
       gridWidth: data.gridWidth,
       gridDepth: data.gridDepth,
       collisionGridData: data.collisionGridData ?? null,
