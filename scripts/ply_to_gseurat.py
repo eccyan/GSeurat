@@ -33,8 +33,8 @@ except ImportError:
 # ---------------------------------------------------------------------------
 
 GSVX_MAGIC = b"GSVX"
-GSVX_VERSION = 1
-HEADER_SIZE = 32
+GSVX_VERSION = 2
+HEADER_SIZE = 64
 GAUSSIAN_SIZE = 64
 SH_C0 = 0.28209479177387814  # 1 / (2 * sqrt(pi))
 
@@ -175,13 +175,19 @@ def ply_to_gsvx(ply_path: Path) -> bytes:
     out["color_pad"][:, 2] = cb
     out["color_pad"][:, 3] = emission
 
-    # --- Build binary ---
-    header = struct.pack("<4sIII16s",
+    # --- Compute AABB from baked positions ---
+    aabb_min = (float(px.min()), float(py.min()), float(pz.min()))
+    aabb_max = (float(px.max()), float(py.max()), float(pz.max()))
+
+    # --- Build binary (v2: 64-byte header with baked AABB) ---
+    header = struct.pack("<4sIII3f3f24s",
                          GSVX_MAGIC,
                          GSVX_VERSION,
                          count,
-                         0,
-                         b"\x00" * 16)
+                         0,               # flags
+                         *aabb_min,
+                         *aabb_max,
+                         b"\x00" * 24)    # reserved
     assert len(header) == HEADER_SIZE
 
     return header + out.tobytes()
