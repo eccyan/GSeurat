@@ -146,6 +146,26 @@ void AppBase::main_loop() {
         dev_overlay_.begin_frame();
 
         state_stack_.update(*this, dt);
+
+        // Broadcast camera state to subscribed clients (throttled to 30 Hz)
+        camera_broadcast_timer_ += dt;
+        if (camera_broadcast_timer_ >= kCameraBroadcastInterval &&
+            control_server_.has_client() &&
+            control_server_.is_event_subscribed("camera_sync")) {
+            camera_broadcast_timer_ = 0.0f;
+            auto pos = renderer_.camera().position();
+            auto tgt = renderer_.camera().target();
+            control_server_.broadcast(nlohmann::json{
+                {"event", "camera_sync"},
+                {"source", "engine"},
+                {"position", {pos.x, pos.y, pos.z}},
+                {"target", {tgt.x, tgt.y, tgt.z}}
+            });
+        }
+
+        // Reset camera sync override at frame end
+        command_dispatcher_.context().camera_sync_override = false;
+
         upload_bone_transforms();
         gameplay_.play_time += dt;
         tick_++;

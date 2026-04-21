@@ -273,6 +273,10 @@ protected:
     int pending_steps_ = 0;
     uint64_t tick_ = 0;
     static constexpr float kFixedDt = 1.0f / 60.0f;
+
+    // Camera broadcast throttle
+    float camera_broadcast_timer_ = 0.0f;
+    static constexpr float kCameraBroadcastInterval = 1.0f / 30.0f;  // 30 Hz
     std::string screenshot_response_path_;
 
     // Async asset loading
