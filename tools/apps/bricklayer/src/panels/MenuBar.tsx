@@ -375,8 +375,8 @@ export function MenuBar() {
         });
       }
     } else {
-      console.error(`[bricklayer] Bridge rejected path: ${result.error}`);
-      window.alert(`Bridge connection failed:\n\n${result.error}\n\nCheck the path exists and is an absolute directory path.`);
+      console.error(`[bricklayer] Bridge connection failed: ${result.error}`);
+      window.alert(`Bridge connection failed:\n\n${result.error}`);
     }
   };
 
