@@ -5,4 +5,6 @@ export { GsAnimationProperties } from './GsAnimationProperties.js';
 export { AudioZoneProperties } from './AudioZoneProperties.js';
 export { VfxInstanceProperties } from './VfxInstanceProperties.js';
 export { ComponentEditor, ComponentFieldEditor } from './ComponentEditor.js';
+export { EntityHeader } from './EntityHeader.js';
+export { TransformFields } from './TransformFields.js';
 export * from './utils.js';

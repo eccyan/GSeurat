@@ -1,8 +1,9 @@
 import { NumberInput } from '../../components/NumberInput.js';
-import { Vec3Input } from '../../components/Vec3Input.js';
 import { useSceneStore } from '../../store/useSceneStore.js';
 import type { VfxInstanceData } from '../../store/types.js';
 import { panelStyles } from '../../styles/panel.js';
+import { EntityHeader } from './EntityHeader.js';
+import { TransformFields } from './TransformFields.js';
 
 const styles = { ...panelStyles };
 
@@ -14,10 +15,7 @@ export function VfxInstanceProperties({ vfx }: { vfx: VfxInstanceData }) {
 
   return (
     <div>
-      <div style={{ ...styles.row, marginBottom: 12 }}>
-        <span style={{ ...styles.label, flex: 1 }}>VFX Instance</span>
-        <button style={styles.btnDanger} onClick={() => remove(vfx.id)}>Remove</button>
-      </div>
+      <EntityHeader label="VFX Instance" onRemove={() => remove(vfx.id)} />
 
       <div style={styles.section}>
         <span style={styles.label}>Name</span>
@@ -31,10 +29,10 @@ export function VfxInstanceProperties({ vfx }: { vfx: VfxInstanceData }) {
         <input type="text" value={vfx.vfx_file} readOnly style={{ ...styles.input, opacity: 0.6 }} />
       </div>
 
-      <div style={styles.section}>
-        <span style={styles.label}>Position</span>
-        <Vec3Input value={vfx.position} onChange={(v) => update(vfx.id, { position: v })} />
-      </div>
+      <TransformFields
+        position={vfx.position}
+        onPositionChange={(v) => update(vfx.id, { position: v })}
+      />
 
       <div style={styles.section}>
         <span style={styles.label}>Rotation Y</span>

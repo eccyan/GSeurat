@@ -2,6 +2,7 @@ import { AudioZonePanel } from '../../components/AudioZonePanel.js';
 import { useSceneStore } from '../../store/useSceneStore.js';
 import type { AudioZoneData } from '../../store/types.js';
 import { panelStyles } from '../../styles/panel.js';
+import { EntityHeader } from './EntityHeader.js';
 
 const styles = { ...panelStyles };
 
@@ -11,10 +12,7 @@ export function AudioZoneProperties({ zone }: { zone: AudioZoneData }) {
 
   return (
     <div>
-      <div style={{ ...styles.row, marginBottom: 12 }}>
-        <span style={{ ...styles.label, flex: 1 }}>Audio Zone</span>
-        <button style={styles.btnDanger} onClick={() => remove(zone.id)}>Remove</button>
-      </div>
+      <EntityHeader label="Audio Zone" onRemove={() => remove(zone.id)} />
 
       <div style={styles.section}>
         <span style={styles.label}>Name</span>

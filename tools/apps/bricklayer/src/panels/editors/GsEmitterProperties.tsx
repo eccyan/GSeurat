@@ -4,6 +4,8 @@ import { useSceneStore } from '../../store/useSceneStore.js';
 import type { GsParticleEmitterData } from '../../store/types.js';
 import { panelStyles } from '../../styles/panel.js';
 import { rgbToHex, hexToRgb } from './utils.js';
+import { EntityHeader } from './EntityHeader.js';
+import { TransformFields } from './TransformFields.js';
 
 const styles = { ...panelStyles };
 
@@ -113,10 +115,7 @@ export function GsEmitterProperties({ emitter }: { emitter: GsParticleEmitterDat
 
   return (
     <div>
-      <div style={{ ...styles.row, marginBottom: 12 }}>
-        <span style={{ ...styles.label, flex: 1 }}>Particle Emitter</span>
-        <button style={styles.btnDanger} onClick={() => remove(emitter.id)}>Remove</button>
-      </div>
+      <EntityHeader label="Particle Emitter" onRemove={() => remove(emitter.id)} />
 
       <div style={styles.section}>
         <span style={styles.label}>Preset</span>
@@ -140,10 +139,10 @@ export function GsEmitterProperties({ emitter }: { emitter: GsParticleEmitterDat
         </select>
       </div>
 
-      <div style={styles.section}>
-        <span style={styles.label}>Position</span>
-        <Vec3Input value={emitter.position} onChange={(v) => update(emitter.id, { position: v })} />
-      </div>
+      <TransformFields
+        position={emitter.position}
+        onPositionChange={(v) => update(emitter.id, { position: v })}
+      />
 
       <div style={styles.section}>
         <span style={styles.label}>Spawn Rate</span>

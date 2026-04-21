@@ -5,6 +5,8 @@ import { useSceneStore } from '../../store/useSceneStore.js';
 import type { GameObjectData, PbdConfig } from '../../store/types.js';
 import { panelStyles } from '../../styles/panel.js';
 import { ComponentEditor } from './ComponentEditor.js';
+import { EntityHeader } from './EntityHeader.js';
+import { TransformFields } from './TransformFields.js';
 
 const styles = { ...panelStyles };
 
@@ -32,10 +34,7 @@ export function GameObjectProperties({ obj }: { obj: GameObjectData }) {
 
   return (
     <div>
-      <div style={{ ...styles.row, marginBottom: 12 }}>
-        <span style={{ ...styles.label, flex: 1 }}>Game Object</span>
-        <button style={styles.btnDanger} onClick={() => remove(obj.id)}>Remove</button>
-      </div>
+      <EntityHeader label="Game Object" onRemove={() => remove(obj.id)} />
 
       <div style={styles.section}>
         <span style={styles.label}>Name</span>
@@ -58,15 +57,12 @@ export function GameObjectProperties({ obj }: { obj: GameObjectData }) {
         />
       </div>
 
-      <div style={styles.section}>
-        <span style={styles.label}>Position</span>
-        <Vec3Input value={obj.position} onChange={(v) => update(obj.id, { position: v })} />
-      </div>
-
-      <div style={styles.section}>
-        <span style={styles.label}>Rotation (deg)</span>
-        <Vec3Input value={obj.rotation} onChange={(v) => update(obj.id, { rotation: v })} />
-      </div>
+      <TransformFields
+        position={obj.position}
+        onPositionChange={(v) => update(obj.id, { position: v })}
+        rotation={obj.rotation}
+        onRotationChange={(v) => update(obj.id, { rotation: v })}
+      />
 
       <div style={styles.section}>
         <span style={styles.label}>Scale</span>

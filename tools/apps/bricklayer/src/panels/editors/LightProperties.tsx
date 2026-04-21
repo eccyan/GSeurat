@@ -5,6 +5,8 @@ import type { StaticLight } from '../../store/types.js';
 import { panelStyles } from '../../styles/panel.js';
 import { getLightType } from './utils.js';
 import type { LightType } from './utils.js';
+import { EntityHeader } from './EntityHeader.js';
+import { TransformFields } from './TransformFields.js';
 
 const styles = { ...panelStyles };
 
@@ -51,10 +53,7 @@ export function LightProperties({ light }: { light: StaticLight }) {
 
   return (
     <div>
-      <div style={{ ...styles.row, marginBottom: 12 }}>
-        <span style={{ ...styles.label, flex: 1 }}>Light</span>
-        <button style={styles.btnDanger} onClick={() => remove(light.id)}>Remove</button>
-      </div>
+      <EntityHeader label="Light" onRemove={() => remove(light.id)} />
 
       {/* Type selector */}
       <div style={styles.section}>
@@ -77,13 +76,10 @@ export function LightProperties({ light }: { light: StaticLight }) {
       </div>
 
       {/* Common fields */}
-      <div style={styles.section}>
-        <span style={styles.label}>Position</span>
-        <Vec3Input
-          value={light.position}
-          onChange={(v) => update(light.id, { position: v })}
-        />
-      </div>
+      <TransformFields
+        position={light.position}
+        onPositionChange={(v) => update(light.id, { position: v })}
+      />
 
       <div style={styles.section}>
         <span style={styles.label}>Radius</span>

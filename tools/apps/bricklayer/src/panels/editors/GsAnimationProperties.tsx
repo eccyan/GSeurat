@@ -4,6 +4,7 @@ import { useSceneStore } from '../../store/useSceneStore.js';
 import type { GsAnimationGroupData } from '../../store/types.js';
 import { panelStyles } from '../../styles/panel.js';
 import { parseEasing, composeEasing } from './utils.js';
+import { EntityHeader } from './EntityHeader.js';
 
 const styles = { ...panelStyles };
 
@@ -110,10 +111,7 @@ export function GsAnimationProperties({ anim }: { anim: GsAnimationGroupData }) 
 
   return (
     <div>
-      <div style={{ ...styles.row, marginBottom: 12 }}>
-        <span style={{ ...styles.label, flex: 1 }}>GS Animation</span>
-        <button style={styles.btnDanger} onClick={() => remove(anim.id)}>Remove</button>
-      </div>
+      <EntityHeader label="Animation Group" onRemove={() => remove(anim.id)} />
 
       <div style={styles.section}>
         <span style={styles.label}>Effect</span>
