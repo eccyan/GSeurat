@@ -191,6 +191,11 @@ void CameraReviewState::update(float dt, const InputManager& input,
     }
 
     // ── Zone system update ─────────────────────────────────────────────────
+    // Skip if an external sync_camera override is active for this frame.
+    if (camera_override_) {
+        camera_override_ = false;
+        return;
+    }
     zone_system_.update(dt, player_pos_, player_vel_, cam_input);
 
     // ── Auto-switch MoveReference on zone change only ──────────────────────

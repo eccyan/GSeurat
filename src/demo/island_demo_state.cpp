@@ -1020,7 +1020,7 @@ void IslandDemoState::update_camera(AppBase& app, float dt) {
     if (!transform) return;
 
     // Camera zone system path — data-driven camera volumes/triggers/rails
-    if (camera_zone_system_) {
+    if (camera_zone_system_ && !app.command_dispatcher().context().camera_sync_override) {
         CameraZoneSystem::InputState input{};
         // Feed orbit mouse delta from the existing drag handler
         auto& inp = app.input();
