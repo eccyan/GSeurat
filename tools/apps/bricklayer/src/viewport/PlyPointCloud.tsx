@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { readFileAtPath } from '@gseurat/project-root';
 import { computeAabbFromPositions, type Aabb } from './plyAabb.js';
@@ -130,6 +130,10 @@ export function PlyPointCloud({
 }) {
   const [geometry, setGeometry] = useState<THREE.BufferGeometry | null>(null);
 
+  // Stable ref for onAabb to avoid re-fetching PLY when callback identity changes
+  const onAabbRef = useRef(onAabb);
+  onAabbRef.current = onAabb;
+
   // Dispose old geometry when path changes or component unmounts
   useEffect(() => {
     return () => {
@@ -173,7 +177,7 @@ export function PlyPointCloud({
         geo.setAttribute('color', new THREE.BufferAttribute(parsed.colors, 4));
         geo.computeBoundingSphere();
         const aabb = computeAabbFromPositions(parsed.positions);
-        if (onAabb) onAabb(aabb);
+        if (onAabbRef.current) onAabbRef.current(aabb);
         console.info(`[PlyPointCloud] Loaded ${parsed.positions.length / 3} vertices from: ${plyPath}`);
         setGeometry(geo);
       } catch (err) {
@@ -181,7 +185,10 @@ export function PlyPointCloud({
       }
     })();
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      if (onAabbRef.current) onAabbRef.current(null);
+    };
   }, [plyPath, projectHandle, visible]);
 
   const material = useMemo(() => {
