@@ -371,6 +371,8 @@ void StagingState::update(AppBase& app, float dt) {
 #else
         bool typing_in_widget = false;
 #endif
+        camera_review_->set_camera_override(
+            app.command_dispatcher().context().camera_sync_override);
         camera_review_->update(dt, app.input(), wants_mouse, typing_in_widget,
                                mouse_dx, mouse_dy);
 

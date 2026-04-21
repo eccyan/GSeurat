@@ -58,6 +58,10 @@ public:
     MoveReference move_reference() const { return move_ref_; }
     void set_move_reference(MoveReference ref) { move_ref_ = ref; }
 
+    // Camera override — suppresses CameraZoneSystem for one frame when an
+    // external sync_camera command has set the camera position.
+    void set_camera_override(bool override_active) { camera_override_ = override_active; }
+
 #ifdef GSEURAT_DEV_MODE
     // Gizmo rendering
     void draw_gizmos(const glm::mat4& vp, float screen_w, float screen_h, ImDrawList* draw_list,
@@ -85,6 +89,7 @@ private:
 
     // State
     bool active_ = false;
+    bool camera_override_ = false;
     glm::vec3 initial_player_pos_{0.0f};
     int last_zone_entity_ = -1;  // for auto-switch on zone change only
 
