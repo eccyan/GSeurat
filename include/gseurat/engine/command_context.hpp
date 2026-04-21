@@ -38,6 +38,7 @@ struct CommandContext {
 
     ControlServer* control_server = nullptr;
     bool camera_sync_override = false;
+    std::string camera_sync_source;  // source of last sync_camera command for echo suppression
 };
 
 }  // namespace gseurat

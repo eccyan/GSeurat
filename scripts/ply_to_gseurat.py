@@ -176,8 +176,12 @@ def ply_to_gsvx(ply_path: Path) -> bytes:
     out["color_pad"][:, 3] = emission
 
     # --- Compute AABB from baked positions ---
-    aabb_min = (float(px.min()), float(py.min()), float(pz.min()))
-    aabb_max = (float(px.max()), float(py.max()), float(pz.max()))
+    if count == 0:
+        aabb_min = (0.0, 0.0, 0.0)
+        aabb_max = (0.0, 0.0, 0.0)
+    else:
+        aabb_min = (float(px.min()), float(py.min()), float(pz.min()))
+        aabb_max = (float(px.max()), float(py.max()), float(pz.max()))
 
     # --- Build binary (v2: 64-byte header with baked AABB) ---
     header = struct.pack("<4sIII3f3f24s",

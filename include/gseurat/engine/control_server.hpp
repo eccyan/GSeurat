@@ -83,6 +83,7 @@ private:
 #endif
 
     std::set<std::string> subscribed_events_;
+    bool has_subscriptions_ = false;  // true after subscribe, false after unsubscribe
 };
 
 }  // namespace gseurat

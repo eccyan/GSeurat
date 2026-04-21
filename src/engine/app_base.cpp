@@ -155,12 +155,16 @@ void AppBase::main_loop() {
             camera_broadcast_timer_ = 0.0f;
             auto pos = renderer_.camera().position();
             auto tgt = renderer_.camera().target();
+            auto& src = command_dispatcher_.context().camera_sync_source;
             control_server_.broadcast(nlohmann::json{
                 {"event", "camera_sync"},
-                {"source", "engine"},
+                {"source", src.empty() ? "engine" : src},
                 {"position", {pos.x, pos.y, pos.z}},
                 {"target", {tgt.x, tgt.y, tgt.z}}
             });
+            // Clear source after broadcast so it isn't lost between
+            // throttled intervals when sync_camera arrives mid-cycle.
+            src.clear();
         }
 
         // Reset camera sync override at frame end

@@ -347,6 +347,7 @@ void StagingState::update(AppBase& app, float dt) {
 
     bool wants_mouse = app.dev_overlay().wants_mouse();
     bool wants_keyboard = app.dev_overlay().wants_keyboard();
+    const bool sync_override = app.command_dispatcher().context().camera_sync_override;
 
     if (camera_review_ && camera_review_->is_active()) {
         // ── Camera Review Mode ──
@@ -371,7 +372,6 @@ void StagingState::update(AppBase& app, float dt) {
 #else
         bool typing_in_widget = false;
 #endif
-        const bool sync_override = app.command_dispatcher().context().camera_sync_override;
         camera_review_->set_camera_override(sync_override);
         camera_review_->update(dt, app.input(), wants_mouse, typing_in_widget,
                                mouse_dx, mouse_dy);
@@ -437,8 +437,39 @@ void StagingState::update(AppBase& app, float dt) {
         }
     } else {
         // ── Orbit Camera (default) ──
+
+        // When sync_camera override is active in orbit mode, apply the
+        // externally synced camera directly instead of computing from
+        // azimuth/elevation/distance.
+        if (sync_override && app.renderer().has_gs_cloud()) {
+            auto pos = app.renderer().camera().position();
+            auto tgt = app.renderer().camera().target();
+
+            // Keep orbit state in sync so world streaming, gizmo
+            // projection, and other orbit-derived logic use the
+            // externally synced camera rather than stale values.
+            target_ = tgt;
+            glm::vec3 delta = pos - tgt;
+            distance_ = glm::length(delta);
+            if (distance_ > 0.001f) {
+                glm::vec3 dir = delta / distance_;
+                azimuth_ = std::atan2(dir.x, dir.z);
+                elevation_ = std::asin(std::clamp(dir.y / 1.0f, -1.0f, 1.0f));
+            }
+
+            auto& gs_renderer = app.renderer().gs_renderer();
+            float aspect = static_cast<float>(gs_renderer.output_width()) /
+                           static_cast<float>(gs_renderer.output_height());
+            auto view = glm::lookAt(pos, tgt, glm::vec3(0, 1, 0));
+            auto proj = glm::perspective(glm::radians(45.0f), aspect, 0.1f, 1000.0f);
+            auto proj_gizmo = proj;
+            proj[1][1] *= -1.0f;  // Vulkan Y-flip
+            app.renderer().set_gs_camera(view, proj);
+            gs_vp_ = proj_gizmo * view;
+        }
+
         // Camera orbit — only when ImGui doesn't want the mouse
-        if (!wants_mouse) {
+        if (!wants_mouse && !sync_override) {
             auto* window = app.window();
             double mx, my;
             glfwGetCursorPos(window, &mx, &my);
@@ -496,8 +527,8 @@ void StagingState::update(AppBase& app, float dt) {
             camera_initialized_ = true;
         }
 
-        // Apply camera
-        if (app.renderer().has_gs_cloud()) {
+        // Apply camera (skip when sync override already applied above)
+        if (!sync_override && app.renderer().has_gs_cloud()) {
             float cos_el = std::cos(elevation_);
             glm::vec3 eye{
                 target_.x + distance_ * cos_el * std::sin(azimuth_),
