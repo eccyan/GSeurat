@@ -189,6 +189,20 @@ export interface SetCameraCommand {
   follow_speed?: number;
 }
 
+export interface SyncCameraCommand {
+  cmd: "sync_camera";
+  source: "bricklayer";
+  position: [number, number, number];
+  target: [number, number, number];
+}
+
+export interface CameraSyncEvent {
+  event: "camera_sync";
+  source: "engine" | "bricklayer";
+  position: [number, number, number];
+  target: [number, number, number];
+}
+
 export interface SubscribeCommand {
   cmd: "subscribe";
   events: string[];
@@ -317,6 +331,7 @@ export type Command =
   | GetFeaturesCommand
   | SetFeatureCommand
   | SetCameraCommand
+  | SyncCameraCommand
   | SubscribeCommand
   | UnsubscribeCommand
   | MoveCommand
