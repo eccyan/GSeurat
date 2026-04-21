@@ -525,12 +525,6 @@ function SceneChildren({
             </TreeNode>
           </TreeNode>
 
-          {/* Player */}
-          <TreeNode
-            icon={icons.player} label="Player"
-            isActive={isActive({ kind: 'player' })}
-            onClick={() => click({ kind: 'player' })}
-          />
         </TreeNode>
       </div>
 
