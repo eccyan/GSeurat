@@ -6,7 +6,7 @@ import { buildManifest } from '../lib/manifestExport.js';
 import { parseVox } from '../lib/voxImport.js';
 import { parsePlyToVoxels } from '../lib/plyImport.js';
 import { parseObjToVoxels } from '../lib/objImport.js';
-import { sendBridgeCommand } from '@gseurat/engine-client';
+import { sendBridgeCommand, BRIDGE_REST_URL } from '@gseurat/engine-client';
 import type { EchidnaFile, Asset } from '../store/types.js';
 import { NewProjectDialog } from './NewProjectDialog.js';
 import { ResizeGridDialog } from './ResizeGridDialog.js';
@@ -17,8 +17,6 @@ import { ImageImportDialog } from './ImageImportDialog.js';
 import {
   saveProjectRootHandle,
 } from '@gseurat/project-root';
-
-const BRIDGE_REST_URL = 'http://localhost:9101';
 
 const styles: Record<string, React.CSSProperties> = {
   bar: {

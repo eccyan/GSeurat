@@ -8,7 +8,7 @@
  * Phase 0.1 #2.
  */
 
-const BRIDGE_REST_URL = 'http://localhost:9101';
+import { BRIDGE_REST_URL } from '@gseurat/engine-client';
 
 export type ConnectBridgeResult =
   | { ok: true; activeProjectDir: string }

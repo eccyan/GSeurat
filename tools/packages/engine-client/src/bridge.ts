@@ -7,8 +7,7 @@
  */
 
 import { EngineClient } from './client.js';
-
-const BRIDGE_URL = 'ws://localhost:9100';
+import { BRIDGE_WS_URL } from './constants.js';
 const RECONNECT_INTERVAL = 3000; // ms
 
 let client: EngineClient | null = null;
@@ -30,7 +29,7 @@ async function ensureConnected(): Promise<EngineClient | null> {
   connecting = true;
   try {
     if (!client) {
-      client = new EngineClient(BRIDGE_URL);
+      client = new EngineClient(BRIDGE_WS_URL);
     }
     await client.connect();
     connecting = false;

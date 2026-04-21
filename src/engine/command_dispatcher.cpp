@@ -80,26 +80,34 @@ void CommandDispatcher::register_default_commands() {
     });
 
     register_command("set_feature", [this, ok](const json& cmd) -> CommandResult {
-        auto name = cmd.value("feature", "");
-        bool enabled = cmd.value("enabled", false);
+        const auto name = cmd.value("feature", "");
+        const bool enabled = cmd.value("enabled", false);
         auto& f = ctx_.feature_flags;
-        if (name == "gs_rendering") f.gs_rendering = enabled;
-        else if (name == "gs_chunk_culling") f.gs_chunk_culling = enabled;
-        else if (name == "gs_lod") f.gs_lod = enabled;
-        else if (name == "gs_adaptive_budget") f.gs_adaptive_budget = enabled;
-        else if (name == "gs_parallax") f.gs_parallax = enabled;
-        else if (name == "gs_tile_binning") f.gs_tile_binning = enabled;
-        else if (name == "bloom") f.bloom = enabled;
-        else if (name == "depth_of_field") f.depth_of_field = enabled;
-        else if (name == "vignette") f.vignette = enabled;
-        else if (name == "tone_mapping") f.tone_mapping = enabled;
-        else if (name == "fog") f.fog = enabled;
-        else if (name == "point_lights") f.point_lights = enabled;
-        else if (name == "particles") f.particles = enabled;
-        else if (name == "weather") f.weather = enabled;
-        else if (name == "screen_effects") f.screen_effects = enabled;
-        else if (name == "music") f.music = enabled;
-        else if (name == "sfx") f.sfx = enabled;
+
+        static const std::unordered_map<std::string, bool FeatureFlags::*> flag_map = {
+            {"gs_rendering",       &FeatureFlags::gs_rendering},
+            {"gs_chunk_culling",   &FeatureFlags::gs_chunk_culling},
+            {"gs_lod",             &FeatureFlags::gs_lod},
+            {"gs_adaptive_budget", &FeatureFlags::gs_adaptive_budget},
+            {"gs_parallax",        &FeatureFlags::gs_parallax},
+            {"gs_tile_binning",    &FeatureFlags::gs_tile_binning},
+            {"bloom",              &FeatureFlags::bloom},
+            {"depth_of_field",     &FeatureFlags::depth_of_field},
+            {"vignette",           &FeatureFlags::vignette},
+            {"tone_mapping",       &FeatureFlags::tone_mapping},
+            {"fog",                &FeatureFlags::fog},
+            {"point_lights",       &FeatureFlags::point_lights},
+            {"particles",          &FeatureFlags::particles},
+            {"weather",            &FeatureFlags::weather},
+            {"screen_effects",     &FeatureFlags::screen_effects},
+            {"music",              &FeatureFlags::music},
+            {"sfx",                &FeatureFlags::sfx},
+        };
+
+        auto it = flag_map.find(name);
+        if (it != flag_map.end()) {
+            f.*(it->second) = enabled;
+        }
         return ok();
     });
 
@@ -139,51 +147,46 @@ void CommandDispatcher::register_default_commands() {
     });
 
     register_command("set_render_param", [this, ok](const json& cmd) -> CommandResult {
-        auto name = cmd.value("name", "");
-        float value = cmd.value("value", 0.0f);
+        const auto name = cmd.value("name", "");
+        const float value = cmd.value("value", 0.0f);
         auto& pp = ctx_.renderer.post_process_params();
         auto& gs = ctx_.renderer.gs_renderer();
-        if (name == "bloom_threshold") pp.bloom_threshold = value;
-        else if (name == "bloom_soft_knee") pp.bloom_soft_knee = value;
-        else if (name == "bloom_intensity") pp.bloom_intensity = value;
-        else if (name == "exposure") pp.exposure = value;
-        else if (name == "vignette_radius") pp.vignette_radius = value;
-        else if (name == "vignette_softness") pp.vignette_softness = value;
-        else if (name == "dof_focus_distance") pp.dof_focus_distance = value;
-        else if (name == "dof_focus_range") pp.dof_focus_range = value;
-        else if (name == "dof_max_blur") pp.dof_max_blur = value;
-        else if (name == "fog_density") pp.fog_density = value;
-        else if (name == "fog_color_r") pp.fog_color_r = value;
-        else if (name == "fog_color_g") pp.fog_color_g = value;
-        else if (name == "fog_color_b") pp.fog_color_b = value;
-        else if (name == "god_rays_intensity") ctx_.renderer.set_god_rays_intensity(value);
-        else if (name == "scale_multiplier") gs.set_scale_multiplier(value);
-        else if (name == "toon_bands") gs.set_toon_bands(static_cast<int>(value));
-        else if (name == "light_mode") gs.set_light_mode(static_cast<int>(value));
-        else if (name == "light_intensity") gs.set_light_intensity(value);
-        else if (name == "ground_color_r") {
-            auto c = ctx_.renderer.gs_bg_ground_color(); c.r = value;
-            ctx_.renderer.set_gs_background_colors(c, ctx_.renderer.gs_bg_sky_color());
-        }
-        else if (name == "ground_color_g") {
-            auto c = ctx_.renderer.gs_bg_ground_color(); c.g = value;
-            ctx_.renderer.set_gs_background_colors(c, ctx_.renderer.gs_bg_sky_color());
-        }
-        else if (name == "ground_color_b") {
-            auto c = ctx_.renderer.gs_bg_ground_color(); c.b = value;
-            ctx_.renderer.set_gs_background_colors(c, ctx_.renderer.gs_bg_sky_color());
-        }
-        else if (name == "sky_color_r") {
-            auto c = ctx_.renderer.gs_bg_sky_color(); c.r = value;
-            ctx_.renderer.set_gs_background_colors(ctx_.renderer.gs_bg_ground_color(), c);
-        }
-        else if (name == "sky_color_g") {
-            auto c = ctx_.renderer.gs_bg_sky_color(); c.g = value;
-            ctx_.renderer.set_gs_background_colors(ctx_.renderer.gs_bg_ground_color(), c);
-        }
-        else if (name == "sky_color_b") {
-            auto c = ctx_.renderer.gs_bg_sky_color(); c.b = value;
-            ctx_.renderer.set_gs_background_colors(ctx_.renderer.gs_bg_ground_color(), c);
+
+        using Setter = std::function<void(float)>;
+        const std::unordered_map<std::string, Setter> param_map = {
+            // Post-process field assignments
+            {"bloom_threshold",    [&](float v) { pp.bloom_threshold = v; }},
+            {"bloom_soft_knee",    [&](float v) { pp.bloom_soft_knee = v; }},
+            {"bloom_intensity",    [&](float v) { pp.bloom_intensity = v; }},
+            {"exposure",           [&](float v) { pp.exposure = v; }},
+            {"vignette_radius",    [&](float v) { pp.vignette_radius = v; }},
+            {"vignette_softness",  [&](float v) { pp.vignette_softness = v; }},
+            {"dof_focus_distance", [&](float v) { pp.dof_focus_distance = v; }},
+            {"dof_focus_range",    [&](float v) { pp.dof_focus_range = v; }},
+            {"dof_max_blur",       [&](float v) { pp.dof_max_blur = v; }},
+            {"fog_density",        [&](float v) { pp.fog_density = v; }},
+            {"fog_color_r",        [&](float v) { pp.fog_color_r = v; }},
+            {"fog_color_g",        [&](float v) { pp.fog_color_g = v; }},
+            {"fog_color_b",        [&](float v) { pp.fog_color_b = v; }},
+            // Method calls
+            {"god_rays_intensity", [&](float v) { ctx_.renderer.set_god_rays_intensity(v); }},
+            {"scale_multiplier",   [&](float v) { gs.set_scale_multiplier(v); }},
+            {"toon_bands",         [&](float v) { gs.set_toon_bands(static_cast<int>(v)); }},
+            {"light_mode",         [&](float v) { gs.set_light_mode(static_cast<int>(v)); }},
+            {"light_intensity",    [&](float v) { gs.set_light_intensity(v); }},
+            // Ground color channels
+            {"ground_color_r",     [&](float v) { auto c = ctx_.renderer.gs_bg_ground_color(); c.r = v; ctx_.renderer.set_gs_background_colors(c, ctx_.renderer.gs_bg_sky_color()); }},
+            {"ground_color_g",     [&](float v) { auto c = ctx_.renderer.gs_bg_ground_color(); c.g = v; ctx_.renderer.set_gs_background_colors(c, ctx_.renderer.gs_bg_sky_color()); }},
+            {"ground_color_b",     [&](float v) { auto c = ctx_.renderer.gs_bg_ground_color(); c.b = v; ctx_.renderer.set_gs_background_colors(c, ctx_.renderer.gs_bg_sky_color()); }},
+            // Sky color channels
+            {"sky_color_r",        [&](float v) { auto c = ctx_.renderer.gs_bg_sky_color(); c.r = v; ctx_.renderer.set_gs_background_colors(ctx_.renderer.gs_bg_ground_color(), c); }},
+            {"sky_color_g",        [&](float v) { auto c = ctx_.renderer.gs_bg_sky_color(); c.g = v; ctx_.renderer.set_gs_background_colors(ctx_.renderer.gs_bg_ground_color(), c); }},
+            {"sky_color_b",        [&](float v) { auto c = ctx_.renderer.gs_bg_sky_color(); c.b = v; ctx_.renderer.set_gs_background_colors(ctx_.renderer.gs_bg_ground_color(), c); }},
+        };
+
+        auto it = param_map.find(name);
+        if (it != param_map.end()) {
+            it->second(value);
         }
         return ok();
     });

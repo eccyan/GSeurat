@@ -14,7 +14,7 @@ import { serializeVfx } from './lib/vfxExport.js';
 import { parseVfx } from './lib/vfxImport.js';
 import { hasFileSystemAccess, openProjectDirectory, saveProject, loadProject, downloadProject, uploadProject, copyPlyToProject, loadPlyFromProject } from './lib/projectIO.js';
 import { loadPly, type PlyPoint } from '@gseurat/vfx-utils';
-import { sendBridgeCommands, sendBridgeCommand } from '@gseurat/engine-client';
+import { sendBridgeCommands, sendBridgeCommand, BRIDGE_REST_URL } from '@gseurat/engine-client';
 import { Preview } from './viewport/Preview.js';
 import { LayerProperties } from './panels/LayerProperties.js';
 import { PresetSettings } from './panels/PresetSettings.js';
@@ -188,7 +188,7 @@ function MenuBar({ onImportScene }: { onImportScene?: () => void }) {
     );
     if (!projectPath) return;
     try {
-      const res = await fetch('http://localhost:9101/api/project/root', {
+      const res = await fetch(`${BRIDGE_REST_URL}/api/project/root`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ path: projectPath }),

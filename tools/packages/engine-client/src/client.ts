@@ -1,4 +1,5 @@
 import type { Command, Response, EngineEvent } from "./types.js";
+import { BRIDGE_WS_URL } from "./constants.js";
 
 interface PendingRequest {
   resolve: (value: unknown) => void;
@@ -18,7 +19,7 @@ export class EngineClient {
   private readonly pending = new Map<number, PendingRequest>();
   private readonly eventHandlers = new Map<string, Set<(data: unknown) => void>>();
 
-  constructor(url: string = "ws://localhost:9100") {
+  constructor(url: string = BRIDGE_WS_URL) {
     this.url = url;
   }
 

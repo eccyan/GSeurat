@@ -52,7 +52,7 @@ export function useEngine() {
 
     try {
       const mod = await import('@gseurat/engine-client');
-      const client = new mod.EngineClient('ws://localhost:9100') as EngineClientLike;
+      const client = new mod.EngineClient(mod.BRIDGE_WS_URL) as EngineClientLike;
       await client.connect();
       clientRef.current = client;
       setConnected(true);
