@@ -34,6 +34,24 @@ CameraParams parse_camera_params(const nlohmann::json& j) {
     if (j.contains("fixed_position")) p.fixed_position = SceneLoader::parse_vec3(j["fixed_position"]);
     p.min_ground_clearance = j.value("min_ground_clearance", 10.0f);
     p.target_y_offset = j.value("target_y_offset", 2.5f);
+    if (j.contains("cinematic_easing")) {
+        p.cinematic_easing = parse_easing(j["cinematic_easing"].get<std::string>());
+    }
+    p.cinematic_duration = j.value("cinematic_duration", 5.0f);
+    if (j.contains("cinematic_playback")) {
+        std::string pb = j["cinematic_playback"].get<std::string>();
+        if (pb == "loop")           p.cinematic_playback = CinematicPlayback::loop;
+        else if (pb == "ping_pong") p.cinematic_playback = CinematicPlayback::ping_pong;
+        else if (pb == "manual")    p.cinematic_playback = CinematicPlayback::manual;
+        else                        p.cinematic_playback = CinematicPlayback::once;
+    }
+    p.play_on_enter = j.value("play_on_enter", true);
+    if (j.contains("target_mode")) {
+        std::string tm = j["target_mode"].get<std::string>();
+        if (tm == "target_path")      p.target_mode = TargetMode::target_path;
+        else if (tm == "fixed_point") p.target_mode = TargetMode::fixed_point;
+        else                          p.target_mode = TargetMode::player;
+    }
     // rail_id resolved later by caller
     return p;
 }

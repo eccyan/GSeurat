@@ -3,6 +3,7 @@
 //                                                  src/engine/gs_spline.cpp)
 
 #include "gseurat/engine/camera_zone_system.hpp"
+#include "gseurat/engine/gs_animator.hpp"
 
 #include <cmath>
 #include <cstdio>
@@ -506,6 +507,19 @@ void test_set_orbit_from_camera() {
           "set_orbit: camera at -Z after set from -Z direction");
 }
 
+// ── Test 13: CinematicParams Defaults ──────────────────────────────────────
+
+void test_cinematic_params_defaults() {
+    std::printf("CinematicParams defaults:\n");
+
+    gseurat::CameraParams p;
+    check(p.cinematic_duration == 5.0f, "default cinematic_duration = 5.0");
+    check(p.cinematic_easing == gseurat::GsEasing::InOutQuad, "default cinematic_easing = InOutQuad");
+    check(p.cinematic_playback == gseurat::CinematicPlayback::once, "default cinematic_playback = once");
+    check(p.play_on_enter == true, "default play_on_enter = true");
+    check(p.target_mode == gseurat::TargetMode::player, "default target_mode = player");
+}
+
 // ── Main ────────────────────────────────────────────────────────────────────
 
 int main() {
@@ -523,6 +537,7 @@ int main() {
     test_constraint_position_clamp();
     test_constraint_pitch_clamp();
     test_set_orbit_from_camera();
+    test_cinematic_params_defaults();
 
     std::printf("\n=== Results: %d passed, %d failed ===\n", passed, failed);
     return failed > 0 ? 1 : 0;

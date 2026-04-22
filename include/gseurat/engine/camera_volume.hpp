@@ -5,6 +5,8 @@
 // Provides CamAABB and CamSphere shapes with contains/clamp/volume_size helpers,
 // plus CameraVolume and CameraTrigger aggregates used by the camera pipeline.
 
+#include "gseurat/engine/gs_animator.hpp"
+
 #include <glm/glm.hpp>
 #include <variant>
 #include <vector>
@@ -103,6 +105,19 @@ enum class CameraMode : uint8_t {
     side_scroll,
 };
 
+enum class CinematicPlayback : uint8_t {
+    once,       // Play once, stop at t=1
+    loop,       // Wrap t from 1 back to 0
+    ping_pong,  // Reverse direction at endpoints
+    manual,     // Timer does NOT auto-advance; driven by API
+};
+
+enum class TargetMode : uint8_t {
+    player,       // Look at player position (spring-damped)
+    target_path,  // Look at target_path.evaluate(t') — same eased t
+    fixed_point,  // Look at CameraParams::fixed_position
+};
+
 struct CameraState {
     glm::vec3 position{0.0f};
     glm::vec3 target{0.0f, 0.0f, -1.0f};
@@ -126,6 +141,13 @@ struct CameraParams {
     int rail_index{-1};
     float min_ground_clearance{10.0f};  // Minimum Y above player (terrain) for rail cameras
     float target_y_offset{2.5f};       // Y offset above player for camera look-at target
+
+    // Cinematic rail parameters (only used when mode == cinematic_rail)
+    float cinematic_duration{5.0f};
+    GsEasing cinematic_easing{GsEasing::InOutQuad};
+    CinematicPlayback cinematic_playback{CinematicPlayback::once};
+    bool play_on_enter{true};
+    TargetMode target_mode{TargetMode::player};
 };
 
 struct CameraVolume {
