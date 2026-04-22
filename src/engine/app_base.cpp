@@ -18,6 +18,8 @@
 #include "gseurat/engine/ecs/components/player_jump.hpp"
 #include "gseurat/engine/ecs/components/collider_component.hpp"
 #include "gseurat/engine/ecs/components/kinematic_body.hpp"
+#include "gseurat/engine/ecs/components/nav_zone_volume.hpp"
+#include "gseurat/engine/ecs/components/light_probe.hpp"
 #include "gseurat/engine/systems/portal_trigger_handler.hpp"
 
 #define GLFW_INCLUDE_VULKAN
@@ -505,6 +507,14 @@ void AppBase::init_game_object_system() {
         [](const KinematicBody& kb) -> nlohmann::json {
             return kinematic_body_to_json(kb);
         });
+
+    component_registry_.register_component<NavZoneVolume>("NavZoneVolume",
+        [](const nlohmann::json& j) -> NavZoneVolume { return nav_zone_volume_from_json(j); },
+        [](const NavZoneVolume& v) -> nlohmann::json { return nav_zone_volume_to_json(v); });
+
+    component_registry_.register_component<LightProbe>("LightProbe",
+        [](const nlohmann::json& j) -> LightProbe { return light_probe_from_json(j); },
+        [](const LightProbe& lp) -> nlohmann::json { return light_probe_to_json(lp); });
 
     // Register engine-level systems
     system_scheduler_.add_system({"bone_animation",

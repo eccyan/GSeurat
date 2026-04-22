@@ -286,6 +286,18 @@
                 "desired_jump_height": { "type": "number", "default": 2.0, "minimum": 0 },
                 "time_to_apex": { "type": "number", "default": 0.4, "minimum": 0 }
               }
+            },
+            "NavZoneVolume": {
+              "type": "object",
+              "properties": {
+                "zone_id": { "type": "integer", "minimum": 0, "maximum": 255, "default": 0 }
+              }
+            },
+            "LightProbe": {
+              "type": "object",
+              "properties": {
+                "color": { "type": "array", "items": {"type": "number"}, "minItems": 3, "maxItems": 3 }
+              }
             }
           },
           "additionalProperties": { "type": "object" }
