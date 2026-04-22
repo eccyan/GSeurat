@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useEditorStore } from '../store/useEditorStore.js';
-import type { LightPlacement, PortalPlacement } from '../store/useEditorStore.js';
+import type { LightPlacement, PortalPlacement, ColliderData } from '../store/useEditorStore.js';
 
 type Engine = ReturnType<typeof import('./useEngine.js').useEngine>;
 
@@ -13,6 +13,7 @@ export function useEngineSync(engine: Engine) {
   const prevLightsRef = useRef<LightPlacement[]>([]);
   const prevPortalsRef = useRef<PortalPlacement[]>([]);
   const prevAmbientRef = useRef<[number, number, number, number]>([0.25, 0.28, 0.45, 1.0]);
+  const prevCollidersRef = useRef<ColliderData[]>([]);
 
   useEffect(() => {
     // Initialize refs with current store state
@@ -20,6 +21,26 @@ export function useEngineSync(engine: Engine) {
     prevLightsRef.current = state.lights;
     prevPortalsRef.current = state.portals;
     prevAmbientRef.current = state.ambientColor;
+    prevCollidersRef.current = state.colliders;
+
+    // Initial collider sync from engine
+    void (async () => {
+      if (!engine.isConnected()) return;
+      const collidersResp = await engine.listColliders();
+      if (collidersResp?.colliders) {
+        const store = useEditorStore.getState();
+        store.setColliders(collidersResp.colliders.map(c => ({
+          id: c.id,
+          name: c.name,
+          position: c.position,
+          rotation: c.rotation,
+          shape: c.collider.shape as ColliderData['shape'],
+          collision_mask: (c.collider.collision_mask as number) ?? 0xFFFFFFFF,
+          is_trigger: (c.collider.is_trigger as boolean) ?? false,
+          is_dynamic: (c.collider.is_dynamic as boolean) ?? false,
+        })));
+      }
+    })();
 
     const unsub = useEditorStore.subscribe((state, prevState) => {
       if (!engine.isConnected()) return;
@@ -38,6 +59,20 @@ export function useEngineSync(engine: Engine) {
       // --- Portals sync ---
       if (state.portals !== prevState.portals) {
         syncPortals(engine, prevState.portals, state.portals);
+      }
+
+      // --- Colliders sync ---
+      if (state.colliders !== prevState.colliders) {
+        syncColliders(engine, prevState.colliders, state.colliders);
+      }
+
+      // --- Auto-enable wireframes when colliders layer is active ---
+      if (state.activeLayer !== prevState.activeLayer) {
+        if (state.activeLayer === 'colliders') {
+          engine.setFeature('debug_colliders', true);
+        } else if (prevState.activeLayer === 'colliders') {
+          engine.setFeature('debug_colliders', false);
+        }
       }
     });
 
@@ -119,6 +154,59 @@ function syncPortals(
   if (next.length < prev.length) {
     for (let i = prev.length - 1; i >= next.length; i--) {
       engine.removePortal(i);
+    }
+  }
+}
+
+async function syncColliders(
+  engine: Engine,
+  prev: ColliderData[],
+  next: ColliderData[],
+) {
+  const prevIds = new Set(prev.map(c => c.id));
+  const nextIds = new Set(next.map(c => c.id));
+
+  // Additions
+  for (const c of next) {
+    if (!prevIds.has(c.id)) {
+      await engine.addCollider({
+        id: c.id,
+        name: c.name,
+        position: c.position,
+        rotation: c.rotation,
+        collider: {
+          shape: c.shape,
+          collision_mask: c.collision_mask,
+          is_trigger: c.is_trigger,
+          is_dynamic: c.is_dynamic,
+        },
+      });
+    }
+  }
+
+  // Removals
+  for (const c of prev) {
+    if (!nextIds.has(c.id)) {
+      await engine.removeCollider(c.id);
+    }
+  }
+
+  // Updates (check by reference — Zustand immutable updates create new objects)
+  for (const c of next) {
+    if (prevIds.has(c.id)) {
+      const prevC = prev.find(p => p.id === c.id);
+      if (prevC && prevC !== c) {
+        await engine.updateCollider(c.id, {
+          position: c.position,
+          rotation: c.rotation,
+          collider: {
+            shape: c.shape,
+            collision_mask: c.collision_mask,
+            is_trigger: c.is_trigger,
+            is_dynamic: c.is_dynamic,
+          },
+        });
+      }
     }
   }
 }
