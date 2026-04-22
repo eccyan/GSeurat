@@ -99,6 +99,11 @@ void CameraZoneSystem::load_from_data(
     blend_elapsed_ = 0.0f;
     spring_initialized_ = false;
     last_rail_t_ = -1.0f;
+
+    // Reset cinematic rail state so stale values don't carry across scene loads.
+    cinematic_timer_ = 0.0f;
+    cinematic_state_ = CinematicState::idle;
+    cinematic_reverse_ = false;
 }
 
 // ── Stage 1: Zone Resolution ────────────────────────────────────────────────
@@ -265,11 +270,12 @@ CameraState CameraZoneSystem::evaluate_vcam(const CameraParams& params,
                     }
                     break;
                 case CinematicPlayback::loop:
-                    if (base_t >= 1.0f) {
+                    if (params.cinematic_duration > 0.0f && base_t >= 1.0f) {
                         cinematic_timer_ = std::fmod(cinematic_timer_, params.cinematic_duration);
                         base_t = cinematic_timer_ / params.cinematic_duration;
                     }
                     if (base_t < 0.0f) base_t += 1.0f;
+                    base_t = std::clamp(base_t, 0.0f, 1.0f);
                     break;
                 case CinematicPlayback::ping_pong:
                     if (base_t >= 1.0f && !cinematic_reverse_) {
