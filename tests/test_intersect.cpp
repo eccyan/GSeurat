@@ -306,6 +306,145 @@ int main() {
         check(!contact.has_value(), "cap_vs_box: separated → no contact");
     }
 
+    std::printf("\n--- Capsule sweep tests ---\n");
+
+    // ── Test 16: Sweep downward onto box floor ──
+    // Capsule at (0,3,0) upright hh=0.5 r=0.3, sweep (0,-1,0) max=5.
+    // Box floor at (0,0,0) half_extents (5,0.5,5), top face at y=0.5.
+    // Contact when capsule bottom sphere hits floor: y ≈ 0.5 + 0.3 = 0.8
+    // t ≈ (3 - 0.8) / 5 = 0.44
+    {
+        CapsuleData cap;
+        cap.radius      = 0.3f;
+        cap.half_height = 0.5f;
+
+        BoxData floor_box;
+        floor_box.half_extents = glm::vec3(5.0f, 0.5f, 5.0f);
+
+        ColliderShape shape = floor_box;
+
+        auto hit = sweep_capsule(
+            glm::vec3(0.0f, 3.0f, 0.0f), identity_rot(), cap,
+            glm::vec3(0.0f, -1.0f, 0.0f), 5.0f,
+            shape, glm::vec3(0.0f, 0.0f, 0.0f), identity_rot());
+
+        check(hit.has_value(), "sweep: capsule sweeping down hits floor box");
+        if (hit) {
+            check(hit->t >= 0.0f && hit->t <= 1.0f, "sweep down-floor: t in [0,1]");
+            check(hit->normal.y > 0.5f, "sweep down-floor: normal points roughly up");
+        }
+    }
+
+    // ── Test 17: Sweep forward into wall ──
+    // Capsule at (0,1,0) upright, sweep (1,0,0) max=5.
+    // Box wall at (3,1,0) half_extents (0.5,2,2), left face at x=2.5.
+    // Hit when capsule right edge reaches x=2.5: x ≈ 2.5 - 0.3 = 2.2, t ≈ 2.2/5 = 0.44
+    {
+        CapsuleData cap;
+        cap.radius      = 0.3f;
+        cap.half_height = 0.5f;
+
+        BoxData wall_box;
+        wall_box.half_extents = glm::vec3(0.5f, 2.0f, 2.0f);
+
+        ColliderShape shape = wall_box;
+
+        auto hit = sweep_capsule(
+            glm::vec3(0.0f, 1.0f, 0.0f), identity_rot(), cap,
+            glm::vec3(1.0f, 0.0f, 0.0f), 5.0f,
+            shape, glm::vec3(3.0f, 1.0f, 0.0f), identity_rot());
+
+        check(hit.has_value(), "sweep: capsule sweeping +X hits wall box");
+        if (hit) {
+            check(hit->t >= 0.0f && hit->t < 1.0f, "sweep forward-wall: t in [0,1)");
+            check(hit->normal.x < -0.5f, "sweep forward-wall: normal points roughly -X");
+        }
+    }
+
+    // ── Test 18: Sweep past sphere (miss) ──
+    // Capsule at (0,1,0) sweep (1,0,0) max=3. Sphere at (2,5,0) radius 0.5.
+    // Sphere is far above — should not hit.
+    {
+        CapsuleData cap;
+        cap.radius      = 0.3f;
+        cap.half_height = 0.5f;
+
+        SphereData sph;
+        sph.radius = 0.5f;
+
+        ColliderShape shape = sph;
+
+        auto hit = sweep_capsule(
+            glm::vec3(0.0f, 1.0f, 0.0f), identity_rot(), cap,
+            glm::vec3(1.0f, 0.0f, 0.0f), 3.0f,
+            shape, glm::vec3(2.0f, 5.0f, 0.0f), identity_rot());
+
+        check(!hit.has_value(), "sweep: capsule sweeping +X misses sphere above");
+    }
+
+    // ── Test 19: Sweep into sphere ──
+    // Capsule at (0,1,0) upright, sweep (1,0,0) max=5. Sphere at (3,1,0) radius 0.5.
+    // Should hit. Combined radius = 0.3 + 0.5 = 0.8. Hit when dist ≈ 0.8, x ≈ 3 - 0.8 = 2.2
+    {
+        CapsuleData cap;
+        cap.radius      = 0.3f;
+        cap.half_height = 0.5f;
+
+        SphereData sph;
+        sph.radius = 0.5f;
+
+        ColliderShape shape = sph;
+
+        auto hit = sweep_capsule(
+            glm::vec3(0.0f, 1.0f, 0.0f), identity_rot(), cap,
+            glm::vec3(1.0f, 0.0f, 0.0f), 5.0f,
+            shape, glm::vec3(3.0f, 1.0f, 0.0f), identity_rot());
+
+        check(hit.has_value(), "sweep: capsule sweeping +X hits sphere");
+        if (hit) {
+            check(hit->t >= 0.0f && hit->t < 1.0f, "sweep into sphere: t in [0,1)");
+        }
+    }
+
+    // ── Test 20: Zero-distance sweep → no hit ──
+    {
+        CapsuleData cap;
+        cap.radius      = 0.3f;
+        cap.half_height = 0.5f;
+
+        BoxData box;
+        box.half_extents = glm::vec3(1.0f);
+
+        ColliderShape shape = box;
+
+        auto hit = sweep_capsule(
+            glm::vec3(0.0f, 5.0f, 0.0f), identity_rot(), cap,
+            glm::vec3(0.0f, -1.0f, 0.0f), 0.0f,
+            shape, glm::vec3(0.0f, 0.0f, 0.0f), identity_rot());
+
+        check(!hit.has_value(), "sweep: max_distance=0 → no hit");
+    }
+
+    // ── Test 21: Sweep parallel to wall (miss) ──
+    // Capsule at (0,1,0) sweep (0,0,1) max=5. Wall box at (3,1,0). Should not hit.
+    {
+        CapsuleData cap;
+        cap.radius      = 0.3f;
+        cap.half_height = 0.5f;
+
+        BoxData wall_box;
+        wall_box.half_extents = glm::vec3(0.5f, 2.0f, 2.0f);
+
+        ColliderShape shape = wall_box;
+
+        auto hit = sweep_capsule(
+            glm::vec3(0.0f, 1.0f, 0.0f), identity_rot(), cap,
+            glm::vec3(0.0f, 0.0f, 1.0f), 5.0f,
+            shape, glm::vec3(3.0f, 1.0f, 0.0f), identity_rot());
+
+        check(!hit.has_value(), "sweep: capsule sweeping +Z parallel to wall at X=3 → miss");
+    }
+
     std::printf("\n=== Results: %d passed, %d failed ===\n", passed, failed);
     return (failed == 0) ? 0 : 1;
 }

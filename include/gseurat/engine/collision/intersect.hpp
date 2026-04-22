@@ -46,4 +46,10 @@ std::optional<Contact> capsule_vs_box(
     const glm::vec3& cap_pos, const glm::quat& cap_rot, const CapsuleData& capsule,
     const glm::vec3& box_pos, const glm::quat& box_rot, const BoxData& box);
 
+// ── Capsule sweep ─────────────────────────────────────────────────
+std::optional<SweepHit> sweep_capsule(
+    const glm::vec3& cap_pos, const glm::quat& cap_rot, const CapsuleData& capsule,
+    const glm::vec3& direction, float max_distance,
+    const ColliderShape& shape, const glm::vec3& pos, const glm::quat& rot);
+
 }  // namespace gseurat

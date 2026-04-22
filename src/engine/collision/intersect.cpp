@@ -400,4 +400,78 @@ std::optional<Contact> capsule_vs_box(
     return Contact{best_obb, normal, depth};
 }
 
+// ── Capsule sweep ────────────────────────────────────────────────────────────
+
+std::optional<SweepHit> sweep_capsule(
+    const glm::vec3& cap_pos, const glm::quat& cap_rot, const CapsuleData& capsule,
+    const glm::vec3& direction, float max_distance,
+    const ColliderShape& shape, const glm::vec3& pos, const glm::quat& rot)
+{
+    if (max_distance <= 0.0f) return std::nullopt;
+
+    glm::vec3 dir = glm::normalize(direction);
+
+    // Helper to test overlap at a given position
+    auto test_overlap = [&](const glm::vec3& test_pos) -> std::optional<Contact> {
+        return std::visit([&](const auto& s) -> std::optional<Contact> {
+            using T = std::decay_t<decltype(s)>;
+            if constexpr (std::is_same_v<T, SphereData>)
+                return capsule_vs_sphere(test_pos, cap_rot, capsule, pos, s);
+            else if constexpr (std::is_same_v<T, CapsuleData>)
+                return capsule_vs_capsule(test_pos, cap_rot, capsule, pos, rot, s);
+            else if constexpr (std::is_same_v<T, BoxData>)
+                return capsule_vs_box(test_pos, cap_rot, capsule, pos, rot, s);
+            else
+                return std::nullopt;
+        }, shape);
+    };
+
+    // Check if already overlapping at start
+    auto start_contact = test_overlap(cap_pos);
+    if (start_contact) {
+        return SweepHit{0.0f, start_contact->point, start_contact->normal};
+    }
+
+    // Check if endpoint overlaps (if not, no hit along the path)
+    glm::vec3 end_pos = cap_pos + dir * max_distance;
+    auto end_contact = test_overlap(end_pos);
+    if (!end_contact) {
+        // Sample at 25%, 50%, 75% of the distance for thin obstacles
+        bool any_hit = false;
+        float hit_t_approx = max_distance;
+        for (float frac : {0.25f, 0.5f, 0.75f}) {
+            glm::vec3 mid = cap_pos + dir * (max_distance * frac);
+            if (test_overlap(mid)) {
+                any_hit = true;
+                hit_t_approx = max_distance * frac;
+                break;
+            }
+        }
+        if (!any_hit) return std::nullopt;
+        // Binary search from start to the intermediate hit point
+        end_pos = cap_pos + dir * hit_t_approx;
+        end_contact = test_overlap(end_pos);
+    }
+
+    // Binary search for exact contact point
+    float lo = 0.0f;
+    float hi = glm::length(end_pos - cap_pos);  // distance where overlap exists
+    Contact last_contact = *end_contact;
+
+    for (int i = 0; i < 16; ++i) {
+        float mid = (lo + hi) * 0.5f;
+        glm::vec3 mid_pos = cap_pos + dir * mid;
+        auto contact = test_overlap(mid_pos);
+        if (contact) {
+            hi = mid;
+            last_contact = *contact;
+        } else {
+            lo = mid;
+        }
+    }
+
+    float t = glm::clamp(hi / max_distance, 0.0f, 1.0f);
+    return SweepHit{t, last_contact.point, last_contact.normal};
+}
+
 }  // namespace gseurat
