@@ -105,6 +105,7 @@ void CommandDispatcher::register_default_commands() {
             {"screen_effects",     &FeatureFlags::screen_effects},
             {"music",              &FeatureFlags::music},
             {"sfx",                &FeatureFlags::sfx},
+            {"debug_colliders",    &FeatureFlags::debug_colliders},
         };
 
         auto it = flag_map.find(name);
