@@ -16,6 +16,8 @@
 #include "gseurat/engine/ecs/components/screen_fade.hpp"
 #include "gseurat/engine/ecs/components/player_controller.hpp"
 #include "gseurat/engine/ecs/components/player_jump.hpp"
+#include "gseurat/engine/ecs/components/collider_component.hpp"
+#include "gseurat/engine/ecs/components/kinematic_body.hpp"
 #include "gseurat/engine/systems/portal_trigger_handler.hpp"
 
 #define GLFW_INCLUDE_VULKAN
@@ -486,6 +488,22 @@ void AppBase::init_game_object_system() {
         },
         [](const PlayerJump& c) -> nlohmann::json {
             return {{"height", c.height}, {"duration", c.duration}};
+        });
+
+    component_registry_.register_component<ColliderComponent>("ColliderComponent",
+        [](const nlohmann::json& j) -> ColliderComponent {
+            return collider_from_json(j);
+        },
+        [](const ColliderComponent& c) -> nlohmann::json {
+            return collider_to_json(c);
+        });
+
+    component_registry_.register_component<KinematicBody>("KinematicBody",
+        [](const nlohmann::json& j) -> KinematicBody {
+            return kinematic_body_from_json(j);
+        },
+        [](const KinematicBody& kb) -> nlohmann::json {
+            return kinematic_body_to_json(kb);
         });
 
     // Register engine-level systems

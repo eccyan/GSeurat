@@ -253,6 +253,41 @@
         "ply_file": { "type": "string" },
         "components": {
           "type": "object",
+          "properties": {
+            "ColliderComponent": {
+              "type": "object",
+              "properties": {
+                "shape": {
+                  "type": "object",
+                  "properties": {
+                    "type": { "type": "string", "enum": ["box", "sphere", "capsule"] },
+                    "half_extents": { "$ref": "#/definitions/vec3" },
+                    "radius": { "type": "number", "minimum": 0 },
+                    "half_height": { "type": "number", "minimum": 0 }
+                  },
+                  "required": ["type"]
+                },
+                "offset": { "$ref": "#/definitions/vec3" },
+                "local_rotation": {
+                  "type": "array",
+                  "items": { "type": "number" },
+                  "minItems": 4,
+                  "maxItems": 4
+                },
+                "collision_mask": { "type": "integer", "default": 4294967295 },
+                "is_trigger": { "type": "boolean", "default": false },
+                "is_dynamic": { "type": "boolean", "default": false }
+              }
+            },
+            "KinematicBody": {
+              "type": "object",
+              "properties": {
+                "gravity_scale": { "type": "number", "default": 1.0 },
+                "desired_jump_height": { "type": "number", "default": 2.0, "minimum": 0 },
+                "time_to_apex": { "type": "number", "default": 0.4, "minimum": 0 }
+              }
+            }
+          },
           "additionalProperties": { "type": "object" }
         },
         "pbd": {
