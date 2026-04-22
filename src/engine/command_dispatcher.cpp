@@ -1,9 +1,11 @@
 #include "gseurat/engine/camera_zone_system.hpp"
+#include "gseurat/engine/collision/collision_system.hpp"
 #include "gseurat/engine/command_dispatcher.hpp"
 #include "gseurat/engine/component_registry.hpp"
 #include "gseurat/engine/control_server.hpp"
 #include "gseurat/engine/debug_dump.hpp"
 #include "gseurat/engine/coordinate.hpp"
+#include "gseurat/engine/ecs/components/collider_component.hpp"
 #include "gseurat/engine/ecs/default_components.hpp"
 #include "gseurat/engine/ecs/ecs.hpp"
 #include "gseurat/engine/feature_flags.hpp"
@@ -659,6 +661,198 @@ void CommandDispatcher::register_default_commands() {
         }
         ctx_.control_server->unsubscribe_all();
         return json{{"type", "ok"}};
+    });
+
+    // --- Collider CRUD commands ---
+
+    register_command("add_collider", [this, ok](const json& cmd) -> CommandResult {
+        if (!ctx_.collision_system)
+            return std::unexpected(std::string("collision_system not available"));
+
+        std::string id = cmd.value("id", "");
+        if (id.empty())
+            return std::unexpected(std::string("missing 'id' field"));
+
+        std::string name = cmd.value("name", id);
+
+        // Parse position
+        glm::vec3 pos{0.0f};
+        if (cmd.contains("position") && cmd["position"].is_array()) {
+            auto& p = cmd["position"];
+            pos = glm::vec3(p[0].get<float>(), p[1].get<float>(), p[2].get<float>());
+        }
+
+        // Parse collider component from "collider" field
+        ColliderComponent collider;
+        if (cmd.contains("collider") && cmd["collider"].is_object()) {
+            collider = collider_from_json(cmd["collider"]);
+        }
+
+        // Parse rotation as quaternion [x,y,z,w] and apply to collider's local_rotation
+        if (cmd.contains("rotation") && cmd["rotation"].is_array()) {
+            auto& r = cmd["rotation"];
+            collider.local_rotation = glm::quat(
+                r[3].get<float>(), r[0].get<float>(), r[1].get<float>(), r[2].get<float>());
+        }
+
+        // Create ECS entity
+        auto entity = ctx_.world.create();
+        ctx_.world.add<ecs::Transform>(entity,
+            ecs::Transform{coord::WorldPos(pos), {1.0f, 1.0f}});
+        ctx_.world.add<ColliderComponent>(entity, collider);
+
+        // Store in scene_objects for ID tracking
+        GameObjectData go_data;
+        go_data.id = id;
+        go_data.name = name;
+        go_data.position = coord::GridPos(pos);
+        go_data.components = cmd.contains("collider") ? json{{"ColliderComponent", cmd["collider"]}} : json::object();
+        ctx_.scene_objects.game_objects.push_back(go_data);
+
+        ctx_.collision_system->mark_dirty();
+
+        json response = ok().value();
+        response["id"] = id;
+        return response;
+    });
+
+    register_command("update_collider", [this, ok](const json& cmd) -> CommandResult {
+        if (!ctx_.collision_system)
+            return std::unexpected(std::string("collision_system not available"));
+
+        std::string id = cmd.value("id", "");
+        if (id.empty())
+            return std::unexpected(std::string("missing 'id' field"));
+
+        // Find the game object and its entity
+        auto& game_objects = ctx_.scene_objects.game_objects;
+        auto go_it = std::find_if(game_objects.begin(), game_objects.end(),
+            [&id](const GameObjectData& go) { return go.id == id; });
+        if (go_it == game_objects.end())
+            return std::unexpected(std::string("collider not found: " + id));
+
+        // Find the ECS entity — scan entities with ColliderComponent
+        // Match by position (WorldPos from GridPos)
+        ecs::Entity target_entity = ecs::kNullEntity;
+        glm::vec3 go_pos = go_it->position.vec();
+
+        ctx_.world.view<ecs::Transform, ColliderComponent>().each(
+            [&](ecs::Entity e, ecs::Transform& t, ColliderComponent&) {
+                if (target_entity == ecs::kNullEntity) {
+                    glm::vec3 epos = t.position.vec();
+                    if (glm::length(epos - go_pos) < 0.01f) {
+                        target_entity = e;
+                    }
+                }
+            });
+
+        if (target_entity == ecs::kNullEntity)
+            return std::unexpected(std::string("entity not found for collider: " + id));
+
+        // Update position
+        if (cmd.contains("position") && cmd["position"].is_array()) {
+            auto& p = cmd["position"];
+            glm::vec3 new_pos(p[0].get<float>(), p[1].get<float>(), p[2].get<float>());
+            ctx_.world.get<ecs::Transform>(target_entity).position = coord::WorldPos(new_pos);
+            go_it->position = coord::GridPos(new_pos);
+        }
+
+        // Update collider fields (partial)
+        if (cmd.contains("collider") && cmd["collider"].is_object()) {
+            auto& cc = ctx_.world.get<ColliderComponent>(target_entity);
+            auto& cj = cmd["collider"];
+
+            if (cj.contains("shape")) {
+                // Re-parse the whole collider to get the new shape
+                ColliderComponent updated = collider_from_json(cj);
+                cc.shape = updated.shape;
+            }
+            if (cj.contains("is_trigger")) cc.is_trigger = cj["is_trigger"].get<bool>();
+            if (cj.contains("is_dynamic")) cc.is_dynamic = cj["is_dynamic"].get<bool>();
+            if (cj.contains("collision_mask")) cc.collision_mask = cj["collision_mask"].get<uint32_t>();
+        }
+
+        // Update rotation
+        if (cmd.contains("rotation") && cmd["rotation"].is_array()) {
+            auto& r = cmd["rotation"];
+            auto& cc = ctx_.world.get<ColliderComponent>(target_entity);
+            cc.local_rotation = glm::quat(
+                r[3].get<float>(), r[0].get<float>(), r[1].get<float>(), r[2].get<float>());
+        }
+
+        ctx_.collision_system->mark_dirty();
+        return ok();
+    });
+
+    register_command("remove_collider", [this, ok](const json& cmd) -> CommandResult {
+        if (!ctx_.collision_system)
+            return std::unexpected(std::string("collision_system not available"));
+
+        std::string id = cmd.value("id", "");
+        if (id.empty())
+            return std::unexpected(std::string("missing 'id' field"));
+
+        auto& game_objects = ctx_.scene_objects.game_objects;
+        auto go_it = std::find_if(game_objects.begin(), game_objects.end(),
+            [&id](const GameObjectData& go) { return go.id == id; });
+        if (go_it == game_objects.end())
+            return std::unexpected(std::string("collider not found: " + id));
+
+        // Find and destroy the ECS entity
+        glm::vec3 go_pos = go_it->position.vec();
+        ecs::Entity target_entity = ecs::kNullEntity;
+
+        ctx_.world.view<ecs::Transform, ColliderComponent>().each(
+            [&](ecs::Entity e, ecs::Transform& t, ColliderComponent&) {
+                if (target_entity == ecs::kNullEntity) {
+                    glm::vec3 epos = t.position.vec();
+                    if (glm::length(epos - go_pos) < 0.01f) {
+                        target_entity = e;
+                    }
+                }
+            });
+
+        if (target_entity != ecs::kNullEntity) {
+            ctx_.world.destroy(target_entity);
+        }
+
+        game_objects.erase(go_it);
+        ctx_.collision_system->mark_dirty();
+        return ok();
+    });
+
+    register_command("list_colliders", [this](const json&) -> CommandResult {
+        json response;
+        response["type"] = "ok";
+
+        auto colliders = json::array();
+        ctx_.world.view<ecs::Transform, ColliderComponent>().each(
+            [&](ecs::Entity e, ecs::Transform& t, ColliderComponent& cc) {
+                // Find matching game object for ID/name
+                std::string id = "";
+                std::string name = "";
+                glm::vec3 pos = t.position.vec();
+
+                for (const auto& go : ctx_.scene_objects.game_objects) {
+                    if (glm::length(go.position.vec() - pos) < 0.01f) {
+                        id = go.id;
+                        name = go.name;
+                        break;
+                    }
+                }
+
+                json entry;
+                entry["id"] = id;
+                entry["name"] = name;
+                entry["position"] = {pos.x, pos.y, pos.z};
+                entry["rotation"] = {cc.local_rotation.x, cc.local_rotation.y,
+                                      cc.local_rotation.z, cc.local_rotation.w};
+                entry["collider"] = collider_to_json(cc);
+                colliders.push_back(entry);
+            });
+
+        response["colliders"] = colliders;
+        return response;
     });
 }
 

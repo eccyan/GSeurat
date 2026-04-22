@@ -291,6 +291,7 @@ void IslandDemoState::on_enter(AppBase& app) {
 
         // Wire up camera_zone_system for bridge commands.
         app.command_dispatcher().context().camera_zone_system = camera_zone_system_.get();
+        app.command_dispatcher().context().collision_system = &collision_system_;
 
         std::fprintf(stderr, "[IslandDemo] Camera zone system loaded: %d volumes, %zu triggers, %zu rails\n",
                      next_zone_id, cz.triggers.size(), rail_count);
@@ -676,6 +677,7 @@ void IslandDemoState::on_exit(AppBase& app) {
 
     // Release camera zone system
     app.command_dispatcher().context().camera_zone_system = nullptr;
+    app.command_dispatcher().context().collision_system = nullptr;
     camera_zone_system_.reset();
 
     // Release animation registry references
@@ -2031,6 +2033,7 @@ void IslandDemoState::perform_portal_transition(AppBase& app,
 
     // Reset camera zone system — island zones are invalid in instances
     app.command_dispatcher().context().camera_zone_system = nullptr;
+    app.command_dispatcher().context().collision_system = nullptr;
     camera_zone_system_.reset();
 
     // Reset camera target to avoid stale smoothing from old scene
