@@ -377,7 +377,7 @@ add_gseurat_test(test_character_data   src/engine/character_data.cpp)
 add_gseurat_test(test_gaussian_cloud   src/engine/gaussian_cloud.cpp src/engine/collision_gen.cpp
                                        src/engine/scene_loader.cpp src/engine/tilemap.cpp
                                        src/engine/gs_particle.cpp src/engine/gs_spline.cpp
-                                       src/engine/project_root.cpp)
+                                       src/engine/gs_animator.cpp src/engine/project_root.cpp)
 add_gseurat_test(test_transition_system  src/engine/systems/transition_system.cpp
                                           src/engine/systems/portal_trigger_handler.cpp)
 add_gseurat_test(test_gs_chunk_grid    src/engine/gs_chunk_grid.cpp src/engine/gaussian_cloud.cpp
@@ -431,6 +431,7 @@ add_gseurat_test(test_parse_easing src/engine/gs_animator.cpp)
 add_gseurat_test(test_camera_review_state src/staging/camera_review_state.cpp
                                            src/engine/camera_zone_system.cpp
                                            src/engine/gs_spline.cpp
+                                           src/engine/gs_animator.cpp
                                            src/engine/input_manager.cpp
                                            src/engine/coordinate.cpp)
 target_link_libraries(test_camera_review_state PRIVATE glfw imgui_lib)

@@ -1,3 +1,4 @@
+#include "gseurat/engine/camera_zone_system.hpp"
 #include "gseurat/engine/command_dispatcher.hpp"
 #include "gseurat/engine/component_registry.hpp"
 #include "gseurat/engine/control_server.hpp"
@@ -626,6 +627,20 @@ void CommandDispatcher::register_default_commands() {
         ctx_.camera_sync_override = true;
         ctx_.camera_sync_source = cmd.value("source", std::string("engine"));
 
+        return json{{"type", "ok"}};
+    });
+
+    register_command("set_cinematic_t", [this](const json& cmd) -> CommandResult {
+        if (!ctx_.camera_zone_system) {
+            return std::unexpected(std::string("camera_zone_system not available"));
+        }
+        if (cmd.contains("t")) {
+            ctx_.camera_zone_system->set_cinematic_t(cmd["t"].get<float>());
+        } else if (cmd.contains("delta_t")) {
+            ctx_.camera_zone_system->advance_cinematic_t(cmd["delta_t"].get<float>());
+        } else {
+            return std::unexpected(std::string("set_cinematic_t requires 't' or 'delta_t' parameter"));
+        }
         return json{{"type", "ok"}};
     });
 
