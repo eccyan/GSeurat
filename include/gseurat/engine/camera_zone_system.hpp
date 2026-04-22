@@ -13,6 +13,7 @@
 #include "gseurat/engine/gs_spline.hpp"
 
 #include <glm/glm.hpp>
+#include <functional>
 #include <vector>
 #include <utility>
 
@@ -61,6 +62,16 @@ public:
     /// Use before teleport to preserve the camera's current facing direction.
     void set_orbit_from_camera(glm::vec3 cam_pos, glm::vec3 cam_target);
 
+    /// Set cinematic progress to an absolute value [0, 1].
+    void set_cinematic_t(float t);
+
+    /// Add delta to current cinematic progress. Clamped to [0, 1].
+    void advance_cinematic_t(float delta_t);
+
+    /// Register a callback that fires when a cinematic_rail (once) reaches t=1.
+    using CinematicCompleteCallback = std::function<void(int zone_entity_id)>;
+    void set_on_cinematic_complete(CinematicCompleteCallback cb);
+
 private:
     // Stage 1: Zone resolution
     int resolve_zone(glm::vec3 player_pos);
@@ -98,6 +109,17 @@ private:
     glm::vec3 spring_target_{0};
     bool spring_initialized_ = false;
     float last_rail_t_ = -1.0f;  // previous t on rail spline (-1 = uninitialized)
+
+    // ── Cinematic rail state ────────────────────────────────────────
+    enum class CinematicState : uint8_t { idle, playing, paused, finished };
+
+    float cinematic_timer_{0.0f};
+    CinematicState cinematic_state_{CinematicState::idle};
+    bool cinematic_reverse_{false};
+    CinematicCompleteCallback on_cinematic_complete_;
+
+    // Helper: look up active zone's params.
+    const CameraParams* active_params_ptr() const;
 
     // ── Stage 3 state ───────────────────────────────────────────────────────
     bool transitioning_ = false;

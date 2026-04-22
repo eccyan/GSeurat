@@ -425,7 +425,8 @@ add_gseurat_test(test_bone_animation_state_machine src/character/character_manif
 add_gseurat_test(test_coordinate      src/engine/coordinate.cpp)
 add_gseurat_test(test_camera_volume)
 add_gseurat_test(test_camera_zone_system src/engine/camera_zone_system.cpp
-                                          src/engine/gs_spline.cpp)
+                                          src/engine/gs_spline.cpp
+                                          src/engine/gs_animator.cpp)
 add_gseurat_test(test_parse_easing src/engine/gs_animator.cpp)
 add_gseurat_test(test_camera_review_state src/staging/camera_review_state.cpp
                                            src/engine/camera_zone_system.cpp

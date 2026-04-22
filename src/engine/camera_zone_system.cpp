@@ -1,4 +1,5 @@
 #include "gseurat/engine/camera_zone_system.hpp"
+#include "gseurat/engine/gs_animator.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -234,14 +235,86 @@ CameraState CameraZoneSystem::evaluate_vcam(const CameraParams& params,
     }
 
     case CameraMode::cinematic_rail: {
-        // Stub: evaluate at t=0 (timer added in later task).
         int ri = params.rail_index;
         if (ri >= 0 && ri < static_cast<int>(rails_.size()) && rails_[ri].path.valid()) {
-            state.position = rails_[ri].path.evaluate(0.0f);
-            if (rails_[ri].has_target_path && rails_[ri].target_path.valid()) {
-                state.target = rails_[ri].target_path.evaluate(0.0f);
-            } else {
-                state.target = spring_target_;
+            // Step 1: Advance timer (time-driven modes only).
+            if (cinematic_state_ == CinematicState::playing &&
+                params.cinematic_playback != CinematicPlayback::manual) {
+                if (cinematic_reverse_) {
+                    cinematic_timer_ -= dt;
+                } else {
+                    cinematic_timer_ += dt;
+                }
+            }
+
+            // Step 2: Compute base t.
+            float base_t = (params.cinematic_duration > 0.0f)
+                ? cinematic_timer_ / params.cinematic_duration
+                : 1.0f;
+
+            // Step 3: Handle playback mode boundaries.
+            switch (params.cinematic_playback) {
+                case CinematicPlayback::once:
+                    base_t = std::clamp(base_t, 0.0f, 1.0f);
+                    if (base_t >= 1.0f && cinematic_state_ == CinematicState::playing) {
+                        cinematic_state_ = CinematicState::finished;
+                        cinematic_timer_ = params.cinematic_duration;
+                        if (on_cinematic_complete_) {
+                            on_cinematic_complete_(active_zone_entity_);
+                        }
+                    }
+                    break;
+                case CinematicPlayback::loop:
+                    if (base_t >= 1.0f) {
+                        cinematic_timer_ = std::fmod(cinematic_timer_, params.cinematic_duration);
+                        base_t = cinematic_timer_ / params.cinematic_duration;
+                    }
+                    if (base_t < 0.0f) base_t += 1.0f;
+                    break;
+                case CinematicPlayback::ping_pong:
+                    if (base_t >= 1.0f && !cinematic_reverse_) {
+                        cinematic_reverse_ = true;
+                        cinematic_timer_ = params.cinematic_duration;
+                        base_t = 1.0f;
+                    } else if (base_t <= 0.0f && cinematic_reverse_) {
+                        cinematic_reverse_ = false;
+                        cinematic_timer_ = 0.0f;
+                        base_t = 0.0f;
+                    }
+                    base_t = std::clamp(base_t, 0.0f, 1.0f);
+                    break;
+                case CinematicPlayback::manual:
+                    base_t = std::clamp(base_t, 0.0f, 1.0f);
+                    break;
+            }
+
+            // Step 4: Apply easing.
+            float eased_t = apply_easing(std::clamp(base_t, 0.0f, 1.0f), params.cinematic_easing);
+
+            // Step 5: Evaluate spline position.
+            state.position = rails_[ri].path.evaluate(eased_t);
+
+            // Step 6: Evaluate target based on target_mode.
+            switch (params.target_mode) {
+                case TargetMode::player:
+                    state.target = spring_target_;
+                    break;
+                case TargetMode::target_path:
+                    if (rails_[ri].has_target_path && rails_[ri].target_path.valid()) {
+                        state.target = rails_[ri].target_path.evaluate(eased_t);
+                    } else {
+                        state.target = spring_target_;
+                    }
+                    break;
+                case TargetMode::fixed_point:
+                    state.target = params.fixed_position;
+                    break;
+            }
+
+            // Step 7: Apply min_ground_clearance.
+            float min_y = spring_target_.y + params.min_ground_clearance;
+            if (state.position.y < min_y) {
+                state.position.y = min_y;
             }
         } else {
             state.position = params.fixed_position;
@@ -365,6 +438,13 @@ void CameraZoneSystem::update(float dt, glm::vec3 player_pos,
     prev_zone_entity_ = active_zone_entity_;
     active_zone_entity_ = new_zone;
 
+    // Reset cinematic state on zone change.
+    if (new_zone != prev_zone_entity_) {
+        cinematic_timer_ = 0.0f;
+        cinematic_state_ = CinematicState::idle;
+        cinematic_reverse_ = false;
+    }
+
     // Look up active zone's params.
     const CameraParams* active_params = &default_params_;
     const CameraVolume* active_vol = &world_fallback_;
@@ -374,6 +454,13 @@ void CameraZoneSystem::update(float dt, glm::vec3 player_pos,
             active_vol = &vol;
             break;
         }
+    }
+
+    // Auto-start cinematic rail if play_on_enter.
+    if (active_params->mode == CameraMode::cinematic_rail &&
+        cinematic_state_ == CinematicState::idle &&
+        active_params->play_on_enter) {
+        cinematic_state_ = CinematicState::playing;
     }
 
     // Stage 2: Evaluate virtual camera.
@@ -400,6 +487,38 @@ void CameraZoneSystem::update(float dt, glm::vec3 player_pos,
 
     // Stage 4: Constraints.
     current_state_ = clamp_state(current_state_, *active_vol);
+}
+
+// ── Cinematic manual control ───────────────────────────────────────────────
+
+const CameraParams* CameraZoneSystem::active_params_ptr() const {
+    for (const auto& [id, vol] : volumes_) {
+        if (id == active_zone_entity_) return &vol.params;
+    }
+    return &default_params_;
+}
+
+void CameraZoneSystem::set_cinematic_t(float t) {
+    const auto* params = active_params_ptr();
+    cinematic_timer_ = std::clamp(t, 0.0f, 1.0f) * params->cinematic_duration;
+    if (cinematic_state_ == CinematicState::idle ||
+        cinematic_state_ == CinematicState::finished) {
+        cinematic_state_ = CinematicState::playing;
+    }
+}
+
+void CameraZoneSystem::advance_cinematic_t(float delta_t) {
+    const auto* params = active_params_ptr();
+    cinematic_timer_ += delta_t * params->cinematic_duration;
+    cinematic_timer_ = std::clamp(cinematic_timer_, 0.0f, params->cinematic_duration);
+    if (cinematic_state_ == CinematicState::idle ||
+        cinematic_state_ == CinematicState::finished) {
+        cinematic_state_ = CinematicState::playing;
+    }
+}
+
+void CameraZoneSystem::set_on_cinematic_complete(CinematicCompleteCallback cb) {
+    on_cinematic_complete_ = std::move(cb);
 }
 
 }  // namespace gseurat
