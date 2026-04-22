@@ -412,6 +412,30 @@ export function useEngine() {
   );
 
   // -------------------------------------------------------------------------
+  // Cinematic rail control
+  // -------------------------------------------------------------------------
+
+  /**
+   * Set the cinematic rail progress to an absolute value [0, 1].
+   * Useful for editor timeline scrubbing.
+   */
+  const setCinematicT = useCallback(
+    (t: number): Promise<OkResponse | null> =>
+      sendCommand<OkResponse>({ cmd: 'set_cinematic_t', t }),
+    [sendCommand],
+  );
+
+  /**
+   * Advance the cinematic rail progress by a delta amount.
+   * Useful for incremental gameplay-driven inputs.
+   */
+  const advanceCinematicT = useCallback(
+    (deltaT: number): Promise<OkResponse | null> =>
+      sendCommand<OkResponse>({ cmd: 'set_cinematic_t', delta_t: deltaT }),
+    [sendCommand],
+  );
+
+  // -------------------------------------------------------------------------
   // Return
   // -------------------------------------------------------------------------
 
@@ -463,5 +487,9 @@ export function useEngine() {
     // Screen effects
     shake,
     flash,
+
+    // Cinematic rail
+    setCinematicT,
+    advanceCinematicT,
   };
 }
