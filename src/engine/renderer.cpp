@@ -81,6 +81,7 @@ void Renderer::init(GLFWwindow* window, ResourceManager& resources,
     create_sprite_pipeline();
     create_outline_pipeline();
     create_ui_pipeline();
+    create_wireframe_pipeline();
 
     float aspect = static_cast<float>(kWindowWidth) / static_cast<float>(kWindowHeight);
     camera_.configure_hd2d(aspect);
@@ -270,6 +271,7 @@ void Renderer::draw_scene(Scene& scene,
                            const std::vector<SpriteDrawInfo>& particles,
                            const std::vector<SpriteDrawInfo>& overlay,
                            const std::vector<ui::UIDrawBatch>& ui_batches,
+                           const std::vector<DebugColliderDrawInfo>& debug_colliders_list,
                            const FeatureFlags& flags) {
     auto device = context_.device();
     const auto& frame_sync = sync_.frame(current_frame_);
@@ -522,6 +524,11 @@ void Renderer::draw_scene(Scene& scene,
             draw_sprite_pass(cmd, overlay, font_descriptor_sets_[current_frame_]);
         }
 
+        // Debug collider wireframes (after all sprite passes, before end render pass)
+        if (flags.debug_colliders && !debug_colliders_list.empty()) {
+            draw_debug_colliders(cmd, debug_colliders_list);
+        }
+
         vkCmdEndRenderPass(cmd);
     }
 
@@ -693,6 +700,15 @@ void Renderer::shutdown() {
     }
     if (ui_pipeline_ != VK_NULL_HANDLE) {
         vkDestroyPipeline(context_.device(), ui_pipeline_, nullptr);
+    }
+    if (wireframe_pipeline_ != VK_NULL_HANDLE) {
+        vkDestroyPipeline(context_.device(), wireframe_pipeline_, nullptr);
+    }
+    if (wireframe_pipeline_layout_ != VK_NULL_HANDLE) {
+        vkDestroyPipelineLayout(context_.device(), wireframe_pipeline_layout_, nullptr);
+    }
+    if (wireframe_vb_ != VK_NULL_HANDLE) {
+        vmaDestroyBuffer(context_.allocator(), wireframe_vb_, wireframe_vb_alloc_);
     }
     vkDestroyPipelineLayout(context_.device(), sprite_pipeline_layout_, nullptr);
 
@@ -1181,6 +1197,132 @@ void Renderer::record_ui_pass(VkCommandBuffer cmd,
     }
 
     vkCmdSetScissor(cmd, 0, 1, &full_scissor);
+}
+
+void Renderer::create_wireframe_pipeline() {
+    auto device = context_.device();
+
+    // Generate wireframe meshes
+    wireframe_meshes_ = generate_wireframe_meshes();
+
+    // Create vertex buffer (host-visible for simplicity — small data, created once)
+    VkBufferCreateInfo buf_info{};
+    buf_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    buf_info.size = wireframe_meshes_.vertices.size() * sizeof(glm::vec3);
+    buf_info.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+    buf_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+    VmaAllocationCreateInfo alloc_info{};
+    alloc_info.usage = VMA_MEMORY_USAGE_AUTO;
+    alloc_info.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
+                       VMA_ALLOCATION_CREATE_MAPPED_BIT;
+
+    VmaAllocationInfo alloc_result;
+    vmaCreateBuffer(context_.allocator(), &buf_info, &alloc_info,
+                    &wireframe_vb_, &wireframe_vb_alloc_, &alloc_result);
+
+    // Upload vertex data
+    std::memcpy(alloc_result.pMappedData, wireframe_meshes_.vertices.data(),
+                wireframe_meshes_.vertices.size() * sizeof(glm::vec3));
+
+    // Create pipeline layout with push constants
+    VkPushConstantRange push_range{};
+    push_range.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+    push_range.offset = 0;
+    push_range.size = 112;  // mat4(64) + vec4(16) + vec4(16) + vec4(16)
+
+    VkPipelineLayoutCreateInfo layout_info{};
+    layout_info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    auto desc_layout = descriptors_.sprite_layout();
+    layout_info.setLayoutCount = 1;
+    layout_info.pSetLayouts = &desc_layout;
+    layout_info.pushConstantRangeCount = 1;
+    layout_info.pPushConstantRanges = &push_range;
+
+    vkCreatePipelineLayout(device, &layout_info, nullptr, &wireframe_pipeline_layout_);
+
+    // Load shaders
+    auto vert = load_shader_module(device, "shaders/debug_wireframe.vert.spv");
+    auto frag = load_shader_module(device, "shaders/debug_wireframe.frag.spv");
+
+    // Vertex input: just vec3 position
+    VkVertexInputBindingDescription binding{};
+    binding.binding = 0;
+    binding.stride = sizeof(glm::vec3);
+    binding.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+
+    VkVertexInputAttributeDescription attr{};
+    attr.binding = 0;
+    attr.location = 0;
+    attr.format = VK_FORMAT_R32G32B32_SFLOAT;
+    attr.offset = 0;
+
+    // Build pipeline
+    wireframe_pipeline_ = PipelineBuilder()
+        .set_shaders(vert, frag)
+        .set_vertex_input(binding, &attr, 1)
+        .set_input_assembly(VK_PRIMITIVE_TOPOLOGY_LINE_LIST)
+        .set_viewport_scissor(swapchain_.extent())
+        .set_rasterizer(VK_POLYGON_MODE_LINE, VK_CULL_MODE_NONE)
+        .set_multisampling(VK_SAMPLE_COUNT_1_BIT)
+        .set_depth_stencil(true, false)  // read depth, don't write
+        .set_color_blend_alpha()
+        .set_layout(wireframe_pipeline_layout_)
+        .set_render_pass(post_process_.scene_render_pass(), 0)
+        .build(device);
+
+    vkDestroyShaderModule(device, frag, nullptr);
+    vkDestroyShaderModule(device, vert, nullptr);
+}
+
+void Renderer::draw_debug_colliders(VkCommandBuffer cmd,
+                                     const std::vector<DebugColliderDrawInfo>& draw_list) {
+    if (draw_list.empty() || wireframe_pipeline_ == VK_NULL_HANDLE) return;
+
+    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, wireframe_pipeline_);
+
+    // Bind the same UBO descriptor set (set 0) — shares VP matrix
+    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                            wireframe_pipeline_layout_, 0, 1,
+                            &descriptor_sets_[current_frame_], 0, nullptr);
+
+    // Bind wireframe vertex buffer
+    VkDeviceSize offset = 0;
+    vkCmdBindVertexBuffers(cmd, 0, 1, &wireframe_vb_, &offset);
+
+    for (const auto& info : draw_list) {
+        // Push constants
+        struct PushConstants {
+            glm::mat4 model;
+            glm::vec4 color;
+            glm::vec4 shape_params;  // type, radius, half_height, 0
+            glm::vec4 extents;       // half_extents.xyz, 0
+        } pc;
+
+        pc.model = info.model;
+        pc.color = info.color;
+        pc.shape_params = glm::vec4(
+            static_cast<float>(static_cast<uint8_t>(info.shape_type)),
+            info.radius, info.half_height, 0.0f);
+        pc.extents = glm::vec4(info.half_extents, 0.0f);
+
+        vkCmdPushConstants(cmd, wireframe_pipeline_layout_,
+                           VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(pc), &pc);
+
+        // Select mesh range
+        WireframeMeshRange range{};
+        switch (info.shape_type) {
+            case ColliderType::Box:     range = wireframe_meshes_.cube; break;
+            case ColliderType::Sphere:  range = wireframe_meshes_.sphere; break;
+            case ColliderType::Capsule: range = wireframe_meshes_.capsule; break;
+        }
+
+        vkCmdDraw(cmd, range.count, 1, range.offset, 0);
+    }
+
+    // Re-bind sprite pipeline for any subsequent passes
+    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, sprite_pipeline_);
+    sprite_batch_.bind(cmd, current_frame_);
 }
 
 void Renderer::add_gs_particle_emitter(const GsEmitterConfig& config) {

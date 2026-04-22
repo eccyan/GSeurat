@@ -251,7 +251,7 @@ void AppBase::main_loop() {
 
         renderer_.draw_scene(scene_, draw_lists_.entity, draw_lists_.outline, draw_lists_.reflection,
                              draw_lists_.shadow, particle_sprites, draw_lists_.overlay, ui_batches,
-                             feature_flags_);
+                             draw_lists_.debug_colliders, feature_flags_);
     }
 }
 
