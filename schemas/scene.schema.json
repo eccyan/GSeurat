@@ -552,7 +552,12 @@
         "orbit_distance": { "type": "number", "default": 10 },
         "offset": { "$ref": "#/definitions/vec3" },
         "fixed_position": { "$ref": "#/definitions/vec3" },
-        "rail_id": { "type": "string" }
+        "rail_id": { "type": "string" },
+        "cinematic_duration": { "type": "number", "minimum": 0, "default": 5.0 },
+        "cinematic_easing": { "type": "string", "default": "in_out_quad" },
+        "cinematic_playback": { "type": "string", "enum": ["once", "loop", "ping_pong", "manual"], "default": "once" },
+        "play_on_enter": { "type": "boolean", "default": true },
+        "target_mode": { "type": "string", "enum": ["player", "target_path", "fixed_point"], "default": "player" }
       }
     },
     "emitter_config_2d": {

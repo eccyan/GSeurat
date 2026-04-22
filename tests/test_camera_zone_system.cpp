@@ -3,6 +3,7 @@
 //                                                  src/engine/gs_spline.cpp)
 
 #include "gseurat/engine/camera_zone_system.hpp"
+#include "gseurat/engine/gs_animator.hpp"
 
 #include <cmath>
 #include <cstdio>
@@ -506,6 +507,334 @@ void test_set_orbit_from_camera() {
           "set_orbit: camera at -Z after set from -Z direction");
 }
 
+// ── Test 13: CinematicParams Defaults ──────────────────────────────────────
+
+void test_cinematic_params_defaults() {
+    std::printf("CinematicParams defaults:\n");
+
+    gseurat::CameraParams p;
+    check(p.cinematic_duration == 5.0f, "default cinematic_duration = 5.0");
+    check(p.cinematic_easing == gseurat::GsEasing::InOutQuad, "default cinematic_easing = InOutQuad");
+    check(p.cinematic_playback == gseurat::CinematicPlayback::once, "default cinematic_playback = once");
+    check(p.play_on_enter == true, "default play_on_enter = true");
+    check(p.target_mode == gseurat::TargetMode::player, "default target_mode = player");
+}
+
+// ── Test 14: cinematic_rail — once playback ────────────────────────────────
+
+void test_cinematic_rail_once() {
+    std::printf("cinematic_rail once:\n");
+
+    gseurat::CameraZoneSystem sys;
+
+    gseurat::CameraRail rail;
+    rail.path.control_points = {
+        {0, 10, 0}, {5, 10, 0}, {10, 10, 0}
+    };
+    rail.has_target_path = false;
+
+    gseurat::CameraParams defaults;
+    defaults.mode = gseurat::CameraMode::cinematic_rail;
+    defaults.rail_index = 0;
+    defaults.cinematic_duration = 2.0f;
+    defaults.cinematic_easing = gseurat::GsEasing::Linear;
+    defaults.cinematic_playback = gseurat::CinematicPlayback::once;
+    defaults.play_on_enter = true;
+    defaults.target_mode = gseurat::TargetMode::player;
+    defaults.min_ground_clearance = 0.0f;
+    defaults.pitch_min = -89.0f;
+    defaults.pitch_max = 89.0f;
+
+    sys.load_from_data({}, {}, {rail}, defaults);
+
+    float dt = 1.0f / 60.0f;
+    gseurat::CameraZoneSystem::InputState no_input;
+    sys.update(dt, {5, 0, 0}, {0, 0, 0}, no_input);
+
+    auto start = sys.current_state();
+    check(approx(start.position.x, 0.0f, 1.5f), "cinematic once: start X near 0");
+
+    for (int i = 0; i < 59; ++i) sys.update(dt, {5, 0, 0}, {0, 0, 0}, no_input);
+
+    auto mid = sys.current_state();
+    check(approx(mid.position.x, 5.0f, 2.0f), "cinematic once: mid X near 5");
+
+    for (int i = 0; i < 90; ++i) sys.update(dt, {5, 0, 0}, {0, 0, 0}, no_input);
+
+    auto end_state = sys.current_state();
+    check(approx(end_state.position.x, 10.0f, 1.5f), "cinematic once: end X near 10");
+
+    for (int i = 0; i < 30; ++i) sys.update(dt, {5, 0, 0}, {0, 0, 0}, no_input);
+
+    auto stuck = sys.current_state();
+    check(approx(stuck.position.x, 10.0f, 1.5f), "cinematic once: stays at end after finish");
+}
+
+// ── Test 15: cinematic_rail — loop playback ────────────────────────────────
+
+void test_cinematic_rail_loop() {
+    std::printf("cinematic_rail loop:\n");
+
+    gseurat::CameraZoneSystem sys;
+
+    gseurat::CameraRail rail;
+    rail.path.control_points = {
+        {0, 10, 0}, {5, 10, 0}, {10, 10, 0}
+    };
+    rail.has_target_path = false;
+
+    gseurat::CameraParams defaults;
+    defaults.mode = gseurat::CameraMode::cinematic_rail;
+    defaults.rail_index = 0;
+    defaults.cinematic_duration = 1.0f;
+    defaults.cinematic_easing = gseurat::GsEasing::Linear;
+    defaults.cinematic_playback = gseurat::CinematicPlayback::loop;
+    defaults.play_on_enter = true;
+    defaults.target_mode = gseurat::TargetMode::player;
+    defaults.min_ground_clearance = 0.0f;
+    defaults.pitch_min = -89.0f;
+    defaults.pitch_max = 89.0f;
+
+    sys.load_from_data({}, {}, {rail}, defaults);
+
+    float dt = 1.0f / 60.0f;
+    gseurat::CameraZoneSystem::InputState no_input;
+
+    for (int i = 0; i < 90; ++i) sys.update(dt, {5, 0, 0}, {0, 0, 0}, no_input);
+
+    auto state = sys.current_state();
+    check(approx(state.position.x, 5.0f, 2.0f), "cinematic loop: wraps around, mid X near 5");
+}
+
+// ── Test 16: cinematic_rail — ping_pong playback ───────────────────────────
+
+void test_cinematic_rail_ping_pong() {
+    std::printf("cinematic_rail ping_pong:\n");
+
+    gseurat::CameraZoneSystem sys;
+
+    gseurat::CameraRail rail;
+    rail.path.control_points = {
+        {0, 10, 0}, {5, 10, 0}, {10, 10, 0}
+    };
+    rail.has_target_path = false;
+
+    gseurat::CameraParams defaults;
+    defaults.mode = gseurat::CameraMode::cinematic_rail;
+    defaults.rail_index = 0;
+    defaults.cinematic_duration = 1.0f;
+    defaults.cinematic_easing = gseurat::GsEasing::Linear;
+    defaults.cinematic_playback = gseurat::CinematicPlayback::ping_pong;
+    defaults.play_on_enter = true;
+    defaults.target_mode = gseurat::TargetMode::player;
+    defaults.min_ground_clearance = 0.0f;
+    defaults.pitch_min = -89.0f;
+    defaults.pitch_max = 89.0f;
+
+    sys.load_from_data({}, {}, {rail}, defaults);
+
+    float dt = 1.0f / 60.0f;
+    gseurat::CameraZoneSystem::InputState no_input;
+
+    for (int i = 0; i < 60; ++i) sys.update(dt, {5, 0, 0}, {0, 0, 0}, no_input);
+
+    for (int i = 0; i < 30; ++i) sys.update(dt, {5, 0, 0}, {0, 0, 0}, no_input);
+
+    auto state = sys.current_state();
+    check(approx(state.position.x, 5.0f, 3.0f), "cinematic ping_pong: reversed to mid X ~5");
+}
+
+// ── Test 17: cinematic_rail — manual playback ──────────────────────────────
+
+void test_cinematic_rail_manual() {
+    std::printf("cinematic_rail manual:\n");
+
+    gseurat::CameraZoneSystem sys;
+
+    gseurat::CameraRail rail;
+    rail.path.control_points = {
+        {0, 10, 0}, {5, 10, 0}, {10, 10, 0}
+    };
+    rail.has_target_path = false;
+
+    gseurat::CameraParams defaults;
+    defaults.mode = gseurat::CameraMode::cinematic_rail;
+    defaults.rail_index = 0;
+    defaults.cinematic_duration = 2.0f;
+    defaults.cinematic_easing = gseurat::GsEasing::Linear;
+    defaults.cinematic_playback = gseurat::CinematicPlayback::manual;
+    defaults.play_on_enter = true;
+    defaults.target_mode = gseurat::TargetMode::player;
+    defaults.min_ground_clearance = 0.0f;
+    defaults.pitch_min = -89.0f;
+    defaults.pitch_max = 89.0f;
+
+    sys.load_from_data({}, {}, {rail}, defaults);
+
+    float dt = 1.0f / 60.0f;
+    gseurat::CameraZoneSystem::InputState no_input;
+
+    sys.update(dt, {5, 0, 0}, {0, 0, 0}, no_input);
+
+    for (int i = 0; i < 120; ++i) sys.update(dt, {5, 0, 0}, {0, 0, 0}, no_input);
+
+    auto still = sys.current_state();
+    check(approx(still.position.x, 0.0f, 1.5f), "cinematic manual: stays at start after 120 frames");
+
+    sys.set_cinematic_t(0.5f);
+    sys.update(dt, {5, 0, 0}, {0, 0, 0}, no_input);
+
+    auto mid = sys.current_state();
+    check(approx(mid.position.x, 5.0f, 2.0f), "cinematic manual: set_cinematic_t(0.5) -> mid X ~5");
+
+    sys.advance_cinematic_t(0.25f);
+    sys.update(dt, {5, 0, 0}, {0, 0, 0}, no_input);
+
+    auto adv = sys.current_state();
+    check(adv.position.x > mid.position.x, "cinematic manual: advance_cinematic_t moved forward");
+}
+
+// ── Test 18: cinematic_rail — target_path mode ─────────────────────────────
+
+void test_cinematic_rail_target_path() {
+    std::printf("cinematic_rail target_path:\n");
+
+    gseurat::CameraZoneSystem sys;
+
+    gseurat::CameraRail rail;
+    rail.path.control_points = {
+        {0, 10, 0}, {5, 10, 0}, {10, 10, 0}
+    };
+    rail.target_path.control_points = {
+        {0, 0, 5}, {5, 0, 5}, {10, 0, 5}
+    };
+    rail.has_target_path = true;
+
+    gseurat::CameraParams defaults;
+    defaults.mode = gseurat::CameraMode::cinematic_rail;
+    defaults.rail_index = 0;
+    defaults.cinematic_duration = 2.0f;
+    defaults.cinematic_easing = gseurat::GsEasing::Linear;
+    defaults.cinematic_playback = gseurat::CinematicPlayback::once;
+    defaults.play_on_enter = true;
+    defaults.target_mode = gseurat::TargetMode::target_path;
+    defaults.min_ground_clearance = 0.0f;
+    defaults.pitch_min = -89.0f;
+    defaults.pitch_max = 89.0f;
+
+    sys.load_from_data({}, {}, {rail}, defaults);
+
+    float dt = 1.0f / 60.0f;
+    gseurat::CameraZoneSystem::InputState no_input;
+
+    for (int i = 0; i < 60; ++i) sys.update(dt, {5, 0, 0}, {0, 0, 0}, no_input);
+
+    auto mid = sys.current_state();
+    check(approx(mid.target.z, 5.0f, 2.0f), "cinematic target_path: target Z near 5 (on target path)");
+}
+
+// ── Test 19: cinematic_rail — zone change resets state ─────────────────────
+
+void test_cinematic_rail_zone_change_reset() {
+    std::printf("cinematic_rail zone change reset:\n");
+
+    gseurat::CameraZoneSystem sys;
+
+    gseurat::CameraRail rail;
+    rail.path.control_points = {
+        {0, 10, 0}, {5, 10, 0}, {10, 10, 0}
+    };
+    rail.has_target_path = false;
+
+    gseurat::CameraVolume zone_a;
+    zone_a.shape = gseurat::CamAABB{{0, 0, 0}, {5, 5, 5}};
+    zone_a.params.mode = gseurat::CameraMode::cinematic_rail;
+    zone_a.params.rail_index = 0;
+    zone_a.params.cinematic_duration = 2.0f;
+    zone_a.params.cinematic_easing = gseurat::GsEasing::Linear;
+    zone_a.params.cinematic_playback = gseurat::CinematicPlayback::once;
+    zone_a.params.play_on_enter = true;
+    zone_a.params.target_mode = gseurat::TargetMode::player;
+    zone_a.params.min_ground_clearance = 0.0f;
+    zone_a.params.pitch_min = -89.0f;
+    zone_a.params.pitch_max = 89.0f;
+    zone_a.params.blend_time = 0.01f;
+
+    gseurat::CameraVolume zone_b;
+    zone_b.shape = gseurat::CamAABB{{50, 0, 0}, {5, 5, 5}};
+    zone_b.params.mode = gseurat::CameraMode::fixed_point;
+    zone_b.params.fov = 60.0f;
+    zone_b.params.fixed_position = {50, 15, 0};
+    zone_b.params.blend_time = 0.01f;
+
+    gseurat::CameraParams defaults;
+    defaults.mode = gseurat::CameraMode::fixed_point;
+    defaults.fixed_position = {0, 10, 0};
+    defaults.pitch_min = -89.0f;
+    defaults.pitch_max = 89.0f;
+
+    std::vector<std::pair<int, gseurat::CameraVolume>> volumes = {
+        {1, zone_a}, {2, zone_b}
+    };
+
+    sys.load_from_data(volumes, {}, {rail}, defaults);
+
+    float dt = 1.0f / 60.0f;
+    gseurat::CameraZoneSystem::InputState no_input;
+
+    for (int i = 0; i < 60; ++i) sys.update(dt, {0, 0, 0}, {0, 0, 0}, no_input);
+
+    check(sys.active_zone_entity() == 1, "zone reset: active in zone A");
+
+    converge(sys, {50, 0, 0}, 30);
+    check(sys.active_zone_entity() == 2, "zone reset: active in zone B");
+
+    for (int i = 0; i < 10; ++i) sys.update(dt, {0, 0, 0}, {0, 0, 0}, no_input);
+
+    auto restarted = sys.current_state();
+    check(approx(restarted.position.x, 0.0f, 2.5f), "zone reset: re-entering resets to t=0");
+}
+
+// ── Test 20: cinematic_rail — completion callback ──────────────────────────
+
+void test_cinematic_rail_completion_callback() {
+    std::printf("cinematic_rail completion callback:\n");
+
+    gseurat::CameraZoneSystem sys;
+
+    gseurat::CameraRail rail;
+    rail.path.control_points = {
+        {0, 10, 0}, {10, 10, 0}
+    };
+    rail.has_target_path = false;
+
+    gseurat::CameraParams defaults;
+    defaults.mode = gseurat::CameraMode::cinematic_rail;
+    defaults.rail_index = 0;
+    defaults.cinematic_duration = 0.5f;
+    defaults.cinematic_easing = gseurat::GsEasing::Linear;
+    defaults.cinematic_playback = gseurat::CinematicPlayback::once;
+    defaults.play_on_enter = true;
+    defaults.target_mode = gseurat::TargetMode::player;
+    defaults.min_ground_clearance = 0.0f;
+    defaults.pitch_min = -89.0f;
+    defaults.pitch_max = 89.0f;
+
+    sys.load_from_data({}, {}, {rail}, defaults);
+
+    int callback_zone = -999;
+    sys.set_on_cinematic_complete([&](int zone_id) {
+        callback_zone = zone_id;
+    });
+
+    float dt = 1.0f / 60.0f;
+    gseurat::CameraZoneSystem::InputState no_input;
+
+    for (int i = 0; i < 60; ++i) sys.update(dt, {5, 0, 0}, {0, 0, 0}, no_input);
+
+    check(callback_zone == -1, "completion callback: fired with zone entity -1 (world fallback)");
+}
+
 // ── Main ────────────────────────────────────────────────────────────────────
 
 int main() {
@@ -523,6 +852,14 @@ int main() {
     test_constraint_position_clamp();
     test_constraint_pitch_clamp();
     test_set_orbit_from_camera();
+    test_cinematic_params_defaults();
+    test_cinematic_rail_once();
+    test_cinematic_rail_loop();
+    test_cinematic_rail_ping_pong();
+    test_cinematic_rail_manual();
+    test_cinematic_rail_target_path();
+    test_cinematic_rail_zone_change_reset();
+    test_cinematic_rail_completion_callback();
 
     std::printf("\n=== Results: %d passed, %d failed ===\n", passed, failed);
     return failed > 0 ? 1 : 0;
