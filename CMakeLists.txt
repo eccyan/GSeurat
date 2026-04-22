@@ -497,6 +497,7 @@ add_gseurat_test(test_audio_svf
     src/engine/audio/state_variable_filter.cpp)
 target_include_directories(test_audio_svf PRIVATE ${PROJECT_SOURCE_DIR}/src/engine/audio)
 add_gseurat_test(test_primitive_aabb src/engine/collision/intersect.cpp)
+add_gseurat_test(test_intersect      src/engine/collision/intersect.cpp)
 add_gseurat_test(test_memory_mapped_file
     src/engine/platform/memory_mapped_file.cpp)
 add_gseurat_test(test_audio_effect_chain
