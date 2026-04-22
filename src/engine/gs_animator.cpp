@@ -82,6 +82,41 @@ float apply_easing(float t, GsEasing easing) {
     return t;
 }
 
+GsEasing parse_easing(const std::string& s) {
+    if (s == "linear")          return GsEasing::Linear;
+    if (s == "in_quad"      || s == "ease_in")     return GsEasing::InQuad;
+    if (s == "out_quad"     || s == "ease_out")    return GsEasing::OutQuad;
+    if (s == "in_out_quad"  || s == "ease_in_out") return GsEasing::InOutQuad;
+    if (s == "in_cubic")     return GsEasing::InCubic;
+    if (s == "out_cubic")    return GsEasing::OutCubic;
+    if (s == "in_out_cubic") return GsEasing::InOutCubic;
+    if (s == "in_quart")     return GsEasing::InQuart;
+    if (s == "out_quart")    return GsEasing::OutQuart;
+    if (s == "in_out_quart") return GsEasing::InOutQuart;
+    if (s == "in_quint")     return GsEasing::InQuint;
+    if (s == "out_quint")    return GsEasing::OutQuint;
+    if (s == "in_out_quint") return GsEasing::InOutQuint;
+    if (s == "in_sine")      return GsEasing::InSine;
+    if (s == "out_sine")     return GsEasing::OutSine;
+    if (s == "in_out_sine")  return GsEasing::InOutSine;
+    if (s == "in_expo")      return GsEasing::InExpo;
+    if (s == "out_expo")     return GsEasing::OutExpo;
+    if (s == "in_out_expo")  return GsEasing::InOutExpo;
+    if (s == "in_circ")      return GsEasing::InCirc;
+    if (s == "out_circ")     return GsEasing::OutCirc;
+    if (s == "in_out_circ")  return GsEasing::InOutCirc;
+    if (s == "in_back")      return GsEasing::InBack;
+    if (s == "out_back")     return GsEasing::OutBack;
+    if (s == "in_out_back")  return GsEasing::InOutBack;
+    if (s == "in_elastic")      return GsEasing::InElastic;
+    if (s == "out_elastic")     return GsEasing::OutElastic;
+    if (s == "in_out_elastic")  return GsEasing::InOutElastic;
+    if (s == "in_bounce")       return GsEasing::InBounce;
+    if (s == "out_bounce")      return GsEasing::OutBounce;
+    if (s == "in_out_bounce")   return GsEasing::InOutBounce;
+    return GsEasing::Linear;
+}
+
 static uint32_t xorshift(uint32_t& state) {
     state ^= state << 13;
     state ^= state >> 17;

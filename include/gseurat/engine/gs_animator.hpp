@@ -3,6 +3,7 @@
 #include "gseurat/engine/gaussian_cloud.hpp"
 
 #include <cstdint>
+#include <string>
 #include <glm/glm.hpp>
 #include <unordered_map>
 #include <vector>
@@ -44,6 +45,9 @@ enum class GsEasing {
 };
 
 float apply_easing(float t, GsEasing easing);
+
+/// Convert a snake_case string to GsEasing enum. Unknown strings return Linear.
+GsEasing parse_easing(const std::string& s);
 
 struct GsAnimParams {
     // Rotation (Orbit, Vortex)
