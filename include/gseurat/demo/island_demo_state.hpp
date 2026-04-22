@@ -1,6 +1,7 @@
 #pragma once
 
 #include "gseurat/engine/camera_zone_system.hpp"
+#include "gseurat/engine/collision/collision_system.hpp"
 #include "gseurat/engine/collision_gen.hpp"
 #include "gseurat/engine/game_state.hpp"
 #include "gseurat/engine/gaussian_cloud.hpp"
@@ -83,6 +84,9 @@ private:
 
     // Camera zone system (data-driven camera volumes/triggers/rails)
     std::unique_ptr<CameraZoneSystem> camera_zone_system_;
+
+    // 3D collision system (replaces grid for scenes with ColliderComponent entities)
+    CollisionSystem collision_system_;
 
     // World streaming
     std::unique_ptr<WorldStreamer> world_streamer_;

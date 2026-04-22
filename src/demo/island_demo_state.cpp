@@ -660,6 +660,14 @@ void IslandDemoState::on_enter(AppBase& app) {
         // They will be triggered when the dialog system is wired up.
     }
 
+    // Initialize collision system — rebuilds cache from any ColliderComponent entities
+    collision_system_.rebuild_cache(app.world());
+
+    // If the player has a KinematicBody, compute derived physics values
+    if (auto* kb = app.world().try_get<KinematicBody>(player_entity_)) {
+        kb->recompute_derived();
+    }
+
     // Scene loaded — ready for play
 }
 
@@ -773,6 +781,9 @@ void IslandDemoState::update(AppBase& app, float dt) {
     if (!app.dev_overlay().wants_keyboard()) {
         update_player(app, dt);
     }
+
+    // Run collision system (KCC processes velocity set by update_player)
+    collision_system_.update(app.world(), dt);
 
     // Audio: update listener position + footstep SFX + audio zone crossfade
     if (auto* ae = app.audio()) {
@@ -926,66 +937,94 @@ void IslandDemoState::update_player(AppBase& app, float dt) {
     player_velocity_.x += (target_vel.x - player_velocity_.x) * blend;
     player_velocity_.z += (target_vel.z - player_velocity_.z) * blend;
 
-    // Update position
-    transform->position.vec() += player_velocity_ * dt;
+    // ── Path selection ──────────────────────────────────────────────
+    auto* kb = app.world().try_get<KinematicBody>(player_entity_);
 
-    // Snap Y to collision grid elevation if available
-    // Select which collision grid to use based on player Z position
-    CollisionGrid* active_grid = &collision_grid_;
-    glm::vec2 active_origin = grid_origin_;
-    if (forest_grid_loaded_ && transform->position.z() < 10.0f) {
-        active_grid = &forest_collision_grid_;
-        active_origin = forest_grid_origin_;
-    }
+    if (kb) {
+        // ── New KCC path ────────────────────────────────────────────
+        // Set KinematicBody velocity from blended input (XZ only, preserve existing Y)
+        kb->velocity.x = player_velocity_.x;
+        kb->velocity.z = player_velocity_.z;
 
-    if (active_grid->width > 0 && active_grid->height > 0) {
-        float local_x = transform->position.x() - active_origin.x;
-        float local_z = transform->position.z() - active_origin.y;
-        int gx = static_cast<int>(local_x / active_grid->cell_size);
-        int gz = static_cast<int>(local_z / active_grid->cell_size);
+        // Jump input
+        if (input.is_key_down(GLFW_KEY_SPACE) && kb->grounded) {
+            kb->velocity.y = kb->derived_jump_velocity;
+            kb->grounded = false;
+            // Trigger jump animation if available
+            auto* pe = app.bone_animation_registry().get(player_registry_id_);
+            if (pe) pe->requested_clip = "jump";
+        }
 
-        if (gx >= 0 && gx < static_cast<int>(active_grid->width) &&
-            gz >= 0 && gz < static_cast<int>(active_grid->height)) {
-            // Check solid — if solid, undo movement
-            bool solid = active_grid->is_solid(static_cast<uint32_t>(gx),
-                                                static_cast<uint32_t>(gz));
-            debug_frame_++;
-            if (solid) {
-                if (debug_frame_ % 60 == 0) {
-                    std::fprintf(stderr, "[Collision] BLOCKED at grid(%d,%d) pos=(%.1f,%.1f)\n",
-                                 gx, gz, transform->position.x(), transform->position.z());
-                }
-                transform->position.vec() -= player_velocity_ * dt;
-            } else {
-                // Snap to elevation
-                float elev = active_grid->get_elevation(
-                    static_cast<uint32_t>(gx), static_cast<uint32_t>(gz));
-                if (!active_grid->elevation.empty()) {
-                    transform->position.vec().y = elev;
+        // Variable jump height — cut velocity on release
+        if (!input.is_key_down(GLFW_KEY_SPACE) && kb->velocity.y > 0.0f) {
+            kb->velocity.y *= collision_system_.jump_cut_multiplier;
+        }
+
+        // KCC handles position update — read back
+        character_origin_ = transform->position.vec();
+    } else {
+        // ── Legacy grid path (unchanged) ────────────────────────────
+        // Update position
+        transform->position.vec() += player_velocity_ * dt;
+
+        // Snap Y to collision grid elevation if available
+        // Select which collision grid to use based on player Z position
+        CollisionGrid* active_grid = &collision_grid_;
+        glm::vec2 active_origin = grid_origin_;
+        if (forest_grid_loaded_ && transform->position.z() < 10.0f) {
+            active_grid = &forest_collision_grid_;
+            active_origin = forest_grid_origin_;
+        }
+
+        if (active_grid->width > 0 && active_grid->height > 0) {
+            float local_x = transform->position.x() - active_origin.x;
+            float local_z = transform->position.z() - active_origin.y;
+            int gx = static_cast<int>(local_x / active_grid->cell_size);
+            int gz = static_cast<int>(local_z / active_grid->cell_size);
+
+            if (gx >= 0 && gx < static_cast<int>(active_grid->width) &&
+                gz >= 0 && gz < static_cast<int>(active_grid->height)) {
+                // Check solid — if solid, undo movement
+                bool solid = active_grid->is_solid(static_cast<uint32_t>(gx),
+                                                    static_cast<uint32_t>(gz));
+                debug_frame_++;
+                if (solid) {
+                    if (debug_frame_ % 60 == 0) {
+                        std::fprintf(stderr, "[Collision] BLOCKED at grid(%d,%d) pos=(%.1f,%.1f)\n",
+                                     gx, gz, transform->position.x(), transform->position.z());
+                    }
+                    transform->position.vec() -= player_velocity_ * dt;
+                } else {
+                    // Snap to elevation
+                    float elev = active_grid->get_elevation(
+                        static_cast<uint32_t>(gx), static_cast<uint32_t>(gz));
+                    if (!active_grid->elevation.empty()) {
+                        transform->position.vec().y = elev;
+                    }
                 }
             }
         }
-    }
 
-    // Update character origin for bone transforms
-    character_origin_ = transform->position.vec();
+        // Update character origin for bone transforms
+        character_origin_ = transform->position.vec();
 
-    // Jump Y arc (parabolic: h = 4*H*t*(1-t) where t in [0,1])
-    {
-        auto* pj = app.world().try_get<PlayerJump>(player_entity_);
-        if (pj && pj->active) {
-            pj->timer += dt;
-            if (pj->timer >= pj->duration) {
-                pj->active = false;
-                pj->timer = 0.0f;
-                // Return to idle or walk based on movement
-                float spd = glm::length(glm::vec2(player_velocity_.x, player_velocity_.z));
-                auto* pe = app.bone_animation_registry().get(player_registry_id_);
-                if (pe) pe->requested_clip = spd > 0.1f ? "walk" : "idle";
-            } else {
-                float t = pj->timer / pj->duration;
-                float jump_y = 4.0f * pj->height * t * (1.0f - t);
-                character_origin_.y += jump_y;
+        // Jump Y arc (parabolic: h = 4*H*t*(1-t) where t in [0,1])
+        {
+            auto* pj = app.world().try_get<PlayerJump>(player_entity_);
+            if (pj && pj->active) {
+                pj->timer += dt;
+                if (pj->timer >= pj->duration) {
+                    pj->active = false;
+                    pj->timer = 0.0f;
+                    // Return to idle or walk based on movement
+                    float spd = glm::length(glm::vec2(player_velocity_.x, player_velocity_.z));
+                    auto* pe = app.bone_animation_registry().get(player_registry_id_);
+                    if (pe) pe->requested_clip = spd > 0.1f ? "walk" : "idle";
+                } else {
+                    float t = pj->timer / pj->duration;
+                    float jump_y = 4.0f * pj->height * t * (1.0f - t);
+                    character_origin_.y += jump_y;
+                }
             }
         }
     }
@@ -2186,6 +2225,9 @@ void IslandDemoState::perform_portal_transition(AppBase& app,
                 {player_registry_id_});
         }
     }
+
+    // Rebuild collision system cache for the new scene
+    collision_system_.rebuild_cache(app.world());
 
     std::fprintf(stderr, "[IslandDemo] Spawned at (%.1f, %.1f, %.1f)\n",
         spawn.x, spawn.y, spawn.z);
