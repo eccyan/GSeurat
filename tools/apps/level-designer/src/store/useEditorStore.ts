@@ -54,8 +54,22 @@ interface CollisionGridData {
   solid: boolean[];
 }
 
+export interface ColliderData {
+  id: string;
+  name: string;
+  position: [number, number, number];
+  rotation: [number, number, number, number]; // quaternion [x,y,z,w]
+  shape:
+    | { type: 'box'; half_extents: [number, number, number] }
+    | { type: 'sphere'; radius: number }
+    | { type: 'capsule'; radius: number; half_height: number };
+  collision_mask: number;
+  is_trigger: boolean;
+  is_dynamic: boolean;
+}
+
 type Tool = 'paint' | 'erase' | 'fill' | 'select' | 'collision';
-type Layer = 'tiles' | 'lights' | 'npcs' | 'portals' | 'backgrounds' | 'environment' | 'collision';
+type Layer = 'tiles' | 'lights' | 'npcs' | 'portals' | 'backgrounds' | 'environment' | 'collision' | 'colliders';
 
 interface HistoryEntry {
   tiles: TileData[];
@@ -134,6 +148,15 @@ interface EditorState {
   collisionGrid: CollisionGridData | null;
   setCollisionGrid: (grid: CollisionGridData | null) => void;
   toggleCollisionCell: (x: number, y: number) => void;
+
+  // Colliders
+  colliders: ColliderData[];
+  selectedColliderId: string | null;
+  addCollider: (data: ColliderData) => void;
+  updateCollider: (id: string, partial: Partial<ColliderData>) => void;
+  removeCollider: (id: string) => void;
+  setSelectedCollider: (id: string | null) => void;
+  setColliders: (data: ColliderData[]) => void;
 
   // Scene file
   currentScenePath: string;
@@ -399,6 +422,35 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
   },
 
   // ---------------------------------------------------------------------------
+  // Colliders
+  // ---------------------------------------------------------------------------
+  colliders: [],
+  selectedColliderId: null,
+
+  addCollider: (data) =>
+    set((state) => ({ colliders: [...state.colliders, data], dirty: true })),
+
+  updateCollider: (id, partial) =>
+    set((state) => {
+      const next = state.colliders.map((c) =>
+        c.id === id ? { ...c, ...partial } : c
+      );
+      return { colliders: next, dirty: true };
+    }),
+
+  removeCollider: (id) =>
+    set((state) => {
+      const next = state.colliders.filter((c) => c.id !== id);
+      const selectedColliderId =
+        state.selectedColliderId === id ? null : state.selectedColliderId;
+      return { colliders: next, selectedColliderId, dirty: true };
+    }),
+
+  setSelectedCollider: (id) => set({ selectedColliderId: id }),
+
+  setColliders: (data) => set({ colliders: data }),
+
+  // ---------------------------------------------------------------------------
   // Scene file
   // ---------------------------------------------------------------------------
   currentScenePath: 'assets/scenes/untitled.json',
@@ -421,3 +473,4 @@ export type {
   HistoryEntry,
   EditorState,
 };
+// ColliderData is already exported via `export interface` above.
