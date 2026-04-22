@@ -221,4 +221,183 @@ std::optional<RayHit> ray_intersect(
     }, shape);
 }
 
+// ── Internal helpers for capsule overlap ─────────────────────────────────────
+
+static glm::vec3 closest_point_on_segment(const glm::vec3& a, const glm::vec3& b, const glm::vec3& p) {
+    glm::vec3 ab = b - a;
+    float len2 = glm::dot(ab, ab);
+    if (len2 < 1e-8f) return a;  // degenerate segment
+    float t = glm::clamp(glm::dot(p - a, ab) / len2, 0.0f, 1.0f);
+    return a + t * ab;
+}
+
+static std::pair<glm::vec3, glm::vec3> closest_points_segments(
+    const glm::vec3& a1, const glm::vec3& b1,
+    const glm::vec3& a2, const glm::vec3& b2)
+{
+    glm::vec3 d1 = b1 - a1;
+    glm::vec3 d2 = b2 - a2;
+    glm::vec3 r  = a1 - a2;
+
+    float e = glm::dot(d2, d2);
+    float f = glm::dot(d2, r);
+
+    float s, t;
+
+    float c = glm::dot(d1, r);
+    float a = glm::dot(d1, d1);
+    float b = glm::dot(d1, d2);
+    float denom = a * e - b * b;
+
+    if (denom < 1e-8f) {
+        // Parallel segments: fix s=0, solve for t
+        s = 0.0f;
+        t = (e > 1e-8f) ? glm::clamp(f / e, 0.0f, 1.0f) : 0.0f;
+    } else {
+        s = glm::clamp((b * f - c * e) / denom, 0.0f, 1.0f);
+        t = (b * s + f) / e;
+
+        if (t < 0.0f) {
+            t = 0.0f;
+            s = glm::clamp(-c / a, 0.0f, 1.0f);
+        } else if (t > 1.0f) {
+            t = 1.0f;
+            s = glm::clamp((b - c) / a, 0.0f, 1.0f);
+        }
+    }
+
+    return {a1 + s * d1, a2 + t * d2};
+}
+
+static glm::vec3 closest_point_on_obb(
+    const glm::vec3& p,
+    const glm::vec3& box_pos, const glm::quat& box_rot, const BoxData& box)
+{
+    glm::quat inv_rot = glm::inverse(box_rot);
+    glm::vec3 local_p = inv_rot * (p - box_pos);
+    glm::vec3 clamped = glm::clamp(local_p, -box.half_extents, box.half_extents);
+    return box_pos + box_rot * clamped;
+}
+
+// ── Capsule overlap implementations ──────────────────────────────────────────
+
+std::optional<Contact> capsule_vs_sphere(
+    const glm::vec3& cap_pos, const glm::quat& cap_rot, const CapsuleData& capsule,
+    const glm::vec3& sph_pos, const SphereData& sphere)
+{
+    glm::vec3 up   = cap_rot * glm::vec3(0.0f, 1.0f, 0.0f);
+    glm::vec3 seg_a = cap_pos - up * capsule.half_height;
+    glm::vec3 seg_b = cap_pos + up * capsule.half_height;
+
+    glm::vec3 cp   = closest_point_on_segment(seg_a, seg_b, sph_pos);
+    float dist      = glm::length(cp - sph_pos);
+    float combined_r = capsule.radius + sphere.radius;
+
+    if (dist >= combined_r) return std::nullopt;
+
+    glm::vec3 normal;
+    if (dist < 1e-8f) {
+        normal = glm::vec3(0.0f, 1.0f, 0.0f);
+    } else {
+        normal = glm::normalize(cp - sph_pos);
+    }
+
+    float depth = combined_r - dist;
+    glm::vec3 point = sph_pos + normal * sphere.radius;
+    return Contact{point, normal, depth};
+}
+
+std::optional<Contact> capsule_vs_capsule(
+    const glm::vec3& pos_a, const glm::quat& rot_a, const CapsuleData& a,
+    const glm::vec3& pos_b, const glm::quat& rot_b, const CapsuleData& b)
+{
+    glm::vec3 up_a  = rot_a * glm::vec3(0.0f, 1.0f, 0.0f);
+    glm::vec3 seg_a1 = pos_a - up_a * a.half_height;
+    glm::vec3 seg_a2 = pos_a + up_a * a.half_height;
+
+    glm::vec3 up_b  = rot_b * glm::vec3(0.0f, 1.0f, 0.0f);
+    glm::vec3 seg_b1 = pos_b - up_b * b.half_height;
+    glm::vec3 seg_b2 = pos_b + up_b * b.half_height;
+
+    auto [cp1, cp2] = closest_points_segments(seg_a1, seg_a2, seg_b1, seg_b2);
+
+    float dist       = glm::length(cp1 - cp2);
+    float combined_r = a.radius + b.radius;
+
+    if (dist >= combined_r) return std::nullopt;
+
+    glm::vec3 normal;
+    if (dist < 1e-8f) {
+        normal = glm::vec3(0.0f, 1.0f, 0.0f);
+    } else {
+        normal = glm::normalize(cp1 - cp2);
+    }
+
+    float depth = combined_r - dist;
+    glm::vec3 point = cp2 + normal * b.radius;
+    return Contact{point, normal, depth};
+}
+
+std::optional<Contact> capsule_vs_box(
+    const glm::vec3& cap_pos, const glm::quat& cap_rot, const CapsuleData& capsule,
+    const glm::vec3& box_pos, const glm::quat& box_rot, const BoxData& box)
+{
+    glm::vec3 up    = cap_rot * glm::vec3(0.0f, 1.0f, 0.0f);
+    glm::vec3 seg_a = cap_pos - up * capsule.half_height;
+    glm::vec3 seg_b = cap_pos + up * capsule.half_height;
+    glm::vec3 seg_m = (seg_a + seg_b) * 0.5f;
+
+    // Build candidate capsule points and find their closest OBB points
+    glm::vec3 candidates[4] = {seg_a, seg_b, seg_m,
+        closest_point_on_segment(seg_a, seg_b, box_pos)};
+
+    float min_dist     = std::numeric_limits<float>::infinity();
+    glm::vec3 best_cap = seg_m;
+    glm::vec3 best_obb = closest_point_on_obb(seg_m, box_pos, box_rot, box);
+
+    for (const glm::vec3& cap_pt : candidates) {
+        glm::vec3 obb_pt = closest_point_on_obb(cap_pt, box_pos, box_rot, box);
+        float d = glm::length(cap_pt - obb_pt);
+        if (d < min_dist) {
+            min_dist = d;
+            best_cap = cap_pt;
+            best_obb = obb_pt;
+        }
+    }
+
+    if (min_dist >= capsule.radius) return std::nullopt;
+
+    glm::vec3 normal;
+    float depth;
+
+    if (min_dist < 1e-8f) {
+        // Capsule center inside box — push out along nearest face
+        glm::quat inv_rot = glm::inverse(box_rot);
+        glm::vec3 local_p = inv_rot * (best_cap - box_pos);
+        glm::vec3 he = box.half_extents;
+
+        // Find which face is closest (smallest penetration per axis)
+        float min_pen = std::numeric_limits<float>::infinity();
+        int   axis    = 0;
+        float sign    = 1.0f;
+
+        for (int i = 0; i < 3; ++i) {
+            float pen_pos = he[i] - local_p[i];
+            float pen_neg = he[i] + local_p[i];
+            if (pen_pos < min_pen) { min_pen = pen_pos; axis = i; sign =  1.0f; }
+            if (pen_neg < min_pen) { min_pen = pen_neg; axis = i; sign = -1.0f; }
+        }
+
+        glm::vec3 local_normal(0.0f);
+        local_normal[axis] = sign;
+        normal = glm::normalize(box_rot * local_normal);
+        depth  = capsule.radius + min_pen;
+    } else {
+        normal = glm::normalize(best_cap - best_obb);
+        depth  = capsule.radius - min_dist;
+    }
+
+    return Contact{best_obb, normal, depth};
+}
+
 }  // namespace gseurat

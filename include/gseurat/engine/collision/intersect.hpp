@@ -33,4 +33,17 @@ std::optional<RayHit> ray_intersect(
     const glm::vec3& origin, const glm::vec3& direction,
     const ColliderShape& shape, const glm::vec3& pos, const glm::quat& rot);
 
+// ── Capsule overlap with penetration ──────────────────────────────
+std::optional<Contact> capsule_vs_sphere(
+    const glm::vec3& cap_pos, const glm::quat& cap_rot, const CapsuleData& capsule,
+    const glm::vec3& sph_pos, const SphereData& sphere);
+
+std::optional<Contact> capsule_vs_capsule(
+    const glm::vec3& pos_a, const glm::quat& rot_a, const CapsuleData& a,
+    const glm::vec3& pos_b, const glm::quat& rot_b, const CapsuleData& b);
+
+std::optional<Contact> capsule_vs_box(
+    const glm::vec3& cap_pos, const glm::quat& cap_rot, const CapsuleData& capsule,
+    const glm::vec3& box_pos, const glm::quat& box_rot, const BoxData& box);
+
 }  // namespace gseurat

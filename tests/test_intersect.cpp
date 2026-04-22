@@ -168,6 +168,144 @@ int main() {
         }
     }
 
+    std::printf("\n--- Capsule overlap tests ---\n");
+
+    // ── Test 9: capsule_vs_sphere overlap ──
+    // Capsule at (0,1,0) upright hh=0.5 r=0.3, sphere at (0.4,1,0) r=0.2
+    // Closest point on segment to sphere center is (0,1,0), dist=0.4, combined=0.5 → contact
+    {
+        CapsuleData cap;
+        cap.radius      = 0.3f;
+        cap.half_height = 0.5f;
+
+        SphereData sph;
+        sph.radius = 0.2f;
+
+        auto contact = capsule_vs_sphere(
+            glm::vec3(0.0f, 1.0f, 0.0f), identity_rot(), cap,
+            glm::vec3(0.4f, 1.0f, 0.0f), sph);
+
+        check(contact.has_value(), "cap_vs_sphere: overlapping contact detected");
+        if (contact) {
+            check(contact->depth > 0.0f, "cap_vs_sphere: depth > 0");
+            // normal = normalize(cp - sph_pos): cp=(0,1,0), sph=(0.4,1,0) → normal ≈ (-1,0,0)
+        check(contact->normal.x < -0.5f, "cap_vs_sphere: normal points roughly -X (from sphere toward capsule)");
+        }
+    }
+
+    // ── Test 10: capsule_vs_sphere no overlap ──
+    {
+        CapsuleData cap;
+        cap.radius      = 0.3f;
+        cap.half_height = 0.5f;
+
+        SphereData sph;
+        sph.radius = 0.5f;
+
+        auto contact = capsule_vs_sphere(
+            glm::vec3(0.0f, 0.0f, 0.0f), identity_rot(), cap,
+            glm::vec3(5.0f, 0.0f, 0.0f), sph);
+
+        check(!contact.has_value(), "cap_vs_sphere: separated → no contact");
+    }
+
+    // ── Test 11: capsule_vs_capsule overlap ──
+    // Two parallel upright capsules at (0,0,0) and (0.4,0,0), both hh=0.5 r=0.3
+    // Combined radius=0.6 > distance=0.4 → contact, normal ≈ (1,0,0)
+    {
+        CapsuleData cap;
+        cap.radius      = 0.3f;
+        cap.half_height = 0.5f;
+
+        auto contact = capsule_vs_capsule(
+            glm::vec3(0.0f, 0.0f, 0.0f), identity_rot(), cap,
+            glm::vec3(0.4f, 0.0f, 0.0f), identity_rot(), cap);
+
+        check(contact.has_value(), "cap_vs_capsule: overlapping contact detected");
+        if (contact) {
+            check(contact->depth > 0.0f, "cap_vs_capsule: depth > 0");
+            // normal points from B toward A, so roughly -X (cap A is at X=0, cap B at X=0.4)
+            check(std::abs(contact->normal.x) > 0.5f, "cap_vs_capsule: normal is along X axis");
+        }
+    }
+
+    // ── Test 12: capsule_vs_capsule no overlap ──
+    {
+        CapsuleData cap;
+        cap.radius      = 0.3f;
+        cap.half_height = 0.5f;
+
+        auto contact = capsule_vs_capsule(
+            glm::vec3(0.0f, 0.0f, 0.0f), identity_rot(), cap,
+            glm::vec3(2.0f, 0.0f, 0.0f), identity_rot(), cap);
+
+        check(!contact.has_value(), "cap_vs_capsule: separated → no contact");
+    }
+
+    // ── Test 13: capsule_vs_box floor contact ──
+    // Capsule at (0, 0.8, 0) upright hh=0.5 r=0.3
+    // Capsule bottom = 0.8 - 0.5 = 0.3 (segment bottom), capsule bottom sphere extent = 0.3 - 0.3 = 0.0
+    // Box at (0,0,0) half_extents (5,0.5,5), top face at y=0.5
+    // Overlap: capsule segment bottom at y=0.3, closest OBB point y=0.5 → dist=0.2 < 0.3 radius
+    {
+        CapsuleData cap;
+        cap.radius      = 0.3f;
+        cap.half_height = 0.5f;
+
+        BoxData floor_box;
+        floor_box.half_extents = glm::vec3(5.0f, 0.5f, 5.0f);
+
+        auto contact = capsule_vs_box(
+            glm::vec3(0.0f, 0.8f, 0.0f), identity_rot(), cap,
+            glm::vec3(0.0f, 0.0f, 0.0f), identity_rot(), floor_box);
+
+        check(contact.has_value(), "cap_vs_box floor: capsule resting on floor → contact");
+        if (contact) {
+            check(contact->depth > 0.0f, "cap_vs_box floor: depth > 0");
+            check(contact->normal.y > 0.5f, "cap_vs_box floor: normal points roughly up");
+        }
+    }
+
+    // ── Test 14: capsule_vs_box wall contact ──
+    // Capsule at (1.2, 1, 0) upright hh=0.5 r=0.3
+    // Box wall at (2,1,0) half_extents (0.5,2,2), left face at X=1.5
+    // Capsule at X=1.2 + radius 0.3 = 1.5 → exactly touching / just overlapping
+    {
+        CapsuleData cap;
+        cap.radius      = 0.3f;
+        cap.half_height = 0.5f;
+
+        BoxData wall_box;
+        wall_box.half_extents = glm::vec3(0.5f, 2.0f, 2.0f);
+
+        // Capsule at X=1.3: closest OBB point at X=1.5, dist=0.2 < radius=0.3 → overlap
+        auto contact = capsule_vs_box(
+            glm::vec3(1.3f, 1.0f, 0.0f), identity_rot(), cap,
+            glm::vec3(2.0f, 1.0f, 0.0f), identity_rot(), wall_box);
+
+        check(contact.has_value(), "cap_vs_box wall: capsule overlapping wall → contact");
+        if (contact) {
+            check(contact->depth > 0.0f, "cap_vs_box wall: depth > 0");
+            check(contact->normal.x < -0.5f, "cap_vs_box wall: normal points roughly -X (away from wall)");
+        }
+    }
+
+    // ── Test 15: capsule_vs_box no overlap ──
+    {
+        CapsuleData cap;
+        cap.radius      = 0.3f;
+        cap.half_height = 0.5f;
+
+        BoxData box;
+        box.half_extents = glm::vec3(1.0f);
+
+        auto contact = capsule_vs_box(
+            glm::vec3(0.0f, 5.0f, 0.0f), identity_rot(), cap,
+            glm::vec3(0.0f, 0.0f, 0.0f), identity_rot(), box);
+
+        check(!contact.has_value(), "cap_vs_box: separated → no contact");
+    }
+
     std::printf("\n=== Results: %d passed, %d failed ===\n", passed, failed);
     return (failed == 0) ? 0 : 1;
 }
