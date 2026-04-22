@@ -46,6 +46,12 @@ struct AABB {
 
     glm::vec3 center() const { return (min + max) * 0.5f; }
     glm::vec3 extent() const { return max - min; }
+
+    uint32_t longest_axis() const {
+        glm::vec3 e = extent();
+        if (e.x >= e.y && e.x >= e.z) return 0;
+        return (e.y >= e.z) ? 1 : 2;
+    }
 };
 
 /// GPU-side Gaussian struct (matches gs_preprocess.comp GpuGaussian).

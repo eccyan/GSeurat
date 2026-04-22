@@ -203,6 +203,7 @@ add_library(gseurat_core ${_gseurat_lib_type}
     src/engine/gs_parallax_camera.cpp
     src/engine/gs_scene_loader.cpp
     src/engine/collision_gen.cpp
+    src/engine/collision/intersect.cpp
     src/engine/save_system.cpp
     src/engine/slab_allocator.cpp
     src/engine/async_loader.cpp
@@ -495,6 +496,7 @@ target_include_directories(test_audio_zone_system PRIVATE ${PROJECT_SOURCE_DIR}/
 add_gseurat_test(test_audio_svf
     src/engine/audio/state_variable_filter.cpp)
 target_include_directories(test_audio_svf PRIVATE ${PROJECT_SOURCE_DIR}/src/engine/audio)
+add_gseurat_test(test_primitive_aabb src/engine/collision/intersect.cpp)
 add_gseurat_test(test_memory_mapped_file
     src/engine/platform/memory_mapped_file.cpp)
 add_gseurat_test(test_audio_effect_chain
