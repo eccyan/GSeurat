@@ -18,6 +18,9 @@ void CollisionSystem::rebuild_cache(ecs::World& world) {
     world.view<ecs::Transform, ColliderComponent>().each(
         [&](ecs::Entity entity, ecs::Transform& transform,
             ColliderComponent& collider) {
+            // Skip kinematic body entities — they're swept, not static obstacles
+            if (world.has<KinematicBody>(entity)) return;
+
             ColliderInstance inst;
             inst.entity = entity;
             inst.collider_index = 0;
@@ -230,8 +233,132 @@ void CollisionSystem::update(ecs::World& world, float dt) {
     run_kcc(world, dt);
 }
 
-// Stub — implemented in Task 9
-void CollisionSystem::run_kcc([[maybe_unused]] ecs::World& world,
-                               [[maybe_unused]] float dt) {}
+void CollisionSystem::run_kcc(ecs::World& world, float dt) {
+    world.view<ecs::Transform, KinematicBody, ColliderComponent>().each(
+        [&](ecs::Entity entity, ecs::Transform& transform,
+            KinematicBody& body, ColliderComponent& collider) {
+            // Only process capsule-shaped kinematic bodies
+            auto* capsule_ptr = std::get_if<CapsuleData>(&collider.shape);
+            if (!capsule_ptr) return;
+            const CapsuleData& capsule = *capsule_ptr;
+
+            glm::vec3 position = transform.position.vec();
+            glm::vec3 velocity = body.velocity;
+            glm::quat rot = collider.local_rotation;
+            bool grounded = body.grounded;
+            glm::vec3 ground_normal = body.ground_normal;
+
+            // Step 1: Apply gravity
+            if (velocity.y > 0.0f) {
+                // Jump ascent — use designer-tuned derived_gravity
+                velocity.y -= body.derived_gravity * dt;
+            } else if (!grounded) {
+                // Fall — use world gravity (fast-fall feel)
+                velocity.y -= world_gravity * body.gravity_scale * dt;
+            } else if (velocity.y < 0.0f) {
+                // Grounded, stop downward velocity
+                velocity.y = 0.0f;
+            }
+
+            // Step 2: Horizontal sweep (XZ)
+            glm::vec3 h_delta(velocity.x * dt, 0.0f, velocity.z * dt);
+            std::optional<SweepResult> wall_hit;
+
+            if (glm::length(h_delta) > 1e-6f) {
+                glm::vec3 h_dir = glm::normalize(h_delta);
+                float h_dist = glm::length(h_delta);
+
+                auto hit = sweep(position, rot, capsule, h_dir, h_dist,
+                                 collider.collision_mask);
+                if (hit && !hit->is_trigger) {
+                    float safe_t = std::max(hit->hit.t * h_dist - skin_width, 0.0f);
+                    position += h_dir * safe_t;
+                    wall_hit = hit;
+                } else {
+                    position += h_delta;
+                }
+            }
+
+            // Step 3: Wall sliding
+            if (wall_hit) {
+                float remaining_frac = 1.0f - wall_hit->hit.t;
+                glm::vec3 remaining = h_delta * remaining_frac;
+                glm::vec3 wall_normal = wall_hit->hit.normal;
+
+                // Project remaining movement onto wall plane
+                glm::vec3 projected = remaining -
+                    glm::dot(remaining, wall_normal) * wall_normal;
+
+                if (glm::length(projected) > 1e-6f) {
+                    glm::vec3 slide_dir = glm::normalize(projected);
+                    float slide_dist = glm::length(projected);
+
+                    auto slide_hit = sweep(position, rot, capsule, slide_dir,
+                                           slide_dist, collider.collision_mask);
+                    if (slide_hit && !slide_hit->is_trigger) {
+                        float safe_t = std::max(
+                            slide_hit->hit.t * slide_dist - skin_width, 0.0f);
+                        position += slide_dir * safe_t;
+                    } else {
+                        position += projected;
+                    }
+                }
+
+                // Project velocity for next frame
+                glm::vec3 vel_xz(velocity.x, 0.0f, velocity.z);
+                vel_xz -= glm::dot(vel_xz, wall_normal) * wall_normal;
+                velocity.x = vel_xz.x;
+                velocity.z = vel_xz.z;
+            }
+
+            // Step 4: Vertical sweep (Y)
+            glm::vec3 v_delta(0.0f, velocity.y * dt, 0.0f);
+
+            if (std::abs(v_delta.y) > 1e-6f) {
+                glm::vec3 v_dir = glm::normalize(v_delta);
+                float v_dist = std::abs(v_delta.y);
+
+                auto hit = sweep(position, rot, capsule, v_dir, v_dist,
+                                 collider.collision_mask);
+                if (hit && !hit->is_trigger) {
+                    float safe_t = std::max(hit->hit.t * v_dist - skin_width, 0.0f);
+                    position += v_dir * safe_t;
+
+                    if (v_delta.y > 0.0f) {
+                        // Hit ceiling — kill upward velocity
+                        velocity.y = 0.0f;
+                    }
+                    // If falling and hit floor, ground detection in step 5 handles it
+                } else {
+                    position += v_delta;
+                }
+            }
+
+            // Step 5: Ground probe
+            auto probe = sweep(position, rot, capsule,
+                               glm::vec3(0.0f, -1.0f, 0.0f),
+                               ground_probe_distance,
+                               collider.collision_mask);
+
+            if (probe && !probe->is_trigger &&
+                glm::dot(probe->hit.normal, glm::vec3(0, 1, 0)) > ground_angle_cos) {
+                grounded = true;
+                ground_normal = probe->hit.normal;
+                // Snap to ground
+                float snap_dist = std::max(
+                    probe->hit.t * ground_probe_distance - skin_width, 0.0f);
+                position.y -= snap_dist;
+            } else {
+                grounded = false;
+                ground_normal = glm::vec3(0.0f, 1.0f, 0.0f);
+            }
+
+            // Step 6: Write back
+            transform.position = coord::WorldPos(position);
+            body.velocity = velocity;
+            body.grounded = grounded;
+            body.ground_normal = ground_normal;
+        });
+}
 
 }  // namespace gseurat

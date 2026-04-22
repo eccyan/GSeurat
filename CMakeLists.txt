@@ -505,6 +505,10 @@ add_gseurat_test(test_collision_system
     src/engine/collision/collision_system.cpp
     src/engine/collision/intersect.cpp
     src/engine/collision/bvh.cpp)
+add_gseurat_test(test_kcc
+    src/engine/collision/collision_system.cpp
+    src/engine/collision/intersect.cpp
+    src/engine/collision/bvh.cpp)
 add_gseurat_test(test_collider_json)
 add_gseurat_test(test_memory_mapped_file
     src/engine/platform/memory_mapped_file.cpp)
