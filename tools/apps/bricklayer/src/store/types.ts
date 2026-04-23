@@ -324,6 +324,14 @@ export interface CameraZoneParams {
   offset: [number, number, number];
   fixed_position?: [number, number, number];
   rail_id?: string;
+  // Cinematic rail parameters
+  cinematic_duration: number;
+  cinematic_easing: string;
+  cinematic_playback: 'once' | 'loop' | 'ping_pong' | 'manual';
+  play_on_enter: boolean;
+  target_mode: 'player' | 'target_path' | 'fixed_point';
+  min_ground_clearance: number;
+  target_y_offset: number;
 }
 
 export const DEFAULT_CAMERA_ZONE_PARAMS: CameraZoneParams = {
@@ -338,6 +346,13 @@ export const DEFAULT_CAMERA_ZONE_PARAMS: CameraZoneParams = {
   fov: 45,
   orbit_distance: 10,
   offset: [0, 5, -10],
+  cinematic_duration: 5.0,
+  cinematic_easing: 'in_out_quad',
+  cinematic_playback: 'once',
+  play_on_enter: true,
+  target_mode: 'player',
+  min_ground_clearance: 10,
+  target_y_offset: 2.5,
 };
 
 export interface CameraZoneVolume {
