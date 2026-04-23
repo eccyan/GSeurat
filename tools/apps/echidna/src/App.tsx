@@ -19,6 +19,7 @@ import {
   installDebugDumpKeyboard,
 } from '@gseurat/debug-dump';
 import { EchidnaEyesDumper } from './lib/debugDumper.js';
+import { EchidnaStoreDumper } from './lib/storeDumper.js';
 
 const styles: Record<string, React.CSSProperties> = {
   root: {
@@ -163,15 +164,17 @@ export function App() {
     }
   }, []);
 
-  // Debug dump: register eyes dumper + install triggers (Ctrl+Shift+D / console)
+  // Debug dump: register eyes + store dumpers + install triggers (Ctrl+Shift+D / console)
   useEffect(() => {
     const registry = DebugDumpRegistry.getInstance();
     registry.setSource('echidna');
-    const dumper = new EchidnaEyesDumper();
-    registry.register(dumper);
+    const eyesDumper = new EchidnaEyesDumper();
+    const storeDumper = new EchidnaStoreDumper();
+    registry.register(eyesDumper);
+    registry.register(storeDumper);
     installDebugDumpGlobal();
     installDebugDumpKeyboard();
-    return () => { registry.unregister(dumper); };
+    return () => { registry.unregister(eyesDumper); registry.unregister(storeDumper); };
   }, []);
 
   // Bootstrap: restore project root handle from IDB on startup

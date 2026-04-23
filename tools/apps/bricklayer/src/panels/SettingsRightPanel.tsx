@@ -25,7 +25,7 @@ export function SettingsRightPanel() {
   const category = useSceneStore((s) => s.selectedSettingsCategory);
 
   return (
-    <div>
+    <div data-panel-id="settings-right-panel">
       {category === 'gs_camera' && (
         <>
           <div style={styles.heading}>GS Camera & Render</div>

@@ -16,6 +16,7 @@ import {
 } from '@gseurat/debug-dump';
 import { connectBridgeToPath } from './lib/bridgeConnection.js';
 import { BricklayerEyesDumper } from './lib/debugDumper.js';
+import { BricklayerStoreDumper } from './lib/storeDumper.js';
 import { ScenePropertiesPanel } from './panels/ScenePropertiesPanel.js';
 import { SettingsRightPanel } from './panels/SettingsRightPanel.js';
 import { WorldPropertiesPanel } from './panels/WorldPropertiesPanel.js';
@@ -227,15 +228,17 @@ export function App() {
     setRightWidth((w) => Math.max(200, Math.min(600, w + delta)));
   }, []);
 
-  // Debug dump: register eyes dumper + install triggers (Ctrl+Shift+D / console)
+  // Debug dump: register eyes + store dumpers + install triggers (Ctrl+Shift+D / console)
   useEffect(() => {
     const registry = DebugDumpRegistry.getInstance();
     registry.setSource('bricklayer');
-    const dumper = new BricklayerEyesDumper();
-    registry.register(dumper);
+    const eyesDumper = new BricklayerEyesDumper();
+    const storeDumper = new BricklayerStoreDumper();
+    registry.register(eyesDumper);
+    registry.register(storeDumper);
     installDebugDumpGlobal();
     installDebugDumpKeyboard();
-    return () => { registry.unregister(dumper); };
+    return () => { registry.unregister(eyesDumper); registry.unregister(storeDumper); };
   }, []);
 
   // Bootstrap (Phase 0.1 #2): on first load, restore the previously-used

@@ -17,6 +17,7 @@ export type {
   EyesState,
   EyesWarning,
   IDebugDumpable,
+  StoreDump,
   TrackGroupStatus,
 } from "./types.js";
 
