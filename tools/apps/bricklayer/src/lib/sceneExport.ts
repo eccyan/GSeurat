@@ -428,6 +428,14 @@ export function exportSceneJson(
         if (p.offset && (p.offset[0] !== 0 || p.offset[1] !== 5 || p.offset[2] !== -10)) params.offset = p.offset;
         if (p.fixed_position) params.fixed_position = p.fixed_position;
         if (p.rail_id) params.rail_id = p.rail_id;
+        // Cinematic rail parameters (only export non-defaults)
+        if (p.cinematic_duration !== undefined && p.cinematic_duration !== 5.0) params.cinematic_duration = p.cinematic_duration;
+        if (p.cinematic_easing && p.cinematic_easing !== 'in_out_quad') params.cinematic_easing = p.cinematic_easing;
+        if (p.cinematic_playback && p.cinematic_playback !== 'once') params.cinematic_playback = p.cinematic_playback;
+        if (p.play_on_enter === false) params.play_on_enter = false;
+        if (p.target_mode && p.target_mode !== 'player') params.target_mode = p.target_mode;
+        if (p.min_ground_clearance !== undefined && p.min_ground_clearance !== 10) params.min_ground_clearance = p.min_ground_clearance;
+        if (p.target_y_offset !== undefined && p.target_y_offset !== 2.5) params.target_y_offset = p.target_y_offset;
         if (Object.keys(params).length > 0) out.params = params;
         return out;
       });

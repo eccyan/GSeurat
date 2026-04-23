@@ -236,6 +236,113 @@ export function CameraVolumeEditor({ volume }: { volume: CameraZoneVolume }) {
         </div>
       )}
 
+      {mode === 'cinematic_rail' && (
+        <>
+          <div style={styles.section}>
+            <span style={styles.label}>Duration (s)</span>
+            <NumberInput
+              value={volume.params.cinematic_duration ?? 5.0}
+              min={0.1}
+              step={0.5}
+              onChange={(v) => updateParams({ cinematic_duration: v })}
+              style={styles.input}
+            />
+          </div>
+
+          <div style={styles.section}>
+            <span style={styles.label}>Easing</span>
+            <select
+              style={styles.select}
+              value={volume.params.cinematic_easing ?? 'in_out_quad'}
+              onChange={(e) => updateParams({ cinematic_easing: e.target.value })}
+            >
+              <option value="linear">Linear</option>
+              <option value="in_quad">In Quad</option>
+              <option value="out_quad">Out Quad</option>
+              <option value="in_out_quad">In Out Quad</option>
+              <option value="in_cubic">In Cubic</option>
+              <option value="out_cubic">Out Cubic</option>
+              <option value="in_out_cubic">In Out Cubic</option>
+              <option value="in_sine">In Sine</option>
+              <option value="out_sine">Out Sine</option>
+              <option value="in_out_sine">In Out Sine</option>
+              <option value="in_expo">In Expo</option>
+              <option value="out_expo">Out Expo</option>
+              <option value="in_out_expo">In Out Expo</option>
+              <option value="in_elastic">In Elastic</option>
+              <option value="out_elastic">Out Elastic</option>
+              <option value="in_out_elastic">In Out Elastic</option>
+              <option value="in_back">In Back</option>
+              <option value="out_back">Out Back</option>
+              <option value="in_out_back">In Out Back</option>
+              <option value="in_bounce">In Bounce</option>
+              <option value="out_bounce">Out Bounce</option>
+              <option value="in_out_bounce">In Out Bounce</option>
+            </select>
+          </div>
+
+          <div style={styles.section}>
+            <span style={styles.label}>Playback</span>
+            <select
+              style={styles.select}
+              value={volume.params.cinematic_playback ?? 'once'}
+              onChange={(e) => updateParams({ cinematic_playback: e.target.value as any })}
+            >
+              <option value="once">Once</option>
+              <option value="loop">Loop</option>
+              <option value="ping_pong">Ping Pong</option>
+              <option value="manual">Manual</option>
+            </select>
+          </div>
+
+          <div style={styles.section}>
+            <label style={{ fontSize: 12, color: '#ddd', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <input
+                type="checkbox"
+                checked={volume.params.play_on_enter ?? true}
+                onChange={(e) => updateParams({ play_on_enter: e.target.checked })}
+              />
+              Play On Enter
+            </label>
+          </div>
+
+          <div style={styles.section}>
+            <span style={styles.label}>Target Mode</span>
+            <select
+              style={styles.select}
+              value={volume.params.target_mode ?? 'player'}
+              onChange={(e) => updateParams({ target_mode: e.target.value as any })}
+            >
+              <option value="player">Player</option>
+              <option value="target_path">Target Path</option>
+              <option value="fixed_point">Fixed Point</option>
+            </select>
+          </div>
+
+          <div style={styles.section}>
+            <span style={styles.label}>Min Ground Clearance</span>
+            <NumberInput
+              value={volume.params.min_ground_clearance ?? 10}
+              min={0}
+              step={1}
+              onChange={(v) => updateParams({ min_ground_clearance: v })}
+              style={styles.input}
+            />
+          </div>
+
+          <div style={styles.section}>
+            <span style={styles.label}>Target Y Offset</span>
+            <NumberInput
+              value={volume.params.target_y_offset ?? 2.5}
+              min={0}
+              step={0.5}
+              onChange={(v) => updateParams({ target_y_offset: v })}
+              style={styles.input}
+            />
+          </div>
+        </>
+      )}
+
     </div>
   );
 }

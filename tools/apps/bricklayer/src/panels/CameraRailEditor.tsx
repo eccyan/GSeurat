@@ -82,10 +82,12 @@ export function CameraRailEditor({ rail }: { rail: CameraZoneRail }) {
                 onChange={(v) => updateRailControlPoint(rail.id, i, v)}
               />
             </div>
-            <button
-              style={{ padding: '0 4px', border: 'none', background: 'transparent', color: '#844', cursor: 'pointer', fontSize: 13, lineHeight: '1', flexShrink: 0 }}
-              onClick={() => removeRailControlPoint(rail.id, i)}
-            >&times;</button>
+            {rail.control_points.length > 2 && (
+              <button
+                style={{ padding: '0 4px', border: 'none', background: 'transparent', color: '#844', cursor: 'pointer', fontSize: 13, lineHeight: '1', flexShrink: 0 }}
+                onClick={() => removeRailControlPoint(rail.id, i)}
+              >&times;</button>
+            )}
           </div>
         ))}
       </div>
