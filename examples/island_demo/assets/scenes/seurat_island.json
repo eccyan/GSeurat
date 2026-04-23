@@ -76905,6 +76905,7 @@
       "position": [198, 0, 170],
       "rotation": [0, 30, 0],
       "scale": 1.0,
+      "ply_file": "assets/props/kcc_stone_wall.ply",
       "components": {
         "ColliderComponent": {
           "shape": { "type": "box", "half_extents": [3.0, 2.0, 0.4] },
@@ -76922,6 +76923,7 @@
       "position": [208, 0, 172],
       "rotation": [0, -25, 0],
       "scale": 1.0,
+      "ply_file": "assets/props/kcc_stone_wall.ply",
       "components": {
         "ColliderComponent": {
           "shape": { "type": "box", "half_extents": [3.0, 2.0, 0.4] },
@@ -76939,6 +76941,7 @@
       "position": [200, 0, 178],
       "rotation": [0, 0, 0],
       "scale": 1.0,
+      "ply_file": "assets/props/kcc_boulder_1_2.ply",
       "components": {
         "ColliderComponent": {
           "shape": { "type": "sphere", "radius": 1.2 },
@@ -76956,6 +76959,7 @@
       "position": [205, 0.5, 168],
       "rotation": [0, 0, 0],
       "scale": 1.0,
+      "ply_file": "assets/props/kcc_boulder_1_0.ply",
       "components": {
         "ColliderComponent": {
           "shape": { "type": "sphere", "radius": 1.0 },
@@ -76973,6 +76977,7 @@
       "position": [197, 0, 174],
       "rotation": [0, 0, 0],
       "scale": 1.0,
+      "ply_file": "assets/props/kcc_boulder_1_5.ply",
       "components": {
         "ColliderComponent": {
           "shape": { "type": "sphere", "radius": 1.5 },
@@ -76990,6 +76995,7 @@
       "position": [202, 0, 173],
       "rotation": [0, 0, 0],
       "scale": 1.0,
+      "ply_file": "assets/props/kcc_stone_pillar.ply",
       "components": {
         "ColliderComponent": {
           "shape": { "type": "capsule", "radius": 0.5, "half_height": 1.5 },
@@ -77007,6 +77013,7 @@
       "position": [206, 0, 177],
       "rotation": [0, 0, 0],
       "scale": 1.0,
+      "ply_file": "assets/props/kcc_stone_pillar.ply",
       "components": {
         "ColliderComponent": {
           "shape": { "type": "capsule", "radius": 0.5, "half_height": 1.5 },
@@ -77024,6 +77031,7 @@
       "position": [201, 0, 165],
       "rotation": [15, 0, 0],
       "scale": 1.0,
+      "ply_file": "assets/props/kcc_stone_ramp.ply",
       "components": {
         "ColliderComponent": {
           "shape": { "type": "box", "half_extents": [2.0, 0.5, 3.0] },

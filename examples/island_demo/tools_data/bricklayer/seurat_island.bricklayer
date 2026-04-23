@@ -1678,7 +1678,7 @@
           0
         ],
         "scale": 1.0,
-        "ply_file": "",
+        "ply_file": "assets/props/kcc_stone_wall.ply",
         "components": {
           "ColliderComponent": {
             "shape": {
@@ -1720,7 +1720,7 @@
           0
         ],
         "scale": 1.0,
-        "ply_file": "",
+        "ply_file": "assets/props/kcc_stone_wall.ply",
         "components": {
           "ColliderComponent": {
             "shape": {
@@ -1762,7 +1762,7 @@
           0
         ],
         "scale": 1.0,
-        "ply_file": "",
+        "ply_file": "assets/props/kcc_boulder_1_2.ply",
         "components": {
           "ColliderComponent": {
             "shape": {
@@ -1800,7 +1800,7 @@
           0
         ],
         "scale": 1.0,
-        "ply_file": "",
+        "ply_file": "assets/props/kcc_boulder_1_0.ply",
         "components": {
           "ColliderComponent": {
             "shape": {
@@ -1838,7 +1838,7 @@
           0
         ],
         "scale": 1.0,
-        "ply_file": "",
+        "ply_file": "assets/props/kcc_boulder_1_5.ply",
         "components": {
           "ColliderComponent": {
             "shape": {
@@ -1876,7 +1876,7 @@
           0
         ],
         "scale": 1.0,
-        "ply_file": "",
+        "ply_file": "assets/props/kcc_stone_pillar.ply",
         "components": {
           "ColliderComponent": {
             "shape": {
@@ -1915,7 +1915,7 @@
           0
         ],
         "scale": 1.0,
-        "ply_file": "",
+        "ply_file": "assets/props/kcc_stone_pillar.ply",
         "components": {
           "ColliderComponent": {
             "shape": {
@@ -1954,7 +1954,7 @@
           0
         ],
         "scale": 1.0,
-        "ply_file": "",
+        "ply_file": "assets/props/kcc_stone_ramp.ply",
         "components": {
           "ColliderComponent": {
             "shape": {
