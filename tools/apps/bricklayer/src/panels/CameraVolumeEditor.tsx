@@ -210,7 +210,7 @@ export function CameraVolumeEditor({ volume }: { volume: CameraZoneVolume }) {
         </div>
       )}
 
-      {mode === 'fixed_point' && (
+      {(mode === 'fixed_point' || (mode === 'cinematic_rail' && (volume.params.target_mode ?? 'player') === 'fixed_point')) && (
         <div style={styles.section}>
           <span style={styles.label}>Fixed Position</span>
           <Vec3Input
