@@ -6,6 +6,7 @@ import {
   installDebugDumpKeyboard,
 } from '@gseurat/debug-dump';
 import { MeliesEyesDumper } from './lib/debugDumper.js';
+import { MeliesStoreDumper } from './lib/storeDumper.js';
 import { useVfxStore, playbackTimeRef } from './store/useVfxStore.js';
 import type { VfxPreset, VfxElement, ElementType } from './store/types.js';
 type VfxLayer = VfxElement;
@@ -842,15 +843,17 @@ export function App() {
   const scenePoints = useVfxStore((s) => s.scenePoints);
   const storeSetScenePoints = useVfxStore((s) => s.setScenePoints);
 
-  // Debug dump: register eyes dumper + install triggers (Ctrl+Shift+D / console)
+  // Debug dump: register eyes + store dumpers + install triggers (Ctrl+Shift+D / console)
   useEffect(() => {
     const registry = DebugDumpRegistry.getInstance();
     registry.setSource('melies');
-    const dumper = new MeliesEyesDumper();
-    registry.register(dumper);
+    const eyesDumper = new MeliesEyesDumper();
+    const storeDumper = new MeliesStoreDumper();
+    registry.register(eyesDumper);
+    registry.register(storeDumper);
     installDebugDumpGlobal();
     installDebugDumpKeyboard();
-    return () => { registry.unregister(dumper); };
+    return () => { registry.unregister(eyesDumper); registry.unregister(storeDumper); };
   }, []);
 
   const handleImportScene = useCallback(() => {

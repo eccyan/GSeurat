@@ -9,6 +9,7 @@ import type {
   EyesComponentNode,
   EyesDump,
   IDebugDumpable,
+  StoreDump,
 } from "./types.js";
 
 // Empty sentinel objects — avoids allocations when a domain has no registrants.
@@ -67,6 +68,7 @@ export class DebugDumpRegistry {
   collectAll(): DebugDumpEnvelope {
     const eyesComponents: EyesComponentNode[] = [];
     let earsDump: EarsDump | null = null;
+    const storeDumps: StoreDump[] = [];
 
     for (const mod of this.modules) {
       const state = mod.dumpDebugState();
@@ -74,7 +76,7 @@ export class DebugDumpRegistry {
       if (mod.debugDomain === "eyes") {
         // Eyes modules return EyesComponentNode[]
         eyesComponents.push(...(state as EyesComponentNode[]));
-      } else {
+      } else if (mod.debugDomain === "ears") {
         // Ears modules return EarsDump — merge if multiple
         const dump = state as EarsDump;
         if (!earsDump) {
@@ -85,6 +87,9 @@ export class DebugDumpRegistry {
           earsDump.warnings.push(...dump.warnings);
           // Keep the first global state (primary audio module wins)
         }
+      } else {
+        // Store modules return StoreDump
+        storeDumps.push(state as StoreDump);
       }
     }
 
@@ -94,6 +99,7 @@ export class DebugDumpRegistry {
       source: this.source,
       eyes: eyesComponents.length > 0 ? { components: eyesComponents } : EMPTY_EYES,
       ears: earsDump ?? EMPTY_EARS,
+      store: storeDumps,
     };
   }
 
@@ -101,7 +107,7 @@ export class DebugDumpRegistry {
    * Collect from a single domain only.
    * Useful when debugging just UI or just audio.
    */
-  collectDomain(domain: DebugDomain): EyesDump | EarsDump {
+  collectDomain(domain: DebugDomain): EyesDump | EarsDump | StoreDump[] {
     if (domain === "eyes") {
       const components: EyesComponentNode[] = [];
       for (const mod of this.modules) {
@@ -110,6 +116,16 @@ export class DebugDumpRegistry {
         }
       }
       return { components };
+    }
+
+    if (domain === "store") {
+      const stores: StoreDump[] = [];
+      for (const mod of this.modules) {
+        if (mod.debugDomain === "store") {
+          stores.push(mod.dumpDebugState() as StoreDump);
+        }
+      }
+      return stores;
     }
 
     // ears

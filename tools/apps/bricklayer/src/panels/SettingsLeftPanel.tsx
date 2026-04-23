@@ -36,7 +36,7 @@ export function SettingsLeftPanel() {
   const setSelected = useSceneStore((s) => s.setSelectedSettingsCategory);
 
   return (
-    <div>
+    <div data-panel-id="settings-left-panel">
       {categories.map((cat) => (
         <button
           key={cat.id}

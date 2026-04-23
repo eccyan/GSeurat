@@ -478,7 +478,7 @@ export function WorldPropertiesPanel() {
   const selectedEntity = useWorldStore((s) => s.selectedEntity);
 
   return (
-    <div style={{ color: '#ccc', fontSize: 12 }}>
+    <div data-panel-id="world-properties-panel" style={{ color: '#ccc', fontSize: 12 }}>
       <WorldSettingsEditor />
 
       {selectedEntity?.type === 'chunk' && (

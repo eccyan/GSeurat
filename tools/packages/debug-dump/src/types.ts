@@ -5,7 +5,7 @@
 // Domain tag — partitions the dump into "eyes" (UI/layout) and "ears" (audio)
 // ---------------------------------------------------------------------------
 
-export type DebugDomain = "eyes" | "ears";
+export type DebugDomain = "eyes" | "ears" | "store";
 
 // ---------------------------------------------------------------------------
 // Eyes (UI / Layout) schema
@@ -111,6 +111,19 @@ export interface EarsDump {
 }
 
 // ---------------------------------------------------------------------------
+// Store (Application State) schema
+// ---------------------------------------------------------------------------
+
+export interface StoreDump {
+  /** Name of the store (e.g. "SceneStore", "VfxStore"). */
+  store_name: string;
+  /** JSON-serializable snapshot of the store's state fields. */
+  state: Record<string, unknown>;
+  /** Optional warnings (e.g. "undo_stack_deep", "dirty_unsaved"). */
+  warnings: string[];
+}
+
+// ---------------------------------------------------------------------------
 // Core interface — every dumpable module implements this
 // ---------------------------------------------------------------------------
 
@@ -123,9 +136,9 @@ export interface IDebugDumpable {
 
   /**
    * Gather current state. Called ONLY on explicit request — never on a hot path.
-   * Return the domain-specific payload (EyesComponentNode[] or EarsDump).
+   * Return the domain-specific payload.
    */
-  dumpDebugState(): EyesComponentNode[] | EarsDump;
+  dumpDebugState(): EyesComponentNode[] | EarsDump | StoreDump;
 }
 
 // ---------------------------------------------------------------------------
@@ -146,4 +159,5 @@ export interface DebugDumpEnvelope {
   source: DebugDumpSource;
   eyes: EyesDump;
   ears: EarsDump;
+  store: StoreDump[];
 }

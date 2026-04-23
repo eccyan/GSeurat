@@ -106,7 +106,7 @@ export function WorldTree() {
   };
 
   return (
-    <div style={styles.root}>
+    <div data-panel-id="world-tree" style={styles.root}>
       {/* Chunks */}
       <div style={styles.section}>
         <div style={styles.sectionHeader}>
