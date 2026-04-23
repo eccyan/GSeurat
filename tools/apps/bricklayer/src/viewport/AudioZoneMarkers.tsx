@@ -13,8 +13,9 @@ function AudioZoneMarker({ zone, isSelected, onSelect }: {
   const edgeOpacity = isSelected ? 1.0 : 0.5;
 
   const { center, halfExtents } = useMemo(() => {
-    const mn = zone.bounds.min;
-    const mx = zone.bounds.max;
+    const mn = zone.bounds?.min;
+    const mx = zone.bounds?.max;
+    if (!mn || !mx) return { center: [0, 0, 0] as [number, number, number], halfExtents: [1, 1, 1] as [number, number, number] };
     return {
       center: [
         (mn[0] + mx[0]) / 2,
@@ -27,7 +28,7 @@ function AudioZoneMarker({ zone, isSelected, onSelect }: {
         (mx[2] - mn[2]) / 2,
       ] as [number, number, number],
     };
-  }, [zone.bounds.min, zone.bounds.max]);
+  }, [zone.bounds?.min, zone.bounds?.max]);
 
   const edgesGeo = useMemo(() => {
     return new THREE.EdgesGeometry(
@@ -44,8 +45,8 @@ function AudioZoneMarker({ zone, isSelected, onSelect }: {
         <boxGeometry args={[1.5, 1.5, 1.5]} />
         <meshBasicMaterial color={edgeColor} />
       </mesh>
-      {/* Wireframe edges */}
-      <lineSegments geometry={edgesGeo}>
+      {/* Wireframe edges — raycast disabled to avoid interfering with teleport */}
+      <lineSegments geometry={edgesGeo} raycast={() => null}>
         <lineBasicMaterial color={edgeColor} transparent opacity={edgeOpacity} />
       </lineSegments>
       {/* Semi-transparent fill — raycast disabled to avoid interfering with teleport */}

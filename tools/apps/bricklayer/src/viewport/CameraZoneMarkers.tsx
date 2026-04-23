@@ -16,7 +16,7 @@ function ShapeWireframe({ shape, color, opacity = 1 }: { shape: CameraShape; col
   }, [shape]);
 
   return (
-    <lineSegments geometry={edgesGeo}>
+    <lineSegments geometry={edgesGeo} raycast={() => null}>
       <lineBasicMaterial color={color} transparent opacity={opacity} />
     </lineSegments>
   );
