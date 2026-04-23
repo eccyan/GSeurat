@@ -234,6 +234,10 @@ public:
     }
 
     DebugSnapshot build_debug_snapshot() const override {
+        // NOTE: This reads Mixer state without synchronization. The audio
+        // callback thread may be mid-render, so values can be slightly stale
+        // or torn. This is acceptable for a debug dump — worst case is a
+        // briefly incorrect volume display. See debug_dump_ears.hpp header.
         DebugSnapshot snap;
         snap.master_volume = 1.0f;
         snap.sample_rate = cfg_.sample_rate;
