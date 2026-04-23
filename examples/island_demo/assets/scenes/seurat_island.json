@@ -77505,5 +77505,33 @@
         ]
       }
     ]
-  }
+  },
+  "audio_zones": [
+    {
+      "id": "bridge_vista_audio",
+      "center": [175, 5, 120],
+      "half_extents": [25, 15, 15],
+      "music_config": "",
+      "crossfade_ms": 1500,
+      "ambient_volume": 1.0,
+      "action_on_enter": "PlayOrTransition",
+      "action_on_exit": "PlayOrTransition",
+      "stem_fade_on_enter": [
+        {
+          "group_id": 1,
+          "stem_index": 4,
+          "target_volume": 1.0,
+          "fade_ms": 1500
+        }
+      ],
+      "stem_fade_on_exit": [
+        {
+          "group_id": 1,
+          "stem_index": 4,
+          "target_volume": 0.0,
+          "fade_ms": 1500
+        }
+      ]
+    }
+  ]
 }

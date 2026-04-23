@@ -3,6 +3,7 @@
 #include "gseurat/engine/camera_volume.hpp"
 #include "gseurat/engine/camera_zone_system.hpp"
 #include "gseurat/engine/collision_gen.hpp"
+#include "gseurat/engine/components/audio_zone_component.hpp"
 #include "gseurat/engine/day_night_system.hpp"
 #include "gseurat/engine/dialog.hpp"
 #include "gseurat/engine/direction.hpp"
@@ -206,9 +207,14 @@ struct SceneData {
         std::string id;
         glm::vec3 center{0.0f};
         glm::vec3 half_extents{0.0f};
-        std::string music_config;   // path to .music.json
+        std::string music_config;   // path to .music.json (empty = stem-fade-only zone)
         float crossfade_ms = 2000.0f;
         float ambient_volume = 1.0f;
+        // Stem fade support
+        std::string action_on_enter_str;
+        std::string action_on_exit_str;
+        std::vector<StemFadeAction> stem_fade_on_enter;
+        std::vector<StemFadeAction> stem_fade_on_exit;
     };
     std::vector<AudioZoneRef> audio_zones;
 };
