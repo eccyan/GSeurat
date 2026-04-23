@@ -298,6 +298,61 @@
               "properties": {
                 "color": { "type": "array", "items": {"type": "number"}, "minItems": 3, "maxItems": 3 }
               }
+            },
+            "AudioZoneComponent": {
+              "type": "object",
+              "properties": {
+                "bounds_min": {
+                  "type": "array",
+                  "items": { "type": "number" },
+                  "minItems": 3, "maxItems": 3,
+                  "description": "AABB minimum corner [x, y, z]"
+                },
+                "bounds_max": {
+                  "type": "array",
+                  "items": { "type": "number" },
+                  "minItems": 3, "maxItems": 3,
+                  "description": "AABB maximum corner [x, y, z]"
+                },
+                "track_group_id": { "type": "integer" },
+                "action_on_enter": {
+                  "type": "string",
+                  "enum": ["Play", "PlayOrTransition", "Stop"]
+                },
+                "action_on_exit": {
+                  "type": "string",
+                  "enum": ["Play", "PlayOrTransition", "Stop"]
+                },
+                "enter_xfade_ms": { "type": "number" },
+                "exit_fade_ms": { "type": "number" },
+                "align_to_next_marker": { "type": "boolean" },
+                "stem_fade_on_enter": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "group_id": { "type": "integer" },
+                      "stem_index": { "type": "integer" },
+                      "target_volume": { "type": "number" },
+                      "fade_ms": { "type": "number" }
+                    },
+                    "required": ["group_id", "stem_index", "target_volume", "fade_ms"]
+                  }
+                },
+                "stem_fade_on_exit": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "group_id": { "type": "integer" },
+                      "stem_index": { "type": "integer" },
+                      "target_volume": { "type": "number" },
+                      "fade_ms": { "type": "number" }
+                    },
+                    "required": ["group_id", "stem_index", "target_volume", "fade_ms"]
+                  }
+                }
+              }
             }
           },
           "additionalProperties": { "type": "object" }
