@@ -565,6 +565,13 @@ export function MenuBar() {
       },
     },
     {
+      label: `${useSceneStore.getState().showCollision ? '\u2713 ' : ''}Colliders`,
+      action: () => {
+        const s = useSceneStore.getState();
+        s.setShowCollision(!s.showCollision);
+      },
+    },
+    {
       label: `${useSceneStore.getState().stagingAutoSync ? '\u2713 ' : ''}Auto-Sync Staging`,
       action: () => {
         const s = useSceneStore.getState();
