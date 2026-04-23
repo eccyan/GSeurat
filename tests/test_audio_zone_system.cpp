@@ -61,6 +61,38 @@ int main() {
     engine->render_offline(out, 256);
     check(!engine->is_group_playing(1), "exit zone: group stopped");
 
+    // --- Stem fade tests ---
+    std::printf("\n--- Stem fade on enter/exit ---\n");
+
+    // Reset zone state
+    zone.player_inside = false;
+
+    // Configure stem fade actions
+    zone.stem_fade_on_enter.push_back({1, 0, 1.0f, 1500.0f});
+    zone.stem_fade_on_exit.push_back({1, 0, 0.0f, 1500.0f});
+
+    uint32_t drops_before = engine->dropped_command_count();
+
+    // Move inside -> stem fade enter dispatched
+    sys.tick({5, 5, 5}, {&zone, 1});
+    engine->render_offline(out, 256);
+    check(engine->is_group_playing(1), "stem fade: group playing after enter");
+    check(engine->dropped_command_count() == drops_before,
+          "stem fade enter: set_stem_volume accepted (no queue overflow)");
+
+    drops_before = engine->dropped_command_count();
+
+    // Move outside -> stem fade exit dispatched
+    sys.tick({-5, 0, 0}, {&zone, 1});
+    engine->render_offline(out, 256);
+    check(!engine->is_group_playing(1), "stem fade: group stopped after exit");
+    check(engine->dropped_command_count() == drops_before,
+          "stem fade exit: set_stem_volume accepted (no queue overflow)");
+
+    // Clean up stem actions
+    zone.stem_fade_on_enter.clear();
+    zone.stem_fade_on_exit.clear();
+
     std::printf("\n=== %d passed, %d failed ===\n", passed, failed);
     return failed == 0 ? 0 : 1;
 }

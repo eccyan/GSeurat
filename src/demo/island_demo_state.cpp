@@ -175,6 +175,26 @@ void IslandDemoState::on_enter(AppBase& app) {
         std::fprintf(stderr, "[IslandDemo] House collision: grid[%d-%d, %d-%d] (%d cells marked)\n",
                      gx_min, gx_max, gz_min, gz_max, marked);
 
+        // Clear grid cells in the KCC showcase courtyard so primitive colliders
+        // are the sole collision source.  Area: X=[185-215], Z=[160-185].
+        int courtyard_cleared = 0;
+        for (float wx = 185.0f; wx <= 215.0f; wx += collision_grid_.cell_size * 0.5f) {
+            for (float wz = 160.0f; wz <= 185.0f; wz += collision_grid_.cell_size * 0.5f) {
+                int cgx = static_cast<int>(wx / collision_grid_.cell_size);
+                int cgz = static_cast<int>(wz / collision_grid_.cell_size);
+                if (cgx >= 0 && cgx < static_cast<int>(collision_grid_.width) &&
+                    cgz >= 0 && cgz < static_cast<int>(collision_grid_.height)) {
+                    size_t idx = cgz * collision_grid_.width + cgx;
+                    if (collision_grid_.solid[idx]) {
+                        collision_grid_.solid[idx] = false;
+                        courtyard_cleared++;
+                    }
+                }
+            }
+        }
+        std::fprintf(stderr, "[IslandDemo] KCC courtyard: %d grid cells cleared (X=185-215, Z=160-185)\n",
+                     courtyard_cleared);
+
         // Open a walkable land bridge at the northern shore → Northern Forest
         // Clear solid cells in a path from Z=0 to Z=60, centered at X=192, width ~40
         int bridge_cleared = 0;
@@ -232,6 +252,10 @@ void IslandDemoState::on_enter(AppBase& app) {
         }
 
         // Collect audio zones from loaded scenes for later setup
+        // Island scene audio zones (collected first)
+        for (const auto& az : scene_data.audio_zones) {
+            scene_audio_zones.push_back(az);
+        }
         for (const auto& az : forest_scene.audio_zones) {
             scene_audio_zones.push_back(az);
         }
@@ -612,24 +636,30 @@ void IslandDemoState::on_enter(AppBase& app) {
                          static_cast<uint32_t>(r.error()));
         }
 
-        // Load audio zones from other scenes and build crossfade state
+        // Load audio zones from all scenes and build crossfade state
         for (const auto& az : scene_audio_zones) {
-            if (az.music_config.empty()) continue;
-            auto gr = ae->load_track_group(az.music_config);
-            if (!gr) {
-                std::fprintf(stderr, "[IslandDemo] WARNING: Failed to load audio zone music '%s'\n",
-                             az.music_config.c_str());
-                continue;
-            }
             AudioZoneState zs;
             zs.bounds_min = az.center - az.half_extents;
             zs.bounds_max = az.center + az.half_extents;
-            zs.group_id = gr.value();
             zs.crossfade_ms = az.crossfade_ms;
             zs.ambient_volume = az.ambient_volume;
+            zs.stem_fade_on_enter = az.stem_fade_on_enter;
+            zs.stem_fade_on_exit = az.stem_fade_on_exit;
+
+            if (!az.music_config.empty()) {
+                auto gr = ae->load_track_group(az.music_config);
+                if (!gr) {
+                    std::fprintf(stderr, "[IslandDemo] WARNING: Failed to load audio zone music '%s'\n",
+                                 az.music_config.c_str());
+                    continue;
+                }
+                zs.group_id = gr.value();
+            }
+            // group_id stays 0 for stem-fade-only zones (no music_config)
+
             audio_zones_.push_back(zs);
             std::fprintf(stderr, "[IslandDemo] Audio zone '%s' loaded (group %u, xfade %.0fms)\n",
-                         az.id.c_str(), gr.value(), az.crossfade_ms);
+                         az.id.c_str(), zs.group_id, az.crossfade_ms);
         }
     }
 
@@ -801,7 +831,23 @@ void IslandDemoState::update(AppBase& app, float dt) {
                                  && character_origin_.x <= z.bounds_max.x
                                  && character_origin_.z >= z.bounds_min.z
                                  && character_origin_.z <= z.bounds_max.z;
-                if (inside) {
+
+                // Detect enter/exit transitions for stem fades.
+                // NOTE: stem fades target already-playing groups (e.g. the field BGM).
+                // Zones that combine music_config crossfades with stem fades on the
+                // *destination* group would need the fade dispatched after the
+                // transition below, since the mixer ignores commands to inactive groups.
+                if (inside && !z.player_inside) {
+                    for (const auto& a : z.stem_fade_on_enter) {
+                        ae->set_stem_volume(a.group_id, a.stem_index, a.target_volume, a.fade_ms);
+                    }
+                } else if (!inside && z.player_inside) {
+                    for (const auto& a : z.stem_fade_on_exit) {
+                        ae->set_stem_volume(a.group_id, a.stem_index, a.target_volume, a.fade_ms);
+                    }
+                }
+
+                if (inside && z.group_id != 0) {
                     desired_group = z.group_id;
                     xfade_ms = z.crossfade_ms;
                 }

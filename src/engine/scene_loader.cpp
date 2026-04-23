@@ -1,5 +1,6 @@
 #include "gseurat/engine/scene_loader.hpp"
 
+#include "gseurat/engine/components/audio_zone_component.hpp"
 #include "gseurat/engine/gs_animator.hpp"
 #include "gseurat/engine/project_root.hpp"
 
@@ -632,6 +633,26 @@ SceneData SceneLoader::from_json(const nlohmann::json& j) {
             ref.music_config = az.value("music_config", "");
             ref.crossfade_ms = az.value("crossfade_ms", 2000.0f);
             ref.ambient_volume = az.value("ambient_volume", 1.0f);
+            if (az.contains("stem_fade_on_enter")) {
+                for (const auto& sf : az["stem_fade_on_enter"]) {
+                    StemFadeAction a;
+                    a.group_id = sf.value("group_id", 0u);
+                    a.stem_index = sf.value("stem_index", 0u);
+                    a.target_volume = sf.value("target_volume", 0.0f);
+                    a.fade_ms = sf.value("fade_ms", 0.0f);
+                    ref.stem_fade_on_enter.push_back(a);
+                }
+            }
+            if (az.contains("stem_fade_on_exit")) {
+                for (const auto& sf : az["stem_fade_on_exit"]) {
+                    StemFadeAction a;
+                    a.group_id = sf.value("group_id", 0u);
+                    a.stem_index = sf.value("stem_index", 0u);
+                    a.target_volume = sf.value("target_volume", 0.0f);
+                    a.fade_ms = sf.value("fade_ms", 0.0f);
+                    ref.stem_fade_on_exit.push_back(a);
+                }
+            }
             data.audio_zones.push_back(std::move(ref));
         }
     }

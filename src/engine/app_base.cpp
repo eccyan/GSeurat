@@ -99,17 +99,37 @@ void AppBase::main_loop() {
     std::optional<AudioEngineDumper> audio_dumper;
     if (audio_engine_) {
         audio_dumper.emplace([this]() -> AudioEngineDumper::Snapshot {
-            // Read what we can from the public AudioEngine API.
-            // Full Mixer state (stems, voices, groups) requires a friend
-            // accessor that will be added in a future phase.
-            return AudioEngineDumper::Snapshot{
-                .master_volume      = 1.0f,
-                .sample_rate        = 44100,
-                .max_polyphony      = 64,
-                .active_voice_count = 0,
-                .active_group_count = 0,
-                .dropped_commands   = audio_engine_->dropped_command_count(),
+            auto ds = audio_engine_->build_debug_snapshot();
+
+            AudioEngineDumper::Snapshot snap;
+            snap.master_volume      = ds.master_volume;
+            snap.sample_rate        = ds.sample_rate;
+            snap.max_polyphony      = ds.max_polyphony;
+            snap.active_voice_count = ds.active_voice_count;
+            snap.active_group_count = ds.active_group_count;
+            snap.dropped_commands   = ds.dropped_commands;
+
+            static constexpr const char* kStatusNames[] = {
+                "Idle", "Playing", "CrossfadingOut", "AwaitingTransition"
             };
+
+            for (const auto& g : ds.groups) {
+                AudioEngineDumper::TrackGroupSnapshot tg;
+                tg.group_id     = g.group_id;
+                tg.status       = (g.status < 4) ? kStatusNames[g.status] : "Unknown";
+                tg.play_cursor  = g.play_cursor;
+                tg.group_volume = g.group_volume;
+
+                for (const auto& s : g.stems) {
+                    AudioEngineDumper::StemSnapshot ss;
+                    ss.index     = static_cast<uint32_t>(&s - &g.stems[0]);
+                    ss.asset_ref = s.source_path;
+                    ss.volume    = s.volume;
+                    tg.stems.push_back(std::move(ss));
+                }
+                snap.track_groups.push_back(std::move(tg));
+            }
+            return snap;
         });
         debug_dump_registry_.register_module(&*audio_dumper);
     }

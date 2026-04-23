@@ -7,6 +7,7 @@
 #include <expected>
 #include <memory>
 #include <span>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -88,6 +89,31 @@ public:
     virtual bool     is_group_playing(uint32_t)   const noexcept = 0;
     virtual uint32_t dropped_command_count()      const noexcept = 0;
     virtual uint32_t channels()                   const noexcept = 0;
+
+    // Debug snapshot — reads Mixer state for the debug dump system.
+    // Returns per-group status, per-stem volumes, voice state.
+    struct DebugGroupInfo {
+        uint32_t    group_id    = 0;
+        uint8_t     status      = 0;   // TrackGroupState::Status
+        uint64_t    play_cursor = 0;
+        float       group_volume = 0.0f;
+        uint8_t     stem_count  = 0;
+        struct StemInfo {
+            float volume = 0.0f;
+            std::string source_path;
+        };
+        std::vector<StemInfo> stems;
+    };
+    struct DebugSnapshot {
+        float    master_volume      = 1.0f;
+        uint32_t sample_rate        = 0;
+        uint32_t max_polyphony      = 0;
+        uint32_t active_voice_count = 0;
+        uint32_t active_group_count = 0;
+        uint32_t dropped_commands   = 0;
+        std::vector<DebugGroupInfo> groups;
+    };
+    virtual DebugSnapshot build_debug_snapshot() const = 0;
 
     // Test-only: register pre-built track group without JSON loading.
     virtual uint32_t register_track_group_for_test(

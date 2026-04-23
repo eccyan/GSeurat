@@ -25,6 +25,10 @@
         {
           "source": "assets/audio/field/music_percussion.wav",
           "initial_volume": 1
+        },
+        {
+          "source": "assets/audio/field/vista_strings.wav",
+          "initial_volume": 0
         }
       ]
     }

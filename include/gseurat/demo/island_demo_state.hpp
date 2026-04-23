@@ -3,6 +3,7 @@
 #include "gseurat/engine/camera_zone_system.hpp"
 #include "gseurat/engine/collision/collision_system.hpp"
 #include "gseurat/engine/collision_gen.hpp"
+#include "gseurat/engine/components/audio_zone_component.hpp"
 #include "gseurat/engine/game_state.hpp"
 #include "gseurat/engine/gaussian_cloud.hpp"
 #include "gseurat/engine/types.hpp"
@@ -171,6 +172,9 @@ private:
         float     crossfade_ms = 2000.0f;
         float     ambient_volume = 1.0f;
         bool      player_inside = false;
+        // Stem fade support
+        std::vector<StemFadeAction> stem_fade_on_enter;
+        std::vector<StemFadeAction> stem_fade_on_exit;
     };
     std::vector<AudioZoneState> audio_zones_;
     uint32_t active_music_group_ = 0;   // currently playing music group

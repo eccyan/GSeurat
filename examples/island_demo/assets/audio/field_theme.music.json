@@ -12,7 +12,8 @@
         { "source": "assets/audio/field_theme/bass_drone.ogg",    "initial_volume": 0.8 },
         { "source": "assets/audio/field_theme/harmony_pad.ogg",   "initial_volume": 0.5 },
         { "source": "assets/audio/field_theme/melody.ogg",        "initial_volume": 0.0 },
-        { "source": "assets/audio/field_theme/percussion.ogg",    "initial_volume": 0.0 }
+        { "source": "assets/audio/field_theme/percussion.ogg",    "initial_volume": 0.0 },
+        { "source": "assets/audio/field_theme/vista_strings.wav", "initial_volume": 0.0 }
       ]
     }
   ]
