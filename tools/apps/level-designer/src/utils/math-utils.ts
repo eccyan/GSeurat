@@ -1,47 +1,51 @@
 // Euler angles (degrees) to quaternion [x, y, z, w]
-// Uses ZYX convention (yaw-pitch-roll)
+// Uses YXZ convention: yaw (Y) applied first, then pitch (X), then roll (Z).
+// This matches the standard game-engine convention where yaw rotates around
+// the vertical Y-axis, pitch tilts around X, and roll spins around Z.
 export function eulerToQuat(
-  pitchDeg: number,
-  yawDeg: number,
-  rollDeg: number,
+  pitchDeg: number,  // X-axis rotation
+  yawDeg: number,    // Y-axis rotation
+  rollDeg: number,   // Z-axis rotation
 ): [number, number, number, number] {
-  const p = (pitchDeg * Math.PI) / 360; // half angle in radians
-  const y = (yawDeg * Math.PI) / 360;
-  const r = (rollDeg * Math.PI) / 360;
+  const px = (pitchDeg * Math.PI) / 360; // half angle
+  const yy = (yawDeg * Math.PI) / 360;
+  const rz = (rollDeg * Math.PI) / 360;
 
-  const cp = Math.cos(p), sp = Math.sin(p);
-  const cy = Math.cos(y), sy = Math.sin(y);
-  const cr = Math.cos(r), sr = Math.sin(r);
+  const cx = Math.cos(px), sx = Math.sin(px);
+  const cy = Math.cos(yy), sy = Math.sin(yy);
+  const cz = Math.cos(rz), sz = Math.sin(rz);
 
+  // Quaternion product: Qy * Qx * Qz
   return [
-    sr * cp * cy - cr * sp * sy, // x
-    cr * sp * cy + sr * cp * sy, // y
-    cr * cp * sy - sr * sp * cy, // z
-    cr * cp * cy + sr * sp * sy, // w
+    cy * sx * cz + sy * cx * sz,  // x
+    sy * cx * cz - cy * sx * sz,  // y
+    cy * cx * sz - sy * sx * cz,  // z
+    cy * cx * cz + sy * sx * sz,  // w
   ];
 }
 
 // Quaternion [x, y, z, w] to Euler angles [pitch, yaw, roll] in degrees
+// Inverse of eulerToQuat — uses YXZ decomposition.
 export function quatToEuler(
   q: [number, number, number, number],
 ): [number, number, number] {
   const [x, y, z, w] = q;
 
-  // Pitch (X-axis rotation)
-  const sinP = 2 * (w * x + y * z);
-  const cosP = 1 - 2 * (x * x + y * y);
-  const pitch = Math.atan2(sinP, cosP);
+  // Pitch (X-axis rotation) — extracted from the YXZ matrix sin(pitch) element
+  const sinP = 2 * (w * x - y * z);
+  const pitch = Math.abs(sinP) >= 1
+    ? (Math.sign(sinP) * Math.PI) / 2
+    : Math.asin(sinP);
 
   // Yaw (Y-axis rotation)
-  const sinY = 2 * (w * y - z * x);
-  const yaw = Math.abs(sinY) >= 1
-    ? (Math.sign(sinY) * Math.PI) / 2
-    : Math.asin(sinY);
+  const sinYcosP = 2 * (w * y + x * z);
+  const cosYcosP = 1 - 2 * (x * x + y * y);
+  const yaw = Math.atan2(sinYcosP, cosYcosP);
 
   // Roll (Z-axis rotation)
-  const sinR = 2 * (w * z + x * y);
-  const cosR = 1 - 2 * (y * y + z * z);
-  const roll = Math.atan2(sinR, cosR);
+  const sinRcosP = 2 * (w * z + x * y);
+  const cosRcosP = 1 - 2 * (x * x + z * z);
+  const roll = Math.atan2(sinRcosP, cosRcosP);
 
   return [
     (pitch * 180) / Math.PI,

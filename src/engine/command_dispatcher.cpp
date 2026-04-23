@@ -702,6 +702,9 @@ void CommandDispatcher::register_default_commands() {
             ecs::Transform{coord::WorldPos(pos), {1.0f, 1.0f}});
         ctx_.world.add<ColliderComponent>(entity, collider);
 
+        // Store id→entity mapping for reliable lookup
+        ctx_.scene_objects.collider_entity_map[id] = entity;
+
         // Store in scene_objects for ID tracking
         GameObjectData go_data;
         go_data.id = id;
@@ -725,37 +728,24 @@ void CommandDispatcher::register_default_commands() {
         if (id.empty())
             return std::unexpected(std::string("missing 'id' field"));
 
-        // Find the game object and its entity
+        // Look up entity by ID map
+        auto entity_it = ctx_.scene_objects.collider_entity_map.find(id);
+        if (entity_it == ctx_.scene_objects.collider_entity_map.end())
+            return std::unexpected(std::string("entity not found for collider: " + id));
+        ecs::Entity target_entity = entity_it->second;
+
+        // Find the game object data for metadata updates
         auto& game_objects = ctx_.scene_objects.game_objects;
         auto go_it = std::find_if(game_objects.begin(), game_objects.end(),
             [&id](const GameObjectData& go) { return go.id == id; });
-        if (go_it == game_objects.end())
-            return std::unexpected(std::string("collider not found: " + id));
-
-        // Find the ECS entity — scan entities with ColliderComponent
-        // Match by position (WorldPos from GridPos)
-        ecs::Entity target_entity = ecs::kNullEntity;
-        glm::vec3 go_pos = go_it->position.vec();
-
-        ctx_.world.view<ecs::Transform, ColliderComponent>().each(
-            [&](ecs::Entity e, ecs::Transform& t, ColliderComponent&) {
-                if (target_entity == ecs::kNullEntity) {
-                    glm::vec3 epos = t.position.vec();
-                    if (glm::length(epos - go_pos) < 0.01f) {
-                        target_entity = e;
-                    }
-                }
-            });
-
-        if (target_entity == ecs::kNullEntity)
-            return std::unexpected(std::string("entity not found for collider: " + id));
 
         // Update position
         if (cmd.contains("position") && cmd["position"].is_array()) {
             auto& p = cmd["position"];
             glm::vec3 new_pos(p[0].get<float>(), p[1].get<float>(), p[2].get<float>());
             ctx_.world.get<ecs::Transform>(target_entity).position = coord::WorldPos(new_pos);
-            go_it->position = coord::GridPos(new_pos);
+            if (go_it != game_objects.end())
+                go_it->position = coord::GridPos(new_pos);
         }
 
         // Update collider fields (partial)
@@ -793,31 +783,20 @@ void CommandDispatcher::register_default_commands() {
         if (id.empty())
             return std::unexpected(std::string("missing 'id' field"));
 
+        // Look up and destroy ECS entity by ID map
+        auto entity_it = ctx_.scene_objects.collider_entity_map.find(id);
+        if (entity_it != ctx_.scene_objects.collider_entity_map.end()) {
+            ctx_.world.destroy(entity_it->second);
+            ctx_.scene_objects.collider_entity_map.erase(entity_it);
+        }
+
+        // Remove from game_objects list
         auto& game_objects = ctx_.scene_objects.game_objects;
         auto go_it = std::find_if(game_objects.begin(), game_objects.end(),
             [&id](const GameObjectData& go) { return go.id == id; });
-        if (go_it == game_objects.end())
-            return std::unexpected(std::string("collider not found: " + id));
+        if (go_it != game_objects.end())
+            game_objects.erase(go_it);
 
-        // Find and destroy the ECS entity
-        glm::vec3 go_pos = go_it->position.vec();
-        ecs::Entity target_entity = ecs::kNullEntity;
-
-        ctx_.world.view<ecs::Transform, ColliderComponent>().each(
-            [&](ecs::Entity e, ecs::Transform& t, ColliderComponent&) {
-                if (target_entity == ecs::kNullEntity) {
-                    glm::vec3 epos = t.position.vec();
-                    if (glm::length(epos - go_pos) < 0.01f) {
-                        target_entity = e;
-                    }
-                }
-            });
-
-        if (target_entity != ecs::kNullEntity) {
-            ctx_.world.destroy(target_entity);
-        }
-
-        game_objects.erase(go_it);
         ctx_.collision_system->mark_dirty();
         return ok();
     });
@@ -827,30 +806,33 @@ void CommandDispatcher::register_default_commands() {
         response["type"] = "ok";
 
         auto colliders = json::array();
-        ctx_.world.view<ecs::Transform, ColliderComponent>().each(
-            [&](ecs::Entity e, ecs::Transform& t, ColliderComponent& cc) {
-                // Find matching game object for ID/name
-                std::string id = "";
-                std::string name = "";
-                glm::vec3 pos = t.position.vec();
+        for (const auto& [id, entity] : ctx_.scene_objects.collider_entity_map) {
+            if (!ctx_.world.has<ecs::Transform>(entity) ||
+                !ctx_.world.has<ColliderComponent>(entity))
+                continue;
 
-                for (const auto& go : ctx_.scene_objects.game_objects) {
-                    if (glm::length(go.position.vec() - pos) < 0.01f) {
-                        id = go.id;
-                        name = go.name;
-                        break;
-                    }
+            auto& t = ctx_.world.get<ecs::Transform>(entity);
+            auto& cc = ctx_.world.get<ColliderComponent>(entity);
+            glm::vec3 pos = t.position.vec();
+
+            // Find matching game object for name
+            std::string name = id;
+            for (const auto& go : ctx_.scene_objects.game_objects) {
+                if (go.id == id) {
+                    name = go.name;
+                    break;
                 }
+            }
 
-                json entry;
-                entry["id"] = id;
-                entry["name"] = name;
-                entry["position"] = {pos.x, pos.y, pos.z};
-                entry["rotation"] = {cc.local_rotation.x, cc.local_rotation.y,
-                                      cc.local_rotation.z, cc.local_rotation.w};
-                entry["collider"] = collider_to_json(cc);
-                colliders.push_back(entry);
-            });
+            json entry;
+            entry["id"] = id;
+            entry["name"] = name;
+            entry["position"] = {pos.x, pos.y, pos.z};
+            entry["rotation"] = {cc.local_rotation.x, cc.local_rotation.y,
+                                  cc.local_rotation.z, cc.local_rotation.w};
+            entry["collider"] = collider_to_json(cc);
+            colliders.push_back(entry);
+        }
 
         response["colliders"] = colliders;
         return response;

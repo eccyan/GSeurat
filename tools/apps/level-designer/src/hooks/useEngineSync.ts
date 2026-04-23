@@ -14,6 +14,7 @@ export function useEngineSync(engine: Engine) {
   const prevPortalsRef = useRef<PortalPlacement[]>([]);
   const prevAmbientRef = useRef<[number, number, number, number]>([0.25, 0.28, 0.45, 1.0]);
   const prevCollidersRef = useRef<ColliderData[]>([]);
+  const hydratingCollidersRef = useRef(false);
 
   useEffect(() => {
     // Initialize refs with current store state
@@ -23,12 +24,14 @@ export function useEngineSync(engine: Engine) {
     prevAmbientRef.current = state.ambientColor;
     prevCollidersRef.current = state.colliders;
 
-    // Initial collider sync from engine
+    // Initial collider sync from engine — set hydration flag to prevent
+    // the subscriber from echoing these colliders back as add_collider commands
     void (async () => {
       if (!engine.isConnected()) return;
       const collidersResp = await engine.listColliders();
       if (collidersResp?.colliders) {
         const store = useEditorStore.getState();
+        hydratingCollidersRef.current = true;
         store.setColliders(collidersResp.colliders.map(c => ({
           id: c.id,
           name: c.name,
@@ -39,6 +42,7 @@ export function useEngineSync(engine: Engine) {
           is_trigger: (c.collider.is_trigger as boolean) ?? false,
           is_dynamic: (c.collider.is_dynamic as boolean) ?? false,
         })));
+        hydratingCollidersRef.current = false;
       }
     })();
 
@@ -61,8 +65,8 @@ export function useEngineSync(engine: Engine) {
         syncPortals(engine, prevState.portals, state.portals);
       }
 
-      // --- Colliders sync ---
-      if (state.colliders !== prevState.colliders) {
+      // --- Colliders sync (skip during hydration from engine) ---
+      if (state.colliders !== prevState.colliders && !hydratingCollidersRef.current) {
         syncColliders(engine, prevState.colliders, state.colliders);
       }
 
