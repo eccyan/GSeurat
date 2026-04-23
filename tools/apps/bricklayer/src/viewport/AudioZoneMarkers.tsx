@@ -48,8 +48,8 @@ function AudioZoneMarker({ zone, isSelected, onSelect }: {
       <lineSegments geometry={edgesGeo}>
         <lineBasicMaterial color={edgeColor} transparent opacity={edgeOpacity} />
       </lineSegments>
-      {/* Semi-transparent fill */}
-      <mesh>
+      {/* Semi-transparent fill — raycast disabled to avoid interfering with teleport */}
+      <mesh raycast={() => null}>
         <boxGeometry args={[2 * halfExtents[0], 2 * halfExtents[1], 2 * halfExtents[2]]} />
         <meshBasicMaterial color="#4488ff" opacity={0.06} transparent side={THREE.DoubleSide} />
       </mesh>

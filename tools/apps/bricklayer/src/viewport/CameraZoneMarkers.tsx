@@ -26,7 +26,7 @@ function ShapeFill({ shape }: { shape: CameraShape }) {
   if (shape.type === 'aabb') {
     const [hx, hy, hz] = shape.half_extents ?? [2, 2, 2];
     return (
-      <mesh>
+      <mesh raycast={() => null}>
         <boxGeometry args={[2 * hx, 2 * hy, 2 * hz]} />
         <meshBasicMaterial color="#00ccff" opacity={0.08} transparent side={THREE.DoubleSide} />
       </mesh>
@@ -34,7 +34,7 @@ function ShapeFill({ shape }: { shape: CameraShape }) {
   } else {
     const r = shape.radius ?? 2;
     return (
-      <mesh>
+      <mesh raycast={() => null}>
         <sphereGeometry args={[r, 24, 16]} />
         <meshBasicMaterial color="#00ccff" opacity={0.08} transparent side={THREE.DoubleSide} />
       </mesh>
@@ -138,8 +138,8 @@ function TriggerMarker({ trigger, isSelected, onSelect, onMove }: {
         </mesh>
         {/* Wireframe edges */}
         <ShapeWireframe shape={shape} color={edgeColor} opacity={edgeOpacity} />
-        {/* Semi-transparent fill */}
-        <mesh>
+        {/* Semi-transparent fill — raycast disabled to avoid interfering with teleport */}
+        <mesh raycast={() => null}>
           {fillGeo}
           <meshBasicMaterial color="#ff00ff" opacity={0.08} transparent side={THREE.DoubleSide} />
         </mesh>
