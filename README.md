@@ -12,6 +12,8 @@ GSeurat is designed to be embedded in external game projects as a **Git submodul
 - **Sprite overlay** — Sprite-based entities over GS backgrounds with bloom, depth-of-field, and tone mapping
 - **Game Object System** — Unified entity model with component composition. Developers define C++ component structs + JSON schemas; level designers compose objects in Bricklayer
 - **Component Registry** — Type-erased component registration with JSON attach/serialize. SystemScheduler with read/write dependency declarations (parallel-ready)
+- **3D Collision System** — Primitive colliders (Box, Sphere, Capsule) with static BVH broadphase, capsule sweep queries, and a Kinematic Character Controller with continuous gravity and wall sliding
+- **Camera Pipeline** — 5-mode camera system (free_look, rail_follow, cinematic_rail, fixed_point, side_scroll) with zone priority resolution, smooth blending, spline paths, easing curves, and cinematic playback modes
 - **Entity Component System** — Header-only ECS with archetype storage, typed views, and system functions
 - **[Scene transitions](docs/scene-transitions.md)** — Transient-entity state machine (`SceneOut → Loading → SceneIn`) fully decoupled from presentation. Portals are authored in Bricklayer via `ProximityTrigger + PortalTarget`; the post-process shader supports solid fade, left-to-right wipe, and iris wipe effects
 - **Async asset streaming** — Slab allocator + GPU page table, async transfer queue, `world.json` spatial partitioning with fixed uniform chunk grid, StreamingVolumes for preload hints, GPU frustum culling
@@ -29,7 +31,8 @@ GSeurat is designed to be embedded in external game projects as a **Git submodul
 GSeurat/
 ├── include/gseurat/           # Public C++ headers
 │   ├── engine/                #   Core engine (renderer, GS, Vulkan, ECS, streaming)
-│   │   └── audio/             #   Audio engine (AudioEngine, IAudioSource, DSP effects)
+│   │   ├── audio/             #   Audio engine (AudioEngine, IAudioSource, DSP effects)
+│   │   └── collision/         #   3D collision (primitives, BVH, intersect, debug wireframe)
 │   ├── platform/              #   Platform abstractions (MemoryMappedFile)
 │   ├── character/             #   Bone animation, character manifests
 │   ├── demo/                  #   Demo application headers
@@ -325,6 +328,47 @@ poll_transfers()                Stage to ring buffer
 Spatial partitioning for vast open-world maps. A `world.json` file defines a fixed uniform grid of chunks, each referencing a PLY file and optional per-chunk scene JSON. The engine derives AABBs from grid position for O(1) camera-to-chunk lookups.
 
 **Chunks vs Instances:** Chunks are spatial PLY tiles in a global coordinate system — loaded/unloaded by camera distance, rendered simultaneously. Instances are isolated rooms in their own local coordinate system — entered via Portals. StreamingVolumes are trigger zones that hint the async transfer queue to preload targets before the player reaches them.
+
+### 3D Collision System
+
+Primitive collider system backed by a static BVH, replacing the legacy 2D CollisionGrid for character physics.
+
+**Collider types:**
+- `BoxData` — axis-aligned box with half-extents
+- `SphereData` — sphere with radius
+- `CapsuleData` — capsule with radius + half-height (oriented along Y axis)
+
+**Architecture:** Hybrid ECS + cached CollisionWorld. `ColliderComponent` is an ECS component for serialization and inspector support. `CollisionSystem` maintains packed `ColliderInstance` caches (static and dynamic) and rebuilds a static BVH for broadphase acceleration.
+
+**Queries:**
+- `sweep()` — capsule sweep against static geometry (continuous collision detection for KCC)
+- `overlap_aabb()` — broadphase AABB overlap query
+- `raycast()` — ray intersection with distance-sorted results
+
+**Kinematic Character Controller (KCC):** Per-frame `run_kcc()` applies continuous gravity, capsule sweeps for movement, ground probing for slope detection, and iterative wall sliding. Configurable ground angle threshold, skin width, and slide iterations.
+
+### Camera Pipeline
+
+5-mode camera system with spatial zone resolution, virtual camera evaluation, smooth blending, and constraint clamping.
+
+**Camera modes:**
+| Mode | Description |
+|------|-------------|
+| `free_look` | Default orbit camera with mouse-driven azimuth/elevation |
+| `rail_follow` | Position-projected nearest-t on a Catmull-Rom spline |
+| `cinematic_rail` | Time-driven spline playback with easing and playback modes |
+| `fixed_point` | Static camera at a fixed world position |
+| `side_scroll` | 2D side-view camera |
+
+**Cinematic rail** supports four playback modes (`once`, `loop`, `ping_pong`, `manual`) and three target modes (`player`, `target_path`, `fixed_point`). Easing reuses the 30+ curve `GsEasing` enum. Duration, easing, and `play_on_enter` are configured per CameraVolume in scene JSON.
+
+**Zone priority resolution:** Manual zones (priority > 0) always beat auto zones. Among manual zones, highest priority wins; among auto zones, smallest volume wins. Tie-break by entity ID.
+
+**Pipeline stages:**
+1. **ZoneResolver** — pick active CameraVolume from player position (AABB/sphere containment)
+2. **VCamEvaluator** — evaluate camera state for the active zone's mode
+3. **Blending** — smoothstep blend between old and new camera states on zone transitions
+4. **Constraints** — clamp camera within volume bounds
 
 ### Audio Engine
 
