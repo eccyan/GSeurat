@@ -233,6 +233,49 @@ public:
         return id;
     }
 
+    DebugSnapshot build_debug_snapshot() const override {
+        DebugSnapshot snap;
+        snap.master_volume = 1.0f;
+        snap.sample_rate = cfg_.sample_rate;
+        snap.max_polyphony = cfg_.max_oneshot_voices;
+        snap.dropped_commands = const_cast<Mixer&>(mixer_).telemetry().dropped_commands.load(
+            std::memory_order_relaxed);
+
+        const auto& active = mixer_.active_groups();
+        const auto& registry = mixer_.registry();
+
+        uint32_t active_count = 0;
+        for (const auto& g : active) {
+            if (g.status == TrackGroupState::Status::Idle) continue;
+            ++active_count;
+
+            DebugGroupInfo info;
+            info.group_id = g.group_id;
+            info.status = static_cast<uint8_t>(g.status);
+            info.play_cursor = g.play_cursor;
+            info.group_volume = g.group_volume.current();
+            info.stem_count = g.stem_count;
+
+            // Find registry entry for source paths
+            const TrackGroupRegistryEntry* reg_entry = nullptr;
+            for (const auto& r : registry) {
+                if (r.metadata.id == g.group_id) { reg_entry = &r; break; }
+            }
+
+            for (uint8_t i = 0; i < g.stem_count; ++i) {
+                DebugGroupInfo::StemInfo si;
+                si.volume = g.stems[i].volume.current();
+                if (reg_entry && i < reg_entry->metadata.stems.size()) {
+                    si.source_path = reg_entry->metadata.stems[i].source_path;
+                }
+                info.stems.push_back(std::move(si));
+            }
+            snap.groups.push_back(std::move(info));
+        }
+        snap.active_group_count = active_count;
+        return snap;
+    }
+
 private:
     uint64_t ms_to_frames(float ms) const noexcept {
         return static_cast<uint64_t>(std::llround(

@@ -79,6 +79,10 @@ public:
     void set_sfx_registry(const std::vector<std::unique_ptr<IAudioSource>>* reg) { sfx_registry_ = reg; }
     ListenerState& listener_state() noexcept { return listener_; }
 
+    // Debug: read active group/stem state (game thread, not lock-free — acceptable for debug).
+    const std::vector<TrackGroupState>&  active_groups()  const noexcept { return active_groups_; }
+    const std::vector<TrackGroupRegistryEntry>& registry() const noexcept { return registry_; }
+
     void add_rtpc_binding(const RtpcBinding& b) {
         const uint32_t n = rtpc_binding_count_.load(std::memory_order_relaxed);
         if (n >= kMaxRtpcBindings) return;
