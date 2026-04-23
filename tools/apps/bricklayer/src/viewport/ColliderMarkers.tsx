@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { useSceneStore } from '../store/useSceneStore.js';
 
@@ -16,20 +16,32 @@ function ColliderWireframe({ shape, color, opacity }: {
   color: string;
   opacity: number;
 }) {
+  const prevGeo = useRef<THREE.EdgesGeometry | null>(null);
+  const hx = shape.half_extents?.[0] ?? 0.5;
+  const hy = shape.half_extents?.[1] ?? 0.5;
+  const hz = shape.half_extents?.[2] ?? 0.5;
+  const r = shape.radius ?? (shape.type === 'capsule' ? 0.3 : 0.5);
+  const hh = shape.half_height ?? 0.5;
+
   const edgesGeo = useMemo(() => {
+    // Dispose previous geometry to prevent GPU memory leak
+    prevGeo.current?.dispose();
+    let geo: THREE.EdgesGeometry;
     if (shape.type === 'box') {
-      const [hx, hy, hz] = shape.half_extents ?? [0.5, 0.5, 0.5];
-      return new THREE.EdgesGeometry(new THREE.BoxGeometry(2 * hx, 2 * hy, 2 * hz));
+      geo = new THREE.EdgesGeometry(new THREE.BoxGeometry(2 * hx, 2 * hy, 2 * hz));
     } else if (shape.type === 'sphere') {
-      const r = shape.radius ?? 0.5;
-      return new THREE.EdgesGeometry(new THREE.SphereGeometry(r, 24, 16));
+      geo = new THREE.EdgesGeometry(new THREE.SphereGeometry(r, 24, 16));
     } else {
-      // capsule
-      const r = shape.radius ?? 0.3;
-      const hh = shape.half_height ?? 0.5;
-      return new THREE.EdgesGeometry(new THREE.CapsuleGeometry(r, 2 * hh, 12, 8));
+      geo = new THREE.EdgesGeometry(new THREE.CapsuleGeometry(r, 2 * hh, 12, 8));
     }
-  }, [shape.type, shape.half_extents, shape.radius, shape.half_height]);
+    prevGeo.current = geo;
+    return geo;
+  }, [shape.type, hx, hy, hz, r, hh]);
+
+  // Dispose on unmount
+  useEffect(() => {
+    return () => { prevGeo.current?.dispose(); };
+  }, []);
 
   return (
     <lineSegments geometry={edgesGeo}>
