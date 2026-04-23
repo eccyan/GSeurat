@@ -5,6 +5,7 @@ import { useSceneStore } from '../../store/useSceneStore.js';
 import type { GameObjectData, PbdConfig } from '../../store/types.js';
 import { panelStyles } from '../../styles/panel.js';
 import { ComponentEditor } from './ComponentEditor.js';
+import { ColliderEditor } from './ColliderEditor.js';
 import { EntityHeader } from './EntityHeader.js';
 import { TransformFields } from './TransformFields.js';
 
@@ -219,6 +220,30 @@ export function GameObjectProperties({ obj }: { obj: GameObjectData }) {
         </div>
 
         {attachedNames.map((name) => {
+          const componentOnChange = (field: string, value: unknown) => {
+            update(obj.id, {
+              components: {
+                ...obj.components,
+                [name]: { ...obj.components[name], [field]: value },
+              },
+            });
+          };
+          const componentOnRemove = () => {
+            const { [name]: _, ...rest } = obj.components;
+            update(obj.id, { components: rest });
+          };
+
+          if (name === 'ColliderComponent') {
+            return (
+              <ColliderEditor
+                key={name}
+                data={obj.components[name]}
+                onChange={componentOnChange}
+                onRemove={componentOnRemove}
+              />
+            );
+          }
+
           const schema = componentSchemas.find((s) => s.name === name);
           if (!schema) {
             return (
@@ -232,18 +257,8 @@ export function GameObjectProperties({ obj }: { obj: GameObjectData }) {
               key={name}
               schema={schema}
               data={obj.components[name]}
-              onChange={(field, value) => {
-                update(obj.id, {
-                  components: {
-                    ...obj.components,
-                    [name]: { ...obj.components[name], [field]: value },
-                  },
-                });
-              }}
-              onRemove={() => {
-                const { [name]: _, ...rest } = obj.components;
-                update(obj.id, { components: rest });
-              }}
+              onChange={componentOnChange}
+              onRemove={componentOnRemove}
             />
           );
         })}
