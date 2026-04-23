@@ -211,8 +211,6 @@ struct SceneData {
         float crossfade_ms = 2000.0f;
         float ambient_volume = 1.0f;
         // Stem fade support
-        std::string action_on_enter_str;
-        std::string action_on_exit_str;
         std::vector<StemFadeAction> stem_fade_on_enter;
         std::vector<StemFadeAction> stem_fade_on_exit;
     };

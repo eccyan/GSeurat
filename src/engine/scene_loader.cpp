@@ -633,8 +633,6 @@ SceneData SceneLoader::from_json(const nlohmann::json& j) {
             ref.music_config = az.value("music_config", "");
             ref.crossfade_ms = az.value("crossfade_ms", 2000.0f);
             ref.ambient_volume = az.value("ambient_volume", 1.0f);
-            ref.action_on_enter_str = az.value("action_on_enter", "");
-            ref.action_on_exit_str = az.value("action_on_exit", "");
             if (az.contains("stem_fade_on_enter")) {
                 for (const auto& sf : az["stem_fade_on_enter"]) {
                     StemFadeAction a;
