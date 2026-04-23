@@ -77408,6 +77408,25 @@
           "pitch_min": 15,
           "pitch_max": 45
         }
+      },
+      {
+        "id": "bridge_cinematic",
+        "shape": {
+          "type": "aabb",
+          "center": [175, 5, 120],
+          "half_extents": [25, 15, 15]
+        },
+        "params": {
+          "mode": "cinematic_rail",
+          "rail_id": "bridge_vista_rail",
+          "play_on_enter": true,
+          "cinematic_playback": "once",
+          "cinematic_duration": 8.0,
+          "cinematic_easing": "in_out_quad",
+          "blend_time": 1.5,
+          "target_mode": "player",
+          "priority": 10
+        }
       }
     ],
     "triggers": [
@@ -77472,6 +77491,17 @@
             15,
             180
           ]
+        ]
+      },
+      {
+        "id": "bridge_vista_rail",
+        "control_points": [
+          [175,  8, 135],
+          [155, 18, 110],
+          [160, 22,  80],
+          [175, 18,  60],
+          [185, 12,  90],
+          [180,  8, 115]
         ]
       }
     ]
