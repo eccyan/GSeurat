@@ -5,6 +5,8 @@ import {
   ColorPicker,
   Vec2Input,
 } from '@gseurat/ui-kit';
+import { ColliderListPanel } from './ColliderListPanel.js';
+import { ColliderPropertiesPanel } from './ColliderPropertiesPanel.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -413,7 +415,47 @@ function PortalProperties({ index }: { index: number }) {
 // PropertiesPanel
 // ---------------------------------------------------------------------------
 export function PropertiesPanel() {
-  const { selectedEntity, activeLayer } = useEditorStore();
+  const { selectedEntity, activeLayer, selectedColliderId } = useEditorStore();
+
+  // Collider layer: show the list + optional properties panel
+  if (activeLayer === 'colliders') {
+    return (
+      <div style={{
+        width: 220,
+        background: '#222',
+        borderLeft: '1px solid #333',
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'hidden',
+      }}>
+        {/* Header */}
+        <div style={{
+          padding: '8px 10px',
+          background: '#1e1e1e',
+          borderBottom: '1px solid #333',
+          fontFamily: 'monospace',
+          fontSize: 11,
+          color: '#aaa',
+          fontWeight: 600,
+          letterSpacing: '0.04em',
+        }}>
+          Colliders
+        </div>
+
+        {/* List (top half) + Properties (bottom half when selected) */}
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          <div style={{ flex: selectedColliderId ? '0 0 40%' : '1', overflow: 'hidden' }}>
+            <ColliderListPanel />
+          </div>
+          {selectedColliderId && (
+            <div style={{ flex: 1, overflowY: 'auto', borderTop: '1px solid #444' }}>
+              <ColliderPropertiesPanel />
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   let content: React.ReactNode;
 

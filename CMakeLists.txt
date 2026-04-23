@@ -206,6 +206,7 @@ add_library(gseurat_core ${_gseurat_lib_type}
     src/engine/collision/intersect.cpp
     src/engine/collision/bvh.cpp
     src/engine/collision/collision_system.cpp
+    src/engine/collision/debug_wireframe.cpp
     src/engine/save_system.cpp
     src/engine/slab_allocator.cpp
     src/engine/async_loader.cpp

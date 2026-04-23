@@ -291,6 +291,7 @@ void IslandDemoState::on_enter(AppBase& app) {
 
         // Wire up camera_zone_system for bridge commands.
         app.command_dispatcher().context().camera_zone_system = camera_zone_system_.get();
+        app.command_dispatcher().context().collision_system = &collision_system_;
 
         std::fprintf(stderr, "[IslandDemo] Camera zone system loaded: %d volumes, %zu triggers, %zu rails\n",
                      next_zone_id, cz.triggers.size(), rail_count);
@@ -676,6 +677,7 @@ void IslandDemoState::on_exit(AppBase& app) {
 
     // Release camera zone system
     app.command_dispatcher().context().camera_zone_system = nullptr;
+    app.command_dispatcher().context().collision_system = nullptr;
     camera_zone_system_.reset();
 
     // Release animation registry references
@@ -1579,6 +1581,51 @@ void IslandDemoState::build_draw_lists(AppBase& app) {
     // Gizmos render independently of HUD mode
     draw_gizmos(app);
 
+    // Build debug collider wireframe draw list
+    if (app.feature_flags().debug_colliders) {
+        auto& debug_colliders = app.draw_lists().debug_colliders;
+
+        auto build_draw_info = [](const ColliderInstance& inst) -> DebugColliderDrawInfo {
+            DebugColliderDrawInfo info;
+            info.model = glm::translate(glm::mat4(1.0f), inst.world_position) *
+                         glm::mat4_cast(inst.world_rotation);
+
+            // Color scheme: yellow for triggers, green for solid
+            if (inst.is_trigger) {
+                info.color = glm::vec4(0.9f, 0.9f, 0.2f, 0.5f);
+            } else {
+                info.color = glm::vec4(0.2f, 0.9f, 0.2f, 0.8f);
+            }
+
+            // Shape params
+            std::visit([&](const auto& shape) {
+                using T = std::decay_t<decltype(shape)>;
+                if constexpr (std::is_same_v<T, BoxData>) {
+                    info.shape_type = ColliderType::Box;
+                    info.half_extents = shape.half_extents;
+                } else if constexpr (std::is_same_v<T, SphereData>) {
+                    info.shape_type = ColliderType::Sphere;
+                    info.radius = shape.radius;
+                } else if constexpr (std::is_same_v<T, CapsuleData>) {
+                    info.shape_type = ColliderType::Capsule;
+                    info.radius = shape.radius;
+                    info.half_height = shape.half_height;
+                }
+            }, inst.shape);
+
+            return info;
+        };
+
+        for (const auto& inst : collision_system_.static_cache()) {
+            debug_colliders.push_back(build_draw_info(inst));
+        }
+        for (const auto& inst : collision_system_.dynamic_cache()) {
+            auto di = build_draw_info(inst);
+            di.color = glm::vec4(0.2f, 0.8f, 0.9f, 0.8f);  // cyan for dynamic
+            debug_colliders.push_back(di);
+        }
+    }
+
     if (hud_mode_ == HudMode::kOff) return;
 
     auto& ui = app.ui_ctx();
@@ -2031,6 +2078,7 @@ void IslandDemoState::perform_portal_transition(AppBase& app,
 
     // Reset camera zone system — island zones are invalid in instances
     app.command_dispatcher().context().camera_zone_system = nullptr;
+    app.command_dispatcher().context().collision_system = nullptr;
     camera_zone_system_.reset();
 
     // Reset camera target to avoid stale smoothing from old scene

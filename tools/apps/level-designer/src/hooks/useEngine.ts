@@ -436,6 +436,75 @@ export function useEngine() {
   );
 
   // -------------------------------------------------------------------------
+  // Collider management
+  // -------------------------------------------------------------------------
+
+  /**
+   * Add a new collider entity to the engine.
+   */
+  const addCollider = useCallback(
+    (data: {
+      id: string;
+      name: string;
+      position: [number, number, number];
+      rotation: [number, number, number, number];
+      collider: {
+        shape: { type: string; half_extents?: [number, number, number]; radius?: number; half_height?: number };
+        collision_mask?: number;
+        is_trigger?: boolean;
+        is_dynamic?: boolean;
+      };
+    }): Promise<OkResponse | null> =>
+      sendCommand<OkResponse>({
+        cmd: 'add_collider',
+        id: data.id,
+        name: data.name,
+        position: data.position,
+        rotation: data.rotation,
+        collider: data.collider,
+      }),
+    [sendCommand],
+  );
+
+  /**
+   * Update an existing collider's properties.
+   */
+  const updateCollider = useCallback(
+    (id: string, data: Record<string, unknown>): Promise<OkResponse | null> =>
+      sendCommand<OkResponse>({ cmd: 'update_collider', id, ...data }),
+    [sendCommand],
+  );
+
+  /**
+   * Remove a collider entity by ID.
+   */
+  const removeCollider = useCallback(
+    (id: string): Promise<OkResponse | null> =>
+      sendCommand<OkResponse>({ cmd: 'remove_collider', id }),
+    [sendCommand],
+  );
+
+  interface ListCollidersResponse {
+    type: string;
+    colliders: Array<{
+      id: string;
+      name: string;
+      position: [number, number, number];
+      rotation: [number, number, number, number];
+      collider: Record<string, unknown>;
+    }>;
+  }
+
+  /**
+   * Fetch all colliders from the engine for initial sync.
+   */
+  const listColliders = useCallback(
+    (): Promise<ListCollidersResponse | null> =>
+      sendCommand<ListCollidersResponse>({ cmd: 'list_colliders' }),
+    [sendCommand],
+  );
+
+  // -------------------------------------------------------------------------
   // Return
   // -------------------------------------------------------------------------
 
@@ -491,5 +560,11 @@ export function useEngine() {
     // Cinematic rail
     setCinematicT,
     advanceCinematicT,
+
+    // Colliders
+    addCollider,
+    updateCollider,
+    removeCollider,
+    listColliders,
   };
 }

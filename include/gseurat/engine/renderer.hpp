@@ -20,6 +20,7 @@
 #include "gseurat/engine/sync.hpp"
 #include "gseurat/engine/texture.hpp"
 #include "gseurat/engine/types.hpp"
+#include "gseurat/engine/collision/debug_wireframe.hpp"
 #include "gseurat/engine/feature_flags.hpp"
 #include "gseurat/engine/ui/ui_context.hpp"
 #include "gseurat/engine/vk_context.hpp"
@@ -85,7 +86,12 @@ public:
                     const std::vector<SpriteDrawInfo>& particles = {},
                     const std::vector<SpriteDrawInfo>& overlay = {},
                     const std::vector<ui::UIDrawBatch>& ui_batches = {},
+                    const std::vector<DebugColliderDrawInfo>& debug_colliders_list = {},
                     const FeatureFlags& flags = {});
+
+    /// Draw debug collider wireframes. Call between scene pass begin and end.
+    void draw_debug_colliders(VkCommandBuffer cmd,
+                              const std::vector<DebugColliderDrawInfo>& draw_list);
     void shutdown();
 
     Camera& camera() { return camera_; }
@@ -160,6 +166,7 @@ private:
     void create_sprite_pipeline();
     void create_outline_pipeline();
     void create_ui_pipeline();
+    void create_wireframe_pipeline();
     void create_uniform_buffers();
     void update_uniform_buffer(uint32_t frame_index, const UniformBufferObject& ubo);
 
@@ -185,6 +192,13 @@ private:
     VkPipelineLayout outline_pipeline_layout_ = VK_NULL_HANDLE;
     VkPipeline outline_pipeline_ = VK_NULL_HANDLE;
     VkPipeline ui_pipeline_ = VK_NULL_HANDLE;
+
+    // Debug wireframe rendering
+    VkPipeline wireframe_pipeline_ = VK_NULL_HANDLE;
+    VkPipelineLayout wireframe_pipeline_layout_ = VK_NULL_HANDLE;
+    VkBuffer wireframe_vb_ = VK_NULL_HANDLE;
+    VmaAllocation wireframe_vb_alloc_ = VK_NULL_HANDLE;
+    WireframeMeshData wireframe_meshes_;
 
     SpriteBatch sprite_batch_;
     std::array<Buffer, kMaxFramesInFlight> uniform_buffers_;

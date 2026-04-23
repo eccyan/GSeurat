@@ -18,6 +18,7 @@ class DebugDumpRegistry;
 class ControlServer;
 struct FeatureFlags;
 class CameraZoneSystem;
+class CollisionSystem;
 struct CommandContext {
     const GsTerrainState& terrain;
     SceneObjectState& scene_objects;
@@ -41,6 +42,7 @@ struct CommandContext {
     bool camera_sync_override = false;
     std::string camera_sync_source;  // source of last sync_camera command for echo suppression
     CameraZoneSystem* camera_zone_system = nullptr;
+    CollisionSystem* collision_system = nullptr;
 };
 
 }  // namespace gseurat
