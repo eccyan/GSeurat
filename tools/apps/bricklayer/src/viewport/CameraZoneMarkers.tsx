@@ -64,10 +64,10 @@ function VolumeMarker({ volume, isSelected, onSelect, onMove }: {
   return (
     <>
       <group ref={groupRef} position={[center[0], center[1], center[2]]}>
-        {/* Invisible hit mesh */}
+        {/* Center gizmo — visible solid cube as click target */}
         <mesh onPointerDown={(e) => { e.stopPropagation(); onSelect(); }}>
-          <sphereGeometry args={[Math.max(hitSize, 1.5), 12, 12]} />
-          <meshBasicMaterial visible={false} />
+          <boxGeometry args={[1.5, 1.5, 1.5]} />
+          <meshBasicMaterial color={edgeColor} />
         </mesh>
         {/* Wireframe edges */}
         <ShapeWireframe shape={shape} color={edgeColor} opacity={edgeOpacity} />
@@ -131,10 +131,10 @@ function TriggerMarker({ trigger, isSelected, onSelect, onMove }: {
   return (
     <>
       <group ref={groupRef} position={[center[0], center[1], center[2]]}>
-        {/* Invisible hit mesh */}
+        {/* Center gizmo — visible solid cube as click target */}
         <mesh onPointerDown={(e) => { e.stopPropagation(); onSelect(); }}>
-          <sphereGeometry args={[Math.max(hitSize, 1.5), 12, 12]} />
-          <meshBasicMaterial visible={false} />
+          <boxGeometry args={[1.5, 1.5, 1.5]} />
+          <meshBasicMaterial color={edgeColor} />
         </mesh>
         {/* Wireframe edges */}
         <ShapeWireframe shape={shape} color={edgeColor} opacity={edgeOpacity} />
