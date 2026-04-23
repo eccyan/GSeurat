@@ -6,6 +6,7 @@ import * as THREE from 'three';
 import { GroundPlane } from './GroundPlane.js';
 import { LightGizmos } from './LightGizmos.js';
 import { GameObjectMarkers } from './GameObjectMarkers.js';
+import { ColliderMarkers } from './ColliderMarkers.js';
 import { GsEmitterMarkers } from './GsEmitterMarkers.js';
 import { GsEmitterParticles } from './GsEmitterParticles.js';
 import { GsAnimationMarkers } from './GsAnimationMarkers.js';
@@ -309,6 +310,7 @@ function SceneContent() {
       <TerrainPlyReference />
       <LightGizmos />
       <GameObjectMarkers />
+      <ColliderMarkers />
       <GsEmitterMarkers />
       <GsEmitterParticles />
       <GsAnimationMarkers />
