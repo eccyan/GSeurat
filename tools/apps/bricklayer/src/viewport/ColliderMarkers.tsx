@@ -134,8 +134,8 @@ function SingleColliderMarker({ objPosition, objRotation, collider, isSelected, 
       position={objPosition}
       rotation={[DEG2RAD(objRotation[0]), DEG2RAD(objRotation[1]), DEG2RAD(objRotation[2])]}
     >
-      <group quaternion={localRotation}>
-        <group position={offset}>
+      <group position={offset}>
+        <group quaternion={localRotation}>
           <ColliderWireframe shape={shape} color={wireColor} opacity={wireOpacity} />
           <ColliderFill shape={shape} color={wireColor} opacity={fillOpacity} />
           <ColliderHitMesh shape={shape} onSelect={onSelect} />
