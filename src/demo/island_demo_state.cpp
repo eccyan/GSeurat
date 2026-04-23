@@ -832,7 +832,11 @@ void IslandDemoState::update(AppBase& app, float dt) {
                                  && character_origin_.z >= z.bounds_min.z
                                  && character_origin_.z <= z.bounds_max.z;
 
-                // Detect enter/exit transitions for stem fades
+                // Detect enter/exit transitions for stem fades.
+                // NOTE: stem fades target already-playing groups (e.g. the field BGM).
+                // Zones that combine music_config crossfades with stem fades on the
+                // *destination* group would need the fade dispatched after the
+                // transition below, since the mixer ignores commands to inactive groups.
                 if (inside && !z.player_inside) {
                     for (const auto& a : z.stem_fade_on_enter) {
                         ae->set_stem_volume(a.group_id, a.stem_index, a.target_volume, a.fade_ms);

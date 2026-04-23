@@ -140,10 +140,46 @@
       }
     },
     "tilemap": { "type": "object" },
-    "tile_animations": { "type": "array" }
+    "tile_animations": { "type": "array" },
+    "audio_zones": {
+      "type": "array",
+      "description": "Spatial audio triggers (AABB containment, stem fades)",
+      "items": {
+        "type": "object",
+        "required": ["id", "center", "half_extents"],
+        "properties": {
+          "id": { "type": "string" },
+          "center": { "$ref": "#/definitions/vec3" },
+          "half_extents": { "$ref": "#/definitions/vec3" },
+          "music_config": { "type": "string", "description": "Path to .music.json (empty for stem-fade-only zones)" },
+          "crossfade_ms": { "type": "number" },
+          "ambient_volume": { "type": "number" },
+          "action_on_enter": { "type": "string", "enum": ["Play", "PlayOrTransition", "Stop"] },
+          "action_on_exit": { "type": "string", "enum": ["Play", "PlayOrTransition", "Stop"] },
+          "stem_fade_on_enter": {
+            "type": "array",
+            "items": { "$ref": "#/definitions/stem_fade_action" }
+          },
+          "stem_fade_on_exit": {
+            "type": "array",
+            "items": { "$ref": "#/definitions/stem_fade_action" }
+          }
+        }
+      }
+    }
   },
   "additionalProperties": false,
   "definitions": {
+    "stem_fade_action": {
+      "type": "object",
+      "required": ["group_id", "stem_index", "target_volume", "fade_ms"],
+      "properties": {
+        "group_id": { "type": "integer" },
+        "stem_index": { "type": "integer" },
+        "target_volume": { "type": "number" },
+        "fade_ms": { "type": "number" }
+      }
+    },
     "vfx_instance": {
       "type": "object",
       "required": ["vfx_file", "position"],
