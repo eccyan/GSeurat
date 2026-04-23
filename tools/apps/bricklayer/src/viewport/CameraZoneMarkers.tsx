@@ -16,7 +16,7 @@ function ShapeWireframe({ shape, color, opacity = 1 }: { shape: CameraShape; col
   }, [shape]);
 
   return (
-    <lineSegments geometry={edgesGeo}>
+    <lineSegments geometry={edgesGeo} raycast={() => null}>
       <lineBasicMaterial color={color} transparent opacity={opacity} />
     </lineSegments>
   );
@@ -26,7 +26,7 @@ function ShapeFill({ shape }: { shape: CameraShape }) {
   if (shape.type === 'aabb') {
     const [hx, hy, hz] = shape.half_extents ?? [2, 2, 2];
     return (
-      <mesh>
+      <mesh raycast={() => null}>
         <boxGeometry args={[2 * hx, 2 * hy, 2 * hz]} />
         <meshBasicMaterial color="#00ccff" opacity={0.08} transparent side={THREE.DoubleSide} />
       </mesh>
@@ -34,7 +34,7 @@ function ShapeFill({ shape }: { shape: CameraShape }) {
   } else {
     const r = shape.radius ?? 2;
     return (
-      <mesh>
+      <mesh raycast={() => null}>
         <sphereGeometry args={[r, 24, 16]} />
         <meshBasicMaterial color="#00ccff" opacity={0.08} transparent side={THREE.DoubleSide} />
       </mesh>
@@ -64,10 +64,10 @@ function VolumeMarker({ volume, isSelected, onSelect, onMove }: {
   return (
     <>
       <group ref={groupRef} position={[center[0], center[1], center[2]]}>
-        {/* Invisible hit mesh */}
+        {/* Center gizmo — visible solid cube as click target */}
         <mesh onPointerDown={(e) => { e.stopPropagation(); onSelect(); }}>
-          <sphereGeometry args={[Math.max(hitSize, 1.5), 12, 12]} />
-          <meshBasicMaterial visible={false} />
+          <boxGeometry args={[1.5, 1.5, 1.5]} />
+          <meshBasicMaterial color={edgeColor} />
         </mesh>
         {/* Wireframe edges */}
         <ShapeWireframe shape={shape} color={edgeColor} opacity={edgeOpacity} />
@@ -131,15 +131,15 @@ function TriggerMarker({ trigger, isSelected, onSelect, onMove }: {
   return (
     <>
       <group ref={groupRef} position={[center[0], center[1], center[2]]}>
-        {/* Invisible hit mesh */}
+        {/* Center gizmo — visible solid cube as click target */}
         <mesh onPointerDown={(e) => { e.stopPropagation(); onSelect(); }}>
-          <sphereGeometry args={[Math.max(hitSize, 1.5), 12, 12]} />
-          <meshBasicMaterial visible={false} />
+          <boxGeometry args={[1.5, 1.5, 1.5]} />
+          <meshBasicMaterial color={edgeColor} />
         </mesh>
         {/* Wireframe edges */}
         <ShapeWireframe shape={shape} color={edgeColor} opacity={edgeOpacity} />
-        {/* Semi-transparent fill */}
-        <mesh>
+        {/* Semi-transparent fill — raycast disabled to avoid interfering with teleport */}
+        <mesh raycast={() => null}>
           {fillGeo}
           <meshBasicMaterial color="#ff00ff" opacity={0.08} transparent side={THREE.DoubleSide} />
         </mesh>
