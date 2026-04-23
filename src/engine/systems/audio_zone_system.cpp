@@ -25,8 +25,14 @@ void AudioZoneSystem::tick(glm::vec3 player_pos, std::span<AudioZoneComponent> z
                 engine_->stop_group(z.track_group_id);
                 break;
             }
+            for (const auto& a : z.stem_fade_on_enter) {
+                engine_->set_stem_volume(a.group_id, a.stem_index, a.target_volume, a.fade_ms);
+            }
         } else if (!now_in && z.player_inside) {
             // Exit
+            for (const auto& a : z.stem_fade_on_exit) {
+                engine_->set_stem_volume(a.group_id, a.stem_index, a.target_volume, a.fade_ms);
+            }
             switch (z.action_on_exit) {
             case AudioZoneComponent::Action::Stop:
                 if (z.exit_fade_ms > 0) {
