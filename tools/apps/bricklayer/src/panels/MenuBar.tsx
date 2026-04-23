@@ -4,7 +4,7 @@ import { useSceneStore } from '../store/useSceneStore.js';
 import { exportSceneJson } from '../lib/sceneExport.js';
 import { computeFingerprint, isStructuralChange, type SceneFingerprint } from '../lib/sceneFingerprint.js';
 import { hasFileSystemAccess, openProjectDirectory, saveProject as saveProjectDir, loadProject as loadProjectDir, saveProjectAsZip, loadProjectFromZip, importAssetToProject } from '../lib/projectIO.js';
-import { sendBridgeCommand, sendBridgeCommands } from '@gseurat/engine-client';
+import { sendBridgeCommand, sendBridgeCommands, onBridgeReconnect } from '@gseurat/engine-client';
 import type { BricklayerFile } from '../store/types.js';
 import {
   saveProjectRootHandle,
@@ -437,6 +437,19 @@ export function MenuBar() {
       if (autoSyncTimer.current) clearTimeout(autoSyncTimer.current);
     };
   }, [stagingAutoSync]);
+
+  // Re-sync full scene to Staging after bridge reconnects (prevents stale state).
+  useEffect(() => {
+    onBridgeReconnect(() => {
+      if (!useSceneStore.getState().stagingAutoSync) return;
+      const s = useSceneStore.getState();
+      const scene = exportSceneJson(s) as Record<string, unknown>;
+      const json = JSON.stringify(scene);
+      const vfxCmds = pushVfxFiles(s);
+      sendBridgeCommands([...vfxCmds, { cmd: 'load_scene_json', json }]);
+      prevFingerprint.current = null; // force next auto-sync to be structural
+    });
+  }, []);
 
   const handleImportAsset = () => {
     const input = document.createElement('input');
