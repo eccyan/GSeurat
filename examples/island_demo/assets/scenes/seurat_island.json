@@ -76898,6 +76898,142 @@
           "loop": true
         }
       }
+    },
+    {
+      "id": "kcc_wall_a",
+      "name": "Angled Stone Wall A",
+      "position": [198, 0, 170],
+      "rotation": [0, 30, 0],
+      "scale": 1.0,
+      "components": {
+        "ColliderComponent": {
+          "shape": { "type": "box", "half_extents": [3.0, 2.0, 0.4] },
+          "offset": [0, 2, 0],
+          "local_rotation": [0, 0, 0, 1],
+          "collision_mask": 1,
+          "is_trigger": false,
+          "is_dynamic": false
+        }
+      }
+    },
+    {
+      "id": "kcc_wall_b",
+      "name": "Angled Stone Wall B",
+      "position": [208, 0, 172],
+      "rotation": [0, -25, 0],
+      "scale": 1.0,
+      "components": {
+        "ColliderComponent": {
+          "shape": { "type": "box", "half_extents": [3.0, 2.0, 0.4] },
+          "offset": [0, 2, 0],
+          "local_rotation": [0, 0, 0, 1],
+          "collision_mask": 1,
+          "is_trigger": false,
+          "is_dynamic": false
+        }
+      }
+    },
+    {
+      "id": "kcc_boulder_a",
+      "name": "Boulder A",
+      "position": [200, 0, 178],
+      "rotation": [0, 0, 0],
+      "scale": 1.0,
+      "components": {
+        "ColliderComponent": {
+          "shape": { "type": "sphere", "radius": 1.2 },
+          "offset": [0, 1.2, 0],
+          "local_rotation": [0, 0, 0, 1],
+          "collision_mask": 1,
+          "is_trigger": false,
+          "is_dynamic": false
+        }
+      }
+    },
+    {
+      "id": "kcc_boulder_b",
+      "name": "Boulder B",
+      "position": [205, 0.5, 168],
+      "rotation": [0, 0, 0],
+      "scale": 1.0,
+      "components": {
+        "ColliderComponent": {
+          "shape": { "type": "sphere", "radius": 1.0 },
+          "offset": [0, 1.0, 0],
+          "local_rotation": [0, 0, 0, 1],
+          "collision_mask": 1,
+          "is_trigger": false,
+          "is_dynamic": false
+        }
+      }
+    },
+    {
+      "id": "kcc_boulder_c",
+      "name": "Boulder C",
+      "position": [197, 0, 174],
+      "rotation": [0, 0, 0],
+      "scale": 1.0,
+      "components": {
+        "ColliderComponent": {
+          "shape": { "type": "sphere", "radius": 1.5 },
+          "offset": [0, 1.5, 0],
+          "local_rotation": [0, 0, 0, 1],
+          "collision_mask": 1,
+          "is_trigger": false,
+          "is_dynamic": false
+        }
+      }
+    },
+    {
+      "id": "kcc_pillar_a",
+      "name": "Ruined Pillar A",
+      "position": [202, 0, 173],
+      "rotation": [0, 0, 0],
+      "scale": 1.0,
+      "components": {
+        "ColliderComponent": {
+          "shape": { "type": "capsule", "radius": 0.5, "half_height": 1.5 },
+          "offset": [0, 2.0, 0],
+          "local_rotation": [0, 0, 0, 1],
+          "collision_mask": 1,
+          "is_trigger": false,
+          "is_dynamic": false
+        }
+      }
+    },
+    {
+      "id": "kcc_pillar_b",
+      "name": "Ruined Pillar B",
+      "position": [206, 0, 177],
+      "rotation": [0, 0, 0],
+      "scale": 1.0,
+      "components": {
+        "ColliderComponent": {
+          "shape": { "type": "capsule", "radius": 0.5, "half_height": 1.5 },
+          "offset": [0, 2.0, 0],
+          "local_rotation": [0, 0, 0, 1],
+          "collision_mask": 1,
+          "is_trigger": false,
+          "is_dynamic": false
+        }
+      }
+    },
+    {
+      "id": "kcc_ramp",
+      "name": "Low Ramp",
+      "position": [201, 0, 165],
+      "rotation": [15, 0, 0],
+      "scale": 1.0,
+      "components": {
+        "ColliderComponent": {
+          "shape": { "type": "box", "half_extents": [2.0, 0.5, 3.0] },
+          "offset": [0, 0.5, 0],
+          "local_rotation": [0, 0, 0, 1],
+          "collision_mask": 1,
+          "is_trigger": false,
+          "is_dynamic": false
+        }
+      }
     }
   ],
   "particle_emitters": [
