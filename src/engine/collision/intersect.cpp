@@ -10,13 +10,15 @@ namespace gseurat {
 AABB compute_aabb(const BoxData& box, const glm::vec3& pos, const glm::quat& rot) {
     // For an OBB, project each local axis into world space and take the absolute
     // value to compute the maximum extent in each world axis.
+    // Clamp to non-negative to prevent inverted AABBs from malformed data.
+    glm::vec3 safe_ext = glm::max(box.half_extents, glm::vec3(0.0f));
     glm::mat3 rotMat = glm::mat3_cast(rot);
 
     glm::vec3 expanded;
     for (int i = 0; i < 3; ++i) {
-        expanded[i] = std::abs(rotMat[0][i]) * box.half_extents.x
-                    + std::abs(rotMat[1][i]) * box.half_extents.y
-                    + std::abs(rotMat[2][i]) * box.half_extents.z;
+        expanded[i] = std::abs(rotMat[0][i]) * safe_ext.x
+                    + std::abs(rotMat[1][i]) * safe_ext.y
+                    + std::abs(rotMat[2][i]) * safe_ext.z;
     }
 
     return AABB{pos - expanded, pos + expanded};
@@ -24,22 +26,26 @@ AABB compute_aabb(const BoxData& box, const glm::vec3& pos, const glm::quat& rot
 
 AABB compute_aabb(const SphereData& sphere, const glm::vec3& pos, const glm::quat& /*rot*/) {
     // Rotation is irrelevant for a sphere.
-    glm::vec3 r{sphere.radius};
+    float safe_r = std::max(sphere.radius, 0.0f);
+    glm::vec3 r{safe_r};
     return AABB{pos - r, pos + r};
 }
 
 AABB compute_aabb(const CapsuleData& capsule, const glm::vec3& pos, const glm::quat& rot) {
     // Capsule is aligned along local Y-axis. The two hemisphere centers are offset
     // by ±half_height along the rotated Y axis.
+    // Clamp to non-negative to prevent inverted AABBs from malformed data.
+    float safe_hh = std::max(capsule.half_height, 0.0f);
+    float safe_r  = std::max(capsule.radius, 0.0f);
     glm::vec3 local_y{0.0f, 1.0f, 0.0f};
-    glm::vec3 offset = rot * local_y * capsule.half_height;
+    glm::vec3 offset = rot * local_y * safe_hh;
 
     glm::vec3 top    = pos + offset;
     glm::vec3 bottom = pos - offset;
 
     // Compute AABB of the two hemisphere centers, then expand by radius.
-    glm::vec3 aabb_min = glm::min(top, bottom) - glm::vec3(capsule.radius);
-    glm::vec3 aabb_max = glm::max(top, bottom) + glm::vec3(capsule.radius);
+    glm::vec3 aabb_min = glm::min(top, bottom) - glm::vec3(safe_r);
+    glm::vec3 aabb_max = glm::max(top, bottom) + glm::vec3(safe_r);
 
     return AABB{aabb_min, aabb_max};
 }

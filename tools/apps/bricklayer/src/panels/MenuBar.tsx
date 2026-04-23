@@ -4,7 +4,7 @@ import { useSceneStore } from '../store/useSceneStore.js';
 import { exportSceneJson } from '../lib/sceneExport.js';
 import { computeFingerprint, isStructuralChange, type SceneFingerprint } from '../lib/sceneFingerprint.js';
 import { hasFileSystemAccess, openProjectDirectory, saveProject as saveProjectDir, loadProject as loadProjectDir, saveProjectAsZip, loadProjectFromZip, importAssetToProject } from '../lib/projectIO.js';
-import { sendBridgeCommand, sendBridgeCommands } from '@gseurat/engine-client';
+import { sendBridgeCommand, sendBridgeCommands, onBridgeReconnect } from '@gseurat/engine-client';
 import type { BricklayerFile } from '../store/types.js';
 import {
   saveProjectRootHandle,
@@ -437,6 +437,39 @@ export function MenuBar() {
       if (autoSyncTimer.current) clearTimeout(autoSyncTimer.current);
     };
   }, [stagingAutoSync]);
+
+  // Re-sync full scene to Staging after bridge reconnects (prevents stale state).
+  useEffect(() => {
+    onBridgeReconnect(() => {
+      if (!useSceneStore.getState().stagingAutoSync) return;
+      const s = useSceneStore.getState();
+      const scene = exportSceneJson(s) as Record<string, unknown>;
+      const bridgePath = s.bridgeConnectedPath;
+
+      // Resolve relative PLY paths to absolute using bridge project root
+      if (bridgePath) {
+        const resolve = (p: string) =>
+          p && !p.startsWith('/') ? `${bridgePath}/${p}` : p;
+        const gs = scene.gaussian_splat as Record<string, unknown> | undefined;
+        if (gs?.ply_file) gs.ply_file = resolve(gs.ply_file as string);
+        if (gs?.morph) {
+          const m = gs.morph as Record<string, unknown>;
+          if (m.pair_ply) m.pair_ply = resolve(m.pair_ply as string);
+        }
+        const gos = scene.game_objects as Array<Record<string, unknown>> | undefined;
+        if (gos) {
+          for (const go of gos) {
+            if (go.ply_file) go.ply_file = resolve(go.ply_file as string);
+          }
+        }
+      }
+
+      const json = JSON.stringify(scene);
+      const vfxCmds = pushVfxFiles(s);
+      sendBridgeCommands([...vfxCmds, { cmd: 'load_scene_json', json }]);
+      prevFingerprint.current = null; // force next auto-sync to be structural
+    });
+  }, []);
 
   const handleImportAsset = () => {
     const input = document.createElement('input');

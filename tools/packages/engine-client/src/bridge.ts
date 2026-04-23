@@ -13,6 +13,8 @@ const RECONNECT_INTERVAL = 3000; // ms
 let client: EngineClient | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let connecting = false;
+let wasConnected = false;
+let reconnectCallback: (() => void) | null = null;
 
 function scheduleReconnect() {
   if (reconnectTimer) return;
@@ -33,6 +35,11 @@ async function ensureConnected(): Promise<EngineClient | null> {
     }
     await client.connect();
     connecting = false;
+    // Fire reconnect callback if this is a reconnection (not the first connect)
+    if (wasConnected && reconnectCallback) {
+      reconnectCallback();
+    }
+    wasConnected = true;
     return client;
   } catch {
     connecting = false;
@@ -77,6 +84,14 @@ export async function sendBridgeCommands(payloads: Record<string, unknown>[]): P
  */
 export function getBridgeClient(): EngineClient | null {
   return client?.isConnected ? client : null;
+}
+
+/**
+ * Register a callback that fires when the bridge reconnects after a disconnect.
+ * Does NOT fire on the initial connection — only on subsequent reconnections.
+ */
+export function onBridgeReconnect(cb: () => void): void {
+  reconnectCallback = cb;
 }
 
 /**
