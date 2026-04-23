@@ -444,6 +444,26 @@ export function MenuBar() {
       if (!useSceneStore.getState().stagingAutoSync) return;
       const s = useSceneStore.getState();
       const scene = exportSceneJson(s) as Record<string, unknown>;
+      const bridgePath = s.bridgeConnectedPath;
+
+      // Resolve relative PLY paths to absolute using bridge project root
+      if (bridgePath) {
+        const resolve = (p: string) =>
+          p && !p.startsWith('/') ? `${bridgePath}/${p}` : p;
+        const gs = scene.gaussian_splat as Record<string, unknown> | undefined;
+        if (gs?.ply_file) gs.ply_file = resolve(gs.ply_file as string);
+        if (gs?.morph) {
+          const m = gs.morph as Record<string, unknown>;
+          if (m.pair_ply) m.pair_ply = resolve(m.pair_ply as string);
+        }
+        const gos = scene.game_objects as Array<Record<string, unknown>> | undefined;
+        if (gos) {
+          for (const go of gos) {
+            if (go.ply_file) go.ply_file = resolve(go.ply_file as string);
+          }
+        }
+      }
+
       const json = JSON.stringify(scene);
       const vfxCmds = pushVfxFiles(s);
       sendBridgeCommands([...vfxCmds, { cmd: 'load_scene_json', json }]);
