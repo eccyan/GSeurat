@@ -91,9 +91,10 @@ export function GameObjectMarkers() {
   return (
     <group>
       {gameObjects.map((obj, idx) => {
-        const hasCollider = 'ColliderComponent' in obj.components;
+        const collider = obj.components['ColliderComponent'] as Record<string, unknown> | undefined;
+        const hasCollider = !!(collider?.shape && (collider.shape as Record<string, unknown>).type);
         const isSelected = selectedEntity?.type === 'game_object' && selectedEntity.id === obj.id;
-        // Collider hit mesh is active when the collider wireframe is visible
+        // Collider hit mesh is active when the collider wireframe is visible and renderable
         const colliderActive = hasCollider && (showCollision || isSelected);
         return (
           <Marker

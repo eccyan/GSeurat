@@ -20,7 +20,7 @@ function ColliderWireframe({ shape, color, opacity }: {
   const hx = shape.half_extents?.[0] ?? 0.5;
   const hy = shape.half_extents?.[1] ?? 0.5;
   const hz = shape.half_extents?.[2] ?? 0.5;
-  const r = shape.radius ?? 0.5;
+  const r = shape.radius ?? (shape.type === 'capsule' ? 0.3 : 0.5);
   const hh = shape.half_height ?? 0.5;
 
   const edgesGeo = useMemo(() => {
