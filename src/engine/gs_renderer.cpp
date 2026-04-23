@@ -2305,6 +2305,9 @@ void GsRenderer::render(VkCommandBuffer cmd, const glm::mat4& view, const glm::m
                 float r_avg = rasterize_ms_accum_ / static_cast<float>(kTimestampAvgFrames);
                 std::fprintf(stderr, "[gs_renderer] DepthSort: %.3f ms  TileSort: %.3f ms  Rasterize: %.3f ms  Total: %.3f ms (avg %u frames)\n",
                              d_avg, t_avg, r_avg, d_avg + t_avg + r_avg, kTimestampAvgFrames);
+                depth_sort_ms_avg_ = d_avg;
+                tile_sort_ms_avg_ = t_avg;
+                rasterize_ms_avg_ = r_avg;
                 depth_sort_ms_accum_ = 0.0f;
                 tile_sort_ms_accum_ = 0.0f;
                 rasterize_ms_accum_ = 0.0f;

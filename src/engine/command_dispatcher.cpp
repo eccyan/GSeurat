@@ -608,6 +608,9 @@ void CommandDispatcher::register_default_commands() {
         if (domain == "ears") {
             return ctx_.debug_dump_registry.collect_domain(DebugDomain::Ears);
         }
+        if (domain == "store") {
+            return ctx_.debug_dump_registry.collect_domain(DebugDomain::Store);
+        }
         return ctx_.debug_dump_registry.collect_all(source);
     });
 

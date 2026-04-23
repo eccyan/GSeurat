@@ -70,9 +70,10 @@ public:
     // -- Per-frame update ----------------------------------------------------
     void update(ecs::World& world, float dt);
 
-    // -- Accessors (for tests) -----------------------------------------------
+    // -- Accessors (for tests & debug dump) ------------------------------------
     const std::vector<ColliderInstance>& static_cache() const { return static_cache_; }
     const std::vector<ColliderInstance>& dynamic_cache() const { return dynamic_cache_; }
+    const BVH& bvh() const { return bvh_; }
     bool is_dirty() const { return dirty_; }
 
 private:

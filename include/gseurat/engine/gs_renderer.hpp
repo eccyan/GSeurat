@@ -206,6 +206,15 @@ public:
     void set_tile_binning(bool enabled) { tile_binning_enabled_ = enabled; }
     bool tile_binning() const { return tile_binning_enabled_; }
 
+    // GPU timing averages (populated over kTimestampAvgFrames)
+    float depth_sort_ms_avg() const { return depth_sort_ms_avg_; }
+    float tile_sort_ms_avg() const { return tile_sort_ms_avg_; }
+    float rasterize_ms_avg() const { return rasterize_ms_avg_; }
+
+    // Streaming state (read-only)
+    uint32_t active_chunk_count() const { return static_cast<uint32_t>(active_chunks_.size()); }
+    uint32_t total_active_splats() const { return total_active_splats_; }
+    bool streaming_initialized() const { return streaming_initialized_; }
 
     // World manifest (Phase 3 streaming)
     void load_world(const WorldManifest& manifest);
@@ -450,6 +459,9 @@ private:
     float depth_sort_ms_accum_ = 0.0f;
     float tile_sort_ms_accum_ = 0.0f;
     float rasterize_ms_accum_ = 0.0f;
+    float depth_sort_ms_avg_ = 0.0f;     // last completed average
+    float tile_sort_ms_avg_ = 0.0f;
+    float rasterize_ms_avg_ = 0.0f;
     bool timestamps_written_ = false;     // true after rasterize dispatch writes timestamps
     static constexpr uint32_t kTimestampAvgFrames = 60;
 
