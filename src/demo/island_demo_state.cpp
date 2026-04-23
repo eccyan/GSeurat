@@ -175,6 +175,26 @@ void IslandDemoState::on_enter(AppBase& app) {
         std::fprintf(stderr, "[IslandDemo] House collision: grid[%d-%d, %d-%d] (%d cells marked)\n",
                      gx_min, gx_max, gz_min, gz_max, marked);
 
+        // Clear grid cells in the KCC showcase courtyard so primitive colliders
+        // are the sole collision source.  Area: X=[185-215], Z=[160-185].
+        int courtyard_cleared = 0;
+        for (float wx = 185.0f; wx <= 215.0f; wx += collision_grid_.cell_size * 0.5f) {
+            for (float wz = 160.0f; wz <= 185.0f; wz += collision_grid_.cell_size * 0.5f) {
+                int cgx = static_cast<int>(wx / collision_grid_.cell_size);
+                int cgz = static_cast<int>(wz / collision_grid_.cell_size);
+                if (cgx >= 0 && cgx < static_cast<int>(collision_grid_.width) &&
+                    cgz >= 0 && cgz < static_cast<int>(collision_grid_.height)) {
+                    size_t idx = cgz * collision_grid_.width + cgx;
+                    if (collision_grid_.solid[idx]) {
+                        collision_grid_.solid[idx] = false;
+                        courtyard_cleared++;
+                    }
+                }
+            }
+        }
+        std::fprintf(stderr, "[IslandDemo] KCC courtyard: %d grid cells cleared (X=185-215, Z=160-185)\n",
+                     courtyard_cleared);
+
         // Open a walkable land bridge at the northern shore → Northern Forest
         // Clear solid cells in a path from Z=0 to Z=60, centered at X=192, width ~40
         int bridge_cleared = 0;
