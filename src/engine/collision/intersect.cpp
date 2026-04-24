@@ -480,4 +480,67 @@ std::optional<SweepHit> sweep_capsule(
     return SweepHit{t, last_contact.point, last_contact.normal};
 }
 
+// ── Heightfield helpers ──────────────────────────────────────────────
+
+std::optional<float> sample_height(const HeightfieldInstance& hf,
+                                   float world_x, float world_z) {
+    if (!hf.data || hf.data->img_width == 0 || hf.data->img_height == 0)
+        return std::nullopt;
+
+    float u = (world_x - hf.origin.x) / hf.width;
+    float v = (world_z - hf.origin.z) / hf.length;
+
+    if (u < 0.0f || u > 1.0f || v < 0.0f || v > 1.0f)
+        return std::nullopt;
+
+    float px = u * static_cast<float>(hf.data->img_width - 1);
+    float pz = v * static_cast<float>(hf.data->img_height - 1);
+
+    uint32_t ix = static_cast<uint32_t>(px);
+    uint32_t iz = static_cast<uint32_t>(pz);
+
+    // Clamp to valid range
+    uint32_t ix1 = std::min(ix + 1, hf.data->img_width - 1);
+    uint32_t iz1 = std::min(iz + 1, hf.data->img_height - 1);
+
+    float fx = px - static_cast<float>(ix);
+    float fz = pz - static_cast<float>(iz);
+
+    auto sample = [&](uint32_t sx, uint32_t sz) -> float {
+        return static_cast<float>(
+            hf.data->samples[sz * hf.data->img_width + sx]);
+    };
+
+    float s00 = sample(ix,  iz);
+    float s10 = sample(ix1, iz);
+    float s01 = sample(ix,  iz1);
+    float s11 = sample(ix1, iz1);
+
+    // Bilinear interpolation
+    float s = (s00 * (1.0f - fx) + s10 * fx) * (1.0f - fz) +
+              (s01 * (1.0f - fx) + s11 * fx) * fz;
+
+    return hf.min_height + (s / 65535.0f) * (hf.max_height - hf.min_height);
+}
+
+glm::vec3 heightfield_normal(const HeightfieldInstance& hf,
+                             float world_x, float world_z) {
+    // Half-texel epsilon in world space
+    float eps_x = hf.width / static_cast<float>(hf.data->img_width) * 0.5f;
+    float eps_z = hf.length / static_cast<float>(hf.data->img_height) * 0.5f;
+    float eps = std::min(eps_x, eps_z);
+
+    auto h_left  = sample_height(hf, world_x - eps, world_z);
+    auto h_right = sample_height(hf, world_x + eps, world_z);
+    auto h_back  = sample_height(hf, world_x, world_z - eps);
+    auto h_front = sample_height(hf, world_x, world_z + eps);
+
+    // Fall back to up vector at edges
+    float dx = (h_right.value_or(0.0f)) - (h_left.value_or(0.0f));
+    float dz = (h_front.value_or(0.0f)) - (h_back.value_or(0.0f));
+
+    glm::vec3 n(-dx, 2.0f * eps, -dz);
+    return glm::normalize(n);
+}
+
 }  // namespace gseurat

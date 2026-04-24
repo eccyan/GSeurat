@@ -6,6 +6,8 @@
 #include <glm/gtc/quaternion.hpp>
 #include <optional>
 
+#include "gseurat/engine/ecs/components/heightfield_component.hpp"
+
 namespace gseurat {
 
 // ── AABB computation ──────────────────────────────────────────────
@@ -51,5 +53,26 @@ std::optional<SweepHit> sweep_capsule(
     const glm::vec3& cap_pos, const glm::quat& cap_rot, const CapsuleData& capsule,
     const glm::vec3& direction, float max_distance,
     const ColliderShape& shape, const glm::vec3& pos, const glm::quat& rot);
+
+// ── Heightfield ──────────────────────────────────────────────────────
+
+struct HeightfieldInstance {
+    glm::vec3 origin{0.0f};              // World-space min corner (from Transform)
+    float width{100.0f};                 // World X extent
+    float length{100.0f};                // World Z extent
+    float min_height{0.0f};
+    float max_height{50.0f};
+    uint32_t collision_mask{0xFFFFFFFF};
+    const HeightfieldData* data{nullptr}; // Non-owning pointer
+    AABB world_aabb;
+};
+
+/// Sample terrain elevation at world (x,z). Returns nullopt if outside bounds.
+std::optional<float> sample_height(const HeightfieldInstance& hf,
+                                   float world_x, float world_z);
+
+/// Compute surface normal at world (x,z) via central differences.
+glm::vec3 heightfield_normal(const HeightfieldInstance& hf,
+                             float world_x, float world_z);
 
 }  // namespace gseurat
