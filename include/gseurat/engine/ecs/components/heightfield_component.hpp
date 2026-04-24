@@ -38,7 +38,7 @@ inline HeightfieldComponent heightfield_from_json(const nlohmann::json& j) {
     h.length         = j.value("length", 100.0f);
     h.min_height     = j.value("min_height", 0.0f);
     h.max_height     = j.value("max_height", 50.0f);
-    h.collision_mask = j.value("collision_mask", 0xFFFFFFFF);
+    h.collision_mask = j.value("collision_mask", static_cast<uint32_t>(0xFFFFFFFF));
     return h;
 }
 
