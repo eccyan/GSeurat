@@ -520,7 +520,7 @@ std::optional<float> sample_height(const HeightfieldInstance& hf,
     float s = (s00 * (1.0f - fx) + s10 * fx) * (1.0f - fz) +
               (s01 * (1.0f - fx) + s11 * fx) * fz;
 
-    return hf.min_height + (s / 65535.0f) * (hf.max_height - hf.min_height);
+    return hf.origin.y + hf.min_height + (s / 65535.0f) * (hf.max_height - hf.min_height);
 }
 
 glm::vec3 heightfield_normal(const HeightfieldInstance& hf,
@@ -530,14 +530,17 @@ glm::vec3 heightfield_normal(const HeightfieldInstance& hf,
     float eps_z = hf.length / static_cast<float>(hf.data->img_height) * 0.5f;
     float eps = std::min(eps_x, eps_z);
 
+    auto h_center = sample_height(hf, world_x, world_z);
+    float fallback = h_center.value_or(0.0f);
+
     auto h_left  = sample_height(hf, world_x - eps, world_z);
     auto h_right = sample_height(hf, world_x + eps, world_z);
     auto h_back  = sample_height(hf, world_x, world_z - eps);
     auto h_front = sample_height(hf, world_x, world_z + eps);
 
-    // Fall back to up vector at edges
-    float dx = (h_right.value_or(0.0f)) - (h_left.value_or(0.0f));
-    float dz = (h_front.value_or(0.0f)) - (h_back.value_or(0.0f));
+    // At edges, fall back to center height (flat normal) instead of 0
+    float dx = h_right.value_or(fallback) - h_left.value_or(fallback);
+    float dz = h_front.value_or(fallback) - h_back.value_or(fallback);
 
     glm::vec3 n(-dx, 2.0f * eps, -dz);
     return glm::normalize(n);
@@ -594,7 +597,7 @@ std::optional<RayHit> ray_vs_heightfield(
         float wx = hf.origin.x + static_cast<float>(ix) * cell_w;
         float wz = hf.origin.z + static_cast<float>(iz) * cell_h;
         float s  = static_cast<float>(hf.data->samples[iz * cols + ix]);
-        float wy = hf.min_height + (s / 65535.0f) * (hf.max_height - hf.min_height);
+        float wy = hf.origin.y + hf.min_height + (s / 65535.0f) * (hf.max_height - hf.min_height);
         return glm::vec3(wx, wy, wz);
     };
 
@@ -910,7 +913,7 @@ std::optional<Contact> capsule_vs_heightfield(
         float wx = hf.origin.x + static_cast<float>(vx) * cell_w;
         float wz = hf.origin.z + static_cast<float>(vz) * cell_h;
         float s  = static_cast<float>(hf.data->samples[vz * cols + vx]);
-        float wy = hf.min_height + (s / 65535.0f) * (hf.max_height - hf.min_height);
+        float wy = hf.origin.y + hf.min_height + (s / 65535.0f) * (hf.max_height - hf.min_height);
         return glm::vec3(wx, wy, wz);
     };
 
@@ -1072,7 +1075,7 @@ std::optional<SweepHit> sweep_capsule_vs_heightfield(
         float wx = hf.origin.x + static_cast<float>(vx) * cell_w;
         float wz = hf.origin.z + static_cast<float>(vz) * cell_h;
         float s  = static_cast<float>(hf.data->samples[vz * cols + vx]);
-        float wy = hf.min_height + (s / 65535.0f) * (hf.max_height - hf.min_height);
+        float wy = hf.origin.y + hf.min_height + (s / 65535.0f) * (hf.max_height - hf.min_height);
         return glm::vec3(wx, wy, wz);
     };
 

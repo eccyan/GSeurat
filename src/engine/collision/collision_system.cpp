@@ -185,11 +185,20 @@ std::vector<CollisionSystem::OverlapResult> CollisionSystem::overlap_aabb(
     std::vector<uint32_t> candidates;
     bvh_.query_aabb(query, bvh_aabbs_, bvh_indices_, candidates);
 
+    uint32_t static_count = static_cast<uint32_t>(static_cache_.size());
     for (uint32_t idx : candidates) {
-        const auto& inst = static_cache_[idx];
-        if ((inst.collision_mask & mask) == 0) continue;
-        // Actual AABB overlap already verified by BVH leaf test
-        results.push_back(OverlapResult{inst.entity, inst.is_trigger});
+        if (idx < static_count) {
+            const auto& inst = static_cache_[idx];
+            if ((inst.collision_mask & mask) == 0) continue;
+            results.push_back(OverlapResult{inst.entity, inst.is_trigger});
+        } else {
+            // Heightfield — skip for AABB overlap (heightfield AABB is coarse)
+            uint32_t hf_idx = idx - static_count;
+            if (hf_idx >= heightfield_cache_.size()) continue;
+            const auto& hf = heightfield_cache_[hf_idx];
+            if ((hf.collision_mask & mask) == 0) continue;
+            results.push_back(OverlapResult{hf.entity, false});
+        }
     }
 
     // Linear scan dynamics
