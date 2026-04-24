@@ -358,6 +358,7 @@ void AppBase::init_scene(const std::string& /*scene_path*/) {}
 void AppBase::clear_scene() {
     world_.clear();
     bone_anim_registry_.clear();
+    gs_terrain_.reset();
 }
 
 // ITransitionHost default: clear, load, then move PlayerTag (if any) into place.

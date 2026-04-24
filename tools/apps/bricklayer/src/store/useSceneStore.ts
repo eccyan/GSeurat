@@ -863,6 +863,7 @@ export const useSceneStore = create<SceneStoreState>((set, get) => ({
     });
     set({
       terrainAabb: null,  // Reset before new PLY loads to avoid stale offset
+      terrainPlyFile: '',  // Clear old PLY path to force PlyPointCloud reload
       gridWidth: data.gridWidth,
       gridDepth: data.gridDepth,
       collisionGridData: data.collisionGridData ?? null,
