@@ -948,4 +948,171 @@ std::optional<Contact> capsule_vs_heightfield(
     return deepest;
 }
 
+// ── Sweep capsule vs triangle (hybrid step + binary search) ─────────
+
+static std::optional<SweepHit> sweep_capsule_vs_triangle(
+    const glm::vec3& cap_pos, const glm::quat& cap_rot,
+    const CapsuleData& capsule,
+    const glm::vec3& direction, float max_distance,
+    const glm::vec3& v0, const glm::vec3& v1, const glm::vec3& v2)
+{
+    // Compute capsule segment endpoints helper
+    glm::vec3 up = cap_rot * glm::vec3(0.0f, 1.0f, 0.0f);
+    float r = capsule.radius;
+
+    auto make_segment = [&](const glm::vec3& pos) -> std::pair<glm::vec3, glm::vec3> {
+        glm::vec3 a = pos - up * capsule.half_height;
+        glm::vec3 b = pos + up * capsule.half_height;
+        return {a, b};
+    };
+
+    // Test overlap at t=0
+    {
+        auto [sa, sb] = make_segment(cap_pos);
+        auto c = capsule_vs_triangle(sa, sb, r, v0, v1, v2);
+        if (c) {
+            return SweepHit{0.0f, c->point, c->normal};
+        }
+    }
+
+    // Step through 8 evenly-spaced positions
+    constexpr int num_steps = 8;
+    float prev_frac = 0.0f;
+
+    for (int i = 1; i <= num_steps; ++i) {
+        float frac = static_cast<float>(i) / static_cast<float>(num_steps);
+        glm::vec3 test_pos = cap_pos + direction * (frac * max_distance);
+        auto [sa, sb] = make_segment(test_pos);
+        auto c = capsule_vs_triangle(sa, sb, r, v0, v1, v2);
+
+        if (c) {
+            // Binary search between prev_frac and frac for precise t
+            float lo = prev_frac;
+            float hi = frac;
+            Contact last_contact = *c;
+
+            for (int iter = 0; iter < 8; ++iter) {
+                float mid = (lo + hi) * 0.5f;
+                glm::vec3 mid_pos = cap_pos + direction * (mid * max_distance);
+                auto [ma, mb] = make_segment(mid_pos);
+                auto mc = capsule_vs_triangle(ma, mb, r, v0, v1, v2);
+                if (mc) {
+                    hi = mid;
+                    last_contact = *mc;
+                } else {
+                    lo = mid;
+                }
+            }
+
+            return SweepHit{hi, last_contact.point, last_contact.normal};
+        }
+
+        prev_frac = frac;
+    }
+
+    return std::nullopt;
+}
+
+// ── Sweep capsule vs heightfield ────────────────────────────────────
+
+std::optional<SweepHit> sweep_capsule_vs_heightfield(
+    const glm::vec3& cap_pos, const glm::quat& cap_rot,
+    const CapsuleData& capsule,
+    const glm::vec3& direction, float max_distance,
+    const HeightfieldInstance& hf)
+{
+    if (max_distance <= 0.0f) return std::nullopt;
+    if (!hf.data || hf.data->img_width < 2 || hf.data->img_height < 2)
+        return std::nullopt;
+
+    // Normalize direction for consistent stepping, but keep max_distance as-is
+    float dir_len = glm::length(direction);
+    if (dir_len < 1e-8f) return std::nullopt;
+    glm::vec3 dir = direction / dir_len;
+    float actual_distance = max_distance * dir_len;
+
+    // Compute capsule segment endpoints at start and end
+    glm::vec3 up = cap_rot * glm::vec3(0.0f, 1.0f, 0.0f);
+    float r = capsule.radius;
+    float hh = capsule.half_height;
+
+    glm::vec3 start_a = cap_pos - up * hh;
+    glm::vec3 start_b = cap_pos + up * hh;
+    glm::vec3 end_pos = cap_pos + dir * actual_distance;
+    glm::vec3 end_a = end_pos - up * hh;
+    glm::vec3 end_b = end_pos + up * hh;
+
+    // Compute swept AABB covering the full movement
+    AABB swept;
+    swept.min = glm::min(glm::min(start_a, start_b), glm::min(end_a, end_b)) - glm::vec3(r);
+    swept.max = glm::max(glm::max(start_a, start_b), glm::max(end_a, end_b)) + glm::vec3(r);
+
+    // Early reject: swept AABB vs heightfield AABB
+    if (!aabb_overlaps(swept, hf.world_aabb)) return std::nullopt;
+
+    uint32_t cols = hf.data->img_width;
+    uint32_t rows = hf.data->img_height;
+
+    float cell_w = hf.width  / static_cast<float>(cols - 1);
+    float cell_h = hf.length / static_cast<float>(rows - 1);
+
+    // Map swept AABB XZ footprint to grid cell range
+    int ix_min = static_cast<int>((swept.min.x - hf.origin.x) / cell_w);
+    int iz_min = static_cast<int>((swept.min.z - hf.origin.z) / cell_h);
+    int ix_max = static_cast<int>((swept.max.x - hf.origin.x) / cell_w);
+    int iz_max = static_cast<int>((swept.max.z - hf.origin.z) / cell_h);
+
+    ix_min = std::max(ix_min, 0);
+    iz_min = std::max(iz_min, 0);
+    ix_max = std::min(ix_max, static_cast<int>(cols) - 2);
+    iz_max = std::min(iz_max, static_cast<int>(rows) - 2);
+
+    // Vertex helper
+    auto vertex = [&](uint32_t vx, uint32_t vz) -> glm::vec3 {
+        float wx = hf.origin.x + static_cast<float>(vx) * cell_w;
+        float wz = hf.origin.z + static_cast<float>(vz) * cell_h;
+        float s  = static_cast<float>(hf.data->samples[vz * cols + vx]);
+        float wy = hf.min_height + (s / 65535.0f) * (hf.max_height - hf.min_height);
+        return glm::vec3(wx, wy, wz);
+    };
+
+    std::optional<SweepHit> earliest;
+
+    for (int iz = iz_min; iz <= iz_max; ++iz) {
+        for (int ix = ix_min; ix <= ix_max; ++ix) {
+            uint32_t ux = static_cast<uint32_t>(ix);
+            uint32_t uz = static_cast<uint32_t>(iz);
+
+            glm::vec3 v00 = vertex(ux,     uz);
+            glm::vec3 v10 = vertex(ux + 1, uz);
+            glm::vec3 v01 = vertex(ux,     uz + 1);
+            glm::vec3 v11 = vertex(ux + 1, uz + 1);
+
+            // Split cell along shorter diagonal
+            float diag_a = glm::length(v00 - v11);
+            float diag_b = glm::length(v10 - v01);
+
+            auto test_tri = [&](const glm::vec3& a, const glm::vec3& b, const glm::vec3& c) {
+                auto hit = sweep_capsule_vs_triangle(
+                    cap_pos, cap_rot, capsule,
+                    dir, actual_distance,
+                    a, b, c);
+                if (hit && (!earliest || hit->t < earliest->t)) {
+                    earliest = hit;
+                }
+            };
+
+            if (diag_a <= diag_b) {
+                test_tri(v00, v11, v10);
+                test_tri(v00, v01, v11);
+            } else {
+                test_tri(v00, v01, v10);
+                test_tri(v10, v01, v11);
+            }
+        }
+    }
+
+    return earliest;
+}
+
 }  // namespace gseurat

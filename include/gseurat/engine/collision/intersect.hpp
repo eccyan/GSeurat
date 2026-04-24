@@ -87,4 +87,12 @@ std::optional<Contact> capsule_vs_heightfield(
     const glm::vec3& cap_pos, const glm::quat& cap_rot,
     const CapsuleData& capsule, const HeightfieldInstance& hf);
 
+/// Capsule sweep against heightfield using analytic triangle gathering.
+/// Computes swept AABB, gathers affected cells, tests capsule-vs-triangle for exact TOI.
+std::optional<SweepHit> sweep_capsule_vs_heightfield(
+    const glm::vec3& cap_pos, const glm::quat& cap_rot,
+    const CapsuleData& capsule,
+    const glm::vec3& direction, float max_distance,
+    const HeightfieldInstance& hf);
+
 }  // namespace gseurat

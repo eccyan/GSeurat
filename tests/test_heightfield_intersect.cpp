@@ -231,6 +231,64 @@ int main() {
         }
     }
 
+    // ── sweep_capsule_vs_heightfield tests ───────────────────────────
+    std::printf("\n-- sweep_capsule_vs_heightfield --\n");
+
+    // Sweep down onto flat terrain
+    {
+        auto p = make_flat_pair(5.0f);
+        CapsuleData cap{0.3f, 0.5f};
+        auto hit = sweep_capsule_vs_heightfield(
+            glm::vec3(5.0f, 10.0f, 5.0f),
+            glm::quat(1, 0, 0, 0), cap,
+            glm::vec3(0.0f, -1.0f, 0.0f), 10.0f,
+            p.inst);
+        check(hit.has_value(), "sweep_down_flat: hits terrain");
+        if (hit) {
+            check(hit->t > 0.0f && hit->t < 1.0f, "sweep_down_flat: valid t fraction");
+            check(hit->normal.y > 0.9f, "sweep_down_flat: normal points up");
+        }
+    }
+
+    // Sweep horizontally across flat terrain (capsule above — no hit)
+    {
+        auto p = make_flat_pair(5.0f);
+        CapsuleData cap{0.3f, 0.5f};
+        auto hit = sweep_capsule_vs_heightfield(
+            glm::vec3(0.0f, 10.0f, 5.0f),
+            glm::quat(1, 0, 0, 0), cap,
+            glm::vec3(1.0f, 0.0f, 0.0f), 10.0f,
+            p.inst);
+        check(!hit.has_value(), "sweep_horiz_above: no hit when above terrain");
+    }
+
+    // Sweep horizontally onto a ramp (slope rising in X)
+    {
+        auto p = make_slope_pair(0.0f, 10.0f, 10.0f, 10.0f, 16);
+        CapsuleData cap{0.3f, 0.5f};
+        auto hit = sweep_capsule_vs_heightfield(
+            glm::vec3(0.0f, 1.0f, 5.0f),
+            glm::quat(1, 0, 0, 0), cap,
+            glm::vec3(1.0f, 0.0f, 0.0f), 10.0f,
+            p.inst);
+        check(hit.has_value(), "sweep_onto_ramp: hits rising terrain");
+        if (hit) {
+            check(hit->t > 0.0f && hit->t < 1.0f, "sweep_onto_ramp: valid t");
+        }
+    }
+
+    // Sweep completely outside heightfield XZ bounds (miss)
+    {
+        auto p = make_flat_pair(5.0f);
+        CapsuleData cap{0.3f, 0.5f};
+        auto hit = sweep_capsule_vs_heightfield(
+            glm::vec3(20.0f, 10.0f, 20.0f),
+            glm::quat(1, 0, 0, 0), cap,
+            glm::vec3(0.0f, -1.0f, 0.0f), 10.0f,
+            p.inst);
+        check(!hit.has_value(), "sweep_oob: miss when outside heightfield");
+    }
+
     std::printf("\n%d passed, %d failed\n", passed, failed);
     return failed > 0 ? 1 : 0;
 }
