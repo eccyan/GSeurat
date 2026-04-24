@@ -41,6 +41,30 @@ void CollisionSystem::rebuild_cache(ecs::World& world) {
             }
         });
 
+    // Scan heightfield entities
+    heightfield_cache_.clear();
+    world.view<ecs::Transform, HeightfieldComponent>().each(
+        [&](ecs::Entity entity, ecs::Transform& transform,
+            HeightfieldComponent& hfc) {
+            if (hfc.data.img_width == 0 || hfc.data.img_height == 0) return;
+
+            HeightfieldInstance inst;
+            inst.entity        = entity;
+            inst.origin        = transform.position.vec();
+            inst.width         = hfc.width;
+            inst.length        = hfc.length;
+            inst.min_height    = hfc.min_height;
+            inst.max_height    = hfc.max_height;
+            inst.collision_mask = hfc.collision_mask;
+            inst.data          = &hfc.data;
+
+            inst.world_aabb.min = inst.origin + glm::vec3(0.0f, inst.min_height, 0.0f);
+            inst.world_aabb.max = inst.origin + glm::vec3(inst.width, inst.max_height, inst.length);
+
+            hfc.world_aabb = inst.world_aabb;
+            heightfield_cache_.push_back(inst);
+        });
+
     rebuild_bvh();
     dirty_ = false;
 }
@@ -49,14 +73,18 @@ void CollisionSystem::rebuild_bvh() {
     bvh_aabbs_.clear();
     bvh_indices_.clear();
 
-    bvh_aabbs_.reserve(static_cache_.size());
-    bvh_indices_.resize(static_cache_.size());
+    size_t total = static_cache_.size() + heightfield_cache_.size();
+    bvh_aabbs_.reserve(total);
+    bvh_indices_.resize(total);
 
     for (size_t i = 0; i < static_cache_.size(); ++i) {
         bvh_aabbs_.push_back(static_cache_[i].world_aabb);
     }
-    std::iota(bvh_indices_.begin(), bvh_indices_.end(), 0u);
+    for (size_t i = 0; i < heightfield_cache_.size(); ++i) {
+        bvh_aabbs_.push_back(heightfield_cache_[i].world_aabb);
+    }
 
+    std::iota(bvh_indices_.begin(), bvh_indices_.end(), 0u);
     bvh_.build(bvh_aabbs_, bvh_indices_);
 }
 
@@ -95,41 +123,54 @@ std::optional<CollisionSystem::SweepResult> CollisionSystem::sweep(
     swept_aabb.min = glm::min(start_aabb.min, end_aabb.min);
     swept_aabb.max = glm::max(start_aabb.max, end_aabb.max);
 
-    // Collect broad-phase candidates from static BVH
+    // Collect broad-phase candidates from static BVH (includes heightfields)
     std::vector<uint32_t> candidates;
     bvh_.query_aabb(swept_aabb, bvh_aabbs_, bvh_indices_, candidates);
 
-    // Also linear scan dynamic cache
-    // Dynamic indices are encoded as (static_cache_.size() + dynamic_index)
     uint32_t static_count = static_cast<uint32_t>(static_cache_.size());
-    for (uint32_t i = 0; i < static_cast<uint32_t>(dynamic_cache_.size()); ++i) {
-        const auto& d = dynamic_cache_[i];
-        if (aabb_overlaps(swept_aabb, d.world_aabb)) {
-            candidates.push_back(static_count + i);
-        }
-    }
 
     // Narrow phase: find closest non-trigger hit
     std::optional<SweepResult> best;
 
+    // BVH candidates: primitives [0, static_count) or heightfields [static_count, ...)
     for (uint32_t idx : candidates) {
-        const ColliderInstance& inst =
-            (idx < static_count) ? static_cache_[idx]
-                                 : dynamic_cache_[idx - static_count];
+        if (idx < static_count) {
+            // Primitive collider
+            const auto& inst = static_cache_[idx];
+            if ((inst.collision_mask & mask) == 0) continue;
+            if (inst.is_trigger) continue;
 
-        // Check mask
-        if ((inst.collision_mask & mask) == 0) continue;
+            auto hit = sweep_capsule(pos, rot, capsule, dir_norm, max_distance,
+                                     inst.shape, inst.world_position,
+                                     inst.world_rotation);
+            if (hit && (!best || hit->t < best->hit.t)) {
+                best = SweepResult{*hit, inst.entity, inst.is_trigger};
+            }
+        } else {
+            // Heightfield
+            uint32_t hf_idx = idx - static_count;
+            if (hf_idx >= heightfield_cache_.size()) continue;
+            const auto& hf = heightfield_cache_[hf_idx];
+            if ((hf.collision_mask & mask) == 0) continue;
 
-        // Skip triggers for solid collision
-        if (inst.is_trigger) continue;
+            auto hit = sweep_capsule_vs_heightfield(
+                pos, rot, capsule, dir_norm, max_distance, hf);
+            if (hit && (!best || hit->t < best->hit.t)) {
+                best = SweepResult{*hit, hf.entity, false};
+            }
+        }
+    }
+
+    // Dynamic colliders (linear scan)
+    for (const auto& d : dynamic_cache_) {
+        if ((d.collision_mask & mask) == 0) continue;
+        if (d.is_trigger) continue;
+        if (!aabb_overlaps(swept_aabb, d.world_aabb)) continue;
 
         auto hit = sweep_capsule(pos, rot, capsule, dir_norm, max_distance,
-                                 inst.shape, inst.world_position,
-                                 inst.world_rotation);
-        if (!hit) continue;
-
-        if (!best || hit->t < best->hit.t) {
-            best = SweepResult{*hit, inst.entity, inst.is_trigger};
+                                 d.shape, d.world_position, d.world_rotation);
+        if (hit && (!best || hit->t < best->hit.t)) {
+            best = SweepResult{*hit, d.entity, d.is_trigger};
         }
     }
 
@@ -194,15 +235,23 @@ std::optional<RayHit> CollisionSystem::raycast(const glm::vec3& origin,
     bvh_.query_aabb(ray_aabb, bvh_aabbs_, bvh_indices_, candidates);
 
     for (uint32_t idx : candidates) {
-        const auto& inst = static_cache_[idx];
-        if ((inst.collision_mask & mask) == 0) continue;
+        if (idx < static_cast<uint32_t>(static_cache_.size())) {
+            const auto& inst = static_cache_[idx];
+            if ((inst.collision_mask & mask) == 0) continue;
 
-        auto hit = ray_intersect(origin, dir_norm, inst.shape,
-                                 inst.world_position, inst.world_rotation);
-        if (!hit) continue;
-        if (hit->t > max_dist) continue;
-        if (!best || hit->t < best->t) {
-            best = *hit;
+            auto hit = ray_intersect(origin, dir_norm, inst.shape,
+                                     inst.world_position, inst.world_rotation);
+            if (!hit || hit->t > max_dist) continue;
+            if (!best || hit->t < best->t) best = *hit;
+        } else {
+            uint32_t hf_idx = idx - static_cast<uint32_t>(static_cache_.size());
+            if (hf_idx >= heightfield_cache_.size()) continue;
+            const auto& hf = heightfield_cache_[hf_idx];
+            if ((hf.collision_mask & mask) == 0) continue;
+
+            auto hit = ray_vs_heightfield(origin, dir_norm, hf);
+            if (!hit || hit->t > max_dist) continue;
+            if (!best || hit->t < best->t) best = *hit;
         }
     }
 

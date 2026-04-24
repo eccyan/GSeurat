@@ -2,6 +2,7 @@
 
 #include "gseurat/engine/collision/primitive.hpp"
 #include "gseurat/engine/gaussian_cloud.hpp"  // for AABB
+#include "gseurat/engine/ecs/types.hpp"       // for ecs::Entity
 
 #include <glm/gtc/quaternion.hpp>
 #include <optional>
@@ -57,6 +58,7 @@ std::optional<SweepHit> sweep_capsule(
 // ── Heightfield ──────────────────────────────────────────────────────
 
 struct HeightfieldInstance {
+    ecs::Entity entity;                  // Owning ECS entity
     glm::vec3 origin{0.0f};              // World-space min corner (from Transform)
     float width{100.0f};                 // World X extent
     float length{100.0f};                // World Z extent
