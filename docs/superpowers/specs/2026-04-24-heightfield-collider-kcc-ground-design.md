@@ -339,6 +339,20 @@ Via Game Director Unix socket:
 
 ---
 
+## Implementation Notes
+
+### Backface Culling in `ray_vs_heightfield`
+
+Triangles generated from heightfield cells are **single-sided** (normal pointing upward). Rays hitting the backface (fired from below the terrain toward the top) must be rejected — return no hit. This matches the single-layer terrain constraint and prevents the KCC from "snapping" to the underside of terrain if it somehow ends up beneath. Implementers should check `dot(ray_direction, triangle_normal) < 0` before accepting a hit.
+
+### Heightmap Data Deduplication
+
+In the MVP, each `HeightfieldComponent` owns its `HeightfieldData` (the `std::vector<uint16_t>` samples). If multiple terrain chunks reference the same PNG file, the image will be loaded and stored multiple times. This is acceptable for the initial implementation where scenes have a single terrain entity.
+
+For future multi-chunk terrains, `load_heightfield()` should be structured to allow easy migration to `ResourceManager` caching (e.g., returning a `std::shared_ptr<HeightfieldData>` keyed by image path). The loader function signature and `HeightfieldComponent` storage should be designed with this transition in mind — use an indirection (`const HeightfieldData*` pointer in `HeightfieldInstance`, owned data in a cache) rather than embedding the vector directly in the component.
+
+---
+
 ## File Manifest
 
 | File | Action |
