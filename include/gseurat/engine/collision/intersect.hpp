@@ -75,4 +75,10 @@ std::optional<float> sample_height(const HeightfieldInstance& hf,
 glm::vec3 heightfield_normal(const HeightfieldInstance& hf,
                              float world_x, float world_z);
 
+/// Ray vs heightfield intersection using DDA grid traversal.
+/// Triangles are single-sided (backface culling — rays from below are rejected).
+std::optional<RayHit> ray_vs_heightfield(
+    const glm::vec3& origin, const glm::vec3& direction,
+    const HeightfieldInstance& hf);
+
 }  // namespace gseurat

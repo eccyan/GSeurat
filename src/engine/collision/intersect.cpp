@@ -543,4 +543,175 @@ glm::vec3 heightfield_normal(const HeightfieldInstance& hf,
     return glm::normalize(n);
 }
 
+// ── Ray-triangle (Moller-Trumbore, backface culling) ────────────────
+
+static std::optional<RayHit> ray_vs_triangle(
+    const glm::vec3& origin, const glm::vec3& dir,
+    const glm::vec3& v0, const glm::vec3& v1, const glm::vec3& v2)
+{
+    glm::vec3 e1 = v1 - v0;
+    glm::vec3 e2 = v2 - v0;
+    glm::vec3 h  = glm::cross(dir, e2);
+    float a = glm::dot(e1, h);
+
+    // Backface cull: only front-face hits (a > 0 means front-facing)
+    if (a < 1e-7f) return std::nullopt;
+
+    float f = 1.0f / a;
+    glm::vec3 s = origin - v0;
+    float u = f * glm::dot(s, h);
+    if (u < 0.0f || u > 1.0f) return std::nullopt;
+
+    glm::vec3 q = glm::cross(s, e1);
+    float v = f * glm::dot(dir, q);
+    if (v < 0.0f || u + v > 1.0f) return std::nullopt;
+
+    float t = f * glm::dot(e2, q);
+    if (t < 0.0f) return std::nullopt;
+
+    glm::vec3 normal = glm::normalize(glm::cross(e1, e2));
+    glm::vec3 point  = origin + t * dir;
+    return RayHit{t, point, normal};
+}
+
+// ── Ray vs heightfield (DDA grid traversal) ─────────────────────────
+
+std::optional<RayHit> ray_vs_heightfield(
+    const glm::vec3& origin, const glm::vec3& direction,
+    const HeightfieldInstance& hf)
+{
+    if (!hf.data || hf.data->img_width < 2 || hf.data->img_height < 2)
+        return std::nullopt;
+
+    uint32_t cols = hf.data->img_width;
+    uint32_t rows = hf.data->img_height;
+
+    float cell_w = hf.width  / static_cast<float>(cols - 1);
+    float cell_h = hf.length / static_cast<float>(rows - 1);
+
+    // Helper: grid (ix, iz) -> world position
+    auto vertex = [&](uint32_t ix, uint32_t iz) -> glm::vec3 {
+        float wx = hf.origin.x + static_cast<float>(ix) * cell_w;
+        float wz = hf.origin.z + static_cast<float>(iz) * cell_h;
+        float s  = static_cast<float>(hf.data->samples[iz * cols + ix]);
+        float wy = hf.min_height + (s / 65535.0f) * (hf.max_height - hf.min_height);
+        return glm::vec3(wx, wy, wz);
+    };
+
+    // Slab test against heightfield XZ bounds to find entry/exit t
+    float xmin = hf.origin.x;
+    float xmax = hf.origin.x + hf.width;
+    float zmin = hf.origin.z;
+    float zmax = hf.origin.z + hf.length;
+
+    float t_enter = 0.0f;
+    float t_exit  = std::numeric_limits<float>::max();
+
+    // X slab
+    if (std::abs(direction.x) < 1e-8f) {
+        if (origin.x < xmin || origin.x > xmax) return std::nullopt;
+    } else {
+        float inv = 1.0f / direction.x;
+        float t0 = (xmin - origin.x) * inv;
+        float t1 = (xmax - origin.x) * inv;
+        if (t0 > t1) std::swap(t0, t1);
+        t_enter = std::max(t_enter, t0);
+        t_exit  = std::min(t_exit, t1);
+    }
+
+    // Z slab
+    if (std::abs(direction.z) < 1e-8f) {
+        if (origin.z < zmin || origin.z > zmax) return std::nullopt;
+    } else {
+        float inv = 1.0f / direction.z;
+        float t0 = (zmin - origin.z) * inv;
+        float t1 = (zmax - origin.z) * inv;
+        if (t0 > t1) std::swap(t0, t1);
+        t_enter = std::max(t_enter, t0);
+        t_exit  = std::min(t_exit, t1);
+    }
+
+    if (t_enter > t_exit || t_exit < 0.0f) return std::nullopt;
+    t_enter = std::max(t_enter, 0.0f);
+
+    // Entry point in world space -> grid coordinates
+    glm::vec3 entry = origin + t_enter * direction;
+    float gx = (entry.x - hf.origin.x) / cell_w;
+    float gz = (entry.z - hf.origin.z) / cell_h;
+
+    int ix = static_cast<int>(gx);
+    int iz = static_cast<int>(gz);
+    ix = std::clamp(ix, 0, static_cast<int>(cols) - 2);
+    iz = std::clamp(iz, 0, static_cast<int>(rows) - 2);
+
+    // DDA step setup
+    int step_x = (direction.x >= 0.0f) ? 1 : -1;
+    int step_z = (direction.z >= 0.0f) ? 1 : -1;
+
+    // t values for crossing next cell boundary
+    auto next_t_x = [&](int cx) -> float {
+        float boundary = hf.origin.x + static_cast<float>(step_x > 0 ? cx + 1 : cx) * cell_w;
+        if (std::abs(direction.x) < 1e-8f) return std::numeric_limits<float>::max();
+        return (boundary - origin.x) / direction.x;
+    };
+    auto next_t_z = [&](int cz) -> float {
+        float boundary = hf.origin.z + static_cast<float>(step_z > 0 ? cz + 1 : cz) * cell_h;
+        if (std::abs(direction.z) < 1e-8f) return std::numeric_limits<float>::max();
+        return (boundary - origin.z) / direction.z;
+    };
+
+    float t_next_x = next_t_x(ix);
+    float t_next_z = next_t_z(iz);
+
+    float dt_x = (std::abs(direction.x) > 1e-8f) ? std::abs(cell_w / direction.x)
+                                                   : std::numeric_limits<float>::max();
+    float dt_z = (std::abs(direction.z) > 1e-8f) ? std::abs(cell_h / direction.z)
+                                                   : std::numeric_limits<float>::max();
+
+    int max_steps = static_cast<int>(cols + rows);
+
+    for (int step = 0; step < max_steps; ++step) {
+        if (ix < 0 || ix >= static_cast<int>(cols) - 1 ||
+            iz < 0 || iz >= static_cast<int>(rows) - 1)
+            break;
+
+        uint32_t ux = static_cast<uint32_t>(ix);
+        uint32_t uz = static_cast<uint32_t>(iz);
+
+        glm::vec3 v00 = vertex(ux,     uz);
+        glm::vec3 v10 = vertex(ux + 1, uz);
+        glm::vec3 v01 = vertex(ux,     uz + 1);
+        glm::vec3 v11 = vertex(ux + 1, uz + 1);
+
+        // Split cell along shorter diagonal.
+        // Winding order: CCW when viewed from above (+Y), so cross(e1,e2) points up.
+        float diag_a = glm::length(v00 - v11);
+        float diag_b = glm::length(v10 - v01);
+
+        std::optional<RayHit> hit;
+        if (diag_a <= diag_b) {
+            // Split: v00-v11 diagonal  ->  tri(v00,v11,v10) and tri(v00,v01,v11)
+            hit = ray_vs_triangle(origin, direction, v00, v11, v10);
+            if (!hit) hit = ray_vs_triangle(origin, direction, v00, v01, v11);
+        } else {
+            // Split: v10-v01 diagonal  ->  tri(v00,v01,v10) and tri(v10,v01,v11)
+            hit = ray_vs_triangle(origin, direction, v00, v01, v10);
+            if (!hit) hit = ray_vs_triangle(origin, direction, v10, v01, v11);
+        }
+
+        if (hit) return hit;
+
+        // Advance DDA
+        if (t_next_x < t_next_z) {
+            ix += step_x;
+            t_next_x += dt_x;
+        } else {
+            iz += step_z;
+            t_next_z += dt_z;
+        }
+    }
+
+    return std::nullopt;
+}
+
 }  // namespace gseurat

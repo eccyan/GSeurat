@@ -128,6 +128,67 @@ int main() {
         check(approx(n.z, 0.0f, 0.1f), "slope: normal Z ≈ 0");
     }
 
+    // ── ray_vs_heightfield tests ─────────────────────────────────────
+    std::printf("\n-- ray_vs_heightfield --\n");
+
+    // Ray straight down onto flat plane at elevation 5
+    {
+        auto p = make_flat_pair(5.0f);
+        auto hit = ray_vs_heightfield(
+            glm::vec3(5.0f, 20.0f, 5.0f),
+            glm::vec3(0.0f, -1.0f, 0.0f),
+            p.inst);
+        check(hit.has_value(), "ray_flat: hits terrain");
+        if (hit) {
+            check(approx(hit->point.y, 5.0f, 0.1f), "ray_flat: hit Y ≈ 5.0");
+            check(hit->normal.y > 0.9f, "ray_flat: normal points up");
+            check(hit->t > 0.0f, "ray_flat: t > 0");
+        }
+    }
+
+    // Ray onto 45-degree slope
+    {
+        auto p = make_slope_pair(0.0f, 10.0f);
+        auto hit = ray_vs_heightfield(
+            glm::vec3(5.0f, 20.0f, 5.0f),
+            glm::vec3(0.0f, -1.0f, 0.0f),
+            p.inst);
+        check(hit.has_value(), "ray_slope: hits terrain");
+        if (hit) {
+            check(approx(hit->point.y, 5.0f, 0.5f), "ray_slope: hit Y ≈ 5.0 at midpoint");
+        }
+    }
+
+    // Ray parallel to terrain (miss)
+    {
+        auto p = make_flat_pair(5.0f);
+        auto hit = ray_vs_heightfield(
+            glm::vec3(5.0f, 10.0f, 5.0f),
+            glm::vec3(1.0f, 0.0f, 0.0f),
+            p.inst);
+        check(!hit.has_value(), "ray_miss: horizontal ray misses terrain");
+    }
+
+    // Ray from below terrain (backface — should NOT hit)
+    {
+        auto p = make_flat_pair(5.0f);
+        auto hit = ray_vs_heightfield(
+            glm::vec3(5.0f, 0.0f, 5.0f),
+            glm::vec3(0.0f, 1.0f, 0.0f),
+            p.inst);
+        check(!hit.has_value(), "ray_backface: ray from below does not hit");
+    }
+
+    // Ray outside heightfield XZ bounds (miss)
+    {
+        auto p = make_flat_pair(5.0f);
+        auto hit = ray_vs_heightfield(
+            glm::vec3(15.0f, 20.0f, 5.0f),
+            glm::vec3(0.0f, -1.0f, 0.0f),
+            p.inst);
+        check(!hit.has_value(), "ray_oob: ray outside XZ bounds misses");
+    }
+
     std::printf("\n%d passed, %d failed\n", passed, failed);
     return failed > 0 ? 1 : 0;
 }
