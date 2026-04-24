@@ -189,6 +189,48 @@ int main() {
         check(!hit.has_value(), "ray_oob: ray outside XZ bounds misses");
     }
 
+    // ── capsule_vs_heightfield tests ─────────────────────────────────
+    std::printf("\n-- capsule_vs_heightfield --\n");
+
+    // Capsule resting on flat terrain at elevation 5
+    {
+        auto p = make_flat_pair(5.0f);
+        CapsuleData cap{0.3f, 0.5f};
+        // Place capsule center at Y=5.0 (bottom hemisphere at Y=4.2, penetrating)
+        auto contact = capsule_vs_heightfield(
+            glm::vec3(5.0f, 5.0f, 5.0f),
+            glm::quat(1, 0, 0, 0), cap, p.inst);
+        check(contact.has_value(), "cap_flat: detects penetration");
+        if (contact) {
+            check(contact->normal.y > 0.9f, "cap_flat: push-out normal is up");
+            check(contact->depth > 0.0f, "cap_flat: positive penetration depth");
+        }
+    }
+
+    // Capsule well above terrain (no contact)
+    {
+        auto p = make_flat_pair(5.0f);
+        CapsuleData cap{0.3f, 0.5f};
+        auto contact = capsule_vs_heightfield(
+            glm::vec3(5.0f, 20.0f, 5.0f),
+            glm::quat(1, 0, 0, 0), cap, p.inst);
+        check(!contact.has_value(), "cap_above: no contact when far above");
+    }
+
+    // Capsule on slope — normal should be angled
+    {
+        auto p = make_slope_pair(0.0f, 10.0f, 10.0f, 10.0f, 16);
+        CapsuleData cap{0.3f, 0.5f};
+        float mid_elev = 5.0f;
+        auto contact = capsule_vs_heightfield(
+            glm::vec3(5.0f, mid_elev, 5.0f),
+            glm::quat(1, 0, 0, 0), cap, p.inst);
+        check(contact.has_value(), "cap_slope: detects contact on slope");
+        if (contact) {
+            check(contact->normal.y > 0.3f, "cap_slope: normal has upward component");
+        }
+    }
+
     std::printf("\n%d passed, %d failed\n", passed, failed);
     return failed > 0 ? 1 : 0;
 }

@@ -81,4 +81,10 @@ std::optional<RayHit> ray_vs_heightfield(
     const glm::vec3& origin, const glm::vec3& direction,
     const HeightfieldInstance& hf);
 
+/// Capsule overlap test against heightfield terrain.
+/// Returns deepest penetrating contact (push-out toward capsule).
+std::optional<Contact> capsule_vs_heightfield(
+    const glm::vec3& cap_pos, const glm::quat& cap_rot,
+    const CapsuleData& capsule, const HeightfieldInstance& hf);
+
 }  // namespace gseurat
