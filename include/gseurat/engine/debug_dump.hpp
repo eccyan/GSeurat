@@ -21,10 +21,15 @@ namespace gseurat {
 // Domain tag — partitions the dump into "eyes" (UI/layout) and "ears" (audio)
 // ---------------------------------------------------------------------------
 
-enum class DebugDomain : uint8_t { Eyes, Ears };
+enum class DebugDomain : uint8_t { Eyes, Ears, Store };
 
 constexpr std::string_view to_string(DebugDomain d) noexcept {
-    return d == DebugDomain::Eyes ? "eyes" : "ears";
+    switch (d) {
+        case DebugDomain::Eyes:  return "eyes";
+        case DebugDomain::Ears:  return "ears";
+        case DebugDomain::Store: return "store";
+    }
+    return "unknown";
 }
 
 // ---------------------------------------------------------------------------
@@ -110,6 +115,7 @@ public:
     [[nodiscard]] nlohmann::json collect_all(std::string_view source) const {
         nlohmann::json eyes_components = nlohmann::json::array();
         nlohmann::json ears = nlohmann::json::object();
+        nlohmann::json store_array = nlohmann::json::array();
         bool has_ears = false;
 
         for (const auto& entry : entries_) {
@@ -122,7 +128,7 @@ public:
                         eyes_components.push_back(std::move(node));
                     }
                 }
-            } else {
+            } else if (entry.domain == DebugDomain::Ears) {
                 // Ears modules return a full ears dump object
                 if (!has_ears) {
                     ears = std::move(state);
@@ -145,6 +151,9 @@ public:
                         }
                     }
                 }
+            } else {
+                // Store modules return a single StoreDump object
+                store_array.push_back(std::move(state));
             }
         }
 
@@ -173,6 +182,7 @@ public:
             {"source",       source},
             {"eyes",         {{"components", std::move(eyes_components)}}},
             {"ears",         std::move(ears)},
+            {"store",        std::move(store_array)},
         };
     }
 
@@ -187,6 +197,9 @@ public:
                 if (state.is_array()) {
                     for (auto& node : state) result.push_back(std::move(node));
                 }
+            } else if (domain == DebugDomain::Store) {
+                if (!result.is_array()) result = nlohmann::json::array();
+                result.push_back(std::move(state));
             } else {
                 if (result.is_null()) {
                     result = std::move(state);

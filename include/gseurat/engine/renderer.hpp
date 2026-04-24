@@ -72,6 +72,7 @@ public:
     uint32_t gs_gaussian_budget() const { return gs_gaussian_budget_; }
     void set_gs_max_render_distance(float d) { gs_max_render_distance_ = d; }
     float gs_max_render_distance() const { return gs_max_render_distance_; }
+    uint32_t gs_visible_chunk_count() const { return static_cast<uint32_t>(gs_prev_visible_.size()); }
     void set_gs_preserve_bone_range(uint32_t first, uint32_t count) {
         gs_preserve_bone_first_ = first; gs_preserve_bone_count_ = count;
     }

@@ -21,6 +21,7 @@
 #include "gseurat/engine/bone_animation_registry.hpp"
 #include "gseurat/engine/bone_animation_system.hpp"
 #include "gseurat/engine/debug_draw.hpp"
+#include "gseurat/engine/debug_dump_collision.hpp"
 #ifdef GSEURAT_DEV_MODE
 #include <imgui.h>
 #endif
@@ -698,6 +699,79 @@ void IslandDemoState::on_enter(AppBase& app) {
     if (auto* kb = app.world().try_get<KinematicBody>(player_entity_)) {
         kb->recompute_derived();
     }
+
+    // Register collision system dumper (Store domain)
+    static std::optional<CollisionSystemDumper> collision_dumper;
+    collision_dumper.emplace([this]() -> CollisionSystemDumper::Snapshot {
+        CollisionSystemDumper::Snapshot snap;
+
+        // Count primitives by type
+        auto count_shapes = [](const std::vector<ColliderInstance>& cache,
+                               uint32_t& boxes, uint32_t& spheres, uint32_t& capsules,
+                               uint32_t& triggers, uint32_t& solids) {
+            for (const auto& ci : cache) {
+                if (std::holds_alternative<BoxData>(ci.shape)) ++boxes;
+                else if (std::holds_alternative<SphereData>(ci.shape)) ++spheres;
+                else if (std::holds_alternative<CapsuleData>(ci.shape)) ++capsules;
+                if (ci.is_trigger) ++triggers; else ++solids;
+            }
+        };
+
+        count_shapes(collision_system_.static_cache(),
+                     snap.box_count, snap.sphere_count, snap.capsule_count,
+                     snap.trigger_count, snap.solid_count);
+        count_shapes(collision_system_.dynamic_cache(),
+                     snap.box_count, snap.sphere_count, snap.capsule_count,
+                     snap.trigger_count, snap.solid_count);
+
+        snap.total_static  = static_cast<uint32_t>(collision_system_.static_cache().size());
+        snap.total_dynamic = static_cast<uint32_t>(collision_system_.dynamic_cache().size());
+        snap.cache_dirty   = collision_system_.is_dirty();
+
+        // BVH stats
+        const auto& bvh_nodes = collision_system_.bvh().nodes();
+        snap.bvh_empty      = collision_system_.bvh().empty();
+        snap.bvh_node_count = static_cast<uint32_t>(bvh_nodes.size());
+
+        // Compute depth and leaf count via traversal
+        uint32_t leaf_count = 0;
+        uint32_t max_depth = 0;
+        if (!snap.bvh_empty) {
+            // Iterative depth computation using a stack
+            struct StackEntry { uint32_t idx; uint32_t depth; };
+            std::vector<StackEntry> stack;
+            stack.push_back({0, 1});
+            while (!stack.empty()) {
+                auto [idx, depth] = stack.back();
+                stack.pop_back();
+                if (idx >= bvh_nodes.size()) continue;
+                const auto& node = bvh_nodes[idx];
+                if (node.is_leaf) {
+                    ++leaf_count;
+                    max_depth = std::max(max_depth, depth);
+                } else {
+                    stack.push_back({node.left, depth + 1});
+                    stack.push_back({node.right, depth + 1});
+                }
+            }
+        }
+        snap.bvh_leaf_count = leaf_count;
+        snap.bvh_depth      = max_depth;
+
+        // NavZones from collision grid
+        snap.grid_width  = collision_grid_.width;
+        snap.grid_height = collision_grid_.height;
+        std::unordered_set<uint8_t> zones;
+        for (uint8_t z : collision_grid_.nav_zone) {
+            if (z != 0) zones.insert(z);
+        }
+        snap.nav_zone_count = static_cast<uint32_t>(zones.size());
+
+        if (snap.cache_dirty) snap.warnings.push_back("cache_needs_rebuild");
+        if (snap.bvh_empty && snap.total_static > 0) snap.warnings.push_back("bvh_stale");
+        return snap;
+    });
+    app.debug_dump_registry().register_module(&*collision_dumper);
 
     // Scene loaded — ready for play
 }

@@ -1,6 +1,8 @@
 #include "gseurat/engine/app_base.hpp"
 #include "gseurat/engine/debug_dump_eyes.hpp"
 #include "gseurat/engine/debug_dump_ears.hpp"
+#include "gseurat/engine/debug_dump_renderer.hpp"
+#include "gseurat/engine/debug_dump_assets.hpp"
 #include "gseurat/engine/project_root.hpp"
 #include "gseurat/engine/gs_scene_loader.hpp"
 #include "gseurat/engine/scene_load_context.hpp"
@@ -133,6 +135,66 @@ void AppBase::main_loop() {
         });
         debug_dump_registry_.register_module(&*audio_dumper);
     }
+
+    // Register renderer stats dumper (Store domain)
+    RendererStatsDumper renderer_dumper([this]() -> RendererStatsDumper::Snapshot {
+        RendererStatsDumper::Snapshot snap;
+        auto& gs = renderer_.gs_renderer();
+        auto& metrics = debug_metrics_;
+
+        snap.total_gaussians   = gs.gaussian_count();
+        snap.visible_gaussians = gs.visible_count();
+        snap.static_gaussians  = gs.static_count();
+        snap.dynamic_gaussians = gs.dynamic_count();
+        snap.max_capacity      = gs.max_gaussian_count();
+        snap.gaussian_budget   = renderer_.gs_gaussian_budget();
+        snap.culled_gaussians  = (snap.total_gaussians > snap.visible_gaussians)
+                                  ? snap.total_gaussians - snap.visible_gaussians : 0;
+        snap.cull_ratio        = snap.total_gaussians > 0
+                                  ? static_cast<float>(snap.culled_gaussians) / static_cast<float>(snap.total_gaussians) : 0.0f;
+        snap.total_chunks      = renderer_.gs_chunk_grid().chunk_count();
+        snap.visible_chunks    = renderer_.gs_visible_chunk_count();
+        snap.tile_binning_enabled = gs.tile_binning();
+        snap.output_width      = gs.output_width();
+        snap.output_height     = gs.output_height();
+        snap.depth_sort_ms     = gs.depth_sort_ms_avg();
+        snap.tile_sort_ms      = gs.tile_sort_ms_avg();
+        snap.rasterize_ms      = gs.rasterize_ms_avg();
+        snap.gpu_total_ms      = snap.depth_sort_ms + snap.tile_sort_ms + snap.rasterize_ms;
+        snap.fps               = metrics.fps;
+        snap.frame_time_ms     = metrics.fps > 0.0f ? 1000.0f / metrics.fps : 0.0f;
+        snap.pbd_count         = gs.pbd_count();
+        snap.pbd_constraints   = gs.pbd_constraint_count();
+        snap.streaming_initialized = gs.streaming_initialized();
+        snap.streaming_active_chunks = gs.active_chunk_count();
+        snap.streaming_active_splats = gs.total_active_splats();
+        snap.max_render_distance = renderer_.gs_max_render_distance();
+
+        if (!gs.has_cloud()) snap.warnings.push_back("no_cloud_loaded");
+        if (snap.cull_ratio > 0.95f) snap.warnings.push_back("high_cull_ratio");
+        return snap;
+    });
+    debug_dump_registry_.register_module(&renderer_dumper);
+
+    // Register asset cache dumper (Store domain)
+    AssetCacheDumper asset_dumper([this]() -> AssetCacheDumper::Snapshot {
+        AssetCacheDumper::Snapshot snap;
+
+        // Count live textures (Texture class doesn't store dimensions)
+        uint32_t tex_count = 0;
+        resources_.texture_cache().for_each_live([&](const std::string&, const Texture&) {
+            ++tex_count;
+        });
+        snap.live_texture_count = tex_count;
+
+        // Staging uploader
+        snap.staging_pending_bytes = staging_uploader_.pending_bytes();
+        snap.staging_pending_count = staging_uploader_.pending_count();
+
+        if (tex_count == 0) snap.warnings.push_back("no_textures_loaded");
+        return snap;
+    });
+    debug_dump_registry_.register_module(&asset_dumper);
 
     while (!glfwWindowShouldClose(window_)) {
         glfwPollEvents();
