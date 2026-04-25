@@ -1117,12 +1117,8 @@ void IslandDemoState::update_player(AppBase& app, float dt) {
                     }
                     transform->position.vec() -= player_velocity_ * dt;
                 } else {
-                    // Snap to elevation
-                    float elev = active_grid->get_elevation(
-                        static_cast<uint32_t>(gx), static_cast<uint32_t>(gz));
-                    if (!active_grid->elevation.empty()) {
-                        transform->position.vec().y = elev;
-                    }
+                    // Ground elevation now handled by HeightfieldComponent + KCC sweep.
+                    // Solid-cell blocking above still enforces walkability.
                 }
             }
         }

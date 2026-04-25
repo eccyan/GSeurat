@@ -207,6 +207,7 @@ add_library(gseurat_core ${_gseurat_lib_type}
     src/engine/collision/bvh.cpp
     src/engine/collision/collision_system.cpp
     src/engine/collision/debug_wireframe.cpp
+    src/engine/collision/heightfield_loader.cpp
     src/engine/save_system.cpp
     src/engine/slab_allocator.cpp
     src/engine/async_loader.cpp
@@ -511,6 +512,13 @@ add_gseurat_test(test_kcc
     src/engine/collision/intersect.cpp
     src/engine/collision/bvh.cpp)
 add_gseurat_test(test_collider_json)
+add_gseurat_test(test_heightfield_intersect
+    src/engine/collision/intersect.cpp
+    src/engine/collision/bvh.cpp)
+add_gseurat_test(test_heightfield_system
+    src/engine/collision/collision_system.cpp
+    src/engine/collision/intersect.cpp
+    src/engine/collision/bvh.cpp)
 add_gseurat_test(test_memory_mapped_file
     src/engine/platform/memory_mapped_file.cpp)
 add_gseurat_test(test_audio_effect_chain

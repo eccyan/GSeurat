@@ -7,6 +7,7 @@
 #include "gseurat/engine/ecs/default_components.hpp"
 #include "gseurat/engine/ecs/components/collider_component.hpp"
 #include "gseurat/engine/ecs/components/kinematic_body.hpp"
+#include "gseurat/engine/ecs/components/heightfield_component.hpp"
 
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
@@ -75,6 +76,7 @@ public:
     const std::vector<ColliderInstance>& dynamic_cache() const { return dynamic_cache_; }
     const BVH& bvh() const { return bvh_; }
     bool is_dirty() const { return dirty_; }
+    const std::vector<HeightfieldInstance>& heightfield_cache() const { return heightfield_cache_; }
 
 private:
     std::vector<ColliderInstance> static_cache_;
@@ -86,6 +88,8 @@ private:
     std::vector<uint32_t> bvh_indices_;  // Reordered indices into static_cache_
 
     bool dirty_{true};
+
+    std::vector<HeightfieldInstance> heightfield_cache_;
 
     void rebuild_bvh();
     void run_kcc(ecs::World& world, float dt);  // Implemented in Task 9

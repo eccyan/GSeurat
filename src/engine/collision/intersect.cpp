@@ -480,4 +480,642 @@ std::optional<SweepHit> sweep_capsule(
     return SweepHit{t, last_contact.point, last_contact.normal};
 }
 
+// ── Heightfield helpers ──────────────────────────────────────────────
+
+std::optional<float> sample_height(const HeightfieldInstance& hf,
+                                   float world_x, float world_z) {
+    if (!hf.data || hf.data->img_width == 0 || hf.data->img_height == 0)
+        return std::nullopt;
+
+    float u = (world_x - hf.origin.x) / hf.width;
+    float v = (world_z - hf.origin.z) / hf.length;
+
+    if (u < 0.0f || u > 1.0f || v < 0.0f || v > 1.0f)
+        return std::nullopt;
+
+    float px = u * static_cast<float>(hf.data->img_width - 1);
+    float pz = v * static_cast<float>(hf.data->img_height - 1);
+
+    uint32_t ix = static_cast<uint32_t>(px);
+    uint32_t iz = static_cast<uint32_t>(pz);
+
+    // Clamp to valid range
+    uint32_t ix1 = std::min(ix + 1, hf.data->img_width - 1);
+    uint32_t iz1 = std::min(iz + 1, hf.data->img_height - 1);
+
+    float fx = px - static_cast<float>(ix);
+    float fz = pz - static_cast<float>(iz);
+
+    auto sample = [&](uint32_t sx, uint32_t sz) -> float {
+        return static_cast<float>(
+            hf.data->samples[sz * hf.data->img_width + sx]);
+    };
+
+    float s00 = sample(ix,  iz);
+    float s10 = sample(ix1, iz);
+    float s01 = sample(ix,  iz1);
+    float s11 = sample(ix1, iz1);
+
+    // Bilinear interpolation
+    float s = (s00 * (1.0f - fx) + s10 * fx) * (1.0f - fz) +
+              (s01 * (1.0f - fx) + s11 * fx) * fz;
+
+    return hf.origin.y + hf.min_height + (s / 65535.0f) * (hf.max_height - hf.min_height);
+}
+
+glm::vec3 heightfield_normal(const HeightfieldInstance& hf,
+                             float world_x, float world_z) {
+    // Half-texel epsilon in world space
+    float eps_x = hf.width / static_cast<float>(hf.data->img_width) * 0.5f;
+    float eps_z = hf.length / static_cast<float>(hf.data->img_height) * 0.5f;
+    float eps = std::min(eps_x, eps_z);
+
+    auto h_center = sample_height(hf, world_x, world_z);
+    float fallback = h_center.value_or(0.0f);
+
+    auto h_left  = sample_height(hf, world_x - eps, world_z);
+    auto h_right = sample_height(hf, world_x + eps, world_z);
+    auto h_back  = sample_height(hf, world_x, world_z - eps);
+    auto h_front = sample_height(hf, world_x, world_z + eps);
+
+    // At edges, fall back to center height (flat normal) instead of 0
+    float dx = h_right.value_or(fallback) - h_left.value_or(fallback);
+    float dz = h_front.value_or(fallback) - h_back.value_or(fallback);
+
+    glm::vec3 n(-dx, 2.0f * eps, -dz);
+    return glm::normalize(n);
+}
+
+// ── Ray-triangle (Moller-Trumbore, backface culling) ────────────────
+
+static std::optional<RayHit> ray_vs_triangle(
+    const glm::vec3& origin, const glm::vec3& dir,
+    const glm::vec3& v0, const glm::vec3& v1, const glm::vec3& v2)
+{
+    glm::vec3 e1 = v1 - v0;
+    glm::vec3 e2 = v2 - v0;
+    glm::vec3 h  = glm::cross(dir, e2);
+    float a = glm::dot(e1, h);
+
+    // Backface cull: only front-face hits (a > 0 means front-facing)
+    if (a < 1e-7f) return std::nullopt;
+
+    float f = 1.0f / a;
+    glm::vec3 s = origin - v0;
+    float u = f * glm::dot(s, h);
+    if (u < 0.0f || u > 1.0f) return std::nullopt;
+
+    glm::vec3 q = glm::cross(s, e1);
+    float v = f * glm::dot(dir, q);
+    if (v < 0.0f || u + v > 1.0f) return std::nullopt;
+
+    float t = f * glm::dot(e2, q);
+    if (t < 0.0f) return std::nullopt;
+
+    glm::vec3 normal = glm::normalize(glm::cross(e1, e2));
+    glm::vec3 point  = origin + t * dir;
+    return RayHit{t, point, normal};
+}
+
+// ── Ray vs heightfield (DDA grid traversal) ─────────────────────────
+
+std::optional<RayHit> ray_vs_heightfield(
+    const glm::vec3& origin, const glm::vec3& direction,
+    const HeightfieldInstance& hf)
+{
+    if (!hf.data || hf.data->img_width < 2 || hf.data->img_height < 2)
+        return std::nullopt;
+
+    uint32_t cols = hf.data->img_width;
+    uint32_t rows = hf.data->img_height;
+
+    float cell_w = hf.width  / static_cast<float>(cols - 1);
+    float cell_h = hf.length / static_cast<float>(rows - 1);
+
+    // Helper: grid (ix, iz) -> world position
+    auto vertex = [&](uint32_t ix, uint32_t iz) -> glm::vec3 {
+        float wx = hf.origin.x + static_cast<float>(ix) * cell_w;
+        float wz = hf.origin.z + static_cast<float>(iz) * cell_h;
+        float s  = static_cast<float>(hf.data->samples[iz * cols + ix]);
+        float wy = hf.origin.y + hf.min_height + (s / 65535.0f) * (hf.max_height - hf.min_height);
+        return glm::vec3(wx, wy, wz);
+    };
+
+    // Slab test against heightfield XZ bounds to find entry/exit t
+    float xmin = hf.origin.x;
+    float xmax = hf.origin.x + hf.width;
+    float zmin = hf.origin.z;
+    float zmax = hf.origin.z + hf.length;
+
+    float t_enter = 0.0f;
+    float t_exit  = std::numeric_limits<float>::max();
+
+    // X slab
+    if (std::abs(direction.x) < 1e-8f) {
+        if (origin.x < xmin || origin.x > xmax) return std::nullopt;
+    } else {
+        float inv = 1.0f / direction.x;
+        float t0 = (xmin - origin.x) * inv;
+        float t1 = (xmax - origin.x) * inv;
+        if (t0 > t1) std::swap(t0, t1);
+        t_enter = std::max(t_enter, t0);
+        t_exit  = std::min(t_exit, t1);
+    }
+
+    // Z slab
+    if (std::abs(direction.z) < 1e-8f) {
+        if (origin.z < zmin || origin.z > zmax) return std::nullopt;
+    } else {
+        float inv = 1.0f / direction.z;
+        float t0 = (zmin - origin.z) * inv;
+        float t1 = (zmax - origin.z) * inv;
+        if (t0 > t1) std::swap(t0, t1);
+        t_enter = std::max(t_enter, t0);
+        t_exit  = std::min(t_exit, t1);
+    }
+
+    if (t_enter > t_exit || t_exit < 0.0f) return std::nullopt;
+    t_enter = std::max(t_enter, 0.0f);
+
+    // Entry point in world space -> grid coordinates
+    glm::vec3 entry = origin + t_enter * direction;
+    float gx = (entry.x - hf.origin.x) / cell_w;
+    float gz = (entry.z - hf.origin.z) / cell_h;
+
+    int ix = static_cast<int>(gx);
+    int iz = static_cast<int>(gz);
+    ix = std::clamp(ix, 0, static_cast<int>(cols) - 2);
+    iz = std::clamp(iz, 0, static_cast<int>(rows) - 2);
+
+    // DDA step setup
+    int step_x = (direction.x >= 0.0f) ? 1 : -1;
+    int step_z = (direction.z >= 0.0f) ? 1 : -1;
+
+    // t values for crossing next cell boundary
+    auto next_t_x = [&](int cx) -> float {
+        float boundary = hf.origin.x + static_cast<float>(step_x > 0 ? cx + 1 : cx) * cell_w;
+        if (std::abs(direction.x) < 1e-8f) return std::numeric_limits<float>::max();
+        return (boundary - origin.x) / direction.x;
+    };
+    auto next_t_z = [&](int cz) -> float {
+        float boundary = hf.origin.z + static_cast<float>(step_z > 0 ? cz + 1 : cz) * cell_h;
+        if (std::abs(direction.z) < 1e-8f) return std::numeric_limits<float>::max();
+        return (boundary - origin.z) / direction.z;
+    };
+
+    float t_next_x = next_t_x(ix);
+    float t_next_z = next_t_z(iz);
+
+    float dt_x = (std::abs(direction.x) > 1e-8f) ? std::abs(cell_w / direction.x)
+                                                   : std::numeric_limits<float>::max();
+    float dt_z = (std::abs(direction.z) > 1e-8f) ? std::abs(cell_h / direction.z)
+                                                   : std::numeric_limits<float>::max();
+
+    int max_steps = static_cast<int>(cols + rows);
+
+    for (int step = 0; step < max_steps; ++step) {
+        if (ix < 0 || ix >= static_cast<int>(cols) - 1 ||
+            iz < 0 || iz >= static_cast<int>(rows) - 1)
+            break;
+
+        uint32_t ux = static_cast<uint32_t>(ix);
+        uint32_t uz = static_cast<uint32_t>(iz);
+
+        glm::vec3 v00 = vertex(ux,     uz);
+        glm::vec3 v10 = vertex(ux + 1, uz);
+        glm::vec3 v01 = vertex(ux,     uz + 1);
+        glm::vec3 v11 = vertex(ux + 1, uz + 1);
+
+        // Split cell along shorter diagonal.
+        // Winding order: CCW when viewed from above (+Y), so cross(e1,e2) points up.
+        float diag_a = glm::length(v00 - v11);
+        float diag_b = glm::length(v10 - v01);
+
+        std::optional<RayHit> hit;
+        if (diag_a <= diag_b) {
+            // Split: v00-v11 diagonal  ->  tri(v00,v11,v10) and tri(v00,v01,v11)
+            hit = ray_vs_triangle(origin, direction, v00, v11, v10);
+            if (!hit) hit = ray_vs_triangle(origin, direction, v00, v01, v11);
+        } else {
+            // Split: v10-v01 diagonal  ->  tri(v00,v01,v10) and tri(v10,v01,v11)
+            hit = ray_vs_triangle(origin, direction, v00, v01, v10);
+            if (!hit) hit = ray_vs_triangle(origin, direction, v10, v01, v11);
+        }
+
+        if (hit) return hit;
+
+        // Advance DDA
+        if (t_next_x < t_next_z) {
+            ix += step_x;
+            t_next_x += dt_x;
+        } else {
+            iz += step_z;
+            t_next_z += dt_z;
+        }
+    }
+
+    return std::nullopt;
+}
+
+// ── Capsule vs triangle (static helper) ─────────────────────────────
+
+static glm::vec3 closest_point_on_triangle(
+    const glm::vec3& p,
+    const glm::vec3& v0, const glm::vec3& v1, const glm::vec3& v2)
+{
+    glm::vec3 e0 = v1 - v0;
+    glm::vec3 e1 = v2 - v0;
+    glm::vec3 v  = v0 - p;
+
+    float a = glm::dot(e0, e0);
+    float b = glm::dot(e0, e1);
+    float c = glm::dot(e1, e1);
+    float d = glm::dot(e0, v);
+    float e = glm::dot(e1, v);
+
+    float det = a * c - b * b;
+    float s   = b * e - c * d;
+    float t   = b * d - a * e;
+
+    if (s + t <= det) {
+        if (s < 0.0f) {
+            if (t < 0.0f) {
+                // Region 4
+                if (d < 0.0f) { s = glm::clamp(-d / a, 0.0f, 1.0f); t = 0.0f; }
+                else          { s = 0.0f; t = glm::clamp(-e / c, 0.0f, 1.0f); }
+            } else {
+                // Region 3
+                s = 0.0f;
+                t = glm::clamp(-e / c, 0.0f, 1.0f);
+            }
+        } else if (t < 0.0f) {
+            // Region 5
+            s = glm::clamp(-d / a, 0.0f, 1.0f);
+            t = 0.0f;
+        } else {
+            // Region 0 (inside triangle)
+            float inv_det = 1.0f / det;
+            s *= inv_det;
+            t *= inv_det;
+        }
+    } else {
+        if (s < 0.0f) {
+            // Region 2
+            float tmp0 = b + d;
+            float tmp1 = c + e;
+            if (tmp1 > tmp0) {
+                float numer = tmp1 - tmp0;
+                float denom2 = a - 2.0f * b + c;
+                s = glm::clamp(numer / denom2, 0.0f, 1.0f);
+                t = 1.0f - s;
+            } else {
+                s = 0.0f;
+                t = glm::clamp(-e / c, 0.0f, 1.0f);
+            }
+        } else if (t < 0.0f) {
+            // Region 6
+            float tmp0 = b + e;
+            float tmp1 = a + d;
+            if (tmp1 > tmp0) {
+                float numer = tmp1 - tmp0;
+                float denom2 = a - 2.0f * b + c;
+                t = glm::clamp(numer / denom2, 0.0f, 1.0f);
+                s = 1.0f - t;
+            } else {
+                t = 0.0f;
+                s = glm::clamp(-d / a, 0.0f, 1.0f);
+            }
+        } else {
+            // Region 1
+            float numer = (c + e) - (b + d);
+            float denom2 = a - 2.0f * b + c;
+            s = glm::clamp(numer / denom2, 0.0f, 1.0f);
+            t = 1.0f - s;
+        }
+    }
+
+    return v0 + s * e0 + t * e1;
+}
+
+static std::optional<Contact> capsule_vs_triangle(
+    const glm::vec3& seg_a, const glm::vec3& seg_b, float radius,
+    const glm::vec3& v0, const glm::vec3& v1, const glm::vec3& v2)
+{
+    // Compute triangle normal
+    glm::vec3 e1 = v1 - v0;
+    glm::vec3 e2 = v2 - v0;
+    glm::vec3 tri_normal = glm::cross(e1, e2);
+    float tri_len2 = glm::dot(tri_normal, tri_normal);
+    if (tri_len2 < 1e-12f) return std::nullopt;  // degenerate triangle
+    tri_normal = tri_normal / std::sqrt(tri_len2);
+
+    // Skip backface (normal pointing down)
+    if (tri_normal.y < 0.0f) return std::nullopt;
+
+    // Find closest point on capsule segment to triangle plane
+    // Then project onto triangle, clamping to edges if outside
+    // Then re-find closest point on segment to that clamped point
+
+    // For each endpoint of capsule segment, find closest point on triangle
+    // and pick the pair with minimum distance.
+    // This is more robust than the plane-projection approach for edge cases.
+
+    // Strategy: find closest point on triangle to segment
+    // 1. Closest point on triangle to seg_a
+    // 2. Closest point on triangle to seg_b
+    // 3. Closest point on segment to each triangle vertex
+    // 4. Closest point on segment to each triangle edge (segment-segment)
+    // Pick the pair with minimum distance.
+
+    // Simplified approach: closest point on triangle to the capsule segment
+    // by testing segment against triangle plane, then clamping.
+
+    // Project segment endpoints onto triangle plane
+    float d_a = glm::dot(seg_a - v0, tri_normal);
+    float d_b = glm::dot(seg_b - v0, tri_normal);
+
+    // Find the point on the segment closest to the plane
+    glm::vec3 seg_pt;
+    if (std::abs(d_a - d_b) > 1e-8f) {
+        float t = d_a / (d_a - d_b);
+        t = glm::clamp(t, 0.0f, 1.0f);
+        seg_pt = seg_a + t * (seg_b - seg_a);
+    } else {
+        // Segment parallel to plane, use the endpoint closer to plane
+        seg_pt = (std::abs(d_a) <= std::abs(d_b)) ? seg_a : seg_b;
+    }
+
+    // Find closest point on triangle to this segment point
+    glm::vec3 tri_pt = closest_point_on_triangle(seg_pt, v0, v1, v2);
+
+    // Re-find closest point on segment to that triangle point
+    seg_pt = closest_point_on_segment(seg_a, seg_b, tri_pt);
+
+    // Re-find closest point on triangle to the updated segment point
+    tri_pt = closest_point_on_triangle(seg_pt, v0, v1, v2);
+
+    glm::vec3 diff = seg_pt - tri_pt;
+    float dist2 = glm::dot(diff, diff);
+
+    if (dist2 >= radius * radius) return std::nullopt;
+
+    float dist = std::sqrt(dist2);
+    glm::vec3 normal;
+    if (dist < 1e-8f) {
+        normal = tri_normal;
+    } else {
+        normal = diff / dist;
+    }
+
+    float depth = radius - dist;
+    glm::vec3 point = tri_pt;
+    return Contact{point, normal, depth};
+}
+
+// ── Capsule vs heightfield ──────────────────────────────────────────
+
+std::optional<Contact> capsule_vs_heightfield(
+    const glm::vec3& cap_pos, const glm::quat& cap_rot,
+    const CapsuleData& capsule, const HeightfieldInstance& hf)
+{
+    if (!hf.data || hf.data->img_width < 2 || hf.data->img_height < 2)
+        return std::nullopt;
+
+    // Compute capsule segment endpoints
+    glm::vec3 up = cap_rot * glm::vec3(0.0f, 1.0f, 0.0f);
+    glm::vec3 seg_a = cap_pos - up * capsule.half_height;
+    glm::vec3 seg_b = cap_pos + up * capsule.half_height;
+
+    // Compute capsule AABB
+    float r = capsule.radius;
+    glm::vec3 aabb_min = glm::min(seg_a, seg_b) - glm::vec3(r);
+    glm::vec3 aabb_max = glm::max(seg_a, seg_b) + glm::vec3(r);
+
+    uint32_t cols = hf.data->img_width;
+    uint32_t rows = hf.data->img_height;
+
+    float cell_w = hf.width  / static_cast<float>(cols - 1);
+    float cell_h = hf.length / static_cast<float>(rows - 1);
+
+    // Map AABB XZ footprint to grid cell range
+    int ix_min = static_cast<int>((aabb_min.x - hf.origin.x) / cell_w);
+    int iz_min = static_cast<int>((aabb_min.z - hf.origin.z) / cell_h);
+    int ix_max = static_cast<int>((aabb_max.x - hf.origin.x) / cell_w);
+    int iz_max = static_cast<int>((aabb_max.z - hf.origin.z) / cell_h);
+
+    ix_min = std::max(ix_min, 0);
+    iz_min = std::max(iz_min, 0);
+    ix_max = std::min(ix_max, static_cast<int>(cols) - 2);
+    iz_max = std::min(iz_max, static_cast<int>(rows) - 2);
+
+    // Vertex helper (same as ray_vs_heightfield)
+    auto vertex = [&](uint32_t vx, uint32_t vz) -> glm::vec3 {
+        float wx = hf.origin.x + static_cast<float>(vx) * cell_w;
+        float wz = hf.origin.z + static_cast<float>(vz) * cell_h;
+        float s  = static_cast<float>(hf.data->samples[vz * cols + vx]);
+        float wy = hf.origin.y + hf.min_height + (s / 65535.0f) * (hf.max_height - hf.min_height);
+        return glm::vec3(wx, wy, wz);
+    };
+
+    std::optional<Contact> deepest;
+
+    for (int iz = iz_min; iz <= iz_max; ++iz) {
+        for (int ix = ix_min; ix <= ix_max; ++ix) {
+            uint32_t ux = static_cast<uint32_t>(ix);
+            uint32_t uz = static_cast<uint32_t>(iz);
+
+            glm::vec3 v00 = vertex(ux,     uz);
+            glm::vec3 v10 = vertex(ux + 1, uz);
+            glm::vec3 v01 = vertex(ux,     uz + 1);
+            glm::vec3 v11 = vertex(ux + 1, uz + 1);
+
+            // Split cell along shorter diagonal (same as ray_vs_heightfield)
+            float diag_a = glm::length(v00 - v11);
+            float diag_b = glm::length(v10 - v01);
+
+            std::optional<Contact> c;
+            if (diag_a <= diag_b) {
+                c = capsule_vs_triangle(seg_a, seg_b, r, v00, v11, v10);
+                if (c && (!deepest || c->depth > deepest->depth)) deepest = c;
+                c = capsule_vs_triangle(seg_a, seg_b, r, v00, v01, v11);
+                if (c && (!deepest || c->depth > deepest->depth)) deepest = c;
+            } else {
+                c = capsule_vs_triangle(seg_a, seg_b, r, v00, v01, v10);
+                if (c && (!deepest || c->depth > deepest->depth)) deepest = c;
+                c = capsule_vs_triangle(seg_a, seg_b, r, v10, v01, v11);
+                if (c && (!deepest || c->depth > deepest->depth)) deepest = c;
+            }
+        }
+    }
+
+    return deepest;
+}
+
+// ── Sweep capsule vs triangle (hybrid step + binary search) ─────────
+
+static std::optional<SweepHit> sweep_capsule_vs_triangle(
+    const glm::vec3& cap_pos, const glm::quat& cap_rot,
+    const CapsuleData& capsule,
+    const glm::vec3& direction, float max_distance,
+    const glm::vec3& v0, const glm::vec3& v1, const glm::vec3& v2)
+{
+    // Compute capsule segment endpoints helper
+    glm::vec3 up = cap_rot * glm::vec3(0.0f, 1.0f, 0.0f);
+    float r = capsule.radius;
+
+    auto make_segment = [&](const glm::vec3& pos) -> std::pair<glm::vec3, glm::vec3> {
+        glm::vec3 a = pos - up * capsule.half_height;
+        glm::vec3 b = pos + up * capsule.half_height;
+        return {a, b};
+    };
+
+    // Test overlap at t=0
+    {
+        auto [sa, sb] = make_segment(cap_pos);
+        auto c = capsule_vs_triangle(sa, sb, r, v0, v1, v2);
+        if (c) {
+            return SweepHit{0.0f, c->point, c->normal};
+        }
+    }
+
+    // Step through 8 evenly-spaced positions
+    constexpr int num_steps = 8;
+    float prev_frac = 0.0f;
+
+    for (int i = 1; i <= num_steps; ++i) {
+        float frac = static_cast<float>(i) / static_cast<float>(num_steps);
+        glm::vec3 test_pos = cap_pos + direction * (frac * max_distance);
+        auto [sa, sb] = make_segment(test_pos);
+        auto c = capsule_vs_triangle(sa, sb, r, v0, v1, v2);
+
+        if (c) {
+            // Binary search between prev_frac and frac for precise t
+            float lo = prev_frac;
+            float hi = frac;
+            Contact last_contact = *c;
+
+            for (int iter = 0; iter < 8; ++iter) {
+                float mid = (lo + hi) * 0.5f;
+                glm::vec3 mid_pos = cap_pos + direction * (mid * max_distance);
+                auto [ma, mb] = make_segment(mid_pos);
+                auto mc = capsule_vs_triangle(ma, mb, r, v0, v1, v2);
+                if (mc) {
+                    hi = mid;
+                    last_contact = *mc;
+                } else {
+                    lo = mid;
+                }
+            }
+
+            return SweepHit{hi, last_contact.point, last_contact.normal};
+        }
+
+        prev_frac = frac;
+    }
+
+    return std::nullopt;
+}
+
+// ── Sweep capsule vs heightfield ────────────────────────────────────
+
+std::optional<SweepHit> sweep_capsule_vs_heightfield(
+    const glm::vec3& cap_pos, const glm::quat& cap_rot,
+    const CapsuleData& capsule,
+    const glm::vec3& direction, float max_distance,
+    const HeightfieldInstance& hf)
+{
+    if (max_distance <= 0.0f) return std::nullopt;
+    if (!hf.data || hf.data->img_width < 2 || hf.data->img_height < 2)
+        return std::nullopt;
+
+    // Normalize direction for consistent stepping, but keep max_distance as-is
+    float dir_len = glm::length(direction);
+    if (dir_len < 1e-8f) return std::nullopt;
+    glm::vec3 dir = direction / dir_len;
+    float actual_distance = max_distance * dir_len;
+
+    // Compute capsule segment endpoints at start and end
+    glm::vec3 up = cap_rot * glm::vec3(0.0f, 1.0f, 0.0f);
+    float r = capsule.radius;
+    float hh = capsule.half_height;
+
+    glm::vec3 start_a = cap_pos - up * hh;
+    glm::vec3 start_b = cap_pos + up * hh;
+    glm::vec3 end_pos = cap_pos + dir * actual_distance;
+    glm::vec3 end_a = end_pos - up * hh;
+    glm::vec3 end_b = end_pos + up * hh;
+
+    // Compute swept AABB covering the full movement
+    AABB swept;
+    swept.min = glm::min(glm::min(start_a, start_b), glm::min(end_a, end_b)) - glm::vec3(r);
+    swept.max = glm::max(glm::max(start_a, start_b), glm::max(end_a, end_b)) + glm::vec3(r);
+
+    // Early reject: swept AABB vs heightfield AABB
+    if (!aabb_overlaps(swept, hf.world_aabb)) return std::nullopt;
+
+    uint32_t cols = hf.data->img_width;
+    uint32_t rows = hf.data->img_height;
+
+    float cell_w = hf.width  / static_cast<float>(cols - 1);
+    float cell_h = hf.length / static_cast<float>(rows - 1);
+
+    // Map swept AABB XZ footprint to grid cell range
+    int ix_min = static_cast<int>((swept.min.x - hf.origin.x) / cell_w);
+    int iz_min = static_cast<int>((swept.min.z - hf.origin.z) / cell_h);
+    int ix_max = static_cast<int>((swept.max.x - hf.origin.x) / cell_w);
+    int iz_max = static_cast<int>((swept.max.z - hf.origin.z) / cell_h);
+
+    ix_min = std::max(ix_min, 0);
+    iz_min = std::max(iz_min, 0);
+    ix_max = std::min(ix_max, static_cast<int>(cols) - 2);
+    iz_max = std::min(iz_max, static_cast<int>(rows) - 2);
+
+    // Vertex helper
+    auto vertex = [&](uint32_t vx, uint32_t vz) -> glm::vec3 {
+        float wx = hf.origin.x + static_cast<float>(vx) * cell_w;
+        float wz = hf.origin.z + static_cast<float>(vz) * cell_h;
+        float s  = static_cast<float>(hf.data->samples[vz * cols + vx]);
+        float wy = hf.origin.y + hf.min_height + (s / 65535.0f) * (hf.max_height - hf.min_height);
+        return glm::vec3(wx, wy, wz);
+    };
+
+    std::optional<SweepHit> earliest;
+
+    for (int iz = iz_min; iz <= iz_max; ++iz) {
+        for (int ix = ix_min; ix <= ix_max; ++ix) {
+            uint32_t ux = static_cast<uint32_t>(ix);
+            uint32_t uz = static_cast<uint32_t>(iz);
+
+            glm::vec3 v00 = vertex(ux,     uz);
+            glm::vec3 v10 = vertex(ux + 1, uz);
+            glm::vec3 v01 = vertex(ux,     uz + 1);
+            glm::vec3 v11 = vertex(ux + 1, uz + 1);
+
+            // Split cell along shorter diagonal
+            float diag_a = glm::length(v00 - v11);
+            float diag_b = glm::length(v10 - v01);
+
+            auto test_tri = [&](const glm::vec3& a, const glm::vec3& b, const glm::vec3& c) {
+                auto hit = sweep_capsule_vs_triangle(
+                    cap_pos, cap_rot, capsule,
+                    dir, actual_distance,
+                    a, b, c);
+                if (hit && (!earliest || hit->t < earliest->t)) {
+                    earliest = hit;
+                }
+            };
+
+            if (diag_a <= diag_b) {
+                test_tri(v00, v11, v10);
+                test_tri(v00, v01, v11);
+            } else {
+                test_tri(v00, v01, v10);
+                test_tri(v10, v01, v11);
+            }
+        }
+    }
+
+    return earliest;
+}
+
 }  // namespace gseurat

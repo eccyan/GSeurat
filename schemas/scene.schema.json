@@ -323,6 +323,18 @@
                 "time_to_apex": { "type": "number", "default": 0.4, "minimum": 0 }
               }
             },
+            "HeightfieldComponent": {
+              "type": "object",
+              "required": ["image_path", "width", "length", "min_height", "max_height"],
+              "properties": {
+                "image_path":     { "type": "string" },
+                "width":          { "type": "number", "exclusiveMinimum": 0 },
+                "length":         { "type": "number", "exclusiveMinimum": 0 },
+                "min_height":     { "type": "number" },
+                "max_height":     { "type": "number" },
+                "collision_mask": { "type": "integer", "default": 4294967295 }
+              }
+            },
             "NavZoneVolume": {
               "type": "object",
               "properties": {
