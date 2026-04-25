@@ -696,6 +696,30 @@
             "pulse_speed": 2.0
           }
         }
+      },
+      {
+        "id": "terrain_heightfield",
+        "name": "terrain_heightfield",
+        "position": [
+          0,
+          0,
+          0
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": 1.0,
+        "components": {
+          "HeightfieldComponent": {
+            "image_path": "assets/terrain/northern_forest_heightmap.png",
+            "width": 192.0,
+            "length": 192.0,
+            "min_height": 0.0,
+            "max_height": 4.342100143432617
+          }
+        }
       }
     ],
     "player": {

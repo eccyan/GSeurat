@@ -1343,6 +1343,30 @@
             "pause_duration": 0.8
           }
         }
+      },
+      {
+        "id": "terrain_heightfield",
+        "name": "terrain_heightfield",
+        "position": [
+          0,
+          0,
+          0
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": 1.0,
+        "components": {
+          "HeightfieldComponent": {
+            "image_path": "assets/terrain/dungeon_heightmap.png",
+            "width": 50.0,
+            "length": 50.0,
+            "min_height": -1.0,
+            "max_height": 0.0
+          }
+        }
       }
     ],
     "player": {

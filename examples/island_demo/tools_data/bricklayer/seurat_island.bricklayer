@@ -220,2514 +220,6 @@
   },
   "gridWidth": 192,
   "gridDepth": 192,
-  "scene": {
-    "ambientColor": [
-      0.12,
-      0.12,
-      0.18,
-      1
-    ],
-    "godRaysIntensity": 0,
-    "staticLights": [
-      {
-        "id": "sun_1",
-        "position": [
-          90,
-          60,
-          300
-        ],
-        "radius": 500,
-        "color": [
-          1,
-          0.9,
-          0.7
-        ],
-        "intensity": 2
-      },
-      {
-        "id": "fill_1",
-        "position": [
-          300,
-          40,
-          90
-        ],
-        "radius": 400,
-        "color": [
-          0.7,
-          0.55,
-          0.4
-        ],
-        "intensity": 0.8
-      }
-    ],
-    "gameObjects": [
-      {
-        "id": "portal_dungeon",
-        "name": "Portal to Dungeon",
-        "position": [
-          203,
-          3,
-          175
-        ],
-        "rotation": [
-          0,
-          0,
-          0
-        ],
-        "scale": 1,
-        "ply_file": "",
-        "components": {
-          "ProximityTrigger": {
-            "radius": 5,
-            "one_shot": true
-          },
-          "PortalTarget": {
-            "target_scene": "assets/scenes/dungeon.json",
-            "target_position": [
-              5,
-              0,
-              5
-            ],
-            "transition_color": [
-              1,
-              1,
-              1
-            ],
-            "transition_duration": 0.5,
-            "effect_type": 2
-          }
-        }
-      },
-      {
-        "id": "tree_1",
-        "name": "Tree",
-        "position": [
-          120,
-          2.0004,
-          150
-        ],
-        "rotation": [
-          0,
-          286.8,
-          0
-        ],
-        "scale": 1.56,
-        "ply_file": "assets/props/island_tree_1.ply",
-        "components": {},
-        "pbd": {
-          "mode": "wind_sway",
-          "sway_threshold": 0.7,
-          "wind_direction": [
-            1,
-            0,
-            0.3
-          ],
-          "wind_strength": 0.06,
-          "wind_frequency": 0.8
-        }
-      },
-      {
-        "id": "tree_2",
-        "name": "Tree",
-        "position": [
-          200,
-          1.8697,
-          130
-        ],
-        "rotation": [
-          0,
-          273.7,
-          0
-        ],
-        "scale": 2.36,
-        "ply_file": "assets/props/island_tree_2.ply",
-        "components": {},
-        "pbd": {
-          "mode": "wind_sway",
-          "sway_threshold": 0.7,
-          "wind_direction": [
-            1,
-            0,
-            0.3
-          ],
-          "wind_strength": 0.06,
-          "wind_frequency": 0.8
-        }
-      },
-      {
-        "id": "tree_3",
-        "name": "Tree",
-        "position": [
-          160,
-          3.3616,
-          220
-        ],
-        "rotation": [
-          0,
-          32.9,
-          0
-        ],
-        "scale": 2.4,
-        "ply_file": "assets/props/island_tree_3.ply",
-        "components": {},
-        "pbd": {
-          "mode": "wind_sway",
-          "sway_threshold": 0.7,
-          "wind_direction": [
-            1,
-            0,
-            0.3
-          ],
-          "wind_strength": 0.06,
-          "wind_frequency": 0.8
-        }
-      },
-      {
-        "id": "tree_4",
-        "name": "Tree",
-        "position": [
-          220,
-          3.6725,
-          180
-        ],
-        "rotation": [
-          0,
-          282.9,
-          0
-        ],
-        "scale": 1.91,
-        "ply_file": "assets/props/island_tree_4.ply",
-        "components": {},
-        "pbd": {
-          "mode": "wind_sway",
-          "sway_threshold": 0.7,
-          "wind_direction": [
-            1,
-            0,
-            0.3
-          ],
-          "wind_strength": 0.06,
-          "wind_frequency": 0.8
-        }
-      },
-      {
-        "id": "tree_5",
-        "name": "Tree",
-        "position": [
-          140,
-          0.7472,
-          100
-        ],
-        "rotation": [
-          0,
-          134.8,
-          0
-        ],
-        "scale": 2.15,
-        "ply_file": "assets/props/island_tree_5.ply",
-        "components": {},
-        "pbd": {
-          "mode": "wind_sway",
-          "sway_threshold": 0.7,
-          "wind_direction": [
-            1,
-            0,
-            0.3
-          ],
-          "wind_strength": 0.06,
-          "wind_frequency": 0.8
-        }
-      },
-      {
-        "id": "tree_6",
-        "name": "Tree",
-        "position": [
-          250,
-          1.6443,
-          160
-        ],
-        "rotation": [
-          0,
-          144.3,
-          0
-        ],
-        "scale": 2.07,
-        "ply_file": "assets/props/island_tree_6.ply",
-        "components": {},
-        "pbd": {
-          "mode": "wind_sway",
-          "sway_threshold": 0.7,
-          "wind_direction": [
-            1,
-            0,
-            0.3
-          ],
-          "wind_strength": 0.06,
-          "wind_frequency": 0.8
-        }
-      },
-      {
-        "id": "tree_7",
-        "name": "Tree",
-        "position": [
-          180,
-          2.1204,
-          250
-        ],
-        "rotation": [
-          0,
-          218.8,
-          0
-        ],
-        "scale": 1.55,
-        "ply_file": "assets/props/island_tree_7.ply",
-        "components": {},
-        "pbd": {
-          "mode": "wind_sway",
-          "sway_threshold": 0.7,
-          "wind_direction": [
-            1,
-            0,
-            0.3
-          ],
-          "wind_strength": 0.06,
-          "wind_frequency": 0.8
-        }
-      },
-      {
-        "id": "tree_8",
-        "name": "Tree",
-        "position": [
-          130,
-          1.8561,
-          200
-        ],
-        "rotation": [
-          0,
-          265.4,
-          0
-        ],
-        "scale": 2.21,
-        "ply_file": "assets/props/island_tree_8.ply",
-        "components": {},
-        "pbd": {
-          "mode": "wind_sway",
-          "sway_threshold": 0.7,
-          "wind_direction": [
-            1,
-            0,
-            0.3
-          ],
-          "wind_strength": 0.06,
-          "wind_frequency": 0.8
-        }
-      },
-      {
-        "id": "tree_9",
-        "name": "Tree",
-        "position": [
-          210,
-          3.7203,
-          240
-        ],
-        "rotation": [
-          0,
-          332,
-          0
-        ],
-        "scale": 2.21,
-        "ply_file": "assets/props/island_tree_9.ply",
-        "components": {},
-        "pbd": {
-          "mode": "wind_sway",
-          "sway_threshold": 0.7,
-          "wind_direction": [
-            1,
-            0,
-            0.3
-          ],
-          "wind_strength": 0.06,
-          "wind_frequency": 0.8
-        }
-      },
-      {
-        "id": "tree_10",
-        "name": "Tree",
-        "position": [
-          170,
-          4.3758,
-          140
-        ],
-        "rotation": [
-          0,
-          236.1,
-          0
-        ],
-        "scale": 2.24,
-        "ply_file": "assets/props/island_tree_10.ply",
-        "components": {},
-        "pbd": {
-          "mode": "wind_sway",
-          "sway_threshold": 0.7,
-          "wind_direction": [
-            1,
-            0,
-            0.3
-          ],
-          "wind_strength": 0.06,
-          "wind_frequency": 0.8
-        }
-      },
-      {
-        "id": "tree_11",
-        "name": "Tree",
-        "position": [
-          240,
-          2.5612,
-          200
-        ],
-        "rotation": [
-          0,
-          67.5,
-          0
-        ],
-        "scale": 2,
-        "ply_file": "assets/props/island_tree_11.ply",
-        "components": {},
-        "pbd": {
-          "mode": "wind_sway",
-          "sway_threshold": 0.7,
-          "wind_direction": [
-            1,
-            0,
-            0.3
-          ],
-          "wind_strength": 0.06,
-          "wind_frequency": 0.8
-        }
-      },
-      {
-        "id": "tree_12",
-        "name": "Tree",
-        "position": [
-          150,
-          1.4526,
-          170
-        ],
-        "rotation": [
-          0,
-          322.2,
-          0
-        ],
-        "scale": 2.43,
-        "ply_file": "assets/props/island_tree_12.ply",
-        "components": {},
-        "pbd": {
-          "mode": "wind_sway",
-          "sway_threshold": 0.7,
-          "wind_direction": [
-            1,
-            0,
-            0.3
-          ],
-          "wind_strength": 0.06,
-          "wind_frequency": 0.8
-        }
-      },
-      {
-        "id": "rock_1",
-        "name": "Rock",
-        "position": [
-          150,
-          5.9757,
-          110
-        ],
-        "rotation": [
-          0,
-          261.9,
-          0
-        ],
-        "scale": 1,
-        "ply_file": "assets/props/island_rock_1.ply",
-        "components": {}
-      },
-      {
-        "id": "rock_2",
-        "name": "Rock",
-        "position": [
-          230,
-          13.5795,
-          170
-        ],
-        "rotation": [
-          0,
-          279.9,
-          0
-        ],
-        "scale": 1,
-        "ply_file": "assets/props/island_rock_2.ply",
-        "components": {}
-      },
-      {
-        "id": "rock_3",
-        "name": "Rock",
-        "position": [
-          130,
-          8.5884,
-          210
-        ],
-        "rotation": [
-          0,
-          317,
-          0
-        ],
-        "scale": 1,
-        "ply_file": "assets/props/island_rock_3.ply",
-        "components": {}
-      },
-      {
-        "id": "rock_4",
-        "name": "Rock",
-        "position": [
-          200,
-          10.767300000000002,
-          100
-        ],
-        "rotation": [
-          0,
-          215.4,
-          0
-        ],
-        "scale": 0.98,
-        "ply_file": "assets/props/island_rock_4.ply",
-        "components": {}
-      },
-      {
-        "id": "rock_5",
-        "name": "Rock",
-        "position": [
-          170,
-          5.669099999999999,
-          260
-        ],
-        "rotation": [
-          0,
-          96.2,
-          0
-        ],
-        "scale": 1,
-        "ply_file": "assets/props/island_rock_5.ply",
-        "components": {}
-      },
-      {
-        "id": "rock_6",
-        "name": "Rock",
-        "position": [
-          260,
-          9.762200000000002,
-          190
-        ],
-        "rotation": [
-          0,
-          357.7,
-          0
-        ],
-        "scale": 1,
-        "ply_file": "assets/props/island_rock_6.ply",
-        "components": {}
-      },
-      {
-        "id": "house",
-        "name": "House",
-        "position": [
-          192,
-          4.5658,
-          175
-        ],
-        "rotation": [
-          0,
-          0,
-          0
-        ],
-        "scale": 0.8,
-        "ply_file": "assets/props/island_house.ply",
-        "components": {
-          "ProximityTrigger": {
-            "radius": 30
-          },
-          "VfxTrigger": {
-            "vfx_path": "assets/vfx/chimney_smoke.vfx.json"
-          }
-        }
-      },
-      {
-        "id": "fountain",
-        "name": "Fountain",
-        "position": [
-          178,
-          3.2,
-          185
-        ],
-        "rotation": [
-          0,
-          45,
-          0
-        ],
-        "scale": 0.65,
-        "ply_file": "assets/props/island_fountain.ply",
-        "components": {
-          "ProximityTrigger": {
-            "radius": 10
-          },
-          "VfxTrigger": {
-            "vfx_path": "assets/vfx/fountain_spray.vfx.json"
-          }
-        }
-      },
-      {
-        "id": "treasure_chest",
-        "name": "Treasure Chest",
-        "position": [
-          235,
-          4,
-          145
-        ],
-        "rotation": [
-          0,
-          210,
-          0
-        ],
-        "scale": 0.8,
-        "ply_file": "assets/props/treasure_chest.ply",
-        "components": {
-          "ProximityTrigger": {
-            "radius": 8,
-            "one_shot": true
-          },
-          "AnimationTrigger": {
-            "effect_name": "scatter",
-            "anim_radius": 4,
-            "lifetime": 2,
-            "loop": false
-          }
-        }
-      },
-      {
-        "id": "mushroom_cluster",
-        "name": "Glowing Mushrooms",
-        "position": [
-          135,
-          2.5,
-          215
-        ],
-        "rotation": [
-          0,
-          120,
-          0
-        ],
-        "scale": 0.5,
-        "ply_file": "assets/props/glow_mushrooms.ply",
-        "components": {}
-      },
-      {
-        "id": "lantern_1",
-        "name": "Lantern Post",
-        "position": [
-          186,
-          3.5,
-          192
-        ],
-        "rotation": [
-          0,
-          0,
-          0
-        ],
-        "scale": 0.45,
-        "ply_file": "assets/props/lantern_post.ply",
-        "components": {}
-      },
-      {
-        "id": "lantern_2",
-        "name": "Lantern Post",
-        "position": [
-          189,
-          3.8,
-          186
-        ],
-        "rotation": [
-          0,
-          45,
-          0
-        ],
-        "scale": 0.45,
-        "ply_file": "assets/props/lantern_post.ply",
-        "components": {}
-      },
-      {
-        "id": "lantern_3",
-        "name": "Lantern Post",
-        "position": [
-          191,
-          4,
-          180
-        ],
-        "rotation": [
-          0,
-          90,
-          0
-        ],
-        "scale": 0.45,
-        "ply_file": "assets/props/lantern_post.ply",
-        "components": {}
-      },
-      {
-        "id": "lantern_4",
-        "name": "Lantern Post",
-        "position": [
-          175,
-          3,
-          195
-        ],
-        "rotation": [
-          0,
-          180,
-          0
-        ],
-        "scale": 0.45,
-        "ply_file": "assets/props/lantern_post.ply",
-        "components": {}
-      },
-      {
-        "id": "flower_1",
-        "name": "Flower",
-        "position": [
-          160,
-          3.5864000000000003,
-          160
-        ],
-        "rotation": [
-          0,
-          200.1,
-          0
-        ],
-        "scale": 0.1,
-        "ply_file": "assets/props/island_flower1.ply",
-        "components": {}
-      },
-      {
-        "id": "flower_2",
-        "name": "Flower",
-        "position": [
-          200,
-          2.7409,
-          200
-        ],
-        "rotation": [
-          0,
-          241.5,
-          0
-        ],
-        "scale": 0.1,
-        "ply_file": "assets/props/island_flower1.ply",
-        "components": {}
-      },
-      {
-        "id": "flower_3",
-        "name": "Flower",
-        "position": [
-          180,
-          3.5151000000000003,
-          130
-        ],
-        "rotation": [
-          0,
-          320.6,
-          0
-        ],
-        "scale": 0.11,
-        "ply_file": "assets/props/island_flower1.ply",
-        "components": {}
-      },
-      {
-        "id": "flower_4",
-        "name": "Flower",
-        "position": [
-          220,
-          3.2845,
-          150
-        ],
-        "rotation": [
-          0,
-          19.6,
-          0
-        ],
-        "scale": 0.11,
-        "ply_file": "assets/props/island_flower1.ply",
-        "components": {}
-      },
-      {
-        "id": "flower_5",
-        "name": "Flower",
-        "position": [
-          140,
-          1.6401000000000001,
-          180
-        ],
-        "rotation": [
-          0,
-          20,
-          0
-        ],
-        "scale": 0.07,
-        "ply_file": "assets/props/island_flower1.ply",
-        "components": {}
-      },
-      {
-        "id": "flower_6",
-        "name": "Flower",
-        "position": [
-          190,
-          3.0744000000000002,
-          230
-        ],
-        "rotation": [
-          0,
-          191.6,
-          0
-        ],
-        "scale": 0.11,
-        "ply_file": "assets/props/island_flower1.ply",
-        "components": {}
-      },
-      {
-        "id": "flower_7",
-        "name": "Flower",
-        "position": [
-          170,
-          4.1552,
-          190
-        ],
-        "rotation": [
-          0,
-          3.5,
-          0
-        ],
-        "scale": 0.11,
-        "ply_file": "assets/props/island_flower1.ply",
-        "components": {}
-      },
-      {
-        "id": "flower_8",
-        "name": "Flower",
-        "position": [
-          210,
-          5.3064,
-          170
-        ],
-        "rotation": [
-          0,
-          255.2,
-          0
-        ],
-        "scale": 0.07,
-        "ply_file": "assets/props/island_flower1.ply",
-        "components": {}
-      },
-      {
-        "id": "crystal_1",
-        "name": "Crystal",
-        "position": [
-          155,
-          3.3481,
-          145
-        ],
-        "rotation": [
-          0,
-          171.2,
-          0
-        ],
-        "scale": 1.28,
-        "ply_file": "assets/props/island_crystal1.ply",
-        "components": {
-          "ProximityTrigger": {
-            "radius": 14
-          },
-          "AnimationTrigger": {
-            "effect_name": "orbit",
-            "anim_radius": 6,
-            "lifetime": 4,
-            "loop": true
-          }
-        }
-      },
-      {
-        "id": "crystal_2",
-        "name": "Crystal",
-        "position": [
-          225,
-          3.6947,
-          195
-        ],
-        "rotation": [
-          0,
-          183.8,
-          0
-        ],
-        "scale": 1.63,
-        "ply_file": "assets/props/island_crystal1.ply",
-        "components": {
-          "ProximityTrigger": {
-            "radius": 14
-          },
-          "AnimationTrigger": {
-            "effect_name": "wave",
-            "anim_radius": 8,
-            "lifetime": 3,
-            "loop": true
-          }
-        }
-      },
-      {
-        "id": "crystal_3",
-        "name": "Crystal",
-        "position": [
-          175,
-          3.0535,
-          235
-        ],
-        "rotation": [
-          0,
-          143.9,
-          0
-        ],
-        "scale": 1.36,
-        "ply_file": "assets/props/island_crystal1.ply",
-        "components": {
-          "ProximityTrigger": {
-            "radius": 14
-          },
-          "AnimationTrigger": {
-            "effect_name": "float",
-            "anim_radius": 5,
-            "lifetime": 5,
-            "loop": true
-          }
-        }
-      },
-      {
-        "id": "crystal_4",
-        "name": "Crystal",
-        "position": [
-          195,
-          2.0418,
-          120
-        ],
-        "rotation": [
-          0,
-          0.5,
-          0
-        ],
-        "scale": 1.53,
-        "ply_file": "assets/props/island_crystal1.ply",
-        "components": {
-          "ProximityTrigger": {
-            "radius": 14
-          },
-          "VfxTrigger": {
-            "vfx_path": "assets/vfx/crystal_burst.vfx.json"
-          }
-        }
-      },
-      {
-        "id": "torch_1",
-        "name": "Torch",
-        "position": [
-          195,
-          4.4784,
-          181
-        ],
-        "rotation": [
-          0,
-          0,
-          0
-        ],
-        "scale": 1,
-        "ply_file": "",
-        "components": {
-          "ProximityTrigger": {
-            "radius": 12
-          },
-          "EmitterToggle": {
-            "emitter_index": 0
-          },
-          "LightToggle": {
-            "color_r": 1,
-            "color_g": 0.6,
-            "color_b": 0.1,
-            "radius": 15,
-            "intensity": 3
-          }
-        }
-      },
-      {
-        "id": "torch_2",
-        "name": "Torch",
-        "position": [
-          185,
-          3.5245,
-          173
-        ],
-        "rotation": [
-          0,
-          0,
-          0
-        ],
-        "scale": 1,
-        "ply_file": "",
-        "components": {
-          "ProximityTrigger": {
-            "radius": 12
-          },
-          "EmitterToggle": {
-            "emitter_index": 1
-          },
-          "LightToggle": {
-            "color_r": 1,
-            "color_g": 0.6,
-            "color_b": 0.1,
-            "radius": 15,
-            "intensity": 3
-          }
-        }
-      },
-      {
-        "id": "torch_3",
-        "name": "Torch",
-        "position": [
-          201,
-          3.0323,
-          191
-        ],
-        "rotation": [
-          0,
-          0,
-          0
-        ],
-        "scale": 1,
-        "ply_file": "",
-        "components": {
-          "ProximityTrigger": {
-            "radius": 12
-          },
-          "EmitterToggle": {
-            "emitter_index": 2
-          },
-          "LightToggle": {
-            "color_r": 1,
-            "color_g": 0.6,
-            "color_b": 0.1,
-            "radius": 15,
-            "intensity": 3
-          }
-        }
-      },
-      {
-        "id": "torch_4",
-        "name": "Torch",
-        "position": [
-          211,
-          3.2403,
-          185
-        ],
-        "rotation": [
-          0,
-          0,
-          0
-        ],
-        "scale": 1,
-        "ply_file": "",
-        "components": {
-          "ProximityTrigger": {
-            "radius": 12
-          },
-          "EmitterToggle": {
-            "emitter_index": 3
-          },
-          "LightToggle": {
-            "color_r": 1,
-            "color_g": 0.6,
-            "color_b": 0.1,
-            "radius": 15,
-            "intensity": 3
-          }
-        }
-      },
-      {
-        "id": "anim_trigger_1",
-        "name": "Animation (pulse)",
-        "position": [
-          151,
-          1.5957,
-          111
-        ],
-        "rotation": [
-          0,
-          0,
-          0
-        ],
-        "scale": 1,
-        "ply_file": "",
-        "components": {
-          "ProximityTrigger": {
-            "radius": 16
-          },
-          "AnimationTrigger": {
-            "effect_name": "pulse",
-            "anim_radius": 9.6,
-            "lifetime": 4,
-            "loop": true
-          }
-        }
-      },
-      {
-        "id": "anim_trigger_2",
-        "name": "Animation (wave)",
-        "position": [
-          231,
-          2.4555,
-          171
-        ],
-        "rotation": [
-          0,
-          0,
-          0
-        ],
-        "scale": 1,
-        "ply_file": "",
-        "components": {
-          "ProximityTrigger": {
-            "radius": 16
-          },
-          "AnimationTrigger": {
-            "effect_name": "wave",
-            "anim_radius": 12.8,
-            "lifetime": 5,
-            "loop": true
-          }
-        }
-      },
-      {
-        "id": "anim_trigger_3",
-        "name": "Animation (vortex)",
-        "position": [
-          131,
-          3.3762,
-          211
-        ],
-        "rotation": [
-          0,
-          0,
-          0
-        ],
-        "scale": 1,
-        "ply_file": "",
-        "components": {
-          "ProximityTrigger": {
-            "radius": 16
-          },
-          "AnimationTrigger": {
-            "effect_name": "vortex",
-            "anim_radius": 8,
-            "lifetime": 3,
-            "loop": true
-          }
-        }
-      },
-      {
-        "id": "anim_trigger_4",
-        "name": "Animation (float)",
-        "position": [
-          171,
-          1.2672,
-          261
-        ],
-        "rotation": [
-          0,
-          0,
-          0
-        ],
-        "scale": 1,
-        "ply_file": "",
-        "components": {
-          "ProximityTrigger": {
-            "radius": 16
-          },
-          "AnimationTrigger": {
-            "effect_name": "float",
-            "anim_radius": 11.2,
-            "lifetime": 6,
-            "loop": true
-          }
-        }
-      },
-      {
-        "id": "mushroom_glow",
-        "name": "Glowing Mushrooms",
-        "position": [
-          135,
-          2.5,
-          215
-        ],
-        "rotation": [
-          0,
-          0,
-          0
-        ],
-        "scale": 1,
-        "ply_file": "",
-        "components": {
-          "ProximityTrigger": {
-            "radius": 12
-          },
-          "AnimationTrigger": {
-            "effect_name": "dissolve",
-            "anim_radius": 5,
-            "lifetime": 3,
-            "loop": true
-          }
-        }
-      },
-      {
-        "id": "secret_summit",
-        "name": "Secret: Summit",
-        "position": [
-          165,
-          2,
-          120
-        ],
-        "rotation": [
-          0,
-          0,
-          0
-        ],
-        "scale": 1,
-        "ply_file": "",
-        "components": {
-          "ProximityTrigger": {
-            "radius": 6,
-            "one_shot": true
-          },
-          "DiscoveryZone": {
-            "color_r": 1,
-            "color_g": 0.4,
-            "color_b": 0.1,
-            "burst_height": 12
-          },
-          "AnimationTrigger": {
-            "effect_name": "vortex",
-            "anim_radius": 6,
-            "lifetime": 4,
-            "loop": false
-          }
-        }
-      },
-      {
-        "id": "secret_cove",
-        "name": "Secret: Hidden Cove",
-        "position": [
-          250,
-          1.5,
-          230
-        ],
-        "rotation": [
-          0,
-          0,
-          0
-        ],
-        "scale": 1,
-        "ply_file": "",
-        "components": {
-          "ProximityTrigger": {
-            "radius": 6,
-            "one_shot": true
-          },
-          "DiscoveryZone": {
-            "color_r": 0.2,
-            "color_g": 0.6,
-            "color_b": 1,
-            "burst_height": 10
-          },
-          "AnimationTrigger": {
-            "effect_name": "vortex",
-            "anim_radius": 6,
-            "lifetime": 4,
-            "loop": false
-          }
-        }
-      },
-      {
-        "id": "secret_grove",
-        "name": "Secret: Ancient Grove",
-        "position": [
-          120,
-          3,
-          160
-        ],
-        "rotation": [
-          0,
-          0,
-          0
-        ],
-        "scale": 1,
-        "ply_file": "",
-        "components": {
-          "ProximityTrigger": {
-            "radius": 6,
-            "one_shot": true
-          },
-          "DiscoveryZone": {
-            "color_r": 0.4,
-            "color_g": 1,
-            "color_b": 0.3,
-            "burst_height": 8
-          },
-          "AnimationTrigger": {
-            "effect_name": "vortex",
-            "anim_radius": 6,
-            "lifetime": 4,
-            "loop": false
-          }
-        }
-      },
-      {
-        "id": "knight_01",
-        "name": "Knight",
-        "position": [
-          202,
-          0,
-          187
-        ],
-        "rotation": [
-          0,
-          0,
-          0
-        ],
-        "scale": 0.45,
-        "ply_file": "assets/characters/knight/knight.ply",
-        "components": {
-          "BoneAnimated": {
-            "manifest": "assets/characters/knight/knight.manifest.json",
-            "default_clip": "idle"
-          },
-          "NpcWalker": {
-            "patrol_radius": 12,
-            "speed": 8,
-            "pause_duration": 1.5
-          }
-        }
-      },
-      {
-        "id": "slime_npc_1",
-        "name": "Slime (patrol)",
-        "position": [
-          170,
-          3,
-          195
-        ],
-        "rotation": [
-          0,
-          0,
-          0
-        ],
-        "scale": 0.5,
-        "ply_file": "assets/characters/slime/slime.ply",
-        "components": {
-          "BoneAnimated": {
-            "manifest": "assets/characters/slime/slime.manifest.json",
-            "default_clip": "idle"
-          },
-          "NpcWalker": {
-            "patrol_radius": 20,
-            "speed": 8,
-            "pause_duration": 0.8
-          },
-          "ProximityTrigger": {
-            "radius": 6
-          },
-          "AnimationTrigger": {
-            "effect_name": "pulse",
-            "anim_radius": 4,
-            "lifetime": 2,
-            "loop": true
-          }
-        }
-      },
-      {
-        "id": "slime_npc_2",
-        "name": "Slime (guard)",
-        "position": [
-          210,
-          3,
-          180
-        ],
-        "rotation": [
-          0,
-          0,
-          0
-        ],
-        "scale": 0.5,
-        "ply_file": "assets/characters/slime/slime.ply",
-        "components": {
-          "BoneAnimated": {
-            "manifest": "assets/characters/slime/slime.manifest.json",
-            "default_clip": "idle"
-          },
-          "NpcWalker": {
-            "patrol_radius": 16,
-            "speed": 10,
-            "pause_duration": 0.5
-          },
-          "ProximityTrigger": {
-            "radius": 6
-          },
-          "AnimationTrigger": {
-            "effect_name": "orbit",
-            "anim_radius": 3,
-            "lifetime": 3,
-            "loop": true
-          }
-        }
-      },
-      {
-        "id": "slime_npc_3",
-        "name": "Slime (wanderer)",
-        "position": [
-          145,
-          3,
-          200
-        ],
-        "rotation": [
-          0,
-          0,
-          0
-        ],
-        "scale": 0.5,
-        "ply_file": "assets/characters/slime/slime.ply",
-        "components": {
-          "BoneAnimated": {
-            "manifest": "assets/characters/slime/slime.manifest.json",
-            "default_clip": "idle"
-          },
-          "NpcWalker": {
-            "patrol_radius": 25,
-            "speed": 12,
-            "pause_duration": 0.3
-          },
-          "ProximityTrigger": {
-            "radius": 6
-          },
-          "AnimationTrigger": {
-            "effect_name": "wave",
-            "anim_radius": 5,
-            "lifetime": 2,
-            "loop": true
-          }
-        }
-      },
-      {
-        "id": "player",
-        "name": "player",
-        "position": [
-          187,
-          1.9663,
-          197
-        ],
-        "rotation": [
-          0,
-          180,
-          0
-        ],
-        "scale": 0.45,
-        "ply_file": "assets/characters/warm_robot/warm_robot.ply",
-        "components": {
-          "PlayerController": {
-            "speed": 20,
-            "acceleration": 20
-          },
-          "PlayerJump": {
-            "height": 4,
-            "duration": 0.8
-          },
-          "BoneAnimated": {
-            "manifest": "assets/characters/warm_robot/warm_robot.manifest.json",
-            "default_clip": "idle"
-          }
-        }
-      },
-      {
-        "id": "kcc_wall_a",
-        "name": "Angled Stone Wall A",
-        "position": [
-          198,
-          0,
-          170
-        ],
-        "rotation": [
-          0,
-          30,
-          0
-        ],
-        "scale": 1.0,
-        "ply_file": "assets/props/kcc_stone_wall.ply",
-        "components": {
-          "ColliderComponent": {
-            "shape": {
-              "type": "box",
-              "half_extents": [
-                3.0,
-                2.0,
-                0.4
-              ]
-            },
-            "offset": [
-              0,
-              2,
-              0
-            ],
-            "local_rotation": [
-              0,
-              0,
-              0,
-              1
-            ],
-            "collision_mask": 1,
-            "is_trigger": false,
-            "is_dynamic": false
-          }
-        }
-      },
-      {
-        "id": "kcc_wall_b",
-        "name": "Angled Stone Wall B",
-        "position": [
-          208,
-          0,
-          172
-        ],
-        "rotation": [
-          0,
-          -25,
-          0
-        ],
-        "scale": 1.0,
-        "ply_file": "assets/props/kcc_stone_wall.ply",
-        "components": {
-          "ColliderComponent": {
-            "shape": {
-              "type": "box",
-              "half_extents": [
-                3.0,
-                2.0,
-                0.4
-              ]
-            },
-            "offset": [
-              0,
-              2,
-              0
-            ],
-            "local_rotation": [
-              0,
-              0,
-              0,
-              1
-            ],
-            "collision_mask": 1,
-            "is_trigger": false,
-            "is_dynamic": false
-          }
-        }
-      },
-      {
-        "id": "kcc_boulder_a",
-        "name": "Boulder A",
-        "position": [
-          200,
-          0,
-          178
-        ],
-        "rotation": [
-          0,
-          0,
-          0
-        ],
-        "scale": 1.0,
-        "ply_file": "assets/props/kcc_boulder_1_2.ply",
-        "components": {
-          "ColliderComponent": {
-            "shape": {
-              "type": "sphere",
-              "radius": 1.2
-            },
-            "offset": [
-              0,
-              1.2,
-              0
-            ],
-            "local_rotation": [
-              0,
-              0,
-              0,
-              1
-            ],
-            "collision_mask": 1,
-            "is_trigger": false,
-            "is_dynamic": false
-          }
-        }
-      },
-      {
-        "id": "kcc_boulder_b",
-        "name": "Boulder B",
-        "position": [
-          205,
-          0.5,
-          168
-        ],
-        "rotation": [
-          0,
-          0,
-          0
-        ],
-        "scale": 1.0,
-        "ply_file": "assets/props/kcc_boulder_1_0.ply",
-        "components": {
-          "ColliderComponent": {
-            "shape": {
-              "type": "sphere",
-              "radius": 1.0
-            },
-            "offset": [
-              0,
-              1.0,
-              0
-            ],
-            "local_rotation": [
-              0,
-              0,
-              0,
-              1
-            ],
-            "collision_mask": 1,
-            "is_trigger": false,
-            "is_dynamic": false
-          }
-        }
-      },
-      {
-        "id": "kcc_boulder_c",
-        "name": "Boulder C",
-        "position": [
-          197,
-          0,
-          174
-        ],
-        "rotation": [
-          0,
-          0,
-          0
-        ],
-        "scale": 1.0,
-        "ply_file": "assets/props/kcc_boulder_1_5.ply",
-        "components": {
-          "ColliderComponent": {
-            "shape": {
-              "type": "sphere",
-              "radius": 1.5
-            },
-            "offset": [
-              0,
-              1.5,
-              0
-            ],
-            "local_rotation": [
-              0,
-              0,
-              0,
-              1
-            ],
-            "collision_mask": 1,
-            "is_trigger": false,
-            "is_dynamic": false
-          }
-        }
-      },
-      {
-        "id": "kcc_pillar_a",
-        "name": "Ruined Pillar A",
-        "position": [
-          202,
-          0,
-          173
-        ],
-        "rotation": [
-          0,
-          0,
-          0
-        ],
-        "scale": 1.0,
-        "ply_file": "assets/props/kcc_stone_pillar.ply",
-        "components": {
-          "ColliderComponent": {
-            "shape": {
-              "type": "capsule",
-              "radius": 0.5,
-              "half_height": 1.5
-            },
-            "offset": [
-              0,
-              2.0,
-              0
-            ],
-            "local_rotation": [
-              0,
-              0,
-              0,
-              1
-            ],
-            "collision_mask": 1,
-            "is_trigger": false,
-            "is_dynamic": false
-          }
-        }
-      },
-      {
-        "id": "kcc_pillar_b",
-        "name": "Ruined Pillar B",
-        "position": [
-          206,
-          0,
-          177
-        ],
-        "rotation": [
-          0,
-          0,
-          0
-        ],
-        "scale": 1.0,
-        "ply_file": "assets/props/kcc_stone_pillar.ply",
-        "components": {
-          "ColliderComponent": {
-            "shape": {
-              "type": "capsule",
-              "radius": 0.5,
-              "half_height": 1.5
-            },
-            "offset": [
-              0,
-              2.0,
-              0
-            ],
-            "local_rotation": [
-              0,
-              0,
-              0,
-              1
-            ],
-            "collision_mask": 1,
-            "is_trigger": false,
-            "is_dynamic": false
-          }
-        }
-      },
-      {
-        "id": "kcc_ramp",
-        "name": "Low Ramp",
-        "position": [
-          201,
-          0,
-          165
-        ],
-        "rotation": [
-          15,
-          0,
-          0
-        ],
-        "scale": 1.0,
-        "ply_file": "assets/props/kcc_stone_ramp.ply",
-        "components": {
-          "ColliderComponent": {
-            "shape": {
-              "type": "box",
-              "half_extents": [
-                2.0,
-                0.5,
-                3.0
-              ]
-            },
-            "offset": [
-              0,
-              0.5,
-              0
-            ],
-            "local_rotation": [
-              0,
-              0,
-              0,
-              1
-            ],
-            "collision_mask": 1,
-            "is_trigger": false,
-            "is_dynamic": false
-          }
-        }
-      }
-    ],
-    "player": {
-      "position": [
-        187,
-        1.9663,
-        197
-      ],
-      "tint": [
-        1,
-        1,
-        1,
-        1
-      ],
-      "facing": "down",
-      "character_id": ""
-    },
-    "backgroundLayers": [],
-    "torchEmitter": {
-      "spawn_rate": 0,
-      "particle_lifetime_min": 0,
-      "particle_lifetime_max": 0,
-      "velocity_min": [
-        0,
-        0
-      ],
-      "velocity_max": [
-        0,
-        0
-      ],
-      "acceleration": [
-        0,
-        0
-      ],
-      "size_min": 0,
-      "size_max": 0,
-      "size_end_scale": 0,
-      "color_start": [
-        0,
-        0,
-        0,
-        0
-      ],
-      "color_end": [
-        0,
-        0,
-        0,
-        0
-      ],
-      "tile": "",
-      "z": 0,
-      "spawn_offset_min": [
-        0,
-        0
-      ],
-      "spawn_offset_max": [
-        0,
-        0
-      ]
-    },
-    "torchPositions": [
-      [
-        195,
-        4.4784,
-        181
-      ],
-      [
-        185,
-        3.5245,
-        173
-      ],
-      [
-        201,
-        3.0323,
-        191
-      ],
-      [
-        211,
-        3.2403,
-        185
-      ]
-    ],
-    "footstepEmitter": {
-      "spawn_rate": 0,
-      "particle_lifetime_min": 0,
-      "particle_lifetime_max": 0,
-      "velocity_min": [
-        0,
-        0
-      ],
-      "velocity_max": [
-        0,
-        0
-      ],
-      "acceleration": [
-        0,
-        0
-      ],
-      "size_min": 0,
-      "size_max": 0,
-      "size_end_scale": 0,
-      "color_start": [
-        0,
-        0,
-        0,
-        0
-      ],
-      "color_end": [
-        0,
-        0,
-        0,
-        0
-      ],
-      "tile": "",
-      "z": 0,
-      "spawn_offset_min": [
-        0,
-        0
-      ],
-      "spawn_offset_max": [
-        0,
-        0
-      ]
-    },
-    "npcAuraEmitter": {
-      "spawn_rate": 0,
-      "particle_lifetime_min": 0,
-      "particle_lifetime_max": 0,
-      "velocity_min": [
-        0,
-        0
-      ],
-      "velocity_max": [
-        0,
-        0
-      ],
-      "acceleration": [
-        0,
-        0
-      ],
-      "size_min": 0,
-      "size_max": 0,
-      "size_end_scale": 0,
-      "color_start": [
-        0,
-        0,
-        0,
-        0
-      ],
-      "color_end": [
-        0,
-        0,
-        0,
-        0
-      ],
-      "tile": "",
-      "z": 0,
-      "spawn_offset_min": [
-        0,
-        0
-      ],
-      "spawn_offset_max": [
-        0,
-        0
-      ]
-    },
-    "weather": {
-      "enabled": false,
-      "type": "rain",
-      "emitter": {
-        "spawn_rate": 0,
-        "particle_lifetime_min": 0,
-        "particle_lifetime_max": 0,
-        "velocity_min": [
-          0,
-          0
-        ],
-        "velocity_max": [
-          0,
-          0
-        ],
-        "acceleration": [
-          0,
-          0
-        ],
-        "size_min": 0,
-        "size_max": 0,
-        "size_end_scale": 0,
-        "color_start": [
-          0,
-          0,
-          0,
-          0
-        ],
-        "color_end": [
-          0,
-          0,
-          0,
-          0
-        ],
-        "tile": "",
-        "z": 0,
-        "spawn_offset_min": [
-          0,
-          0
-        ],
-        "spawn_offset_max": [
-          0,
-          0
-        ]
-      },
-      "ambient_override": [
-        0,
-        0,
-        0,
-        0
-      ],
-      "fog_density": 0,
-      "fog_color": [
-        0,
-        0,
-        0
-      ],
-      "transition_speed": 0
-    },
-    "dayNight": {
-      "enabled": false,
-      "cycle_speed": 1,
-      "initial_time": 0,
-      "keyframes": []
-    },
-    "gaussianSplat": {
-      "ply_file": "assets/maps/seurat_island.ply",
-      "camera": {
-        "position": [
-          192,
-          40,
-          260
-        ],
-        "target": [
-          192,
-          0,
-          192
-        ],
-        "fov": 45
-      },
-      "render_width": 1280,
-      "render_height": 720,
-      "scale_multiplier": 0.8,
-      "background_image": "",
-      "parallax": {
-        "azimuth_range": 30,
-        "elevation_min": -10,
-        "elevation_max": 20,
-        "distance_range": 5,
-        "parallax_strength": 1
-      },
-      "morphPairPly": "",
-      "morphDuration": 2,
-      "morphDefaultBlend": 0,
-      "morphEasing": "linear"
-    },
-    "gsParticleEmitters": [
-      {
-        "id": "gs_emitter_1776583671217_1",
-        "preset": "",
-        "position": [
-          183.8,
-          5.2,
-          180.6
-        ],
-        "spawn_rate": 10,
-        "lifetime_min": 0.5,
-        "lifetime_max": 1.5,
-        "velocity_min": [
-          -1,
-          1,
-          -1
-        ],
-        "velocity_max": [
-          1,
-          3,
-          1
-        ],
-        "acceleration": [
-          0,
-          -9.8,
-          0
-        ],
-        "color_start": [
-          1,
-          0.8,
-          0.3
-        ],
-        "color_end": [
-          1,
-          0.2,
-          0
-        ],
-        "scale_min": [
-          0.3,
-          0.3,
-          0.3
-        ],
-        "scale_max": [
-          0.6,
-          0.6,
-          0.6
-        ],
-        "scale_end_factor": 0,
-        "opacity_start": 1,
-        "opacity_end": 0,
-        "emission": 0,
-        "spawn_region": {
-          "shape": "sphere",
-          "radius": 1,
-          "center": [
-            0,
-            0,
-            0
-          ],
-          "half_extents": [
-            1,
-            1,
-            1
-          ]
-        },
-        "burst_duration": 0
-      }
-    ],
-    "gsAnimations": [],
-    "vfxInstances": [
-      {
-        "vfx_file": "assets/vfx/torch.vfx.json",
-        "position": [
-          195.0,
-          4.4784,
-          181.0
-        ],
-        "rotation_y": 0,
-        "radius": 5,
-        "trigger": "auto",
-        "loop": true
-      },
-      {
-        "vfx_file": "assets/vfx/torch.vfx.json",
-        "position": [
-          185.0,
-          3.5245,
-          173.0
-        ],
-        "rotation_y": 0,
-        "radius": 5,
-        "trigger": "auto",
-        "loop": true
-      },
-      {
-        "vfx_file": "assets/vfx/torch.vfx.json",
-        "position": [
-          201.0,
-          3.0323,
-          191.0
-        ],
-        "rotation_y": 0,
-        "radius": 5,
-        "trigger": "auto",
-        "loop": true
-      },
-      {
-        "vfx_file": "assets/vfx/torch.vfx.json",
-        "position": [
-          211.0,
-          3.2403,
-          185.0
-        ],
-        "rotation_y": 0,
-        "radius": 5,
-        "trigger": "auto",
-        "loop": true
-      },
-      {
-        "vfx_file": "assets/vfx/fountain_spray.vfx.json",
-        "position": [
-          178,
-          3.2,
-          185
-        ],
-        "rotation_y": 0,
-        "radius": 5,
-        "trigger": "auto",
-        "loop": true
-      },
-      {
-        "vfx_file": "assets/vfx/crystal_burst.vfx.json",
-        "position": [
-          155,
-          3.3481,
-          145
-        ],
-        "rotation_y": 0,
-        "radius": 3,
-        "trigger": "proximity",
-        "loop": true
-      },
-      {
-        "vfx_file": "assets/vfx/crystal_burst.vfx.json",
-        "position": [
-          225,
-          3.6947,
-          195
-        ],
-        "rotation_y": 0,
-        "radius": 3,
-        "trigger": "proximity",
-        "loop": true
-      },
-      {
-        "vfx_file": "assets/vfx/crystal_burst.vfx.json",
-        "position": [
-          175,
-          3.0535,
-          235
-        ],
-        "rotation_y": 0,
-        "radius": 3,
-        "trigger": "proximity",
-        "loop": true
-      },
-      {
-        "vfx_file": "assets/vfx/crystal_burst.vfx.json",
-        "position": [
-          195,
-          2.0418,
-          120
-        ],
-        "rotation_y": 0,
-        "radius": 3,
-        "trigger": "proximity",
-        "loop": true
-      },
-      {
-        "vfx_file": "assets/vfx/spline_dragon_flame.vfx.json",
-        "position": [
-          230,
-          4,
-          145
-        ],
-        "rotation_y": 0,
-        "radius": 10,
-        "trigger": "auto",
-        "loop": true
-      },
-      {
-        "vfx_file": "assets/vfx/spline_smoke_trail.vfx.json",
-        "position": [
-          192,
-          6,
-          175
-        ],
-        "rotation_y": 0,
-        "radius": 8,
-        "trigger": "auto",
-        "loop": true
-      }
-    ],
-    "cameraVolumes": [
-      {
-        "id": "town_center",
-        "name": "town_center",
-        "shape": {
-          "type": "aabb",
-          "center": [
-            192,
-            5,
-            185
-          ],
-          "half_extents": [
-            25,
-            20,
-            25
-          ]
-        },
-        "params": {
-          "mode": "orbit",
-          "priority": 1,
-          "blend_time": 1.5,
-          "allow_user_orbit": true,
-          "pitch_min": -45,
-          "pitch_max": 5,
-          "yaw_min": -180,
-          "yaw_max": 180,
-          "fov": 42,
-          "orbit_distance": 20,
-          "offset": [
-            0,
-            6,
-            -12
-          ]
-        }
-      },
-      {
-        "id": "cliff_overlook",
-        "name": "cliff_overlook",
-        "shape": {
-          "type": "sphere",
-          "center": [
-            235,
-            6,
-            145
-          ],
-          "radius": 20
-        },
-        "params": {
-          "mode": "orbit",
-          "priority": 2,
-          "blend_time": 1.5,
-          "allow_user_orbit": true,
-          "pitch_min": -70,
-          "pitch_max": -10,
-          "yaw_min": -180,
-          "yaw_max": 180,
-          "fov": 50,
-          "orbit_distance": 30,
-          "offset": [
-            0,
-            12,
-            -20
-          ]
-        }
-      },
-      {
-        "id": "forest_edge",
-        "name": "forest_edge",
-        "shape": {
-          "type": "aabb",
-          "center": [
-            160,
-            5,
-            100
-          ],
-          "half_extents": [
-            40,
-            20,
-            30
-          ]
-        },
-        "params": {
-          "mode": "orbit",
-          "priority": 1,
-          "blend_time": 1.5,
-          "allow_user_orbit": true,
-          "pitch_min": -60,
-          "pitch_max": 10,
-          "yaw_min": -180,
-          "yaw_max": 180,
-          "fov": 48,
-          "orbit_distance": 22,
-          "offset": [
-            0,
-            7,
-            -14
-          ]
-        }
-      },
-      {
-        "id": "dungeon_approach",
-        "name": "dungeon_approach",
-        "shape": {
-          "type": "sphere",
-          "center": [
-            203,
-            3,
-            175
-          ],
-          "radius": 12
-        },
-        "params": {
-          "mode": "orbit",
-          "priority": 3,
-          "blend_time": 1.5,
-          "allow_user_orbit": true,
-          "pitch_min": -30,
-          "pitch_max": 0,
-          "yaw_min": -180,
-          "yaw_max": 180,
-          "fov": 40,
-          "orbit_distance": 15,
-          "offset": [
-            0,
-            5,
-            -8
-          ]
-        }
-      },
-      {
-        "id": "bridge_cinematic",
-        "name": "bridge_cinematic",
-        "shape": {
-          "type": "aabb",
-          "center": [
-            175,
-            5,
-            120
-          ],
-          "half_extents": [
-            25,
-            15,
-            15
-          ]
-        },
-        "params": {
-          "mode": "cinematic_rail",
-          "rail_id": "bridge_vista_rail",
-          "play_on_enter": true,
-          "cinematic_playback": "once",
-          "cinematic_duration": 8.0,
-          "cinematic_easing": "in_out_quad",
-          "blend_time": 1.5,
-          "target_mode": "player",
-          "priority": 10
-        }
-      }
-    ],
-    "cameraTriggers": [
-      {
-        "id": "trigger_0",
-        "shape": {
-          "type": "aabb",
-          "center": [
-            192,
-            5,
-            155
-          ],
-          "half_extents": [
-            50,
-            20,
-            5
-          ]
-        },
-        "from_zone": "forest_edge",
-        "to_zone": "town_center",
-        "blend_override": 2
-      },
-      {
-        "id": "trigger_1",
-        "shape": {
-          "type": "sphere",
-          "center": [
-            203,
-            3,
-            180
-          ],
-          "radius": 5
-        },
-        "from_zone": "",
-        "to_zone": "dungeon_approach",
-        "blend_override": 1
-      }
-    ],
-    "cameraRails": [
-      {
-        "id": "main_path_rail",
-        "name": "main_path_rail",
-        "control_points": [
-          [
-            150,
-            8,
-            100
-          ],
-          [
-            170,
-            6,
-            140
-          ],
-          [
-            185,
-            5,
-            175
-          ],
-          [
-            195,
-            4,
-            190
-          ],
-          [
-            210,
-            5,
-            180
-          ]
-        ],
-        "target_points": []
-      },
-      {
-        "id": "bridge_vista_rail",
-        "name": "bridge_vista_rail",
-        "control_points": [
-          [
-            175,
-            8,
-            135
-          ],
-          [
-            155,
-            18,
-            110
-          ],
-          [
-            160,
-            22,
-            80
-          ],
-          [
-            175,
-            18,
-            60
-          ],
-          [
-            185,
-            12,
-            90
-          ],
-          [
-            180,
-            8,
-            115
-          ]
-        ],
-        "target_points": []
-      }
-    ],
-    "cameraDefaultParams": {
-      "mode": "orbit",
-      "blend_time": 1.5,
-      "allow_user_orbit": true,
-      "pitch_min": -60,
-      "pitch_max": 10,
-      "yaw_min": -180,
-      "yaw_max": 180,
-      "fov": 45,
-      "orbit_distance": 25,
-      "offset": [
-        0,
-        8,
-        -15
-      ]
-    }
-  },
   "collisionGridData": {
     "width": 192,
     "height": 192,
@@ -76465,5 +73957,2565 @@
       0
     ],
     "nav_zone": []
+  },
+  "scene": {
+    "ambientColor": [
+      0.12,
+      0.12,
+      0.18,
+      1
+    ],
+    "godRaysIntensity": 0,
+    "staticLights": [
+      {
+        "id": "sun_1",
+        "position": [
+          90,
+          60,
+          300
+        ],
+        "radius": 500,
+        "color": [
+          1,
+          0.9,
+          0.7
+        ],
+        "intensity": 2
+      },
+      {
+        "id": "fill_1",
+        "position": [
+          300,
+          40,
+          90
+        ],
+        "radius": 400,
+        "color": [
+          0.7,
+          0.55,
+          0.4
+        ],
+        "intensity": 0.8
+      }
+    ],
+    "gameObjects": [
+      {
+        "id": "portal_dungeon",
+        "name": "Portal to Dungeon",
+        "position": [
+          203,
+          3,
+          175
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": 1,
+        "ply_file": "",
+        "components": {
+          "ProximityTrigger": {
+            "radius": 5,
+            "one_shot": true
+          },
+          "PortalTarget": {
+            "target_scene": "assets/scenes/dungeon.json",
+            "target_position": [
+              5,
+              0,
+              5
+            ],
+            "transition_color": [
+              1,
+              1,
+              1
+            ],
+            "transition_duration": 0.5,
+            "effect_type": 2
+          }
+        }
+      },
+      {
+        "id": "tree_1",
+        "name": "Tree",
+        "position": [
+          120,
+          2.0004,
+          150
+        ],
+        "rotation": [
+          0,
+          286.8,
+          0
+        ],
+        "scale": 1.56,
+        "ply_file": "assets/props/island_tree_1.ply",
+        "components": {},
+        "pbd": {
+          "mode": "wind_sway",
+          "sway_threshold": 0.7,
+          "wind_direction": [
+            1,
+            0,
+            0.3
+          ],
+          "wind_strength": 0.06,
+          "wind_frequency": 0.8
+        }
+      },
+      {
+        "id": "tree_2",
+        "name": "Tree",
+        "position": [
+          200,
+          1.8697,
+          130
+        ],
+        "rotation": [
+          0,
+          273.7,
+          0
+        ],
+        "scale": 2.36,
+        "ply_file": "assets/props/island_tree_2.ply",
+        "components": {},
+        "pbd": {
+          "mode": "wind_sway",
+          "sway_threshold": 0.7,
+          "wind_direction": [
+            1,
+            0,
+            0.3
+          ],
+          "wind_strength": 0.06,
+          "wind_frequency": 0.8
+        }
+      },
+      {
+        "id": "tree_3",
+        "name": "Tree",
+        "position": [
+          160,
+          3.3616,
+          220
+        ],
+        "rotation": [
+          0,
+          32.9,
+          0
+        ],
+        "scale": 2.4,
+        "ply_file": "assets/props/island_tree_3.ply",
+        "components": {},
+        "pbd": {
+          "mode": "wind_sway",
+          "sway_threshold": 0.7,
+          "wind_direction": [
+            1,
+            0,
+            0.3
+          ],
+          "wind_strength": 0.06,
+          "wind_frequency": 0.8
+        }
+      },
+      {
+        "id": "tree_4",
+        "name": "Tree",
+        "position": [
+          220,
+          3.6725,
+          180
+        ],
+        "rotation": [
+          0,
+          282.9,
+          0
+        ],
+        "scale": 1.91,
+        "ply_file": "assets/props/island_tree_4.ply",
+        "components": {},
+        "pbd": {
+          "mode": "wind_sway",
+          "sway_threshold": 0.7,
+          "wind_direction": [
+            1,
+            0,
+            0.3
+          ],
+          "wind_strength": 0.06,
+          "wind_frequency": 0.8
+        }
+      },
+      {
+        "id": "tree_5",
+        "name": "Tree",
+        "position": [
+          140,
+          0.7472,
+          100
+        ],
+        "rotation": [
+          0,
+          134.8,
+          0
+        ],
+        "scale": 2.15,
+        "ply_file": "assets/props/island_tree_5.ply",
+        "components": {},
+        "pbd": {
+          "mode": "wind_sway",
+          "sway_threshold": 0.7,
+          "wind_direction": [
+            1,
+            0,
+            0.3
+          ],
+          "wind_strength": 0.06,
+          "wind_frequency": 0.8
+        }
+      },
+      {
+        "id": "tree_6",
+        "name": "Tree",
+        "position": [
+          250,
+          1.6443,
+          160
+        ],
+        "rotation": [
+          0,
+          144.3,
+          0
+        ],
+        "scale": 2.07,
+        "ply_file": "assets/props/island_tree_6.ply",
+        "components": {},
+        "pbd": {
+          "mode": "wind_sway",
+          "sway_threshold": 0.7,
+          "wind_direction": [
+            1,
+            0,
+            0.3
+          ],
+          "wind_strength": 0.06,
+          "wind_frequency": 0.8
+        }
+      },
+      {
+        "id": "tree_7",
+        "name": "Tree",
+        "position": [
+          180,
+          2.1204,
+          250
+        ],
+        "rotation": [
+          0,
+          218.8,
+          0
+        ],
+        "scale": 1.55,
+        "ply_file": "assets/props/island_tree_7.ply",
+        "components": {},
+        "pbd": {
+          "mode": "wind_sway",
+          "sway_threshold": 0.7,
+          "wind_direction": [
+            1,
+            0,
+            0.3
+          ],
+          "wind_strength": 0.06,
+          "wind_frequency": 0.8
+        }
+      },
+      {
+        "id": "tree_8",
+        "name": "Tree",
+        "position": [
+          130,
+          1.8561,
+          200
+        ],
+        "rotation": [
+          0,
+          265.4,
+          0
+        ],
+        "scale": 2.21,
+        "ply_file": "assets/props/island_tree_8.ply",
+        "components": {},
+        "pbd": {
+          "mode": "wind_sway",
+          "sway_threshold": 0.7,
+          "wind_direction": [
+            1,
+            0,
+            0.3
+          ],
+          "wind_strength": 0.06,
+          "wind_frequency": 0.8
+        }
+      },
+      {
+        "id": "tree_9",
+        "name": "Tree",
+        "position": [
+          210,
+          3.7203,
+          240
+        ],
+        "rotation": [
+          0,
+          332,
+          0
+        ],
+        "scale": 2.21,
+        "ply_file": "assets/props/island_tree_9.ply",
+        "components": {},
+        "pbd": {
+          "mode": "wind_sway",
+          "sway_threshold": 0.7,
+          "wind_direction": [
+            1,
+            0,
+            0.3
+          ],
+          "wind_strength": 0.06,
+          "wind_frequency": 0.8
+        }
+      },
+      {
+        "id": "tree_10",
+        "name": "Tree",
+        "position": [
+          170,
+          4.3758,
+          140
+        ],
+        "rotation": [
+          0,
+          236.1,
+          0
+        ],
+        "scale": 2.24,
+        "ply_file": "assets/props/island_tree_10.ply",
+        "components": {},
+        "pbd": {
+          "mode": "wind_sway",
+          "sway_threshold": 0.7,
+          "wind_direction": [
+            1,
+            0,
+            0.3
+          ],
+          "wind_strength": 0.06,
+          "wind_frequency": 0.8
+        }
+      },
+      {
+        "id": "tree_11",
+        "name": "Tree",
+        "position": [
+          240,
+          2.5612,
+          200
+        ],
+        "rotation": [
+          0,
+          67.5,
+          0
+        ],
+        "scale": 2,
+        "ply_file": "assets/props/island_tree_11.ply",
+        "components": {},
+        "pbd": {
+          "mode": "wind_sway",
+          "sway_threshold": 0.7,
+          "wind_direction": [
+            1,
+            0,
+            0.3
+          ],
+          "wind_strength": 0.06,
+          "wind_frequency": 0.8
+        }
+      },
+      {
+        "id": "tree_12",
+        "name": "Tree",
+        "position": [
+          150,
+          1.4526,
+          170
+        ],
+        "rotation": [
+          0,
+          322.2,
+          0
+        ],
+        "scale": 2.43,
+        "ply_file": "assets/props/island_tree_12.ply",
+        "components": {},
+        "pbd": {
+          "mode": "wind_sway",
+          "sway_threshold": 0.7,
+          "wind_direction": [
+            1,
+            0,
+            0.3
+          ],
+          "wind_strength": 0.06,
+          "wind_frequency": 0.8
+        }
+      },
+      {
+        "id": "rock_1",
+        "name": "Rock",
+        "position": [
+          150,
+          5.9757,
+          110
+        ],
+        "rotation": [
+          0,
+          261.9,
+          0
+        ],
+        "scale": 1,
+        "ply_file": "assets/props/island_rock_1.ply",
+        "components": {}
+      },
+      {
+        "id": "rock_2",
+        "name": "Rock",
+        "position": [
+          230,
+          13.5795,
+          170
+        ],
+        "rotation": [
+          0,
+          279.9,
+          0
+        ],
+        "scale": 1,
+        "ply_file": "assets/props/island_rock_2.ply",
+        "components": {}
+      },
+      {
+        "id": "rock_3",
+        "name": "Rock",
+        "position": [
+          130,
+          8.5884,
+          210
+        ],
+        "rotation": [
+          0,
+          317,
+          0
+        ],
+        "scale": 1,
+        "ply_file": "assets/props/island_rock_3.ply",
+        "components": {}
+      },
+      {
+        "id": "rock_4",
+        "name": "Rock",
+        "position": [
+          200,
+          10.767300000000002,
+          100
+        ],
+        "rotation": [
+          0,
+          215.4,
+          0
+        ],
+        "scale": 0.98,
+        "ply_file": "assets/props/island_rock_4.ply",
+        "components": {}
+      },
+      {
+        "id": "rock_5",
+        "name": "Rock",
+        "position": [
+          170,
+          5.669099999999999,
+          260
+        ],
+        "rotation": [
+          0,
+          96.2,
+          0
+        ],
+        "scale": 1,
+        "ply_file": "assets/props/island_rock_5.ply",
+        "components": {}
+      },
+      {
+        "id": "rock_6",
+        "name": "Rock",
+        "position": [
+          260,
+          9.762200000000002,
+          190
+        ],
+        "rotation": [
+          0,
+          357.7,
+          0
+        ],
+        "scale": 1,
+        "ply_file": "assets/props/island_rock_6.ply",
+        "components": {}
+      },
+      {
+        "id": "house",
+        "name": "House",
+        "position": [
+          192,
+          4.5658,
+          175
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": 0.8,
+        "ply_file": "assets/props/island_house.ply",
+        "components": {
+          "ProximityTrigger": {
+            "radius": 30
+          },
+          "VfxTrigger": {
+            "vfx_path": "assets/vfx/chimney_smoke.vfx.json"
+          }
+        }
+      },
+      {
+        "id": "fountain",
+        "name": "Fountain",
+        "position": [
+          178,
+          3.2,
+          185
+        ],
+        "rotation": [
+          0,
+          45,
+          0
+        ],
+        "scale": 0.65,
+        "ply_file": "assets/props/island_fountain.ply",
+        "components": {
+          "ProximityTrigger": {
+            "radius": 10
+          },
+          "VfxTrigger": {
+            "vfx_path": "assets/vfx/fountain_spray.vfx.json"
+          }
+        }
+      },
+      {
+        "id": "treasure_chest",
+        "name": "Treasure Chest",
+        "position": [
+          235,
+          4,
+          145
+        ],
+        "rotation": [
+          0,
+          210,
+          0
+        ],
+        "scale": 0.8,
+        "ply_file": "assets/props/treasure_chest.ply",
+        "components": {
+          "ProximityTrigger": {
+            "radius": 8,
+            "one_shot": true
+          },
+          "AnimationTrigger": {
+            "effect_name": "scatter",
+            "anim_radius": 4,
+            "lifetime": 2,
+            "loop": false
+          }
+        }
+      },
+      {
+        "id": "mushroom_cluster",
+        "name": "Glowing Mushrooms",
+        "position": [
+          135,
+          2.5,
+          215
+        ],
+        "rotation": [
+          0,
+          120,
+          0
+        ],
+        "scale": 0.5,
+        "ply_file": "assets/props/glow_mushrooms.ply",
+        "components": {}
+      },
+      {
+        "id": "lantern_1",
+        "name": "Lantern Post",
+        "position": [
+          186,
+          3.5,
+          192
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": 0.45,
+        "ply_file": "assets/props/lantern_post.ply",
+        "components": {}
+      },
+      {
+        "id": "lantern_2",
+        "name": "Lantern Post",
+        "position": [
+          189,
+          3.8,
+          186
+        ],
+        "rotation": [
+          0,
+          45,
+          0
+        ],
+        "scale": 0.45,
+        "ply_file": "assets/props/lantern_post.ply",
+        "components": {}
+      },
+      {
+        "id": "lantern_3",
+        "name": "Lantern Post",
+        "position": [
+          191,
+          4,
+          180
+        ],
+        "rotation": [
+          0,
+          90,
+          0
+        ],
+        "scale": 0.45,
+        "ply_file": "assets/props/lantern_post.ply",
+        "components": {}
+      },
+      {
+        "id": "lantern_4",
+        "name": "Lantern Post",
+        "position": [
+          175,
+          3,
+          195
+        ],
+        "rotation": [
+          0,
+          180,
+          0
+        ],
+        "scale": 0.45,
+        "ply_file": "assets/props/lantern_post.ply",
+        "components": {}
+      },
+      {
+        "id": "flower_1",
+        "name": "Flower",
+        "position": [
+          160,
+          3.5864000000000003,
+          160
+        ],
+        "rotation": [
+          0,
+          200.1,
+          0
+        ],
+        "scale": 0.1,
+        "ply_file": "assets/props/island_flower1.ply",
+        "components": {}
+      },
+      {
+        "id": "flower_2",
+        "name": "Flower",
+        "position": [
+          200,
+          2.7409,
+          200
+        ],
+        "rotation": [
+          0,
+          241.5,
+          0
+        ],
+        "scale": 0.1,
+        "ply_file": "assets/props/island_flower1.ply",
+        "components": {}
+      },
+      {
+        "id": "flower_3",
+        "name": "Flower",
+        "position": [
+          180,
+          3.5151000000000003,
+          130
+        ],
+        "rotation": [
+          0,
+          320.6,
+          0
+        ],
+        "scale": 0.11,
+        "ply_file": "assets/props/island_flower1.ply",
+        "components": {}
+      },
+      {
+        "id": "flower_4",
+        "name": "Flower",
+        "position": [
+          220,
+          3.2845,
+          150
+        ],
+        "rotation": [
+          0,
+          19.6,
+          0
+        ],
+        "scale": 0.11,
+        "ply_file": "assets/props/island_flower1.ply",
+        "components": {}
+      },
+      {
+        "id": "flower_5",
+        "name": "Flower",
+        "position": [
+          140,
+          1.6401000000000001,
+          180
+        ],
+        "rotation": [
+          0,
+          20,
+          0
+        ],
+        "scale": 0.07,
+        "ply_file": "assets/props/island_flower1.ply",
+        "components": {}
+      },
+      {
+        "id": "flower_6",
+        "name": "Flower",
+        "position": [
+          190,
+          3.0744000000000002,
+          230
+        ],
+        "rotation": [
+          0,
+          191.6,
+          0
+        ],
+        "scale": 0.11,
+        "ply_file": "assets/props/island_flower1.ply",
+        "components": {}
+      },
+      {
+        "id": "flower_7",
+        "name": "Flower",
+        "position": [
+          170,
+          4.1552,
+          190
+        ],
+        "rotation": [
+          0,
+          3.5,
+          0
+        ],
+        "scale": 0.11,
+        "ply_file": "assets/props/island_flower1.ply",
+        "components": {}
+      },
+      {
+        "id": "flower_8",
+        "name": "Flower",
+        "position": [
+          210,
+          5.3064,
+          170
+        ],
+        "rotation": [
+          0,
+          255.2,
+          0
+        ],
+        "scale": 0.07,
+        "ply_file": "assets/props/island_flower1.ply",
+        "components": {}
+      },
+      {
+        "id": "crystal_1",
+        "name": "Crystal",
+        "position": [
+          155,
+          3.3481,
+          145
+        ],
+        "rotation": [
+          0,
+          171.2,
+          0
+        ],
+        "scale": 1.28,
+        "ply_file": "assets/props/island_crystal1.ply",
+        "components": {
+          "ProximityTrigger": {
+            "radius": 14
+          },
+          "AnimationTrigger": {
+            "effect_name": "orbit",
+            "anim_radius": 6,
+            "lifetime": 4,
+            "loop": true
+          }
+        }
+      },
+      {
+        "id": "crystal_2",
+        "name": "Crystal",
+        "position": [
+          225,
+          3.6947,
+          195
+        ],
+        "rotation": [
+          0,
+          183.8,
+          0
+        ],
+        "scale": 1.63,
+        "ply_file": "assets/props/island_crystal1.ply",
+        "components": {
+          "ProximityTrigger": {
+            "radius": 14
+          },
+          "AnimationTrigger": {
+            "effect_name": "wave",
+            "anim_radius": 8,
+            "lifetime": 3,
+            "loop": true
+          }
+        }
+      },
+      {
+        "id": "crystal_3",
+        "name": "Crystal",
+        "position": [
+          175,
+          3.0535,
+          235
+        ],
+        "rotation": [
+          0,
+          143.9,
+          0
+        ],
+        "scale": 1.36,
+        "ply_file": "assets/props/island_crystal1.ply",
+        "components": {
+          "ProximityTrigger": {
+            "radius": 14
+          },
+          "AnimationTrigger": {
+            "effect_name": "float",
+            "anim_radius": 5,
+            "lifetime": 5,
+            "loop": true
+          }
+        }
+      },
+      {
+        "id": "crystal_4",
+        "name": "Crystal",
+        "position": [
+          195,
+          2.0418,
+          120
+        ],
+        "rotation": [
+          0,
+          0.5,
+          0
+        ],
+        "scale": 1.53,
+        "ply_file": "assets/props/island_crystal1.ply",
+        "components": {
+          "ProximityTrigger": {
+            "radius": 14
+          },
+          "VfxTrigger": {
+            "vfx_path": "assets/vfx/crystal_burst.vfx.json"
+          }
+        }
+      },
+      {
+        "id": "torch_1",
+        "name": "Torch",
+        "position": [
+          195,
+          4.4784,
+          181
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": 1,
+        "ply_file": "",
+        "components": {
+          "ProximityTrigger": {
+            "radius": 12
+          },
+          "EmitterToggle": {
+            "emitter_index": 0
+          },
+          "LightToggle": {
+            "color_r": 1,
+            "color_g": 0.6,
+            "color_b": 0.1,
+            "radius": 15,
+            "intensity": 3
+          }
+        }
+      },
+      {
+        "id": "torch_2",
+        "name": "Torch",
+        "position": [
+          185,
+          3.5245,
+          173
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": 1,
+        "ply_file": "",
+        "components": {
+          "ProximityTrigger": {
+            "radius": 12
+          },
+          "EmitterToggle": {
+            "emitter_index": 1
+          },
+          "LightToggle": {
+            "color_r": 1,
+            "color_g": 0.6,
+            "color_b": 0.1,
+            "radius": 15,
+            "intensity": 3
+          }
+        }
+      },
+      {
+        "id": "torch_3",
+        "name": "Torch",
+        "position": [
+          201,
+          3.0323,
+          191
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": 1,
+        "ply_file": "",
+        "components": {
+          "ProximityTrigger": {
+            "radius": 12
+          },
+          "EmitterToggle": {
+            "emitter_index": 2
+          },
+          "LightToggle": {
+            "color_r": 1,
+            "color_g": 0.6,
+            "color_b": 0.1,
+            "radius": 15,
+            "intensity": 3
+          }
+        }
+      },
+      {
+        "id": "torch_4",
+        "name": "Torch",
+        "position": [
+          211,
+          3.2403,
+          185
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": 1,
+        "ply_file": "",
+        "components": {
+          "ProximityTrigger": {
+            "radius": 12
+          },
+          "EmitterToggle": {
+            "emitter_index": 3
+          },
+          "LightToggle": {
+            "color_r": 1,
+            "color_g": 0.6,
+            "color_b": 0.1,
+            "radius": 15,
+            "intensity": 3
+          }
+        }
+      },
+      {
+        "id": "anim_trigger_1",
+        "name": "Animation (pulse)",
+        "position": [
+          151,
+          1.5957,
+          111
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": 1,
+        "ply_file": "",
+        "components": {
+          "ProximityTrigger": {
+            "radius": 16
+          },
+          "AnimationTrigger": {
+            "effect_name": "pulse",
+            "anim_radius": 9.6,
+            "lifetime": 4,
+            "loop": true
+          }
+        }
+      },
+      {
+        "id": "anim_trigger_2",
+        "name": "Animation (wave)",
+        "position": [
+          231,
+          2.4555,
+          171
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": 1,
+        "ply_file": "",
+        "components": {
+          "ProximityTrigger": {
+            "radius": 16
+          },
+          "AnimationTrigger": {
+            "effect_name": "wave",
+            "anim_radius": 12.8,
+            "lifetime": 5,
+            "loop": true
+          }
+        }
+      },
+      {
+        "id": "anim_trigger_3",
+        "name": "Animation (vortex)",
+        "position": [
+          131,
+          3.3762,
+          211
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": 1,
+        "ply_file": "",
+        "components": {
+          "ProximityTrigger": {
+            "radius": 16
+          },
+          "AnimationTrigger": {
+            "effect_name": "vortex",
+            "anim_radius": 8,
+            "lifetime": 3,
+            "loop": true
+          }
+        }
+      },
+      {
+        "id": "anim_trigger_4",
+        "name": "Animation (float)",
+        "position": [
+          171,
+          1.2672,
+          261
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": 1,
+        "ply_file": "",
+        "components": {
+          "ProximityTrigger": {
+            "radius": 16
+          },
+          "AnimationTrigger": {
+            "effect_name": "float",
+            "anim_radius": 11.2,
+            "lifetime": 6,
+            "loop": true
+          }
+        }
+      },
+      {
+        "id": "mushroom_glow",
+        "name": "Glowing Mushrooms",
+        "position": [
+          135,
+          2.5,
+          215
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": 1,
+        "ply_file": "",
+        "components": {
+          "ProximityTrigger": {
+            "radius": 12
+          },
+          "AnimationTrigger": {
+            "effect_name": "dissolve",
+            "anim_radius": 5,
+            "lifetime": 3,
+            "loop": true
+          }
+        }
+      },
+      {
+        "id": "secret_summit",
+        "name": "Secret: Summit",
+        "position": [
+          165,
+          2,
+          120
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": 1,
+        "ply_file": "",
+        "components": {
+          "ProximityTrigger": {
+            "radius": 6,
+            "one_shot": true
+          },
+          "DiscoveryZone": {
+            "color_r": 1,
+            "color_g": 0.4,
+            "color_b": 0.1,
+            "burst_height": 12
+          },
+          "AnimationTrigger": {
+            "effect_name": "vortex",
+            "anim_radius": 6,
+            "lifetime": 4,
+            "loop": false
+          }
+        }
+      },
+      {
+        "id": "secret_cove",
+        "name": "Secret: Hidden Cove",
+        "position": [
+          250,
+          1.5,
+          230
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": 1,
+        "ply_file": "",
+        "components": {
+          "ProximityTrigger": {
+            "radius": 6,
+            "one_shot": true
+          },
+          "DiscoveryZone": {
+            "color_r": 0.2,
+            "color_g": 0.6,
+            "color_b": 1,
+            "burst_height": 10
+          },
+          "AnimationTrigger": {
+            "effect_name": "vortex",
+            "anim_radius": 6,
+            "lifetime": 4,
+            "loop": false
+          }
+        }
+      },
+      {
+        "id": "secret_grove",
+        "name": "Secret: Ancient Grove",
+        "position": [
+          120,
+          3,
+          160
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": 1,
+        "ply_file": "",
+        "components": {
+          "ProximityTrigger": {
+            "radius": 6,
+            "one_shot": true
+          },
+          "DiscoveryZone": {
+            "color_r": 0.4,
+            "color_g": 1,
+            "color_b": 0.3,
+            "burst_height": 8
+          },
+          "AnimationTrigger": {
+            "effect_name": "vortex",
+            "anim_radius": 6,
+            "lifetime": 4,
+            "loop": false
+          }
+        }
+      },
+      {
+        "id": "knight_01",
+        "name": "Knight",
+        "position": [
+          202,
+          0,
+          187
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": 0.45,
+        "ply_file": "assets/characters/knight/knight.ply",
+        "components": {
+          "BoneAnimated": {
+            "manifest": "assets/characters/knight/knight.manifest.json",
+            "default_clip": "idle"
+          },
+          "NpcWalker": {
+            "patrol_radius": 12,
+            "speed": 8,
+            "pause_duration": 1.5
+          }
+        }
+      },
+      {
+        "id": "slime_npc_1",
+        "name": "Slime (patrol)",
+        "position": [
+          170,
+          3,
+          195
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": 0.5,
+        "ply_file": "assets/characters/slime/slime.ply",
+        "components": {
+          "BoneAnimated": {
+            "manifest": "assets/characters/slime/slime.manifest.json",
+            "default_clip": "idle"
+          },
+          "NpcWalker": {
+            "patrol_radius": 20,
+            "speed": 8,
+            "pause_duration": 0.8
+          },
+          "ProximityTrigger": {
+            "radius": 6
+          },
+          "AnimationTrigger": {
+            "effect_name": "pulse",
+            "anim_radius": 4,
+            "lifetime": 2,
+            "loop": true
+          }
+        }
+      },
+      {
+        "id": "slime_npc_2",
+        "name": "Slime (guard)",
+        "position": [
+          210,
+          3,
+          180
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": 0.5,
+        "ply_file": "assets/characters/slime/slime.ply",
+        "components": {
+          "BoneAnimated": {
+            "manifest": "assets/characters/slime/slime.manifest.json",
+            "default_clip": "idle"
+          },
+          "NpcWalker": {
+            "patrol_radius": 16,
+            "speed": 10,
+            "pause_duration": 0.5
+          },
+          "ProximityTrigger": {
+            "radius": 6
+          },
+          "AnimationTrigger": {
+            "effect_name": "orbit",
+            "anim_radius": 3,
+            "lifetime": 3,
+            "loop": true
+          }
+        }
+      },
+      {
+        "id": "slime_npc_3",
+        "name": "Slime (wanderer)",
+        "position": [
+          145,
+          3,
+          200
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": 0.5,
+        "ply_file": "assets/characters/slime/slime.ply",
+        "components": {
+          "BoneAnimated": {
+            "manifest": "assets/characters/slime/slime.manifest.json",
+            "default_clip": "idle"
+          },
+          "NpcWalker": {
+            "patrol_radius": 25,
+            "speed": 12,
+            "pause_duration": 0.3
+          },
+          "ProximityTrigger": {
+            "radius": 6
+          },
+          "AnimationTrigger": {
+            "effect_name": "wave",
+            "anim_radius": 5,
+            "lifetime": 2,
+            "loop": true
+          }
+        }
+      },
+      {
+        "id": "player",
+        "name": "player",
+        "position": [
+          187,
+          1.9663,
+          197
+        ],
+        "rotation": [
+          0,
+          180,
+          0
+        ],
+        "scale": 0.45,
+        "ply_file": "assets/characters/warm_robot/warm_robot.ply",
+        "components": {
+          "PlayerController": {
+            "speed": 20,
+            "acceleration": 20
+          },
+          "PlayerJump": {
+            "height": 4,
+            "duration": 0.8
+          },
+          "BoneAnimated": {
+            "manifest": "assets/characters/warm_robot/warm_robot.manifest.json",
+            "default_clip": "idle"
+          },
+          "KinematicBody": {
+            "desired_jump_height": 2.0,
+            "time_to_apex": 0.4
+          },
+          "ColliderComponent": {
+            "shape": {
+              "type": "capsule",
+              "radius": 0.3,
+              "half_height": 0.5
+            },
+            "is_dynamic": true
+          },
+          "PlayerTag": {}
+        }
+      },
+      {
+        "id": "kcc_wall_a",
+        "name": "Angled Stone Wall A",
+        "position": [
+          198,
+          0,
+          170
+        ],
+        "rotation": [
+          0,
+          30,
+          0
+        ],
+        "scale": 1,
+        "ply_file": "assets/props/kcc_stone_wall.ply",
+        "components": {
+          "ColliderComponent": {
+            "shape": {
+              "type": "box",
+              "half_extents": [
+                3,
+                2,
+                0.4
+              ]
+            },
+            "offset": [
+              0,
+              2,
+              0
+            ],
+            "local_rotation": [
+              0,
+              0,
+              0,
+              1
+            ],
+            "collision_mask": 1,
+            "is_trigger": false,
+            "is_dynamic": false
+          }
+        }
+      },
+      {
+        "id": "kcc_wall_b",
+        "name": "Angled Stone Wall B",
+        "position": [
+          208,
+          0,
+          172
+        ],
+        "rotation": [
+          0,
+          -25,
+          0
+        ],
+        "scale": 1,
+        "ply_file": "assets/props/kcc_stone_wall.ply",
+        "components": {
+          "ColliderComponent": {
+            "shape": {
+              "type": "box",
+              "half_extents": [
+                3,
+                2,
+                0.4
+              ]
+            },
+            "offset": [
+              0,
+              2,
+              0
+            ],
+            "local_rotation": [
+              0,
+              0,
+              0,
+              1
+            ],
+            "collision_mask": 1,
+            "is_trigger": false,
+            "is_dynamic": false
+          }
+        }
+      },
+      {
+        "id": "kcc_boulder_a",
+        "name": "Boulder A",
+        "position": [
+          200,
+          0,
+          178
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": 1,
+        "ply_file": "assets/props/kcc_boulder_1_2.ply",
+        "components": {
+          "ColliderComponent": {
+            "shape": {
+              "type": "sphere",
+              "radius": 1.2
+            },
+            "offset": [
+              0,
+              1.2,
+              0
+            ],
+            "is_trigger": false,
+            "is_dynamic": false
+          }
+        }
+      },
+      {
+        "id": "kcc_boulder_b",
+        "name": "Boulder B",
+        "position": [
+          205,
+          0.5,
+          168
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": 1,
+        "ply_file": "assets/props/kcc_boulder_1_0.ply",
+        "components": {
+          "ColliderComponent": {
+            "shape": {
+              "type": "sphere",
+              "radius": 1
+            },
+            "offset": [
+              0,
+              1,
+              0
+            ],
+            "local_rotation": [
+              0,
+              0,
+              0,
+              1
+            ],
+            "collision_mask": 1,
+            "is_trigger": false,
+            "is_dynamic": false
+          }
+        }
+      },
+      {
+        "id": "kcc_boulder_c",
+        "name": "Boulder C",
+        "position": [
+          197,
+          0,
+          174
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": 1,
+        "ply_file": "assets/props/kcc_boulder_1_5.ply",
+        "components": {
+          "ColliderComponent": {
+            "shape": {
+              "type": "sphere",
+              "radius": 1.5
+            },
+            "offset": [
+              0,
+              1.5,
+              0
+            ],
+            "local_rotation": [
+              0,
+              0,
+              0,
+              1
+            ],
+            "collision_mask": 1,
+            "is_trigger": false,
+            "is_dynamic": false
+          }
+        }
+      },
+      {
+        "id": "kcc_pillar_a",
+        "name": "Ruined Pillar A",
+        "position": [
+          202,
+          0,
+          173
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": 1,
+        "ply_file": "assets/props/kcc_stone_pillar.ply",
+        "components": {
+          "ColliderComponent": {
+            "shape": {
+              "type": "capsule",
+              "radius": 0.5,
+              "half_height": 1.5
+            },
+            "offset": [
+              0,
+              2,
+              0
+            ],
+            "local_rotation": [
+              0,
+              0,
+              0,
+              1
+            ],
+            "collision_mask": 1,
+            "is_trigger": false,
+            "is_dynamic": false
+          }
+        }
+      },
+      {
+        "id": "kcc_pillar_b",
+        "name": "Ruined Pillar B",
+        "position": [
+          206,
+          0,
+          177
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": 1,
+        "ply_file": "assets/props/kcc_stone_pillar.ply",
+        "components": {
+          "ColliderComponent": {
+            "shape": {
+              "type": "capsule",
+              "radius": 0.5,
+              "half_height": 1.5
+            },
+            "offset": [
+              0,
+              2,
+              0
+            ],
+            "local_rotation": [
+              0,
+              0,
+              0,
+              1
+            ],
+            "collision_mask": 1,
+            "is_trigger": false,
+            "is_dynamic": false
+          }
+        }
+      },
+      {
+        "id": "kcc_ramp",
+        "name": "Low Ramp",
+        "position": [
+          201,
+          0,
+          165
+        ],
+        "rotation": [
+          15,
+          0,
+          0
+        ],
+        "scale": 1,
+        "ply_file": "assets/props/kcc_stone_ramp.ply",
+        "components": {
+          "ColliderComponent": {
+            "shape": {
+              "type": "box",
+              "half_extents": [
+                2,
+                0.5,
+                3
+              ]
+            },
+            "offset": [
+              0,
+              0.5,
+              0
+            ],
+            "local_rotation": [
+              0,
+              0,
+              0,
+              1
+            ],
+            "collision_mask": 1,
+            "is_trigger": false,
+            "is_dynamic": false
+          }
+        }
+      },
+      {
+        "id": "terrain_heightfield",
+        "name": "terrain_heightfield",
+        "position": [
+          0,
+          0,
+          0
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": 1.0,
+        "components": {
+          "HeightfieldComponent": {
+            "image_path": "assets/terrain/seurat_island_heightmap.png",
+            "width": 384.0,
+            "length": 384.0,
+            "min_height": 0.0,
+            "max_height": 5.479599952697754
+          }
+        }
+      }
+    ],
+    "player": {
+      "position": [
+        187,
+        1.9663,
+        197
+      ],
+      "tint": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "facing": "down",
+      "character_id": ""
+    },
+    "backgroundLayers": [],
+    "torchEmitter": {
+      "spawn_rate": 0,
+      "particle_lifetime_min": 0,
+      "particle_lifetime_max": 0,
+      "velocity_min": [
+        0,
+        0
+      ],
+      "velocity_max": [
+        0,
+        0
+      ],
+      "acceleration": [
+        0,
+        0
+      ],
+      "size_min": 0,
+      "size_max": 0,
+      "size_end_scale": 0,
+      "color_start": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "color_end": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "tile": "",
+      "z": 0,
+      "spawn_offset_min": [
+        0,
+        0
+      ],
+      "spawn_offset_max": [
+        0,
+        0
+      ]
+    },
+    "torchPositions": [
+      [
+        195,
+        4.4784,
+        181
+      ],
+      [
+        185,
+        3.5245,
+        173
+      ],
+      [
+        201,
+        3.0323,
+        191
+      ],
+      [
+        211,
+        3.2403,
+        185
+      ]
+    ],
+    "footstepEmitter": {
+      "spawn_rate": 0,
+      "particle_lifetime_min": 0,
+      "particle_lifetime_max": 0,
+      "velocity_min": [
+        0,
+        0
+      ],
+      "velocity_max": [
+        0,
+        0
+      ],
+      "acceleration": [
+        0,
+        0
+      ],
+      "size_min": 0,
+      "size_max": 0,
+      "size_end_scale": 0,
+      "color_start": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "color_end": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "tile": "",
+      "z": 0,
+      "spawn_offset_min": [
+        0,
+        0
+      ],
+      "spawn_offset_max": [
+        0,
+        0
+      ]
+    },
+    "npcAuraEmitter": {
+      "spawn_rate": 0,
+      "particle_lifetime_min": 0,
+      "particle_lifetime_max": 0,
+      "velocity_min": [
+        0,
+        0
+      ],
+      "velocity_max": [
+        0,
+        0
+      ],
+      "acceleration": [
+        0,
+        0
+      ],
+      "size_min": 0,
+      "size_max": 0,
+      "size_end_scale": 0,
+      "color_start": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "color_end": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "tile": "",
+      "z": 0,
+      "spawn_offset_min": [
+        0,
+        0
+      ],
+      "spawn_offset_max": [
+        0,
+        0
+      ]
+    },
+    "weather": {
+      "enabled": false,
+      "type": "rain",
+      "emitter": {
+        "spawn_rate": 0,
+        "particle_lifetime_min": 0,
+        "particle_lifetime_max": 0,
+        "velocity_min": [
+          0,
+          0
+        ],
+        "velocity_max": [
+          0,
+          0
+        ],
+        "acceleration": [
+          0,
+          0
+        ],
+        "size_min": 0,
+        "size_max": 0,
+        "size_end_scale": 0,
+        "color_start": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "color_end": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "tile": "",
+        "z": 0,
+        "spawn_offset_min": [
+          0,
+          0
+        ],
+        "spawn_offset_max": [
+          0,
+          0
+        ]
+      },
+      "ambient_override": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "fog_density": 0,
+      "fog_color": [
+        0,
+        0,
+        0
+      ],
+      "transition_speed": 0
+    },
+    "dayNight": {
+      "enabled": false,
+      "cycle_speed": 1,
+      "initial_time": 0,
+      "keyframes": []
+    },
+    "gaussianSplat": {
+      "ply_file": "assets/maps/seurat_island.ply",
+      "camera": {
+        "position": [
+          192,
+          40,
+          260
+        ],
+        "target": [
+          192,
+          0,
+          192
+        ],
+        "fov": 45
+      },
+      "render_width": 1280,
+      "render_height": 720,
+      "scale_multiplier": 0.8,
+      "background_image": "",
+      "parallax": {
+        "azimuth_range": 30,
+        "elevation_min": -10,
+        "elevation_max": 20,
+        "distance_range": 5,
+        "parallax_strength": 1
+      },
+      "morphPairPly": "",
+      "morphDuration": 2,
+      "morphDefaultBlend": 0,
+      "morphEasing": "linear"
+    },
+    "gsParticleEmitters": [
+      {
+        "id": "gs_emitter_1776583671217_1",
+        "preset": "",
+        "position": [
+          183.8,
+          5.2,
+          180.6
+        ],
+        "spawn_rate": 10,
+        "lifetime_min": 0.5,
+        "lifetime_max": 1.5,
+        "velocity_min": [
+          -1,
+          1,
+          -1
+        ],
+        "velocity_max": [
+          1,
+          3,
+          1
+        ],
+        "acceleration": [
+          0,
+          -9.8,
+          0
+        ],
+        "color_start": [
+          1,
+          0.8,
+          0.3
+        ],
+        "color_end": [
+          1,
+          0.2,
+          0
+        ],
+        "scale_min": [
+          0.3,
+          0.3,
+          0.3
+        ],
+        "scale_max": [
+          0.6,
+          0.6,
+          0.6
+        ],
+        "scale_end_factor": 0,
+        "opacity_start": 1,
+        "opacity_end": 0,
+        "emission": 0,
+        "spawn_region": {
+          "shape": "sphere",
+          "radius": 1,
+          "center": [
+            0,
+            0,
+            0
+          ],
+          "half_extents": [
+            1,
+            1,
+            1
+          ]
+        },
+        "burst_duration": 0
+      }
+    ],
+    "gsAnimations": [],
+    "vfxInstances": [
+      {
+        "vfx_file": "assets/vfx/torch.vfx.json",
+        "position": [
+          195,
+          4.4784,
+          181
+        ],
+        "rotation_y": 0,
+        "radius": 5,
+        "trigger": "auto",
+        "loop": true,
+        "id": "vfx_0_mobid3ep",
+        "name": "torch"
+      },
+      {
+        "vfx_file": "assets/vfx/torch.vfx.json",
+        "position": [
+          185,
+          3.5245,
+          173
+        ],
+        "rotation_y": 0,
+        "radius": 5,
+        "trigger": "auto",
+        "loop": true,
+        "id": "vfx_1_mobid3ep",
+        "name": "torch"
+      },
+      {
+        "vfx_file": "assets/vfx/torch.vfx.json",
+        "position": [
+          201,
+          3.0323,
+          191
+        ],
+        "rotation_y": 0,
+        "radius": 5,
+        "trigger": "auto",
+        "loop": true,
+        "id": "vfx_2_mobid3ep",
+        "name": "torch"
+      },
+      {
+        "vfx_file": "assets/vfx/torch.vfx.json",
+        "position": [
+          211,
+          3.2403,
+          185
+        ],
+        "rotation_y": 0,
+        "radius": 5,
+        "trigger": "auto",
+        "loop": true,
+        "id": "vfx_3_mobid3ep",
+        "name": "torch"
+      },
+      {
+        "vfx_file": "assets/vfx/fountain_spray.vfx.json",
+        "position": [
+          178,
+          3.2,
+          185
+        ],
+        "rotation_y": 0,
+        "radius": 5,
+        "trigger": "auto",
+        "loop": true,
+        "id": "vfx_4_mobid3ep",
+        "name": "fountain_spray"
+      },
+      {
+        "vfx_file": "assets/vfx/crystal_burst.vfx.json",
+        "position": [
+          155,
+          3.3481,
+          145
+        ],
+        "rotation_y": 0,
+        "radius": 3,
+        "trigger": "proximity",
+        "loop": true,
+        "id": "vfx_5_mobid3ep",
+        "name": "crystal_burst"
+      },
+      {
+        "vfx_file": "assets/vfx/crystal_burst.vfx.json",
+        "position": [
+          225,
+          3.6947,
+          195
+        ],
+        "rotation_y": 0,
+        "radius": 3,
+        "trigger": "proximity",
+        "loop": true,
+        "id": "vfx_6_mobid3ep",
+        "name": "crystal_burst"
+      },
+      {
+        "vfx_file": "assets/vfx/crystal_burst.vfx.json",
+        "position": [
+          175,
+          3.0535,
+          235
+        ],
+        "rotation_y": 0,
+        "radius": 3,
+        "trigger": "proximity",
+        "loop": true,
+        "id": "vfx_7_mobid3ep",
+        "name": "crystal_burst"
+      },
+      {
+        "vfx_file": "assets/vfx/crystal_burst.vfx.json",
+        "position": [
+          195,
+          2.0418,
+          120
+        ],
+        "rotation_y": 0,
+        "radius": 3,
+        "trigger": "proximity",
+        "loop": true,
+        "id": "vfx_8_mobid3ep",
+        "name": "crystal_burst"
+      },
+      {
+        "vfx_file": "assets/vfx/spline_dragon_flame.vfx.json",
+        "position": [
+          230,
+          4,
+          145
+        ],
+        "rotation_y": 0,
+        "radius": 10,
+        "trigger": "auto",
+        "loop": true,
+        "id": "vfx_9_mobid3ep",
+        "name": "spline_dragon_flame"
+      },
+      {
+        "vfx_file": "assets/vfx/spline_smoke_trail.vfx.json",
+        "position": [
+          192,
+          6,
+          175
+        ],
+        "rotation_y": 0,
+        "radius": 8,
+        "trigger": "auto",
+        "loop": true,
+        "id": "vfx_10_mobid3ep",
+        "name": "spline_smoke_trail"
+      }
+    ],
+    "cameraVolumes": [
+      {
+        "id": "town_center",
+        "name": "town_center",
+        "shape": {
+          "type": "aabb",
+          "center": [
+            192,
+            5,
+            185
+          ],
+          "half_extents": [
+            25,
+            20,
+            25
+          ]
+        },
+        "params": {
+          "mode": "orbit",
+          "priority": 1,
+          "blend_time": 1.5,
+          "allow_user_orbit": true,
+          "pitch_min": -45,
+          "pitch_max": 5,
+          "yaw_min": -180,
+          "yaw_max": 180,
+          "fov": 42,
+          "orbit_distance": 20,
+          "offset": [
+            0,
+            6,
+            -12
+          ]
+        }
+      },
+      {
+        "id": "cliff_overlook",
+        "name": "cliff_overlook",
+        "shape": {
+          "type": "sphere",
+          "center": [
+            235,
+            6,
+            145
+          ],
+          "radius": 20
+        },
+        "params": {
+          "mode": "orbit",
+          "priority": 2,
+          "blend_time": 1.5,
+          "allow_user_orbit": true,
+          "pitch_min": -70,
+          "pitch_max": -10,
+          "yaw_min": -180,
+          "yaw_max": 180,
+          "fov": 50,
+          "orbit_distance": 30,
+          "offset": [
+            0,
+            12,
+            -20
+          ]
+        }
+      },
+      {
+        "id": "forest_edge",
+        "name": "forest_edge",
+        "shape": {
+          "type": "aabb",
+          "center": [
+            160,
+            5,
+            100
+          ],
+          "half_extents": [
+            40,
+            20,
+            30
+          ]
+        },
+        "params": {
+          "mode": "orbit",
+          "priority": 1,
+          "blend_time": 1.5,
+          "allow_user_orbit": true,
+          "pitch_min": -60,
+          "pitch_max": 10,
+          "yaw_min": -180,
+          "yaw_max": 180,
+          "fov": 48,
+          "orbit_distance": 22,
+          "offset": [
+            0,
+            7,
+            -14
+          ]
+        }
+      },
+      {
+        "id": "dungeon_approach",
+        "name": "dungeon_approach",
+        "shape": {
+          "type": "sphere",
+          "center": [
+            203,
+            3,
+            175
+          ],
+          "radius": 12
+        },
+        "params": {
+          "mode": "orbit",
+          "priority": 3,
+          "blend_time": 1.5,
+          "allow_user_orbit": true,
+          "pitch_min": -30,
+          "pitch_max": 0,
+          "yaw_min": -180,
+          "yaw_max": 180,
+          "fov": 40,
+          "orbit_distance": 15,
+          "offset": [
+            0,
+            5,
+            -8
+          ]
+        }
+      },
+      {
+        "id": "bridge_cinematic",
+        "name": "bridge_cinematic",
+        "shape": {
+          "type": "aabb",
+          "center": [
+            175,
+            5,
+            120
+          ],
+          "half_extents": [
+            25,
+            15,
+            15
+          ]
+        },
+        "params": {
+          "mode": "cinematic_rail",
+          "rail_id": "bridge_vista_rail",
+          "play_on_enter": true,
+          "cinematic_playback": "once",
+          "cinematic_duration": 8,
+          "cinematic_easing": "in_out_quad",
+          "blend_time": 1.5,
+          "target_mode": "player",
+          "priority": 10
+        }
+      }
+    ],
+    "cameraTriggers": [
+      {
+        "id": "trigger_0",
+        "shape": {
+          "type": "aabb",
+          "center": [
+            192,
+            5,
+            155
+          ],
+          "half_extents": [
+            50,
+            20,
+            5
+          ]
+        },
+        "from_zone": "forest_edge",
+        "to_zone": "town_center",
+        "blend_override": 2
+      },
+      {
+        "id": "trigger_1",
+        "shape": {
+          "type": "sphere",
+          "center": [
+            203,
+            3,
+            180
+          ],
+          "radius": 5
+        },
+        "from_zone": "",
+        "to_zone": "dungeon_approach",
+        "blend_override": 1
+      }
+    ],
+    "cameraRails": [
+      {
+        "id": "main_path_rail",
+        "name": "main_path_rail",
+        "control_points": [
+          [
+            150,
+            8,
+            100
+          ],
+          [
+            170,
+            6,
+            140
+          ],
+          [
+            185,
+            5,
+            175
+          ],
+          [
+            195,
+            4,
+            190
+          ],
+          [
+            210,
+            5,
+            180
+          ]
+        ],
+        "target_points": []
+      },
+      {
+        "id": "bridge_vista_rail",
+        "name": "bridge_vista_rail",
+        "control_points": [
+          [
+            175,
+            8,
+            135
+          ],
+          [
+            155,
+            18,
+            110
+          ],
+          [
+            160,
+            22,
+            80
+          ],
+          [
+            175,
+            18,
+            60
+          ],
+          [
+            185,
+            12,
+            90
+          ],
+          [
+            180,
+            8,
+            115
+          ]
+        ],
+        "target_points": []
+      }
+    ],
+    "cameraDefaultParams": {
+      "mode": "orbit",
+      "blend_time": 1.5,
+      "allow_user_orbit": true,
+      "pitch_min": -60,
+      "pitch_max": 10,
+      "yaw_min": -180,
+      "yaw_max": 180,
+      "fov": 45,
+      "orbit_distance": 25,
+      "offset": [
+        0,
+        8,
+        -15
+      ]
+    }
   }
 }
