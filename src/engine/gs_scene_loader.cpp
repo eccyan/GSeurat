@@ -74,21 +74,9 @@ void GsSceneLoader::load(SceneLoadContext& ctx, const SceneData& scene_data,
         }
 
         // Snap game object positions to terrain elevation (in grid coordinates)
+        // Game objects use authored Y from scene JSON.
+        // Ground elevation is handled at runtime by HeightfieldComponent + KCC.
         auto snapped_objects = scene_data.game_objects;
-        if (scene_data.collision) {
-            const auto& grid = *scene_data.collision;
-            if (grid.width > 0 && !grid.elevation.empty()) {
-                for (auto& go : snapped_objects) {
-                    int gx = static_cast<int>(go.position.x() / grid.cell_size);
-                    int gz = static_cast<int>(go.position.z() / grid.cell_size);
-                    if (gx >= 0 && gx < static_cast<int>(grid.width) &&
-                        gz >= 0 && gz < static_cast<int>(grid.height)) {
-                        go.position.vec().y = grid.get_elevation(
-                            static_cast<uint32_t>(gx), static_cast<uint32_t>(gz));
-                    }
-                }
-            }
-        }
 
         // Convert grid positions to world positions via coord::to_world()
         ctx.scene_objects.game_objects = snapped_objects;

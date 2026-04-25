@@ -71,11 +71,13 @@ void emissive_toggle_system(ecs::World& world, float dt) {
 void npc_walker_system(ecs::World& world, float dt, BoneAnimationRegistry& registry) {
     const CollisionGrid* grid = nullptr;
     float grid_ox = 0.0f, grid_oz = 0.0f;
+    std::function<float(float, float)> height_fn;
     world.view<CollisionGridRef>().each(
         [&](ecs::Entity, CollisionGridRef& ref) {
             grid = ref.grid;
             grid_ox = ref.origin_x;
             grid_oz = ref.origin_z;
+            height_fn = ref.query_height;
         });
 
     world.view<NpcWalker, ecs::Transform>().each(
@@ -121,7 +123,7 @@ void npc_walker_system(ecs::World& world, float dt, BoneAnimationRegistry& regis
             t.position.vec().x += (dx / dist) * step;
             t.position.vec().z += (dz / dist) * step;
 
-            if (grid && grid->width > 0 && !grid->elevation.empty()) {
+            if (grid && grid->width > 0) {
                 int gx = static_cast<int>((t.position.x() - grid_ox) / grid->cell_size);
                 int gz = static_cast<int>((t.position.z() - grid_oz) / grid->cell_size);
                 if (gx >= 0 && gx < static_cast<int>(grid->width) &&
@@ -134,8 +136,10 @@ void npc_walker_system(ecs::World& world, float dt, BoneAnimationRegistry& regis
                         npc.pause_timer = 0.5f;
                         return;
                     }
-                    t.position.vec().y = grid->get_elevation(
-                        static_cast<uint32_t>(gx), static_cast<uint32_t>(gz));
+                    if (height_fn) {
+                        t.position.vec().y = height_fn(
+                            t.position.x(), t.position.z());
+                    }
                 }
             }
 

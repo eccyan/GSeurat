@@ -10,6 +10,7 @@
 #include "gseurat/engine/gs_chunk_grid.hpp"
 #include "gseurat/demo/island_components.hpp"
 #include "gseurat/engine/trigger_components.hpp"
+#include "gseurat/engine/collision/intersect.hpp"
 #include "gseurat/engine/scene_loader.hpp"
 #include "gseurat/engine/world_manifest.hpp"
 #include "gseurat/engine/project_root.hpp"
@@ -208,9 +209,6 @@ void IslandDemoState::on_enter(AppBase& app) {
                     size_t idx = bgz * collision_grid_.width + bgx;
                     if (collision_grid_.solid[idx]) {
                         collision_grid_.solid[idx] = false;
-                        if (!collision_grid_.elevation.empty()) {
-                            collision_grid_.elevation[idx] = 0.5f;  // slight elevation above water
-                        }
                         bridge_cleared++;
                     }
                 }
@@ -242,8 +240,6 @@ void IslandDemoState::on_enter(AppBase& app) {
                         size_t idx = fgz * forest_collision_grid_.width + fgx;
                         if (forest_collision_grid_.solid[idx]) {
                             forest_collision_grid_.solid[idx] = false;
-                            if (!forest_collision_grid_.elevation.empty())
-                                forest_collision_grid_.elevation[idx] = 0.5f;
                             forest_bridge++;
                         }
                     }
@@ -274,6 +270,13 @@ void IslandDemoState::on_enter(AppBase& app) {
         ref.grid = &collision_grid_;
         ref.origin_x = grid_origin_.x;
         ref.origin_z = grid_origin_.y;
+        ref.query_height = [this](float wx, float wz) -> float {
+            for (const auto& hf : collision_system_.heightfield_cache()) {
+                auto h = sample_height(hf, wx, wz);
+                if (h) return *h;
+            }
+            return 0.0f;
+        };
         app.world().add<CollisionGridRef>(grid_entity, ref);
     }
 
@@ -401,17 +404,10 @@ void IslandDemoState::on_enter(AppBase& app) {
                             // Convert grid position to world using chunk's AABB
                             glm::vec3 world_pos = go.position.vec() + chunk_aabb.min;
 
-                            // Snap Y to chunk collision grid elevation
-                            if (chunk_scene.collision) {
-                                const auto& grid = *chunk_scene.collision;
-                                int gx = static_cast<int>(go.position.x() / grid.cell_size);
-                                int gz = static_cast<int>(go.position.z() / grid.cell_size);
-                                if (gx >= 0 && gx < static_cast<int>(grid.width) &&
-                                    gz >= 0 && gz < static_cast<int>(grid.height)) {
-                                    world_pos.y = grid.get_elevation(
-                                        static_cast<uint32_t>(gx), static_cast<uint32_t>(gz))
-                                        + chunk_aabb.min.y;
-                                }
+                            // Snap Y to terrain via heightfield
+                            for (const auto& hf : collision_system_.heightfield_cache()) {
+                                auto h = sample_height(hf, world_pos.x, world_pos.z);
+                                if (h) { world_pos.y = *h; break; }
                             }
 
                             // Merge BoneAnimated PLY with bone index allocation
@@ -1084,67 +1080,6 @@ void IslandDemoState::update_player(AppBase& app, float dt) {
 
         // KCC handles position update — read back
         character_origin_ = transform->position.vec();
-    } else {
-        // ── Legacy grid path (unchanged) ────────────────────────────
-        // Update position
-        transform->position.vec() += player_velocity_ * dt;
-
-        // Snap Y to collision grid elevation if available
-        // Select which collision grid to use based on player Z position
-        CollisionGrid* active_grid = &collision_grid_;
-        glm::vec2 active_origin = grid_origin_;
-        if (forest_grid_loaded_ && transform->position.z() < 10.0f) {
-            active_grid = &forest_collision_grid_;
-            active_origin = forest_grid_origin_;
-        }
-
-        if (active_grid->width > 0 && active_grid->height > 0) {
-            float local_x = transform->position.x() - active_origin.x;
-            float local_z = transform->position.z() - active_origin.y;
-            int gx = static_cast<int>(local_x / active_grid->cell_size);
-            int gz = static_cast<int>(local_z / active_grid->cell_size);
-
-            if (gx >= 0 && gx < static_cast<int>(active_grid->width) &&
-                gz >= 0 && gz < static_cast<int>(active_grid->height)) {
-                // Check solid — if solid, undo movement
-                bool solid = active_grid->is_solid(static_cast<uint32_t>(gx),
-                                                    static_cast<uint32_t>(gz));
-                debug_frame_++;
-                if (solid) {
-                    if (debug_frame_ % 60 == 0) {
-                        std::fprintf(stderr, "[Collision] BLOCKED at grid(%d,%d) pos=(%.1f,%.1f)\n",
-                                     gx, gz, transform->position.x(), transform->position.z());
-                    }
-                    transform->position.vec() -= player_velocity_ * dt;
-                } else {
-                    // Ground elevation now handled by HeightfieldComponent + KCC sweep.
-                    // Solid-cell blocking above still enforces walkability.
-                }
-            }
-        }
-
-        // Update character origin for bone transforms
-        character_origin_ = transform->position.vec();
-
-        // Jump Y arc (parabolic: h = 4*H*t*(1-t) where t in [0,1])
-        {
-            auto* pj = app.world().try_get<PlayerJump>(player_entity_);
-            if (pj && pj->active) {
-                pj->timer += dt;
-                if (pj->timer >= pj->duration) {
-                    pj->active = false;
-                    pj->timer = 0.0f;
-                    // Return to idle or walk based on movement
-                    float spd = glm::length(glm::vec2(player_velocity_.x, player_velocity_.z));
-                    auto* pe = app.bone_animation_registry().get(player_registry_id_);
-                    if (pe) pe->requested_clip = spd > 0.1f ? "walk" : "idle";
-                } else {
-                    float t = pj->timer / pj->duration;
-                    float jump_y = 4.0f * pj->height * t * (1.0f - t);
-                    character_origin_.y += jump_y;
-                }
-            }
-        }
     }
 
     // Update facing angle from movement direction
@@ -1250,19 +1185,16 @@ void IslandDemoState::update_camera(AppBase& app, float dt) {
 
     // Gentle camera nudge: sample midpoint of eye-to-target ray.
     // If terrain occludes, nudge camera up just enough to clear.
-    if (collision_grid_.width > 0 && !collision_grid_.elevation.empty()) {
+    if (!collision_system_.heightfield_cache().empty()) {
         glm::vec3 mid = (eye + camera_target_) * 0.5f;
-        float lx = mid.x - grid_origin_.x;
-        float lz = mid.z - grid_origin_.y;
-        int gx = static_cast<int>(lx / collision_grid_.cell_size);
-        int gz = static_cast<int>(lz / collision_grid_.cell_size);
-        if (gx >= 0 && gx < static_cast<int>(collision_grid_.width) &&
-            gz >= 0 && gz < static_cast<int>(collision_grid_.height)) {
-            float terrain_y = collision_grid_.get_elevation(
-                static_cast<uint32_t>(gx), static_cast<uint32_t>(gz));
-            float mid_y = mid.y;
-            if (mid_y < terrain_y + 3.0f) {
-                eye.y += (terrain_y + 3.0f - mid_y) * 2.0f;
+        for (const auto& hf : collision_system_.heightfield_cache()) {
+            auto h = sample_height(hf, mid.x, mid.z);
+            if (h) {
+                float terrain_y = *h;
+                if (mid.y < terrain_y + 3.0f) {
+                    eye.y += (terrain_y + 3.0f - mid.y) * 2.0f;
+                }
+                break;
             }
         }
     }
@@ -2173,8 +2105,6 @@ void IslandDemoState::perform_portal_transition(AppBase& app,
                         size_t idx = bgz * collision_grid_.width + bgx;
                         if (collision_grid_.solid[idx]) {
                             collision_grid_.solid[idx] = false;
-                            if (!collision_grid_.elevation.empty())
-                                collision_grid_.elevation[idx] = 0.5f;
                             bridge_cleared++;
                         }
                     }
@@ -2247,15 +2177,10 @@ void IslandDemoState::perform_portal_transition(AppBase& app,
                         AABB chunk_aabb = extra.bounds();
                         for (const auto& go : chunk_scene.game_objects) {
                             glm::vec3 world_pos = go.position.vec() + chunk_aabb.min;
-                            if (chunk_scene.collision) {
-                                const auto& grid = *chunk_scene.collision;
-                                int gx = static_cast<int>(go.position.x() / grid.cell_size);
-                                int gz = static_cast<int>(go.position.z() / grid.cell_size);
-                                if (gx >= 0 && gx < static_cast<int>(grid.width) &&
-                                    gz >= 0 && gz < static_cast<int>(grid.height))
-                                    world_pos.y = grid.get_elevation(
-                                        static_cast<uint32_t>(gx), static_cast<uint32_t>(gz))
-                                        + chunk_aabb.min.y;
+                            // Snap Y to terrain via heightfield
+                            for (const auto& hf : collision_system_.heightfield_cache()) {
+                                auto h = sample_height(hf, world_pos.x, world_pos.z);
+                                if (h) { world_pos.y = *h; break; }
                             }
                             if (!go.ply_file.empty() && !go.components.is_null()
                                 && go.components.contains("BoneAnimated")) {

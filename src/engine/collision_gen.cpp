@@ -70,7 +70,6 @@ CollisionGrid generate_collision_from_gaussians(
     grid.cell_size = cell_size;
     size_t total = static_cast<size_t>(grid_width) * grid_height;
     grid.solid.resize(total, true);       // default: solid (no Gaussians = void)
-    grid.elevation.resize(total, 0.0f);
     grid.nav_zone.resize(total, 0);
     grid.light_probe.resize(total, glm::vec3(0.5f));
 
@@ -94,13 +93,9 @@ CollisionGrid generate_collision_from_gaussians(
             gz < 0 || gz >= static_cast<int>(grid_height)) continue;
 
         size_t idx = static_cast<size_t>(gz) * grid_width + static_cast<size_t>(gx);
-        // Track highest Y as ground elevation
         if (grid.solid[idx]) {
             // First Gaussian in this cell — mark as walkable
             grid.solid[idx] = false;
-            grid.elevation[idx] = g.position.y;
-        } else {
-            grid.elevation[idx] = std::max(grid.elevation[idx], g.position.y);
         }
 
         // Accumulate color for light probe
@@ -108,30 +103,7 @@ CollisionGrid generate_collision_from_gaussians(
         color_count[idx]++;
     }
 
-    // Mark cells with steep slope as solid
-    for (uint32_t gy = 0; gy < grid_height; ++gy) {
-        for (uint32_t gx = 0; gx < grid_width; ++gx) {
-            size_t idx = gy * grid_width + gx;
-            if (grid.solid[idx]) continue;  // already solid (void)
-
-            float h = grid.elevation[idx];
-            // Check neighbors for steep slopes
-            auto check_neighbor = [&](int nx, int ny) {
-                if (nx < 0 || nx >= static_cast<int>(grid_width) ||
-                    ny < 0 || ny >= static_cast<int>(grid_height)) return;
-                size_t nidx = static_cast<size_t>(ny) * grid_width + static_cast<size_t>(nx);
-                if (grid.solid[nidx]) return;
-                float diff = std::abs(grid.elevation[nidx] - h);
-                if (diff > slope_threshold) {
-                    grid.solid[idx] = true;
-                }
-            };
-            check_neighbor(static_cast<int>(gx) - 1, static_cast<int>(gy));
-            check_neighbor(static_cast<int>(gx) + 1, static_cast<int>(gy));
-            check_neighbor(static_cast<int>(gx), static_cast<int>(gy) - 1);
-            check_neighbor(static_cast<int>(gx), static_cast<int>(gy) + 1);
-        }
-    }
+    // Slope rejection is handled at runtime by the KCC's ground_angle_cos threshold.
 
     // Compute light probes (average Gaussian color per cell)
     for (size_t i = 0; i < total; ++i) {

@@ -20,9 +20,9 @@ WorldPos to_world(CellPos cell, const CollisionGrid& grid, const AABB& terrain_a
     float world_x = cell.x() * grid.cell_size + terrain_aabb.min.x;
     float world_z = cell.z() * grid.cell_size + terrain_aabb.min.z;
 
-    auto gx = static_cast<uint32_t>(cell.x());
-    auto gz = static_cast<uint32_t>(cell.z());
-    float world_y = grid.get_elevation(gx, gz);
+    // Y is not available from the grid; callers that need terrain Y should
+    // sample the HeightfieldComponent after this conversion.
+    float world_y = 0.0f;
 
     return WorldPos(world_x, world_y, world_z);
 }

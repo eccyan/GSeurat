@@ -203,7 +203,6 @@ int main() {
         grid.width = 256;
         grid.height = 128;
         grid.cell_size = 1.0f;
-        grid.elevation.resize(256 * 128, 5.0f);
 
         gseurat::AABB aabb;
         aabb.min = glm::vec3(-128.0f, 0.0f, 0.0f);
@@ -213,7 +212,7 @@ int main() {
         auto world = gseurat::coord::to_world(cell, grid, aabb);
 
         check(approx(world.x(), -118.0f), "cell→world X: 10*1 + (-128)");
-        check(approx(world.y(), 5.0f),    "cell→world Y: elevation");
+        check(approx(world.y(), 0.0f),    "cell→world Y: no elevation in grid");
         check(approx(world.z(), 20.0f),   "cell→world Z: 20*1 + 0");
     }
 
@@ -243,7 +242,6 @@ int main() {
         grid.width = 100;
         grid.height = 100;
         grid.cell_size = 1.0f;
-        grid.elevation.resize(10000, 3.0f);
 
         gseurat::AABB aabb;
         aabb.min = glm::vec3(-50.0f, 0.0f, -50.0f);
