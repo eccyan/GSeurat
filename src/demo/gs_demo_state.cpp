@@ -595,14 +595,9 @@ void GsDemoState::build_draw_lists(AppBase& app) {
         glm::vec4 layer_color{0.5f, 1.0f, 0.8f, 1.0f};
         char buf[128];
         uint32_t walkable = 0;
-        float min_elev = 1e9f, max_elev = -1e9f;
         for (uint32_t i = 0; i < scene_grid_.width * scene_grid_.height; ++i) {
             if (!scene_grid_.solid[i]) {
                 walkable++;
-                if (i < scene_grid_.elevation.size()) {
-                    min_elev = std::min(min_elev, scene_grid_.elevation[i]);
-                    max_elev = std::max(max_elev, scene_grid_.elevation[i]);
-                }
             }
         }
         std::snprintf(buf, sizeof(buf), "Grid: %ux%u  Walkable: %u/%u",
@@ -610,11 +605,6 @@ void GsDemoState::build_draw_lists(AppBase& app) {
                       walkable, scene_grid_.width * scene_grid_.height);
         ui.label(buf, lx, y, scale, layer_color);
         y -= 16.0f;
-        if (min_elev < 1e8f) {
-            std::snprintf(buf, sizeof(buf), "Elevation: %.1f - %.1f", min_elev, max_elev);
-            ui.label(buf, lx, y, scale, layer_color);
-            y -= 16.0f;
-        }
         // Show light probe sample at grid center
         uint32_t cx = scene_grid_.width / 2, cy = scene_grid_.height / 2;
         auto probe = scene_grid_.get_light_probe(cx, cy);
@@ -665,9 +655,7 @@ void GsDemoState::build_draw_lists(AppBase& app) {
                 // Get elevation at this waypoint
                 int gx = static_cast<int>((wp.x - grid_origin_.x) / scene_grid_.cell_size);
                 int gz = static_cast<int>((wp.y - grid_origin_.y) / scene_grid_.cell_size);
-                float wy = scene_grid_.get_elevation(
-                    static_cast<uint32_t>(std::max(0, gx)),
-                    static_cast<uint32_t>(std::max(0, gz)));
+                float wy = 0.0f;
                 auto [sx, sy] = project({wp.x, wy + 1.0f, wp.y});
                 if (sx > 0 && sx < screen_w && sy > 0 && sy < screen_h) {
                     ui.panel(sx, sy, 4.0f, 4.0f, {1.0f, 0.9f, 0.2f, 0.7f});
@@ -1044,7 +1032,7 @@ void GsDemoState::generate_scene_layers(AppBase& app) {
             auto [gx, gz] = walkable_cells[idx];
             float wx = aabb.min.x + (static_cast<float>(gx) + 0.5f) * cell;
             float wz = aabb.min.z + (static_cast<float>(gz) + 0.5f) * cell;
-            float wy = scene_grid_.get_elevation(gx, gz);
+            float wy = 0.0f;
             demo_markers_.push_back({wx, wy, wz});
 
             // Tint marker by light probe at this position

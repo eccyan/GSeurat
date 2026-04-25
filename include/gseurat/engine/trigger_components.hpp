@@ -3,6 +3,7 @@
 #include "gseurat/engine/collision_gen.hpp"
 
 #include <cstdint>
+#include <functional>
 
 namespace gseurat {
 
@@ -42,11 +43,12 @@ struct LinkedTrigger {
     bool fired = false;
 };
 
-// Singleton: stores collision grid pointer for NPC systems.
+// Singleton: stores collision grid pointer + terrain height query for NPC systems.
 struct CollisionGridRef {
     const CollisionGrid* grid = nullptr;
     float origin_x = 0.0f;
     float origin_z = 0.0f;
+    std::function<float(float world_x, float world_z)> query_height;
 };
 
 // Patrolling NPC — wanders randomly within patrol_radius of home position.

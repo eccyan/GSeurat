@@ -284,15 +284,6 @@ SceneData SceneLoader::from_json(const nlohmann::json& j) {
         } else {
             grid.solid.resize(total, false);
         }
-        if (col.contains("elevation")) {
-            const auto& elev_arr = col["elevation"];
-            grid.elevation.resize(elev_arr.size(), 0.0f);
-            for (size_t i = 0; i < elev_arr.size(); ++i) {
-                grid.elevation[i] = elev_arr[i].get<float>();
-            }
-        }
-        // If elevation is absent (migrated to HeightfieldComponent PNG),
-        // leave the vector empty so GsSceneLoader skips Y-snapping.
         if (col.contains("nav_zone")) {
             const auto& zone_arr = col["nav_zone"];
             grid.nav_zone.resize(zone_arr.size(), 0);
@@ -1037,11 +1028,6 @@ nlohmann::json SceneLoader::to_json(const SceneData& data) {
         nlohmann::json solid_arr = nlohmann::json::array();
         for (bool s : grid.solid) solid_arr.push_back(s);
         col["solid"] = solid_arr;
-        if (!grid.elevation.empty()) {
-            nlohmann::json elev_arr = nlohmann::json::array();
-            for (float e : grid.elevation) elev_arr.push_back(e);
-            col["elevation"] = elev_arr;
-        }
         if (!grid.nav_zone.empty()) {
             nlohmann::json zone_arr = nlohmann::json::array();
             for (uint8_t z : grid.nav_zone) zone_arr.push_back(z);

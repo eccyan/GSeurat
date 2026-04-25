@@ -108,7 +108,7 @@ void draw_collision_grid_overlay(ImDrawList* dl,
             float wx1 = grid_origin.x + (gx + 1) * grid.cell_size;
             float wz0 = grid_origin.y + gz * grid.cell_size;
             float wz1 = grid_origin.y + (gz + 1) * grid.cell_size;
-            float wy = grid.get_elevation(gx, gz);
+            float wy = 0.0f;  // grid overlay is drawn flat; terrain Y from HeightfieldComponent
 
             glm::vec3 p00(wx0, wy, wz0);
             glm::vec3 p10(wx1, wy, wz0);

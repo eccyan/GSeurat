@@ -974,7 +974,13 @@ static std::optional<SweepHit> sweep_capsule_vs_triangle(
         auto [sa, sb] = make_segment(cap_pos);
         auto c = capsule_vs_triangle(sa, sb, r, v0, v1, v2);
         if (c) {
-            return SweepHit{0.0f, c->point, c->normal};
+            // Use triangle face normal for initial overlaps — the capsule_vs_triangle
+            // normal can be a horizontal edge-push direction, but for grounding on
+            // a heightfield we need the true surface normal.
+            glm::vec3 face_normal = glm::normalize(glm::cross(v1 - v0, v2 - v0));
+            if (glm::dot(face_normal, glm::vec3(0.0f, 1.0f, 0.0f)) < 0.0f)
+                face_normal = -face_normal;
+            return SweepHit{0.0f, c->point, face_normal};
         }
     }
 

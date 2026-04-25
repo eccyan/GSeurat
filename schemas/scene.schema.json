@@ -626,7 +626,6 @@
         "height": { "type": "integer" },
         "cell_size": { "type": "number" },
         "solid": { "type": "array", "items": { "type": "boolean" } },
-        "elevation": { "type": "array", "items": { "type": "number" } },
         "nav_zone": { "type": "array", "items": { "type": "integer" } },
         "light_probe": { "type": "array", "items": { "type": "number" } }
       }
