@@ -2,6 +2,7 @@
 
 #include <stb_image.h>
 
+#include <cstdio>
 #include <stdexcept>
 #include <string>
 
@@ -28,6 +29,10 @@ HeightfieldData load_heightfield(const std::string& path) {
     data.samples.assign(pixels, pixels + static_cast<size_t>(w) * h);
 
     stbi_image_free(pixels);
+
+    std::fprintf(stderr, "[Physics] Loaded heightfield: %s (%ux%u)\n",
+                 path.c_str(), data.img_width, data.img_height);
+
     return data;
 }
 
