@@ -290,9 +290,9 @@ SceneData SceneLoader::from_json(const nlohmann::json& j) {
             for (size_t i = 0; i < elev_arr.size(); ++i) {
                 grid.elevation[i] = elev_arr[i].get<float>();
             }
-        } else {
-            grid.elevation.resize(total, 0.0f);
         }
+        // If elevation is absent (migrated to HeightfieldComponent PNG),
+        // leave the vector empty so GsSceneLoader skips Y-snapping.
         if (col.contains("nav_zone")) {
             const auto& zone_arr = col["nav_zone"];
             grid.nav_zone.resize(zone_arr.size(), 0);
