@@ -341,6 +341,37 @@ c++ -std=c++23 -I include \
     -o build/test_character_data
 ```
 
+### test_kcc_integration
+
+Headless KCC (Kinematic Character Controller) integration tests. Exercises the full physics pipeline (CollisionSystem + heightfield terrain) without GPU or display.
+
+**Run:** `ctest -R test_kcc_integration -V`
+
+**Tests (18 assertions across 5 charters):**
+| Charter | Test | What it verifies |
+|---------|------|------------------|
+| 1+4 | Slope tracking | 14° ramp, grounded for 20 frames, Y monotonically non-decreasing |
+| 2 | Zero tunneling | Gravity fall from Y=45, player never passes through Y=5 terrain |
+| 3 | Primitive transition | Walk from heightfield onto flush box collider, grounded throughout |
+| 5 | Depenetration recovery | Spawn embedded 0.8u in terrain, recovers within 3 frames |
+| 6 | Flat terrain baseline | v*t displacement matches expected, constant Y |
+
+### test_ply2heightmap
+
+Tests for the `ply2heightmap` CLI tool's core rasterizer functions. Headless — no GPU required.
+
+**Run:** `ctest -R test_ply2heightmap -V`
+
+**Tests (17 assertions):**
+| # | Test | What it verifies |
+|---|------|------------------|
+| 1 | Flat plane | 4 splats at Y=5 → center cells filled at ~6.0 (pos + half_y) |
+| 2 | Gap fill | 5x5 grid with center hole → dilation fills to neighbor max |
+| 3 | Flat-world guard | All cells identical Y → no NaN, guard sets range to 1.0 |
+| 4 | Opacity filter | Low-opacity splat excluded, high-opacity passes |
+| 5 | AABB footprint | Non-uniform scale splat covers expected cell count (~24) |
+| 6 | PNG round-trip | write_png_16 produces valid non-empty file |
+
 ## TypeScript Tool Tests
 
 All tool tests run via the QA test runner which uses headless Chrome + WebSocket to manipulate Zustand stores.
