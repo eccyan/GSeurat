@@ -349,6 +349,17 @@ void IslandDemoState::on_enter(AppBase& app) {
         app.world().add<PlayerController>(player_entity_, {20.0f, 20.0f});
         app.world().add<PlayerJump>(player_entity_);
         app.world().add<PlayerTag>(player_entity_);
+
+        KinematicBody kb;
+        kb.desired_jump_height = 2.0f;
+        kb.time_to_apex = 0.4f;
+        kb.recompute_derived();
+        app.world().add<KinematicBody>(player_entity_, kb);
+
+        ColliderComponent cc;
+        cc.shape = CapsuleData{0.3f, 0.5f};
+        cc.is_dynamic = true;
+        app.world().add<ColliderComponent>(player_entity_, cc);
     }
 
     // Capture base scene lights (before dynamic emissive lights are added)
@@ -2151,6 +2162,22 @@ void IslandDemoState::perform_portal_transition(AppBase& app,
     // (Latent bug in the original inline portal code, exposed by the new
     // ECS-based portal triggers.)
     app.world().add<PlayerTag>(player_entity_);
+
+    // KCC components — required for capsule-sweep movement on heightfield terrain.
+    // Without these, run_kcc skips the player and the legacy fallback has no
+    // elevation data (removed in PR #371).
+    {
+        KinematicBody kb;
+        kb.desired_jump_height = 2.0f;
+        kb.time_to_apex = 0.4f;
+        kb.recompute_derived();
+        app.world().add<KinematicBody>(player_entity_, kb);
+
+        ColliderComponent cc;
+        cc.shape = CapsuleData{0.3f, 0.5f};
+        cc.is_dynamic = true;
+        app.world().add<ColliderComponent>(player_entity_, cc);
+    }
 
     // Re-merge world chunks + player character into the new scene
     if (app.renderer().has_gs_cloud()) {

@@ -1424,7 +1424,20 @@
         "BoneAnimated": {
           "manifest": "assets/characters/warm_robot/warm_robot.manifest.json",
           "default_clip": "idle"
-        }
+        },
+        "KinematicBody": {
+          "desired_jump_height": 2.0,
+          "time_to_apex": 0.4
+        },
+        "ColliderComponent": {
+          "shape": {
+            "type": "capsule",
+            "radius": 0.3,
+            "half_height": 0.5
+          },
+          "is_dynamic": true
+        },
+        "PlayerTag": {}
       }
     },
     {
