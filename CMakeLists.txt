@@ -538,6 +538,10 @@ add_gseurat_test(test_audio_effect_chain
     ${AUDIO_ENGINE_TEST_SOURCES})
 target_include_directories(test_audio_effect_chain PRIVATE ${PROJECT_SOURCE_DIR}/src/engine/audio)
 
+add_gseurat_test(test_ply2heightmap
+    src/engine/gaussian_cloud.cpp
+    src/engine/project_root.cpp)
+
 # --- GPU Tests (require actual GPU, link engine sources directly) ----------
 
 function(add_gseurat_gpu_test NAME)
