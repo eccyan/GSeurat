@@ -519,7 +519,7 @@ add_gseurat_test(test_heightfield_system
     src/engine/collision/collision_system.cpp
     src/engine/collision/intersect.cpp
     src/engine/collision/bvh.cpp)
-add_gseurat_test(test_kcc_stuck_headless
+add_gseurat_test(test_kcc_integration
     src/engine/collision/collision_system.cpp
     src/engine/collision/intersect.cpp
     src/engine/collision/bvh.cpp)
