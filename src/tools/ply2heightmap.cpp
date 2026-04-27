@@ -19,6 +19,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -226,14 +227,14 @@ uint32_t png_crc32(const uint8_t* data, size_t len) {
 }
 
 // Write a PNG chunk: length(4) + type(4) + data(length) + crc(4)
-void png_write_chunk(FILE* fp, const char type[4],
+bool png_write_chunk(FILE* fp, const char type[4],
                      const uint8_t* data, uint32_t length) {
     uint8_t buf[4];
     png_write_u32be(buf, length);
-    fwrite(buf, 1, 4, fp);
-    fwrite(type, 1, 4, fp);
+    if (fwrite(buf, 1, 4, fp) != 4) return false;
+    if (fwrite(type, 1, 4, fp) != 4) return false;
     if (length > 0 && data) {
-        fwrite(data, 1, length, fp);
+        if (fwrite(data, 1, length, fp) != length) return false;
     }
     // CRC covers type + data
     std::vector<uint8_t> crc_buf(4 + length);
@@ -243,7 +244,8 @@ void png_write_chunk(FILE* fp, const char type[4],
     }
     uint32_t crc = png_crc32(crc_buf.data(), crc_buf.size());
     png_write_u32be(buf, crc);
-    fwrite(buf, 1, 4, fp);
+    if (fwrite(buf, 1, 4, fp) != 4) return false;
+    return true;
 }
 
 } // anonymous namespace
@@ -266,7 +268,7 @@ bool write_png_16(const char* path, const uint16_t* data,
     ihdr[10] = 0;  // compression method
     ihdr[11] = 0;  // filter method
     ihdr[12] = 0;  // interlace method
-    png_write_chunk(fp, "IHDR", ihdr, 13);
+    if (!png_write_chunk(fp, "IHDR", ihdr, 13)) { fclose(fp); return false; }
 
     // Build raw image data: for each row, 1 filter byte + w*2 bytes (big-endian)
     size_t row_bytes = 1 + static_cast<size_t>(w) * 2;
@@ -294,12 +296,13 @@ bool write_png_16(const char* path, const uint16_t* data,
         return false;
     }
 
-    png_write_chunk(fp, "IDAT", compressed,
-                    static_cast<uint32_t>(compressed_len));
+    bool idat_ok = png_write_chunk(fp, "IDAT", compressed,
+                                    static_cast<uint32_t>(compressed_len));
     STBIW_FREE(compressed);
+    if (!idat_ok) { fclose(fp); return false; }
 
     // IEND
-    png_write_chunk(fp, "IEND", nullptr, 0);
+    if (!png_write_chunk(fp, "IEND", nullptr, 0)) { fclose(fp); return false; }
 
     fclose(fp);
     return true;
@@ -343,8 +346,24 @@ int main(int argc, char* argv[]) {
         }
     }
 
+    // Validate parameters
+    if (params.ppu <= 0.0f) {
+        fprintf(stderr, "Error: --ppu must be positive (got %.4f)\n", params.ppu);
+        return 1;
+    }
+    if (params.padding < 0.0f) {
+        fprintf(stderr, "Error: --padding must be non-negative (got %.4f)\n", params.padding);
+        return 1;
+    }
+
     // Load PLY
-    GaussianCloud cloud = GaussianCloud::load_ply(input_path);
+    GaussianCloud cloud;
+    try {
+        cloud = GaussianCloud::load_ply(input_path);
+    } catch (const std::exception& e) {
+        fprintf(stderr, "Error loading PLY: %s\n", e.what());
+        return 1;
+    }
     if (cloud.empty()) {
         fprintf(stderr, "Error: failed to load PLY or file is empty: %s\n",
                 input_path);
