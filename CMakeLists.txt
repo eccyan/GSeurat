@@ -347,6 +347,15 @@ add_custom_target(sync_assets ALL
     DEPENDS shaders
 )
 
+add_executable(ply2heightmap src/tools/ply2heightmap.cpp
+    src/engine/gaussian_cloud.cpp
+    src/engine/project_root.cpp)
+target_include_directories(ply2heightmap PRIVATE
+    ${PROJECT_SOURCE_DIR}/include
+    ${stb_SOURCE_DIR})
+target_compile_definitions(ply2heightmap PRIVATE GLM_FORCE_DEPTH_ZERO_TO_ONE)
+target_link_libraries(ply2heightmap PRIVATE glm::glm nlohmann_json::nlohmann_json)
+
 endif() # GSEURAT_BUILD_EXAMPLES
 
 # --- Tests ------------------------------------------------------------------
@@ -528,6 +537,10 @@ add_gseurat_test(test_memory_mapped_file
 add_gseurat_test(test_audio_effect_chain
     ${AUDIO_ENGINE_TEST_SOURCES})
 target_include_directories(test_audio_effect_chain PRIVATE ${PROJECT_SOURCE_DIR}/src/engine/audio)
+
+add_gseurat_test(test_ply2heightmap
+    src/engine/gaussian_cloud.cpp
+    src/engine/project_root.cpp)
 
 # --- GPU Tests (require actual GPU, link engine sources directly) ----------
 
