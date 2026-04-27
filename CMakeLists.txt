@@ -347,6 +347,15 @@ add_custom_target(sync_assets ALL
     DEPENDS shaders
 )
 
+add_executable(ply2heightmap src/tools/ply2heightmap.cpp
+    src/engine/gaussian_cloud.cpp
+    src/engine/project_root.cpp)
+target_include_directories(ply2heightmap PRIVATE
+    ${PROJECT_SOURCE_DIR}/include
+    ${stb_SOURCE_DIR})
+target_compile_definitions(ply2heightmap PRIVATE GLM_FORCE_DEPTH_ZERO_TO_ONE)
+target_link_libraries(ply2heightmap PRIVATE glm::glm nlohmann_json::nlohmann_json)
+
 endif() # GSEURAT_BUILD_EXAMPLES
 
 # --- Tests ------------------------------------------------------------------
