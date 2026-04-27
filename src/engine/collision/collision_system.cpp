@@ -306,6 +306,18 @@ void CollisionSystem::run_kcc(ecs::World& world, float dt) {
             bool grounded = body.grounded;
             glm::vec3 ground_normal = body.ground_normal;
 
+            // Step 0: Depenetration — resolve any existing overlap with terrain
+            // or static colliders before sweeping. Without this, a capsule that
+            // starts embedded in terrain gets t=0 on every horizontal sweep,
+            // producing zero movement (the "stuck player" bug).
+            for (const auto& hf : heightfield_cache_) {
+                if ((hf.collision_mask & collider.collision_mask) == 0) continue;
+                auto contact = capsule_vs_heightfield(position, rot, capsule, hf);
+                if (contact && contact->depth > 0.0f) {
+                    position += contact->normal * (contact->depth + skin_width);
+                }
+            }
+
             // Step 1: Apply gravity
             if (velocity.y > 0.0f) {
                 // Jump ascent — use designer-tuned derived_gravity
