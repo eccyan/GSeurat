@@ -82,6 +82,22 @@ public:
                   VkBuffer dest_buffer, std::uint64_t dest_offset,
                   std::function<void()> on_complete = {});
 
+    // Pre-allocate a Handle without enqueueing any work. The handle starts
+    // in `Status::Pending` and stays there until a matching call to
+    // `submit_with_handle(...)`. Useful when the caller needs to expose
+    // handles to a status-poller (e.g. EngineLoadingMonitor) before the
+    // staging ring has space to accept the actual reservation+memcpy —
+    // i.e. a drain-across-frames upload pattern.
+    Handle reserve_handle();
+
+    // Same as `submit(...)` but uses a previously-reserved handle instead
+    // of allocating a new one. The caller's saved handle keeps reporting
+    // `Status::Pending` until the GPU fence retires this batch.
+    Handle submit_with_handle(Handle handle,
+                              const Reservation& reservation,
+                              VkBuffer dest_buffer, std::uint64_t dest_offset,
+                              std::function<void()> on_complete = {});
+
     // Schedule a callback that fires after every preceding submit() in the
     // current pending batch finishes. Useful for "all chunks for asset X are
     // uploaded → register asset" without per-chunk handles.

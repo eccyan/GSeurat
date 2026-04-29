@@ -395,6 +395,72 @@ int main() {
         std::printf("[TEST] per-frame budget defers excess across polls\n");
     }
 
+    // ── Test 9: reserve_handle + submit_with_handle ─────────────────────
+    // Drain-across-frames upload pattern: caller pre-allocates a Handle,
+    // exposes it to a status poller, and only later does the actual
+    // reserve_staging + submit_with_handle. The pre-allocated handle must
+    // report Pending immediately and transition to Complete once the
+    // matching submit lands and its fence retires.
+    {
+        const std::uint64_t kRing = 64ull * 1024;  // 64 KB
+        TransferQueue tq2(
+            gpu.device(), gpu.allocator(),
+            gpu.context().graphics_queue(),
+            gpu.queue_family(), gpu.queue_family(),
+            /*dedicated=*/false,
+            kRing, /*budget_mb=*/4);
+
+        auto dest = Buffer::create_storage_gpu_only(gpu.allocator(), 4096);
+
+        // Pre-allocate two handles before any reservation/submit. Both
+        // must immediately read as Pending — the loading monitor depends
+        // on this so it can begin tracking handles before drain starts.
+        auto h_a = tq2.reserve_handle();
+        auto h_b = tq2.reserve_handle();
+        expect(static_cast<bool>(h_a), "reserve_handle returns valid handle");
+        expect(static_cast<bool>(h_b), "reserve_handle returns valid handle");
+        expect(h_a.id != h_b.id, "reserve_handle issues distinct ids");
+        expect(tq2.status(h_a) == TransferQueue::Status::Pending,
+               "pre-reserved handle is Pending");
+        expect(tq2.status(h_b) == TransferQueue::Status::Pending,
+               "pre-reserved handle is Pending");
+
+        // Now do the reserve+submit_with_handle. Each chunk has a distinct
+        // byte pattern so we can verify the right bytes ended up at the
+        // right destination offset.
+        auto res_a = tq2.reserve_staging(256);
+        expect(res_a.has_value(), "reserve_staging A");
+        std::memset(res_a->host_ptr, 0xAA, 256);
+        auto returned_a = tq2.submit_with_handle(h_a, *res_a, dest.buffer(), 0);
+        expect(returned_a == h_a, "submit_with_handle echoes the same handle");
+
+        auto res_b = tq2.reserve_staging(256);
+        expect(res_b.has_value(), "reserve_staging B");
+        std::memset(res_b->host_ptr, 0xBB, 256);
+        auto returned_b = tq2.submit_with_handle(h_b, *res_b, dest.buffer(), 256);
+        expect(returned_b == h_b, "submit_with_handle echoes the same handle");
+
+        // Drive to completion.
+        poll_until_complete(tq2, gpu, {h_a, h_b});
+
+        // Read back and verify byte patterns.
+        auto cmd = gpu.begin_commands();
+        auto rb = gpu.readback_from_gpu(cmd, dest, 512);
+        gpu.submit_and_wait();
+        const auto* p = static_cast<const std::uint8_t*>(rb.mapped());
+        for (int i = 0; i < 256; ++i) {
+            expect(p[i] == 0xAA, "byte mismatch in chunk A region");
+        }
+        for (int i = 256; i < 512; ++i) {
+            expect(p[i] == 0xBB, "byte mismatch in chunk B region");
+        }
+
+        rb.destroy(gpu.allocator());
+        dest.destroy(gpu.allocator());
+        tq2.shutdown();
+        std::printf("[TEST] reserve_handle + submit_with_handle preserves handle identity\n");
+    }
+
     gpu.shutdown();
     std::printf("[ALL TESTS PASSED]\n");
     return 0;

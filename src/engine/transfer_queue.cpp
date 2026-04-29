@@ -141,6 +141,38 @@ TransferQueue::submit(const Reservation& reservation,
     return h;
 }
 
+TransferQueue::Handle TransferQueue::reserve_handle() {
+    std::lock_guard<std::mutex> lock(queue_mutex_);
+    Handle h{ next_handle_id_++ };
+    pending_status_[h.id] = Status::Pending;
+    return h;
+}
+
+TransferQueue::Handle
+TransferQueue::submit_with_handle(Handle h, const Reservation& reservation,
+                                  VkBuffer dest_buffer, std::uint64_t dest_offset,
+                                  std::function<void()> on_complete) {
+    if (!h || !reservation || dest_buffer == VK_NULL_HANDLE) {
+        return Handle{};
+    }
+
+    std::lock_guard<std::mutex> lock(queue_mutex_);
+    // Caller may have pre-reserved this handle via reserve_handle(). Make
+    // sure pending_status_ has it as Pending (idempotent).
+    pending_status_[h.id] = Status::Pending;
+
+    PendingChunk chunk{};
+    chunk.handle         = h;
+    chunk.dest_buffer    = dest_buffer;
+    chunk.dest_offset    = dest_offset;
+    chunk.staging_offset = reservation.staging_offset;
+    chunk.size           = reservation.size;
+    chunk.logical_end    = reservation.logical_end;
+    chunk.on_complete    = std::move(on_complete);
+    pending_chunks_.push_back(std::move(chunk));
+    return h;
+}
+
 void TransferQueue::enqueue_completion(std::function<void()> on_complete) {
     std::lock_guard<std::mutex> lock(queue_mutex_);
     PendingChunk marker{};
