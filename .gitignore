@@ -24,6 +24,7 @@ Thumbs.db
 imgui.ini
 perf.log
 __pycache__/
+.cache/
 
 # Compiled objects
 *.o

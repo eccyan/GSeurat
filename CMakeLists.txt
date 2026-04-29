@@ -154,6 +154,7 @@ add_library(gseurat_core ${_gseurat_lib_type}
     src/engine/swapchain.cpp
     src/engine/render_pass.cpp
     src/engine/pipeline.cpp
+    src/engine/pipeline_cache.cpp
     src/engine/command_pool.cpp
     src/engine/sync.cpp
     src/engine/buffer.cpp
@@ -552,6 +553,8 @@ function(add_gseurat_gpu_test NAME)
         src/engine/vk_context.cpp
         src/engine/buffer.cpp
         src/engine/pipeline.cpp
+        src/engine/pipeline_cache.cpp
+        src/engine/project_root.cpp
         ${ARGN}
     )
     target_include_directories(${NAME} PRIVATE
