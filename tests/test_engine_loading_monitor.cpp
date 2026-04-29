@@ -214,6 +214,76 @@ int main() {
         std::printf("[TEST] Playing tick is a no-op\n");
     }
 
+    // ── 13. Minimum loading duration holds Loading even with no handles.
+    //        Retro-style: sub-frame loads still get a visible screen. ────
+    {
+        EngineLoadingMonitor m;
+        m.set_min_loading_duration(1.5f);
+        m.begin_load({});                            // empty handle list
+
+        // Without dt, the empty-list fast path normally goes Warming → Playing
+        // immediately. With min duration set, Loading must hold.
+        m.tick(MockStatuses{}.provider(), 0.1f);
+        expect(m.state() == EngineState::Loading,   "0.1s elapsed < 1.5s → still Loading");
+        m.tick(MockStatuses{}.provider(), 0.5f);
+        expect(m.state() == EngineState::Loading,   "0.6s elapsed < 1.5s → still Loading");
+        m.tick(MockStatuses{}.provider(), 0.5f);
+        expect(m.state() == EngineState::Loading,   "1.1s elapsed < 1.5s → still Loading");
+        m.tick(MockStatuses{}.provider(), 0.5f);
+        expect(m.state() == EngineState::Warming,   "1.6s elapsed ≥ 1.5s → Warming");
+        std::printf("[TEST] min loading duration holds Loading state\n");
+    }
+
+    // ── 14. Min duration also gates when handles complete instantly. ────
+    {
+        EngineLoadingMonitor m;
+        m.set_min_loading_duration(0.5f);
+        m.begin_load({TransferQueue::Handle{200}});
+        MockStatuses ms;
+        ms.by_id[200] = TransferQueue::Status::Complete;   // resolves on first poll
+
+        m.tick(ms.provider(), 0.1f);
+        expect(m.state() == EngineState::Loading,   "handle done but 0.1s < 0.5s → Loading");
+        expect(m.pending_handles() == 0,            "handle was reaped");
+
+        m.tick(ms.provider(), 0.3f);
+        expect(m.state() == EngineState::Loading,   "0.4s < 0.5s → still Loading");
+
+        m.tick(ms.provider(), 0.2f);
+        expect(m.state() == EngineState::Warming,   "0.6s ≥ 0.5s → Warming");
+        std::printf("[TEST] min duration gates instant-complete handles\n");
+    }
+
+    // ── 15. set_min_loading_duration(0) restores original behaviour. ────
+    {
+        EngineLoadingMonitor m;
+        m.set_min_loading_duration(0.0f);
+        m.begin_load({});
+        m.tick(MockStatuses{}.provider(), 0.0f);
+        expect(m.state() == EngineState::Warming,   "0 min duration → fast Warming");
+        std::printf("[TEST] zero min duration is no-op\n");
+    }
+
+    // ── 16. Negative duration clamps to zero. ───────────────────────────
+    {
+        EngineLoadingMonitor m;
+        m.set_min_loading_duration(-3.0f);
+        expect(m.min_loading_duration() == 0.0f,    "negative clamped to 0");
+        std::printf("[TEST] negative min duration clamped\n");
+    }
+
+    // ── 17. begin_load resets the loading_elapsed_ counter. ─────────────
+    {
+        EngineLoadingMonitor m;
+        m.set_min_loading_duration(1.0f);
+        m.begin_load({});
+        m.tick(MockStatuses{}.provider(), 0.5f);
+        expect(m.loading_elapsed() >= 0.5f,         "elapsed accumulated");
+        m.begin_load({});                            // reset
+        expect(m.loading_elapsed() == 0.0f,         "begin_load resets timer");
+        std::printf("[TEST] begin_load resets loading_elapsed\n");
+    }
+
     std::printf("[ALL TESTS PASSED]\n");
     return 0;
 }

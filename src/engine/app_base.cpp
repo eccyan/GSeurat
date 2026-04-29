@@ -235,7 +235,8 @@ void AppBase::main_loop() {
                     return tq->status(h);
                 }
                 return TransferQueue::Status::Unknown;
-            });
+            },
+            dt);
 
         // F1 → toggle developer overlay
         if (input_.was_key_pressed(GLFW_KEY_F1)) {

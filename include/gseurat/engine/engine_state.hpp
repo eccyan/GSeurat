@@ -43,22 +43,32 @@ public:
     void set_warmup_frames(std::uint32_t n) noexcept;
     std::uint32_t warmup_frames() const noexcept { return warmup_frames_total_; }
 
+    // Enforce a minimum wall-clock duration in the Loading state, even if all
+    // tracked handles resolve immediately (or the handle list is empty).
+    // Useful for retro-style loading screens where the underlying load is
+    // sub-frame but the UI should breathe — fast loads otherwise produce a
+    // single-frame flicker. 0.0f (default) keeps the original behaviour.
+    void set_min_loading_duration(float seconds) noexcept;
+    float min_loading_duration() const noexcept { return min_loading_seconds_; }
+
     // Begin a Loading phase tracking the given handles. State flips to
     // Loading immediately. Subsequent `tick()` calls drive the transition:
-    //   - all handles Complete → Warming, with `warmup_frames_total_` to count down
-    //   - empty handle list   → Warming on the next tick (skip-load fast path
-    //                          for "force a warm-up cycle" callers)
+    //   - all handles Complete AND min duration elapsed → Warming
+    //   - empty handle list AND min duration elapsed    → Warming on tick
     void begin_load(std::vector<TransferQueue::Handle> handles);
 
-    // Per-frame: poll handle statuses (or count down warm-up), advance state.
+    // Per-frame: poll handle statuses, advance Loading→Warming→Playing,
+    // and accumulate the Loading-state timer for `set_min_loading_duration`.
     // `provider` may be nullptr-equivalent (an empty `std::function`) — that
     // is treated as "no progress this tick" so the early boot path before
-    // the transfer queue exists is harmless.
-    void tick(const StatusProvider& provider);
+    // the transfer queue exists is harmless. `dt` is seconds since last
+    // tick; only used while in Loading to enforce the min display duration.
+    void tick(const StatusProvider& provider, float dt = 0.0f);
 
     EngineState   state()                    const noexcept { return state_; }
     std::uint32_t pending_handles()          const noexcept { return static_cast<std::uint32_t>(tracked_.size()); }
     std::uint32_t warmup_frames_remaining()  const noexcept { return warmup_remaining_; }
+    float         loading_elapsed()          const noexcept { return loading_elapsed_; }
 
     // Frame-policy helpers — what callers (AppBase, Renderer) actually use.
     bool should_run_gameplay()       const noexcept { return state_ == EngineState::Playing; }
@@ -74,6 +84,8 @@ private:
     std::vector<TransferQueue::Handle>   tracked_;
     std::uint32_t                        warmup_frames_total_ = kDefaultWarmupFrames;
     std::uint32_t                        warmup_remaining_    = 0;
+    float                                min_loading_seconds_ = 0.0f;
+    float                                loading_elapsed_     = 0.0f;
 };
 
 }  // namespace gseurat
