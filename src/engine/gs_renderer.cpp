@@ -973,47 +973,78 @@ void GsRenderer::create_transfer_queue(VkQueue transfer_q, uint32_t transfer_fam
         streaming_config_.transfer_budget_mb_per_frame);
 }
 
-void GsRenderer::load_cloud_async(const std::string& ply_path) {
+std::vector<TransferQueue::Handle> GsRenderer::load_cloud_async(GaussianCloud cloud) {
     if (!streaming_initialized_ || !transfer_queue_) {
-        // Fall back to synchronous load
-        GaussianCloud cloud;
-        cloud.load_ply(ply_path);
+        // No streaming infra: fall through to the synchronous path. Returning
+        // an empty handle list lets EngineLoadingMonitor advance on its
+        // min-duration timer alone (since `tick` already treats Unknown
+        // handles as resolved).
         load_cloud(cloud);
-        return;
+        return {};
+    }
+    if (cloud.empty()) return {};
+    if (pending_load_) {
+        std::fprintf(stderr,
+            "GS: load_cloud_async called while a previous load is still draining\n");
+        return {};
     }
 
-    pending_loads_++;
+    // Match `load_cloud()`s "replace previous scene" semantics so that
+    // re-loading a scene through this path doesn't accumulate stale chunks.
+    if (initialized_) vkDeviceWaitIdle(device_);
+    for (auto& chunk : active_chunks_) slab_allocator_->release(chunk.handle);
+    active_chunks_.clear();
+    static_count_ = 0;
+    total_active_splats_ = 0;
+    sort_done_once_ = false;
+    static_dirty_ = true;
 
-    load_threads_.emplace_back([this, ply_path]() {
-        GaussianCloud cloud;
-        cloud.load_ply(ply_path);
+    // Drop has_cloud() back to false until the final completion callback
+    // fires; the loading monitor uses these handles to gate the transition
+    // out of Loading.
+    gaussian_count_ = 0;
 
-        const uint32_t splat_count = cloud.count();
-        const uint32_t sps = streaming_config_.slab_size_splats;
-        const uint32_t slabs_needed = (splat_count + sps - 1) / sps;
+    const uint32_t sps = streaming_config_.slab_size_splats;
+    const uint32_t splat_count = cloud.count();
+    const uint32_t slabs_needed = (splat_count + sps - 1) / sps;
 
-        auto handle = slab_allocator_->checkout(slabs_needed);
+    PendingLoadJob job;
+    job.slab_handle = slab_allocator_->checkout(slabs_needed);
+    job.splat_count = splat_count;
+    job.slabs_needed = slabs_needed;
+    job.slab_size_splats = sps;
+    job.handles.reserve(slabs_needed);
+    for (uint32_t s = 0; s < slabs_needed; ++s) {
+        job.handles.push_back(transfer_queue_->reserve_handle());
+    }
+    job.cloud = std::move(cloud);
 
-        const auto& gaussians = cloud.gaussians();
+    std::vector<TransferQueue::Handle> handles_for_caller = job.handles;
+    pending_load_ = std::move(job);
+    return handles_for_caller;
+}
+
+void GsRenderer::poll_transfers(VkCommandBuffer frame_cmd) {
+    if (!transfer_queue_) return;
+
+    // Drain pending slab uploads as long as the staging ring has space for
+    // each next slab. This naturally throttles a 100-slab cloud across
+    // frames so we never need a ring sized for the whole cloud at once.
+    if (pending_load_) {
+        auto& job = *pending_load_;
+        const auto& gaussians = job.cloud.gaussians();
         const VkBuffer dest = static_gaussian_ssbo_.buffer();
 
-        for (uint32_t s = 0; s < slabs_needed; ++s) {
-            const uint32_t physical_slab = handle.slab_indices[s];
-            const uint32_t src_start = s * sps;
-            const uint32_t src_end   = std::min(src_start + sps, splat_count);
+        while (job.next_slab < job.slabs_needed) {
+            const uint32_t s = job.next_slab;
+            const uint32_t physical_slab = job.slab_handle.slab_indices[s];
+            const uint32_t src_start = s * job.slab_size_splats;
+            const uint32_t src_end   = std::min(src_start + job.slab_size_splats, job.splat_count);
             const uint32_t count     = src_end - src_start;
             const uint64_t copy_size = static_cast<uint64_t>(count) * sizeof(GpuGaussian);
 
-            // Block-and-retry: reservation only fails when the staging ring is
-            // full of in-flight bytes. The main thread's poll() will retire
-            // batches and free space within a few frames. On engine shutdown
-            // the queue's cancellation flag flips, breaking the loop so the
-            // joining thread doesn't deadlock.
-            std::optional<TransferQueue::Reservation> res;
-            while (!(res = transfer_queue_->reserve_staging(copy_size))) {
-                if (transfer_queue_->is_shutting_down()) return;
-                std::this_thread::sleep_for(std::chrono::milliseconds(2));
-            }
+            auto res = transfer_queue_->reserve_staging(copy_size);
+            if (!res) break;  // ring full this frame; resume next frame
 
             auto* dst = reinterpret_cast<GpuGaussian*>(res->host_ptr);
             for (uint32_t i = 0; i < count; ++i) {
@@ -1028,51 +1059,75 @@ void GsRenderer::load_cloud_async(const std::string& ply_path) {
             }
 
             const uint64_t dest_offset =
-                static_cast<uint64_t>(physical_slab) * sps * sizeof(GpuGaussian);
-            transfer_queue_->submit(*res, dest, dest_offset);
+                static_cast<uint64_t>(physical_slab) * job.slab_size_splats * sizeof(GpuGaussian);
+            transfer_queue_->submit_with_handle(job.handles[s], *res, dest, dest_offset);
+            ++job.next_slab;
         }
 
-        // Completion callback — runs on main thread via poll_completions
-        transfer_queue_->enqueue_completion(
-            [this, handle = std::move(handle), splat_count, slabs_needed, sps]() mutable {
-                uint32_t page_table_offset = 0;
-                for (const auto& chunk : active_chunks_) {
-                    page_table_offset += static_cast<uint32_t>(chunk.handle.slab_indices.size());
-                }
+        // Once every slab has been submitted, queue the final completion
+        // marker that publishes the chunk to the renderer. Doing this
+        // exactly once is what the `completion_enqueued` flag protects.
+        if (job.next_slab == job.slabs_needed && !job.completion_enqueued) {
+            job.completion_enqueued = true;
+            // Move out the per-job state the callback needs so the job
+            // itself can be reset right after — the callback fires later.
+            auto handle       = std::move(job.slab_handle);
+            const uint32_t splat_count   = job.splat_count;
+            const uint32_t slabs_needed  = job.slabs_needed;
+            const uint32_t sps_local     = job.slab_size_splats;
 
-                auto* pt = static_cast<uint32_t*>(page_table_ssbo_.mapped());
-                for (uint32_t i = 0; i < slabs_needed; ++i) {
-                    pt[page_table_offset + i] = handle.slab_indices[i];
-                }
+            transfer_queue_->enqueue_completion(
+                [this, handle = std::move(handle), splat_count, slabs_needed, sps_local]() mutable {
+                    uint32_t page_table_offset = 0;
+                    for (const auto& chunk : active_chunks_) {
+                        page_table_offset += static_cast<uint32_t>(chunk.handle.slab_indices.size());
+                    }
 
-                // Update chunk table
-                auto* ct = static_cast<uint8_t*>(chunk_table_ssbo_.mapped());
-                uint32_t chunk_idx = static_cast<uint32_t>(active_chunks_.size());
-                uint32_t last_slab_splats = splat_count - (slabs_needed - 1) * sps;
-                uint32_t entry[4] = {page_table_offset, slabs_needed, last_slab_splats, splat_count};
-                std::memcpy(ct + chunk_idx * 16, entry, 16);
+                    auto* pt = static_cast<uint32_t*>(page_table_ssbo_.mapped());
+                    for (uint32_t i = 0; i < slabs_needed; ++i) {
+                        pt[page_table_offset + i] = handle.slab_indices[i];
+                    }
 
-                ChunkState cs;
-                cs.status = ChunkState::Status::ACTIVE;
-                cs.handle = std::move(handle);
-                cs.page_table_offset = page_table_offset;
-                cs.splat_count = splat_count;
-                active_chunks_.push_back(std::move(cs));
+                    auto* ct = static_cast<uint8_t*>(chunk_table_ssbo_.mapped());
+                    const uint32_t chunk_idx = static_cast<uint32_t>(active_chunks_.size());
+                    const uint32_t last_slab_splats = splat_count - (slabs_needed - 1) * sps_local;
+                    const uint32_t entry[4] = {page_table_offset, slabs_needed, last_slab_splats, splat_count};
+                    std::memcpy(ct + chunk_idx * 16, entry, 16);
 
-                static_count_ = 0;
-                for (const auto& c : active_chunks_) static_count_ += c.splat_count;
-                total_active_splats_ = static_count_;
-                gaussian_count_ = static_count_;
-                static_dirty_ = true;
+                    ChunkState cs;
+                    cs.status = ChunkState::Status::ACTIVE;
+                    cs.handle = std::move(handle);
+                    cs.page_table_offset = page_table_offset;
+                    cs.splat_count = splat_count;
+                    active_chunks_.push_back(std::move(cs));
 
-                pending_loads_--;
-                std::printf("[gs_renderer] Async load complete: %u splats\n", splat_count);
-            });
-    });
-}
+                    static_count_ = 0;
+                    for (const auto& c : active_chunks_) static_count_ += c.splat_count;
+                    total_active_splats_ = static_count_;
+                    gaussian_count_ = static_count_;
 
-void GsRenderer::poll_transfers(VkCommandBuffer frame_cmd) {
-    if (transfer_queue_) transfer_queue_->poll_completions(frame_cmd);
+                    std::vector<SortEntry> staging(static_sort_size_);
+                    for (uint32_t i = 0; i < static_sort_size_; ++i) {
+                        staging[i].key = 0xFFFFFFFF;
+                        staging[i].index = i < static_count_ ? i : 0;
+                    }
+                    std::memcpy(static_sort_a_.mapped(), staging.data(),
+                                static_sort_size_ * sizeof(SortEntry));
+                    std::memcpy(static_sort_b_.mapped(), staging.data(),
+                                static_sort_size_ * sizeof(SortEntry));
+
+                    static_dirty_ = true;
+
+                    std::fprintf(stderr,
+                        "GS: Async load complete — %u splats in %u slabs (total active: %u)\n",
+                        splat_count, slabs_needed, static_count_);
+
+                    pending_load_.reset();
+                });
+        }
+    }
+
+    transfer_queue_->poll_completions(frame_cmd);
 }
 
 void GsRenderer::load_cloud_legacy(const GaussianCloud& cloud) {
@@ -2822,15 +2877,12 @@ void GsRenderer::load_world(const WorldManifest& manifest) {
 void GsRenderer::shutdown(VmaAllocator allocator) {
     if (!initialized_) return;
 
-    // Signal in-flight loaders to bail out of their reserve_staging() retry
-    // loops *before* joining — otherwise a worker waiting on space that will
-    // never be freed (because we've stopped polling) would hang the join.
-    if (transfer_queue_) transfer_queue_->request_cancel();
-    for (auto& t : load_threads_) {
-        if (t.joinable()) t.join();
-    }
-    load_threads_.clear();
+    // The async loader no longer spins up worker threads — reserve+submit
+    // run synchronously on the main thread now. We still call
+    // `request_cancel` to be tidy: any pending callbacks queued in the
+    // transfer queue should observe the shutdown flag and bail.
     if (transfer_queue_) {
+        transfer_queue_->request_cancel();
         transfer_queue_->shutdown();
         transfer_queue_.reset();
     }

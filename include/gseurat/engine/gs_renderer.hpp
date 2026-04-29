@@ -16,6 +16,7 @@
 #include <atomic>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <thread>
 #include <vector>
 
@@ -88,7 +89,16 @@ public:
     void load_cloud(const GaussianCloud& cloud);
     void init_streaming(const StreamingConfig& config);
     void unload_cloud(uint32_t chunk_id);
-    void load_cloud_async(const std::string& ply_path);
+    // Async upload via the shared host-visible staging ring. The cloud is
+    // moved into a pending-load job stored on the renderer; per-slab
+    // `reserve_staging` + memcpy + `submit_with_handle` are issued by
+    // `poll_transfers` across frames so a 100-slab cloud doesn't have to
+    // fit in the staging ring at once. Returns one Handle per slab,
+    // pre-allocated so `EngineLoadingMonitor` can poll their status
+    // immediately even before any has been submitted to the GPU.
+    // Falls back to synchronous `load_cloud` (and returns {}) if streaming
+    // isn't initialized or no transfer queue exists.
+    std::vector<TransferQueue::Handle> load_cloud_async(GaussianCloud cloud);
     void poll_transfers(VkCommandBuffer frame_cmd);
     void create_transfer_queue(VkQueue transfer_q, uint32_t transfer_family,
                                uint32_t graphics_family, bool dedicated);
@@ -332,10 +342,26 @@ private:
     uint32_t total_active_splats_{0};
     bool streaming_initialized_{false};
 
-    // Async transfer + background loading
+    // Async transfer queue. Reservations and submits run on the main thread;
+    // `poll_transfers` (per-frame) retires fences and fires per-batch
+    // completion callbacks that publish uploaded chunks to the renderer.
     std::unique_ptr<TransferQueue> transfer_queue_;
-    std::vector<std::thread> load_threads_;
-    std::atomic<uint32_t> pending_loads_{0};
+
+    // Pending async cloud upload. `load_cloud_async` builds this in one
+    // call and pre-allocates handles, then `poll_transfers` drains slabs
+    // across frames as the staging ring frees space. The cloud is owned
+    // here so its memory outlives all per-slab memcpys.
+    struct PendingLoadJob {
+        GaussianCloud cloud;
+        SlabAllocator::SlabHandle slab_handle;
+        std::vector<TransferQueue::Handle> handles;  // one per slab
+        uint32_t splat_count = 0;
+        uint32_t slabs_needed = 0;
+        uint32_t slab_size_splats = 0;
+        uint32_t next_slab = 0;          // index of the next slab to submit
+        bool completion_enqueued = false; // true once enqueue_completion() ran
+    };
+    std::optional<PendingLoadJob> pending_load_;
 
     uint32_t gaussian_count_ = 0;
     uint32_t max_gaussian_count_ = 0;
