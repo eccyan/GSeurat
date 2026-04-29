@@ -326,18 +326,31 @@ int main() {
         }
 
         // First poll: budget allows 2 × 384 KB = 768 KB before the third
-        // chunk would push us over 1 MB. Three chunks must remain Pending.
+        // chunk would push us over 1 MB. The split must be exact —
+        // recording a third chunk (1.125 MB) would exceed the budget and
+        // reintroduce the frame-time spikes this fix is meant to prevent.
+        // Recording fewer than two would mean the "always allow at least
+        // one chunk" allowance ate into the cap unnecessarily.
         {
             auto cmd = gpu.begin_commands();
             tiny.poll_completions(cmd);
             gpu.submit_and_wait();
 
-            int still_pending = 0;
+            int pending = 0;
+            int inflight = 0;
+            int complete = 0;
             for (auto h : handles) {
-                if (tiny.status(h) == TransferQueue::Status::Pending) still_pending++;
+                switch (tiny.status(h)) {
+                    case TransferQueue::Status::Pending:  pending++;  break;
+                    case TransferQueue::Status::InFlight: inflight++; break;
+                    case TransferQueue::Status::Complete: complete++; break;
+                    default:                                          break;
+                }
             }
-            expect(still_pending >= 2,
-                   "first poll deferred at least the budget-exceeding tail");
+            expect(pending == 3,
+                   "exactly 3 of 5 chunks deferred to next poll");
+            expect(inflight + complete == 2,
+                   "exactly 2 chunks recorded into the first batch");
         }
 
         // Drive the rest to completion across multiple polls.
