@@ -1005,9 +1005,12 @@ void GsRenderer::load_cloud_async(const std::string& ply_path) {
 
             // Block-and-retry: reservation only fails when the staging ring is
             // full of in-flight bytes. The main thread's poll() will retire
-            // batches and free space within a few frames.
+            // batches and free space within a few frames. On engine shutdown
+            // the queue's cancellation flag flips, breaking the loop so the
+            // joining thread doesn't deadlock.
             std::optional<TransferQueue::Reservation> res;
             while (!(res = transfer_queue_->reserve_staging(copy_size))) {
+                if (transfer_queue_->is_shutting_down()) return;
                 std::this_thread::sleep_for(std::chrono::milliseconds(2));
             }
 
@@ -2760,7 +2763,10 @@ void GsRenderer::load_world(const WorldManifest& manifest) {
 void GsRenderer::shutdown(VmaAllocator allocator) {
     if (!initialized_) return;
 
-    // Join background load threads before destroying resources
+    // Signal in-flight loaders to bail out of their reserve_staging() retry
+    // loops *before* joining — otherwise a worker waiting on space that will
+    // never be freed (because we've stopped polling) would hang the join.
+    if (transfer_queue_) transfer_queue_->request_cancel();
     for (auto& t : load_threads_) {
         if (t.joinable()) t.join();
     }

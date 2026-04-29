@@ -5,6 +5,7 @@
 #include <vk_mem_alloc.h>
 #include <vulkan/vulkan.h>
 
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <deque>
@@ -98,6 +99,16 @@ public:
     bool          is_dedicated()  const { return dedicated_; }
     std::uint64_t staging_size()  const { return staging_size_; }
 
+    // Signal worker threads spinning on `reserve_staging()` that the queue is
+    // tearing down so they can abandon their work and exit. Must be called
+    // before joining loader threads — `shutdown()` itself blocks on
+    // `vkDeviceWaitIdle` which would deadlock if a worker still holds a
+    // reservation that will never be drained.
+    void request_cancel();
+    bool is_shutting_down() const noexcept {
+        return shutting_down_.load(std::memory_order_acquire);
+    }
+
     void shutdown();
 
 private:
@@ -161,6 +172,8 @@ private:
 
     std::uint64_t next_handle_id_ = 1;
     std::uint64_t next_token_     = 1;
+
+    std::atomic<bool> shutting_down_{false};
 };
 
 }  // namespace gseurat

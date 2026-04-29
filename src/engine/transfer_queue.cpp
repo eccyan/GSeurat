@@ -73,6 +73,18 @@ TransferQueue::reserve_staging(std::uint64_t bytes) {
 
     std::lock_guard<std::mutex> lock(queue_mutex_);
 
+    // When the ring is empty, snap both watermarks to the next wrap boundary.
+    // Without this a request for the full `staging_size_` would fail when
+    // `ring_write_` happens to land mid-buffer — the wrap-pad would consume
+    // bytes the request still needs.
+    if (ring_read_ == ring_write_) {
+        const std::uint64_t phys = physical_offset(ring_write_, staging_size_);
+        if (phys != 0) {
+            ring_write_ += (staging_size_ - phys);
+            ring_read_   = ring_write_;
+        }
+    }
+
     // Determine the candidate write offset. If the request would straddle the
     // ring boundary (physical offset + bytes > capacity), pad to the next
     // wrap to keep each reservation contiguous.
@@ -320,12 +332,16 @@ void TransferQueue::poll_completions(VkCommandBuffer frame_cmd) {
     }
 
     // 2. Drain pending chunks into `frame_cmd` up to the per-frame budget.
+    // Bail before the swap when there's no command buffer to record into —
+    // otherwise pending chunks would be moved into `local` and silently
+    // dropped on return, leaking handles and stalling the staging ring.
+    if (frame_cmd == VK_NULL_HANDLE) return;
     std::deque<PendingChunk> local;
     {
         std::lock_guard<std::mutex> lock(queue_mutex_);
         local.swap(pending_chunks_);
     }
-    if (local.empty() || frame_cmd == VK_NULL_HANDLE) return;
+    if (local.empty()) return;
 
     std::uint64_t bytes_recorded = 0;
     std::deque<PendingChunk> deferred;
@@ -375,8 +391,17 @@ void TransferQueue::poll_completions(VkCommandBuffer frame_cmd) {
     }
 }
 
+void TransferQueue::request_cancel() {
+    shutting_down_.store(true, std::memory_order_release);
+}
+
 void TransferQueue::shutdown() {
     if (device_ == VK_NULL_HANDLE) return;
+
+    // Belt-and-braces: callers should already have set this before joining
+    // their loader threads, but signalling it here too makes the queue safe
+    // to shut down even if the convention is missed.
+    shutting_down_.store(true, std::memory_order_release);
 
     vkDeviceWaitIdle(device_);
 

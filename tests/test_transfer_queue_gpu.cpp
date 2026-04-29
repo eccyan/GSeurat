@@ -11,10 +11,13 @@
 #include "gpu_test_context.hpp"
 #include "gseurat/engine/transfer_queue.hpp"
 
+#include <atomic>
 #include <cassert>
+#include <chrono>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <thread>
 #include <vector>
 
 using namespace gseurat;
@@ -216,6 +219,71 @@ int main() {
         auto res = tq.reserve_staging(staging_size + 1);
         expect(!res.has_value(), "oversized reservation refused");
         std::printf("[TEST] oversized reservation rejected\n");
+    }
+
+    // ── Test 6: pending chunks survive a poll with no frame_cmd ──
+    // Regression for a bug where `poll_completions(VK_NULL_HANDLE)` would
+    // drain `pending_chunks_` into a local deque and then return without
+    // recording any copy, silently dropping every queued upload.
+    {
+        auto dest = Buffer::create_storage_gpu_only(gpu.allocator(), 256);
+        auto res = tq.reserve_staging(64);
+        expect(res.has_value(), "reservation for null-frame test");
+        std::memset(res->host_ptr, 0xDD, 64);
+        auto h = tq.submit(*res, dest.buffer(), 0);
+
+        // Poll with no command buffer. The chunk must remain pending.
+        tq.poll_completions(VK_NULL_HANDLE);
+        expect(tq.status(h) == TransferQueue::Status::Pending,
+               "chunk stays Pending when poll has no frame_cmd");
+
+        // Now poll for real and verify the upload completes.
+        poll_until_complete(tq, gpu, {h});
+
+        auto cmd = gpu.begin_commands();
+        auto rb = gpu.readback_from_gpu(cmd, dest, 64);
+        gpu.submit_and_wait();
+        const auto* p = static_cast<const std::uint8_t*>(rb.mapped());
+        for (int i = 0; i < 64; ++i) {
+            expect(p[i] == 0xDD, "byte mismatch after recovered poll");
+        }
+        rb.destroy(gpu.allocator());
+        dest.destroy(gpu.allocator());
+        std::printf("[TEST] poll(VK_NULL_HANDLE) preserves pending chunks\n");
+    }
+
+    // ── Test 7: request_cancel breaks a worker's reserve_staging spin loop ──
+    // Regression for an engine-shutdown deadlock: workers loop forever on
+    // `reserve_staging` when the ring is full; shutdown joins them while
+    // still holding the lock that would have freed the ring.
+    {
+        // Fill the ring so further reservations will block.
+        auto pad = tq.reserve_staging(staging_size);
+        expect(pad.has_value(), "saturating reservation for cancellation test");
+
+        std::atomic<bool> worker_returned{false};
+        std::thread worker([&]() {
+            std::optional<TransferQueue::Reservation> r;
+            while (!(r = tq.reserve_staging(64))) {
+                if (tq.is_shutting_down()) {
+                    worker_returned.store(true);
+                    return;
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
+            // Should never succeed in this test — if it does, fail loud.
+            std::fprintf(stderr, "FAIL: worker got reservation despite saturated ring\n");
+            std::exit(1);
+        });
+
+        // Give the worker a chance to enter its retry loop.
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        expect(!worker_returned.load(), "worker is still spinning before cancel");
+
+        tq.request_cancel();
+        worker.join();
+        expect(worker_returned.load(), "worker observed cancel and exited");
+        std::printf("[TEST] request_cancel unblocks worker spin loop\n");
     }
 
     tq.shutdown();
