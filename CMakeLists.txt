@@ -318,6 +318,7 @@ if(GSEURAT_BUILD_EXAMPLES)
 add_executable(gseurat_demo
     src/demo_main.cpp
     src/demo/demo_app.cpp
+    src/demo/demo_loading_overlay.cpp
     src/demo/gs_demo_state.cpp
     src/demo/island_demo_state.cpp
 )

@@ -306,6 +306,13 @@ void AppBase::main_loop() {
         // Let states build their draw lists
         state_stack_.build_draw_lists(*this);
 
+        // Loading/Warming overlay (after the active state's draw lists are
+        // built so the overlay paints over them). Default AppBase impl is a
+        // no-op; host apps override to draw their own art.
+        if (loading_monitor_.should_overlay_loading_ui()) {
+            draw_loading_overlay(dt);
+        }
+
         // Developer overlay (after states have drawn their content)
         if (dev_overlay_.visible()) {
             dev_overlay_.draw(*this);

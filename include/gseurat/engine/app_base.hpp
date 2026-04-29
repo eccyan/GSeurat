@@ -123,6 +123,13 @@ public:
     virtual void init_scene(const std::string& scene_path);
     virtual void clear_scene();
 
+    // Hook invoked once per frame while `loading_monitor_.should_overlay_loading_ui()`
+    // is true (Loading or Warming). Default impl is empty so the engine ships
+    // no visual style — host applications override to draw their own overlay
+    // (background, progress bar, art, etc.). Engine code stays free of
+    // game-specific aesthetics per CLAUDE.md.
+    virtual void draw_loading_overlay(float /*dt*/) {}
+
     // ITransitionHost: invoked atomically by transition_system on scene transitions.
     // Default impl does clear + init_scene + move PlayerTag entity. Game apps may
     // override to inject app-specific scene-recovery work.
