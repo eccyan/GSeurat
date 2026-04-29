@@ -9,7 +9,8 @@
 namespace gseurat {
 
 void PostProcessPipeline::init(VkDevice device, VmaAllocator allocator,
-                                const Swapchain& swapchain) {
+                                const Swapchain& swapchain,
+                                VkPipelineCache pipeline_cache) {
     device_ = device;
     scene_width_ = swapchain.extent().width;
     scene_height_ = swapchain.extent().height;
@@ -23,7 +24,7 @@ void PostProcessPipeline::init(VkDevice device, VmaAllocator allocator,
     create_render_passes(device, swapchain.image_format());
     create_framebuffers(device, swapchain);
     create_descriptor_resources(device);
-    create_pipelines(device);
+    create_pipelines(device, pipeline_cache);
 
     // Create light glow UBO (host-visible for easy update)
     {
@@ -654,7 +655,7 @@ void PostProcessPipeline::create_descriptor_resources(VkDevice device) {
     }
 }
 
-void PostProcessPipeline::create_pipelines(VkDevice device) {
+void PostProcessPipeline::create_pipelines(VkDevice device, VkPipelineCache cache) {
     auto fullscreen_vert = load_shader_module(device, "shaders/fullscreen.vert.spv");
     auto bloom_extract_frag = load_shader_module(device, "shaders/bloom_extract.frag.spv");
     auto bloom_blur_frag = load_shader_module(device, "shaders/bloom_blur.frag.spv");
@@ -715,7 +716,7 @@ void PostProcessPipeline::create_pipelines(VkDevice device) {
         .set_no_blend()
         .set_layout(bloom_pipeline_layout_)
         .set_render_pass(bloom_render_pass_, 0)
-        .build(device);
+        .build(device, cache);
 
     // Bloom blur pipeline (same for H and V, direction via push constant)
     bloom_blur_pipeline_ = PipelineBuilder()
@@ -729,7 +730,7 @@ void PostProcessPipeline::create_pipelines(VkDevice device) {
         .set_no_blend()
         .set_layout(bloom_pipeline_layout_)
         .set_render_pass(bloom_render_pass_, 0)
-        .build(device);
+        .build(device, cache);
 
     // DoF blur pipeline (half resolution, reuses bloom_blur.frag)
     VkExtent2D dof_extent{dof_width_, dof_height_};
@@ -744,7 +745,7 @@ void PostProcessPipeline::create_pipelines(VkDevice device) {
         .set_no_blend()
         .set_layout(bloom_pipeline_layout_)
         .set_render_pass(bloom_render_pass_, 0)
-        .build(device);
+        .build(device, cache);
 
     // Composite pipeline
     composite_pipeline_ = PipelineBuilder()
@@ -758,7 +759,7 @@ void PostProcessPipeline::create_pipelines(VkDevice device) {
         .set_no_blend()
         .set_layout(composite_pipeline_layout_)
         .set_render_pass(composite_render_pass_, 0)
-        .build(device);
+        .build(device, cache);
 
     vkDestroyShaderModule(device, composite_frag, nullptr);
     vkDestroyShaderModule(device, bloom_blur_frag, nullptr);

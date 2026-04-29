@@ -34,7 +34,8 @@ void Renderer::init(GLFWwindow* window, ResourceManager& resources,
     context_.init(window);
     swapchain_.init(context_, kWindowWidth, kWindowHeight);
     render_pass_mgr_.init(context_.device(), context_.allocator(), swapchain_);
-    post_process_.init(context_.device(), context_.allocator(), swapchain_);
+    post_process_.init(context_.device(), context_.allocator(), swapchain_,
+                       context_.pipeline_cache());
     command_pool_.init(context_.device(), context_.graphics_queue_family());
     sync_.init(context_.device(), swapchain_.image_count());
     descriptors_.init(context_.device());
@@ -754,7 +755,7 @@ void Renderer::create_sprite_pipeline() {
                            .set_color_blend_alpha()
                            .set_layout(sprite_pipeline_layout_)
                            .set_render_pass(post_process_.scene_render_pass(), 0)
-                           .build(device);
+                           .build(device, context_.pipeline_cache());
 
     vkDestroyShaderModule(device, frag, nullptr);
     vkDestroyShaderModule(device, vert, nullptr);
@@ -800,7 +801,7 @@ void Renderer::create_outline_pipeline() {
                             .set_color_blend_alpha()
                             .set_layout(outline_pipeline_layout_)
                             .set_render_pass(post_process_.scene_render_pass(), 0)
-                            .build(device);
+                            .build(device, context_.pipeline_cache());
 
     vkDestroyShaderModule(device, frag, nullptr);
     vkDestroyShaderModule(device, vert, nullptr);
@@ -828,7 +829,7 @@ void Renderer::create_ui_pipeline() {
                        .set_dynamic_scissor()
                        .set_layout(sprite_pipeline_layout_)
                        .set_render_pass(post_process_.composite_render_pass(), 0)
-                       .build(device);
+                       .build(device, context_.pipeline_cache());
 
     vkDestroyShaderModule(device, frag, nullptr);
     vkDestroyShaderModule(device, vert, nullptr);
@@ -1270,7 +1271,7 @@ void Renderer::create_wireframe_pipeline() {
         .set_color_blend_alpha()
         .set_layout(wireframe_pipeline_layout_)
         .set_render_pass(post_process_.scene_render_pass(), 0)
-        .build(device);
+        .build(device, context_.pipeline_cache());
 
     vkDestroyShaderModule(device, frag, nullptr);
     vkDestroyShaderModule(device, vert, nullptr);
