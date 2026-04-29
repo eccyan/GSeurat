@@ -28,30 +28,35 @@ TransferQueue::TransferQueue(VkDevice device, VmaAllocator allocator,
       transfer_budget_bytes_(static_cast<std::uint64_t>(transfer_budget_mb) * 1024u * 1024u) {
     staging_buffer_ = Buffer::create_staging(allocator_, staging_size_);
 
-    if (dedicated_) {
-        VkCommandPoolCreateInfo pool_info{};
-        pool_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-        pool_info.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-        pool_info.queueFamilyIndex = transfer_family_;
-        if (vkCreateCommandPool(device_, &pool_info, nullptr, &transfer_cmd_pool_) != VK_SUCCESS) {
-            throw std::runtime_error("TransferQueue: failed to create transfer command pool");
-        }
+    // Always own a transfer command buffer + fence — both the dedicated
+    // (separate transfer family) and single-family paths now retire batches
+    // on fence signal so `ring_read_` only advances after the GPU has
+    // actually consumed the staging bytes. The previous "piggyback on the
+    // caller's frame_cmd and retire synchronously" design corrupted the
+    // ring under concurrent worker uploads (recorded but not yet executed
+    // copies still referenced staging bytes that workers were rewriting).
+    VkCommandPoolCreateInfo pool_info{};
+    pool_info.sType            = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+    pool_info.flags            = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+    pool_info.queueFamilyIndex = transfer_family_;
+    if (vkCreateCommandPool(device_, &pool_info, nullptr, &transfer_cmd_pool_) != VK_SUCCESS) {
+        throw std::runtime_error("TransferQueue: failed to create transfer command pool");
+    }
 
-        VkCommandBufferAllocateInfo alloc_info{};
-        alloc_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-        alloc_info.commandPool = transfer_cmd_pool_;
-        alloc_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-        alloc_info.commandBufferCount = 1;
-        if (vkAllocateCommandBuffers(device_, &alloc_info, &transfer_cmd_) != VK_SUCCESS) {
-            throw std::runtime_error("TransferQueue: failed to allocate transfer command buffer");
-        }
+    VkCommandBufferAllocateInfo alloc_info{};
+    alloc_info.sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    alloc_info.commandPool        = transfer_cmd_pool_;
+    alloc_info.level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    alloc_info.commandBufferCount = 1;
+    if (vkAllocateCommandBuffers(device_, &alloc_info, &transfer_cmd_) != VK_SUCCESS) {
+        throw std::runtime_error("TransferQueue: failed to allocate transfer command buffer");
+    }
 
-        VkFenceCreateInfo fence_info{};
-        fence_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-        // Not pre-signaled — `transfer_in_flight_` gates polling.
-        if (vkCreateFence(device_, &fence_info, nullptr, &transfer_fence_) != VK_SUCCESS) {
-            throw std::runtime_error("TransferQueue: failed to create transfer fence");
-        }
+    VkFenceCreateInfo fence_info{};
+    fence_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+    // Not pre-signaled — `transfer_in_flight_` gates polling.
+    if (vkCreateFence(device_, &fence_info, nullptr, &transfer_fence_) != VK_SUCCESS) {
+        throw std::runtime_error("TransferQueue: failed to create transfer fence");
     }
 }
 
@@ -209,133 +214,31 @@ void TransferQueue::retire_batch(InFlightBatch& batch, VkCommandBuffer frame_cmd
 }
 
 void TransferQueue::poll_completions(VkCommandBuffer frame_cmd) {
-    if (dedicated_) {
-        // ── Dedicated transfer queue path ──
+    // ── 1. Retire the in-flight batch when its fence signals ──
+    if (transfer_in_flight_) {
+        // When transfer and graphics families differ, retiring the batch
+        // means recording the queue-family acquire barrier into `frame_cmd`.
+        // If the caller hasn't given us one yet, defer retirement: the
+        // batch stays in flight and we'll catch it on a later poll. Without
+        // this guard, handles would flip to Complete with no acquire on
+        // the consumer side, leaving the destination range in an
+        // undefined state for graphics-side reads.
+        const bool needs_acquire = (transfer_family_ != graphics_family_);
+        if (needs_acquire && frame_cmd == VK_NULL_HANDLE) return;
 
-        // 1. Retire the in-flight batch (if any) when its fence signals.
-        if (transfer_in_flight_) {
-            VkResult fs = vkGetFenceStatus(device_, transfer_fence_);
-            if (fs == VK_SUCCESS) {
-                vkResetFences(device_, 1, &transfer_fence_);
-                if (!in_flight_.empty()) {
-                    auto batch = std::move(in_flight_.front());
-                    in_flight_.pop_front();
-                    retire_batch(batch, frame_cmd);
-                }
-                transfer_in_flight_ = false;
-            } else {
-                return;  // still pending; new batch waits its turn
-            }
-        }
-
-        // 2. Drain pending chunks into a new batch.
-        std::deque<PendingChunk> local;
-        {
-            std::lock_guard<std::mutex> lock(queue_mutex_);
-            local.swap(pending_chunks_);
-        }
-        if (local.empty()) return;
-
-        InFlightBatch batch{};
-        batch.fence = transfer_fence_;
-
-        vkResetCommandBuffer(transfer_cmd_, 0);
-        VkCommandBufferBeginInfo begin{};
-        begin.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-        begin.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-        vkBeginCommandBuffer(transfer_cmd_, &begin);
-
-        // Per-buffer release barriers accumulated for emission after all
-        // copies in this batch finish recording.
-        std::vector<VkBufferMemoryBarrier> release_barriers;
-
-        for (auto& ch : local) {
-            if (ch.is_completion_marker) {
-                if (ch.on_complete) batch.callbacks.push_back(std::move(ch.on_complete));
-                continue;
-            }
-            VkBufferCopy region{};
-            region.srcOffset = ch.staging_offset;
-            region.dstOffset = ch.dest_offset;
-            region.size      = ch.size;
-            vkCmdCopyBuffer(transfer_cmd_, staging_buffer_.buffer(),
-                            ch.dest_buffer, 1, &region);
-
-            batch.handles.push_back(ch.handle);
-            if (ch.on_complete) batch.callbacks.push_back(std::move(ch.on_complete));
-            batch.max_logical_end = std::max(batch.max_logical_end, ch.logical_end);
-
-            // Cross-queue release: hand the destination range from the
-            // transfer family to the graphics family. The acquire half
-            // executes on `frame_cmd` once retire_batch sees this batch's
-            // fence signal.
-            if (transfer_family_ != graphics_family_) {
-                VkBufferMemoryBarrier rb{};
-                rb.sType               = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-                rb.srcAccessMask       = VK_ACCESS_TRANSFER_WRITE_BIT;
-                rb.dstAccessMask       = 0;                          // acquire side will set
-                rb.srcQueueFamilyIndex = transfer_family_;
-                rb.dstQueueFamilyIndex = graphics_family_;
-                rb.buffer              = ch.dest_buffer;
-                rb.offset              = ch.dest_offset;
-                rb.size                = ch.size;
-                release_barriers.push_back(rb);
-
-                batch.acquire_ranges.push_back({ch.dest_buffer, ch.dest_offset, ch.size});
-            }
-
-            std::lock_guard<std::mutex> lock(queue_mutex_);
-            pending_status_[ch.handle.id] = Status::InFlight;
-        }
-
-        if (!release_barriers.empty()) {
-            vkCmdPipelineBarrier(transfer_cmd_,
-                VK_PIPELINE_STAGE_TRANSFER_BIT,
-                VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
-                0,
-                0, nullptr,
-                static_cast<std::uint32_t>(release_barriers.size()), release_barriers.data(),
-                0, nullptr);
-        }
-
-        vkEndCommandBuffer(transfer_cmd_);
-
-        VkSubmitInfo submit{};
-        submit.sType              = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-        submit.commandBufferCount = 1;
-        submit.pCommandBuffers    = &transfer_cmd_;
-        vkQueueSubmit(transfer_queue_, 1, &submit, transfer_fence_);
-
-        in_flight_.push_back(std::move(batch));
-        transfer_in_flight_ = true;
-        return;
-    }
-
-    // ── Graphics-queue fallback path ──
-    // No cross-queue ownership transfer needed (single family). Copies record
-    // directly into `frame_cmd`; callbacks fire inline since the recorded copy
-    // executes before the same submission's later commands.
-
-    // 1. Retire any per-batch fences that have signaled (fallback path uses
-    //    one fence per submitted batch).
-    while (!in_flight_.empty()) {
-        auto& front = in_flight_.front();
-        if (vkGetFenceStatus(device_, front.fence) == VK_SUCCESS) {
-            vkDestroyFence(device_, front.fence, nullptr);
-            front.fence = VK_NULL_HANDLE;
-            auto batch = std::move(front);
+        VkResult fs = vkGetFenceStatus(device_, transfer_fence_);
+        if (fs == VK_SUCCESS) {
+            vkResetFences(device_, 1, &transfer_fence_);
+            auto batch = std::move(in_flight_.front());
             in_flight_.pop_front();
-            retire_batch(batch, frame_cmd);  // no acquire barriers in fallback
+            retire_batch(batch, frame_cmd);
+            transfer_in_flight_ = false;
         } else {
-            break;
+            return;  // still pending; new batch waits its turn
         }
     }
 
-    // 2. Drain pending chunks into `frame_cmd` up to the per-frame budget.
-    // Bail before the swap when there's no command buffer to record into —
-    // otherwise pending chunks would be moved into `local` and silently
-    // dropped on return, leaking handles and stalling the staging ring.
-    if (frame_cmd == VK_NULL_HANDLE) return;
+    // ── 2. Drain pending chunks into a new batch ──
     std::deque<PendingChunk> local;
     {
         std::lock_guard<std::mutex> lock(queue_mutex_);
@@ -343,52 +246,78 @@ void TransferQueue::poll_completions(VkCommandBuffer frame_cmd) {
     }
     if (local.empty()) return;
 
-    std::uint64_t bytes_recorded = 0;
-    std::deque<PendingChunk> deferred;
-    InFlightBatch frame_batch{};
+    InFlightBatch batch{};
+    batch.fence = transfer_fence_;
+
+    vkResetCommandBuffer(transfer_cmd_, 0);
+    VkCommandBufferBeginInfo begin{};
+    begin.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    begin.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    vkBeginCommandBuffer(transfer_cmd_, &begin);
+
+    // Per-buffer release barriers accumulated for emission after all copies
+    // in this batch finish recording (cross-family path only — empty when
+    // transfer_family_ == graphics_family_).
+    std::vector<VkBufferMemoryBarrier> release_barriers;
 
     for (auto& ch : local) {
         if (ch.is_completion_marker) {
-            if (ch.on_complete) frame_batch.callbacks.push_back(std::move(ch.on_complete));
+            if (ch.on_complete) batch.callbacks.push_back(std::move(ch.on_complete));
             continue;
         }
-        if (transfer_budget_bytes_ > 0 &&
-            bytes_recorded + ch.size > transfer_budget_bytes_) {
-            deferred.push_back(std::move(ch));
-            continue;
-        }
-
         VkBufferCopy region{};
         region.srcOffset = ch.staging_offset;
         region.dstOffset = ch.dest_offset;
         region.size      = ch.size;
-        vkCmdCopyBuffer(frame_cmd, staging_buffer_.buffer(),
+        vkCmdCopyBuffer(transfer_cmd_, staging_buffer_.buffer(),
                         ch.dest_buffer, 1, &region);
 
-        frame_batch.handles.push_back(ch.handle);
-        if (ch.on_complete) frame_batch.callbacks.push_back(std::move(ch.on_complete));
-        frame_batch.max_logical_end =
-            std::max(frame_batch.max_logical_end, ch.logical_end);
-        bytes_recorded += ch.size;
+        batch.handles.push_back(ch.handle);
+        if (ch.on_complete) batch.callbacks.push_back(std::move(ch.on_complete));
+        batch.max_logical_end = std::max(batch.max_logical_end, ch.logical_end);
+
+        // Cross-queue release: hand the destination range from the transfer
+        // family to the graphics family. The acquire half executes on
+        // `frame_cmd` once retire_batch sees this batch's fence signal.
+        if (transfer_family_ != graphics_family_) {
+            VkBufferMemoryBarrier rb{};
+            rb.sType               = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+            rb.srcAccessMask       = VK_ACCESS_TRANSFER_WRITE_BIT;
+            rb.dstAccessMask       = 0;  // acquire side will set
+            rb.srcQueueFamilyIndex = transfer_family_;
+            rb.dstQueueFamilyIndex = graphics_family_;
+            rb.buffer              = ch.dest_buffer;
+            rb.offset              = ch.dest_offset;
+            rb.size                = ch.size;
+            release_barriers.push_back(rb);
+
+            batch.acquire_ranges.push_back({ch.dest_buffer, ch.dest_offset, ch.size});
+        }
 
         std::lock_guard<std::mutex> lock(queue_mutex_);
         pending_status_[ch.handle.id] = Status::InFlight;
     }
 
-    if (!deferred.empty()) {
-        std::lock_guard<std::mutex> lock(queue_mutex_);
-        for (auto it = deferred.rbegin(); it != deferred.rend(); ++it) {
-            pending_chunks_.push_front(std::move(*it));
-        }
+    if (!release_barriers.empty()) {
+        vkCmdPipelineBarrier(transfer_cmd_,
+            VK_PIPELINE_STAGE_TRANSFER_BIT,
+            VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+            0,
+            0, nullptr,
+            static_cast<std::uint32_t>(release_barriers.size()), release_barriers.data(),
+            0, nullptr);
     }
 
-    // Fallback path retires synchronously — the same `frame_cmd` will execute
-    // the copy before any later use, so we can fire callbacks immediately
-    // without waiting on a fence. Ring read also advances right away (the
-    // staging memcpy is a CPU write that's already visible).
-    if (!frame_batch.handles.empty() || !frame_batch.callbacks.empty()) {
-        retire_batch(frame_batch, /*frame_cmd=*/VK_NULL_HANDLE);
-    }
+    vkEndCommandBuffer(transfer_cmd_);
+
+    VkSubmitInfo submit{};
+    submit.sType              = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submit.commandBufferCount = 1;
+    submit.pCommandBuffers    = &transfer_cmd_;
+    vkQueueSubmit(transfer_queue_, 1, &submit, transfer_fence_);
+
+    in_flight_.push_back(std::move(batch));
+    transfer_in_flight_ = true;
 }
 
 void TransferQueue::request_cancel() {
@@ -414,9 +343,8 @@ void TransferQueue::shutdown() {
     }
     for (auto& batch : in_flight_) {
         for (auto& cb : batch.callbacks) if (cb) cb();
-        if (!dedicated_ && batch.fence != VK_NULL_HANDLE) {
-            vkDestroyFence(device_, batch.fence, nullptr);
-        }
+        // All batches share the queue's `transfer_fence_` (destroyed below);
+        // there are no per-batch fences to clean up.
     }
     in_flight_.clear();
 

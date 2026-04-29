@@ -221,10 +221,13 @@ int main() {
         std::printf("[TEST] oversized reservation rejected\n");
     }
 
-    // ── Test 6: pending chunks survive a poll with no frame_cmd ──
-    // Regression for a bug where `poll_completions(VK_NULL_HANDLE)` would
-    // drain `pending_chunks_` into a local deque and then return without
-    // recording any copy, silently dropping every queued upload.
+    // ── Test 6: poll(VK_NULL_HANDLE) is safe in single-family mode ──
+    // The unified poll_completions submits its own command buffer regardless
+    // of `frame_cmd`; `frame_cmd` is consulted only for the cross-queue
+    // acquire barrier when transfer/graphics families differ. In the
+    // single-family fixture used here, passing VK_NULL_HANDLE must not
+    // crash, must not drop the chunk, and must still produce a byte-perfect
+    // upload after subsequent polls drive the fence to signal.
     {
         auto dest = Buffer::create_storage_gpu_only(gpu.allocator(), 256);
         auto res = tq.reserve_staging(64);
@@ -232,12 +235,13 @@ int main() {
         std::memset(res->host_ptr, 0xDD, 64);
         auto h = tq.submit(*res, dest.buffer(), 0);
 
-        // Poll with no command buffer. The chunk must remain pending.
-        tq.poll_completions(VK_NULL_HANDLE);
-        expect(tq.status(h) == TransferQueue::Status::Pending,
-               "chunk stays Pending when poll has no frame_cmd");
+        tq.poll_completions(VK_NULL_HANDLE);  // safe in single-family mode
+        const auto s = tq.status(h);
+        expect(s == TransferQueue::Status::Pending
+            || s == TransferQueue::Status::InFlight,
+               "status is Pending or InFlight after null-cmd poll (not lost)");
 
-        // Now poll for real and verify the upload completes.
+        // Driving the queue to completion still works.
         poll_until_complete(tq, gpu, {h});
 
         auto cmd = gpu.begin_commands();
@@ -249,7 +253,7 @@ int main() {
         }
         rb.destroy(gpu.allocator());
         dest.destroy(gpu.allocator());
-        std::printf("[TEST] poll(VK_NULL_HANDLE) preserves pending chunks\n");
+        std::printf("[TEST] poll(VK_NULL_HANDLE) is safe (single-family path)\n");
     }
 
     // ── Test 7: request_cancel breaks a worker's reserve_staging spin loop ──
