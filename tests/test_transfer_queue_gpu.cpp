@@ -291,6 +291,110 @@ int main() {
     }
 
     tq.shutdown();
+
+    // ── Test 8: per-frame transfer budget spreads work across polls ─────
+    // Build a separate TransferQueue with a small budget and a ring large
+    // enough to hold every reservation in flight, then verify that chunks
+    // exceeding the budget get deferred to subsequent polls (instead of
+    // recording into one giant submission). Allowance: a single chunk is
+    // always permitted even if it alone exceeds the budget — otherwise
+    // oversize payloads would never make progress.
+    {
+        constexpr std::uint64_t kRing       = 4ull * 1024 * 1024;  // 4 MB ring
+        constexpr std::uint64_t kChunkBytes = 384ull * 1024;       // 384 KB each
+        constexpr int           kChunks     = 5;                    // 5 × 384 KB = 1.875 MB
+        constexpr std::uint32_t kBudgetMB   = 1;                    // 1 MB → 2 chunks/poll
+
+        TransferQueue tiny(
+            gpu.device(), gpu.allocator(),
+            gpu.context().graphics_queue(),
+            gpu.queue_family(), gpu.queue_family(),
+            /*dedicated=*/false,
+            kRing,
+            kBudgetMB);
+
+        auto dest = Buffer::create_storage_gpu_only(gpu.allocator(),
+                                                     kChunks * kChunkBytes);
+
+        std::vector<TransferQueue::Handle> handles;
+        for (int c = 0; c < kChunks; ++c) {
+            auto res = tiny.reserve_staging(kChunkBytes);
+            expect(res.has_value(), "tiny-budget reservation succeeded");
+            std::memset(res->host_ptr, 0xE0 + c, kChunkBytes);
+            handles.push_back(tiny.submit(*res, dest.buffer(),
+                                          static_cast<std::uint64_t>(c) * kChunkBytes));
+        }
+
+        // First poll: budget allows 2 × 384 KB = 768 KB before the third
+        // chunk would push us over 1 MB. The split must be exact —
+        // recording a third chunk (1.125 MB) would exceed the budget and
+        // reintroduce the frame-time spikes this fix is meant to prevent.
+        // Recording fewer than two would mean the "always allow at least
+        // one chunk" allowance ate into the cap unnecessarily.
+        {
+            auto cmd = gpu.begin_commands();
+            tiny.poll_completions(cmd);
+            gpu.submit_and_wait();
+
+            int pending = 0;
+            int inflight = 0;
+            int complete = 0;
+            for (auto h : handles) {
+                switch (tiny.status(h)) {
+                    case TransferQueue::Status::Pending:  pending++;  break;
+                    case TransferQueue::Status::InFlight: inflight++; break;
+                    case TransferQueue::Status::Complete: complete++; break;
+                    default:                                          break;
+                }
+            }
+            expect(pending == 3,
+                   "exactly 3 of 5 chunks deferred to next poll");
+            expect(inflight + complete == 2,
+                   "exactly 2 chunks recorded into the first batch");
+        }
+
+        // Drive the rest to completion across multiple polls.
+        for (int i = 0; i < 32; ++i) {
+            auto cmd = gpu.begin_commands();
+            tiny.poll_completions(cmd);
+            gpu.submit_and_wait();
+            bool all_done = true;
+            for (auto h : handles) {
+                if (tiny.status(h) != TransferQueue::Status::Complete) {
+                    all_done = false;
+                    break;
+                }
+            }
+            if (all_done) break;
+        }
+        for (auto h : handles) {
+            expect(tiny.status(h) == TransferQueue::Status::Complete,
+                   "all budgeted chunks eventually complete");
+        }
+
+        // Verify bytes landed correctly across the destination buffer.
+        auto cmd = gpu.begin_commands();
+        auto rb = gpu.readback_from_gpu(cmd, dest, kChunks * kChunkBytes);
+        gpu.submit_and_wait();
+        const auto* p = static_cast<const std::uint8_t*>(rb.mapped());
+        for (int c = 0; c < kChunks; ++c) {
+            const auto expected = static_cast<std::uint8_t>(0xE0 + c);
+            for (std::uint64_t i = 0; i < kChunkBytes; ++i) {
+                if (p[c * kChunkBytes + i] != expected) {
+                    std::fprintf(stderr,
+                        "byte mismatch chunk %d offset %llu: got 0x%02X want 0x%02X\n",
+                        c, static_cast<unsigned long long>(i),
+                        p[c * kChunkBytes + i], expected);
+                    std::exit(1);
+                }
+            }
+        }
+        rb.destroy(gpu.allocator());
+        dest.destroy(gpu.allocator());
+        tiny.shutdown();
+        std::printf("[TEST] per-frame budget defers excess across polls\n");
+    }
+
     gpu.shutdown();
     std::printf("[ALL TESTS PASSED]\n");
     return 0;

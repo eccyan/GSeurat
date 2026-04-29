@@ -260,9 +260,34 @@ void TransferQueue::poll_completions(VkCommandBuffer frame_cmd) {
     // transfer_family_ == graphics_family_).
     std::vector<VkBufferMemoryBarrier> release_barriers;
 
+    // Per-frame upload budget: stop recording new copies once we've hit the
+    // configured byte cap, and push the remaining chunks back onto
+    // `pending_chunks_` for the next poll. `transfer_budget_bytes_ == 0`
+    // means "no cap" (caller passed budget_mb == 0). Once we defer the
+    // first chunk, every subsequent chunk and completion marker is also
+    // deferred so callbacks fire in the right order relative to the work
+    // they're meant to gate on.
+    std::uint64_t  bytes_recorded = 0;
+    bool           defer_rest     = false;
+    std::deque<PendingChunk> deferred;
+
     for (auto& ch : local) {
+        if (defer_rest) {
+            deferred.push_back(std::move(ch));
+            continue;
+        }
         if (ch.is_completion_marker) {
             if (ch.on_complete) batch.callbacks.push_back(std::move(ch.on_complete));
+            continue;
+        }
+        if (transfer_budget_bytes_ > 0 &&
+            bytes_recorded + ch.size > transfer_budget_bytes_ &&
+            bytes_recorded > 0) {
+            // Out of budget. Defer this chunk and every later one. Allow at
+            // least one chunk per poll regardless of budget so a single
+            // oversized payload can still make progress.
+            defer_rest = true;
+            deferred.push_back(std::move(ch));
             continue;
         }
         VkBufferCopy region{};
@@ -272,6 +297,7 @@ void TransferQueue::poll_completions(VkCommandBuffer frame_cmd) {
         vkCmdCopyBuffer(transfer_cmd_, staging_buffer_.buffer(),
                         ch.dest_buffer, 1, &region);
 
+        bytes_recorded += ch.size;
         batch.handles.push_back(ch.handle);
         if (ch.on_complete) batch.callbacks.push_back(std::move(ch.on_complete));
         batch.max_logical_end = std::max(batch.max_logical_end, ch.logical_end);
@@ -298,6 +324,15 @@ void TransferQueue::poll_completions(VkCommandBuffer frame_cmd) {
         pending_status_[ch.handle.id] = Status::InFlight;
     }
 
+    // Re-queue deferred chunks at the front of pending_chunks_ so they keep
+    // their original FIFO order on the next poll.
+    if (!deferred.empty()) {
+        std::lock_guard<std::mutex> lock(queue_mutex_);
+        for (auto it = deferred.rbegin(); it != deferred.rend(); ++it) {
+            pending_chunks_.push_front(std::move(*it));
+        }
+    }
+
     if (!release_barriers.empty()) {
         vkCmdPipelineBarrier(transfer_cmd_,
             VK_PIPELINE_STAGE_TRANSFER_BIT,
@@ -309,6 +344,13 @@ void TransferQueue::poll_completions(VkCommandBuffer frame_cmd) {
     }
 
     vkEndCommandBuffer(transfer_cmd_);
+
+    // If everything was deferred (budget exhausted before the first chunk
+    // could record) and no markers piggybacked on this poll, skip the
+    // submit — there's no GPU work to fence on. Standalone markers (no
+    // recorded copies) still fire via the in_flight retirement path so
+    // they observe their preceding chunks.
+    if (batch.handles.empty() && batch.callbacks.empty()) return;
 
     VkSubmitInfo submit{};
     submit.sType              = VK_STRUCTURE_TYPE_SUBMIT_INFO;
