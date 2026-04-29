@@ -59,6 +59,7 @@ public:
 
     TransferQueue(VkDevice device, VmaAllocator allocator,
                   VkQueue transfer_queue, std::uint32_t transfer_family,
+                  std::uint32_t graphics_family,
                   bool dedicated, std::uint64_t staging_size,
                   std::uint32_t transfer_budget_mb);
 
@@ -115,6 +116,10 @@ private:
         VkFence                              fence = VK_NULL_HANDLE;
         std::vector<Handle>                  handles;
         std::vector<std::function<void()>>   callbacks;
+        // Per-buffer ranges for the graphics-side acquire barrier (dedicated
+        // path only — empty when transfer_family_ == graphics_family_).
+        struct AcquireRange { VkBuffer buffer; std::uint64_t offset; std::uint64_t size; };
+        std::vector<AcquireRange>            acquire_ranges;
         std::uint64_t                        max_logical_end = 0;   // for ring retirement
     };
 
@@ -125,6 +130,7 @@ private:
     VmaAllocator     allocator_;
     VkQueue          transfer_queue_;
     std::uint32_t    transfer_family_;
+    std::uint32_t    graphics_family_;
     bool             dedicated_;
     std::uint64_t    staging_size_;
     std::uint64_t    transfer_budget_bytes_;

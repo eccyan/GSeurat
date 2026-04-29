@@ -63,7 +63,7 @@ int main() {
     TransferQueue tq(
         gpu.device(), gpu.allocator(),
         gpu.context().graphics_queue(),
-        gpu.queue_family(),
+        gpu.queue_family(), gpu.queue_family(),
         /*dedicated=*/false,
         staging_size,
         /*budget_mb=*/64);

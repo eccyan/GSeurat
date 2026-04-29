@@ -91,7 +91,7 @@ public:
     void load_cloud_async(const std::string& ply_path);
     void poll_transfers(VkCommandBuffer frame_cmd);
     void create_transfer_queue(VkQueue transfer_q, uint32_t transfer_family,
-                               bool dedicated);
+                               uint32_t graphics_family, bool dedicated);
     void update_active_gaussians(const Gaussian* data, uint32_t count);
     void update_gaussian_data(const Gaussian* data, uint32_t count);
 

@@ -15,12 +15,14 @@ inline std::uint64_t physical_offset(std::uint64_t logical, std::uint64_t capaci
 
 TransferQueue::TransferQueue(VkDevice device, VmaAllocator allocator,
                              VkQueue transfer_queue, std::uint32_t transfer_family,
+                             std::uint32_t graphics_family,
                              bool dedicated, std::uint64_t staging_size,
                              std::uint32_t transfer_budget_mb)
     : device_(device),
       allocator_(allocator),
       transfer_queue_(transfer_queue),
       transfer_family_(transfer_family),
+      graphics_family_(graphics_family),
       dedicated_(dedicated),
       staging_size_(staging_size),
       transfer_budget_bytes_(static_cast<std::uint64_t>(transfer_budget_mb) * 1024u * 1024u) {
@@ -160,8 +162,34 @@ void TransferQueue::retire_batch(InFlightBatch& batch, VkCommandBuffer frame_cmd
         ring_read_ = std::max(ring_read_, batch.max_logical_end);
     }
 
-    (void)frame_cmd;  // unused in single-family path; cross-queue barriers
-                      // arrive in a follow-up commit.
+    // Cross-queue acquire barriers (dedicated path only). Records into
+    // `frame_cmd` so the graphics queue takes ownership before any compute
+    // dispatch reads the destination buffer.
+    if (dedicated_ && frame_cmd != VK_NULL_HANDLE && !batch.acquire_ranges.empty() &&
+        transfer_family_ != graphics_family_) {
+        std::vector<VkBufferMemoryBarrier> barriers;
+        barriers.reserve(batch.acquire_ranges.size());
+        for (const auto& r : batch.acquire_ranges) {
+            VkBufferMemoryBarrier b{};
+            b.sType               = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+            b.srcAccessMask       = 0;                              // release side already flushed
+            b.dstAccessMask       = VK_ACCESS_SHADER_READ_BIT
+                                  | VK_ACCESS_SHADER_WRITE_BIT;
+            b.srcQueueFamilyIndex = transfer_family_;
+            b.dstQueueFamilyIndex = graphics_family_;
+            b.buffer              = r.buffer;
+            b.offset              = r.offset;
+            b.size                = r.size;
+            barriers.push_back(b);
+        }
+        vkCmdPipelineBarrier(frame_cmd,
+            VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+            0,
+            0, nullptr,
+            static_cast<std::uint32_t>(barriers.size()), barriers.data(),
+            0, nullptr);
+    }
 
     for (auto& cb : batch.callbacks) {
         if (cb) cb();
@@ -205,6 +233,10 @@ void TransferQueue::poll_completions(VkCommandBuffer frame_cmd) {
         begin.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
         vkBeginCommandBuffer(transfer_cmd_, &begin);
 
+        // Per-buffer release barriers accumulated for emission after all
+        // copies in this batch finish recording.
+        std::vector<VkBufferMemoryBarrier> release_barriers;
+
         for (auto& ch : local) {
             if (ch.is_completion_marker) {
                 if (ch.on_complete) batch.callbacks.push_back(std::move(ch.on_complete));
@@ -221,11 +253,37 @@ void TransferQueue::poll_completions(VkCommandBuffer frame_cmd) {
             if (ch.on_complete) batch.callbacks.push_back(std::move(ch.on_complete));
             batch.max_logical_end = std::max(batch.max_logical_end, ch.logical_end);
 
-            // Cross-queue ownership transfer (release on transfer queue,
-            // acquire on graphics queue) is added in a follow-up commit.
+            // Cross-queue release: hand the destination range from the
+            // transfer family to the graphics family. The acquire half
+            // executes on `frame_cmd` once retire_batch sees this batch's
+            // fence signal.
+            if (transfer_family_ != graphics_family_) {
+                VkBufferMemoryBarrier rb{};
+                rb.sType               = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+                rb.srcAccessMask       = VK_ACCESS_TRANSFER_WRITE_BIT;
+                rb.dstAccessMask       = 0;                          // acquire side will set
+                rb.srcQueueFamilyIndex = transfer_family_;
+                rb.dstQueueFamilyIndex = graphics_family_;
+                rb.buffer              = ch.dest_buffer;
+                rb.offset              = ch.dest_offset;
+                rb.size                = ch.size;
+                release_barriers.push_back(rb);
+
+                batch.acquire_ranges.push_back({ch.dest_buffer, ch.dest_offset, ch.size});
+            }
 
             std::lock_guard<std::mutex> lock(queue_mutex_);
             pending_status_[ch.handle.id] = Status::InFlight;
+        }
+
+        if (!release_barriers.empty()) {
+            vkCmdPipelineBarrier(transfer_cmd_,
+                VK_PIPELINE_STAGE_TRANSFER_BIT,
+                VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+                0,
+                0, nullptr,
+                static_cast<std::uint32_t>(release_barriers.size()), release_barriers.data(),
+                0, nullptr);
         }
 
         vkEndCommandBuffer(transfer_cmd_);

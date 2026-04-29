@@ -959,7 +959,7 @@ void GsRenderer::unload_cloud(uint32_t chunk_id) {
 }
 
 void GsRenderer::create_transfer_queue(VkQueue transfer_q, uint32_t transfer_family,
-                                        bool dedicated) {
+                                        uint32_t graphics_family, bool dedicated) {
     if (!streaming_initialized_) return;
     // Sized for double-buffered slab uploads plus headroom for in-flight
     // chunks before they retire on the fence — multi-batch concurrency now
@@ -967,7 +967,7 @@ void GsRenderer::create_transfer_queue(VkQueue transfer_q, uint32_t transfer_fam
     const uint64_t staging_size = streaming_config_.slab_bytes() * 4;
     transfer_queue_ = std::make_unique<TransferQueue>(
         device_, allocator_,
-        transfer_q, transfer_family,
+        transfer_q, transfer_family, graphics_family,
         dedicated, staging_size,
         streaming_config_.transfer_budget_mb_per_frame);
 }
