@@ -51,6 +51,14 @@ void DemoApp::run() {
 
     init_game_content();
 
+    // Opt into the engine's Loading → Warming → Playing flow. The terrain
+    // PLY currently uploads synchronously inside `init_scene`, so the
+    // tracked-handle list is empty; the min-duration timer is what keeps
+    // the SNES-style loading overlay on screen long enough to read.
+    loading_monitor_.set_min_loading_duration(1.5f);
+    loading_monitor_.set_warmup_frames(EngineLoadingMonitor::kMaxWarmupFrames);
+    loading_monitor_.begin_load({});
+
     if (viewer_mode_) {
         std::string path = scene_path_explicit_ ? scene_path_ : resolve_asset_path("assets/scenes/gs_demo.json").string();
         scene_objects_.current_scene_path = path;
