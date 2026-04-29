@@ -207,7 +207,8 @@ void GsRenderer::create_output_image(uint32_t width, uint32_t height) {
         proc_info.arrayLayers = 1;
         proc_info.samples = VK_SAMPLE_COUNT_1_BIT;
         proc_info.tiling = VK_IMAGE_TILING_OPTIMAL;
-        proc_info.usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+        proc_info.usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT
+                        | VK_IMAGE_USAGE_TRANSFER_DST_BIT;  // for init_output_layouts clear
 
         VmaAllocationCreateInfo proc_alloc{};
         proc_alloc.usage = VMA_MEMORY_USAGE_GPU_ONLY;
@@ -2054,6 +2055,64 @@ void GsRenderer::resize_output(uint32_t width, uint32_t height) {
     if (gaussian_count_ > 0) {
         update_descriptors();
     }
+}
+
+void GsRenderer::init_output_layouts(VkCommandBuffer cmd) {
+    // The renderer's main fragment pass samples `processed_view_` every
+    // frame. While the engine sits in EngineState::Loading the GS compute
+    // path is gated off, so the image would otherwise stay in UNDEFINED
+    // until the first Warming frame and produce a layout-mismatch
+    // validation error. Clear it to black up front and leave it in
+    // SHADER_READ_ONLY_OPTIMAL — the GS compute path will reset oldLayout
+    // to UNDEFINED → GENERAL (Vulkan's "discard previous contents") on
+    // its first dispatch, so this seed transition is invisible afterwards.
+    //
+    // `output_image_` and `depth_image_` are not sampled by fragment
+    // shaders (output_image_ is read by the post-process compute via
+    // GENERAL; depth_image_ is storage-only), so they don't need to be
+    // pre-transitioned for the sample-during-Loading path.
+
+    auto barrier_for = [](VkImage image, VkImageLayout old_layout, VkImageLayout new_layout,
+                          VkAccessFlags src_access, VkAccessFlags dst_access) {
+        VkImageMemoryBarrier b{};
+        b.sType                       = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        b.srcAccessMask               = src_access;
+        b.dstAccessMask               = dst_access;
+        b.oldLayout                   = old_layout;
+        b.newLayout                   = new_layout;
+        b.srcQueueFamilyIndex         = VK_QUEUE_FAMILY_IGNORED;
+        b.dstQueueFamilyIndex         = VK_QUEUE_FAMILY_IGNORED;
+        b.image                       = image;
+        b.subresourceRange            = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+        return b;
+    };
+
+    // 1. UNDEFINED → TRANSFER_DST_OPTIMAL.
+    VkImageMemoryBarrier to_dst = barrier_for(processed_image_,
+        VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+        0, VK_ACCESS_TRANSFER_WRITE_BIT);
+    vkCmdPipelineBarrier(cmd,
+        VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+        VK_PIPELINE_STAGE_TRANSFER_BIT,
+        0, 0, nullptr, 0, nullptr, 1, &to_dst);
+
+    // 2. Clear to opaque black.
+    VkClearColorValue clear{};
+    clear.float32[0] = clear.float32[1] = clear.float32[2] = 0.0f;
+    clear.float32[3] = 1.0f;
+    VkImageSubresourceRange range{VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+    vkCmdClearColorImage(cmd, processed_image_,
+        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &clear, 1, &range);
+
+    // 3. TRANSFER_DST → SHADER_READ_ONLY_OPTIMAL.
+    VkImageMemoryBarrier to_shader = barrier_for(processed_image_,
+        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT);
+    vkCmdPipelineBarrier(cmd,
+        VK_PIPELINE_STAGE_TRANSFER_BIT,
+        VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+        0, 0, nullptr, 0, nullptr, 1, &to_shader);
 }
 
 void GsRenderer::dispatch_depth_onesweep(
