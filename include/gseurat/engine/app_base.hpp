@@ -3,6 +3,7 @@
 #include "gseurat/engine/async_loader.hpp"
 #include "gseurat/engine/audio/audio_engine.hpp"
 #include "gseurat/engine/component_registry.hpp"
+#include "gseurat/engine/engine_state.hpp"
 #include "gseurat/engine/system_scheduler.hpp"
 #include "gseurat/engine/control_server.hpp"
 #include "gseurat/engine/collision_gen.hpp"
@@ -178,6 +179,13 @@ public:
     AsyncLoader& async_loader() { return async_loader_; }
     StagingUploader& staging_uploader() { return staging_uploader_; }
 
+    // Engine-level lifecycle monitor (Loading / Warming / Playing). Default
+    // state is Playing; games opt into the loading flow by calling
+    // `loading_monitor().begin_load(...)` after enqueueing async asset
+    // uploads on a TransferQueue (or any other handle-producing loader).
+    EngineLoadingMonitor& loading_monitor() { return loading_monitor_; }
+    const EngineLoadingMonitor& loading_monitor() const { return loading_monitor_; }
+
     // Game object system accessors
     ComponentRegistry& component_registry() { return component_registry_; }
     SystemScheduler& system_scheduler() { return system_scheduler_; }
@@ -282,6 +290,9 @@ protected:
     // Async asset loading
     AsyncLoader async_loader_;
     StagingUploader staging_uploader_;
+
+    // Engine-level Loading/Warming/Playing state machine.
+    EngineLoadingMonitor loading_monitor_;
 
     // Game object system
     ComponentRegistry component_registry_;

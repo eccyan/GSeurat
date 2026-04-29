@@ -274,7 +274,8 @@ void Renderer::draw_scene(Scene& scene,
                            const std::vector<SpriteDrawInfo>& overlay,
                            const std::vector<ui::UIDrawBatch>& ui_batches,
                            const std::vector<DebugColliderDrawInfo>& debug_colliders_list,
-                           const FeatureFlags& flags) {
+                           const FeatureFlags& flags,
+                           bool dispatch_gpu_compute) {
     auto device = context_.device();
     const auto& frame_sync = sync_.frame(current_frame_);
 
@@ -380,7 +381,7 @@ void Renderer::draw_scene(Scene& scene,
         gs_renderer_.set_post_process_params(gs_pp);
     }
 
-    record_gs_prepass(cmd, device, dt, flags);
+    record_gs_prepass(cmd, device, dt, flags, dispatch_gpu_compute);
 
     // ===== Pass 1: Scene render pass (offscreen HDR) =====
     {
@@ -863,7 +864,8 @@ void Renderer::draw_sprite_pass(VkCommandBuffer cmd,
 }
 
 void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
-                                  const FeatureFlags& flags) {
+                                  const FeatureFlags& flags,
+                                  bool dispatch_gpu_compute) {
     // Adaptive GS budget: converge to target FPS then lock
     if (flags.gs_adaptive_budget && gs_adaptive_budget_ && gs_gaussian_budget_ > 0 && dt > 0.0f) {
         float fps = 1.0f / dt;
@@ -885,8 +887,12 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
         }
     }
 
-    // Gaussian splatting compute (before render pass)
-    if (flags.gs_rendering && gs_initialized_ && gs_renderer_.has_cloud()) {
+    // Gaussian splatting compute (before render pass).
+    // Gated on `dispatch_gpu_compute` so the engine's Loading state can keep
+    // the GPU idle while the loading screen draws. Warming intentionally
+    // keeps this true so the driver finalises pipeline/state setup against
+    // the freshly-uploaded buffers before the player starts seeing frames.
+    if (dispatch_gpu_compute && flags.gs_rendering && gs_initialized_ && gs_renderer_.has_cloud()) {
 
         // --- Static path: rebuild on camera dirty ---
         bool budget_changed = (gs_gaussian_budget_ != gs_prev_budget_);
