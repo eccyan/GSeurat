@@ -1,5 +1,6 @@
 #pragma once
 
+#include "gseurat/demo/demo_loading_overlay.hpp"
 #include "gseurat/engine/app_base.hpp"
 
 #include <functional>
@@ -28,12 +29,14 @@ protected:
     /// falls back to AppBase's default (clear + init + move PlayerTag).
     void transition_scene(const std::string& target_scene,
                           const glm::vec3& target_position) override;
+    void draw_loading_overlay(float dt) override { loading_overlay_.draw(*this, dt); }
 
 private:
     std::string scene_path_;
     bool scene_path_explicit_ = false;
     bool viewer_mode_ = false;
     PortalHandler portal_handler_;
+    DemoLoadingOverlay loading_overlay_;
 };
 
 }  // namespace gseurat

@@ -113,6 +113,18 @@ public:
     void set_static_dirty(bool d) { static_dirty_ = d; }
 
     void resize_output(uint32_t width, uint32_t height);
+
+    // Records a one-time barrier+clear that transitions the GS output,
+    // processed, and depth images out of `VK_IMAGE_LAYOUT_UNDEFINED` (their
+    // post-creation state) into `VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL`
+    // with their contents cleared to black. The renderer's main pass samples
+    // `processed_view_` every frame; without this seed transition, the very
+    // first frame after `resize_output` while the engine state is `Loading`
+    // (i.e. the GS compute path is gated off) would hit a layout-mismatch
+    // validation error. Caller is responsible for submitting + waiting on
+    // the recorded command buffer.
+    void init_output_layouts(VkCommandBuffer cmd);
+
     void render(VkCommandBuffer cmd, const glm::mat4& view, const glm::mat4& proj);
     VkImageView output_view() const { return processed_view_ ? processed_view_ : output_view_; }
     VkImageView raw_output_view() const { return output_view_; }

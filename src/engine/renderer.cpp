@@ -206,6 +206,18 @@ void Renderer::init_gs(const GaussianCloud& cloud, uint32_t width, uint32_t heig
         gs_initialized_ = true;
     }
     gs_renderer_.resize_output(width, height);
+
+    // Seed the GS output / processed / depth images into SHADER_READ_ONLY_OPTIMAL
+    // so the very first frame can sample them safely even when the engine is
+    // in EngineState::Loading and skips the GS compute path that would
+    // normally perform this transition. Without this, sampling would fault
+    // a Vulkan validation layer because the images sit in UNDEFINED.
+    {
+        VkCommandBuffer cmd = command_pool_.begin_single_time(context_.device());
+        gs_renderer_.init_output_layouts(cmd);
+        command_pool_.end_single_time(context_.device(), context_.graphics_queue(), cmd);
+    }
+
     gs_renderer_.load_cloud(cloud);
     output_width_ = width;
     output_height_ = height;

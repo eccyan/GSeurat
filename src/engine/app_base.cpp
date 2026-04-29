@@ -215,9 +215,14 @@ void AppBase::main_loop() {
         input_.update();
 
         auto now = std::chrono::steady_clock::now();
-        float dt = std::chrono::duration<float>(now - last_update_time_).count();
+        const float wall_dt = std::chrono::duration<float>(now - last_update_time_).count();
         last_update_time_ = now;
 
+        // Gameplay/physics consumes a clamped dt to keep PBD/KCC stable on
+        // hitches. The loading monitor needs the true wall-clock delta, since
+        // its min-duration gate is a real-world timer — clamping would let a
+        // 1 fps stall stretch a 1.5s loading screen into ~15s of held state.
+        float dt = wall_dt;
         if (dt > 0.1f) dt = 0.1f;
 
         debug_metrics_.update(dt);
@@ -235,7 +240,8 @@ void AppBase::main_loop() {
                     return tq->status(h);
                 }
                 return TransferQueue::Status::Unknown;
-            });
+            },
+            wall_dt);
 
         // F1 → toggle developer overlay
         if (input_.was_key_pressed(GLFW_KEY_F1)) {
@@ -304,6 +310,13 @@ void AppBase::main_loop() {
 
         // Let states build their draw lists
         state_stack_.build_draw_lists(*this);
+
+        // Loading/Warming overlay (after the active state's draw lists are
+        // built so the overlay paints over them). Default AppBase impl is a
+        // no-op; host apps override to draw their own art.
+        if (loading_monitor_.should_overlay_loading_ui()) {
+            draw_loading_overlay(dt);
+        }
 
         // Developer overlay (after states have drawn their content)
         if (dev_overlay_.visible()) {
