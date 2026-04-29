@@ -1,7 +1,9 @@
 #include "gseurat/engine/renderer.hpp"
 #include "gseurat/engine/pipeline.hpp"
 #include "gseurat/engine/procedural_textures.hpp"
+#include "gseurat/engine/project_root.hpp"
 #include "gseurat/engine/resource_manager.hpp"
+#include "gseurat/engine/streaming_config.hpp"
 
 #include <algorithm>
 #include <array>
@@ -205,6 +207,24 @@ void Renderer::init_gs(const GaussianCloud& cloud, uint32_t width, uint32_t heig
                           context_.pipeline_cache());
         gs_initialized_ = true;
     }
+
+    // Pre-allocate streaming buffers once and stand up the transfer queue.
+    // Both must be live before `load_cloud_async` so per-slab uploads can
+    // route through the shared host-visible staging ring instead of the
+    // legacy `vkCmdCopyBuffer` + `vkDeviceWaitIdle` path.
+    if (!gs_renderer_.streaming_initialized()) {
+        const auto& project_root = get_project_root();
+        StreamingConfig cfg = project_root.empty()
+            ? StreamingConfig{}
+            : StreamingConfig::load(project_root);
+        gs_renderer_.init_streaming(cfg);
+        gs_renderer_.create_transfer_queue(
+            context_.transfer_queue(),
+            context_.transfer_queue_family(),
+            context_.graphics_queue_family(),
+            context_.has_dedicated_transfer());
+    }
+
     gs_renderer_.resize_output(width, height);
 
     // Seed the GS output / processed / depth images into SHADER_READ_ONLY_OPTIMAL
@@ -218,13 +238,26 @@ void Renderer::init_gs(const GaussianCloud& cloud, uint32_t width, uint32_t heig
         command_pool_.end_single_time(context_.device(), context_.graphics_queue(), cmd);
     }
 
-    gs_renderer_.load_cloud(cloud);
+    // CPU-side post-load setup (chunk grid, bounds, descriptor sets) reads
+    // only the GaussianCloud — those run synchronously below, BEFORE we
+    // hand the cloud over to the async upload. The loading monitor gates
+    // GS compute via `dispatch_gpu_compute = false` until the returned
+    // handles report Complete, so no shader will read stale slab buffers
+    // while transfers are draining across frames.
     output_width_ = width;
     output_height_ = height;
 
-    // Build spatial chunk grid for frustum-based streaming
+    // Build spatial chunk grid for frustum-based streaming.
     gs_chunk_grid_.build(cloud, 32.0f);
     gs_prev_visible_.clear();
+
+    // Hand a copy of the cloud off to the renderer's pending-upload job.
+    // The async path moves the cloud in and drains slab transfers across
+    // frames via poll_transfers; the caller (`GsSceneLoader::load`) still
+    // needs the original for PBD anchor uploads and bounds calculations
+    // after `init_gs` returns, so we duplicate it here. The duplicate is
+    // freed once the final completion callback fires.
+    pending_load_handles_ = gs_renderer_.load_cloud_async(GaussianCloud(cloud));
 
     // Auto-enable adaptive LOD budget for large clouds
     gs_total_gaussian_count_ = cloud.count();
@@ -319,6 +352,14 @@ void Renderer::draw_scene(Scene& scene,
     VkCommandBufferBeginInfo begin_info{};
     begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     vkBeginCommandBuffer(cmd, &begin_info);
+
+    // Drain completed async transfers: retires fences, fires per-handle and
+    // batch completion callbacks (which write page/chunk tables, set
+    // gaussian_count_, etc.), and on the dedicated-transfer-family path
+    // records acquire barriers into `cmd` so subsequent GS compute reads
+    // see fully-uploaded slabs. Must run before any pipeline that consumes
+    // the slab buffers, including `record_gs_prepass`.
+    gs_renderer_.poll_transfers(cmd);
 
     // Forward post-process params to GS pipeline before GS compute runs
     {

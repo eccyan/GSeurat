@@ -51,13 +51,15 @@ void DemoApp::run() {
 
     init_game_content();
 
-    // Opt into the engine's Loading → Warming → Playing flow. The terrain
-    // PLY currently uploads synchronously inside `init_scene`, so the
-    // tracked-handle list is empty; the min-duration timer is what keeps
-    // the SNES-style loading overlay on screen long enough to read.
+    // Loading monitor configuration goes in *before* the state push so the
+    // monitor is fully tuned by the time the GS compute gate is consulted
+    // on the very next frame. The handles passed to `begin_load` come
+    // from the renderer, which stashes them when `init_gs` routes the
+    // initial cloud through `load_cloud_async`. The state push runs
+    // `on_enter` synchronously (see GameStateStack::push), so by the time
+    // it returns the handles are available to take.
     loading_monitor_.set_min_loading_duration(1.5f);
     loading_monitor_.set_warmup_frames(EngineLoadingMonitor::kMaxWarmupFrames);
-    loading_monitor_.begin_load({});
 
     if (viewer_mode_) {
         std::string path = scene_path_explicit_ ? scene_path_ : resolve_asset_path("assets/scenes/gs_demo.json").string();
@@ -68,6 +70,13 @@ void DemoApp::run() {
         if (scene_path_explicit_) state->set_scene_path(scene_path_);
         state_stack_.push(std::move(state), *this);
     }
+
+    // Drain the renderer's stashed slab handles from `init_gs`. Empty
+    // vector falls back to the min-duration-only loading screen (e.g.
+    // when streaming infra isn't available on this platform). Non-empty
+    // vector means the monitor will track real GPU upload progress
+    // before transitioning to Warming.
+    loading_monitor_.begin_load(renderer_.take_pending_load_handles());
 
     main_loop();
     cleanup();

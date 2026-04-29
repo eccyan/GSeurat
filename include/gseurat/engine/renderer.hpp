@@ -50,6 +50,17 @@ public:
     void init_shadows(ResourceManager& resources);
     void draw_frame();
     void init_gs(const GaussianCloud& cloud, uint32_t width = 320, uint32_t height = 240);
+
+    // After `init_gs` runs an async upload via the transfer queue, the
+    // returned slab Handles are stashed here. The demo `run()` flow takes
+    // them after pushing the initial game state and feeds them into
+    // `EngineLoadingMonitor::begin_load` so the loading screen tracks
+    // real GPU upload completion rather than a min-duration timer alone.
+    // Returns an empty vector when init_gs fell back to the synchronous
+    // path (no streaming infra) or when a previous take already drained.
+    std::vector<TransferQueue::Handle> take_pending_load_handles() {
+        return std::move(pending_load_handles_);
+    }
     void set_gs_background(const ResourceHandle<Texture>& texture);
     void set_gs_camera(const glm::mat4& view, const glm::mat4& proj) {
         gs_view_ = view; gs_proj_ = proj;
@@ -244,6 +255,10 @@ private:
     std::array<VkDescriptorSet, kMaxFramesInFlight> gs_descriptor_sets_{};    // scene UBO (unused now)
     std::array<VkDescriptorSet, kMaxFramesInFlight> gs_ui_descriptor_sets_{}; // UI orthographic UBO
     bool gs_initialized_ = false;
+    // Slab transfer handles from the most recent `init_gs` async upload.
+    // Drained by `take_pending_load_handles()` and forwarded to the engine
+    // loading monitor so it can gate Loading→Warming on real GPU readiness.
+    std::vector<TransferQueue::Handle> pending_load_handles_;
     ResourceHandle<Texture> gs_bg_texture_;
     std::array<VkDescriptorSet, kMaxFramesInFlight> gs_bg_descriptor_sets_{};
     bool gs_bg_initialized_ = false;

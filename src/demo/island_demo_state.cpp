@@ -1002,7 +1002,14 @@ void IslandDemoState::update(AppBase& app, float dt) {
                     auto resolved = resolve_asset_path(chunk.ply_file);
                     std::fprintf(stderr, "[IslandDemo] Chunk [%s] Loading: %s\n",
                         grid_key.c_str(), chunk.ply_file.c_str());
-                    app.renderer().gs_renderer().load_cloud_async(resolved.string());
+                    // load_cloud_async now expects an in-memory cloud — file
+                    // IO is the caller's responsibility. WorldStreamer load
+                    // happens on the main thread for now; a follow-up could
+                    // hand the PLY parse to a worker thread and queue the
+                    // async upload from a result callback.
+                    GaussianCloud chunk_cloud;
+                    chunk_cloud.load_ply(resolved.string());
+                    app.renderer().gs_renderer().load_cloud_async(std::move(chunk_cloud));
                     break;
                 }
             }

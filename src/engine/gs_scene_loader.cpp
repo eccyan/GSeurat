@@ -404,9 +404,14 @@ void GsSceneLoader::load(SceneLoadContext& ctx, const SceneData& scene_data,
         }
     }
 
-    // VFX instances (load even without gaussian_splat)
+    // VFX instances (load even without gaussian_splat). The "do we already
+    // have a GS context?" check uses the local `cloud` (the merged
+    // terrain + game-object cloud the block above worked with) rather
+    // than `renderer.has_gs_cloud()`, which now returns false during
+    // async upload drain — the cloud is committed but `gaussian_count_`
+    // only flips to non-zero after the final completion callback fires.
     if (!scene_data.vfx_instances.empty()) {
-        if (!ctx.renderer.has_gs_cloud()) {
+        if (cloud.empty()) {
             // Minimal GS renderer for VFX-only scenes
             std::vector<Gaussian> dummy(1);
             dummy[0].opacity = 0.0f;
