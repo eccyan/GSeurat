@@ -186,7 +186,26 @@ int main() {
         std::printf("[TEST] set_warmup_frames clamps correctly\n");
     }
 
-    // ── 11. Tick during Playing is a no-op (steady state). ──────────────
+    // ── 11. Unknown status counts as resolved (handle aged out / never
+    //        tracked). Without this, the queue's ~64-entry recent_status_
+    //        cap would let large batches strand older completed handles
+    //        in tracked_, deadlocking the monitor in Loading. ───────────
+    {
+        EngineLoadingMonitor m;
+        m.begin_load({TransferQueue::Handle{100}, TransferQueue::Handle{101}});
+        // Provider returns Unknown for both handles — simulating either
+        // aged-out cache entries or handles never seen by the queue.
+        EngineLoadingMonitor::StatusProvider unknown_provider =
+            [](TransferQueue::Handle) {
+                return TransferQueue::Status::Unknown;
+            };
+        m.tick(unknown_provider);
+        expect(m.state() == EngineState::Warming,
+               "Unknown handles count as resolved → Warming");
+        std::printf("[TEST] Unknown status counts as resolved\n");
+    }
+
+    // ── 12. Tick during Playing is a no-op (steady state). ──────────────
     {
         EngineLoadingMonitor m;                       // starts Playing
         for (int i = 0; i < 100; ++i) m.tick(MockStatuses{}.provider());

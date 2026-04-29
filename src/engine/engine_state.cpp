@@ -21,12 +21,18 @@ bool EngineLoadingMonitor::reap_completed(const StatusProvider& provider) {
 
     auto it = std::remove_if(tracked_.begin(), tracked_.end(),
         [&](TransferQueue::Handle h) {
-            // Complete → drop. Failed → also drop (caller decides what to do
-            // with the side-effect; the loader monitor's job is "did the
-            // handle resolve", not "did it succeed"). Pending/InFlight stay.
+            // Anything other than Pending/InFlight is "resolved" from the
+            // monitor's perspective:
+            //   - Complete → as advertised
+            //   - Failed   → caller handles the error path; we don't stall
+            //   - Unknown  → either the queue aged this handle out of its
+            //                ~64-entry recent_status_ window, or the handle
+            //                was never tracked. In both cases waiting on
+            //                it forever would be wrong (would deadlock the
+            //                Loading state machine for large batches).
             const auto s = provider(h);
-            return s == TransferQueue::Status::Complete
-                || s == TransferQueue::Status::Failed;
+            return s != TransferQueue::Status::Pending
+                && s != TransferQueue::Status::InFlight;
         });
     tracked_.erase(it, tracked_.end());
     return tracked_.empty();

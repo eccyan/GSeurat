@@ -223,15 +223,19 @@ void AppBase::main_loop() {
         debug_metrics_.update(dt);
 
         // Drive the engine lifecycle state machine. The status provider
-        // closes over the GS streamer's transfer queue when one exists; if
-        // no streaming is active, the empty `std::function` makes `tick()`
-        // a safe no-op (only the Warming countdown advances).
-        // GsRenderer doesn't yet expose its TransferQueue handle, so for
-        // now we drive the monitor with an empty provider — only callers
-        // that explicitly `begin_load({})` (skip-load fast path) advance
-        // the state machine. Real handle tracking arrives once streaming
-        // is wired into engine startup in a follow-up.
-        loading_monitor_.tick({});
+        // closes over the GS streamer's transfer queue when one exists. If
+        // no streaming has been initialised yet, the closure returns
+        // `Unknown`, which the monitor treats as resolved — that way a
+        // caller who `begin_load`s before streaming is wired up doesn't
+        // permanently stall in Loading. Once streaming is active, real
+        // handle status flows through.
+        loading_monitor_.tick(
+            [this](TransferQueue::Handle h) -> TransferQueue::Status {
+                if (auto* tq = renderer_.gs_renderer().transfer_queue()) {
+                    return tq->status(h);
+                }
+                return TransferQueue::Status::Unknown;
+            });
 
         // F1 → toggle developer overlay
         if (input_.was_key_pressed(GLFW_KEY_F1)) {

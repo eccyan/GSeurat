@@ -92,6 +92,13 @@ public:
     void poll_transfers(VkCommandBuffer frame_cmd);
     void create_transfer_queue(VkQueue transfer_q, uint32_t transfer_family,
                                uint32_t graphics_family, bool dedicated);
+
+    // Exposed for the engine-level loading monitor: AppBase wires a status
+    // provider against this so the EngineState machine can advance from
+    // Loading → Warming when the streamer's transfer handles complete.
+    // Returns nullptr until `create_transfer_queue` runs.
+    TransferQueue* transfer_queue() { return transfer_queue_.get(); }
+    const TransferQueue* transfer_queue() const { return transfer_queue_.get(); }
     void update_active_gaussians(const Gaussian* data, uint32_t count);
     void update_gaussian_data(const Gaussian* data, uint32_t count);
 
