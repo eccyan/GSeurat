@@ -83,14 +83,22 @@ struct GsPreprocessPush {
 
 class GsRenderer {
 public:
-    void init(VkDevice device, VkPhysicalDevice physical_device, VmaAllocator allocator, VkDescriptorPool pool);
+    void init(VkDevice device, VkPhysicalDevice physical_device, VmaAllocator allocator,
+              VkDescriptorPool pool, VkPipelineCache pipeline_cache);
     void load_cloud(const GaussianCloud& cloud);
     void init_streaming(const StreamingConfig& config);
     void unload_cloud(uint32_t chunk_id);
     void load_cloud_async(const std::string& ply_path);
     void poll_transfers(VkCommandBuffer frame_cmd);
     void create_transfer_queue(VkQueue transfer_q, uint32_t transfer_family,
-                               bool dedicated, VkQueue graphics_q);
+                               uint32_t graphics_family, bool dedicated);
+
+    // Exposed for the engine-level loading monitor: AppBase wires a status
+    // provider against this so the EngineState machine can advance from
+    // Loading → Warming when the streamer's transfer handles complete.
+    // Returns nullptr until `create_transfer_queue` runs.
+    TransferQueue* transfer_queue() { return transfer_queue_.get(); }
+    const TransferQueue* transfer_queue() const { return transfer_queue_.get(); }
     void update_active_gaussians(const Gaussian* data, uint32_t count);
     void update_gaussian_data(const Gaussian* data, uint32_t count);
 
@@ -235,6 +243,7 @@ private:
 
     VkDevice device_ = VK_NULL_HANDLE;
     VmaAllocator allocator_ = VK_NULL_HANDLE;
+    VkPipelineCache pipeline_cache_ = VK_NULL_HANDLE;
 
     // Output storage image (raw HDR from tile rasterizer)
     VkImage output_image_ = VK_NULL_HANDLE;

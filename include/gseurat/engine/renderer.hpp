@@ -79,6 +79,10 @@ public:
     void set_gs_lod_focus(const glm::vec3& pos) { gs_lod_focus_pos_ = pos; gs_has_lod_focus_ = true; }
     void clear_gs_lod_focus() { gs_has_lod_focus_ = false; }
 
+    // `dispatch_gpu_compute` gates GS-renderer compute pipelines (preprocess /
+    // sort / merge / render / pbd_solver / tile_render / post_process). Set
+    // false during EngineState::Loading to keep the GPU idle while the
+    // loading screen draws; true during Warming and Playing.
     void draw_scene(Scene& scene,
                     const std::vector<SpriteDrawInfo>& entity_sprites = {},
                     const std::vector<SpriteDrawInfo>& outline_sprites = {},
@@ -88,7 +92,8 @@ public:
                     const std::vector<SpriteDrawInfo>& overlay = {},
                     const std::vector<ui::UIDrawBatch>& ui_batches = {},
                     const std::vector<DebugColliderDrawInfo>& debug_colliders_list = {},
-                    const FeatureFlags& flags = {});
+                    const FeatureFlags& flags = {},
+                    bool dispatch_gpu_compute = true);
 
     /// Draw debug collider wireframes. Call between scene pass begin and end.
     void draw_debug_colliders(VkCommandBuffer cmd,
@@ -175,7 +180,8 @@ private:
                           const std::vector<SpriteDrawInfo>& sprites,
                           VkDescriptorSet descriptor_set);
     void record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
-                           const FeatureFlags& flags);
+                           const FeatureFlags& flags,
+                           bool dispatch_gpu_compute);
     void record_gs_blit(VkCommandBuffer cmd, const FeatureFlags& flags);
     void record_ui_pass(VkCommandBuffer cmd,
                         const std::vector<ui::UIDrawBatch>& ui_batches);

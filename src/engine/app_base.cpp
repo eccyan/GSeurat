@@ -222,6 +222,21 @@ void AppBase::main_loop() {
 
         debug_metrics_.update(dt);
 
+        // Drive the engine lifecycle state machine. The status provider
+        // closes over the GS streamer's transfer queue when one exists. If
+        // no streaming has been initialised yet, the closure returns
+        // `Unknown`, which the monitor treats as resolved — that way a
+        // caller who `begin_load`s before streaming is wired up doesn't
+        // permanently stall in Loading. Once streaming is active, real
+        // handle status flows through.
+        loading_monitor_.tick(
+            [this](TransferQueue::Handle h) -> TransferQueue::Status {
+                if (auto* tq = renderer_.gs_renderer().transfer_queue()) {
+                    return tq->status(h);
+                }
+                return TransferQueue::Status::Unknown;
+            });
+
         // F1 → toggle developer overlay
         if (input_.was_key_pressed(GLFW_KEY_F1)) {
             dev_overlay_.toggle();
@@ -233,7 +248,13 @@ void AppBase::main_loop() {
         }
         dev_overlay_.begin_frame();
 
-        state_stack_.update(*this, dt);
+        // Gameplay updates (KCC, AI, PBD integration, animations) only run
+        // in EngineState::Playing. During Loading and Warming the world is
+        // intentionally frozen so the player doesn't see physics tick or
+        // characters move during the loading screen.
+        if (loading_monitor_.should_run_gameplay()) {
+            state_stack_.update(*this, dt);
+        }
 
         // Broadcast camera state to subscribed clients (throttled to 30 Hz)
         camera_broadcast_timer_ += dt;
@@ -258,8 +279,12 @@ void AppBase::main_loop() {
         // Reset camera sync override at frame end
         command_dispatcher_.context().camera_sync_override = false;
 
-        upload_bone_transforms();
-        gameplay_.play_time += dt;
+        // Bone transforms only stream up while gameplay is running; otherwise
+        // they freeze at their last value, matching the suspended world state.
+        if (loading_monitor_.should_run_gameplay()) {
+            upload_bone_transforms();
+            gameplay_.play_time += dt;
+        }
         tick_++;
 
         // Feed UI context with input state
@@ -333,9 +358,14 @@ void AppBase::main_loop() {
                 });
         }
 
+        // GS compute pipelines (preprocess / sort / merge / render / pbd /
+        // tile_render / post_process) are gated on the engine state. Loading
+        // skips them entirely; Warming dispatches them to flush driver state
+        // against freshly-uploaded buffers; Playing is the steady state.
+        const bool dispatch_gpu_compute = loading_monitor_.should_dispatch_gpu_work();
         renderer_.draw_scene(scene_, draw_lists_.entity, draw_lists_.outline, draw_lists_.reflection,
                              draw_lists_.shadow, particle_sprites, draw_lists_.overlay, ui_batches,
-                             draw_lists_.debug_colliders, feature_flags_);
+                             draw_lists_.debug_colliders, feature_flags_, dispatch_gpu_compute);
     }
 }
 

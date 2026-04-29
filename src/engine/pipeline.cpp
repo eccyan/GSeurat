@@ -148,7 +148,7 @@ PipelineBuilder& PipelineBuilder::set_render_pass(VkRenderPass render_pass, uint
     return *this;
 }
 
-VkPipeline PipelineBuilder::build(VkDevice device) {
+VkPipeline PipelineBuilder::build(VkDevice device, VkPipelineCache cache) {
     VkPipelineViewportStateCreateInfo viewport_state{};
     viewport_state.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
     viewport_state.viewportCount = 1;
@@ -185,7 +185,7 @@ VkPipeline PipelineBuilder::build(VkDevice device) {
     }
 
     VkPipeline pipeline;
-    if (vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &info, nullptr, &pipeline) !=
+    if (vkCreateGraphicsPipelines(device, cache, 1, &info, nullptr, &pipeline) !=
         VK_SUCCESS) {
         throw std::runtime_error("Failed to create graphics pipeline");
     }

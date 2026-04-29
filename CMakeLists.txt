@@ -154,6 +154,7 @@ add_library(gseurat_core ${_gseurat_lib_type}
     src/engine/swapchain.cpp
     src/engine/render_pass.cpp
     src/engine/pipeline.cpp
+    src/engine/pipeline_cache.cpp
     src/engine/command_pool.cpp
     src/engine/sync.cpp
     src/engine/buffer.cpp
@@ -234,6 +235,7 @@ add_library(gseurat_core ${_gseurat_lib_type}
     src/engine/systems/transition_system.cpp
     src/engine/systems/portal_trigger_handler.cpp
     src/engine/systems/audio_zone_system.cpp
+    src/engine/engine_state.cpp
 )
 
 
@@ -386,6 +388,7 @@ endfunction()
 add_gseurat_test(test_feature_flags)
 add_gseurat_test(test_tile_sort_key)
 add_gseurat_test(test_onesweep_logic)
+add_gseurat_test(test_engine_loading_monitor  src/engine/engine_state.cpp)
 add_gseurat_test(test_async_loader     src/engine/async_loader.cpp)
 add_gseurat_test(test_character_data   src/engine/character_data.cpp)
 add_gseurat_test(test_gaussian_cloud   src/engine/gaussian_cloud.cpp src/engine/collision_gen.cpp
@@ -552,6 +555,8 @@ function(add_gseurat_gpu_test NAME)
         src/engine/vk_context.cpp
         src/engine/buffer.cpp
         src/engine/pipeline.cpp
+        src/engine/pipeline_cache.cpp
+        src/engine/project_root.cpp
         ${ARGN}
     )
     target_include_directories(${NAME} PRIVATE
@@ -572,5 +577,6 @@ function(add_gseurat_gpu_test NAME)
 endfunction()
 
 add_gseurat_gpu_test(test_onesweep_gpu)
+add_gseurat_gpu_test(test_transfer_queue_gpu src/engine/transfer_queue.cpp)
 
 endif() # GSEURAT_BUILD_TESTS

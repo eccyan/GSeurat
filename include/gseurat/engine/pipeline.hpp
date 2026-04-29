@@ -27,7 +27,7 @@ public:
     PipelineBuilder& set_layout(VkPipelineLayout layout);
     PipelineBuilder& set_render_pass(VkRenderPass render_pass, uint32_t subpass);
 
-    VkPipeline build(VkDevice device);
+    VkPipeline build(VkDevice device, VkPipelineCache cache = VK_NULL_HANDLE);
 
 private:
     std::vector<VkPipelineShaderStageCreateInfo> shader_stages_;

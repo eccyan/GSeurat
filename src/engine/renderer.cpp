@@ -34,7 +34,8 @@ void Renderer::init(GLFWwindow* window, ResourceManager& resources,
     context_.init(window);
     swapchain_.init(context_, kWindowWidth, kWindowHeight);
     render_pass_mgr_.init(context_.device(), context_.allocator(), swapchain_);
-    post_process_.init(context_.device(), context_.allocator(), swapchain_);
+    post_process_.init(context_.device(), context_.allocator(), swapchain_,
+                       context_.pipeline_cache());
     command_pool_.init(context_.device(), context_.graphics_queue_family());
     sync_.init(context_.device(), swapchain_.image_count());
     descriptors_.init(context_.device());
@@ -200,7 +201,8 @@ void Renderer::init_backgrounds(const std::vector<ResourceHandle<Texture>>& bg_t
 void Renderer::init_gs(const GaussianCloud& cloud, uint32_t width, uint32_t height) {
     if (!gs_initialized_) {
         gs_renderer_.init(context_.device(), context_.physical_device(),
-                          context_.allocator(), VK_NULL_HANDLE);
+                          context_.allocator(), VK_NULL_HANDLE,
+                          context_.pipeline_cache());
         gs_initialized_ = true;
     }
     gs_renderer_.resize_output(width, height);
@@ -272,7 +274,8 @@ void Renderer::draw_scene(Scene& scene,
                            const std::vector<SpriteDrawInfo>& overlay,
                            const std::vector<ui::UIDrawBatch>& ui_batches,
                            const std::vector<DebugColliderDrawInfo>& debug_colliders_list,
-                           const FeatureFlags& flags) {
+                           const FeatureFlags& flags,
+                           bool dispatch_gpu_compute) {
     auto device = context_.device();
     const auto& frame_sync = sync_.frame(current_frame_);
 
@@ -378,7 +381,7 @@ void Renderer::draw_scene(Scene& scene,
         gs_renderer_.set_post_process_params(gs_pp);
     }
 
-    record_gs_prepass(cmd, device, dt, flags);
+    record_gs_prepass(cmd, device, dt, flags, dispatch_gpu_compute);
 
     // ===== Pass 1: Scene render pass (offscreen HDR) =====
     {
@@ -753,7 +756,7 @@ void Renderer::create_sprite_pipeline() {
                            .set_color_blend_alpha()
                            .set_layout(sprite_pipeline_layout_)
                            .set_render_pass(post_process_.scene_render_pass(), 0)
-                           .build(device);
+                           .build(device, context_.pipeline_cache());
 
     vkDestroyShaderModule(device, frag, nullptr);
     vkDestroyShaderModule(device, vert, nullptr);
@@ -799,7 +802,7 @@ void Renderer::create_outline_pipeline() {
                             .set_color_blend_alpha()
                             .set_layout(outline_pipeline_layout_)
                             .set_render_pass(post_process_.scene_render_pass(), 0)
-                            .build(device);
+                            .build(device, context_.pipeline_cache());
 
     vkDestroyShaderModule(device, frag, nullptr);
     vkDestroyShaderModule(device, vert, nullptr);
@@ -827,7 +830,7 @@ void Renderer::create_ui_pipeline() {
                        .set_dynamic_scissor()
                        .set_layout(sprite_pipeline_layout_)
                        .set_render_pass(post_process_.composite_render_pass(), 0)
-                       .build(device);
+                       .build(device, context_.pipeline_cache());
 
     vkDestroyShaderModule(device, frag, nullptr);
     vkDestroyShaderModule(device, vert, nullptr);
@@ -861,7 +864,8 @@ void Renderer::draw_sprite_pass(VkCommandBuffer cmd,
 }
 
 void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
-                                  const FeatureFlags& flags) {
+                                  const FeatureFlags& flags,
+                                  bool dispatch_gpu_compute) {
     // Adaptive GS budget: converge to target FPS then lock
     if (flags.gs_adaptive_budget && gs_adaptive_budget_ && gs_gaussian_budget_ > 0 && dt > 0.0f) {
         float fps = 1.0f / dt;
@@ -883,8 +887,12 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
         }
     }
 
-    // Gaussian splatting compute (before render pass)
-    if (flags.gs_rendering && gs_initialized_ && gs_renderer_.has_cloud()) {
+    // Gaussian splatting compute (before render pass).
+    // Gated on `dispatch_gpu_compute` so the engine's Loading state can keep
+    // the GPU idle while the loading screen draws. Warming intentionally
+    // keeps this true so the driver finalises pipeline/state setup against
+    // the freshly-uploaded buffers before the player starts seeing frames.
+    if (dispatch_gpu_compute && flags.gs_rendering && gs_initialized_ && gs_renderer_.has_cloud()) {
 
         // --- Static path: rebuild on camera dirty ---
         bool budget_changed = (gs_gaussian_budget_ != gs_prev_budget_);
@@ -1269,7 +1277,7 @@ void Renderer::create_wireframe_pipeline() {
         .set_color_blend_alpha()
         .set_layout(wireframe_pipeline_layout_)
         .set_render_pass(post_process_.scene_render_pass(), 0)
-        .build(device);
+        .build(device, context_.pipeline_cache());
 
     vkDestroyShaderModule(device, frag, nullptr);
     vkDestroyShaderModule(device, vert, nullptr);

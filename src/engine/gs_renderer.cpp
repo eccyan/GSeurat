@@ -1,10 +1,13 @@
 #include "gseurat/engine/gs_renderer.hpp"
 #include "gseurat/engine/pipeline.hpp"
 
+#include <chrono>
 #include <cmath>
 #include <cstring>
 #include <stdexcept>
+#include <thread>
 #include <algorithm>
+#include <optional>
 
 namespace gseurat {
 
@@ -69,10 +72,12 @@ void insert_compute_barrier(VkCommandBuffer cmd) {
 }  // namespace
 
 void GsRenderer::init(VkDevice device, VkPhysicalDevice physical_device,
-                      VmaAllocator allocator, VkDescriptorPool pool) {
+                      VmaAllocator allocator, VkDescriptorPool pool,
+                      VkPipelineCache pipeline_cache) {
     device_ = device;
     allocator_ = allocator;
     pool_ = pool;
+    pipeline_cache_ = pipeline_cache;
 
     create_output_image(320, 240);
 
@@ -536,7 +541,7 @@ void GsRenderer::create_compute_pipelines() {
         pi.stage.pName = "main";
         pi.layout = out_layout;
 
-        if (vkCreateComputePipelines(device_, VK_NULL_HANDLE, 1, &pi,
+        if (vkCreateComputePipelines(device_, pipeline_cache_, 1, &pi,
                                      nullptr, &out_pipeline) != VK_SUCCESS) {
             throw std::runtime_error(std::string("Failed to create pipeline: ") + spv_path);
         }
@@ -954,15 +959,17 @@ void GsRenderer::unload_cloud(uint32_t chunk_id) {
 }
 
 void GsRenderer::create_transfer_queue(VkQueue transfer_q, uint32_t transfer_family,
-                                        bool dedicated, VkQueue graphics_q) {
+                                        uint32_t graphics_family, bool dedicated) {
     if (!streaming_initialized_) return;
-    const uint64_t staging_size = streaming_config_.slab_bytes() * 2;  // double-buffered
+    // Sized for double-buffered slab uploads plus headroom for in-flight
+    // chunks before they retire on the fence — multi-batch concurrency now
+    // matters because the queue accepts arbitrary destination buffers.
+    const uint64_t staging_size = streaming_config_.slab_bytes() * 4;
     transfer_queue_ = std::make_unique<TransferQueue>(
         device_, allocator_,
-        transfer_q, transfer_family,
+        transfer_q, transfer_family, graphics_family,
         dedicated, staging_size,
-        streaming_config_.transfer_budget_mb_per_frame,
-        static_gaussian_ssbo_.buffer());
+        streaming_config_.transfer_budget_mb_per_frame);
 }
 
 void GsRenderer::load_cloud_async(const std::string& ply_path) {
@@ -987,32 +994,41 @@ void GsRenderer::load_cloud_async(const std::string& ply_path) {
         auto handle = slab_allocator_->checkout(slabs_needed);
 
         const auto& gaussians = cloud.gaussians();
-        auto* staging = static_cast<uint8_t*>(transfer_queue_->staging_mapped());
-        const uint64_t slab_bytes = static_cast<uint64_t>(sps) * sizeof(GpuGaussian);
+        const VkBuffer dest = static_gaussian_ssbo_.buffer();
 
         for (uint32_t s = 0; s < slabs_needed; ++s) {
             const uint32_t physical_slab = handle.slab_indices[s];
             const uint32_t src_start = s * sps;
-            const uint32_t src_end = std::min(src_start + sps, splat_count);
-            const uint32_t count = src_end - src_start;
+            const uint32_t src_end   = std::min(src_start + sps, splat_count);
+            const uint32_t count     = src_end - src_start;
+            const uint64_t copy_size = static_cast<uint64_t>(count) * sizeof(GpuGaussian);
 
-            // Write into staging buffer (ring: alternate halves)
-            const uint64_t staging_offset = (s % 2) * slab_bytes;
-            auto* dst = reinterpret_cast<GpuGaussian*>(staging + staging_offset);
+            // Block-and-retry: reservation only fails when the staging ring is
+            // full of in-flight bytes. The main thread's poll() will retire
+            // batches and free space within a few frames. On engine shutdown
+            // the queue's cancellation flag flips, breaking the loop so the
+            // joining thread doesn't deadlock.
+            std::optional<TransferQueue::Reservation> res;
+            while (!(res = transfer_queue_->reserve_staging(copy_size))) {
+                if (transfer_queue_->is_shutting_down()) return;
+                std::this_thread::sleep_for(std::chrono::milliseconds(2));
+            }
+
+            auto* dst = reinterpret_cast<GpuGaussian*>(res->host_ptr);
             for (uint32_t i = 0; i < count; ++i) {
                 const auto& g = gaussians[src_start + i];
                 float bone_as_float;
                 uint32_t bone_idx = g.bone_index;
                 std::memcpy(&bone_as_float, &bone_idx, sizeof(float));
                 dst[i].pos_opacity = glm::vec4(g.position, g.opacity);
-                dst[i].scale_pad = glm::vec4(g.scale, bone_as_float);
-                dst[i].rot = glm::vec4(g.rotation.x, g.rotation.y, g.rotation.z, g.rotation.w);
-                dst[i].color_pad = glm::vec4(g.color, g.emission);
+                dst[i].scale_pad   = glm::vec4(g.scale, bone_as_float);
+                dst[i].rot         = glm::vec4(g.rotation.x, g.rotation.y, g.rotation.z, g.rotation.w);
+                dst[i].color_pad   = glm::vec4(g.color, g.emission);
             }
 
-            const uint64_t dest_offset = static_cast<uint64_t>(physical_slab) * sps * sizeof(GpuGaussian);
-            const uint64_t copy_size = static_cast<uint64_t>(count) * sizeof(GpuGaussian);
-            transfer_queue_->enqueue(staging_offset, dest_offset, copy_size);
+            const uint64_t dest_offset =
+                static_cast<uint64_t>(physical_slab) * sps * sizeof(GpuGaussian);
+            transfer_queue_->submit(*res, dest, dest_offset);
         }
 
         // Completion callback — runs on main thread via poll_completions
@@ -2747,7 +2763,10 @@ void GsRenderer::load_world(const WorldManifest& manifest) {
 void GsRenderer::shutdown(VmaAllocator allocator) {
     if (!initialized_) return;
 
-    // Join background load threads before destroying resources
+    // Signal in-flight loaders to bail out of their reserve_staging() retry
+    // loops *before* joining — otherwise a worker waiting on space that will
+    // never be freed (because we've stopped polling) would hang the join.
+    if (transfer_queue_) transfer_queue_->request_cancel();
     for (auto& t : load_threads_) {
         if (t.joinable()) t.join();
     }

@@ -46,7 +46,8 @@ struct PostProcessParams {
 
 class PostProcessPipeline {
 public:
-    void init(VkDevice device, VmaAllocator allocator, const Swapchain& swapchain);
+    void init(VkDevice device, VmaAllocator allocator, const Swapchain& swapchain,
+              VkPipelineCache pipeline_cache);
     void shutdown(VkDevice device, VmaAllocator allocator);
 
     VkRenderPass scene_render_pass() const { return scene_render_pass_; }
@@ -77,7 +78,7 @@ private:
     void create_render_passes(VkDevice device, VkFormat swapchain_format);
     void create_framebuffers(VkDevice device, const Swapchain& swapchain);
     void create_descriptor_resources(VkDevice device);
-    void create_pipelines(VkDevice device);
+    void create_pipelines(VkDevice device, VkPipelineCache cache);
 
     ImageResource create_color_image(VkDevice device, VmaAllocator allocator,
                                      VkFormat format, uint32_t width, uint32_t height,
