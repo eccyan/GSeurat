@@ -12,7 +12,7 @@ GSeurat is designed to be embedded in external game projects as a **Git submodul
 - **Sprite overlay** — Sprite-based entities over GS backgrounds with bloom, depth-of-field, and tone mapping
 - **Game Object System** — Unified entity model with component composition. Developers define C++ component structs + JSON schemas; level designers compose objects in Bricklayer
 - **Component Registry** — Type-erased component registration with JSON attach/serialize. SystemScheduler with read/write dependency declarations (parallel-ready)
-- **3D Collision System** — Primitive colliders (Box, Sphere, Capsule) with static BVH broadphase, capsule sweep queries, and a Kinematic Character Controller with continuous gravity and wall sliding
+- **3D Collision System** — Primitive colliders (Box, Sphere, Capsule) with static BVH broadphase, capsule sweep queries, heightfield terrain colliders (16-bit PNG), and a Kinematic Character Controller with depenetration recovery, continuous gravity, and wall sliding
 - **Camera Pipeline** — 5-mode camera system (free_look, rail_follow, cinematic_rail, fixed_point, side_scroll) with zone priority resolution, smooth blending, spline paths, easing curves, and cinematic playback modes
 - **Entity Component System** — Header-only ECS with archetype storage, typed views, and system functions
 - **[Scene transitions](docs/scene-transitions.md)** — Transient-entity state machine (`SceneOut → Loading → SceneIn`) fully decoupled from presentation. Portals are authored in Bricklayer via `ProximityTrigger + PortalTarget`; the post-process shader supports solid fade, left-to-right wipe, and iris wipe effects
@@ -51,6 +51,7 @@ GSeurat/
 │       └── world.json         #   World manifest (chunks, portals, streaming volumes)
 ├── tests/                     # C++ unit and GPU tests
 ├── scripts/                   # Python utilities (Game Director, asset generation)
+├── src/tools/                 # Offline CLI utilities (ply2heightmap)
 ├── tools/                     # TypeScript/React monorepo (pnpm)
 │   ├── apps/                  #   Web apps (Bricklayer, Echidna, Melies, Bridge)
 │   └── packages/              #   Shared packages (engine-client, asset-types, ui-kit)
@@ -185,6 +186,7 @@ One demo executable and one staging tool are produced:
 |---|---|
 | `gseurat_demo` | Island demo with visual effects, scene layers, and chunk streaming |
 | `gseurat_staging` | ImGui-based rendering review with live scene preview and gizmos |
+| `ply2heightmap` | Convert Gaussian-splat PLY point clouds to 16-bit heightmap PNGs |
 
 ```bash
 # Run with default island scene
@@ -192,6 +194,9 @@ One demo executable and one staging tool are produced:
 
 # Run with a custom scene
 ./build/macos-release/gseurat_demo --scene examples/island_demo/assets/scenes/my_scene.json
+
+# Generate a heightmap from a PLY point cloud
+./build/macos-release/ply2heightmap assets/maps/map.ply terrain_heightmap.png --ppu 2.0
 ```
 
 ## Architecture
@@ -337,15 +342,18 @@ Primitive collider system backed by a static BVH, replacing the legacy 2D Collis
 - `BoxData` — axis-aligned box with half-extents
 - `SphereData` — sphere with radius
 - `CapsuleData` — capsule with radius + half-height (oriented along Y axis)
+- `HeightfieldComponent` — 16-bit PNG grayscale terrain with bilinear sampling and triangle-based sweep
 
-**Architecture:** Hybrid ECS + cached CollisionWorld. `ColliderComponent` is an ECS component for serialization and inspector support. `CollisionSystem` maintains packed `ColliderInstance` caches (static and dynamic) and rebuilds a static BVH for broadphase acceleration.
+**Architecture:** Hybrid ECS + cached CollisionWorld. `ColliderComponent` is an ECS component for serialization and inspector support. `CollisionSystem` maintains packed `ColliderInstance` caches (static and dynamic), a `HeightfieldInstance` cache, and rebuilds a static BVH for broadphase acceleration.
 
 **Queries:**
-- `sweep()` — capsule sweep against static geometry (continuous collision detection for KCC)
+- `sweep()` — capsule sweep against static geometry and heightfields (continuous collision detection for KCC)
 - `overlap_aabb()` — broadphase AABB overlap query
 - `raycast()` — ray intersection with distance-sorted results
 
-**Kinematic Character Controller (KCC):** Per-frame `run_kcc()` applies continuous gravity, capsule sweeps for movement, ground probing for slope detection, and iterative wall sliding. Configurable ground angle threshold, skin width, and slide iterations.
+**Kinematic Character Controller (KCC):** 7-step per-frame pipeline: depenetration → gravity → horizontal sweep → wall slide → vertical sweep → ground probe → write-back. The depenetration step resolves capsule-terrain overlap on spawn/teleport (prevents the "stuck player" bug when authored Y coordinates don't account for capsule dimensions). Configurable ground angle threshold, skin width, and slide iterations.
+
+**Heightmap pipeline:** The `ply2heightmap` CLI converts Gaussian-splat PLY point clouds to 16-bit heightmaps via AABB splatting — each splat's oriented bounding box is projected onto an XZ grid with conservative max-Y fill. Output PNGs plug directly into `HeightfieldComponent`.
 
 ### Camera Pipeline
 
