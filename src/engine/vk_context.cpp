@@ -1,6 +1,8 @@
 #define VMA_IMPLEMENTATION
 #include "gseurat/engine/vk_context.hpp"
 
+#include "gseurat/engine/project_root.hpp"
+
 #include <cstdio>
 #include <cstring>
 #include <iostream>
@@ -26,6 +28,7 @@ void VkContext::init(GLFWwindow* window) {
     pick_physical_device();
     create_logical_device();
     create_allocator();
+    create_pipeline_cache(/*persistent=*/true);
 }
 
 void VkContext::init_headless() {
@@ -35,9 +38,25 @@ void VkContext::init_headless() {
     pick_physical_device_headless();
     create_logical_device_headless();
     create_allocator();
+    // Headless tests get an in-memory cache only — still amortises compiles
+    // across the 12 GS compute pipelines within a single test process, but
+    // doesn't pollute the working tree with cache files.
+    create_pipeline_cache(/*persistent=*/false);
+}
+
+void VkContext::create_pipeline_cache(bool persistent) {
+    std::filesystem::path path;
+    if (persistent) {
+        path = resolve_asset_path(".cache/vulkan_pipeline.bin");
+    }
+    pipeline_cache_.init(device_, physical_device_, std::move(path));
 }
 
 void VkContext::shutdown() {
+    // Save before tearing down the device — vkGetPipelineCacheData needs it.
+    pipeline_cache_.save();
+    pipeline_cache_.shutdown(device_);
+
 #ifndef NDEBUG
     VmaTotalStatistics stats{};
     vmaCalculateStatistics(allocator_, &stats);

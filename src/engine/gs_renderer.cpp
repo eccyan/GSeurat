@@ -69,10 +69,12 @@ void insert_compute_barrier(VkCommandBuffer cmd) {
 }  // namespace
 
 void GsRenderer::init(VkDevice device, VkPhysicalDevice physical_device,
-                      VmaAllocator allocator, VkDescriptorPool pool) {
+                      VmaAllocator allocator, VkDescriptorPool pool,
+                      VkPipelineCache pipeline_cache) {
     device_ = device;
     allocator_ = allocator;
     pool_ = pool;
+    pipeline_cache_ = pipeline_cache;
 
     create_output_image(320, 240);
 
@@ -536,7 +538,7 @@ void GsRenderer::create_compute_pipelines() {
         pi.stage.pName = "main";
         pi.layout = out_layout;
 
-        if (vkCreateComputePipelines(device_, VK_NULL_HANDLE, 1, &pi,
+        if (vkCreateComputePipelines(device_, pipeline_cache_, 1, &pi,
                                      nullptr, &out_pipeline) != VK_SUCCESS) {
             throw std::runtime_error(std::string("Failed to create pipeline: ") + spv_path);
         }

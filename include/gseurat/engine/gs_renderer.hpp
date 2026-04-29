@@ -83,7 +83,8 @@ struct GsPreprocessPush {
 
 class GsRenderer {
 public:
-    void init(VkDevice device, VkPhysicalDevice physical_device, VmaAllocator allocator, VkDescriptorPool pool);
+    void init(VkDevice device, VkPhysicalDevice physical_device, VmaAllocator allocator,
+              VkDescriptorPool pool, VkPipelineCache pipeline_cache);
     void load_cloud(const GaussianCloud& cloud);
     void init_streaming(const StreamingConfig& config);
     void unload_cloud(uint32_t chunk_id);
@@ -235,6 +236,7 @@ private:
 
     VkDevice device_ = VK_NULL_HANDLE;
     VmaAllocator allocator_ = VK_NULL_HANDLE;
+    VkPipelineCache pipeline_cache_ = VK_NULL_HANDLE;
 
     // Output storage image (raw HDR from tile rasterizer)
     VkImage output_image_ = VK_NULL_HANDLE;

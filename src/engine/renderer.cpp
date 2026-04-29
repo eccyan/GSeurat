@@ -200,7 +200,8 @@ void Renderer::init_backgrounds(const std::vector<ResourceHandle<Texture>>& bg_t
 void Renderer::init_gs(const GaussianCloud& cloud, uint32_t width, uint32_t height) {
     if (!gs_initialized_) {
         gs_renderer_.init(context_.device(), context_.physical_device(),
-                          context_.allocator(), VK_NULL_HANDLE);
+                          context_.allocator(), VK_NULL_HANDLE,
+                          context_.pipeline_cache());
         gs_initialized_ = true;
     }
     gs_renderer_.resize_output(width, height);
