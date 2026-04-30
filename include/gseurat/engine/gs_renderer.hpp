@@ -15,6 +15,7 @@
 #include <glm/gtc/quaternion.hpp>
 #include <atomic>
 #include <cstdint>
+#include <deque>
 #include <memory>
 #include <optional>
 #include <thread>
@@ -89,12 +90,22 @@ public:
     void load_cloud(const GaussianCloud& cloud);
     void init_streaming(const StreamingConfig& config);
     void unload_cloud(uint32_t chunk_id);
-    // Release every active chunk and any in-flight pending async load.
+    // Release every active chunk and any in-flight pending async loads.
     // Used by full scene loads/transitions (`Renderer::init_gs`) so the
     // new scene replaces the old. Streaming-style appends should NOT
     // call this. Performs a `vkDeviceWaitIdle` to drain transfers before
     // returning slab indices to the allocator.
-    void clear_chunks();
+    //
+    // `drain_cmd` is a transient command buffer the caller has already
+    // begun via `vkBeginCommandBuffer`; clear_chunks records any
+    // outstanding acquire barriers from completed transfers into it.
+    // The caller is responsible for ending + submitting + waiting on
+    // `drain_cmd`. Pass `VK_NULL_HANDLE` only for the single-queue
+    // (Apple/fallback) path where no acquire barriers are required —
+    // on dedicated transfer family that path leaves callbacks deferred
+    // to the next frame, which would then fire against the next scene
+    // and corrupt slab state.
+    void clear_chunks(VkCommandBuffer drain_cmd = VK_NULL_HANDLE);
     // Async upload via the shared host-visible staging ring. The cloud is
     // moved into a pending-load job stored on the renderer; per-slab
     // `reserve_staging` + memcpy + `submit_with_handle` are issued by
@@ -353,10 +364,14 @@ private:
     // completion callbacks that publish uploaded chunks to the renderer.
     std::unique_ptr<TransferQueue> transfer_queue_;
 
-    // Pending async cloud upload. `load_cloud_async` builds this in one
-    // call and pre-allocates handles, then `poll_transfers` drains slabs
-    // across frames as the staging ring frees space. The cloud is owned
-    // here so its memory outlives all per-slab memcpys.
+    // Queued async cloud uploads. `load_cloud_async` always pushes to
+    // the back; `poll_transfers` drains the front job's slabs as the
+    // staging ring frees space, and pops once a job's slabs are all
+    // submitted (the per-job completion callback then fires later when
+    // the GPU fence retires). The deque lets WorldStreamer queue
+    // multiple chunks back-to-back without losing requests — under
+    // single-slot semantics, the streamer marks chunks `LOADING` once
+    // and never retries, so a rejected request would stick forever.
     struct PendingLoadJob {
         GaussianCloud cloud;
         SlabAllocator::SlabHandle slab_handle;
@@ -367,7 +382,7 @@ private:
         uint32_t next_slab = 0;          // index of the next slab to submit
         bool completion_enqueued = false; // true once enqueue_completion() ran
     };
-    std::optional<PendingLoadJob> pending_load_;
+    std::deque<PendingLoadJob> pending_loads_;
 
     uint32_t gaussian_count_ = 0;
     uint32_t max_gaussian_count_ = 0;

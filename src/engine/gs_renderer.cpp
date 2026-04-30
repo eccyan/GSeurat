@@ -959,7 +959,7 @@ void GsRenderer::unload_cloud(uint32_t chunk_id) {
     static_dirty_ = true;
 }
 
-void GsRenderer::clear_chunks() {
+void GsRenderer::clear_chunks(VkCommandBuffer drain_cmd) {
     if (!streaming_initialized_ || !initialized_) return;
 
     // Wait for any in-flight transfers so we don't release slabs the GPU
@@ -968,24 +968,24 @@ void GsRenderer::clear_chunks() {
     vkDeviceWaitIdle(device_);
 
     // Drain any completion callbacks queued by transfers that finished
-    // during waitIdle. Each fired callback commits its slab handle into
-    // `active_chunks_`, so we can release them in the loop below — no
-    // double-free, no leaked slab. Single-queue path (Apple, fallback)
-    // accepts a null frame_cmd; dedicated path would need a real cmd
-    // for acquire barriers, but those barriers only matter when GS
-    // compute will later read the transferred bytes. Since clear_chunks
-    // is followed by a fresh load that overwrites the same slabs, the
-    // missing barriers don't hurt.
-    if (transfer_queue_) transfer_queue_->poll_completions(VK_NULL_HANDLE);
+    // during waitIdle. The dedicated transfer-family path needs a real
+    // command buffer to record acquire barriers; with VK_NULL_HANDLE
+    // poll_completions defers callbacks to the next frame, where they
+    // would later fire against a freshly-loaded scene's slab indices
+    // and corrupt state. Caller (Renderer::init_gs) provides
+    // `drain_cmd`; for the single-queue (Apple/fallback) path
+    // VK_NULL_HANDLE is also accepted because no acquire barriers
+    // need recording.
+    if (transfer_queue_) transfer_queue_->poll_completions(drain_cmd);
 
-    // Anything still in `pending_load_` had its `submit_with_handle` runs
-    // partially completed (or not at all) — its slab_handle owns slabs
-    // we never published into `active_chunks_`. Release it manually so
-    // the allocator can reuse those indices.
-    if (pending_load_) {
-        slab_allocator_->release(pending_load_->slab_handle);
-        pending_load_.reset();
+    // Anything still in `pending_loads_` had its `submit_with_handle`
+    // runs partially completed (or not at all) — those slab handles
+    // own slabs we never published into `active_chunks_`. Release
+    // them manually so the allocator can reuse those indices.
+    for (auto& job : pending_loads_) {
+        slab_allocator_->release(job.slab_handle);
     }
+    pending_loads_.clear();
 
     for (auto& chunk : active_chunks_) slab_allocator_->release(chunk.handle);
     active_chunks_.clear();
@@ -1020,11 +1020,6 @@ std::vector<TransferQueue::Handle> GsRenderer::load_cloud_async(GaussianCloud cl
         return {};
     }
     if (cloud.empty()) return {};
-    if (pending_load_) {
-        std::fprintf(stderr,
-            "GS: load_cloud_async called while a previous load is still draining\n");
-        return {};
-    }
 
     // Append-only semantics. The new chunk is checked out from the slab
     // allocator and pushed onto `active_chunks_` by the final completion
@@ -1035,6 +1030,10 @@ std::vector<TransferQueue::Handle> GsRenderer::load_cloud_async(GaussianCloud cl
     // contract for both code paths). The synchronous `load_cloud` is
     // still the right tool when a true scene replacement is needed —
     // it does the `vkDeviceWaitIdle` + chunk release in one shot.
+    //
+    // Multiple concurrent loads queue up on `pending_loads_` instead of
+    // being rejected — WorldStreamer marks each chunk `LOADING` once
+    // and never retries, so a rejected request would stick forever.
     const uint32_t sps = streaming_config_.slab_size_splats;
     const uint32_t splat_count = cloud.count();
     const uint32_t slabs_needed = (splat_count + sps - 1) / sps;
@@ -1051,21 +1050,26 @@ std::vector<TransferQueue::Handle> GsRenderer::load_cloud_async(GaussianCloud cl
     job.cloud = std::move(cloud);
 
     std::vector<TransferQueue::Handle> handles_for_caller = job.handles;
-    pending_load_ = std::move(job);
+    pending_loads_.push_back(std::move(job));
     return handles_for_caller;
 }
 
 void GsRenderer::poll_transfers(VkCommandBuffer frame_cmd) {
     if (!transfer_queue_) return;
 
-    // Drain pending slab uploads as long as the staging ring has space for
-    // each next slab. This naturally throttles a 100-slab cloud across
-    // frames so we never need a ring sized for the whole cloud at once.
-    if (pending_load_) {
-        auto& job = *pending_load_;
-        const auto& gaussians = job.cloud.gaussians();
-        const VkBuffer dest = static_gaussian_ssbo_.buffer();
+    // Drain queued slab uploads as long as the staging ring has space.
+    // We process the front job's slabs, then advance to the next job
+    // when a job is fully submitted. The ring naturally throttles
+    // multi-job uploads — when a slab can't fit, we break and resume
+    // next frame. Each job's completion callback writes its chunk to
+    // `active_chunks_`, so multiple chunks can be in flight via the
+    // GPU fence without conflict.
+    const VkBuffer dest = static_gaussian_ssbo_.buffer();
+    while (!pending_loads_.empty()) {
+        auto& job = pending_loads_.front();
 
+        // Submit any remaining slabs from this job.
+        bool ring_full = false;
         while (job.next_slab < job.slabs_needed) {
             const uint32_t s = job.next_slab;
             const uint32_t physical_slab = job.slab_handle.slab_indices[s];
@@ -1075,8 +1079,9 @@ void GsRenderer::poll_transfers(VkCommandBuffer frame_cmd) {
             const uint64_t copy_size = static_cast<uint64_t>(count) * sizeof(GpuGaussian);
 
             auto res = transfer_queue_->reserve_staging(copy_size);
-            if (!res) break;  // ring full this frame; resume next frame
+            if (!res) { ring_full = true; break; }
 
+            const auto& gaussians = job.cloud.gaussians();
             auto* dst = reinterpret_cast<GpuGaussian*>(res->host_ptr);
             for (uint32_t i = 0; i < count; ++i) {
                 const auto& g = gaussians[src_start + i];
@@ -1095,17 +1100,26 @@ void GsRenderer::poll_transfers(VkCommandBuffer frame_cmd) {
             ++job.next_slab;
         }
 
-        // Once every slab has been submitted, queue the final completion
-        // marker that publishes the chunk to the renderer. Doing this
-        // exactly once is what the `completion_enqueued` flag protects.
-        if (job.next_slab == job.slabs_needed && !job.completion_enqueued) {
+        if (job.next_slab < job.slabs_needed) {
+            // Couldn't finish this job (ring full); break out so we
+            // try again next frame. Don't advance to the next job —
+            // each job's completion callback expects to fire AFTER
+            // the previous job's completion has already mutated
+            // `active_chunks_` and `static_count_`, so we serialise
+            // job completions in order.
+            (void)ring_full;
+            break;
+        }
+
+        // Front job is fully submitted. Queue the completion marker —
+        // exactly once per job — that publishes the chunk to the
+        // renderer when the GPU fence retires.
+        if (!job.completion_enqueued) {
             job.completion_enqueued = true;
-            // Move out the per-job state the callback needs so the job
-            // itself can be reset right after — the callback fires later.
-            auto handle       = std::move(job.slab_handle);
-            const uint32_t splat_count   = job.splat_count;
-            const uint32_t slabs_needed  = job.slabs_needed;
-            const uint32_t sps_local     = job.slab_size_splats;
+            auto handle      = std::move(job.slab_handle);
+            const uint32_t splat_count  = job.splat_count;
+            const uint32_t slabs_needed = job.slabs_needed;
+            const uint32_t sps_local    = job.slab_size_splats;
 
             transfer_queue_->enqueue_completion(
                 [this, handle = std::move(handle), splat_count, slabs_needed, sps_local]() mutable {
@@ -1152,10 +1166,12 @@ void GsRenderer::poll_transfers(VkCommandBuffer frame_cmd) {
                     std::fprintf(stderr,
                         "GS: Async load complete — %u splats in %u slabs (total active: %u)\n",
                         splat_count, slabs_needed, static_count_);
-
-                    pending_load_.reset();
                 });
         }
+
+        // Done queuing this job — drop it from the deque. The completion
+        // lambda has already moved the slab handle into its own capture.
+        pending_loads_.pop_front();
     }
 
     transfer_queue_->poll_completions(frame_cmd);

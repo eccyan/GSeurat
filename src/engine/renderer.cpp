@@ -259,7 +259,20 @@ void Renderer::init_gs(const GaussianCloud& cloud, uint32_t width, uint32_t heig
     // overlay both terrains and the smaller dungeon heightmap would
     // stop catching the player at its borders → the "floor gave way"
     // symptom.
-    gs_renderer_.clear_chunks();
+    //
+    // We hand `clear_chunks` a transient command buffer so its
+    // poll_completions call can record acquire barriers from any
+    // in-flight transfers on the dedicated transfer-family path.
+    // Without a real cmd, those callbacks defer to the next frame
+    // and would fire against the freshly-loaded scene's slab
+    // indices, corrupting state. The single-queue path (Apple/
+    // fallback) doesn't strictly need the cmd, but always providing
+    // one keeps both code paths uniform.
+    {
+        VkCommandBuffer drain_cmd = command_pool_.begin_single_time(context_.device());
+        gs_renderer_.clear_chunks(drain_cmd);
+        command_pool_.end_single_time(context_.device(), context_.graphics_queue(), drain_cmd);
+    }
 
     // Hand a copy of the cloud off to the renderer's pending-upload job.
     // The async path moves the cloud in and drains slab transfers across
