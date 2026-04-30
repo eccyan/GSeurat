@@ -3,7 +3,12 @@
 #include "gseurat/engine/procedural_textures.hpp"
 #include "gseurat/engine/project_root.hpp"
 #include "gseurat/engine/resource_manager.hpp"
+#include "gseurat/engine/sort_entry.hpp"
+#include "gseurat/engine/sort_hash.hpp"
 #include "gseurat/engine/streaming_config.hpp"
+
+#include <cstdio>
+#include <set>
 
 #include <algorithm>
 #include <array>
@@ -317,6 +322,24 @@ void Renderer::init_gs(const GaussianCloud& cloud, uint32_t width, uint32_t heig
     }
 }
 
+void Renderer::begin_determinism_test(int frames) {
+    if (frames <= 0) frames = 10;
+    determinism_test_state_.active = true;
+    determinism_test_state_.total_frames = frames;
+    determinism_test_state_.captured_frames = 0;
+    // Snapshot current camera matrices — `draw_scene` will replay these
+    // for the next `frames` frames.
+    determinism_test_state_.frozen_view = gs_view_;
+    determinism_test_state_.frozen_proj = gs_proj_;
+
+    determinism_test_result_ = {};
+    determinism_test_result_.verdict = DeterminismVerdict::Running;
+    determinism_test_result_.total_frames = frames;
+    determinism_test_result_.hashes.reserve(static_cast<size_t>(frames));
+
+    std::fprintf(stderr, "[GS det] determinism test started: frames=%d\n", frames);
+}
+
 void Renderer::set_gs_background(const ResourceHandle<Texture>& texture) {
     if (!font_initialized_) return;  // need UI UBOs
 
@@ -351,6 +374,23 @@ void Renderer::draw_scene(Scene& scene,
     float now = static_cast<float>(glfwGetTime());
     float dt = now - last_time_;
     last_time_ = now;
+
+    // Frame-determinism harness: when active, freeze every CPU-side input
+    // that feeds the GS pipeline. Goal is to render N frames against
+    // identical inputs so a hash drift in the post-Onesweep buffer
+    // proves order-instability rather than legitimate per-frame change.
+    const bool determinism_active = determinism_test_state_.active;
+    if (determinism_active) {
+        dt = 0.0f;                                 // freeze any dt-driven anim/PBD step
+        gs_view_ = determinism_test_state_.frozen_view;
+        gs_proj_ = determinism_test_state_.frozen_proj;
+        // Ensure the camera-dirty path doesn't re-pick LOD/chunk visibility
+        // each frame on micro-jitter from particle/VFX presence.
+        gs_static_force_dirty_ = false;
+        gs_renderer_.set_determinism_test_active(true);
+    } else {
+        gs_renderer_.set_determinism_test_active(false);
+    }
 
     // Suppress camera shake if disabled (zero amplitude prevents shake math)
     if (!flags.camera_shake && camera_.shake_active()) {
@@ -701,6 +741,46 @@ void Renderer::draw_scene(Scene& scene,
         screenshot_.readback_and_write(context_.allocator(), swapchain_.extent());
     }
 
+    // Frame-determinism harness: after the GPU finishes this frame, hash
+    // the live entries in the post-Onesweep readback. Bound the hashed
+    // range to `live_tile_sort_count() * sizeof(SortEntry)` so we ignore
+    // the sentinel-filled tail. Debug-only — blocking on the in-flight
+    // fence is fine here.
+    if (determinism_active) {
+        vkWaitForFences(device, 1, &frame_sync.in_flight, VK_TRUE, UINT64_MAX);
+        const uint32_t live_count = gs_renderer_.live_tile_sort_count();
+        const void* mapped = gs_renderer_.determinism_readback_data();
+        std::uint64_t hash = 0;
+        if (mapped != nullptr && live_count > 0) {
+            hash = fnv1a_64(static_cast<const std::uint8_t*>(mapped),
+                            static_cast<std::size_t>(live_count) * sizeof(SortEntry));
+        }
+        determinism_test_result_.hashes.push_back(hash);
+        determinism_test_result_.live_entry_count = live_count;
+        determinism_test_result_.captured_frames = ++determinism_test_state_.captured_frames;
+        std::fprintf(stderr,
+                     "[GS det] frame %d/%d hash=0x%016llx live=%u\n",
+                     determinism_test_state_.captured_frames,
+                     determinism_test_state_.total_frames,
+                     static_cast<unsigned long long>(hash), live_count);
+        if (determinism_test_state_.captured_frames >= determinism_test_state_.total_frames) {
+            std::set<std::uint64_t> unique(determinism_test_result_.hashes.begin(),
+                                           determinism_test_result_.hashes.end());
+            determinism_test_result_.unique_hashes = static_cast<uint32_t>(unique.size());
+            determinism_test_result_.verdict = (unique.size() <= 1)
+                ? DeterminismVerdict::Stable
+                : DeterminismVerdict::Unstable;
+            determinism_test_state_.active = false;
+            gs_renderer_.set_determinism_test_active(false);
+            std::fprintf(stderr,
+                         "[GS det] verdict=%s unique=%u/%d\n",
+                         (determinism_test_result_.verdict == DeterminismVerdict::Stable)
+                             ? "STABLE" : "UNSTABLE",
+                         determinism_test_result_.unique_hashes,
+                         determinism_test_result_.total_frames);
+        }
+    }
+
     VkPresentInfoKHR present{};
     present.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
     present.waitSemaphoreCount = 1;
@@ -989,6 +1069,15 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
         // buffer state from the previous frame's radix scatter corrupts the merge output.
         if (!gs_pending_dynamics_.empty() || !gs_particle_emitters_.empty() || !vfx_instances_.empty()) {
             camera_dirty = true;
+        }
+
+        // Determinism harness: hold the LOD/chunk-gather selection across
+        // frames so the pre-sort input set itself is bit-identical. Any
+        // change here would mask the order-instability we're trying to
+        // detect downstream in the tile-bin atomic.
+        if (determinism_test_state_.active) {
+            camera_dirty = false;
+            gs_static_force_dirty_ = false;
         }
 
         if (camera_dirty && flags.gs_chunk_culling && !gs_skip_chunk_cull_ && !gs_chunk_grid_.empty()) {

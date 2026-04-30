@@ -614,6 +614,47 @@ void CommandDispatcher::register_default_commands() {
         return ctx_.debug_dump_registry.collect_all(source);
     });
 
+    // ── Frame-determinism harness (Mode 1) ──
+    // Triggers a hash-replay test: holds camera/PBD/animator/LOD frozen
+    // and renders N frames, hashing the post-Onesweep tile_sort_a_
+    // contents each frame. If the hashes differ across frames despite
+    // identical inputs, the GS sort's input order is non-deterministic.
+    register_command("start_determinism_test", [this](const json& cmd) -> CommandResult {
+        const int frames = cmd.value("frames", 10);
+        if (frames <= 0 || frames > 1000) {
+            return std::unexpected(std::string("frames must be in (0, 1000]"));
+        }
+        ctx_.renderer.begin_determinism_test(frames);
+        return json{{"type", "ok"}, {"frames", frames}};
+    });
+
+    register_command("get_determinism_test_result", [this](const json&) -> CommandResult {
+        const auto& r = ctx_.renderer.determinism_test_result();
+        const char* verdict_str = "idle";
+        switch (r.verdict) {
+            case Renderer::DeterminismVerdict::Idle:     verdict_str = "idle"; break;
+            case Renderer::DeterminismVerdict::Running:  verdict_str = "running"; break;
+            case Renderer::DeterminismVerdict::Stable:   verdict_str = "stable"; break;
+            case Renderer::DeterminismVerdict::Unstable: verdict_str = "unstable"; break;
+        }
+        json hashes_arr = json::array();
+        for (auto h : r.hashes) {
+            char buf[32];
+            std::snprintf(buf, sizeof(buf), "0x%016llx",
+                          static_cast<unsigned long long>(h));
+            hashes_arr.push_back(buf);
+        }
+        return json{
+            {"type", "determinism_test_result"},
+            {"verdict", verdict_str},
+            {"total_frames", r.total_frames},
+            {"captured_frames", r.captured_frames},
+            {"unique_hashes", r.unique_hashes},
+            {"live_entry_count", r.live_entry_count},
+            {"hashes", hashes_arr},
+        };
+    });
+
     register_command("quit", [this](const json&) -> CommandResult {
         glfwSetWindowShouldClose(ctx_.window, GLFW_TRUE);
         return json{{"type", "ok"}, {"message", "Shutting down"}};

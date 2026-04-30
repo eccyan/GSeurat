@@ -253,6 +253,20 @@ public:
     void set_tile_binning(bool enabled) { tile_binning_enabled_ = enabled; }
     bool tile_binning() const { return tile_binning_enabled_; }
 
+    // Frame-determinism test harness (Mode 1): when active, copy the
+    // post-Onesweep tile_sort_a_ buffer into a host-mapped readback so the
+    // CPU can hash the live entry range and detect order-instability
+    // across frames with frozen inputs. Debug-only; no production cost.
+    void set_determinism_test_active(bool active) { determinism_test_active_ = active; }
+    bool determinism_test_active() const { return determinism_test_active_; }
+    const void* determinism_readback_data() const {
+        return determinism_readback_.mapped();
+    }
+    uint32_t live_tile_sort_count() const {
+        if (tile_sort_count_ssbo_.mapped() == nullptr) return 0;
+        return *static_cast<const uint32_t*>(tile_sort_count_ssbo_.mapped());
+    }
+
     // GPU timing averages (populated over kTimestampAvgFrames)
     float depth_sort_ms_avg() const { return depth_sort_ms_avg_; }
     float tile_sort_ms_avg() const { return tile_sort_ms_avg_; }
@@ -505,6 +519,13 @@ private:
     Buffer tile_sort_count_ssbo_;     // atomic counter (single uint32)
     Buffer tile_ranges_ssbo_;         // per-tile {start, count}
     Buffer tile_indirect_args_;       // indirect dispatch args (8 × uint32)
+
+    // Frame-determinism harness: HOST_VISIBLE copy of the post-Onesweep
+    // tile_sort_a_ buffer. Sized to match tile_sort_a_; only populated when
+    // determinism_test_active_ is true.
+    Buffer determinism_readback_;
+    VkDeviceSize determinism_readback_size_ = 0;
+    bool determinism_test_active_ = false;
 
     uint32_t tile_sort_capacity_ = 0;    // max entries in tile sort buffers
     uint32_t tile_sort_size_ = 0;        // workgroup-aligned count for radix sort
