@@ -16,7 +16,9 @@
 #include <cassert>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <random>
+#include <utility>
 #include <vector>
 
 using namespace gseurat;
