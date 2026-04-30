@@ -580,5 +580,6 @@ endfunction()
 
 add_gseurat_gpu_test(test_onesweep_gpu)
 add_gseurat_gpu_test(test_transfer_queue_gpu src/engine/transfer_queue.cpp)
+add_gseurat_gpu_test(test_tile_scan_gpu)
 
 endif() # GSEURAT_BUILD_TESTS

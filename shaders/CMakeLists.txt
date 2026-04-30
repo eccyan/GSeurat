@@ -27,6 +27,8 @@ set(SHADER_SOURCES
     ${SHADER_SOURCE_DIR}/gs_render.comp
 
     ${SHADER_SOURCE_DIR}/gs_merge.comp
+    ${SHADER_SOURCE_DIR}/gs_tile_count.comp
+    ${SHADER_SOURCE_DIR}/gs_tile_scan.comp
     ${SHADER_SOURCE_DIR}/gs_tile_bin.comp
     ${SHADER_SOURCE_DIR}/gs_tile_ranges.comp
     ${SHADER_SOURCE_DIR}/gs_tile_render.comp

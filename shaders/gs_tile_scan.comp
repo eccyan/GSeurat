@@ -1,0 +1,162 @@
+#version 450
+
+// Tile-bin Pass 2 (Scan). Three-dispatch hierarchical exclusive prefix-sum
+// over per_splat_tile_count[] → per_splat_tile_offset[].
+//
+// Dispatch protocol (driven by C++):
+//   pass=0 (LOCAL_SCAN): one workgroup per 256 input elements.
+//                        Each WG performs a 256-element exclusive scan in
+//                        shared memory and writes its block sum (= sum of
+//                        all 256 inputs) to scan_block_sums[wg_id].
+//   pass=1 (BLOCK_SCAN): single workgroup. Iterates over scan_block_sums in
+//                        256-element chunks, exclusive-scans each chunk in
+//                        shared memory, and propagates a running base
+//                        across chunks. Writes the grand total to
+//                        tile_sort_count.
+//   pass=2 (ADD_BASE):   one workgroup per 256 elements. Reads its block's
+//                        scanned base from scan_block_sums[wg_id] and adds
+//                        it to per_splat_tile_offset[wg_id*256 + lid].
+//
+// All passes use 256-thread workgroups. Pass 1's chunked scan supports up
+// to 256*256 = 65 536 blocks → 16.7 M visible splats, well above our
+// tile_sort_capacity_ ceiling.
+
+layout(local_size_x = 256) in;
+
+const uint WG_SIZE = 256u;
+
+const uint PASS_LOCAL_SCAN = 0u;
+const uint PASS_BLOCK_SCAN = 1u;
+const uint PASS_ADD_BASE   = 2u;
+
+layout(set = 0, binding = 0) readonly buffer InCount {
+    uint per_splat_tile_count[];
+};
+
+layout(set = 0, binding = 1) buffer OutOffset {
+    uint per_splat_tile_offset[];
+};
+
+layout(set = 0, binding = 2) buffer BlockSums {
+    uint scan_block_sums[];
+};
+
+layout(set = 0, binding = 3) buffer TileSortCount {
+    uint tile_sort_count;
+};
+
+layout(push_constant) uniform PushConstants {
+    uint pass;          // PASS_LOCAL_SCAN | PASS_BLOCK_SCAN | PASS_ADD_BASE
+    uint num_elements;  // count_dispatch_size = ceil(N/256)*256
+    uint num_blocks;    // ceil(N/256)
+};
+
+shared uint s_data[WG_SIZE];
+shared uint s_chunk_total;
+
+// In-place inclusive Hillis–Steele scan on s_data[0..WG_SIZE).
+void inclusive_scan_inplace(uint lid) {
+    for (uint d = 1u; d < WG_SIZE; d <<= 1u) {
+        uint t = (lid >= d) ? s_data[lid - d] : 0u;
+        barrier();
+        s_data[lid] += t;
+        barrier();
+    }
+}
+
+void main_local_scan() {
+    uint lid = gl_LocalInvocationID.x;
+    uint wg_id = gl_WorkGroupID.x;
+    uint gid = wg_id * WG_SIZE + lid;
+
+    uint my_val = (gid < num_elements) ? per_splat_tile_count[gid] : 0u;
+    s_data[lid] = my_val;
+    barrier();
+
+    inclusive_scan_inplace(lid);
+
+    // s_data[lid] = inclusive prefix. Exclusive = inclusive - my_val.
+    uint exclusive = s_data[lid] - my_val;
+    if (gid < num_elements) {
+        per_splat_tile_offset[gid] = exclusive;
+    }
+
+    // Last thread writes the block's total (= inclusive[WG_SIZE-1]).
+    if (lid == WG_SIZE - 1u) {
+        scan_block_sums[wg_id] = s_data[lid];
+    }
+    // Same Apple-TBDR consideration as main_block_scan: explicitly fence
+    // the per_splat_tile_offset and scan_block_sums writes out to global
+    // memory before this workgroup completes, so pass 1 (which reads
+    // scan_block_sums) and pass 2 (which reads per_splat_tile_offset) see
+    // a fully-published view.
+    memoryBarrierBuffer();
+}
+
+void main_block_scan() {
+    uint lid = gl_LocalInvocationID.x;
+    uint blocks = num_blocks;
+    if (lid == 0u) {
+        s_chunk_total = 0u;
+    }
+    barrier();
+
+    // Process scan_block_sums[] in 256-wide chunks, threading a running
+    // base through each chunk so the final exclusive prefix is global.
+    uint chunk_count = (blocks + WG_SIZE - 1u) / WG_SIZE;
+    for (uint chunk = 0u; chunk < chunk_count; chunk++) {
+        uint idx = chunk * WG_SIZE + lid;
+        uint my_val = (idx < blocks) ? scan_block_sums[idx] : 0u;
+        s_data[lid] = my_val;
+        barrier();
+
+        inclusive_scan_inplace(lid);
+
+        uint exclusive = s_data[lid] - my_val;
+        // Carry the running base from prior chunks.
+        uint base = s_chunk_total;
+        if (idx < blocks) {
+            scan_block_sums[idx] = exclusive + base;
+        }
+
+        // Last thread updates the running total.
+        if (lid == WG_SIZE - 1u) {
+            s_chunk_total = base + s_data[lid];
+        }
+        barrier();
+    }
+
+    // Force the scan_block_sums writes out to global memory before the
+    // workgroup terminates. Without this, pass 2 (other workgroups) can
+    // observe stale values on tile-based GPUs where workgroup-scope
+    // barriers don't imply storage-buffer flushes.
+    memoryBarrierBuffer();
+
+    // Single thread writes the grand total. This is the deterministic
+    // tile_sort_count consumed downstream by the scatter and indirect
+    // dispatch builder.
+    if (lid == 0u) {
+        tile_sort_count = s_chunk_total;
+    }
+}
+
+void main_add_base() {
+    uint lid = gl_LocalInvocationID.x;
+    uint wg_id = gl_WorkGroupID.x;
+    uint gid = wg_id * WG_SIZE + lid;
+
+    if (gid >= num_elements) return;
+
+    uint base = scan_block_sums[wg_id];
+    per_splat_tile_offset[gid] += base;
+}
+
+void main() {
+    if (pass == PASS_LOCAL_SCAN) {
+        main_local_scan();
+    } else if (pass == PASS_BLOCK_SCAN) {
+        main_block_scan();
+    } else {
+        main_add_base();
+    }
+}

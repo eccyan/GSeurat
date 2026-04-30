@@ -1,0 +1,110 @@
+#version 450
+
+// Tile-bin Pass 1 (Count). Counts per-splat tile-overlap.
+//
+// For each visible splat, computes how many 16×16 tiles its bounding circle
+// overlaps and writes that count to per_splat_tile_count[gid]. The count
+// must exactly match the loop iteration count of the scatter shader's
+// inner double-loop (tx_max-tx_min+1) * (ty_max-ty_min+1) for splats that
+// pass culling, or 0 otherwise. This invariant is what makes the
+// downstream exclusive scan + scatter deterministic.
+//
+// This shader replaces the count-bookkeeping side of the old single-pass
+// gs_tile_bin.comp's atomicAdd. The actual TileSortEntry writes happen in
+// the rewritten gs_tile_bin.comp scatter pass after the scan computes
+// each splat's deterministic write offset.
+
+layout(local_size_x = 256) in;
+
+struct ProjectedSplat {
+    vec2 center;
+    float depth;
+    float radius;
+    vec4 conic_opacity;
+    vec4 color;
+};
+
+struct SortEntry {
+    uint key;
+    uint index;
+};
+
+layout(set = 0, binding = 0) readonly buffer ProjectedBuffer {
+    ProjectedSplat projected[];
+};
+
+layout(set = 0, binding = 1) readonly buffer MergedSortBuffer {
+    SortEntry merged_entries[];
+};
+
+layout(set = 0, binding = 2) readonly buffer CountsBuffer {
+    uint static_count;
+    uint dynamic_count;
+    uint merged_visible_count;
+};
+
+layout(set = 0, binding = 3) writeonly buffer PerSplatTileCountBuffer {
+    uint per_splat_tile_count[];
+};
+
+layout(set = 0, binding = 6) uniform Uniforms {
+    mat4 view;
+    mat4 proj;
+    mat4 inv_view;
+    mat4 inv_proj;
+    uvec4 params;
+    vec4 shadow_box;
+    vec4 cone_dir;
+    vec4 cam_pos;
+    vec4 effect_flags;
+    vec4 light_params;
+    vec4 touch_point;
+    vec4 effect_params;
+    vec4 effect_params2;
+    vec4 point_light_params;
+    vec4 actor_rotation;
+    vec4 pl_pos_rad[8];
+    vec4 pl_color[8];
+    vec4 pl_dir_cone[8];
+    vec4 pl_area[8];
+    vec4 tile_sort_params;
+};
+
+void main() {
+    uint gid = gl_GlobalInvocationID.x;
+    uint visible = static_count + dynamic_count;
+    // Tail threads in the last workgroup (gid >= visible): C++ vkCmdFillBuffer
+    // pre-zeros the entire per_splat_tile_count_ssbo_ before this dispatch,
+    // so leaving them untouched is correct — the scan reads 0 there.
+    if (gid >= visible) return;
+
+    SortEntry entry = merged_entries[gid];
+    if (entry.key == 0xFFFFu) {
+        per_splat_tile_count[gid] = 0u;
+        return;
+    }
+
+    uint idx = entry.index;
+    ProjectedSplat splat = projected[idx];
+
+    if (splat.radius <= 0.0) {
+        per_splat_tile_count[gid] = 0u;
+        return;
+    }
+
+    vec2 c = splat.center;
+    float r = splat.radius;
+    uint tiles_x = uint(tile_sort_params.z);
+    uint tiles_y = uint(tile_sort_params.w);
+
+    int tx_min = max(0, int(floor((c.x - r) / 16.0)));
+    int tx_max = min(int(tiles_x) - 1, int(floor((c.x + r) / 16.0)));
+    int ty_min = max(0, int(floor((c.y - r) / 16.0)));
+    int ty_max = min(int(tiles_y) - 1, int(floor((c.y + r) / 16.0)));
+
+    uint tile_count = 0u;
+    if (tx_max >= tx_min && ty_max >= ty_min) {
+        tile_count = uint(tx_max - tx_min + 1) * uint(ty_max - ty_min + 1);
+    }
+    per_splat_tile_count[gid] = tile_count;
+}
