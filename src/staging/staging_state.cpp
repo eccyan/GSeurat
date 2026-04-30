@@ -591,7 +591,12 @@ void StagingState::update(AppBase& app, float dt) {
                     auto resolved = resolve_asset_path(chunk.ply_file);
                     std::fprintf(stderr, "[Staging] Chunk [%s] Loading: %s\n",
                         grid_key.c_str(), chunk.ply_file.c_str());
-                    app.renderer().gs_renderer().load_cloud_async(resolved.string());
+                    // load_cloud_async now expects an in-memory cloud; PLY
+                    // parse runs on the main thread for now (same trade-off
+                    // as the IslandDemo WorldStreamer path).
+                    GaussianCloud chunk_cloud;
+                    chunk_cloud.load_ply(resolved.string());
+                    app.renderer().gs_renderer().load_cloud_async(std::move(chunk_cloud));
                     break;
                 }
             }

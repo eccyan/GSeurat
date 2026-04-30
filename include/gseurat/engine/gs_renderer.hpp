@@ -15,7 +15,9 @@
 #include <glm/gtc/quaternion.hpp>
 #include <atomic>
 #include <cstdint>
+#include <deque>
 #include <memory>
+#include <optional>
 #include <thread>
 #include <vector>
 
@@ -88,7 +90,32 @@ public:
     void load_cloud(const GaussianCloud& cloud);
     void init_streaming(const StreamingConfig& config);
     void unload_cloud(uint32_t chunk_id);
-    void load_cloud_async(const std::string& ply_path);
+    // Release every active chunk and any in-flight pending async loads.
+    // Used by full scene loads/transitions (`Renderer::init_gs`) so the
+    // new scene replaces the old. Streaming-style appends should NOT
+    // call this. Performs a `vkDeviceWaitIdle` to drain transfers before
+    // returning slab indices to the allocator.
+    //
+    // `drain_cmd` is a transient command buffer the caller has already
+    // begun via `vkBeginCommandBuffer`; clear_chunks records any
+    // outstanding acquire barriers from completed transfers into it.
+    // The caller is responsible for ending + submitting + waiting on
+    // `drain_cmd`. Pass `VK_NULL_HANDLE` only for the single-queue
+    // (Apple/fallback) path where no acquire barriers are required —
+    // on dedicated transfer family that path leaves callbacks deferred
+    // to the next frame, which would then fire against the next scene
+    // and corrupt slab state.
+    void clear_chunks(VkCommandBuffer drain_cmd = VK_NULL_HANDLE);
+    // Async upload via the shared host-visible staging ring. The cloud is
+    // moved into a pending-load job stored on the renderer; per-slab
+    // `reserve_staging` + memcpy + `submit_with_handle` are issued by
+    // `poll_transfers` across frames so a 100-slab cloud doesn't have to
+    // fit in the staging ring at once. Returns one Handle per slab,
+    // pre-allocated so `EngineLoadingMonitor` can poll their status
+    // immediately even before any has been submitted to the GPU.
+    // Falls back to synchronous `load_cloud` (and returns {}) if streaming
+    // isn't initialized or no transfer queue exists.
+    std::vector<TransferQueue::Handle> load_cloud_async(GaussianCloud cloud);
     void poll_transfers(VkCommandBuffer frame_cmd);
     void create_transfer_queue(VkQueue transfer_q, uint32_t transfer_family,
                                uint32_t graphics_family, bool dedicated);
@@ -332,10 +359,30 @@ private:
     uint32_t total_active_splats_{0};
     bool streaming_initialized_{false};
 
-    // Async transfer + background loading
+    // Async transfer queue. Reservations and submits run on the main thread;
+    // `poll_transfers` (per-frame) retires fences and fires per-batch
+    // completion callbacks that publish uploaded chunks to the renderer.
     std::unique_ptr<TransferQueue> transfer_queue_;
-    std::vector<std::thread> load_threads_;
-    std::atomic<uint32_t> pending_loads_{0};
+
+    // Queued async cloud uploads. `load_cloud_async` always pushes to
+    // the back; `poll_transfers` drains the front job's slabs as the
+    // staging ring frees space, and pops once a job's slabs are all
+    // submitted (the per-job completion callback then fires later when
+    // the GPU fence retires). The deque lets WorldStreamer queue
+    // multiple chunks back-to-back without losing requests — under
+    // single-slot semantics, the streamer marks chunks `LOADING` once
+    // and never retries, so a rejected request would stick forever.
+    struct PendingLoadJob {
+        GaussianCloud cloud;
+        SlabAllocator::SlabHandle slab_handle;
+        std::vector<TransferQueue::Handle> handles;  // one per slab
+        uint32_t splat_count = 0;
+        uint32_t slabs_needed = 0;
+        uint32_t slab_size_splats = 0;
+        uint32_t next_slab = 0;          // index of the next slab to submit
+        bool completion_enqueued = false; // true once enqueue_completion() ran
+    };
+    std::deque<PendingLoadJob> pending_loads_;
 
     uint32_t gaussian_count_ = 0;
     uint32_t max_gaussian_count_ = 0;
