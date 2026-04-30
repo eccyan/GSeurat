@@ -2582,7 +2582,13 @@ void GsRenderer::render(VkCommandBuffer cmd, const glm::mat4& view, const glm::m
         // === PBD solver dispatch (before any preprocess) ===
         // PBD-tagged Gaussians live in the static buffer but need re-preprocessing
         // every frame since their positions/rotations change continuously.
-        if (pbd_count_ > 0) {
+        // Determinism harness: PBD uses a hardcoded 1/60s step rather than
+        // the engine dt, so the upstream draw_scene `dt = 0` freeze is not
+        // enough — the solver would still advance wind-sway each frame and
+        // shift the depth-sort key for tagged splats. Skip the dispatch
+        // entirely while a Mode-1 test is active so the GPU's pbd_state
+        // SSBO retains its pre-test contents.
+        if (pbd_count_ > 0 && !determinism_test_active_) {
             static_dirty_ = true;
             struct {
                 float time;

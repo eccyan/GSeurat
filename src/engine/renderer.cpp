@@ -1182,79 +1182,90 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
         }
 
         // --- Dynamic path: every frame ---
-        gs_dynamic_buffer_.clear();
+        // Determinism harness: when a Mode-1 test is active, skip the
+        // entire dynamic-buffer rebuild. The GPU's dynamic_gaussian_ssbo
+        // and dynamic_count_ retain whatever was uploaded just before the
+        // test began, so every replayed frame sees identical dynamic
+        // input. We can't just rely on `dt = 0` here — emitter.update
+        // and inst.update may rebuild internal state non-deterministically
+        // (particle re-emission ordering, std::erase_if removal of dead
+        // entries reshuffling indices), and the std::vector clear+fill
+        // pattern would change capacity allocations across frames.
+        if (!determinism_test_state_.active) {
+            gs_dynamic_buffer_.clear();
 
-        // Distance culling for dynamic effects (emitters, VFX)
-        glm::vec3 cull_origin = glm::vec3(glm::inverse(gs_view_)[3]);
-        float cull_dist_sq = gs_max_render_distance_ > 0.0f
-            ? gs_max_render_distance_ * gs_max_render_distance_ : 0.0f;
+            // Distance culling for dynamic effects (emitters, VFX)
+            glm::vec3 cull_origin = glm::vec3(glm::inverse(gs_view_)[3]);
+            float cull_dist_sq = gs_max_render_distance_ > 0.0f
+                ? gs_max_render_distance_ * gs_max_render_distance_ : 0.0f;
 
-        // Update and gather Gaussian particles from emitters
-        if (flags.particles) {
-            for (auto& emitter : gs_particle_emitters_) {
-                emitter.update(dt);
-                // Skip gathering from emitters beyond max render distance
-                if (cull_dist_sq > 0.0f) {
-                    glm::vec3 d = emitter.position() - cull_origin;
-                    if (glm::dot(d, d) > cull_dist_sq) continue;
+            // Update and gather Gaussian particles from emitters
+            if (flags.particles) {
+                for (auto& emitter : gs_particle_emitters_) {
+                    emitter.update(dt);
+                    // Skip gathering from emitters beyond max render distance
+                    if (cull_dist_sq > 0.0f) {
+                        glm::vec3 d = emitter.position() - cull_origin;
+                        if (glm::dot(d, d) > cull_dist_sq) continue;
+                    }
+                    emitter.gather(gs_dynamic_buffer_);
                 }
-                emitter.gather(gs_dynamic_buffer_);
+                // Remove dead emitters
+                gs_particle_emitters_.erase(
+                    std::remove_if(gs_particle_emitters_.begin(), gs_particle_emitters_.end(),
+                        [](const GaussianParticleEmitter& e) { return !e.active() && e.alive_count() == 0; }),
+                    gs_particle_emitters_.end());
             }
-            // Remove dead emitters
-            gs_particle_emitters_.erase(
-                std::remove_if(gs_particle_emitters_.begin(), gs_particle_emitters_.end(),
-                    [](const GaussianParticleEmitter& e) { return !e.active() && e.alive_count() == 0; }),
-                gs_particle_emitters_.end());
-        }
 
-        // Update VFX instances (timeline + emitters append particles to dynamic buffer)
-        if (flags.particles || flags.animation) {
-            for (auto& inst : vfx_instances_) {
-                // Skip distant VFX instances
-                if (cull_dist_sq > 0.0f) {
-                    glm::vec3 d = inst.position() - cull_origin;
-                    if (glm::dot(d, d) > cull_dist_sq) continue;
+            // Update VFX instances (timeline + emitters append particles to dynamic buffer)
+            if (flags.particles || flags.animation) {
+                for (auto& inst : vfx_instances_) {
+                    // Skip distant VFX instances
+                    if (cull_dist_sq > 0.0f) {
+                        glm::vec3 d = inst.position() - cull_origin;
+                        if (glm::dot(d, d) > cull_dist_sq) continue;
+                    }
+                    inst.update(dt, gs_dynamic_buffer_, gs_animator_);
                 }
-                inst.update(dt, gs_dynamic_buffer_, gs_animator_);
+                std::erase_if(vfx_instances_,
+                    [](const VfxInstance& i) { return i.is_finished(); });
             }
-            std::erase_if(vfx_instances_,
-                [](const VfxInstance& i) { return i.is_finished(); });
-        }
 
-        // Collect VFX dynamic lights and merge with existing lights
-        {
-            auto all_lights = gs_static_lights_;
-            for (const auto& inst : vfx_instances_) {
-                for (const auto& vl : inst.active_lights()) {
-                    if (all_lights.size() < 8) {
-                        all_lights.push_back(vl);
+            // Collect VFX dynamic lights and merge with existing lights
+            {
+                auto all_lights = gs_static_lights_;
+                for (const auto& inst : vfx_instances_) {
+                    for (const auto& vl : inst.active_lights()) {
+                        if (all_lights.size() < 8) {
+                            all_lights.push_back(vl);
+                        }
                     }
                 }
-            }
-            if (!all_lights.empty()) {
-                if (gs_renderer_.light_mode() < 2) {
-                    gs_renderer_.set_light_mode(2);
+                if (!all_lights.empty()) {
+                    if (gs_renderer_.light_mode() < 2) {
+                        gs_renderer_.set_light_mode(2);
+                    }
+                    gs_renderer_.set_point_lights(all_lights);
                 }
-                gs_renderer_.set_point_lights(all_lights);
             }
-        }
 
-        // Append pending dynamics from game states (e.g., PBD chain demo)
-        if (!gs_pending_dynamics_.empty()) {
-            gs_dynamic_buffer_.insert(gs_dynamic_buffer_.end(),
-                                      gs_pending_dynamics_.begin(),
-                                      gs_pending_dynamics_.end());
-            gs_pending_dynamics_.clear();
-        }
-
-        // Upload dynamic Gaussians
-        {
-            auto count = static_cast<uint32_t>(gs_dynamic_buffer_.size());
-            if (count > gs_renderer_.max_dynamic_count()) {
-                gs_dynamic_buffer_.resize(gs_renderer_.max_dynamic_count());
-                count = gs_renderer_.max_dynamic_count();
+            // Append pending dynamics from game states (e.g., PBD chain demo)
+            if (!gs_pending_dynamics_.empty()) {
+                gs_dynamic_buffer_.insert(gs_dynamic_buffer_.end(),
+                                          gs_pending_dynamics_.begin(),
+                                          gs_pending_dynamics_.end());
+                gs_pending_dynamics_.clear();
             }
-            gs_renderer_.update_dynamic_gaussians(gs_dynamic_buffer_.data(), count);
+
+            // Upload dynamic Gaussians
+            {
+                auto count = static_cast<uint32_t>(gs_dynamic_buffer_.size());
+                if (count > gs_renderer_.max_dynamic_count()) {
+                    gs_dynamic_buffer_.resize(gs_renderer_.max_dynamic_count());
+                    count = gs_renderer_.max_dynamic_count();
+                }
+                gs_renderer_.update_dynamic_gaussians(gs_dynamic_buffer_.data(), count);
+            }
         }
 
         gs_renderer_.set_tile_binning(flags.gs_tile_binning);
