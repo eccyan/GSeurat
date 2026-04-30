@@ -800,6 +800,43 @@ def main():
                 else:
                     print("No snapshots saved")
 
+        elif cmd == "determinism_test":
+            # Mode 1 frame-replay determinism harness. Holds camera/PBD/
+            # animator/LOD frozen for `frames` frames and hashes the
+            # post-Onesweep tile_sort_a_ contents each frame. If the
+            # hashes differ the GS sort's input order is non-deterministic.
+            frames = int(sys.argv[2]) if len(sys.argv) > 2 else 10
+            poll_timeout = float(sys.argv[3]) if len(sys.argv) > 3 else 30.0
+            start_resp = send_command({"cmd": "start_determinism_test", "frames": frames})
+            if start_resp.get("type") == "error":
+                print(f"Error starting test: {start_resp.get('message')}")
+                return
+            print(f"Determinism test started: frames={frames}")
+            deadline = time.time() + poll_timeout
+            result = None
+            while time.time() < deadline:
+                time.sleep(0.5)
+                result = send_command({"cmd": "get_determinism_test_result"})
+                if result.get("verdict") in ("stable", "unstable"):
+                    break
+                print(f"  ... captured {result.get('captured_frames', 0)}/{frames}")
+            if result is None:
+                print("No result returned")
+                return
+            verdict = result.get("verdict", "unknown")
+            unique = result.get("unique_hashes", 0)
+            captured = result.get("captured_frames", 0)
+            live = result.get("live_entry_count", 0)
+            print(f"Verdict: {verdict.upper()}")
+            print(f"  captured_frames = {captured}")
+            print(f"  unique_hashes   = {unique}")
+            print(f"  live_entry_count= {live}")
+            for i, h in enumerate(result.get("hashes", [])):
+                print(f"  frame {i+1:3d}: {h}")
+            if verdict == "unstable":
+                print("WARNING: post-Onesweep buffer changed across frames despite frozen inputs.")
+                print("         This confirms order-instability in the GS sort input path.")
+
         else:
             print(f"Unknown command: {cmd}")
             print(__doc__)

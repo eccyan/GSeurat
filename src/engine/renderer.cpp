@@ -3,7 +3,12 @@
 #include "gseurat/engine/procedural_textures.hpp"
 #include "gseurat/engine/project_root.hpp"
 #include "gseurat/engine/resource_manager.hpp"
+#include "gseurat/engine/sort_entry.hpp"
+#include "gseurat/engine/sort_hash.hpp"
 #include "gseurat/engine/streaming_config.hpp"
+
+#include <cstdio>
+#include <set>
 
 #include <algorithm>
 #include <array>
@@ -317,6 +322,24 @@ void Renderer::init_gs(const GaussianCloud& cloud, uint32_t width, uint32_t heig
     }
 }
 
+void Renderer::begin_determinism_test(int frames) {
+    if (frames <= 0) frames = 10;
+    determinism_test_state_.active = true;
+    determinism_test_state_.total_frames = frames;
+    determinism_test_state_.captured_frames = 0;
+    // Snapshot current camera matrices — `draw_scene` will replay these
+    // for the next `frames` frames.
+    determinism_test_state_.frozen_view = gs_view_;
+    determinism_test_state_.frozen_proj = gs_proj_;
+
+    determinism_test_result_ = {};
+    determinism_test_result_.verdict = DeterminismVerdict::Running;
+    determinism_test_result_.total_frames = frames;
+    determinism_test_result_.hashes.reserve(static_cast<size_t>(frames));
+
+    std::fprintf(stderr, "[GS det] determinism test started: frames=%d\n", frames);
+}
+
 void Renderer::set_gs_background(const ResourceHandle<Texture>& texture) {
     if (!font_initialized_) return;  // need UI UBOs
 
@@ -351,6 +374,23 @@ void Renderer::draw_scene(Scene& scene,
     float now = static_cast<float>(glfwGetTime());
     float dt = now - last_time_;
     last_time_ = now;
+
+    // Frame-determinism harness: when active, freeze every CPU-side input
+    // that feeds the GS pipeline. Goal is to render N frames against
+    // identical inputs so a hash drift in the post-Onesweep buffer
+    // proves order-instability rather than legitimate per-frame change.
+    const bool determinism_active = determinism_test_state_.active;
+    if (determinism_active) {
+        dt = 0.0f;                                 // freeze any dt-driven anim/PBD step
+        gs_view_ = determinism_test_state_.frozen_view;
+        gs_proj_ = determinism_test_state_.frozen_proj;
+        // Ensure the camera-dirty path doesn't re-pick LOD/chunk visibility
+        // each frame on micro-jitter from particle/VFX presence.
+        gs_static_force_dirty_ = false;
+        gs_renderer_.set_determinism_test_active(true);
+    } else {
+        gs_renderer_.set_determinism_test_active(false);
+    }
 
     // Suppress camera shake if disabled (zero amplitude prevents shake math)
     if (!flags.camera_shake && camera_.shake_active()) {
@@ -701,6 +741,82 @@ void Renderer::draw_scene(Scene& scene,
         screenshot_.readback_and_write(context_.allocator(), swapchain_.extent());
     }
 
+    // Frame-determinism harness: after the GPU finishes this frame, hash
+    // the live entries in the post-Onesweep readback. Debug-only — blocking
+    // on the in-flight fence is fine here.
+    //
+    // Codex P1.1 / P1.3 / P2.4 hardening:
+    //  * vmaInvalidateAllocation on both the count counter and the readback
+    //    buffer before reading their mapped data, in case VMA picked a
+    //    non-HOST_COHERENT memory type (would otherwise read stale CPU
+    //    cache lines and produce false STABLE/UNSTABLE verdicts).
+    //  * Clamp live_count against tile_sort_capacity. The legacy `atomicAdd`
+    //    in gs_tile_bin.comp can leave the counter beyond capacity in
+    //    overflow scenarios; without clamping the hash range would slide
+    //    past the end of the host-mapped buffer.
+    //  * Skip the frame entirely if `dispatch_tile_sort` did not actually
+    //    record a readback this frame (loading / scene-transition / no
+    //    cloud / tile-binning disabled). Otherwise the hash would be
+    //    computed against stale or zero contents and could produce a
+    //    bogus STABLE verdict.
+    if (determinism_active) {
+        vkWaitForFences(device, 1, &frame_sync.in_flight, VK_TRUE, UINT64_MAX);
+
+        if (!gs_renderer_.determinism_readback_emitted_this_frame()) {
+            // Readback wasn't emitted (GS path was gated off). Don't pollute
+            // the verdict with stale-buffer hashes — just keep waiting for
+            // a real frame. Logging here is intentionally chatty so a stuck
+            // test is easy to diagnose from the demo log.
+            std::fprintf(stderr,
+                         "[GS det] frame skipped (no tile-sort readback this frame; "
+                         "GS path likely gated off — waiting for a real frame)\n");
+        } else {
+            VmaAllocator allocator = context_.allocator();
+            if (auto count_alloc = gs_renderer_.tile_sort_count_allocation()) {
+                vmaInvalidateAllocation(allocator, count_alloc, 0, VK_WHOLE_SIZE);
+            }
+            if (auto readback_alloc = gs_renderer_.determinism_readback_allocation()) {
+                vmaInvalidateAllocation(allocator, readback_alloc, 0, VK_WHOLE_SIZE);
+            }
+
+            const uint32_t raw_live_count = gs_renderer_.live_tile_sort_count();
+            const uint32_t capacity = gs_renderer_.tile_sort_capacity();
+            const uint32_t live_count =
+                (capacity > 0) ? std::min(raw_live_count, capacity) : raw_live_count;
+            const void* mapped = gs_renderer_.determinism_readback_data();
+            std::uint64_t hash = 0;
+            if (mapped != nullptr && live_count > 0) {
+                hash = fnv1a_64(static_cast<const std::uint8_t*>(mapped),
+                                static_cast<std::size_t>(live_count) * sizeof(SortEntry));
+            }
+            determinism_test_result_.hashes.push_back(hash);
+            determinism_test_result_.live_entry_count = live_count;
+            determinism_test_result_.captured_frames = ++determinism_test_state_.captured_frames;
+            std::fprintf(stderr,
+                         "[GS det] frame %d/%d hash=0x%016llx live=%u (raw=%u capacity=%u)\n",
+                         determinism_test_state_.captured_frames,
+                         determinism_test_state_.total_frames,
+                         static_cast<unsigned long long>(hash), live_count,
+                         raw_live_count, capacity);
+            if (determinism_test_state_.captured_frames >= determinism_test_state_.total_frames) {
+                std::set<std::uint64_t> unique(determinism_test_result_.hashes.begin(),
+                                               determinism_test_result_.hashes.end());
+                determinism_test_result_.unique_hashes = static_cast<uint32_t>(unique.size());
+                determinism_test_result_.verdict = (unique.size() <= 1)
+                    ? DeterminismVerdict::Stable
+                    : DeterminismVerdict::Unstable;
+                determinism_test_state_.active = false;
+                gs_renderer_.set_determinism_test_active(false);
+                std::fprintf(stderr,
+                             "[GS det] verdict=%s unique=%u/%d\n",
+                             (determinism_test_result_.verdict == DeterminismVerdict::Stable)
+                                 ? "STABLE" : "UNSTABLE",
+                             determinism_test_result_.unique_hashes,
+                             determinism_test_result_.total_frames);
+            }
+        }
+    }
+
     VkPresentInfoKHR present{};
     present.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
     present.waitSemaphoreCount = 1;
@@ -991,6 +1107,15 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
             camera_dirty = true;
         }
 
+        // Determinism harness: hold the LOD/chunk-gather selection across
+        // frames so the pre-sort input set itself is bit-identical. Any
+        // change here would mask the order-instability we're trying to
+        // detect downstream in the tile-bin atomic.
+        if (determinism_test_state_.active) {
+            camera_dirty = false;
+            gs_static_force_dirty_ = false;
+        }
+
         if (camera_dirty && flags.gs_chunk_culling && !gs_skip_chunk_cull_ && !gs_chunk_grid_.empty()) {
             glm::mat4 gs_vp = gs_proj_ * gs_view_;
             glm::vec3 cam_pos = glm::vec3(glm::inverse(gs_view_)[3]);
@@ -1093,79 +1218,90 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
         }
 
         // --- Dynamic path: every frame ---
-        gs_dynamic_buffer_.clear();
+        // Determinism harness: when a Mode-1 test is active, skip the
+        // entire dynamic-buffer rebuild. The GPU's dynamic_gaussian_ssbo
+        // and dynamic_count_ retain whatever was uploaded just before the
+        // test began, so every replayed frame sees identical dynamic
+        // input. We can't just rely on `dt = 0` here — emitter.update
+        // and inst.update may rebuild internal state non-deterministically
+        // (particle re-emission ordering, std::erase_if removal of dead
+        // entries reshuffling indices), and the std::vector clear+fill
+        // pattern would change capacity allocations across frames.
+        if (!determinism_test_state_.active) {
+            gs_dynamic_buffer_.clear();
 
-        // Distance culling for dynamic effects (emitters, VFX)
-        glm::vec3 cull_origin = glm::vec3(glm::inverse(gs_view_)[3]);
-        float cull_dist_sq = gs_max_render_distance_ > 0.0f
-            ? gs_max_render_distance_ * gs_max_render_distance_ : 0.0f;
+            // Distance culling for dynamic effects (emitters, VFX)
+            glm::vec3 cull_origin = glm::vec3(glm::inverse(gs_view_)[3]);
+            float cull_dist_sq = gs_max_render_distance_ > 0.0f
+                ? gs_max_render_distance_ * gs_max_render_distance_ : 0.0f;
 
-        // Update and gather Gaussian particles from emitters
-        if (flags.particles) {
-            for (auto& emitter : gs_particle_emitters_) {
-                emitter.update(dt);
-                // Skip gathering from emitters beyond max render distance
-                if (cull_dist_sq > 0.0f) {
-                    glm::vec3 d = emitter.position() - cull_origin;
-                    if (glm::dot(d, d) > cull_dist_sq) continue;
+            // Update and gather Gaussian particles from emitters
+            if (flags.particles) {
+                for (auto& emitter : gs_particle_emitters_) {
+                    emitter.update(dt);
+                    // Skip gathering from emitters beyond max render distance
+                    if (cull_dist_sq > 0.0f) {
+                        glm::vec3 d = emitter.position() - cull_origin;
+                        if (glm::dot(d, d) > cull_dist_sq) continue;
+                    }
+                    emitter.gather(gs_dynamic_buffer_);
                 }
-                emitter.gather(gs_dynamic_buffer_);
+                // Remove dead emitters
+                gs_particle_emitters_.erase(
+                    std::remove_if(gs_particle_emitters_.begin(), gs_particle_emitters_.end(),
+                        [](const GaussianParticleEmitter& e) { return !e.active() && e.alive_count() == 0; }),
+                    gs_particle_emitters_.end());
             }
-            // Remove dead emitters
-            gs_particle_emitters_.erase(
-                std::remove_if(gs_particle_emitters_.begin(), gs_particle_emitters_.end(),
-                    [](const GaussianParticleEmitter& e) { return !e.active() && e.alive_count() == 0; }),
-                gs_particle_emitters_.end());
-        }
 
-        // Update VFX instances (timeline + emitters append particles to dynamic buffer)
-        if (flags.particles || flags.animation) {
-            for (auto& inst : vfx_instances_) {
-                // Skip distant VFX instances
-                if (cull_dist_sq > 0.0f) {
-                    glm::vec3 d = inst.position() - cull_origin;
-                    if (glm::dot(d, d) > cull_dist_sq) continue;
+            // Update VFX instances (timeline + emitters append particles to dynamic buffer)
+            if (flags.particles || flags.animation) {
+                for (auto& inst : vfx_instances_) {
+                    // Skip distant VFX instances
+                    if (cull_dist_sq > 0.0f) {
+                        glm::vec3 d = inst.position() - cull_origin;
+                        if (glm::dot(d, d) > cull_dist_sq) continue;
+                    }
+                    inst.update(dt, gs_dynamic_buffer_, gs_animator_);
                 }
-                inst.update(dt, gs_dynamic_buffer_, gs_animator_);
+                std::erase_if(vfx_instances_,
+                    [](const VfxInstance& i) { return i.is_finished(); });
             }
-            std::erase_if(vfx_instances_,
-                [](const VfxInstance& i) { return i.is_finished(); });
-        }
 
-        // Collect VFX dynamic lights and merge with existing lights
-        {
-            auto all_lights = gs_static_lights_;
-            for (const auto& inst : vfx_instances_) {
-                for (const auto& vl : inst.active_lights()) {
-                    if (all_lights.size() < 8) {
-                        all_lights.push_back(vl);
+            // Collect VFX dynamic lights and merge with existing lights
+            {
+                auto all_lights = gs_static_lights_;
+                for (const auto& inst : vfx_instances_) {
+                    for (const auto& vl : inst.active_lights()) {
+                        if (all_lights.size() < 8) {
+                            all_lights.push_back(vl);
+                        }
                     }
                 }
-            }
-            if (!all_lights.empty()) {
-                if (gs_renderer_.light_mode() < 2) {
-                    gs_renderer_.set_light_mode(2);
+                if (!all_lights.empty()) {
+                    if (gs_renderer_.light_mode() < 2) {
+                        gs_renderer_.set_light_mode(2);
+                    }
+                    gs_renderer_.set_point_lights(all_lights);
                 }
-                gs_renderer_.set_point_lights(all_lights);
             }
-        }
 
-        // Append pending dynamics from game states (e.g., PBD chain demo)
-        if (!gs_pending_dynamics_.empty()) {
-            gs_dynamic_buffer_.insert(gs_dynamic_buffer_.end(),
-                                      gs_pending_dynamics_.begin(),
-                                      gs_pending_dynamics_.end());
-            gs_pending_dynamics_.clear();
-        }
-
-        // Upload dynamic Gaussians
-        {
-            auto count = static_cast<uint32_t>(gs_dynamic_buffer_.size());
-            if (count > gs_renderer_.max_dynamic_count()) {
-                gs_dynamic_buffer_.resize(gs_renderer_.max_dynamic_count());
-                count = gs_renderer_.max_dynamic_count();
+            // Append pending dynamics from game states (e.g., PBD chain demo)
+            if (!gs_pending_dynamics_.empty()) {
+                gs_dynamic_buffer_.insert(gs_dynamic_buffer_.end(),
+                                          gs_pending_dynamics_.begin(),
+                                          gs_pending_dynamics_.end());
+                gs_pending_dynamics_.clear();
             }
-            gs_renderer_.update_dynamic_gaussians(gs_dynamic_buffer_.data(), count);
+
+            // Upload dynamic Gaussians
+            {
+                auto count = static_cast<uint32_t>(gs_dynamic_buffer_.size());
+                if (count > gs_renderer_.max_dynamic_count()) {
+                    gs_dynamic_buffer_.resize(gs_renderer_.max_dynamic_count());
+                    count = gs_renderer_.max_dynamic_count();
+                }
+                gs_renderer_.update_dynamic_gaussians(gs_dynamic_buffer_.data(), count);
+            }
         }
 
         gs_renderer_.set_tile_binning(flags.gs_tile_binning);

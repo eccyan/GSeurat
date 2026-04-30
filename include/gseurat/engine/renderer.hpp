@@ -182,6 +182,31 @@ public:
     Swapchain& swapchain() { return swapchain_; }
     PostProcessPipeline& post_process() { return post_process_; }
 
+    // ── Frame-determinism harness (Mode 1) ─────────────────────────────
+    // Runs the GS pipeline N times against frozen camera/PBD/animator/LOD
+    // state, hashing the post-Onesweep tile_sort_a_ buffer each frame.
+    // If the hash changes, the sort's input order is non-deterministic
+    // (the flicker mechanism we're trying to confirm/eliminate).
+    // Test runs entirely from inside `draw_scene` — no external driving
+    // needed. After `total_frames` captures, the result stays available
+    // via `determinism_test_result()` until a new test starts.
+    enum class DeterminismVerdict { Idle, Running, Stable, Unstable };
+    struct DeterminismTestResult {
+        DeterminismVerdict verdict = DeterminismVerdict::Idle;
+        int total_frames = 0;
+        int captured_frames = 0;
+        uint32_t unique_hashes = 0;
+        uint32_t live_entry_count = 0;
+        std::vector<std::uint64_t> hashes;  // one per captured frame
+    };
+    void begin_determinism_test(int frames);
+    const DeterminismTestResult& determinism_test_result() const {
+        return determinism_test_result_;
+    }
+    bool determinism_test_active() const {
+        return determinism_test_state_.active;
+    }
+
     // Overlay callback: called after composite pass with (cmd, swapchain_image_index)
     // Used by Staging app to inject ImGui render pass
     using OverlayCallback = std::function<void(VkCommandBuffer, uint32_t)>;
@@ -297,6 +322,17 @@ private:
     std::vector<VfxInstance> vfx_instances_;
     std::vector<uint32_t> gs_prev_visible_;
     bool gs_skip_chunk_cull_ = false;
+
+    // ── Frame-determinism harness internal state ──
+    struct DeterminismTestState {
+        bool active = false;
+        int total_frames = 0;
+        int captured_frames = 0;
+        glm::mat4 frozen_view{1.0f};
+        glm::mat4 frozen_proj{1.0f};
+    };
+    DeterminismTestState determinism_test_state_;
+    DeterminismTestResult determinism_test_result_;
     uint32_t gs_gaussian_budget_ = 0;  // 0 = unlimited (no LOD decimation)
     float gs_max_render_distance_ = 0.0f;  // 0 = unlimited (no distance culling)
     uint32_t gs_preserve_bone_first_ = 0;

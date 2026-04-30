@@ -257,8 +257,15 @@ void AppBase::main_loop() {
         // Gameplay updates (KCC, AI, PBD integration, animations) only run
         // in EngineState::Playing. During Loading and Warming the world is
         // intentionally frozen so the player doesn't see physics tick or
-        // characters move during the loading screen.
-        if (loading_monitor_.should_run_gameplay()) {
+        // characters move during the loading screen. The determinism
+        // harness reuses this freeze: while a Mode-1 test is active the
+        // entire ECS scheduler (movement, bone-anim, NPC AI, particle
+        // emitters, VFX) sits still so the GS pipeline sees identical
+        // inputs every frame. Without this gate the upstream
+        // merged_entries[] order varies frame-to-frame even though the
+        // tile-bin and sort are deterministic.
+        if (loading_monitor_.should_run_gameplay() &&
+            !renderer_.determinism_test_active()) {
             state_stack_.update(*this, dt);
         }
 
@@ -287,7 +294,12 @@ void AppBase::main_loop() {
 
         // Bone transforms only stream up while gameplay is running; otherwise
         // they freeze at their last value, matching the suspended world state.
-        if (loading_monitor_.should_run_gameplay()) {
+        // Same determinism-test gate as the gameplay update above — bone
+        // matrices are baked from the ECS scheduler's character animation
+        // tick, so freezing the scheduler must also freeze the upload to
+        // keep merged_entries[] bit-identical across frames.
+        if (loading_monitor_.should_run_gameplay() &&
+            !renderer_.determinism_test_active()) {
             upload_bone_transforms();
             gameplay_.play_time += dt;
         }
