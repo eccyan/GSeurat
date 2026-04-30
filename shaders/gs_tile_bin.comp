@@ -1,5 +1,20 @@
 #version 450
 
+// Tile-bin Pass 3 (Scatter). Deterministic write of TileSortEntry into
+// tile_entries[] using offsets computed by the count + scan passes.
+//
+// Each visible splat reads its precomputed exclusive prefix from
+// per_splat_tile_offset[gid] and writes its (tx_max-tx_min+1) *
+// (ty_max-ty_min+1) entries sequentially starting at that offset. The
+// projection / culling math is intentionally identical to gs_tile_count.comp
+// — any divergence breaks the count↔scatter invariant and corrupts the
+// scan layout. Keep them in lockstep.
+//
+// This replaces the global atomicAdd in the previous implementation. The
+// only remaining check is the per-write capacity bound: if a splat's
+// computed offset exceeds max_entries, the write is dropped (matches the
+// old behaviour where atomicAdd was free to overshoot capacity).
+
 layout(local_size_x = 256) in;
 
 struct ProjectedSplat {
@@ -34,15 +49,15 @@ layout(set = 0, binding = 2) readonly buffer CountsBuffer {
     uint merged_visible_count;
 };
 
-layout(set = 0, binding = 3) writeonly buffer TileSortBuffer {
+layout(set = 0, binding = 4) readonly buffer PerSplatTileOffsetBuffer {
+    uint per_splat_tile_offset[];
+};
+
+layout(set = 0, binding = 5) writeonly buffer TileSortBuffer {
     TileSortEntry tile_entries[];
 };
 
-layout(set = 0, binding = 4) buffer TileSortCountBuffer {
-    uint tile_sort_count;
-};
-
-layout(set = 0, binding = 5) uniform Uniforms {
+layout(set = 0, binding = 6) uniform Uniforms {
     mat4 view;
     mat4 proj;
     mat4 inv_view;
@@ -92,20 +107,27 @@ void main() {
     int ty_min = max(0, int(floor((c.y - r) / 16.0)));
     int ty_max = min(int(tiles_y) - 1, int(floor((c.y + r) / 16.0)));
 
+    if (tx_max < tx_min || ty_max < ty_min) return;
+
     float near_z = tile_sort_params.x;
     float far_z  = tile_sort_params.y;
     float t = clamp((splat.depth - near_z) / (far_z - near_z), 0.0, 1.0);
     uint depth_q = min(uint(t * 65535.0), 0xFFFEu);
 
+    // Deterministic write base — computed by the count + exclusive-scan
+    // passes. Each (ty, tx) iteration of the inner loop writes to the
+    // next sequential slot starting here.
+    uint write_offset = per_splat_tile_offset[gid];
+
     for (int ty = ty_min; ty <= ty_max; ty++) {
         for (int tx = tx_min; tx <= tx_max; tx++) {
             uint tile_id = uint(ty) * tiles_x + uint(tx);
             uint sort_key = (tile_id << 16u) | depth_q;
-            uint offset = atomicAdd(tile_sort_count, 1);
-            if (offset < max_entries) {
-                tile_entries[offset].key = sort_key;
-                tile_entries[offset].index = idx;
+            if (write_offset < max_entries) {
+                tile_entries[write_offset].key = sort_key;
+                tile_entries[write_offset].index = idx;
             }
+            write_offset++;
         }
     }
 }

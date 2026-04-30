@@ -434,11 +434,30 @@ private:
     VkPipeline sort_pipeline_ = VK_NULL_HANDLE;
     VkDescriptorSet sort_set_ = VK_NULL_HANDLE;
 
-    // ── Tile binning pipeline (Phase 1) ──
+    // ── Tile binning pipeline (deterministic count→scan→scatter) ──
+    // The combined `tile_bin_layout_` covers both the count and scatter
+    // shaders (gs_tile_count.comp / gs_tile_bin.comp). Bindings:
+    //   0 projected[]   1 merged_entries[]   2 counts (ro)
+    //   3 per_splat_tile_count[]  4 per_splat_tile_offset[]
+    //   5 tile_entries[]          6 uniforms
+    // Count shader uses 0,1,2,3,6. Scatter uses 0,1,2,4,5,6.
     VkDescriptorSetLayout tile_bin_layout_ = VK_NULL_HANDLE;
     VkPipelineLayout tile_bin_pipeline_layout_ = VK_NULL_HANDLE;
     VkPipeline tile_bin_pipeline_ = VK_NULL_HANDLE;
     VkDescriptorSet tile_bin_set_ = VK_NULL_HANDLE;
+
+    // Pre-scatter count pass (gs_tile_count.comp). Shares layout/set with
+    // tile_bin_pipeline_ — the binding set is a strict superset of what
+    // either shader reads.
+    VkPipeline tile_count_pipeline_ = VK_NULL_HANDLE;
+
+    // Three-dispatch exclusive prefix-sum (gs_tile_scan.comp). Bindings:
+    //   0 per_splat_tile_count[]  1 per_splat_tile_offset[]
+    //   2 scan_block_sums[]       3 tile_sort_count
+    VkDescriptorSetLayout tile_scan_layout_ = VK_NULL_HANDLE;
+    VkPipelineLayout tile_scan_pipeline_layout_ = VK_NULL_HANDLE;
+    VkPipeline tile_scan_pipeline_ = VK_NULL_HANDLE;
+    VkDescriptorSet tile_scan_set_ = VK_NULL_HANDLE;
 
     // Indirect dispatch preparation
     VkDescriptorSetLayout tile_indirect_layout_ = VK_NULL_HANDLE;
@@ -502,9 +521,17 @@ private:
     // Tile sort buffers
     Buffer tile_sort_a_;              // TileSortEntry ping buffer (8 bytes/entry)
     Buffer tile_sort_b_;              // TileSortEntry pong buffer
-    Buffer tile_sort_count_ssbo_;     // atomic counter (single uint32)
+    Buffer tile_sort_count_ssbo_;     // single uint32 — written by gs_tile_scan pass=1
     Buffer tile_ranges_ssbo_;         // per-tile {start, count}
     Buffer tile_indirect_args_;       // indirect dispatch args (8 × uint32)
+
+    // Deterministic tile-bin (Fix B) intermediate SSBOs. All sized to the
+    // visible-splat upper bound (static_sort_size_ + dynamic_sort_size_).
+    Buffer per_splat_tile_count_ssbo_;   // uint32 × visible_upper
+    Buffer per_splat_tile_offset_ssbo_;  // uint32 × visible_upper (exclusive scan)
+    Buffer scan_block_sums_ssbo_;        // uint32 × ceil(visible_upper / 256)
+    uint32_t scan_dispatch_size_ = 0;    // visible_upper rounded up to 256
+    uint32_t scan_num_blocks_ = 0;       // scan_dispatch_size_ / 256
 
     uint32_t tile_sort_capacity_ = 0;    // max entries in tile sort buffers
     uint32_t tile_sort_size_ = 0;        // workgroup-aligned count for radix sort
