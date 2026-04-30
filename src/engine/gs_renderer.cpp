@@ -2276,6 +2276,11 @@ void GsRenderer::dispatch_depth_onesweep(
 }
 
 void GsRenderer::dispatch_tile_sort(VkCommandBuffer cmd) {
+    // Reset the per-frame "did we record a readback?" flag at the start of
+    // every dispatch attempt. The harness in Renderer::draw_scene reads
+    // this flag after the in-flight fence to decide whether the captured
+    // frame represents a real measurement.
+    determinism_readback_emitted_ = false;
     if (!tile_binning_enabled_ || !tile_sort_a_.buffer() || tile_sort_capacity_ == 0) return;
 
     uint32_t width = output_width_;
@@ -2427,6 +2432,7 @@ void GsRenderer::dispatch_tile_sort(VkCommandBuffer cmd) {
             VK_PIPELINE_STAGE_TRANSFER_BIT,
             VK_PIPELINE_STAGE_HOST_BIT,
             0, 0, nullptr, 1, &dst_barrier, 0, nullptr);
+        determinism_readback_emitted_ = true;
     }
 
     // === Tile range detection ===

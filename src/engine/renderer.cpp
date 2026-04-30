@@ -742,42 +742,78 @@ void Renderer::draw_scene(Scene& scene,
     }
 
     // Frame-determinism harness: after the GPU finishes this frame, hash
-    // the live entries in the post-Onesweep readback. Bound the hashed
-    // range to `live_tile_sort_count() * sizeof(SortEntry)` so we ignore
-    // the sentinel-filled tail. Debug-only — blocking on the in-flight
-    // fence is fine here.
+    // the live entries in the post-Onesweep readback. Debug-only — blocking
+    // on the in-flight fence is fine here.
+    //
+    // Codex P1.1 / P1.3 / P2.4 hardening:
+    //  * vmaInvalidateAllocation on both the count counter and the readback
+    //    buffer before reading their mapped data, in case VMA picked a
+    //    non-HOST_COHERENT memory type (would otherwise read stale CPU
+    //    cache lines and produce false STABLE/UNSTABLE verdicts).
+    //  * Clamp live_count against tile_sort_capacity. The legacy `atomicAdd`
+    //    in gs_tile_bin.comp can leave the counter beyond capacity in
+    //    overflow scenarios; without clamping the hash range would slide
+    //    past the end of the host-mapped buffer.
+    //  * Skip the frame entirely if `dispatch_tile_sort` did not actually
+    //    record a readback this frame (loading / scene-transition / no
+    //    cloud / tile-binning disabled). Otherwise the hash would be
+    //    computed against stale or zero contents and could produce a
+    //    bogus STABLE verdict.
     if (determinism_active) {
         vkWaitForFences(device, 1, &frame_sync.in_flight, VK_TRUE, UINT64_MAX);
-        const uint32_t live_count = gs_renderer_.live_tile_sort_count();
-        const void* mapped = gs_renderer_.determinism_readback_data();
-        std::uint64_t hash = 0;
-        if (mapped != nullptr && live_count > 0) {
-            hash = fnv1a_64(static_cast<const std::uint8_t*>(mapped),
-                            static_cast<std::size_t>(live_count) * sizeof(SortEntry));
-        }
-        determinism_test_result_.hashes.push_back(hash);
-        determinism_test_result_.live_entry_count = live_count;
-        determinism_test_result_.captured_frames = ++determinism_test_state_.captured_frames;
-        std::fprintf(stderr,
-                     "[GS det] frame %d/%d hash=0x%016llx live=%u\n",
-                     determinism_test_state_.captured_frames,
-                     determinism_test_state_.total_frames,
-                     static_cast<unsigned long long>(hash), live_count);
-        if (determinism_test_state_.captured_frames >= determinism_test_state_.total_frames) {
-            std::set<std::uint64_t> unique(determinism_test_result_.hashes.begin(),
-                                           determinism_test_result_.hashes.end());
-            determinism_test_result_.unique_hashes = static_cast<uint32_t>(unique.size());
-            determinism_test_result_.verdict = (unique.size() <= 1)
-                ? DeterminismVerdict::Stable
-                : DeterminismVerdict::Unstable;
-            determinism_test_state_.active = false;
-            gs_renderer_.set_determinism_test_active(false);
+
+        if (!gs_renderer_.determinism_readback_emitted_this_frame()) {
+            // Readback wasn't emitted (GS path was gated off). Don't pollute
+            // the verdict with stale-buffer hashes — just keep waiting for
+            // a real frame. Logging here is intentionally chatty so a stuck
+            // test is easy to diagnose from the demo log.
             std::fprintf(stderr,
-                         "[GS det] verdict=%s unique=%u/%d\n",
-                         (determinism_test_result_.verdict == DeterminismVerdict::Stable)
-                             ? "STABLE" : "UNSTABLE",
-                         determinism_test_result_.unique_hashes,
-                         determinism_test_result_.total_frames);
+                         "[GS det] frame skipped (no tile-sort readback this frame; "
+                         "GS path likely gated off — waiting for a real frame)\n");
+        } else {
+            VmaAllocator allocator = context_.allocator();
+            if (auto count_alloc = gs_renderer_.tile_sort_count_allocation()) {
+                vmaInvalidateAllocation(allocator, count_alloc, 0, VK_WHOLE_SIZE);
+            }
+            if (auto readback_alloc = gs_renderer_.determinism_readback_allocation()) {
+                vmaInvalidateAllocation(allocator, readback_alloc, 0, VK_WHOLE_SIZE);
+            }
+
+            const uint32_t raw_live_count = gs_renderer_.live_tile_sort_count();
+            const uint32_t capacity = gs_renderer_.tile_sort_capacity();
+            const uint32_t live_count =
+                (capacity > 0) ? std::min(raw_live_count, capacity) : raw_live_count;
+            const void* mapped = gs_renderer_.determinism_readback_data();
+            std::uint64_t hash = 0;
+            if (mapped != nullptr && live_count > 0) {
+                hash = fnv1a_64(static_cast<const std::uint8_t*>(mapped),
+                                static_cast<std::size_t>(live_count) * sizeof(SortEntry));
+            }
+            determinism_test_result_.hashes.push_back(hash);
+            determinism_test_result_.live_entry_count = live_count;
+            determinism_test_result_.captured_frames = ++determinism_test_state_.captured_frames;
+            std::fprintf(stderr,
+                         "[GS det] frame %d/%d hash=0x%016llx live=%u (raw=%u capacity=%u)\n",
+                         determinism_test_state_.captured_frames,
+                         determinism_test_state_.total_frames,
+                         static_cast<unsigned long long>(hash), live_count,
+                         raw_live_count, capacity);
+            if (determinism_test_state_.captured_frames >= determinism_test_state_.total_frames) {
+                std::set<std::uint64_t> unique(determinism_test_result_.hashes.begin(),
+                                               determinism_test_result_.hashes.end());
+                determinism_test_result_.unique_hashes = static_cast<uint32_t>(unique.size());
+                determinism_test_result_.verdict = (unique.size() <= 1)
+                    ? DeterminismVerdict::Stable
+                    : DeterminismVerdict::Unstable;
+                determinism_test_state_.active = false;
+                gs_renderer_.set_determinism_test_active(false);
+                std::fprintf(stderr,
+                             "[GS det] verdict=%s unique=%u/%d\n",
+                             (determinism_test_result_.verdict == DeterminismVerdict::Stable)
+                                 ? "STABLE" : "UNSTABLE",
+                             determinism_test_result_.unique_hashes,
+                             determinism_test_result_.total_frames);
+            }
         }
     }
 

@@ -257,8 +257,35 @@ public:
     // post-Onesweep tile_sort_a_ buffer into a host-mapped readback so the
     // CPU can hash the live entry range and detect order-instability
     // across frames with frozen inputs. Debug-only; no production cost.
-    void set_determinism_test_active(bool active) { determinism_test_active_ = active; }
+    void set_determinism_test_active(bool active) {
+        determinism_test_active_ = active;
+        if (!active) determinism_readback_emitted_ = false;
+    }
     bool determinism_test_active() const { return determinism_test_active_; }
+
+    // True iff `dispatch_tile_sort` actually emitted a host-visible copy of
+    // tile_sort_a_ this frame. False during scene-transition / loading frames
+    // where the GS compute path was skipped (no cloud, !gs_rendering,
+    // !dispatch_gpu_compute, !tile_binning_enabled_, capacity == 0). The
+    // harness uses this to skip frames with stale readback contents — without
+    // it the test could report a false STABLE verdict from leftover bytes.
+    bool determinism_readback_emitted_this_frame() const {
+        return determinism_readback_emitted_;
+    }
+
+    // Raw VMA allocation handles + capacity exposed for the harness to call
+    // `vmaInvalidateAllocation` after the in-flight fence and clamp the hash
+    // range to actual buffer size. Both buffers are host-mapped; on
+    // platforms whose memory type is not `HOST_COHERENT`, omitting the
+    // invalidate would let stale CPU caches leak into the verdict.
+    VmaAllocation determinism_readback_allocation() const {
+        return determinism_readback_.allocation();
+    }
+    VmaAllocation tile_sort_count_allocation() const {
+        return tile_sort_count_ssbo_.allocation();
+    }
+    uint32_t tile_sort_capacity() const { return tile_sort_capacity_; }
+
     const void* determinism_readback_data() const {
         return determinism_readback_.mapped();
     }
@@ -526,6 +553,12 @@ private:
     Buffer determinism_readback_;
     VkDeviceSize determinism_readback_size_ = 0;
     bool determinism_test_active_ = false;
+    // Set true by `dispatch_tile_sort` once the host-visible copy has
+    // actually been recorded for the current command buffer. Cleared at
+    // the start of each `dispatch_tile_sort`. The harness consults this
+    // before counting a frame so that loading / transition frames where
+    // the GS compute path was gated off don't pollute the verdict.
+    bool determinism_readback_emitted_ = false;
 
     uint32_t tile_sort_capacity_ = 0;    // max entries in tile sort buffers
     uint32_t tile_sort_size_ = 0;        // workgroup-aligned count for radix sort
