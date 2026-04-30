@@ -89,6 +89,12 @@ public:
     void load_cloud(const GaussianCloud& cloud);
     void init_streaming(const StreamingConfig& config);
     void unload_cloud(uint32_t chunk_id);
+    // Release every active chunk and any in-flight pending async load.
+    // Used by full scene loads/transitions (`Renderer::init_gs`) so the
+    // new scene replaces the old. Streaming-style appends should NOT
+    // call this. Performs a `vkDeviceWaitIdle` to drain transfers before
+    // returning slab indices to the allocator.
+    void clear_chunks();
     // Async upload via the shared host-visible staging ring. The cloud is
     // moved into a pending-load job stored on the renderer; per-slab
     // `reserve_staging` + memcpy + `submit_with_handle` are issued by

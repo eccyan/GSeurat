@@ -959,6 +959,43 @@ void GsRenderer::unload_cloud(uint32_t chunk_id) {
     static_dirty_ = true;
 }
 
+void GsRenderer::clear_chunks() {
+    if (!streaming_initialized_ || !initialized_) return;
+
+    // Wait for any in-flight transfers so we don't release slabs the GPU
+    // is still writing to. Scene transitions are heavy operations
+    // already; this matches the pre-streaming `load_cloud` behaviour.
+    vkDeviceWaitIdle(device_);
+
+    // Drain any completion callbacks queued by transfers that finished
+    // during waitIdle. Each fired callback commits its slab handle into
+    // `active_chunks_`, so we can release them in the loop below — no
+    // double-free, no leaked slab. Single-queue path (Apple, fallback)
+    // accepts a null frame_cmd; dedicated path would need a real cmd
+    // for acquire barriers, but those barriers only matter when GS
+    // compute will later read the transferred bytes. Since clear_chunks
+    // is followed by a fresh load that overwrites the same slabs, the
+    // missing barriers don't hurt.
+    if (transfer_queue_) transfer_queue_->poll_completions(VK_NULL_HANDLE);
+
+    // Anything still in `pending_load_` had its `submit_with_handle` runs
+    // partially completed (or not at all) — its slab_handle owns slabs
+    // we never published into `active_chunks_`. Release it manually so
+    // the allocator can reuse those indices.
+    if (pending_load_) {
+        slab_allocator_->release(pending_load_->slab_handle);
+        pending_load_.reset();
+    }
+
+    for (auto& chunk : active_chunks_) slab_allocator_->release(chunk.handle);
+    active_chunks_.clear();
+    static_count_ = 0;
+    total_active_splats_ = 0;
+    gaussian_count_ = 0;
+    sort_done_once_ = false;
+    static_dirty_ = true;
+}
+
 void GsRenderer::create_transfer_queue(VkQueue transfer_q, uint32_t transfer_family,
                                         uint32_t graphics_family, bool dedicated) {
     if (!streaming_initialized_) return;
@@ -989,21 +1026,15 @@ std::vector<TransferQueue::Handle> GsRenderer::load_cloud_async(GaussianCloud cl
         return {};
     }
 
-    // Match `load_cloud()`s "replace previous scene" semantics so that
-    // re-loading a scene through this path doesn't accumulate stale chunks.
-    if (initialized_) vkDeviceWaitIdle(device_);
-    for (auto& chunk : active_chunks_) slab_allocator_->release(chunk.handle);
-    active_chunks_.clear();
-    static_count_ = 0;
-    total_active_splats_ = 0;
-    sort_done_once_ = false;
-    static_dirty_ = true;
-
-    // Drop has_cloud() back to false until the final completion callback
-    // fires; the loading monitor uses these handles to gate the transition
-    // out of Loading.
-    gaussian_count_ = 0;
-
+    // Append-only semantics. The new chunk is checked out from the slab
+    // allocator and pushed onto `active_chunks_` by the final completion
+    // callback — existing chunks are *not* released. Callers that need
+    // "replace previous scene" must explicitly clear before this call
+    // (the initial demo load arrives on an empty `active_chunks_`
+    // straight out of `init_streaming`, so this matches the documented
+    // contract for both code paths). The synchronous `load_cloud` is
+    // still the right tool when a true scene replacement is needed —
+    // it does the `vkDeviceWaitIdle` + chunk release in one shot.
     const uint32_t sps = streaming_config_.slab_size_splats;
     const uint32_t splat_count = cloud.count();
     const uint32_t slabs_needed = (splat_count + sps - 1) / sps;

@@ -251,6 +251,16 @@ void Renderer::init_gs(const GaussianCloud& cloud, uint32_t width, uint32_t heig
     gs_chunk_grid_.build(cloud, 32.0f);
     gs_prev_visible_.clear();
 
+    // Scene-load semantics are REPLACE: drop every chunk from the previous
+    // scene before queuing the new cloud. `load_cloud_async` itself is
+    // append-only (so streaming chunks can ride on top of an existing
+    // world), so the replacement step lives at the call site. Without
+    // this, a transition (seurat_island → dungeon) would visually
+    // overlay both terrains and the smaller dungeon heightmap would
+    // stop catching the player at its borders → the "floor gave way"
+    // symptom.
+    gs_renderer_.clear_chunks();
+
     // Hand a copy of the cloud off to the renderer's pending-upload job.
     // The async path moves the cloud in and drains slab transfers across
     // frames via poll_transfers; the caller (`GsSceneLoader::load`) still

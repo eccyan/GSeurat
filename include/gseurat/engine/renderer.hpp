@@ -68,7 +68,15 @@ public:
     GsRenderer& gs_renderer() { return gs_renderer_; }
     GsChunkGrid& gs_chunk_grid() { return gs_chunk_grid_; }
     const GsChunkGrid& gs_chunk_grid() const { return gs_chunk_grid_; }
-    bool has_gs_cloud() const { return gs_renderer_.has_cloud(); }
+    // True once `init_gs` has loaded scene data into the chunk grid (CPU
+    // side). Game logic that wants to read the cloud's gaussians or
+    // spawn CPU entities (e.g. the procedural snes_hero in the demo's
+    // IslandDemoState::on_enter) should gate on this — NOT on
+    // `gs_renderer().has_cloud()`, which only flips true when the
+    // async GPU upload finishes draining and would skip the spawn
+    // path on initial scene load. GPU dispatch gating still uses
+    // `gs_renderer().has_cloud()` directly inside the renderer.
+    bool has_gs_cloud() const { return gs_total_gaussian_count_ > 0; }
     void set_gs_skip_chunk_cull(bool skip) { gs_skip_chunk_cull_ = skip; }
     void set_gs_blit_offset(float x, float y) { gs_blit_offset_x_ = x; gs_blit_offset_y_ = y; }
     void set_gs_background_colors(const glm::vec3& ground, const glm::vec3& sky) {
