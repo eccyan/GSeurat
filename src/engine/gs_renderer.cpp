@@ -809,6 +809,7 @@ void GsRenderer::init_streaming(const StreamingConfig& config) {
         per_splat_tile_count_ssbo_.destroy(allocator_);
         per_splat_tile_offset_ssbo_.destroy(allocator_);
         scan_block_sums_ssbo_.destroy(allocator_);
+        determinism_readback_.destroy(allocator_);
 
         tile_sort_a_ = Buffer::create_storage_gpu_only(allocator_, entry_buf_size);
         tile_sort_b_ = Buffer::create_storage_gpu_only(allocator_, entry_buf_size);
@@ -821,6 +822,8 @@ void GsRenderer::init_streaming(const StreamingConfig& config) {
             Buffer::create_storage_gpu_only(allocator_, per_splat_buf_size);
         scan_block_sums_ssbo_ =
             Buffer::create_storage_gpu_only(allocator_, block_sums_buf_size);
+        determinism_readback_ = Buffer::create_readback(allocator_, entry_buf_size);
+        determinism_readback_size_ = entry_buf_size;
 
         std::fprintf(stderr, "GS: Tile sort -- capacity=%u entries (%u workgroups), "
                      "output=%ux%u, buf=%.1f MB; scan=%u elems / %u blocks\n",
@@ -1454,6 +1457,7 @@ void GsRenderer::load_cloud_legacy(const GaussianCloud& cloud) {
         per_splat_tile_count_ssbo_.destroy(allocator_);
         per_splat_tile_offset_ssbo_.destroy(allocator_);
         scan_block_sums_ssbo_.destroy(allocator_);
+        determinism_readback_.destroy(allocator_);
 
         tile_sort_a_ = Buffer::create_storage_gpu_only(allocator_, entry_buf_size);
         tile_sort_b_ = Buffer::create_storage_gpu_only(allocator_, entry_buf_size);
@@ -1467,6 +1471,8 @@ void GsRenderer::load_cloud_legacy(const GaussianCloud& cloud) {
             Buffer::create_storage_gpu_only(allocator_, per_splat_buf_size);
         scan_block_sums_ssbo_ =
             Buffer::create_storage_gpu_only(allocator_, block_sums_buf_size);
+        determinism_readback_ = Buffer::create_readback(allocator_, entry_buf_size);
+        determinism_readback_size_ = entry_buf_size;
 
         std::fprintf(stderr, "GS: Tile sort -- capacity=%u entries (%u workgroups), "
                      "output=%ux%u, buf=%.1f MB; scan=%u elems / %u blocks\n",
@@ -2390,6 +2396,11 @@ void GsRenderer::dispatch_depth_onesweep(
 }
 
 void GsRenderer::dispatch_tile_sort(VkCommandBuffer cmd) {
+    // Reset the per-frame "did we record a readback?" flag at the start of
+    // every dispatch attempt. The harness in Renderer::draw_scene reads
+    // this flag after the in-flight fence to decide whether the captured
+    // frame represents a real measurement.
+    determinism_readback_emitted_ = false;
     if (!tile_binning_enabled_ || !tile_sort_a_.buffer() || tile_sort_capacity_ == 0) return;
 
     uint32_t width = output_width_;
@@ -2551,6 +2562,49 @@ void GsRenderer::dispatch_tile_sort(VkCommandBuffer cmd) {
         // After 4 passes (even count), sorted result is in tile_sort_a_
     }
 
+    // === Frame-determinism readback (Mode 1) ===
+    // When the harness is active, copy tile_sort_a_ into a host-visible
+    // readback buffer so the CPU can hash the live entry range and detect
+    // order-instability across frames with frozen inputs.
+    if (determinism_test_active_ && determinism_readback_.buffer() != VK_NULL_HANDLE
+        && determinism_readback_size_ > 0) {
+        VkBufferMemoryBarrier src_barrier{};
+        src_barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+        src_barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+        src_barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+        src_barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        src_barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        src_barrier.buffer = tile_sort_a_.buffer();
+        src_barrier.offset = 0;
+        src_barrier.size = determinism_readback_size_;
+        vkCmdPipelineBarrier(cmd,
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+            VK_PIPELINE_STAGE_TRANSFER_BIT,
+            0, 0, nullptr, 1, &src_barrier, 0, nullptr);
+
+        VkBufferCopy region{};
+        region.srcOffset = 0;
+        region.dstOffset = 0;
+        region.size = determinism_readback_size_;
+        vkCmdCopyBuffer(cmd, tile_sort_a_.buffer(),
+                        determinism_readback_.buffer(), 1, &region);
+
+        VkBufferMemoryBarrier dst_barrier{};
+        dst_barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+        dst_barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        dst_barrier.dstAccessMask = VK_ACCESS_HOST_READ_BIT;
+        dst_barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        dst_barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        dst_barrier.buffer = determinism_readback_.buffer();
+        dst_barrier.offset = 0;
+        dst_barrier.size = determinism_readback_size_;
+        vkCmdPipelineBarrier(cmd,
+            VK_PIPELINE_STAGE_TRANSFER_BIT,
+            VK_PIPELINE_STAGE_HOST_BIT,
+            0, 0, nullptr, 1, &dst_barrier, 0, nullptr);
+        determinism_readback_emitted_ = true;
+    }
+
     // === Tile range detection ===
     {
         uint32_t num_tiles = tiles_x * tiles_y;
@@ -2704,7 +2758,13 @@ void GsRenderer::render(VkCommandBuffer cmd, const glm::mat4& view, const glm::m
         // === PBD solver dispatch (before any preprocess) ===
         // PBD-tagged Gaussians live in the static buffer but need re-preprocessing
         // every frame since their positions/rotations change continuously.
-        if (pbd_count_ > 0) {
+        // Determinism harness: PBD uses a hardcoded 1/60s step rather than
+        // the engine dt, so the upstream draw_scene `dt = 0` freeze is not
+        // enough — the solver would still advance wind-sway each frame and
+        // shift the depth-sort key for tagged splats. Skip the dispatch
+        // entirely while a Mode-1 test is active so the GPU's pbd_state
+        // SSBO retains its pre-test contents.
+        if (pbd_count_ > 0 && !determinism_test_active_) {
             static_dirty_ = true;
             struct {
                 float time;
@@ -3144,6 +3204,7 @@ void GsRenderer::shutdown(VmaAllocator allocator) {
     per_splat_tile_count_ssbo_.destroy(allocator);
     per_splat_tile_offset_ssbo_.destroy(allocator);
     scan_block_sums_ssbo_.destroy(allocator);
+    determinism_readback_.destroy(allocator);
 
     // Depth sort Onesweep buffers
     depth_onesweep_status_.destroy(allocator);
