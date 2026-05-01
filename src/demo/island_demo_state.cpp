@@ -1,6 +1,8 @@
 #include "gseurat/demo/island_demo_state.hpp"
 #include "gseurat/demo/demo_app.hpp"
 #include "gseurat/engine/ecs/components/portal_target.hpp"
+#include "gseurat/engine/ecs/components/scene_transition.hpp"
+#include "gseurat/engine/ecs/components/screen_fade.hpp"
 #include "gseurat/engine/shutdown_auditor.hpp"
 #include "gseurat/character/character_manifest.hpp"
 #include "gseurat/character/bone_animation_player.hpp"
@@ -2470,6 +2472,37 @@ void IslandDemoState::perform_portal_transition(AppBase& app,
         std::fprintf(stderr, "[IslandDemo] World streaming re-enabled (overworld)\n");
     } else {
         std::fprintf(stderr, "[IslandDemo] World streaming disabled (non-overworld scene)\n");
+    }
+
+    // Recreate a SceneTransition entity in SceneIn state so the next few
+    // frames render with a fade-in overlay covering any first-frame GS
+    // pop (slabs streaming in, chunk grid warming up). Without this the
+    // SceneOut entity was destroyed by `app.world().clear()` above and
+    // the new scene appears with NO overlay — the user sees the slab
+    // upload progress and chunk re-tag flicker uncovered. Set alpha=1
+    // so the very first post-transition frame is fully covered, then
+    // transition_system animates it down to 0 over `kFadeIn` seconds.
+    {
+        constexpr float kFadeIn = 0.4f;
+        auto e = app.world().create();
+        SceneTransition st;
+        st.current_state       = SceneTransition::State::SceneIn;
+        st.timer               = 0.0f;
+        st.transition_duration = kFadeIn;
+        st.target_scene        = target_scene;
+        st.target_position     = target_position;
+        st.load_dispatched     = true;  // already done — we're past Loading
+        app.world().add<SceneTransition>(e, st);
+
+        ScreenFade fade;
+        fade.alpha            = 1.0f;
+        // Use scene_color from authored portal data when we still have it
+        // — but at this point the authoring entity is gone. Default to
+        // black, which matches the most common transition_color in the
+        // demo's scene JSONs.
+        fade.transition_color = glm::vec3(0.0f, 0.0f, 0.0f);
+        fade.effect_type      = 0;
+        app.world().add<ScreenFade>(e, fade);
     }
 
     std::fprintf(stderr, "[IslandDemo] Spawned at (%.1f, %.1f, %.1f)\n",
