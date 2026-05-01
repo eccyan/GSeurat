@@ -140,6 +140,19 @@ public:
     bool static_dirty() const { return static_dirty_; }
     void set_static_dirty(bool d) { static_dirty_ = d; }
 
+    // True when a metadata mutation (currently: Unload publication that
+    // shrinks `static_count_`) has left the static sort buffers' tail
+    // entries [new_count, old_count) holding stale REAL depth keys
+    // instead of the 0xFFFFFFFF sentinels the merge step expects. The
+    // renderer queries this every frame; a true value forces a static
+    // rebuild whose update_static_gaussians call re-runs init_sort_buf
+    // and clears the flag. Without this gate, the static+dynamic merge
+    // can interleave stale entries into the sorted output (flicker /
+    // wrong-depth artefacts) on frames where dynamic emitters force
+    // camera_dirty true but visibility/animation/LOD/VFX-set state are
+    // unchanged so the rebuild-skip fast path would otherwise fire.
+    bool static_sort_needs_reinit() const { return static_sort_needs_reinit_; }
+
     void resize_output(uint32_t width, uint32_t height);
 
     // Records a one-time barrier+clear that transitions every per-frame
@@ -424,6 +437,11 @@ private:
     uint32_t static_sort_workgroups_ = 0;
     uint32_t dynamic_sort_workgroups_ = 0;
     bool static_dirty_ = true;
+    // Set by publish_pending_chunks when an Unload publication shrinks
+    // static_count_. Cleared by update_static_gaussians after init_sort_buf
+    // restores the [new_count, sort_size) sentinel tail. See the public
+    // static_sort_needs_reinit() getter for the rationale.
+    bool static_sort_needs_reinit_ = false;
 
     // --- Streaming architecture (Phase 2) ---
     StreamingConfig streaming_config_;

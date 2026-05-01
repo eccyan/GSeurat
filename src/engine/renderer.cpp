@@ -1169,10 +1169,16 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
                 gs_animator_.has_active_groups() || !gs_scene_animations_.empty();
             const bool lod_active = flags.gs_lod && gs_gaussian_budget_ > 0;
             const bool vfx_set_changed = (vfx_instances_.size() != gs_prev_vfx_count_);
+            // Set by GsRenderer::publish_pending_chunks when an Unload
+            // shrinks static_count_ and the static_sort_a_/b_ tail
+            // entries become stale (real depth keys, not sentinels).
+            // update_static_gaussians clears it after init_sort_buf.
+            const bool sort_reinit_needed = gs_renderer_.static_sort_needs_reinit();
 
             const bool need_rebuild =
                 visibility_changed || budget_changed || gs_static_force_dirty_ ||
-                animations_active || lod_active || vfx_set_changed;
+                animations_active || lod_active || vfx_set_changed ||
+                sort_reinit_needed;
 
             gs_prev_visible_ = visible;
             gs_prev_vfx_count_ = vfx_instances_.size();
