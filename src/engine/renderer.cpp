@@ -322,6 +322,13 @@ void Renderer::init_gs(const GaussianCloud& cloud, uint32_t width, uint32_t heig
     }
 }
 
+void Renderer::drop_all_gs_chunks_now() {
+    if (!gs_initialized_ || !gs_renderer_.streaming_initialized()) return;
+    VkCommandBuffer drain_cmd = command_pool_.begin_single_time(context_.device());
+    gs_renderer_.clear_chunks(drain_cmd);
+    command_pool_.end_single_time(context_.device(), context_.graphics_queue(), drain_cmd);
+}
+
 void Renderer::begin_determinism_test(int frames) {
     if (frames <= 0) frames = 10;
     determinism_test_state_.active = true;

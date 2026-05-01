@@ -13,8 +13,10 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
 #include <array>
+#include <future>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace gseurat {
 
@@ -91,6 +93,20 @@ private:
 
     // World streaming
     std::unique_ptr<WorldStreamer> world_streamer_;
+
+    // Async chunk-load worker. PLY parsing is the main cost in
+    // load_cloud_async's caller path; running it on the main thread
+    // shows up as multi-frame stalls / OS beachballs while walking
+    // toward newly-streaming chunks. We hand the parse to std::async
+    // and let the main thread poll the future once per frame.
+    struct PendingChunkParse {
+        std::string grid_key;
+        std::future<GaussianCloud> future;
+    };
+    std::vector<PendingChunkParse> pending_chunk_parses_;
+    void enqueue_async_chunk_load(const std::string& grid_key,
+                                  const std::string& ply_path);
+    void drain_async_chunk_loads(AppBase& app);
 
     // Orbit camera (third-person around player)
     float azimuth_ = 0.0f;

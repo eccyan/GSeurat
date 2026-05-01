@@ -1072,6 +1072,26 @@ void GsRenderer::clear_chunks(VkCommandBuffer drain_cmd) {
     static_dirty_ = true;
 }
 
+std::vector<GsRenderer::ChunkInventoryEntry> GsRenderer::chunk_inventory() const {
+    std::vector<ChunkInventoryEntry> out;
+    out.reserve(active_chunks_.size());
+    for (const auto& c : active_chunks_) {
+        const char* st = "active";
+        switch (c.status) {
+            case ChunkState::Status::LOADING:   st = "loading"; break;
+            case ChunkState::Status::ACTIVE:    st = "active"; break;
+            case ChunkState::Status::UNLOADING: st = "unloading"; break;
+        }
+        out.push_back({
+            .status_str        = st,
+            .page_table_offset = c.page_table_offset,
+            .splat_count       = c.splat_count,
+            .slab_count        = static_cast<uint32_t>(c.handle.slab_indices.size()),
+        });
+    }
+    return out;
+}
+
 void GsRenderer::create_transfer_queue(VkQueue transfer_q, uint32_t transfer_family,
                                         uint32_t graphics_family, bool dedicated) {
     if (!streaming_initialized_) return;

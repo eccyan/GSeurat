@@ -51,6 +51,13 @@ public:
     void draw_frame();
     void init_gs(const GaussianCloud& cloud, uint32_t width = 320, uint32_t height = 240);
 
+    // Drop every GS chunk currently resident in VRAM. Allocates a transient
+    // command buffer for `gs_renderer_.clear_chunks` so callers don't need
+    // access to the renderer's internal command pool. Used by demo portal
+    // transitions to defend against scene-leak bugs where new scene's
+    // init_gs is skipped or runs after a frame of stale rendering.
+    void drop_all_gs_chunks_now();
+
     // After `init_gs` runs an async upload via the transfer queue, the
     // returned slab Handles are stashed here. The demo `run()` flow takes
     // them after pushing the initial game state and feeds them into

@@ -304,6 +304,18 @@ public:
     uint32_t total_active_splats() const { return total_active_splats_; }
     bool streaming_initialized() const { return streaming_initialized_; }
 
+    // Per-chunk inventory for diagnostic dumps. status_str is one of
+    // "loading", "active", "unloading"; splat_count is the splat count
+    // published by the chunk's load completion callback.
+    struct ChunkInventoryEntry {
+        std::string status_str;
+        uint32_t page_table_offset;
+        uint32_t splat_count;
+        uint32_t slab_count;
+    };
+    std::vector<ChunkInventoryEntry> chunk_inventory() const;
+    uint32_t pending_load_count() const { return static_cast<uint32_t>(pending_loads_.size()); }
+
     // World manifest (Phase 3 streaming)
     void load_world(const WorldManifest& manifest);
     const WorldManifest& world_manifest() const { return world_manifest_; }

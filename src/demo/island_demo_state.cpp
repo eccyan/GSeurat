@@ -8,6 +8,7 @@
 #include "gseurat/engine/app_base.hpp"
 #include "gseurat/engine/gaussian_cloud.hpp"
 #include "gseurat/engine/gs_chunk_grid.hpp"
+#include "gseurat/engine/scoped_timer.hpp"
 #include "gseurat/demo/island_components.hpp"
 #include "gseurat/engine/trigger_components.hpp"
 #include "gseurat/engine/collision/intersect.hpp"
@@ -997,9 +998,17 @@ void IslandDemoState::update(AppBase& app, float dt) {
     // content into the dungeon's GS buffer.
     const bool in_overworld = (app.scene_objects().current_scene_path == scene_path_);
     if (world_streamer_ && in_overworld) {
+        ScopedStallTimer _t_streamer{"world_streamer.update+pending_loads"};
         auto events = world_streamer_->update(character_origin_);
 
-        // Process pending loads
+        // Drain any worker-thread-completed PLY parses BEFORE kicking off
+        // new ones, so a chunk that finished loading last frame doesn't
+        // wait an extra cycle to reach VRAM.
+        drain_async_chunk_loads(app);
+
+        // Kick off async PLY loads for newly-pending chunks. Parsing runs
+        // on a worker thread; the main thread only enqueues the work and
+        // hands the resulting cloud to load_cloud_async on a later frame.
         for (const auto& grid_key : world_streamer_->pending_loads()) {
             for (const auto& chunk : world_streamer_->manifest().chunks) {
                 std::string key = std::to_string(chunk.grid.x) + "," +
@@ -1007,16 +1016,9 @@ void IslandDemoState::update(AppBase& app, float dt) {
                                   std::to_string(chunk.grid.z);
                 if (key == grid_key && !chunk.ply_file.empty()) {
                     auto resolved = resolve_asset_path(chunk.ply_file);
-                    std::fprintf(stderr, "[IslandDemo] Chunk [%s] Loading: %s\n",
+                    std::fprintf(stderr, "[IslandDemo] Chunk [%s] async parse start: %s\n",
                         grid_key.c_str(), chunk.ply_file.c_str());
-                    // load_cloud_async now expects an in-memory cloud — file
-                    // IO is the caller's responsibility. WorldStreamer load
-                    // happens on the main thread for now; a follow-up could
-                    // hand the PLY parse to a worker thread and queue the
-                    // async upload from a result callback.
-                    GaussianCloud chunk_cloud;
-                    chunk_cloud.load_ply(resolved.string());
-                    app.renderer().gs_renderer().load_cloud_async(std::move(chunk_cloud));
+                    enqueue_async_chunk_load(grid_key, resolved.string());
                     break;
                 }
             }
@@ -2070,6 +2072,7 @@ void IslandDemoState::draw_gizmos(AppBase& app) {
 void IslandDemoState::perform_portal_transition(AppBase& app,
                                                 const std::string& target_scene,
                                                 const glm::vec3& target_position) {
+    ScopedStallTimer _t_total{"perform_portal_transition (TOTAL)"};
     std::fprintf(stderr, "[IslandDemo] perform_portal_transition -> '%s' at (%.1f,%.1f,%.1f)\n",
         target_scene.c_str(), target_position.x, target_position.y, target_position.z);
 
@@ -2079,8 +2082,29 @@ void IslandDemoState::perform_portal_transition(AppBase& app,
         ae->set_rtpc(kRtpcMusicFilter, entering_dungeon ? 0.0f : 1.0f);
     }
 
-    // Wait for GPU to finish before destroying resources
-    vkDeviceWaitIdle(app.renderer().context().device());
+    // Cancel anything we have a worker thread parsing right now — its
+    // result would be a chunk for the SCENE WE'RE LEAVING, which would
+    // otherwise get appended to the new scene's GS buffer once the
+    // future resolves. Wait blocks (the parse is on a worker), so this
+    // is bounded by the longest-in-flight parse, but typically <100ms.
+    {
+        ScopedStallTimer _t{"perform_portal_transition: drain in-flight chunk parses"};
+        for (auto& p : pending_chunk_parses_) {
+            if (p.future.valid()) (void)p.future.wait();
+        }
+        pending_chunk_parses_.clear();
+    }
+
+    // Wait for GPU to finish before destroying resources. Then explicitly
+    // drop any active GS chunks so the new scene starts from a clean
+    // VRAM state — clear_chunks() is also called inside init_gs() but
+    // doing it here too defends against any path where the new scene's
+    // init_gs is skipped (e.g. has_gs_cloud false on the new scene).
+    {
+        ScopedStallTimer _t{"perform_portal_transition: wait_idle + drop_chunks"};
+        vkDeviceWaitIdle(app.renderer().context().device());
+        app.renderer().drop_all_gs_chunks_now();
+    }
 
     // Transition: clear current scene and load instance
     // Clear ECS world first — old game object entities must not persist
@@ -2088,7 +2112,10 @@ void IslandDemoState::perform_portal_transition(AppBase& app,
     player_entity_ = ecs::kNullEntity;
 
     app.clear_scene();
-    app.init_scene(target_scene);
+    {
+        ScopedStallTimer _t{"perform_portal_transition: init_scene (load_gs_scene + first init_gs)"};
+        app.init_scene(target_scene);
+    }
 
     // "Returning to overworld" detection: target matches our base scene path.
     const bool is_overworld = (target_scene == scene_path_);
@@ -2424,6 +2451,65 @@ void IslandDemoState::perform_portal_transition(AppBase& app,
 
     std::fprintf(stderr, "[IslandDemo] Spawned at (%.1f, %.1f, %.1f)\n",
         spawn.x, spawn.y, spawn.z);
+}
+
+// ── Async chunk parsing ───────────────────────────────────────────────
+// PLY parsing is hundreds-of-MB-of-mmap-and-vector-fill expensive. Doing
+// it on the main thread shows up as a 200-800ms beachball whenever a new
+// chunk crosses the streamer's load_radius_. std::async with launch::async
+// pushes it onto a worker thread; drain_async_chunk_loads polls the
+// future once per frame and only touches the GPU once the parse is done.
+
+void IslandDemoState::enqueue_async_chunk_load(const std::string& grid_key,
+                                               const std::string& ply_path) {
+    // Skip if a parse is already in flight for this key (the streamer will
+    // re-emit `pending_loads_` keys until we tell it the chunk is loaded).
+    for (const auto& p : pending_chunk_parses_) {
+        if (p.grid_key == grid_key) return;
+    }
+    pending_chunk_parses_.push_back({
+        grid_key,
+        std::async(std::launch::async, [ply_path]() {
+            GaussianCloud c;
+            c.load_ply(ply_path);
+            return c;
+        })
+    });
+}
+
+void IslandDemoState::drain_async_chunk_loads(AppBase& app) {
+    // Sweep ready futures, consume their clouds, and hand them to the
+    // existing async-upload pipe. Anything still parsing stays in the
+    // queue for next frame.
+    for (auto it = pending_chunk_parses_.begin();
+         it != pending_chunk_parses_.end(); ) {
+        if (it->future.wait_for(std::chrono::seconds(0)) ==
+            std::future_status::ready) {
+            ScopedStallTimer _t{"chunk_parse_drain+load_cloud_async"};
+            GaussianCloud cloud;
+            try {
+                cloud = it->future.get();
+            } catch (const std::exception& e) {
+                std::fprintf(stderr,
+                    "[IslandDemo] Chunk [%s] async parse FAILED: %s\n",
+                    it->grid_key.c_str(), e.what());
+                it = pending_chunk_parses_.erase(it);
+                continue;
+            }
+            if (!cloud.empty()) {
+                app.renderer().gs_renderer().load_cloud_async(std::move(cloud));
+                if (world_streamer_) {
+                    world_streamer_->on_chunk_loaded(it->grid_key, 0);
+                }
+                std::fprintf(stderr,
+                    "[IslandDemo] Chunk [%s] async parse done, queued for VRAM\n",
+                    it->grid_key.c_str());
+            }
+            it = pending_chunk_parses_.erase(it);
+        } else {
+            ++it;
+        }
+    }
 }
 
 }  // namespace gseurat

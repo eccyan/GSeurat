@@ -170,6 +170,15 @@ void AppBase::main_loop() {
         snap.streaming_initialized = gs.streaming_initialized();
         snap.streaming_active_chunks = gs.active_chunk_count();
         snap.streaming_active_splats = gs.total_active_splats();
+        snap.streaming_pending_loads = gs.pending_load_count();
+        for (const auto& c : gs.chunk_inventory()) {
+            snap.chunks.push_back({
+                .status            = c.status_str,
+                .page_table_offset = c.page_table_offset,
+                .splat_count       = c.splat_count,
+                .slab_count        = c.slab_count,
+            });
+        }
         snap.max_render_distance = renderer_.gs_max_render_distance();
 
         if (!gs.has_cloud()) snap.warnings.push_back("no_cloud_loaded");
