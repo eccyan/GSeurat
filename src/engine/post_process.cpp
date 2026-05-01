@@ -349,12 +349,21 @@ void PostProcessPipeline::create_render_passes(VkDevice device, VkFormat swapcha
         }
     }
 
-    // Composite render pass: swapchain format color, UI draws here too
+    // Composite render pass: swapchain format color, UI draws here too.
+    // loadOp = CLEAR (not DONT_CARE): the GS blit + UI passes don't cover
+    // every pixel of the swapchain (GS output is rendered at e.g. 320x240
+    // and stretched, leaving the surrounding swapchain area uncovered).
+    // With DONT_CARE + a 3-image swapchain cycling round-robin, an uncovered
+    // pixel inherits whatever that swapchain image was last used to display
+    // — which is the rendered content from N frames ago. That manifests as
+    // an "old initial-frame flashes back" ghost in motion. CLEAR forces a
+    // known black starting state and the cost is negligible (one tile-clear
+    // per frame on Apple-TBDR hardware).
     {
         VkAttachmentDescription color_att{};
         color_att.format = swapchain_format;
         color_att.samples = VK_SAMPLE_COUNT_1_BIT;
-        color_att.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+        color_att.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
         color_att.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
         color_att.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
         color_att.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
@@ -909,6 +918,14 @@ void PostProcessPipeline::record_post_process(VkCommandBuffer cmd, uint32_t swap
         rp_info.renderPass = composite_render_pass_;
         rp_info.framebuffer = composite_framebuffers_[swapchain_index];
         rp_info.renderArea.extent = {scene_width_, scene_height_};
+        // The composite color attachment was switched from LOAD_OP_DONT_CARE
+        // to LOAD_OP_CLEAR (see render-pass creation) — supply the clear
+        // value here. Black with full alpha matches the previous
+        // post_process initial-clear path.
+        VkClearValue composite_clear{};
+        composite_clear.color = {{0.0f, 0.0f, 0.0f, 1.0f}};
+        rp_info.clearValueCount = 1;
+        rp_info.pClearValues = &composite_clear;
 
         vkCmdBeginRenderPass(cmd, &rp_info, VK_SUBPASS_CONTENTS_INLINE);
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, composite_pipeline_);

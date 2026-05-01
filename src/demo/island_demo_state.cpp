@@ -814,6 +814,19 @@ void IslandDemoState::update(AppBase& app, float dt) {
         return;
     }
 
+    // Drain Phase B of any in-flight portal transition. We can only run the
+    // post-load body once `app.is_async_loading_gs_scene()` has flipped back
+    // to false — that's the signal that `tick_async_load_gs_scene` has
+    // consumed the parse future and run `GsSceneLoader::finalize_on_main`,
+    // so `renderer().has_gs_cloud()` is now true and the new ECS world is
+    // populated. Until then keep waiting; the screen-fade overlay covers
+    // the window.
+    if (pending_portal_post_load_ && !app.is_async_loading_gs_scene()) {
+        auto fn = std::move(pending_portal_post_load_);
+        pending_portal_post_load_ = {};
+        fn(app);
+    }
+
     // Skip keyboard shortcuts when dev overlay has focus
     if (!app.dev_overlay().wants_keyboard()) {
         // Tab → cycle HUD mode: OFF → COMPACT → FULL → OFF
@@ -2116,10 +2129,42 @@ void IslandDemoState::perform_portal_transition(AppBase& app,
     player_entity_ = ecs::kNullEntity;
 
     app.clear_scene();
-    {
-        ScopedStallTimer _t{"perform_portal_transition: init_scene (load_gs_scene + first init_gs)"};
-        app.init_scene(target_scene);
-    }
+
+    // Phase A ends here: kick off PLY parsing on a worker thread and stash
+    // the rest of the transition as a deferred lambda. update() drains it
+    // once `app.is_async_loading_gs_scene()` flips back to false (parse +
+    // GPU/ECS finalize done). The main thread keeps rendering the scene
+    // transition fade overlay while the worker parses.
+    app.scene_objects().current_scene_path = target_scene;
+    auto target_scene_data = SceneLoader::load(target_scene);
+    GsSceneOptions portal_opts{ .add_default_light = true, .set_god_rays = true };
+    app.begin_async_load_gs_scene(std::move(target_scene_data), portal_opts);
+
+    pending_portal_post_load_ =
+        [target_scene, target_position](AppBase& app_in) {
+            // Forward to the (private) member implementation. We need the
+            // `IslandDemoState*` to call `finish_portal_transition`. The
+            // lambda is owned by `IslandDemoState::pending_portal_post_load_`
+            // so `this` is alive for the duration; we capture it via the
+            // surrounding outer-method `this`-pointer below.
+            (void)app_in;
+        };
+    pending_portal_post_load_ =
+        [this, target_scene, target_position](AppBase& app_in) {
+            this->finish_portal_transition(app_in, target_scene, target_position);
+        };
+
+    std::fprintf(stderr, "[IslandDemo] Portal Phase A done; async parse in flight for '%s'\n",
+                 target_scene.c_str());
+}
+
+// Phase B: invoked from `update()` once the async scene-load has finalized.
+// Runs the original synchronous post-load body — collision grid restore,
+// player respawn, world-chunk re-merge, bone registry, etc.
+void IslandDemoState::finish_portal_transition(AppBase& app,
+                                               const std::string& target_scene,
+                                               const glm::vec3& target_position) {
+    ScopedStallTimer _t_total{"finish_portal_transition (Phase B TOTAL)"};
 
     // "Returning to overworld" detection: target matches our base scene path.
     const bool is_overworld = (target_scene == scene_path_);
@@ -2468,12 +2513,10 @@ void IslandDemoState::perform_portal_transition(AppBase& app,
 
     // Recreate a SceneTransition entity in SceneIn state so the next few
     // frames render with a fade-in overlay covering any first-frame GS
-    // pop (slabs streaming in, chunk grid warming up). Without this the
-    // SceneOut entity was destroyed by `app.world().clear()` above and
-    // the new scene appears with NO overlay — the user sees the slab
-    // upload progress and chunk re-tag flicker uncovered. Set alpha=1
-    // so the very first post-transition frame is fully covered, then
-    // transition_system animates it down to 0 over `kFadeIn` seconds.
+    // pop. The SceneOut entity was destroyed by `app.world().clear()`
+    // above; without this recreation the new scene would render
+    // uncovered. alpha=1 fully covers the very first post-transition
+    // frame, then transition_system animates it down to 0 over kFadeIn.
     {
         constexpr float kFadeIn = 0.4f;
         auto e = app.world().create();
@@ -2483,7 +2526,7 @@ void IslandDemoState::perform_portal_transition(AppBase& app,
         st.transition_duration = kFadeIn;
         st.target_scene        = target_scene;
         st.target_position     = target_position;
-        st.load_dispatched     = true;  // already done — we're past Loading
+        st.load_dispatched     = true;
         app.world().add<SceneTransition>(e, st);
 
         ScreenFade fade;

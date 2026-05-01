@@ -26,8 +26,187 @@
 
 namespace gseurat {
 
-void GsSceneLoader::load(SceneLoadContext& ctx, const SceneData& scene_data,
-                          const GsSceneOptions& opts) {
+// CPU-only parse phase. Touches no Vulkan / ECS / GPU resources, so it can be
+// invoked from a worker thread. Returns a `ParsedScene` that the main thread
+// then consumes via `finalize_on_main`.
+ParsedScene GsSceneLoader::parse(const SceneData& scene_data) {
+    ParsedScene parsed;
+
+    // Load terrain PLY if present
+    if (scene_data.gaussian_splat) {
+        const auto& gs = *scene_data.gaussian_splat;
+        std::fprintf(stderr, "[GS] (parse) Terrain PLY: '%s' (project_root='%s')\n",
+                     gs.ply_file.c_str(), get_project_root().c_str());
+        try {
+            parsed.cloud = GaussianCloud::load_ply(gs.ply_file);
+            parsed.has_terrain = !parsed.cloud.empty();
+        } catch (const std::runtime_error& e) {
+            std::fprintf(stderr, "[GS] Warning: %s\n", e.what());
+        }
+        parsed.gs_scale_multiplier = gs.scale_multiplier;
+    }
+
+    // Compute terrain AABB (grid-to-world coordinate mapping)
+    parsed.terrain_aabb.min = glm::vec3(0.0f);
+    parsed.terrain_aabb.max = glm::vec3(0.0f);
+    if (parsed.has_terrain) {
+        parsed.terrain_aabb = parsed.cloud.bounds();
+    }
+
+    parsed.snapped_objects = scene_data.game_objects;
+    parsed.world_positions.reserve(parsed.snapped_objects.size());
+    for (const auto& go : parsed.snapped_objects) {
+        parsed.world_positions.push_back(coord::to_world(go.position, parsed.terrain_aabb));
+    }
+
+    // Pre-scan: allocate bone slots for BoneAnimated game objects.
+    parsed.bone_slot_counter = 8;  // reserve 0-7 for player
+    for (size_t i = 0; i < parsed.snapped_objects.size(); ++i) {
+        const auto& go = parsed.snapped_objects[i];
+        if (go.components.is_null() || !go.components.contains("BoneAnimated")) continue;
+        const auto& ba_json = go.components["BoneAnimated"];
+        std::string manifest_path = ba_json.value("manifest", std::string{});
+        if (manifest_path.empty()) continue;
+
+        uint32_t bone_count = 0;
+        {
+            std::ifstream mf(manifest_path);
+            if (!mf.is_open()) {
+                std::fprintf(stderr, "[GS] BoneAnimated: failed to open manifest '%s'\n",
+                             manifest_path.c_str());
+                continue;
+            }
+            auto mj = nlohmann::json::parse(mf, nullptr, false);
+            if (mj.is_discarded() || !mj.contains("bones") || !mj["bones"].is_array()) {
+                std::fprintf(stderr, "[GS] BoneAnimated: invalid manifest '%s'\n",
+                             manifest_path.c_str());
+                continue;
+            }
+            bone_count = static_cast<uint32_t>(mj["bones"].size());
+        }
+        if (parsed.bone_slot_counter + bone_count > 32) {
+            std::fprintf(stderr, "[GS] BoneAnimated: bone budget exceeded for '%s' (need %u, have %u)\n",
+                         go.id.c_str(), bone_count, 32 - parsed.bone_slot_counter);
+            continue;
+        }
+
+        GsTerrainState::BoneAllocation alloc;
+        alloc.manifest_path = manifest_path;
+        alloc.default_clip = ba_json.value("default_clip", std::string{"idle"});
+        alloc.first_bone_index = parsed.bone_slot_counter;
+        alloc.bone_count = bone_count;
+        alloc.char_scale = go.scale;
+        alloc.gs_scale_multiplier = parsed.gs_scale_multiplier;
+        alloc.world_pos = parsed.world_positions[i].vec();
+        alloc.game_object_index = i;
+        parsed.bone_allocations.push_back(alloc);
+        parsed.bone_slot_counter += bone_count;
+
+        std::fprintf(stderr, "[GS] BoneAnimated '%s': bones %u-%u (count=%u)\n",
+                     go.id.c_str(), alloc.first_bone_index,
+                     alloc.first_bone_index + bone_count - 1, bone_count);
+    }
+
+    // Merge all game objects with PLY visuals into the parsed cloud.
+    {
+        auto merged = parsed.cloud.gaussians();
+        uint32_t merged_count = 0;
+        for (size_t i = 0; i < parsed.snapped_objects.size(); ++i) {
+            const auto& go = parsed.snapped_objects[i];
+            if (go.ply_file.empty()) continue;
+            try {
+                auto placed_cloud = GaussianCloud::load_ply(go.ply_file);
+                if (placed_cloud.empty()) continue;
+                glm::vec3 local_min(1e9f);
+                glm::vec3 local_max(-1e9f);
+                for (const auto& g : placed_cloud.gaussians()) {
+                    local_min = glm::min(local_min, g.position);
+                    local_max = glm::max(local_max, g.position);
+                }
+                glm::vec3 local_center = (local_min + local_max) * 0.5f;
+                local_center.y = local_min.y;
+                float local_min_y = local_min.y;
+                float local_max_y = local_max.y;
+                glm::vec3 adjusted_pos = parsed.world_positions[i].vec();
+                auto transform = glm::translate(glm::mat4(1.0f), adjusted_pos);
+                transform = glm::rotate(transform, glm::radians(go.rotation.x), {1,0,0});
+                transform = glm::rotate(transform, glm::radians(go.rotation.y), {0,1,0});
+                transform = glm::rotate(transform, glm::radians(go.rotation.z), {0,0,1});
+                transform = glm::scale(transform, glm::vec3(go.scale));
+                transform = glm::translate(transform, -local_center);
+                auto rot_q = glm::quat(glm::radians(go.rotation));
+
+                uint32_t pbd_idx = 0;
+                float sway_threshold_frac = 0.7f;
+                if (go.pbd && parsed.pbd_anchors.size() < kMaxPbdElements) {
+                    pbd_idx = 32 + static_cast<uint32_t>(parsed.pbd_anchors.size());
+                    parsed.pbd_anchors.push_back(adjusted_pos);
+                    parsed.pbd_configs.push_back(*go.pbd);
+                    sway_threshold_frac = go.pbd->sway_threshold;
+                }
+                float sway_threshold = local_min_y + (local_max_y - local_min_y) * sway_threshold_frac;
+
+                uint32_t ba_first_bone = 0;
+                bool has_bone_anim = false;
+                for (const auto& alloc : parsed.bone_allocations) {
+                    if (alloc.game_object_index == i) {
+                        ba_first_bone = alloc.first_bone_index;
+                        has_bone_anim = true;
+                        break;
+                    }
+                }
+
+                auto placed_gs = placed_cloud.gaussians();
+                uint32_t tagged_count = 0;
+                for (auto& g : placed_gs) {
+                    float local_y = g.position.y;
+                    g.position = glm::vec3(transform * glm::vec4(g.position, 1.0f));
+                    g.scale *= go.scale;
+                    g.rotation = rot_q * g.rotation;
+                    if (pbd_idx > 0 && local_y > sway_threshold) {
+                        g.bone_index = pbd_idx;
+                        tagged_count++;
+                    }
+                    if (has_bone_anim) {
+                        g.bone_index = ba_first_bone + g.bone_index;
+                    }
+                }
+                if (pbd_idx > 0) {
+                    std::fprintf(stderr, "[GS] PBD '%s': idx=%u, threshold=%.2f (frac=%.2f), "
+                                 "model Y=[%.2f,%.2f], tagged=%u/%zu, anchor=(%.1f,%.1f,%.1f)\n",
+                                 go.name.c_str(), pbd_idx, sway_threshold, sway_threshold_frac,
+                                 local_min_y, local_max_y, tagged_count, placed_gs.size(),
+                                 adjusted_pos.x, adjusted_pos.y, adjusted_pos.z);
+                }
+                merged.insert(merged.end(), placed_gs.begin(), placed_gs.end());
+                merged_count++;
+            } catch (const std::runtime_error& e) {
+                std::fprintf(stderr, "[GS] Warning: game object '%s': %s\n",
+                             go.id.c_str(), e.what());
+            }
+        }
+        if (merged_count > 0) {
+            parsed.cloud = GaussianCloud::from_gaussians(std::move(merged));
+        }
+        if (!parsed.pbd_anchors.empty()) {
+            std::fprintf(stderr, "[GS] PBD: %zu objects configured (idx 32-%u)\n",
+                         parsed.pbd_anchors.size(),
+                         31 + static_cast<uint32_t>(parsed.pbd_anchors.size()));
+        }
+    }
+
+    // Cloud bounds for camera centering.
+    if (!parsed.cloud.empty()) {
+        auto bounds = parsed.cloud.bounds();
+        parsed.cloud_center = (bounds.min + bounds.max) * 0.5f;
+        parsed.cloud_extent = glm::length(bounds.max - bounds.min) * 0.5f;
+    }
+
+    return parsed;
+}
+
+void GsSceneLoader::finalize_on_main(SceneLoadContext& ctx, const SceneData& scene_data,
+                                     ParsedScene&& parsed, const GsSceneOptions& opts) {
 
     ctx.renderer.clear_gs_particle_emitters();
     ctx.renderer.clear_gs_animations();
@@ -39,201 +218,26 @@ void GsSceneLoader::load(SceneLoadContext& ctx, const SceneData& scene_data,
         ctx.scene.add_light(pl);
     }
 
-    // Apply weather fog to scene (picked up by renderer each frame)
     ctx.scene.set_fog_density(scene_data.weather.fog_density);
     ctx.scene.set_fog_color(scene_data.weather.fog_color);
 
-    // Load terrain PLY if present
-    GaussianCloud cloud;
-    bool has_terrain = false;
-    float gs_scale_multiplier = 1.0f;
-    if (scene_data.gaussian_splat) {
-        const auto& gs = *scene_data.gaussian_splat;
-        std::fprintf(stderr, "[GS] Terrain PLY: '%s' (project_root='%s')\n",
-                     gs.ply_file.c_str(), get_project_root().c_str());
-        try {
-            cloud = GaussianCloud::load_ply(gs.ply_file);
-            has_terrain = !cloud.empty();
-        } catch (const std::runtime_error& e) {
-            std::fprintf(stderr, "[GS] Warning: %s\n", e.what());
-        }
-        gs_scale_multiplier = gs.scale_multiplier;
+    if (parsed.has_terrain) {
+        ctx.renderer.gs_renderer().set_scale_multiplier(parsed.gs_scale_multiplier);
     }
 
+    ctx.terrain.terrain_aabb = parsed.terrain_aabb;
+    ctx.scene_objects.game_objects = parsed.snapped_objects;
+    ctx.terrain.bone_allocations = parsed.bone_allocations;
+    ctx.terrain.bone_slot_counter = parsed.bone_slot_counter;
+    ctx.terrain.pbd_anchors = parsed.pbd_anchors;
+    ctx.terrain.pbd_configs = parsed.pbd_configs;
+
+    GaussianCloud cloud = std::move(parsed.cloud);
+    const bool has_terrain = parsed.has_terrain;
+    const auto& world_positions = parsed.world_positions;
+    const auto& snapped_objects = ctx.scene_objects.game_objects;
+
     {
-        if (has_terrain) {
-            ctx.renderer.gs_renderer().set_scale_multiplier(gs_scale_multiplier);
-        }
-
-        // Compute terrain AABB (grid-to-world coordinate mapping)
-        ctx.terrain.terrain_aabb = AABB{};
-        ctx.terrain.terrain_aabb.min = glm::vec3(0.0f);
-        ctx.terrain.terrain_aabb.max = glm::vec3(0.0f);
-        if (has_terrain) {
-            ctx.terrain.terrain_aabb = cloud.bounds();
-        }
-
-        // Snap game object positions to terrain elevation (in grid coordinates)
-        // Game objects use authored Y from scene JSON.
-        // Ground elevation is handled at runtime by HeightfieldComponent + KCC.
-        auto snapped_objects = scene_data.game_objects;
-
-        // Convert grid positions to world positions via coord::to_world()
-        ctx.scene_objects.game_objects = snapped_objects;
-
-        std::vector<coord::WorldPos> world_positions;
-        world_positions.reserve(snapped_objects.size());
-        for (const auto& go : snapped_objects) {
-            world_positions.push_back(coord::to_world(go.position, ctx.terrain.terrain_aabb));
-        }
-
-        // Pre-scan: allocate bone slots for BoneAnimated game objects
-        ctx.terrain.bone_allocations.clear();
-        ctx.terrain.bone_slot_counter = 8;  // reserve 0-7 for player
-        for (size_t i = 0; i < snapped_objects.size(); ++i) {
-            const auto& go = snapped_objects[i];
-            if (go.components.is_null() || !go.components.contains("BoneAnimated")) continue;
-            const auto& ba_json = go.components["BoneAnimated"];
-            std::string manifest_path = ba_json.value("manifest", std::string{});
-            if (manifest_path.empty()) continue;
-
-            // Parse manifest JSON directly to get bone count
-            // (avoid constructing CharacterData — its destructor crashes on macOS)
-            uint32_t bone_count = 0;
-            {
-                std::ifstream mf(manifest_path);
-                if (!mf.is_open()) {
-                    std::fprintf(stderr, "[GS] BoneAnimated: failed to open manifest '%s'\n",
-                                 manifest_path.c_str());
-                    continue;
-                }
-                auto mj = nlohmann::json::parse(mf, nullptr, false);
-                if (mj.is_discarded() || !mj.contains("bones") || !mj["bones"].is_array()) {
-                    std::fprintf(stderr, "[GS] BoneAnimated: invalid manifest '%s'\n",
-                                 manifest_path.c_str());
-                    continue;
-                }
-                bone_count = static_cast<uint32_t>(mj["bones"].size());
-            }
-            if (ctx.terrain.bone_slot_counter + bone_count > 32) {
-                std::fprintf(stderr, "[GS] BoneAnimated: bone budget exceeded for '%s' (need %u, have %u)\n",
-                             go.id.c_str(), bone_count, 32 - ctx.terrain.bone_slot_counter);
-                continue;
-            }
-
-            GsTerrainState::BoneAllocation alloc;
-            alloc.manifest_path = manifest_path;
-            alloc.default_clip = ba_json.value("default_clip", std::string{"idle"});
-            alloc.first_bone_index = ctx.terrain.bone_slot_counter;
-            alloc.bone_count = bone_count;
-            alloc.char_scale = go.scale;
-            alloc.gs_scale_multiplier = gs_scale_multiplier;
-            alloc.world_pos = world_positions[i].vec();
-            alloc.game_object_index = i;
-            ctx.terrain.bone_allocations.push_back(alloc);
-            ctx.terrain.bone_slot_counter += bone_count;
-
-            std::fprintf(stderr, "[GS] BoneAnimated '%s': bones %u-%u (count=%u)\n",
-                         go.id.c_str(), alloc.first_bone_index,
-                         alloc.first_bone_index + bone_count - 1, bone_count);
-        }
-
-        // Merge all game objects with PLY visuals into the GS cloud
-        ctx.terrain.pbd_anchors.clear();
-        ctx.terrain.pbd_configs.clear();
-            {
-                auto merged = cloud.gaussians();
-                uint32_t merged_count = 0;
-                for (size_t i = 0; i < snapped_objects.size(); ++i) {
-                    const auto& go = snapped_objects[i];
-                    if (go.ply_file.empty()) continue;
-                    try {
-                        auto placed_cloud = GaussianCloud::load_ply(go.ply_file);
-                        if (placed_cloud.empty()) continue;
-                        // Compute local AABB
-                        glm::vec3 local_min(1e9f);
-                        glm::vec3 local_max(-1e9f);
-                        for (const auto& g : placed_cloud.gaussians()) {
-                            local_min = glm::min(local_min, g.position);
-                            local_max = glm::max(local_max, g.position);
-                        }
-                        // Center the model at its XZ centroid, sit bottom on ground
-                        glm::vec3 local_center = (local_min + local_max) * 0.5f;
-                        local_center.y = local_min.y;  // pivot at bottom, not center Y
-                        float local_min_y = local_min.y;
-                        float local_max_y = local_max.y;
-                        glm::vec3 adjusted_pos = world_positions[i].vec();
-                        // Build transform: translate to position, rotate, scale, then center the model
-                        auto transform = glm::translate(glm::mat4(1.0f), adjusted_pos);
-                        transform = glm::rotate(transform, glm::radians(go.rotation.x), {1,0,0});
-                        transform = glm::rotate(transform, glm::radians(go.rotation.y), {0,1,0});
-                        transform = glm::rotate(transform, glm::radians(go.rotation.z), {0,0,1});
-                        transform = glm::scale(transform, glm::vec3(go.scale));
-                        transform = glm::translate(transform, -local_center);  // center model at origin
-                        auto rot_q = glm::quat(glm::radians(go.rotation));
-
-                        // Assign PBD index from game object config
-                        uint32_t pbd_idx = 0;
-                        float sway_threshold_frac = 0.7f;
-                        if (go.pbd && ctx.terrain.pbd_anchors.size() < kMaxPbdElements) {
-                            pbd_idx = 32 + static_cast<uint32_t>(ctx.terrain.pbd_anchors.size());
-                            ctx.terrain.pbd_anchors.push_back(adjusted_pos);
-                            ctx.terrain.pbd_configs.push_back(*go.pbd);
-                            sway_threshold_frac = go.pbd->sway_threshold;
-                        }
-                        float sway_threshold = local_min_y + (local_max_y - local_min_y) * sway_threshold_frac;
-
-                        // Check if this game object has bone animation
-                        uint32_t ba_first_bone = 0;
-                        bool has_bone_anim = false;
-                        for (const auto& alloc : ctx.terrain.bone_allocations) {
-                            if (alloc.game_object_index == i) {
-                                ba_first_bone = alloc.first_bone_index;
-                                has_bone_anim = true;
-                                break;
-                            }
-                        }
-
-                        auto placed_gs = placed_cloud.gaussians();
-                        uint32_t tagged_count = 0;
-                        for (auto& g : placed_gs) {
-                            float local_y = g.position.y;  // before transform
-                            g.position = glm::vec3(transform * glm::vec4(g.position, 1.0f));
-                            g.scale *= go.scale;
-                            g.rotation = rot_q * g.rotation;
-                            // Tag canopy Gaussians with PBD index
-                            if (pbd_idx > 0 && local_y > sway_threshold) {
-                                g.bone_index = pbd_idx;
-                                tagged_count++;
-                            }
-                            if (has_bone_anim) {
-                                g.bone_index = ba_first_bone + g.bone_index;
-                            }
-                        }
-                        if (pbd_idx > 0) {
-                            std::fprintf(stderr, "[GS] PBD '%s': idx=%u, threshold=%.2f (frac=%.2f), "
-                                         "model Y=[%.2f,%.2f], tagged=%u/%zu, anchor=(%.1f,%.1f,%.1f)\n",
-                                         go.name.c_str(), pbd_idx, sway_threshold, sway_threshold_frac,
-                                         local_min_y, local_max_y, tagged_count, placed_gs.size(),
-                                         adjusted_pos.x, adjusted_pos.y, adjusted_pos.z);
-                        }
-                        merged.insert(merged.end(), placed_gs.begin(), placed_gs.end());
-                        merged_count++;
-                    } catch (const std::runtime_error& e) {
-                        std::fprintf(stderr, "[GS] Warning: game object '%s': %s\n",
-                                     go.id.c_str(), e.what());
-                    }
-                }
-                if (merged_count > 0) {
-                    cloud = GaussianCloud::from_gaussians(std::move(merged));
-                }
-                if (!ctx.terrain.pbd_anchors.empty()) {
-                    std::fprintf(stderr, "[GS] PBD: %zu objects configured (idx 32-%u)\n",
-                                 ctx.terrain.pbd_anchors.size(),
-                                 31 + static_cast<uint32_t>(ctx.terrain.pbd_anchors.size()));
-                }
-            }
-
             // Create ECS entities for game objects with components
             for (size_t i = 0; i < snapped_objects.size(); ++i) {
                 const auto& go = snapped_objects[i];
@@ -442,6 +446,15 @@ void GsSceneLoader::load(SceneLoadContext& ctx, const SceneData& scene_data,
             ctx.renderer.add_vfx_instance(std::move(inst));
         }
     }
+}
+
+// Synchronous wrapper: parse on the calling thread (blocks until PLY load
+// completes) and immediately finalize on the same thread. Used by callers
+// that don't need the async / loading-overlay path.
+void GsSceneLoader::load(SceneLoadContext& ctx, const SceneData& scene_data,
+                          const GsSceneOptions& opts) {
+    ParsedScene parsed = parse(scene_data);
+    finalize_on_main(ctx, scene_data, std::move(parsed), opts);
 }
 
 }  // namespace gseurat

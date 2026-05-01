@@ -121,112 +121,72 @@ void GsRenderer::create_output_image(uint32_t width, uint32_t height) {
     output_width_ = width;
     output_height_ = height;
 
-    VkImageCreateInfo image_info{};
-    image_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-    image_info.imageType = VK_IMAGE_TYPE_2D;
-    image_info.format = VK_FORMAT_R16G16B16A16_SFLOAT;
-    image_info.extent = {width, height, 1};
-    image_info.mipLevels = 1;
-    image_info.arrayLayers = 1;
-    image_info.samples = VK_SAMPLE_COUNT_1_BIT;
-    image_info.tiling = VK_IMAGE_TILING_OPTIMAL;
-    image_info.usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+    // Helper that allocates one VkImage + view at a given index using a
+    // fixed format/usage. Used to build the per-frame arrays for output,
+    // depth, and processed images.
+    auto make_image = [&](VkFormat format, VkImageUsageFlags usage,
+                          VkImage& out_image, VmaAllocation& out_alloc,
+                          VkImageView& out_view, const char* what) {
+        VkImageCreateInfo image_info{};
+        image_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+        image_info.imageType = VK_IMAGE_TYPE_2D;
+        image_info.format = format;
+        image_info.extent = {width, height, 1};
+        image_info.mipLevels = 1;
+        image_info.arrayLayers = 1;
+        image_info.samples = VK_SAMPLE_COUNT_1_BIT;
+        image_info.tiling = VK_IMAGE_TILING_OPTIMAL;
+        image_info.usage = usage;
 
-    VmaAllocationCreateInfo alloc_info{};
-    alloc_info.usage = VMA_MEMORY_USAGE_GPU_ONLY;
+        VmaAllocationCreateInfo alloc_info{};
+        alloc_info.usage = VMA_MEMORY_USAGE_GPU_ONLY;
 
-    if (vmaCreateImage(allocator_, &image_info, &alloc_info,
-                       &output_image_, &output_allocation_, nullptr) != VK_SUCCESS) {
-        throw std::runtime_error("Failed to create GS output image");
-    }
-
-    VkImageViewCreateInfo view_info{};
-    view_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-    view_info.image = output_image_;
-    view_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
-    view_info.format = VK_FORMAT_R16G16B16A16_SFLOAT;
-    view_info.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
-
-    if (vkCreateImageView(device_, &view_info, nullptr, &output_view_) != VK_SUCCESS) {
-        throw std::runtime_error("Failed to create GS output image view");
-    }
-
-    VkSamplerCreateInfo sampler_info{};
-    sampler_info.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
-    sampler_info.magFilter = VK_FILTER_NEAREST;
-    sampler_info.minFilter = VK_FILTER_NEAREST;
-    sampler_info.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-    sampler_info.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-    sampler_info.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-
-    if (vkCreateSampler(device_, &sampler_info, nullptr, &output_sampler_) != VK_SUCCESS) {
-        throw std::runtime_error("Failed to create GS output sampler");
-    }
-
-    // Depth storage image (R16F, per-pixel view-space depth)
-    {
-        VkImageCreateInfo depth_info{};
-        depth_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-        depth_info.imageType = VK_IMAGE_TYPE_2D;
-        depth_info.format = VK_FORMAT_R16_SFLOAT;
-        depth_info.extent = {width, height, 1};
-        depth_info.mipLevels = 1;
-        depth_info.arrayLayers = 1;
-        depth_info.samples = VK_SAMPLE_COUNT_1_BIT;
-        depth_info.tiling = VK_IMAGE_TILING_OPTIMAL;
-        depth_info.usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
-
-        VmaAllocationCreateInfo depth_alloc{};
-        depth_alloc.usage = VMA_MEMORY_USAGE_GPU_ONLY;
-
-        if (vmaCreateImage(allocator_, &depth_info, &depth_alloc,
-                           &depth_image_, &depth_allocation_, nullptr) != VK_SUCCESS) {
-            throw std::runtime_error("Failed to create GS depth image");
+        if (vmaCreateImage(allocator_, &image_info, &alloc_info,
+                           &out_image, &out_alloc, nullptr) != VK_SUCCESS) {
+            throw std::runtime_error(std::string("Failed to create GS image: ") + what);
         }
 
-        VkImageViewCreateInfo dv_info{};
-        dv_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-        dv_info.image = depth_image_;
-        dv_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
-        dv_info.format = VK_FORMAT_R16_SFLOAT;
-        dv_info.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+        VkImageViewCreateInfo view_info{};
+        view_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+        view_info.image = out_image;
+        view_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
+        view_info.format = format;
+        view_info.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
 
-        if (vkCreateImageView(device_, &dv_info, nullptr, &depth_view_) != VK_SUCCESS) {
-            throw std::runtime_error("Failed to create GS depth image view");
+        if (vkCreateImageView(device_, &view_info, nullptr, &out_view) != VK_SUCCESS) {
+            throw std::runtime_error(std::string("Failed to create GS image view: ") + what);
         }
+    };
+
+    constexpr VkImageUsageFlags kColorUsage =
+        VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT |
+        VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+    constexpr VkImageUsageFlags kDepthUsage =
+        VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+
+    for (uint32_t i = 0; i < kMaxFramesInFlight; ++i) {
+        make_image(VK_FORMAT_R16G16B16A16_SFLOAT, kColorUsage,
+                   output_images_[i], output_allocations_[i], output_views_[i],
+                   "output");
+        make_image(VK_FORMAT_R16_SFLOAT, kDepthUsage,
+                   depth_images_[i], depth_allocations_[i], depth_views_[i],
+                   "depth");
+        make_image(VK_FORMAT_R16G16B16A16_SFLOAT, kColorUsage,
+                   processed_images_[i], processed_allocations_[i], processed_views_[i],
+                   "processed");
     }
 
-    // Post-processed output image (RGBA16F, same dimensions)
-    {
-        VkImageCreateInfo proc_info{};
-        proc_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-        proc_info.imageType = VK_IMAGE_TYPE_2D;
-        proc_info.format = VK_FORMAT_R16G16B16A16_SFLOAT;
-        proc_info.extent = {width, height, 1};
-        proc_info.mipLevels = 1;
-        proc_info.arrayLayers = 1;
-        proc_info.samples = VK_SAMPLE_COUNT_1_BIT;
-        proc_info.tiling = VK_IMAGE_TILING_OPTIMAL;
-        proc_info.usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT
-                        | VK_IMAGE_USAGE_TRANSFER_DST_BIT;  // for init_output_layouts clear
+    if (output_sampler_ == VK_NULL_HANDLE) {
+        VkSamplerCreateInfo sampler_info{};
+        sampler_info.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+        sampler_info.magFilter = VK_FILTER_NEAREST;
+        sampler_info.minFilter = VK_FILTER_NEAREST;
+        sampler_info.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        sampler_info.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        sampler_info.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
 
-        VmaAllocationCreateInfo proc_alloc{};
-        proc_alloc.usage = VMA_MEMORY_USAGE_GPU_ONLY;
-
-        if (vmaCreateImage(allocator_, &proc_info, &proc_alloc,
-                           &processed_image_, &processed_allocation_, nullptr) != VK_SUCCESS) {
-            throw std::runtime_error("Failed to create GS processed image");
-        }
-
-        VkImageViewCreateInfo pv_info{};
-        pv_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-        pv_info.image = processed_image_;
-        pv_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
-        pv_info.format = VK_FORMAT_R16G16B16A16_SFLOAT;
-        pv_info.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
-
-        if (vkCreateImageView(device_, &pv_info, nullptr, &processed_view_) != VK_SUCCESS) {
-            throw std::runtime_error("Failed to create GS processed image view");
+        if (vkCreateSampler(device_, &sampler_info, nullptr, &output_sampler_) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to create GS output sampler");
         }
     }
 
@@ -246,7 +206,7 @@ void GsRenderer::create_descriptor_resources() {
 
     VkDescriptorPoolCreateInfo pool_info{};
     pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-    pool_info.maxSets = 128;  // expanded for static/dynamic/merge sets
+    pool_info.maxSets = 160;  // expanded for static/dynamic/merge + per-frame sets
     pool_info.poolSizeCount = 3;
     pool_info.pPoolSizes = pool_sizes;
 
@@ -463,9 +423,19 @@ void GsRenderer::create_descriptor_resources() {
     // Reset pool to free previously allocated sets before reallocating
     vkResetDescriptorPool(device_, gs_pool_, 0);
 
+    // Per-frame intermediate images (`output_image_[i]`, `depth_image_[i]`,
+    // `processed_image_[i]`) require per-frame descriptor sets because a
+    // single VkDescriptorSet binds to one VkImageView. The render,
+    // post_process, and tile_render sets all bind at least one of those
+    // images, so we allocate `kMaxFramesInFlight` of each.
+    static_assert(kMaxFramesInFlight == 2,
+                  "Per-frame descriptor allocation below assumes 2 frames in flight; "
+                  "if you change kMaxFramesInFlight, also extend the per-frame slot "
+                  "indices for render/post_process/tile_render at the end of `layouts`.");
+
     VkDescriptorSetLayout layouts[] = {
-        preprocess_layout_, sort_layout_, render_layout_,   // 0-2: legacy
-        post_process_layout_,                               // 3: post-process
+        preprocess_layout_, sort_layout_, render_layout_,   // 0-2: legacy (render_sets_[0])
+        post_process_layout_,                               // 3: post-process (post_process_sets_[0])
         preprocess_layout_, preprocess_layout_,             // 4-5: static + dynamic preprocess
         merge_layout_,                                      // 6: merge
         render_layout_,                                     // 7: merged render
@@ -474,7 +444,7 @@ void GsRenderer::create_descriptor_resources() {
         tile_bin_layout_,                                   // 9: tile bin (count + scatter)
         tile_ranges_layout_,                                // 10: tile range detection
         tile_indirect_layout_,                              // 11: indirect dispatch prep
-        tile_render_layout_,                                // 12: tile render
+        tile_render_layout_,                                // 12: tile render (tile_render_sets_[0])
         onesweep_hist_layout_, onesweep_hist_layout_,       // 13-14: tile onesweep histogram A, B
         onesweep_scatter_layout_, onesweep_scatter_layout_, // 15-16: tile onesweep scatter A→B, B→A
         // Depth sort Onesweep sets (reusing onesweep layouts)
@@ -485,8 +455,12 @@ void GsRenderer::create_descriptor_resources() {
         onesweep_hist_layout_, onesweep_hist_layout_,       // 25-26: dynamic depth hist A, B
         onesweep_scatter_layout_, onesweep_scatter_layout_, // 27-28: dynamic depth scatter AB, BA
         tile_scan_layout_,                                  // 29: deterministic tile-bin scan
+        // Per-frame [1] copies for sets that bind per-frame images:
+        render_layout_,                                     // 30: render_sets_[1]
+        post_process_layout_,                               // 31: post_process_sets_[1]
+        tile_render_layout_,                                // 32: tile_render_sets_[1]
     };
-    constexpr uint32_t kSetCount = 30;
+    constexpr uint32_t kSetCount = 33;
     VkDescriptorSet sets[kSetCount];
     VkDescriptorSetAllocateInfo alloc_info{};
     alloc_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
@@ -498,8 +472,10 @@ void GsRenderer::create_descriptor_resources() {
     // Legacy sets
     preprocess_set_ = sets[0];
     sort_set_ = sets[1];
-    render_set_ = sets[2];
-    post_process_set_ = sets[3];
+    render_sets_[0] = sets[2];
+    render_sets_[1] = sets[30];
+    post_process_sets_[0] = sets[3];
+    post_process_sets_[1] = sets[31];
     // Static/dynamic preprocess
     static_preprocess_set_ = sets[4];
     dynamic_preprocess_set_ = sets[5];
@@ -510,7 +486,8 @@ void GsRenderer::create_descriptor_resources() {
     tile_bin_set_ = sets[9];
     tile_ranges_set_ = sets[10];
     tile_indirect_set_ = sets[11];
-    tile_render_set_ = sets[12];
+    tile_render_sets_[0] = sets[12];
+    tile_render_sets_[1] = sets[32];
     onesweep_hist_set_a_ = sets[13];
     onesweep_hist_set_b_ = sets[14];
     onesweep_scatter_set_ab_ = sets[15];
@@ -1804,46 +1781,50 @@ void GsRenderer::update_descriptors() {
     }
 
     // Render set: projected(0), sort_keys_A(1), uniforms(2), output_image(3), visible_count(4), depth_image(5)
-    {
+    // Per-frame: each render_sets_[i] binds output_views_[i] / depth_views_[i].
+    for (uint32_t f = 0; f < kMaxFramesInFlight; ++f) {
         VkDescriptorBufferInfo projected_info{projected_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo sort_info{sort_keys_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo uniform_info{uniform_buffer_.buffer(), 0, sizeof(GsUniforms)};
-        VkDescriptorImageInfo image_info{VK_NULL_HANDLE, output_view_, VK_IMAGE_LAYOUT_GENERAL};
+        VkDescriptorImageInfo image_info{VK_NULL_HANDLE, output_views_[f], VK_IMAGE_LAYOUT_GENERAL};
         VkDescriptorBufferInfo visible_count_info{visible_count_ssbo_.buffer(), 0, sizeof(uint32_t)};
-        VkDescriptorImageInfo depth_img_info{VK_NULL_HANDLE, depth_view_, VK_IMAGE_LAYOUT_GENERAL};
+        VkDescriptorImageInfo depth_img_info{VK_NULL_HANDLE, depth_views_[f], VK_IMAGE_LAYOUT_GENERAL};
 
+        VkDescriptorSet set = render_sets_[f];
         VkWriteDescriptorSet writes[] = {
-            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, render_set_, 0, 0, 1,
+            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, set, 0, 0, 1,
              VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &projected_info, nullptr},
-            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, render_set_, 1, 0, 1,
+            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, set, 1, 0, 1,
              VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &sort_info, nullptr},
-            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, render_set_, 2, 0, 1,
+            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, set, 2, 0, 1,
              VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, nullptr, &uniform_info, nullptr},
-            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, render_set_, 3, 0, 1,
+            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, set, 3, 0, 1,
              VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, &image_info, nullptr, nullptr},
-            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, render_set_, 4, 0, 1,
+            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, set, 4, 0, 1,
              VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &visible_count_info, nullptr},
-            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, render_set_, 5, 0, 1,
+            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, set, 5, 0, 1,
              VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, &depth_img_info, nullptr, nullptr},
         };
         vkUpdateDescriptorSets(device_, 6, writes, 0, nullptr);
     }
 
     // Post-process set: input_image(0), depth_image(1), processed_image(2), pp_ubo(3)
-    {
-        VkDescriptorImageInfo input_info{VK_NULL_HANDLE, output_view_, VK_IMAGE_LAYOUT_GENERAL};
-        VkDescriptorImageInfo depth_info{VK_NULL_HANDLE, depth_view_, VK_IMAGE_LAYOUT_GENERAL};
-        VkDescriptorImageInfo proc_info{VK_NULL_HANDLE, processed_view_, VK_IMAGE_LAYOUT_GENERAL};
+    // Per-frame: each post_process_sets_[i] binds frame i's output, depth, processed views.
+    for (uint32_t f = 0; f < kMaxFramesInFlight; ++f) {
+        VkDescriptorImageInfo input_info{VK_NULL_HANDLE, output_views_[f], VK_IMAGE_LAYOUT_GENERAL};
+        VkDescriptorImageInfo depth_info{VK_NULL_HANDLE, depth_views_[f], VK_IMAGE_LAYOUT_GENERAL};
+        VkDescriptorImageInfo proc_info{VK_NULL_HANDLE, processed_views_[f], VK_IMAGE_LAYOUT_GENERAL};
         VkDescriptorBufferInfo ubo_info{pp_ubo_buffer_.buffer(), 0, sizeof(GsPostProcessUbo)};
 
+        VkDescriptorSet set = post_process_sets_[f];
         VkWriteDescriptorSet writes[] = {
-            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, post_process_set_, 0, 0, 1,
+            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, set, 0, 0, 1,
              VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, &input_info, nullptr, nullptr},
-            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, post_process_set_, 1, 0, 1,
+            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, set, 1, 0, 1,
              VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, &depth_info, nullptr, nullptr},
-            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, post_process_set_, 2, 0, 1,
+            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, set, 2, 0, 1,
              VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, &proc_info, nullptr, nullptr},
-            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, post_process_set_, 3, 0, 1,
+            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, set, 3, 0, 1,
              VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, nullptr, &ubo_info, nullptr},
         };
         vkUpdateDescriptorSets(device_, 4, writes, 0, nullptr);
@@ -2080,27 +2061,31 @@ void GsRenderer::update_descriptors() {
         vkUpdateDescriptorSets(device_, 4, writes, 0, nullptr);
     }
 
-    // Render set (uses merged_sort and counts)
-    {
+    // Render set (uses merged_sort and counts) — per-frame.
+    // Re-binds render_sets_[i] to point at the merged_sort buffer and
+    // counts_ssbo, replacing the legacy bindings written above. Each
+    // frame's set still references its frame-i image views.
+    for (uint32_t f = 0; f < kMaxFramesInFlight; ++f) {
         VkDescriptorBufferInfo projected_info{projected_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo merged_info{merged_sort_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo uniform_info{uniform_buffer_.buffer(), 0, sizeof(GsUniforms)};
-        VkDescriptorImageInfo image_info{VK_NULL_HANDLE, output_view_, VK_IMAGE_LAYOUT_GENERAL};
+        VkDescriptorImageInfo image_info{VK_NULL_HANDLE, output_views_[f], VK_IMAGE_LAYOUT_GENERAL};
         VkDescriptorBufferInfo counts_info{counts_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
-        VkDescriptorImageInfo depth_img_info{VK_NULL_HANDLE, depth_view_, VK_IMAGE_LAYOUT_GENERAL};
+        VkDescriptorImageInfo depth_img_info{VK_NULL_HANDLE, depth_views_[f], VK_IMAGE_LAYOUT_GENERAL};
 
+        VkDescriptorSet set = render_sets_[f];
         VkWriteDescriptorSet writes[] = {
-            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, render_set_, 0, 0, 1,
+            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, set, 0, 0, 1,
              VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &projected_info, nullptr},
-            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, render_set_, 1, 0, 1,
+            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, set, 1, 0, 1,
              VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &merged_info, nullptr},
-            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, render_set_, 2, 0, 1,
+            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, set, 2, 0, 1,
              VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, nullptr, &uniform_info, nullptr},
-            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, render_set_, 3, 0, 1,
+            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, set, 3, 0, 1,
              VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, &image_info, nullptr, nullptr},
-            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, render_set_, 4, 0, 1,
+            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, set, 4, 0, 1,
              VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &counts_info, nullptr},
-            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, render_set_, 5, 0, 1,
+            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, set, 5, 0, 1,
              VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, &depth_img_info, nullptr, nullptr},
         };
         vkUpdateDescriptorSets(device_, 6, writes, 0, nullptr);
@@ -2260,26 +2245,28 @@ void GsRenderer::update_descriptors() {
         }
 
         // Tile render set: projected(0), tile_entries(1), uniforms(2), output_image(3), tile_ranges(4), depth_image(5)
-        {
+        // Per-frame: each tile_render_sets_[i] binds frame i's output and depth views.
+        for (uint32_t f = 0; f < kMaxFramesInFlight; ++f) {
             VkDescriptorBufferInfo projected_info{projected_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
             VkDescriptorBufferInfo tile_entries_info{tile_sort_a_.buffer(), 0, VK_WHOLE_SIZE};
             VkDescriptorBufferInfo uniform_info{uniform_buffer_.buffer(), 0, sizeof(GsUniforms)};
-            VkDescriptorImageInfo image_info{VK_NULL_HANDLE, output_view_, VK_IMAGE_LAYOUT_GENERAL};
+            VkDescriptorImageInfo image_info{VK_NULL_HANDLE, output_views_[f], VK_IMAGE_LAYOUT_GENERAL};
             VkDescriptorBufferInfo tile_ranges_info{tile_ranges_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
-            VkDescriptorImageInfo depth_img_info{VK_NULL_HANDLE, depth_view_, VK_IMAGE_LAYOUT_GENERAL};
+            VkDescriptorImageInfo depth_img_info{VK_NULL_HANDLE, depth_views_[f], VK_IMAGE_LAYOUT_GENERAL};
 
+            VkDescriptorSet set = tile_render_sets_[f];
             VkWriteDescriptorSet writes[] = {
-                {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, tile_render_set_, 0, 0, 1,
+                {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, set, 0, 0, 1,
                  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &projected_info, nullptr},
-                {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, tile_render_set_, 1, 0, 1,
+                {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, set, 1, 0, 1,
                  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &tile_entries_info, nullptr},
-                {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, tile_render_set_, 2, 0, 1,
+                {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, set, 2, 0, 1,
                  VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, nullptr, &uniform_info, nullptr},
-                {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, tile_render_set_, 3, 0, 1,
+                {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, set, 3, 0, 1,
                  VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, &image_info, nullptr, nullptr},
-                {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, tile_render_set_, 4, 0, 1,
+                {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, set, 4, 0, 1,
                  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &tile_ranges_info, nullptr},
-                {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, tile_render_set_, 5, 0, 1,
+                {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, set, 5, 0, 1,
                  VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, &depth_img_info, nullptr, nullptr},
             };
             vkUpdateDescriptorSets(device_, 6, writes, 0, nullptr);
@@ -2290,13 +2277,36 @@ void GsRenderer::update_descriptors() {
 void GsRenderer::resize_output(uint32_t width, uint32_t height) {
     if (width == output_width_ && height == output_height_) return;
 
-    if (output_sampler_) { vkDestroySampler(device_, output_sampler_, nullptr); output_sampler_ = VK_NULL_HANDLE; }
-    if (output_view_) { vkDestroyImageView(device_, output_view_, nullptr); output_view_ = VK_NULL_HANDLE; }
-    if (output_image_) { vmaDestroyImage(allocator_, output_image_, output_allocation_); output_image_ = VK_NULL_HANDLE; }
-    if (depth_view_) { vkDestroyImageView(device_, depth_view_, nullptr); depth_view_ = VK_NULL_HANDLE; }
-    if (depth_image_) { vmaDestroyImage(allocator_, depth_image_, depth_allocation_); depth_image_ = VK_NULL_HANDLE; }
-    if (processed_view_) { vkDestroyImageView(device_, processed_view_, nullptr); processed_view_ = VK_NULL_HANDLE; }
-    if (processed_image_) { vmaDestroyImage(allocator_, processed_image_, processed_allocation_); processed_image_ = VK_NULL_HANDLE; }
+    // Sampler is resolution-independent — keep it across resizes.
+    for (uint32_t i = 0; i < kMaxFramesInFlight; ++i) {
+        if (output_views_[i]) {
+            vkDestroyImageView(device_, output_views_[i], nullptr);
+            output_views_[i] = VK_NULL_HANDLE;
+        }
+        if (output_images_[i]) {
+            vmaDestroyImage(allocator_, output_images_[i], output_allocations_[i]);
+            output_images_[i] = VK_NULL_HANDLE;
+            output_allocations_[i] = VK_NULL_HANDLE;
+        }
+        if (depth_views_[i]) {
+            vkDestroyImageView(device_, depth_views_[i], nullptr);
+            depth_views_[i] = VK_NULL_HANDLE;
+        }
+        if (depth_images_[i]) {
+            vmaDestroyImage(allocator_, depth_images_[i], depth_allocations_[i]);
+            depth_images_[i] = VK_NULL_HANDLE;
+            depth_allocations_[i] = VK_NULL_HANDLE;
+        }
+        if (processed_views_[i]) {
+            vkDestroyImageView(device_, processed_views_[i], nullptr);
+            processed_views_[i] = VK_NULL_HANDLE;
+        }
+        if (processed_images_[i]) {
+            vmaDestroyImage(allocator_, processed_images_[i], processed_allocations_[i]);
+            processed_images_[i] = VK_NULL_HANDLE;
+            processed_allocations_[i] = VK_NULL_HANDLE;
+        }
+    }
 
     create_output_image(width, height);
 
@@ -2335,32 +2345,42 @@ void GsRenderer::init_output_layouts(VkCommandBuffer cmd) {
         return b;
     };
 
-    // 1. UNDEFINED → TRANSFER_DST_OPTIMAL.
-    VkImageMemoryBarrier to_dst = barrier_for(processed_image_,
-        VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-        0, VK_ACCESS_TRANSFER_WRITE_BIT);
-    vkCmdPipelineBarrier(cmd,
-        VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-        VK_PIPELINE_STAGE_TRANSFER_BIT,
-        0, 0, nullptr, 0, nullptr, 1, &to_dst);
-
-    // 2. Clear to opaque black.
     VkClearColorValue clear{};
     clear.float32[0] = clear.float32[1] = clear.float32[2] = 0.0f;
     clear.float32[3] = 1.0f;
     VkImageSubresourceRange range{VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
-    vkCmdClearColorImage(cmd, processed_image_,
-        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &clear, 1, &range);
 
-    // 3. TRANSFER_DST → SHADER_READ_ONLY_OPTIMAL.
-    VkImageMemoryBarrier to_shader = barrier_for(processed_image_,
-        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-        VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT);
+    std::array<VkImageMemoryBarrier, kMaxFramesInFlight> to_dst{};
+    std::array<VkImageMemoryBarrier, kMaxFramesInFlight> to_shader{};
+    for (uint32_t i = 0; i < kMaxFramesInFlight; ++i) {
+        to_dst[i] = barrier_for(processed_images_[i],
+            VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+            0, VK_ACCESS_TRANSFER_WRITE_BIT);
+        to_shader[i] = barrier_for(processed_images_[i],
+            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+            VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT);
+    }
+
+    // 1. UNDEFINED → TRANSFER_DST_OPTIMAL (all frames).
+    vkCmdPipelineBarrier(cmd,
+        VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+        VK_PIPELINE_STAGE_TRANSFER_BIT,
+        0, 0, nullptr, 0, nullptr,
+        kMaxFramesInFlight, to_dst.data());
+
+    // 2. Clear each per-frame processed image to opaque black.
+    for (uint32_t i = 0; i < kMaxFramesInFlight; ++i) {
+        vkCmdClearColorImage(cmd, processed_images_[i],
+            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &clear, 1, &range);
+    }
+
+    // 3. TRANSFER_DST → SHADER_READ_ONLY_OPTIMAL (all frames).
     vkCmdPipelineBarrier(cmd,
         VK_PIPELINE_STAGE_TRANSFER_BIT,
         VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-        0, 0, nullptr, 0, nullptr, 1, &to_shader);
+        0, 0, nullptr, 0, nullptr,
+        kMaxFramesInFlight, to_shader.data());
 }
 
 void GsRenderer::dispatch_depth_onesweep(
@@ -2655,8 +2675,20 @@ void GsRenderer::dispatch_tile_sort(VkCommandBuffer cmd) {
     insert_compute_barrier(cmd);
 }
 
-void GsRenderer::render(VkCommandBuffer cmd, const glm::mat4& view, const glm::mat4& proj) {
+void GsRenderer::render(VkCommandBuffer cmd, uint32_t frame_in_flight,
+                        const glm::mat4& view, const glm::mat4& proj) {
     if (gaussian_count_ == 0 && static_count_ == 0 && dynamic_count_ == 0) return;
+    if (frame_in_flight >= kMaxFramesInFlight) {
+        std::fprintf(stderr, "[gs_renderer] render(): frame_in_flight=%u out of range\n",
+                     frame_in_flight);
+        return;
+    }
+    const VkImage out_img       = output_images_[frame_in_flight];
+    const VkImage depth_img     = depth_images_[frame_in_flight];
+    const VkImage processed_img = processed_images_[frame_in_flight];
+    VkDescriptorSet render_set       = render_sets_[frame_in_flight];
+    VkDescriptorSet post_process_set = post_process_sets_[frame_in_flight];
+    VkDescriptorSet tile_render_set  = tile_render_sets_[frame_in_flight];
 
     uint32_t width = output_width_;
     uint32_t height = output_height_;
@@ -2747,7 +2779,7 @@ void GsRenderer::render(VkCommandBuffer cmd, const glm::mat4& view, const glm::m
     bool skip_gs_compute = skip_sort_ && sort_done_once_;
 
     if (!skip_gs_compute) {
-        // Transition output + depth images to GENERAL layout for compute write
+        // Transition this frame's output + depth images to GENERAL layout for compute write.
         VkImageMemoryBarrier barriers[2]{};
         barriers[0].sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
         barriers[0].srcAccessMask = 0;
@@ -2756,11 +2788,11 @@ void GsRenderer::render(VkCommandBuffer cmd, const glm::mat4& view, const glm::m
         barriers[0].newLayout = VK_IMAGE_LAYOUT_GENERAL;
         barriers[0].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         barriers[0].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        barriers[0].image = output_image_;
+        barriers[0].image = out_img;
         barriers[0].subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
 
         barriers[1] = barriers[0];
-        barriers[1].image = depth_image_;
+        barriers[1].image = depth_img;
 
         vkCmdPipelineBarrier(cmd,
             VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
@@ -2769,11 +2801,11 @@ void GsRenderer::render(VkCommandBuffer cmd, const glm::mat4& view, const glm::m
     }
 
     if (!skip_gs_compute) {
-        // Clear output + depth images to transparent black (prevents ghost artifacts)
+        // Clear this frame's output + depth images to transparent black (prevents ghost artifacts)
         VkClearColorValue clear_color = {{0.0f, 0.0f, 0.0f, 0.0f}};
         VkImageSubresourceRange range = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
-        vkCmdClearColorImage(cmd, output_image_, VK_IMAGE_LAYOUT_GENERAL, &clear_color, 1, &range);
-        vkCmdClearColorImage(cmd, depth_image_, VK_IMAGE_LAYOUT_GENERAL, &clear_color, 1, &range);
+        vkCmdClearColorImage(cmd, out_img,   VK_IMAGE_LAYOUT_GENERAL, &clear_color, 1, &range);
+        vkCmdClearColorImage(cmd, depth_img, VK_IMAGE_LAYOUT_GENERAL, &clear_color, 1, &range);
 
         // === PBD solver dispatch (before any preprocess) ===
         // PBD-tagged Gaussians live in the static buffer but need re-preprocessing
@@ -2927,11 +2959,11 @@ void GsRenderer::render(VkCommandBuffer cmd, const glm::mat4& view, const glm::m
                 if (use_tile) {
                     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, tile_render_pipeline_);
                     vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
-                                            tile_render_pipeline_layout_, 0, 1, &tile_render_set_, 0, nullptr);
+                                            tile_render_pipeline_layout_, 0, 1, &tile_render_set, 0, nullptr);
                 } else {
                     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, render_pipeline_);
                     vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
-                                            render_pipeline_layout_, 0, 1, &render_set_, 0, nullptr);
+                                            render_pipeline_layout_, 0, 1, &render_set, 0, nullptr);
                 }
                 uint32_t tiles_x = (width + 15) / 16;
                 uint32_t tiles_y = (height + 15) / 16;
@@ -2995,10 +3027,10 @@ void GsRenderer::render(VkCommandBuffer cmd, const glm::mat4& view, const glm::m
                                    timestamp_pool_, 3);  // tile_sort_end
             }
 
-            // Tile-based rasterization
+            // Tile-based rasterization (legacy path)
             vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, render_pipeline_);
             vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
-                                    render_pipeline_layout_, 0, 1, &render_set_, 0, nullptr);
+                                    render_pipeline_layout_, 0, 1, &render_set, 0, nullptr);
             uint32_t tiles_x = (width + 15) / 16;
             uint32_t tiles_y = (height + 15) / 16;
 
@@ -3057,7 +3089,7 @@ void GsRenderer::render(VkCommandBuffer cmd, const glm::mat4& view, const glm::m
         pp_ubo._pad0 = pp_ubo._pad1 = pp_ubo._pad2 = 0;
         std::memcpy(pp_ubo_buffer_.mapped(), &pp_ubo, sizeof(pp_ubo));
 
-        // Transition processed image to GENERAL for compute write
+        // Transition this frame's processed image to GENERAL for compute write
         {
             VkImageMemoryBarrier barrier{};
             barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
@@ -3067,7 +3099,7 @@ void GsRenderer::render(VkCommandBuffer cmd, const glm::mat4& view, const glm::m
             barrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
             barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
             barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-            barrier.image = processed_image_;
+            barrier.image = processed_img;
             barrier.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
 
             vkCmdPipelineBarrier(cmd,
@@ -3079,13 +3111,13 @@ void GsRenderer::render(VkCommandBuffer cmd, const glm::mat4& view, const glm::m
         // Dispatch post-process (same tile grid as render)
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, post_process_pipeline_);
         vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
-                                post_process_pipeline_layout_, 0, 1, &post_process_set_, 0, nullptr);
+                                post_process_pipeline_layout_, 0, 1, &post_process_set, 0, nullptr);
         uint32_t tiles_x = (width + 15) / 16;
         uint32_t tiles_y = (height + 15) / 16;
         vkCmdDispatch(cmd, tiles_x, tiles_y, 1);
     }
 
-    // Transition processed image → SHADER_READ_ONLY for fragment sampling (blit)
+    // Transition this frame's processed image → SHADER_READ_ONLY for fragment sampling (blit)
     {
         VkImageMemoryBarrier barrier{};
         barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
@@ -3095,7 +3127,7 @@ void GsRenderer::render(VkCommandBuffer cmd, const glm::mat4& view, const glm::m
         barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
         barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        barrier.image = processed_image_;
+        barrier.image = processed_img;
         barrier.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
 
         vkCmdPipelineBarrier(cmd,
@@ -3235,12 +3267,35 @@ void GsRenderer::shutdown(VmaAllocator allocator) {
     pp_ubo_buffer_.destroy(allocator);
 
     if (output_sampler_) { vkDestroySampler(device_, output_sampler_, nullptr); output_sampler_ = VK_NULL_HANDLE; }
-    if (output_view_) { vkDestroyImageView(device_, output_view_, nullptr); output_view_ = VK_NULL_HANDLE; }
-    if (output_image_) { vmaDestroyImage(allocator, output_image_, output_allocation_); output_image_ = VK_NULL_HANDLE; }
-    if (depth_view_) { vkDestroyImageView(device_, depth_view_, nullptr); depth_view_ = VK_NULL_HANDLE; }
-    if (depth_image_) { vmaDestroyImage(allocator, depth_image_, depth_allocation_); depth_image_ = VK_NULL_HANDLE; }
-    if (processed_view_) { vkDestroyImageView(device_, processed_view_, nullptr); processed_view_ = VK_NULL_HANDLE; }
-    if (processed_image_) { vmaDestroyImage(allocator, processed_image_, processed_allocation_); processed_image_ = VK_NULL_HANDLE; }
+    for (uint32_t i = 0; i < kMaxFramesInFlight; ++i) {
+        if (output_views_[i]) {
+            vkDestroyImageView(device_, output_views_[i], nullptr);
+            output_views_[i] = VK_NULL_HANDLE;
+        }
+        if (output_images_[i]) {
+            vmaDestroyImage(allocator, output_images_[i], output_allocations_[i]);
+            output_images_[i] = VK_NULL_HANDLE;
+            output_allocations_[i] = VK_NULL_HANDLE;
+        }
+        if (depth_views_[i]) {
+            vkDestroyImageView(device_, depth_views_[i], nullptr);
+            depth_views_[i] = VK_NULL_HANDLE;
+        }
+        if (depth_images_[i]) {
+            vmaDestroyImage(allocator, depth_images_[i], depth_allocations_[i]);
+            depth_images_[i] = VK_NULL_HANDLE;
+            depth_allocations_[i] = VK_NULL_HANDLE;
+        }
+        if (processed_views_[i]) {
+            vkDestroyImageView(device_, processed_views_[i], nullptr);
+            processed_views_[i] = VK_NULL_HANDLE;
+        }
+        if (processed_images_[i]) {
+            vmaDestroyImage(allocator, processed_images_[i], processed_allocations_[i]);
+            processed_images_[i] = VK_NULL_HANDLE;
+            processed_allocations_[i] = VK_NULL_HANDLE;
+        }
+    }
 
     auto destroy_pipeline = [&](VkPipeline& p) { if (p) { vkDestroyPipeline(device_, p, nullptr); p = VK_NULL_HANDLE; } };
     auto destroy_layout = [&](VkPipelineLayout& l) { if (l) { vkDestroyPipelineLayout(device_, l, nullptr); l = VK_NULL_HANDLE; } };

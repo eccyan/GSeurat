@@ -13,6 +13,7 @@
 #include <vulkan/vulkan.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
+#include <array>
 #include <atomic>
 #include <cstdint>
 #include <deque>
@@ -141,20 +142,43 @@ public:
 
     void resize_output(uint32_t width, uint32_t height);
 
-    // Records a one-time barrier+clear that transitions the GS output,
-    // processed, and depth images out of `VK_IMAGE_LAYOUT_UNDEFINED` (their
-    // post-creation state) into `VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL`
-    // with their contents cleared to black. The renderer's main pass samples
-    // `processed_view_` every frame; without this seed transition, the very
-    // first frame after `resize_output` while the engine state is `Loading`
-    // (i.e. the GS compute path is gated off) would hit a layout-mismatch
-    // validation error. Caller is responsible for submitting + waiting on
-    // the recorded command buffer.
+    // Records a one-time barrier+clear that transitions every per-frame
+    // GS output, processed, and depth image out of `VK_IMAGE_LAYOUT_UNDEFINED`
+    // (post-creation state) into `VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL`
+    // with contents cleared to black. The renderer's main pass samples
+    // `processed_views_[frame]` every frame; without this seed transition,
+    // the very first frame after `resize_output` while the engine state is
+    // `Loading` (i.e. the GS compute path is gated off) would hit a
+    // layout-mismatch validation error. Caller is responsible for submitting
+    // and waiting on the recorded command buffer.
     void init_output_layouts(VkCommandBuffer cmd);
 
-    void render(VkCommandBuffer cmd, const glm::mat4& view, const glm::mat4& proj);
-    VkImageView output_view() const { return processed_view_ ? processed_view_ : output_view_; }
-    VkImageView raw_output_view() const { return output_view_; }
+    // `frame_in_flight` selects which of the kMaxFramesInFlight per-frame
+    // image and descriptor sets to write into / bind. The caller is the
+    // top-level Renderer which already tracks `current_frame_`.
+    void render(VkCommandBuffer cmd, uint32_t frame_in_flight,
+                const glm::mat4& view, const glm::mat4& proj);
+    // Per-frame view consumed by the composite/blit. Caller passes the
+    // same frame index it used to record `render()` so the sampled image
+    // is the one this frame just wrote to.
+    VkImageView output_view(uint32_t frame_in_flight) const {
+        return processed_views_[frame_in_flight] != VK_NULL_HANDLE
+            ? processed_views_[frame_in_flight]
+            : output_views_[frame_in_flight];
+    }
+    VkImageView raw_output_view(uint32_t frame_in_flight) const {
+        return output_views_[frame_in_flight];
+    }
+    // Backwards-compatible accessors returning all per-frame views; the
+    // descriptor allocator binds set i to view i.
+    const std::array<VkImageView, kMaxFramesInFlight>& output_views() const {
+        // Prefer processed if available; callers needing the raw-HDR
+        // version use `raw_output_views()`.
+        return processed_views_[0] != VK_NULL_HANDLE ? processed_views_ : output_views_;
+    }
+    const std::array<VkImageView, kMaxFramesInFlight>& raw_output_views() const {
+        return output_views_;
+    }
     VkSampler output_sampler() const { return output_sampler_; }
     static constexpr uint32_t kParticleHeadroom = 2048;
     static constexpr uint32_t kDynamicHeadroom = 8192;  // particles + character + animated regions
@@ -337,23 +361,24 @@ private:
     VmaAllocator allocator_ = VK_NULL_HANDLE;
     VkPipelineCache pipeline_cache_ = VK_NULL_HANDLE;
 
-    // Output storage image (raw HDR from tile rasterizer)
-    VkImage output_image_ = VK_NULL_HANDLE;
-    VmaAllocation output_allocation_ = VK_NULL_HANDLE;
-    VkImageView output_view_ = VK_NULL_HANDLE;
+    // Per-frame intermediate images. Frame N writes into images_[N % kMaxFramesInFlight];
+    // Frame N+1 begins recording before frame N's GPU work has finished, so a single
+    // shared VkImage would be raced (compute write of frame N+1 vs composite read of
+    // frame N). Indexed by `frame_in_flight` passed into render().
+    std::array<VkImage,        kMaxFramesInFlight> output_images_{};
+    std::array<VmaAllocation,  kMaxFramesInFlight> output_allocations_{};
+    std::array<VkImageView,    kMaxFramesInFlight> output_views_{};
     VkSampler output_sampler_ = VK_NULL_HANDLE;
     uint32_t output_width_ = 0;
     uint32_t output_height_ = 0;
 
-    // Depth storage image (R16F, per-pixel view-space depth from tile rasterizer)
-    VkImage depth_image_ = VK_NULL_HANDLE;
-    VmaAllocation depth_allocation_ = VK_NULL_HANDLE;
-    VkImageView depth_view_ = VK_NULL_HANDLE;
+    std::array<VkImage,        kMaxFramesInFlight> depth_images_{};
+    std::array<VmaAllocation,  kMaxFramesInFlight> depth_allocations_{};
+    std::array<VkImageView,    kMaxFramesInFlight> depth_views_{};
 
-    // Post-processed output image (RGBA16F, final result after effects)
-    VkImage processed_image_ = VK_NULL_HANDLE;
-    VmaAllocation processed_allocation_ = VK_NULL_HANDLE;
-    VkImageView processed_view_ = VK_NULL_HANDLE;
+    std::array<VkImage,        kMaxFramesInFlight> processed_images_{};
+    std::array<VmaAllocation,  kMaxFramesInFlight> processed_allocations_{};
+    std::array<VkImageView,    kMaxFramesInFlight> processed_views_{};
 
     // GPU buffers
     Buffer gaussian_ssbo_;           // Input Gaussians
@@ -448,7 +473,9 @@ private:
     VkDescriptorSetLayout preprocess_layout_ = VK_NULL_HANDLE;
     VkDescriptorSetLayout render_layout_ = VK_NULL_HANDLE;
     VkDescriptorSet preprocess_set_ = VK_NULL_HANDLE;
-    VkDescriptorSet render_set_ = VK_NULL_HANDLE;
+    // render_set_ binds output_image + depth_image — both per-frame —
+    // so the set must also be per-frame to point at the right pair.
+    std::array<VkDescriptorSet, kMaxFramesInFlight> render_sets_{};
 
     // Merge pipeline
     VkDescriptorSetLayout merge_layout_ = VK_NULL_HANDLE;
@@ -477,7 +504,9 @@ private:
     VkDescriptorSetLayout post_process_layout_ = VK_NULL_HANDLE;
     VkPipelineLayout post_process_pipeline_layout_ = VK_NULL_HANDLE;
     VkPipeline post_process_pipeline_ = VK_NULL_HANDLE;
-    VkDescriptorSet post_process_set_ = VK_NULL_HANDLE;
+    // post_process binds input output_image + depth_image AND output processed_image
+    // — three per-frame images, so the set is per-frame.
+    std::array<VkDescriptorSet, kMaxFramesInFlight> post_process_sets_{};
     Buffer pp_ubo_buffer_;
     GsPostProcessParams gs_pp_params_;
 
@@ -528,7 +557,8 @@ private:
     VkDescriptorSetLayout tile_render_layout_ = VK_NULL_HANDLE;
     VkPipelineLayout tile_render_pipeline_layout_ = VK_NULL_HANDLE;
     VkPipeline tile_render_pipeline_ = VK_NULL_HANDLE;
-    VkDescriptorSet tile_render_set_ = VK_NULL_HANDLE;
+    // tile_render binds output_image + depth_image — per-frame.
+    std::array<VkDescriptorSet, kMaxFramesInFlight> tile_render_sets_{};
 
     // Onesweep 2-dispatch sort (histogram+lookback → scatter)
     VkDescriptorSetLayout onesweep_hist_layout_ = VK_NULL_HANDLE;

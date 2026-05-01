@@ -304,9 +304,9 @@ void Renderer::init_gs(const GaussianCloud& cloud, uint32_t width, uint32_t heig
     for (uint32_t i = 0; i < kMaxFramesInFlight; i++) {
         ubo_buffers[i] = uniform_buffers_[i].buffer();
     }
-    gs_descriptor_sets_ = descriptors_.allocate_sprite_sets(
+    gs_descriptor_sets_ = descriptors_.allocate_sprite_sets_per_frame(
         context_.device(), ubo_buffers, sizeof(UniformBufferObject),
-        gs_renderer_.output_view(), gs_renderer_.output_sampler(),
+        gs_renderer_.output_views(), gs_renderer_.output_sampler(),
         flat_normal_texture_->image_view(), flat_normal_texture_->sampler());
 
     // Also create UI-space descriptor sets (orthographic projection for fullscreen blit)
@@ -315,9 +315,9 @@ void Renderer::init_gs(const GaussianCloud& cloud, uint32_t width, uint32_t heig
         for (uint32_t i = 0; i < kMaxFramesInFlight; i++) {
             ui_ubo_buffers[i] = ui_uniform_buffers_[i].buffer();
         }
-        gs_ui_descriptor_sets_ = descriptors_.allocate_sprite_sets(
+        gs_ui_descriptor_sets_ = descriptors_.allocate_sprite_sets_per_frame(
             context_.device(), ui_ubo_buffers, sizeof(UniformBufferObject),
-            gs_renderer_.output_view(), gs_renderer_.output_sampler(),
+            gs_renderer_.output_views(), gs_renderer_.output_sampler(),
             flat_normal_texture_->image_view(), flat_normal_texture_->sampler());
     }
 }
@@ -1312,7 +1312,7 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
         }
 
         gs_renderer_.set_tile_binning(flags.gs_tile_binning);
-        gs_renderer_.render(cmd, gs_view_, gs_proj_);
+        gs_renderer_.render(cmd, current_frame_, gs_view_, gs_proj_);
     }
 }
 
