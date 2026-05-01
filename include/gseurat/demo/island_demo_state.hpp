@@ -94,6 +94,12 @@ private:
     // World streaming
     std::unique_ptr<WorldStreamer> world_streamer_;
 
+    // Explicit hard-stop for the streamer. TRUE while transitioning OUT
+    // of the overworld and inside any non-overworld scene; FALSE only
+    // after the overworld is fully restored. Replaces the brittle
+    // current_scene_path string-equality gate.
+    bool disable_world_streaming_ = false;
+
     // Async chunk-load worker. PLY parsing is the main cost in
     // load_cloud_async's caller path; running it on the main thread
     // shows up as multi-frame stalls / OS beachballs while walking

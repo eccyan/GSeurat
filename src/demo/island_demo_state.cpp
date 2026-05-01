@@ -998,8 +998,7 @@ void IslandDemoState::update(AppBase& app, float dt) {
     // against overworld chunk AABBs and trigger load_cloud_async for any
     // chunk that happens to fall within load_radius_, leaking forest
     // content into the dungeon's GS buffer.
-    const bool in_overworld = (app.scene_objects().current_scene_path == scene_path_);
-    if (world_streamer_ && in_overworld) {
+    if (world_streamer_ && !disable_world_streaming_) {
         ScopedStallTimer _t_streamer{"world_streamer.update+pending_loads"};
         auto events = world_streamer_->update(character_origin_);
 
@@ -2077,6 +2076,9 @@ void IslandDemoState::perform_portal_transition(AppBase& app,
     ScopedStallTimer _t_total{"perform_portal_transition (TOTAL)"};
     std::fprintf(stderr, "[IslandDemo] perform_portal_transition -> '%s' at (%.1f,%.1f,%.1f)\n",
         target_scene.c_str(), target_position.x, target_position.y, target_position.z);
+
+    // Hard-stop the world streamer for the entire transition.
+    disable_world_streaming_ = true;
 
     // Muffle/restore music based on destination
     if (auto* ae = app.audio()) {
