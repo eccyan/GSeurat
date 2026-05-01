@@ -217,3 +217,7 @@ The other root cause from this investigation — coarse 16-bit depth quantizatio
 - PR #380: <https://github.com/eccyan/GSeurat/pull/380>
 - PR #381: <https://github.com/eccyan/GSeurat/pull/381>
 - Merge commits on `main`: `a80cd8ce` (#380), `1b0d3287` (#381)
+
+### See also
+
+A separate GS-rendering pathology — **post-portal ghost geometry** (overworld content rendering inside the dungeon at original world coordinates) — was investigated and resolved on 2026-05-01. Different mechanism (stale `projected_ssbo_` tail across scene clear, not per-frame sort non-determinism), tracked in `2026-05-01-post-portal-flashback-investigation.md`. PR #385 + #386.

@@ -1078,6 +1078,122 @@ void GsRenderer::clear_chunks(VkCommandBuffer drain_cmd) {
         std::memset(dynamic_gaussian_ssbo_.mapped(), 0,
                     static_cast<size_t>(max_dynamic_count_) * sizeof(GpuGaussian));
     }
+
+    // Reset the static depth-sort tail. The previous scene's last frame
+    // left valid keys at indices [0, old_static_count_) in static_sort_a_/b_;
+    // those entries survive `static_count_ = 0` because the depth-sort
+    // shader only writes keys for [0, current_static_count_) each frame.
+    // Without this reset, the next frame whose rebuild path skips
+    // `update_static_gaussians` (e.g. the rebuild block runs but
+    // `gs_static_buffer_.empty()`, or the count==0 early return fires)
+    // will sort the stale keys to the front and the rasterizer will
+    // dereference their indices into `static_gaussian_ssbo_` — which
+    // still holds the previous scene's data at those offsets — producing
+    // ghost geometry at the previous scene's world coordinates (the
+    // "green splats from the overworld visible when zoomed out in the
+    // dungeon" symptom). Same fix shape as 139f055b's chunk-Unload
+    // rebuild flag, applied to the portal/scene-clear path.
+    auto fill_sort_sentinel = [](Buffer& buf, uint32_t sort_size) {
+        if (!buf.mapped() || sort_size == 0) return;
+        auto* sort = static_cast<SortEntry*>(buf.mapped());
+        for (uint32_t i = 0; i < sort_size; ++i) {
+            sort[i].key   = 0xFFFFFFFFu;
+            sort[i].index = 0;
+        }
+    };
+    fill_sort_sentinel(static_sort_a_, static_sort_size_);
+    fill_sort_sentinel(static_sort_b_, static_sort_size_);
+    // Defense in depth: force the next camera-dirty frame's `need_rebuild`
+    // gate to fire even if no other dirty signal is pending, so
+    // `update_static_gaussians` re-runs `init_sort_buf` against the
+    // freshly-loaded scene's count.
+    static_sort_needs_reinit_ = true;
+
+    // Invalidate the slab-indirection metadata. `publish_pending_chunks`'s
+    // Unload path writes 0xFFFFFFFF sentinels to `page_table_ssbo_` for
+    // each released slab + clears the chunk-table row, but `clear_chunks`
+    // releases slabs by calling `slab_allocator_->release(...)` directly
+    // and bypasses that path entirely. The stale entries survive: when
+    // the new scene loads a smaller chunk set than the previous (e.g.
+    // dungeon takes 1 slab where overworld used 25), only the reused
+    // slabs' page-table entries get overwritten — the rest still point
+    // at offsets in `static_gaussian_ssbo_` containing previous-scene
+    // geometry data (the streaming path never zeroes the unused tail).
+    // Anything in the rendering pipeline that walks the page/chunk
+    // tables fetches that stale data.
+    //
+    // Both buffers were created HOST_VISIBLE+TRANSFER_DST and are
+    // host-mapped (see init at line 851/858, which uses the same memset
+    // pattern). vkDeviceWaitIdle above guarantees the GPU is idle, so
+    // direct host writes are safe.
+    if (page_table_ssbo_.mapped()) {
+        std::memset(page_table_ssbo_.mapped(), 0xFF,
+                    static_cast<size_t>(streaming_config_.total_slabs()) * sizeof(uint32_t));
+    }
+    if (chunk_table_ssbo_.mapped()) {
+        std::memset(chunk_table_ssbo_.mapped(), 0, 256 * 16);
+    }
+
+    // Reset the visibility counts so the first post-portal frame doesn't
+    // start by reading {static_visible, dynamic_visible, merged_visible}
+    // values left over from the previous scene's last frame.
+    if (counts_ssbo_.mapped()) {
+        auto* counts = static_cast<uint32_t*>(counts_ssbo_.mapped());
+        counts[0] = 0;
+        counts[1] = 0;
+        counts[2] = 0;
+    }
+
+    // Zero the static splat data itself. The previous scene's last
+    // `update_static_gaussians` wrote the consolidated view to
+    // `static_gaussian_ssbo_[0, old_count)`. Streaming-path uploads also
+    // wrote individual chunks at slab offsets, leaving previous-scene
+    // geometry data scattered across the buffer up to `max_static_count_`.
+    // After the new scene loads, `update_static_gaussians` overwrites
+    // `[0, new_count)` and the new chunk's streaming write overwrites its
+    // slab — but every offset in `[new_count, max)` and every unused slab
+    // still holds previous-scene geometry data. If anything in the
+    // rendering pipeline reads those offsets (a path more subtle than
+    // either the consolidated sort buffer or the slab-indirection
+    // metadata, both of which we already invalidated above), the result
+    // is ghost geometry at the previous scene's world coordinates.
+    //
+    // Buffer is HOST_VISIBLE+MAPPED (Buffer::create_storage). vkDeviceWaitIdle
+    // above guarantees GPU is idle, so direct host writes are safe.
+    // ~max_static_count_ × 64 bytes — at 11M splats that's ~700 MB of
+    // memory bandwidth, ~3-5 ms on Apple Silicon's unified memory.
+    // Acceptable for the one-time portal cost, eliminates the entire
+    // class of stale-static-data ghost rendering.
+    if (static_gaussian_ssbo_.mapped() && max_static_count_ > 0) {
+        std::memset(static_gaussian_ssbo_.mapped(), 0,
+                    static_cast<size_t>(max_static_count_) * sizeof(GpuGaussian));
+    }
+
+    // Zero `projected_ssbo_`. This is the actual fix for the post-portal
+    // ghost geometry. Diagnostics on the rebuild path confirmed
+    // `gs_static_buffer_`'s post-portal AABB is tight on the dungeon
+    // footprint and `pbd_tagged == 0`, yet the user still saw ghost
+    // overworld trees rendered at world coords like (351, _, 310) — the
+    // signature of PBD-transformed positions from the previous scene.
+    //
+    // Preprocess writes `projected_ssbo_[projected_offset, +static_count_)`
+    // each frame the static path is dirty, but the tail beyond that range
+    // keeps the previous scene's last-frame projections — including the
+    // overworld trees' PBD-transformed positions at far world coords. The
+    // merge / tile-bin / rasterize chain only loosely bounds its reads by
+    // `counts[0]`, so anything further along that picked up an index in
+    // the stale region read the previous scene's geometry.
+    //
+    // Buffer is HOST_VISIBLE+MAPPED, sized for max_static_count_ +
+    // max_dynamic_count_ × sizeof(ProjectedSplat) (48 bytes/entry).
+    // vkDeviceWaitIdle above guarantees GPU is idle.
+    if (projected_ssbo_.mapped()) {
+        const size_t total = static_cast<size_t>(max_static_count_ + max_dynamic_count_);
+        if (total > 0) {
+            std::memset(projected_ssbo_.mapped(), 0,
+                        total * sizeof(ProjectedSplat));
+        }
+    }
 }
 
 std::vector<GsRenderer::ChunkInventoryEntry> GsRenderer::chunk_inventory() const {
