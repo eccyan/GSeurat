@@ -292,6 +292,16 @@ void TransferQueue::poll_completions(VkCommandBuffer frame_cmd) {
     // transfer_family_ == graphics_family_).
     std::vector<VkBufferMemoryBarrier> release_barriers;
 
+    // Per-buffer memory-visibility barriers for the single-family path
+    // (transfer_queue_ == graphics_queue_). vkCmdCopyBuffer alone leaves
+    // the writes in the transfer cache; without this, a later submission
+    // on the same queue can read torn/stale splat data even though
+    // submission order guarantees the copies execute first. The metadata
+    // SSBOs get an analogous barrier in publish_pending_chunks; the
+    // splat destination buffer was previously missed, producing the
+    // 1-frame "ghost flashback" on Apple Silicon (single queue family).
+    std::vector<VkBufferMemoryBarrier> visibility_barriers;
+
     // Per-frame upload budget: stop recording new copies once we've hit the
     // configured byte cap, and push the remaining chunks back onto
     // `pending_chunks_` for the next poll. `transfer_budget_bytes_ == 0`
@@ -350,6 +360,22 @@ void TransferQueue::poll_completions(VkCommandBuffer frame_cmd) {
             release_barriers.push_back(rb);
 
             batch.acquire_ranges.push_back({ch.dest_buffer, ch.dest_offset, ch.size});
+        } else {
+            // Same-queue path: pipeline barriers establish memory
+            // dependencies across submissions on the same VkQueue, so
+            // emitting the visibility barrier here at the tail of
+            // transfer_cmd_ is sufficient to make the writes visible to
+            // the next frame_cmd's compute reads — no semaphore needed.
+            VkBufferMemoryBarrier vb{};
+            vb.sType               = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+            vb.srcAccessMask       = VK_ACCESS_TRANSFER_WRITE_BIT;
+            vb.dstAccessMask       = VK_ACCESS_SHADER_READ_BIT;
+            vb.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            vb.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            vb.buffer              = ch.dest_buffer;
+            vb.offset              = ch.dest_offset;
+            vb.size                = ch.size;
+            visibility_barriers.push_back(vb);
         }
 
         std::lock_guard<std::mutex> lock(queue_mutex_);
@@ -372,6 +398,16 @@ void TransferQueue::poll_completions(VkCommandBuffer frame_cmd) {
             0,
             0, nullptr,
             static_cast<std::uint32_t>(release_barriers.size()), release_barriers.data(),
+            0, nullptr);
+    }
+
+    if (!visibility_barriers.empty()) {
+        vkCmdPipelineBarrier(transfer_cmd_,
+            VK_PIPELINE_STAGE_TRANSFER_BIT,
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+            0,
+            0, nullptr,
+            static_cast<std::uint32_t>(visibility_barriers.size()), visibility_barriers.data(),
             0, nullptr);
     }
 
