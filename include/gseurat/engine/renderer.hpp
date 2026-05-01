@@ -328,6 +328,12 @@ private:
     std::vector<SceneAnimation> gs_scene_animations_;
     std::vector<VfxInstance> vfx_instances_;
     std::vector<uint32_t> gs_prev_visible_;
+    // Tracks vfx_instances_.size() observed during the last static-rebuild
+    // frame. A change between frames means a VfxInstance was spawned or
+    // expired, which invalidates the appended VFX-object splats in
+    // gs_static_buffer_ and forces a rebuild. Cheap proxy for "did the VFX
+    // instance set actually change" without keeping a side-table of IDs.
+    size_t gs_prev_vfx_count_ = 0;
     bool gs_skip_chunk_cull_ = false;
 
     // ── Frame-determinism harness internal state ──

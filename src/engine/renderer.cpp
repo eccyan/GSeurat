@@ -1125,20 +1125,15 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
         }
 
         if (camera_dirty && flags.gs_chunk_culling && !gs_skip_chunk_cull_ && !gs_chunk_grid_.empty()) {
-            // Diagnostic: this branch runs every frame the camera moves
-            // (i.e. constantly during walking). The CPU work below — chunk
-            // visibility, gs_static_buffer_ rebuild, then the SSBO upload
-            // path at update_static_gaussians — is the prime suspect for
-            // walking-time main-thread stalls when streaming is gated off
-            // by the demo's pre-merge.
             ScopedStallTimer _t_static_rebuild{"gs_static_rebuild (visibility+gather+upload)"};
 
+            // Visibility cull always runs — it's cheap, and we need its
+            // result to decide whether the heavier rebuild is even needed.
             std::vector<uint32_t> visible;
             {
                 ScopedStallTimer _t_vis{"  > gs_chunk_grid.visible_chunks (frustum+dist cull)"};
                 glm::mat4 gs_vp = gs_proj_ * gs_view_;
                 glm::vec3 cam_pos = glm::vec3(glm::inverse(gs_view_)[3]);
-                // Use camera position for distance culling (camera sees ahead of player)
                 glm::vec3 dist_origin = cam_pos;
                 visible = gs_chunk_grid_.visible_chunks(gs_vp, dist_origin, gs_max_render_distance_);
             }
@@ -1147,99 +1142,130 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
                 gs_budget_locked_ = false;
                 gs_stable_frame_count_ = 0;
             }
+
+            // ── Skip-rebuild fast path ──
+            // Camera moving WITHIN an already-loaded set of chunks doesn't
+            // change which splats are in gs_static_buffer_ — the previously
+            // built buffer (and the GPU SSBO it was uploaded to) is still
+            // valid. Reasons we MUST rebuild:
+            //   (a) visibility set changed (chunk crossed load/cull radius)
+            //   (b) gaussian budget changed
+            //   (c) static_force_dirty_ was set externally (scene anim
+            //       triggered a re-tag, etc.)
+            //   (d) animations are active — gs_animator_.update() mutates
+            //       gs_static_buffer_ in place every frame, the upload has
+            //       to follow, and re-tagging needs the fresh indices
+            //   (e) LOD is enabled and the budget is set — gather_lod's
+            //       per-splat selection is camera-distance-dependent, so
+            //       every camera-dirty frame produces a different splat set
+            //   (f) the VFX instance set changed (a VfxTrigger spawned a
+            //       new instance or one expired) — the VFX-object splats
+            //       appended at the tail of gs_static_buffer_ are stale.
+            //       Tracked via a count-based proxy: cheap, and a same-
+            //       count-different-instances swap is rare enough that the
+            //       worst case is one stale frame before the next dirty.
+            const bool visibility_changed = (visible != gs_prev_visible_);
+            const bool animations_active =
+                gs_animator_.has_active_groups() || !gs_scene_animations_.empty();
+            const bool lod_active = flags.gs_lod && gs_gaussian_budget_ > 0;
+            const bool vfx_set_changed = (vfx_instances_.size() != gs_prev_vfx_count_);
+
+            const bool need_rebuild =
+                visibility_changed || budget_changed || gs_static_force_dirty_ ||
+                animations_active || lod_active || vfx_set_changed;
+
             gs_prev_visible_ = visible;
+            gs_prev_vfx_count_ = vfx_instances_.size();
 
-            // Re-gather scene Gaussians
-            {
-                ScopedStallTimer _t_gather{"  > gs_chunk_grid.gather[_lod] (per-splat copy)"};
-                if (flags.gs_lod && gs_gaussian_budget_ > 0) {
-                    glm::vec3 cam_pos = glm::vec3(glm::inverse(gs_view_)[3]);
-                    const glm::vec3* focus = gs_has_lod_focus_ ? &gs_lod_focus_pos_ : nullptr;
-                    gs_chunk_grid_.gather_lod(visible, cam_pos, gs_gaussian_budget_,
-                                              gs_static_buffer_, focus,
-                                              gs_preserve_bone_first_, gs_preserve_bone_count_);
-                } else {
-                    gs_chunk_grid_.gather(visible, gs_static_buffer_);
+            if (need_rebuild) {
+                // Re-gather scene Gaussians
+                {
+                    ScopedStallTimer _t_gather{"  > gs_chunk_grid.gather[_lod] (per-splat copy)"};
+                    if (lod_active) {
+                        glm::vec3 cam_pos = glm::vec3(glm::inverse(gs_view_)[3]);
+                        const glm::vec3* focus = gs_has_lod_focus_ ? &gs_lod_focus_pos_ : nullptr;
+                        gs_chunk_grid_.gather_lod(visible, cam_pos, gs_gaussian_budget_,
+                                                  gs_static_buffer_, focus,
+                                                  gs_preserve_bone_first_, gs_preserve_bone_count_);
+                    } else {
+                        gs_chunk_grid_.gather(visible, gs_static_buffer_);
+                    }
                 }
-            }
 
-            // Append VFX object Gaussians to static buffer
-            {
-                ScopedStallTimer _t_vfx_append{"  > vfx_instances.append_objects"};
+                // Append VFX object Gaussians to static buffer
+                {
+                    ScopedStallTimer _t_vfx_append{"  > vfx_instances.append_objects"};
+                    for (auto& inst : vfx_instances_) {
+                        inst.append_objects(gs_static_buffer_);
+                    }
+                }
+
+                // Scene buffer changed — animator indices are stale.
+                // Reset so VFX animations re-tag on the new buffer.
+                ScopedStallTimer _t_animator{"  > animator reset+tag (VFX + scene anims)"};
+                gs_animator_.reset();
+
+                // Reset VFX animation states so they re-tag on the fresh static buffer
                 for (auto& inst : vfx_instances_) {
-                    inst.append_objects(gs_static_buffer_);
+                    inst.reset_animations();
                 }
-            }
 
-            // Scene buffer changed — animator indices are stale.
-            // Reset so VFX animations re-tag on the new buffer.
-            ScopedStallTimer _t_animator{"  > animator reset+tag (VFX + scene anims)"};
-            gs_animator_.reset();
+                // Tag VFX animations on the static buffer (where object PLYs live)
+                for (auto& inst : vfx_instances_) {
+                    inst.tag_animations(gs_static_buffer_, gs_animator_);
+                }
 
-            // Reset VFX animation states so they re-tag on the fresh static buffer
-            for (auto& inst : vfx_instances_) {
-                inst.reset_animations();
-            }
-
-            // Tag VFX animations on the static buffer (where object PLYs live)
-            for (auto& inst : vfx_instances_) {
-                inst.tag_animations(gs_static_buffer_, gs_animator_);
-            }
-
-            // Phase-based state machine for scene animations
-            for (auto& sa : gs_scene_animations_) {
-                using Phase = SceneAnimation::Phase;
-                if (sa.phase == Phase::Effect) {
-                    if (sa.group_id == 0) {
-                        sa.group_id = gs_animator_.tag_region(
-                            gs_static_buffer_, sa.region,
-                            parse_effect_name(sa.effect), sa.lifetime, sa.params);
-                    } else if (!gs_animator_.has_group(sa.group_id)) {
-                        if (sa.reform) {
-                            sa.reform_group_id = gs_animator_.tag_region(
-                                gs_static_buffer_, sa.region,
-                                GsAnimEffect::Reform, sa.reform->lifetime);
-                            sa.phase = Phase::Reforming;
-                        } else if (sa.loop) {
+                // Phase-based state machine for scene animations
+                for (auto& sa : gs_scene_animations_) {
+                    using Phase = SceneAnimation::Phase;
+                    if (sa.phase == Phase::Effect) {
+                        if (sa.group_id == 0) {
                             sa.group_id = gs_animator_.tag_region(
                                 gs_static_buffer_, sa.region,
                                 parse_effect_name(sa.effect), sa.lifetime, sa.params);
-                        } else {
-                            sa.phase = Phase::Idle;
+                        } else if (!gs_animator_.has_group(sa.group_id)) {
+                            if (sa.reform) {
+                                sa.reform_group_id = gs_animator_.tag_region(
+                                    gs_static_buffer_, sa.region,
+                                    GsAnimEffect::Reform, sa.reform->lifetime);
+                                sa.phase = Phase::Reforming;
+                            } else if (sa.loop) {
+                                sa.group_id = gs_animator_.tag_region(
+                                    gs_static_buffer_, sa.region,
+                                    parse_effect_name(sa.effect), sa.lifetime, sa.params);
+                            } else {
+                                sa.phase = Phase::Idle;
+                            }
                         }
-                    }
-                } else if (sa.phase == Phase::Reforming) {
-                    if (!gs_animator_.has_group(sa.reform_group_id)) {
-                        if (sa.loop) {
-                            sa.group_id = gs_animator_.tag_region(
-                                gs_static_buffer_, sa.region,
-                                parse_effect_name(sa.effect), sa.lifetime, sa.params);
-                            sa.phase = Phase::Effect;
-                        } else {
-                            sa.phase = Phase::Idle;
+                    } else if (sa.phase == Phase::Reforming) {
+                        if (!gs_animator_.has_group(sa.reform_group_id)) {
+                            if (sa.loop) {
+                                sa.group_id = gs_animator_.tag_region(
+                                    gs_static_buffer_, sa.region,
+                                    parse_effect_name(sa.effect), sa.lifetime, sa.params);
+                                sa.phase = Phase::Effect;
+                            } else {
+                                sa.phase = Phase::Idle;
+                            }
                         }
                     }
                 }
-            }
 
-            // Animate tagged scene Gaussians in static buffer
-            if (flags.animation && gs_animator_.has_active_groups()) {
-                gs_animator_.update(dt, gs_static_buffer_);
-            }
-
-            // Upload static Gaussians
-            if (!gs_static_buffer_.empty()) {
-                auto count = static_cast<uint32_t>(gs_static_buffer_.size());
-                if (count > gs_renderer_.max_static_count()) {
-                    gs_static_buffer_.resize(gs_renderer_.max_static_count());
-                    count = gs_renderer_.max_static_count();
+                // Animate tagged scene Gaussians in static buffer
+                if (flags.animation && gs_animator_.has_active_groups()) {
+                    gs_animator_.update(dt, gs_static_buffer_);
                 }
-                // Diagnostic sub-timer for the host-mapped memcpy alone.
-                // For a 2.4M-splat pre-merged scene this is ~150 MiB of CPU
-                // writes contending with the GPU's read pipeline through
-                // unified memory; suspected primary cause of walking stalls.
-                ScopedStallTimer _t_upload{"gs_renderer.update_static_gaussians (memcpy)"};
-                gs_renderer_.update_static_gaussians(gs_static_buffer_.data(), count);
+
+                // Upload static Gaussians
+                if (!gs_static_buffer_.empty()) {
+                    auto count = static_cast<uint32_t>(gs_static_buffer_.size());
+                    if (count > gs_renderer_.max_static_count()) {
+                        gs_static_buffer_.resize(gs_renderer_.max_static_count());
+                        count = gs_renderer_.max_static_count();
+                    }
+                    ScopedStallTimer _t_upload{"  > gs_renderer.update_static_gaussians (memcpy)"};
+                    gs_renderer_.update_static_gaussians(gs_static_buffer_.data(), count);
+                }
             }
 
             gs_prev_view_ = gs_view_;
