@@ -989,15 +989,17 @@ void IslandDemoState::update(AppBase& app, float dt) {
     // Camera follow
     update_camera(app, dt);
 
-    // World streaming evaluation. Gated to the overworld: world_streamer_
-    // is initialised once (in on_enter) with seurat_island/world.json's
-    // manifest, but its update() is purely distance-based — leaving it
-    // ticking inside dungeon.json would distance-check the dungeon player
-    // against overworld chunk AABBs and trigger load_cloud_async for any
-    // chunk that happens to fall within load_radius_, leaking forest
-    // content into the dungeon's GS buffer.
-    const bool in_overworld = (app.scene_objects().current_scene_path == scene_path_);
-    if (world_streamer_ && in_overworld) {
+    // World streaming evaluation. Gated by the explicit `disable_world_streaming_`
+    // flag — set TRUE while transitioning to / inside any non-overworld scene
+    // (dungeon, instanced interiors), FALSE after the overworld is fully
+    // restored. While true the streamer doesn't tick at all: no distance
+    // checks, no pending_loads, no async parses. Replaces the previous
+    // current_scene_path == scene_path_ string check, which was vulnerable
+    // to ordering races (init_scene mutates current_scene_path before the
+    // chunk re-merge runs, so for a few frames after the dungeon's
+    // init_gs the streamer would see "still in overworld" and could
+    // re-trigger forest chunk parses against the dungeon player position).
+    if (world_streamer_ && !disable_world_streaming_) {
         ScopedStallTimer _t_streamer{"world_streamer.update+pending_loads"};
         auto events = world_streamer_->update(character_origin_);
 
@@ -2076,6 +2078,14 @@ void IslandDemoState::perform_portal_transition(AppBase& app,
     std::fprintf(stderr, "[IslandDemo] perform_portal_transition -> '%s' at (%.1f,%.1f,%.1f)\n",
         target_scene.c_str(), target_position.x, target_position.y, target_position.z);
 
+    // Hard-stop the world streamer for the entire transition. This must
+    // be set BEFORE any await/clear work so even if a previous frame's
+    // streamer.update() left a parse in flight, we won't kick off any
+    // new parses, and won't drain landed clouds into the wrong scene's
+    // GS buffer. Cleared at the END of the transition only when we've
+    // returned to the overworld AND the merged init_gs has run.
+    disable_world_streaming_ = true;
+
     // Muffle/restore music based on destination
     if (auto* ae = app.audio()) {
         const bool entering_dungeon = target_scene.find("dungeon") != std::string::npos;
@@ -2448,6 +2458,19 @@ void IslandDemoState::perform_portal_transition(AppBase& app,
 
     // Rebuild collision system cache for the new scene
     collision_system_.rebuild_cache(app.world());
+
+    // Re-enable world streaming only when the destination is the overworld
+    // AND we've gotten through the merged init_gs + chunk re-mark. For
+    // any non-overworld destination (dungeon, instanced interiors) the
+    // flag stays TRUE — the dungeon doesn't have streamed chunks, and
+    // leaving the streamer dormant means no rogue parses against the
+    // dungeon player position.
+    if (is_overworld) {
+        disable_world_streaming_ = false;
+        std::fprintf(stderr, "[IslandDemo] World streaming re-enabled (overworld)\n");
+    } else {
+        std::fprintf(stderr, "[IslandDemo] World streaming disabled (non-overworld scene)\n");
+    }
 
     std::fprintf(stderr, "[IslandDemo] Spawned at (%.1f, %.1f, %.1f)\n",
         spawn.x, spawn.y, spawn.z);
