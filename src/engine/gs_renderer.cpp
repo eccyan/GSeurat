@@ -714,6 +714,48 @@ void GsRenderer::init_streaming(const StreamingConfig& config) {
     uniform_buffer_ = Buffer::create_uniform(allocator_, sizeof(GsUniforms));
     visible_count_ssbo_ = Buffer::create_storage_readback(allocator_, sizeof(uint32_t));
 
+    // Defense in depth: zero/sentinel-fill all splat-related buffers at init.
+    // VMA does not guarantee zero-init for new allocations, so the bytes
+    // returned by vmaCreateBuffer can carry whatever the previous owner of
+    // that memory left behind. Once the renderer is live, sort indirection
+    // is meant to bound reads to [0, count) — but a one-time host fill here
+    // makes the invariant independent of any indirection bug, matching the
+    // pattern established in clear_chunks() (PR #386). Buffers are
+    // HOST_VISIBLE + MAPPED at this point and no GPU work has been
+    // submitted, so memset is race-free.
+    std::memset(static_gaussian_ssbo_.mapped(), 0,
+                static_cast<size_t>(max_static_count_) * sizeof(GpuGaussian));
+    std::memset(dynamic_gaussian_ssbo_.mapped(), 0,
+                static_cast<size_t>(max_dynamic_count_) * sizeof(GpuGaussian));
+    std::memset(projected_ssbo_.mapped(), 0,
+                static_cast<size_t>(max_static_count_ + max_dynamic_count_)
+                    * sizeof(ProjectedSplat));
+    {
+        // Sentinel-fill sort buffers: key=0xFFFFFFFF sorts to the tail and
+        // is never read by the merge's [0, count) window. index=0 is a
+        // safe placeholder (never read while paired with sentinel key).
+        // Subsequent load_cloud / load_cloud_legacy call init_sort_buf,
+        // which reproduces this layout — this just covers the pre-load
+        // window between init_streaming and the first scene load.
+        auto sentinel_fill_sort = [](Buffer& buf, uint32_t entries) {
+            auto* p = static_cast<SortEntry*>(buf.mapped());
+            for (uint32_t i = 0; i < entries; ++i) {
+                p[i].key = 0xFFFFFFFFu;
+                p[i].index = 0;
+            }
+        };
+        sentinel_fill_sort(static_sort_a_, static_sort_size_);
+        sentinel_fill_sort(static_sort_b_, static_sort_size_);
+        sentinel_fill_sort(dynamic_sort_a_, dynamic_sort_size_);
+        sentinel_fill_sort(dynamic_sort_b_, dynamic_sort_size_);
+        // merged_sort_ssbo_ is rewritten by the merge stage every frame
+        // for [0, total_count); tile_bin reads only that range. No
+        // sentinel needed here, but zero it for cleanliness.
+        std::memset(merged_sort_ssbo_.mapped(), 0,
+                    static_cast<size_t>(max_static_count_ + max_dynamic_count_)
+                        * sizeof(SortEntry));
+    }
+
     // Legacy buffers (same sizes as static counterparts for backward compat)
     gaussian_ssbo_ = Buffer::create_storage(allocator_,
         static_cast<VkDeviceSize>(max_gaussian_count_) * sizeof(GpuGaussian));
