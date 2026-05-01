@@ -988,8 +988,15 @@ void IslandDemoState::update(AppBase& app, float dt) {
     // Camera follow
     update_camera(app, dt);
 
-    // World streaming evaluation
-    if (world_streamer_) {
+    // World streaming evaluation. Gated to the overworld: world_streamer_
+    // is initialised once (in on_enter) with seurat_island/world.json's
+    // manifest, but its update() is purely distance-based — leaving it
+    // ticking inside dungeon.json would distance-check the dungeon player
+    // against overworld chunk AABBs and trigger load_cloud_async for any
+    // chunk that happens to fall within load_radius_, leaking forest
+    // content into the dungeon's GS buffer.
+    const bool in_overworld = (app.scene_objects().current_scene_path == scene_path_);
+    if (world_streamer_ && in_overworld) {
         auto events = world_streamer_->update(character_origin_);
 
         // Process pending loads
@@ -2157,23 +2164,31 @@ void IslandDemoState::perform_portal_transition(AppBase& app,
     character_origin_ = spawn;
     character_spawn_pos_ = spawn;
 
-    // Re-create player entity (old one was destroyed by world.clear())
-    player_entity_ = app.world().create();
-    app.world().add<ecs::Transform>(player_entity_,
-        {coord::WorldPos(spawn), {1.0f, 1.0f}});
-    app.world().add<PlayerController>(player_entity_, {20.0f, 20.0f});
-    app.world().add<PlayerJump>(player_entity_);
-    // PlayerTag is required by proximity_trigger_system — without it, ALL
-    // ECS proximity triggers (portals, lights, emitters) silently no-op
-    // because the system early-returns when it can't find the player.
-    // (Latent bug in the original inline portal code, exposed by the new
-    // ECS-based portal triggers.)
-    app.world().add<PlayerTag>(player_entity_);
+    // The new scene's "player" game_object (when present, e.g. seurat_island)
+    // is already wired up by load_gs_scene during init_scene above: PlayerController,
+    // PlayerTag, BoneAnimated, KinematicBody, ColliderComponent — and its PLY is
+    // merged into the new gs_chunk_grid_ at the *authored* position. Reuse that
+    // entity, teleport it to `spawn`, and skip the manual merge below to avoid
+    // a second PC entity + a second copy of the splats (which appears as a
+    // collision-less ghost at the authored position when target_position
+    // differs from the authored one — the dungeon-return spawn does).
+    //
+    // For scenes without a player game_object (interior instances etc.), fall
+    // back to creating one manually — same shape as the on_enter legacy path.
+    player_entity_ = ecs::kNullEntity;
+    app.world().view<PlayerController, PlayerTag, ecs::Transform>().each(
+        [&](ecs::Entity e, PlayerController&, PlayerTag&, ecs::Transform& t) {
+            player_entity_ = e;
+            t.position = coord::WorldPos(spawn);
+        });
+    if (!player_entity_.valid()) {
+        player_entity_ = app.world().create();
+        app.world().add<ecs::Transform>(player_entity_,
+            {coord::WorldPos(spawn), {1.0f, 1.0f}});
+        app.world().add<PlayerController>(player_entity_, {20.0f, 20.0f});
+        app.world().add<PlayerJump>(player_entity_);
+        app.world().add<PlayerTag>(player_entity_);
 
-    // KCC components — required for capsule-sweep movement on heightfield terrain.
-    // Without these, run_kcc skips the player and the legacy fallback has no
-    // elevation data (removed in PR #371).
-    {
         KinematicBody kb;
         kb.desired_jump_height = 2.0f;
         kb.time_to_apex = 0.4f;
@@ -2184,6 +2199,16 @@ void IslandDemoState::perform_portal_transition(AppBase& app,
         cc.shape = CapsuleData{0.3f, 0.5f};
         cc.is_dynamic = true;
         app.world().add<ColliderComponent>(player_entity_, cc);
+    }
+
+    // Teleport the load_gs_scene-allocated player bone slot's anchor so the
+    // PLY splats follow the entity to `spawn`. Without this, the splats stay
+    // at the authored bone-allocation world_pos forever (load_gs_scene only
+    // sets it once at scene-load time).
+    for (auto& alloc : app.gs_terrain().bone_allocations) {
+        if (alloc.manifest_path.find("snes_hero") != std::string::npos) {
+            alloc.world_pos = spawn;
+        }
     }
 
     // Re-merge world chunks + player character into the new scene
@@ -2288,37 +2313,82 @@ void IslandDemoState::perform_portal_transition(AppBase& app,
             elevation_ = 0.6f;
         }
 
-        auto char_cloud = GaussianCloud::load_ply(
-            "assets/characters/snes_hero/snes_hero.ply");
-        if (!char_cloud.empty()) {
-            const auto& char_gs = char_cloud.gaussians();
-            for (const auto& g : char_gs) {
-                Gaussian cg = g;
-                glm::vec3 rotated(-cg.position.x, cg.position.y, -cg.position.z);
-                glm::vec3 offset = rotated * kCharScale;
-                offset.y *= gs_scale_;
-                cg.position = spawn + offset + glm::vec3(0, 2.0f, 0);
-                cg.scale *= kCharScale;
-                cg.opacity = std::min(1.0f, cg.opacity * 1.3f);
-                cg.bone_index = cg.bone_index + 1;
-                merged.push_back(cg);
+        // Skip the manual PC PLY merge if load_gs_scene already merged the
+        // player from a "player" game_object — adding it again here would
+        // duplicate the splats (one set at the authored game_object position
+        // via load_gs_scene's PLY merge, one set at `spawn` via this loop)
+        // and produce a side-by-side "ghost PC" whenever target_position
+        // differs from the authored position (every dungeon→overworld
+        // return). Detect via the bone allocation populated by
+        // gs_scene_loader's BoneAnimated pre-scan.
+        bool player_already_merged = false;
+        for (const auto& alloc : app.gs_terrain().bone_allocations) {
+            if (alloc.manifest_path.find("snes_hero") != std::string::npos) {
+                player_already_merged = true;
+                break;
             }
         }
-        std::fprintf(stderr, "[IslandDemo] Portal re-merge: %u total Gaussians\n",
-            static_cast<uint32_t>(merged.size()));
+        if (!player_already_merged) {
+            auto char_cloud = GaussianCloud::load_ply(
+                "assets/characters/snes_hero/snes_hero.ply");
+            if (!char_cloud.empty()) {
+                const auto& char_gs = char_cloud.gaussians();
+                for (const auto& g : char_gs) {
+                    Gaussian cg = g;
+                    glm::vec3 rotated(-cg.position.x, cg.position.y, -cg.position.z);
+                    glm::vec3 offset = rotated * kCharScale;
+                    offset.y *= gs_scale_;
+                    cg.position = spawn + offset + glm::vec3(0, 2.0f, 0);
+                    cg.scale *= kCharScale;
+                    cg.opacity = std::min(1.0f, cg.opacity * 1.3f);
+                    cg.bone_index = cg.bone_index + 1;
+                    merged.push_back(cg);
+                }
+            }
+        }
+        std::fprintf(stderr, "[IslandDemo] Portal re-merge: %u total Gaussians%s\n",
+            static_cast<uint32_t>(merged.size()),
+            player_already_merged ? " (player from game_object)" : "");
 
         auto cloud = GaussianCloud::from_gaussians(std::move(merged));
         uint32_t gs_w = app.renderer().gs_renderer().output_width();
         uint32_t gs_h = app.renderer().gs_renderer().output_height();
         if (gs_w == 0) { gs_w = 320; gs_h = 240; }
         app.renderer().init_gs(cloud, gs_w, gs_h);
+
+        // Returning to overworld merged every world chunk into the new
+        // cloud. Without re-marking them, world_streamer_->update() will
+        // see them as UNLOADED on the next tick and call load_cloud_async
+        // for each — which is append-only — duplicating every tree, NPC,
+        // and ghost-spawn-PC's worth of splats on top of the merged cloud.
+        // Mirror the on_enter loop that does the same for the initial load.
+        if (is_overworld && world_streamer_) {
+            for (const auto& chunk : world_streamer_->manifest().chunks) {
+                std::string key = std::to_string(chunk.grid.x) + "," +
+                                  std::to_string(chunk.grid.y) + "," +
+                                  std::to_string(chunk.grid.z);
+                world_streamer_->on_chunk_loaded(key, 0);
+            }
+        }
     }
 
-    // Re-populate bone animation registry for the new scene
+    // Re-populate bone animation registry for the new scene. When the new
+    // scene has a "player" game_object, this binds the player's bone slot
+    // to player_entity_ — no second register needed below (a second add()
+    // would create a duplicate entry, animating empty bone slots).
     populate_bone_animation_registry(app.bone_animation_registry(), app.world(), app.gs_terrain());
 
-    // Re-register player in BoneAnimationRegistry
-    {
+    // Capture the registry_id populated above (or, fallback path, register
+    // the player manually for scenes that don't author a player game_object).
+    if (auto* existing = app.bone_animation_registry().get_by_entity(player_entity_)) {
+        // populate_bone_animation_registry already wired the player.
+        for (const auto& [id, entry] : app.bone_animation_registry().entries()) {
+            if (&entry == existing) { player_registry_id_ = id; break; }
+        }
+        if (!app.world().has<gseurat::BoneAnimatedTag>(player_entity_)) {
+            app.world().add<gseurat::BoneAnimatedTag>(player_entity_, {player_registry_id_});
+        }
+    } else {
         auto loaded = gseurat::load_character_manifest(
             "assets/characters/snes_hero/snes_hero.manifest.json");
         if (loaded) {
