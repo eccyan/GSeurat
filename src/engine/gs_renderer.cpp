@@ -1023,6 +1023,34 @@ void GsRenderer::clear_chunks(VkCommandBuffer drain_cmd) {
     // need recording.
     if (transfer_queue_) transfer_queue_->poll_completions(drain_cmd);
 
+    // poll_completions above can fire transfer-completion callbacks that
+    // enqueue new PendingChunkPublication entries referencing OLD-scene
+    // slabs. If we don't drain them here, the next poll_transfers (after
+    // the new scene has loaded) would publish stale page_table /
+    // chunk_table writes for slabs the new scene never owned —
+    // ghost-chunk metadata leaking across scene boundary. Same hazard
+    // for deferred_slab_releases_: those handles' frame counters would
+    // tick past after we wipe everything, releasing slabs that belong
+    // to a freshly-checked-out new chunk.
+    //
+    // GPU is idle (vkDeviceWaitIdle above) so direct slab releases here
+    // are safe.
+    for (auto& p : pending_publications_) {
+        // Op::Load owns slab handles not yet in active_chunks_ — release
+        // them directly, otherwise they leak from the allocator.
+        // Op::Unload's handle is empty: the actual chunk handle is still
+        // in active_chunks_, released by the loop further down.
+        if (p.op == PendingChunkPublication::Op::Load) {
+            slab_allocator_->release(p.handle);
+        }
+    }
+    pending_publications_.clear();
+
+    for (auto& dr : deferred_slab_releases_) {
+        slab_allocator_->release(dr.handle);
+    }
+    deferred_slab_releases_.clear();
+
     // Anything still in `pending_loads_` had its `submit_with_handle`
     // runs partially completed (or not at all) — those slab handles
     // own slabs we never published into `active_chunks_`. Release
@@ -1365,6 +1393,20 @@ void GsRenderer::publish_pending_chunks(VkCommandBuffer cmd) {
             // shift, so chunk_table needs a full rewrite below.
             active_chunks_.erase(it);
             chunk_table_needs_full_rebuild = true;
+
+            // Step 4: flag the static sort buffers as needing a sentinel-
+            // tail reinit. This unload shrinks static_count_, so entries
+            // [new_count, old_count) in static_sort_a_/b_ now hold stale
+            // REAL depth keys from the prior frame's sort. Without a
+            // reinit they'd participate in the next preprocess+sort+merge
+            // as legitimate elements (their keys aren't 0xFFFFFFFF
+            // sentinels), corrupting the merged-sort output. We can't
+            // safely host-write to the sort buffer here (race vs the
+            // in-flight prior frame's GPU read), so we defer: the flag
+            // is picked up by Renderer::draw_scene's need_rebuild gate
+            // on the next camera-dirty frame, and update_static_gaussians
+            // re-runs init_sort_buf to restore the sentinel-tail invariant.
+            static_sort_needs_reinit_ = true;
         }
 
         any_published = true;
@@ -1729,6 +1771,8 @@ void GsRenderer::update_static_gaussians(const Gaussian* data, uint32_t count) {
     };
     init_sort_buf(static_sort_a_, static_sort_size_, count);
     init_sort_buf(static_sort_b_, static_sort_size_, count);
+    // Sentinel tail just rewritten — unblock the rebuild-skip fast path.
+    static_sort_needs_reinit_ = false;
 }
 
 void GsRenderer::update_dynamic_gaussians(const Gaussian* data, uint32_t count) {
