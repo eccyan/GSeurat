@@ -702,8 +702,14 @@ void GsRenderer::init_streaming(const StreamingConfig& config) {
     static_depth_params_.destroy(allocator_);
     dynamic_depth_params_.destroy(allocator_);
 
-    // Create split buffers at full budget size
-    static_gaussian_ssbo_ = Buffer::create_storage(allocator_, static_gauss_size);
+    // Create split buffers at full budget size.
+    // static_gaussian_ssbo_ is the destination of vkCmdCopyBuffer in
+    // TransferQueue::poll_completions (chunk-streaming uploads), so it
+    // requires TRANSFER_DST_BIT. Without it, the copy is undefined
+    // behavior — the validation layer reports the violation, and on
+    // MoltenVK the destination ends up with torn/stale bytes that
+    // surface as "ghost geometry from initial spawn state".
+    static_gaussian_ssbo_ = Buffer::create_storage_host_dst(allocator_, static_gauss_size);
     dynamic_gaussian_ssbo_ = Buffer::create_storage(allocator_, dynamic_gauss_size);
     projected_ssbo_ = Buffer::create_storage(allocator_, projected_buf_size);
     // host_dst flag = TRANSFER_DST_BIT, required for the per-frame
@@ -1872,7 +1878,9 @@ void GsRenderer::load_cloud_legacy(const GaussianCloud& cloud) {
     counts_ssbo_.destroy(allocator_);
 
     // Create split buffers
-    static_gaussian_ssbo_ = Buffer::create_storage(allocator_, static_gauss_size);
+    // static_gaussian_ssbo_ is the dst of vkCmdCopyBuffer for chunk
+    // streaming — see init_streaming for the TRANSFER_DST_BIT rationale.
+    static_gaussian_ssbo_ = Buffer::create_storage_host_dst(allocator_, static_gauss_size);
     dynamic_gaussian_ssbo_ = Buffer::create_storage(allocator_, dynamic_gauss_size);
     projected_ssbo_ = Buffer::create_storage(allocator_, projected_buf_size);
     // host_dst (TRANSFER_DST_BIT) — see init_streaming for rationale.
