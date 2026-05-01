@@ -467,19 +467,42 @@ private:
     };
     std::deque<PendingLoadJob> pending_loads_;
 
-    // Chunks whose Gaussian SSBO data has finished uploading on the GPU but
-    // whose metadata (page_table, chunk_table) hasn't been published yet.
-    // The transfer-completion callback only enqueues here; the actual
-    // metadata writes happen in publish_pending_chunks() recorded onto the
-    // current frame's command buffer. This avoids the host/device race that
-    // raw mapped writes have against in-flight GPU reads of the same SSBOs.
+    // Chunks whose metadata mutation (page_table, chunk_table) has been
+    // requested but not yet published on the GPU. Both load completions and
+    // unload requests enqueue here; the actual SSBO writes happen in
+    // publish_pending_chunks() recorded onto the current frame's command
+    // buffer with TRANSFER_WRITE -> SHADER_READ barriers. This avoids the
+    // host/device race that raw mapped writes have against in-flight GPU
+    // reads of the same SSBOs.
     struct PendingChunkPublication {
+        enum class Op { Load, Unload };
+        Op op = Op::Load;
+        // Load: handle for the new chunk (slabs already filled via TransferQueue).
+        // Unload: ownership of the chunk's slab handle, captured from
+        //         active_chunks_ at unload_cloud() time. The handle stays
+        //         in this struct until publish moves it onto
+        //         deferred_slab_releases_ for fence-safe release.
         SlabAllocator::SlabHandle handle;
-        uint32_t splat_count = 0;
+        uint32_t splat_count = 0;        // Load only
         uint32_t slabs_needed = 0;
-        uint32_t slab_size_splats = 0;
+        uint32_t slab_size_splats = 0;   // Load only
+        uint32_t unload_chunk_id = 0;    // Unload only
     };
     std::deque<PendingChunkPublication> pending_publications_;
+
+    // Slabs released by an unload have to outlive any in-flight frame that
+    // was reading them via the OLD page_table. We can't return them to the
+    // allocator immediately — a concurrent load could check those same
+    // physical slabs out and TransferQueue would overwrite Gaussian data
+    // still being read by the prior frame. Hold for at least
+    // kMaxFramesInFlight ticks of poll_transfers (+1 for slack), then
+    // release. That guarantees the frame which last referenced the OLD
+    // page_table has retired.
+    struct DeferredSlabRelease {
+        SlabAllocator::SlabHandle handle;
+        uint32_t frames_remaining = 0;
+    };
+    std::deque<DeferredSlabRelease> deferred_slab_releases_;
 
     uint32_t gaussian_count_ = 0;
     uint32_t max_gaussian_count_ = 0;
