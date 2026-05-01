@@ -19,8 +19,8 @@ Source: `src/engine/gs_renderer.cpp:233-249`
 | `UNIFORM_BUFFER` | 32 |
 | **Max Sets** | **128** |
 
-Currently allocates **29 sets** (see [Set Allocation](#set-allocation) below).
-99 sets remain available.
+Currently allocates **30 sets** (see [Set Allocation](#set-allocation) below).
+98 sets remain available.
 
 ### Sprites / Graphics (`DescriptorManager`)
 
@@ -135,18 +135,47 @@ Shader: `gs_merge.comp`
 
 ### Tile Binning (`tile_bin_layout_`)
 
-Assigns projected splats to screen-space tiles.
+Assigns projected splats to screen-space tiles. Implemented as a deterministic
+3-pass count → exclusive-scan → scatter pipeline rather than a single-pass
+`atomicAdd`, so the entry order in `tile_sort_a_` is bit-stable across frames
+with identical input. Two compute pipelines share this layout (count uses
+bindings 0-3, 6; scatter uses 0-2, 4-6).
 
 | Binding | Type | Resource |
 |---|---|---|
 | 0 | `STORAGE_BUFFER` | projected |
 | 1 | `STORAGE_BUFFER` | merged_sort |
 | 2 | `STORAGE_BUFFER` | counts |
-| 3 | `STORAGE_BUFFER` | tile_entries |
-| 4 | `STORAGE_BUFFER` | tile_count |
-| 5 | `UNIFORM_BUFFER` | uniforms |
+| 3 | `STORAGE_BUFFER` | per_splat_tile_count (count writes) |
+| 4 | `STORAGE_BUFFER` | per_splat_tile_offset (scatter reads) |
+| 5 | `STORAGE_BUFFER` | tile_entries (scatter writes) |
+| 6 | `UNIFORM_BUFFER` | uniforms |
 
-Shader: `gs_tile_bin.comp` | Push constants: 4 bytes (max_entries)
+Shaders:
+- `gs_tile_count.comp` — pass 1, writes per-splat tile-overlap count.
+- `gs_tile_bin.comp` — pass 3 (scatter), reads precomputed offsets and writes `TileSortEntry` blocks. Push constants: 4 bytes (`max_entries`).
+
+### Tile Scan (`tile_scan_layout_`)
+
+Three-dispatch hierarchical exclusive prefix-sum over `per_splat_tile_count[]`,
+producing the deterministic write offsets the scatter consumes. Single shader
+dispatched 3× via the `pass` push constant: pass 0 = local 256-element scan +
+write block sums, pass 1 = single-workgroup chunked scan over block sums (also
+writes the grand total to `tile_sort_count`), pass 2 = add scanned base back
+to per-splat offsets.
+
+| Binding | Type | Resource |
+|---|---|---|
+| 0 | `STORAGE_BUFFER` | per_splat_tile_count (input) |
+| 1 | `STORAGE_BUFFER` | per_splat_tile_offset (output) |
+| 2 | `STORAGE_BUFFER` | scan_block_sums (intermediate) |
+| 3 | `STORAGE_BUFFER` | tile_sort_count (pass 1 writes total) |
+
+Shader: `gs_tile_scan.comp` | Push constants: 12 bytes (`pass`, `num_elements`, `num_blocks`)
+
+Capacity: pass 1's chunked scan supports up to 256 × 256 = 65 536 blocks → 16.7 M visible splats, well above `tile_sort_capacity_`'s 2 M cap.
+
+Headless GPU correctness coverage: `tests/test_tile_scan_gpu.cpp` (8 cases including 262 K-element multi-chunk).
 
 ### Tile Range Detection (`tile_ranges_layout_`)
 
@@ -263,7 +292,7 @@ Source: `src/engine/post_process.cpp:515-538`
 
 ## Set Allocation
 
-The GS Renderer allocates all 29 sets in a single `vkAllocateDescriptorSets`
+The GS Renderer allocates all 30 sets in a single `vkAllocateDescriptorSets`
 call (`gs_renderer.cpp:439-504`).
 
 | Index | Layout | Purpose |
@@ -277,7 +306,7 @@ call (`gs_renderer.cpp:439-504`).
 | 6 | merge | Static/dynamic merge |
 | 7 | render | Merged render |
 | 8 | pbd | PBD solver |
-| 9 | tile_bin | Tile binning |
+| 9 | tile_bin | Tile binning (count + scatter) |
 | 10 | tile_ranges | Tile range detection |
 | 11 | tile_indirect | Indirect dispatch prep |
 | 12 | tile_render | Tile render |
@@ -289,6 +318,7 @@ call (`gs_renderer.cpp:439-504`).
 | 23-24 | onesweep_scatter | Depth sort scatter (static) |
 | 25-26 | onesweep_hist | Depth sort histogram A/B (dynamic) |
 | 27-28 | onesweep_scatter | Depth sort scatter (dynamic) |
+| 29 | tile_scan | Deterministic tile-bin prefix-sum |
 
 ---
 
@@ -312,7 +342,7 @@ call (`gs_renderer.cpp:439-504`).
 
 | Resource | Allocated | Pool Limit | Remaining |
 |---|---|---|---|
-| Sets | 29 | 128 | 99 |
+| Sets | 30 | 128 | 98 |
 | `STORAGE_BUFFER` | ~120 | 256 | ~136 |
 | `STORAGE_IMAGE` | 8 | 24 | 16 |
 | `UNIFORM_BUFFER` | 9 | 32 | 23 |
@@ -329,7 +359,10 @@ Each frame dispatches compute work in this order:
 1. **Preprocess** (static + dynamic) — frustum cull, project to 2D
 2. **Onesweep radix sort** (4 passes per buffer) — depth-sort splats
 3. **Merge** — combine static + dynamic sorted keys
-4. **Tile binning** — assign splats to screen tiles
+4. **Tile binning** — deterministic 3-pass pipeline:
+   1. **Count** (`gs_tile_count.comp`) — per-splat tile-overlap count
+   2. **Scan** (`gs_tile_scan.comp`, dispatched 3×) — exclusive prefix-sum → write offsets, also writes grand total
+   3. **Scatter** (`gs_tile_bin.comp`) — write `TileSortEntry` blocks at precomputed offsets
 5. **Tile sort** (onesweep, 4 passes) — sort within tiles
 6. **Tile range detection** — find per-tile entry ranges
 7. **Tile render** — per-tile alpha-blended rasterization
