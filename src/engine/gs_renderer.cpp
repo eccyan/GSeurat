@@ -1143,6 +1143,31 @@ void GsRenderer::clear_chunks(VkCommandBuffer drain_cmd) {
         counts[1] = 0;
         counts[2] = 0;
     }
+
+    // Zero the static splat data itself. The previous scene's last
+    // `update_static_gaussians` wrote the consolidated view to
+    // `static_gaussian_ssbo_[0, old_count)`. Streaming-path uploads also
+    // wrote individual chunks at slab offsets, leaving previous-scene
+    // geometry data scattered across the buffer up to `max_static_count_`.
+    // After the new scene loads, `update_static_gaussians` overwrites
+    // `[0, new_count)` and the new chunk's streaming write overwrites its
+    // slab — but every offset in `[new_count, max)` and every unused slab
+    // still holds previous-scene geometry data. If anything in the
+    // rendering pipeline reads those offsets (a path more subtle than
+    // either the consolidated sort buffer or the slab-indirection
+    // metadata, both of which we already invalidated above), the result
+    // is ghost geometry at the previous scene's world coordinates.
+    //
+    // Buffer is HOST_VISIBLE+MAPPED (Buffer::create_storage). vkDeviceWaitIdle
+    // above guarantees GPU is idle, so direct host writes are safe.
+    // ~max_static_count_ × 64 bytes — at 11M splats that's ~700 MB of
+    // memory bandwidth, ~3-5 ms on Apple Silicon's unified memory.
+    // Acceptable for the one-time portal cost, eliminates the entire
+    // class of stale-static-data ghost rendering.
+    if (static_gaussian_ssbo_.mapped() && max_static_count_ > 0) {
+        std::memset(static_gaussian_ssbo_.mapped(), 0,
+                    static_cast<size_t>(max_static_count_) * sizeof(GpuGaussian));
+    }
 }
 
 std::vector<GsRenderer::ChunkInventoryEntry> GsRenderer::chunk_inventory() const {
