@@ -1078,6 +1078,36 @@ void GsRenderer::clear_chunks(VkCommandBuffer drain_cmd) {
         std::memset(dynamic_gaussian_ssbo_.mapped(), 0,
                     static_cast<size_t>(max_dynamic_count_) * sizeof(GpuGaussian));
     }
+
+    // Reset the static depth-sort tail. The previous scene's last frame
+    // left valid keys at indices [0, old_static_count_) in static_sort_a_/b_;
+    // those entries survive `static_count_ = 0` because the depth-sort
+    // shader only writes keys for [0, current_static_count_) each frame.
+    // Without this reset, the next frame whose rebuild path skips
+    // `update_static_gaussians` (e.g. the rebuild block runs but
+    // `gs_static_buffer_.empty()`, or the count==0 early return fires)
+    // will sort the stale keys to the front and the rasterizer will
+    // dereference their indices into `static_gaussian_ssbo_` — which
+    // still holds the previous scene's data at those offsets — producing
+    // ghost geometry at the previous scene's world coordinates (the
+    // "green splats from the overworld visible when zoomed out in the
+    // dungeon" symptom). Same fix shape as 139f055b's chunk-Unload
+    // rebuild flag, applied to the portal/scene-clear path.
+    auto fill_sort_sentinel = [](Buffer& buf, uint32_t sort_size) {
+        if (!buf.mapped() || sort_size == 0) return;
+        auto* sort = static_cast<SortEntry*>(buf.mapped());
+        for (uint32_t i = 0; i < sort_size; ++i) {
+            sort[i].key   = 0xFFFFFFFFu;
+            sort[i].index = 0;
+        }
+    };
+    fill_sort_sentinel(static_sort_a_, static_sort_size_);
+    fill_sort_sentinel(static_sort_b_, static_sort_size_);
+    // Defense in depth: force the next camera-dirty frame's `need_rebuild`
+    // gate to fire even if no other dirty signal is pending, so
+    // `update_static_gaussians` re-runs `init_sort_buf` against the
+    // freshly-loaded scene's count.
+    static_sort_needs_reinit_ = true;
 }
 
 std::vector<GsRenderer::ChunkInventoryEntry> GsRenderer::chunk_inventory() const {
