@@ -1132,11 +1132,16 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
             // walking-time main-thread stalls when streaming is gated off
             // by the demo's pre-merge.
             ScopedStallTimer _t_static_rebuild{"gs_static_rebuild (visibility+gather+upload)"};
-            glm::mat4 gs_vp = gs_proj_ * gs_view_;
-            glm::vec3 cam_pos = glm::vec3(glm::inverse(gs_view_)[3]);
-            // Use camera position for distance culling (camera sees ahead of player)
-            glm::vec3 dist_origin = cam_pos;
-            auto visible = gs_chunk_grid_.visible_chunks(gs_vp, dist_origin, gs_max_render_distance_);
+
+            std::vector<uint32_t> visible;
+            {
+                ScopedStallTimer _t_vis{"  > gs_chunk_grid.visible_chunks (frustum+dist cull)"};
+                glm::mat4 gs_vp = gs_proj_ * gs_view_;
+                glm::vec3 cam_pos = glm::vec3(glm::inverse(gs_view_)[3]);
+                // Use camera position for distance culling (camera sees ahead of player)
+                glm::vec3 dist_origin = cam_pos;
+                visible = gs_chunk_grid_.visible_chunks(gs_vp, dist_origin, gs_max_render_distance_);
+            }
 
             if ((visible != gs_prev_visible_ || budget_changed) && gs_budget_locked_) {
                 gs_budget_locked_ = false;
@@ -1145,23 +1150,30 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
             gs_prev_visible_ = visible;
 
             // Re-gather scene Gaussians
-            if (flags.gs_lod && gs_gaussian_budget_ > 0) {
-                glm::vec3 cam_pos = glm::vec3(glm::inverse(gs_view_)[3]);
-                const glm::vec3* focus = gs_has_lod_focus_ ? &gs_lod_focus_pos_ : nullptr;
-                gs_chunk_grid_.gather_lod(visible, cam_pos, gs_gaussian_budget_,
-                                          gs_static_buffer_, focus,
-                                          gs_preserve_bone_first_, gs_preserve_bone_count_);
-            } else {
-                gs_chunk_grid_.gather(visible, gs_static_buffer_);
+            {
+                ScopedStallTimer _t_gather{"  > gs_chunk_grid.gather[_lod] (per-splat copy)"};
+                if (flags.gs_lod && gs_gaussian_budget_ > 0) {
+                    glm::vec3 cam_pos = glm::vec3(glm::inverse(gs_view_)[3]);
+                    const glm::vec3* focus = gs_has_lod_focus_ ? &gs_lod_focus_pos_ : nullptr;
+                    gs_chunk_grid_.gather_lod(visible, cam_pos, gs_gaussian_budget_,
+                                              gs_static_buffer_, focus,
+                                              gs_preserve_bone_first_, gs_preserve_bone_count_);
+                } else {
+                    gs_chunk_grid_.gather(visible, gs_static_buffer_);
+                }
             }
 
             // Append VFX object Gaussians to static buffer
-            for (auto& inst : vfx_instances_) {
-                inst.append_objects(gs_static_buffer_);
+            {
+                ScopedStallTimer _t_vfx_append{"  > vfx_instances.append_objects"};
+                for (auto& inst : vfx_instances_) {
+                    inst.append_objects(gs_static_buffer_);
+                }
             }
 
             // Scene buffer changed — animator indices are stale.
             // Reset so VFX animations re-tag on the new buffer.
+            ScopedStallTimer _t_animator{"  > animator reset+tag (VFX + scene anims)"};
             gs_animator_.reset();
 
             // Reset VFX animation states so they re-tag on the fresh static buffer
