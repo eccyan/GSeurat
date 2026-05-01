@@ -702,8 +702,11 @@ void GsRenderer::init_streaming(const StreamingConfig& config) {
     static_gaussian_ssbo_ = Buffer::create_storage(allocator_, static_gauss_size);
     dynamic_gaussian_ssbo_ = Buffer::create_storage(allocator_, dynamic_gauss_size);
     projected_ssbo_ = Buffer::create_storage(allocator_, projected_buf_size);
-    static_sort_a_ = Buffer::create_storage(allocator_, static_sort_buf_size);
-    static_sort_b_ = Buffer::create_storage(allocator_, static_sort_buf_size);
+    // host_dst flag = TRANSFER_DST_BIT, required for the per-frame
+    // vkCmdFillBuffer in publish_pending_chunks that sentinel-fills the
+    // [new_count, prev_count) tail when streaming Unloads shrink static_count_.
+    static_sort_a_ = Buffer::create_storage_host_dst(allocator_, static_sort_buf_size);
+    static_sort_b_ = Buffer::create_storage_host_dst(allocator_, static_sort_buf_size);
     dynamic_sort_a_ = Buffer::create_storage(allocator_, dynamic_sort_buf_size);
     dynamic_sort_b_ = Buffer::create_storage(allocator_, dynamic_sort_buf_size);
     merged_sort_ssbo_ = Buffer::create_storage(allocator_, merged_sort_buf_size);
@@ -1392,6 +1395,16 @@ void GsRenderer::publish_pending_chunks(VkCommandBuffer cmd) {
     if (pending_publications_.empty()) return;
     if (cmd == VK_NULL_HANDLE) return;
 
+    // Snapshot the count BEFORE this batch's Unloads shrink it. Used at the
+    // tail of this function to sentinel-fill static_sort_a_/b_'s
+    // [new_count, prev_count) window — without that fill, real depth keys
+    // from the prior frame's sort survive in the now-out-of-range tail and
+    // leak into the next frame's global radix sort, producing 1-frame ghost
+    // splats while walking. The legacy gs_chunk_grid_ rebuild path consumes
+    // `static_sort_needs_reinit_` to call init_sort_buf, but in streaming
+    // mode (gs_chunk_grid_ empty) that path never runs.
+    const uint32_t prev_static_count = static_count_;
+
     bool any_published = false;
     bool chunk_table_needs_full_rebuild = false;
 
@@ -1561,32 +1574,68 @@ void GsRenderer::publish_pending_chunks(VkCommandBuffer cmd) {
         gaussian_count_ = static_count_;
         static_dirty_ = true;
 
-        // Note: we deliberately do NOT reinitialise static_sort_a_ /
-        // static_sort_b_ here. The depth sort regenerates keys for
-        // [0, static_count_) every frame, and entries beyond
-        // static_count_ retain their 0xFFFFFFFF sentinel keys from the
-        // original sort buffer init (in load_cloud_legacy / load_cloud).
+        // Sentinel-fill the static_sort_a_/b_ delta window when this batch
+        // shrunk static_count_. The depth sort each frame writes keys for
+        // [0, static_count_), so entries beyond static_count_ would remain
+        // valid only if pre-filled with key=0xFFFFFFFF. After an Unload,
+        // [new_count, prev_count) holds REAL depth keys from the prior
+        // frame's sort — those would otherwise participate in the next
+        // global radix sort with valid `index` fields, leak into merge
+        // output, and render as ghost splats. Surgical fill: only the
+        // delta window, not the full max-static tail (avoids 88 MB worst-
+        // case bandwidth hit). Skipped on Load-only batches (count grew or
+        // stayed equal, no stale keys introduced).
+        if (static_count_ < prev_static_count) {
+            const VkDeviceSize entry_sz = sizeof(SortEntry);  // 8 bytes
+            const VkDeviceSize fill_offset =
+                static_cast<VkDeviceSize>(static_count_) * entry_sz;
+            const VkDeviceSize fill_size =
+                static_cast<VkDeviceSize>(prev_static_count - static_count_) * entry_sz;
+            // vkCmdFillBuffer fills with one uint32 pattern repeated, so
+            // each 8-byte SortEntry becomes {key=0xFFFFFFFF, index=0xFFFFFFFF}.
+            // The 0xFFFFFFFF key sorts to the tail; the index is never read
+            // (entry won't survive into merge's [0, static_count_) window).
+            vkCmdFillBuffer(cmd, static_sort_a_.buffer(),
+                            fill_offset, fill_size, 0xFFFFFFFFu);
+            vkCmdFillBuffer(cmd, static_sort_b_.buffer(),
+                            fill_offset, fill_size, 0xFFFFFFFFu);
+            // Flag is consumed here — the legacy gs_chunk_grid_ rebuild path
+            // would otherwise pick this up to call init_sort_buf, but it
+            // doesn't run in streaming mode (and even when it does, the GPU
+            // fill above has already restored the sentinel-tail invariant).
+            static_sort_needs_reinit_ = false;
+        }
 
-        // Single barrier covering both metadata buffers: TRANSFER_WRITE
-        // (vkCmdUpdateBuffer's effective stage) -> SHADER_READ. Without
-        // this, subsequent compute dispatches in the same cmd buffer
-        // could read the metadata with the writes still in flight.
-        VkBufferMemoryBarrier barriers[2]{};
-        barriers[0].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-        barriers[0].srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-        barriers[0].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-        barriers[0].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        barriers[0].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        barriers[0].buffer = page_table_ssbo_.buffer();
-        barriers[0].offset = 0;
-        barriers[0].size = VK_WHOLE_SIZE;
-        barriers[1] = barriers[0];
-        barriers[1].buffer = chunk_table_ssbo_.buffer();
+        // Single barrier covering both metadata buffers AND the sort-tail
+        // fill: TRANSFER_WRITE (vkCmdUpdateBuffer + vkCmdFillBuffer share
+        // the TRANSFER stage) -> SHADER_READ. Without this, subsequent
+        // compute dispatches in the same cmd buffer could read with the
+        // writes still in flight.
+        const bool sort_filled = (static_count_ < prev_static_count);
+        VkBufferMemoryBarrier barriers[4]{};
+        uint32_t nb = 0;
+        auto add = [&](VkBuffer b) {
+            barriers[nb].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+            barriers[nb].srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+            barriers[nb].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+            barriers[nb].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            barriers[nb].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            barriers[nb].buffer = b;
+            barriers[nb].offset = 0;
+            barriers[nb].size = VK_WHOLE_SIZE;
+            ++nb;
+        };
+        add(page_table_ssbo_.buffer());
+        add(chunk_table_ssbo_.buffer());
+        if (sort_filled) {
+            add(static_sort_a_.buffer());
+            add(static_sort_b_.buffer());
+        }
 
         vkCmdPipelineBarrier(cmd,
             VK_PIPELINE_STAGE_TRANSFER_BIT,
             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-            0, 0, nullptr, 2, barriers, 0, nullptr);
+            0, 0, nullptr, nb, barriers, 0, nullptr);
     }
 }
 
@@ -1660,8 +1709,9 @@ void GsRenderer::load_cloud_legacy(const GaussianCloud& cloud) {
     static_gaussian_ssbo_ = Buffer::create_storage(allocator_, static_gauss_size);
     dynamic_gaussian_ssbo_ = Buffer::create_storage(allocator_, dynamic_gauss_size);
     projected_ssbo_ = Buffer::create_storage(allocator_, projected_buf_size);
-    static_sort_a_ = Buffer::create_storage(allocator_, static_sort_buf_size);
-    static_sort_b_ = Buffer::create_storage(allocator_, static_sort_buf_size);
+    // host_dst (TRANSFER_DST_BIT) — see init_streaming for rationale.
+    static_sort_a_ = Buffer::create_storage_host_dst(allocator_, static_sort_buf_size);
+    static_sort_b_ = Buffer::create_storage_host_dst(allocator_, static_sort_buf_size);
     dynamic_sort_a_ = Buffer::create_storage(allocator_, dynamic_sort_buf_size);
     dynamic_sort_b_ = Buffer::create_storage(allocator_, dynamic_sort_buf_size);
     merged_sort_ssbo_ = Buffer::create_storage(allocator_, merged_sort_buf_size);
