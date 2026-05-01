@@ -40,6 +40,12 @@ public:
     static Buffer create_storage_indirect(VmaAllocator allocator, VkDeviceSize size);
     static Buffer create_storage_gpu_only(VmaAllocator allocator, VkDeviceSize size);
     static Buffer create_storage_readback(VmaAllocator allocator, VkDeviceSize size);
+    // Host-visible+mapped storage buffer that *also* accepts vkCmdUpdateBuffer /
+    // vkCmdCopyBuffer / vkCmdFillBuffer writes (TRANSFER_DST_BIT). Use this for
+    // SSBOs that are read by shaders every frame but updated mid-stream from
+    // the main thread — recording the update via the GPU command stream avoids
+    // the host/device race that pure mapped writes have against in-flight reads.
+    static Buffer create_storage_host_dst(VmaAllocator allocator, VkDeviceSize size);
     static Buffer create_staging(VmaAllocator allocator, VkDeviceSize size);
     static Buffer create_readback(VmaAllocator allocator, VkDeviceSize size);
 

@@ -140,6 +140,19 @@ public:
     bool static_dirty() const { return static_dirty_; }
     void set_static_dirty(bool d) { static_dirty_ = d; }
 
+    // True when a metadata mutation (currently: Unload publication that
+    // shrinks `static_count_`) has left the static sort buffers' tail
+    // entries [new_count, old_count) holding stale REAL depth keys
+    // instead of the 0xFFFFFFFF sentinels the merge step expects. The
+    // renderer queries this every frame; a true value forces a static
+    // rebuild whose update_static_gaussians call re-runs init_sort_buf
+    // and clears the flag. Without this gate, the static+dynamic merge
+    // can interleave stale entries into the sorted output (flicker /
+    // wrong-depth artefacts) on frames where dynamic emitters force
+    // camera_dirty true but visibility/animation/LOD/VFX-set state are
+    // unchanged so the rebuild-skip fast path would otherwise fire.
+    bool static_sort_needs_reinit() const { return static_sort_needs_reinit_; }
+
     void resize_output(uint32_t width, uint32_t height);
 
     // Records a one-time barrier+clear that transitions every per-frame
@@ -356,6 +369,11 @@ private:
         VkDescriptorSet scatter_ab, VkDescriptorSet scatter_ba);
     void dispatch_tile_sort(VkCommandBuffer cmd);
     void load_cloud_legacy(const GaussianCloud& cloud);
+    // Drain pending_publications_ and record the metadata writes
+    // (page_table, chunk_table) onto `cmd` via vkCmdUpdateBuffer + a
+    // TRANSFER_WRITE -> SHADER_READ barrier. Called from poll_transfers
+    // immediately after poll_completions enqueues new publications.
+    void publish_pending_chunks(VkCommandBuffer cmd);
 
     VkDevice device_ = VK_NULL_HANDLE;
     VmaAllocator allocator_ = VK_NULL_HANDLE;
@@ -419,6 +437,11 @@ private:
     uint32_t static_sort_workgroups_ = 0;
     uint32_t dynamic_sort_workgroups_ = 0;
     bool static_dirty_ = true;
+    // Set by publish_pending_chunks when an Unload publication shrinks
+    // static_count_. Cleared by update_static_gaussians after init_sort_buf
+    // restores the [new_count, sort_size) sentinel tail. See the public
+    // static_sort_needs_reinit() getter for the rationale.
+    bool static_sort_needs_reinit_ = false;
 
     // --- Streaming architecture (Phase 2) ---
     StreamingConfig streaming_config_;
@@ -461,6 +484,43 @@ private:
         bool completion_enqueued = false; // true once enqueue_completion() ran
     };
     std::deque<PendingLoadJob> pending_loads_;
+
+    // Chunks whose metadata mutation (page_table, chunk_table) has been
+    // requested but not yet published on the GPU. Both load completions and
+    // unload requests enqueue here; the actual SSBO writes happen in
+    // publish_pending_chunks() recorded onto the current frame's command
+    // buffer with TRANSFER_WRITE -> SHADER_READ barriers. This avoids the
+    // host/device race that raw mapped writes have against in-flight GPU
+    // reads of the same SSBOs.
+    struct PendingChunkPublication {
+        enum class Op { Load, Unload };
+        Op op = Op::Load;
+        // Load: handle for the new chunk (slabs already filled via TransferQueue).
+        // Unload: ownership of the chunk's slab handle, captured from
+        //         active_chunks_ at unload_cloud() time. The handle stays
+        //         in this struct until publish moves it onto
+        //         deferred_slab_releases_ for fence-safe release.
+        SlabAllocator::SlabHandle handle;
+        uint32_t splat_count = 0;        // Load only
+        uint32_t slabs_needed = 0;
+        uint32_t slab_size_splats = 0;   // Load only
+        uint32_t unload_chunk_id = 0;    // Unload only
+    };
+    std::deque<PendingChunkPublication> pending_publications_;
+
+    // Slabs released by an unload have to outlive any in-flight frame that
+    // was reading them via the OLD page_table. We can't return them to the
+    // allocator immediately — a concurrent load could check those same
+    // physical slabs out and TransferQueue would overwrite Gaussian data
+    // still being read by the prior frame. Hold for at least
+    // kMaxFramesInFlight ticks of poll_transfers (+1 for slack), then
+    // release. That guarantees the frame which last referenced the OLD
+    // page_table has retired.
+    struct DeferredSlabRelease {
+        SlabAllocator::SlabHandle handle;
+        uint32_t frames_remaining = 0;
+    };
+    std::deque<DeferredSlabRelease> deferred_slab_releases_;
 
     uint32_t gaussian_count_ = 0;
     uint32_t max_gaussian_count_ = 0;
