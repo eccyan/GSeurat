@@ -94,28 +94,28 @@ Shader: `gs_sort.comp` | Push constants: 8 bytes
 
 ### Render (`render_layout_`)
 
-Full-screen Gaussian rasterization (non-tiled path).
+Full-screen Gaussian rasterization (non-tiled path). Allocated per-frame as `render_sets_[kMaxFramesInFlight]` — each frame's set binds the frame's matching `output_image[frame]` / `depth_image[frame]`.
 
 | Binding | Type | Resource |
 |---|---|---|
 | 0 | `STORAGE_BUFFER` | projected |
 | 1 | `STORAGE_BUFFER` | sort_keys |
 | 2 | `UNIFORM_BUFFER` | uniforms |
-| 3 | `STORAGE_IMAGE` | output_image |
+| 3 | `STORAGE_IMAGE` | output_image (per frame) |
 | 4 | `STORAGE_BUFFER` | visible_count |
-| 5 | `STORAGE_IMAGE` | depth_image |
+| 5 | `STORAGE_IMAGE` | depth_image (per frame) |
 
 Shader: `gs_render.comp`
 
 ### Post-Process (`post_process_layout_`)
 
-Fog, tone mapping, vignette, bloom, DoF, chromatic aberration.
+Fog, tone mapping, vignette, bloom, DoF, chromatic aberration. Allocated per-frame as `post_process_sets_[kMaxFramesInFlight]` — each frame's set reads / writes the frame's matching images.
 
 | Binding | Type | Resource |
 |---|---|---|
-| 0 | `STORAGE_IMAGE` | input (readonly) |
-| 1 | `STORAGE_IMAGE` | depth (readonly) |
-| 2 | `STORAGE_IMAGE` | output (writeonly) |
+| 0 | `STORAGE_IMAGE` | input (readonly, per frame = output_image[frame]) |
+| 1 | `STORAGE_IMAGE` | depth (readonly, per frame = depth_image[frame]) |
+| 2 | `STORAGE_IMAGE` | output (writeonly, per frame = processed_image[frame]) |
 | 3 | `UNIFORM_BUFFER` | UBO |
 
 Shader: `gs_post_process.comp`
@@ -202,16 +202,16 @@ Shader: `gs_tile_prepare_indirect.comp` | Push constants: 4 bytes (max_entries)
 
 ### Tile Render (`tile_render_layout_`)
 
-Per-tile Gaussian rasterization (production path, ~3x faster than full-screen).
+Per-tile Gaussian rasterization (production path, ~3x faster than full-screen). Allocated per-frame as `tile_render_sets_[kMaxFramesInFlight]` — each frame's set binds the frame's matching `output_image[frame]` / `depth_image[frame]`.
 
 | Binding | Type | Resource |
 |---|---|---|
 | 0 | `STORAGE_BUFFER` | projected |
 | 1 | `STORAGE_BUFFER` | tile_entries |
 | 2 | `UNIFORM_BUFFER` | uniforms |
-| 3 | `STORAGE_IMAGE` | output_image |
+| 3 | `STORAGE_IMAGE` | output_image (per frame) |
 | 4 | `STORAGE_BUFFER` | tile_ranges |
-| 5 | `STORAGE_IMAGE` | depth_image |
+| 5 | `STORAGE_IMAGE` | depth_image (per frame) |
 
 Shader: `gs_tile_render.comp`
 
@@ -319,6 +319,9 @@ call (`gs_renderer.cpp:439-504`).
 | 25-26 | onesweep_hist | Depth sort histogram A/B (dynamic) |
 | 27-28 | onesweep_scatter | Depth sort scatter (dynamic) |
 | 29 | tile_scan | Deterministic tile-bin prefix-sum |
+| 30 | render | Render set (frame-in-flight 1) — paired with slot 2 |
+| 31 | post_process | Post-process set (frame-in-flight 1) — paired with slot 3 |
+| 32 | tile_render | Tile render set (frame-in-flight 1) — paired with slot 12 |
 
 ---
 
@@ -342,10 +345,29 @@ call (`gs_renderer.cpp:439-504`).
 
 | Resource | Allocated | Pool Limit | Remaining |
 |---|---|---|---|
-| Sets | 30 | 128 | 98 |
+| Sets | 33 | 160 | 127 |
 | `STORAGE_BUFFER` | ~120 | 256 | ~136 |
-| `STORAGE_IMAGE` | 8 | 24 | 16 |
+| `STORAGE_IMAGE` | 14 | 24 | 10 |
 | `UNIFORM_BUFFER` | 9 | 32 | 23 |
+
+The set count grew from 30 to 33 when `output_image_` / `depth_image_` /
+`processed_image_` were promoted to per-frame `std::array<…, kMaxFramesInFlight>`
+arrays — the render, post_process, and tile_render descriptor sets that bind
+those images had to follow, so each gets one set per frame in flight (slots
+2, 3, 12 hold the frame-0 set; slots 30, 31, 32 hold the frame-1 set). The
+storage-image count grew similarly: 3 images × 2 frames = 6, plus one extra
+sampler view per frame, vs. the original 3 single shared images.
+
+**Per-frame intermediates rationale.** With `kMaxFramesInFlight = 2`, a
+single shared `output_image_` / `depth_image_` / `processed_image_` would be
+written by frame N+1's compute dispatch while frame N's composite-blit is
+still sampling it on the GPU — there is no producer/consumer fence between
+adjacent in-flight frames on those images. On Apple/MoltenVK with a 3-image
+swapchain that race manifested as a "first-rendered configuration flashes
+back" ghost. Each frame now writes into its own image and binds its own
+descriptor set; the `Renderer` passes its `current_frame_` index through
+`gs_renderer_.render(cmd, frame, view, proj)` and uses the matching
+`output_views_[frame]` for the swapchain blit (`DescriptorManager::allocate_sprite_sets_per_frame`).
 
 Adding a new compute pass with a typical layout (4 SSBOs + 1 UBO + 1 storage
 image) is well within pool limits without resizing.

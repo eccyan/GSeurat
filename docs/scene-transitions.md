@@ -125,19 +125,58 @@ struct ScreenFade {
 
 ### `ITransitionHost`
 
-The system calls one atomic host method on the `SceneOut → Loading` boundary:
+The system calls one atomic host method on the `SceneOut → Loading` boundary, plus a non-blocking query each frame in `SceneIn`:
 
 ```cpp
 struct ITransitionHost {
     virtual void transition_scene(const std::string& target_scene,
                                   const glm::vec3& target_position) = 0;
+    // Optional: defaults to false. When true, transition_system pins the
+    // SceneIn fade overlay at alpha=1.0 and resets its timer each frame,
+    // so the kFadeIn animation only starts once the host reports the new
+    // scene is fully ready. Hosts that load synchronously can leave the
+    // default; hosts using the async load path (see "Async Scene Loading"
+    // below) override to forward their loading state.
+    virtual bool is_async_loading() const { return false; }
     virtual ~ITransitionHost() = default;
 };
 ```
 
-`AppBase` implements this interface by clearing the ECS world + bone registry, loading the destination scene, and placing `PlayerTag` at the target position. Game apps that need extra recovery (collision grids, camera state, audio regions) override `transition_scene` to wrap the base behavior.
+`AppBase` implements this interface by clearing the ECS world + bone registry, loading the destination scene, and placing `PlayerTag` at the target position. Its `is_async_loading()` override forwards `is_async_loading_gs_scene()` so the SceneIn fade stays opaque while a worker thread is parsing PLYs. Game apps that need extra recovery (collision grids, camera state, audio regions) override `transition_scene` to wrap the base behavior.
 
-The single-method design is deliberate: portal transitions are atomic — you cannot "move the player" to an entity that doesn't exist between clear and load. Tests provide a `FakeHost` implementation to exercise the state machine without Vulkan.
+The single-method design for `transition_scene` is deliberate: portal transitions are atomic — you cannot "move the player" to an entity that doesn't exist between clear and load. Tests provide a `FakeHost` implementation to exercise the state machine without Vulkan.
+
+## Async Scene Loading
+
+`AppBase::transition_scene` for the demo's portal path is implemented as a two-phase split that keeps the main thread free of long PLY-parse stalls:
+
+```cpp
+// Phase A — synchronous, fast (<100ms): drain GPU, clear world, kick off
+// worker. `begin_async_load_gs_scene` is non-blocking.
+app.world().clear();
+app.clear_scene();
+app.begin_async_load_gs_scene(SceneLoader::load(target_scene), opts);
+
+pending_portal_post_load_ = [this, target_scene, target_position](AppBase& a) {
+    finish_portal_transition(a, target_scene, target_position);
+};
+
+// Phase B — drained from update() once is_async_loading_gs_scene() is false.
+// Performs collision-grid restore, player respawn, character re-merge, etc.
+```
+
+The supporting API on `AppBase`:
+
+| Method | Phase | Notes |
+|---|---|---|
+| `begin_async_load_gs_scene(SceneData, opts)` | Phase A | Spawns a `std::async(std::launch::async, …)` worker that runs `GsSceneLoader::parse()` (PLY load + Gaussian merge, no Vulkan / ECS access). |
+| `tick_async_load_gs_scene()` | every frame | Called from `main_loop`. Non-blocking poll via `wait_for(0s)`. When the future is ready, runs `GsSceneLoader::finalize_on_main` (Vulkan + ECS) and arms `loading_monitor_` for the streaming-upload phase. |
+| `is_async_loading_gs_scene()` | every frame | True between `begin_…` and the frame `tick_…` consumes the future. |
+| `load_gs_scene(SceneData, opts)` | sync | Convenience wrapper that calls `parse()` then `finalize_on_main()` on the calling thread. Used by the initial scene load where a loading screen is already up. |
+
+`GsSceneLoader::parse(SceneData) → ParsedScene` is the CPU-only contract. It owns no Vulkan / ECS resources and is safe to invoke from a worker thread. `finalize_on_main(ctx, parsed, opts)` is the main-thread half — it performs `init_gs`, ECS entity creation, bone registry population, light upload, VFX instance setup, etc.
+
+While Phase B is pending, `IslandDemoState::update()` checks `app.is_async_loading_gs_scene()` and drains the deferred lambda once it flips false. The SceneIn `ScreenFade` entity is created in Phase A (not Phase B), so the opaque overlay covers the entire async-parse + GPU-upload window — without that earlier creation, the user would see the per-frame `processed_image_` slots from the OLD scene flash through during the parse.
 
 ## Transition Effects
 
@@ -303,7 +342,6 @@ The state machine itself does not need to change.
 
 ### Known out-of-scope items
 
-- **Async scene loading.** `Loading` currently invokes `host.transition_scene` synchronously under a fully-opaque overlay. Upgrading to true async loading is an internal change with no public API impact — component schemas would stay identical.
 - **Transition cancellation / pause.** Transitions run to completion once started.
 - **Non-portal triggers.** `portal_trigger_handler` only handles `ProximityTrigger + PortalTarget` pairs; interact-key triggers, cutscene entries, and save-point respawns are future features that follow the same pattern (new companion component + new handler, same transient-entity machinery).
 - **Per-transition audio hooks.** Sound designers can respond to `ScreenFade` presence from their own system.
@@ -315,7 +353,8 @@ The state machine itself does not need to change.
 |---|---|
 | Components | `include/gseurat/engine/ecs/components/{scene_transition,screen_fade,portal_target}.hpp` |
 | Systems | `include/gseurat/engine/systems/{transition_system,portal_trigger_handler}.hpp`<br>`src/engine/systems/{transition_system,portal_trigger_handler}.cpp` |
-| Registration & host | `src/engine/app_base.cpp` (`register_component<PortalTarget>`, `register_component<ScreenFade>`, `transition_scene` override, system registration order) |
+| Async load | `include/gseurat/engine/app_base.hpp` (`begin_async_load_gs_scene`, `tick_async_load_gs_scene`, `is_async_loading_gs_scene`)<br>`include/gseurat/engine/gs_scene_loader.hpp` (`parse`, `finalize_on_main`, `ParsedScene`)<br>`src/demo/island_demo_state.cpp` (`perform_portal_transition` Phase A, `finish_portal_transition` Phase B) |
+| Registration & host | `src/engine/app_base.cpp` (`register_component<PortalTarget>`, `register_component<ScreenFade>`, `transition_scene` override, `is_async_loading` override, system registration order) |
 | Renderer | `include/gseurat/engine/post_process.hpp`, `include/gseurat/engine/gs_renderer.hpp`, `src/engine/gs_renderer.cpp`, `src/engine/renderer.cpp` |
 | Shader | `shaders/gs_post_process.comp` (UBO `overlay` + `overlay_effect_type`, effect branches) |
 | Schemas | `examples/island_demo/assets/components/{portal_target,screen_fade,scene_transition}.schema.json` |
