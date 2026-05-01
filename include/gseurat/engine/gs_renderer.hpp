@@ -131,16 +131,6 @@ public:
 
     // Static/dynamic split API
     void update_static_gaussians(const Gaussian* data, uint32_t count);
-
-    // Re-initialise the static sort buffers in place without re-packing
-    // the gaussian SSBO. The radix-sort's scatter pass leaves
-    // static_sort_a_/static_sort_b_ permuted by the previous frame's
-    // depth ordering; if dynamics exist, those stale keys must be reset
-    // back to {key=0xFFFFFFFF, index=i} or the merge output is wrong.
-    // update_static_gaussians does this AND a 200-300MB Gaussian
-    // re-pack — separating them lets us run the cheap sort reset every
-    // frame and the expensive re-pack only when chunk visibility changes.
-    void reset_static_sort_only();
     void update_dynamic_gaussians(const Gaussian* data, uint32_t count);
     uint32_t max_static_count() const { return max_static_count_; }
     uint32_t max_dynamic_count() const { return max_dynamic_count_; }

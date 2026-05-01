@@ -3,7 +3,6 @@
 #include "gseurat/engine/procedural_textures.hpp"
 #include "gseurat/engine/project_root.hpp"
 #include "gseurat/engine/resource_manager.hpp"
-#include "gseurat/engine/scoped_timer.hpp"
 #include "gseurat/engine/sort_entry.hpp"
 #include "gseurat/engine/sort_hash.hpp"
 #include "gseurat/engine/streaming_config.hpp"
@@ -430,10 +429,7 @@ void Renderer::draw_scene(Scene& scene,
     // records acquire barriers into `cmd` so subsequent GS compute reads
     // see fully-uploaded slabs. Must run before any pipeline that consumes
     // the slab buffers, including `record_gs_prepass`.
-    {
-        ScopedStallTimer _t_poll{"draw_scene: gs_renderer.poll_transfers"};
-        gs_renderer_.poll_transfers(cmd);
-    }
+    gs_renderer_.poll_transfers(cmd);
 
     // Forward post-process params to GS pipeline before GS compute runs
     {
@@ -1103,28 +1099,7 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
             gs_prev_budget_ = gs_gaussian_budget_;
         }
 
-        // Visibility-driven gate. The heavy static-path (gather +
-        // update_static_gaussians) costs ~175ms/frame on a 2.4M-splat
-        // overworld. The cost is justified ONLY when the visible chunk
-        // set changes — typically a ~5-second-apart event as the player
-        // crosses a chunk boundary. The previous gate fired on bit-precise
-        // matrix change, which meant every camera-follow tick.
-        //
-        // Compute the visible set first (cheap frustum check, <1ms even
-        // with hundreds of chunks) and use the set change + force flags
-        // as the heavy-path trigger. LOD distance prioritisation drifts
-        // slightly stale between chunk-boundary crossings but the visual
-        // delta is imperceptible — bone-preserved player splats are
-        // re-injected on every gather, which is the only LOD output that
-        // needs near-frame freshness.
-        const glm::mat4 gs_vp_now = gs_proj_ * gs_view_;
-        const glm::vec3 dist_origin_now = glm::vec3(glm::inverse(gs_view_)[3]);
-        auto visible_now = (!gs_chunk_grid_.empty() && flags.gs_chunk_culling && !gs_skip_chunk_cull_)
-            ? gs_chunk_grid_.visible_chunks(gs_vp_now, dist_origin_now, gs_max_render_distance_)
-            : std::vector<uint32_t>{};
-        const bool visibility_changed = (visible_now != gs_prev_visible_);
-
-        bool camera_dirty = visibility_changed || budget_changed || gs_static_force_dirty_;
+        bool camera_dirty = (gs_view_ != gs_prev_view_) || budget_changed || gs_static_force_dirty_;
 
         // If scene animations are active, force static rebuild each frame
         if (gs_animator_.has_active_groups() || !gs_scene_animations_.empty()) {
@@ -1132,18 +1107,12 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
             camera_dirty = true;
         }
 
-        // Sort-buffer reset is required every frame the merge runs with
-        // dynamic content — the radix-sort scatter leaves stale keys in
-        // static_sort_a_/_b_. Previously this was bundled into camera_dirty
-        // and ran the FULL static path (gather + Gaussian re-pack) every
-        // frame, costing 175ms/frame on a 2.4M-splat scene. Decouple:
-        // mark `dynamics_active` here, run the cheap sort-only reset in
-        // its own branch below, and keep camera_dirty for the actual
-        // chunk-visibility re-gather case.
-        const bool dynamics_active =
-            !gs_pending_dynamics_.empty() ||
-            !gs_particle_emitters_.empty() ||
-            !vfx_instances_.empty();
+        // Dynamic Gaussians (particles, VFX, PBD) require the static sort buffers to be
+        // reinitialized each frame via update_static_gaussians. Without this, stale sort
+        // buffer state from the previous frame's radix scatter corrupts the merge output.
+        if (!gs_pending_dynamics_.empty() || !gs_particle_emitters_.empty() || !vfx_instances_.empty()) {
+            camera_dirty = true;
+        }
 
         // Determinism harness: hold the LOD/chunk-gather selection across
         // frames so the pre-sort input set itself is bit-identical. Any
@@ -1155,30 +1124,27 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
         }
 
         if (camera_dirty && flags.gs_chunk_culling && !gs_skip_chunk_cull_ && !gs_chunk_grid_.empty()) {
-            ScopedStallTimer _t_static_path{"record_gs_prepass: camera_dirty static-path (gather + update_static)"};
-            // visible_now was computed above for the visibility_changed
-            // check; reuse here instead of repeating the frustum cull.
-            auto& visible = visible_now;
-            glm::vec3 cam_pos = dist_origin_now;
+            glm::mat4 gs_vp = gs_proj_ * gs_view_;
+            glm::vec3 cam_pos = glm::vec3(glm::inverse(gs_view_)[3]);
+            // Use camera position for distance culling (camera sees ahead of player)
+            glm::vec3 dist_origin = cam_pos;
+            auto visible = gs_chunk_grid_.visible_chunks(gs_vp, dist_origin, gs_max_render_distance_);
 
-            if ((visibility_changed || budget_changed) && gs_budget_locked_) {
+            if ((visible != gs_prev_visible_ || budget_changed) && gs_budget_locked_) {
                 gs_budget_locked_ = false;
                 gs_stable_frame_count_ = 0;
             }
             gs_prev_visible_ = visible;
 
             // Re-gather scene Gaussians
-            {
-                ScopedStallTimer _t_gather{"record_gs_prepass: chunk_grid.gather"};
-                if (flags.gs_lod && gs_gaussian_budget_ > 0) {
-                    glm::vec3 cam_pos = glm::vec3(glm::inverse(gs_view_)[3]);
-                    const glm::vec3* focus = gs_has_lod_focus_ ? &gs_lod_focus_pos_ : nullptr;
-                    gs_chunk_grid_.gather_lod(visible, cam_pos, gs_gaussian_budget_,
-                                              gs_static_buffer_, focus,
-                                              gs_preserve_bone_first_, gs_preserve_bone_count_);
-                } else {
-                    gs_chunk_grid_.gather(visible, gs_static_buffer_);
-                }
+            if (flags.gs_lod && gs_gaussian_budget_ > 0) {
+                glm::vec3 cam_pos = glm::vec3(glm::inverse(gs_view_)[3]);
+                const glm::vec3* focus = gs_has_lod_focus_ ? &gs_lod_focus_pos_ : nullptr;
+                gs_chunk_grid_.gather_lod(visible, cam_pos, gs_gaussian_budget_,
+                                          gs_static_buffer_, focus,
+                                          gs_preserve_bone_first_, gs_preserve_bone_count_);
+            } else {
+                gs_chunk_grid_.gather(visible, gs_static_buffer_);
             }
 
             // Append VFX object Gaussians to static buffer
@@ -1243,7 +1209,6 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
 
             // Upload static Gaussians
             if (!gs_static_buffer_.empty()) {
-                ScopedStallTimer _t_upload{"record_gs_prepass: update_static_gaussians"};
                 auto count = static_cast<uint32_t>(gs_static_buffer_.size());
                 if (count > gs_renderer_.max_static_count()) {
                     gs_static_buffer_.resize(gs_renderer_.max_static_count());
@@ -1257,13 +1222,6 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
             if (!gs_animator_.has_active_groups() && gs_scene_animations_.empty()) {
                 gs_static_force_dirty_ = false;
             }
-        } else if (dynamics_active && !determinism_test_state_.active) {
-            // Cheap path: visibility didn't change but dynamics exist,
-            // so the sort buffers still need a reset (otherwise the
-            // radix-merge reads stale keys from last frame's scatter).
-            // ~5ms instead of ~175ms.
-            ScopedStallTimer _t_sort_only{"record_gs_prepass: reset_static_sort_only"};
-            gs_renderer_.reset_static_sort_only();
         }
 
         // --- Dynamic path: every frame ---
@@ -1344,7 +1302,6 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
 
             // Upload dynamic Gaussians
             {
-                ScopedStallTimer _t_dyn{"record_gs_prepass: update_dynamic_gaussians"};
                 auto count = static_cast<uint32_t>(gs_dynamic_buffer_.size());
                 if (count > gs_renderer_.max_dynamic_count()) {
                     gs_dynamic_buffer_.resize(gs_renderer_.max_dynamic_count());
