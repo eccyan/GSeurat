@@ -1108,6 +1108,41 @@ void GsRenderer::clear_chunks(VkCommandBuffer drain_cmd) {
     // `update_static_gaussians` re-runs `init_sort_buf` against the
     // freshly-loaded scene's count.
     static_sort_needs_reinit_ = true;
+
+    // Invalidate the slab-indirection metadata. `publish_pending_chunks`'s
+    // Unload path writes 0xFFFFFFFF sentinels to `page_table_ssbo_` for
+    // each released slab + clears the chunk-table row, but `clear_chunks`
+    // releases slabs by calling `slab_allocator_->release(...)` directly
+    // and bypasses that path entirely. The stale entries survive: when
+    // the new scene loads a smaller chunk set than the previous (e.g.
+    // dungeon takes 1 slab where overworld used 25), only the reused
+    // slabs' page-table entries get overwritten — the rest still point
+    // at offsets in `static_gaussian_ssbo_` containing previous-scene
+    // geometry data (the streaming path never zeroes the unused tail).
+    // Anything in the rendering pipeline that walks the page/chunk
+    // tables fetches that stale data.
+    //
+    // Both buffers were created HOST_VISIBLE+TRANSFER_DST and are
+    // host-mapped (see init at line 851/858, which uses the same memset
+    // pattern). vkDeviceWaitIdle above guarantees the GPU is idle, so
+    // direct host writes are safe.
+    if (page_table_ssbo_.mapped()) {
+        std::memset(page_table_ssbo_.mapped(), 0xFF,
+                    static_cast<size_t>(streaming_config_.total_slabs()) * sizeof(uint32_t));
+    }
+    if (chunk_table_ssbo_.mapped()) {
+        std::memset(chunk_table_ssbo_.mapped(), 0, 256 * 16);
+    }
+
+    // Reset the visibility counts so the first post-portal frame doesn't
+    // start by reading {static_visible, dynamic_visible, merged_visible}
+    // values left over from the previous scene's last frame.
+    if (counts_ssbo_.mapped()) {
+        auto* counts = static_cast<uint32_t*>(counts_ssbo_.mapped());
+        counts[0] = 0;
+        counts[1] = 0;
+        counts[2] = 0;
+    }
 }
 
 std::vector<GsRenderer::ChunkInventoryEntry> GsRenderer::chunk_inventory() const {
