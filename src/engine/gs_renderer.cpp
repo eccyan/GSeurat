@@ -842,14 +842,19 @@ void GsRenderer::init_streaming(const StreamingConfig& config) {
                      static_cast<float>(depth_status_size) / 1024.0f);
     }
 
-    // Page table: one uint32 per slab, initialized to 0xFFFFFFFF (invalid)
-    page_table_ssbo_ = Buffer::create_storage(allocator_,
+    // Page table: one uint32 per slab, initialized to 0xFFFFFFFF (invalid).
+    // host_dst variant: reads happen on the GPU every frame; updates from
+    // chunk-load completions are recorded as vkCmdUpdateBuffer onto the
+    // current frame's cmd buffer with a TRANSFER_WRITE -> SHADER_READ barrier
+    // so they don't tear under in-flight GPU reads.
+    page_table_ssbo_ = Buffer::create_storage_host_dst(allocator_,
         static_cast<VkDeviceSize>(config.total_slabs()) * sizeof(uint32_t));
     std::memset(page_table_ssbo_.mapped(), 0xFF,
                 config.total_slabs() * sizeof(uint32_t));
 
-    // Chunk table: 256 entries x 16 bytes each, zeroed
-    chunk_table_ssbo_ = Buffer::create_storage(allocator_, 256 * 16);
+    // Chunk table: 256 entries x 16 bytes each, zeroed. Same host_dst
+    // rationale as page_table.
+    chunk_table_ssbo_ = Buffer::create_storage_host_dst(allocator_, 256 * 16);
     std::memset(chunk_table_ssbo_.mapped(), 0, 256 * 16);
 
     // Zero the counts buffer
@@ -1196,8 +1201,12 @@ void GsRenderer::poll_transfers(VkCommandBuffer frame_cmd) {
         }
 
         // Front job is fully submitted. Queue the completion marker —
-        // exactly once per job — that publishes the chunk to the
-        // renderer when the GPU fence retires.
+        // exactly once per job. The fence-retire callback only enqueues a
+        // PendingChunkPublication; the actual page_table / chunk_table
+        // writes happen later on the current frame's command buffer in
+        // publish_pending_chunks(). That serialises the metadata update
+        // through the GPU command stream so it can't tear under in-flight
+        // shader reads.
         if (!job.completion_enqueued) {
             job.completion_enqueued = true;
             auto handle      = std::move(job.slab_handle);
@@ -1207,49 +1216,12 @@ void GsRenderer::poll_transfers(VkCommandBuffer frame_cmd) {
 
             transfer_queue_->enqueue_completion(
                 [this, handle = std::move(handle), splat_count, slabs_needed, sps_local]() mutable {
-                    uint32_t page_table_offset = 0;
-                    for (const auto& chunk : active_chunks_) {
-                        page_table_offset += static_cast<uint32_t>(chunk.handle.slab_indices.size());
-                    }
-
-                    auto* pt = static_cast<uint32_t*>(page_table_ssbo_.mapped());
-                    for (uint32_t i = 0; i < slabs_needed; ++i) {
-                        pt[page_table_offset + i] = handle.slab_indices[i];
-                    }
-
-                    auto* ct = static_cast<uint8_t*>(chunk_table_ssbo_.mapped());
-                    const uint32_t chunk_idx = static_cast<uint32_t>(active_chunks_.size());
-                    const uint32_t last_slab_splats = splat_count - (slabs_needed - 1) * sps_local;
-                    const uint32_t entry[4] = {page_table_offset, slabs_needed, last_slab_splats, splat_count};
-                    std::memcpy(ct + chunk_idx * 16, entry, 16);
-
-                    ChunkState cs;
-                    cs.status = ChunkState::Status::ACTIVE;
-                    cs.handle = std::move(handle);
-                    cs.page_table_offset = page_table_offset;
-                    cs.splat_count = splat_count;
-                    active_chunks_.push_back(std::move(cs));
-
-                    static_count_ = 0;
-                    for (const auto& c : active_chunks_) static_count_ += c.splat_count;
-                    total_active_splats_ = static_count_;
-                    gaussian_count_ = static_count_;
-
-                    std::vector<SortEntry> staging(static_sort_size_);
-                    for (uint32_t i = 0; i < static_sort_size_; ++i) {
-                        staging[i].key = 0xFFFFFFFF;
-                        staging[i].index = i < static_count_ ? i : 0;
-                    }
-                    std::memcpy(static_sort_a_.mapped(), staging.data(),
-                                static_sort_size_ * sizeof(SortEntry));
-                    std::memcpy(static_sort_b_.mapped(), staging.data(),
-                                static_sort_size_ * sizeof(SortEntry));
-
-                    static_dirty_ = true;
-
-                    std::fprintf(stderr,
-                        "GS: Async load complete — %u splats in %u slabs (total active: %u)\n",
-                        splat_count, slabs_needed, static_count_);
+                    PendingChunkPublication p;
+                    p.handle = std::move(handle);
+                    p.splat_count = splat_count;
+                    p.slabs_needed = slabs_needed;
+                    p.slab_size_splats = sps_local;
+                    pending_publications_.push_back(std::move(p));
                 });
         }
 
@@ -1259,6 +1231,115 @@ void GsRenderer::poll_transfers(VkCommandBuffer frame_cmd) {
     }
 
     transfer_queue_->poll_completions(frame_cmd);
+    publish_pending_chunks(frame_cmd);
+}
+
+void GsRenderer::publish_pending_chunks(VkCommandBuffer cmd) {
+    if (pending_publications_.empty()) return;
+    if (cmd == VK_NULL_HANDLE) return;
+
+    bool any_published = false;
+
+    while (!pending_publications_.empty()) {
+        PendingChunkPublication p = std::move(pending_publications_.front());
+        pending_publications_.pop_front();
+
+        // Page table offset for this chunk = sum of slab counts of all
+        // already-active chunks. Computed sequentially as we publish.
+        uint32_t page_table_offset = 0;
+        for (const auto& chunk : active_chunks_) {
+            page_table_offset += static_cast<uint32_t>(chunk.handle.slab_indices.size());
+        }
+
+        // page_table entries: one uint32 (the physical slab index) per slab
+        // owned by this chunk. vkCmdUpdateBuffer is bounded to 65536 bytes;
+        // a typical chunk has <=100 slabs (400 bytes), so this fits trivially.
+        if (!p.handle.slab_indices.empty()) {
+            const VkDeviceSize pt_offset_bytes =
+                static_cast<VkDeviceSize>(page_table_offset) * sizeof(uint32_t);
+            const VkDeviceSize pt_size_bytes =
+                static_cast<VkDeviceSize>(p.handle.slab_indices.size()) * sizeof(uint32_t);
+            if (pt_size_bytes <= 65536) {
+                vkCmdUpdateBuffer(cmd, page_table_ssbo_.buffer(),
+                                  pt_offset_bytes, pt_size_bytes,
+                                  p.handle.slab_indices.data());
+            } else {
+                std::fprintf(stderr,
+                    "[gs_renderer] publish: page_table update %llu bytes exceeds "
+                    "vkCmdUpdateBuffer 65536-byte limit; chunk has %zu slabs\n",
+                    static_cast<unsigned long long>(pt_size_bytes),
+                    p.handle.slab_indices.size());
+            }
+        }
+
+        // chunk_table entry: 16 bytes ({page_table_offset, slabs_needed,
+        // last_slab_splats, splat_count}) at index `chunk_idx * 16`.
+        const uint32_t chunk_idx = static_cast<uint32_t>(active_chunks_.size());
+        const uint32_t last_slab_splats =
+            p.splat_count - (p.slabs_needed - 1) * p.slab_size_splats;
+        const uint32_t entry[4] = {page_table_offset, p.slabs_needed,
+                                    last_slab_splats, p.splat_count};
+        vkCmdUpdateBuffer(cmd, chunk_table_ssbo_.buffer(),
+                          static_cast<VkDeviceSize>(chunk_idx) * 16,
+                          sizeof(entry), entry);
+
+        // CPU-side bookkeeping. Counts must update in the same step so the
+        // next frame's render() sees a consistent {static_count_, page_table,
+        // chunk_table} triple. The GPU reads the new metadata only after
+        // the barrier at the end of this function, so a graphics dispatch
+        // recorded *later* in this same cmd buffer will see fresh data.
+        ChunkState cs;
+        cs.status = ChunkState::Status::ACTIVE;
+        cs.handle = std::move(p.handle);
+        cs.page_table_offset = page_table_offset;
+        cs.splat_count = p.splat_count;
+        active_chunks_.push_back(std::move(cs));
+
+        static_count_ = 0;
+        for (const auto& c : active_chunks_) static_count_ += c.splat_count;
+        total_active_splats_ = static_count_;
+        gaussian_count_ = static_count_;
+        static_dirty_ = true;
+
+        // Note: we deliberately do NOT reinitialise static_sort_a_ /
+        // static_sort_b_ here. The depth sort regenerates keys for
+        // [0, static_count_) every frame, and entries beyond static_count_
+        // retain their 0xFFFFFFFF sentinel keys from the original sort
+        // buffer init (in load_cloud_legacy / load_cloud). The previous
+        // implementation memcpy'd a fresh sentinel pattern over the whole
+        // sort buffer here — which raced with frame N-1's sort dispatch
+        // reading the same buffer. Skipping it is correct AND removes
+        // the second host/device race in this path.
+
+        any_published = true;
+
+        std::fprintf(stderr,
+            "GS: Async load complete — %u splats in %u slabs (total active: %u)\n",
+            p.splat_count, p.slabs_needed, static_count_);
+    }
+
+    if (any_published) {
+        // Single barrier covering both metadata buffers: TRANSFER_WRITE
+        // (vkCmdUpdateBuffer's effective stage) -> SHADER_READ. Without
+        // this, subsequent compute dispatches in the same cmd buffer
+        // could read the metadata with the writes still in flight.
+        VkBufferMemoryBarrier barriers[2]{};
+        barriers[0].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+        barriers[0].srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        barriers[0].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+        barriers[0].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barriers[0].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barriers[0].buffer = page_table_ssbo_.buffer();
+        barriers[0].offset = 0;
+        barriers[0].size = VK_WHOLE_SIZE;
+        barriers[1] = barriers[0];
+        barriers[1].buffer = chunk_table_ssbo_.buffer();
+
+        vkCmdPipelineBarrier(cmd,
+            VK_PIPELINE_STAGE_TRANSFER_BIT,
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+            0, 0, nullptr, 2, barriers, 0, nullptr);
+    }
 }
 
 void GsRenderer::load_cloud_legacy(const GaussianCloud& cloud) {
@@ -1427,7 +1508,7 @@ void GsRenderer::load_cloud_legacy(const GaussianCloud& cloud) {
 
     // Allocate a dummy page table buffer for binding 8 (legacy path, USE_PAGE_TABLE=0)
     page_table_ssbo_.destroy(allocator_);
-    page_table_ssbo_ = Buffer::create_storage(allocator_, sizeof(uint32_t));
+    page_table_ssbo_ = Buffer::create_storage_host_dst(allocator_, sizeof(uint32_t));
     {
         auto* pt = static_cast<uint32_t*>(page_table_ssbo_.mapped());
         pt[0] = 0xFFFFFFFF;

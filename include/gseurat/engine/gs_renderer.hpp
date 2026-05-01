@@ -356,6 +356,11 @@ private:
         VkDescriptorSet scatter_ab, VkDescriptorSet scatter_ba);
     void dispatch_tile_sort(VkCommandBuffer cmd);
     void load_cloud_legacy(const GaussianCloud& cloud);
+    // Drain pending_publications_ and record the metadata writes
+    // (page_table, chunk_table) onto `cmd` via vkCmdUpdateBuffer + a
+    // TRANSFER_WRITE -> SHADER_READ barrier. Called from poll_transfers
+    // immediately after poll_completions enqueues new publications.
+    void publish_pending_chunks(VkCommandBuffer cmd);
 
     VkDevice device_ = VK_NULL_HANDLE;
     VmaAllocator allocator_ = VK_NULL_HANDLE;
@@ -461,6 +466,20 @@ private:
         bool completion_enqueued = false; // true once enqueue_completion() ran
     };
     std::deque<PendingLoadJob> pending_loads_;
+
+    // Chunks whose Gaussian SSBO data has finished uploading on the GPU but
+    // whose metadata (page_table, chunk_table) hasn't been published yet.
+    // The transfer-completion callback only enqueues here; the actual
+    // metadata writes happen in publish_pending_chunks() recorded onto the
+    // current frame's command buffer. This avoids the host/device race that
+    // raw mapped writes have against in-flight GPU reads of the same SSBOs.
+    struct PendingChunkPublication {
+        SlabAllocator::SlabHandle handle;
+        uint32_t splat_count = 0;
+        uint32_t slabs_needed = 0;
+        uint32_t slab_size_splats = 0;
+    };
+    std::deque<PendingChunkPublication> pending_publications_;
 
     uint32_t gaussian_count_ = 0;
     uint32_t max_gaussian_count_ = 0;
