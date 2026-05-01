@@ -779,17 +779,26 @@ void AppBase::load_gs_scene(const SceneData& scene_data, const GsSceneOptions& o
 void AppBase::begin_async_load_gs_scene(SceneData scene_data,
                                         const GsSceneOptions& opts) {
     // Stash everything needed for the finalize phase, then kick the parse off
-    // on a worker. `std::launch::async` forces a real worker thread on every
-    // implementation we ship for (libc++/Apple Clang, MSVC) — the deferred
-    // alternative would silently downgrade to lazy execution, which would
-    // re-introduce the main-thread stall the moment we called `future.get()`.
-    PendingAsyncScene pending;
-    pending.scene_data = std::move(scene_data);
-    pending.opts = opts;
-    SceneData* scene_ref = &pending.scene_data;  // alive until pending is dropped
-    pending.parse_future = std::async(std::launch::async,
+    // on a worker. The pointer-into-optional must be taken AFTER the
+    // `emplace`, otherwise the move performed by `optional::emplace` would
+    // leave the worker reading from a moved-from `SceneData` (its PLY paths
+    // and scene_objects would be empty strings, the parse would fail with a
+    // bad_alloc / "Failed to open PLY file" cascade, and the post-load body
+    // would silently re-merge the OLD scene's chunks back in — which was
+    // the source of the persistent flashback after #380/#381).
+    //
+    // `std::launch::async` forces a real worker thread on every libc++ /
+    // Apple Clang / MSVC build target; the deferred alternative would
+    // silently downgrade to lazy execution and re-introduce the main-thread
+    // stall the moment `future.get()` was called.
+    PendingAsyncScene initial;
+    initial.scene_data = std::move(scene_data);
+    initial.opts = opts;
+    pending_async_scene_.emplace(std::move(initial));
+
+    SceneData* scene_ref = &pending_async_scene_->scene_data;
+    pending_async_scene_->parse_future = std::async(std::launch::async,
         [scene_ref] { return GsSceneLoader::parse(*scene_ref); });
-    pending_async_scene_.emplace(std::move(pending));
 }
 
 void AppBase::tick_async_load_gs_scene() {
