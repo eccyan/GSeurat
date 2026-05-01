@@ -1045,8 +1045,19 @@ void GsRenderer::clear_chunks(VkCommandBuffer drain_cmd) {
     static_count_ = 0;
     total_active_splats_ = 0;
     gaussian_count_ = 0;
+    dynamic_count_ = 0;
     sort_done_once_ = false;
     static_dirty_ = true;
+
+    // Zero the dynamic SSBO so a future over-count of `dynamic_count_`
+    // can't surface old-scene gaussians as ghost geometry. memset (not
+    // vkCmdFillBuffer) because Buffer::create_storage omits TRANSFER_DST_BIT;
+    // the buffer is HOST_VISIBLE+MAPPED, and `vkDeviceWaitIdle` above
+    // guarantees the GPU is idle here.
+    if (dynamic_gaussian_ssbo_.mapped() && max_dynamic_count_ > 0) {
+        std::memset(dynamic_gaussian_ssbo_.mapped(), 0,
+                    static_cast<size_t>(max_dynamic_count_) * sizeof(GpuGaussian));
+    }
 }
 
 std::vector<GsRenderer::ChunkInventoryEntry> GsRenderer::chunk_inventory() const {
