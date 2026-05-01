@@ -3,6 +3,7 @@
 #include "gseurat/engine/procedural_textures.hpp"
 #include "gseurat/engine/project_root.hpp"
 #include "gseurat/engine/resource_manager.hpp"
+#include "gseurat/engine/scoped_timer.hpp"
 #include "gseurat/engine/sort_entry.hpp"
 #include "gseurat/engine/sort_hash.hpp"
 #include "gseurat/engine/streaming_config.hpp"
@@ -1124,6 +1125,13 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
         }
 
         if (camera_dirty && flags.gs_chunk_culling && !gs_skip_chunk_cull_ && !gs_chunk_grid_.empty()) {
+            // Diagnostic: this branch runs every frame the camera moves
+            // (i.e. constantly during walking). The CPU work below — chunk
+            // visibility, gs_static_buffer_ rebuild, then the SSBO upload
+            // path at update_static_gaussians — is the prime suspect for
+            // walking-time main-thread stalls when streaming is gated off
+            // by the demo's pre-merge.
+            ScopedStallTimer _t_static_rebuild{"gs_static_rebuild (visibility+gather+upload)"};
             glm::mat4 gs_vp = gs_proj_ * gs_view_;
             glm::vec3 cam_pos = glm::vec3(glm::inverse(gs_view_)[3]);
             // Use camera position for distance culling (camera sees ahead of player)
@@ -1214,6 +1222,11 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
                     gs_static_buffer_.resize(gs_renderer_.max_static_count());
                     count = gs_renderer_.max_static_count();
                 }
+                // Diagnostic sub-timer for the host-mapped memcpy alone.
+                // For a 2.4M-splat pre-merged scene this is ~150 MiB of CPU
+                // writes contending with the GPU's read pipeline through
+                // unified memory; suspected primary cause of walking stalls.
+                ScopedStallTimer _t_upload{"gs_renderer.update_static_gaussians (memcpy)"};
                 gs_renderer_.update_static_gaussians(gs_static_buffer_.data(), count);
             }
 

@@ -1,5 +1,6 @@
 #include "gseurat/engine/gs_renderer.hpp"
 #include "gseurat/engine/pipeline.hpp"
+#include "gseurat/engine/scoped_timer.hpp"
 
 #include <chrono>
 #include <cmath>
@@ -1131,6 +1132,10 @@ std::vector<TransferQueue::Handle> GsRenderer::load_cloud_async(GaussianCloud cl
 
 void GsRenderer::poll_transfers(VkCommandBuffer frame_cmd) {
     if (!transfer_queue_) return;
+    // Diagnostic: full poll path covers slab-upload submits, completion
+    // callback drains, deferred slab releases, and the metadata publish.
+    // If the beachball is in any of those paths, this fires.
+    ScopedStallTimer _t_poll{"GsRenderer::poll_transfers"};
 
     // Drain queued slab uploads as long as the staging ring has space.
     // We process the front job's slabs, then advance to the next job
