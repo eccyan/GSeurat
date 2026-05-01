@@ -1126,11 +1126,22 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
 
         bool camera_dirty = visibility_changed || budget_changed || gs_static_force_dirty_;
 
-        // If scene animations are active, force static rebuild each frame
-        if (gs_animator_.has_active_groups() || !gs_scene_animations_.empty()) {
-            gs_static_force_dirty_ = true;
-            camera_dirty = true;
-        }
+        // Animations don't require the heavy gather+re-tag — they can
+        // advance in place by calling gs_animator_.update on the
+        // existing gs_static_buffer_ + re-uploading. We track them
+        // separately and route to a much cheaper "animate-only" branch
+        // when visibility hasn't changed.
+        //
+        // The previous code forced camera_dirty=true whenever animations
+        // were present, which caused a per-frame re-gather + re-tag
+        // feedback loop: the static path always re-tags VFX/scene
+        // animations from gs_static_buffer_, leaving has_active_groups()
+        // true, which then forces camera_dirty again next frame even
+        // though visibility hadn't changed. Inside the dungeon (where
+        // scene_animations + slime VFX exist) this pinned the demo at
+        // ~14fps with a sustained 70ms/frame static-path stall.
+        const bool animations_present =
+            gs_animator_.has_active_groups() || !gs_scene_animations_.empty();
 
         // Sort-buffer reset is required every frame the merge runs with
         // dynamic content — the radix-sort scatter leaves stale keys in
@@ -1253,15 +1264,33 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
             }
 
             gs_prev_view_ = gs_view_;
-            // Clear force_dirty only if it wasn't set by animations this frame
-            if (!gs_animator_.has_active_groups() && gs_scene_animations_.empty()) {
-                gs_static_force_dirty_ = false;
-            }
+            // Always clear force_dirty after completing the heavy path —
+            // the animate-only branch below handles per-frame animation
+            // updates without needing a re-gather. The previous
+            // "keep force_dirty true while animations active" behaviour
+            // pinned the dungeon at ~14fps because the heavy path then
+            // ran every frame.
+            gs_static_force_dirty_ = false;
+        } else if (animations_present && !determinism_test_state_.active &&
+                   flags.animation && !gs_static_buffer_.empty() &&
+                   gs_animator_.has_active_groups()) {
+            // Cheap animate-only path: visibility didn't change but the
+            // animator still has active groups, so step them in place
+            // and re-upload. Skips gather + re-tag (the per-frame loop
+            // that pinned the dungeon at 14fps). The animator's tagged
+            // regions remain valid because the buffer hasn't been
+            // re-gathered.
+            ScopedStallTimer _t_anim_only{"record_gs_prepass: animate-only path"};
+            gs_animator_.update(dt, gs_static_buffer_);
+            auto count = static_cast<uint32_t>(gs_static_buffer_.size());
+            if (count > gs_renderer_.max_static_count()) count = gs_renderer_.max_static_count();
+            gs_renderer_.update_static_gaussians(gs_static_buffer_.data(), count);
         } else if (dynamics_active && !determinism_test_state_.active) {
-            // Cheap path: visibility didn't change but dynamics exist,
-            // so the sort buffers still need a reset (otherwise the
-            // radix-merge reads stale keys from last frame's scatter).
-            // ~5ms instead of ~175ms.
+            // Cheap sort-only path: visibility didn't change AND no
+            // animations need stepping, but dynamics exist so the sort
+            // buffers still need a reset (otherwise the radix-merge
+            // reads stale keys from last frame's scatter). ~5ms instead
+            // of ~175ms.
             ScopedStallTimer _t_sort_only{"record_gs_prepass: reset_static_sort_only"};
             gs_renderer_.reset_static_sort_only();
         }
