@@ -4,8 +4,12 @@
 
 #include <chrono>
 #include <cmath>
+#include <cstdint>
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <stdexcept>
+#include <string>
 #include <thread>
 #include <algorithm>
 #include <optional>
@@ -1413,6 +1417,126 @@ void GsRenderer::poll_transfers(VkCommandBuffer frame_cmd) {
 
     transfer_queue_->poll_completions(frame_cmd);
     publish_pending_chunks(frame_cmd);
+
+    // ── DIAG: streaming-state dump (PR #387 ghost investigation) ──
+    // Opt-in via env var GS_DIAG_STREAMING=1. Cached once. Prints to
+    // stderr each frame for the first 5 frames (initial state — what the
+    // user reported as the "initial spawn state ghost") then every 60
+    // frames (~1s @ 60fps) thereafter. Reads HOST_VISIBLE+MAPPED buffers
+    // directly without vkDeviceWaitIdle: this is sampling, torn reads
+    // are acceptable for diagnostic output.
+    {
+        static const bool diag_enabled = []() {
+            const char* env = std::getenv("GS_DIAG_STREAMING");
+            return env != nullptr && env[0] == '1';
+        }();
+        if (diag_enabled && streaming_initialized_) {
+            static uint64_t diag_frame = 0;
+            ++diag_frame;
+            const bool dump_now = (diag_frame <= 5) || (diag_frame % 60 == 0);
+            if (dump_now) {
+                diag_streaming_dump(diag_frame);
+            }
+        }
+    }
+}
+
+void GsRenderer::diag_streaming_dump(uint64_t frame) {
+    std::fprintf(stderr,
+        "[gs_diag] f=%llu static=%u dynamic=%u total_active=%u max_static=%u\n",
+        static_cast<unsigned long long>(frame),
+        static_count_, dynamic_count_, total_active_splats_, max_static_count_);
+
+    // active_chunks_ — what the engine THINKS is loaded.
+    std::fprintf(stderr, "[gs_diag]   active_chunks=%zu\n", active_chunks_.size());
+    for (size_t i = 0; i < active_chunks_.size(); ++i) {
+        const auto& c = active_chunks_[i];
+        std::fprintf(stderr,
+            "[gs_diag]     [%zu] chunk_id=%u splats=%u page_offset=%u slabs=%zu\n",
+            i, c.handle.chunk_id, c.splat_count, c.page_table_offset,
+            c.handle.slab_indices.size());
+    }
+
+    // projected_ssbo_ tail scan: what's living BEYOND static_count_.
+    // If sort indirection is bounding correctly, the rasterizer should
+    // never reach these — but if real-looking projections sit here AND
+    // the ghost still renders, something downstream is reading past count.
+    if (projected_ssbo_.mapped() && static_count_ < max_static_count_) {
+        const auto* p = static_cast<const ProjectedSplat*>(projected_ssbo_.mapped());
+        const uint32_t scan_start = static_count_;
+        const uint32_t scan_end =
+            std::min<uint32_t>(static_count_ + 2048u, max_static_count_);
+        uint32_t non_zero = 0;
+        uint32_t real_looking = 0;  // radius>0 AND depth>0
+        std::fprintf(stderr,
+            "[gs_diag]   projected_ssbo_ tail scan [%u..%u):\n",
+            scan_start, scan_end);
+        for (uint32_t i = scan_start; i < scan_end; ++i) {
+            const auto& s = p[i];
+            const bool any_nz =
+                s.center.x != 0.0f || s.center.y != 0.0f ||
+                s.depth != 0.0f || s.radius != 0.0f ||
+                s.color.x != 0.0f || s.color.y != 0.0f ||
+                s.color.z != 0.0f || s.color.w != 0.0f;
+            if (any_nz) ++non_zero;
+            if (s.radius > 0.0f && s.depth > 0.0f) {
+                ++real_looking;
+                if (real_looking <= 5) {
+                    std::fprintf(stderr,
+                        "[gs_diag]     tail[%u] center=(%.2f,%.2f) depth=%.2f "
+                        "radius=%.2f color=(%.2f,%.2f,%.2f,%.2f)\n",
+                        i, s.center.x, s.center.y, s.depth, s.radius,
+                        s.color.x, s.color.y, s.color.z, s.color.w);
+                }
+            }
+        }
+        std::fprintf(stderr,
+            "[gs_diag]     summary: non_zero=%u real_looking=%u (in %u slots)\n",
+            non_zero, real_looking, scan_end - scan_start);
+    }
+
+    // merged_sort_ssbo_: indices the rasterizer WILL read, bounded by
+    // total_active_splats_. If max_idx >= max_static + max_dynamic that's
+    // an out-of-bounds index — direct evidence of a bound bug.
+    if (merged_sort_ssbo_.mapped() && total_active_splats_ > 0) {
+        const auto* m = static_cast<const SortEntry*>(merged_sort_ssbo_.mapped());
+        const uint32_t total_max = max_static_count_ + max_dynamic_count_;
+        const uint32_t merge_count = total_active_splats_;
+        uint32_t max_idx = 0;
+        uint32_t idx_above_count = 0;     // index points beyond static_count_+dynamic_count_
+        uint32_t idx_above_capacity = 0;  // index points beyond capacity (real OOB)
+        for (uint32_t i = 0; i < merge_count; ++i) {
+            const uint32_t idx = m[i].index;
+            if (idx > max_idx) max_idx = idx;
+            if (idx >= static_count_ + dynamic_count_) ++idx_above_count;
+            if (idx >= total_max) ++idx_above_capacity;
+        }
+        std::fprintf(stderr,
+            "[gs_diag]   merged_sort: count=%u max_idx=%u above_count=%u above_capacity=%u\n",
+            merge_count, max_idx, idx_above_count, idx_above_capacity);
+    }
+
+    // static_sort_a_ tail invariant check: should be all key=0xFFFFFFFF
+    // beyond static_count_ (PR #387's whole purpose).
+    if (static_sort_a_.mapped() && static_count_ < static_sort_size_) {
+        const auto* s = static_cast<const SortEntry*>(static_sort_a_.mapped());
+        const uint32_t scan_end = std::min<uint32_t>(static_count_ + 1024u, static_sort_size_);
+        uint32_t non_sentinel = 0;
+        uint32_t first_offender = UINT32_MAX;
+        for (uint32_t i = static_count_; i < scan_end; ++i) {
+            if (s[i].key != 0xFFFFFFFFu) {
+                ++non_sentinel;
+                if (first_offender == UINT32_MAX) first_offender = i;
+            }
+        }
+        std::fprintf(stderr,
+            "[gs_diag]   static_sort_a_ tail [%u..%u): non_sentinel=%u first_offender=%s\n",
+            static_count_, scan_end, non_sentinel,
+            first_offender == UINT32_MAX
+                ? "none"
+                : (std::string("idx=") + std::to_string(first_offender)).c_str());
+    }
+    std::fflush(stderr);
 }
 
 void GsRenderer::publish_pending_chunks(VkCommandBuffer cmd) {

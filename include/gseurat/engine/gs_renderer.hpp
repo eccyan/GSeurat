@@ -375,6 +375,11 @@ private:
     // immediately after poll_completions enqueues new publications.
     void publish_pending_chunks(VkCommandBuffer cmd);
 
+    // DIAG: stderr-print streaming-state snapshot (active_chunks_, counts,
+    // projected_ssbo_/merged_sort_ssbo_/static_sort_a_ tail samples) for
+    // ghost investigation. Opt-in via env var GS_DIAG_STREAMING=1.
+    void diag_streaming_dump(uint64_t frame);
+
     VkDevice device_ = VK_NULL_HANDLE;
     VmaAllocator allocator_ = VK_NULL_HANDLE;
     VkPipelineCache pipeline_cache_ = VK_NULL_HANDLE;
