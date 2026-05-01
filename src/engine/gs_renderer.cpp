@@ -1168,6 +1168,32 @@ void GsRenderer::clear_chunks(VkCommandBuffer drain_cmd) {
         std::memset(static_gaussian_ssbo_.mapped(), 0,
                     static_cast<size_t>(max_static_count_) * sizeof(GpuGaussian));
     }
+
+    // Zero `projected_ssbo_`. This is the actual fix for the post-portal
+    // ghost geometry. Diagnostics on the rebuild path confirmed
+    // `gs_static_buffer_`'s post-portal AABB is tight on the dungeon
+    // footprint and `pbd_tagged == 0`, yet the user still saw ghost
+    // overworld trees rendered at world coords like (351, _, 310) — the
+    // signature of PBD-transformed positions from the previous scene.
+    //
+    // Preprocess writes `projected_ssbo_[projected_offset, +static_count_)`
+    // each frame the static path is dirty, but the tail beyond that range
+    // keeps the previous scene's last-frame projections — including the
+    // overworld trees' PBD-transformed positions at far world coords. The
+    // merge / tile-bin / rasterize chain only loosely bounds its reads by
+    // `counts[0]`, so anything further along that picked up an index in
+    // the stale region read the previous scene's geometry.
+    //
+    // Buffer is HOST_VISIBLE+MAPPED, sized for max_static_count_ +
+    // max_dynamic_count_ × sizeof(ProjectedSplat) (48 bytes/entry).
+    // vkDeviceWaitIdle above guarantees GPU is idle.
+    if (projected_ssbo_.mapped()) {
+        const size_t total = static_cast<size_t>(max_static_count_ + max_dynamic_count_);
+        if (total > 0) {
+            std::memset(projected_ssbo_.mapped(), 0,
+                        total * sizeof(ProjectedSplat));
+        }
+    }
 }
 
 std::vector<GsRenderer::ChunkInventoryEntry> GsRenderer::chunk_inventory() const {
