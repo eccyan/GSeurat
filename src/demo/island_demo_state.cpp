@@ -2130,6 +2130,35 @@ void IslandDemoState::perform_portal_transition(AppBase& app,
 
     app.clear_scene();
 
+    // The original SceneOut SceneTransition entity was destroyed by the
+    // app.world().clear() above. Recreate one immediately in SceneIn state
+    // with alpha=1.0 so the very next composited frame is fully covered by
+    // an opaque overlay. Without this, the window between Phase A and Phase
+    // B (which spans the async PLY parse + GPU upload — typically several
+    // frames at hundreds of ms) renders against the stale per-frame
+    // `processed_image_` contents, exposing residue from the OLD scene
+    // (the user-reported "old initial-frame configuration flashes back"
+    // ghost). The transition_system holds the alpha at 1.0 until Phase B
+    // completes, then animates it down over kFadeIn seconds.
+    {
+        constexpr float kFadeIn = 0.4f;
+        auto e = app.world().create();
+        SceneTransition st;
+        st.current_state       = SceneTransition::State::SceneIn;
+        st.timer               = 0.0f;
+        st.transition_duration = kFadeIn;
+        st.target_scene        = target_scene;
+        st.target_position     = target_position;
+        st.load_dispatched     = true;  // we are past Loading
+        app.world().add<SceneTransition>(e, st);
+
+        ScreenFade fade;
+        fade.alpha            = 1.0f;
+        fade.transition_color = glm::vec3(0.0f, 0.0f, 0.0f);
+        fade.effect_type      = 0;
+        app.world().add<ScreenFade>(e, fade);
+    }
+
     // Phase A ends here: kick off PLY parsing on a worker thread and stash
     // the rest of the transition as a deferred lambda. update() drains it
     // once `app.is_async_loading_gs_scene()` flips back to false (parse +
@@ -2140,15 +2169,6 @@ void IslandDemoState::perform_portal_transition(AppBase& app,
     GsSceneOptions portal_opts{ .add_default_light = true, .set_god_rays = true };
     app.begin_async_load_gs_scene(std::move(target_scene_data), portal_opts);
 
-    pending_portal_post_load_ =
-        [target_scene, target_position](AppBase& app_in) {
-            // Forward to the (private) member implementation. We need the
-            // `IslandDemoState*` to call `finish_portal_transition`. The
-            // lambda is owned by `IslandDemoState::pending_portal_post_load_`
-            // so `this` is alive for the duration; we capture it via the
-            // surrounding outer-method `this`-pointer below.
-            (void)app_in;
-        };
     pending_portal_post_load_ =
         [this, target_scene, target_position](AppBase& app_in) {
             this->finish_portal_transition(app_in, target_scene, target_position);
@@ -2287,8 +2307,27 @@ void IslandDemoState::finish_portal_transition(AppBase& app,
         }
     }
 
+    // Fast-path detection: when the new scene authors a "player" game_object
+    // pointing at the snes_hero PLY, `GsSceneLoader::parse` already merged
+    // the player Gaussians into the scene cloud on the worker thread.
+    // Phase B's re-merge + 2nd init_gs is redundant for non-overworld
+    // destinations (no streamed chunks to add), and the synchronous
+    // load_ply call below would re-introduce a 100-300ms main-thread
+    // stall after we just spent the entire async-load window avoiding
+    // exactly that. Skip the whole re-merge block when both conditions
+    // hold; the renderer already has everything it needs.
+    bool player_already_merged_fast = false;
+    for (const auto& alloc : app.gs_terrain().bone_allocations) {
+        if (alloc.manifest_path.find("snes_hero") != std::string::npos) {
+            player_already_merged_fast = true;
+            break;
+        }
+    }
+    const bool skip_phase_b_remerge = !is_overworld && player_already_merged_fast
+                                      && app.renderer().has_gs_cloud();
+
     // Re-merge world chunks + player character into the new scene
-    if (app.renderer().has_gs_cloud()) {
+    if (!skip_phase_b_remerge && app.renderer().has_gs_cloud()) {
         const auto& new_map = app.renderer().gs_chunk_grid().all_gaussians();
         map_gaussians_.assign(new_map.begin(), new_map.end());
         std::vector<Gaussian> merged = map_gaussians_;
@@ -2511,30 +2550,11 @@ void IslandDemoState::finish_portal_transition(AppBase& app,
         std::fprintf(stderr, "[IslandDemo] World streaming disabled (non-overworld scene)\n");
     }
 
-    // Recreate a SceneTransition entity in SceneIn state so the next few
-    // frames render with a fade-in overlay covering any first-frame GS
-    // pop. The SceneOut entity was destroyed by `app.world().clear()`
-    // above; without this recreation the new scene would render
-    // uncovered. alpha=1 fully covers the very first post-transition
-    // frame, then transition_system animates it down to 0 over kFadeIn.
-    {
-        constexpr float kFadeIn = 0.4f;
-        auto e = app.world().create();
-        SceneTransition st;
-        st.current_state       = SceneTransition::State::SceneIn;
-        st.timer               = 0.0f;
-        st.transition_duration = kFadeIn;
-        st.target_scene        = target_scene;
-        st.target_position     = target_position;
-        st.load_dispatched     = true;
-        app.world().add<SceneTransition>(e, st);
-
-        ScreenFade fade;
-        fade.alpha            = 1.0f;
-        fade.transition_color = glm::vec3(0.0f, 0.0f, 0.0f);
-        fade.effect_type      = 0;
-        app.world().add<ScreenFade>(e, fade);
-    }
+    // Note: the SceneIn fade entity is created by Phase A
+    // (`perform_portal_transition`) — not here — so the overlay covers the
+    // full async-parse + finalize window, not just the post-finalize tail.
+    // Without that earlier creation the user sees "old initial-frame
+    // configuration flashes back" between Phase A and Phase B.
 
     std::fprintf(stderr, "[IslandDemo] Spawned at (%.1f, %.1f, %.1f)\n",
         spawn.x, spawn.y, spawn.z);

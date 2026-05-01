@@ -138,6 +138,12 @@ public:
     void transition_scene(const std::string& target_scene,
                           const glm::vec3& target_position) override;
 
+    // ITransitionHost: lets the transition system pin the SceneIn fade at
+    // alpha=1.0 while async scene loading is in flight.
+    bool is_async_loading() const override {
+        return is_async_loading_gs_scene();
+    }
+
     // Shared GS scene loading: PLY + placed objects + lights + emitters + animations + VFX
     void load_gs_scene(const SceneData& scene_data, const GsSceneOptions& opts = {});
 
