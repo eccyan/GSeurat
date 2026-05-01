@@ -299,6 +299,8 @@ Everything in the scene is a **Game Object** — a unified entity with position,
 
 Portals and cross-scene transitions are driven by a **transient-entity state machine** on the existing ECS. When a `ProximityTrigger + PortalTarget` pair fires, `portal_trigger_handler` spawns an entity with `SceneTransition + ScreenFade` components. `transition_system` advances `SceneOut → Loading → SceneIn`, issues a single atomic `host.transition_scene()` call under a fully-opaque overlay, and destroys the entity on completion.
 
+PLY parsing for the destination scene runs on a worker thread (`std::async`) via `AppBase::begin_async_load_gs_scene`; the main thread keeps rendering the loading overlay while `tick_async_load_gs_scene` non-blockingly polls the future, then performs the GPU/ECS finalize. `ITransitionHost::is_async_loading()` lets the state machine pin the SceneIn fade at alpha=1.0 until the load completes, so the fade-in only starts once the new scene is fully ready.
+
 Visuals are decoupled from the state machine — the post-process compute shader branches on `effect_type` to select between solid fade, left-to-right wipe, and iris wipe (aspect-corrected circle). Adding a new effect is a single-file shader change plus a schema bump.
 
 See [docs/scene-transitions.md](docs/scene-transitions.md) for the full architecture, components, effects reference, authoring workflow, and extension guide.

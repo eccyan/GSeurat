@@ -49,7 +49,9 @@
 #include <chrono>
 #include <cstdint>
 #include <functional>
+#include <future>
 #include <memory>
+#include <optional>
 #include <vector>
 
 namespace gseurat {
@@ -136,8 +138,30 @@ public:
     void transition_scene(const std::string& target_scene,
                           const glm::vec3& target_position) override;
 
+    // ITransitionHost: lets the transition system pin the SceneIn fade at
+    // alpha=1.0 while async scene loading is in flight.
+    bool is_async_loading() const override {
+        return is_async_loading_gs_scene();
+    }
+
     // Shared GS scene loading: PLY + placed objects + lights + emitters + animations + VFX
     void load_gs_scene(const SceneData& scene_data, const GsSceneOptions& opts = {});
+
+    // Async-load API. Pushes the CPU-only PLY parse + Gaussian merge to a worker
+    // thread (`std::async(std::launch::async, …)`), returning immediately. The
+    // main thread is expected to invoke `tick_async_load_gs_scene` once per
+    // frame; once the parse future is ready, that hook performs the GPU/ECS
+    // finalize phase synchronously and then arms `loading_monitor_` to track
+    // the streaming-upload phase. While the parse is in flight,
+    // `is_async_loading_gs_scene` returns true so callers can render a
+    // loading overlay or otherwise gate input.
+    void begin_async_load_gs_scene(SceneData scene_data,
+                                   const GsSceneOptions& opts = {});
+    void tick_async_load_gs_scene();
+    bool is_async_loading_gs_scene() const {
+        return pending_async_scene_.has_value();
+    }
+
     virtual void update_game(float dt);
     void upload_bone_transforms();
     virtual void update_audio(float dt);
@@ -305,6 +329,18 @@ protected:
     ComponentRegistry component_registry_;
     SystemScheduler system_scheduler_;
     void init_game_object_system();
+
+    // In-flight async scene load. The future runs `GsSceneLoader::parse` on a
+    // worker thread; the main thread polls it from `tick_async_load_gs_scene`
+    // and, when it is ready, performs the Vulkan / ECS finalize phase on the
+    // calling (main) thread. `scene_data` and `opts` are owned here so they
+    // outlive the worker.
+    struct PendingAsyncScene {
+        std::future<ParsedScene> parse_future;
+        SceneData scene_data;
+        GsSceneOptions opts;
+    };
+    std::optional<PendingAsyncScene> pending_async_scene_;
 };
 
 }  // namespace gseurat

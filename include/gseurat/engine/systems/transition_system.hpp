@@ -25,6 +25,17 @@ namespace gseurat {
 struct ITransitionHost {
     virtual void transition_scene(const std::string& target_scene,
                                   const glm::vec3& target_position) = 0;
+
+    /// Returns true while an async scene load is in flight (PLY parsing on a
+    /// worker, GPU upload not yet complete). The transition system uses this
+    /// to keep the SceneIn fade pinned at alpha=1.0 until the new scene is
+    /// fully ready — without it, the fade would tick down to 0 after
+    /// `transition_duration` regardless of load progress, exposing whatever
+    /// stale processed-image content was last rendered (the "old initial
+    /// configuration flashes back" ghost). Default returns false for hosts
+    /// that don't use the async-load path.
+    virtual bool is_async_loading() const { return false; }
+
     virtual ~ITransitionHost() = default;
 };
 

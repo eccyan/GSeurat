@@ -170,6 +170,15 @@ void AppBase::main_loop() {
         snap.streaming_initialized = gs.streaming_initialized();
         snap.streaming_active_chunks = gs.active_chunk_count();
         snap.streaming_active_splats = gs.total_active_splats();
+        snap.streaming_pending_loads = gs.pending_load_count();
+        for (const auto& c : gs.chunk_inventory()) {
+            snap.chunks.push_back({
+                .status            = c.status_str,
+                .page_table_offset = c.page_table_offset,
+                .splat_count       = c.splat_count,
+                .slab_count        = c.slab_count,
+            });
+        }
         snap.max_render_distance = renderer_.gs_max_render_distance();
 
         if (!gs.has_cloud()) snap.warnings.push_back("no_cloud_loaded");
@@ -207,6 +216,13 @@ void AppBase::main_loop() {
         // Poll async loader and process GPU uploads (before game logic)
         resources_.process_async_results(async_loader_, staging_uploader_);
         staging_uploader_.flush();
+
+        // Drive the off-thread GS scene parse (begin_async_load_gs_scene).
+        // When the parse future is ready, this runs the GPU/ECS finalize
+        // synchronously and arms `loading_monitor_` for the upload phase.
+        // Until then the worker keeps parsing PLYs while the main thread
+        // continues to render the loading overlay every frame.
+        tick_async_load_gs_scene();
 
         // Clear draw lists at frame start (states will rebuild them)
         draw_lists_.overlay.clear();
@@ -758,6 +774,70 @@ void AppBase::load_gs_scene(const SceneData& scene_data, const GsSceneOptions& o
 
     // Populate bone animation registry from allocations created by the scene loader
     populate_bone_animation_registry(bone_anim_registry_, world_, gs_terrain_);
+}
+
+void AppBase::begin_async_load_gs_scene(SceneData scene_data,
+                                        const GsSceneOptions& opts) {
+    // Stash everything needed for the finalize phase, then kick the parse off
+    // on a worker. The pointer-into-optional must be taken AFTER the
+    // `emplace`, otherwise the move performed by `optional::emplace` would
+    // leave the worker reading from a moved-from `SceneData` (its PLY paths
+    // and scene_objects would be empty strings, the parse would fail with a
+    // bad_alloc / "Failed to open PLY file" cascade, and the post-load body
+    // would silently re-merge the OLD scene's chunks back in — which was
+    // the source of the persistent flashback after #380/#381).
+    //
+    // `std::launch::async` forces a real worker thread on every libc++ /
+    // Apple Clang / MSVC build target; the deferred alternative would
+    // silently downgrade to lazy execution and re-introduce the main-thread
+    // stall the moment `future.get()` was called.
+    PendingAsyncScene initial;
+    initial.scene_data = std::move(scene_data);
+    initial.opts = opts;
+    pending_async_scene_.emplace(std::move(initial));
+
+    SceneData* scene_ref = &pending_async_scene_->scene_data;
+    pending_async_scene_->parse_future = std::async(std::launch::async,
+        [scene_ref] { return GsSceneLoader::parse(*scene_ref); });
+}
+
+void AppBase::tick_async_load_gs_scene() {
+    if (!pending_async_scene_.has_value()) return;
+    auto& pending = *pending_async_scene_;
+    if (!pending.parse_future.valid()) {
+        pending_async_scene_.reset();
+        return;
+    }
+    // Non-blocking poll. If the worker hasn't finished yet, return — the
+    // calling main loop will tick us again next frame and meanwhile keeps
+    // rendering the loading overlay.
+    auto status = pending.parse_future.wait_for(std::chrono::seconds(0));
+    if (status != std::future_status::ready) return;
+
+    ParsedScene parsed;
+    try {
+        parsed = pending.parse_future.get();
+    } catch (const std::exception& e) {
+        std::fprintf(stderr, "[AppBase] async scene parse failed: %s\n", e.what());
+        pending_async_scene_.reset();
+        return;
+    }
+
+    SceneLoadContext ctx{
+        gs_terrain_, scene_objects_, renderer_, scene_,
+        world_, component_registry_, resources_, feature_flags_
+    };
+    GsSceneLoader loader;
+    loader.finalize_on_main(ctx, pending.scene_data, std::move(parsed), pending.opts);
+    populate_bone_animation_registry(bone_anim_registry_, world_, gs_terrain_);
+
+    // After finalize, the renderer has issued any new VRAM uploads via
+    // `load_cloud_async`. Hand the resulting handles to the loading monitor
+    // so the engine state machine waits in `Loading` until streaming
+    // completes, then transitions through `Warming` to `Playing`.
+    loading_monitor_.begin_load(renderer_.take_pending_load_handles());
+
+    pending_async_scene_.reset();
 }
 
 // ── Control Server ──

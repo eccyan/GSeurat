@@ -124,6 +124,71 @@ std::array<VkDescriptorSet, kMaxFramesInFlight> DescriptorManager::allocate_spri
     return sets;
 }
 
+std::array<VkDescriptorSet, kMaxFramesInFlight>
+DescriptorManager::allocate_sprite_sets_per_frame(
+    VkDevice device, const std::array<VkBuffer, kMaxFramesInFlight>& uniform_buffers,
+    VkDeviceSize ubo_size,
+    const std::array<VkImageView, kMaxFramesInFlight>& texture_views,
+    VkSampler sampler, VkImageView normal_view, VkSampler normal_sampler) {
+    std::array<VkDescriptorSetLayout, kMaxFramesInFlight> layouts;
+    layouts.fill(sprite_layout_);
+
+    VkDescriptorSetAllocateInfo alloc_info{};
+    alloc_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    alloc_info.descriptorPool = pool_;
+    alloc_info.descriptorSetCount = kMaxFramesInFlight;
+    alloc_info.pSetLayouts = layouts.data();
+
+    std::array<VkDescriptorSet, kMaxFramesInFlight> sets;
+    if (vkAllocateDescriptorSets(device, &alloc_info, sets.data()) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to allocate per-frame sprite descriptor sets");
+    }
+
+    for (uint32_t i = 0; i < kMaxFramesInFlight; i++) {
+        VkDescriptorBufferInfo buffer_info{};
+        buffer_info.buffer = uniform_buffers[i];
+        buffer_info.offset = 0;
+        buffer_info.range = ubo_size;
+
+        VkDescriptorImageInfo image_info{};
+        image_info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        image_info.imageView = texture_views[i];
+        image_info.sampler = sampler;
+
+        VkDescriptorImageInfo normal_info{};
+        normal_info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        normal_info.imageView = (normal_view != VK_NULL_HANDLE) ? normal_view : texture_views[i];
+        normal_info.sampler = (normal_sampler != VK_NULL_HANDLE) ? normal_sampler : sampler;
+
+        std::array<VkWriteDescriptorSet, 3> writes{};
+        writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        writes[0].dstSet = sets[i];
+        writes[0].dstBinding = 0;
+        writes[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        writes[0].descriptorCount = 1;
+        writes[0].pBufferInfo = &buffer_info;
+
+        writes[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        writes[1].dstSet = sets[i];
+        writes[1].dstBinding = 1;
+        writes[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        writes[1].descriptorCount = 1;
+        writes[1].pImageInfo = &image_info;
+
+        writes[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        writes[2].dstSet = sets[i];
+        writes[2].dstBinding = 2;
+        writes[2].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        writes[2].descriptorCount = 1;
+        writes[2].pImageInfo = &normal_info;
+
+        vkUpdateDescriptorSets(device, static_cast<uint32_t>(writes.size()), writes.data(), 0,
+                               nullptr);
+    }
+
+    return sets;
+}
+
 void DescriptorManager::free_sprite_sets(VkDevice device,
                                           std::array<VkDescriptorSet, kMaxFramesInFlight>& sets) {
     std::vector<VkDescriptorSet> valid;

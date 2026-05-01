@@ -9,7 +9,10 @@
 #include "gseurat/engine/renderer.hpp"
 
 #include <cstdint>
+#include <functional>
+#include <string>
 #include <string_view>
+#include <vector>
 
 namespace gseurat {
 
@@ -57,6 +60,17 @@ public:
         uint32_t streaming_active_chunks = 0;
         uint32_t streaming_active_splats = 0;
         bool     streaming_initialized   = false;
+        uint32_t streaming_pending_loads = 0;
+
+        // Per-chunk detail (proves which scene's content is currently
+        // resident in VRAM — empty after a clean scene transition).
+        struct ChunkRow {
+            std::string status;
+            uint32_t page_table_offset = 0;
+            uint32_t splat_count       = 0;
+            uint32_t slab_count        = 0;
+        };
+        std::vector<ChunkRow> chunks;
 
         // Render distance
         float max_render_distance   = 0.0f;
@@ -116,6 +130,19 @@ public:
                     {"initialized",   snap.streaming_initialized},
                     {"active_chunks", snap.streaming_active_chunks},
                     {"active_splats", snap.streaming_active_splats},
+                    {"pending_loads", snap.streaming_pending_loads},
+                    {"chunks",        [&]() {
+                        nlohmann::json arr = nlohmann::json::array();
+                        for (const auto& c : snap.chunks) {
+                            arr.push_back({
+                                {"status",            c.status},
+                                {"page_table_offset", c.page_table_offset},
+                                {"splat_count",       c.splat_count},
+                                {"slab_count",        c.slab_count},
+                            });
+                        }
+                        return arr;
+                    }()},
                 }},
                 {"max_render_distance", snap.max_render_distance},
             }},

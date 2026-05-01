@@ -57,6 +57,19 @@ void transition_system(ecs::World& world, ITransitionHost& host, float dt) {
                 }
 
                 case SceneTransition::State::SceneIn: {
+                    // Pin the overlay at fully-opaque while the host is still
+                    // performing an async scene load (PLY parse + GPU upload
+                    // running in the background; the IslandDemoState Phase B
+                    // post-load body has not yet fired). Resetting `timer`
+                    // each frame in this state keeps `progress()` at zero so
+                    // the fade-in starts fresh once loading completes — that
+                    // way the user always sees the full kFadeIn sweep, not a
+                    // partially-faded reveal.
+                    if (host.is_async_loading()) {
+                        st.timer = 0.0f;
+                        fade.alpha = 1.0f;
+                        break;
+                    }
                     const float t = progress(st);
                     fade.alpha = 1.0f - t;
                     if (t >= 1.0f) {

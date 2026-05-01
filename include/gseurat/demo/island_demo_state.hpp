@@ -13,8 +13,11 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
 #include <array>
+#include <functional>
+#include <future>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace gseurat {
 
@@ -32,12 +35,24 @@ public:
 
     /// Perform the demo-specific scene-transition recovery work for a portal.
     /// Invoked by DemoApp::transition_scene via the portal_handler callback.
-    /// Includes: vkDeviceWaitIdle, world clear, scene load, collision-grid restore,
-    /// world-chunk re-merge (overworld only), camera reset, player re-creation,
-    /// character re-merge, bone-animation re-registration, portal entity re-spawn.
+    /// Phase A (this call, fast): drain in-flight chunk parses, wait_idle,
+    /// drop chunks, clear world, kick off async scene load via
+    /// AppBase::begin_async_load_gs_scene, and store `pending_portal_post_load_`
+    /// to do the rest later. Phase B (drained from update() the first frame the
+    /// async scene load reports complete): collision-grid restore, world-chunk
+    /// re-merge, player re-creation, character re-merge, bone-animation
+    /// re-registration.
     void perform_portal_transition(AppBase& app,
                                    const std::string& target_scene,
                                    const glm::vec3& target_position);
+
+private:
+    /// Phase B of perform_portal_transition. Runs once the async scene-load
+    /// future is consumed and the GPU/ECS finalize has happened.
+    void finish_portal_transition(AppBase& app,
+                                  const std::string& target_scene,
+                                  const glm::vec3& target_position);
+public:
 
 private:
     void update_player(AppBase& app, float dt);
@@ -91,6 +106,32 @@ private:
 
     // World streaming
     std::unique_ptr<WorldStreamer> world_streamer_;
+
+    // Explicit hard-stop for the streamer. TRUE while transitioning OUT
+    // of the overworld and inside any non-overworld scene; FALSE only
+    // after the overworld is fully restored. Replaces the brittle
+    // current_scene_path string-equality gate.
+    bool disable_world_streaming_ = false;
+
+    // Deferred post-load work for the in-flight portal transition. Populated
+    // by perform_portal_transition (Phase A, runs synchronously); drained
+    // from update() once `app.is_async_loading_gs_scene()` flips back to
+    // false (parse + finalize done). Empty when no portal is in flight.
+    std::function<void(AppBase&)> pending_portal_post_load_;
+
+    // Async chunk-load worker. PLY parsing is the main cost in
+    // load_cloud_async's caller path; running it on the main thread
+    // shows up as multi-frame stalls / OS beachballs while walking
+    // toward newly-streaming chunks. We hand the parse to std::async
+    // and let the main thread poll the future once per frame.
+    struct PendingChunkParse {
+        std::string grid_key;
+        std::future<GaussianCloud> future;
+    };
+    std::vector<PendingChunkParse> pending_chunk_parses_;
+    void enqueue_async_chunk_load(const std::string& grid_key,
+                                  const std::string& ply_path);
+    void drain_async_chunk_loads(AppBase& app);
 
     // Orbit camera (third-person around player)
     float azimuth_ = 0.0f;

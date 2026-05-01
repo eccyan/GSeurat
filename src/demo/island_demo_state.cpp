@@ -1,6 +1,8 @@
 #include "gseurat/demo/island_demo_state.hpp"
 #include "gseurat/demo/demo_app.hpp"
 #include "gseurat/engine/ecs/components/portal_target.hpp"
+#include "gseurat/engine/ecs/components/scene_transition.hpp"
+#include "gseurat/engine/ecs/components/screen_fade.hpp"
 #include "gseurat/engine/shutdown_auditor.hpp"
 #include "gseurat/character/character_manifest.hpp"
 #include "gseurat/character/bone_animation_player.hpp"
@@ -8,6 +10,7 @@
 #include "gseurat/engine/app_base.hpp"
 #include "gseurat/engine/gaussian_cloud.hpp"
 #include "gseurat/engine/gs_chunk_grid.hpp"
+#include "gseurat/engine/scoped_timer.hpp"
 #include "gseurat/demo/island_components.hpp"
 #include "gseurat/engine/trigger_components.hpp"
 #include "gseurat/engine/collision/intersect.hpp"
@@ -811,6 +814,19 @@ void IslandDemoState::update(AppBase& app, float dt) {
         return;
     }
 
+    // Drain Phase B of any in-flight portal transition. We can only run the
+    // post-load body once `app.is_async_loading_gs_scene()` has flipped back
+    // to false — that's the signal that `tick_async_load_gs_scene` has
+    // consumed the parse future and run `GsSceneLoader::finalize_on_main`,
+    // so `renderer().has_gs_cloud()` is now true and the new ECS world is
+    // populated. Until then keep waiting; the screen-fade overlay covers
+    // the window.
+    if (pending_portal_post_load_ && !app.is_async_loading_gs_scene()) {
+        auto fn = std::move(pending_portal_post_load_);
+        pending_portal_post_load_ = {};
+        fn(app);
+    }
+
     // Skip keyboard shortcuts when dev overlay has focus
     if (!app.dev_overlay().wants_keyboard()) {
         // Tab → cycle HUD mode: OFF → COMPACT → FULL → OFF
@@ -988,11 +1004,25 @@ void IslandDemoState::update(AppBase& app, float dt) {
     // Camera follow
     update_camera(app, dt);
 
-    // World streaming evaluation
-    if (world_streamer_) {
+    // World streaming evaluation. Gated to the overworld: world_streamer_
+    // is initialised once (in on_enter) with seurat_island/world.json's
+    // manifest, but its update() is purely distance-based — leaving it
+    // ticking inside dungeon.json would distance-check the dungeon player
+    // against overworld chunk AABBs and trigger load_cloud_async for any
+    // chunk that happens to fall within load_radius_, leaking forest
+    // content into the dungeon's GS buffer.
+    if (world_streamer_ && !disable_world_streaming_) {
+        ScopedStallTimer _t_streamer{"world_streamer.update+pending_loads"};
         auto events = world_streamer_->update(character_origin_);
 
-        // Process pending loads
+        // Drain any worker-thread-completed PLY parses BEFORE kicking off
+        // new ones, so a chunk that finished loading last frame doesn't
+        // wait an extra cycle to reach VRAM.
+        drain_async_chunk_loads(app);
+
+        // Kick off async PLY loads for newly-pending chunks. Parsing runs
+        // on a worker thread; the main thread only enqueues the work and
+        // hands the resulting cloud to load_cloud_async on a later frame.
         for (const auto& grid_key : world_streamer_->pending_loads()) {
             for (const auto& chunk : world_streamer_->manifest().chunks) {
                 std::string key = std::to_string(chunk.grid.x) + "," +
@@ -1000,16 +1030,9 @@ void IslandDemoState::update(AppBase& app, float dt) {
                                   std::to_string(chunk.grid.z);
                 if (key == grid_key && !chunk.ply_file.empty()) {
                     auto resolved = resolve_asset_path(chunk.ply_file);
-                    std::fprintf(stderr, "[IslandDemo] Chunk [%s] Loading: %s\n",
+                    std::fprintf(stderr, "[IslandDemo] Chunk [%s] async parse start: %s\n",
                         grid_key.c_str(), chunk.ply_file.c_str());
-                    // load_cloud_async now expects an in-memory cloud — file
-                    // IO is the caller's responsibility. WorldStreamer load
-                    // happens on the main thread for now; a follow-up could
-                    // hand the PLY parse to a worker thread and queue the
-                    // async upload from a result callback.
-                    GaussianCloud chunk_cloud;
-                    chunk_cloud.load_ply(resolved.string());
-                    app.renderer().gs_renderer().load_cloud_async(std::move(chunk_cloud));
+                    enqueue_async_chunk_load(grid_key, resolved.string());
                     break;
                 }
             }
@@ -2063,8 +2086,12 @@ void IslandDemoState::draw_gizmos(AppBase& app) {
 void IslandDemoState::perform_portal_transition(AppBase& app,
                                                 const std::string& target_scene,
                                                 const glm::vec3& target_position) {
+    ScopedStallTimer _t_total{"perform_portal_transition (TOTAL)"};
     std::fprintf(stderr, "[IslandDemo] perform_portal_transition -> '%s' at (%.1f,%.1f,%.1f)\n",
         target_scene.c_str(), target_position.x, target_position.y, target_position.z);
+
+    // Hard-stop the world streamer for the entire transition.
+    disable_world_streaming_ = true;
 
     // Muffle/restore music based on destination
     if (auto* ae = app.audio()) {
@@ -2072,8 +2099,29 @@ void IslandDemoState::perform_portal_transition(AppBase& app,
         ae->set_rtpc(kRtpcMusicFilter, entering_dungeon ? 0.0f : 1.0f);
     }
 
-    // Wait for GPU to finish before destroying resources
-    vkDeviceWaitIdle(app.renderer().context().device());
+    // Cancel anything we have a worker thread parsing right now — its
+    // result would be a chunk for the SCENE WE'RE LEAVING, which would
+    // otherwise get appended to the new scene's GS buffer once the
+    // future resolves. Wait blocks (the parse is on a worker), so this
+    // is bounded by the longest-in-flight parse, but typically <100ms.
+    {
+        ScopedStallTimer _t{"perform_portal_transition: drain in-flight chunk parses"};
+        for (auto& p : pending_chunk_parses_) {
+            if (p.future.valid()) (void)p.future.wait();
+        }
+        pending_chunk_parses_.clear();
+    }
+
+    // Wait for GPU to finish before destroying resources. Then explicitly
+    // drop any active GS chunks so the new scene starts from a clean
+    // VRAM state — clear_chunks() is also called inside init_gs() but
+    // doing it here too defends against any path where the new scene's
+    // init_gs is skipped (e.g. has_gs_cloud false on the new scene).
+    {
+        ScopedStallTimer _t{"perform_portal_transition: wait_idle + drop_chunks"};
+        vkDeviceWaitIdle(app.renderer().context().device());
+        app.renderer().drop_all_gs_chunks_now();
+    }
 
     // Transition: clear current scene and load instance
     // Clear ECS world first — old game object entities must not persist
@@ -2081,7 +2129,62 @@ void IslandDemoState::perform_portal_transition(AppBase& app,
     player_entity_ = ecs::kNullEntity;
 
     app.clear_scene();
-    app.init_scene(target_scene);
+
+    // The original SceneOut SceneTransition entity was destroyed by the
+    // app.world().clear() above. Recreate one immediately in SceneIn state
+    // with alpha=1.0 so the very next composited frame is fully covered by
+    // an opaque overlay. Without this, the window between Phase A and Phase
+    // B (which spans the async PLY parse + GPU upload — typically several
+    // frames at hundreds of ms) renders against the stale per-frame
+    // `processed_image_` contents, exposing residue from the OLD scene
+    // (the user-reported "old initial-frame configuration flashes back"
+    // ghost). The transition_system holds the alpha at 1.0 until Phase B
+    // completes, then animates it down over kFadeIn seconds.
+    {
+        constexpr float kFadeIn = 0.4f;
+        auto e = app.world().create();
+        SceneTransition st;
+        st.current_state       = SceneTransition::State::SceneIn;
+        st.timer               = 0.0f;
+        st.transition_duration = kFadeIn;
+        st.target_scene        = target_scene;
+        st.target_position     = target_position;
+        st.load_dispatched     = true;  // we are past Loading
+        app.world().add<SceneTransition>(e, st);
+
+        ScreenFade fade;
+        fade.alpha            = 1.0f;
+        fade.transition_color = glm::vec3(0.0f, 0.0f, 0.0f);
+        fade.effect_type      = 0;
+        app.world().add<ScreenFade>(e, fade);
+    }
+
+    // Phase A ends here: kick off PLY parsing on a worker thread and stash
+    // the rest of the transition as a deferred lambda. update() drains it
+    // once `app.is_async_loading_gs_scene()` flips back to false (parse +
+    // GPU/ECS finalize done). The main thread keeps rendering the scene
+    // transition fade overlay while the worker parses.
+    app.scene_objects().current_scene_path = target_scene;
+    auto target_scene_data = SceneLoader::load(target_scene);
+    GsSceneOptions portal_opts{ .add_default_light = true, .set_god_rays = true };
+    app.begin_async_load_gs_scene(std::move(target_scene_data), portal_opts);
+
+    pending_portal_post_load_ =
+        [this, target_scene, target_position](AppBase& app_in) {
+            this->finish_portal_transition(app_in, target_scene, target_position);
+        };
+
+    std::fprintf(stderr, "[IslandDemo] Portal Phase A done; async parse in flight for '%s'\n",
+                 target_scene.c_str());
+}
+
+// Phase B: invoked from `update()` once the async scene-load has finalized.
+// Runs the original synchronous post-load body — collision grid restore,
+// player respawn, world-chunk re-merge, bone registry, etc.
+void IslandDemoState::finish_portal_transition(AppBase& app,
+                                               const std::string& target_scene,
+                                               const glm::vec3& target_position) {
+    ScopedStallTimer _t_total{"finish_portal_transition (Phase B TOTAL)"};
 
     // "Returning to overworld" detection: target matches our base scene path.
     const bool is_overworld = (target_scene == scene_path_);
@@ -2157,23 +2260,31 @@ void IslandDemoState::perform_portal_transition(AppBase& app,
     character_origin_ = spawn;
     character_spawn_pos_ = spawn;
 
-    // Re-create player entity (old one was destroyed by world.clear())
-    player_entity_ = app.world().create();
-    app.world().add<ecs::Transform>(player_entity_,
-        {coord::WorldPos(spawn), {1.0f, 1.0f}});
-    app.world().add<PlayerController>(player_entity_, {20.0f, 20.0f});
-    app.world().add<PlayerJump>(player_entity_);
-    // PlayerTag is required by proximity_trigger_system — without it, ALL
-    // ECS proximity triggers (portals, lights, emitters) silently no-op
-    // because the system early-returns when it can't find the player.
-    // (Latent bug in the original inline portal code, exposed by the new
-    // ECS-based portal triggers.)
-    app.world().add<PlayerTag>(player_entity_);
+    // The new scene's "player" game_object (when present, e.g. seurat_island)
+    // is already wired up by load_gs_scene during init_scene above: PlayerController,
+    // PlayerTag, BoneAnimated, KinematicBody, ColliderComponent — and its PLY is
+    // merged into the new gs_chunk_grid_ at the *authored* position. Reuse that
+    // entity, teleport it to `spawn`, and skip the manual merge below to avoid
+    // a second PC entity + a second copy of the splats (which appears as a
+    // collision-less ghost at the authored position when target_position
+    // differs from the authored one — the dungeon-return spawn does).
+    //
+    // For scenes without a player game_object (interior instances etc.), fall
+    // back to creating one manually — same shape as the on_enter legacy path.
+    player_entity_ = ecs::kNullEntity;
+    app.world().view<PlayerController, PlayerTag, ecs::Transform>().each(
+        [&](ecs::Entity e, PlayerController&, PlayerTag&, ecs::Transform& t) {
+            player_entity_ = e;
+            t.position = coord::WorldPos(spawn);
+        });
+    if (!player_entity_.valid()) {
+        player_entity_ = app.world().create();
+        app.world().add<ecs::Transform>(player_entity_,
+            {coord::WorldPos(spawn), {1.0f, 1.0f}});
+        app.world().add<PlayerController>(player_entity_, {20.0f, 20.0f});
+        app.world().add<PlayerJump>(player_entity_);
+        app.world().add<PlayerTag>(player_entity_);
 
-    // KCC components — required for capsule-sweep movement on heightfield terrain.
-    // Without these, run_kcc skips the player and the legacy fallback has no
-    // elevation data (removed in PR #371).
-    {
         KinematicBody kb;
         kb.desired_jump_height = 2.0f;
         kb.time_to_apex = 0.4f;
@@ -2186,8 +2297,37 @@ void IslandDemoState::perform_portal_transition(AppBase& app,
         app.world().add<ColliderComponent>(player_entity_, cc);
     }
 
+    // Teleport the load_gs_scene-allocated player bone slot's anchor so the
+    // PLY splats follow the entity to `spawn`. Without this, the splats stay
+    // at the authored bone-allocation world_pos forever (load_gs_scene only
+    // sets it once at scene-load time).
+    for (auto& alloc : app.gs_terrain().bone_allocations) {
+        if (alloc.manifest_path.find("snes_hero") != std::string::npos) {
+            alloc.world_pos = spawn;
+        }
+    }
+
+    // Fast-path detection: when the new scene authors a "player" game_object
+    // pointing at the snes_hero PLY, `GsSceneLoader::parse` already merged
+    // the player Gaussians into the scene cloud on the worker thread.
+    // Phase B's re-merge + 2nd init_gs is redundant for non-overworld
+    // destinations (no streamed chunks to add), and the synchronous
+    // load_ply call below would re-introduce a 100-300ms main-thread
+    // stall after we just spent the entire async-load window avoiding
+    // exactly that. Skip the whole re-merge block when both conditions
+    // hold; the renderer already has everything it needs.
+    bool player_already_merged_fast = false;
+    for (const auto& alloc : app.gs_terrain().bone_allocations) {
+        if (alloc.manifest_path.find("snes_hero") != std::string::npos) {
+            player_already_merged_fast = true;
+            break;
+        }
+    }
+    const bool skip_phase_b_remerge = !is_overworld && player_already_merged_fast
+                                      && app.renderer().has_gs_cloud();
+
     // Re-merge world chunks + player character into the new scene
-    if (app.renderer().has_gs_cloud()) {
+    if (!skip_phase_b_remerge && app.renderer().has_gs_cloud()) {
         const auto& new_map = app.renderer().gs_chunk_grid().all_gaussians();
         map_gaussians_.assign(new_map.begin(), new_map.end());
         std::vector<Gaussian> merged = map_gaussians_;
@@ -2288,37 +2428,82 @@ void IslandDemoState::perform_portal_transition(AppBase& app,
             elevation_ = 0.6f;
         }
 
-        auto char_cloud = GaussianCloud::load_ply(
-            "assets/characters/snes_hero/snes_hero.ply");
-        if (!char_cloud.empty()) {
-            const auto& char_gs = char_cloud.gaussians();
-            for (const auto& g : char_gs) {
-                Gaussian cg = g;
-                glm::vec3 rotated(-cg.position.x, cg.position.y, -cg.position.z);
-                glm::vec3 offset = rotated * kCharScale;
-                offset.y *= gs_scale_;
-                cg.position = spawn + offset + glm::vec3(0, 2.0f, 0);
-                cg.scale *= kCharScale;
-                cg.opacity = std::min(1.0f, cg.opacity * 1.3f);
-                cg.bone_index = cg.bone_index + 1;
-                merged.push_back(cg);
+        // Skip the manual PC PLY merge if load_gs_scene already merged the
+        // player from a "player" game_object — adding it again here would
+        // duplicate the splats (one set at the authored game_object position
+        // via load_gs_scene's PLY merge, one set at `spawn` via this loop)
+        // and produce a side-by-side "ghost PC" whenever target_position
+        // differs from the authored position (every dungeon→overworld
+        // return). Detect via the bone allocation populated by
+        // gs_scene_loader's BoneAnimated pre-scan.
+        bool player_already_merged = false;
+        for (const auto& alloc : app.gs_terrain().bone_allocations) {
+            if (alloc.manifest_path.find("snes_hero") != std::string::npos) {
+                player_already_merged = true;
+                break;
             }
         }
-        std::fprintf(stderr, "[IslandDemo] Portal re-merge: %u total Gaussians\n",
-            static_cast<uint32_t>(merged.size()));
+        if (!player_already_merged) {
+            auto char_cloud = GaussianCloud::load_ply(
+                "assets/characters/snes_hero/snes_hero.ply");
+            if (!char_cloud.empty()) {
+                const auto& char_gs = char_cloud.gaussians();
+                for (const auto& g : char_gs) {
+                    Gaussian cg = g;
+                    glm::vec3 rotated(-cg.position.x, cg.position.y, -cg.position.z);
+                    glm::vec3 offset = rotated * kCharScale;
+                    offset.y *= gs_scale_;
+                    cg.position = spawn + offset + glm::vec3(0, 2.0f, 0);
+                    cg.scale *= kCharScale;
+                    cg.opacity = std::min(1.0f, cg.opacity * 1.3f);
+                    cg.bone_index = cg.bone_index + 1;
+                    merged.push_back(cg);
+                }
+            }
+        }
+        std::fprintf(stderr, "[IslandDemo] Portal re-merge: %u total Gaussians%s\n",
+            static_cast<uint32_t>(merged.size()),
+            player_already_merged ? " (player from game_object)" : "");
 
         auto cloud = GaussianCloud::from_gaussians(std::move(merged));
         uint32_t gs_w = app.renderer().gs_renderer().output_width();
         uint32_t gs_h = app.renderer().gs_renderer().output_height();
         if (gs_w == 0) { gs_w = 320; gs_h = 240; }
         app.renderer().init_gs(cloud, gs_w, gs_h);
+
+        // Returning to overworld merged every world chunk into the new
+        // cloud. Without re-marking them, world_streamer_->update() will
+        // see them as UNLOADED on the next tick and call load_cloud_async
+        // for each — which is append-only — duplicating every tree, NPC,
+        // and ghost-spawn-PC's worth of splats on top of the merged cloud.
+        // Mirror the on_enter loop that does the same for the initial load.
+        if (is_overworld && world_streamer_) {
+            for (const auto& chunk : world_streamer_->manifest().chunks) {
+                std::string key = std::to_string(chunk.grid.x) + "," +
+                                  std::to_string(chunk.grid.y) + "," +
+                                  std::to_string(chunk.grid.z);
+                world_streamer_->on_chunk_loaded(key, 0);
+            }
+        }
     }
 
-    // Re-populate bone animation registry for the new scene
+    // Re-populate bone animation registry for the new scene. When the new
+    // scene has a "player" game_object, this binds the player's bone slot
+    // to player_entity_ — no second register needed below (a second add()
+    // would create a duplicate entry, animating empty bone slots).
     populate_bone_animation_registry(app.bone_animation_registry(), app.world(), app.gs_terrain());
 
-    // Re-register player in BoneAnimationRegistry
-    {
+    // Capture the registry_id populated above (or, fallback path, register
+    // the player manually for scenes that don't author a player game_object).
+    if (auto* existing = app.bone_animation_registry().get_by_entity(player_entity_)) {
+        // populate_bone_animation_registry already wired the player.
+        for (const auto& [id, entry] : app.bone_animation_registry().entries()) {
+            if (&entry == existing) { player_registry_id_ = id; break; }
+        }
+        if (!app.world().has<gseurat::BoneAnimatedTag>(player_entity_)) {
+            app.world().add<gseurat::BoneAnimatedTag>(player_entity_, {player_registry_id_});
+        }
+    } else {
         auto loaded = gseurat::load_character_manifest(
             "assets/characters/snes_hero/snes_hero.manifest.json");
         if (loaded) {
@@ -2352,8 +2537,86 @@ void IslandDemoState::perform_portal_transition(AppBase& app,
     // Rebuild collision system cache for the new scene
     collision_system_.rebuild_cache(app.world());
 
+    // Re-enable world streaming only when the destination is the overworld
+    // AND we've gotten through the merged init_gs + chunk re-mark. For
+    // any non-overworld destination (dungeon, instanced interiors) the
+    // flag stays TRUE — the dungeon doesn't have streamed chunks, and
+    // leaving the streamer dormant means no rogue parses against the
+    // dungeon player position.
+    if (is_overworld) {
+        disable_world_streaming_ = false;
+        std::fprintf(stderr, "[IslandDemo] World streaming re-enabled (overworld)\n");
+    } else {
+        std::fprintf(stderr, "[IslandDemo] World streaming disabled (non-overworld scene)\n");
+    }
+
+    // Note: the SceneIn fade entity is created by Phase A
+    // (`perform_portal_transition`) — not here — so the overlay covers the
+    // full async-parse + finalize window, not just the post-finalize tail.
+    // Without that earlier creation the user sees "old initial-frame
+    // configuration flashes back" between Phase A and Phase B.
+
     std::fprintf(stderr, "[IslandDemo] Spawned at (%.1f, %.1f, %.1f)\n",
         spawn.x, spawn.y, spawn.z);
+}
+
+// ── Async chunk parsing ───────────────────────────────────────────────
+// PLY parsing is hundreds-of-MB-of-mmap-and-vector-fill expensive. Doing
+// it on the main thread shows up as a 200-800ms beachball whenever a new
+// chunk crosses the streamer's load_radius_. std::async with launch::async
+// pushes it onto a worker thread; drain_async_chunk_loads polls the
+// future once per frame and only touches the GPU once the parse is done.
+
+void IslandDemoState::enqueue_async_chunk_load(const std::string& grid_key,
+                                               const std::string& ply_path) {
+    // Skip if a parse is already in flight for this key (the streamer will
+    // re-emit `pending_loads_` keys until we tell it the chunk is loaded).
+    for (const auto& p : pending_chunk_parses_) {
+        if (p.grid_key == grid_key) return;
+    }
+    pending_chunk_parses_.push_back({
+        grid_key,
+        std::async(std::launch::async, [ply_path]() {
+            GaussianCloud c;
+            c.load_ply(ply_path);
+            return c;
+        })
+    });
+}
+
+void IslandDemoState::drain_async_chunk_loads(AppBase& app) {
+    // Sweep ready futures, consume their clouds, and hand them to the
+    // existing async-upload pipe. Anything still parsing stays in the
+    // queue for next frame.
+    for (auto it = pending_chunk_parses_.begin();
+         it != pending_chunk_parses_.end(); ) {
+        if (it->future.wait_for(std::chrono::seconds(0)) ==
+            std::future_status::ready) {
+            ScopedStallTimer _t{"chunk_parse_drain+load_cloud_async"};
+            GaussianCloud cloud;
+            try {
+                cloud = it->future.get();
+            } catch (const std::exception& e) {
+                std::fprintf(stderr,
+                    "[IslandDemo] Chunk [%s] async parse FAILED: %s\n",
+                    it->grid_key.c_str(), e.what());
+                it = pending_chunk_parses_.erase(it);
+                continue;
+            }
+            if (!cloud.empty()) {
+                app.renderer().gs_renderer().load_cloud_async(std::move(cloud));
+                if (world_streamer_) {
+                    world_streamer_->on_chunk_loaded(it->grid_key, 0);
+                }
+                std::fprintf(stderr,
+                    "[IslandDemo] Chunk [%s] async parse done, queued for VRAM\n",
+                    it->grid_key.c_str());
+            }
+            it = pending_chunk_parses_.erase(it);
+        } else {
+            ++it;
+        }
+    }
 }
 
 }  // namespace gseurat

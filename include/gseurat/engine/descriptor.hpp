@@ -25,6 +25,18 @@ public:
         VkImageView normal_view = VK_NULL_HANDLE,
         VkSampler normal_sampler = VK_NULL_HANDLE);
 
+    // Per-frame view variant: descriptor set `i` is bound to `texture_views[i]`.
+    // Used for sampling per-frame intermediate images (e.g. the GS post-processed
+    // image) where a single shared view would race between frames in flight.
+    std::array<VkDescriptorSet, kMaxFramesInFlight> allocate_sprite_sets_per_frame(
+        VkDevice device,
+        const std::array<VkBuffer, kMaxFramesInFlight>& uniform_buffers,
+        VkDeviceSize ubo_size,
+        const std::array<VkImageView, kMaxFramesInFlight>& texture_views,
+        VkSampler sampler,
+        VkImageView normal_view = VK_NULL_HANDLE,
+        VkSampler normal_sampler = VK_NULL_HANDLE);
+
     void free_sprite_sets(VkDevice device,
                           std::array<VkDescriptorSet, kMaxFramesInFlight>& sets);
 
