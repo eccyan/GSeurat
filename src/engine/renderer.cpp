@@ -1294,6 +1294,23 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
             }
         }
 
+        // Streaming-strict camera-dirty refresh.
+        // GsRenderer::render() gates the per-frame static preprocess on
+        // `static_dirty_`. The legacy block above (now disabled in streaming
+        // mode) used to set it via update_static_gaussians on every
+        // camera-dirty frame. Without that, only chunk publications and
+        // PBD physics dispatches re-arm the flag — so a streamed scene
+        // with no PBD elements would freeze the static projections at
+        // the last preprocess between chunk events, rendering stale
+        // pixel positions as the camera moves. The demo masks this
+        // because pbd_count_=12 keeps the flag hot, but other scenes
+        // wouldn't. Source: codex P1 review on PR #388.
+        if (streaming_strict && camera_dirty) {
+            gs_renderer_.set_static_dirty(true);
+            gs_prev_view_ = gs_view_;
+            gs_static_force_dirty_ = false;
+        }
+
         // --- Dynamic path: every frame ---
         // Determinism harness: when a Mode-1 test is active, skip the
         // entire dynamic-buffer rebuild. The GPU's dynamic_gaussian_ssbo
@@ -1710,13 +1727,20 @@ void Renderer::clear_gs_animations() {
 }
 
 void Renderer::add_vfx_instance(VfxInstance&& inst) {
-    // Grow SSBO capacity to fit object PLY Gaussians
+    // In streaming-strict mode, VFX object geometry is appended to
+    // gs_dynamic_buffer_ each frame in the dynamic block; gs_static_buffer_
+    // and the legacy static-SSBO grow path are dead. Skipping them here
+    // prevents unbounded gs_static_buffer_ growth from repeated VFX spawns
+    // (e.g. proximity-triggered chimney_smoke). The dynamic SSBO capacity
+    // is sized via kDynamicHeadroom at init_streaming. Source: codex P2
+    // review on PR #388.
     const auto& obj_gs = inst.object_gaussians();
-    if (!obj_gs.empty()) {
+    if (!obj_gs.empty() && !gs_renderer_.streaming_initialized()) {
+        // Legacy path: grow static SSBO + populate gs_static_buffer_ for
+        // the legacy gather block to pick up.
         uint32_t current_base = gs_renderer_.max_gaussian_count() - GsRenderer::kParticleHeadroom;
         uint32_t new_base = current_base + static_cast<uint32_t>(obj_gs.size());
         gs_renderer_.ensure_capacity(new_base);
-        // Include in static buffer so no per-frame append is needed
         gs_static_buffer_.insert(gs_static_buffer_.end(), obj_gs.begin(), obj_gs.end());
         std::fprintf(stderr, "VFX: Added %zu object Gaussians to scene buffer\n", obj_gs.size());
     }
