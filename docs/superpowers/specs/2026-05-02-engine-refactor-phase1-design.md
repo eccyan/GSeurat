@@ -385,7 +385,7 @@ Strict serial execution. One PR merged green before the next begins. Each PR pas
 | PR | Branch | Description | Risk | Touches |
 |---|---|---|---|---|
 | 0a | `refactor/0a-debug-header` | `gs::dbg::` header + CMake `GSEURAT_DEBUG_FORCE` + new `release-with-diag` preset. No callers yet. | Low | new files only |
-| 0b | `refactor/0b-golden-frames` | Game Director regression harness (§7). | Low | `scripts/`, `tests/` only |
+| 0b | `refactor/0b-golden-frames` | Determinism audit (seeded RNG, `gs::SimClock`, fixed-`dt` tick), Game Director regression harness, macOS CI workflow (§7). | Medium | `src/engine/` (SimClock, RNG audit), `scripts/regression/`, `tests/regression/`, `.github/workflows/` |
 
 ### Phase 1: Deletion
 
@@ -452,25 +452,51 @@ The single most important deliverable. Without this, the refactor will regress s
    - Walks 30 seconds through forest
    - Returns through portal
    - Lingers 5 seconds at start (post-portal "flashback" detection window)
-2. **Frame capture cadence.** 12 golden frames at fixed timestamps (t=0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55s). Captured via `screenshot` command into `tests/regression/golden/<commit>/`.
-3. **SSIM diff harness.** `scripts/regression/diff_golden.py` — compares current run against `main` baseline. Threshold: SSIM ≥ 0.985 per frame (allows minor floating-point drift, catches geometry/color regressions). Threshold tunable via `--ssim-threshold`.
-4. **Validation-layer assertion.** Run scenario with `release-with-diag` build; assert zero validation warnings/errors on stderr.
-5. **Diag invariant assertion.** Run with `GS_DIAG_STREAMING=1`; assert `static_count == sum(active_chunks_.splats)` invariant holds for entire 60s.
-6. **GPU timing budget.** Capture per-pass timing via `VK_EXT_calibrated_timestamps` at t=10, 30, 50s. Compare against baseline; fail if any pass regresses > 5% (configurable).
+2. **Determinism Mode (mandatory — hard prerequisite).** Without this, golden-frame diffing is impossible because PBD wind, particles, and animations introduce per-run drift. The harness boots the engine with a `--deterministic` flag that enforces:
+   - **Fixed RNG seed** — `gs::random::seed(0xC0FFEE)` at startup; all subsystems (particle spawn, PBD wind noise, audio jitter, animation phase offsets) draw from a single seeded generator. Audit every `std::random_device`, `rand()`, and `mt19937` instantiation in the codebase as part of Phase 0b; replace ad-hoc RNG with a single seeded source.
+   - **Fixed simulation `dt = 1.0f / 60.0f` per frame.** Engine ignores wall-clock time; advances simulation by 16.667ms per `tick()` regardless of real elapsed time. Any code path that reads wall-clock time (e.g., `std::chrono::steady_clock::now()` for animation phase) must consult a `gs::SimClock` abstraction that returns simulated time in deterministic mode.
+   - **Disabled vsync / swapchain present pacing.** Render-and-readback runs as fast as the GPU permits; no `std::this_thread::sleep_for` between frames.
+   - **Fixed input timeline.** Game Director input commands are dispatched at exact frame boundaries (frame N = "press W", frame N+120 = "release W"), not by wall-clock timer.
+   - **Audio disabled or muted-deterministic.** Audio engine threads introduce non-determinism from OS scheduling. In deterministic mode, audio runs in a synchronous tick loop or is disabled entirely. (Audio output is not part of golden-frame diff anyway.)
+   - **Verification.** Run the harness twice on the same commit; SSIM must be 1.000 (pixel-identical). If not, determinism is broken — investigate before trusting any subsequent diff.
+3. **Frame capture cadence.** 12 golden frames at fixed simulation timestamps (frames 0, 300, 600, …, 3300 — i.e., every 5 simulated seconds). Captured via `screenshot` command into `tests/regression/golden/<commit>/`.
+4. **SSIM diff harness.** `scripts/regression/diff_golden.py` — compares current run against `main` baseline. Threshold: SSIM ≥ 0.985 per frame (allows minor floating-point drift, catches geometry/color regressions). Threshold tunable via `--ssim-threshold`. **In deterministic mode with no real changes, expected SSIM is 1.000** — the threshold accounts only for intentional refactor side-effects (e.g., descriptor binding order changes that cause sub-ULP shading drift), never for stochastic simulation.
+5. **CI hardware parity (mandatory).** Floating-point rasterization differs across MoltenVK (Apple Silicon) vs Lavapipe / AMD / Intel (Linux/Windows). Golden-frame diffing **must run on the same architecture as the baseline**. Phase 0b commits to:
+   - **macOS CI runner only** for pixel diff (`macos-14` / Apple Silicon, matching local dev hardware).
+   - **Linux/Windows CI** still runs build + validation-layer checks + scenario completion, but skips pixel diff.
+   - Baseline frames are captured on macOS CI runner, not local dev machines (avoids "works on my Mac" drift between developers).
+6. **Validation-layer assertion.** Run scenario with `release-with-diag` build; assert zero validation warnings/errors on stderr.
+7. **Diag invariant assertion.** Run with `GS_DIAG_STREAMING=1`; assert `static_count == sum(active_chunks_.splats)` invariant holds for entire 60s.
+8. **GPU timing budget.** Capture per-pass timing via `VK_EXT_calibrated_timestamps` at frames 600, 1800, 3000. Compare against baseline; fail if any pass regresses > 5% (configurable). Note: timing has more variance than pixels — wider tolerance is intentional.
 
 ### CI integration
 
 ```yaml
 # .github/workflows/regression.yml
-- name: Build release-with-diag
-  run: cmake --build --preset macos-release-with-diag
-- name: Run regression harness
-  run: python3 scripts/regression/run_harness.py --baseline main --threshold 0.985
-- name: Upload diff artifacts on failure
-  if: failure()
-  uses: actions/upload-artifact@v4
-  with:
-    path: tests/regression/diff/
+jobs:
+  golden-frames:
+    runs-on: macos-14   # Apple Silicon, matches local dev + baseline capture hardware
+    steps:
+      - name: Build release-with-diag
+        run: cmake --build --preset macos-release-with-diag
+      - name: Determinism self-check (run twice, assert SSIM=1.0)
+        run: python3 scripts/regression/run_harness.py --self-check
+      - name: Run regression harness vs baseline
+        run: python3 scripts/regression/run_harness.py --baseline main --threshold 0.985
+      - name: Upload diff artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with: { path: tests/regression/diff/ }
+
+  build-and-validate:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Build + scenario completion + validation-layer clean
+        # No pixel diff on Linux/Windows — FP rasterization differs across drivers.
+        run: python3 scripts/regression/run_harness.py --no-pixel-diff
 ```
 
 ### Baseline establishment
@@ -498,6 +524,7 @@ Phase 0b's PR captures golden frames against `main` at `5fc4c6a9` (post-#388). E
 
 | Risk | Likelihood | Impact | Mitigation |
 |---|---|---|---|
+| **Determinism audit incomplete; harness produces flaky diffs** | Medium | High | Self-check step in CI runs harness twice on every PR; SSIM=1.0 required. Any drift between runs fails the build before downstream PRs trust the harness. Audit checklist: `grep -rn "random_device\|mt19937\|rand()\|steady_clock::now\|system_clock::now" src/` before Phase 0b ships. |
 | **Phase 1b deletion misses a live caller** | Medium | High | Phase 0b harness catches visual regression. Granular PR (1a/1b/1c) limits blast radius. Code review checklist: grep for every removed symbol before merge. |
 | **`render_pipeline_` removal in 1c breaks an edge case** (e.g., low-end GPU fallback) | Medium | Medium | 1c is **conditional**. If audit reveals any caller, skip the PR and document. |
 | **Persistent-mapped buffer race in `RenderState`** (system writes while GPU reads previous frame's data) | Medium | High | `RenderState::begin_frame()` waits on the previous frame's fence before allowing writes. `GS_DBG_INVARIANT` checks slot < capacity in writer. RenderDoc trace + golden-frame harness catches data races visually. |
@@ -511,7 +538,7 @@ Phase 0b's PR captures golden frames against `main` at `5fc4c6a9` (post-#388). E
 
 ## 9. Open Questions / Deferred
 
-1. **Should `GsResourceManager` use `vk::raii` or raw handles?** Recommend `vk::raii::Buffer` / `vk::raii::Image` for RAII cleanup, matching modern Vulkan-Hpp idiom. Verify it compiles cleanly under `-fno-rtti` if applicable.
+1. **`GsResourceManager` resource handle type — RESOLVED: `vk::raii`.** Use `vk::raii::Buffer` / `vk::raii::Image` for RAII cleanup, matching modern Vulkan-Hpp idiom. Move-only semantics; no copy. Resource manager is move-constructed once at startup, lives for the lifetime of `AppBase`. Verify it compiles cleanly under `-fno-rtti` if applicable.
 2. **`EventQueue<T>` allocation strategy.** Default to `std::vector<T>` (allocations per send). For hot-path events (>1k/frame), revisit with a small-buffer-optimized queue. Not a Phase 1 concern.
 3. **Naming: `system` vs `subsystem`.** I used `GsStreamingSystem`, `GsSortSystem`, etc. throughout. The ECS layer also has "systems". Naming collision is acceptable because they're in different namespaces (`gs::ecs::*System` vs `gs::*System`), but document the convention in CONTRIBUTING. Alternative: `Pass` (e.g., `GsTileBinPass`) — less accurate since each owns multiple GPU dispatches.
 4. **What replaces `gs_scene_animations_` after Phase 1?** Currently soft-disabled in streaming-strict (PR #388). The Phase 2 GPU region-tagging compute pass is out of scope here but should be planned alongside this refactor — it will be cleaner to land against the new `RenderState` contract.
@@ -527,6 +554,8 @@ Phase 0b's PR captures golden frames against `main` at `5fc4c6a9` (post-#388). E
 - **Tier B / Tier C** — diagnostic tiers. Tier B is compile-time-gated (`GSEURAT_DEBUG_BUILD`); Tier C is runtime env-var-gated.
 - **System** (in this doc, capitalized) — a Phase 5 unit of decomposition (e.g., `GsSortSystem`). Distinct from ECS systems (lower-case "system").
 - **Phase X PR Y** — a specific PR in the rollout (e.g., "Phase 4 PR 4b" = `refactor/4b-bones-writer`).
+- **`gs::SimClock`** — abstraction returning simulated time. In normal mode, returns wall-clock; in `--deterministic` mode, returns `frame_count * (1.0 / 60.0)`. Replaces direct `std::chrono::steady_clock::now()` calls in any subsystem that affects rendering.
+- **Determinism Mode** — engine boot flag (`--deterministic`) enforcing fixed RNG seed, `SimClock`, fixed `dt`, disabled vsync, frame-aligned input dispatch. Hard prerequisite for golden-frame diffing.
 
 ---
 
