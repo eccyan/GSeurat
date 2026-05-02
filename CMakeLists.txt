@@ -258,6 +258,14 @@ target_compile_definitions(gseurat_core PUBLIC
     GLM_FORCE_DEPTH_ZERO_TO_ONE
 )
 
+option(GSEURAT_DEBUG_FORCE "Force debug instrumentation in Release builds" OFF)
+
+target_compile_definitions(gseurat_core PUBLIC
+    GSEURAT_DEBUG_BUILD=$<IF:$<OR:$<CONFIG:Debug>,$<BOOL:${GSEURAT_DEBUG_FORCE}>>,1,0>
+)
+
+target_sources(gseurat_core PRIVATE src/engine/debug.cpp)
+
 if(GSEURAT_SHARED_LIBS)
     target_compile_definitions(gseurat_core PUBLIC GSEURAT_ENGINE_BUILD_SHARED)
 endif()
@@ -546,6 +554,9 @@ target_include_directories(test_audio_effect_chain PRIVATE ${PROJECT_SOURCE_DIR}
 add_gseurat_test(test_ply2heightmap
     src/engine/gaussian_cloud.cpp
     src/engine/project_root.cpp)
+
+add_gseurat_test(test_debug
+    src/engine/debug.cpp)
 
 # --- GPU Tests (require actual GPU, link engine sources directly) ----------
 

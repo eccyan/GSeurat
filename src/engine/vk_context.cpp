@@ -1,6 +1,7 @@
 #define VMA_IMPLEMENTATION
 #include "gseurat/engine/vk_context.hpp"
 
+#include "gseurat/engine/debug.hpp"
 #include "gseurat/engine/project_root.hpp"
 
 #include <cstdio>
@@ -24,6 +25,8 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL debug_callback(
 void VkContext::init(GLFWwindow* window) {
     create_instance();
     setup_debug_messenger();
+    gs::dbg::init_function_pointers(instance_);
+    gs::dbg::init_diag_registry();
     create_surface(window);
     pick_physical_device();
     create_logical_device();
@@ -35,6 +38,8 @@ void VkContext::init_headless() {
     headless_ = true;
     create_instance_headless();
     setup_debug_messenger();
+    gs::dbg::init_function_pointers(instance_);
+    gs::dbg::init_diag_registry();
     pick_physical_device_headless();
     create_logical_device_headless();
     create_allocator();
