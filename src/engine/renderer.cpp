@@ -1344,14 +1344,19 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
                 }
             }
             if (streaming_strict && !gs_scene_animations_.empty()) {
+                // Phase 2 deferred: scene animations on streamed terrain
+                // need GPU-side region tagging (compute shader) since the
+                // terrain has no CPU mirror. Soft-disable for now: drop
+                // queued animations and log once per batch so we know they
+                // were skipped. Affected effects (pulse / burn / swirl on
+                // terrain regions) won't render until the compute path
+                // lands. Triggers themselves still fire normally.
                 std::fprintf(stderr,
-                    "[streaming-strict] FATAL: %zu scene animation(s) queued, "
-                    "but scene-animation region tagging on streamed terrain "
-                    "is not yet implemented. Either disable scene animations "
-                    "or implement Phase 2 (GPU-side region tagging compute "
-                    "pass). See feature/streaming-strict-mode design.\n",
+                    "[streaming-strict] WARN: skipped %zu scene animation(s) "
+                    "— GPU-side region tagging not yet implemented "
+                    "(Phase 2 follow-up).\n",
                     gs_scene_animations_.size());
-                std::abort();
+                gs_scene_animations_.clear();
             }
 
             // Distance culling for dynamic effects (emitters, VFX)
