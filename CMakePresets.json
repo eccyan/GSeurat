@@ -100,6 +100,21 @@
         "lhs": "${hostSystemName}",
         "rhs": "Darwin"
       }
+    },
+    {
+      "name": "macos-release-with-diag",
+      "inherits": "base",
+      "displayName": "macOS Release with Diagnostics",
+      "description": "Release build with GPU labels and invariant checks (release-with-diag profile)",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "GSEURAT_DEBUG_FORCE": "ON"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Darwin"
+      }
     }
   ],
   "buildPresets": [
@@ -126,6 +141,10 @@
     {
       "name": "macos-release",
       "configurePreset": "macos-release"
+    },
+    {
+      "name": "macos-release-with-diag",
+      "configurePreset": "macos-release-with-diag"
     }
   ]
 }
