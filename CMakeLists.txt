@@ -566,6 +566,7 @@ function(add_gseurat_gpu_test NAME)
         tests/gpu_test_context.cpp
         tests/onesweep_test_runner.cpp
         src/engine/vk_context.cpp
+        src/engine/debug.cpp
         src/engine/buffer.cpp
         src/engine/pipeline.cpp
         src/engine/pipeline_cache.cpp
