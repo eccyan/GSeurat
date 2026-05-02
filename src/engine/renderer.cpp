@@ -1124,7 +1124,20 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
             gs_static_force_dirty_ = false;
         }
 
-        if (camera_dirty && flags.gs_chunk_culling && !gs_skip_chunk_cull_ && !gs_chunk_grid_.empty()) {
+        // Legacy gs_chunk_grid_ rebuild path: gathers terrain from the
+        // CPU-side spatial grid, appends VFX object geometry, runs the
+        // animator, and uploads via update_static_gaussians (which
+        // STOMPS static_count_). In streaming mode the terrain is owned
+        // by the slab streamer (publish_pending_chunks recomputes
+        // static_count_ from active_chunks_), so running this block
+        // would clobber that state and produce ghost geometry from prior
+        // gather results — see PR #387's DIAG investigation. Gate the
+        // entire block off in streaming mode; VFX object geometry is
+        // rerouted to the dynamic SSBO below (search "streaming-strict
+        // VFX-objects").
+        const bool streaming_strict = gs_renderer_.streaming_initialized();
+        if (camera_dirty && flags.gs_chunk_culling && !gs_skip_chunk_cull_ &&
+            !gs_chunk_grid_.empty() && !streaming_strict) {
             ScopedStallTimer _t_static_rebuild{"gs_static_rebuild (visibility+gather+upload)"};
 
             // Visibility cull always runs — it's cheap, and we need its
@@ -1281,6 +1294,23 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
             }
         }
 
+        // Streaming-strict camera-dirty refresh.
+        // GsRenderer::render() gates the per-frame static preprocess on
+        // `static_dirty_`. The legacy block above (now disabled in streaming
+        // mode) used to set it via update_static_gaussians on every
+        // camera-dirty frame. Without that, only chunk publications and
+        // PBD physics dispatches re-arm the flag — so a streamed scene
+        // with no PBD elements would freeze the static projections at
+        // the last preprocess between chunk events, rendering stale
+        // pixel positions as the camera moves. The demo masks this
+        // because pbd_count_=12 keeps the flag hot, but other scenes
+        // wouldn't. Source: codex P1 review on PR #388.
+        if (streaming_strict && camera_dirty) {
+            gs_renderer_.set_static_dirty(true);
+            gs_prev_view_ = gs_view_;
+            gs_static_force_dirty_ = false;
+        }
+
         // --- Dynamic path: every frame ---
         // Determinism harness: when a Mode-1 test is active, skip the
         // entire dynamic-buffer rebuild. The GPU's dynamic_gaussian_ssbo
@@ -1293,6 +1323,58 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
         // pattern would change capacity allocations across frames.
         if (!determinism_test_state_.active) {
             gs_dynamic_buffer_.clear();
+
+            // ── streaming-strict VFX-objects ──
+            // In streaming mode the legacy block above is gated off, so
+            // VFX object geometry (torch.ply etc.) and the animator setup
+            // need a home. Both move here, into the dynamic buffer:
+            //   1. Append VFX object Gaussians to gs_dynamic_buffer_ first
+            //      so their indices [0, vfx_obj_count) are stable across
+            //      subsequent particle / timeline appends.
+            //   2. Reset + tag the animator on the dynamic buffer so flame
+            //      / swirl / object-effect animations re-bind to the fresh
+            //      indices each frame.
+            //   3. Run gs_animator_.update on the dynamic buffer.
+            // This keeps torches lit and VFX-object animations working
+            // without touching static_count_. Bone-animated entities (PC,
+            // NPCs, slimes, knight) and PBD trees are part of the terrain
+            // PLY and live in streaming chunks — they're already covered
+            // by the chunk path and don't pass through here.
+            //
+            // Scene animations (gs_scene_animations_) currently tag
+            // regions of the CPU-side static buffer; in streaming mode the
+            // terrain has no CPU mirror, so they're deferred to a Phase 2
+            // GPU-side region-tagging compute pass. Fail loudly if any are
+            // queued so we don't silently lose them.
+            if (streaming_strict && !vfx_instances_.empty()) {
+                ScopedStallTimer _t_vfx_obj{"  > vfx_objects → dynamic_buffer (streaming-strict)"};
+                for (auto& inst : vfx_instances_) {
+                    inst.append_objects(gs_dynamic_buffer_);
+                }
+                gs_animator_.reset();
+                for (auto& inst : vfx_instances_) inst.reset_animations();
+                for (auto& inst : vfx_instances_) {
+                    inst.tag_animations(gs_dynamic_buffer_, gs_animator_);
+                }
+                if (flags.animation && gs_animator_.has_active_groups()) {
+                    gs_animator_.update(dt, gs_dynamic_buffer_);
+                }
+            }
+            if (streaming_strict && !gs_scene_animations_.empty()) {
+                // Phase 2 deferred: scene animations on streamed terrain
+                // need GPU-side region tagging (compute shader) since the
+                // terrain has no CPU mirror. Soft-disable for now: drop
+                // queued animations and log once per batch so we know they
+                // were skipped. Affected effects (pulse / burn / swirl on
+                // terrain regions) won't render until the compute path
+                // lands. Triggers themselves still fire normally.
+                std::fprintf(stderr,
+                    "[streaming-strict] WARN: skipped %zu scene animation(s) "
+                    "— GPU-side region tagging not yet implemented "
+                    "(Phase 2 follow-up).\n",
+                    gs_scene_animations_.size());
+                gs_scene_animations_.clear();
+            }
 
             // Distance culling for dynamic effects (emitters, VFX)
             glm::vec3 cull_origin = glm::vec3(glm::inverse(gs_view_)[3]);
@@ -1645,13 +1727,20 @@ void Renderer::clear_gs_animations() {
 }
 
 void Renderer::add_vfx_instance(VfxInstance&& inst) {
-    // Grow SSBO capacity to fit object PLY Gaussians
+    // In streaming-strict mode, VFX object geometry is appended to
+    // gs_dynamic_buffer_ each frame in the dynamic block; gs_static_buffer_
+    // and the legacy static-SSBO grow path are dead. Skipping them here
+    // prevents unbounded gs_static_buffer_ growth from repeated VFX spawns
+    // (e.g. proximity-triggered chimney_smoke). The dynamic SSBO capacity
+    // is sized via kDynamicHeadroom at init_streaming. Source: codex P2
+    // review on PR #388.
     const auto& obj_gs = inst.object_gaussians();
-    if (!obj_gs.empty()) {
+    if (!obj_gs.empty() && !gs_renderer_.streaming_initialized()) {
+        // Legacy path: grow static SSBO + populate gs_static_buffer_ for
+        // the legacy gather block to pick up.
         uint32_t current_base = gs_renderer_.max_gaussian_count() - GsRenderer::kParticleHeadroom;
         uint32_t new_base = current_base + static_cast<uint32_t>(obj_gs.size());
         gs_renderer_.ensure_capacity(new_base);
-        // Include in static buffer so no per-frame append is needed
         gs_static_buffer_.insert(gs_static_buffer_.end(), obj_gs.begin(), obj_gs.end());
         std::fprintf(stderr, "VFX: Added %zu object Gaussians to scene buffer\n", obj_gs.size());
     }

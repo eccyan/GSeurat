@@ -194,7 +194,13 @@ public:
     }
     VkSampler output_sampler() const { return output_sampler_; }
     static constexpr uint32_t kParticleHeadroom = 2048;
-    static constexpr uint32_t kDynamicHeadroom = 8192;  // particles + character + animated regions
+    // Sized for: particles + character + animated regions + VFX object
+    // geometry (e.g. torch.ply at ~50K splats × multiple instances). The
+    // bump from 8192 was made when streaming-strict mode rerouted VFX
+    // object geometry from the legacy gs_static_buffer_ path to the
+    // dynamic SSBO. 256K × 64 B = 16 MB; projected_ssbo_ grows by
+    // (256K - 8K) × 48 B ≈ 12 MB. Trivial against a 10M-static budget.
+    static constexpr uint32_t kDynamicHeadroom = 262144;
 
     void ensure_capacity(uint32_t needed_total);
 
@@ -374,6 +380,11 @@ private:
     // TRANSFER_WRITE -> SHADER_READ barrier. Called from poll_transfers
     // immediately after poll_completions enqueues new publications.
     void publish_pending_chunks(VkCommandBuffer cmd);
+
+    // DIAG: stderr-print streaming-state snapshot (active_chunks_, counts,
+    // projected_ssbo_/merged_sort_ssbo_/static_sort_a_ tail samples) for
+    // ghost investigation. Opt-in via env var GS_DIAG_STREAMING=1.
+    void diag_streaming_dump(uint64_t frame);
 
     VkDevice device_ = VK_NULL_HANDLE;
     VmaAllocator allocator_ = VK_NULL_HANDLE;
