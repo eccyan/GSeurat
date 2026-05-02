@@ -1124,7 +1124,20 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
             gs_static_force_dirty_ = false;
         }
 
-        if (camera_dirty && flags.gs_chunk_culling && !gs_skip_chunk_cull_ && !gs_chunk_grid_.empty()) {
+        // Legacy gs_chunk_grid_ rebuild path: gathers terrain from the
+        // CPU-side spatial grid, appends VFX object geometry, runs the
+        // animator, and uploads via update_static_gaussians (which
+        // STOMPS static_count_). In streaming mode the terrain is owned
+        // by the slab streamer (publish_pending_chunks recomputes
+        // static_count_ from active_chunks_), so running this block
+        // would clobber that state and produce ghost geometry from prior
+        // gather results — see PR #387's DIAG investigation. Gate the
+        // entire block off in streaming mode; VFX object geometry is
+        // rerouted to the dynamic SSBO below (search "streaming-strict
+        // VFX-objects").
+        const bool streaming_strict = gs_renderer_.streaming_initialized();
+        if (camera_dirty && flags.gs_chunk_culling && !gs_skip_chunk_cull_ &&
+            !gs_chunk_grid_.empty() && !streaming_strict) {
             ScopedStallTimer _t_static_rebuild{"gs_static_rebuild (visibility+gather+upload)"};
 
             // Visibility cull always runs — it's cheap, and we need its
@@ -1293,6 +1306,53 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
         // pattern would change capacity allocations across frames.
         if (!determinism_test_state_.active) {
             gs_dynamic_buffer_.clear();
+
+            // ── streaming-strict VFX-objects ──
+            // In streaming mode the legacy block above is gated off, so
+            // VFX object geometry (torch.ply etc.) and the animator setup
+            // need a home. Both move here, into the dynamic buffer:
+            //   1. Append VFX object Gaussians to gs_dynamic_buffer_ first
+            //      so their indices [0, vfx_obj_count) are stable across
+            //      subsequent particle / timeline appends.
+            //   2. Reset + tag the animator on the dynamic buffer so flame
+            //      / swirl / object-effect animations re-bind to the fresh
+            //      indices each frame.
+            //   3. Run gs_animator_.update on the dynamic buffer.
+            // This keeps torches lit and VFX-object animations working
+            // without touching static_count_. Bone-animated entities (PC,
+            // NPCs, slimes, knight) and PBD trees are part of the terrain
+            // PLY and live in streaming chunks — they're already covered
+            // by the chunk path and don't pass through here.
+            //
+            // Scene animations (gs_scene_animations_) currently tag
+            // regions of the CPU-side static buffer; in streaming mode the
+            // terrain has no CPU mirror, so they're deferred to a Phase 2
+            // GPU-side region-tagging compute pass. Fail loudly if any are
+            // queued so we don't silently lose them.
+            if (streaming_strict && !vfx_instances_.empty()) {
+                ScopedStallTimer _t_vfx_obj{"  > vfx_objects → dynamic_buffer (streaming-strict)"};
+                for (auto& inst : vfx_instances_) {
+                    inst.append_objects(gs_dynamic_buffer_);
+                }
+                gs_animator_.reset();
+                for (auto& inst : vfx_instances_) inst.reset_animations();
+                for (auto& inst : vfx_instances_) {
+                    inst.tag_animations(gs_dynamic_buffer_, gs_animator_);
+                }
+                if (flags.animation && gs_animator_.has_active_groups()) {
+                    gs_animator_.update(dt, gs_dynamic_buffer_);
+                }
+            }
+            if (streaming_strict && !gs_scene_animations_.empty()) {
+                std::fprintf(stderr,
+                    "[streaming-strict] FATAL: %zu scene animation(s) queued, "
+                    "but scene-animation region tagging on streamed terrain "
+                    "is not yet implemented. Either disable scene animations "
+                    "or implement Phase 2 (GPU-side region tagging compute "
+                    "pass). See feature/streaming-strict-mode design.\n",
+                    gs_scene_animations_.size());
+                std::abort();
+            }
 
             // Distance culling for dynamic effects (emitters, VFX)
             glm::vec3 cull_origin = glm::vec3(glm::inverse(gs_view_)[3]);

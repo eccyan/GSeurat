@@ -194,7 +194,13 @@ public:
     }
     VkSampler output_sampler() const { return output_sampler_; }
     static constexpr uint32_t kParticleHeadroom = 2048;
-    static constexpr uint32_t kDynamicHeadroom = 8192;  // particles + character + animated regions
+    // Sized for: particles + character + animated regions + VFX object
+    // geometry (e.g. torch.ply at ~50K splats × multiple instances). The
+    // bump from 8192 was made when streaming-strict mode rerouted VFX
+    // object geometry from the legacy gs_static_buffer_ path to the
+    // dynamic SSBO. 256K × 64 B = 16 MB; projected_ssbo_ grows by
+    // (256K - 8K) × 48 B ≈ 12 MB. Trivial against a 10M-static budget.
+    static constexpr uint32_t kDynamicHeadroom = 262144;
 
     void ensure_capacity(uint32_t needed_total);
 
