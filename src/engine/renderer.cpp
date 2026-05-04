@@ -1257,7 +1257,6 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
             }
         }
 
-        gs_renderer_.set_tile_binning(flags.gs_tile_binning);
         gs_renderer_.render(cmd, current_frame_, gs_view_, gs_proj_);
     }
 }

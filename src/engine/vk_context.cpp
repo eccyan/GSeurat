@@ -234,7 +234,7 @@ void VkContext::pick_physical_device() {
 }
 
 void VkContext::create_logical_device() {
-    // Log subgroup properties for diagnostics (subgroup vote used in gs_render.comp)
+    // Log subgroup properties for diagnostics (subgroup vote used in gs_tile_render.comp)
     {
         VkPhysicalDeviceSubgroupProperties subgroup_props{};
         subgroup_props.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_PROPERTIES;
