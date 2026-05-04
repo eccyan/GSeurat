@@ -46,6 +46,7 @@
 #include "gseurat/engine/types.hpp"
 #include "gseurat/engine/ui/ui_context.hpp"
 
+#include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <functional>
@@ -307,9 +308,14 @@ protected:
     // Control server (bridge integration — Unix socket or Windows Named Pipe)
     ControlServer control_server_;
 
-    // Step mode / control
+    // Step mode / control. pending_steps_ is atomic so the field is safe if
+    // socket I/O is ever moved off the main thread; std::memory_order_relaxed
+    // is sufficient today since both reads and writes are single-threaded.
     bool step_mode_ = false;
-    int pending_steps_ = 0;
+    std::atomic<int> pending_steps_ = 0;
+    // Synchronous "step N": captured at command time, response sent after
+    // the Nth frame completes. reply_target = -1 means no step in flight.
+    CommandContext::DeferredStepResponse deferred_step_response_;
     uint64_t tick_ = 0;
     static constexpr float kFixedDt = 1.0f / 60.0f;
 

@@ -157,6 +157,7 @@ public:
             }
         }
 
+        // Human-facing: keep wall-clock so timestamps reflect real time, not simulated.
         auto now = std::chrono::system_clock::now();
         auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
                       now.time_since_epoch())

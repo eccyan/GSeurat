@@ -1,7 +1,7 @@
 #include "gseurat/engine/camera.hpp"
+#include "gseurat/engine/random.hpp"
 
 #include <cmath>
-#include <random>
 
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -66,10 +66,8 @@ void Camera::trigger_shake(float amplitude, float frequency, float duration) {
     shake_.decay_rate = (duration > 0.0f) ? (4.6f / duration) : 10.0f;
     shake_.timer = 0.0f;
     // Random phase offsets for natural feel
-    static std::mt19937 rng{std::random_device{}()};
-    std::uniform_real_distribution<float> dist(0.0f, 6.2831853f);
-    shake_.phase_x = dist(rng);
-    shake_.phase_y = dist(rng);
+    shake_.phase_x = gs::random::next_float() * 6.2831853f;
+    shake_.phase_y = gs::random::next_float() * 6.2831853f;
 }
 
 void Camera::set_target_zoom(float z) {

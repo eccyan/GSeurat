@@ -1,5 +1,6 @@
 #include "gseurat/engine/swapchain.hpp"
 #include "gseurat/engine/vk_context.hpp"
+#include "gseurat/engine/sim_clock.hpp"
 
 #include <algorithm>
 #include <stdexcept>
@@ -35,11 +36,30 @@ void Swapchain::init(const VkContext& context, uint32_t width, uint32_t height) 
     }
 
     // Choose present mode
+    // In deterministic mode, prefer IMMEDIATE (no vsync) so frame pacing is
+    // GPU-bound rather than vsync-bound, enabling reproducible frame timing.
     VkPresentModeKHR chosen_mode = VK_PRESENT_MODE_FIFO_KHR;
-    for (auto mode : modes) {
-        if (mode == VK_PRESENT_MODE_MAILBOX_KHR) {
-            chosen_mode = mode;
-            break;
+    if (gs::SimClock::is_deterministic()) {
+        // Prefer IMMEDIATE, then MAILBOX, then FIFO_RELAXED as fallbacks.
+        bool found = false;
+        for (auto preferred : {VK_PRESENT_MODE_IMMEDIATE_KHR,
+                               VK_PRESENT_MODE_MAILBOX_KHR,
+                               VK_PRESENT_MODE_FIFO_RELAXED_KHR}) {
+            for (auto mode : modes) {
+                if (mode == preferred) {
+                    chosen_mode = mode;
+                    found = true;
+                    break;
+                }
+            }
+            if (found) break;
+        }
+    } else {
+        for (auto mode : modes) {
+            if (mode == VK_PRESENT_MODE_MAILBOX_KHR) {
+                chosen_mode = mode;
+                break;
+            }
         }
     }
 

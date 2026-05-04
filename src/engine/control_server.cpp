@@ -95,8 +95,8 @@ void ControlServer::disconnect_client(size_t index) {
     clients_.erase(clients_.begin() + static_cast<ptrdiff_t>(index));
 }
 
-std::vector<nlohmann::json> ControlServer::poll() {
-    std::vector<nlohmann::json> commands;
+std::vector<ControlServer::ParsedCommand> ControlServer::poll() {
+    std::vector<ParsedCommand> commands;
 
     // Accept new clients
     try_accept();
@@ -121,7 +121,10 @@ std::vector<nlohmann::json> ControlServer::poll() {
             }
         }
 
-        // Parse complete lines
+        // Parse complete lines, tagging each with the client fd they came
+        // from. The caller (AppBase::poll_control_server) MUST set_reply_target
+        // before each dispatch so multi-client scenarios route responses
+        // correctly.
         size_t pos;
         while ((pos = client.read_buffer.find('\n')) != std::string::npos) {
             std::string line = client.read_buffer.substr(0, pos);
@@ -131,8 +134,8 @@ std::vector<nlohmann::json> ControlServer::poll() {
 
             try {
                 auto cmd = nlohmann::json::parse(line);
-                reply_fd_ = client.fd;  // track who sent this command
-                commands.push_back(std::move(cmd));
+                commands.push_back({std::move(cmd),
+                                    static_cast<ReplyTarget>(client.fd)});
             } catch (const nlohmann::json::parse_error&) {
                 send_to(client.fd, {{"type", "error"}, {"message", "invalid JSON"}});
             }
@@ -149,8 +152,32 @@ std::vector<nlohmann::json> ControlServer::poll() {
     return commands;
 }
 
+void ControlServer::set_reply_target(ReplyTarget target) noexcept {
+#ifdef _WIN32
+    reply_pipe_ = reinterpret_cast<HANDLE>(static_cast<std::intptr_t>(target));
+#else
+    reply_fd_ = static_cast<int>(target);
+#endif
+}
+
 void ControlServer::send(const nlohmann::json& msg) {
     send_to(reply_fd_, msg);
+}
+
+ControlServer::ReplyTarget ControlServer::current_reply_target() const noexcept {
+#ifdef _WIN32
+    return reinterpret_cast<std::int64_t>(reply_pipe_);
+#else
+    return static_cast<std::int64_t>(reply_fd_);
+#endif
+}
+
+void ControlServer::send_to_target(ReplyTarget target, const nlohmann::json& msg) {
+#ifdef _WIN32
+    send_to(reinterpret_cast<HANDLE>(static_cast<std::intptr_t>(target)), msg);
+#else
+    send_to(static_cast<int>(target), msg);
+#endif
 }
 
 void ControlServer::broadcast(const nlohmann::json& msg) {

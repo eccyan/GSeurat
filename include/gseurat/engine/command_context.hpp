@@ -1,7 +1,11 @@
 #pragma once
 
+#include <atomic>
+#include <cstdint>
 #include <functional>
 #include <string>
+
+#include <nlohmann/json.hpp>
 
 struct GLFWwindow;
 
@@ -43,6 +47,28 @@ struct CommandContext {
     std::string camera_sync_source;  // source of last sync_camera command for echo suppression
     CameraZoneSystem* camera_zone_system = nullptr;
     CollisionSystem* collision_system = nullptr;
+
+    // Step-mode: set by the "step" command; main loop consumes one per frame.
+    // Non-null only when AppBase wires it up (demo/gameplay path). Atomic so
+    // the field is safe if socket I/O is ever moved off the main thread.
+    std::atomic<int>* pending_steps = nullptr;
+
+    // Deferred response state for synchronous "step N". The step command
+    // captures the current reply target and N here, returns a sentinel that
+    // suppresses immediate response, and the main loop sends the response
+    // after pending_steps reaches 0. Cleared (target = -1) when no step is
+    // in flight.
+    //
+    // bridge_id replays the request's _bridge_id correlation key through to
+    // the completion response. Bridge clients treat unkeyed responses as
+    // unsolicited broadcasts, so without this, deferred step completions
+    // would be misrouted when multiple clients share a connection.
+    struct DeferredStepResponse {
+        std::int64_t reply_target = -1;  // ControlServer::ReplyTarget; -1 = none
+        int frames_total = 0;
+        nlohmann::json bridge_id = nullptr;  // null => no _bridge_id was set
+    };
+    DeferredStepResponse* deferred_step_response = nullptr;
 };
 
 }  // namespace gseurat

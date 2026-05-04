@@ -265,6 +265,8 @@ target_compile_definitions(gseurat_core PUBLIC
 )
 
 target_sources(gseurat_core PRIVATE src/engine/debug.cpp)
+target_sources(gseurat_core PRIVATE src/engine/sim_clock.cpp)
+target_sources(gseurat_core PRIVATE src/engine/random.cpp)
 
 if(GSEURAT_SHARED_LIBS)
     target_compile_definitions(gseurat_core PUBLIC GSEURAT_ENGINE_BUILD_SHARED)
@@ -443,6 +445,7 @@ add_gseurat_test(test_pbd_solver)
 add_gseurat_test(test_component_registry src/engine/component_registry.cpp)
 add_gseurat_test(test_system_scheduler  src/engine/system_scheduler.cpp)
 add_gseurat_test(test_island_systems    src/engine/trigger_systems.cpp
+    src/engine/random.cpp
     src/character/character_manifest.cpp
     src/character/bone_animation_player.cpp
     src/character/bone_animation_state_machine.cpp)
@@ -557,6 +560,8 @@ add_gseurat_test(test_ply2heightmap
 
 add_gseurat_test(test_debug
     src/engine/debug.cpp)
+add_gseurat_test(test_sim_clock src/engine/sim_clock.cpp)
+add_gseurat_test(test_random src/engine/random.cpp)
 
 # --- GPU Tests (require actual GPU, link engine sources directly) ----------
 
@@ -567,6 +572,8 @@ function(add_gseurat_gpu_test NAME)
         tests/onesweep_test_runner.cpp
         src/engine/vk_context.cpp
         src/engine/debug.cpp
+        src/engine/sim_clock.cpp
+        src/engine/random.cpp
         src/engine/buffer.cpp
         src/engine/pipeline.cpp
         src/engine/pipeline_cache.cpp

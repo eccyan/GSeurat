@@ -158,8 +158,8 @@ void ControlServer::disconnect_client(size_t index) {
     clients_.erase(clients_.begin() + static_cast<ptrdiff_t>(index));
 }
 
-std::vector<nlohmann::json> ControlServer::poll() {
-    std::vector<nlohmann::json> commands;
+std::vector<ControlServer::ParsedCommand> ControlServer::poll() {
+    std::vector<ParsedCommand> commands;
 
     try_accept();
 
@@ -200,8 +200,8 @@ std::vector<nlohmann::json> ControlServer::poll() {
 
             try {
                 auto cmd = nlohmann::json::parse(line);
-                reply_pipe_ = client.pipe;
-                commands.push_back(std::move(cmd));
+                commands.push_back({std::move(cmd),
+                                    reinterpret_cast<ReplyTarget>(client.pipe)});
             } catch (const nlohmann::json::parse_error&) {
                 send_to(client.pipe, {{"type", "error"}, {"message", "invalid JSON"}});
             }
@@ -219,6 +219,18 @@ std::vector<nlohmann::json> ControlServer::poll() {
 
 void ControlServer::send(const nlohmann::json& msg) {
     send_to(reply_pipe_, msg);
+}
+
+ControlServer::ReplyTarget ControlServer::current_reply_target() const noexcept {
+    return reinterpret_cast<ReplyTarget>(reply_pipe_);
+}
+
+void ControlServer::set_reply_target(ReplyTarget target) noexcept {
+    reply_pipe_ = reinterpret_cast<HANDLE>(static_cast<std::intptr_t>(target));
+}
+
+void ControlServer::send_to_target(ReplyTarget target, const nlohmann::json& msg) {
+    send_to(reinterpret_cast<HANDLE>(static_cast<std::intptr_t>(target)), msg);
 }
 
 void ControlServer::broadcast(const nlohmann::json& msg) {
