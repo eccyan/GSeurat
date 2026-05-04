@@ -2,6 +2,8 @@
 
 The regression harness runs a canonical 60-second walkthrough of `island_demo` in deterministic mode and compares 12 captured frames against a baseline using SSIM diff.
 
+**Local-only manual check.** The harness needs a real GPU to run (MoltenVK requires Metal hardware passthrough; GitHub-hosted Apple runners are virtualized and don't have it). For this reason the harness has no CI job — run it on your local Apple Silicon Mac as a pre-merge check before shipping big refactor PRs.
+
 **Hard requirement:** the engine MUST be built with `--preset macos-release-with-diag` (or another `GSEURAT_DEBUG_FORCE=ON` preset) so validation layers and diagnostic tiers are active. Pixel diff runs on macOS only because floating-point rasterization differs across MoltenVK / Lavapipe / AMD / Intel.
 
 **Python deps:** `scikit-image>=0.19`, `Pillow>=10`, `numpy>=1.24`. Recommended setup: a venv to avoid clobbering system Python.
