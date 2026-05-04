@@ -26,6 +26,7 @@ size_t type_size(const std::string& type) {
     if (type == "float" || type == "float32") return 4;
     if (type == "double" || type == "float64") return 8;
     if (type == "uchar" || type == "uint8") return 1;
+    if (type == "char" || type == "int8") return 1;
     if (type == "int" || type == "int32") return 4;
     if (type == "uint" || type == "uint32") return 4;
     if (type == "short" || type == "int16") return 2;
@@ -123,14 +124,28 @@ PlyCloud parse_ply(const std::string& path) {
         } else if (token == "property" && current_element == "vertex") {
             std::string type, name;
             iss >> type >> name;
-            // Skip list properties
-            if (type == "list") continue;
+            // List properties are variable-length per row, which would
+            // invalidate the fixed vertex_stride model. 3DGS PLYs don't
+            // use list-typed vertex columns; refuse the file rather than
+            // produce silently-misaligned output.
+            if (type == "list") {
+                throw std::runtime_error(
+                    "Vertex list properties are unsupported (column: " + name + ")");
+            }
 
             PlyProperty prop;
             prop.name = name;
             prop.type = type;
             prop.offset = vertex_stride;
             prop.size = type_size(type);
+            // type_size returns 0 for any unknown PLY scalar type. Recording
+            // a zero-stride property would leave subsequent column offsets
+            // pointing into the wrong byte ranges, silently corrupting output.
+            // Fail fast instead.
+            if (prop.size == 0) {
+                throw std::runtime_error(
+                    "Unsupported PLY property type '" + type + "' (column: " + name + ")");
+            }
             vertex_stride += prop.size;
             properties.push_back(std::move(prop));
         } else if (token == "end_header") {
