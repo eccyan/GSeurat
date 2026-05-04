@@ -28,6 +28,7 @@ size_t type_size(const std::string& type) {
     if (type == "float" || type == "float32") return 4;
     if (type == "double" || type == "float64") return 8;
     if (type == "uchar" || type == "uint8") return 1;
+    if (type == "char" || type == "int8") return 1;
     if (type == "int" || type == "int32") return 4;
     if (type == "uint" || type == "uint32") return 4;
     if (type == "short" || type == "int16") return 2;
@@ -47,11 +48,40 @@ float read_float(const char* data, const PlyProperty& prop) {
         return static_cast<float>(v);
     }
     if (prop.type == "uchar" || prop.type == "uint8") {
+        // uchar is conventionally normalized [0,255] → [0,1] (color channels).
         uint8_t v;
         std::memcpy(&v, data + prop.offset, 1);
         return static_cast<float>(v) / 255.0f;
     }
-    return 0.0f;
+    // Integer scalar types are returned as raw values (no normalization).
+    // bone_index is the only known int-typed column today; if future PLY
+    // columns need different semantics, decode them at the call site.
+    if (prop.type == "int" || prop.type == "int32") {
+        int32_t v;
+        std::memcpy(&v, data + prop.offset, 4);
+        return static_cast<float>(v);
+    }
+    if (prop.type == "uint" || prop.type == "uint32") {
+        uint32_t v;
+        std::memcpy(&v, data + prop.offset, 4);
+        return static_cast<float>(v);
+    }
+    if (prop.type == "short" || prop.type == "int16") {
+        int16_t v;
+        std::memcpy(&v, data + prop.offset, 2);
+        return static_cast<float>(v);
+    }
+    if (prop.type == "ushort" || prop.type == "uint16") {
+        uint16_t v;
+        std::memcpy(&v, data + prop.offset, 2);
+        return static_cast<float>(v);
+    }
+    if (prop.type == "char" || prop.type == "int8") {
+        int8_t v;
+        std::memcpy(&v, data + prop.offset, 1);
+        return static_cast<float>(v);
+    }
+    throw std::runtime_error("Unsupported PLY property type: " + prop.type);
 }
 
 }  // namespace
@@ -75,6 +105,11 @@ GaussianCloud GaussianCloud::load_ply(const std::string& path,
     uint32_t vertex_count = 0;
     std::vector<PlyProperty> properties;
     size_t vertex_stride = 0;
+    // Track the element currently being declared so non-vertex elements
+    // (e.g. `face`, `edge`) don't leak their `property` lines into the
+    // vertex layout. Without this, vertex_stride and per-property offsets
+    // are corrupted whenever the PLY contains anything beyond `vertex`.
+    std::string current_element;
 
     while (std::getline(file, line)) {
         // Strip trailing \r for Windows line endings
@@ -89,23 +124,36 @@ GaussianCloud GaussianCloud::load_ply(const std::string& path,
             iss >> fmt;
             binary_little_endian = (fmt == "binary_little_endian");
         } else if (token == "element") {
-            std::string elem_name;
             uint32_t count;
-            iss >> elem_name >> count;
-            if (elem_name == "vertex") {
+            iss >> current_element >> count;
+            if (current_element == "vertex") {
                 vertex_count = count;
             }
-        } else if (token == "property") {
+        } else if (token == "property" && current_element == "vertex") {
             std::string type, name;
             iss >> type >> name;
-            // Skip list properties
-            if (type == "list") continue;
+            // List properties are variable-length per row, which would
+            // invalidate the fixed vertex_stride model. 3DGS PLYs don't
+            // use list-typed vertex columns; refuse the file rather than
+            // produce silently-misaligned output.
+            if (type == "list") {
+                throw std::runtime_error(
+                    "Vertex list properties are unsupported (column: " + name + ")");
+            }
 
             PlyProperty prop;
             prop.name = name;
             prop.type = type;
             prop.offset = vertex_stride;
             prop.size = type_size(type);
+            // type_size returns 0 for any unknown PLY scalar type. Recording
+            // a zero-stride property would leave subsequent column offsets
+            // pointing into the wrong byte ranges, silently corrupting reads.
+            // Fail fast instead.
+            if (prop.size == 0) {
+                throw std::runtime_error(
+                    "Unsupported PLY property type '" + type + "' (column: " + name + ")");
+            }
             vertex_stride += prop.size;
             properties.push_back(std::move(prop));
         } else if (token == "end_header") {
