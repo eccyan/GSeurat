@@ -45,11 +45,36 @@ float read_float(const char* data, const PlyProperty& prop) {
         return static_cast<float>(v);
     }
     if (prop.type == "uchar" || prop.type == "uint8") {
+        // uchar is conventionally normalized [0,255] → [0,1] (color channels)
         uint8_t v;
         std::memcpy(&v, data + prop.offset, 1);
         return static_cast<float>(v) / 255.0f;
     }
-    return 0.0f;
+    // Integer scalar types are returned as raw values (no normalization).
+    // The engine's bone_index column is the only known int-typed field; if
+    // future PLY columns need different semantics, decode them at the call
+    // site rather than baking a policy in here.
+    if (prop.type == "int" || prop.type == "int32") {
+        int32_t v;
+        std::memcpy(&v, data + prop.offset, 4);
+        return static_cast<float>(v);
+    }
+    if (prop.type == "uint" || prop.type == "uint32") {
+        uint32_t v;
+        std::memcpy(&v, data + prop.offset, 4);
+        return static_cast<float>(v);
+    }
+    if (prop.type == "short" || prop.type == "int16") {
+        int16_t v;
+        std::memcpy(&v, data + prop.offset, 2);
+        return static_cast<float>(v);
+    }
+    if (prop.type == "ushort" || prop.type == "uint16") {
+        uint16_t v;
+        std::memcpy(&v, data + prop.offset, 2);
+        return static_cast<float>(v);
+    }
+    throw std::runtime_error("Unsupported PLY property type: " + prop.type);
 }
 
 }  // namespace
@@ -71,6 +96,11 @@ PlyCloud parse_ply(const std::string& path) {
     uint32_t vertex_count = 0;
     std::vector<PlyProperty> properties;
     size_t vertex_stride = 0;
+    // Track the element currently being declared so non-vertex elements
+    // (e.g. `face`, `edge`) don't leak their `property` lines into the
+    // vertex layout. Without this, vertex_stride and per-property offsets
+    // are corrupted whenever the PLY contains anything beyond `vertex`.
+    std::string current_element;
 
     while (std::getline(file, line)) {
         // Strip trailing \r for Windows line endings
@@ -85,13 +115,12 @@ PlyCloud parse_ply(const std::string& path) {
             iss >> fmt;
             binary_little_endian = (fmt == "binary_little_endian");
         } else if (token == "element") {
-            std::string elem_name;
             uint32_t count;
-            iss >> elem_name >> count;
-            if (elem_name == "vertex") {
+            iss >> current_element >> count;
+            if (current_element == "vertex") {
                 vertex_count = count;
             }
-        } else if (token == "property") {
+        } else if (token == "property" && current_element == "vertex") {
             std::string type, name;
             iss >> type >> name;
             // Skip list properties
