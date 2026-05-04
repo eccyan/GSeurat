@@ -274,9 +274,6 @@ public:
     void set_post_process_params(const GsPostProcessParams& p) { gs_pp_params_ = p; }
     const GsPostProcessParams& post_process_params() const { return gs_pp_params_; }
 
-    void set_tile_binning(bool enabled) { tile_binning_enabled_ = enabled; }
-    bool tile_binning() const { return tile_binning_enabled_; }
-
     // Frame-determinism test harness (Mode 1): when active, copy the
     // post-Onesweep tile_sort_a_ buffer into a host-mapped readback so the
     // CPU can hash the live entry range and detect order-instability
@@ -290,9 +287,9 @@ public:
     // True iff `dispatch_tile_sort` actually emitted a host-visible copy of
     // tile_sort_a_ this frame. False during scene-transition / loading frames
     // where the GS compute path was skipped (no cloud, !gs_rendering,
-    // !dispatch_gpu_compute, !tile_binning_enabled_, capacity == 0). The
-    // harness uses this to skip frames with stale readback contents — without
-    // it the test could report a false STABLE verdict from leftover bytes.
+    // !dispatch_gpu_compute, capacity == 0). The harness uses this to skip
+    // frames with stale readback contents — without it the test could report
+    // a false STABLE verdict from leftover bytes.
     bool determinism_readback_emitted_this_frame() const {
         return determinism_readback_emitted_;
     }
@@ -535,10 +532,8 @@ private:
 
     // Compute pipelines
     VkPipelineLayout preprocess_pipeline_layout_ = VK_NULL_HANDLE;
-    VkPipelineLayout render_pipeline_layout_ = VK_NULL_HANDLE;
 
     VkPipeline preprocess_pipeline_ = VK_NULL_HANDLE;
-    VkPipeline render_pipeline_ = VK_NULL_HANDLE;
 
     // PBD solver pipeline
     VkDescriptorSetLayout pbd_layout_ = VK_NULL_HANDLE;
@@ -599,7 +594,7 @@ private:
     VkPipeline tile_ranges_pipeline_ = VK_NULL_HANDLE;
     VkDescriptorSet tile_ranges_set_ = VK_NULL_HANDLE;
 
-    // Tile render pipeline (separate from render_pipeline_ — 8 bindings)
+    // Tile render pipeline (8 bindings)
     VkDescriptorSetLayout tile_render_layout_ = VK_NULL_HANDLE;
     VkPipelineLayout tile_render_pipeline_layout_ = VK_NULL_HANDLE;
     VkPipeline tile_render_pipeline_ = VK_NULL_HANDLE;
@@ -678,8 +673,6 @@ private:
     uint32_t tile_sort_size_ = 0;        // workgroup-aligned count for radix sort
     uint32_t tile_sort_workgroups_ = 0;
     static constexpr uint32_t kTileSortPasses = 4;  // 4 passes for 32-bit key
-    bool tile_binning_enabled_ = true;
-
     bool initialized_ = false;
 
     // World manifest (Phase 3 streaming)

@@ -2,6 +2,7 @@
 #include "gseurat/engine/pipeline.hpp"
 #include "gseurat/engine/scoped_timer.hpp"
 
+#include <cassert>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
@@ -560,8 +561,6 @@ void GsRenderer::create_compute_pipelines() {
                     preprocess_pipeline_layout_, preprocess_pipeline_);
     create_pipeline("shaders/gs_sort.comp.spv", sort_layout_, 8,
                     sort_pipeline_layout_, sort_pipeline_);
-    create_pipeline("shaders/gs_render.comp.spv", render_layout_, 0,
-                    render_pipeline_layout_, render_pipeline_);
 
     // Post-process pipeline (no push constants — dimensions in UBO)
     create_pipeline("shaders/gs_post_process.comp.spv", post_process_layout_, 0,
@@ -2497,7 +2496,8 @@ void GsRenderer::dispatch_tile_sort(VkCommandBuffer cmd) {
     // this flag after the in-flight fence to decide whether the captured
     // frame represents a real measurement.
     determinism_readback_emitted_ = false;
-    if (!tile_binning_enabled_ || !tile_sort_a_.buffer() || tile_sort_capacity_ == 0) return;
+    assert(tile_sort_a_.buffer() && tile_sort_capacity_ > 0 &&
+           "dispatch_tile_sort: tile sort buffers must be allocated before first dispatch");
 
     uint32_t width = output_width_;
     uint32_t height = output_height_;
@@ -2742,7 +2742,6 @@ void GsRenderer::render(VkCommandBuffer cmd, uint32_t frame_in_flight,
     const VkImage out_img       = output_images_[frame_in_flight];
     const VkImage depth_img     = depth_images_[frame_in_flight];
     const VkImage processed_img = processed_images_[frame_in_flight];
-    VkDescriptorSet render_set       = render_sets_[frame_in_flight];
     VkDescriptorSet post_process_set = post_process_sets_[frame_in_flight];
     VkDescriptorSet tile_render_set  = tile_render_sets_[frame_in_flight];
 
@@ -2908,8 +2907,11 @@ void GsRenderer::render(VkCommandBuffer cmd, uint32_t frame_in_flight,
                 0, 1, &pbd_barrier, 0, nullptr, 0, nullptr);
         }
 
-        // Use split pipeline if split buffers are allocated, otherwise legacy path
+        // Streaming-strict invariant: split buffers are always allocated
+        // post-init. The wrapper remains for code-locality; collapsing it
+        // is part of the post-1c descriptor-state cleanup (issue #397).
         bool use_split = static_gaussian_ssbo_.buffer() && counts_ssbo_.buffer();
+        assert(use_split && "render: split buffers must be allocated in streaming-strict mode");
 
         if (use_split) {
             // Reset counts that will be written this frame
@@ -3011,16 +3013,11 @@ void GsRenderer::render(VkCommandBuffer cmd, uint32_t frame_in_flight,
 
             // === Phase 4: Tile-based rasterization ===
             {
-                bool use_tile = (tile_binning_enabled_ && tile_sort_a_.buffer() && tile_sort_capacity_ > 0);
-                if (use_tile) {
-                    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, tile_render_pipeline_);
-                    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
-                                            tile_render_pipeline_layout_, 0, 1, &tile_render_set, 0, nullptr);
-                } else {
-                    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, render_pipeline_);
-                    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
-                                            render_pipeline_layout_, 0, 1, &render_set, 0, nullptr);
-                }
+                assert(tile_sort_a_.buffer() && tile_sort_capacity_ > 0 &&
+                       "tile render: tile sort buffers must be allocated post-init");
+                vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, tile_render_pipeline_);
+                vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
+                                        tile_render_pipeline_layout_, 0, 1, &tile_render_set, 0, nullptr);
                 uint32_t tiles_x = (width + 15) / 16;
                 uint32_t tiles_y = (height + 15) / 16;
 
@@ -3034,71 +3031,6 @@ void GsRenderer::render(VkCommandBuffer cmd, uint32_t frame_in_flight,
                                        timestamp_pool_, 5);  // raster_end
                     timestamps_written_ = true;
                 }
-            }
-        } else {
-            // Legacy single-buffer path (backward compat)
-            // Reset visible count to 0 on GPU timeline
-            vkCmdFillBuffer(cmd, visible_count_ssbo_.buffer(), 0, sizeof(uint32_t), 0);
-            {
-                VkMemoryBarrier fill_barrier{};
-                fill_barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
-                fill_barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-                fill_barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
-                vkCmdPipelineBarrier(cmd,
-                    VK_PIPELINE_STAGE_TRANSFER_BIT,
-                    VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                    0, 1, &fill_barrier, 0, nullptr, 0, nullptr);
-            }
-
-            // Depth sort timestamp: begin
-            if (timestamp_pool_) {
-                vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                                   timestamp_pool_, 0);  // depth_sort_begin
-            }
-
-            // Preprocess
-            vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, preprocess_pipeline_);
-            vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
-                                    preprocess_pipeline_layout_, 0, 1, &preprocess_set_, 0, nullptr);
-            GsPreprocessPush legacy_push{0, gaussian_count_, 0};
-            vkCmdPushConstants(cmd, preprocess_pipeline_layout_, VK_SHADER_STAGE_COMPUTE_BIT,
-                               0, sizeof(GsPreprocessPush), &legacy_push);
-            vkCmdDispatch(cmd, (gaussian_count_ + 255) / 256, 1, 1);
-
-            insert_compute_barrier(cmd);
-
-            // Depth sort (legacy path, Onesweep)
-            dispatch_depth_onesweep(cmd, sort_size_, num_sort_workgroups_,
-                depth_hist_set_a_, depth_hist_set_b_,
-                depth_scatter_set_ab_, depth_scatter_set_ba_);
-
-            // Depth sort timestamp: end (also serves as tile_sort_begin/end = same point)
-            if (timestamp_pool_) {
-                vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                                   timestamp_pool_, 1);  // depth_sort_end
-                // No tile sort in legacy path — write same timestamp for tile begin/end
-                vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                                   timestamp_pool_, 2);  // tile_sort_begin
-                vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                                   timestamp_pool_, 3);  // tile_sort_end
-            }
-
-            // Tile-based rasterization (legacy path)
-            vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, render_pipeline_);
-            vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
-                                    render_pipeline_layout_, 0, 1, &render_set, 0, nullptr);
-            uint32_t tiles_x = (width + 15) / 16;
-            uint32_t tiles_y = (height + 15) / 16;
-
-            if (timestamp_pool_) {
-                vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                                   timestamp_pool_, 4);  // raster_begin
-            }
-            vkCmdDispatch(cmd, tiles_x, tiles_y, 1);
-            if (timestamp_pool_) {
-                vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                                   timestamp_pool_, 5);  // raster_end
-                timestamps_written_ = true;
             }
         }
 
@@ -3359,7 +3291,6 @@ void GsRenderer::shutdown(VmaAllocator allocator) {
 
     destroy_pipeline(preprocess_pipeline_);
     destroy_pipeline(sort_pipeline_);
-    destroy_pipeline(render_pipeline_);
     destroy_pipeline(post_process_pipeline_);
     destroy_pipeline(merge_pipeline_);
     destroy_pipeline(pbd_pipeline_);
@@ -3374,7 +3305,6 @@ void GsRenderer::shutdown(VmaAllocator allocator) {
 
     destroy_layout(preprocess_pipeline_layout_);
     destroy_layout(sort_pipeline_layout_);
-    destroy_layout(render_pipeline_layout_);
     destroy_layout(post_process_pipeline_layout_);
     destroy_layout(merge_pipeline_layout_);
     destroy_layout(pbd_pipeline_layout_);

@@ -35,9 +35,6 @@ public:
         uint32_t total_chunks       = 0;
         uint32_t visible_chunks     = 0;
 
-        // Tile binning
-        bool tile_binning_enabled   = false;
-
         // Output resolution
         uint32_t output_width       = 0;
         uint32_t output_height      = 0;
@@ -120,7 +117,6 @@ public:
                     {"fps",           snap.fps},
                     {"frame_time_ms", snap.frame_time_ms},
                 }},
-                {"tile_binning_enabled", snap.tile_binning_enabled},
                 {"output_resolution", {snap.output_width, snap.output_height}},
                 {"pbd", {
                     {"count",       snap.pbd_count},

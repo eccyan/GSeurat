@@ -24,7 +24,6 @@ set(SHADER_SOURCES
     ${SHADER_SOURCE_DIR}/sprite_outline.frag
     ${SHADER_SOURCE_DIR}/gs_preprocess.comp
     ${SHADER_SOURCE_DIR}/gs_sort.comp
-    ${SHADER_SOURCE_DIR}/gs_render.comp
 
     ${SHADER_SOURCE_DIR}/gs_merge.comp
     ${SHADER_SOURCE_DIR}/gs_tile_count.comp

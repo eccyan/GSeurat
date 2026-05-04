@@ -68,7 +68,6 @@ void CommandDispatcher::register_default_commands() {
         add("gs_lod", f.gs_lod, "LOD");
         add("gs_adaptive_budget", f.gs_adaptive_budget, "Adaptive Budget");
         add("gs_parallax", f.gs_parallax, "Parallax");
-        add("gs_tile_binning", f.gs_tile_binning, "Tile Binning");
         add("bloom", f.bloom, "Bloom");
         add("depth_of_field", f.depth_of_field, "Depth of Field");
         add("vignette", f.vignette, "Vignette");
@@ -94,7 +93,6 @@ void CommandDispatcher::register_default_commands() {
             {"gs_lod",             &FeatureFlags::gs_lod},
             {"gs_adaptive_budget", &FeatureFlags::gs_adaptive_budget},
             {"gs_parallax",        &FeatureFlags::gs_parallax},
-            {"gs_tile_binning",    &FeatureFlags::gs_tile_binning},
             {"bloom",              &FeatureFlags::bloom},
             {"depth_of_field",     &FeatureFlags::depth_of_field},
             {"vignette",           &FeatureFlags::vignette},

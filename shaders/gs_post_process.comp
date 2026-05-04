@@ -1,11 +1,11 @@
 #version 450
 
 // GS post-process compute shader.
-// Reads raw HDR color + depth from gs_render.comp, applies screen-space
+// Reads raw HDR color + depth from gs_tile_render.comp, applies screen-space
 // effects (fog, tone mapping, vignette, bloom, CA, DoF, flash, fade),
 // and writes the final processed image for blit.
 //
-// One workgroup per 16×16 tile (matches gs_render.comp tile size).
+// One workgroup per 16×16 tile (matches gs_tile_render.comp tile size).
 layout(local_size_x = 16, local_size_y = 16) in;
 
 layout(set = 0, binding = 0, rgba16f) uniform readonly image2D input_image;

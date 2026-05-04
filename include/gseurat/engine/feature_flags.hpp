@@ -59,7 +59,6 @@ struct FeatureFlags {
     bool gs_lod = true;             // Distance-based LOD budget decimation
     bool gs_adaptive_budget = true; // Auto-tuning LOD budget to target FPS
     bool gs_parallax = true;        // Shadow-box parallax camera
-    bool gs_tile_binning = true;    // Per-tile Gaussian binning (disable on Apple TBDR)
 
     // Debug
     bool debug_colliders = false;    // Collider wireframe debug visualization
@@ -79,8 +78,8 @@ struct FeatureFlags {
             false, false, false, false, false,                       // Effects 9-13
             false, false, false, false,                              // Gameplay (4)
             false, false,                                            // Audio (2)
-            true, true, true, true, false, true,  // GS (6): rendering, chunk_cull, lod, budget, parallax=off, tile_binning
-            false                                  // Debug: debug_colliders
+            true, true, true, true, false,  // GS (5): rendering, chunk_cull, lod, budget, parallax=off
+            false                           // Debug: debug_colliders
         };
     }
 
@@ -90,7 +89,7 @@ struct FeatureFlags {
         (void)apple_gpu;
     }
 
-    static constexpr std::array<Entry, 34> entries() {
+    static constexpr std::array<Entry, 33> entries() {
         return {{
             {"Parallax BG",    "24",  "RENDERING", &FeatureFlags::parallax_backgrounds},
             {"Point Lights",   "11",  "RENDERING", &FeatureFlags::point_lights},
@@ -124,7 +123,6 @@ struct FeatureFlags {
             {"GS LOD",         "GS10","3DGS",      &FeatureFlags::gs_lod},
             {"GS Budget",      "GS10","3DGS",      &FeatureFlags::gs_adaptive_budget},
             {"GS Parallax",    "GS9", "3DGS",     &FeatureFlags::gs_parallax},
-            {"GS Tile Bin",    "GS9", "3DGS",     &FeatureFlags::gs_tile_binning},
             {"Debug Colliders","---", "DEBUG",     &FeatureFlags::debug_colliders},
         }};
     }
