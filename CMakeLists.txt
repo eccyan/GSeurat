@@ -371,6 +371,15 @@ target_link_libraries(ply2heightmap PRIVATE glm::glm nlohmann_json::nlohmann_jso
 
 endif() # GSEURAT_BUILD_EXAMPLES
 
+# --- Offline tools ----------------------------------------------------------
+# Standalone CLI utilities that do NOT link gseurat_core.
+# Gated behind GSEURAT_BUILD_TOOLS (ON by default for top-level builds, OFF
+# when included as a submodule via add_subdirectory).
+
+if(GSEURAT_BUILD_TOOLS)
+add_subdirectory(tools/ply_importer)
+endif() # GSEURAT_BUILD_TOOLS
+
 # --- Tests ------------------------------------------------------------------
 
 if(GSEURAT_BUILD_TESTS)
