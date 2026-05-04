@@ -148,7 +148,6 @@ public:
 
     // Gaussian animator (animate existing scene Gaussians)
     GaussianAnimator& gs_animator() { return gs_animator_; }
-    const std::vector<Gaussian>& gs_static_buffer() const { return gs_static_buffer_; }
 
     // Scene-placed animations (with loop support)
     struct ReformConfig {
@@ -316,9 +315,11 @@ private:
     uint32_t output_width_ = 320;
     uint32_t output_height_ = 240;
 
-    // Spatial chunk grid for GS frustum culling
+    // Spatial chunk grid retained for one-time metadata queries (cloud
+    // bounds, all-Gaussians for bone identification). The per-frame
+    // frustum-culling consumers were removed in PR 1b; the field stays
+    // alive for demo-layer setup queries until those callers migrate.
     GsChunkGrid gs_chunk_grid_;
-    std::vector<Gaussian> gs_static_buffer_;
     std::vector<Gaussian> gs_dynamic_buffer_;
     std::vector<Gaussian> gs_pending_dynamics_;
     glm::mat4 gs_prev_view_{0.0f};  // for camera dirty detection
@@ -328,12 +329,6 @@ private:
     std::vector<SceneAnimation> gs_scene_animations_;
     std::vector<VfxInstance> vfx_instances_;
     std::vector<uint32_t> gs_prev_visible_;
-    // Tracks vfx_instances_.size() observed during the last static-rebuild
-    // frame. A change between frames means a VfxInstance was spawned or
-    // expired, which invalidates the appended VFX-object splats in
-    // gs_static_buffer_ and forces a rebuild. Cheap proxy for "did the VFX
-    // instance set actually change" without keeping a side-table of IDs.
-    size_t gs_prev_vfx_count_ = 0;
     bool gs_skip_chunk_cull_ = false;
 
     // ── Frame-determinism harness internal state ──

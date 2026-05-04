@@ -1109,7 +1109,7 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
         }
 
         // Dynamic Gaussians (particles, VFX, PBD) require the static sort buffers to be
-        // reinitialized each frame via update_static_gaussians. Without this, stale sort
+        // reinitialized each frame via set_static_dirty. Without this, stale sort
         // buffer state from the previous frame's radix scatter corrupts the merge output.
         if (!gs_pending_dynamics_.empty() || !gs_particle_emitters_.empty() || !vfx_instances_.empty()) {
             camera_dirty = true;
@@ -1124,188 +1124,14 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
             gs_static_force_dirty_ = false;
         }
 
-        // Legacy gs_chunk_grid_ rebuild path: gathers terrain from the
-        // CPU-side spatial grid, appends VFX object geometry, runs the
-        // animator, and uploads via update_static_gaussians (which
-        // STOMPS static_count_). In streaming mode the terrain is owned
-        // by the slab streamer (publish_pending_chunks recomputes
-        // static_count_ from active_chunks_), so running this block
-        // would clobber that state and produce ghost geometry from prior
-        // gather results — see PR #387's DIAG investigation. Gate the
-        // entire block off in streaming mode; VFX object geometry is
-        // rerouted to the dynamic SSBO below (search "streaming-strict
-        // VFX-objects").
-        const bool streaming_strict = gs_renderer_.streaming_initialized();
-        if (camera_dirty && flags.gs_chunk_culling && !gs_skip_chunk_cull_ &&
-            !gs_chunk_grid_.empty() && !streaming_strict) {
-            ScopedStallTimer _t_static_rebuild{"gs_static_rebuild (visibility+gather+upload)"};
-
-            // Visibility cull always runs — it's cheap, and we need its
-            // result to decide whether the heavier rebuild is even needed.
-            std::vector<uint32_t> visible;
-            {
-                ScopedStallTimer _t_vis{"  > gs_chunk_grid.visible_chunks (frustum+dist cull)"};
-                glm::mat4 gs_vp = gs_proj_ * gs_view_;
-                glm::vec3 cam_pos = glm::vec3(glm::inverse(gs_view_)[3]);
-                glm::vec3 dist_origin = cam_pos;
-                visible = gs_chunk_grid_.visible_chunks(gs_vp, dist_origin, gs_max_render_distance_);
-            }
-
-            if ((visible != gs_prev_visible_ || budget_changed) && gs_budget_locked_) {
-                gs_budget_locked_ = false;
-                gs_stable_frame_count_ = 0;
-            }
-
-            // ── Skip-rebuild fast path ──
-            // Camera moving WITHIN an already-loaded set of chunks doesn't
-            // change which splats are in gs_static_buffer_ — the previously
-            // built buffer (and the GPU SSBO it was uploaded to) is still
-            // valid. Reasons we MUST rebuild:
-            //   (a) visibility set changed (chunk crossed load/cull radius)
-            //   (b) gaussian budget changed
-            //   (c) static_force_dirty_ was set externally (scene anim
-            //       triggered a re-tag, etc.)
-            //   (d) animations are active — gs_animator_.update() mutates
-            //       gs_static_buffer_ in place every frame, the upload has
-            //       to follow, and re-tagging needs the fresh indices
-            //   (e) LOD is enabled and the budget is set — gather_lod's
-            //       per-splat selection is camera-distance-dependent, so
-            //       every camera-dirty frame produces a different splat set
-            //   (f) the VFX instance set changed (a VfxTrigger spawned a
-            //       new instance or one expired) — the VFX-object splats
-            //       appended at the tail of gs_static_buffer_ are stale.
-            //       Tracked via a count-based proxy: cheap, and a same-
-            //       count-different-instances swap is rare enough that the
-            //       worst case is one stale frame before the next dirty.
-            const bool visibility_changed = (visible != gs_prev_visible_);
-            const bool animations_active =
-                gs_animator_.has_active_groups() || !gs_scene_animations_.empty();
-            const bool lod_active = flags.gs_lod && gs_gaussian_budget_ > 0;
-            const bool vfx_set_changed = (vfx_instances_.size() != gs_prev_vfx_count_);
-            // Set by GsRenderer::publish_pending_chunks when an Unload
-            // shrinks static_count_ and the static_sort_a_/b_ tail
-            // entries become stale (real depth keys, not sentinels).
-            // update_static_gaussians clears it after init_sort_buf.
-            const bool sort_reinit_needed = gs_renderer_.static_sort_needs_reinit();
-
-            const bool need_rebuild =
-                visibility_changed || budget_changed || gs_static_force_dirty_ ||
-                animations_active || lod_active || vfx_set_changed ||
-                sort_reinit_needed;
-
-            gs_prev_visible_ = visible;
-            gs_prev_vfx_count_ = vfx_instances_.size();
-
-            if (need_rebuild) {
-                // Re-gather scene Gaussians
-                {
-                    ScopedStallTimer _t_gather{"  > gs_chunk_grid.gather[_lod] (per-splat copy)"};
-                    if (lod_active) {
-                        glm::vec3 cam_pos = glm::vec3(glm::inverse(gs_view_)[3]);
-                        const glm::vec3* focus = gs_has_lod_focus_ ? &gs_lod_focus_pos_ : nullptr;
-                        gs_chunk_grid_.gather_lod(visible, cam_pos, gs_gaussian_budget_,
-                                                  gs_static_buffer_, focus,
-                                                  gs_preserve_bone_first_, gs_preserve_bone_count_);
-                    } else {
-                        gs_chunk_grid_.gather(visible, gs_static_buffer_);
-                    }
-                }
-
-                // Append VFX object Gaussians to static buffer
-                {
-                    ScopedStallTimer _t_vfx_append{"  > vfx_instances.append_objects"};
-                    for (auto& inst : vfx_instances_) {
-                        inst.append_objects(gs_static_buffer_);
-                    }
-                }
-
-                // Scene buffer changed — animator indices are stale.
-                // Reset so VFX animations re-tag on the new buffer.
-                ScopedStallTimer _t_animator{"  > animator reset+tag (VFX + scene anims)"};
-                gs_animator_.reset();
-
-                // Reset VFX animation states so they re-tag on the fresh static buffer
-                for (auto& inst : vfx_instances_) {
-                    inst.reset_animations();
-                }
-
-                // Tag VFX animations on the static buffer (where object PLYs live)
-                for (auto& inst : vfx_instances_) {
-                    inst.tag_animations(gs_static_buffer_, gs_animator_);
-                }
-
-                // Phase-based state machine for scene animations
-                for (auto& sa : gs_scene_animations_) {
-                    using Phase = SceneAnimation::Phase;
-                    if (sa.phase == Phase::Effect) {
-                        if (sa.group_id == 0) {
-                            sa.group_id = gs_animator_.tag_region(
-                                gs_static_buffer_, sa.region,
-                                parse_effect_name(sa.effect), sa.lifetime, sa.params);
-                        } else if (!gs_animator_.has_group(sa.group_id)) {
-                            if (sa.reform) {
-                                sa.reform_group_id = gs_animator_.tag_region(
-                                    gs_static_buffer_, sa.region,
-                                    GsAnimEffect::Reform, sa.reform->lifetime);
-                                sa.phase = Phase::Reforming;
-                            } else if (sa.loop) {
-                                sa.group_id = gs_animator_.tag_region(
-                                    gs_static_buffer_, sa.region,
-                                    parse_effect_name(sa.effect), sa.lifetime, sa.params);
-                            } else {
-                                sa.phase = Phase::Idle;
-                            }
-                        }
-                    } else if (sa.phase == Phase::Reforming) {
-                        if (!gs_animator_.has_group(sa.reform_group_id)) {
-                            if (sa.loop) {
-                                sa.group_id = gs_animator_.tag_region(
-                                    gs_static_buffer_, sa.region,
-                                    parse_effect_name(sa.effect), sa.lifetime, sa.params);
-                                sa.phase = Phase::Effect;
-                            } else {
-                                sa.phase = Phase::Idle;
-                            }
-                        }
-                    }
-                }
-
-                // Animate tagged scene Gaussians in static buffer
-                if (flags.animation && gs_animator_.has_active_groups()) {
-                    gs_animator_.update(dt, gs_static_buffer_);
-                }
-
-                // Upload static Gaussians
-                if (!gs_static_buffer_.empty()) {
-                    auto count = static_cast<uint32_t>(gs_static_buffer_.size());
-                    if (count > gs_renderer_.max_static_count()) {
-                        gs_static_buffer_.resize(gs_renderer_.max_static_count());
-                        count = gs_renderer_.max_static_count();
-                    }
-                    ScopedStallTimer _t_upload{"  > gs_renderer.update_static_gaussians (memcpy)"};
-                    gs_renderer_.update_static_gaussians(gs_static_buffer_.data(), count);
-                }
-            }
-
-            gs_prev_view_ = gs_view_;
-            // Clear force_dirty only if it wasn't set by animations this frame
-            if (!gs_animator_.has_active_groups() && gs_scene_animations_.empty()) {
-                gs_static_force_dirty_ = false;
-            }
-        }
-
-        // Streaming-strict camera-dirty refresh.
-        // GsRenderer::render() gates the per-frame static preprocess on
-        // `static_dirty_`. The legacy block above (now disabled in streaming
-        // mode) used to set it via update_static_gaussians on every
-        // camera-dirty frame. Without that, only chunk publications and
-        // PBD physics dispatches re-arm the flag — so a streamed scene
-        // with no PBD elements would freeze the static projections at
-        // the last preprocess between chunk events, rendering stale
-        // pixel positions as the camera moves. The demo masks this
-        // because pbd_count_=12 keeps the flag hot, but other scenes
-        // wouldn't. Source: codex P1 review on PR #388.
-        if (streaming_strict && camera_dirty) {
+        // Camera-dirty refresh: arm the per-frame static preprocess gate.
+        // GsRenderer::render() gates static preprocess on `static_dirty_`.
+        // Only chunk publications and PBD physics dispatches re-arm it
+        // automatically — so a streamed scene with no PBD elements would
+        // freeze static projections between chunk events as the camera
+        // moves. Force the flag on every camera-dirty frame so streaming
+        // scenes stay responsive. Source: codex P1 review on PR #388.
+        if (camera_dirty) {
             gs_renderer_.set_static_dirty(true);
             gs_prev_view_ = gs_view_;
             gs_static_force_dirty_ = false;
@@ -1324,30 +1150,11 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
         if (!determinism_test_state_.active) {
             gs_dynamic_buffer_.clear();
 
-            // ── streaming-strict VFX-objects ──
-            // In streaming mode the legacy block above is gated off, so
-            // VFX object geometry (torch.ply etc.) and the animator setup
-            // need a home. Both move here, into the dynamic buffer:
-            //   1. Append VFX object Gaussians to gs_dynamic_buffer_ first
-            //      so their indices [0, vfx_obj_count) are stable across
-            //      subsequent particle / timeline appends.
-            //   2. Reset + tag the animator on the dynamic buffer so flame
-            //      / swirl / object-effect animations re-bind to the fresh
-            //      indices each frame.
-            //   3. Run gs_animator_.update on the dynamic buffer.
-            // This keeps torches lit and VFX-object animations working
-            // without touching static_count_. Bone-animated entities (PC,
-            // NPCs, slimes, knight) and PBD trees are part of the terrain
-            // PLY and live in streaming chunks — they're already covered
-            // by the chunk path and don't pass through here.
-            //
-            // Scene animations (gs_scene_animations_) currently tag
-            // regions of the CPU-side static buffer; in streaming mode the
-            // terrain has no CPU mirror, so they're deferred to a Phase 2
-            // GPU-side region-tagging compute pass. Fail loudly if any are
-            // queued so we don't silently lose them.
-            if (streaming_strict && !vfx_instances_.empty()) {
-                ScopedStallTimer _t_vfx_obj{"  > vfx_objects → dynamic_buffer (streaming-strict)"};
+            // VFX object Gaussians (torch.ply etc.) live in the dynamic buffer.
+            // Append them first so their indices [0, vfx_obj_count) are stable
+            // before particle / timeline appends follow.
+            if (!vfx_instances_.empty()) {
+                ScopedStallTimer _t_vfx_obj{"  > vfx_objects → dynamic_buffer"};
                 for (auto& inst : vfx_instances_) {
                     inst.append_objects(gs_dynamic_buffer_);
                 }
@@ -1360,7 +1167,7 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
                     gs_animator_.update(dt, gs_dynamic_buffer_);
                 }
             }
-            if (streaming_strict && !gs_scene_animations_.empty()) {
+            if (!gs_scene_animations_.empty()) {
                 // Phase 2 deferred: scene animations on streamed terrain
                 // need GPU-side region tagging (compute shader) since the
                 // terrain has no CPU mirror. Soft-disable for now: drop
@@ -1369,7 +1176,7 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
                 // terrain regions) won't render until the compute path
                 // lands. Triggers themselves still fire normally.
                 std::fprintf(stderr,
-                    "[streaming-strict] WARN: skipped %zu scene animation(s) "
+                    "[scene-animations] WARN: skipped %zu scene animation(s) "
                     "— GPU-side region tagging not yet implemented "
                     "(Phase 2 follow-up).\n",
                     gs_scene_animations_.size());
@@ -1715,10 +1522,6 @@ void Renderer::add_gs_animation(const std::string& effect, const GsAnimRegion& r
     sa.loop = loop;
     sa.params = params;
     sa.reform = reform;
-    if (!gs_static_buffer_.empty()) {
-        sa.group_id = gs_animator_.tag_region(
-            gs_static_buffer_, region, parse_effect_name(effect), lifetime, params);
-    }
     gs_scene_animations_.push_back(std::move(sa));
 }
 
@@ -1727,23 +1530,9 @@ void Renderer::clear_gs_animations() {
 }
 
 void Renderer::add_vfx_instance(VfxInstance&& inst) {
-    // In streaming-strict mode, VFX object geometry is appended to
-    // gs_dynamic_buffer_ each frame in the dynamic block; gs_static_buffer_
-    // and the legacy static-SSBO grow path are dead. Skipping them here
-    // prevents unbounded gs_static_buffer_ growth from repeated VFX spawns
-    // (e.g. proximity-triggered chimney_smoke). The dynamic SSBO capacity
-    // is sized via kDynamicHeadroom at init_streaming. Source: codex P2
-    // review on PR #388.
-    const auto& obj_gs = inst.object_gaussians();
-    if (!obj_gs.empty() && !gs_renderer_.streaming_initialized()) {
-        // Legacy path: grow static SSBO + populate gs_static_buffer_ for
-        // the legacy gather block to pick up.
-        uint32_t current_base = gs_renderer_.max_gaussian_count() - GsRenderer::kParticleHeadroom;
-        uint32_t new_base = current_base + static_cast<uint32_t>(obj_gs.size());
-        gs_renderer_.ensure_capacity(new_base);
-        gs_static_buffer_.insert(gs_static_buffer_.end(), obj_gs.begin(), obj_gs.end());
-        std::fprintf(stderr, "VFX: Added %zu object Gaussians to scene buffer\n", obj_gs.size());
-    }
+    // VFX object geometry (torch.ply etc.) is appended to gs_dynamic_buffer_
+    // each frame by the dynamic path. The dynamic SSBO capacity is sized via
+    // kDynamicHeadroom at init_streaming.
     vfx_instances_.push_back(std::move(inst));
 }
 

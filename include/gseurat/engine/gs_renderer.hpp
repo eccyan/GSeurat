@@ -129,8 +129,8 @@ public:
     void update_active_gaussians(const Gaussian* data, uint32_t count);
     void update_gaussian_data(const Gaussian* data, uint32_t count);
 
-    // Static/dynamic split API
-    void update_static_gaussians(const Gaussian* data, uint32_t count);
+    // Per-frame dynamic upload API (VFX/particles/PBD). Static geometry
+    // arrives via load_cloud_async + publish_pending_chunks, not this path.
     void update_dynamic_gaussians(const Gaussian* data, uint32_t count);
     uint32_t max_static_count() const { return max_static_count_; }
     uint32_t max_dynamic_count() const { return max_dynamic_count_; }
@@ -138,19 +138,6 @@ public:
     uint32_t dynamic_count() const { return dynamic_count_; }
     bool static_dirty() const { return static_dirty_; }
     void set_static_dirty(bool d) { static_dirty_ = d; }
-
-    // True when a metadata mutation (currently: Unload publication that
-    // shrinks `static_count_`) has left the static sort buffers' tail
-    // entries [new_count, old_count) holding stale REAL depth keys
-    // instead of the 0xFFFFFFFF sentinels the merge step expects. The
-    // renderer queries this every frame; a true value forces a static
-    // rebuild whose update_static_gaussians call re-runs init_sort_buf
-    // and clears the flag. Without this gate, the static+dynamic merge
-    // can interleave stale entries into the sorted output (flicker /
-    // wrong-depth artefacts) on frames where dynamic emitters force
-    // camera_dirty true but visibility/animation/LOD/VFX-set state are
-    // unchanged so the rebuild-skip fast path would otherwise fire.
-    bool static_sort_needs_reinit() const { return static_sort_needs_reinit_; }
 
     void resize_output(uint32_t width, uint32_t height);
 
@@ -192,16 +179,11 @@ public:
         return output_views_;
     }
     VkSampler output_sampler() const { return output_sampler_; }
-    static constexpr uint32_t kParticleHeadroom = 2048;
     // Sized for: particles + character + animated regions + VFX object
-    // geometry (e.g. torch.ply at ~50K splats × multiple instances). The
-    // bump from 8192 was made when streaming-strict mode rerouted VFX
-    // object geometry from the legacy gs_static_buffer_ path to the
-    // dynamic SSBO. 256K × 64 B = 16 MB; projected_ssbo_ grows by
-    // (256K - 8K) × 48 B ≈ 12 MB. Trivial against a 10M-static budget.
+    // geometry (e.g. torch.ply at ~50K splats × multiple instances).
+    // 256K × 64 B = 16 MB; projected_ssbo_ grows by (256K - 8K) × 48 B ≈ 12 MB.
+    // Trivial against a 10M-static budget.
     static constexpr uint32_t kDynamicHeadroom = 262144;
-
-    void ensure_capacity(uint32_t needed_total);
 
     bool has_cloud() const { return gaussian_count_ > 0; }
     uint32_t gaussian_count() const { return gaussian_count_; }
@@ -446,11 +428,6 @@ private:
     uint32_t static_sort_workgroups_ = 0;
     uint32_t dynamic_sort_workgroups_ = 0;
     bool static_dirty_ = true;
-    // Set by publish_pending_chunks when an Unload publication shrinks
-    // static_count_. Cleared by update_static_gaussians after init_sort_buf
-    // restores the [new_count, sort_size) sentinel tail. See the public
-    // static_sort_needs_reinit() getter for the rationale.
-    bool static_sort_needs_reinit_ = false;
 
     // --- Streaming architecture (Phase 2) ---
     StreamingConfig streaming_config_;
