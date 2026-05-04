@@ -5,6 +5,8 @@
 #include <functional>
 #include <string>
 
+#include <nlohmann/json.hpp>
+
 struct GLFWwindow;
 
 namespace gseurat {
@@ -56,9 +58,15 @@ struct CommandContext {
     // suppresses immediate response, and the main loop sends the response
     // after pending_steps reaches 0. Cleared (target = -1) when no step is
     // in flight.
+    //
+    // bridge_id replays the request's _bridge_id correlation key through to
+    // the completion response. Bridge clients treat unkeyed responses as
+    // unsolicited broadcasts, so without this, deferred step completions
+    // would be misrouted when multiple clients share a connection.
     struct DeferredStepResponse {
         std::int64_t reply_target = -1;  // ControlServer::ReplyTarget; -1 = none
         int frames_total = 0;
+        nlohmann::json bridge_id = nullptr;  // null => no _bridge_id was set
     };
     DeferredStepResponse* deferred_step_response = nullptr;
 };

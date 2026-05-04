@@ -38,12 +38,25 @@ def run_scenario(out_dir):
                             cwd=DEMO_DIR)
     try:
         # Wait for socket to appear (engine startup). Cold PLY load of the
-        # 2.2M-Gaussian island can take 30-60s; warm load is ~3-5s. Generous
-        # timeout to accommodate cold runs.
+        # 2.2M-Gaussian island takes 30-60s on warm dev machines; on
+        # GitHub-hosted macOS runners (no GPU passthrough → MoltenVK falls
+        # back to a slow software path) startup can take much longer.
+        # Generous 300s timeout to accommodate that.
         t0 = time.time()
         while not os.path.exists(SOCKET):
-            if time.time() - t0 > 90:
-                raise RuntimeError("engine did not create socket in 90s")
+            if time.time() - t0 > 300:
+                # Drain any stderr the engine produced before timing out so
+                # the failure is diagnosable (validation errors, missing
+                # GPU, etc).
+                try:
+                    proc.terminate()
+                    _, stderr_bytes = proc.communicate(timeout=5)
+                    sys.stderr.write(
+                        "engine stderr at socket-wait timeout:\n" +
+                        stderr_bytes.decode(errors="replace") + "\n")
+                except Exception:
+                    pass
+                raise RuntimeError("engine did not create socket in 300s")
             time.sleep(0.1)
 
         # Drive the scenario.

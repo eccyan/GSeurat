@@ -4,6 +4,7 @@
 #include "gseurat/engine/component_registry.hpp"
 #include "gseurat/engine/control_server.hpp"
 #include "gseurat/engine/debug_dump.hpp"
+#include "gseurat/engine/sim_clock.hpp"
 #include "gseurat/engine/coordinate.hpp"
 #include "gseurat/engine/ecs/components/collider_component.hpp"
 #include "gseurat/engine/ecs/default_components.hpp"
@@ -675,10 +676,20 @@ void CommandDispatcher::register_default_commands() {
         if (n <= 0 || n > 10000) {
             return std::unexpected(std::string("step: n must be in [1, 10000]"));
         }
+        // P1: step is meaningful only when --deterministic gates the main
+        // loop on pending_steps_. Outside deterministic mode the main loop
+        // runs frames continuously regardless of pending_steps_, so the
+        // deferred response would never fire and the caller would hang
+        // forever waiting for {"frames_completed":N}.
+        if (!gs::SimClock::is_deterministic()) {
+            return std::unexpected(std::string(
+                "step: requires --deterministic engine mode "
+                "(otherwise the deferred response would never fire)"));
+        }
         if (!ctx_.pending_steps || !ctx_.deferred_step_response ||
             !ctx_.control_server) {
             return std::unexpected(std::string(
-                "step: control plane not wired up (deterministic mode required)"));
+                "step: control plane not wired up"));
         }
         if (ctx_.deferred_step_response->reply_target >= 0) {
             return std::unexpected(std::string(
@@ -687,6 +698,14 @@ void CommandDispatcher::register_default_commands() {
         ctx_.deferred_step_response->reply_target =
             ctx_.control_server->current_reply_target();
         ctx_.deferred_step_response->frames_total = n;
+        // P2: preserve _bridge_id correlation from the request through to the
+        // deferred completion response. Bridge clients route on _bridge_id
+        // and treat unkeyed responses as broadcasts.
+        if (cmd.contains("_bridge_id")) {
+            ctx_.deferred_step_response->bridge_id = cmd["_bridge_id"];
+        } else {
+            ctx_.deferred_step_response->bridge_id = json(nullptr);
+        }
         ctx_.pending_steps->fetch_add(n, std::memory_order_relaxed);
         // Sentinel response — poll_control_server checks for "_deferred" key
         // and skips the immediate send.

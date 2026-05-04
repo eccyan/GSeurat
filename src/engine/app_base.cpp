@@ -441,12 +441,19 @@ void AppBase::main_loop() {
         if (step_mode_ &&
             pending_steps_.load(std::memory_order_relaxed) <= 0 &&
             deferred_step_response_.reply_target >= 0) {
+            nlohmann::json msg = {
+                {"type", "ok"},
+                {"frames_completed", deferred_step_response_.frames_total}
+            };
+            // Replay _bridge_id correlation if the request had one.
+            if (!deferred_step_response_.bridge_id.is_null()) {
+                msg["_bridge_id"] = deferred_step_response_.bridge_id;
+            }
             control_server_.send_to_target(
-                deferred_step_response_.reply_target,
-                {{"type", "ok"},
-                 {"frames_completed", deferred_step_response_.frames_total}});
+                deferred_step_response_.reply_target, msg);
             deferred_step_response_.reply_target = -1;
             deferred_step_response_.frames_total = 0;
+            deferred_step_response_.bridge_id = nlohmann::json(nullptr);
         }
     }
 }
