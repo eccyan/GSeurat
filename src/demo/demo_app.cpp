@@ -1,4 +1,6 @@
 #include "gseurat/demo/demo_app.hpp"
+#include "gseurat/engine/sim_clock.hpp"
+#include "gseurat/engine/random.hpp"
 #include "gseurat/engine/audio/audio_engine.hpp"
 #include "gseurat/demo/gs_demo_state.hpp"
 #include "gseurat/demo/island_demo_state.hpp"
@@ -32,11 +34,20 @@ void DemoApp::parse_args(int argc, char* argv[]) {
             scene_path_explicit_ = true;
         } else if (arg == "--viewer") {
             viewer_mode_ = true;
+        } else if (arg == "--deterministic") {
+            deterministic_ = true;
         }
     }
 }
 
 void DemoApp::run() {
+    gs::SimClock::init(deterministic_);
+    if (deterministic_) {
+        gs::random::seed(0xC0FFEE);
+    } else {
+        gs::random::seed_from_device();
+    }
+
     command_dispatcher_.register_default_commands();
     init_game_object_system();
 

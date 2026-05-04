@@ -1,4 +1,5 @@
 #include "gseurat/engine/app_base.hpp"
+#include "gseurat/engine/sim_clock.hpp"
 #include "gseurat/engine/debug_dump_eyes.hpp"
 #include "gseurat/engine/debug_dump_ears.hpp"
 #include "gseurat/engine/debug_dump_renderer.hpp"
@@ -207,11 +208,33 @@ void AppBase::main_loop() {
     });
     debug_dump_registry_.register_module(&asset_dumper);
 
+    // If --deterministic was passed, activate step mode immediately so the
+    // harness can drive frame-by-frame via the "step" command.  The loop
+    // idles (polls events + socket) until pending_steps_ > 0.
+    if (gs::SimClock::is_deterministic()) {
+        step_mode_ = true;
+    }
+
     while (!glfwWindowShouldClose(window_)) {
         glfwPollEvents();
 
         // Poll control server for bridge commands
         poll_control_server();
+
+        // In step mode: idle until the harness queues at least one frame via
+        // the "step" command.  This keeps the loop from racing ahead of the
+        // harness and ensures every screenshot is taken at the exact frame
+        // the scenario script intends.
+        if (step_mode_ && pending_steps_.load(std::memory_order_relaxed) <= 0) {
+            continue;
+        }
+        if (step_mode_) {
+            const int remaining = pending_steps_.fetch_sub(1, std::memory_order_relaxed) - 1;
+            // After this iteration the frame will run. If this was the last
+            // frame of an in-flight synchronous step, fire the deferred
+            // response AFTER the frame completes (handled at end of loop).
+            (void)remaining;
+        }
 
         // Poll async loader and process GPU uploads (before game logic)
         resources_.process_async_results(async_loader_, staging_uploader_);
@@ -238,8 +261,12 @@ void AppBase::main_loop() {
         // hitches. The loading monitor needs the true wall-clock delta, since
         // its min-duration gate is a real-world timer — clamping would let a
         // 1 fps stall stretch a 1.5s loading screen into ~15s of held state.
-        float dt = wall_dt;
+        // In deterministic mode, use fixed_dt so simulation is reproducible.
+        float dt = gs::SimClock::is_deterministic() ?
+                   static_cast<float>(gs::SimClock::fixed_dt()) :
+                   wall_dt;
         if (dt > 0.1f) dt = 0.1f;
+        gs::SimClock::tick();  // advances sim time in deterministic mode
 
         debug_metrics_.update(dt);
 
@@ -407,6 +434,20 @@ void AppBase::main_loop() {
         renderer_.draw_scene(scene_, draw_lists_.entity, draw_lists_.outline, draw_lists_.reflection,
                              draw_lists_.shadow, particle_sprites, draw_lists_.overlay, ui_batches,
                              draw_lists_.debug_colliders, feature_flags_, dispatch_gpu_compute);
+
+        // Synchronous step: fire the deferred response now that this frame has
+        // completed AND no more steps are queued. The harness then knows N
+        // frames are fully done and can safely send screenshot/etc.
+        if (step_mode_ &&
+            pending_steps_.load(std::memory_order_relaxed) <= 0 &&
+            deferred_step_response_.reply_target >= 0) {
+            control_server_.send_to_target(
+                deferred_step_response_.reply_target,
+                {{"type", "ok"},
+                 {"frames_completed", deferred_step_response_.frames_total}});
+            deferred_step_response_.reply_target = -1;
+            deferred_step_response_.frames_total = 0;
+        }
     }
 }
 
@@ -759,6 +800,8 @@ CommandContext AppBase::build_command_context() {
         .clear_scene = [this]() { clear_scene(); },
         .load_character = [this](const std::string& path) { pending_character_path = path; },
         .control_server = &control_server_,
+        .pending_steps = &pending_steps_,
+        .deferred_step_response = &deferred_step_response_,
     };
 }
 
@@ -844,16 +887,25 @@ void AppBase::tick_async_load_gs_scene() {
 
 void AppBase::poll_control_server() {
     auto commands = control_server_.poll();
-    for (auto& cmd : commands) {
+    for (auto& parsed : commands) {
+        // Route this command's response to its actual sender. Without this,
+        // multi-client setups (Bridge + Game Director + harness etc.) would
+        // route responses to whichever client's command was parsed last.
+        control_server_.set_reply_target(parsed.source);
+
         nlohmann::json response;
-        command_dispatcher_.dispatch(cmd, response);
-        if (!response.is_null()) {
-            // Preserve bridge correlation ID
-            if (cmd.contains("_bridge_id")) {
-                response["_bridge_id"] = cmd["_bridge_id"];
-            }
-            control_server_.send(response);
+        command_dispatcher_.dispatch(parsed.cmd, response);
+        if (response.is_null()) continue;
+
+        // Synchronous "step" returns a {_deferred: true} sentinel; the actual
+        // response is sent later by the main loop after all frames complete.
+        if (response.is_object() && response.value("_deferred", false)) continue;
+
+        // Preserve bridge correlation ID
+        if (parsed.cmd.contains("_bridge_id")) {
+            response["_bridge_id"] = parsed.cmd["_bridge_id"];
         }
+        control_server_.send(response);
     }
 }
 

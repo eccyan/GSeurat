@@ -17,6 +17,8 @@ namespace gseurat {
 
 class ScopedStallTimer {
 public:
+    // Human-facing: uses wall-clock (not gs::SimClock) so stall warnings
+    // reflect real elapsed time, even when sim time is frozen for harness runs.
     explicit ScopedStallTimer(std::string_view label,
                               double warn_threshold_ms = 50.0) noexcept
         : label_(label),

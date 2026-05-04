@@ -208,6 +208,7 @@ void GsDemoState::update(AppBase& app, float dt) {
     }
 
     // FPS counter — use wall clock instead of clamped dt for accurate measurement
+    // Human-facing: keep wall-clock so timestamps reflect real time, not simulated.
     {
         auto now = std::chrono::steady_clock::now();
         if (fps_frame_count_ == 0) fps_clock_ = now;

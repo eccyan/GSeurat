@@ -2,10 +2,10 @@
 #include "gseurat/engine/trigger_components.hpp"
 #include "gseurat/engine/bone_animation_registry.hpp"
 #include "gseurat/engine/ecs/default_components.hpp"
+#include "gseurat/engine/random.hpp"
 
 #include <cmath>
 #include <cstdio>
-#include <cstdlib>
 
 namespace gseurat {
 
@@ -96,8 +96,8 @@ void npc_walker_system(ecs::World& world, float dt, BoneAnimationRegistry& regis
                 npc.pause_timer -= dt;
                 if (npc.pause_timer <= 0.0f) {
                     npc.paused = false;
-                    float angle = static_cast<float>(std::rand()) / RAND_MAX * 6.28318f;
-                    float dist = static_cast<float>(std::rand()) / RAND_MAX * npc.patrol_radius;
+                    float angle = gs::random::next_float() * 6.28318f;
+                    float dist = gs::random::next_float() * npc.patrol_radius;
                     npc.target_x = npc.home_x + std::cos(angle) * dist;
                     npc.target_z = npc.home_z + std::sin(angle) * dist;
                 }

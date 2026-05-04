@@ -59,6 +59,7 @@ nlohmann::json SaveSystem::to_json(const SaveData& data) {
     j["time_of_day"] = data.time_of_day;
 
     // Add timestamp
+    // Human-facing: keep wall-clock so timestamps reflect real time, not simulated.
     auto now = std::chrono::system_clock::now();
     auto t = std::chrono::system_clock::to_time_t(now);
     std::stringstream ss;

@@ -655,6 +655,44 @@ void CommandDispatcher::register_default_commands() {
         };
     });
 
+    // ── Deterministic frame stepper ──
+    // Enqueues N simulation frames to be processed by the main loop.
+    // In deterministic mode (--deterministic flag) each queued frame advances
+    // gs::SimClock by kFixedDt (1/60 s). In non-deterministic mode the main
+    // loop simply runs N iterations at wall-clock pace.
+    //
+    // SYNCHRONOUS: response is deferred until all N frames have completed.
+    // This makes screenshot/state queries that follow `step` see the post-step
+    // engine state. Callers who want fire-and-forget should send `step` and
+    // simply read the response when convenient — the response contract is
+    // {"type":"ok","frames_completed":N} after the Nth frame renders.
+    //
+    // Only one synchronous step may be in flight at a time. If a second `step`
+    // arrives while a deferred response is pending (deferred_step_response's
+    // reply_target >= 0), it is rejected — callers must serialize step calls.
+    register_command("step", [this](const json& cmd) -> CommandResult {
+        const int n = cmd.value("n", 1);
+        if (n <= 0 || n > 10000) {
+            return std::unexpected(std::string("step: n must be in [1, 10000]"));
+        }
+        if (!ctx_.pending_steps || !ctx_.deferred_step_response ||
+            !ctx_.control_server) {
+            return std::unexpected(std::string(
+                "step: control plane not wired up (deterministic mode required)"));
+        }
+        if (ctx_.deferred_step_response->reply_target >= 0) {
+            return std::unexpected(std::string(
+                "step: a previous step is still in flight; serialize calls"));
+        }
+        ctx_.deferred_step_response->reply_target =
+            ctx_.control_server->current_reply_target();
+        ctx_.deferred_step_response->frames_total = n;
+        ctx_.pending_steps->fetch_add(n, std::memory_order_relaxed);
+        // Sentinel response — poll_control_server checks for "_deferred" key
+        // and skips the immediate send.
+        return json{{"_deferred", true}};
+    });
+
     register_command("quit", [this](const json&) -> CommandResult {
         glfwSetWindowShouldClose(ctx_.window, GLFW_TRUE);
         return json{{"type", "ok"}, {"message", "Shutting down"}};

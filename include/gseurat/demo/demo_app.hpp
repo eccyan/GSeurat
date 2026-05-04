@@ -35,6 +35,7 @@ private:
     std::string scene_path_;
     bool scene_path_explicit_ = false;
     bool viewer_mode_ = false;
+    bool deterministic_ = false;
     PortalHandler portal_handler_;
     DemoLoadingOverlay loading_overlay_;
 };

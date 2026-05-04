@@ -1,0 +1,55 @@
+name: Regression Harness
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  golden-frames:
+    name: Golden Frames (macOS, Apple Silicon)
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+        with: { lfs: true }
+      - name: Install Python deps
+        # Lower bound on scikit-image: channel_axis ssim signature
+        # introduced in 0.19. Upper bounds prevent surprise major-version
+        # breakage. Adjust as Python ABI advances.
+        run: pip3 install "scikit-image>=0.19,<1.0" "Pillow>=10,<12" "numpy>=1.24,<3"
+      - name: Configure
+        run: cmake --preset macos-release-with-diag
+      - name: Build
+        run: cmake --build --preset macos-release-with-diag --target gseurat_demo
+      - name: Determinism self-check
+        run: python3 scripts/regression/run_harness.py --self-check
+      - name: Regression diff vs baseline
+        run: |
+          python3 scripts/regression/run_harness.py \
+            --baseline tests/regression/baseline/main \
+            --threshold 0.985
+      - name: Upload diff artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: regression-diff
+          path: tests/regression/diff/
+
+  build-and-validate:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            preset: linux-release
+          - os: windows-latest
+            preset: windows-release
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: cmake --preset ${{ matrix.preset }}
+      - name: Build
+        run: cmake --build --preset ${{ matrix.preset }}
+      - name: Run scenario without pixel diff
+        run: python3 scripts/regression/run_harness.py --no-pixel-diff
