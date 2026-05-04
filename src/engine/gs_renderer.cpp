@@ -744,7 +744,7 @@ void GsRenderer::init_streaming(const StreamingConfig& config) {
         // Sentinel-fill sort buffers: key=0xFFFFFFFF sorts to the tail and
         // is never read by the merge's [0, count) window. index=0 is a
         // safe placeholder (never read while paired with sentinel key).
-        // Subsequent load_cloud / load_cloud_legacy call init_sort_buf,
+        // load_cloud_async's completion callback calls init_sort_buf,
         // which reproduces this layout — this just covers the pre-load
         // window between init_streaming and the first scene load.
         auto sentinel_fill_sort = [](Buffer& buf, uint32_t entries) {
@@ -932,115 +932,6 @@ void GsRenderer::init_streaming(const StreamingConfig& config) {
                  config.gpu_budget_splats, config.total_slabs(), config.slab_size_splats);
 }
 
-void GsRenderer::load_cloud(const GaussianCloud& cloud) {
-    if (!streaming_initialized_) {
-        load_cloud_legacy(cloud);
-        return;
-    }
-
-    if (cloud.empty()) return;
-
-    // Wait for GPU before writing to buffers
-    if (initialized_) {
-        vkDeviceWaitIdle(device_);
-    }
-
-    // Release old scene data — return slabs to allocator, reset tracking state.
-    // Without this, loading a second scene appends to active_chunks_ and old
-    // Gaussian data persists in GPU buffers (visual corruption + VRAM leak).
-    for (auto& chunk : active_chunks_) {
-        slab_allocator_->release(chunk.handle);
-    }
-    active_chunks_.clear();
-    static_count_ = 0;
-    total_active_splats_ = 0;
-
-    sort_done_once_ = false;
-    static_dirty_ = true;
-
-    uint32_t sps = streaming_config_.slab_size_splats;
-    uint32_t slabs_needed = (cloud.count() + sps - 1) / sps;
-    auto handle = slab_allocator_->checkout(slabs_needed);
-
-    // Calculate page table offset from existing chunks
-    uint32_t page_table_offset = 0;
-    for (const auto& chunk : active_chunks_) {
-        page_table_offset += static_cast<uint32_t>(chunk.handle.slab_indices.size());
-    }
-
-    // Write page table entries
-    auto* pt = static_cast<uint32_t*>(page_table_ssbo_.mapped());
-    for (uint32_t i = 0; i < slabs_needed; ++i) {
-        pt[page_table_offset + i] = handle.slab_indices[i];
-    }
-
-    // Write Gaussian data into physical slab locations
-    {
-        auto* gpu = static_cast<GpuGaussian*>(static_gaussian_ssbo_.mapped());
-        for (uint32_t slab_idx = 0; slab_idx < slabs_needed; ++slab_idx) {
-            uint32_t phys_slab = handle.slab_indices[slab_idx];
-            uint32_t base_src = slab_idx * sps;
-            uint32_t base_dst = phys_slab * sps;
-            uint32_t count_in_slab = std::min(sps, cloud.count() - base_src);
-
-            std::vector<GpuGaussian> staging(count_in_slab);
-            for (uint32_t i = 0; i < count_in_slab; ++i) {
-                const auto& g = cloud.gaussians()[base_src + i];
-                float bone_as_float;
-                uint32_t bone_idx = g.bone_index;
-                std::memcpy(&bone_as_float, &bone_idx, sizeof(float));
-                staging[i].pos_opacity = glm::vec4(g.position, g.opacity);
-                staging[i].scale_pad = glm::vec4(g.scale, bone_as_float);
-                staging[i].rot = glm::vec4(g.rotation.x, g.rotation.y, g.rotation.z, g.rotation.w);
-                staging[i].color_pad = glm::vec4(g.color, g.emission);
-            }
-            std::memcpy(gpu + base_dst, staging.data(), count_in_slab * sizeof(GpuGaussian));
-        }
-    }
-
-    // Write chunk table entry
-    {
-        auto* ct = static_cast<uint8_t*>(chunk_table_ssbo_.mapped());
-        uint32_t chunk_idx = static_cast<uint32_t>(active_chunks_.size());
-        uint32_t last_slab_splats = cloud.count() - (slabs_needed - 1) * sps;
-        uint32_t entry[4] = {page_table_offset, slabs_needed, last_slab_splats, cloud.count()};
-        std::memcpy(ct + chunk_idx * 16, entry, 16);
-    }
-
-    // Record chunk state
-    ChunkState cs;
-    cs.status = ChunkState::Status::ACTIVE;
-    cs.handle = std::move(handle);
-    cs.page_table_offset = page_table_offset;
-    cs.splat_count = cloud.count();
-    active_chunks_.push_back(std::move(cs));
-
-    // Recalculate total static count
-    static_count_ = 0;
-    for (const auto& chunk : active_chunks_) {
-        static_count_ += chunk.splat_count;
-    }
-    total_active_splats_ = static_count_;
-    gaussian_count_ = static_count_;
-
-    // Initialize sort buffers with sentinel keys
-    auto init_sort_buf = [](Buffer& buf, uint32_t sort_size, uint32_t valid_count) {
-        std::vector<SortEntry> staging(sort_size);
-        for (uint32_t i = 0; i < sort_size; ++i) {
-            staging[i].key = 0xFFFFFFFF;
-            staging[i].index = i < valid_count ? i : 0;
-        }
-        std::memcpy(buf.mapped(), staging.data(), sort_size * sizeof(SortEntry));
-    };
-    init_sort_buf(static_sort_a_, static_sort_size_, static_count_);
-    init_sort_buf(static_sort_b_, static_sort_size_, static_count_);
-
-    static_dirty_ = true;
-
-    std::fprintf(stderr, "GS: Loaded chunk %u — %u splats in %u slabs (total active: %u)\n",
-                 active_chunks_.back().handle.chunk_id, cloud.count(), slabs_needed, static_count_);
-}
-
 void GsRenderer::unload_cloud(uint32_t chunk_id) {
     if (!streaming_initialized_) return;
     // Verify the chunk actually exists before queuing — caller may
@@ -1063,8 +954,7 @@ void GsRenderer::clear_chunks(VkCommandBuffer drain_cmd) {
     if (!streaming_initialized_ || !initialized_) return;
 
     // Wait for any in-flight transfers so we don't release slabs the GPU
-    // is still writing to. Scene transitions are heavy operations
-    // already; this matches the pre-streaming `load_cloud` behaviour.
+    // is still writing to. Scene transitions are heavy operations.
     vkDeviceWaitIdle(device_);
 
     // Drain any completion callbacks queued by transfers that finished
@@ -1287,11 +1177,15 @@ void GsRenderer::create_transfer_queue(VkQueue transfer_q, uint32_t transfer_fam
 
 std::vector<TransferQueue::Handle> GsRenderer::load_cloud_async(GaussianCloud cloud) {
     if (!streaming_initialized_ || !transfer_queue_) {
-        // No streaming infra: fall through to the synchronous path. Returning
-        // an empty handle list lets EngineLoadingMonitor advance on its
-        // min-duration timer alone (since `tick` already treats Unknown
-        // handles as resolved).
-        load_cloud(cloud);
+        // Streaming-strict mode: init_streaming + create_transfer_queue must
+        // both be called before load_cloud_async. Reaching this branch means
+        // the caller violated the contract; surface it immediately.
+        std::fprintf(stderr,
+            "GS ERROR: load_cloud_async called before streaming was initialized "
+            "(streaming_initialized_=%d, transfer_queue_=%s). "
+            "Call init_streaming() and create_transfer_queue() first.\n",
+            static_cast<int>(streaming_initialized_),
+            transfer_queue_ ? "ok" : "null");
         return {};
     }
     if (cloud.empty()) return {};
@@ -1299,12 +1193,9 @@ std::vector<TransferQueue::Handle> GsRenderer::load_cloud_async(GaussianCloud cl
     // Append-only semantics. The new chunk is checked out from the slab
     // allocator and pushed onto `active_chunks_` by the final completion
     // callback — existing chunks are *not* released. Callers that need
-    // "replace previous scene" must explicitly clear before this call
-    // (the initial demo load arrives on an empty `active_chunks_`
-    // straight out of `init_streaming`, so this matches the documented
-    // contract for both code paths). The synchronous `load_cloud` is
-    // still the right tool when a true scene replacement is needed —
-    // it does the `vkDeviceWaitIdle` + chunk release in one shot.
+    // "replace previous scene" must explicitly call clear_chunks() before
+    // this (the initial demo load arrives on an empty `active_chunks_`
+    // straight out of `init_streaming`).
     //
     // Multiple concurrent loads queue up on `pending_loads_` instead of
     // being rejected — WorldStreamer marks each chunk `LOADING` once
@@ -1809,272 +1700,6 @@ void GsRenderer::publish_pending_chunks(VkCommandBuffer cmd) {
             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
             0, 0, nullptr, nb, barriers, 0, nullptr);
     }
-}
-
-void GsRenderer::load_cloud_legacy(const GaussianCloud& cloud) {
-    if (cloud.empty()) return;
-
-    // Wait for GPU before destroying existing buffers
-    if (initialized_) {
-        vkDeviceWaitIdle(device_);
-    }
-
-    sort_done_once_ = false;
-    static_dirty_ = true;
-
-    // Static/dynamic counts
-    static_count_ = cloud.count();
-    max_static_count_ = static_count_ + kParticleHeadroom;
-    max_dynamic_count_ = kDynamicHeadroom;
-    dynamic_count_ = 0;
-
-    // Backward compat: keep legacy members up to date
-    gaussian_count_ = static_count_;
-    max_gaussian_count_ = max_static_count_ + max_dynamic_count_;
-
-    // Helper: compute sort size (aligned to Onesweep ENTRIES_PER_WG = 2048)
-    auto compute_sort_params = [](uint32_t max_count, uint32_t& sort_size, uint32_t& num_wg) {
-        sort_size = ((max_count + 2047) / 2048) * 2048;
-        if (sort_size < max_count) sort_size = max_count;
-        num_wg = sort_size / 2048;
-        if (num_wg == 0) num_wg = 1;
-        sort_size = num_wg * 2048;
-    };
-
-    compute_sort_params(max_static_count_, static_sort_size_, static_sort_workgroups_);
-    compute_sort_params(max_dynamic_count_, dynamic_sort_size_, dynamic_sort_workgroups_);
-
-    // Legacy sort params (use static for backward compat)
-    sort_size_ = static_sort_size_;
-    num_sort_workgroups_ = static_sort_workgroups_;
-
-    // Buffer sizes
-    VkDeviceSize static_gauss_size = static_cast<VkDeviceSize>(max_static_count_) * sizeof(GpuGaussian);
-    VkDeviceSize dynamic_gauss_size = static_cast<VkDeviceSize>(max_dynamic_count_) * sizeof(GpuGaussian);
-    VkDeviceSize projected_buf_size = static_cast<VkDeviceSize>(max_static_count_ + max_dynamic_count_) * sizeof(ProjectedSplat);
-    VkDeviceSize static_sort_buf_size = static_cast<VkDeviceSize>(static_sort_size_) * sizeof(SortEntry);
-    VkDeviceSize dynamic_sort_buf_size = static_cast<VkDeviceSize>(dynamic_sort_size_) * sizeof(SortEntry);
-    VkDeviceSize merged_sort_buf_size = static_cast<VkDeviceSize>(max_static_count_ + max_dynamic_count_) * sizeof(SortEntry);
-
-    // Destroy ALL old buffers (legacy + split)
-    gaussian_ssbo_.destroy(allocator_);
-    projected_ssbo_.destroy(allocator_);
-    sort_keys_ssbo_.destroy(allocator_);
-    sort_b_ssbo_.destroy(allocator_);
-    uniform_buffer_.destroy(allocator_);
-    visible_count_ssbo_.destroy(allocator_);
-    bone_ssbo_.destroy(allocator_);
-    pbd_state_ssbo_.destroy(allocator_);
-    pbd_params_ssbo_.destroy(allocator_);
-    pbd_constraint_ssbo_.destroy(allocator_);
-    pbd_uniform_buffer_.destroy(allocator_);
-    static_gaussian_ssbo_.destroy(allocator_);
-    dynamic_gaussian_ssbo_.destroy(allocator_);
-    static_sort_a_.destroy(allocator_);
-    static_sort_b_.destroy(allocator_);
-    dynamic_sort_a_.destroy(allocator_);
-    dynamic_sort_b_.destroy(allocator_);
-    merged_sort_ssbo_.destroy(allocator_);
-    counts_ssbo_.destroy(allocator_);
-
-    // Create split buffers
-    // static_gaussian_ssbo_ is the dst of vkCmdCopyBuffer for chunk
-    // streaming — see init_streaming for the TRANSFER_DST_BIT rationale.
-    static_gaussian_ssbo_ = Buffer::create_storage_host_dst(allocator_, static_gauss_size);
-    dynamic_gaussian_ssbo_ = Buffer::create_storage(allocator_, dynamic_gauss_size);
-    projected_ssbo_ = Buffer::create_storage(allocator_, projected_buf_size);
-    // host_dst (TRANSFER_DST_BIT) — see init_streaming for rationale.
-    static_sort_a_ = Buffer::create_storage_host_dst(allocator_, static_sort_buf_size);
-    static_sort_b_ = Buffer::create_storage_host_dst(allocator_, static_sort_buf_size);
-    dynamic_sort_a_ = Buffer::create_storage(allocator_, dynamic_sort_buf_size);
-    dynamic_sort_b_ = Buffer::create_storage(allocator_, dynamic_sort_buf_size);
-    merged_sort_ssbo_ = Buffer::create_storage(allocator_, merged_sort_buf_size);
-    counts_ssbo_ = Buffer::create_storage_readback(allocator_, 3 * sizeof(uint32_t));  // {static_visible, dynamic_visible, merged_visible}
-    uniform_buffer_ = Buffer::create_uniform(allocator_, sizeof(GsUniforms));
-    visible_count_ssbo_ = Buffer::create_storage_readback(allocator_, sizeof(uint32_t));
-
-    // Legacy gaussian_ssbo_ aliases static for backward compat
-    gaussian_ssbo_ = Buffer::create_storage(allocator_,
-        static_cast<VkDeviceSize>(max_gaussian_count_) * sizeof(GpuGaussian));
-    sort_keys_ssbo_ = Buffer::create_storage(allocator_, static_sort_buf_size);
-    sort_b_ssbo_ = Buffer::create_storage(allocator_, static_sort_buf_size);
-
-    // Bone transform SSBO (always allocated, zeroed if unused)
-    bone_ssbo_ = Buffer::create_storage(allocator_, kMaxBones * sizeof(glm::mat4));
-    bone_count_ = 0;
-    {
-        auto* bones = static_cast<glm::mat4*>(bone_ssbo_.mapped());
-        for (uint32_t i = 0; i < kMaxBones; ++i) bones[i] = glm::mat4(1.0f);
-    }
-
-    // PBD state, params, and constraint SSBOs (always allocated, zeroed if unused)
-    pbd_state_ssbo_ = Buffer::create_storage(allocator_,
-        kMaxPbdElements * sizeof(PbdPhysicsState));
-    pbd_params_ssbo_ = Buffer::create_storage(allocator_,
-        kMaxPbdElements * sizeof(PbdElementParams));
-    pbd_constraint_ssbo_ = Buffer::create_storage(allocator_,
-        kMaxPbdConstraints * sizeof(PbdConstraint));
-    pbd_count_ = 0;
-    pbd_constraint_count_ = 0;
-    // Zero-initialize all PBD buffers
-    {
-        auto* states = static_cast<PbdPhysicsState*>(pbd_state_ssbo_.mapped());
-        for (uint32_t i = 0; i < kMaxPbdElements; ++i) {
-            states[i].position = glm::vec4(0.0f, 0.0f, 0.0f, 0.0f);
-            states[i].prev_position = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);  // identity quaternion (preprocess reads as rotation)
-            states[i].velocity = glm::vec4(0.0f);
-            states[i].params = glm::vec4(0.0f);
-        }
-        std::memset(pbd_params_ssbo_.mapped(), 0,
-                    kMaxPbdElements * sizeof(PbdElementParams));
-        std::memset(pbd_constraint_ssbo_.mapped(), 0,
-                    kMaxPbdConstraints * sizeof(PbdConstraint));
-    }
-    pbd_uniform_buffer_ = Buffer::create_uniform(allocator_, 32);
-
-    // Upload Gaussian data to static buffer via staging to avoid -O3 write-reordering
-    {
-        std::vector<GpuGaussian> staging(static_count_);
-        for (uint32_t i = 0; i < static_count_; ++i) {
-            const auto& g = cloud.gaussians()[i];
-            float bone_as_float;
-            uint32_t bone_idx = g.bone_index;
-            std::memcpy(&bone_as_float, &bone_idx, sizeof(float));
-            staging[i].pos_opacity = glm::vec4(g.position, g.opacity);
-            staging[i].scale_pad = glm::vec4(g.scale, bone_as_float);
-            staging[i].rot = glm::vec4(g.rotation.x, g.rotation.y, g.rotation.z, g.rotation.w);
-            staging[i].color_pad = glm::vec4(g.color, g.emission);
-        }
-        std::memcpy(static_gaussian_ssbo_.mapped(), staging.data(), static_count_ * sizeof(GpuGaussian));
-        // Also mirror to legacy buffer for backward compat
-        if (gaussian_ssbo_.mapped() && gaussian_ssbo_.mapped() != static_gaussian_ssbo_.mapped()) {
-            std::memcpy(gaussian_ssbo_.mapped(), staging.data(), static_count_ * sizeof(GpuGaussian));
-        }
-    }
-
-    // Initialize sort buffers with sentinel keys via staging memcpy
-    auto init_sort_buf = [](Buffer& buf, uint32_t sort_size, uint32_t valid_count) {
-        std::vector<SortEntry> staging(sort_size);
-        for (uint32_t i = 0; i < sort_size; ++i) {
-            staging[i].key = 0xFFFFFFFF;
-            staging[i].index = i < valid_count ? i : 0;
-        }
-        std::memcpy(buf.mapped(), staging.data(), sort_size * sizeof(SortEntry));
-    };
-    init_sort_buf(static_sort_a_, static_sort_size_, static_count_);
-    init_sort_buf(static_sort_b_, static_sort_size_, static_count_);
-    init_sort_buf(dynamic_sort_a_, dynamic_sort_size_, 0);
-    init_sort_buf(dynamic_sort_b_, dynamic_sort_size_, 0);
-
-    // Legacy sort buffers
-    init_sort_buf(sort_keys_ssbo_, static_sort_size_, static_count_);
-    init_sort_buf(sort_b_ssbo_, static_sort_size_, static_count_);
-
-    // Zero the counts buffer {0, 0, 0}
-    {
-        auto* counts = static_cast<uint32_t*>(counts_ssbo_.mapped());
-        counts[0] = 0;
-        counts[1] = 0;
-        counts[2] = 0;
-    }
-
-    // Allocate a dummy page table buffer for binding 8 (legacy path, USE_PAGE_TABLE=0)
-    page_table_ssbo_.destroy(allocator_);
-    page_table_ssbo_ = Buffer::create_storage_host_dst(allocator_, sizeof(uint32_t));
-    {
-        auto* pt = static_cast<uint32_t*>(page_table_ssbo_.mapped());
-        pt[0] = 0xFFFFFFFF;
-    }
-
-    // ── Tile binning buffers (same logic as init_streaming) ──
-    {
-        uint32_t visible_upper = static_sort_size_ + dynamic_sort_size_;
-        tile_sort_capacity_ = std::min(visible_upper * 4, 1u << 21);  // cap at 2M (16MB per buffer)
-        tile_sort_size_ = ((tile_sort_capacity_ + 2047) / 2048) * 2048;
-        tile_sort_workgroups_ = tile_sort_size_ / 2048;
-        if (tile_sort_workgroups_ == 0) tile_sort_workgroups_ = 1;
-        tile_sort_size_ = tile_sort_workgroups_ * 2048;
-
-        VkDeviceSize entry_buf_size = static_cast<VkDeviceSize>(tile_sort_size_) * 8;  // 8 bytes/entry
-        // Allocate tile_ranges for max possible resolution (output_width_ may not
-        // reflect final size at allocation time). Generous upper bound.
-        static constexpr uint32_t kMaxTiles = 256 * 144;  // supports up to 4096×2304
-        VkDeviceSize ranges_buf_size = static_cast<VkDeviceSize>(kMaxTiles) * 2 * sizeof(uint32_t);
-
-        // Deterministic tile-bin (Fix B) intermediate SSBOs.
-        scan_dispatch_size_ = ((visible_upper + 255u) / 256u) * 256u;
-        if (scan_dispatch_size_ == 0) scan_dispatch_size_ = 256u;
-        scan_num_blocks_ = scan_dispatch_size_ / 256u;
-        VkDeviceSize per_splat_buf_size =
-            static_cast<VkDeviceSize>(scan_dispatch_size_) * sizeof(uint32_t);
-        VkDeviceSize block_sums_buf_size =
-            static_cast<VkDeviceSize>(scan_num_blocks_) * sizeof(uint32_t);
-
-        tile_sort_a_.destroy(allocator_);
-        tile_sort_b_.destroy(allocator_);
-        tile_sort_count_ssbo_.destroy(allocator_);
-        tile_ranges_ssbo_.destroy(allocator_);
-        tile_indirect_args_.destroy(allocator_);
-        per_splat_tile_count_ssbo_.destroy(allocator_);
-        per_splat_tile_offset_ssbo_.destroy(allocator_);
-        scan_block_sums_ssbo_.destroy(allocator_);
-        determinism_readback_.destroy(allocator_);
-
-        tile_sort_a_ = Buffer::create_storage_gpu_only(allocator_, entry_buf_size);
-        tile_sort_b_ = Buffer::create_storage_gpu_only(allocator_, entry_buf_size);
-        tile_sort_count_ssbo_ = Buffer::create_storage_readback(allocator_, sizeof(uint32_t));
-        tile_ranges_ssbo_ = Buffer::create_storage_gpu_only(allocator_, ranges_buf_size);
-        tile_indirect_args_ = Buffer::create_storage_indirect(allocator_, 8 * sizeof(uint32_t));
-        std::memset(tile_indirect_args_.mapped(), 0, 8 * sizeof(uint32_t));
-        per_splat_tile_count_ssbo_ =
-            Buffer::create_storage_gpu_only(allocator_, per_splat_buf_size);
-        per_splat_tile_offset_ssbo_ =
-            Buffer::create_storage_gpu_only(allocator_, per_splat_buf_size);
-        scan_block_sums_ssbo_ =
-            Buffer::create_storage_gpu_only(allocator_, block_sums_buf_size);
-        determinism_readback_ = Buffer::create_readback(allocator_, entry_buf_size);
-        determinism_readback_size_ = entry_buf_size;
-
-        std::fprintf(stderr, "GS: Tile sort -- capacity=%u entries (%u workgroups), "
-                     "output=%ux%u, buf=%.1f MB; scan=%u elems / %u blocks\n",
-                     tile_sort_size_, tile_sort_workgroups_,
-                     output_width_, output_height_,
-                     static_cast<float>(entry_buf_size * 2) / (1024.0f * 1024.0f),
-                     scan_dispatch_size_, scan_num_blocks_);
-
-        // Onesweep status buffer: 4 passes × 256 digits × max_workgroups
-        onesweep_status_.destroy(allocator_);
-        onesweep_max_wg_ = (tile_sort_capacity_ + 2047) / 2048;
-        if (onesweep_max_wg_ == 0) onesweep_max_wg_ = 1;
-        VkDeviceSize status_size = 4ull * 256ull * onesweep_max_wg_ * sizeof(uint32_t);
-        onesweep_status_ = Buffer::create_storage_gpu_only(allocator_, status_size);
-    }
-
-    // ── Depth sort Onesweep buffers ──
-    {
-        depth_onesweep_status_.destroy(allocator_);
-        depth_sort_params_.destroy(allocator_);
-        static_depth_params_.destroy(allocator_);
-        dynamic_depth_params_.destroy(allocator_);
-
-        depth_onesweep_max_wg_ = std::max({static_sort_workgroups_, dynamic_sort_workgroups_, num_sort_workgroups_});
-        VkDeviceSize depth_status_size = static_cast<VkDeviceSize>(num_sort_passes_) * 256ull
-                                         * depth_onesweep_max_wg_ * sizeof(uint32_t);
-        depth_onesweep_status_ = Buffer::create_storage_gpu_only(allocator_, depth_status_size);
-
-        auto fill_sort_params = [&](Buffer& buf, uint32_t wg_count, uint32_t entry_count) {
-            buf = Buffer::create_storage(allocator_, 8 * sizeof(uint32_t));
-            auto* p = static_cast<uint32_t*>(buf.mapped());
-            p[0] = wg_count; p[1] = 1; p[2] = 1;
-            p[3] = 0; p[4] = 0; p[5] = 0;
-            p[6] = entry_count; p[7] = 0;
-        };
-        fill_sort_params(static_depth_params_, static_sort_workgroups_, static_sort_size_);
-        fill_sort_params(dynamic_depth_params_, dynamic_sort_workgroups_, dynamic_sort_size_);
-        fill_sort_params(depth_sort_params_, num_sort_workgroups_, sort_size_);
-    }
-
-    update_descriptors();
 }
 
 void GsRenderer::update_static_gaussians(const Gaussian* data, uint32_t count) {

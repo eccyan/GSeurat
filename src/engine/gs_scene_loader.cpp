@@ -270,7 +270,7 @@ void GsSceneLoader::finalize_on_main(SceneLoadContext& ctx, const SceneData& sce
 
             ctx.renderer.init_gs(cloud, gs_w, gs_h);
 
-            // Upload PBD elements AFTER init_gs (load_cloud resets pbd_count_)
+            // Upload PBD elements AFTER init_gs (init_streaming resets pbd_count_)
             if (!ctx.terrain.pbd_anchors.empty() && ctx.terrain.pbd_anchors.size() == ctx.terrain.pbd_configs.size()) {
                 uint32_t count = static_cast<uint32_t>(ctx.terrain.pbd_anchors.size());
                 std::vector<PbdPhysicsState> states(count);

@@ -88,7 +88,6 @@ class GsRenderer {
 public:
     void init(VkDevice device, VkPhysicalDevice physical_device, VmaAllocator allocator,
               VkDescriptorPool pool, VkPipelineCache pipeline_cache);
-    void load_cloud(const GaussianCloud& cloud);
     void init_streaming(const StreamingConfig& config);
     void unload_cloud(uint32_t chunk_id);
     // Release every active chunk and any in-flight pending async loads.
@@ -114,8 +113,8 @@ public:
     // fit in the staging ring at once. Returns one Handle per slab,
     // pre-allocated so `EngineLoadingMonitor` can poll their status
     // immediately even before any has been submitted to the GPU.
-    // Falls back to synchronous `load_cloud` (and returns {}) if streaming
-    // isn't initialized or no transfer queue exists.
+    // Requires init_streaming() and create_transfer_queue() to have been
+    // called first; logs an error and returns {} if streaming isn't ready.
     std::vector<TransferQueue::Handle> load_cloud_async(GaussianCloud cloud);
     void poll_transfers(VkCommandBuffer frame_cmd);
     void create_transfer_queue(VkQueue transfer_q, uint32_t transfer_family,
@@ -374,7 +373,6 @@ private:
         VkDescriptorSet hist_a, VkDescriptorSet hist_b,
         VkDescriptorSet scatter_ab, VkDescriptorSet scatter_ba);
     void dispatch_tile_sort(VkCommandBuffer cmd);
-    void load_cloud_legacy(const GaussianCloud& cloud);
     // Drain pending_publications_ and record the metadata writes
     // (page_table, chunk_table) onto `cmd` via vkCmdUpdateBuffer + a
     // TRANSFER_WRITE -> SHADER_READ barrier. Called from poll_transfers
