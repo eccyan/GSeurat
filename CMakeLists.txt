@@ -442,8 +442,6 @@ add_gseurat_test(test_incremental_sync src/engine/scene_loader.cpp src/engine/ti
                                         src/engine/gaussian_cloud.cpp src/engine/gs_particle.cpp
                                         src/engine/gs_animator.cpp src/engine/gs_spline.cpp
                                         src/engine/coordinate.cpp src/engine/project_root.cpp)
-add_gseurat_test(test_vfx_scene_buffer src/engine/gaussian_cloud.cpp
-                                        src/engine/project_root.cpp)
 add_gseurat_test(test_vfx_lights_rotation src/engine/gs_vfx.cpp src/engine/gs_particle.cpp
                                            src/engine/gs_animator.cpp src/engine/gaussian_cloud.cpp
                                            src/engine/scene_loader.cpp src/engine/tilemap.cpp

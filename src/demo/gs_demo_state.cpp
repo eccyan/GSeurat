@@ -444,19 +444,6 @@ void GsDemoState::update(AppBase& app, float dt) {
         }
     }
 
-    // Q → scatter existing Gaussians around camera target (GS-native animation)
-    if (app.input().was_key_pressed(GLFW_KEY_Q)) {
-        GsAnimRegion region;
-        region.shape = GsAnimRegion::Shape::Sphere;
-        region.center = target_;
-        region.radius = 10.0f;
-        auto id = app.renderer().gs_animator().tag_region(
-            app.renderer().gs_static_buffer(),
-            region, GsAnimEffect::Detach, 3.0f);
-        std::fprintf(stderr, "GS Animator: Detach group %u at (%.1f, %.1f, %.1f)\n",
-                     id, target_.x, target_.y, target_.z);
-    }
-
     // J → spawn Gaussian particle burst at camera target
     if (app.input().was_key_pressed(GLFW_KEY_J)) {
         auto preset = gs_preset_spark_shower();

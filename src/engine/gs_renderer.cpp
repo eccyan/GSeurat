@@ -1028,16 +1028,13 @@ void GsRenderer::clear_chunks(VkCommandBuffer drain_cmd) {
     // left valid keys at indices [0, old_static_count_) in static_sort_a_/b_;
     // those entries survive `static_count_ = 0` because the depth-sort
     // shader only writes keys for [0, current_static_count_) each frame.
-    // Without this reset, the next frame whose rebuild path skips
-    // `update_static_gaussians` (e.g. the rebuild block runs but
-    // `gs_static_buffer_.empty()`, or the count==0 early return fires)
-    // will sort the stale keys to the front and the rasterizer will
-    // dereference their indices into `static_gaussian_ssbo_` — which
+    // Without this reset, stale keys sort to the front and the rasterizer
+    // will dereference their indices into `static_gaussian_ssbo_` — which
     // still holds the previous scene's data at those offsets — producing
     // ghost geometry at the previous scene's world coordinates (the
     // "green splats from the overworld visible when zoomed out in the
     // dungeon" symptom). Same fix shape as 139f055b's chunk-Unload
-    // rebuild flag, applied to the portal/scene-clear path.
+    // sentinel-fill, applied to the portal/scene-clear path.
     auto fill_sort_sentinel = [](Buffer& buf, uint32_t sort_size) {
         if (!buf.mapped() || sort_size == 0) return;
         auto* sort = static_cast<SortEntry*>(buf.mapped());
@@ -1048,11 +1045,6 @@ void GsRenderer::clear_chunks(VkCommandBuffer drain_cmd) {
     };
     fill_sort_sentinel(static_sort_a_, static_sort_size_);
     fill_sort_sentinel(static_sort_b_, static_sort_size_);
-    // Defense in depth: force the next camera-dirty frame's `need_rebuild`
-    // gate to fire even if no other dirty signal is pending, so
-    // `update_static_gaussians` re-runs `init_sort_buf` against the
-    // freshly-loaded scene's count.
-    static_sort_needs_reinit_ = true;
 
     // Invalidate the slab-indirection metadata. `publish_pending_chunks`'s
     // Unload path writes 0xFFFFFFFF sentinels to `page_table_ssbo_` for
@@ -1089,19 +1081,16 @@ void GsRenderer::clear_chunks(VkCommandBuffer drain_cmd) {
         counts[2] = 0;
     }
 
-    // Zero the static splat data itself. The previous scene's last
-    // `update_static_gaussians` wrote the consolidated view to
-    // `static_gaussian_ssbo_[0, old_count)`. Streaming-path uploads also
-    // wrote individual chunks at slab offsets, leaving previous-scene
-    // geometry data scattered across the buffer up to `max_static_count_`.
-    // After the new scene loads, `update_static_gaussians` overwrites
-    // `[0, new_count)` and the new chunk's streaming write overwrites its
-    // slab — but every offset in `[new_count, max)` and every unused slab
-    // still holds previous-scene geometry data. If anything in the
-    // rendering pipeline reads those offsets (a path more subtle than
-    // either the consolidated sort buffer or the slab-indirection
-    // metadata, both of which we already invalidated above), the result
-    // is ghost geometry at the previous scene's world coordinates.
+    // Zero the static splat data itself. Streaming-path uploads wrote
+    // individual chunks at slab offsets, leaving previous-scene geometry data
+    // scattered across the buffer up to `max_static_count_`. When the new
+    // scene loads, each new chunk's streaming write overwrites its slab —
+    // but every offset in `[new_count, max)` and every unused slab still
+    // holds previous-scene geometry data. If anything in the rendering
+    // pipeline reads those offsets (a path more subtle than either the
+    // consolidated sort buffer or the slab-indirection metadata, both of
+    // which we already invalidated above), the result is ghost geometry at
+    // the previous scene's world coordinates.
     //
     // Buffer is HOST_VISIBLE+MAPPED (Buffer::create_storage). vkDeviceWaitIdle
     // above guarantees GPU is idle, so direct host writes are safe.
@@ -1115,11 +1104,10 @@ void GsRenderer::clear_chunks(VkCommandBuffer drain_cmd) {
     }
 
     // Zero `projected_ssbo_`. This is the actual fix for the post-portal
-    // ghost geometry. Diagnostics on the rebuild path confirmed
-    // `gs_static_buffer_`'s post-portal AABB is tight on the dungeon
-    // footprint and `pbd_tagged == 0`, yet the user still saw ghost
-    // overworld trees rendered at world coords like (351, _, 310) — the
-    // signature of PBD-transformed positions from the previous scene.
+    // ghost geometry. Diagnostics confirmed the post-portal AABB is tight
+    // on the dungeon footprint and `pbd_tagged == 0`, yet the user still saw
+    // ghost overworld trees rendered at world coords like (351, _, 310) —
+    // the signature of PBD-transformed positions from the previous scene.
     //
     // Preprocess writes `projected_ssbo_[projected_offset, +static_count_)`
     // each frame the static path is dirty, but the tail beyond that range
@@ -1460,12 +1448,10 @@ void GsRenderer::publish_pending_chunks(VkCommandBuffer cmd) {
 
     // Snapshot the count BEFORE this batch's Unloads shrink it. Used at the
     // tail of this function to sentinel-fill static_sort_a_/b_'s
-    // [new_count, prev_count) window — without that fill, real depth keys
-    // from the prior frame's sort survive in the now-out-of-range tail and
-    // leak into the next frame's global radix sort, producing 1-frame ghost
-    // splats while walking. The legacy gs_chunk_grid_ rebuild path consumes
-    // `static_sort_needs_reinit_` to call init_sort_buf, but in streaming
-    // mode (gs_chunk_grid_ empty) that path never runs.
+    // [new_count, prev_count) window via vkCmdFillBuffer — without that fill,
+    // real depth keys from the prior frame's sort survive in the now-out-of-
+    // range tail and leak into the next frame's global radix sort, producing
+    // 1-frame ghost splats while walking.
     const uint32_t prev_static_count = static_count_;
 
     bool any_published = false;
@@ -1592,13 +1578,8 @@ void GsRenderer::publish_pending_chunks(VkCommandBuffer cmd) {
             // REAL depth keys from the prior frame's sort. Without a
             // reinit they'd participate in the next preprocess+sort+merge
             // as legitimate elements (their keys aren't 0xFFFFFFFF
-            // sentinels), corrupting the merged-sort output. We can't
-            // safely host-write to the sort buffer here (race vs the
-            // in-flight prior frame's GPU read), so we defer: the flag
-            // is picked up by Renderer::draw_scene's need_rebuild gate
-            // on the next camera-dirty frame, and update_static_gaussians
-            // re-runs init_sort_buf to restore the sentinel-tail invariant.
-            static_sort_needs_reinit_ = true;
+            // sentinels), corrupting the merged-sort output. The GPU fill
+            // happens below in the any_published block via vkCmdFillBuffer.
         }
 
         any_published = true;
@@ -1662,11 +1643,6 @@ void GsRenderer::publish_pending_chunks(VkCommandBuffer cmd) {
                             fill_offset, fill_size, 0xFFFFFFFFu);
             vkCmdFillBuffer(cmd, static_sort_b_.buffer(),
                             fill_offset, fill_size, 0xFFFFFFFFu);
-            // Flag is consumed here — the legacy gs_chunk_grid_ rebuild path
-            // would otherwise pick this up to call init_sort_buf, but it
-            // doesn't run in streaming mode (and even when it does, the GPU
-            // fill above has already restored the sentinel-tail invariant).
-            static_sort_needs_reinit_ = false;
         }
 
         // Single barrier covering both metadata buffers AND the sort-tail
@@ -1702,43 +1678,6 @@ void GsRenderer::publish_pending_chunks(VkCommandBuffer cmd) {
     }
 }
 
-void GsRenderer::update_static_gaussians(const Gaussian* data, uint32_t count) {
-    if (count == 0 || count > max_static_count_) return;
-
-    static_count_ = count;
-    gaussian_count_ = count;  // backward compat
-    static_dirty_ = true;
-    sort_done_once_ = false;
-
-    // Build GPU data in a local buffer first, then memcpy to mapped memory.
-    // This avoids -O3 write-reordering issues with mapped GPU memory.
-    std::vector<GpuGaussian> staging(count);
-    for (uint32_t i = 0; i < count; ++i) {
-        float bone_f;
-        uint32_t bi = data[i].bone_index;
-        std::memcpy(&bone_f, &bi, sizeof(float));
-        staging[i].pos_opacity = glm::vec4(data[i].position, data[i].opacity);
-        staging[i].scale_pad = glm::vec4(data[i].scale, bone_f);
-        staging[i].rot = glm::vec4(data[i].rotation.x, data[i].rotation.y,
-                                    data[i].rotation.z, data[i].rotation.w);
-        staging[i].color_pad = glm::vec4(data[i].color, data[i].emission);
-    }
-    std::memcpy(static_gaussian_ssbo_.mapped(), staging.data(), count * sizeof(GpuGaussian));
-
-    // Reinitialize static sort buffers via memcpy for consistency
-    auto init_sort_buf = [](Buffer& buf, uint32_t sort_size, uint32_t valid_count) {
-        std::vector<SortEntry> staging_sort(sort_size);
-        for (uint32_t i = 0; i < sort_size; ++i) {
-            staging_sort[i].key = 0xFFFFFFFF;
-            staging_sort[i].index = i < valid_count ? i : 0;
-        }
-        std::memcpy(buf.mapped(), staging_sort.data(), sort_size * sizeof(SortEntry));
-    };
-    init_sort_buf(static_sort_a_, static_sort_size_, count);
-    init_sort_buf(static_sort_b_, static_sort_size_, count);
-    // Sentinel tail just rewritten — unblock the rebuild-skip fast path.
-    static_sort_needs_reinit_ = false;
-}
 
 void GsRenderer::update_dynamic_gaussians(const Gaussian* data, uint32_t count) {
     if (count == 0) {
@@ -1776,80 +1715,6 @@ void GsRenderer::update_dynamic_gaussians(const Gaussian* data, uint32_t count) 
     init_sort_buf(dynamic_sort_b_, dynamic_sort_size_, count);
 }
 
-void GsRenderer::ensure_capacity(uint32_t needed_total) {
-    // With split architecture, static buffer has kParticleHeadroom and
-    // dynamic buffer has kDynamicHeadroom. Warn if over capacity.
-    uint32_t total_max = max_static_count_ + max_dynamic_count_;
-    if (total_max == 0) total_max = max_gaussian_count_;
-    if (needed_total <= total_max) return;
-
-    // Legacy fallback: grow the combined buffer
-    uint32_t new_max = needed_total + kParticleHeadroom;
-
-    vkDeviceWaitIdle(device_);
-
-    max_gaussian_count_ = new_max;
-
-    // Recalculate sort sizes (aligned to Onesweep ENTRIES_PER_WG = 2048)
-    sort_size_ = ((max_gaussian_count_ + 2047) / 2048) * 2048;
-    if (sort_size_ < max_gaussian_count_) sort_size_ = max_gaussian_count_;
-    num_sort_workgroups_ = sort_size_ / 2048;
-    if (num_sort_workgroups_ == 0) num_sort_workgroups_ = 1;
-    sort_size_ = num_sort_workgroups_ * 2048;
-
-    VkDeviceSize gaussian_buf_size = static_cast<VkDeviceSize>(max_gaussian_count_) * sizeof(GpuGaussian);
-    VkDeviceSize projected_buf_size = static_cast<VkDeviceSize>(max_gaussian_count_) * sizeof(ProjectedSplat);
-    VkDeviceSize sort_buf_size = static_cast<VkDeviceSize>(sort_size_) * sizeof(SortEntry);
-
-    // Reallocate legacy GPU buffers
-    gaussian_ssbo_.destroy(allocator_);
-    sort_keys_ssbo_.destroy(allocator_);
-    sort_b_ssbo_.destroy(allocator_);
-    // Only reallocate projected if split buffers aren't managing it
-    if (!static_gaussian_ssbo_.buffer()) {
-        projected_ssbo_.destroy(allocator_);
-        projected_ssbo_ = Buffer::create_storage(allocator_, projected_buf_size);
-    }
-
-    gaussian_ssbo_ = Buffer::create_storage(allocator_, gaussian_buf_size);
-    sort_keys_ssbo_ = Buffer::create_storage(allocator_, sort_buf_size);
-    sort_b_ssbo_ = Buffer::create_storage(allocator_, sort_buf_size);
-
-    // Update depth sort params buffer
-    depth_sort_params_.destroy(allocator_);
-    depth_sort_params_ = Buffer::create_storage(allocator_, 8 * sizeof(uint32_t));
-    {
-        auto* p = static_cast<uint32_t*>(depth_sort_params_.mapped());
-        p[0] = num_sort_workgroups_; p[1] = 1; p[2] = 1;
-        p[3] = 0; p[4] = 0; p[5] = 0;
-        p[6] = sort_size_; p[7] = 0;
-    }
-    // Resize depth status buffer if needed
-    if (num_sort_workgroups_ > depth_onesweep_max_wg_) {
-        depth_onesweep_max_wg_ = num_sort_workgroups_;
-        depth_onesweep_status_.destroy(allocator_);
-        VkDeviceSize depth_status_size = static_cast<VkDeviceSize>(num_sort_passes_) * 256ull
-                                         * depth_onesweep_max_wg_ * sizeof(uint32_t);
-        depth_onesweep_status_ = Buffer::create_storage_gpu_only(allocator_, depth_status_size);
-    }
-
-    // Reinitialize sort buffers
-    auto init_sort_buf = [&](Buffer& buf) {
-        auto* sort = static_cast<SortEntry*>(buf.mapped());
-        for (uint32_t i = 0; i < sort_size_; ++i) {
-            sort[i].key = 0xFFFFFFFF;
-            sort[i].index = i < gaussian_count_ ? i : 0;
-        }
-    };
-    init_sort_buf(sort_keys_ssbo_);
-    init_sort_buf(sort_b_ssbo_);
-
-    sort_done_once_ = false;
-    update_descriptors();
-
-    std::fprintf(stderr, "GS: Grew SSBO capacity to %u (sort_size=%u)\n",
-                 max_gaussian_count_, sort_size_);
-}
 
 void GsRenderer::update_active_gaussians(const Gaussian* data, uint32_t count) {
     if (count == 0 || count > max_gaussian_count_) return;
