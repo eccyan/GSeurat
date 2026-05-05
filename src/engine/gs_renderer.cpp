@@ -2792,13 +2792,17 @@ void GsRenderer::render(VkCommandBuffer cmd, uint32_t frame_in_flight,
     std::memcpy(uniform_buffer_.mapped(), &uniforms, sizeof(uniforms));
 
     // Read back GPU timestamps from previous frame (depth sort + tile sort + rasterize).
-    // Non-blocking: if results aren't ready yet, skip this frame's sample.
+    // WAIT_BIT: with kMaxFramesInFlight=2 the GPU hasn't necessarily completed
+    // frame N-1's queries by the time frame N's CPU code runs, so non-blocking
+    // reads returned VK_NOT_READY every frame and the 60-avg log never fired
+    // (#404 — silent during the #399 perf investigation). The wait is bounded
+    // to the previous frame's GPU latency and is worth the diagnostic data.
     if (timestamp_pool_ && timestamps_written_) {
         uint64_t ts[6]{};  // depth_sort_begin/end, tile_sort_begin/end, raster_begin/end
         VkResult ts_result = vkGetQueryPoolResults(
             device_, timestamp_pool_, 0, 6,
             sizeof(ts), ts, sizeof(uint64_t),
-            VK_QUERY_RESULT_64_BIT);  // no WAIT_BIT — never block on GPU
+            VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT);
         if (ts_result == VK_SUCCESS && ts[5] > ts[4] && ts[3] > ts[2] && ts[1] > ts[0]) {
             float depth_ms = static_cast<float>(ts[1] - ts[0]) * timestamp_period_ns_ / 1e6f;
             float tile_ms  = static_cast<float>(ts[3] - ts[2]) * timestamp_period_ns_ / 1e6f;
