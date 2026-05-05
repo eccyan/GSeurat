@@ -62,8 +62,6 @@ void AppBase::set_start_state(std::unique_ptr<GameState> state) {
 }
 
 void AppBase::run() {
-    install_signal_handlers();
-
     command_dispatcher_.register_default_commands();
     init_game_object_system();
 
@@ -101,6 +99,14 @@ void AppBase::init_game_content() {
 }
 
 void AppBase::main_loop() {
+    // Install SIGTERM/SIGINT handlers HERE rather than in run() because
+    // DemoApp::run() and StagingApp::run() override AppBase::run() and call
+    // main_loop() directly without invoking the base — moving this to
+    // main_loop() guarantees the handlers are installed for every entry
+    // path. std::signal is idempotent if called repeatedly with the same
+    // handler, so double-install via tests/headless paths is harmless.
+    install_signal_handlers();
+
     last_update_time_ = std::chrono::steady_clock::now();
 
     // Initialize async loading subsystems
