@@ -13,6 +13,8 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
 #include <array>
+#include <chrono>
+#include <cstdint>
 #include <functional>
 #include <future>
 #include <memory>
@@ -127,10 +129,15 @@ private:
     struct PendingChunkParse {
         std::string grid_key;
         std::future<GaussianCloud> future;
+        // Stamped at enqueue time for the [streaming] event log's `took=Yms`
+        // field. `requested_frame` is `app.tick()` at enqueue.
+        std::chrono::steady_clock::time_point requested_at{};
+        uint64_t requested_frame{0};
     };
     std::vector<PendingChunkParse> pending_chunk_parses_;
     void enqueue_async_chunk_load(const std::string& grid_key,
-                                  const std::string& ply_path);
+                                  const std::string& ply_path,
+                                  uint64_t frame_index);
     void drain_async_chunk_loads(AppBase& app);
 
     // Orbit camera (third-person around player)
