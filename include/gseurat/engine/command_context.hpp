@@ -1,9 +1,11 @@
 #pragma once
 
 #include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <functional>
 #include <string>
+#include <vector>
 
 #include <nlohmann/json.hpp>
 
@@ -67,6 +69,17 @@ struct CommandContext {
         std::int64_t reply_target = -1;  // ControlServer::ReplyTarget; -1 = none
         int frames_total = 0;
         nlohmann::json bridge_id = nullptr;  // null => no _bridge_id was set
+
+        // Per-frame wall-clock duration (ms) for each stepped frame. Filled in
+        // by the main loop as each step frame completes. Sent to the harness
+        // alongside frames_completed so single-frame spikes (e.g. chunk-load
+        // stalls) are not smeared by the existing 60-frame averager.
+        //
+        // First entry is measured from `last_step_frame_end` (set to "now" at
+        // step-command issue time), not from the previous unrelated frame —
+        // pre-step idle may be unbounded.
+        std::vector<double> per_frame_ms;
+        std::chrono::high_resolution_clock::time_point last_step_frame_end{};
     };
     DeferredStepResponse* deferred_step_response = nullptr;
 };

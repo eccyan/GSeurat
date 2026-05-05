@@ -816,6 +816,8 @@ void GsDemoState::enter_streaming_mode(AppBase& app) {
                                    bounds.max.z - bounds.min.z);
     chunk_streamer_.set_load_radius(cloud_extent * 0.4f);
     chunk_streamer_.set_unload_radius(cloud_extent * 0.6f);
+    chunk_streamer_.set_slab_size_splats(
+        app.renderer().gs_renderer().streaming_config().slab_size_splats);
 
     // Disable the renderer's internal chunk culling — we'll update manually
     app.renderer().set_gs_skip_chunk_cull(true);
@@ -835,14 +837,15 @@ void GsDemoState::update_streaming(AppBase& app) {
         distance_ * cos_elev * std::cos(azimuth_));
 
     auto& loader = app.async_loader();
+    const uint64_t frame_index = app.tick();
 
     // Update streamer — submits load requests for nearby chunks
-    chunk_streamer_.update(eye, loader);
+    chunk_streamer_.update(eye, loader, frame_index);
 
     // Process completed loads
     auto results = loader.poll_results();
     if (!results.empty()) {
-        chunk_streamer_.process_load_results(results);
+        chunk_streamer_.process_load_results(results, frame_index);
     }
 
     // If active set changed, re-upload to GPU

@@ -1,8 +1,11 @@
 #include "gseurat/engine/gs_chunk_streamer.hpp"
+#include "gseurat/engine/debug.hpp"
 #include "gseurat/engine/project_root.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
+#include <cstdio>
 
 namespace gseurat {
 
@@ -47,6 +50,20 @@ ChunkManifest ChunkManifest::from_json(const nlohmann::json& j) {
 
 // --- GsChunkStreamer ---
 
+#if GSEURAT_DEBUG_BUILD
+namespace {
+// Used purely for the [streaming] event-log "slabs=" field — this streamer
+// loads whole chunks (not slabs), so we report ceil(gaussians / slab_size)
+// as the equivalent slab footprint. `slab_size` is the runtime-configurable
+// value sourced from StreamingConfig::slab_size_splats (plumbed via
+// GsChunkStreamer::set_slab_size_splats by the demo).
+inline uint32_t slabs_for(uint32_t gaussians, uint32_t slab_size) {
+    if (gaussians == 0 || slab_size == 0) return 0;
+    return (gaussians + slab_size - 1) / slab_size;
+}
+}  // namespace
+#endif
+
 void GsChunkStreamer::init(const ChunkManifest& manifest) {
     manifest_ = manifest;
     chunk_data_.clear();
@@ -55,7 +72,11 @@ void GsChunkStreamer::init(const ChunkManifest& manifest) {
     current_memory_ = 0;
 }
 
-void GsChunkStreamer::update(const glm::vec3& camera_pos, AsyncLoader& loader) {
+void GsChunkStreamer::update(const glm::vec3& camera_pos, AsyncLoader& loader,
+                             uint64_t frame_index) {
+#if !GSEURAT_DEBUG_BUILD
+    (void)frame_index;
+#endif
     for (uint32_t i = 0; i < manifest_.chunks.size(); ++i) {
         auto& chunk = manifest_.chunks[i];
         float dist = chunk_distance_xz(chunk.bounds, camera_pos);
@@ -68,9 +89,24 @@ void GsChunkStreamer::update(const glm::vec3& camera_pos, AsyncLoader& loader) {
             });
             chunk.state = ChunkState::Loading;
             chunk.load_request_id = req_id;
+            chunk.load_started_at = std::chrono::steady_clock::now();
             pending_loads_[req_id] = i;
+#if GSEURAT_DEBUG_BUILD
+            std::fprintf(stderr,
+                "[streaming] frame=%llu chunk=%u event=load_request slabs=%u\n",
+                static_cast<unsigned long long>(frame_index), i,
+                slabs_for(chunk.gaussian_count, slab_size_splats_));
+#endif
         } else if (chunk.state == ChunkState::Loaded && dist > unload_radius_) {
             // Unload
+#if GSEURAT_DEBUG_BUILD
+            uint32_t evict_slabs = 0;
+            auto data_it = chunk_data_.find(i);
+            if (data_it != chunk_data_.end()) {
+                evict_slabs = slabs_for(static_cast<uint32_t>(data_it->second.size()),
+                                        slab_size_splats_);
+            }
+#endif
             auto it = chunk_data_.find(i);
             if (it != chunk_data_.end()) {
                 current_memory_ -= it->second.size() * sizeof(Gaussian);
@@ -79,6 +115,11 @@ void GsChunkStreamer::update(const glm::vec3& camera_pos, AsyncLoader& loader) {
             chunk.state = ChunkState::Unloaded;
             chunk.load_request_id = 0;
             dirty_ = true;
+#if GSEURAT_DEBUG_BUILD
+            std::fprintf(stderr,
+                "[streaming] frame=%llu chunk=%u event=evict slabs=%u\n",
+                static_cast<unsigned long long>(frame_index), i, evict_slabs);
+#endif
         } else if (chunk.state == ChunkState::Loading && dist > unload_radius_) {
             // Cancel pending load that's now too far
             loader.cancel(chunk.load_request_id);
@@ -91,7 +132,11 @@ void GsChunkStreamer::update(const glm::vec3& camera_pos, AsyncLoader& loader) {
     }
 }
 
-void GsChunkStreamer::process_load_results(const std::vector<LoadResult>& results) {
+void GsChunkStreamer::process_load_results(const std::vector<LoadResult>& results,
+                                            uint64_t frame_index) {
+#if !GSEURAT_DEBUG_BUILD
+    (void)frame_index;
+#endif
     for (const auto& result : results) {
         auto it = pending_loads_.find(result.request_id);
         if (it == pending_loads_.end()) continue;
@@ -115,6 +160,20 @@ void GsChunkStreamer::process_load_results(const std::vector<LoadResult>& result
         chunk.state = ChunkState::Loaded;
         chunk.load_request_id = 0;
         dirty_ = true;
+#if GSEURAT_DEBUG_BUILD
+        double took_ms = 0.0;
+        if (chunk.load_started_at.time_since_epoch().count() != 0) {
+            auto now = std::chrono::steady_clock::now();
+            took_ms = std::chrono::duration<double, std::milli>(
+                now - chunk.load_started_at).count();
+        }
+        std::fprintf(stderr,
+            "[streaming] frame=%llu chunk=%u event=load_complete slabs=%u took=%.2fms\n",
+            static_cast<unsigned long long>(frame_index), chunk_idx,
+            slabs_for(static_cast<uint32_t>(chunk_data_[chunk_idx].size()),
+                      slab_size_splats_),
+            took_ms);
+#endif
     }
 
     // Enforce memory budget after loading new chunks
@@ -122,7 +181,7 @@ void GsChunkStreamer::process_load_results(const std::vector<LoadResult>& result
         // Use a dummy camera_pos (0,0,0) for eviction — proper eviction uses
         // the camera position from the most recent update() call.
         // We'll use chunk center distance to origin as a rough heuristic.
-        evict_if_over_budget(glm::vec3(0.0f));
+        evict_if_over_budget(glm::vec3(0.0f), frame_index);
     }
 }
 
@@ -226,7 +285,11 @@ bool GsChunkStreamer::is_chunk_visible(const AABB& bounds, const glm::mat4& view
     return true;
 }
 
-void GsChunkStreamer::evict_if_over_budget(const glm::vec3& camera_pos) {
+void GsChunkStreamer::evict_if_over_budget(const glm::vec3& camera_pos,
+                                            uint64_t frame_index) {
+#if !GSEURAT_DEBUG_BUILD
+    (void)frame_index;
+#endif
     while (current_memory_ > memory_budget_ && !chunk_data_.empty()) {
         // Find the furthest loaded chunk
         uint32_t furthest_idx = 0;
@@ -244,6 +307,10 @@ void GsChunkStreamer::evict_if_over_budget(const glm::vec3& camera_pos) {
         auto it = chunk_data_.find(furthest_idx);
         if (it == chunk_data_.end()) break;
 
+#if GSEURAT_DEBUG_BUILD
+        uint32_t evict_slabs = slabs_for(static_cast<uint32_t>(it->second.size()),
+                                          slab_size_splats_);
+#endif
         current_memory_ -= it->second.size() * sizeof(Gaussian);
         chunk_data_.erase(it);
 
@@ -252,6 +319,12 @@ void GsChunkStreamer::evict_if_over_budget(const glm::vec3& camera_pos) {
             manifest_.chunks[furthest_idx].load_request_id = 0;
         }
         dirty_ = true;
+#if GSEURAT_DEBUG_BUILD
+        std::fprintf(stderr,
+            "[streaming] frame=%llu chunk=%u event=evict_budget slabs=%u\n",
+            static_cast<unsigned long long>(frame_index), furthest_idx,
+            evict_slabs);
+#endif
     }
 }
 

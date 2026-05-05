@@ -24,6 +24,7 @@
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 
@@ -704,6 +705,13 @@ void CommandDispatcher::register_default_commands() {
         } else {
             ctx_.deferred_step_response->bridge_id = json(nullptr);
         }
+        ctx_.deferred_step_response->per_frame_ms.clear();
+        ctx_.deferred_step_response->per_frame_ms.reserve(static_cast<size_t>(n));
+        // First stepped frame's duration is measured from command-issue time,
+        // not from the previous frame: pre-step idle (in step_mode_) may be
+        // unbounded while the loop spins waiting for `pending_steps_ > 0`.
+        ctx_.deferred_step_response->last_step_frame_end =
+            std::chrono::high_resolution_clock::now();
         ctx_.pending_steps->fetch_add(n, std::memory_order_relaxed);
         // Sentinel response — poll_control_server checks for "_deferred" key
         // and skips the immediate send.

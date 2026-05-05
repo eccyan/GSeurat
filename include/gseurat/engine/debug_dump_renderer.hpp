@@ -39,7 +39,8 @@ public:
         uint32_t output_width       = 0;
         uint32_t output_height      = 0;
 
-        // GPU timing (averaged over 60 frames)
+        // GPU timing (last completed frame, raw — not averaged).
+        // Single-frame spike attribution per #399.
         float depth_sort_ms         = 0.0f;
         float tile_sort_ms          = 0.0f;
         float rasterize_ms          = 0.0f;
