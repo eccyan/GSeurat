@@ -34,6 +34,14 @@ public:
     // shader compilation across pipelines and runs.
     VkPipelineCache pipeline_cache() const { return pipeline_cache_.handle(); }
 
+    // Persist the pipeline cache to disk. Safe to call before shutdown() —
+    // vkGetPipelineCacheData is a CPU-side query that doesn't require GPU
+    // idle, so this can run at the very start of teardown. Idempotent;
+    // shutdown() also calls save() but that's behind ~5+ seconds of slow
+    // VMA / device / instance teardown that frequently exceeds the
+    // SIGTERM→SIGKILL window driven by the regression harness (#405).
+    void save_pipeline_cache() { pipeline_cache_.save(); }
+
 private:
     void create_instance();
     void setup_debug_messenger();

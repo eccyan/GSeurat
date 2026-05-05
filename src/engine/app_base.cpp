@@ -30,17 +30,40 @@
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
+#include <atomic>
 #include <chrono>
+#include <csignal>
 #include <cstdio>
 #include <optional>
 
 namespace gseurat {
+
+namespace {
+// Set by SIGTERM/SIGINT handler so the main loop can exit cleanly. Without
+// this the harness's `proc.terminate()` (SIGTERM, then SIGKILL after 5 s)
+// kills the engine without running any C++ destructors — meaning
+// Renderer::shutdown() never fires and the Vulkan pipeline cache is never
+// persisted. Every subsequent harness run then starts cold and pays the
+// MoltenVK first-compile cost on the main thread mid-frame (#405 / #399).
+std::atomic<bool> g_shutdown_requested{false};
+
+void signal_handler(int /*sig*/) {
+    g_shutdown_requested.store(true, std::memory_order_relaxed);
+}
+
+void install_signal_handlers() {
+    std::signal(SIGTERM, signal_handler);
+    std::signal(SIGINT, signal_handler);
+}
+}  // namespace
 
 void AppBase::set_start_state(std::unique_ptr<GameState> state) {
     custom_start_state_ = std::move(state);
 }
 
 void AppBase::run() {
+    install_signal_handlers();
+
     command_dispatcher_.register_default_commands();
     init_game_object_system();
 
@@ -217,7 +240,8 @@ void AppBase::main_loop() {
         step_mode_ = true;
     }
 
-    while (!glfwWindowShouldClose(window_)) {
+    while (!glfwWindowShouldClose(window_) &&
+           !g_shutdown_requested.load(std::memory_order_relaxed)) {
         glfwPollEvents();
 
         // Poll control server for bridge commands

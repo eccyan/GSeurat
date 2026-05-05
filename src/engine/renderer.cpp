@@ -879,6 +879,15 @@ void Renderer::shutdown() {
         }
     }
 
+    // Persist the pipeline cache to disk FIRST, before any slow teardown.
+    // Otherwise the SIGTERM→SIGKILL window driven by the regression harness
+    // (5 s) frequently expires while VMA / device / instance teardown is
+    // still running, and the cache is lost — forcing every harness run to
+    // recompile every PSO from scratch on first dispatch (#405). vkDeviceWaitIdle
+    // isn't required: vkGetPipelineCacheData is a CPU-side query against the
+    // driver's cache state, not pending GPU work.
+    context_.save_pipeline_cache();
+
     if (gs_bg_texture_) {
         gs_bg_texture_->destroy(context_.device(), context_.allocator());
         gs_bg_texture_ = {};
