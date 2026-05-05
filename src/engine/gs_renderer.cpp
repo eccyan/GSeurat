@@ -792,7 +792,10 @@ void GsRenderer::prewarm_pipelines(VkQueue queue, VkCommandPool cmd_pool) {
     dpc.maxSets = 32;
     dpc.poolSizeCount = 3;
     dpc.pPoolSizes = pool_sizes;
-    VkDescriptorPool prewarm_pool = VK_NULL_HANDLE;
+    // Assign to the function-scope handle so cleanup() can destroy it on
+    // any exit path. Earlier draft shadowed this with a local declaration —
+    // the outer handle stayed VK_NULL_HANDLE and the pool leaked on every
+    // successful run (Codex P2 review on PR #409).
     if (vkCreateDescriptorPool(device_, &dpc, nullptr, &prewarm_pool) != VK_SUCCESS) {
         throw std::runtime_error("[prewarm] Failed to create descriptor pool");
     }
@@ -992,6 +995,29 @@ void GsRenderer::prewarm_pipelines(VkQueue queue, VkCommandPool cmd_pool) {
         if (vkBeginCommandBuffer(cmd, &cbb) != VK_SUCCESS) {
             throw std::runtime_error("[prewarm] vkBeginCommandBuffer (warmup) failed");
         }
+
+        // Zero the dummy SSBO before any pipeline dispatches read from it.
+        // Several shaders (gs_onesweep_scatter, merge, tile shaders) read
+        // control/count values from their SSBO bindings before deciding how
+        // much work to do; uninitialized GPU-only allocations contain
+        // recycled VRAM that can produce huge values, causing 1×1 warmup
+        // dispatches to perform OOB reads/writes (Codex P1 review on #409).
+        // The host-visible UBO is already memset to zero on the CPU side
+        // above, so only the SSBO needs an in-command-buffer fill.
+        vkCmdFillBuffer(cmd, dummy_ssbo.buffer(), 0, VK_WHOLE_SIZE, 0);
+        VkBufferMemoryBarrier fill_barrier{};
+        fill_barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+        fill_barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        fill_barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+        fill_barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        fill_barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        fill_barrier.buffer = dummy_ssbo.buffer();
+        fill_barrier.offset = 0;
+        fill_barrier.size = VK_WHOLE_SIZE;
+        vkCmdPipelineBarrier(cmd,
+            VK_PIPELINE_STAGE_TRANSFER_BIT,
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+            0, 0, nullptr, 1, &fill_barrier, 0, nullptr);
 
         // Zero push constant scratch (largest is 12 bytes for tile_scan).
         uint8_t push_scratch[16] = {0};
