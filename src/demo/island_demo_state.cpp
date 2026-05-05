@@ -1013,6 +1013,7 @@ void IslandDemoState::update(AppBase& app, float dt) {
     // content into the dungeon's GS buffer.
     if (world_streamer_ && !disable_world_streaming_) {
         ScopedStallTimer _t_streamer{"world_streamer.update+pending_loads"};
+        const uint64_t frame_index = app.tick();
         auto events = world_streamer_->update(character_origin_);
 
         // Drain any worker-thread-completed PLY parses BEFORE kicking off
@@ -1032,7 +1033,7 @@ void IslandDemoState::update(AppBase& app, float dt) {
                     auto resolved = resolve_asset_path(chunk.ply_file);
                     std::fprintf(stderr, "[IslandDemo] Chunk [%s] async parse start: %s\n",
                         grid_key.c_str(), chunk.ply_file.c_str());
-                    enqueue_async_chunk_load(grid_key, resolved.string());
+                    enqueue_async_chunk_load(grid_key, resolved.string(), frame_index);
                     break;
                 }
             }
@@ -1041,6 +1042,11 @@ void IslandDemoState::update(AppBase& app, float dt) {
         // Process pending unloads
         for (const auto& grid_key : world_streamer_->pending_unloads()) {
             std::fprintf(stderr, "[IslandDemo] Chunk [%s] Unloaded\n", grid_key.c_str());
+#if GSEURAT_DEBUG_BUILD
+            std::fprintf(stderr,
+                "[streaming] frame=%llu chunk=%s event=evict\n",
+                static_cast<unsigned long long>(frame_index), grid_key.c_str());
+#endif
         }
 
 
@@ -2568,26 +2574,39 @@ void IslandDemoState::finish_portal_transition(AppBase& app,
 // future once per frame and only touches the GPU once the parse is done.
 
 void IslandDemoState::enqueue_async_chunk_load(const std::string& grid_key,
-                                               const std::string& ply_path) {
+                                               const std::string& ply_path,
+                                               uint64_t frame_index) {
     // Skip if a parse is already in flight for this key (the streamer will
     // re-emit `pending_loads_` keys until we tell it the chunk is loaded).
     for (const auto& p : pending_chunk_parses_) {
         if (p.grid_key == grid_key) return;
     }
-    pending_chunk_parses_.push_back({
-        grid_key,
-        std::async(std::launch::async, [ply_path]() {
-            GaussianCloud c;
-            c.load_ply(ply_path);
-            return c;
-        })
+    PendingChunkParse entry;
+    entry.grid_key = grid_key;
+    entry.future = std::async(std::launch::async, [ply_path]() {
+        GaussianCloud c;
+        c.load_ply(ply_path);
+        return c;
     });
+    entry.requested_at = std::chrono::steady_clock::now();
+    entry.requested_frame = frame_index;
+    pending_chunk_parses_.push_back(std::move(entry));
+#if GSEURAT_DEBUG_BUILD
+    std::fprintf(stderr,
+        "[streaming] frame=%llu chunk=%s event=load_request\n",
+        static_cast<unsigned long long>(frame_index), grid_key.c_str());
+#else
+    (void)frame_index;
+#endif
 }
 
 void IslandDemoState::drain_async_chunk_loads(AppBase& app) {
     // Sweep ready futures, consume their clouds, and hand them to the
     // existing async-upload pipe. Anything still parsing stays in the
     // queue for next frame.
+#if GSEURAT_DEBUG_BUILD
+    const uint64_t frame_index = app.tick();
+#endif
     for (auto it = pending_chunk_parses_.begin();
          it != pending_chunk_parses_.end(); ) {
         if (it->future.wait_for(std::chrono::seconds(0)) ==
@@ -2600,6 +2619,17 @@ void IslandDemoState::drain_async_chunk_loads(AppBase& app) {
                 std::fprintf(stderr,
                     "[IslandDemo] Chunk [%s] async parse FAILED: %s\n",
                     it->grid_key.c_str(), e.what());
+#if GSEURAT_DEBUG_BUILD
+                double took_ms = std::chrono::duration<double, std::milli>(
+                    std::chrono::steady_clock::now() - it->requested_at).count();
+                std::fprintf(stderr,
+                    "[streaming] frame=%llu chunk=%s event=parse_failed "
+                    "requested_frame=%llu took=%.2fms\n",
+                    static_cast<unsigned long long>(frame_index),
+                    it->grid_key.c_str(),
+                    static_cast<unsigned long long>(it->requested_frame),
+                    took_ms);
+#endif
                 it = pending_chunk_parses_.erase(it);
                 continue;
             }
@@ -2611,6 +2641,17 @@ void IslandDemoState::drain_async_chunk_loads(AppBase& app) {
                 std::fprintf(stderr,
                     "[IslandDemo] Chunk [%s] async parse done, queued for VRAM\n",
                     it->grid_key.c_str());
+#if GSEURAT_DEBUG_BUILD
+                double took_ms = std::chrono::duration<double, std::milli>(
+                    std::chrono::steady_clock::now() - it->requested_at).count();
+                std::fprintf(stderr,
+                    "[streaming] frame=%llu chunk=%s event=parse_complete "
+                    "requested_frame=%llu took=%.2fms\n",
+                    static_cast<unsigned long long>(frame_index),
+                    it->grid_key.c_str(),
+                    static_cast<unsigned long long>(it->requested_frame),
+                    took_ms);
+#endif
             }
             it = pending_chunk_parses_.erase(it);
         } else {
