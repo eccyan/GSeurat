@@ -850,6 +850,15 @@ void Renderer::draw_frame() {
 }
 
 void Renderer::shutdown() {
+    // Persist the pipeline cache to disk BEFORE vkDeviceWaitIdle and any
+    // teardown work. Otherwise the SIGTERM→SIGKILL window driven by the
+    // regression harness (5 s) can expire while waiting for in-flight GPU
+    // work or destroying textures, and the cache is lost — forcing every
+    // harness run to recompile every PSO from scratch on first dispatch
+    // (#405). vkGetPipelineCacheData is a CPU-side query against the
+    // driver's cache state and does NOT require a device idle.
+    context_.save_pipeline_cache();
+
     vkDeviceWaitIdle(context_.device());
 
     // Release texture handles (actual GPU cleanup happens via shared_ptr destructor
