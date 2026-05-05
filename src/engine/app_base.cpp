@@ -159,9 +159,12 @@ void AppBase::main_loop() {
         snap.visible_chunks    = renderer_.gs_visible_chunk_count();
         snap.output_width      = gs.output_width();
         snap.output_height     = gs.output_height();
-        snap.depth_sort_ms     = gs.depth_sort_ms_avg();
-        snap.tile_sort_ms      = gs.tile_sort_ms_avg();
-        snap.rasterize_ms      = gs.rasterize_ms_avg();
+        // Last-frame raw GPU timing (per #399 instrumentation): single-frame
+        // spikes were previously smeared into invisibility by the 60-frame
+        // averager. The averaged stderr log line is preserved unchanged.
+        snap.depth_sort_ms     = gs.depth_sort_ms_last();
+        snap.tile_sort_ms      = gs.tile_sort_ms_last();
+        snap.rasterize_ms      = gs.rasterize_ms_last();
         snap.gpu_total_ms      = snap.depth_sort_ms + snap.tile_sort_ms + snap.rasterize_ms;
         snap.fps               = metrics.fps;
         snap.frame_time_ms     = metrics.fps > 0.0f ? 1000.0f / metrics.fps : 0.0f;
@@ -434,6 +437,17 @@ void AppBase::main_loop() {
                              draw_lists_.shadow, particle_sprites, draw_lists_.overlay, ui_batches,
                              draw_lists_.debug_colliders, feature_flags_, dispatch_gpu_compute);
 
+        // Per-frame wall-clock timing for synchronous step. Captured here
+        // (frame fully drawn) and the delta is taken from either the previous
+        // step-frame's end or the step-command-issue timestamp for frame 0.
+        if (step_mode_ && deferred_step_response_.reply_target >= 0) {
+            auto frame_end = std::chrono::high_resolution_clock::now();
+            double dt_ms = std::chrono::duration<double, std::milli>(
+                frame_end - deferred_step_response_.last_step_frame_end).count();
+            deferred_step_response_.per_frame_ms.push_back(dt_ms);
+            deferred_step_response_.last_step_frame_end = frame_end;
+        }
+
         // Synchronous step: fire the deferred response now that this frame has
         // completed AND no more steps are queued. The harness then knows N
         // frames are fully done and can safely send screenshot/etc.
@@ -442,7 +456,8 @@ void AppBase::main_loop() {
             deferred_step_response_.reply_target >= 0) {
             nlohmann::json msg = {
                 {"type", "ok"},
-                {"frames_completed", deferred_step_response_.frames_total}
+                {"frames_completed", deferred_step_response_.frames_total},
+                {"per_frame_ms", deferred_step_response_.per_frame_ms}
             };
             // Replay _bridge_id correlation if the request had one.
             if (!deferred_step_response_.bridge_id.is_null()) {
@@ -453,6 +468,7 @@ void AppBase::main_loop() {
             deferred_step_response_.reply_target = -1;
             deferred_step_response_.frames_total = 0;
             deferred_step_response_.bridge_id = nlohmann::json(nullptr);
+            deferred_step_response_.per_frame_ms.clear();
         }
     }
 }

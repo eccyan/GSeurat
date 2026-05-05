@@ -7,6 +7,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <nlohmann/json.hpp>
 
+#include <chrono>
 #include <cstdint>
 #include <string>
 #include <unordered_map>
@@ -25,6 +26,10 @@ struct StreamChunkMeta {
     uint32_t gaussian_count = 0;
     ChunkState state = ChunkState::Unloaded;
     uint32_t load_request_id = 0;
+    // Wall-clock start of the most recent load request; used by the debug
+    // event log to compute load_complete `took=Y.YYms`. Default-initialized
+    // (epoch) when no load is in flight.
+    std::chrono::steady_clock::time_point load_started_at{};
 };
 
 struct ChunkManifest {
@@ -46,10 +51,13 @@ public:
     // Update streaming state based on camera position.
     // Submits load requests to AsyncLoader for chunks within load_radius.
     // Marks chunks beyond unload_radius for removal.
-    void update(const glm::vec3& camera_pos, AsyncLoader& loader);
+    // `frame_index` is used by GSEURAT_DEBUG_BUILD-gated stderr event log.
+    void update(const glm::vec3& camera_pos, AsyncLoader& loader,
+                uint64_t frame_index);
 
     // Process completed load results. Call after AsyncLoader::poll_results().
-    void process_load_results(const std::vector<LoadResult>& results);
+    void process_load_results(const std::vector<LoadResult>& results,
+                              uint64_t frame_index);
 
     // Returns true if the active Gaussian set changed since last call to
     // assemble_active().
@@ -67,6 +75,11 @@ public:
     void set_load_radius(float r) { load_radius_ = r; }
     void set_unload_radius(float r) { unload_radius_ = r; }
     void set_memory_budget(size_t bytes) { memory_budget_ = bytes; }
+    // Slab footprint reported in [streaming] event log. Demo wires this
+    // from GsRenderer::streaming_config().slab_size_splats so the log
+    // vocabulary tracks runtime config. Value defaults to the
+    // StreamingConfig default (100k) for tests and standalone use.
+    void set_slab_size_splats(uint32_t s) { slab_size_splats_ = s; }
     float load_radius() const { return load_radius_; }
     float unload_radius() const { return unload_radius_; }
 
@@ -80,8 +93,11 @@ private:
     // Frustum culling for chunk AABBs
     static bool is_chunk_visible(const AABB& bounds, const glm::mat4& view_proj);
 
-    // Evict furthest loaded chunks to stay within memory budget
-    void evict_if_over_budget(const glm::vec3& camera_pos);
+    // Evict furthest loaded chunks to stay within memory budget.
+    // `frame_index` is used by GSEURAT_DEBUG_BUILD-gated stderr event log
+    // (these are budget-driven evictions, distinct from camera-distance
+    // unloads in update()).
+    void evict_if_over_budget(const glm::vec3& camera_pos, uint64_t frame_index);
 
     // Distance from camera to chunk center (XZ plane)
     static float chunk_distance_xz(const AABB& bounds, const glm::vec3& camera_pos);
@@ -100,6 +116,7 @@ private:
     float unload_radius_ = 384.0f;
     size_t memory_budget_ = 512 * 1024 * 1024;  // 512 MB
     size_t current_memory_ = 0;
+    uint32_t slab_size_splats_ = 100'000;  // mirror of StreamingConfig default
 };
 
 }  // namespace gseurat

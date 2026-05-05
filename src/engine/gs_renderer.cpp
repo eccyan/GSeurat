@@ -2803,6 +2803,9 @@ void GsRenderer::render(VkCommandBuffer cmd, uint32_t frame_in_flight,
             float depth_ms = static_cast<float>(ts[1] - ts[0]) * timestamp_period_ns_ / 1e6f;
             float tile_ms  = static_cast<float>(ts[3] - ts[2]) * timestamp_period_ns_ / 1e6f;
             float raster_ms = static_cast<float>(ts[5] - ts[4]) * timestamp_period_ns_ / 1e6f;
+            depth_sort_ms_last_ = depth_ms;
+            tile_sort_ms_last_ = tile_ms;
+            rasterize_ms_last_ = raster_ms;
             depth_sort_ms_accum_ += depth_ms;
             tile_sort_ms_accum_ += tile_ms;
             rasterize_ms_accum_ += raster_ms;

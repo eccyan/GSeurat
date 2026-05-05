@@ -118,7 +118,7 @@ int main() {
         loader.init();
 
         // Camera at origin — should request nearby chunks
-        streamer.update(glm::vec3(16.0f, 0.0f, 16.0f), loader);
+        streamer.update(glm::vec3(16.0f, 0.0f, 16.0f), loader, 0);
         assert(streamer.loading_chunk_count() > 0);
 
         loader.shutdown();
@@ -138,7 +138,7 @@ int main() {
 
         // Camera near chunk (0,0) — loads nearby chunks
         glm::vec3 cam_near(16.0f, 0.0f, 16.0f);
-        streamer.update(cam_near, loader);
+        streamer.update(cam_near, loader, 0);
 
         // Simulate all chunks loading
         auto pending = loader.poll_results();
@@ -158,7 +158,7 @@ int main() {
 
         // Move camera far away
         glm::vec3 cam_far(500.0f, 0.0f, 500.0f);
-        streamer.update(cam_far, loader);
+        streamer.update(cam_far, loader, 0);
 
         // After moving far, loading count should be for distant chunks now
         // (any previously loaded chunks beyond unload_radius should be unloaded)
@@ -180,7 +180,7 @@ int main() {
         loader.init();
 
         // Camera near chunk (0,0) — request load
-        streamer.update(glm::vec3(16.0f, 0.0f, 16.0f), loader);
+        streamer.update(glm::vec3(16.0f, 0.0f, 16.0f), loader, 0);
         uint32_t initially_loading = streamer.loading_chunk_count();
         assert(initially_loading > 0);
 
@@ -196,7 +196,7 @@ int main() {
         // Move camera to distance 50 from chunk (0,0) center (between load=40 and unload=60)
         // The chunk was Loading (not yet Loaded), so it stays Loading
         // This tests that Loading state is preserved in the hysteresis zone
-        streamer.update(glm::vec3(66.0f, 0.0f, 16.0f), loader);
+        streamer.update(glm::vec3(66.0f, 0.0f, 16.0f), loader, 0);
 
         // The chunks that were Loading and are now between 40-60 should still be Loading
         // (not cancelled, not unloaded)
@@ -220,7 +220,7 @@ int main() {
         loader.init();
 
         // Camera at center — all 4 chunks within load radius
-        streamer.update(glm::vec3(64.0f, 0.0f, 16.0f), loader);
+        streamer.update(glm::vec3(64.0f, 0.0f, 16.0f), loader, 0);
 
         // Simulate all 4 chunks loading — use streamer's manifest for correct IDs
         std::vector<LoadResult> results;
@@ -229,7 +229,7 @@ int main() {
                 results.push_back(make_load_result(c.load_request_id, c.bounds.center(), 100));
             }
         }
-        streamer.process_load_results(results);
+        streamer.process_load_results(results, 0);
 
         // After processing, memory budget should be enforced
         // At most 2 chunks should remain loaded (budget = 2 * 100 * sizeof(Gaussian))
@@ -254,7 +254,7 @@ int main() {
         loader.init();
 
         // Request load — submits jobs, stores request IDs in streamer's manifest
-        streamer.update(glm::vec3(16.0f, 0.0f, 16.0f), loader);
+        streamer.update(glm::vec3(16.0f, 0.0f, 16.0f), loader, 0);
 
         // Create fake results using request IDs from the *streamer's* manifest
         std::vector<LoadResult> results;
@@ -263,7 +263,7 @@ int main() {
                 results.push_back(make_load_result(c.load_request_id, c.bounds.center()));
             }
         }
-        streamer.process_load_results(results);
+        streamer.process_load_results(results, 0);
         assert(streamer.active_set_dirty());
 
         // Assemble clears dirty flag
@@ -286,7 +286,7 @@ int main() {
         AsyncLoader loader;
         loader.init();
 
-        streamer.update(glm::vec3(64.0f, 0.0f, 16.0f), loader);
+        streamer.update(glm::vec3(64.0f, 0.0f, 16.0f), loader, 0);
 
         // Load all chunks — use streamer's manifest for correct request IDs
         std::vector<LoadResult> results;
@@ -295,7 +295,7 @@ int main() {
                 results.push_back(make_load_result(c.load_request_id, c.bounds.center(), 50));
             }
         }
-        streamer.process_load_results(results);
+        streamer.process_load_results(results, 0);
 
         // Wide VP sees everything
         std::vector<Gaussian> all_out;
@@ -312,7 +312,7 @@ int main() {
         auto narrow_vp = narrow_proj * narrow_view;
 
         // Reset dirty flag for second assemble
-        streamer.process_load_results({});  // no-op but keeps API clean
+        streamer.process_load_results({}, 0);  // no-op but keeps API clean
         std::vector<Gaussian> narrow_out;
         uint32_t narrow_count = streamer.assemble_active(
             narrow_vp, glm::vec3(16.0f, 0.0f, 50.0f), 100000, narrow_out);
