@@ -27,7 +27,6 @@ void GsDemoState::on_enter(AppBase& app) {
 
     // Disable app-level parallax — demo manages its own camera
     app.gs_terrain().parallax_active = false;
-    app.renderer().set_gs_skip_chunk_cull(false);
     app.renderer().gs_renderer().set_skip_sort(false);
     app.renderer().gs_renderer().set_pixel_art_intensity(0.5f);
 
@@ -196,7 +195,6 @@ void GsDemoState::update(AppBase& app, float dt) {
     // P → toggle shadow box mode (hybrid: re-render every N frames)
     if (app.input().was_key_pressed(GLFW_KEY_P)) {
         shadow_box_mode_ = !shadow_box_mode_;
-        app.renderer().set_gs_skip_chunk_cull(shadow_box_mode_);
         if (shadow_box_mode_) {
             gs_frame_counter_ = 0;  // first frame does full compute
             app.renderer().gs_renderer().set_skip_sort(false);
@@ -351,8 +349,6 @@ void GsDemoState::update(AppBase& app, float dt) {
             enter_streaming_mode(app);
         } else if (streaming_mode_) {
             streaming_mode_ = false;
-            // Re-enable normal chunk culling
-            app.renderer().set_gs_skip_chunk_cull(false);
             std::fprintf(stderr, "Streaming mode: OFF\n");
         }
     }
@@ -818,9 +814,6 @@ void GsDemoState::enter_streaming_mode(AppBase& app) {
     chunk_streamer_.set_unload_radius(cloud_extent * 0.6f);
     chunk_streamer_.set_slab_size_splats(
         app.renderer().gs_renderer().streaming_config().slab_size_splats);
-
-    // Disable the renderer's internal chunk culling — we'll update manually
-    app.renderer().set_gs_skip_chunk_cull(true);
 
     streaming_mode_ = true;
     std::fprintf(stderr, "Streaming mode: ON (load_r=%.0f, unload_r=%.0f)\n",

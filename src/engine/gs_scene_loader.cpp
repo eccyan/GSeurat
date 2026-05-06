@@ -386,13 +386,11 @@ void GsSceneLoader::finalize_on_main(SceneLoadContext& ctx, const SceneData& sce
                         gs.camera_fov, gs_w, gs_h, *gs.parallax);
                     ctx.terrain.parallax_active = true;
                     ctx.terrain.frame_counter = 0;
-                    ctx.renderer.set_gs_skip_chunk_cull(true);
                     ctx.renderer.gs_renderer().set_skip_sort(false);
                     auto cam_fwd = glm::normalize(gs.camera_target - gs.camera_position);
                     ctx.renderer.gs_renderer().set_shadow_box_params(cam_fwd, 0.0f, gs.camera_position, 32.0f);
                 } else {
                     ctx.terrain.parallax_active = false;
-                    ctx.renderer.set_gs_skip_chunk_cull(false);
                     ctx.renderer.gs_renderer().clear_shadow_box_params();
                 }
                 std::fprintf(stderr, "[GS] Loaded %u Gaussians (terrain: %s, game objects: %zu)\n",
@@ -400,7 +398,6 @@ void GsSceneLoader::finalize_on_main(SceneLoadContext& ctx, const SceneData& sce
                              scene_data.game_objects.size());
             } else {
                 ctx.terrain.parallax_active = false;
-                ctx.renderer.set_gs_skip_chunk_cull(false);
                 ctx.renderer.gs_renderer().clear_shadow_box_params();
                 std::fprintf(stderr, "[GS] Loaded %u Gaussians from %zu game objects\n",
                              cloud.count(), scene_data.game_objects.size());
