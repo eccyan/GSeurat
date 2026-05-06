@@ -211,6 +211,27 @@ void Renderer::init_gs(const GaussianCloud& cloud, uint32_t width, uint32_t heig
         gs_renderer_.init(context_.device(), context_.physical_device(),
                           context_.allocator(), VK_NULL_HANDLE,
                           context_.pipeline_cache());
+        // Pre-warm every GS compute pipeline by dispatching a single-thread
+        // workgroup against dummy descriptor sets. On MoltenVK each pipeline
+        // is lazily compiled to MTLComputePipelineState on first dispatch;
+        // doing it at init-time spreads the 25-35 s of mid-frame Metal
+        // compile latency that issue #399 surfaced. After the wait-idle
+        // returns, persist the now-warm cache to disk before any later
+        // code path can crash (PR #408 made this reliable; #409 makes
+        // sure the cache is actually populated by first run).
+        // Defense-in-depth: prewarm_pipelines is internally fail-soft, but if
+        // a future refactor ever lets an exception escape we still want the
+        // cache flush below to run unconditionally. Issue #408's lesson: a
+        // critical post-step buried after a potentially-throwing call is one
+        // bug away from being silently skipped.
+        try {
+            gs_renderer_.prewarm_pipelines(context_.graphics_queue(), command_pool_.pool());
+        } catch (const std::exception& e) {
+            std::fprintf(stderr,
+                "[prewarm] init_gs caught: %s — continuing with cold cache\n",
+                e.what());
+        }
+        context_.save_pipeline_cache();
         gs_initialized_ = true;
     }
 
