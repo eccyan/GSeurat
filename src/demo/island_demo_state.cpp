@@ -105,7 +105,6 @@ void IslandDemoState::on_enter(AppBase& app) {
     pp.vignette_radius = 0.75f;    // tighter vignette for cinematic framing
     pp.vignette_softness = 0.4f;   // soft falloff
     pp.ca_intensity = 0.15f;       // subtle chromatic aberration at edges
-    app.renderer().set_gs_skip_chunk_cull(false);
     app.renderer().set_gs_max_render_distance(150.0f);  // cull distant chunks (uses player pos, not camera)
     app.renderer().gs_renderer().set_skip_sort(false);
 
@@ -580,9 +579,6 @@ void IslandDemoState::on_enter(AppBase& app) {
                 player_entity_, std::move(player_entry));
             app.world().add<gseurat::BoneAnimatedTag>(player_entity_,
                 {player_registry_id_});
-
-            // Tell renderer to preserve player character Gaussians during distance culling
-            app.renderer().set_gs_preserve_bone_range(1, player_bone_count);
 
             // Set bone 0 override for terrain sway
             app.set_bone_pre_upload_hook([this](glm::mat4* bones, uint32_t) {

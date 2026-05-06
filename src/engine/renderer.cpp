@@ -276,7 +276,6 @@ void Renderer::init_gs(const GaussianCloud& cloud, uint32_t width, uint32_t heig
 
     // Build spatial chunk grid for frustum-based streaming.
     gs_chunk_grid_.build(cloud, 32.0f);
-    gs_prev_visible_.clear();
 
     // Scene-load semantics are REPLACE: drop every chunk from the previous
     // scene before queuing the new cloud. `load_cloud_async` itself is
@@ -1106,7 +1105,6 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
                 float scale = gs_smoothed_fps_ / gs_target_fps_;
                 gs_gaussian_budget_ = std::max(kGsBudgetMin,
                     static_cast<uint32_t>(gs_gaussian_budget_ * scale));
-                gs_prev_visible_.clear();
                 gs_stable_frame_count_ = 0;
             } else {
                 gs_stable_frame_count_++;

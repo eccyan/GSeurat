@@ -33,7 +33,6 @@ public:
 
         // Chunk grid
         uint32_t total_chunks       = 0;
-        uint32_t visible_chunks     = 0;
 
         // Output resolution
         uint32_t output_width       = 0;
@@ -106,7 +105,6 @@ public:
                 }},
                 {"chunks", {
                     {"total",    snap.total_chunks},
-                    {"visible",  snap.visible_chunks},
                 }},
                 {"gpu_timing_ms", {
                     {"depth_sort",  snap.depth_sort_ms},

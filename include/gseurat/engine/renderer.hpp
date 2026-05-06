@@ -84,7 +84,6 @@ public:
     // path on initial scene load. GPU dispatch gating still uses
     // `gs_renderer().has_cloud()` directly inside the renderer.
     bool has_gs_cloud() const { return gs_total_gaussian_count_ > 0; }
-    void set_gs_skip_chunk_cull(bool skip) { gs_skip_chunk_cull_ = skip; }
     void set_gs_blit_offset(float x, float y) { gs_blit_offset_x_ = x; gs_blit_offset_y_ = y; }
     void set_gs_background_colors(const glm::vec3& ground, const glm::vec3& sky) {
         gs_bg_ground_color_ = ground;
@@ -98,10 +97,6 @@ public:
     uint32_t gs_gaussian_budget() const { return gs_gaussian_budget_; }
     void set_gs_max_render_distance(float d) { gs_max_render_distance_ = d; }
     float gs_max_render_distance() const { return gs_max_render_distance_; }
-    uint32_t gs_visible_chunk_count() const { return static_cast<uint32_t>(gs_prev_visible_.size()); }
-    void set_gs_preserve_bone_range(uint32_t first, uint32_t count) {
-        gs_preserve_bone_first_ = first; gs_preserve_bone_count_ = count;
-    }
     void set_gs_lod_focus(const glm::vec3& pos) { gs_lod_focus_pos_ = pos; gs_has_lod_focus_ = true; }
     void clear_gs_lod_focus() { gs_has_lod_focus_ = false; }
 
@@ -339,8 +334,6 @@ private:
     GaussianAnimator gs_animator_;
     std::vector<SceneAnimation> gs_scene_animations_;
     std::vector<VfxInstance> vfx_instances_;
-    std::vector<uint32_t> gs_prev_visible_;
-    bool gs_skip_chunk_cull_ = false;
 
     // ── Frame-determinism harness internal state ──
     struct DeterminismTestState {
@@ -354,8 +347,6 @@ private:
     DeterminismTestResult determinism_test_result_;
     uint32_t gs_gaussian_budget_ = 0;  // 0 = unlimited (no LOD decimation)
     float gs_max_render_distance_ = 0.0f;  // 0 = unlimited (no distance culling)
-    uint32_t gs_preserve_bone_first_ = 0;
-    uint32_t gs_preserve_bone_count_ = 0;
     uint32_t gs_total_gaussian_count_ = 0;  // total Gaussians in loaded cloud
     bool gs_adaptive_budget_ = false;
     bool gs_budget_locked_ = false;
