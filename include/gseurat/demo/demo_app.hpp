@@ -36,6 +36,13 @@ private:
     bool scene_path_explicit_ = false;
     bool viewer_mode_ = false;
     bool deterministic_ = false;
+    // Opt-in via --prewarm CLI flag. Default OFF: the all-in-one prewarm
+    // submitted in #409 caused a kernel panic on macOS due to MoltenVK
+    // compiling 13 PSOs in parallel (#410 reverted it). The new design
+    // (per-pipeline serialization) is safe but expensive (~30-60s on a
+    // cold cache), so the user opts in once to populate the cache and
+    // benefits from #408's persistence on subsequent runs.
+    bool prewarm_at_startup_ = false;
     PortalHandler portal_handler_;
     DemoLoadingOverlay loading_overlay_;
 };

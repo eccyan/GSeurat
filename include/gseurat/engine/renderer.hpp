@@ -105,6 +105,14 @@ public:
     void set_gs_lod_focus(const glm::vec3& pos) { gs_lod_focus_pos_ = pos; gs_has_lod_focus_ = true; }
     void clear_gs_lod_focus() { gs_has_lod_focus_ = false; }
 
+    // Opt-in prewarm of all GS compute pipelines on first `init_gs` call.
+    // Default OFF. Per-pipeline serialization makes this safe but expensive
+    // (~30-60s on a cold cache); the user opts in once with `--prewarm` to
+    // populate the on-disk pipeline cache, and #408's persistence keeps
+    // subsequent runs warm without paying that cost again. Must be called
+    // BEFORE `init_gs` to take effect.
+    void set_prewarm_at_startup(bool b) { prewarm_at_startup_ = b; }
+
     // `dispatch_gpu_compute` gates GS-renderer compute pipelines (preprocess /
     // sort / merge / render / pbd_solver / tile_render / post_process). Set
     // false during EngineState::Loading to keep the GPU idle while the
@@ -294,6 +302,9 @@ private:
     std::array<VkDescriptorSet, kMaxFramesInFlight> gs_descriptor_sets_{};    // scene UBO (unused now)
     std::array<VkDescriptorSet, kMaxFramesInFlight> gs_ui_descriptor_sets_{}; // UI orthographic UBO
     bool gs_initialized_ = false;
+    // Set via `set_prewarm_at_startup`; consumed in `init_gs` first-time
+    // branch. See header doc on the setter.
+    bool prewarm_at_startup_ = false;
     // Slab transfer handles from the most recent `init_gs` async upload.
     // Drained by `take_pending_load_handles()` and forwarded to the engine
     // loading monitor so it can gate Loading→Warming on real GPU readiness.
