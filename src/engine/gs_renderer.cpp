@@ -640,6 +640,14 @@ void GsRenderer::create_compute_pipelines() {
 // grows from a few seconds (old parallel design) to ~30-60s on a cold
 // cache, but it is bounded and predictable instead of system-fatal.
 //
+// SECOND HAZARD — the macOS WindowServer watchdog (bug_type 409). Even
+// serialized, ~13 cold PSO compiles back-to-back monopolize the Metal
+// driver and starve WindowServer past its 40 s "no checkin" threshold,
+// which kills the user session. The submission loop below sleeps briefly
+// after each `WaitIdle` so the kernel can schedule WindowServer's GPU work
+// between compiles. Total added latency is small relative to compile time
+// and bounded by `entries.size() × kYieldMs`.
+//
 // All resources are tracked at function scope so the cleanup lambda below
 // can destroy whatever was actually created on ANY exit path — including
 // the catch handler. Soft-fail: prewarm is an optimization, so any error
@@ -955,9 +963,23 @@ void GsRenderer::prewarm_pipelines(VkQueue queue, VkCommandPool cmd_pool) {
         // buffer, submitted alone and `vkQueueWaitIdle`'d before moving on.
         // The wait pins us to a single in-flight Metal compile at a time,
         // so peak compile-memory pressure is 1 PSO not 13.
+        //
+        // ALSO: yield to the OS between submissions. The crash log behind
+        // #406's watchdog post-mortem (bug_type 409, "40 seconds since last
+        // successful checkin") showed WindowServer killed by the macOS
+        // watchdog while MoltenVK held the GPU driver compiling PSOs. Even
+        // with per-pipeline serialization, a long enough chain of cold
+        // compiles (~13 pipelines × multi-second each) can starve
+        // WindowServer past the 40 s threshold. After every `WaitIdle`
+        // we sleep briefly so the kernel can schedule WindowServer's GPU
+        // work and macOS can refresh its watchdog checkin. Total added
+        // latency is bounded (~entries.size() × kYieldMs) and dwarfed by
+        // PSO compile time on a cold cache.
+        constexpr int kYieldMs = 50;
         uint8_t push_scratch[16] = {0};
         for (size_t i = 0; i < entries.size(); ++i) {
             const auto& e = entries[i];
+            auto t_pipeline_begin = clock::now();
 
             VkCommandBuffer cmd = VK_NULL_HANDLE;
             VkCommandBufferAllocateInfo cba{};
@@ -1026,6 +1048,20 @@ void GsRenderer::prewarm_pipelines(VkQueue queue, VkCommandPool cmd_pool) {
             }
             vkQueueWaitIdle(queue);
             vkFreeCommandBuffers(device_, cmd_pool, 1, &cmd);
+
+            auto pipeline_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                clock::now() - t_pipeline_begin).count();
+            std::fprintf(stderr,
+                "[prewarm] %zu/%zu %s — %lld ms\n",
+                i + 1, entries.size(), e.name,
+                static_cast<long long>(pipeline_ms));
+
+            // Yield to the OS so WindowServer can checkin with its watchdog
+            // (see comment above the loop). Skip the yield after the last
+            // pipeline — caller is about to return and resume the main loop.
+            if (i + 1 < entries.size()) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(kYieldMs));
+            }
         }
 
         pipeline_count = entries.size();

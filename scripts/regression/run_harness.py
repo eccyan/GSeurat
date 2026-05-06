@@ -45,7 +45,7 @@ def run_scenario(out_dir):
     if os.path.exists(SOCKET):
         os.unlink(SOCKET)
 
-    proc = subprocess.Popen([DEMO_BIN, "--deterministic"],
+    proc = subprocess.Popen([DEMO_BIN, "--deterministic", "--prewarm"],
                             stderr=subprocess.PIPE,
                             cwd=DEMO_DIR)
     stderr_bytes = b""
