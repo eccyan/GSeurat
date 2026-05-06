@@ -977,6 +977,31 @@ void GsRenderer::prewarm_pipelines(VkQueue queue, VkCommandPool cmd_pool) {
                 throw std::runtime_error(std::string("[prewarm] begin cmd failed for ") + e.name);
             }
 
+            // SHADER_WRITE -> SHADER_READ memory barrier on the shared dummy
+            // SSBO. `vkQueueWaitIdle` between submissions serializes execution
+            // (and compile pressure) but does NOT make shader writes from a
+            // prior submission visible to subsequent shader reads on the same
+            // queue — Vulkan's spec requires an explicit memory dependency
+            // (Codex P2 review on PR #411). Without this, dispatches like
+            // `gs_onesweep_scatter` could read pre-fill zeros for indirect
+            // args (e.g. max_wg=0) instead of `gs_tile_prepare_indirect`'s
+            // outputs, in turn potentially OOB-indexing into status buffers.
+            // The first iteration's barrier is a no-op (buffer is freshly
+            // zeroed), but unconditional issuance keeps the loop simple.
+            VkBufferMemoryBarrier ssbo_barrier{};
+            ssbo_barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+            ssbo_barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+            ssbo_barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+            ssbo_barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            ssbo_barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            ssbo_barrier.buffer = dummy_ssbo.buffer();
+            ssbo_barrier.offset = 0;
+            ssbo_barrier.size = VK_WHOLE_SIZE;
+            vkCmdPipelineBarrier(cmd,
+                VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                0, 0, nullptr, 1, &ssbo_barrier, 0, nullptr);
+
             vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, e.pipeline);
             vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, e.layout,
                                     0, 1, &sets[i], 0, nullptr);
