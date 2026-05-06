@@ -353,18 +353,6 @@ public:
     void load_world(const WorldManifest& manifest);
     const WorldManifest& world_manifest() const { return world_manifest_; }
 
-    // Pre-warm every compute pipeline created in `init()` by recording one
-    // `vkCmdDispatch(1,1,1)` per pipeline against transient dummy descriptor
-    // sets, then `vkQueueWaitIdle`-ing the submit. On MoltenVK this forces
-    // each `MTLComputePipelineState` to be compiled at startup so the first
-    // real frame doesn't pay 25-35 s of mid-frame Metal compile latency
-    // (issue #399 root cause). Caller must invoke `save_pipeline_cache()`
-    // on its `VkContext` immediately after this returns so the now-warm
-    // cache is persisted before any later code can crash. All temporary
-    // resources (cmd buffer, descriptor pool, dummy buffers/images) are
-    // freed before this method returns. Safe to call once after `init()`.
-    void prewarm_pipelines(VkQueue queue, VkCommandPool cmd_pool);
-
     void shutdown(VmaAllocator allocator);
 
 private:
