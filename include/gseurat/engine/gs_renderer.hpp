@@ -353,6 +353,19 @@ public:
     void load_world(const WorldManifest& manifest);
     const WorldManifest& world_manifest() const { return world_manifest_; }
 
+    // Pre-warm every compute pipeline by submitting **one pipeline per
+    // command buffer**, with `vkQueueWaitIdle` between submissions. This
+    // forces MoltenVK to compile each `MTLComputePipelineState`
+    // sequentially, bounding peak compile-time memory pressure.
+    //
+    // The earlier all-in-one-cmd-buffer design (#409) compiled all 13
+    // shaders in parallel and crashed WindowServer on a Mac with limited
+    // free RAM (#410 reverted it).
+    //
+    // Soft-fail: any internal error logs and returns; the engine continues
+    // with cold caches and pays the first-frame compile cost mid-frame.
+    void prewarm_pipelines(VkQueue queue, VkCommandPool cmd_pool);
+
     void shutdown(VmaAllocator allocator);
 
 private:

@@ -627,6 +627,423 @@ void GsRenderer::create_compute_pipelines() {
                     tile_render_pipeline_layout_, tile_render_pipeline_);
 }
 
+// Pre-warm every compute pipeline created above by submitting a separate
+// `vkCmdDispatch(1,1,1)` per pipeline, each in its own command buffer with
+// a `vkQueueWaitIdle` between submissions. The first attempt at this in
+// PR #409 recorded all 13 dispatches into one command buffer; on MoltenVK
+// that triggered parallel `MTLComputePipelineState` compilation across all
+// shaders and crashed WindowServer on a Mac at modest free-memory levels
+// (panic kernel, #410 reverted it).
+//
+// Per-pipeline serialization forces Metal to compile one PSO per `WaitIdle`
+// boundary, dropping peak compile-time memory ~13×. Total prewarm time
+// grows from a few seconds (old parallel design) to ~30-60s on a cold
+// cache, but it is bounded and predictable instead of system-fatal.
+//
+// All resources are tracked at function scope so the cleanup lambda below
+// can destroy whatever was actually created on ANY exit path — including
+// the catch handler. Soft-fail: prewarm is an optimization, so any error
+// logs and returns; the engine continues with cold caches.
+void GsRenderer::prewarm_pipelines(VkQueue queue, VkCommandPool cmd_pool) {
+    using clock = std::chrono::steady_clock;
+    auto t_begin = clock::now();
+
+    Buffer dummy_ssbo;
+    Buffer dummy_ubo;
+    VkImage     color_img    = VK_NULL_HANDLE;
+    VmaAllocation color_alloc = VK_NULL_HANDLE;
+    VkImageView color_view   = VK_NULL_HANDLE;
+    VkImage     depth_img    = VK_NULL_HANDLE;
+    VmaAllocation depth_alloc = VK_NULL_HANDLE;
+    VkImageView depth_view   = VK_NULL_HANDLE;
+    VkDescriptorPool prewarm_pool = VK_NULL_HANDLE;
+    size_t pipeline_count = 0;
+
+    auto cleanup = [&]() {
+        if (prewarm_pool != VK_NULL_HANDLE)
+            vkDestroyDescriptorPool(device_, prewarm_pool, nullptr);
+        if (dummy_ssbo.buffer() != VK_NULL_HANDLE) dummy_ssbo.destroy(allocator_);
+        if (dummy_ubo.buffer()  != VK_NULL_HANDLE) dummy_ubo.destroy(allocator_);
+        if (color_view != VK_NULL_HANDLE) vkDestroyImageView(device_, color_view, nullptr);
+        if (color_img  != VK_NULL_HANDLE) vmaDestroyImage(allocator_, color_img, color_alloc);
+        if (depth_view != VK_NULL_HANDLE) vkDestroyImageView(device_, depth_view, nullptr);
+        if (depth_img  != VK_NULL_HANDLE) vmaDestroyImage(allocator_, depth_img, depth_alloc);
+    };
+
+    try {
+        // ── 1. Dummy buffers ──────────────────────────────────────────────
+        constexpr VkDeviceSize kDummySsboSize = 4096;
+        constexpr VkDeviceSize kDummyUboSize = sizeof(GsUniforms);
+        dummy_ssbo = Buffer::create_storage_gpu_only(allocator_, kDummySsboSize);
+        dummy_ubo  = Buffer::create_uniform(allocator_, kDummyUboSize);
+        std::memset(dummy_ubo.mapped(), 0, kDummyUboSize);
+
+        // ── 2. Dummy storage images ───────────────────────────────────────
+        auto make_dummy_image = [&](VkFormat format, VkImage& out_image,
+                                    VmaAllocation& out_alloc, VkImageView& out_view) {
+            VkImageCreateInfo ic{};
+            ic.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+            ic.imageType = VK_IMAGE_TYPE_2D;
+            ic.format = format;
+            ic.extent = {1, 1, 1};
+            ic.mipLevels = 1;
+            ic.arrayLayers = 1;
+            ic.samples = VK_SAMPLE_COUNT_1_BIT;
+            ic.tiling = VK_IMAGE_TILING_OPTIMAL;
+            ic.usage = VK_IMAGE_USAGE_STORAGE_BIT;
+            VmaAllocationCreateInfo ai{};
+            ai.usage = VMA_MEMORY_USAGE_GPU_ONLY;
+            if (vmaCreateImage(allocator_, &ic, &ai, &out_image, &out_alloc, nullptr) != VK_SUCCESS) {
+                throw std::runtime_error("[prewarm] Failed to create dummy storage image");
+            }
+            VkImageViewCreateInfo vi{};
+            vi.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+            vi.image = out_image;
+            vi.viewType = VK_IMAGE_VIEW_TYPE_2D;
+            vi.format = format;
+            vi.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+            if (vkCreateImageView(device_, &vi, nullptr, &out_view) != VK_SUCCESS) {
+                throw std::runtime_error("[prewarm] Failed to create dummy image view");
+            }
+        };
+        make_dummy_image(VK_FORMAT_R16G16B16A16_SFLOAT, color_img, color_alloc, color_view);
+        make_dummy_image(VK_FORMAT_R16_SFLOAT,           depth_img, depth_alloc, depth_view);
+
+        // ── 3. One-shot pre-pass: image transitions + SSBO zero-fill ──────
+        // Combined into a single short-lived cmd buffer so the actual prewarm
+        // loop below can submit one cmd-buffer-per-pipeline cleanly.
+        {
+            VkCommandBuffer pre_cmd = VK_NULL_HANDLE;
+            VkCommandBufferAllocateInfo cba{};
+            cba.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+            cba.commandPool = cmd_pool;
+            cba.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+            cba.commandBufferCount = 1;
+            if (vkAllocateCommandBuffers(device_, &cba, &pre_cmd) != VK_SUCCESS) {
+                throw std::runtime_error("[prewarm] Failed to allocate pre-pass cmd buffer");
+            }
+
+            VkCommandBufferBeginInfo cbb{};
+            cbb.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+            cbb.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+            if (vkBeginCommandBuffer(pre_cmd, &cbb) != VK_SUCCESS) {
+                vkFreeCommandBuffers(device_, cmd_pool, 1, &pre_cmd);
+                throw std::runtime_error("[prewarm] vkBeginCommandBuffer (pre) failed");
+            }
+
+            // Image transitions: UNDEFINED → GENERAL.
+            VkImageMemoryBarrier img_barriers[2]{};
+            for (int i = 0; i < 2; ++i) {
+                img_barriers[i].sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+                img_barriers[i].oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+                img_barriers[i].newLayout = VK_IMAGE_LAYOUT_GENERAL;
+                img_barriers[i].srcAccessMask = 0;
+                img_barriers[i].dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+                img_barriers[i].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                img_barriers[i].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                img_barriers[i].subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+            }
+            img_barriers[0].image = color_img;
+            img_barriers[1].image = depth_img;
+
+            vkCmdPipelineBarrier(pre_cmd,
+                VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+                VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                0, 0, nullptr, 0, nullptr, 2, img_barriers);
+
+            // Zero the dummy SSBO. Several shaders read control/count values
+            // before deciding how much work to do; uninitialized GPU-only
+            // allocations contain recycled VRAM and a 1×1 dispatch could
+            // OOB-read/write off bogus counts (Codex P1 from #409).
+            vkCmdFillBuffer(pre_cmd, dummy_ssbo.buffer(), 0, VK_WHOLE_SIZE, 0);
+            VkBufferMemoryBarrier fill_barrier{};
+            fill_barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+            fill_barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+            fill_barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+            fill_barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            fill_barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            fill_barrier.buffer = dummy_ssbo.buffer();
+            fill_barrier.offset = 0;
+            fill_barrier.size = VK_WHOLE_SIZE;
+            vkCmdPipelineBarrier(pre_cmd,
+                VK_PIPELINE_STAGE_TRANSFER_BIT,
+                VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                0, 0, nullptr, 1, &fill_barrier, 0, nullptr);
+
+            if (vkEndCommandBuffer(pre_cmd) != VK_SUCCESS) {
+                vkFreeCommandBuffers(device_, cmd_pool, 1, &pre_cmd);
+                throw std::runtime_error("[prewarm] vkEndCommandBuffer (pre) failed");
+            }
+            VkSubmitInfo sub{};
+            sub.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+            sub.commandBufferCount = 1;
+            sub.pCommandBuffers = &pre_cmd;
+            if (vkQueueSubmit(queue, 1, &sub, VK_NULL_HANDLE) != VK_SUCCESS) {
+                vkFreeCommandBuffers(device_, cmd_pool, 1, &pre_cmd);
+                throw std::runtime_error("[prewarm] vkQueueSubmit (pre) failed");
+            }
+            vkQueueWaitIdle(queue);
+            vkFreeCommandBuffers(device_, cmd_pool, 1, &pre_cmd);
+        }
+
+        // ── 4. Transient descriptor pool ──────────────────────────────────
+        VkDescriptorPoolSize pool_sizes[] = {
+            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 128},
+            {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 32},
+            {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,  16},
+        };
+        VkDescriptorPoolCreateInfo dpc{};
+        dpc.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+        dpc.maxSets = 32;
+        dpc.poolSizeCount = 3;
+        dpc.pPoolSizes = pool_sizes;
+        if (vkCreateDescriptorPool(device_, &dpc, nullptr, &prewarm_pool) != VK_SUCCESS) {
+            throw std::runtime_error("[prewarm] Failed to create descriptor pool");
+        }
+
+        // ── 5. Pipeline entries (mirrors create_compute_pipelines layout) ─
+        struct PipelineEntry {
+            const char* name;
+            VkPipeline pipeline;
+            VkPipelineLayout layout;
+            VkDescriptorSetLayout set_layout;
+            struct ImageBinding {
+                uint32_t binding;
+                VkImageView view;
+            };
+            std::array<ImageBinding, 3> image_bindings{};
+            uint32_t image_binding_count = 0;
+            std::array<uint32_t, 2> uniform_bindings{};
+            uint32_t uniform_binding_count = 0;
+            std::array<uint32_t, 8> storage_bindings{};
+            uint32_t storage_binding_count = 0;
+            uint32_t push_size = 0;
+        };
+
+        std::vector<PipelineEntry> entries;
+        entries.reserve(13);
+        auto add_entry = [&](const char* name, VkPipeline p, VkPipelineLayout pl,
+                             VkDescriptorSetLayout sl, uint32_t push_size,
+                             std::initializer_list<uint32_t> ssbo_bindings,
+                             std::initializer_list<uint32_t> ubo_bindings,
+                             std::initializer_list<std::pair<uint32_t, VkImageView>> img_bindings) {
+            PipelineEntry e{};
+            e.name = name;
+            e.pipeline = p;
+            e.layout = pl;
+            e.set_layout = sl;
+            e.push_size = push_size;
+            for (auto b : ssbo_bindings) e.storage_bindings[e.storage_binding_count++] = b;
+            for (auto b : ubo_bindings)  e.uniform_bindings[e.uniform_binding_count++] = b;
+            for (const auto& ib : img_bindings) {
+                e.image_bindings[e.image_binding_count++] = {ib.first, ib.second};
+            }
+            entries.push_back(e);
+        };
+
+        add_entry("gs_preprocess", preprocess_pipeline_, preprocess_pipeline_layout_,
+                  preprocess_layout_, sizeof(GsPreprocessPush),
+                  {0,1,2,4,5,6,8}, {3}, {});
+        add_entry("gs_sort", sort_pipeline_, sort_pipeline_layout_, sort_layout_, 8,
+                  {0}, {1}, {});
+        add_entry("gs_post_process", post_process_pipeline_, post_process_pipeline_layout_,
+                  post_process_layout_, 0,
+                  {}, {3},
+                  {{0u, color_view}, {1u, depth_view}, {2u, color_view}});
+        add_entry("pbd_solver", pbd_pipeline_, pbd_pipeline_layout_, pbd_layout_,
+                  sizeof(uint32_t),
+                  {0,1,2}, {3}, {});
+        add_entry("gs_merge", merge_pipeline_, merge_pipeline_layout_, merge_layout_, 0,
+                  {0,1,2,3}, {}, {});
+        add_entry("gs_tile_bin", tile_bin_pipeline_, tile_bin_pipeline_layout_,
+                  tile_bin_layout_, 4,
+                  {0,1,2,3,4,5}, {6}, {});
+        add_entry("gs_tile_count", tile_count_pipeline_, tile_bin_pipeline_layout_,
+                  tile_bin_layout_, 4,
+                  {0,1,2,3,4,5}, {6}, {});
+        add_entry("gs_tile_scan", tile_scan_pipeline_, tile_scan_pipeline_layout_,
+                  tile_scan_layout_, 12,
+                  {0,1,2,3}, {}, {});
+        add_entry("gs_tile_ranges", tile_ranges_pipeline_, tile_ranges_pipeline_layout_,
+                  tile_ranges_layout_, 8,
+                  {0,1,2}, {}, {});
+        add_entry("gs_tile_prepare_indirect", tile_indirect_pipeline_,
+                  tile_indirect_pipeline_layout_, tile_indirect_layout_, 4,
+                  {0,1}, {}, {});
+        add_entry("gs_onesweep_histogram", onesweep_hist_pipeline_,
+                  onesweep_hist_pipeline_layout_, onesweep_hist_layout_, 4,
+                  {0,1,2}, {}, {});
+        add_entry("gs_onesweep_scatter", onesweep_scatter_pipeline_,
+                  onesweep_scatter_pipeline_layout_, onesweep_scatter_layout_, 4,
+                  {0,1,2,3}, {}, {});
+        add_entry("gs_tile_render", tile_render_pipeline_, tile_render_pipeline_layout_,
+                  tile_render_layout_, 0,
+                  {0,1,4}, {2},
+                  {{3u, color_view}, {5u, depth_view}});
+
+        // Allocate one descriptor set per entry.
+        std::vector<VkDescriptorSetLayout> set_layouts;
+        set_layouts.reserve(entries.size());
+        for (const auto& e : entries) set_layouts.push_back(e.set_layout);
+
+        std::vector<VkDescriptorSet> sets(entries.size(), VK_NULL_HANDLE);
+        VkDescriptorSetAllocateInfo dai{};
+        dai.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+        dai.descriptorPool = prewarm_pool;
+        dai.descriptorSetCount = static_cast<uint32_t>(set_layouts.size());
+        dai.pSetLayouts = set_layouts.data();
+        if (vkAllocateDescriptorSets(device_, &dai, sets.data()) != VK_SUCCESS) {
+            throw std::runtime_error("[prewarm] Failed to allocate descriptor sets");
+        }
+
+        // Write valid bindings for each set.
+        {
+            std::vector<VkDescriptorBufferInfo> ssbo_infos;
+            std::vector<VkDescriptorBufferInfo> ubo_infos;
+            std::vector<VkDescriptorImageInfo>  img_infos;
+            ssbo_infos.reserve(128);
+            ubo_infos.reserve(32);
+            img_infos.reserve(32);
+
+            std::vector<VkWriteDescriptorSet> writes;
+            writes.reserve(128);
+
+            for (size_t i = 0; i < entries.size(); ++i) {
+                const auto& e = entries[i];
+                VkDescriptorSet set = sets[i];
+                for (uint32_t bi = 0; bi < e.storage_binding_count; ++bi) {
+                    ssbo_infos.push_back({dummy_ssbo.buffer(), 0, VK_WHOLE_SIZE});
+                    VkWriteDescriptorSet w{};
+                    w.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                    w.dstSet = set;
+                    w.dstBinding = e.storage_bindings[bi];
+                    w.descriptorCount = 1;
+                    w.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+                    w.pBufferInfo = &ssbo_infos.back();
+                    writes.push_back(w);
+                }
+                for (uint32_t bi = 0; bi < e.uniform_binding_count; ++bi) {
+                    ubo_infos.push_back({dummy_ubo.buffer(), 0, VK_WHOLE_SIZE});
+                    VkWriteDescriptorSet w{};
+                    w.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                    w.dstSet = set;
+                    w.dstBinding = e.uniform_bindings[bi];
+                    w.descriptorCount = 1;
+                    w.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+                    w.pBufferInfo = &ubo_infos.back();
+                    writes.push_back(w);
+                }
+                for (uint32_t bi = 0; bi < e.image_binding_count; ++bi) {
+                    img_infos.push_back({VK_NULL_HANDLE, e.image_bindings[bi].view,
+                                         VK_IMAGE_LAYOUT_GENERAL});
+                    VkWriteDescriptorSet w{};
+                    w.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                    w.dstSet = set;
+                    w.dstBinding = e.image_bindings[bi].binding;
+                    w.descriptorCount = 1;
+                    w.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+                    w.pImageInfo = &img_infos.back();
+                    writes.push_back(w);
+                }
+            }
+            vkUpdateDescriptorSets(device_, static_cast<uint32_t>(writes.size()),
+                                   writes.data(), 0, nullptr);
+        }
+
+        // ── 6. Per-pipeline submission loop ───────────────────────────────
+        // KEY DIFFERENCE FROM #409: each pipeline gets its OWN command
+        // buffer, submitted alone and `vkQueueWaitIdle`'d before moving on.
+        // The wait pins us to a single in-flight Metal compile at a time,
+        // so peak compile-memory pressure is 1 PSO not 13.
+        uint8_t push_scratch[16] = {0};
+        for (size_t i = 0; i < entries.size(); ++i) {
+            const auto& e = entries[i];
+
+            VkCommandBuffer cmd = VK_NULL_HANDLE;
+            VkCommandBufferAllocateInfo cba{};
+            cba.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+            cba.commandPool = cmd_pool;
+            cba.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+            cba.commandBufferCount = 1;
+            if (vkAllocateCommandBuffers(device_, &cba, &cmd) != VK_SUCCESS) {
+                throw std::runtime_error(std::string("[prewarm] alloc cmd failed for ") + e.name);
+            }
+
+            VkCommandBufferBeginInfo cbb{};
+            cbb.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+            cbb.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+            if (vkBeginCommandBuffer(cmd, &cbb) != VK_SUCCESS) {
+                vkFreeCommandBuffers(device_, cmd_pool, 1, &cmd);
+                throw std::runtime_error(std::string("[prewarm] begin cmd failed for ") + e.name);
+            }
+
+            // SHADER_WRITE -> SHADER_READ memory barrier on the shared dummy
+            // SSBO. `vkQueueWaitIdle` between submissions serializes execution
+            // (and compile pressure) but does NOT make shader writes from a
+            // prior submission visible to subsequent shader reads on the same
+            // queue — Vulkan's spec requires an explicit memory dependency
+            // (Codex P2 review on PR #411). Without this, dispatches like
+            // `gs_onesweep_scatter` could read pre-fill zeros for indirect
+            // args (e.g. max_wg=0) instead of `gs_tile_prepare_indirect`'s
+            // outputs, in turn potentially OOB-indexing into status buffers.
+            // The first iteration's barrier is a no-op (buffer is freshly
+            // zeroed), but unconditional issuance keeps the loop simple.
+            VkBufferMemoryBarrier ssbo_barrier{};
+            ssbo_barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+            ssbo_barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+            ssbo_barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+            ssbo_barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            ssbo_barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            ssbo_barrier.buffer = dummy_ssbo.buffer();
+            ssbo_barrier.offset = 0;
+            ssbo_barrier.size = VK_WHOLE_SIZE;
+            vkCmdPipelineBarrier(cmd,
+                VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                0, 0, nullptr, 1, &ssbo_barrier, 0, nullptr);
+
+            vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, e.pipeline);
+            vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, e.layout,
+                                    0, 1, &sets[i], 0, nullptr);
+            if (e.push_size > 0) {
+                vkCmdPushConstants(cmd, e.layout, VK_SHADER_STAGE_COMPUTE_BIT,
+                                   0, e.push_size, push_scratch);
+            }
+            vkCmdDispatch(cmd, 1, 1, 1);
+
+            if (vkEndCommandBuffer(cmd) != VK_SUCCESS) {
+                vkFreeCommandBuffers(device_, cmd_pool, 1, &cmd);
+                throw std::runtime_error(std::string("[prewarm] end cmd failed for ") + e.name);
+            }
+
+            VkSubmitInfo sub{};
+            sub.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+            sub.commandBufferCount = 1;
+            sub.pCommandBuffers = &cmd;
+            if (vkQueueSubmit(queue, 1, &sub, VK_NULL_HANDLE) != VK_SUCCESS) {
+                vkFreeCommandBuffers(device_, cmd_pool, 1, &cmd);
+                throw std::runtime_error(std::string("[prewarm] submit failed for ") + e.name);
+            }
+            vkQueueWaitIdle(queue);
+            vkFreeCommandBuffers(device_, cmd_pool, 1, &cmd);
+        }
+
+        pipeline_count = entries.size();
+    } catch (const std::exception& e) {
+        std::fprintf(stderr,
+            "[prewarm] aborted: %s — first run will pay full MoltenVK compile cost\n",
+            e.what());
+        cleanup();
+        return;
+    }
+
+    cleanup();
+    auto t_end = clock::now();
+    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(t_end - t_begin).count();
+    std::fprintf(stderr, "[prewarm] Compiled %zu pipelines in %lld ms (per-pipeline serialized)\n",
+                 pipeline_count, static_cast<long long>(ms));
+}
+
 void GsRenderer::init_streaming(const StreamingConfig& config) {
     streaming_config_ = config;
     slab_allocator_ = std::make_unique<SlabAllocator>(config.total_slabs(), config.slab_size_splats);

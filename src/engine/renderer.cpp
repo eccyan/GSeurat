@@ -212,6 +212,27 @@ void Renderer::init_gs(const GaussianCloud& cloud, uint32_t width, uint32_t heig
                           context_.allocator(), VK_NULL_HANDLE,
                           context_.pipeline_cache());
         gs_initialized_ = true;
+
+        // Opt-in pipeline pre-warm. Default OFF; user passes `--prewarm`
+        // to populate the on-disk cache (#408 persists it across runs).
+        // Per-pipeline serialization in `prewarm_pipelines` keeps Metal
+        // PSO compiles single-file so peak memory pressure is bounded.
+        // Always wrapped in try/catch — prewarm is an optimization, not a
+        // correctness requirement; soft-fail just costs first-frame stalls.
+        if (prewarm_at_startup_) {
+            try {
+                gs_renderer_.prewarm_pipelines(context_.graphics_queue(),
+                                               command_pool_.pool());
+            } catch (const std::exception& e) {
+                std::fprintf(stderr,
+                    "[prewarm] init_gs caught: %s — continuing with cold cache\n",
+                    e.what());
+            }
+            // Persist whatever warmed up immediately. The shutdown-time
+            // save (#408) still runs on normal exit; this is belt-and-
+            // suspenders for the regression-harness SIGTERM window.
+            context_.save_pipeline_cache();
+        }
     }
 
     // Pre-allocate streaming buffers once and stand up the transfer queue.

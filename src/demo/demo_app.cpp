@@ -36,6 +36,8 @@ void DemoApp::parse_args(int argc, char* argv[]) {
             viewer_mode_ = true;
         } else if (arg == "--deterministic") {
             deterministic_ = true;
+        } else if (arg == "--prewarm") {
+            prewarm_at_startup_ = true;
         }
     }
 }
@@ -104,6 +106,9 @@ void DemoApp::init_game_content() {
 
     renderer_.init(window_, resources_);
     feature_flags_.apply_platform_defaults(renderer_.context().is_apple_gpu());
+    // Propagate the `--prewarm` opt-in BEFORE init_gs runs (which is triggered
+    // later by the initial scene load in state_stack_.push). Off by default.
+    renderer_.set_prewarm_at_startup(prewarm_at_startup_);
     renderer_.init_font(font_atlas_, resources_);
     renderer_.init_particles(resources_);
     renderer_.init_shadows(resources_);
