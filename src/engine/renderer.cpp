@@ -274,8 +274,12 @@ void Renderer::init_gs(const GaussianCloud& cloud, uint32_t width, uint32_t heig
     output_width_ = width;
     output_height_ = height;
 
-    // Build spatial chunk grid for frustum-based streaming.
-    gs_chunk_grid_.build(cloud, 32.0f);
+    // Snapshot constant-size cloud metadata for demo-layer setup queries
+    // (camera framing, ground-plane derivation). The Gaussians themselves
+    // are NOT cached on the renderer — Option B per #396 §A: demos that
+    // need the splats re-parse from disk via `GaussianCloud::load_ply`.
+    gs_cloud_metadata_.bounds = cloud.bounds();
+    gs_cloud_metadata_.gaussian_count = cloud.count();
 
     // Scene-load semantics are REPLACE: drop every chunk from the previous
     // scene before queuing the new cloud. `load_cloud_async` itself is

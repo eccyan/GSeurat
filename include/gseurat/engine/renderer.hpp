@@ -3,7 +3,6 @@
 #include "gseurat/engine/buffer.hpp"
 #include "gseurat/engine/camera.hpp"
 #include "gseurat/engine/screenshot.hpp"
-#include "gseurat/engine/gs_chunk_grid.hpp"
 #include "gseurat/engine/gs_animator.hpp"
 #include "gseurat/engine/gs_particle.hpp"
 #include "gseurat/engine/gs_vfx.hpp"
@@ -11,6 +10,7 @@
 #include "gseurat/engine/command_pool.hpp"
 #include "gseurat/engine/descriptor.hpp"
 #include "gseurat/engine/font_atlas.hpp"
+#include "gseurat/engine/gaussian_cloud.hpp"
 #include "gseurat/engine/post_process.hpp"
 #include "gseurat/engine/render_pass.hpp"
 #include "gseurat/engine/resource_handle.hpp"
@@ -36,6 +36,16 @@ struct GLFWwindow;
 namespace gseurat {
 
 class ResourceManager;
+
+// Small constant-size summary of the loaded GS cloud. Replaces the demo-side
+// reads of `cloud_bounds()` / `chunk_count()` / `all_gaussians()` with a
+// side-channel that does NOT require the renderer to keep a CPU shadow of
+// the cloud. Populated at `init_gs` time directly from the just-parsed
+// `GaussianCloud`; thereafter the renderer holds no Gaussian data CPU-side.
+struct GsCloudMetadata {
+    AABB bounds;
+    uint32_t gaussian_count = 0;
+};
 
 class Renderer {
 public:
@@ -73,8 +83,7 @@ public:
         gs_view_ = view; gs_proj_ = proj;
     }
     GsRenderer& gs_renderer() { return gs_renderer_; }
-    GsChunkGrid& gs_chunk_grid() { return gs_chunk_grid_; }
-    const GsChunkGrid& gs_chunk_grid() const { return gs_chunk_grid_; }
+    const GsCloudMetadata& gs_cloud_metadata() const { return gs_cloud_metadata_; }
     // True once `init_gs` has loaded scene data into the chunk grid (CPU
     // side). Game logic that wants to read the cloud's gaussians or
     // spawn CPU entities (e.g. the procedural snes_hero in the demo's
@@ -321,11 +330,12 @@ private:
     uint32_t output_width_ = 320;
     uint32_t output_height_ = 240;
 
-    // Spatial chunk grid retained for one-time metadata queries (cloud
-    // bounds, all-Gaussians for bone identification). The per-frame
-    // frustum-culling consumers were removed in PR 1b; the field stays
-    // alive for demo-layer setup queries until those callers migrate.
-    GsChunkGrid gs_chunk_grid_;
+    // Constant-size cloud metadata: bounds + gaussian count. Replaces the
+    // CPU shadow buffer that used to live here as a `GsChunkGrid` field.
+    // Demos that need the actual splats re-parse from disk via
+    // `GsSceneLoader::parse` (Option B per #396 §A); the renderer is a
+    // pure GPU consumer once init_gs returns.
+    GsCloudMetadata gs_cloud_metadata_;
     std::vector<Gaussian> gs_dynamic_buffer_;
     std::vector<Gaussian> gs_pending_dynamics_;
     glm::mat4 gs_prev_view_{0.0f};  // for camera dirty detection

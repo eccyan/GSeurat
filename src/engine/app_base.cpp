@@ -184,7 +184,6 @@ void AppBase::main_loop() {
                                   ? snap.total_gaussians - snap.visible_gaussians : 0;
         snap.cull_ratio        = snap.total_gaussians > 0
                                   ? static_cast<float>(snap.culled_gaussians) / static_cast<float>(snap.total_gaussians) : 0.0f;
-        snap.total_chunks      = renderer_.gs_chunk_grid().chunk_count();
         snap.output_width      = gs.output_width();
         snap.output_height     = gs.output_height();
         // Last-frame raw GPU timing (per #399 instrumentation): single-frame

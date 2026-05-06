@@ -5,7 +5,6 @@
 
 #include "gseurat/engine/debug_dump.hpp"
 #include "gseurat/engine/gs_renderer.hpp"
-#include "gseurat/engine/gs_chunk_grid.hpp"
 #include "gseurat/engine/renderer.hpp"
 
 #include <cstdint>
@@ -30,9 +29,6 @@ public:
         // Culling
         uint32_t culled_gaussians   = 0;   // total - visible
         float    cull_ratio         = 0.0f; // culled / total
-
-        // Chunk grid
-        uint32_t total_chunks       = 0;
 
         // Output resolution
         uint32_t output_width       = 0;
@@ -102,9 +98,6 @@ public:
                     {"dynamic",  snap.dynamic_gaussians},
                     {"max_capacity", snap.max_capacity},
                     {"budget",   snap.gaussian_budget},
-                }},
-                {"chunks", {
-                    {"total",    snap.total_chunks},
                 }},
                 {"gpu_timing_ms", {
                     {"depth_sort",  snap.depth_sort_ms},

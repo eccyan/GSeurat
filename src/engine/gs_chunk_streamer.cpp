@@ -227,7 +227,7 @@ uint32_t GsChunkStreamer::assemble_active(const glm::mat4& view_proj,
             out.insert(out.end(), gaussians.begin(), gaussians.end());
             total += chunk_count;
         } else {
-            // Stride-based sampling (same pattern as GsChunkGrid::gather_lod)
+            // Stride-based sampling for budget-bound LOD decimation.
             uint32_t stride = (chunk_count + remaining - 1) / remaining;
             for (uint32_t j = 0; j < chunk_count && total < budget; j += stride) {
                 out.push_back(gaussians[j]);

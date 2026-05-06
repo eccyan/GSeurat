@@ -3,7 +3,6 @@
 #include "gseurat/engine/collision_gen.hpp"
 #include "gseurat/engine/game_state.hpp"
 #include "gseurat/engine/gaussian_cloud.hpp"
-#include "gseurat/engine/gs_chunk_streamer.hpp"
 #include "gseurat/engine/gs_parallax_camera.hpp"
 
 #include <glm/glm.hpp>
@@ -23,8 +22,6 @@ private:
     void update_camera(AppBase& app, float dt);
     void update_shadow_box_camera(AppBase& app, float dt);
     void reset_camera();
-    void enter_streaming_mode(AppBase& app);
-    void update_streaming(AppBase& app);
 
     // Orbit camera parameters
     float azimuth_ = 0.0f;          // horizontal angle (radians)
@@ -85,16 +82,10 @@ private:
     static constexpr float kOrbitSensitivity = 0.005f;
     static constexpr float kZoomSensitivity = 10.0f;
 
-    // Streaming mode (M key)
-    bool streaming_mode_ = false;
-    GsChunkStreamer chunk_streamer_;
-    std::string chunk_dir_;  // directory where chunk PLYs are written
-
     // Character demo (K key to toggle)
     bool character_demo_ = false;
     float character_anim_time_ = 0.0f;
     glm::vec3 character_origin_{0.0f};  // center of map where character stands
-    std::vector<Gaussian> map_gaussians_;  // original map data (before character merge)
     void spawn_test_character(AppBase& app);
     void despawn_test_character(AppBase& app);
     void update_character_pose(AppBase& app, float dt);
