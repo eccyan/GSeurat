@@ -869,6 +869,18 @@ void AppBase::load_gs_scene(const SceneData& scene_data, const GsSceneOptions& o
     populate_bone_animation_registry(bone_anim_registry_, world_, gs_terrain_);
 }
 
+void AppBase::load_pre_parsed_gs_scene(const SceneData& scene_data,
+                                       ParsedScene&& parsed,
+                                       const GsSceneOptions& opts) {
+    SceneLoadContext ctx{
+        gs_terrain_, scene_objects_, renderer_, scene_,
+        world_, component_registry_, resources_, feature_flags_
+    };
+    GsSceneLoader loader;
+    loader.finalize_on_main(ctx, scene_data, std::move(parsed), opts);
+    populate_bone_animation_registry(bone_anim_registry_, world_, gs_terrain_);
+}
+
 void AppBase::begin_async_load_gs_scene(SceneData scene_data,
                                         const GsSceneOptions& opts) {
     // Stash everything needed for the finalize phase, then kick the parse off

@@ -66,7 +66,24 @@ void IslandDemoState::on_enter(AppBase& app) {
     if (scene_path_.empty()) scene_path_ = resolve_asset_path("assets/scenes/seurat_island.json").string();
     app.feature_flags() = FeatureFlags::gs_viewer();
     app.feature_flags().apply_platform_defaults(app.renderer().context().is_apple_gpu());
-    app.init_scene(scene_path_);
+
+    // Load scene JSON sync (cheap) and set the active scene path. The heavy
+    // PLY parse happens in `GsSceneLoader::parse`, kicked on a worker thread
+    // immediately so it overlaps the rest of on_enter's main-thread setup
+    // work below (audio/camera zones, world manifest, collision grid,
+    // character manifest). `parse_future` is consumed just before the §A
+    // merge needs the cloud, so the worker has the maximum window to run.
+    //
+    // The GPU sequencing (init_gs → manual merge → 2nd init_gs) is preserved
+    // exactly as in the synchronous `init_scene` path — only the *parse*
+    // (PLY I/O) is moved to a worker. `std::launch::async` forces a real
+    // worker thread; deferred would silently downgrade to lazy execution
+    // and re-introduce the main-thread stall at `future.get()`.
+    auto scene_data = SceneLoader::load(scene_path_);
+    app.scene_objects().current_scene_path = scene_path_;
+    auto parse_future = std::async(std::launch::async, [&scene_data] {
+        return GsSceneLoader::parse(scene_data);
+    });
 
     // Collect audio zones from all scenes (populated below during scene loading)
     std::vector<SceneData::AudioZoneRef> scene_audio_zones;
@@ -147,8 +164,7 @@ void IslandDemoState::on_enter(AppBase& app) {
         }
     }
 
-    // Load collision grid from scene data
-    auto scene_data = SceneLoader::load(scene_path_);
+    // Load collision grid from scene data (already loaded at top of on_enter).
     if (scene_data.collision) {
         collision_grid_ = *scene_data.collision;
         // Grid origin is (0,0) — scene coordinates match grid coordinates
@@ -327,6 +343,24 @@ void IslandDemoState::on_enter(AppBase& app) {
                      next_zone_id, cz.triggers.size(), rail_count);
     }
 
+    // Block on the worker-thread parse and run finalize_on_main inline. This
+    // is the spot in main where `init_scene` (synchronous) ran before; the
+    // GPU sequencing of finalize → first init_gs → §A merge → second init_gs
+    // is preserved exactly. Only the PLY parse moved off the main thread.
+    //
+    // `base_gaussians` is a copy of the parsed cloud's gaussians, retained
+    // for the §A re-merge below (line ~390 reads `parsed.cloud.gaussians()`
+    // in main; here we just keep the vector around to avoid a redundant
+    // re-parse from disk).
+    ParsedScene parsed_scene = parse_future.get();
+    auto base_gaussians = parsed_scene.cloud.gaussians();
+    {
+        GsSceneOptions parse_opts;
+        parse_opts.add_default_light = true;
+        parse_opts.set_god_rays = true;
+        app.load_pre_parsed_gs_scene(scene_data, std::move(parsed_scene), parse_opts);
+    }
+
     // Determine player start position
     glm::vec3 player_pos = scene_data.player_position.vec();
     // If player_position is zero, place at map center
@@ -388,15 +422,10 @@ void IslandDemoState::on_enter(AppBase& app) {
 
     // Spawn player character (procedural humanoid)
     if (app.renderer().has_gs_cloud()) {
-        // Re-parse the scene's terrain + game-object cloud from disk
-        // (Option B per #396 §A — no CPU shadow on the renderer). The
-        // result equals what `init_scene` originally fed into the renderer.
-        std::vector<Gaussian> merged;
-        {
-            SceneData sd = SceneLoader::load(app.scene_objects().current_scene_path);
-            ParsedScene parsed = GsSceneLoader::parse(sd);
-            merged = parsed.cloud.gaussians();
-        }
+        // Reuse the parsed terrain + game-object cloud that was stashed in
+        // `base_gaussians` after the worker-thread parse — saves a redundant
+        // re-parse from disk that the synchronous main path used to do here.
+        std::vector<Gaussian> merged = std::move(base_gaussians);
 
         // Merge additional world chunks (northern forest) into the cloud
         // Since load_radius(558) covers all chunks, merge them at startup
