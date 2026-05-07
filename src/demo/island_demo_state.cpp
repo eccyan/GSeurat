@@ -386,215 +386,198 @@ void IslandDemoState::on_enter(AppBase& app) {
         }
     }
 
-    // Spawn player character (procedural humanoid)
+    // Phase A re-merge — async per #396 §A follow-up. Pre-allocate bone slots
+    // and ECS entities synchronously on the main thread (mutates gs_terrain()
+    // and the ECS world), then kick the heavy PLY-parse + per-Gaussian
+    // transform onto a worker thread. Completion is drained in `update()` via
+    // `poll_phase_a_remerge`, which calls `init_gs` + registers the player +
+    // arms the loading monitor on the main thread.
     if (app.renderer().has_gs_cloud()) {
-        // Re-parse the scene's terrain + game-object cloud from disk
-        // (Option B per #396 §A — no CPU shadow on the renderer). The
-        // result equals what `init_scene` originally fed into the renderer.
-        std::vector<Gaussian> merged;
-        {
-            SceneData sd = SceneLoader::load(app.scene_objects().current_scene_path);
-            ParsedScene parsed = GsSceneLoader::parse(sd);
-            merged = parsed.cloud.gaussians();
-        }
+        gs_scale_ = scene_data.gaussian_splat
+            ? scene_data.gaussian_splat->scale_multiplier : 1.0f;
 
-        // Merge additional world chunks (northern forest) into the cloud
-        // Since load_radius(558) covers all chunks, merge them at startup
-        // to avoid load_cloud_async replacing the entire cloud
+        std::vector<AsyncRemergeTask> tasks;
+
+        // Per-chunk bookkeeping. Bone-slot allocation, ECS entity creation,
+        // and pre-computation of NPC world positions stay on the main thread.
+        // The chunk PLY itself is read once here to derive the chunk AABB
+        // (needed for game-object grid→world conversion); the worker reloads
+        // it for the splat data. TODO: cache AABBs in the world manifest to
+        // avoid the double-load on NPC-bearing chunks.
         if (world_streamer_) {
             for (const auto& chunk : world_streamer_->manifest().chunks) {
-                if (chunk.grid == glm::ivec3(0, 0, 0)) continue;  // already loaded
+                if (chunk.grid == glm::ivec3(0, 0, 0)) continue;  // already in scene cloud
                 if (chunk.ply_file.empty()) continue;
-                auto resolved = resolve_asset_path(chunk.ply_file);
-                auto extra = GaussianCloud::load_ply(resolved.string());
-                if (!extra.empty()) {
-                    const auto& gs = extra.gaussians();
-                    merged.insert(merged.end(), gs.begin(), gs.end());
-                    std::fprintf(stderr, "[IslandDemo] Merged chunk [%d,%d,%d]: +%u Gaussians\n",
-                        chunk.grid.x, chunk.grid.y, chunk.grid.z, extra.count());
+                std::string chunk_ply = resolve_asset_path(chunk.ply_file).string();
 
-                    // Process game objects from the chunk's scene file
-                    if (!chunk.scene_file.empty()) {
-                        auto chunk_scene = SceneLoader::load(chunk.scene_file);
-                        AABB chunk_aabb = extra.bounds();
+                AsyncRemergeTask chunk_task;
+                chunk_task.kind = AsyncRemergeTask::Kind::Chunk;
+                chunk_task.ply_path = chunk_ply;
+                tasks.push_back(std::move(chunk_task));
 
-                        for (const auto& go : chunk_scene.game_objects) {
-                            // Convert grid position to world using chunk's AABB
-                            glm::vec3 world_pos = go.position.vec() + chunk_aabb.min;
+                if (chunk.scene_file.empty()) continue;
+                auto chunk_scene = SceneLoader::load(chunk.scene_file);
+                AABB chunk_aabb;
+                {
+                    auto extra_for_aabb = GaussianCloud::load_ply(chunk_ply);
+                    chunk_aabb = extra_for_aabb.bounds();
+                }
 
-                            // Snap Y to terrain via heightfield
-                            for (const auto& hf : collision_system_.heightfield_cache()) {
-                                auto h = sample_height(hf, world_pos.x, world_pos.z);
-                                if (h) { world_pos.y = *h; break; }
+                for (const auto& go : chunk_scene.game_objects) {
+                    glm::vec3 world_pos = go.position.vec() + chunk_aabb.min;
+                    for (const auto& hf : collision_system_.heightfield_cache()) {
+                        auto h = sample_height(hf, world_pos.x, world_pos.z);
+                        if (h) { world_pos.y = *h; break; }
+                    }
+
+                    if (!go.ply_file.empty() && !go.components.is_null()
+                        && go.components.contains("BoneAnimated")) {
+                        const auto& ba_json = go.components["BoneAnimated"];
+                        std::string manifest_path = ba_json.value("manifest", std::string{});
+
+                        uint32_t bone_count = 0;
+                        {
+                            std::ifstream mf(manifest_path);
+                            if (mf.is_open()) {
+                                auto mj = nlohmann::json::parse(mf, nullptr, false);
+                                if (!mj.is_discarded() && mj.contains("bones"))
+                                    bone_count = static_cast<uint32_t>(mj["bones"].size());
                             }
+                        }
 
-                            // Merge BoneAnimated PLY with bone index allocation
-                            if (!go.ply_file.empty() && !go.components.is_null()
-                                && go.components.contains("BoneAnimated")) {
-                                auto npc_cloud = GaussianCloud::load_ply(go.ply_file);
-                                if (!npc_cloud.empty()) {
-                                    const auto& ba_json = go.components["BoneAnimated"];
-                                    std::string manifest_path = ba_json.value("manifest", std::string{});
+                        uint32_t first_bone = app.gs_terrain().bone_slot_counter;
+                        if (bone_count > 0 && first_bone + bone_count <= 32) {
+                            app.gs_terrain().bone_slot_counter += bone_count;
 
-                                    // Get bone count from manifest JSON
-                                    uint32_t bone_count = 0;
-                                    {
-                                        std::ifstream mf(manifest_path);
-                                        if (mf.is_open()) {
-                                            auto mj = nlohmann::json::parse(mf, nullptr, false);
-                                            if (!mj.is_discarded() && mj.contains("bones"))
-                                                bone_count = static_cast<uint32_t>(mj["bones"].size());
-                                        }
-                                    }
+                            GsTerrainState::BoneAllocation alloc;
+                            alloc.manifest_path = manifest_path;
+                            alloc.default_clip = ba_json.value("default_clip", std::string{"idle"});
+                            alloc.first_bone_index = first_bone;
+                            alloc.bone_count = bone_count;
+                            alloc.char_scale = go.scale;
+                            alloc.gs_scale_multiplier = gs_scale_;
+                            alloc.world_pos = world_pos;
+                            alloc.game_object_index = 9999;  // not from main scene
+                            app.gs_terrain().bone_allocations.push_back(alloc);
 
-                                    uint32_t first_bone = app.gs_terrain().bone_slot_counter;
-                                    if (bone_count > 0 && first_bone + bone_count <= 32) {
-                                        app.gs_terrain().bone_slot_counter += bone_count;
+                            AsyncRemergeTask npc_task;
+                            npc_task.kind = AsyncRemergeTask::Kind::Npc;
+                            npc_task.ply_path = go.ply_file;
+                            npc_task.npc_world_pos = world_pos;
+                            npc_task.npc_rotation = go.rotation;
+                            npc_task.npc_scale = go.scale;
+                            npc_task.npc_first_bone = first_bone;
+                            tasks.push_back(std::move(npc_task));
 
-                                        // Store allocation for registry population later
-                                        GsTerrainState::BoneAllocation alloc;
-                                        alloc.manifest_path = manifest_path;
-                                        alloc.default_clip = ba_json.value("default_clip", std::string{"idle"});
-                                        alloc.first_bone_index = first_bone;
-                                        alloc.bone_count = bone_count;
-                                        alloc.char_scale = go.scale;
-                                        alloc.gs_scale_multiplier = gs_scale_;
-                                        alloc.world_pos = world_pos;
-                                        alloc.game_object_index = 9999;  // not from main scene
-                                        app.gs_terrain().bone_allocations.push_back(alloc);
+                            std::fprintf(stderr,
+                                "[IslandDemo] Chunk NPC '%s': bones %u-%u at (%.1f, %.1f, %.1f)\n",
+                                go.id.c_str(), first_bone, first_bone + bone_count - 1,
+                                world_pos.x, world_pos.y, world_pos.z);
+                        }
+                    }
 
-                                        // Use same transform as scene loader: translate, rotate, scale, center
-                                        glm::vec3 local_min(1e9f), local_max(-1e9f);
-                                        for (const auto& g : npc_cloud.gaussians()) {
-                                            local_min = glm::min(local_min, g.position);
-                                            local_max = glm::max(local_max, g.position);
-                                        }
-                                        glm::vec3 local_center = (local_min + local_max) * 0.5f;
-                                        local_center.y = local_min.y;
-
-                                        auto xform = glm::translate(glm::mat4(1.0f), world_pos);
-                                        xform = glm::rotate(xform, glm::radians(go.rotation.x), {1,0,0});
-                                        xform = glm::rotate(xform, glm::radians(go.rotation.y), {0,1,0});
-                                        xform = glm::rotate(xform, glm::radians(go.rotation.z), {0,0,1});
-                                        xform = glm::scale(xform, glm::vec3(go.scale));
-                                        xform = glm::translate(xform, -local_center);
-                                        glm::mat3 rot_mat(xform);
-
-                                        for (const auto& g : npc_cloud.gaussians()) {
-                                            Gaussian ng = g;
-                                            ng.position = glm::vec3(xform * glm::vec4(ng.position, 1.0f));
-                                            ng.scale *= go.scale;
-                                            ng.bone_index = first_bone + ng.bone_index;
-                                            ng.opacity = std::min(1.0f, ng.opacity * 1.3f);
-                                            // Rotate Gaussian orientation quaternion
-                                            glm::quat rot_q(rot_mat);
-                                            glm::quat orig_q(ng.rotation[0], ng.rotation[1], ng.rotation[2], ng.rotation[3]);
-                                            glm::quat new_q = rot_q * orig_q;
-                                            ng.rotation = {new_q.w, new_q.x, new_q.y, new_q.z};
-                                            merged.push_back(ng);
-                                        }
-
-                                        std::fprintf(stderr, "[IslandDemo] Chunk NPC '%s': bones %u-%u at (%.1f, %.1f, %.1f)\n",
-                                            go.id.c_str(), first_bone, first_bone + bone_count - 1,
-                                            world_pos.x, world_pos.y, world_pos.z);
-                                    }
-                                }
-                            }
-
-                            // Create ECS entity for game objects with components
-                            if (!go.components.is_null() && !go.components.empty()) {
-                                auto entity = app.world().create();
-                                app.world().add<ecs::Transform>(entity,
-                                    {coord::WorldPos(world_pos), {go.scale, go.scale}});
-                                for (auto& [name, data] : go.components.items()) {
-                                    app.component_registry().attach(app.world(), entity, name, data);
-                                }
-                            }
+                    if (!go.components.is_null() && !go.components.empty()) {
+                        auto entity = app.world().create();
+                        app.world().add<ecs::Transform>(entity,
+                            {coord::WorldPos(world_pos), {go.scale, go.scale}});
+                        for (auto& [name, data] : go.components.items()) {
+                            app.component_registry().attach(app.world(), entity, name, data);
                         }
                     }
                 }
             }
         }
 
-        uint32_t map_count = static_cast<uint32_t>(merged.size());
-
-        // Load mesh-converted character model
-        // kCharScale defined as static constexpr on the class
-        const float gs_scale = scene_data.gaussian_splat
-            ? scene_data.gaussian_splat->scale_multiplier : 1.0f;
-        gs_scale_ = gs_scale;
-        auto char_cloud = GaussianCloud::load_ply("assets/characters/snes_hero/snes_hero.ply");
-        if (!char_cloud.empty()) {
-            // Scale, rotate 180° (face away from camera), and position at spawn
-            const auto& char_gs = char_cloud.gaussians();
-            for (const auto& g : char_gs) {
-                Gaussian cg = g;
-                // Rotate 180° around Y: (x,y,z) → (-x, y, -z)
-                glm::vec3 rotated(-cg.position.x, cg.position.y, -cg.position.z);
-                glm::vec3 offset = rotated * kCharScale;
-                offset.y *= gs_scale;
-                cg.position = player_pos + offset + glm::vec3(0, 2.0f, 0);
-                cg.scale *= kCharScale;
-                cg.opacity = std::min(1.0f, cg.opacity * 1.3f);
-                // Offset bone_index by +1 — shader skips bone_index=0 (terrain),
-                // and update_walk_animation writes character bones at [i + 1]
-                cg.bone_index = cg.bone_index + 1;
-                merged.push_back(cg);
-            }
+        // Player character. Stash main-thread state for the completion
+        // handler; the merge itself runs on the worker.
+        pending_player_char_data_ = std::move(player_char_data);
+        pending_player_spawn_pos_ = player_pos;
+        {
+            AsyncRemergeTask player_task;
+            player_task.kind = AsyncRemergeTask::Kind::Player;
+            player_task.ply_path = "assets/characters/snes_hero/snes_hero.ply";
+            player_task.player_pos = player_pos;
+            player_task.player_gs_scale = gs_scale_;
+            player_task.player_char_scale = kCharScale;
+            tasks.push_back(std::move(player_task));
         }
 
-        uint32_t char_count = static_cast<uint32_t>(merged.size()) - map_count;
-        auto cloud = GaussianCloud::from_gaussians(std::move(merged));
+        std::string scene_path = app.scene_objects().current_scene_path;
+        phase_a_remerge_future_ = std::async(std::launch::async,
+            [scene_path, tasks = std::move(tasks)]() -> std::vector<Gaussian> {
+                SceneData sd = SceneLoader::load(scene_path);
+                ParsedScene parsed = GsSceneLoader::parse(sd);
+                std::vector<Gaussian> merged = parsed.cloud.gaussians();
 
-        uint32_t gs_w = app.renderer().gs_renderer().output_width();
-        uint32_t gs_h = app.renderer().gs_renderer().output_height();
-        if (gs_w == 0) { gs_w = 320; gs_h = 240; }
-        app.renderer().init_gs(cloud, gs_w, gs_h);
+                for (const auto& task : tasks) {
+                    GaussianCloud cloud;
+                    try {
+                        cloud = GaussianCloud::load_ply(task.ply_path);
+                    } catch (const std::exception& e) {
+                        std::fprintf(stderr,
+                            "[async-remerge] failed to load %s: %s\n",
+                            task.ply_path.c_str(), e.what());
+                        continue;
+                    }
+                    if (cloud.empty()) continue;
 
-        character_spawn_pos_ = player_pos;
-        character_origin_ = player_pos;
-        character_spawned_ = true;
+                    switch (task.kind) {
+                    case AsyncRemergeTask::Kind::Chunk: {
+                        const auto& gs = cloud.gaussians();
+                        merged.insert(merged.end(), gs.begin(), gs.end());
+                        break;
+                    }
+                    case AsyncRemergeTask::Kind::Npc: {
+                        glm::vec3 local_min(1e9f), local_max(-1e9f);
+                        for (const auto& g : cloud.gaussians()) {
+                            local_min = glm::min(local_min, g.position);
+                            local_max = glm::max(local_max, g.position);
+                        }
+                        glm::vec3 local_center = (local_min + local_max) * 0.5f;
+                        local_center.y = local_min.y;
 
-        // Re-populate registry with all bone allocations (main scene + chunks)
-        populate_bone_animation_registry(app.bone_animation_registry(), app.world(), app.gs_terrain());
+                        auto xform = glm::translate(glm::mat4(1.0f), task.npc_world_pos);
+                        xform = glm::rotate(xform, glm::radians(task.npc_rotation.x), {1,0,0});
+                        xform = glm::rotate(xform, glm::radians(task.npc_rotation.y), {0,1,0});
+                        xform = glm::rotate(xform, glm::radians(task.npc_rotation.z), {0,0,1});
+                        xform = glm::scale(xform, glm::vec3(task.npc_scale));
+                        xform = glm::translate(xform, -local_center);
+                        glm::mat3 rot_mat(xform);
+                        glm::quat rot_q(rot_mat);
 
-        // Register player in BoneAnimationRegistry
-        if (player_char_data) {
-            gseurat::BoneAnimationEntry player_entry;
-            player_entry.manifest_path = "assets/characters/snes_hero/snes_hero.manifest.json";
-            player_entry.default_clip = "idle";
-            player_entry.first_bone_index = 1;
-            uint32_t player_bone_count = static_cast<uint32_t>(player_char_data->bones.size());
-            player_entry.bone_count = player_bone_count;
-            player_entry.char_scale = kCharScale;
-            player_entry.gs_scale_multiplier = gs_scale_;
-            player_entry.spawn_pos = player_pos;
-            player_entry.current_pos = player_pos;
-            player_entry.character_data = std::move(player_char_data);
-            player_entry.anim_player = std::make_unique<gseurat::BoneAnimationPlayer>(
-                *player_entry.character_data);
-            player_entry.anim_sm = std::make_unique<gseurat::BoneAnimationStateMachine>(
-                *player_entry.anim_player);
-            for (const auto& clip : player_entry.character_data->clips) {
-                player_entry.anim_sm->add_state(clip.name, clip.name);
-            }
-            player_entry.anim_sm->set_state("idle");
-            player_entry.initialized = true;
-            player_registry_id_ = app.bone_animation_registry().add(
-                player_entity_, std::move(player_entry));
-            app.world().add<gseurat::BoneAnimatedTag>(player_entity_,
-                {player_registry_id_});
-
-            // Set bone 0 override for terrain sway
-            app.set_bone_pre_upload_hook([this](glm::mat4* bones, uint32_t) {
-                float sway_y = std::sin(env_anim_time_ * 1.0f) * 0.05f;
-                float sway_x = std::sin(env_anim_time_ * 0.6f) * 0.02f;
-                bones[0] = glm::translate(glm::mat4(1.0f),
-                    glm::vec3(sway_x, sway_y, 0.0f));
+                        for (const auto& g : cloud.gaussians()) {
+                            Gaussian ng = g;
+                            ng.position = glm::vec3(xform * glm::vec4(ng.position, 1.0f));
+                            ng.scale *= task.npc_scale;
+                            ng.bone_index = task.npc_first_bone + ng.bone_index;
+                            ng.opacity = std::min(1.0f, ng.opacity * 1.3f);
+                            glm::quat orig_q(ng.rotation[0], ng.rotation[1], ng.rotation[2], ng.rotation[3]);
+                            glm::quat new_q = rot_q * orig_q;
+                            ng.rotation = {new_q.w, new_q.x, new_q.y, new_q.z};
+                            merged.push_back(ng);
+                        }
+                        break;
+                    }
+                    case AsyncRemergeTask::Kind::Player: {
+                        for (const auto& g : cloud.gaussians()) {
+                            Gaussian cg = g;
+                            // Rotate 180° around Y, then offset + scale + place at spawn.
+                            glm::vec3 rotated(-cg.position.x, cg.position.y, -cg.position.z);
+                            glm::vec3 offset = rotated * task.player_char_scale;
+                            offset.y *= task.player_gs_scale;
+                            cg.position = task.player_pos + offset + glm::vec3(0, 2.0f, 0);
+                            cg.scale *= task.player_char_scale;
+                            cg.opacity = std::min(1.0f, cg.opacity * 1.3f);
+                            // Shader skips bone_index=0 (terrain); character bones live at [i+1].
+                            cg.bone_index = cg.bone_index + 1;
+                            merged.push_back(cg);
+                        }
+                        break;
+                    }
+                    }
+                }
+                return merged;
             });
-        }
-
-        (void)char_count;
     }
 
     // Re-upload PBD elements — the second init_gs() above (for character merge)
@@ -787,8 +770,125 @@ void IslandDemoState::on_enter(AppBase& app) {
     // Scene loaded — ready for play
 }
 
+void IslandDemoState::poll_phase_a_remerge(AppBase& app) {
+    if (!phase_a_remerge_future_ || !phase_a_remerge_future_->valid()) return;
+    if (phase_a_remerge_future_->wait_for(std::chrono::seconds(0))
+        != std::future_status::ready) return;
+
+    std::vector<Gaussian> merged;
+    try {
+        merged = phase_a_remerge_future_->get();
+    } catch (const std::exception& e) {
+        std::fprintf(stderr, "[IslandDemo] Phase A async re-merge FAILED: %s\n", e.what());
+        phase_a_remerge_future_.reset();
+        pending_player_char_data_.reset();
+        return;
+    }
+    phase_a_remerge_future_.reset();
+    finalize_phase_a_remerge(app, std::move(merged));
+}
+
+void IslandDemoState::finalize_phase_a_remerge(AppBase& app, std::vector<Gaussian>&& merged) {
+    // Push the merged cloud to the renderer. This replaces the scene's
+    // primary cloud (uploaded by `init_scene`) with the full re-merge —
+    // terrain + game-objects + world chunks + chunk NPCs + player.
+    auto cloud = GaussianCloud::from_gaussians(std::move(merged));
+    uint32_t gs_w = app.renderer().gs_renderer().output_width();
+    uint32_t gs_h = app.renderer().gs_renderer().output_height();
+    if (gs_w == 0) { gs_w = 320; gs_h = 240; }
+    app.renderer().init_gs(cloud, gs_w, gs_h);
+
+    // Hand the new transfer handles to the loading monitor so the loading
+    // overlay covers the second VRAM upload (without this, the overlay
+    // disappears as soon as the FIRST upload — the scene cloud alone —
+    // completes, exposing a brief frame of partial geometry).
+    app.loading_monitor().begin_load(app.renderer().take_pending_load_handles());
+
+    character_spawn_pos_ = pending_player_spawn_pos_;
+    character_origin_    = pending_player_spawn_pos_;
+    character_spawned_   = true;
+
+    // Re-upload PBD elements — init_gs above resets pbd_count_ to 0,
+    // wiping the upload from `init_scene → load_gs_scene`.
+    {
+        const auto& anchors = app.gs_terrain().pbd_anchors;
+        const auto& configs = app.gs_terrain().pbd_configs;
+        if (!anchors.empty() && anchors.size() == configs.size()) {
+            uint32_t count = static_cast<uint32_t>(anchors.size());
+            std::vector<PbdPhysicsState> states(count);
+            std::vector<PbdElementParams> params(count);
+            for (uint32_t i = 0; i < count; ++i) {
+                const auto& cfg = configs[i];
+                float inv_mass = (cfg.mode == "physics" && cfg.pinned) ? 0.0f : 1.0f;
+                states[i].position = glm::vec4(anchors[i], inv_mass);
+                states[i].prev_position = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+                states[i].velocity = glm::vec4(0.0f);
+                states[i].params = glm::vec4(cfg.sway_threshold, 0.0f, 0.0f, 0.0f);
+                params[i].gravity = glm::vec4(cfg.gravity, cfg.damping);
+                params[i].wind = glm::vec4(cfg.wind_direction, cfg.wind_strength);
+                params[i].dynamics = glm::vec4(cfg.wind_frequency, cfg.ground_y, cfg.bounce, 0.0f);
+            }
+            app.renderer().gs_renderer().upload_pbd_elements(states.data(), params.data(), count);
+        }
+    }
+
+    // Re-populate registry with all bone allocations (main scene + chunks).
+    populate_bone_animation_registry(app.bone_animation_registry(), app.world(), app.gs_terrain());
+
+    // Register player in BoneAnimationRegistry. `pending_player_char_data_`
+    // was stashed during on_enter so we could move it here without a
+    // second manifest load.
+    if (pending_player_char_data_) {
+        gseurat::BoneAnimationEntry player_entry;
+        player_entry.manifest_path = "assets/characters/snes_hero/snes_hero.manifest.json";
+        player_entry.default_clip = "idle";
+        player_entry.first_bone_index = 1;
+        uint32_t player_bone_count = static_cast<uint32_t>(pending_player_char_data_->bones.size());
+        player_entry.bone_count = player_bone_count;
+        player_entry.char_scale = kCharScale;
+        player_entry.gs_scale_multiplier = gs_scale_;
+        player_entry.spawn_pos = pending_player_spawn_pos_;
+        player_entry.current_pos = pending_player_spawn_pos_;
+        player_entry.character_data = std::move(pending_player_char_data_);
+        player_entry.anim_player = std::make_unique<gseurat::BoneAnimationPlayer>(
+            *player_entry.character_data);
+        player_entry.anim_sm = std::make_unique<gseurat::BoneAnimationStateMachine>(
+            *player_entry.anim_player);
+        for (const auto& clip : player_entry.character_data->clips) {
+            player_entry.anim_sm->add_state(clip.name, clip.name);
+        }
+        player_entry.anim_sm->set_state("idle");
+        player_entry.initialized = true;
+        player_registry_id_ = app.bone_animation_registry().add(
+            player_entity_, std::move(player_entry));
+        app.world().add<gseurat::BoneAnimatedTag>(player_entity_,
+            {player_registry_id_});
+
+        // Set bone 0 override for terrain sway.
+        app.set_bone_pre_upload_hook([this](glm::mat4* bones, uint32_t) {
+            float sway_y = std::sin(env_anim_time_ * 1.0f) * 0.05f;
+            float sway_x = std::sin(env_anim_time_ * 0.6f) * 0.02f;
+            bones[0] = glm::translate(glm::mat4(1.0f),
+                glm::vec3(sway_x, sway_y, 0.0f));
+        });
+    }
+    pending_player_char_data_.reset();
+
+    std::fprintf(stderr, "[IslandDemo] Phase A async re-merge: complete (%u Gaussians)\n",
+                 cloud.count());
+}
+
 void IslandDemoState::on_exit(AppBase& app) {
     ShutdownAuditor::report();
+
+    // Drain a still-in-flight Phase A re-merge future. The future's
+    // destructor would block, but doing it here makes the wait explicit
+    // and adjacent to other shutdown work.
+    if (phase_a_remerge_future_ && phase_a_remerge_future_->valid()) {
+        (void)phase_a_remerge_future_->wait();
+        phase_a_remerge_future_.reset();
+    }
+    pending_player_char_data_.reset();
 
     // Release camera zone system
     app.command_dispatcher().context().camera_zone_system = nullptr;
@@ -827,6 +927,10 @@ void IslandDemoState::update(AppBase& app, float dt) {
         pending_portal_post_load_ = {};
         fn(app);
     }
+
+    // Drain Phase A async re-merge worker. Idempotent — does nothing if
+    // no future is in flight, or if the future hasn't completed yet.
+    poll_phase_a_remerge(app);
 
     // Skip keyboard shortcuts when dev overlay has focus
     if (!app.dev_overlay().wants_keyboard()) {
@@ -2117,6 +2221,15 @@ void IslandDemoState::perform_portal_transition(AppBase& app,
             if (p.future.valid()) (void)p.future.wait();
         }
         pending_chunk_parses_.clear();
+    }
+
+    // Same hazard for the Phase A async re-merge future — a portal that
+    // fires before the initial re-merge completes would otherwise see its
+    // result land on top of the destination scene. Drop it.
+    if (phase_a_remerge_future_ && phase_a_remerge_future_->valid()) {
+        (void)phase_a_remerge_future_->wait();
+        phase_a_remerge_future_.reset();
+        pending_player_char_data_.reset();
     }
 
     // Wait for GPU to finish before destroying resources. Then explicitly

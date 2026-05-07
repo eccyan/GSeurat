@@ -8,6 +8,7 @@
 #include "gseurat/engine/gaussian_cloud.hpp"
 #include "gseurat/engine/types.hpp"
 #include "gseurat/engine/world_streamer.hpp"
+#include "gseurat/character/character_manifest.hpp"
 #include "gseurat/engine/ecs/types.hpp"
 
 #include <glm/glm.hpp>
@@ -18,6 +19,7 @@
 #include <functional>
 #include <future>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -138,6 +140,39 @@ private:
                                   const std::string& ply_path,
                                   uint64_t frame_index);
     void drain_async_chunk_loads(AppBase& app);
+
+    // Phase A async re-merge worker (#396 §A follow-up). Replaces the synchronous
+    // re-merge that ran inside `on_enter` (terrain + world chunks + chunk NPCs +
+    // player character) and showed up as a 100-300ms+ main-thread stall after
+    // every initial scene load. Bookkeeping that mutates ECS / `gs_terrain()` /
+    // bone allocations stays on the main thread inside `on_enter`; only PLY
+    // parsing and per-Gaussian transformations move to the worker.
+    //
+    // Each `AsyncRemergeTask` is a tagged record describing one PLY to load
+    // and how to transform its Gaussians before appending to the merged
+    // cloud. Chunk PLYs are appended raw; NPC and player tasks carry the
+    // pre-computed transform parameters captured on the main thread.
+    struct AsyncRemergeTask {
+        enum class Kind { Chunk, Npc, Player };
+        Kind kind = Kind::Chunk;
+        std::string ply_path;
+        // NPC fields (Kind::Npc)
+        glm::vec3 npc_world_pos{0.0f};
+        glm::vec3 npc_rotation{0.0f};
+        float npc_scale = 1.0f;
+        uint32_t npc_first_bone = 0;
+        // Player fields (Kind::Player)
+        glm::vec3 player_pos{0.0f};
+        float player_gs_scale = 1.0f;
+        float player_char_scale = 1.0f;
+    };
+    std::optional<std::future<std::vector<Gaussian>>> phase_a_remerge_future_;
+    // Stashed during `on_enter` for use in the completion handler that runs
+    // out of `update()`. Cleared once the player is registered.
+    std::unique_ptr<CharacterData> pending_player_char_data_;
+    glm::vec3 pending_player_spawn_pos_{0.0f};
+    void poll_phase_a_remerge(AppBase& app);
+    void finalize_phase_a_remerge(AppBase& app, std::vector<Gaussian>&& merged);
 
     // Orbit camera (third-person around player)
     float azimuth_ = 0.0f;
