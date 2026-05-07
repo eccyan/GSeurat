@@ -652,7 +652,8 @@ void GsRenderer::create_compute_pipelines() {
 // can destroy whatever was actually created on ANY exit path — including
 // the catch handler. Soft-fail: prewarm is an optimization, so any error
 // logs and returns; the engine continues with cold caches.
-void GsRenderer::prewarm_pipelines(VkQueue queue, VkCommandPool cmd_pool) {
+void GsRenderer::prewarm_pipelines(VkQueue queue, VkCommandPool cmd_pool,
+                                   std::function<void()> pump_events) {
     using clock = std::chrono::steady_clock;
     auto t_begin = clock::now();
 
@@ -1049,6 +1050,13 @@ void GsRenderer::prewarm_pipelines(VkQueue queue, VkCommandPool cmd_pool) {
             vkQueueWaitIdle(queue);
             vkFreeCommandBuffers(device_, cmd_pool, 1, &cmd);
 
+            // Drain queued window events immediately after the WaitIdle stall
+            // (which can be multi-second on a cold MoltenVK compile). Without
+            // this the demo window appears frozen for the entire prewarm pass
+            // — focus changes and expose events sit unprocessed until the
+            // main loop resumes polling.
+            if (pump_events) pump_events();
+
             auto pipeline_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
                 clock::now() - t_pipeline_begin).count();
             std::fprintf(stderr,
@@ -1057,10 +1065,16 @@ void GsRenderer::prewarm_pipelines(VkQueue queue, VkCommandPool cmd_pool) {
                 static_cast<long long>(pipeline_ms));
 
             // Yield to the OS so WindowServer can checkin with its watchdog
-            // (see comment above the loop). Skip the yield after the last
-            // pipeline — caller is about to return and resume the main loop.
+            // (see comment above the loop), while continuing to drain window
+            // events on a sub-tick cadence so the window stays interactive.
+            // Skip the yield after the last pipeline — caller is about to
+            // return and resume the main loop.
             if (i + 1 < entries.size()) {
-                std::this_thread::sleep_for(std::chrono::milliseconds(kYieldMs));
+                const auto deadline = clock::now() + std::chrono::milliseconds(kYieldMs);
+                do {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+                    if (pump_events) pump_events();
+                } while (clock::now() < deadline);
             }
         }
 

@@ -17,6 +17,7 @@
 #include <atomic>
 #include <cstdint>
 #include <deque>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <thread>
@@ -364,7 +365,16 @@ public:
     //
     // Soft-fail: any internal error logs and returns; the engine continues
     // with cold caches and pays the first-frame compile cost mid-frame.
-    void prewarm_pipelines(VkQueue queue, VkCommandPool cmd_pool);
+    //
+    // `pump_events` (optional) is invoked after each pipeline's
+    // `vkQueueWaitIdle` and inside the inter-pipeline yield loop. It lets
+    // the caller drain the windowing system's event queue (typically
+    // `glfwPollEvents`) without dragging GLFW into the engine layer.
+    // Without this, focus changes / window-damage events sit unprocessed
+    // for the multi-second cold-cache prewarm pass and the demo window
+    // appears frozen until prewarm completes.
+    void prewarm_pipelines(VkQueue queue, VkCommandPool cmd_pool,
+                           std::function<void()> pump_events = {});
 
     void shutdown(VmaAllocator allocator);
 
