@@ -221,8 +221,11 @@ void Renderer::init_gs(const GaussianCloud& cloud, uint32_t width, uint32_t heig
         // correctness requirement; soft-fail just costs first-frame stalls.
         if (prewarm_at_startup_) {
             try {
+                // `glfwPollEvents` keeps the window responsive while the
+                // multi-second cold-cache prewarm runs on this thread.
                 gs_renderer_.prewarm_pipelines(context_.graphics_queue(),
-                                               command_pool_.pool());
+                                               command_pool_.pool(),
+                                               []() { glfwPollEvents(); });
             } catch (const std::exception& e) {
                 std::fprintf(stderr,
                     "[prewarm] init_gs caught: %s — continuing with cold cache\n",
