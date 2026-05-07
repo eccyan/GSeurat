@@ -200,7 +200,6 @@ add_library(gseurat_core ${_gseurat_lib_type}
     src/engine/ui/ui_context.cpp
     src/engine/gaussian_cloud.cpp
     src/engine/gs_renderer.cpp
-    src/engine/gs_chunk_grid.cpp
     src/engine/gs_parallax_camera.cpp
     src/engine/gs_scene_loader.cpp
     src/engine/collision_gen.cpp
@@ -418,10 +417,8 @@ add_gseurat_test(test_gaussian_cloud   src/engine/gaussian_cloud.cpp src/engine/
                                        src/engine/gs_animator.cpp src/engine/project_root.cpp)
 add_gseurat_test(test_transition_system  src/engine/systems/transition_system.cpp
                                           src/engine/systems/portal_trigger_handler.cpp)
-add_gseurat_test(test_gs_chunk_grid    src/engine/gs_chunk_grid.cpp src/engine/gaussian_cloud.cpp
-                                       src/engine/project_root.cpp)
 add_gseurat_test(test_gs_chunk_streamer src/engine/gs_chunk_streamer.cpp src/engine/gaussian_cloud.cpp
-                                        src/engine/gs_chunk_grid.cpp src/engine/async_loader.cpp
+                                        src/engine/async_loader.cpp
                                         src/engine/project_root.cpp)
 add_gseurat_test(test_gs_parallax_camera src/engine/gs_parallax_camera.cpp)
 add_gseurat_test(test_screenshot       src/engine/screenshot.cpp)

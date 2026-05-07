@@ -1,10 +1,11 @@
 #include "gseurat/demo/gs_demo_state.hpp"
 #include "gseurat/engine/app_base.hpp"
 #include "gseurat/engine/gaussian_cloud.hpp"
-#include "gseurat/engine/gs_chunk_grid.hpp"
 #include "gseurat/engine/gs_animator.hpp"
 #include "gseurat/engine/gs_particle.hpp"
+#include "gseurat/engine/gs_scene_loader.hpp"
 #include "gseurat/engine/pathfinder.hpp"
+#include "gseurat/engine/scene_loader.hpp"
 
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
@@ -35,9 +36,9 @@ void GsDemoState::on_enter(AppBase& app) {
 
     // Set initial camera based on loaded cloud AABB
     if (app.renderer().has_gs_cloud()) {
-        auto& grid = app.renderer().gs_chunk_grid();
-        if (!grid.empty()) {
-            auto aabb = grid.cloud_bounds();
+        const auto& meta = app.renderer().gs_cloud_metadata();
+        if (meta.gaussian_count > 0) {
+            const auto& aabb = meta.bounds;
             float extent_x = aabb.max.x - aabb.min.x;
             float extent_y = aabb.max.y - aabb.min.y;
             float center_x = (aabb.min.x + aabb.max.x) * 0.5f;
@@ -258,7 +259,7 @@ void GsDemoState::update(AppBase& app, float dt) {
         float touch_radius = 20.0f;
         // Scale touch to cloud size and center z in the cloud volume
         if (app.renderer().has_gs_cloud()) {
-            auto aabb = app.renderer().gs_chunk_grid().cloud_bounds();
+            const auto& aabb = app.renderer().gs_cloud_metadata().bounds;
             float max_extent = std::max({aabb.max.x - aabb.min.x,
                                          aabb.max.y - aabb.min.y,
                                          aabb.max.z - aabb.min.z});
@@ -286,7 +287,7 @@ void GsDemoState::update(AppBase& app, float dt) {
         fire_active_ = !fire_active_;
         auto& gs = app.renderer().gs_renderer();
         if (fire_active_ && app.renderer().has_gs_cloud()) {
-            auto aabb = app.renderer().gs_chunk_grid().cloud_bounds();
+            const auto& aabb = app.renderer().gs_cloud_metadata().bounds;
             float y_range = aabb.max.y - aabb.min.y;
             gs.set_fire_region(aabb.max.y - y_range * 0.2f, aabb.max.y);
         } else {
@@ -301,7 +302,7 @@ void GsDemoState::update(AppBase& app, float dt) {
         water_active_ = !water_active_;
         auto& gs = app.renderer().gs_renderer();
         if (water_active_ && app.renderer().has_gs_cloud()) {
-            auto aabb = app.renderer().gs_chunk_grid().cloud_bounds();
+            const auto& aabb = app.renderer().gs_cloud_metadata().bounds;
             float y_range = aabb.max.y - aabb.min.y;
             gs.set_water_threshold(aabb.min.y + y_range * 0.3f);
         } else {
@@ -343,21 +344,6 @@ void GsDemoState::update(AppBase& app, float dt) {
         std::fprintf(stderr, "Swirl: %s\n", swirl_active_ ? "ON" : "OFF");
     }
 
-    // M → toggle streaming mode
-    if (app.input().was_key_pressed(GLFW_KEY_M)) {
-        if (!streaming_mode_ && app.renderer().has_gs_cloud()) {
-            enter_streaming_mode(app);
-        } else if (streaming_mode_) {
-            streaming_mode_ = false;
-            std::fprintf(stderr, "Streaming mode: OFF\n");
-        }
-    }
-
-    // Update streaming each frame if active
-    if (streaming_mode_) {
-        update_streaming(app);
-    }
-
     // B → burn (one-shot 5s: fire→char→scatter)
     if (app.input().was_key_pressed(GLFW_KEY_B) && burn_timer_ <= 0.0f) {
         burn_timer_ = 0.001f;
@@ -365,7 +351,7 @@ void GsDemoState::update(AppBase& app, float dt) {
         // Set fire region to full cloud Y range for the burn shader
         auto& gs = app.renderer().gs_renderer();
         if (app.renderer().has_gs_cloud()) {
-            auto aabb = app.renderer().gs_chunk_grid().cloud_bounds();
+            const auto& aabb = app.renderer().gs_cloud_metadata().bounds;
             gs.set_fire_region(aabb.min.y, aabb.max.y);
         }
         std::fprintf(stderr, "Burn: START\n");
@@ -536,28 +522,6 @@ void GsDemoState::build_draw_lists(AppBase& app) {
             ui.label("FX: " + fx, lx, y, scale, {1.0f, 0.9f, 0.3f, 1.0f});
             y -= 18.0f;
         }
-    }
-
-    // Streaming mode metrics
-    if (streaming_mode_) {
-        glm::vec4 stream_color{0.3f, 1.0f, 0.6f, 1.0f};
-        ui.label("STREAMING", lx + 120.0f, panel_top - 20.0f, 0.5f, stream_color);
-
-        uint32_t loaded = chunk_streamer_.loaded_chunk_count();
-        uint32_t loading = chunk_streamer_.loading_chunk_count();
-        uint32_t total_chunks = static_cast<uint32_t>(chunk_streamer_.manifest().chunks.size());
-        float mem_mb = static_cast<float>(chunk_streamer_.loaded_memory_bytes()) / (1024.0f * 1024.0f);
-
-        char buf[128];
-        std::snprintf(buf, sizeof(buf), "Chunks: %u loaded, %u loading / %u total",
-                      loaded, loading, total_chunks);
-        ui.label(buf, lx, y, scale, stream_color);
-        y -= 18.0f;
-
-        std::snprintf(buf, sizeof(buf), "Stream mem: %.1f MB  R=%.0f/%.0f",
-                      mem_mb, chunk_streamer_.load_radius(), chunk_streamer_.unload_radius());
-        ui.label(buf, lx, y, scale, stream_color);
-        y -= 18.0f;
     }
 
     if (shadow_box_mode_) {
@@ -739,149 +703,35 @@ void GsDemoState::build_draw_lists(AppBase& app) {
     }
 }
 
-void GsDemoState::enter_streaming_mode(AppBase& app) {
-    auto& grid = app.renderer().gs_chunk_grid();
-    if (grid.empty()) return;
-
-    // Create chunk directory next to the executable
-    chunk_dir_ = "stream_chunks";
-    std::filesystem::create_directories(chunk_dir_);
-
-    // Get all chunks from the grid and write per-chunk PLY files
-    auto all_visible = grid.visible_chunks(
-        glm::perspective(glm::radians(179.0f), 1.0f, 0.1f, 100000.0f) *
-        glm::lookAt(grid.cloud_bounds().center() + glm::vec3(0, 0, 10000),
-                    grid.cloud_bounds().center(), glm::vec3(0, 1, 0)),
-        grid.cloud_bounds().center());
-
-    // Build manifest by gathering each chunk individually
-    ChunkManifest manifest;
-    auto bounds = grid.cloud_bounds();
-    float chunk_size = (bounds.max.x - bounds.min.x) > 0 ? 32.0f : 32.0f;  // Use default
-
-    // Gather all gaussians from the grid, organized by chunk
-    // We need to write each chunk as a separate PLY
-    // Use visible_chunks to get all chunk indices, then gather each individually
-    nlohmann::json manifest_json;
-    manifest_json["chunk_size"] = chunk_size;
-    manifest_json["grid_origin"] = {bounds.min.x, bounds.min.y, bounds.min.z};
-    manifest_json["grid_cols"] = 0;
-    manifest_json["grid_rows"] = 0;
-    manifest_json["chunks"] = nlohmann::json::array();
-
-    uint32_t total_written = 0;
-    for (uint32_t ci = 0; ci < all_visible.size(); ++ci) {
-        std::vector<Gaussian> chunk_gaussians;
-        std::vector<uint32_t> single = {all_visible[ci]};
-        grid.gather(single, chunk_gaussians);
-
-        if (chunk_gaussians.empty()) continue;
-
-        // Compute chunk bounds
-        AABB chunk_bounds;
-        for (auto& g : chunk_gaussians) {
-            chunk_bounds.expand(g.position);
-        }
-
-        std::string ply_name = "chunk_" + std::to_string(ci) + ".ply";
-        std::string ply_path = chunk_dir_ + "/" + ply_name;
-
-        GaussianCloud::write_ply(ply_path, chunk_gaussians);
-
-        manifest_json["chunks"].push_back({
-            {"grid_x", static_cast<int>(ci % 8)},
-            {"grid_z", static_cast<int>(ci / 8)},
-            {"ply_file", ply_path},
-            {"gaussian_count", chunk_gaussians.size()},
-            {"bounds_min", {chunk_bounds.min.x, chunk_bounds.min.y, chunk_bounds.min.z}},
-            {"bounds_max", {chunk_bounds.max.x, chunk_bounds.max.y, chunk_bounds.max.z}}
-        });
-        total_written += static_cast<uint32_t>(chunk_gaussians.size());
-    }
-
-    std::fprintf(stderr, "Streaming: wrote %u chunks (%u gaussians) to %s/\n",
-                 static_cast<uint32_t>(manifest_json["chunks"].size()),
-                 total_written, chunk_dir_.c_str());
-
-    // Parse manifest and init streamer
-    auto parsed_manifest = ChunkManifest::from_json(manifest_json);
-    chunk_streamer_.init(parsed_manifest);
-
-    // Use smaller radii for the demo to make streaming behavior visible
-    float cloud_extent = std::max(bounds.max.x - bounds.min.x,
-                                   bounds.max.z - bounds.min.z);
-    chunk_streamer_.set_load_radius(cloud_extent * 0.4f);
-    chunk_streamer_.set_unload_radius(cloud_extent * 0.6f);
-    chunk_streamer_.set_slab_size_splats(
-        app.renderer().gs_renderer().streaming_config().slab_size_splats);
-
-    streaming_mode_ = true;
-    std::fprintf(stderr, "Streaming mode: ON (load_r=%.0f, unload_r=%.0f)\n",
-                 chunk_streamer_.load_radius(), chunk_streamer_.unload_radius());
-}
-
-void GsDemoState::update_streaming(AppBase& app) {
-    // Compute camera position from orbit parameters
-    float cos_elev = std::cos(elevation_);
-    float sin_elev = std::sin(elevation_);
-    glm::vec3 eye = target_ + glm::vec3(
-        distance_ * cos_elev * std::sin(azimuth_),
-        distance_ * sin_elev,
-        distance_ * cos_elev * std::cos(azimuth_));
-
-    auto& loader = app.async_loader();
-    const uint64_t frame_index = app.tick();
-
-    // Update streamer — submits load requests for nearby chunks
-    chunk_streamer_.update(eye, loader, frame_index);
-
-    // Process completed loads
-    auto results = loader.poll_results();
-    if (!results.empty()) {
-        chunk_streamer_.process_load_results(results, frame_index);
-    }
-
-    // If active set changed, re-upload to GPU
-    if (chunk_streamer_.active_set_dirty()) {
-        glm::mat4 view = glm::lookAt(eye, target_, glm::vec3(0, 1, 0));
-        glm::mat4 proj = glm::perspective(glm::radians(60.0f), 1280.0f / 720.0f, 0.1f, 1000.0f);
-        proj[1][1] *= -1.0f;
-        glm::mat4 vp = proj * view;
-
-        std::vector<Gaussian> active;
-        uint32_t budget = app.renderer().gs_renderer().gaussian_count();
-        if (budget == 0) budget = 100000;
-        chunk_streamer_.assemble_active(vp, eye, budget, active);
-
-        if (!active.empty()) {
-            app.renderer().gs_renderer().update_active_gaussians(
-                active.data(), static_cast<uint32_t>(active.size()));
-        }
-    }
-}
-
 // ---------------------------------------------------------------------------
 // Character demo — procedural voxel humanoid with walking animation
 // ---------------------------------------------------------------------------
 
 void GsDemoState::spawn_test_character(AppBase& app) {
-    // Save original map Gaussians (only once)
-    if (map_gaussians_.empty() && app.renderer().has_gs_cloud()) {
-        const auto& all = app.renderer().gs_chunk_grid().all_gaussians();
-        map_gaussians_.assign(all.begin(), all.end());
+    if (!app.renderer().has_gs_cloud()) return;
+
+    // Re-parse the scene's terrain + game-object cloud from disk (Option B
+    // per #396 §A). The renderer no longer keeps a CPU shadow buffer of
+    // the loaded splats; this pure-CPU re-merge runs only when the user
+    // toggles the character demo (K key).
+    std::vector<Gaussian> map_gaussians;
+    {
+        SceneData sd = SceneLoader::load(app.scene_objects().current_scene_path);
+        ParsedScene parsed = GsSceneLoader::parse(sd);
+        map_gaussians = parsed.cloud.gaussians();
     }
 
     // Find center of the map
     glm::vec3 center{0.0f};
-    if (!map_gaussians_.empty()) {
+    if (!map_gaussians.empty()) {
         AABB aabb;
-        for (const auto& g : map_gaussians_) aabb.expand(g.position);
+        for (const auto& g : map_gaussians) aabb.expand(g.position);
         center = aabb.center();
     }
     character_origin_ = center;
 
-    // Start with a copy of the original map (no accumulated characters)
-    std::vector<Gaussian> merged = map_gaussians_;
+    // Start with the freshly re-parsed map (no accumulated characters).
+    std::vector<Gaussian> merged = std::move(map_gaussians);
     uint32_t map_count = static_cast<uint32_t>(merged.size());
 
     // Generate humanoid at center: body parts 1-6
@@ -929,14 +779,18 @@ void GsDemoState::despawn_test_character(AppBase& app) {
     app.renderer().gs_renderer().clear_bone_transforms();
     character_anim_time_ = 0.0f;
 
-    // Restore original map without character
-    if (!map_gaussians_.empty()) {
-        auto cloud = GaussianCloud::from_gaussians(
-            std::vector<Gaussian>(map_gaussians_));
-        uint32_t gs_w = app.renderer().gs_renderer().output_width();
-        uint32_t gs_h = app.renderer().gs_renderer().output_height();
-        if (gs_w == 0) { gs_w = 320; gs_h = 240; }
-        app.renderer().init_gs(cloud, gs_w, gs_h);
+    // Restore the original map by re-parsing from disk (Option B per #396 §A
+    // — no CPU shadow buffer). Equivalent to the cloud the renderer was
+    // originally fed by `init_scene`.
+    if (app.renderer().has_gs_cloud()) {
+        SceneData sd = SceneLoader::load(app.scene_objects().current_scene_path);
+        ParsedScene parsed = GsSceneLoader::parse(sd);
+        if (!parsed.cloud.empty()) {
+            uint32_t gs_w = app.renderer().gs_renderer().output_width();
+            uint32_t gs_h = app.renderer().gs_renderer().output_height();
+            if (gs_w == 0) { gs_w = 320; gs_h = 240; }
+            app.renderer().init_gs(parsed.cloud, gs_w, gs_h);
+        }
     }
 
     std::fprintf(stderr, "Character demo: OFF\n");
@@ -979,12 +833,23 @@ void GsDemoState::generate_scene_layers(AppBase& app) {
         return;
     }
 
-    // Get all Gaussians from the chunk grid
-    const auto& all = app.renderer().gs_chunk_grid().all_gaussians();
-    auto cloud = GaussianCloud::from_gaussians(std::vector<Gaussian>(all.begin(), all.end()));
+    // Re-parse the scene's cloud from disk (Option B per #396 §A — the
+    // renderer no longer holds a CPU shadow buffer). Used here only to feed
+    // `generate_collision_from_gaussians`, which inspects splat positions
+    // to derive the walkable grid.
+    GaussianCloud cloud;
+    {
+        SceneData sd = SceneLoader::load(app.scene_objects().current_scene_path);
+        ParsedScene parsed = GsSceneLoader::parse(sd);
+        cloud = std::move(parsed.cloud);
+    }
+    if (cloud.empty()) {
+        std::fprintf(stderr, "Scene layers: re-parsed cloud is empty\n");
+        return;
+    }
 
     // Auto-generate collision grid with elevation and light probes
-    auto aabb = app.renderer().gs_chunk_grid().cloud_bounds();
+    const auto& aabb = app.renderer().gs_cloud_metadata().bounds;
     float extent_x = aabb.max.x - aabb.min.x;
     float extent_z = aabb.max.z - aabb.min.z;
     float cell = std::max(1.0f, std::max(extent_x, extent_z) / 64.0f);  // ~64 cells on longest axis

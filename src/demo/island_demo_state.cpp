@@ -9,7 +9,7 @@
 #include "gseurat/character/bone_animation_state_machine.hpp"
 #include "gseurat/engine/app_base.hpp"
 #include "gseurat/engine/gaussian_cloud.hpp"
-#include "gseurat/engine/gs_chunk_grid.hpp"
+#include "gseurat/engine/gs_scene_loader.hpp"
 #include "gseurat/engine/scoped_timer.hpp"
 #include "gseurat/demo/island_components.hpp"
 #include "gseurat/engine/trigger_components.hpp"
@@ -331,7 +331,7 @@ void IslandDemoState::on_enter(AppBase& app) {
     glm::vec3 player_pos = scene_data.player_position.vec();
     // If player_position is zero, place at map center
     if (glm::length(player_pos) < 0.001f && app.renderer().has_gs_cloud()) {
-        auto aabb = app.renderer().gs_chunk_grid().cloud_bounds();
+        const auto& aabb = app.renderer().gs_cloud_metadata().bounds;
         player_pos = aabb.center();
     }
     // Note: player_pos is in scene/terrain coordinates — no AABB offset needed.
@@ -388,10 +388,15 @@ void IslandDemoState::on_enter(AppBase& app) {
 
     // Spawn player character (procedural humanoid)
     if (app.renderer().has_gs_cloud()) {
-        const auto& all = app.renderer().gs_chunk_grid().all_gaussians();
-        map_gaussians_.assign(all.begin(), all.end());
-
-        std::vector<Gaussian> merged = map_gaussians_;
+        // Re-parse the scene's terrain + game-object cloud from disk
+        // (Option B per #396 §A — no CPU shadow on the renderer). The
+        // result equals what `init_scene` originally fed into the renderer.
+        std::vector<Gaussian> merged;
+        {
+            SceneData sd = SceneLoader::load(app.scene_objects().current_scene_path);
+            ParsedScene parsed = GsSceneLoader::parse(sd);
+            merged = parsed.cloud.gaussians();
+        }
 
         // Merge additional world chunks (northern forest) into the cloud
         // Since load_radius(558) covers all chunks, merge them at startup
@@ -2265,7 +2270,7 @@ void IslandDemoState::finish_portal_transition(AppBase& app,
     // The new scene's "player" game_object (when present, e.g. seurat_island)
     // is already wired up by load_gs_scene during init_scene above: PlayerController,
     // PlayerTag, BoneAnimated, KinematicBody, ColliderComponent — and its PLY is
-    // merged into the new gs_chunk_grid_ at the *authored* position. Reuse that
+    // merged into the new scene cloud at the *authored* position. Reuse that
     // entity, teleport it to `spawn`, and skip the manual merge below to avoid
     // a second PC entity + a second copy of the splats (which appears as a
     // collision-less ghost at the authored position when target_position
@@ -2330,9 +2335,16 @@ void IslandDemoState::finish_portal_transition(AppBase& app,
 
     // Re-merge world chunks + player character into the new scene
     if (!skip_phase_b_remerge && app.renderer().has_gs_cloud()) {
-        const auto& new_map = app.renderer().gs_chunk_grid().all_gaussians();
-        map_gaussians_.assign(new_map.begin(), new_map.end());
-        std::vector<Gaussian> merged = map_gaussians_;
+        // Re-parse the new scene's terrain + game-object cloud from disk
+        // (Option B per #396 §A — no CPU shadow on the renderer). The
+        // result equals what `init_scene` just fed the renderer; the
+        // re-merge below appends streamed world chunks + the player on top.
+        std::vector<Gaussian> merged;
+        {
+            SceneData sd = SceneLoader::load(app.scene_objects().current_scene_path);
+            ParsedScene parsed = GsSceneLoader::parse(sd);
+            merged = parsed.cloud.gaussians();
+        }
 
         // When returning to overworld, re-merge all world chunks
         if (is_overworld && world_streamer_) {

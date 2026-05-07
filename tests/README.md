@@ -133,39 +133,6 @@ c++ -std=c++23 -I include \
 | 11 | position calculation | 2×2 grid positions are centered correctly |
 | 12 | animator integration | Animated tile changes UV coordinates |
 
-### test_gs_chunk_grid
-
-Tests GsChunkGrid: build, visible_chunks frustum culling, gather, gather_lod decimation.
-
-**Build:**
-```bash
-c++ -std=c++23 -I include \
-    -I build/macos-debug/_deps/glm-src \
-    -I build/macos-debug/_deps/stb-src \
-    tests/test_gs_chunk_grid.cpp \
-    src/engine/gs_chunk_grid.cpp \
-    src/engine/gaussian_cloud.cpp \
-    -o build/test_gs_chunk_grid
-```
-
-**Run:**
-```bash
-./build/test_gs_chunk_grid
-```
-
-**Tests (9):**
-| # | Test | What it verifies |
-|---|------|------------------|
-| 1 | Empty cloud | `build()` on empty → `empty() == true` |
-| 2 | Single Gaussian | 1 chunk, correct `cloud_bounds()` |
-| 3 | Multi-chunk | Gaussians spread across area → multiple chunks |
-| 4 | visible_chunks returns results | Known VP matrix returns visible chunks |
-| 5 | Frustum culling | Tight camera doesn't see all chunks in large grid |
-| 6 | gather count | Output count matches sum of selected chunk counts |
-| 7 | gather_lod respects budget | 1000 Gaussians, budget=200 → output ≤ 200 |
-| 8 | gather_lod spatial coverage | Stride sampling covers spatial range, not just first N |
-| 9 | cloud_bounds accuracy | AABB matches min/max of input positions |
-
 ### test_gs_parallax_camera
 
 Tests GsParallaxCamera: configure, update, view/proj matrix properties.
