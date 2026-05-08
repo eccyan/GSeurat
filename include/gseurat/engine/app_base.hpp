@@ -148,6 +148,15 @@ public:
     // Shared GS scene loading: PLY + placed objects + lights + emitters + animations + VFX
     void load_gs_scene(const SceneData& scene_data, const GsSceneOptions& opts = {});
 
+    // Pre-parsed variant: caller has already run `GsSceneLoader::parse` (typically
+    // on a worker thread to overlap PLY I/O with other on_enter setup). The
+    // finalize phase still runs on the main thread inside this call — same GPU
+    // sequencing as the synchronous `load_gs_scene`. Caller is responsible for
+    // ensuring `parsed` was produced from the same `scene_data` passed here.
+    void load_pre_parsed_gs_scene(const SceneData& scene_data,
+                                  ParsedScene&& parsed,
+                                  const GsSceneOptions& opts = {});
+
     // Async-load API. Pushes the CPU-only PLY parse + Gaussian merge to a worker
     // thread (`std::async(std::launch::async, …)`), returning immediately. The
     // main thread is expected to invoke `tick_async_load_gs_scene` once per
