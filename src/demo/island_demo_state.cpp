@@ -2515,6 +2515,20 @@ void IslandDemoState::perform_portal_transition(AppBase& app,
         }
     }
 
+    // Arm the engine loading monitor with the slab-upload handles from the
+    // init_gs call(s) above so the engine state machine gates GPU compute
+    // (`should_dispatch_gpu_work`) until the new scene's uploads have
+    // drained. Without this, the next frame after this function returns
+    // would dispatch GS compute against in-flight slab buffers — exactly
+    // the corruption / page-fault hazard the loading-state gate exists to
+    // prevent. `take_pending_load_handles` returns the handles from the
+    // most recent `init_gs` (either `load_pre_parsed_gs_scene` above or the
+    // §B re-merge call if it ran), so this covers both branches.
+    // (`on_enter`'s path is armed by `DemoApp::run` immediately after
+    // `state_stack_.push` returns; portal transitions happen mid-frame
+    // and have no analogous post-call hook.)
+    app.loading_monitor().begin_load(app.renderer().take_pending_load_handles());
+
     // Re-populate bone animation registry for the new scene. When the new
     // scene has a "player" game_object, this binds the player's bone slot
     // to player_entity_ — no second register needed below (a second add()
