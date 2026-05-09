@@ -844,19 +844,6 @@ void IslandDemoState::update(AppBase& app, float dt) {
         return;
     }
 
-    // Drain Phase B of any in-flight portal transition. We can only run the
-    // post-load body once `app.is_async_loading_gs_scene()` has flipped back
-    // to false — that's the signal that `tick_async_load_gs_scene` has
-    // consumed the parse future and run `GsSceneLoader::finalize_on_main`,
-    // so `renderer().has_gs_cloud()` is now true and the new ECS world is
-    // populated. Until then keep waiting; the screen-fade overlay covers
-    // the window.
-    if (pending_portal_post_load_ && !app.is_async_loading_gs_scene()) {
-        auto fn = std::move(pending_portal_post_load_);
-        pending_portal_post_load_ = {};
-        fn(app);
-    }
-
     // Skip keyboard shortcuts when dev overlay has focus
     if (!app.dev_overlay().wants_keyboard()) {
         // Tab → cycle HUD mode: OFF → COMPACT → FULL → OFF
@@ -2195,41 +2182,30 @@ void IslandDemoState::perform_portal_transition(AppBase& app,
         app.world().add<ScreenFade>(e, fade);
     }
 
-    // Phase A ends here: kick off PLY parsing on a worker thread and stash
-    // the rest of the transition as a deferred lambda. update() drains it
-    // once `app.is_async_loading_gs_scene()` flips back to false (parse +
-    // GPU/ECS finalize done). The main thread keeps rendering the scene
-    // transition fade overlay while the worker parses.
+    // Kick PLY parse for the new scene on a worker thread. The worker runs
+    // while we do the non-cloud-dependent setup (collision grid, camera
+    // zones, audio muffling already done above) on the main thread; we
+    // block on the future just before the merge needs the cloud. Same shape
+    // as `IslandDemoState::on_enter` (PR #417 Option C) — keeps the engine's
+    // synchronous double-`init_gs` GPU sequencing intact, which avoids the
+    // M5/MoltenVK GPU-Address-Fault that bit the single-`init_gs` async
+    // parse-extension approach.
     app.scene_objects().current_scene_path = target_scene;
     auto target_scene_data = SceneLoader::load(target_scene);
-    GsSceneOptions portal_opts{ .add_default_light = true, .set_god_rays = true };
-    app.begin_async_load_gs_scene(std::move(target_scene_data), portal_opts);
+    auto parse_future = std::async(std::launch::async, [&target_scene_data] {
+        return GsSceneLoader::parse(target_scene_data);
+    });
 
-    pending_portal_post_load_ =
-        [this, target_scene, target_position](AppBase& app_in) {
-            this->finish_portal_transition(app_in, target_scene, target_position);
-        };
-
-    std::fprintf(stderr, "[IslandDemo] Portal Phase A done; async parse in flight for '%s'\n",
-                 target_scene.c_str());
-}
-
-// Phase B: invoked from `update()` once the async scene-load has finalized.
-// Runs the original synchronous post-load body — collision grid restore,
-// player respawn, world-chunk re-merge, bone registry, etc.
-void IslandDemoState::finish_portal_transition(AppBase& app,
-                                               const std::string& target_scene,
-                                               const glm::vec3& target_position) {
-    ScopedStallTimer _t_total{"finish_portal_transition (Phase B TOTAL)"};
+    // ── Non-cloud-dependent setup (overlapped with worker parse) ──
 
     // "Returning to overworld" detection: target matches our base scene path.
     const bool is_overworld = (target_scene == scene_path_);
 
-    // Reload collision grid from the new scene
+    // Reload collision grid from the new scene (already loaded via
+    // `target_scene_data` above — no need to re-read from disk).
     {
-        auto new_scene = SceneLoader::load(target_scene);
-        if (new_scene.collision) {
-            collision_grid_ = *new_scene.collision;
+        if (target_scene_data.collision) {
+            collision_grid_ = *target_scene_data.collision;
             grid_origin_ = {0.0f, 0.0f};
             std::fprintf(stderr, "[IslandDemo] Collision grid updated: %ux%u\n",
                 collision_grid_.width, collision_grid_.height);
@@ -2296,8 +2272,23 @@ void IslandDemoState::finish_portal_transition(AppBase& app,
     character_origin_ = spawn;
     character_spawn_pos_ = spawn;
 
+    // ── Block on parse + run finalize_on_main (first init_gs) ──
+    // This is the same call the demo's `on_enter` path makes after its parse
+    // future resolves. `base_gaussians` is stashed for the §B re-merge below
+    // (which would otherwise need to re-parse the just-loaded scene from
+    // disk to get the same vector — wasteful).
+    ParsedScene parsed_scene = parse_future.get();
+    auto base_gaussians = parsed_scene.cloud.gaussians();
+    {
+        GsSceneOptions portal_opts;
+        portal_opts.add_default_light = true;
+        portal_opts.set_god_rays = true;
+        app.load_pre_parsed_gs_scene(target_scene_data,
+                                     std::move(parsed_scene), portal_opts);
+    }
+
     // The new scene's "player" game_object (when present, e.g. seurat_island)
-    // is already wired up by load_gs_scene during init_scene above: PlayerController,
+    // is wired up by `load_pre_parsed_gs_scene` above: PlayerController,
     // PlayerTag, BoneAnimated, KinematicBody, ColliderComponent — and its PLY is
     // merged into the new scene cloud at the *authored* position. Reuse that
     // entity, teleport it to `spawn`, and skip the manual merge below to avoid
@@ -2362,18 +2353,12 @@ void IslandDemoState::finish_portal_transition(AppBase& app,
     const bool skip_phase_b_remerge = !is_overworld && player_already_merged_fast
                                       && app.renderer().has_gs_cloud();
 
-    // Re-merge world chunks + player character into the new scene
+    // Re-merge world chunks + player character into the new scene. Reuses
+    // the parsed cloud's gaussians stashed in `base_gaussians` after the
+    // worker-thread parse — saves a redundant re-parse from disk that the
+    // pre-Option-C path used to do here.
     if (!skip_phase_b_remerge && app.renderer().has_gs_cloud()) {
-        // Re-parse the new scene's terrain + game-object cloud from disk
-        // (Option B per #396 §A — no CPU shadow on the renderer). The
-        // result equals what `init_scene` just fed the renderer; the
-        // re-merge below appends streamed world chunks + the player on top.
-        std::vector<Gaussian> merged;
-        {
-            SceneData sd = SceneLoader::load(app.scene_objects().current_scene_path);
-            ParsedScene parsed = GsSceneLoader::parse(sd);
-            merged = parsed.cloud.gaussians();
-        }
+        std::vector<Gaussian> merged = std::move(base_gaussians);
 
         // When returning to overworld, re-merge all world chunks
         if (is_overworld && world_streamer_) {
@@ -2593,11 +2578,10 @@ void IslandDemoState::finish_portal_transition(AppBase& app,
         std::fprintf(stderr, "[IslandDemo] World streaming disabled (non-overworld scene)\n");
     }
 
-    // Note: the SceneIn fade entity is created by Phase A
-    // (`perform_portal_transition`) — not here — so the overlay covers the
-    // full async-parse + finalize window, not just the post-finalize tail.
-    // Without that earlier creation the user sees "old initial-frame
-    // configuration flashes back" between Phase A and Phase B.
+    // Note: the SceneIn fade entity is created near the top of this
+    // function (after `app.world().clear()`), so the very next composited
+    // frame is fully covered by an opaque overlay. The transition_system
+    // animates it out once we return.
 
     std::fprintf(stderr, "[IslandDemo] Spawned at (%.1f, %.1f, %.1f)\n",
         spawn.x, spawn.y, spawn.z);
