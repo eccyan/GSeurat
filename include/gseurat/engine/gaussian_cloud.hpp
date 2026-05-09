@@ -101,6 +101,15 @@ public:
                                    CoordinateSystem coords = CoordinateSystem::kYUp);
     /// Load a pre-baked .gsvx binary file (zero-copy GPU format).
     static GsvxPayload load_gsvx(const std::string& path);
+    /// Try a sibling `.gsvx` first (path with `.ply` swapped for `.gsvx`);
+    /// fall back to `load_ply` on any failure (no file, bad header,
+    /// truncated, etc.). The returned cloud is field-equivalent to
+    /// `load_ply` within float epsilon. `coords` is applied symmetrically
+    /// on either path. Drop-in replacement for runtime `load_ply` callers
+    /// (PR-A of #396).
+    static GaussianCloud load_with_gsvx_first(
+        const std::string& ply_path,
+        CoordinateSystem coords = CoordinateSystem::kYUp);
     static GaussianCloud from_gaussians(std::vector<Gaussian> gaussians);
 
     // Write Gaussians to a binary little-endian PLY file.

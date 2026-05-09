@@ -4,10 +4,13 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <stdexcept>
+#include <system_error>
 #include <unordered_map>
 
 namespace gseurat {
@@ -517,6 +520,77 @@ GsvxPayload GaussianCloud::load_gsvx(const std::string& path) {
     }
 
     return payload;
+}
+
+namespace {
+
+// Convert a baked GpuGaussian buffer back into the CPU Gaussian form that
+// load_ply produces. `coords` is applied symmetrically with load_ply
+// (negate position.y, flip rotation.x and rotation.z when kVulkanYDown).
+// `importance` is left default — `from_gaussians` recomputes it.
+std::vector<Gaussian> unpack_gpu_gaussians(const std::vector<GpuGaussian>& gpu,
+                                          CoordinateSystem coords) {
+    std::vector<Gaussian> out(gpu.size());
+    for (size_t i = 0; i < gpu.size(); ++i) {
+        const GpuGaussian& g = gpu[i];
+        Gaussian& dst = out[i];
+
+        dst.position = glm::vec3(g.pos_opacity);
+        dst.opacity  = g.pos_opacity.w;
+        dst.scale    = glm::vec3(g.scale_pad);
+
+        // bone_index: ply_importer stores it via memcpy from uint32 → float
+        // (lossless bit pattern). Reverse with the same trick.
+        uint32_t bone_idx = 0;
+        const float bone_as_float = g.scale_pad.w;
+        std::memcpy(&bone_idx, &bone_as_float, sizeof(uint32_t));
+        dst.bone_index = bone_idx;
+
+        // GpuGaussian stores quaternion as xyzw; glm::quat ctor is wxyz.
+        dst.rotation = glm::quat(g.rot.w, g.rot.x, g.rot.y, g.rot.z);
+
+        dst.color    = glm::vec3(g.color_pad);
+        dst.emission = g.color_pad.w;
+
+        if (coords == CoordinateSystem::kVulkanYDown) {
+            dst.position.y = -dst.position.y;
+            dst.rotation.x = -dst.rotation.x;
+            dst.rotation.z = -dst.rotation.z;
+        }
+    }
+    return out;
+}
+
+}  // namespace
+
+GaussianCloud GaussianCloud::load_with_gsvx_first(const std::string& ply_path,
+                                                   CoordinateSystem coords) {
+    std::filesystem::path gsvx_candidate(ply_path);
+    gsvx_candidate.replace_extension(".gsvx");
+    const std::string gsvx_path_str = gsvx_candidate.string();
+
+    // Probe for the sibling. We resolve through the same asset-root logic
+    // load_gsvx will use so the existence check matches what the load
+    // attempt would see.
+    auto resolved = resolve_asset_path(gsvx_path_str);
+    std::error_code ec;
+    if (std::filesystem::is_regular_file(resolved, ec)) {
+        try {
+            GsvxPayload payload = load_gsvx(gsvx_path_str);
+            return GaussianCloud::from_gaussians(
+                unpack_gpu_gaussians(payload.gpu_gaussians, coords));
+        } catch (const std::exception& e) {
+            // Sibling exists but won't parse — log once per failure (worker
+            // threads share stderr; expected to be rare and is useful PR-B
+            // signal) and fall through to PLY.
+            std::fprintf(stderr,
+                "[gaussian_cloud] sibling .gsvx failed to load (%s); "
+                "falling back to PLY: %s\n",
+                e.what(), ply_path.c_str());
+        }
+    }
+
+    return load_ply(ply_path, coords);
 }
 
 }  // namespace gseurat
