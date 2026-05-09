@@ -792,6 +792,197 @@ int main() {
         printf("PASS: Test 23 - v1 GSVX loads with v2-aware loader\n");
     }
 
+    // ---------------------------------------------------------------------------
+    // Tests 24-29: load_with_gsvx_first wrapper (PR-A #396)
+    //
+    // Helper: bake a sibling .gsvx alongside a .ply by reading the PLY,
+    // packing into GpuGaussian using the importer's exact math, and writing.
+    // Mirrors `tools/ply_importer/ply_parse.cpp` so the unit test does not
+    // depend on the offline tool binary.
+    // ---------------------------------------------------------------------------
+
+    auto bake_sibling_gsvx_v2 = [](const std::string& ply_path,
+                                    const std::string& gsvx_path) {
+        auto cloud = GaussianCloud::load_ply(ply_path);
+        std::vector<GpuGaussian> data(cloud.count());
+        AABB aabb;
+        for (uint32_t i = 0; i < cloud.count(); ++i) {
+            const auto& g = cloud.gaussians()[i];
+            float bone_as_float;
+            uint32_t bone_idx = g.bone_index;
+            std::memcpy(&bone_as_float, &bone_idx, sizeof(float));
+            data[i].pos_opacity = glm::vec4(g.position, g.opacity);
+            data[i].scale_pad   = glm::vec4(g.scale, bone_as_float);
+            data[i].rot         = glm::vec4(g.rotation.x, g.rotation.y,
+                                             g.rotation.z, g.rotation.w);
+            data[i].color_pad   = glm::vec4(g.color, g.emission);
+            aabb.expand(g.position);
+        }
+        write_test_gsvx_v2(gsvx_path, data, aabb);
+    };
+
+    // ====== Test 24: fallback to PLY when no .gsvx sibling exists ======
+    {
+        const std::string ply_path = tmp_dir + "/test_dual_fallback.ply";
+        write_test_ply(ply_path, 5);
+
+        auto via_ply  = GaussianCloud::load_ply(ply_path);
+        auto via_dual = GaussianCloud::load_with_gsvx_first(ply_path);
+
+        assert(via_dual.count() == via_ply.count() && "fallback count matches");
+        for (uint32_t i = 0; i < via_ply.count(); ++i) {
+            const auto& a = via_ply.gaussians()[i];
+            const auto& b = via_dual.gaussians()[i];
+            assert(approx(a.position.x, b.position.x, 1e-6f) && "fallback position.x");
+            assert(approx(a.opacity,    b.opacity,    1e-6f) && "fallback opacity");
+            assert(approx(a.scale.x,    b.scale.x,    1e-6f) && "fallback scale.x");
+            assert(approx(a.importance, b.importance, 1e-6f) && "fallback importance");
+        }
+        printf("PASS: Test 24 - load_with_gsvx_first falls back to PLY when no sibling\n");
+    }
+
+    // ====== Test 25: prefers .gsvx sibling when present (parity with load_ply) ======
+    {
+        const std::string ply_path  = tmp_dir + "/test_dual_prefer.ply";
+        const std::string gsvx_path = tmp_dir + "/test_dual_prefer.gsvx";
+        write_test_ply(ply_path, 7);
+        bake_sibling_gsvx_v2(ply_path, gsvx_path);
+
+        auto via_ply  = GaussianCloud::load_ply(ply_path);
+        auto via_dual = GaussianCloud::load_with_gsvx_first(ply_path);
+
+        assert(via_dual.count() == via_ply.count() && "prefer count matches");
+        // Tight tolerance — the GSVX bake stored the exact post-conversion
+        // floats from load_ply, so the unpacked Gaussian fields must match
+        // bit-equal except for floating-point ordering in importance.
+        for (uint32_t i = 0; i < via_ply.count(); ++i) {
+            const auto& a = via_ply.gaussians()[i];
+            const auto& b = via_dual.gaussians()[i];
+            assert(approx(a.position.x, b.position.x, 1e-6f) && "prefer position.x");
+            assert(approx(a.position.y, b.position.y, 1e-6f) && "prefer position.y");
+            assert(approx(a.position.z, b.position.z, 1e-6f) && "prefer position.z");
+            assert(approx(a.scale.x,    b.scale.x,    1e-6f) && "prefer scale.x");
+            assert(approx(a.scale.y,    b.scale.y,    1e-6f) && "prefer scale.y");
+            assert(approx(a.scale.z,    b.scale.z,    1e-6f) && "prefer scale.z");
+            assert(approx(a.color.r,    b.color.r,    1e-6f) && "prefer color.r");
+            assert(approx(a.opacity,    b.opacity,    1e-6f) && "prefer opacity");
+            assert(approx(a.emission,   b.emission,   1e-6f) && "prefer emission");
+            assert(a.bone_index == b.bone_index && "prefer bone_index");
+            // Quaternion: GpuGaussian stores xyzw, glm::quat ctor is wxyz.
+            // Wrong order would manifest here.
+            assert(approx(a.rotation.w, b.rotation.w, 1e-6f) && "prefer rot.w");
+            assert(approx(a.rotation.x, b.rotation.x, 1e-6f) && "prefer rot.x");
+            assert(approx(a.rotation.y, b.rotation.y, 1e-6f) && "prefer rot.y");
+            assert(approx(a.rotation.z, b.rotation.z, 1e-6f) && "prefer rot.z");
+            assert(approx(a.importance, b.importance, 1e-6f) && "prefer importance");
+        }
+        // Bounds match
+        assert(approx(via_ply.bounds().min.x, via_dual.bounds().min.x, 1e-6f) && "prefer bounds.min.x");
+        assert(approx(via_ply.bounds().max.x, via_dual.bounds().max.x, 1e-6f) && "prefer bounds.max.x");
+        printf("PASS: Test 25 - load_with_gsvx_first prefers sibling .gsvx (parity)\n");
+    }
+
+    // ====== Test 26: graceful fallback to PLY when .gsvx is corrupt ======
+    {
+        const std::string ply_path  = tmp_dir + "/test_dual_corrupt.ply";
+        const std::string gsvx_path = tmp_dir + "/test_dual_corrupt.gsvx";
+        write_test_ply(ply_path, 4);
+        // Write a bad-magic GSVX next to the PLY
+        {
+            std::ofstream out(gsvx_path, std::ios::binary);
+            GsvxHeader header{};
+            std::memcpy(header.magic, "NOPE", 4);
+            header.version = 1;
+            out.write(reinterpret_cast<const char*>(&header), sizeof(header));
+        }
+
+        auto via_ply  = GaussianCloud::load_ply(ply_path);
+        auto via_dual = GaussianCloud::load_with_gsvx_first(ply_path);
+
+        assert(via_dual.count() == via_ply.count() && "corrupt fallback count");
+        for (uint32_t i = 0; i < via_ply.count(); ++i) {
+            assert(approx(via_ply.gaussians()[i].position.x,
+                          via_dual.gaussians()[i].position.x, 1e-6f) &&
+                   "corrupt fallback position.x");
+        }
+        printf("PASS: Test 26 - load_with_gsvx_first falls back on corrupt sibling\n");
+    }
+
+    // ====== Test 27: graceful fallback when sibling .gsvx is truncated ======
+    {
+        const std::string ply_path  = tmp_dir + "/test_dual_short.ply";
+        const std::string gsvx_path = tmp_dir + "/test_dual_short.gsvx";
+        write_test_ply(ply_path, 3);
+        // Write a header that claims count=999 but contains no payload — load_gsvx
+        // throws on size mismatch; wrapper must catch and fall through.
+        {
+            std::ofstream out(gsvx_path, std::ios::binary);
+            GsvxHeader header{};
+            std::memcpy(header.magic, "GSVX", 4);
+            header.version = 1;
+            header.count = 999;
+            header.flags = 0;
+            out.write(reinterpret_cast<const char*>(&header), sizeof(header));
+        }
+
+        auto via_ply  = GaussianCloud::load_ply(ply_path);
+        auto via_dual = GaussianCloud::load_with_gsvx_first(ply_path);
+
+        assert(via_dual.count() == via_ply.count() && "truncated fallback count");
+        printf("PASS: Test 27 - load_with_gsvx_first falls back on truncated sibling\n");
+    }
+
+    // ====== Test 28: kVulkanYDown applied symmetrically on GSVX path ======
+    {
+        const std::string ply_path  = tmp_dir + "/test_dual_ydown.ply";
+        const std::string gsvx_path = tmp_dir + "/test_dual_ydown.gsvx";
+        write_test_ply(ply_path, 5);
+        bake_sibling_gsvx_v2(ply_path, gsvx_path);
+
+        auto via_ply  = GaussianCloud::load_ply(ply_path, CoordinateSystem::kVulkanYDown);
+        auto via_dual = GaussianCloud::load_with_gsvx_first(ply_path,
+                                                             CoordinateSystem::kVulkanYDown);
+
+        assert(via_dual.count() == via_ply.count() && "ydown count matches");
+        // Y on positions must be negated on both paths
+        const auto& a3 = via_ply.gaussians()[3];
+        const auto& b3 = via_dual.gaussians()[3];
+        assert(approx(a3.position.y, b3.position.y, 1e-6f) && "ydown position.y matches");
+        // The PLY-Y-up baseline at index 3: y = 1.5; with kVulkanYDown, both paths
+        // should read -1.5.
+        assert(approx(b3.position.y, -1.5f, 1e-6f) && "ydown position.y is negated");
+        printf("PASS: Test 28 - kVulkanYDown applied symmetrically on GSVX path\n");
+    }
+
+    // ====== Test 29: bone_index round-trip through GpuGaussian.scale_pad.w ======
+    {
+        // Manually craft a GSVX with non-zero bone indices, alongside a PLY
+        // that doesn't carry bone_index — so the only way to get a non-zero
+        // bone_index in the result is via the GSVX path.
+        const std::string ply_path  = tmp_dir + "/test_dual_bones.ply";
+        const std::string gsvx_path = tmp_dir + "/test_dual_bones.gsvx";
+        write_test_ply(ply_path, 3);
+
+        std::vector<GpuGaussian> data(3);
+        for (uint32_t i = 0; i < 3; ++i) {
+            uint32_t bone_idx = 7 + i;  // 7, 8, 9
+            float bone_as_float;
+            std::memcpy(&bone_as_float, &bone_idx, sizeof(float));
+            data[i].pos_opacity = glm::vec4(float(i), 0.0f, 0.0f, 1.0f);
+            data[i].scale_pad   = glm::vec4(0.5f, 0.5f, 0.5f, bone_as_float);
+            data[i].rot         = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+            data[i].color_pad   = glm::vec4(1.0f, 1.0f, 1.0f, 0.0f);
+        }
+        write_test_gsvx(gsvx_path, data);
+
+        auto via_dual = GaussianCloud::load_with_gsvx_first(ply_path);
+        assert(via_dual.count() == 3 && "bone count");
+        assert(via_dual.gaussians()[0].bone_index == 7 && "bone_index 0");
+        assert(via_dual.gaussians()[1].bone_index == 8 && "bone_index 1");
+        assert(via_dual.gaussians()[2].bone_index == 9 && "bone_index 2");
+        printf("PASS: Test 29 - bone_index round-trips through GpuGaussian unpack\n");
+    }
+
     // Cleanup temp files
     fs::remove_all(tmp_dir);
 

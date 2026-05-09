@@ -435,7 +435,7 @@ void IslandDemoState::on_enter(AppBase& app) {
                 if (chunk.grid == glm::ivec3(0, 0, 0)) continue;  // already loaded
                 if (chunk.ply_file.empty()) continue;
                 auto resolved = resolve_asset_path(chunk.ply_file);
-                auto extra = GaussianCloud::load_ply(resolved.string());
+                auto extra = GaussianCloud::load_with_gsvx_first(resolved.string());
                 if (!extra.empty()) {
                     const auto& gs = extra.gaussians();
                     merged.insert(merged.end(), gs.begin(), gs.end());
@@ -460,7 +460,7 @@ void IslandDemoState::on_enter(AppBase& app) {
                             // Merge BoneAnimated PLY with bone index allocation
                             if (!go.ply_file.empty() && !go.components.is_null()
                                 && go.components.contains("BoneAnimated")) {
-                                auto npc_cloud = GaussianCloud::load_ply(go.ply_file);
+                                auto npc_cloud = GaussianCloud::load_with_gsvx_first(go.ply_file);
                                 if (!npc_cloud.empty()) {
                                     const auto& ba_json = go.components["BoneAnimated"];
                                     std::string manifest_path = ba_json.value("manifest", std::string{});
@@ -552,7 +552,7 @@ void IslandDemoState::on_enter(AppBase& app) {
         const float gs_scale = scene_data.gaussian_splat
             ? scene_data.gaussian_splat->scale_multiplier : 1.0f;
         gs_scale_ = gs_scale;
-        auto char_cloud = GaussianCloud::load_ply("assets/characters/snes_hero/snes_hero.ply");
+        auto char_cloud = GaussianCloud::load_with_gsvx_first("assets/characters/snes_hero/snes_hero.ply");
         if (!char_cloud.empty()) {
             // Scale, rotate 180° (face away from camera), and position at spawn
             const auto& char_gs = char_cloud.gaussians();
@@ -2366,7 +2366,7 @@ void IslandDemoState::perform_portal_transition(AppBase& app,
                 if (chunk.grid == glm::ivec3(0, 0, 0)) continue;
                 if (chunk.ply_file.empty()) continue;
                 auto resolved = resolve_asset_path(chunk.ply_file);
-                auto extra = GaussianCloud::load_ply(resolved.string());
+                auto extra = GaussianCloud::load_with_gsvx_first(resolved.string());
                 if (!extra.empty()) {
                     const auto& gs = extra.gaussians();
                     merged.insert(merged.end(), gs.begin(), gs.end());
@@ -2386,7 +2386,7 @@ void IslandDemoState::perform_portal_transition(AppBase& app,
                             }
                             if (!go.ply_file.empty() && !go.components.is_null()
                                 && go.components.contains("BoneAnimated")) {
-                                auto npc_cloud = GaussianCloud::load_ply(go.ply_file);
+                                auto npc_cloud = GaussianCloud::load_with_gsvx_first(go.ply_file);
                                 if (!npc_cloud.empty()) {
                                     const auto& ba_json = go.components["BoneAnimated"];
                                     std::string manifest_path = ba_json.value("manifest", std::string{});
@@ -2472,7 +2472,7 @@ void IslandDemoState::perform_portal_transition(AppBase& app,
             }
         }
         if (!player_already_merged) {
-            auto char_cloud = GaussianCloud::load_ply(
+            auto char_cloud = GaussianCloud::load_with_gsvx_first(
                 "assets/characters/snes_hero/snes_hero.ply");
             if (!char_cloud.empty()) {
                 const auto& char_gs = char_cloud.gaussians();
@@ -2620,7 +2620,7 @@ void IslandDemoState::enqueue_async_chunk_load(const std::string& grid_key,
     entry.grid_key = grid_key;
     entry.future = std::async(std::launch::async, [ply_path]() {
         GaussianCloud c;
-        c.load_ply(ply_path);
+        c.load_with_gsvx_first(ply_path);
         return c;
     });
     entry.requested_at = std::chrono::steady_clock::now();

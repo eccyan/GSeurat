@@ -34,9 +34,11 @@ public:
     /// any failure (file missing, header invalid, count==0, read error)
     /// fall through to `load_ply(path, coords)`.
     ///
-    /// `coords` is forwarded only to the PLY fallback. The GSVX format
-    /// always encodes the kYUp post-conversion form, so the GSVX path
-    /// ignores `coords`. (No runtime caller uses `kVulkanYDown` today.)
+    /// `coords` is applied symmetrically on both paths: the PLY path
+    /// negates Y / flips qx,qz inside `load_ply`, and the GSVX unpack
+    /// applies the same transform on `pos_opacity.xyz` / `rot.xyz`.
+    /// No runtime caller uses `kVulkanYDown` today, but symmetry
+    /// future-proofs the wrapper against PR-B's `load_ply` deletion.
     ///
     /// Returns a `GaussianCloud` whose contents — `gaussians()` field-by-field,
     /// `bounds()`, and `count()` — are equivalent to the PLY parse within
@@ -91,7 +93,7 @@ within `~1e-6` per-component (FP32 round-trip through the GpuGaussian pack/unpac
 
 ## Migration
 
-8 runtime call sites, all currently passing default `coords`:
+12 runtime call sites on clean `origin/main`, all currently passing default `coords`:
 
 | File | Line | Replacement |
 |---|---|---|
@@ -99,14 +101,22 @@ within `~1e-6` per-component (FP32 round-trip through the GpuGaussian pack/unpac
 | `src/engine/gs_scene_loader.cpp` | 118 | `GaussianCloud::load_ply(go.ply_file)` → `GaussianCloud::load_with_gsvx_first(go.ply_file)` |
 | `src/engine/gs_chunk_streamer.cpp` | 88 | `return GaussianCloud::load_ply(path);` → `return GaussianCloud::load_with_gsvx_first(path);` |
 | `src/engine/gs_vfx.cpp` | 155 | `GaussianCloud::load_ply(ply_path)` → `GaussianCloud::load_with_gsvx_first(ply_path)` |
-| `src/demo/island_demo_state.cpp` | 438 | chunk merge — replace |
-| `src/demo/island_demo_state.cpp` | 463 | NPC merge — replace |
-| `src/demo/island_demo_state.cpp` | 555 | character merge — replace |
-| `src/staging/staging_state.cpp` | 598 | staging chunk — replace |
+| `src/demo/island_demo_state.cpp` | 438 | `on_enter` chunk merge — replace |
+| `src/demo/island_demo_state.cpp` | 463 | `on_enter` NPC merge — replace |
+| `src/demo/island_demo_state.cpp` | 555 | `on_enter` character merge — replace |
+| `src/demo/island_demo_state.cpp` | 2369 | `perform_portal_transition` chunk merge — replace |
+| `src/demo/island_demo_state.cpp` | 2389 | `perform_portal_transition` NPC merge — replace |
+| `src/demo/island_demo_state.cpp` | 2475 | `perform_portal_transition` character merge — replace |
+| `src/demo/island_demo_state.cpp` | 2623 | `enqueue_async_chunk_load` worker (latent bug — see below) — replace mechanically |
+| `src/staging/staging_state.cpp` | 598 | staging chunk (latent bug — see below) — replace mechanically |
+
+**Latent bugs preserved by mechanical migration:** two of the call sites (`island_demo_state.cpp:2623` and `staging_state.cpp:598`) call the static `load_ply` *through an instance* — `c.load_ply(path)` rather than `c = GaussianCloud::load_ply(path)`. The static method's return value is discarded, leaving the local `GaussianCloud` instance empty. Both are pre-existing on `main`. PR-A preserves this shape (`c.load_with_gsvx_first(path)`) so we don't introduce a behavior change. A follow-up cleanup PR can fix both with `c = GaussianCloud::load_with_gsvx_first(path);`.
 
 The `src/tools/ply2heightmap.cpp:362` call is **not** migrated — it's an offline tool that takes user-supplied PLY paths and is not part of `gseurat_core` runtime. Stays on `load_ply`.
 
-The instance method `c.load_ply(ply_path)` at `src/demo/island_demo_state.cpp:2623` (note: this is in dead code from a stale buffer per the gitStatus dirty state on `main`) — verify on a clean checkout. If it's live, migrate; if it's dead code, leave it for the §A merge cleanup that already ran.
+`src/engine/renderer.cpp:283` is a comment reference; left alone (the comment will become accurate again once PR-B deletes `load_ply`).
+
+**Count amended (8 → 11):** the original 8-site count was based on a grep against the dirty `main` worktree, which had a local -234-line deletion block hiding the `perform_portal_transition` mirror of the §A merge. On clean `origin/main` those lines are live and must be migrated for symmetry with `on_enter`.
 
 ## Validation
 

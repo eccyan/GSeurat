@@ -85,7 +85,7 @@ void GsChunkStreamer::update(const glm::vec3& camera_pos, AsyncLoader& loader,
             // Request load
             std::string path = chunk.ply_path;
             uint32_t req_id = loader.submit([path]() -> std::any {
-                return GaussianCloud::load_ply(path);
+                return GaussianCloud::load_with_gsvx_first(path);
             });
             chunk.state = ChunkState::Loading;
             chunk.load_request_id = req_id;

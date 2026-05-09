@@ -152,7 +152,7 @@ void VfxInstance::init(const VfxPreset& preset, const glm::vec3& position, bool 
                 ply_path = resolve_asset_path("assets/vfx/" + filename).string();
             }
             if (std::filesystem::exists(ply_path)) {
-                auto cloud = GaussianCloud::load_ply(ply_path);
+                auto cloud = GaussianCloud::load_with_gsvx_first(ply_path);
                 const auto& gs = cloud.gaussians();
                 glm::vec3 offset = position_ + rotated_pos;
                 for (const auto& src : gs) {
