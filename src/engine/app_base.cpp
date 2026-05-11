@@ -120,6 +120,12 @@ void AppBase::main_loop() {
             resources_.texture_cache().insert(cache_key, std::move(sp));
         });
 
+    // Phase 3b: RenderState contract. Allocates persistent-mapped storage
+    // buffers per frame-in-flight. No callers consume it yet — Phase 4
+    // PRs will wire producers (BoneAnimationSystem, VfxSystem, ...) and
+    // the renderer through it.
+    render_state_ = std::make_unique<RenderState>(renderer_.context());
+
     // Start control server for bridge integration
     control_server_.start();
 
@@ -548,6 +554,9 @@ void AppBase::cleanup() {
     async_loader_.shutdown();
     staging_uploader_.shutdown();
     audio_engine_.reset();
+    // RenderState owns VMA buffers; must die before renderer_ tears down
+    // the VkContext that owns the allocator.
+    render_state_.reset();
     resources_.shutdown();
     renderer_.shutdown();
     glfwDestroyWindow(window_);
