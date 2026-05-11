@@ -4,6 +4,26 @@
 
 namespace gseurat {
 
+namespace {
+
+// Flush the byte range covered by `dr` for a HOST_VISIBLE allocation.
+// vmaFlushAllocation is a no-op when the allocation's memory type is
+// HOST_COHERENT, so this is safe to call unconditionally and correct
+// on platforms where VMA selects non-coherent host memory.
+void flush_dirty(VmaAllocator alloc, VmaAllocation a,
+                 const DirtyRange& dr, std::size_t stride) noexcept {
+    if (dr.empty() || a == VK_NULL_HANDLE || alloc == VK_NULL_HANDLE) return;
+    const VkDeviceSize offset = static_cast<VkDeviceSize>(dr.first) * stride;
+    const VkDeviceSize size =
+        static_cast<VkDeviceSize>(dr.last - dr.first + 1) * stride;
+    // Return value ignored: failure is a device-lost-class event and will
+    // surface through other code paths; we don't have a return channel here.
+    (void)vmaFlushAllocation(alloc, a, offset, size);
+}
+
+}  // namespace
+
+
 RenderState::RenderState(VkContext& ctx, const RenderStateConfig& cfg)
     : ctx_(ctx), cfg_(cfg) {
     VmaAllocator alloc = ctx_.allocator();
@@ -95,14 +115,24 @@ void RenderState::begin_frame(FrameIndex f) noexcept {
     pf.lights_dirty.clear();
 }
 
-void RenderState::end_frame(FrameIndex /*f*/) noexcept {
+void RenderState::end_frame(FrameIndex f) noexcept {
     // Buffers are HOST_ACCESS_SEQUENTIAL_WRITE + MAPPED via VMA's
-    // create_storage. On coherent memory (Apple Silicon's unified
-    // memory, most discrete GPUs' HOST_VISIBLE | HOST_COHERENT) writes
-    // are visible to the GPU without an explicit flush — no work to do.
+    // create_storage. VMA may select either HOST_COHERENT or
+    // non-coherent memory depending on the platform; vmaFlushAllocation
+    // is a no-op in the coherent case (Apple Silicon's unified memory,
+    // typical discrete-GPU HOST_VISIBLE | HOST_COHERENT) and issues the
+    // required vkFlushMappedMemoryRanges otherwise. Calling it
+    // unconditionally is correct everywhere.
     //
-    // If a future target exposes non-coherent host memory, this is
-    // where vkFlushMappedMemoryRanges over the dirty ranges would go.
+    // DirtyRange state is preserved here; begin_frame() clears it when
+    // this slot is reused in a future frame.
+    auto& pf = per_frame_[to_u32(f) % kMaxFramesInFlight];
+    VmaAllocator alloc = ctx_.allocator();
+    flush_dirty(alloc, pf.bones.allocation(),        pf.bones_dirty,     sizeof(glm::mat4));
+    flush_dirty(alloc, pf.vfx.allocation(),          pf.vfx_dirty,       cfg_.splat_stride);
+    flush_dirty(alloc, pf.pbd.allocation(),          pf.pbd_dirty,       cfg_.splat_stride);
+    flush_dirty(alloc, pf.particles.allocation(),    pf.particles_dirty, cfg_.splat_stride);
+    flush_dirty(alloc, pf.point_lights.allocation(), pf.lights_dirty,    sizeof(PointLight));
 }
 
 }  // namespace gseurat
