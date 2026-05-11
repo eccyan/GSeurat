@@ -484,8 +484,14 @@ private:
     // Static/dynamic split buffers
     Buffer static_gaussian_ssbo_;
     Buffer dynamic_gaussian_ssbo_;
-    Buffer static_sort_a_;
-    Buffer static_sort_b_;
+    // Static depth-sort ping-pong outputs — per-frame. static_dirty_frames_remaining_
+    // counts down kMaxFramesInFlight, so two consecutive in-flight cmdbufs both
+    // run the static Onesweep; with shared buffers their pass-N intermediate
+    // states would race the other cmdbuf's downstream merge read of the same
+    // bytes. Each frame slot now owns its own a/b buffers; the preprocess→sort→
+    // merge chain in cmdbuf [f] reads and writes only slot [f].
+    std::array<Buffer, kMaxFramesInFlight> static_sort_as_{};
+    std::array<Buffer, kMaxFramesInFlight> static_sort_bs_{};
     // Per-frame racing SSBOs (see comment above projected_ssbos_).
     std::array<Buffer, kMaxFramesInFlight> dynamic_sort_as_{};
     std::array<Buffer, kMaxFramesInFlight> dynamic_sort_bs_{};
@@ -739,9 +745,10 @@ private:
     std::array<VkDescriptorSet, kMaxFramesInFlight> depth_scatter_sets_ba_{};
 
     // Depth sort Onesweep descriptor sets (static path) — per-frame.
-    // static_sort_a_/b_ themselves are single-instance (GPU-fenced via
-    // static_dirty_), but the bound depth_onesweep_statuses_ slot is now
-    // per-frame, so each slot binds frame f's status buffer.
+    // Each slot binds frame f's depth_onesweep_statuses_[f] AND its own
+    // static_sort_as_[f]/static_sort_bs_[f] ping-pong buffers, so the two
+    // frames of the static_dirty_frames_remaining_ countdown can run
+    // concurrently without racing on shared sort buffers.
     std::array<VkDescriptorSet, kMaxFramesInFlight> static_depth_hist_sets_a_{};
     std::array<VkDescriptorSet, kMaxFramesInFlight> static_depth_hist_sets_b_{};
     std::array<VkDescriptorSet, kMaxFramesInFlight> static_depth_scatter_sets_ab_{};

@@ -572,8 +572,8 @@ void GsRenderer::create_descriptor_resources() {
     depth_scatter_sets_ab_[1] = sets[40];
     depth_scatter_sets_ba_[1] = sets[41];
     // Depth sort Onesweep (static) — per-frame so each slot can bind frame
-    // f's depth_onesweep_statuses_[f]. static_sort_a_/b_ stay single-instance
-    // (GPU-fenced via static_dirty_).
+    // f's depth_onesweep_statuses_[f] AND its own static_sort_as_[f]/
+    // static_sort_bs_[f] ping-pong buffers.
     static_depth_hist_sets_a_[0] = sets[21];
     static_depth_hist_sets_b_[0] = sets[22];
     static_depth_scatter_sets_ab_[0] = sets[23];
@@ -1225,10 +1225,11 @@ void GsRenderer::init_streaming(const StreamingConfig& config) {
     pbd_uniform_buffer_.destroy(allocator_);
     static_gaussian_ssbo_.destroy(allocator_);
     dynamic_gaussian_ssbo_.destroy(allocator_);
-    static_sort_a_.destroy(allocator_);
-    static_sort_b_.destroy(allocator_);
-    // Per-frame racing SSBOs: destroy every slot.
+    // Per-frame racing SSBOs: destroy every slot. static_sort_as_/bs_ are
+    // grouped in the same loop now that they're per-frame too.
     for (uint32_t f = 0; f < kMaxFramesInFlight; ++f) {
+        static_sort_as_[f].destroy(allocator_);
+        static_sort_bs_[f].destroy(allocator_);
         projected_ssbos_[f].destroy(allocator_);
         sort_keys_ssbos_[f].destroy(allocator_);
         sort_b_ssbos_[f].destroy(allocator_);
@@ -1269,8 +1270,14 @@ void GsRenderer::init_streaming(const StreamingConfig& config) {
     // host_dst flag = TRANSFER_DST_BIT, required for the per-frame
     // vkCmdFillBuffer in publish_pending_chunks that sentinel-fills the
     // [new_count, prev_count) tail when streaming Unloads shrink static_count_.
-    static_sort_a_ = Buffer::create_storage_host_dst(allocator_, static_sort_buf_size);
-    static_sort_b_ = Buffer::create_storage_host_dst(allocator_, static_sort_buf_size);
+    // static_sort_as_/bs_ are now per-frame so that two consecutive in-flight
+    // cmdbufs running the static Onesweep during a static_dirty cycle don't
+    // race each other on the shared ping-pong buffers; the preprocess→sort→
+    // merge chain in cmdbuf [f] reads/writes only slot [f].
+    for (uint32_t f = 0; f < kMaxFramesInFlight; ++f) {
+        static_sort_as_[f] = Buffer::create_storage_host_dst(allocator_, static_sort_buf_size);
+        static_sort_bs_[f] = Buffer::create_storage_host_dst(allocator_, static_sort_buf_size);
+    }
     uniform_buffer_ = Buffer::create_uniform(allocator_, sizeof(GsUniforms));
 
     // Per-frame racing SSBOs: create one slot per frame in flight. Phase 1
@@ -1321,9 +1328,9 @@ void GsRenderer::init_streaming(const StreamingConfig& config) {
                 p[i].index = 0;
             }
         };
-        sentinel_fill_sort(static_sort_a_, static_sort_size_);
-        sentinel_fill_sort(static_sort_b_, static_sort_size_);
         for (uint32_t f = 0; f < kMaxFramesInFlight; ++f) {
+            sentinel_fill_sort(static_sort_as_[f], static_sort_size_);
+            sentinel_fill_sort(static_sort_bs_[f], static_sort_size_);
             std::memset(projected_ssbos_[f].mapped(), 0,
                         static_cast<size_t>(max_static_count_ + max_dynamic_count_)
                             * sizeof(ProjectedSplat));
@@ -1632,8 +1639,13 @@ void GsRenderer::clear_chunks(VkCommandBuffer drain_cmd) {
             sort[i].index = 0;
         }
     };
-    fill_sort_sentinel(static_sort_a_, static_sort_size_);
-    fill_sort_sentinel(static_sort_b_, static_sort_size_);
+    // Per-frame: refill every slot. clear_chunks is called from the portal/
+    // scene-clear path after vkDeviceWaitIdle, so direct host writes to all
+    // slots are safe here.
+    for (uint32_t f = 0; f < kMaxFramesInFlight; ++f) {
+        fill_sort_sentinel(static_sort_as_[f], static_sort_size_);
+        fill_sort_sentinel(static_sort_bs_[f], static_sort_size_);
+    }
 
     // Invalidate the slab-indirection metadata. `publish_pending_chunks`'s
     // Unload path writes 0xFFFFFFFF sentinels to `page_table_ssbo_` for
@@ -2018,9 +2030,11 @@ void GsRenderer::diag_streaming_dump(uint64_t frame) {
     }
 
     // static_sort_a_ tail invariant check: should be all key=0xFFFFFFFF
-    // beyond static_count_ (PR #387's whole purpose).
-    if (static_sort_a_.mapped() && static_count_ < static_sort_size_) {
-        const auto* s = static_cast<const SortEntry*>(static_sort_a_.mapped());
+    // beyond static_count_ (PR #387's whole purpose). Per-frame: inspect
+    // slot [0] — both slots hold the same data when invariants hold, so
+    // slot [0] is sufficient for a diagnostic.
+    if (static_sort_as_[0].mapped() && static_count_ < static_sort_size_) {
+        const auto* s = static_cast<const SortEntry*>(static_sort_as_[0].mapped());
         const uint32_t scan_end = std::min<uint32_t>(static_count_ + 1024u, static_sort_size_);
         uint32_t non_sentinel = 0;
         uint32_t first_offender = UINT32_MAX;
@@ -2031,7 +2045,7 @@ void GsRenderer::diag_streaming_dump(uint64_t frame) {
             }
         }
         std::fprintf(stderr,
-            "[gs_diag]   static_sort_a_ tail [%u..%u): non_sentinel=%u first_offender=%s\n",
+            "[gs_diag]   static_sort_as_[0] tail [%u..%u): non_sentinel=%u first_offender=%s\n",
             static_count_, scan_end, non_sentinel,
             first_offender == UINT32_MAX
                 ? "none"
@@ -2255,10 +2269,14 @@ void GsRenderer::publish_pending_chunks(VkCommandBuffer cmd) {
             // each 8-byte SortEntry becomes {key=0xFFFFFFFF, index=0xFFFFFFFF}.
             // The 0xFFFFFFFF key sorts to the tail; the index is never read
             // (entry won't survive into merge's [0, static_count_) window).
-            vkCmdFillBuffer(cmd, static_sort_a_.buffer(),
-                            fill_offset, fill_size, 0xFFFFFFFFu);
-            vkCmdFillBuffer(cmd, static_sort_b_.buffer(),
-                            fill_offset, fill_size, 0xFFFFFFFFu);
+            // Per-frame: fill every slot so both in-flight cmdbufs see the
+            // same sentinel tail when the next static depth sort runs.
+            for (uint32_t f = 0; f < kMaxFramesInFlight; ++f) {
+                vkCmdFillBuffer(cmd, static_sort_as_[f].buffer(),
+                                fill_offset, fill_size, 0xFFFFFFFFu);
+                vkCmdFillBuffer(cmd, static_sort_bs_[f].buffer(),
+                                fill_offset, fill_size, 0xFFFFFFFFu);
+            }
         }
 
         // Single barrier covering both metadata buffers AND the sort-tail
@@ -2267,7 +2285,8 @@ void GsRenderer::publish_pending_chunks(VkCommandBuffer cmd) {
         // compute dispatches in the same cmd buffer could read with the
         // writes still in flight.
         const bool sort_filled = (static_count_ < prev_static_count);
-        VkBufferMemoryBarrier barriers[4]{};
+        // 2 metadata buffers + 2 sort buffers × kMaxFramesInFlight slots.
+        VkBufferMemoryBarrier barriers[2 + 2 * kMaxFramesInFlight]{};
         uint32_t nb = 0;
         auto add = [&](VkBuffer b) {
             barriers[nb].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
@@ -2283,8 +2302,10 @@ void GsRenderer::publish_pending_chunks(VkCommandBuffer cmd) {
         add(page_table_ssbo_.buffer());
         add(chunk_table_ssbo_.buffer());
         if (sort_filled) {
-            add(static_sort_a_.buffer());
-            add(static_sort_b_.buffer());
+            for (uint32_t f = 0; f < kMaxFramesInFlight; ++f) {
+                add(static_sort_as_[f].buffer());
+                add(static_sort_bs_[f].buffer());
+            }
         }
 
         vkCmdPipelineBarrier(cmd,
@@ -2643,12 +2664,13 @@ void GsRenderer::update_descriptors() {
     if (!static_gaussian_ssbo_.buffer() || !counts_ssbos_[0].buffer()) return;
 
     // Static preprocess set: static_gaussian(0), projected(1), static_sort_a(2), uniforms(3), counts[0](4), bones(5), pbd(6), page_table(8)
-    // Per-frame: static_preprocess_sets_[f] binds projected_ssbos_[f] and counts_ssbos_[f].
-    // (static_sort_a_ is single-instance — not in the racing set.)
+    // Per-frame: static_preprocess_sets_[f] binds projected_ssbos_[f],
+    // counts_ssbos_[f], and (now) static_sort_as_[f] so the preprocess→sort→
+    // merge chain in cmdbuf [f] is self-contained.
     for (uint32_t f = 0; f < kMaxFramesInFlight; ++f) {
         VkDescriptorBufferInfo gaussian_info{static_gaussian_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo projected_info{projected_ssbos_[f].buffer(), 0, VK_WHOLE_SIZE};
-        VkDescriptorBufferInfo sort_info{static_sort_a_.buffer(), 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo sort_info{static_sort_as_[f].buffer(), 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo uniform_info{uniform_buffer_.buffer(), 0, sizeof(GsUniforms)};
         VkDescriptorBufferInfo counts_info{counts_ssbos_[f].buffer(), 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo bone_info{bone_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
@@ -2772,14 +2794,14 @@ void GsRenderer::update_descriptors() {
               }; vkUpdateDescriptorSets(device_, 4, w, 0, nullptr); }
         };
 
-        // Static depth sort: static_sort_a_/b_ are single-instance
-        // (GPU-fenced via static_dirty_), but the bound status buffer is
-        // per-frame so we still need per-frame descriptor sets here.
+        // Static depth sort: static_sort_as_/bs_ are now per-frame too, so
+        // the descriptor set in slot [f] binds the buffers in slot [f] and
+        // there's no cross-cmdbuf race on the radix ping-pong outputs.
         for (uint32_t f = 0; f < kMaxFramesInFlight; ++f) {
             write_depth_onesweep_sets(
                 static_depth_hist_sets_a_[f], static_depth_hist_sets_b_[f],
                 static_depth_scatter_sets_ab_[f], static_depth_scatter_sets_ba_[f],
-                static_sort_a_.buffer(), static_sort_b_.buffer(),
+                static_sort_as_[f].buffer(), static_sort_bs_[f].buffer(),
                 depth_onesweep_statuses_[f].buffer(), static_depth_params_.buffer());
         }
         // Dynamic depth sort — per-frame (Phase 3). Each frame slot binds
@@ -2795,10 +2817,12 @@ void GsRenderer::update_descriptors() {
     }
 
     // Merge set: static_sort_a(0), dynamic_sort_a(1), merged_sort(2), counts(3)
-    // Per-frame (Phase 3): merge_sets_[f] binds dynamic_sort_as_[f],
-    // merged_sort_ssbos_[f], counts_ssbos_[f]. static_sort_a_ is single-instance.
+    // Per-frame (Phase 3 + onesweep status fix): merge_sets_[f] binds
+    // dynamic_sort_as_[f], merged_sort_ssbos_[f], counts_ssbos_[f], and (now)
+    // static_sort_as_[f] — every input/output the merge touches lives in
+    // slot [f], so two in-flight cmdbufs do not race on shared buffers.
     for (uint32_t f = 0; f < kMaxFramesInFlight; ++f) {
-        VkDescriptorBufferInfo static_info{static_sort_a_.buffer(), 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo static_info{static_sort_as_[f].buffer(), 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo dynamic_info{dynamic_sort_as_[f].buffer(), 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo merged_info{merged_sort_ssbos_[f].buffer(), 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo counts_info{counts_ssbos_[f].buffer(), 0, VK_WHOLE_SIZE};
@@ -3790,9 +3814,10 @@ void GsRenderer::render(VkCommandBuffer cmd, uint32_t frame_in_flight,
 
                 insert_compute_barrier(cmd);
 
-                // Sort static (Onesweep) — static_sort_a_/b_ are GPU-fenced
-                // via static_dirty_, but the bound depth_onesweep_statuses_
-                // slot is per-frame, so the descriptor sets are per-frame too.
+                // Sort static (Onesweep) — every input/output the static sort
+                // touches lives in slot [frame_in_flight]: status buffer,
+                // ping-pong sort_as_/bs_, and the bound descriptor sets. The
+                // two frames of the static_dirty cycle now run independently.
                 dispatch_depth_onesweep(cmd, static_sort_size_, static_sort_workgroups_,
                     frame_in_flight,
                     static_depth_hist_sets_a_[frame_in_flight], static_depth_hist_sets_b_[frame_in_flight],
@@ -4046,10 +4071,10 @@ void GsRenderer::shutdown(VmaAllocator allocator) {
     // Split buffers
     static_gaussian_ssbo_.destroy(allocator);
     dynamic_gaussian_ssbo_.destroy(allocator);
-    static_sort_a_.destroy(allocator);
-    static_sort_b_.destroy(allocator);
-    // Per-frame racing SSBOs.
+    // Per-frame racing SSBOs (static_sort_as_/bs_ are grouped here now).
     for (uint32_t f = 0; f < kMaxFramesInFlight; ++f) {
+        static_sort_as_[f].destroy(allocator);
+        static_sort_bs_[f].destroy(allocator);
         projected_ssbos_[f].destroy(allocator);
         sort_keys_ssbos_[f].destroy(allocator);
         sort_b_ssbos_[f].destroy(allocator);
