@@ -2218,9 +2218,11 @@ void GsRenderer::update_dynamic_gaussians(const Gaussian* data, uint32_t count) 
         std::memcpy(dst, staging.data(), count * sizeof(GpuGaussian));
     }
 
-    // Reinitialize dynamic sort buffers for active range [0..dynamic_count_)
-    init_dynamic_sort_buf(dynamic_sort_a_, dynamic_sort_size_, dynamic_count_);
-    init_dynamic_sort_buf(dynamic_sort_b_, dynamic_sort_size_, dynamic_count_);
+    // Dynamic sort buffer init is NOT done here. It runs GPU-side in
+    // GsRenderer::render via vkCmdFillBuffer, properly synchronized against
+    // the in-flight depth-sort dispatch from frame N-1. CPU init here would
+    // race with frame N-1's GPU sort, causing intermittent flicker of
+    // persistent dynamics (chars/NPCs/PBD-tagged splats).
 }
 
 
@@ -3474,6 +3476,32 @@ void GsRenderer::render(VkCommandBuffer cmd, uint32_t frame_in_flight,
             } else {
                 // Reset only dynamic visible count (counts[1]) and merged (counts[2])
                 vkCmdFillBuffer(cmd, counts_ssbo_.buffer(), 4, 8, 0);
+            }
+
+            // Per-frame GPU-side init of dynamic sort buffers.
+            //
+            // Why on the GPU? The previous CPU-side init (an 8MB std::memcpy
+            // to a HOST_VISIBLE mapped buffer every frame) raced against the
+            // GPU's in-flight reads of those same buffers from frame N-1.
+            // With kMaxFramesInFlight=2, frame N+1's CPU init could clobber
+            // entries that frame N's depth-sort dispatch was still consuming,
+            // producing intermittent flicker of persistent dynamics
+            // (chars/NPCs/PBD trees would appear for "a few frames" then
+            // disappear). Moving the fill into the command buffer makes it
+            // properly serialized with the subsequent preprocess + sort
+            // dispatches via the same TRANSFER→COMPUTE barrier below.
+            //
+            // Fill pattern 0xFFFFFFFF gives both `key` and `index` fields of
+            // every SortEntry the max-uint sentinel. The preprocess shader
+            // overwrites slots [0..dynamic_count_) with real keys (depth in
+            // [0..0xFFFE] for visible, 0xFFFF for culled) and indices, so the
+            // active range is fresh. Inactive slots keep 0xFFFFFFFF, sorting
+            // them past 0xFFFF and out of the counts[1] visible window.
+            if (dynamic_count_ > 0 && dynamic_sort_a_.buffer() && dynamic_sort_b_.buffer()) {
+                const VkDeviceSize dyn_sort_bytes =
+                    static_cast<VkDeviceSize>(dynamic_sort_size_) * sizeof(SortEntry);
+                vkCmdFillBuffer(cmd, dynamic_sort_a_.buffer(), 0, dyn_sort_bytes, 0xFFFFFFFFu);
+                vkCmdFillBuffer(cmd, dynamic_sort_b_.buffer(), 0, dyn_sort_bytes, 0xFFFFFFFFu);
             }
             {
                 VkMemoryBarrier fill_barrier{};
