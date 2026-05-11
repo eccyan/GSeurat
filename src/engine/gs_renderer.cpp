@@ -1531,6 +1531,9 @@ void GsRenderer::init_streaming(const StreamingConfig& config) {
 
     std::fprintf(stderr, "GS: Streaming initialized — budget=%u splats, %u slabs of %u\n",
                  config.gpu_budget_splats, config.total_slabs(), config.slab_size_splats);
+
+    GS_DBG_INVARIANT(active_chunks_.empty() && static_count_ == 0,
+                     "init_streaming: active_chunks_ must be empty and static_count_ zeroed on fresh init");
 }
 
 void GsRenderer::unload_cloud(uint32_t chunk_id) {
@@ -1760,6 +1763,9 @@ void GsRenderer::clear_chunks(VkCommandBuffer drain_cmd) {
     // by static_preprocess once. Phase 3's per-frame routing means each
     // slot must run static_preprocess at least once after a scene clear.
     static_dirty_frames_remaining_ = kMaxFramesInFlight;
+
+    GS_DBG_INVARIANT(active_chunks_.empty() && static_count_ == 0,
+                     "clear_chunks: active_chunks_ must be empty and static_count_ zeroed post-clear");
 }
 
 std::vector<GsRenderer::ChunkInventoryEntry> GsRenderer::chunk_inventory() const {
@@ -2324,6 +2330,15 @@ void GsRenderer::publish_pending_chunks(VkCommandBuffer cmd, uint32_t frame_in_f
             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
             0, 0, nullptr, nb, barriers, 0, nullptr);
     }
+
+    // PR #387 invariant: CPU-side static_count_ must always equal the sum
+    // of splat counts across all active chunks. Drift between these two
+    // means a Load/Unload codepath updated one but not the other, and
+    // every subsequent frame's render() reads a corrupt count — the kind
+    // of bug that took two weeks of GPU-side debugging to trace last time.
+    GS_DBG_INVARIANT(
+        [&]{ uint32_t s = 0; for (const auto& c : active_chunks_) s += c.splat_count; return s; }() == static_count_,
+        "publish_pending_chunks: static_count_ drift vs sum(active_chunks.splat_count)");
 }
 
 
@@ -3280,8 +3295,8 @@ void GsRenderer::dispatch_tile_sort(VkCommandBuffer cmd, uint32_t frame_in_fligh
     // this flag after the in-flight fence to decide whether the captured
     // frame represents a real measurement.
     determinism_readback_emitted_ = false;
-    assert(tile_sort_as_[frame_in_flight].buffer() && tile_sort_capacity_ > 0 &&
-           "dispatch_tile_sort: tile sort buffers must be allocated before first dispatch");
+    GS_DBG_INVARIANT(tile_sort_as_[frame_in_flight].buffer() && tile_sort_capacity_ > 0,
+                     "dispatch_tile_sort: tile sort buffers must be allocated before first dispatch");
 
     uint32_t width = output_width_;
     uint32_t height = output_height_;
@@ -3805,7 +3820,7 @@ void GsRenderer::render(VkCommandBuffer cmd, uint32_t frame_in_flight,
         // post-init. The wrapper remains for code-locality; collapsing it
         // is part of the post-1c descriptor-state cleanup (issue #397).
         bool use_split = static_gaussian_ssbo_.buffer() && counts_ssbos_[0].buffer();
-        assert(use_split && "render: split buffers must be allocated in streaming-strict mode");
+        GS_DBG_INVARIANT(use_split, "render: split buffers must be allocated in streaming-strict mode");
 
         if (use_split) {
             // Reset counts that will be written this frame
@@ -3961,8 +3976,8 @@ void GsRenderer::render(VkCommandBuffer cmd, uint32_t frame_in_flight,
             // === Phase 4: Tile-based rasterization ===
             {
                 GS_LABEL(cmd, "Rasterize");
-                assert(tile_sort_as_[frame_in_flight].buffer() && tile_sort_capacity_ > 0 &&
-                       "tile render: tile sort buffers must be allocated post-init");
+                GS_DBG_INVARIANT(tile_sort_as_[frame_in_flight].buffer() && tile_sort_capacity_ > 0,
+                                 "tile render: tile sort buffers must be allocated post-init");
                 vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, tile_render_pipeline_);
                 vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
                                         tile_render_pipeline_layout_, 0, 1, &tile_render_set, 0, nullptr);
