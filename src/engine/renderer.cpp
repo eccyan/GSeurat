@@ -510,7 +510,7 @@ void Renderer::draw_scene(Scene& scene,
 #if GSEURAT_DEBUG_BUILD
     const auto t_ds_pre_poll = std::chrono::steady_clock::now();
 #endif
-    gs_renderer_.poll_transfers(cmd);
+    gs_renderer_.poll_transfers(cmd, current_frame_);
 #if GSEURAT_DEBUG_BUILD
     const auto t_ds_post_poll = std::chrono::steady_clock::now();
 #endif

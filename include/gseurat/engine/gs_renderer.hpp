@@ -117,7 +117,11 @@ public:
     // Requires init_streaming() and create_transfer_queue() to have been
     // called first; logs an error and returns {} if streaming isn't ready.
     std::vector<TransferQueue::Handle> load_cloud_async(GaussianCloud cloud);
-    void poll_transfers(VkCommandBuffer frame_cmd);
+    // `frame_in_flight` identifies the slot the caller has waited on; only
+    // resources owned by that slot may be written from `frame_cmd`. Other
+    // slots' state (e.g. static_sort tail) is updated lazily when those
+    // slots are next reused.
+    void poll_transfers(VkCommandBuffer frame_cmd, uint32_t frame_in_flight);
     void create_transfer_queue(VkQueue transfer_q, uint32_t transfer_family,
                                uint32_t graphics_family, bool dedicated);
 
@@ -427,7 +431,12 @@ private:
     // (page_table, chunk_table) onto `cmd` via vkCmdUpdateBuffer + a
     // TRANSFER_WRITE -> SHADER_READ barrier. Called from poll_transfers
     // immediately after poll_completions enqueues new publications.
-    void publish_pending_chunks(VkCommandBuffer cmd);
+    // `frame_in_flight` is the slot the caller has waited on. Only
+    // static_sort_as_/bs_[frame_in_flight] are filled in-place; other
+    // slots are flagged in static_sort_tail_dirty_per_slot_ and lazily
+    // filled at the start of their own render() record (after their
+    // in-flight fence has been waited on).
+    void publish_pending_chunks(VkCommandBuffer cmd, uint32_t frame_in_flight);
 
     // DIAG: stderr-print streaming-state snapshot (active_chunks_, counts,
     // projected_ssbo_/merged_sort_ssbo_/static_sort_a_ tail samples) for
@@ -492,6 +501,12 @@ private:
     // merge chain in cmdbuf [f] reads and writes only slot [f].
     std::array<Buffer, kMaxFramesInFlight> static_sort_as_{};
     std::array<Buffer, kMaxFramesInFlight> static_sort_bs_{};
+    // Per-slot deferred sentinel-fill request. publish_pending_chunks sets
+    // this for every slot OTHER than the one it's recording on whenever an
+    // Unload shrinks static_count_; render() consumes it at the start of
+    // its record for that slot (after the in-flight fence wait has made
+    // the slot safe to write).
+    std::array<bool, kMaxFramesInFlight> static_sort_tail_dirty_per_slot_{};
     // Per-frame racing SSBOs (see comment above projected_ssbos_).
     std::array<Buffer, kMaxFramesInFlight> dynamic_sort_as_{};
     std::array<Buffer, kMaxFramesInFlight> dynamic_sort_bs_{};

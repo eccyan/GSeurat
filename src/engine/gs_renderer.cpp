@@ -1840,7 +1840,7 @@ std::vector<TransferQueue::Handle> GsRenderer::load_cloud_async(GaussianCloud cl
     return handles_for_caller;
 }
 
-void GsRenderer::poll_transfers(VkCommandBuffer frame_cmd) {
+void GsRenderer::poll_transfers(VkCommandBuffer frame_cmd, uint32_t frame_in_flight) {
     if (!transfer_queue_) return;
     // Diagnostic: full poll path covers slab-upload submits, completion
     // callback drains, deferred slab releases, and the metadata publish.
@@ -1933,7 +1933,7 @@ void GsRenderer::poll_transfers(VkCommandBuffer frame_cmd) {
     }
 
     transfer_queue_->poll_completions(frame_cmd);
-    publish_pending_chunks(frame_cmd);
+    publish_pending_chunks(frame_cmd, frame_in_flight);
 
     // ── DIAG: streaming-state dump (PR #387 ghost investigation) ──
     // Opt-in via env var GS_DIAG_STREAMING=1. Cached once. Prints to
@@ -2058,7 +2058,7 @@ void GsRenderer::diag_streaming_dump(uint64_t frame) {
     std::fflush(stderr);
 }
 
-void GsRenderer::publish_pending_chunks(VkCommandBuffer cmd) {
+void GsRenderer::publish_pending_chunks(VkCommandBuffer cmd, uint32_t frame_in_flight) {
     // Step 1: tick the deferred-release queue *before* doing anything that
     // might check out new slabs. Slabs whose hold-time has expired are
     // returned to the allocator now so they're available for incoming load
@@ -2273,13 +2273,19 @@ void GsRenderer::publish_pending_chunks(VkCommandBuffer cmd) {
             // each 8-byte SortEntry becomes {key=0xFFFFFFFF, index=0xFFFFFFFF}.
             // The 0xFFFFFFFF key sorts to the tail; the index is never read
             // (entry won't survive into merge's [0, static_count_) window).
-            // Per-frame: fill every slot so both in-flight cmdbufs see the
-            // same sentinel tail when the next static depth sort runs.
+            // Per-frame: only fill THIS slot — the caller has waited on its
+            // in-flight fence. Other slots may still be GPU-active on their
+            // own cmdbufs; writing them here would race those reads.
+            // Mark the other slots dirty so render() refills them at the
+            // top of their next record (after their fence has been waited).
+            vkCmdFillBuffer(cmd, static_sort_as_[frame_in_flight].buffer(),
+                            fill_offset, fill_size, 0xFFFFFFFFu);
+            vkCmdFillBuffer(cmd, static_sort_bs_[frame_in_flight].buffer(),
+                            fill_offset, fill_size, 0xFFFFFFFFu);
             for (uint32_t f = 0; f < kMaxFramesInFlight; ++f) {
-                vkCmdFillBuffer(cmd, static_sort_as_[f].buffer(),
-                                fill_offset, fill_size, 0xFFFFFFFFu);
-                vkCmdFillBuffer(cmd, static_sort_bs_[f].buffer(),
-                                fill_offset, fill_size, 0xFFFFFFFFu);
+                if (f != frame_in_flight) {
+                    static_sort_tail_dirty_per_slot_[f] = true;
+                }
             }
         }
 
@@ -2289,8 +2295,10 @@ void GsRenderer::publish_pending_chunks(VkCommandBuffer cmd) {
         // compute dispatches in the same cmd buffer could read with the
         // writes still in flight.
         const bool sort_filled = (static_count_ < prev_static_count);
-        // 2 metadata buffers + 2 sort buffers × kMaxFramesInFlight slots.
-        VkBufferMemoryBarrier barriers[2 + 2 * kMaxFramesInFlight]{};
+        // 2 metadata buffers + 2 sort buffers (current slot only — other
+        // slots are barriered separately at the start of their render()
+        // record, when the deferred dirty fill is emitted).
+        VkBufferMemoryBarrier barriers[4]{};
         uint32_t nb = 0;
         auto add = [&](VkBuffer b) {
             barriers[nb].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
@@ -2306,10 +2314,8 @@ void GsRenderer::publish_pending_chunks(VkCommandBuffer cmd) {
         add(page_table_ssbo_.buffer());
         add(chunk_table_ssbo_.buffer());
         if (sort_filled) {
-            for (uint32_t f = 0; f < kMaxFramesInFlight; ++f) {
-                add(static_sort_as_[f].buffer());
-                add(static_sort_bs_[f].buffer());
-            }
+            add(static_sort_as_[frame_in_flight].buffer());
+            add(static_sort_bs_[frame_in_flight].buffer());
         }
 
         vkCmdPipelineBarrier(cmd,
@@ -3564,6 +3570,50 @@ void GsRenderer::render(VkCommandBuffer cmd, uint32_t frame_in_flight,
         static_cast<float>(tiles_x), static_cast<float>(tiles_y));
 
     std::memcpy(uniform_buffer_.mapped(), &uniforms, sizeof(uniforms));
+
+    // Deferred static_sort tail fill (Codex P1 round 2).
+    //
+    // publish_pending_chunks only touches its own fenced slot when an Unload
+    // shrinks static_count_; it marks the OTHER slots dirty for lazy refill
+    // here. By the time render() runs for `frame_in_flight`, this slot's
+    // in-flight fence has been waited on, so writing static_sort_as_/bs_
+    // [frame_in_flight] is race-free.
+    //
+    // Conservative fill: zero out the full tail [static_count_, static_sort_size_)
+    // rather than tracking per-event delta windows. Multiple Unloads can
+    // accumulate between two reuses of a slot; the over-fill is correctness-
+    // critical and runs only when a slot was actually marked dirty (rare,
+    // chunk-transition / scene-clear events).
+    if (static_sort_tail_dirty_per_slot_[frame_in_flight] &&
+        static_count_ < static_sort_size_) {
+        const VkDeviceSize entry_sz = sizeof(SortEntry);
+        const VkDeviceSize fill_offset =
+            static_cast<VkDeviceSize>(static_count_) * entry_sz;
+        const VkDeviceSize fill_size =
+            static_cast<VkDeviceSize>(static_sort_size_ - static_count_) * entry_sz;
+        vkCmdFillBuffer(cmd, static_sort_as_[frame_in_flight].buffer(),
+                        fill_offset, fill_size, 0xFFFFFFFFu);
+        vkCmdFillBuffer(cmd, static_sort_bs_[frame_in_flight].buffer(),
+                        fill_offset, fill_size, 0xFFFFFFFFu);
+
+        VkBufferMemoryBarrier sort_barriers[2]{};
+        for (uint32_t i = 0; i < 2; ++i) {
+            sort_barriers[i].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+            sort_barriers[i].srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+            sort_barriers[i].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+            sort_barriers[i].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            sort_barriers[i].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            sort_barriers[i].offset = 0;
+            sort_barriers[i].size = VK_WHOLE_SIZE;
+        }
+        sort_barriers[0].buffer = static_sort_as_[frame_in_flight].buffer();
+        sort_barriers[1].buffer = static_sort_bs_[frame_in_flight].buffer();
+        vkCmdPipelineBarrier(cmd,
+            VK_PIPELINE_STAGE_TRANSFER_BIT,
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+            0, 0, nullptr, 2, sort_barriers, 0, nullptr);
+        static_sort_tail_dirty_per_slot_[frame_in_flight] = false;
+    }
 
     // Read back GPU timestamps from THIS slot's PREVIOUS write (the renderer
     // waits on this slot's in-flight fence before calling render(), so the
