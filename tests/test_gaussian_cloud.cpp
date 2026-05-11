@@ -16,6 +16,7 @@
 // Run: ./build/test_gaussian_cloud
 
 #include "gseurat/engine/gaussian_cloud.hpp"
+#include "gseurat/engine/gaussian_cloud_ply.hpp"
 #include "gseurat/engine/collision_gen.hpp"
 #include "gseurat/engine/scene_loader.hpp"
 
@@ -239,7 +240,7 @@ int main() {
         const std::string ply_path = tmp_dir + "/test_standard.ply";
         write_test_ply(ply_path, 10);
 
-        auto cloud = GaussianCloud::load_ply(ply_path);
+        auto cloud = ply::load(ply_path);
         assert(cloud.count() == 10 && "Should load 10 Gaussians");
         assert(!cloud.empty() && "Cloud should not be empty");
 
@@ -282,7 +283,7 @@ int main() {
         const std::string ply_path = tmp_dir + "/test_nerfstudio.ply";
         write_test_ply_nerfstudio(ply_path);
 
-        auto cloud = GaussianCloud::load_ply(ply_path);
+        auto cloud = ply::load(ply_path);
         assert(cloud.count() == 1 && "Should load 1 Gaussian");
 
         const auto& g = cloud.gaussians()[0];
@@ -302,7 +303,7 @@ int main() {
     {
         bool threw = false;
         try {
-            GaussianCloud::load_ply(tmp_dir + "/nonexistent.ply");
+            ply::load(tmp_dir + "/nonexistent.ply");
         } catch (const std::runtime_error&) {
             threw = true;
         }
@@ -315,7 +316,7 @@ int main() {
         const std::string ply_path = tmp_dir + "/test_empty.ply";
         write_test_ply(ply_path, 0);
 
-        auto cloud = GaussianCloud::load_ply(ply_path);
+        auto cloud = ply::load(ply_path);
         assert(cloud.count() == 0 && "Should have 0 Gaussians");
         assert(cloud.empty() && "Cloud should be empty");
         printf("PASS: Test 4 - Empty PLY (0 vertices)\n");
@@ -428,7 +429,7 @@ int main() {
     {
         const std::string ply_path = tmp_dir + "/test_standard.ply";
         write_test_ply(ply_path, 5);
-        auto cloud = GaussianCloud::load_ply(ply_path);
+        auto cloud = ply::load(ply_path);
 
         std::vector<GpuGaussian> expected(cloud.count());
         for (uint32_t i = 0; i < cloud.count(); ++i) {
@@ -638,8 +639,8 @@ int main() {
         const std::string ply_path = tmp_dir + "/test_standard.ply";
         write_test_ply(ply_path, 10);
 
-        auto cloud_yup = GaussianCloud::load_ply(ply_path);
-        auto cloud_ydn = GaussianCloud::load_ply(ply_path, CoordinateSystem::kVulkanYDown);
+        auto cloud_yup = ply::load(ply_path);
+        auto cloud_ydn = ply::load(ply_path, CoordinateSystem::kVulkanYDown);
 
         assert(cloud_ydn.count() == 10 && "Y-down should load same count");
 
@@ -673,8 +674,8 @@ int main() {
 
         // Write with Y-down, then read back with default (Y-up) — Y should be negated
         const std::string ply_path = tmp_dir + "/test_ydown_roundtrip.ply";
-        GaussianCloud::write_ply(ply_path, src, CoordinateSystem::kVulkanYDown);
-        auto cloud = GaussianCloud::load_ply(ply_path);  // default Y-up load
+        ply::write(ply_path, src, CoordinateSystem::kVulkanYDown);
+        auto cloud = ply::load(ply_path);  // default Y-up load
 
         const auto& g = cloud.gaussians()[0];
         assert(approx(g.position.x, 1.0f) && "Written X unchanged");
@@ -703,8 +704,8 @@ int main() {
         src[0].emission = 0.0f;
 
         const std::string ply_path = tmp_dir + "/test_ydown_identity.ply";
-        GaussianCloud::write_ply(ply_path, src, CoordinateSystem::kVulkanYDown);
-        auto cloud = GaussianCloud::load_ply(ply_path, CoordinateSystem::kVulkanYDown);
+        ply::write(ply_path, src, CoordinateSystem::kVulkanYDown);
+        auto cloud = ply::load(ply_path, CoordinateSystem::kVulkanYDown);
 
         const auto& g = cloud.gaussians()[0];
         // Double-negation should recover original position
@@ -725,7 +726,7 @@ int main() {
     {
         const std::string ply_path = tmp_dir + "/test_standard.ply";
         write_test_ply(ply_path, 5);
-        auto cloud = GaussianCloud::load_ply(ply_path);
+        auto cloud = ply::load(ply_path);
 
         std::vector<GpuGaussian> data(cloud.count());
         AABB expected_aabb;
@@ -766,7 +767,7 @@ int main() {
     {
         const std::string ply_path = tmp_dir + "/test_standard.ply";
         write_test_ply(ply_path, 5);
-        auto cloud = GaussianCloud::load_ply(ply_path);
+        auto cloud = ply::load(ply_path);
 
         std::vector<GpuGaussian> data(cloud.count());
         for (uint32_t i = 0; i < cloud.count(); ++i) {
@@ -803,7 +804,7 @@ int main() {
 
     auto bake_sibling_gsvx_v2 = [](const std::string& ply_path,
                                     const std::string& gsvx_path) {
-        auto cloud = GaussianCloud::load_ply(ply_path);
+        auto cloud = ply::load(ply_path);
         std::vector<GpuGaussian> data(cloud.count());
         AABB aabb;
         for (uint32_t i = 0; i < cloud.count(); ++i) {
@@ -821,24 +822,22 @@ int main() {
         write_test_gsvx_v2(gsvx_path, data, aabb);
     };
 
-    // ====== Test 24: fallback to PLY when no .gsvx sibling exists ======
+    // ====== Test 24: throws when no .gsvx sibling exists ======
+    // Post-#396 M1: there is no PLY fallback in the runtime path. The
+    // bake_gsvx CMake target guarantees a sibling .gsvx for every bundled
+    // .ply; a missing one is a build/asset-pipeline error.
     {
-        const std::string ply_path = tmp_dir + "/test_dual_fallback.ply";
+        const std::string ply_path = tmp_dir + "/test_dual_no_sibling.ply";
         write_test_ply(ply_path, 5);
 
-        auto via_ply  = GaussianCloud::load_ply(ply_path);
-        auto via_dual = GaussianCloud::load_with_gsvx_first(ply_path);
-
-        assert(via_dual.count() == via_ply.count() && "fallback count matches");
-        for (uint32_t i = 0; i < via_ply.count(); ++i) {
-            const auto& a = via_ply.gaussians()[i];
-            const auto& b = via_dual.gaussians()[i];
-            assert(approx(a.position.x, b.position.x, 1e-6f) && "fallback position.x");
-            assert(approx(a.opacity,    b.opacity,    1e-6f) && "fallback opacity");
-            assert(approx(a.scale.x,    b.scale.x,    1e-6f) && "fallback scale.x");
-            assert(approx(a.importance, b.importance, 1e-6f) && "fallback importance");
+        bool threw = false;
+        try {
+            (void)GaussianCloud::load_with_gsvx_first(ply_path);
+        } catch (const std::runtime_error&) {
+            threw = true;
         }
-        printf("PASS: Test 24 - load_with_gsvx_first falls back to PLY when no sibling\n");
+        assert(threw && "load_with_gsvx_first throws when no sibling .gsvx");
+        printf("PASS: Test 24 - load_with_gsvx_first throws when no sibling .gsvx\n");
     }
 
     // ====== Test 25: prefers .gsvx sibling when present (parity with load_ply) ======
@@ -848,7 +847,7 @@ int main() {
         write_test_ply(ply_path, 7);
         bake_sibling_gsvx_v2(ply_path, gsvx_path);
 
-        auto via_ply  = GaussianCloud::load_ply(ply_path);
+        auto via_ply  = ply::load(ply_path);
         auto via_dual = GaussianCloud::load_with_gsvx_first(ply_path);
 
         assert(via_dual.count() == via_ply.count() && "prefer count matches");
@@ -882,12 +881,12 @@ int main() {
         printf("PASS: Test 25 - load_with_gsvx_first prefers sibling .gsvx (parity)\n");
     }
 
-    // ====== Test 26: graceful fallback to PLY when .gsvx is corrupt ======
+    // ====== Test 26: throws when sibling .gsvx is corrupt ======
     {
         const std::string ply_path  = tmp_dir + "/test_dual_corrupt.ply";
         const std::string gsvx_path = tmp_dir + "/test_dual_corrupt.gsvx";
         write_test_ply(ply_path, 4);
-        // Write a bad-magic GSVX next to the PLY
+        // Write a bad-magic GSVX next to the PLY.
         {
             std::ofstream out(gsvx_path, std::ios::binary);
             GsvxHeader header{};
@@ -896,25 +895,23 @@ int main() {
             out.write(reinterpret_cast<const char*>(&header), sizeof(header));
         }
 
-        auto via_ply  = GaussianCloud::load_ply(ply_path);
-        auto via_dual = GaussianCloud::load_with_gsvx_first(ply_path);
-
-        assert(via_dual.count() == via_ply.count() && "corrupt fallback count");
-        for (uint32_t i = 0; i < via_ply.count(); ++i) {
-            assert(approx(via_ply.gaussians()[i].position.x,
-                          via_dual.gaussians()[i].position.x, 1e-6f) &&
-                   "corrupt fallback position.x");
+        bool threw = false;
+        try {
+            (void)GaussianCloud::load_with_gsvx_first(ply_path);
+        } catch (const std::runtime_error&) {
+            threw = true;
         }
-        printf("PASS: Test 26 - load_with_gsvx_first falls back on corrupt sibling\n");
+        assert(threw && "load_with_gsvx_first throws on corrupt sibling .gsvx");
+        printf("PASS: Test 26 - load_with_gsvx_first throws on corrupt sibling\n");
     }
 
-    // ====== Test 27: graceful fallback when sibling .gsvx is truncated ======
+    // ====== Test 27: throws when sibling .gsvx is truncated ======
     {
         const std::string ply_path  = tmp_dir + "/test_dual_short.ply";
         const std::string gsvx_path = tmp_dir + "/test_dual_short.gsvx";
         write_test_ply(ply_path, 3);
-        // Write a header that claims count=999 but contains no payload — load_gsvx
-        // throws on size mismatch; wrapper must catch and fall through.
+        // Header claims count=999 but contains no payload — load_gsvx
+        // throws on size mismatch and the wrapper now propagates it.
         {
             std::ofstream out(gsvx_path, std::ios::binary);
             GsvxHeader header{};
@@ -925,11 +922,14 @@ int main() {
             out.write(reinterpret_cast<const char*>(&header), sizeof(header));
         }
 
-        auto via_ply  = GaussianCloud::load_ply(ply_path);
-        auto via_dual = GaussianCloud::load_with_gsvx_first(ply_path);
-
-        assert(via_dual.count() == via_ply.count() && "truncated fallback count");
-        printf("PASS: Test 27 - load_with_gsvx_first falls back on truncated sibling\n");
+        bool threw = false;
+        try {
+            (void)GaussianCloud::load_with_gsvx_first(ply_path);
+        } catch (const std::runtime_error&) {
+            threw = true;
+        }
+        assert(threw && "load_with_gsvx_first throws on truncated sibling .gsvx");
+        printf("PASS: Test 27 - load_with_gsvx_first throws on truncated sibling\n");
     }
 
     // ====== Test 28: kVulkanYDown applied symmetrically on GSVX path ======
@@ -939,7 +939,7 @@ int main() {
         write_test_ply(ply_path, 5);
         bake_sibling_gsvx_v2(ply_path, gsvx_path);
 
-        auto via_ply  = GaussianCloud::load_ply(ply_path, CoordinateSystem::kVulkanYDown);
+        auto via_ply  = ply::load(ply_path, CoordinateSystem::kVulkanYDown);
         auto via_dual = GaussianCloud::load_with_gsvx_first(ply_path,
                                                              CoordinateSystem::kVulkanYDown);
 

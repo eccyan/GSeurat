@@ -5,6 +5,7 @@
 //                      [--min-opacity N] [--z-up]
 
 #include "gseurat/engine/gaussian_cloud.hpp"
+#include "gseurat/engine/gaussian_cloud_ply.hpp"
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include <stb_image_write.h>
@@ -359,7 +360,7 @@ int main(int argc, char* argv[]) {
     // Load PLY
     GaussianCloud cloud;
     try {
-        cloud = GaussianCloud::load_ply(input_path);
+        cloud = gseurat::ply::load(input_path);
     } catch (const std::exception& e) {
         fprintf(stderr, "Error loading PLY: %s\n", e.what());
         return 1;

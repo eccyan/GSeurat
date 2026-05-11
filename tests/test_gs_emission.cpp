@@ -4,6 +4,7 @@
 // and packed into the GPU struct.
 
 #include "gseurat/engine/gaussian_cloud.hpp"
+#include "gseurat/engine/gaussian_cloud_ply.hpp"
 
 #include <cassert>
 #include <cstdio>
@@ -47,10 +48,10 @@ int main() {
 
         // Write PLY
         const char* path = "/tmp/test_emission.ply";
-        GaussianCloud::write_ply(path, input);
+        ply::write(path, input);
 
         // Read back
-        GaussianCloud cloud = GaussianCloud::load_ply(path);
+        GaussianCloud cloud = ply::load(path);
         const auto& output = cloud.gaussians();
         assert(output.size() == 3);
         assert(output[0].emission == 0.0f);
@@ -95,7 +96,7 @@ int main() {
             f.write(reinterpret_cast<const char*>(data), sizeof(data));
         }
 
-        GaussianCloud cloud = GaussianCloud::load_ply(path);
+        GaussianCloud cloud = ply::load(path);
         assert(cloud.gaussians().size() == 1);
         assert(cloud.gaussians()[0].emission == 0.0f);
 
