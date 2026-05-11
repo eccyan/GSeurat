@@ -575,7 +575,10 @@ private:
     VkDescriptorPool gs_pool_ = VK_NULL_HANDLE;
     VkDescriptorSetLayout preprocess_layout_ = VK_NULL_HANDLE;
     VkDescriptorSetLayout render_layout_ = VK_NULL_HANDLE;
-    VkDescriptorSet preprocess_set_ = VK_NULL_HANDLE;
+    // Per-frame compute sets: preprocess_sets_[f] is bound to *_ssbos_[f].
+    // Phase 2: plumbing only — dispatch sites still use [0]. Phase 3 routes
+    // frame_in_flight to actually use the per-frame slot.
+    std::array<VkDescriptorSet, kMaxFramesInFlight> preprocess_sets_{};
     // render_set_ binds output_image + depth_image — both per-frame —
     // so the set must also be per-frame to point at the right pair.
     std::array<VkDescriptorSet, kMaxFramesInFlight> render_sets_{};
@@ -586,9 +589,10 @@ private:
     VkPipeline merge_pipeline_ = VK_NULL_HANDLE;
     VkDescriptorSet merge_set_ = VK_NULL_HANDLE;
 
-    // Static/dynamic preprocess descriptor sets
-    VkDescriptorSet static_preprocess_set_ = VK_NULL_HANDLE;
-    VkDescriptorSet dynamic_preprocess_set_ = VK_NULL_HANDLE;
+    // Static/dynamic preprocess descriptor sets — per-frame (Phase 2 plumbing;
+    // dispatch still binds [0] until Phase 3).
+    std::array<VkDescriptorSet, kMaxFramesInFlight> static_preprocess_sets_{};
+    std::array<VkDescriptorSet, kMaxFramesInFlight> dynamic_preprocess_sets_{};
 
     // Compute pipelines
     VkPipelineLayout preprocess_pipeline_layout_ = VK_NULL_HANDLE;
@@ -615,7 +619,8 @@ private:
     VkDescriptorSetLayout sort_layout_ = VK_NULL_HANDLE;
     VkPipelineLayout sort_pipeline_layout_ = VK_NULL_HANDLE;
     VkPipeline sort_pipeline_ = VK_NULL_HANDLE;
-    VkDescriptorSet sort_set_ = VK_NULL_HANDLE;
+    // Per-frame sort sets (Phase 2 plumbing; dispatch still binds [0]).
+    std::array<VkDescriptorSet, kMaxFramesInFlight> sort_sets_{};
 
     // ── Tile binning pipeline (deterministic count→scan→scatter) ──
     // The combined `tile_bin_layout_` covers both the count and scatter

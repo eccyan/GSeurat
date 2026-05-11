@@ -203,16 +203,18 @@ void GsRenderer::create_output_image(uint32_t width, uint32_t height) {
 }
 
 void GsRenderer::create_descriptor_resources() {
-    // Descriptor pool — enough for all sets (including post-process + static/dynamic split)
+    // Descriptor pool — enough for all sets (including post-process + static/dynamic split).
+    // Phase 2 bumped capacity to absorb the doubled compute-set count
+    // (preprocess, sort, static_preprocess, dynamic_preprocess become per-frame).
     VkDescriptorPoolSize pool_sizes[] = {
-        {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 256},   // many more for split buffers
+        {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 320},   // many more for split buffers + Phase 2 per-frame
         {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 24},
-        {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 32},
+        {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 48},
     };
 
     VkDescriptorPoolCreateInfo pool_info{};
     pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-    pool_info.maxSets = 160;  // expanded for static/dynamic/merge + per-frame sets
+    pool_info.maxSets = 192;  // expanded for static/dynamic/merge + per-frame compute sets
     pool_info.poolSizeCount = 3;
     pool_info.pPoolSizes = pool_sizes;
 
@@ -440,9 +442,9 @@ void GsRenderer::create_descriptor_resources() {
                   "indices for render/post_process/tile_render at the end of `layouts`.");
 
     VkDescriptorSetLayout layouts[] = {
-        preprocess_layout_, sort_layout_, render_layout_,   // 0-2: legacy (render_sets_[0])
+        preprocess_layout_, sort_layout_, render_layout_,   // 0-2: legacy preprocess_sets_[0], sort_sets_[0], render_sets_[0]
         post_process_layout_,                               // 3: post-process (post_process_sets_[0])
-        preprocess_layout_, preprocess_layout_,             // 4-5: static + dynamic preprocess
+        preprocess_layout_, preprocess_layout_,             // 4-5: static_preprocess_sets_[0], dynamic_preprocess_sets_[0]
         merge_layout_,                                      // 6: merge
         render_layout_,                                     // 7: merged render
         pbd_layout_,                                        // 8: PBD solver
@@ -465,8 +467,15 @@ void GsRenderer::create_descriptor_resources() {
         render_layout_,                                     // 30: render_sets_[1]
         post_process_layout_,                               // 31: post_process_sets_[1]
         tile_render_layout_,                                // 32: tile_render_sets_[1]
+        // Phase 2 per-frame [1] copies for compute sets that bind per-frame
+        // racing SSBOs (projected, sort_keys, visible_count, counts, dynamic_sort_a).
+        // Dispatch still binds [0]; Phase 3 routes frame_in_flight here.
+        preprocess_layout_,                                 // 33: preprocess_sets_[1]
+        sort_layout_,                                       // 34: sort_sets_[1]
+        preprocess_layout_,                                 // 35: static_preprocess_sets_[1]
+        preprocess_layout_,                                 // 36: dynamic_preprocess_sets_[1]
     };
-    constexpr uint32_t kSetCount = 33;
+    constexpr uint32_t kSetCount = 37;
     VkDescriptorSet sets[kSetCount];
     VkDescriptorSetAllocateInfo alloc_info{};
     alloc_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
@@ -475,16 +484,20 @@ void GsRenderer::create_descriptor_resources() {
     alloc_info.pSetLayouts = layouts;
     vkAllocateDescriptorSets(device_, &alloc_info, sets);
 
-    // Legacy sets
-    preprocess_set_ = sets[0];
-    sort_set_ = sets[1];
+    // Legacy sets (per-frame Phase 2)
+    preprocess_sets_[0] = sets[0];
+    preprocess_sets_[1] = sets[33];
+    sort_sets_[0] = sets[1];
+    sort_sets_[1] = sets[34];
     render_sets_[0] = sets[2];
     render_sets_[1] = sets[30];
     post_process_sets_[0] = sets[3];
     post_process_sets_[1] = sets[31];
-    // Static/dynamic preprocess
-    static_preprocess_set_ = sets[4];
-    dynamic_preprocess_set_ = sets[5];
+    // Static/dynamic preprocess (per-frame Phase 2)
+    static_preprocess_sets_[0] = sets[4];
+    static_preprocess_sets_[1] = sets[35];
+    dynamic_preprocess_sets_[0] = sets[5];
+    dynamic_preprocess_sets_[1] = sets[36];
     merge_set_ = sets[6];
     // sets[7] is the merged render set (render_layout_)
     pbd_set_ = sets[8];
@@ -2324,58 +2337,64 @@ void GsRenderer::clear_bone_transforms() {
 
 void GsRenderer::update_descriptors() {
     // Preprocess set: gaussians(0), projected(1), sort_keys_A(2), uniforms(3), visible_count(4), bones(5), pbd(6), page_table(8)
-    {
+    // Per-frame: preprocess_sets_[f] binds *_ssbos_[f]. Dispatch still uses [0]
+    // until Phase 3. Single-instance buffers (gaussian, bone, pbd, page_table,
+    // uniform) are shared across frames.
+    for (uint32_t f = 0; f < kMaxFramesInFlight; ++f) {
         VkDescriptorBufferInfo gaussian_info{gaussian_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
-        VkDescriptorBufferInfo projected_info{projected_ssbos_[0].buffer(), 0, VK_WHOLE_SIZE};
-        VkDescriptorBufferInfo sort_info{sort_keys_ssbos_[0].buffer(), 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo projected_info{projected_ssbos_[f].buffer(), 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo sort_info{sort_keys_ssbos_[f].buffer(), 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo uniform_info{uniform_buffer_.buffer(), 0, sizeof(GsUniforms)};
-        VkDescriptorBufferInfo visible_count_info{visible_count_ssbos_[0].buffer(), 0, sizeof(uint32_t)};
+        VkDescriptorBufferInfo visible_count_info{visible_count_ssbos_[f].buffer(), 0, sizeof(uint32_t)};
         VkDescriptorBufferInfo bone_info{bone_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo pbd_info{pbd_state_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo page_table_info{page_table_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
 
+        VkDescriptorSet set = preprocess_sets_[f];
         VkWriteDescriptorSet writes[] = {
-            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, preprocess_set_, 0, 0, 1,
+            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, set, 0, 0, 1,
              VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &gaussian_info, nullptr},
-            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, preprocess_set_, 1, 0, 1,
+            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, set, 1, 0, 1,
              VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &projected_info, nullptr},
-            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, preprocess_set_, 2, 0, 1,
+            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, set, 2, 0, 1,
              VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &sort_info, nullptr},
-            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, preprocess_set_, 3, 0, 1,
+            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, set, 3, 0, 1,
              VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, nullptr, &uniform_info, nullptr},
-            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, preprocess_set_, 4, 0, 1,
+            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, set, 4, 0, 1,
              VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &visible_count_info, nullptr},
-            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, preprocess_set_, 5, 0, 1,
+            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, set, 5, 0, 1,
              VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &bone_info, nullptr},
-            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, preprocess_set_, 6, 0, 1,
+            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, set, 6, 0, 1,
              VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &pbd_info, nullptr},
-            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, preprocess_set_, 8, 0, 1,
+            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, set, 8, 0, 1,
              VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &page_table_info, nullptr},
         };
         vkUpdateDescriptorSets(device_, 8, writes, 0, nullptr);
     }
 
-    // Legacy sort set
-    {
-        VkDescriptorBufferInfo sort_info{sort_keys_ssbos_[0].buffer(), 0, VK_WHOLE_SIZE};
+    // Legacy sort set — per-frame (binds racing sort_keys_ssbos_[f]).
+    for (uint32_t f = 0; f < kMaxFramesInFlight; ++f) {
+        VkDescriptorBufferInfo sort_info{sort_keys_ssbos_[f].buffer(), 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo uniform_info{uniform_buffer_.buffer(), 0, sizeof(GsUniforms)};
+        VkDescriptorSet set = sort_sets_[f];
         VkWriteDescriptorSet writes[] = {
-            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, sort_set_, 0, 0, 1,
+            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, set, 0, 0, 1,
              VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &sort_info, nullptr},
-            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, sort_set_, 1, 0, 1,
+            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, set, 1, 0, 1,
              VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, nullptr, &uniform_info, nullptr},
         };
         vkUpdateDescriptorSets(device_, 2, writes, 0, nullptr);
     }
 
     // Render set: projected(0), sort_keys_A(1), uniforms(2), output_image(3), visible_count(4), depth_image(5)
-    // Per-frame: each render_sets_[i] binds output_views_[i] / depth_views_[i].
+    // Per-frame: each render_sets_[i] binds output_views_[i] / depth_views_[i]
+    // and racing SSBO slot [f].
     for (uint32_t f = 0; f < kMaxFramesInFlight; ++f) {
-        VkDescriptorBufferInfo projected_info{projected_ssbos_[0].buffer(), 0, VK_WHOLE_SIZE};
-        VkDescriptorBufferInfo sort_info{sort_keys_ssbos_[0].buffer(), 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo projected_info{projected_ssbos_[f].buffer(), 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo sort_info{sort_keys_ssbos_[f].buffer(), 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo uniform_info{uniform_buffer_.buffer(), 0, sizeof(GsUniforms)};
         VkDescriptorImageInfo image_info{VK_NULL_HANDLE, output_views_[f], VK_IMAGE_LAYOUT_GENERAL};
-        VkDescriptorBufferInfo visible_count_info{visible_count_ssbos_[0].buffer(), 0, sizeof(uint32_t)};
+        VkDescriptorBufferInfo visible_count_info{visible_count_ssbos_[f].buffer(), 0, sizeof(uint32_t)};
         VkDescriptorImageInfo depth_img_info{VK_NULL_HANDLE, depth_views_[f], VK_IMAGE_LAYOUT_GENERAL};
 
         VkDescriptorSet set = render_sets_[f];
@@ -2479,7 +2498,9 @@ void GsRenderer::update_descriptors() {
             }
         };
 
-        // Legacy depth sort sets
+        // Legacy depth sort sets. Phase 2: onesweep sets stay single-instance,
+        // so we bind racing buffer slot [0]. Phase 3 will either make these
+        // per-frame or route around the legacy path entirely.
         write_depth_onesweep_sets(
             depth_hist_set_a_, depth_hist_set_b_,
             depth_scatter_set_ab_, depth_scatter_set_ba_,
@@ -2492,64 +2513,70 @@ void GsRenderer::update_descriptors() {
     if (!static_gaussian_ssbo_.buffer() || !counts_ssbos_[0].buffer()) return;
 
     // Static preprocess set: static_gaussian(0), projected(1), static_sort_a(2), uniforms(3), counts[0](4), bones(5), pbd(6), page_table(8)
-    {
+    // Per-frame: static_preprocess_sets_[f] binds projected_ssbos_[f] and counts_ssbos_[f].
+    // (static_sort_a_ is single-instance — not in the racing set.)
+    for (uint32_t f = 0; f < kMaxFramesInFlight; ++f) {
         VkDescriptorBufferInfo gaussian_info{static_gaussian_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
-        VkDescriptorBufferInfo projected_info{projected_ssbos_[0].buffer(), 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo projected_info{projected_ssbos_[f].buffer(), 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo sort_info{static_sort_a_.buffer(), 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo uniform_info{uniform_buffer_.buffer(), 0, sizeof(GsUniforms)};
-        VkDescriptorBufferInfo counts_info{counts_ssbos_[0].buffer(), 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo counts_info{counts_ssbos_[f].buffer(), 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo bone_info{bone_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo pbd_info{pbd_state_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo page_table_info{page_table_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
 
+        VkDescriptorSet set = static_preprocess_sets_[f];
         VkWriteDescriptorSet writes[] = {
-            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, static_preprocess_set_, 0, 0, 1,
+            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, set, 0, 0, 1,
              VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &gaussian_info, nullptr},
-            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, static_preprocess_set_, 1, 0, 1,
+            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, set, 1, 0, 1,
              VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &projected_info, nullptr},
-            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, static_preprocess_set_, 2, 0, 1,
+            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, set, 2, 0, 1,
              VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &sort_info, nullptr},
-            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, static_preprocess_set_, 3, 0, 1,
+            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, set, 3, 0, 1,
              VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, nullptr, &uniform_info, nullptr},
-            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, static_preprocess_set_, 4, 0, 1,
+            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, set, 4, 0, 1,
              VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &counts_info, nullptr},
-            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, static_preprocess_set_, 5, 0, 1,
+            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, set, 5, 0, 1,
              VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &bone_info, nullptr},
-            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, static_preprocess_set_, 6, 0, 1,
+            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, set, 6, 0, 1,
              VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &pbd_info, nullptr},
-            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, static_preprocess_set_, 8, 0, 1,
+            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, set, 8, 0, 1,
              VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &page_table_info, nullptr},
         };
         vkUpdateDescriptorSets(device_, 8, writes, 0, nullptr);
     }
 
     // Dynamic preprocess set: dynamic_gaussian(0), projected(1), dynamic_sort_a(2), uniforms(3), counts[1](4), bones(5), pbd(6), page_table(8)
-    {
+    // Per-frame: dynamic_preprocess_sets_[f] binds projected_ssbos_[f],
+    // dynamic_sort_as_[f], and counts_ssbos_[f].
+    for (uint32_t f = 0; f < kMaxFramesInFlight; ++f) {
         VkDescriptorBufferInfo gaussian_info{dynamic_gaussian_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
-        VkDescriptorBufferInfo projected_info{projected_ssbos_[0].buffer(), 0, VK_WHOLE_SIZE};
-        VkDescriptorBufferInfo sort_info{dynamic_sort_as_[0].buffer(), 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo projected_info{projected_ssbos_[f].buffer(), 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo sort_info{dynamic_sort_as_[f].buffer(), 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo uniform_info{uniform_buffer_.buffer(), 0, sizeof(GsUniforms)};
-        VkDescriptorBufferInfo counts_info{counts_ssbos_[0].buffer(), 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo counts_info{counts_ssbos_[f].buffer(), 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo bone_info{bone_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo pbd_info{pbd_state_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo page_table_info{page_table_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
 
+        VkDescriptorSet set = dynamic_preprocess_sets_[f];
         VkWriteDescriptorSet writes[] = {
-            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, dynamic_preprocess_set_, 0, 0, 1,
+            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, set, 0, 0, 1,
              VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &gaussian_info, nullptr},
-            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, dynamic_preprocess_set_, 1, 0, 1,
+            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, set, 1, 0, 1,
              VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &projected_info, nullptr},
-            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, dynamic_preprocess_set_, 2, 0, 1,
+            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, set, 2, 0, 1,
              VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &sort_info, nullptr},
-            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, dynamic_preprocess_set_, 3, 0, 1,
+            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, set, 3, 0, 1,
              VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, nullptr, &uniform_info, nullptr},
-            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, dynamic_preprocess_set_, 4, 0, 1,
+            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, set, 4, 0, 1,
              VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &counts_info, nullptr},
-            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, dynamic_preprocess_set_, 5, 0, 1,
+            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, set, 5, 0, 1,
              VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &bone_info, nullptr},
-            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, dynamic_preprocess_set_, 6, 0, 1,
+            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, set, 6, 0, 1,
              VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &pbd_info, nullptr},
-            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, dynamic_preprocess_set_, 8, 0, 1,
+            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, set, 8, 0, 1,
              VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &page_table_info, nullptr},
         };
         vkUpdateDescriptorSets(device_, 8, writes, 0, nullptr);
@@ -2615,13 +2642,15 @@ void GsRenderer::update_descriptors() {
               }; vkUpdateDescriptorSets(device_, 4, w, 0, nullptr); }
         };
 
-        // Static depth sort
+        // Static depth sort (static_sort_a_/b_ are single-instance — not racing).
         write_depth_onesweep_sets(
             static_depth_hist_set_a_, static_depth_hist_set_b_,
             static_depth_scatter_set_ab_, static_depth_scatter_set_ba_,
             static_sort_a_.buffer(), static_sort_b_.buffer(),
             depth_onesweep_status_.buffer(), static_depth_params_.buffer());
-        // Dynamic depth sort
+        // Dynamic depth sort. Phase 2: dynamic depth onesweep sets stay
+        // single-instance, so we bind racing buffer slot [0] (dynamic_sort_as_[0],
+        // dynamic_sort_bs_[0]). Phase 3 will revisit if needed.
         write_depth_onesweep_sets(
             dynamic_depth_hist_set_a_, dynamic_depth_hist_set_b_,
             dynamic_depth_scatter_set_ab_, dynamic_depth_scatter_set_ba_,
@@ -2652,13 +2681,14 @@ void GsRenderer::update_descriptors() {
     // Render set (uses merged_sort and counts) — per-frame.
     // Re-binds render_sets_[i] to point at the merged_sort buffer and
     // counts_ssbo, replacing the legacy bindings written above. Each
-    // frame's set still references its frame-i image views.
+    // frame's set still references its frame-i image views and racing
+    // SSBO slot [f].
     for (uint32_t f = 0; f < kMaxFramesInFlight; ++f) {
-        VkDescriptorBufferInfo projected_info{projected_ssbos_[0].buffer(), 0, VK_WHOLE_SIZE};
-        VkDescriptorBufferInfo merged_info{merged_sort_ssbos_[0].buffer(), 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo projected_info{projected_ssbos_[f].buffer(), 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo merged_info{merged_sort_ssbos_[f].buffer(), 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo uniform_info{uniform_buffer_.buffer(), 0, sizeof(GsUniforms)};
         VkDescriptorImageInfo image_info{VK_NULL_HANDLE, output_views_[f], VK_IMAGE_LAYOUT_GENERAL};
-        VkDescriptorBufferInfo counts_info{counts_ssbos_[0].buffer(), 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo counts_info{counts_ssbos_[f].buffer(), 0, VK_WHOLE_SIZE};
         VkDescriptorImageInfo depth_img_info{VK_NULL_HANDLE, depth_views_[f], VK_IMAGE_LAYOUT_GENERAL};
 
         VkDescriptorSet set = render_sets_[f];
@@ -3547,8 +3577,9 @@ void GsRenderer::render(VkCommandBuffer cmd, uint32_t frame_in_flight,
             // === Phase 1: Dynamic preprocess + sort (every frame, if dynamic_count_ > 0) ===
             if (dynamic_count_ > 0) {
                 vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, preprocess_pipeline_);
+                // Phase 2: still binding slot [0]; Phase 3 routes frame_in_flight here.
                 vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
-                                        preprocess_pipeline_layout_, 0, 1, &dynamic_preprocess_set_, 0, nullptr);
+                                        preprocess_pipeline_layout_, 0, 1, &dynamic_preprocess_sets_[0], 0, nullptr);
                 GsPreprocessPush dyn_push{max_static_count_, dynamic_count_, 1};
                 vkCmdPushConstants(cmd, preprocess_pipeline_layout_, VK_SHADER_STAGE_COMPUTE_BIT,
                                    0, sizeof(GsPreprocessPush), &dyn_push);
@@ -3565,8 +3596,9 @@ void GsRenderer::render(VkCommandBuffer cmd, uint32_t frame_in_flight,
             // === Phase 2: Static preprocess + sort (only when static_dirty_) ===
             if (static_dirty_ && static_count_ > 0) {
                 vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, preprocess_pipeline_);
+                // Phase 2: still binding slot [0]; Phase 3 routes frame_in_flight here.
                 vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
-                                        preprocess_pipeline_layout_, 0, 1, &static_preprocess_set_, 0, nullptr);
+                                        preprocess_pipeline_layout_, 0, 1, &static_preprocess_sets_[0], 0, nullptr);
                 GsPreprocessPush stat_push{0, static_count_, 0};
                 vkCmdPushConstants(cmd, preprocess_pipeline_layout_, VK_SHADER_STAGE_COMPUTE_BIT,
                                    0, sizeof(GsPreprocessPush), &stat_push);
