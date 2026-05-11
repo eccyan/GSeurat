@@ -2145,40 +2145,82 @@ void GsRenderer::publish_pending_chunks(VkCommandBuffer cmd) {
 }
 
 
-void GsRenderer::update_dynamic_gaussians(const Gaussian* data, uint32_t count) {
-    if (count == 0) {
-        dynamic_count_ = 0;
-        return;
+// Helper: reinitialize a dynamic sort buffer with sentinels for inactive
+// slots and identity indices for the active range [0..valid_count).
+static void init_dynamic_sort_buf(Buffer& buf, uint32_t sort_size, uint32_t valid_count) {
+    std::vector<SortEntry> staging_sort(sort_size);
+    for (uint32_t i = 0; i < sort_size; ++i) {
+        staging_sort[i].key = 0xFFFFFFFF;
+        staging_sort[i].index = i < valid_count ? i : 0;
     }
-    if (count > max_dynamic_count_) return;
+    std::memcpy(buf.mapped(), staging_sort.data(), sort_size * sizeof(SortEntry));
+}
 
-    dynamic_count_ = count;
+// Helper: encode a single Gaussian into GpuGaussian layout.
+static void encode_gaussian(const Gaussian& src, GpuGaussian& dst) {
+    float bone_f;
+    uint32_t bi = src.bone_index;
+    std::memcpy(&bone_f, &bi, sizeof(float));
+    dst.pos_opacity = glm::vec4(src.position, src.opacity);
+    dst.scale_pad   = glm::vec4(src.scale, bone_f);
+    dst.rot         = glm::vec4(src.rotation.x, src.rotation.y,
+                                src.rotation.z, src.rotation.w);
+    dst.color_pad   = glm::vec4(src.color, src.emission);
+}
 
-    // Build GPU data in local buffer, then memcpy to mapped memory
-    std::vector<GpuGaussian> staging(count);
-    for (uint32_t i = 0; i < count; ++i) {
-        float bone_f;
-        uint32_t bi = data[i].bone_index;
-        std::memcpy(&bone_f, &bi, sizeof(float));
-        staging[i].pos_opacity = glm::vec4(data[i].position, data[i].opacity);
-        staging[i].scale_pad = glm::vec4(data[i].scale, bone_f);
-        staging[i].rot = glm::vec4(data[i].rotation.x, data[i].rotation.y,
-                                    data[i].rotation.z, data[i].rotation.w);
-        staging[i].color_pad = glm::vec4(data[i].color, data[i].emission);
+void GsRenderer::set_persistent_dynamics(const Gaussian* data, uint32_t count) {
+    if (count > max_dynamic_count_) {
+        std::fprintf(stderr,
+            "[gs_renderer] set_persistent_dynamics: count=%u exceeds max_dynamic_count=%u; truncating\n",
+            count, max_dynamic_count_);
+        count = max_dynamic_count_;
     }
-    std::memcpy(dynamic_gaussian_ssbo_.mapped(), staging.data(), count * sizeof(GpuGaussian));
+    persistent_dyn_count_ = count;
+    dynamic_count_ = count;  // transient reset; next update_dynamic_gaussians extends it
 
-    // Reinitialize dynamic sort buffers via memcpy
-    auto init_sort_buf = [](Buffer& buf, uint32_t sort_size, uint32_t valid_count) {
-        std::vector<SortEntry> staging_sort(sort_size);
-        for (uint32_t i = 0; i < sort_size; ++i) {
-            staging_sort[i].key = 0xFFFFFFFF;
-            staging_sort[i].index = i < valid_count ? i : 0;
+    if (count > 0) {
+        std::vector<GpuGaussian> staging(count);
+        for (uint32_t i = 0; i < count; ++i) {
+            encode_gaussian(data[i], staging[i]);
         }
-        std::memcpy(buf.mapped(), staging_sort.data(), sort_size * sizeof(SortEntry));
-    };
-    init_sort_buf(dynamic_sort_a_, dynamic_sort_size_, count);
-    init_sort_buf(dynamic_sort_b_, dynamic_sort_size_, count);
+        std::memcpy(dynamic_gaussian_ssbo_.mapped(), staging.data(),
+                    count * sizeof(GpuGaussian));
+    }
+
+    // Reinitialize dynamic sort buffers for the active range [0..count)
+    init_dynamic_sort_buf(dynamic_sort_a_, dynamic_sort_size_, count);
+    init_dynamic_sort_buf(dynamic_sort_b_, dynamic_sort_size_, count);
+
+    std::fprintf(stderr,
+        "[gs_renderer] persistent dynamics uploaded: %u splats (chars+NPCs+PBD-trees)\n",
+        count);
+}
+
+void GsRenderer::update_dynamic_gaussians(const Gaussian* data, uint32_t count) {
+    // count is the TRANSIENT portion (VFX, particles, scene anims). Persistent
+    // prefix lives in indices [0, persistent_dyn_count_) and is preserved.
+    const uint32_t total = persistent_dyn_count_ + count;
+    if (total > max_dynamic_count_) {
+        // Cap the transient portion so total fits.
+        count = (max_dynamic_count_ > persistent_dyn_count_)
+            ? max_dynamic_count_ - persistent_dyn_count_ : 0;
+    }
+    dynamic_count_ = persistent_dyn_count_ + count;
+
+    if (count > 0) {
+        std::vector<GpuGaussian> staging(count);
+        for (uint32_t i = 0; i < count; ++i) {
+            encode_gaussian(data[i], staging[i]);
+        }
+        // Write at offset persistent_dyn_count_ * sizeof(GpuGaussian)
+        auto* dst = static_cast<uint8_t*>(dynamic_gaussian_ssbo_.mapped())
+                    + persistent_dyn_count_ * sizeof(GpuGaussian);
+        std::memcpy(dst, staging.data(), count * sizeof(GpuGaussian));
+    }
+
+    // Reinitialize dynamic sort buffers for active range [0..dynamic_count_)
+    init_dynamic_sort_buf(dynamic_sort_a_, dynamic_sort_size_, dynamic_count_);
+    init_dynamic_sort_buf(dynamic_sort_b_, dynamic_sort_size_, dynamic_count_);
 }
 
 
@@ -2243,9 +2285,11 @@ void GsRenderer::upload_bone_transforms(const glm::mat4* transforms, uint32_t co
     auto* dst = static_cast<glm::mat4*>(bone_ssbo_.mapped());
     std::memcpy(dst, transforms, n * sizeof(glm::mat4));
     bone_count_ = n;
-    // Force static preprocess to re-run so bone skinning is applied.
-    // Without this, Index-Merge skips the preprocess dispatch when camera is static.
-    static_dirty_ = true;
+    // No static_dirty_=true: bone-animated splats now live in the dynamic
+    // buffer (persistent prefix populated by IslandDemoState::on_enter →
+    // gs_renderer.set_persistent_dynamics). The dynamic preprocess runs every
+    // frame and re-applies these bone matrices via gs_preprocess.comp:198-214.
+    // The static buffer holds only terrain — no need to invalidate its sort.
 }
 
 void GsRenderer::clear_bone_transforms() {
@@ -3266,10 +3310,26 @@ void GsRenderer::render(VkCommandBuffer cmd, uint32_t frame_in_flight,
     // to the previous frame's GPU latency and is worth the diagnostic data.
     if (timestamp_pool_ && timestamps_written_) {
         uint64_t ts[6]{};  // depth_sort_begin/end, tile_sort_begin/end, raster_begin/end
+        const auto t_wait_start = std::chrono::steady_clock::now();
         VkResult ts_result = vkGetQueryPoolResults(
             device_, timestamp_pool_, 0, 6,
             sizeof(ts), ts, sizeof(uint64_t),
             VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT);
+        const auto t_wait_end = std::chrono::steady_clock::now();
+        const double wait_ms = std::chrono::duration<double, std::milli>(t_wait_end - t_wait_start).count();
+        if (wait_ms > 100.0) {
+            float prev_depth_ms = (ts_result == VK_SUCCESS && ts[1] > ts[0])
+                ? static_cast<float>(ts[1] - ts[0]) * timestamp_period_ns_ / 1e6f : -1.0f;
+            float prev_tile_ms = (ts_result == VK_SUCCESS && ts[3] > ts[2])
+                ? static_cast<float>(ts[3] - ts[2]) * timestamp_period_ns_ / 1e6f : -1.0f;
+            float prev_raster_ms = (ts_result == VK_SUCCESS && ts[5] > ts[4])
+                ? static_cast<float>(ts[5] - ts[4]) * timestamp_period_ns_ / 1e6f : -1.0f;
+            std::fprintf(stderr,
+                "[gs_render/wd/WAIT_SLOW] wait_ms=%.1f prev_depth=%.1fms prev_tile=%.1fms prev_raster=%.1fms "
+                "static=%u dyn=%u total=%u\n",
+                wait_ms, prev_depth_ms, prev_tile_ms, prev_raster_ms,
+                static_count_, dynamic_count_, gaussian_count_);
+        }
         if (ts_result == VK_SUCCESS && ts[5] > ts[4] && ts[3] > ts[2] && ts[1] > ts[0]) {
             float depth_ms = static_cast<float>(ts[1] - ts[0]) * timestamp_period_ns_ / 1e6f;
             float tile_ms  = static_cast<float>(ts[3] - ts[2]) * timestamp_period_ns_ / 1e6f;
@@ -3337,8 +3397,26 @@ void GsRenderer::render(VkCommandBuffer cmd, uint32_t frame_in_flight,
         vkCmdClearColorImage(cmd, depth_img, VK_IMAGE_LAYOUT_GENERAL, &clear_color, 1, &range);
 
         // === PBD solver dispatch (before any preprocess) ===
-        // PBD-tagged Gaussians live in the static buffer but need re-preprocessing
-        // every frame since their positions/rotations change continuously.
+        // PBD-tagged gaussians live in the static buffer, but we deliberately do
+        // NOT force static_dirty_=true here. The static depth sort cost
+        // (~2.44M splats with the island scene) is too high to absorb every
+        // frame just to keep tree wind-sway frame-current. Instead the cached
+        // static sort is reused while the camera is stationary; trees freeze
+        // at their last-cached pose between camera-dirty events. Wind sway
+        // becomes visible whenever the camera moves (which arms
+        // `set_static_dirty(true)` upstream in Renderer::record_gs_prepass and
+        // re-runs static preprocess + sort, picking up the current
+        // pbd_state_ssbo_ contents).
+        //
+        // The PBD solver compute dispatch below still runs every frame to keep
+        // pbd_state_ssbo_ current — without that the rotation values trees
+        // pick up at the next camera move would themselves be stale.
+        //
+        // Trade-off accepted: stationary trees while camera is still vs.
+        // eliminating a per-frame 100-200ms (foreground) / 5-90s (M5
+        // background-throttled) sort cost that surfaces as a CPU freeze
+        // through vkGetQueryPoolResults's VK_QUERY_RESULT_WAIT_BIT.
+        //
         // Determinism harness: PBD uses a hardcoded 1/60s step rather than
         // the engine dt, so the upstream draw_scene `dt = 0` freeze is not
         // enough — the solver would still advance wind-sway each frame and
@@ -3346,7 +3424,6 @@ void GsRenderer::render(VkCommandBuffer cmd, uint32_t frame_in_flight,
         // entirely while a Mode-1 test is active so the GPU's pbd_state
         // SSBO retains its pre-test contents.
         if (pbd_count_ > 0 && !determinism_test_active_) {
-            static_dirty_ = true;
             struct {
                 float time;
                 float dt;

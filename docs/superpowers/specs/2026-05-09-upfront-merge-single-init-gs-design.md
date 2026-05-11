@@ -288,3 +288,55 @@ After approval the design was implemented (commits on this branch). Manual run o
 - Independent architectural merit (cleaner shape, less GPU work, fewer moving parts).
 - Future investigators of the freeze should not have to mentally subtract the double-init_gs noise to see the actual cause.
 - Reverting would lose the spec, which now also documents the disproven hypothesis.
+
+## 9. Post-postmortem — actual root cause (2026-05-10)
+
+The freeze investigation continued on the same branch with watchdog instrumentation in `Renderer::draw_scene` / `GsRenderer::render`. Findings:
+
+1. **Watchdog timed each per-frame phase.** `vkWaitForFences`, `vkAcquireNextImageKHR`, `vkQueueSubmit`, `vkQueuePresentKHR`, command recording — all bounded to milliseconds. **`vkGetQueryPoolResults` with `VK_QUERY_RESULT_WAIT_BIT` at `gs_renderer.cpp:3269` was the only blocking CPU call**, and it surfaced 5-90 second waits.
+
+2. **The wait was bounded to the previous frame's GPU latency.** When the GPU was overloaded, that bound was 50+ seconds. So the "freeze" was a GPU-side stall surfaced through a blocking CPU read of GPU timestamps. The mach-port `IMKCFRunLoopWakeUpReliable` log was a downstream symptom (slow main thread can't pump IME events), not the cause.
+
+3. **GPU saturation cause: per-frame full 2.44M static depth sort.** Three setters all forced `static_dirty_ = true` every frame:
+   - PBD path at `gs_renderer.cpp:3349` (12 trees)
+   - `upload_bone_transforms` at `gs_renderer.cpp:2248` (player + NPCs)
+   - `set_actor_rotation` at `gs_renderer.hpp:263` (player rotation)
+   
+   All three forced re-sorts because tagged splats (PBD trees, animated chars/NPCs) lived in the static buffer alongside immobile terrain.
+
+## 10. The actual fix — Option A: split static and dynamic by bone_index
+
+After exploring three rejected approaches (one-line PBD `static_dirty_` removal — insufficient; reuse-cached-static-sort with no PBD update — would also freeze chars; SSBO double-buffering — based on a misread of the buffer layout), the architecturally honest fix:
+
+**Move all bone-animated and PBD-tagged splats into the dynamic SSBO as a "persistent prefix".**
+
+- `kDynamicHeadroom` bumped 262 144 → 1 048 576 (`gs_renderer.hpp:187`).
+- New API `GsRenderer::set_persistent_dynamics(data, count)` writes the dynamic SSBO's `[0, count)` region.
+- `update_dynamic_gaussians(data, count)` now writes at offset `persistent_dyn_count_`, treating `count` as the transient (VFX/particle) portion.
+- `IslandDemoState::on_enter` and `perform_portal_transition` partition the §A/§B merged cloud by `bone_index`:
+  - `bone_index == 0` → static-only cloud (terrain + tree trunks + non-animated props).
+  - `bone_index > 0` → `persistent_dynamics` vector, uploaded once via `set_persistent_dynamics`.
+- Removed `static_dirty_ = true` from PBD path, `upload_bone_transforms`, and `set_actor_rotation` — bone-animated splats no longer touch the static buffer.
+
+### Measured result (M5 background-mode)
+- Partition: static = 1 698 939 splats, persistent dynamic = 742 573 splats (PBD-tagged tree leaves + characters + NPCs), transient dynamic = ~200 000 (chimney_smoke + torch VFX). Total = 2.44 M.
+- Per-frame static sort: **skipped** while camera is stationary (only re-runs on chunk events).
+- Per-frame dynamic sort: ~942 k splats every frame. Mostly bounded (60-200 ms); rare outliers (20-50 s, suspected M5 GPU watchdog).
+- Fps in background-throttled mode: ~0.6 → 2-18 (30× improvement, variance-limited by background throttling).
+- **Foreground validation pending** — the ~942 k dynamic sort should land well under 16 ms in foreground M5, restoring 60 fps.
+
+### Why this is the right fix
+- "Static" now genuinely means static. Only chunk publish/unpublish and camera moves invalidate the static sort.
+- "Dynamic" holds everything that moves frame-to-frame, which is exactly what the dynamic Onesweep was designed for.
+- PBD solver and bone-animation system both remain unchanged. The dynamic preprocess shader already binds `bone_ssbo_` and `pbd_state_ssbo_` (descriptor-set bindings 5 and 6); the bone-skinning code at `gs_preprocess.comp:180-214` works identically for static and dynamic paths.
+
+### Risks not yet validated
+- Streaming chunks (`enqueue_async_chunk_load`) currently load chunk-terrain PLYs only via `load_cloud_async` → static. Chunk NPCs are loaded at scene-load time by the §A merge (already partitioned correctly). If a future scene puts animated NPCs into chunk PLYs themselves, those would need to flow through the partition too. Out of scope for the island demo.
+- The 20-50 s outlier spikes in background mode are unexplained. Likely GPU-watchdog-triggered Metal pauses under sustained CPU+GPU load with no window focus. Need foreground confirmation that they don't repro under normal use.
+
+### Code touched
+- `include/gseurat/engine/gs_renderer.hpp` (capacity, API, `set_actor_rotation`)
+- `src/engine/gs_renderer.cpp` (`set_persistent_dynamics` impl, `update_dynamic_gaussians` offset, `upload_bone_transforms`, PBD path)
+- `src/demo/island_demo_state.cpp` (partition in `on_enter` and `perform_portal_transition`)
+
+Plus watchdog instrumentation (`Renderer::draw_scene`, `AppBase` main loop, `GsRenderer::render`) that **stays in the binary** for now — it's the eyes we need if any other freeze surfaces, and it self-silences when frames are healthy.

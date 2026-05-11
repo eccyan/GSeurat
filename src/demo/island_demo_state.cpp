@@ -367,6 +367,10 @@ void IslandDemoState::on_enter(AppBase& app) {
     gs_scale_ = scene_data.gaussian_splat
         ? scene_data.gaussian_splat->scale_multiplier : 1.0f;
 
+    // Collected during §A merge below; uploaded to the dynamic SSBO's
+    // persistent prefix after `load_pre_parsed_gs_scene`.
+    std::vector<Gaussian> persistent_dynamics_pending;
+
     // ── §A upfront merge ──
     // Build the full terrain + world-chunks + character gaussian vector
     // on the CPU and replace `parsed_scene.cloud` with it. Mutates
@@ -513,9 +517,27 @@ void IslandDemoState::on_enter(AppBase& app) {
             }
         }
 
-        // Replace the parsed cloud with the merged one. Single init_gs in
-        // load_pre_parsed_gs_scene below will upload the whole thing once.
-        parsed_scene.cloud = GaussianCloud::from_gaussians(std::move(merged));
+        // Partition by bone_index:
+        //   bone_index == 0  → static (terrain + tree trunks + non-animated props)
+        //   bone_index >  0  → persistent dynamic (PBD-tagged tree leaves with
+        //                       bone_index ≥ 32, plus bone-animated characters
+        //                       and NPCs with bone_index in [1, 31]).
+        // The dynamic preprocess re-applies bone+PBD transforms every frame, so
+        // the static depth sort can stay cached when the camera is stationary.
+        // Source: 2026-05-09 Option A architectural fix.
+        std::vector<Gaussian> static_only;
+        static_only.reserve(merged.size());
+        for (const auto& g : merged) {
+            if (g.bone_index > 0) {
+                persistent_dynamics_pending.push_back(g);
+            } else {
+                static_only.push_back(g);
+            }
+        }
+        std::fprintf(stderr,
+            "[IslandDemo] Partition for split-tail: static=%zu persistent_dyn=%zu (total=%zu)\n",
+            static_only.size(), persistent_dynamics_pending.size(), merged.size());
+        parsed_scene.cloud = GaussianCloud::from_gaussians(std::move(static_only));
     }
 
     {
@@ -523,6 +545,15 @@ void IslandDemoState::on_enter(AppBase& app) {
         parse_opts.add_default_light = true;
         parse_opts.set_god_rays = true;
         app.load_pre_parsed_gs_scene(scene_data, std::move(parsed_scene), parse_opts);
+    }
+
+    // Upload persistent dynamics (chars/NPCs/PBD-tagged tree splats) into the
+    // dynamic SSBO's prefix region. The transient suffix (VFX, particles)
+    // continues to be re-uploaded every frame from Renderer::record_gs_prepass.
+    if (!persistent_dynamics_pending.empty()) {
+        app.renderer().gs_renderer().set_persistent_dynamics(
+            persistent_dynamics_pending.data(),
+            static_cast<uint32_t>(persistent_dynamics_pending.size()));
     }
 
     // `player_pos` was computed earlier (before the §A merge) using
@@ -2301,6 +2332,10 @@ void IslandDemoState::perform_portal_transition(AppBase& app,
     const bool skip_phase_b_remerge = !is_overworld && player_already_merged_fast
                                       && app.renderer().has_gs_cloud();
 
+    // Collected during §B merge below; uploaded to the dynamic SSBO's
+    // persistent prefix after `load_pre_parsed_gs_scene`.
+    std::vector<Gaussian> portal_persistent_dynamics;
+
     // ── §B upfront merge ──
     // Builds the full parsed-terrain + chunks + character cloud on the CPU
     // and replaces parsed_scene.cloud. Mutates parsed_scene.bone_allocations
@@ -2453,6 +2488,28 @@ void IslandDemoState::perform_portal_transition(AppBase& app,
         parsed_scene.cloud = GaussianCloud::from_gaussians(std::move(merged));
     }
 
+    // Split-tail partition (Option A — applies whether §B re-merge ran or
+    // skip_phase_b_remerge took the parser-merged path):
+    //   bone_index == 0  → static (terrain + tree trunks + non-animated props)
+    //   bone_index >  0  → persistent dynamic (PBD-tagged tree leaves +
+    //                       bone-animated chars/NPCs)
+    {
+        const auto& cloud_g = parsed_scene.cloud.gaussians();
+        std::vector<Gaussian> static_only;
+        static_only.reserve(cloud_g.size());
+        for (const auto& g : cloud_g) {
+            if (g.bone_index > 0) {
+                portal_persistent_dynamics.push_back(g);
+            } else {
+                static_only.push_back(g);
+            }
+        }
+        std::fprintf(stderr,
+            "[IslandDemo] Portal partition: static=%zu persistent_dyn=%zu (total=%zu)\n",
+            static_only.size(), portal_persistent_dynamics.size(), cloud_g.size());
+        parsed_scene.cloud = GaussianCloud::from_gaussians(std::move(static_only));
+    }
+
     {
         GsSceneOptions portal_opts;
         portal_opts.add_default_light = true;
@@ -2460,6 +2517,13 @@ void IslandDemoState::perform_portal_transition(AppBase& app,
         app.load_pre_parsed_gs_scene(target_scene_data,
                                      std::move(parsed_scene), portal_opts);
     }
+
+    // Upload persistent dynamics. set_persistent_dynamics replaces the entire
+    // dynamic prefix; passing count=0 clears any prior scene's prefix so it
+    // doesn't render alongside the new one.
+    app.renderer().gs_renderer().set_persistent_dynamics(
+        portal_persistent_dynamics.empty() ? nullptr : portal_persistent_dynamics.data(),
+        static_cast<uint32_t>(portal_persistent_dynamics.size()));
 
     // The new scene's "player" game_object (when present, e.g. seurat_island)
     // is wired up by `load_pre_parsed_gs_scene` above: PlayerController,
