@@ -340,3 +340,78 @@ After exploring three rejected approaches (one-line PBD `static_dirty_` removal 
 - `src/demo/island_demo_state.cpp` (partition in `on_enter` and `perform_portal_transition`)
 
 Plus watchdog instrumentation (`Renderer::draw_scene`, `AppBase` main loop, `GsRenderer::render`) that **stays in the binary** for now — it's the eyes we need if any other freeze surfaces, and it self-silences when frames are healthy.
+
+## 11. Known follow-ups (post-Option A)
+
+### 11.1 Render → blank → render oscillation (visual flicker)
+
+Distinct from the freeze, the user has reported a long-standing symptom where
+rendered frames alternate visually with blank frames. After Option A landed,
+the watchdog confirmed the per-frame loop continues to iterate steadily and
+`vkWaitForFences` is not the cause. The remaining flicker is therefore not the
+race-on-sort-buffer issue we fixed (Bug 2 of follow-up #1), but a pre-existing
+rendering artefact that predates this branch.
+
+Worth investigating in a fresh, context-rich session:
+- Per-frame swapchain image presentation: is `vkAcquireNextImageKHR` ever
+  returning the *same* image_index across frames in a way that violates the
+  per-frame layout assumptions?
+- Post-process compute output: is `processed_image_[frame_in_flight]` being
+  cleared or sampled inconsistently?
+- The `gs_static_force_dirty_` reset path: with our Option A change, does any
+  bookkeeping field still toggle on/off frame-to-frame in a way that flips
+  some descriptor binding back and forth?
+- Loading-monitor state transitions: does the gating flag for
+  `dispatch_gpu_compute` rapidly toggle around the Warming→Playing edge,
+  alternating between "render correctly" and "don't dispatch"?
+
+Recommended start: capture two consecutive frames' rendered output via the
+existing screenshot mechanism (`screenshot_.has_pending()`) and diff them.
+
+### 11.2 Dungeon VFX content overload
+
+The dungeon scene authors **23 torch VFX instances**, each with its own
+emitter, point light, and a 50k-splat torch.ply visual. Even with stride-7
+decimation (~7k splats per torch → 164k total transient) the GPU stalls
+several seconds in M5 background-throttled mode, and the 23-light + 23-
+emitter activation pattern is heavy work regardless of splat count.
+
+The fundamental cost issue is that the dynamic Onesweep depth sort runs at
+`sort_size` (sized to `max_dynamic_count_` = 1 M, fixed at init), independent
+of the actual `dynamic_count_`. So reducing per-torch splat counts cuts CPU
+upload and projection cost but not the sort cost.
+
+Follow-ups:
+
+a. **Demo content fix (cheapest):** reduce the dungeon torch instance count
+   from 23 to ~6-8. Visual density is preserved; budget impact drops by 3-4×.
+   Edit: `examples/island_demo/assets/scenes/dungeon.json` (or wherever the
+   torch instance definitions live in the dungeon scene's game_objects).
+b. **Asset retargeting:** author a `torch_small.ply` at ~2k splats specifically
+   for instanced use in dungeons, separate from the showcase-quality 50k torch.
+   The decimation cap (`kMaxVfxObjectSplats = 2048` in `gs_vfx.cpp`) can then
+   stay or be relaxed for non-instanced VFX.
+c. **Engine architecture (deeper):** make `dynamic_sort_size_` adaptive
+   per-frame based on actual `dynamic_count_` rather than the fixed-max
+   capacity. Recompute `dynamic_sort_workgroups_` and the depth-sort
+   IndirectArgs buffer (`dynamic_depth_params_`) each frame from
+   `dynamic_count_`. This eliminates the "pay-for-max-capacity" trap and
+   makes the sort cost track the actual data. Risk: Onesweep status buffer
+   (`depth_onesweep_status_`) and ping-pong scatter buffers are sized for the
+   max; the dispatch can shrink without resizing them. Estimated ~50 LOC.
+
+### 11.3 Watchdog instrumentation removal
+
+Watchdog logs in `Renderer::draw_scene`, `AppBase` main loop, and
+`GsRenderer::render` self-silence when frames are healthy but produce thousands
+of lines per second during exploration. They're invaluable for incident
+investigations like the one this spec documents. Two reasonable terminal
+states:
+
+- Keep them in the binary, gated behind a `#ifdef GSEURAT_FRAME_WATCHDOG`
+  defined only in `macos-release-with-diag` (not in `macos-release`).
+- Remove the unconditional phase logs (`[loop/wd] iter_start`/`post_update`/
+  etc.) but keep the conditional `*SLOW*` logs — those are silent under
+  healthy conditions and only fire on regressions.
+
+Either way, decide before merging to main.

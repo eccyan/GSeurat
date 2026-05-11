@@ -158,13 +158,19 @@ void VfxInstance::init(const VfxPreset& preset, const glm::vec3& position, bool 
                 // keep the dynamic SSBO budget reasonable. Reusable assets
                 // (e.g. torch.ply at 50k splats) are designed for showcase
                 // rendering, not for being instantiated 20+ times in a single
-                // scene. With kDynamicHeadroom=1M and the dungeon spawning
-                // 23 torch instances, a 50k-per-torch budget would alone
-                // exhaust 1.15M of dynamic capacity. Cap at 8k per instance
-                // (23 × 8k = 188k for the dungeon, well under budget).
-                // Stride-sampling preserves spatial distribution; the visual
+                // scene. The dungeon spawns 23 torch instances; at 50k each
+                // they would alone exceed the dynamic budget. The dynamic
+                // depth-sort cost is dominated by sort_size (fixed at init
+                // based on max_dynamic_count_), so reducing actual splat
+                // counts only partially mitigates GPU work — but it does cut
+                // CPU upload bandwidth, projection cost, and overdraw. Cap at
+                // 2k per instance (23 × 2k = 46k for the dungeon). Stride-
+                // sampling preserves spatial distribution; the visual
                 // difference for a small mesh viewed at distance is minimal.
-                constexpr size_t kMaxVfxObjectSplats = 8192;
+                // Authoring fix track (see spec §11.2): reduce dungeon torch
+                // instance count, or replace torch.ply with a smaller asset
+                // (~2k splats) authored for the showcase rendering scale.
+                constexpr size_t kMaxVfxObjectSplats = 2048;
                 const size_t total = gs.size();
                 const size_t stride = (total > kMaxVfxObjectSplats)
                     ? (total + kMaxVfxObjectSplats - 1) / kMaxVfxObjectSplats
