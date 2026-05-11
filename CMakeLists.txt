@@ -266,6 +266,7 @@ target_compile_definitions(gseurat_core PUBLIC
 target_sources(gseurat_core PRIVATE src/engine/debug.cpp)
 target_sources(gseurat_core PRIVATE src/engine/sim_clock.cpp)
 target_sources(gseurat_core PRIVATE src/engine/random.cpp)
+target_sources(gseurat_core PRIVATE src/engine/ecs/events.cpp)
 
 if(GSEURAT_SHARED_LIBS)
     target_compile_definitions(gseurat_core PUBLIC GSEURAT_ENGINE_BUILD_SHARED)
@@ -494,7 +495,8 @@ add_gseurat_test(test_gs_spline src/engine/gs_spline.cpp)
 add_gseurat_test(test_gs_post_process)
 add_gseurat_test(test_pbd_solver)
 add_gseurat_test(test_component_registry src/engine/component_registry.cpp)
-add_gseurat_test(test_system_scheduler  src/engine/system_scheduler.cpp)
+add_gseurat_test(test_system_scheduler  src/engine/system_scheduler.cpp src/engine/ecs/events.cpp)
+add_gseurat_test(test_event_queue       src/engine/system_scheduler.cpp src/engine/ecs/events.cpp)
 add_gseurat_test(test_island_systems    src/engine/trigger_systems.cpp
     src/engine/random.cpp
     src/character/character_manifest.cpp
