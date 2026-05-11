@@ -42,6 +42,7 @@
 #include "gseurat/engine/scene.hpp"
 #include "gseurat/engine/screen_effects.hpp"
 #include "gseurat/engine/systems/transition_system.hpp"
+#include "gseurat/engine/systems/vfx_system.hpp"
 #include "gseurat/engine/weather_system.hpp"
 #include "gseurat/engine/text_renderer.hpp"
 #include "gseurat/engine/types.hpp"
@@ -305,6 +306,11 @@ protected:
     // Held by unique_ptr so its destructor runs deterministically before
     // VkContext tear-down inside cleanup().
     std::unique_ptr<RenderState> render_state_;
+
+    // VFX spawn consumer (Phase 4a). Owns the cursor so it doesn't
+    // re-process events across frames. Registered with system_scheduler_
+    // in init_game_object_system().
+    std::unique_ptr<systems::VfxSystem> vfx_system_;
 
     // Bone pre-upload hook
     std::function<void(glm::mat4*, uint32_t)> bone_pre_upload_hook_;

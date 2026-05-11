@@ -218,37 +218,35 @@ int main() {
         std::printf("PASS: World::events<T> returns stable instance\n");
     }
 
-    // 11. SystemScheduler::run_all rotates event queues at end of frame
+    // 11. World::rotate_events drives event lifecycle. In Phase 4a this
+    //     responsibility moved out of SystemScheduler::run_all and into
+    //     AppBase::main_loop so it ticks even for game states that don't
+    //     invoke the gameplay scheduler (Staging, GsDemoState).
     {
         World world;
         world.events<ClickEvent>().send({1, 1});
         world.events<ClickEvent>().send({2, 2});
 
-        SystemScheduler sched;
-        // Trivial system that does nothing — we only care about the
-        // implicit end-of-frame rotation in run_all.
-        sched.add_system({"noop", [](ecs::World&, float) {}, {}, {}});
-
         EventCursor cursor;
 
-        // Read before first run: see both events.
+        // Read before first rotate: see both events.
         auto pre = drain(world.events<ClickEvent>(), cursor);
         assert(pre.size() == 2);
 
-        sched.run_all(world, 0.016f);  // rotate #1: events still retained
+        world.rotate_events();  // rotate #1: events still retained
 
         world.events<ClickEvent>().send({3, 3});  // new event in frame N+1
         auto mid = drain(world.events<ClickEvent>(), cursor);
         assert(mid.size() == 1);
         assert(mid[0].x == 3);
 
-        sched.run_all(world, 0.016f);  // rotate #2: prior events expire
-        sched.run_all(world, 0.016f);  // rotate #3: {3,3} also expires
+        world.rotate_events();  // rotate #2: prior events expire
+        world.rotate_events();  // rotate #3: {3,3} also expires
 
         EventCursor fresh_cursor;
         auto post = drain(world.events<ClickEvent>(), fresh_cursor);
         assert(post.empty());
-        std::printf("PASS: SystemScheduler::run_all drives event rotation\n");
+        std::printf("PASS: world.rotate_events drives event lifecycle\n");
     }
 
     // 12. Producer system sends, consumer system reads — same frame
@@ -333,6 +331,42 @@ int main() {
         assert(post[0].x == 10);
         assert(post[1].x == 20);
         std::printf("PASS: surviving cursor reads all new events after clear\n");
+    }
+
+    // 14b. EventQueue<T>::clear drops pending events in both buffers
+    //      and invalidates surviving cursors. Used by scene-teardown
+    //      paths that lighter than World::clear (e.g. StagingApp).
+    {
+        EventQueue<ClickEvent> q;
+        q.send({1, 1});
+        q.send({2, 2});
+        q.rotate();
+        q.send({3, 3});
+
+        assert(q.pending_count() == 3);  // 2 in prev + 1 in curr
+
+        EventCursor cursor;
+        // First drain captures all 3 events at current generation.
+        auto first = drain(q, cursor);
+        assert(first.size() == 3);
+
+        q.clear();
+        assert(q.pending_count() == 0);
+
+        // After clear, a fresh send is visible to a new cursor.
+        q.send({99, 99});
+        EventCursor fresh;
+        auto post = drain(q, fresh);
+        assert(post.size() == 1);
+        assert(post[0].x == 99);
+
+        // The surviving cursor saw generation N-1 from before clear;
+        // after clear's ++generation_ it falls into the expired branch
+        // and reads everything currently retained (the one new event).
+        auto survived = drain(q, cursor);
+        assert(survived.size() == 1);
+        assert(survived[0].x == 99);
+        std::printf("PASS: EventQueue::clear drops pending + invalidates cursor\n");
     }
 
     // 15. Multiple clears continue to advance epoch_floor monotonically;
