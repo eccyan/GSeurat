@@ -218,37 +218,35 @@ int main() {
         std::printf("PASS: World::events<T> returns stable instance\n");
     }
 
-    // 11. SystemScheduler::run_all rotates event queues at end of frame
+    // 11. World::rotate_events drives event lifecycle. In Phase 4a this
+    //     responsibility moved out of SystemScheduler::run_all and into
+    //     AppBase::main_loop so it ticks even for game states that don't
+    //     invoke the gameplay scheduler (Staging, GsDemoState).
     {
         World world;
         world.events<ClickEvent>().send({1, 1});
         world.events<ClickEvent>().send({2, 2});
 
-        SystemScheduler sched;
-        // Trivial system that does nothing — we only care about the
-        // implicit end-of-frame rotation in run_all.
-        sched.add_system({"noop", [](ecs::World&, float) {}, {}, {}});
-
         EventCursor cursor;
 
-        // Read before first run: see both events.
+        // Read before first rotate: see both events.
         auto pre = drain(world.events<ClickEvent>(), cursor);
         assert(pre.size() == 2);
 
-        sched.run_all(world, 0.016f);  // rotate #1: events still retained
+        world.rotate_events();  // rotate #1: events still retained
 
         world.events<ClickEvent>().send({3, 3});  // new event in frame N+1
         auto mid = drain(world.events<ClickEvent>(), cursor);
         assert(mid.size() == 1);
         assert(mid[0].x == 3);
 
-        sched.run_all(world, 0.016f);  // rotate #2: prior events expire
-        sched.run_all(world, 0.016f);  // rotate #3: {3,3} also expires
+        world.rotate_events();  // rotate #2: prior events expire
+        world.rotate_events();  // rotate #3: {3,3} also expires
 
         EventCursor fresh_cursor;
         auto post = drain(world.events<ClickEvent>(), fresh_cursor);
         assert(post.empty());
-        std::printf("PASS: SystemScheduler::run_all drives event rotation\n");
+        std::printf("PASS: world.rotate_events drives event lifecycle\n");
     }
 
     // 12. Producer system sends, consumer system reads — same frame

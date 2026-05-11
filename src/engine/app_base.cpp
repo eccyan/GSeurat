@@ -351,6 +351,15 @@ void AppBase::main_loop() {
             !renderer_.determinism_test_active()) {
             state_stack_.update(*this, dt);
         }
+
+        // Engine-level systems that must tick every frame regardless of
+        // game state (Staging and GsDemoState don't run the gameplay
+        // scheduler, but the event bus still has producers like the
+        // command dispatcher — see Phase 4a / Codex P1 on PR #431).
+        if (vfx_system_) {
+            vfx_system_->run(world_, dt);
+        }
+        world_.rotate_events();
 #if GSEURAT_DEBUG_BUILD
         const auto t_after_update = std::chrono::steady_clock::now();
         std::fprintf(stderr, "[loop/wd] post_update tick=%u\n", tick_);
@@ -827,16 +836,12 @@ void AppBase::init_game_object_system() {
         [](const nlohmann::json& j) -> LightProbe { return light_probe_from_json(j); },
         [](const LightProbe& lp) -> nlohmann::json { return light_probe_to_json(lp); });
 
-    // Phase 4a: VFX spawn consumer. Lives ahead of the trigger systems
-    // so that any spawn event a trigger emits in the same frame is
-    // visible next frame, while spawns from the command dispatcher
-    // (which runs before update_game) materialise in renderer state
-    // this frame, ahead of build_draw_lists.
+    // Phase 4a: VFX spawn consumer. Constructed here but NOT registered
+    // with system_scheduler_ — it's engine-level infrastructure that
+    // must run every frame regardless of which game state is active
+    // (Staging and GsDemoState don't invoke the gameplay scheduler).
+    // main_loop() drives it directly.
     vfx_system_ = std::make_unique<systems::VfxSystem>(&renderer_);
-    system_scheduler_.add_system({"vfx_spawn",
-        [this](ecs::World& w, float dt) {
-            vfx_system_->run(w, dt);
-        }, {}, {}});
 
     // Register engine-level systems
     system_scheduler_.add_system({"bone_animation",
