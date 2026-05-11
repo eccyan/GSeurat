@@ -148,8 +148,13 @@ public:
     uint32_t max_dynamic_count() const { return max_dynamic_count_; }
     uint32_t static_count() const { return static_count_; }
     uint32_t dynamic_count() const { return dynamic_count_; }
-    bool static_dirty() const { return static_dirty_; }
-    void set_static_dirty(bool d) { static_dirty_ = d; }
+    bool static_dirty() const { return static_dirty_frames_remaining_ > 0; }
+    // Marks the static head of projected_ssbos_ as dirty for the next
+    // kMaxFramesInFlight frames. Phase 3: with per-frame projected SSBOs,
+    // each frame slot must run static_preprocess once to refresh its slot.
+    void set_static_dirty(bool d) {
+        static_dirty_frames_remaining_ = d ? kMaxFramesInFlight : 0;
+    }
 
     void resize_output(uint32_t width, uint32_t height);
 
@@ -405,7 +410,9 @@ private:
     void dispatch_depth_onesweep(VkCommandBuffer cmd, uint32_t sort_size, uint32_t num_workgroups,
         VkDescriptorSet hist_a, VkDescriptorSet hist_b,
         VkDescriptorSet scatter_ab, VkDescriptorSet scatter_ba);
-    void dispatch_tile_sort(VkCommandBuffer cmd);
+    // Phase 3: frame_in_flight selects tile_bin_sets_[f] so the per-frame
+    // racing projected/merged/counts slots are read correctly.
+    void dispatch_tile_sort(VkCommandBuffer cmd, uint32_t frame_in_flight);
     // Drain pending_publications_ and record the metadata writes
     // (page_table, chunk_table) onto `cmd` via vkCmdUpdateBuffer + a
     // TRANSFER_WRITE -> SHADER_READ barrier. Called from poll_transfers
@@ -484,7 +491,11 @@ private:
     uint32_t dynamic_sort_size_ = 0;
     uint32_t static_sort_workgroups_ = 0;
     uint32_t dynamic_sort_workgroups_ = 0;
-    bool static_dirty_ = true;
+    // Static-head refresh countdown. With per-frame projected_ssbos_,
+    // each frame slot must re-run static_preprocess once after a static
+    // mutation. Initialized to kMaxFramesInFlight so the first
+    // kMaxFramesInFlight frames each refresh their own projected slot.
+    uint32_t static_dirty_frames_remaining_ = kMaxFramesInFlight;
 
     // --- Streaming architecture (Phase 2) ---
     StreamingConfig streaming_config_;
@@ -587,7 +598,9 @@ private:
     VkDescriptorSetLayout merge_layout_ = VK_NULL_HANDLE;
     VkPipelineLayout merge_pipeline_layout_ = VK_NULL_HANDLE;
     VkPipeline merge_pipeline_ = VK_NULL_HANDLE;
-    VkDescriptorSet merge_set_ = VK_NULL_HANDLE;
+    // Per-frame merge sets: merge_sets_[f] binds dynamic_sort_as_[f],
+    // merged_sort_ssbos_[f], counts_ssbos_[f] (all racing per-frame buffers).
+    std::array<VkDescriptorSet, kMaxFramesInFlight> merge_sets_{};
 
     // Static/dynamic preprocess descriptor sets — per-frame (Phase 2 plumbing;
     // dispatch still binds [0] until Phase 3).
@@ -632,7 +645,10 @@ private:
     VkDescriptorSetLayout tile_bin_layout_ = VK_NULL_HANDLE;
     VkPipelineLayout tile_bin_pipeline_layout_ = VK_NULL_HANDLE;
     VkPipeline tile_bin_pipeline_ = VK_NULL_HANDLE;
-    VkDescriptorSet tile_bin_set_ = VK_NULL_HANDLE;
+    // Per-frame (Phase 3): tile_bin_sets_[f] binds projected_ssbos_[f],
+    // merged_sort_ssbos_[f], counts_ssbos_[f]. Other bindings (per_splat_*,
+    // tile_entries, uniforms) are single-instance.
+    std::array<VkDescriptorSet, kMaxFramesInFlight> tile_bin_sets_{};
 
     // Pre-scatter count pass (gs_tile_count.comp). Shares layout/set with
     // tile_bin_pipeline_ — the binding set is a strict superset of what
@@ -689,23 +705,26 @@ private:
     Buffer dynamic_depth_params_;        // IndirectArgs-layout buffer for dynamic depth sort
     uint32_t depth_onesweep_max_wg_ = 0;
 
-    // Depth sort Onesweep descriptor sets (legacy path)
-    VkDescriptorSet depth_hist_set_a_ = VK_NULL_HANDLE;
-    VkDescriptorSet depth_hist_set_b_ = VK_NULL_HANDLE;
-    VkDescriptorSet depth_scatter_set_ab_ = VK_NULL_HANDLE;
-    VkDescriptorSet depth_scatter_set_ba_ = VK_NULL_HANDLE;
+    // Depth sort Onesweep descriptor sets (legacy path) — per-frame.
+    // These bind racing sort_keys_ssbos_[f] / sort_b_ssbos_[f].
+    std::array<VkDescriptorSet, kMaxFramesInFlight> depth_hist_sets_a_{};
+    std::array<VkDescriptorSet, kMaxFramesInFlight> depth_hist_sets_b_{};
+    std::array<VkDescriptorSet, kMaxFramesInFlight> depth_scatter_sets_ab_{};
+    std::array<VkDescriptorSet, kMaxFramesInFlight> depth_scatter_sets_ba_{};
 
-    // Depth sort Onesweep descriptor sets (static path)
+    // Depth sort Onesweep descriptor sets (static path) — single-instance.
+    // These bind only static_sort_a_/b_ which are GPU-fenced via static_dirty_.
     VkDescriptorSet static_depth_hist_set_a_ = VK_NULL_HANDLE;
     VkDescriptorSet static_depth_hist_set_b_ = VK_NULL_HANDLE;
     VkDescriptorSet static_depth_scatter_set_ab_ = VK_NULL_HANDLE;
     VkDescriptorSet static_depth_scatter_set_ba_ = VK_NULL_HANDLE;
 
-    // Depth sort Onesweep descriptor sets (dynamic path)
-    VkDescriptorSet dynamic_depth_hist_set_a_ = VK_NULL_HANDLE;
-    VkDescriptorSet dynamic_depth_hist_set_b_ = VK_NULL_HANDLE;
-    VkDescriptorSet dynamic_depth_scatter_set_ab_ = VK_NULL_HANDLE;
-    VkDescriptorSet dynamic_depth_scatter_set_ba_ = VK_NULL_HANDLE;
+    // Depth sort Onesweep descriptor sets (dynamic path) — per-frame.
+    // These bind racing dynamic_sort_as_[f] / dynamic_sort_bs_[f].
+    std::array<VkDescriptorSet, kMaxFramesInFlight> dynamic_depth_hist_sets_a_{};
+    std::array<VkDescriptorSet, kMaxFramesInFlight> dynamic_depth_hist_sets_b_{};
+    std::array<VkDescriptorSet, kMaxFramesInFlight> dynamic_depth_scatter_sets_ab_{};
+    std::array<VkDescriptorSet, kMaxFramesInFlight> dynamic_depth_scatter_sets_ba_{};
 
     // Tile sort buffers
     Buffer tile_sort_a_;              // TileSortEntry ping buffer (8 bytes/entry)
