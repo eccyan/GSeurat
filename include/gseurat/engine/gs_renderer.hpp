@@ -328,7 +328,10 @@ public:
         return determinism_readback_.allocation();
     }
     VmaAllocation tile_sort_count_allocation() const {
-        return tile_sort_count_ssbo_.allocation();
+        // Phase 3.5: tile_sort_count is per-frame. Return the slot that
+        // dispatch_tile_sort most recently recorded into (matches the
+        // readback the harness reads after the in-flight fence).
+        return tile_sort_count_ssbos_[determinism_last_emitted_frame_].allocation();
     }
     uint32_t tile_sort_capacity() const { return tile_sort_capacity_; }
 
@@ -336,8 +339,11 @@ public:
         return determinism_readback_.mapped();
     }
     uint32_t live_tile_sort_count() const {
-        if (tile_sort_count_ssbo_.mapped() == nullptr) return 0;
-        return *static_cast<const uint32_t*>(tile_sort_count_ssbo_.mapped());
+        // Phase 3.5: tile_sort_count is per-frame. Read the slot that
+        // dispatch_tile_sort most recently emitted (post-fence).
+        const auto& slot = tile_sort_count_ssbos_[determinism_last_emitted_frame_];
+        if (slot.mapped() == nullptr) return 0;
+        return *static_cast<const uint32_t*>(slot.mapped());
     }
 
     // GPU timing averages (populated over kTimestampAvgFrames)
@@ -658,22 +664,26 @@ private:
     // Three-dispatch exclusive prefix-sum (gs_tile_scan.comp). Bindings:
     //   0 per_splat_tile_count[]  1 per_splat_tile_offset[]
     //   2 scan_block_sums[]       3 tile_sort_count
+    // Per-frame (Phase 3.5): binds racing per_splat_*/scan_block_sums/
+    // tile_sort_count buffers, so the set itself is per-frame.
     VkDescriptorSetLayout tile_scan_layout_ = VK_NULL_HANDLE;
     VkPipelineLayout tile_scan_pipeline_layout_ = VK_NULL_HANDLE;
     VkPipeline tile_scan_pipeline_ = VK_NULL_HANDLE;
-    VkDescriptorSet tile_scan_set_ = VK_NULL_HANDLE;
+    std::array<VkDescriptorSet, kMaxFramesInFlight> tile_scan_sets_{};
 
     // Indirect dispatch preparation
+    // Per-frame (Phase 3.5): binds racing tile_sort_count + tile_indirect_args.
     VkDescriptorSetLayout tile_indirect_layout_ = VK_NULL_HANDLE;
     VkPipelineLayout tile_indirect_pipeline_layout_ = VK_NULL_HANDLE;
     VkPipeline tile_indirect_pipeline_ = VK_NULL_HANDLE;
-    VkDescriptorSet tile_indirect_set_ = VK_NULL_HANDLE;
+    std::array<VkDescriptorSet, kMaxFramesInFlight> tile_indirect_sets_{};
 
     // Tile range detection pipeline
+    // Per-frame (Phase 3.5): binds racing tile_sort_a + tile_ranges + tile_sort_count.
     VkDescriptorSetLayout tile_ranges_layout_ = VK_NULL_HANDLE;
     VkPipelineLayout tile_ranges_pipeline_layout_ = VK_NULL_HANDLE;
     VkPipeline tile_ranges_pipeline_ = VK_NULL_HANDLE;
-    VkDescriptorSet tile_ranges_set_ = VK_NULL_HANDLE;
+    std::array<VkDescriptorSet, kMaxFramesInFlight> tile_ranges_sets_{};
 
     // Tile render pipeline (8 bindings)
     VkDescriptorSetLayout tile_render_layout_ = VK_NULL_HANDLE;
@@ -682,18 +692,21 @@ private:
     // tile_render binds output_image + depth_image — per-frame.
     std::array<VkDescriptorSet, kMaxFramesInFlight> tile_render_sets_{};
 
-    // Onesweep 2-dispatch sort (histogram+lookback → scatter)
+    // Onesweep 2-dispatch sort (histogram+lookback → scatter) — per-frame
+    // (Phase 3.5). Binds racing tile_sort_a/b + tile_indirect_args. The
+    // onesweep_status_ binding is still single-instance (its race is a
+    // separate follow-up item not in this phase's scope).
     VkDescriptorSetLayout onesweep_hist_layout_ = VK_NULL_HANDLE;
     VkPipelineLayout onesweep_hist_pipeline_layout_ = VK_NULL_HANDLE;
     VkPipeline onesweep_hist_pipeline_ = VK_NULL_HANDLE;
-    VkDescriptorSet onesweep_hist_set_a_ = VK_NULL_HANDLE;  // read from A
-    VkDescriptorSet onesweep_hist_set_b_ = VK_NULL_HANDLE;  // read from B
+    std::array<VkDescriptorSet, kMaxFramesInFlight> onesweep_hist_sets_a_{};  // read from A
+    std::array<VkDescriptorSet, kMaxFramesInFlight> onesweep_hist_sets_b_{};  // read from B
 
     VkDescriptorSetLayout onesweep_scatter_layout_ = VK_NULL_HANDLE;
     VkPipelineLayout onesweep_scatter_pipeline_layout_ = VK_NULL_HANDLE;
     VkPipeline onesweep_scatter_pipeline_ = VK_NULL_HANDLE;
-    VkDescriptorSet onesweep_scatter_set_ab_ = VK_NULL_HANDLE;  // read A → write B
-    VkDescriptorSet onesweep_scatter_set_ba_ = VK_NULL_HANDLE;  // read B → write A
+    std::array<VkDescriptorSet, kMaxFramesInFlight> onesweep_scatter_sets_ab_{};  // read A → write B
+    std::array<VkDescriptorSet, kMaxFramesInFlight> onesweep_scatter_sets_ba_{};  // read B → write A
 
     Buffer onesweep_status_;    // per-digit lookback status buffer (tile sort, coherent)
     uint32_t onesweep_max_wg_ = 0;
@@ -726,18 +739,25 @@ private:
     std::array<VkDescriptorSet, kMaxFramesInFlight> dynamic_depth_scatter_sets_ab_{};
     std::array<VkDescriptorSet, kMaxFramesInFlight> dynamic_depth_scatter_sets_ba_{};
 
-    // Tile sort buffers
-    Buffer tile_sort_a_;              // TileSortEntry ping buffer (8 bytes/entry)
-    Buffer tile_sort_b_;              // TileSortEntry pong buffer
-    Buffer tile_sort_count_ssbo_;     // single uint32 — written by gs_tile_scan pass=1
-    Buffer tile_ranges_ssbo_;         // per-tile {start, count}
-    Buffer tile_indirect_args_;       // indirect dispatch args (8 × uint32)
+    // Tile sort buffers — per-frame (Phase 3.5).
+    // All seven buffers below are written every frame on the per-frame
+    // render path (dispatch_tile_sort). With kMaxFramesInFlight cmdbufs
+    // executing concurrently on the same VkQueue, single-instance
+    // buffers would race the same way the projected/sort_keys/visible_count
+    // buffers did pre-Phase-3. Each slot is sized identically (driven by
+    // tile_sort_capacity_ / scan_dispatch_size_).
+    std::array<Buffer, kMaxFramesInFlight> tile_sort_as_{};              // TileSortEntry ping buffer (8 bytes/entry)
+    std::array<Buffer, kMaxFramesInFlight> tile_sort_bs_{};              // TileSortEntry pong buffer
+    std::array<Buffer, kMaxFramesInFlight> tile_sort_count_ssbos_{};     // single uint32 — written by gs_tile_scan pass=1
+    std::array<Buffer, kMaxFramesInFlight> tile_ranges_ssbos_{};         // per-tile {start, count}
+    std::array<Buffer, kMaxFramesInFlight> tile_indirect_args_{};        // indirect dispatch args (8 × uint32)
 
     // Deterministic tile-bin (Fix B) intermediate SSBOs. All sized to the
     // visible-splat upper bound (static_sort_size_ + dynamic_sort_size_).
-    Buffer per_splat_tile_count_ssbo_;   // uint32 × visible_upper
-    Buffer per_splat_tile_offset_ssbo_;  // uint32 × visible_upper (exclusive scan)
-    Buffer scan_block_sums_ssbo_;        // uint32 × ceil(visible_upper / 256)
+    // Per-frame for the same race reason as the tile sort buffers above.
+    std::array<Buffer, kMaxFramesInFlight> per_splat_tile_count_ssbos_{};   // uint32 × visible_upper
+    std::array<Buffer, kMaxFramesInFlight> per_splat_tile_offset_ssbos_{};  // uint32 × visible_upper (exclusive scan)
+    std::array<Buffer, kMaxFramesInFlight> scan_block_sums_ssbos_{};        // uint32 × ceil(visible_upper / 256)
     uint32_t scan_dispatch_size_ = 0;    // visible_upper rounded up to 256
     uint32_t scan_num_blocks_ = 0;       // scan_dispatch_size_ / 256
     // Frame-determinism harness: HOST_VISIBLE copy of the post-Onesweep
@@ -752,6 +772,10 @@ private:
     // before counting a frame so that loading / transition frames where
     // the GS compute path was gated off don't pollute the verdict.
     bool determinism_readback_emitted_ = false;
+    // Phase 3.5: which per-frame slot of tile_sort_count_ssbos_ was the
+    // most recently emitted readback against. The harness uses this to
+    // select the right slot post-fence. Updated inside dispatch_tile_sort.
+    uint32_t determinism_last_emitted_frame_ = 0;
 
     uint32_t tile_sort_capacity_ = 0;    // max entries in tile sort buffers
     uint32_t tile_sort_size_ = 0;        // workgroup-aligned count for radix sort
