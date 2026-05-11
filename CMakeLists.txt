@@ -360,7 +360,7 @@ add_custom_target(sync_assets ALL
 )
 
 add_executable(ply2heightmap src/tools/ply2heightmap.cpp
-    src/engine/gaussian_cloud.cpp
+    src/engine/gaussian_cloud.cpp src/engine/gaussian_cloud_ply.cpp
     src/engine/project_root.cpp)
 target_include_directories(ply2heightmap PRIVATE
     ${PROJECT_SOURCE_DIR}/include
@@ -458,13 +458,13 @@ add_gseurat_test(test_sort_hash)
 add_gseurat_test(test_engine_loading_monitor  src/engine/engine_state.cpp)
 add_gseurat_test(test_async_loader     src/engine/async_loader.cpp)
 add_gseurat_test(test_character_data   src/engine/character_data.cpp)
-add_gseurat_test(test_gaussian_cloud   src/engine/gaussian_cloud.cpp src/engine/collision_gen.cpp
+add_gseurat_test(test_gaussian_cloud   src/engine/gaussian_cloud.cpp src/engine/gaussian_cloud_ply.cpp src/engine/collision_gen.cpp
                                        src/engine/scene_loader.cpp src/engine/tilemap.cpp
                                        src/engine/gs_particle.cpp src/engine/gs_spline.cpp
                                        src/engine/gs_animator.cpp src/engine/project_root.cpp)
 add_gseurat_test(test_transition_system  src/engine/systems/transition_system.cpp
                                           src/engine/systems/portal_trigger_handler.cpp)
-add_gseurat_test(test_gs_chunk_streamer src/engine/gs_chunk_streamer.cpp src/engine/gaussian_cloud.cpp
+add_gseurat_test(test_gs_chunk_streamer src/engine/gs_chunk_streamer.cpp src/engine/gaussian_cloud.cpp src/engine/gaussian_cloud_ply.cpp
                                         src/engine/async_loader.cpp
                                         src/engine/project_root.cpp)
 add_gseurat_test(test_gs_parallax_camera src/engine/gs_parallax_camera.cpp)
@@ -472,22 +472,22 @@ add_gseurat_test(test_screenshot       src/engine/screenshot.cpp)
 add_gseurat_test(test_staging_uploader src/engine/staging_uploader.cpp)
 add_gseurat_test(test_tilemap          src/engine/tilemap.cpp)
 add_gseurat_test(test_gs_point_lights)
-add_gseurat_test(test_gs_emission     src/engine/gaussian_cloud.cpp
+add_gseurat_test(test_gs_emission     src/engine/gaussian_cloud.cpp src/engine/gaussian_cloud_ply.cpp
                                        src/engine/project_root.cpp)
 add_gseurat_test(test_gs_particle    src/engine/gs_particle.cpp src/engine/gs_animator.cpp
-                                      src/engine/gaussian_cloud.cpp src/engine/scene_loader.cpp
+                                      src/engine/gaussian_cloud.cpp src/engine/gaussian_cloud_ply.cpp src/engine/scene_loader.cpp
                                       src/engine/gs_spline.cpp src/engine/project_root.cpp)
 add_gseurat_test(test_scene_loading  src/engine/scene_loader.cpp src/engine/tilemap.cpp
                                       src/engine/gs_particle.cpp src/engine/gs_animator.cpp
-                                      src/engine/gaussian_cloud.cpp src/engine/gs_vfx.cpp
+                                      src/engine/gaussian_cloud.cpp src/engine/gaussian_cloud_ply.cpp src/engine/gs_vfx.cpp
                                       src/engine/gs_spline.cpp src/engine/coordinate.cpp
                                       src/engine/project_root.cpp)
 add_gseurat_test(test_incremental_sync src/engine/scene_loader.cpp src/engine/tilemap.cpp
-                                        src/engine/gaussian_cloud.cpp src/engine/gs_particle.cpp
+                                        src/engine/gaussian_cloud.cpp src/engine/gaussian_cloud_ply.cpp src/engine/gs_particle.cpp
                                         src/engine/gs_animator.cpp src/engine/gs_spline.cpp
                                         src/engine/coordinate.cpp src/engine/project_root.cpp)
 add_gseurat_test(test_vfx_lights_rotation src/engine/gs_vfx.cpp src/engine/gs_particle.cpp
-                                           src/engine/gs_animator.cpp src/engine/gaussian_cloud.cpp
+                                           src/engine/gs_animator.cpp src/engine/gaussian_cloud.cpp src/engine/gaussian_cloud_ply.cpp
                                            src/engine/scene_loader.cpp src/engine/tilemap.cpp
                                            src/engine/gs_spline.cpp src/engine/project_root.cpp)
 add_gseurat_test(test_gs_spline src/engine/gs_spline.cpp)
@@ -518,8 +518,8 @@ add_gseurat_test(test_camera_review_state src/staging/camera_review_state.cpp
 target_link_libraries(test_camera_review_state PRIVATE glfw imgui_lib)
 add_gseurat_test(test_visual_state  src/staging/visual_state.cpp)
 add_gseurat_test(test_project_root  src/engine/project_root.cpp)
-add_gseurat_test(test_ply_path_resolution  src/engine/project_root.cpp src/engine/gaussian_cloud.cpp)
-add_gseurat_test(test_bridge_reconnect_root  src/engine/project_root.cpp src/engine/gaussian_cloud.cpp)
+add_gseurat_test(test_ply_path_resolution  src/engine/project_root.cpp src/engine/gaussian_cloud.cpp src/engine/gaussian_cloud_ply.cpp)
+add_gseurat_test(test_bridge_reconnect_root  src/engine/project_root.cpp src/engine/gaussian_cloud.cpp src/engine/gaussian_cloud_ply.cpp)
 add_gseurat_test(test_slab_allocator src/engine/slab_allocator.cpp)
 add_gseurat_test(test_world_manifest src/engine/world_manifest.cpp)
 add_gseurat_test(test_world_streamer src/engine/world_streamer.cpp src/engine/world_manifest.cpp)
@@ -606,7 +606,7 @@ add_gseurat_test(test_audio_effect_chain
 target_include_directories(test_audio_effect_chain PRIVATE ${PROJECT_SOURCE_DIR}/src/engine/audio)
 
 add_gseurat_test(test_ply2heightmap
-    src/engine/gaussian_cloud.cpp
+    src/engine/gaussian_cloud.cpp src/engine/gaussian_cloud_ply.cpp
     src/engine/project_root.cpp)
 
 add_gseurat_test(test_debug

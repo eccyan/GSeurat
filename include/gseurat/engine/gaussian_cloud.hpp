@@ -97,16 +97,19 @@ struct GsvxPayload {
 
 class GaussianCloud {
 public:
+    /// Parse a binary_little_endian PLY file. Compiled into offline tools
+    /// (ply2heightmap) and tests only; the runtime engine does NOT link
+    /// this. The runtime uses `load_with_gsvx_first`, which requires a
+    /// build-baked sibling .gsvx (see CMakeLists.txt `bake_gsvx`).
     static GaussianCloud load_ply(const std::string& path,
                                    CoordinateSystem coords = CoordinateSystem::kYUp);
     /// Load a pre-baked .gsvx binary file (zero-copy GPU format).
     static GsvxPayload load_gsvx(const std::string& path);
-    /// Try a sibling `.gsvx` first (path with `.ply` swapped for `.gsvx`);
-    /// fall back to `load_ply` on any failure (no file, bad header,
-    /// truncated, etc.). The returned cloud is field-equivalent to
-    /// `load_ply` within float epsilon. `coords` is applied symmetrically
-    /// on either path. Drop-in replacement for runtime `load_ply` callers
-    /// (PR-A of #396).
+    /// Resolve the sibling `.gsvx` for a `.ply` path and load it. Throws
+    /// `std::runtime_error` if the sibling is missing or unreadable; this
+    /// is the runtime cloud-load path and there is no PLY fallback. Every
+    /// bundled .ply is converted to .gsvx by the `bake_gsvx` build target
+    /// (M1 of #396).
     static GaussianCloud load_with_gsvx_first(
         const std::string& ply_path,
         CoordinateSystem coords = CoordinateSystem::kYUp);
