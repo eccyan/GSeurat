@@ -117,7 +117,11 @@ public:
     // Requires init_streaming() and create_transfer_queue() to have been
     // called first; logs an error and returns {} if streaming isn't ready.
     std::vector<TransferQueue::Handle> load_cloud_async(GaussianCloud cloud);
-    void poll_transfers(VkCommandBuffer frame_cmd);
+    // `frame_in_flight` identifies the slot the caller has waited on; only
+    // resources owned by that slot may be written from `frame_cmd`. Other
+    // slots' state (e.g. static_sort tail) is updated lazily when those
+    // slots are next reused.
+    void poll_transfers(VkCommandBuffer frame_cmd, uint32_t frame_in_flight);
     void create_transfer_queue(VkQueue transfer_q, uint32_t transfer_family,
                                uint32_t graphics_family, bool dedicated);
 
@@ -413,7 +417,11 @@ private:
     void create_compute_pipelines();
     void create_descriptor_resources();
     void update_descriptors();
+    // frame_in_flight selects depth_onesweep_statuses_[f] for the status
+    // clear so frame N+1's fill doesn't stomp frame N's in-flight lookback.
+    // The passed descriptor sets must already bind that same per-frame slot.
     void dispatch_depth_onesweep(VkCommandBuffer cmd, uint32_t sort_size, uint32_t num_workgroups,
+        uint32_t frame_in_flight,
         VkDescriptorSet hist_a, VkDescriptorSet hist_b,
         VkDescriptorSet scatter_ab, VkDescriptorSet scatter_ba);
     // Phase 3: frame_in_flight selects tile_bin_sets_[f] so the per-frame
@@ -423,7 +431,12 @@ private:
     // (page_table, chunk_table) onto `cmd` via vkCmdUpdateBuffer + a
     // TRANSFER_WRITE -> SHADER_READ barrier. Called from poll_transfers
     // immediately after poll_completions enqueues new publications.
-    void publish_pending_chunks(VkCommandBuffer cmd);
+    // `frame_in_flight` is the slot the caller has waited on. Only
+    // static_sort_as_/bs_[frame_in_flight] are filled in-place; other
+    // slots are flagged in static_sort_tail_dirty_per_slot_ and lazily
+    // filled at the start of their own render() record (after their
+    // in-flight fence has been waited on).
+    void publish_pending_chunks(VkCommandBuffer cmd, uint32_t frame_in_flight);
 
     // DIAG: stderr-print streaming-state snapshot (active_chunks_, counts,
     // projected_ssbo_/merged_sort_ssbo_/static_sort_a_ tail samples) for
@@ -480,8 +493,20 @@ private:
     // Static/dynamic split buffers
     Buffer static_gaussian_ssbo_;
     Buffer dynamic_gaussian_ssbo_;
-    Buffer static_sort_a_;
-    Buffer static_sort_b_;
+    // Static depth-sort ping-pong outputs — per-frame. static_dirty_frames_remaining_
+    // counts down kMaxFramesInFlight, so two consecutive in-flight cmdbufs both
+    // run the static Onesweep; with shared buffers their pass-N intermediate
+    // states would race the other cmdbuf's downstream merge read of the same
+    // bytes. Each frame slot now owns its own a/b buffers; the preprocess→sort→
+    // merge chain in cmdbuf [f] reads and writes only slot [f].
+    std::array<Buffer, kMaxFramesInFlight> static_sort_as_{};
+    std::array<Buffer, kMaxFramesInFlight> static_sort_bs_{};
+    // Per-slot deferred sentinel-fill request. publish_pending_chunks sets
+    // this for every slot OTHER than the one it's recording on whenever an
+    // Unload shrinks static_count_; render() consumes it at the start of
+    // its record for that slot (after the in-flight fence wait has made
+    // the slot safe to write).
+    std::array<bool, kMaxFramesInFlight> static_sort_tail_dirty_per_slot_{};
     // Per-frame racing SSBOs (see comment above projected_ssbos_).
     std::array<Buffer, kMaxFramesInFlight> dynamic_sort_as_{};
     std::array<Buffer, kMaxFramesInFlight> dynamic_sort_bs_{};
@@ -693,9 +718,10 @@ private:
     std::array<VkDescriptorSet, kMaxFramesInFlight> tile_render_sets_{};
 
     // Onesweep 2-dispatch sort (histogram+lookback → scatter) — per-frame
-    // (Phase 3.5). Binds racing tile_sort_a/b + tile_indirect_args. The
-    // onesweep_status_ binding is still single-instance (its race is a
-    // separate follow-up item not in this phase's scope).
+    // (Phase 3.5). Binds racing tile_sort_a/b + tile_indirect_args.
+    // onesweep_statuses_ is also per-frame (final cross-frame race fix):
+    // frame N+1's vkCmdFillBuffer would otherwise stomp frame N's in-flight
+    // lookback state.
     VkDescriptorSetLayout onesweep_hist_layout_ = VK_NULL_HANDLE;
     VkPipelineLayout onesweep_hist_pipeline_layout_ = VK_NULL_HANDLE;
     VkPipeline onesweep_hist_pipeline_ = VK_NULL_HANDLE;
@@ -708,11 +734,19 @@ private:
     std::array<VkDescriptorSet, kMaxFramesInFlight> onesweep_scatter_sets_ab_{};  // read A → write B
     std::array<VkDescriptorSet, kMaxFramesInFlight> onesweep_scatter_sets_ba_{};  // read B → write A
 
-    Buffer onesweep_status_;    // per-digit lookback status buffer (tile sort, coherent)
+    // Per-digit lookback status buffer (tile sort, coherent). Per-frame:
+    // dispatch_tile_sort zeroes the slot at the start of every per-frame
+    // record and the onesweep compute reads/writes it; with kMaxFramesInFlight
+    // cmdbufs in flight a single-instance buffer would race itself.
+    std::array<Buffer, kMaxFramesInFlight> onesweep_statuses_{};
     uint32_t onesweep_max_wg_ = 0;
 
     // Depth sort Onesweep (reuses same shaders as tile sort)
-    Buffer depth_onesweep_status_;       // per-digit lookback status (depth sort, coherent)
+    // Per-digit lookback status (depth sort, coherent). Per-frame for the
+    // same reason as onesweep_statuses_ — dispatch_depth_onesweep zeroes
+    // this slot at the start of every sort. Shared across static/dynamic/
+    // legacy depth sorts (all three bind frame f's slot).
+    std::array<Buffer, kMaxFramesInFlight> depth_onesweep_statuses_{};
     Buffer depth_sort_params_;           // IndirectArgs-layout buffer for legacy depth sort
     Buffer static_depth_params_;         // IndirectArgs-layout buffer for static depth sort
     Buffer dynamic_depth_params_;        // IndirectArgs-layout buffer for dynamic depth sort
@@ -725,12 +759,15 @@ private:
     std::array<VkDescriptorSet, kMaxFramesInFlight> depth_scatter_sets_ab_{};
     std::array<VkDescriptorSet, kMaxFramesInFlight> depth_scatter_sets_ba_{};
 
-    // Depth sort Onesweep descriptor sets (static path) — single-instance.
-    // These bind only static_sort_a_/b_ which are GPU-fenced via static_dirty_.
-    VkDescriptorSet static_depth_hist_set_a_ = VK_NULL_HANDLE;
-    VkDescriptorSet static_depth_hist_set_b_ = VK_NULL_HANDLE;
-    VkDescriptorSet static_depth_scatter_set_ab_ = VK_NULL_HANDLE;
-    VkDescriptorSet static_depth_scatter_set_ba_ = VK_NULL_HANDLE;
+    // Depth sort Onesweep descriptor sets (static path) — per-frame.
+    // Each slot binds frame f's depth_onesweep_statuses_[f] AND its own
+    // static_sort_as_[f]/static_sort_bs_[f] ping-pong buffers, so the two
+    // frames of the static_dirty_frames_remaining_ countdown can run
+    // concurrently without racing on shared sort buffers.
+    std::array<VkDescriptorSet, kMaxFramesInFlight> static_depth_hist_sets_a_{};
+    std::array<VkDescriptorSet, kMaxFramesInFlight> static_depth_hist_sets_b_{};
+    std::array<VkDescriptorSet, kMaxFramesInFlight> static_depth_scatter_sets_ab_{};
+    std::array<VkDescriptorSet, kMaxFramesInFlight> static_depth_scatter_sets_ba_{};
 
     // Depth sort Onesweep descriptor sets (dynamic path) — per-frame.
     // These bind racing dynamic_sort_as_[f] / dynamic_sort_bs_[f].
@@ -786,11 +823,20 @@ private:
     // World manifest (Phase 3 streaming)
     WorldManifest world_manifest_;
 
-    // GPU timestamp profiling: 6 queries
-    //   0: depth_sort_begin, 1: depth_sort_end
-    //   2: tile_sort_begin,  3: tile_sort_end
-    //   4: raster_begin,     5: raster_end
+    // GPU timestamp profiling: 6 queries per frame slot, kMaxFramesInFlight
+    // slots total. Frame f's queries live at indices [f*6, f*6+6):
+    //   +0: depth_sort_begin, +1: depth_sort_end
+    //   +2: tile_sort_begin,  +3: tile_sort_end
+    //   +4: raster_begin,     +5: raster_end
+    // Per-slot is required to keep timestamps_written_per_slot_[f] coherent
+    // with the non-blocking vkGetQueryPoolResults read: with a shared pool
+    // the previous frame's reset would discard frame N's timestamps before
+    // any later frame could read them, and on CPU-ahead systems the avg
+    // log would never fire.
     VkQueryPool timestamp_pool_ = VK_NULL_HANDLE;
+    static constexpr uint32_t kTimestampQueriesPerFrame = 6;
+    static constexpr uint32_t kTimestampPoolSize =
+        kMaxFramesInFlight * kTimestampQueriesPerFrame;
     float timestamp_period_ns_ = 0.0f;   // nanoseconds per tick
     uint32_t timestamp_frame_ = 0;
     float depth_sort_ms_accum_ = 0.0f;
@@ -802,7 +848,10 @@ private:
     float depth_sort_ms_last_ = 0.0f;    // last per-frame raw sample
     float tile_sort_ms_last_ = 0.0f;
     float rasterize_ms_last_ = 0.0f;
-    bool timestamps_written_ = false;     // true after rasterize dispatch writes timestamps
+    // true once frame f has issued its writes — read-and-reset at the start
+    // of the NEXT time slot f is reused, where the in-flight fence wait
+    // guarantees the writes have landed.
+    std::array<bool, kMaxFramesInFlight> timestamps_written_per_slot_{};
     static constexpr uint32_t kTimestampAvgFrames = 60;
 
     // Shadow box parameters

@@ -114,7 +114,11 @@ void GsRenderer::init(VkDevice device, VkPhysicalDevice physical_device,
         VkQueryPoolCreateInfo qp_info{};
         qp_info.sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO;
         qp_info.queryType = VK_QUERY_TYPE_TIMESTAMP;
-        qp_info.queryCount = 6;  // depth_sort_begin/end, tile_sort_begin/end, raster_begin/end
+        // Per-frame slots: 6 queries × kMaxFramesInFlight. Frame f writes
+        // [f*6, f*6+6) and resets only its own slot before writing, so a
+        // non-blocking read of a previous frame's slot is never invalidated
+        // by a reset from a different frame.
+        qp_info.queryCount = kTimestampPoolSize;
         vkCreateQueryPool(device_, &qp_info, nullptr, &timestamp_pool_);
 
         VkPhysicalDeviceProperties props;
@@ -221,7 +225,7 @@ void GsRenderer::create_descriptor_resources() {
 
     VkDescriptorPoolCreateInfo pool_info{};
     pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-    pool_info.maxSets = 232;  // expanded for static/dynamic/merge + per-frame compute sets (Phase 3: +10 racing onesweep/merge/tile_bin sets per frame slot; Phase 3.5: +16 for per-frame tile_scan/tile_indirect/tile_ranges + onesweep tile sort sets)
+    pool_info.maxSets = 236;  // expanded for static/dynamic/merge + per-frame compute sets (Phase 3: +10 racing onesweep/merge/tile_bin sets per frame slot; Phase 3.5: +16 for per-frame tile_scan/tile_indirect/tile_ranges + onesweep tile sort sets; per-frame onesweep status fix: +4 for static depth onesweep slot [1])
     pool_info.poolSizeCount = 3;
     pool_info.pPoolSizes = pool_sizes;
 
@@ -506,15 +510,25 @@ void GsRenderer::create_descriptor_resources() {
         tile_ranges_layout_,                                // 49: tile_ranges_sets_[1]
         onesweep_hist_layout_, onesweep_hist_layout_,       // 50-51: tile onesweep hist A, B (slot [1])
         onesweep_scatter_layout_, onesweep_scatter_layout_, // 52-53: tile onesweep scatter AB, BA (slot [1])
+        // Per-frame onesweep status fix — static depth onesweep sets become
+        // per-frame so they can bind depth_onesweep_statuses_[f].
+        onesweep_hist_layout_, onesweep_hist_layout_,       // 54-55: static depth hist A, B (slot [1])
+        onesweep_scatter_layout_, onesweep_scatter_layout_, // 56-57: static depth scatter AB, BA (slot [1])
     };
-    constexpr uint32_t kSetCount = 54;
+    constexpr uint32_t kSetCount = 58;
     VkDescriptorSet sets[kSetCount];
     VkDescriptorSetAllocateInfo alloc_info{};
     alloc_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
     alloc_info.descriptorPool = gs_pool_;
     alloc_info.descriptorSetCount = kSetCount;
     alloc_info.pSetLayouts = layouts;
-    vkAllocateDescriptorSets(device_, &alloc_info, sets);
+    VkResult alloc_res = vkAllocateDescriptorSets(device_, &alloc_info, sets);
+    if (alloc_res != VK_SUCCESS) {
+        std::fprintf(stderr,
+            "[gs_renderer] vkAllocateDescriptorSets failed (%d) — pool exhausted? maxSets must cover kSetCount=%u\n",
+            static_cast<int>(alloc_res), kSetCount);
+        std::abort();
+    }
 
     // Legacy sets (per-frame Phase 2)
     preprocess_sets_[0] = sets[0];
@@ -561,11 +575,17 @@ void GsRenderer::create_descriptor_resources() {
     depth_hist_sets_b_[1] = sets[39];
     depth_scatter_sets_ab_[1] = sets[40];
     depth_scatter_sets_ba_[1] = sets[41];
-    // Depth sort Onesweep (static) — single-instance (static_sort_a_/b_ GPU-fenced)
-    static_depth_hist_set_a_ = sets[21];
-    static_depth_hist_set_b_ = sets[22];
-    static_depth_scatter_set_ab_ = sets[23];
-    static_depth_scatter_set_ba_ = sets[24];
+    // Depth sort Onesweep (static) — per-frame so each slot can bind frame
+    // f's depth_onesweep_statuses_[f] AND its own static_sort_as_[f]/
+    // static_sort_bs_[f] ping-pong buffers.
+    static_depth_hist_sets_a_[0] = sets[21];
+    static_depth_hist_sets_b_[0] = sets[22];
+    static_depth_scatter_sets_ab_[0] = sets[23];
+    static_depth_scatter_sets_ba_[0] = sets[24];
+    static_depth_hist_sets_a_[1] = sets[54];
+    static_depth_hist_sets_b_[1] = sets[55];
+    static_depth_scatter_sets_ab_[1] = sets[56];
+    static_depth_scatter_sets_ba_[1] = sets[57];
     // Depth sort Onesweep (dynamic) — per-frame (racing dynamic_sort_as_/bs_)
     dynamic_depth_hist_sets_a_[0] = sets[25];
     dynamic_depth_hist_sets_b_[0] = sets[26];
@@ -1209,10 +1229,11 @@ void GsRenderer::init_streaming(const StreamingConfig& config) {
     pbd_uniform_buffer_.destroy(allocator_);
     static_gaussian_ssbo_.destroy(allocator_);
     dynamic_gaussian_ssbo_.destroy(allocator_);
-    static_sort_a_.destroy(allocator_);
-    static_sort_b_.destroy(allocator_);
-    // Per-frame racing SSBOs: destroy every slot.
+    // Per-frame racing SSBOs: destroy every slot. static_sort_as_/bs_ are
+    // grouped in the same loop now that they're per-frame too.
     for (uint32_t f = 0; f < kMaxFramesInFlight; ++f) {
+        static_sort_as_[f].destroy(allocator_);
+        static_sort_bs_[f].destroy(allocator_);
         projected_ssbos_[f].destroy(allocator_);
         sort_keys_ssbos_[f].destroy(allocator_);
         sort_b_ssbos_[f].destroy(allocator_);
@@ -1234,7 +1255,9 @@ void GsRenderer::init_streaming(const StreamingConfig& config) {
         tile_ranges_ssbos_[f].destroy(allocator_);
     }
     pp_ubo_buffer_.destroy(allocator_);
-    depth_onesweep_status_.destroy(allocator_);
+    for (uint32_t f = 0; f < kMaxFramesInFlight; ++f) {
+        depth_onesweep_statuses_[f].destroy(allocator_);
+    }
     depth_sort_params_.destroy(allocator_);
     static_depth_params_.destroy(allocator_);
     dynamic_depth_params_.destroy(allocator_);
@@ -1251,8 +1274,14 @@ void GsRenderer::init_streaming(const StreamingConfig& config) {
     // host_dst flag = TRANSFER_DST_BIT, required for the per-frame
     // vkCmdFillBuffer in publish_pending_chunks that sentinel-fills the
     // [new_count, prev_count) tail when streaming Unloads shrink static_count_.
-    static_sort_a_ = Buffer::create_storage_host_dst(allocator_, static_sort_buf_size);
-    static_sort_b_ = Buffer::create_storage_host_dst(allocator_, static_sort_buf_size);
+    // static_sort_as_/bs_ are now per-frame so that two consecutive in-flight
+    // cmdbufs running the static Onesweep during a static_dirty cycle don't
+    // race each other on the shared ping-pong buffers; the preprocess→sort→
+    // merge chain in cmdbuf [f] reads/writes only slot [f].
+    for (uint32_t f = 0; f < kMaxFramesInFlight; ++f) {
+        static_sort_as_[f] = Buffer::create_storage_host_dst(allocator_, static_sort_buf_size);
+        static_sort_bs_[f] = Buffer::create_storage_host_dst(allocator_, static_sort_buf_size);
+    }
     uniform_buffer_ = Buffer::create_uniform(allocator_, sizeof(GsUniforms));
 
     // Per-frame racing SSBOs: create one slot per frame in flight. Phase 1
@@ -1303,9 +1332,9 @@ void GsRenderer::init_streaming(const StreamingConfig& config) {
                 p[i].index = 0;
             }
         };
-        sentinel_fill_sort(static_sort_a_, static_sort_size_);
-        sentinel_fill_sort(static_sort_b_, static_sort_size_);
         for (uint32_t f = 0; f < kMaxFramesInFlight; ++f) {
+            sentinel_fill_sort(static_sort_as_[f], static_sort_size_);
+            sentinel_fill_sort(static_sort_bs_[f], static_sort_size_);
             std::memset(projected_ssbos_[f].mapped(), 0,
                         static_cast<size_t>(max_static_count_ + max_dynamic_count_)
                             * sizeof(ProjectedSplat));
@@ -1425,21 +1454,30 @@ void GsRenderer::init_streaming(const StreamingConfig& config) {
                      static_cast<float>(entry_buf_size * 2) / (1024.0f * 1024.0f),
                      scan_dispatch_size_, scan_num_blocks_);
 
-        // Onesweep status buffer: 4 passes × 256 digits × max_workgroups
-        onesweep_status_.destroy(allocator_);
+        // Onesweep status buffer: 4 passes × 256 digits × max_workgroups.
+        // Per-frame so each in-flight cmdbuf clears + reads its own slot
+        // without racing the other cmdbuf's in-progress onesweep lookback.
         onesweep_max_wg_ = (tile_sort_capacity_ + 2047) / 2048;
         if (onesweep_max_wg_ == 0) onesweep_max_wg_ = 1;
         VkDeviceSize status_size = 4ull * 256ull * onesweep_max_wg_ * sizeof(uint32_t);
-        onesweep_status_ = Buffer::create_storage_gpu_only(allocator_, status_size);
+        for (uint32_t f = 0; f < kMaxFramesInFlight; ++f) {
+            onesweep_statuses_[f].destroy(allocator_);
+            onesweep_statuses_[f] = Buffer::create_storage_gpu_only(allocator_, status_size);
+        }
     }
 
     // ── Depth sort Onesweep buffers ──
     {
-        // Status buffer: num_sort_passes × 256 digits × max_wg (shared across static/dynamic/legacy)
+        // Status buffer: num_sort_passes × 256 digits × max_wg (shared across
+        // static/dynamic/legacy depth sorts). Per-frame so the per-cmdbuf
+        // status clears don't race in-flight onesweep lookback on the other
+        // cmdbuf.
         depth_onesweep_max_wg_ = std::max({static_sort_workgroups_, dynamic_sort_workgroups_, num_sort_workgroups_});
         VkDeviceSize depth_status_size = static_cast<VkDeviceSize>(num_sort_passes_) * 256ull
                                          * depth_onesweep_max_wg_ * sizeof(uint32_t);
-        depth_onesweep_status_ = Buffer::create_storage_gpu_only(allocator_, depth_status_size);
+        for (uint32_t f = 0; f < kMaxFramesInFlight; ++f) {
+            depth_onesweep_statuses_[f] = Buffer::create_storage_gpu_only(allocator_, depth_status_size);
+        }
 
         // Params buffers (IndirectArgs layout: {wg_x, 1, 1, 0, 0, 0, entry_count, 0})
         auto fill_sort_params = [&](Buffer& buf, uint32_t wg_count, uint32_t entry_count) {
@@ -1605,8 +1643,13 @@ void GsRenderer::clear_chunks(VkCommandBuffer drain_cmd) {
             sort[i].index = 0;
         }
     };
-    fill_sort_sentinel(static_sort_a_, static_sort_size_);
-    fill_sort_sentinel(static_sort_b_, static_sort_size_);
+    // Per-frame: refill every slot. clear_chunks is called from the portal/
+    // scene-clear path after vkDeviceWaitIdle, so direct host writes to all
+    // slots are safe here.
+    for (uint32_t f = 0; f < kMaxFramesInFlight; ++f) {
+        fill_sort_sentinel(static_sort_as_[f], static_sort_size_);
+        fill_sort_sentinel(static_sort_bs_[f], static_sort_size_);
+    }
 
     // Invalidate the slab-indirection metadata. `publish_pending_chunks`'s
     // Unload path writes 0xFFFFFFFF sentinels to `page_table_ssbo_` for
@@ -1797,7 +1840,7 @@ std::vector<TransferQueue::Handle> GsRenderer::load_cloud_async(GaussianCloud cl
     return handles_for_caller;
 }
 
-void GsRenderer::poll_transfers(VkCommandBuffer frame_cmd) {
+void GsRenderer::poll_transfers(VkCommandBuffer frame_cmd, uint32_t frame_in_flight) {
     if (!transfer_queue_) return;
     // Diagnostic: full poll path covers slab-upload submits, completion
     // callback drains, deferred slab releases, and the metadata publish.
@@ -1890,7 +1933,7 @@ void GsRenderer::poll_transfers(VkCommandBuffer frame_cmd) {
     }
 
     transfer_queue_->poll_completions(frame_cmd);
-    publish_pending_chunks(frame_cmd);
+    publish_pending_chunks(frame_cmd, frame_in_flight);
 
     // ── DIAG: streaming-state dump (PR #387 ghost investigation) ──
     // Opt-in via env var GS_DIAG_STREAMING=1. Cached once. Prints to
@@ -1991,9 +2034,11 @@ void GsRenderer::diag_streaming_dump(uint64_t frame) {
     }
 
     // static_sort_a_ tail invariant check: should be all key=0xFFFFFFFF
-    // beyond static_count_ (PR #387's whole purpose).
-    if (static_sort_a_.mapped() && static_count_ < static_sort_size_) {
-        const auto* s = static_cast<const SortEntry*>(static_sort_a_.mapped());
+    // beyond static_count_ (PR #387's whole purpose). Per-frame: inspect
+    // slot [0] — both slots hold the same data when invariants hold, so
+    // slot [0] is sufficient for a diagnostic.
+    if (static_sort_as_[0].mapped() && static_count_ < static_sort_size_) {
+        const auto* s = static_cast<const SortEntry*>(static_sort_as_[0].mapped());
         const uint32_t scan_end = std::min<uint32_t>(static_count_ + 1024u, static_sort_size_);
         uint32_t non_sentinel = 0;
         uint32_t first_offender = UINT32_MAX;
@@ -2004,7 +2049,7 @@ void GsRenderer::diag_streaming_dump(uint64_t frame) {
             }
         }
         std::fprintf(stderr,
-            "[gs_diag]   static_sort_a_ tail [%u..%u): non_sentinel=%u first_offender=%s\n",
+            "[gs_diag]   static_sort_as_[0] tail [%u..%u): non_sentinel=%u first_offender=%s\n",
             static_count_, scan_end, non_sentinel,
             first_offender == UINT32_MAX
                 ? "none"
@@ -2013,7 +2058,7 @@ void GsRenderer::diag_streaming_dump(uint64_t frame) {
     std::fflush(stderr);
 }
 
-void GsRenderer::publish_pending_chunks(VkCommandBuffer cmd) {
+void GsRenderer::publish_pending_chunks(VkCommandBuffer cmd, uint32_t frame_in_flight) {
     // Step 1: tick the deferred-release queue *before* doing anything that
     // might check out new slabs. Slabs whose hold-time has expired are
     // returned to the allocator now so they're available for incoming load
@@ -2228,10 +2273,20 @@ void GsRenderer::publish_pending_chunks(VkCommandBuffer cmd) {
             // each 8-byte SortEntry becomes {key=0xFFFFFFFF, index=0xFFFFFFFF}.
             // The 0xFFFFFFFF key sorts to the tail; the index is never read
             // (entry won't survive into merge's [0, static_count_) window).
-            vkCmdFillBuffer(cmd, static_sort_a_.buffer(),
+            // Per-frame: only fill THIS slot — the caller has waited on its
+            // in-flight fence. Other slots may still be GPU-active on their
+            // own cmdbufs; writing them here would race those reads.
+            // Mark the other slots dirty so render() refills them at the
+            // top of their next record (after their fence has been waited).
+            vkCmdFillBuffer(cmd, static_sort_as_[frame_in_flight].buffer(),
                             fill_offset, fill_size, 0xFFFFFFFFu);
-            vkCmdFillBuffer(cmd, static_sort_b_.buffer(),
+            vkCmdFillBuffer(cmd, static_sort_bs_[frame_in_flight].buffer(),
                             fill_offset, fill_size, 0xFFFFFFFFu);
+            for (uint32_t f = 0; f < kMaxFramesInFlight; ++f) {
+                if (f != frame_in_flight) {
+                    static_sort_tail_dirty_per_slot_[f] = true;
+                }
+            }
         }
 
         // Single barrier covering both metadata buffers AND the sort-tail
@@ -2240,6 +2295,9 @@ void GsRenderer::publish_pending_chunks(VkCommandBuffer cmd) {
         // compute dispatches in the same cmd buffer could read with the
         // writes still in flight.
         const bool sort_filled = (static_count_ < prev_static_count);
+        // 2 metadata buffers + 2 sort buffers (current slot only — other
+        // slots are barriered separately at the start of their render()
+        // record, when the deferred dirty fill is emitted).
         VkBufferMemoryBarrier barriers[4]{};
         uint32_t nb = 0;
         auto add = [&](VkBuffer b) {
@@ -2256,8 +2314,8 @@ void GsRenderer::publish_pending_chunks(VkCommandBuffer cmd) {
         add(page_table_ssbo_.buffer());
         add(chunk_table_ssbo_.buffer());
         if (sort_filled) {
-            add(static_sort_a_.buffer());
-            add(static_sort_b_.buffer());
+            add(static_sort_as_[frame_in_flight].buffer());
+            add(static_sort_bs_[frame_in_flight].buffer());
         }
 
         vkCmdPipelineBarrier(cmd,
@@ -2536,7 +2594,7 @@ void GsRenderer::update_descriptors() {
     }
 
     // Depth Onesweep descriptor sets (legacy path) — same layout as tile Onesweep
-    if (depth_onesweep_status_.buffer() && depth_sort_params_.buffer()) {
+    if (depth_onesweep_statuses_[0].buffer() && depth_sort_params_.buffer()) {
         auto write_depth_onesweep_sets = [&](
             VkDescriptorSet hist_a, VkDescriptorSet hist_b,
             VkDescriptorSet scatter_ab, VkDescriptorSet scatter_ba,
@@ -2599,12 +2657,15 @@ void GsRenderer::update_descriptors() {
         // Legacy depth sort sets — per-frame (Phase 3). Each frame slot
         // binds its own sort_keys_ssbos_[f] / sort_b_ssbos_[f] so frame N+1's
         // dispatch reads its own slot, never frame N's still-in-use slot.
+        // depth_onesweep_statuses_[f] is also per-frame so the status fill
+        // at the start of dispatch_depth_onesweep doesn't race the other
+        // cmdbuf's in-flight lookback.
         for (uint32_t f = 0; f < kMaxFramesInFlight; ++f) {
             write_depth_onesweep_sets(
                 depth_hist_sets_a_[f], depth_hist_sets_b_[f],
                 depth_scatter_sets_ab_[f], depth_scatter_sets_ba_[f],
                 sort_keys_ssbos_[f].buffer(), sort_b_ssbos_[f].buffer(),
-                depth_onesweep_status_.buffer(), depth_sort_params_.buffer());
+                depth_onesweep_statuses_[f].buffer(), depth_sort_params_.buffer());
         }
     }
 
@@ -2613,12 +2674,13 @@ void GsRenderer::update_descriptors() {
     if (!static_gaussian_ssbo_.buffer() || !counts_ssbos_[0].buffer()) return;
 
     // Static preprocess set: static_gaussian(0), projected(1), static_sort_a(2), uniforms(3), counts[0](4), bones(5), pbd(6), page_table(8)
-    // Per-frame: static_preprocess_sets_[f] binds projected_ssbos_[f] and counts_ssbos_[f].
-    // (static_sort_a_ is single-instance — not in the racing set.)
+    // Per-frame: static_preprocess_sets_[f] binds projected_ssbos_[f],
+    // counts_ssbos_[f], and (now) static_sort_as_[f] so the preprocess→sort→
+    // merge chain in cmdbuf [f] is self-contained.
     for (uint32_t f = 0; f < kMaxFramesInFlight; ++f) {
         VkDescriptorBufferInfo gaussian_info{static_gaussian_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo projected_info{projected_ssbos_[f].buffer(), 0, VK_WHOLE_SIZE};
-        VkDescriptorBufferInfo sort_info{static_sort_a_.buffer(), 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo sort_info{static_sort_as_[f].buffer(), 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo uniform_info{uniform_buffer_.buffer(), 0, sizeof(GsUniforms)};
         VkDescriptorBufferInfo counts_info{counts_ssbos_[f].buffer(), 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo bone_info{bone_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
@@ -2702,7 +2764,7 @@ void GsRenderer::update_descriptors() {
     }
 
     // Static/dynamic depth Onesweep descriptor sets (reuse lambda from above if available)
-    if (depth_onesweep_status_.buffer() && static_depth_params_.buffer()) {
+    if (depth_onesweep_statuses_[0].buffer() && static_depth_params_.buffer()) {
         auto write_depth_onesweep_sets = [&](
             VkDescriptorSet hist_a, VkDescriptorSet hist_b,
             VkDescriptorSet scatter_ab, VkDescriptorSet scatter_ba,
@@ -2742,12 +2804,16 @@ void GsRenderer::update_descriptors() {
               }; vkUpdateDescriptorSets(device_, 4, w, 0, nullptr); }
         };
 
-        // Static depth sort (static_sort_a_/b_ are single-instance — not racing).
-        write_depth_onesweep_sets(
-            static_depth_hist_set_a_, static_depth_hist_set_b_,
-            static_depth_scatter_set_ab_, static_depth_scatter_set_ba_,
-            static_sort_a_.buffer(), static_sort_b_.buffer(),
-            depth_onesweep_status_.buffer(), static_depth_params_.buffer());
+        // Static depth sort: static_sort_as_/bs_ are now per-frame too, so
+        // the descriptor set in slot [f] binds the buffers in slot [f] and
+        // there's no cross-cmdbuf race on the radix ping-pong outputs.
+        for (uint32_t f = 0; f < kMaxFramesInFlight; ++f) {
+            write_depth_onesweep_sets(
+                static_depth_hist_sets_a_[f], static_depth_hist_sets_b_[f],
+                static_depth_scatter_sets_ab_[f], static_depth_scatter_sets_ba_[f],
+                static_sort_as_[f].buffer(), static_sort_bs_[f].buffer(),
+                depth_onesweep_statuses_[f].buffer(), static_depth_params_.buffer());
+        }
         // Dynamic depth sort — per-frame (Phase 3). Each frame slot binds
         // its own dynamic_sort_as_[f] / dynamic_sort_bs_[f] so frame N+1's
         // dispatch reads its own slot.
@@ -2756,15 +2822,17 @@ void GsRenderer::update_descriptors() {
                 dynamic_depth_hist_sets_a_[f], dynamic_depth_hist_sets_b_[f],
                 dynamic_depth_scatter_sets_ab_[f], dynamic_depth_scatter_sets_ba_[f],
                 dynamic_sort_as_[f].buffer(), dynamic_sort_bs_[f].buffer(),
-                depth_onesweep_status_.buffer(), dynamic_depth_params_.buffer());
+                depth_onesweep_statuses_[f].buffer(), dynamic_depth_params_.buffer());
         }
     }
 
     // Merge set: static_sort_a(0), dynamic_sort_a(1), merged_sort(2), counts(3)
-    // Per-frame (Phase 3): merge_sets_[f] binds dynamic_sort_as_[f],
-    // merged_sort_ssbos_[f], counts_ssbos_[f]. static_sort_a_ is single-instance.
+    // Per-frame (Phase 3 + onesweep status fix): merge_sets_[f] binds
+    // dynamic_sort_as_[f], merged_sort_ssbos_[f], counts_ssbos_[f], and (now)
+    // static_sort_as_[f] — every input/output the merge touches lives in
+    // slot [f], so two in-flight cmdbufs do not race on shared buffers.
     for (uint32_t f = 0; f < kMaxFramesInFlight; ++f) {
-        VkDescriptorBufferInfo static_info{static_sort_a_.buffer(), 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo static_info{static_sort_as_[f].buffer(), 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo dynamic_info{dynamic_sort_as_[f].buffer(), 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo merged_info{merged_sort_ssbos_[f].buffer(), 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo counts_info{counts_ssbos_[f].buffer(), 0, VK_WHOLE_SIZE};
@@ -2916,13 +2984,13 @@ void GsRenderer::update_descriptors() {
         }
 
         // Onesweep histogram descriptor sets (read-only input + status + args)
-        // Phase 3.5: per-frame. onesweep_status_ stays single-instance (its
-        // race is out of scope for this phase).
-        if (onesweep_status_.buffer()) {
+        // Phase 3.5 + onesweep status fix: every binding is per-frame, so
+        // each frame f's onesweep dispatch reads/writes only its own slot.
+        if (onesweep_statuses_[0].buffer()) {
             for (uint32_t f = 0; f < kMaxFramesInFlight; ++f) {
                 {
                     VkDescriptorBufferInfo in_info{tile_sort_as_[f].buffer(), 0, VK_WHOLE_SIZE};
-                    VkDescriptorBufferInfo status_info{onesweep_status_.buffer(), 0, VK_WHOLE_SIZE};
+                    VkDescriptorBufferInfo status_info{onesweep_statuses_[f].buffer(), 0, VK_WHOLE_SIZE};
                     VkDescriptorBufferInfo args_info{tile_indirect_args_[f].buffer(), 0, VK_WHOLE_SIZE};
                     VkDescriptorSet hist_a = onesweep_hist_sets_a_[f];
                     VkWriteDescriptorSet writes[] = {
@@ -2937,7 +3005,7 @@ void GsRenderer::update_descriptors() {
                 }
                 {
                     VkDescriptorBufferInfo in_info{tile_sort_bs_[f].buffer(), 0, VK_WHOLE_SIZE};
-                    VkDescriptorBufferInfo status_info{onesweep_status_.buffer(), 0, VK_WHOLE_SIZE};
+                    VkDescriptorBufferInfo status_info{onesweep_statuses_[f].buffer(), 0, VK_WHOLE_SIZE};
                     VkDescriptorBufferInfo args_info{tile_indirect_args_[f].buffer(), 0, VK_WHOLE_SIZE};
                     VkDescriptorSet hist_b = onesweep_hist_sets_b_[f];
                     VkWriteDescriptorSet writes[] = {
@@ -2954,7 +3022,7 @@ void GsRenderer::update_descriptors() {
                 {
                     VkDescriptorBufferInfo in_info{tile_sort_as_[f].buffer(), 0, VK_WHOLE_SIZE};
                     VkDescriptorBufferInfo out_info{tile_sort_bs_[f].buffer(), 0, VK_WHOLE_SIZE};
-                    VkDescriptorBufferInfo status_info{onesweep_status_.buffer(), 0, VK_WHOLE_SIZE};
+                    VkDescriptorBufferInfo status_info{onesweep_statuses_[f].buffer(), 0, VK_WHOLE_SIZE};
                     VkDescriptorBufferInfo args_info{tile_indirect_args_[f].buffer(), 0, VK_WHOLE_SIZE};
                     VkDescriptorSet scatter_ab = onesweep_scatter_sets_ab_[f];
                     VkWriteDescriptorSet writes[] = {
@@ -2972,7 +3040,7 @@ void GsRenderer::update_descriptors() {
                 {
                     VkDescriptorBufferInfo in_info{tile_sort_bs_[f].buffer(), 0, VK_WHOLE_SIZE};
                     VkDescriptorBufferInfo out_info{tile_sort_as_[f].buffer(), 0, VK_WHOLE_SIZE};
-                    VkDescriptorBufferInfo status_info{onesweep_status_.buffer(), 0, VK_WHOLE_SIZE};
+                    VkDescriptorBufferInfo status_info{onesweep_statuses_[f].buffer(), 0, VK_WHOLE_SIZE};
                     VkDescriptorBufferInfo args_info{tile_indirect_args_[f].buffer(), 0, VK_WHOLE_SIZE};
                     VkDescriptorSet scatter_ba = onesweep_scatter_sets_ba_[f];
                     VkWriteDescriptorSet writes[] = {
@@ -3136,13 +3204,15 @@ void GsRenderer::init_output_layouts(VkCommandBuffer cmd) {
 
 void GsRenderer::dispatch_depth_onesweep(
     VkCommandBuffer cmd, uint32_t sort_size, uint32_t num_workgroups,
+    uint32_t frame_in_flight,
     VkDescriptorSet hist_a, VkDescriptorSet hist_b,
     VkDescriptorSet scatter_ab, VkDescriptorSet scatter_ba)
 {
-    // Clear shared status buffer before sort
+    // Clear the per-frame status buffer slot before sort. The descriptor
+    // sets passed in must already bind depth_onesweep_statuses_[frame_in_flight].
     VkDeviceSize status_clear_size = static_cast<VkDeviceSize>(num_sort_passes_) * 256ull
                                      * depth_onesweep_max_wg_ * sizeof(uint32_t);
-    vkCmdFillBuffer(cmd, depth_onesweep_status_.buffer(), 0, status_clear_size, 0);
+    vkCmdFillBuffer(cmd, depth_onesweep_statuses_[frame_in_flight].buffer(), 0, status_clear_size, 0);
     {
         VkMemoryBarrier sb{};
         sb.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
@@ -3310,9 +3380,11 @@ void GsRenderer::dispatch_tile_sort(VkCommandBuffer cmd, uint32_t frame_in_fligh
     }
 
     // === Onesweep 2-dispatch: clear status buffer once ===
+    // Per-frame: fill frame f's slot so cmdbuf f+1's clear doesn't stomp
+    // cmdbuf f's still-in-progress onesweep lookback state.
     {
         VkDeviceSize status_size = 4ull * 256ull * onesweep_max_wg_ * sizeof(uint32_t);
-        vkCmdFillBuffer(cmd, onesweep_status_.buffer(), 0, status_size, 0);
+        vkCmdFillBuffer(cmd, onesweep_statuses_[frame_in_flight].buffer(), 0, status_size, 0);
         {
             VkMemoryBarrier sb{};
             sb.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
@@ -3499,21 +3571,75 @@ void GsRenderer::render(VkCommandBuffer cmd, uint32_t frame_in_flight,
 
     std::memcpy(uniform_buffer_.mapped(), &uniforms, sizeof(uniforms));
 
-    // Read back GPU timestamps from previous frame (depth sort + tile sort + rasterize).
-    // WAIT_BIT: with kMaxFramesInFlight=2 the GPU hasn't necessarily completed
-    // frame N-1's queries by the time frame N's CPU code runs, so non-blocking
-    // reads returned VK_NOT_READY every frame and the 60-avg log never fired
-    // (#404 — silent during the #399 perf investigation). The wait is bounded
-    // to the previous frame's GPU latency and is worth the diagnostic data.
-    if (timestamp_pool_ && timestamps_written_) {
-        uint64_t ts[6]{};  // depth_sort_begin/end, tile_sort_begin/end, raster_begin/end
+    // Deferred static_sort tail fill (Codex P1 round 2).
+    //
+    // publish_pending_chunks only touches its own fenced slot when an Unload
+    // shrinks static_count_; it marks the OTHER slots dirty for lazy refill
+    // here. By the time render() runs for `frame_in_flight`, this slot's
+    // in-flight fence has been waited on, so writing static_sort_as_/bs_
+    // [frame_in_flight] is race-free.
+    //
+    // Conservative fill: zero out the full tail [static_count_, static_sort_size_)
+    // rather than tracking per-event delta windows. Multiple Unloads can
+    // accumulate between two reuses of a slot; the over-fill is correctness-
+    // critical and runs only when a slot was actually marked dirty (rare,
+    // chunk-transition / scene-clear events).
+    if (static_sort_tail_dirty_per_slot_[frame_in_flight] &&
+        static_count_ < static_sort_size_) {
+        const VkDeviceSize entry_sz = sizeof(SortEntry);
+        const VkDeviceSize fill_offset =
+            static_cast<VkDeviceSize>(static_count_) * entry_sz;
+        const VkDeviceSize fill_size =
+            static_cast<VkDeviceSize>(static_sort_size_ - static_count_) * entry_sz;
+        vkCmdFillBuffer(cmd, static_sort_as_[frame_in_flight].buffer(),
+                        fill_offset, fill_size, 0xFFFFFFFFu);
+        vkCmdFillBuffer(cmd, static_sort_bs_[frame_in_flight].buffer(),
+                        fill_offset, fill_size, 0xFFFFFFFFu);
+
+        VkBufferMemoryBarrier sort_barriers[2]{};
+        for (uint32_t i = 0; i < 2; ++i) {
+            sort_barriers[i].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+            sort_barriers[i].srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+            sort_barriers[i].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+            sort_barriers[i].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            sort_barriers[i].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            sort_barriers[i].offset = 0;
+            sort_barriers[i].size = VK_WHOLE_SIZE;
+        }
+        sort_barriers[0].buffer = static_sort_as_[frame_in_flight].buffer();
+        sort_barriers[1].buffer = static_sort_bs_[frame_in_flight].buffer();
+        vkCmdPipelineBarrier(cmd,
+            VK_PIPELINE_STAGE_TRANSFER_BIT,
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+            0, 0, nullptr, 2, sort_barriers, 0, nullptr);
+        static_sort_tail_dirty_per_slot_[frame_in_flight] = false;
+    }
+
+    // Read back GPU timestamps from THIS slot's PREVIOUS write (the renderer
+    // waits on this slot's in-flight fence before calling render(), so the
+    // writes are guaranteed complete by the time we reach here).
+    //
+    // Non-blocking: a hung GPU dispatch must not wedge the CPU here. If
+    // results aren't ready (VK_NOT_READY), drop this measurement; the next
+    // re-use of this slot will read its own most-recent writes. WAIT_BIT
+    // was removed after a Phase-3.6 attempt deadlocked the entire process
+    // (spindump showed the main thread permanently blocked here when the
+    // onesweep lookback hung the GPU).
+    //
+    // Per-slot pool (Codex P2): each frame slot owns 6 consecutive queries
+    // starting at slot_offset. The reset below only touches THIS slot's
+    // queries, so a previous frame's queries are never invalidated before
+    // they're consumed.
+    const uint32_t ts_slot_offset = frame_in_flight * kTimestampQueriesPerFrame;
+    if (timestamp_pool_ && timestamps_written_per_slot_[frame_in_flight]) {
+        uint64_t ts[kTimestampQueriesPerFrame]{};  // depth_sort_begin/end, tile_sort_begin/end, raster_begin/end
 #if GSEURAT_DEBUG_BUILD
         const auto t_wait_start = std::chrono::steady_clock::now();
 #endif
         VkResult ts_result = vkGetQueryPoolResults(
-            device_, timestamp_pool_, 0, 6,
+            device_, timestamp_pool_, ts_slot_offset, kTimestampQueriesPerFrame,
             sizeof(ts), ts, sizeof(uint64_t),
-            VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT);
+            VK_QUERY_RESULT_64_BIT);
 #if GSEURAT_DEBUG_BUILD
         const auto t_wait_end = std::chrono::steady_clock::now();
         const double wait_ms = std::chrono::duration<double, std::milli>(t_wait_end - t_wait_start).count();
@@ -3558,10 +3684,11 @@ void GsRenderer::render(VkCommandBuffer cmd, uint32_t frame_in_flight,
         }
     }
 
-    // Reset timestamp queries for this frame
+    // Reset only THIS slot's queries before issuing new writes — other
+    // slots' queries remain intact for their owning frames to consume.
     if (timestamp_pool_) {
-        vkCmdResetQueryPool(cmd, timestamp_pool_, 0, 6);
-        timestamps_written_ = false;
+        vkCmdResetQueryPool(cmd, timestamp_pool_, ts_slot_offset, kTimestampQueriesPerFrame);
+        timestamps_written_per_slot_[frame_in_flight] = false;
     }
 
     // In skip-sort mode, skip GS compute but still run post-process
@@ -3709,7 +3836,7 @@ void GsRenderer::render(VkCommandBuffer cmd, uint32_t frame_in_flight,
             // === Depth sort timestamp: begin ===
             if (timestamp_pool_) {
                 vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                                   timestamp_pool_, 0);  // depth_sort_begin
+                                   timestamp_pool_, ts_slot_offset + 0);  // depth_sort_begin
             }
 
             // === Phase 1: Dynamic preprocess + sort (every frame, if dynamic_count_ > 0) ===
@@ -3726,8 +3853,10 @@ void GsRenderer::render(VkCommandBuffer cmd, uint32_t frame_in_flight,
                 insert_compute_barrier(cmd);
 
                 // Sort dynamic (Onesweep) — Phase 3: per-frame sets read this
-                // frame's dynamic_sort_as_[f]/bs_[f].
+                // frame's dynamic_sort_as_[f]/bs_[f]. frame_in_flight also
+                // selects this frame's slot of depth_onesweep_statuses_.
                 dispatch_depth_onesweep(cmd, dynamic_sort_size_, dynamic_sort_workgroups_,
+                    frame_in_flight,
                     dynamic_depth_hist_sets_a_[frame_in_flight], dynamic_depth_hist_sets_b_[frame_in_flight],
                     dynamic_depth_scatter_sets_ab_[frame_in_flight], dynamic_depth_scatter_sets_ba_[frame_in_flight]);
             }
@@ -3749,11 +3878,14 @@ void GsRenderer::render(VkCommandBuffer cmd, uint32_t frame_in_flight,
 
                 insert_compute_barrier(cmd);
 
-                // Sort static (Onesweep) — static_*_set_ are single-instance
-                // (static_sort_a_/b_ are GPU-fenced via this dirty flow).
+                // Sort static (Onesweep) — every input/output the static sort
+                // touches lives in slot [frame_in_flight]: status buffer,
+                // ping-pong sort_as_/bs_, and the bound descriptor sets. The
+                // two frames of the static_dirty cycle now run independently.
                 dispatch_depth_onesweep(cmd, static_sort_size_, static_sort_workgroups_,
-                    static_depth_hist_set_a_, static_depth_hist_set_b_,
-                    static_depth_scatter_set_ab_, static_depth_scatter_set_ba_);
+                    frame_in_flight,
+                    static_depth_hist_sets_a_[frame_in_flight], static_depth_hist_sets_b_[frame_in_flight],
+                    static_depth_scatter_sets_ab_[frame_in_flight], static_depth_scatter_sets_ba_[frame_in_flight]);
 
                 static_dirty_frames_remaining_--;
             }
@@ -3777,18 +3909,18 @@ void GsRenderer::render(VkCommandBuffer cmd, uint32_t frame_in_flight,
             // === Depth sort timestamp: end ===
             if (timestamp_pool_) {
                 vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                                   timestamp_pool_, 1);  // depth_sort_end
+                                   timestamp_pool_, ts_slot_offset + 1);  // depth_sort_end
             }
 
             // === Phase 3.5: Tile binning + tile sort ===
             if (timestamp_pool_) {
                 vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                                   timestamp_pool_, 2);  // tile_sort_begin
+                                   timestamp_pool_, ts_slot_offset + 2);  // tile_sort_begin
             }
             dispatch_tile_sort(cmd, frame_in_flight);
             if (timestamp_pool_) {
                 vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                                   timestamp_pool_, 3);  // tile_sort_end
+                                   timestamp_pool_, ts_slot_offset + 3);  // tile_sort_end
             }
 
             // === Phase 4: Tile-based rasterization ===
@@ -3803,13 +3935,13 @@ void GsRenderer::render(VkCommandBuffer cmd, uint32_t frame_in_flight,
 
                 if (timestamp_pool_) {
                     vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                                       timestamp_pool_, 4);  // raster_begin
+                                       timestamp_pool_, ts_slot_offset + 4);  // raster_begin
                 }
                 vkCmdDispatch(cmd, tiles_x, tiles_y, 1);
                 if (timestamp_pool_) {
                     vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                                       timestamp_pool_, 5);  // raster_end
-                    timestamps_written_ = true;
+                                       timestamp_pool_, ts_slot_offset + 5);  // raster_end
+                    timestamps_written_per_slot_[frame_in_flight] = true;
                 }
             }
         }
@@ -4003,10 +4135,10 @@ void GsRenderer::shutdown(VmaAllocator allocator) {
     // Split buffers
     static_gaussian_ssbo_.destroy(allocator);
     dynamic_gaussian_ssbo_.destroy(allocator);
-    static_sort_a_.destroy(allocator);
-    static_sort_b_.destroy(allocator);
-    // Per-frame racing SSBOs.
+    // Per-frame racing SSBOs (static_sort_as_/bs_ are grouped here now).
     for (uint32_t f = 0; f < kMaxFramesInFlight; ++f) {
+        static_sort_as_[f].destroy(allocator);
+        static_sort_bs_[f].destroy(allocator);
         projected_ssbos_[f].destroy(allocator);
         sort_keys_ssbos_[f].destroy(allocator);
         sort_b_ssbos_[f].destroy(allocator);
@@ -4028,11 +4160,15 @@ void GsRenderer::shutdown(VmaAllocator allocator) {
         per_splat_tile_offset_ssbos_[f].destroy(allocator);
         scan_block_sums_ssbos_[f].destroy(allocator);
     }
-    onesweep_status_.destroy(allocator);
+    for (uint32_t f = 0; f < kMaxFramesInFlight; ++f) {
+        onesweep_statuses_[f].destroy(allocator);
+    }
     determinism_readback_.destroy(allocator);
 
-    // Depth sort Onesweep buffers
-    depth_onesweep_status_.destroy(allocator);
+    // Depth sort Onesweep buffers — per-frame status, single-instance params.
+    for (uint32_t f = 0; f < kMaxFramesInFlight; ++f) {
+        depth_onesweep_statuses_[f].destroy(allocator);
+    }
     depth_sort_params_.destroy(allocator);
     static_depth_params_.destroy(allocator);
     dynamic_depth_params_.destroy(allocator);
