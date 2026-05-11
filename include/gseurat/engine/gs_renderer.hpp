@@ -208,12 +208,12 @@ public:
     uint32_t output_width() const { return output_width_; }
     uint32_t output_height() const { return output_height_; }
     uint32_t visible_count() const {
-        if (counts_ssbo_.mapped()) {
-            auto* c = static_cast<const uint32_t*>(counts_ssbo_.mapped());
+        if (counts_ssbos_[0].mapped()) {
+            auto* c = static_cast<const uint32_t*>(counts_ssbos_[0].mapped());
             return c[0] + c[1];  // static_visible + dynamic_visible
         }
-        if (visible_count_ssbo_.mapped())
-            return *static_cast<const uint32_t*>(visible_count_ssbo_.mapped());
+        if (visible_count_ssbos_[0].mapped())
+            return *static_cast<const uint32_t*>(visible_count_ssbos_[0].mapped());
         return 0;
     }
     void set_shadow_box_params(const glm::vec3& cone_dir, float cone_cos,
@@ -442,12 +442,16 @@ private:
 
     // GPU buffers
     Buffer gaussian_ssbo_;           // Input Gaussians
-    Buffer projected_ssbo_;          // Projected 2D splats
-    Buffer sort_keys_ssbo_;          // Sort buffer A (ping-pong)
-    Buffer sort_b_ssbo_;             // Sort buffer B (ping-pong)
+    // Per-frame racing SSBOs: frame N writes slot [N % kMaxFramesInFlight]
+    // while frame N-1 is still draining. Phase 1 of the cross-frame race
+    // fix converts these to arrays; Phase 3 will wire frame_in_flight into
+    // dispatch sites. For now all consumers access slot [0].
+    std::array<Buffer, kMaxFramesInFlight> projected_ssbos_{};   // Projected 2D splats
+    std::array<Buffer, kMaxFramesInFlight> sort_keys_ssbos_{};   // Sort buffer A (ping-pong)
+    std::array<Buffer, kMaxFramesInFlight> sort_b_ssbos_{};      // Sort buffer B (ping-pong)
 
     Buffer uniform_buffer_;          // Camera + resolution
-    Buffer visible_count_ssbo_;      // Atomic counter: visible Gaussians after frustum cull
+    std::array<Buffer, kMaxFramesInFlight> visible_count_ssbos_{};  // Atomic counter: visible Gaussians after frustum cull
     Buffer bone_ssbo_;               // Bone transforms for character skinning
     uint32_t bone_count_ = 0;
     glm::quat actor_rotation_{1.0f, 0.0f, 0.0f, 0.0f};  // Root motion world rotation
@@ -465,10 +469,11 @@ private:
     Buffer dynamic_gaussian_ssbo_;
     Buffer static_sort_a_;
     Buffer static_sort_b_;
-    Buffer dynamic_sort_a_;
-    Buffer dynamic_sort_b_;
-    Buffer merged_sort_ssbo_;
-    Buffer counts_ssbo_;  // {static_visible, dynamic_visible, merged_visible}
+    // Per-frame racing SSBOs (see comment above projected_ssbos_).
+    std::array<Buffer, kMaxFramesInFlight> dynamic_sort_as_{};
+    std::array<Buffer, kMaxFramesInFlight> dynamic_sort_bs_{};
+    std::array<Buffer, kMaxFramesInFlight> merged_sort_ssbos_{};
+    std::array<Buffer, kMaxFramesInFlight> counts_ssbos_{};  // {static_visible, dynamic_visible, merged_visible}
 
     uint32_t static_count_ = 0;
     uint32_t dynamic_count_ = 0;            // persistent_dyn_count_ + transient

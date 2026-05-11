@@ -1138,11 +1138,7 @@ void GsRenderer::init_streaming(const StreamingConfig& config) {
 
     // Destroy ALL old buffers (legacy + split)
     gaussian_ssbo_.destroy(allocator_);
-    projected_ssbo_.destroy(allocator_);
-    sort_keys_ssbo_.destroy(allocator_);
-    sort_b_ssbo_.destroy(allocator_);
     uniform_buffer_.destroy(allocator_);
-    visible_count_ssbo_.destroy(allocator_);
     bone_ssbo_.destroy(allocator_);
     pbd_state_ssbo_.destroy(allocator_);
     pbd_params_ssbo_.destroy(allocator_);
@@ -1152,10 +1148,17 @@ void GsRenderer::init_streaming(const StreamingConfig& config) {
     dynamic_gaussian_ssbo_.destroy(allocator_);
     static_sort_a_.destroy(allocator_);
     static_sort_b_.destroy(allocator_);
-    dynamic_sort_a_.destroy(allocator_);
-    dynamic_sort_b_.destroy(allocator_);
-    merged_sort_ssbo_.destroy(allocator_);
-    counts_ssbo_.destroy(allocator_);
+    // Per-frame racing SSBOs: destroy every slot.
+    for (uint32_t f = 0; f < kMaxFramesInFlight; ++f) {
+        projected_ssbos_[f].destroy(allocator_);
+        sort_keys_ssbos_[f].destroy(allocator_);
+        sort_b_ssbos_[f].destroy(allocator_);
+        visible_count_ssbos_[f].destroy(allocator_);
+        dynamic_sort_as_[f].destroy(allocator_);
+        dynamic_sort_bs_[f].destroy(allocator_);
+        merged_sort_ssbos_[f].destroy(allocator_);
+        counts_ssbos_[f].destroy(allocator_);
+    }
     page_table_ssbo_.destroy(allocator_);
     chunk_table_ssbo_.destroy(allocator_);
     tile_sort_a_.destroy(allocator_);
@@ -1177,23 +1180,33 @@ void GsRenderer::init_streaming(const StreamingConfig& config) {
     // surface as "ghost geometry from initial spawn state".
     static_gaussian_ssbo_ = Buffer::create_storage_host_dst(allocator_, static_gauss_size);
     dynamic_gaussian_ssbo_ = Buffer::create_storage(allocator_, dynamic_gauss_size);
-    projected_ssbo_ = Buffer::create_storage(allocator_, projected_buf_size);
     // host_dst flag = TRANSFER_DST_BIT, required for the per-frame
     // vkCmdFillBuffer in publish_pending_chunks that sentinel-fills the
     // [new_count, prev_count) tail when streaming Unloads shrink static_count_.
     static_sort_a_ = Buffer::create_storage_host_dst(allocator_, static_sort_buf_size);
     static_sort_b_ = Buffer::create_storage_host_dst(allocator_, static_sort_buf_size);
+    uniform_buffer_ = Buffer::create_uniform(allocator_, sizeof(GsUniforms));
+
+    // Per-frame racing SSBOs: create one slot per frame in flight. Phase 1
+    // of the cross-frame race fix; all consumers still index slot [0] for
+    // now, so behavior is unchanged. Phase 3 wires frame_in_flight into
+    // dispatch sites to actually use the per-frame slots.
+    //
     // Dynamic sort buffers also need TRANSFER_DST_BIT — render() issues a
     // per-frame vkCmdFillBuffer against them to GPU-side init the sentinel
     // keys before the dynamic preprocess overwrites the active range.
     // Without TRANSFER_DST the fillbuffer is a Vulkan-spec violation
     // (validation error / UB). Codex review on PR #420 flagged this.
-    dynamic_sort_a_ = Buffer::create_storage_host_dst(allocator_, dynamic_sort_buf_size);
-    dynamic_sort_b_ = Buffer::create_storage_host_dst(allocator_, dynamic_sort_buf_size);
-    merged_sort_ssbo_ = Buffer::create_storage(allocator_, merged_sort_buf_size);
-    counts_ssbo_ = Buffer::create_storage_readback(allocator_, 3 * sizeof(uint32_t));
-    uniform_buffer_ = Buffer::create_uniform(allocator_, sizeof(GsUniforms));
-    visible_count_ssbo_ = Buffer::create_storage_readback(allocator_, sizeof(uint32_t));
+    for (uint32_t f = 0; f < kMaxFramesInFlight; ++f) {
+        projected_ssbos_[f]     = Buffer::create_storage(allocator_, projected_buf_size);
+        sort_keys_ssbos_[f]     = Buffer::create_storage(allocator_, static_sort_buf_size);
+        sort_b_ssbos_[f]        = Buffer::create_storage(allocator_, static_sort_buf_size);
+        visible_count_ssbos_[f] = Buffer::create_storage_readback(allocator_, sizeof(uint32_t));
+        dynamic_sort_as_[f]     = Buffer::create_storage_host_dst(allocator_, dynamic_sort_buf_size);
+        dynamic_sort_bs_[f]     = Buffer::create_storage_host_dst(allocator_, dynamic_sort_buf_size);
+        counts_ssbos_[f]        = Buffer::create_storage_readback(allocator_, 3 * sizeof(uint32_t));
+        merged_sort_ssbos_[f]   = Buffer::create_storage(allocator_, merged_sort_buf_size);
+    }
 
     // Defense in depth: zero/sentinel-fill all splat-related buffers at init.
     // VMA does not guarantee zero-init for new allocations, so the bytes
@@ -1208,9 +1221,6 @@ void GsRenderer::init_streaming(const StreamingConfig& config) {
                 static_cast<size_t>(max_static_count_) * sizeof(GpuGaussian));
     std::memset(dynamic_gaussian_ssbo_.mapped(), 0,
                 static_cast<size_t>(max_dynamic_count_) * sizeof(GpuGaussian));
-    std::memset(projected_ssbo_.mapped(), 0,
-                static_cast<size_t>(max_static_count_ + max_dynamic_count_)
-                    * sizeof(ProjectedSplat));
     {
         // Sentinel-fill sort buffers: key=0xFFFFFFFF sorts to the tail and
         // is never read by the merge's [0, count) window. index=0 is a
@@ -1227,21 +1237,25 @@ void GsRenderer::init_streaming(const StreamingConfig& config) {
         };
         sentinel_fill_sort(static_sort_a_, static_sort_size_);
         sentinel_fill_sort(static_sort_b_, static_sort_size_);
-        sentinel_fill_sort(dynamic_sort_a_, dynamic_sort_size_);
-        sentinel_fill_sort(dynamic_sort_b_, dynamic_sort_size_);
-        // merged_sort_ssbo_ is rewritten by the merge stage every frame
-        // for [0, total_count); tile_bin reads only that range. No
-        // sentinel needed here, but zero it for cleanliness.
-        std::memset(merged_sort_ssbo_.mapped(), 0,
-                    static_cast<size_t>(max_static_count_ + max_dynamic_count_)
-                        * sizeof(SortEntry));
+        for (uint32_t f = 0; f < kMaxFramesInFlight; ++f) {
+            std::memset(projected_ssbos_[f].mapped(), 0,
+                        static_cast<size_t>(max_static_count_ + max_dynamic_count_)
+                            * sizeof(ProjectedSplat));
+            sentinel_fill_sort(dynamic_sort_as_[f], dynamic_sort_size_);
+            sentinel_fill_sort(dynamic_sort_bs_[f], dynamic_sort_size_);
+            // merged_sort_ssbos_ is rewritten by the merge stage every frame
+            // for [0, total_count); tile_bin reads only that range. No
+            // sentinel needed here, but zero it for cleanliness.
+            std::memset(merged_sort_ssbos_[f].mapped(), 0,
+                        static_cast<size_t>(max_static_count_ + max_dynamic_count_)
+                            * sizeof(SortEntry));
+        }
     }
 
-    // Legacy buffers (same sizes as static counterparts for backward compat)
+    // Legacy buffers (same sizes as static counterparts for backward compat).
+    // sort_keys/sort_b are now per-frame and created in the loop above.
     gaussian_ssbo_ = Buffer::create_storage(allocator_,
         static_cast<VkDeviceSize>(max_gaussian_count_) * sizeof(GpuGaussian));
-    sort_keys_ssbo_ = Buffer::create_storage(allocator_, static_sort_buf_size);
-    sort_b_ssbo_ = Buffer::create_storage(allocator_, static_sort_buf_size);
 
     // Bone transform SSBO
     bone_ssbo_ = Buffer::create_storage(allocator_, kMaxBones * sizeof(glm::mat4));
@@ -1384,9 +1398,9 @@ void GsRenderer::init_streaming(const StreamingConfig& config) {
     chunk_table_ssbo_ = Buffer::create_storage_host_dst(allocator_, 256 * 16);
     std::memset(chunk_table_ssbo_.mapped(), 0, 256 * 16);
 
-    // Zero the counts buffer
+    // Zero the counts buffer (Phase 1: slot [0] only; Phase 3 indexes by frame).
     {
-        auto* counts = static_cast<uint32_t*>(counts_ssbo_.mapped());
+        auto* counts = static_cast<uint32_t*>(counts_ssbos_[0].mapped());
         counts[0] = 0;
         counts[1] = 0;
         counts[2] = 0;
@@ -1545,8 +1559,8 @@ void GsRenderer::clear_chunks(VkCommandBuffer drain_cmd) {
     // Reset the visibility counts so the first post-portal frame doesn't
     // start by reading {static_visible, dynamic_visible, merged_visible}
     // values left over from the previous scene's last frame.
-    if (counts_ssbo_.mapped()) {
-        auto* counts = static_cast<uint32_t*>(counts_ssbo_.mapped());
+    if (counts_ssbos_[0].mapped()) {
+        auto* counts = static_cast<uint32_t*>(counts_ssbos_[0].mapped());
         counts[0] = 0;
         counts[1] = 0;
         counts[2] = 0;
@@ -1591,10 +1605,10 @@ void GsRenderer::clear_chunks(VkCommandBuffer drain_cmd) {
     // Buffer is HOST_VISIBLE+MAPPED, sized for max_static_count_ +
     // max_dynamic_count_ × sizeof(ProjectedSplat) (48 bytes/entry).
     // vkDeviceWaitIdle above guarantees GPU is idle.
-    if (projected_ssbo_.mapped()) {
+    if (projected_ssbos_[0].mapped()) {
         const size_t total = static_cast<size_t>(max_static_count_ + max_dynamic_count_);
         if (total > 0) {
-            std::memset(projected_ssbo_.mapped(), 0,
+            std::memset(projected_ssbos_[0].mapped(), 0,
                         total * sizeof(ProjectedSplat));
         }
     }
@@ -1817,8 +1831,8 @@ void GsRenderer::diag_streaming_dump(uint64_t frame) {
     // If sort indirection is bounding correctly, the rasterizer should
     // never reach these — but if real-looking projections sit here AND
     // the ghost still renders, something downstream is reading past count.
-    if (projected_ssbo_.mapped() && static_count_ < max_static_count_) {
-        const auto* p = static_cast<const ProjectedSplat*>(projected_ssbo_.mapped());
+    if (projected_ssbos_[0].mapped() && static_count_ < max_static_count_) {
+        const auto* p = static_cast<const ProjectedSplat*>(projected_ssbos_[0].mapped());
         const uint32_t scan_start = static_count_;
         const uint32_t scan_end =
             std::min<uint32_t>(static_count_ + 2048u, max_static_count_);
@@ -1854,8 +1868,8 @@ void GsRenderer::diag_streaming_dump(uint64_t frame) {
     // merged_sort_ssbo_: indices the rasterizer WILL read, bounded by
     // total_active_splats_. If max_idx >= max_static + max_dynamic that's
     // an out-of-bounds index — direct evidence of a bound bug.
-    if (merged_sort_ssbo_.mapped() && total_active_splats_ > 0) {
-        const auto* m = static_cast<const SortEntry*>(merged_sort_ssbo_.mapped());
+    if (merged_sort_ssbos_[0].mapped() && total_active_splats_ > 0) {
+        const auto* m = static_cast<const SortEntry*>(merged_sort_ssbos_[0].mapped());
         const uint32_t total_max = max_static_count_ + max_dynamic_count_;
         const uint32_t merge_count = total_active_splats_;
         uint32_t max_idx = 0;
@@ -2192,9 +2206,10 @@ void GsRenderer::set_persistent_dynamics(const Gaussian* data, uint32_t count) {
                     count * sizeof(GpuGaussian));
     }
 
-    // Reinitialize dynamic sort buffers for the active range [0..count)
-    init_dynamic_sort_buf(dynamic_sort_a_, dynamic_sort_size_, count);
-    init_dynamic_sort_buf(dynamic_sort_b_, dynamic_sort_size_, count);
+    // Reinitialize dynamic sort buffers for the active range [0..count).
+    // Phase 1: slot [0] only; Phase 3 will index by frame_in_flight.
+    init_dynamic_sort_buf(dynamic_sort_as_[0], dynamic_sort_size_, count);
+    init_dynamic_sort_buf(dynamic_sort_bs_[0], dynamic_sort_size_, count);
 
     std::fprintf(stderr,
         "[gs_renderer] persistent dynamics uploaded: %u splats (chars+NPCs+PBD-trees)\n",
@@ -2260,8 +2275,8 @@ void GsRenderer::update_active_gaussians(const Gaussian* data, uint32_t count) {
         }
         std::memcpy(buf.mapped(), staging_sort.data(), sort_size_ * sizeof(SortEntry));
     };
-    init_sort_buf(sort_keys_ssbo_);
-    init_sort_buf(sort_b_ssbo_);
+    init_sort_buf(sort_keys_ssbos_[0]);
+    init_sort_buf(sort_b_ssbos_[0]);
 }
 
 void GsRenderer::update_gaussian_data(const Gaussian* data, uint32_t count) {
@@ -2311,10 +2326,10 @@ void GsRenderer::update_descriptors() {
     // Preprocess set: gaussians(0), projected(1), sort_keys_A(2), uniforms(3), visible_count(4), bones(5), pbd(6), page_table(8)
     {
         VkDescriptorBufferInfo gaussian_info{gaussian_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
-        VkDescriptorBufferInfo projected_info{projected_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
-        VkDescriptorBufferInfo sort_info{sort_keys_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo projected_info{projected_ssbos_[0].buffer(), 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo sort_info{sort_keys_ssbos_[0].buffer(), 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo uniform_info{uniform_buffer_.buffer(), 0, sizeof(GsUniforms)};
-        VkDescriptorBufferInfo visible_count_info{visible_count_ssbo_.buffer(), 0, sizeof(uint32_t)};
+        VkDescriptorBufferInfo visible_count_info{visible_count_ssbos_[0].buffer(), 0, sizeof(uint32_t)};
         VkDescriptorBufferInfo bone_info{bone_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo pbd_info{pbd_state_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo page_table_info{page_table_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
@@ -2342,7 +2357,7 @@ void GsRenderer::update_descriptors() {
 
     // Legacy sort set
     {
-        VkDescriptorBufferInfo sort_info{sort_keys_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo sort_info{sort_keys_ssbos_[0].buffer(), 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo uniform_info{uniform_buffer_.buffer(), 0, sizeof(GsUniforms)};
         VkWriteDescriptorSet writes[] = {
             {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, sort_set_, 0, 0, 1,
@@ -2356,11 +2371,11 @@ void GsRenderer::update_descriptors() {
     // Render set: projected(0), sort_keys_A(1), uniforms(2), output_image(3), visible_count(4), depth_image(5)
     // Per-frame: each render_sets_[i] binds output_views_[i] / depth_views_[i].
     for (uint32_t f = 0; f < kMaxFramesInFlight; ++f) {
-        VkDescriptorBufferInfo projected_info{projected_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
-        VkDescriptorBufferInfo sort_info{sort_keys_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo projected_info{projected_ssbos_[0].buffer(), 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo sort_info{sort_keys_ssbos_[0].buffer(), 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo uniform_info{uniform_buffer_.buffer(), 0, sizeof(GsUniforms)};
         VkDescriptorImageInfo image_info{VK_NULL_HANDLE, output_views_[f], VK_IMAGE_LAYOUT_GENERAL};
-        VkDescriptorBufferInfo visible_count_info{visible_count_ssbo_.buffer(), 0, sizeof(uint32_t)};
+        VkDescriptorBufferInfo visible_count_info{visible_count_ssbos_[0].buffer(), 0, sizeof(uint32_t)};
         VkDescriptorImageInfo depth_img_info{VK_NULL_HANDLE, depth_views_[f], VK_IMAGE_LAYOUT_GENERAL};
 
         VkDescriptorSet set = render_sets_[f];
@@ -2468,21 +2483,21 @@ void GsRenderer::update_descriptors() {
         write_depth_onesweep_sets(
             depth_hist_set_a_, depth_hist_set_b_,
             depth_scatter_set_ab_, depth_scatter_set_ba_,
-            sort_keys_ssbo_.buffer(), sort_b_ssbo_.buffer(),
+            sort_keys_ssbos_[0].buffer(), sort_b_ssbos_[0].buffer(),
             depth_onesweep_status_.buffer(), depth_sort_params_.buffer());
     }
 
     // --- Static/dynamic split descriptor sets ---
     // Only write these if the split buffers have been allocated
-    if (!static_gaussian_ssbo_.buffer() || !counts_ssbo_.buffer()) return;
+    if (!static_gaussian_ssbo_.buffer() || !counts_ssbos_[0].buffer()) return;
 
     // Static preprocess set: static_gaussian(0), projected(1), static_sort_a(2), uniforms(3), counts[0](4), bones(5), pbd(6), page_table(8)
     {
         VkDescriptorBufferInfo gaussian_info{static_gaussian_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
-        VkDescriptorBufferInfo projected_info{projected_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo projected_info{projected_ssbos_[0].buffer(), 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo sort_info{static_sort_a_.buffer(), 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo uniform_info{uniform_buffer_.buffer(), 0, sizeof(GsUniforms)};
-        VkDescriptorBufferInfo counts_info{counts_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo counts_info{counts_ssbos_[0].buffer(), 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo bone_info{bone_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo pbd_info{pbd_state_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo page_table_info{page_table_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
@@ -2511,10 +2526,10 @@ void GsRenderer::update_descriptors() {
     // Dynamic preprocess set: dynamic_gaussian(0), projected(1), dynamic_sort_a(2), uniforms(3), counts[1](4), bones(5), pbd(6), page_table(8)
     {
         VkDescriptorBufferInfo gaussian_info{dynamic_gaussian_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
-        VkDescriptorBufferInfo projected_info{projected_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
-        VkDescriptorBufferInfo sort_info{dynamic_sort_a_.buffer(), 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo projected_info{projected_ssbos_[0].buffer(), 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo sort_info{dynamic_sort_as_[0].buffer(), 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo uniform_info{uniform_buffer_.buffer(), 0, sizeof(GsUniforms)};
-        VkDescriptorBufferInfo counts_info{counts_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo counts_info{counts_ssbos_[0].buffer(), 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo bone_info{bone_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo pbd_info{pbd_state_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo page_table_info{page_table_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
@@ -2610,16 +2625,16 @@ void GsRenderer::update_descriptors() {
         write_depth_onesweep_sets(
             dynamic_depth_hist_set_a_, dynamic_depth_hist_set_b_,
             dynamic_depth_scatter_set_ab_, dynamic_depth_scatter_set_ba_,
-            dynamic_sort_a_.buffer(), dynamic_sort_b_.buffer(),
+            dynamic_sort_as_[0].buffer(), dynamic_sort_bs_[0].buffer(),
             depth_onesweep_status_.buffer(), dynamic_depth_params_.buffer());
     }
 
     // Merge set: static_sort_a(0), dynamic_sort_a(1), merged_sort(2), counts(3)
     {
         VkDescriptorBufferInfo static_info{static_sort_a_.buffer(), 0, VK_WHOLE_SIZE};
-        VkDescriptorBufferInfo dynamic_info{dynamic_sort_a_.buffer(), 0, VK_WHOLE_SIZE};
-        VkDescriptorBufferInfo merged_info{merged_sort_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
-        VkDescriptorBufferInfo counts_info{counts_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo dynamic_info{dynamic_sort_as_[0].buffer(), 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo merged_info{merged_sort_ssbos_[0].buffer(), 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo counts_info{counts_ssbos_[0].buffer(), 0, VK_WHOLE_SIZE};
 
         VkWriteDescriptorSet writes[] = {
             {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, merge_set_, 0, 0, 1,
@@ -2639,11 +2654,11 @@ void GsRenderer::update_descriptors() {
     // counts_ssbo, replacing the legacy bindings written above. Each
     // frame's set still references its frame-i image views.
     for (uint32_t f = 0; f < kMaxFramesInFlight; ++f) {
-        VkDescriptorBufferInfo projected_info{projected_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
-        VkDescriptorBufferInfo merged_info{merged_sort_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo projected_info{projected_ssbos_[0].buffer(), 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo merged_info{merged_sort_ssbos_[0].buffer(), 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo uniform_info{uniform_buffer_.buffer(), 0, sizeof(GsUniforms)};
         VkDescriptorImageInfo image_info{VK_NULL_HANDLE, output_views_[f], VK_IMAGE_LAYOUT_GENERAL};
-        VkDescriptorBufferInfo counts_info{counts_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo counts_info{counts_ssbos_[0].buffer(), 0, VK_WHOLE_SIZE};
         VkDescriptorImageInfo depth_img_info{VK_NULL_HANDLE, depth_views_[f], VK_IMAGE_LAYOUT_GENERAL};
 
         VkDescriptorSet set = render_sets_[f];
@@ -2673,9 +2688,9 @@ void GsRenderer::update_descriptors() {
         //   5 tile_entries (scatter writes here)
         //   6 uniforms
         {
-            VkDescriptorBufferInfo projected_info{projected_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
-            VkDescriptorBufferInfo merged_info{merged_sort_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
-            VkDescriptorBufferInfo counts_info{counts_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
+            VkDescriptorBufferInfo projected_info{projected_ssbos_[0].buffer(), 0, VK_WHOLE_SIZE};
+            VkDescriptorBufferInfo merged_info{merged_sort_ssbos_[0].buffer(), 0, VK_WHOLE_SIZE};
+            VkDescriptorBufferInfo counts_info{counts_ssbos_[0].buffer(), 0, VK_WHOLE_SIZE};
             VkDescriptorBufferInfo per_splat_count_info{per_splat_tile_count_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
             VkDescriptorBufferInfo per_splat_offset_info{per_splat_tile_offset_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
             VkDescriptorBufferInfo tile_entries_info{tile_sort_a_.buffer(), 0, VK_WHOLE_SIZE};
@@ -2820,7 +2835,7 @@ void GsRenderer::update_descriptors() {
         // Tile render set: projected(0), tile_entries(1), uniforms(2), output_image(3), tile_ranges(4), depth_image(5)
         // Per-frame: each tile_render_sets_[i] binds frame i's output and depth views.
         for (uint32_t f = 0; f < kMaxFramesInFlight; ++f) {
-            VkDescriptorBufferInfo projected_info{projected_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
+            VkDescriptorBufferInfo projected_info{projected_ssbos_[0].buffer(), 0, VK_WHOLE_SIZE};
             VkDescriptorBufferInfo tile_entries_info{tile_sort_a_.buffer(), 0, VK_WHOLE_SIZE};
             VkDescriptorBufferInfo uniform_info{uniform_buffer_.buffer(), 0, sizeof(GsUniforms)};
             VkDescriptorImageInfo image_info{VK_NULL_HANDLE, output_views_[f], VK_IMAGE_LAYOUT_GENERAL};
@@ -3472,7 +3487,7 @@ void GsRenderer::render(VkCommandBuffer cmd, uint32_t frame_in_flight,
         // Streaming-strict invariant: split buffers are always allocated
         // post-init. The wrapper remains for code-locality; collapsing it
         // is part of the post-1c descriptor-state cleanup (issue #397).
-        bool use_split = static_gaussian_ssbo_.buffer() && counts_ssbo_.buffer();
+        bool use_split = static_gaussian_ssbo_.buffer() && counts_ssbos_[0].buffer();
         assert(use_split && "render: split buffers must be allocated in streaming-strict mode");
 
         if (use_split) {
@@ -3481,10 +3496,10 @@ void GsRenderer::render(VkCommandBuffer cmd, uint32_t frame_in_flight,
             // vkCmdFillBuffer requires offset/size to be multiples of 4 (satisfied)
             if (static_dirty_ && static_count_ > 0) {
                 // Reset all 3 counts (static + dynamic + merged)
-                vkCmdFillBuffer(cmd, counts_ssbo_.buffer(), 0, 12, 0);
+                vkCmdFillBuffer(cmd, counts_ssbos_[0].buffer(), 0, 12, 0);
             } else {
                 // Reset only dynamic visible count (counts[1]) and merged (counts[2])
-                vkCmdFillBuffer(cmd, counts_ssbo_.buffer(), 4, 8, 0);
+                vkCmdFillBuffer(cmd, counts_ssbos_[0].buffer(), 4, 8, 0);
             }
 
             // Per-frame GPU-side init of dynamic sort buffers.
@@ -3506,11 +3521,11 @@ void GsRenderer::render(VkCommandBuffer cmd, uint32_t frame_in_flight,
             // [0..0xFFFE] for visible, 0xFFFF for culled) and indices, so the
             // active range is fresh. Inactive slots keep 0xFFFFFFFF, sorting
             // them past 0xFFFF and out of the counts[1] visible window.
-            if (dynamic_count_ > 0 && dynamic_sort_a_.buffer() && dynamic_sort_b_.buffer()) {
+            if (dynamic_count_ > 0 && dynamic_sort_as_[0].buffer() && dynamic_sort_bs_[0].buffer()) {
                 const VkDeviceSize dyn_sort_bytes =
                     static_cast<VkDeviceSize>(dynamic_sort_size_) * sizeof(SortEntry);
-                vkCmdFillBuffer(cmd, dynamic_sort_a_.buffer(), 0, dyn_sort_bytes, 0xFFFFFFFFu);
-                vkCmdFillBuffer(cmd, dynamic_sort_b_.buffer(), 0, dyn_sort_bytes, 0xFFFFFFFFu);
+                vkCmdFillBuffer(cmd, dynamic_sort_as_[0].buffer(), 0, dyn_sort_bytes, 0xFFFFFFFFu);
+                vkCmdFillBuffer(cmd, dynamic_sort_bs_[0].buffer(), 0, dyn_sort_bytes, 0xFFFFFFFFu);
             }
             {
                 VkMemoryBarrier fill_barrier{};
@@ -3801,11 +3816,7 @@ void GsRenderer::shutdown(VmaAllocator allocator) {
 
     // Legacy buffers
     gaussian_ssbo_.destroy(allocator);
-    projected_ssbo_.destroy(allocator);
-    sort_keys_ssbo_.destroy(allocator);
-    sort_b_ssbo_.destroy(allocator);
     uniform_buffer_.destroy(allocator);
-    visible_count_ssbo_.destroy(allocator);
     bone_ssbo_.destroy(allocator);
     pbd_state_ssbo_.destroy(allocator);
     pbd_params_ssbo_.destroy(allocator);
@@ -3817,10 +3828,17 @@ void GsRenderer::shutdown(VmaAllocator allocator) {
     dynamic_gaussian_ssbo_.destroy(allocator);
     static_sort_a_.destroy(allocator);
     static_sort_b_.destroy(allocator);
-    dynamic_sort_a_.destroy(allocator);
-    dynamic_sort_b_.destroy(allocator);
-    merged_sort_ssbo_.destroy(allocator);
-    counts_ssbo_.destroy(allocator);
+    // Per-frame racing SSBOs.
+    for (uint32_t f = 0; f < kMaxFramesInFlight; ++f) {
+        projected_ssbos_[f].destroy(allocator);
+        sort_keys_ssbos_[f].destroy(allocator);
+        sort_b_ssbos_[f].destroy(allocator);
+        visible_count_ssbos_[f].destroy(allocator);
+        dynamic_sort_as_[f].destroy(allocator);
+        dynamic_sort_bs_[f].destroy(allocator);
+        merged_sort_ssbos_[f].destroy(allocator);
+        counts_ssbos_[f].destroy(allocator);
+    }
 
     // Tile binning buffers
     tile_sort_a_.destroy(allocator);
