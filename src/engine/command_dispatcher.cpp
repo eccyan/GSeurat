@@ -370,10 +370,14 @@ void CommandDispatcher::register_default_commands() {
 
             // Rebuild VFX instances. clear_vfx_instances() empties the
             // renderer's list synchronously; the new instances arrive via
-            // VfxSpawnEvent → systems::VfxSystem during this same frame's
-            // SystemScheduler::run_all (which runs after this command
-            // dispatch completes, before render).
+            // VfxSpawnEvent → systems::VfxSystem on the main_loop drain
+            // (post-state.update, pre-render). Also drop any pending
+            // VfxSpawnEvents from an earlier same-poll update_scene_data
+            // so the last live scene update wins — pre-refactor, the
+            // second clear_vfx_instances() removed the first batch's
+            // synchronously-added instances (Codex P2 on PR #431).
             ctx_.renderer.clear_vfx_instances();
+            ctx_.world.events<VfxSpawnEvent>().clear();
             for (const auto& vi : scene_data.vfx_instances) {
                 if (vi.trigger != "auto") continue;
                 auto world_pos = coord::to_world(vi.position, aabb);
