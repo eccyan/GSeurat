@@ -1943,17 +1943,16 @@ void GsRenderer::poll_transfers(VkCommandBuffer frame_cmd, uint32_t frame_in_fli
     publish_pending_chunks(frame_cmd, frame_in_flight);
 
     // ── DIAG: streaming-state dump (PR #387 ghost investigation) ──
-    // Opt-in via env var GS_DIAG_STREAMING=1. Cached once. Prints to
-    // stderr each frame for the first 5 frames (initial state — what the
-    // user reported as the "initial spawn state ghost") then every 60
-    // frames (~1s @ 60fps) thereafter. Reads HOST_VISIBLE+MAPPED buffers
-    // directly without vkDeviceWaitIdle: this is sampling, torn reads
-    // are acceptable for diagnostic output.
+    // Opt-in via env var GS_DIAG_STREAMING=1 (read once by
+    // gs::dbg::init_diag_registry() at VkInstance creation; cached in
+    // the Diag flag array thereafter). Prints to stderr each frame for
+    // the first 5 frames (initial state — what the user reported as the
+    // "initial spawn state ghost") then every 60 frames (~1s @ 60fps)
+    // thereafter. Reads HOST_VISIBLE+MAPPED buffers directly without
+    // vkDeviceWaitIdle: this is sampling, torn reads are acceptable for
+    // diagnostic output.
     {
-        static const bool diag_enabled = []() {
-            const char* env = std::getenv("GS_DIAG_STREAMING");
-            return env != nullptr && env[0] == '1';
-        }();
+        static const bool diag_enabled = ::gs::dbg::enabled(::gs::dbg::Diag::StreamingState);
         if (diag_enabled && streaming_initialized_) {
             static uint64_t diag_frame = 0;
             ++diag_frame;
