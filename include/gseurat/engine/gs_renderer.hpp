@@ -808,11 +808,20 @@ private:
     // World manifest (Phase 3 streaming)
     WorldManifest world_manifest_;
 
-    // GPU timestamp profiling: 6 queries
-    //   0: depth_sort_begin, 1: depth_sort_end
-    //   2: tile_sort_begin,  3: tile_sort_end
-    //   4: raster_begin,     5: raster_end
+    // GPU timestamp profiling: 6 queries per frame slot, kMaxFramesInFlight
+    // slots total. Frame f's queries live at indices [f*6, f*6+6):
+    //   +0: depth_sort_begin, +1: depth_sort_end
+    //   +2: tile_sort_begin,  +3: tile_sort_end
+    //   +4: raster_begin,     +5: raster_end
+    // Per-slot is required to keep timestamps_written_per_slot_[f] coherent
+    // with the non-blocking vkGetQueryPoolResults read: with a shared pool
+    // the previous frame's reset would discard frame N's timestamps before
+    // any later frame could read them, and on CPU-ahead systems the avg
+    // log would never fire.
     VkQueryPool timestamp_pool_ = VK_NULL_HANDLE;
+    static constexpr uint32_t kTimestampQueriesPerFrame = 6;
+    static constexpr uint32_t kTimestampPoolSize =
+        kMaxFramesInFlight * kTimestampQueriesPerFrame;
     float timestamp_period_ns_ = 0.0f;   // nanoseconds per tick
     uint32_t timestamp_frame_ = 0;
     float depth_sort_ms_accum_ = 0.0f;
@@ -824,7 +833,10 @@ private:
     float depth_sort_ms_last_ = 0.0f;    // last per-frame raw sample
     float tile_sort_ms_last_ = 0.0f;
     float rasterize_ms_last_ = 0.0f;
-    bool timestamps_written_ = false;     // true after rasterize dispatch writes timestamps
+    // true once frame f has issued its writes — read-and-reset at the start
+    // of the NEXT time slot f is reused, where the in-flight fence wait
+    // guarantees the writes have landed.
+    std::array<bool, kMaxFramesInFlight> timestamps_written_per_slot_{};
     static constexpr uint32_t kTimestampAvgFrames = 60;
 
     // Shadow box parameters

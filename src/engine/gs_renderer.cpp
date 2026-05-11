@@ -114,7 +114,11 @@ void GsRenderer::init(VkDevice device, VkPhysicalDevice physical_device,
         VkQueryPoolCreateInfo qp_info{};
         qp_info.sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO;
         qp_info.queryType = VK_QUERY_TYPE_TIMESTAMP;
-        qp_info.queryCount = 6;  // depth_sort_begin/end, tile_sort_begin/end, raster_begin/end
+        // Per-frame slots: 6 queries × kMaxFramesInFlight. Frame f writes
+        // [f*6, f*6+6) and resets only its own slot before writing, so a
+        // non-blocking read of a previous frame's slot is never invalidated
+        // by a reset from a different frame.
+        qp_info.queryCount = kTimestampPoolSize;
         vkCreateQueryPool(device_, &qp_info, nullptr, &timestamp_pool_);
 
         VkPhysicalDeviceProperties props;
@@ -3561,20 +3565,29 @@ void GsRenderer::render(VkCommandBuffer cmd, uint32_t frame_in_flight,
 
     std::memcpy(uniform_buffer_.mapped(), &uniforms, sizeof(uniforms));
 
-    // Read back GPU timestamps from previous frame (depth sort + tile sort + rasterize).
+    // Read back GPU timestamps from THIS slot's PREVIOUS write (the renderer
+    // waits on this slot's in-flight fence before calling render(), so the
+    // writes are guaranteed complete by the time we reach here).
+    //
     // Non-blocking: a hung GPU dispatch must not wedge the CPU here. If
-    // results aren't ready (VK_NOT_READY), drop this frame's measurement;
-    // the next frame will catch up once the in-flight fence has been
-    // signaled. WAIT_BIT was removed after a Phase-3.6 attempt deadlocked
-    // the entire process (spindump showed the main thread permanently
-    // blocked here when the onesweep lookback hung the GPU).
-    if (timestamp_pool_ && timestamps_written_) {
-        uint64_t ts[6]{};  // depth_sort_begin/end, tile_sort_begin/end, raster_begin/end
+    // results aren't ready (VK_NOT_READY), drop this measurement; the next
+    // re-use of this slot will read its own most-recent writes. WAIT_BIT
+    // was removed after a Phase-3.6 attempt deadlocked the entire process
+    // (spindump showed the main thread permanently blocked here when the
+    // onesweep lookback hung the GPU).
+    //
+    // Per-slot pool (Codex P2): each frame slot owns 6 consecutive queries
+    // starting at slot_offset. The reset below only touches THIS slot's
+    // queries, so a previous frame's queries are never invalidated before
+    // they're consumed.
+    const uint32_t ts_slot_offset = frame_in_flight * kTimestampQueriesPerFrame;
+    if (timestamp_pool_ && timestamps_written_per_slot_[frame_in_flight]) {
+        uint64_t ts[kTimestampQueriesPerFrame]{};  // depth_sort_begin/end, tile_sort_begin/end, raster_begin/end
 #if GSEURAT_DEBUG_BUILD
         const auto t_wait_start = std::chrono::steady_clock::now();
 #endif
         VkResult ts_result = vkGetQueryPoolResults(
-            device_, timestamp_pool_, 0, 6,
+            device_, timestamp_pool_, ts_slot_offset, kTimestampQueriesPerFrame,
             sizeof(ts), ts, sizeof(uint64_t),
             VK_QUERY_RESULT_64_BIT);
 #if GSEURAT_DEBUG_BUILD
@@ -3621,10 +3634,11 @@ void GsRenderer::render(VkCommandBuffer cmd, uint32_t frame_in_flight,
         }
     }
 
-    // Reset timestamp queries for this frame
+    // Reset only THIS slot's queries before issuing new writes — other
+    // slots' queries remain intact for their owning frames to consume.
     if (timestamp_pool_) {
-        vkCmdResetQueryPool(cmd, timestamp_pool_, 0, 6);
-        timestamps_written_ = false;
+        vkCmdResetQueryPool(cmd, timestamp_pool_, ts_slot_offset, kTimestampQueriesPerFrame);
+        timestamps_written_per_slot_[frame_in_flight] = false;
     }
 
     // In skip-sort mode, skip GS compute but still run post-process
@@ -3772,7 +3786,7 @@ void GsRenderer::render(VkCommandBuffer cmd, uint32_t frame_in_flight,
             // === Depth sort timestamp: begin ===
             if (timestamp_pool_) {
                 vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                                   timestamp_pool_, 0);  // depth_sort_begin
+                                   timestamp_pool_, ts_slot_offset + 0);  // depth_sort_begin
             }
 
             // === Phase 1: Dynamic preprocess + sort (every frame, if dynamic_count_ > 0) ===
@@ -3845,18 +3859,18 @@ void GsRenderer::render(VkCommandBuffer cmd, uint32_t frame_in_flight,
             // === Depth sort timestamp: end ===
             if (timestamp_pool_) {
                 vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                                   timestamp_pool_, 1);  // depth_sort_end
+                                   timestamp_pool_, ts_slot_offset + 1);  // depth_sort_end
             }
 
             // === Phase 3.5: Tile binning + tile sort ===
             if (timestamp_pool_) {
                 vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                                   timestamp_pool_, 2);  // tile_sort_begin
+                                   timestamp_pool_, ts_slot_offset + 2);  // tile_sort_begin
             }
             dispatch_tile_sort(cmd, frame_in_flight);
             if (timestamp_pool_) {
                 vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                                   timestamp_pool_, 3);  // tile_sort_end
+                                   timestamp_pool_, ts_slot_offset + 3);  // tile_sort_end
             }
 
             // === Phase 4: Tile-based rasterization ===
@@ -3871,13 +3885,13 @@ void GsRenderer::render(VkCommandBuffer cmd, uint32_t frame_in_flight,
 
                 if (timestamp_pool_) {
                     vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                                       timestamp_pool_, 4);  // raster_begin
+                                       timestamp_pool_, ts_slot_offset + 4);  // raster_begin
                 }
                 vkCmdDispatch(cmd, tiles_x, tiles_y, 1);
                 if (timestamp_pool_) {
                     vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                                       timestamp_pool_, 5);  // raster_end
-                    timestamps_written_ = true;
+                                       timestamp_pool_, ts_slot_offset + 5);  // raster_end
+                    timestamps_written_per_slot_[frame_in_flight] = true;
                 }
             }
         }
