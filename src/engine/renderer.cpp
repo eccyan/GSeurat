@@ -1275,9 +1275,11 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
         // Phase 1 (dynamic preprocess+sort) and Phase 2 (static preprocess+sort)
         // touch disjoint regions; Phase 3 (merge) reads both and is re-run every
         // frame, so dropping the static rebuild while a VFX is alive is safe.
-        // PBD-on-static still self-arms `static_dirty_` from inside
-        // GsRenderer::render() because PBD-tagged splats live in the static
-        // buffer and mutate every frame; that path stays.
+        // Option A (2026-05-11): PBD-tagged splats now live in the dynamic
+        // prefix alongside characters/NPCs. The dynamic preprocess runs every
+        // frame anyway, so PBD wind sway is visible without arming
+        // `static_dirty_` — and the static sort can stay cached until the
+        // camera actually moves.
 
         // Determinism harness: hold the LOD/chunk-gather selection across
         // frames so the pre-sort input set itself is bit-identical. Any
@@ -1290,11 +1292,12 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
 
         // Camera-dirty refresh: arm the per-frame static preprocess gate.
         // GsRenderer::render() gates static preprocess on `static_dirty_`.
-        // Only chunk publications and PBD physics dispatches re-arm it
-        // automatically — so a streamed scene with no PBD elements would
-        // freeze static projections between chunk events as the camera
-        // moves. Force the flag on every camera-dirty frame so streaming
-        // scenes stay responsive. Source: codex P1 review on PR #388.
+        // Only chunk publications re-arm it automatically (PBD now lives in
+        // dynamic under Option A and no longer touches `static_dirty_`) — so
+        // a streamed scene would freeze static projections between chunk
+        // events as the camera moves. Force the flag on every camera-dirty
+        // frame so streaming scenes stay responsive. Source: codex P1 review
+        // on PR #388.
         if (camera_dirty) {
             gs_renderer_.set_static_dirty(true);
             gs_prev_view_ = gs_view_;
