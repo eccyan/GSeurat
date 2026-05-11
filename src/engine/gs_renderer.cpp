@@ -1,4 +1,5 @@
 #include "gseurat/engine/gs_renderer.hpp"
+#include "gseurat/engine/debug.hpp"
 #include "gseurat/engine/pipeline.hpp"
 #include "gseurat/engine/scoped_timer.hpp"
 
@@ -3221,6 +3222,7 @@ void GsRenderer::dispatch_depth_onesweep(
     VkDescriptorSet hist_a, VkDescriptorSet hist_b,
     VkDescriptorSet scatter_ab, VkDescriptorSet scatter_ba)
 {
+    GS_LABEL(cmd, "DepthSort");
     // Clear the per-frame status buffer slot before sort. The descriptor
     // sets passed in must already bind depth_onesweep_statuses_[frame_in_flight].
     VkDeviceSize status_clear_size = static_cast<VkDeviceSize>(num_sort_passes_) * 256ull
@@ -3242,6 +3244,7 @@ void GsRenderer::dispatch_depth_onesweep(
 
         // Dispatch 1: histogram + decoupled lookback
         {
+            GS_LABEL(cmd, "Histogram");
             VkDescriptorSet hist_set = read_from_a ? hist_a : hist_b;
             vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, onesweep_hist_pipeline_);
             vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
@@ -3255,6 +3258,7 @@ void GsRenderer::dispatch_depth_onesweep(
 
         // Dispatch 2: read status buffer, compute prefix, scatter
         {
+            GS_LABEL(cmd, "Scatter");
             VkDescriptorSet scatter_set = read_from_a ? scatter_ab : scatter_ba;
             vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, onesweep_scatter_pipeline_);
             vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
@@ -3270,6 +3274,7 @@ void GsRenderer::dispatch_depth_onesweep(
 }
 
 void GsRenderer::dispatch_tile_sort(VkCommandBuffer cmd, uint32_t frame_in_flight) {
+    GS_LABEL(cmd, "TileSort");
     // Reset the per-frame "did we record a readback?" flag at the start of
     // every dispatch attempt. The harness in Renderer::draw_scene reads
     // this flag after the in-flight fence to decide whether the captured
@@ -3316,6 +3321,7 @@ void GsRenderer::dispatch_tile_sort(VkCommandBuffer cmd, uint32_t frame_in_fligh
 
     // === Phase 1: Count pass — per-splat tile-overlap count ===
     {
+        GS_LABEL(cmd, "Count");
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, tile_count_pipeline_);
         vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
                                 tile_bin_pipeline_layout_, 0, 1, &tile_bin_sets_[frame_in_flight], 0, nullptr);
@@ -3330,6 +3336,7 @@ void GsRenderer::dispatch_tile_sort(VkCommandBuffer cmd, uint32_t frame_in_fligh
 
     // === Phase 2: Three-pass exclusive scan ===
     {
+        GS_LABEL(cmd, "Scan");
         struct ScanPush { uint32_t pass; uint32_t num_elements; uint32_t num_blocks; };
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, tile_scan_pipeline_);
         vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
@@ -3359,6 +3366,7 @@ void GsRenderer::dispatch_tile_sort(VkCommandBuffer cmd, uint32_t frame_in_fligh
 
     // === Phase 3: Deterministic scatter ===
     {
+        GS_LABEL(cmd, "Bin");
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, tile_bin_pipeline_);
         vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
                                 tile_bin_pipeline_layout_, 0, 1, &tile_bin_sets_[frame_in_flight], 0, nullptr);
@@ -3372,6 +3380,7 @@ void GsRenderer::dispatch_tile_sort(VkCommandBuffer cmd, uint32_t frame_in_fligh
 
     // === Prepare indirect dispatch args from tile_sort_count ===
     {
+        GS_LABEL(cmd, "IndirectArgs");
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, tile_indirect_pipeline_);
         vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
                                 tile_indirect_pipeline_layout_, 0, 1, &tile_indirect_sets_[frame_in_flight], 0, nullptr);
@@ -3396,6 +3405,7 @@ void GsRenderer::dispatch_tile_sort(VkCommandBuffer cmd, uint32_t frame_in_fligh
     // Per-frame: fill frame f's slot so cmdbuf f+1's clear doesn't stomp
     // cmdbuf f's still-in-progress onesweep lookback state.
     {
+        GS_LABEL(cmd, "Onesweep");
         VkDeviceSize status_size = 4ull * 256ull * onesweep_max_wg_ * sizeof(uint32_t);
         vkCmdFillBuffer(cmd, onesweep_statuses_[frame_in_flight].buffer(), 0, status_size, 0);
         {
@@ -3511,6 +3521,7 @@ void GsRenderer::dispatch_tile_sort(VkCommandBuffer cmd, uint32_t frame_in_fligh
 
     // Dispatch tile range detection (indirect from args[3..5])
     {
+        GS_LABEL(cmd, "Ranges");
         uint32_t num_tiles = tiles_x * tiles_y;
         uint32_t push_data[2] = {num_tiles, tile_sort_capacity_};
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, tile_ranges_pipeline_);
@@ -3532,6 +3543,7 @@ void GsRenderer::render(VkCommandBuffer cmd, uint32_t frame_in_flight,
                      frame_in_flight);
         return;
     }
+    GS_LABEL(cmd, "GS.Render");
     const VkImage out_img       = output_images_[frame_in_flight];
     const VkImage depth_img     = depth_images_[frame_in_flight];
     const VkImage processed_img = processed_images_[frame_in_flight];
@@ -3754,6 +3766,7 @@ void GsRenderer::render(VkCommandBuffer cmd, uint32_t frame_in_flight,
         // entirely while a Mode-1 test is active so the GPU's pbd_state
         // SSBO retains its pre-test contents.
         if (pbd_count_ > 0 && !determinism_test_active_) {
+            GS_LABEL(cmd, "PBD");
             struct {
                 float time;
                 float dt;
@@ -3854,14 +3867,18 @@ void GsRenderer::render(VkCommandBuffer cmd, uint32_t frame_in_flight,
 
             // === Phase 1: Dynamic preprocess + sort (every frame, if dynamic_count_ > 0) ===
             if (dynamic_count_ > 0) {
-                vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, preprocess_pipeline_);
-                // Phase 3: bind frame_in_flight's per-frame slot.
-                vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
-                                        preprocess_pipeline_layout_, 0, 1, &dynamic_preprocess_sets_[frame_in_flight], 0, nullptr);
-                GsPreprocessPush dyn_push{max_static_count_, dynamic_count_, 1};
-                vkCmdPushConstants(cmd, preprocess_pipeline_layout_, VK_SHADER_STAGE_COMPUTE_BIT,
-                                   0, sizeof(GsPreprocessPush), &dyn_push);
-                vkCmdDispatch(cmd, (dynamic_count_ + 255) / 256, 1, 1);
+                GS_LABEL(cmd, "Dynamic");
+                {
+                    GS_LABEL(cmd, "Preprocess");
+                    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, preprocess_pipeline_);
+                    // Phase 3: bind frame_in_flight's per-frame slot.
+                    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
+                                            preprocess_pipeline_layout_, 0, 1, &dynamic_preprocess_sets_[frame_in_flight], 0, nullptr);
+                    GsPreprocessPush dyn_push{max_static_count_, dynamic_count_, 1};
+                    vkCmdPushConstants(cmd, preprocess_pipeline_layout_, VK_SHADER_STAGE_COMPUTE_BIT,
+                                       0, sizeof(GsPreprocessPush), &dyn_push);
+                    vkCmdDispatch(cmd, (dynamic_count_ + 255) / 256, 1, 1);
+                }
 
                 insert_compute_barrier(cmd);
 
@@ -3878,16 +3895,20 @@ void GsRenderer::render(VkCommandBuffer cmd, uint32_t frame_in_flight,
             // Phase 3: static_dirty_frames_remaining_ tracks per-frame slots
             // that still need a refresh after the last static mutation.
             if (static_dirty_frames_remaining_ > 0 && static_count_ > 0) {
-                vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, preprocess_pipeline_);
-                // Phase 3: bind frame_in_flight's per-frame slot. The static
-                // head of projected_ssbos_[f] is refreshed once per slot per
-                // dirty cycle.
-                vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
-                                        preprocess_pipeline_layout_, 0, 1, &static_preprocess_sets_[frame_in_flight], 0, nullptr);
-                GsPreprocessPush stat_push{0, static_count_, 0};
-                vkCmdPushConstants(cmd, preprocess_pipeline_layout_, VK_SHADER_STAGE_COMPUTE_BIT,
-                                   0, sizeof(GsPreprocessPush), &stat_push);
-                vkCmdDispatch(cmd, (static_count_ + 255) / 256, 1, 1);
+                GS_LABEL(cmd, "Static");
+                {
+                    GS_LABEL(cmd, "Preprocess");
+                    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, preprocess_pipeline_);
+                    // Phase 3: bind frame_in_flight's per-frame slot. The static
+                    // head of projected_ssbos_[f] is refreshed once per slot per
+                    // dirty cycle.
+                    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
+                                            preprocess_pipeline_layout_, 0, 1, &static_preprocess_sets_[frame_in_flight], 0, nullptr);
+                    GsPreprocessPush stat_push{0, static_count_, 0};
+                    vkCmdPushConstants(cmd, preprocess_pipeline_layout_, VK_SHADER_STAGE_COMPUTE_BIT,
+                                       0, sizeof(GsPreprocessPush), &stat_push);
+                    vkCmdDispatch(cmd, (static_count_ + 255) / 256, 1, 1);
+                }
 
                 insert_compute_barrier(cmd);
 
@@ -3907,6 +3928,7 @@ void GsRenderer::render(VkCommandBuffer cmd, uint32_t frame_in_flight,
             // Merge uses actual visible counts from counts SSBO (written by preprocess shaders)
             // Thread 0 computes merged_visible_count = static_count + dynamic_count
             {
+                GS_LABEL(cmd, "Merge");
                 vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, merge_pipeline_);
                 // Phase 3: bind frame_in_flight's per-frame merge set.
                 vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
@@ -3938,6 +3960,7 @@ void GsRenderer::render(VkCommandBuffer cmd, uint32_t frame_in_flight,
 
             // === Phase 4: Tile-based rasterization ===
             {
+                GS_LABEL(cmd, "Rasterize");
                 assert(tile_sort_as_[frame_in_flight].buffer() && tile_sort_capacity_ > 0 &&
                        "tile render: tile sort buffers must be allocated post-init");
                 vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, tile_render_pipeline_);
@@ -3968,6 +3991,7 @@ void GsRenderer::render(VkCommandBuffer cmd, uint32_t frame_in_flight,
 
     // Pass 4: Post-process (always runs — params like fade_amount change every frame)
     {
+        GS_LABEL(cmd, "PostProcess");
         // Update post-process UBO
         GsPostProcessUbo pp_ubo{};
         pp_ubo.fog_params = glm::vec4(gs_pp_params_.fog_density,
