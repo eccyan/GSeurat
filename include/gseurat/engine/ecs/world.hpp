@@ -141,6 +141,9 @@ public:
         entity_archetype_.clear();
         archetypes_.clear();
         next_id_ = 1;
+        // Drop pending events too — otherwise queued events from the prior
+        // scene leak into consumers on the new scene for up to two rotations.
+        events_.clear();
     }
 
     template <typename... Ts>

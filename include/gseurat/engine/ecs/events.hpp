@@ -165,6 +165,11 @@ public:
 
     void rotate_all() noexcept;
 
+    // Drop every registered queue. Used when the host clears the World (e.g.
+    // scene transition) so stale events from the prior scene cannot leak
+    // into consumers on the new scene.
+    void clear() noexcept { queues_.clear(); }
+
     std::size_t queue_count() const noexcept { return queues_.size(); }
 
 private:

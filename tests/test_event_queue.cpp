@@ -276,6 +276,27 @@ int main() {
         std::printf("PASS: producer+consumer systems in same frame\n");
     }
 
+    // 13. World::clear() drops pending events (no leak across scene transitions)
+    {
+        World world;
+        world.events<ClickEvent>().send({77, 88});
+        world.events<KeyEvent>().send({'x'});
+        assert(world.event_registry().queue_count() == 2);
+        assert(world.events<ClickEvent>().pending_count() == 1);
+
+        world.clear();
+
+        // After clear: registry is empty; lazily recreated queue starts fresh.
+        assert(world.event_registry().queue_count() == 0);
+        auto& fresh = world.events<ClickEvent>();
+        assert(fresh.pending_count() == 0);
+
+        EventCursor cursor;
+        auto seen = drain(fresh, cursor);
+        assert(seen.empty());
+        std::printf("PASS: World::clear drops pending events\n");
+    }
+
     std::printf("\nALL EVENT QUEUE TESTS PASSED\n");
     return 0;
 }
