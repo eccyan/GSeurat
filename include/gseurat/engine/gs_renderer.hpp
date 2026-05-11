@@ -413,7 +413,11 @@ private:
     void create_compute_pipelines();
     void create_descriptor_resources();
     void update_descriptors();
+    // frame_in_flight selects depth_onesweep_statuses_[f] for the status
+    // clear so frame N+1's fill doesn't stomp frame N's in-flight lookback.
+    // The passed descriptor sets must already bind that same per-frame slot.
     void dispatch_depth_onesweep(VkCommandBuffer cmd, uint32_t sort_size, uint32_t num_workgroups,
+        uint32_t frame_in_flight,
         VkDescriptorSet hist_a, VkDescriptorSet hist_b,
         VkDescriptorSet scatter_ab, VkDescriptorSet scatter_ba);
     // Phase 3: frame_in_flight selects tile_bin_sets_[f] so the per-frame
@@ -693,9 +697,10 @@ private:
     std::array<VkDescriptorSet, kMaxFramesInFlight> tile_render_sets_{};
 
     // Onesweep 2-dispatch sort (histogram+lookback → scatter) — per-frame
-    // (Phase 3.5). Binds racing tile_sort_a/b + tile_indirect_args. The
-    // onesweep_status_ binding is still single-instance (its race is a
-    // separate follow-up item not in this phase's scope).
+    // (Phase 3.5). Binds racing tile_sort_a/b + tile_indirect_args.
+    // onesweep_statuses_ is also per-frame (final cross-frame race fix):
+    // frame N+1's vkCmdFillBuffer would otherwise stomp frame N's in-flight
+    // lookback state.
     VkDescriptorSetLayout onesweep_hist_layout_ = VK_NULL_HANDLE;
     VkPipelineLayout onesweep_hist_pipeline_layout_ = VK_NULL_HANDLE;
     VkPipeline onesweep_hist_pipeline_ = VK_NULL_HANDLE;
@@ -708,11 +713,19 @@ private:
     std::array<VkDescriptorSet, kMaxFramesInFlight> onesweep_scatter_sets_ab_{};  // read A → write B
     std::array<VkDescriptorSet, kMaxFramesInFlight> onesweep_scatter_sets_ba_{};  // read B → write A
 
-    Buffer onesweep_status_;    // per-digit lookback status buffer (tile sort, coherent)
+    // Per-digit lookback status buffer (tile sort, coherent). Per-frame:
+    // dispatch_tile_sort zeroes the slot at the start of every per-frame
+    // record and the onesweep compute reads/writes it; with kMaxFramesInFlight
+    // cmdbufs in flight a single-instance buffer would race itself.
+    std::array<Buffer, kMaxFramesInFlight> onesweep_statuses_{};
     uint32_t onesweep_max_wg_ = 0;
 
     // Depth sort Onesweep (reuses same shaders as tile sort)
-    Buffer depth_onesweep_status_;       // per-digit lookback status (depth sort, coherent)
+    // Per-digit lookback status (depth sort, coherent). Per-frame for the
+    // same reason as onesweep_statuses_ — dispatch_depth_onesweep zeroes
+    // this slot at the start of every sort. Shared across static/dynamic/
+    // legacy depth sorts (all three bind frame f's slot).
+    std::array<Buffer, kMaxFramesInFlight> depth_onesweep_statuses_{};
     Buffer depth_sort_params_;           // IndirectArgs-layout buffer for legacy depth sort
     Buffer static_depth_params_;         // IndirectArgs-layout buffer for static depth sort
     Buffer dynamic_depth_params_;        // IndirectArgs-layout buffer for dynamic depth sort
@@ -725,12 +738,14 @@ private:
     std::array<VkDescriptorSet, kMaxFramesInFlight> depth_scatter_sets_ab_{};
     std::array<VkDescriptorSet, kMaxFramesInFlight> depth_scatter_sets_ba_{};
 
-    // Depth sort Onesweep descriptor sets (static path) — single-instance.
-    // These bind only static_sort_a_/b_ which are GPU-fenced via static_dirty_.
-    VkDescriptorSet static_depth_hist_set_a_ = VK_NULL_HANDLE;
-    VkDescriptorSet static_depth_hist_set_b_ = VK_NULL_HANDLE;
-    VkDescriptorSet static_depth_scatter_set_ab_ = VK_NULL_HANDLE;
-    VkDescriptorSet static_depth_scatter_set_ba_ = VK_NULL_HANDLE;
+    // Depth sort Onesweep descriptor sets (static path) — per-frame.
+    // static_sort_a_/b_ themselves are single-instance (GPU-fenced via
+    // static_dirty_), but the bound depth_onesweep_statuses_ slot is now
+    // per-frame, so each slot binds frame f's status buffer.
+    std::array<VkDescriptorSet, kMaxFramesInFlight> static_depth_hist_sets_a_{};
+    std::array<VkDescriptorSet, kMaxFramesInFlight> static_depth_hist_sets_b_{};
+    std::array<VkDescriptorSet, kMaxFramesInFlight> static_depth_scatter_sets_ab_{};
+    std::array<VkDescriptorSet, kMaxFramesInFlight> static_depth_scatter_sets_ba_{};
 
     // Depth sort Onesweep descriptor sets (dynamic path) — per-frame.
     // These bind racing dynamic_sort_as_[f] / dynamic_sort_bs_[f].
