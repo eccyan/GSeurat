@@ -379,6 +379,53 @@ if(GSEURAT_BUILD_TOOLS)
 add_subdirectory(tools/ply_importer)
 endif() # GSEURAT_BUILD_TOOLS
 
+# --- GSVX baking ------------------------------------------------------------
+# Pre-convert all bundled .ply assets to GSVX at build time, so the runtime
+# always hits the GSVX fast path in GaussianCloud::load_with_gsvx_first and
+# never falls back to runtime PLY parsing. Required for #396 / M1 — once every
+# asset has a sibling .gsvx in the build dir, the PLY parser can be removed
+# from gseurat_core entirely (PR-2).
+
+if(GSEURAT_BUILD_EXAMPLES AND GSEURAT_BUILD_TOOLS)
+    file(GLOB_RECURSE GSEURAT_PLY_ASSETS
+        CONFIGURE_DEPENDS
+        RELATIVE "${GSEURAT_EXAMPLE_DIR}/assets"
+        "${GSEURAT_EXAMPLE_DIR}/assets/*.ply")
+
+    set(GSEURAT_GSVX_OUTPUTS)
+    foreach(rel_ply IN LISTS GSEURAT_PLY_ASSETS)
+        set(src_ply  "${GSEURAT_EXAMPLE_DIR}/assets/${rel_ply}")
+        # Skip test fixtures that are not valid PLYs (e.g. tests/ scene-loader
+        # path-resolution stubs). Real PLY files start with "ply\n"; check the
+        # first three bytes against the magic.
+        file(READ "${src_ply}" GSEURAT_PLY_MAGIC LIMIT 3 HEX)
+        if(NOT GSEURAT_PLY_MAGIC STREQUAL "706c79")
+            message(STATUS "GSeurat: skipping non-PLY file assets/${rel_ply}")
+            continue()
+        endif()
+        string(REGEX REPLACE "\\.ply$" ".gsvx" rel_gsvx "${rel_ply}")
+        set(dst_gsvx "${CMAKE_CURRENT_BINARY_DIR}/assets/${rel_gsvx}")
+        get_filename_component(dst_dir "${dst_gsvx}" DIRECTORY)
+        add_custom_command(
+            OUTPUT  "${dst_gsvx}"
+            DEPENDS "${src_ply}" ply_importer
+            COMMAND ${CMAKE_COMMAND} -E make_directory "${dst_dir}"
+            COMMAND $<TARGET_FILE:ply_importer> "${src_ply}" "${dst_gsvx}"
+            COMMENT "Baking GSVX: ${rel_gsvx}"
+            VERBATIM
+        )
+        list(APPEND GSEURAT_GSVX_OUTPUTS "${dst_gsvx}")
+    endforeach()
+
+    list(LENGTH GSEURAT_GSVX_OUTPUTS GSEURAT_GSVX_COUNT)
+    if(GSEURAT_GSVX_COUNT GREATER 0)
+        add_custom_target(bake_gsvx ALL DEPENDS ${GSEURAT_GSVX_OUTPUTS})
+        add_dependencies(gseurat_demo bake_gsvx)
+        add_dependencies(gseurat_staging bake_gsvx)
+        message(STATUS "GSeurat: GSVX baking enabled for ${GSEURAT_GSVX_COUNT} PLY assets")
+    endif()
+endif()
+
 # --- Tests ------------------------------------------------------------------
 
 if(GSEURAT_BUILD_TESTS)
