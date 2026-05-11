@@ -154,15 +154,38 @@ void VfxInstance::init(const VfxPreset& preset, const glm::vec3& position, bool 
             if (std::filesystem::exists(ply_path)) {
                 auto cloud = GaussianCloud::load_with_gsvx_first(ply_path);
                 const auto& gs = cloud.gaussians();
-                glm::vec3 offset = position_ + rotated_pos;
-                for (const auto& src : gs) {
-                    Gaussian g = src;
+                // VFX object decimation: cap each VFX object's splat count to
+                // keep the dynamic SSBO budget reasonable. Reusable assets
+                // (e.g. torch.ply at 50k splats) are designed for showcase
+                // rendering, not for being instantiated 20+ times in a single
+                // scene. The dungeon spawns 23 torch instances; at 50k each
+                // they would alone exceed the dynamic budget. The dynamic
+                // depth-sort cost is dominated by sort_size (fixed at init
+                // based on max_dynamic_count_), so reducing actual splat
+                // counts only partially mitigates GPU work — but it does cut
+                // CPU upload bandwidth, projection cost, and overdraw. Cap at
+                // 2k per instance (23 × 2k = 46k for the dungeon). Stride-
+                // sampling preserves spatial distribution; the visual
+                // difference for a small mesh viewed at distance is minimal.
+                // Authoring fix track (see spec §11.2): reduce dungeon torch
+                // instance count, or replace torch.ply with a smaller asset
+                // (~2k splats) authored for the showcase rendering scale.
+                constexpr size_t kMaxVfxObjectSplats = 2048;
+                const size_t total = gs.size();
+                const size_t stride = (total > kMaxVfxObjectSplats)
+                    ? (total + kMaxVfxObjectSplats - 1) / kMaxVfxObjectSplats
+                    : 1;
+                size_t taken = 0;
+                for (size_t i = 0; i < total; i += stride) {
+                    Gaussian g = gs[i];
                     // Rotate Gaussian position around prefab origin, then offset
                     g.position = rotate_y(g.position * el.scale, rot_rad) + position_ + rotated_pos;
                     object_gaussians_.push_back(g);
+                    ++taken;
                 }
-                std::fprintf(stderr, "VFX: Object '%s' loaded %zu Gaussians from %s\n",
-                    el.name.c_str(), gs.size(), el.ply_file.c_str());
+                std::fprintf(stderr,
+                    "VFX: Object '%s' loaded %zu/%zu Gaussians from %s (stride=%zu)\n",
+                    el.name.c_str(), taken, total, el.ply_file.c_str(), stride);
             } else {
                 std::fprintf(stderr, "VFX: Object PLY not found: %s\n", el.ply_file.c_str());
             }

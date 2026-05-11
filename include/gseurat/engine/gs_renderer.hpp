@@ -130,9 +130,20 @@ public:
     void update_active_gaussians(const Gaussian* data, uint32_t count);
     void update_gaussian_data(const Gaussian* data, uint32_t count);
 
-    // Per-frame dynamic upload API (VFX/particles/PBD). Static geometry
-    // arrives via load_cloud_async + publish_pending_chunks, not this path.
+    // Per-frame dynamic upload API (VFX/particles/scene-anim "transient suffix").
+    // Writes at offset persistent_dyn_count_; sets dynamic_count_ to
+    // persistent_dyn_count_ + count. Static geometry (terrain) arrives via
+    // load_cloud_async + publish_pending_chunks, not this path.
     void update_dynamic_gaussians(const Gaussian* data, uint32_t count);
+
+    // Once-per-scene (or per-chunk-event) upload API for the "persistent prefix"
+    // of the dynamic buffer: characters, NPCs, PBD-tagged trees. Replaces all
+    // existing persistent-dynamic content. Caller assembles the full vector;
+    // engine doesn't track per-source slots. After this call, dynamic_count_
+    // resets to the persistent count (transient region is zero until the next
+    // update_dynamic_gaussians).
+    void set_persistent_dynamics(const Gaussian* data, uint32_t count);
+    uint32_t persistent_dynamic_count() const { return persistent_dyn_count_; }
     uint32_t max_static_count() const { return max_static_count_; }
     uint32_t max_dynamic_count() const { return max_dynamic_count_; }
     uint32_t static_count() const { return static_count_; }
@@ -180,11 +191,16 @@ public:
         return output_views_;
     }
     VkSampler output_sampler() const { return output_sampler_; }
-    // Sized for: particles + character + animated regions + VFX object
-    // geometry (e.g. torch.ply at ~50K splats × multiple instances).
-    // 256K × 64 B = 16 MB; projected_ssbo_ grows by (256K - 8K) × 48 B ≈ 12 MB.
-    // Trivial against a 10M-static budget.
-    static constexpr uint32_t kDynamicHeadroom = 262144;
+    // Sized for: persistent dynamics (PBD-tagged trees, characters, NPCs) +
+    // transient dynamics (VFX objects, particle emitters, scene animations).
+    // The split-tail design (Option A) puts all bone-animated and PBD-tagged
+    // splats in dynamic_gaussian_ssbo_ so the static depth sort doesn't have
+    // to re-run every frame to keep them current. Persistent content sums to
+    // ~700-800k splats for the island demo (12 trees × ~60k tagged + chars
+    // + NPCs); transient adds ~200k headroom for chimney_smoke + torches.
+    // 1M × 64 B = 64 MB; projected_ssbo_ grows proportionally. M5 unified
+    // memory absorbs this trivially.
+    static constexpr uint32_t kDynamicHeadroom = 1048576;
 
     bool has_cloud() const { return gaussian_count_ > 0; }
     uint32_t gaussian_count() const { return gaussian_count_; }
@@ -259,8 +275,11 @@ public:
     void upload_bone_transforms(const glm::mat4* transforms, uint32_t count);
     void clear_bone_transforms();
 
-    // Actor world rotation for root motion (Phase 2: applied to per-Gaussian covariance)
-    void set_actor_rotation(const glm::quat& q) { actor_rotation_ = q; static_dirty_ = true; }
+    // Actor world rotation for root motion (Phase 2: applied to per-Gaussian covariance).
+    // No static_dirty_=true: bone-animated splats now live in dynamic, and the
+    // dynamic preprocess re-applies actor_rotation every frame via the bone
+    // skinning path (gs_preprocess.comp:209-213).
+    void set_actor_rotation(const glm::quat& q) { actor_rotation_ = q; }
 
     // PBD (Position Based Dynamics) solver
     void upload_pbd_elements(const PbdPhysicsState* states,
@@ -452,7 +471,8 @@ private:
     Buffer counts_ssbo_;  // {static_visible, dynamic_visible, merged_visible}
 
     uint32_t static_count_ = 0;
-    uint32_t dynamic_count_ = 0;
+    uint32_t dynamic_count_ = 0;            // persistent_dyn_count_ + transient
+    uint32_t persistent_dyn_count_ = 0;     // chars/NPCs/PBD-trees prefix in dynamic SSBO
     uint32_t max_static_count_ = 0;
     uint32_t max_dynamic_count_ = 0;
     uint32_t static_sort_size_ = 0;
