@@ -2,6 +2,7 @@
 
 #include "gseurat/engine/ecs/archetype.hpp"
 #include "gseurat/engine/ecs/component.hpp"
+#include "gseurat/engine/ecs/events.hpp"
 #include "gseurat/engine/ecs/types.hpp"
 #include "gseurat/engine/ecs/view.hpp"
 
@@ -140,6 +141,9 @@ public:
         entity_archetype_.clear();
         archetypes_.clear();
         next_id_ = 1;
+        // Drop pending events too — otherwise queued events from the prior
+        // scene leak into consumers on the new scene for up to two rotations.
+        events_.clear();
     }
 
     template <typename... Ts>
@@ -148,6 +152,22 @@ public:
         (add<Ts>(e, std::move(components)), ...);
         return e;
     }
+
+    // --- Event bus (Phase 3a) ---
+    // Per-event-type queue lazily created on first access. See
+    // gseurat/engine/ecs/events.hpp for semantics. No callers migrate
+    // in Phase 3; consumers will be wired in Phase 4.
+    template <typename T>
+    EventQueue<T>& events() {
+        return events_.get_or_create<T>();
+    }
+
+    EventRegistry& event_registry() noexcept { return events_; }
+    const EventRegistry& event_registry() const noexcept { return events_; }
+
+    // Called once per frame by SystemScheduler (end of update) to advance
+    // every event queue's retention window.
+    void rotate_events() noexcept { events_.rotate_all(); }
 
 private:
     Archetype* find_or_create_archetype(const TypeSet& type_set) {
@@ -195,6 +215,7 @@ private:
     uint32_t next_id_ = 1;
     std::vector<std::unique_ptr<Archetype>> archetypes_;
     std::unordered_map<uint32_t, Archetype*> entity_archetype_;
+    EventRegistry events_;
 };
 
 }  // namespace gseurat::ecs
