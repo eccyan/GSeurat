@@ -3598,25 +3598,14 @@ void GsRenderer::render(VkCommandBuffer cmd, uint32_t frame_in_flight,
         vkCmdClearColorImage(cmd, depth_img, VK_IMAGE_LAYOUT_GENERAL, &clear_color, 1, &range);
 
         // === PBD solver dispatch (before any preprocess) ===
-        // PBD-tagged gaussians live in the static buffer, but we deliberately do
-        // NOT force static_dirty_=true here. The static depth sort cost
-        // (~2.44M splats with the island scene) is too high to absorb every
-        // frame just to keep tree wind-sway frame-current. Instead the cached
-        // static sort is reused while the camera is stationary; trees freeze
-        // at their last-cached pose between camera-dirty events. Wind sway
-        // becomes visible whenever the camera moves (which arms
-        // `set_static_dirty(true)` upstream in Renderer::record_gs_prepass and
-        // re-runs static preprocess + sort, picking up the current
-        // pbd_state_ssbo_ contents).
-        //
-        // The PBD solver compute dispatch below still runs every frame to keep
-        // pbd_state_ssbo_ current — without that the rotation values trees
-        // pick up at the next camera move would themselves be stale.
-        //
-        // Trade-off accepted: stationary trees while camera is still vs.
-        // eliminating a per-frame 100-200ms (foreground) / 5-90s (M5
-        // background-throttled) sort cost that surfaces as a CPU freeze
-        // through vkGetQueryPoolResults's VK_QUERY_RESULT_WAIT_BIT.
+        // Option A (2026-05-11 cross-frame race fix): PBD-tagged gaussians live
+        // in the persistent-dynamic prefix alongside bone-animated characters
+        // and NPCs. The dynamic preprocess re-applies bone+PBD transforms every
+        // frame, so wind sway is visible while the camera is stationary — the
+        // static depth sort no longer needs to be re-armed to refresh tree
+        // poses. Static cloud retains only terrain + non-animated props
+        // (bone_index == 0) and its sort can stay cached until the camera
+        // actually moves.
         //
         // Determinism harness: PBD uses a hardcoded 1/60s step rather than
         // the engine dt, so the upstream draw_scene `dt = 0` freeze is not
