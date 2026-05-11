@@ -121,8 +121,16 @@ public:
             curr_start = 0;
         }
 
-        std::span<const T> prev_span{prev_buf.data() + prev_start, prev_buf.size() - prev_start};
-        std::span<const T> curr_span{curr_buf.data() + curr_start, curr_buf.size() - curr_start};
+        // Guard against `data() + offset` UB on empty vectors: libc++'s
+        // empty std::vector returns nullptr from data(), and `nullptr + 0`
+        // is undefined per the C++ standard (UBSan flags it). Construct an
+        // empty span explicitly when there's nothing to read from a buffer.
+        std::span<const T> prev_span = (prev_start < prev_buf.size())
+            ? std::span<const T>{prev_buf.data() + prev_start, prev_buf.size() - prev_start}
+            : std::span<const T>{};
+        std::span<const T> curr_span = (curr_start < curr_buf.size())
+            ? std::span<const T>{curr_buf.data() + curr_start, curr_buf.size() - curr_start}
+            : std::span<const T>{};
 
         cursor.last_seen_generation = generation_;
         cursor.last_read_per_buffer[prev_idx] = prev_buf.size();
