@@ -912,6 +912,14 @@ CommandContext AppBase::build_command_context() {
         .init_scene = [this](const std::string& path) { init_scene(path); },
         .clear_scene = [this]() { clear_scene(); },
         .load_character = [this](const std::string& path) { pending_character_path = path; },
+        // vfx_system_ is null at construction (init_game_object_system
+        // builds it later) but the captured `this` outlives the
+        // dispatcher, so the lambda dereferences lazily at call time.
+        .drain_pending_vfx_spawns = [this]() {
+            if (vfx_system_) {
+                vfx_system_->run(world_, 0.0f);
+            }
+        },
         .control_server = &control_server_,
         .pending_steps = &pending_steps_,
         .deferred_step_response = &deferred_step_response_,

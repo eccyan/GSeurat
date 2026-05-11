@@ -418,6 +418,15 @@ void CommandDispatcher::register_default_commands() {
         if (!cmd.contains("vfx_instances"))
             return std::unexpected(std::string("Missing 'vfx_instances' array"));
 
+        // Phase 4a: materialise any pending VfxSpawnEvents from a
+        // same-poll update_scene_data first. Otherwise we'd iterate an
+        // empty vfx_instances_ and silently no-op position updates that
+        // the pre-refactor synchronous path would have applied (Codex
+        // P2 on PR #431).
+        if (ctx_.drain_pending_vfx_spawns) {
+            ctx_.drain_pending_vfx_spawns();
+        }
+
         const auto& aabb = ctx_.terrain.terrain_aabb;
         auto& vfx = ctx_.renderer.vfx_instances_mutable();
         const auto& vi_arr = cmd["vfx_instances"];

@@ -44,6 +44,15 @@ struct CommandContext {
     std::function<void()> clear_scene;
     std::function<void(const std::string&)> load_character;  // optional: for staging animation preview
 
+    // Synchronously drain pending VfxSpawnEvents so they land in
+    // renderer.vfx_instances_ immediately. Used by commands that read
+    // vfx_instances_ in the same poll cycle as a preceding
+    // update_scene_data (e.g. update_vfx_positions), where the normal
+    // main-loop drain would happen too late and the position update
+    // would silently no-op against an empty vector. Phase 4a wiring;
+    // may be null when no VfxSystem is registered.
+    std::function<void()> drain_pending_vfx_spawns;
+
     ControlServer* control_server = nullptr;
     bool camera_sync_override = false;
     std::string camera_sync_source;  // source of last sync_camera command for echo suppression
