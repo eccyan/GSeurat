@@ -145,6 +145,18 @@ public:
         ++generation_;
     }
 
+    // Drop every pending event in both buffers. Used when a scene-level
+    // teardown happens between an event send and the next drain (e.g.
+    // StagingApp::clear_scene during a bridge poll cycle that mixed
+    // update_scene_data and open_scene). Bumps generation so any
+    // surviving cursor falls into the "expired" branch on next read
+    // and cannot apply stale per-buffer offsets to the empty buffers.
+    void clear() noexcept {
+        buffers_[0].clear();
+        buffers_[1].clear();
+        ++generation_;
+    }
+
     std::size_t pending_count() const noexcept override {
         return buffers_[0].size() + buffers_[1].size();
     }

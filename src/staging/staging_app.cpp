@@ -6,6 +6,7 @@
 #include "gseurat/engine/project_root.hpp"
 #include "gseurat/engine/scene_loader.hpp"
 #include "gseurat/engine/gs_vfx.hpp"
+#include "gseurat/engine/vfx_events.hpp"
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include <stb_image_write.h>
@@ -91,6 +92,14 @@ void StagingApp::clear_scene() {
     renderer_.clear_gs_particle_emitters();
     renderer_.clear_gs_animations();
     renderer_.clear_vfx_instances();
+    // Phase 4a: drop pending VfxSpawnEvents that an earlier
+    // update_scene_data command queued in the same poll cycle.
+    // Otherwise they'd survive the scene swap and resurrect the
+    // prior scene's VFX on top of the freshly loaded one
+    // (Codex P2 on PR #431). AppBase::clear_scene takes the
+    // bigger world_.clear() hammer; Staging's lighter teardown
+    // surgically drops just this queue.
+    world_.events<VfxSpawnEvent>().clear();
     scene_.clear_lights();
     gs_terrain_.terrain_aabb = AABB{};
     gs_terrain_.terrain_aabb.min = glm::vec3(0.0f);
