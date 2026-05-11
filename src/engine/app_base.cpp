@@ -827,6 +827,17 @@ void AppBase::init_game_object_system() {
         [](const nlohmann::json& j) -> LightProbe { return light_probe_from_json(j); },
         [](const LightProbe& lp) -> nlohmann::json { return light_probe_to_json(lp); });
 
+    // Phase 4a: VFX spawn consumer. Lives ahead of the trigger systems
+    // so that any spawn event a trigger emits in the same frame is
+    // visible next frame, while spawns from the command dispatcher
+    // (which runs before update_game) materialise in renderer state
+    // this frame, ahead of build_draw_lists.
+    vfx_system_ = std::make_unique<systems::VfxSystem>(&renderer_);
+    system_scheduler_.add_system({"vfx_spawn",
+        [this](ecs::World& w, float dt) {
+            vfx_system_->run(w, dt);
+        }, {}, {}});
+
     // Register engine-level systems
     system_scheduler_.add_system({"bone_animation",
         [this](ecs::World& w, float dt) {

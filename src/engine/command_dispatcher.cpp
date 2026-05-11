@@ -18,6 +18,7 @@
 #include "gseurat/engine/scene.hpp"
 #include "gseurat/engine/scene_loader.hpp"
 #include "gseurat/engine/scene_object_state.hpp"
+#include "gseurat/engine/vfx_events.hpp"
 #include "gseurat/engine/world_manifest.hpp"
 #include "gseurat/engine/trigger_components.hpp"
 
@@ -367,16 +368,21 @@ void CommandDispatcher::register_default_commands() {
                 ctx_.renderer.add_gs_animation(anim.effect, region, anim.lifetime, anim.loop, anim.params, reform);
             }
 
-            // Rebuild VFX instances
+            // Rebuild VFX instances. clear_vfx_instances() empties the
+            // renderer's list synchronously; the new instances arrive via
+            // VfxSpawnEvent → systems::VfxSystem during this same frame's
+            // SystemScheduler::run_all (which runs after this command
+            // dispatch completes, before render).
             ctx_.renderer.clear_vfx_instances();
             for (const auto& vi : scene_data.vfx_instances) {
                 if (vi.trigger != "auto") continue;
-                auto preset = load_vfx_preset(vi.vfx_file);
-                if (preset.elements.empty()) continue;
-                VfxInstance inst;
                 auto world_pos = coord::to_world(vi.position, aabb);
-                inst.init(preset, world_pos.vec(), vi.loop, vi.rotation_y);
-                ctx_.renderer.add_vfx_instance(std::move(inst));
+                ctx_.world.events<VfxSpawnEvent>().send({
+                    .vfx_file = vi.vfx_file,
+                    .position = world_pos.vec(),
+                    .rotation_y = vi.rotation_y,
+                    .loop = vi.loop,
+                });
             }
 
             // Update stored game object data for gizmo rendering
