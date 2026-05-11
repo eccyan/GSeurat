@@ -1183,8 +1183,13 @@ void GsRenderer::init_streaming(const StreamingConfig& config) {
     // [new_count, prev_count) tail when streaming Unloads shrink static_count_.
     static_sort_a_ = Buffer::create_storage_host_dst(allocator_, static_sort_buf_size);
     static_sort_b_ = Buffer::create_storage_host_dst(allocator_, static_sort_buf_size);
-    dynamic_sort_a_ = Buffer::create_storage(allocator_, dynamic_sort_buf_size);
-    dynamic_sort_b_ = Buffer::create_storage(allocator_, dynamic_sort_buf_size);
+    // Dynamic sort buffers also need TRANSFER_DST_BIT — render() issues a
+    // per-frame vkCmdFillBuffer against them to GPU-side init the sentinel
+    // keys before the dynamic preprocess overwrites the active range.
+    // Without TRANSFER_DST the fillbuffer is a Vulkan-spec violation
+    // (validation error / UB). Codex review on PR #420 flagged this.
+    dynamic_sort_a_ = Buffer::create_storage_host_dst(allocator_, dynamic_sort_buf_size);
+    dynamic_sort_b_ = Buffer::create_storage_host_dst(allocator_, dynamic_sort_buf_size);
     merged_sort_ssbo_ = Buffer::create_storage(allocator_, merged_sort_buf_size);
     counts_ssbo_ = Buffer::create_storage_readback(allocator_, 3 * sizeof(uint32_t));
     uniform_buffer_ = Buffer::create_uniform(allocator_, sizeof(GsUniforms));

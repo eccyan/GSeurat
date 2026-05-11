@@ -550,11 +550,15 @@ void IslandDemoState::on_enter(AppBase& app) {
     // Upload persistent dynamics (chars/NPCs/PBD-tagged tree splats) into the
     // dynamic SSBO's prefix region. The transient suffix (VFX, particles)
     // continues to be re-uploaded every frame from Renderer::record_gs_prepass.
-    if (!persistent_dynamics_pending.empty()) {
-        app.renderer().gs_renderer().set_persistent_dynamics(
-            persistent_dynamics_pending.data(),
-            static_cast<uint32_t>(persistent_dynamics_pending.size()));
-    }
+    //
+    // Called unconditionally — even with count=0 — so the prefix is cleared
+    // when entering a scene with no animated content. Without this, a stale
+    // persistent_dyn_count_ from the previous scene would shift the offset
+    // used by subsequent update_dynamic_gaussians calls and either clip or
+    // misplace transient VFX. Codex P2 on #420.
+    app.renderer().gs_renderer().set_persistent_dynamics(
+        persistent_dynamics_pending.empty() ? nullptr : persistent_dynamics_pending.data(),
+        static_cast<uint32_t>(persistent_dynamics_pending.size()));
 
     // `player_pos` was computed earlier (before the §A merge) using
     // `parsed_scene.terrain_aabb` for the same fallback `gs_cloud_metadata`
