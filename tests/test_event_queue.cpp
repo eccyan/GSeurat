@@ -297,6 +297,74 @@ int main() {
         std::printf("PASS: World::clear drops pending events\n");
     }
 
+    // 14. Cursor surviving World::clear() does NOT drop events from the
+    //     freshly recreated queue (regression for Codex P2 on commit bb014684).
+    //
+    // Old behavior bug: queue gen reset to 0 → if cursor's last_seen_generation
+    // was also 0 with nonzero per-buffer offsets, the `==` branch in read()
+    // applied stale offsets and silently skipped new-scene events.
+    {
+        World world;
+
+        // Pre-clear: consumer reads some events at gen 0.
+        world.events<ClickEvent>().send({1, 1});
+        world.events<ClickEvent>().send({2, 2});
+        world.events<ClickEvent>().send({3, 3});
+
+        EventCursor persistent_cursor;
+        auto pre = drain(world.events<ClickEvent>(), persistent_cursor);
+        assert(pre.size() == 3);
+        // Cursor now has last_seen_generation=0, last_read_per_buffer[0]=3.
+
+        // Scene transition.
+        world.clear();
+        assert(world.event_registry().epoch_floor() >= 1);
+
+        // New-scene producer sends 2 events. Fresh queue's generation_
+        // should be >= 1 (seeded from epoch_floor_), so the persistent
+        // cursor's last_seen_generation=0 cannot match it.
+        world.events<ClickEvent>().send({10, 10});
+        world.events<ClickEvent>().send({20, 20});
+
+        // Without the epoch fix, this would return 0 events (cursor's
+        // stale offset 3 clamped to buffer size 2 → curr_start=2 → empty).
+        auto post = drain(world.events<ClickEvent>(), persistent_cursor);
+        assert(post.size() == 2);
+        assert(post[0].x == 10);
+        assert(post[1].x == 20);
+        std::printf("PASS: surviving cursor reads all new events after clear\n");
+    }
+
+    // 15. Multiple clears continue to advance epoch_floor monotonically;
+    //     a stale cursor across N clears still cannot collide with new queues.
+    {
+        EventRegistry reg;
+
+        // Cycle 1
+        reg.get_or_create<ClickEvent>().send({1, 1});
+        EventCursor cursor;
+        drain(reg.get_or_create<ClickEvent>(), cursor);
+        reg.clear();
+        const uint32_t floor1 = reg.epoch_floor();
+        assert(floor1 >= 1);
+
+        // Cycle 2 — different mix of rotates
+        reg.get_or_create<ClickEvent>().send({2, 2});
+        reg.get_or_create<ClickEvent>().rotate();
+        reg.get_or_create<ClickEvent>().rotate();
+        reg.clear();
+        const uint32_t floor2 = reg.epoch_floor();
+        assert(floor2 > floor1);
+
+        // Cycle 3 — fresh queue, cursor from cycle 1 still around
+        reg.get_or_create<ClickEvent>().send({3, 3});
+        auto seen = drain(reg.get_or_create<ClickEvent>(), cursor);
+        // Persistent cursor from cycle 1 sees the new event without skip.
+        assert(seen.size() == 1);
+        assert(seen[0].x == 3);
+        std::printf("PASS: epoch_floor advances across multiple clears\n");
+    }
+
     std::printf("\nALL EVENT QUEUE TESTS PASSED\n");
     return 0;
 }

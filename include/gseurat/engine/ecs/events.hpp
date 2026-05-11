@@ -68,11 +68,22 @@ public:
     virtual ~EventQueueBase();
     virtual void rotate() noexcept = 0;
     virtual std::size_t pending_count() const noexcept = 0;
+    // Exposed so EventRegistry::clear() can advance its epoch floor past
+    // any live queue's current generation, preventing cursor collisions
+    // with freshly recreated queues.
+    virtual uint32_t current_generation() const noexcept = 0;
 };
 
 template <typename T>
 class EventQueue final : public EventQueueBase {
 public:
+    EventQueue() = default;
+    // Seed `generation_` past any prior generation a stale cursor might
+    // be carrying. Used by EventRegistry to make post-clear queues immune
+    // to cursors that survived World::clear() — see EventRegistry::clear.
+    explicit EventQueue(uint32_t initial_generation) noexcept
+        : generation_(initial_generation) {}
+
     void send(T evt) {
         buffers_[write_idx_].push_back(std::move(evt));
     }
@@ -130,6 +141,7 @@ public:
         return buffers_[0].size() + buffers_[1].size();
     }
 
+    uint32_t current_generation() const noexcept override { return generation_; }
     uint32_t generation() const noexcept { return generation_; }
 
 private:
@@ -149,7 +161,10 @@ public:
         if (it != queues_.end()) {
             return *static_cast<EventQueue<T>*>(it->second.get());
         }
-        auto owned = std::make_unique<EventQueue<T>>();
+        // Seed the new queue's generation past the epoch floor so any
+        // cursor surviving a prior clear() cannot collide with this
+        // queue's starting generation.
+        auto owned = std::make_unique<EventQueue<T>>(epoch_floor_);
         EventQueue<T>* raw = owned.get();
         queues_.emplace(key, std::move(owned));
         return *raw;
@@ -168,12 +183,26 @@ public:
     // Drop every registered queue. Used when the host clears the World (e.g.
     // scene transition) so stale events from the prior scene cannot leak
     // into consumers on the new scene.
-    void clear() noexcept { queues_.clear(); }
+    //
+    // Also advances `epoch_floor_` past the highest live queue generation
+    // so a long-lived EventCursor that survived the clear cannot match the
+    // generation of any freshly recreated queue (which would otherwise
+    // cause its stale per-buffer offsets to silently skip new events).
+    void clear() noexcept {
+        for (auto& [type_idx, queue] : queues_) {
+            if (queue->current_generation() >= epoch_floor_) {
+                epoch_floor_ = queue->current_generation() + 1;
+            }
+        }
+        queues_.clear();
+    }
 
     std::size_t queue_count() const noexcept { return queues_.size(); }
+    uint32_t epoch_floor() const noexcept { return epoch_floor_; }
 
 private:
     std::unordered_map<std::type_index, std::unique_ptr<EventQueueBase>> queues_;
+    uint32_t epoch_floor_ = 0;
 };
 
 }  // namespace gseurat::ecs
