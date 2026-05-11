@@ -403,8 +403,10 @@ void Renderer::draw_scene(Scene& scene,
                            const std::vector<DebugColliderDrawInfo>& debug_colliders_list,
                            const FeatureFlags& flags,
                            bool dispatch_gpu_compute) {
+#if GSEURAT_DEBUG_BUILD
     std::fprintf(stderr, "[draw_scene/wd] entry current_frame=%u\n", current_frame_);
     const auto t_ds_entry = std::chrono::steady_clock::now();
+#endif
     auto device = context_.device();
     const auto& frame_sync = sync_.frame(current_frame_);
 
@@ -436,10 +438,12 @@ void Renderer::draw_scene(Scene& scene,
     }
     camera_.update(dt);
 
-    // Watchdog instrumentation for post-load freeze investigation. Mach-port
-    // log signature points at an indefinite main-thread block. Use a finite
-    // timeout to surface which call hangs, then fall back to UINT64_MAX so
-    // the demo doesn't crash on a real (transient) stall.
+#if GSEURAT_DEBUG_BUILD
+    // Watchdog: bounded fence wait + retry, with timing log on stalls. The
+    // diag build uses a 2-second timeout so a real hang surfaces immediately
+    // via the SLOW log; on timeout, retry with UINT64_MAX so the demo keeps
+    // running. Production builds skip this instrumentation and use the plain
+    // UINT64_MAX path.
     constexpr uint64_t kFenceWaitWatchdogNs = 2'000'000'000ull; // 2 sec
     const auto fence_t0 = std::chrono::steady_clock::now();
     VkResult fence_result = vkWaitForFences(device, 1, &frame_sync.in_flight, VK_TRUE,
@@ -477,6 +481,14 @@ void Renderer::draw_scene(Scene& scene,
         std::fprintf(stderr,
             "[renderer/watchdog] vkAcquireNextImageKHR slow: %.2f ms\n", acquire_ms);
     }
+#else
+    vkWaitForFences(device, 1, &frame_sync.in_flight, VK_TRUE, UINT64_MAX);
+
+    uint32_t image_index;
+    auto acquire_sem = sync_.acquire_semaphore(acquire_semaphore_index_);
+    vkAcquireNextImageKHR(device, swapchain_.swapchain(), UINT64_MAX, acquire_sem,
+                          VK_NULL_HANDLE, &image_index);
+#endif
     acquire_semaphore_index_ =
         (acquire_semaphore_index_ + 1) % sync_.acquire_semaphore_count();
 
@@ -495,9 +507,13 @@ void Renderer::draw_scene(Scene& scene,
     // records acquire barriers into `cmd` so subsequent GS compute reads
     // see fully-uploaded slabs. Must run before any pipeline that consumes
     // the slab buffers, including `record_gs_prepass`.
+#if GSEURAT_DEBUG_BUILD
     const auto t_ds_pre_poll = std::chrono::steady_clock::now();
+#endif
     gs_renderer_.poll_transfers(cmd);
+#if GSEURAT_DEBUG_BUILD
     const auto t_ds_post_poll = std::chrono::steady_clock::now();
+#endif
 
     // Forward post-process params to GS pipeline before GS compute runs
     {
@@ -572,9 +588,13 @@ void Renderer::draw_scene(Scene& scene,
         gs_renderer_.set_post_process_params(gs_pp);
     }
 
+#if GSEURAT_DEBUG_BUILD
     const auto t_ds_pre_prepass = std::chrono::steady_clock::now();
+#endif
     record_gs_prepass(cmd, device, dt, flags, dispatch_gpu_compute);
+#if GSEURAT_DEBUG_BUILD
     const auto t_ds_post_prepass = std::chrono::steady_clock::now();
+#endif
 
     // ===== Pass 1: Scene render pass (offscreen HDR) =====
     {
@@ -772,9 +792,13 @@ void Renderer::draw_scene(Scene& scene,
         post_process_.update_light_glow(context_.allocator(), glow);
     }
 
+#if GSEURAT_DEBUG_BUILD
     const auto t_ds_pre_pp = std::chrono::steady_clock::now();
+#endif
     post_process_.record_post_process(cmd, image_index, pp_params);
+#if GSEURAT_DEBUG_BUILD
     const auto t_ds_post_pp = std::chrono::steady_clock::now();
+#endif
 
     record_gs_blit(cmd, flags);
     // Light glow is now rendered via the UI system in GsDemoState
@@ -795,9 +819,13 @@ void Renderer::draw_scene(Scene& scene,
                                 swapchain_.extent(), context_.allocator());
     }
 
+#if GSEURAT_DEBUG_BUILD
     const auto t_ds_pre_end = std::chrono::steady_clock::now();
+#endif
     vkEndCommandBuffer(cmd);
+#if GSEURAT_DEBUG_BUILD
     const auto t_ds_post_end = std::chrono::steady_clock::now();
+#endif
 
     auto render_done_sem = sync_.render_finished_semaphore(image_index);
 
@@ -812,11 +840,15 @@ void Renderer::draw_scene(Scene& scene,
     submit.signalSemaphoreCount = 1;
     submit.pSignalSemaphores = &render_done_sem;
 
+#if GSEURAT_DEBUG_BUILD
     const auto t_ds_pre_submit = std::chrono::steady_clock::now();
+#endif
     if (vkQueueSubmit(context_.graphics_queue(), 1, &submit, frame_sync.in_flight) != VK_SUCCESS) {
         throw std::runtime_error("Failed to submit draw command buffer");
     }
+#if GSEURAT_DEBUG_BUILD
     const auto t_ds_post_submit = std::chrono::steady_clock::now();
+#endif
 
     // Screenshot readback: wait for GPU, swizzle BGRA→RGBA, write PNG
     if (screenshot_requested) {
@@ -909,8 +941,11 @@ void Renderer::draw_scene(Scene& scene,
     present.pSwapchains = &sc;
     present.pImageIndices = &image_index;
 
+#if GSEURAT_DEBUG_BUILD
     const auto t_ds_pre_present = std::chrono::steady_clock::now();
+#endif
     vkQueuePresentKHR(context_.graphics_queue(), &present);
+#if GSEURAT_DEBUG_BUILD
     const auto t_ds_post_present = std::chrono::steady_clock::now();
 
     const double draw_total_ms = std::chrono::duration<double, std::milli>(
@@ -920,8 +955,6 @@ void Renderer::draw_scene(Scene& scene,
             t_ds_pre_poll - t_ds_entry).count();
         const double poll_ms = std::chrono::duration<double, std::milli>(
             t_ds_post_poll - t_ds_pre_poll).count();
-        const double record_ms = std::chrono::duration<double, std::milli>(
-            t_ds_pre_submit - t_ds_post_poll).count();
         const double submit_ms = std::chrono::duration<double, std::milli>(
             t_ds_post_submit - t_ds_pre_submit).count();
         const double post_submit_to_present_ms = std::chrono::duration<double, std::milli>(
@@ -946,6 +979,7 @@ void Renderer::draw_scene(Scene& scene,
             setup_ms, poll_ms, prepass_ms, prepass_to_pp_ms, post_process_ms, pp_to_end_ms, end_cmdbuf_ms,
             submit_ms, post_submit_to_present_ms, present_ms);
     }
+#endif
 
     current_frame_ = (current_frame_ + 1) % kMaxFramesInFlight;
 }
@@ -1186,8 +1220,10 @@ void Renderer::draw_sprite_pass(VkCommandBuffer cmd,
 void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
                                   const FeatureFlags& flags,
                                   bool dispatch_gpu_compute) {
+#if GSEURAT_DEBUG_BUILD
     const auto t_prepass_start = std::chrono::steady_clock::now();
     uint32_t dbg_dyn_count = 0;
+#endif
     // Adaptive GS budget: converge to target FPS then lock
     if (flags.gs_adaptive_budget && gs_adaptive_budget_ && gs_gaussian_budget_ > 0 && dt > 0.0f) {
         float fps = 1.0f / dt;
@@ -1382,12 +1418,17 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
                     count = gs_renderer_.max_dynamic_count();
                 }
                 gs_renderer_.update_dynamic_gaussians(gs_dynamic_buffer_.data(), count);
+#if GSEURAT_DEBUG_BUILD
                 dbg_dyn_count = count;
+#endif
             }
         }
 
+#if GSEURAT_DEBUG_BUILD
         const auto t_prepass_pre_render = std::chrono::steady_clock::now();
+#endif
         gs_renderer_.render(cmd, current_frame_, gs_view_, gs_proj_);
+#if GSEURAT_DEBUG_BUILD
         const auto t_prepass_end = std::chrono::steady_clock::now();
 
         const double total_ms = std::chrono::duration<double, std::milli>(
@@ -1405,6 +1446,7 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
                 total_ms, cpu_gather_ms, gs_render_ms, dbg_dyn_count,
                 emitter_count, vfx_count, gs_static_force_dirty_ ? 1 : 0);
         }
+#endif
     }
 }
 

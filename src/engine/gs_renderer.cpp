@@ -3312,11 +3312,14 @@ void GsRenderer::render(VkCommandBuffer cmd, uint32_t frame_in_flight,
     // to the previous frame's GPU latency and is worth the diagnostic data.
     if (timestamp_pool_ && timestamps_written_) {
         uint64_t ts[6]{};  // depth_sort_begin/end, tile_sort_begin/end, raster_begin/end
+#if GSEURAT_DEBUG_BUILD
         const auto t_wait_start = std::chrono::steady_clock::now();
+#endif
         VkResult ts_result = vkGetQueryPoolResults(
             device_, timestamp_pool_, 0, 6,
             sizeof(ts), ts, sizeof(uint64_t),
             VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT);
+#if GSEURAT_DEBUG_BUILD
         const auto t_wait_end = std::chrono::steady_clock::now();
         const double wait_ms = std::chrono::duration<double, std::milli>(t_wait_end - t_wait_start).count();
         if (wait_ms > 100.0) {
@@ -3332,6 +3335,7 @@ void GsRenderer::render(VkCommandBuffer cmd, uint32_t frame_in_flight,
                 wait_ms, prev_depth_ms, prev_tile_ms, prev_raster_ms,
                 static_count_, dynamic_count_, gaussian_count_);
         }
+#endif
         if (ts_result == VK_SUCCESS && ts[5] > ts[4] && ts[3] > ts[2] && ts[1] > ts[0]) {
             float depth_ms = static_cast<float>(ts[1] - ts[0]) * timestamp_period_ns_ / 1e6f;
             float tile_ms  = static_cast<float>(ts[3] - ts[2]) * timestamp_period_ns_ / 1e6f;
