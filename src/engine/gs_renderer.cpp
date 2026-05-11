@@ -3129,7 +3129,20 @@ void GsRenderer::resize_output(uint32_t width, uint32_t height) {
 
     create_output_image(width, height);
 
-    if (gaussian_count_ > 0) {
+    // Descriptors hold raw VkImageView handles into the just-destroyed
+    // output_views_/depth_views_/processed_views_ arrays. They must be
+    // refreshed against the new views before any GS dispatch, regardless
+    // of whether splats have been uploaded yet — gaussian_count_ > 0
+    // gates whether the resulting frame is meaningful, not whether the
+    // descriptor handles are valid. (Without this, the first dispatch
+    // after a resize-before-load reports VkImageView 0x0 and the slot's
+    // post-process writes nothing — the symptom user-visible as alternating
+    // blank frames after a cold scene load.)
+    //
+    // update_descriptors has its own internal guard for the static/dynamic
+    // split sets that early-returns when split buffers aren't allocated
+    // yet (pre-init_streaming).
+    if (streaming_initialized_) {
         update_descriptors();
     }
 }
