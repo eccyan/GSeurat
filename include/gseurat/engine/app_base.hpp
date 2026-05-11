@@ -31,6 +31,7 @@
 #include "gseurat/engine/locale_manager.hpp"
 #include "gseurat/engine/minimap.hpp"
 #include "gseurat/engine/particle.hpp"
+#include "gseurat/engine/render_state.hpp"
 #include "gseurat/engine/renderer.hpp"
 #include "gseurat/engine/resource_manager.hpp"
 #include "gseurat/engine/save_system.hpp"
@@ -237,6 +238,14 @@ public:
     // Pending character load (set by load_character command, consumed by StagingState)
     std::string pending_character_path;  // non-empty = load request pending
 
+    // === RenderState contract (Phase 3b) ===
+    // Constructed during main_loop() once VkContext is initialized; reset
+    // in cleanup() before renderer_.shutdown() tears the context down.
+    // Phase 4 PRs migrate producers/consumers onto this contract.
+    RenderState& render_state() { return *render_state_; }
+    const RenderState& render_state() const { return *render_state_; }
+    bool has_render_state() const noexcept { return render_state_ != nullptr; }
+
 protected:
     void init_window();
     virtual void init_game_content();
@@ -290,6 +299,12 @@ protected:
 
     // Debug metrics
     DebugMetrics debug_metrics_;
+
+    // RenderState — constructed lazily in AppBase::main_loop() after the
+    // renderer (and thus VkContext) has been initialised by the subclass.
+    // Held by unique_ptr so its destructor runs deterministically before
+    // VkContext tear-down inside cleanup().
+    std::unique_ptr<RenderState> render_state_;
 
     // Bone pre-upload hook
     std::function<void(glm::mat4*, uint32_t)> bone_pre_upload_hook_;
