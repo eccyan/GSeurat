@@ -16,6 +16,7 @@
 // Run: ./build/test_gaussian_cloud
 
 #include "gseurat/engine/gaussian_cloud.hpp"
+#include "gseurat/engine/gaussian_cloud_ply.hpp"
 #include "gseurat/engine/collision_gen.hpp"
 #include "gseurat/engine/scene_loader.hpp"
 
@@ -239,7 +240,7 @@ int main() {
         const std::string ply_path = tmp_dir + "/test_standard.ply";
         write_test_ply(ply_path, 10);
 
-        auto cloud = GaussianCloud::load_ply(ply_path);
+        auto cloud = ply::load(ply_path);
         assert(cloud.count() == 10 && "Should load 10 Gaussians");
         assert(!cloud.empty() && "Cloud should not be empty");
 
@@ -282,7 +283,7 @@ int main() {
         const std::string ply_path = tmp_dir + "/test_nerfstudio.ply";
         write_test_ply_nerfstudio(ply_path);
 
-        auto cloud = GaussianCloud::load_ply(ply_path);
+        auto cloud = ply::load(ply_path);
         assert(cloud.count() == 1 && "Should load 1 Gaussian");
 
         const auto& g = cloud.gaussians()[0];
@@ -302,7 +303,7 @@ int main() {
     {
         bool threw = false;
         try {
-            GaussianCloud::load_ply(tmp_dir + "/nonexistent.ply");
+            ply::load(tmp_dir + "/nonexistent.ply");
         } catch (const std::runtime_error&) {
             threw = true;
         }
@@ -315,7 +316,7 @@ int main() {
         const std::string ply_path = tmp_dir + "/test_empty.ply";
         write_test_ply(ply_path, 0);
 
-        auto cloud = GaussianCloud::load_ply(ply_path);
+        auto cloud = ply::load(ply_path);
         assert(cloud.count() == 0 && "Should have 0 Gaussians");
         assert(cloud.empty() && "Cloud should be empty");
         printf("PASS: Test 4 - Empty PLY (0 vertices)\n");
@@ -428,7 +429,7 @@ int main() {
     {
         const std::string ply_path = tmp_dir + "/test_standard.ply";
         write_test_ply(ply_path, 5);
-        auto cloud = GaussianCloud::load_ply(ply_path);
+        auto cloud = ply::load(ply_path);
 
         std::vector<GpuGaussian> expected(cloud.count());
         for (uint32_t i = 0; i < cloud.count(); ++i) {
@@ -638,8 +639,8 @@ int main() {
         const std::string ply_path = tmp_dir + "/test_standard.ply";
         write_test_ply(ply_path, 10);
 
-        auto cloud_yup = GaussianCloud::load_ply(ply_path);
-        auto cloud_ydn = GaussianCloud::load_ply(ply_path, CoordinateSystem::kVulkanYDown);
+        auto cloud_yup = ply::load(ply_path);
+        auto cloud_ydn = ply::load(ply_path, CoordinateSystem::kVulkanYDown);
 
         assert(cloud_ydn.count() == 10 && "Y-down should load same count");
 
@@ -673,8 +674,8 @@ int main() {
 
         // Write with Y-down, then read back with default (Y-up) — Y should be negated
         const std::string ply_path = tmp_dir + "/test_ydown_roundtrip.ply";
-        GaussianCloud::write_ply(ply_path, src, CoordinateSystem::kVulkanYDown);
-        auto cloud = GaussianCloud::load_ply(ply_path);  // default Y-up load
+        ply::write(ply_path, src, CoordinateSystem::kVulkanYDown);
+        auto cloud = ply::load(ply_path);  // default Y-up load
 
         const auto& g = cloud.gaussians()[0];
         assert(approx(g.position.x, 1.0f) && "Written X unchanged");
@@ -703,8 +704,8 @@ int main() {
         src[0].emission = 0.0f;
 
         const std::string ply_path = tmp_dir + "/test_ydown_identity.ply";
-        GaussianCloud::write_ply(ply_path, src, CoordinateSystem::kVulkanYDown);
-        auto cloud = GaussianCloud::load_ply(ply_path, CoordinateSystem::kVulkanYDown);
+        ply::write(ply_path, src, CoordinateSystem::kVulkanYDown);
+        auto cloud = ply::load(ply_path, CoordinateSystem::kVulkanYDown);
 
         const auto& g = cloud.gaussians()[0];
         // Double-negation should recover original position
@@ -725,7 +726,7 @@ int main() {
     {
         const std::string ply_path = tmp_dir + "/test_standard.ply";
         write_test_ply(ply_path, 5);
-        auto cloud = GaussianCloud::load_ply(ply_path);
+        auto cloud = ply::load(ply_path);
 
         std::vector<GpuGaussian> data(cloud.count());
         AABB expected_aabb;
@@ -766,7 +767,7 @@ int main() {
     {
         const std::string ply_path = tmp_dir + "/test_standard.ply";
         write_test_ply(ply_path, 5);
-        auto cloud = GaussianCloud::load_ply(ply_path);
+        auto cloud = ply::load(ply_path);
 
         std::vector<GpuGaussian> data(cloud.count());
         for (uint32_t i = 0; i < cloud.count(); ++i) {
@@ -803,7 +804,7 @@ int main() {
 
     auto bake_sibling_gsvx_v2 = [](const std::string& ply_path,
                                     const std::string& gsvx_path) {
-        auto cloud = GaussianCloud::load_ply(ply_path);
+        auto cloud = ply::load(ply_path);
         std::vector<GpuGaussian> data(cloud.count());
         AABB aabb;
         for (uint32_t i = 0; i < cloud.count(); ++i) {
@@ -846,7 +847,7 @@ int main() {
         write_test_ply(ply_path, 7);
         bake_sibling_gsvx_v2(ply_path, gsvx_path);
 
-        auto via_ply  = GaussianCloud::load_ply(ply_path);
+        auto via_ply  = ply::load(ply_path);
         auto via_dual = GaussianCloud::load_with_gsvx_first(ply_path);
 
         assert(via_dual.count() == via_ply.count() && "prefer count matches");
@@ -938,7 +939,7 @@ int main() {
         write_test_ply(ply_path, 5);
         bake_sibling_gsvx_v2(ply_path, gsvx_path);
 
-        auto via_ply  = GaussianCloud::load_ply(ply_path, CoordinateSystem::kVulkanYDown);
+        auto via_ply  = ply::load(ply_path, CoordinateSystem::kVulkanYDown);
         auto via_dual = GaussianCloud::load_with_gsvx_first(ply_path,
                                                              CoordinateSystem::kVulkanYDown);
 

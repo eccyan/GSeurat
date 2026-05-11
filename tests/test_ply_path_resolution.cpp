@@ -8,6 +8,7 @@
 
 #include "gseurat/engine/project_root.hpp"
 #include "gseurat/engine/gaussian_cloud.hpp"
+#include "gseurat/engine/gaussian_cloud_ply.hpp"
 
 #include <cassert>
 #include <cstdio>
@@ -84,7 +85,7 @@ int main() {
     {
         set_project_root(project_dir.string());
         try {
-            auto cloud = GaussianCloud::load_ply("assets/maps/tunnel_present.ply");
+            auto cloud = ply::load("assets/maps/tunnel_present.ply");
             check(cloud.count() == 4, "loaded 4 Gaussians via project_root");
         } catch (const std::exception& e) {
             check(false, e.what());
@@ -98,7 +99,7 @@ int main() {
         set_project_root("");
         bool threw = false;
         try {
-            auto cloud = GaussianCloud::load_ply("assets/maps/tunnel_present.ply");
+            auto cloud = ply::load("assets/maps/tunnel_present.ply");
         } catch (const std::runtime_error&) {
             threw = true;
         }
@@ -117,7 +118,7 @@ int main() {
 
         // Simulate: command 2 loads scene (which calls load_ply internally)
         try {
-            auto cloud = GaussianCloud::load_ply("assets/maps/tunnel_present.ply");
+            auto cloud = ply::load("assets/maps/tunnel_present.ply");
             check(cloud.count() == 4, "load succeeds when root set in same frame before load");
         } catch (const std::exception& e) {
             check(false, e.what());
@@ -143,7 +144,7 @@ int main() {
 
         set_project_root(project_dir.string());
         try {
-            auto cloud = GaussianCloud::load_ply("assets/characters/knight/knight.ply");
+            auto cloud = ply::load("assets/characters/knight/knight.ply");
             check(cloud.count() == 8, "character PLY loaded via project_root (8 gaussians)");
         } catch (const std::exception& e) {
             check(false, e.what());

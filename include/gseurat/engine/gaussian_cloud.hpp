@@ -97,12 +97,6 @@ struct GsvxPayload {
 
 class GaussianCloud {
 public:
-    /// Parse a binary_little_endian PLY file. Compiled into offline tools
-    /// (ply2heightmap) and tests only; the runtime engine does NOT link
-    /// this. The runtime uses `load_with_gsvx_first`, which requires a
-    /// build-baked sibling .gsvx (see CMakeLists.txt `bake_gsvx`).
-    static GaussianCloud load_ply(const std::string& path,
-                                   CoordinateSystem coords = CoordinateSystem::kYUp);
     /// Load a pre-baked .gsvx binary file (zero-copy GPU format).
     static GsvxPayload load_gsvx(const std::string& path);
     /// Resolve the sibling `.gsvx` for a `.ply` path and load it. Throws
@@ -115,10 +109,10 @@ public:
         CoordinateSystem coords = CoordinateSystem::kYUp);
     static GaussianCloud from_gaussians(std::vector<Gaussian> gaussians);
 
-    // Write Gaussians to a binary little-endian PLY file.
-    // Data is stored in the same format load_ply() expects (log-scale, logit-opacity, SH DC color).
-    static void write_ply(const std::string& path, const std::vector<Gaussian>& gaussians,
-                          CoordinateSystem coords = CoordinateSystem::kYUp);
+    // PLY load/write live in <gseurat/engine/gaussian_cloud_ply.hpp> as
+    // `gseurat::ply::load` / `gseurat::ply::write`. They are offline-only —
+    // not linked into gseurat_core. Callers must add
+    // `src/engine/gaussian_cloud_ply.cpp` to their build target.
 
     const std::vector<Gaussian>& gaussians() const { return gaussians_; }
     const AABB& bounds() const { return bounds_; }

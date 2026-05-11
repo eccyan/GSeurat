@@ -7,10 +7,11 @@
 // GaussianCloud::load_with_gsvx_first throws on missing .gsvx rather
 // than falling back here.
 //
-// Splitting load_ply / write_ply off keeps the runtime binary free of
-// the text-PLY parser; that's the M1 closure of #396.
+// load / write live in `gseurat::ply::` (not on the GaussianCloud class)
+// so the public engine header surface matches the engine link surface
+// — addresses Codex P2 on PR #425.
 
-#include "gseurat/engine/gaussian_cloud.hpp"
+#include "gseurat/engine/gaussian_cloud_ply.hpp"
 
 #include "gseurat/engine/project_root.hpp"
 
@@ -22,7 +23,7 @@
 #include <stdexcept>
 #include <unordered_map>
 
-namespace gseurat {
+namespace gseurat::ply {
 
 namespace {
 
@@ -94,8 +95,7 @@ float read_float(const char* data, const PlyProperty& prop) {
 
 }  // namespace
 
-GaussianCloud GaussianCloud::load_ply(const std::string& path,
-                                      CoordinateSystem coords) {
+GaussianCloud load(const std::string& path, CoordinateSystem coords) {
     auto resolved = resolve_asset_path(path);
     std::ifstream file(resolved, std::ios::binary);
     if (!file.is_open()) {
@@ -304,9 +304,9 @@ GaussianCloud GaussianCloud::load_ply(const std::string& path,
     return GaussianCloud::from_gaussians(std::move(gaussians));
 }
 
-void GaussianCloud::write_ply(const std::string& path,
-                              const std::vector<Gaussian>& gaussians,
-                              CoordinateSystem coords) {
+void write(const std::string& path,
+           const std::vector<Gaussian>& gaussians,
+           CoordinateSystem coords) {
     std::ofstream file(path, std::ios::binary);
     if (!file.is_open()) {
         throw std::runtime_error("Failed to open PLY file for writing: " + path);
@@ -375,4 +375,4 @@ void GaussianCloud::write_ply(const std::string& path,
     }
 }
 
-}  // namespace gseurat
+}  // namespace gseurat::ply

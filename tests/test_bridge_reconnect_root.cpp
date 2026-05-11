@@ -11,6 +11,7 @@
 
 #include "gseurat/engine/project_root.hpp"
 #include "gseurat/engine/gaussian_cloud.hpp"
+#include "gseurat/engine/gaussian_cloud_ply.hpp"
 
 #include <cassert>
 #include <cstdio>
@@ -64,7 +65,7 @@ int main() {
     {
         set_project_root("");
         bool threw = false;
-        try { GaussianCloud::load_ply("assets/maps/tunnel.ply"); }
+        try { ply::load("assets/maps/tunnel.ply"); }
         catch (const std::runtime_error&) { threw = true; }
         check(threw, "relative path fails without project_root");
     }
@@ -73,7 +74,7 @@ int main() {
     std::printf("Scenario 2: project_root set, relative path succeeds\n");
     {
         set_project_root(project.string());
-        auto cloud = GaussianCloud::load_ply("assets/maps/tunnel.ply");
+        auto cloud = ply::load("assets/maps/tunnel.ply");
         check(cloud.count() == 10, "loaded 10 Gaussians with project_root");
     }
 
@@ -82,7 +83,7 @@ int main() {
     {
         set_project_root("");
         auto abs_path = (project / "assets" / "maps" / "tunnel.ply").string();
-        auto cloud = GaussianCloud::load_ply(abs_path);
+        auto cloud = ply::load(abs_path);
         check(cloud.count() == 10, "absolute path works without project_root");
     }
 
@@ -94,7 +95,7 @@ int main() {
         std::string bridge_path = project.string();
         std::string relative = "assets/maps/tunnel.ply";
         std::string resolved = bridge_path + "/" + relative;
-        auto cloud = GaussianCloud::load_ply(resolved);
+        auto cloud = ply::load(resolved);
         check(cloud.count() == 10, "pre-resolved path loads without project_root");
     }
 
