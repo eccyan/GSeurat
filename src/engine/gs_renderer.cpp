@@ -764,13 +764,16 @@ void GsRenderer::create_compose_pipeline() {
     }
     vkDestroyShaderModule(device_, module, nullptr);
 
-    // Dedicated descriptor pool — kMaxFramesInFlight sets × 2 SSBO bindings each.
+    // Dedicated descriptor pool — 2 × kMaxFramesInFlight sets (vfx + pbd),
+    // each with 2 SSBO bindings (src + dst).
+    constexpr uint32_t kSetsPerSource = kMaxFramesInFlight;
+    constexpr uint32_t kSources = 2;  // vfx + pbd
     VkDescriptorPoolSize pool_sizes[1] = {
-        {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, kMaxFramesInFlight * 2},
+        {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, kSetsPerSource * kSources * 2},
     };
     VkDescriptorPoolCreateInfo pool_ci{};
     pool_ci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-    pool_ci.maxSets = kMaxFramesInFlight;
+    pool_ci.maxSets = kSetsPerSource * kSources;
     pool_ci.poolSizeCount = 1;
     pool_ci.pPoolSizes = pool_sizes;
     if (vkCreateDescriptorPool(device_, &pool_ci, nullptr, &compose_pool_) != VK_SUCCESS) {
@@ -784,33 +787,51 @@ void GsRenderer::create_compose_pipeline() {
     alloc_info.descriptorPool = compose_pool_;
     alloc_info.descriptorSetCount = kMaxFramesInFlight;
     alloc_info.pSetLayouts = layouts.data();
-    if (vkAllocateDescriptorSets(device_, &alloc_info, compose_sets_.data()) != VK_SUCCESS) {
-        throw std::runtime_error("Failed to allocate compose descriptor sets");
+    if (vkAllocateDescriptorSets(device_, &alloc_info, compose_sets_vfx_.data()) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to allocate compose (vfx) descriptor sets");
+    }
+    if (vkAllocateDescriptorSets(device_, &alloc_info, compose_sets_pbd_.data()) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to allocate compose (pbd) descriptor sets");
     }
 }
 
 void GsRenderer::update_compose_descriptors() {
     if (!render_state_) return;
     for (uint32_t f = 0; f < kMaxFramesInFlight; ++f) {
-        VkDescriptorBufferInfo src_info{render_state_->vfx_buffer(FrameIndex{f}), 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo vfx_src_info{render_state_->vfx_buffer(FrameIndex{f}), 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo pbd_src_info{render_state_->pbd_buffer(FrameIndex{f}), 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo dst_info{dynamic_gaussian_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
 
-        VkWriteDescriptorSet writes[2]{};
+        VkWriteDescriptorSet writes[4]{};
         writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        writes[0].dstSet = compose_sets_[f];
+        writes[0].dstSet = compose_sets_vfx_[f];
         writes[0].dstBinding = 0;
         writes[0].descriptorCount = 1;
         writes[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        writes[0].pBufferInfo = &src_info;
+        writes[0].pBufferInfo = &vfx_src_info;
 
         writes[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        writes[1].dstSet = compose_sets_[f];
+        writes[1].dstSet = compose_sets_vfx_[f];
         writes[1].dstBinding = 1;
         writes[1].descriptorCount = 1;
         writes[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         writes[1].pBufferInfo = &dst_info;
 
-        vkUpdateDescriptorSets(device_, 2, writes, 0, nullptr);
+        writes[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        writes[2].dstSet = compose_sets_pbd_[f];
+        writes[2].dstBinding = 0;
+        writes[2].descriptorCount = 1;
+        writes[2].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        writes[2].pBufferInfo = &pbd_src_info;
+
+        writes[3].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        writes[3].dstSet = compose_sets_pbd_[f];
+        writes[3].dstBinding = 1;
+        writes[3].descriptorCount = 1;
+        writes[3].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        writes[3].pBufferInfo = &dst_info;
+
+        vkUpdateDescriptorSets(device_, 4, writes, 0, nullptr);
     }
     compose_descriptors_initialised_ = true;
 }
@@ -822,7 +843,7 @@ void GsRenderer::dispatch_compose_vfx(VkCommandBuffer cmd, FrameIndex frame_idx,
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, compose_pipeline_);
     vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
                             compose_pipeline_layout_, 0, 1,
-                            &compose_sets_[to_u32(frame_idx)], 0, nullptr);
+                            &compose_sets_vfx_[to_u32(frame_idx)], 0, nullptr);
     struct PushConstants {
         uint32_t splat_count;
         uint32_t dst_offset;
@@ -835,6 +856,37 @@ void GsRenderer::dispatch_compose_vfx(VkCommandBuffer cmd, FrameIndex frame_idx,
 
     // Compute→compute SSBO write→read barrier so the downstream preprocess
     // pipeline (which reads dynamic_gaussian_ssbo) sees our writes.
+    // dispatch_compose_pbd, if it runs next, only writes disjoint slots, but
+    // we keep this barrier here so a vfx-only frame remains correct on its
+    // own; pbd's barrier handles the second-source case.
+    VkMemoryBarrier mb{};
+    mb.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+    mb.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+    mb.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+    vkCmdPipelineBarrier(cmd,
+                         VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                         VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                         0, 1, &mb, 0, nullptr, 0, nullptr);
+}
+
+void GsRenderer::dispatch_compose_pbd(VkCommandBuffer cmd, FrameIndex frame_idx,
+                                       uint32_t vfx_count, uint32_t pbd_count) {
+    if (pbd_count == 0 || !compose_descriptors_initialised_) return;
+
+    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, compose_pipeline_);
+    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
+                            compose_pipeline_layout_, 0, 1,
+                            &compose_sets_pbd_[to_u32(frame_idx)], 0, nullptr);
+    struct PushConstants {
+        uint32_t splat_count;
+        uint32_t dst_offset;
+    } pc{pbd_count, persistent_dyn_count_ + vfx_count};
+    vkCmdPushConstants(cmd, compose_pipeline_layout_, VK_SHADER_STAGE_COMPUTE_BIT,
+                       0, sizeof(pc), &pc);
+    constexpr uint32_t kLocalSize = 64;
+    const uint32_t groups = (pbd_count + kLocalSize - 1) / kLocalSize;
+    vkCmdDispatch(cmd, groups, 1, 1);
+
     VkMemoryBarrier mb{};
     mb.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
     mb.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
@@ -2529,15 +2581,16 @@ void GsRenderer::set_persistent_dynamics(const Gaussian* data, uint32_t count) {
 }
 
 void GsRenderer::update_dynamic_gaussians(const Gaussian* data, uint32_t count,
-                                            uint32_t vfx_prefix) {
-    // `count` is the CPU-sourced transient portion (particles, scene anims,
-    // pending dynamics). `vfx_prefix` is the slot count already filled by
-    // the GPU compose pass at offset persistent_dyn_count_ (4c-vfx).
-    // Persistent prefix lives in indices [0, persistent_dyn_count_).
-    const uint32_t fixed_prefix = persistent_dyn_count_ + vfx_prefix;
+                                            uint32_t gpu_prefix) {
+    // `count` is the CPU-sourced transient portion (particles, scene anims).
+    // `gpu_prefix` is the slot count already filled by the GPU compose
+    // passes at offset persistent_dyn_count_ — currently vfx_count +
+    // pbd_count (4c-vfx + 4c-pbd). Persistent prefix lives in indices
+    // [0, persistent_dyn_count_).
+    const uint32_t fixed_prefix = persistent_dyn_count_ + gpu_prefix;
     const uint32_t total = fixed_prefix + count;
     if (total > max_dynamic_count_) {
-        // Cap the CPU portion so total fits; vfx_prefix is GPU-controlled
+        // Cap the CPU portion so total fits; gpu_prefix is GPU-controlled
         // and can't be truncated here.
         count = (max_dynamic_count_ > fixed_prefix)
             ? max_dynamic_count_ - fixed_prefix : 0;
@@ -2549,7 +2602,7 @@ void GsRenderer::update_dynamic_gaussians(const Gaussian* data, uint32_t count,
         for (uint32_t i = 0; i < count; ++i) {
             encode_gaussian(data[i], staging[i]);
         }
-        // Write at offset (persistent_dyn_count_ + vfx_prefix) * sizeof(GpuGaussian)
+        // Write at offset (persistent_dyn_count_ + gpu_prefix) * sizeof(GpuGaussian)
         auto* dst = static_cast<uint8_t*>(dynamic_gaussian_ssbo_.mapped())
                     + fixed_prefix * sizeof(GpuGaussian);
         std::memcpy(dst, staging.data(), count * sizeof(GpuGaussian));

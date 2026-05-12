@@ -1052,7 +1052,7 @@ void IslandDemoState::update(AppBase& app, float dt) {
     // PBD chain physics step + visual gather
     if (pbd_chain_active_) {
         step_pbd_chain(dt);
-        gather_pbd_chain(app.renderer());
+        gather_pbd_chain(app);
     }
 
     // Set player position as LOD focus for foveated culling
@@ -1660,7 +1660,7 @@ void IslandDemoState::step_pbd_chain(float dt) {
 
 // ── PBD visual gather ──
 
-void IslandDemoState::gather_pbd_chain(Renderer& renderer) {
+void IslandDemoState::gather_pbd_chain(AppBase& app) {
     std::vector<Gaussian> buf;
     buf.reserve(120);
 
@@ -1729,7 +1729,9 @@ void IslandDemoState::gather_pbd_chain(Renderer& renderer) {
         }
     }
 
-    renderer.append_dynamic_gaussians(buf.data(), static_cast<uint32_t>(buf.size()));
+    if (auto* pbd = app.pbd_system()) {
+        pbd->push_splats(buf.data(), buf.size());
+    }
 }
 
 // ── build_draw_lists (debug HUD) ──

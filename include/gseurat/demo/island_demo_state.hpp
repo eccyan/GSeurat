@@ -22,6 +22,7 @@
 
 namespace gseurat {
 
+class AppBase;
 class Renderer;
 
 class IslandDemoState : public GameState {
@@ -54,7 +55,7 @@ private:
     void update_walk_animation(AppBase& app, float dt);
     void update_environment_animation(AppBase& app, float dt);
     void step_pbd_chain(float dt);
-    void gather_pbd_chain(Renderer& renderer);
+    void gather_pbd_chain(AppBase& app);
     void draw_gizmos(AppBase& app);
 
     // Scene
