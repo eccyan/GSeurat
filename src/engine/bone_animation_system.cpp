@@ -53,16 +53,15 @@ void bone_animation_system(ecs::World& world, float dt, BoneAnimationRegistry& r
         });
 }
 
-uint32_t gather_bone_animation_transforms(
+void gather_bone_animation_transforms(
     const BoneAnimationRegistry& registry,
-    glm::mat4* bones,
-    uint32_t max_bones) {
+    BonesWriter& writer) {
 
-    uint32_t highest_slot = 0;
+    const uint32_t cap = writer.capacity();
 
     for (const auto& [id, entry] : registry.entries()) {
         if (!entry.initialized || !entry.anim_player) continue;
-        if (entry.first_bone_index + entry.bone_count > max_bones) continue;
+        if (entry.first_bone_index + entry.bone_count > cap) continue;
 
         const float scale_val = entry.char_scale;
         const glm::vec3 y_off(0.0f, 2.0f, 0.0f);
@@ -84,15 +83,10 @@ uint32_t gather_bone_animation_transforms(
             glm::rotate(glm::mat4(1.0f), glm::pi<float>(), {0, 1, 0});
 
         const auto& npc_bones = entry.anim_player->bone_transforms();
-        for (uint32_t i = 0; i < entry.bone_count && (entry.first_bone_index + i) < max_bones; ++i) {
-            bones[entry.first_bone_index + i] = to_world * npc_bones[i] * from_world;
+        for (uint32_t i = 0; i < entry.bone_count && (entry.first_bone_index + i) < cap; ++i) {
+            writer.write(entry.first_bone_index + i, to_world * npc_bones[i] * from_world);
         }
-
-        uint32_t end_slot = entry.first_bone_index + entry.bone_count;
-        if (end_slot > highest_slot) highest_slot = end_slot;
     }
-
-    return highest_slot;
 }
 
 void populate_bone_animation_registry(

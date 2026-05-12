@@ -105,6 +105,9 @@ void DemoApp::init_game_content() {
     text_renderer_.init(font_atlas_);
 
     renderer_.init(window_, resources_);
+    // Phase 4b: must construct RenderState + wire it into GsRenderer
+    // BEFORE any state push triggers init_streaming → update_descriptors.
+    init_render_state();
     feature_flags_.apply_platform_defaults(renderer_.context().is_apple_gpu());
     // Propagate the `--prewarm` opt-in BEFORE init_gs runs (which is triggered
     // later by the initial scene load in state_stack_.push). Off by default.

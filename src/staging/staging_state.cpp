@@ -275,9 +275,12 @@ void StagingState::on_exit(AppBase& app) {
         std::fprintf(stderr, "[Staging] CharacterData leaked (macOS allocator workaround)\n");
     }
 
-    if (app.renderer().has_gs_cloud()) {
-        app.renderer().gs_renderer().clear_bone_transforms();
-    }
+    // Phase 4b: clear_bone_transforms retired. on_exit() tears the
+    // character down; no future frame will reference the bones buffer
+    // for this character, so leftover values are inert. If a new
+    // character is loaded later, the post-load init path (around line
+    // 1206) writes identity into the writer for the new character.
+    (void)app;
 }
 
 void StagingState::update(AppBase& app, float dt) {
@@ -549,12 +552,17 @@ void StagingState::update(AppBase& app, float dt) {
         }
     }
 
-    // Update character animation and upload bone transforms
-    if (anim_player_ && anim_playing_) {
+    // Update character animation and write bone transforms through RenderState
+    // (Phase 4b: was renderer().gs_renderer().upload_bone_transforms).
+    if (anim_player_ && anim_playing_ && app.has_render_state()) {
         anim_player_->update(dt * anim_speed_);
-        app.renderer().gs_renderer().upload_bone_transforms(
-            anim_player_->bone_transforms().data(),
-            static_cast<uint32_t>(character_data_->bones.size()));
+        const auto& src = anim_player_->bone_transforms();
+        const uint32_t count = static_cast<uint32_t>(character_data_->bones.size());
+        const auto frame = FrameIndex{app.renderer().current_frame()};
+        auto writer = app.render_state().bones_writer(frame);
+        for (uint32_t i = 0; i < count; ++i) {
+            writer.write(i, src[i]);
+        }
     }
 
     // ── World streaming evaluation ──
@@ -864,7 +872,19 @@ void StagingState::draw_character_panel(AppBase& app) {
         ImGui::SameLine();
         if (ImGui::Button("Stop")) {
             anim_playing_ = false;
-            app.renderer().gs_renderer().clear_bone_transforms();
+            // Phase 4b: write identity into the writer to mimic the prior
+            // clear_bone_transforms behaviour (model returns to rest pose).
+            // Without this the bone buffer holds the last animated pose
+            // and the model would freeze mid-animation visually.
+            if (app.has_render_state() && character_data_) {
+                const auto frame = FrameIndex{app.renderer().current_frame()};
+                auto writer = app.render_state().bones_writer(frame);
+                const uint32_t count = static_cast<uint32_t>(character_data_->bones.size());
+                const glm::mat4 identity{1.0f};
+                for (uint32_t i = 0; i < count; ++i) {
+                    writer.write(i, identity);
+                }
+            }
         }
         ImGui::SameLine();
         ImGui::SetNextItemWidth(80);
@@ -1197,8 +1217,20 @@ void StagingState::load_character(const std::string& manifest_path, AppBase& app
         anim_playing_ = false;
     }
 
-    // Clear bone transforms (identity) until animation starts
-    app.renderer().gs_renderer().clear_bone_transforms();
+    // Clear bone transforms (identity) until animation starts.
+    // Phase 4b: the per-frame writer is only invoked when anim_playing_
+    // is true, so we need to seed the bone buffer here. Otherwise the
+    // first rendered frame after character load would read whatever
+    // values the (recycled per-frame) buffer last held.
+    if (app.has_render_state() && character_data_) {
+        const auto frame = FrameIndex{app.renderer().current_frame()};
+        auto writer = app.render_state().bones_writer(frame);
+        const uint32_t count = static_cast<uint32_t>(character_data_->bones.size());
+        const glm::mat4 identity{1.0f};
+        for (uint32_t i = 0; i < count; ++i) {
+            writer.write(i, identity);
+        }
+    }
 }
 
 }  // namespace gseurat

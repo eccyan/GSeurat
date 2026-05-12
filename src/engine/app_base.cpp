@@ -1,4 +1,5 @@
 #include "gseurat/engine/app_base.hpp"
+#include "gseurat/engine/debug.hpp"
 #include "gseurat/engine/sim_clock.hpp"
 #include "gseurat/engine/debug_dump_eyes.hpp"
 #include "gseurat/engine/debug_dump_ears.hpp"
@@ -121,10 +122,13 @@ void AppBase::main_loop() {
         });
 
     // Phase 3b: RenderState contract. Allocates persistent-mapped storage
-    // buffers per frame-in-flight. No callers consume it yet — Phase 4
-    // PRs will wire producers (BoneAnimationSystem, VfxSystem, ...) and
-    // the renderer through it.
-    render_state_ = std::make_unique<RenderState>(renderer_.context());
+    // buffers per frame-in-flight. Phase 4b wires GsRenderer to source
+    // its bone descriptor binding from RenderState. Construction must
+    // happen BEFORE any state push triggers init_streaming, which is
+    // why subclasses call init_render_state() inside init_game_content
+    // right after renderer_.init. This call is a defensive safety net
+    // for the rare path that reaches main_loop without prior construction.
+    init_render_state();
 
     // Start control server for bridge integration
     control_server_.start();
@@ -254,7 +258,9 @@ void AppBase::main_loop() {
            !g_shutdown_requested.load(std::memory_order_relaxed)) {
 #if GSEURAT_DEBUG_BUILD
         const auto t_iter_start = std::chrono::steady_clock::now();
-        std::fprintf(stderr, "[loop/wd] iter_start tick=%u\n", tick_);
+        if (gs::dbg::enabled(gs::dbg::Diag::Watchdog)) {
+            std::fprintf(stderr, "[loop/wd] iter_start tick=%u\n", tick_);
+        }
 #endif
         glfwPollEvents();
 
@@ -362,7 +368,9 @@ void AppBase::main_loop() {
         world_.rotate_events();
 #if GSEURAT_DEBUG_BUILD
         const auto t_after_update = std::chrono::steady_clock::now();
-        std::fprintf(stderr, "[loop/wd] post_update tick=%u\n", tick_);
+        if (gs::dbg::enabled(gs::dbg::Diag::Watchdog)) {
+            std::fprintf(stderr, "[loop/wd] post_update tick=%u\n", tick_);
+        }
 #endif
 
         // Broadcast camera state to subscribed clients (throttled to 30 Hz)
@@ -417,13 +425,17 @@ void AppBase::main_loop() {
         }
 
 #if GSEURAT_DEBUG_BUILD
-        std::fprintf(stderr, "[loop/wd] before_build_draw_lists tick=%u\n", tick_);
+        if (gs::dbg::enabled(gs::dbg::Diag::Watchdog)) {
+            std::fprintf(stderr, "[loop/wd] before_build_draw_lists tick=%u\n", tick_);
+        }
 #endif
         // Let states build their draw lists
         state_stack_.build_draw_lists(*this);
 #if GSEURAT_DEBUG_BUILD
         const auto t_after_build_draw_lists = std::chrono::steady_clock::now();
-        std::fprintf(stderr, "[loop/wd] after_build_draw_lists tick=%u\n", tick_);
+        if (gs::dbg::enabled(gs::dbg::Diag::Watchdog)) {
+            std::fprintf(stderr, "[loop/wd] after_build_draw_lists tick=%u\n", tick_);
+        }
 #endif
 
         // Loading/Warming overlay (after the active state's draw lists are
@@ -492,19 +504,23 @@ void AppBase::main_loop() {
         // against freshly-uploaded buffers; Playing is the steady state.
         const bool dispatch_gpu_compute = loading_monitor_.should_dispatch_gpu_work();
 #if GSEURAT_DEBUG_BUILD
-        std::fprintf(stderr, "[loop/wd] before_draw_scene tick=%u dispatch=%d\n",
-                     tick_, dispatch_gpu_compute ? 1 : 0);
+        if (gs::dbg::enabled(gs::dbg::Diag::Watchdog)) {
+            std::fprintf(stderr, "[loop/wd] before_draw_scene tick=%u dispatch=%d\n",
+                         tick_, dispatch_gpu_compute ? 1 : 0);
+        }
 #endif
         renderer_.draw_scene(scene_, draw_lists_.entity, draw_lists_.outline, draw_lists_.reflection,
                              draw_lists_.shadow, particle_sprites, draw_lists_.overlay, ui_batches,
                              draw_lists_.debug_colliders, feature_flags_, dispatch_gpu_compute);
 #if GSEURAT_DEBUG_BUILD
         const auto t_after_draw_scene = std::chrono::steady_clock::now();
-        std::fprintf(stderr, "[loop/wd] after_draw_scene tick=%u\n", tick_);
+        if (gs::dbg::enabled(gs::dbg::Diag::Watchdog)) {
+            std::fprintf(stderr, "[loop/wd] after_draw_scene tick=%u\n", tick_);
+        }
 
         const double iter_total_ms = std::chrono::duration<double, std::milli>(
             t_after_draw_scene - t_iter_start).count();
-        if (iter_total_ms > 100.0) {
+        if (iter_total_ms > 100.0 && gs::dbg::enabled(gs::dbg::Diag::Watchdog)) {
             const double pre_update_ms = std::chrono::duration<double, std::milli>(
                 t_after_update - t_iter_start).count();
             const double draw_lists_ms = std::chrono::duration<double, std::milli>(
@@ -594,21 +610,40 @@ void AppBase::transition_scene(const std::string& target_scene,
 }
 void AppBase::update_game(float dt) { system_scheduler_.run_all(world_, dt); }
 
+void AppBase::init_render_state() {
+    if (render_state_) return;
+    render_state_ = std::make_unique<RenderState>(renderer_.context());
+    renderer_.gs_renderer().set_render_state(render_state_.get());
+}
+
 void AppBase::upload_bone_transforms() {
-    if (bone_anim_registry_.entries().empty()) return;
+    if (bone_anim_registry_.entries().empty() || !render_state_) return;
 
-    glm::mat4 bones[32];
-    bones[0] = glm::mat4(1.0f);  // identity — hook can override
+    const auto frame = FrameIndex{renderer_.current_frame()};
+    auto writer = render_state_->bones_writer(frame);
 
-    if (bone_pre_upload_hook_) {
-        bone_pre_upload_hook_(bones, 32);
+    // Phase 4b: with per-frame RenderState buffers we explicitly init the
+    // first 32 slots (the prior single-buffer's kMaxBones capacity) to
+    // identity each frame. Without this, slots that hook/gather don't
+    // touch this frame would retain values from 2 frames ago (the buffer
+    // ping-pong), which the original stack-allocation path didn't suffer
+    // because each frame got a fresh uninitialised array.
+    constexpr uint32_t kFrameBoneSlots = 32;
+    const glm::mat4 identity{1.0f};
+    for (uint32_t i = 0; i < kFrameBoneSlots; ++i) {
+        writer.write(i, identity);
     }
 
-    uint32_t highest = gather_bone_animation_transforms(
-        bone_anim_registry_, bones, 32);
-    uint32_t total = std::max(highest, gs_terrain_.bone_slot_counter);
-    renderer_.gs_renderer().upload_bone_transforms(
-        bones, static_cast<int>(total));
+    if (bone_pre_upload_hook_) {
+        bone_pre_upload_hook_(writer);
+    }
+
+    gather_bone_animation_transforms(bone_anim_registry_, writer);
+    // bone_count_/total bookkeeping retired with the upload path:
+    // GsRenderer's preprocess shader reads bones[bone_idx] indexed by
+    // per-splat metadata; slots beyond what was written remain at
+    // identity (init above) so any splat that references an unused slot
+    // gets a sane fallback rather than stale data.
 }
 void AppBase::update_audio(float /*dt*/) {}
 SaveData AppBase::build_save_data() const { return {}; }

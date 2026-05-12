@@ -25,6 +25,8 @@
 
 namespace gseurat {
 
+class RenderState;
+
 // Post-process parameters forwarded from the composite pipeline to GS compute.
 // Mirrors relevant fields from PostProcessParams for consistent visual treatment.
 struct GsPostProcessParams {
@@ -279,10 +281,11 @@ public:
     void set_burn_t(float t) { burn_t_ = t; }
     float burn_t() const { return burn_t_; }
 
-    // Bone transforms for character skinning (max 32 bones)
-    static constexpr uint32_t kMaxBones = 32;
-    void upload_bone_transforms(const glm::mat4* transforms, uint32_t count);
-    void clear_bone_transforms();
+    // Bone transforms. Phase 4b: storage moved to RenderState (per
+    // frame-in-flight). Producers write through
+    // render_state.bones_writer(FrameIndex); GsRenderer's preprocess
+    // descriptors bind render_state.bones_buffer(FrameIndex{f}).
+    void set_render_state(RenderState* rs) noexcept;
 
     // Actor world rotation for root motion (Phase 2: applied to per-Gaussian covariance).
     // No static_dirty_=true: bone-animated splats now live in dynamic, and the
@@ -478,8 +481,10 @@ private:
 
     Buffer uniform_buffer_;          // Camera + resolution
     std::array<Buffer, kMaxFramesInFlight> visible_count_ssbos_{};  // Atomic counter: visible Gaussians after frustum cull
-    Buffer bone_ssbo_;               // Bone transforms for character skinning
-    uint32_t bone_count_ = 0;
+    // Phase 4b: bone transform storage moved to gseurat::RenderState
+    // (per-frame-in-flight, persistent-mapped). Set via set_render_state
+    // before init_streaming. Non-owning pointer; AppBase owns lifetime.
+    RenderState* render_state_ = nullptr;
     glm::quat actor_rotation_{1.0f, 0.0f, 0.0f, 0.0f};  // Root motion world rotation
 
     // PBD solver resources

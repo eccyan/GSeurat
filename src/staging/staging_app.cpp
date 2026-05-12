@@ -62,6 +62,9 @@ void StagingApp::init_game_content() {
     text_renderer_.init(font_atlas_);
 
     renderer_.init(window_, resources_);
+    // Phase 4b: see Demo equivalent — RenderState must be live before
+    // any state push triggers init_streaming.
+    init_render_state();
     renderer_.init_font(font_atlas_, resources_);
     renderer_.init_particles(resources_);
     renderer_.init_shadows(resources_);
