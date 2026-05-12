@@ -21,6 +21,7 @@
 #include "gseurat/engine/gs_particle.hpp"
 #include "gseurat/engine/gs_animator.hpp"
 #include "gseurat/engine/gs_vfx.hpp"
+#include "gseurat/engine/pbd_events.hpp"
 #include "gseurat/engine/pbd_types.hpp"
 #include "gseurat/engine/bone_animation_registry.hpp"
 #include "gseurat/engine/bone_animation_system.hpp"
@@ -686,7 +687,10 @@ void IslandDemoState::on_enter(AppBase& app) {
                 params[i].wind = glm::vec4(cfg.wind_direction, cfg.wind_strength);
                 params[i].dynamics = glm::vec4(cfg.wind_frequency, cfg.ground_y, cfg.bounce, 0.0f);
             }
-            app.renderer().gs_renderer().upload_pbd_elements(states.data(), params.data(), count);
+            // Phase 4d-1: route through PbdElementsLoadedEvent;
+            // PbdSystem::run picks this up on the next main_loop tick.
+            app.world().events<PbdElementsLoadedEvent>().send(
+                PbdElementsLoadedEvent{std::move(states), std::move(params)});
         }
     }
 

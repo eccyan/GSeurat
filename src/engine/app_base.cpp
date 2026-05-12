@@ -364,6 +364,9 @@ void AppBase::main_loop() {
         if (vfx_system_) {
             vfx_system_->run(world_, dt);
         }
+        if (pbd_system_) {
+            pbd_system_->run(world_, dt);
+        }
         world_.rotate_events();
 #if GSEURAT_DEBUG_BUILD
         const auto t_after_update = std::chrono::steady_clock::now();
@@ -888,7 +891,10 @@ void AppBase::init_game_object_system() {
     // (currently fed by IslandDemoState's PBD chain demo) and packs
     // them into RenderState's pbd_buffer per frame. Same late-bind
     // pattern as VfxSystem; init_render_state wires render_state_.
-    pbd_system_ = std::make_unique<systems::PbdSystem>(render_state_.get());
+    // Phase 4d-1: also consumes PbdElementsLoadedEvent and forwards
+    // the GPU upload to GsRenderer, so it needs a back-pointer to
+    // the Renderer (constructed before this in init_window).
+    pbd_system_ = std::make_unique<systems::PbdSystem>(&renderer_, render_state_.get());
 
     // Register engine-level systems
     system_scheduler_.add_system({"bone_animation",
