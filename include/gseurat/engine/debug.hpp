@@ -40,7 +40,8 @@ enum class Diag : std::uint16_t {
   ChunkInventory,    // GS_DIAG_CHUNKS
   RenderStateSlots,  // GS_DIAG_RENDERSTATE
   EventQueueSizes,   // GS_DIAG_EVENTS
-  Watchdog,          // GS_DIAG_WATCHDOG — per-frame [loop/wd] / [draw_scene/wd] traces
+  // Watchdog was retired — per-frame traces moved to gs::log::Category::Frame
+  // (env GS_LOG_FRAME=1). See include/gseurat/engine/log.hpp.
   COUNT_
 };
 

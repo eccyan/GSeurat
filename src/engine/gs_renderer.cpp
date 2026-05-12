@@ -1,5 +1,6 @@
 #include "gseurat/engine/gs_renderer.hpp"
 #include "gseurat/engine/debug.hpp"
+#include "gseurat/engine/log.hpp"
 #include "gseurat/engine/pipeline.hpp"
 #include "gseurat/engine/render_state.hpp"
 #include "gseurat/engine/scoped_timer.hpp"
@@ -3669,18 +3670,17 @@ void GsRenderer::render(VkCommandBuffer cmd, uint32_t frame_in_flight,
 #if GSEURAT_DEBUG_BUILD
         const auto t_wait_end = std::chrono::steady_clock::now();
         const double wait_ms = std::chrono::duration<double, std::milli>(t_wait_end - t_wait_start).count();
-        if (wait_ms > 100.0 && ::gs::dbg::enabled(::gs::dbg::Diag::Watchdog)) {
+        if (wait_ms > 100.0) {
             float prev_depth_ms = (ts_result == VK_SUCCESS && ts[1] > ts[0])
                 ? static_cast<float>(ts[1] - ts[0]) * timestamp_period_ns_ / 1e6f : -1.0f;
             float prev_tile_ms = (ts_result == VK_SUCCESS && ts[3] > ts[2])
                 ? static_cast<float>(ts[3] - ts[2]) * timestamp_period_ns_ / 1e6f : -1.0f;
             float prev_raster_ms = (ts_result == VK_SUCCESS && ts[5] > ts[4])
                 ? static_cast<float>(ts[5] - ts[4]) * timestamp_period_ns_ / 1e6f : -1.0f;
-            std::fprintf(stderr,
-                "[gs_render/wd/WAIT_SLOW] wait_ms=%.1f prev_depth=%.1fms prev_tile=%.1fms prev_raster=%.1fms "
-                "static=%u dyn=%u total=%u\n",
-                wait_ms, prev_depth_ms, prev_tile_ms, prev_raster_ms,
-                static_count_, dynamic_count_, gaussian_count_);
+            GS_LOG_FRAME("[gs_render/wd/WAIT_SLOW] wait_ms={:.1f} prev_depth={:.1f}ms prev_tile={:.1f}ms prev_raster={:.1f}ms "
+                         "static={} dyn={} total={}",
+                         wait_ms, prev_depth_ms, prev_tile_ms, prev_raster_ms,
+                         static_count_, dynamic_count_, gaussian_count_);
         }
 #endif
         if (ts_result == VK_SUCCESS && ts[5] > ts[4] && ts[3] > ts[2] && ts[1] > ts[0]) {
@@ -3698,10 +3698,8 @@ void GsRenderer::render(VkCommandBuffer cmd, uint32_t frame_in_flight,
                 float d_avg = depth_sort_ms_accum_ / static_cast<float>(kTimestampAvgFrames);
                 float t_avg = tile_sort_ms_accum_ / static_cast<float>(kTimestampAvgFrames);
                 float r_avg = rasterize_ms_accum_ / static_cast<float>(kTimestampAvgFrames);
-                if (::gs::dbg::enabled(::gs::dbg::Diag::Watchdog)) {
-                    std::fprintf(stderr, "[gs_renderer] DepthSort: %.3f ms  TileSort: %.3f ms  Rasterize: %.3f ms  Total: %.3f ms (avg %u frames)\n",
-                                 d_avg, t_avg, r_avg, d_avg + t_avg + r_avg, kTimestampAvgFrames);
-                }
+                GS_LOG_FRAME("[gs_renderer] DepthSort: {:.3f} ms  TileSort: {:.3f} ms  Rasterize: {:.3f} ms  Total: {:.3f} ms (avg {} frames)",
+                             d_avg, t_avg, r_avg, d_avg + t_avg + r_avg, kTimestampAvgFrames);
                 depth_sort_ms_avg_ = d_avg;
                 tile_sort_ms_avg_ = t_avg;
                 rasterize_ms_avg_ = r_avg;
