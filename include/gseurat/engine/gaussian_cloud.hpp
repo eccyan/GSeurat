@@ -4,6 +4,7 @@
 #include <glm/gtc/quaternion.hpp>
 
 #include <cstdint>
+#include <cstring>
 #include <string>
 #include <vector>
 
@@ -64,6 +65,21 @@ struct alignas(16) GpuGaussian {
 };
 static_assert(sizeof(GpuGaussian) == 64, "GpuGaussian must be 64 bytes for GPU std430");
 static_assert(alignof(GpuGaussian) == 16, "GpuGaussian must be 16-byte aligned");
+
+/// CPU → GPU pack. Used by both `update_dynamic_gaussians` (uploading via
+/// staging copy) and by VfxSystem (writing directly to RenderState's
+/// persistent-mapped vfx_buffer). Bone index is bit-cast through float to
+/// fit in the scale_pad.w slot.
+inline void encode_gaussian(const Gaussian& src, GpuGaussian& dst) noexcept {
+    float bone_f;
+    uint32_t bi = src.bone_index;
+    std::memcpy(&bone_f, &bi, sizeof(float));
+    dst.pos_opacity = glm::vec4(src.position, src.opacity);
+    dst.scale_pad   = glm::vec4(src.scale, bone_f);
+    dst.rot         = glm::vec4(src.rotation.x, src.rotation.y,
+                                src.rotation.z, src.rotation.w);
+    dst.color_pad   = glm::vec4(src.color, src.emission);
+}
 
 /// GSVX binary file header (32 bytes, little-endian).
 struct GsvxHeader {

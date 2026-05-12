@@ -1,0 +1,42 @@
+#version 450
+
+// Phase 4c-vfx: GPU compose pass.
+//
+// Copies VFX splats from RenderState's per-frame `vfx_buffer` (written by
+// VfxSystem on CPU each frame) into the transient region of GsRenderer's
+// `dynamic_gaussian_ssbo` at offset `dst_offset` (= persistent_dyn_count).
+// CPU-side appends (particles, scene anims, pending dynamics) follow in
+// the slots after the VFX prefix; the consumer (`update_dynamic_gaussians`)
+// is passed `vfx_prefix=vfx_count` so the CPU upload starts at the right
+// offset.
+//
+// Future writers (PBD in 4c-pbd, particles in 4e) will dispatch through
+// this same shader with different src buffers and dst_offset values.
+
+layout(local_size_x = 64) in;
+
+struct GpuGaussian {
+    vec4 pos_opacity;
+    vec4 scale_pad;
+    vec4 rot;
+    vec4 color_pad;
+};
+
+layout(set = 0, binding = 0) readonly buffer Src {
+    GpuGaussian src_splats[];
+};
+
+layout(set = 0, binding = 1) buffer Dst {
+    GpuGaussian dst_splats[];
+};
+
+layout(push_constant) uniform PushConstants {
+    uint splat_count;   // number of splats to copy from src[0..splat_count)
+    uint dst_offset;    // dst[dst_offset + i] = src[i]
+} pc;
+
+void main() {
+    uint tid = gl_GlobalInvocationID.x;
+    if (tid >= pc.splat_count) return;
+    dst_splats[pc.dst_offset + tid] = src_splats[tid];
+}

@@ -3,6 +3,7 @@
 #include "gseurat/engine/buffer.hpp"
 #include "gseurat/engine/gaussian_cloud.hpp"
 #include "gseurat/engine/pbd_types.hpp"
+#include "gseurat/engine/render_state.hpp"  // FrameIndex
 #include "gseurat/engine/slab_allocator.hpp"
 #include "gseurat/engine/streaming_config.hpp"
 #include "gseurat/engine/transfer_queue.hpp"
@@ -136,11 +137,25 @@ public:
     void update_active_gaussians(const Gaussian* data, uint32_t count);
     void update_gaussian_data(const Gaussian* data, uint32_t count);
 
-    // Per-frame dynamic upload API (VFX/particles/scene-anim "transient suffix").
-    // Writes at offset persistent_dyn_count_; sets dynamic_count_ to
-    // persistent_dyn_count_ + count. Static geometry (terrain) arrives via
-    // load_cloud_async + publish_pending_chunks, not this path.
-    void update_dynamic_gaussians(const Gaussian* data, uint32_t count);
+    // Per-frame dynamic upload API (CPU-sourced transient: particles,
+    // scene anims, pending dynamics). Writes at offset
+    // `persistent_dyn_count_ + vfx_prefix`; sets dynamic_count_ to
+    // `persistent_dyn_count_ + vfx_prefix + count`. Static geometry
+    // (terrain) arrives via load_cloud_async + publish_pending_chunks.
+    //
+    // `vfx_prefix` is the number of slots already filled at offset
+    // `persistent_dyn_count_` by the GPU compose pass (4c-vfx). Callers
+    // that don't run the compose pass pass 0 (default) and behave as
+    // before.
+    void update_dynamic_gaussians(const Gaussian* data, uint32_t count,
+                                  uint32_t vfx_prefix = 0);
+
+    // Phase 4c-vfx: GPU compose pass. Copies `vfx_count` slots from
+    // RenderState's vfx_buffer (bound via set_render_state) into
+    // dynamic_gaussian_ssbo at offset `persistent_dyn_count_`. Must be
+    // called BEFORE update_dynamic_gaussians on the same frame.
+    void dispatch_compose_vfx(VkCommandBuffer cmd, FrameIndex frame_idx,
+                              uint32_t vfx_count);
 
     // Once-per-scene (or per-chunk-event) upload API for the "persistent prefix"
     // of the dynamic buffer: characters, NPCs, PBD-tagged trees. Replaces all
@@ -653,6 +668,20 @@ private:
     VkPipelineLayout pbd_pipeline_layout_ = VK_NULL_HANDLE;
     VkPipeline pbd_pipeline_ = VK_NULL_HANDLE;
     VkDescriptorSet pbd_set_ = VK_NULL_HANDLE;
+
+    // Phase 4c-vfx: GPU compose pass. Dedicated descriptor pool so the
+    // central kSetCount=58 allocation in dispatch_descriptor_sets doesn't
+    // get reshuffled. Two sets total (one per frame in flight).
+    VkDescriptorSetLayout compose_layout_ = VK_NULL_HANDLE;
+    VkPipelineLayout compose_pipeline_layout_ = VK_NULL_HANDLE;
+    VkPipeline compose_pipeline_ = VK_NULL_HANDLE;
+    VkDescriptorPool compose_pool_ = VK_NULL_HANDLE;
+    std::array<VkDescriptorSet, kMaxFramesInFlight> compose_sets_{};
+    // Cached dst-info so the compose set update can be (re)issued from
+    // set_render_state without holding a Buffer reference.
+    bool compose_descriptors_initialised_ = false;
+    void create_compose_pipeline();
+    void update_compose_descriptors();  // called from set_render_state
 
     // Post-process pipeline
     VkDescriptorSetLayout post_process_layout_ = VK_NULL_HANDLE;

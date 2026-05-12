@@ -711,6 +711,138 @@ void GsRenderer::create_compute_pipelines() {
     // Tile render pipeline (separate from render — uses tile_entries + tile_ranges)
     create_pipeline("shaders/gs_tile_render.comp.spv", tile_render_layout_, 0,
                     tile_render_pipeline_layout_, tile_render_pipeline_);
+
+    // Phase 4c-vfx: compose pass (own descriptor pool to avoid disturbing
+    // the central gs_pool_ slot indexing).
+    create_compose_pipeline();
+}
+
+void GsRenderer::create_compose_pipeline() {
+    // Set layout: src (binding 0, readonly SSBO) + dst (binding 1, RW SSBO).
+    VkDescriptorSetLayoutBinding bindings[2] = {
+        {0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
+        {1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
+    };
+    VkDescriptorSetLayoutCreateInfo set_ci{};
+    set_ci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    set_ci.bindingCount = 2;
+    set_ci.pBindings = bindings;
+    if (vkCreateDescriptorSetLayout(device_, &set_ci, nullptr, &compose_layout_) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to create compose descriptor set layout");
+    }
+
+    // Pipeline layout: 8-byte push range { splat_count, dst_offset }.
+    VkPushConstantRange push{};
+    push.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+    push.offset = 0;
+    push.size = 8;
+    VkPipelineLayoutCreateInfo pl_ci{};
+    pl_ci.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    pl_ci.setLayoutCount = 1;
+    pl_ci.pSetLayouts = &compose_layout_;
+    pl_ci.pushConstantRangeCount = 1;
+    pl_ci.pPushConstantRanges = &push;
+    if (vkCreatePipelineLayout(device_, &pl_ci, nullptr, &compose_pipeline_layout_) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to create compose pipeline layout");
+    }
+
+    // Compute pipeline.
+    auto module = load_shader_module(device_, "shaders/gs_compose.comp.spv");
+    VkPipelineShaderStageCreateInfo stage{};
+    stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+    stage.module = module;
+    stage.pName = "main";
+
+    VkComputePipelineCreateInfo pipe_info{};
+    pipe_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+    pipe_info.stage = stage;
+    pipe_info.layout = compose_pipeline_layout_;
+    if (vkCreateComputePipelines(device_, pipeline_cache_, 1, &pipe_info, nullptr,
+                                  &compose_pipeline_) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to create compose pipeline");
+    }
+    vkDestroyShaderModule(device_, module, nullptr);
+
+    // Dedicated descriptor pool — kMaxFramesInFlight sets × 2 SSBO bindings each.
+    VkDescriptorPoolSize pool_sizes[1] = {
+        {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, kMaxFramesInFlight * 2},
+    };
+    VkDescriptorPoolCreateInfo pool_ci{};
+    pool_ci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    pool_ci.maxSets = kMaxFramesInFlight;
+    pool_ci.poolSizeCount = 1;
+    pool_ci.pPoolSizes = pool_sizes;
+    if (vkCreateDescriptorPool(device_, &pool_ci, nullptr, &compose_pool_) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to create compose descriptor pool");
+    }
+
+    std::array<VkDescriptorSetLayout, kMaxFramesInFlight> layouts;
+    for (auto& l : layouts) l = compose_layout_;
+    VkDescriptorSetAllocateInfo alloc_info{};
+    alloc_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    alloc_info.descriptorPool = compose_pool_;
+    alloc_info.descriptorSetCount = kMaxFramesInFlight;
+    alloc_info.pSetLayouts = layouts.data();
+    if (vkAllocateDescriptorSets(device_, &alloc_info, compose_sets_.data()) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to allocate compose descriptor sets");
+    }
+}
+
+void GsRenderer::update_compose_descriptors() {
+    if (!render_state_) return;
+    for (uint32_t f = 0; f < kMaxFramesInFlight; ++f) {
+        VkDescriptorBufferInfo src_info{render_state_->vfx_buffer(FrameIndex{f}), 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo dst_info{dynamic_gaussian_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
+
+        VkWriteDescriptorSet writes[2]{};
+        writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        writes[0].dstSet = compose_sets_[f];
+        writes[0].dstBinding = 0;
+        writes[0].descriptorCount = 1;
+        writes[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        writes[0].pBufferInfo = &src_info;
+
+        writes[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        writes[1].dstSet = compose_sets_[f];
+        writes[1].dstBinding = 1;
+        writes[1].descriptorCount = 1;
+        writes[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        writes[1].pBufferInfo = &dst_info;
+
+        vkUpdateDescriptorSets(device_, 2, writes, 0, nullptr);
+    }
+    compose_descriptors_initialised_ = true;
+}
+
+void GsRenderer::dispatch_compose_vfx(VkCommandBuffer cmd, FrameIndex frame_idx,
+                                       uint32_t vfx_count) {
+    if (vfx_count == 0 || !compose_descriptors_initialised_) return;
+
+    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, compose_pipeline_);
+    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
+                            compose_pipeline_layout_, 0, 1,
+                            &compose_sets_[to_u32(frame_idx)], 0, nullptr);
+    struct PushConstants {
+        uint32_t splat_count;
+        uint32_t dst_offset;
+    } pc{vfx_count, persistent_dyn_count_};
+    vkCmdPushConstants(cmd, compose_pipeline_layout_, VK_SHADER_STAGE_COMPUTE_BIT,
+                       0, sizeof(pc), &pc);
+    constexpr uint32_t kLocalSize = 64;
+    const uint32_t groups = (vfx_count + kLocalSize - 1) / kLocalSize;
+    vkCmdDispatch(cmd, groups, 1, 1);
+
+    // Compute→compute SSBO write→read barrier so the downstream preprocess
+    // pipeline (which reads dynamic_gaussian_ssbo) sees our writes.
+    VkMemoryBarrier mb{};
+    mb.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+    mb.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+    mb.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+    vkCmdPipelineBarrier(cmd,
+                         VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                         VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                         0, 1, &mb, 0, nullptr, 0, nullptr);
 }
 
 // Pre-warm every compute pipeline created above by submitting a separate
@@ -1525,6 +1657,16 @@ void GsRenderer::init_streaming(const StreamingConfig& config) {
     initialized_ = true;
 
     update_descriptors();
+    // Phase 4c-vfx-1: init_streaming() is the first point where
+    // dynamic_gaussian_ssbo_ is created. In the normal app path,
+    // set_render_state() runs BEFORE init_streaming() (AppBase wiring
+    // order), so its update_compose_descriptors() call is gated out by
+    // the missing dst buffer. Retry here so the per-frame compose sets
+    // get bound before dispatch_compose_vfx() can fire. (Codex P2 on
+    // PR #435.)
+    if (render_state_ && compose_pipeline_ != VK_NULL_HANDLE) {
+        update_compose_descriptors();
+    }
 
     std::fprintf(stderr, "GS: Streaming initialized — budget=%u splats, %u slabs of %u\n",
                  config.gpu_budget_splats, config.total_slabs(), config.slab_size_splats);
@@ -2349,17 +2491,9 @@ static void init_dynamic_sort_buf(Buffer& buf, uint32_t sort_size, uint32_t vali
     std::memcpy(buf.mapped(), staging_sort.data(), sort_size * sizeof(SortEntry));
 }
 
-// Helper: encode a single Gaussian into GpuGaussian layout.
-static void encode_gaussian(const Gaussian& src, GpuGaussian& dst) {
-    float bone_f;
-    uint32_t bi = src.bone_index;
-    std::memcpy(&bone_f, &bi, sizeof(float));
-    dst.pos_opacity = glm::vec4(src.position, src.opacity);
-    dst.scale_pad   = glm::vec4(src.scale, bone_f);
-    dst.rot         = glm::vec4(src.rotation.x, src.rotation.y,
-                                src.rotation.z, src.rotation.w);
-    dst.color_pad   = glm::vec4(src.color, src.emission);
-}
+// encode_gaussian moved to include/gseurat/engine/gaussian_cloud.hpp so
+// VfxSystem can call it directly when packing splats into RenderState's
+// persistent-mapped vfx_buffer.
 
 void GsRenderer::set_persistent_dynamics(const Gaussian* data, uint32_t count) {
     if (count > max_dynamic_count_) {
@@ -2394,25 +2528,30 @@ void GsRenderer::set_persistent_dynamics(const Gaussian* data, uint32_t count) {
         count);
 }
 
-void GsRenderer::update_dynamic_gaussians(const Gaussian* data, uint32_t count) {
-    // count is the TRANSIENT portion (VFX, particles, scene anims). Persistent
-    // prefix lives in indices [0, persistent_dyn_count_) and is preserved.
-    const uint32_t total = persistent_dyn_count_ + count;
+void GsRenderer::update_dynamic_gaussians(const Gaussian* data, uint32_t count,
+                                            uint32_t vfx_prefix) {
+    // `count` is the CPU-sourced transient portion (particles, scene anims,
+    // pending dynamics). `vfx_prefix` is the slot count already filled by
+    // the GPU compose pass at offset persistent_dyn_count_ (4c-vfx).
+    // Persistent prefix lives in indices [0, persistent_dyn_count_).
+    const uint32_t fixed_prefix = persistent_dyn_count_ + vfx_prefix;
+    const uint32_t total = fixed_prefix + count;
     if (total > max_dynamic_count_) {
-        // Cap the transient portion so total fits.
-        count = (max_dynamic_count_ > persistent_dyn_count_)
-            ? max_dynamic_count_ - persistent_dyn_count_ : 0;
+        // Cap the CPU portion so total fits; vfx_prefix is GPU-controlled
+        // and can't be truncated here.
+        count = (max_dynamic_count_ > fixed_prefix)
+            ? max_dynamic_count_ - fixed_prefix : 0;
     }
-    dynamic_count_ = persistent_dyn_count_ + count;
+    dynamic_count_ = fixed_prefix + count;
 
     if (count > 0) {
         std::vector<GpuGaussian> staging(count);
         for (uint32_t i = 0; i < count; ++i) {
             encode_gaussian(data[i], staging[i]);
         }
-        // Write at offset persistent_dyn_count_ * sizeof(GpuGaussian)
+        // Write at offset (persistent_dyn_count_ + vfx_prefix) * sizeof(GpuGaussian)
         auto* dst = static_cast<uint8_t*>(dynamic_gaussian_ssbo_.mapped())
-                    + persistent_dyn_count_ * sizeof(GpuGaussian);
+                    + fixed_prefix * sizeof(GpuGaussian);
         std::memcpy(dst, staging.data(), count * sizeof(GpuGaussian));
     }
 
@@ -2491,6 +2630,13 @@ void GsRenderer::set_render_state(RenderState* rs) noexcept {
     // update_descriptors itself when it runs.
     if (streaming_initialized_) {
         update_descriptors();
+    }
+    // Phase 4c-vfx: bind compose_sets_'s src (vfx_buffer) + dst
+    // (dynamic_gaussian_ssbo). Safe to call regardless of streaming
+    // state — only depends on render_state_ being non-null and
+    // dynamic_gaussian_ssbo_ being created (true after init_streaming).
+    if (rs && compose_pipeline_ != VK_NULL_HANDLE && dynamic_gaussian_ssbo_.buffer()) {
+        update_compose_descriptors();
     }
 }
 
@@ -4260,7 +4406,9 @@ void GsRenderer::shutdown(VmaAllocator allocator) {
     destroy_pipeline(tile_render_pipeline_);
     destroy_pipeline(onesweep_hist_pipeline_);
     destroy_pipeline(onesweep_scatter_pipeline_);
+    destroy_pipeline(compose_pipeline_);
 
+    destroy_layout(compose_pipeline_layout_);
     destroy_layout(preprocess_pipeline_layout_);
     destroy_layout(sort_pipeline_layout_);
     destroy_layout(post_process_pipeline_layout_);
@@ -4287,9 +4435,11 @@ void GsRenderer::shutdown(VmaAllocator allocator) {
     destroy_set_layout(tile_render_layout_);
     destroy_set_layout(onesweep_hist_layout_);
     destroy_set_layout(onesweep_scatter_layout_);
+    destroy_set_layout(compose_layout_);
 
     if (timestamp_pool_) { vkDestroyQueryPool(device_, timestamp_pool_, nullptr); timestamp_pool_ = VK_NULL_HANDLE; }
     if (gs_pool_) vkDestroyDescriptorPool(device_, gs_pool_, nullptr);
+    if (compose_pool_) { vkDestroyDescriptorPool(device_, compose_pool_, nullptr); compose_pool_ = VK_NULL_HANDLE; }
 
     initialized_ = false;
 }
