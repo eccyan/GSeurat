@@ -1,20 +1,30 @@
-"""Canonical 60-second island_demo walkthrough for regression diffing.
+"""Canonical island_demo walkthrough for regression diffing.
 
 Run via: python3 scripts/regression/run_harness.py
 Standalone: python3 scripts/regression/island_demo_canonical.py --output-dir <dir>
 
 The engine MUST be running with --deterministic.  Frame-aligned input dispatch
-ensures the same scenario produces bit-identical pixels across runs.
+ensures the same scenario produces deterministic pixels across runs.
 
-POI names intentionally omitted from the input timeline: there is no "goto"
-command in the engine's command dispatcher (goto is a high-level Game Director
-concept, not a raw engine command).  Instead, player position is set via
-inject_key sequences or teleport via set_player_pos if available.  The timeline
-below uses only inject_key commands, which are always available.
+# Capture methodology — settle-before-capture (Path A)
 
-# TODO: if the engine gains a teleport command in the future, replace the long
-# walk sequences with precise teleports keyed to POI coords from
-# scripts/game_director.py POIS dict.
+Apple Silicon's TBDR + MoltenVK introduces sub-frame schedule variance under
+motion: tile-bin reductions, async-compute dispatches, and PBD wind RNG each
+contribute small non-deterministic ordering that produces SSIM ~0.73–0.94
+between two runs of the same deterministic scenario when frames are captured
+mid-motion. (Phase 4b validation surfaced this — see
+`project_harness_apple_silicon_methodology.md` in agent memory.)
+
+To make `--self-check` reliable on the platform, every screenshot is preceded
+by a 120-frame (2 s @ 60 Hz) idle settle: input cleared, PBD oscillations
+damped, particles aged out. The player is stationary at capture time, the
+only residual motion is NPC idle animation (which produces ~0.02 SSIM noise
+that the harness threshold absorbs).
+
+Trade-off: we no longer catch regressions that *only* manifest during motion
+(e.g., a broken walk-anim blend). The settled snapshots still catch the
+common regression classes — broken bone buffers, missing geometry, wrong
+shader output, dispatch-ordering bugs that bleed into final pixels.
 """
 import argparse
 import json
@@ -30,25 +40,33 @@ GLFW_KEY_A = 65
 GLFW_KEY_S = 83
 GLFW_KEY_D = 68
 
-# Frames at which to capture screenshots (60 Hz simulation, 60 s total = 3300 f + frame 0).
-CAPTURE_FRAMES = [0, 300, 600, 900, 1200, 1500, 1800, 2100, 2400, 2700, 3000, 3300]
+# Frames of idle stepping between input-clear and screenshot. Long enough for
+# PBD tree oscillations to damp (~6% residual amplitude assuming ~0.95-per-step
+# damping over 120 iterations) and ambient particles to age out of the frame.
+SETTLE_FRAMES = 120
 
-# Frame-aligned input timeline: (frame_number, JSON command dict).
-# All inputs use inject_key/clear_keys which are registered engine commands.
-INPUT_TIMELINE = [
-    (1,    {"cmd": "inject_key", "key": GLFW_KEY_W, "down": True}),   # start walking forward
-    (300,  {"cmd": "clear_keys"}),                                      # stop at 5 s
-    (301,  {"cmd": "inject_key", "key": GLFW_KEY_W, "down": True}),   # resume walk
-    (360,  {"cmd": "clear_keys"}),                                      # stop before portal area
-    (361,  {"cmd": "inject_key", "key": GLFW_KEY_W, "down": True}),   # walk through portal
-    (420,  {"cmd": "clear_keys"}),                                      # stop
-    (1200, {"cmd": "inject_key", "key": GLFW_KEY_W, "down": True}),   # 20 s: walk toward forest
-    (1800, {"cmd": "clear_keys"}),                                      # 30 s: stop in forest
-    (1801, {"cmd": "inject_key", "key": GLFW_KEY_S, "down": True}),   # 30 s + 1f: walk back
-    (2400, {"cmd": "clear_keys"}),                                      # 40 s: stop
-    (2401, {"cmd": "inject_key", "key": GLFW_KEY_S, "down": True}),   # 40 s: continue back
-    (2700, {"cmd": "clear_keys"}),                                      # 45 s: stop
-    # 3300 = end (linger 5 s for any post-portal effect detection window)
+# Walkthrough stages. Each stage executes:
+#   1. (optional) inject_key <movement_key, down=True>
+#   2. step <walk_frames>   (engine sim runs while the key is "held")
+#   3. clear_keys
+#   4. step SETTLE_FRAMES   (settle — skipped for stage 0)
+#   5. screenshot
+#
+# Format: (movement_key | None, walk_frames). walk_frames=0 means "no movement,
+# just settle and capture — exercises NPC animation phase advance at this POI".
+STAGES = [
+    (None,        0),    # 0: spawn — pre-walk capture
+    (GLFW_KEY_W, 300),   # 1: walked W 5 s — open meadow
+    (GLFW_KEY_W, 120),   # 2: 2 s more W — approaching portal
+    (GLFW_KEY_W, 120),   # 3: through portal
+    (None,        0),    # 4: same position, NPC time advance
+    (GLFW_KEY_W, 240),   # 5: 4 s W into forest
+    (GLFW_KEY_W, 240),   # 6: deeper forest
+    (GLFW_KEY_S, 240),   # 7: walked back S
+    (GLFW_KEY_S, 240),   # 8: more S
+    (GLFW_KEY_S, 240),   # 9: near return
+    (None,        0),    # 10: NPC time advance
+    (None,        0),    # 11: final NPC time advance
 ]
 
 
@@ -82,40 +100,31 @@ def main():
             "(harness orchestrator should have spawned it)\n")
         sys.exit(1)
 
-    # Step engine in deterministic mode using BATCHED step calls.
-    # Per-frame round-trips are paced at ~2 Hz on macOS due to GLFW runloop
-    # integration (~480 ms each), making `step 1` × 3300 take ~50 minutes.
-    # Instead, we step in chunks bounded by event/capture frames, reducing
-    # round-trips from 3300 to ~24. Sync `step` semantics (response after
-    # frames complete) ensure screenshot ordering is correct.
-    capture_set = set(CAPTURE_FRAMES)
-
-    # Build a sorted timeline of (frame, action_callable). Each action is
-    # either an inject_key/clear_keys send, or a screenshot send.
-    events = []
-    for f, cmd in INPUT_TIMELINE:
-        events.append((f, "input", cmd))
-    for f in CAPTURE_FRAMES:
-        events.append((f, "capture", None))
-    events.sort(key=lambda e: (e[0], 0 if e[1] == "input" else 1))
-
     current_frame = 0
-    for frame_no, kind, cmd in events:
-        if frame_no > current_frame:
-            send_cmd(sock, {"cmd": "step", "n": frame_no - current_frame})
-            current_frame = frame_no
-        if kind == "input":
-            send_cmd(sock, cmd)
-        else:
-            out_path = os.path.join(args.output_dir, f"frame_{frame_no:05d}.png")
-            send_cmd(sock, {"cmd": "screenshot", "path": out_path})
+    captures_taken = 0
+    for stage_idx, (key, walk_frames) in enumerate(STAGES):
+        # 1+2: drive the movement (if any) then 3: clear input
+        if walk_frames > 0:
+            if key is not None:
+                send_cmd(sock, {"cmd": "inject_key", "key": key, "down": True})
+            send_cmd(sock, {"cmd": "step", "n": walk_frames})
+            current_frame += walk_frames
+            if key is not None:
+                send_cmd(sock, {"cmd": "clear_keys"})
 
-    # Step to the final frame if no event landed there.
-    if current_frame < 3300:
-        send_cmd(sock, {"cmd": "step", "n": 3300 - current_frame})
+        # 4: settle (skipped for stage 0 — fresh spawn already deterministic)
+        if stage_idx > 0:
+            send_cmd(sock, {"cmd": "step", "n": SETTLE_FRAMES})
+            current_frame += SETTLE_FRAMES
+
+        # 5: capture at the settled frame
+        out_path = os.path.join(args.output_dir, f"frame_{current_frame:05d}.png")
+        send_cmd(sock, {"cmd": "screenshot", "path": out_path})
+        captures_taken += 1
 
     sock.close()
-    print(f"Captured {len(CAPTURE_FRAMES)} frames to {args.output_dir}")
+    print(f"Captured {captures_taken} frames to {args.output_dir} "
+          f"(scenario length: {current_frame} frames)")
 
 
 if __name__ == "__main__":

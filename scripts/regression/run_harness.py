@@ -164,14 +164,22 @@ def main():
     args = p.parse_args()
 
     if args.self_check:
-        # KNOWN GAP (as of PR 0b): the engine has ~10% peak SSIM drift across
-        # repeated runs of the same deterministic scenario, traced to ECS
-        # iteration order in particle/VFX spawn paths and likely warp-
-        # scheduling non-determinism in tile-bin reductions. Tightening to
-        # bit-identical (SSIM=1.0) is tracked in refactor/0c-tight-determinism.
-        # For now we verify "engine isn't catastrophically broken across runs"
-        # at SSIM >= 0.90, which catches geometry / large-scale regressions.
-        SELF_CHECK_THRESHOLD = 0.90
+        # Apple Silicon TBDR + MoltenVK + async-compute scheduling produces
+        # ~0.02 SSIM noise floor between two runs of the same deterministic
+        # scenario, dominated by NPC idle-animation phase drift and tile-bin
+        # reduction ordering jitter. The settle-before-capture methodology in
+        # island_demo_canonical.py keeps each captured frame at a stationary
+        # player position with PBD oscillations damped — that holds the noise
+        # floor at ~0.02 even on Apple Silicon. 0.96 leaves a 0.02 headroom
+        # above the noise floor while still flagging real regressions (broken
+        # bone buffers / missing geometry / wrong shader output, which would
+        # drop SSIM far below 0.96).
+        #
+        # If post-settle SSIM trends below 0.96 in a future PR, the cause is
+        # almost certainly a real CPU-state regression — investigate the diff,
+        # don't loosen the threshold. See
+        # `project_harness_apple_silicon_methodology.md` for the data.
+        SELF_CHECK_THRESHOLD = 0.96
         with _RunDir("gseurat_regression_t1_") as t1, \
              _RunDir("gseurat_regression_t2_") as t2:
             run_scenario(t1.path)
