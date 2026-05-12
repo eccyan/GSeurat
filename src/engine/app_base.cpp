@@ -1,4 +1,5 @@
 #include "gseurat/engine/app_base.hpp"
+#include "gseurat/engine/debug.hpp"
 #include "gseurat/engine/sim_clock.hpp"
 #include "gseurat/engine/debug_dump_eyes.hpp"
 #include "gseurat/engine/debug_dump_ears.hpp"
@@ -257,7 +258,9 @@ void AppBase::main_loop() {
            !g_shutdown_requested.load(std::memory_order_relaxed)) {
 #if GSEURAT_DEBUG_BUILD
         const auto t_iter_start = std::chrono::steady_clock::now();
-        std::fprintf(stderr, "[loop/wd] iter_start tick=%u\n", tick_);
+        if (gs::dbg::enabled(gs::dbg::Diag::Watchdog)) {
+            std::fprintf(stderr, "[loop/wd] iter_start tick=%u\n", tick_);
+        }
 #endif
         glfwPollEvents();
 
@@ -365,7 +368,9 @@ void AppBase::main_loop() {
         world_.rotate_events();
 #if GSEURAT_DEBUG_BUILD
         const auto t_after_update = std::chrono::steady_clock::now();
-        std::fprintf(stderr, "[loop/wd] post_update tick=%u\n", tick_);
+        if (gs::dbg::enabled(gs::dbg::Diag::Watchdog)) {
+            std::fprintf(stderr, "[loop/wd] post_update tick=%u\n", tick_);
+        }
 #endif
 
         // Broadcast camera state to subscribed clients (throttled to 30 Hz)
@@ -420,13 +425,17 @@ void AppBase::main_loop() {
         }
 
 #if GSEURAT_DEBUG_BUILD
-        std::fprintf(stderr, "[loop/wd] before_build_draw_lists tick=%u\n", tick_);
+        if (gs::dbg::enabled(gs::dbg::Diag::Watchdog)) {
+            std::fprintf(stderr, "[loop/wd] before_build_draw_lists tick=%u\n", tick_);
+        }
 #endif
         // Let states build their draw lists
         state_stack_.build_draw_lists(*this);
 #if GSEURAT_DEBUG_BUILD
         const auto t_after_build_draw_lists = std::chrono::steady_clock::now();
-        std::fprintf(stderr, "[loop/wd] after_build_draw_lists tick=%u\n", tick_);
+        if (gs::dbg::enabled(gs::dbg::Diag::Watchdog)) {
+            std::fprintf(stderr, "[loop/wd] after_build_draw_lists tick=%u\n", tick_);
+        }
 #endif
 
         // Loading/Warming overlay (after the active state's draw lists are
@@ -495,19 +504,23 @@ void AppBase::main_loop() {
         // against freshly-uploaded buffers; Playing is the steady state.
         const bool dispatch_gpu_compute = loading_monitor_.should_dispatch_gpu_work();
 #if GSEURAT_DEBUG_BUILD
-        std::fprintf(stderr, "[loop/wd] before_draw_scene tick=%u dispatch=%d\n",
-                     tick_, dispatch_gpu_compute ? 1 : 0);
+        if (gs::dbg::enabled(gs::dbg::Diag::Watchdog)) {
+            std::fprintf(stderr, "[loop/wd] before_draw_scene tick=%u dispatch=%d\n",
+                         tick_, dispatch_gpu_compute ? 1 : 0);
+        }
 #endif
         renderer_.draw_scene(scene_, draw_lists_.entity, draw_lists_.outline, draw_lists_.reflection,
                              draw_lists_.shadow, particle_sprites, draw_lists_.overlay, ui_batches,
                              draw_lists_.debug_colliders, feature_flags_, dispatch_gpu_compute);
 #if GSEURAT_DEBUG_BUILD
         const auto t_after_draw_scene = std::chrono::steady_clock::now();
-        std::fprintf(stderr, "[loop/wd] after_draw_scene tick=%u\n", tick_);
+        if (gs::dbg::enabled(gs::dbg::Diag::Watchdog)) {
+            std::fprintf(stderr, "[loop/wd] after_draw_scene tick=%u\n", tick_);
+        }
 
         const double iter_total_ms = std::chrono::duration<double, std::milli>(
             t_after_draw_scene - t_iter_start).count();
-        if (iter_total_ms > 100.0) {
+        if (iter_total_ms > 100.0 && gs::dbg::enabled(gs::dbg::Diag::Watchdog)) {
             const double pre_update_ms = std::chrono::duration<double, std::milli>(
                 t_after_update - t_iter_start).count();
             const double draw_lists_ms = std::chrono::duration<double, std::milli>(

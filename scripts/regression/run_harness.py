@@ -17,6 +17,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 
 # Use the same python interpreter that's running the harness for child
@@ -48,6 +49,24 @@ def run_scenario(out_dir):
     proc = subprocess.Popen([DEMO_BIN, "--deterministic", "--prewarm"],
                             stderr=subprocess.PIPE,
                             cwd=DEMO_DIR)
+    # Drain stderr in a background thread so the OS pipe buffer (~64KB on
+    # macOS) cannot fill and deadlock the engine on `write()`. Without
+    # this, the release-with-diag engine's per-frame stderr fills the
+    # buffer in ~200 frames and main_loop() blocks on its next fprintf,
+    # which in turn freezes the scenario subprocess waiting on socket
+    # recv for `step`/`screenshot` responses. The thread is daemon so it
+    # won't block process exit if the engine never closes its end.
+    stderr_chunks = []
+    def _drain_stderr():
+        try:
+            for chunk in iter(lambda: proc.stderr.read(4096), b""):
+                if not chunk:
+                    break
+                stderr_chunks.append(chunk)
+        except (OSError, ValueError):
+            pass
+    drain_thread = threading.Thread(target=_drain_stderr, daemon=True)
+    drain_thread.start()
     stderr_bytes = b""
     try:
         # Wait for socket to appear (engine startup). Cold PLY load of the
@@ -67,16 +86,17 @@ def run_scenario(out_dir):
                         "--socket", SOCKET],
                        check=True)
     finally:
-        # Use communicate() to drain stderr concurrently with wait(), avoiding
-        # a deadlock if the engine writes more than the OS pipe buffer (~64KB)
-        # during shutdown — a real risk on validation-layer-spam failures.
-        # communicate() returns (stdout, stderr) — stdout is None here (not piped).
+        # The background drain thread (started above) already pulled stderr
+        # as the engine wrote it. After terminate(), join the thread so we
+        # capture the final bytes before stderr is closed.
         proc.terminate()
         try:
-            _, stderr_bytes = proc.communicate(timeout=5)
+            proc.wait(timeout=5)
         except subprocess.TimeoutExpired:
             proc.kill()
-            _, stderr_bytes = proc.communicate()
+            proc.wait()
+        drain_thread.join(timeout=2)
+        stderr_bytes = b"".join(stderr_chunks)
 
         # Persist the engine's stderr next to the captured frames so it's
         # always available for diagnosis — including when the scenario

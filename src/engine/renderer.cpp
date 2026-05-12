@@ -1,4 +1,5 @@
 #include "gseurat/engine/renderer.hpp"
+#include "gseurat/engine/debug.hpp"
 #include "gseurat/engine/pipeline.hpp"
 #include "gseurat/engine/procedural_textures.hpp"
 #include "gseurat/engine/project_root.hpp"
@@ -404,7 +405,9 @@ void Renderer::draw_scene(Scene& scene,
                            const FeatureFlags& flags,
                            bool dispatch_gpu_compute) {
 #if GSEURAT_DEBUG_BUILD
-    std::fprintf(stderr, "[draw_scene/wd] entry current_frame=%u\n", current_frame_);
+    if (gs::dbg::enabled(gs::dbg::Diag::Watchdog)) {
+        std::fprintf(stderr, "[draw_scene/wd] entry current_frame=%u\n", current_frame_);
+    }
     const auto t_ds_entry = std::chrono::steady_clock::now();
 #endif
     auto device = context_.device();
@@ -456,7 +459,7 @@ void Renderer::draw_scene(Scene& scene,
             "main-thread blocked on prior frame's GPU work; retrying with infinite timeout\n",
             fence_ms, current_frame_);
         vkWaitForFences(device, 1, &frame_sync.in_flight, VK_TRUE, UINT64_MAX);
-    } else if (fence_ms > 50.0) {
+    } else if (fence_ms > 50.0 && gs::dbg::enabled(gs::dbg::Diag::Watchdog)) {
         std::fprintf(stderr,
             "[renderer/watchdog] vkWaitForFences slow: %.2f ms (current_frame=%u)\n",
             fence_ms, current_frame_);
@@ -477,7 +480,7 @@ void Renderer::draw_scene(Scene& scene,
             acquire_ms);
         vkAcquireNextImageKHR(device, swapchain_.swapchain(), UINT64_MAX, acquire_sem,
                               VK_NULL_HANDLE, &image_index);
-    } else if (acquire_ms > 50.0) {
+    } else if (acquire_ms > 50.0 && gs::dbg::enabled(gs::dbg::Diag::Watchdog)) {
         std::fprintf(stderr,
             "[renderer/watchdog] vkAcquireNextImageKHR slow: %.2f ms\n", acquire_ms);
     }
@@ -950,7 +953,7 @@ void Renderer::draw_scene(Scene& scene,
 
     const double draw_total_ms = std::chrono::duration<double, std::milli>(
         t_ds_post_present - t_ds_entry).count();
-    if (draw_total_ms > 100.0) {
+    if (draw_total_ms > 100.0 && gs::dbg::enabled(gs::dbg::Diag::Watchdog)) {
         const double setup_ms = std::chrono::duration<double, std::milli>(
             t_ds_pre_poll - t_ds_entry).count();
         const double poll_ms = std::chrono::duration<double, std::milli>(
@@ -1436,7 +1439,7 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
 
         const double total_ms = std::chrono::duration<double, std::milli>(
             t_prepass_end - t_prepass_start).count();
-        if (total_ms > 100.0) {
+        if (total_ms > 100.0 && gs::dbg::enabled(gs::dbg::Diag::Watchdog)) {
             const double cpu_gather_ms = std::chrono::duration<double, std::milli>(
                 t_prepass_pre_render - t_prepass_start).count();
             const double gs_render_ms = std::chrono::duration<double, std::milli>(

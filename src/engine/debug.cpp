@@ -23,6 +23,7 @@ constexpr const char* env_var_for(Diag d) noexcept {
     case Diag::ChunkInventory:   return "GS_DIAG_CHUNKS";
     case Diag::RenderStateSlots: return "GS_DIAG_RENDERSTATE";
     case Diag::EventQueueSizes:  return "GS_DIAG_EVENTS";
+    case Diag::Watchdog:         return "GS_DIAG_WATCHDOG";
     case Diag::COUNT_:           break;
   }
   return "";
