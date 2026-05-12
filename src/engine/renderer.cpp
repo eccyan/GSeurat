@@ -1337,6 +1337,23 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
         if (pbd_system_ && !determinism_test_state_.active) {
             pbd_count = pbd_system_->update_per_frame(FrameIndex{current_frame_});
         }
+        // Clamp the GPU-composed prefix so persistent + vfx + pbd fits
+        // inside max_dynamic_count_. Without this the compose shaders
+        // would write past `dynamic_gaussian_ssbo`'s end when a scene's
+        // persistent prefix is large enough to leave less headroom than
+        // the system writer caps (RenderStateConfig max_vfx_splats +
+        // max_pbd_splats currently 250k vs. kDynamicHeadroom 1M minus
+        // persistent). The old pending-dynamics path was implicitly
+        // clipped by update_dynamic_gaussians, which can only truncate
+        // the CPU portion (after the GPU prefix) — Codex P2 on #437.
+        {
+            const uint32_t max_dyn = gs_renderer_.max_dynamic_count();
+            const uint32_t persistent = gs_renderer_.persistent_dynamic_count();
+            uint32_t gpu_budget = (max_dyn > persistent) ? (max_dyn - persistent) : 0;
+            if (vfx_count > gpu_budget) vfx_count = gpu_budget;
+            gpu_budget -= vfx_count;
+            if (pbd_count > gpu_budget) pbd_count = gpu_budget;
+        }
 
         if (!determinism_test_state_.active) {
             gs_dynamic_buffer_.clear();
