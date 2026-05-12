@@ -1657,6 +1657,16 @@ void GsRenderer::init_streaming(const StreamingConfig& config) {
     initialized_ = true;
 
     update_descriptors();
+    // Phase 4c-vfx-1: init_streaming() is the first point where
+    // dynamic_gaussian_ssbo_ is created. In the normal app path,
+    // set_render_state() runs BEFORE init_streaming() (AppBase wiring
+    // order), so its update_compose_descriptors() call is gated out by
+    // the missing dst buffer. Retry here so the per-frame compose sets
+    // get bound before dispatch_compose_vfx() can fire. (Codex P2 on
+    // PR #435.)
+    if (render_state_ && compose_pipeline_ != VK_NULL_HANDLE) {
+        update_compose_descriptors();
+    }
 
     std::fprintf(stderr, "GS: Streaming initialized — budget=%u splats, %u slabs of %u\n",
                  config.gpu_budget_splats, config.total_slabs(), config.slab_size_splats);
