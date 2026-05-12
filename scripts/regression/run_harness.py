@@ -13,6 +13,7 @@ Failure-path behavior (issue #400):
 """
 import argparse
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -112,6 +113,72 @@ def run_scenario(out_dir):
     return stderr_bytes.decode(errors="replace") if stderr_bytes else ""
 
 
+def _vm_stat_available_gb():
+    """Parse `vm_stat` and return available memory in GB.
+
+    Available = (free + inactive + speculative + purgeable) * page_size, per
+    `feedback_vm_stat_reading` — `Pages free` alone severely undercounts what
+    macOS can reclaim under pressure. Darwin-only (vm_stat is mac-specific).
+    """
+    out = subprocess.check_output(["vm_stat"]).decode()
+    lines = out.splitlines()
+    m = re.search(r"page size of (\d+) bytes", lines[0])
+    page_size = int(m.group(1)) if m else 16384
+
+    def find(label):
+        for line in lines:
+            if line.startswith(label):
+                return int(line.rstrip(".\n").rsplit()[-1])
+        return 0
+
+    pages = (find("Pages free:") + find("Pages inactive:") +
+             find("Pages speculative:") + find("Pages purgeable:"))
+    return pages * page_size / (1024 ** 3)
+
+
+def _cooldown_between_runs(target_gb=8.0, mandatory_sec=30, poll_timeout_sec=60):
+    """Pause between back-to-back scenario subprocesses inside --self-check.
+
+    The two scenarios kick a fresh gseurat_demo (2.2 M Gaussians, full GPU
+    pipeline, MoltenVK on TBDR). Running them back-to-back has crashed the
+    user's Mac twice (WindowServer watchdog panic — see 2026-05-12 incidents
+    in `feedback_harness_crushes_mac.md`). The kernel kills WindowServer
+    after 120 s without checkins; even with no OOM, the prolonged GPU
+    pressure starves WindowServer of scheduling.
+
+    This pause gives WindowServer + GPU drivers time to recover, and waits
+    for macOS to reclaim the first run's pages from the compressor. Returns
+    True on success, False on memory-not-reclaimed-in-time (caller should
+    abort the second run rather than risk another panic).
+    """
+    sys.stderr.write(
+        f"[harness] First scenario done. Cooling down ({mandatory_sec} s) then "
+        f"polling for >= {target_gb} GB available memory...\n")
+    sys.stderr.flush()
+    time.sleep(mandatory_sec)
+
+    deadline = time.time() + poll_timeout_sec
+    last_avail = _vm_stat_available_gb()
+    while time.time() < deadline:
+        avail = _vm_stat_available_gb()
+        if avail >= target_gb:
+            sys.stderr.write(
+                f"[harness] Memory reclaimed: {avail:.1f} GB available "
+                f"(>= {target_gb} GB target). Starting second scenario.\n")
+            sys.stderr.flush()
+            return True
+        last_avail = avail
+        time.sleep(2)
+
+    sys.stderr.write(
+        f"[harness] FATAL: only {last_avail:.1f} GB available after "
+        f"{mandatory_sec + poll_timeout_sec} s — below {target_gb} GB target.\n"
+        f"[harness] Aborting second scenario to avoid Mac watchdog panic.\n"
+        f"[harness] Close apps and rerun, or use --update-baseline + manual diff.\n")
+    sys.stderr.flush()
+    return False
+
+
 def diff(baseline_dir, current_dir, threshold):
     return subprocess.run([
         PYTHON, "scripts/regression/diff_golden.py",
@@ -183,6 +250,9 @@ def main():
         with _RunDir("gseurat_regression_t1_") as t1, \
              _RunDir("gseurat_regression_t2_") as t2:
             run_scenario(t1.path)
+            if not _cooldown_between_runs():
+                # Memory didn't reclaim — both dirs retained for inspection.
+                return 6
             run_scenario(t2.path)
             rc = diff(t1.path, t2.path, threshold=SELF_CHECK_THRESHOLD)
             if rc == 0:
