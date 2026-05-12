@@ -7,6 +7,7 @@
 #include "gseurat/engine/coordinate.hpp"
 #include "gseurat/engine/gaussian_cloud.hpp"
 #include "gseurat/engine/gs_vfx.hpp"
+#include "gseurat/engine/pbd_events.hpp"
 #include "gseurat/engine/pbd_types.hpp"
 #include "gseurat/engine/renderer.hpp"
 #include "gseurat/engine/resource_manager.hpp"
@@ -290,10 +291,14 @@ void GsSceneLoader::finalize_on_main(SceneLoadContext& ctx, const SceneData& sce
                     params[i].wind = glm::vec4(cfg.wind_direction, cfg.wind_strength);
                     params[i].dynamics = glm::vec4(cfg.wind_frequency, cfg.ground_y, cfg.bounce, 0.0f);
                 }
-                ctx.renderer.gs_renderer().upload_pbd_elements(states.data(), params.data(), count);
-                std::fprintf(stderr, "[GS] PBD upload: %u elements, wind=(%.2f,%.2f,%.2f) str=%.2f freq=%.2f\n",
+                std::fprintf(stderr, "[GS] PBD load event queued: %u elements, wind=(%.2f,%.2f,%.2f) str=%.2f freq=%.2f\n",
                              count, params[0].wind.x, params[0].wind.y, params[0].wind.z,
                              params[0].wind.w, params[0].dynamics.x);
+                // Phase 4d-1: emit instead of calling upload_pbd_elements
+                // directly — `systems::PbdSystem::run` drains this on the
+                // next main_loop tick and forwards to GsRenderer.
+                ctx.world.events<PbdElementsLoadedEvent>().send(
+                    PbdElementsLoadedEvent{std::move(states), std::move(params)});
             }
 
             // Store cloud bounds for camera centering
