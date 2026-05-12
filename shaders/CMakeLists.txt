@@ -35,6 +35,7 @@ set(SHADER_SOURCES
     ${SHADER_SOURCE_DIR}/gs_onesweep_histogram.comp
     ${SHADER_SOURCE_DIR}/gs_onesweep_scatter.comp
     ${SHADER_SOURCE_DIR}/gs_post_process.comp
+    ${SHADER_SOURCE_DIR}/gs_compose.comp
     ${SHADER_SOURCE_DIR}/pbd_solver.comp
     ${SHADER_SOURCE_DIR}/debug_wireframe.vert
     ${SHADER_SOURCE_DIR}/debug_wireframe.frag
