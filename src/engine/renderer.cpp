@@ -9,6 +9,7 @@
 #include "gseurat/engine/sort_entry.hpp"
 #include "gseurat/engine/sort_hash.hpp"
 #include "gseurat/engine/streaming_config.hpp"
+#include "gseurat/engine/systems/vfx_system.hpp"
 
 #include <cstdio>
 #include <set>
@@ -1258,8 +1259,11 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
 
         bool camera_dirty = (gs_view_ != gs_prev_view_) || budget_changed || gs_static_force_dirty_;
 
-        // If scene animations are active, force static rebuild each frame
-        if (gs_animator_.has_active_groups() || !gs_scene_animations_.empty()) {
+        // If scene animations are active, force static rebuild each frame.
+        // Phase 4c-vfx-2: VFX animator state moved to VfxSystem and writes
+        // to vfx_buffer (dynamic-side, via compose pass), so we no longer
+        // arm static-dirty from animator activity.
+        if (!gs_scene_animations_.empty()) {
             gs_static_force_dirty_ = true;
             camera_dirty = true;
         }
@@ -1313,26 +1317,23 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
         // (particle re-emission ordering, std::erase_if removal of dead
         // entries reshuffling indices), and the std::vector clear+fill
         // pattern would change capacity allocations across frames.
+        // Phase 4c-vfx-2: VFX splats now go through VfxSystem → vfx_buffer
+        // (RenderState) → GPU compose pass → dynamic_gaussian_ssbo. We
+        // need vfx_count BEFORE update_dynamic_gaussians so its vfx_prefix
+        // is right. Distance-cull origin computed once and reused below.
+        const glm::vec3 cull_origin_v = glm::vec3(glm::inverse(gs_view_)[3]);
+        const float cull_dist_sq_v = gs_max_render_distance_ > 0.0f
+            ? gs_max_render_distance_ * gs_max_render_distance_ : 0.0f;
+        uint32_t vfx_count = 0;
+        if (vfx_system_ && !determinism_test_state_.active) {
+            vfx_count = vfx_system_->update_per_frame(
+                dt, FrameIndex{current_frame_}, cull_origin_v, cull_dist_sq_v,
+                flags.animation, flags.particles);
+        }
+
         if (!determinism_test_state_.active) {
             gs_dynamic_buffer_.clear();
 
-            // VFX object Gaussians (torch.ply etc.) live in the dynamic buffer.
-            // Append them first so their indices [0, vfx_obj_count) are stable
-            // before particle / timeline appends follow.
-            if (!vfx_instances_.empty()) {
-                ScopedStallTimer _t_vfx_obj{"  > vfx_objects → dynamic_buffer"};
-                for (auto& inst : vfx_instances_) {
-                    inst.append_objects(gs_dynamic_buffer_);
-                }
-                gs_animator_.reset();
-                for (auto& inst : vfx_instances_) inst.reset_animations();
-                for (auto& inst : vfx_instances_) {
-                    inst.tag_animations(gs_dynamic_buffer_, gs_animator_);
-                }
-                if (flags.animation && gs_animator_.has_active_groups()) {
-                    gs_animator_.update(dt, gs_dynamic_buffer_);
-                }
-            }
             if (!gs_scene_animations_.empty()) {
                 // Phase 2 deferred: scene animations on streamed terrain
                 // need GPU-side region tagging (compute shader) since the
@@ -1349,52 +1350,31 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
                 gs_scene_animations_.clear();
             }
 
-            // Distance culling for dynamic effects (emitters, VFX)
-            glm::vec3 cull_origin = glm::vec3(glm::inverse(gs_view_)[3]);
-            float cull_dist_sq = gs_max_render_distance_ > 0.0f
-                ? gs_max_render_distance_ * gs_max_render_distance_ : 0.0f;
-
             // Update and gather Gaussian particles from emitters
+            // (VFX iteration above wrote to vfx_buffer; emitters still
+            // write to gs_dynamic_buffer_ → slots after the VFX prefix.)
             if (flags.particles) {
                 for (auto& emitter : gs_particle_emitters_) {
                     emitter.update(dt);
-                    // Skip gathering from emitters beyond max render distance
-                    if (cull_dist_sq > 0.0f) {
-                        glm::vec3 d = emitter.position() - cull_origin;
-                        if (glm::dot(d, d) > cull_dist_sq) continue;
+                    if (cull_dist_sq_v > 0.0f) {
+                        glm::vec3 d = emitter.position() - cull_origin_v;
+                        if (glm::dot(d, d) > cull_dist_sq_v) continue;
                     }
                     emitter.gather(gs_dynamic_buffer_);
                 }
-                // Remove dead emitters
                 gs_particle_emitters_.erase(
                     std::remove_if(gs_particle_emitters_.begin(), gs_particle_emitters_.end(),
                         [](const GaussianParticleEmitter& e) { return !e.active() && e.alive_count() == 0; }),
                     gs_particle_emitters_.end());
             }
 
-            // Update VFX instances (timeline + emitters append particles to dynamic buffer)
-            if (flags.particles || flags.animation) {
-                for (auto& inst : vfx_instances_) {
-                    // Skip distant VFX instances
-                    if (cull_dist_sq > 0.0f) {
-                        glm::vec3 d = inst.position() - cull_origin;
-                        if (glm::dot(d, d) > cull_dist_sq) continue;
-                    }
-                    inst.update(dt, gs_dynamic_buffer_, gs_animator_);
-                }
-                std::erase_if(vfx_instances_,
-                    [](const VfxInstance& i) { return i.is_finished(); });
-            }
-
-            // Collect VFX dynamic lights and merge with existing lights
+            // Phase 4c-vfx-2: VFX per-frame timeline + erase has moved
+            // into VfxSystem::update_per_frame above. Lights still merge
+            // here so the renderer remains the owner of the lights upload.
             {
                 auto all_lights = gs_static_lights_;
-                for (const auto& inst : vfx_instances_) {
-                    for (const auto& vl : inst.active_lights()) {
-                        if (all_lights.size() < 8) {
-                            all_lights.push_back(vl);
-                        }
-                    }
+                if (vfx_system_) {
+                    vfx_system_->collect_active_lights(all_lights, 8);
                 }
                 if (!all_lights.empty()) {
                     if (gs_renderer_.light_mode() < 2) {
@@ -1412,19 +1392,32 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
                 gs_pending_dynamics_.clear();
             }
 
-            // Upload dynamic Gaussians
+            // Upload dynamic Gaussians. The dynamic_gaussian_ssbo layout
+            // is now [persistent | vfx | cpu], where `vfx_count` slots
+            // are filled by the GPU compose pass below, and `count`
+            // CPU-sourced slots come after.
             {
                 auto count = static_cast<uint32_t>(gs_dynamic_buffer_.size());
-                if (count > gs_renderer_.max_dynamic_count()) {
-                    gs_dynamic_buffer_.resize(gs_renderer_.max_dynamic_count());
-                    count = gs_renderer_.max_dynamic_count();
+                const uint32_t max_cpu = (gs_renderer_.max_dynamic_count() > vfx_count)
+                    ? gs_renderer_.max_dynamic_count() - vfx_count : 0;
+                if (count > max_cpu) {
+                    gs_dynamic_buffer_.resize(max_cpu);
+                    count = max_cpu;
                 }
-                gs_renderer_.update_dynamic_gaussians(gs_dynamic_buffer_.data(), count);
+                gs_renderer_.update_dynamic_gaussians(gs_dynamic_buffer_.data(), count,
+                                                       /*vfx_prefix=*/vfx_count);
 #if GSEURAT_DEBUG_BUILD
-                dbg_dyn_count = count;
+                dbg_dyn_count = count + vfx_count;
 #endif
             }
         }
+
+        // Phase 4c-vfx-2: GPU compose pass — copy VfxSystem's per-frame
+        // vfx_buffer into dynamic_gaussian_ssbo at offset
+        // persistent_dyn_count_ for `vfx_count` slots. Must run on the
+        // same cmd buffer BEFORE gs_renderer_.render() so downstream
+        // preprocess/sort/raster see the composed splats.
+        gs_renderer_.dispatch_compose_vfx(cmd, FrameIndex{current_frame_}, vfx_count);
 
 #if GSEURAT_DEBUG_BUILD
         const auto t_prepass_pre_render = std::chrono::steady_clock::now();
@@ -1441,11 +1434,11 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
             const double gs_render_ms = std::chrono::duration<double, std::milli>(
                 t_prepass_end - t_prepass_pre_render).count();
             const size_t emitter_count = gs_particle_emitters_.size();
-            const size_t vfx_count = vfx_instances_.size();
+            const size_t vfx_inst_count = vfx_system_ ? vfx_system_->instances().size() : 0;
             GS_LOG_FRAME("[gs_prepass/wd/SLOW] total={:.1f}ms cpu_gather={:.1f} gs_render={:.1f} "
                          "dyn_count={} emitters={} vfx_inst={} static_dirty={}",
                          total_ms, cpu_gather_ms, gs_render_ms, dbg_dyn_count,
-                         emitter_count, vfx_count, gs_static_force_dirty_ ? 1 : 0);
+                         emitter_count, vfx_inst_count, gs_static_force_dirty_ ? 1 : 0);
         }
 #endif
     }
@@ -1716,19 +1709,6 @@ void Renderer::add_gs_animation(const std::string& effect, const GsAnimRegion& r
 
 void Renderer::clear_gs_animations() {
     gs_scene_animations_.clear();
-}
-
-void Renderer::add_vfx_instance(VfxInstance&& inst) {
-    // VFX object geometry (torch.ply etc.) is appended to gs_dynamic_buffer_
-    // each frame by the dynamic path. The dynamic SSBO capacity is sized via
-    // kDynamicHeadroom at init_streaming.
-    vfx_instances_.push_back(std::move(inst));
-}
-
-void Renderer::clear_vfx_instances() {
-    vfx_instances_.clear();
-    // Force static rebuild on next frame to remove VFX object Gaussians
-    gs_static_force_dirty_ = true;
 }
 
 }  // namespace gseurat

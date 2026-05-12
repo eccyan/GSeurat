@@ -600,6 +600,11 @@ void AppBase::init_render_state() {
     if (render_state_) return;
     render_state_ = std::make_unique<RenderState>(renderer_.context());
     renderer_.gs_renderer().set_render_state(render_state_.get());
+    // Late-bind RenderState into VfxSystem if it was constructed first
+    // (init_game_object_system runs before init_render_state).
+    if (vfx_system_) {
+        vfx_system_->set_render_state(render_state_.get());
+    }
 }
 
 void AppBase::upload_bone_transforms() {
@@ -862,7 +867,12 @@ void AppBase::init_game_object_system() {
     // must run every frame regardless of which game state is active
     // (Staging and GsDemoState don't invoke the gameplay scheduler).
     // main_loop() drives it directly.
-    vfx_system_ = std::make_unique<systems::VfxSystem>(&renderer_);
+    // Phase 4c-vfx-2: VfxSystem owns its instances + animator; per-frame
+    // it packs splats into RenderState's vfx_buffer. render_state_ may
+    // be null at this construction site (init_game_object_system runs
+    // before init_render_state in some flows) — VfxSystem tolerates the
+    // null and treats per-frame splat-write as a no-op until rs binds.
+    vfx_system_ = std::make_unique<systems::VfxSystem>(&renderer_, render_state_.get());
 
     // Register engine-level systems
     system_scheduler_.add_system({"bone_animation",
@@ -942,6 +952,7 @@ CommandContext AppBase::build_command_context() {
             }
         },
         .control_server = &control_server_,
+        .vfx_system = vfx_system_.get(),
         .pending_steps = &pending_steps_,
         .deferred_step_response = &deferred_step_response_,
     };
@@ -952,7 +963,8 @@ CommandContext AppBase::build_command_context() {
 void AppBase::load_gs_scene(const SceneData& scene_data, const GsSceneOptions& opts) {
     SceneLoadContext ctx{
         gs_terrain_, scene_objects_, renderer_, scene_,
-        world_, component_registry_, resources_, feature_flags_
+        world_, component_registry_, resources_, feature_flags_,
+        vfx_system_.get(),
     };
     GsSceneLoader loader;
     loader.load(ctx, scene_data, opts);
@@ -966,7 +978,8 @@ void AppBase::load_pre_parsed_gs_scene(const SceneData& scene_data,
                                        const GsSceneOptions& opts) {
     SceneLoadContext ctx{
         gs_terrain_, scene_objects_, renderer_, scene_,
-        world_, component_registry_, resources_, feature_flags_
+        world_, component_registry_, resources_, feature_flags_,
+        vfx_system_.get(),
     };
     GsSceneLoader loader;
     loader.finalize_on_main(ctx, scene_data, std::move(parsed), opts);
@@ -1022,7 +1035,8 @@ void AppBase::tick_async_load_gs_scene() {
 
     SceneLoadContext ctx{
         gs_terrain_, scene_objects_, renderer_, scene_,
-        world_, component_registry_, resources_, feature_flags_
+        world_, component_registry_, resources_, feature_flags_,
+        vfx_system_.get(),
     };
     GsSceneLoader loader;
     loader.finalize_on_main(ctx, pending.scene_data, std::move(parsed), pending.opts);

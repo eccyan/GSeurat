@@ -10,6 +10,7 @@ namespace ecs { class World; }
 class ComponentRegistry;
 class ResourceManager;
 struct FeatureFlags;
+namespace systems { class VfxSystem; }
 
 struct SceneLoadContext {
     GsTerrainState& terrain;
@@ -20,6 +21,9 @@ struct SceneLoadContext {
     ComponentRegistry& components;
     ResourceManager& resources;
     const FeatureFlags& feature_flags;
+    // Phase 4c-vfx-2: VFX spawn target. Null is tolerated (scene load
+    // without VfxSystem skips VFX instances rather than crashing).
+    systems::VfxSystem* vfx_system = nullptr;
 };
 
 }  // namespace gseurat

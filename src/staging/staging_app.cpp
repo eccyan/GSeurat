@@ -94,7 +94,9 @@ void StagingApp::clear_scene() {
     vkDeviceWaitIdle(renderer_.context().device());
     renderer_.clear_gs_particle_emitters();
     renderer_.clear_gs_animations();
-    renderer_.clear_vfx_instances();
+    if (vfx_system_) {
+        vfx_system_->clear_instances();
+    }
     // Phase 4a: drop pending VfxSpawnEvents that an earlier
     // update_scene_data command queued in the same poll cycle.
     // Otherwise they'd survive the scene swap and resurrect the

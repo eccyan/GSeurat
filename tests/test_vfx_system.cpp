@@ -20,7 +20,7 @@ int main() {
     // 1. Empty world: drain returns nothing, cursor stays at default
     {
         World world;
-        VfxSystem sys{nullptr};
+        VfxSystem sys{nullptr, nullptr};
         auto out = sys.drain_events(world);
         assert(out.empty());
         std::printf("PASS: empty world drains nothing\n");
@@ -29,7 +29,7 @@ int main() {
     // 2. Producer sends N events; consumer drains all in order
     {
         World world;
-        VfxSystem sys{nullptr};
+        VfxSystem sys{nullptr, nullptr};
 
         world.events<VfxSpawnEvent>().send({"a.vfx", {1.f, 0.f, 0.f}, 0.f, false});
         world.events<VfxSpawnEvent>().send({"b.vfx", {2.f, 0.f, 0.f}, 0.5f, true});
@@ -46,7 +46,7 @@ int main() {
     // 3. Re-drain in same frame returns nothing (cursor advanced)
     {
         World world;
-        VfxSystem sys{nullptr};
+        VfxSystem sys{nullptr, nullptr};
 
         world.events<VfxSpawnEvent>().send({"x.vfx", {}, 0.f, false});
         auto first = sys.drain_events(world);
@@ -62,7 +62,7 @@ int main() {
     //    of frame (which is also what AppBase wires up by default).
     {
         World world;
-        VfxSystem sys{nullptr};
+        VfxSystem sys{nullptr, nullptr};
 
         // Frame N: producer sends; consumer drains.
         world.events<VfxSpawnEvent>().send({"frame_n.vfx", {}, 0.f, false});
@@ -85,7 +85,7 @@ int main() {
     //    (mirror of test 3 with a denser send pattern).
     {
         World world;
-        VfxSystem sys{nullptr};
+        VfxSystem sys{nullptr, nullptr};
 
         world.events<VfxSpawnEvent>().send({"a.vfx", {}, 0.f, false});
         world.events<VfxSpawnEvent>().send({"b.vfx", {}, 0.f, false});
@@ -104,8 +104,8 @@ int main() {
     //    aren't consumed destructively from the queue.
     {
         World world;
-        VfxSystem a{nullptr};
-        VfxSystem b{nullptr};
+        VfxSystem a{nullptr, nullptr};
+        VfxSystem b{nullptr, nullptr};
 
         world.events<VfxSpawnEvent>().send({"shared.vfx", {}, 0.f, false});
 
