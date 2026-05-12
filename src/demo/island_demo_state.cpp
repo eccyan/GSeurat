@@ -1479,7 +1479,12 @@ void IslandDemoState::update_effects(AppBase& app, float dt) {
                         auto preset = load_vfx_preset(path);
                         VfxInstance inst;
                         inst.init(preset, t.position.vec(), true);
-                        app.renderer().add_vfx_instance(std::move(inst));
+                        if (app.vfx_system()) {
+                            app.vfx_system()->add_instance(std::move(inst));
+                        } else {
+                            std::fprintf(stderr,
+                                "[VfxTrigger] WARN: vfx_system not initialised\n");
+                        }
                     } catch (const std::exception& e) {
                         std::fprintf(stderr, "[VfxTrigger] ERROR: %s\n", e.what());
                     }

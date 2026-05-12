@@ -36,6 +36,7 @@ struct GLFWwindow;
 namespace gseurat {
 
 class ResourceManager;
+namespace systems { class VfxSystem; }
 
 // Small constant-size summary of the loaded GS cloud. Replaces the demo-side
 // reads of `cloud_bounds()` / `chunk_count()` / `all_gaussians()` with a
@@ -158,8 +159,11 @@ public:
     std::vector<GaussianParticleEmitter>& gs_particle_emitters() { return gs_particle_emitters_; }
     void append_dynamic_gaussians(const Gaussian* data, uint32_t count);
 
-    // Gaussian animator (animate existing scene Gaussians)
-    GaussianAnimator& gs_animator() { return gs_animator_; }
+    // Phase 4c-vfx-2: GaussianAnimator + vfx_instances_ moved to
+    // systems::VfxSystem. The renderer now holds a non-owning pointer
+    // to dispatch its per-frame VFX update and dispatch_compose_vfx
+    // from record_gs_prepass.
+    void set_vfx_system(systems::VfxSystem* vs) noexcept { vfx_system_ = vs; }
 
     // Scene-placed animations (with loop support)
     struct ReformConfig {
@@ -183,11 +187,9 @@ public:
     void clear_gs_animations();
     const std::vector<SceneAnimation>& gs_scene_animations() const { return gs_scene_animations_; }
 
-    // VFX instances (Méliès presets placed on map)
-    void add_vfx_instance(VfxInstance&& inst);
-    void clear_vfx_instances();
-    const std::vector<VfxInstance>& vfx_instances() const { return vfx_instances_; }
-    std::vector<VfxInstance>& vfx_instances_mutable() { return vfx_instances_; }
+    // Phase 4c-vfx-2: add/clear/list VFX instances moved to
+    // systems::VfxSystem. Callers should use `vfx_system->add_instance(...)`
+    // / `vfx_system->clear_instances()` / `vfx_system->instances()`.
     void set_gs_static_lights(const std::vector<PointLight>& lights) { gs_static_lights_ = lights; }
 
     // Current frame-in-flight slot. Stable for the duration of a frame's
@@ -347,9 +349,10 @@ private:
     glm::mat4 gs_prev_view_{0.0f};  // for camera dirty detection
     bool gs_static_force_dirty_ = false;
     std::vector<GaussianParticleEmitter> gs_particle_emitters_;
-    GaussianAnimator gs_animator_;
     std::vector<SceneAnimation> gs_scene_animations_;
-    std::vector<VfxInstance> vfx_instances_;
+    // Phase 4c-vfx-2: VFX instances + animator moved to systems::VfxSystem;
+    // we only keep a non-owning pointer so record_gs_prepass can tick it.
+    systems::VfxSystem* vfx_system_ = nullptr;
 
     // ── Frame-determinism harness internal state ──
     struct DeterminismTestState {

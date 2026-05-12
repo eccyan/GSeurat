@@ -25,6 +25,7 @@ class ControlServer;
 struct FeatureFlags;
 class CameraZoneSystem;
 class CollisionSystem;
+namespace systems { class VfxSystem; }
 struct CommandContext {
     const GsTerrainState& terrain;
     SceneObjectState& scene_objects;
@@ -58,6 +59,10 @@ struct CommandContext {
     std::string camera_sync_source;  // source of last sync_camera command for echo suppression
     CameraZoneSystem* camera_zone_system = nullptr;
     CollisionSystem* collision_system = nullptr;
+
+    // Phase 4c-vfx-2: VFX commands talk to VfxSystem, not Renderer.
+    // Null only in test harnesses without an AppBase.
+    systems::VfxSystem* vfx_system = nullptr;
 
     // Step-mode: set by the "step" command; main loop consumes one per frame.
     // Non-null only when AppBase wires it up (demo/gameplay path). Atomic so

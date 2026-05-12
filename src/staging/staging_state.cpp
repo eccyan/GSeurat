@@ -1055,7 +1055,8 @@ void StagingState::draw_gizmos(AppBase& app) {
 
     // ── VFX instance gizmos (with element details) ──
     if (ov.show_gizmo_vfx) {
-        const auto& vfx = app.renderer().vfx_instances();
+        static const std::vector<VfxInstance> kEmptyVfx;
+        const auto& vfx = app.vfx_system() ? app.vfx_system()->instances() : kEmptyVfx;
         for (size_t i = 0; i < vfx.size(); i++) {
             auto inst_pos = vfx[i].position();
             float sx, sy;

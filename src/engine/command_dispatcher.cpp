@@ -18,6 +18,7 @@
 #include "gseurat/engine/scene.hpp"
 #include "gseurat/engine/scene_loader.hpp"
 #include "gseurat/engine/scene_object_state.hpp"
+#include "gseurat/engine/systems/vfx_system.hpp"
 #include "gseurat/engine/vfx_events.hpp"
 #include "gseurat/engine/world_manifest.hpp"
 #include "gseurat/engine/trigger_components.hpp"
@@ -376,7 +377,9 @@ void CommandDispatcher::register_default_commands() {
             // so the last live scene update wins — pre-refactor, the
             // second clear_vfx_instances() removed the first batch's
             // synchronously-added instances (Codex P2 on PR #431).
-            ctx_.renderer.clear_vfx_instances();
+            if (ctx_.vfx_system) {
+                ctx_.vfx_system->clear_instances();
+            }
             ctx_.world.events<VfxSpawnEvent>().clear();
             for (const auto& vi : scene_data.vfx_instances) {
                 if (vi.trigger != "auto") continue;
@@ -432,7 +435,10 @@ void CommandDispatcher::register_default_commands() {
         }
 
         const auto& aabb = ctx_.terrain.terrain_aabb;
-        auto& vfx = ctx_.renderer.vfx_instances_mutable();
+        if (ctx_.vfx_system == nullptr) {
+            return std::unexpected(std::string("vfx_system not available"));
+        }
+        auto& vfx = ctx_.vfx_system->instances_mutable();
         const auto& vi_arr = cmd["vfx_instances"];
         for (size_t i = 0; i < std::min(vfx.size(), vi_arr.size()); i++) {
             if (vi_arr[i].contains("position")) {

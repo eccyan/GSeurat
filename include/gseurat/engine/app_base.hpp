@@ -89,6 +89,11 @@ public:
     // Subsystem accessors (used by GameStates)
     InputManager& input() { return input_; }
     Renderer& renderer() { return renderer_; }
+    // Phase 4c-vfx-2: VFX state ownership lives here, not on Renderer.
+    // Pointer (not reference) because init_game_object_system() builds
+    // it later than this accessor's first plausible use site.
+    systems::VfxSystem* vfx_system() { return vfx_system_.get(); }
+    const systems::VfxSystem* vfx_system() const { return vfx_system_.get(); }
     ResourceManager& resources() { return resources_; }
     Scene& scene() { return scene_; }
     ecs::World& world() { return world_; }

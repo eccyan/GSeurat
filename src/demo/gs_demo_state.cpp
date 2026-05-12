@@ -565,7 +565,7 @@ void GsDemoState::build_draw_lists(AppBase& app) {
                       demo_markers_.size(), demo_path_.size(),
                       app.renderer().gs_particle_emitters().size(),
                       app.renderer().gs_scene_animations().size(),
-                      app.renderer().vfx_instances().size());
+                      app.vfx_system() ? app.vfx_system()->instances().size() : 0);
         ui.label(buf, lx, y, scale, layer_color);
 
         // Render markers and path as projected UI panels
@@ -683,7 +683,8 @@ void GsDemoState::build_draw_lists(AppBase& app) {
             }
 
             // Draw VFX instance markers (V0, V1, ...) — amber/orange star
-            auto& vfx_insts = app.renderer().vfx_instances();
+            static const std::vector<VfxInstance> kEmptyVfx;
+            const auto& vfx_insts = app.vfx_system() ? app.vfx_system()->instances() : kEmptyVfx;
             for (size_t i = 0; i < vfx_insts.size(); ++i) {
                 auto [sx, sy] = project(vfx_insts[i].position());
                 if (sx > 0 && sx < screen_w && sy > 0 && sy < screen_h) {

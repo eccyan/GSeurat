@@ -1,4 +1,6 @@
 #include "gseurat/engine/gs_scene_loader.hpp"
+
+#include "gseurat/engine/systems/vfx_system.hpp"
 #include "gseurat/engine/scene_load_context.hpp"
 #include "gseurat/engine/gs_terrain_state.hpp"
 #include "gseurat/engine/scene_object_state.hpp"
@@ -210,7 +212,9 @@ void GsSceneLoader::finalize_on_main(SceneLoadContext& ctx, const SceneData& sce
 
     ctx.renderer.clear_gs_particle_emitters();
     ctx.renderer.clear_gs_animations();
-    ctx.renderer.clear_vfx_instances();
+    if (ctx.vfx_system) {
+        ctx.vfx_system->clear_instances();
+    }
 
     ctx.scene.clear_lights();
     ctx.scene.set_ambient_color(scene_data.ambient_color);
@@ -440,7 +444,13 @@ void GsSceneLoader::finalize_on_main(SceneLoadContext& ctx, const SceneData& sce
             VfxInstance inst;
             auto world_pos = coord::to_world(vi.position, ctx.terrain.terrain_aabb);
             inst.init(preset, world_pos.vec(), vi.loop, vi.rotation_y);
-            ctx.renderer.add_vfx_instance(std::move(inst));
+            if (ctx.vfx_system) {
+                ctx.vfx_system->add_instance(std::move(inst));
+            } else {
+                std::fprintf(stderr,
+                    "[scene-loader] WARN: skipping vfx_instance — "
+                    "ctx.vfx_system is null\n");
+            }
         }
     }
 }
