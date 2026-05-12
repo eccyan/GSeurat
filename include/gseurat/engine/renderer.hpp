@@ -190,6 +190,12 @@ public:
     std::vector<VfxInstance>& vfx_instances_mutable() { return vfx_instances_; }
     void set_gs_static_lights(const std::vector<PointLight>& lights) { gs_static_lights_ = lights; }
 
+    // Current frame-in-flight slot. Stable for the duration of a frame's
+    // CPU-side work; advances at the end of draw_scene. Producers that
+    // need to write to a frame-indexed resource (e.g. RenderState
+    // writers in Phase 4) should snapshot this at the start of their work.
+    uint32_t current_frame() const noexcept { return current_frame_; }
+
     void request_screenshot(const std::string& path) { screenshot_.request(path); }
     bool screenshot_write_ok() const { return screenshot_.write_ok(); }
     uint32_t screenshot_width() const { return screenshot_.width(); }

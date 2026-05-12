@@ -121,10 +121,13 @@ void AppBase::main_loop() {
         });
 
     // Phase 3b: RenderState contract. Allocates persistent-mapped storage
-    // buffers per frame-in-flight. No callers consume it yet — Phase 4
-    // PRs will wire producers (BoneAnimationSystem, VfxSystem, ...) and
-    // the renderer through it.
-    render_state_ = std::make_unique<RenderState>(renderer_.context());
+    // buffers per frame-in-flight. Phase 4b wires GsRenderer to source
+    // its bone descriptor binding from RenderState. Construction must
+    // happen BEFORE any state push triggers init_streaming, which is
+    // why subclasses call init_render_state() inside init_game_content
+    // right after renderer_.init. This call is a defensive safety net
+    // for the rare path that reaches main_loop without prior construction.
+    init_render_state();
 
     // Start control server for bridge integration
     control_server_.start();
@@ -594,21 +597,40 @@ void AppBase::transition_scene(const std::string& target_scene,
 }
 void AppBase::update_game(float dt) { system_scheduler_.run_all(world_, dt); }
 
+void AppBase::init_render_state() {
+    if (render_state_) return;
+    render_state_ = std::make_unique<RenderState>(renderer_.context());
+    renderer_.gs_renderer().set_render_state(render_state_.get());
+}
+
 void AppBase::upload_bone_transforms() {
-    if (bone_anim_registry_.entries().empty()) return;
+    if (bone_anim_registry_.entries().empty() || !render_state_) return;
 
-    glm::mat4 bones[32];
-    bones[0] = glm::mat4(1.0f);  // identity — hook can override
+    const auto frame = FrameIndex{renderer_.current_frame()};
+    auto writer = render_state_->bones_writer(frame);
 
-    if (bone_pre_upload_hook_) {
-        bone_pre_upload_hook_(bones, 32);
+    // Phase 4b: with per-frame RenderState buffers we explicitly init the
+    // first 32 slots (the prior single-buffer's kMaxBones capacity) to
+    // identity each frame. Without this, slots that hook/gather don't
+    // touch this frame would retain values from 2 frames ago (the buffer
+    // ping-pong), which the original stack-allocation path didn't suffer
+    // because each frame got a fresh uninitialised array.
+    constexpr uint32_t kFrameBoneSlots = 32;
+    const glm::mat4 identity{1.0f};
+    for (uint32_t i = 0; i < kFrameBoneSlots; ++i) {
+        writer.write(i, identity);
     }
 
-    uint32_t highest = gather_bone_animation_transforms(
-        bone_anim_registry_, bones, 32);
-    uint32_t total = std::max(highest, gs_terrain_.bone_slot_counter);
-    renderer_.gs_renderer().upload_bone_transforms(
-        bones, static_cast<int>(total));
+    if (bone_pre_upload_hook_) {
+        bone_pre_upload_hook_(writer);
+    }
+
+    gather_bone_animation_transforms(bone_anim_registry_, writer);
+    // bone_count_/total bookkeeping retired with the upload path:
+    // GsRenderer's preprocess shader reads bones[bone_idx] indexed by
+    // per-splat metadata; slots beyond what was written remain at
+    // identity (init above) so any splat that references an unused slot
+    // gets a sane fallback rather than stale data.
 }
 void AppBase::update_audio(float /*dt*/) {}
 SaveData AppBase::build_save_data() const { return {}; }

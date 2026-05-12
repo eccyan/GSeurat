@@ -776,7 +776,11 @@ void GsDemoState::spawn_test_character(AppBase& app) {
 }
 
 void GsDemoState::despawn_test_character(AppBase& app) {
-    app.renderer().gs_renderer().clear_bone_transforms();
+    // Phase 4b: clear_bone_transforms removed — next frame's
+    // AppBase::upload_bone_transforms re-initialises all bone slots to
+    // identity at the start of the write loop. If no character respawns,
+    // no splats reference the bones buffer and stale values are inert.
+    (void)app;
     character_anim_time_ = 0.0f;
 
     // Restore the original map by re-parsing from disk (Option B per #396 §A
@@ -824,7 +828,13 @@ void GsDemoState::update_character_pose(AppBase& app, float dt) {
     bones[5] = pivot_rotate({-1.0f, 4.0f, 0.0f}, -swing);   // Left leg
     bones[6] = pivot_rotate({1.0f, 4.0f, 0.0f}, swing);     // Right leg
 
-    app.renderer().gs_renderer().upload_bone_transforms(bones, 7);
+    // Phase 4b: write through RenderState for the current frame in flight.
+    if (!app.has_render_state()) return;
+    const auto frame = FrameIndex{app.renderer().current_frame()};
+    auto writer = app.render_state().bones_writer(frame);
+    for (uint32_t i = 0; i < 7; ++i) {
+        writer.write(i, bones[i]);
+    }
 }
 
 void GsDemoState::generate_scene_layers(AppBase& app) {

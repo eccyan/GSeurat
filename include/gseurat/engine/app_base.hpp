@@ -211,7 +211,7 @@ public:
     const DebugDumpRegistry& debug_dump_registry() const { return debug_dump_registry_; }
 
     // Bone pre-upload hook (e.g., terrain sway on bone 0)
-    void set_bone_pre_upload_hook(std::function<void(glm::mat4*, uint32_t)> hook) {
+    void set_bone_pre_upload_hook(std::function<void(BonesWriter&)> hook) {
         bone_pre_upload_hook_ = std::move(hook);
     }
 
@@ -246,6 +246,11 @@ public:
     RenderState& render_state() { return *render_state_; }
     const RenderState& render_state() const { return *render_state_; }
     bool has_render_state() const noexcept { return render_state_ != nullptr; }
+
+    // Idempotent. Subclasses call this from init_game_content() right
+    // after renderer_.init() so render_state_ is wired into gs_renderer
+    // BEFORE any state push triggers init_streaming → update_descriptors.
+    void init_render_state();
 
 protected:
     void init_window();
@@ -312,8 +317,10 @@ protected:
     // in init_game_object_system().
     std::unique_ptr<systems::VfxSystem> vfx_system_;
 
-    // Bone pre-upload hook
-    std::function<void(glm::mat4*, uint32_t)> bone_pre_upload_hook_;
+    // Bone pre-upload hook (Phase 4b: writer API). Game-specific code
+    // installs this to fill specific bone slots (e.g. the player's bones)
+    // before gather_bone_animation_transforms walks the NPC registry.
+    std::function<void(BonesWriter&)> bone_pre_upload_hook_;
 
     // Developer overlay
     DevOverlay dev_overlay_;

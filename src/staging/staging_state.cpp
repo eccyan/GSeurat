@@ -549,12 +549,17 @@ void StagingState::update(AppBase& app, float dt) {
         }
     }
 
-    // Update character animation and upload bone transforms
-    if (anim_player_ && anim_playing_) {
+    // Update character animation and write bone transforms through RenderState
+    // (Phase 4b: was renderer().gs_renderer().upload_bone_transforms).
+    if (anim_player_ && anim_playing_ && app.has_render_state()) {
         anim_player_->update(dt * anim_speed_);
-        app.renderer().gs_renderer().upload_bone_transforms(
-            anim_player_->bone_transforms().data(),
-            static_cast<uint32_t>(character_data_->bones.size()));
+        const auto& src = anim_player_->bone_transforms();
+        const uint32_t count = static_cast<uint32_t>(character_data_->bones.size());
+        const auto frame = FrameIndex{app.renderer().current_frame()};
+        auto writer = app.render_state().bones_writer(frame);
+        for (uint32_t i = 0; i < count; ++i) {
+            writer.write(i, src[i]);
+        }
     }
 
     // ── World streaming evaluation ──

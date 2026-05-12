@@ -1,6 +1,7 @@
 #include "gseurat/engine/gs_renderer.hpp"
 #include "gseurat/engine/debug.hpp"
 #include "gseurat/engine/pipeline.hpp"
+#include "gseurat/engine/render_state.hpp"
 #include "gseurat/engine/scoped_timer.hpp"
 
 #include <cassert>
@@ -1223,7 +1224,6 @@ void GsRenderer::init_streaming(const StreamingConfig& config) {
     // Destroy ALL old buffers (legacy + split)
     gaussian_ssbo_.destroy(allocator_);
     uniform_buffer_.destroy(allocator_);
-    bone_ssbo_.destroy(allocator_);
     pbd_state_ssbo_.destroy(allocator_);
     pbd_params_ssbo_.destroy(allocator_);
     pbd_constraint_ssbo_.destroy(allocator_);
@@ -1355,13 +1355,9 @@ void GsRenderer::init_streaming(const StreamingConfig& config) {
     gaussian_ssbo_ = Buffer::create_storage(allocator_,
         static_cast<VkDeviceSize>(max_gaussian_count_) * sizeof(GpuGaussian));
 
-    // Bone transform SSBO
-    bone_ssbo_ = Buffer::create_storage(allocator_, kMaxBones * sizeof(glm::mat4));
-    bone_count_ = 0;
-    {
-        auto* bones = static_cast<glm::mat4*>(bone_ssbo_.mapped());
-        for (uint32_t i = 0; i < kMaxBones; ++i) bones[i] = glm::mat4(1.0f);
-    }
+    // Phase 4b: bone storage now lives in gseurat::RenderState, allocated
+    // per-frame-in-flight at AppBase init time. Descriptors are bound by
+    // update_descriptors() below from render_state_->bones_buffer(frame).
 
     // PBD buffers
     pbd_state_ssbo_ = Buffer::create_storage(allocator_,
@@ -2485,24 +2481,15 @@ void GsRenderer::update_gaussian_data(const Gaussian* data, uint32_t count) {
     // and the radix sort will re-sort naturally without losing convergence.
 }
 
-void GsRenderer::upload_bone_transforms(const glm::mat4* transforms, uint32_t count) {
-    if (!bone_ssbo_.mapped() || count == 0) return;
-    uint32_t n = std::min(count, kMaxBones);
-    auto* dst = static_cast<glm::mat4*>(bone_ssbo_.mapped());
-    std::memcpy(dst, transforms, n * sizeof(glm::mat4));
-    bone_count_ = n;
-    // No static_dirty_=true: bone-animated splats now live in the dynamic
-    // buffer (persistent prefix populated by IslandDemoState::on_enter →
-    // gs_renderer.set_persistent_dynamics). The dynamic preprocess runs every
-    // frame and re-applies these bone matrices via gs_preprocess.comp:198-214.
-    // The static buffer holds only terrain — no need to invalidate its sort.
-}
-
-void GsRenderer::clear_bone_transforms() {
-    bone_count_ = 0;
-    if (bone_ssbo_.mapped()) {
-        auto* dst = static_cast<glm::mat4*>(bone_ssbo_.mapped());
-        for (uint32_t i = 0; i < kMaxBones; ++i) dst[i] = glm::mat4(1.0f);
+void GsRenderer::set_render_state(RenderState* rs) noexcept {
+    if (render_state_ == rs) return;
+    render_state_ = rs;
+    // Re-bind descriptors so the bones binding picks up RenderState's
+    // per-frame buffers. Only re-run if streaming is initialised — pre-init
+    // descriptors haven't been written yet, and init_streaming will call
+    // update_descriptors itself when it runs.
+    if (streaming_initialized_) {
+        update_descriptors();
     }
 }
 
@@ -2517,7 +2504,7 @@ void GsRenderer::update_descriptors() {
         VkDescriptorBufferInfo sort_info{sort_keys_ssbos_[f].buffer(), 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo uniform_info{uniform_buffer_.buffer(), 0, sizeof(GsUniforms)};
         VkDescriptorBufferInfo visible_count_info{visible_count_ssbos_[f].buffer(), 0, sizeof(uint32_t)};
-        VkDescriptorBufferInfo bone_info{bone_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo bone_info{render_state_ ? render_state_->bones_buffer(FrameIndex{f}) : VK_NULL_HANDLE, 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo pbd_info{pbd_state_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo page_table_info{page_table_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
 
@@ -2698,7 +2685,7 @@ void GsRenderer::update_descriptors() {
         VkDescriptorBufferInfo sort_info{static_sort_as_[f].buffer(), 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo uniform_info{uniform_buffer_.buffer(), 0, sizeof(GsUniforms)};
         VkDescriptorBufferInfo counts_info{counts_ssbos_[f].buffer(), 0, VK_WHOLE_SIZE};
-        VkDescriptorBufferInfo bone_info{bone_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo bone_info{render_state_ ? render_state_->bones_buffer(FrameIndex{f}) : VK_NULL_HANDLE, 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo pbd_info{pbd_state_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo page_table_info{page_table_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
 
@@ -2733,7 +2720,7 @@ void GsRenderer::update_descriptors() {
         VkDescriptorBufferInfo sort_info{dynamic_sort_as_[f].buffer(), 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo uniform_info{uniform_buffer_.buffer(), 0, sizeof(GsUniforms)};
         VkDescriptorBufferInfo counts_info{counts_ssbos_[f].buffer(), 0, VK_WHOLE_SIZE};
-        VkDescriptorBufferInfo bone_info{bone_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo bone_info{render_state_ ? render_state_->bones_buffer(FrameIndex{f}) : VK_NULL_HANDLE, 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo pbd_info{pbd_state_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo page_table_info{page_table_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
 
@@ -4177,7 +4164,6 @@ void GsRenderer::shutdown(VmaAllocator allocator) {
     // Legacy buffers
     gaussian_ssbo_.destroy(allocator);
     uniform_buffer_.destroy(allocator);
-    bone_ssbo_.destroy(allocator);
     pbd_state_ssbo_.destroy(allocator);
     pbd_params_ssbo_.destroy(allocator);
     pbd_constraint_ssbo_.destroy(allocator);

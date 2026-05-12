@@ -657,11 +657,11 @@ void IslandDemoState::on_enter(AppBase& app) {
                 {player_registry_id_});
 
             // Set bone 0 override for terrain sway
-            app.set_bone_pre_upload_hook([this](glm::mat4* bones, uint32_t) {
+            app.set_bone_pre_upload_hook([this](BonesWriter& writer) {
                 float sway_y = std::sin(env_anim_time_ * 1.0f) * 0.05f;
                 float sway_x = std::sin(env_anim_time_ * 0.6f) * 0.02f;
-                bones[0] = glm::translate(glm::mat4(1.0f),
-                    glm::vec3(sway_x, sway_y, 0.0f));
+                writer.write(0, glm::translate(glm::mat4(1.0f),
+                    glm::vec3(sway_x, sway_y, 0.0f)));
             });
         }
     }
@@ -869,7 +869,7 @@ void IslandDemoState::on_exit(AppBase& app) {
     player_registry_id_ = 0;
 
     if (character_spawned_) {
-        app.renderer().gs_renderer().clear_bone_transforms();
+        // Phase 4b: clear_bone_transforms removed (see GsDemoState equivalent).
         app.renderer().gs_renderer().clear_pbd();
         character_spawned_ = false;
     }
