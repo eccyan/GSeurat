@@ -47,7 +47,20 @@ def run_scenario(out_dir):
     if os.path.exists(SOCKET):
         os.unlink(SOCKET)
 
-    proc = subprocess.Popen([DEMO_BIN, "--deterministic", "--prewarm"],
+    # `taskpolicy -c background` demotes the demo's QoS class so the
+    # OS scheduler will preempt it whenever WindowServer or other
+    # foreground/UI services need CPU + GPU time. Without this, the
+    # demo launches at "foreground/boosted" QoS (basePriority ~47, audio
+    # IOThread at 97) and starves WindowServer of its periodic checkin
+    # window. The kernel watchdog kills WS after ~40-120 s without a
+    # checkin, which on prior incidents (2026-05-12 x3) escalated to a
+    # full kernel panic and Mac restart. The demo runs in --deterministic
+    # step mode so it doesn't need realtime priority — each `step N`
+    # just takes longer wall-clock under background QoS, which is fine
+    # because the scenario waits for socket responses anyway.
+    demo_cmd = ["/usr/sbin/taskpolicy", "-c", "background", "--",
+                DEMO_BIN, "--deterministic", "--prewarm"]
+    proc = subprocess.Popen(demo_cmd,
                             stderr=subprocess.PIPE,
                             cwd=DEMO_DIR)
     # Drain stderr in a background thread so the OS pipe buffer (~64KB on
