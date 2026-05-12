@@ -88,8 +88,22 @@ def run_scenario(out_dir):
         # GitHub-hosted macOS runners (no GPU passthrough → MoltenVK falls
         # back to a slow software path) startup can take much longer.
         # Generous 300s timeout to accommodate that.
+        #
+        # Codex P2 on PR #434: `taskpolicy -c background -- ./gseurat_demo`
+        # will Popen-succeed even if `gseurat_demo` is missing / not exec /
+        # rejected by taskpolicy, because Popen only verifies taskpolicy
+        # itself starts. taskpolicy then exits with an error and the harness
+        # would otherwise wait the full 300 s for a socket that never
+        # appears. Poll proc.poll() on every iteration so a dead wrapper
+        # aborts immediately with the stderr already captured.
         t0 = time.time()
         while not os.path.exists(SOCKET):
+            rc = proc.poll()
+            if rc is not None:
+                raise RuntimeError(
+                    f"engine wrapper exited prematurely with rc={rc} before "
+                    f"socket appeared — check engine_stderr.log for cause "
+                    f"(missing/broken DEMO_BIN, taskpolicy rejection, etc.)")
             if time.time() - t0 > 300:
                 raise RuntimeError("engine did not create socket in 300s")
             time.sleep(0.1)
