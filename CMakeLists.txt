@@ -270,6 +270,7 @@ target_sources(gseurat_core PRIVATE src/engine/random.cpp)
 target_sources(gseurat_core PRIVATE src/engine/ecs/events.cpp)
 target_sources(gseurat_core PRIVATE src/engine/render_state.cpp)
 target_sources(gseurat_core PRIVATE src/engine/systems/vfx_system.cpp)
+target_sources(gseurat_core PRIVATE src/engine/systems/pbd_system.cpp)
 
 if(GSEURAT_SHARED_LIBS)
     target_compile_definitions(gseurat_core PUBLIC GSEURAT_ENGINE_BUILD_SHARED)

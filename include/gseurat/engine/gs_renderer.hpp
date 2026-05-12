@@ -138,24 +138,32 @@ public:
     void update_gaussian_data(const Gaussian* data, uint32_t count);
 
     // Per-frame dynamic upload API (CPU-sourced transient: particles,
-    // scene anims, pending dynamics). Writes at offset
-    // `persistent_dyn_count_ + vfx_prefix`; sets dynamic_count_ to
-    // `persistent_dyn_count_ + vfx_prefix + count`. Static geometry
-    // (terrain) arrives via load_cloud_async + publish_pending_chunks.
+    // scene anims). Writes at offset `persistent_dyn_count_ + gpu_prefix`
+    // and sets dynamic_count_ to `persistent_dyn_count_ + gpu_prefix +
+    // count`. Static geometry (terrain) arrives via load_cloud_async +
+    // publish_pending_chunks.
     //
-    // `vfx_prefix` is the number of slots already filled at offset
-    // `persistent_dyn_count_` by the GPU compose pass (4c-vfx). Callers
-    // that don't run the compose pass pass 0 (default) and behave as
-    // before.
+    // `gpu_prefix` is the number of slots already filled at offset
+    // `persistent_dyn_count_` by GPU compose passes (4c-vfx + 4c-pbd =
+    // vfx_count + pbd_count). Callers that don't run any compose pass
+    // pass 0 (default) and behave as before.
     void update_dynamic_gaussians(const Gaussian* data, uint32_t count,
-                                  uint32_t vfx_prefix = 0);
+                                  uint32_t gpu_prefix = 0);
 
-    // Phase 4c-vfx: GPU compose pass. Copies `vfx_count` slots from
-    // RenderState's vfx_buffer (bound via set_render_state) into
-    // dynamic_gaussian_ssbo at offset `persistent_dyn_count_`. Must be
-    // called BEFORE update_dynamic_gaussians on the same frame.
+    // Phase 4c-vfx: GPU compose pass for VFX splats. Copies `vfx_count`
+    // slots from RenderState's vfx_buffer (bound via set_render_state)
+    // into dynamic_gaussian_ssbo at offset `persistent_dyn_count_`.
+    // Must be called BEFORE update_dynamic_gaussians on the same frame.
     void dispatch_compose_vfx(VkCommandBuffer cmd, FrameIndex frame_idx,
                               uint32_t vfx_count);
+
+    // Phase 4c-pbd: GPU compose pass for PBD splats. Copies `pbd_count`
+    // slots from RenderState's pbd_buffer into dynamic_gaussian_ssbo at
+    // offset `persistent_dyn_count_ + vfx_count`. Must be called AFTER
+    // dispatch_compose_vfx (so the offset is correct) and BEFORE
+    // update_dynamic_gaussians on the same frame.
+    void dispatch_compose_pbd(VkCommandBuffer cmd, FrameIndex frame_idx,
+                              uint32_t vfx_count, uint32_t pbd_count);
 
     // Once-per-scene (or per-chunk-event) upload API for the "persistent prefix"
     // of the dynamic buffer: characters, NPCs, PBD-tagged trees. Replaces all
@@ -669,16 +677,20 @@ private:
     VkPipeline pbd_pipeline_ = VK_NULL_HANDLE;
     VkDescriptorSet pbd_set_ = VK_NULL_HANDLE;
 
-    // Phase 4c-vfx: GPU compose pass. Dedicated descriptor pool so the
-    // central kSetCount=58 allocation in dispatch_descriptor_sets doesn't
-    // get reshuffled. Two sets total (one per frame in flight).
+    // Phase 4c-vfx / 4c-pbd: GPU compose pass. Dedicated descriptor pool
+    // so the central kSetCount=58 allocation in dispatch_descriptor_sets
+    // doesn't get reshuffled. One set per (frame, source) pair: VFX +
+    // PBD share the same pipeline + push-constant layout (splat_count,
+    // dst_offset) but distinct src descriptors, so we allocate
+    // 2 × kMaxFramesInFlight sets total.
     VkDescriptorSetLayout compose_layout_ = VK_NULL_HANDLE;
     VkPipelineLayout compose_pipeline_layout_ = VK_NULL_HANDLE;
     VkPipeline compose_pipeline_ = VK_NULL_HANDLE;
     VkDescriptorPool compose_pool_ = VK_NULL_HANDLE;
-    std::array<VkDescriptorSet, kMaxFramesInFlight> compose_sets_{};
-    // Cached dst-info so the compose set update can be (re)issued from
-    // set_render_state without holding a Buffer reference.
+    std::array<VkDescriptorSet, kMaxFramesInFlight> compose_sets_vfx_{};
+    std::array<VkDescriptorSet, kMaxFramesInFlight> compose_sets_pbd_{};
+    // Both sets are written together by update_compose_descriptors when
+    // render_state_ and dynamic_gaussian_ssbo_ are both live.
     bool compose_descriptors_initialised_ = false;
     void create_compose_pipeline();
     void update_compose_descriptors();  // called from set_render_state

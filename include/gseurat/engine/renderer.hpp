@@ -36,7 +36,7 @@ struct GLFWwindow;
 namespace gseurat {
 
 class ResourceManager;
-namespace systems { class VfxSystem; }
+namespace systems { class VfxSystem; class PbdSystem; }
 
 // Small constant-size summary of the loaded GS cloud. Replaces the demo-side
 // reads of `cloud_bounds()` / `chunk_count()` / `all_gaussians()` with a
@@ -157,13 +157,18 @@ public:
     void add_gs_particle_emitter(const GsEmitterConfig& config);
     void clear_gs_particle_emitters();
     std::vector<GaussianParticleEmitter>& gs_particle_emitters() { return gs_particle_emitters_; }
-    void append_dynamic_gaussians(const Gaussian* data, uint32_t count);
 
     // Phase 4c-vfx-2: GaussianAnimator + vfx_instances_ moved to
     // systems::VfxSystem. The renderer now holds a non-owning pointer
     // to dispatch its per-frame VFX update and dispatch_compose_vfx
     // from record_gs_prepass.
     void set_vfx_system(systems::VfxSystem* vs) noexcept { vfx_system_ = vs; }
+
+    // Phase 4c-pbd: PBD splats migrated out of gs_pending_dynamics_ into
+    // systems::PbdSystem. The renderer holds a non-owning pointer to
+    // dispatch its per-frame PBD update + dispatch_compose_pbd from
+    // record_gs_prepass.
+    void set_pbd_system(systems::PbdSystem* ps) noexcept { pbd_system_ = ps; }
 
     // Scene-placed animations (with loop support)
     struct ReformConfig {
@@ -345,14 +350,15 @@ private:
     // pure GPU consumer once init_gs returns.
     GsCloudMetadata gs_cloud_metadata_;
     std::vector<Gaussian> gs_dynamic_buffer_;
-    std::vector<Gaussian> gs_pending_dynamics_;
     glm::mat4 gs_prev_view_{0.0f};  // for camera dirty detection
     bool gs_static_force_dirty_ = false;
     std::vector<GaussianParticleEmitter> gs_particle_emitters_;
     std::vector<SceneAnimation> gs_scene_animations_;
-    // Phase 4c-vfx-2: VFX instances + animator moved to systems::VfxSystem;
-    // we only keep a non-owning pointer so record_gs_prepass can tick it.
+    // Phase 4c-vfx-2 / 4c-pbd: VFX instances + animator (4c-vfx-2) and
+    // PBD pending splats (4c-pbd) moved to their respective systems;
+    // we only keep non-owning pointers so record_gs_prepass can tick them.
     systems::VfxSystem* vfx_system_ = nullptr;
+    systems::PbdSystem* pbd_system_ = nullptr;
 
     // ── Frame-determinism harness internal state ──
     struct DeterminismTestState {

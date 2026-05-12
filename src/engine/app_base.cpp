@@ -600,11 +600,21 @@ void AppBase::init_render_state() {
     if (render_state_) return;
     render_state_ = std::make_unique<RenderState>(renderer_.context());
     renderer_.gs_renderer().set_render_state(render_state_.get());
-    // Late-bind RenderState into VfxSystem if it was constructed first
-    // (init_game_object_system runs before init_render_state).
+    // Late-bind RenderState into VfxSystem + PbdSystem if they were
+    // constructed first (init_game_object_system runs before
+    // init_render_state in the canonical AppBase init order).
     if (vfx_system_) {
         vfx_system_->set_render_state(render_state_.get());
     }
+    if (pbd_system_) {
+        pbd_system_->set_render_state(render_state_.get());
+    }
+    // Renderer needs back-pointers to both systems so record_gs_prepass
+    // can drive their per-frame update + dispatch_compose calls.
+    // (4c-pbd: also fixes a latent wire-up gap from 4c-vfx-2 where
+    // set_vfx_system was declared but never invoked.)
+    renderer_.set_vfx_system(vfx_system_.get());
+    renderer_.set_pbd_system(pbd_system_.get());
 }
 
 void AppBase::upload_bone_transforms() {
@@ -873,6 +883,12 @@ void AppBase::init_game_object_system() {
     // before init_render_state in some flows) — VfxSystem tolerates the
     // null and treats per-frame splat-write as a no-op until rs binds.
     vfx_system_ = std::make_unique<systems::VfxSystem>(&renderer_, render_state_.get());
+
+    // Phase 4c-pbd: PbdSystem owns the pending CPU-side PBD splats
+    // (currently fed by IslandDemoState's PBD chain demo) and packs
+    // them into RenderState's pbd_buffer per frame. Same late-bind
+    // pattern as VfxSystem; init_render_state wires render_state_.
+    pbd_system_ = std::make_unique<systems::PbdSystem>(render_state_.get());
 
     // Register engine-level systems
     system_scheduler_.add_system({"bone_animation",

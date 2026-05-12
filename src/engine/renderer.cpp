@@ -9,6 +9,7 @@
 #include "gseurat/engine/sort_entry.hpp"
 #include "gseurat/engine/sort_hash.hpp"
 #include "gseurat/engine/streaming_config.hpp"
+#include "gseurat/engine/systems/pbd_system.hpp"
 #include "gseurat/engine/systems/vfx_system.hpp"
 
 #include <cstdio>
@@ -1317,10 +1318,12 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
         // (particle re-emission ordering, std::erase_if removal of dead
         // entries reshuffling indices), and the std::vector clear+fill
         // pattern would change capacity allocations across frames.
-        // Phase 4c-vfx-2: VFX splats now go through VfxSystem → vfx_buffer
-        // (RenderState) → GPU compose pass → dynamic_gaussian_ssbo. We
-        // need vfx_count BEFORE update_dynamic_gaussians so its vfx_prefix
-        // is right. Distance-cull origin computed once and reused below.
+        // Phase 4c-vfx-2 / 4c-pbd: VFX + PBD splats now go through their
+        // respective systems → vfx_buffer / pbd_buffer (RenderState) →
+        // GPU compose passes → dynamic_gaussian_ssbo. We need both
+        // counts BEFORE update_dynamic_gaussians so its gpu_prefix is
+        // right. Distance-cull origin computed once and reused below
+        // (PBD doesn't distance-cull — its CPU producers can if they care).
         const glm::vec3 cull_origin_v = glm::vec3(glm::inverse(gs_view_)[3]);
         const float cull_dist_sq_v = gs_max_render_distance_ > 0.0f
             ? gs_max_render_distance_ * gs_max_render_distance_ : 0.0f;
@@ -1329,6 +1332,27 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
             vfx_count = vfx_system_->update_per_frame(
                 dt, FrameIndex{current_frame_}, cull_origin_v, cull_dist_sq_v,
                 flags.animation, flags.particles);
+        }
+        uint32_t pbd_count = 0;
+        if (pbd_system_ && !determinism_test_state_.active) {
+            pbd_count = pbd_system_->update_per_frame(FrameIndex{current_frame_});
+        }
+        // Clamp the GPU-composed prefix so persistent + vfx + pbd fits
+        // inside max_dynamic_count_. Without this the compose shaders
+        // would write past `dynamic_gaussian_ssbo`'s end when a scene's
+        // persistent prefix is large enough to leave less headroom than
+        // the system writer caps (RenderStateConfig max_vfx_splats +
+        // max_pbd_splats currently 250k vs. kDynamicHeadroom 1M minus
+        // persistent). The old pending-dynamics path was implicitly
+        // clipped by update_dynamic_gaussians, which can only truncate
+        // the CPU portion (after the GPU prefix) — Codex P2 on #437.
+        {
+            const uint32_t max_dyn = gs_renderer_.max_dynamic_count();
+            const uint32_t persistent = gs_renderer_.persistent_dynamic_count();
+            uint32_t gpu_budget = (max_dyn > persistent) ? (max_dyn - persistent) : 0;
+            if (vfx_count > gpu_budget) vfx_count = gpu_budget;
+            gpu_budget -= vfx_count;
+            if (pbd_count > gpu_budget) pbd_count = gpu_budget;
         }
 
         if (!determinism_test_state_.active) {
@@ -1384,40 +1408,38 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
                 }
             }
 
-            // Append pending dynamics from game states (e.g., PBD chain demo)
-            if (!gs_pending_dynamics_.empty()) {
-                gs_dynamic_buffer_.insert(gs_dynamic_buffer_.end(),
-                                          gs_pending_dynamics_.begin(),
-                                          gs_pending_dynamics_.end());
-                gs_pending_dynamics_.clear();
-            }
-
             // Upload dynamic Gaussians. The dynamic_gaussian_ssbo layout
-            // is now [persistent | vfx | cpu], where `vfx_count` slots
-            // are filled by the GPU compose pass below, and `count`
-            // CPU-sourced slots come after.
+            // is now [persistent | vfx | pbd | cpu]: `vfx_count` and
+            // `pbd_count` slots are filled by the GPU compose passes
+            // below, and `count` CPU-sourced slots come after.
             {
                 auto count = static_cast<uint32_t>(gs_dynamic_buffer_.size());
-                const uint32_t max_cpu = (gs_renderer_.max_dynamic_count() > vfx_count)
-                    ? gs_renderer_.max_dynamic_count() - vfx_count : 0;
+                const uint32_t gpu_prefix = vfx_count + pbd_count;
+                const uint32_t max_cpu = (gs_renderer_.max_dynamic_count() > gpu_prefix)
+                    ? gs_renderer_.max_dynamic_count() - gpu_prefix : 0;
                 if (count > max_cpu) {
                     gs_dynamic_buffer_.resize(max_cpu);
                     count = max_cpu;
                 }
                 gs_renderer_.update_dynamic_gaussians(gs_dynamic_buffer_.data(), count,
-                                                       /*vfx_prefix=*/vfx_count);
+                                                       /*gpu_prefix=*/gpu_prefix);
 #if GSEURAT_DEBUG_BUILD
-                dbg_dyn_count = count + vfx_count;
+                dbg_dyn_count = count + gpu_prefix;
 #endif
             }
         }
 
-        // Phase 4c-vfx-2: GPU compose pass — copy VfxSystem's per-frame
-        // vfx_buffer into dynamic_gaussian_ssbo at offset
-        // persistent_dyn_count_ for `vfx_count` slots. Must run on the
-        // same cmd buffer BEFORE gs_renderer_.render() so downstream
-        // preprocess/sort/raster see the composed splats.
+        // Phase 4c-vfx-2 / 4c-pbd: GPU compose passes — copy VfxSystem's
+        // per-frame vfx_buffer into dynamic_gaussian_ssbo at offset
+        // persistent_dyn_count_ for `vfx_count` slots, then PbdSystem's
+        // pbd_buffer at offset persistent_dyn_count_ + vfx_count. Both
+        // must run on the same cmd buffer BEFORE gs_renderer_.render()
+        // so downstream preprocess/sort/raster see the composed splats.
+        // Order matters because dispatch_compose_pbd uses vfx_count as
+        // an offset.
         gs_renderer_.dispatch_compose_vfx(cmd, FrameIndex{current_frame_}, vfx_count);
+        gs_renderer_.dispatch_compose_pbd(cmd, FrameIndex{current_frame_},
+                                          vfx_count, pbd_count);
 
 #if GSEURAT_DEBUG_BUILD
         const auto t_prepass_pre_render = std::chrono::steady_clock::now();
@@ -1688,10 +1710,6 @@ void Renderer::add_gs_particle_emitter(const GsEmitterConfig& config) {
 
 void Renderer::clear_gs_particle_emitters() {
     gs_particle_emitters_.clear();
-}
-
-void Renderer::append_dynamic_gaussians(const Gaussian* data, uint32_t count) {
-    gs_pending_dynamics_.insert(gs_pending_dynamics_.end(), data, data + count);
 }
 
 void Renderer::add_gs_animation(const std::string& effect, const GsAnimRegion& region,
