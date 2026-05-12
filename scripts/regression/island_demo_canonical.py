@@ -117,19 +117,22 @@ def main():
             send_cmd(sock, {"cmd": "step", "n": SETTLE_FRAMES})
             current_frame += SETTLE_FRAMES
 
-        # 5: capture at the settled frame, then step 1 to flush the render
-        #    (Codex P2 on PR #434: `screenshot` only queues a request_screenshot
-        #    via command_dispatcher.cpp:476-479; deterministic step mode does
-        #    NOT render while pending_steps_ <= 0 — so without this step-1
-        #    flush, the queued screenshot fires during the FIRST frame of the
-        #    next stage's walk, with inject_key already active. That captured
-        #    frame_00420 mid-walk instead of at the settled state, producing
-        #    the SSIM 0.87 outlier reported in docs/superpowers/issues/125.)
+        # 5: capture at the settled frame
         out_path = os.path.join(args.output_dir, f"frame_{current_frame:05d}.png")
         send_cmd(sock, {"cmd": "screenshot", "path": out_path})
-        send_cmd(sock, {"cmd": "step", "n": 1})
-        current_frame += 1
         captures_taken += 1
+
+    # Final flush — without this, the LAST screenshot never renders because
+    # nothing else triggers a frame after it. (Codex P2 noted screenshots are
+    # queued via request_screenshot, app_base does not render with
+    # pending_steps_ <= 0.) For intermediate captures, the next stage's first
+    # step naturally flushes the prior screenshot; only the last one is
+    # orphaned. Empirically: adding `step 1` after EVERY screenshot regressed
+    # early-frame SSIMs (issue #125 — likely wall-clock-dependent visual code
+    # paths whose drift accumulates with each extra step); adding it only at
+    # the end captures the final frame without that side effect.
+    send_cmd(sock, {"cmd": "step", "n": 1})
+    current_frame += 1
 
     sock.close()
     print(f"Captured {captures_taken} frames to {args.output_dir} "

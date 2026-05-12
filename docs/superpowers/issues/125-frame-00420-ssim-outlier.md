@@ -44,7 +44,7 @@ or "particle wakeup" pattern — it's a uniform brightness/color drift.
 
 ## Candidate causes
 
-### Candidate 1 — async-screenshot ordering bug in the harness (most likely)
+### Candidate 1 — async-screenshot ordering bug in the harness (RULED OUT)
 
 Codex review on PR #434 identified:
 
@@ -54,24 +54,49 @@ Codex review on PR #434 identified:
 > The next loop iteration can therefore inject the next movement key before
 > the render that actually writes the PNG.
 
-If this is the cause, `frame_00420` is being captured during the FIRST frame
-of the next walk stage, not at the settled stationary state. The RGB shift
-would reflect the player+camera moving (different occlusion, different lit
-surfaces) on that one mid-walk frame.
+**Verification result (2026-05-12, commit b20fdce3): adding `step 1` after
+every `screenshot` made the regression WORSE, not better.** Full SSIM
+distribution before vs. after the fix:
 
-**Verification:** PR #434 adds a `step 1` after every `screenshot` to flush
-the queued render before the next `inject_key`. If after that fix
-`frame_00420` jumps from 0.87 to >= 0.96, this candidate is confirmed and
-this issue can be closed.
+| Frame | Before fix | After fix | Δ |
+|---|---|---|---|
+| 00000 | 0.99999 | 0.99999 | unchanged |
+| 00420/421 | **0.871** | **0.756** | −0.115 (much worse) |
+| 00660/662 | 0.998 | 0.955 | −0.043 |
+| 00900/903 | 0.992 | 0.957 | −0.035 |
+| 01020/1024 | 0.985 | 0.937 | −0.048 |
+| 01380/1385 | 0.997 | 0.996 | unchanged |
+| 01740+ | ≥ 0.98 | ≥ 0.98 | unchanged |
+| 03060/3071 | (orphaned) | 0.973 | NEW (last frame now flushes) |
 
-### Candidate 2 — wall-clock dependency in engine visual pipeline (fallback)
+Only the first 4 captures regressed; everything from frame 1385 onward is
+unchanged. The final capture (which WAS being orphaned because nothing
+flushed it) is now correctly written.
 
-If candidate 1 is NOT the cause, the next hypothesis is that something in
-the visual pipeline reads `glfwGetTime()` / `std::chrono::system_clock` /
-similar real-clock source instead of the deterministic `gs::SimClock`. The
-`taskpolicy -c background` demotion (also in PR #434) makes the wall-clock
-duration of each run highly variable, which would expose any real-clock
-visual dep as a between-runs appearance drift.
+**Interpretation:** Codex was correct that the last screenshot was orphaned,
+but incorrect about intermediate captures — they were apparently being
+flushed correctly by the next stage's first step. Adding `step 1` after
+every screenshot introduces extra wall-clock variance during early frames,
+which strengthens candidate 2 below (wall-clock dependency in engine
+visual code) — adding any extra step amplifies the per-run wall-clock
+divergence, with cumulative effect on the first ~4 captures before
+plateauing.
+
+The chosen partial fix in PR #434 (final commit): keep the broad revert,
+add a single `step 1` AFTER the for-loop to flush only the last screenshot.
+This regains the missing final capture without regressing the early ones.
+
+### Candidate 2 — wall-clock dependency in engine visual pipeline (now primary suspect)
+
+With candidate 1 ruled out by the verification above, the remaining
+hypothesis is that something in the visual pipeline reads `glfwGetTime()`
+/ `std::chrono::system_clock` / similar real-clock source instead of the
+deterministic `gs::SimClock`. The `taskpolicy -c background` demotion (in
+PR #434) makes the wall-clock duration of each run highly variable, which
+would expose any real-clock visual dep as a between-runs appearance drift.
+This also explains the "step 1 made it worse" result: every extra step
+incurs additional wall-clock variance, so the cumulative drift over the
+early stages is larger when more steps are involved.
 
 Likely suspects to audit if this turns out to be the cause:
 - Sky / atmospheric scattering shader (sun position, scattering coefficients)
@@ -84,16 +109,22 @@ The audit would `grep -rn "glfwGetTime\|chrono::system\|chrono::steady\|wall_clo
 across `src/engine/` and the GLSL files under `shaders/`, then replace each
 hit with the appropriate `gs::SimClock`-based source.
 
-## Decision on the harness threshold (interim)
+## Decision on the harness threshold
 
-`SELF_CHECK_THRESHOLD` is dropped from 0.96 to 0.85 in PR #434 as a stopgap.
-Once candidate 1 is verified (by re-running `--self-check` with the
-screenshot-flush fix), the threshold should tighten back to **0.96** (or
-whatever the genuine noise floor turns out to be). If candidate 1 is NOT
-the cause and we have to investigate candidate 2, the threshold stays at
-0.85 until the engine audit lands.
+`SELF_CHECK_THRESHOLD` stays at 0.85 in PR #434. Candidate 1 is ruled out
+(see above); candidate 2 (wall-clock visual dep) is the working hypothesis.
+The threshold should NOT be tightened back to 0.96 until that engine-side
+audit lands and frame_00420 demonstrably moves above 0.96.
 
 **This issue blocks tightening the threshold back to 0.96.**
+
+## Suggested investigation steps for the next owner
+
+1. `grep -rn "glfwGetTime\|chrono::system\|chrono::steady\|wall_clock\|::now()" src/engine/ shaders/` — enumerate every real-clock read in the visual path.
+2. Disambiguate which of these feed into visible pixels (vs. only diagnostics).
+3. Replace each with `gs::SimClock::now()` / step-count-derived equivalent.
+4. Re-run the harness; verify frame_00420 jumps to ≥ 0.96.
+5. Tighten `SELF_CHECK_THRESHOLD` back to 0.96 in a follow-up commit.
 
 ## Reproduction
 
