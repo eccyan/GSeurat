@@ -1,5 +1,6 @@
 #include "gseurat/engine/renderer.hpp"
 #include "gseurat/engine/debug.hpp"
+#include "gseurat/engine/log.hpp"
 #include "gseurat/engine/pipeline.hpp"
 #include "gseurat/engine/procedural_textures.hpp"
 #include "gseurat/engine/project_root.hpp"
@@ -404,10 +405,8 @@ void Renderer::draw_scene(Scene& scene,
                            const std::vector<DebugColliderDrawInfo>& debug_colliders_list,
                            const FeatureFlags& flags,
                            bool dispatch_gpu_compute) {
+    GS_LOG_FRAME("[draw_scene/wd] entry current_frame={}", current_frame_);
 #if GSEURAT_DEBUG_BUILD
-    if (gs::dbg::enabled(gs::dbg::Diag::Watchdog)) {
-        std::fprintf(stderr, "[draw_scene/wd] entry current_frame=%u\n", current_frame_);
-    }
     const auto t_ds_entry = std::chrono::steady_clock::now();
 #endif
     auto device = context_.device();
@@ -459,10 +458,9 @@ void Renderer::draw_scene(Scene& scene,
             "main-thread blocked on prior frame's GPU work; retrying with infinite timeout\n",
             fence_ms, current_frame_);
         vkWaitForFences(device, 1, &frame_sync.in_flight, VK_TRUE, UINT64_MAX);
-    } else if (fence_ms > 50.0 && gs::dbg::enabled(gs::dbg::Diag::Watchdog)) {
-        std::fprintf(stderr,
-            "[renderer/watchdog] vkWaitForFences slow: %.2f ms (current_frame=%u)\n",
-            fence_ms, current_frame_);
+    } else if (fence_ms > 50.0) {
+        GS_LOG_FRAME("[renderer/watchdog] vkWaitForFences slow: {:.2f} ms (current_frame={})",
+                     fence_ms, current_frame_);
     }
 
     uint32_t image_index;
@@ -480,9 +478,8 @@ void Renderer::draw_scene(Scene& scene,
             acquire_ms);
         vkAcquireNextImageKHR(device, swapchain_.swapchain(), UINT64_MAX, acquire_sem,
                               VK_NULL_HANDLE, &image_index);
-    } else if (acquire_ms > 50.0 && gs::dbg::enabled(gs::dbg::Diag::Watchdog)) {
-        std::fprintf(stderr,
-            "[renderer/watchdog] vkAcquireNextImageKHR slow: %.2f ms\n", acquire_ms);
+    } else if (acquire_ms > 50.0) {
+        GS_LOG_FRAME("[renderer/watchdog] vkAcquireNextImageKHR slow: {:.2f} ms", acquire_ms);
     }
 #else
     vkWaitForFences(device, 1, &frame_sync.in_flight, VK_TRUE, UINT64_MAX);
@@ -953,7 +950,7 @@ void Renderer::draw_scene(Scene& scene,
 
     const double draw_total_ms = std::chrono::duration<double, std::milli>(
         t_ds_post_present - t_ds_entry).count();
-    if (draw_total_ms > 100.0 && gs::dbg::enabled(gs::dbg::Diag::Watchdog)) {
+    if (draw_total_ms > 100.0) {
         const double setup_ms = std::chrono::duration<double, std::milli>(
             t_ds_pre_poll - t_ds_entry).count();
         const double poll_ms = std::chrono::duration<double, std::milli>(
@@ -974,13 +971,12 @@ void Renderer::draw_scene(Scene& scene,
             t_ds_pre_end - t_ds_post_pp).count();
         const double end_cmdbuf_ms = std::chrono::duration<double, std::milli>(
             t_ds_post_end - t_ds_pre_end).count();
-        std::fprintf(stderr,
-            "[draw_scene/wd/SLOW] frame=%u total=%.1fms "
-            "setup=%.1f poll_xfers=%.1f gs_prepass=%.1f scene_pass=%.1f post_process=%.1f composite=%.1f end_cmdbuf=%.1f "
-            "submit=%.1f post_submit=%.1f present=%.1f\n",
-            current_frame_, draw_total_ms,
-            setup_ms, poll_ms, prepass_ms, prepass_to_pp_ms, post_process_ms, pp_to_end_ms, end_cmdbuf_ms,
-            submit_ms, post_submit_to_present_ms, present_ms);
+        GS_LOG_FRAME("[draw_scene/wd/SLOW] frame={} total={:.1f}ms "
+                     "setup={:.1f} poll_xfers={:.1f} gs_prepass={:.1f} scene_pass={:.1f} post_process={:.1f} composite={:.1f} end_cmdbuf={:.1f} "
+                     "submit={:.1f} post_submit={:.1f} present={:.1f}",
+                     current_frame_, draw_total_ms,
+                     setup_ms, poll_ms, prepass_ms, prepass_to_pp_ms, post_process_ms, pp_to_end_ms, end_cmdbuf_ms,
+                     submit_ms, post_submit_to_present_ms, present_ms);
     }
 #endif
 
@@ -1439,18 +1435,17 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
 
         const double total_ms = std::chrono::duration<double, std::milli>(
             t_prepass_end - t_prepass_start).count();
-        if (total_ms > 100.0 && gs::dbg::enabled(gs::dbg::Diag::Watchdog)) {
+        if (total_ms > 100.0) {
             const double cpu_gather_ms = std::chrono::duration<double, std::milli>(
                 t_prepass_pre_render - t_prepass_start).count();
             const double gs_render_ms = std::chrono::duration<double, std::milli>(
                 t_prepass_end - t_prepass_pre_render).count();
             const size_t emitter_count = gs_particle_emitters_.size();
             const size_t vfx_count = vfx_instances_.size();
-            std::fprintf(stderr,
-                "[gs_prepass/wd/SLOW] total=%.1fms cpu_gather=%.1f gs_render=%.1f "
-                "dyn_count=%u emitters=%zu vfx_inst=%zu static_dirty=%d\n",
-                total_ms, cpu_gather_ms, gs_render_ms, dbg_dyn_count,
-                emitter_count, vfx_count, gs_static_force_dirty_ ? 1 : 0);
+            GS_LOG_FRAME("[gs_prepass/wd/SLOW] total={:.1f}ms cpu_gather={:.1f} gs_render={:.1f} "
+                         "dyn_count={} emitters={} vfx_inst={} static_dirty={}",
+                         total_ms, cpu_gather_ms, gs_render_ms, dbg_dyn_count,
+                         emitter_count, vfx_count, gs_static_force_dirty_ ? 1 : 0);
         }
 #endif
     }

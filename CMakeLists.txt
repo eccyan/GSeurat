@@ -264,6 +264,7 @@ target_compile_definitions(gseurat_core PUBLIC
 )
 
 target_sources(gseurat_core PRIVATE src/engine/debug.cpp)
+target_sources(gseurat_core PRIVATE src/engine/log.cpp)
 target_sources(gseurat_core PRIVATE src/engine/sim_clock.cpp)
 target_sources(gseurat_core PRIVATE src/engine/random.cpp)
 target_sources(gseurat_core PRIVATE src/engine/ecs/events.cpp)
@@ -629,6 +630,7 @@ function(add_gseurat_gpu_test NAME)
         tests/onesweep_test_runner.cpp
         src/engine/vk_context.cpp
         src/engine/debug.cpp
+        src/engine/log.cpp
         src/engine/sim_clock.cpp
         src/engine/random.cpp
         src/engine/buffer.cpp

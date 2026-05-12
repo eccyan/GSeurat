@@ -2,6 +2,7 @@
 #include "gseurat/engine/vk_context.hpp"
 
 #include "gseurat/engine/debug.hpp"
+#include "gseurat/engine/log.hpp"
 #include "gseurat/engine/project_root.hpp"
 
 #include <cstdio>
@@ -27,6 +28,7 @@ void VkContext::init(GLFWwindow* window) {
     setup_debug_messenger();
     gs::dbg::init_function_pointers(instance_);
     gs::dbg::init_diag_registry();
+    gs::log::init_log();
     create_surface(window);
     pick_physical_device();
     create_logical_device();
@@ -40,6 +42,7 @@ void VkContext::init_headless() {
     setup_debug_messenger();
     gs::dbg::init_function_pointers(instance_);
     gs::dbg::init_diag_registry();
+    gs::log::init_log();
     pick_physical_device_headless();
     create_logical_device_headless();
     create_allocator();
@@ -86,6 +89,8 @@ void VkContext::shutdown() {
 #endif
 
     vkDestroyInstance(instance_, nullptr);
+
+    gs::log::shutdown_log();
 }
 
 void VkContext::create_instance() {
