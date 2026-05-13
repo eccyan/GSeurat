@@ -15,7 +15,16 @@ void LightingSystem::run(ecs::World& world, float /*dt*/) {
             // a scene declares no lights, the prior implementation
             // explicitly turned off light_mode rather than leaving
             // stale lights bound.
-            renderer_->gs_renderer().set_light_mode(0);
+            auto& gs = renderer_->gs_renderer();
+            gs.set_light_mode(0);
+            // Also flush GsRenderer's cached point_lights_ vector so
+            // later reads (e.g. dev_panels' point_lights() / gizmos)
+            // and any re-enable of light_mode don't surface stale
+            // entries from the previous scene (Codex P2 on PR #439).
+            // The per-frame merge can't do this on its own because it
+            // gates uploads on `!all.empty()` to preserve historical
+            // behavior; the explicit-clear case lives here.
+            gs.set_point_lights({});
         }
     });
 }
