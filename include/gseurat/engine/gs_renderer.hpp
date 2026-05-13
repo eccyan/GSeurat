@@ -5,6 +5,7 @@
 #include "gseurat/engine/gs_renderer/gs_resources.hpp"
 #include "gseurat/engine/gs_renderer/post/gs_post_process_system.hpp"
 #include "gseurat/engine/gs_renderer/post/post_process_params.hpp"
+#include "gseurat/engine/gs_renderer/sort/gs_sort_system.hpp"
 #include "gseurat/engine/pbd_types.hpp"
 #include "gseurat/engine/render_state.hpp"  // FrameIndex
 #include "gseurat/engine/slab_allocator.hpp"
@@ -414,13 +415,7 @@ private:
     void create_compute_pipelines();
     void create_descriptor_resources();
     void update_descriptors();
-    // frame_in_flight selects resources_->depth_onesweep_statuses[f] for the status
-    // clear so frame N+1's fill doesn't stomp frame N's in-flight lookback.
-    // The passed descriptor sets must already bind that same per-frame slot.
-    void dispatch_depth_onesweep(VkCommandBuffer cmd, uint32_t sort_size, uint32_t num_workgroups,
-        uint32_t frame_in_flight,
-        VkDescriptorSet hist_a, VkDescriptorSet hist_b,
-        VkDescriptorSet scatter_ab, VkDescriptorSet scatter_ba);
+    // Phase 5c: dispatch_depth_onesweep moved to GsSortSystem (sort_.dispatch_depth_*).
     // Phase 3: frame_in_flight selects tile_bin_sets_[f] so the per-frame
     // racing projected/merged/counts slots are read correctly.
     void dispatch_tile_sort(VkCommandBuffer cmd, uint32_t frame_in_flight);
@@ -466,6 +461,12 @@ private:
     // renderer; init() in GsRenderer::init(), shutdown() inside our
     // explicit shutdown(allocator).
     GsPostProcessSystem post_;
+
+    // Phase 5c: depth sort + merge extraction. Owns onesweep histogram +
+    // scatter pipelines (shared with 5d tile-bin via getters), merge
+    // pipeline, all depth-sort descriptor sets (3 paths × 4 sets × 2
+    // frames + 2 merge = 26 sets), and the sort-size scalars.
+    GsSortSystem sort_;
 
     // Phase 4b: bone transform storage moved to gseurat::RenderState
     // (per-frame-in-flight, persistent-mapped). Set via set_render_state
@@ -602,13 +603,7 @@ private:
     // so the set must also be per-frame to point at the right pair.
     std::array<VkDescriptorSet, kMaxFramesInFlight> render_sets_{};
 
-    // Merge pipeline
-    VkDescriptorSetLayout merge_layout_ = VK_NULL_HANDLE;
-    VkPipelineLayout merge_pipeline_layout_ = VK_NULL_HANDLE;
-    VkPipeline merge_pipeline_ = VK_NULL_HANDLE;
-    // Per-frame merge sets: merge_sets_[f] binds resources_->dynamic_sort_as[f],
-    // resources_->merged_sort_ssbos[f], resources_->counts_ssbos[f] (all racing per-frame buffers).
-    std::array<VkDescriptorSet, kMaxFramesInFlight> merge_sets_{};
+    // Phase 5c: merge pipeline + layout + sets moved to GsSortSystem.
 
     // Static/dynamic preprocess descriptor sets — per-frame (Phase 2 plumbing;
     // dispatch still binds [0] until Phase 3).
@@ -712,15 +707,11 @@ private:
     // resources_->onesweep_statuses is also per-frame (final cross-frame race fix):
     // frame N+1's vkCmdFillBuffer would otherwise stomp frame N's in-flight
     // lookback state.
-    VkDescriptorSetLayout onesweep_hist_layout_ = VK_NULL_HANDLE;
-    VkPipelineLayout onesweep_hist_pipeline_layout_ = VK_NULL_HANDLE;
-    VkPipeline onesweep_hist_pipeline_ = VK_NULL_HANDLE;
+    // Phase 5c: onesweep_hist pipeline + layout moved to GsSortSystem (shared with 5d tile-bin).
     std::array<VkDescriptorSet, kMaxFramesInFlight> onesweep_hist_sets_a_{};  // read from A
     std::array<VkDescriptorSet, kMaxFramesInFlight> onesweep_hist_sets_b_{};  // read from B
 
-    VkDescriptorSetLayout onesweep_scatter_layout_ = VK_NULL_HANDLE;
-    VkPipelineLayout onesweep_scatter_pipeline_layout_ = VK_NULL_HANDLE;
-    VkPipeline onesweep_scatter_pipeline_ = VK_NULL_HANDLE;
+    // Phase 5c: onesweep_scatter pipeline + layout moved to GsSortSystem (shared with 5d tile-bin).
     std::array<VkDescriptorSet, kMaxFramesInFlight> onesweep_scatter_sets_ab_{};  // read A → write B
     std::array<VkDescriptorSet, kMaxFramesInFlight> onesweep_scatter_sets_ba_{};  // read B → write A
 
@@ -732,34 +723,16 @@ private:
 
     // Depth sort Onesweep (reuses same shaders as tile sort)
     // Per-digit lookback status (depth sort, coherent). Per-frame for the
-    // same reason as resources_->onesweep_statuses — dispatch_depth_onesweep zeroes
-    // this slot at the start of every sort. Shared across static/dynamic/
-    // legacy depth sorts (all three bind frame f's slot).
+    // same reason as resources_->onesweep_statuses.
+    // Phase 5c: depth_onesweep_max_wg_ kept here temporarily because
+    // init_streaming computes its size from sort sizes — pushed into
+    // GsSortSystem via set_sort_sizes() after the computation. Will be
+    // fully retired in a later cleanup.
     uint32_t depth_onesweep_max_wg_ = 0;
 
-    // Depth sort Onesweep descriptor sets (legacy path) — per-frame.
-    // These bind racing resources_->sort_keys_ssbos[f] / resources_->sort_b_ssbos[f].
-    std::array<VkDescriptorSet, kMaxFramesInFlight> depth_hist_sets_a_{};
-    std::array<VkDescriptorSet, kMaxFramesInFlight> depth_hist_sets_b_{};
-    std::array<VkDescriptorSet, kMaxFramesInFlight> depth_scatter_sets_ab_{};
-    std::array<VkDescriptorSet, kMaxFramesInFlight> depth_scatter_sets_ba_{};
-
-    // Depth sort Onesweep descriptor sets (static path) — per-frame.
-    // Each slot binds frame f's resources_->depth_onesweep_statuses[f] AND its own
-    // resources_->static_sort_as[f]/resources_->static_sort_bs[f] ping-pong buffers, so the two
-    // frames of the static_dirty_frames_remaining_ countdown can run
-    // concurrently without racing on shared sort buffers.
-    std::array<VkDescriptorSet, kMaxFramesInFlight> static_depth_hist_sets_a_{};
-    std::array<VkDescriptorSet, kMaxFramesInFlight> static_depth_hist_sets_b_{};
-    std::array<VkDescriptorSet, kMaxFramesInFlight> static_depth_scatter_sets_ab_{};
-    std::array<VkDescriptorSet, kMaxFramesInFlight> static_depth_scatter_sets_ba_{};
-
-    // Depth sort Onesweep descriptor sets (dynamic path) — per-frame.
-    // These bind racing resources_->dynamic_sort_as[f] / resources_->dynamic_sort_bs[f].
-    std::array<VkDescriptorSet, kMaxFramesInFlight> dynamic_depth_hist_sets_a_{};
-    std::array<VkDescriptorSet, kMaxFramesInFlight> dynamic_depth_hist_sets_b_{};
-    std::array<VkDescriptorSet, kMaxFramesInFlight> dynamic_depth_scatter_sets_ab_{};
-    std::array<VkDescriptorSet, kMaxFramesInFlight> dynamic_depth_scatter_sets_ba_{};
+    // Phase 5c: all depth-sort descriptor sets (legacy/static/dynamic
+    // × hist_a/hist_b/scatter_ab/scatter_ba × per-frame = 24 sets)
+    // moved into GsSortSystem.
 
     // Tile sort buffers — per-frame (Phase 3.5).
     // All seven buffers below are written every frame on the per-frame
