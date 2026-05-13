@@ -119,6 +119,12 @@ void GsRenderer::init(VkDevice device, VkPhysicalDevice physical_device,
     assert(resources_ != nullptr && "set_resources() must run before init()");
     post_.init(device_, pipeline_cache_, gs_pool_, resources_);
 
+    // Phase 5e-1: streaming system captures device + allocator handles
+    // for its lightweight methods (create_transfer_queue). Heavy
+    // mutators in GsRenderer still reach into streaming_'s state via
+    // friend access until 5e-2 moves them in.
+    streaming_.init(device_, allocator_);
+
     // Create timestamp query pool for GPU profiling (2 queries: before/after rasterize)
     {
         VkQueryPoolCreateInfo qp_info{};
@@ -1173,8 +1179,8 @@ void GsRenderer::prewarm_pipelines(VkQueue queue, VkCommandPool cmd_pool,
 }
 
 void GsRenderer::init_streaming(const StreamingConfig& config) {
-    streaming_config_ = config;
-    slab_allocator_ = std::make_unique<SlabAllocator>(config.total_slabs(), config.slab_size_splats);
+    streaming_.streaming_config_ = config;
+    streaming_.slab_allocator_ = std::make_unique<SlabAllocator>(config.total_slabs(), config.slab_size_splats);
 
     // Wait for GPU before destroying existing buffers
     if (initialized_) {
@@ -1506,9 +1512,9 @@ void GsRenderer::init_streaming(const StreamingConfig& config) {
         }
     }
 
-    active_chunks_.clear();
-    total_active_splats_ = 0;
-    streaming_initialized_ = true;
+    streaming_.active_chunks_.clear();
+    streaming_.total_active_splats_ = 0;
+    streaming_.streaming_initialized_ = true;
     initialized_ = true;
 
     update_descriptors();
@@ -1526,30 +1532,30 @@ void GsRenderer::init_streaming(const StreamingConfig& config) {
     std::fprintf(stderr, "GS: Streaming initialized — budget=%u splats, %u slabs of %u\n",
                  config.gpu_budget_splats, config.total_slabs(), config.slab_size_splats);
 
-    GS_DBG_INVARIANT(active_chunks_.empty() && static_count_ == 0,
-                     "init_streaming: active_chunks_ must be empty and static_count_ zeroed on fresh init");
+    GS_DBG_INVARIANT(streaming_.active_chunks_.empty() && static_count_ == 0,
+                     "init_streaming: streaming_.active_chunks_ must be empty and static_count_ zeroed on fresh init");
 }
 
 void GsRenderer::unload_cloud(uint32_t chunk_id) {
-    if (!streaming_initialized_) return;
+    if (!streaming_.streaming_initialized_) return;
     // Verify the chunk actually exists before queuing — caller may
     // double-unload during world-streamer churn. We don't mutate
-    // active_chunks_ here; publish_pending_chunks does the actual
+    // streaming_.active_chunks_ here; publish_pending_chunks does the actual
     // removal (and the page_table/chunk_table writes) inside the
     // current frame's command buffer so the GPU-side metadata update
     // is properly ordered against in-flight reads.
-    auto it = std::find_if(active_chunks_.begin(), active_chunks_.end(),
-        [chunk_id](const ChunkState& c) { return c.handle.chunk_id == chunk_id; });
-    if (it == active_chunks_.end()) return;
+    auto it = std::find_if(streaming_.active_chunks_.begin(), streaming_.active_chunks_.end(),
+        [chunk_id](const GsStreamingSystem::ChunkState& c) { return c.handle.chunk_id == chunk_id; });
+    if (it == streaming_.active_chunks_.end()) return;
 
-    PendingChunkPublication p;
-    p.op = PendingChunkPublication::Op::Unload;
+    GsStreamingSystem::PendingChunkPublication p;
+    p.op = GsStreamingSystem::PendingChunkPublication::Op::Unload;
     p.unload_chunk_id = chunk_id;
-    pending_publications_.push_back(std::move(p));
+    streaming_.pending_publications_.push_back(std::move(p));
 }
 
 void GsRenderer::clear_chunks(VkCommandBuffer drain_cmd) {
-    if (!streaming_initialized_ || !initialized_) return;
+    if (!streaming_.streaming_initialized_ || !initialized_) return;
 
     // Wait for any in-flight transfers so we don't release slabs the GPU
     // is still writing to. Scene transitions are heavy operations.
@@ -1564,49 +1570,49 @@ void GsRenderer::clear_chunks(VkCommandBuffer drain_cmd) {
     // `drain_cmd`; for the single-queue (Apple/fallback) path
     // VK_NULL_HANDLE is also accepted because no acquire barriers
     // need recording.
-    if (transfer_queue_) transfer_queue_->poll_completions(drain_cmd);
+    if (streaming_.transfer_queue_) streaming_.transfer_queue_->poll_completions(drain_cmd);
 
     // poll_completions above can fire transfer-completion callbacks that
-    // enqueue new PendingChunkPublication entries referencing OLD-scene
+    // enqueue new GsStreamingSystem::PendingChunkPublication entries referencing OLD-scene
     // slabs. If we don't drain them here, the next poll_transfers (after
     // the new scene has loaded) would publish stale page_table /
     // chunk_table writes for slabs the new scene never owned —
     // ghost-chunk metadata leaking across scene boundary. Same hazard
-    // for deferred_slab_releases_: those handles' frame counters would
+    // for streaming_.deferred_slab_releases_: those handles' frame counters would
     // tick past after we wipe everything, releasing slabs that belong
     // to a freshly-checked-out new chunk.
     //
     // GPU is idle (vkDeviceWaitIdle above) so direct slab releases here
     // are safe.
-    for (auto& p : pending_publications_) {
-        // Op::Load owns slab handles not yet in active_chunks_ — release
+    for (auto& p : streaming_.pending_publications_) {
+        // Op::Load owns slab handles not yet in streaming_.active_chunks_ — release
         // them directly, otherwise they leak from the allocator.
         // Op::Unload's handle is empty: the actual chunk handle is still
-        // in active_chunks_, released by the loop further down.
-        if (p.op == PendingChunkPublication::Op::Load) {
-            slab_allocator_->release(p.handle);
+        // in streaming_.active_chunks_, released by the loop further down.
+        if (p.op == GsStreamingSystem::PendingChunkPublication::Op::Load) {
+            streaming_.slab_allocator_->release(p.handle);
         }
     }
-    pending_publications_.clear();
+    streaming_.pending_publications_.clear();
 
-    for (auto& dr : deferred_slab_releases_) {
-        slab_allocator_->release(dr.handle);
+    for (auto& dr : streaming_.deferred_slab_releases_) {
+        streaming_.slab_allocator_->release(dr.handle);
     }
-    deferred_slab_releases_.clear();
+    streaming_.deferred_slab_releases_.clear();
 
-    // Anything still in `pending_loads_` had its `submit_with_handle`
+    // Anything still in `streaming_.pending_loads_` had its `submit_with_handle`
     // runs partially completed (or not at all) — those slab handles
-    // own slabs we never published into `active_chunks_`. Release
+    // own slabs we never published into `streaming_.active_chunks_`. Release
     // them manually so the allocator can reuse those indices.
-    for (auto& job : pending_loads_) {
-        slab_allocator_->release(job.slab_handle);
+    for (auto& job : streaming_.pending_loads_) {
+        streaming_.slab_allocator_->release(job.slab_handle);
     }
-    pending_loads_.clear();
+    streaming_.pending_loads_.clear();
 
-    for (auto& chunk : active_chunks_) slab_allocator_->release(chunk.handle);
-    active_chunks_.clear();
+    for (auto& chunk : streaming_.active_chunks_) streaming_.slab_allocator_->release(chunk.handle);
+    streaming_.active_chunks_.clear();
     static_count_ = 0;
-    total_active_splats_ = 0;
+    streaming_.total_active_splats_ = 0;
     gaussian_count_ = 0;
     dynamic_count_ = 0;
     sort_done_once_ = false;
@@ -1652,7 +1658,7 @@ void GsRenderer::clear_chunks(VkCommandBuffer drain_cmd) {
     // Invalidate the slab-indirection metadata. `publish_pending_chunks`'s
     // Unload path writes 0xFFFFFFFF sentinels to `resources_->page_table_ssbo` for
     // each released slab + clears the chunk-table row, but `clear_chunks`
-    // releases slabs by calling `slab_allocator_->release(...)` directly
+    // releases slabs by calling `streaming_.slab_allocator_->release(...)` directly
     // and bypasses that path entirely. The stale entries survive: when
     // the new scene loads a smaller chunk set than the previous (e.g.
     // dungeon takes 1 slab where overworld used 25), only the reused
@@ -1668,7 +1674,7 @@ void GsRenderer::clear_chunks(VkCommandBuffer drain_cmd) {
     // direct host writes are safe.
     if (resources_->page_table_ssbo.mapped()) {
         std::memset(resources_->page_table_ssbo.mapped(), 0xFF,
-                    static_cast<size_t>(streaming_config_.total_slabs()) * sizeof(uint32_t));
+                    static_cast<size_t>(streaming_.streaming_config_.total_slabs()) * sizeof(uint32_t));
     }
     if (resources_->chunk_table_ssbo.mapped()) {
         std::memset(resources_->chunk_table_ssbo.mapped(), 0, 256 * 16);
@@ -1758,91 +1764,57 @@ void GsRenderer::clear_chunks(VkCommandBuffer drain_cmd) {
     // slot must run static_preprocess at least once after a scene clear.
     static_dirty_frames_remaining_ = kMaxFramesInFlight;
 
-    GS_DBG_INVARIANT(active_chunks_.empty() && static_count_ == 0,
-                     "clear_chunks: active_chunks_ must be empty and static_count_ zeroed post-clear");
-}
-
-std::vector<GsRenderer::ChunkInventoryEntry> GsRenderer::chunk_inventory() const {
-    std::vector<ChunkInventoryEntry> out;
-    out.reserve(active_chunks_.size());
-    for (const auto& c : active_chunks_) {
-        const char* st = "active";
-        switch (c.status) {
-            case ChunkState::Status::LOADING:   st = "loading"; break;
-            case ChunkState::Status::ACTIVE:    st = "active"; break;
-            case ChunkState::Status::UNLOADING: st = "unloading"; break;
-        }
-        out.push_back({
-            .status_str        = st,
-            .page_table_offset = c.page_table_offset,
-            .splat_count       = c.splat_count,
-            .slab_count        = static_cast<uint32_t>(c.handle.slab_indices.size()),
-        });
-    }
-    return out;
-}
-
-void GsRenderer::create_transfer_queue(VkQueue transfer_q, uint32_t transfer_family,
-                                        uint32_t graphics_family, bool dedicated) {
-    if (!streaming_initialized_) return;
-    // Sized for double-buffered slab uploads plus headroom for in-flight
-    // chunks before they retire on the fence — multi-batch concurrency now
-    // matters because the queue accepts arbitrary destination buffers.
-    const uint64_t staging_size = streaming_config_.slab_bytes() * 4;
-    transfer_queue_ = std::make_unique<TransferQueue>(
-        device_, allocator_,
-        transfer_q, transfer_family, graphics_family,
-        dedicated, staging_size,
-        streaming_config_.transfer_budget_mb_per_frame);
+    GS_DBG_INVARIANT(streaming_.active_chunks_.empty() && static_count_ == 0,
+                     "clear_chunks: streaming_.active_chunks_ must be empty and static_count_ zeroed post-clear");
 }
 
 std::vector<TransferQueue::Handle> GsRenderer::load_cloud_async(GaussianCloud cloud) {
-    if (!streaming_initialized_ || !transfer_queue_) {
+    if (!streaming_.streaming_initialized_ || !streaming_.transfer_queue_) {
         // Streaming-strict mode: init_streaming + create_transfer_queue must
         // both be called before load_cloud_async. Reaching this branch means
         // the caller violated the contract; surface it immediately.
         std::fprintf(stderr,
             "GS ERROR: load_cloud_async called before streaming was initialized "
-            "(streaming_initialized_=%d, transfer_queue_=%s). "
+            "(streaming_.streaming_initialized_=%d, streaming_.transfer_queue_=%s). "
             "Call init_streaming() and create_transfer_queue() first.\n",
-            static_cast<int>(streaming_initialized_),
-            transfer_queue_ ? "ok" : "null");
+            static_cast<int>(streaming_.streaming_initialized_),
+            streaming_.transfer_queue_ ? "ok" : "null");
         return {};
     }
     if (cloud.empty()) return {};
 
     // Append-only semantics. The new chunk is checked out from the slab
-    // allocator and pushed onto `active_chunks_` by the final completion
+    // allocator and pushed onto `streaming_.active_chunks_` by the final completion
     // callback — existing chunks are *not* released. Callers that need
     // "replace previous scene" must explicitly call clear_chunks() before
-    // this (the initial demo load arrives on an empty `active_chunks_`
+    // this (the initial demo load arrives on an empty `streaming_.active_chunks_`
     // straight out of `init_streaming`).
     //
-    // Multiple concurrent loads queue up on `pending_loads_` instead of
+    // Multiple concurrent loads queue up on `streaming_.pending_loads_` instead of
     // being rejected — WorldStreamer marks each chunk `LOADING` once
     // and never retries, so a rejected request would stick forever.
-    const uint32_t sps = streaming_config_.slab_size_splats;
+    const uint32_t sps = streaming_.streaming_config_.slab_size_splats;
     const uint32_t splat_count = cloud.count();
     const uint32_t slabs_needed = (splat_count + sps - 1) / sps;
 
-    PendingLoadJob job;
-    job.slab_handle = slab_allocator_->checkout(slabs_needed);
+    GsStreamingSystem::PendingLoadJob job;
+    job.slab_handle = streaming_.slab_allocator_->checkout(slabs_needed);
     job.splat_count = splat_count;
     job.slabs_needed = slabs_needed;
     job.slab_size_splats = sps;
     job.handles.reserve(slabs_needed);
     for (uint32_t s = 0; s < slabs_needed; ++s) {
-        job.handles.push_back(transfer_queue_->reserve_handle());
+        job.handles.push_back(streaming_.transfer_queue_->reserve_handle());
     }
     job.cloud = std::move(cloud);
 
     std::vector<TransferQueue::Handle> handles_for_caller = job.handles;
-    pending_loads_.push_back(std::move(job));
+    streaming_.pending_loads_.push_back(std::move(job));
     return handles_for_caller;
 }
 
 void GsRenderer::poll_transfers(VkCommandBuffer frame_cmd, uint32_t frame_in_flight) {
-    if (!transfer_queue_) return;
+    if (!streaming_.transfer_queue_) return;
     // Diagnostic: full poll path covers slab-upload submits, completion
     // callback drains, deferred slab releases, and the metadata publish.
     // If the beachball is in any of those paths, this fires.
@@ -1853,11 +1825,11 @@ void GsRenderer::poll_transfers(VkCommandBuffer frame_cmd, uint32_t frame_in_fli
     // when a job is fully submitted. The ring naturally throttles
     // multi-job uploads — when a slab can't fit, we break and resume
     // next frame. Each job's completion callback writes its chunk to
-    // `active_chunks_`, so multiple chunks can be in flight via the
+    // `streaming_.active_chunks_`, so multiple chunks can be in flight via the
     // GPU fence without conflict.
     const VkBuffer dest = resources_->static_gaussian_ssbo.buffer();
-    while (!pending_loads_.empty()) {
-        auto& job = pending_loads_.front();
+    while (!streaming_.pending_loads_.empty()) {
+        auto& job = streaming_.pending_loads_.front();
 
         // Submit any remaining slabs from this job.
         bool ring_full = false;
@@ -1869,7 +1841,7 @@ void GsRenderer::poll_transfers(VkCommandBuffer frame_cmd, uint32_t frame_in_fli
             const uint32_t count     = src_end - src_start;
             const uint64_t copy_size = static_cast<uint64_t>(count) * sizeof(GpuGaussian);
 
-            auto res = transfer_queue_->reserve_staging(copy_size);
+            auto res = streaming_.transfer_queue_->reserve_staging(copy_size);
             if (!res) { ring_full = true; break; }
 
             const auto& gaussians = job.cloud.gaussians();
@@ -1887,7 +1859,7 @@ void GsRenderer::poll_transfers(VkCommandBuffer frame_cmd, uint32_t frame_in_fli
 
             const uint64_t dest_offset =
                 static_cast<uint64_t>(physical_slab) * job.slab_size_splats * sizeof(GpuGaussian);
-            transfer_queue_->submit_with_handle(job.handles[s], *res, dest, dest_offset);
+            streaming_.transfer_queue_->submit_with_handle(job.handles[s], *res, dest, dest_offset);
             ++job.next_slab;
         }
 
@@ -1896,7 +1868,7 @@ void GsRenderer::poll_transfers(VkCommandBuffer frame_cmd, uint32_t frame_in_fli
             // try again next frame. Don't advance to the next job —
             // each job's completion callback expects to fire AFTER
             // the previous job's completion has already mutated
-            // `active_chunks_` and `static_count_`, so we serialise
+            // `streaming_.active_chunks_` and `static_count_`, so we serialise
             // job completions in order.
             (void)ring_full;
             break;
@@ -1904,7 +1876,7 @@ void GsRenderer::poll_transfers(VkCommandBuffer frame_cmd, uint32_t frame_in_fli
 
         // Front job is fully submitted. Queue the completion marker —
         // exactly once per job. The fence-retire callback only enqueues a
-        // PendingChunkPublication; the actual page_table / chunk_table
+        // GsStreamingSystem::PendingChunkPublication; the actual page_table / chunk_table
         // writes happen later on the current frame's command buffer in
         // publish_pending_chunks(). That serialises the metadata update
         // through the GPU command stream so it can't tear under in-flight
@@ -1916,24 +1888,24 @@ void GsRenderer::poll_transfers(VkCommandBuffer frame_cmd, uint32_t frame_in_fli
             const uint32_t slabs_needed = job.slabs_needed;
             const uint32_t sps_local    = job.slab_size_splats;
 
-            transfer_queue_->enqueue_completion(
+            streaming_.transfer_queue_->enqueue_completion(
                 [this, handle = std::move(handle), splat_count, slabs_needed, sps_local]() mutable {
-                    PendingChunkPublication p;
-                    p.op = PendingChunkPublication::Op::Load;
+                    GsStreamingSystem::PendingChunkPublication p;
+                    p.op = GsStreamingSystem::PendingChunkPublication::Op::Load;
                     p.handle = std::move(handle);
                     p.splat_count = splat_count;
                     p.slabs_needed = slabs_needed;
                     p.slab_size_splats = sps_local;
-                    pending_publications_.push_back(std::move(p));
+                    streaming_.pending_publications_.push_back(std::move(p));
                 });
         }
 
         // Done queuing this job — drop it from the deque. The completion
         // lambda has already moved the slab handle into its own capture.
-        pending_loads_.pop_front();
+        streaming_.pending_loads_.pop_front();
     }
 
-    transfer_queue_->poll_completions(frame_cmd);
+    streaming_.transfer_queue_->poll_completions(frame_cmd);
     publish_pending_chunks(frame_cmd, frame_in_flight);
 
     // ── DIAG: streaming-state dump (PR #387 ghost investigation) ──
@@ -1947,7 +1919,7 @@ void GsRenderer::poll_transfers(VkCommandBuffer frame_cmd, uint32_t frame_in_fli
     // diagnostic output.
     {
         static const bool diag_enabled = ::gs::dbg::enabled(::gs::dbg::Diag::StreamingState);
-        if (diag_enabled && streaming_initialized_) {
+        if (diag_enabled && streaming_.streaming_initialized_) {
             static uint64_t diag_frame = 0;
             ++diag_frame;
             const bool dump_now = (diag_frame <= 5) || (diag_frame % 60 == 0);
@@ -1962,12 +1934,12 @@ void GsRenderer::diag_streaming_dump(uint64_t frame) {
     std::fprintf(stderr,
         "[gs_diag] f=%llu static=%u dynamic=%u total_active=%u max_static=%u\n",
         static_cast<unsigned long long>(frame),
-        static_count_, dynamic_count_, total_active_splats_, max_static_count_);
+        static_count_, dynamic_count_, streaming_.total_active_splats_, max_static_count_);
 
-    // active_chunks_ — what the engine THINKS is loaded.
-    std::fprintf(stderr, "[gs_diag]   active_chunks=%zu\n", active_chunks_.size());
-    for (size_t i = 0; i < active_chunks_.size(); ++i) {
-        const auto& c = active_chunks_[i];
+    // streaming_.active_chunks_ — what the engine THINKS is loaded.
+    std::fprintf(stderr, "[gs_diag]   active_chunks=%zu\n", streaming_.active_chunks_.size());
+    for (size_t i = 0; i < streaming_.active_chunks_.size(); ++i) {
+        const auto& c = streaming_.active_chunks_[i];
         std::fprintf(stderr,
             "[gs_diag]     [%zu] chunk_id=%u splats=%u page_offset=%u slabs=%zu\n",
             i, c.handle.chunk_id, c.splat_count, c.page_table_offset,
@@ -2013,12 +1985,12 @@ void GsRenderer::diag_streaming_dump(uint64_t frame) {
     }
 
     // merged_sort_ssbo_: indices the rasterizer WILL read, bounded by
-    // total_active_splats_. If max_idx >= max_static + max_dynamic that's
+    // streaming_.total_active_splats_. If max_idx >= max_static + max_dynamic that's
     // an out-of-bounds index — direct evidence of a bound bug.
-    if (resources_->merged_sort_ssbos[0].mapped() && total_active_splats_ > 0) {
+    if (resources_->merged_sort_ssbos[0].mapped() && streaming_.total_active_splats_ > 0) {
         const auto* m = static_cast<const SortEntry*>(resources_->merged_sort_ssbos[0].mapped());
         const uint32_t total_max = max_static_count_ + max_dynamic_count_;
-        const uint32_t merge_count = total_active_splats_;
+        const uint32_t merge_count = streaming_.total_active_splats_;
         uint32_t max_idx = 0;
         uint32_t idx_above_count = 0;     // index points beyond static_count_+dynamic_count_
         uint32_t idx_above_capacity = 0;  // index points beyond capacity (real OOB)
@@ -2064,12 +2036,12 @@ void GsRenderer::publish_pending_chunks(VkCommandBuffer cmd, uint32_t frame_in_f
     // returned to the allocator now so they're available for incoming load
     // publications below. Slabs queued THIS call (from an Unload op below)
     // start their countdown on the next poll_transfers tick.
-    if (!deferred_slab_releases_.empty()) {
-        auto it = deferred_slab_releases_.begin();
-        while (it != deferred_slab_releases_.end()) {
+    if (!streaming_.deferred_slab_releases_.empty()) {
+        auto it = streaming_.deferred_slab_releases_.begin();
+        while (it != streaming_.deferred_slab_releases_.end()) {
             if (it->frames_remaining == 0) {
-                slab_allocator_->release(it->handle);
-                it = deferred_slab_releases_.erase(it);
+                streaming_.slab_allocator_->release(it->handle);
+                it = streaming_.deferred_slab_releases_.erase(it);
             } else {
                 --it->frames_remaining;
                 ++it;
@@ -2077,7 +2049,7 @@ void GsRenderer::publish_pending_chunks(VkCommandBuffer cmd, uint32_t frame_in_f
         }
     }
 
-    if (pending_publications_.empty()) return;
+    if (streaming_.pending_publications_.empty()) return;
     if (cmd == VK_NULL_HANDLE) return;
 
     // Snapshot the count BEFORE this batch's Unloads shrink it. Used at the
@@ -2091,16 +2063,16 @@ void GsRenderer::publish_pending_chunks(VkCommandBuffer cmd, uint32_t frame_in_f
     bool any_published = false;
     bool chunk_table_needs_full_rebuild = false;
 
-    while (!pending_publications_.empty()) {
-        PendingChunkPublication p = std::move(pending_publications_.front());
-        pending_publications_.pop_front();
+    while (!streaming_.pending_publications_.empty()) {
+        GsStreamingSystem::PendingChunkPublication p = std::move(streaming_.pending_publications_.front());
+        streaming_.pending_publications_.pop_front();
 
-        if (p.op == PendingChunkPublication::Op::Load) {
+        if (p.op == GsStreamingSystem::PendingChunkPublication::Op::Load) {
             // === LOAD ===
             // Page table offset for this chunk = sum of slab counts of all
             // already-active chunks. Computed sequentially as we publish.
             uint32_t page_table_offset = 0;
-            for (const auto& chunk : active_chunks_) {
+            for (const auto& chunk : streaming_.active_chunks_) {
                 page_table_offset += static_cast<uint32_t>(chunk.handle.slab_indices.size());
             }
 
@@ -2132,8 +2104,8 @@ void GsRenderer::publish_pending_chunks(VkCommandBuffer cmd, uint32_t frame_in_f
             // single-entry write may be overwritten — that's the correct
             // outcome. Either way, the recorded vkCmdUpdateBuffers run in
             // recorded order on the GPU, so the final state matches CPU
-            // active_chunks_.
-            const uint32_t chunk_idx = static_cast<uint32_t>(active_chunks_.size());
+            // streaming_.active_chunks_.
+            const uint32_t chunk_idx = static_cast<uint32_t>(streaming_.active_chunks_.size());
             const uint32_t last_slab_splats =
                 p.splat_count - (p.slabs_needed - 1) * p.slab_size_splats;
             const uint32_t entry[4] = {page_table_offset, p.slabs_needed,
@@ -2142,23 +2114,23 @@ void GsRenderer::publish_pending_chunks(VkCommandBuffer cmd, uint32_t frame_in_f
                               static_cast<VkDeviceSize>(chunk_idx) * 16,
                               sizeof(entry), entry);
 
-            ChunkState cs;
-            cs.status = ChunkState::Status::ACTIVE;
+            GsStreamingSystem::ChunkState cs;
+            cs.status = GsStreamingSystem::ChunkState::Status::ACTIVE;
             cs.handle = std::move(p.handle);
             cs.page_table_offset = page_table_offset;
             cs.splat_count = p.splat_count;
-            active_chunks_.push_back(std::move(cs));
+            streaming_.active_chunks_.push_back(std::move(cs));
 
             std::fprintf(stderr,
                 "GS: Async load complete — %u splats in %u slabs (total active: %u)\n",
                 p.splat_count, p.slabs_needed,
-                [this]() { uint32_t s = 0; for (auto& c : active_chunks_) s += c.splat_count; return s; }());
+                [this]() { uint32_t s = 0; for (auto& c : streaming_.active_chunks_) s += c.splat_count; return s; }());
 
         } else {
             // === UNLOAD ===
-            auto it = std::find_if(active_chunks_.begin(), active_chunks_.end(),
-                [&](const ChunkState& c) { return c.handle.chunk_id == p.unload_chunk_id; });
-            if (it == active_chunks_.end()) {
+            auto it = std::find_if(streaming_.active_chunks_.begin(), streaming_.active_chunks_.end(),
+                [&](const GsStreamingSystem::ChunkState& c) { return c.handle.chunk_id == p.unload_chunk_id; });
+            if (it == streaming_.active_chunks_.end()) {
                 // The chunk was already gone (double-unload races, or a
                 // clear_chunks ran between unload_cloud() and publish).
                 // Nothing to write; nothing to release.
@@ -2196,14 +2168,14 @@ void GsRenderer::publish_pending_chunks(VkCommandBuffer cmd, uint32_t frame_in_f
             // before the allocator gets it back, so a concurrent Load
             // publication can't claim these physical slabs and overwrite
             // them while the prior frame's GPU read is still in flight.
-            DeferredSlabRelease dr;
+            GsStreamingSystem::DeferredSlabRelease dr;
             dr.handle = std::move(it->handle);
             dr.frames_remaining = kMaxFramesInFlight + 1;
-            deferred_slab_releases_.push_back(std::move(dr));
+            streaming_.deferred_slab_releases_.push_back(std::move(dr));
 
-            // Step 3: erase from active_chunks_. Other chunks' indices
+            // Step 3: erase from streaming_.active_chunks_. Other chunks' indices
             // shift, so chunk_table needs a full rewrite below.
-            active_chunks_.erase(it);
+            streaming_.active_chunks_.erase(it);
             chunk_table_needs_full_rebuild = true;
 
             // Step 4: flag the static sort buffers as needing a sentinel-
@@ -2219,15 +2191,15 @@ void GsRenderer::publish_pending_chunks(VkCommandBuffer cmd, uint32_t frame_in_f
         any_published = true;
     }
 
-    // If any unload happened, chunk indices in active_chunks_ shifted, so
+    // If any unload happened, chunk indices in streaming_.active_chunks_ shifted, so
     // the chunk_table on the GPU now references stale data. Rewrite the
     // valid prefix and zero the tail. 256 entries × 16 B = 4 KiB — fits
     // vkCmdUpdateBuffer's 65536-byte limit easily.
     if (chunk_table_needs_full_rebuild) {
         std::array<uint32_t, 256 * 4> ct_data{};  // zero-initialised
-        const uint32_t sps = streaming_config_.slab_size_splats;
-        for (size_t i = 0; i < active_chunks_.size(); ++i) {
-            const auto& c = active_chunks_[i];
+        const uint32_t sps = streaming_.streaming_config_.slab_size_splats;
+        for (size_t i = 0; i < streaming_.active_chunks_.size(); ++i) {
+            const auto& c = streaming_.active_chunks_[i];
             const uint32_t cn = static_cast<uint32_t>(c.handle.slab_indices.size());
             const uint32_t last_slab_splats = c.splat_count - (cn - 1) * sps;
             ct_data[i * 4 + 0] = c.page_table_offset;
@@ -2247,8 +2219,8 @@ void GsRenderer::publish_pending_chunks(VkCommandBuffer cmd, uint32_t frame_in_f
         // the barrier below, so a graphics dispatch recorded *later* in
         // this same cmd buffer will see fresh data.
         static_count_ = 0;
-        for (const auto& c : active_chunks_) static_count_ += c.splat_count;
-        total_active_splats_ = static_count_;
+        for (const auto& c : streaming_.active_chunks_) static_count_ += c.splat_count;
+        streaming_.total_active_splats_ = static_count_;
         gaussian_count_ = static_count_;
         static_dirty_frames_remaining_ = kMaxFramesInFlight;
 
@@ -2330,7 +2302,7 @@ void GsRenderer::publish_pending_chunks(VkCommandBuffer cmd, uint32_t frame_in_f
     // every subsequent frame's render() reads a corrupt count — the kind
     // of bug that took two weeks of GPU-side debugging to trace last time.
     GS_DBG_INVARIANT(
-        [&]{ uint32_t s = 0; for (const auto& c : active_chunks_) s += c.splat_count; return s; }() == static_count_,
+        [&]{ uint32_t s = 0; for (const auto& c : streaming_.active_chunks_) s += c.splat_count; return s; }() == static_count_,
         "publish_pending_chunks: static_count_ drift vs sum(active_chunks.splat_count)");
 }
 
@@ -2484,7 +2456,7 @@ void GsRenderer::set_render_state(RenderState* rs) noexcept {
     // per-frame buffers. Only re-run if streaming is initialised — pre-init
     // descriptors haven't been written yet, and init_streaming will call
     // update_descriptors itself when it runs.
-    if (streaming_initialized_) {
+    if (streaming_.streaming_initialized_) {
         update_descriptors();
     }
     // Phase 4c-vfx: bind compose_sets_'s src (vfx_buffer) + dst
@@ -2764,7 +2736,7 @@ void GsRenderer::resize_output(uint32_t width, uint32_t height) {
     // update_descriptors has its own internal guard for the static/dynamic
     // split sets that early-returns when split buffers aren't allocated
     // yet (pre-init_streaming).
-    if (streaming_initialized_) {
+    if (streaming_.streaming_initialized_) {
         update_descriptors();
     }
 }
@@ -3350,13 +3322,6 @@ void GsRenderer::set_point_lights(const std::vector<PointLight>& lights) {
                                                     static_cast<size_t>(kMaxGsPointLights)));
 }
 
-void GsRenderer::load_world(const WorldManifest& manifest) {
-    world_manifest_ = manifest;
-    std::fprintf(stderr, "[GsRenderer] World loaded: %zu chunks, cell_size=(%.0f,%.0f,%.0f)\n",
-        manifest.chunks.size(),
-        manifest.grid_cell_size.x, manifest.grid_cell_size.y, manifest.grid_cell_size.z);
-}
-
 void GsRenderer::shutdown(VmaAllocator allocator) {
     if (!initialized_) return;
 
@@ -3366,23 +3331,29 @@ void GsRenderer::shutdown(VmaAllocator allocator) {
     post_.shutdown();
     sort_.shutdown();
     tile_.shutdown();
+    // Phase 5e-1: streaming_.shutdown() releases transfer_queue_ +
+    // slab_allocator_ + the deques. The existing clear-up of streaming
+    // resources (resources_->page_table_ssbo, etc.) lower in this
+    // function still runs because those buffers live in
+    // GsResourceManager, not in the streaming system.
+    streaming_.shutdown();
 
     // The async loader no longer spins up worker threads — reserve+submit
     // run synchronously on the main thread now. We still call
     // `request_cancel` to be tidy: any pending callbacks queued in the
     // transfer queue should observe the shutdown flag and bail.
-    if (transfer_queue_) {
-        transfer_queue_->request_cancel();
-        transfer_queue_->shutdown();
-        transfer_queue_.reset();
+    if (streaming_.transfer_queue_) {
+        streaming_.transfer_queue_->request_cancel();
+        streaming_.transfer_queue_->shutdown();
+        streaming_.transfer_queue_.reset();
     }
 
     // Streaming resources
     resources_->page_table_ssbo.destroy(allocator);
     resources_->chunk_table_ssbo.destroy(allocator);
-    slab_allocator_.reset();
-    active_chunks_.clear();
-    streaming_initialized_ = false;
+    streaming_.slab_allocator_.reset();
+    streaming_.active_chunks_.clear();
+    streaming_.streaming_initialized_ = false;
 
     // Legacy buffers
     resources_->gaussian_ssbo.destroy(allocator);
