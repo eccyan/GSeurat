@@ -9,6 +9,7 @@
 #include "gseurat/engine/sort_entry.hpp"
 #include "gseurat/engine/sort_hash.hpp"
 #include "gseurat/engine/streaming_config.hpp"
+#include "gseurat/engine/systems/lighting_system.hpp"
 #include "gseurat/engine/systems/pbd_system.hpp"
 #include "gseurat/engine/systems/vfx_system.hpp"
 
@@ -1392,20 +1393,11 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
                     gs_particle_emitters_.end());
             }
 
-            // Phase 4c-vfx-2: VFX per-frame timeline + erase has moved
-            // into VfxSystem::update_per_frame above. Lights still merge
-            // here so the renderer remains the owner of the lights upload.
-            {
-                auto all_lights = gs_static_lights_;
-                if (vfx_system_) {
-                    vfx_system_->collect_active_lights(all_lights, 8);
-                }
-                if (!all_lights.empty()) {
-                    if (gs_renderer_.light_mode() < 2) {
-                        gs_renderer_.set_light_mode(2);
-                    }
-                    gs_renderer_.set_point_lights(all_lights);
-                }
+            // Phase 4d-2: static + VFX-emitted light merge moved into
+            // systems::LightingSystem. Falls through harmlessly if the
+            // system isn't bound (tests / standalone harness).
+            if (lighting_system_) {
+                lighting_system_->update_per_frame();
             }
 
             // Upload dynamic Gaussians. The dynamic_gaussian_ssbo layout

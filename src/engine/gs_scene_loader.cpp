@@ -7,6 +7,7 @@
 #include "gseurat/engine/coordinate.hpp"
 #include "gseurat/engine/gaussian_cloud.hpp"
 #include "gseurat/engine/gs_vfx.hpp"
+#include "gseurat/engine/light_events.hpp"
 #include "gseurat/engine/pbd_events.hpp"
 #include "gseurat/engine/pbd_types.hpp"
 #include "gseurat/engine/renderer.hpp"
@@ -357,12 +358,14 @@ void GsSceneLoader::finalize_on_main(SceneLoadContext& ctx, const SceneData& sce
                 gs_lights.push_back(test_light);
             }
 
-            if (!gs_lights.empty()) {
-                ctx.renderer.gs_renderer().set_light_mode(2);
-                ctx.renderer.gs_renderer().set_point_lights(gs_lights);
-                ctx.renderer.set_gs_static_lights(gs_lights);
-                if (opts.set_god_rays) ctx.renderer.set_god_rays_intensity(1.0f);
+            if (!gs_lights.empty() && opts.set_god_rays) {
+                ctx.renderer.set_god_rays_intensity(1.0f);
             }
+            // Phase 4d-2: route through PointLightsLoadedEvent. LightingSystem::run
+            // updates its static_lights_; the next update_per_frame produces the
+            // merged static+VFX upload and sets light_mode.
+            ctx.world.events<PointLightsLoadedEvent>().send(
+                PointLightsLoadedEvent{gs_lights});
 
             // Emitters (grid->world)
             for (const auto& em : scene_data.gs_particle_emitters) {

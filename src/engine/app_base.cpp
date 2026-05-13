@@ -367,6 +367,9 @@ void AppBase::main_loop() {
         if (pbd_system_) {
             pbd_system_->run(world_, dt);
         }
+        if (lighting_system_) {
+            lighting_system_->run(world_, dt);
+        }
         world_.rotate_events();
 #if GSEURAT_DEBUG_BUILD
         const auto t_after_update = std::chrono::steady_clock::now();
@@ -612,12 +615,16 @@ void AppBase::init_render_state() {
     if (pbd_system_) {
         pbd_system_->set_render_state(render_state_.get());
     }
-    // Renderer needs back-pointers to both systems so record_gs_prepass
-    // can drive their per-frame update + dispatch_compose calls.
-    // (4c-pbd: also fixes a latent wire-up gap from 4c-vfx-2 where
-    // set_vfx_system was declared but never invoked.)
+    if (lighting_system_) {
+        lighting_system_->set_render_state(render_state_.get());
+    }
+    // Renderer needs back-pointers to these systems so record_gs_prepass
+    // can drive their per-frame work. (4c-pbd: also fixes a latent
+    // wire-up gap from 4c-vfx-2 where set_vfx_system was declared
+    // but never invoked.)
     renderer_.set_vfx_system(vfx_system_.get());
     renderer_.set_pbd_system(pbd_system_.get());
+    renderer_.set_lighting_system(lighting_system_.get());
 }
 
 void AppBase::upload_bone_transforms() {
@@ -895,6 +902,15 @@ void AppBase::init_game_object_system() {
     // the GPU upload to GsRenderer, so it needs a back-pointer to
     // the Renderer (constructed before this in init_window).
     pbd_system_ = std::make_unique<systems::PbdSystem>(&renderer_, render_state_.get());
+
+    // Phase 4d-2: LightingSystem owns the static light set and runs
+    // the per-frame static+VFX merge. Needs both Renderer (for GPU
+    // upload via set_point_lights / light_mode) and VfxSystem (for
+    // per-frame collect_active_lights). vfx_system_ is non-null by
+    // now (constructed a few lines above); render_state_ may be null
+    // until init_render_state runs.
+    lighting_system_ = std::make_unique<systems::LightingSystem>(
+        &renderer_, vfx_system_.get(), render_state_.get());
 
     // Register engine-level systems
     system_scheduler_.add_system({"bone_animation",

@@ -4,6 +4,7 @@
 #include "gseurat/engine/gaussian_cloud.hpp"
 #include "gseurat/engine/gs_parallax_camera.hpp"
 #include "gseurat/engine/project_root.hpp"
+#include "gseurat/engine/light_events.hpp"
 #include "gseurat/engine/pbd_events.hpp"
 #include "gseurat/engine/scene_loader.hpp"
 #include "gseurat/engine/gs_vfx.hpp"
@@ -110,6 +111,8 @@ void StagingApp::clear_scene() {
     // in-progress scene load before this clear runs. Drop them so the
     // next scene's PBD config doesn't get clobbered by stale state.
     world_.events<PbdElementsLoadedEvent>().clear();
+    // Phase 4d-2: same for PointLightsLoadedEvents.
+    world_.events<PointLightsLoadedEvent>().clear();
     scene_.clear_lights();
     gs_terrain_.terrain_aabb = AABB{};
     gs_terrain_.terrain_aabb.min = glm::vec3(0.0f);

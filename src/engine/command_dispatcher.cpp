@@ -13,6 +13,7 @@
 #include "gseurat/engine/gs_terrain_state.hpp"
 #include "gseurat/engine/gs_vfx.hpp"
 #include "gseurat/engine/input_manager.hpp"
+#include "gseurat/engine/light_events.hpp"
 #include "gseurat/engine/project_root.hpp"
 #include "gseurat/engine/renderer.hpp"
 #include "gseurat/engine/scene.hpp"
@@ -337,13 +338,11 @@ void CommandDispatcher::register_default_commands() {
                 t.position_and_radius.z = world.vec().y;  // internal slot 2 = world Y (height)
                 gs_lights.push_back(t);
             }
-            if (!gs_lights.empty()) {
-                ctx_.renderer.gs_renderer().set_light_mode(2);
-                ctx_.renderer.gs_renderer().set_point_lights(gs_lights);
-                ctx_.renderer.set_gs_static_lights(gs_lights);
-            } else {
-                ctx_.renderer.gs_renderer().set_light_mode(0);
-            }
+            // Phase 4d-2: route through PointLightsLoadedEvent. Empty
+            // payload tells LightingSystem to reset light_mode to 0,
+            // preserving prior update_scene_data semantics.
+            ctx_.world.events<PointLightsLoadedEvent>().send(
+                PointLightsLoadedEvent{gs_lights});
 
             // Apply weather fog directly to scene (no WeatherSystem in Staging)
             ctx_.scene.set_fog_density(scene_data.weather.fog_density);
