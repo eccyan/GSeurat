@@ -921,6 +921,20 @@ void AppBase::init_game_object_system() {
     // Render_state binding is late.
     particle_system_ = std::make_unique<systems::ParticleSystem>(render_state_.get());
 
+    // CommandDispatcher captured a CommandContext snapshot during AppBase
+    // member-init (see hpp: `command_dispatcher_{build_command_context()}`),
+    // BEFORE any of the systems above existed. That snapshot saw null
+    // pointers for vfx_system / particle_system, so commands routed
+    // through ctx_.* would silently fail on the system-driven paths
+    // (update_scene_data emitter rebuild, update_vfx_positions, etc.).
+    // CommandContext has reference members so it can't be reassigned —
+    // patch the pointer fields in place via the existing context()
+    // accessor. (Codex P2 on PR #440; also retroactively fixes the same
+    // hazard for vfx_system introduced in PR #436.)
+    auto& ctx = command_dispatcher_.context();
+    ctx.vfx_system = vfx_system_.get();
+    ctx.particle_system = particle_system_.get();
+
     // Register engine-level systems
     system_scheduler_.add_system({"bone_animation",
         [this](ecs::World& w, float dt) {
