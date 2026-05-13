@@ -1,5 +1,6 @@
 #include "gseurat/engine/gs_scene_loader.hpp"
 
+#include "gseurat/engine/systems/particle_system.hpp"
 #include "gseurat/engine/systems/vfx_system.hpp"
 #include "gseurat/engine/scene_load_context.hpp"
 #include "gseurat/engine/gs_terrain_state.hpp"
@@ -212,7 +213,7 @@ ParsedScene GsSceneLoader::parse(const SceneData& scene_data) {
 void GsSceneLoader::finalize_on_main(SceneLoadContext& ctx, const SceneData& scene_data,
                                      ParsedScene&& parsed, const GsSceneOptions& opts) {
 
-    ctx.renderer.clear_gs_particle_emitters();
+    if (ctx.particle_system) ctx.particle_system->clear_emitters();
     ctx.renderer.clear_gs_animations();
     if (ctx.vfx_system) {
         ctx.vfx_system->clear_instances();
@@ -368,11 +369,13 @@ void GsSceneLoader::finalize_on_main(SceneLoadContext& ctx, const SceneData& sce
                 PointLightsLoadedEvent{gs_lights});
 
             // Emitters (grid->world)
-            for (const auto& em : scene_data.gs_particle_emitters) {
-                auto config = em.config;
-                auto world_pos = coord::to_world(coord::GridPos(config.position), ctx.terrain.terrain_aabb);
-                config.position = world_pos.vec();
-                ctx.renderer.add_gs_particle_emitter(config);
+            if (ctx.particle_system) {
+                for (const auto& em : scene_data.gs_particle_emitters) {
+                    auto config = em.config;
+                    auto world_pos = coord::to_world(coord::GridPos(config.position), ctx.terrain.terrain_aabb);
+                    config.position = world_pos.vec();
+                    ctx.particle_system->add_emitter(config);
+                }
             }
 
             // Animations (grid->world)

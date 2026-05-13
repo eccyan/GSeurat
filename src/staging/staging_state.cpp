@@ -1019,7 +1019,7 @@ void StagingState::draw_gizmos(AppBase& app) {
     // ── Standalone emitter gizmos (with spawn region) ──
     if (ov.show_gizmo_emitters) {
         ImU32 emitter_col = IM_COL32(236, 72, 153, 200);  // pink
-        auto& emitters = app.renderer().gs_particle_emitters();
+        auto& emitters = app.particle_system()->emitters();
         for (size_t i = 0; i < emitters.size(); i++) {
             auto& cfg = emitters[i].config();
             float sx, sy;

@@ -165,6 +165,16 @@ public:
     void dispatch_compose_pbd(VkCommandBuffer cmd, FrameIndex frame_idx,
                               uint32_t vfx_count, uint32_t pbd_count);
 
+    // Phase 4e: GPU compose pass for particle splats. Copies
+    // `particles_count` slots from RenderState's particles_buffer
+    // into dynamic_gaussian_ssbo at offset
+    // `persistent_dyn_count_ + vfx_count + pbd_count`. Must be called
+    // AFTER both other compose dispatches and BEFORE
+    // update_dynamic_gaussians on the same frame.
+    void dispatch_compose_particles(VkCommandBuffer cmd, FrameIndex frame_idx,
+                                    uint32_t prior_offset,
+                                    uint32_t particles_count);
+
     // Once-per-scene (or per-chunk-event) upload API for the "persistent prefix"
     // of the dynamic buffer: characters, NPCs, PBD-tagged trees. Replaces all
     // existing persistent-dynamic content. Caller assembles the full vector;
@@ -677,18 +687,19 @@ private:
     VkPipeline pbd_pipeline_ = VK_NULL_HANDLE;
     VkDescriptorSet pbd_set_ = VK_NULL_HANDLE;
 
-    // Phase 4c-vfx / 4c-pbd: GPU compose pass. Dedicated descriptor pool
-    // so the central kSetCount=58 allocation in dispatch_descriptor_sets
-    // doesn't get reshuffled. One set per (frame, source) pair: VFX +
-    // PBD share the same pipeline + push-constant layout (splat_count,
-    // dst_offset) but distinct src descriptors, so we allocate
-    // 2 × kMaxFramesInFlight sets total.
+    // Phase 4c-vfx / 4c-pbd / 4e: GPU compose pass. Dedicated descriptor
+    // pool so the central kSetCount=58 allocation in dispatch_descriptor_sets
+    // doesn't get reshuffled. One set per (frame, source) tuple: VFX +
+    // PBD + Particles share the same pipeline + push-constant layout
+    // (splat_count, dst_offset) but distinct src descriptors, so we
+    // allocate 3 × kMaxFramesInFlight sets total.
     VkDescriptorSetLayout compose_layout_ = VK_NULL_HANDLE;
     VkPipelineLayout compose_pipeline_layout_ = VK_NULL_HANDLE;
     VkPipeline compose_pipeline_ = VK_NULL_HANDLE;
     VkDescriptorPool compose_pool_ = VK_NULL_HANDLE;
     std::array<VkDescriptorSet, kMaxFramesInFlight> compose_sets_vfx_{};
     std::array<VkDescriptorSet, kMaxFramesInFlight> compose_sets_pbd_{};
+    std::array<VkDescriptorSet, kMaxFramesInFlight> compose_sets_particles_{};
     // Both sets are written together by update_compose_descriptors when
     // render_state_ and dynamic_gaussian_ssbo_ are both live.
     bool compose_descriptors_initialised_ = false;
