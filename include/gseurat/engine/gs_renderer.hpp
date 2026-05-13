@@ -3,6 +3,8 @@
 #include "gseurat/engine/buffer.hpp"
 #include "gseurat/engine/gaussian_cloud.hpp"
 #include "gseurat/engine/gs_renderer/gs_resources.hpp"
+#include "gseurat/engine/gs_renderer/post/gs_post_process_system.hpp"
+#include "gseurat/engine/gs_renderer/post/post_process_params.hpp"
 #include "gseurat/engine/pbd_types.hpp"
 #include "gseurat/engine/render_state.hpp"  // FrameIndex
 #include "gseurat/engine/slab_allocator.hpp"
@@ -29,58 +31,9 @@ namespace gseurat {
 
 class RenderState;
 
-// Post-process parameters forwarded from the composite pipeline to GS compute.
-// Mirrors relevant fields from PostProcessParams for consistent visual treatment.
-struct GsPostProcessParams {
-    float fog_density = 0.0f;
-    float fog_color_r = 0.3f;
-    float fog_color_g = 0.35f;
-    float fog_color_b = 0.45f;
-    float exposure = 1.2f;
-    float vignette_radius = 0.75f;
-    float vignette_softness = 0.45f;
-    float bloom_intensity = 0.35f;
-    float bloom_threshold = 1.0f;
-    float fade_amount = 0.0f;
-    float flash_r = 0.0f;
-    float flash_g = 0.0f;
-    float flash_b = 0.0f;
-    float ca_intensity = 0.0f;
-    float dof_focus_distance = 12.0f;
-    float dof_focus_range = 3.0f;
-    float dof_max_blur = 0.5f;
-    float far_plane = 1000.0f;  // GS camera far plane for depth normalization
-
-    // Hybrid background (ground plane + sky gradient)
-    glm::vec3 ground_color{0.0f};  // RGB ground color (0 = disabled)
-    glm::vec3 sky_color{0.0f};     // RGB sky color (0 = disabled)
-    float horizon_y = 0.5f;        // Normalized screen Y of horizon (0=top, 1=bottom)
-    bool background_enabled = false;
-
-    // Scene-transition overlay (final mix() applied at end of compositing).
-    // overlay_alpha == 0 produces a shader no-op.
-    float overlay_r = 1.0f;
-    float overlay_g = 1.0f;
-    float overlay_b = 1.0f;
-    float overlay_alpha = 0.0f;
-    uint32_t overlay_effect_type = 0;  // 0 = solid fade, 1 = left-to-right wipe
-};
-
-// GPU UBO layout for gs_post_process.comp (std140, 8 × vec4 + 16 = 144 bytes)
-struct GsPostProcessUbo {
-    glm::vec4 fog_params;         // density, r, g, b
-    glm::vec4 exposure_vignette;  // exposure, radius, softness, bloom_intensity
-    glm::vec4 bloom_fade;         // bloom_threshold, fade_amount, flash_r, flash_g
-    glm::vec4 effects;            // flash_b, ca_intensity, dof_focus_dist, dof_focus_range
-    glm::vec4 dimensions;         // dof_max_blur, width, height, far_plane
-    glm::vec4 ground_sky;         // ground_r, ground_g, ground_b, horizon_y
-    glm::vec4 sky_enable;         // sky_r, sky_g, sky_b, enable (> 0.5 = on)
-    glm::vec4 overlay;            // r, g, b, alpha (scene transition overlay)
-    uint32_t  overlay_effect_type; // 0 = solid fade, 1 = left-to-right wipe
-    uint32_t  _pad0;
-    uint32_t  _pad1;
-    uint32_t  _pad2;
-};
+// Phase 5b: GsPostProcessParams and GsPostProcessUbo definitions moved to
+// gseurat/engine/gs_renderer/post/post_process_params.hpp (included above).
+// The include keeps external callers source-compatible.
 
 // Push constants for preprocess shader (static/dynamic offset)
 struct GsPreprocessPush {
@@ -343,8 +296,9 @@ public:
     uint32_t pbd_constraint_count() const { return pbd_constraint_count_; }
 
     // Post-process parameters (fog, tone mapping, vignette, etc.)
-    void set_post_process_params(const GsPostProcessParams& p) { gs_pp_params_ = p; }
-    const GsPostProcessParams& post_process_params() const { return gs_pp_params_; }
+    // Phase 5b: forwards to the by-value GsPostProcessSystem member.
+    void set_post_process_params(const GsPostProcessParams& p) { post_.params() = p; }
+    const GsPostProcessParams& post_process_params() const { return post_.params(); }
 
     // Frame-determinism test harness (Mode 1): when active, copy the
     // post-Onesweep tile_sort_a_ buffer into a host-mapped readback so the
@@ -506,6 +460,12 @@ private:
     // Phase 5a: GPU resource ownership. Non-owning; bound via set_resources()
     // before init(). AppBase owns the GsResourceManager lifetime.
     GsResourceManager* resources_ = nullptr;
+
+    // Phase 5b: first system extraction. Owns the gs_post_process.comp
+    // pipeline + descriptors + runtime params. Lifetime tied to the
+    // renderer; init() in GsRenderer::init(), shutdown() inside our
+    // explicit shutdown(allocator).
+    GsPostProcessSystem post_;
 
     // Phase 4b: bone transform storage moved to gseurat::RenderState
     // (per-frame-in-flight, persistent-mapped). Set via set_render_state
@@ -685,14 +645,9 @@ private:
     void create_compose_pipeline();
     void update_compose_descriptors();  // called from set_render_state
 
-    // Post-process pipeline
-    VkDescriptorSetLayout post_process_layout_ = VK_NULL_HANDLE;
-    VkPipelineLayout post_process_pipeline_layout_ = VK_NULL_HANDLE;
-    VkPipeline post_process_pipeline_ = VK_NULL_HANDLE;
-    // post_process binds input output_image + depth_image AND output processed_image
-    // — three per-frame images, so the set is per-frame.
-    std::array<VkDescriptorSet, kMaxFramesInFlight> post_process_sets_{};
-    GsPostProcessParams gs_pp_params_;
+    // Phase 5b: post-process pipeline / layout / sets / params live in
+    // GsPostProcessSystem (by-value member below). Renderer dispatches via
+    // post_.dispatch(); set_post_process_params() forwards to post_.params().
 
     // Legacy sort (kept for fallback, not dispatched)
     VkDescriptorSetLayout sort_layout_ = VK_NULL_HANDLE;
