@@ -430,7 +430,7 @@ void GsDemoState::update(AppBase& app, float dt) {
     if (app.input().was_key_pressed(GLFW_KEY_J)) {
         auto preset = gs_preset_spark_shower();
         preset.position = target_;
-        app.renderer().add_gs_particle_emitter(preset);
+        app.particle_system()->add_emitter(preset);
         std::fprintf(stderr, "GS Particles: spark shower at (%.1f, %.1f, %.1f)\n",
                      target_.x, target_.y, target_.z);
     }
@@ -563,7 +563,7 @@ void GsDemoState::build_draw_lists(AppBase& app) {
         // Show marker info
         std::snprintf(buf, sizeof(buf), "Markers: %zu  Path: %zu  Emitters: %zu  Anims: %zu  VFX: %zu",
                       demo_markers_.size(), demo_path_.size(),
-                      app.renderer().gs_particle_emitters().size(),
+                      app.particle_system()->emitters().size(),
                       app.renderer().gs_scene_animations().size(),
                       app.vfx_system() ? app.vfx_system()->instances().size() : 0);
         ui.label(buf, lx, y, scale, layer_color);
@@ -647,7 +647,7 @@ void GsDemoState::build_draw_lists(AppBase& app) {
             }
 
             // Draw particle emitter markers (P0, P1, ...) — magenta diamond
-            auto& emitters = app.renderer().gs_particle_emitters();
+            auto& emitters = app.particle_system()->emitters();
             for (size_t i = 0; i < emitters.size(); ++i) {
                 auto [sx, sy] = project(emitters[i].config().position);
                 if (sx > 0 && sx < screen_w && sy > 0 && sy < screen_h) {

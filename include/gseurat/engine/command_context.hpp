@@ -25,7 +25,7 @@ class ControlServer;
 struct FeatureFlags;
 class CameraZoneSystem;
 class CollisionSystem;
-namespace systems { class VfxSystem; }
+namespace systems { class VfxSystem; class ParticleSystem; }
 struct CommandContext {
     const GsTerrainState& terrain;
     SceneObjectState& scene_objects;
@@ -63,6 +63,9 @@ struct CommandContext {
     // Phase 4c-vfx-2: VFX commands talk to VfxSystem, not Renderer.
     // Null only in test harnesses without an AppBase.
     systems::VfxSystem* vfx_system = nullptr;
+    // Phase 4e: emitter add/clear and emitter-count reads go through
+    // ParticleSystem. Same nullable contract.
+    systems::ParticleSystem* particle_system = nullptr;
 
     // Step-mode: set by the "step" command; main loop consumes one per frame.
     // Non-null only when AppBase wires it up (demo/gameplay path). Atomic so

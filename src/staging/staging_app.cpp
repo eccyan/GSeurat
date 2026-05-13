@@ -94,7 +94,9 @@ void StagingApp::init_scene(const std::string& scene_path) {
 
 void StagingApp::clear_scene() {
     vkDeviceWaitIdle(renderer_.context().device());
-    renderer_.clear_gs_particle_emitters();
+    if (particle_system_) {
+        particle_system_->clear_emitters();
+    }
     renderer_.clear_gs_animations();
     if (vfx_system_) {
         vfx_system_->clear_instances();

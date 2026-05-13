@@ -14,6 +14,7 @@
 #include "gseurat/engine/gs_vfx.hpp"
 #include "gseurat/engine/input_manager.hpp"
 #include "gseurat/engine/light_events.hpp"
+#include "gseurat/engine/systems/particle_system.hpp"
 #include "gseurat/engine/project_root.hpp"
 #include "gseurat/engine/renderer.hpp"
 #include "gseurat/engine/scene.hpp"
@@ -349,12 +350,14 @@ void CommandDispatcher::register_default_commands() {
             ctx_.scene.set_fog_color(scene_data.weather.fog_color);
 
             // Rebuild emitters
-            ctx_.renderer.clear_gs_particle_emitters();
-            for (const auto& em : scene_data.gs_particle_emitters) {
-                auto config = em.config;
-                auto world_pos = coord::to_world(coord::GridPos(config.position), aabb);
-                config.position = world_pos.vec();
-                ctx_.renderer.add_gs_particle_emitter(config);
+            if (ctx_.particle_system) {
+                ctx_.particle_system->clear_emitters();
+                for (const auto& em : scene_data.gs_particle_emitters) {
+                    auto config = em.config;
+                    auto world_pos = coord::to_world(coord::GridPos(config.position), aabb);
+                    config.position = world_pos.vec();
+                    ctx_.particle_system->add_emitter(config);
+                }
             }
 
             // Rebuild animations
@@ -536,7 +539,9 @@ void CommandDispatcher::register_default_commands() {
                 });
             });
         response["triggers"] = triggers;
-        response["emitter_count"] = ctx_.renderer.gs_particle_emitters().size();
+        response["emitter_count"] = ctx_.particle_system
+            ? ctx_.particle_system->emitters().size()
+            : std::size_t{0};
         return response;
     });
 

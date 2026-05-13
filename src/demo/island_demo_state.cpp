@@ -1332,7 +1332,7 @@ void IslandDemoState::update_effects(AppBase& app, float dt) {
         world.view<EmitterToggle, ProximityTrigger>().each(
             [&](ecs::Entity, EmitterToggle& et, ProximityTrigger& pt) {
                 count++;
-                auto& emitters = app.renderer().gs_particle_emitters();
+                auto& emitters = app.particle_system()->emitters();
                 if (et.emitter_index >= emitters.size()) return;
                 auto& emitter = emitters[et.emitter_index];
                 if (pt.triggered && !et.active) {
@@ -1409,7 +1409,7 @@ void IslandDemoState::update_effects(AppBase& app, float dt) {
                     cfg.opacity_end = 0.0f;
                     cfg.emission = et.emission * 1.5f;  // extra glow for bloom
                     cfg.burst_duration = 0.0f;  // continuous
-                    app.renderer().add_gs_particle_emitter(cfg);
+                    app.particle_system()->add_emitter(cfg);
                 }
                 if (!pt.triggered && et.applied) {
                     et.applied = false;
@@ -1430,7 +1430,7 @@ void IslandDemoState::update_effects(AppBase& app, float dt) {
                     be.fired = true;
                     std::fprintf(stderr, "[BurstEffect] FIRED at (%.1f, %.1f, %.1f) emitter_index=%u\n",
                         t.position.x(), t.position.y(), t.position.z(), be.emitter_index);
-                    auto& emitters = app.renderer().gs_particle_emitters();
+                    auto& emitters = app.particle_system()->emitters();
                     if (be.emitter_index < emitters.size()) {
                         auto& emitter = emitters[be.emitter_index];
                         auto cfg = emitter.config();
@@ -1526,7 +1526,7 @@ void IslandDemoState::update_effects(AppBase& app, float dt) {
                     cfg.opacity_end = 0.0f;
                     cfg.emission = 8.0f;  // bright glow for bloom
                     cfg.burst_duration = 0.8f;  // short burst, not continuous
-                    app.renderer().add_gs_particle_emitter(cfg);
+                    app.particle_system()->add_emitter(cfg);
 
                     // Add a bright celebration light
                     PointLight pl{};
@@ -1818,7 +1818,7 @@ void IslandDemoState::build_draw_lists(AppBase& app) {
     auto& ff = app.feature_flags();
     uint32_t gs_total = gs.gaussian_count();
     uint32_t gs_visible = gs.visible_count();
-    size_t emitter_count = app.renderer().gs_particle_emitters().size();
+    size_t emitter_count = app.particle_system()->emitters().size();
 
     // Count triggered proximity triggers
     int triggered_count = 0;
@@ -2076,7 +2076,7 @@ void IslandDemoState::draw_gizmos(AppBase& app) {
     // ── Emitter gizmos ──
     if (ov.show_gizmo_emitters) {
         ImU32 col = IM_COL32(236, 72, 153, 200);
-        auto& emitters = app.renderer().gs_particle_emitters();
+        auto& emitters = app.particle_system()->emitters();
         for (size_t i = 0; i < emitters.size(); i++) {
             auto& cfg = emitters[i].config();
             float sx, sy;

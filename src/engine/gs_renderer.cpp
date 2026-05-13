@@ -764,10 +764,10 @@ void GsRenderer::create_compose_pipeline() {
     }
     vkDestroyShaderModule(device_, module, nullptr);
 
-    // Dedicated descriptor pool — 2 × kMaxFramesInFlight sets (vfx + pbd),
-    // each with 2 SSBO bindings (src + dst).
+    // Dedicated descriptor pool — 3 × kMaxFramesInFlight sets
+    // (vfx + pbd + particles), each with 2 SSBO bindings (src + dst).
     constexpr uint32_t kSetsPerSource = kMaxFramesInFlight;
-    constexpr uint32_t kSources = 2;  // vfx + pbd
+    constexpr uint32_t kSources = 3;  // vfx + pbd + particles
     VkDescriptorPoolSize pool_sizes[1] = {
         {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, kSetsPerSource * kSources * 2},
     };
@@ -793,6 +793,9 @@ void GsRenderer::create_compose_pipeline() {
     if (vkAllocateDescriptorSets(device_, &alloc_info, compose_sets_pbd_.data()) != VK_SUCCESS) {
         throw std::runtime_error("Failed to allocate compose (pbd) descriptor sets");
     }
+    if (vkAllocateDescriptorSets(device_, &alloc_info, compose_sets_particles_.data()) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to allocate compose (particles) descriptor sets");
+    }
 }
 
 void GsRenderer::update_compose_descriptors() {
@@ -800,9 +803,10 @@ void GsRenderer::update_compose_descriptors() {
     for (uint32_t f = 0; f < kMaxFramesInFlight; ++f) {
         VkDescriptorBufferInfo vfx_src_info{render_state_->vfx_buffer(FrameIndex{f}), 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo pbd_src_info{render_state_->pbd_buffer(FrameIndex{f}), 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo part_src_info{render_state_->particles_buffer(FrameIndex{f}), 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo dst_info{dynamic_gaussian_ssbo_.buffer(), 0, VK_WHOLE_SIZE};
 
-        VkWriteDescriptorSet writes[4]{};
+        VkWriteDescriptorSet writes[6]{};
         writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
         writes[0].dstSet = compose_sets_vfx_[f];
         writes[0].dstBinding = 0;
@@ -831,7 +835,21 @@ void GsRenderer::update_compose_descriptors() {
         writes[3].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         writes[3].pBufferInfo = &dst_info;
 
-        vkUpdateDescriptorSets(device_, 4, writes, 0, nullptr);
+        writes[4].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        writes[4].dstSet = compose_sets_particles_[f];
+        writes[4].dstBinding = 0;
+        writes[4].descriptorCount = 1;
+        writes[4].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        writes[4].pBufferInfo = &part_src_info;
+
+        writes[5].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        writes[5].dstSet = compose_sets_particles_[f];
+        writes[5].dstBinding = 1;
+        writes[5].descriptorCount = 1;
+        writes[5].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        writes[5].pBufferInfo = &dst_info;
+
+        vkUpdateDescriptorSets(device_, 6, writes, 0, nullptr);
     }
     compose_descriptors_initialised_ = true;
 }
@@ -885,6 +903,35 @@ void GsRenderer::dispatch_compose_pbd(VkCommandBuffer cmd, FrameIndex frame_idx,
                        0, sizeof(pc), &pc);
     constexpr uint32_t kLocalSize = 64;
     const uint32_t groups = (pbd_count + kLocalSize - 1) / kLocalSize;
+    vkCmdDispatch(cmd, groups, 1, 1);
+
+    VkMemoryBarrier mb{};
+    mb.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+    mb.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+    mb.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+    vkCmdPipelineBarrier(cmd,
+                         VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                         VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                         0, 1, &mb, 0, nullptr, 0, nullptr);
+}
+
+void GsRenderer::dispatch_compose_particles(VkCommandBuffer cmd, FrameIndex frame_idx,
+                                             uint32_t prior_offset,
+                                             uint32_t particles_count) {
+    if (particles_count == 0 || !compose_descriptors_initialised_) return;
+
+    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, compose_pipeline_);
+    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
+                            compose_pipeline_layout_, 0, 1,
+                            &compose_sets_particles_[to_u32(frame_idx)], 0, nullptr);
+    struct PushConstants {
+        uint32_t splat_count;
+        uint32_t dst_offset;
+    } pc{particles_count, persistent_dyn_count_ + prior_offset};
+    vkCmdPushConstants(cmd, compose_pipeline_layout_, VK_SHADER_STAGE_COMPUTE_BIT,
+                       0, sizeof(pc), &pc);
+    constexpr uint32_t kLocalSize = 64;
+    const uint32_t groups = (particles_count + kLocalSize - 1) / kLocalSize;
     vkCmdDispatch(cmd, groups, 1, 1);
 
     VkMemoryBarrier mb{};

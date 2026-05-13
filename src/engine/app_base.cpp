@@ -618,6 +618,9 @@ void AppBase::init_render_state() {
     if (lighting_system_) {
         lighting_system_->set_render_state(render_state_.get());
     }
+    if (particle_system_) {
+        particle_system_->set_render_state(render_state_.get());
+    }
     // Renderer needs back-pointers to these systems so record_gs_prepass
     // can drive their per-frame work. (4c-pbd: also fixes a latent
     // wire-up gap from 4c-vfx-2 where set_vfx_system was declared
@@ -625,6 +628,7 @@ void AppBase::init_render_state() {
     renderer_.set_vfx_system(vfx_system_.get());
     renderer_.set_pbd_system(pbd_system_.get());
     renderer_.set_lighting_system(lighting_system_.get());
+    renderer_.set_particle_system(particle_system_.get());
 }
 
 void AppBase::upload_bone_transforms() {
@@ -912,6 +916,25 @@ void AppBase::init_game_object_system() {
     lighting_system_ = std::make_unique<systems::LightingSystem>(
         &renderer_, vfx_system_.get(), render_state_.get());
 
+    // Phase 4e: ParticleSystem owns gs_particle_emitters_ and packs
+    // per-frame Gaussians into RenderState::particles_buffer.
+    // Render_state binding is late.
+    particle_system_ = std::make_unique<systems::ParticleSystem>(render_state_.get());
+
+    // CommandDispatcher captured a CommandContext snapshot during AppBase
+    // member-init (see hpp: `command_dispatcher_{build_command_context()}`),
+    // BEFORE any of the systems above existed. That snapshot saw null
+    // pointers for vfx_system / particle_system, so commands routed
+    // through ctx_.* would silently fail on the system-driven paths
+    // (update_scene_data emitter rebuild, update_vfx_positions, etc.).
+    // CommandContext has reference members so it can't be reassigned —
+    // patch the pointer fields in place via the existing context()
+    // accessor. (Codex P2 on PR #440; also retroactively fixes the same
+    // hazard for vfx_system introduced in PR #436.)
+    auto& ctx = command_dispatcher_.context();
+    ctx.vfx_system = vfx_system_.get();
+    ctx.particle_system = particle_system_.get();
+
     // Register engine-level systems
     system_scheduler_.add_system({"bone_animation",
         [this](ecs::World& w, float dt) {
@@ -991,6 +1014,7 @@ CommandContext AppBase::build_command_context() {
         },
         .control_server = &control_server_,
         .vfx_system = vfx_system_.get(),
+        .particle_system = particle_system_.get(),
         .pending_steps = &pending_steps_,
         .deferred_step_response = &deferred_step_response_,
     };
@@ -1003,6 +1027,7 @@ void AppBase::load_gs_scene(const SceneData& scene_data, const GsSceneOptions& o
         gs_terrain_, scene_objects_, renderer_, scene_,
         world_, component_registry_, resources_, feature_flags_,
         vfx_system_.get(),
+        particle_system_.get(),
     };
     GsSceneLoader loader;
     loader.load(ctx, scene_data, opts);
@@ -1018,6 +1043,7 @@ void AppBase::load_pre_parsed_gs_scene(const SceneData& scene_data,
         gs_terrain_, scene_objects_, renderer_, scene_,
         world_, component_registry_, resources_, feature_flags_,
         vfx_system_.get(),
+        particle_system_.get(),
     };
     GsSceneLoader loader;
     loader.finalize_on_main(ctx, scene_data, std::move(parsed), opts);
@@ -1075,6 +1101,7 @@ void AppBase::tick_async_load_gs_scene() {
         gs_terrain_, scene_objects_, renderer_, scene_,
         world_, component_registry_, resources_, feature_flags_,
         vfx_system_.get(),
+        particle_system_.get(),
     };
     GsSceneLoader loader;
     loader.finalize_on_main(ctx, pending.scene_data, std::move(parsed), pending.opts);

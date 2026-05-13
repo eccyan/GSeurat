@@ -10,6 +10,7 @@
 #include "gseurat/engine/sort_hash.hpp"
 #include "gseurat/engine/streaming_config.hpp"
 #include "gseurat/engine/systems/lighting_system.hpp"
+#include "gseurat/engine/systems/particle_system.hpp"
 #include "gseurat/engine/systems/pbd_system.hpp"
 #include "gseurat/engine/systems/vfx_system.hpp"
 
@@ -1338,15 +1339,23 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
         if (pbd_system_ && !determinism_test_state_.active) {
             pbd_count = pbd_system_->update_per_frame(FrameIndex{current_frame_});
         }
-        // Clamp the GPU-composed prefix so persistent + vfx + pbd fits
-        // inside max_dynamic_count_. Without this the compose shaders
+        // Phase 4e: particle emitters now own their per-frame tick + cull
+        // + erase, writing encoded GpuGaussians directly into
+        // particles_buffer. flags.particles gates BOTH the tick and the
+        // dispatch (matching pre-refactor behavior).
+        uint32_t particles_count = 0;
+        if (particle_system_ && flags.particles && !determinism_test_state_.active) {
+            particles_count = particle_system_->update_per_frame(
+                dt, FrameIndex{current_frame_}, cull_origin_v, cull_dist_sq_v);
+        }
+        // Clamp the GPU-composed prefix so persistent + vfx + pbd + particles
+        // fits inside max_dynamic_count_. Without this the compose shaders
         // would write past `dynamic_gaussian_ssbo`'s end when a scene's
         // persistent prefix is large enough to leave less headroom than
-        // the system writer caps (RenderStateConfig max_vfx_splats +
-        // max_pbd_splats currently 250k vs. kDynamicHeadroom 1M minus
-        // persistent). The old pending-dynamics path was implicitly
-        // clipped by update_dynamic_gaussians, which can only truncate
-        // the CPU portion (after the GPU prefix) — Codex P2 on #437.
+        // the system writer caps. The old pending-dynamics path was
+        // implicitly clipped by update_dynamic_gaussians, which can only
+        // truncate a CPU portion (which no longer exists post-4e) —
+        // Codex P2 on #437.
         {
             const uint32_t max_dyn = gs_renderer_.max_dynamic_count();
             const uint32_t persistent = gs_renderer_.persistent_dynamic_count();
@@ -1354,11 +1363,11 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
             if (vfx_count > gpu_budget) vfx_count = gpu_budget;
             gpu_budget -= vfx_count;
             if (pbd_count > gpu_budget) pbd_count = gpu_budget;
+            gpu_budget -= pbd_count;
+            if (particles_count > gpu_budget) particles_count = gpu_budget;
         }
 
         if (!determinism_test_state_.active) {
-            gs_dynamic_buffer_.clear();
-
             if (!gs_scene_animations_.empty()) {
                 // Phase 2 deferred: scene animations on streamed terrain
                 // need GPU-side region tagging (compute shader) since the
@@ -1375,24 +1384,6 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
                 gs_scene_animations_.clear();
             }
 
-            // Update and gather Gaussian particles from emitters
-            // (VFX iteration above wrote to vfx_buffer; emitters still
-            // write to gs_dynamic_buffer_ → slots after the VFX prefix.)
-            if (flags.particles) {
-                for (auto& emitter : gs_particle_emitters_) {
-                    emitter.update(dt);
-                    if (cull_dist_sq_v > 0.0f) {
-                        glm::vec3 d = emitter.position() - cull_origin_v;
-                        if (glm::dot(d, d) > cull_dist_sq_v) continue;
-                    }
-                    emitter.gather(gs_dynamic_buffer_);
-                }
-                gs_particle_emitters_.erase(
-                    std::remove_if(gs_particle_emitters_.begin(), gs_particle_emitters_.end(),
-                        [](const GaussianParticleEmitter& e) { return !e.active() && e.alive_count() == 0; }),
-                    gs_particle_emitters_.end());
-            }
-
             // Phase 4d-2: static + VFX-emitted light merge moved into
             // systems::LightingSystem. Falls through harmlessly if the
             // system isn't bound (tests / standalone harness).
@@ -1400,38 +1391,33 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
                 lighting_system_->update_per_frame();
             }
 
-            // Upload dynamic Gaussians. The dynamic_gaussian_ssbo layout
-            // is now [persistent | vfx | pbd | cpu]: `vfx_count` and
-            // `pbd_count` slots are filled by the GPU compose passes
-            // below, and `count` CPU-sourced slots come after.
-            {
-                auto count = static_cast<uint32_t>(gs_dynamic_buffer_.size());
-                const uint32_t gpu_prefix = vfx_count + pbd_count;
-                const uint32_t max_cpu = (gs_renderer_.max_dynamic_count() > gpu_prefix)
-                    ? gs_renderer_.max_dynamic_count() - gpu_prefix : 0;
-                if (count > max_cpu) {
-                    gs_dynamic_buffer_.resize(max_cpu);
-                    count = max_cpu;
-                }
-                gs_renderer_.update_dynamic_gaussians(gs_dynamic_buffer_.data(), count,
-                                                       /*gpu_prefix=*/gpu_prefix);
+            // Phase 4e: no more CPU dynamic upload. Every transient
+            // splat now lives in a per-frame RenderState buffer and
+            // arrives via a compose dispatch below. Calling
+            // update_dynamic_gaussians with count=0 still updates
+            // dynamic_count_ so downstream raster knows the active
+            // range.
+            const uint32_t gpu_prefix = vfx_count + pbd_count + particles_count;
+            gs_renderer_.update_dynamic_gaussians(nullptr, 0, /*gpu_prefix=*/gpu_prefix);
 #if GSEURAT_DEBUG_BUILD
-                dbg_dyn_count = count + gpu_prefix;
+            dbg_dyn_count = gpu_prefix;
 #endif
-            }
         }
 
-        // Phase 4c-vfx-2 / 4c-pbd: GPU compose passes — copy VfxSystem's
-        // per-frame vfx_buffer into dynamic_gaussian_ssbo at offset
-        // persistent_dyn_count_ for `vfx_count` slots, then PbdSystem's
-        // pbd_buffer at offset persistent_dyn_count_ + vfx_count. Both
-        // must run on the same cmd buffer BEFORE gs_renderer_.render()
-        // so downstream preprocess/sort/raster see the composed splats.
-        // Order matters because dispatch_compose_pbd uses vfx_count as
-        // an offset.
+        // Phase 4c-vfx-2 / 4c-pbd / 4e: GPU compose passes — copy each
+        // per-frame source buffer (vfx_buffer / pbd_buffer /
+        // particles_buffer) into dynamic_gaussian_ssbo at successive
+        // offsets after persistent_dyn_count_. All three must run on
+        // the same cmd buffer BEFORE gs_renderer_.render() so the
+        // downstream preprocess/sort/raster see the composed splats.
+        // Order matters because each dispatch uses the cumulative
+        // prior offset.
         gs_renderer_.dispatch_compose_vfx(cmd, FrameIndex{current_frame_}, vfx_count);
         gs_renderer_.dispatch_compose_pbd(cmd, FrameIndex{current_frame_},
                                           vfx_count, pbd_count);
+        gs_renderer_.dispatch_compose_particles(cmd, FrameIndex{current_frame_},
+                                                /*prior_offset=*/vfx_count + pbd_count,
+                                                particles_count);
 
 #if GSEURAT_DEBUG_BUILD
         const auto t_prepass_pre_render = std::chrono::steady_clock::now();
@@ -1447,7 +1433,7 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
                 t_prepass_pre_render - t_prepass_start).count();
             const double gs_render_ms = std::chrono::duration<double, std::milli>(
                 t_prepass_end - t_prepass_pre_render).count();
-            const size_t emitter_count = gs_particle_emitters_.size();
+            const size_t emitter_count = particle_system_ ? particle_system_->emitters().size() : 0;
             const size_t vfx_inst_count = vfx_system_ ? vfx_system_->instances().size() : 0;
             GS_LOG_FRAME("[gs_prepass/wd/SLOW] total={:.1f}ms cpu_gather={:.1f} gs_render={:.1f} "
                          "dyn_count={} emitters={} vfx_inst={} static_dirty={}",
@@ -1692,16 +1678,6 @@ void Renderer::draw_debug_colliders(VkCommandBuffer cmd,
     // Re-bind sprite pipeline for any subsequent passes
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, sprite_pipeline_);
     sprite_batch_.bind(cmd, current_frame_);
-}
-
-void Renderer::add_gs_particle_emitter(const GsEmitterConfig& config) {
-    auto& emitter = gs_particle_emitters_.emplace_back();
-    emitter.configure(config);
-    emitter.set_active(true);
-}
-
-void Renderer::clear_gs_particle_emitters() {
-    gs_particle_emitters_.clear();
 }
 
 void Renderer::add_gs_animation(const std::string& effect, const GsAnimRegion& region,

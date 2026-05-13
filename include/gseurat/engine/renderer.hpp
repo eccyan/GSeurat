@@ -36,7 +36,7 @@ struct GLFWwindow;
 namespace gseurat {
 
 class ResourceManager;
-namespace systems { class VfxSystem; class PbdSystem; class LightingSystem; }
+namespace systems { class VfxSystem; class PbdSystem; class LightingSystem; class ParticleSystem; }
 
 // Small constant-size summary of the loaded GS cloud. Replaces the demo-side
 // reads of `cloud_bounds()` / `chunk_count()` / `all_gaussians()` with a
@@ -153,10 +153,11 @@ public:
     PostProcessParams& post_process_params() { return pp_params_; }
     const PostProcessParams& post_process_params() const { return pp_params_; }
 
-    // Gaussian particle emitters
-    void add_gs_particle_emitter(const GsEmitterConfig& config);
-    void clear_gs_particle_emitters();
-    std::vector<GaussianParticleEmitter>& gs_particle_emitters() { return gs_particle_emitters_; }
+    // Phase 4e: Gaussian particle emitters moved to systems::ParticleSystem.
+    // Callers use `app.particle_system()->add_emitter(...)`,
+    // `clear_emitters()`, and `emitters()`. The renderer holds a non-
+    // owning pointer to dispatch per-frame update + compose from
+    // record_gs_prepass.
 
     // Phase 4c-vfx-2: GaussianAnimator + vfx_instances_ moved to
     // systems::VfxSystem. The renderer now holds a non-owning pointer
@@ -175,6 +176,13 @@ public:
     // calls lighting_system_->update_per_frame() from record_gs_prepass.
     void set_lighting_system(systems::LightingSystem* ls) noexcept {
         lighting_system_ = ls;
+    }
+
+    // Phase 4e: particle emitters moved to systems::ParticleSystem.
+    // Renderer drives per-frame update + dispatch_compose_particles
+    // from record_gs_prepass.
+    void set_particle_system(systems::ParticleSystem* ps) noexcept {
+        particle_system_ = ps;
     }
 
     // Scene-placed animations (with loop support)
@@ -357,18 +365,17 @@ private:
     // `GsSceneLoader::parse` (Option B per #396 §A); the renderer is a
     // pure GPU consumer once init_gs returns.
     GsCloudMetadata gs_cloud_metadata_;
-    std::vector<Gaussian> gs_dynamic_buffer_;
     glm::mat4 gs_prev_view_{0.0f};  // for camera dirty detection
     bool gs_static_force_dirty_ = false;
-    std::vector<GaussianParticleEmitter> gs_particle_emitters_;
     std::vector<SceneAnimation> gs_scene_animations_;
-    // Phase 4c-vfx-2 / 4c-pbd / 4d-2: VFX instances + animator (4c-vfx-2),
-    // PBD pending splats (4c-pbd), and static lights + per-frame merge
-    // (4d-2) all moved to their respective systems; we only keep
-    // non-owning pointers so record_gs_prepass can tick them.
+    // Phase 4c-vfx-2 / 4c-pbd / 4d-2 / 4e: VFX instances + animator,
+    // PBD pending splats, static lights + per-frame merge, and particle
+    // emitters have all moved to their respective systems; we only
+    // keep non-owning pointers so record_gs_prepass can tick them.
     systems::VfxSystem* vfx_system_ = nullptr;
     systems::PbdSystem* pbd_system_ = nullptr;
     systems::LightingSystem* lighting_system_ = nullptr;
+    systems::ParticleSystem* particle_system_ = nullptr;
 
     // ── Frame-determinism harness internal state ──
     struct DeterminismTestState {
