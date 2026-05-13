@@ -6,6 +6,7 @@
 #include "gseurat/engine/gs_renderer/post/gs_post_process_system.hpp"
 #include "gseurat/engine/gs_renderer/post/post_process_params.hpp"
 #include "gseurat/engine/gs_renderer/sort/gs_sort_system.hpp"
+#include "gseurat/engine/gs_renderer/tile_bin/gs_tile_bin_system.hpp"
 #include "gseurat/engine/pbd_types.hpp"
 #include "gseurat/engine/render_state.hpp"  // FrameIndex
 #include "gseurat/engine/slab_allocator.hpp"
@@ -301,52 +302,16 @@ public:
     void set_post_process_params(const GsPostProcessParams& p) { post_.params() = p; }
     const GsPostProcessParams& post_process_params() const { return post_.params(); }
 
-    // Frame-determinism test harness (Mode 1): when active, copy the
-    // post-Onesweep tile_sort_a_ buffer into a host-mapped readback so the
-    // CPU can hash the live entry range and detect order-instability
-    // across frames with frozen inputs. Debug-only; no production cost.
-    void set_determinism_test_active(bool active) {
-        determinism_test_active_ = active;
-        if (!active) determinism_readback_emitted_ = false;
-    }
-    bool determinism_test_active() const { return determinism_test_active_; }
-
-    // True iff `dispatch_tile_sort` actually emitted a host-visible copy of
-    // tile_sort_a_ this frame. False during scene-transition / loading frames
-    // where the GS compute path was skipped (no cloud, !gs_rendering,
-    // !dispatch_gpu_compute, capacity == 0). The harness uses this to skip
-    // frames with stale readback contents — without it the test could report
-    // a false STABLE verdict from leftover bytes.
-    bool determinism_readback_emitted_this_frame() const {
-        return determinism_readback_emitted_;
-    }
-
-    // Raw VMA allocation handles + capacity exposed for the harness to call
-    // `vmaInvalidateAllocation` after the in-flight fence and clamp the hash
-    // range to actual buffer size. Both buffers are host-mapped; on
-    // platforms whose memory type is not `HOST_COHERENT`, omitting the
-    // invalidate would let stale CPU caches leak into the verdict.
-    VmaAllocation determinism_readback_allocation() const {
-        return resources_->determinism_readback.allocation();
-    }
-    VmaAllocation tile_sort_count_allocation() const {
-        // Phase 3.5: tile_sort_count is per-frame. Return the slot that
-        // dispatch_tile_sort most recently recorded into (matches the
-        // readback the harness reads after the in-flight fence).
-        return resources_->tile_sort_count_ssbos[determinism_last_emitted_frame_].allocation();
-    }
-    uint32_t tile_sort_capacity() const { return tile_sort_capacity_; }
-
-    const void* determinism_readback_data() const {
-        return resources_->determinism_readback.mapped();
-    }
-    uint32_t live_tile_sort_count() const {
-        // Phase 3.5: tile_sort_count is per-frame. Read the slot that
-        // dispatch_tile_sort most recently emitted (post-fence).
-        const auto& slot = resources_->tile_sort_count_ssbos[determinism_last_emitted_frame_];
-        if (slot.mapped() == nullptr) return 0;
-        return *static_cast<const uint32_t*>(slot.mapped());
-    }
+    // Frame-determinism test harness (Mode 1): forwarded to GsTileBinSystem,
+    // which owns the readback state since 5d. Public API stays identical.
+    void set_determinism_test_active(bool active) { tile_.set_determinism_test_active(active); }
+    bool determinism_test_active() const { return tile_.determinism_test_active(); }
+    bool determinism_readback_emitted_this_frame() const { return tile_.determinism_readback_emitted_this_frame(); }
+    VmaAllocation determinism_readback_allocation() const { return tile_.determinism_readback_allocation(); }
+    VmaAllocation tile_sort_count_allocation() const { return tile_.tile_sort_count_allocation(); }
+    uint32_t tile_sort_capacity() const { return tile_.tile_sort_capacity(); }
+    const void* determinism_readback_data() const { return tile_.determinism_readback_data(); }
+    uint32_t live_tile_sort_count() const { return tile_.live_tile_sort_count(); }
 
     // GPU timing averages (populated over kTimestampAvgFrames)
     float depth_sort_ms_avg() const { return depth_sort_ms_avg_; }
@@ -416,9 +381,7 @@ private:
     void create_descriptor_resources();
     void update_descriptors();
     // Phase 5c: dispatch_depth_onesweep moved to GsSortSystem (sort_.dispatch_depth_*).
-    // Phase 3: frame_in_flight selects tile_bin_sets_[f] so the per-frame
-    // racing projected/merged/counts slots are read correctly.
-    void dispatch_tile_sort(VkCommandBuffer cmd, uint32_t frame_in_flight);
+    // Phase 5d: dispatch_tile_sort moved to GsTileBinSystem (tile_.dispatch_sort).
     // Drain pending_publications_ and record the metadata writes
     // (page_table, chunk_table) onto `cmd` via vkCmdUpdateBuffer + a
     // TRANSFER_WRITE -> SHADER_READ barrier. Called from poll_transfers
@@ -467,6 +430,13 @@ private:
     // pipeline, all depth-sort descriptor sets (3 paths × 4 sets × 2
     // frames + 2 merge = 26 sets), and the sort-size scalars.
     GsSortSystem sort_;
+
+    // Phase 5d: tile binning + tile sort + tile rasterization extraction.
+    // Owns 5 layouts + 6 pipelines + 18 descriptor sets (10 tile + 8 tile-
+    // onesweep). Borrows sort_'s onesweep pipelines via accessors. Holds
+    // the determinism readback harness state (forwarded by the getters
+    // above for ABI stability).
+    GsTileBinSystem tile_;
 
     // Phase 4b: bone transform storage moved to gseurat::RenderState
     // (per-frame-in-flight, persistent-mapped). Set via set_render_state
@@ -651,121 +621,16 @@ private:
     // Per-frame sort sets (Phase 2 plumbing; dispatch still binds [0]).
     std::array<VkDescriptorSet, kMaxFramesInFlight> sort_sets_{};
 
-    // ── Tile binning pipeline (deterministic count→scan→scatter) ──
-    // The combined `tile_bin_layout_` covers both the count and scatter
-    // shaders (gs_tile_count.comp / gs_tile_bin.comp). Bindings:
-    //   0 projected[]   1 merged_entries[]   2 counts (ro)
-    //   3 per_splat_tile_count[]  4 per_splat_tile_offset[]
-    //   5 tile_entries[]          6 uniforms
-    // Count shader uses 0,1,2,3,6. Scatter uses 0,1,2,4,5,6.
-    VkDescriptorSetLayout tile_bin_layout_ = VK_NULL_HANDLE;
-    VkPipelineLayout tile_bin_pipeline_layout_ = VK_NULL_HANDLE;
-    VkPipeline tile_bin_pipeline_ = VK_NULL_HANDLE;
-    // Per-frame (Phase 3): tile_bin_sets_[f] binds resources_->projected_ssbos[f],
-    // resources_->merged_sort_ssbos[f], resources_->counts_ssbos[f]. Other bindings (per_splat_*,
-    // tile_entries, uniforms) are single-instance.
-    std::array<VkDescriptorSet, kMaxFramesInFlight> tile_bin_sets_{};
+    // Phase 5d: all tile-bin / tile-sort / tile-render layouts, pipelines,
+    // descriptor sets, sizing scalars, and determinism harness state moved
+    // into GsTileBinSystem (the `tile_` member declared earlier).
 
-    // Pre-scatter count pass (gs_tile_count.comp). Shares layout/set with
-    // tile_bin_pipeline_ — the binding set is a strict superset of what
-    // either shader reads.
-    VkPipeline tile_count_pipeline_ = VK_NULL_HANDLE;
-
-    // Three-dispatch exclusive prefix-sum (gs_tile_scan.comp). Bindings:
-    //   0 per_splat_tile_count[]  1 per_splat_tile_offset[]
-    //   2 scan_block_sums[]       3 tile_sort_count
-    // Per-frame (Phase 3.5): binds racing per_splat_*/scan_block_sums/
-    // tile_sort_count buffers, so the set itself is per-frame.
-    VkDescriptorSetLayout tile_scan_layout_ = VK_NULL_HANDLE;
-    VkPipelineLayout tile_scan_pipeline_layout_ = VK_NULL_HANDLE;
-    VkPipeline tile_scan_pipeline_ = VK_NULL_HANDLE;
-    std::array<VkDescriptorSet, kMaxFramesInFlight> tile_scan_sets_{};
-
-    // Indirect dispatch preparation
-    // Per-frame (Phase 3.5): binds racing tile_sort_count + tile_indirect_args.
-    VkDescriptorSetLayout tile_indirect_layout_ = VK_NULL_HANDLE;
-    VkPipelineLayout tile_indirect_pipeline_layout_ = VK_NULL_HANDLE;
-    VkPipeline tile_indirect_pipeline_ = VK_NULL_HANDLE;
-    std::array<VkDescriptorSet, kMaxFramesInFlight> tile_indirect_sets_{};
-
-    // Tile range detection pipeline
-    // Per-frame (Phase 3.5): binds racing tile_sort_a + tile_ranges + tile_sort_count.
-    VkDescriptorSetLayout tile_ranges_layout_ = VK_NULL_HANDLE;
-    VkPipelineLayout tile_ranges_pipeline_layout_ = VK_NULL_HANDLE;
-    VkPipeline tile_ranges_pipeline_ = VK_NULL_HANDLE;
-    std::array<VkDescriptorSet, kMaxFramesInFlight> tile_ranges_sets_{};
-
-    // Tile render pipeline (8 bindings)
-    VkDescriptorSetLayout tile_render_layout_ = VK_NULL_HANDLE;
-    VkPipelineLayout tile_render_pipeline_layout_ = VK_NULL_HANDLE;
-    VkPipeline tile_render_pipeline_ = VK_NULL_HANDLE;
-    // tile_render binds output_image + depth_image — per-frame.
-    std::array<VkDescriptorSet, kMaxFramesInFlight> tile_render_sets_{};
-
-    // Onesweep 2-dispatch sort (histogram+lookback → scatter) — per-frame
-    // (Phase 3.5). Binds racing tile_sort_a/b + tile_indirect_args.
-    // resources_->onesweep_statuses is also per-frame (final cross-frame race fix):
-    // frame N+1's vkCmdFillBuffer would otherwise stomp frame N's in-flight
-    // lookback state.
-    // Phase 5c: onesweep_hist pipeline + layout moved to GsSortSystem (shared with 5d tile-bin).
-    std::array<VkDescriptorSet, kMaxFramesInFlight> onesweep_hist_sets_a_{};  // read from A
-    std::array<VkDescriptorSet, kMaxFramesInFlight> onesweep_hist_sets_b_{};  // read from B
-
-    // Phase 5c: onesweep_scatter pipeline + layout moved to GsSortSystem (shared with 5d tile-bin).
-    std::array<VkDescriptorSet, kMaxFramesInFlight> onesweep_scatter_sets_ab_{};  // read A → write B
-    std::array<VkDescriptorSet, kMaxFramesInFlight> onesweep_scatter_sets_ba_{};  // read B → write A
-
-    // Per-digit lookback status buffer (tile sort, coherent). Per-frame:
-    // dispatch_tile_sort zeroes the slot at the start of every per-frame
-    // record and the onesweep compute reads/writes it; with kMaxFramesInFlight
-    // cmdbufs in flight a single-instance buffer would race itself.
-    uint32_t onesweep_max_wg_ = 0;
-
-    // Depth sort Onesweep (reuses same shaders as tile sort)
-    // Per-digit lookback status (depth sort, coherent). Per-frame for the
-    // same reason as resources_->onesweep_statuses.
-    // Phase 5c: depth_onesweep_max_wg_ kept here temporarily because
-    // init_streaming computes its size from sort sizes — pushed into
-    // GsSortSystem via set_sort_sizes() after the computation. Will be
-    // fully retired in a later cleanup.
+    // Phase 5c: depth_onesweep_max_wg_ — still computed in init_streaming
+    // (depends on max workgroups across static/dynamic/legacy depth paths)
+    // and pushed into GsSortSystem via set_sort_sizes(). Will be fully
+    // retired in a later cleanup.
     uint32_t depth_onesweep_max_wg_ = 0;
 
-    // Phase 5c: all depth-sort descriptor sets (legacy/static/dynamic
-    // × hist_a/hist_b/scatter_ab/scatter_ba × per-frame = 24 sets)
-    // moved into GsSortSystem.
-
-    // Tile sort buffers — per-frame (Phase 3.5).
-    // All seven buffers below are written every frame on the per-frame
-    // render path (dispatch_tile_sort). With kMaxFramesInFlight cmdbufs
-    // executing concurrently on the same VkQueue, single-instance
-    // buffers would race the same way the projected/sort_keys/visible_count
-    // buffers did pre-Phase-3. Each slot is sized identically (driven by
-    // tile_sort_capacity_ / scan_dispatch_size_).
-
-    // Deterministic tile-bin (Fix B) intermediate SSBOs. All sized to the
-    // visible-splat upper bound (static_sort_size_ + dynamic_sort_size_).
-    // Per-frame for the same race reason as the tile sort buffers above.
-    uint32_t scan_dispatch_size_ = 0;    // visible_upper rounded up to 256
-    uint32_t scan_num_blocks_ = 0;       // scan_dispatch_size_ / 256
-    // Frame-determinism harness: HOST_VISIBLE copy of the post-Onesweep
-    // tile_sort_a_ buffer. Sized to match tile_sort_a_; only populated when
-    // determinism_test_active_ is true.
-    bool determinism_test_active_ = false;
-    // Set true by `dispatch_tile_sort` once the host-visible copy has
-    // actually been recorded for the current command buffer. Cleared at
-    // the start of each `dispatch_tile_sort`. The harness consults this
-    // before counting a frame so that loading / transition frames where
-    // the GS compute path was gated off don't pollute the verdict.
-    bool determinism_readback_emitted_ = false;
-    // Phase 3.5: which per-frame slot of resources_->tile_sort_count_ssbos was the
-    // most recently emitted readback against. The harness uses this to
-    // select the right slot post-fence. Updated inside dispatch_tile_sort.
-    uint32_t determinism_last_emitted_frame_ = 0;
-
-    uint32_t tile_sort_capacity_ = 0;    // max entries in tile sort buffers
-    uint32_t tile_sort_size_ = 0;        // workgroup-aligned count for radix sort
-    uint32_t tile_sort_workgroups_ = 0;
-    static constexpr uint32_t kTileSortPasses = 4;  // 4 passes for 32-bit key
     bool initialized_ = false;
 
     // World manifest (Phase 3 streaming)

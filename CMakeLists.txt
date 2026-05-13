@@ -276,6 +276,7 @@ target_sources(gseurat_core PRIVATE src/engine/systems/particle_system.cpp)
 target_sources(gseurat_core PRIVATE src/engine/gs_renderer/gs_resources.cpp)
 target_sources(gseurat_core PRIVATE src/engine/gs_renderer/post/gs_post_process_system.cpp)
 target_sources(gseurat_core PRIVATE src/engine/gs_renderer/sort/gs_sort_system.cpp)
+target_sources(gseurat_core PRIVATE src/engine/gs_renderer/tile_bin/gs_tile_bin_system.cpp)
 
 if(GSEURAT_SHARED_LIBS)
     target_compile_definitions(gseurat_core PUBLIC GSEURAT_ENGINE_BUILD_SHARED)
