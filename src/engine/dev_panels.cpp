@@ -2,8 +2,10 @@
 
 #include "gseurat/engine/dev_panels.hpp"
 #include "gseurat/engine/app_base.hpp"
+#include "gseurat/engine/light_events.hpp"
 #include "gseurat/engine/renderer.hpp"
 #include "gseurat/engine/gs_renderer.hpp"
+#include "gseurat/engine/systems/lighting_system.hpp"
 
 #include <imgui.h>
 #include <filesystem>
@@ -182,7 +184,13 @@ void draw_lighting_panel(AppBase& app) {
 
     ImGui::Separator();
 
-    auto lights = gs.point_lights();
+    // Phase 4d-2: read from LightingSystem's static set (the renderer-side
+    // point_lights_ now also includes VFX-merged entries, which we don't
+    // want to expose here). Falls back to the renderer's list if the
+    // system isn't yet bound (e.g. early init in test harnesses).
+    auto lights = app.lighting_system()
+        ? app.lighting_system()->static_lights()
+        : gs.point_lights();
     bool lights_changed = false;
     ImGui::Text("Point Lights: %zu / 8", lights.size());
 
@@ -233,7 +241,11 @@ void draw_lighting_panel(AppBase& app) {
     }
 
     if (lights_changed) {
-        gs.set_point_lights(lights);
+        // Phase 4d-2: emit the new static set; LightingSystem's run()
+        // will pick it up on the next tick and the per-frame merge
+        // will re-upload to the GPU.
+        app.world().events<PointLightsLoadedEvent>().send(
+            PointLightsLoadedEvent{lights});
     }
 
     ImGui::End();

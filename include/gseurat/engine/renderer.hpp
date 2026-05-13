@@ -36,7 +36,7 @@ struct GLFWwindow;
 namespace gseurat {
 
 class ResourceManager;
-namespace systems { class VfxSystem; class PbdSystem; }
+namespace systems { class VfxSystem; class PbdSystem; class LightingSystem; }
 
 // Small constant-size summary of the loaded GS cloud. Replaces the demo-side
 // reads of `cloud_bounds()` / `chunk_count()` / `all_gaussians()` with a
@@ -170,6 +170,13 @@ public:
     // record_gs_prepass.
     void set_pbd_system(systems::PbdSystem* ps) noexcept { pbd_system_ = ps; }
 
+    // Phase 4d-2: static lights + per-frame static+VFX merge moved to
+    // systems::LightingSystem. Same back-pointer pattern; the renderer
+    // calls lighting_system_->update_per_frame() from record_gs_prepass.
+    void set_lighting_system(systems::LightingSystem* ls) noexcept {
+        lighting_system_ = ls;
+    }
+
     // Scene-placed animations (with loop support)
     struct ReformConfig {
         float lifetime = 2.0f;
@@ -195,7 +202,8 @@ public:
     // Phase 4c-vfx-2: add/clear/list VFX instances moved to
     // systems::VfxSystem. Callers should use `vfx_system->add_instance(...)`
     // / `vfx_system->clear_instances()` / `vfx_system->instances()`.
-    void set_gs_static_lights(const std::vector<PointLight>& lights) { gs_static_lights_ = lights; }
+    // Phase 4d-2: set_gs_static_lights moved to systems::LightingSystem
+    // (callers emit PointLightsLoadedEvent instead).
 
     // Current frame-in-flight slot. Stable for the duration of a frame's
     // CPU-side work; advances at the end of draw_scene. Producers that
@@ -354,11 +362,13 @@ private:
     bool gs_static_force_dirty_ = false;
     std::vector<GaussianParticleEmitter> gs_particle_emitters_;
     std::vector<SceneAnimation> gs_scene_animations_;
-    // Phase 4c-vfx-2 / 4c-pbd: VFX instances + animator (4c-vfx-2) and
-    // PBD pending splats (4c-pbd) moved to their respective systems;
-    // we only keep non-owning pointers so record_gs_prepass can tick them.
+    // Phase 4c-vfx-2 / 4c-pbd / 4d-2: VFX instances + animator (4c-vfx-2),
+    // PBD pending splats (4c-pbd), and static lights + per-frame merge
+    // (4d-2) all moved to their respective systems; we only keep
+    // non-owning pointers so record_gs_prepass can tick them.
     systems::VfxSystem* vfx_system_ = nullptr;
     systems::PbdSystem* pbd_system_ = nullptr;
+    systems::LightingSystem* lighting_system_ = nullptr;
 
     // ── Frame-determinism harness internal state ──
     struct DeterminismTestState {
@@ -385,7 +395,6 @@ private:
     uint32_t gs_prev_budget_ = 0;
     glm::vec3 gs_lod_focus_pos_{0.0f};  // Player position for foveated LOD
     bool gs_has_lod_focus_ = false;
-    std::vector<PointLight> gs_static_lights_;  // Scene-defined lights (for VFX light merging)
 
     // Persistent post-process params (modified by Staging panels)
     PostProcessParams pp_params_;

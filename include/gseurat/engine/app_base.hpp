@@ -41,6 +41,7 @@
 #include "gseurat/engine/staging_uploader.hpp"
 #include "gseurat/engine/scene.hpp"
 #include "gseurat/engine/screen_effects.hpp"
+#include "gseurat/engine/systems/lighting_system.hpp"
 #include "gseurat/engine/systems/pbd_system.hpp"
 #include "gseurat/engine/systems/transition_system.hpp"
 #include "gseurat/engine/systems/vfx_system.hpp"
@@ -99,6 +100,9 @@ public:
     // late-construction caveat — null until init_game_object_system runs.
     systems::PbdSystem* pbd_system() { return pbd_system_.get(); }
     const systems::PbdSystem* pbd_system() const { return pbd_system_.get(); }
+    // Phase 4d-2: static lights + static+VFX merge ownership.
+    systems::LightingSystem* lighting_system() { return lighting_system_.get(); }
+    const systems::LightingSystem* lighting_system() const { return lighting_system_.get(); }
     ResourceManager& resources() { return resources_; }
     Scene& scene() { return scene_; }
     ecs::World& world() { return world_; }
@@ -331,6 +335,10 @@ protected:
     // in init_game_object_system; render_state binding late-binds the
     // same way as VfxSystem.
     std::unique_ptr<systems::PbdSystem> pbd_system_;
+
+    // Phase 4d-2: Static lights + static+VFX merge owner. Same
+    // late-construction shape as VFX/PBD.
+    std::unique_ptr<systems::LightingSystem> lighting_system_;
 
     // Bone pre-upload hook (Phase 4b: writer API). Game-specific code
     // installs this to fill specific bone slots (e.g. the player's bones)
