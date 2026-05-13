@@ -575,7 +575,12 @@ void AppBase::cleanup() {
     // the VkContext that owns the allocator.
     render_state_.reset();
     resources_.shutdown();
+    // renderer_.shutdown() calls gs_renderer_.shutdown(allocator), which
+    // still issues the explicit destroys against resources_-> fields. So
+    // gs_resources_ has to outlive renderer_.shutdown(). Its own
+    // destructor is a no-op against already-null Buffer handles.
     renderer_.shutdown();
+    gs_resources_.reset();
     glfwDestroyWindow(window_);
     glfwTerminate();
 }
@@ -604,6 +609,15 @@ void AppBase::update_game(float dt) { system_scheduler_.run_all(world_, dt); }
 
 void AppBase::init_render_state() {
     if (render_state_) return;
+    // Phase 5a: GsResourceManager owns GsRenderer's long-lived GPU
+    // resources. Construct + initialize BEFORE binding into the renderer,
+    // so its create_output_image / init_streaming paths find a live
+    // device/allocator on resources_.
+    gs_resources_ = std::make_unique<GsResourceManager>();
+    gs_resources_->initialize(renderer_.context().device(),
+                              renderer_.context().allocator());
+    renderer_.gs_renderer().set_resources(gs_resources_.get());
+
     render_state_ = std::make_unique<RenderState>(renderer_.context());
     renderer_.gs_renderer().set_render_state(render_state_.get());
     // Late-bind RenderState into VfxSystem + PbdSystem if they were
