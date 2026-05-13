@@ -243,6 +243,19 @@ void GsRenderer::create_descriptor_resources() {
         throw std::runtime_error("Failed to create GS descriptor pool");
     }
 
+    // Phase 5c: reset must run BEFORE any descriptor-set allocation from
+    // this pool (including sort_'s 26 sets below). Originally placed
+    // immediately before the central vkAllocateDescriptorSets call as
+    // defense-in-depth for a hypothetical re-entry; now hoisted up so
+    // sort_'s allocation isn't invalidated.
+    vkResetDescriptorPool(device_, gs_pool_, 0);
+
+    // Phase 5c: GsSortSystem creates its own layouts/pipelines/sets here,
+    // BEFORE the central layouts[] array is built — that array borrows
+    // sort_.onesweep_*_set_layout() for the remaining tile-onesweep slots.
+    assert(resources_ != nullptr && "set_resources() must run before init()");
+    sort_.init(device_, pipeline_cache_, gs_pool_, resources_);
+
     // Preprocess layout: { gaussians, projected, sort_keys, uniforms, visible_count, bones, pbd_states }
     {
         VkDescriptorSetLayoutBinding bindings[] = {
@@ -294,20 +307,7 @@ void GsRenderer::create_descriptor_resources() {
 
     // Phase 5b: post-process descriptor set layout moved to GsPostProcessSystem.
 
-    // Merge layout: { static_sort(0), dynamic_sort(1), merged_sort(2), counts(3) }
-    {
-        VkDescriptorSetLayoutBinding bindings[] = {
-            {0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
-            {1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
-            {2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
-            {3, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
-        };
-        VkDescriptorSetLayoutCreateInfo ci{};
-        ci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-        ci.bindingCount = 4;
-        ci.pBindings = bindings;
-        vkCreateDescriptorSetLayout(device_, &ci, nullptr, &merge_layout_);
-    }
+    // Phase 5c: merge descriptor set layout moved to GsSortSystem.
 
     // Tile binning layout (deterministic count + scatter):
     //   0 projected      1 merged_sort     2 counts (ro)
@@ -347,34 +347,7 @@ void GsRenderer::create_descriptor_resources() {
         vkCreateDescriptorSetLayout(device_, &ci, nullptr, &tile_scan_layout_);
     }
 
-    // Onesweep histogram layout: { input(0), status(1), indirect_args(2) }
-    {
-        VkDescriptorSetLayoutBinding bindings[] = {
-            {0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
-            {1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
-            {2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
-        };
-        VkDescriptorSetLayoutCreateInfo ci{};
-        ci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-        ci.bindingCount = 3;
-        ci.pBindings = bindings;
-        vkCreateDescriptorSetLayout(device_, &ci, nullptr, &onesweep_hist_layout_);
-    }
-
-    // Onesweep scatter layout: { input(0), output(1), status(2), indirect_args(3) }
-    {
-        VkDescriptorSetLayoutBinding bindings[] = {
-            {0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
-            {1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
-            {2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
-            {3, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
-        };
-        VkDescriptorSetLayoutCreateInfo ci{};
-        ci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-        ci.bindingCount = 4;
-        ci.pBindings = bindings;
-        vkCreateDescriptorSetLayout(device_, &ci, nullptr, &onesweep_scatter_layout_);
-    }
+    // Phase 5c: onesweep histogram + scatter descriptor set layouts moved to GsSortSystem.
 
     // Tile indirect dispatch layout: { tile_sort_count(0), indirect_args(1) }
     {
@@ -435,9 +408,8 @@ void GsRenderer::create_descriptor_resources() {
         vkCreateDescriptorSetLayout(device_, &ci, nullptr, &pbd_layout_);
     }
 
-    // Allocate all descriptor sets
-    // Reset pool to free previously allocated sets before reallocating
-    vkResetDescriptorPool(device_, gs_pool_, 0);
+    // Allocate all descriptor sets. (Reset was hoisted up to run BEFORE
+    // sort_.init() so that sort_'s 26 sets aren't invalidated.)
 
     // Per-frame intermediate images (`output_image_[i]`, `depth_image_[i]`,
     // `processed_image_[i]`) require per-frame descriptor sets because a
@@ -452,69 +424,44 @@ void GsRenderer::create_descriptor_resources() {
                   "dynamic_preprocess/merge/depth_hist/depth_scatter/dynamic_depth_hist/"
                   "dynamic_depth_scatter) at the end of `layouts`.");
 
-    // Phase 5b: post_process_layout_ entries removed (indices 3 and 31 in
-    // the pre-5b layout). GsPostProcessSystem allocates its own 2 sets from
-    // the same gs_pool_. All subsequent indices shifted down accordingly;
-    // kSetCount decreased from 58 to 56.
+    // Phase 5c: depth-sort + merge layout slots (26 entries) removed.
+    // GsSortSystem allocates its own 26 sets from the same gs_pool_.
+    // kSetCount: 56 → 30. The remaining onesweep_hist/scatter slots are
+    // for tile-sort only (will move to GsTileBinSystem in 5d) and
+    // reference layouts borrowed from GsSortSystem via sort_.onesweep_*().
+    const VkDescriptorSetLayout onesweep_hist_layout    = sort_.onesweep_hist_set_layout();
+    const VkDescriptorSetLayout onesweep_scatter_layout = sort_.onesweep_scatter_set_layout();
     VkDescriptorSetLayout layouts[] = {
-        preprocess_layout_, sort_layout_, render_layout_,   // 0-2: legacy preprocess_sets_[0], sort_sets_[0], render_sets_[0]
+        preprocess_layout_, sort_layout_, render_layout_,   // 0-2: preprocess_sets_[0], sort_sets_[0], render_sets_[0]
         preprocess_layout_, preprocess_layout_,             // 3-4: static_preprocess_sets_[0], dynamic_preprocess_sets_[0]
-        merge_layout_,                                      // 5: merge_sets_[0]
-        render_layout_,                                     // 6: merged render
-        pbd_layout_,                                        // 7: PBD solver
-        // Tile binning sets
-        tile_bin_layout_,                                   // 8: tile bin (count + scatter)
-        tile_ranges_layout_,                                // 9: tile range detection (slot [0])
-        tile_indirect_layout_,                              // 10: indirect dispatch prep (slot [0])
-        tile_render_layout_,                                // 11: tile render (tile_render_sets_[0])
-        onesweep_hist_layout_, onesweep_hist_layout_,       // 12-13: tile onesweep histogram A, B (slot [0])
-        onesweep_scatter_layout_, onesweep_scatter_layout_, // 14-15: tile onesweep scatter A→B, B→A (slot [0])
-        // Depth sort Onesweep sets (reusing onesweep layouts)
-        onesweep_hist_layout_, onesweep_hist_layout_,       // 16-17: legacy depth hist A, B (slot [0])
-        onesweep_scatter_layout_, onesweep_scatter_layout_, // 18-19: legacy depth scatter AB, BA (slot [0])
-        onesweep_hist_layout_, onesweep_hist_layout_,       // 20-21: static depth hist A, B (single-instance)
-        onesweep_scatter_layout_, onesweep_scatter_layout_, // 22-23: static depth scatter AB, BA (single-instance)
-        onesweep_hist_layout_, onesweep_hist_layout_,       // 24-25: dynamic depth hist A, B (slot [0])
-        onesweep_scatter_layout_, onesweep_scatter_layout_, // 26-27: dynamic depth scatter AB, BA (slot [0])
-        tile_scan_layout_,                                  // 28: deterministic tile-bin scan (slot [0])
+        render_layout_,                                     // 5: merged render
+        pbd_layout_,                                        // 6: PBD solver
+        // Tile binning sets (per-frame slot [0])
+        tile_bin_layout_,                                   // 7: tile_bin_sets_[0]
+        tile_ranges_layout_,                                // 8: tile_ranges_sets_[0]
+        tile_indirect_layout_,                              // 9: tile_indirect_sets_[0]
+        tile_render_layout_,                                // 10: tile_render_sets_[0]
+        onesweep_hist_layout, onesweep_hist_layout,         // 11-12: tile onesweep hist A, B [0]
+        onesweep_scatter_layout, onesweep_scatter_layout,   // 13-14: tile onesweep scatter AB, BA [0]
+        tile_scan_layout_,                                  // 15: tile_scan_sets_[0]
         // Per-frame [1] copies for sets that bind per-frame images:
-        render_layout_,                                     // 29: render_sets_[1]
-        tile_render_layout_,                                // 30: tile_render_sets_[1]
-        // Phase 2 per-frame [1] copies for compute sets that bind per-frame
-        // racing SSBOs (projected, sort_keys, visible_count, counts, dynamic_sort_a).
-        preprocess_layout_,                                 // 31: preprocess_sets_[1]
-        sort_layout_,                                       // 32: sort_sets_[1]
-        preprocess_layout_,                                 // 33: static_preprocess_sets_[1]
-        preprocess_layout_,                                 // 34: dynamic_preprocess_sets_[1]
-        // Phase 3 per-frame [1] copies for the racing onesweep/merge sets.
-        // Dispatch binds [frame_in_flight] for these — frame N+1's preprocess
-        // writes its own slot's projected/sort_keys/visible_count without
-        // clobbering frame N's still-active reads.
-        merge_layout_,                                      // 35: merge_sets_[1]
-        onesweep_hist_layout_, onesweep_hist_layout_,       // 36-37: legacy depth hist A, B (slot [1])
-        onesweep_scatter_layout_, onesweep_scatter_layout_, // 38-39: legacy depth scatter AB, BA (slot [1])
-        onesweep_hist_layout_, onesweep_hist_layout_,       // 40-41: dynamic depth hist A, B (slot [1])
-        onesweep_scatter_layout_, onesweep_scatter_layout_, // 42-43: dynamic depth scatter AB, BA (slot [1])
-        // tile_bin_set_ reads racing projected/merged/counts — must be per-frame
-        // so tile_bin in frame f reads the slot frame f's preprocess wrote.
-        // (slot [0] is sets[8]; this is the slot [1] copy.)
-        tile_bin_layout_,                                   // 44: tile_bin_sets_[1]
-        // Phase 3.5 per-frame [1] copies for the racing tile-pipeline sets:
-        // tile_scan/tile_indirect/tile_ranges + tile onesweep hist/scatter.
-        // Each binds at least one of the newly per-frame tile buffers
-        // (tile_sort_a/b, tile_sort_count, tile_ranges, tile_indirect_args,
-        // per_splat_tile_count/offset, scan_block_sums).
-        tile_scan_layout_,                                  // 45: tile_scan_sets_[1]
-        tile_indirect_layout_,                              // 46: tile_indirect_sets_[1]
-        tile_ranges_layout_,                                // 47: tile_ranges_sets_[1]
-        onesweep_hist_layout_, onesweep_hist_layout_,       // 48-49: tile onesweep hist A, B (slot [1])
-        onesweep_scatter_layout_, onesweep_scatter_layout_, // 50-51: tile onesweep scatter AB, BA (slot [1])
-        // Per-frame onesweep status fix — static depth onesweep sets become
-        // per-frame so they can bind resources_->depth_onesweep_statuses[f].
-        onesweep_hist_layout_, onesweep_hist_layout_,       // 52-53: static depth hist A, B (slot [1])
-        onesweep_scatter_layout_, onesweep_scatter_layout_, // 54-55: static depth scatter AB, BA (slot [1])
+        render_layout_,                                     // 16: render_sets_[1]
+        tile_render_layout_,                                // 17: tile_render_sets_[1]
+        // Phase 2/3 per-frame [1] copies for compute sets that bind racing SSBOs.
+        preprocess_layout_,                                 // 18: preprocess_sets_[1]
+        sort_layout_,                                       // 19: sort_sets_[1]
+        preprocess_layout_,                                 // 20: static_preprocess_sets_[1]
+        preprocess_layout_,                                 // 21: dynamic_preprocess_sets_[1]
+        // tile_bin_set_ reads racing projected/merged/counts — must be per-frame.
+        tile_bin_layout_,                                   // 22: tile_bin_sets_[1]
+        // Phase 3.5 per-frame [1] copies for the racing tile-pipeline sets.
+        tile_scan_layout_,                                  // 23: tile_scan_sets_[1]
+        tile_indirect_layout_,                              // 24: tile_indirect_sets_[1]
+        tile_ranges_layout_,                                // 25: tile_ranges_sets_[1]
+        onesweep_hist_layout, onesweep_hist_layout,         // 26-27: tile onesweep hist A, B [1]
+        onesweep_scatter_layout, onesweep_scatter_layout,   // 28-29: tile onesweep scatter AB, BA [1]
     };
-    constexpr uint32_t kSetCount = 56;
+    constexpr uint32_t kSetCount = 30;
     VkDescriptorSet sets[kSetCount];
     VkDescriptorSetAllocateInfo alloc_info{};
     alloc_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
@@ -531,71 +478,41 @@ void GsRenderer::create_descriptor_resources() {
 
     // Legacy sets (per-frame Phase 2)
     preprocess_sets_[0] = sets[0];
-    preprocess_sets_[1] = sets[31];
+    preprocess_sets_[1] = sets[18];
     sort_sets_[0] = sets[1];
-    sort_sets_[1] = sets[32];
+    sort_sets_[1] = sets[19];
     render_sets_[0] = sets[2];
-    render_sets_[1] = sets[29];
+    render_sets_[1] = sets[16];
     // Phase 5b: post_process_sets_ now lives in GsPostProcessSystem.
+    // Phase 5c: merge_sets_ + all depth_*_sets_ now live in GsSortSystem.
     // Static/dynamic preprocess (per-frame Phase 2)
     static_preprocess_sets_[0] = sets[3];
-    static_preprocess_sets_[1] = sets[33];
+    static_preprocess_sets_[1] = sets[20];
     dynamic_preprocess_sets_[0] = sets[4];
-    dynamic_preprocess_sets_[1] = sets[34];
-    merge_sets_[0] = sets[5];
-    merge_sets_[1] = sets[35];
-    // sets[6] is the merged render set (render_layout_)
-    pbd_set_ = sets[7];
+    dynamic_preprocess_sets_[1] = sets[21];
+    // sets[5] is the merged render set (render_layout_)
+    pbd_set_ = sets[6];
     // Tile binning
-    tile_bin_sets_[0] = sets[8];
-    tile_bin_sets_[1] = sets[44];
+    tile_bin_sets_[0] = sets[7];
+    tile_bin_sets_[1] = sets[22];
     // Phase 3.5: per-frame tile_ranges / tile_indirect / tile_scan + tile onesweep
-    tile_ranges_sets_[0] = sets[9];
-    tile_ranges_sets_[1] = sets[47];
-    tile_indirect_sets_[0] = sets[10];
-    tile_indirect_sets_[1] = sets[46];
-    tile_render_sets_[0] = sets[11];
-    tile_render_sets_[1] = sets[30];
-    onesweep_hist_sets_a_[0] = sets[12];
-    onesweep_hist_sets_b_[0] = sets[13];
-    onesweep_scatter_sets_ab_[0] = sets[14];
-    onesweep_scatter_sets_ba_[0] = sets[15];
-    onesweep_hist_sets_a_[1] = sets[48];
-    onesweep_hist_sets_b_[1] = sets[49];
-    onesweep_scatter_sets_ab_[1] = sets[50];
-    onesweep_scatter_sets_ba_[1] = sets[51];
-    // Depth sort Onesweep (legacy) — per-frame (racing sort_keys/sort_b SSBOs)
-    depth_hist_sets_a_[0] = sets[16];
-    depth_hist_sets_b_[0] = sets[17];
-    depth_scatter_sets_ab_[0] = sets[18];
-    depth_scatter_sets_ba_[0] = sets[19];
-    depth_hist_sets_a_[1] = sets[36];
-    depth_hist_sets_b_[1] = sets[37];
-    depth_scatter_sets_ab_[1] = sets[38];
-    depth_scatter_sets_ba_[1] = sets[39];
-    // Depth sort Onesweep (static) — per-frame so each slot can bind frame
-    // f's resources_->depth_onesweep_statuses[f] AND its own resources_->static_sort_as[f]/
-    // resources_->static_sort_bs[f] ping-pong buffers.
-    static_depth_hist_sets_a_[0] = sets[20];
-    static_depth_hist_sets_b_[0] = sets[21];
-    static_depth_scatter_sets_ab_[0] = sets[22];
-    static_depth_scatter_sets_ba_[0] = sets[23];
-    static_depth_hist_sets_a_[1] = sets[52];
-    static_depth_hist_sets_b_[1] = sets[53];
-    static_depth_scatter_sets_ab_[1] = sets[54];
-    static_depth_scatter_sets_ba_[1] = sets[55];
-    // Depth sort Onesweep (dynamic) — per-frame (racing resources_->dynamic_sort_as/bs_)
-    dynamic_depth_hist_sets_a_[0] = sets[24];
-    dynamic_depth_hist_sets_b_[0] = sets[25];
-    dynamic_depth_scatter_sets_ab_[0] = sets[26];
-    dynamic_depth_scatter_sets_ba_[0] = sets[27];
-    dynamic_depth_hist_sets_a_[1] = sets[40];
-    dynamic_depth_hist_sets_b_[1] = sets[41];
-    dynamic_depth_scatter_sets_ab_[1] = sets[42];
-    dynamic_depth_scatter_sets_ba_[1] = sets[43];
+    tile_ranges_sets_[0] = sets[8];
+    tile_ranges_sets_[1] = sets[25];
+    tile_indirect_sets_[0] = sets[9];
+    tile_indirect_sets_[1] = sets[24];
+    tile_render_sets_[0] = sets[10];
+    tile_render_sets_[1] = sets[17];
+    onesweep_hist_sets_a_[0] = sets[11];
+    onesweep_hist_sets_b_[0] = sets[12];
+    onesweep_scatter_sets_ab_[0] = sets[13];
+    onesweep_scatter_sets_ba_[0] = sets[14];
+    onesweep_hist_sets_a_[1] = sets[26];
+    onesweep_hist_sets_b_[1] = sets[27];
+    onesweep_scatter_sets_ab_[1] = sets[28];
+    onesweep_scatter_sets_ba_[1] = sets[29];
     // Deterministic tile-bin scan — per-frame (Phase 3.5)
-    tile_scan_sets_[0] = sets[28];
-    tile_scan_sets_[1] = sets[45];
+    tile_scan_sets_[0] = sets[15];
+    tile_scan_sets_[1] = sets[23];
 }
 
 void GsRenderer::create_compute_pipelines() {
@@ -650,9 +567,7 @@ void GsRenderer::create_compute_pipelines() {
                     static_cast<uint32_t>(sizeof(uint32_t)),
                     pbd_pipeline_layout_, pbd_pipeline_);
 
-    // Merge pipeline (no push constants)
-    create_pipeline("shaders/gs_merge.comp.spv", merge_layout_, 0,
-                    merge_pipeline_layout_, merge_pipeline_);
+    // Phase 5c: merge pipeline owned by GsSortSystem.
 
     // Tile binning scatter (push: max_entries = 4 bytes). Builds the
     // pipeline layout that the count pipeline below reuses — the count
@@ -693,13 +608,7 @@ void GsRenderer::create_compute_pipelines() {
     create_pipeline("shaders/gs_tile_prepare_indirect.comp.spv", tile_indirect_layout_, 4,
                     tile_indirect_pipeline_layout_, tile_indirect_pipeline_);
 
-    // Onesweep histogram pipeline (push: pass = 4 bytes)
-    create_pipeline("shaders/gs_onesweep_histogram.comp.spv", onesweep_hist_layout_, 4,
-                    onesweep_hist_pipeline_layout_, onesweep_hist_pipeline_);
-
-    // Onesweep scatter pipeline (push: pass = 4 bytes)
-    create_pipeline("shaders/gs_onesweep_scatter.comp.spv", onesweep_scatter_layout_, 4,
-                    onesweep_scatter_pipeline_layout_, onesweep_scatter_pipeline_);
+    // Phase 5c: onesweep histogram + scatter pipelines owned by GsSortSystem.
 
     // Tile render pipeline (separate from render — uses tile_entries + tile_ranges)
     create_pipeline("shaders/gs_tile_render.comp.spv", tile_render_layout_, 0,
@@ -1176,8 +1085,13 @@ void GsRenderer::prewarm_pipelines(VkQueue queue, VkCommandPool cmd_pool,
         add_entry("pbd_solver", pbd_pipeline_, pbd_pipeline_layout_, pbd_layout_,
                   sizeof(uint32_t),
                   {0,1,2}, {3}, {});
-        add_entry("gs_merge", merge_pipeline_, merge_pipeline_layout_, merge_layout_, 0,
-                  {0,1,2,3}, {}, {});
+        // Phase 5c: merge pipeline owned by GsSortSystem.
+        {
+            auto entries = sort_.prewarm_entries();
+            // entries[2] is the merge pipeline.
+            add_entry("gs_merge", entries[2].pipeline, entries[2].pipeline_layout,
+                      entries[2].set_layout, 0, {0,1,2,3}, {}, {});
+        }
         add_entry("gs_tile_bin", tile_bin_pipeline_, tile_bin_pipeline_layout_,
                   tile_bin_layout_, 4,
                   {0,1,2,3,4,5}, {6}, {});
@@ -1193,12 +1107,16 @@ void GsRenderer::prewarm_pipelines(VkQueue queue, VkCommandPool cmd_pool,
         add_entry("gs_tile_prepare_indirect", tile_indirect_pipeline_,
                   tile_indirect_pipeline_layout_, tile_indirect_layout_, 4,
                   {0,1}, {}, {});
-        add_entry("gs_onesweep_histogram", onesweep_hist_pipeline_,
-                  onesweep_hist_pipeline_layout_, onesweep_hist_layout_, 4,
-                  {0,1,2}, {}, {});
-        add_entry("gs_onesweep_scatter", onesweep_scatter_pipeline_,
-                  onesweep_scatter_pipeline_layout_, onesweep_scatter_layout_, 4,
-                  {0,1,2,3}, {}, {});
+        // Phase 5c: onesweep histogram + scatter pipelines owned by GsSortSystem.
+        {
+            auto entries = sort_.prewarm_entries();
+            add_entry("gs_onesweep_histogram", entries[0].pipeline,
+                      entries[0].pipeline_layout, entries[0].set_layout, 4,
+                      {0,1,2}, {}, {});
+            add_entry("gs_onesweep_scatter", entries[1].pipeline,
+                      entries[1].pipeline_layout, entries[1].set_layout, 4,
+                      {0,1,2,3}, {}, {});
+        }
         add_entry("gs_tile_render", tile_render_pipeline_, tile_render_pipeline_layout_,
                   tile_render_layout_, 0,
                   {0,1,4}, {2},
@@ -1699,6 +1617,13 @@ void GsRenderer::init_streaming(const StreamingConfig& config) {
         // status clears don't race in-flight onesweep lookback on the other
         // cmdbuf.
         depth_onesweep_max_wg_ = std::max({static_sort_workgroups_, dynamic_sort_workgroups_, num_sort_workgroups_});
+        // Phase 5c: push the just-computed sort sizes into GsSortSystem.
+        // The system needs these for its dispatch_depth_* methods (workgroup
+        // counts) and for the status-clear size inside dispatch_depth_onesweep_impl.
+        sort_.set_sort_sizes(static_sort_size_, static_sort_workgroups_,
+                              dynamic_sort_size_, dynamic_sort_workgroups_,
+                              sort_size_, num_sort_workgroups_,
+                              num_sort_passes_, depth_onesweep_max_wg_);
         VkDeviceSize depth_status_size = static_cast<VkDeviceSize>(num_sort_passes_) * 256ull
                                          * depth_onesweep_max_wg_ * sizeof(uint32_t);
         for (uint32_t f = 0; f < kMaxFramesInFlight; ++f) {
@@ -2820,81 +2745,9 @@ void GsRenderer::update_descriptors() {
     // Phase 5b: post-process descriptor writes moved to GsPostProcessSystem.
     post_.write_descriptors();
 
-    // Depth Onesweep descriptor sets (legacy path) — same layout as tile Onesweep
-    if (resources_->depth_onesweep_statuses[0].buffer() && resources_->depth_sort_params.buffer()) {
-        auto write_depth_onesweep_sets = [&](
-            VkDescriptorSet hist_a, VkDescriptorSet hist_b,
-            VkDescriptorSet scatter_ab, VkDescriptorSet scatter_ba,
-            VkBuffer sort_a, VkBuffer sort_b,
-            VkBuffer status_buf, VkBuffer params_buf) {
-            // Histogram A: input(0), status(1), params(2)
-            {
-                VkDescriptorBufferInfo in_info{sort_a, 0, VK_WHOLE_SIZE};
-                VkDescriptorBufferInfo st_info{status_buf, 0, VK_WHOLE_SIZE};
-                VkDescriptorBufferInfo pm_info{params_buf, 0, VK_WHOLE_SIZE};
-                VkWriteDescriptorSet writes[] = {
-                    {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, hist_a, 0, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &in_info, nullptr},
-                    {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, hist_a, 1, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &st_info, nullptr},
-                    {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, hist_a, 2, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &pm_info, nullptr},
-                };
-                vkUpdateDescriptorSets(device_, 3, writes, 0, nullptr);
-            }
-            // Histogram B
-            {
-                VkDescriptorBufferInfo in_info{sort_b, 0, VK_WHOLE_SIZE};
-                VkDescriptorBufferInfo st_info{status_buf, 0, VK_WHOLE_SIZE};
-                VkDescriptorBufferInfo pm_info{params_buf, 0, VK_WHOLE_SIZE};
-                VkWriteDescriptorSet writes[] = {
-                    {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, hist_b, 0, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &in_info, nullptr},
-                    {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, hist_b, 1, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &st_info, nullptr},
-                    {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, hist_b, 2, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &pm_info, nullptr},
-                };
-                vkUpdateDescriptorSets(device_, 3, writes, 0, nullptr);
-            }
-            // Scatter A→B: input(0), output(1), status(2), params(3)
-            {
-                VkDescriptorBufferInfo in_info{sort_a, 0, VK_WHOLE_SIZE};
-                VkDescriptorBufferInfo out_info{sort_b, 0, VK_WHOLE_SIZE};
-                VkDescriptorBufferInfo st_info{status_buf, 0, VK_WHOLE_SIZE};
-                VkDescriptorBufferInfo pm_info{params_buf, 0, VK_WHOLE_SIZE};
-                VkWriteDescriptorSet writes[] = {
-                    {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, scatter_ab, 0, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &in_info, nullptr},
-                    {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, scatter_ab, 1, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &out_info, nullptr},
-                    {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, scatter_ab, 2, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &st_info, nullptr},
-                    {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, scatter_ab, 3, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &pm_info, nullptr},
-                };
-                vkUpdateDescriptorSets(device_, 4, writes, 0, nullptr);
-            }
-            // Scatter B→A
-            {
-                VkDescriptorBufferInfo in_info{sort_b, 0, VK_WHOLE_SIZE};
-                VkDescriptorBufferInfo out_info{sort_a, 0, VK_WHOLE_SIZE};
-                VkDescriptorBufferInfo st_info{status_buf, 0, VK_WHOLE_SIZE};
-                VkDescriptorBufferInfo pm_info{params_buf, 0, VK_WHOLE_SIZE};
-                VkWriteDescriptorSet writes[] = {
-                    {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, scatter_ba, 0, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &in_info, nullptr},
-                    {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, scatter_ba, 1, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &out_info, nullptr},
-                    {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, scatter_ba, 2, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &st_info, nullptr},
-                    {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, scatter_ba, 3, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &pm_info, nullptr},
-                };
-                vkUpdateDescriptorSets(device_, 4, writes, 0, nullptr);
-            }
-        };
 
-        // Legacy depth sort sets — per-frame (Phase 3). Each frame slot
-        // binds its own resources_->sort_keys_ssbos[f] / resources_->sort_b_ssbos[f] so frame N+1's
-        // dispatch reads its own slot, never frame N's still-in-use slot.
-        // resources_->depth_onesweep_statuses[f] is also per-frame so the status fill
-        // at the start of dispatch_depth_onesweep doesn't race the other
-        // cmdbuf's in-flight lookback.
-        for (uint32_t f = 0; f < kMaxFramesInFlight; ++f) {
-            write_depth_onesweep_sets(
-                depth_hist_sets_a_[f], depth_hist_sets_b_[f],
-                depth_scatter_sets_ab_[f], depth_scatter_sets_ba_[f],
-                resources_->sort_keys_ssbos[f].buffer(), resources_->sort_b_ssbos[f].buffer(),
-                resources_->depth_onesweep_statuses[f].buffer(), resources_->depth_sort_params.buffer());
-        }
-    }
+    // Phase 5c: depth-sort + merge descriptor writes moved to GsSortSystem.
+    sort_.write_descriptors();
 
     // --- Static/dynamic split descriptor sets ---
     // Only write these if the split buffers have been allocated
@@ -2990,93 +2843,6 @@ void GsRenderer::update_descriptors() {
         vkUpdateDescriptorSets(device_, 4, writes, 0, nullptr);
     }
 
-    // Static/dynamic depth Onesweep descriptor sets (reuse lambda from above if available)
-    if (resources_->depth_onesweep_statuses[0].buffer() && resources_->static_depth_params.buffer()) {
-        auto write_depth_onesweep_sets = [&](
-            VkDescriptorSet hist_a, VkDescriptorSet hist_b,
-            VkDescriptorSet scatter_ab, VkDescriptorSet scatter_ba,
-            VkBuffer sort_a, VkBuffer sort_b,
-            VkBuffer status_buf, VkBuffer params_buf) {
-            VkDescriptorBufferInfo st_info{status_buf, 0, VK_WHOLE_SIZE};
-            VkDescriptorBufferInfo pm_info{params_buf, 0, VK_WHOLE_SIZE};
-            // Histogram A
-            { VkDescriptorBufferInfo in_info{sort_a, 0, VK_WHOLE_SIZE};
-              VkWriteDescriptorSet w[] = {
-                  {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, hist_a, 0, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &in_info, nullptr},
-                  {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, hist_a, 1, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &st_info, nullptr},
-                  {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, hist_a, 2, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &pm_info, nullptr},
-              }; vkUpdateDescriptorSets(device_, 3, w, 0, nullptr); }
-            // Histogram B
-            { VkDescriptorBufferInfo in_info{sort_b, 0, VK_WHOLE_SIZE};
-              VkWriteDescriptorSet w[] = {
-                  {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, hist_b, 0, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &in_info, nullptr},
-                  {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, hist_b, 1, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &st_info, nullptr},
-                  {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, hist_b, 2, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &pm_info, nullptr},
-              }; vkUpdateDescriptorSets(device_, 3, w, 0, nullptr); }
-            // Scatter A→B
-            { VkDescriptorBufferInfo in_info{sort_a, 0, VK_WHOLE_SIZE}; VkDescriptorBufferInfo out_info{sort_b, 0, VK_WHOLE_SIZE};
-              VkWriteDescriptorSet w[] = {
-                  {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, scatter_ab, 0, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &in_info, nullptr},
-                  {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, scatter_ab, 1, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &out_info, nullptr},
-                  {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, scatter_ab, 2, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &st_info, nullptr},
-                  {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, scatter_ab, 3, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &pm_info, nullptr},
-              }; vkUpdateDescriptorSets(device_, 4, w, 0, nullptr); }
-            // Scatter B→A
-            { VkDescriptorBufferInfo in_info{sort_b, 0, VK_WHOLE_SIZE}; VkDescriptorBufferInfo out_info{sort_a, 0, VK_WHOLE_SIZE};
-              VkWriteDescriptorSet w[] = {
-                  {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, scatter_ba, 0, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &in_info, nullptr},
-                  {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, scatter_ba, 1, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &out_info, nullptr},
-                  {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, scatter_ba, 2, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &st_info, nullptr},
-                  {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, scatter_ba, 3, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &pm_info, nullptr},
-              }; vkUpdateDescriptorSets(device_, 4, w, 0, nullptr); }
-        };
-
-        // Static depth sort: resources_->static_sort_as/bs_ are now per-frame too, so
-        // the descriptor set in slot [f] binds the buffers in slot [f] and
-        // there's no cross-cmdbuf race on the radix ping-pong outputs.
-        for (uint32_t f = 0; f < kMaxFramesInFlight; ++f) {
-            write_depth_onesweep_sets(
-                static_depth_hist_sets_a_[f], static_depth_hist_sets_b_[f],
-                static_depth_scatter_sets_ab_[f], static_depth_scatter_sets_ba_[f],
-                resources_->static_sort_as[f].buffer(), resources_->static_sort_bs[f].buffer(),
-                resources_->depth_onesweep_statuses[f].buffer(), resources_->static_depth_params.buffer());
-        }
-        // Dynamic depth sort — per-frame (Phase 3). Each frame slot binds
-        // its own resources_->dynamic_sort_as[f] / resources_->dynamic_sort_bs[f] so frame N+1's
-        // dispatch reads its own slot.
-        for (uint32_t f = 0; f < kMaxFramesInFlight; ++f) {
-            write_depth_onesweep_sets(
-                dynamic_depth_hist_sets_a_[f], dynamic_depth_hist_sets_b_[f],
-                dynamic_depth_scatter_sets_ab_[f], dynamic_depth_scatter_sets_ba_[f],
-                resources_->dynamic_sort_as[f].buffer(), resources_->dynamic_sort_bs[f].buffer(),
-                resources_->depth_onesweep_statuses[f].buffer(), resources_->dynamic_depth_params.buffer());
-        }
-    }
-
-    // Merge set: static_sort_a(0), dynamic_sort_a(1), merged_sort(2), counts(3)
-    // Per-frame (Phase 3 + onesweep status fix): merge_sets_[f] binds
-    // resources_->dynamic_sort_as[f], resources_->merged_sort_ssbos[f], resources_->counts_ssbos[f], and (now)
-    // resources_->static_sort_as[f] — every input/output the merge touches lives in
-    // slot [f], so two in-flight cmdbufs do not race on shared buffers.
-    for (uint32_t f = 0; f < kMaxFramesInFlight; ++f) {
-        VkDescriptorBufferInfo static_info{resources_->static_sort_as[f].buffer(), 0, VK_WHOLE_SIZE};
-        VkDescriptorBufferInfo dynamic_info{resources_->dynamic_sort_as[f].buffer(), 0, VK_WHOLE_SIZE};
-        VkDescriptorBufferInfo merged_info{resources_->merged_sort_ssbos[f].buffer(), 0, VK_WHOLE_SIZE};
-        VkDescriptorBufferInfo counts_info{resources_->counts_ssbos[f].buffer(), 0, VK_WHOLE_SIZE};
-
-        VkDescriptorSet merge_set = merge_sets_[f];
-        VkWriteDescriptorSet writes[] = {
-            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, merge_set, 0, 0, 1,
-             VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &static_info, nullptr},
-            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, merge_set, 1, 0, 1,
-             VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &dynamic_info, nullptr},
-            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, merge_set, 2, 0, 1,
-             VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &merged_info, nullptr},
-            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, merge_set, 3, 0, 1,
-             VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &counts_info, nullptr},
-        };
-        vkUpdateDescriptorSets(device_, 4, writes, 0, nullptr);
-    }
 
     // Render set (uses merged_sort and counts) — per-frame.
     // Re-binds render_sets_[i] to point at the merged_sort buffer and
@@ -3442,62 +3208,6 @@ void GsRenderer::init_output_layouts(VkCommandBuffer cmd) {
         kMaxFramesInFlight, to_shader.data());
 }
 
-void GsRenderer::dispatch_depth_onesweep(
-    VkCommandBuffer cmd, uint32_t sort_size, uint32_t num_workgroups,
-    uint32_t frame_in_flight,
-    VkDescriptorSet hist_a, VkDescriptorSet hist_b,
-    VkDescriptorSet scatter_ab, VkDescriptorSet scatter_ba)
-{
-    GS_LABEL(cmd, "DepthSort");
-    // Clear the per-frame status buffer slot before sort. The descriptor
-    // sets passed in must already bind resources_->depth_onesweep_statuses[frame_in_flight].
-    VkDeviceSize status_clear_size = static_cast<VkDeviceSize>(num_sort_passes_) * 256ull
-                                     * depth_onesweep_max_wg_ * sizeof(uint32_t);
-    vkCmdFillBuffer(cmd, resources_->depth_onesweep_statuses[frame_in_flight].buffer(), 0, status_clear_size, 0);
-    {
-        VkMemoryBarrier sb{};
-        sb.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
-        sb.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-        sb.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
-        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
-            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &sb, 0, nullptr, 0, nullptr);
-    }
-
-    // 2-dispatch Onesweep: num_sort_passes_ passes × 2 dispatches each
-    for (uint32_t pass = 0; pass < num_sort_passes_; pass++) {
-        uint32_t push_data[1] = {pass};
-        bool read_from_a = (pass % 2 == 0);
-
-        // Dispatch 1: histogram + decoupled lookback
-        {
-            GS_LABEL(cmd, "Histogram");
-            VkDescriptorSet hist_set = read_from_a ? hist_a : hist_b;
-            vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, onesweep_hist_pipeline_);
-            vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
-                                    onesweep_hist_pipeline_layout_, 0, 1, &hist_set, 0, nullptr);
-            vkCmdPushConstants(cmd, onesweep_hist_pipeline_layout_, VK_SHADER_STAGE_COMPUTE_BIT,
-                               0, 4, push_data);
-            vkCmdDispatch(cmd, num_workgroups, 1, 1);
-        }
-
-        insert_compute_barrier(cmd);
-
-        // Dispatch 2: read status buffer, compute prefix, scatter
-        {
-            GS_LABEL(cmd, "Scatter");
-            VkDescriptorSet scatter_set = read_from_a ? scatter_ab : scatter_ba;
-            vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, onesweep_scatter_pipeline_);
-            vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
-                                    onesweep_scatter_pipeline_layout_, 0, 1, &scatter_set, 0, nullptr);
-            vkCmdPushConstants(cmd, onesweep_scatter_pipeline_layout_, VK_SHADER_STAGE_COMPUTE_BIT,
-                               0, 4, push_data);
-            vkCmdDispatch(cmd, num_workgroups, 1, 1);
-        }
-
-        insert_compute_barrier(cmd);
-    }
-    // After even number of passes, sorted result is in buffer A
-}
 
 void GsRenderer::dispatch_tile_sort(VkCommandBuffer cmd, uint32_t frame_in_flight) {
     GS_LABEL(cmd, "TileSort");
@@ -3650,13 +3360,14 @@ void GsRenderer::dispatch_tile_sort(VkCommandBuffer cmd, uint32_t frame_in_fligh
 
             // Dispatch 1: histogram + decoupled lookback
             // Phase 3.5: per-frame onesweep sets bind racing tile_sort_a/b + indirect_args.
+            // Phase 5c: onesweep pipelines + layouts borrowed from GsSortSystem.
             {
                 VkDescriptorSet hist_set = read_from_a ? onesweep_hist_sets_a_[frame_in_flight]
                                                        : onesweep_hist_sets_b_[frame_in_flight];
-                vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, onesweep_hist_pipeline_);
+                vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, sort_.onesweep_hist_pipeline());
                 vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
-                                        onesweep_hist_pipeline_layout_, 0, 1, &hist_set, 0, nullptr);
-                vkCmdPushConstants(cmd, onesweep_hist_pipeline_layout_, VK_SHADER_STAGE_COMPUTE_BIT,
+                                        sort_.onesweep_hist_pipeline_layout(), 0, 1, &hist_set, 0, nullptr);
+                vkCmdPushConstants(cmd, sort_.onesweep_hist_pipeline_layout(), VK_SHADER_STAGE_COMPUTE_BIT,
                                    0, 4, push_data);
                 vkCmdDispatchIndirect(cmd, resources_->tile_indirect_args[frame_in_flight].buffer(), 0);
             }
@@ -3667,10 +3378,10 @@ void GsRenderer::dispatch_tile_sort(VkCommandBuffer cmd, uint32_t frame_in_fligh
             {
                 VkDescriptorSet scatter_set = read_from_a ? onesweep_scatter_sets_ab_[frame_in_flight]
                                                           : onesweep_scatter_sets_ba_[frame_in_flight];
-                vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, onesweep_scatter_pipeline_);
+                vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, sort_.onesweep_scatter_pipeline());
                 vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
-                                        onesweep_scatter_pipeline_layout_, 0, 1, &scatter_set, 0, nullptr);
-                vkCmdPushConstants(cmd, onesweep_scatter_pipeline_layout_, VK_SHADER_STAGE_COMPUTE_BIT,
+                                        sort_.onesweep_scatter_pipeline_layout(), 0, 1, &scatter_set, 0, nullptr);
+                vkCmdPushConstants(cmd, sort_.onesweep_scatter_pipeline_layout(), VK_SHADER_STAGE_COMPUTE_BIT,
                                    0, 4, push_data);
                 vkCmdDispatchIndirect(cmd, resources_->tile_indirect_args[frame_in_flight].buffer(), 0);
             }
@@ -4108,13 +3819,8 @@ void GsRenderer::render(VkCommandBuffer cmd, uint32_t frame_in_flight,
 
                 insert_compute_barrier(cmd);
 
-                // Sort dynamic (Onesweep) — Phase 3: per-frame sets read this
-                // frame's resources_->dynamic_sort_as[f]/bs_[f]. frame_in_flight also
-                // selects this frame's slot of resources_->depth_onesweep_statuses.
-                dispatch_depth_onesweep(cmd, dynamic_sort_size_, dynamic_sort_workgroups_,
-                    frame_in_flight,
-                    dynamic_depth_hist_sets_a_[frame_in_flight], dynamic_depth_hist_sets_b_[frame_in_flight],
-                    dynamic_depth_scatter_sets_ab_[frame_in_flight], dynamic_depth_scatter_sets_ba_[frame_in_flight]);
+                // Sort dynamic (Onesweep) — Phase 5c: delegated to GsSortSystem.
+                sort_.dispatch_depth_dynamic(cmd, frame_in_flight);
             }
 
             // === Phase 2: Static preprocess + sort (only when static_dirty_) ===
@@ -4138,31 +3844,18 @@ void GsRenderer::render(VkCommandBuffer cmd, uint32_t frame_in_flight,
 
                 insert_compute_barrier(cmd);
 
-                // Sort static (Onesweep) — every input/output the static sort
-                // touches lives in slot [frame_in_flight]: status buffer,
-                // ping-pong sort_as_/bs_, and the bound descriptor sets. The
-                // two frames of the static_dirty cycle now run independently.
-                dispatch_depth_onesweep(cmd, static_sort_size_, static_sort_workgroups_,
-                    frame_in_flight,
-                    static_depth_hist_sets_a_[frame_in_flight], static_depth_hist_sets_b_[frame_in_flight],
-                    static_depth_scatter_sets_ab_[frame_in_flight], static_depth_scatter_sets_ba_[frame_in_flight]);
+                // Sort static (Onesweep) — Phase 5c: delegated to GsSortSystem.
+                sort_.dispatch_depth_static(cmd, frame_in_flight);
 
                 static_dirty_frames_remaining_--;
             }
 
-            // === Phase 3: Merge (every frame) ===
+            // === Phase 3: Merge (every frame) — Phase 5c: delegated to GsSortSystem. ===
             // Merge uses actual visible counts from counts SSBO (written by preprocess shaders)
-            // Thread 0 computes merged_visible_count = static_count + dynamic_count
+            // Thread 0 computes merged_visible_count = static_count + dynamic_count.
             {
-                GS_LABEL(cmd, "Merge");
-                vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, merge_pipeline_);
-                // Phase 3: bind frame_in_flight's per-frame merge set.
-                vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
-                                        merge_pipeline_layout_, 0, 1, &merge_sets_[frame_in_flight], 0, nullptr);
-                // Dispatch enough threads to cover possible visible count
-                // Use sort sizes as upper bound (actual count determined by shader from counts SSBO)
-                uint32_t total = static_sort_size_ + dynamic_sort_size_;
-                vkCmdDispatch(cmd, (total + 255) / 256, 1, 1);
+                uint32_t total_upper = static_sort_size_ + dynamic_sort_size_;
+                sort_.dispatch_merge(cmd, frame_in_flight, total_upper);
             }
 
             insert_compute_barrier(cmd);
@@ -4312,10 +4005,11 @@ void GsRenderer::load_world(const WorldManifest& manifest) {
 void GsRenderer::shutdown(VmaAllocator allocator) {
     if (!initialized_) return;
 
-    // Phase 5b: tear down owned subsystems before the renderer's gs_pool_
-    // (post_'s descriptor sets live in there) and before the device handle
-    // becomes invalid. shutdown() is idempotent.
+    // Phase 5b/5c: tear down owned subsystems before the renderer's gs_pool_
+    // (their descriptor sets live in there) and before the device handle
+    // becomes invalid. Both shutdown() calls are idempotent.
     post_.shutdown();
+    sort_.shutdown();
 
     // The async loader no longer spins up worker threads — reserve+submit
     // run synchronously on the main thread now. We still call
@@ -4423,7 +4117,7 @@ void GsRenderer::shutdown(VmaAllocator allocator) {
     destroy_pipeline(preprocess_pipeline_);
     destroy_pipeline(sort_pipeline_);
     // Phase 5b: post-process pipeline destroyed by GsPostProcessSystem::shutdown().
-    destroy_pipeline(merge_pipeline_);
+    // Phase 5c: merge pipeline destroyed by GsSortSystem::shutdown().
     destroy_pipeline(pbd_pipeline_);
     destroy_pipeline(tile_bin_pipeline_);
     destroy_pipeline(tile_count_pipeline_);
@@ -4431,37 +4125,34 @@ void GsRenderer::shutdown(VmaAllocator allocator) {
     destroy_pipeline(tile_ranges_pipeline_);
     destroy_pipeline(tile_indirect_pipeline_);
     destroy_pipeline(tile_render_pipeline_);
-    destroy_pipeline(onesweep_hist_pipeline_);
-    destroy_pipeline(onesweep_scatter_pipeline_);
+    // Phase 5c: onesweep hist + scatter pipelines destroyed by GsSortSystem::shutdown().
     destroy_pipeline(compose_pipeline_);
 
     destroy_layout(compose_pipeline_layout_);
     destroy_layout(preprocess_pipeline_layout_);
     destroy_layout(sort_pipeline_layout_);
     // Phase 5b: post-process pipeline layout destroyed by GsPostProcessSystem::shutdown().
-    destroy_layout(merge_pipeline_layout_);
+    // Phase 5c: merge pipeline layout destroyed by GsSortSystem::shutdown().
     destroy_layout(pbd_pipeline_layout_);
     destroy_layout(tile_bin_pipeline_layout_);
     destroy_layout(tile_scan_pipeline_layout_);
     destroy_layout(tile_ranges_pipeline_layout_);
     destroy_layout(tile_indirect_pipeline_layout_);
     destroy_layout(tile_render_pipeline_layout_);
-    destroy_layout(onesweep_hist_pipeline_layout_);
-    destroy_layout(onesweep_scatter_pipeline_layout_);
+    // Phase 5c: onesweep hist + scatter pipeline layouts destroyed by GsSortSystem::shutdown().
 
     destroy_set_layout(preprocess_layout_);
     destroy_set_layout(sort_layout_);
     destroy_set_layout(render_layout_);
     // Phase 5b: post-process set layout destroyed by GsPostProcessSystem::shutdown().
-    destroy_set_layout(merge_layout_);
+    // Phase 5c: merge descriptor set layout destroyed by GsSortSystem::shutdown().
     destroy_set_layout(pbd_layout_);
     destroy_set_layout(tile_bin_layout_);
     destroy_set_layout(tile_scan_layout_);
     destroy_set_layout(tile_ranges_layout_);
     destroy_set_layout(tile_indirect_layout_);
     destroy_set_layout(tile_render_layout_);
-    destroy_set_layout(onesweep_hist_layout_);
-    destroy_set_layout(onesweep_scatter_layout_);
+    // Phase 5c: onesweep hist + scatter descriptor set layouts destroyed by GsSortSystem::shutdown().
     destroy_set_layout(compose_layout_);
 
     if (timestamp_pool_) { vkDestroyQueryPool(device_, timestamp_pool_, nullptr); timestamp_pool_ = VK_NULL_HANDLE; }

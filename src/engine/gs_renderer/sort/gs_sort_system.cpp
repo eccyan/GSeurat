@@ -1,0 +1,453 @@
+#include "gseurat/engine/gs_renderer/sort/gs_sort_system.hpp"
+
+#include "gseurat/engine/debug.hpp"
+#include "gseurat/engine/gs_renderer/gs_resources.hpp"
+#include "gseurat/engine/pipeline.hpp"
+
+#include <cassert>
+#include <stdexcept>
+#include <string>
+
+namespace gseurat {
+
+namespace {
+
+void insert_compute_barrier(VkCommandBuffer cmd) {
+    VkMemoryBarrier barrier{};
+    barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+    barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+    barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+    vkCmdPipelineBarrier(cmd,
+        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+        0, 1, &barrier, 0, nullptr, 0, nullptr);
+}
+
+}  // namespace
+
+GsSortSystem::~GsSortSystem() {
+    shutdown();
+}
+
+void GsSortSystem::init(VkDevice device, VkPipelineCache pipeline_cache,
+                         VkDescriptorPool pool, GsResourceManager* resources) {
+    assert(device != VK_NULL_HANDLE);
+    assert(pool != VK_NULL_HANDLE);
+    assert(resources != nullptr);
+    device_ = device;
+    resources_ = resources;
+
+    // ── Set layouts ───────────────────────────────────────────────────
+    // Onesweep histogram layout: { input(0), status(1), indirect_args(2) }
+    {
+        VkDescriptorSetLayoutBinding bindings[] = {
+            {0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
+            {1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
+            {2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
+        };
+        VkDescriptorSetLayoutCreateInfo ci{};
+        ci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+        ci.bindingCount = 3;
+        ci.pBindings = bindings;
+        if (vkCreateDescriptorSetLayout(device_, &ci, nullptr, &onesweep_hist_layout_) != VK_SUCCESS) {
+            throw std::runtime_error("GsSortSystem: failed onesweep_hist descriptor set layout");
+        }
+    }
+    // Onesweep scatter layout: { input(0), output(1), status(2), indirect_args(3) }
+    {
+        VkDescriptorSetLayoutBinding bindings[] = {
+            {0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
+            {1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
+            {2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
+            {3, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
+        };
+        VkDescriptorSetLayoutCreateInfo ci{};
+        ci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+        ci.bindingCount = 4;
+        ci.pBindings = bindings;
+        if (vkCreateDescriptorSetLayout(device_, &ci, nullptr, &onesweep_scatter_layout_) != VK_SUCCESS) {
+            throw std::runtime_error("GsSortSystem: failed onesweep_scatter descriptor set layout");
+        }
+    }
+    // Merge layout: { static_sort(0), dynamic_sort(1), merged_sort(2), counts(3) }
+    {
+        VkDescriptorSetLayoutBinding bindings[] = {
+            {0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
+            {1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
+            {2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
+            {3, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
+        };
+        VkDescriptorSetLayoutCreateInfo ci{};
+        ci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+        ci.bindingCount = 4;
+        ci.pBindings = bindings;
+        if (vkCreateDescriptorSetLayout(device_, &ci, nullptr, &merge_layout_) != VK_SUCCESS) {
+            throw std::runtime_error("GsSortSystem: failed merge descriptor set layout");
+        }
+    }
+
+    // ── Pipelines ─────────────────────────────────────────────────────
+    auto create_pipeline = [&](const char* spv_path, VkDescriptorSetLayout layout,
+                                uint32_t push_size,
+                                VkPipelineLayout& out_layout, VkPipeline& out_pipeline) {
+        auto module = load_shader_module(device_, spv_path);
+
+        VkPipelineLayoutCreateInfo layout_info{};
+        layout_info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+        layout_info.setLayoutCount = 1;
+        layout_info.pSetLayouts = &layout;
+
+        VkPushConstantRange push_range{};
+        if (push_size > 0) {
+            push_range.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+            push_range.size = push_size;
+            layout_info.pushConstantRangeCount = 1;
+            layout_info.pPushConstantRanges = &push_range;
+        }
+        if (vkCreatePipelineLayout(device_, &layout_info, nullptr, &out_layout) != VK_SUCCESS) {
+            vkDestroyShaderModule(device_, module, nullptr);
+            throw std::runtime_error(std::string("GsSortSystem: pipeline layout: ") + spv_path);
+        }
+
+        VkComputePipelineCreateInfo pi{};
+        pi.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+        pi.stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        pi.stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+        pi.stage.module = module;
+        pi.stage.pName = "main";
+        pi.layout = out_layout;
+        VkResult res = vkCreateComputePipelines(device_, pipeline_cache, 1, &pi, nullptr, &out_pipeline);
+        vkDestroyShaderModule(device_, module, nullptr);
+        if (res != VK_SUCCESS) {
+            throw std::runtime_error(std::string("GsSortSystem: pipeline create: ") + spv_path);
+        }
+    };
+
+    create_pipeline("shaders/gs_onesweep_histogram.comp.spv", onesweep_hist_layout_, 4,
+                    onesweep_hist_pipeline_layout_, onesweep_hist_pipeline_);
+    create_pipeline("shaders/gs_onesweep_scatter.comp.spv", onesweep_scatter_layout_, 4,
+                    onesweep_scatter_pipeline_layout_, onesweep_scatter_pipeline_);
+    create_pipeline("shaders/gs_merge.comp.spv", merge_layout_, 0,
+                    merge_pipeline_layout_, merge_pipeline_);
+
+    // ── Descriptor set allocation ─────────────────────────────────────
+    // 26 sets total = 12 depth (legacy/static/dynamic × 4 each) × 2 frames
+    //                + 2 merge.
+    constexpr uint32_t kSetsPerFrame = 12;            // 4 (legacy) + 4 (static) + 4 (dynamic)
+    constexpr uint32_t kTotalDepth   = kSetsPerFrame * kMaxFramesInFlight;
+    constexpr uint32_t kTotalMerge   = kMaxFramesInFlight;
+    constexpr uint32_t kTotal        = kTotalDepth + kTotalMerge;
+
+    VkDescriptorSetLayout layouts[kTotal];
+    uint32_t i = 0;
+    // Legacy depth: hist_a, hist_b, scatter_ab, scatter_ba — per frame
+    for (uint32_t f = 0; f < kMaxFramesInFlight; ++f) {
+        layouts[i++] = onesweep_hist_layout_;     // depth_hist_a
+        layouts[i++] = onesweep_hist_layout_;     // depth_hist_b
+        layouts[i++] = onesweep_scatter_layout_;  // depth_scatter_ab
+        layouts[i++] = onesweep_scatter_layout_;  // depth_scatter_ba
+    }
+    // Static depth — per frame
+    for (uint32_t f = 0; f < kMaxFramesInFlight; ++f) {
+        layouts[i++] = onesweep_hist_layout_;
+        layouts[i++] = onesweep_hist_layout_;
+        layouts[i++] = onesweep_scatter_layout_;
+        layouts[i++] = onesweep_scatter_layout_;
+    }
+    // Dynamic depth — per frame
+    for (uint32_t f = 0; f < kMaxFramesInFlight; ++f) {
+        layouts[i++] = onesweep_hist_layout_;
+        layouts[i++] = onesweep_hist_layout_;
+        layouts[i++] = onesweep_scatter_layout_;
+        layouts[i++] = onesweep_scatter_layout_;
+    }
+    // Merge — per frame
+    for (uint32_t f = 0; f < kMaxFramesInFlight; ++f) {
+        layouts[i++] = merge_layout_;
+    }
+    assert(i == kTotal);
+
+    VkDescriptorSet sets[kTotal];
+    VkDescriptorSetAllocateInfo alloc{};
+    alloc.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    alloc.descriptorPool = pool;
+    alloc.descriptorSetCount = kTotal;
+    alloc.pSetLayouts = layouts;
+    if (vkAllocateDescriptorSets(device_, &alloc, sets) != VK_SUCCESS) {
+        throw std::runtime_error("GsSortSystem: vkAllocateDescriptorSets failed");
+    }
+
+    // Unpack into per-path arrays
+    i = 0;
+    for (uint32_t f = 0; f < kMaxFramesInFlight; ++f) {
+        depth_hist_sets_a_[f]      = sets[i++];
+        depth_hist_sets_b_[f]      = sets[i++];
+        depth_scatter_sets_ab_[f]  = sets[i++];
+        depth_scatter_sets_ba_[f]  = sets[i++];
+    }
+    for (uint32_t f = 0; f < kMaxFramesInFlight; ++f) {
+        static_depth_hist_sets_a_[f]      = sets[i++];
+        static_depth_hist_sets_b_[f]      = sets[i++];
+        static_depth_scatter_sets_ab_[f]  = sets[i++];
+        static_depth_scatter_sets_ba_[f]  = sets[i++];
+    }
+    for (uint32_t f = 0; f < kMaxFramesInFlight; ++f) {
+        dynamic_depth_hist_sets_a_[f]     = sets[i++];
+        dynamic_depth_hist_sets_b_[f]     = sets[i++];
+        dynamic_depth_scatter_sets_ab_[f] = sets[i++];
+        dynamic_depth_scatter_sets_ba_[f] = sets[i++];
+    }
+    for (uint32_t f = 0; f < kMaxFramesInFlight; ++f) {
+        merge_sets_[f] = sets[i++];
+    }
+    assert(i == kTotal);
+}
+
+void GsSortSystem::set_sort_sizes(uint32_t static_sort_size, uint32_t static_sort_workgroups,
+                                   uint32_t dynamic_sort_size, uint32_t dynamic_sort_workgroups,
+                                   uint32_t legacy_sort_size, uint32_t legacy_sort_workgroups,
+                                   uint32_t num_passes, uint32_t depth_onesweep_max_wg) {
+    static_sort_size_         = static_sort_size;
+    static_sort_workgroups_   = static_sort_workgroups;
+    dynamic_sort_size_        = dynamic_sort_size;
+    dynamic_sort_workgroups_  = dynamic_sort_workgroups;
+    legacy_sort_size_         = legacy_sort_size;
+    legacy_sort_workgroups_   = legacy_sort_workgroups;
+    num_passes_               = num_passes;
+    depth_onesweep_max_wg_    = depth_onesweep_max_wg;
+}
+
+void GsSortSystem::write_depth_set_quad(VkDescriptorSet hist_a, VkDescriptorSet hist_b,
+                                         VkDescriptorSet scatter_ab, VkDescriptorSet scatter_ba,
+                                         VkBuffer sort_a, VkBuffer sort_b,
+                                         VkBuffer status_buf, VkBuffer params_buf) {
+    VkDescriptorBufferInfo st_info{status_buf, 0, VK_WHOLE_SIZE};
+    VkDescriptorBufferInfo pm_info{params_buf, 0, VK_WHOLE_SIZE};
+    // Histogram A: input(0)=sort_a, status(1), params(2)
+    { VkDescriptorBufferInfo in_info{sort_a, 0, VK_WHOLE_SIZE};
+      VkWriteDescriptorSet w[] = {
+          {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, hist_a, 0, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &in_info, nullptr},
+          {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, hist_a, 1, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &st_info, nullptr},
+          {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, hist_a, 2, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &pm_info, nullptr},
+      }; vkUpdateDescriptorSets(device_, 3, w, 0, nullptr); }
+    // Histogram B: input(0)=sort_b
+    { VkDescriptorBufferInfo in_info{sort_b, 0, VK_WHOLE_SIZE};
+      VkWriteDescriptorSet w[] = {
+          {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, hist_b, 0, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &in_info, nullptr},
+          {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, hist_b, 1, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &st_info, nullptr},
+          {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, hist_b, 2, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &pm_info, nullptr},
+      }; vkUpdateDescriptorSets(device_, 3, w, 0, nullptr); }
+    // Scatter A→B: input(0)=sort_a, output(1)=sort_b
+    { VkDescriptorBufferInfo in_info{sort_a, 0, VK_WHOLE_SIZE};
+      VkDescriptorBufferInfo out_info{sort_b, 0, VK_WHOLE_SIZE};
+      VkWriteDescriptorSet w[] = {
+          {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, scatter_ab, 0, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &in_info, nullptr},
+          {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, scatter_ab, 1, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &out_info, nullptr},
+          {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, scatter_ab, 2, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &st_info, nullptr},
+          {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, scatter_ab, 3, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &pm_info, nullptr},
+      }; vkUpdateDescriptorSets(device_, 4, w, 0, nullptr); }
+    // Scatter B→A: input(0)=sort_b, output(1)=sort_a
+    { VkDescriptorBufferInfo in_info{sort_b, 0, VK_WHOLE_SIZE};
+      VkDescriptorBufferInfo out_info{sort_a, 0, VK_WHOLE_SIZE};
+      VkWriteDescriptorSet w[] = {
+          {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, scatter_ba, 0, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &in_info, nullptr},
+          {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, scatter_ba, 1, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &out_info, nullptr},
+          {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, scatter_ba, 2, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &st_info, nullptr},
+          {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, scatter_ba, 3, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &pm_info, nullptr},
+      }; vkUpdateDescriptorSets(device_, 4, w, 0, nullptr); }
+}
+
+void GsSortSystem::write_descriptors() {
+    assert(device_ != VK_NULL_HANDLE);
+    assert(resources_ != nullptr);
+
+    // Legacy depth sort (sort_keys / sort_b ping-pong)
+    if (resources_->depth_onesweep_statuses[0].buffer() && resources_->depth_sort_params.buffer()) {
+        for (uint32_t f = 0; f < kMaxFramesInFlight; ++f) {
+            write_depth_set_quad(
+                depth_hist_sets_a_[f], depth_hist_sets_b_[f],
+                depth_scatter_sets_ab_[f], depth_scatter_sets_ba_[f],
+                resources_->sort_keys_ssbos[f].buffer(),
+                resources_->sort_b_ssbos[f].buffer(),
+                resources_->depth_onesweep_statuses[f].buffer(),
+                resources_->depth_sort_params.buffer());
+        }
+    }
+
+    // Static + dynamic depth sort (separate static_*/dynamic_* params).
+    if (resources_->depth_onesweep_statuses[0].buffer() && resources_->static_depth_params.buffer()) {
+        for (uint32_t f = 0; f < kMaxFramesInFlight; ++f) {
+            write_depth_set_quad(
+                static_depth_hist_sets_a_[f], static_depth_hist_sets_b_[f],
+                static_depth_scatter_sets_ab_[f], static_depth_scatter_sets_ba_[f],
+                resources_->static_sort_as[f].buffer(),
+                resources_->static_sort_bs[f].buffer(),
+                resources_->depth_onesweep_statuses[f].buffer(),
+                resources_->static_depth_params.buffer());
+        }
+        for (uint32_t f = 0; f < kMaxFramesInFlight; ++f) {
+            write_depth_set_quad(
+                dynamic_depth_hist_sets_a_[f], dynamic_depth_hist_sets_b_[f],
+                dynamic_depth_scatter_sets_ab_[f], dynamic_depth_scatter_sets_ba_[f],
+                resources_->dynamic_sort_as[f].buffer(),
+                resources_->dynamic_sort_bs[f].buffer(),
+                resources_->depth_onesweep_statuses[f].buffer(),
+                resources_->dynamic_depth_params.buffer());
+        }
+    }
+
+    // Merge — only after the split buffers are allocated.
+    if (resources_->static_gaussian_ssbo.buffer() && resources_->counts_ssbos[0].buffer()) {
+        for (uint32_t f = 0; f < kMaxFramesInFlight; ++f) {
+            VkDescriptorBufferInfo static_info{resources_->static_sort_as[f].buffer(), 0, VK_WHOLE_SIZE};
+            VkDescriptorBufferInfo dynamic_info{resources_->dynamic_sort_as[f].buffer(), 0, VK_WHOLE_SIZE};
+            VkDescriptorBufferInfo merged_info{resources_->merged_sort_ssbos[f].buffer(), 0, VK_WHOLE_SIZE};
+            VkDescriptorBufferInfo counts_info{resources_->counts_ssbos[f].buffer(), 0, VK_WHOLE_SIZE};
+
+            VkDescriptorSet merge_set = merge_sets_[f];
+            VkWriteDescriptorSet writes[] = {
+                {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, merge_set, 0, 0, 1,
+                 VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &static_info, nullptr},
+                {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, merge_set, 1, 0, 1,
+                 VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &dynamic_info, nullptr},
+                {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, merge_set, 2, 0, 1,
+                 VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &merged_info, nullptr},
+                {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, merge_set, 3, 0, 1,
+                 VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &counts_info, nullptr},
+            };
+            vkUpdateDescriptorSets(device_, 4, writes, 0, nullptr);
+        }
+    }
+}
+
+void GsSortSystem::dispatch_depth_onesweep_impl(VkCommandBuffer cmd, uint32_t frame_in_flight,
+                                                  uint32_t num_workgroups,
+                                                  VkDescriptorSet hist_a, VkDescriptorSet hist_b,
+                                                  VkDescriptorSet scatter_ab, VkDescriptorSet scatter_ba) {
+    GS_LABEL(cmd, "DepthSort");
+    // Clear the per-frame status buffer slot. The descriptor sets bind
+    // resources_->depth_onesweep_statuses[frame_in_flight] for both
+    // histogram and scatter passes.
+    VkDeviceSize status_clear_size = static_cast<VkDeviceSize>(num_passes_) * 256ull
+                                     * depth_onesweep_max_wg_ * sizeof(uint32_t);
+    vkCmdFillBuffer(cmd, resources_->depth_onesweep_statuses[frame_in_flight].buffer(),
+                    0, status_clear_size, 0);
+    {
+        VkMemoryBarrier sb{};
+        sb.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+        sb.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        sb.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &sb, 0, nullptr, 0, nullptr);
+    }
+
+    for (uint32_t pass = 0; pass < num_passes_; pass++) {
+        uint32_t push_data[1] = {pass};
+        bool read_from_a = (pass % 2 == 0);
+
+        // Histogram + decoupled lookback
+        {
+            GS_LABEL(cmd, "Histogram");
+            VkDescriptorSet hist_set = read_from_a ? hist_a : hist_b;
+            vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, onesweep_hist_pipeline_);
+            vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
+                                    onesweep_hist_pipeline_layout_, 0, 1, &hist_set, 0, nullptr);
+            vkCmdPushConstants(cmd, onesweep_hist_pipeline_layout_, VK_SHADER_STAGE_COMPUTE_BIT,
+                               0, 4, push_data);
+            vkCmdDispatch(cmd, num_workgroups, 1, 1);
+        }
+
+        insert_compute_barrier(cmd);
+
+        // Scatter
+        {
+            GS_LABEL(cmd, "Scatter");
+            VkDescriptorSet scatter_set = read_from_a ? scatter_ab : scatter_ba;
+            vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, onesweep_scatter_pipeline_);
+            vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
+                                    onesweep_scatter_pipeline_layout_, 0, 1, &scatter_set, 0, nullptr);
+            vkCmdPushConstants(cmd, onesweep_scatter_pipeline_layout_, VK_SHADER_STAGE_COMPUTE_BIT,
+                               0, 4, push_data);
+            vkCmdDispatch(cmd, num_workgroups, 1, 1);
+        }
+
+        insert_compute_barrier(cmd);
+    }
+    // After even number of passes, sorted result is in buffer A.
+}
+
+void GsSortSystem::dispatch_depth_dynamic(VkCommandBuffer cmd, uint32_t frame_in_flight) {
+    assert(frame_in_flight < kMaxFramesInFlight);
+    dispatch_depth_onesweep_impl(cmd, frame_in_flight, dynamic_sort_workgroups_,
+        dynamic_depth_hist_sets_a_[frame_in_flight], dynamic_depth_hist_sets_b_[frame_in_flight],
+        dynamic_depth_scatter_sets_ab_[frame_in_flight], dynamic_depth_scatter_sets_ba_[frame_in_flight]);
+}
+
+void GsSortSystem::dispatch_depth_static(VkCommandBuffer cmd, uint32_t frame_in_flight) {
+    assert(frame_in_flight < kMaxFramesInFlight);
+    dispatch_depth_onesweep_impl(cmd, frame_in_flight, static_sort_workgroups_,
+        static_depth_hist_sets_a_[frame_in_flight], static_depth_hist_sets_b_[frame_in_flight],
+        static_depth_scatter_sets_ab_[frame_in_flight], static_depth_scatter_sets_ba_[frame_in_flight]);
+}
+
+void GsSortSystem::dispatch_depth_legacy(VkCommandBuffer cmd, uint32_t frame_in_flight) {
+    assert(frame_in_flight < kMaxFramesInFlight);
+    dispatch_depth_onesweep_impl(cmd, frame_in_flight, legacy_sort_workgroups_,
+        depth_hist_sets_a_[frame_in_flight], depth_hist_sets_b_[frame_in_flight],
+        depth_scatter_sets_ab_[frame_in_flight], depth_scatter_sets_ba_[frame_in_flight]);
+}
+
+void GsSortSystem::dispatch_merge(VkCommandBuffer cmd, uint32_t frame_in_flight,
+                                   uint32_t total_upper) {
+    assert(frame_in_flight < kMaxFramesInFlight);
+    GS_LABEL(cmd, "Merge");
+    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, merge_pipeline_);
+    VkDescriptorSet set = merge_sets_[frame_in_flight];
+    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
+                            merge_pipeline_layout_, 0, 1, &set, 0, nullptr);
+    vkCmdDispatch(cmd, (total_upper + 255) / 256, 1, 1);
+}
+
+std::array<GsSortSystem::PrewarmEntry, 3> GsSortSystem::prewarm_entries() const {
+    return {{
+        {onesweep_hist_pipeline_,    onesweep_hist_pipeline_layout_,    onesweep_hist_layout_},
+        {onesweep_scatter_pipeline_, onesweep_scatter_pipeline_layout_, onesweep_scatter_layout_},
+        {merge_pipeline_,            merge_pipeline_layout_,            merge_layout_},
+    }};
+}
+
+void GsSortSystem::shutdown() {
+    if (device_ == VK_NULL_HANDLE) return;
+
+    if (onesweep_hist_pipeline_)    { vkDestroyPipeline(device_, onesweep_hist_pipeline_,    nullptr); onesweep_hist_pipeline_ = VK_NULL_HANDLE; }
+    if (onesweep_scatter_pipeline_) { vkDestroyPipeline(device_, onesweep_scatter_pipeline_, nullptr); onesweep_scatter_pipeline_ = VK_NULL_HANDLE; }
+    if (merge_pipeline_)            { vkDestroyPipeline(device_, merge_pipeline_,            nullptr); merge_pipeline_ = VK_NULL_HANDLE; }
+
+    if (onesweep_hist_pipeline_layout_)    { vkDestroyPipelineLayout(device_, onesweep_hist_pipeline_layout_,    nullptr); onesweep_hist_pipeline_layout_ = VK_NULL_HANDLE; }
+    if (onesweep_scatter_pipeline_layout_) { vkDestroyPipelineLayout(device_, onesweep_scatter_pipeline_layout_, nullptr); onesweep_scatter_pipeline_layout_ = VK_NULL_HANDLE; }
+    if (merge_pipeline_layout_)            { vkDestroyPipelineLayout(device_, merge_pipeline_layout_,            nullptr); merge_pipeline_layout_ = VK_NULL_HANDLE; }
+
+    if (onesweep_hist_layout_)    { vkDestroyDescriptorSetLayout(device_, onesweep_hist_layout_,    nullptr); onesweep_hist_layout_ = VK_NULL_HANDLE; }
+    if (onesweep_scatter_layout_) { vkDestroyDescriptorSetLayout(device_, onesweep_scatter_layout_, nullptr); onesweep_scatter_layout_ = VK_NULL_HANDLE; }
+    if (merge_layout_)            { vkDestroyDescriptorSetLayout(device_, merge_layout_,            nullptr); merge_layout_ = VK_NULL_HANDLE; }
+
+    // Sets are pool-owned; pool teardown reclaims them.
+    merge_sets_.fill(VK_NULL_HANDLE);
+    depth_hist_sets_a_.fill(VK_NULL_HANDLE);
+    depth_hist_sets_b_.fill(VK_NULL_HANDLE);
+    depth_scatter_sets_ab_.fill(VK_NULL_HANDLE);
+    depth_scatter_sets_ba_.fill(VK_NULL_HANDLE);
+    static_depth_hist_sets_a_.fill(VK_NULL_HANDLE);
+    static_depth_hist_sets_b_.fill(VK_NULL_HANDLE);
+    static_depth_scatter_sets_ab_.fill(VK_NULL_HANDLE);
+    static_depth_scatter_sets_ba_.fill(VK_NULL_HANDLE);
+    dynamic_depth_hist_sets_a_.fill(VK_NULL_HANDLE);
+    dynamic_depth_hist_sets_b_.fill(VK_NULL_HANDLE);
+    dynamic_depth_scatter_sets_ab_.fill(VK_NULL_HANDLE);
+    dynamic_depth_scatter_sets_ba_.fill(VK_NULL_HANDLE);
+
+    device_ = VK_NULL_HANDLE;
+    resources_ = nullptr;
+}
+
+}  // namespace gseurat
