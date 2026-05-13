@@ -31,6 +31,7 @@
 #include "gseurat/engine/locale_manager.hpp"
 #include "gseurat/engine/minimap.hpp"
 #include "gseurat/engine/particle.hpp"
+#include "gseurat/engine/gs_renderer/gs_resources.hpp"
 #include "gseurat/engine/render_state.hpp"
 #include "gseurat/engine/renderer.hpp"
 #include "gseurat/engine/resource_manager.hpp"
@@ -323,6 +324,13 @@ protected:
 
     // Debug metrics
     DebugMetrics debug_metrics_;
+
+    // Phase 5a: GsRenderer's GPU resource owner. Constructed in
+    // init_render_state() alongside RenderState; runs before init_gs() so
+    // GsRenderer::init() / init_streaming() find a live handle via
+    // set_resources(). Declared AFTER renderer_ so its destructor runs
+    // first — VMA destroys must happen before VkContext tear-down.
+    std::unique_ptr<GsResourceManager> gs_resources_;
 
     // RenderState — constructed lazily in AppBase::main_loop() after the
     // renderer (and thus VkContext) has been initialised by the subclass.

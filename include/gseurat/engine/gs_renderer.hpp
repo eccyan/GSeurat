@@ -2,6 +2,7 @@
 
 #include "gseurat/engine/buffer.hpp"
 #include "gseurat/engine/gaussian_cloud.hpp"
+#include "gseurat/engine/gs_renderer/gs_resources.hpp"
 #include "gseurat/engine/pbd_types.hpp"
 #include "gseurat/engine/render_state.hpp"  // FrameIndex
 #include "gseurat/engine/slab_allocator.hpp"
@@ -188,7 +189,7 @@ public:
     uint32_t static_count() const { return static_count_; }
     uint32_t dynamic_count() const { return dynamic_count_; }
     bool static_dirty() const { return static_dirty_frames_remaining_ > 0; }
-    // Marks the static head of projected_ssbos_ as dirty for the next
+    // Marks the static head of resources_->projected_ssbos as dirty for the next
     // kMaxFramesInFlight frames. Phase 3: with per-frame projected SSBOs,
     // each frame slot must run static_preprocess once to refresh its slot.
     void set_static_dirty(bool d) {
@@ -201,7 +202,7 @@ public:
     // GS output, processed, and depth image out of `VK_IMAGE_LAYOUT_UNDEFINED`
     // (post-creation state) into `VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL`
     // with contents cleared to black. The renderer's main pass samples
-    // `processed_views_[frame]` every frame; without this seed transition,
+    // `resources_->processed_views[frame]` every frame; without this seed transition,
     // the very first frame after `resize_output` while the engine state is
     // `Loading` (i.e. the GS compute path is gated off) would hit a
     // layout-mismatch validation error. Caller is responsible for submitting
@@ -217,28 +218,28 @@ public:
     // same frame index it used to record `render()` so the sampled image
     // is the one this frame just wrote to.
     VkImageView output_view(uint32_t frame_in_flight) const {
-        return processed_views_[frame_in_flight] != VK_NULL_HANDLE
-            ? processed_views_[frame_in_flight]
-            : output_views_[frame_in_flight];
+        return resources_->processed_views[frame_in_flight] != VK_NULL_HANDLE
+            ? resources_->processed_views[frame_in_flight]
+            : resources_->output_views[frame_in_flight];
     }
     VkImageView raw_output_view(uint32_t frame_in_flight) const {
-        return output_views_[frame_in_flight];
+        return resources_->output_views[frame_in_flight];
     }
     // Backwards-compatible accessors returning all per-frame views; the
     // descriptor allocator binds set i to view i.
     const std::array<VkImageView, kMaxFramesInFlight>& output_views() const {
         // Prefer processed if available; callers needing the raw-HDR
         // version use `raw_output_views()`.
-        return processed_views_[0] != VK_NULL_HANDLE ? processed_views_ : output_views_;
+        return resources_->processed_views[0] != VK_NULL_HANDLE ? resources_->processed_views : resources_->output_views;
     }
     const std::array<VkImageView, kMaxFramesInFlight>& raw_output_views() const {
-        return output_views_;
+        return resources_->output_views;
     }
-    VkSampler output_sampler() const { return output_sampler_; }
+    VkSampler output_sampler() const { return resources_->output_sampler; }
     // Sized for: persistent dynamics (PBD-tagged trees, characters, NPCs) +
     // transient dynamics (VFX objects, particle emitters, scene animations).
     // The split-tail design (Option A) puts all bone-animated and PBD-tagged
-    // splats in dynamic_gaussian_ssbo_ so the static depth sort doesn't have
+    // splats in resources_->dynamic_gaussian_ssbo so the static depth sort doesn't have
     // to re-run every frame to keep them current. Persistent content sums to
     // ~700-800k splats for the island demo (12 trees × ~60k tagged + chars
     // + NPCs); transient adds ~200k headroom for chimney_smoke + torches.
@@ -249,15 +250,15 @@ public:
     bool has_cloud() const { return gaussian_count_ > 0; }
     uint32_t gaussian_count() const { return gaussian_count_; }
     uint32_t max_gaussian_count() const { return max_gaussian_count_; }
-    uint32_t output_width() const { return output_width_; }
-    uint32_t output_height() const { return output_height_; }
+    uint32_t output_width() const { return resources_->output_width; }
+    uint32_t output_height() const { return resources_->output_height; }
     uint32_t visible_count() const {
-        if (counts_ssbos_[0].mapped()) {
-            auto* c = static_cast<const uint32_t*>(counts_ssbos_[0].mapped());
+        if (resources_->counts_ssbos[0].mapped()) {
+            auto* c = static_cast<const uint32_t*>(resources_->counts_ssbos[0].mapped());
             return c[0] + c[1];  // static_visible + dynamic_visible
         }
-        if (visible_count_ssbos_[0].mapped())
-            return *static_cast<const uint32_t*>(visible_count_ssbos_[0].mapped());
+        if (resources_->visible_count_ssbos[0].mapped())
+            return *static_cast<const uint32_t*>(resources_->visible_count_ssbos[0].mapped());
         return 0;
     }
     void set_shadow_box_params(const glm::vec3& cone_dir, float cone_cos,
@@ -320,6 +321,12 @@ public:
     // descriptors bind render_state.bones_buffer(FrameIndex{f}).
     void set_render_state(RenderState* rs) noexcept;
 
+    // Phase 5a: GPU resource ownership. AppBase owns a GsResourceManager
+    // and binds it here BEFORE init() so create_output_image and
+    // init_streaming can populate it. Lifetime: the manager outlives
+    // GsRenderer (AppBase destructs it before VkContext tear-down).
+    void set_resources(GsResourceManager* r) noexcept { resources_ = r; }
+
     // Actor world rotation for root motion (Phase 2: applied to per-Gaussian covariance).
     // No static_dirty_=true: bone-animated splats now live in dynamic, and the
     // dynamic preprocess re-applies actor_rotation every frame via the bone
@@ -365,23 +372,23 @@ public:
     // platforms whose memory type is not `HOST_COHERENT`, omitting the
     // invalidate would let stale CPU caches leak into the verdict.
     VmaAllocation determinism_readback_allocation() const {
-        return determinism_readback_.allocation();
+        return resources_->determinism_readback.allocation();
     }
     VmaAllocation tile_sort_count_allocation() const {
         // Phase 3.5: tile_sort_count is per-frame. Return the slot that
         // dispatch_tile_sort most recently recorded into (matches the
         // readback the harness reads after the in-flight fence).
-        return tile_sort_count_ssbos_[determinism_last_emitted_frame_].allocation();
+        return resources_->tile_sort_count_ssbos[determinism_last_emitted_frame_].allocation();
     }
     uint32_t tile_sort_capacity() const { return tile_sort_capacity_; }
 
     const void* determinism_readback_data() const {
-        return determinism_readback_.mapped();
+        return resources_->determinism_readback.mapped();
     }
     uint32_t live_tile_sort_count() const {
         // Phase 3.5: tile_sort_count is per-frame. Read the slot that
         // dispatch_tile_sort most recently emitted (post-fence).
-        const auto& slot = tile_sort_count_ssbos_[determinism_last_emitted_frame_];
+        const auto& slot = resources_->tile_sort_count_ssbos[determinism_last_emitted_frame_];
         if (slot.mapped() == nullptr) return 0;
         return *static_cast<const uint32_t*>(slot.mapped());
     }
@@ -453,7 +460,7 @@ private:
     void create_compute_pipelines();
     void create_descriptor_resources();
     void update_descriptors();
-    // frame_in_flight selects depth_onesweep_statuses_[f] for the status
+    // frame_in_flight selects resources_->depth_onesweep_statuses[f] for the status
     // clear so frame N+1's fill doesn't stomp frame N's in-flight lookback.
     // The passed descriptor sets must already bind that same per-frame slot.
     void dispatch_depth_onesweep(VkCommandBuffer cmd, uint32_t sort_size, uint32_t num_workgroups,
@@ -468,7 +475,7 @@ private:
     // TRANSFER_WRITE -> SHADER_READ barrier. Called from poll_transfers
     // immediately after poll_completions enqueues new publications.
     // `frame_in_flight` is the slot the caller has waited on. Only
-    // static_sort_as_/bs_[frame_in_flight] are filled in-place; other
+    // resources_->static_sort_as/bs_[frame_in_flight] are filled in-place; other
     // slots are flagged in static_sort_tail_dirty_per_slot_ and lazily
     // filled at the start of their own render() record (after their
     // in-flight fence has been waited on).
@@ -487,33 +494,19 @@ private:
     // Frame N+1 begins recording before frame N's GPU work has finished, so a single
     // shared VkImage would be raced (compute write of frame N+1 vs composite read of
     // frame N). Indexed by `frame_in_flight` passed into render().
-    std::array<VkImage,        kMaxFramesInFlight> output_images_{};
-    std::array<VmaAllocation,  kMaxFramesInFlight> output_allocations_{};
-    std::array<VkImageView,    kMaxFramesInFlight> output_views_{};
-    VkSampler output_sampler_ = VK_NULL_HANDLE;
-    uint32_t output_width_ = 0;
-    uint32_t output_height_ = 0;
 
-    std::array<VkImage,        kMaxFramesInFlight> depth_images_{};
-    std::array<VmaAllocation,  kMaxFramesInFlight> depth_allocations_{};
-    std::array<VkImageView,    kMaxFramesInFlight> depth_views_{};
 
-    std::array<VkImage,        kMaxFramesInFlight> processed_images_{};
-    std::array<VmaAllocation,  kMaxFramesInFlight> processed_allocations_{};
-    std::array<VkImageView,    kMaxFramesInFlight> processed_views_{};
 
     // GPU buffers
-    Buffer gaussian_ssbo_;           // Input Gaussians
     // Per-frame racing SSBOs: frame N writes slot [N % kMaxFramesInFlight]
     // while frame N-1 is still draining. Phase 1 of the cross-frame race
     // fix converts these to arrays; Phase 3 will wire frame_in_flight into
     // dispatch sites. For now all consumers access slot [0].
-    std::array<Buffer, kMaxFramesInFlight> projected_ssbos_{};   // Projected 2D splats
-    std::array<Buffer, kMaxFramesInFlight> sort_keys_ssbos_{};   // Sort buffer A (ping-pong)
-    std::array<Buffer, kMaxFramesInFlight> sort_b_ssbos_{};      // Sort buffer B (ping-pong)
 
-    Buffer uniform_buffer_;          // Camera + resolution
-    std::array<Buffer, kMaxFramesInFlight> visible_count_ssbos_{};  // Atomic counter: visible Gaussians after frustum cull
+    // Phase 5a: GPU resource ownership. Non-owning; bound via set_resources()
+    // before init(). AppBase owns the GsResourceManager lifetime.
+    GsResourceManager* resources_ = nullptr;
+
     // Phase 4b: bone transform storage moved to gseurat::RenderState
     // (per-frame-in-flight, persistent-mapped). Set via set_render_state
     // before init_streaming. Non-owning pointer; AppBase owns lifetime.
@@ -521,35 +514,23 @@ private:
     glm::quat actor_rotation_{1.0f, 0.0f, 0.0f, 0.0f};  // Root motion world rotation
 
     // PBD solver resources
-    Buffer pbd_state_ssbo_;
-    Buffer pbd_params_ssbo_;
-    Buffer pbd_constraint_ssbo_;
-    Buffer pbd_uniform_buffer_;
     uint32_t pbd_count_ = 0;
     uint32_t pbd_constraint_count_ = 0;
 
     // Static/dynamic split buffers
-    Buffer static_gaussian_ssbo_;
-    Buffer dynamic_gaussian_ssbo_;
     // Static depth-sort ping-pong outputs — per-frame. static_dirty_frames_remaining_
     // counts down kMaxFramesInFlight, so two consecutive in-flight cmdbufs both
     // run the static Onesweep; with shared buffers their pass-N intermediate
     // states would race the other cmdbuf's downstream merge read of the same
     // bytes. Each frame slot now owns its own a/b buffers; the preprocess→sort→
     // merge chain in cmdbuf [f] reads and writes only slot [f].
-    std::array<Buffer, kMaxFramesInFlight> static_sort_as_{};
-    std::array<Buffer, kMaxFramesInFlight> static_sort_bs_{};
     // Per-slot deferred sentinel-fill request. publish_pending_chunks sets
     // this for every slot OTHER than the one it's recording on whenever an
     // Unload shrinks static_count_; render() consumes it at the start of
     // its record for that slot (after the in-flight fence wait has made
     // the slot safe to write).
     std::array<bool, kMaxFramesInFlight> static_sort_tail_dirty_per_slot_{};
-    // Per-frame racing SSBOs (see comment above projected_ssbos_).
-    std::array<Buffer, kMaxFramesInFlight> dynamic_sort_as_{};
-    std::array<Buffer, kMaxFramesInFlight> dynamic_sort_bs_{};
-    std::array<Buffer, kMaxFramesInFlight> merged_sort_ssbos_{};
-    std::array<Buffer, kMaxFramesInFlight> counts_ssbos_{};  // {static_visible, dynamic_visible, merged_visible}
+    // Per-frame racing SSBOs (see comment above resources_->projected_ssbos).
 
     uint32_t static_count_ = 0;
     uint32_t dynamic_count_ = 0;            // persistent_dyn_count_ + transient
@@ -560,7 +541,7 @@ private:
     uint32_t dynamic_sort_size_ = 0;
     uint32_t static_sort_workgroups_ = 0;
     uint32_t dynamic_sort_workgroups_ = 0;
-    // Static-head refresh countdown. With per-frame projected_ssbos_,
+    // Static-head refresh countdown. With per-frame resources_->projected_ssbos,
     // each frame slot must re-run static_preprocess once after a static
     // mutation. Initialized to kMaxFramesInFlight so the first
     // kMaxFramesInFlight frames each refresh their own projected slot.
@@ -569,8 +550,6 @@ private:
     // --- Streaming architecture (Phase 2) ---
     StreamingConfig streaming_config_;
     std::unique_ptr<SlabAllocator> slab_allocator_;
-    Buffer page_table_ssbo_;
-    Buffer chunk_table_ssbo_;
 
     struct ChunkState {
         enum class Status { LOADING, ACTIVE, UNLOADING };
@@ -667,8 +646,8 @@ private:
     VkDescriptorSetLayout merge_layout_ = VK_NULL_HANDLE;
     VkPipelineLayout merge_pipeline_layout_ = VK_NULL_HANDLE;
     VkPipeline merge_pipeline_ = VK_NULL_HANDLE;
-    // Per-frame merge sets: merge_sets_[f] binds dynamic_sort_as_[f],
-    // merged_sort_ssbos_[f], counts_ssbos_[f] (all racing per-frame buffers).
+    // Per-frame merge sets: merge_sets_[f] binds resources_->dynamic_sort_as[f],
+    // resources_->merged_sort_ssbos[f], resources_->counts_ssbos[f] (all racing per-frame buffers).
     std::array<VkDescriptorSet, kMaxFramesInFlight> merge_sets_{};
 
     // Static/dynamic preprocess descriptor sets — per-frame (Phase 2 plumbing;
@@ -701,7 +680,7 @@ private:
     std::array<VkDescriptorSet, kMaxFramesInFlight> compose_sets_pbd_{};
     std::array<VkDescriptorSet, kMaxFramesInFlight> compose_sets_particles_{};
     // Both sets are written together by update_compose_descriptors when
-    // render_state_ and dynamic_gaussian_ssbo_ are both live.
+    // render_state_ and resources_->dynamic_gaussian_ssbo are both live.
     bool compose_descriptors_initialised_ = false;
     void create_compose_pipeline();
     void update_compose_descriptors();  // called from set_render_state
@@ -713,7 +692,6 @@ private:
     // post_process binds input output_image + depth_image AND output processed_image
     // — three per-frame images, so the set is per-frame.
     std::array<VkDescriptorSet, kMaxFramesInFlight> post_process_sets_{};
-    Buffer pp_ubo_buffer_;
     GsPostProcessParams gs_pp_params_;
 
     // Legacy sort (kept for fallback, not dispatched)
@@ -733,8 +711,8 @@ private:
     VkDescriptorSetLayout tile_bin_layout_ = VK_NULL_HANDLE;
     VkPipelineLayout tile_bin_pipeline_layout_ = VK_NULL_HANDLE;
     VkPipeline tile_bin_pipeline_ = VK_NULL_HANDLE;
-    // Per-frame (Phase 3): tile_bin_sets_[f] binds projected_ssbos_[f],
-    // merged_sort_ssbos_[f], counts_ssbos_[f]. Other bindings (per_splat_*,
+    // Per-frame (Phase 3): tile_bin_sets_[f] binds resources_->projected_ssbos[f],
+    // resources_->merged_sort_ssbos[f], resources_->counts_ssbos[f]. Other bindings (per_splat_*,
     // tile_entries, uniforms) are single-instance.
     std::array<VkDescriptorSet, kMaxFramesInFlight> tile_bin_sets_{};
 
@@ -776,7 +754,7 @@ private:
 
     // Onesweep 2-dispatch sort (histogram+lookback → scatter) — per-frame
     // (Phase 3.5). Binds racing tile_sort_a/b + tile_indirect_args.
-    // onesweep_statuses_ is also per-frame (final cross-frame race fix):
+    // resources_->onesweep_statuses is also per-frame (final cross-frame race fix):
     // frame N+1's vkCmdFillBuffer would otherwise stomp frame N's in-flight
     // lookback state.
     VkDescriptorSetLayout onesweep_hist_layout_ = VK_NULL_HANDLE;
@@ -795,30 +773,25 @@ private:
     // dispatch_tile_sort zeroes the slot at the start of every per-frame
     // record and the onesweep compute reads/writes it; with kMaxFramesInFlight
     // cmdbufs in flight a single-instance buffer would race itself.
-    std::array<Buffer, kMaxFramesInFlight> onesweep_statuses_{};
     uint32_t onesweep_max_wg_ = 0;
 
     // Depth sort Onesweep (reuses same shaders as tile sort)
     // Per-digit lookback status (depth sort, coherent). Per-frame for the
-    // same reason as onesweep_statuses_ — dispatch_depth_onesweep zeroes
+    // same reason as resources_->onesweep_statuses — dispatch_depth_onesweep zeroes
     // this slot at the start of every sort. Shared across static/dynamic/
     // legacy depth sorts (all three bind frame f's slot).
-    std::array<Buffer, kMaxFramesInFlight> depth_onesweep_statuses_{};
-    Buffer depth_sort_params_;           // IndirectArgs-layout buffer for legacy depth sort
-    Buffer static_depth_params_;         // IndirectArgs-layout buffer for static depth sort
-    Buffer dynamic_depth_params_;        // IndirectArgs-layout buffer for dynamic depth sort
     uint32_t depth_onesweep_max_wg_ = 0;
 
     // Depth sort Onesweep descriptor sets (legacy path) — per-frame.
-    // These bind racing sort_keys_ssbos_[f] / sort_b_ssbos_[f].
+    // These bind racing resources_->sort_keys_ssbos[f] / resources_->sort_b_ssbos[f].
     std::array<VkDescriptorSet, kMaxFramesInFlight> depth_hist_sets_a_{};
     std::array<VkDescriptorSet, kMaxFramesInFlight> depth_hist_sets_b_{};
     std::array<VkDescriptorSet, kMaxFramesInFlight> depth_scatter_sets_ab_{};
     std::array<VkDescriptorSet, kMaxFramesInFlight> depth_scatter_sets_ba_{};
 
     // Depth sort Onesweep descriptor sets (static path) — per-frame.
-    // Each slot binds frame f's depth_onesweep_statuses_[f] AND its own
-    // static_sort_as_[f]/static_sort_bs_[f] ping-pong buffers, so the two
+    // Each slot binds frame f's resources_->depth_onesweep_statuses[f] AND its own
+    // resources_->static_sort_as[f]/resources_->static_sort_bs[f] ping-pong buffers, so the two
     // frames of the static_dirty_frames_remaining_ countdown can run
     // concurrently without racing on shared sort buffers.
     std::array<VkDescriptorSet, kMaxFramesInFlight> static_depth_hist_sets_a_{};
@@ -827,7 +800,7 @@ private:
     std::array<VkDescriptorSet, kMaxFramesInFlight> static_depth_scatter_sets_ba_{};
 
     // Depth sort Onesweep descriptor sets (dynamic path) — per-frame.
-    // These bind racing dynamic_sort_as_[f] / dynamic_sort_bs_[f].
+    // These bind racing resources_->dynamic_sort_as[f] / resources_->dynamic_sort_bs[f].
     std::array<VkDescriptorSet, kMaxFramesInFlight> dynamic_depth_hist_sets_a_{};
     std::array<VkDescriptorSet, kMaxFramesInFlight> dynamic_depth_hist_sets_b_{};
     std::array<VkDescriptorSet, kMaxFramesInFlight> dynamic_depth_scatter_sets_ab_{};
@@ -840,25 +813,15 @@ private:
     // buffers would race the same way the projected/sort_keys/visible_count
     // buffers did pre-Phase-3. Each slot is sized identically (driven by
     // tile_sort_capacity_ / scan_dispatch_size_).
-    std::array<Buffer, kMaxFramesInFlight> tile_sort_as_{};              // TileSortEntry ping buffer (8 bytes/entry)
-    std::array<Buffer, kMaxFramesInFlight> tile_sort_bs_{};              // TileSortEntry pong buffer
-    std::array<Buffer, kMaxFramesInFlight> tile_sort_count_ssbos_{};     // single uint32 — written by gs_tile_scan pass=1
-    std::array<Buffer, kMaxFramesInFlight> tile_ranges_ssbos_{};         // per-tile {start, count}
-    std::array<Buffer, kMaxFramesInFlight> tile_indirect_args_{};        // indirect dispatch args (8 × uint32)
 
     // Deterministic tile-bin (Fix B) intermediate SSBOs. All sized to the
     // visible-splat upper bound (static_sort_size_ + dynamic_sort_size_).
     // Per-frame for the same race reason as the tile sort buffers above.
-    std::array<Buffer, kMaxFramesInFlight> per_splat_tile_count_ssbos_{};   // uint32 × visible_upper
-    std::array<Buffer, kMaxFramesInFlight> per_splat_tile_offset_ssbos_{};  // uint32 × visible_upper (exclusive scan)
-    std::array<Buffer, kMaxFramesInFlight> scan_block_sums_ssbos_{};        // uint32 × ceil(visible_upper / 256)
     uint32_t scan_dispatch_size_ = 0;    // visible_upper rounded up to 256
     uint32_t scan_num_blocks_ = 0;       // scan_dispatch_size_ / 256
     // Frame-determinism harness: HOST_VISIBLE copy of the post-Onesweep
     // tile_sort_a_ buffer. Sized to match tile_sort_a_; only populated when
     // determinism_test_active_ is true.
-    Buffer determinism_readback_;
-    VkDeviceSize determinism_readback_size_ = 0;
     bool determinism_test_active_ = false;
     // Set true by `dispatch_tile_sort` once the host-visible copy has
     // actually been recorded for the current command buffer. Cleared at
@@ -866,7 +829,7 @@ private:
     // before counting a frame so that loading / transition frames where
     // the GS compute path was gated off don't pollute the verdict.
     bool determinism_readback_emitted_ = false;
-    // Phase 3.5: which per-frame slot of tile_sort_count_ssbos_ was the
+    // Phase 3.5: which per-frame slot of resources_->tile_sort_count_ssbos was the
     // most recently emitted readback against. The harness uses this to
     // select the right slot post-fence. Updated inside dispatch_tile_sort.
     uint32_t determinism_last_emitted_frame_ = 0;

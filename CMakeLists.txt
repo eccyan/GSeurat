@@ -273,6 +273,7 @@ target_sources(gseurat_core PRIVATE src/engine/systems/vfx_system.cpp)
 target_sources(gseurat_core PRIVATE src/engine/systems/pbd_system.cpp)
 target_sources(gseurat_core PRIVATE src/engine/systems/lighting_system.cpp)
 target_sources(gseurat_core PRIVATE src/engine/systems/particle_system.cpp)
+target_sources(gseurat_core PRIVATE src/engine/gs_renderer/gs_resources.cpp)
 
 if(GSEURAT_SHARED_LIBS)
     target_compile_definitions(gseurat_core PUBLIC GSEURAT_ENGINE_BUILD_SHARED)
