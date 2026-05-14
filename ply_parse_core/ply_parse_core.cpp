@@ -214,14 +214,14 @@ RawPlyCloud parse(const std::string& path, CoordinateSystem coords) {
             s.position.y = -s.position.y;
         }
 
-        // Scale: stored as log(scale) in standard 3DGS → apply exp()
-        if (sx && sy && sz) {
-            s.scale.x = std::exp(read_float(row, *sx));
-            s.scale.y = std::exp(read_float(row, *sy));
-            s.scale.z = std::exp(read_float(row, *sz));
-        } else {
-            s.scale = glm::vec3(0.01f);
-        }
+        // Scale: stored as log(scale) in standard 3DGS → apply exp().
+        // Per-axis fallback so PLYs that omit individual scale columns
+        // (e.g. isotropic exporters that only emit `scale_0`) preserve
+        // whatever components are present rather than collapsing the
+        // whole splat to the all-axes default — Codex P2 on PR #453.
+        s.scale.x = sx ? std::exp(read_float(row, *sx)) : 0.01f;
+        s.scale.y = sy ? std::exp(read_float(row, *sy)) : 0.01f;
+        s.scale.z = sz ? std::exp(read_float(row, *sz)) : 0.01f;
 
         // Rotation quaternion, stored as w,x,y,z in PLY → normalize.
         if (rw && rx && ry && rz) {
