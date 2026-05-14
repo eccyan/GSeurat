@@ -2395,11 +2395,18 @@ void GsRenderer::shutdown(VmaAllocator allocator) {
     // Phase 5e-2: GsStreamingSystem owns the full streaming subsystem
     // (transfer queue cancel + shutdown, slab allocator, active chunks,
     // pending deques, streaming_initialized_, sizing scalars, dirty flags).
-    // The streaming-owned GPU buffers (page_table_ssbo, chunk_table_ssbo)
-    // are destroyed here because their ownership is in GsResourceManager.
+    // Run streaming_.shutdown() FIRST: TransferQueue::shutdown() calls
+    // vkDeviceWaitIdle, which must drain any in-flight preprocess/render
+    // command buffers that may still be sampling page_table_ssbo /
+    // chunk_table_ssbo before those buffers are destroyed. (Codex P2 on
+    // PR #446.) Renderer::shutdown waits idle upstream as well, but
+    // matching the prior 5e-1 ordering keeps this entry point safe even
+    // if a future caller forgets the upstream wait.
+    streaming_.shutdown();
+    // The streaming-owned GPU buffers live in GsResourceManager, so they
+    // are destroyed here rather than inside streaming_.shutdown().
     resources_->page_table_ssbo.destroy(allocator);
     resources_->chunk_table_ssbo.destroy(allocator);
-    streaming_.shutdown();
 
     // Legacy buffers
     resources_->gaussian_ssbo.destroy(allocator);
