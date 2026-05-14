@@ -49,8 +49,13 @@ class GsRenderer {
 public:
     void init(VkDevice device, VkPhysicalDevice physical_device, VmaAllocator allocator,
               VkDescriptorPool pool, VkPipelineCache pipeline_cache);
+    // Phase 5e-2: GsRenderer's init_streaming stays as the orchestrator
+    // (drives non-streaming buffer destroy/recreate, descriptor refresh,
+    // pbd reset). It delegates the streaming-derivation portion to
+    // GsStreamingSystem::init_streaming() partway through.
     void init_streaming(const StreamingConfig& config);
-    void unload_cloud(uint32_t chunk_id);
+    // Phase 5e-2: forwarder.
+    void unload_cloud(uint32_t chunk_id) { streaming_.unload_cloud(chunk_id); }
     // Release every active chunk and any in-flight pending async loads.
     // Used by full scene loads/transitions (`Renderer::init_gs`) so the
     // new scene replaces the old. Streaming-style appends should NOT
@@ -66,7 +71,14 @@ public:
     // on dedicated transfer family that path leaves callbacks deferred
     // to the next frame, which would then fire against the next scene
     // and corrupt slab state.
-    void clear_chunks(VkCommandBuffer drain_cmd = VK_NULL_HANDLE);
+    //
+    // Phase 5e-2: forwarder; renderer-local counters that aren't
+    // streaming-owned (dynamic_count_, sort_done_once_) are reset here.
+    void clear_chunks(VkCommandBuffer drain_cmd = VK_NULL_HANDLE) {
+        streaming_.clear_chunks(drain_cmd);
+        dynamic_count_   = 0;
+        sort_done_once_  = false;
+    }
     // Async upload via the shared host-visible staging ring. The cloud is
     // moved into a pending-load job stored on the renderer; per-slab
     // `reserve_staging` + memcpy + `submit_with_handle` are issued by
@@ -76,12 +88,17 @@ public:
     // immediately even before any has been submitted to the GPU.
     // Requires init_streaming() and create_transfer_queue() to have been
     // called first; logs an error and returns {} if streaming isn't ready.
-    std::vector<TransferQueue::Handle> load_cloud_async(GaussianCloud cloud);
+    // Phase 5e-2: forwarder to GsStreamingSystem.
+    std::vector<TransferQueue::Handle> load_cloud_async(GaussianCloud cloud) {
+        return streaming_.load_cloud_async(std::move(cloud));
+    }
     // `frame_in_flight` identifies the slot the caller has waited on; only
     // resources owned by that slot may be written from `frame_cmd`. Other
     // slots' state (e.g. static_sort tail) is updated lazily when those
     // slots are next reused.
-    void poll_transfers(VkCommandBuffer frame_cmd, uint32_t frame_in_flight);
+    void poll_transfers(VkCommandBuffer frame_cmd, uint32_t frame_in_flight) {
+        streaming_.poll_transfers(frame_cmd, frame_in_flight);
+    }
     // Phase 5e-1: forwards to GsStreamingSystem.
     void create_transfer_queue(VkQueue transfer_q, uint32_t transfer_family,
                                uint32_t graphics_family, bool dedicated) {
@@ -95,8 +112,10 @@ public:
     // Phase 5e-1: forwards to GsStreamingSystem.
     TransferQueue* transfer_queue() { return streaming_.transfer_queue(); }
     const TransferQueue* transfer_queue() const { return streaming_.transfer_queue(); }
-    void update_active_gaussians(const Gaussian* data, uint32_t count);
-    void update_gaussian_data(const Gaussian* data, uint32_t count);
+    // Phase 5e-2: update_active_gaussians + update_gaussian_data
+    // removed as dead code — no callers existed outside the renderer
+    // itself, and they were the last writers to gaussian_count_ that
+    // weren't streaming-owned, blocking the Q3 migration.
 
     // Per-frame dynamic upload API (CPU-sourced transient: particles,
     // scene anims). Writes at offset `persistent_dyn_count_ + gpu_prefix`
@@ -144,17 +163,16 @@ public:
     // update_dynamic_gaussians).
     void set_persistent_dynamics(const Gaussian* data, uint32_t count);
     uint32_t persistent_dynamic_count() const { return persistent_dyn_count_; }
-    uint32_t max_static_count() const { return max_static_count_; }
-    uint32_t max_dynamic_count() const { return max_dynamic_count_; }
-    uint32_t static_count() const { return static_count_; }
-    uint32_t dynamic_count() const { return dynamic_count_; }
-    bool static_dirty() const { return static_dirty_frames_remaining_ > 0; }
+    // Phase 5e-2: forwarders to GsStreamingSystem.
+    uint32_t max_static_count()  const { return streaming_.max_static_count(); }
+    uint32_t max_dynamic_count() const { return streaming_.max_dynamic_count(); }
+    uint32_t static_count()      const { return streaming_.static_count(); }
+    uint32_t dynamic_count()     const { return dynamic_count_; }
+    bool     static_dirty()      const { return streaming_.static_dirty(); }
     // Marks the static head of resources_->projected_ssbos as dirty for the next
     // kMaxFramesInFlight frames. Phase 3: with per-frame projected SSBOs,
     // each frame slot must run static_preprocess once to refresh its slot.
-    void set_static_dirty(bool d) {
-        static_dirty_frames_remaining_ = d ? kMaxFramesInFlight : 0;
-    }
+    void set_static_dirty(bool d) { streaming_.set_static_dirty(d); }
 
     void resize_output(uint32_t width, uint32_t height);
 
@@ -196,20 +214,13 @@ public:
         return resources_->output_views;
     }
     VkSampler output_sampler() const { return resources_->output_sampler; }
-    // Sized for: persistent dynamics (PBD-tagged trees, characters, NPCs) +
-    // transient dynamics (VFX objects, particle emitters, scene animations).
-    // The split-tail design (Option A) puts all bone-animated and PBD-tagged
-    // splats in resources_->dynamic_gaussian_ssbo so the static depth sort doesn't have
-    // to re-run every frame to keep them current. Persistent content sums to
-    // ~700-800k splats for the island demo (12 trees × ~60k tagged + chars
-    // + NPCs); transient adds ~200k headroom for chimney_smoke + torches.
-    // 1M × 64 B = 64 MB; projected_ssbo_ grows proportionally. M5 unified
-    // memory absorbs this trivially.
-    static constexpr uint32_t kDynamicHeadroom = 1048576;
+    // Phase 5e-2: moved into GsStreamingSystem. Alias kept for external
+    // ABI stability (no external direct readers, just keeping the symbol).
+    static constexpr uint32_t kDynamicHeadroom = GsStreamingSystem::kDynamicHeadroom;
 
-    bool has_cloud() const { return gaussian_count_ > 0; }
-    uint32_t gaussian_count() const { return gaussian_count_; }
-    uint32_t max_gaussian_count() const { return max_gaussian_count_; }
+    bool has_cloud()              const { return streaming_.gaussian_count() > 0; }
+    uint32_t gaussian_count()     const { return streaming_.gaussian_count(); }
+    uint32_t max_gaussian_count() const { return streaming_.max_gaussian_count(); }
     uint32_t output_width() const { return resources_->output_width; }
     uint32_t output_height() const { return resources_->output_height; }
     uint32_t visible_count() const {
@@ -381,21 +392,8 @@ private:
     void update_descriptors();
     // Phase 5c: dispatch_depth_onesweep moved to GsSortSystem (sort_.dispatch_depth_*).
     // Phase 5d: dispatch_tile_sort moved to GsTileBinSystem (tile_.dispatch_sort).
-    // Drain pending_publications_ and record the metadata writes
-    // (page_table, chunk_table) onto `cmd` via vkCmdUpdateBuffer + a
-    // TRANSFER_WRITE -> SHADER_READ barrier. Called from poll_transfers
-    // immediately after poll_completions enqueues new publications.
-    // `frame_in_flight` is the slot the caller has waited on. Only
-    // resources_->static_sort_as/bs_[frame_in_flight] are filled in-place; other
-    // slots are flagged in static_sort_tail_dirty_per_slot_ and lazily
-    // filled at the start of their own render() record (after their
-    // in-flight fence has been waited on).
-    void publish_pending_chunks(VkCommandBuffer cmd, uint32_t frame_in_flight);
-
-    // DIAG: stderr-print streaming-state snapshot (active_chunks_, counts,
-    // projected_ssbo_/merged_sort_ssbo_/static_sort_a_ tail samples) for
-    // ghost investigation. Opt-in via env var GS_DIAG_STREAMING=1.
-    void diag_streaming_dump(uint64_t frame);
+    // Phase 5e-2: publish_pending_chunks + diag_streaming_dump moved to
+    // GsStreamingSystem as private members called from poll_transfers.
 
     VkDevice device_ = VK_NULL_HANDLE;
     VmaAllocator allocator_ = VK_NULL_HANDLE;
@@ -447,50 +445,18 @@ private:
     uint32_t pbd_count_ = 0;
     uint32_t pbd_constraint_count_ = 0;
 
-    // Static/dynamic split buffers
-    // Static depth-sort ping-pong outputs — per-frame. static_dirty_frames_remaining_
-    // counts down kMaxFramesInFlight, so two consecutive in-flight cmdbufs both
-    // run the static Onesweep; with shared buffers their pass-N intermediate
-    // states would race the other cmdbuf's downstream merge read of the same
-    // bytes. Each frame slot now owns its own a/b buffers; the preprocess→sort→
-    // merge chain in cmdbuf [f] reads and writes only slot [f].
-    // Per-slot deferred sentinel-fill request. publish_pending_chunks sets
-    // this for every slot OTHER than the one it's recording on whenever an
-    // Unload shrinks static_count_; render() consumes it at the start of
-    // its record for that slot (after the in-flight fence wait has made
-    // the slot safe to write).
-    std::array<bool, kMaxFramesInFlight> static_sort_tail_dirty_per_slot_{};
-    // Per-frame racing SSBOs (see comment above resources_->projected_ssbos).
-
-    uint32_t static_count_ = 0;
+    // Phase 5e-2: static/dynamic sort sizing, dirty flags, max counts,
+    // and the per-slot sentinel-fill request all moved into
+    // GsStreamingSystem. dynamic_count_ stays here — it's mutated every
+    // frame by set_persistent_dynamics / update_dynamic_gaussians, not
+    // by streaming.
     uint32_t dynamic_count_ = 0;            // persistent_dyn_count_ + transient
     uint32_t persistent_dyn_count_ = 0;     // chars/NPCs/PBD-trees prefix in dynamic SSBO
-    uint32_t max_static_count_ = 0;
-    uint32_t max_dynamic_count_ = 0;
-    uint32_t static_sort_size_ = 0;
-    uint32_t dynamic_sort_size_ = 0;
-    uint32_t static_sort_workgroups_ = 0;
-    uint32_t dynamic_sort_workgroups_ = 0;
-    // Static-head refresh countdown. With per-frame resources_->projected_ssbos,
-    // each frame slot must re-run static_preprocess once after a static
-    // mutation. Initialized to kMaxFramesInFlight so the first
-    // kMaxFramesInFlight frames each refresh their own projected slot.
-    uint32_t static_dirty_frames_remaining_ = kMaxFramesInFlight;
 
-    // Phase 5e-1: streaming state + 4 nested data structs + lightweight
-    // methods (load_world, chunk_inventory, create_transfer_queue) moved
-    // into GsStreamingSystem. Heavy mutators (init_streaming,
-    // load_cloud_async, poll_transfers, publish_pending_chunks,
-    // unload_cloud, clear_chunks, diag_streaming_dump) STAY in
-    // GsRenderer for 5e-1 and reach into the system's state via
-    // `friend class GsRenderer;` declared in the system. 5e-2 will move
-    // those bodies in and drop the friend.
+    // Phase 5e-2: GsStreamingSystem owns the full streaming subsystem
+    // (data + 7 heavy mutators + 14 cross-cutting sizing/count/dirty
+    // fields). The friend declaration from 5e-1 is gone.
     GsStreamingSystem streaming_;
-
-    uint32_t gaussian_count_ = 0;
-    uint32_t max_gaussian_count_ = 0;
-    uint32_t sort_size_ = 0;         // Power-of-2 padded count
-    uint32_t num_sort_workgroups_ = 0;
 
     // Descriptor resources
     VkDescriptorPool pool_ = VK_NULL_HANDLE;
@@ -557,11 +523,8 @@ private:
     // descriptor sets, sizing scalars, and determinism harness state moved
     // into GsTileBinSystem (the `tile_` member declared earlier).
 
-    // Phase 5c: depth_onesweep_max_wg_ — still computed in init_streaming
-    // (depends on max workgroups across static/dynamic/legacy depth paths)
-    // and pushed into GsSortSystem via set_sort_sizes(). Will be fully
-    // retired in a later cleanup.
-    uint32_t depth_onesweep_max_wg_ = 0;
+    // Phase 5e-2: depth_onesweep_max_wg_ moved into GsStreamingSystem
+    // along with the rest of the sort-sizing scalars.
 
     bool initialized_ = false;
 
