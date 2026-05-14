@@ -502,7 +502,10 @@ void AppBase::main_loop() {
         const bool dispatch_gpu_compute = loading_monitor_.should_dispatch_gpu_work();
         GS_LOG_FRAME("[loop/wd] before_draw_scene tick={} dispatch={}",
                      tick_, dispatch_gpu_compute ? 1 : 0);
-        renderer_.draw_scene(scene_, draw_lists_.entity, draw_lists_.outline, draw_lists_.reflection,
+        // Phase 5.1 dt-plumbing: pass the SimClock-aware dt (computed at
+        // line 310-312) through to the renderer so its camera / VFX /
+        // particle advance is driven by the same clock as gameplay/physics.
+        renderer_.draw_scene(dt, scene_, draw_lists_.entity, draw_lists_.outline, draw_lists_.reflection,
                              draw_lists_.shadow, particle_sprites, draw_lists_.overlay, ui_batches,
                              draw_lists_.debug_colliders, feature_flags_, dispatch_gpu_compute);
 #if GSEURAT_DEBUG_BUILD

@@ -59,7 +59,8 @@ public:
     void init_particles(ResourceManager& resources);
     void init_backgrounds(const std::vector<ResourceHandle<Texture>>& bg_textures);
     void init_shadows(ResourceManager& resources);
-    void draw_frame();
+    // Phase 5.1 dt-plumbing: legacy `draw_frame()` shim deleted as unused
+    // dead code (no callers in src/, examples/, tests/).
     void init_gs(const GaussianCloud& cloud, uint32_t width = 320, uint32_t height = 240);
 
     // Drop every GS chunk currently resident in VRAM. Allocates a transient
@@ -118,11 +119,22 @@ public:
     // BEFORE `init_gs` to take effect.
     void set_prewarm_at_startup(bool b) { prewarm_at_startup_ = b; }
 
+    // `dt` is the authoritative per-frame delta from AppBase's main loop —
+    // already clamped and SimClock-aware (fixed 1/60 s in deterministic
+    // mode). Previously the renderer recomputed its own dt from
+    // glfwGetTime(), which ran a parallel wall-clock against AppBase's
+    // SimClock-aware dt: camera, VFX, and particle systems advanced on a
+    // different clock than gameplay/physics. The frame-determinism harness
+    // already gated this with `determinism_test_state_.active` (dt forced
+    // to 0, vfx/particle updates skipped) but the parallel clock leaked
+    // through normal gameplay frames.
+    //
     // `dispatch_gpu_compute` gates GS-renderer compute pipelines (preprocess /
     // sort / merge / render / pbd_solver / tile_render / post_process). Set
     // false during EngineState::Loading to keep the GPU idle while the
     // loading screen draws; true during Warming and Playing.
-    void draw_scene(Scene& scene,
+    void draw_scene(float dt,
+                    Scene& scene,
                     const std::vector<SpriteDrawInfo>& entity_sprites = {},
                     const std::vector<SpriteDrawInfo>& outline_sprites = {},
                     const std::vector<SpriteDrawInfo>& reflection_sprites = {},
@@ -327,7 +339,14 @@ private:
 
     uint32_t current_frame_ = 0;
     uint32_t acquire_semaphore_index_ = 0;
-    float last_time_ = 0.0f;
+    // Wall-clock timestamp of the previous `record_gs_prepass` call,
+    // scoped to the adaptive GS budget controller. The controller reads
+    // `1 / dt` as an instantaneous FPS measurement; it must see actual
+    // render time, NOT the gameplay dt that AppBase clamps to 0.1s and
+    // replaces with SimClock::fixed_dt() in deterministic mode (Codex P2
+    // on PR #447). Visual systems (camera, VFX, particles) continue to
+    // run on the SimClock-aware dt plumbed through draw_scene.
+    double last_render_wall_time_ = 0.0;
     bool font_initialized_ = false;
 
     // Gaussian splatting
