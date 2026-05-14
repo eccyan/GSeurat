@@ -24,6 +24,7 @@
 #include "gseurat/engine/gaussian_cloud_ply.hpp"
 #include "ply_parse.hpp"  // tools/ply_importer/ply_parse.hpp via target_include
 
+#include <algorithm>
 #include <cassert>
 #include <cmath>
 #include <cstdio>
