@@ -544,6 +544,16 @@ target_link_libraries(test_camera_review_state PRIVATE glfw imgui_lib)
 add_gseurat_test(test_visual_state  src/staging/visual_state.cpp)
 add_gseurat_test(test_project_root  src/engine/project_root.cpp)
 add_gseurat_test(test_ply_path_resolution  src/engine/project_root.cpp src/engine/gaussian_cloud.cpp src/engine/gaussian_cloud_ply.cpp)
+# #393 follow-up: cross-wrapper round-trip drift detector. Compiles BOTH
+# the engine-side `gseurat::ply::load` (via gaussian_cloud_ply.cpp) and
+# the tool-side `ply_importer::parse_ply` (via tools/ply_importer/) into
+# one test binary, then asserts field-by-field agreement on a synthetic
+# fixture. Catches drift in either thin wrapper's per-field conversion.
+add_gseurat_test(test_ply_round_trip src/engine/project_root.cpp
+                                     src/engine/gaussian_cloud.cpp src/engine/gaussian_cloud_ply.cpp
+                                     tools/ply_importer/ply_parse.cpp)
+target_include_directories(test_ply_round_trip PRIVATE
+    ${PROJECT_SOURCE_DIR}/tools/ply_importer)
 add_gseurat_test(test_bridge_reconnect_root  src/engine/project_root.cpp src/engine/gaussian_cloud.cpp src/engine/gaussian_cloud_ply.cpp)
 add_gseurat_test(test_slab_allocator src/engine/slab_allocator.cpp)
 add_gseurat_test(test_world_manifest src/engine/world_manifest.cpp)
