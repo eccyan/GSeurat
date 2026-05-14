@@ -54,8 +54,7 @@ struct GsResourceManager {
     std::array<VmaAllocation,  kMaxFramesInFlight> processed_allocations{};
     std::array<VkImageView,    kMaxFramesInFlight> processed_views{};
 
-    // ── Splat buffers (legacy + split) ────────────────────────────────
-    Buffer gaussian_ssbo;
+    // ── Splat buffers (static/dynamic split) ──────────────────────────
     Buffer uniform_buffer;
     Buffer static_gaussian_ssbo;
     Buffer dynamic_gaussian_ssbo;
