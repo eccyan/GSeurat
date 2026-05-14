@@ -119,11 +119,12 @@ void GsRenderer::init(VkDevice device, VkPhysicalDevice physical_device,
     assert(resources_ != nullptr && "set_resources() must run before init()");
     post_.init(device_, pipeline_cache_, gs_pool_, resources_);
 
-    // Phase 5e-1: streaming system captures device + allocator handles
-    // for its lightweight methods (create_transfer_queue). Heavy
-    // mutators in GsRenderer still reach into streaming_'s state via
-    // friend access until 5e-2 moves them in.
-    streaming_.init(device_, allocator_);
+    // Phase 5e-2: streaming system captures device + allocator + the
+    // resources / sort / tile back-pointers it needs for the heavy
+    // mutators (init_streaming, publish_pending_chunks, clear_chunks,
+    // poll_transfers). Must run after sort_/tile_ are initialised
+    // (create_descriptor_resources above) so the pointers are valid.
+    streaming_.init(device_, allocator_, resources_, &sort_, &tile_);
 
     // Create timestamp query pool for GPU profiling (2 queries: before/after rasterize)
     {
@@ -1178,49 +1179,23 @@ void GsRenderer::prewarm_pipelines(VkQueue queue, VkCommandPool cmd_pool,
                  pipeline_count, static_cast<long long>(ms));
 }
 
-void GsRenderer::init_streaming(const StreamingConfig& config) {
-    streaming_.streaming_config_ = config;
-    streaming_.slab_allocator_ = std::make_unique<SlabAllocator>(config.total_slabs(), config.slab_size_splats);
 
-    // Wait for GPU before destroying existing buffers
+// Phase 5e-2: orchestrator. The streaming-derivation portion (slab
+// allocator, page/chunk tables, sizing scalars, pushes to sort_/tile_)
+// lives in GsStreamingSystem::init_streaming(); GsRenderer owns the
+// non-streaming buffer destroy/recreate + descriptor refresh.
+void GsRenderer::init_streaming(const StreamingConfig& config) {
     if (initialized_) {
         vkDeviceWaitIdle(device_);
     }
 
-    sort_done_once_ = false;
-    static_dirty_frames_remaining_ = kMaxFramesInFlight;
+    sort_done_once_       = false;
+    dynamic_count_        = 0;
+    pbd_count_            = 0;
+    pbd_constraint_count_ = 0;
 
-    // Pre-allocate ALL buffers to full budget size
-    max_static_count_ = config.gpu_budget_splats;
-    max_dynamic_count_ = kDynamicHeadroom;
-    static_count_ = 0;
-    dynamic_count_ = 0;
-    gaussian_count_ = 0;
-    max_gaussian_count_ = max_static_count_ + max_dynamic_count_;
-
-    // Compute sort params (aligned to Onesweep ENTRIES_PER_WG = 2048)
-    auto compute_sort_params = [](uint32_t max_count, uint32_t& sort_size, uint32_t& num_wg) {
-        sort_size = ((max_count + 2047) / 2048) * 2048;
-        if (sort_size < max_count) sort_size = max_count;
-        num_wg = sort_size / 2048;
-        if (num_wg == 0) num_wg = 1;
-        sort_size = num_wg * 2048;
-    };
-
-    compute_sort_params(max_static_count_, static_sort_size_, static_sort_workgroups_);
-    compute_sort_params(max_dynamic_count_, dynamic_sort_size_, dynamic_sort_workgroups_);
-    sort_size_ = static_sort_size_;
-    num_sort_workgroups_ = static_sort_workgroups_;
-
-    // Buffer sizes
-    VkDeviceSize static_gauss_size = static_cast<VkDeviceSize>(max_static_count_) * sizeof(GpuGaussian);
-    VkDeviceSize dynamic_gauss_size = static_cast<VkDeviceSize>(max_dynamic_count_) * sizeof(GpuGaussian);
-    VkDeviceSize projected_buf_size = static_cast<VkDeviceSize>(max_static_count_ + max_dynamic_count_) * sizeof(ProjectedSplat);
-    VkDeviceSize static_sort_buf_size = static_cast<VkDeviceSize>(static_sort_size_) * sizeof(SortEntry);
-    VkDeviceSize dynamic_sort_buf_size = static_cast<VkDeviceSize>(dynamic_sort_size_) * sizeof(SortEntry);
-    VkDeviceSize merged_sort_buf_size = static_cast<VkDeviceSize>(max_static_count_ + max_dynamic_count_) * sizeof(SortEntry);
-
-    // Destroy ALL old buffers (legacy + split)
+    // Destroy all renderer-owned GPU buffers (streaming-owned page_table
+    // and chunk_table are destroyed/recreated inside streaming_.init_streaming).
     resources_->gaussian_ssbo.destroy(allocator_);
     resources_->uniform_buffer.destroy(allocator_);
     resources_->pbd_state_ssbo.destroy(allocator_);
@@ -1229,8 +1204,6 @@ void GsRenderer::init_streaming(const StreamingConfig& config) {
     resources_->pbd_uniform_buffer.destroy(allocator_);
     resources_->static_gaussian_ssbo.destroy(allocator_);
     resources_->dynamic_gaussian_ssbo.destroy(allocator_);
-    // Per-frame racing SSBOs: destroy every slot. resources_->static_sort_as/bs_ are
-    // grouped in the same loop now that they're per-frame too.
     for (uint32_t f = 0; f < kMaxFramesInFlight; ++f) {
         resources_->static_sort_as[f].destroy(allocator_);
         resources_->static_sort_bs[f].destroy(allocator_);
@@ -1242,89 +1215,79 @@ void GsRenderer::init_streaming(const StreamingConfig& config) {
         resources_->dynamic_sort_bs[f].destroy(allocator_);
         resources_->merged_sort_ssbos[f].destroy(allocator_);
         resources_->counts_ssbos[f].destroy(allocator_);
-    }
-    resources_->page_table_ssbo.destroy(allocator_);
-    resources_->chunk_table_ssbo.destroy(allocator_);
-    // Phase 3.5: per-frame tile buffers — destroy every slot.
-    // (resources_->tile_indirect_args, resources_->per_splat_tile_count_ssbos, resources_->per_splat_tile_offset_ssbos,
-    //  resources_->scan_block_sums_ssbos are destroyed inside the tile-sort recreate block below.)
-    for (uint32_t f = 0; f < kMaxFramesInFlight; ++f) {
         resources_->tile_sort_as[f].destroy(allocator_);
         resources_->tile_sort_bs[f].destroy(allocator_);
         resources_->tile_sort_count_ssbos[f].destroy(allocator_);
         resources_->tile_ranges_ssbos[f].destroy(allocator_);
-    }
-    resources_->pp_ubo_buffer.destroy(allocator_);
-    for (uint32_t f = 0; f < kMaxFramesInFlight; ++f) {
+        resources_->tile_indirect_args[f].destroy(allocator_);
+        resources_->per_splat_tile_count_ssbos[f].destroy(allocator_);
+        resources_->per_splat_tile_offset_ssbos[f].destroy(allocator_);
+        resources_->scan_block_sums_ssbos[f].destroy(allocator_);
+        resources_->onesweep_statuses[f].destroy(allocator_);
         resources_->depth_onesweep_statuses[f].destroy(allocator_);
     }
+    resources_->pp_ubo_buffer.destroy(allocator_);
     resources_->depth_sort_params.destroy(allocator_);
     resources_->static_depth_params.destroy(allocator_);
     resources_->dynamic_depth_params.destroy(allocator_);
+    resources_->determinism_readback.destroy(allocator_);
 
-    // Create split buffers at full budget size.
-    // resources_->static_gaussian_ssbo is the destination of vkCmdCopyBuffer in
-    // TransferQueue::poll_completions (chunk-streaming uploads), so it
-    // requires TRANSFER_DST_BIT. Without it, the copy is undefined
-    // behavior — the validation layer reports the violation, and on
-    // MoltenVK the destination ends up with torn/stale bytes that
-    // surface as "ghost geometry from initial spawn state".
-    resources_->static_gaussian_ssbo = Buffer::create_storage_host_dst(allocator_, static_gauss_size);
+    // Streaming derivation: computes sizing scalars, allocates slab + page
+    // + chunk tables, pushes sizes into sort_/tile_.
+    streaming_.init_streaming(config, num_sort_passes_);
+
+    // Read back sizing for renderer-owned buffer allocation.
+    const uint32_t max_static          = streaming_.max_static_count();
+    const uint32_t max_dynamic         = streaming_.max_dynamic_count();
+    const uint32_t max_gaussian        = streaming_.max_gaussian_count();
+    const uint32_t s_sort_size         = streaming_.static_sort_size();
+    const uint32_t d_sort_size         = streaming_.dynamic_sort_size();
+    const uint32_t s_sort_workgroups   = streaming_.static_sort_workgroups();
+    const uint32_t d_sort_workgroups   = streaming_.dynamic_sort_workgroups();
+    const uint32_t leg_sort_size       = streaming_.sort_size();
+    const uint32_t leg_sort_workgroups = streaming_.num_sort_workgroups();
+    const uint32_t depth_onesweep_max  = streaming_.depth_onesweep_max_wg();
+
+    const VkDeviceSize static_gauss_size   = static_cast<VkDeviceSize>(max_static)  * sizeof(GpuGaussian);
+    const VkDeviceSize dynamic_gauss_size  = static_cast<VkDeviceSize>(max_dynamic) * sizeof(GpuGaussian);
+    const VkDeviceSize projected_buf_size  = static_cast<VkDeviceSize>(max_static + max_dynamic) * sizeof(ProjectedSplat);
+    const VkDeviceSize static_sort_buf_sz  = static_cast<VkDeviceSize>(s_sort_size) * sizeof(SortEntry);
+    const VkDeviceSize dynamic_sort_buf_sz = static_cast<VkDeviceSize>(d_sort_size) * sizeof(SortEntry);
+    const VkDeviceSize merged_sort_buf_sz  = static_cast<VkDeviceSize>(max_static + max_dynamic) * sizeof(SortEntry);
+
+    // static_gaussian_ssbo: destination of vkCmdCopyBuffer in
+    // TransferQueue::poll_completions (chunk-streaming uploads), requires
+    // TRANSFER_DST_BIT. static/dynamic_sort also need TRANSFER_DST for the
+    // vkCmdFillBuffer paths in publish_pending_chunks / render() sentinel
+    // fills.
+    resources_->static_gaussian_ssbo  = Buffer::create_storage_host_dst(allocator_, static_gauss_size);
     resources_->dynamic_gaussian_ssbo = Buffer::create_storage(allocator_, dynamic_gauss_size);
-    // host_dst flag = TRANSFER_DST_BIT, required for the per-frame
-    // vkCmdFillBuffer in publish_pending_chunks that sentinel-fills the
-    // [new_count, prev_count) tail when streaming Unloads shrink static_count_.
-    // resources_->static_sort_as/bs_ are now per-frame so that two consecutive in-flight
-    // cmdbufs running the static Onesweep during a static_dirty cycle don't
-    // race each other on the shared ping-pong buffers; the preprocess→sort→
-    // merge chain in cmdbuf [f] reads/writes only slot [f].
     for (uint32_t f = 0; f < kMaxFramesInFlight; ++f) {
-        resources_->static_sort_as[f] = Buffer::create_storage_host_dst(allocator_, static_sort_buf_size);
-        resources_->static_sort_bs[f] = Buffer::create_storage_host_dst(allocator_, static_sort_buf_size);
+        resources_->static_sort_as[f] = Buffer::create_storage_host_dst(allocator_, static_sort_buf_sz);
+        resources_->static_sort_bs[f] = Buffer::create_storage_host_dst(allocator_, static_sort_buf_sz);
     }
     resources_->uniform_buffer = Buffer::create_uniform(allocator_, sizeof(GsUniforms));
 
-    // Per-frame racing SSBOs: create one slot per frame in flight. Phase 1
-    // of the cross-frame race fix; all consumers still index slot [0] for
-    // now, so behavior is unchanged. Phase 3 wires frame_in_flight into
-    // dispatch sites to actually use the per-frame slots.
-    //
-    // Dynamic sort buffers also need TRANSFER_DST_BIT — render() issues a
-    // per-frame vkCmdFillBuffer against them to GPU-side init the sentinel
-    // keys before the dynamic preprocess overwrites the active range.
-    // Without TRANSFER_DST the fillbuffer is a Vulkan-spec violation
-    // (validation error / UB). Codex review on PR #420 flagged this.
     for (uint32_t f = 0; f < kMaxFramesInFlight; ++f) {
         resources_->projected_ssbos[f]     = Buffer::create_storage(allocator_, projected_buf_size);
-        resources_->sort_keys_ssbos[f]     = Buffer::create_storage(allocator_, static_sort_buf_size);
-        resources_->sort_b_ssbos[f]        = Buffer::create_storage(allocator_, static_sort_buf_size);
+        resources_->sort_keys_ssbos[f]     = Buffer::create_storage(allocator_, static_sort_buf_sz);
+        resources_->sort_b_ssbos[f]        = Buffer::create_storage(allocator_, static_sort_buf_sz);
         resources_->visible_count_ssbos[f] = Buffer::create_storage_readback(allocator_, sizeof(uint32_t));
-        resources_->dynamic_sort_as[f]     = Buffer::create_storage_host_dst(allocator_, dynamic_sort_buf_size);
-        resources_->dynamic_sort_bs[f]     = Buffer::create_storage_host_dst(allocator_, dynamic_sort_buf_size);
+        resources_->dynamic_sort_as[f]     = Buffer::create_storage_host_dst(allocator_, dynamic_sort_buf_sz);
+        resources_->dynamic_sort_bs[f]     = Buffer::create_storage_host_dst(allocator_, dynamic_sort_buf_sz);
         resources_->counts_ssbos[f]        = Buffer::create_storage_readback(allocator_, 3 * sizeof(uint32_t));
-        resources_->merged_sort_ssbos[f]   = Buffer::create_storage(allocator_, merged_sort_buf_size);
+        resources_->merged_sort_ssbos[f]   = Buffer::create_storage(allocator_, merged_sort_buf_sz);
     }
 
-    // Defense in depth: zero/sentinel-fill all splat-related buffers at init.
-    // VMA does not guarantee zero-init for new allocations, so the bytes
-    // returned by vmaCreateBuffer can carry whatever the previous owner of
-    // that memory left behind. Once the renderer is live, sort indirection
-    // is meant to bound reads to [0, count) — but a one-time host fill here
-    // makes the invariant independent of any indirection bug, matching the
-    // pattern established in clear_chunks() (PR #386). Buffers are
-    // HOST_VISIBLE + MAPPED at this point and no GPU work has been
-    // submitted, so memset is race-free.
+    // Defense in depth: zero/sentinel-fill all splat-related buffers.
+    // VMA does not guarantee zero-init; the bytes carry whatever the
+    // previous owner left behind. Buffers are HOST_VISIBLE + MAPPED at
+    // this point and no GPU work has been submitted, so memset is race-free.
     std::memset(resources_->static_gaussian_ssbo.mapped(), 0,
-                static_cast<size_t>(max_static_count_) * sizeof(GpuGaussian));
+                static_cast<size_t>(max_static) * sizeof(GpuGaussian));
     std::memset(resources_->dynamic_gaussian_ssbo.mapped(), 0,
-                static_cast<size_t>(max_dynamic_count_) * sizeof(GpuGaussian));
+                static_cast<size_t>(max_dynamic) * sizeof(GpuGaussian));
     {
-        // Sentinel-fill sort buffers: key=0xFFFFFFFF sorts to the tail and
-        // is never read by the merge's [0, count) window. index=0 is a
-        // safe placeholder (never read while paired with sentinel key).
-        // load_cloud_async's completion callback calls init_sort_buf,
-        // which reproduces this layout — this just covers the pre-load
-        // window between init_streaming and the first scene load.
         auto sentinel_fill_sort = [](Buffer& buf, uint32_t entries) {
             auto* p = static_cast<SortEntry*>(buf.mapped());
             for (uint32_t i = 0; i < entries; ++i) {
@@ -1333,30 +1296,22 @@ void GsRenderer::init_streaming(const StreamingConfig& config) {
             }
         };
         for (uint32_t f = 0; f < kMaxFramesInFlight; ++f) {
-            sentinel_fill_sort(resources_->static_sort_as[f], static_sort_size_);
-            sentinel_fill_sort(resources_->static_sort_bs[f], static_sort_size_);
+            sentinel_fill_sort(resources_->static_sort_as[f], s_sort_size);
+            sentinel_fill_sort(resources_->static_sort_bs[f], s_sort_size);
             std::memset(resources_->projected_ssbos[f].mapped(), 0,
-                        static_cast<size_t>(max_static_count_ + max_dynamic_count_)
+                        static_cast<size_t>(max_static + max_dynamic)
                             * sizeof(ProjectedSplat));
-            sentinel_fill_sort(resources_->dynamic_sort_as[f], dynamic_sort_size_);
-            sentinel_fill_sort(resources_->dynamic_sort_bs[f], dynamic_sort_size_);
-            // resources_->merged_sort_ssbos is rewritten by the merge stage every frame
-            // for [0, total_count); tile_bin reads only that range. No
-            // sentinel needed here, but zero it for cleanliness.
+            sentinel_fill_sort(resources_->dynamic_sort_as[f], d_sort_size);
+            sentinel_fill_sort(resources_->dynamic_sort_bs[f], d_sort_size);
             std::memset(resources_->merged_sort_ssbos[f].mapped(), 0,
-                        static_cast<size_t>(max_static_count_ + max_dynamic_count_)
+                        static_cast<size_t>(max_static + max_dynamic)
                             * sizeof(SortEntry));
         }
     }
 
     // Legacy buffers (same sizes as static counterparts for backward compat).
-    // sort_keys/sort_b are now per-frame and created in the loop above.
     resources_->gaussian_ssbo = Buffer::create_storage(allocator_,
-        static_cast<VkDeviceSize>(max_gaussian_count_) * sizeof(GpuGaussian));
-
-    // Phase 4b: bone storage now lives in gseurat::RenderState, allocated
-    // per-frame-in-flight at AppBase init time. Descriptors are bound by
-    // update_descriptors() below from render_state_->bones_buffer(frame).
+        static_cast<VkDeviceSize>(max_gaussian) * sizeof(GpuGaussian));
 
     // PBD buffers
     resources_->pbd_state_ssbo = Buffer::create_storage(allocator_,
@@ -1365,8 +1320,6 @@ void GsRenderer::init_streaming(const StreamingConfig& config) {
         kMaxPbdElements * sizeof(PbdElementParams));
     resources_->pbd_constraint_ssbo = Buffer::create_storage(allocator_,
         kMaxPbdConstraints * sizeof(PbdConstraint));
-    pbd_count_ = 0;
-    pbd_constraint_count_ = 0;
     {
         auto* states = static_cast<PbdPhysicsState*>(resources_->pbd_state_ssbo.mapped());
         for (uint32_t i = 0; i < kMaxPbdElements; ++i) {
@@ -1384,38 +1337,16 @@ void GsRenderer::init_streaming(const StreamingConfig& config) {
     resources_->pp_ubo_buffer = Buffer::create_uniform(allocator_, sizeof(GsPostProcessUbo));
 
     // ── Tile binning buffers ──
-    // Phase 5d: tile-sort sizing now computed inside GsTileBinSystem.
-    // We push the static/dynamic split into the system, then read back
-    // the derived sizes via getters to size the per-frame tile_* SSBOs
-    // owned by GsResourceManager.
+    // tile_'s sizing scalars were populated by streaming_.init_streaming()
+    // (via tile_->set_sort_sizes()). Pull them back here for buffer sizing.
     {
-        tile_.set_sort_sizes(static_sort_size_, dynamic_sort_size_);
-
-        VkDeviceSize entry_buf_size = static_cast<VkDeviceSize>(tile_.tile_sort_size()) * 8;  // 8 bytes/entry
-        // Allocate tile_ranges for max possible resolution (resources_->output_width may not
-        // reflect final size at allocation time). Generous upper bound.
+        const VkDeviceSize entry_buf_size = static_cast<VkDeviceSize>(tile_.tile_sort_size()) * 8;  // 8 bytes/entry
         static constexpr uint32_t kMaxTiles = 256 * 144;  // supports up to 4096×2304
-        VkDeviceSize ranges_buf_size = static_cast<VkDeviceSize>(kMaxTiles) * 2 * sizeof(uint32_t);
-
-        VkDeviceSize per_splat_buf_size =
+        const VkDeviceSize ranges_buf_size = static_cast<VkDeviceSize>(kMaxTiles) * 2 * sizeof(uint32_t);
+        const VkDeviceSize per_splat_buf_size =
             static_cast<VkDeviceSize>(tile_.scan_dispatch_size()) * sizeof(uint32_t);
-        VkDeviceSize block_sums_buf_size =
+        const VkDeviceSize block_sums_buf_size =
             static_cast<VkDeviceSize>(tile_.scan_num_blocks()) * sizeof(uint32_t);
-
-        // Phase 3.5: per-frame — destroy + recreate every slot at the new
-        // capacity. All seven buffers are racing across cmdbufs and must
-        // exist in kMaxFramesInFlight independent allocations.
-        for (uint32_t f = 0; f < kMaxFramesInFlight; ++f) {
-            resources_->tile_sort_as[f].destroy(allocator_);
-            resources_->tile_sort_bs[f].destroy(allocator_);
-            resources_->tile_sort_count_ssbos[f].destroy(allocator_);
-            resources_->tile_ranges_ssbos[f].destroy(allocator_);
-            resources_->tile_indirect_args[f].destroy(allocator_);
-            resources_->per_splat_tile_count_ssbos[f].destroy(allocator_);
-            resources_->per_splat_tile_offset_ssbos[f].destroy(allocator_);
-            resources_->scan_block_sums_ssbos[f].destroy(allocator_);
-        }
-        resources_->determinism_readback.destroy(allocator_);
 
         for (uint32_t f = 0; f < kMaxFramesInFlight; ++f) {
             resources_->tile_sort_as[f] = Buffer::create_storage_gpu_only(allocator_, entry_buf_size);
@@ -1441,31 +1372,16 @@ void GsRenderer::init_streaming(const StreamingConfig& config) {
                      tile_.scan_dispatch_size(), tile_.scan_num_blocks());
 
         // Onesweep status buffer: 4 passes × 256 digits × max_workgroups.
-        // Per-frame so each in-flight cmdbuf clears + reads its own slot
-        // without racing the other cmdbuf's in-progress onesweep lookback.
-        VkDeviceSize status_size = 4ull * 256ull * tile_.onesweep_max_wg() * sizeof(uint32_t);
+        const VkDeviceSize status_size = 4ull * 256ull * tile_.onesweep_max_wg() * sizeof(uint32_t);
         for (uint32_t f = 0; f < kMaxFramesInFlight; ++f) {
-            resources_->onesweep_statuses[f].destroy(allocator_);
             resources_->onesweep_statuses[f] = Buffer::create_storage_gpu_only(allocator_, status_size);
         }
     }
 
-    // ── Depth sort Onesweep buffers ──
+    // ── Depth sort Onesweep status + params buffers ──
     {
-        // Status buffer: num_sort_passes × 256 digits × max_wg (shared across
-        // static/dynamic/legacy depth sorts). Per-frame so the per-cmdbuf
-        // status clears don't race in-flight onesweep lookback on the other
-        // cmdbuf.
-        depth_onesweep_max_wg_ = std::max({static_sort_workgroups_, dynamic_sort_workgroups_, num_sort_workgroups_});
-        // Phase 5c: push the just-computed sort sizes into GsSortSystem.
-        // The system needs these for its dispatch_depth_* methods (workgroup
-        // counts) and for the status-clear size inside dispatch_depth_onesweep_impl.
-        sort_.set_sort_sizes(static_sort_size_, static_sort_workgroups_,
-                              dynamic_sort_size_, dynamic_sort_workgroups_,
-                              sort_size_, num_sort_workgroups_,
-                              num_sort_passes_, depth_onesweep_max_wg_);
-        VkDeviceSize depth_status_size = static_cast<VkDeviceSize>(num_sort_passes_) * 256ull
-                                         * depth_onesweep_max_wg_ * sizeof(uint32_t);
+        const VkDeviceSize depth_status_size = static_cast<VkDeviceSize>(num_sort_passes_) * 256ull
+                                                * depth_onesweep_max * sizeof(uint32_t);
         for (uint32_t f = 0; f < kMaxFramesInFlight; ++f) {
             resources_->depth_onesweep_statuses[f] = Buffer::create_storage_gpu_only(allocator_, depth_status_size);
         }
@@ -1478,31 +1394,16 @@ void GsRenderer::init_streaming(const StreamingConfig& config) {
             p[3] = 0; p[4] = 0; p[5] = 0;
             p[6] = entry_count; p[7] = 0;
         };
-        fill_sort_params(resources_->static_depth_params, static_sort_workgroups_, static_sort_size_);
-        fill_sort_params(resources_->dynamic_depth_params, dynamic_sort_workgroups_, dynamic_sort_size_);
-        fill_sort_params(resources_->depth_sort_params, num_sort_workgroups_, sort_size_);
+        fill_sort_params(resources_->static_depth_params,  s_sort_workgroups,   s_sort_size);
+        fill_sort_params(resources_->dynamic_depth_params, d_sort_workgroups,   d_sort_size);
+        fill_sort_params(resources_->depth_sort_params,    leg_sort_workgroups, leg_sort_size);
 
         std::fprintf(stderr, "GS: Depth sort Onesweep -- static=%u wg, dynamic=%u wg, status=%.1f KB\n",
-                     static_sort_workgroups_, dynamic_sort_workgroups_,
+                     s_sort_workgroups, d_sort_workgroups,
                      static_cast<float>(depth_status_size) / 1024.0f);
     }
 
-    // Page table: one uint32 per slab, initialized to 0xFFFFFFFF (invalid).
-    // host_dst variant: reads happen on the GPU every frame; updates from
-    // chunk-load completions are recorded as vkCmdUpdateBuffer onto the
-    // current frame's cmd buffer with a TRANSFER_WRITE -> SHADER_READ barrier
-    // so they don't tear under in-flight GPU reads.
-    resources_->page_table_ssbo = Buffer::create_storage_host_dst(allocator_,
-        static_cast<VkDeviceSize>(config.total_slabs()) * sizeof(uint32_t));
-    std::memset(resources_->page_table_ssbo.mapped(), 0xFF,
-                config.total_slabs() * sizeof(uint32_t));
-
-    // Chunk table: 256 entries x 16 bytes each, zeroed. Same host_dst
-    // rationale as page_table.
-    resources_->chunk_table_ssbo = Buffer::create_storage_host_dst(allocator_, 256 * 16);
-    std::memset(resources_->chunk_table_ssbo.mapped(), 0, 256 * 16);
-
-    // Zero the counts buffer (Phase 3: every per-frame slot).
+    // Zero the counts buffer across every per-frame slot.
     for (uint32_t f = 0; f < kMaxFramesInFlight; ++f) {
         if (resources_->counts_ssbos[f].mapped()) {
             auto* counts = static_cast<uint32_t*>(resources_->counts_ssbos[f].mapped());
@@ -1512,798 +1413,16 @@ void GsRenderer::init_streaming(const StreamingConfig& config) {
         }
     }
 
-    streaming_.active_chunks_.clear();
-    streaming_.total_active_splats_ = 0;
-    streaming_.streaming_initialized_ = true;
     initialized_ = true;
 
     update_descriptors();
     // Phase 4c-vfx-1: init_streaming() is the first point where
-    // resources_->dynamic_gaussian_ssbo is created. In the normal app path,
-    // set_render_state() runs BEFORE init_streaming() (AppBase wiring
-    // order), so its update_compose_descriptors() call is gated out by
-    // the missing dst buffer. Retry here so the per-frame compose sets
-    // get bound before dispatch_compose_vfx() can fire. (Codex P2 on
-    // PR #435.)
+    // resources_->dynamic_gaussian_ssbo is created. set_render_state() may
+    // run before init_streaming; its update_compose_descriptors() call is
+    // gated out by the missing dst buffer. Retry here.
     if (render_state_ && compose_pipeline_ != VK_NULL_HANDLE) {
         update_compose_descriptors();
     }
-
-    std::fprintf(stderr, "GS: Streaming initialized — budget=%u splats, %u slabs of %u\n",
-                 config.gpu_budget_splats, config.total_slabs(), config.slab_size_splats);
-
-    GS_DBG_INVARIANT(streaming_.active_chunks_.empty() && static_count_ == 0,
-                     "init_streaming: streaming_.active_chunks_ must be empty and static_count_ zeroed on fresh init");
-}
-
-void GsRenderer::unload_cloud(uint32_t chunk_id) {
-    if (!streaming_.streaming_initialized_) return;
-    // Verify the chunk actually exists before queuing — caller may
-    // double-unload during world-streamer churn. We don't mutate
-    // streaming_.active_chunks_ here; publish_pending_chunks does the actual
-    // removal (and the page_table/chunk_table writes) inside the
-    // current frame's command buffer so the GPU-side metadata update
-    // is properly ordered against in-flight reads.
-    auto it = std::find_if(streaming_.active_chunks_.begin(), streaming_.active_chunks_.end(),
-        [chunk_id](const GsStreamingSystem::ChunkState& c) { return c.handle.chunk_id == chunk_id; });
-    if (it == streaming_.active_chunks_.end()) return;
-
-    GsStreamingSystem::PendingChunkPublication p;
-    p.op = GsStreamingSystem::PendingChunkPublication::Op::Unload;
-    p.unload_chunk_id = chunk_id;
-    streaming_.pending_publications_.push_back(std::move(p));
-}
-
-void GsRenderer::clear_chunks(VkCommandBuffer drain_cmd) {
-    if (!streaming_.streaming_initialized_ || !initialized_) return;
-
-    // Wait for any in-flight transfers so we don't release slabs the GPU
-    // is still writing to. Scene transitions are heavy operations.
-    vkDeviceWaitIdle(device_);
-
-    // Drain any completion callbacks queued by transfers that finished
-    // during waitIdle. The dedicated transfer-family path needs a real
-    // command buffer to record acquire barriers; with VK_NULL_HANDLE
-    // poll_completions defers callbacks to the next frame, where they
-    // would later fire against a freshly-loaded scene's slab indices
-    // and corrupt state. Caller (Renderer::init_gs) provides
-    // `drain_cmd`; for the single-queue (Apple/fallback) path
-    // VK_NULL_HANDLE is also accepted because no acquire barriers
-    // need recording.
-    if (streaming_.transfer_queue_) streaming_.transfer_queue_->poll_completions(drain_cmd);
-
-    // poll_completions above can fire transfer-completion callbacks that
-    // enqueue new GsStreamingSystem::PendingChunkPublication entries referencing OLD-scene
-    // slabs. If we don't drain them here, the next poll_transfers (after
-    // the new scene has loaded) would publish stale page_table /
-    // chunk_table writes for slabs the new scene never owned —
-    // ghost-chunk metadata leaking across scene boundary. Same hazard
-    // for streaming_.deferred_slab_releases_: those handles' frame counters would
-    // tick past after we wipe everything, releasing slabs that belong
-    // to a freshly-checked-out new chunk.
-    //
-    // GPU is idle (vkDeviceWaitIdle above) so direct slab releases here
-    // are safe.
-    for (auto& p : streaming_.pending_publications_) {
-        // Op::Load owns slab handles not yet in streaming_.active_chunks_ — release
-        // them directly, otherwise they leak from the allocator.
-        // Op::Unload's handle is empty: the actual chunk handle is still
-        // in streaming_.active_chunks_, released by the loop further down.
-        if (p.op == GsStreamingSystem::PendingChunkPublication::Op::Load) {
-            streaming_.slab_allocator_->release(p.handle);
-        }
-    }
-    streaming_.pending_publications_.clear();
-
-    for (auto& dr : streaming_.deferred_slab_releases_) {
-        streaming_.slab_allocator_->release(dr.handle);
-    }
-    streaming_.deferred_slab_releases_.clear();
-
-    // Anything still in `streaming_.pending_loads_` had its `submit_with_handle`
-    // runs partially completed (or not at all) — those slab handles
-    // own slabs we never published into `streaming_.active_chunks_`. Release
-    // them manually so the allocator can reuse those indices.
-    for (auto& job : streaming_.pending_loads_) {
-        streaming_.slab_allocator_->release(job.slab_handle);
-    }
-    streaming_.pending_loads_.clear();
-
-    for (auto& chunk : streaming_.active_chunks_) streaming_.slab_allocator_->release(chunk.handle);
-    streaming_.active_chunks_.clear();
-    static_count_ = 0;
-    streaming_.total_active_splats_ = 0;
-    gaussian_count_ = 0;
-    dynamic_count_ = 0;
-    sort_done_once_ = false;
-    static_dirty_frames_remaining_ = kMaxFramesInFlight;
-
-    // Zero the dynamic SSBO so a future over-count of `dynamic_count_`
-    // can't surface old-scene gaussians as ghost geometry. memset (not
-    // vkCmdFillBuffer) because Buffer::create_storage omits TRANSFER_DST_BIT;
-    // the buffer is HOST_VISIBLE+MAPPED, and `vkDeviceWaitIdle` above
-    // guarantees the GPU is idle here.
-    if (resources_->dynamic_gaussian_ssbo.mapped() && max_dynamic_count_ > 0) {
-        std::memset(resources_->dynamic_gaussian_ssbo.mapped(), 0,
-                    static_cast<size_t>(max_dynamic_count_) * sizeof(GpuGaussian));
-    }
-
-    // Reset the static depth-sort tail. The previous scene's last frame
-    // left valid keys at indices [0, old_static_count_) in static_sort_a_/b_;
-    // those entries survive `static_count_ = 0` because the depth-sort
-    // shader only writes keys for [0, current_static_count_) each frame.
-    // Without this reset, stale keys sort to the front and the rasterizer
-    // will dereference their indices into `resources_->static_gaussian_ssbo` — which
-    // still holds the previous scene's data at those offsets — producing
-    // ghost geometry at the previous scene's world coordinates (the
-    // "green splats from the overworld visible when zoomed out in the
-    // dungeon" symptom). Same fix shape as 139f055b's chunk-Unload
-    // sentinel-fill, applied to the portal/scene-clear path.
-    auto fill_sort_sentinel = [](Buffer& buf, uint32_t sort_size) {
-        if (!buf.mapped() || sort_size == 0) return;
-        auto* sort = static_cast<SortEntry*>(buf.mapped());
-        for (uint32_t i = 0; i < sort_size; ++i) {
-            sort[i].key   = 0xFFFFFFFFu;
-            sort[i].index = 0;
-        }
-    };
-    // Per-frame: refill every slot. clear_chunks is called from the portal/
-    // scene-clear path after vkDeviceWaitIdle, so direct host writes to all
-    // slots are safe here.
-    for (uint32_t f = 0; f < kMaxFramesInFlight; ++f) {
-        fill_sort_sentinel(resources_->static_sort_as[f], static_sort_size_);
-        fill_sort_sentinel(resources_->static_sort_bs[f], static_sort_size_);
-    }
-
-    // Invalidate the slab-indirection metadata. `publish_pending_chunks`'s
-    // Unload path writes 0xFFFFFFFF sentinels to `resources_->page_table_ssbo` for
-    // each released slab + clears the chunk-table row, but `clear_chunks`
-    // releases slabs by calling `streaming_.slab_allocator_->release(...)` directly
-    // and bypasses that path entirely. The stale entries survive: when
-    // the new scene loads a smaller chunk set than the previous (e.g.
-    // dungeon takes 1 slab where overworld used 25), only the reused
-    // slabs' page-table entries get overwritten — the rest still point
-    // at offsets in `resources_->static_gaussian_ssbo` containing previous-scene
-    // geometry data (the streaming path never zeroes the unused tail).
-    // Anything in the rendering pipeline that walks the page/chunk
-    // tables fetches that stale data.
-    //
-    // Both buffers were created HOST_VISIBLE+TRANSFER_DST and are
-    // host-mapped (see init at line 851/858, which uses the same memset
-    // pattern). vkDeviceWaitIdle above guarantees the GPU is idle, so
-    // direct host writes are safe.
-    if (resources_->page_table_ssbo.mapped()) {
-        std::memset(resources_->page_table_ssbo.mapped(), 0xFF,
-                    static_cast<size_t>(streaming_.streaming_config_.total_slabs()) * sizeof(uint32_t));
-    }
-    if (resources_->chunk_table_ssbo.mapped()) {
-        std::memset(resources_->chunk_table_ssbo.mapped(), 0, 256 * 16);
-    }
-
-    // Reset the visibility counts so the first post-portal frame doesn't
-    // start by reading {static_visible, dynamic_visible, merged_visible}
-    // values left over from the previous scene's last frame.
-    // Phase 3: reset every per-frame slot since the next render will pick
-    // whichever slot frame_in_flight points at.
-    for (uint32_t f = 0; f < kMaxFramesInFlight; ++f) {
-        if (resources_->counts_ssbos[f].mapped()) {
-            auto* counts = static_cast<uint32_t*>(resources_->counts_ssbos[f].mapped());
-            counts[0] = 0;
-            counts[1] = 0;
-            counts[2] = 0;
-        }
-    }
-
-    // Zero the static splat data itself. Streaming-path uploads wrote
-    // individual chunks at slab offsets, leaving previous-scene geometry data
-    // scattered across the buffer up to `max_static_count_`. When the new
-    // scene loads, each new chunk's streaming write overwrites its slab —
-    // but every offset in `[new_count, max)` and every unused slab still
-    // holds previous-scene geometry data. If anything in the rendering
-    // pipeline reads those offsets (a path more subtle than either the
-    // consolidated sort buffer or the slab-indirection metadata, both of
-    // which we already invalidated above), the result is ghost geometry at
-    // the previous scene's world coordinates.
-    //
-    // Buffer is HOST_VISIBLE+MAPPED (Buffer::create_storage). vkDeviceWaitIdle
-    // above guarantees GPU is idle, so direct host writes are safe.
-    // ~max_static_count_ × 64 bytes — at 11M splats that's ~700 MB of
-    // memory bandwidth, ~3-5 ms on Apple Silicon's unified memory.
-    // Acceptable for the one-time portal cost, eliminates the entire
-    // class of stale-static-data ghost rendering.
-    if (resources_->static_gaussian_ssbo.mapped() && max_static_count_ > 0) {
-        std::memset(resources_->static_gaussian_ssbo.mapped(), 0,
-                    static_cast<size_t>(max_static_count_) * sizeof(GpuGaussian));
-    }
-
-    // Zero `projected_ssbo_`. This is the actual fix for the post-portal
-    // ghost geometry. Diagnostics confirmed the post-portal AABB is tight
-    // on the dungeon footprint and `pbd_tagged == 0`, yet the user still saw
-    // ghost overworld trees rendered at world coords like (351, _, 310) —
-    // the signature of PBD-transformed positions from the previous scene.
-    //
-    // Preprocess writes `projected_ssbo_[projected_offset, +static_count_)`
-    // each frame the static path is dirty, but the tail beyond that range
-    // keeps the previous scene's last-frame projections — including the
-    // overworld trees' PBD-transformed positions at far world coords. The
-    // merge / tile-bin / rasterize chain only loosely bounds its reads by
-    // `counts[0]`, so anything further along that picked up an index in
-    // the stale region read the previous scene's geometry.
-    //
-    // Buffer is HOST_VISIBLE+MAPPED, sized for max_static_count_ +
-    // max_dynamic_count_ × sizeof(ProjectedSplat) (48 bytes/entry).
-    // vkDeviceWaitIdle above guarantees GPU is idle.
-    // Phase 3: zero every per-frame slot since the next render will pick
-    // whichever slot frame_in_flight points at.
-    const size_t total_projected =
-        static_cast<size_t>(max_static_count_ + max_dynamic_count_);
-    if (total_projected > 0) {
-        for (uint32_t f = 0; f < kMaxFramesInFlight; ++f) {
-            if (resources_->projected_ssbos[f].mapped()) {
-                std::memset(resources_->projected_ssbos[f].mapped(), 0,
-                            total_projected * sizeof(ProjectedSplat));
-            }
-        }
-    }
-
-    // Reset the merged_sort tail to zero across all per-frame slots so the
-    // first post-portal frame's merge sees a clean output buffer.
-    const size_t merged_total =
-        static_cast<size_t>(max_static_count_ + max_dynamic_count_);
-    if (merged_total > 0) {
-        for (uint32_t f = 0; f < kMaxFramesInFlight; ++f) {
-            if (resources_->merged_sort_ssbos[f].mapped()) {
-                std::memset(resources_->merged_sort_ssbos[f].mapped(), 0,
-                            merged_total * sizeof(SortEntry));
-            }
-        }
-    }
-
-    // Ensure every per-frame slot's projected static head is refreshed
-    // by static_preprocess once. Phase 3's per-frame routing means each
-    // slot must run static_preprocess at least once after a scene clear.
-    static_dirty_frames_remaining_ = kMaxFramesInFlight;
-
-    GS_DBG_INVARIANT(streaming_.active_chunks_.empty() && static_count_ == 0,
-                     "clear_chunks: streaming_.active_chunks_ must be empty and static_count_ zeroed post-clear");
-}
-
-std::vector<TransferQueue::Handle> GsRenderer::load_cloud_async(GaussianCloud cloud) {
-    if (!streaming_.streaming_initialized_ || !streaming_.transfer_queue_) {
-        // Streaming-strict mode: init_streaming + create_transfer_queue must
-        // both be called before load_cloud_async. Reaching this branch means
-        // the caller violated the contract; surface it immediately.
-        std::fprintf(stderr,
-            "GS ERROR: load_cloud_async called before streaming was initialized "
-            "(streaming_.streaming_initialized_=%d, streaming_.transfer_queue_=%s). "
-            "Call init_streaming() and create_transfer_queue() first.\n",
-            static_cast<int>(streaming_.streaming_initialized_),
-            streaming_.transfer_queue_ ? "ok" : "null");
-        return {};
-    }
-    if (cloud.empty()) return {};
-
-    // Append-only semantics. The new chunk is checked out from the slab
-    // allocator and pushed onto `streaming_.active_chunks_` by the final completion
-    // callback — existing chunks are *not* released. Callers that need
-    // "replace previous scene" must explicitly call clear_chunks() before
-    // this (the initial demo load arrives on an empty `streaming_.active_chunks_`
-    // straight out of `init_streaming`).
-    //
-    // Multiple concurrent loads queue up on `streaming_.pending_loads_` instead of
-    // being rejected — WorldStreamer marks each chunk `LOADING` once
-    // and never retries, so a rejected request would stick forever.
-    const uint32_t sps = streaming_.streaming_config_.slab_size_splats;
-    const uint32_t splat_count = cloud.count();
-    const uint32_t slabs_needed = (splat_count + sps - 1) / sps;
-
-    GsStreamingSystem::PendingLoadJob job;
-    job.slab_handle = streaming_.slab_allocator_->checkout(slabs_needed);
-    job.splat_count = splat_count;
-    job.slabs_needed = slabs_needed;
-    job.slab_size_splats = sps;
-    job.handles.reserve(slabs_needed);
-    for (uint32_t s = 0; s < slabs_needed; ++s) {
-        job.handles.push_back(streaming_.transfer_queue_->reserve_handle());
-    }
-    job.cloud = std::move(cloud);
-
-    std::vector<TransferQueue::Handle> handles_for_caller = job.handles;
-    streaming_.pending_loads_.push_back(std::move(job));
-    return handles_for_caller;
-}
-
-void GsRenderer::poll_transfers(VkCommandBuffer frame_cmd, uint32_t frame_in_flight) {
-    if (!streaming_.transfer_queue_) return;
-    // Diagnostic: full poll path covers slab-upload submits, completion
-    // callback drains, deferred slab releases, and the metadata publish.
-    // If the beachball is in any of those paths, this fires.
-    ScopedStallTimer _t_poll{"GsRenderer::poll_transfers"};
-
-    // Drain queued slab uploads as long as the staging ring has space.
-    // We process the front job's slabs, then advance to the next job
-    // when a job is fully submitted. The ring naturally throttles
-    // multi-job uploads — when a slab can't fit, we break and resume
-    // next frame. Each job's completion callback writes its chunk to
-    // `streaming_.active_chunks_`, so multiple chunks can be in flight via the
-    // GPU fence without conflict.
-    const VkBuffer dest = resources_->static_gaussian_ssbo.buffer();
-    while (!streaming_.pending_loads_.empty()) {
-        auto& job = streaming_.pending_loads_.front();
-
-        // Submit any remaining slabs from this job.
-        bool ring_full = false;
-        while (job.next_slab < job.slabs_needed) {
-            const uint32_t s = job.next_slab;
-            const uint32_t physical_slab = job.slab_handle.slab_indices[s];
-            const uint32_t src_start = s * job.slab_size_splats;
-            const uint32_t src_end   = std::min(src_start + job.slab_size_splats, job.splat_count);
-            const uint32_t count     = src_end - src_start;
-            const uint64_t copy_size = static_cast<uint64_t>(count) * sizeof(GpuGaussian);
-
-            auto res = streaming_.transfer_queue_->reserve_staging(copy_size);
-            if (!res) { ring_full = true; break; }
-
-            const auto& gaussians = job.cloud.gaussians();
-            auto* dst = reinterpret_cast<GpuGaussian*>(res->host_ptr);
-            for (uint32_t i = 0; i < count; ++i) {
-                const auto& g = gaussians[src_start + i];
-                float bone_as_float;
-                uint32_t bone_idx = g.bone_index;
-                std::memcpy(&bone_as_float, &bone_idx, sizeof(float));
-                dst[i].pos_opacity = glm::vec4(g.position, g.opacity);
-                dst[i].scale_pad   = glm::vec4(g.scale, bone_as_float);
-                dst[i].rot         = glm::vec4(g.rotation.x, g.rotation.y, g.rotation.z, g.rotation.w);
-                dst[i].color_pad   = glm::vec4(g.color, g.emission);
-            }
-
-            const uint64_t dest_offset =
-                static_cast<uint64_t>(physical_slab) * job.slab_size_splats * sizeof(GpuGaussian);
-            streaming_.transfer_queue_->submit_with_handle(job.handles[s], *res, dest, dest_offset);
-            ++job.next_slab;
-        }
-
-        if (job.next_slab < job.slabs_needed) {
-            // Couldn't finish this job (ring full); break out so we
-            // try again next frame. Don't advance to the next job —
-            // each job's completion callback expects to fire AFTER
-            // the previous job's completion has already mutated
-            // `streaming_.active_chunks_` and `static_count_`, so we serialise
-            // job completions in order.
-            (void)ring_full;
-            break;
-        }
-
-        // Front job is fully submitted. Queue the completion marker —
-        // exactly once per job. The fence-retire callback only enqueues a
-        // GsStreamingSystem::PendingChunkPublication; the actual page_table / chunk_table
-        // writes happen later on the current frame's command buffer in
-        // publish_pending_chunks(). That serialises the metadata update
-        // through the GPU command stream so it can't tear under in-flight
-        // shader reads.
-        if (!job.completion_enqueued) {
-            job.completion_enqueued = true;
-            auto handle      = std::move(job.slab_handle);
-            const uint32_t splat_count  = job.splat_count;
-            const uint32_t slabs_needed = job.slabs_needed;
-            const uint32_t sps_local    = job.slab_size_splats;
-
-            streaming_.transfer_queue_->enqueue_completion(
-                [this, handle = std::move(handle), splat_count, slabs_needed, sps_local]() mutable {
-                    GsStreamingSystem::PendingChunkPublication p;
-                    p.op = GsStreamingSystem::PendingChunkPublication::Op::Load;
-                    p.handle = std::move(handle);
-                    p.splat_count = splat_count;
-                    p.slabs_needed = slabs_needed;
-                    p.slab_size_splats = sps_local;
-                    streaming_.pending_publications_.push_back(std::move(p));
-                });
-        }
-
-        // Done queuing this job — drop it from the deque. The completion
-        // lambda has already moved the slab handle into its own capture.
-        streaming_.pending_loads_.pop_front();
-    }
-
-    streaming_.transfer_queue_->poll_completions(frame_cmd);
-    publish_pending_chunks(frame_cmd, frame_in_flight);
-
-    // ── DIAG: streaming-state dump (PR #387 ghost investigation) ──
-    // Opt-in via env var GS_DIAG_STREAMING=1 (read once by
-    // gs::dbg::init_diag_registry() at VkInstance creation; cached in
-    // the Diag flag array thereafter). Prints to stderr each frame for
-    // the first 5 frames (initial state — what the user reported as the
-    // "initial spawn state ghost") then every 60 frames (~1s @ 60fps)
-    // thereafter. Reads HOST_VISIBLE+MAPPED buffers directly without
-    // vkDeviceWaitIdle: this is sampling, torn reads are acceptable for
-    // diagnostic output.
-    {
-        static const bool diag_enabled = ::gs::dbg::enabled(::gs::dbg::Diag::StreamingState);
-        if (diag_enabled && streaming_.streaming_initialized_) {
-            static uint64_t diag_frame = 0;
-            ++diag_frame;
-            const bool dump_now = (diag_frame <= 5) || (diag_frame % 60 == 0);
-            if (dump_now) {
-                diag_streaming_dump(diag_frame);
-            }
-        }
-    }
-}
-
-void GsRenderer::diag_streaming_dump(uint64_t frame) {
-    std::fprintf(stderr,
-        "[gs_diag] f=%llu static=%u dynamic=%u total_active=%u max_static=%u\n",
-        static_cast<unsigned long long>(frame),
-        static_count_, dynamic_count_, streaming_.total_active_splats_, max_static_count_);
-
-    // streaming_.active_chunks_ — what the engine THINKS is loaded.
-    std::fprintf(stderr, "[gs_diag]   active_chunks=%zu\n", streaming_.active_chunks_.size());
-    for (size_t i = 0; i < streaming_.active_chunks_.size(); ++i) {
-        const auto& c = streaming_.active_chunks_[i];
-        std::fprintf(stderr,
-            "[gs_diag]     [%zu] chunk_id=%u splats=%u page_offset=%u slabs=%zu\n",
-            i, c.handle.chunk_id, c.splat_count, c.page_table_offset,
-            c.handle.slab_indices.size());
-    }
-
-    // projected_ssbo_ tail scan: what's living BEYOND static_count_.
-    // If sort indirection is bounding correctly, the rasterizer should
-    // never reach these — but if real-looking projections sit here AND
-    // the ghost still renders, something downstream is reading past count.
-    if (resources_->projected_ssbos[0].mapped() && static_count_ < max_static_count_) {
-        const auto* p = static_cast<const ProjectedSplat*>(resources_->projected_ssbos[0].mapped());
-        const uint32_t scan_start = static_count_;
-        const uint32_t scan_end =
-            std::min<uint32_t>(static_count_ + 2048u, max_static_count_);
-        uint32_t non_zero = 0;
-        uint32_t real_looking = 0;  // radius>0 AND depth>0
-        std::fprintf(stderr,
-            "[gs_diag]   projected_ssbo_ tail scan [%u..%u):\n",
-            scan_start, scan_end);
-        for (uint32_t i = scan_start; i < scan_end; ++i) {
-            const auto& s = p[i];
-            const bool any_nz =
-                s.center.x != 0.0f || s.center.y != 0.0f ||
-                s.depth != 0.0f || s.radius != 0.0f ||
-                s.color.x != 0.0f || s.color.y != 0.0f ||
-                s.color.z != 0.0f || s.color.w != 0.0f;
-            if (any_nz) ++non_zero;
-            if (s.radius > 0.0f && s.depth > 0.0f) {
-                ++real_looking;
-                if (real_looking <= 5) {
-                    std::fprintf(stderr,
-                        "[gs_diag]     tail[%u] center=(%.2f,%.2f) depth=%.2f "
-                        "radius=%.2f color=(%.2f,%.2f,%.2f,%.2f)\n",
-                        i, s.center.x, s.center.y, s.depth, s.radius,
-                        s.color.x, s.color.y, s.color.z, s.color.w);
-                }
-            }
-        }
-        std::fprintf(stderr,
-            "[gs_diag]     summary: non_zero=%u real_looking=%u (in %u slots)\n",
-            non_zero, real_looking, scan_end - scan_start);
-    }
-
-    // merged_sort_ssbo_: indices the rasterizer WILL read, bounded by
-    // streaming_.total_active_splats_. If max_idx >= max_static + max_dynamic that's
-    // an out-of-bounds index — direct evidence of a bound bug.
-    if (resources_->merged_sort_ssbos[0].mapped() && streaming_.total_active_splats_ > 0) {
-        const auto* m = static_cast<const SortEntry*>(resources_->merged_sort_ssbos[0].mapped());
-        const uint32_t total_max = max_static_count_ + max_dynamic_count_;
-        const uint32_t merge_count = streaming_.total_active_splats_;
-        uint32_t max_idx = 0;
-        uint32_t idx_above_count = 0;     // index points beyond static_count_+dynamic_count_
-        uint32_t idx_above_capacity = 0;  // index points beyond capacity (real OOB)
-        for (uint32_t i = 0; i < merge_count; ++i) {
-            const uint32_t idx = m[i].index;
-            if (idx > max_idx) max_idx = idx;
-            if (idx >= static_count_ + dynamic_count_) ++idx_above_count;
-            if (idx >= total_max) ++idx_above_capacity;
-        }
-        std::fprintf(stderr,
-            "[gs_diag]   merged_sort: count=%u max_idx=%u above_count=%u above_capacity=%u\n",
-            merge_count, max_idx, idx_above_count, idx_above_capacity);
-    }
-
-    // static_sort_a_ tail invariant check: should be all key=0xFFFFFFFF
-    // beyond static_count_ (PR #387's whole purpose). Per-frame: inspect
-    // slot [0] — both slots hold the same data when invariants hold, so
-    // slot [0] is sufficient for a diagnostic.
-    if (resources_->static_sort_as[0].mapped() && static_count_ < static_sort_size_) {
-        const auto* s = static_cast<const SortEntry*>(resources_->static_sort_as[0].mapped());
-        const uint32_t scan_end = std::min<uint32_t>(static_count_ + 1024u, static_sort_size_);
-        uint32_t non_sentinel = 0;
-        uint32_t first_offender = UINT32_MAX;
-        for (uint32_t i = static_count_; i < scan_end; ++i) {
-            if (s[i].key != 0xFFFFFFFFu) {
-                ++non_sentinel;
-                if (first_offender == UINT32_MAX) first_offender = i;
-            }
-        }
-        std::fprintf(stderr,
-            "[gs_diag]   resources_->static_sort_as[0] tail [%u..%u): non_sentinel=%u first_offender=%s\n",
-            static_count_, scan_end, non_sentinel,
-            first_offender == UINT32_MAX
-                ? "none"
-                : (std::string("idx=") + std::to_string(first_offender)).c_str());
-    }
-    std::fflush(stderr);
-}
-
-void GsRenderer::publish_pending_chunks(VkCommandBuffer cmd, uint32_t frame_in_flight) {
-    // Step 1: tick the deferred-release queue *before* doing anything that
-    // might check out new slabs. Slabs whose hold-time has expired are
-    // returned to the allocator now so they're available for incoming load
-    // publications below. Slabs queued THIS call (from an Unload op below)
-    // start their countdown on the next poll_transfers tick.
-    if (!streaming_.deferred_slab_releases_.empty()) {
-        auto it = streaming_.deferred_slab_releases_.begin();
-        while (it != streaming_.deferred_slab_releases_.end()) {
-            if (it->frames_remaining == 0) {
-                streaming_.slab_allocator_->release(it->handle);
-                it = streaming_.deferred_slab_releases_.erase(it);
-            } else {
-                --it->frames_remaining;
-                ++it;
-            }
-        }
-    }
-
-    if (streaming_.pending_publications_.empty()) return;
-    if (cmd == VK_NULL_HANDLE) return;
-
-    // Snapshot the count BEFORE this batch's Unloads shrink it. Used at the
-    // tail of this function to sentinel-fill static_sort_a_/b_'s
-    // [new_count, prev_count) window via vkCmdFillBuffer — without that fill,
-    // real depth keys from the prior frame's sort survive in the now-out-of-
-    // range tail and leak into the next frame's global radix sort, producing
-    // 1-frame ghost splats while walking.
-    const uint32_t prev_static_count = static_count_;
-
-    bool any_published = false;
-    bool chunk_table_needs_full_rebuild = false;
-
-    while (!streaming_.pending_publications_.empty()) {
-        GsStreamingSystem::PendingChunkPublication p = std::move(streaming_.pending_publications_.front());
-        streaming_.pending_publications_.pop_front();
-
-        if (p.op == GsStreamingSystem::PendingChunkPublication::Op::Load) {
-            // === LOAD ===
-            // Page table offset for this chunk = sum of slab counts of all
-            // already-active chunks. Computed sequentially as we publish.
-            uint32_t page_table_offset = 0;
-            for (const auto& chunk : streaming_.active_chunks_) {
-                page_table_offset += static_cast<uint32_t>(chunk.handle.slab_indices.size());
-            }
-
-            // page_table entries: one uint32 (the physical slab index) per
-            // slab owned by this chunk. vkCmdUpdateBuffer is bounded to
-            // 65536 bytes; a typical chunk has <=100 slabs (400 bytes).
-            if (!p.handle.slab_indices.empty()) {
-                const VkDeviceSize pt_offset_bytes =
-                    static_cast<VkDeviceSize>(page_table_offset) * sizeof(uint32_t);
-                const VkDeviceSize pt_size_bytes =
-                    static_cast<VkDeviceSize>(p.handle.slab_indices.size()) * sizeof(uint32_t);
-                if (pt_size_bytes <= 65536) {
-                    vkCmdUpdateBuffer(cmd, resources_->page_table_ssbo.buffer(),
-                                      pt_offset_bytes, pt_size_bytes,
-                                      p.handle.slab_indices.data());
-                } else {
-                    std::fprintf(stderr,
-                        "[gs_renderer] publish: page_table update %llu bytes "
-                        "exceeds vkCmdUpdateBuffer 65536-byte limit; chunk has "
-                        "%zu slabs\n",
-                        static_cast<unsigned long long>(pt_size_bytes),
-                        p.handle.slab_indices.size());
-                }
-            }
-
-            // chunk_table entry: 16 bytes at index `chunk_idx * 16`. If a
-            // sibling Unload publication runs after this one, that Unload
-            // path rewrites the full table (chunk indices shift), so this
-            // single-entry write may be overwritten — that's the correct
-            // outcome. Either way, the recorded vkCmdUpdateBuffers run in
-            // recorded order on the GPU, so the final state matches CPU
-            // streaming_.active_chunks_.
-            const uint32_t chunk_idx = static_cast<uint32_t>(streaming_.active_chunks_.size());
-            const uint32_t last_slab_splats =
-                p.splat_count - (p.slabs_needed - 1) * p.slab_size_splats;
-            const uint32_t entry[4] = {page_table_offset, p.slabs_needed,
-                                        last_slab_splats, p.splat_count};
-            vkCmdUpdateBuffer(cmd, resources_->chunk_table_ssbo.buffer(),
-                              static_cast<VkDeviceSize>(chunk_idx) * 16,
-                              sizeof(entry), entry);
-
-            GsStreamingSystem::ChunkState cs;
-            cs.status = GsStreamingSystem::ChunkState::Status::ACTIVE;
-            cs.handle = std::move(p.handle);
-            cs.page_table_offset = page_table_offset;
-            cs.splat_count = p.splat_count;
-            streaming_.active_chunks_.push_back(std::move(cs));
-
-            std::fprintf(stderr,
-                "GS: Async load complete — %u splats in %u slabs (total active: %u)\n",
-                p.splat_count, p.slabs_needed,
-                [this]() { uint32_t s = 0; for (auto& c : streaming_.active_chunks_) s += c.splat_count; return s; }());
-
-        } else {
-            // === UNLOAD ===
-            auto it = std::find_if(streaming_.active_chunks_.begin(), streaming_.active_chunks_.end(),
-                [&](const GsStreamingSystem::ChunkState& c) { return c.handle.chunk_id == p.unload_chunk_id; });
-            if (it == streaming_.active_chunks_.end()) {
-                // The chunk was already gone (double-unload races, or a
-                // clear_chunks ran between unload_cloud() and publish).
-                // Nothing to write; nothing to release.
-                continue;
-            }
-
-            // Step 1: invalidate this chunk's page_table entries. Write
-            // 0xFFFFFFFF (the configured sentinel) for every slab the chunk
-            // owned at `it->page_table_offset`. The GPU dispatches recorded
-            // later in this same cmd buffer (post-barrier) read these
-            // sentinel entries and skip the slot. The PRIOR frame, which
-            // saw the old entries, has already retired (we waited on its
-            // fence) — so no in-flight read of the old slabs persists past
-            // this cmd buffer's submission.
-            const uint32_t nslabs = static_cast<uint32_t>(it->handle.slab_indices.size());
-            if (nslabs > 0) {
-                std::vector<uint32_t> sentinel(nslabs, 0xFFFFFFFFu);
-                const VkDeviceSize pt_offset_bytes =
-                    static_cast<VkDeviceSize>(it->page_table_offset) * sizeof(uint32_t);
-                const VkDeviceSize pt_size_bytes =
-                    static_cast<VkDeviceSize>(nslabs) * sizeof(uint32_t);
-                if (pt_size_bytes <= 65536) {
-                    vkCmdUpdateBuffer(cmd, resources_->page_table_ssbo.buffer(),
-                                      pt_offset_bytes, pt_size_bytes, sentinel.data());
-                } else {
-                    std::fprintf(stderr,
-                        "[gs_renderer] publish: unload page_table sentinel %llu bytes "
-                        "exceeds vkCmdUpdateBuffer 65536-byte limit\n",
-                        static_cast<unsigned long long>(pt_size_bytes));
-                }
-            }
-
-            // Step 2: hand the slab handle to the deferred-release queue.
-            // It survives at least kMaxFramesInFlight ticks of poll_transfers
-            // before the allocator gets it back, so a concurrent Load
-            // publication can't claim these physical slabs and overwrite
-            // them while the prior frame's GPU read is still in flight.
-            GsStreamingSystem::DeferredSlabRelease dr;
-            dr.handle = std::move(it->handle);
-            dr.frames_remaining = kMaxFramesInFlight + 1;
-            streaming_.deferred_slab_releases_.push_back(std::move(dr));
-
-            // Step 3: erase from streaming_.active_chunks_. Other chunks' indices
-            // shift, so chunk_table needs a full rewrite below.
-            streaming_.active_chunks_.erase(it);
-            chunk_table_needs_full_rebuild = true;
-
-            // Step 4: flag the static sort buffers as needing a sentinel-
-            // tail reinit. This unload shrinks static_count_, so entries
-            // [new_count, old_count) in static_sort_a_/b_ now hold stale
-            // REAL depth keys from the prior frame's sort. Without a
-            // reinit they'd participate in the next preprocess+sort+merge
-            // as legitimate elements (their keys aren't 0xFFFFFFFF
-            // sentinels), corrupting the merged-sort output. The GPU fill
-            // happens below in the any_published block via vkCmdFillBuffer.
-        }
-
-        any_published = true;
-    }
-
-    // If any unload happened, chunk indices in streaming_.active_chunks_ shifted, so
-    // the chunk_table on the GPU now references stale data. Rewrite the
-    // valid prefix and zero the tail. 256 entries × 16 B = 4 KiB — fits
-    // vkCmdUpdateBuffer's 65536-byte limit easily.
-    if (chunk_table_needs_full_rebuild) {
-        std::array<uint32_t, 256 * 4> ct_data{};  // zero-initialised
-        const uint32_t sps = streaming_.streaming_config_.slab_size_splats;
-        for (size_t i = 0; i < streaming_.active_chunks_.size(); ++i) {
-            const auto& c = streaming_.active_chunks_[i];
-            const uint32_t cn = static_cast<uint32_t>(c.handle.slab_indices.size());
-            const uint32_t last_slab_splats = c.splat_count - (cn - 1) * sps;
-            ct_data[i * 4 + 0] = c.page_table_offset;
-            ct_data[i * 4 + 1] = cn;
-            ct_data[i * 4 + 2] = last_slab_splats;
-            ct_data[i * 4 + 3] = c.splat_count;
-        }
-        vkCmdUpdateBuffer(cmd, resources_->chunk_table_ssbo.buffer(), 0,
-                          static_cast<VkDeviceSize>(ct_data.size()) * sizeof(uint32_t),
-                          ct_data.data());
-    }
-
-    if (any_published) {
-        // Recompute counts on the CPU side in the same step so the next
-        // frame's render() sees a consistent {static_count_, page_table,
-        // chunk_table} triple. The GPU reads the new metadata only after
-        // the barrier below, so a graphics dispatch recorded *later* in
-        // this same cmd buffer will see fresh data.
-        static_count_ = 0;
-        for (const auto& c : streaming_.active_chunks_) static_count_ += c.splat_count;
-        streaming_.total_active_splats_ = static_count_;
-        gaussian_count_ = static_count_;
-        static_dirty_frames_remaining_ = kMaxFramesInFlight;
-
-        // Sentinel-fill the static_sort_a_/b_ delta window when this batch
-        // shrunk static_count_. The depth sort each frame writes keys for
-        // [0, static_count_), so entries beyond static_count_ would remain
-        // valid only if pre-filled with key=0xFFFFFFFF. After an Unload,
-        // [new_count, prev_count) holds REAL depth keys from the prior
-        // frame's sort — those would otherwise participate in the next
-        // global radix sort with valid `index` fields, leak into merge
-        // output, and render as ghost splats. Surgical fill: only the
-        // delta window, not the full max-static tail (avoids 88 MB worst-
-        // case bandwidth hit). Skipped on Load-only batches (count grew or
-        // stayed equal, no stale keys introduced).
-        if (static_count_ < prev_static_count) {
-            const VkDeviceSize entry_sz = sizeof(SortEntry);  // 8 bytes
-            const VkDeviceSize fill_offset =
-                static_cast<VkDeviceSize>(static_count_) * entry_sz;
-            const VkDeviceSize fill_size =
-                static_cast<VkDeviceSize>(prev_static_count - static_count_) * entry_sz;
-            // vkCmdFillBuffer fills with one uint32 pattern repeated, so
-            // each 8-byte SortEntry becomes {key=0xFFFFFFFF, index=0xFFFFFFFF}.
-            // The 0xFFFFFFFF key sorts to the tail; the index is never read
-            // (entry won't survive into merge's [0, static_count_) window).
-            // Per-frame: only fill THIS slot — the caller has waited on its
-            // in-flight fence. Other slots may still be GPU-active on their
-            // own cmdbufs; writing them here would race those reads.
-            // Mark the other slots dirty so render() refills them at the
-            // top of their next record (after their fence has been waited).
-            vkCmdFillBuffer(cmd, resources_->static_sort_as[frame_in_flight].buffer(),
-                            fill_offset, fill_size, 0xFFFFFFFFu);
-            vkCmdFillBuffer(cmd, resources_->static_sort_bs[frame_in_flight].buffer(),
-                            fill_offset, fill_size, 0xFFFFFFFFu);
-            for (uint32_t f = 0; f < kMaxFramesInFlight; ++f) {
-                if (f != frame_in_flight) {
-                    static_sort_tail_dirty_per_slot_[f] = true;
-                }
-            }
-        }
-
-        // Single barrier covering both metadata buffers AND the sort-tail
-        // fill: TRANSFER_WRITE (vkCmdUpdateBuffer + vkCmdFillBuffer share
-        // the TRANSFER stage) -> SHADER_READ. Without this, subsequent
-        // compute dispatches in the same cmd buffer could read with the
-        // writes still in flight.
-        const bool sort_filled = (static_count_ < prev_static_count);
-        // 2 metadata buffers + 2 sort buffers (current slot only — other
-        // slots are barriered separately at the start of their render()
-        // record, when the deferred dirty fill is emitted).
-        VkBufferMemoryBarrier barriers[4]{};
-        uint32_t nb = 0;
-        auto add = [&](VkBuffer b) {
-            barriers[nb].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-            barriers[nb].srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-            barriers[nb].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-            barriers[nb].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-            barriers[nb].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-            barriers[nb].buffer = b;
-            barriers[nb].offset = 0;
-            barriers[nb].size = VK_WHOLE_SIZE;
-            ++nb;
-        };
-        add(resources_->page_table_ssbo.buffer());
-        add(resources_->chunk_table_ssbo.buffer());
-        if (sort_filled) {
-            add(resources_->static_sort_as[frame_in_flight].buffer());
-            add(resources_->static_sort_bs[frame_in_flight].buffer());
-        }
-
-        vkCmdPipelineBarrier(cmd,
-            VK_PIPELINE_STAGE_TRANSFER_BIT,
-            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-            0, 0, nullptr, nb, barriers, 0, nullptr);
-    }
-
-    // PR #387 invariant: CPU-side static_count_ must always equal the sum
-    // of splat counts across all active chunks. Drift between these two
-    // means a Load/Unload codepath updated one but not the other, and
-    // every subsequent frame's render() reads a corrupt count — the kind
-    // of bug that took two weeks of GPU-side debugging to trace last time.
-    GS_DBG_INVARIANT(
-        [&]{ uint32_t s = 0; for (const auto& c : streaming_.active_chunks_) s += c.splat_count; return s; }() == static_count_,
-        "publish_pending_chunks: static_count_ drift vs sum(active_chunks.splat_count)");
 }
 
 
@@ -2323,11 +1442,11 @@ static void init_dynamic_sort_buf(Buffer& buf, uint32_t sort_size, uint32_t vali
 // persistent-mapped vfx_buffer.
 
 void GsRenderer::set_persistent_dynamics(const Gaussian* data, uint32_t count) {
-    if (count > max_dynamic_count_) {
+    if (count > streaming_.max_dynamic_count()) {
         std::fprintf(stderr,
             "[gs_renderer] set_persistent_dynamics: count=%u exceeds max_dynamic_count=%u; truncating\n",
-            count, max_dynamic_count_);
-        count = max_dynamic_count_;
+            count, streaming_.max_dynamic_count());
+        count = streaming_.max_dynamic_count();
     }
     persistent_dyn_count_ = count;
     dynamic_count_ = count;  // transient reset; next update_dynamic_gaussians extends it
@@ -2346,8 +1465,8 @@ void GsRenderer::set_persistent_dynamics(const Gaussian* data, uint32_t count) {
     // active slot via vkCmdFillBuffer, but other slots inherit this init
     // until their first frame uses them.
     for (uint32_t f = 0; f < kMaxFramesInFlight; ++f) {
-        init_dynamic_sort_buf(resources_->dynamic_sort_as[f], dynamic_sort_size_, count);
-        init_dynamic_sort_buf(resources_->dynamic_sort_bs[f], dynamic_sort_size_, count);
+        init_dynamic_sort_buf(resources_->dynamic_sort_as[f], streaming_.dynamic_sort_size(), count);
+        init_dynamic_sort_buf(resources_->dynamic_sort_bs[f], streaming_.dynamic_sort_size(), count);
     }
 
     std::fprintf(stderr,
@@ -2364,11 +1483,11 @@ void GsRenderer::update_dynamic_gaussians(const Gaussian* data, uint32_t count,
     // [0, persistent_dyn_count_).
     const uint32_t fixed_prefix = persistent_dyn_count_ + gpu_prefix;
     const uint32_t total = fixed_prefix + count;
-    if (total > max_dynamic_count_) {
+    if (total > streaming_.max_dynamic_count()) {
         // Cap the CPU portion so total fits; gpu_prefix is GPU-controlled
         // and can't be truncated here.
-        count = (max_dynamic_count_ > fixed_prefix)
-            ? max_dynamic_count_ - fixed_prefix : 0;
+        count = (streaming_.max_dynamic_count() > fixed_prefix)
+            ? streaming_.max_dynamic_count() - fixed_prefix : 0;
     }
     dynamic_count_ = fixed_prefix + count;
 
@@ -2391,64 +1510,6 @@ void GsRenderer::update_dynamic_gaussians(const Gaussian* data, uint32_t count,
 }
 
 
-void GsRenderer::update_active_gaussians(const Gaussian* data, uint32_t count) {
-    if (count == 0 || count > max_gaussian_count_) return;
-
-    sort_done_once_ = false;
-    gaussian_count_ = count;
-
-    // Stage in local buffer, then memcpy to mapped memory (avoids -O3 reordering)
-    std::vector<GpuGaussian> staging(count);
-    for (uint32_t i = 0; i < count; ++i) {
-        float bone_f;
-        uint32_t bi = data[i].bone_index;
-        std::memcpy(&bone_f, &bi, sizeof(float));
-        staging[i].pos_opacity = glm::vec4(data[i].position, data[i].opacity);
-        staging[i].scale_pad = glm::vec4(data[i].scale, bone_f);
-        staging[i].rot = glm::vec4(data[i].rotation.x, data[i].rotation.y,
-                                    data[i].rotation.z, data[i].rotation.w);
-        staging[i].color_pad = glm::vec4(data[i].color, data[i].emission);
-    }
-    std::memcpy(resources_->gaussian_ssbo.mapped(), staging.data(), count * sizeof(GpuGaussian));
-
-    // Reinitialize both sort buffers via staging
-    auto init_sort_buf = [&](Buffer& buf) {
-        std::vector<SortEntry> staging_sort(sort_size_);
-        for (uint32_t i = 0; i < sort_size_; ++i) {
-            staging_sort[i].key = 0xFFFFFFFF;
-            staging_sort[i].index = i < gaussian_count_ ? i : 0;
-        }
-        std::memcpy(buf.mapped(), staging_sort.data(), sort_size_ * sizeof(SortEntry));
-    };
-    // Phase 3: init every per-frame slot. The legacy sort path consumes these.
-    for (uint32_t f = 0; f < kMaxFramesInFlight; ++f) {
-        init_sort_buf(resources_->sort_keys_ssbos[f]);
-        init_sort_buf(resources_->sort_b_ssbos[f]);
-    }
-}
-
-void GsRenderer::update_gaussian_data(const Gaussian* data, uint32_t count) {
-    if (count == 0 || count > max_gaussian_count_) return;
-
-    gaussian_count_ = count;
-
-    // Stage in local buffer, then memcpy to mapped memory (avoids -O3 reordering)
-    std::vector<GpuGaussian> staging(count);
-    for (uint32_t i = 0; i < count; ++i) {
-        float bone_f;
-        uint32_t bi = data[i].bone_index;
-        std::memcpy(&bone_f, &bi, sizeof(float));
-        staging[i].pos_opacity = glm::vec4(data[i].position, data[i].opacity);
-        staging[i].scale_pad = glm::vec4(data[i].scale, bone_f);
-        staging[i].rot = glm::vec4(data[i].rotation.x, data[i].rotation.y,
-                                    data[i].rotation.z, data[i].rotation.w);
-        staging[i].color_pad = glm::vec4(data[i].color, data[i].emission);
-    }
-    std::memcpy(resources_->gaussian_ssbo.mapped(), staging.data(), count * sizeof(GpuGaussian));
-    // Sort keys are NOT reset — preprocess shader will recompute depth keys,
-    // and the radix sort will re-sort naturally without losing convergence.
-}
-
 void GsRenderer::set_render_state(RenderState* rs) noexcept {
     if (render_state_ == rs) return;
     render_state_ = rs;
@@ -2456,7 +1517,7 @@ void GsRenderer::set_render_state(RenderState* rs) noexcept {
     // per-frame buffers. Only re-run if streaming is initialised — pre-init
     // descriptors haven't been written yet, and init_streaming will call
     // update_descriptors itself when it runs.
-    if (streaming_.streaming_initialized_) {
+    if (streaming_.initialized()) {
         update_descriptors();
     }
     // Phase 4c-vfx: bind compose_sets_'s src (vfx_buffer) + dst
@@ -2726,7 +1787,7 @@ void GsRenderer::resize_output(uint32_t width, uint32_t height) {
     // Descriptors hold raw VkImageView handles into the just-destroyed
     // resources_->output_views/resources_->depth_views/resources_->processed_views arrays. They must be
     // refreshed against the new views before any GS dispatch, regardless
-    // of whether splats have been uploaded yet — gaussian_count_ > 0
+    // of whether splats have been uploaded yet — streaming_.gaussian_count() > 0
     // gates whether the resulting frame is meaningful, not whether the
     // descriptor handles are valid. (Without this, the first dispatch
     // after a resize-before-load reports VkImageView 0x0 and the slot's
@@ -2736,7 +1797,7 @@ void GsRenderer::resize_output(uint32_t width, uint32_t height) {
     // update_descriptors has its own internal guard for the static/dynamic
     // split sets that early-returns when split buffers aren't allocated
     // yet (pre-init_streaming).
-    if (streaming_.streaming_initialized_) {
+    if (streaming_.initialized()) {
         update_descriptors();
     }
 }
@@ -2812,7 +1873,7 @@ void GsRenderer::init_output_layouts(VkCommandBuffer cmd) {
 
 void GsRenderer::render(VkCommandBuffer cmd, uint32_t frame_in_flight,
                         const glm::mat4& view, const glm::mat4& proj) {
-    if (gaussian_count_ == 0 && static_count_ == 0 && dynamic_count_ == 0) return;
+    if (streaming_.gaussian_count() == 0 && streaming_.static_count() == 0 && dynamic_count_ == 0) return;
     if (frame_in_flight >= kMaxFramesInFlight) {
         std::fprintf(stderr, "[gs_renderer] render(): frame_in_flight=%u out of range\n",
                      frame_in_flight);
@@ -2835,7 +1896,7 @@ void GsRenderer::render(VkCommandBuffer cmd, uint32_t frame_in_flight,
     uniforms.proj = proj;
     uniforms.inv_view = glm::inverse(view);
     uniforms.inv_proj = glm::inverse(proj);
-    uniforms.params = glm::uvec4(width, height, gaussian_count_, sort_size_);
+    uniforms.params = glm::uvec4(width, height, streaming_.gaussian_count(), streaming_.sort_size());
     uniforms.shadow_box = glm::vec4(shadow_box_margin_, shadow_box_cone_cos_,
                                      static_cast<float>(num_sort_passes_), scale_multiplier_);
     uniforms.cone_dir = glm::vec4(shadow_box_cone_dir_, explode_t_);
@@ -2875,23 +1936,23 @@ void GsRenderer::render(VkCommandBuffer cmd, uint32_t frame_in_flight,
     // Deferred static_sort tail fill (Codex P1 round 2).
     //
     // publish_pending_chunks only touches its own fenced slot when an Unload
-    // shrinks static_count_; it marks the OTHER slots dirty for lazy refill
+    // shrinks streaming_.static_count(); it marks the OTHER slots dirty for lazy refill
     // here. By the time render() runs for `frame_in_flight`, this slot's
     // in-flight fence has been waited on, so writing resources_->static_sort_as/bs_
     // [frame_in_flight] is race-free.
     //
-    // Conservative fill: zero out the full tail [static_count_, static_sort_size_)
+    // Conservative fill: zero out the full tail [streaming_.static_count(), streaming_.static_sort_size())
     // rather than tracking per-event delta windows. Multiple Unloads can
     // accumulate between two reuses of a slot; the over-fill is correctness-
     // critical and runs only when a slot was actually marked dirty (rare,
     // chunk-transition / scene-clear events).
-    if (static_sort_tail_dirty_per_slot_[frame_in_flight] &&
-        static_count_ < static_sort_size_) {
+    if (streaming_.is_static_tail_dirty(frame_in_flight) &&
+        streaming_.static_count() < streaming_.static_sort_size()) {
         const VkDeviceSize entry_sz = sizeof(SortEntry);
         const VkDeviceSize fill_offset =
-            static_cast<VkDeviceSize>(static_count_) * entry_sz;
+            static_cast<VkDeviceSize>(streaming_.static_count()) * entry_sz;
         const VkDeviceSize fill_size =
-            static_cast<VkDeviceSize>(static_sort_size_ - static_count_) * entry_sz;
+            static_cast<VkDeviceSize>(streaming_.static_sort_size() - streaming_.static_count()) * entry_sz;
         vkCmdFillBuffer(cmd, resources_->static_sort_as[frame_in_flight].buffer(),
                         fill_offset, fill_size, 0xFFFFFFFFu);
         vkCmdFillBuffer(cmd, resources_->static_sort_bs[frame_in_flight].buffer(),
@@ -2913,7 +1974,7 @@ void GsRenderer::render(VkCommandBuffer cmd, uint32_t frame_in_flight,
             VK_PIPELINE_STAGE_TRANSFER_BIT,
             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
             0, 0, nullptr, 2, sort_barriers, 0, nullptr);
-        static_sort_tail_dirty_per_slot_[frame_in_flight] = false;
+        streaming_.clear_static_tail_dirty(frame_in_flight);
     }
 
     // Read back GPU timestamps from THIS slot's PREVIOUS write (the renderer
@@ -2954,7 +2015,7 @@ void GsRenderer::render(VkCommandBuffer cmd, uint32_t frame_in_flight,
             GS_LOG_FRAME("[gs_render/wd/WAIT_SLOW] wait_ms={:.1f} prev_depth={:.1f}ms prev_tile={:.1f}ms prev_raster={:.1f}ms "
                          "static={} dyn={} total={}",
                          wait_ms, prev_depth_ms, prev_tile_ms, prev_raster_ms,
-                         static_count_, dynamic_count_, gaussian_count_);
+                         streaming_.static_count(), dynamic_count_, streaming_.gaussian_count());
         }
 #endif
         if (ts_result == VK_SUCCESS && ts[5] > ts[4] && ts[3] > ts[2] && ts[1] > ts[0]) {
@@ -3088,7 +2149,7 @@ void GsRenderer::render(VkCommandBuffer cmd, uint32_t frame_in_flight,
             // vkCmdFillBuffer requires offset/size to be multiples of 4 (satisfied)
             // Phase 3: writes go to frame_in_flight's per-frame slot.
             const bool static_dirty_this_frame =
-                static_dirty_frames_remaining_ > 0 && static_count_ > 0;
+                streaming_.static_dirty() && streaming_.static_count() > 0;
             if (static_dirty_this_frame) {
                 // Reset all 3 counts (static + dynamic + merged)
                 vkCmdFillBuffer(cmd, resources_->counts_ssbos[frame_in_flight].buffer(), 0, 12, 0);
@@ -3119,7 +2180,7 @@ void GsRenderer::render(VkCommandBuffer cmd, uint32_t frame_in_flight,
             // Phase 3: fill frame_in_flight's per-frame slot.
             if (dynamic_count_ > 0 && resources_->dynamic_sort_as[frame_in_flight].buffer() && resources_->dynamic_sort_bs[frame_in_flight].buffer()) {
                 const VkDeviceSize dyn_sort_bytes =
-                    static_cast<VkDeviceSize>(dynamic_sort_size_) * sizeof(SortEntry);
+                    static_cast<VkDeviceSize>(streaming_.dynamic_sort_size()) * sizeof(SortEntry);
                 vkCmdFillBuffer(cmd, resources_->dynamic_sort_as[frame_in_flight].buffer(), 0, dyn_sort_bytes, 0xFFFFFFFFu);
                 vkCmdFillBuffer(cmd, resources_->dynamic_sort_bs[frame_in_flight].buffer(), 0, dyn_sort_bytes, 0xFFFFFFFFu);
             }
@@ -3149,7 +2210,7 @@ void GsRenderer::render(VkCommandBuffer cmd, uint32_t frame_in_flight,
                     // Phase 3: bind frame_in_flight's per-frame slot.
                     vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
                                             preprocess_pipeline_layout_, 0, 1, &dynamic_preprocess_sets_[frame_in_flight], 0, nullptr);
-                    GsPreprocessPush dyn_push{max_static_count_, dynamic_count_, 1};
+                    GsPreprocessPush dyn_push{streaming_.max_static_count(), dynamic_count_, 1};
                     vkCmdPushConstants(cmd, preprocess_pipeline_layout_, VK_SHADER_STAGE_COMPUTE_BIT,
                                        0, sizeof(GsPreprocessPush), &dyn_push);
                     vkCmdDispatch(cmd, (dynamic_count_ + 255) / 256, 1, 1);
@@ -3164,7 +2225,7 @@ void GsRenderer::render(VkCommandBuffer cmd, uint32_t frame_in_flight,
             // === Phase 2: Static preprocess + sort (only when static_dirty_) ===
             // Phase 3: static_dirty_frames_remaining_ tracks per-frame slots
             // that still need a refresh after the last static mutation.
-            if (static_dirty_frames_remaining_ > 0 && static_count_ > 0) {
+            if (streaming_.static_dirty() && streaming_.static_count() > 0) {
                 GS_LABEL(cmd, "Static");
                 {
                     GS_LABEL(cmd, "Preprocess");
@@ -3174,10 +2235,10 @@ void GsRenderer::render(VkCommandBuffer cmd, uint32_t frame_in_flight,
                     // dirty cycle.
                     vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
                                             preprocess_pipeline_layout_, 0, 1, &static_preprocess_sets_[frame_in_flight], 0, nullptr);
-                    GsPreprocessPush stat_push{0, static_count_, 0};
+                    GsPreprocessPush stat_push{0, streaming_.static_count(), 0};
                     vkCmdPushConstants(cmd, preprocess_pipeline_layout_, VK_SHADER_STAGE_COMPUTE_BIT,
                                        0, sizeof(GsPreprocessPush), &stat_push);
-                    vkCmdDispatch(cmd, (static_count_ + 255) / 256, 1, 1);
+                    vkCmdDispatch(cmd, (streaming_.static_count() + 255) / 256, 1, 1);
                 }
 
                 insert_compute_barrier(cmd);
@@ -3185,14 +2246,14 @@ void GsRenderer::render(VkCommandBuffer cmd, uint32_t frame_in_flight,
                 // Sort static (Onesweep) — Phase 5c: delegated to GsSortSystem.
                 sort_.dispatch_depth_static(cmd, frame_in_flight);
 
-                static_dirty_frames_remaining_--;
+                streaming_.tick_static_dirty();
             }
 
             // === Phase 3: Merge (every frame) — Phase 5c: delegated to GsSortSystem. ===
             // Merge uses actual visible counts from counts SSBO (written by preprocess shaders)
             // Thread 0 computes merged_visible_count = static_count + dynamic_count.
             {
-                uint32_t total_upper = static_sort_size_ + dynamic_sort_size_;
+                uint32_t total_upper = streaming_.static_sort_size() + streaming_.dynamic_sort_size();
                 sort_.dispatch_merge(cmd, frame_in_flight, total_upper);
             }
 
@@ -3331,29 +2392,21 @@ void GsRenderer::shutdown(VmaAllocator allocator) {
     post_.shutdown();
     sort_.shutdown();
     tile_.shutdown();
-    // Phase 5e-1: streaming_.shutdown() releases transfer_queue_ +
-    // slab_allocator_ + the deques. The existing clear-up of streaming
-    // resources (resources_->page_table_ssbo, etc.) lower in this
-    // function still runs because those buffers live in
-    // GsResourceManager, not in the streaming system.
+    // Phase 5e-2: GsStreamingSystem owns the full streaming subsystem
+    // (transfer queue cancel + shutdown, slab allocator, active chunks,
+    // pending deques, streaming_initialized_, sizing scalars, dirty flags).
+    // Run streaming_.shutdown() FIRST: TransferQueue::shutdown() calls
+    // vkDeviceWaitIdle, which must drain any in-flight preprocess/render
+    // command buffers that may still be sampling page_table_ssbo /
+    // chunk_table_ssbo before those buffers are destroyed. (Codex P2 on
+    // PR #446.) Renderer::shutdown waits idle upstream as well, but
+    // matching the prior 5e-1 ordering keeps this entry point safe even
+    // if a future caller forgets the upstream wait.
     streaming_.shutdown();
-
-    // The async loader no longer spins up worker threads — reserve+submit
-    // run synchronously on the main thread now. We still call
-    // `request_cancel` to be tidy: any pending callbacks queued in the
-    // transfer queue should observe the shutdown flag and bail.
-    if (streaming_.transfer_queue_) {
-        streaming_.transfer_queue_->request_cancel();
-        streaming_.transfer_queue_->shutdown();
-        streaming_.transfer_queue_.reset();
-    }
-
-    // Streaming resources
+    // The streaming-owned GPU buffers live in GsResourceManager, so they
+    // are destroyed here rather than inside streaming_.shutdown().
     resources_->page_table_ssbo.destroy(allocator);
     resources_->chunk_table_ssbo.destroy(allocator);
-    streaming_.slab_allocator_.reset();
-    streaming_.active_chunks_.clear();
-    streaming_.streaming_initialized_ = false;
 
     // Legacy buffers
     resources_->gaussian_ssbo.destroy(allocator);
