@@ -461,15 +461,11 @@ private:
     // Descriptor resources
     VkDescriptorPool pool_ = VK_NULL_HANDLE;
     VkDescriptorPool gs_pool_ = VK_NULL_HANDLE;
+    // preprocess_layout_ is shared by the active static/dynamic preprocess
+    // sets below. The legacy single-source `preprocess_sets_` allocations
+    // were removed in #397 — the pre-split path has been dead since the
+    // streaming-strict invariant landed.
     VkDescriptorSetLayout preprocess_layout_ = VK_NULL_HANDLE;
-    VkDescriptorSetLayout render_layout_ = VK_NULL_HANDLE;
-    // Per-frame compute sets: preprocess_sets_[f] is bound to *_ssbos_[f].
-    // Phase 2: plumbing only — dispatch sites still use [0]. Phase 3 routes
-    // frame_in_flight to actually use the per-frame slot.
-    std::array<VkDescriptorSet, kMaxFramesInFlight> preprocess_sets_{};
-    // render_set_ binds output_image + depth_image — both per-frame —
-    // so the set must also be per-frame to point at the right pair.
-    std::array<VkDescriptorSet, kMaxFramesInFlight> render_sets_{};
 
     // Phase 5c: merge pipeline + layout + sets moved to GsSortSystem.
 
@@ -512,12 +508,11 @@ private:
     // GsPostProcessSystem (by-value member below). Renderer dispatches via
     // post_.dispatch(); set_post_process_params() forwards to post_.params().
 
-    // Legacy sort (kept for fallback, not dispatched)
-    VkDescriptorSetLayout sort_layout_ = VK_NULL_HANDLE;
-    VkPipelineLayout sort_pipeline_layout_ = VK_NULL_HANDLE;
-    VkPipeline sort_pipeline_ = VK_NULL_HANDLE;
-    // Per-frame sort sets (Phase 2 plumbing; dispatch still binds [0]).
-    std::array<VkDescriptorSet, kMaxFramesInFlight> sort_sets_{};
+    // #397: sort_layout_, sort_pipeline_layout_, sort_pipeline_, and the
+    // sort_sets_ allocation were all artefacts of the pre-Onesweep depth
+    // sort path. Onesweep moved into GsSortSystem (Phase 5c) and owns its
+    // own layout/pipeline/sets; nothing in the live render path bound the
+    // legacy ones — they were write-only since 5c.
 
     // Phase 5d: all tile-bin / tile-sort / tile-render layouts, pipelines,
     // descriptor sets, sizing scalars, and determinism harness state moved
