@@ -144,11 +144,15 @@ void IslandDemoState::on_enter(AppBase& app) {
 
             // Mark ALL chunks as loaded — we merge them in on_enter below.
             // This prevents load_cloud_async from replacing the merged cloud.
+            // Mark them externally-managed too so the streamer's distance
+            // check doesn't try to emit load/unload transitions for content
+            // we can't actually manage as separate chunks (#399).
             for (const auto& chunk : manifest.chunks) {
                 std::string key = std::to_string(chunk.grid.x) + "," +
                                   std::to_string(chunk.grid.y) + "," +
                                   std::to_string(chunk.grid.z);
                 world_streamer_->on_chunk_loaded(key, 0);
+                world_streamer_->mark_chunk_externally_managed(key);
             }
 
             std::fprintf(stderr, "[IslandDemo] WorldStreamer initialized: load_radius=%.0f unload_radius=%.0f\n",
@@ -2454,11 +2458,14 @@ void IslandDemoState::perform_portal_transition(AppBase& app,
             // Mark chunks as loaded so WorldStreamer::update() doesn't issue
             // a redundant load_cloud_async for them on the next tick (which
             // is append-only and would duplicate every tree/NPC/spawn-PC).
+            // Also mark them externally-managed so distance transitions are
+            // fully suppressed (#399).
             for (const auto& chunk : world_streamer_->manifest().chunks) {
                 std::string key = std::to_string(chunk.grid.x) + "," +
                                   std::to_string(chunk.grid.y) + "," +
                                   std::to_string(chunk.grid.z);
                 world_streamer_->on_chunk_loaded(key, 0);
+                world_streamer_->mark_chunk_externally_managed(key);
             }
             // Restore overworld camera settings
             distance_ = 20.0f;

@@ -50,6 +50,13 @@ std::vector<WorldStreamer::StreamEvent> WorldStreamer::update(const glm::vec3& c
         if (it == chunks_.end()) continue;
         ChunkInfo& info = it->second;
 
+        // Externally-managed chunks: the renderer holds their data via a
+        // merge-at-init upload (or similar out-of-band mechanism), so a
+        // streamer-driven load/unload would either duplicate the content
+        // (append-only load_cloud_async) or unload the wrong chunk_id.
+        // Suppress distance transitions entirely. See #399.
+        if (info.externally_managed) continue;
+
         // Compute distance from camera to chunk AABB center
         auto [aabb_min, aabb_max] = manifest_.chunk_aabb(i);
         glm::vec3 center = (aabb_min + aabb_max) * 0.5f;
@@ -100,6 +107,13 @@ void WorldStreamer::on_chunk_loaded(const std::string& grid_key, uint32_t render
     if (it != chunks_.end()) {
         it->second.status = ChunkStatus::ACTIVE;
         it->second.renderer_chunk_id = renderer_chunk_id;
+    }
+}
+
+void WorldStreamer::mark_chunk_externally_managed(const std::string& grid_key) {
+    auto it = chunks_.find(grid_key);
+    if (it != chunks_.end()) {
+        it->second.externally_managed = true;
     }
 }
 
