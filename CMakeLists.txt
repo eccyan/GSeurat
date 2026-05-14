@@ -139,6 +139,15 @@ endif()
 
 add_subdirectory(shaders)
 
+# --- Shared PLY parser ------------------------------------------------------
+# #393: standalone library depended on by both the engine-side offline
+# parser (`src/engine/gaussian_cloud_ply.cpp`) and the offline GSVX baker
+# (`tools/ply_importer/`). Pulled in for the runtime engine link too only
+# because individual tests target_link the same static archive; the runtime
+# `gseurat_core` itself does not compile `gaussian_cloud_ply.cpp` and so
+# does not exercise any symbols from this library (dead-stripped).
+add_subdirectory(ply_parse_core)
+
 # --- Core engine library -----------------------------------------------------
 
 if(GSEURAT_SHARED_LIBS)
@@ -378,7 +387,7 @@ target_include_directories(ply2heightmap PRIVATE
     ${PROJECT_SOURCE_DIR}/include
     ${stb_SOURCE_DIR})
 target_compile_definitions(ply2heightmap PRIVATE GLM_FORCE_DEPTH_ZERO_TO_ONE)
-target_link_libraries(ply2heightmap PRIVATE glm::glm nlohmann_json::nlohmann_json)
+target_link_libraries(ply2heightmap PRIVATE glm::glm nlohmann_json::nlohmann_json ply_parse_core)
 
 endif() # GSEURAT_BUILD_EXAMPLES
 
@@ -458,6 +467,7 @@ function(add_gseurat_test NAME)
         glm::glm
         GPUOpen::VulkanMemoryAllocator
         nlohmann_json::nlohmann_json
+        ply_parse_core
     )
     add_test(NAME ${NAME} COMMAND ${NAME}
              WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})

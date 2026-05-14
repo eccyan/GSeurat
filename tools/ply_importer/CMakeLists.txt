@@ -22,4 +22,5 @@ target_compile_definitions(ply_importer PRIVATE
 
 target_link_libraries(ply_importer PRIVATE
     glm::glm
+    ply_parse_core
 )
