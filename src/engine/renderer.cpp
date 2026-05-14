@@ -1221,9 +1221,21 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
     const auto t_prepass_start = std::chrono::steady_clock::now();
     uint32_t dbg_dyn_count = 0;
 #endif
-    // Adaptive GS budget: converge to target FPS then lock
-    if (flags.gs_adaptive_budget && gs_adaptive_budget_ && gs_gaussian_budget_ > 0 && dt > 0.0f) {
-        float fps = 1.0f / dt;
+    // Adaptive GS budget: converge to target FPS then lock.
+    //
+    // Measure render-side wall-clock dt locally, NOT the gameplay dt
+    // parameter. The gameplay dt is SimClock-aware (fixed 1/60 in
+    // deterministic mode) and clamped to 0.1s by AppBase — both make it
+    // wrong for FPS feedback: deterministic runs would always see
+    // 60 FPS, and a real 5 FPS stall would underestimate as 10 FPS
+    // (Codex P2 on PR #447).
+    const double render_now = glfwGetTime();
+    const double render_dt = (last_render_wall_time_ > 0.0)
+        ? render_now - last_render_wall_time_
+        : 0.0;
+    last_render_wall_time_ = render_now;
+    if (flags.gs_adaptive_budget && gs_adaptive_budget_ && gs_gaussian_budget_ > 0 && render_dt > 0.0) {
+        float fps = static_cast<float>(1.0 / render_dt);
         gs_smoothed_fps_ = gs_smoothed_fps_ * 0.9f + fps * 0.1f;
 
         if (!gs_budget_locked_) {

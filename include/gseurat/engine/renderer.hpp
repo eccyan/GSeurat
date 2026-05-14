@@ -339,9 +339,14 @@ private:
 
     uint32_t current_frame_ = 0;
     uint32_t acquire_semaphore_index_ = 0;
-    // Phase 5.1 dt-plumbing: last_time_ + glfwGetTime() recomputation
-    // removed. dt now flows in from AppBase::main_loop() (SimClock-aware,
-    // already clamped) via draw_scene's new first parameter.
+    // Wall-clock timestamp of the previous `record_gs_prepass` call,
+    // scoped to the adaptive GS budget controller. The controller reads
+    // `1 / dt` as an instantaneous FPS measurement; it must see actual
+    // render time, NOT the gameplay dt that AppBase clamps to 0.1s and
+    // replaces with SimClock::fixed_dt() in deterministic mode (Codex P2
+    // on PR #447). Visual systems (camera, VFX, particles) continue to
+    // run on the SimClock-aware dt plumbed through draw_scene.
+    double last_render_wall_time_ = 0.0;
     bool font_initialized_ = false;
 
     // Gaussian splatting
