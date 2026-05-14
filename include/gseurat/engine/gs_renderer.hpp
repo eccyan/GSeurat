@@ -6,6 +6,7 @@
 #include "gseurat/engine/gs_renderer/post/gs_post_process_system.hpp"
 #include "gseurat/engine/gs_renderer/post/post_process_params.hpp"
 #include "gseurat/engine/gs_renderer/sort/gs_sort_system.hpp"
+#include "gseurat/engine/gs_renderer/streaming/gs_streaming_system.hpp"
 #include "gseurat/engine/gs_renderer/tile_bin/gs_tile_bin_system.hpp"
 #include "gseurat/engine/pbd_types.hpp"
 #include "gseurat/engine/render_state.hpp"  // FrameIndex
@@ -81,15 +82,19 @@ public:
     // slots' state (e.g. static_sort tail) is updated lazily when those
     // slots are next reused.
     void poll_transfers(VkCommandBuffer frame_cmd, uint32_t frame_in_flight);
+    // Phase 5e-1: forwards to GsStreamingSystem.
     void create_transfer_queue(VkQueue transfer_q, uint32_t transfer_family,
-                               uint32_t graphics_family, bool dedicated);
+                               uint32_t graphics_family, bool dedicated) {
+        streaming_.create_transfer_queue(transfer_q, transfer_family, graphics_family, dedicated);
+    }
 
     // Exposed for the engine-level loading monitor: AppBase wires a status
     // provider against this so the EngineState machine can advance from
     // Loading → Warming when the streamer's transfer handles complete.
     // Returns nullptr until `create_transfer_queue` runs.
-    TransferQueue* transfer_queue() { return transfer_queue_.get(); }
-    const TransferQueue* transfer_queue() const { return transfer_queue_.get(); }
+    // Phase 5e-1: forwards to GsStreamingSystem.
+    TransferQueue* transfer_queue() { return streaming_.transfer_queue(); }
+    const TransferQueue* transfer_queue() const { return streaming_.transfer_queue(); }
     void update_active_gaussians(const Gaussian* data, uint32_t count);
     void update_gaussian_data(const Gaussian* data, uint32_t count);
 
@@ -325,31 +330,25 @@ public:
     float tile_sort_ms_last() const { return tile_sort_ms_last_; }
     float rasterize_ms_last() const { return rasterize_ms_last_; }
 
-    // Live streaming config (slab_size_splats etc.). Demo plumbs this into
-    // GsChunkStreamer so its [streaming] event-log "slabs=" field uses the
-    // same vocabulary as the renderer's slab-based streamer.
-    const StreamingConfig& streaming_config() const { return streaming_config_; }
-
-    // Streaming state (read-only)
-    uint32_t active_chunk_count() const { return static_cast<uint32_t>(active_chunks_.size()); }
-    uint32_t total_active_splats() const { return total_active_splats_; }
-    bool streaming_initialized() const { return streaming_initialized_; }
+    // Phase 5e-1: streaming state + lightweight methods live in
+    // GsStreamingSystem. GsRenderer keeps thin forwarders for ABI
+    // stability — external callers (renderer.cpp, app_base.cpp,
+    // demo, command_dispatcher) don't need source changes.
+    const StreamingConfig& streaming_config() const { return streaming_.config(); }
+    uint32_t active_chunk_count()             const { return streaming_.active_chunk_count(); }
+    uint32_t total_active_splats()            const { return streaming_.total_active_splats(); }
+    bool streaming_initialized()              const { return streaming_.initialized(); }
+    uint32_t pending_load_count()             const { return streaming_.pending_load_count(); }
 
     // Per-chunk inventory for diagnostic dumps. status_str is one of
-    // "loading", "active", "unloading"; splat_count is the splat count
-    // published by the chunk's load completion callback.
-    struct ChunkInventoryEntry {
-        std::string status_str;
-        uint32_t page_table_offset;
-        uint32_t splat_count;
-        uint32_t slab_count;
-    };
-    std::vector<ChunkInventoryEntry> chunk_inventory() const;
-    uint32_t pending_load_count() const { return static_cast<uint32_t>(pending_loads_.size()); }
+    // "loading", "active", "unloading". Re-exports the system's nested
+    // type so callers can still write `GsRenderer::ChunkInventoryEntry`.
+    using ChunkInventoryEntry = GsStreamingSystem::ChunkInventoryEntry;
+    std::vector<ChunkInventoryEntry> chunk_inventory() const { return streaming_.chunk_inventory(); }
 
     // World manifest (Phase 3 streaming)
-    void load_world(const WorldManifest& manifest);
-    const WorldManifest& world_manifest() const { return world_manifest_; }
+    void load_world(const WorldManifest& manifest) { streaming_.load_world(manifest); }
+    const WorldManifest& world_manifest() const   { return streaming_.world_manifest(); }
 
     // Pre-warm every compute pipeline by submitting **one pipeline per
     // command buffer**, with `vkQueueWaitIdle` between submissions. This
@@ -478,82 +477,15 @@ private:
     // kMaxFramesInFlight frames each refresh their own projected slot.
     uint32_t static_dirty_frames_remaining_ = kMaxFramesInFlight;
 
-    // --- Streaming architecture (Phase 2) ---
-    StreamingConfig streaming_config_;
-    std::unique_ptr<SlabAllocator> slab_allocator_;
-
-    struct ChunkState {
-        enum class Status { LOADING, ACTIVE, UNLOADING };
-        Status status;
-        SlabAllocator::SlabHandle handle;
-        uint32_t page_table_offset;
-        uint32_t splat_count;
-    };
-    std::vector<ChunkState> active_chunks_;
-    uint32_t total_active_splats_{0};
-    bool streaming_initialized_{false};
-
-    // Async transfer queue. Reservations and submits run on the main thread;
-    // `poll_transfers` (per-frame) retires fences and fires per-batch
-    // completion callbacks that publish uploaded chunks to the renderer.
-    std::unique_ptr<TransferQueue> transfer_queue_;
-
-    // Queued async cloud uploads. `load_cloud_async` always pushes to
-    // the back; `poll_transfers` drains the front job's slabs as the
-    // staging ring frees space, and pops once a job's slabs are all
-    // submitted (the per-job completion callback then fires later when
-    // the GPU fence retires). The deque lets WorldStreamer queue
-    // multiple chunks back-to-back without losing requests — under
-    // single-slot semantics, the streamer marks chunks `LOADING` once
-    // and never retries, so a rejected request would stick forever.
-    struct PendingLoadJob {
-        GaussianCloud cloud;
-        SlabAllocator::SlabHandle slab_handle;
-        std::vector<TransferQueue::Handle> handles;  // one per slab
-        uint32_t splat_count = 0;
-        uint32_t slabs_needed = 0;
-        uint32_t slab_size_splats = 0;
-        uint32_t next_slab = 0;          // index of the next slab to submit
-        bool completion_enqueued = false; // true once enqueue_completion() ran
-    };
-    std::deque<PendingLoadJob> pending_loads_;
-
-    // Chunks whose metadata mutation (page_table, chunk_table) has been
-    // requested but not yet published on the GPU. Both load completions and
-    // unload requests enqueue here; the actual SSBO writes happen in
-    // publish_pending_chunks() recorded onto the current frame's command
-    // buffer with TRANSFER_WRITE -> SHADER_READ barriers. This avoids the
-    // host/device race that raw mapped writes have against in-flight GPU
-    // reads of the same SSBOs.
-    struct PendingChunkPublication {
-        enum class Op { Load, Unload };
-        Op op = Op::Load;
-        // Load: handle for the new chunk (slabs already filled via TransferQueue).
-        // Unload: ownership of the chunk's slab handle, captured from
-        //         active_chunks_ at unload_cloud() time. The handle stays
-        //         in this struct until publish moves it onto
-        //         deferred_slab_releases_ for fence-safe release.
-        SlabAllocator::SlabHandle handle;
-        uint32_t splat_count = 0;        // Load only
-        uint32_t slabs_needed = 0;
-        uint32_t slab_size_splats = 0;   // Load only
-        uint32_t unload_chunk_id = 0;    // Unload only
-    };
-    std::deque<PendingChunkPublication> pending_publications_;
-
-    // Slabs released by an unload have to outlive any in-flight frame that
-    // was reading them via the OLD page_table. We can't return them to the
-    // allocator immediately — a concurrent load could check those same
-    // physical slabs out and TransferQueue would overwrite Gaussian data
-    // still being read by the prior frame. Hold for at least
-    // kMaxFramesInFlight ticks of poll_transfers (+1 for slack), then
-    // release. That guarantees the frame which last referenced the OLD
-    // page_table has retired.
-    struct DeferredSlabRelease {
-        SlabAllocator::SlabHandle handle;
-        uint32_t frames_remaining = 0;
-    };
-    std::deque<DeferredSlabRelease> deferred_slab_releases_;
+    // Phase 5e-1: streaming state + 4 nested data structs + lightweight
+    // methods (load_world, chunk_inventory, create_transfer_queue) moved
+    // into GsStreamingSystem. Heavy mutators (init_streaming,
+    // load_cloud_async, poll_transfers, publish_pending_chunks,
+    // unload_cloud, clear_chunks, diag_streaming_dump) STAY in
+    // GsRenderer for 5e-1 and reach into the system's state via
+    // `friend class GsRenderer;` declared in the system. 5e-2 will move
+    // those bodies in and drop the friend.
+    GsStreamingSystem streaming_;
 
     uint32_t gaussian_count_ = 0;
     uint32_t max_gaussian_count_ = 0;
@@ -633,8 +565,7 @@ private:
 
     bool initialized_ = false;
 
-    // World manifest (Phase 3 streaming)
-    WorldManifest world_manifest_;
+    // Phase 5e-1: world_manifest_ moved into GsStreamingSystem.
 
     // GPU timestamp profiling: 6 queries per frame slot, kMaxFramesInFlight
     // slots total. Frame f's queries live at indices [f*6, f*6+6):
