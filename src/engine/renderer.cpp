@@ -101,8 +101,6 @@ void Renderer::init(GLFWwindow* window, ResourceManager& resources,
 
     float aspect = static_cast<float>(kWindowWidth) / static_cast<float>(kWindowHeight);
     camera_.configure_hd2d(aspect);
-
-    last_time_ = static_cast<float>(glfwGetTime());
 }
 
 void Renderer::init_font(const FontAtlas& atlas, ResourceManager& resources) {
@@ -398,7 +396,8 @@ void Renderer::set_gs_background(const ResourceHandle<Texture>& texture) {
     gs_bg_initialized_ = true;
 }
 
-void Renderer::draw_scene(Scene& scene,
+void Renderer::draw_scene(float dt,
+                           Scene& scene,
                            const std::vector<SpriteDrawInfo>& entity_sprites,
                            const std::vector<SpriteDrawInfo>& outline_sprites,
                            const std::vector<SpriteDrawInfo>& reflection_sprites,
@@ -416,10 +415,14 @@ void Renderer::draw_scene(Scene& scene,
     auto device = context_.device();
     const auto& frame_sync = sync_.frame(current_frame_);
 
-    // Delta time
-    float now = static_cast<float>(glfwGetTime());
-    float dt = now - last_time_;
-    last_time_ = now;
+    // Phase 5.1 dt-plumbing: dt is passed in from AppBase::main_loop, which
+    // computes it via gs::SimClock::fixed_dt() in deterministic mode and a
+    // wall-clock delta otherwise. The renderer previously recomputed its
+    // own dt from glfwGetTime() — a parallel clock that drifted from
+    // AppBase's authoritative one and accumulated into VFX / particle /
+    // camera state. The frame-determinism harness already forced dt to 0
+    // inside its gate, but the recomputation leaked through normal
+    // gameplay frames.
 
     // Frame-determinism harness: when active, freeze every CPU-side input
     // that feeds the GS pipeline. Goal is to render N frames against
@@ -987,15 +990,6 @@ void Renderer::draw_scene(Scene& scene,
     current_frame_ = (current_frame_ + 1) % kMaxFramesInFlight;
 }
 
-void Renderer::draw_frame() {
-    // Legacy shim: render a single white quad
-    Scene test_scene;
-    SpriteDrawInfo info{};
-    info.position = {0.0f, 0.0f, 0.0f};
-    info.size = {1.0f, 1.0f};
-    info.color = {1.0f, 1.0f, 1.0f, 1.0f};
-    draw_scene(test_scene, {info}, {}, {}, {}, {}, {}, {});
-}
 
 void Renderer::shutdown() {
     // Persist the pipeline cache to disk BEFORE vkDeviceWaitIdle and any
