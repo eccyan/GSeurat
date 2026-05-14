@@ -72,6 +72,18 @@ public:
     std::vector<VfxInstance>& instances_mutable() noexcept { return vfx_instances_; }
     const std::vector<VfxInstance>& instances() const noexcept { return vfx_instances_; }
 
+    // #407: prefetched "object" PLYs keyed by resolved path. Owned by the
+    // VFX system so it survives scene reloads (cleared in clear_instances)
+    // and is reachable from every site that calls VfxInstance::init.
+    VfxObjectCache& object_cache() noexcept { return object_cache_; }
+    const VfxObjectCache& object_cache() const noexcept { return object_cache_; }
+
+    // Parse `vfx_file` and preload every "object" element's PLY into the
+    // cache. Safe to call repeatedly for the same preset (preload itself
+    // is idempotent per resolved path). Logs and continues on malformed
+    // JSON so a single broken preset doesn't block scene init.
+    void prefetch_preset_objects(const std::string& vfx_file);
+
     // VFX-emitted lights — `out` is appended (caller may seed with statics).
     // Caps at `cap` total lights including pre-existing entries.
     void collect_active_lights(std::vector<PointLight>& out, std::size_t cap) const;
@@ -96,6 +108,7 @@ private:
     GaussianAnimator gs_animator_;
     // Scratch CPU buffer reused frame-to-frame to avoid per-frame allocs.
     std::vector<Gaussian> scratch_;
+    VfxObjectCache object_cache_;
 };
 
 }  // namespace systems

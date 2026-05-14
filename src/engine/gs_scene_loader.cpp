@@ -439,6 +439,17 @@ void GsSceneLoader::finalize_on_main(SceneLoadContext& ctx, const SceneData& sce
             proj[1][1] *= -1.0f;
             ctx.renderer.set_gs_camera(view, proj);
         }
+        // #407: prefetch all auto-trigger preset "object" PLYs before we
+        // start initialising instances, so the inst.init loop below never
+        // blocks on disk I/O. Runtime triggers (VfxTrigger components,
+        // VfxSpawnEvent) are prefetched separately by the demo/game state
+        // since they aren't in scene_data.vfx_instances.
+        if (ctx.vfx_system) {
+            for (const auto& vi : scene_data.vfx_instances) {
+                if (vi.trigger != "auto") continue;
+                ctx.vfx_system->prefetch_preset_objects(vi.vfx_file);
+            }
+        }
         for (const auto& vi : scene_data.vfx_instances) {
             if (vi.trigger != "auto") continue;
             auto preset = load_vfx_preset(vi.vfx_file);
@@ -454,7 +465,8 @@ void GsSceneLoader::finalize_on_main(SceneLoadContext& ctx, const SceneData& sce
             }
             VfxInstance inst;
             auto world_pos = coord::to_world(vi.position, ctx.terrain.terrain_aabb);
-            inst.init(preset, world_pos.vec(), vi.loop, vi.rotation_y);
+            const VfxObjectCache* cache = ctx.vfx_system ? &ctx.vfx_system->object_cache() : nullptr;
+            inst.init(preset, world_pos.vec(), vi.loop, vi.rotation_y, cache);
             if (ctx.vfx_system) {
                 ctx.vfx_system->add_instance(std::move(inst));
             } else {

@@ -19,7 +19,7 @@ void VfxSystem::run(ecs::World& world, float /*dt*/) {
             auto preset = load_vfx_preset(evt.vfx_file);
             if (preset.elements.empty()) continue;
             VfxInstance inst;
-            inst.init(preset, evt.position, evt.loop, evt.rotation_y);
+            inst.init(preset, evt.position, evt.loop, evt.rotation_y, &object_cache_);
             vfx_instances_.push_back(std::move(inst));
         } catch (const std::exception& e) {
             std::fprintf(stderr,
@@ -29,10 +29,29 @@ void VfxSystem::run(ecs::World& world, float /*dt*/) {
     }
 }
 
+void VfxSystem::prefetch_preset_objects(const std::string& vfx_file) {
+    try {
+        auto preset = load_vfx_preset(vfx_file);
+        for (const auto& el : preset.elements) {
+            if (el.type == "object" && !el.ply_file.empty()) {
+                object_cache_.preload(el.ply_file);
+            }
+        }
+    } catch (const std::exception& e) {
+        std::fprintf(stderr,
+            "[VfxSystem] prefetch_preset_objects '%s' skipped: %s\n",
+            vfx_file.c_str(), e.what());
+    }
+}
+
 void VfxSystem::clear_instances() {
     vfx_instances_.clear();
     gs_animator_.reset();
     scratch_.clear();
+    // Drop the cache too — a new scene may reference different PLYs and
+    // we want stale entries garbage-collected. Scene-init prefetch
+    // repopulates whatever the next scene needs.
+    object_cache_.clear();
 }
 
 void VfxSystem::collect_active_lights(std::vector<PointLight>& out, std::size_t cap) const {

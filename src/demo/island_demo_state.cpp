@@ -861,6 +861,27 @@ void IslandDemoState::on_enter(AppBase& app) {
     });
     app.debug_dump_registry().register_module(&*collision_dumper);
 
+    // #407: prefetch every VfxTrigger's preset "object" PLY before
+    // gameplay starts. The scene loader already prefetched auto-trigger
+    // presets from scene_data.vfx_instances; this pass covers the
+    // runtime-spawned VFX referenced by proximity-triggered components.
+    // Without this, the first time a player triggers a VfxTrigger whose
+    // preset uses an "object" element, VfxInstance::init would block on
+    // a synchronous PLY load on the main thread (mid-gameplay stall).
+    if (app.vfx_system()) {
+        std::size_t prefetched = 0;
+        app.world().view<VfxTrigger>().each(
+            [&](ecs::Entity, VfxTrigger& vt) {
+                if (vt.vfx_path[0] != '\0') {
+                    app.vfx_system()->prefetch_preset_objects(vt.vfx_path);
+                    ++prefetched;
+                }
+            });
+        std::fprintf(stderr,
+            "[IslandDemo] VfxTrigger prefetch: %zu trigger(s), %zu PLY cache entries\n",
+            prefetched, app.vfx_system()->object_cache().size());
+    }
+
     // Scene loaded — ready for play
 }
 
@@ -1486,7 +1507,9 @@ void IslandDemoState::update_effects(AppBase& app, float dt) {
                     try {
                         auto preset = load_vfx_preset(path);
                         VfxInstance inst;
-                        inst.init(preset, t.position.vec(), true);
+                        const VfxObjectCache* cache = app.vfx_system()
+                            ? &app.vfx_system()->object_cache() : nullptr;
+                        inst.init(preset, t.position.vec(), true, 0.0f, cache);
                         if (app.vfx_system()) {
                             app.vfx_system()->add_instance(std::move(inst));
                         } else {

@@ -110,8 +110,69 @@ static glm::vec3 rotate_y(const glm::vec3& v, float angle_rad) {
     return {v.x * c + v.z * s, v.y, -v.x * s + v.z * c};
 }
 
+// Cap each VFX object's splat count to keep the dynamic SSBO budget
+// reasonable. Authored asset sizes (e.g. torch.ply at 50k splats) target
+// showcase rendering, not 20× instancing in one scene. See the long
+// comment in VfxInstance::init below for the full rationale — this
+// constant is shared between the legacy sync-load path and the
+// VfxObjectCache::preload path so both decimate identically.
+namespace { constexpr std::size_t kMaxVfxObjectSplats = 2048; }
+
+// Resolve a preset's `ply_file` string to a path on disk. Tries the exact
+// path first (so absolute paths and project-relative paths both work),
+// then falls back to `assets/vfx/<filename>` exactly as the legacy
+// `VfxInstance::init` path did. Returns the empty string if neither
+// candidate exists.
+static std::string resolve_vfx_ply_path(const std::string& ply_file) {
+    if (std::filesystem::exists(ply_file)) {
+        return ply_file;
+    }
+    auto filename = std::filesystem::path(ply_file).filename().string();
+    auto alt = resolve_asset_path("assets/vfx/" + filename).string();
+    if (std::filesystem::exists(alt)) {
+        return alt;
+    }
+    return {};
+}
+
+std::string VfxObjectCache::preload(const std::string& ply_file) {
+    std::string resolved = resolve_vfx_ply_path(ply_file);
+    if (resolved.empty()) {
+        std::fprintf(stderr, "[VFX] preload failed — PLY not found: %s\n", ply_file.c_str());
+        return resolved;
+    }
+    if (entries_.count(resolved)) return resolved;  // idempotent
+
+    auto cloud = GaussianCloud::load_with_gsvx_first(resolved);
+    const auto& gs = cloud.gaussians();
+    const std::size_t total = gs.size();
+    const std::size_t stride = (total > kMaxVfxObjectSplats)
+        ? (total + kMaxVfxObjectSplats - 1) / kMaxVfxObjectSplats
+        : 1;
+
+    Entry entry;
+    entry.source_count = total;
+    entry.stride = stride;
+    entry.decimated.reserve((total + stride - 1) / stride);
+    for (std::size_t i = 0; i < total; i += stride) {
+        entry.decimated.push_back(gs[i]);  // raw, no per-instance transform
+    }
+    std::fprintf(stderr,
+        "[VFX] preload '%s' -> %zu/%zu Gaussians (stride=%zu)\n",
+        resolved.c_str(), entry.decimated.size(), total, stride);
+    entries_.emplace(resolved, std::move(entry));
+    return resolved;
+}
+
+const VfxObjectCache::Entry* VfxObjectCache::find(const std::string& ply_file) const {
+    std::string resolved = resolve_vfx_ply_path(ply_file);
+    if (resolved.empty()) return nullptr;
+    auto it = entries_.find(resolved);
+    return (it == entries_.end()) ? nullptr : &it->second;
+}
+
 void VfxInstance::init(const VfxPreset& preset, const glm::vec3& position, bool loop,
-                       float rotation_y) {
+                       float rotation_y, const VfxObjectCache* cache) {
     preset_ = preset;
     position_ = position;
     rotation_y_ = rotation_y;
@@ -145,49 +206,57 @@ void VfxInstance::init(const VfxPreset& preset, const glm::vec3& position, bool 
             as.activated = false;
             anim_states_.push_back(std::move(as));
         } else if (el.type == "object" && !el.ply_file.empty()) {
-            // Load PLY file — try exact path, then assets/vfx/filename
-            std::string ply_path = el.ply_file;
-            if (!std::filesystem::exists(ply_path)) {
-                auto filename = std::filesystem::path(el.ply_file).filename().string();
-                ply_path = resolve_asset_path("assets/vfx/" + filename).string();
-            }
-            if (std::filesystem::exists(ply_path)) {
-                auto cloud = GaussianCloud::load_with_gsvx_first(ply_path);
-                const auto& gs = cloud.gaussians();
-                // VFX object decimation: cap each VFX object's splat count to
-                // keep the dynamic SSBO budget reasonable. Reusable assets
-                // (e.g. torch.ply at 50k splats) are designed for showcase
-                // rendering, not for being instantiated 20+ times in a single
-                // scene. The dungeon spawns 23 torch instances; at 50k each
-                // they would alone exceed the dynamic budget. The dynamic
-                // depth-sort cost is dominated by sort_size (fixed at init
-                // based on max_dynamic_count_), so reducing actual splat
-                // counts only partially mitigates GPU work — but it does cut
-                // CPU upload bandwidth, projection cost, and overdraw. Cap at
-                // 2k per instance (23 × 2k = 46k for the dungeon). Stride-
-                // sampling preserves spatial distribution; the visual
-                // difference for a small mesh viewed at distance is minimal.
-                // Authoring fix track (see spec §11.2): reduce dungeon torch
-                // instance count, or replace torch.ply with a smaller asset
-                // (~2k splats) authored for the showcase rendering scale.
-                constexpr size_t kMaxVfxObjectSplats = 2048;
-                const size_t total = gs.size();
-                const size_t stride = (total > kMaxVfxObjectSplats)
-                    ? (total + kMaxVfxObjectSplats - 1) / kMaxVfxObjectSplats
-                    : 1;
-                size_t taken = 0;
-                for (size_t i = 0; i < total; i += stride) {
-                    Gaussian g = gs[i];
-                    // Rotate Gaussian position around prefab origin, then offset
+            // #407: prefer the prefetched cache so spawning a runtime VFX
+            // doesn't block on disk I/O. The cache stores already-decimated
+            // raw splats; we only apply the per-instance scale/rotate/offset
+            // transform here. On miss, fall back to a sync load with a
+            // visible warning so the missing prefetch is loud in smoke tests.
+            //
+            // VFX object decimation (rationale preserved from the legacy
+            // inline path): cap each instance's splat count to keep the
+            // dynamic SSBO budget reasonable. Reusable assets like torch.ply
+            // (~50k splats) are authored for showcase rendering, not for 20×
+            // instancing in one scene; the dungeon spawns 23 torches and at
+            // 50k each would alone exceed the dynamic budget. Stride sampling
+            // preserves spatial distribution; the visual difference for a
+            // small mesh viewed at distance is minimal. Sort cost is
+            // dominated by `max_dynamic_count_` so this mainly cuts CPU
+            // upload bandwidth, projection cost, and overdraw. Authoring fix
+            // track (spec §11.2): reduce dungeon torch count or author a
+            // smaller torch asset.
+            const VfxObjectCache::Entry* entry = cache ? cache->find(el.ply_file) : nullptr;
+            if (entry) {
+                object_gaussians_.reserve(object_gaussians_.size() + entry->decimated.size());
+                for (Gaussian g : entry->decimated) {
                     g.position = rotate_y(g.position * el.scale, rot_rad) + position_ + rotated_pos;
                     object_gaussians_.push_back(g);
-                    ++taken;
                 }
-                std::fprintf(stderr,
-                    "VFX: Object '%s' loaded %zu/%zu Gaussians from %s (stride=%zu)\n",
-                    el.name.c_str(), taken, total, el.ply_file.c_str(), stride);
             } else {
-                std::fprintf(stderr, "VFX: Object PLY not found: %s\n", el.ply_file.c_str());
+                // Sync fallback — same shape as the pre-#407 inline path.
+                std::string ply_path = resolve_vfx_ply_path(el.ply_file);
+                if (!ply_path.empty()) {
+                    std::fprintf(stderr,
+                        "[VFX] WARN: PLY '%s' not preloaded — main-thread stall\n",
+                        el.ply_file.c_str());
+                    auto cloud = GaussianCloud::load_with_gsvx_first(ply_path);
+                    const auto& gs = cloud.gaussians();
+                    const std::size_t total = gs.size();
+                    const std::size_t stride = (total > kMaxVfxObjectSplats)
+                        ? (total + kMaxVfxObjectSplats - 1) / kMaxVfxObjectSplats
+                        : 1;
+                    std::size_t taken = 0;
+                    for (std::size_t k = 0; k < total; k += stride) {
+                        Gaussian g = gs[k];
+                        g.position = rotate_y(g.position * el.scale, rot_rad) + position_ + rotated_pos;
+                        object_gaussians_.push_back(g);
+                        ++taken;
+                    }
+                    std::fprintf(stderr,
+                        "VFX: Object '%s' (fallback) loaded %zu/%zu Gaussians from %s (stride=%zu)\n",
+                        el.name.c_str(), taken, total, el.ply_file.c_str(), stride);
+                } else {
+                    std::fprintf(stderr, "VFX: Object PLY not found: %s\n", el.ply_file.c_str());
+                }
             }
         } else if (el.type == "light") {
             LightState ls;

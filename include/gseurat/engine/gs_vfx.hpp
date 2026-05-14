@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <unordered_map>
 #include <vector>
 #include <glm/vec3.hpp>
 #include <gseurat/engine/gs_particle.hpp>
@@ -8,6 +9,8 @@
 #include <gseurat/engine/scene_loader.hpp>
 
 namespace gseurat {
+
+class VfxObjectCache;
 
 // ── VFX element data (parsed from .vfx.json) ──
 
@@ -56,12 +59,54 @@ struct VfxInstanceData {
 VfxPreset load_vfx_preset(const std::string& path);
 VfxPreset parse_vfx_preset(const nlohmann::json& j);
 
+// ── Decimated "object" PLY cache ──
+//
+// Issue #407: VfxInstance::init synchronously parses a PLY file for every
+// "object" element on the main render thread, which can stall gameplay when
+// a runtime trigger spawns a preset whose PLY hasn't been touched yet.
+//
+// VfxObjectCache holds already-decimated splats keyed by the (resolved)
+// PLY path. At scene init the demo + scene loader walk every VFX preset
+// that will be referenced and prefetch each "object" PLY into the cache.
+// `VfxInstance::init` then applies the per-instance scale/rotation/offset
+// transform on top of cached splats, skipping disk I/O entirely.
+//
+// On cache miss, `init` falls back to the legacy synchronous load with a
+// `[VFX] WARN: PLY '%s' not preloaded — main-thread stall` log line so
+// missing prefetches are visible in regression smokes.
+class VfxObjectCache {
+public:
+    struct Entry {
+        std::vector<Gaussian> decimated;   // post-decimation, no per-instance transform applied
+        std::size_t source_count = 0;      // raw splat count before decimation (for logging)
+        std::size_t stride = 1;
+    };
+
+    // Idempotent: re-calling preload() for an already-cached path is a no-op.
+    // Returns the resolved canonical path used as the cache key (so callers
+    // can log which file was actually parsed, including the fallback under
+    // assets/vfx/filename).
+    std::string preload(const std::string& ply_file);
+
+    // Returns nullptr on miss. Resolves the input path the same way as
+    // preload() so a preset element's raw `ply_file` string matches the
+    // prefetched entry.
+    const Entry* find(const std::string& ply_file) const;
+
+    void clear() noexcept { entries_.clear(); }
+    std::size_t size() const noexcept { return entries_.size(); }
+
+private:
+    std::unordered_map<std::string, Entry> entries_;
+};
+
 // ── Runtime VFX instance ──
 
 class VfxInstance {
 public:
     void init(const VfxPreset& preset, const glm::vec3& position, bool loop,
-              float rotation_y = 0.0f);
+              float rotation_y = 0.0f,
+              const VfxObjectCache* cache = nullptr);
 
     /// Append static object Gaussians to the buffer (call before animator runs).
     void append_objects(std::vector<Gaussian>& out_buffer);
