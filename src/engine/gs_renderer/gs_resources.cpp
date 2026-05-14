@@ -52,7 +52,6 @@ void GsResourceManager::destroy_output_views_and_images() {
 
 void GsResourceManager::destroy_streaming_buffers() {
     if (allocator == VK_NULL_HANDLE) return;
-    gaussian_ssbo.destroy(allocator);
     uniform_buffer.destroy(allocator);
     pbd_state_ssbo.destroy(allocator);
     pbd_params_ssbo.destroy(allocator);

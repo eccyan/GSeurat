@@ -1161,7 +1161,6 @@ void GsRenderer::init_streaming(const StreamingConfig& config) {
 
     // Destroy all renderer-owned GPU buffers (streaming-owned page_table
     // and chunk_table are destroyed/recreated inside streaming_.init_streaming).
-    resources_->gaussian_ssbo.destroy(allocator_);
     resources_->uniform_buffer.destroy(allocator_);
     resources_->pbd_state_ssbo.destroy(allocator_);
     resources_->pbd_params_ssbo.destroy(allocator_);
@@ -1204,7 +1203,6 @@ void GsRenderer::init_streaming(const StreamingConfig& config) {
     // Read back sizing for renderer-owned buffer allocation.
     const uint32_t max_static          = streaming_.max_static_count();
     const uint32_t max_dynamic         = streaming_.max_dynamic_count();
-    const uint32_t max_gaussian        = streaming_.max_gaussian_count();
     const uint32_t s_sort_size         = streaming_.static_sort_size();
     const uint32_t d_sort_size         = streaming_.dynamic_sort_size();
     const uint32_t s_sort_workgroups   = streaming_.static_sort_workgroups();
@@ -1273,10 +1271,6 @@ void GsRenderer::init_streaming(const StreamingConfig& config) {
                             * sizeof(SortEntry));
         }
     }
-
-    // Legacy buffers (same sizes as static counterparts for backward compat).
-    resources_->gaussian_ssbo = Buffer::create_storage(allocator_,
-        static_cast<VkDeviceSize>(max_gaussian) * sizeof(GpuGaussian));
 
     // PBD buffers
     resources_->pbd_state_ssbo = Buffer::create_storage(allocator_,
@@ -2273,8 +2267,6 @@ void GsRenderer::shutdown(VmaAllocator allocator) {
     resources_->page_table_ssbo.destroy(allocator);
     resources_->chunk_table_ssbo.destroy(allocator);
 
-    // Legacy buffers
-    resources_->gaussian_ssbo.destroy(allocator);
     resources_->uniform_buffer.destroy(allocator);
     resources_->pbd_state_ssbo.destroy(allocator);
     resources_->pbd_params_ssbo.destroy(allocator);

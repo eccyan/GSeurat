@@ -71,8 +71,8 @@ public:
     // compute and store the sort sizing scalars, and push them into
     // GsSortSystem/GsTileBinSystem. The renderer's own init_streaming
     // continues to allocate the non-streaming GPU buffers (pbd_*,
-    // gaussian_ssbo, projected, sort A/B, merged_sort, uniform, etc.)
-    // and reads the sizing scalars back via the getters below.
+    // projected, sort A/B, merged_sort, uniform, etc.) and reads the
+    // sizing scalars back via the getters below.
     //
     // `num_sort_passes` is owned by GsRenderer (render config) and
     // passed in so the depth-onesweep sizing matches the dispatch.
