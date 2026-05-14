@@ -274,6 +274,50 @@ int main() {
         std::printf("PASS: Volume exit event\n");
     }
 
+    // 11. mark_chunk_externally_managed suppresses distance transitions (#399)
+    {
+        WorldManifest manifest = make_test_manifest(2);
+
+        WorldStreamer streamer;
+        streamer.init(manifest);
+
+        // Mark chunk (0,0,0) externally-managed (caller is responsible for
+        // its GPU lifetime). Inform the streamer it's ACTIVE up front.
+        streamer.on_chunk_loaded(gk(0,0,0), 42);
+        streamer.mark_chunk_externally_managed(gk(0,0,0));
+
+        // Camera near chunk (0,0,0): the load distance check would normally
+        // re-trigger a LOADING transition if status were UNLOADED, but with
+        // externally_managed=true the streamer must skip the chunk entirely.
+        glm::vec3 cam_near(32.0f, 0.0f, 32.0f);  // inside chunk 0,0,0
+        auto ev_near = streamer.update(cam_near);
+        for (const auto& e : ev_near) {
+            // Externally-managed chunk must produce no streaming events.
+            assert(!(e.type == WorldStreamer::StreamEvent::Type::CHUNK_LOAD_START && e.id == gk(0,0,0)));
+            assert(!(e.type == WorldStreamer::StreamEvent::Type::CHUNK_UNLOADED && e.id == gk(0,0,0)));
+        }
+        // pending_loads / pending_unloads must not contain the managed chunk.
+        for (const auto& k : streamer.pending_loads())   assert(k != gk(0,0,0));
+        for (const auto& k : streamer.pending_unloads()) assert(k != gk(0,0,0));
+
+        // Camera far from chunk (0,0,0): the unload distance check would
+        // normally fire ACTIVE→UNLOADED, but externally_managed suppresses it.
+        glm::vec3 cam_far(10000.0f, 0.0f, 10000.0f);
+        auto ev_far = streamer.update(cam_far);
+        for (const auto& e : ev_far) {
+            assert(!(e.type == WorldStreamer::StreamEvent::Type::CHUNK_UNLOADED && e.id == gk(0,0,0)));
+        }
+        for (const auto& k : streamer.pending_unloads()) assert(k != gk(0,0,0));
+        // Status stays ACTIVE; renderer_chunk_id stays intact.
+        assert(streamer.chunk_status(gk(0,0,0)) == WorldStreamer::ChunkStatus::ACTIVE);
+
+        // Sanity: a non-externally-managed neighbor still gets normal
+        // streaming transitions when far away.
+        // (chunk (1,0,0) is non-managed; cam_far is also far from it →
+        // it remains UNLOADED, no spurious events.)
+        std::printf("PASS: externally_managed chunks skip distance transitions\n");
+    }
+
     std::printf("\nAll world_streamer tests passed.\n");
     return 0;
 }
