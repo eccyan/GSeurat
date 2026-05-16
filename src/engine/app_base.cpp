@@ -281,6 +281,31 @@ void AppBase::main_loop() {
             (void)remaining;
         }
 
+        // Phase 4 closure: open the RenderState lifecycle bracket BEFORE any
+        // writer for this frame can mark dirty ranges. upload_bone_transforms
+        // (below) and state-tick callers of bones_writer/vfx_writer/pbd_writer
+        // /particles_writer all run later in this iteration; record_gs_prepass
+        // writes are bracketed too. end_frame() runs inside Renderer::draw_scene
+        // immediately before vkQueueSubmit so non-coherent memory platforms
+        // see the flushed writes. Null-safe for pre-init / tests.
+        //
+        // wait_current_frame_fence() runs FIRST so the previous GPU submit on
+        // this same slot is complete before any CPU writer touches the mapped
+        // buffers. Without this wait, bones / vfx / pbd / particles writes
+        // here would race against an in-flight GPU read from
+        // kMaxFramesInFlight submits ago. draw_scene also waits the fence
+        // internally as a fallback for paths without RenderState wired
+        // (standalone tests); when we wait here, that becomes a fast no-op.
+        //
+        // (Fix history: Codex P1 #1 on #460 — original placement was inside
+        // GSEURAT_DEBUG_BUILD-gated code AFTER bones writers fired. Codex P1
+        // #2 on #460 — moved to top-of-iteration but without the fence wait,
+        // so writes raced with GPU. This placement addresses both.)
+        if (render_state_) {
+            renderer_.wait_current_frame_fence();
+            render_state_->begin_frame(FrameIndex{renderer_.current_frame()});
+        }
+
         // Poll async loader and process GPU uploads (before game logic)
         resources_.process_async_results(async_loader_, staging_uploader_);
         staging_uploader_.flush();
@@ -623,6 +648,10 @@ void AppBase::init_render_state() {
 
     render_state_ = std::make_unique<RenderState>(renderer_.context());
     renderer_.gs_renderer().set_render_state(render_state_.get());
+    // Phase 4 closure: Renderer drives RenderState::begin_frame /
+    // end_frame around draw_scene so writer dirty ranges reset cleanly
+    // and non-coherent-memory platforms see writes before submit.
+    renderer_.set_render_state(render_state_.get());
     // Late-bind RenderState into VfxSystem + PbdSystem if they were
     // constructed first (init_game_object_system runs before
     // init_render_state in the canonical AppBase init order).

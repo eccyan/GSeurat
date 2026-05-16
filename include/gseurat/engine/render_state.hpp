@@ -121,10 +121,15 @@ private:
 };
 
 using BonesWriter = TypedSlotWriter<glm::mat4>;
-using PointLightsWriter = TypedSlotWriter<PointLight>;
 using VfxWriter = BytesSlotWriter;
 using PbdWriter = BytesSlotWriter;
 using ParticlesWriter = BytesSlotWriter;
+
+// Phase 4 closure (2026-05-17): PointLightsWriter / point_lights_buffer /
+// max_point_lights were dead architecture — no shader bound the SSBO.
+// Point lights live in the uniform buffer (kMaxGsPointLights=8 inline
+// vec4 arrays in GsRenderer's UBO). LightingSystem keeps its
+// set_point_lights → UBO path.
 
 // Defaults match the spec's working-set estimate (~12 MB for VFX splats,
 // per frame in flight, doubled). Phase 4 may tune per-app needs.
@@ -133,7 +138,6 @@ struct RenderStateConfig {
     uint32_t max_vfx_splats = 200'000;
     uint32_t max_pbd_splats = 50'000;
     uint32_t max_particles = 8'192;
-    uint32_t max_point_lights = kMaxLights;
     std::size_t splat_stride = 64;  // matches current Gaussian/GSVX layout
 };
 
@@ -152,20 +156,22 @@ public:
     VfxWriter vfx_writer(FrameIndex) noexcept;
     PbdWriter pbd_writer(FrameIndex) noexcept;
     ParticlesWriter particles_writer(FrameIndex) noexcept;
-    PointLightsWriter point_lights_writer(FrameIndex) noexcept;
 
     // === Renderer-side read access — const, called from GsRenderer::render() ===
     VkBuffer bones_buffer(FrameIndex) const noexcept;
     VkBuffer vfx_buffer(FrameIndex) const noexcept;
     VkBuffer pbd_buffer(FrameIndex) const noexcept;
     VkBuffer particles_buffer(FrameIndex) const noexcept;
-    VkBuffer point_lights_buffer(FrameIndex) const noexcept;
 
     // === Lifecycle ===
-    // begin_frame: resets dirty ranges for the given frame slot.
-    // end_frame:   on non-coherent memory, would issue
-    //              vkFlushMappedMemoryRanges over the dirty regions. On
-    //              Apple Silicon's unified memory it's a no-op.
+    // begin_frame: resets dirty ranges for the given frame slot. Call at
+    //              the start of each per-frame work block, BEFORE any
+    //              writer.write() targeting this frame.
+    // end_frame:   on non-coherent memory, issues vkFlushMappedMemoryRanges
+    //              over the dirty regions so the GPU sees the writes.
+    //              On Apple Silicon's unified memory (HOST_COHERENT) it's
+    //              a no-op. Call AFTER all writer.write() and BEFORE any
+    //              GPU dispatch / submit that reads these buffers.
     void begin_frame(FrameIndex) noexcept;
     void end_frame(FrameIndex) noexcept;
 
@@ -177,12 +183,10 @@ private:
         Buffer vfx;
         Buffer pbd;
         Buffer particles;
-        Buffer point_lights;
         DirtyRange bones_dirty;
         DirtyRange vfx_dirty;
         DirtyRange pbd_dirty;
         DirtyRange particles_dirty;
-        DirtyRange lights_dirty;
     };
 
     VkContext& ctx_;

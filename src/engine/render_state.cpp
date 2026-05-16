@@ -35,15 +35,12 @@ RenderState::RenderState(VkContext& ctx, const RenderStateConfig& cfg)
         static_cast<VkDeviceSize>(cfg_.max_pbd_splats) * cfg_.splat_stride;
     const VkDeviceSize part_bytes =
         static_cast<VkDeviceSize>(cfg_.max_particles) * cfg_.splat_stride;
-    const VkDeviceSize light_bytes =
-        static_cast<VkDeviceSize>(cfg_.max_point_lights) * sizeof(PointLight);
 
     for (auto& f : per_frame_) {
         f.bones = Buffer::create_storage(alloc, bones_bytes);
         f.vfx = Buffer::create_storage(alloc, vfx_bytes);
         f.pbd = Buffer::create_storage(alloc, pbd_bytes);
         f.particles = Buffer::create_storage(alloc, part_bytes);
-        f.point_lights = Buffer::create_storage(alloc, light_bytes);
     }
 }
 
@@ -55,7 +52,6 @@ RenderState::~RenderState() {
         f.vfx.destroy(alloc);
         f.pbd.destroy(alloc);
         f.particles.destroy(alloc);
-        f.point_lights.destroy(alloc);
     }
 }
 
@@ -84,12 +80,6 @@ ParticlesWriter RenderState::particles_writer(FrameIndex f) noexcept {
                            &pf.particles_dirty};
 }
 
-PointLightsWriter RenderState::point_lights_writer(FrameIndex f) noexcept {
-    auto& pf = per_frame_[to_u32(f) % kMaxFramesInFlight];
-    return PointLightsWriter{static_cast<PointLight*>(pf.point_lights.mapped()),
-                             cfg_.max_point_lights, &pf.lights_dirty};
-}
-
 VkBuffer RenderState::bones_buffer(FrameIndex f) const noexcept {
     return per_frame_[to_u32(f) % kMaxFramesInFlight].bones.buffer();
 }
@@ -102,9 +92,6 @@ VkBuffer RenderState::pbd_buffer(FrameIndex f) const noexcept {
 VkBuffer RenderState::particles_buffer(FrameIndex f) const noexcept {
     return per_frame_[to_u32(f) % kMaxFramesInFlight].particles.buffer();
 }
-VkBuffer RenderState::point_lights_buffer(FrameIndex f) const noexcept {
-    return per_frame_[to_u32(f) % kMaxFramesInFlight].point_lights.buffer();
-}
 
 void RenderState::begin_frame(FrameIndex f) noexcept {
     auto& pf = per_frame_[to_u32(f) % kMaxFramesInFlight];
@@ -112,7 +99,6 @@ void RenderState::begin_frame(FrameIndex f) noexcept {
     pf.vfx_dirty.clear();
     pf.pbd_dirty.clear();
     pf.particles_dirty.clear();
-    pf.lights_dirty.clear();
 }
 
 void RenderState::end_frame(FrameIndex f) noexcept {
@@ -128,11 +114,10 @@ void RenderState::end_frame(FrameIndex f) noexcept {
     // this slot is reused in a future frame.
     auto& pf = per_frame_[to_u32(f) % kMaxFramesInFlight];
     VmaAllocator alloc = ctx_.allocator();
-    flush_dirty(alloc, pf.bones.allocation(),        pf.bones_dirty,     sizeof(glm::mat4));
-    flush_dirty(alloc, pf.vfx.allocation(),          pf.vfx_dirty,       cfg_.splat_stride);
-    flush_dirty(alloc, pf.pbd.allocation(),          pf.pbd_dirty,       cfg_.splat_stride);
-    flush_dirty(alloc, pf.particles.allocation(),    pf.particles_dirty, cfg_.splat_stride);
-    flush_dirty(alloc, pf.point_lights.allocation(), pf.lights_dirty,    sizeof(PointLight));
+    flush_dirty(alloc, pf.bones.allocation(),     pf.bones_dirty,     sizeof(glm::mat4));
+    flush_dirty(alloc, pf.vfx.allocation(),       pf.vfx_dirty,       cfg_.splat_stride);
+    flush_dirty(alloc, pf.pbd.allocation(),       pf.pbd_dirty,       cfg_.splat_stride);
+    flush_dirty(alloc, pf.particles.allocation(), pf.particles_dirty, cfg_.splat_stride);
 }
 
 }  // namespace gseurat

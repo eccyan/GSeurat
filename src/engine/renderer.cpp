@@ -4,6 +4,7 @@
 #include "gseurat/engine/pipeline.hpp"
 #include "gseurat/engine/procedural_textures.hpp"
 #include "gseurat/engine/project_root.hpp"
+#include "gseurat/engine/render_state.hpp"
 #include "gseurat/engine/resource_manager.hpp"
 #include "gseurat/engine/scoped_timer.hpp"
 #include "gseurat/engine/sort_entry.hpp"
@@ -394,6 +395,31 @@ void Renderer::set_gs_background(const ResourceHandle<Texture>& texture) {
         texture->image_view(), texture->sampler(),
         flat_normal_texture_->image_view(), flat_normal_texture_->sampler());
     gs_bg_initialized_ = true;
+}
+
+void Renderer::wait_current_frame_fence() noexcept {
+    auto device = context_.device();
+    const auto& fs = sync_.frame(current_frame_);
+#if GSEURAT_DEBUG_BUILD
+    constexpr uint64_t kFenceWaitWatchdogNs = 2'000'000'000ull;  // 2 sec
+    const auto t0 = std::chrono::steady_clock::now();
+    VkResult r = vkWaitForFences(device, 1, &fs.in_flight, VK_TRUE,
+                                  kFenceWaitWatchdogNs);
+    const auto t1 = std::chrono::steady_clock::now();
+    const double ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
+    if (r == VK_TIMEOUT) {
+        std::fprintf(stderr,
+            "[renderer/watchdog] wait_current_frame_fence TIMEOUT after %.2f ms "
+            "(current_frame=%u) — retrying with infinite timeout\n",
+            ms, current_frame_);
+        vkWaitForFences(device, 1, &fs.in_flight, VK_TRUE, UINT64_MAX);
+    } else if (ms > 50.0) {
+        GS_LOG_FRAME("[renderer/watchdog] wait_current_frame_fence slow: {:.2f} ms "
+                     "(current_frame={})", ms, current_frame_);
+    }
+#else
+    vkWaitForFences(device, 1, &fs.in_flight, VK_TRUE, UINT64_MAX);
+#endif
 }
 
 void Renderer::draw_scene(float dt,
@@ -850,6 +876,13 @@ void Renderer::draw_scene(float dt,
 #if GSEURAT_DEBUG_BUILD
     const auto t_ds_pre_submit = std::chrono::steady_clock::now();
 #endif
+    // Phase 4 closure: flush mapped RenderState writes BEFORE submit so
+    // non-coherent memory platforms see them on the GPU side. No-op on
+    // Apple Silicon HOST_COHERENT. Must run after all writer.write() in
+    // this frame (record_gs_prepass) and before vkQueueSubmit.
+    if (render_state_) {
+        render_state_->end_frame(FrameIndex{current_frame_});
+    }
     if (vkQueueSubmit(context_.graphics_queue(), 1, &submit, frame_sync.in_flight) != VK_SUCCESS) {
         throw std::runtime_error("Failed to submit draw command buffer");
     }
