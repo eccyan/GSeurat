@@ -1,6 +1,6 @@
 {
   "name": "warm_robot",
-  "ply_file": "warm_robot.ply",
+  "ply_file": "warm_robot.gsvx",
   "scale": 0.5,
   "bones": [
     { "id": "torso", "parent": null, "joint": [16, 3, 16] },

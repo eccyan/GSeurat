@@ -1,6 +1,6 @@
 {
   "name": "snes_hero",
-  "ply_file": "snes_hero.ply",
+  "ply_file": "snes_hero.gsvx",
   "scale": 1.0,
   "bones": [
     {

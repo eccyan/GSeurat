@@ -1,7 +1,7 @@
 {
   "version": 2,
   "gaussian_splat": {
-    "ply_file": "assets/maps/dungeon.ply",
+    "ply_file": "assets/maps/dungeon.gsvx",
     "camera": {
       "position": [
         25,
@@ -3564,7 +3564,7 @@
         0
       ],
       "scale": 0.5,
-      "ply_file": "assets/characters/slime/slime.ply",
+      "ply_file": "assets/characters/slime/slime.gsvx",
       "components": {
         "BoneAnimated": {
           "manifest": "assets/characters/slime/slime.manifest.json",
@@ -3591,7 +3591,7 @@
         0
       ],
       "scale": 0.6,
-      "ply_file": "assets/characters/slime/slime.ply",
+      "ply_file": "assets/characters/slime/slime.gsvx",
       "components": {
         "BoneAnimated": {
           "manifest": "assets/characters/slime/slime.manifest.json",
@@ -3618,7 +3618,7 @@
         0
       ],
       "scale": 0.4,
-      "ply_file": "assets/characters/slime/slime.ply",
+      "ply_file": "assets/characters/slime/slime.gsvx",
       "components": {
         "BoneAnimated": {
           "manifest": "assets/characters/slime/slime.manifest.json",

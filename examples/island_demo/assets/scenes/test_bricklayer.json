@@ -147,7 +147,7 @@
     ]
   },
   "gaussian_splat": {
-    "ply_file": "assets/maps/test_bricklayer.ply",
+    "ply_file": "assets/maps/test_bricklayer.gsvx",
     "camera": {
       "position": [
         128,

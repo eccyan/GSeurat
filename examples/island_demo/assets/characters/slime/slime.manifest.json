@@ -1,6 +1,6 @@
 {
   "name": "slime",
-  "ply_file": "slime.ply",
+  "ply_file": "slime.gsvx",
   "scale": 1.0,
   "bones": [
     {

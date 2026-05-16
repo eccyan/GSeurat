@@ -10,7 +10,7 @@
         -10
       ],
       "duration": 0,
-      "ply_file": "scene/torch.ply",
+      "ply_file": "scene/torch.gsvx",
       "scale": 10
     },
     {

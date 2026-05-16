@@ -21,7 +21,7 @@
     "facing": "down"
   },
   "gaussian_splat": {
-    "ply_file": "maps/map.ply",
+    "ply_file": "maps/map.gsvx",
     "camera": {
       "position": [
         0,
