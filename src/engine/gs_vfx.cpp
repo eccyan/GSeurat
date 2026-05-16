@@ -143,7 +143,7 @@ std::string VfxObjectCache::preload(const std::string& ply_file) {
     }
     if (entries_.count(resolved)) return resolved;  // idempotent
 
-    auto cloud = GaussianCloud::load_with_gsvx_first(resolved);
+    auto cloud = GaussianCloud::load_baked(resolved);
     const auto& gs = cloud.gaussians();
     const std::size_t total = gs.size();
     const std::size_t stride = (total > kMaxVfxObjectSplats)
@@ -238,7 +238,7 @@ void VfxInstance::init(const VfxPreset& preset, const glm::vec3& position, bool 
                     std::fprintf(stderr,
                         "[VFX] WARN: PLY '%s' not preloaded — main-thread stall\n",
                         el.ply_file.c_str());
-                    auto cloud = GaussianCloud::load_with_gsvx_first(ply_path);
+                    auto cloud = GaussianCloud::load_baked(ply_path);
                     const auto& gs = cloud.gaussians();
                     const std::size_t total = gs.size();
                     const std::size_t stride = (total > kMaxVfxObjectSplats)

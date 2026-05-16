@@ -43,7 +43,7 @@ ParsedScene GsSceneLoader::parse(const SceneData& scene_data) {
         std::fprintf(stderr, "[GS] (parse) Terrain PLY: '%s' (project_root='%s')\n",
                      gs.ply_file.c_str(), get_project_root().c_str());
         try {
-            parsed.cloud = GaussianCloud::load_with_gsvx_first(gs.ply_file);
+            parsed.cloud = GaussianCloud::load_baked(gs.ply_file);
             parsed.has_terrain = !parsed.cloud.empty();
         } catch (const std::runtime_error& e) {
             std::fprintf(stderr, "[GS] Warning: %s\n", e.what());
@@ -120,7 +120,7 @@ ParsedScene GsSceneLoader::parse(const SceneData& scene_data) {
             const auto& go = parsed.snapped_objects[i];
             if (go.ply_file.empty()) continue;
             try {
-                auto placed_cloud = GaussianCloud::load_with_gsvx_first(go.ply_file);
+                auto placed_cloud = GaussianCloud::load_baked(go.ply_file);
                 if (placed_cloud.empty()) continue;
                 glm::vec3 local_min(1e9f);
                 glm::vec3 local_max(-1e9f);

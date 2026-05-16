@@ -392,7 +392,7 @@ void IslandDemoState::on_enter(AppBase& app) {
                 if (chunk.grid == glm::ivec3(0, 0, 0)) continue;  // already in terrain cloud
                 if (chunk.ply_file.empty()) continue;
                 auto resolved = resolve_asset_path(chunk.ply_file);
-                auto extra = GaussianCloud::load_with_gsvx_first(resolved.string());
+                auto extra = GaussianCloud::load_baked(resolved.string());
                 if (!extra.empty()) {
                     const auto& gs = extra.gaussians();
                     merged.insert(merged.end(), gs.begin(), gs.end());
@@ -417,7 +417,7 @@ void IslandDemoState::on_enter(AppBase& app) {
                             // `finalize_on_main` writes them into gs_terrain.
                             if (!go.ply_file.empty() && !go.components.is_null()
                                 && go.components.contains("BoneAnimated")) {
-                                auto npc_cloud = GaussianCloud::load_with_gsvx_first(go.ply_file);
+                                auto npc_cloud = GaussianCloud::load_baked(go.ply_file);
                                 if (!npc_cloud.empty()) {
                                     const auto& ba_json = go.components["BoneAnimated"];
                                     std::string manifest_path = ba_json.value("manifest", std::string{});
@@ -506,7 +506,7 @@ void IslandDemoState::on_enter(AppBase& app) {
         // bone_index is offset by +1 so the shader's bone[0] (terrain sway)
         // is preserved; per-character bone slots start at 1 (the player) and
         // chunk NPCs use slots starting at 8 (set up by parse() / appended above).
-        auto char_cloud = GaussianCloud::load_with_gsvx_first("assets/characters/snes_hero/snes_hero.ply");
+        auto char_cloud = GaussianCloud::load_baked("assets/characters/snes_hero/snes_hero.ply");
         if (!char_cloud.empty()) {
             const auto& char_gs = char_cloud.gaussians();
             for (const auto& g : char_gs) {
@@ -2393,7 +2393,7 @@ void IslandDemoState::perform_portal_transition(AppBase& app,
                 if (chunk.grid == glm::ivec3(0, 0, 0)) continue;
                 if (chunk.ply_file.empty()) continue;
                 auto resolved = resolve_asset_path(chunk.ply_file);
-                auto extra = GaussianCloud::load_with_gsvx_first(resolved.string());
+                auto extra = GaussianCloud::load_baked(resolved.string());
                 if (!extra.empty()) {
                     const auto& gs = extra.gaussians();
                     merged.insert(merged.end(), gs.begin(), gs.end());
@@ -2413,7 +2413,7 @@ void IslandDemoState::perform_portal_transition(AppBase& app,
                             }
                             if (!go.ply_file.empty() && !go.components.is_null()
                                 && go.components.contains("BoneAnimated")) {
-                                auto npc_cloud = GaussianCloud::load_with_gsvx_first(go.ply_file);
+                                auto npc_cloud = GaussianCloud::load_baked(go.ply_file);
                                 if (!npc_cloud.empty()) {
                                     const auto& ba_json = go.components["BoneAnimated"];
                                     std::string manifest_path = ba_json.value("manifest", std::string{});
@@ -2509,7 +2509,7 @@ void IslandDemoState::perform_portal_transition(AppBase& app,
             }
         }
         if (!player_already_merged) {
-            auto char_cloud = GaussianCloud::load_with_gsvx_first(
+            auto char_cloud = GaussianCloud::load_baked(
                 "assets/characters/snes_hero/snes_hero.ply");
             if (!char_cloud.empty()) {
                 const auto& char_gs = char_cloud.gaussians();
@@ -2726,7 +2726,7 @@ void IslandDemoState::enqueue_async_chunk_load(const std::string& grid_key,
     entry.grid_key = grid_key;
     entry.future = std::async(std::launch::async, [ply_path]() {
         GaussianCloud c;
-        c.load_with_gsvx_first(ply_path);
+        c.load_baked(ply_path);
         return c;
     });
     entry.requested_at = std::chrono::steady_clock::now();

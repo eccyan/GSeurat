@@ -9,7 +9,7 @@
 //
 // Only offline tools (e.g. ply2heightmap) and tests include this header
 // and add `src/engine/gaussian_cloud_ply.cpp` to their build. The runtime
-// path goes through `GaussianCloud::load_with_gsvx_first`, which requires
+// path goes through `GaussianCloud::load_baked`, which requires
 // a sibling `.gsvx` baked by the `bake_gsvx` CMake target.
 //
 // Closes Codex P2 on PR #425: header surface now matches link surface.

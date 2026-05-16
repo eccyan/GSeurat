@@ -285,7 +285,7 @@ void Renderer::init_gs(const GaussianCloud& cloud, uint32_t width, uint32_t heig
     // Snapshot constant-size cloud metadata for demo-layer setup queries
     // (camera framing, ground-plane derivation). The Gaussians themselves
     // are NOT cached on the renderer — Option B per #396 §A: demos that
-    // need the splats re-parse from disk via `GaussianCloud::load_with_gsvx_first`.
+    // need the splats re-parse from disk via `GaussianCloud::load_baked`.
     gs_cloud_metadata_.bounds = cloud.bounds();
     gs_cloud_metadata_.gaussian_count = cloud.count();
 

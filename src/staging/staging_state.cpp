@@ -603,7 +603,7 @@ void StagingState::update(AppBase& app, float dt) {
                     // parse runs on the main thread for now (same trade-off
                     // as the IslandDemo WorldStreamer path).
                     GaussianCloud chunk_cloud;
-                    chunk_cloud.load_with_gsvx_first(resolved.string());
+                    chunk_cloud.load_baked(resolved.string());
                     app.renderer().gs_renderer().load_cloud_async(std::move(chunk_cloud));
                     break;
                 }

@@ -113,15 +113,17 @@ struct GsvxPayload {
 
 class GaussianCloud {
 public:
-    /// Load a pre-baked .gsvx binary file (zero-copy GPU format).
+    /// Read a pre-baked .gsvx binary file (zero-copy GPU format) and
+    /// return the raw payload. Low-level accessor; runtime callers should
+    /// prefer `load_baked` which unpacks straight into a GaussianCloud.
     static GsvxPayload load_gsvx(const std::string& path);
-    /// Resolve the sibling `.gsvx` for a `.ply` path and load it. Throws
-    /// `std::runtime_error` if the sibling is missing or unreadable; this
-    /// is the runtime cloud-load path and there is no PLY fallback. Every
-    /// bundled .ply is converted to .gsvx by the `bake_gsvx` build target
-    /// (M1 of #396).
-    static GaussianCloud load_with_gsvx_first(
-        const std::string& ply_path,
+    /// Load a baked GaussianCloud from a `.gsvx` file path. Throws
+    /// `std::runtime_error` if the file is missing or unreadable —
+    /// there is no PLY fallback. Every bundled `.ply` has a `.gsvx`
+    /// sibling produced by `scripts/bake_assets.py`, and scene /
+    /// manifest / vfx JSON references it directly (PR-B2 of #396).
+    static GaussianCloud load_baked(
+        const std::string& gsvx_path,
         CoordinateSystem coords = CoordinateSystem::kYUp);
     static GaussianCloud from_gaussians(std::vector<Gaussian> gaussians);
 
