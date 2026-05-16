@@ -102,6 +102,9 @@ jobs:
       - name: Validate bricklayer sync
         run: python3 scripts/validate_bricklayer_sync.py
 
+      - name: Validate gsvx sync
+        run: python3 scripts/validate_gsvx_in_sync.py
+
   test-tools:
     runs-on: ubuntu-24.04
     name: Test (TypeScript)
