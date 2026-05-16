@@ -69,7 +69,7 @@
     }
   ],
   "gaussian_splat": {
-    "ply_file": "assets/maps/emissive_test.ply",
+    "ply_file": "assets/maps/emissive_test.gsvx",
     "camera": {
       "position": [
         32,

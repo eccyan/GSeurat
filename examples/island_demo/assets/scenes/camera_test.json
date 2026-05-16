@@ -1,7 +1,7 @@
 {
   "version": 2,
   "gaussian_splat": {
-    "ply_file": "assets/maps/test_terrain.ply",
+    "ply_file": "assets/maps/test_terrain.gsvx",
     "camera": { "position": [32, 30, 80], "target": [32, 0, 32], "fov": 45 },
     "render_width": 320, "render_height": 240
   },

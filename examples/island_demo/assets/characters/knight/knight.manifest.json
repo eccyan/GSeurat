@@ -1,6 +1,6 @@
 {
   "name": "knight",
-  "ply_file": "knight.ply",
+  "ply_file": "knight.gsvx",
   "scale": 1,
   "bones": [
     {

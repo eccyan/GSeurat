@@ -149,7 +149,7 @@
           "speed": 1.5
         }
       },
-      "ply_file": "assets/characters/deer/deer.ply"
+      "ply_file": "assets/characters/deer/deer.gsvx"
     },
     {
       "id": "forest_deer_2",
@@ -171,7 +171,7 @@
           "speed": 1.5
         }
       },
-      "ply_file": "assets/characters/deer/deer.ply"
+      "ply_file": "assets/characters/deer/deer.gsvx"
     },
     {
       "id": "forest_wolf",
@@ -193,7 +193,7 @@
           "speed": 1.5
         }
       },
-      "ply_file": "assets/characters/wolf/wolf.ply"
+      "ply_file": "assets/characters/wolf/wolf.gsvx"
     },
     {
       "id": "forest_mushroom_1",
@@ -221,7 +221,7 @@
           "effect_radius": 6
         }
       },
-      "ply_file": "assets/props/glow_mushrooms.ply"
+      "ply_file": "assets/props/glow_mushrooms.gsvx"
     },
     {
       "id": "forest_mushroom_2",
@@ -249,7 +249,7 @@
           "effect_radius": 6
         }
       },
-      "ply_file": "assets/props/glow_mushrooms.ply"
+      "ply_file": "assets/props/glow_mushrooms.gsvx"
     },
     {
       "id": "forest_mushroom_3",
@@ -277,7 +277,7 @@
           "effect_radius": 6
         }
       },
-      "ply_file": "assets/props/glow_mushrooms.ply"
+      "ply_file": "assets/props/glow_mushrooms.gsvx"
     },
     {
       "id": "forest_mushroom_4",
@@ -305,7 +305,7 @@
           "effect_radius": 6
         }
       },
-      "ply_file": "assets/props/glow_mushrooms.ply"
+      "ply_file": "assets/props/glow_mushrooms.gsvx"
     },
     {
       "id": "forest_guardian",
@@ -321,7 +321,7 @@
         0
       ],
       "scale": 1,
-      "ply_file": "assets/characters/warm_robot/warm_robot.ply",
+      "ply_file": "assets/characters/warm_robot/warm_robot.gsvx",
       "components": {
         "BoneAnimated": {
           "manifest": "assets/characters/warm_robot/warm_robot.manifest.json",
@@ -348,7 +348,7 @@
         0
       ],
       "scale": 0.45,
-      "ply_file": "assets/characters/knight/knight.ply",
+      "ply_file": "assets/characters/knight/knight.gsvx",
       "components": {
         "BoneAnimated": {
           "manifest": "assets/characters/knight/knight.manifest.json",
@@ -375,7 +375,7 @@
         0
       ],
       "scale": 1,
-      "ply_file": "assets/props/firefly.ply",
+      "ply_file": "assets/props/firefly.gsvx",
       "components": {
         "EmissiveToggle": {
           "emission_base": 5.0,
@@ -398,7 +398,7 @@
         0
       ],
       "scale": 1,
-      "ply_file": "assets/props/firefly.ply",
+      "ply_file": "assets/props/firefly.gsvx",
       "components": {
         "EmissiveToggle": {
           "emission_base": 5.0,
@@ -421,7 +421,7 @@
         0
       ],
       "scale": 1,
-      "ply_file": "assets/props/firefly.ply",
+      "ply_file": "assets/props/firefly.gsvx",
       "components": {
         "EmissiveToggle": {
           "emission_base": 5.0,
@@ -444,7 +444,7 @@
         0
       ],
       "scale": 1,
-      "ply_file": "assets/props/firefly.ply",
+      "ply_file": "assets/props/firefly.gsvx",
       "components": {
         "EmissiveToggle": {
           "emission_base": 5.0,
@@ -467,7 +467,7 @@
         0
       ],
       "scale": 1,
-      "ply_file": "assets/props/firefly.ply",
+      "ply_file": "assets/props/firefly.gsvx",
       "components": {
         "EmissiveToggle": {
           "emission_base": 5.0,
@@ -637,7 +637,7 @@
     ]
   },
   "gaussian_splat": {
-    "ply_file": "assets/maps/northern_forest.ply",
+    "ply_file": "assets/maps/northern_forest.gsvx",
     "camera": {
       "position": [
         192,
