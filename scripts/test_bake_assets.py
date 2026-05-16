@@ -127,6 +127,35 @@ with tempfile.TemporaryDirectory() as tmp:
     check(found == target, f"locates importer in candidate root (got {found})")
 
 # ---------------------------------------------------------------------------
+# bake_one (integration — requires ply_importer to be built)
+# ---------------------------------------------------------------------------
+print("\nbake_one")
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+SAMPLE_PLY = REPO_ROOT / "examples" / "island_demo" / "assets" / "props" / "firefly.ply"
+IMPORTER_CANDIDATES = [
+    REPO_ROOT / "build" / "macos-release",
+    REPO_ROOT / "build" / "macos-release-with-diag",
+    REPO_ROOT / "build" / "macos-debug",
+    REPO_ROOT / "build" / "linux-release",
+    Path("/Users/eccyan/dev/GSeurat/.worktrees/fix-double-init-gs/build/macos-release"),
+]
+importer = bake_assets.find_ply_importer(IMPORTER_CANDIDATES)
+
+if importer is None or not SAMPLE_PLY.exists():
+    print("  SKIP  bake_one (ply_importer not built or fixture missing)")
+else:
+    with tempfile.TemporaryDirectory() as tmp:
+        out = Path(tmp) / "firefly.gsvx"
+        bake_assets.bake_one(importer, SAMPLE_PLY, out)
+        check(out.exists(), "bake_one writes the output file")
+        check(out.stat().st_size > 64,
+              f"bake_one output exceeds header size (got {out.stat().st_size} bytes)")
+        # First 4 bytes must be the GSVX magic
+        magic = out.read_bytes()[:4]
+        check(magic == b"GSVX", f"bake_one output begins with GSVX magic (got {magic!r})")
+
+# ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
 total = passed + failed

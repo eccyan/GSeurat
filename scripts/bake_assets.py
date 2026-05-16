@@ -13,8 +13,11 @@ Skip-up-to-date: bake only if .ply mtime > .gsvx mtime, or .gsvx is missing,
 or --force.
 """
 
+import argparse
 import hashlib
 import json
+import subprocess
+import sys
 from pathlib import Path
 
 
@@ -62,10 +65,120 @@ def find_ply_importer(roots: list[Path]) -> Path | None:
     `<root>/tools/ply_importer/ply_importer` (with `.exe` on Windows).
     Returns the first match, or None if none exist.
     """
-    import sys as _sys
-    name = "ply_importer.exe" if _sys.platform == "win32" else "ply_importer"
+    name = "ply_importer.exe" if sys.platform == "win32" else "ply_importer"
     for root in roots:
         candidate = Path(root) / "tools" / "ply_importer" / name
         if candidate.exists():
             return candidate
     return None
+
+
+def bake_one(importer: Path, ply: Path, gsvx: Path) -> None:
+    """Invoke ply_importer on `ply`, writing `gsvx`.
+
+    Raises CalledProcessError if the importer fails. Output is captured
+    so callers can decide what to surface.
+    """
+    gsvx.parent.mkdir(parents=True, exist_ok=True)
+    subprocess.run(
+        [str(importer), str(ply), str(gsvx)],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+
+# Repo-relative root holding all bakeable assets and the manifest.
+ASSETS_ROOT_REL = "examples/island_demo/assets"
+MANIFEST_NAME = "gsvx_sync_manifest.json"
+
+DEFAULT_BUILD_DIRS = [
+    "build/macos-release",
+    "build/macos-release-with-diag",
+    "build/macos-debug",
+    "build/linux-release",
+    "build/windows-release",
+]
+
+
+def find_repo_root(start: Path) -> Path:
+    """Walk up from `start` looking for a `.git` directory."""
+    for candidate in [start, *start.parents]:
+        if (candidate / ".git").exists():
+            return candidate
+    raise RuntimeError(f"could not find repository root from {start}")
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="re-bake every .ply, ignoring skip-up-to-date logic",
+    )
+    parser.add_argument(
+        "--build-dir",
+        type=Path,
+        action="append",
+        default=None,
+        help="extra build directory to search for ply_importer "
+             "(may be given multiple times)",
+    )
+    args = parser.parse_args(argv)
+
+    repo_root = find_repo_root(Path(__file__).resolve().parent)
+    assets_root = repo_root / ASSETS_ROOT_REL
+    manifest_path = assets_root / MANIFEST_NAME
+
+    candidate_dirs = []
+    if args.build_dir:
+        candidate_dirs.extend(args.build_dir)
+    candidate_dirs.extend(repo_root / d for d in DEFAULT_BUILD_DIRS)
+
+    importer = find_ply_importer(candidate_dirs)
+    if importer is None:
+        sys.stderr.write(
+            "bake_assets: could not find ply_importer. "
+            "Build it first:\n"
+            "    cmake --preset macos-release\n"
+            "    cmake --build --preset macos-release --target ply_importer\n"
+        )
+        return 2
+
+    manifest = load_manifest(manifest_path)
+    entries = manifest.setdefault("entries", {})
+
+    plys = sorted(assets_root.rglob("*.ply"))
+    baked = 0
+    skipped = 0
+
+    for ply in plys:
+        rel = ply.relative_to(assets_root).as_posix()
+        gsvx = ply.with_suffix(".gsvx")
+        if should_bake(ply, gsvx, args.force):
+            print(f"  bake  {rel}")
+            bake_one(importer, ply, gsvx)
+            entries[rel] = sha256_file(ply)
+            baked += 1
+        else:
+            # Keep manifest in sync even when we skip the bake — the .ply
+            # could have been touched without content change in a previous
+            # session that we want to record.
+            entries[rel] = sha256_file(ply)
+            skipped += 1
+
+    # Drop manifest entries for .ply files that no longer exist.
+    live = {ply.relative_to(assets_root).as_posix() for ply in plys}
+    stale = [k for k in entries if k not in live]
+    for k in stale:
+        del entries[k]
+
+    save_manifest(manifest_path, manifest)
+    print(f"\nbaked={baked}  skipped={skipped}  total={len(plys)}  "
+          f"pruned_stale={len(stale)}")
+    print(f"manifest: {manifest_path}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
