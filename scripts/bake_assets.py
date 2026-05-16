@@ -9,8 +9,11 @@ source .ply.
 Usage:
     python3 scripts/bake_assets.py [--force] [--build-dir <path>]
 
-Skip-up-to-date: bake only if .ply mtime > .gsvx mtime, or .gsvx is missing,
-or --force.
+Skip-up-to-date: a .ply is re-baked only if the manifest's recorded SHA256
+does not match the current source bytes, or the .gsvx is missing, or
+--force is passed. mtime is intentionally not consulted — rsync -t, cp -p,
+and archive-restore workflows can preserve old mtimes on new content, and
+trusting mtime there would silently bless a stale .gsvx.
 """
 
 import argparse
@@ -49,13 +52,25 @@ def save_manifest(path: Path, manifest: dict) -> None:
         f.write("\n")
 
 
-def should_bake(ply: Path, gsvx: Path, force: bool) -> bool:
-    """True if .gsvx must be regenerated."""
+def should_bake(
+    gsvx: Path,
+    current_hash: str,
+    recorded_hash: str | None,
+    force: bool,
+) -> bool:
+    """True if .gsvx must be regenerated.
+
+    Hash-based — does not consult mtime. `current_hash` is the SHA256 of the
+    .ply source bytes right now; `recorded_hash` is whatever the manifest had
+    on disk for this asset (None if no entry yet). A mismatch (including
+    None) means the manifest is out of sync with the source and the .gsvx is
+    no longer trustworthy, regardless of mtimes.
+    """
     if force:
         return True
     if not gsvx.exists():
         return True
-    return ply.stat().st_mtime > gsvx.stat().st_mtime
+    return recorded_hash != current_hash
 
 
 def find_ply_importer(roots: list[Path]) -> Path | None:
@@ -155,17 +170,15 @@ def main(argv: list[str] | None = None) -> int:
     for ply in plys:
         rel = ply.relative_to(assets_root).as_posix()
         gsvx = ply.with_suffix(".gsvx")
-        if should_bake(ply, gsvx, args.force):
+        current_hash = sha256_file(ply)
+        recorded_hash = entries.get(rel)
+        if should_bake(gsvx, current_hash, recorded_hash, args.force):
             print(f"  bake  {rel}")
             bake_one(importer, ply, gsvx)
-            entries[rel] = sha256_file(ply)
             baked += 1
         else:
-            # Keep manifest in sync even when we skip the bake — the .ply
-            # could have been touched without content change in a previous
-            # session that we want to record.
-            entries[rel] = sha256_file(ply)
             skipped += 1
+        entries[rel] = current_hash
 
     # Drop manifest entries for .ply files that no longer exist.
     live = {ply.relative_to(assets_root).as_posix() for ply in plys}

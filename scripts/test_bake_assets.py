@@ -85,26 +85,31 @@ print("\nshould_bake")
 
 with tempfile.TemporaryDirectory() as tmp:
     tmp = Path(tmp)
-    ply = tmp / "a.ply"
-    gsvx = tmp / "a.gsvx"
-    ply.write_bytes(b"hello")
+    gsvx_missing = tmp / "missing.gsvx"
+    gsvx_present = tmp / "present.gsvx"
+    gsvx_present.write_bytes(b"GSVX...")
 
-    check(bake_assets.should_bake(ply, gsvx, force=False) is True,
+    H = "a" * 64  # canonical hash
+
+    # Missing sibling → always bake, regardless of hash match
+    check(bake_assets.should_bake(gsvx_missing, H, H, force=False) is True,
           "bake when .gsvx is missing")
 
-    gsvx.write_bytes(b"GSVX")
-    # ensure .gsvx is older than .ply
-    os.utime(gsvx, (0, 0))
-    check(bake_assets.should_bake(ply, gsvx, force=False) is True,
-          "bake when .ply is newer than .gsvx")
+    # No recorded hash (None) → bake; we cannot trust an unrecorded .gsvx
+    check(bake_assets.should_bake(gsvx_present, H, None, force=False) is True,
+          "bake when manifest has no entry yet")
 
-    # touch gsvx so it's newer
-    now = ply.stat().st_mtime + 10
-    os.utime(gsvx, (now, now))
-    check(bake_assets.should_bake(ply, gsvx, force=False) is False,
-          "skip when .gsvx is newer than .ply")
+    # Hash mismatch → bake even though sibling exists (Codex P2 scenario:
+    # a content change that didn't bump mtime, e.g. via rsync -t / cp -p)
+    check(bake_assets.should_bake(gsvx_present, H, "b" * 64, force=False) is True,
+          "bake when manifest hash mismatches current source hash")
 
-    check(bake_assets.should_bake(ply, gsvx, force=True) is True,
+    # Everything matches → skip
+    check(bake_assets.should_bake(gsvx_present, H, H, force=False) is False,
+          "skip when .gsvx present and hash matches")
+
+    # --force overrides every other branch
+    check(bake_assets.should_bake(gsvx_present, H, H, force=True) is True,
           "force overrides skip")
 
 # ---------------------------------------------------------------------------
