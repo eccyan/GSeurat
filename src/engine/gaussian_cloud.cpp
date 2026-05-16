@@ -11,10 +11,11 @@
 
 namespace gseurat {
 
-// PLY I/O (load_ply / write_ply) lives in gaussian_cloud_ply.cpp. That file is
-// NOT compiled into gseurat_core — only into offline tools (ply2heightmap)
-// and tests. The runtime path goes through load_with_gsvx_first, which
-// requires a sibling .gsvx baked by the build-time bake_gsvx target.
+// PLY I/O (`gseurat::ply::load` / `gseurat::ply::write`) lives in
+// gaussian_cloud_ply.cpp — offline-only, NOT linked into gseurat_core.
+// The runtime path is `GaussianCloud::load_baked`, which requires a
+// .gsvx file produced by scripts/bake_assets.py (PR-B1) and referenced
+// directly from scene/manifest/vfx JSON (PR-B2).
 
 GaussianCloud GaussianCloud::from_gaussians(std::vector<Gaussian> gaussians) {
     GaussianCloud cloud;
@@ -176,27 +177,32 @@ std::vector<Gaussian> unpack_gpu_gaussians(const std::vector<GpuGaussian>& gpu,
 
 }  // namespace
 
-GaussianCloud GaussianCloud::load_with_gsvx_first(const std::string& ply_path,
-                                                   CoordinateSystem coords) {
-    std::filesystem::path gsvx_candidate(ply_path);
+GaussianCloud GaussianCloud::load_baked(const std::string& asset_path,
+                                        CoordinateSystem coords) {
+    // Accept either a `.ply` or `.gsvx` path and resolve to the baked
+    // `.gsvx` sibling. PR-B2 migrated JSON scene/manifest/vfx paths to
+    // `.gsvx`, but two callers still legitimately pass `.ply`: the
+    // hard-coded player loader in `island_demo_state.cpp` (predates the
+    // JSON migration) and the wrapper tests in `tests/test_gaussian_cloud.cpp`
+    // that exercise sibling resolution. The rewrite is a no-op when the
+    // input already has `.gsvx`, so this stays safe for the migrated path.
+    std::filesystem::path gsvx_candidate(asset_path);
     gsvx_candidate.replace_extension(".gsvx");
-    const std::string gsvx_path_str = gsvx_candidate.string();
+    const std::string gsvx_path = gsvx_candidate.string();
 
-    // The runtime engine does not link the PLY parser. Every bundled .ply
-    // must have a sibling .gsvx produced by the build-time bake_gsvx target;
-    // a missing or invalid .gsvx is a build/asset-pipeline error, not a
-    // runtime fallback case.
-    auto resolved = resolve_asset_path(gsvx_path_str);
+    // The runtime engine does not link the PLY parser. The baked `.gsvx`
+    // must exist — a missing or invalid file is a build/asset-pipeline
+    // error, not a runtime fallback case.
+    auto resolved = resolve_asset_path(gsvx_path);
     std::error_code ec;
     if (!std::filesystem::is_regular_file(resolved, ec)) {
         throw std::runtime_error(
-            "GaussianCloud: missing sibling .gsvx for '" + ply_path +
-            "' (expected at '" + resolved.string() + "'). The build-time " +
-            "bake_gsvx target produces .gsvx siblings for every bundled .ply; " +
-            "rebuild or invoke ply_importer manually if you added a PLY " +
-            "outside the build system.");
+            "GaussianCloud::load_baked: missing .gsvx for '" + asset_path +
+            "' (expected at '" + resolved.string() + "'). Run " +
+            "scripts/bake_assets.py to regenerate, or verify the scene/manifest "
+            "JSON path is correct.");
     }
-    GsvxPayload payload = load_gsvx(gsvx_path_str);
+    GsvxPayload payload = load_gsvx(gsvx_path);
     return GaussianCloud::from_gaussians(
         unpack_gpu_gaussians(payload.gpu_gaussians, coords));
 }

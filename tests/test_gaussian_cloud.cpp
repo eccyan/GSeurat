@@ -794,7 +794,7 @@ int main() {
     }
 
     // ---------------------------------------------------------------------------
-    // Tests 24-29: load_with_gsvx_first wrapper (PR-A #396)
+    // Tests 24-29: load_baked wrapper (PR-A #396)
     //
     // Helper: bake a sibling .gsvx alongside a .ply by reading the PLY,
     // packing into GpuGaussian using the importer's exact math, and writing.
@@ -832,12 +832,12 @@ int main() {
 
         bool threw = false;
         try {
-            (void)GaussianCloud::load_with_gsvx_first(ply_path);
+            (void)GaussianCloud::load_baked(ply_path);
         } catch (const std::runtime_error&) {
             threw = true;
         }
-        assert(threw && "load_with_gsvx_first throws when no sibling .gsvx");
-        printf("PASS: Test 24 - load_with_gsvx_first throws when no sibling .gsvx\n");
+        assert(threw && "load_baked throws when no sibling .gsvx");
+        printf("PASS: Test 24 - load_baked throws when no sibling .gsvx\n");
     }
 
     // ====== Test 25: prefers .gsvx sibling when present (parity with load_ply) ======
@@ -848,7 +848,7 @@ int main() {
         bake_sibling_gsvx_v2(ply_path, gsvx_path);
 
         auto via_ply  = ply::load(ply_path);
-        auto via_dual = GaussianCloud::load_with_gsvx_first(ply_path);
+        auto via_dual = GaussianCloud::load_baked(ply_path);
 
         assert(via_dual.count() == via_ply.count() && "prefer count matches");
         // Tight tolerance — the GSVX bake stored the exact post-conversion
@@ -878,7 +878,7 @@ int main() {
         // Bounds match
         assert(approx(via_ply.bounds().min.x, via_dual.bounds().min.x, 1e-6f) && "prefer bounds.min.x");
         assert(approx(via_ply.bounds().max.x, via_dual.bounds().max.x, 1e-6f) && "prefer bounds.max.x");
-        printf("PASS: Test 25 - load_with_gsvx_first prefers sibling .gsvx (parity)\n");
+        printf("PASS: Test 25 - load_baked prefers sibling .gsvx (parity)\n");
     }
 
     // ====== Test 26: throws when sibling .gsvx is corrupt ======
@@ -897,12 +897,12 @@ int main() {
 
         bool threw = false;
         try {
-            (void)GaussianCloud::load_with_gsvx_first(ply_path);
+            (void)GaussianCloud::load_baked(ply_path);
         } catch (const std::runtime_error&) {
             threw = true;
         }
-        assert(threw && "load_with_gsvx_first throws on corrupt sibling .gsvx");
-        printf("PASS: Test 26 - load_with_gsvx_first throws on corrupt sibling\n");
+        assert(threw && "load_baked throws on corrupt sibling .gsvx");
+        printf("PASS: Test 26 - load_baked throws on corrupt sibling\n");
     }
 
     // ====== Test 27: throws when sibling .gsvx is truncated ======
@@ -924,12 +924,12 @@ int main() {
 
         bool threw = false;
         try {
-            (void)GaussianCloud::load_with_gsvx_first(ply_path);
+            (void)GaussianCloud::load_baked(ply_path);
         } catch (const std::runtime_error&) {
             threw = true;
         }
-        assert(threw && "load_with_gsvx_first throws on truncated sibling .gsvx");
-        printf("PASS: Test 27 - load_with_gsvx_first throws on truncated sibling\n");
+        assert(threw && "load_baked throws on truncated sibling .gsvx");
+        printf("PASS: Test 27 - load_baked throws on truncated sibling\n");
     }
 
     // ====== Test 28: kVulkanYDown applied symmetrically on GSVX path ======
@@ -940,7 +940,7 @@ int main() {
         bake_sibling_gsvx_v2(ply_path, gsvx_path);
 
         auto via_ply  = ply::load(ply_path, CoordinateSystem::kVulkanYDown);
-        auto via_dual = GaussianCloud::load_with_gsvx_first(ply_path,
+        auto via_dual = GaussianCloud::load_baked(ply_path,
                                                              CoordinateSystem::kVulkanYDown);
 
         assert(via_dual.count() == via_ply.count() && "ydown count matches");
@@ -975,7 +975,7 @@ int main() {
         }
         write_test_gsvx(gsvx_path, data);
 
-        auto via_dual = GaussianCloud::load_with_gsvx_first(ply_path);
+        auto via_dual = GaussianCloud::load_baked(ply_path);
         assert(via_dual.count() == 3 && "bone count");
         assert(via_dual.gaussians()[0].bone_index == 7 && "bone_index 0");
         assert(via_dual.gaussians()[1].bone_index == 8 && "bone_index 1");

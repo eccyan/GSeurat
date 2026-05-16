@@ -4,7 +4,7 @@
 // gseurat_core. The runtime engine consumes pre-baked .gsvx files via
 // GaussianCloud::load_gsvx — every bundled .ply has a sibling .gsvx
 // produced by the build-time bake_gsvx target (CMakeLists.txt), and
-// GaussianCloud::load_with_gsvx_first throws on missing .gsvx rather
+// GaussianCloud::load_baked throws on missing .gsvx rather
 // than falling back here.
 //
 // load / write live in `gseurat::ply::` (not on the GaussianCloud class)
