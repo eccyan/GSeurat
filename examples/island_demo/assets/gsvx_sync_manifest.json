@@ -1,0 +1,229 @@
+{
+  "version": 2,
+  "entries": {
+    "characters/deer/deer.ply": {
+      "ply_sha256": "a63c01e0756e157d69ba820f61263bdea7e77527f532561f0c5282e90d0d1a94",
+      "gsvx_sha256": "dc0a24438614564b3e89e1e16e6527b2b199d188cc1aed0c2b888e5d91f27f34"
+    },
+    "characters/knight/knight.ply": {
+      "ply_sha256": "ef5904fc065331709873cacd86db34173c52556ead76eb723d3a4e844a160c9b",
+      "gsvx_sha256": "e5883a3205e9a4bf156e2c49d1ec728d0552b80828c8ceb797d73f43ffe0c2c2"
+    },
+    "characters/slime/slime.ply": {
+      "ply_sha256": "ca7e5d6f0116483d2362764a01822d46dd178bf9285849287292ba718b477d6e",
+      "gsvx_sha256": "52b1d30dffa9b4be679b32bae6b651a16d7317951a2b8c1827f381b005ede1c8"
+    },
+    "characters/snes_hero/snes_hero.ply": {
+      "ply_sha256": "ecf78b5c628d78972376f784036be38c1d0ecdbaa0b0122ab7b7d3ef72dea9fb",
+      "gsvx_sha256": "774907873c8fada8017fc5cb8890dbdf489b993e00040f98e97bdfce051a366d"
+    },
+    "characters/untitled/untitled.ply": {
+      "ply_sha256": "6bee54938897813132331f54e540d9120fd704bcf6774f3f6025023a8b934900",
+      "gsvx_sha256": "12f88fafc3ebf4925add87c365a5b077f91d37e6882da6883a0c743c833ad3ff"
+    },
+    "characters/warm_robot/warm_robot.ply": {
+      "ply_sha256": "36e1051c4aadae36dc71da1f8e55b96b291d849d6c4105f9732cd1a03b9c4b59",
+      "gsvx_sha256": "fb07a88d01be2df6effcdce393cc63a0991d10fc36f623fc16ff003700b18090"
+    },
+    "characters/wolf/wolf.ply": {
+      "ply_sha256": "cbfd3041da6b07c436b0377d5f9be02b7bee5d16b02c02314e2a8f4faa4f9b8d",
+      "gsvx_sha256": "3b124c1c1eaf44a5640276e146004770a9a7fac9ecb3a84b1599aaa4812db3cb"
+    },
+    "maps/dungeon.ply": {
+      "ply_sha256": "136ad5b28772d7e2c853e041428d5dd9cde381a606de3ae8e2f9ecfabb0f955b",
+      "gsvx_sha256": "c75b07d157893e66c59117b6ea0fad4926884075aabe7e9e7c248b04251acd62"
+    },
+    "maps/emissive_test.ply": {
+      "ply_sha256": "62724e7749ada5f42187295d6c3b30ecfdb7ffc09c7df3f326c0489374732803",
+      "gsvx_sha256": "8f0d034b51f295259f876926ea777705c125d2c419398a6fe1d35f29c86c215b"
+    },
+    "maps/map.ply": {
+      "ply_sha256": "77f076c541b41fbeeb0fa59bb15dc4a9ae26354aa5ca02da1662aa8c26aae3f3",
+      "gsvx_sha256": "5023b7d893d0a0c53200934be085c6b6bb9e72be51ea2f228fc55c069b8efbb8"
+    },
+    "maps/northern_forest.ply": {
+      "ply_sha256": "1952016ec7fbcbea2e2deddf1f1c3e59b07a2e7ff414c88f73a51c5fe21d7bf8",
+      "gsvx_sha256": "6f11176b1274bd31ca35da2e63616608ed151813cb15622a55a8d823a82f8d93"
+    },
+    "maps/seurat_island.ply": {
+      "ply_sha256": "cec309099c563f2f3568f07dc5012858cb4e6972ab9fb781b01d4864f9170787",
+      "gsvx_sha256": "a28f406b4f1f5df78675d6b5a0ce1929af4b015aa05721ff023ac8fc364e10b0"
+    },
+    "maps/test_bricklayer.ply": {
+      "ply_sha256": "00cdec474ae272fac8b2c07eccb7562e18f7ddcfd4fc2161e344cb6a6d12c0a9",
+      "gsvx_sha256": "be945c8690d463d7535964462f1e0e1a4960c3c6a7741de47038902dcddd7a66"
+    },
+    "maps/test_terrain.ply": {
+      "ply_sha256": "b68df53e06ab963da95dbdf2cac2f05a3c1b22c9c5eaac1f08be96a5ffca8e52",
+      "gsvx_sha256": "d9af6f192e4bd55674066be3e954805f02cf49a0757e49bbe593c154fe722ae7"
+    },
+    "props/boy_character.ply": {
+      "ply_sha256": "69a942ab0b14760db76a3d79d46457b9911b2333ac5226cd24670e963b3d3142",
+      "gsvx_sha256": "821d81e01cbda4873f09aacfc34db4048b794e93bd3990f534e9ace0de4fbdf6"
+    },
+    "props/firefly.ply": {
+      "ply_sha256": "0d8fc34e35ceb1cab838d8e0a3b9ca01357ae88cb580e095d8d82215cd467d38",
+      "gsvx_sha256": "bedcf89350b62e66e547f614d2e668be5afb89ebba654e88e316a8a4515de17a"
+    },
+    "props/glow_mushrooms.ply": {
+      "ply_sha256": "75d4fb8a127b21d0e8d7864a1cc4f03a21271950b62554305be243766fac2091",
+      "gsvx_sha256": "5c5edd069f6c3f81bffe1822f1d5b32765c1ecb8dacdf7da1b0796831b5f5e0b"
+    },
+    "props/house.ply": {
+      "ply_sha256": "d6042d0942d8262f4257390d4525f66435fa2cfdc917d0abdbd7fc1f7a2a18ef",
+      "gsvx_sha256": "57d7ac6bb0fbb850dbb7bf65bb7d034652c5333c7577ffc8d4fe975e81a0f2ce"
+    },
+    "props/island_crystal1.ply": {
+      "ply_sha256": "c3e62573a92f42e6bd4ff11ab7ecf788bab1de1f65a88820f0286af263fc809b",
+      "gsvx_sha256": "6174e2612f863bbd2a9c45d16068b2971e4a9f0938f0bfffe5eeaf7dc3045b59"
+    },
+    "props/island_flower1.ply": {
+      "ply_sha256": "c2faf80ef13faebd922e3d2e142cd32f1c51aaeeeb137329e0c9c5c169c5b9aa",
+      "gsvx_sha256": "991df0c4ed762d1102b2e2b0d75741bdd393c0e39c452a7cc57f62dbf2f4db02"
+    },
+    "props/island_fountain.ply": {
+      "ply_sha256": "7bd57470db716ba4ab69ff85ae3ec40fb0c09e5d9acfa0f76998877dc2e2bfe2",
+      "gsvx_sha256": "2a7dbd04724d7bad27f49238300e5f2b7fc0cb923c887adf9a2625c2ae11f5aa"
+    },
+    "props/island_house.ply": {
+      "ply_sha256": "35cdbf2684ae27775d809c9a1489cf4a1c48d7674e9b401cf2d38fc00092bb73",
+      "gsvx_sha256": "d072e2e407b029eefc51e93afc0c3b862c694f4a8e536bb7e9abb3543058f84c"
+    },
+    "props/island_house1.ply": {
+      "ply_sha256": "2abaf5d8b1ffd1c6f1a6d7eb65c031fe82446c69a5e9e2d5e990283fc27a1678",
+      "gsvx_sha256": "3b5c4bae60f8411e0167191df40c44f9d6878f16bfcc8c115396b830a2d6f4ec"
+    },
+    "props/island_rock1.ply": {
+      "ply_sha256": "3d5a6b2ff8e14f6d7aec6a39ad2825b7d2f9faea5f9e66164ac9ac157815c2b4",
+      "gsvx_sha256": "84919ea8f196bf6ad7e3256273da52475f527d498dda8b0d78f064487ab62412"
+    },
+    "props/island_rock2.ply": {
+      "ply_sha256": "134defa5ef5f156f7301d4c39442606518b2cbf13a8510c9e0efd294cbeb4cb0",
+      "gsvx_sha256": "fce832464e4259977f8758362cea5e8196b5523458085f3f09c4574ae54f17de"
+    },
+    "props/island_rock_1.ply": {
+      "ply_sha256": "8109c8c3a39e563c1f345a438ae607a15b4519656caf9d9954bcaab17f874772",
+      "gsvx_sha256": "0732ac30c5c4b0598dadb28ac51debf54981ee7871e37cfe756b5e4c6ad2141d"
+    },
+    "props/island_rock_2.ply": {
+      "ply_sha256": "434400ea4455f176752993f618dbc7abeb889c7ca5fea842f1db768a3cd790b2",
+      "gsvx_sha256": "2c1e629f0925dff75e66ac99282cfbe0c059aa126ccc9741511895522dd7cb03"
+    },
+    "props/island_rock_3.ply": {
+      "ply_sha256": "e16e68d078f4bd1b9efc00e2dce66d39ab8775d2df9857d97aadd17dc3b833f8",
+      "gsvx_sha256": "ec4fc9c55dee9c6e0666ef979fd4c244d8aba5c49fe4def1a822fdabfdf8fe6e"
+    },
+    "props/island_rock_4.ply": {
+      "ply_sha256": "e1ddf339f570655a987be31faff90635bc4927ac923f359855f18b622953a3e4",
+      "gsvx_sha256": "e1c63924325bab0e71fe6950a42904a35bc737dc7986918eeda592b4106d410d"
+    },
+    "props/island_rock_5.ply": {
+      "ply_sha256": "496945e103807b4e4e7433c28992fcee7157c8e72dae4854494053e321484957",
+      "gsvx_sha256": "1ffdb85ad377c07b93bea8ac24a56e62c852e401752b5c25ca66a0c3259650d4"
+    },
+    "props/island_rock_6.ply": {
+      "ply_sha256": "6e07f8ef2eba37f936c7e2063049bae1bb1f71dd2a72d219c2ce1fe95f91ad2a",
+      "gsvx_sha256": "56ab24f2a2e8b8aa03547500b0b6be996e14c91694c498eafe41c0e7b91968c7"
+    },
+    "props/island_tree_1.ply": {
+      "ply_sha256": "07be6f5abb9714e5f8f5b0bcf9dc47d6d7ac52385a7011def2340cad81b02c50",
+      "gsvx_sha256": "6eb737309fcb3440f7ff4bc670280463719aee5c02f22e8d858b066e7dd3e6a0"
+    },
+    "props/island_tree_10.ply": {
+      "ply_sha256": "34265395f7da96218fa8ca5708139d21e7715f301bdbf1195d3ceb4352fa3ba0",
+      "gsvx_sha256": "f808e7cd980c71ab88104e23ea33a5905d50ebed78be87516b35e5340f4a8132"
+    },
+    "props/island_tree_11.ply": {
+      "ply_sha256": "07be6f5abb9714e5f8f5b0bcf9dc47d6d7ac52385a7011def2340cad81b02c50",
+      "gsvx_sha256": "6eb737309fcb3440f7ff4bc670280463719aee5c02f22e8d858b066e7dd3e6a0"
+    },
+    "props/island_tree_12.ply": {
+      "ply_sha256": "34265395f7da96218fa8ca5708139d21e7715f301bdbf1195d3ceb4352fa3ba0",
+      "gsvx_sha256": "f808e7cd980c71ab88104e23ea33a5905d50ebed78be87516b35e5340f4a8132"
+    },
+    "props/island_tree_2.ply": {
+      "ply_sha256": "34265395f7da96218fa8ca5708139d21e7715f301bdbf1195d3ceb4352fa3ba0",
+      "gsvx_sha256": "f808e7cd980c71ab88104e23ea33a5905d50ebed78be87516b35e5340f4a8132"
+    },
+    "props/island_tree_3.ply": {
+      "ply_sha256": "07be6f5abb9714e5f8f5b0bcf9dc47d6d7ac52385a7011def2340cad81b02c50",
+      "gsvx_sha256": "6eb737309fcb3440f7ff4bc670280463719aee5c02f22e8d858b066e7dd3e6a0"
+    },
+    "props/island_tree_4.ply": {
+      "ply_sha256": "34265395f7da96218fa8ca5708139d21e7715f301bdbf1195d3ceb4352fa3ba0",
+      "gsvx_sha256": "f808e7cd980c71ab88104e23ea33a5905d50ebed78be87516b35e5340f4a8132"
+    },
+    "props/island_tree_5.ply": {
+      "ply_sha256": "07be6f5abb9714e5f8f5b0bcf9dc47d6d7ac52385a7011def2340cad81b02c50",
+      "gsvx_sha256": "6eb737309fcb3440f7ff4bc670280463719aee5c02f22e8d858b066e7dd3e6a0"
+    },
+    "props/island_tree_6.ply": {
+      "ply_sha256": "34265395f7da96218fa8ca5708139d21e7715f301bdbf1195d3ceb4352fa3ba0",
+      "gsvx_sha256": "f808e7cd980c71ab88104e23ea33a5905d50ebed78be87516b35e5340f4a8132"
+    },
+    "props/island_tree_7.ply": {
+      "ply_sha256": "07be6f5abb9714e5f8f5b0bcf9dc47d6d7ac52385a7011def2340cad81b02c50",
+      "gsvx_sha256": "6eb737309fcb3440f7ff4bc670280463719aee5c02f22e8d858b066e7dd3e6a0"
+    },
+    "props/island_tree_8.ply": {
+      "ply_sha256": "34265395f7da96218fa8ca5708139d21e7715f301bdbf1195d3ceb4352fa3ba0",
+      "gsvx_sha256": "f808e7cd980c71ab88104e23ea33a5905d50ebed78be87516b35e5340f4a8132"
+    },
+    "props/island_tree_9.ply": {
+      "ply_sha256": "07be6f5abb9714e5f8f5b0bcf9dc47d6d7ac52385a7011def2340cad81b02c50",
+      "gsvx_sha256": "6eb737309fcb3440f7ff4bc670280463719aee5c02f22e8d858b066e7dd3e6a0"
+    },
+    "props/island_tree_mesh.ply": {
+      "ply_sha256": "5ccbd37fedd80252ca496e7d30fd216768b543ef6886b6250a2bc0110bc4c74a",
+      "gsvx_sha256": "b82baff83bd2c2e562b45440f70cae8dca56c5892145b2df7315a712b5fff28f"
+    },
+    "props/kcc_boulder_1_0.ply": {
+      "ply_sha256": "26840647792737e14106fdb6ab69e21842f3b0f1af8dab0c7f307d597cf4dc01",
+      "gsvx_sha256": "6b3d80d3e5854b8a1a4eb8a308ff911654fe5efb6ead28f3be11ad26bef6cef9"
+    },
+    "props/kcc_boulder_1_2.ply": {
+      "ply_sha256": "7153518a07fb6a3556e06acc8af1cb42589fdc7614ae337dc7d8846b2ef681fe",
+      "gsvx_sha256": "6fca81d8e59d7c2e0d3e1cb1173b99bfe992c95059f95ceea29cadd5edbf46f8"
+    },
+    "props/kcc_boulder_1_5.ply": {
+      "ply_sha256": "0e21d1b84b58bb2cd9f6ec627e0c117b8f3cc0840f9f128379e325a5000449fe",
+      "gsvx_sha256": "60b8f70fd8475c4b351418b70c50c1bc225a9581fc2d6e011b3fa136414f48ac"
+    },
+    "props/kcc_stone_pillar.ply": {
+      "ply_sha256": "ec41daff41a6face139a6556b284405af7e9d0090983d2cc86168f85760d478b",
+      "gsvx_sha256": "3c76ffb5cef48fa32a4c0299306913f584a52b252862ac0a0aff11967337a880"
+    },
+    "props/kcc_stone_ramp.ply": {
+      "ply_sha256": "7554ce994e159981292aaff71f2ff452711bc04c7276e25e52da02c27e35c3df",
+      "gsvx_sha256": "7a3a351c7a3e7e9c38546faa2345c9e4b8d65f7aa9cab72e20d5d2936423e1f7"
+    },
+    "props/kcc_stone_wall.ply": {
+      "ply_sha256": "fad952faa84c82ba30ab7de0c7e3e06213fd8076888defbe0ac4929a692f0870",
+      "gsvx_sha256": "bab4fec97365f01dae5296b599211c3cd77c7d518452e1f9ee3aef721527c8b7"
+    },
+    "props/lantern_post.ply": {
+      "ply_sha256": "31013f74e08c4cdf157dbc55fa8270b444e9242d85f6d075128bdb825f1b78c5",
+      "gsvx_sha256": "8e83a6bb28bdf180e57b0d0d2ab8e7f6c713b378f2fedfa784b9bf9b3c10509c"
+    },
+    "props/rock.ply": {
+      "ply_sha256": "8109c8c3a39e563c1f345a438ae607a15b4519656caf9d9954bcaab17f874772",
+      "gsvx_sha256": "0732ac30c5c4b0598dadb28ac51debf54981ee7871e37cfe756b5e4c6ad2141d"
+    },
+    "props/treasure_chest.ply": {
+      "ply_sha256": "b0f287cf60ccbca0a74a5d8cb46914326333db0d88e82fdf16778ec51cfff432",
+      "gsvx_sha256": "13efb98736d72b0dbb7d437a5d8e2ceca22221f0b30338446d03f61aa9b0be8a"
+    },
+    "props/tree.ply": {
+      "ply_sha256": "e89b7a884ce5b4eacb82abfbc719e965b52739349bce5d6141d94ae0695dfc63",
+      "gsvx_sha256": "9715ada5cfb0ba67aba0b3eb139e32daca8d82cede530154438af8b7072e5076"
+    },
+    "test_models/blub.ply": {
+      "ply_sha256": "31a6325ad2ccb19154320bdbe1efc0e4e855b59f9973b3f38cf644dbbc9b1979",
+      "gsvx_sha256": "1c11d97b17aa0a7e84243835e3fc0cd3db2fd27a693f72baa4ab5bc740296631"
+    },
+    "vfx/torch.ply": {
+      "ply_sha256": "a12df515da90fd8fd503b82d60c37d27e5c47a465685f5fe035b01cb0b788c9d",
+      "gsvx_sha256": "bd353ebf2a5fcc43ef4b05888ef63ce2d11b8878b47870750648fcc0c5238c3d"
+    }
+  }
+}
