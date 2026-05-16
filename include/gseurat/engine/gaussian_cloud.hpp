@@ -117,13 +117,17 @@ public:
     /// return the raw payload. Low-level accessor; runtime callers should
     /// prefer `load_baked` which unpacks straight into a GaussianCloud.
     static GsvxPayload load_gsvx(const std::string& path);
-    /// Load a baked GaussianCloud from a `.gsvx` file path. Throws
-    /// `std::runtime_error` if the file is missing or unreadable —
-    /// there is no PLY fallback. Every bundled `.ply` has a `.gsvx`
-    /// sibling produced by `scripts/bake_assets.py`, and scene /
-    /// manifest / vfx JSON references it directly (PR-B2 of #396).
+    /// Load a baked GaussianCloud. Accepts either a `.ply` or `.gsvx`
+    /// path — the extension is rewritten to `.gsvx` internally so the
+    /// caller can pass whichever convention is convenient (most callers
+    /// after PR-B2 pass `.gsvx` already, but a few hard-coded demo paths
+    /// and the wrapper tests in tests/test_gaussian_cloud.cpp still pass
+    /// `.ply`). Throws `std::runtime_error` if the resolved `.gsvx` is
+    /// missing or unreadable — there is no PLY fallback. Every bundled
+    /// `.ply` has a `.gsvx` sibling produced by scripts/bake_assets.py
+    /// (PR-B1 of #396).
     static GaussianCloud load_baked(
-        const std::string& gsvx_path,
+        const std::string& asset_path,
         CoordinateSystem coords = CoordinateSystem::kYUp);
     static GaussianCloud from_gaussians(std::vector<Gaussian> gaussians);
 

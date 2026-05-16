@@ -177,18 +177,28 @@ std::vector<Gaussian> unpack_gpu_gaussians(const std::vector<GpuGaussian>& gpu,
 
 }  // namespace
 
-GaussianCloud GaussianCloud::load_baked(const std::string& gsvx_path,
+GaussianCloud GaussianCloud::load_baked(const std::string& asset_path,
                                         CoordinateSystem coords) {
-    // The runtime engine does not link the PLY parser. The provided path
-    // must point at a .gsvx baked by scripts/bake_assets.py (PR-B1); a
-    // missing or invalid file is a build/asset-pipeline error, not a
-    // runtime fallback case.
+    // Accept either a `.ply` or `.gsvx` path and resolve to the baked
+    // `.gsvx` sibling. PR-B2 migrated JSON scene/manifest/vfx paths to
+    // `.gsvx`, but two callers still legitimately pass `.ply`: the
+    // hard-coded player loader in `island_demo_state.cpp` (predates the
+    // JSON migration) and the wrapper tests in `tests/test_gaussian_cloud.cpp`
+    // that exercise sibling resolution. The rewrite is a no-op when the
+    // input already has `.gsvx`, so this stays safe for the migrated path.
+    std::filesystem::path gsvx_candidate(asset_path);
+    gsvx_candidate.replace_extension(".gsvx");
+    const std::string gsvx_path = gsvx_candidate.string();
+
+    // The runtime engine does not link the PLY parser. The baked `.gsvx`
+    // must exist — a missing or invalid file is a build/asset-pipeline
+    // error, not a runtime fallback case.
     auto resolved = resolve_asset_path(gsvx_path);
     std::error_code ec;
     if (!std::filesystem::is_regular_file(resolved, ec)) {
         throw std::runtime_error(
-            "GaussianCloud::load_baked: missing .gsvx '" + gsvx_path +
-            "' (resolved to '" + resolved.string() + "'). Run " +
+            "GaussianCloud::load_baked: missing .gsvx for '" + asset_path +
+            "' (expected at '" + resolved.string() + "'). Run " +
             "scripts/bake_assets.py to regenerate, or verify the scene/manifest "
             "JSON path is correct.");
     }
