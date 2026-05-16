@@ -9,6 +9,23 @@
 
 ---
 
+## Status update (2026-05-17)
+
+Audited against `main` at `9a7ede5f`. The design below was authored 2026-05-02 with a strict-serial 17-PR cadence (§6 rollout table). In practice, most of the refactor landed organically alongside other work rather than in the planned `refactor/N{a,b,c}-*` branches. The architectural body of this design remains the source of truth; this section is the live status pointer.
+
+| Phase | Theme | Status | Notes |
+|---|---|---|---|
+| 0 | Pre-flight (`gs::dbg::`, golden-frame harness) | ✅ DONE | #390 (0a), #391 (0b). |
+| 1 | Deletion | ✅ DONE | All targets purged: `load_cloud_legacy`, `gs_chunk_grid_`, `update_static_gaussians`, `ensure_capacity` legacy, `render_pipeline_` (1c fired). PLY parser severed from `gseurat_core` via PRs #455–458 (2026-05-16). |
+| 2 | Instrumentation | ✅ DONE | 19 `GS_LABEL` sites with two-level hierarchy. 5 `GS_DBG_INVARIANT` sites. `GS_DIAG_STREAMING` migrated to `gs::dbg::Diag::StreamingState`. Legacy non-GS draws (`renderer.cpp` wireframe, `post_process.cpp` bloom) deliberately uninstrumented — Phase 5e deletion candidates. |
+| 3 | Infrastructure | ✅ DONE | `ecs/events.hpp` (228 LOC) uses a generation/epoch cursor model (more robust than the doc's `last_read_per_buffer[k]` sketch in §5.3). `World::events<T>()` type-erased registry. `RenderState` with all 5 typed writers (`BonesWriter`, `VfxWriter`, `PbdWriter`, `ParticlesWriter`, `PointLightsWriter`). Event types split into dedicated headers (`vfx_events.hpp`, `pbd_events.hpp`, `light_events.hpp`). |
+| 4 | Caller migration | ⚠️ MOSTLY DONE — residual gap | Events fully wired: `VfxSpawnEvent` (CommandDispatcher → VfxSystem), `PbdElementsLoadedEvent` (scene loader → PbdSystem), `PointLightsLoadedEvent` (scene loader + dev panels + CommandDispatcher → LightingSystem). State ownership migrated: `gs_animator_` + `vfx_instances_` now live inside `systems/vfx_system.cpp`; `gs_particle_emitters_` inside `ParticleSystem`. **Open gap:** `VfxWriter`/`PbdWriter`/`ParticlesWriter`/`PointLightsWriter` are declared but have ZERO callers. Only `BonesWriter` is used (single site at `gs_demo_state.cpp:835`). Renderer still pulls these payloads from AppBase rather than reading them from `RenderState`. |
+| 5 | Renderer system extraction | ⚠️ MOSTLY DONE — residual gap | All five subsystems exist per §5.5: `gs_resources`, `gs_post_process_system`, `gs_sort_system`, `gs_tile_bin_system`, `gs_streaming_system`. `gs_renderer.cpp` shrunk **3919 → 2388 LOC (~39%)**. **Open gap:** `GsRenderer::render()` (line 1733+) still contains orchestration logic and direct GPU dispatch — not yet the ~80-LOC orchestrator described in §5.1. Phase 5e final extraction outstanding. |
+
+**Next target:** Wire the four unused `RenderState` writers (close Phase 4), then attack Phase 5e (`render()` orchestrator). The two are coupled — `render()` can only become a pure orchestrator once data flows through `RenderState` rather than AppBase reach-throughs.
+
+---
+
 ## 1. Context & Motivation
 
 The streaming-strict ghost-debugging saga (PRs #385–#388) eliminated four ghost-rendering bugs over two weeks of intense investigation. The root causes were not individual bugs but **structural**:

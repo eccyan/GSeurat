@@ -12,6 +12,23 @@
 
 ---
 
+## Status update (2026-05-17)
+
+Audited against `main` at `9a7ede5f`. The strict-serial 17-PR cadence below did not survive contact with reality — most of the refactor landed organically alongside other work. PR-level task breakdowns in §Phase 1–5 are preserved as historical record; current status is tracked in the matrix below and in the spec doc's matching "Status update" section.
+
+| Phase | Status | Open work |
+|---|---|---|
+| 0 | ✅ DONE (#390, #391) | — |
+| 1 | ✅ DONE (closed via #455–458 on 2026-05-16) | — |
+| 2 | ✅ DONE | Legacy non-GS draw labels skipped on purpose (Phase 5e deletion candidates) |
+| 3 | ✅ DONE | — |
+| 4 | ⚠️ MOSTLY DONE | `VfxWriter` / `PbdWriter` / `ParticlesWriter` / `PointLightsWriter` declared but unused. Wire them so ECS systems push render data into `RenderState` instead of the renderer pulling from AppBase. Only `BonesWriter` has a caller today. |
+| 5 | ⚠️ MOSTLY DONE | `gs_renderer.cpp` is 2388 LOC (was 3919). `GsRenderer::render()` at line 1733+ still holds orchestration logic — not yet ~80 LOC. Phase 5e final extraction outstanding; blocked on Phase 4 writer wiring landing first. |
+
+**Next:** Close the Phase 4 writer gap (small, focused PRs per writer), then Phase 5e.
+
+---
+
 ## How to use this plan
 
 This plan covers 17 PRs across 5 phases plus pre-flight Phase 0. **Strict serial execution** — each PR merges green before the next begins. Per-phase detail level:
