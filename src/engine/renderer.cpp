@@ -471,21 +471,6 @@ void Renderer::draw_scene(float dt,
                      fence_ms, current_frame_);
     }
 
-    // Phase 4 closure: bracket the frame's writer activity with
-    // RenderState lifecycle. begin_frame must come AFTER the fence
-    // wait (so the previous GPU use of this slot is done) and BEFORE
-    // any writer.write — which happens inside record_gs_prepass and,
-    // for BonesWriter, in callers like gs_demo_state that ran before
-    // draw_scene. The fence wait is the well-defined synchronization
-    // point for slot reuse; the bones writes between draw_scene calls
-    // are accepted as "writing while GPU may still be reading the same
-    // slot": correct on Apple Silicon HOST_COHERENT (CPU and GPU share
-    // memory and the fence wait completes before the GPU could observe
-    // the new write), and inherited from the existing Phase 4b shape.
-    if (render_state_) {
-        render_state_->begin_frame(FrameIndex{current_frame_});
-    }
-
     uint32_t image_index;
     auto acquire_sem = sync_.acquire_semaphore(acquire_semaphore_index_);
     const auto acquire_t0 = std::chrono::steady_clock::now();

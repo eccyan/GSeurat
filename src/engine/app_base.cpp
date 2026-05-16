@@ -281,6 +281,21 @@ void AppBase::main_loop() {
             (void)remaining;
         }
 
+        // Phase 4 closure: open the RenderState lifecycle bracket BEFORE any
+        // writer for this frame can mark dirty ranges. upload_bone_transforms
+        // (below) and state-tick callers of bones_writer/vfx_writer/pbd_writer
+        // /particles_writer all run later in this iteration; record_gs_prepass
+        // writes are bracketed too. end_frame() runs inside Renderer::draw_scene
+        // immediately before vkQueueSubmit so non-coherent memory platforms
+        // see the flushed writes. Null-safe for pre-init / tests.
+        // (Fix for PR #460 Codex P1: previous placement was inside
+        // GSEURAT_DEBUG_BUILD-gated code AFTER bones writers had already
+        // marked dirty ranges, defeating the lifecycle in release builds
+        // and on non-coherent memory.)
+        if (render_state_) {
+            render_state_->begin_frame(FrameIndex{renderer_.current_frame()});
+        }
+
         // Poll async loader and process GPU uploads (before game logic)
         resources_.process_async_results(async_loader_, staging_uploader_);
         staging_uploader_.flush();
