@@ -14,6 +14,7 @@ or --force.
 """
 
 import hashlib
+import json
 from pathlib import Path
 
 
@@ -24,3 +25,22 @@ def sha256_file(path: Path) -> str:
         for chunk in iter(lambda: f.read(65536), b""):
             h.update(chunk)
     return h.hexdigest()
+
+
+def load_manifest(path: Path) -> dict:
+    """Load the GSVX sync manifest, or return an empty schema if missing."""
+    if not path.exists():
+        return {"version": 1, "entries": {}}
+    with path.open("r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def save_manifest(path: Path, manifest: dict) -> None:
+    """Write manifest with entries sorted by key for stable diffs."""
+    out = {
+        "version": manifest.get("version", 1),
+        "entries": dict(sorted(manifest.get("entries", {}).items())),
+    }
+    with path.open("w", encoding="utf-8") as f:
+        json.dump(out, f, indent=2)
+        f.write("\n")

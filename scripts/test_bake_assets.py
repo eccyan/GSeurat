@@ -48,6 +48,37 @@ finally:
     tmp_path.unlink()
 
 # ---------------------------------------------------------------------------
+# load_manifest / save_manifest
+# ---------------------------------------------------------------------------
+print("\nload_manifest / save_manifest")
+
+# load_manifest returns an empty schema when the file is missing
+with tempfile.TemporaryDirectory() as tmp:
+    missing = Path(tmp) / "nope.json"
+    m = bake_assets.load_manifest(missing)
+    check(m == {"version": 1, "entries": {}}, "missing manifest → empty schema")
+
+# load_manifest parses an existing file
+with tempfile.TemporaryDirectory() as tmp:
+    path = Path(tmp) / "manifest.json"
+    path.write_text(json.dumps({"version": 1, "entries": {"a.ply": "abc123"}}))
+    m = bake_assets.load_manifest(path)
+    check(m["entries"]["a.ply"] == "abc123", "load_manifest parses existing entry")
+
+# save_manifest writes entries sorted by key, with trailing newline
+with tempfile.TemporaryDirectory() as tmp:
+    path = Path(tmp) / "manifest.json"
+    bake_assets.save_manifest(
+        path,
+        {"version": 1, "entries": {"z.ply": "zzz", "a.ply": "aaa"}},
+    )
+    text = path.read_text()
+    a_pos = text.index('"a.ply"')
+    z_pos = text.index('"z.ply"')
+    check(a_pos < z_pos, "save_manifest sorts entries by key")
+    check(text.endswith("\n"), "save_manifest ends with newline")
+
+# ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
 total = passed + failed
