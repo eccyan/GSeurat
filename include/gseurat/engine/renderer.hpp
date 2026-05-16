@@ -207,6 +207,16 @@ public:
     // the lifecycle calls when this pointer hasn't been wired.
     void set_render_state(RenderState* rs) noexcept { render_state_ = rs; }
 
+    // Phase 4 closure (Codex P1 #2 on #460): wait for the current
+    // frame slot's in-flight fence. Public so AppBase can wait BEFORE
+    // opening the RenderState lifecycle bracket — otherwise writers
+    // (upload_bone_transforms, state-tick bones writes) would race
+    // against the previous GPU submit on the same slot. draw_scene
+    // still issues its own wait as a fallback for paths without
+    // RenderState wired (standalone tests); when AppBase has already
+    // waited, draw_scene's wait is a fast no-op on a signaled fence.
+    void wait_current_frame_fence() noexcept;
+
     // Scene-placed animations (with loop support)
     struct ReformConfig {
         float lifetime = 2.0f;

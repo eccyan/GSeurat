@@ -397,6 +397,31 @@ void Renderer::set_gs_background(const ResourceHandle<Texture>& texture) {
     gs_bg_initialized_ = true;
 }
 
+void Renderer::wait_current_frame_fence() noexcept {
+    auto device = context_.device();
+    const auto& fs = sync_.frame(current_frame_);
+#if GSEURAT_DEBUG_BUILD
+    constexpr uint64_t kFenceWaitWatchdogNs = 2'000'000'000ull;  // 2 sec
+    const auto t0 = std::chrono::steady_clock::now();
+    VkResult r = vkWaitForFences(device, 1, &fs.in_flight, VK_TRUE,
+                                  kFenceWaitWatchdogNs);
+    const auto t1 = std::chrono::steady_clock::now();
+    const double ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
+    if (r == VK_TIMEOUT) {
+        std::fprintf(stderr,
+            "[renderer/watchdog] wait_current_frame_fence TIMEOUT after %.2f ms "
+            "(current_frame=%u) — retrying with infinite timeout\n",
+            ms, current_frame_);
+        vkWaitForFences(device, 1, &fs.in_flight, VK_TRUE, UINT64_MAX);
+    } else if (ms > 50.0) {
+        GS_LOG_FRAME("[renderer/watchdog] wait_current_frame_fence slow: {:.2f} ms "
+                     "(current_frame={})", ms, current_frame_);
+    }
+#else
+    vkWaitForFences(device, 1, &fs.in_flight, VK_TRUE, UINT64_MAX);
+#endif
+}
+
 void Renderer::draw_scene(float dt,
                            Scene& scene,
                            const std::vector<SpriteDrawInfo>& entity_sprites,

@@ -288,11 +288,21 @@ void AppBase::main_loop() {
         // writes are bracketed too. end_frame() runs inside Renderer::draw_scene
         // immediately before vkQueueSubmit so non-coherent memory platforms
         // see the flushed writes. Null-safe for pre-init / tests.
-        // (Fix for PR #460 Codex P1: previous placement was inside
-        // GSEURAT_DEBUG_BUILD-gated code AFTER bones writers had already
-        // marked dirty ranges, defeating the lifecycle in release builds
-        // and on non-coherent memory.)
+        //
+        // wait_current_frame_fence() runs FIRST so the previous GPU submit on
+        // this same slot is complete before any CPU writer touches the mapped
+        // buffers. Without this wait, bones / vfx / pbd / particles writes
+        // here would race against an in-flight GPU read from
+        // kMaxFramesInFlight submits ago. draw_scene also waits the fence
+        // internally as a fallback for paths without RenderState wired
+        // (standalone tests); when we wait here, that becomes a fast no-op.
+        //
+        // (Fix history: Codex P1 #1 on #460 — original placement was inside
+        // GSEURAT_DEBUG_BUILD-gated code AFTER bones writers fired. Codex P1
+        // #2 on #460 — moved to top-of-iteration but without the fence wait,
+        // so writes raced with GPU. This placement addresses both.)
         if (render_state_) {
+            renderer_.wait_current_frame_fence();
             render_state_->begin_frame(FrameIndex{renderer_.current_frame()});
         }
 
