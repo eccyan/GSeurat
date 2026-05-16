@@ -138,7 +138,6 @@ IMPORTER_CANDIDATES = [
     REPO_ROOT / "build" / "macos-release-with-diag",
     REPO_ROOT / "build" / "macos-debug",
     REPO_ROOT / "build" / "linux-release",
-    Path("/Users/eccyan/dev/GSeurat/.worktrees/fix-double-init-gs/build/macos-release"),
 ]
 importer = bake_assets.find_ply_importer(IMPORTER_CANDIDATES)
 
