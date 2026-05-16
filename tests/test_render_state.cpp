@@ -216,22 +216,10 @@ int main() {
         std::printf("PASS: per-frame writers and dirty ranges are isolated\n");
     }
 
-    // 10. PointLightsWriter (typed for the existing PointLight POD)
-    {
-        std::vector<PointLight> lights(kMaxLights);
-        DirtyRange dirty;
-        PointLightsWriter w{lights.data(), kMaxLights, &dirty};
-
-        PointLight pl;
-        pl.position_and_radius = {10.0f, 5.0f, 3.0f, 7.5f};
-        pl.color = {1.0f, 0.5f, 0.25f, 2.0f};
-        w.write(3, pl);
-
-        assert(lights[3].position_and_radius.w == 7.5f);
-        assert(lights[3].color.r == 1.0f);
-        assert(dirty.first == 3 && dirty.last == 3);
-        std::printf("PASS: PointLightsWriter handles PointLight POD\n");
-    }
+    // Phase 4 closure (2026-05-17): PointLightsWriter removed as dead
+    // architecture. Lights live in GsRenderer's uniform buffer (8-cap
+    // inline vec4 arrays), not in an SSBO. The previous test (#10) for
+    // PointLightsWriter is intentionally not replaced.
 
     std::printf("\nALL RENDER STATE TESTS PASSED\n");
     return 0;

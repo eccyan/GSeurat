@@ -36,6 +36,7 @@ struct GLFWwindow;
 namespace gseurat {
 
 class ResourceManager;
+class RenderState;
 namespace systems { class VfxSystem; class PbdSystem; class LightingSystem; class ParticleSystem; }
 
 // Small constant-size summary of the loaded GS cloud. Replaces the demo-side
@@ -196,6 +197,15 @@ public:
     void set_particle_system(systems::ParticleSystem* ps) noexcept {
         particle_system_ = ps;
     }
+
+    // Phase 4 closure: lifecycle hook for RenderState. Renderer brackets
+    // each frame's draw_scene with begin_frame / end_frame so writer
+    // dirty ranges reset cleanly between frames and so non-coherent
+    // memory platforms get the required vkFlushMappedMemoryRanges
+    // BEFORE vkQueueSubmit. Pointer is non-owning; AppBase owns the
+    // RenderState. Null-safe: pre-init / standalone-test paths skip
+    // the lifecycle calls when this pointer hasn't been wired.
+    void set_render_state(RenderState* rs) noexcept { render_state_ = rs; }
 
     // Scene-placed animations (with loop support)
     struct ReformConfig {
@@ -395,6 +405,12 @@ private:
     systems::PbdSystem* pbd_system_ = nullptr;
     systems::LightingSystem* lighting_system_ = nullptr;
     systems::ParticleSystem* particle_system_ = nullptr;
+
+    // Phase 4 closure: non-owning pointer to AppBase-owned RenderState.
+    // Used to bracket draw_scene with begin_frame / end_frame so
+    // writer dirty ranges reset per frame and non-coherent memory
+    // platforms get vkFlushMappedMemoryRanges before vkQueueSubmit.
+    RenderState* render_state_ = nullptr;
 
     // ── Frame-determinism harness internal state ──
     struct DeterminismTestState {

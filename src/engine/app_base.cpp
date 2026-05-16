@@ -623,6 +623,10 @@ void AppBase::init_render_state() {
 
     render_state_ = std::make_unique<RenderState>(renderer_.context());
     renderer_.gs_renderer().set_render_state(render_state_.get());
+    // Phase 4 closure: Renderer drives RenderState::begin_frame /
+    // end_frame around draw_scene so writer dirty ranges reset cleanly
+    // and non-coherent-memory platforms see writes before submit.
+    renderer_.set_render_state(render_state_.get());
     // Late-bind RenderState into VfxSystem + PbdSystem if they were
     // constructed first (init_game_object_system runs before
     // init_render_state in the canonical AppBase init order).

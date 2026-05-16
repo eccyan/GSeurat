@@ -4,6 +4,7 @@
 #include "gseurat/engine/pipeline.hpp"
 #include "gseurat/engine/procedural_textures.hpp"
 #include "gseurat/engine/project_root.hpp"
+#include "gseurat/engine/render_state.hpp"
 #include "gseurat/engine/resource_manager.hpp"
 #include "gseurat/engine/scoped_timer.hpp"
 #include "gseurat/engine/sort_entry.hpp"
@@ -470,6 +471,21 @@ void Renderer::draw_scene(float dt,
                      fence_ms, current_frame_);
     }
 
+    // Phase 4 closure: bracket the frame's writer activity with
+    // RenderState lifecycle. begin_frame must come AFTER the fence
+    // wait (so the previous GPU use of this slot is done) and BEFORE
+    // any writer.write — which happens inside record_gs_prepass and,
+    // for BonesWriter, in callers like gs_demo_state that ran before
+    // draw_scene. The fence wait is the well-defined synchronization
+    // point for slot reuse; the bones writes between draw_scene calls
+    // are accepted as "writing while GPU may still be reading the same
+    // slot": correct on Apple Silicon HOST_COHERENT (CPU and GPU share
+    // memory and the fence wait completes before the GPU could observe
+    // the new write), and inherited from the existing Phase 4b shape.
+    if (render_state_) {
+        render_state_->begin_frame(FrameIndex{current_frame_});
+    }
+
     uint32_t image_index;
     auto acquire_sem = sync_.acquire_semaphore(acquire_semaphore_index_);
     const auto acquire_t0 = std::chrono::steady_clock::now();
@@ -850,6 +866,13 @@ void Renderer::draw_scene(float dt,
 #if GSEURAT_DEBUG_BUILD
     const auto t_ds_pre_submit = std::chrono::steady_clock::now();
 #endif
+    // Phase 4 closure: flush mapped RenderState writes BEFORE submit so
+    // non-coherent memory platforms see them on the GPU side. No-op on
+    // Apple Silicon HOST_COHERENT. Must run after all writer.write() in
+    // this frame (record_gs_prepass) and before vkQueueSubmit.
+    if (render_state_) {
+        render_state_->end_frame(FrameIndex{current_frame_});
+    }
     if (vkQueueSubmit(context_.graphics_queue(), 1, &submit, frame_sync.in_flight) != VK_SUCCESS) {
         throw std::runtime_error("Failed to submit draw command buffer");
     }
