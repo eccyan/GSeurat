@@ -3,6 +3,7 @@
 #include "gseurat/engine/buffer.hpp"
 #include "gseurat/engine/gaussian_cloud.hpp"
 #include "gseurat/engine/gs_renderer/gs_resources.hpp"
+#include "gseurat/engine/gs_renderer/pbd/gs_pbd_system.hpp"
 #include "gseurat/engine/gs_renderer/post/gs_post_process_system.hpp"
 #include "gseurat/engine/gs_renderer/post/post_process_params.hpp"
 #include "gseurat/engine/gs_renderer/sort/gs_sort_system.hpp"
@@ -310,8 +311,9 @@ public:
                              uint32_t count);
     void upload_pbd_constraints(const PbdConstraint* constraints, uint32_t count);
     void clear_pbd();
-    uint32_t pbd_count() const { return pbd_count_; }
-    uint32_t pbd_constraint_count() const { return pbd_constraint_count_; }
+    // Phase 5e step 1.10: forwarded to GsPbdSystem.
+    uint32_t pbd_count() const { return pbd_.count(); }
+    uint32_t pbd_constraint_count() const { return pbd_.constraint_count(); }
 
     // Post-process parameters (fog, tone mapping, vignette, etc.)
     // Phase 5b: forwards to the by-value GsPostProcessSystem member.
@@ -435,15 +437,19 @@ private:
     // above for ABI stability).
     GsTileBinSystem tile_;
 
+    // Phase 5e: PBD solver extraction. Owns the pbd_solver.comp pipeline,
+    // descriptor set layout, pipeline layout, and single descriptor set.
+    // Public upload_pbd_*/clear_pbd forward to this member.
+    GsPbdSystem pbd_;
+
     // Phase 4b: bone transform storage moved to gseurat::RenderState
     // (per-frame-in-flight, persistent-mapped). Set via set_render_state
     // before init_streaming. Non-owning pointer; AppBase owns lifetime.
     RenderState* render_state_ = nullptr;
     glm::quat actor_rotation_{1.0f, 0.0f, 0.0f, 0.0f};  // Root motion world rotation
 
-    // PBD solver resources
-    uint32_t pbd_count_ = 0;
-    uint32_t pbd_constraint_count_ = 0;
+    // Phase 5e step 1.10: pbd_count_ and pbd_constraint_count_ moved to GsPbdSystem.
+    // Accessors pbd_count() / pbd_constraint_count() forward to pbd_.count() / pbd_.constraint_count().
 
     // Phase 5e-2: static/dynamic sort sizing, dirty flags, max counts,
     // and the per-slot sentinel-fill request all moved into
@@ -479,11 +485,8 @@ private:
 
     VkPipeline preprocess_pipeline_ = VK_NULL_HANDLE;
 
-    // PBD solver pipeline
-    VkDescriptorSetLayout pbd_layout_ = VK_NULL_HANDLE;
-    VkPipelineLayout pbd_pipeline_layout_ = VK_NULL_HANDLE;
-    VkPipeline pbd_pipeline_ = VK_NULL_HANDLE;
-    VkDescriptorSet pbd_set_ = VK_NULL_HANDLE;
+    // Phase 5e step 1.10: pbd_layout_, pbd_pipeline_layout_, pbd_pipeline_, pbd_set_
+    // moved into GsPbdSystem (the pbd_ member declared above).
 
     // Phase 4c-vfx / 4c-pbd / 4e: GPU compose pass. Dedicated descriptor
     // pool so the central kSetCount=58 allocation in dispatch_descriptor_sets
