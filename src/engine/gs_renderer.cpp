@@ -120,11 +120,8 @@ void GsRenderer::init(VkDevice device, VkPhysicalDevice physical_device,
     post_.init(device_, pipeline_cache_, gs_pool_, resources_);
 
     // Phase 5e: init the PBD solver system. Must run after
-    // create_descriptor_resources() (gs_pool_ live; PBD set allocated here)
-    // and after create_compute_pipelines() (legacy pbd_pipeline_ still
-    // created there until step 1.10 removes it). gs_pool_ still has
-    // capacity for 1 additional set (PBD moved out of the bulk 5-set
-    // allocation into pbd_.init()).
+    // create_descriptor_resources() (gs_pool_ live; PBD set is now allocated
+    // inside pbd_.init() from gs_pool_, not in the bulk 4-set allocation).
     pbd_.init(device_, allocator_, pipeline_cache_, gs_pool_, resources_);
 
     // Phase 5e-2: streaming system captures device + allocator + the
