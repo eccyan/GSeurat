@@ -79,6 +79,54 @@ with tempfile.TemporaryDirectory() as tmp:
     check(text.endswith("\n"), "save_manifest ends with newline")
 
 # ---------------------------------------------------------------------------
+# should_bake
+# ---------------------------------------------------------------------------
+print("\nshould_bake")
+
+with tempfile.TemporaryDirectory() as tmp:
+    tmp = Path(tmp)
+    ply = tmp / "a.ply"
+    gsvx = tmp / "a.gsvx"
+    ply.write_bytes(b"hello")
+
+    check(bake_assets.should_bake(ply, gsvx, force=False) is True,
+          "bake when .gsvx is missing")
+
+    gsvx.write_bytes(b"GSVX")
+    # ensure .gsvx is older than .ply
+    os.utime(gsvx, (0, 0))
+    check(bake_assets.should_bake(ply, gsvx, force=False) is True,
+          "bake when .ply is newer than .gsvx")
+
+    # touch gsvx so it's newer
+    now = ply.stat().st_mtime + 10
+    os.utime(gsvx, (now, now))
+    check(bake_assets.should_bake(ply, gsvx, force=False) is False,
+          "skip when .gsvx is newer than .ply")
+
+    check(bake_assets.should_bake(ply, gsvx, force=True) is True,
+          "force overrides skip")
+
+# ---------------------------------------------------------------------------
+# find_ply_importer
+# ---------------------------------------------------------------------------
+print("\nfind_ply_importer")
+
+with tempfile.TemporaryDirectory() as tmp:
+    tmp = Path(tmp)
+    # No candidates → None
+    check(bake_assets.find_ply_importer([tmp]) is None,
+          "returns None when no candidate exists")
+
+    # Drop an executable into a known location and detect it
+    target = tmp / "tools" / "ply_importer" / "ply_importer"
+    target.parent.mkdir(parents=True)
+    target.write_text("#!/bin/sh\nexit 0\n")
+    target.chmod(0o755)
+    found = bake_assets.find_ply_importer([tmp])
+    check(found == target, f"locates importer in candidate root (got {found})")
+
+# ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
 total = passed + failed

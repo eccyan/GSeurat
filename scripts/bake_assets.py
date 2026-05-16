@@ -44,3 +44,28 @@ def save_manifest(path: Path, manifest: dict) -> None:
     with path.open("w", encoding="utf-8") as f:
         json.dump(out, f, indent=2)
         f.write("\n")
+
+
+def should_bake(ply: Path, gsvx: Path, force: bool) -> bool:
+    """True if .gsvx must be regenerated."""
+    if force:
+        return True
+    if not gsvx.exists():
+        return True
+    return ply.stat().st_mtime > gsvx.stat().st_mtime
+
+
+def find_ply_importer(roots: list[Path]) -> Path | None:
+    """Locate the ply_importer binary under any of the given build roots.
+
+    Each root is a candidate build directory; we look for
+    `<root>/tools/ply_importer/ply_importer` (with `.exe` on Windows).
+    Returns the first match, or None if none exist.
+    """
+    import sys as _sys
+    name = "ply_importer.exe" if _sys.platform == "win32" else "ply_importer"
+    for root in roots:
+        candidate = Path(root) / "tools" / "ply_importer" / name
+        if candidate.exists():
+            return candidate
+    return None
