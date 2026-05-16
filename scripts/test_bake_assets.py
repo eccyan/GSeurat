@@ -52,25 +52,43 @@ finally:
 # ---------------------------------------------------------------------------
 print("\nload_manifest / save_manifest")
 
-# load_manifest returns an empty schema when the file is missing
+V2_EMPTY = {"version": 2, "entries": {}}
+
+# load_manifest returns an empty v2 schema when the file is missing
 with tempfile.TemporaryDirectory() as tmp:
     missing = Path(tmp) / "nope.json"
     m = bake_assets.load_manifest(missing)
-    check(m == {"version": 1, "entries": {}}, "missing manifest → empty schema")
+    check(m == V2_EMPTY, "missing manifest → empty v2 schema")
 
-# load_manifest parses an existing file
+# load_manifest parses an existing v2 file
 with tempfile.TemporaryDirectory() as tmp:
     path = Path(tmp) / "manifest.json"
-    path.write_text(json.dumps({"version": 1, "entries": {"a.ply": "abc123"}}))
+    path.write_text(json.dumps({
+        "version": 2,
+        "entries": {"a.ply": {"ply_sha256": "abc", "gsvx_sha256": "def"}},
+    }))
     m = bake_assets.load_manifest(path)
-    check(m["entries"]["a.ply"] == "abc123", "load_manifest parses existing entry")
+    check(m["entries"]["a.ply"]["ply_sha256"] == "abc",
+          "load_manifest parses existing v2 entry (ply_sha256)")
+    check(m["entries"]["a.ply"]["gsvx_sha256"] == "def",
+          "load_manifest parses existing v2 entry (gsvx_sha256)")
+
+# load_manifest drops entries from incompatible (e.g. v1) schemas, forcing a re-bake
+with tempfile.TemporaryDirectory() as tmp:
+    path = Path(tmp) / "manifest.json"
+    path.write_text(json.dumps({"version": 1, "entries": {"a.ply": "legacy_hash"}}))
+    m = bake_assets.load_manifest(path)
+    check(m == V2_EMPTY, "load_manifest drops v1 entries (migration to v2)")
 
 # save_manifest writes entries sorted by key, with trailing newline
 with tempfile.TemporaryDirectory() as tmp:
     path = Path(tmp) / "manifest.json"
     bake_assets.save_manifest(
         path,
-        {"version": 1, "entries": {"z.ply": "zzz", "a.ply": "aaa"}},
+        {"version": 2, "entries": {
+            "z.ply": {"ply_sha256": "zp", "gsvx_sha256": "zg"},
+            "a.ply": {"ply_sha256": "ap", "gsvx_sha256": "ag"},
+        }},
     )
     text = path.read_text()
     a_pos = text.index('"a.ply"')
@@ -89,27 +107,38 @@ with tempfile.TemporaryDirectory() as tmp:
     gsvx_present = tmp / "present.gsvx"
     gsvx_present.write_bytes(b"GSVX...")
 
-    H = "a" * 64  # canonical hash
+    PLY_H = "a" * 64   # canonical .ply hash
+    GSVX_H = "b" * 64  # canonical .gsvx hash
+    GOOD = {"ply_sha256": PLY_H, "gsvx_sha256": GSVX_H}
 
-    # Missing sibling → always bake, regardless of hash match
-    check(bake_assets.should_bake(gsvx_missing, H, H, force=False) is True,
+    # Missing sibling → always bake, regardless of any other state
+    check(bake_assets.should_bake(gsvx_missing, PLY_H, None, GOOD, force=False) is True,
           "bake when .gsvx is missing")
 
-    # No recorded hash (None) → bake; we cannot trust an unrecorded .gsvx
-    check(bake_assets.should_bake(gsvx_present, H, None, force=False) is True,
+    # No recorded entry → bake; we cannot trust an unrecorded .gsvx
+    check(bake_assets.should_bake(gsvx_present, PLY_H, GSVX_H, None, force=False) is True,
           "bake when manifest has no entry yet")
 
-    # Hash mismatch → bake even though sibling exists (Codex P2 scenario:
-    # a content change that didn't bump mtime, e.g. via rsync -t / cp -p)
-    check(bake_assets.should_bake(gsvx_present, H, "b" * 64, force=False) is True,
-          "bake when manifest hash mismatches current source hash")
+    # .ply hash mismatch (Codex P2#1 — source drifted via rsync -t / cp -p)
+    check(bake_assets.should_bake(
+              gsvx_present, "c" * 64, GSVX_H,
+              {"ply_sha256": PLY_H, "gsvx_sha256": GSVX_H},
+              force=False) is True,
+          "bake when .ply hash mismatches recorded")
+
+    # .gsvx hash mismatch (Codex P2#2 — .gsvx was reverted/edited/corrupted)
+    check(bake_assets.should_bake(
+              gsvx_present, PLY_H, "d" * 64,
+              {"ply_sha256": PLY_H, "gsvx_sha256": GSVX_H},
+              force=False) is True,
+          "bake when .gsvx hash mismatches recorded")
 
     # Everything matches → skip
-    check(bake_assets.should_bake(gsvx_present, H, H, force=False) is False,
-          "skip when .gsvx present and hash matches")
+    check(bake_assets.should_bake(gsvx_present, PLY_H, GSVX_H, GOOD, force=False) is False,
+          "skip when both hashes match")
 
     # --force overrides every other branch
-    check(bake_assets.should_bake(gsvx_present, H, H, force=True) is True,
+    check(bake_assets.should_bake(gsvx_present, PLY_H, GSVX_H, GOOD, force=True) is True,
           "force overrides skip")
 
 # ---------------------------------------------------------------------------

@@ -1,11 +1,16 @@
 #!/usr/bin/env python3
-"""Verify every committed .ply has a matching .gsvx and recorded hash.
+"""Verify every committed .ply / .gsvx pair matches the manifest.
 
-Reads examples/island_demo/assets/gsvx_sync_manifest.json and confirms,
-for every .ply under that tree:
+Reads examples/island_demo/assets/gsvx_sync_manifest.json (schema v2) and
+confirms, for every .ply under that tree:
   1. A sibling .gsvx exists.
   2. The manifest has an entry for the .ply (keyed by repo-relative path).
-  3. SHA256 of the .ply matches the manifest entry.
+  3. SHA256 of the .ply matches `recorded.ply_sha256`.
+  4. SHA256 of the .gsvx matches `recorded.gsvx_sha256`.
+
+Step 4 closes the hole where a .gsvx is modified, reverted, or corrupted
+without changing the .ply — the engine would happily load that stale
+baked file, and a .ply-only check would not catch it.
 
 Exit 0 if everything is consistent, exit 1 otherwise with a clear
 description of each mismatch.
@@ -55,11 +60,23 @@ def validate(assets_root: Path, manifest_path: Path) -> list[str]:
                 "Run: python3 scripts/bake_assets.py"
             )
             continue
-        actual = _sha256_file(ply)
-        if actual != recorded:
+        recorded_ply = recorded.get("ply_sha256")
+        recorded_gsvx = recorded.get("gsvx_sha256")
+        actual_ply = _sha256_file(ply)
+        if actual_ply != recorded_ply:
             errors.append(
-                f"{rel}: hash mismatch "
-                f"(manifest={recorded[:16]}... actual={actual[:16]}...). "
+                f"{rel}: .ply hash mismatch "
+                f"(manifest={(recorded_ply or '<missing>')[:16]}... "
+                f"actual={actual_ply[:16]}...). "
+                "Run: python3 scripts/bake_assets.py"
+            )
+            continue
+        actual_gsvx = _sha256_file(gsvx)
+        if actual_gsvx != recorded_gsvx:
+            errors.append(
+                f"{rel}: .gsvx hash mismatch "
+                f"(manifest={(recorded_gsvx or '<missing>')[:16]}... "
+                f"actual={actual_gsvx[:16]}...). "
                 "Run: python3 scripts/bake_assets.py"
             )
     return errors
