@@ -392,6 +392,15 @@ private:
     // Phase 5e-2: publish_pending_chunks + diag_streaming_dump moved to
     // GsStreamingSystem as private members called from poll_transfers.
 
+    // Phase 5e orchestrator helpers (Task 7) — render() is now an orchestrator
+    // dominated by subsystem dispatch() calls plus these helpers for
+    // renderer-local concerns (uniforms, GPU timing diag, image lifecycle).
+    void build_uniforms(const glm::mat4& view, const glm::mat4& proj) noexcept;
+    void read_prev_timestamps(uint32_t frame, uint32_t ts_slot_offset) noexcept;
+    void reset_timestamps(VkCommandBuffer cmd, uint32_t frame, uint32_t ts_slot_offset) noexcept;
+    void transition_outputs_for_compute(VkCommandBuffer cmd, uint32_t frame) noexcept;
+    void clear_outputs(VkCommandBuffer cmd, uint32_t frame) noexcept;
+
     VkDevice device_ = VK_NULL_HANDLE;
     VmaAllocator allocator_ = VK_NULL_HANDLE;
     VkPipelineCache pipeline_cache_ = VK_NULL_HANDLE;

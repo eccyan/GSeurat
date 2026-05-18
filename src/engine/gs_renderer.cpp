@@ -1593,27 +1593,14 @@ void GsRenderer::init_output_layouts(VkCommandBuffer cmd) {
 }
 
 
-void GsRenderer::render(VkCommandBuffer cmd, uint32_t frame_in_flight,
-                        const glm::mat4& view, const glm::mat4& proj) {
-    if (streaming_.gaussian_count() == 0 && streaming_.static_count() == 0 && dynamic_count_ == 0) return;
-    if (frame_in_flight >= kMaxFramesInFlight) {
-        std::fprintf(stderr, "[gs_renderer] render(): frame_in_flight=%u out of range\n",
-                     frame_in_flight);
-        return;
-    }
-    GS_LABEL(cmd, "GS.Render");
-    const VkImage out_img       = resources_->output_images[frame_in_flight];
-    const VkImage depth_img     = resources_->depth_images[frame_in_flight];
-    // Phase 5b: post-process descriptor set now lives in GsPostProcessSystem;
-    // post_.dispatch() resolves the per-frame set internally.
-    // Phase 5d: tile_render_set now lives in GsTileBinSystem; tile_.dispatch_render() resolves it internally.
-    // Phase 5e step 6: processed_image is now owned end-to-end by GsPostProcessSystem
-    // (UNDEFINED→GENERAL pre-barrier + GENERAL→SHADER_READ_ONLY_OPTIMAL post-barrier).
+// ─── Phase 5e Task 7 helpers ──────────────────────────────────────────────────
+// Each helper is a verbatim move of a formerly-inline render() block.
+// render() itself is now an ~45-statement orchestrator.
 
-    uint32_t width = resources_->output_width;
-    uint32_t height = resources_->output_height;
+void GsRenderer::build_uniforms(const glm::mat4& view, const glm::mat4& proj) noexcept {
+    const uint32_t width  = resources_->output_width;
+    const uint32_t height = resources_->output_height;
 
-    // Update uniforms
     GsUniforms uniforms{};
     uniforms.view = view;
     uniforms.proj = proj;
@@ -1655,7 +1642,9 @@ void GsRenderer::render(VkCommandBuffer cmd, uint32_t frame_in_flight,
         static_cast<float>(tiles_x), static_cast<float>(tiles_y));
 
     std::memcpy(resources_->uniform_buffer.mapped(), &uniforms, sizeof(uniforms));
+}
 
+void GsRenderer::read_prev_timestamps(uint32_t frame, uint32_t ts_slot_offset) noexcept {
     // Read back GPU timestamps from THIS slot's PREVIOUS write (the renderer
     // waits on this slot's in-flight fence before calling render(), so the
     // writes are guaranteed complete by the time we reach here).
@@ -1671,8 +1660,7 @@ void GsRenderer::render(VkCommandBuffer cmd, uint32_t frame_in_flight,
     // starting at slot_offset. The reset below only touches THIS slot's
     // queries, so a previous frame's queries are never invalidated before
     // they're consumed.
-    const uint32_t ts_slot_offset = frame_in_flight * kTimestampQueriesPerFrame;
-    if (timestamp_pool_ && timestamps_written_per_slot_[frame_in_flight]) {
+    if (timestamp_pool_ && timestamps_written_per_slot_[frame]) {
         uint64_t ts[kTimestampQueriesPerFrame]{};  // depth_sort_begin/end, tile_sort_begin/end, raster_begin/end
 #if GSEURAT_DEBUG_BUILD
         const auto t_wait_start = std::chrono::steady_clock::now();
@@ -1723,46 +1711,81 @@ void GsRenderer::render(VkCommandBuffer cmd, uint32_t frame_in_flight,
             }
         }
     }
+}
 
+void GsRenderer::reset_timestamps(VkCommandBuffer cmd, uint32_t frame, uint32_t ts_slot_offset) noexcept {
     // Reset only THIS slot's queries before issuing new writes — other
     // slots' queries remain intact for their owning frames to consume.
     if (timestamp_pool_) {
         vkCmdResetQueryPool(cmd, timestamp_pool_, ts_slot_offset, kTimestampQueriesPerFrame);
-        timestamps_written_per_slot_[frame_in_flight] = false;
+        timestamps_written_per_slot_[frame] = false;
     }
+}
 
-    // In skip-sort mode, skip GS compute but still run post-process
-    // (parameters like fade_amount change continuously).
-    bool skip_gs_compute = skip_sort_ && sort_done_once_;
+void GsRenderer::transition_outputs_for_compute(VkCommandBuffer cmd, uint32_t frame) noexcept {
+    const VkImage out_img   = resources_->output_images[frame];
+    const VkImage depth_img = resources_->depth_images[frame];
+
+    // Transition this frame's output + depth images to GENERAL layout for compute write.
+    VkImageMemoryBarrier barriers[2]{};
+    barriers[0].sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    barriers[0].srcAccessMask = 0;
+    barriers[0].dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+    barriers[0].oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    barriers[0].newLayout = VK_IMAGE_LAYOUT_GENERAL;
+    barriers[0].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barriers[0].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barriers[0].image = out_img;
+    barriers[0].subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+
+    barriers[1] = barriers[0];
+    barriers[1].image = depth_img;
+
+    vkCmdPipelineBarrier(cmd,
+        VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+        0, 0, nullptr, 0, nullptr, 2, barriers);
+}
+
+void GsRenderer::clear_outputs(VkCommandBuffer cmd, uint32_t frame) noexcept {
+    const VkImage out_img   = resources_->output_images[frame];
+    const VkImage depth_img = resources_->depth_images[frame];
+
+    // Clear this frame's output + depth images to transparent black (prevents ghost artifacts)
+    VkClearColorValue clear_color = {{0.0f, 0.0f, 0.0f, 0.0f}};
+    VkImageSubresourceRange range = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+    vkCmdClearColorImage(cmd, out_img,   VK_IMAGE_LAYOUT_GENERAL, &clear_color, 1, &range);
+    vkCmdClearColorImage(cmd, depth_img, VK_IMAGE_LAYOUT_GENERAL, &clear_color, 1, &range);
+}
+
+// ─── render() — orchestrator ──────────────────────────────────────────────────
+
+void GsRenderer::render(VkCommandBuffer cmd, uint32_t frame_in_flight,
+                        const glm::mat4& view, const glm::mat4& proj) {
+    // Guards
+    if (streaming_.gaussian_count() == 0 &&
+        streaming_.static_count() == 0 &&
+        dynamic_count_ == 0) return;
+    if (frame_in_flight >= kMaxFramesInFlight) {
+        std::fprintf(stderr, "[gs_renderer] render(): frame_in_flight=%u out of range\n",
+                     frame_in_flight);
+        return;
+    }
+    GS_LABEL(cmd, "GS.Render");
+
+    const uint32_t width     = resources_->output_width;
+    const uint32_t height    = resources_->output_height;
+    const uint32_t ts_offset = frame_in_flight * kTimestampQueriesPerFrame;
+
+    build_uniforms(view, proj);
+    read_prev_timestamps(frame_in_flight, ts_offset);
+    reset_timestamps(cmd, frame_in_flight, ts_offset);
+
+    const bool skip_gs_compute = skip_sort_ && sort_done_once_;
 
     if (!skip_gs_compute) {
-        // Transition this frame's output + depth images to GENERAL layout for compute write.
-        VkImageMemoryBarrier barriers[2]{};
-        barriers[0].sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-        barriers[0].srcAccessMask = 0;
-        barriers[0].dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-        barriers[0].oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-        barriers[0].newLayout = VK_IMAGE_LAYOUT_GENERAL;
-        barriers[0].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        barriers[0].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        barriers[0].image = out_img;
-        barriers[0].subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
-
-        barriers[1] = barriers[0];
-        barriers[1].image = depth_img;
-
-        vkCmdPipelineBarrier(cmd,
-            VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-            0, 0, nullptr, 0, nullptr, 2, barriers);
-    }
-
-    if (!skip_gs_compute) {
-        // Clear this frame's output + depth images to transparent black (prevents ghost artifacts)
-        VkClearColorValue clear_color = {{0.0f, 0.0f, 0.0f, 0.0f}};
-        VkImageSubresourceRange range = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
-        vkCmdClearColorImage(cmd, out_img,   VK_IMAGE_LAYOUT_GENERAL, &clear_color, 1, &range);
-        vkCmdClearColorImage(cmd, depth_img, VK_IMAGE_LAYOUT_GENERAL, &clear_color, 1, &range);
+        transition_outputs_for_compute(cmd, frame_in_flight);
+        clear_outputs(cmd, frame_in_flight);
 
         // === PBD solver dispatch (before any preprocess) ===
         // Option A (2026-05-11 cross-frame race fix): PBD-tagged gaussians live
@@ -1780,7 +1803,6 @@ void GsRenderer::render(VkCommandBuffer cmd, uint32_t frame_in_flight,
         // shift the depth-sort key for tagged splats. Skip the dispatch
         // entirely while a Mode-1 test is active so the GPU's pbd_state
         // SSBO retains its pre-test contents.
-        // Phase 5e step 1.9: inline dispatch replaced by pbd_.dispatch().
         pbd_.dispatch(cmd, frame_in_flight, time_, tile_.determinism_test_active());
 
         // Streaming-strict invariant: split buffers are always allocated
@@ -1791,21 +1813,14 @@ void GsRenderer::render(VkCommandBuffer cmd, uint32_t frame_in_flight,
             resources_->static_gaussian_ssbo.buffer() && resources_->counts_ssbos[0].buffer(),
             "render: split buffers must be allocated in streaming-strict mode");
 
-        // Phase 5e step 4: entire depth-sort phase delegated to GsSortSystem::dispatch().
-        // Internalizes: prepare_buffers, depth_sort timestamps (ts+0, ts+1),
-        // dynamic preprocess + sort, static preprocess + sort + tick_static_dirty,
-        // merge (always), and the sort→tile cross-system barrier (§5.4).
         sort_.dispatch(cmd, frame_in_flight, dynamic_count_, streaming_,
-                       timestamp_pool_, ts_slot_offset);
+                       timestamp_pool_, ts_offset);
 
-        // Phase 5e step 5: entire tile phase delegated to GsTileBinSystem::dispatch().
-        // Internalizes: tile sort timestamps (ts+2, ts+3), dispatch_sort (6-pass),
-        // raster timestamps (ts+4, ts+5), dispatch_render, and tile→post-process barrier.
         tile_.dispatch(cmd, frame_in_flight, width, height,
-                       timestamp_pool_, ts_slot_offset);
+                       timestamp_pool_, ts_offset);
+
         sort_done_once_ = true;
         timestamps_written_per_slot_[frame_in_flight] = tile_.emitted_timestamps_this_frame();
-
     }
 
     // Pass 4: Post-process (always runs — params like fade_amount change every frame).
