@@ -39,12 +39,7 @@ class RenderState;
 // gseurat/engine/gs_renderer/post/post_process_params.hpp (included above).
 // The include keeps external callers source-compatible.
 
-// Push constants for preprocess shader (static/dynamic offset)
-struct GsPreprocessPush {
-    uint32_t projected_offset;
-    uint32_t gaussian_count;
-    uint32_t counts_index;  // 0 for static, 1 for dynamic
-};
+// Phase 5e step 2: GsPreprocessPush moved to gs_sort_system.hpp.
 
 class GsRenderer {
 public:
@@ -467,23 +462,11 @@ private:
     // Descriptor resources
     VkDescriptorPool pool_ = VK_NULL_HANDLE;
     VkDescriptorPool gs_pool_ = VK_NULL_HANDLE;
-    // preprocess_layout_ is shared by the active static/dynamic preprocess
-    // sets below. The legacy single-source `preprocess_sets_` allocations
-    // were removed in #397 — the pre-split path has been dead since the
-    // streaming-strict invariant landed.
-    VkDescriptorSetLayout preprocess_layout_ = VK_NULL_HANDLE;
 
     // Phase 5c: merge pipeline + layout + sets moved to GsSortSystem.
-
-    // Static/dynamic preprocess descriptor sets — per-frame (Phase 2 plumbing;
-    // dispatch still binds [0] until Phase 3).
-    std::array<VkDescriptorSet, kMaxFramesInFlight> static_preprocess_sets_{};
-    std::array<VkDescriptorSet, kMaxFramesInFlight> dynamic_preprocess_sets_{};
-
-    // Compute pipelines
-    VkPipelineLayout preprocess_pipeline_layout_ = VK_NULL_HANDLE;
-
-    VkPipeline preprocess_pipeline_ = VK_NULL_HANDLE;
+    // Phase 5e step 2: preprocess_layout_, static_preprocess_sets_,
+    // dynamic_preprocess_sets_, preprocess_pipeline_layout_,
+    // preprocess_pipeline_ moved into GsSortSystem.
 
     // Phase 5e step 1.10: pbd_layout_, pbd_pipeline_layout_, pbd_pipeline_, pbd_set_
     // moved into GsPbdSystem (the pbd_ member declared above).
