@@ -176,6 +176,26 @@ void GsPostProcessSystem::dispatch(VkCommandBuffer cmd, uint32_t frame_in_flight
     uint32_t tiles_x = (width + 15) / 16;
     uint32_t tiles_y = (height + 15) / 16;
     vkCmdDispatch(cmd, tiles_x, tiles_y, 1);
+
+    // Phase 5e: processed_image GENERAL → SHADER_READ_ONLY_OPTIMAL
+    // (formerly emitted from GsRenderer::render after post_.dispatch).
+    {
+        VkImageMemoryBarrier barrier{};
+        barrier.sType            = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        barrier.srcAccessMask    = VK_ACCESS_SHADER_WRITE_BIT;
+        barrier.dstAccessMask    = VK_ACCESS_SHADER_READ_BIT;
+        barrier.oldLayout        = VK_IMAGE_LAYOUT_GENERAL;
+        barrier.newLayout        = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier.image            = resources_->processed_images[frame_in_flight];
+        barrier.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+
+        vkCmdPipelineBarrier(cmd,
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+            VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+            0, 0, nullptr, 0, nullptr, 1, &barrier);
+    }
 }
 
 void GsPostProcessSystem::shutdown() {

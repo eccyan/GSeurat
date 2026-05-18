@@ -21,9 +21,9 @@ struct GsResourceManager;
 // no heap allocation overhead. Lifecycle: init() at GsRenderer::init() time
 // (after the renderer's gs_pool_ and GsResourceManager are live); shutdown()
 // from GsRenderer::shutdown(). The dispatch path is invoked from
-// GsRenderer::render() once per frame; the system owns the
-// processed_image UNDEFINED→GENERAL barrier but the downstream
-// SHADER_READ_ONLY transition stays with the renderer's orchestration.
+// GsRenderer::render() once per frame; the system owns both the
+// processed_image UNDEFINED→GENERAL pre-barrier and the GENERAL→
+// SHADER_READ_ONLY_OPTIMAL post-barrier (Phase 5e, step 6).
 class GsPostProcessSystem {
 public:
     GsPostProcessSystem() = default;
@@ -45,10 +45,13 @@ public:
     // (re)created on resize.
     void write_descriptors();
 
-    // Issue the gs_post_process.comp dispatch. Owns the processed_image
-    // UNDEFINED→GENERAL pre-barrier. Caller owns the inter-pass barriers
-    // around this (input layout transition before, SHADER_READ_ONLY after).
+    // Issue the gs_post_process.comp dispatch. Owns both
+    //  - the processed_image UNDEFINED→GENERAL pre-barrier (existing), and
+    //  - the processed_image GENERAL→SHADER_READ_ONLY_OPTIMAL post-barrier
+    //    (Phase 5e — absorbed from GsRenderer::render).
     // `frame_in_flight` selects the descriptor set + processed image slot.
+    // Caller owns the upstream tile→post barrier (lives on GsTileBinSystem
+    // per spec §5.4 producer-side rule).
     void dispatch(VkCommandBuffer cmd, uint32_t frame_in_flight,
                   uint32_t width, uint32_t height);
 

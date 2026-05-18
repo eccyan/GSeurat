@@ -1604,10 +1604,11 @@ void GsRenderer::render(VkCommandBuffer cmd, uint32_t frame_in_flight,
     GS_LABEL(cmd, "GS.Render");
     const VkImage out_img       = resources_->output_images[frame_in_flight];
     const VkImage depth_img     = resources_->depth_images[frame_in_flight];
-    const VkImage processed_img = resources_->processed_images[frame_in_flight];
     // Phase 5b: post-process descriptor set now lives in GsPostProcessSystem;
     // post_.dispatch() resolves the per-frame set internally.
     // Phase 5d: tile_render_set now lives in GsTileBinSystem; tile_.dispatch_render() resolves it internally.
+    // Phase 5e step 6: processed_image is now owned end-to-end by GsPostProcessSystem
+    // (UNDEFINED→GENERAL pre-barrier + GENERAL→SHADER_READ_ONLY_OPTIMAL post-barrier).
 
     uint32_t width = resources_->output_width;
     uint32_t height = resources_->output_height;
@@ -1810,28 +1811,11 @@ void GsRenderer::render(VkCommandBuffer cmd, uint32_t frame_in_flight,
     // Pass 4: Post-process (always runs — params like fade_amount change every frame).
     // Phase 5b: dispatch + UBO upload + processed_image UNDEFINED→GENERAL barrier
     // all live inside GsPostProcessSystem now.
+    // Phase 5e step 6: GENERAL→SHADER_READ_ONLY_OPTIMAL post-barrier also
+    // absorbed into GsPostProcessSystem::dispatch().
     {
         GS_LABEL(cmd, "PostProcess");
         post_.dispatch(cmd, frame_in_flight, width, height);
-    }
-
-    // Transition this frame's processed image → SHADER_READ_ONLY for fragment sampling (blit)
-    {
-        VkImageMemoryBarrier barrier{};
-        barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-        barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-        barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-        barrier.oldLayout = VK_IMAGE_LAYOUT_GENERAL;
-        barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-        barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        barrier.image = processed_img;
-        barrier.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
-
-        vkCmdPipelineBarrier(cmd,
-            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-            VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-            0, 0, nullptr, 0, nullptr, 1, &barrier);
     }
 }
 
