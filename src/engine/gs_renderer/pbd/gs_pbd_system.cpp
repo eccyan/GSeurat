@@ -6,6 +6,7 @@
 
 #include <glm/glm.hpp>
 
+#include <algorithm>
 #include <cassert>
 #include <cstring>
 #include <stdexcept>
