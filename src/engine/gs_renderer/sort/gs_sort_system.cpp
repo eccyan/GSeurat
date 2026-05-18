@@ -1,6 +1,7 @@
 #include "gseurat/engine/gs_renderer/sort/gs_sort_system.hpp"
 
 #include "gseurat/engine/debug.hpp"
+#include "gseurat/engine/gs_renderer/gs_renderer_internal.hpp"
 #include "gseurat/engine/gs_renderer/gs_resources.hpp"
 #include "gseurat/engine/gs_renderer/streaming/gs_streaming_system.hpp"
 #include "gseurat/engine/pipeline.hpp"
@@ -12,21 +13,6 @@
 #include <string>
 
 namespace gseurat {
-
-namespace {
-
-void insert_compute_barrier(VkCommandBuffer cmd) {
-    VkMemoryBarrier barrier{};
-    barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
-    barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-    barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
-    vkCmdPipelineBarrier(cmd,
-        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-        0, 1, &barrier, 0, nullptr, 0, nullptr);
-}
-
-}  // namespace
 
 GsSortSystem::~GsSortSystem() {
     shutdown();

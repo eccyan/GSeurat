@@ -1,5 +1,6 @@
 #include "gseurat/engine/gs_renderer.hpp"
 #include "gseurat/engine/debug.hpp"
+#include "gseurat/engine/gs_renderer/gs_renderer_internal.hpp"
 #include "gseurat/engine/log.hpp"
 #include "gseurat/engine/pipeline.hpp"
 #include "gseurat/engine/render_state.hpp"
@@ -66,17 +67,6 @@ struct SortEntry {
     uint32_t key;   // depth as uint
     uint32_t index; // original Gaussian index
 };
-
-void insert_compute_barrier(VkCommandBuffer cmd) {
-    VkMemoryBarrier barrier{};
-    barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
-    barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-    barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
-    vkCmdPipelineBarrier(cmd,
-        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-        0, 1, &barrier, 0, nullptr, 0, nullptr);
-}
 
 }  // namespace
 
@@ -1807,33 +1797,13 @@ void GsRenderer::render(VkCommandBuffer cmd, uint32_t frame_in_flight,
         sort_.dispatch(cmd, frame_in_flight, dynamic_count_, streaming_,
                        timestamp_pool_, ts_slot_offset);
 
-        // === Phase 3.5: Tile binning + tile sort ===
-        if (timestamp_pool_) {
-            vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                               timestamp_pool_, ts_slot_offset + 2);  // tile_sort_begin
-        }
-        tile_.dispatch_sort(cmd, frame_in_flight);
-        if (timestamp_pool_) {
-            vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                               timestamp_pool_, ts_slot_offset + 3);  // tile_sort_end
-        }
-
-        // === Phase 4: Tile-based rasterization (Phase 5d: into GsTileBinSystem) ===
-        if (timestamp_pool_) {
-            vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                               timestamp_pool_, ts_slot_offset + 4);  // raster_begin
-        }
-        tile_.dispatch_render(cmd, frame_in_flight, width, height);
-        if (timestamp_pool_) {
-            vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                               timestamp_pool_, ts_slot_offset + 5);  // raster_end
-            timestamps_written_per_slot_[frame_in_flight] = true;
-        }
-
+        // Phase 5e step 5: entire tile phase delegated to GsTileBinSystem::dispatch().
+        // Internalizes: tile sort timestamps (ts+2, ts+3), dispatch_sort (6-pass),
+        // raster timestamps (ts+4, ts+5), dispatch_render, and tile→post-process barrier.
+        tile_.dispatch(cmd, frame_in_flight, width, height,
+                       timestamp_pool_, ts_slot_offset);
         sort_done_once_ = true;
-
-        // Barrier: tile rasterize → post-process (output+depth readable)
-        insert_compute_barrier(cmd);
+        timestamps_written_per_slot_[frame_in_flight] = tile_.emitted_timestamps_this_frame();
 
     }
 

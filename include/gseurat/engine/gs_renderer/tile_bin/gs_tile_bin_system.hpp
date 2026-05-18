@@ -58,16 +58,18 @@ public:
     // GsRenderer::update_descriptors after buffer (re)creation.
     void write_descriptors();
 
-    // 6-pass tile sort: tile_count → tile_scan ×3 → tile_bin (scatter) →
-    // tile_prepare_indirect → onesweep radix sort ×kPasses (via sort_'s
-    // pipelines) → tile_ranges. Also records the determinism readback
-    // copy when the harness is active.
-    void dispatch_sort(VkCommandBuffer cmd, uint32_t frame_in_flight);
-
-    // Final tile rasterization dispatch. Width/height come from the
-    // renderer (output size may have been resized since init_streaming).
-    void dispatch_render(VkCommandBuffer cmd, uint32_t frame_in_flight,
-                         uint32_t width, uint32_t height);
+    // Phase 5e: single tile-phase entry. Internalizes:
+    //   - ts_slot_offset + 2 (tile_sort_begin)
+    //   - dispatch_sort (existing internal 6-pass)
+    //   - ts_slot_offset + 3 (tile_sort_end)
+    //   - ts_slot_offset + 4 (raster_begin)
+    //   - dispatch_render
+    //   - ts_slot_offset + 5 (raster_end)
+    //   - final compute → compute barrier (tile → post-process, producer-side per spec §5.4)
+    void dispatch(VkCommandBuffer cmd, uint32_t frame_in_flight,
+                  uint32_t width, uint32_t height,
+                  VkQueryPool timestamp_pool, uint32_t ts_slot_offset);
+    bool emitted_timestamps_this_frame() const { return emitted_timestamps_; }
 
     // Tear down. Idempotent.
     void shutdown();
@@ -113,6 +115,18 @@ public:
 
 private:
     static constexpr uint32_t kTileSortPasses = 4;  // 4 radix passes for 32-bit key
+
+    // Sub-methods used by dispatch(); not part of the public API.
+    // 6-pass tile sort: tile_count → tile_scan ×3 → tile_bin (scatter) →
+    // tile_prepare_indirect → onesweep radix sort ×kPasses (via sort_'s
+    // pipelines) → tile_ranges. Also records the determinism readback
+    // copy when the harness is active.
+    void dispatch_sort(VkCommandBuffer cmd, uint32_t frame_in_flight);
+
+    // Final tile rasterization dispatch. Width/height come from the
+    // renderer (output size may have been resized since init_streaming).
+    void dispatch_render(VkCommandBuffer cmd, uint32_t frame_in_flight,
+                         uint32_t width, uint32_t height);
 
     VkDevice           device_     = VK_NULL_HANDLE;
     GsResourceManager* resources_  = nullptr;
@@ -167,6 +181,9 @@ private:
     bool     determinism_test_active_       = false;
     bool     determinism_readback_emitted_  = false;
     uint32_t determinism_last_emitted_frame_ = 0;
+
+    // Phase 5e: set by dispatch() each call — true iff timestamp_pool != VK_NULL_HANDLE
+    bool     emitted_timestamps_ = false;
 };
 
 }  // namespace gseurat
