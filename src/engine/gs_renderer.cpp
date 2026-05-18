@@ -1800,64 +1800,12 @@ void GsRenderer::render(VkCommandBuffer cmd, uint32_t frame_in_flight,
             resources_->static_gaussian_ssbo.buffer() && resources_->counts_ssbos[0].buffer(),
             "render: split buffers must be allocated in streaming-strict mode");
 
-        // Phase 5e step 3: sort-phase buffer preparation delegated to GsSortSystem.
-        // Performs static-tail fill, counts SSBO reset, dynamic sort_a/b fill 0xFFFFFFFF,
-        // and the final TRANSFER→COMPUTE barrier. See GsSortSystem::prepare_buffers().
-        sort_.prepare_buffers(cmd, frame_in_flight, dynamic_count_, streaming_);
-
-        // === Depth sort timestamp: begin ===
-        if (timestamp_pool_) {
-            vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                               timestamp_pool_, ts_slot_offset + 0);  // depth_sort_begin
-        }
-
-        // === Phase 1: Dynamic preprocess + sort (every frame, if dynamic_count_ > 0) ===
-        if (dynamic_count_ > 0) {
-            GS_LABEL(cmd, "Dynamic");
-            // Phase 5e step 2: preprocess delegated to GsSortSystem.
-            sort_.dispatch_preprocess(cmd, frame_in_flight, dynamic_count_,
-                                      streaming_.max_static_count(),
-                                      /*is_static=*/false);
-
-            insert_compute_barrier(cmd);
-
-            // Sort dynamic (Onesweep) — Phase 5c: delegated to GsSortSystem.
-            sort_.dispatch_depth_dynamic(cmd, frame_in_flight);
-        }
-
-        // === Phase 2: Static preprocess + sort (only when static_dirty_) ===
-        // Phase 3: static_dirty_frames_remaining_ tracks per-frame slots
-        // that still need a refresh after the last static mutation.
-        if (streaming_.static_dirty() && streaming_.static_count() > 0) {
-            GS_LABEL(cmd, "Static");
-            // Phase 5e step 2: preprocess delegated to GsSortSystem.
-            sort_.dispatch_preprocess(cmd, frame_in_flight, streaming_.static_count(),
-                                      /*static_offset=*/0u,
-                                      /*is_static=*/true);
-
-            insert_compute_barrier(cmd);
-
-            // Sort static (Onesweep) — Phase 5c: delegated to GsSortSystem.
-            sort_.dispatch_depth_static(cmd, frame_in_flight);
-
-            streaming_.tick_static_dirty();
-        }
-
-        // === Phase 3: Merge (every frame) — Phase 5c: delegated to GsSortSystem. ===
-        // Merge uses actual visible counts from counts SSBO (written by preprocess shaders)
-        // Thread 0 computes merged_visible_count = static_count + dynamic_count.
-        {
-            uint32_t total_upper = streaming_.static_sort_size() + streaming_.dynamic_sort_size();
-            sort_.dispatch_merge(cmd, frame_in_flight, total_upper);
-        }
-
-        insert_compute_barrier(cmd);
-
-        // === Depth sort timestamp: end ===
-        if (timestamp_pool_) {
-            vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                               timestamp_pool_, ts_slot_offset + 1);  // depth_sort_end
-        }
+        // Phase 5e step 4: entire depth-sort phase delegated to GsSortSystem::dispatch().
+        // Internalizes: prepare_buffers, depth_sort timestamps (ts+0, ts+1),
+        // dynamic preprocess + sort, static preprocess + sort + tick_static_dirty,
+        // merge (always), and the sort→tile cross-system barrier (§5.4).
+        sort_.dispatch(cmd, frame_in_flight, dynamic_count_, streaming_,
+                       timestamp_pool_, ts_slot_offset);
 
         // === Phase 3.5: Tile binning + tile sort ===
         if (timestamp_pool_) {

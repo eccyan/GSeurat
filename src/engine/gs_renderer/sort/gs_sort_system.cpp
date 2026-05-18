@@ -514,13 +514,6 @@ void GsSortSystem::dispatch_depth_static(VkCommandBuffer cmd, uint32_t frame_in_
         static_depth_scatter_sets_ab_[frame_in_flight], static_depth_scatter_sets_ba_[frame_in_flight]);
 }
 
-void GsSortSystem::dispatch_depth_legacy(VkCommandBuffer cmd, uint32_t frame_in_flight) {
-    assert(frame_in_flight < kMaxFramesInFlight);
-    dispatch_depth_onesweep_impl(cmd, frame_in_flight, legacy_sort_workgroups_,
-        depth_hist_sets_a_[frame_in_flight], depth_hist_sets_b_[frame_in_flight],
-        depth_scatter_sets_ab_[frame_in_flight], depth_scatter_sets_ba_[frame_in_flight]);
-}
-
 void GsSortSystem::dispatch_merge(VkCommandBuffer cmd, uint32_t frame_in_flight,
                                    uint32_t total_upper) {
     assert(frame_in_flight < kMaxFramesInFlight);
@@ -599,6 +592,57 @@ void GsSortSystem::shutdown() {
     device_ = VK_NULL_HANDLE;
     resources_ = nullptr;
     render_state_ = nullptr;
+}
+
+void GsSortSystem::dispatch(VkCommandBuffer cmd, uint32_t frame_in_flight,
+                             uint32_t dynamic_count,
+                             GsStreamingSystem& streaming,
+                             VkQueryPool timestamp_pool,
+                             uint32_t ts_slot_offset) {
+    GS_LABEL(cmd, "Sort");
+    prepare_buffers(cmd, frame_in_flight, dynamic_count, streaming);
+
+    // Depth sort timestamp: begin
+    if (timestamp_pool != VK_NULL_HANDLE) {
+        vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                           timestamp_pool, ts_slot_offset + 0);
+    }
+
+    // Phase 1: dynamic preprocess + sort
+    if (dynamic_count > 0) {
+        GS_LABEL(cmd, "Dynamic");
+        dispatch_preprocess(cmd, frame_in_flight, dynamic_count,
+                            streaming.max_static_count(), /*is_static=*/false);
+        insert_compute_barrier(cmd);
+        dispatch_depth_dynamic(cmd, frame_in_flight);
+    }
+
+    // Phase 2: static preprocess + sort
+    if (streaming.static_dirty() && streaming.static_count() > 0) {
+        GS_LABEL(cmd, "Static");
+        dispatch_preprocess(cmd, frame_in_flight, streaming.static_count(),
+                            /*static_offset=*/0u, /*is_static=*/true);
+        insert_compute_barrier(cmd);
+        dispatch_depth_static(cmd, frame_in_flight);
+        streaming.tick_static_dirty();
+    }
+
+    // Phase 3: merge (always — reads counts SSBO populated by preprocess shaders).
+    // total_upper is the sort-slot upper bound (static + dynamic capacities), not
+    // the actual visible count — the merge shader reads merged_visible_count from
+    // the counts SSBO. Source both halves from `streaming` to avoid drift if a
+    // future hot-reload path mutates streaming's size without calling set_sort_sizes.
+    uint32_t total_upper = streaming.static_sort_size() + streaming.dynamic_sort_size();
+    dispatch_merge(cmd, frame_in_flight, total_upper);
+
+    // Sort → tile cross-system barrier (producer-side per spec §5.4)
+    insert_compute_barrier(cmd);
+
+    // Depth sort timestamp: end
+    if (timestamp_pool != VK_NULL_HANDLE) {
+        vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                           timestamp_pool, ts_slot_offset + 1);
+    }
 }
 
 void GsSortSystem::prepare_buffers(VkCommandBuffer cmd, uint32_t frame_in_flight,

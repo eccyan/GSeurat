@@ -68,42 +68,19 @@ public:
     // Called from GsRenderer::update_descriptors after buffer (re)creation.
     void write_descriptors();
 
-    // Phase 5e: sort-phase buffer preparation. Performs:
-    //   1. Static-tail fill (if streaming.is_static_tail_dirty(frame)) —
-    //      2× vkCmdFillBuffer + 2-barrier on static_sort_as/bs[frame].
-    //      Calls streaming.clear_static_tail_dirty(frame) after.
-    //   2. Counts SSBO reset (12 bytes if static_dirty, else 8 bytes from offset 4).
-    //   3. Dynamic sort_a/b fill 0xFFFFFFFFu (if dynamic_count > 0).
-    //   4. TRANSFER→COMPUTE barrier.
-    void prepare_buffers(VkCommandBuffer cmd, uint32_t frame_in_flight,
-                         uint32_t dynamic_count,
-                         GsStreamingSystem& streaming);
-
-    // Per-path depth-sort entry points. Each clears its status buffer
-    // slot, then runs `num_passes_` × {histogram, scatter}. After
-    // dispatch, the sorted output lives in slot A (even passes).
-    void dispatch_depth_dynamic(VkCommandBuffer cmd, uint32_t frame_in_flight);
-    void dispatch_depth_static (VkCommandBuffer cmd, uint32_t frame_in_flight);
-    void dispatch_depth_legacy (VkCommandBuffer cmd, uint32_t frame_in_flight);
-
-    // Merge dispatch: combines static + dynamic sorted entries into
-    // merged_sort_ssbo using counts SSBO. `total_upper` is the static +
-    // dynamic sort-size sum (visible upper bound).
-    void dispatch_merge(VkCommandBuffer cmd, uint32_t frame_in_flight,
-                        uint32_t total_upper);
-
-    // Phase 5e: preprocess dispatch — projects 3D gaussians, computes
-    // depth keys, writes sort entries. Called once for dynamic and once
-    // for static per frame from GsRenderer::render() (until step 4
-    // collapses the orchestrator further).
-    //
-    // `is_static = false` selects dynamic_preprocess_sets_[frame] and
-    // pushes (static_offset = streaming.max_static_count(), count, dyn_flag = 1).
-    // `is_static = true ` selects static_preprocess_sets_[frame] and
-    // pushes (static_offset = 0, count, dyn_flag = 0).
-    void dispatch_preprocess(VkCommandBuffer cmd, uint32_t frame_in_flight,
-                             uint32_t count, uint32_t static_offset,
-                             bool is_static);
+    // Phase 5e: single depth-sort phase entry. Internalizes:
+    //   - prepare_buffers (static-tail + counts reset + dyn sort fill + barriers)
+    //   - ts_slot_offset + 0 timestamp (depth_sort_begin)
+    //   - dynamic preprocess + sort (if dynamic_count > 0)
+    //   - static preprocess + sort (if streaming.static_dirty() && static_count > 0)
+    //   - merge dispatch (always)
+    //   - final compute → compute barrier (sort → tile, producer-side per spec §5.4)
+    //   - ts_slot_offset + 1 timestamp (depth_sort_end)
+    void dispatch(VkCommandBuffer cmd, uint32_t frame_in_flight,
+                  uint32_t dynamic_count,
+                  GsStreamingSystem& streaming,
+                  VkQueryPool timestamp_pool,
+                  uint32_t ts_slot_offset);
 
     // Cross-system pipeline access for 5d (tile-bin reuses onesweep
     // pipelines). Phase 5c keeps these accessible so GsRenderer's
@@ -181,7 +158,36 @@ private:
     uint32_t num_passes_               = 2;
     uint32_t depth_onesweep_max_wg_    = 0;
 
-    // Helpers
+    // Sub-phase helpers (internalized by dispatch() — no longer part of external surface)
+
+    // Sort-phase buffer preparation:
+    //   1. Static-tail fill (if streaming.is_static_tail_dirty(frame))
+    //   2. Counts SSBO reset
+    //   3. Dynamic sort_a/b fill 0xFFFFFFFFu (if dynamic_count > 0)
+    //   4. TRANSFER→COMPUTE barrier
+    void prepare_buffers(VkCommandBuffer cmd, uint32_t frame_in_flight,
+                         uint32_t dynamic_count,
+                         GsStreamingSystem& streaming);
+
+    // Preprocess dispatch — projects 3D gaussians, computes depth keys, writes sort entries.
+    // `is_static = false` → dynamic_preprocess_sets_[frame], static_offset = max_static_count.
+    // `is_static = true`  → static_preprocess_sets_[frame],  static_offset = 0.
+    void dispatch_preprocess(VkCommandBuffer cmd, uint32_t frame_in_flight,
+                             uint32_t count, uint32_t static_offset,
+                             bool is_static);
+
+    // Per-path depth-sort entry points. Each clears its status buffer
+    // slot, then runs `num_passes_` × {histogram, scatter}.
+    void dispatch_depth_dynamic(VkCommandBuffer cmd, uint32_t frame_in_flight);
+    void dispatch_depth_static (VkCommandBuffer cmd, uint32_t frame_in_flight);
+
+    // Merge dispatch: combines static + dynamic sorted entries into
+    // merged_sort_ssbo using counts SSBO. `total_upper` is the static +
+    // dynamic sort-size sum (visible upper bound).
+    void dispatch_merge(VkCommandBuffer cmd, uint32_t frame_in_flight,
+                        uint32_t total_upper);
+
+    // Low-level onesweep helpers
     void write_depth_set_quad(VkDescriptorSet hist_a, VkDescriptorSet hist_b,
                               VkDescriptorSet scatter_ab, VkDescriptorSet scatter_ba,
                               VkBuffer sort_a, VkBuffer sort_b,
