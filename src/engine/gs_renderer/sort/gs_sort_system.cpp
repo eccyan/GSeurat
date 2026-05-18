@@ -2,8 +2,10 @@
 
 #include "gseurat/engine/debug.hpp"
 #include "gseurat/engine/gs_renderer/gs_resources.hpp"
+#include "gseurat/engine/gs_renderer/streaming/gs_streaming_system.hpp"
 #include "gseurat/engine/pipeline.hpp"
 #include "gseurat/engine/render_state.hpp"  // RenderState::bones_buffer
+#include "gseurat/engine/sort_entry.hpp"
 
 #include <cassert>
 #include <stdexcept>
@@ -374,13 +376,12 @@ void GsSortSystem::write_descriptors() {
 
     // Static preprocess set: static_gaussian(0), projected(1), static_sort_a(2),
     // uniforms(3), counts[0](4), bones(5), pbd(6), page_table(8)
-    // Note: uniform_buffer size == sizeof(GsUniforms) (internal to gs_renderer.cpp);
-    //       VK_WHOLE_SIZE is safe as the buffer is exactly that size.
+    // sizeof(GsUniforms) matches the buffer allocation; avoids VK_WHOLE_SIZE UBO ambiguity.
     for (uint32_t f = 0; f < kMaxFramesInFlight; ++f) {
         VkDescriptorBufferInfo gaussian_info{resources_->static_gaussian_ssbo.buffer(), 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo projected_info{resources_->projected_ssbos[f].buffer(), 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo sort_info{resources_->static_sort_as[f].buffer(), 0, VK_WHOLE_SIZE};
-        VkDescriptorBufferInfo uniform_info{resources_->uniform_buffer.buffer(), 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo uniform_info{resources_->uniform_buffer.buffer(), 0, resources_->uniform_buffer_size};
         VkDescriptorBufferInfo counts_info{resources_->counts_ssbos[f].buffer(), 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo bone_info{render_state_ ? render_state_->bones_buffer(FrameIndex{f}) : VK_NULL_HANDLE, 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo pbd_info{resources_->pbd_state_ssbo.buffer(), 0, VK_WHOLE_SIZE};
@@ -414,7 +415,7 @@ void GsSortSystem::write_descriptors() {
         VkDescriptorBufferInfo gaussian_info{resources_->dynamic_gaussian_ssbo.buffer(), 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo projected_info{resources_->projected_ssbos[f].buffer(), 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo sort_info{resources_->dynamic_sort_as[f].buffer(), 0, VK_WHOLE_SIZE};
-        VkDescriptorBufferInfo uniform_info{resources_->uniform_buffer.buffer(), 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo uniform_info{resources_->uniform_buffer.buffer(), 0, resources_->uniform_buffer_size};
         VkDescriptorBufferInfo counts_info{resources_->counts_ssbos[f].buffer(), 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo bone_info{render_state_ ? render_state_->bones_buffer(FrameIndex{f}) : VK_NULL_HANDLE, 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo pbd_info{resources_->pbd_state_ssbo.buffer(), 0, VK_WHOLE_SIZE};
@@ -598,6 +599,79 @@ void GsSortSystem::shutdown() {
     device_ = VK_NULL_HANDLE;
     resources_ = nullptr;
     render_state_ = nullptr;
+}
+
+void GsSortSystem::prepare_buffers(VkCommandBuffer cmd, uint32_t frame_in_flight,
+                                    uint32_t dynamic_count,
+                                    GsStreamingSystem& streaming) {
+    // 1. Static-tail fill (Phase 3 of #421 cross-frame race fix — moved into
+    //    sort_ in Phase 5e step 3). Conservative fill: zero the tail
+    //    [static_count, static_sort_size) of this slot's static_sort_a/b
+    //    buffers when the dirty flag was set by publish_pending_chunks.
+    if (streaming.is_static_tail_dirty(frame_in_flight) &&
+        streaming.static_count() < streaming.static_sort_size()) {
+        const VkDeviceSize entry_sz = sizeof(SortEntry);
+        const VkDeviceSize fill_offset =
+            static_cast<VkDeviceSize>(streaming.static_count()) * entry_sz;
+        const VkDeviceSize fill_size =
+            static_cast<VkDeviceSize>(streaming.static_sort_size() - streaming.static_count()) * entry_sz;
+        vkCmdFillBuffer(cmd, resources_->static_sort_as[frame_in_flight].buffer(),
+                        fill_offset, fill_size, 0xFFFFFFFFu);
+        vkCmdFillBuffer(cmd, resources_->static_sort_bs[frame_in_flight].buffer(),
+                        fill_offset, fill_size, 0xFFFFFFFFu);
+
+        VkBufferMemoryBarrier sort_barriers[2]{};
+        for (uint32_t i = 0; i < 2; ++i) {
+            sort_barriers[i].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+            sort_barriers[i].srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+            sort_barriers[i].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+            sort_barriers[i].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            sort_barriers[i].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            sort_barriers[i].offset = 0;
+            sort_barriers[i].size = VK_WHOLE_SIZE;
+        }
+        sort_barriers[0].buffer = resources_->static_sort_as[frame_in_flight].buffer();
+        sort_barriers[1].buffer = resources_->static_sort_bs[frame_in_flight].buffer();
+        vkCmdPipelineBarrier(cmd,
+            VK_PIPELINE_STAGE_TRANSFER_BIT,
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+            0, 0, nullptr, 2, sort_barriers, 0, nullptr);
+        streaming.clear_static_tail_dirty(frame_in_flight);
+    }
+
+    // 2. Counts SSBO reset — 12 bytes if static_dirty + static_count > 0,
+    //    else 8 bytes from offset 4 (skip the static count slot).
+    const bool static_dirty_this_frame =
+        streaming.static_dirty() && streaming.static_count() > 0;
+    if (static_dirty_this_frame) {
+        vkCmdFillBuffer(cmd, resources_->counts_ssbos[frame_in_flight].buffer(), 0, 12, 0);
+    } else {
+        vkCmdFillBuffer(cmd, resources_->counts_ssbos[frame_in_flight].buffer(), 4, 8, 0);
+    }
+
+    // 3. Dynamic sort_a/b fill — 0xFFFFFFFFu sentinel. Inactive slots stay
+    //    past 0xFFFF and get sorted out of the visible window.
+    if (dynamic_count > 0 && resources_->dynamic_sort_as[frame_in_flight].buffer()
+                          && resources_->dynamic_sort_bs[frame_in_flight].buffer()) {
+        const VkDeviceSize dyn_sort_bytes =
+            static_cast<VkDeviceSize>(dynamic_sort_size_) * sizeof(SortEntry);
+        vkCmdFillBuffer(cmd, resources_->dynamic_sort_as[frame_in_flight].buffer(),
+                        0, dyn_sort_bytes, 0xFFFFFFFFu);
+        vkCmdFillBuffer(cmd, resources_->dynamic_sort_bs[frame_in_flight].buffer(),
+                        0, dyn_sort_bytes, 0xFFFFFFFFu);
+    }
+
+    // 4. TRANSFER → COMPUTE barrier (covers static-tail and dynamic-sort fills).
+    {
+        VkMemoryBarrier fill_barrier{};
+        fill_barrier.sType         = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+        fill_barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        fill_barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+        vkCmdPipelineBarrier(cmd,
+            VK_PIPELINE_STAGE_TRANSFER_BIT,
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+            0, 1, &fill_barrier, 0, nullptr, 0, nullptr);
+    }
 }
 
 }  // namespace gseurat

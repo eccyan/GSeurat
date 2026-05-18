@@ -11,6 +11,7 @@ namespace gseurat {
 
 struct GsResourceManager;
 class RenderState;
+class GsStreamingSystem;
 
 // Push constants for the preprocess shader (Phase 5e — moved from gs_renderer.hpp)
 struct GsPreprocessPush {
@@ -19,15 +20,16 @@ struct GsPreprocessPush {
     uint32_t counts_index;  // 0 for static, 1 for dynamic
 };
 
-// Phase 5c: depth sort + merge extraction. Owns:
+// Phase 5c + 5e: depth sort + merge + preprocess pipeline. Owns:
 //  - Onesweep histogram and scatter pipelines (shared with 5d tile-bin
 //    via the onesweep_*() getters — tile-bin reads them out instead of
 //    duplicating pipeline creation)
 //  - Merge pipeline + per-frame merge descriptor sets
-//  - All three depth-sort descriptor set quads: legacy (sort_keys/sort_b),
-//    static (static_sort_a/b), dynamic (dynamic_sort_a/b), each 4 sets
-//    (hist_a, hist_b, scatter_ab, scatter_ba) per frame in flight =
-//    12 sets per frame × 2 frames = 24 sets, +2 merge = 26 sets total
+//  - Preprocess pipeline (Phase 5e — moved from GsRenderer) + 4 per-frame
+//    descriptor sets (2 static + 2 dynamic)
+//  - All three depth-sort descriptor set quads: legacy, static, dynamic,
+//    each 4 sets per frame in flight = 12 sets per frame × 2 frames =
+//    24 sets, +2 merge + 4 preprocess = 30 sets total
 //
 // Lifetime: by-value member of GsRenderer; same lifetime as the renderer.
 // init() runs in GsRenderer::init() after gs_pool_ exists.
@@ -44,9 +46,9 @@ public:
     GsSortSystem(GsSortSystem&&) = delete;
     GsSortSystem& operator=(GsSortSystem&&) = delete;
 
-    // Create the 3 set layouts, 3 pipeline layouts, 3 pipelines, and
-    // allocate 26 descriptor sets (12 depth × 2 frames + 2 merge) from
-    // the shared gs_pool_.
+    // Create the 4 set layouts, 4 pipeline layouts, 4 pipelines, and
+    // allocate 30 descriptor sets (12 depth × 2 frames + 2 merge +
+    // 4 preprocess) from the shared gs_pool_.
     void init(VkDevice device, VkPipelineCache pipeline_cache,
               VkDescriptorPool pool, GsResourceManager* resources);
 
@@ -65,6 +67,17 @@ public:
     // Write/refresh all descriptor sets (depth-sort, merge, and preprocess).
     // Called from GsRenderer::update_descriptors after buffer (re)creation.
     void write_descriptors();
+
+    // Phase 5e: sort-phase buffer preparation. Performs:
+    //   1. Static-tail fill (if streaming.is_static_tail_dirty(frame)) —
+    //      2× vkCmdFillBuffer + 2-barrier on static_sort_as/bs[frame].
+    //      Calls streaming.clear_static_tail_dirty(frame) after.
+    //   2. Counts SSBO reset (12 bytes if static_dirty, else 8 bytes from offset 4).
+    //   3. Dynamic sort_a/b fill 0xFFFFFFFFu (if dynamic_count > 0).
+    //   4. TRANSFER→COMPUTE barrier.
+    void prepare_buffers(VkCommandBuffer cmd, uint32_t frame_in_flight,
+                         uint32_t dynamic_count,
+                         GsStreamingSystem& streaming);
 
     // Per-path depth-sort entry points. Each clears its status buffer
     // slot, then runs `num_passes_` × {histogram, scatter}. After

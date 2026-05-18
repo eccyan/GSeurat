@@ -1188,6 +1188,7 @@ void GsRenderer::init_streaming(const StreamingConfig& config) {
         resources_->static_sort_bs[f] = Buffer::create_storage_host_dst(allocator_, static_sort_buf_sz);
     }
     resources_->uniform_buffer = Buffer::create_uniform(allocator_, sizeof(GsUniforms));
+    resources_->uniform_buffer_size = sizeof(GsUniforms);
 
     for (uint32_t f = 0; f < kMaxFramesInFlight; ++f) {
         resources_->projected_ssbos[f]     = Buffer::create_storage(allocator_, projected_buf_size);
@@ -1664,50 +1665,6 @@ void GsRenderer::render(VkCommandBuffer cmd, uint32_t frame_in_flight,
 
     std::memcpy(resources_->uniform_buffer.mapped(), &uniforms, sizeof(uniforms));
 
-    // Deferred static_sort tail fill (Codex P1 round 2).
-    //
-    // publish_pending_chunks only touches its own fenced slot when an Unload
-    // shrinks streaming_.static_count(); it marks the OTHER slots dirty for lazy refill
-    // here. By the time render() runs for `frame_in_flight`, this slot's
-    // in-flight fence has been waited on, so writing resources_->static_sort_as/bs_
-    // [frame_in_flight] is race-free.
-    //
-    // Conservative fill: zero out the full tail [streaming_.static_count(), streaming_.static_sort_size())
-    // rather than tracking per-event delta windows. Multiple Unloads can
-    // accumulate between two reuses of a slot; the over-fill is correctness-
-    // critical and runs only when a slot was actually marked dirty (rare,
-    // chunk-transition / scene-clear events).
-    if (streaming_.is_static_tail_dirty(frame_in_flight) &&
-        streaming_.static_count() < streaming_.static_sort_size()) {
-        const VkDeviceSize entry_sz = sizeof(SortEntry);
-        const VkDeviceSize fill_offset =
-            static_cast<VkDeviceSize>(streaming_.static_count()) * entry_sz;
-        const VkDeviceSize fill_size =
-            static_cast<VkDeviceSize>(streaming_.static_sort_size() - streaming_.static_count()) * entry_sz;
-        vkCmdFillBuffer(cmd, resources_->static_sort_as[frame_in_flight].buffer(),
-                        fill_offset, fill_size, 0xFFFFFFFFu);
-        vkCmdFillBuffer(cmd, resources_->static_sort_bs[frame_in_flight].buffer(),
-                        fill_offset, fill_size, 0xFFFFFFFFu);
-
-        VkBufferMemoryBarrier sort_barriers[2]{};
-        for (uint32_t i = 0; i < 2; ++i) {
-            sort_barriers[i].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-            sort_barriers[i].srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-            sort_barriers[i].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-            sort_barriers[i].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-            sort_barriers[i].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-            sort_barriers[i].offset = 0;
-            sort_barriers[i].size = VK_WHOLE_SIZE;
-        }
-        sort_barriers[0].buffer = resources_->static_sort_as[frame_in_flight].buffer();
-        sort_barriers[1].buffer = resources_->static_sort_bs[frame_in_flight].buffer();
-        vkCmdPipelineBarrier(cmd,
-            VK_PIPELINE_STAGE_TRANSFER_BIT,
-            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-            0, 0, nullptr, 2, sort_barriers, 0, nullptr);
-        streaming_.clear_static_tail_dirty(frame_in_flight);
-    }
-
     // Read back GPU timestamps from THIS slot's PREVIOUS write (the renderer
     // waits on this slot's in-flight fence before calling render(), so the
     // writes are guaranteed complete by the time we reach here).
@@ -1843,56 +1800,10 @@ void GsRenderer::render(VkCommandBuffer cmd, uint32_t frame_in_flight,
             resources_->static_gaussian_ssbo.buffer() && resources_->counts_ssbos[0].buffer(),
             "render: split buffers must be allocated in streaming-strict mode");
 
-        // Reset counts that will be written this frame
-        // counts[0]=static_visible (reset if static dirty), counts[1]=dynamic_visible (always reset)
-        // vkCmdFillBuffer requires offset/size to be multiples of 4 (satisfied)
-        // Phase 3: writes go to frame_in_flight's per-frame slot.
-        const bool static_dirty_this_frame =
-            streaming_.static_dirty() && streaming_.static_count() > 0;
-        if (static_dirty_this_frame) {
-            // Reset all 3 counts (static + dynamic + merged)
-            vkCmdFillBuffer(cmd, resources_->counts_ssbos[frame_in_flight].buffer(), 0, 12, 0);
-        } else {
-            // Reset only dynamic visible count (counts[1]) and merged (counts[2])
-            vkCmdFillBuffer(cmd, resources_->counts_ssbos[frame_in_flight].buffer(), 4, 8, 0);
-        }
-
-        // Per-frame GPU-side init of dynamic sort buffers.
-        //
-        // Why on the GPU? The previous CPU-side init (an 8MB std::memcpy
-        // to a HOST_VISIBLE mapped buffer every frame) raced against the
-        // GPU's in-flight reads of those same buffers from frame N-1.
-        // With kMaxFramesInFlight=2, frame N+1's CPU init could clobber
-        // entries that frame N's depth-sort dispatch was still consuming,
-        // producing intermittent flicker of persistent dynamics
-        // (chars/NPCs/PBD trees would appear for "a few frames" then
-        // disappear). Moving the fill into the command buffer makes it
-        // properly serialized with the subsequent preprocess + sort
-        // dispatches via the same TRANSFER→COMPUTE barrier below.
-        //
-        // Fill pattern 0xFFFFFFFF gives both `key` and `index` fields of
-        // every SortEntry the max-uint sentinel. The preprocess shader
-        // overwrites slots [0..dynamic_count_) with real keys (depth in
-        // [0..0xFFFE] for visible, 0xFFFF for culled) and indices, so the
-        // active range is fresh. Inactive slots keep 0xFFFFFFFF, sorting
-        // them past 0xFFFF and out of the counts[1] visible window.
-        // Phase 3: fill frame_in_flight's per-frame slot.
-        if (dynamic_count_ > 0 && resources_->dynamic_sort_as[frame_in_flight].buffer() && resources_->dynamic_sort_bs[frame_in_flight].buffer()) {
-            const VkDeviceSize dyn_sort_bytes =
-                static_cast<VkDeviceSize>(streaming_.dynamic_sort_size()) * sizeof(SortEntry);
-            vkCmdFillBuffer(cmd, resources_->dynamic_sort_as[frame_in_flight].buffer(), 0, dyn_sort_bytes, 0xFFFFFFFFu);
-            vkCmdFillBuffer(cmd, resources_->dynamic_sort_bs[frame_in_flight].buffer(), 0, dyn_sort_bytes, 0xFFFFFFFFu);
-        }
-        {
-            VkMemoryBarrier fill_barrier{};
-            fill_barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
-            fill_barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-            fill_barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
-            vkCmdPipelineBarrier(cmd,
-                VK_PIPELINE_STAGE_TRANSFER_BIT,
-                VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                0, 1, &fill_barrier, 0, nullptr, 0, nullptr);
-        }
+        // Phase 5e step 3: sort-phase buffer preparation delegated to GsSortSystem.
+        // Performs static-tail fill, counts SSBO reset, dynamic sort_a/b fill 0xFFFFFFFF,
+        // and the final TRANSFER→COMPUTE barrier. See GsSortSystem::prepare_buffers().
+        sort_.prepare_buffers(cmd, frame_in_flight, dynamic_count_, streaming_);
 
         // === Depth sort timestamp: begin ===
         if (timestamp_pool_) {
