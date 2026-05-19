@@ -1730,7 +1730,7 @@ void GsRenderer::transition_outputs_for_compute(VkCommandBuffer cmd, uint32_t fr
     VkImageMemoryBarrier barriers[2]{};
     barriers[0].sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
     barriers[0].srcAccessMask = 0;
-    barriers[0].dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+    barriers[0].dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT | VK_ACCESS_SHADER_WRITE_BIT;
     barriers[0].oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
     barriers[0].newLayout = VK_IMAGE_LAYOUT_GENERAL;
     barriers[0].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
@@ -1743,7 +1743,7 @@ void GsRenderer::transition_outputs_for_compute(VkCommandBuffer cmd, uint32_t fr
 
     vkCmdPipelineBarrier(cmd,
         VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+        VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
         0, 0, nullptr, 0, nullptr, 2, barriers);
 }
 
