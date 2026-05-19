@@ -335,11 +335,11 @@ To trace a set from allocation to use: open the subsystem's `.cpp`, find the `vk
 | Resource | Allocated | Pool Limit | Remaining |
 |---|---|---|---|
 | Sets | 51 | 236 | 185 |
-| `STORAGE_BUFFER` | ~170 | 416 | ~246 |
-| `STORAGE_IMAGE` | 8 | 24 | 16 |
-| `UNIFORM_BUFFER` | 8 | 48 | 40 |
+| `STORAGE_BUFFER` | 187 | 416 | 229 |
+| `STORAGE_IMAGE` | 10 | 24 | 14 |
+| `UNIFORM_BUFFER` | 11 | 48 | 37 |
 
-`STORAGE_BUFFER` is the dominant resource — sort + tile-bin allocate the bulk of it. `STORAGE_IMAGE` is bounded by per-frame `output_image` / `depth_image` views (each consumed by `tile_render` and `post_process`).
+Counts are exact summations over every set bound from `gs_pool_`. `STORAGE_BUFFER` is the dominant resource — depth-sort (84 sets-bindings: 24 sets × 3.5 SSBO avg), preprocess (28: 4 sets × 7), and the borrowed onesweep sets in `GsTileBinSystem` (28: 8 sets × 3.5 avg) make up most of it. `STORAGE_IMAGE` is bounded by `tile_render` (4: 2 frames × {output, depth}) and `post_process` (6: 2 frames × {output, depth, processed}). `UNIFORM_BUFFER` is spread across every layout that touches `GsUniforms`, `GsPostProcessUbo`, or the PBD UBO.
 
 **Per-frame intermediate images.** With `kMaxFramesInFlight = 2`, a single shared `output_image_` / `depth_image_` / `processed_image_` would be written by frame N+1's compute dispatch while frame N's composite-blit is still sampling it on the GPU — there is no producer/consumer fence between adjacent in-flight frames on those images. On Apple/MoltenVK with a 3-image swapchain that race manifested as a "first-rendered configuration flashes back" ghost. Each frame now writes into its own image and binds its own descriptor set; the `Renderer` passes its `current_frame_` index through `gs_renderer_.render(cmd, frame, view, proj)` and uses the matching `output_views_[frame]` for the swapchain blit (`DescriptorManager::allocate_sprite_sets_per_frame`).
 
