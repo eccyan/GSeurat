@@ -208,7 +208,16 @@ render_state_->end_frame(frame);                // flush mapped ranges if non-co
 
 `begin_frame` / `end_frame` are no-ops on Apple Silicon (`HOST_COHERENT` unified memory), but on platforms with non-coherent host-visible memory `end_frame` emits the necessary `vkFlushMappedMemoryRanges`. The bracket also encodes the synchronization contract: CPU writes are race-free against the previous frame's GPU reads on the same slot, because the fence wait precedes `begin_frame`.
 
-`RenderState` is owned by `AppBase` and passed by mutable reference into the ECS scheduler and by const reference into `Renderer::draw_scene`. The transition from "renderer pulls from AppBase" (pre-refactor) to "ECS pushes to RenderState, renderer consumes RenderState" is a multi-PR migration that is still partially in progress; `BonesWriter` is fully wired, with the remaining writers (vfx, pbd, particles) following the same pattern as they migrate.
+`RenderState` is owned by `AppBase` and passed by mutable reference into the ECS scheduler and by const reference into `Renderer::draw_scene`. The transition from "renderer pulls from AppBase" to "ECS pushes to `RenderState`, renderer consumes `RenderState`" is complete for all four typed writers:
+
+| Writer | Producer (ECS) | Consumer |
+|---|---|---|
+| `BonesWriter` | `BoneAnimationPlayer` invocations in `AppBase::upload_bone_transforms` and per-character demo/staging state-tick code | `GsSortSystem`'s preprocess descriptor set (binding 5 = bones SSBO) |
+| `VfxWriter` | `VfxSystem::update_per_frame` | `Renderer::dispatch_compose_vfx` (issued from `record_gs_prepass`) |
+| `PbdWriter` | `PbdSystem::update_per_frame` | `Renderer::dispatch_compose_pbd` (issued from `record_gs_prepass`) |
+| `ParticlesWriter` | `ParticleSystem::update_per_frame` | `Renderer::dispatch_compose_particles` (issued from `record_gs_prepass`) |
+
+`record_gs_prepass` runs before `gs_renderer_.render()` inside `Renderer::draw_scene` and dispatches the three compose passes that consume the VFX / PBD / particles writers' SSBO data into the persistent-dynamic prefix of the GS data buffer. The `PointLightsWriter` was removed in PR #460 as dead architecture — point lights live in the GS uniform buffer's inline `vec4` arrays, not in an SSBO routed through `RenderState`.
 
 ---
 
