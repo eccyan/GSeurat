@@ -88,14 +88,14 @@ The pre-refactor `GsRenderer::render()` was 451 lines of inline glue. It directl
 
 ## 3. The Six Subsystems
 
-Each subsystem under `include/gseurat/engine/gs_renderer/` follows the same surface contract:
+The four **compute-pipeline subsystems** — `GsPbdSystem`, `GsSortSystem`, `GsTileBinSystem`, and `GsPostProcessSystem` — share a uniform surface contract. Each is a move-disabled, by-value member of `GsRenderer` that exposes a single per-frame `dispatch()`:
 
 ```cpp
 class Gs<Name>System {
  public:
   Gs<Name>System() = default;
   ~Gs<Name>System();
-  Gs<Name>System(const Gs<Name>System&) = delete;   // move-disabled, by-value member
+  Gs<Name>System(const Gs<Name>System&) = delete;   // move-disabled
   Gs<Name>System& operator=(const Gs<Name>System&) = delete;
 
   void init(VkDevice, VkPipelineCache, VkDescriptorPool, GsResourceManager*);
@@ -104,6 +104,11 @@ class Gs<Name>System {
   void shutdown();
 };
 ```
+
+The other two subsystems deviate by design:
+
+- **`GsResourceManager`** is a passive `struct` of handles, not a class. It has no `init` / `dispatch` / `shutdown` surface — the underlying GPU buffers and images are created and destroyed by `GsRenderer::init` and `GsRenderer::shutdown`, with `AppBase` owning the `std::unique_ptr`.
+- **`GsStreamingSystem`** uses an extended `init(VkDevice, VmaAllocator, …)` plus a separate `init_streaming(StreamingConfig, num_sort_passes)` for resource-budget allocation. Its per-frame entry point is `poll_transfers(cmd, frame_in_flight)` rather than `dispatch()`, and it provides no `write_descriptors()` because it does not own any descriptor sets — its consumers (`GsSortSystem`, `GsTileBinSystem`) read its state via getters at dispatch time.
 
 Move-disabled by design: each subsystem holds raw Vulkan handles that must be destroyed deterministically when `GsRenderer` is destroyed. Forbidding moves prevents accidental ownership transfers that would invalidate the renderer's destructors.
 
