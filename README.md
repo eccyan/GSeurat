@@ -1,6 +1,6 @@
 # GSeurat
 
-A high-performance C++23 / Vulkan engine for real-time **3D Gaussian Splatting**, optimized for a pixel-art aesthetic. The renderer follows an **orchestrator-over-subsystems** architecture: a ~73-line `GsRenderer::render()` invokes six autonomous subsystems (`GsStreamingSystem`, `GsPbdSystem`, `GsSortSystem`, `GsTileBinSystem`, `GsPostProcessSystem`, plus the passive `GsResources` resource container), each owning its own pipelines, descriptor sets, and pipeline-stage barriers. See [docs/architecture.md](docs/architecture.md) for the full architectural overview.
+A high-performance C++23 / Vulkan engine for real-time **3D Gaussian Splatting**, optimized for a pixel-art aesthetic. The renderer follows an **orchestrator-over-subsystems** architecture: a ~73-line `GsRenderer::render()` invokes six autonomous subsystems (`GsStreamingSystem`, `GsPbdSystem`, `GsSortSystem`, `GsTileBinSystem`, `GsPostProcessSystem`, plus the passive `GsResourceManager` resource container), each owning its own pipelines, descriptor sets, and pipeline-stage barriers. See [docs/architecture.md](docs/architecture.md) for the full architectural overview.
 
 Named after **3DGS + [Georges Seurat](https://en.wikipedia.org/wiki/Georges_Seurat)**, the pointillist painter — because Gaussian splats are the modern equivalent of painted dots.
 
@@ -221,7 +221,7 @@ GsRenderer::render
   └── post_.dispatch               ── GsPostProcessSystem (fog, tone mapping, bloom, DoF)
 ```
 
-Streaming work (`GsStreamingSystem`) runs across `Renderer::draw_scene`'s `poll_transfers()` call and reads-from-state via getters that the sort system queries; `GsResources` is a passive struct of shared GPU resource handles. The four cross-system pipeline barriers (PBD→sort, sort→tile, tile→post, post→blit) all sit on the producer side as the last operation each `dispatch()` emits.
+Streaming work (`GsStreamingSystem`) runs across `Renderer::draw_scene`'s `poll_transfers()` call and reads-from-state via getters that the sort system queries; `GsResourceManager` is a passive struct of shared GPU resource handles. The four cross-system pipeline barriers (PBD→sort, sort→tile, tile→post, post→blit) all sit on the producer side as the last operation each `dispatch()` emits.
 
 ### Renderer Output Flow
 

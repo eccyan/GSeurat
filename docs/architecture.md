@@ -54,16 +54,22 @@ class GsRenderer {
               const glm::mat4& view,
               const glm::mat4& proj);
  private:
-  GsResources         resources_;
+  GsResourceManager*  resources_ = nullptr;   // non-owning; AppBase owns the unique_ptr
+                                              //   and binds via set_resources()
   GsStreamingSystem   streaming_;
   GsSortSystem        sort_;
   GsTileBinSystem     tile_;
   GsPbdSystem         pbd_;
   GsPostProcessSystem post_;
 
-  // Five small private helpers (uniform construction, GPU timing
-  // readback / reset, output-image lifecycle). None of them issue
-  // pipeline-stage barriers — those live inside the subsystems.
+  // Five small private helpers for renderer-local concerns
+  // (uniform construction, GPU timing readback / reset, output-image
+  // lifecycle). `transition_outputs_for_compute()` emits the
+  // UNDEFINED → GENERAL transitions on the per-frame output and depth
+  // images that bracket the compute phase — these are renderer-owned
+  // image-lifecycle barriers, distinct from the cross-system barriers
+  // (PBD → sort, sort → tile, tile → post, post → blit) that live
+  // inside the subsystems on the producer side.
   void build_uniforms(const glm::mat4& view, const glm::mat4& proj) noexcept;
   void read_prev_timestamps(uint32_t frame, uint32_t ts_slot_offset) noexcept;
   void reset_timestamps(VkCommandBuffer cmd, uint32_t frame, uint32_t ts_slot_offset) noexcept;
@@ -101,13 +107,13 @@ class Gs<Name>System {
 
 Move-disabled by design: each subsystem holds raw Vulkan handles that must be destroyed deterministically when `GsRenderer` is destroyed. Forbidding moves prevents accidental ownership transfers that would invalidate the renderer's destructors.
 
-### 3.1 `GsResources` — Passive Resource Container
+### 3.1 `GsResourceManager` — Passive Resource Container
 
-**Path:** `include/gseurat/engine/gs_renderer/gs_resources.hpp`
+**Path:** `include/gseurat/engine/gs_renderer/gs_resources.hpp` (struct `GsResourceManager`)
 
 A plain `struct` of `Buffer`, `Image`, and `VkImageView` handles plus a handful of sizing scalars (`output_width`, `output_height`, `uniform_buffer_size`). It owns no logic — its sole responsibility is to give every subsystem a stable place to look up the GPU resources they share (output images, depth images, the GS uniform buffer, sort SSBOs, etc.).
 
-All subsystems hold a non-owning `GsResourceManager*` set at `init()` time. They read from `resources_->X` directly.
+**Lifetime:** `AppBase` owns the `std::unique_ptr<GsResourceManager>` (`AppBase::gs_resources_`) and binds it into the renderer via `renderer_.gs_renderer().set_resources(gs_resources_.get())` during `init_render_state`. `GsRenderer` holds a non-owning `GsResourceManager* resources_` pointer; each subsystem holds its own non-owning pointer set at `init()` time. Subsystems read shared GPU resources via `resources_->X` directly.
 
 ### 3.2 `GsStreamingSystem` — Chunk Lifecycle and GPU Page Table
 
@@ -212,9 +218,9 @@ render_state_->end_frame(frame);                // flush mapped ranges if non-co
 |---|---|
 | View / projection matrices | Passed into `GsRenderer::render` from `Renderer::draw_scene` |
 | Per-frame uniform values (lights, fog, effects, time, camera, etc.) | `GsRenderer` private fields, fed by existing `set_*` accessors; aggregated into `GsUniforms` via `build_uniforms()` |
-| Uniform buffer (mapped GPU memory) | `GsResources::uniform_buffer` |
-| Output / depth / processed images (per frame in flight) | `GsResources::output_images[]` / `depth_images[]` / `processed_images[]` |
-| Sort entries, counts SSBO, projected SSBO | `GsResources` |
+| Uniform buffer (mapped GPU memory) | `GsResourceManager::uniform_buffer` (owned by `AppBase`) |
+| Output / depth / processed images (per frame in flight) | `GsResourceManager::output_images[]` / `depth_images[]` / `processed_images[]` |
+| Sort entries, counts SSBO, projected SSBO | `GsResourceManager` |
 | Preprocess pipeline + descriptor sets | `GsSortSystem` |
 | Onesweep histogram & scatter pipelines | `GsSortSystem` (shared with `GsTileBinSystem` via getters) |
 | Merge pipeline | `GsSortSystem` |
