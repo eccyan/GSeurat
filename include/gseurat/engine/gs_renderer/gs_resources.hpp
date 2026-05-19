@@ -55,7 +55,8 @@ struct GsResourceManager {
     std::array<VkImageView,    kMaxFramesInFlight> processed_views{};
 
     // ── Splat buffers (static/dynamic split) ──────────────────────────
-    Buffer uniform_buffer;
+    Buffer       uniform_buffer;
+    VkDeviceSize uniform_buffer_size = 0;  // sizeof(GsUniforms) — stored here so subsystems don't need a back-include into gs_renderer.cpp
     Buffer static_gaussian_ssbo;
     Buffer dynamic_gaussian_ssbo;
 

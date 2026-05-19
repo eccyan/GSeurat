@@ -1,6 +1,7 @@
 #include "gseurat/engine/gs_renderer/tile_bin/gs_tile_bin_system.hpp"
 
 #include "gseurat/engine/debug.hpp"
+#include "gseurat/engine/gs_renderer/gs_renderer_internal.hpp"
 #include "gseurat/engine/gs_renderer/gs_resources.hpp"
 #include "gseurat/engine/gs_renderer/sort/gs_sort_system.hpp"
 #include "gseurat/engine/pipeline.hpp"
@@ -12,21 +13,6 @@
 #include <string>
 
 namespace gseurat {
-
-namespace {
-
-void insert_compute_barrier(VkCommandBuffer cmd) {
-    VkMemoryBarrier barrier{};
-    barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
-    barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-    barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
-    vkCmdPipelineBarrier(cmd,
-        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-        0, 1, &barrier, 0, nullptr, 0, nullptr);
-}
-
-}  // namespace
 
 GsTileBinSystem::~GsTileBinSystem() {
     shutdown();
@@ -715,6 +701,39 @@ void GsTileBinSystem::dispatch_render(VkCommandBuffer cmd, uint32_t frame_in_fli
     uint32_t tiles_x = (width + 15) / 16;
     uint32_t tiles_y = (height + 15) / 16;
     vkCmdDispatch(cmd, tiles_x, tiles_y, 1);
+}
+
+void GsTileBinSystem::dispatch(VkCommandBuffer cmd, uint32_t frame_in_flight,
+                                uint32_t width, uint32_t height,
+                                VkQueryPool timestamp_pool, uint32_t ts_slot_offset) {
+    GS_LABEL(cmd, "Tile");
+
+    // Tile sort begin
+    if (timestamp_pool != VK_NULL_HANDLE) {
+        vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                           timestamp_pool, ts_slot_offset + 2);
+    }
+    dispatch_sort(cmd, frame_in_flight);
+    if (timestamp_pool != VK_NULL_HANDLE) {
+        vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                           timestamp_pool, ts_slot_offset + 3);
+    }
+
+    // Raster begin
+    if (timestamp_pool != VK_NULL_HANDLE) {
+        vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                           timestamp_pool, ts_slot_offset + 4);
+    }
+    dispatch_render(cmd, frame_in_flight, width, height);
+    if (timestamp_pool != VK_NULL_HANDLE) {
+        vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                           timestamp_pool, ts_slot_offset + 5);
+    }
+
+    emitted_timestamps_ = (timestamp_pool != VK_NULL_HANDLE);
+
+    // Tile rasterize → post-process barrier (cross-system producer-side)
+    insert_compute_barrier(cmd);
 }
 
 std::array<GsTileBinSystem::PrewarmEntry, 6> GsTileBinSystem::prewarm_entries() const {

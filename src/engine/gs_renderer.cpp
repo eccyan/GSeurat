@@ -1,5 +1,6 @@
 #include "gseurat/engine/gs_renderer.hpp"
 #include "gseurat/engine/debug.hpp"
+#include "gseurat/engine/gs_renderer/gs_renderer_internal.hpp"
 #include "gseurat/engine/log.hpp"
 #include "gseurat/engine/pipeline.hpp"
 #include "gseurat/engine/render_state.hpp"
@@ -67,17 +68,6 @@ struct SortEntry {
     uint32_t index; // original Gaussian index
 };
 
-void insert_compute_barrier(VkCommandBuffer cmd) {
-    VkMemoryBarrier barrier{};
-    barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
-    barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-    barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
-    vkCmdPipelineBarrier(cmd,
-        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-        0, 1, &barrier, 0, nullptr, 0, nullptr);
-}
-
 }  // namespace
 
 void GsRenderer::init(VkDevice device, VkPhysicalDevice physical_device,
@@ -118,6 +108,11 @@ void GsRenderer::init(VkDevice device, VkPhysicalDevice physical_device,
     // pipeline / descriptor sets).
     assert(resources_ != nullptr && "set_resources() must run before init()");
     post_.init(device_, pipeline_cache_, gs_pool_, resources_);
+
+    // Phase 5e: init the PBD solver system. Must run after
+    // create_descriptor_resources() (gs_pool_ live; PBD set is now allocated
+    // inside pbd_.init() from gs_pool_, not in the bulk 4-set allocation).
+    pbd_.init(device_, allocator_, pipeline_cache_, gs_pool_, resources_);
 
     // Phase 5e-2: streaming system captures device + allocator + the
     // resources / sort / tile back-pointers it needs for the heavy
@@ -265,24 +260,9 @@ void GsRenderer::create_descriptor_resources() {
     sort_.init(device_, pipeline_cache_, gs_pool_, resources_);
     tile_.init(device_, pipeline_cache_, gs_pool_, resources_, &sort_);
 
-    // Preprocess layout: { gaussians, projected, sort_keys, uniforms, visible_count, bones, pbd_states }
-    {
-        VkDescriptorSetLayoutBinding bindings[] = {
-            {0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
-            {1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
-            {2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
-            {3, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
-            {4, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
-            {5, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
-            {6, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},  // PBD
-            {8, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},  // Page table
-        };
-        VkDescriptorSetLayoutCreateInfo ci{};
-        ci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-        ci.bindingCount = 8;
-        ci.pBindings = bindings;
-        vkCreateDescriptorSetLayout(device_, &ci, nullptr, &preprocess_layout_);
-    }
+    // Phase 5e step 2: preprocess descriptor set layout creation moved into
+    // GsSortSystem::init(). The layout, pipeline layout, pipeline, and 4
+    // preprocess sets are now allocated inside sort_.init().
 
     // #397: render_layout_ + render_sets_ deleted — they were owned by the
     // pre-tile-bin full-raster pipeline removed in PR 1c. Post-1c the only
@@ -302,20 +282,7 @@ void GsRenderer::create_descriptor_resources() {
     // descriptor set layouts now live inside GsTileBinSystem (already created
     // by tile_.init() above).
 
-    // PBD solver layout: { pbd_states (rw), pbd_params (ro), pbd_constraints (ro), pbd_uniforms }
-    {
-        VkDescriptorSetLayoutBinding bindings[] = {
-            {0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
-            {1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
-            {2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
-            {3, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
-        };
-        VkDescriptorSetLayoutCreateInfo ci{};
-        ci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-        ci.bindingCount = 4;
-        ci.pBindings = bindings;
-        vkCreateDescriptorSetLayout(device_, &ci, nullptr, &pbd_layout_);
-    }
+    // Phase 5e step 1.10: PBD solver set layout moved to GsPbdSystem (pbd_.init()).
 
     // Allocate all descriptor sets. (Reset was hoisted up to run BEFORE
     // sort_.init() so that sort_'s 26 sets aren't invalidated.)
@@ -336,38 +303,10 @@ void GsRenderer::create_descriptor_resources() {
     // Phase 5c: depth-sort + merge slots removed (26 sets owned by GsSortSystem).
     // Phase 5d: tile-bin + tile-onesweep slots removed (18 sets owned by
     // GsTileBinSystem). #397: render/preprocess/sort orphan slots removed.
-    // kSetCount: 56 → 30 (5c) → 12 (5d) → 5 (#397). Only the
-    // static_preprocess / dynamic_preprocess / pbd sets remain.
-    VkDescriptorSetLayout layouts[] = {
-        preprocess_layout_, preprocess_layout_,   // 0-1: static_preprocess_sets_[0], dynamic_preprocess_sets_[0]
-        pbd_layout_,                              // 2:   PBD solver
-        // Per-frame [1] copies for sets that bind racing SSBOs:
-        preprocess_layout_,                       // 3:   static_preprocess_sets_[1]
-        preprocess_layout_,                       // 4:   dynamic_preprocess_sets_[1]
-    };
-    constexpr uint32_t kSetCount = 5;
-    VkDescriptorSet sets[kSetCount];
-    VkDescriptorSetAllocateInfo alloc_info{};
-    alloc_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-    alloc_info.descriptorPool = gs_pool_;
-    alloc_info.descriptorSetCount = kSetCount;
-    alloc_info.pSetLayouts = layouts;
-    VkResult alloc_res = vkAllocateDescriptorSets(device_, &alloc_info, sets);
-    if (alloc_res != VK_SUCCESS) {
-        std::fprintf(stderr,
-            "[gs_renderer] vkAllocateDescriptorSets failed (%d) — pool exhausted? maxSets must cover kSetCount=%u\n",
-            static_cast<int>(alloc_res), kSetCount);
-        std::abort();
-    }
-
-    // Phase 5b: post_process_sets_ now lives in GsPostProcessSystem.
-    // Phase 5c: merge_sets_ + all depth_*_sets_ now live in GsSortSystem.
-    // Phase 5d: all tile-bin / tile-onesweep sets now live in GsTileBinSystem.
-    static_preprocess_sets_[0] = sets[0];
-    static_preprocess_sets_[1] = sets[3];
-    dynamic_preprocess_sets_[0] = sets[1];
-    dynamic_preprocess_sets_[1] = sets[4];
-    pbd_set_ = sets[2];
+    // Phase 5e: pbd slot removed (1 set now owned by GsPbdSystem).
+    // Phase 5e step 2: static_preprocess/dynamic_preprocess sets moved to
+    //   GsSortSystem (allocated in sort_.init() above). kSetCount now 0 —
+    //   this bulk allocation is empty; all descriptor sets are subsystem-owned.
 }
 
 void GsRenderer::create_compute_pipelines() {
@@ -409,18 +348,15 @@ void GsRenderer::create_compute_pipelines() {
         vkDestroyShaderModule(device_, module, nullptr);
     };
 
-    create_pipeline("shaders/gs_preprocess.comp.spv", preprocess_layout_,
-                    static_cast<uint32_t>(sizeof(GsPreprocessPush)),
-                    preprocess_pipeline_layout_, preprocess_pipeline_);
+    // Phase 5e step 2: gs_preprocess.comp.spv pipeline creation moved to
+    // GsSortSystem::init(). No pipelines remain in this function except
+    // the compose pass (below).
     // #397: legacy gs_sort.comp pipeline retired — Onesweep depth sort
     // (GsSortSystem) is the live path.
 
     // Phase 5b: post-process pipeline lives in GsPostProcessSystem.
 
-    // PBD solver pipeline (push constant = pbd_count)
-    create_pipeline("shaders/pbd_solver.comp.spv", pbd_layout_,
-                    static_cast<uint32_t>(sizeof(uint32_t)),
-                    pbd_pipeline_layout_, pbd_pipeline_);
+    // Phase 5e step 1.10: PBD solver pipeline moved to GsPbdSystem (pbd_.init()).
 
     // Phase 5c: merge pipeline owned by GsSortSystem.
     // Phase 5c: onesweep histogram + scatter pipelines owned by GsSortSystem.
@@ -882,9 +818,17 @@ void GsRenderer::prewarm_pipelines(VkQueue queue, VkCommandPool cmd_pool,
             entries.push_back(e);
         };
 
-        add_entry("gs_preprocess", preprocess_pipeline_, preprocess_pipeline_layout_,
-                  preprocess_layout_, sizeof(GsPreprocessPush),
-                  {0,1,2,4,5,6,8}, {3}, {});
+        // Phase 5e step 2: gs_preprocess pipeline now owned by GsSortSystem.
+        {
+            auto sort_entries = sort_.prewarm_entries();
+            // sort_entries[3] is the preprocess pipeline.
+            add_entry("gs_preprocess",
+                      sort_entries[3].pipeline,
+                      sort_entries[3].pipeline_layout,
+                      sort_entries[3].set_layout,
+                      sizeof(GsPreprocessPush),
+                      {0,1,2,4,5,6,8}, {3}, {});
+        }
         // #397: gs_sort prewarm entry retired with the legacy sort pipeline.
         // Phase 5b: post-process pipeline owned by GsPostProcessSystem.
         {
@@ -894,9 +838,13 @@ void GsRenderer::prewarm_pipelines(VkQueue queue, VkCommandPool cmd_pool,
                       {}, {3},
                       {{0u, color_view}, {1u, depth_view}, {2u, color_view}});
         }
-        add_entry("pbd_solver", pbd_pipeline_, pbd_pipeline_layout_, pbd_layout_,
-                  sizeof(uint32_t),
-                  {0,1,2}, {3}, {});
+        // Phase 5e step 1.10: PBD pipeline owned by GsPbdSystem.
+        {
+            auto pbd_pe = pbd_.prewarm_entry();
+            add_entry("pbd_solver", pbd_pe.pipeline, pbd_pe.pipeline_layout, pbd_pe.set_layout,
+                      sizeof(uint32_t),
+                      {0,1,2}, {3}, {});
+        }
         // Phase 5c: merge pipeline owned by GsSortSystem.
         {
             auto entries = sort_.prewarm_entries();
@@ -1156,8 +1104,8 @@ void GsRenderer::init_streaming(const StreamingConfig& config) {
 
     sort_done_once_       = false;
     dynamic_count_        = 0;
-    pbd_count_            = 0;
-    pbd_constraint_count_ = 0;
+    // Phase 5e step 1.10: pbd counts reset via pbd_.clear() (clears both counts + buffers).
+    pbd_.clear();
 
     // Destroy all renderer-owned GPU buffers (streaming-owned page_table
     // and chunk_table are destroyed/recreated inside streaming_.init_streaming).
@@ -1230,6 +1178,7 @@ void GsRenderer::init_streaming(const StreamingConfig& config) {
         resources_->static_sort_bs[f] = Buffer::create_storage_host_dst(allocator_, static_sort_buf_sz);
     }
     resources_->uniform_buffer = Buffer::create_uniform(allocator_, sizeof(GsUniforms));
+    resources_->uniform_buffer_size = sizeof(GsUniforms);
 
     for (uint32_t f = 0; f < kMaxFramesInFlight; ++f) {
         resources_->projected_ssbos[f]     = Buffer::create_storage(allocator_, projected_buf_size);
@@ -1472,6 +1421,9 @@ void GsRenderer::update_dynamic_gaussians(const Gaussian* data, uint32_t count,
 void GsRenderer::set_render_state(RenderState* rs) noexcept {
     if (render_state_ == rs) return;
     render_state_ = rs;
+    // Phase 5e step 2: propagate render_state to sort system so its
+    // write_descriptors() can bind the bones buffer.
+    sort_.set_render_state(rs);
     // Re-bind descriptors so the bones binding picks up RenderState's
     // per-frame buffers. Only re-run if streaming is initialised — pre-init
     // descriptors haven't been written yet, and init_streaming will call
@@ -1491,111 +1443,22 @@ void GsRenderer::set_render_state(RenderState* rs) noexcept {
 void GsRenderer::update_descriptors() {
     // #397: the central `preprocess_sets_[*]` and `sort_sets_[*]` writes
     // (and the matching `render_sets_[*]` write blocks) all populated
-    // descriptor sets that no live pipeline ever bound. Only the
-    // static/dynamic preprocess sets below feed `preprocess_pipeline_`;
-    // GsSortSystem/GsPostProcessSystem/GsTileBinSystem each own their
-    // own descriptor writes.
+    // descriptor sets that no live pipeline ever bound.
+    // Phase 5e step 2: preprocess sets now owned and written by GsSortSystem.
+    // All descriptor writes are delegated to subsystem write_descriptors() calls below.
 
     // Phase 5b: post-process descriptor writes moved to GsPostProcessSystem.
     post_.write_descriptors();
 
 
     // Phase 5c: depth-sort + merge descriptor writes moved to GsSortSystem.
+    // Phase 5e step 2: static/dynamic preprocess set writes moved to GsSortSystem.
+    // sort_.write_descriptors() now handles depth-sort, merge, and preprocess sets.
     sort_.write_descriptors();
 
-    // --- Static/dynamic split descriptor sets ---
-    // Only write these if the split buffers have been allocated
-    if (!resources_->static_gaussian_ssbo.buffer() || !resources_->counts_ssbos[0].buffer()) return;
-
-    // Static preprocess set: static_gaussian(0), projected(1), static_sort_a(2), uniforms(3), counts[0](4), bones(5), pbd(6), page_table(8)
-    // Per-frame: static_preprocess_sets_[f] binds resources_->projected_ssbos[f],
-    // resources_->counts_ssbos[f], and (now) resources_->static_sort_as[f] so the preprocess→sort→
-    // merge chain in cmdbuf [f] is self-contained.
-    for (uint32_t f = 0; f < kMaxFramesInFlight; ++f) {
-        VkDescriptorBufferInfo gaussian_info{resources_->static_gaussian_ssbo.buffer(), 0, VK_WHOLE_SIZE};
-        VkDescriptorBufferInfo projected_info{resources_->projected_ssbos[f].buffer(), 0, VK_WHOLE_SIZE};
-        VkDescriptorBufferInfo sort_info{resources_->static_sort_as[f].buffer(), 0, VK_WHOLE_SIZE};
-        VkDescriptorBufferInfo uniform_info{resources_->uniform_buffer.buffer(), 0, sizeof(GsUniforms)};
-        VkDescriptorBufferInfo counts_info{resources_->counts_ssbos[f].buffer(), 0, VK_WHOLE_SIZE};
-        VkDescriptorBufferInfo bone_info{render_state_ ? render_state_->bones_buffer(FrameIndex{f}) : VK_NULL_HANDLE, 0, VK_WHOLE_SIZE};
-        VkDescriptorBufferInfo pbd_info{resources_->pbd_state_ssbo.buffer(), 0, VK_WHOLE_SIZE};
-        VkDescriptorBufferInfo page_table_info{resources_->page_table_ssbo.buffer(), 0, VK_WHOLE_SIZE};
-
-        VkDescriptorSet set = static_preprocess_sets_[f];
-        VkWriteDescriptorSet writes[] = {
-            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, set, 0, 0, 1,
-             VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &gaussian_info, nullptr},
-            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, set, 1, 0, 1,
-             VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &projected_info, nullptr},
-            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, set, 2, 0, 1,
-             VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &sort_info, nullptr},
-            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, set, 3, 0, 1,
-             VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, nullptr, &uniform_info, nullptr},
-            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, set, 4, 0, 1,
-             VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &counts_info, nullptr},
-            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, set, 5, 0, 1,
-             VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &bone_info, nullptr},
-            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, set, 6, 0, 1,
-             VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &pbd_info, nullptr},
-            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, set, 8, 0, 1,
-             VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &page_table_info, nullptr},
-        };
-        vkUpdateDescriptorSets(device_, 8, writes, 0, nullptr);
-    }
-
-    // Dynamic preprocess set: dynamic_gaussian(0), projected(1), dynamic_sort_a(2), uniforms(3), counts[1](4), bones(5), pbd(6), page_table(8)
-    // Per-frame: dynamic_preprocess_sets_[f] binds resources_->projected_ssbos[f],
-    // resources_->dynamic_sort_as[f], and resources_->counts_ssbos[f].
-    for (uint32_t f = 0; f < kMaxFramesInFlight; ++f) {
-        VkDescriptorBufferInfo gaussian_info{resources_->dynamic_gaussian_ssbo.buffer(), 0, VK_WHOLE_SIZE};
-        VkDescriptorBufferInfo projected_info{resources_->projected_ssbos[f].buffer(), 0, VK_WHOLE_SIZE};
-        VkDescriptorBufferInfo sort_info{resources_->dynamic_sort_as[f].buffer(), 0, VK_WHOLE_SIZE};
-        VkDescriptorBufferInfo uniform_info{resources_->uniform_buffer.buffer(), 0, sizeof(GsUniforms)};
-        VkDescriptorBufferInfo counts_info{resources_->counts_ssbos[f].buffer(), 0, VK_WHOLE_SIZE};
-        VkDescriptorBufferInfo bone_info{render_state_ ? render_state_->bones_buffer(FrameIndex{f}) : VK_NULL_HANDLE, 0, VK_WHOLE_SIZE};
-        VkDescriptorBufferInfo pbd_info{resources_->pbd_state_ssbo.buffer(), 0, VK_WHOLE_SIZE};
-        VkDescriptorBufferInfo page_table_info{resources_->page_table_ssbo.buffer(), 0, VK_WHOLE_SIZE};
-
-        VkDescriptorSet set = dynamic_preprocess_sets_[f];
-        VkWriteDescriptorSet writes[] = {
-            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, set, 0, 0, 1,
-             VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &gaussian_info, nullptr},
-            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, set, 1, 0, 1,
-             VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &projected_info, nullptr},
-            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, set, 2, 0, 1,
-             VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &sort_info, nullptr},
-            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, set, 3, 0, 1,
-             VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, nullptr, &uniform_info, nullptr},
-            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, set, 4, 0, 1,
-             VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &counts_info, nullptr},
-            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, set, 5, 0, 1,
-             VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &bone_info, nullptr},
-            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, set, 6, 0, 1,
-             VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &pbd_info, nullptr},
-            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, set, 8, 0, 1,
-             VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &page_table_info, nullptr},
-        };
-        vkUpdateDescriptorSets(device_, 8, writes, 0, nullptr);
-    }
-
-    // PBD solver descriptor set: pbd_states(0), pbd_params(1), pbd_constraints(2), pbd_uniforms(3)
-    {
-        VkDescriptorBufferInfo pbd_state_info{resources_->pbd_state_ssbo.buffer(), 0, VK_WHOLE_SIZE};
-        VkDescriptorBufferInfo pbd_params_info{resources_->pbd_params_ssbo.buffer(), 0, VK_WHOLE_SIZE};
-        VkDescriptorBufferInfo pbd_constraint_info{resources_->pbd_constraint_ssbo.buffer(), 0, VK_WHOLE_SIZE};
-        VkDescriptorBufferInfo pbd_ubo_info{resources_->pbd_uniform_buffer.buffer(), 0, 32};
-        VkWriteDescriptorSet writes[] = {
-            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, pbd_set_, 0, 0, 1,
-             VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &pbd_state_info, nullptr},
-            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, pbd_set_, 1, 0, 1,
-             VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &pbd_params_info, nullptr},
-            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, pbd_set_, 2, 0, 1,
-             VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &pbd_constraint_info, nullptr},
-            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, pbd_set_, 3, 0, 1,
-             VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, nullptr, &pbd_ubo_info, nullptr},
-        };
-        vkUpdateDescriptorSets(device_, 4, writes, 0, nullptr);
-    }
+    // Phase 5e step 1.8: PBD descriptor writes migrated to pbd_.write_descriptors()
+    // — legacy block removed in step 1.10.
+    pbd_.write_descriptors();
 
 
     // #397: the second render_sets_[*] write-pass (merged_sort re-bind)
@@ -1730,26 +1593,14 @@ void GsRenderer::init_output_layouts(VkCommandBuffer cmd) {
 }
 
 
-void GsRenderer::render(VkCommandBuffer cmd, uint32_t frame_in_flight,
-                        const glm::mat4& view, const glm::mat4& proj) {
-    if (streaming_.gaussian_count() == 0 && streaming_.static_count() == 0 && dynamic_count_ == 0) return;
-    if (frame_in_flight >= kMaxFramesInFlight) {
-        std::fprintf(stderr, "[gs_renderer] render(): frame_in_flight=%u out of range\n",
-                     frame_in_flight);
-        return;
-    }
-    GS_LABEL(cmd, "GS.Render");
-    const VkImage out_img       = resources_->output_images[frame_in_flight];
-    const VkImage depth_img     = resources_->depth_images[frame_in_flight];
-    const VkImage processed_img = resources_->processed_images[frame_in_flight];
-    // Phase 5b: post-process descriptor set now lives in GsPostProcessSystem;
-    // post_.dispatch() resolves the per-frame set internally.
-    // Phase 5d: tile_render_set now lives in GsTileBinSystem; tile_.dispatch_render() resolves it internally.
+// ─── Phase 5e Task 7 helpers ──────────────────────────────────────────────────
+// Each helper is a verbatim move of a formerly-inline render() block.
+// render() itself is now an ~45-statement orchestrator.
 
-    uint32_t width = resources_->output_width;
-    uint32_t height = resources_->output_height;
+void GsRenderer::build_uniforms(const glm::mat4& view, const glm::mat4& proj) noexcept {
+    const uint32_t width  = resources_->output_width;
+    const uint32_t height = resources_->output_height;
 
-    // Update uniforms
     GsUniforms uniforms{};
     uniforms.view = view;
     uniforms.proj = proj;
@@ -1791,51 +1642,9 @@ void GsRenderer::render(VkCommandBuffer cmd, uint32_t frame_in_flight,
         static_cast<float>(tiles_x), static_cast<float>(tiles_y));
 
     std::memcpy(resources_->uniform_buffer.mapped(), &uniforms, sizeof(uniforms));
+}
 
-    // Deferred static_sort tail fill (Codex P1 round 2).
-    //
-    // publish_pending_chunks only touches its own fenced slot when an Unload
-    // shrinks streaming_.static_count(); it marks the OTHER slots dirty for lazy refill
-    // here. By the time render() runs for `frame_in_flight`, this slot's
-    // in-flight fence has been waited on, so writing resources_->static_sort_as/bs_
-    // [frame_in_flight] is race-free.
-    //
-    // Conservative fill: zero out the full tail [streaming_.static_count(), streaming_.static_sort_size())
-    // rather than tracking per-event delta windows. Multiple Unloads can
-    // accumulate between two reuses of a slot; the over-fill is correctness-
-    // critical and runs only when a slot was actually marked dirty (rare,
-    // chunk-transition / scene-clear events).
-    if (streaming_.is_static_tail_dirty(frame_in_flight) &&
-        streaming_.static_count() < streaming_.static_sort_size()) {
-        const VkDeviceSize entry_sz = sizeof(SortEntry);
-        const VkDeviceSize fill_offset =
-            static_cast<VkDeviceSize>(streaming_.static_count()) * entry_sz;
-        const VkDeviceSize fill_size =
-            static_cast<VkDeviceSize>(streaming_.static_sort_size() - streaming_.static_count()) * entry_sz;
-        vkCmdFillBuffer(cmd, resources_->static_sort_as[frame_in_flight].buffer(),
-                        fill_offset, fill_size, 0xFFFFFFFFu);
-        vkCmdFillBuffer(cmd, resources_->static_sort_bs[frame_in_flight].buffer(),
-                        fill_offset, fill_size, 0xFFFFFFFFu);
-
-        VkBufferMemoryBarrier sort_barriers[2]{};
-        for (uint32_t i = 0; i < 2; ++i) {
-            sort_barriers[i].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-            sort_barriers[i].srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-            sort_barriers[i].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-            sort_barriers[i].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-            sort_barriers[i].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-            sort_barriers[i].offset = 0;
-            sort_barriers[i].size = VK_WHOLE_SIZE;
-        }
-        sort_barriers[0].buffer = resources_->static_sort_as[frame_in_flight].buffer();
-        sort_barriers[1].buffer = resources_->static_sort_bs[frame_in_flight].buffer();
-        vkCmdPipelineBarrier(cmd,
-            VK_PIPELINE_STAGE_TRANSFER_BIT,
-            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-            0, 0, nullptr, 2, sort_barriers, 0, nullptr);
-        streaming_.clear_static_tail_dirty(frame_in_flight);
-    }
-
+void GsRenderer::read_prev_timestamps(uint32_t frame, uint32_t ts_slot_offset) noexcept {
     // Read back GPU timestamps from THIS slot's PREVIOUS write (the renderer
     // waits on this slot's in-flight fence before calling render(), so the
     // writes are guaranteed complete by the time we reach here).
@@ -1851,8 +1660,7 @@ void GsRenderer::render(VkCommandBuffer cmd, uint32_t frame_in_flight,
     // starting at slot_offset. The reset below only touches THIS slot's
     // queries, so a previous frame's queries are never invalidated before
     // they're consumed.
-    const uint32_t ts_slot_offset = frame_in_flight * kTimestampQueriesPerFrame;
-    if (timestamp_pool_ && timestamps_written_per_slot_[frame_in_flight]) {
+    if (timestamp_pool_ && timestamps_written_per_slot_[frame]) {
         uint64_t ts[kTimestampQueriesPerFrame]{};  // depth_sort_begin/end, tile_sort_begin/end, raster_begin/end
 #if GSEURAT_DEBUG_BUILD
         const auto t_wait_start = std::chrono::steady_clock::now();
@@ -1903,46 +1711,81 @@ void GsRenderer::render(VkCommandBuffer cmd, uint32_t frame_in_flight,
             }
         }
     }
+}
 
+void GsRenderer::reset_timestamps(VkCommandBuffer cmd, uint32_t frame, uint32_t ts_slot_offset) noexcept {
     // Reset only THIS slot's queries before issuing new writes — other
     // slots' queries remain intact for their owning frames to consume.
     if (timestamp_pool_) {
         vkCmdResetQueryPool(cmd, timestamp_pool_, ts_slot_offset, kTimestampQueriesPerFrame);
-        timestamps_written_per_slot_[frame_in_flight] = false;
+        timestamps_written_per_slot_[frame] = false;
     }
+}
 
-    // In skip-sort mode, skip GS compute but still run post-process
-    // (parameters like fade_amount change continuously).
-    bool skip_gs_compute = skip_sort_ && sort_done_once_;
+void GsRenderer::transition_outputs_for_compute(VkCommandBuffer cmd, uint32_t frame) noexcept {
+    const VkImage out_img   = resources_->output_images[frame];
+    const VkImage depth_img = resources_->depth_images[frame];
+
+    // Transition this frame's output + depth images to GENERAL layout for compute write.
+    VkImageMemoryBarrier barriers[2]{};
+    barriers[0].sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    barriers[0].srcAccessMask = 0;
+    barriers[0].dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+    barriers[0].oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    barriers[0].newLayout = VK_IMAGE_LAYOUT_GENERAL;
+    barriers[0].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barriers[0].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barriers[0].image = out_img;
+    barriers[0].subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+
+    barriers[1] = barriers[0];
+    barriers[1].image = depth_img;
+
+    vkCmdPipelineBarrier(cmd,
+        VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+        0, 0, nullptr, 0, nullptr, 2, barriers);
+}
+
+void GsRenderer::clear_outputs(VkCommandBuffer cmd, uint32_t frame) noexcept {
+    const VkImage out_img   = resources_->output_images[frame];
+    const VkImage depth_img = resources_->depth_images[frame];
+
+    // Clear this frame's output + depth images to transparent black (prevents ghost artifacts)
+    VkClearColorValue clear_color = {{0.0f, 0.0f, 0.0f, 0.0f}};
+    VkImageSubresourceRange range = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+    vkCmdClearColorImage(cmd, out_img,   VK_IMAGE_LAYOUT_GENERAL, &clear_color, 1, &range);
+    vkCmdClearColorImage(cmd, depth_img, VK_IMAGE_LAYOUT_GENERAL, &clear_color, 1, &range);
+}
+
+// ─── render() — orchestrator ──────────────────────────────────────────────────
+
+void GsRenderer::render(VkCommandBuffer cmd, uint32_t frame_in_flight,
+                        const glm::mat4& view, const glm::mat4& proj) {
+    // Guards
+    if (streaming_.gaussian_count() == 0 &&
+        streaming_.static_count() == 0 &&
+        dynamic_count_ == 0) return;
+    if (frame_in_flight >= kMaxFramesInFlight) {
+        std::fprintf(stderr, "[gs_renderer] render(): frame_in_flight=%u out of range\n",
+                     frame_in_flight);
+        return;
+    }
+    GS_LABEL(cmd, "GS.Render");
+
+    const uint32_t width     = resources_->output_width;
+    const uint32_t height    = resources_->output_height;
+    const uint32_t ts_offset = frame_in_flight * kTimestampQueriesPerFrame;
+
+    build_uniforms(view, proj);
+    read_prev_timestamps(frame_in_flight, ts_offset);
+    reset_timestamps(cmd, frame_in_flight, ts_offset);
+
+    const bool skip_gs_compute = skip_sort_ && sort_done_once_;
 
     if (!skip_gs_compute) {
-        // Transition this frame's output + depth images to GENERAL layout for compute write.
-        VkImageMemoryBarrier barriers[2]{};
-        barriers[0].sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-        barriers[0].srcAccessMask = 0;
-        barriers[0].dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-        barriers[0].oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-        barriers[0].newLayout = VK_IMAGE_LAYOUT_GENERAL;
-        barriers[0].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        barriers[0].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        barriers[0].image = out_img;
-        barriers[0].subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
-
-        barriers[1] = barriers[0];
-        barriers[1].image = depth_img;
-
-        vkCmdPipelineBarrier(cmd,
-            VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-            0, 0, nullptr, 0, nullptr, 2, barriers);
-    }
-
-    if (!skip_gs_compute) {
-        // Clear this frame's output + depth images to transparent black (prevents ghost artifacts)
-        VkClearColorValue clear_color = {{0.0f, 0.0f, 0.0f, 0.0f}};
-        VkImageSubresourceRange range = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
-        vkCmdClearColorImage(cmd, out_img,   VK_IMAGE_LAYOUT_GENERAL, &clear_color, 1, &range);
-        vkCmdClearColorImage(cmd, depth_img, VK_IMAGE_LAYOUT_GENERAL, &clear_color, 1, &range);
+        transition_outputs_for_compute(cmd, frame_in_flight);
+        clear_outputs(cmd, frame_in_flight);
 
         // === PBD solver dispatch (before any preprocess) ===
         // Option A (2026-05-11 cross-frame race fix): PBD-tagged gaussians live
@@ -1960,41 +1803,7 @@ void GsRenderer::render(VkCommandBuffer cmd, uint32_t frame_in_flight,
         // shift the depth-sort key for tagged splats. Skip the dispatch
         // entirely while a Mode-1 test is active so the GPU's pbd_state
         // SSBO retains its pre-test contents.
-        if (pbd_count_ > 0 && !tile_.determinism_test_active()) {
-            GS_LABEL(cmd, "PBD");
-            struct {
-                float time;
-                float dt;
-                uint32_t iterations;
-                uint32_t count;
-                uint32_t constraint_count;
-                uint32_t pad[3];
-            } pbd_ubo;
-            pbd_ubo.time = time_;
-            pbd_ubo.dt = 1.0f / 60.0f;
-            pbd_ubo.iterations = kPbdSolverIterations;
-            pbd_ubo.count = pbd_count_;
-            pbd_ubo.constraint_count = pbd_constraint_count_;
-            pbd_ubo.pad[0] = pbd_ubo.pad[1] = pbd_ubo.pad[2] = 0;
-            std::memcpy(resources_->pbd_uniform_buffer.mapped(), &pbd_ubo, sizeof(pbd_ubo));
-
-            vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pbd_pipeline_);
-            vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
-                                    pbd_pipeline_layout_, 0, 1, &pbd_set_, 0, nullptr);
-            vkCmdPushConstants(cmd, pbd_pipeline_layout_, VK_SHADER_STAGE_COMPUTE_BIT,
-                               0, sizeof(uint32_t), &pbd_count_);
-            vkCmdDispatch(cmd, (pbd_count_ + 63) / 64, 1, 1);
-
-            // Barrier: PBD write → preprocess read
-            VkMemoryBarrier pbd_barrier{};
-            pbd_barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
-            pbd_barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-            pbd_barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-            vkCmdPipelineBarrier(cmd,
-                VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                0, 1, &pbd_barrier, 0, nullptr, 0, nullptr);
-        }
+        pbd_.dispatch(cmd, frame_in_flight, time_, tile_.determinism_test_active());
 
         // Streaming-strict invariant: split buffers are always allocated
         // post-init. #397: the `if (use_split) { ... }` wrapper that used
@@ -2004,182 +1813,24 @@ void GsRenderer::render(VkCommandBuffer cmd, uint32_t frame_in_flight,
             resources_->static_gaussian_ssbo.buffer() && resources_->counts_ssbos[0].buffer(),
             "render: split buffers must be allocated in streaming-strict mode");
 
-        // Reset counts that will be written this frame
-        // counts[0]=static_visible (reset if static dirty), counts[1]=dynamic_visible (always reset)
-        // vkCmdFillBuffer requires offset/size to be multiples of 4 (satisfied)
-        // Phase 3: writes go to frame_in_flight's per-frame slot.
-        const bool static_dirty_this_frame =
-            streaming_.static_dirty() && streaming_.static_count() > 0;
-        if (static_dirty_this_frame) {
-            // Reset all 3 counts (static + dynamic + merged)
-            vkCmdFillBuffer(cmd, resources_->counts_ssbos[frame_in_flight].buffer(), 0, 12, 0);
-        } else {
-            // Reset only dynamic visible count (counts[1]) and merged (counts[2])
-            vkCmdFillBuffer(cmd, resources_->counts_ssbos[frame_in_flight].buffer(), 4, 8, 0);
-        }
+        sort_.dispatch(cmd, frame_in_flight, dynamic_count_, streaming_,
+                       timestamp_pool_, ts_offset);
 
-        // Per-frame GPU-side init of dynamic sort buffers.
-        //
-        // Why on the GPU? The previous CPU-side init (an 8MB std::memcpy
-        // to a HOST_VISIBLE mapped buffer every frame) raced against the
-        // GPU's in-flight reads of those same buffers from frame N-1.
-        // With kMaxFramesInFlight=2, frame N+1's CPU init could clobber
-        // entries that frame N's depth-sort dispatch was still consuming,
-        // producing intermittent flicker of persistent dynamics
-        // (chars/NPCs/PBD trees would appear for "a few frames" then
-        // disappear). Moving the fill into the command buffer makes it
-        // properly serialized with the subsequent preprocess + sort
-        // dispatches via the same TRANSFER→COMPUTE barrier below.
-        //
-        // Fill pattern 0xFFFFFFFF gives both `key` and `index` fields of
-        // every SortEntry the max-uint sentinel. The preprocess shader
-        // overwrites slots [0..dynamic_count_) with real keys (depth in
-        // [0..0xFFFE] for visible, 0xFFFF for culled) and indices, so the
-        // active range is fresh. Inactive slots keep 0xFFFFFFFF, sorting
-        // them past 0xFFFF and out of the counts[1] visible window.
-        // Phase 3: fill frame_in_flight's per-frame slot.
-        if (dynamic_count_ > 0 && resources_->dynamic_sort_as[frame_in_flight].buffer() && resources_->dynamic_sort_bs[frame_in_flight].buffer()) {
-            const VkDeviceSize dyn_sort_bytes =
-                static_cast<VkDeviceSize>(streaming_.dynamic_sort_size()) * sizeof(SortEntry);
-            vkCmdFillBuffer(cmd, resources_->dynamic_sort_as[frame_in_flight].buffer(), 0, dyn_sort_bytes, 0xFFFFFFFFu);
-            vkCmdFillBuffer(cmd, resources_->dynamic_sort_bs[frame_in_flight].buffer(), 0, dyn_sort_bytes, 0xFFFFFFFFu);
-        }
-        {
-            VkMemoryBarrier fill_barrier{};
-            fill_barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
-            fill_barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-            fill_barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
-            vkCmdPipelineBarrier(cmd,
-                VK_PIPELINE_STAGE_TRANSFER_BIT,
-                VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                0, 1, &fill_barrier, 0, nullptr, 0, nullptr);
-        }
-
-        // === Depth sort timestamp: begin ===
-        if (timestamp_pool_) {
-            vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                               timestamp_pool_, ts_slot_offset + 0);  // depth_sort_begin
-        }
-
-        // === Phase 1: Dynamic preprocess + sort (every frame, if dynamic_count_ > 0) ===
-        if (dynamic_count_ > 0) {
-            GS_LABEL(cmd, "Dynamic");
-            {
-                GS_LABEL(cmd, "Preprocess");
-                vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, preprocess_pipeline_);
-                // Phase 3: bind frame_in_flight's per-frame slot.
-                vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
-                                        preprocess_pipeline_layout_, 0, 1, &dynamic_preprocess_sets_[frame_in_flight], 0, nullptr);
-                GsPreprocessPush dyn_push{streaming_.max_static_count(), dynamic_count_, 1};
-                vkCmdPushConstants(cmd, preprocess_pipeline_layout_, VK_SHADER_STAGE_COMPUTE_BIT,
-                                   0, sizeof(GsPreprocessPush), &dyn_push);
-                vkCmdDispatch(cmd, (dynamic_count_ + 255) / 256, 1, 1);
-            }
-
-            insert_compute_barrier(cmd);
-
-            // Sort dynamic (Onesweep) — Phase 5c: delegated to GsSortSystem.
-            sort_.dispatch_depth_dynamic(cmd, frame_in_flight);
-        }
-
-        // === Phase 2: Static preprocess + sort (only when static_dirty_) ===
-        // Phase 3: static_dirty_frames_remaining_ tracks per-frame slots
-        // that still need a refresh after the last static mutation.
-        if (streaming_.static_dirty() && streaming_.static_count() > 0) {
-            GS_LABEL(cmd, "Static");
-            {
-                GS_LABEL(cmd, "Preprocess");
-                vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, preprocess_pipeline_);
-                // Phase 3: bind frame_in_flight's per-frame slot. The static
-                // head of resources_->projected_ssbos[f] is refreshed once per slot per
-                // dirty cycle.
-                vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
-                                        preprocess_pipeline_layout_, 0, 1, &static_preprocess_sets_[frame_in_flight], 0, nullptr);
-                GsPreprocessPush stat_push{0, streaming_.static_count(), 0};
-                vkCmdPushConstants(cmd, preprocess_pipeline_layout_, VK_SHADER_STAGE_COMPUTE_BIT,
-                                   0, sizeof(GsPreprocessPush), &stat_push);
-                vkCmdDispatch(cmd, (streaming_.static_count() + 255) / 256, 1, 1);
-            }
-
-            insert_compute_barrier(cmd);
-
-            // Sort static (Onesweep) — Phase 5c: delegated to GsSortSystem.
-            sort_.dispatch_depth_static(cmd, frame_in_flight);
-
-            streaming_.tick_static_dirty();
-        }
-
-        // === Phase 3: Merge (every frame) — Phase 5c: delegated to GsSortSystem. ===
-        // Merge uses actual visible counts from counts SSBO (written by preprocess shaders)
-        // Thread 0 computes merged_visible_count = static_count + dynamic_count.
-        {
-            uint32_t total_upper = streaming_.static_sort_size() + streaming_.dynamic_sort_size();
-            sort_.dispatch_merge(cmd, frame_in_flight, total_upper);
-        }
-
-        insert_compute_barrier(cmd);
-
-        // === Depth sort timestamp: end ===
-        if (timestamp_pool_) {
-            vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                               timestamp_pool_, ts_slot_offset + 1);  // depth_sort_end
-        }
-
-        // === Phase 3.5: Tile binning + tile sort ===
-        if (timestamp_pool_) {
-            vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                               timestamp_pool_, ts_slot_offset + 2);  // tile_sort_begin
-        }
-        tile_.dispatch_sort(cmd, frame_in_flight);
-        if (timestamp_pool_) {
-            vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                               timestamp_pool_, ts_slot_offset + 3);  // tile_sort_end
-        }
-
-        // === Phase 4: Tile-based rasterization (Phase 5d: into GsTileBinSystem) ===
-        if (timestamp_pool_) {
-            vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                               timestamp_pool_, ts_slot_offset + 4);  // raster_begin
-        }
-        tile_.dispatch_render(cmd, frame_in_flight, width, height);
-        if (timestamp_pool_) {
-            vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                               timestamp_pool_, ts_slot_offset + 5);  // raster_end
-            timestamps_written_per_slot_[frame_in_flight] = true;
-        }
+        tile_.dispatch(cmd, frame_in_flight, width, height,
+                       timestamp_pool_, ts_offset);
 
         sort_done_once_ = true;
-
-        // Barrier: tile rasterize → post-process (output+depth readable)
-        insert_compute_barrier(cmd);
-
+        timestamps_written_per_slot_[frame_in_flight] = tile_.emitted_timestamps_this_frame();
     }
 
     // Pass 4: Post-process (always runs — params like fade_amount change every frame).
     // Phase 5b: dispatch + UBO upload + processed_image UNDEFINED→GENERAL barrier
     // all live inside GsPostProcessSystem now.
+    // Phase 5e step 6: GENERAL→SHADER_READ_ONLY_OPTIMAL post-barrier also
+    // absorbed into GsPostProcessSystem::dispatch().
     {
         GS_LABEL(cmd, "PostProcess");
         post_.dispatch(cmd, frame_in_flight, width, height);
-    }
-
-    // Transition this frame's processed image → SHADER_READ_ONLY for fragment sampling (blit)
-    {
-        VkImageMemoryBarrier barrier{};
-        barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-        barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-        barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-        barrier.oldLayout = VK_IMAGE_LAYOUT_GENERAL;
-        barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-        barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        barrier.image = processed_img;
-        barrier.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
-
-        vkCmdPipelineBarrier(cmd,
-            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-            VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-            0, 0, nullptr, 0, nullptr, 1, &barrier);
     }
 }
 
@@ -2203,37 +1854,18 @@ void GsRenderer::clear_shadow_box_params() {
 void GsRenderer::upload_pbd_elements(const PbdPhysicsState* states,
                                       const PbdElementParams* params,
                                       uint32_t count) {
-    if (count == 0) return;
-    uint32_t n = std::min(count, kMaxPbdElements);
-    if (resources_->pbd_state_ssbo.mapped())
-        std::memcpy(resources_->pbd_state_ssbo.mapped(), states, n * sizeof(PbdPhysicsState));
-    if (resources_->pbd_params_ssbo.mapped())
-        std::memcpy(resources_->pbd_params_ssbo.mapped(), params, n * sizeof(PbdElementParams));
-    pbd_count_ = n;
+    // Phase 5e step 1.10: pure forwarder to GsPbdSystem.
+    pbd_.upload_elements(states, params, count);
 }
 
 void GsRenderer::upload_pbd_constraints(const PbdConstraint* constraints, uint32_t count) {
-    if (count == 0) return;
-    uint32_t n = std::min(count, kMaxPbdConstraints);
-    if (resources_->pbd_constraint_ssbo.mapped())
-        std::memcpy(resources_->pbd_constraint_ssbo.mapped(), constraints, n * sizeof(PbdConstraint));
-    pbd_constraint_count_ = n;
+    // Phase 5e step 1.10: pure forwarder to GsPbdSystem.
+    pbd_.upload_constraints(constraints, count);
 }
 
 void GsRenderer::clear_pbd() {
-    pbd_count_ = 0;
-    pbd_constraint_count_ = 0;
-    if (resources_->pbd_state_ssbo.mapped()) {
-        auto* s = static_cast<PbdPhysicsState*>(resources_->pbd_state_ssbo.mapped());
-        for (uint32_t i = 0; i < kMaxPbdElements; ++i) {
-            s[i] = PbdPhysicsState{};
-            s[i].prev_position = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);  // identity quat
-        }
-    }
-    if (resources_->pbd_params_ssbo.mapped())
-        std::memset(resources_->pbd_params_ssbo.mapped(), 0, kMaxPbdElements * sizeof(PbdElementParams));
-    if (resources_->pbd_constraint_ssbo.mapped())
-        std::memset(resources_->pbd_constraint_ssbo.mapped(), 0, kMaxPbdConstraints * sizeof(PbdConstraint));
+    // Phase 5e step 1.10: pure forwarder to GsPbdSystem.
+    pbd_.clear();
 }
 
 void GsRenderer::set_point_lights(const std::vector<PointLight>& lights) {
@@ -2247,10 +1879,13 @@ void GsRenderer::shutdown(VmaAllocator allocator) {
 
     // Phase 5b/5c: tear down owned subsystems before the renderer's gs_pool_
     // (their descriptor sets live in there) and before the device handle
-    // becomes invalid. Both shutdown() calls are idempotent.
+    // becomes invalid. All shutdown() calls are idempotent.
     post_.shutdown();
     sort_.shutdown();
     tile_.shutdown();
+    // Phase 5e: GsPbdSystem owns its pipeline/layout/set-layout. Must run
+    // before gs_pool_ is destroyed (pbd_set_ lives in gs_pool_).
+    pbd_.shutdown();
     // Phase 5e-2: GsStreamingSystem owns the full streaming subsystem
     // (transfer queue cancel + shutdown, slab allocator, active chunks,
     // pending deques, streaming_initialized_, sizing scalars, dirty flags).
@@ -2351,31 +1986,31 @@ void GsRenderer::shutdown(VmaAllocator allocator) {
     auto destroy_layout = [&](VkPipelineLayout& l) { if (l) { vkDestroyPipelineLayout(device_, l, nullptr); l = VK_NULL_HANDLE; } };
     auto destroy_set_layout = [&](VkDescriptorSetLayout& l) { if (l) { vkDestroyDescriptorSetLayout(device_, l, nullptr); l = VK_NULL_HANDLE; } };
 
-    destroy_pipeline(preprocess_pipeline_);
     // #397: sort_pipeline_ retired with the legacy depth-sort path.
     // Phase 5b: post-process pipeline destroyed by GsPostProcessSystem::shutdown().
     // Phase 5c: merge pipeline destroyed by GsSortSystem::shutdown().
     // Phase 5d: all tile pipelines destroyed by GsTileBinSystem::shutdown().
-    destroy_pipeline(pbd_pipeline_);
+    // Phase 5e: pbd_pipeline_ destroyed by GsPbdSystem::shutdown() (called above).
     // Phase 5c: onesweep hist + scatter pipelines destroyed by GsSortSystem::shutdown().
+    // Phase 5e step 2: preprocess_pipeline_ destroyed by GsSortSystem::shutdown().
     destroy_pipeline(compose_pipeline_);
 
     destroy_layout(compose_pipeline_layout_);
-    destroy_layout(preprocess_pipeline_layout_);
     // #397: sort_pipeline_layout_ retired with the legacy depth-sort path.
     // Phase 5b: post-process pipeline layout destroyed by GsPostProcessSystem::shutdown().
     // Phase 5c: merge pipeline layout destroyed by GsSortSystem::shutdown().
     // Phase 5d: all tile pipeline layouts destroyed by GsTileBinSystem::shutdown().
-    destroy_layout(pbd_pipeline_layout_);
+    // Phase 5e: pbd_pipeline_layout_ destroyed by GsPbdSystem::shutdown().
     // Phase 5c: onesweep hist + scatter pipeline layouts destroyed by GsSortSystem::shutdown().
+    // Phase 5e step 2: preprocess_pipeline_layout_ destroyed by GsSortSystem::shutdown().
 
-    destroy_set_layout(preprocess_layout_);
     // #397: sort_layout_ retired with the legacy depth-sort path.
     // Phase 5b: post-process set layout destroyed by GsPostProcessSystem::shutdown().
     // Phase 5c: merge descriptor set layout destroyed by GsSortSystem::shutdown().
     // Phase 5d: all tile descriptor set layouts destroyed by GsTileBinSystem::shutdown().
-    destroy_set_layout(pbd_layout_);
+    // Phase 5e: pbd_layout_ (now pbd_set_layout_) destroyed by GsPbdSystem::shutdown().
     // Phase 5c: onesweep hist + scatter descriptor set layouts destroyed by GsSortSystem::shutdown().
+    // Phase 5e step 2: preprocess_layout_ destroyed by GsSortSystem::shutdown().
     destroy_set_layout(compose_layout_);
 
     if (timestamp_pool_) { vkDestroyQueryPool(device_, timestamp_pool_, nullptr); timestamp_pool_ = VK_NULL_HANDLE; }
