@@ -1,11 +1,14 @@
 # GSeurat
 
-A high-performance C++23 / Vulkan engine utilizing **3D Gaussian Splatting**, optimized for a pixel-art aesthetic. Named after **3DGS + [Georges Seurat](https://en.wikipedia.org/wiki/Georges_Seurat)**, the pointillist painter — because Gaussian splats are the modern equivalent of painted dots.
+A high-performance C++23 / Vulkan engine for real-time **3D Gaussian Splatting**, optimized for a pixel-art aesthetic. The renderer follows an **orchestrator-over-subsystems** architecture: a ~73-line `GsRenderer::render()` invokes six autonomous subsystems (`GsStreamingSystem`, `GsPbdSystem`, `GsSortSystem`, `GsTileBinSystem`, `GsPostProcessSystem`, plus the passive `GsResourceManager` resource container), each owning its own pipelines, descriptor sets, and pipeline-stage barriers. See [docs/architecture.md](docs/architecture.md) for the full architectural overview.
+
+Named after **3DGS + [Georges Seurat](https://en.wikipedia.org/wiki/Georges_Seurat)**, the pointillist painter — because Gaussian splats are the modern equivalent of painted dots.
 
 GSeurat is designed to be embedded in external game projects as a **Git submodule**, while remaining fully buildable as a standalone project with demonstration apps and creative tooling.
 
 ## Features
 
+- **Subsystem-based renderer** — `GsRenderer` is a thin orchestrator over six self-contained Vulkan subsystems; each subsystem exposes a single `dispatch()` entry point and owns its own GPU resources. Cross-system pipeline barriers attach to the producer side of every hand-off. See [docs/architecture.md](docs/architecture.md).
 - **3D Gaussian Splatting** — GPU compute pipeline for rendering `.ply` / `.gsvx` point clouds with tile-based rasterization, dynamic point light support
 - **GPU PBD solver** — Position Based Dynamics compute shader with Verlet integration, iterative distance constraints, and ground collision. Dual-mode: wind-only (backward-compatible foliage sway) and full physics (dangling chains, pendulums)
 - **Voxel character pipeline** — MagicaVoxel import, rigid-body-part posing, GPU bone skinning in compute shader, root motion (animation-driven world movement)
@@ -201,7 +204,26 @@ One demo executable and one staging tool are produced:
 
 ## Architecture
 
-### Renderer Flow
+For the full architectural overview — the orchestrator pattern, subsystem responsibilities, cross-system barrier discipline, and resource ownership — read [docs/architecture.md](docs/architecture.md). The summary below is intentionally brief.
+
+### Frame Pipeline
+
+`GsRenderer::render()` is an ~73-line orchestrator. Each subsystem `dispatch()` is the single entry point for its phase of GPU work:
+
+```
+GsRenderer::render
+  ├── build_uniforms / read_prev_timestamps / reset_timestamps   (renderer-local helpers)
+  ├── if (!skip_gs_compute):
+  │     ├── transition_outputs_for_compute / clear_outputs
+  │     ├── pbd_.dispatch          ── GsPbdSystem        (Position-Based Dynamics solver)
+  │     ├── sort_.dispatch         ── GsSortSystem       (preprocess + Onesweep depth sort + merge)
+  │     └── tile_.dispatch         ── GsTileBinSystem    (6-pass tile bin + tile rasterize)
+  └── post_.dispatch               ── GsPostProcessSystem (fog, tone mapping, bloom, DoF)
+```
+
+Streaming work (`GsStreamingSystem`) runs across `Renderer::draw_scene`'s `poll_transfers()` call and reads-from-state via getters that the sort system queries; `GsResourceManager` is a passive struct of shared GPU resource handles. The four cross-system pipeline barriers (PBD→sort, sort→tile, tile→post, post→blit) all sit on the producer side as the last operation each `dispatch()` emits.
+
+### Renderer Output Flow
 
 ```
 Offscreen HDR (RGBA16F) -> Bloom -> DoF -> Composite (tone mapping + vignette)
@@ -212,16 +234,17 @@ Draw order: GS compute -> GS blit -> backgrounds -> tilemap -> reflections -> sh
 ### 3D Gaussian Splatting
 
 ```
-PLY file -> GaussianCloud -> GsRenderer (compute) -> Storage Image -> Fullscreen Blit
+PLY file -> GaussianCloud -> GsStreamingSystem -> GsSortSystem -> GsTileBinSystem -> GsPostProcessSystem -> Storage Image -> Fullscreen Blit
 ```
 
-Compute passes before the main render pass:
+Compute passes within the `if (!skip_gs_compute)` block of `render()`:
 
-0. **PBD Solver** (optional) — GPU-driven Position Based Dynamics physics solver: Verlet integration, distance constraint projection, ground collision. Writes position + rotation deltas
-1. **Preprocess** — project 3D Gaussians to 2D, frustum cull, compute 2D covariance (reads PBD + bone transforms)
-2. **Tile Binning** — assign projected Gaussians to overlapping 16x16 tiles with sort keys
-3. **Tile Sort** — Onesweep radix sort (decoupled lookback) or fallback 4-pass radix sort
-4. **Tile Rasterizer** — per-tile front-to-back alpha blending into HDR storage image
+0. **PBD Solver** — `GsPbdSystem::dispatch`: Verlet integration, distance constraint projection, ground collision. Writes position + rotation deltas. Early-exits internally when no PBD elements exist.
+1. **Preprocess** — inside `GsSortSystem::dispatch`: project 3D Gaussians to 2D, frustum cull, compute 2D covariance (reads PBD + bone transforms).
+2. **Depth sort** — inside `GsSortSystem::dispatch`: Onesweep radix sort (decoupled lookback, 2-dispatch per radix pass) over static and dynamic splats, then merge.
+3. **Tile Binning** — inside `GsTileBinSystem::dispatch`: assign projected Gaussians to overlapping 16x16 tiles via a deterministic 3-pass count → exclusive-scan → scatter pipeline.
+4. **Tile Sort** — inside `GsTileBinSystem::dispatch`: Onesweep radix sort within tiles (4 passes).
+5. **Tile Rasterizer** — inside `GsTileBinSystem::dispatch`: per-tile front-to-back alpha blending into the per-frame HDR storage image.
 
 Output is sampled with nearest-neighbor filtering for stylized upscale.
 
