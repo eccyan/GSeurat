@@ -1000,6 +1000,18 @@ void IslandDemoState::update(AppBase& app, float dt) {
     // Run collision system (KCC processes velocity set by update_player)
     collision_system_.update(app.world(), dt);
 
+    // Clear PlayerJump.active when KCC reports landing. Without this the flag
+    // stays true forever after the first jump, muting footsteps (line 1051)
+    // and pinning the animation clip to "jump" (line 1580).
+    {
+        auto* pj_land = app.world().try_get<PlayerJump>(player_entity_);
+        auto* kb_land = app.world().try_get<KinematicBody>(player_entity_);
+        if (pj_land && pj_land->active && kb_land && kb_land->grounded) {
+            pj_land->active = false;
+            pj_land->timer = 0.0f;
+        }
+    }
+
     // Audio: update listener position + footstep SFX + audio zone crossfade
     if (auto* ae = app.audio()) {
         ae->set_listener_position(character_origin_.x, character_origin_.y, character_origin_.z);
@@ -1614,8 +1626,10 @@ void IslandDemoState::update_walk_animation(AppBase& app, float dt) {
         }
     }
 
-    // Actor rotation (for GS preprocess shader)
-    app.renderer().gs_renderer().set_actor_rotation(character_rotation_);
+    // Facing rotation is baked into the bone to_world matrix (see
+    // bone_animation_system.cpp), so the preprocess shader already rotates
+    // per-Gaussian orientations via bone_q. Leaving actor_rotation at identity
+    // avoids double-rotating the PC's covariances.
 }
 
 // ── Environment animation (terrain sway) ──
