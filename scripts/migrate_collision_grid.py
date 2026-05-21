@@ -149,6 +149,88 @@ def migrate_solid_cells(collision, cell_size):
     return game_objects
 
 
+def migrate_solid_cells_as_walls(collision, cell_size, wall_height=4.0):
+    """Convert solid cells to tall Box wall colliders (dungeon mode).
+
+    Solid cells represent impassable walls (e.g. inside a dungeon), not floor.
+    Greedy-merges adjacent solid cells into rectangles, then emits each as a
+    box wall whose bottom sits at y=0 and top at y=wall_height.
+    """
+    width = collision['width']
+    height = collision['height']
+    solid = collision.get('solid', [])
+
+    if not solid:
+        return []
+
+    def predicate(x, z):
+        idx = z * width + x
+        return idx < len(solid) and solid[idx]
+
+    rects = greedy_merge(width, height, predicate)
+    half_h = wall_height / 2.0
+
+    game_objects = []
+    for i, (rx, rz, rw, rh) in enumerate(rects, start=1):
+        cx = (rx + rw / 2.0) * cell_size
+        cz = (rz + rh / 2.0) * cell_size
+        hex_ = (rw * cell_size) / 2.0
+        hez = (rh * cell_size) / 2.0
+
+        game_objects.append({
+            'id': f'kcc_wall_{i:03d}',
+            'name': 'Dungeon Wall (migrated)',
+            'position': [round(cx, 4), 0.0, round(cz, 4)],
+            'components': {
+                'ColliderComponent': {
+                    'shape': {
+                        'type': 'box',
+                        'half_extents': [round(hex_, 4), half_h, round(hez, 4)],
+                    },
+                    'offset': [0.0, half_h, 0.0],
+                    'collision_mask': 1,
+                    'is_trigger': False,
+                    'is_dynamic': False,
+                }
+            }
+        })
+
+    return game_objects
+
+
+def make_floor_slab(collision, cell_size, slab_thickness=0.5):
+    """Emit one large Box collider covering the full grid as a floor.
+
+    Top face sits at y=0 (matching the convention used by the kcc_wall_*
+    showcase entities in seurat_island.json). Player capsule rests on it.
+    """
+    width = collision['width']
+    height = collision['height']
+    half_h = slab_thickness / 2.0
+    cx = (width * cell_size) / 2.0
+    cz = (height * cell_size) / 2.0
+    hex_ = (width * cell_size) / 2.0
+    hez = (height * cell_size) / 2.0
+
+    return [{
+        'id': 'kcc_floor_main',
+        'name': 'Dungeon Floor (migrated)',
+        'position': [round(cx, 4), 0.0, round(cz, 4)],
+        'components': {
+            'ColliderComponent': {
+                'shape': {
+                    'type': 'box',
+                    'half_extents': [round(hex_, 4), half_h, round(hez, 4)],
+                },
+                'offset': [0.0, -half_h, 0.0],
+                'collision_mask': 1,
+                'is_trigger': False,
+                'is_dynamic': False,
+            }
+        }
+    }]
+
+
 def migrate_nav_zones(collision, cell_size):
     """Convert nav_zone[] to NavZoneVolume trigger boxes."""
     width = collision['width']
@@ -273,6 +355,14 @@ def main():
     parser.add_argument('--skip-light-probes', action='store_true')
     parser.add_argument('--probe-block-size', type=int, default=4)
     parser.add_argument('--dry-run', action='store_true')
+    parser.add_argument(
+        '--mode', choices=['floors', 'walls'], default='floors',
+        help='floors (default): emit thin box per solid cell as floor tile. '
+             'walls: emit tall box per solid cell as wall + one floor slab. '
+             "Use 'walls' for dungeon-interior scenes where solid means impassable wall.")
+    parser.add_argument(
+        '--wall-height', type=float, default=4.0,
+        help='Wall height in world units when --mode=walls (default 4.0).')
     args = parser.parse_args()
 
     scene_path = Path(args.scene)
@@ -287,14 +377,23 @@ def main():
     cell_size = collision.get('cell_size', 1.0)
 
     # Migrate
-    floor_objects = migrate_solid_cells(collision, cell_size)
+    if args.mode == 'walls':
+        wall_objects = migrate_solid_cells_as_walls(collision, cell_size, args.wall_height)
+        floor_objects = make_floor_slab(collision, cell_size)
+    else:
+        wall_objects = []
+        floor_objects = migrate_solid_cells(collision, cell_size)
     nav_objects = [] if args.skip_nav_zones else migrate_nav_zones(collision, cell_size)
     probe_objects = [] if args.skip_light_probes else migrate_light_probes(collision, cell_size, args.probe_block_size)
 
-    total = len(floor_objects) + len(nav_objects) + len(probe_objects)
+    total = len(wall_objects) + len(floor_objects) + len(nav_objects) + len(probe_objects)
 
-    print(f'Migration results:')
-    print(f'  Floor colliders: {len(floor_objects)}')
+    print(f'Migration results (mode={args.mode}):')
+    if args.mode == 'walls':
+        print(f'  Wall colliders: {len(wall_objects)}')
+        print(f'  Floor slab:     {len(floor_objects)}')
+    else:
+        print(f'  Floor colliders: {len(floor_objects)}')
     print(f'  Nav zone volumes: {len(nav_objects)}')
     print(f'  Light probes: {len(probe_objects)}')
     print(f'  Total entities: {total}')
@@ -306,6 +405,7 @@ def main():
     # Append to game_objects
     if 'game_objects' not in scene:
         scene['game_objects'] = []
+    scene['game_objects'].extend(wall_objects)
     scene['game_objects'].extend(floor_objects)
     scene['game_objects'].extend(nav_objects)
     scene['game_objects'].extend(probe_objects)
