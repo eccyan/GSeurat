@@ -1002,11 +1002,17 @@ void IslandDemoState::update(AppBase& app, float dt) {
 
     // Clear PlayerJump.active when KCC reports landing. Without this the flag
     // stays true forever after the first jump, muting footsteps (line 1051)
-    // and pinning the animation clip to "jump" (line 1580).
+    // and pinning the animation clip to "jump" (line 1580). The velocity.y<=0
+    // gate is required because KCC's ground probe (collision_system.cpp:408,
+    // 0.1m default) can re-flag grounded=true while the character is still
+    // ascending: at 144 FPS jump_velocity*dt is below the probe distance, so
+    // the post-jump probe still sees ground. Only treat it as a real landing
+    // once we're no longer rising.
     {
         auto* pj_land = app.world().try_get<PlayerJump>(player_entity_);
         auto* kb_land = app.world().try_get<KinematicBody>(player_entity_);
-        if (pj_land && pj_land->active && kb_land && kb_land->grounded) {
+        if (pj_land && pj_land->active && kb_land && kb_land->grounded
+            && kb_land->velocity.y <= 0.0f) {
             pj_land->active = false;
             pj_land->timer = 0.0f;
         }
