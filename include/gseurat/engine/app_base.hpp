@@ -271,6 +271,16 @@ public:
     // BEFORE any state push triggers init_streaming → update_descriptors.
     void init_render_state();
 
+    // === GS resource access (Phase 5a) ===
+    // Non-owning reference to AppBase's GsResourceManager. Host applications
+    // need this to bind engine-owned SSBOs (e.g. `dynamic_gaussian_ssbo`) as
+    // the destination of game-side compute passes dispatched via
+    // `set_pre_sort_compute_callback`. Returns a valid reference only after
+    // `init_render_state()` has constructed the manager.
+    GsResourceManager& gs_resources() { return *gs_resources_; }
+    const GsResourceManager& gs_resources() const { return *gs_resources_; }
+    bool has_gs_resources() const noexcept { return gs_resources_ != nullptr; }
+
 protected:
     void init_window();
     virtual void init_game_content();
