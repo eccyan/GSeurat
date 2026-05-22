@@ -229,25 +229,12 @@ void GsSortSystem::init(VkDevice device, VkPipelineCache pipeline_cache,
     // dynamic path leaves USE_PAGE_TABLE=0 — dynamic_gaussian_ssbo is
     // densely packed without slabs.
     //
-    // SPLATS_PER_SLAB must match streaming_config.slab_size_splats; the
-    // engine default (100000, see streaming_config.hpp) matches the
-    // shader default, so we keep it constant here. If we ever want to
-    // make slab size configurable per scene, this site needs to plumb
-    // the runtime value through.
-    struct PreprocessSpec {
-        uint32_t splats_per_slab;
-        uint32_t use_page_table;
-    };
-    PreprocessSpec static_spec{100000u, 1u};
-    PreprocessSpec dynamic_spec{100000u, 0u};
-    VkSpecializationMapEntry spec_map[2] = {
-        {0, offsetof(PreprocessSpec, splats_per_slab), sizeof(uint32_t)},
-        {1, offsetof(PreprocessSpec, use_page_table),  sizeof(uint32_t)},
-    };
-    VkSpecializationInfo static_spec_info{
-        2, spec_map, sizeof(PreprocessSpec), &static_spec};
-    VkSpecializationInfo dynamic_spec_info{
-        2, spec_map, sizeof(PreprocessSpec), &dynamic_spec};
+    // SPLATS_PER_SLAB must match streaming_config.slab_size_splats. We
+    // bake the engine default (100000) here so prewarm at startup has
+    // a valid pipeline; GsStreamingSystem::init_streaming() later calls
+    // set_static_preprocess_slab_size() with the runtime config value
+    // and rebuilds the static pipeline if it differs.
+    pipeline_cache_ = pipeline_cache;
 
     // Create the shared pipeline layout (one push-constant range, one
     // descriptor set layout — same for both specializations).
@@ -268,8 +255,18 @@ void GsSortSystem::init(VkDevice device, VkPipelineCache pipeline_cache,
         }
     }
 
-    auto create_preprocess_pipeline = [&](const VkSpecializationInfo* spec_info,
-                                           VkPipeline& out_pipeline) {
+    // Dynamic pipeline is invariant: USE_PAGE_TABLE=0 short-circuits the
+    // SPLATS_PER_SLAB divisor in resolve_physical_index(), so the value
+    // is irrelevant for the dynamic path.
+    set_static_preprocess_slab_size(static_preprocess_slab_size_);
+    {
+        struct DynamicSpec { uint32_t splats_per_slab; uint32_t use_page_table; };
+        DynamicSpec dyn{100000u, 0u};
+        VkSpecializationMapEntry map[2] = {
+            {0, offsetof(DynamicSpec, splats_per_slab), sizeof(uint32_t)},
+            {1, offsetof(DynamicSpec, use_page_table),  sizeof(uint32_t)},
+        };
+        VkSpecializationInfo info{2, map, sizeof(DynamicSpec), &dyn};
         auto module = load_shader_module(device_, "shaders/gs_preprocess.comp.spv");
         VkComputePipelineCreateInfo pi{};
         pi.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
@@ -277,17 +274,15 @@ void GsSortSystem::init(VkDevice device, VkPipelineCache pipeline_cache,
         pi.stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
         pi.stage.module = module;
         pi.stage.pName = "main";
-        pi.stage.pSpecializationInfo = spec_info;
+        pi.stage.pSpecializationInfo = &info;
         pi.layout = preprocess_pipeline_layout_;
         VkResult res = vkCreateComputePipelines(device_, pipeline_cache, 1, &pi,
-                                                 nullptr, &out_pipeline);
+                                                 nullptr, &dynamic_preprocess_pipeline_);
         vkDestroyShaderModule(device_, module, nullptr);
         if (res != VK_SUCCESS) {
-            throw std::runtime_error("GsSortSystem: preprocess pipeline create failed");
+            throw std::runtime_error("GsSortSystem: dynamic preprocess pipeline create failed");
         }
-    };
-    create_preprocess_pipeline(&static_spec_info,  static_preprocess_pipeline_);
-    create_preprocess_pipeline(&dynamic_spec_info, dynamic_preprocess_pipeline_);
+    }
 
     // Allocate 4 preprocess descriptor sets (2 static + 2 dynamic, per frame).
     {
@@ -324,6 +319,52 @@ void GsSortSystem::set_sort_sizes(uint32_t static_sort_size, uint32_t static_sor
     legacy_sort_workgroups_   = legacy_sort_workgroups;
     num_passes_               = num_passes;
     depth_onesweep_max_wg_    = depth_onesweep_max_wg;
+}
+
+void GsSortSystem::set_static_preprocess_slab_size(uint32_t slab_size_splats) {
+    // No-op if the existing pipeline already bakes this value AND was
+    // built (init() invokes this once with the default to construct the
+    // initial pipeline). The early-out keeps init_streaming() cheap when
+    // the runtime config matches the engine default.
+    if (static_preprocess_pipeline_ != VK_NULL_HANDLE &&
+        static_preprocess_slab_size_ == slab_size_splats) {
+        return;
+    }
+    if (device_ == VK_NULL_HANDLE) return;
+
+    // Stale pipeline, if any, must outlive any in-flight dispatches; we
+    // only get here from init() (no in-flight work) and from
+    // init_streaming() which runs on the main thread before
+    // create_transfer_queue / first frame.
+    if (static_preprocess_pipeline_ != VK_NULL_HANDLE) {
+        vkDestroyPipeline(device_, static_preprocess_pipeline_, nullptr);
+        static_preprocess_pipeline_ = VK_NULL_HANDLE;
+    }
+
+    struct StaticSpec { uint32_t splats_per_slab; uint32_t use_page_table; };
+    StaticSpec spec{slab_size_splats, 1u};
+    VkSpecializationMapEntry map[2] = {
+        {0, offsetof(StaticSpec, splats_per_slab), sizeof(uint32_t)},
+        {1, offsetof(StaticSpec, use_page_table),  sizeof(uint32_t)},
+    };
+    VkSpecializationInfo info{2, map, sizeof(StaticSpec), &spec};
+
+    auto module = load_shader_module(device_, "shaders/gs_preprocess.comp.spv");
+    VkComputePipelineCreateInfo pi{};
+    pi.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+    pi.stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    pi.stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+    pi.stage.module = module;
+    pi.stage.pName = "main";
+    pi.stage.pSpecializationInfo = &info;
+    pi.layout = preprocess_pipeline_layout_;
+    VkResult res = vkCreateComputePipelines(device_, pipeline_cache_, 1, &pi,
+                                             nullptr, &static_preprocess_pipeline_);
+    vkDestroyShaderModule(device_, module, nullptr);
+    if (res != VK_SUCCESS) {
+        throw std::runtime_error("GsSortSystem: static preprocess pipeline create failed");
+    }
+    static_preprocess_slab_size_ = slab_size_splats;
 }
 
 void GsSortSystem::write_depth_set_quad(VkDescriptorSet hist_a, VkDescriptorSet hist_b,

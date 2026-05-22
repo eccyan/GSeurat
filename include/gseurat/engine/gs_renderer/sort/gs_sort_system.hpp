@@ -59,6 +59,14 @@ public:
                         uint32_t legacy_sort_size, uint32_t legacy_sort_workgroups,
                         uint32_t num_passes, uint32_t depth_onesweep_max_wg);
 
+    // Rebuild the static preprocess pipeline with `SPLATS_PER_SLAB` baked
+    // in. Called from GsStreamingSystem::init_streaming() once the runtime
+    // `streaming_config.slab_size_splats` is known. No-op when the value
+    // matches the pipeline already created by init() (the default 100000).
+    // Must run before any static preprocess dispatch when the runtime
+    // slab size diverges from that default.
+    void set_static_preprocess_slab_size(uint32_t slab_size_splats);
+
     // Store the RenderState pointer (for bones buffer in preprocess sets).
     // Must be called before write_descriptors() if bones are needed.
     // Mirrors the GsRenderer::set_render_state() pattern.
@@ -129,10 +137,19 @@ private:
     // indices to physical slab offsets in `static_gaussian_ssbo`; the
     // dynamic path uses `USE_PAGE_TABLE=0` (direct addressing) because
     // `dynamic_gaussian_ssbo` is densely packed.
+    //
+    // `static_preprocess_slab_size_` is the SPLATS_PER_SLAB value baked
+    // into the static pipeline's spec constants. It defaults to the
+    // shader/engine default (100000) so prewarm at startup uses a valid
+    // pipeline even before `init_streaming` runs; `init_streaming` calls
+    // `set_static_preprocess_slab_size()` with the runtime config value
+    // and rebuilds the pipeline if it differs.
+    VkPipelineCache                                    pipeline_cache_                 = VK_NULL_HANDLE;
     VkDescriptorSetLayout                              preprocess_layout_              = VK_NULL_HANDLE;
     VkPipelineLayout                                   preprocess_pipeline_layout_     = VK_NULL_HANDLE;
     VkPipeline                                         static_preprocess_pipeline_     = VK_NULL_HANDLE;
     VkPipeline                                         dynamic_preprocess_pipeline_    = VK_NULL_HANDLE;
+    uint32_t                                           static_preprocess_slab_size_    = 100000u;
     std::array<VkDescriptorSet, kMaxFramesInFlight>    static_preprocess_sets_{};
     std::array<VkDescriptorSet, kMaxFramesInFlight>    dynamic_preprocess_sets_{};
 
