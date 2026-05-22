@@ -291,6 +291,29 @@ public:
     using OverlayCallback = std::function<void(VkCommandBuffer, uint32_t)>;
     void set_overlay_callback(OverlayCallback cb) { overlay_callback_ = std::move(cb); }
 
+    // Pre-sort GS compute callback. Fires inside `record_gs_prepass` after all
+    // engine compose dispatches (vfx / pbd / particles) but BEFORE
+    // `gs_renderer_.render()` runs the sort + tile-bin + raster pipeline.
+    // Host applications can use this to inject a game-specific compute pass
+    // that writes into `dynamic_gaussian_ssbo` — for example, a procedural
+    // mesh deformer, a fluid sim, or a Present↔Past state morph.
+    //
+    // Contract:
+    //   - Gated by the same `dispatch_gpu_compute` flag the engine uses for
+    //     its own compose dispatches; the callback does NOT fire during
+    //     EngineState::Loading.
+    //   - The callback is responsible for its own VK_ACCESS_SHADER_WRITE_BIT
+    //     → SHADER_READ_BIT memory barrier after its dispatch, matching the
+    //     pattern in `dispatch_compose_vfx/_pbd/_particles`. The engine does
+    //     not add one on the callback's behalf.
+    //   - `frame_in_flight` mirrors the engine's `current_frame()` and is
+    //     valid for the duration of the callback call.
+    using PreSortComputeCallback =
+        std::function<void(VkCommandBuffer cmd, uint32_t frame_in_flight)>;
+    void set_pre_sort_compute_callback(PreSortComputeCallback cb) {
+        pre_sort_compute_callback_ = std::move(cb);
+    }
+
 private:
     void create_sprite_pipeline();
     void create_outline_pipeline();
@@ -456,6 +479,10 @@ private:
 
     // Overlay callback (ImGui rendering hook)
     OverlayCallback overlay_callback_;
+
+    // Pre-sort game compute hook (procedural deformers, state morphs, etc.).
+    // See `set_pre_sort_compute_callback` for the contract.
+    PreSortComputeCallback pre_sort_compute_callback_;
 };
 
 }  // namespace gseurat

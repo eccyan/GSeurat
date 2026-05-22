@@ -1458,6 +1458,15 @@ void Renderer::record_gs_prepass(VkCommandBuffer cmd, VkDevice device, float dt,
                                                 /*prior_offset=*/vfx_count + pbd_count,
                                                 particles_count);
 
+        // Pre-sort game compute hook. Fires after all engine compose dispatches
+        // but before sort+tile-bin+raster, giving host applications a slot to
+        // inject their own compute pass (e.g. procedural deformers, State A/B
+        // morph). Callback is responsible for its own SSBO write→read barrier;
+        // see contract in `set_pre_sort_compute_callback`.
+        if (pre_sort_compute_callback_) {
+            pre_sort_compute_callback_(cmd, current_frame_);
+        }
+
 #if GSEURAT_DEBUG_BUILD
         const auto t_prepass_pre_render = std::chrono::steady_clock::now();
 #endif
