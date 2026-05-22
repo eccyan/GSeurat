@@ -214,9 +214,75 @@ void GsSortSystem::init(VkDevice device, VkPipelineCache pipeline_cache,
         }
     }
 
-    create_pipeline("shaders/gs_preprocess.comp.spv", preprocess_layout_,
-                    static_cast<uint32_t>(sizeof(GsPreprocessPush)),
-                    preprocess_pipeline_layout_, preprocess_pipeline_);
+    // The preprocess shader exposes two specialization constants:
+    //   id=0: SPLATS_PER_SLAB (default 100000) — divisor used by
+    //         resolve_physical_index() to split a logical chunk index
+    //         into {slab_logical, offset_in_slab}.
+    //   id=1: USE_PAGE_TABLE     (default 0)   — when 1, the shader
+    //         resolves through `page_table[]` to translate logical
+    //         slab indices to physical slab offsets.
+    //
+    // The static path must use USE_PAGE_TABLE=1: clear_chunks releases
+    // overworld slabs back to a LIFO free-list, so the next chunk gets
+    // assigned a non-zero slab index (e.g. dungeon = slab 16) and the
+    // direct-addressed read would land in the zeroed region. The
+    // dynamic path leaves USE_PAGE_TABLE=0 — dynamic_gaussian_ssbo is
+    // densely packed without slabs.
+    //
+    // SPLATS_PER_SLAB must match streaming_config.slab_size_splats. We
+    // bake the engine default (100000) here so prewarm at startup has
+    // a valid pipeline; GsStreamingSystem::init_streaming() later calls
+    // set_static_preprocess_slab_size() with the runtime config value
+    // and rebuilds the static pipeline if it differs.
+    pipeline_cache_ = pipeline_cache;
+
+    // Create the shared pipeline layout (one push-constant range, one
+    // descriptor set layout — same for both specializations).
+    {
+        VkPushConstantRange push_range{};
+        push_range.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+        push_range.size = static_cast<uint32_t>(sizeof(GsPreprocessPush));
+
+        VkPipelineLayoutCreateInfo layout_info{};
+        layout_info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+        layout_info.setLayoutCount = 1;
+        layout_info.pSetLayouts = &preprocess_layout_;
+        layout_info.pushConstantRangeCount = 1;
+        layout_info.pPushConstantRanges = &push_range;
+        if (vkCreatePipelineLayout(device_, &layout_info, nullptr,
+                                    &preprocess_pipeline_layout_) != VK_SUCCESS) {
+            throw std::runtime_error("GsSortSystem: preprocess pipeline layout");
+        }
+    }
+
+    // Dynamic pipeline is invariant: USE_PAGE_TABLE=0 short-circuits the
+    // SPLATS_PER_SLAB divisor in resolve_physical_index(), so the value
+    // is irrelevant for the dynamic path.
+    set_static_preprocess_slab_size(static_preprocess_slab_size_);
+    {
+        struct DynamicSpec { uint32_t splats_per_slab; uint32_t use_page_table; };
+        DynamicSpec dyn{100000u, 0u};
+        VkSpecializationMapEntry map[2] = {
+            {0, offsetof(DynamicSpec, splats_per_slab), sizeof(uint32_t)},
+            {1, offsetof(DynamicSpec, use_page_table),  sizeof(uint32_t)},
+        };
+        VkSpecializationInfo info{2, map, sizeof(DynamicSpec), &dyn};
+        auto module = load_shader_module(device_, "shaders/gs_preprocess.comp.spv");
+        VkComputePipelineCreateInfo pi{};
+        pi.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+        pi.stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        pi.stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+        pi.stage.module = module;
+        pi.stage.pName = "main";
+        pi.stage.pSpecializationInfo = &info;
+        pi.layout = preprocess_pipeline_layout_;
+        VkResult res = vkCreateComputePipelines(device_, pipeline_cache, 1, &pi,
+                                                 nullptr, &dynamic_preprocess_pipeline_);
+        vkDestroyShaderModule(device_, module, nullptr);
+        if (res != VK_SUCCESS) {
+            throw std::runtime_error("GsSortSystem: dynamic preprocess pipeline create failed");
+        }
+    }
 
     // Allocate 4 preprocess descriptor sets (2 static + 2 dynamic, per frame).
     {
@@ -253,6 +319,52 @@ void GsSortSystem::set_sort_sizes(uint32_t static_sort_size, uint32_t static_sor
     legacy_sort_workgroups_   = legacy_sort_workgroups;
     num_passes_               = num_passes;
     depth_onesweep_max_wg_    = depth_onesweep_max_wg;
+}
+
+void GsSortSystem::set_static_preprocess_slab_size(uint32_t slab_size_splats) {
+    // No-op if the existing pipeline already bakes this value AND was
+    // built (init() invokes this once with the default to construct the
+    // initial pipeline). The early-out keeps init_streaming() cheap when
+    // the runtime config matches the engine default.
+    if (static_preprocess_pipeline_ != VK_NULL_HANDLE &&
+        static_preprocess_slab_size_ == slab_size_splats) {
+        return;
+    }
+    if (device_ == VK_NULL_HANDLE) return;
+
+    // Stale pipeline, if any, must outlive any in-flight dispatches; we
+    // only get here from init() (no in-flight work) and from
+    // init_streaming() which runs on the main thread before
+    // create_transfer_queue / first frame.
+    if (static_preprocess_pipeline_ != VK_NULL_HANDLE) {
+        vkDestroyPipeline(device_, static_preprocess_pipeline_, nullptr);
+        static_preprocess_pipeline_ = VK_NULL_HANDLE;
+    }
+
+    struct StaticSpec { uint32_t splats_per_slab; uint32_t use_page_table; };
+    StaticSpec spec{slab_size_splats, 1u};
+    VkSpecializationMapEntry map[2] = {
+        {0, offsetof(StaticSpec, splats_per_slab), sizeof(uint32_t)},
+        {1, offsetof(StaticSpec, use_page_table),  sizeof(uint32_t)},
+    };
+    VkSpecializationInfo info{2, map, sizeof(StaticSpec), &spec};
+
+    auto module = load_shader_module(device_, "shaders/gs_preprocess.comp.spv");
+    VkComputePipelineCreateInfo pi{};
+    pi.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+    pi.stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    pi.stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+    pi.stage.module = module;
+    pi.stage.pName = "main";
+    pi.stage.pSpecializationInfo = &info;
+    pi.layout = preprocess_pipeline_layout_;
+    VkResult res = vkCreateComputePipelines(device_, pipeline_cache_, 1, &pi,
+                                             nullptr, &static_preprocess_pipeline_);
+    vkDestroyShaderModule(device_, module, nullptr);
+    if (res != VK_SUCCESS) {
+        throw std::runtime_error("GsSortSystem: static preprocess pipeline create failed");
+    }
+    static_preprocess_slab_size_ = slab_size_splats;
 }
 
 void GsSortSystem::write_depth_set_quad(VkDescriptorSet hist_a, VkDescriptorSet hist_b,
@@ -511,12 +623,13 @@ void GsSortSystem::dispatch_merge(VkCommandBuffer cmd, uint32_t frame_in_flight,
     vkCmdDispatch(cmd, (total_upper + 255) / 256, 1, 1);
 }
 
-std::array<GsSortSystem::PrewarmEntry, 4> GsSortSystem::prewarm_entries() const {
+std::array<GsSortSystem::PrewarmEntry, 5> GsSortSystem::prewarm_entries() const {
     return {{
-        {onesweep_hist_pipeline_,    onesweep_hist_pipeline_layout_,    onesweep_hist_layout_},
-        {onesweep_scatter_pipeline_, onesweep_scatter_pipeline_layout_, onesweep_scatter_layout_},
-        {merge_pipeline_,            merge_pipeline_layout_,            merge_layout_},
-        {preprocess_pipeline_,       preprocess_pipeline_layout_,       preprocess_layout_},
+        {onesweep_hist_pipeline_,     onesweep_hist_pipeline_layout_,    onesweep_hist_layout_},
+        {onesweep_scatter_pipeline_,  onesweep_scatter_pipeline_layout_, onesweep_scatter_layout_},
+        {merge_pipeline_,             merge_pipeline_layout_,            merge_layout_},
+        {static_preprocess_pipeline_,  preprocess_pipeline_layout_,      preprocess_layout_},
+        {dynamic_preprocess_pipeline_, preprocess_pipeline_layout_,      preprocess_layout_},
     }};
 }
 
@@ -526,7 +639,9 @@ void GsSortSystem::dispatch_preprocess(VkCommandBuffer cmd, uint32_t frame_in_fl
     if (count == 0) return;
     GS_LABEL(cmd, is_static ? "Preprocess.Static" : "Preprocess.Dynamic");
 
-    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, preprocess_pipeline_);
+    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
+                      is_static ? static_preprocess_pipeline_
+                                : dynamic_preprocess_pipeline_);
     VkDescriptorSet set = is_static
         ? static_preprocess_sets_[frame_in_flight]
         : dynamic_preprocess_sets_[frame_in_flight];
@@ -553,10 +668,12 @@ void GsSortSystem::shutdown() {
     if (onesweep_scatter_layout_) { vkDestroyDescriptorSetLayout(device_, onesweep_scatter_layout_, nullptr); onesweep_scatter_layout_ = VK_NULL_HANDLE; }
     if (merge_layout_)            { vkDestroyDescriptorSetLayout(device_, merge_layout_,            nullptr); merge_layout_ = VK_NULL_HANDLE; }
 
-    // Preprocess pipeline (Phase 5e — moved from GsRenderer)
-    if (preprocess_pipeline_)        { vkDestroyPipeline(device_, preprocess_pipeline_, nullptr);             preprocess_pipeline_        = VK_NULL_HANDLE; }
-    if (preprocess_pipeline_layout_) { vkDestroyPipelineLayout(device_, preprocess_pipeline_layout_, nullptr); preprocess_pipeline_layout_ = VK_NULL_HANDLE; }
-    if (preprocess_layout_)          { vkDestroyDescriptorSetLayout(device_, preprocess_layout_, nullptr);     preprocess_layout_          = VK_NULL_HANDLE; }
+    // Preprocess pipelines (Phase 5e — moved from GsRenderer). Two
+    // specializations of the same shader, see init() for rationale.
+    if (static_preprocess_pipeline_)  { vkDestroyPipeline(device_, static_preprocess_pipeline_,  nullptr); static_preprocess_pipeline_  = VK_NULL_HANDLE; }
+    if (dynamic_preprocess_pipeline_) { vkDestroyPipeline(device_, dynamic_preprocess_pipeline_, nullptr); dynamic_preprocess_pipeline_ = VK_NULL_HANDLE; }
+    if (preprocess_pipeline_layout_)  { vkDestroyPipelineLayout(device_, preprocess_pipeline_layout_, nullptr); preprocess_pipeline_layout_ = VK_NULL_HANDLE; }
+    if (preprocess_layout_)           { vkDestroyDescriptorSetLayout(device_, preprocess_layout_, nullptr);     preprocess_layout_          = VK_NULL_HANDLE; }
 
     // Sets are pool-owned; pool teardown reclaims them.
     merge_sets_.fill(VK_NULL_HANDLE);

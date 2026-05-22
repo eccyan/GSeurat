@@ -157,6 +157,14 @@ void GsStreamingSystem::init_streaming(const StreamingConfig& config, uint32_t n
                           num_sort_passes, depth_onesweep_max_wg_);
     tile_->set_sort_sizes(static_sort_size_, dynamic_sort_size_);
 
+    // Issue #467 P1 follow-up: bake the runtime slab size into the static
+    // preprocess pipeline's `SPLATS_PER_SLAB` spec constant. The pipeline
+    // initially created by GsSortSystem::init() uses the engine default
+    // (100000) so prewarm has something to warm; this call rebuilds it
+    // here if a custom `streaming.slab_size_splats` was loaded from disk
+    // — `resolve_physical_index()` in the shader depends on it.
+    sort_->set_static_preprocess_slab_size(config.slab_size_splats);
+
     // Page table: one uint32 per slab, initialized to 0xFFFFFFFF (invalid).
     // host_dst variant: reads happen on the GPU every frame; updates from
     // chunk-load completions are recorded as vkCmdUpdateBuffer onto the
