@@ -99,7 +99,7 @@ public:
         VkPipelineLayout         pipeline_layout;
         VkDescriptorSetLayout    set_layout;
     };
-    std::array<PrewarmEntry, 4> prewarm_entries() const;
+    std::array<PrewarmEntry, 5> prewarm_entries() const;
 
     // Tear down. Idempotent.
     void shutdown();
@@ -123,10 +123,16 @@ private:
     VkPipeline              merge_pipeline_            = VK_NULL_HANDLE;
     std::array<VkDescriptorSet, kMaxFramesInFlight> merge_sets_{};
 
-    // Preprocess pipeline (Phase 5e — moved from GsRenderer)
+    // Preprocess pipelines (Phase 5e — moved from GsRenderer)
+    // Two specializations: the static path uses `USE_PAGE_TABLE=1` so that
+    // `gs_preprocess.comp` walks the page_table to translate logical chunk
+    // indices to physical slab offsets in `static_gaussian_ssbo`; the
+    // dynamic path uses `USE_PAGE_TABLE=0` (direct addressing) because
+    // `dynamic_gaussian_ssbo` is densely packed.
     VkDescriptorSetLayout                              preprocess_layout_              = VK_NULL_HANDLE;
     VkPipelineLayout                                   preprocess_pipeline_layout_     = VK_NULL_HANDLE;
-    VkPipeline                                         preprocess_pipeline_            = VK_NULL_HANDLE;
+    VkPipeline                                         static_preprocess_pipeline_     = VK_NULL_HANDLE;
+    VkPipeline                                         dynamic_preprocess_pipeline_    = VK_NULL_HANDLE;
     std::array<VkDescriptorSet, kMaxFramesInFlight>    static_preprocess_sets_{};
     std::array<VkDescriptorSet, kMaxFramesInFlight>    dynamic_preprocess_sets_{};
 

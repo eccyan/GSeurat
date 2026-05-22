@@ -819,13 +819,21 @@ void GsRenderer::prewarm_pipelines(VkQueue queue, VkCommandPool cmd_pool,
         };
 
         // Phase 5e step 2: gs_preprocess pipeline now owned by GsSortSystem.
+        // Issue #467: split into two specializations (USE_PAGE_TABLE 1/0)
+        // for the static / dynamic paths — prewarm both so neither cold-starts.
         {
             auto sort_entries = sort_.prewarm_entries();
-            // sort_entries[3] is the preprocess pipeline.
-            add_entry("gs_preprocess",
+            // sort_entries[3] = static preprocess, [4] = dynamic preprocess.
+            add_entry("gs_preprocess.static",
                       sort_entries[3].pipeline,
                       sort_entries[3].pipeline_layout,
                       sort_entries[3].set_layout,
+                      sizeof(GsPreprocessPush),
+                      {0,1,2,4,5,6,8}, {3}, {});
+            add_entry("gs_preprocess.dynamic",
+                      sort_entries[4].pipeline,
+                      sort_entries[4].pipeline_layout,
+                      sort_entries[4].set_layout,
                       sizeof(GsPreprocessPush),
                       {0,1,2,4,5,6,8}, {3}, {});
         }
